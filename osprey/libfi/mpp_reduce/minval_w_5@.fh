@@ -1,0 +1,398 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+
+************************************************************************
+*
+* Purpose: This is the guts of the minval routines for arrays of
+*          rank 5. For further information, see related files
+*          minval_w_p5@.f and/or minval_w_s5@.f.
+*
+************************************************************************
+*
+*     Get a local copy of my virtual pe number.
+*
+      mype = my_pe()
+*
+*     Check the mask. If it is a scalar set to false (mask = -1)
+*     then set the result to the smallest possible integer and
+*     return to the caller.
+*
+      if (maskflg .eq. -1) then
+          goto 9999
+      endif
+*
+*     Search for the local minimum value.
+*
+      if (maskflg .eq. 0) then
+*
+*         Do not use the mask argument. Search the entire dimension
+*         for the minimum value.
+*
+          if (dim .eq. 1) then
+              do i5 = 1, sext(5)
+              do i4 = 1, sext(4)
+              do i3 = 1, sext(3)
+              do i2 = 1, sext(2)
+              do i1 = 1, sext(1)
+                  if (source(i1,i2,i3,i4,i5) .lt.
+     +                local_min(i2,i3,i4,i5)) then
+                      local_min(i2,i3,i4,i5) =
+     +                             source(i1,i2,i3,i4,i5)
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          else if (dim .eq. 2) then
+              do i5 = 1, sext(5)
+              do i4 = 1, sext(4)
+              do i3 = 1, sext(3)
+              do i1 = 1, sext(1)
+              do i2 = 1, sext(2)
+                  if (source(i1,i2,i3,i4,i5) .lt.
+     +                local_min(i1,i3,i4,i5)) then
+                      local_min(i1,i3,i4,i5) =
+     +                             source(i1,i2,i3,i4,i5)
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          else if (dim .eq. 3) then
+              do i5 = 1, sext(5)
+              do i4 = 1, sext(4)
+              do i2 = 1, sext(2)
+              do i1 = 1, sext(1)
+              do i3 = 1, sext(3)
+                  if (source(i1,i2,i3,i4,i5) .lt.
+     +                local_min(i1,i2,i4,i5)) then
+                      local_min(i1,i2,i4,i5) =
+     +                             source(i1,i2,i3,i4,i5)
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          else if (dim .eq. 4) then
+              do i5 = 1, sext(5)
+              do i3 = 1, sext(3)
+              do i2 = 1, sext(2)
+              do i1 = 1, sext(1)
+              do i4 = 1, sext(4)
+                  if (source(i1,i2,i3,i4,i5) .lt.
+     +                local_min(i1,i2,i3,i5)) then
+                      local_min(i1,i2,i3,i5) =
+     +                             source(i1,i2,i3,i4,i5)
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          else
+              do i4 = 1, sext(4)
+              do i3 = 1, sext(3)
+              do i2 = 1, sext(2)
+              do i1 = 1, sext(1)
+              do i5 = 1, sext(5)
+                  if (source(i1,i2,i3,i4,i5) .lt.
+     +                local_min(i1,i2,i3,i4)) then
+                      local_min(i1,i2,i3,i4) =
+     +                             source(i1,i2,i3,i4,i5)
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          endif
+      else
+*
+*         Only search through the values of source identified
+*         by mask.
+*
+          if (dim .eq. 1) then
+              do i5 = 1, sext(5)
+              do i4 = 1, sext(4)
+              do i3 = 1, sext(3)
+              do i2 = 1, sext(2)
+              do i1 = 1, sext(1)
+                  if (mask(i1,i2,i3,i4,i5)) then
+                      if (source(i1,i2,i3,i4,i5) .lt.
+     +                    local_min(i2,i3,i4,i5)) then
+                          local_min(i2,i3,i4,i5) =
+     +                                 source(i1,i2,i3,i4,i5)
+                      endif
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          else if (dim .eq. 2) then
+              do i5 = 1, sext(5)
+              do i4 = 1, sext(4)
+              do i3 = 1, sext(3)
+              do i1 = 1, sext(1)
+              do i2 = 1, sext(2)
+                  if (mask(i1,i2,i3,i4,i5)) then
+                      if (source(i1,i2,i3,i4,i5) .lt.
+     +                    local_min(i1,i3,i4,i5)) then
+                          local_min(i1,i3,i4,i5) =
+     +                                 source(i1,i2,i3,i4,i5)
+                      endif
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          else if (dim .eq. 3) then
+              do i5 = 1, sext(5)
+              do i4 = 1, sext(4)
+              do i2 = 1, sext(2)
+              do i1 = 1, sext(1)
+              do i3 = 1, sext(3)
+                  if (mask(i1,i2,i3,i4,i5)) then
+                      if (source(i1,i2,i3,i4,i5) .lt.
+     +                    local_min(i1,i2,i4,i5)) then
+                          local_min(i1,i2,i4,i5) =
+     +                                 source(i1,i2,i3,i4,i5)
+                      endif
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          else if (dim .eq. 4) then
+              do i5 = 1, sext(5)
+              do i3 = 1, sext(3)
+              do i2 = 1, sext(2)
+              do i1 = 1, sext(1)
+              do i4 = 1, sext(4)
+                  if (mask(i1,i2,i3,i4,i5)) then
+                      if (source(i1,i2,i3,i4,i5) .lt.
+     +                    local_min(i1,i2,i3,i5)) then
+                          local_min(i1,i2,i3,i5) =
+     +                                 source(i1,i2,i3,i4,i5)
+                      endif
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          else
+              do i4 = 1, sext(4)
+              do i3 = 1, sext(3)
+              do i2 = 1, sext(2)
+              do i1 = 1, sext(1)
+              do i5 = 1, sext(5)
+                  if (mask(i1,i2,i3,i4,i5)) then
+                      if (source(i1,i2,i3,i4,i5) .lt.
+     +                    local_min(i1,i2,i3,i4)) then
+                          local_min(i1,i2,i3,i4) =
+     +                                 source(i1,i2,i3,i4,i5)
+                      endif
+                  endif
+              enddo
+              enddo
+              enddo
+              enddo
+              enddo
+          endif
+      endif
+*
+*     If running in parallel, then find the global minimums,
+*     else if running in a master region, then return to the
+*     caller; the global minimums have already been found by
+*     processor 0.
+*
+
+      if (.not. in_parallel()) then
+          goto 9999
+      endif
+*
+*     In order to find the global result values in an efficient manner
+*     that keeps all of the processors busy all of the time without
+*     memory contention, we need to direct the processors to work on
+*     independent portions of the global result array simultaneously.
+*     To this end, we need to compute a PE offset value that will
+*     insure that for each trip through the j loops below, each processor
+*     is working on a unique portion of the result array.
+*
+      if ((npes .eq. 1) .or. (npes .eq. n$pes)) then
+          pe_offset = mod(mype,npes)
+      else
+          pe_offset = mod(mype/dist_cnt,npes)
+      endif
+*
+*     Find the global minimums along dimension dim. For dim = 1,
+*     If the number of blocks in the second dimension is less than
+*     the number of processors that the first dimension is spread
+*     across, then divide up each block into sub-blocks. For dim
+*     > 1, compare the number of blocks in the first dimension with
+*     the number of processors that dimension dim is spread across.
+*
+      if (blkcnts(1) .lt. npes) then
+          if (blkcnts(1) .eq. 0) then
+              do j = 1, npes
+cdir$ barrier
+              enddo
+          else
+              do k = 1, blkcnts(1)
+                  l = hi1(k) - low1(k) + 1
+                  length = l/npes
+                  if ((length * npes) .lt. l) length = length + 1
+*
+*                 Calculate the offset of the starting point for
+*                 each block and the length of the result array
+*                 that each processor will update during every
+*                 time step.
+*
+                  offset = 0
+                  do i = 1, k-1
+                      offset = offset + (hi1(i) - low1(i) + 1)
+                  enddo
+*
+*                 Calculate the global minimum on npes subgroups
+*                 concurrently and the offset within each block
+*                 that the processor will use for each time step.
+*
+                  do j = 1, npes
+                     j_offset = mod(pe_offset+j-1,npes)*length
+                     isize = min0(length,lmext(1)-j_offset)
+                     do i1 = j_offset+1, j_offset + isize
+                        m1 = offset + low1(k) + i1 - 1
+                        i4 = 1
+                        do mm4 = 1, blkcnts(4)
+                        do m4 = low4(mm4), hi4(mm4)
+                        i3 = 1
+                        do mm3 = 1, blkcnts(3)
+                        do m3 = low3(mm3), hi3(mm3)
+                        i2 = 1
+                        do mm2 = 1, blkcnts(2)
+                        do m2 = low2(mm2), hi2(mm2)
+                        if (local_min(i1,i2,i3,i4) .lt.
+     +                          result(m1,m2,m3,m4)) then
+                                result(m1,m2,m3,m4) =
+     +                                    local_min(i1,i2,i3,i4)
+                            endif
+                        i2 = i2 + 1
+                        enddo
+                        enddo
+                        i3 = i3 + 1
+                        enddo
+                        enddo
+                        i4 = i4 + 1
+                        enddo
+                        enddo
+                     enddo
+cdir$ barrier
+                  enddo
+              enddo
+          endif
+      else
+*
+*         Since the number of blocks in dimension dim is larger
+*         than the number of processors that the first dimension
+*         is spread across, the cost of interprocessor communication
+*         begins to dominate. So, instead of dividing up the blocks,
+*         each processor will do one complete block at each time
+*         step and then rotate blocks between time steps. Begin by
+*         computing the offset into local_min for the first iteration.
+*
+          offset = 0
+          do i = 1, pe_offset
+              offset = offset + (hi1(i) - low1(i) + 1)
+          enddo
+*
+*         Search for the global minimums on a block-by-block basis.
+*         Every processor is allocated a different block for each
+*         time step.
+*
+          do j = 1, blkcnts(1)
+*
+*             Calculate the block number and the high and low index
+*             for the current block, then process the block.
+*
+              j_block = mod(pe_offset+j-1,blkcnts(1)) + 1
+              do i = 1, hi1(j_block) - low1(j_block) + 1
+                  m1 = low1(j_block) + i - 1
+                  i1 = offset + i
+                  i4 = 1
+                  do mm4 = 1, blkcnts(4)
+                  do m4 = low4(mm4), hi4(mm4)
+                  i3 = 1
+                  do mm3 = 1, blkcnts(3)
+                  do m3 = low3(mm3), hi3(mm3)
+                  i2 = 1
+                  do mm2 = 1, blkcnts(2)
+                  do m2 = low2(mm2), hi2(mm2)
+                      if (local_min(i1,i2,i3,i4) .lt.
+     +                    result(m1,m2,m3,m4)) then
+                          result(m1,m2,m3,m4) =
+     +                             local_min(i1,i2,i3,i4)
+                      endif
+                  i2 = i2 + 1
+                  enddo
+                  enddo
+                  i3 = i3 + 1
+                  enddo
+                  enddo
+                  i4 = i4 + 1
+                  enddo
+                  enddo
+              enddo
+cdir$ barrier
+*
+*             Update the offset for the next block.
+*
+              if (j_block .eq. blkcnts(1)) then
+                  offset = 0
+              else
+                  offset = offset + 
+     +                       (hi1(j_block) - low1(j_block) + 1)
+              endif
+          enddo
+      endif
+*
+9999  continue
+*

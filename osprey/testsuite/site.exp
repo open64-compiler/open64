@@ -1,0 +1,100 @@
+
+#################################################################
+# Entry for the dejagnu testing framework
+#  dejagnu will first try to load this file
+# In this file, we try to set the configuration globally and 
+# some global variables.
+#################################################################
+# Configuration we are going to use
+set conf open64-O2
+
+# Today's date in YYYY-MM-DD format
+#set date [clock format [clock scan [system date]] -format "%Y-%m-%d"]
+set date [exec date +%F]
+
+# Home for the test framework
+if {[info exists env(DEJAGNU)]} {
+	set testhome [split $env(DEJAGNU) /]
+	set len [expr [llength $testhome] - 1]
+	set testhome [join [lreplace $testhome $len $len] /]
+} else {
+	set testhome [pwd]
+	set dejagnu $testhome
+	append dejagnu "/site.exp"
+	if {[file exists $dejagnu]} {
+		set env(DEJAGNU) $dejagnu
+	} else {
+		puts ""
+		puts "******Error:DEJAGNU variable is empty and site.exp doesn't exist in current directory!!"
+		puts "Please set DEJAGNU to point to your site.exp file"
+		puts ""
+		exit
+	}
+}
+
+# check for TOOLROOT and COMP_TARGET_ROOT
+#if {![info exists env(TOOLROOT)]} {
+#	puts "******Error: TOOLROOT is not set."
+#	exit
+#} elseif {![file isdirectory $env(TOOLROOT)]} {
+#	puts "******Error: TOOLROOT directory $env(TOOLROOT) doesn't exist."
+#	exit
+#}
+#if {![info exists env(COMP_TARGET_ROOT)]} {
+#	puts "******Error: COMP_TARGET_ROOT is not set."
+#} elseif {![file isdirectory $env(COMP_TARGET_ROOT)]} {
+#	puts "******Error: COMP_TARGET_ROOT directory $env(COMP_TARGET_ROOT) doesn't exist."
+#}
+
+# the dir for storing log files
+set logdir   $testhome/log/$date/
+
+# the dir for storing historical data
+set datdir   $testhome/dat
+
+# the dir for storing configuration files
+set confdir  $testhome/conf
+
+# the output for the test cases
+set testoutput $testhome/output/$date
+
+# log file for putting compiler update/building
+set compiler_build_log $logdir/compiler-build.log
+set check_in_log       $logdir/checkin.log
+
+set lib_build_log    $logdir/lib-build.log
+set lib_check_in_log $logdir/lib-checkin.log
+
+set cc  	{}
+set cxx 	{}
+set fc  	{}
+set cflags 	{}
+set cxxflags 	{}
+set fflags 	{}
+set sim         {}
+set comp_home 	{}
+set sim_home    {}
+set lib_home    {}
+set platform    [exec uname -m | sed -e s/i.86/i386/]
+#set maximum timeout 2 minutes
+set max_timeout 120
+
+#ignore these directories
+set ignoredirs [list "conf" "dat" "doc" "log" "output"]
+
+set smoking_test_list ""
+lappend smoking_test_list "sl1/fsim/fsim_sl1.exp"
+lappend smoking_test_list "sl1/compiler/compiler_sl1.exp"
+lappend smoking_test_list "sl1/cpp/cpp_sl1.exp"
+lappend smoking_test_list "sl2/fsim/fsim_sl2.exp" 
+lappend smoking_test_list "sl2/compiler/compiler_sl2.exp"
+lappend smoking_test_list "sl2/libtest/libtest_sl2.exp"
+
+# cases listed in pre_test_cases will be run orderly before others
+# musted be relative path
+set pre_test_list ""
+lappend pre_test_list "build_tool/build_tool.exp"
+
+system mkdir -p $logdir
+system mkdir -p $testoutput
+

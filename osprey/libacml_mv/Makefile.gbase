@@ -1,0 +1,258 @@
+#
+#  Copyright (C) 2009-2010 Advanced Micro Devices, Inc. All Rights Reserved.
+#
+#  This file is part of libacml_mv.
+#
+#  libacml_mv is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU Lesser General Public
+#  License as published by the Free Software Foundation; either
+#  version 2.1 of the License, or (at your option) any later version.
+#
+#  libacml_mv is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+#  Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public
+#  License along with libacml_mv.  If not, see
+#  <http://www.gnu.org/licenses/>.
+#
+
+# Makefile for libacml_mv library
+
+# What we're building, and where to find it.
+LIBRARY = libacml_mv.a
+dso_version := 1
+DSO = libacml_mv.so.$(dso_version)
+
+ifeq ($(BUILD_TYPE), NONSHARED)
+TARGETS = $(LIBRARY)
+else
+TARGETS = $(LIBRARY) $(DSO)
+endif
+
+# Makefile setup
+include $(COMMONDEFS)
+
+VPATH    = $(BUILD_BASE)/src:$(BUILD_BASE)/src/gas
+
+# Compiler options
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = -I$(BUILD_BASE)/inc
+
+# CFLAGS += -Wall -W -Wstrict-prototypes -Werror -fPIC -O2 $(DEBUG)
+
+ifeq ($(BUILD_ARCH), X8664)
+
+CFILES = \
+	acos.c \
+	acosf.c \
+	acosh.c \
+	acoshf.c \
+	asin.c \
+	asinf.c \
+	asinh.c \
+	asinhf.c \
+	atan2.c \
+	atan2f.c \
+	atan.c \
+	atanf.c \
+	atanh.c \
+	atanhf.c \
+	ceil.c \
+	ceilf.c \
+	cosh.c \
+	coshf.c \
+	exp_special.c \
+	finite.c \
+	finitef.c \
+	floor.c \
+	floorf.c \
+	frexp.c \
+	frexpf.c \
+	hypot.c \
+	hypotf.c \
+	ilogb.c \
+	ilogbf.c \
+	ldexp.c \
+	ldexpf.c \
+	libm_special.c \
+	llrint.c \
+	llrintf.c \
+	llround.c \
+	llroundf.c \
+	log1p.c \
+	log1pf.c \
+	logb.c \
+	logbf.c \
+	log_special.c \
+	lrint.c \
+	lrintf.c \
+	lround.c \
+	lroundf.c \
+	modf.c \
+	modff.c \
+	nan.c \
+	nanf.c \
+	nearbyintf.c \
+	nextafter.c \
+	nextafterf.c \
+	nexttoward.c \
+	nexttowardf.c \
+	pow_special.c \
+	remainder_piby2.c \
+	remainder_piby2d2f.c \
+	rint.c \
+	rintf.c \
+	roundf.c \
+	scalbln.c \
+	scalblnf.c \
+	scalbn.c \
+	scalbnf.c \
+	sincos_special.c \
+	sinh.c \
+	sinhf.c \
+	sqrt.c \
+	sqrtf.c \
+	tan.c \
+	tanf.c \
+	tanh.c \
+	tanhf.c
+
+ASFILES = \
+	cbrtf.S \
+	cbrt.S \
+	copysignf.S \
+	copysign.S \
+	cosf.S \
+	cos.S \
+	exp10f.S \
+	exp10.S \
+	exp2f.S \
+	exp2.S \
+	expf.S \
+	expm1f.S \
+	expm1.S \
+	exp.S \
+	fabsf.S \
+	fabs.S \
+	fdimf.S \
+	fdim.S \
+	fmaxf.S \
+	fmax.S \
+	fminf.S \
+	fmin.S \
+	fmodf.S \
+	fmod.S \
+	log10f.S \
+	log10.S \
+	log2f.S \
+	log2.S \
+	logf.S \
+	log.S \
+	nearbyint.S \
+	powf.S \
+	pow.S \
+	remainderf.S \
+	remainder.S \
+	round.S \
+	sincosf.S \
+	sincos.S \
+	sinf.S \
+	sin.S \
+	truncf.S \
+	trunc.S \
+	v4hcosl.S \
+	v4helpl.S \
+	v4hfrcpal.S \
+	v4hlog10l.S \
+	v4hlog2l.S \
+	v4hlogl.S \
+	v4hsinl.S \
+	vrd2cos.S \
+	vrd2exp.S \
+	vrd2log10.S \
+	vrd2log2.S \
+	vrd2log.S \
+	vrd2sincos.S \
+	vrd2sin.S \
+	vrd4cos.S \
+	vrd4exp.S \
+	vrd4frcpa.S \
+	vrd4log10.S \
+	vrd4log2.S \
+	vrd4log.S \
+	vrd4sin.S \
+	vrdacos.S \
+	vrdaexp.S \
+	vrdalog10.S \
+	vrdalog2.S \
+	vrdalogr.S \
+	vrdalog.S \
+	vrda_scaled_logr.S \
+	vrda_scaledshifted_logr.S \
+	vrdasincos.S \
+	vrdasin.S \
+	vrs4cosf.S \
+	vrs4expf.S \
+	vrs4log10f.S \
+	vrs4log2f.S \
+	vrs4logf.S \
+	vrs4powf.S \
+	vrs4powxf.S \
+	vrs4sincosf.S \
+	vrs4sinf.S \
+	vrs8expf.S \
+	vrs8log10f.S \
+	vrs8log2f.S \
+	vrs8logf.S \
+	vrsacosf.S \
+	vrsaexpf.S \
+	vrsalog10f.S \
+	vrsalog2f.S \
+	vrsalogf.S \
+	vrsapowf.S \
+	vrsapowxf.S \
+	vrsasincosf.S \
+	vrsasinf.S
+
+else
+
+# The special processing of the -lm option in the compiler driver should
+# be delayed until all of the options have been parsed.  Until the
+# driver is cleaned up, it is important that processing be the same on
+# all architectures.  Thus we add an empty 32-bit ACML vector math
+# library.
+
+dummy.c :
+	echo "void libacml_mv_placeholder() {}" > dummy.c
+
+CFILES = dummy.c
+LDIRT += dummy.c
+
+endif
+
+
+default:
+	$(MAKE)  first
+	$(MAKE)  $(TARGETS)
+	$(MAKE)  last
+
+first : 
+ifndef SKIP_DEP_BUILD
+	$(call submake,$(BUILD_AREA)/include)
+endif
+
+last : make_libdeps
+
+include $(COMMONRULES)
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+	$(ranlib) $@
+
+$(DSO): $(OBJECTS:%.o=%.pic.o)
+	$(ld) $(STD_DSO_LOADOPTS) -Wl,-x -o $@ $^ -L.
+	$(ln) -sf $(DSO) $(basename $(DSO))
+

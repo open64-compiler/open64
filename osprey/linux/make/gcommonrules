@@ -1,0 +1,265 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#ident "$Revision$"
+#
+# Common makefile rules.
+#
+# Notes:
+#	- After including $(ROOT)/usr/include/make/commondefs, a makefile may
+#	  say ``include $(COMMONRULES)'' to get this file.
+#	- It is up to the including makefile to define a default rule before
+#	  including $(COMMONRULES).
+#	- The parent makefile must define TARGETS in order for clobber to work.
+#
+#	- if BUILD_SUBDIRS is set, then iterate over that for the COMMONTARGS
+
+#
+# An always-unsatisfied target.  The name is unlikely to occur in a file tree,
+# but if _force existed in a make's current directory, this target would be
+# always-satisfied and targets that depended on it would not be made.
+#
+$(_FORCE):
+
+#
+# File removal rules: there are three.
+#	- clean removes dirt
+#	- clobber removes targets, dirt, and Makedepend
+#	- rmtargets removes targets only
+# One might 'make clean' in a large tree to reclaim disk space after targets
+# are built, but before they are archived into distribution images on disk.
+# One might 'make rmtargets' to remove badly-linked executables, and then
+# run a 'make' to re-link the good objects.
+#
+CWD := $(shell pwd)
+
+ifdef BUILD_SUBDIRS
+# use separate clobber so don't recurse on each sub-target
+clobber: $(_FORCE)
+	rm -rf $(DIRT)
+	rm -rf $(TARGETS)
+	rm -rf $(MKDEPFILE)
+	@for d in $(BUILD_SUBDIRS); do cd $(CWD)/$$d && $(MAKE) $@; done
+else
+clobber: clean rmtargets $(_FORCE)
+	rm -rf $(MKDEPFILE)
+endif
+
+clean: $(_FORCE)
+	rm -rf $(DIRT)
+ifdef BUILD_SUBDIRS
+	@for d in $(BUILD_SUBDIRS); do cd $(CWD)/$$d && $(MAKE) $@; done
+endif
+
+rmtargets: $(_FORCE)
+	rm -rf $(TARGETS)
+ifdef BUILD_SUBDIRS
+	@for d in $(BUILD_SUBDIRS); do cd $(CWD)/$$d && $(MAKE) $@; done
+endif
+
+#
+# A better version of smake's makelib.mk rule.
+# XXX fix makelib.mk in next release and remove this rule.
+#
+MAKELIB: .USE .PRECIOUS
+	$(AR) c$(ARFLAGS) $@ $?
+	rm -f $?
+
+_empty :=
+_space :=	$(_empty) $(_empty)
+
+ifeq ($(BUILD_TARGET), NVISA)
+ar =		$(AR)
+as =		$(CC)
+bison =		$(BISON)
+c++f =		$(C++F)
+cc =		$(CC)
+ccf =		$(CCF)
+cxx =		$(CXX)
+f77 =		$(F77)
+f90 =		$(F90)
+fc =		$(FC)
+ld =		$(LD)
+ln =		$(LN)
+link.c++f =	$(C++F)
+link.ccf =	$(CCF)
+link.cxxf =	$(CXXF)
+ranlib =	$(RANLIB)
+run =	
+submake =	$(MAKE) -C $(1) $(2)
+
+else
+ar =		$(if $V,,@echo 'AR     $(CWD)/$@';) $(AR)
+as =		$(if $V,,@echo 'AS     $(CWD)/$<';) $(CC)
+bison =		$(if $V,,@echo 'BISON  $(CWD)/$<';) $(BISON)
+c++f =		$(if $V,,@echo 'C++    $(CWD)/$<';) $(C++F)
+cc =		$(if $V,,@echo 'C      $(CWD)/$<';) $(CC)
+ccf =		$(if $V,,@echo 'C      $(CWD)/$@';) $(CCF)
+cxx =		$(if $V,,@echo 'C++    $(CWD)/$<';) $(CXX)
+f77 =		$(if $V,,@echo 'F77    $(CWD)/$<';) $(F77)
+f90 =		$(if $V,,@echo 'F90    $(CWD)/$<';) $(F90)
+fc =		$(if $V,,@echo 'F90    $(CWD)/$<';) $(FC)
+ld =		$(if $V,,@echo 'LD     $(CWD)/$@';) $(LD)
+ln =		$(if $V,,@echo 'LN     $(CWD)/$@';) $(LN)
+link.c++f =	$(if $V,,@echo 'LD     $(CWD)/$@';) $(C++F)
+link.ccf =	$(if $V,,@echo 'LD     $(CWD)/$@';) $(CCF)
+link.cxxf =	$(if $V,,@echo 'LD     $(CWD)/$@';) $(CXXF)
+link.f90f =	$(if $V,,@echo 'LD     $(CWD)/$@';) $(F90F)
+ranlib =	$(if $V,,@echo 'RANLIB $(CWD)/$@';) $(RANLIB)
+run =		$(if $V,,@echo 'RUN    $(CWD)/$<';)
+submake =	+$(if $V,,@echo 'MAKE   $(if $(2),$(2) in )$(CWD)/$(1)';) $(MAKE) -C $(1) $(if $V,,--no-print-directory) $(2)
+endif # TARG_NVISA
+
+%.o : %.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+%.o : %.c
+	$(cc) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.o : %.s
+	$(as) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.o : %.S
+	$(as) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.o : %.F
+	$(fc) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+%.o : %.f
+	$(fc) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+%.o : %.F90
+	$(fc) -c $(FFLAGS_NOLANG) $(F90FLAGS) $<
+
+pic_flag := -fpic
+
+%.pic.o : %.cxx
+	$(cxx) $(pic_flag) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+%.pic.o : %.c
+	$(cc) $(pic_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.pic.o : %.s
+	$(as) $(pic_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.pic.o : %.S
+	$(as) $(pic_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.pic.o : %.f
+	$(fc) $(pic_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+%.pic.o : %.F
+	$(fc) $(pic_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+%.pic.o : %.F90
+	$(fc) $(pic_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+prof_flag := -pg
+
+%.pg.o : %.cxx
+	$(cxx) $(prof_flag) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+%.pg.o : %.c
+	$(cc) $(prof_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.pg.o : %.s
+	$(as) $(prof_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.pg.o : %.S
+	$(as) $(prof_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.pg.o : %.f
+	$(fc) $(prof_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+%.pg.o : %.F
+	$(fc) $(prof_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+%.pg.o : %.F90
+	$(fc) $(prof_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+ipa_flag := -ipa
+
+%.ipa.o : %.cxx
+	$(cxx) $(ipa_flag) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+%.ipa.o : %.c
+	$(cc) $(ipa_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.ipa.o : %.s
+	$(as) $(ipa_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.ipa.o : %.S
+	$(as) $(ipa_flag) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+%.ipa.o : %.f
+	$(fc) $(ipa_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+%.ipa.o : %.F
+	$(fc) $(ipa_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $< -o $@
+
+%.ipa.o : %.F90
+	$(fc) $(ipa_flag) -c $(FFLAGS_NOLANG) $(F90FLAGS) $<
+
+make_deps:
+	-@cat *.d > $(MKDEPFILE)
+
+# Note that the default make_libdeps rule appears to be broken.  The
+# maintainers of architectures besides NVISA and X8664 should check to
+# see if the default rule is actually desirable.
+ifeq ($(BUILD_TARGET), NVISA)
+NO_LIB_MEMBER_DEPS=1
+endif
+ifeq ($(BUILD_TARGET), X8664)
+NO_LIB_MEMBER_DEPS=1
+endif
+
+ifdef NO_LIB_MEMBER_DEPS
+make_libdeps :
+	-@cat *.d > $(MKDEPFILE)
+else
+# make dependencies be for library(foo.o) not for foo.o,
+# thus we don't need to preserve intermediate .o files.
+make_libdeps :
+	-@cat *.d | sed -e "s/^.*\.o/$(LIBRARY)(&)/" > $(MKDEPFILE)
+endif
+
+#
+# Include the make dependency file if it exists.
+#
+-include $(MKDEPFILE)
+
+#
+# Local make rules
+#
+-include $(LOCALRULES)

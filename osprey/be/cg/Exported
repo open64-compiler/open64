@@ -1,0 +1,12 @@
+CG_Process_Command_Line
+CG_Init
+CG_Fini
+CG_Dump_Region
+CG_Generate_Code
+CG_PU_Finalize
+CG_PU_Initialize
+CG_Change_Elf_Symbol_To_Undefined
+EH_Generate_Range_List
+EH_Write_Range_Table
+prefetch_ahead
+

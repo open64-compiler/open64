@@ -1,0 +1,112 @@
+#!/usr/bin/expect -f
+
+proc ParseTimefile { filename arg_result } {
+    upvar $arg_result result
+    set file [open $filename r]
+    set historys 3
+    array set result {}
+    while { [gets $file line] >= 0 } {
+        set line [string trim $line]
+        if { [string length $line] > 0 } {
+	    set words [split $line "="]
+	    if { [llength $words] == 2 } {
+	        set values [split [lindex $words 1] ","]
+		set res [list]
+		if { [llength $values] != $historys } {
+                    for {set i 0} {$i < $historys} {incr i} {
+		        lappend res -1
+		    }
+		} else {
+		    foreach val $values {
+		        lappend res $val
+                    }
+                }
+	        set result([string trim [lindex $words 0]]) $res
+	    } else {
+	        error "Bad format in $filename: $line"
+		
+	    }
+	}
+    }
+    close $file
+}
+
+proc UpdateTimefile { filename arg_time_list arg_cur_time } {
+    upvar $arg_time_list time_list
+    upvar $arg_cur_time cur_time
+    set file [open $filename w]
+    foreach key [lsort -dictionary [array names time_list]] {
+        puts -nonewline $file "$key = "
+        set tlist $time_list($key)
+        foreach time [lrange $tlist 1 [expr [llength $tlist] - 1]] {
+            puts -nonewline $file "$time, "
+        }
+        puts $file $cur_time($key)
+    }
+    close $file
+}
+
+proc GetAverageTime { timelist } {
+    set total 0
+    set count 0
+    foreach time $timelist {
+        if { $time >= 0 } {
+            incr count
+            set total [expr $total + $time]
+        }
+    }
+    if { $count == 0 } {
+        return -1
+    } else {
+        return [expr $total / $count]
+    }
+}
+
+proc WriteTimeResult { summary arg_runtimes standardfile } {
+    global testhome datdir
+    variable standard
+    upvar $arg_runtimes runtimes
+    ParseTimefile "$datdir/$standardfile" standard
+    puts $summary ""
+    puts $summary " TIME "
+    puts $summary "======"
+    puts $summary "--------------------------------------------------------------"
+    puts $summary "|        Case        |3 times' Avg.|   Present   |   Ratio   |"
+    puts $summary "--------------------------------------------------------------"
+    set products 1
+    set count 0
+    foreach key [lsort -dictionary [array names runtimes]] {
+        set std [GetAverageTime $standard($key)]
+	set actual $runtimes($key)
+        puts -nonewline $summary [format "| %18s |" $key]
+        if { $std >= 0 } {
+	    puts -nonewline $summary [format "  %10.3f |" $std]
+	} else {
+	    puts -nonewline $summary "      -      |"
+	}
+	if { $actual >= 0 } {
+	    puts -nonewline $summary [format "  %10.3f |" $actual]
+	} else {
+	    puts -nonewline $summary "      -      |"
+	}
+	if { $std > 0 && $actual >= 0 } {
+	    set ratio [expr $actual / $std]
+	    puts $summary [format " %8.3f%% |" [expr $ratio * 100]]
+	    set products [expr $ratio * $products]
+	    set count [expr $count + 1]
+	} else {
+	    puts $summary "     -     |"
+	}
+    }
+    
+    if { $count > 0 } {
+        set geoavg [format " %8.3f%% " [expr pow($products, 1.0 / $count) * 100]]
+    } else {
+        set geoavg "     -     "
+    }
+    puts $summary "--------------------------------------------------------------"
+    puts $summary "|     GeoAverage     |      -      |      -      |$geoavg|"
+    puts $summary "--------------------------------------------------------------"
+    UpdateTimefile "$datdir/$standardfile" standard runtimes
+}
+

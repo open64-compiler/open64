@@ -1,0 +1,9 @@
+SI_RRW_initializer
+SI_RRW_overuse_mask
+SI_resource_count
+SI_resources
+SI_issue_slot_count
+SI_issue_slots
+SI_top_si
+SI_ID_si
+SI_ID_count

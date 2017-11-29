@@ -1,0 +1,202 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+	if (shftval .eq. -1) then
+*
+*	If all of dimension is spread out over more than 1 PE.
+*
+	    if (mype .ne. pe_hi) then
+		if (dim .eq. 1) then
+		    do j = 1, sext(2)
+		    do k = 1, sext(3)
+			do i = 1, sext(1)-1
+			    result(i+1,j,k) = source(i,j,k)
+			enddo
+		    enddo
+		    enddo
+		    if (str1 .eq. 1) then
+			call shmem_iput (result(1,1,1),source(sext(1),1,1),
+     &				totsx1,totsx1,totsx2*totsx3,pe_hi)
+		    else
+			do j = 1, sext(2)
+			do k = 1, sext(3)
+			    call shmem_put (result(1,j,k),source(sext(1),j,k),
+     &				str1, pe_hi)
+			enddo
+			enddo
+		    endif
+		else if (dim .eq. 2) then
+		    do k = 1, sext(3)
+			do i = 1, sext(1)
+			    do j = 1, sext(2)-1
+				result(i,j+1,k) = source(i,j,k)
+			    enddo
+			enddo
+			call shmem_iput (result(1,1,k),source(1,sext(2),k),
+     &				1,1,totsx1,pe_hi)
+		    enddo
+		else
+		    do i = 1, sext(1)
+		    do j = 1, sext(2)
+			do k = 1, sext(3)-1
+			    result(i,j,k+1) = source(i,j,k)
+			enddo
+		    enddo
+		    enddo
+		    call shmem_iput (result(1,1,1),source(1,1,sext(3)),
+     &			1,1,totsx1*totsx2,pe_hi)
+		endif
+	    else
+*
+*	If entire extent of total array is on 1 PE, we don't need to do
+*	any inter-PE puts.
+*
+		if (dim .eq. 1) then
+		    do j = 1, sext(2)
+		    do k = 1, sext(3)
+			do i = 1, sext(1)-1
+			    result(i+1,j,k) = source(i,j,k)
+			enddo
+			result(1,j,k) = source(sext(1),j,k)
+		    enddo
+		    enddo
+		else if (dim .eq. 2) then
+		    do i = 1, sext(1)
+		    do k = 1, sext(3)
+			do j = 1, sext(2)-1
+			    result(i,j+1,k) = source(i,j,k)
+			enddo
+			result(i,1,k) = source(i,sext(2),k)
+		    enddo
+		    enddo
+		else
+		    do i = 1, sext(1)
+		    do j = 1, sext(2)
+			do k = 1, sext(3)-1
+			    result(i,j,k+1) = source(i,j,k)
+			enddo
+			result(i,j,1) = source(i,j,sext(3))
+		    enddo
+		    enddo
+		endif
+	    endif
+	else if (shftval .eq. 1) then
+*
+*	If extent is on more than 1 PE.
+*
+	    if (mype .ne. pe_low) then
+		if (dim .eq. 1) then
+		    do j = 1, sext(2)
+		    do k = 1, sext(3)
+			do i = 2, sext(1)
+			    result(i-1,j,k) = source(i,j,k)
+			enddo
+		    enddo
+		    enddo
+		    if (str1 .eq. 1) then
+			call shmem_iput (result(sext(1),1,1),source(1,1,1),
+     &				totsx1,totsx1,totsx2*totsx3,pe_low)
+		    else
+			do j = 1, sext(2)
+			do k = 1, sext(3)
+			    call shmem_put (result(sext(1),j,k),source(1,j,k),
+     &				str1, pe_hi)
+			enddo
+			enddo
+		    endif
+		else if (dim .eq. 2) then
+		    do k = 1, sext(3)
+			do i = 1, sext(1)
+			    do j = 2, sext(2)
+				result(i,j-1,k) = source(i,j,k)
+			    enddo
+			enddo
+			call shmem_iput (result(1,sext(2),k),
+     &			    source(1,1,k),1,1,totsx1,pe_low)
+		    enddo
+		else
+		    do i = 1, sext(1)
+		    do j = 1, sext(2)
+			do k = 2, sext(3)
+			    result(i,j,k-1) = source(i,j,k)
+			enddo
+		    enddo
+		    enddo
+		    call shmem_iput (result(1,1,sext(3)),source(1,1,1),
+     &			1,1,totsx1*totsx2,pe_low)
+		endif
+	    else
+*
+*	If entire extent of total array is on 1 PE, we don't need to do
+*	any inter-PE puts.
+*
+		if (dim .eq. 1) then
+		    do j = 1, sext(2)
+		    do k = 1, sext(3)
+			do i = 2, sext(1)
+			    result(i-1,j,k) = source(i,j,k)
+			enddo
+			result(sext(1),j,k) = source(1,j,k)
+		    enddo
+		    enddo
+		else if (dim .eq. 2) then
+		    do i = 1, sext(1)
+		    do k = 1, sext(3)
+			do j = 2, sext(2)
+			    result(i,j-1,k) = source(i,j,k)
+			enddo
+			result(i,sext(2),k) = source(i,1,k)
+		    enddo
+		    enddo
+		else
+		    do i = 1, sext(1)
+		    do j = 1, sext(2)
+			do k = 2, sext(3)
+			    result(i,j,k-1) = source(i,j,k)
+			enddo
+			result(i,j,sext(3)) = source(i,j,1)
+		    enddo
+		    enddo
+		endif
+	    endif
+	else
+	    do i = 1, sext(1)
+	    do j = 1, sext(2)
+	    do k = 1, sext(3)
+		result(i,j,k) = source(i,j,k)
+	    enddo
+	    enddo
+	    enddo
+	endif

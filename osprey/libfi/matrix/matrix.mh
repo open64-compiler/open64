@@ -1,0 +1,264 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+/* USMID @(#) libfi/matrix/matrix.mh	92.2	10/28/98 22:59:22 */
+
+LIB_SRC_INFO += \
+		I:matrix/MATMUL_C4C.F90 \
+		I:matrix/MATMUL_C4C4.F90 \
+		I:matrix/MATMUL_C4C4dispatch.c \
+		I:matrix/MATMUL_C4Cdispatch.c \
+		I:matrix/MATMUL_C4S.F90 \
+		I:matrix/MATMUL_C4S4.F90 \
+		I:matrix/MATMUL_C4S4dispatch.c \
+		I:matrix/MATMUL_C4Sdispatch.c \
+		I:matrix/MATMUL_CC.F90 \
+		I:matrix/MATMUL_CC4.F90 \
+		I:matrix/MATMUL_CC4dispatch.c \
+		I:matrix/MATMUL_CCdispatch.c \
+		I:matrix/MATMUL_CS.F90 \
+		I:matrix/MATMUL_CS4.F90 \
+		I:matrix/MATMUL_CS4dispatch.c \
+		I:matrix/MATMUL_CSdispatch.c \
+		I:matrix/MATMUL_S4C.F90 \
+		I:matrix/MATMUL_S4C4.F90 \
+		I:matrix/MATMUL_S4C4dispatch.c \
+		I:matrix/MATMUL_S4Cdispatch.c \
+		I:matrix/MATMUL_S4S.F90 \
+		I:matrix/MATMUL_S4S4.F90 \
+		I:matrix/MATMUL_S4S4dispatch.c \
+		I:matrix/MATMUL_S4Sdispatch.c \
+		I:matrix/MATMUL_SC.F90 \
+		I:matrix/MATMUL_SC4.F90 \
+		I:matrix/MATMUL_SC4dispatch.c \
+		I:matrix/MATMUL_SCdispatch.c \
+		I:matrix/MATMUL_SS.F90 \
+		I:matrix/MATMUL_SS4.F90 \
+		I:matrix/MATMUL_SS4dispatch.c \
+		I:matrix/MATMUL_SSdispatch.c \
+		Ytm:matrix/dgemmx@.f \
+		Ytm:matrix/idgemmx@.f \
+		YtM:matrix/igemmx@.f \
+		YtM:matrix/isgemmx@.f \
+		Ytm:matrix/jdgemmx@.f \
+		YtM:matrix/jgemmx@.f \
+		YtM:matrix/jsgemmx@.f \
+		YtM:matrix/lgemmx@.f \
+		Ytm:matrix/sdgemmx@.f \
+		YtMPI:matrix/matmul_cc@.c \
+		YtmI:matrix/matmul_cd@.c \
+		Yt:matrix/matmul_ci@.c \
+		YtMI:matrix/matmul_cj@.c \
+		YtMPI:matrix/matmul_cs@.c \
+		YtmI:matrix/matmul_cz@.c \
+		YtmI:matrix/matmul_dc@.c \
+		YtmI:matrix/matmul_dd@.c \
+		Yt:matrix/matmul_di@.c \
+		YtmI:matrix/matmul_dj@.c \
+		YtmI:matrix/matmul_ds@.c \
+		YtmI:matrix/matmul_dz@.c \
+		Yt:matrix/matmul_ic@.c \
+		Yt:matrix/matmul_id@.c \
+		Yt:matrix/matmul_ii@.c \
+		Yt:matrix/matmul_is@.c \
+		Yt:matrix/matmul_iz@.c \
+		YtMI:matrix/matmul_jc@.c \
+		YtmI:matrix/matmul_jd@.c \
+		YtMI:matrix/matmul_jj@.c \
+		YtMI:matrix/matmul_js@.c \
+		YtmI:matrix/matmul_jz@.c \
+		YtMI:matrix/matmul_ll@.c \
+		YtMPI:matrix/matmul_sc@.c \
+		YtmI:matrix/matmul_sd@.c \
+		Yt:matrix/matmul_si@.c \
+		YtMI:matrix/matmul_sj@.c \
+		YtMPI:matrix/matmul_ss@.c \
+		YtmI:matrix/matmul_sz@.c \
+		YtmI:matrix/matmul_zc@.c \
+		YtmI:matrix/matmul_zd@.c \
+		Yt:matrix/matmul_zi@.c \
+		YtmI:matrix/matmul_zj@.c \
+		YtmI:matrix/matmul_zs@.c \
+		YtmI:matrix/matmul_zz@.c \
+		IP:matrix/c4gemmx.f \
+		IP:matrix/c4gemvx.f \
+		IP:matrix/cgemmx.f \
+		IP:matrix/cgemvx.f \
+		I:matrix/dgemmx.f \
+		I:matrix/i1dgemmx.f \
+		I:matrix/i1gemmx.f \
+		I:matrix/i1i2gemmx.f \
+		I:matrix/i1i4gemmx.f \
+		I:matrix/i1jgemmx.f \
+		I:matrix/i1s4gemmx.f \
+		I:matrix/i1sgemmx.f \
+		I:matrix/i2dgemmx.f \
+		I:matrix/i2gemmx.f \
+		I:matrix/i2i4gemmx.f \
+		I:matrix/i2jgemmx.f \
+		I:matrix/i2s4gemmx.f \
+		I:matrix/i2sgemmx.f \
+		I:matrix/i4dgemmx.f \
+		IP:matrix/i4gemmx.f \
+		I:matrix/i4jgemmx.f \
+		IP:matrix/i4s4gemmx.f \
+		IP:matrix/i4sgemmx.f \
+		I:matrix/jdgemmx.f \
+		I:matrix/jgemmx.f \
+		I:matrix/jsgemmx.f \
+		I:matrix/js4gemmx.f \
+		I:matrix/l1gemmx.f \
+		I:matrix/l1l2gemmx.f \
+		I:matrix/l1l4gemmx.f \
+		I:matrix/l1lgemmx.f \
+		I:matrix/l2gemmx.f \
+		I:matrix/l2l4gemmx.f \
+		I:matrix/l2lgemmx.f \
+		IP:matrix/l4gemmx.f \
+		I:matrix/l4lgemmx.f \
+		I:matrix/lgemmx.f \
+		I:matrix/s4dgemmx.f \
+		IP:matrix/s4gemmx.f \
+		IP:matrix/s4gemvx.f \
+		IP:matrix/s4sgemmx.f \
+		I:matrix/sdgemmx.f \
+		IP:matrix/sgemmx.f \
+		IP:matrix/sgemvx.f \
+		IP:matrix/matmul_c4c.c \
+		IP:matrix/matmul_c4c4.c \
+		I:matrix/matmul_c4d.c \
+		I:matrix/matmul_c4i1.c \
+		I:matrix/matmul_c4i2.c \
+		IP:matrix/matmul_c4i4.c \
+		I:matrix/matmul_c4j.c \
+		IP:matrix/matmul_c4s.c \
+		IP:matrix/matmul_c4s4.c \
+		I:matrix/matmul_c4z.c \
+		IP:matrix/matmul_cc4.c \
+		I:matrix/matmul_ci1.c \
+		I:matrix/matmul_ci2.c \
+		IP:matrix/matmul_ci4.c \
+		IP:matrix/matmul_cs4.c \
+		I_:matrix/matmul_dc4.c \
+		I:matrix/matmul_di1.c \
+		I:matrix/matmul_di2.c \
+		I:matrix/matmul_di4.c \
+		I:matrix/matmul_ds4.c \
+		I:matrix/matmul_i1c.c \
+		I:matrix/matmul_i1c4.c \
+		I:matrix/matmul_i1d.c \
+		I:matrix/matmul_i1i1.c \
+		I:matrix/matmul_i1i2.c \
+		I:matrix/matmul_i1i4.c \
+		I:matrix/matmul_i1j.c \
+		I:matrix/matmul_i1s.c \
+		I:matrix/matmul_i1s4.c \
+		I:matrix/matmul_i1z.c \
+		I:matrix/matmul_i2c.c \
+		I:matrix/matmul_i2c4.c \
+		I:matrix/matmul_i2d.c \
+		I:matrix/matmul_i2i1.c \
+		I:matrix/matmul_i2i2.c \
+		I:matrix/matmul_i2i4.c \
+		I:matrix/matmul_i2j.c \
+		I:matrix/matmul_i2s.c \
+		I:matrix/matmul_i2s4.c \
+		I:matrix/matmul_i2z.c \
+		IP:matrix/matmul_i4c.c \
+		IP:matrix/matmul_i4c4.c \
+		I:matrix/matmul_i4d.c \
+		I:matrix/matmul_i4i1.c \
+		I:matrix/matmul_i4i2.c \
+		IP:matrix/matmul_i4i4.c \
+		I:matrix/matmul_i4j.c \
+		IP:matrix/matmul_i4s.c \
+		IP:matrix/matmul_i4s4.c \
+		I:matrix/matmul_i4z.c \
+		I:matrix/matmul_jc4.c \
+		I:matrix/matmul_ji1.c \
+		I:matrix/matmul_ji2.c \
+		I:matrix/matmul_ji4.c \
+		I:matrix/matmul_js4.c \
+		I:matrix/matmul_l1l.c \
+		I:matrix/matmul_l1l1.c \
+		I:matrix/matmul_l1l2.c \
+		I:matrix/matmul_l1l4.c \
+		I:matrix/matmul_l2l.c \
+		I:matrix/matmul_l2l1.c \
+		I:matrix/matmul_l2l2.c \
+		I:matrix/matmul_l2l4.c \
+		I:matrix/matmul_l4l.c \
+		I:matrix/matmul_l4l1.c \
+		I:matrix/matmul_l4l2.c \
+		IP:matrix/matmul_l4l4.c \
+		I:matrix/matmul_ll1.c \
+		I:matrix/matmul_ll2.c \
+		I:matrix/matmul_ll4.c \
+		IP:matrix/matmul_s4c.c \
+		IP:matrix/matmul_s4c4.c \
+		I:matrix/matmul_s4d.c \
+		I:matrix/matmul_s4i1.c \
+		I:matrix/matmul_s4i2.c \
+		IP:matrix/matmul_s4i4.c \
+		I:matrix/matmul_s4j.c \
+		IP:matrix/matmul_s4s.c \
+		IP:matrix/matmul_s4s4.c \
+		I:matrix/matmul_s4z.c \
+		IP:matrix/matmul_sc4.c \
+		I:matrix/matmul_si1.c \
+		I:matrix/matmul_si2.c \
+		IP:matrix/matmul_si4.c \
+		IP:matrix/matmul_ss4.c \
+		I:matrix/matmul_zc4.c \
+		I:matrix/matmul_zi1.c \
+		I:matrix/matmul_zi2.c \
+		I:matrix/matmul_zi4.c \
+		I:matrix/matmul_zs4.c \
+		I:matrix/f90_mmult_error.c \
+		I:matrix/mmx_dlutil.c \
+
+
+LIB_DIRS_INFO += \
+                YMPI:matrix
+
+
+RMRSRC += \
+		matrix/lgemmx.h \
+		matrix/matmul.h \
+		matrix/mmx_c.h \
+		matrix/mmx_dlutil.h \
+		matrix/mmx_fort.h \
+		matrix/xgemmx.h \
+

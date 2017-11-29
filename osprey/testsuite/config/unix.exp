@@ -1,0 +1,35 @@
+#!/usr/bin/expect -f
+####################################################################################
+# Load required libraries
+###################################################################################
+set libdir $testhome
+
+load_lib parse_conf.exp
+
+if {[info exists env(DEJAGNU)]} {
+} else {
+puts ""
+puts ""
+puts "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+puts "FATAL error: DEJAGNU is empty. We can't find site.exp to start test."
+puts "Please set DEJAGNU to point to 'site.exp' file for SL regression test."
+puts "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+puts ""
+puts ""
+exit;
+}
+
+verbose "The Osprey software testing framework started with: "
+verbose "_____________________________________________"
+verbose "Configuration: $confdir/$conf.conf"
+verbose "Current Date:  $date"
+verbose "Testing Home:  $testhome"
+verbose "Log DIR:       $logdir"
+verbose "Test Output DIR:$testoutput"
+verbose "Machine type:  $platform"
+
+# First, Parse the configuration
+parse_conf $confdir/$conf.conf
+
+# Log and print out the result of configuration
+print_conf_vars

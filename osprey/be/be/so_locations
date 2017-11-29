@@ -1,0 +1,28 @@
+wopt.so \
+		:st = $range 0x0f000000, 0x00600000:
+
+lno.so \
+		:st = $range 0x0ea00000, 0x00800000:
+
+cg.so \
+		:st = $range 0x0e200000, 0x00400000:
+
+ipa.so \
+		:st = $range 0x0de00000, 0x00400000:
+
+whirl2c.so \
+		:st = $range 0x0da00000, 0x00200000:
+
+whirl2f.so \
+		:st = $range 0x0da00000, 0x00200000:
+
+ipl.so \
+		:st = $range 0x0d600000, 0x00200000:
+
+inline.so \
+		:st = $range 0x0d400000, 0x00200000:
+
+be.so \
+		:st = $range 0x0ca00000, 0x00800000:
+
+

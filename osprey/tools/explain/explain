@@ -1,0 +1,153 @@
+#!/usr/bin/python
+#
+# Copyright 2004, 2005 PathScale, Inc.  All Rights Reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of version 2 of the GNU General Public License as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it would be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+# Further, this software is distributed without any warranty that it
+# is free of the rightful claim of any third person regarding
+# infringement or the like.  Any license provided herein, whether
+# implied or otherwise, applies only to this software file.  Patent
+# licenses, if any, provided herein do not apply to combinations of
+# this program with other software, or any other product whatsoever.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write the Free Software Foundation,
+# Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#
+#
+# The explain utility describes a compiler message in detail.  The
+# user passes the message ID given by the compiler, such as
+# pathf95-0012, and explain outputs the full description.
+
+import errno
+import os
+import re
+import sys
+import string
+
+
+def construct_search_path():
+    '''Return a list of directories to search for the messages file.'''
+
+    cmdline = 'openf95 -print-file-name=libpscrt.a'
+    return [os.path.dirname(os.popen(os.path.join(os.path.dirname(sys.argv[0]),
+                                                  cmdline),
+                                     'r').read().strip())]
+
+
+def find_message_cat (msg_cat):
+    '''Find the message catalog in the message catalog search path.'''
+
+    cat_file = msg_cat + '.msgs'
+
+    for dir in construct_search_path():
+        fullpath = os.path.join (dir, cat_file)
+        if os.path.isfile(fullpath):
+            return fullpath
+    raise IOError(errno.ENOENT,
+                  'Could not find message catalog for %s in search path' %
+                  msg_cat)
+
+
+def print_message (msg_num, msg_id, cat_path):
+    '''Print an indexed message from the message catalog.'''
+
+    msg_re = re.compile(r'\$msg +%0.4d ' % msg_num)
+
+    cat = open (cat_path, 'r')
+
+    # Search for $msg
+    line = cat.readline()
+    while line:
+        line = cat.readline()
+        if msg_re.match(line):
+            break
+
+    # Discard lines up to and including the one that has $nexp
+    msg_re = re.compile(r'\$nexp')
+    while line:
+        line = cat.readline()
+        if msg_re.match(line):
+            break
+
+    if not line:
+        raise Exception('Could not find an entry for message %s' % msg_id)
+
+    nroff = []
+    while line:
+        line = cat.readline()
+        if line.startswith('$'):
+            break
+        nroff.append(line)
+
+    if not nroff:
+        raise Exception('No message text for message %s' % msg_id)
+
+    pager = os.getenv('PAGER', '/bin/more')
+    if os.path.basename(pager) == 'less':
+        pager = pager + ' -R'
+    fp = os.popen('/usr/bin/nroff -msg | %s -s' % pager, 'w')
+    fp.writelines(nroff)
+    fp.close()
+    return 1
+
+
+def usage(code = 1):
+    print >> sys.stderr, 'Usage: %s <message_string>' % os.path.dirname(sys.argv[0])
+    sys.exit(code)
+
+
+def main():
+    msg_id = sys.argv[1]
+
+    # The message ID is in the form of catalog-XXXX, such as pathf95-0010.
+    # The message catalog is catalog.msgs, or pathf90.msgs in this case.
+
+    try:
+        cat_name, msg_num = msg_id.split('-', 1)
+    except ValueError:
+        raise Exception('The parameter must be of the form "string-number", '
+                        'e.g. pathf95-134')
+    try:
+        msg_num = int(msg_num)
+    except ValueError:
+        raise Exception('The string "%s" is not a number' % msg_num)
+
+    # When the library returns a small msg_num, it refers to Unix errno
+    # rather than to the message catalog
+
+    if (msg_num < 1000) and (cat_name == 'lib'):
+        print >> sys.stderr, 'lib-%s: ' % msg_num
+	print >> sys.stderr, '   %s' % os.strerror(msg_num)
+	sys.exit(0)
+
+    msg_cat_path = find_message_cat (cat_name)
+
+    # This path includes the groff macro file we need, tmac.sg
+
+    os.environ['GROFF_TMAC_PATH'] = os.path.dirname (msg_cat_path)
+
+    if not os.path.isfile('/usr/bin/nroff'):
+        raise Exception('nroff is not installed on this system')
+
+    print_message (msg_num, msg_id, msg_cat_path)
+
+
+try:
+    if len (sys.argv) != 2:
+        usage(1)
+
+    main()
+except SystemExit:
+    pass
+except Exception, err:
+    print >> sys.stderr, 'Error: %s' % err
+    sys.exit(1)

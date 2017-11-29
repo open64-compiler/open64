@@ -1,0 +1,88 @@
+#ifndef exp_slintrn_included
+#define exp_slintrn_included  "exp_slintrn.h"
+extern TN *Expand_C3_INIT_ACC (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_SAVE_ACC (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_MAC(WN *intrncall, TN *result, OPS *ops, BOOL ismac=TRUE);
+extern TN *Expand_C3_ROUND (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_SAADDS(WN *intrncall, TN *result, OPS *ops, BOOL isadd= TRUE);
+extern TN *Expand_C3_MULA (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_MPY_32_16 (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_MPY_32 (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_MACD(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_MVFS(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_SAADDSH (WN *intrncall, TN *result, OPS *ops, BOOL isadd=TRUE) ;
+extern TN *Expand_C3_MAC_A (WN *intrncall, TN *result, OPS *ops, BOOL mac_a = TRUE);
+extern TN *Expand_C3_INIT_DACC (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_SAVE_DACC (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_DMAC_A (WN *intrncall, TN *result, OPS *ops, BOOL dmac_a = TRUE);
+extern TN *Expand_INIT_ADDR (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_SAVE_ADDR (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_SAADDH_A (WN *intrncall, TN *result, OPS *ops, BOOL is_add = TRUE);
+extern TN *Expand_C3_SAMULSH (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_LEAD (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_MULA_A (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_SAMULH_A (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_PTR (WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_MAC_AR  (WN *intrncall, TN *result, OPS *ops, BOOL mac_ar = TRUE);
+extern TN *Expand_C3_MULA_AR (WN *intrncall, TN *result, OPS *ops);
+extern TN *Build_C3_INIT_PTR (WN *intrncall, TN *result, OPS *ops);
+extern TN *Build_C3_TRBACK (WN *intrncall, TN *result, OPS *ops);
+extern TN *Build_C3_VITERBI (WN *intrncall, TN *result, OPS *ops);
+extern TN *Build_C3_FFT (WN *intrncall, TN *result, OPS *ops);
+extern void Copy_Tn_MapInfo(TN *src_tn, TN *tgt_tn) ;
+extern TN *Expand_C3_DMULT_A (WN *intrncall, TN *result, OPS *ops, BOOL dmult_a = TRUE);
+extern TN *Expand_C3_DMULA (WN *intrncall, TN *result, OPS *ops, BOOL isdmula=TRUE);
+extern TN *Expand_Set_CircBuf(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_DADD(WN *intrncall, TN *result, OPS *ops, BOOL is_dadd = TRUE);
+extern TN *Expand_C3_FFTST(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_FFTLD(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_Deposit(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_Extract(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_ST(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_LD(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_DMAC(WN *intrncall, TN *result, OPS *ops, BOOL is_dmac = TRUE);
+extern TN *Expand_C3_BITR(WN *intrncall, TN *result, OPS *op);
+extern TN *Expand_C3_REVB(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_DSHIFT_I(WN *intrncall, TN *result, OPS *ops, BOOL shl = TRUE);
+extern TN *Expand_C3_MAC_I(WN *intrncall, TN *result, OPS *ops, BOOL mac_i = TRUE);
+extern TN *Expand_C3_MULA_I(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_SAADD_A(WN *intrncall, TN *result, OPS *ops, BOOL is_add = TRUE);
+extern TN *Expand_C3_SADDHA(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_SADDHA_A(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_COPY_ADDR(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_SET_ADDRSIZE (WN *intrncall, TN *result, OPS *ops);
+extern TN* Expand_Float64_Const(WN* intrncall, TN* result,  BOOL Is_high,  OPS *ops);
+extern TN* Expand_Float32_Const(WN* intrncall, TN* result, OPS *ops);
+extern TN* Expand_LONGLONG_Const(WN* intrncall, TN* result,  BOOL Is_high,  OPS *ops);
+extern TN *Expand_Unsigned_Extract(WN *intrncall, TN *result, OPS *ops);
+// new C3
+//new c3 instruction version
+extern TN *Expand_C3_FFE(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_aadda(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_bitr(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_cs(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_dadd(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_Mode0(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode1(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums,  OPS *ops);
+extern TN *Expand_C3_Mode2(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops);
+extern TN *Expand_C3_revb(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_Mode3(TOP top, WN *intrncall, TN *result, UINT32 const_parm_numbers, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode4(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode5(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode6(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode7(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode8(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode9(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode10(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_Mode11(TOP top, WN *intrncall, TN *result, UINT32 const_parm_nums, OPS *ops, BOOL has_oper = TRUE);
+extern TN *Expand_C3_lead(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_shlafa_i(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_saadda_a(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_subc(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_nega(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_C3_mul(TOP top, WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_Init_HI(WN *intrncall, TN *result, OPS *ops);
+extern TN *Expand_Copy_HI(WN *intrncall, TN *result, OPS *ops);
+// end
+#endif
+

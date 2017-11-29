@@ -1,0 +1,76 @@
+/*
+ * Copyright 2003, 2004 PathScale, Inc.  All Rights Reserved.
+ */
+
+/* Generated automatically by the program `genconstants'
+   from the machine description file `md'.  */
+
+#ifndef GCC_INSN_CONSTANTS_H
+#define GCC_INSN_CONSTANTS_H
+
+#define UNSPEC_PAVGUSB 49
+#define UNSPEC_SHUFFLE 41
+#define UNSPEC_PFRCPIT2 52
+#define UNSPECV_MWAIT 70
+#define UNSPEC_TPOFF 4
+#define UNSPEC_PFRSQIT1 54
+#define UNSPECV_EMMS 31
+#define UNSPEC_GOTOFF 1
+#define UNSPEC_TP_MEM 18
+#define UNSPEC_MOVSLDUP 75
+#define UNSPEC_TP 15
+#define UNSPEC_ADDSUB 71
+#define UNSPEC_MOVNT 34
+#define UNSPEC_SAHF 25
+#define UNSPEC_STACK_PROBE 10
+#define UNSPECV_LDMXCSR 37
+#define UNSPEC_COS 22
+#define UNSPECV_EH_RETURN 13
+#define UNSPEC_GOT 0
+#define UNSPEC_LFENCE 60
+#define UNSPEC_PFRCP 50
+#define UNSPEC_PSADBW 61
+#define UNSPEC_PFRSQRT 53
+#define UNSPEC_MOVA 38
+#define UNSPEC_SCAS 20
+#define UNSPECV_CLFLUSH 57
+#define UNSPEC_STACK_ALLOC 11
+#define UNSPEC_FLDCW 28
+#define UNSPECV_STMXCSR 40
+#define UNSPEC_PSHUFHW 56
+#define UNSPEC_SSE_PROLOGUE_SAVE 13
+#define UNSPEC_TLS_LD_BASE 17
+#define UNSPEC_SET_GOT 12
+#define UNSPEC_GOTTPOFF 3
+#define UNSPEC_ADD_CARRY 27
+#define UNSPEC_MASKMOV 32
+#define UNSPEC_HADD 72
+#define UNSPEC_DTPOFF 6
+#define UNSPEC_LDQQU 76
+#define UNSPEC_GOTPCREL 2
+#define UNSPEC_NTPOFF 5
+#define UNSPEC_BSF 23
+#define UNSPEC_RCP 42
+#define UNSPEC_GOTNTPOFF 7
+#define UNSPEC_FIX 30
+#define UNSPEC_RSQRT 43
+#define UNSPEC_NOP 45
+#define UNSPECV_FEMMS 46
+#define UNSPEC_FSTCW 26
+#define UNSPEC_MFENCE 59
+#define UNSPEC_TLS_GD 16
+#define UNSPEC_SFENCE 44
+#define UNSPEC_PFRCPIT1 51
+#define UNSPEC_MOVU 39
+#define UNSPEC_HSUB 73
+#define UNSPEC_MOVMSK 33
+#define UNSPECV_MONITOR 69
+#define UNSPEC_SIN 21
+#define UNSPEC_INDNTPOFF 8
+#define UNSPEC_FNSTSW 24
+#define UNSPEC_MOVSHDUP 74
+#define UNSPEC_MOVDDUP 77
+#define UNSPECV_BLOCKAGE 0
+#define UNSPEC_PSHUFLW 55
+
+#endif /* GCC_INSN_CONSTANTS_H */

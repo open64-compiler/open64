@@ -1,0 +1,170 @@
+/* USMID @(#) libf/fio/fio.mh	92.3	11/16/99 15:43:33 */
+
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/*
+ *  fio.mh - source list and special options for libf/fio
+ */
+
+LIB_SRC_INFO += \
+		A:fio/backspace.c \
+		A:fio/cls.c \
+		A:fio/cntigchk.c \
+		U:fio/dfi.c \
+		A:fio/dopexfer.c \
+		Ad:fio/dumppfmt.c \
+		A:fio/dsetpos.c \
+		U:fio/efi.c \
+		A:fio/endfile.c \
+		I:fio/f77wrappers.c \
+		A:fio/fcleanup.c \
+		A:fio/fcontext.c \
+		A:fio/ferror.c \
+		U:fio/fffcntl.c \
+		I:fio/fgetc.c \
+		A:fio/finit.c \
+		A:fio/flush.c \
+		P:fio/flsh_mem.c \
+		A:fio/fmtchk.c \
+		Ad:fio/fmtparse.c \
+		A:fio/fopn.c \
+		I:fio/fork.c \
+		A:fio/fortunit.c \
+		I:fio/fputc.c \
+		A:fio/frch.c \
+		A:fio/frwd.c \
+		I:fio/fseek.c \
+		I:fio/fstat.c \
+		I:fio/fstring.c \
+		I:fio/ftell.c \
+		A:fio/fwarn.c \
+		A:fio/fwch.c \
+		A:fio/fwwd.c \
+		A:fio/getdcparam.c \
+		U:fio/getpos.c \
+		A:fio/globals.c \
+		A:fio/iconvtab.c \
+		A:fio/impopen.c \
+		A:fio/initunit.c \
+		A:fio/inq.c \
+		A:fio/inqil.c \
+		A:fio/inquire.c \
+		A:fio/iochunk.c \
+		I:fio/isatty.c \
+		A:fio/length.c \
+		A:fio/lread.c \
+		A:fio/lu2s.c \
+		A:fio/lwrite.c \
+		I:fio/main.c \
+		A:fio/numblks.c \
+		A:fio/oconvtab.c \
+		A:fio/open.c \
+		A:fio/openutil.c \
+		A:fio/opn.c \
+		A:fio/parse.c \
+		Ad:fio/parsfmt.c \
+		A:fio/rb.c \
+		A:fio/rdfmt.c \
+		A:fio/rdunf.c \
+		U:fio/read.c \
+		U:fio/readc.c \
+		A:fio/rewind.c \
+		A:fio/rf.c \
+		A:fio/rf90.c \
+		A:fio/ru.c \
+		A:fio/ru90.c \
+		A:fio/s2ub.c \
+		A:fio/s2ul.c \
+		A:fio/s2uo.c \
+		A:fio/s2uz.c \
+		A:fio/scatgath.c \
+		U:fio/setpos.c \
+		A:fio/setstride.c \
+		U:fio/skipf.c \
+		A:fio/stats.c \
+		I:fio/ttynam.c \
+		A:fio/tables.c \
+		A:fio/unit.c \
+		A:fio/unitbksp.c \
+		A:fio/unitclose.c \
+		A:fio/unitseek.c \
+		A:fio/unittrunc.c \
+		U:fio/uptr.c \
+		I:fio/usdumplock.c \
+		I:fio/usdumpsema.c \
+		A:fio/util.c \
+		A:fio/wb.c \
+		A:fio/wf.c \
+		A:fio/wf90.c \
+		A:fio/wrfmt.c \
+		U:fio/write.c \
+		U:fio/writec.c \
+		A:fio/wrunf.c \
+		A:fio/wu.c \
+		A:fio/wu90.c \
+		1:fio/defaults.s \
+		A:fio/rnl90.c \
+		A:fio/rnl90to77.c \
+		A:fio/rnldata.c \
+		A:fio/rnlutil.c \
+		Yt:fio/rnly.c \
+		1:fio/sets3.s \
+		A:fio/wnl90.c \
+		A:fio/wnl90to77.c \
+		A:fio/wnlutil.c \
+		Yt:fio/wnly.c \
+		M:fio/defaults_mpp.s \
+		1:fio/c1/calio.c \
+		1:fio/c1/fmtv.s \
+		1:fio/c1/ibmerr.c \
+		1:fio/c1/rch.s \
+		Yt:fio/c1/readibm.s \
+		1:fio/c1/rwd.s \
+		1:fio/c1/unfmtv.s \
+		1:fio/c1/wch.s \
+		Yt:fio/c1/writibm.s \
+		1:fio/c1/wwd.s \
+
+LIB_DIRS_INFO += \
+		1:fio/c1 \
+		Ad:fio
+
+/*
+ *  These files require '-hpagelm' on Cray-2 systems
+ */
+
+LIBSRC_SLM +=	cls.c fcleanup.c fcontext.c ferror.c flush.c fopen.c fopn.c \
+		fwarn.c initunit.c inq.c inquire.c open.c opn.c unitclose.c

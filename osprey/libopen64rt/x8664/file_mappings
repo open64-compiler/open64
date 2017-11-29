@@ -1,0 +1,9 @@
+sysdeps/x86_64/cacheinfo.c cacheinfo.c
+sysdeps/generic/symbol-hacks.h symbol-hacks.h
+include/libc-symbols.h libc-symbols.h
+include/gnu/stubs.h gnu/stubs.h
+sysdeps/generic/sysdep.h sysdeps/generic/sysdep.h
+sysdeps/x86_64/memset.S memset.S
+b/config.h config.h
+sysdeps/x86_64/sysdep.h sysdep.h
+COPYING.LIB COPYING.LIB

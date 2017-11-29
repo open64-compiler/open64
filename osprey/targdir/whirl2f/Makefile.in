@@ -1,0 +1,5 @@
+#  Define build parameters
+BUILD_BASE     = @top_srcdir@/osprey/be/whirl2f
+
+#  Include setup file which will then include Makefile.base
+include @top_builddir@/osprey/Makefile.gsetup

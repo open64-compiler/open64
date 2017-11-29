@@ -1,0 +1,38 @@
+/* Generated automatically by the program `genconstants'
+   from the machine description file `md'.  */
+
+#ifndef GCC_INSN_CONSTANTS_H
+#define GCC_INSN_CONSTANTS_H
+
+#define UNSPEC_POPCNT 16
+#define UNSPEC_FETCHADD_ACQ 20
+#define UNSPEC_LD_BASE 9
+#define UNSPEC_FR_SPILL 12
+#define UNSPEC_PROLOGUE_USE 25
+#define UNSPEC_GR_SPILL 10
+#define UNSPEC_CMPXCHG_ACQ 19
+#define UNSPEC_GR_RESTORE 11
+#define UNSPEC_FR_RESTORE 13
+#define UNSPEC_LTOFF_DTPMOD 0
+#define UNSPEC_TPREL 4
+#define UNSPECV_ALLOC 0
+#define UNSPEC_MF 18
+#define UNSPEC_LTOFF_TPREL 3
+#define UNSPEC_PRED_REL_MUTEX 15
+#define UNSPECV_SET_BSP 4
+#define UNSPECV_PSAC_ALL 5
+#define UNSPEC_BSP_VALUE 21
+#define UNSPEC_FR_RECIP_APPROX 14
+#define UNSPEC_ADDP4 24
+#define UNSPEC_PIC_CALL 17
+#define UNSPEC_DTPREL 2
+#define UNSPECV_INSN_GROUP_BARRIER 2
+#define UNSPECV_SETJMP_RECEIVER 7
+#define UNSPECV_BREAK 3
+#define UNSPEC_LTOFF_DTPREL 1
+#define UNSPEC_BUNDLE_SELECTOR 23
+#define UNSPECV_BLOCKAGE 1
+#define UNSPECV_PSAC_NORMAL 6
+#define UNSPEC_FLUSHRS 22
+
+#endif /* GCC_INSN_CONSTANTS_H */

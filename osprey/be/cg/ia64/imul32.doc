@@ -1,0 +1,36 @@
+32-bit integer multiply:
+
+setf.sig f1 = src1
+setf.sig f2 = src2
+xma.l    f3 = f1,f2,f0
+getf.sig result = f3
+
+If we treat the 32-bit multiplcands as being composed of two 16-bit
+fields, we can perform a polynomial multiplication and use the
+16-bit packed multiply instructions.
+
+Say x1 is bits 16:31 of src1, x0 is bits 0:15 of src1,
+y1 is bits 16:31 of src2, and y0 is bits 0:15 of src.
+
+Then, the product is:
+
+	= (2^16*x1 + x0) * (2^16*y1 + y0)
+	= 2^16*2^16*x1*y1 + 2^16*x1*y0 + 2^16*x0*y1 + x0*y0
+
+Each of the partial products is an unsigned 16-bit multiply, producing
+a 32-bit result.
+
+Since we're interested in only a 32-bit result, the first term
+is not needed, and only the low 16-bits of the second and third
+term contribute.
+
+The following alternate sequence implements the above algorithm:
+
+mux2       t0 = src1,0x50	// form x1:x1:x0:x0
+mux2       t1 = src2,0x44	// form y1:y0:y1:y0
+pmpyshr2.u t2 = src1,src2,16	// bits 16:31 of x0*y0
+shl        t3 = t2,16
+pmpyshr2.u t4 = t0,t1,0		// bits 0:15 of x1*y0, x0*y1 and x0*y0
+unpack2.h  t5 = t4,r0
+add        t6 = t4,t3
+add        result = t5,t6

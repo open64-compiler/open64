@@ -1,0 +1,103 @@
+#!/usr/bin/expect -f
+#############################################################
+# This script needs two arguments:
+#   1. the location of the compiler's source code
+#   2. the location for putting the log files
+#		which includes: the checkin logfile name and
+#                       the build log file name
+#
+# On success, this script return 0, 1 for error
+#    -1 for no need to go on because no checkin in yesterday
+#
+#############################################################
+
+proc update_compiler { compiler checkin_log build_log } {
+        
+	note "==================================================================";
+	note "We are going to update the compiler:";
+	note "==================================================================";
+        
+	
+	set dateStamp [clock scan [system date]]
+	set curDate [clock format [expr $dateStamp + 86400] -format "%Y-%m-%d" -gmt 1]
+	set prvDate [clock format $dateStamp -format "%Y-%m-%d" -gmt 1]
+	note "The current date is: $curDate";
+	note "Yesterday's date is: $prvDate";
+
+        # Now we are going to update the compiler
+        #  But, get the check-in-log first
+	if { ![file exists $compiler] || ![file isdirectory $compiler] } {
+		return -code 1 "The given location is not a direcotry";
+	}
+
+        note "Compiler is located in: $compiler";
+	note "We will write log files into [file dirname $checkin_log]";
+        note "with check-in log: $checkin_log and build log: $build_log";
+
+	set cmd "svn log --revision {$prvDate}:{$curDate} &> $checkin_log";
+	cd $compiler;
+	system $cmd;
+
+        # check for the last night checkin
+	set cmd [format "%s %s" {grep --line-buffered ^r[0-9][0-9]*} " $checkin_log"];
+	set updfd [open "|$cmd"];
+	set updateresult [read $updfd];
+        
+	note "The followings are last night's check-in:";
+	note "$updateresult";
+
+	if {[ string length $updateresult] ==0} {
+                note "No need to build compiler because there is no checkin last night";
+                #do install directly
+                set installCompiler "sh $compiler/INSTALL.cross"
+                system $installCompiler
+		return -code -1 "No need to build compiler because there is no checkin last night";
+	}
+
+        # Update the compiler
+	set cmd "svn update $compiler";
+	system $cmd; 
+	
+	#build compiler 
+	set logdir [file dirname [file normalize $build_log] ];
+	set buildscript $logdir/build_compiler.sh;
+	set scriptfd [open $buildscript "w+"];
+	puts $scriptfd "cd $compiler/targia32_sl1/gccfe";
+        puts $scriptfd "make clean";
+	puts $scriptfd "cd $compiler/targia32_sl1/g++fe";
+        puts $scriptfd "make clean";
+	puts $scriptfd "cd $compiler";
+	puts $scriptfd "make build install BUILD_OPTIMIZE=DEBUG -f $compiler/Make.cross &>$build_log";
+        puts $scriptfd "exit 0"
+	close $scriptfd
+	note "Build Script $buildscript successfuly written";
+	file attributes $buildscript -permissions u+x;
+	if { [catch {exec $buildscript} status ]} {
+		note "Compiler Build Status: $status";
+		note "An error has happened in Building Compiler";
+		set status 1;
+	} else {
+		note "Compiler was successfully built"
+		set status 0;
+	}
+
+    #search for error
+	set cmd "grep Error $build_log";
+	set buildfd [open "|$cmd"];
+	set buildresult [read $buildfd];
+	note $buildresult;
+	if { [string length $buildresult] != 0 || $status == 1} {
+		set cmd "grep -C 3 Error $build_log";
+		set buildfd [open "|$cmd"];
+		set buildresult [read $buildfd];
+		
+		set build_log_fd [open $build_log "w+"];
+		puts $build_log_fd $buildresult;
+		close $build_log_fd
+		
+		return -code 1 "Compiler has build error";
+	}
+	note "Compiler built successful"
+	return 0;
+}
+

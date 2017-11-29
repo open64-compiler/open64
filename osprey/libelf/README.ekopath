@@ -1,0 +1,3 @@
+Took the libelf-0.8.5 sources, ran ./configure,
+then created own Makefile.gbase to build with.
+For the headers, modified include/Makefile.gbase to link to them.

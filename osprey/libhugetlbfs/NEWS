@@ -1,0 +1,107 @@
+libhugetlbfs 1.3 "Big Jim"
+======================================================================
+
+New features
+* Add HUGETLB_NO_PREFAULT to control prefaulting of huge pages via mlock
+* Add "[hostname:pid]" to output messages
+* Setup for handling larger huge page sizes e.g. 16G huge pages
+* Update for new upstream sysctl
+* Add support for hugetlbfs_morecore to shrink the heap
+
+Bug fixes
+* Disable heap shrinking by default to avoid bug in glibc malloc
+* Skip elflink calls in setup_libhugetlbfs for IA64 and sparc64
+* Replace gethugepagesize with check_hugepagesize for error checking
+* Make morecore argument a long to handle larger page sizes
+
+Tets suite fixes
+* Check uid/gid in tests where it matters
+* tests: verify there are enough huge pages
+* Change tests to read /proc/meminfo
+* tests: verify that huge page size isn't too big for the test
+
+libhugetlbfs 1.2 "Mango Habanero"
+======================================================================
+
+New features
+
+* Partial segment remapping. This allows non-relinked binaries to try
+  to take advantage of libhugetlbfs' segment remapping code. Large
+  segments are required, especially on Power. This feature is useful
+  for estimating huge page performance, however full relinking will
+  still perform better.
+* Add extra debugging for binaries that may run out of address space.
+* Log library version when HUGETLB_VERBOSE is enabled.
+* Beginning support for ia64 and sparc64.
+* New test to check handling of misaligned mmap() parameters.
+
+Bug fixes
+
+* Fix EH_FRAME segment. Fixes some C++ applications.
+* Rework PLT detection to work better on Power.
+* Add per-target-arch syscall stubs to the library. These provide
+  reliable error messages from elflink.c if they occur while the
+  program segments are unmapped.
+* Add proper SONAME to shared libs.
+* Makefile respects CFLAGS/LDFLAGS/CPPFLAGS environment variables.
+* Make mlock() failure non-fatal.
+
+Test suite fixes
+
+* Fix zero_filesize_segment test.
+* Fix the icache-hygeine testcase for i386 and x86_64.
+* Fix SEGVs in task-size-overrun test.
+* Enable stack_grow_into_huge test, previously skipped.
+* Fix test_addr_huge() for anon pages.
+
+libhugetlbfs 1.1 "Carribbean Jerk"
+======================================================================
+
+This large release brings several performance improvements
+
+Security
+
+* Remove the sharing daemon completely and rework the segment sharing
+  code. Permissions on the hugetlbfs mountpoint are used to enforce
+  segment sharing.
+
+Bug fixes
+
+* Sharing of writable segments is no longer possible, due to address
+  space randomization on x86_64 (although similar issues could happen on
+  any architecture).
+* minimal_copy detection should work better in this release.
+
+Trivial but notable changes
+
+* Testcase updates
+
+libhugetlbfs 1.0.1 "Spicy Garlic"
+======================================================================
+
+This small maintenance release brings a security fix, a few minor bug
+fixes, plus some documentation and error message updates.
+
+Security
+
+* A section on security has been added to the README file
+* The hugetlbd daemon socket has been moved from /tmp to /var/run.
+  This will require the daemon to be run as root, which was previously
+  just a recommendation.
+
+Bug fixes
+
+* Reduce reserved huge pages needed for application start-up
+* PPC linker script fixes
+
+Trivial but notable changes
+
+* Always install linker scripts for all targets
+* Error message updates
+* Add documentation on HUGETLB_DEBUG
+* Testcase updates
+
+libhugetlbfs 1.0
+======================================================================
+
+* First stable release

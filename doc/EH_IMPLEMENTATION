@@ -1,0 +1,293 @@
+
+    C++ Exception Handling Implementation in OpenCC
+
+-----------------------------------------------------------
+Organization:
+    Institute of High Performance Computing,
+    Department of Computer Science and Technology, 
+    Tsinghua University, Beijing, China, 100084.
+-----------------------------------------------------------
+
+-----------------------------------------------------------
+Document Revision History:
+
+2006-6-9 zhenyu.guo@gmail.com, zhou.hucheng@gmai.com
+    The initial version of this document is established.
+  
+2006-7-20 zhou.hucheng@gmai.com
+    The updated version, which compresses LSDA and remove redundant EH ranges
+    and trace EH related information, as well as EH implementation details.
+    Besides, more aggressive EH optimization option "-foptimize-regions" is added.
+-----------------------------------------------------------
+
+Status of this memo
+  
+  This document describes the work we've done so far in OpenCC to implement C++
+  Exception Handling. Please refer to https://svn.open64.net/svnroot/open64/trunk 
+  for the updated status of this work, as well as related code.
+
+Abstract
+  
+  Infrastructures about C++ Exception Handling in OpenCC is more or less 
+  established in OpenCC's ancestors, such as ORC or Open64. However, they are
+  incomplete and not compliance with C++ Exception Handling Application Binary 
+  Interface on IPF[1]. Generally, there are two problems to solve here. One is 
+  to make it compatible with gcc, which is compliance with the ABI mentioned 
+  above. The other is to fix the error-prone situation due to the broken 
+  control flow from an exception throw point to its corresponding landing pad.
+  The purpose of this document is to document the whole process to deal with 
+  exception handling in OpenCC as far as we understand and the ways we adopted
+  to conquer the problems above.
+
+Conventions and Abbreviations
+  
+  EH/eh: C++ Exception Handling
+  LSDA:  language sepcific data area
+  whirl: intermediate language in OpenCC
+  pu:	 program unit, a basic compilation unit in OpenCC
+  inito: initialized object, an intermediate language data structure in OpenCC
+  initv: initialized value, an intermediate language data structure in OpenCC
+  exception: synchronous exception which is explicitly triggered by a throw, 
+         rethrow, or unwind_resume call, we don't care about asynchronous 
+         exceptions in this document.
+  blabla
+
+1. The Entire Picture
+
+  The whole process can be divided into four phases in general, as depicted in 
+  the following picture.
+
+	----------------------------------------
+	  FE -> EH_RANGE_GEN -> OPT -> CGEMIT
+	----------------------------------------
+
+  1.1. FE (Front End)
+  
+  There are a lot of work done in the gcc front end and tree2whirl phase, and 
+  we have not investigated all the details. Instead, we see the following 
+  come-out finally.
+
+  1) the eh region hirearchy is established. An eh region here represents a 
+     code range which has a possibility to throw a synchronous exception. There
+     are two kinds of eh regions. One is a region container, which means there 
+     can be other eh regions in it. While the other is a leaf eh region, which
+     conains only one function call that can throw a synchronous exception and 
+     can not contain other regions. Whirl uses REGION node to present an eh 
+     region, and build a hirearchy.
+  2) a link from eh region to its corresponding landing pad (if exists) is 
+     given in 'ereg_supp' inito field in whirl REGION node. The landing pad may 
+     contins a clean-up code snippet or true exception handler (a switch-case 
+     handler selector followed by handler code).
+  3) a throw object type is given if possible in 'ereg_supp' inito field in 
+     whirl REGION node.
+  4) an eh table is established in 'unused' inito field in pu. This table
+     contains four important entries, as listed below:
+     (1) symbol index of __Exc_Ptr__, which is used by landing pad to receive
+         the exception object;
+     (2) symbol index of __Exc_Filter__, which is used by landing pad to
+         receive a key that indicates which catch clause or clean-up code 
+	 snippet will be invoked.
+     (3) eh related type table. Types in eh specification list or explicitly
+         thrown are collected here and mapped to a unique index starting from 
+	 zero. Note zero is quite distinctive since it represents all types. 
+     (4) eh specification list.
+
+  1.2. EH_RANGE_GEN (EH Range Generation)
+   
+    After LNO(if exists), while just before WOPT, OpenCC will keep eh region 
+  information in eh_range, pls see be/cg/eh_region.cxx for detailed structures.
+  The eh region hirearchy represented by whirl REGION nodes is transformed into
+  a RID tree, and then EH_RANGE_LIST which also keeps the hirearchy with a 
+  'parent' field. Note that the 'ereg_supp' inito index is copied with the 
+  transformation.
+
+  1.3 OPT (Optimizations)
+
+    After eh range generation, there are still lots of optimizations followed up.
+  The eh ranges need to be adapted to be consistent with these transformations.
+  Among these optimizations, when whirl is lowered to CGIR, an eh start label
+  and its corresponding eh end label are attached to the basic blocks inside eh
+  regions.
+  
+  1.4 CGEMIT (Code Emission)
+
+    Based on the eh ranges we maintained above, a LSDA for eh is created in this
+  phase. As in OpenCC, there are two steps. In the first step, an inito for eh
+  ranges is created per pu. In the second step, OpenCC will write text stmts to
+  .S file upon this inito. In design principle, we do not need to take care of
+  the second step, as long as we can create an inito which is 100 percents 
+  compilance with final binary format of LSDA. However, some distinctive 
+  requirements, such as leb128 encoding, label differentiation, are out of the
+  description capability of INITO in OpenCC. Hence, we now take care of both 
+  steps. 
+
+
+    The previous maintainers implements all these four phases, which constructs a
+  complete framework there. However, the output of the final phase is not 
+  compilance with gcc, and there are no documents about all these phases. We
+  have just tried made some comments here, and they definitely need to be 
+  revised by the later maintainers. 
+  
+2. LSDA construction
+
+    The previous LSDA construction is not compilance with gcc, and it is not using
+  the informations provided by 'pu.unused' as described in 1.1. Our work is to
+  rewrite the fourth phase defined in 1.4. Pls refer to 'C++ Exception Handling
+  Runtime on IPF' for detailed structure of LSDA. 
+
+    The work is somewhat trivial, hence pls refer to code eh_region.cxx and 
+  cgemit.cxx to find the details. 
+
+3. Broken Control Flow Fixup
+  
+    One crucial problem about current implementation of eh is that there is no 
+  control flow from an eh throw point to its corresponding landing pad. 
+  However, it does exists in the execution time. One way to fix this problem is
+  to add this arc in the control flow graph explicitly, while the other is to 
+  do this implicitly. The former way is simpler(apparently, this will result in 
+  a lot of arcs to be added). However, it complicates the flow graph, which may 
+  lead to the failure of optimizations. 
+
+    Our current implementation is virtually adding the control flow in liveness
+  range analysis when initializing liveness information. Note that the unwind
+  operation implicitly uses the related registers, we also add live-out information
+  for any call that may throw an exception. Specifically, for handler BB, we should 
+  explicitly add the corresponding definition reaching info of Caller_GP_TN, 
+  ra_intsave_tn, Caller_FP_TN, and Caller_Pfs_TN; Meanwhile, for BB which in EH region,
+  we aslo need to explicitly add the corresponding live_out information of Caller_GP_TN,
+  ra_intsave_tn, Caller_FP_TN, and Caller_Pfs_TN. (can be refered in gra_live.cxx:live_init)
+  Please refer to function Live_Init in ~/krpo64/be/cg/gra_live.cxx.
+
+4. LSDA compression
+    In previous implementation of EH, EH range list is generated after LNO according 
+  to the EH region (RID) derived from gfecc. However, there are actually redundant 
+  EH ranges existing, such as:
+    (1). eh ranges which haven't call, (has_call == false), removed by function 
+         EH_Prune_Range_List;
+    (2). All the eh ranges in PU ALL haven't related landing pad, so they all can 
+       be removed. This is OK because EH personality routine in libstdc++ will return
+       _URC_CONTINUE_UNWIND to unwind routine. This condition may equal to 
+       PU.unused--->type_info is NULL or INITVKIND_ZERO. Function Need_Not_Create_LSDA 
+       is used to check whether generates the corresponding LSDA or not. 
+       We didn't generate the corresponding LSDA stored in related INITO when function
+       Need_Not_Create_LSDA return TRUE.
+    (3). Because EH regions are structured in hierarchical way. The outmost EH range 
+       is indeed not useful to unwind and EH handling, of course can be removed.
+    (4). In main PU, if one eh ranges hasn't it's landing pad, we can avoid to set the 
+       corresponding EH labels (either EH start label or EH end label) safely, since 
+       too much Eh label will affect the cfg and region formation, further affects the
+       register allocation and instruction schedule.
+    (5). The redundant condition whether can be removed can aslo be determined by check 
+       the PU.unused entry.
+    Apparently, we can removed these EH ranges in different phase and not generate the 
+  correpoding LSDA data structure to reduce final code size. 
+  
+5. Optimization Option relate to EH
+    You can optimize EH implementation more aggressively, using option "-foptimize-regions",
+  which is disabled by default, equaling to option "-fno-optimize-regions". This optimizataion
+  is done in FE phase to reduce the number of EH regions(RID) generated. You can refer to
+  the source code, where opt_regions is set to TRUE through "-foptimize-regions". Mainly 
+  located at file kpro64/kg++fe/wfe_stmt.cxx.
+  
+6. Miscellaneous
+
+    We do not generate code for handler entry, and we do not generate restore unwind
+  directives for handler entry. Pls see calls.cxx:generate_entry and 
+  cgdwarf_targ.cxx:Do_Control_Flow_Analysis_Of_Unwind_Info for more detail.
+    For tracing intermediate information which is useful to view the handle process 
+  of EH implementation in open64, we added trace option through Get_Trace(). Ther are:
+    -ttEH:0x0001		Trace EH entry info for each PU
+ 	  	                (~/kpro64/be/cg/eh_region.cxx)
+    -ttEH:0x0002		Trace info of each EH range
+        			(~/kpro64/be/cg/cg.cxx: EH_Prune_Range_List ())
+    -ttEH:0x0004		Trace the updated info of INITO related to EH region 
+		        	(~/kpro64/be/be/driver.cxx:Update_EHRegion_Inito ())
+    -ttEH:0x0008		Trace LSDA info for each PU
+ 				(~/kpro64/be/cg/eh_region.cxx)
+  (These trace option also equals to -tt74:0x0001, -tt74:0x0002, -tt74:0x0004, -tt74:0x0008, respectively)
+
+
+7. Future work
+
+  1. Accelerate the excution of 252.eon in spec2000, which has about 5% performance 
+     regression. This has been done partially. One can improve the EH's performance more 
+     aggressive, which means reduce the run time of program built with "-fexceptions"
+     (the performance is optimal when it's performance equals to that built with -fno-exceptions),
+     by means of removing extra added EH ranges when considering system call, such as "printf", 
+     since systems calls never throw exceptions.
+     Below is the details of performance difference before/after optimization of EH implementation:
+	(1). SPEC2000
+		252.eon                         184/180                                 (2.2%)
+	(2). SPEC2006
+		471.omnetpp                     1494/1478                               (1.1%)
+		473.aster                       1161/1151                               (0.9%)
+		453.povray                      812/783                                 (3.57%)
+	(3). CERN Distribution 8
+		testTRandom3                    63.148/60.518                           (4.12%)
+		testTGeoPgon                    81.675/79.055                           (3.2%)
+		testTGeoBBox                    87.631/83.242                           (5.01%)
+		testMatrixInversion             163.29/161.77                           (1%)
+		testG4Mag_EqRhs                 88.522/83.694                           (5.45%)
+		testG4Tubs                      64.411/62.455                           (3.03%)
+	(4). CERN Distribution 7
+     		testTRandom3                    63.121/60.489                           (4.17%)
+                testTGeoArb8                    95.928/93.136                           (2.5%)
+		testTGeoPgon                    81.501/79.476                           (2.49%)
+		testTGeoBBox                    87.631/83.242                           (5.01%)
+  2. More bugs may be exposed in later high level optimization with/without consideration of eh.
+     These bugs are expected to be fixed in the release of open64-2.0.
+
+Reference
+  [1]. Code Sourcery, "Itanium C++ ABI: Exception Handling ($Revision: 1.22 $)",
+       http://www.codesourcery.com/cxx-abi/abi-eh.html.
+  [2]. Intel Itanium Processor specific Application Binary Interface, Section 6: Libraries.
+  [3]. Intel Itanium Software Conventions and Runtime Architecture Guide, 
+       Section 11: Stack Unwinding and Exception Handling.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,139 @@
+# USMID @(#) libf/fio/fio.makeinclude	92.4	11/16/99 15:43:33
+
+#
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#if $(BUILD_TARGET) == "IA64" || $(BUILD_TARGET) == "IA32"
+IRFILES =
+#else
+IRFILES = usdumplock.c \
+    usdumpsema.c
+#endif
+
+CFILES += \
+    backspace.c \
+    cls.c \
+    cntigchk.c \
+    dopexfer.c \
+    dumppfmt.c \
+    dsetpos.c \
+    endfile.c \
+    f77wrappers.c \
+    fcleanup.c \
+    fcontext.c \
+    ferror.c \
+    fgetc.c \
+    finit.c \
+    flush.c \
+    fmtchk.c \
+    fmtparse.c \
+    fopn.c \
+    fork.c \
+    fortunit.c \
+    fputc.c \
+    frch.c \
+    frwd.c \
+    fseek.c \
+    fstat.c \
+    fstring.c \
+    ftell.c \
+    fwarn.c \
+    fwch.c \
+    fwwd.c \
+    getdcparam.c \
+    globals.c \
+    iconvtab.c \
+    impopen.c \
+    initunit.c \
+    inq.c \
+    inqil.c \
+    inquire.c \
+    iochunk.c \
+    isatty.c \
+    length.c \
+    lread.c \
+    lu2s.c \
+    lwrite.c \
+    main.c \
+    f90_main.c \
+    numblks.c \
+    oconvtab.c \
+    open.c \
+    openutil.c \
+    opn.c \
+    parse.c \
+    parsfmt.c \
+    rb.c \
+    rdfmt.c \
+    rdunf.c \
+    rewind.c \
+    rf.c \
+    rf90.c \
+    ru.c \
+    ru90.c \
+    s2ub.c \
+    s2ul.c \
+    s2uo.c \
+    s2uz.c \
+    scatgath.c \
+    setbuf.c \
+    setstride.c \
+    stats.c \
+    tables.c \
+    ttynam.c \
+    unit.c \
+    unitbksp.c \
+    unitclose.c \
+    unitseek.c \
+    unittrunc.c \
+    util.c \
+    wb.c \
+    wf.c \
+    wf90.c \
+    wrfmt.c \
+    wrunf.c \
+    wu.c \
+    wu90.c \
+    rnl90.c \
+    rnl90to77.c \
+    rnldata.c \
+    rnlutil.c \
+    wnl90.c \
+    wnl90to77.c \
+    wnlutil.c \
+    $(IRFILES)
+
+SRC_DIRS += \
+   $(BUILD_TOT)/libf/fio

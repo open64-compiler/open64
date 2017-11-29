@@ -1,0 +1,121 @@
+Info
+====
+This files contains the people who have write permission to the repository.
+
+Please do not contact this people directly to report a problem with Open64.
+Instead, please file a bug report at https://bugs.open64.net.
+
+The checkin policy and the role of gatekeepers is documented at
+http://wiki.open64.net/index.php/CheckinPolicy .
+
+All checkins need to be approved by a gatekeeper. Global gatekeepers can
+approve changes to any part of the Open64 compiler. Local gatekeepers can
+approve changes in their listed components. Changes by one of the 
+gatekeepers still need to be approved by one of the other gatekeepers.
+
+Global Gatekeepers:
+-------------------
+Sun Chan           		sun.chan(AT)gmail.com
+Fred Chow			frdchow(AT)gmail.com
+Suneel Jain			suneel.jain(AT)gmail.com
+Roy Ju				roy.ju(AT)amd.com
+Chandrasekhar Murthy		murthy(AT)sgi.com
+
+Local/Domain Gatekeepers:
+-------------------------
+C/C++ front ends 	Gautam Chakrabarti 	gchakrabarti(AT)nvidia.com 	
+IPA/inlining		Gautam Chakrabarti	gchakrabarti(AT)nvidia.com
+OpenMP			Gautam Chakrabarti	gchakrabarti(AT)nvidia.com
+OpenMP			Wenguang Chen		cwg(AT)tsinghua.edu.cn
+Driver, build system    David Coakley		dcoakley(AT)gmail.com
+Libraries               David Coakley		dcoakley(AT)gmail.com
+wgen, WOPT, CG		Jian-Xin Lai		jianxin.lai(AT)hp.com
+IPA/inlining    	Michael Lai		michael.lai(AT)amd.com
+Fortran	                Michael Lai		michael.lai(AT)amd.com
+Cuda/NVISA		Mike Murphy		mmurphy(AT)nvidia.com  	
+Driver, build system	Mike Murphy		mmurphy(AT)nvidia.com  	
+Common infrastructure  	Mike Murphy		mmurphy(AT)nvidia.com  	
+CG infrastructure  	Mike Murphy		mmurphy(AT)nvidia.com  	
+IPA, WOPT 		Tianwei Sheng		tianwei.sheng(AT)gmail.com
+WOPT, LNO		Mei Ye			mei.ye(AT)amd.com
+IPA, WOPT		Min Zhao		min.zhao(AT)hp.com
+IPA/WOPT/CG             Ramshankar Ram          ramshankar.ramanarayanan@amd.com
+Fortran                 Shivarama Rao		shivarama.rao(AT)amd.com
+Libraries               Shivarama Rao		shivarama.rao(AT)amd.com
+LNO                     Shivarama Rao		shivarama.rao(AT)amd.com
+
+
+Maintainers (in alphabetical order by last name - please keep it this way)
+==========================================================================
+Ajit Agarwal                    ajit.agarwal@amd.com
+Xiaomi An			annyur(AT)gmail.com
+Bin Bao				bin.bao(AT)gmail.com
+Christopher Bergström		codestr0m(AT)osunix.org
+Zhen Cao			caozhen08(AT)gmail.com
+Gautam Chakrabarti		gchakrabarti(AT)nvidia.com
+Dehao Chen			danielcdh(AT)yahoo.com.cn
+Rui Chen			rui.chen(AT)hp.com
+Wenguang Chen			cwg(AT)tsinghua.edu.cn
+Fred Chow			frdchow(AT)gmail.com
+Stephen Clarke			stephen.clarke(AT)st.com
+David Coakley			dcoakley(AT)gmail.com
+Huimin Cui			cuihm(AT)ict.ac.cn
+Jiun-Hung Ding			adjunhon(AT)gmail.com
+Rodrigo Dominguez		roddomi(AT)hotmail.com
+Yuan Dong			dongyuan(AT)tsinghua.edu.cn
+Deepak Eachempati		dreachem(AT)gmail.com
+Steve Ellcey			sje(AT)cup.hp.com
+Ge Gan				george.gan(AT)gmail.com
+Doug Gilmore			dougjgilmore(AT)gmail.com
+Rick Hank	                rick.hank(AT)hp.com
+Matthew Hausknecht		mhauskn(AT)emory.edu
+Jiangzhou He			hejiangzhou(AT)gmail.com
+Mark Heffernan			meheff(AT)google.com
+Oscar Hernandez			oscar(AT)cs.uh.edu
+Chuntao Hong			chuntao.hong(AT)gmail.com
+Lei Huang			lei.huang(AT)mail.uh.edu
+Robert Hundt			rhundt(AT)google.com
+Suneel Jain			suneel.jain(AT)gmail.com
+Roy Ju				roy.ju(AT)amd.com
+Jian-Xin Lai			jianxin.lai(AT)hp.com
+Jaemok Lee			sagitarian.lee(AT)gmail.com
+Loreena Lee			loreena(AT)hp.com
+Richard Li			liptxyz(AT)gmail.com
+Chunhua Liao			liaoch(AT)cs.uh.edu
+Lianjie Luo			luolianjie(AT)gmail.com
+Huan Luo            luo_huan_na(AT)126.com
+Lin Ma				lin.ma(AT)simplnano.com
+Mike Murphy			mmurphy(AT)nvidia.com
+Prashantha Naduthota		prashanth.nr(AT)gmail.com
+Ram Ramanarayanan               ramshankar.ramanarayanan@amd.com
+Shivarama Rao                   shivarama.rao@amd.com
+Jürgen Ributzka			ributzka(AT)gmail.com
+Akella V.S. Sastry              akella.sastry(AT)hp.com
+Robert Scollard			robert.scollard(AT)amd.com
+Ruifen Shen			ruifen.shen(AT)simplnano.com
+Tianwei Sheng			tianwei.sheng(AT)gmail.com
+Hui Shi                         kalin.shi@gmail.com
+Yao Shi				shiyao(AT)gmail.com
+Jaewook Shin			jaewookshin701(AT)gmail.com
+Sunil Shrestha			sunil(AT)udel.edu
+Wei Tang			tangwei.ict(AT)gmail.com
+Lingyun Tuo			tony.tuo(AT)simplnano.com
+Guozhi Wei			carrot(AT)google.com
+Mingliang Wei			mlwei(AT)google.com
+Yong-Chong Wu			yongchong.wu(AT)hp.com
+Tian Xiao			xiaotianrandom(AT)gmail.com
+Jianian Yan			jianian.yan(AT)gmail.com
+Keqiao Yang			yangkeqiao(AT)gmail.com
+Shuxin Yang			shuxinyang2005(AT)gmail.com
+Zhe-Min Yang			072053015(AT)fudan.edu.cn
+Handong Ye			yehandong(AT)gmail.com
+Gang Yu                         yugang.bj(AT)gmail.com
+Zhenyang Yu			yuzhenyang(AT)gmail.com
+Paul Yuan			yingbo.com(AT)gmail.com
+Duo Zhang			zhangduo07(AT)mails.tsinghua.edu.cn
+Min Zhao			min.zhao(AT)hp.com
+Feng Zhou			feng.zhou(AT)hp.com
+Hucheng Zhou			zhou.hucheng(AT)gmail.com
+Xing Zhou			zhouxing05(AT)gmail.com
+Qing Zhu                        zqing1986@gmail.com
+Wenwen Xu			xuwenwen(AT)ict.ac.cn

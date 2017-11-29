@@ -1,0 +1,16 @@
+#  Define build parameters
+
+BUILD_BASE     = @top_srcdir@/osprey/libhugetlbfs
+
+# for libhugetlbfs, indicate host tag and whether the library is built as
+# native binaries.
+ifeq ($(BUILD_TARGET), X8664)
+  BUILD_LIB_TYPE   = NATIVEONLY
+  BUILD_HOST_TAG   = x86_64
+endif
+ifeq ($(BUILD_TARGET), IA32)
+  BUILD_HOST_TAG   = i386
+endif
+
+#  Include setup file which will then include Makefile.base
+include @top_builddir@/osprey/Makefile.gsetup

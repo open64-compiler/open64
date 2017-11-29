@@ -1,0 +1,3391 @@
+#/*
+#  Copyright (C) 2000-2003, Intel Corporation
+#  All rights reserved.
+#  
+#  Redistribution and use in source and binary forms, with or without modification,
+#  are permitted provided that the following conditions are met:
+#  
+#  Redistributions of source code must retain the above copyright notice, this list
+#  of conditions and the following disclaimer. 
+#  
+#  Redistributions in binary form must reproduce the above copyright notice, this list
+#  of conditions and the following disclaimer in the documentation and/or other materials
+#  provided with the distribution. 
+#
+#  Neither the name of the owner nor the names of its contributors may be used to endorse or
+#  promote products derived from this software without specific prior written permission. 
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+#  IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+#  FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE CONTRIBUTORS BE LIABLE FOR
+#  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+#  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+#  BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+#  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+#  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#*/
+#
+## Version: 1.1
+#
+#  Processor: Itanium2
+#  Format: KAPI 4.1 compliant
+#  Architecture Content: model of Pro64
+#  Microarchitecture Content: "Itanium(tm) Processor Microarchitecture 
+#                    Reference for Software Optimization, March, 2000"
+#
+#  - - - - - - - - -
+#
+#  See KAPI documentation for a description of the contents
+#  of this file. This document will hold all the machine 
+#  description information absent in knobsfile of KAPI. It 
+#  will help us improve flexibility of compiler.
+#
+#  - - - - - - - - -
+
+#  = = = = = = = = = = = = = = = = = = = = = = = = = = =
+#  
+#  operate code of IA64 
+#
+#  in order to consist with pro64, some pesudo op 
+#  should be added.
+#  Format:
+#  opcode += "<operate id>, <operate code name>, <function class 
+#             in KAPI or fuDUMMY>, 
+#  <subset>, <opopndsgrp id>, <others>" 
+#  
+#  <others > is used for easily extending, default is NULL. 
+
+Type ISA_SUBSET = enum(intel1); 
+
+opcode += "0, add, fuIALU, intel1, 63, NULL";
+opcode += "1, add_1, fuIALU, intel1, 40, NULL";
+opcode += "2, adds, fuIALU, intel1, 80, NULL";
+opcode += "3, addl, fuIALU, intel1, 81, NULL";
+opcode += "4, addp4, fuPNT, intel1, 63, NULL";
+opcode += "5, addp4_i, fuPNT, intel1, 73, NULL";
+opcode += "6, alloc_3, fuSYST_M2, intel1, 46, NULL";
+opcode += "7, and, fuILOG, intel1, 63, NULL";
+opcode += "8, and_i, fuILOG, intel1, 68, NULL";
+opcode += "9, andcm, fuILOG, intel1, 63, NULL";
+
+opcode += "10, andcm_i, fuILOG, intel1, 68, NULL";
+opcode += "11, br.cond, fuBR, intel1, 93, NULL";
+opcode += "12, br_r.cond, fuBR, intel1, 66, NULL";
+opcode += "13, br.call, fuBR, intel1, 110, NULL";
+opcode += "14, br_r.call, fuBR, intel1, 87, NULL";
+opcode += "15, br.ret, fuBR, intel1, 66, NULL";
+opcode += "16, br.ia, fuBR, intel1, 33, NULL";
+opcode += "17, br.cloop, fuBR_B2, intel1, 54, NULL";
+opcode += "18, br.ctop, fuBR_B2, intel1, 55, NULL";
+opcode += "19, br.cexit, fuBR_B2, intel1, 55, NULL";
+
+opcode += "20, br.wtop, fuBR_B2, intel1, 94, NULL";
+opcode += "21, br.wexit, fuBR_B2, intel1, 94, NULL";
+opcode += "22, break.i, fuNOP_I, intel1, 8, NULL";
+opcode += "23, break.b, fuNOP_B, intel1, 8, NULL";
+opcode += "24, break.m, fuNOP_M, intel1, 8, NULL";
+opcode += "25, break.f, fuNOP_F, intel1, 8, NULL";
+opcode += "26, break.x, fuNOP_X, intel1, 10, NULL";
+opcode += "27, brl.cond, fuBR, intel1, 95, NULL";
+opcode += "28, brl.call, fuBR, intel1, 111, NULL";
+opcode += "29, brp, fuBRP, intel1, 59, NULL";
+
+opcode += "30, brp_r, fuBRP, intel1, 43, NULL";
+opcode += "31, brp.ret, fuBRP, intel1, 43, NULL";
+opcode += "32, bsw.0, fuSYST_B2, intel1, 0, NULL";
+opcode += "33, bsw.1, fuSYST_B2, intel1, 0, NULL";
+opcode += "34, chk.s.i, fuCHK_I, intel1, 52, NULL";
+opcode += "35, chk.s.m, fuCHK_M, intel1, 52, NULL";
+opcode += "36, chk_f.s, fuCHK_M, intel1, 49, NULL";
+opcode += "37, chk.a, fuCHK_ALAT, intel1, 79, NULL";
+opcode += "38, chk_f.a, fuCHK_ALAT, intel1, 78, NULL";
+opcode += "39, clrrrb, fuRSE_B, intel1, 0, NULL";
+
+opcode += "40, clrrrb.pr, fuRSE_B, intel1, 0, NULL";
+opcode += "41, cmp.eq, fuICMP, intel1, 84, NULL";
+opcode += "42, cmp.eq.unc, fuICMP, intel1, 84, NULL";
+opcode += "43, cmp.eq.and, fuICMP, intel1, 84, NULL";
+opcode += "44, cmp.eq.or, fuICMP, intel1, 84, NULL";
+opcode += "45, cmp.eq.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "46, cmp.ne.and, fuICMP, intel1, 84, NULL";
+opcode += "47, cmp.ne.or, fuICMP, intel1, 84, NULL";
+opcode += "48, cmp.ne.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "49, cmp.lt, fuICMP, intel1, 84, NULL";
+
+opcode += "50, cmp.lt.unc, fuICMP, intel1, 84, NULL";
+opcode += "51, cmp.ltu, fuICMP, intel1, 84, NULL";
+opcode += "52, cmp.ltu.unc, fuICMP, intel1, 84, NULL";
+opcode += "53, cmp_z1.lt.and, fuICMP, intel1, 48, NULL";
+opcode += "54, cmp_z1.lt.or, fuICMP, intel1, 48, NULL";
+opcode += "55, cmp_z1.lt.or.andcm, fuICMP, intel1, 48, NULL";
+opcode += "56, cmp_z1.le.and, fuICMP, intel1, 48, NULL";
+opcode += "57, cmp_z1.le.or, fuICMP, intel1, 48, NULL";
+opcode += "58, cmp_z1.le.or.andcm, fuICMP, intel1, 48, NULL";
+opcode += "59, cmp_z1.gt.and, fuICMP, intel1, 48, NULL";
+
+opcode += "60, cmp_z1.gt.or, fuICMP, intel1, 48, NULL";
+opcode += "61, cmp_z1.gt.or.andcm, fuICMP, intel1, 48, NULL";
+opcode += "62, cmp_z1.ge.and, fuICMP, intel1, 48, NULL";
+opcode += "63, cmp_z1.ge.or, fuICMP, intel1, 48, NULL";
+opcode += "64, cmp_z1.ge.or.andcm, fuICMP, intel1, 48, NULL";
+opcode += "65, cmp_i.eq, fuICMP, intel1, 88, NULL";
+opcode += "66, cmp_i.eq.unc, fuICMP, intel1, 88, NULL";
+opcode += "67, cmp_i.eq.and, fuICMP, intel1, 88, NULL";
+opcode += "68, cmp_i.eq.or, fuICMP, intel1, 88, NULL";
+opcode += "69, cmp_i.eq.or.andcm, fuICMP, intel1, 88, NULL";
+
+opcode += "70, cmp_i.ne.and, fuICMP, intel1, 88, NULL";
+opcode += "71, cmp_i.ne.or, fuICMP, intel1, 88, NULL";
+opcode += "72, cmp_i.ne.or.andcm, fuICMP, intel1, 88, NULL";
+opcode += "73, cmp_i.lt, fuICMP, intel1, 88, NULL";
+opcode += "74, cmp_i.lt.unc, fuICMP, intel1, 88, NULL";
+opcode += "75, cmp_i.ltu, fuICMP, intel1, 97, NULL";
+opcode += "76, cmp_i.ltu.unc, fuICMP, intel1, 97, NULL";
+opcode += "77, cmp4.eq, fuICMP, intel1, 84, NULL";
+opcode += "78, cmp4.eq.unc, fuICMP, intel1, 84, NULL";
+opcode += "79, cmp4.eq.and, fuICMP, intel1, 84, NULL";
+
+opcode += "80, cmp4.eq.or, fuICMP, intel1, 84, NULL";
+opcode += "81, cmp4.eq.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "82, cmp4.ne.and, fuICMP, intel1, 84, NULL";
+opcode += "83, cmp4.ne.or, fuICMP, intel1, 84, NULL";
+opcode += "84, cmp4.ne.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "85, cmp4.lt, fuICMP, intel1, 84, NULL";
+opcode += "86, cmp4.lt.unc, fuICMP, intel1, 84, NULL";
+opcode += "87, cmp4.ltu, fuICMP, intel1, 84, NULL";
+opcode += "88, cmp4.ltu.unc, fuICMP, intel1, 84, NULL";
+opcode += "89, cmp4_z1.lt.and, fuICMP, intel1, 48, NULL";
+
+opcode += "90, cmp4_z1.lt.or, fuICMP, intel1, 48, NULL";
+opcode += "91, cmp4_z1.lt.or.andcm, fuICMP, intel1, 48, NULL";
+opcode += "92, cmp4_z1.le.and, fuICMP, intel1, 48, NULL";
+opcode += "93, cmp4_z1.le.or, fuICMP, intel1, 48, NULL";
+opcode += "94, cmp4_z1.le.or.andcm, fuICMP, intel1, 48, NULL";
+opcode += "95, cmp4_z1.gt.and, fuICMP, intel1, 48, NULL";
+opcode += "96, cmp4_z1.gt.or, fuICMP, intel1, 48, NULL";
+opcode += "97, cmp4_z1.gt.or.andcm, fuICMP, intel1, 48, NULL";
+opcode += "98, cmp4_z1.ge.and, fuICMP, intel1, 48, NULL";
+opcode += "99, cmp4_z1.ge.or, fuICMP, intel1, 48, NULL";
+
+opcode += "100, cmp4_z1.ge.or.andcm, fuICMP, intel1, 48, NULL";
+opcode += "101, cmp4_i.eq, fuICMP, intel1, 88, NULL";
+opcode += "102, cmp4_i.eq.unc, fuICMP, intel1, 88, NULL";
+opcode += "103, cmp4_i.eq.and, fuICMP, intel1, 88, NULL";
+opcode += "104, cmp4_i.eq.or, fuICMP, intel1, 88, NULL";
+opcode += "105, cmp4_i.eq.or.andcm, fuICMP, intel1, 88, NULL";
+opcode += "106, cmp4_i.ne.and, fuICMP, intel1, 88, NULL";
+opcode += "107, cmp4_i.ne.or, fuICMP, intel1, 88, NULL";
+opcode += "108, cmp4_i.ne.or.andcm, fuICMP, intel1, 88, NULL";
+opcode += "109, cmp4_i.lt, fuICMP, intel1, 88, NULL";
+
+opcode += "110, cmp4_i.lt.unc, fuICMP, intel1, 88, NULL";
+opcode += "111, cmp4_i.ltu, fuICMP, intel1, 99, NULL";
+opcode += "112, cmp4_i.ltu.unc, fuICMP, intel1, 99, NULL";
+opcode += "113, cmpxchg1, fuSEM, intel1, 114, NULL";
+opcode += "114, cmpxchg2, fuSEM, intel1, 114, NULL";
+opcode += "115, cmpxchg4, fuSEM, intel1, 114, NULL";
+opcode += "116, cmpxchg8, fuSEM, intel1, 114, NULL";
+opcode += "117, cover, fuRSE_B, intel1, 0, NULL";
+opcode += "118, czx1.l, fuXTD, intel1, 17, NULL";
+opcode += "119, czx1.r, fuXTD, intel1, 17, NULL";
+
+opcode += "120, czx2.l, fuXTD, intel1, 17, NULL";
+opcode += "121, czx2.r, fuXTD, intel1, 17, NULL";
+opcode += "122, dep, fuISHF, intel1, 91, NULL";
+opcode += "123, dep.z, fuISHF, intel1, 71, NULL";
+opcode += "124, dep_i, fuISHF, intel1, 102, NULL";
+opcode += "125, dep_i.z, fuISHF, intel1, 82, NULL";
+opcode += "126, epc, fuSYST_B, intel1, 0, NULL";
+opcode += "127, extr, fuISHF, intel1, 71, NULL";
+opcode += "128, extr.u, fuISHF, intel1, 71, NULL";
+opcode += "129, famax, fuFMISC, intel1, 83, NULL";
+
+opcode += "130, famin, fuFMISC, intel1, 83, NULL";
+opcode += "131, fand, fuFMISC, intel1, 60, NULL";
+opcode += "132, fandcm, fuFMISC, intel1, 60, NULL";
+opcode += "133, fc, fuSYST_M2, intel1, 3, NULL";
+opcode += "134, fchkf, fuFOTHER, intel1, 57, NULL";
+opcode += "135, fclass.m, fuFCMP, intel1, 61, NULL";
+opcode += "136, fclass.m.unc, fuFCMP, intel1, 61, NULL";
+opcode += "137, fclrf, fuFOTHER, intel1, 5, NULL";
+opcode += "138, fcmp.eq, fuFCMP, intel1, 106, NULL";
+opcode += "139, fcmp.eq.unc, fuFCMP, intel1, 106, NULL";
+
+opcode += "140, fcmp.lt, fuFCMP, intel1, 106, NULL";
+opcode += "141, fcmp.lt.unc, fuFCMP, intel1, 106, NULL";
+opcode += "142, fcmp.le, fuFCMP, intel1, 106, NULL";
+opcode += "143, fcmp.le.unc, fuFCMP, intel1, 106, NULL";
+opcode += "144, fcmp.unord, fuFCMP, intel1, 106, NULL";
+opcode += "145, fcmp.unord.unc, fuFCMP, intel1, 106, NULL";
+opcode += "146, fcvt.fx, fuFCVTFX, intel1, 42, NULL";
+opcode += "147, fcvt.fx.trunc, fuFCVTFX, intel1, 42, NULL";
+opcode += "148, fcvt.fxu, fuFCVTFX, intel1, 42, NULL";
+opcode += "149, fcvt.fxu.trunc, fuFCVTFX, intel1, 42, NULL";
+
+opcode += "150, fcvt.xf, fuFCVTFX, intel1, 12, NULL";
+opcode += "151, fetchadd4, fuSEM, intel1, 119, NULL";
+opcode += "152, fetchadd8, fuSEM, intel1, 119, NULL";
+opcode += "153, flushrs, fuRSE_M, intel1, 0, NULL";
+opcode += "154, fma, fuFMAC, intel1, 115, NULL";
+opcode += "155, fma.s, fuFMAC, intel1, 115, NULL";
+opcode += "156, fma.d, fuFMAC, intel1, 115, NULL";
+opcode += "157, fmax, fuFMISC, intel1, 85, NULL";
+opcode += "158, fmerge.ns, fuFMISC, intel1, 38, NULL";
+opcode += "159, fmerge.s, fuFMISC, intel1, 38, NULL";
+
+opcode += "160, fmerge.se, fuFMISC, intel1, 38, NULL";
+opcode += "161, fmin, fuFMISC, intel1, 85, NULL";
+opcode += "162, fmix.l, fuFMISC, intel1, 38, NULL";
+opcode += "163, fmix.r, fuFMISC, intel1, 38, NULL";
+opcode += "164, fmix.lr, fuFMISC, intel1, 38, NULL";
+opcode += "165, fms, fuFMAC, intel1, 115, NULL";
+opcode += "166, fms.s, fuFMAC, intel1, 115, NULL";
+opcode += "167, fms.d, fuFMAC, intel1, 115, NULL";
+opcode += "168, fnma, fuFMAC, intel1, 115, NULL";
+opcode += "169, fnma.s, fuFMAC, intel1, 115, NULL";
+
+opcode += "170, fnma.d, fuFMAC, intel1, 115, NULL";
+opcode += "171, for, fuFMISC, intel1, 60, NULL";
+opcode += "172, fpack, fuFMISC, intel1, 38, NULL";
+opcode += "173, fpamax, fuSFMISC, intel1, 85, NULL";
+opcode += "174, fpamin, fuSFMISC, intel1, 85, NULL";
+opcode += "175, fpcmp.eq, fuSFMISC, intel1, 85, NULL";
+opcode += "176, fpcmp.lt, fuSFMISC, intel1, 85, NULL";
+opcode += "177, fpcmp.le, fuSFMISC, intel1, 85, NULL";
+opcode += "178, fpcmp.unord, fuSFMISC, intel1, 85, NULL";
+opcode += "179, fpcmp.neq, fuSFMISC, intel1, 85, NULL";
+
+opcode += "180, fpcmp.nlt, fuSFMISC, intel1, 85, NULL";
+opcode += "181, fpcmp.nle, fuSFMISC, intel1, 85, NULL";
+opcode += "182, fpcmp.ord, fuSFMISC, intel1, 85, NULL";
+opcode += "183, fpcvt.fx, fuSFCVTFX, intel1, 42, NULL";
+opcode += "184, fpcvt.fx.trunc, fuSFCVTFX, intel1, 42, NULL";
+opcode += "185, fpcvt.fxu, fuSFCVTFX, intel1, 42, NULL";
+opcode += "186, fpcvt.fxu.trunc, fuSFCVTFX, intel1, 42, NULL";
+opcode += "187, fpma, fuSFMAC, intel1, 115, NULL";
+opcode += "188, fpmax, fuSFMISC, intel1, 85, NULL";
+opcode += "189, fpmerge.ns, fuSFMISC, intel1, 38, NULL";
+
+opcode += "190, fpmerge.s, fuSFMISC, intel1, 38, NULL";
+opcode += "191, fpmerge.se, fuSFMERGESE, intel1, 38, NULL";
+opcode += "192, fpmin, fuSFMISC, intel1, 85, NULL";
+opcode += "193, fpms, fuSFMAC, intel1, 115, NULL";
+opcode += "194, fpnma, fuSFMAC, intel1, 115, NULL";
+opcode += "195, fprcpa, fuSFMISC, intel1, 72, NULL";
+opcode += "196, fprsqrta, fuSFMISC, intel1, 56, NULL";
+opcode += "197, frcpa, fuFMISC, intel1, 72, NULL";
+opcode += "198, frsqrta, fuFMISC, intel1, 56, NULL";
+opcode += "199, fselect, fuFMISC, intel1, 50, NULL";
+
+opcode += "200, fsetc, fuFOTHER, intel1, 58, NULL";
+opcode += "201, fswap, fuFMISC, intel1, 38, NULL";
+opcode += "202, fswap.nl, fuFMISC, intel1, 38, NULL";
+opcode += "203, fswap.nr, fuFMISC, intel1, 38, NULL";
+opcode += "204, fsxt.l, fuFMISC, intel1, 38, NULL";
+opcode += "205, fsxt.r, fuFMISC, intel1, 38, NULL";
+opcode += "206, fwb, fuSYST_M0, intel1, 1, NULL";
+opcode += "207, fxor, fuFMISC, intel1, 60, NULL";
+opcode += "208, getf.s, fuFRFR, intel1, 16, NULL";
+opcode += "209, getf.d, fuFRFR, intel1, 16, NULL";
+
+opcode += "210, getf.exp, fuFRFR, intel1, 16, NULL";
+opcode += "211, getf.sig, fuFRFR, intel1, 16, NULL";
+opcode += "212, invala, fuSYST_M, intel1, 1, NULL";
+opcode += "213, invala.e, fuSYST_M, intel1, 3, NULL";
+opcode += "214, invala_f.e, fuSYST_M, intel1, 2, NULL";
+opcode += "215, itc.i, fuSYST_M2, intel1, 3, NULL";
+opcode += "216, itc.d, fuSYST_M2, intel1, 3, NULL";
+opcode += "217, itr.i, fuSYST_M2, intel1, 41, NULL";
+opcode += "218, itr.d, fuSYST_M2, intel1, 41, NULL";
+opcode += "219, ld1, fuLD, intel1, 108, NULL";
+
+opcode += "220, ld1_r, fuLD, intel1, 120, NULL";
+opcode += "221, ld1_i, fuLD, intel1, 124, NULL";
+opcode += "222, ld2, fuLD, intel1, 108, NULL";
+opcode += "223, ld2_r, fuLD, intel1, 120, NULL";
+opcode += "224, ld2_i, fuLD, intel1, 124, NULL";
+opcode += "225, ld4, fuLD, intel1, 108, NULL";
+opcode += "226, ld4_r, fuLD, intel1, 120, NULL";
+opcode += "227, ld4_i, fuLD, intel1, 124, NULL";
+opcode += "228, ld8, fuLD, intel1, 108, NULL";
+opcode += "229, ld8_r, fuLD, intel1, 120, NULL";
+
+opcode += "230, ld8_i, fuLD, intel1, 124, NULL";
+opcode += "231, ld8.fill, fuLD, intel1, 69, NULL";
+opcode += "232, ld8_r.fill, fuLD, intel1, 107, NULL";
+opcode += "233, ld8_i.fill, fuLD, intel1, 113, NULL";
+opcode += "234, ldfs, fuFLD, intel1, 109, NULL";
+opcode += "235, ldfs_r, fuFLD, intel1, 123, NULL";
+opcode += "236, ldfs_i, fuFLD, intel1, 125, NULL";
+opcode += "237, ldfd, fuFLD, intel1, 109, NULL";
+opcode += "238, ldfd_r, fuFLD, intel1, 123, NULL";
+opcode += "239, ldfd_i, fuFLD, intel1, 125, NULL";
+
+opcode += "240, ldfe, fuFLD, intel1, 109, NULL";
+opcode += "241, ldfe_r, fuFLD, intel1, 123, NULL";
+opcode += "242, ldfe_i, fuFLD, intel1, 125, NULL";
+opcode += "243, ldf8, fuFLD, intel1, 109, NULL";
+opcode += "244, ldf8_r, fuFLD, intel1, 123, NULL";
+opcode += "245, ldf8_i, fuFLD, intel1, 125, NULL";
+opcode += "246, ldf.fill, fuFLD, intel1, 67, NULL";
+opcode += "247, ldf_r.fill, fuFLD, intel1, 105, NULL";
+opcode += "248, ldf_i.fill, fuFLD, intel1, 112, NULL";
+opcode += "249, ldfps, fuFLDP, intel1, 116, NULL";
+
+opcode += "250, ldfps_i, fuFLDP, intel1, 117, NULL";
+opcode += "251, ldfpd, fuFLDP, intel1, 116, NULL";
+opcode += "252, ldfpd_i, fuFLDP, intel1, 117, NULL";
+opcode += "253, ldfp8, fuFLDP, intel1, 116, NULL";
+opcode += "254, ldfp8_i, fuFLDP, intel1, 117, NULL";
+opcode += "255, lfetch, fuLFETCH, intel1, 51, NULL";
+opcode += "256, lfetch.excl, fuLFETCH, intel1, 51, NULL";
+opcode += "257, lfetch.fault, fuLFETCH, intel1, 51, NULL";
+opcode += "258, lfetch.fault.excl, fuLFETCH, intel1, 51, NULL";
+opcode += "259, lfetch_r, fuLFETCH, intel1, 86, NULL";
+
+opcode += "260, lfetch_r.excl, fuLFETCH, intel1, 86, NULL";
+opcode += "261, lfetch_r.fault, fuLFETCH, intel1, 86, NULL";
+opcode += "262, lfetch_r.fault.excl, fuLFETCH, intel1, 86, NULL";
+opcode += "263, lfetch_i, fuLFETCH, intel1, 96, NULL";
+opcode += "264, lfetch_i.excl, fuLFETCH, intel1, 96, NULL";
+opcode += "265, lfetch_i.fault, fuLFETCH, intel1, 96, NULL";
+opcode += "266, lfetch_i.fault.excl, fuLFETCH, intel1, 96, NULL";
+opcode += "267, loadrs, fuRSE_M, intel1, 0, NULL";
+opcode += "268, mf, fuSYST_M0, intel1, 1, NULL";
+opcode += "269, mf.a, fuSYST_M0, intel1, 1, NULL";
+
+opcode += "270, mix1.l, fuMMSHF, intel1, 40, NULL";
+opcode += "271, mix1.r, fuMMSHF, intel1, 40, NULL";
+opcode += "272, mix2.l, fuMMSHF, intel1, 40, NULL";
+opcode += "273, mix2.r, fuMMSHF, intel1, 40, NULL";
+opcode += "274, mix4.l, fuMMSHF, intel1, 40, NULL";
+opcode += "275, mix4.r, fuMMSHF, intel1, 40, NULL";
+opcode += "276, mov_f_ar.i, fuFRAR_I, intel1, 28, NULL";
+opcode += "277, mov_t_ar_r.i, fuTOAR_I, intel1, 24, NULL";
+opcode += "278, mov_t_ar_i.i, fuTOAR_I, intel1, 36, NULL";
+opcode += "279, mov_f_ar.m, fuFRAR_M, intel1, 29, NULL";
+
+opcode += "280, mov_t_ar_r.m, fuTOAR_M, intel1, 25, NULL";
+opcode += "281, mov_t_ar_i.m, fuTOAR_M, intel1, 37, NULL";
+opcode += "282, mov_f_br, fuFRBR, intel1, 15, NULL";
+opcode += "283, mov_t_br_i, fuTOBR, intel1, 92, NULL";
+opcode += "284, mov_t_br.ret, fuTOBR, intel1, 92, NULL";
+opcode += "285, mov_t_cr, fuTOCR, intel1, 19, NULL";
+opcode += "286, mov_f_cr, fuFRCR, intel1, 21, NULL";
+opcode += "287, mov_f_cpuid, fuSYST_M2, intel1, 22, NULL";
+opcode += "288, mov_t_dbr, fuSYST_M2, intel1, 41, NULL";
+opcode += "289, mov_f_dbr, fuSYST_M2, intel1, 22, NULL";
+
+opcode += "290, mov_t_ibr, fuSYST_M2, intel1, 41, NULL";
+opcode += "291, mov_f_ibr, fuSYST_M2, intel1, 22, NULL";
+opcode += "292, mov_t_msr, fuSYST_M2, intel1, 41, NULL";
+opcode += "293, mov_f_msr, fuSYST_M2, intel1, 22, NULL";
+opcode += "294, mov_t_pkr, fuSYST_M2, intel1, 41, NULL";
+opcode += "295, mov_f_pkr, fuSYST_M2, intel1, 22, NULL";
+opcode += "296, mov_t_pmc, fuSYST_M2, intel1, 41, NULL";
+opcode += "297, mov_f_pmc, fuSYST_M2, intel1, 22, NULL";
+opcode += "298, mov_t_pmd, fuSYST_M2, intel1, 41, NULL";
+opcode += "299, mov_f_pmd, fuSYST_M2, intel1, 22, NULL";
+
+opcode += "300, mov_t_rr, fuSYST_M2, intel1, 41, NULL";
+opcode += "301, mov_f_rr, fuSYST_M2, intel1, 22, NULL";
+opcode += "302, mov_f_ip, fuFRIP, intel1, 4, NULL";
+opcode += "303, mov_f_pr, fuFRPR, intel1, 4, NULL";
+opcode += "304, mov_t_pr, fuTOPR, intel1, 26, NULL";
+opcode += "305, mov_t_pr_i, fuTOPR, intel1, 6, NULL";
+opcode += "306, mov_t_psr, fuSYST_M2, intel1, 3, NULL";
+opcode += "307, mov_f_psr, fuSYST_M2, intel1, 4, NULL";
+opcode += "308, mov_t_psrum, fuSYST_M2, intel1, 3, NULL";
+opcode += "309, mov_f_psrum, fuSYST_M2, intel1, 4, NULL";
+
+opcode += "310, movl, fuLONG_I, intel1, 32, NULL";
+opcode += "311, mux1, fuMMSHF, intel1, 53, NULL";
+opcode += "312, mux2, fuMMSHF, intel1, 45, NULL";
+opcode += "313, nop.i, fuNOP_I, intel1, 8, NULL";
+opcode += "314, nop.b, fuNOP_B, intel1, 8, NULL";
+opcode += "315, nop.m, fuNOP_M, intel1, 8, NULL";
+opcode += "316, nop.f, fuNOP_F, intel1, 8, NULL";
+opcode += "317, nop.x, fuNOP_X, intel1, 10, NULL";
+opcode += "318, or, fuILOG, intel1, 63, NULL";
+opcode += "319, or_i, fuILOG, intel1, 68, NULL";
+
+opcode += "320, pack2.sss, fuMMSHF, intel1, 40, NULL";
+opcode += "321, pack2.uss, fuMMSHF, intel1, 40, NULL";
+opcode += "322, pack4.sss, fuMMSHF, intel1, 40, NULL";
+opcode += "323, padd1, fuMMALU_A, intel1, 63, NULL";
+opcode += "324, padd1.sss, fuMMALU_A, intel1, 63, NULL";
+opcode += "325, padd1.uus, fuMMALU_A, intel1, 63, NULL";
+opcode += "326, padd1.uuu, fuMMALU_A, intel1, 63, NULL";
+opcode += "327, padd2, fuMMALU_A, intel1, 63, NULL";
+opcode += "328, padd2.sss, fuMMALU_A, intel1, 63, NULL";
+opcode += "329, padd2.uus, fuMMALU_A, intel1, 63, NULL";
+
+opcode += "330, padd2.uuu, fuMMALU_A, intel1, 63, NULL";
+opcode += "331, padd4, fuMMALU_A, intel1, 63, NULL";
+opcode += "332, pavg1, fuMMALU_A, intel1, 40, NULL";
+opcode += "333, pavg1.raz, fuMMALU_A, intel1, 40, NULL";
+opcode += "334, pavg2, fuMMALU_A, intel1, 40, NULL";
+opcode += "335, pavg2.raz, fuMMALU_A, intel1, 40, NULL";
+opcode += "336, pavgsub1, fuMMALU_A, intel1, 40, NULL";
+opcode += "337, pavgsub2, fuMMALU_A, intel1, 40, NULL";
+opcode += "338, pcmp1.eq, fuMMALU_A, intel1, 63, NULL";
+opcode += "339, pcmp1.gt, fuMMALU_A, intel1, 63, NULL";
+
+opcode += "340, pcmp2.eq, fuMMALU_A, intel1, 63, NULL";
+opcode += "341, pcmp2.gt, fuMMALU_A, intel1, 63, NULL";
+opcode += "342, pcmp4.eq, fuMMALU_A, intel1, 63, NULL";
+opcode += "343, pcmp4.gt, fuMMALU_A, intel1, 63, NULL";
+opcode += "344, pmax1.u, fuMMALU_I, intel1, 63, NULL";
+opcode += "345, pmax2, fuMMALU_I, intel1, 63, NULL";
+opcode += "346, pmin1.u, fuMMALU_I, intel1, 63, NULL";
+opcode += "347, pmin2, fuMMALU_I, intel1, 63, NULL";
+opcode += "348, pmpy2.r, fuMMMUL, intel1, 63, NULL";
+opcode += "349, pmpy2.l, fuMMMUL, intel1, 63, NULL";
+
+opcode += "350, pmpyshr2, fuMMMUL, intel1, 76, NULL";
+opcode += "351, pmpyshr2.u, fuMMMUL, intel1, 76, NULL";
+opcode += "352, popcnt, fuMMMUL, intel1, 17, NULL";
+opcode += "353, probe.r, fuSYST_M2, intel1, 40, NULL";
+opcode += "354, probe.w, fuSYST_M2, intel1, 40, NULL";
+opcode += "355, probe_i.r, fuSYST_M2, intel1, 44, NULL";
+opcode += "356, probe_i.w, fuSYST_M2, intel1, 44, NULL";
+opcode += "357, probe.r.fault, fuSYST_M2, intel1, 27, NULL";
+opcode += "358, probe.w.fault, fuSYST_M2, intel1, 27, NULL";
+opcode += "359, probe.rw.fault, fuSYST_M2, intel1, 27, NULL";
+
+opcode += "360, psad1, fuMMALU_I, intel1, 40, NULL";
+opcode += "361, pshl2, fuMMSHF, intel1, 63, NULL";
+opcode += "362, pshl4, fuMMSHF, intel1, 63, NULL";
+opcode += "363, pshl2_i, fuMMSHF, intel1, 74, NULL";
+opcode += "364, pshl4_i, fuMMSHF, intel1, 74, NULL";
+opcode += "365, pshladd2, fuMMALU_A, intel1, 70, NULL";
+opcode += "366, pshr2, fuMMSHF, intel1, 63, NULL";
+opcode += "367, pshr2.u, fuMMSHF, intel1, 63, NULL";
+opcode += "368, pshr4, fuMMSHF, intel1, 63, NULL";
+opcode += "369, pshr4.u, fuMMSHF, intel1, 63, NULL";
+
+opcode += "370, pshr2_i, fuMMSHF, intel1, 74, NULL";
+opcode += "371, pshr2_i.u, fuMMSHF, intel1, 74, NULL";
+opcode += "372, pshr4_i, fuMMSHF, intel1, 74, NULL";
+opcode += "373, pshr4_i.u, fuMMSHF, intel1, 74, NULL";
+opcode += "374, pshradd2, fuMMALU_A, intel1, 70, NULL";
+opcode += "375, psub1, fuMMALU_A, intel1, 63, NULL";
+opcode += "376, psub2, fuMMALU_A, intel1, 63, NULL";
+opcode += "377, psub4, fuMMALU_A, intel1, 63, NULL";
+opcode += "378, psub1.sss, fuMMALU_A, intel1, 63, NULL";
+opcode += "379, psub1.uus, fuMMALU_A, intel1, 63, NULL";
+
+opcode += "380, psub1.uuu, fuMMALU_A, intel1, 63, NULL";
+opcode += "381, psub2.sss, fuMMALU_A, intel1, 63, NULL";
+opcode += "382, psub2.uus, fuMMALU_A, intel1, 63, NULL";
+opcode += "383, psub2.uuu, fuMMALU_A, intel1, 63, NULL";
+opcode += "384, ptc.e, fuSYST_M2, intel1, 3, NULL";
+opcode += "385, ptc.g, fuSYST_M2, intel1, 14, NULL";
+opcode += "386, ptc.ga, fuSYST_M2, intel1, 14, NULL";
+opcode += "387, ptc.l, fuSYST_M2, intel1, 14, NULL";
+opcode += "388, ptr.d, fuSYST_M2, intel1, 14, NULL";
+opcode += "389, ptr.i, fuSYST_M2, intel1, 14, NULL";
+
+opcode += "390, rfi, fuSYST_B2, intel1, 0, NULL";
+opcode += "391, rsm, fuSYST_M2, intel1, 9, NULL";
+opcode += "392, rum, fuSYST_M2, intel1, 9, NULL";
+opcode += "393, setf.s, fuTOFR, intel1, 13, NULL";
+opcode += "394, setf.d, fuTOFR, intel1, 13, NULL";
+opcode += "395, setf.exp, fuTOFR, intel1, 13, NULL";
+opcode += "396, setf.sig, fuTOFR, intel1, 13, NULL";
+opcode += "397, shl, fuMMSHF, intel1, 63, NULL";
+opcode += "398, shladd, fuIALU, intel1, 65, NULL";
+opcode += "399, shladdp4, fuPNT, intel1, 65, NULL";
+
+opcode += "400, shr, fuMMSHF, intel1, 63, NULL";
+opcode += "401, shr.u, fuMMSHF, intel1, 63, NULL";
+opcode += "402, shrp, fuISHF, intel1, 64, NULL";
+opcode += "403, srlz.i, fuSYST_M0, intel1, 1, NULL";
+opcode += "404, srlz.d, fuSYST_M0, intel1, 1, NULL";
+opcode += "405, ssm, fuSYST_M2, intel1, 9, NULL";
+opcode += "406, st1, fuST, intel1, 118, NULL";
+opcode += "407, st1_i, fuST, intel1, 126, NULL";
+opcode += "408, st2, fuST, intel1, 118, NULL";
+opcode += "409, st2_i, fuST, intel1, 126, NULL";
+
+opcode += "410, st4, fuST, intel1, 118, NULL";
+opcode += "411, st4_i, fuST, intel1, 126, NULL";
+opcode += "412, st8, fuST, intel1, 118, NULL";
+opcode += "413, st8_i, fuST, intel1, 126, NULL";
+opcode += "414, st8.spill, fuST, intel1, 104, NULL";
+opcode += "415, st8_i.spill, fuST, intel1, 122, NULL";
+opcode += "416, stfs, fuSTF, intel1, 103, NULL";
+opcode += "417, stfs_i, fuSTF, intel1, 121, NULL";
+opcode += "418, stfd, fuSTF, intel1, 103, NULL";
+opcode += "419, stfd_i, fuSTF, intel1, 121, NULL";
+
+opcode += "420, stfe, fuSTF, intel1, 103, NULL";
+opcode += "421, stfe_i, fuSTF, intel1, 121, NULL";
+opcode += "422, stf8, fuSTF, intel1, 103, NULL";
+opcode += "423, stf8_i, fuSTF, intel1, 121, NULL";
+opcode += "424, stf.spill, fuSTF, intel1, 103, NULL";
+opcode += "425, stf_i.spill, fuSTF, intel1, 121, NULL";
+opcode += "426, sub, fuIALU, intel1, 63, NULL";
+opcode += "427, sub_1, fuIALU, intel1, 40, NULL";
+opcode += "428, sub_i, fuIALU, intel1, 68, NULL";
+opcode += "429, sum, fuSYST_M2, intel1, 9, NULL";
+
+opcode += "430, sxt1, fuXTD, intel1, 17, NULL";
+opcode += "431, sxt2, fuXTD, intel1, 17, NULL";
+opcode += "432, sxt4, fuXTD, intel1, 17, NULL";
+opcode += "433, sync.i, fuSYST_M0, intel1, 1, NULL";
+opcode += "434, tak, fuSYST_M2, intel1, 17, NULL";
+opcode += "435, tbit.z, fuTBIT, intel1, 62, NULL";
+opcode += "436, tbit.z.unc, fuTBIT, intel1, 62, NULL";
+opcode += "437, tbit.z.and, fuTBIT, intel1, 62, NULL";
+opcode += "438, tbit.z.or, fuTBIT, intel1, 62, NULL";
+opcode += "439, tbit.z.or.andcm, fuTBIT, intel1, 62, NULL";
+
+opcode += "440, tbit.nz.and, fuTBIT, intel1, 62, NULL";
+opcode += "441, tbit.nz.or, fuTBIT, intel1, 62, NULL";
+opcode += "442, tbit.nz.or.andcm, fuTBIT, intel1, 62, NULL";
+opcode += "443, thash, fuSYST_M2, intel1, 17, NULL";
+opcode += "444, tnat.z, fuTBIT, intel1, 39, NULL";
+opcode += "445, tnat.z.unc, fuTBIT, intel1, 39, NULL";
+opcode += "446, tnat.z.and, fuTBIT, intel1, 39, NULL";
+opcode += "447, tnat.z.or, fuTBIT, intel1, 39, NULL";
+opcode += "448, tnat.z.or.andcm, fuTBIT, intel1, 39, NULL";
+opcode += "449, tnat.nz.and, fuTBIT, intel1, 39, NULL";
+
+opcode += "450, tnat.nz.or, fuTBIT, intel1, 39, NULL";
+opcode += "451, tnat.nz.or.andcm, fuTBIT, intel1, 39, NULL";
+opcode += "452, tpa, fuSYST_M2, intel1, 17, NULL";
+opcode += "453, ttag, fuSYST_M2, intel1, 17, NULL";
+opcode += "454, unpack1.l, fuMMSHF, intel1, 40, NULL";
+opcode += "455, unpack1.h, fuMMSHF, intel1, 40, NULL";
+opcode += "456, unpack2.l, fuMMSHF, intel1, 40, NULL";
+opcode += "457, unpack2.h, fuMMSHF, intel1, 40, NULL";
+opcode += "458, unpack4.l, fuMMSHF, intel1, 40, NULL";
+opcode += "459, unpack4.h, fuMMSHF, intel1, 40, NULL";
+
+opcode += "460, xchg1, fuSEM, intel1, 90, NULL";
+opcode += "461, xchg2, fuSEM, intel1, 90, NULL";
+opcode += "462, xchg4, fuSEM, intel1, 90, NULL";
+opcode += "463, xchg8, fuSEM, intel1, 90, NULL";
+opcode += "464, xma.l, fuXMA, intel1, 101, NULL";
+opcode += "465, xma.h, fuXMA, intel1, 101, NULL";
+opcode += "466, xma.hu, fuXMA, intel1, 101, NULL";
+opcode += "467, xor, fuILOG, intel1, 63, NULL";
+opcode += "468, xor_i, fuILOG, intel1, 68, NULL";
+opcode += "469, zxt1, fuXTD, intel1, 17, NULL";
+
+opcode += "470, zxt2, fuXTD, intel1, 17, NULL";
+opcode += "471, zxt4, fuXTD, intel1, 17, NULL";
+opcode += "472, alloc, fuSYST_M2, intel1, 77, NULL";
+opcode += "473, br, fuBR, intel1, 34, NULL";
+opcode += "474, br_r, fuBR, intel1, 7, NULL";
+opcode += "475, brl, fuBR, intel1, 35, NULL";
+opcode += "476, cmp.eq.orcm, fuICMP, intel1, 84, NULL";
+opcode += "477, cmp.eq.andcm, fuICMP, intel1, 84, NULL";
+opcode += "478, cmp.eq.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "479, cmp.ne, fuICMP, intel1, 84, NULL";
+
+opcode += "480, cmp.ne.unc, fuICMP, intel1, 84, NULL";
+opcode += "481, cmp.ne.orcm, fuICMP, intel1, 84, NULL";
+opcode += "482, cmp.ne.andcm, fuICMP, intel1, 84, NULL";
+opcode += "483, cmp.ne.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "484, cmp.le, fuICMP, intel1, 84, NULL";
+opcode += "485, cmp.le.unc, fuICMP, intel1, 84, NULL";
+opcode += "486, cmp.gt, fuICMP, intel1, 84, NULL";
+opcode += "487, cmp.gt.unc, fuICMP, intel1, 84, NULL";
+opcode += "488, cmp.ge, fuICMP, intel1, 84, NULL";
+opcode += "489, cmp.ge.unc, fuICMP, intel1, 84, NULL";
+
+opcode += "490, cmp.leu, fuICMP, intel1, 84, NULL";
+opcode += "491, cmp.leu.unc, fuICMP, intel1, 84, NULL";
+opcode += "492, cmp.gtu, fuICMP, intel1, 84, NULL";
+opcode += "493, cmp.gtu.unc, fuICMP, intel1, 84, NULL";
+opcode += "494, cmp.geu, fuICMP, intel1, 84, NULL";
+opcode += "495, cmp.geu.unc, fuICMP, intel1, 84, NULL";
+opcode += "496, cmp_z1.lt.orcm, fuICMP, intel1, 48, NULL";
+opcode += "497, cmp_z1.lt.andcm, fuICMP, intel1, 48, NULL";
+opcode += "498, cmp_z1.lt.and.orcm, fuICMP, intel1, 48, NULL";
+opcode += "499, cmp_z1.le.orcm, fuICMP, intel1, 48, NULL";
+
+opcode += "500, cmp_z1.le.andcm, fuICMP, intel1, 48, NULL";
+opcode += "501, cmp_z1.le.and.orcm, fuICMP, intel1, 48, NULL";
+opcode += "502, cmp_z1.gt.orcm, fuICMP, intel1, 48, NULL";
+opcode += "503, cmp_z1.gt.andcm, fuICMP, intel1, 48, NULL";
+opcode += "504, cmp_z1.gt.and.orcm, fuICMP, intel1, 48, NULL";
+opcode += "505, cmp_z1.ge.orcm, fuICMP, intel1, 48, NULL";
+opcode += "506, cmp_z1.ge.andcm, fuICMP, intel1, 48, NULL";
+opcode += "507, cmp_z1.ge.and.orcm, fuICMP, intel1, 48, NULL";
+opcode += "508, cmp_z2.lt.orcm, fuICMP, intel1, 47, NULL";
+opcode += "509, cmp_z2.lt.andcm, fuICMP, intel1, 47, NULL";
+
+opcode += "510, cmp_z2.lt.and.orcm, fuICMP, intel1, 47, NULL";
+opcode += "511, cmp_z2.le.orcm, fuICMP, intel1, 47, NULL";
+opcode += "512, cmp_z2.le.andcm, fuICMP, intel1, 47, NULL";
+opcode += "513, cmp_z2.le.and.orcm, fuICMP, intel1, 47, NULL";
+opcode += "514, cmp_z2.gt.orcm, fuICMP, intel1, 47, NULL";
+opcode += "515, cmp_z2.gt.andcm, fuICMP, intel1, 47, NULL";
+opcode += "516, cmp_z2.gt.and.orcm, fuICMP, intel1, 47, NULL";
+opcode += "517, cmp_z2.ge.orcm, fuICMP, intel1, 47, NULL";
+opcode += "518, cmp_z2.ge.andcm, fuICMP, intel1, 47, NULL";
+opcode += "519, cmp_z2.ge.and.orcm, fuICMP, intel1, 47, NULL";
+
+opcode += "520, cmp_z2.lt.and, fuICMP, intel1, 47, NULL";
+opcode += "521, cmp_z2.lt.or, fuICMP, intel1, 47, NULL";
+opcode += "522, cmp_z2.lt.or.andcm, fuICMP, intel1, 47, NULL";
+opcode += "523, cmp_z2.le.and, fuICMP, intel1, 47, NULL";
+opcode += "524, cmp_z2.le.or, fuICMP, intel1, 47, NULL";
+opcode += "525, cmp_z2.le.or.andcm, fuICMP, intel1, 47, NULL";
+opcode += "526, cmp_z2.gt.and, fuICMP, intel1, 47, NULL";
+opcode += "527, cmp_z2.gt.or, fuICMP, intel1, 47, NULL";
+opcode += "528, cmp_z2.gt.or.andcm, fuICMP, intel1, 47, NULL";
+opcode += "529, cmp_z2.ge.and, fuICMP, intel1, 47, NULL";
+
+opcode += "530, cmp_z2.ge.or, fuICMP, intel1, 47, NULL";
+opcode += "531, cmp_z2.ge.or.andcm, fuICMP, intel1, 47, NULL";
+opcode += "532, cmp_i.eq.orcm, fuICMP, intel1, 88, NULL";
+opcode += "533, cmp_i.eq.andcm, fuICMP, intel1, 88, NULL";
+opcode += "534, cmp_i.eq.and.orcm, fuICMP, intel1, 88, NULL";
+opcode += "535, cmp_i.ne, fuICMP, intel1, 88, NULL";
+opcode += "536, cmp_i.ne.unc, fuICMP, intel1, 88, NULL";
+opcode += "537, cmp_i.ne.orcm, fuICMP, intel1, 88, NULL";
+opcode += "538, cmp_i.ne.andcm, fuICMP, intel1, 88, NULL";
+opcode += "539, cmp_i.ne.and.orcm, fuICMP, intel1, 88, NULL";
+
+opcode += "540, cmp_i.le, fuICMP, intel1, 89, NULL";
+opcode += "541, cmp_i.le.unc, fuICMP, intel1, 89, NULL";
+opcode += "542, cmp_i.gt, fuICMP, intel1, 89, NULL";
+opcode += "543, cmp_i.gt.unc, fuICMP, intel1, 89, NULL";
+opcode += "544, cmp_i.ge, fuICMP, intel1, 88, NULL";
+opcode += "545, cmp_i.ge.unc, fuICMP, intel1, 88, NULL";
+opcode += "546, cmp_i.leu, fuICMP, intel1, 98, NULL";
+opcode += "547, cmp_i.leu.unc, fuICMP, intel1, 98, NULL";
+opcode += "548, cmp_i.gtu, fuICMP, intel1, 98, NULL";
+opcode += "549, cmp_i.gtu.unc, fuICMP, intel1, 98, NULL";
+
+opcode += "550, cmp_i.geu, fuICMP, intel1, 97, NULL";
+opcode += "551, cmp_i.geu.unc, fuICMP, intel1, 97, NULL";
+opcode += "552, cmp4.eq.orcm, fuICMP, intel1, 84, NULL";
+opcode += "553, cmp4.eq.andcm, fuICMP, intel1, 84, NULL";
+opcode += "554, cmp4.eq.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "555, cmp4.ne, fuICMP, intel1, 84, NULL";
+opcode += "556, cmp4.ne.unc, fuICMP, intel1, 84, NULL";
+opcode += "557, cmp4.ne.orcm, fuICMP, intel1, 84, NULL";
+opcode += "558, cmp4.ne.andcm, fuICMP, intel1, 84, NULL";
+opcode += "559, cmp4.ne.and.orcm, fuICMP, intel1, 84, NULL";
+
+opcode += "560, cmp4.le, fuICMP, intel1, 84, NULL";
+opcode += "561, cmp4.le.unc, fuICMP, intel1, 84, NULL";
+opcode += "562, cmp4.gt, fuICMP, intel1, 84, NULL";
+opcode += "563, cmp4.gt.unc, fuICMP, intel1, 84, NULL";
+opcode += "564, cmp4.ge, fuICMP, intel1, 84, NULL";
+opcode += "565, cmp4.ge.unc, fuICMP, intel1, 84, NULL";
+opcode += "566, cmp4.leu, fuICMP, intel1, 84, NULL";
+opcode += "567, cmp4.leu.unc, fuICMP, intel1, 84, NULL";
+opcode += "568, cmp4.gtu, fuICMP, intel1, 84, NULL";
+opcode += "569, cmp4.gtu.unc, fuICMP, intel1, 84, NULL";
+
+opcode += "570, cmp4.geu, fuICMP, intel1, 84, NULL";
+opcode += "571, cmp4.geu.unc, fuICMP, intel1, 84, NULL";
+opcode += "572, cmp4_z1.lt.orcm, fuICMP, intel1, 48, NULL";
+opcode += "573, cmp4_z1.lt.andcm, fuICMP, intel1, 48, NULL";
+opcode += "574, cmp4_z1.lt.and.orcm, fuICMP, intel1, 48, NULL";
+opcode += "575, cmp4_z1.le.orcm, fuICMP, intel1, 48, NULL";
+opcode += "576, cmp4_z1.le.andcm, fuICMP, intel1, 48, NULL";
+opcode += "577, cmp4_z1.le.and.orcm, fuICMP, intel1, 48, NULL";
+opcode += "578, cmp4_z1.gt.orcm, fuICMP, intel1, 48, NULL";
+opcode += "579, cmp4_z1.gt.andcm, fuICMP, intel1, 48, NULL";
+
+opcode += "580, cmp4_z1.gt.and.orcm, fuICMP, intel1, 48, NULL";
+opcode += "581, cmp4_z1.ge.orcm, fuICMP, intel1, 48, NULL";
+opcode += "582, cmp4_z1.ge.andcm, fuICMP, intel1, 48, NULL";
+opcode += "583, cmp4_z1.ge.and.orcm, fuICMP, intel1, 48, NULL";
+opcode += "584, cmp4_z2.lt.orcm, fuICMP, intel1, 47, NULL";
+opcode += "585, cmp4_z2.lt.andcm, fuICMP, intel1, 47, NULL";
+opcode += "586, cmp4_z2.lt.and.orcm, fuICMP, intel1, 47, NULL";
+opcode += "587, cmp4_z2.le.orcm, fuICMP, intel1, 47, NULL";
+opcode += "588, cmp4_z2.le.andcm, fuICMP, intel1, 47, NULL";
+opcode += "589, cmp4_z2.le.and.orcm, fuICMP, intel1, 47, NULL";
+
+opcode += "590, cmp4_z2.gt.orcm, fuICMP, intel1, 47, NULL";
+opcode += "591, cmp4_z2.gt.andcm, fuICMP, intel1, 47, NULL";
+opcode += "592, cmp4_z2.gt.and.orcm, fuICMP, intel1, 47, NULL";
+opcode += "593, cmp4_z2.ge.orcm, fuICMP, intel1, 47, NULL";
+opcode += "594, cmp4_z2.ge.andcm, fuICMP, intel1, 47, NULL";
+opcode += "595, cmp4_z2.ge.and.orcm, fuICMP, intel1, 47, NULL";
+opcode += "596, cmp4_z2.lt.and, fuICMP, intel1, 47, NULL";
+opcode += "597, cmp4_z2.lt.or, fuICMP, intel1, 47, NULL";
+opcode += "598, cmp4_z2.lt.or.andcm, fuICMP, intel1, 47, NULL";
+opcode += "599, cmp4_z2.le.and, fuICMP, intel1, 47, NULL";
+
+opcode += "600, cmp4_z2.le.or, fuICMP, intel1, 47, NULL";
+opcode += "601, cmp4_z2.le.or.andcm, fuICMP, intel1, 47, NULL";
+opcode += "602, cmp4_z2.gt.and, fuICMP, intel1, 47, NULL";
+opcode += "603, cmp4_z2.gt.or, fuICMP, intel1, 47, NULL";
+opcode += "604, cmp4_z2.gt.or.andcm, fuICMP, intel1, 47, NULL";
+opcode += "605, cmp4_z2.ge.and, fuICMP, intel1, 47, NULL";
+opcode += "606, cmp4_z2.ge.or, fuICMP, intel1, 47, NULL";
+opcode += "607, cmp4_z2.ge.or.andcm, fuICMP, intel1, 47, NULL";
+opcode += "608, cmp4_i.eq.orcm, fuICMP, intel1, 88, NULL";
+opcode += "609, cmp4_i.eq.andcm, fuICMP, intel1, 88, NULL";
+
+opcode += "610, cmp4_i.eq.and.orcm, fuICMP, intel1, 88, NULL";
+opcode += "611, cmp4_i.ne, fuICMP, intel1, 88, NULL";
+opcode += "612, cmp4_i.ne.unc, fuICMP, intel1, 88, NULL";
+opcode += "613, cmp4_i.ne.orcm, fuICMP, intel1, 88, NULL";
+opcode += "614, cmp4_i.ne.andcm, fuICMP, intel1, 88, NULL";
+opcode += "615, cmp4_i.ne.and.orcm, fuICMP, intel1, 88, NULL";
+opcode += "616, cmp4_i.le, fuICMP, intel1, 89, NULL";
+opcode += "617, cmp4_i.le.unc, fuICMP, intel1, 89, NULL";
+opcode += "618, cmp4_i.gt, fuICMP, intel1, 89, NULL";
+opcode += "619, cmp4_i.gt.unc, fuICMP, intel1, 89, NULL";
+
+opcode += "620, cmp4_i.ge, fuICMP, intel1, 88, NULL";
+opcode += "621, cmp4_i.ge.unc, fuICMP, intel1, 88, NULL";
+opcode += "622, cmp4_i.leu, fuICMP, intel1, 100, NULL";
+opcode += "623, cmp4_i.leu.unc, fuICMP, intel1, 100, NULL";
+opcode += "624, cmp4_i.gtu, fuICMP, intel1, 100, NULL";
+opcode += "625, cmp4_i.gtu.unc, fuICMP, intel1, 100, NULL";
+opcode += "626, cmp4_i.geu, fuICMP, intel1, 99, NULL";
+opcode += "627, cmp4_i.geu.unc, fuICMP, intel1, 99, NULL";
+opcode += "628, fabs, fuFMISC, intel1, 31, NULL";
+opcode += "629, fadd, fuFMAC, intel1, 85, NULL";
+
+opcode += "630, fadd.s, fuFMAC, intel1, 85, NULL";
+opcode += "631, fadd.d, fuFMAC, intel1, 85, NULL";
+opcode += "632, fclass.nm, fuFCMP, intel1, 61, NULL";
+opcode += "633, fclass.nm.unc, fuFCMP, intel1, 61, NULL";
+opcode += "634, fcmp.gt, fuFCMP, intel1, 106, NULL";
+opcode += "635, fcmp.gt.unc, fuFCMP, intel1, 106, NULL";
+opcode += "636, fcmp.ge, fuFCMP, intel1, 106, NULL";
+opcode += "637, fcmp.ge.unc, fuFCMP, intel1, 106, NULL";
+opcode += "638, fcmp.neq, fuFCMP, intel1, 106, NULL";
+opcode += "639, fcmp.neq.unc, fuFCMP, intel1, 106, NULL";
+
+opcode += "640, fcmp.nlt, fuFCMP, intel1, 106, NULL";
+opcode += "641, fcmp.nlt.unc, fuFCMP, intel1, 106, NULL";
+opcode += "642, fcmp.nle, fuFCMP, intel1, 106, NULL";
+opcode += "643, fcmp.nle.unc, fuFCMP, intel1, 106, NULL";
+opcode += "644, fcmp.ngt, fuFCMP, intel1, 106, NULL";
+opcode += "645, fcmp.ngt.unc, fuFCMP, intel1, 106, NULL";
+opcode += "646, fcmp.nge, fuFCMP, intel1, 106, NULL";
+opcode += "647, fcmp.nge.unc, fuFCMP, intel1, 106, NULL";
+opcode += "648, fcmp.ord, fuFCMP, intel1, 106, NULL";
+opcode += "649, fcmp.ord.unc, fuFCMP, intel1, 106, NULL";
+
+opcode += "650, fcvt.xuf, fuFMAC, intel1, 42, NULL";
+opcode += "651, fcvt.xuf.s, fuFMAC, intel1, 42, NULL";
+opcode += "652, fcvt.xuf.d, fuFMAC, intel1, 42, NULL";
+opcode += "653, fmpy, fuFMAC, intel1, 85, NULL";
+opcode += "654, fmpy.s, fuFMAC, intel1, 85, NULL";
+opcode += "655, fmpy.d, fuFMAC, intel1, 85, NULL";
+opcode += "656, fneg, fuFMISC, intel1, 31, NULL";
+opcode += "657, fnegabs, fuFMISC, intel1, 31, NULL";
+opcode += "658, fnmpy, fuFMAC, intel1, 85, NULL";
+opcode += "659, fnmpy.s, fuFMAC, intel1, 85, NULL";
+
+opcode += "660, fnmpy.d, fuFMAC, intel1, 85, NULL";
+opcode += "661, fnorm, fuFMAC, intel1, 42, NULL";
+opcode += "662, fnorm.s, fuFMAC, intel1, 42, NULL";
+opcode += "663, fnorm.d, fuFMAC, intel1, 42, NULL";
+opcode += "664, fpabs, fuSFMISC, intel1, 31, NULL";
+opcode += "665, fpcmp.gt, fuSFMISC, intel1, 85, NULL";
+opcode += "666, fpcmp.ge, fuSFMISC, intel1, 85, NULL";
+opcode += "667, fpcmp.ngt, fuSFMISC, intel1, 85, NULL";
+opcode += "668, fpcmp.nge, fuSFMISC, intel1, 85, NULL";
+opcode += "669, fpmpy, fuSFMAC, intel1, 85, NULL";
+
+opcode += "670, fpneg, fuSFMISC, intel1, 31, NULL";
+opcode += "671, fpnegabs, fuSFMISC, intel1, 31, NULL";
+opcode += "672, fpnmpy, fuSFMAC, intel1, 85, NULL";
+opcode += "673, fsub, fuFMAC, intel1, 85, NULL";
+opcode += "674, fsub.s, fuFMAC, intel1, 85, NULL";
+opcode += "675, fsub.d, fuFMAC, intel1, 85, NULL";
+opcode += "676, mov_t_br, fuTOBR, intel1, 11, NULL";
+opcode += "677, mov_f, fuFMISC, intel1, 12, NULL";
+opcode += "678, mov, fuIALU, intel1, 17, NULL";
+opcode += "679, mov_i, fuIALU, intel1, 30, NULL";
+
+opcode += "680, shl_i, fuISHF, intel1, 75, NULL";
+opcode += "681, shr_i, fuISHF, intel1, 75, NULL";
+opcode += "682, shr_i.u, fuISHF, intel1, 75, NULL";
+opcode += "683, tbit.nz, fuTBIT, intel1, 62, NULL";
+opcode += "684, tbit.nz.unc, fuTBIT, intel1, 62, NULL";
+opcode += "685, tnat.nz, fuTBIT, intel1, 39, NULL";
+opcode += "686, tnat.nz.unc, fuTBIT, intel1, 39, NULL";
+opcode += "687, xma.lu, fuXMA, intel1, 101, NULL";
+opcode += "688, xmpy.l, fuXMA, intel1, 60, NULL";
+opcode += "689, xmpy.lu, fuXMA, intel1, 60, NULL";
+
+opcode += "690, xmpy.h, fuXMA, intel1, 60, NULL";
+opcode += "691, xmpy.hu, fuXMA, intel1, 60, NULL";
+opcode += "692, break, fuDUMMY, intel1, 8, NULL";
+opcode += "693, chk.s, fuDUMMY, intel1, 52, NULL";
+opcode += "694, cmp.lt.and, fuICMP, intel1, 84, NULL";
+opcode += "695, cmp.lt.or, fuICMP, intel1, 84, NULL";
+opcode += "696, cmp.lt.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "697, cmp.le.and, fuICMP, intel1, 84, NULL";
+opcode += "698, cmp.le.or, fuICMP, intel1, 84, NULL";
+opcode += "699, cmp.le.or.andcm, fuICMP, intel1, 84, NULL";
+
+opcode += "700, cmp.gt.and, fuICMP, intel1, 84, NULL";
+opcode += "701, cmp.gt.or, fuICMP, intel1, 84, NULL";
+opcode += "702, cmp.gt.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "703, cmp.ge.and, fuICMP, intel1, 84, NULL";
+opcode += "704, cmp.ge.or, fuICMP, intel1, 84, NULL";
+opcode += "705, cmp.ge.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "706, cmp.lt.orcm, fuICMP, intel1, 84, NULL";
+opcode += "707, cmp.lt.andcm, fuICMP, intel1, 84, NULL";
+opcode += "708, cmp.lt.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "709, cmp.le.orcm, fuICMP, intel1, 84, NULL";
+
+opcode += "710, cmp.le.andcm, fuICMP, intel1, 84, NULL";
+opcode += "711, cmp.le.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "712, cmp.gt.orcm, fuICMP, intel1, 84, NULL";
+opcode += "713, cmp.gt.andcm, fuICMP, intel1, 84, NULL";
+opcode += "714, cmp.gt.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "715, cmp.ge.orcm, fuICMP, intel1, 84, NULL";
+opcode += "716, cmp.ge.andcm, fuICMP, intel1, 84, NULL";
+opcode += "717, cmp.ge.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "718, cmp4.lt.and, fuICMP, intel1, 84, NULL";
+opcode += "719, cmp4.lt.or, fuICMP, intel1, 84, NULL";
+
+opcode += "720, cmp4.lt.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "721, cmp4.le.and, fuICMP, intel1, 84, NULL";
+opcode += "722, cmp4.le.or, fuICMP, intel1, 84, NULL";
+opcode += "723, cmp4.le.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "724, cmp4.gt.and, fuICMP, intel1, 84, NULL";
+opcode += "725, cmp4.gt.or, fuICMP, intel1, 84, NULL";
+opcode += "726, cmp4.gt.or.andcm, fuICMP, intel1, 84, NULL";
+opcode += "727, cmp4.ge.and, fuICMP, intel1, 84, NULL";
+opcode += "728, cmp4.ge.or, fuICMP, intel1, 84, NULL";
+opcode += "729, cmp4.ge.or.andcm, fuICMP, intel1, 84, NULL";
+
+opcode += "730, cmp4.lt.orcm, fuICMP, intel1, 84, NULL";
+opcode += "731, cmp4.lt.andcm, fuICMP, intel1, 84, NULL";
+opcode += "732, cmp4.lt.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "733, cmp4.le.orcm, fuICMP, intel1, 84, NULL";
+opcode += "734, cmp4.le.andcm, fuICMP, intel1, 84, NULL";
+opcode += "735, cmp4.le.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "736, cmp4.gt.orcm, fuICMP, intel1, 84, NULL";
+opcode += "737, cmp4.gt.andcm, fuICMP, intel1, 84, NULL";
+opcode += "738, cmp4.gt.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "739, cmp4.ge.orcm, fuICMP, intel1, 84, NULL";
+
+opcode += "740, cmp4.ge.andcm, fuICMP, intel1, 84, NULL";
+opcode += "741, cmp4.ge.and.orcm, fuICMP, intel1, 84, NULL";
+opcode += "742, mov_f_ar, fuDUMMY, intel1, 20, NULL";
+opcode += "743, mov_t_ar_r, fuDUMMY, intel1, 18, NULL";
+opcode += "744, mov_t_ar_i, fuDUMMY, intel1, 23, NULL";
+opcode += "745, nop, fuDUMMY, intel1, 8, NULL";
+opcode += "746, asm, fuDUMMY, intel1, 134, NULL";
+opcode += "747, intrncall, fuDUMMY, intel1, 129, NULL";
+opcode += "748, spadjust, fuDUMMY, intel1, 127, NULL";
+opcode += "749, copy.br, fuDUMMY, intel1, 133, NULL";
+
+opcode += "750, begin.pregtn, fuUNKNOWN, intel1, 128, NULL";
+opcode += "751, end.pregtn, fuUNKNOWN, intel1, 128, NULL";
+opcode += "752, bwd.bar, fuUNKNOWN, intel1, 132, NULL";
+opcode += "753, fwd.bar, fuUNKNOWN, intel1, 132, NULL";
+opcode += "754, dfixup, fuUNKNOWN, intel1, 131, NULL";
+opcode += "755, ffixup, fuUNKNOWN, intel1, 131, NULL";
+opcode += "756, ifixup, fuUNKNOWN, intel1, 130, NULL";
+opcode += "757, label, fuUNKNOWN, intel1, 135, NULL";
+opcode += "758, noop, fuUNKNOWN, intel1, 132, NULL";
+
+#  End of opcode
+
+#  = = = = = = = = = = = = = = = = = = = = = = = =
+#
+#  Bundle Part
+#
+#  1) Bundle width of bit and Max slot.
+#  2) Enumeration of execute unit in pro64
+#  3) Array to mapping existed slot type in KAPI to slot type of PRO64
+#  4) Array to give execute unit properties for each op
+#  5) Enumeration of bundle component and width of each one
+#
+
+BundleWidth := 128;
+MaxSlot     := 3;
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - 
+#  Enumeration of execute unit in pro64
+#    R_Unit,  // Reserved unit type
+#    I_Unit,  // Integer execution type
+#    M_Unit,  // Memory execution type
+#    F_Unit,  // Floating-point execution type
+#    B_Unit,  // Branch execution type
+#    L_Unit,  // Long immediate type
+#    B2_Unit, // specific B-unit category in which instruction can occupy
+#             // only in slot2 position. 
+#    I2_Unit; // specific I-unit category for template2 specification. Only
+#             // movl, break and nop fall in this category and occupy slot2
+#             // position.
+#  - - - - - - - - - - - - - - - - - - - - - - - - 
+
+TYPE eun_t  = enum( R_Unit, I_Unit, M_Unit, B_Unit, F_Unit, L_Unit, 
+                    I2_Unit, B2_Unit )
+              limit <> noredefine;
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#  Array to mapping existed slot type in KAPI to this type
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+            
+eun_sylt       :array[STRING] of eun_t;
+eun_sylt["sylI"]    := I_Unit;
+eun_sylt["sylM"]    := M_Unit;
+eun_sylt["sylF"]    := F_Unit;
+eun_sylt["sylB"]    := B_Unit;
+eun_sylt["sylL"]    := L_Unit;
+
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+#  Array to give execute unit properties for each op
+#  Format:
+#  unitprop[opname] := bitmask(eun_t);
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+unitprop  : array [string] of bitmask(eun_t);
+
+unitprop[ "add" ]                 :=  bitmask( I_Unit, M_Unit );
+unitprop[ "add_1" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "adds" ]                :=  bitmask( I_Unit, M_Unit );
+unitprop[ "addl" ]                :=  bitmask( I_Unit, M_Unit );
+unitprop[ "addp4" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "addp4_i" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "alloc_3" ]             :=  bitmask( M_Unit );
+unitprop[ "and" ]                 :=  bitmask( I_Unit, M_Unit );
+unitprop[ "and_i" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "andcm" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "andcm_i" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "br.cond" ]             :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "br_r.cond" ]           :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "br.call" ]             :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "br_r.call" ]           :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "br.ret" ]              :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "br.ia" ]               :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "br.cloop" ]            :=  bitmask( B2_Unit );
+unitprop[ "br.ctop" ]             :=  bitmask( B2_Unit );
+unitprop[ "br.cexit" ]            :=  bitmask( B2_Unit );
+unitprop[ "br.wtop" ]             :=  bitmask( B2_Unit );
+unitprop[ "br.wexit" ]            :=  bitmask( B2_Unit );
+unitprop[ "break.i" ]             :=  bitmask( I_Unit, I2_Unit );
+unitprop[ "break.b" ]             :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "break.m" ]             :=  bitmask( M_Unit );
+unitprop[ "break.f" ]             :=  bitmask( F_Unit );
+unitprop[ "break.x" ]             :=  bitmask( L_Unit, I2_Unit );
+unitprop[ "brl.cond" ]            :=  bitmask(  );
+unitprop[ "brl.call" ]            :=  bitmask(  );
+unitprop[ "brp" ]                 :=  bitmask( B2_Unit );
+unitprop[ "brp_r" ]               :=  bitmask( B2_Unit );
+unitprop[ "brp.ret" ]             :=  bitmask( B2_Unit );
+unitprop[ "bsw.0" ]               :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "bsw.1" ]               :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "chk.s.i" ]             :=  bitmask( I_Unit );
+unitprop[ "chk.s.m" ]             :=  bitmask( M_Unit );
+unitprop[ "chk_f.s" ]             :=  bitmask( M_Unit );
+unitprop[ "chk.a" ]               :=  bitmask( M_Unit );
+unitprop[ "chk_f.a" ]             :=  bitmask( M_Unit );
+unitprop[ "clrrrb" ]              :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "clrrrb.pr" ]           :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "cmp.eq" ]              :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.eq.unc" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.eq.and" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.eq.or" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.eq.or.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ne.and" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ne.or" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ne.or.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.lt" ]              :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.lt.unc" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ltu" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ltu.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.lt.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.lt.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.lt.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.le.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.le.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.le.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.gt.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.gt.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.gt.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.ge.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.ge.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.ge.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.eq" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.eq.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.eq.and" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.eq.or" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.eq.or.andcm" ]   :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ne.and" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ne.or" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ne.or.andcm" ]   :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.lt" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.lt.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ltu" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ltu.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.eq" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.eq.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.eq.and" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.eq.or" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.eq.or.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ne.and" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ne.or" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ne.or.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.lt" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.lt.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ltu" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ltu.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.lt.and" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.lt.or" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.lt.or.andcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.le.and" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.le.or" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.le.or.andcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.gt.and" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.gt.or" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.gt.or.andcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.ge.and" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.ge.or" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.ge.or.andcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.eq" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.eq.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.eq.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.eq.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.eq.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ne.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ne.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ne.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.lt" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.lt.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ltu" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ltu.unc" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmpxchg1" ]            :=  bitmask( M_Unit );
+unitprop[ "cmpxchg2" ]            :=  bitmask( M_Unit );
+unitprop[ "cmpxchg4" ]            :=  bitmask( M_Unit );
+unitprop[ "cmpxchg8" ]            :=  bitmask( M_Unit );
+unitprop[ "cover" ]               :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "czx1.l" ]              :=  bitmask( I_Unit );
+unitprop[ "czx1.r" ]              :=  bitmask( I_Unit );
+unitprop[ "czx2.l" ]              :=  bitmask( I_Unit );
+unitprop[ "czx2.r" ]              :=  bitmask( I_Unit );
+unitprop[ "dep" ]                 :=  bitmask( I_Unit );
+unitprop[ "dep.z" ]               :=  bitmask( I_Unit );
+unitprop[ "dep_i" ]               :=  bitmask( I_Unit );
+unitprop[ "dep_i.z" ]             :=  bitmask( I_Unit );
+unitprop[ "epc" ]                 :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "extr" ]                :=  bitmask( I_Unit );
+unitprop[ "extr.u" ]              :=  bitmask( I_Unit );
+unitprop[ "famax" ]               :=  bitmask( F_Unit );
+unitprop[ "famin" ]               :=  bitmask( F_Unit );
+unitprop[ "fand" ]                :=  bitmask( F_Unit );
+unitprop[ "fandcm" ]              :=  bitmask( F_Unit );
+unitprop[ "fc" ]                  :=  bitmask( M_Unit );
+unitprop[ "fchkf" ]               :=  bitmask( F_Unit );
+unitprop[ "fclass.m" ]            :=  bitmask( F_Unit );
+unitprop[ "fclass.m.unc" ]        :=  bitmask( F_Unit );
+unitprop[ "fclrf" ]               :=  bitmask( F_Unit );
+unitprop[ "fcmp.eq" ]             :=  bitmask( F_Unit );
+unitprop[ "fcmp.eq.unc" ]         :=  bitmask( F_Unit );
+unitprop[ "fcmp.lt" ]             :=  bitmask( F_Unit );
+unitprop[ "fcmp.lt.unc" ]         :=  bitmask( F_Unit );
+unitprop[ "fcmp.le" ]             :=  bitmask( F_Unit );
+unitprop[ "fcmp.le.unc" ]         :=  bitmask( F_Unit );
+unitprop[ "fcmp.unord" ]          :=  bitmask( F_Unit );
+unitprop[ "fcmp.unord.unc" ]      :=  bitmask( F_Unit );
+unitprop[ "fcvt.fx" ]             :=  bitmask( F_Unit );
+unitprop[ "fcvt.fx.trunc" ]       :=  bitmask( F_Unit );
+unitprop[ "fcvt.fxu" ]            :=  bitmask( F_Unit );
+unitprop[ "fcvt.fxu.trunc" ]      :=  bitmask( F_Unit );
+unitprop[ "fcvt.xf" ]             :=  bitmask( F_Unit );
+unitprop[ "fetchadd4" ]           :=  bitmask( M_Unit );
+unitprop[ "fetchadd8" ]           :=  bitmask( M_Unit );
+unitprop[ "flushrs" ]             :=  bitmask( M_Unit );
+unitprop[ "fma" ]                 :=  bitmask( F_Unit );
+unitprop[ "fma.s" ]               :=  bitmask( F_Unit );
+unitprop[ "fma.d" ]               :=  bitmask( F_Unit );
+unitprop[ "fmax" ]                :=  bitmask( F_Unit );
+unitprop[ "fmerge.ns" ]           :=  bitmask( F_Unit );
+unitprop[ "fmerge.s" ]            :=  bitmask( F_Unit );
+unitprop[ "fmerge.se" ]           :=  bitmask( F_Unit );
+unitprop[ "fmin" ]                :=  bitmask( F_Unit );
+unitprop[ "fmix.l" ]              :=  bitmask( F_Unit );
+unitprop[ "fmix.r" ]              :=  bitmask( F_Unit );
+unitprop[ "fmix.lr" ]             :=  bitmask( F_Unit );
+unitprop[ "fms" ]                 :=  bitmask( F_Unit );
+unitprop[ "fms.s" ]               :=  bitmask( F_Unit );
+unitprop[ "fms.d" ]               :=  bitmask( F_Unit );
+unitprop[ "fnma" ]                :=  bitmask( F_Unit );
+unitprop[ "fnma.s" ]              :=  bitmask( F_Unit );
+unitprop[ "fnma.d" ]              :=  bitmask( F_Unit );
+unitprop[ "for" ]                 :=  bitmask( F_Unit );
+unitprop[ "fpack" ]               :=  bitmask( F_Unit );
+unitprop[ "fpamax" ]              :=  bitmask( F_Unit );
+unitprop[ "fpamin" ]              :=  bitmask( F_Unit );
+unitprop[ "fpcmp.eq" ]            :=  bitmask( F_Unit );
+unitprop[ "fpcmp.lt" ]            :=  bitmask( F_Unit );
+unitprop[ "fpcmp.le" ]            :=  bitmask( F_Unit );
+unitprop[ "fpcmp.unord" ]         :=  bitmask( F_Unit );
+unitprop[ "fpcmp.neq" ]           :=  bitmask( F_Unit );
+unitprop[ "fpcmp.nlt" ]           :=  bitmask( F_Unit );
+unitprop[ "fpcmp.nle" ]           :=  bitmask( F_Unit );
+unitprop[ "fpcmp.ord" ]           :=  bitmask( F_Unit );
+unitprop[ "fpcvt.fx" ]            :=  bitmask( F_Unit );
+unitprop[ "fpcvt.fx.trunc" ]      :=  bitmask( F_Unit );
+unitprop[ "fpcvt.fxu" ]           :=  bitmask( F_Unit );
+unitprop[ "fpcvt.fxu.trunc" ]     :=  bitmask( F_Unit );
+unitprop[ "fpma" ]                :=  bitmask( F_Unit );
+unitprop[ "fpmax" ]               :=  bitmask( F_Unit );
+unitprop[ "fpmerge.ns" ]          :=  bitmask( F_Unit );
+unitprop[ "fpmerge.s" ]           :=  bitmask( F_Unit );
+unitprop[ "fpmerge.se" ]          :=  bitmask( F_Unit );
+unitprop[ "fpmin" ]               :=  bitmask( F_Unit );
+unitprop[ "fpms" ]                :=  bitmask( F_Unit );
+unitprop[ "fpnma" ]               :=  bitmask( F_Unit );
+unitprop[ "fprcpa" ]              :=  bitmask( F_Unit );
+unitprop[ "fprsqrta" ]            :=  bitmask( F_Unit );
+unitprop[ "frcpa" ]               :=  bitmask( F_Unit );
+unitprop[ "frsqrta" ]             :=  bitmask( F_Unit );
+unitprop[ "fselect" ]             :=  bitmask( F_Unit );
+unitprop[ "fsetc" ]               :=  bitmask( F_Unit );
+unitprop[ "fswap" ]               :=  bitmask( F_Unit );
+unitprop[ "fswap.nl" ]            :=  bitmask( F_Unit );
+unitprop[ "fswap.nr" ]            :=  bitmask( F_Unit );
+unitprop[ "fsxt.l" ]              :=  bitmask( F_Unit );
+unitprop[ "fsxt.r" ]              :=  bitmask( F_Unit );
+unitprop[ "fwb" ]                 :=  bitmask( M_Unit );
+unitprop[ "fxor" ]                :=  bitmask( F_Unit );
+unitprop[ "getf.s" ]              :=  bitmask( M_Unit );
+unitprop[ "getf.d" ]              :=  bitmask( M_Unit );
+unitprop[ "getf.exp" ]            :=  bitmask( M_Unit );
+unitprop[ "getf.sig" ]            :=  bitmask( M_Unit );
+unitprop[ "invala" ]              :=  bitmask( M_Unit );
+unitprop[ "invala.e" ]            :=  bitmask( M_Unit );
+unitprop[ "invala_f.e" ]          :=  bitmask( M_Unit );
+unitprop[ "itc.i" ]               :=  bitmask( M_Unit );
+unitprop[ "itc.d" ]               :=  bitmask( M_Unit );
+unitprop[ "itr.i" ]               :=  bitmask( M_Unit );
+unitprop[ "itr.d" ]               :=  bitmask( M_Unit );
+unitprop[ "ld1" ]                 :=  bitmask( M_Unit );
+unitprop[ "ld1_r" ]               :=  bitmask( M_Unit );
+unitprop[ "ld1_i" ]               :=  bitmask( M_Unit );
+unitprop[ "ld2" ]                 :=  bitmask( M_Unit );
+unitprop[ "ld2_r" ]               :=  bitmask( M_Unit );
+unitprop[ "ld2_i" ]               :=  bitmask( M_Unit );
+unitprop[ "ld4" ]                 :=  bitmask( M_Unit );
+unitprop[ "ld4_r" ]               :=  bitmask( M_Unit );
+unitprop[ "ld4_i" ]               :=  bitmask( M_Unit );
+unitprop[ "ld8" ]                 :=  bitmask( M_Unit );
+unitprop[ "ld8_r" ]               :=  bitmask( M_Unit );
+unitprop[ "ld8_i" ]               :=  bitmask( M_Unit );
+unitprop[ "ld8.fill" ]            :=  bitmask( M_Unit );
+unitprop[ "ld8_r.fill" ]          :=  bitmask( M_Unit );
+unitprop[ "ld8_i.fill" ]          :=  bitmask( M_Unit );
+unitprop[ "ldfs" ]                :=  bitmask( M_Unit );
+unitprop[ "ldfs_r" ]              :=  bitmask( M_Unit );
+unitprop[ "ldfs_i" ]              :=  bitmask( M_Unit );
+unitprop[ "ldfd" ]                :=  bitmask( M_Unit );
+unitprop[ "ldfd_r" ]              :=  bitmask( M_Unit );
+unitprop[ "ldfd_i" ]              :=  bitmask( M_Unit );
+unitprop[ "ldfe" ]                :=  bitmask( M_Unit );
+unitprop[ "ldfe_r" ]              :=  bitmask( M_Unit );
+unitprop[ "ldfe_i" ]              :=  bitmask( M_Unit );
+unitprop[ "ldf8" ]                :=  bitmask( M_Unit );
+unitprop[ "ldf8_r" ]              :=  bitmask( M_Unit );
+unitprop[ "ldf8_i" ]              :=  bitmask( M_Unit );
+unitprop[ "ldf.fill" ]            :=  bitmask( M_Unit );
+unitprop[ "ldf_r.fill" ]          :=  bitmask( M_Unit );
+unitprop[ "ldf_i.fill" ]          :=  bitmask( M_Unit );
+unitprop[ "ldfps" ]               :=  bitmask( M_Unit );
+unitprop[ "ldfps_i" ]             :=  bitmask( M_Unit );
+unitprop[ "ldfpd" ]               :=  bitmask( M_Unit );
+unitprop[ "ldfpd_i" ]             :=  bitmask( M_Unit );
+unitprop[ "ldfp8" ]               :=  bitmask( M_Unit );
+unitprop[ "ldfp8_i" ]             :=  bitmask( M_Unit );
+unitprop[ "lfetch" ]              :=  bitmask( M_Unit );
+unitprop[ "lfetch.excl" ]         :=  bitmask( M_Unit );
+unitprop[ "lfetch.fault" ]        :=  bitmask( M_Unit );
+unitprop[ "lfetch.fault.excl" ]   :=  bitmask( M_Unit );
+unitprop[ "lfetch_r" ]            :=  bitmask( M_Unit );
+unitprop[ "lfetch_r.excl" ]       :=  bitmask( M_Unit );
+unitprop[ "lfetch_r.fault" ]      :=  bitmask( M_Unit );
+unitprop[ "lfetch_r.fault.excl" ] :=  bitmask( M_Unit );
+unitprop[ "lfetch_i" ]            :=  bitmask( M_Unit );
+unitprop[ "lfetch_i.excl" ]       :=  bitmask( M_Unit );
+unitprop[ "lfetch_i.fault" ]      :=  bitmask( M_Unit );
+unitprop[ "lfetch_i.fault.excl" ] :=  bitmask( M_Unit );
+unitprop[ "loadrs" ]              :=  bitmask( M_Unit );
+unitprop[ "mf" ]                  :=  bitmask( M_Unit );
+unitprop[ "mf.a" ]                :=  bitmask( M_Unit );
+unitprop[ "mix1.l" ]              :=  bitmask( I_Unit );
+unitprop[ "mix1.r" ]              :=  bitmask( I_Unit );
+unitprop[ "mix2.l" ]              :=  bitmask( I_Unit );
+unitprop[ "mix2.r" ]              :=  bitmask( I_Unit );
+unitprop[ "mix4.l" ]              :=  bitmask( I_Unit );
+unitprop[ "mix4.r" ]              :=  bitmask( I_Unit );
+unitprop[ "mov_f_ar.i" ]          :=  bitmask( I_Unit );
+unitprop[ "mov_t_ar_r.i" ]        :=  bitmask( I_Unit );
+unitprop[ "mov_t_ar_i.i" ]        :=  bitmask( I_Unit );
+unitprop[ "mov_f_ar.m" ]          :=  bitmask( M_Unit );
+unitprop[ "mov_t_ar_r.m" ]        :=  bitmask( M_Unit );
+unitprop[ "mov_t_ar_i.m" ]        :=  bitmask( M_Unit );
+unitprop[ "mov_f_br" ]            :=  bitmask( I_Unit );
+unitprop[ "mov_t_br_i" ]          :=  bitmask( I_Unit );
+unitprop[ "mov_t_br.ret" ]        :=  bitmask( I_Unit );
+unitprop[ "mov_t_cr" ]            :=  bitmask( M_Unit );
+unitprop[ "mov_f_cr" ]            :=  bitmask( M_Unit );
+unitprop[ "mov_f_cpuid" ]         :=  bitmask( M_Unit );
+unitprop[ "mov_t_dbr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_f_dbr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_t_ibr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_f_ibr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_t_msr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_f_msr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_t_pkr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_f_pkr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_t_pmc" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_f_pmc" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_t_pmd" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_f_pmd" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_t_rr" ]            :=  bitmask( M_Unit );
+unitprop[ "mov_f_rr" ]            :=  bitmask( M_Unit );
+unitprop[ "mov_f_ip" ]            :=  bitmask( I_Unit );
+unitprop[ "mov_f_pr" ]            :=  bitmask( I_Unit );
+unitprop[ "mov_t_pr" ]            :=  bitmask( I_Unit );
+unitprop[ "mov_t_pr_i" ]          :=  bitmask( I_Unit );
+unitprop[ "mov_t_psr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_f_psr" ]           :=  bitmask( M_Unit );
+unitprop[ "mov_t_psrum" ]         :=  bitmask( M_Unit );
+unitprop[ "mov_f_psrum" ]         :=  bitmask( M_Unit );
+unitprop[ "movl" ]                :=  bitmask( L_Unit, I2_Unit );
+unitprop[ "mux1" ]                :=  bitmask( I_Unit );
+unitprop[ "mux2" ]                :=  bitmask( I_Unit );
+unitprop[ "nop.i" ]               :=  bitmask( I_Unit, I2_Unit );
+unitprop[ "nop.b" ]               :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "nop.m" ]               :=  bitmask( M_Unit );
+unitprop[ "nop.f" ]               :=  bitmask( F_Unit );
+unitprop[ "nop.x" ]               :=  bitmask( L_Unit, I2_Unit );
+unitprop[ "or" ]                  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "or_i" ]                :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pack2.sss" ]           :=  bitmask( I_Unit );
+unitprop[ "pack2.uss" ]           :=  bitmask( I_Unit );
+unitprop[ "pack4.sss" ]           :=  bitmask( I_Unit );
+unitprop[ "padd1" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "padd1.sss" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "padd1.uus" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "padd1.uuu" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "padd2" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "padd2.sss" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "padd2.uus" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "padd2.uuu" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "padd4" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pavg1" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pavg1.raz" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pavg2" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pavg2.raz" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pavgsub1" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pavgsub2" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pcmp1.eq" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pcmp1.gt" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pcmp2.eq" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pcmp2.gt" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pcmp4.eq" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pcmp4.gt" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pmax1.u" ]             :=  bitmask( I_Unit );
+unitprop[ "pmax2" ]               :=  bitmask( I_Unit );
+unitprop[ "pmin1.u" ]             :=  bitmask( I_Unit );
+unitprop[ "pmin2" ]               :=  bitmask( I_Unit );
+unitprop[ "pmpy2.r" ]             :=  bitmask( I_Unit );
+unitprop[ "pmpy2.l" ]             :=  bitmask( I_Unit );
+unitprop[ "pmpyshr2" ]            :=  bitmask( I_Unit );
+unitprop[ "pmpyshr2.u" ]          :=  bitmask( I_Unit );
+unitprop[ "popcnt" ]              :=  bitmask( I_Unit );
+unitprop[ "probe.r" ]             :=  bitmask( M_Unit );
+unitprop[ "probe.w" ]             :=  bitmask( M_Unit );
+unitprop[ "probe_i.r" ]           :=  bitmask( M_Unit );
+unitprop[ "probe_i.w" ]           :=  bitmask( M_Unit );
+unitprop[ "probe.r.fault" ]       :=  bitmask( M_Unit );
+unitprop[ "probe.w.fault" ]       :=  bitmask( M_Unit );
+unitprop[ "probe.rw.fault" ]      :=  bitmask( M_Unit );
+unitprop[ "psad1" ]               :=  bitmask( I_Unit );
+unitprop[ "pshl2" ]               :=  bitmask( I_Unit );
+unitprop[ "pshl4" ]               :=  bitmask( I_Unit );
+unitprop[ "pshl2_i" ]             :=  bitmask( I_Unit );
+unitprop[ "pshl4_i" ]             :=  bitmask( I_Unit );
+unitprop[ "pshladd2" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "pshr2" ]               :=  bitmask( I_Unit );
+unitprop[ "pshr2.u" ]             :=  bitmask( I_Unit );
+unitprop[ "pshr4" ]               :=  bitmask( I_Unit );
+unitprop[ "pshr4.u" ]             :=  bitmask( I_Unit );
+unitprop[ "pshr2_i" ]             :=  bitmask( I_Unit );
+unitprop[ "pshr2_i.u" ]           :=  bitmask( I_Unit );
+unitprop[ "pshr4_i" ]             :=  bitmask( I_Unit );
+unitprop[ "pshr4_i.u" ]           :=  bitmask( I_Unit );
+unitprop[ "pshradd2" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub1" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub2" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub4" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub1.sss" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub1.uus" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub1.uuu" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub2.sss" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub2.uus" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "psub2.uuu" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "ptc.e" ]               :=  bitmask( M_Unit );
+unitprop[ "ptc.g" ]               :=  bitmask( M_Unit );
+unitprop[ "ptc.ga" ]              :=  bitmask( M_Unit );
+unitprop[ "ptc.l" ]               :=  bitmask( M_Unit );
+unitprop[ "ptr.d" ]               :=  bitmask( M_Unit );
+unitprop[ "ptr.i" ]               :=  bitmask( M_Unit );
+unitprop[ "rfi" ]                 :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "rsm" ]                 :=  bitmask( M_Unit );
+unitprop[ "rum" ]                 :=  bitmask( M_Unit );
+unitprop[ "setf.s" ]              :=  bitmask( M_Unit );
+unitprop[ "setf.d" ]              :=  bitmask( M_Unit );
+unitprop[ "setf.exp" ]            :=  bitmask( M_Unit );
+unitprop[ "setf.sig" ]            :=  bitmask( M_Unit );
+unitprop[ "shl" ]                 :=  bitmask( I_Unit );
+unitprop[ "shladd" ]              :=  bitmask( I_Unit, M_Unit );
+unitprop[ "shladdp4" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "shr" ]                 :=  bitmask( I_Unit );
+unitprop[ "shr.u" ]               :=  bitmask( I_Unit );
+unitprop[ "shrp" ]                :=  bitmask( I_Unit );
+unitprop[ "srlz.i" ]              :=  bitmask( M_Unit );
+unitprop[ "srlz.d" ]              :=  bitmask( M_Unit );
+unitprop[ "ssm" ]                 :=  bitmask( M_Unit );
+unitprop[ "st1" ]                 :=  bitmask( M_Unit );
+unitprop[ "st1_i" ]               :=  bitmask( M_Unit );
+unitprop[ "st2" ]                 :=  bitmask( M_Unit );
+unitprop[ "st2_i" ]               :=  bitmask( M_Unit );
+unitprop[ "st4" ]                 :=  bitmask( M_Unit );
+unitprop[ "st4_i" ]               :=  bitmask( M_Unit );
+unitprop[ "st8" ]                 :=  bitmask( M_Unit );
+unitprop[ "st8_i" ]               :=  bitmask( M_Unit );
+unitprop[ "st8.spill" ]           :=  bitmask( M_Unit );
+unitprop[ "st8_i.spill" ]         :=  bitmask( M_Unit );
+unitprop[ "stfs" ]                :=  bitmask( M_Unit );
+unitprop[ "stfs_i" ]              :=  bitmask( M_Unit );
+unitprop[ "stfd" ]                :=  bitmask( M_Unit );
+unitprop[ "stfd_i" ]              :=  bitmask( M_Unit );
+unitprop[ "stfe" ]                :=  bitmask( M_Unit );
+unitprop[ "stfe_i" ]              :=  bitmask( M_Unit );
+unitprop[ "stf8" ]                :=  bitmask( M_Unit );
+unitprop[ "stf8_i" ]              :=  bitmask( M_Unit );
+unitprop[ "stf.spill" ]           :=  bitmask( M_Unit );
+unitprop[ "stf_i.spill" ]         :=  bitmask( M_Unit );
+unitprop[ "sub" ]                 :=  bitmask( I_Unit, M_Unit );
+unitprop[ "sub_1" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "sub_i" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "sum" ]                 :=  bitmask( M_Unit );
+unitprop[ "sxt1" ]                :=  bitmask( I_Unit );
+unitprop[ "sxt2" ]                :=  bitmask( I_Unit );
+unitprop[ "sxt4" ]                :=  bitmask( I_Unit );
+unitprop[ "sync.i" ]              :=  bitmask( M_Unit );
+unitprop[ "tak" ]                 :=  bitmask( M_Unit );
+unitprop[ "tbit.z" ]              :=  bitmask( I_Unit );
+unitprop[ "tbit.z.unc" ]          :=  bitmask( I_Unit );
+unitprop[ "tbit.z.and" ]          :=  bitmask( I_Unit );
+unitprop[ "tbit.z.or" ]           :=  bitmask( I_Unit );
+unitprop[ "tbit.z.or.andcm" ]     :=  bitmask( I_Unit );
+unitprop[ "tbit.nz.and" ]         :=  bitmask( I_Unit );
+unitprop[ "tbit.nz.or" ]          :=  bitmask( I_Unit );
+unitprop[ "tbit.nz.or.andcm" ]    :=  bitmask( I_Unit );
+unitprop[ "thash" ]               :=  bitmask( M_Unit );
+unitprop[ "tnat.z" ]              :=  bitmask( I_Unit );
+unitprop[ "tnat.z.unc" ]          :=  bitmask( I_Unit );
+unitprop[ "tnat.z.and" ]          :=  bitmask( I_Unit );
+unitprop[ "tnat.z.or" ]           :=  bitmask( I_Unit );
+unitprop[ "tnat.z.or.andcm" ]     :=  bitmask( I_Unit );
+unitprop[ "tnat.nz.and" ]         :=  bitmask( I_Unit );
+unitprop[ "tnat.nz.or" ]          :=  bitmask( I_Unit );
+unitprop[ "tnat.nz.or.andcm" ]    :=  bitmask( I_Unit );
+unitprop[ "tpa" ]                 :=  bitmask( M_Unit );
+unitprop[ "ttag" ]                :=  bitmask( M_Unit );
+unitprop[ "unpack1.l" ]           :=  bitmask( I_Unit );
+unitprop[ "unpack1.h" ]           :=  bitmask( I_Unit );
+unitprop[ "unpack2.l" ]           :=  bitmask( I_Unit );
+unitprop[ "unpack2.h" ]           :=  bitmask( I_Unit );
+unitprop[ "unpack4.l" ]           :=  bitmask( I_Unit );
+unitprop[ "unpack4.h" ]           :=  bitmask( I_Unit );
+unitprop[ "xchg1" ]               :=  bitmask( M_Unit );
+unitprop[ "xchg2" ]               :=  bitmask( M_Unit );
+unitprop[ "xchg4" ]               :=  bitmask( M_Unit );
+unitprop[ "xchg8" ]               :=  bitmask( M_Unit );
+unitprop[ "xma.l" ]               :=  bitmask( F_Unit );
+unitprop[ "xma.h" ]               :=  bitmask( F_Unit );
+unitprop[ "xma.hu" ]              :=  bitmask( F_Unit );
+unitprop[ "xor" ]                 :=  bitmask( I_Unit, M_Unit );
+unitprop[ "xor_i" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "zxt1" ]                :=  bitmask( I_Unit );
+unitprop[ "zxt2" ]                :=  bitmask( I_Unit );
+unitprop[ "zxt4" ]                :=  bitmask( I_Unit );
+unitprop[ "alloc" ]               :=  bitmask( M_Unit );
+unitprop[ "br" ]                  :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "br_r" ]                :=  bitmask( B_Unit, B2_Unit );
+unitprop[ "brl" ]                 :=  bitmask(  );
+unitprop[ "cmp.eq.orcm" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.eq.andcm" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.eq.and.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ne" ]              :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ne.unc" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ne.orcm" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ne.andcm" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ne.and.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.le" ]              :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.le.unc" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.gt" ]              :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.gt.unc" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ge" ]              :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.ge.unc" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.leu" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.leu.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.gtu" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.gtu.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.geu" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.geu.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.lt.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.lt.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.lt.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.le.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.le.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.le.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.gt.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.gt.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.gt.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.ge.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.ge.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z1.ge.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.lt.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.lt.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.lt.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.le.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.le.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.le.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.gt.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.gt.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.gt.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.ge.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.ge.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.ge.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.lt.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.lt.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.lt.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.le.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.le.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.le.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.gt.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.gt.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.gt.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.ge.and" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.ge.or" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_z2.ge.or.andcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.eq.orcm" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.eq.andcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.eq.and.orcm" ]   :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ne" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ne.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ne.orcm" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ne.andcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ne.and.orcm" ]   :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.le" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.le.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.gt" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.gt.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ge" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.ge.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.leu" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.leu.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.gtu" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.gtu.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.geu" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp_i.geu.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.eq.orcm" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.eq.andcm" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.eq.and.orcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ne" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ne.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ne.orcm" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ne.andcm" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ne.and.orcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.le" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.le.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.gt" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.gt.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ge" ]             :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.ge.unc" ]         :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.leu" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.leu.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.gtu" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.gtu.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.geu" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4.geu.unc" ]        :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.lt.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.lt.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.lt.and.orcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.le.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.le.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.le.and.orcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.gt.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.gt.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.gt.and.orcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.ge.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.ge.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z1.ge.and.orcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.lt.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.lt.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.lt.and.orcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.le.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.le.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.le.and.orcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.gt.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.gt.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.gt.and.orcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.ge.orcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.ge.andcm" ]    :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.ge.and.orcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.lt.and" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.lt.or" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.lt.or.andcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.le.and" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.le.or" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.le.or.andcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.gt.and" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.gt.or" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.gt.or.andcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.ge.and" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.ge.or" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_z2.ge.or.andcm" ] :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.eq.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.eq.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.eq.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ne" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ne.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ne.orcm" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ne.andcm" ]     :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ne.and.orcm" ]  :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.le" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.le.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.gt" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.gt.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ge" ]           :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.ge.unc" ]       :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.leu" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.leu.unc" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.gtu" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.gtu.unc" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.geu" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp4_i.geu.unc" ]      :=  bitmask( I_Unit, M_Unit );
+unitprop[ "fabs" ]                :=  bitmask( F_Unit );
+unitprop[ "fadd" ]                :=  bitmask( F_Unit );
+unitprop[ "fadd.s" ]              :=  bitmask( F_Unit );
+unitprop[ "fadd.d" ]              :=  bitmask( F_Unit );
+unitprop[ "fclass.nm" ]           :=  bitmask( F_Unit );
+unitprop[ "fclass.nm.unc" ]       :=  bitmask( F_Unit );
+unitprop[ "fcmp.gt" ]             :=  bitmask( F_Unit );
+unitprop[ "fcmp.gt.unc" ]         :=  bitmask( F_Unit );
+unitprop[ "fcmp.ge" ]             :=  bitmask( F_Unit );
+unitprop[ "fcmp.ge.unc" ]         :=  bitmask( F_Unit );
+unitprop[ "fcmp.neq" ]            :=  bitmask( F_Unit );
+unitprop[ "fcmp.neq.unc" ]        :=  bitmask( F_Unit );
+unitprop[ "fcmp.nlt" ]            :=  bitmask( F_Unit );
+unitprop[ "fcmp.nlt.unc" ]        :=  bitmask( F_Unit );
+unitprop[ "fcmp.nle" ]            :=  bitmask( F_Unit );
+unitprop[ "fcmp.nle.unc" ]        :=  bitmask( F_Unit );
+unitprop[ "fcmp.ngt" ]            :=  bitmask( F_Unit );
+unitprop[ "fcmp.ngt.unc" ]        :=  bitmask( F_Unit );
+unitprop[ "fcmp.nge" ]            :=  bitmask( F_Unit );
+unitprop[ "fcmp.nge.unc" ]        :=  bitmask( F_Unit );
+unitprop[ "fcmp.ord" ]            :=  bitmask( F_Unit );
+unitprop[ "fcmp.ord.unc" ]        :=  bitmask( F_Unit );
+unitprop[ "fcvt.xuf" ]            :=  bitmask( F_Unit );
+unitprop[ "fcvt.xuf.s" ]          :=  bitmask( F_Unit );
+unitprop[ "fcvt.xuf.d" ]          :=  bitmask( F_Unit );
+unitprop[ "fmpy" ]                :=  bitmask( F_Unit );
+unitprop[ "fmpy.s" ]              :=  bitmask( F_Unit );
+unitprop[ "fmpy.d" ]              :=  bitmask( F_Unit );
+unitprop[ "fneg" ]                :=  bitmask( F_Unit );
+unitprop[ "fnegabs" ]             :=  bitmask( F_Unit );
+unitprop[ "fnmpy" ]               :=  bitmask( F_Unit );
+unitprop[ "fnmpy.s" ]             :=  bitmask( F_Unit );
+unitprop[ "fnmpy.d" ]             :=  bitmask( F_Unit );
+unitprop[ "fnorm" ]               :=  bitmask( F_Unit );
+unitprop[ "fnorm.s" ]             :=  bitmask( F_Unit );
+unitprop[ "fnorm.d" ]             :=  bitmask( F_Unit );
+unitprop[ "fpabs" ]               :=  bitmask( F_Unit );
+unitprop[ "fpcmp.gt" ]            :=  bitmask( F_Unit );
+unitprop[ "fpcmp.ge" ]            :=  bitmask( F_Unit );
+unitprop[ "fpcmp.ngt" ]           :=  bitmask( F_Unit );
+unitprop[ "fpcmp.nge" ]           :=  bitmask( F_Unit );
+unitprop[ "fpmpy" ]               :=  bitmask( F_Unit );
+unitprop[ "fpneg" ]               :=  bitmask( F_Unit );
+unitprop[ "fpnegabs" ]            :=  bitmask( F_Unit );
+unitprop[ "fpnmpy" ]              :=  bitmask( F_Unit );
+unitprop[ "fsub" ]                :=  bitmask( F_Unit );
+unitprop[ "fsub.s" ]              :=  bitmask( F_Unit );
+unitprop[ "fsub.d" ]              :=  bitmask( F_Unit );
+unitprop[ "mov_t_br" ]            :=  bitmask( I_Unit );
+unitprop[ "mov_f" ]               :=  bitmask( F_Unit );
+unitprop[ "mov" ]                 :=  bitmask( I_Unit, M_Unit );
+unitprop[ "mov_i" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "shl_i" ]               :=  bitmask( I_Unit );
+unitprop[ "shr_i" ]               :=  bitmask( I_Unit );
+unitprop[ "shr_i.u" ]             :=  bitmask( I_Unit );
+unitprop[ "tbit.nz" ]             :=  bitmask( I_Unit );
+unitprop[ "tbit.nz.unc" ]         :=  bitmask( I_Unit );
+unitprop[ "tnat.nz" ]             :=  bitmask( I_Unit );
+unitprop[ "tnat.nz.unc" ]         :=  bitmask( I_Unit );
+unitprop[ "xma.lu" ]              :=  bitmask( F_Unit );
+unitprop[ "xmpy.l" ]              :=  bitmask( F_Unit );
+unitprop[ "xmpy.lu" ]             :=  bitmask( F_Unit );
+unitprop[ "xmpy.h" ]              :=  bitmask( F_Unit );
+unitprop[ "xmpy.hu" ]             :=  bitmask( F_Unit );
+unitprop[ "break" ]               :=  bitmask( I_Unit, M_Unit, B_Unit, F_Unit, I2_Unit, B2_Unit );
+unitprop[ "chk.s" ]               :=  bitmask( I_Unit, M_Unit );
+unitprop[ "cmp.lt.and" ]          :=  bitmask( I_Unit );
+unitprop[ "cmp.lt.or" ]           :=  bitmask( I_Unit );
+unitprop[ "cmp.lt.or.andcm" ]     :=  bitmask( I_Unit );
+unitprop[ "cmp.le.and" ]          :=  bitmask( I_Unit );
+unitprop[ "cmp.le.or" ]           :=  bitmask( I_Unit );
+unitprop[ "cmp.le.or.andcm" ]     :=  bitmask( I_Unit );
+unitprop[ "cmp.gt.and" ]          :=  bitmask( I_Unit );
+unitprop[ "cmp.gt.or" ]           :=  bitmask( I_Unit );
+unitprop[ "cmp.gt.or.andcm" ]     :=  bitmask( I_Unit );
+unitprop[ "cmp.ge.and" ]          :=  bitmask( I_Unit );
+unitprop[ "cmp.ge.or" ]           :=  bitmask( I_Unit );
+unitprop[ "cmp.ge.or.andcm" ]     :=  bitmask( I_Unit );
+unitprop[ "cmp.lt.orcm" ]         :=  bitmask( I_Unit );
+unitprop[ "cmp.lt.andcm" ]        :=  bitmask( I_Unit );
+unitprop[ "cmp.lt.and.orcm" ]     :=  bitmask( I_Unit );
+unitprop[ "cmp.le.orcm" ]         :=  bitmask( I_Unit );
+unitprop[ "cmp.le.andcm" ]        :=  bitmask( I_Unit );
+unitprop[ "cmp.le.and.orcm" ]     :=  bitmask( I_Unit );
+unitprop[ "cmp.gt.orcm" ]         :=  bitmask( I_Unit );
+unitprop[ "cmp.gt.andcm" ]        :=  bitmask( I_Unit );
+unitprop[ "cmp.gt.and.orcm" ]     :=  bitmask( I_Unit );
+unitprop[ "cmp.ge.orcm" ]         :=  bitmask( I_Unit );
+unitprop[ "cmp.ge.andcm" ]        :=  bitmask( I_Unit );
+unitprop[ "cmp.ge.and.orcm" ]     :=  bitmask( I_Unit );
+unitprop[ "cmp4.lt.and" ]         :=  bitmask( I_Unit );
+unitprop[ "cmp4.lt.or" ]          :=  bitmask( I_Unit );
+unitprop[ "cmp4.lt.or.andcm" ]    :=  bitmask( I_Unit );
+unitprop[ "cmp4.le.and" ]         :=  bitmask( I_Unit );
+unitprop[ "cmp4.le.or" ]          :=  bitmask( I_Unit );
+unitprop[ "cmp4.le.or.andcm" ]    :=  bitmask( I_Unit );
+unitprop[ "cmp4.gt.and" ]         :=  bitmask( I_Unit );
+unitprop[ "cmp4.gt.or" ]          :=  bitmask( I_Unit );
+unitprop[ "cmp4.gt.or.andcm" ]    :=  bitmask( I_Unit );
+unitprop[ "cmp4.ge.and" ]         :=  bitmask( I_Unit );
+unitprop[ "cmp4.ge.or" ]          :=  bitmask( I_Unit );
+unitprop[ "cmp4.ge.or.andcm" ]    :=  bitmask( I_Unit );
+unitprop[ "cmp4.lt.orcm" ]        :=  bitmask( I_Unit );
+unitprop[ "cmp4.lt.andcm" ]       :=  bitmask( I_Unit );
+unitprop[ "cmp4.lt.and.orcm" ]    :=  bitmask( I_Unit );
+unitprop[ "cmp4.le.orcm" ]        :=  bitmask( I_Unit );
+unitprop[ "cmp4.le.andcm" ]       :=  bitmask( I_Unit );
+unitprop[ "cmp4.le.and.orcm" ]    :=  bitmask( I_Unit );
+unitprop[ "cmp4.gt.orcm" ]        :=  bitmask( I_Unit );
+unitprop[ "cmp4.gt.andcm" ]       :=  bitmask( I_Unit );
+unitprop[ "cmp4.gt.and.orcm" ]    :=  bitmask( I_Unit );
+unitprop[ "cmp4.ge.orcm" ]        :=  bitmask( I_Unit );
+unitprop[ "cmp4.ge.andcm" ]       :=  bitmask( I_Unit );
+unitprop[ "cmp4.ge.and.orcm" ]    :=  bitmask( I_Unit );
+unitprop[ "mov_f_ar" ]            :=  bitmask( I_Unit, M_Unit );
+unitprop[ "mov_t_ar_r" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "mov_t_ar_i" ]          :=  bitmask( I_Unit, M_Unit );
+unitprop[ "nop" ]                 :=  bitmask( I_Unit, M_Unit, B_Unit, F_Unit, I2_Unit, B2_Unit );
+unitprop[ "asm" ]                 :=  bitmask(  );
+unitprop[ "intrncall" ]           :=  bitmask(  );
+unitprop[ "spadjust" ]            :=  bitmask(  );
+unitprop[ "copy.br" ]             :=  bitmask(  );
+unitprop[ "begin.pregtn" ]        :=  bitmask(  );
+unitprop[ "end.pregtn" ]          :=  bitmask(  );
+unitprop[ "bwd.bar" ]             :=  bitmask(  );
+unitprop[ "fwd.bar" ]             :=  bitmask(  );
+unitprop[ "dfixup" ]              :=  bitmask(  );
+unitprop[ "ffixup" ]              :=  bitmask(  );
+unitprop[ "ifixup" ]              :=  bitmask(  );
+unitprop[ "label" ]               :=  bitmask(  );
+unitprop[ "noop" ]                :=  bitmask(  );
+
+
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#  Enumeration of bundle component and width of each one
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+TYPE bidcomp_t = enum( COMP_stop, COMP_template, COMP_slot_0, 
+                       COMP_slot_1, COMP_slot_2 );
+
+bidcomp_width              :array [bidcomp_t] of INT;
+bidcomp_width[COMP_stop]        := 1;
+bidcomp_width[COMP_template]    := 4;
+bidcomp_width[COMP_slot_0]      := 41;
+bidcomp_width[COMP_slot_1]      := 41;
+bidcomp_width[COMP_slot_2]      := 41;
+
+#  End of bundle
+#  = = = = = = = = = = = = = = = = = = = 
+
+
+#  = = = = = = = = = = = = = = = = = = = = 
+#
+#  Register and its properties
+#
+#  1)Enumeration type for register class
+#  2)Attribute for properties of register class
+#  3)Array of special register name for some register class
+#  3)Enumeration type for register subclass
+#  4)Attribute of subclass properties
+#  5)Enumeration type for register abi and properties
+#
+#
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+#  Enumeration type for register class 
+#
+#  Attribute for properties of register class
+#  regclassprop += "<item of REGCLASS>, <isa_mask>, <register number>, 
+#            <bit_size>, <can_store>, <multiple_save>, <name>, <naming_rule>, 
+#                   <name of array holds special register name or null>"
+#
+#  Array for special name of register
+#  <REGCLASS special name array>[index] = "special name"
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+TYPE REGCLASS = enum( integer, float, predicate, branch, 
+                      application, control );
+
+REG_integer_special        :array [string] of STRING;
+REG_application_special    :array [string] of STRING;
+REG_control_special        :array [string] of STRING;
+
+
+regclassprop +="integer, all_isa_mask, 128, 64, 1, 0, integer, r%d, REG_integer_special";
+regclassprop +="float, all_isa_mask, 128, 82, 1, 0, float, f%d, ";
+regclassprop +="predicate, all_isa_mask, 64, 1, 0, 1, predicate, p%d, ";
+regclassprop +="branch, all_isa_mask, 8, 64, 0, 0, branch, b%d, ";
+regclassprop +="application, all_isa_mask, 128, 64, 0, 0, application, ar%d, REG_application_special";
+regclassprop +="control, all_isa_mask, 128, 64, 0, 0, control, cr%d, REG_control_special";
+
+#  integer register special array
+REG_integer_special["1"]      := "gp";
+REG_integer_special["12"]     := "sp";
+
+#  application register special integer
+REG_application_special["0"]  := "ar.k0";
+REG_application_special["1"]  := "ar.k1";
+REG_application_special["2"]  := "ar.k2";
+REG_application_special["3"]  := "ar.k3";
+REG_application_special["4"]  := "ar.k4";
+REG_application_special["5"]  := "ar.k5";
+REG_application_special["6"]  := "ar.k6";
+REG_application_special["7"]  := "ar.k7";
+REG_application_special["16"]  := "ar.rsc";
+REG_application_special["17"]  := "ar.bsp";
+REG_application_special["18"]  := "ar.bspstore";
+REG_application_special["19"]  := "ar.rnat";
+REG_application_special["21"]  := "ar.fcr";
+REG_application_special["24"]  := "ar.eflag"; ## same as pro64, I can adjust it?
+REG_application_special["25"]  := "ar.csd";
+REG_application_special["26"]  := "ar.ssd";
+REG_application_special["27"]  := "ar.cflg";
+REG_application_special["28"]  := "ar.fsr";
+REG_application_special["29"]  := "ar.fir";
+REG_application_special["30"]  := "ar.fdr";
+REG_application_special["32"]  := "ar.ccv";
+REG_application_special["36"]  := "ar.unat";
+REG_application_special["40"]  := "ar.fpsr";
+REG_application_special["44"]  := "ar.itc";
+REG_application_special["64"]  := "ar.pfs";
+REG_application_special["65"]  := "ar.lc";
+REG_application_special["66"]  := "ar.ec";
+
+#  control register special array
+REG_control_special["0"]  := "cr.dcr";
+REG_control_special["1"]  := "cr.itm";
+REG_control_special["2"]  := "cr.iva";
+REG_control_special["8"]  := "cr.pta";
+REG_control_special["16"]  := "cr.ipsr";
+REG_control_special["17"]  := "cr.isr";
+REG_control_special["19"]  := "cr.iip";
+REG_control_special["20"]  := "cr.ifa";
+REG_control_special["21"]  := "cr.itir";
+REG_control_special["22"]  := "cr.iipa";
+REG_control_special["23"]  := "cr.ifs";
+REG_control_special["24"]  := "cr.iim";
+REG_control_special["25"]  := "cr.iha";
+REG_control_special["64"]  := "cr.lid";
+REG_control_special["65"]  := "cr.ivr";
+REG_control_special["66"]  := "cr.tpr";
+REG_control_special["67"]  := "cr.eoi";
+REG_control_special["68"]  := "cr.irr0";
+REG_control_special["69"]  := "cr.irr1";
+REG_control_special["70"]  := "cr.irr2";
+REG_control_special["71"]  := "cr.irr3";
+REG_control_special["72"]  := "cr.itv";
+REG_control_special["73"]  := "cr.pmv";
+REG_control_special["74"]  := "cr.cmcv";
+REG_control_special["80"]  := "cr.lrr0";
+REG_control_special["81"]  := "cr.lrr1";
+
+#  - - - - - - - - - - - - - - - - - - - - - - - 
+#  Enumeration type for register subclass
+#
+#  Attribute of subclass properties
+#  regsubclassprop += "<register subclass item>, <register class>,
+#                      <member number list>, end(-1)"
+#  - - - - - - - - - - - - - - - - - - - - - - - 
+
+TYPE REGSUBCLASS = enum(addl, ar_i, ar_m, ec, lc);
+
+regsubclassprop += "addl, integer, 0, 1, 2, 3, -1";
+regsubclassprop += "ar_i, application, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, \
+                    58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, \
+                    73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, \
+                    88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101,   \
+                    102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,  \
+                    114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, \
+                    126, 127, -1";
+
+regsubclassprop += "ar_m, application, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, \
+                    13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, \
+                    28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, \
+                    43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, \
+                    58, 59, 60, 61, 62, 63, 112, 113, 114, 115, 116, 117, 118, \
+                    119, 120, 121, 122, 123, 124, 125, 126, 127, -1";
+regsubclassprop += "ec, application, 66, -1";
+regsubclassprop += "lc, application, 65, -1";
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+#  Enumeration type of register abi and register properties
+#
+#  Attribute of which register has the property
+#  regprop +="<REGCLASS>, <ABIPROP>, <member number list>, end(-1)"
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+TYPE ABI = enum(i32, i64);
+TYPE ABIPROP = enum( entry_ptr, allocatable, callee, caller, stacked, func_arg, 
+                     func_val, static_link, global_ptr, frame_ptr, stack_ptr, thread_ptr,
+                     zero, fzero, fone, true_predicate, ret_addr, prev_funcstate, 
+                     loop_count, epilog_count );
+
+#  integer register class
+regprop += " integer, allocatable, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,   14, 15, 16, \
+               17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, \
+               34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, \
+               51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, \
+               68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, \
+               85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, \
+               102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, \
+               116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, \
+               -1 ";
+regprop += " integer, callee, 4, 5, 6, 7, -1 ";
+regprop += " integer, caller, 2, 3, 8, 9, 10, 11, 14, 15, 16, 17, 18, 19, 20, 21, \
+               22, 23, 24, 25, 26, 27, 28, 29, 30, 31, \
+               -1 ";
+regprop += " integer, stacked, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, \
+               45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, \
+               63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, \
+               81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, \
+               99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, \
+               114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, \
+               -1 ";
+regprop += " integer, func_arg, 32, 33, 34, 35, 36, 37, 38, 39, -1 ";
+regprop += " integer, func_val, 8, 9, 10, 11, -1 ";
+regprop += " integer, static_link, 14, -1 ";
+regprop += " integer, global_ptr, 1, -1 ";
+regprop += " integer, frame_ptr, 7, -1 ";
+regprop += " integer, stack_ptr, 12, -1 ";
+regprop += " integer, thread_ptr, 13, -1 ";
+regprop += " integer, zero, 0, -1 ";
+
+#  float register class
+regprop += " float, allocatable, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, \
+               16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, \
+               33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, \
+               50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, \
+               67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, \
+               84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, \
+               101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, \
+               115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, \
+               -1 ";
+regprop += " float, callee, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, \
+               27, 28, 29, 30, 31, \
+               -1 ";
+regprop += " float, caller, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, \
+               37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, \
+               55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, \
+               73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, \
+               91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106,  \
+               107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120,  \
+               121, 122, 123, 124, 125, 126, 127, \
+               -1 "; 
+regprop += " float, func_arg, 8, 9, 10, 11, 12, 13, 14, 15, -1 ";
+regprop += " float, func_val, 8, 9, 10, 11, 12, 13, 14, 15, -1 ";
+regprop += " float, fzero, 0, -1 ";
+regprop += " float, fone, 1, -1 ";
+
+#predicate register class
+regprop += " predicate, allocatable, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, \
+               15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, \
+               33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, \
+               51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, \
+               -1 ";
+regprop += " predicate, callee, 1, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, \
+               26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, \
+               44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, \
+               -1 ";
+regprop += " predicate, caller, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1 ";
+regprop += " predicate, true_predicate, 0, -1 ";
+
+#  branch register class
+regprop += " branch, allocatable, 0, 1, 2, 3, 4, 5, 6, 7, -1 ";
+regprop += " branch, callee, 1, 2, 3, 4, 5, -1 ";
+regprop += " branch, caller, 0, 6, 7, -1 ";
+regprop += " branch, ret_addr, 0, -1 ";
+
+#  application register class
+regprop += " application, prev_funcstate, 64, -1 ";
+regprop += " application, caller, 32, 64, -1 ";
+regprop += " application, callee, 36, 65, 66, -1 ";
+regprop += " application, loop_count, 65, -1 ";
+regprop += " application, epilog_count, 66, -1";
+
+#  control register class
+#  nothing
+
+#
+#  End of register and properties
+#  = = = = = = = = = = = = = = = = = = = = = = = = 
+
+
+#  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+#
+#  Enum and Literal Class
+#
+#  Enum and Literal Class are used as a component type of operands.
+#  The details are list in following.
+#
+
+#  - - - - - - - - - - - - - - - - - - - - - - 
+#  Enum Class
+#  1) Enumeration type for Enum class type: ec_t
+#  2) Enumeration type for Enum class value type: ecv_t
+#  3) Three array indexed by ecv_t, 
+#       a) mapping ecv_t to ec_t: ecv_ec
+#       b) give name to ecv_t : ecvname
+#       c) give int value to ecv_t:ecvval
+#  - - - - - - - - - - - - - - - - - - - - - -
+
+TYPE ec_t = enum( EC_mwh, EC_ldhint, EC_sthint, EC_lfhint, EC_ph, EC_bwh, EC_dh, 
+                  EC_ipwh, EC_indwh, EC_ih, EC_aclr, EC_sem, EC_ldtype, EC_fldtype,
+                  EC_sttype, EC_mbtype4, EC_sf );
+                  
+TYPE ecv_t = enum( ECV_mwh_sptk, ECV_mwh_dptk, ECV_mwh, ECV_ldhint_nt1, ECV_ldhint_nta,
+                   ECV_ldhint, ECV_sthint_nta, ECV_sthint, ECV_lfhint_nt1, ECV_lfhint_nt2,
+                   ECV_lfhint_nta, ECV_lfhint, ECV_ph_few, ECV_ph_many, ECV_bwh_sptk, 
+                   ECV_bwh_spnt, ECV_bwh_dptk, ECV_bwh_dpnt, ECV_dh_clr, ECV_dh, ECV_ipwh_sptk,
+                   ECV_ipwh_loop, ECV_ipwh_dptk, ECV_ipwh_exit, ECV_indwh_sptk, ECV_indwh_dptk,
+                   ECV_ih_imp, ECV_ih, ECV_aclr_nc, ECV_aclr_clr, ECV_sem_acq, ECV_sem_rel, 
+                   ECV_ldtype_s, ECV_ldtype_a, ECV_ldtype_sa, ECV_ldtype_bias, ECV_ldtype_acq,
+                   ECV_ldtype_c_clr, ECV_ldtype_c_nc, ECV_ldtype_c_clr_acq, ECV_ldtype,
+                   ECV_fldtype_s, ECV_fldtype_a, ECV_fldtype_sa, ECV_fldtype_c_clr, ECV_fldtype_c_nc,
+                   ECV_fldtype, ECV_sttype_rel, ECV_sttype, ECV_mbtype4_brdcst, ECV_mbtype4_mix,
+                   ECV_mbtype4_shuf, ECV_mbtype4_alt, ECV_mbtype4_rev, ECV_sf_s0, ECV_sf_s1, ECV_sf_s2,
+                   ECV_sf_s3 );
+
+ecv_ec  :array[ ecv_t ] of ec_t;
+
+ecv_ec[ECV_mwh_sptk]    := EC_mwh;
+ecv_ec[ECV_mwh_dptk]    := EC_mwh;
+ecv_ec[ECV_mwh]         := EC_mwh;
+ecv_ec[ECV_ldhint_nt1]  := EC_ldhint;
+ecv_ec[ECV_ldhint_nta]  := EC_ldhint;
+ecv_ec[ECV_ldhint]      := EC_ldhint;
+ecv_ec[ECV_sthint_nta]  := EC_sthint;
+ecv_ec[ECV_sthint]      := EC_sthint;
+ecv_ec[ECV_lfhint_nt1]  := EC_lfhint;
+ecv_ec[ECV_lfhint_nt2]  := EC_lfhint;
+ecv_ec[ECV_lfhint_nta]  := EC_lfhint;
+ecv_ec[ECV_lfhint]      := EC_lfhint;
+ecv_ec[ECV_ph_few]      := EC_ph;
+ecv_ec[ECV_ph_many]     := EC_ph;
+ecv_ec[ECV_bwh_sptk]    := EC_bwh;
+ecv_ec[ECV_bwh_spnt]    := EC_bwh;
+ecv_ec[ECV_bwh_dptk]    := EC_bwh;
+ecv_ec[ECV_bwh_dpnt]    := EC_bwh;
+ecv_ec[ECV_dh_clr]      := EC_dh;
+ecv_ec[ECV_dh]          := EC_dh;
+ecv_ec[ECV_ipwh_sptk]   := EC_ipwh;
+ecv_ec[ECV_ipwh_loop]   := EC_ipwh;
+ecv_ec[ECV_ipwh_dptk]   := EC_ipwh;
+ecv_ec[ECV_ipwh_exit]   := EC_ipwh;
+ecv_ec[ECV_indwh_sptk]  := EC_indwh;
+ecv_ec[ECV_indwh_dptk]  := EC_indwh;
+ecv_ec[ECV_ih_imp]      := EC_ih;
+ecv_ec[ECV_ih]          := EC_ih;
+ecv_ec[ECV_aclr_nc]     := EC_aclr;
+ecv_ec[ECV_aclr_clr]    := EC_aclr;
+ecv_ec[ECV_sem_acq]     := EC_sem;
+ecv_ec[ECV_sem_rel]     := EC_sem;
+ecv_ec[ECV_ldtype_s]    := EC_ldtype;
+ecv_ec[ECV_ldtype_a]    := EC_ldtype;
+ecv_ec[ECV_ldtype_sa]   := EC_ldtype;
+ecv_ec[ECV_ldtype_bias] := EC_ldtype;
+ecv_ec[ECV_ldtype_acq]  := EC_ldtype;
+ecv_ec[ECV_ldtype_c_clr]:= EC_ldtype;
+ecv_ec[ECV_ldtype_c_nc] := EC_ldtype;
+ecv_ec[ECV_ldtype_c_clr_acq]  := EC_ldtype;
+ecv_ec[ECV_ldtype]      := EC_ldtype;
+ecv_ec[ECV_fldtype_s]   := EC_fldtype;
+ecv_ec[ECV_fldtype_a]   := EC_fldtype;
+ecv_ec[ECV_fldtype_sa]  := EC_fldtype;
+ecv_ec[ECV_fldtype_c_clr]  := EC_fldtype;
+ecv_ec[ECV_fldtype_c_nc]:= EC_fldtype;
+ecv_ec[ECV_fldtype]     := EC_fldtype;
+ecv_ec[ECV_sttype_rel]  := EC_sttype;
+ecv_ec[ECV_sttype]      := EC_sttype;
+ecv_ec[ECV_mbtype4_brdcst]  := EC_mbtype4;
+ecv_ec[ECV_mbtype4_mix] := EC_mbtype4;
+ecv_ec[ECV_mbtype4_shuf]:= EC_mbtype4;
+ecv_ec[ECV_mbtype4_alt] := EC_mbtype4;
+ecv_ec[ECV_mbtype4_rev] := EC_mbtype4;
+ecv_ec[ECV_sf_s0]       := EC_sf;
+ecv_ec[ECV_sf_s1]       := EC_sf;
+ecv_ec[ECV_sf_s2]       := EC_sf;
+ecv_ec[ECV_sf_s3]       := EC_sf;
+
+ecvname :array [ecv_t] of string;
+
+ecvname[ECV_mwh_sptk]    := ".sptk";
+ecvname[ECV_mwh_dptk]    := ".dptk";
+ecvname[ECV_mwh]         := "";
+ecvname[ECV_ldhint_nt1]  := ".nt1";
+ecvname[ECV_ldhint_nta]  := ".nta";
+ecvname[ECV_ldhint]      := "";
+ecvname[ECV_sthint_nta]  := ".nta";
+ecvname[ECV_sthint]      := "";
+ecvname[ECV_lfhint_nt1]  := ".nt1";
+ecvname[ECV_lfhint_nt2]  := ".nt2";
+ecvname[ECV_lfhint_nta]  := ".nta";
+ecvname[ECV_lfhint]      := "";
+ecvname[ECV_ph_few]      := ".few";
+ecvname[ECV_ph_many]     := ".many";
+ecvname[ECV_bwh_sptk]    := ".sptk";
+ecvname[ECV_bwh_spnt]    := ".spnt";
+ecvname[ECV_bwh_dptk]    := ".dptk";
+ecvname[ECV_bwh_dpnt]    := ".dpnt";
+ecvname[ECV_dh_clr]      := ".clr";
+ecvname[ECV_dh]          := "";
+ecvname[ECV_ipwh_sptk]   := ".sptk";
+ecvname[ECV_ipwh_loop]   := ".loop";
+ecvname[ECV_ipwh_dptk]   := ".dptk";
+ecvname[ECV_ipwh_exit]   := ".exit";
+ecvname[ECV_indwh_sptk]  := ".sptk";
+ecvname[ECV_indwh_dptk]  := ".dptk";
+ecvname[ECV_ih_imp]      := ".imp";
+ecvname[ECV_ih]          := "";
+ecvname[ECV_aclr_nc]     := ".nc";
+ecvname[ECV_aclr_clr]    := ".clr";
+ecvname[ECV_sem_acq]     := ".acq";
+ecvname[ECV_sem_rel]     := ".rel";
+ecvname[ECV_ldtype_s]    := ".s";
+ecvname[ECV_ldtype_a]    := ".a";
+ecvname[ECV_ldtype_sa]   := ".sa";
+ecvname[ECV_ldtype_bias] := ".bias";
+ecvname[ECV_ldtype_acq]  := ".acq";
+ecvname[ECV_ldtype_c_clr]:= ".c.clr";
+ecvname[ECV_ldtype_c_nc] := ".c.nc";
+ecvname[ECV_ldtype_c_clr_acq]  := ".c.clr.acq";
+ecvname[ECV_ldtype]      := "";
+ecvname[ECV_fldtype_s]   := ".s";
+ecvname[ECV_fldtype_a]   := ".a";
+ecvname[ECV_fldtype_sa]  := ".sa";
+ecvname[ECV_fldtype_c_clr]   := ".c.clr";
+ecvname[ECV_fldtype_c_nc]:= ".c.nc";
+ecvname[ECV_fldtype]     := "";
+ecvname[ECV_sttype_rel]  := ".rel";
+ecvname[ECV_sttype]      := "";
+ecvname[ECV_mbtype4_brdcst]  := "@brdcst";
+ecvname[ECV_mbtype4_mix] := "@mix";
+ecvname[ECV_mbtype4_shuf]:= "@shuf";
+ecvname[ECV_mbtype4_alt] := "@alt";
+ecvname[ECV_mbtype4_rev] := "@rev";
+ecvname[ECV_sf_s0]       := ".s0";
+ecvname[ECV_sf_s1]       := ".s1";
+ecvname[ECV_sf_s2]       := ".s2";
+ecvname[ECV_sf_s3]       := ".s3";
+
+ecvval :array[ ecv_t ] of int;
+
+ecvval[ECV_mwh_sptk]    := 0;
+ecvval[ECV_mwh_dptk]    := 2;
+ecvval[ECV_mwh]         := 1;
+ecvval[ECV_ldhint_nt1]  := 1;
+ecvval[ECV_ldhint_nta]  := 3;
+ecvval[ECV_ldhint]      := 0;
+ecvval[ECV_sthint_nta]  := 3;
+ecvval[ECV_sthint]      := 0;
+ecvval[ECV_lfhint_nt1]  := 1;
+ecvval[ECV_lfhint_nt2]  := 2;
+ecvval[ECV_lfhint_nta]  := 3;
+ecvval[ECV_lfhint]      := 0;
+ecvval[ECV_ph_few]      := 0;
+ecvval[ECV_ph_many]     := 1;
+ecvval[ECV_bwh_sptk]    := 0;
+ecvval[ECV_bwh_spnt]    := 1;
+ecvval[ECV_bwh_dptk]    := 2;
+ecvval[ECV_bwh_dpnt]    := 3;
+ecvval[ECV_dh_clr]      := 1;
+ecvval[ECV_dh]          := 0;
+ecvval[ECV_ipwh_sptk]   := 0;
+ecvval[ECV_ipwh_loop]   := 1;
+ecvval[ECV_ipwh_dptk]   := 2;
+ecvval[ECV_ipwh_exit]   := 3;
+ecvval[ECV_indwh_sptk]  := 0;
+ecvval[ECV_indwh_dptk]  := 2;
+ecvval[ECV_ih_imp]      := 1;
+ecvval[ECV_ih]          := 0;
+ecvval[ECV_aclr_nc]     := 0;
+ecvval[ECV_aclr_clr]    := 1;
+ecvval[ECV_sem_acq]     := 0;
+ecvval[ECV_sem_rel]     := 1;
+ecvval[ECV_ldtype_s]    := 1;
+ecvval[ECV_ldtype_a]    := 2;
+ecvval[ECV_ldtype_sa]   := 3;
+ecvval[ECV_ldtype_bias] := 4;
+ecvval[ECV_ldtype_acq]  := 5;
+ecvval[ECV_ldtype_c_clr]:= 8;
+ecvval[ECV_ldtype_c_nc] := 9;
+ecvval[ECV_ldtype_c_clr_acq]  := 10;
+ecvval[ECV_ldtype]      := 0;
+ecvval[ECV_fldtype_s]   := 1;
+ecvval[ECV_fldtype_a]   := 2;
+ecvval[ECV_fldtype_sa]  := 3;
+ecvval[ECV_fldtype_c_clr]   := 8;
+ecvval[ECV_fldtype_c_nc]:= 9;
+ecvval[ECV_fldtype]     := 0;
+ecvval[ECV_sttype_rel]  := 1;
+ecvval[ECV_sttype]      := 0;
+ecvval[ECV_mbtype4_brdcst]  := 0;
+ecvval[ECV_mbtype4_mix] := 8;
+ecvval[ECV_mbtype4_shuf]:= 9;
+ecvval[ECV_mbtype4_alt] := 10;
+ecvval[ECV_mbtype4_rev] := 11;
+ecvval[ECV_sf_s0]       := 0;
+ecvval[ECV_sf_s1]       := 1;
+ecvval[ECV_sf_s2]       := 2;
+ecvval[ECV_sf_s3]       := 3;
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - 
+#  Literal Class
+#  1)Attribute of Literal information
+#   literal += "<literal class name>,<Signed>,<range array>"
+#   <range array> grammar:
+#      *: the next number is bit range
+#      @: the next number is just a number range, That is inlcude this number
+#         in its range
+#      ?: the next value range is a pair of min:max
+#      
+#  - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+literal +=" LC_i1, SIGNED, *1 ";
+literal +=" LC_i8, SIGNED, *8 "; 
+literal +=" LC_i9, SIGNED, *9 ";
+literal +=" LC_i13, SIGNED, *13 ";
+literal +=" LC_i14, SIGNED, *14 ";
+literal +=" LC_i16, SIGNED, *16 ";
+literal +=" LC_i17, SIGNED, *17 ";
+literal +=" LC_i22, SIGNED, *22 ";
+literal +=" LC_i25, SIGNED, *25 ";
+literal +=" LC_i44, SIGNED, *44 ";
+literal +=" LC_i64, SIGNED, *64 ";
+literal +=" LC_k2, UNSIGNED, *2 ";
+literal +=" LC_k4, UNSIGNED, *4 ";
+literal +=" LC_k5, UNSIGNED, *5 ";
+literal +=" LC_k6, UNSIGNED, *6 ";
+literal +=" LC_k7, UNSIGNED, *7 ";
+literal +=" LC_k8, UNSIGNED, *8 ";
+literal +=" LC_k9, UNSIGNED, *9 ";
+literal +=" LC_k21, UNSIGNED, *21 ";
+literal +=" LC_k24, UNSIGNED, *24 ";
+literal +=" LC_k62, UNSIGNED, *62 ";
+literal +=" LC_pmpyshr2, UNSIGNED, @0, @7, @15, @16 ";
+literal +=" LC_fetchadd, SIGNED, @-16, @-8, @-4, @-1, @1, @4, @8, @16 ";
+literal +=" LC_shfadd, UNSIGNED, ?1:4 ";
+literal +=" LC_pshfadd, UNSIGNED, ?1:3 ";
+literal +=" LC_len4, UNSIGNED, ?1:16 ";
+literal +=" LC_len6, UNSIGNED, ?1:64 ";
+literal +=" LC_scmp, SIGNED, ?-127:128 ";
+literal +=" LC_ucmp1, UNSIGNED, ?0:127, ?-128:-1";
+literal +=" LC_ucmp2, UNSIGNED, ?1:128, ?-127:-1";
+literal +=" LC_ucmp3, UNSIGNED, ?0:127, ?4294967168:4294967295";
+literal +=" LC_ucmp4, UNSIGNED, ?1:128, ?4294967169:4294967296";
+
+#
+#  End of Enum and Literal Information
+#  = = = = = = = = = = = = = = = = = = = = = = = =
+
+              
+#  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+#
+#  Properties Inforamtion
+#
+#  Operate code group by similar properties. 
+#  Such as: load op, store op, following is all properties meaning
+#    load,   		/* Memory load operator */
+#    store, 		/* Memory store operator */
+#    prefetch,		/* Prefetch operator */
+#    xfer, 		/* Control transfer operator */
+#    call, 		/* Subprogram call operator */
+#    cond, 		/* Call/xfer is conditional */
+#    likely, 		/* Cond call/xfer is likely */
+#    unalign_ld, 	/* Unaligned load operator */
+#    unalign_store,	/* Unaligned store operator */
+#    cond_move, 		/* conditional move */
+#    uniq_res, 		/* Result must not be opnd */
+#    same_res,		/* Result must be same as opnd */
+#    noop, 		/* No-op operator */
+#    select, 		/* Operator is a machine level select */
+#    dummy, 		/* No-op doesn't get emitted */
+#    iadd, 		/* Integer add operator */
+#    isub, 		/* Integer subtract operator */
+#    imul, 		/* Integer multiply operator */
+#    idiv,		/* Integer divide operator */
+#    flop, 		/* Any proper floating point op */
+#    fadd, 		/* FP add operator */
+#    fsub,		/* FP subtract operator */
+#    fmul, 		/* FP multiply operator */
+#    fmisc,              /* FP miscellaneous class type */
+#    madd,		/* The kind that do two at once */
+#    mmalu,              /* Multimedia ALU operator */
+#    mmmul,              /* Multimedia multiply operator */
+#    mmshf,              /* Multimedia shift operator */
+#    itrap,		/* Integer trap potential */
+#    safe,		/* Never traps -- always safe */
+#    ftrap,		/* Floating point trap potential */
+#    fdiv,		/* Floating point divides */
+#    sqrt,		/* Square root operator */
+#    memtrap,		/* Memory trap potential */
+#    unsafe,		/* Unsafe always */
+#    defs_fp,		/* Operator defines FP reg */
+#    defs_fcc,		/* Operator defines FP CC reg */
+#    defs_fcr,		/* Operator defines FCR reg */
+#    refs_fcr,		/* Operator uses FCR reg */
+#    defs_fpu_int,	/* Operator defs int val in FP reg */
+#    ior,		/* Integer logical OR operator */
+#    jump,		/* Jump operator */
+#    ijump,		/* Indirect jump operator */
+#    ixor,		/* Integer logical exclusive OR operator */
+#    iand,		/* Integer logical AND operator */
+#    icmp,		/* Integer compare operator */
+#    f_group,            /* Instruction must be first in an instruction group */
+#    l_group,            /* Instruction must be last in an instruction group */
+#    privileged,         /* Instruction is a privileged instruction */
+#  This part includes :
+#  1) Enumeration type for all the properties type: opp_t
+#  2) Enumeration type for all false properties type: false_opp_t
+#  3) Array of indicate opcode's properties: opprop
+#
+
+TYPE opp_t = enum( OPP_load, OPP_store, OPP_prefetch, OPP_mem_fill_type, OPP_xfer, 
+                   OPP_call, OPP_cond, OPP_uniq_res, OPP_same_res, OPP_iadd, 
+                   OPP_isub, OPP_imul, OPP_flop, OPP_fadd, OPP_fsub, 
+                   OPP_fmul, OPP_fmisc, OPP_madd, OPP_mmalu, OPP_mmshf, 
+                   OPP_mmmul, OPP_noop, OPP_dummy, OPP_unsafe, OPP_fdiv, 
+                   OPP_sqrt, OPP_memtrap, OPP_f_group, OPP_l_group, OPP_privileged,
+                   OPP_ior, OPP_ijump, OPP_ixor, OPP_iand, OPP_icmp, 
+                   OPP_simulated, OPP_predicated, OPP_access_reg_bank, OPP_side_effects, 
+                   OPP_branch_predict, OPP_var_opnds);
+                   
+Type false_opp_t = enum( OPP_likely, OPP_cond_move, OPP_select, OPP_unalign_ld, OPP_unalign_store,
+                         OPP_idiv, OPP_itrap, OPP_safe, OPP_ftrap, OPP_defs_fcc, OPP_defs_fcr,
+                         OPP_refs_fcr, OPP_defs_fpu_int, OPP_defs_fp, OPP_jump ); 
+
+opprop    :array[ string ] of bitmask(opp_t);
+
+opprop[ "add" ]                 :=  bitmask( OPP_iadd, OPP_predicated );
+opprop[ "add_1" ]               :=  bitmask( OPP_predicated );
+opprop[ "adds" ]                :=  bitmask( OPP_iadd, OPP_predicated );
+opprop[ "addl" ]                :=  bitmask( OPP_iadd, OPP_predicated );
+opprop[ "addp4" ]               :=  bitmask( OPP_iadd, OPP_predicated );
+opprop[ "addp4_i" ]             :=  bitmask( OPP_iadd, OPP_predicated );
+opprop[ "alloc_3" ]             :=  bitmask( OPP_f_group, OPP_side_effects );
+opprop[ "and" ]                 :=  bitmask( OPP_iand, OPP_predicated );
+opprop[ "and_i" ]               :=  bitmask( OPP_iand, OPP_predicated );
+opprop[ "andcm" ]               :=  bitmask( OPP_predicated );
+opprop[ "andcm_i" ]             :=  bitmask( OPP_predicated );
+opprop[ "br.cond" ]             :=  bitmask( OPP_xfer, OPP_cond, OPP_predicated );
+opprop[ "br_r.cond" ]           :=  bitmask( OPP_xfer, OPP_cond, OPP_ijump, OPP_predicated );
+opprop[ "br.call" ]             :=  bitmask( OPP_xfer, OPP_call, OPP_predicated );
+opprop[ "br_r.call" ]           :=  bitmask( OPP_xfer, OPP_call, OPP_ijump, OPP_predicated );
+opprop[ "br.ret" ]              :=  bitmask( OPP_xfer, OPP_ijump, OPP_predicated );
+opprop[ "br.ia" ]               :=  bitmask( OPP_xfer, OPP_ijump );
+opprop[ "br.cloop" ]            :=  bitmask( OPP_xfer, OPP_cond );
+opprop[ "br.ctop" ]             :=  bitmask( OPP_xfer, OPP_cond );
+opprop[ "br.cexit" ]            :=  bitmask( OPP_xfer, OPP_cond );
+opprop[ "br.wtop" ]             :=  bitmask( OPP_xfer, OPP_cond, OPP_predicated );
+opprop[ "br.wexit" ]            :=  bitmask( OPP_xfer, OPP_cond, OPP_predicated );
+opprop[ "break.i" ]             :=  bitmask( OPP_xfer, OPP_predicated );
+opprop[ "break.b" ]             :=  bitmask( OPP_xfer, OPP_predicated );
+opprop[ "break.m" ]             :=  bitmask( OPP_xfer, OPP_predicated );
+opprop[ "break.f" ]             :=  bitmask( OPP_xfer, OPP_predicated );
+opprop[ "break.x" ]             :=  bitmask( OPP_xfer, OPP_predicated );
+opprop[ "brl.cond" ]            :=  bitmask( OPP_xfer, OPP_cond, OPP_predicated );
+opprop[ "brl.call" ]            :=  bitmask( OPP_xfer, OPP_predicated );
+opprop[ "brp" ]                 :=  bitmask( OPP_branch_predict );
+opprop[ "brp_r" ]               :=  bitmask( OPP_branch_predict );
+opprop[ "brp.ret" ]             :=  bitmask( OPP_branch_predict );
+opprop[ "bsw.0" ]               :=  bitmask( OPP_l_group, OPP_privileged );
+opprop[ "bsw.1" ]               :=  bitmask( OPP_l_group, OPP_privileged );
+opprop[ "chk.s.i" ]             :=  bitmask( OPP_predicated );
+opprop[ "chk.s.m" ]             :=  bitmask( OPP_predicated );
+opprop[ "chk_f.s" ]             :=  bitmask( OPP_predicated );
+opprop[ "chk.a" ]               :=  bitmask( OPP_predicated );
+opprop[ "chk_f.a" ]             :=  bitmask( OPP_predicated );
+opprop[ "clrrrb" ]              :=  bitmask( OPP_l_group, OPP_access_reg_bank );
+opprop[ "clrrrb.pr" ]           :=  bitmask( OPP_l_group, OPP_access_reg_bank );
+opprop[ "cmp.eq" ]              :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.eq.unc" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.eq.and" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.eq.or" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.eq.or.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ne.and" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ne.or" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ne.or.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.lt" ]              :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.lt.unc" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ltu" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ltu.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.lt.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.lt.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.lt.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.le.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.le.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.le.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.gt.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.gt.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.gt.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.ge.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.ge.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.ge.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.eq" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.eq.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.eq.and" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.eq.or" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.eq.or.andcm" ]   :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ne.and" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ne.or" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ne.or.andcm" ]   :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.lt" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.lt.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ltu" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ltu.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.eq" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.eq.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.eq.and" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.eq.or" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.eq.or.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ne.and" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ne.or" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ne.or.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.lt" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.lt.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ltu" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ltu.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.lt.and" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.lt.or" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.lt.or.andcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.le.and" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.le.or" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.le.or.andcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.gt.and" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.gt.or" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.gt.or.andcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.ge.and" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.ge.or" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.ge.or.andcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.eq" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.eq.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.eq.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.eq.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.eq.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ne.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ne.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ne.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.lt" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.lt.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ltu" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ltu.unc" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmpxchg1" ]            :=  bitmask( OPP_predicated );
+opprop[ "cmpxchg2" ]            :=  bitmask( OPP_predicated );
+opprop[ "cmpxchg4" ]            :=  bitmask( OPP_predicated );
+opprop[ "cmpxchg8" ]            :=  bitmask( OPP_predicated );
+opprop[ "cover" ]               :=  bitmask( OPP_l_group );
+opprop[ "czx1.l" ]              :=  bitmask( OPP_predicated );
+opprop[ "czx1.r" ]              :=  bitmask( OPP_predicated );  
+opprop[ "czx2.l" ]              :=  bitmask( OPP_predicated );
+opprop[ "czx2.r" ]              :=  bitmask( OPP_predicated );
+opprop[ "dep" ]                 :=  bitmask( OPP_predicated );
+opprop[ "dep.z" ]               :=  bitmask( OPP_predicated );
+opprop[ "dep_i" ]               :=  bitmask( OPP_predicated );
+opprop[ "dep_i.z" ]             :=  bitmask( OPP_predicated );
+opprop[ "epc" ]                 :=  bitmask( );
+opprop[ "extr" ]                :=  bitmask( OPP_predicated );
+opprop[ "extr.u" ]              :=  bitmask( OPP_predicated );
+opprop[ "famax" ]               :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "famin" ]               :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fand" ]                :=  bitmask( OPP_fmisc, OPP_iand, OPP_predicated );
+opprop[ "fandcm" ]              :=  bitmask( OPP_fmisc, OPP_predicated );
+opprop[ "fc" ]                  :=  bitmask( OPP_predicated );
+opprop[ "fchkf" ]               :=  bitmask( OPP_predicated );
+opprop[ "fclass.m" ]            :=  bitmask( OPP_predicated );
+opprop[ "fclass.m.unc" ]        :=  bitmask( OPP_predicated );
+opprop[ "fclrf" ]               :=  bitmask( OPP_predicated );
+opprop[ "fcmp.eq" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.eq.unc" ]         :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.lt" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.lt.unc" ]         :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.le" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.le.unc" ]         :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.unord" ]          :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.unord.unc" ]      :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcvt.fx" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcvt.fx.trunc" ]       :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcvt.fxu" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcvt.fxu.trunc" ]      :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcvt.xf" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fetchadd4" ]           :=  bitmask( OPP_predicated );
+opprop[ "fetchadd8" ]           :=  bitmask( OPP_predicated );
+opprop[ "flushrs" ]             :=  bitmask( OPP_f_group );
+opprop[ "fma" ]                 :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fma.s" ]               :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fma.d" ]               :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fmax" ]                :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fmerge.ns" ]           :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fmerge.s" ]            :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fmerge.se" ]           :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fmin" ]                :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fmix.l" ]              :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fmix.r" ]              :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fmix.lr" ]             :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fms" ]                 :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fms.s" ]               :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fms.d" ]               :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fnma" ]                :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fnma.s" ]              :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fnma.d" ]              :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "for" ]                 :=  bitmask( OPP_fmisc, OPP_ior, OPP_predicated );
+opprop[ "fpack" ]               :=  bitmask( OPP_fmisc, OPP_predicated );
+opprop[ "fpamax" ]              :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpamin" ]              :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.eq" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.lt" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.le" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.unord" ]         :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.neq" ]           :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.nlt" ]           :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.nle" ]           :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.ord" ]           :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcvt.fx" ]            :=  bitmask( OPP_predicated );
+opprop[ "fpcvt.fx.trunc" ]      :=  bitmask( OPP_predicated );
+opprop[ "fpcvt.fxu" ]           :=  bitmask( OPP_predicated );
+opprop[ "fpcvt.fxu.trunc" ]     :=  bitmask( OPP_predicated );
+opprop[ "fpma" ]                :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fpmax" ]               :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpmerge.ns" ]          :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpmerge.s" ]           :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpmerge.se" ]          :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpmin" ]               :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpms" ]                :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpnma" ]               :=  bitmask( OPP_flop, OPP_madd, OPP_predicated );
+opprop[ "fprcpa" ]              :=  bitmask( OPP_flop, OPP_fdiv, OPP_predicated );
+opprop[ "fprsqrta" ]            :=  bitmask( OPP_flop, OPP_fdiv, OPP_sqrt, OPP_predicated );
+opprop[ "frcpa" ]               :=  bitmask( OPP_flop, OPP_fmisc, OPP_fdiv, OPP_predicated );
+opprop[ "frsqrta" ]             :=  bitmask( OPP_flop, OPP_fmisc, OPP_fdiv, OPP_sqrt, OPP_predicated );
+opprop[ "fselect" ]             :=  bitmask( OPP_fmisc, OPP_predicated );
+opprop[ "fsetc" ]               :=  bitmask( OPP_predicated, OPP_side_effects );
+opprop[ "fswap" ]               :=  bitmask( OPP_fmisc, OPP_predicated );
+opprop[ "fswap.nl" ]            :=  bitmask( OPP_fmisc, OPP_predicated );
+opprop[ "fswap.nr" ]            :=  bitmask( OPP_fmisc, OPP_predicated );
+opprop[ "fsxt.l" ]              :=  bitmask( OPP_fmisc, OPP_predicated );
+opprop[ "fsxt.r" ]              :=  bitmask( OPP_fmisc, OPP_predicated );
+opprop[ "fwb" ]                 :=  bitmask( OPP_predicated );
+opprop[ "fxor" ]                :=  bitmask( OPP_fmisc, OPP_ixor, OPP_predicated );
+opprop[ "getf.s" ]              :=  bitmask( OPP_predicated );
+opprop[ "getf.d" ]              :=  bitmask( OPP_predicated );
+opprop[ "getf.exp" ]            :=  bitmask( OPP_predicated );
+opprop[ "getf.sig" ]            :=  bitmask( OPP_predicated );
+opprop[ "invala" ]              :=  bitmask( OPP_predicated );
+opprop[ "invala.e" ]            :=  bitmask( OPP_predicated );
+opprop[ "invala_f.e" ]          :=  bitmask( OPP_predicated );
+opprop[ "itc.i" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "itc.d" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "itr.i" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "itr.d" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "ld1" ]                 :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ld1_r" ]               :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld1_i" ]               :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld2" ]                 :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ld2_r" ]               :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld2_i" ]               :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld4" ]                 :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ld4_r" ]               :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld4_i" ]               :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld8" ]                 :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ld8_r" ]               :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld8_i" ]               :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld8.fill" ]            :=  bitmask( OPP_load, OPP_mem_fill_type, OPP_memtrap, OPP_predicated );
+opprop[ "ld8_r.fill" ]          :=  bitmask( OPP_load, OPP_mem_fill_type, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ld8_i.fill" ]          :=  bitmask( OPP_load, OPP_mem_fill_type, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldfs" ]                :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldfs_r" ]              :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldfs_i" ]              :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldfd" ]                :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldfd_r" ]              :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldfd_i" ]              :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldfe" ]                :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldfe_r" ]              :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldfe_i" ]              :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldf8" ]                :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldf8_r" ]              :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldf8_i" ]              :=  bitmask( OPP_load, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldf.fill" ]            :=  bitmask( OPP_load, OPP_mem_fill_type, OPP_memtrap, OPP_predicated );
+opprop[ "ldf_r.fill" ]          :=  bitmask( OPP_load, OPP_mem_fill_type, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldf_i.fill" ]          :=  bitmask( OPP_load, OPP_mem_fill_type, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "ldfps" ]               :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldfps_i" ]             :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldfpd" ]               :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldfpd_i" ]             :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldfp8" ]               :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "ldfp8_i" ]             :=  bitmask( OPP_load, OPP_memtrap, OPP_predicated );
+opprop[ "lfetch" ]              :=  bitmask( OPP_prefetch, OPP_predicated );
+opprop[ "lfetch.excl" ]         :=  bitmask( OPP_prefetch, OPP_predicated );
+opprop[ "lfetch.fault" ]        :=  bitmask( OPP_predicated );
+opprop[ "lfetch.fault.excl" ]   :=  bitmask( OPP_predicated );
+opprop[ "lfetch_r" ]            :=  bitmask( OPP_prefetch, OPP_same_res, OPP_predicated );
+opprop[ "lfetch_r.excl" ]       :=  bitmask( OPP_prefetch, OPP_same_res, OPP_predicated );
+opprop[ "lfetch_r.fault" ]      :=  bitmask( OPP_same_res, OPP_predicated );
+opprop[ "lfetch_r.fault.excl" ] :=  bitmask( OPP_same_res, OPP_predicated );
+opprop[ "lfetch_i" ]            :=  bitmask( OPP_prefetch, OPP_same_res, OPP_predicated );
+opprop[ "lfetch_i.excl" ]       :=  bitmask( OPP_prefetch, OPP_same_res, OPP_predicated );
+opprop[ "lfetch_i.fault" ]      :=  bitmask( OPP_same_res, OPP_predicated );
+opprop[ "lfetch_i.fault.excl" ] :=  bitmask( OPP_same_res, OPP_predicated );
+opprop[ "loadrs" ]              :=  bitmask( OPP_f_group );
+opprop[ "mf" ]                  :=  bitmask( OPP_predicated );
+opprop[ "mf.a" ]                :=  bitmask( OPP_predicated );
+opprop[ "mix1.l" ]              :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "mix1.r" ]              :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "mix2.l" ]              :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "mix2.r" ]              :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "mix4.l" ]              :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "mix4.r" ]              :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "mov_f_ar.i" ]          :=  bitmask( OPP_predicated );
+opprop[ "mov_t_ar_r.i" ]        :=  bitmask( OPP_predicated );
+opprop[ "mov_t_ar_i.i" ]        :=  bitmask( OPP_predicated );
+opprop[ "mov_f_ar.m" ]          :=  bitmask( OPP_predicated );
+opprop[ "mov_t_ar_r.m" ]        :=  bitmask( OPP_predicated );
+opprop[ "mov_t_ar_i.m" ]        :=  bitmask( OPP_predicated );
+opprop[ "mov_f_br" ]            :=  bitmask( OPP_predicated );
+opprop[ "mov_t_br_i" ]          :=  bitmask( OPP_predicated );
+opprop[ "mov_t_br.ret" ]        :=  bitmask( OPP_predicated );
+opprop[ "mov_t_cr" ]            :=  bitmask( OPP_predicated );
+opprop[ "mov_f_cr" ]            :=  bitmask( OPP_predicated );
+opprop[ "mov_f_cpuid" ]         :=  bitmask( OPP_predicated );
+opprop[ "mov_t_dbr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_f_dbr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_t_ibr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_f_ibr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_t_msr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_f_msr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_t_pkr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_f_pkr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_t_pmc" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_f_pmc" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_t_pmd" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_f_pmd" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_t_rr" ]            :=  bitmask( OPP_predicated );
+opprop[ "mov_f_rr" ]            :=  bitmask( OPP_predicated );
+opprop[ "mov_f_ip" ]            :=  bitmask( OPP_predicated );
+opprop[ "mov_f_pr" ]            :=  bitmask( OPP_predicated, OPP_access_reg_bank );
+opprop[ "mov_t_pr" ]            :=  bitmask( OPP_predicated, OPP_access_reg_bank );
+opprop[ "mov_t_pr_i" ]          :=  bitmask( OPP_predicated, OPP_access_reg_bank );
+opprop[ "mov_t_psr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_f_psr" ]           :=  bitmask( OPP_predicated );
+opprop[ "mov_t_psrum" ]         :=  bitmask( OPP_predicated );
+opprop[ "mov_f_psrum" ]         :=  bitmask( OPP_predicated );
+opprop[ "movl" ]                :=  bitmask( OPP_predicated );
+opprop[ "mux1" ]                :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "mux2" ]                :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "nop.i" ]               :=  bitmask( OPP_noop, OPP_predicated );
+opprop[ "nop.b" ]               :=  bitmask( OPP_noop, OPP_predicated );
+opprop[ "nop.m" ]               :=  bitmask( OPP_noop, OPP_predicated );
+opprop[ "nop.f" ]               :=  bitmask( OPP_noop, OPP_predicated );
+opprop[ "nop.x" ]               :=  bitmask( OPP_noop, OPP_predicated );
+opprop[ "or" ]                  :=  bitmask( OPP_ior, OPP_predicated );
+opprop[ "or_i" ]                :=  bitmask( OPP_ior, OPP_predicated );
+opprop[ "pack2.sss" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pack2.uss" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pack4.sss" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "padd1" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "padd1.sss" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "padd1.uus" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "padd1.uuu" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "padd2" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "padd2.sss" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "padd2.uus" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "padd2.uuu" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "padd4" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pavg1" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pavg1.raz" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pavg2" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pavg2.raz" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pavgsub1" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pavgsub2" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pcmp1.eq" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pcmp1.gt" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pcmp2.eq" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pcmp2.gt" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pcmp4.eq" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pcmp4.gt" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pmax1.u" ]             :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pmax2" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pmin1.u" ]             :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pmin2" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pmpy2.r" ]             :=  bitmask( OPP_mmmul, OPP_predicated );
+opprop[ "pmpy2.l" ]             :=  bitmask( OPP_mmmul, OPP_predicated );
+opprop[ "pmpyshr2" ]            :=  bitmask( OPP_mmmul, OPP_predicated );
+opprop[ "pmpyshr2.u" ]          :=  bitmask( OPP_mmmul, OPP_predicated );
+opprop[ "popcnt" ]              :=  bitmask( OPP_mmmul, OPP_predicated );
+opprop[ "probe.r" ]             :=  bitmask( OPP_predicated );
+opprop[ "probe.w" ]             :=  bitmask( OPP_predicated );
+opprop[ "probe_i.r" ]           :=  bitmask( OPP_predicated );
+opprop[ "probe_i.w" ]           :=  bitmask( OPP_predicated );
+opprop[ "probe.r.fault" ]       :=  bitmask( OPP_predicated );
+opprop[ "probe.w.fault" ]       :=  bitmask( OPP_predicated );
+opprop[ "probe.rw.fault" ]      :=  bitmask( OPP_predicated );
+opprop[ "psad1" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pshl2" ]               :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshl4" ]               :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshl2_i" ]             :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshl4_i" ]             :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshladd2" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "pshr2" ]               :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshr2.u" ]             :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshr4" ]               :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshr4.u" ]             :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshr2_i" ]             :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshr2_i.u" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshr4_i" ]             :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshr4_i.u" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "pshradd2" ]            :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub1" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub2" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub4" ]               :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub1.sss" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub1.uus" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub1.uuu" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub2.sss" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub2.uus" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "psub2.uuu" ]           :=  bitmask( OPP_mmalu, OPP_predicated );
+opprop[ "ptc.e" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "ptc.g" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "ptc.ga" ]              :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "ptc.l" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "ptr.d" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "ptr.i" ]               :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "rfi" ]                 :=  bitmask( OPP_l_group, OPP_privileged );
+opprop[ "rsm" ]                 :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "rum" ]                 :=  bitmask( OPP_predicated );
+opprop[ "setf.s" ]              :=  bitmask( OPP_predicated );
+opprop[ "setf.d" ]              :=  bitmask( OPP_predicated );
+opprop[ "setf.exp" ]            :=  bitmask( OPP_predicated );
+opprop[ "setf.sig" ]            :=  bitmask( OPP_predicated );
+opprop[ "shl" ]                 :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "shladd" ]              :=  bitmask( OPP_predicated );
+opprop[ "shladdp4" ]            :=  bitmask( OPP_predicated );
+opprop[ "shr" ]                 :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "shr.u" ]               :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "shrp" ]                :=  bitmask( OPP_predicated );
+opprop[ "srlz.i" ]              :=  bitmask( OPP_predicated );
+opprop[ "srlz.d" ]              :=  bitmask( OPP_predicated );
+opprop[ "ssm" ]                 :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "st1" ]                 :=  bitmask( OPP_store, OPP_memtrap, OPP_predicated );
+opprop[ "st1_i" ]               :=  bitmask( OPP_store, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "st2" ]                 :=  bitmask( OPP_store, OPP_memtrap, OPP_predicated );
+opprop[ "st2_i" ]               :=  bitmask( OPP_store, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "st4" ]                 :=  bitmask( OPP_store, OPP_memtrap, OPP_predicated );
+opprop[ "st4_i" ]               :=  bitmask( OPP_store, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "st8" ]                 :=  bitmask( OPP_store, OPP_memtrap, OPP_predicated );
+opprop[ "st8_i" ]               :=  bitmask( OPP_store, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "st8.spill" ]           :=  bitmask( OPP_store, OPP_mem_fill_type, OPP_memtrap, OPP_predicated );
+opprop[ "st8_i.spill" ]         :=  bitmask( OPP_store, OPP_mem_fill_type, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "stfs" ]                :=  bitmask( OPP_store, OPP_memtrap, OPP_predicated );
+opprop[ "stfs_i" ]              :=  bitmask( OPP_store, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "stfd" ]                :=  bitmask( OPP_store, OPP_memtrap, OPP_predicated );
+opprop[ "stfd_i" ]              :=  bitmask( OPP_store, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "stfe" ]                :=  bitmask( OPP_store, OPP_memtrap, OPP_predicated );
+opprop[ "stfe_i" ]              :=  bitmask( OPP_store, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "stf8" ]                :=  bitmask( OPP_store, OPP_memtrap, OPP_predicated );
+opprop[ "stf8_i" ]              :=  bitmask( OPP_store, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "stf.spill" ]           :=  bitmask( OPP_store, OPP_mem_fill_type, OPP_memtrap, OPP_predicated );
+opprop[ "stf_i.spill" ]         :=  bitmask( OPP_store, OPP_mem_fill_type, OPP_same_res, OPP_memtrap, OPP_predicated );
+opprop[ "sub" ]                 :=  bitmask( OPP_isub, OPP_predicated );
+opprop[ "sub_1" ]               :=  bitmask( OPP_predicated );
+opprop[ "sub_i" ]               :=  bitmask( OPP_isub, OPP_predicated );
+opprop[ "sum" ]                 :=  bitmask( OPP_predicated );
+opprop[ "sxt1" ]                :=  bitmask( OPP_predicated );
+opprop[ "sxt2" ]                :=  bitmask( OPP_predicated );
+opprop[ "sxt4" ]                :=  bitmask( OPP_predicated );
+opprop[ "sync.i" ]              :=  bitmask( OPP_predicated );
+opprop[ "tak" ]                 :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "tbit.z" ]              :=  bitmask( OPP_predicated );
+opprop[ "tbit.z.unc" ]          :=  bitmask( OPP_predicated );
+opprop[ "tbit.z.and" ]          :=  bitmask( OPP_predicated );
+opprop[ "tbit.z.or" ]           :=  bitmask( OPP_predicated );
+opprop[ "tbit.z.or.andcm" ]     :=  bitmask( OPP_predicated );
+opprop[ "tbit.nz.and" ]         :=  bitmask( OPP_predicated );
+opprop[ "tbit.nz.or" ]          :=  bitmask( OPP_predicated );
+opprop[ "tbit.nz.or.andcm" ]    :=  bitmask( OPP_predicated );
+opprop[ "thash" ]               :=  bitmask( OPP_predicated );
+opprop[ "tnat.z" ]              :=  bitmask( OPP_predicated );
+opprop[ "tnat.z.unc" ]          :=  bitmask( OPP_predicated );
+opprop[ "tnat.z.and" ]          :=  bitmask( OPP_predicated );
+opprop[ "tnat.z.or" ]           :=  bitmask( OPP_predicated );
+opprop[ "tnat.z.or.andcm" ]     :=  bitmask( OPP_predicated );
+opprop[ "tnat.nz.and" ]         :=  bitmask( OPP_predicated );
+opprop[ "tnat.nz.or" ]          :=  bitmask( OPP_predicated );
+opprop[ "tnat.nz.or.andcm" ]    :=  bitmask( OPP_predicated );
+opprop[ "tpa" ]                 :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "ttag" ]                :=  bitmask( OPP_predicated );
+opprop[ "unpack1.l" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "unpack1.h" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "unpack2.l" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "unpack2.h" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "unpack4.l" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "unpack4.h" ]           :=  bitmask( OPP_mmshf, OPP_predicated );
+opprop[ "xchg1" ]               :=  bitmask( OPP_predicated );
+opprop[ "xchg2" ]               :=  bitmask( OPP_predicated );
+opprop[ "xchg4" ]               :=  bitmask( OPP_predicated );
+opprop[ "xchg8" ]               :=  bitmask( OPP_predicated );
+opprop[ "xma.l" ]               :=  bitmask( OPP_imul, OPP_predicated );
+opprop[ "xma.h" ]               :=  bitmask( OPP_imul, OPP_predicated );
+opprop[ "xma.hu" ]              :=  bitmask( OPP_imul, OPP_predicated );
+opprop[ "xor" ]                 :=  bitmask( OPP_ixor, OPP_predicated );
+opprop[ "xor_i" ]               :=  bitmask( OPP_ixor, OPP_predicated );
+opprop[ "zxt1" ]                :=  bitmask( OPP_predicated );
+opprop[ "zxt2" ]                :=  bitmask( OPP_predicated );
+opprop[ "zxt4" ]                :=  bitmask( OPP_predicated );
+opprop[ "alloc" ]               :=  bitmask( OPP_f_group, OPP_side_effects );
+opprop[ "br" ]                  :=  bitmask( OPP_xfer );
+opprop[ "br_r" ]                :=  bitmask( OPP_xfer, OPP_ijump );
+opprop[ "brl" ]                 :=  bitmask( OPP_xfer );
+opprop[ "cmp.eq.orcm" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.eq.andcm" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.eq.and.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ne" ]              :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ne.unc" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ne.orcm" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ne.andcm" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ne.and.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.le" ]              :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.le.unc" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.gt" ]              :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.gt.unc" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ge" ]              :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.ge.unc" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.leu" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.leu.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.gtu" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.gtu.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.geu" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp.geu.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.lt.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.lt.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.lt.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.le.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.le.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.le.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.gt.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.gt.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.gt.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.ge.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.ge.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z1.ge.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.lt.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.lt.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.lt.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.le.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.le.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.le.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.gt.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.gt.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.gt.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.ge.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.ge.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.ge.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.lt.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.lt.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.lt.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.le.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.le.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.le.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.gt.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.gt.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.gt.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.ge.and" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.ge.or" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_z2.ge.or.andcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.eq.orcm" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.eq.andcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.eq.and.orcm" ]   :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ne" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ne.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ne.orcm" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ne.andcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ne.and.orcm" ]   :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.le" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.le.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.gt" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.gt.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ge" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.ge.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.leu" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.leu.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.gtu" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.gtu.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.geu" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp_i.geu.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.eq.orcm" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.eq.andcm" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.eq.and.orcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ne" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ne.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ne.orcm" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ne.andcm" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ne.and.orcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.le" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.le.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.gt" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.gt.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ge" ]             :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.ge.unc" ]         :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.leu" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.leu.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.gtu" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.gtu.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.geu" ]            :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4.geu.unc" ]        :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.lt.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.lt.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.lt.and.orcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.le.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.le.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.le.and.orcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.gt.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.gt.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.gt.and.orcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.ge.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.ge.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z1.ge.and.orcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.lt.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.lt.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.lt.and.orcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.le.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.le.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.le.and.orcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.gt.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.gt.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.gt.and.orcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.ge.orcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.ge.andcm" ]    :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.ge.and.orcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.lt.and" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.lt.or" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.lt.or.andcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.le.and" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.le.or" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.le.or.andcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.gt.and" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.gt.or" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.gt.or.andcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.ge.and" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.ge.or" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_z2.ge.or.andcm" ] :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.eq.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.eq.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.eq.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ne" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ne.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ne.orcm" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ne.andcm" ]     :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ne.and.orcm" ]  :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.le" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.le.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.gt" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.gt.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ge" ]           :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.ge.unc" ]       :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.leu" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.leu.unc" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.gtu" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.gtu.unc" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.geu" ]          :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "cmp4_i.geu.unc" ]      :=  bitmask( OPP_icmp, OPP_predicated );
+opprop[ "fabs" ]                :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fadd" ]                :=  bitmask( OPP_flop, OPP_fadd, OPP_predicated );
+opprop[ "fadd.s" ]              :=  bitmask( OPP_flop, OPP_fadd, OPP_predicated );
+opprop[ "fadd.d" ]              :=  bitmask( OPP_flop, OPP_fadd, OPP_predicated );
+opprop[ "fclass.nm" ]           :=  bitmask( OPP_predicated );
+opprop[ "fclass.nm.unc" ]       :=  bitmask( OPP_predicated );
+opprop[ "fcmp.gt" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.gt.unc" ]         :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.ge" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.ge.unc" ]         :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.neq" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.neq.unc" ]        :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.nlt" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.nlt.unc" ]        :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.nle" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.nle.unc" ]        :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.ngt" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.ngt.unc" ]        :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.nge" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.nge.unc" ]        :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.ord" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcmp.ord.unc" ]        :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fcvt.xuf" ]            :=  bitmask( OPP_predicated );
+opprop[ "fcvt.xuf.s" ]          :=  bitmask( OPP_predicated );
+opprop[ "fcvt.xuf.d" ]          :=  bitmask( OPP_predicated );
+opprop[ "fmpy" ]                :=  bitmask( OPP_flop, OPP_fmul, OPP_predicated );
+opprop[ "fmpy.s" ]              :=  bitmask( OPP_flop, OPP_fmul, OPP_predicated );
+opprop[ "fmpy.d" ]              :=  bitmask( OPP_flop, OPP_fmul, OPP_predicated );
+opprop[ "fneg" ]                :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fnegabs" ]             :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "fnmpy" ]               :=  bitmask( OPP_flop, OPP_fmul, OPP_predicated );
+opprop[ "fnmpy.s" ]             :=  bitmask( OPP_flop, OPP_fmul, OPP_predicated );
+opprop[ "fnmpy.d" ]             :=  bitmask( OPP_flop, OPP_fmul, OPP_predicated );
+opprop[ "fnorm" ]               :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fnorm.s" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fnorm.d" ]             :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpabs" ]               :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.gt" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.ge" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.ngt" ]           :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpcmp.nge" ]           :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpmpy" ]               :=  bitmask( OPP_flop, OPP_fmul, OPP_predicated );
+opprop[ "fpneg" ]               :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpnegabs" ]            :=  bitmask( OPP_flop, OPP_predicated );
+opprop[ "fpnmpy" ]              :=  bitmask( OPP_flop, OPP_fmul, OPP_predicated );
+opprop[ "fsub" ]                :=  bitmask( OPP_flop, OPP_fsub, OPP_predicated );
+opprop[ "fsub.s" ]              :=  bitmask( OPP_flop, OPP_fsub, OPP_predicated );
+opprop[ "fsub.d" ]              :=  bitmask( OPP_flop, OPP_fsub, OPP_predicated );
+opprop[ "mov_t_br" ]            :=  bitmask( OPP_predicated );
+opprop[ "mov_f" ]               :=  bitmask( OPP_flop, OPP_fmisc, OPP_predicated );
+opprop[ "mov" ]                 :=  bitmask( OPP_privileged, OPP_predicated );
+opprop[ "mov_i" ]               :=  bitmask( OPP_predicated );
+opprop[ "shl_i" ]               :=  bitmask( OPP_predicated );
+opprop[ "shr_i" ]               :=  bitmask( OPP_predicated );
+opprop[ "shr_i.u" ]             :=  bitmask( OPP_predicated );
+opprop[ "tbit.nz" ]             :=  bitmask( OPP_predicated );
+opprop[ "tbit.nz.unc" ]         :=  bitmask( OPP_predicated );
+opprop[ "tnat.nz" ]             :=  bitmask( OPP_predicated );
+opprop[ "tnat.nz.unc" ]         :=  bitmask( OPP_predicated );
+opprop[ "xma.lu" ]              :=  bitmask( OPP_imul, OPP_predicated );
+opprop[ "xmpy.l" ]              :=  bitmask( OPP_imul, OPP_predicated );
+opprop[ "xmpy.lu" ]             :=  bitmask( OPP_imul, OPP_predicated );
+opprop[ "xmpy.h" ]              :=  bitmask( OPP_imul, OPP_predicated );
+opprop[ "xmpy.hu" ]             :=  bitmask( OPP_imul, OPP_predicated );
+opprop[ "break" ]               :=  bitmask( OPP_xfer, OPP_simulated, OPP_predicated );
+opprop[ "chk.s" ]               :=  bitmask( OPP_simulated, OPP_predicated );
+opprop[ "cmp.lt.and" ]          :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.lt.or" ]           :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.lt.or.andcm" ]     :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.le.and" ]          :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.le.or" ]           :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.le.or.andcm" ]     :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.gt.and" ]          :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.gt.or" ]           :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.gt.or.andcm" ]     :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.ge.and" ]          :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.ge.or" ]           :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.ge.or.andcm" ]     :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.lt.orcm" ]         :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.lt.andcm" ]        :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.lt.and.orcm" ]     :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.le.orcm" ]         :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.le.andcm" ]        :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.le.and.orcm" ]     :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.gt.orcm" ]         :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.gt.andcm" ]        :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.gt.and.orcm" ]     :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.ge.orcm" ]         :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.ge.andcm" ]        :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp.ge.and.orcm" ]     :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.lt.and" ]         :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.lt.or" ]          :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.lt.or.andcm" ]    :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.le.and" ]         :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.le.or" ]          :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.le.or.andcm" ]    :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.gt.and" ]         :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.gt.or" ]          :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.gt.or.andcm" ]    :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.ge.and" ]         :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.ge.or" ]          :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.ge.or.andcm" ]    :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.lt.orcm" ]        :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.lt.andcm" ]       :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.lt.and.orcm" ]    :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.le.orcm" ]        :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.le.andcm" ]       :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.le.and.orcm" ]    :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.gt.orcm" ]        :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.gt.andcm" ]       :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.gt.and.orcm" ]    :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.ge.orcm" ]        :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.ge.andcm" ]       :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "cmp4.ge.and.orcm" ]    :=  bitmask( OPP_icmp, OPP_simulated, OPP_predicated );
+opprop[ "mov_f_ar" ]            :=  bitmask( OPP_simulated, OPP_predicated );
+opprop[ "mov_t_ar_r" ]          :=  bitmask( OPP_simulated, OPP_predicated );
+opprop[ "mov_t_ar_i" ]          :=  bitmask( OPP_simulated, OPP_predicated );
+opprop[ "nop" ]                 :=  bitmask( OPP_noop, OPP_simulated, OPP_predicated );
+opprop[ "asm" ]                 :=  bitmask( OPP_simulated, OPP_var_opnds );
+opprop[ "intrncall" ]           :=  bitmask( OPP_uniq_res, OPP_simulated, OPP_predicated );
+opprop[ "spadjust" ]            :=  bitmask( OPP_iadd, OPP_simulated, OPP_predicated );
+opprop[ "copy.br" ]             :=  bitmask( OPP_simulated, OPP_predicated );
+opprop[ "begin.pregtn" ]        :=  bitmask( OPP_dummy );
+opprop[ "end.pregtn" ]          :=  bitmask( OPP_dummy );
+opprop[ "bwd.bar" ]             :=  bitmask( OPP_dummy, OPP_unsafe );
+opprop[ "fwd.bar" ]             :=  bitmask( OPP_dummy, OPP_unsafe );
+opprop[ "dfixup" ]              :=  bitmask( OPP_dummy );
+opprop[ "ffixup" ]              :=  bitmask( OPP_dummy );
+opprop[ "ifixup" ]              :=  bitmask( OPP_dummy );
+opprop[ "label" ]               :=  bitmask( OPP_dummy );
+opprop[ "noop" ]                :=  bitmask( OPP_noop, OPP_dummy );
+
+
+#
+#  End of op properties information
+#  = = = = = = = = = = = = = = = = = = = = = = = =
+
+#  = = = = = = = = = = = = = = = = = = = = = = = = = = = = =  = = = = = 
+#
+#  Operands Information
+#  
+#  To consist with Pro64, So not use the operands infor provided by Intel'knobs
+#  file, but to use infor in this file.
+#  1) Enumeration type for operand usage: ou_t
+#  2) Enum type for operand type name: ot_t
+#     and Array type for operand type: opndtype
+#  3) Attribute type for operands group type of one op:opndsgrp
+#  4) operands group id will be as one field of attribute "opcode"
+#
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#  Enumeration type for operand usage:ou_t
+#
+#      Operand usage can help compiler know much about 
+#   current op, and decide how to distribute resource.
+#
+#  special variable:
+#   MAX_OPND_SRC; MAX_OPND_DEST;
+#   indicate maximum of source operands and result operands 
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Type ou_t = enum( OU_UNDEFINED, OU_predicate, OU_offset, OU_base, OU_postincr, 
+                  OU_target, OU_storeval, OU_opnd1, OU_opnd2, OU_maddend );
+
+MAX_OPND_SRC  := 6;
+MAX_OPND_DEST := 3;
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+#  Array type for Operand type ,index is type enum name
+#  Form:
+#      opndtype [<operand types enum name>] := "<rclass>, <rsubclass>, 
+#                   <lclass>, <eclass>, <size>, <IS_signed>, 
+#                   <IS_fpu_int>, <IS_pcrel>"£»
+#
+#  If (operand type is XXXX) IS_XXXX is true else false
+#
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Type ot_t = enum( OT_ar, OT_ar_i, OT_ar_m, OT_ec, OT_lc, OT_cr,
+                  OT_br, OT_pr, OT_fp64, OT_int64, OT_int64_2,
+                  OT_ph, OT_dh, OT_bwh, OT_aclr, OT_ldhint,
+                  OT_sthint, OT_lfhint, OT_indwh, OT_ih, OT_ipwh,
+                  OT_ldtype, OT_sttype, OT_fldtype, OT_sem, OT_mwh,
+                  OT_mbtype4, OT_sf, OT_lit1, OT_lit8, OT_lit9,
+                  OT_lit14, OT_lit16, OT_lit17, OT_lit22, OT_lit44,
+                  OT_lit64, OT_ulit2, OT_ulit4, OT_ulit5, OT_ulit6,
+                  OT_ulit7, OT_ulit8, OT_ulit9, OT_ulit21, OT_ulit24,
+                  OT_ulit62, OT_pcrel13, OT_pcrel25, OT_pcrel64,
+                  OT_pmpyshr2, OT_fetchadd, OT_shfadd, OT_pshfadd,
+                  OT_len4, OT_len6, OT_scmp, OT_ucmp1, OT_ucmp2,
+                  OT_ucmp3, OT_ucmp4  
+                ); # 61 items
+
+opndtype   : array[ ot_t ] of string;
+
+## register operand
+opndtype[OT_ar]      := "application, UNDEFINED, UNDEFINED, UNDEFINED, 64, false, false, false";
+opndtype[OT_ar_i]    := "application, ar_i, UNDEFINED, UNDEFINED, 64, false, false, false";
+opndtype[OT_ar_m]    := "application, ar_m, UNDEFINED, UNDEFINED, 64, false, false, false";
+opndtype[OT_ec]      := "application, ec, UNDEFINED, UNDEFINED, 64, false, false, false";
+opndtype[OT_lc]      := "application, lc, UNDEFINED, UNDEFINED, 64, false, false, false";
+opndtype[OT_cr]      := "control, UNDEFINED, UNDEFINED, UNDEFINED, 64, false, false, false";
+opndtype[OT_br]      := "branch, UNDEFINED, UNDEFINED, UNDEFINED, 64, false, false, false";
+opndtype[OT_pr]      := "predicate, UNDEFINED, UNDEFINED, UNDEFINED, 1, false, false, false";
+opndtype[OT_fp64]    := "float, UNDEFINED, UNDEFINED, UNDEFINED, 64, true, false, false";
+opndtype[OT_int64]   := "integer, UNDEFINED, UNDEFINED, UNDEFINED, 64, true, false, false";
+opndtype[OT_int64_2] := "integer, addl, UNDEFINED, UNDEFINED, 64, true, false, false";
+## Enum operand
+opndtype[OT_ph]      := "UNDEFINED, UNDEFINED, UNDEFINED, EC_ph, 8, false, false, false";
+opndtype[OT_dh]      := "UNDEFINED, UNDEFINED, UNDEFINED, EC_dh, 8, false, false, false";
+opndtype[OT_bwh]     := "UNDEFINED, UNDEFINED, UNDEFINED, EC_bwh, 8, false, false, false";
+opndtype[OT_aclr]    := "UNDEFINED, UNDEFINED, UNDEFINED, EC_aclr, 8, false, false, false";
+opndtype[OT_ldhint]  := "UNDEFINED, UNDEFINED, UNDEFINED, EC_ldhint, 8, false, false, false";
+opndtype[OT_sthint]  := "UNDEFINED, UNDEFINED, UNDEFINED, EC_sthint, 8, false, false, false";
+opndtype[OT_lfhint]  := "UNDEFINED, UNDEFINED, UNDEFINED, EC_lfhint, 8, false, false, false";
+opndtype[OT_indwh]   := "UNDEFINED, UNDEFINED, UNDEFINED, EC_indwh, 8, false, false, false";
+opndtype[OT_ih]      := "UNDEFINED, UNDEFINED, UNDEFINED, EC_ih, 8, false, false, false";
+opndtype[OT_ipwh]    := "UNDEFINED, UNDEFINED, UNDEFINED, EC_ipwh, 8, false, false, false";
+opndtype[OT_ldtype]  := "UNDEFINED, UNDEFINED, UNDEFINED, EC_ldtype, 8, false, false, false";
+opndtype[OT_sttype]  := "UNDEFINED, UNDEFINED, UNDEFINED, EC_sttype, 8, false, false, false";
+opndtype[OT_fldtype] := "UNDEFINED, UNDEFINED, UNDEFINED, EC_fldtype, 8, false, false, false";
+opndtype[OT_sem]     := "UNDEFINED, UNDEFINED, UNDEFINED, EC_sem, 8, false, false, false";
+opndtype[OT_mwh]     := "UNDEFINED, UNDEFINED, UNDEFINED, EC_mwh, 8, false, false, false";
+opndtype[OT_mbtype4] := "UNDEFINED, UNDEFINED, UNDEFINED, EC_mbtype4, 4, false, false, false";
+opndtype[OT_sf]      := "UNDEFINED, UNDEFINED, UNDEFINED, EC_sf, 2, false, false, false";
+## Literal operand
+opndtype[OT_lit1]    := "UNDEFINED, UNDEFINED, LC_i1, UNDEFINED, 1, true, false, false";
+opndtype[OT_lit8]    := "UNDEFINED, UNDEFINED, LC_i8, UNDEFINED, 8, true, false, false";
+opndtype[OT_lit9]    := "UNDEFINED, UNDEFINED, LC_i9, UNDEFINED, 9, true, false, false";
+opndtype[OT_lit14]   := "UNDEFINED, UNDEFINED, LC_i14, UNDEFINED, 14, true, false, false";
+opndtype[OT_lit16]   := "UNDEFINED, UNDEFINED, LC_i16, UNDEFINED, 16, true, false, false";
+opndtype[OT_lit17]   := "UNDEFINED, UNDEFINED, LC_i17, UNDEFINED, 17, true, false, false";
+opndtype[OT_lit22]   := "UNDEFINED, UNDEFINED, LC_i22, UNDEFINED, 22, true, false, false";
+opndtype[OT_lit44]   := "UNDEFINED, UNDEFINED, LC_i44, UNDEFINED, 44, true, false, false";
+opndtype[OT_lit64]   := "UNDEFINED, UNDEFINED, LC_i64, UNDEFINED, 64, true, false, false";
+opndtype[OT_ulit2]   := "UNDEFINED, UNDEFINED, LC_k2, UNDEFINED, 2, false, false, false";
+opndtype[OT_ulit4]   := "UNDEFINED, UNDEFINED, LC_k4, UNDEFINED, 4, false, false, false";
+opndtype[OT_ulit5]   := "UNDEFINED, UNDEFINED, LC_k5, UNDEFINED, 5, false, false, false";
+opndtype[OT_ulit6]   := "UNDEFINED, UNDEFINED, LC_k6, UNDEFINED, 6, false, false, false";
+opndtype[OT_ulit7]   := "UNDEFINED, UNDEFINED, LC_k7, UNDEFINED, 7, false, false, false";
+opndtype[OT_ulit8]   := "UNDEFINED, UNDEFINED, LC_k8, UNDEFINED, 8, false, false, false";
+opndtype[OT_ulit9]   := "UNDEFINED, UNDEFINED, LC_k9, UNDEFINED, 9, false, false, false";
+opndtype[OT_ulit21]  := "UNDEFINED, UNDEFINED, LC_k21, UNDEFINED, 21, false, false, false";
+opndtype[OT_ulit24]  := "UNDEFINED, UNDEFINED, LC_k24, UNDEFINED, 24, false, false, false";
+opndtype[OT_ulit62]  := "UNDEFINED, UNDEFINED, LC_k62, UNDEFINED, 62, false, false, false";
+opndtype[OT_pcrel13] := "UNDEFINED, UNDEFINED, LC_i13, UNDEFINED, 13, true, false, true";
+opndtype[OT_pcrel25] := "UNDEFINED, UNDEFINED, LC_i25, UNDEFINED, 25, true, false, true";
+opndtype[OT_pcrel64] := "UNDEFINED, UNDEFINED, LC_i64, UNDEFINED, 64, true, false, true";
+opndtype[OT_pmpyshr2]:= "UNDEFINED, UNDEFINED, LC_pmpyshr2, UNDEFINED, 5, false, false, false";
+opndtype[OT_fetchadd]:= "UNDEFINED, UNDEFINED, LC_fetchadd, UNDEFINED, 6, true, false, false";
+opndtype[OT_shfadd]  := "UNDEFINED, UNDEFINED, LC_shfadd, UNDEFINED, 3, false, false, false";
+opndtype[OT_pshfadd] := "UNDEFINED, UNDEFINED, LC_pshfadd, UNDEFINED, 2, false, false, false";
+opndtype[OT_len4]    := "UNDEFINED, UNDEFINED, LC_len4, UNDEFINED, 5, false, false, false";
+opndtype[OT_len6]    := "UNDEFINED, UNDEFINED, LC_len6, UNDEFINED, 7, false, false, false";
+opndtype[OT_scmp]    := "UNDEFINED, UNDEFINED, LC_scmp, UNDEFINED, 9, true, false, false";
+opndtype[OT_ucmp1]   := "UNDEFINED, UNDEFINED, LC_ucmp1, UNDEFINED, 64, false, false, false";
+opndtype[OT_ucmp2]   := "UNDEFINED, UNDEFINED, LC_ucmp2, UNDEFINED, 64, false, false, false";
+opndtype[OT_ucmp3]   := "UNDEFINED, UNDEFINED, LC_ucmp3, UNDEFINED, 64, false, false, false";
+opndtype[OT_ucmp4]   := "UNDEFINED, UNDEFINED, LC_ucmp4, UNDEFINED, 64, false, false, false";
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+#  Array for indicate which operands of op is relocatable
+#  relocatable : array[<op name>] = operand index
+#  no indicate op means no relocatable operand
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - -
+relocatable : array[string] of int;
+
+relocatable["adds"]     := 1;
+relocatable["addl"]     := 1;
+relocatable["br.cond"]  := 4;
+relocatable["br.call"]  := 4;
+relocatable["br.cloop"] := 3;
+relocatable["br.ctop"]  := 3;
+relocatable["br.cexit"] := 3;
+relocatable["br.wtop"]  := 4;
+relocatable["br.wexit"] := 4;
+relocatable["brl.cond"] := 4;
+relocatable["brl.call"] := 4;
+relocatable["brp"]      := 2;
+relocatable["chk.s.i"]  := 2;
+relocatable["chk.s.m"]  := 2;
+relocatable["chk_f.s"]  := 2;
+relocatable["chk.a"]    := 3;
+relocatable["chk_f.a"]  := 3;
+relocatable["fchkf"]    := 2;
+relocatable["movl"]     := 1;
+relocatable["br"]       := 2;
+relocatable["brl"]      := 2;
+relocatable["chk.s"]    := 2;
+relocatable["label"]    := 0;
+
+
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#  Attribute type for operands group type of one op
+#
+#  opndsgrp += "<opndsgrp id>,
+#               <op specifier><operand types>/<uses name>"
+#  Semantics of <op specifier>:
+#     ? :  Predicate
+#     - :  Source operands
+#     + :  Result operands
+#  If don't hold operands of this type, the attribute string will 
+#  not persent the corresponding op specifier;
+#  And result have no usage.So, Is it is result operands,
+#  the uses name and '/' of attribute is discarded .
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+opndsgrp += "0";
+opndsgrp += "1, ?pr/OU_predicate";
+opndsgrp += "2, ?pr/OU_predicate, -fp64/OU_UNDEFINED";
+opndsgrp += "3, ?pr/OU_predicate, -int64/OU_UNDEFINED";
+opndsgrp += "4, ?pr/OU_predicate, +int64";
+opndsgrp += "5, ?pr/OU_predicate, -sf/OU_UNDEFINED";
+opndsgrp += "6, ?pr/OU_predicate, -lit44/OU_UNDEFINED";
+opndsgrp += "7, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -br/OU_target";
+opndsgrp += "8, ?pr/OU_predicate, -ulit21/OU_UNDEFINED";
+opndsgrp += "9, ?pr/OU_predicate, -ulit24/OU_UNDEFINED";
+opndsgrp += "10, ?pr/OU_predicate, -ulit62/OU_UNDEFINED";
+opndsgrp += "11, ?pr/OU_predicate, -int64/OU_UNDEFINED, +br";
+opndsgrp += "12, ?pr/OU_predicate, -fp64/OU_UNDEFINED, +fp64";
+opndsgrp += "13, ?pr/OU_predicate, -int64/OU_UNDEFINED, +fp64";
+opndsgrp += "14, ?pr/OU_predicate, -int64/OU_UNDEFINED, -int64/OU_UNDEFINED";
+opndsgrp += "15, ?pr/OU_predicate, -br/OU_UNDEFINED, +int64";
+opndsgrp += "16, ?pr/OU_predicate, -fp64/OU_UNDEFINED, +int64";
+opndsgrp += "17, ?pr/OU_predicate, -int64/OU_UNDEFINED, +int64";
+opndsgrp += "18, ?pr/OU_predicate, -int64/OU_UNDEFINED, +ar";
+opndsgrp += "19, ?pr/OU_predicate, -int64/OU_UNDEFINED, +cr";
+opndsgrp += "20, ?pr/OU_predicate, -ar/OU_UNDEFINED, +int64";
+opndsgrp += "21, ?pr/OU_predicate, -cr/OU_UNDEFINED, +int64";
+opndsgrp += "22, ?pr/OU_predicate, -int64/OU_UNDEFINED, +int64";
+opndsgrp += "23, ?pr/OU_predicate, -lit8/OU_UNDEFINED, +ar";
+opndsgrp += "24, ?pr/OU_predicate, -int64/OU_UNDEFINED, +ar_i";
+opndsgrp += "25, ?pr/OU_predicate, -int64/OU_UNDEFINED, +ar_m";
+opndsgrp += "26, ?pr/OU_predicate, -int64/OU_UNDEFINED, -lit17/OU_UNDEFINED";
+opndsgrp += "27, ?pr/OU_predicate, -int64/OU_UNDEFINED, -ulit2/OU_UNDEFINED";
+opndsgrp += "28, ?pr/OU_predicate, -ar_i/OU_UNDEFINED, +int64";
+opndsgrp += "29, ?pr/OU_predicate, -ar_m/OU_UNDEFINED, +int64";
+opndsgrp += "30, ?pr/OU_predicate, -lit22/OU_UNDEFINED, +int64";
+opndsgrp += "31, ?pr/OU_predicate, -fp64/OU_opnd1, +fp64";
+opndsgrp += "32, ?pr/OU_predicate, -lit64/OU_UNDEFINED, +int64";
+opndsgrp += "33, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -br/OU_target";
+opndsgrp += "34, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel25/OU_target";
+opndsgrp += "35, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel64/OU_target";
+opndsgrp += "36, ?pr/OU_predicate, -lit8/OU_UNDEFINED, +ar_i";
+opndsgrp += "37, ?pr/OU_predicate, -lit8/OU_UNDEFINED, +ar_m";
+opndsgrp += "38, ?pr/OU_predicate, -fp64/OU_UNDEFINED, -fp64/OU_UNDEFINED, +fp64";
+opndsgrp += "39, ?pr/OU_predicate, -int64/OU_UNDEFINED, +pr, +pr";
+opndsgrp += "40, ?pr/OU_predicate, -int64/OU_UNDEFINED, -int64/OU_UNDEFINED, +int64";
+opndsgrp += "41, ?pr/OU_predicate, -int64/OU_UNDEFINED, -int64/OU_UNDEFINED";
+opndsgrp += "42, ?pr/OU_predicate, -sf/OU_UNDEFINED, -fp64/OU_UNDEFINED, +fp64";
+opndsgrp += "43, -indwh/OU_UNDEFINED, -ih/OU_UNDEFINED, -br/OU_UNDEFINED, -pcrel13/OU_UNDEFINED";
+opndsgrp += "44, ?pr/OU_predicate, -int64/OU_UNDEFINED, -ulit2/OU_UNDEFINED, +int64";
+opndsgrp += "45, ?pr/OU_predicate, -int64/OU_UNDEFINED, -ulit8/OU_UNDEFINED, +int64";
+opndsgrp += "46, -ulit7/OU_UNDEFINED, -ulit7/OU_UNDEFINED, -ulit4/OU_UNDEFINED, +int64";
+opndsgrp += "47, ?pr/OU_predicate, -int64/OU_opnd1, +pr, +pr";
+opndsgrp += "48, ?pr/OU_predicate, -int64/OU_opnd2, +pr, +pr";
+opndsgrp += "49, ?pr/OU_predicate, -fp64/OU_UNDEFINED, -pcrel25/OU_target";
+opndsgrp += "50, ?pr/OU_predicate, -fp64/OU_UNDEFINED, -fp64/OU_UNDEFINED, -fp64/OU_UNDEFINED, +fp64";
+opndsgrp += "51, ?pr/OU_predicate, -lfhint/OU_UNDEFINED, -int64/OU_base";
+opndsgrp += "52, ?pr/OU_predicate, -int64/OU_UNDEFINED, -pcrel25/OU_target";
+opndsgrp += "53, ?pr/OU_predicate, -int64/OU_UNDEFINED, -mbtype4/OU_UNDEFINED, +int64";
+opndsgrp += "54, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel25/OU_target, -lc/OU_UNDEFINED, +lc";
+opndsgrp += "55, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel25/OU_target, -ec/OU_UNDEFINED, -lc/OU_UNDEFINED, +ec, +lc";
+opndsgrp += "56, ?pr/OU_predicate, -sf/OU_UNDEFINED, -fp64/OU_UNDEFINED, +fp64, +pr";
+opndsgrp += "57, ?pr/OU_predicate, -sf/OU_UNDEFINED, -pcrel25/OU_target";
+opndsgrp += "58, ?pr/OU_predicate, -sf/OU_UNDEFINED, -ulit7/OU_UNDEFINED, -ulit7/OU_UNDEFINED";
+opndsgrp += "59, -ipwh/OU_UNDEFINED, -ih/OU_UNDEFINED, -pcrel25/OU_UNDEFINED, -pcrel13/OU_UNDEFINED";
+opndsgrp += "60, ?pr/OU_predicate, -fp64/OU_opnd1, -fp64/OU_opnd2, +fp64";
+
+opndsgrp += "61, ?pr/OU_predicate, -fp64/OU_UNDEFINED, -ulit9/OU_UNDEFINED, +pr, +pr";
+opndsgrp += "62, ?pr/OU_predicate, -int64/OU_UNDEFINED, -ulit6/OU_UNDEFINED, +pr, +pr";
+opndsgrp += "63, ?pr/OU_predicate, -int64/OU_opnd1, -int64/OU_opnd2, +int64";
+opndsgrp += "64, ?pr/OU_predicate, -int64/OU_UNDEFINED, -int64/OU_UNDEFINED, -ulit6/OU_UNDEFINED, +int64";
+opndsgrp += "65, ?pr/OU_predicate, -int64/OU_UNDEFINED, -shfadd/OU_UNDEFINED, -int64/OU_UNDEFINED, +int64";
+opndsgrp += "66, ?pr/OU_predicate, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -br/OU_target";
+opndsgrp += "67, ?pr/OU_predicate, -ldhint/OU_UNDEFINED, -int64/OU_base, +fp64";
+opndsgrp += "68, ?pr/OU_predicate, -lit8/OU_opnd1, -int64/OU_opnd2, +int64";
+opndsgrp += "69, ?pr/OU_predicate, -ldhint/OU_UNDEFINED, -int64/OU_base, +int64";
+opndsgrp += "70, ?pr/OU_predicate, -int64/OU_UNDEFINED, -pshfadd/OU_UNDEFINED, -int64/OU_UNDEFINED, +int64";
+opndsgrp += "71, ?pr/OU_predicate, -int64/OU_UNDEFINED, -ulit6/OU_UNDEFINED, -len6/OU_UNDEFINED, +int64";
+opndsgrp += "72, ?pr/OU_predicate, -sf/OU_UNDEFINED, -fp64/OU_UNDEFINED, -fp64/OU_UNDEFINED, +fp64, +pr";
+opndsgrp += "73, ?pr/OU_predicate, -lit14/OU_opnd1, -int64/OU_opnd2, +int64";
+opndsgrp += "74, ?pr/OU_predicate, -int64/OU_opnd1, -ulit5/OU_opnd2, +int64";
+opndsgrp += "75, ?pr/OU_predicate, -int64/OU_opnd1, -ulit6/OU_opnd2, +int64";
+opndsgrp += "76, ?pr/OU_predicate, -int64/OU_UNDEFINED, -int64/OU_UNDEFINED, -pmpyshr2/OU_UNDEFINED, +int64";
+opndsgrp += "77, -ulit7/OU_UNDEFINED, -ulit7/OU_UNDEFINED, -ulit7/OU_UNDEFINED, -ulit7/OU_UNDEFINED, +int64";
+opndsgrp += "78, ?pr/OU_predicate, -aclr/OU_UNDEFINED, -fp64/OU_UNDEFINED, -pcrel25/OU_target";
+opndsgrp += "79, ?pr/OU_predicate, -aclr/OU_UNDEFINED, -int64/OU_UNDEFINED, -pcrel25/OU_target";
+opndsgrp += "80, ?pr/OU_predicate, -lit14/OU_opnd1, -int64/OU_opnd2, +int64";
+opndsgrp += "81, ?pr/OU_predicate, -lit22/OU_opnd1, -int64_2/OU_opnd2, +int64";
+opndsgrp += "82, ?pr/OU_predicate, -lit8/OU_UNDEFINED, -ulit6/OU_UNDEFINED, -len6/OU_UNDEFINED, +int64";
+opndsgrp += "83, ?pr/OU_predicate, -sf/OU_UNDEFINED, -fp64/OU_opnd1, -fp64/OU_opnd2, +fp64";
+opndsgrp += "84, ?pr/OU_predicate, -int64/OU_opnd1, -int64/OU_opnd2, +pr, +pr";
+opndsgrp += "85, ?pr/OU_predicate, -sf/OU_UNDEFINED, -fp64/OU_opnd1, -fp64/OU_opnd2, +fp64";
+opndsgrp += "86, ?pr/OU_predicate, -lfhint/OU_UNDEFINED, -int64/OU_base, -int64/OU_postincr, +int64";
+opndsgrp += "87, ?pr/OU_predicate, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -br/OU_target, -ec/OU_UNDEFINED, +br";
+opndsgrp += "88, ?pr/OU_predicate, -lit8/OU_opnd1, -int64/OU_opnd2, +pr, +pr";
+opndsgrp += "89, ?pr/OU_predicate, -scmp/OU_opnd1, -int64/OU_opnd2, +pr, +pr";
+opndsgrp += "90, ?pr/OU_predicate, -ldhint/OU_UNDEFINED, -int64/OU_base, -int64/OU_UNDEFINED, +int64";
+opndsgrp += "91, ?pr/OU_predicate, -int64/OU_UNDEFINED, -int64/OU_UNDEFINED, -ulit6/OU_UNDEFINED, -len4/OU_UNDEFINED, +int64";
+opndsgrp += "92, ?pr/OU_predicate, -mwh/OU_UNDEFINED, -ih/OU_UNDEFINED, -int64/OU_UNDEFINED, -pcrel13/OU_UNDEFINED, +br";
+opndsgrp += "93, ?pr/OU_predicate, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel25/OU_target";
+opndsgrp += "94, ?pr/OU_predicate, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel25/OU_target, -ec/OU_UNDEFINED, +ec";
+opndsgrp += "95, ?pr/OU_predicate, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel64/OU_target";
+opndsgrp += "96, ?pr/OU_predicate, -lfhint/OU_UNDEFINED, -int64/OU_base, -lit9/OU_postincr, +int64";
+opndsgrp += "97, ?pr/OU_predicate, -ucmp1/OU_opnd1, -int64/OU_opnd2, +pr, +pr";
+opndsgrp += "98, ?pr/OU_predicate, -ucmp2/OU_opnd1, -int64/OU_opnd2, +pr, +pr";
+opndsgrp += "99, ?pr/OU_predicate, -ucmp3/OU_opnd1, -int64/OU_opnd2, +pr, +pr";
+opndsgrp += "100, ?pr/OU_predicate, -ucmp4/OU_opnd1, -int64/OU_opnd2, +pr, +pr";
+opndsgrp += "101, ?pr/OU_predicate, -fp64/OU_opnd1, -fp64/OU_opnd2, -fp64/OU_maddend, +fp64";
+opndsgrp += "102, ?pr/OU_predicate, -lit1/OU_UNDEFINED, -int64/OU_UNDEFINED, -ulit6/OU_UNDEFINED, -len6/OU_UNDEFINED, +int64";
+opndsgrp += "103, ?pr/OU_predicate, -sthint/OU_UNDEFINED, -int64/OU_base, -fp64/OU_storeval";
+opndsgrp += "104, ?pr/OU_predicate, -sthint/OU_UNDEFINED, -int64/OU_base, -int64/OU_storeval";
+opndsgrp += "105, ?pr/OU_predicate, -ldhint/OU_UNDEFINED, -int64/OU_base, -int64/OU_postincr, +fp64, +int64";
+opndsgrp += "106, ?pr/OU_predicate, -sf/OU_UNDEFINED, -fp64/OU_opnd1, -fp64/OU_opnd2, +pr, +pr";
+opndsgrp += "107, ?pr/OU_predicate, -ldhint/OU_UNDEFINED, -int64/OU_base, -int64/OU_postincr, +int64, +int64";
+opndsgrp += "108, ?pr/OU_predicate, -ldtype/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, +int64";
+opndsgrp += "109, ?pr/OU_predicate, -fldtype/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, +fp64";
+opndsgrp += "110, ?pr/OU_predicate, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel25/OU_target, -ec/OU_UNDEFINED, +br";
+opndsgrp += "111, ?pr/OU_predicate, -bwh/OU_UNDEFINED, -ph/OU_UNDEFINED, -dh/OU_UNDEFINED, -pcrel64/OU_target, +br";
+opndsgrp += "112, ?pr/OU_predicate, -ldhint/OU_UNDEFINED, -int64/OU_base, -lit9/OU_postincr, +fp64, +int64";
+opndsgrp += "113, ?pr/OU_predicate, -ldhint/OU_UNDEFINED, -int64/OU_base, -lit9/OU_postincr, +int64, +int64";
+opndsgrp += "114, ?pr/OU_predicate, -sem/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, -int64/OU_UNDEFINED, +int64";
+opndsgrp += "115, ?pr/OU_predicate, -sf/OU_UNDEFINED, -fp64/OU_opnd1, -fp64/OU_opnd2, -fp64/OU_maddend, +fp64";
+opndsgrp += "116, ?pr/OU_predicate, -fldtype/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, +fp64, +fp64";
+opndsgrp += "117, ?pr/OU_predicate, -fldtype/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, +fp64, +fp64, +int64";
+opndsgrp += "118, ?pr/OU_predicate, -sttype/OU_UNDEFINED, -sthint/OU_UNDEFINED, -int64/OU_base, -int64/OU_storeval";
+opndsgrp += "119, ?pr/OU_predicate, -sem/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, -fetchadd/OU_UNDEFINED, +int64";
+opndsgrp += "120, ?pr/OU_predicate, -ldtype/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, -int64/OU_postincr, +int64, +int64";
+
+opndsgrp += "121, ?pr/OU_predicate, -sthint/OU_UNDEFINED, -int64/OU_base, -fp64/OU_storeval, -lit9/OU_postincr, +int64";
+opndsgrp += "122, ?pr/OU_predicate, -sthint/OU_UNDEFINED, -int64/OU_base, -int64/OU_storeval, -lit9/OU_postincr, +int64";
+opndsgrp += "123, ?pr/OU_predicate, -fldtype/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, -int64/OU_postincr, +fp64, +int64";
+opndsgrp += "124, ?pr/OU_predicate, -ldtype/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, -lit9/OU_postincr, +int64, +int64";
+opndsgrp += "125, ?pr/OU_predicate, -fldtype/OU_UNDEFINED, -ldhint/OU_UNDEFINED, -int64/OU_base, -lit9/OU_postincr, +fp64, +int64";
+opndsgrp += "126, ?pr/OU_predicate, -sttype/OU_UNDEFINED, -sthint/OU_UNDEFINED, -int64/OU_base, -int64/OU_storeval, -lit9/OU_postincr, +int64";
+opndsgrp += "127, ?pr/OU_predicate, -int64/OU_opnd1, -lit64/OU_opnd2, +int64"; ##O_spadjust
+opndsgrp += "128, -int64/OU_UNDEFINED, -lit16/OU_UNDEFINED"; ##O_noop_pregtn
+opndsgrp += "129, -lit64/OU_UNDEFINED, +int64"; ##O_intrncall
+opndsgrp += "130, +int64";   ##O_noop_ifixup
+opndsgrp += "131, +fp64";    ##O_noop_ffixup
+opndsgrp += "132";            ##O_noop
+opndsgrp += "133, ?pr/OU_UNDEFINED, -br/OU_UNDEFINED, +br"; ##O_copr_br
+opndsgrp += "134";             ##O_asm
+opndsgrp += "135, -pcrel64/OU_UNDEFINED"; ##O_label 
+
+#
+#  End of operands information
+#  = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
+
+#  = = = = = = = = = = = = = = = = = = = = = = 
+#
+#  Others information
+#
+
+processor_name := "itanium";
+

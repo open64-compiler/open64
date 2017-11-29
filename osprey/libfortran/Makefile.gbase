@@ -1,0 +1,234 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+# USMID @(#)libfortran/Makefile.base	92.10	11/04/99 11:07:16
+
+#
+#  Makefile.base for libfortran.so
+#
+
+include $(COMMONDEFS)
+
+LCDEFS += -D_LITTLE_ENDIAN
+LCINCS += -I$(BUILD_TOT)/clibinc -I$(BUILD_TOT)/libu
+LCINCS += -I$(BUILD_TOT)/clibinc/cray
+LCINCS += -I$(BUILD_TOT)/include
+
+LCDEFS += -DKEY -DPATHSCALE_MERGE $(ERROR_ON_WARNINGS)
+
+ifeq ($(BUILD_TARGET), IA32)
+LCDEFS += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
+endif
+
+ifeq ($(BUILD_HOST), IA32)
+LCDEFS += -D_WORD32
+LCDEFS += -D_LIB_INTERNAL
+LCDEFS += -D_GNU_SOURCE
+LCDEFS += -U__mips
+endif
+ifeq ($(BUILD_HOST), X8664)
+LCDEFS += -D_WORD32
+LCDEFS += -D_LIB_INTERNAL
+LCDEFS += -D_GNU_SOURCE
+LCDEFS += -U__mips
+endif
+LCDEFS += -DTARG_$(BUILD_TARGET)
+ifeq ($(BUILD_HOST), IA64)
+LCDEFS += -D_WORD32
+LCDEFS += -D_LIB_INTERNAL
+LCDEFS += -D_GNU_SOURCE
+LCDEFS += -U__mips
+endif
+
+LCINCS += -I$(BUILD_TOT)/clibroot
+ifeq ($(BUILD_ABI), N32BIT)
+LCDEFS += -D_WORD32 -Wa,-mips4
+endif
+
+LASOPTS = $(STD_COMPILE_OPTS)
+
+LF77OPTS = $(STD_COMPILE_OPTS)
+FFLAGS_NOLANG = $(FFLAGS:N-LANG\:exceptions=O*) -shared
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+LCDEFS += -DLIBDEBUG -D_ASSERT_ON -DDEBUG_MTIO
+endif
+ifeq ($(BUILD_OPTIMIZE), NODEBUG)
+OPTIMIZER = -O3
+F90FLAGS =
+endif
+CFLAGS += -funwind-tables 
+ifeq ($(BUILD_COMPILER), OSP)
+OPTIMIZER += -fno-fast-stdlib
+endif
+ifeq ($(BUILD_COMPILER), PSC)
+OPTIMIZER += -fno-fast-stdlib
+endif
+
+FC = $(F90) -c -Wf,-eQ
+
+%.o:%.f
+	$(FC) $(FFLAGS_NOLANG) $(F90FLAGS) $<
+
+%.o:%.F90
+	$(FC) $(FFLAGS_NOLANG) $(F90FLAGS) $<
+
+
+LIBRARY = libfortran.a
+PROF_LIB = libfortran_p.a
+DSO = libfortran.so
+DSO_NAME = libfortran.so
+
+ifeq ($(BUILD_ABI), N32BIT)
+LLDDSOOPTS = # -n32
+else
+LLDDSOOPTS =
+endif
+
+ifeq ($(BUILD_TYPE), NONSHARED)
+TARGETS = $(LIBRARY)
+LINK_TARGET = $(LIBRARY)
+else
+TARGETS = $(LIBRARY) $(PROF_LIB) $(DSO)
+LINK_TARGET = $(DSO)
+endif
+
+.PHONY: default first last install
+
+ifeq ($(BUILD_COMPILER), GNU)
+default:
+	@echo "--------------------------------------------"
+	@echo "Warning: libfortran is not build!"
+	@echo "build libfortran with GNU compiler is not supported" 
+	@echo "--------------------------------------------"
+else
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+endif
+
+
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+endif
+
+last: make_libdeps
+
+
+# from libf
+include $(BUILD_TOT)/libf/auxarr/auxarr.makeinclude
+include $(BUILD_TOT)/libf/fio/fio.gmakeinclude
+include $(BUILD_TOT)/libf/fort/fort.makeinclude
+include $(BUILD_TOT)/libf/include/include.makeinclude
+include $(BUILD_TOT)/libf/pxf/pxf.makeinclude
+include $(BUILD_TOT)/libf/tape/tape.makeinclude
+LCINCS += -I$(BUILD_TOT)/libf/include
+
+# from libfi
+
+include $(BUILD_TOT)/libfi/char/char.makeinclude
+include $(BUILD_TOT)/libfi/dotprod/dotprod.makeinclude
+include $(BUILD_TOT)/libfi/element/element.makeinclude
+include $(BUILD_TOT)/libfi/include/include.makeinclude
+include $(BUILD_TOT)/libfi/mathlb/mathlb.gmakeinclude
+include $(BUILD_TOT)/libfi/matrix/matrix.gmakeinclude
+include $(BUILD_TOT)/libfi/subrtn/subrtn.makeinclude
+include $(BUILD_TOT)/libfi/array/array.gmakeinclude
+include $(BUILD_TOT)/libfi/prodsum/prodsum.makeinclude
+
+# from libF77
+
+ifeq ($(BUILD_OS), LINUX)
+  include $(BUILD_TOT)/libF77/libF77aslibfortran.gmakeinclude
+endif
+
+LCINCS += -I$(BUILD_TOT)/libfi/include
+SRC_DIRS += $(BUILD_TOT)/libfi/array \
+        $(BUILD_TOT)/libfi/char \
+        $(BUILD_TOT)/libfi/dotprod \
+        $(BUILD_TOT)/libfi/element \
+        $(BUILD_TOT)/libfi/include \
+        $(BUILD_TOT)/libfi/mathlb \
+        $(BUILD_TOT)/libfi/matrix \
+        $(BUILD_TOT)/libfi/prodsum \
+        $(BUILD_TOT)/libfi/subrtn
+
+LCINCS += -I$(TARGDIR)/libfortran
+
+# No additional files 
+
+F90OBJECTS = $(F90FILES:.F90=.o)
+
+
+# relasedefs defines RELEASE needed temporarily since building some ftn library
+# components depends on whether building for redwood or banyan
+# see bug report 250462, dlai
+include $(BUILD_TOT)/linux/make/releasedefs
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+# LCDEFS += -DDEBUG // comment out for now because ffio wont build with it
+LASDEFS += -DDEBUG
+endif
+
+
+LDIRT += $(LIBRARY)
+
+include $(COMMONRULES)
+
+OBJECTS += $(F90OBJECTS)
+SOURCES += $(F90FILES)
+
+VPATH    = $(SRC_DIRS)
+LCINCS += $(addprefix -I, $(SRC_DIRS))
+
+# When using cpp or "use"ing modules, Fortran needs same -I options as C would
+LF77INCS += $(LCINCS)
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+	$(ranlib) $@
+
+$(PROF_LIB): $(OBJECTS:%.o=%.pg.o)
+	$(ar) cru $@ $^
+	$(ranlib) $@
+
+$(DSO): $(OBJECTS:%.o=%.pic.o)
+	$(ld) $(STD_DSO_LOADOPTS) -o $@ $^
+
+main.o: ERROR_ON_WARNINGS += -Wno-format

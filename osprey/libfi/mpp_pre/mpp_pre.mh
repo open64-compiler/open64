@@ -1,0 +1,324 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+/* USMID @(#) libfi/mpp_pre/mpp_pre.mh	92.0	10/08/98 14:37:14 */
+
+MPP_SRC_INFO += \
+	D:mpp_pre/preprod_cp_1.c \
+	D:mpp_pre/preprod_jp_1.c \
+	D:mpp_pre/preprod_sp_1.c \
+	D:mpp_pre/preprod_p_1@.f \
+	D:mpp_pre/preprod_cp_2.c \
+	D:mpp_pre/preprod_jp_2.c \
+	D:mpp_pre/preprod_sp_2.c \
+	D:mpp_pre/preprod_p_2@.f \
+	D:mpp_pre/preprod_cp_3.c \
+	D:mpp_pre/preprod_jp_3.c \
+	D:mpp_pre/preprod_sp_3.c \
+	D:mpp_pre/preprod_p_3@.f \
+	D:mpp_pre/preprod_cp_4.c \
+	D:mpp_pre/preprod_jp_4.c \
+	D:mpp_pre/preprod_sp_4.c \
+	D:mpp_pre/preprod_p_4@.f \
+	D:mpp_pre/preprod_cp_5.c \
+	D:mpp_pre/preprod_jp_5.c \
+	D:mpp_pre/preprod_sp_5.c \
+	D:mpp_pre/preprod_p_5@.f \
+	D:mpp_pre/preprod_cp_6.c \
+	D:mpp_pre/preprod_jp_6.c \
+	D:mpp_pre/preprod_sp_6.c \
+	D:mpp_pre/preprod_p_6@.f \
+	D:mpp_pre/preprod_cp_7.c \
+	D:mpp_pre/preprod_jp_7.c \
+	D:mpp_pre/preprod_sp_7.c \
+	D:mpp_pre/preprod_p_7@.f \
+	D:mpp_pre/preprod_cs_1.c \
+	D:mpp_pre/preprod_js_1.c \
+	D:mpp_pre/preprod_ss_1.c \
+	D:mpp_pre/preprod_s_1@.f \
+	D:mpp_pre/preprod_cs_2.c \
+	D:mpp_pre/preprod_js_2.c \
+	D:mpp_pre/preprod_ss_2.c \
+	D:mpp_pre/preprod_s_2@.f \
+	D:mpp_pre/preprod_cs_3.c \
+	D:mpp_pre/preprod_js_3.c \
+	D:mpp_pre/preprod_ss_3.c \
+	D:mpp_pre/preprod_s_3@.f \
+	D:mpp_pre/preprod_cs_4.c \
+	D:mpp_pre/preprod_js_4.c \
+	D:mpp_pre/preprod_ss_4.c \
+	D:mpp_pre/preprod_s_4@.f \
+	D:mpp_pre/preprod_cs_5.c \
+	D:mpp_pre/preprod_js_5.c \
+	D:mpp_pre/preprod_ss_5.c \
+	D:mpp_pre/preprod_s_5@.f \
+	D:mpp_pre/preprod_cs_6.c \
+	D:mpp_pre/preprod_js_6.c \
+	D:mpp_pre/preprod_ss_6.c \
+	D:mpp_pre/preprod_s_6@.f \
+	D:mpp_pre/preprod_cs_7.c \
+	D:mpp_pre/preprod_js_7.c \
+	D:mpp_pre/preprod_ss_7.c \
+	D:mpp_pre/preprod_s_7@.f \
+	D:mpp_pre/presum_cp_1.c \
+	D:mpp_pre/presum_jp_1.c \
+	D:mpp_pre/presum_sp_1.c \
+	D:mpp_pre/presum_p_1@.f \
+	D:mpp_pre/presum_cp_2.c \
+	D:mpp_pre/presum_jp_2.c \
+	D:mpp_pre/presum_sp_2.c \
+	D:mpp_pre/presum_p_2@.f \
+	D:mpp_pre/presum_cp_3.c \
+	D:mpp_pre/presum_jp_3.c \
+	D:mpp_pre/presum_sp_3.c \
+	D:mpp_pre/presum_p_3@.f \
+	D:mpp_pre/presum_cp_4.c \
+	D:mpp_pre/presum_jp_4.c \
+	D:mpp_pre/presum_sp_4.c \
+	D:mpp_pre/presum_p_4@.f \
+	D:mpp_pre/presum_cp_5.c \
+	D:mpp_pre/presum_jp_5.c \
+	D:mpp_pre/presum_sp_5.c \
+	D:mpp_pre/presum_p_5@.f \
+	D:mpp_pre/presum_cp_6.c \
+	D:mpp_pre/presum_jp_6.c \
+	D:mpp_pre/presum_sp_6.c \
+	D:mpp_pre/presum_p_6@.f \
+	D:mpp_pre/presum_sp_7.c \
+	D:mpp_pre/presum_jp_7.c \
+	D:mpp_pre/presum_cp_7.c \
+	D:mpp_pre/presum_sp_7.c \
+	D:mpp_pre/presum_p_7@.f \
+	D:mpp_pre/presum_cs_1.c \
+	D:mpp_pre/presum_js_1.c \
+	D:mpp_pre/presum_ss_1.c \
+	D:mpp_pre/presum_s_1@.f \
+	D:mpp_pre/presum_cs_2.c \
+	D:mpp_pre/presum_js_2.c \
+	D:mpp_pre/presum_ss_2.c \
+	D:mpp_pre/presum_s_2@.f \
+	D:mpp_pre/presum_cs_3.c \
+	D:mpp_pre/presum_js_3.c \
+	D:mpp_pre/presum_ss_3.c \
+	D:mpp_pre/presum_s_3@.f \
+	D:mpp_pre/presum_cs_4.c \
+	D:mpp_pre/presum_js_4.c \
+	D:mpp_pre/presum_ss_4.c \
+	D:mpp_pre/presum_s_4@.f \
+	D:mpp_pre/presum_cs_5.c \
+	D:mpp_pre/presum_js_5.c \
+	D:mpp_pre/presum_ss_5.c \
+	D:mpp_pre/presum_s_5@.f \
+	D:mpp_pre/presum_cs_6.c \
+	D:mpp_pre/presum_js_6.c \
+	D:mpp_pre/presum_ss_6.c \
+	D:mpp_pre/presum_s_6@.f \
+	D:mpp_pre/presum_cs_7.c \
+	D:mpp_pre/presum_js_7.c \
+	D:mpp_pre/presum_ss_7.c \
+	D:mpp_pre/presum_s_7@.f \
+	D:mpp_pre/premax_jp_1.c \
+	D:mpp_pre/premax_sp_1.c \
+	D:mpp_pre/premax_p_1@.f \
+	D:mpp_pre/premax_jp_2.c \
+	D:mpp_pre/premax_sp_2.c \
+	D:mpp_pre/premax_p_2@.f \
+	D:mpp_pre/premax_jp_3.c \
+	D:mpp_pre/premax_sp_3.c \
+	D:mpp_pre/premax_p_3@.f \
+	D:mpp_pre/premax_jp_4.c \
+	D:mpp_pre/premax_sp_4.c \
+	D:mpp_pre/premax_p_4@.f \
+	D:mpp_pre/premax_jp_5.c \
+	D:mpp_pre/premax_sp_5.c \
+	D:mpp_pre/premax_p_5@.f \
+	D:mpp_pre/premax_jp_6.c \
+	D:mpp_pre/premax_sp_6.c \
+	D:mpp_pre/premax_p_6@.f \
+	D:mpp_pre/premax_jp_7.c \
+	D:mpp_pre/premax_sp_7.c \
+	D:mpp_pre/premax_p_7@.f \
+	D:mpp_pre/premax_js_1.c \
+	D:mpp_pre/premax_ss_1.c \
+	D:mpp_pre/premax_s_1@.f \
+	D:mpp_pre/premax_js_2.c \
+	D:mpp_pre/premax_ss_2.c \
+	D:mpp_pre/premax_s_2@.f \
+	D:mpp_pre/premax_js_3.c \
+	D:mpp_pre/premax_ss_3.c \
+	D:mpp_pre/premax_s_3@.f \
+	D:mpp_pre/premax_js_4.c \
+	D:mpp_pre/premax_ss_4.c \
+	D:mpp_pre/premax_s_4@.f \
+	D:mpp_pre/premax_js_5.c \
+	D:mpp_pre/premax_ss_5.c \
+	D:mpp_pre/premax_s_5@.f \
+	D:mpp_pre/premax_js_6.c \
+	D:mpp_pre/premax_ss_6.c \
+	D:mpp_pre/premax_s_6@.f \
+	D:mpp_pre/premax_js_7.c \
+	D:mpp_pre/premax_ss_7.c \
+	D:mpp_pre/premax_s_7@.f \
+	D:mpp_pre/premin_jp_1.c \
+	D:mpp_pre/premin_sp_1.c \
+	D:mpp_pre/premin_p_1@.f \
+	D:mpp_pre/premin_jp_2.c \
+	D:mpp_pre/premin_sp_2.c \
+	D:mpp_pre/premin_p_2@.f \
+	D:mpp_pre/premin_jp_3.c \
+	D:mpp_pre/premin_sp_3.c \
+	D:mpp_pre/premin_p_3@.f \
+	D:mpp_pre/premin_jp_4.c \
+	D:mpp_pre/premin_sp_4.c \
+	D:mpp_pre/premin_p_4@.f \
+	D:mpp_pre/premin_jp_5.c \
+	D:mpp_pre/premin_sp_5.c \
+	D:mpp_pre/premin_p_5@.f \
+	D:mpp_pre/premin_jp_6.c \
+	D:mpp_pre/premin_sp_6.c \
+	D:mpp_pre/premin_p_6@.f \
+	D:mpp_pre/premin_jp_7.c \
+	D:mpp_pre/premin_sp_7.c \
+	D:mpp_pre/premin_p_7@.f \
+	D:mpp_pre/premin_js_1.c \
+	D:mpp_pre/premin_ss_1.c \
+	D:mpp_pre/premin_s_1@.f \
+	D:mpp_pre/premin_js_2.c \
+	D:mpp_pre/premin_ss_2.c \
+	D:mpp_pre/premin_s_2@.f \
+	D:mpp_pre/premin_js_3.c \
+	D:mpp_pre/premin_ss_3.c \
+	D:mpp_pre/premin_s_3@.f \
+	D:mpp_pre/premin_js_4.c \
+	D:mpp_pre/premin_ss_4.c \
+	D:mpp_pre/premin_s_4@.f \
+	D:mpp_pre/premin_js_5.c \
+	D:mpp_pre/premin_ss_5.c \
+	D:mpp_pre/premin_s_5@.f \
+	D:mpp_pre/premin_js_6.c \
+	D:mpp_pre/premin_ss_6.c \
+	D:mpp_pre/premin_s_6@.f \
+	D:mpp_pre/premin_js_7.c \
+	D:mpp_pre/premin_ss_7.c \
+	D:mpp_pre/premin_s_7@.f \
+
+RMRSRC += \
+	parallel_prefix_p.h \
+	parallel_prefix_s.h \
+	parapre_p1_dim0_mask.fh \
+	parapre_p1_dim0_nomask.fh \
+	parapre_p2_dim0_nomask.fh \
+	parapre_p2_dim0_mask.fh \
+	parapre_p2_dim1_nomask.fh \
+	parapre_p2_dim1_mask.fh \
+	parapre_p2_dim2_nomask.fh \
+	parapre_p2_dim2_mask.fh \
+	parapre_p3_dim0_nomask.fh \
+	parapre_p3_dim0_mask.fh \
+	parapre_p3_dim1_nomask.fh \
+	parapre_p3_dim1_mask.fh \
+	parapre_p3_dim2_nomask.fh \
+	parapre_p3_dim2_mask.fh \
+	parapre_p3_dim3_nomask.fh \
+	parapre_p3_dim3_mask.fh \
+	parapre_s1_dim0_mask.fh \
+	parapre_s1_dim0_nomask.fh \
+	parapre_s2_dim0_nomask.fh \
+	parapre_s2_dim0_mask.fh \
+	parapre_s2_dim1_nomask.fh \
+	parapre_s2_dim1_mask.fh \
+	parapre_s2_dim2_nomask.fh \
+	parapre_s2_dim2_mask.fh \
+	parapre_s3_dim0_nomask.fh \
+	parapre_s3_dim0_mask.fh \
+	parapre_s3_dim1_nomask.fh \
+	parapre_s3_dim1_mask.fh \
+	parapre_s3_dim2_nomask.fh \
+	parapre_s3_dim2_mask.fh \
+	parapre_s3_dim3_nomask.fh \
+	parapre_s3_dim3_mask.fh \
+	parapre_s4_dim0_nomask.fh \
+	parapre_s4_dim0_mask.fh \
+	parapre_s4_dim1_nomask.fh \
+	parapre_s4_dim1_mask.fh \
+	parapre_s4_dim2_nomask.fh \
+	parapre_s4_dim2_mask.fh \
+	parapre_s4_dim3_nomask.fh \
+	parapre_s4_dim3_mask.fh \
+	parapre_s4_dim4_nomask.fh \
+	parapre_s4_dim4_mask.fh \
+	parapre_s5_dim0_nomask.fh \
+	parapre_s5_dim0_mask.fh \
+	parapre_s5_dim1_nomask.fh \
+	parapre_s5_dim1_mask.fh \
+	parapre_s5_dim2_nomask.fh \
+	parapre_s5_dim2_mask.fh \
+	parapre_s5_dim3_nomask.fh \
+	parapre_s5_dim3_mask.fh \
+	parapre_s5_dim4_nomask.fh \
+	parapre_s5_dim4_mask.fh \
+	parapre_s5_dim5_nomask.fh \
+	parapre_s5_dim5_mask.fh \
+	parapre_s6_dim0_nomask.fh \
+	parapre_s6_dim0_mask.fh \
+	parapre_s6_dim1_nomask.fh \
+	parapre_s6_dim1_mask.fh \
+	parapre_s6_dim2_nomask.fh \
+	parapre_s6_dim2_mask.fh \
+	parapre_s6_dim3_nomask.fh \
+	parapre_s6_dim3_mask.fh \
+	parapre_s6_dim4_nomask.fh \
+	parapre_s6_dim4_mask.fh \
+	parapre_s6_dim5_nomask.fh \
+	parapre_s6_dim5_mask.fh \
+	parapre_s6_dim6_nomask.fh \
+	parapre_s6_dim6_mask.fh \
+	parapre_s7_dim0_nomask.fh \
+	parapre_s7_dim0_mask.fh \
+	parapre_s7_dim1_nomask.fh \
+	parapre_s7_dim1_mask.fh \
+	parapre_s7_dim2_nomask.fh \
+	parapre_s7_dim2_mask.fh \
+	parapre_s7_dim3_nomask.fh \
+	parapre_s7_dim3_mask.fh \
+	parapre_s7_dim4_nomask.fh \
+	parapre_s7_dim4_mask.fh \
+	parapre_s7_dim5_nomask.fh \
+	parapre_s7_dim5_mask.fh \
+	parapre_s7_dim6_nomask.fh \
+	parapre_s7_dim6_mask.fh \
+	parapre_s7_dim7_nomask.fh \
+	parapre_s7_dim7_mask.fh \
+

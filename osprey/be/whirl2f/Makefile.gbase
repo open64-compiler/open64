@@ -1,0 +1,361 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for whirl2f
+#
+
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  This Makefile is used to build the 32 bit host/target version of
+#  whirl2f
+#
+#  *  This Makefile does not require that targ_info has already been built.
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#----------------------------------------------------------------------
+ifdef LOCAL_BE_DIR
+CVERSION  =  -xansi
+TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
+else
+CVERSION =
+TARG_BE_DIR = $(TARGDIR)/be
+endif
+ifdef LOCAL_TARG_INFO_DIR
+TARG_TARG_INFO_DIR = $(TARGDIR)/$(LOCAL_TARG_INFO_DIR)
+else
+TARG_TARG_INFO_DIR = $(TARGDIR)/targ_info
+endif
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dsgi
+HOSTDEFS += -Dlonglong
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+# need to define BUILD_WHIRL2F to get appropriate code from common sources
+HOSTDEFS += -DMONGOOSE_BE -DBUILD_WHIRL2F -D_LIBELF_XTND_64
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+BE_DIR 			= $(BUILD_BASE)/..
+BE_MIPS_DIR 		= $(BE_DIR)/MIPS
+BE_BE_DIR 		= $(BE_DIR)/be
+BE_CG_DIR 		= $(BE_DIR)/cg
+BE_LNO_DIR 		= $(BE_DIR)/lno
+BE_COM_DIR 		= $(BE_DIR)/com
+BE_OPT_DIR 		= $(BE_DIR)/opt
+BE_REGION_DIR 	        = $(BE_DIR)/region
+BE_WHIRL2C_DIR 		= $(BE_DIR)/whirl2c
+BE_WHIRL2F_DIR 		= $(BE_DIR)/whirl2f
+COMMON_DIR 		= $(BUILD_TOT)/common
+COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_LIB_DIR 		= $(COMMON_DIR)/lib
+COMMON_UTIL_DIR 	= $(COMMON_DIR)/util
+INCLUDE_DIR 		= $(ROOT)/usr/include
+IPA_COM_DIR 		= $(BUILD_TOT)/ipa/common/
+LIBCOMUTIL_DIR 		= $(BUILD_TOT)/libcomutil
+
+COMMON_COM_TARGET_DIR   = $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+COMMON_UTIL_TARGET_DIR  = $(COMMON_UTIL_DIR)/$(BUILD_TARGET_DIR)
+
+TARG_COMUTIL_DIR	= $(TARGDIR)/libcomutil
+
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS = \
+  $(BE_COM_DIR)		\
+  $(BE_REGION_DIR)	\
+  $(BE_WHIRL2F_DIR)	\
+  $(BE_WHIRL2C_DIR)	
+
+HEADER_DIRS = \
+  $(SRC_DIRS)		\
+  $(COMMON_COM_DIR)	\
+  $(COMMON_COM_TARGET_DIR)\
+  $(COMMON_LIB_DIR)	\
+  $(COMMON_UTIL_DIR)	\
+  $(COMMON_UTIL_TARGET_DIR)\
+  $(TARG_BE_DIR)	\
+  $(BE_DIR)		\
+  $(BE_BE_DIR)		\
+  $(BE_CG_DIR)		\
+  $(BE_OPT_DIR)		\
+  $(BE_LNO_DIR)		\
+  $(TARGDIR)/be
+
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+BE_WHIRL2C_C_SRCS = \
+  diagnostics.cxx	\
+  PUinfo.cxx		\
+  stab_attr.cxx		\
+  token_buffer.cxx	\
+  w2cf_parentize.cxx	\
+  w2cf_symtab.cxx	\
+  wn_attr.cxx		
+#SKIP  whirl2c_common.c	\
+#SKIP  whirl2c.c	\
+#SKIP  ty2c.c		\
+#SKIP  st2c.c		\
+#SKIP  wn2c.c		\
+#SKIP  tcon2c.c		\
+#SKIP  init2c.c		\
+
+
+BE_WHIRL2F_C_SRCS = \
+  init2f.cxx		\
+  st2f.cxx		\
+  tcon2f.cxx		\
+  ty2f.cxx		\
+  whirl2f_common.cxx	\
+  wn2f.cxx		\
+  wn2f_expr.cxx		\
+  wn2f_io.cxx		\
+  wn2f_load_store.cxx	\
+  wn2f_stmt.cxx		\
+  wn2f_pragma.cxx	\
+  w2f_driver.cxx
+
+WHIRL2F_C_SRCS = \
+  $(BE_WHIRL2C_C_SRCS)	\
+  $(BE_WHIRL2F_C_SRCS)  
+
+WHIRL2F_DRIVER_SRCS = \
+  whirl2f.cxx
+
+WHIRL2F_MAIN_SRCS = \
+  whirl2f_main.cxx
+
+
+WHIRL2F_C_OBJS = $(WHIRL2F_C_SRCS:.cxx=.o)
+WHIRL2F_DRIVER_OBJS = $(WHIRL2F_DRIVER_SRCS:.cxx=.o)
+WHIRL2F_MAIN_OBJS = $(WHIRL2F_MAIN_SRCS:.cxx=.o)
+ifeq ($(BUILD_OS), LINUX)
+WHIRL2F_DSOS = be.so
+else
+WHIRL2F_DSOS = $(TARGDIR)/be/be.so
+endif
+
+VPATH    =  $(SRC_DIRS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+ifeq ($(BUILD_OS), LINUX)
+LCINCS += -I$(BUILD_AREA)/include
+endif
+
+LC++OPTS = $(STD_COMPILE_OPTS)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(LCINCS)
+
+LASDEFS = $(HOSTDEFS) $(TARGDEFS)
+LASINCS = $(LCINCS)
+LASOPTS = $(STD_COMPILE_OPTS)
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS) $(LD_QUICKSTART_INFO)
+
+#DSOSTARTOPT = -update_registry $(TARGDIR)/be/so_locations -no_unresolved
+#DSOSTARTOPT = -no_unresolved
+ifeq ($(BUILD_OS), IRIX)
+DSOSTARTOPT = -check_registry $(TARGDIR)/be/so_locations -no_unresolved
+else
+DSOSTARTOPT = 
+endif
+DSOSTARTOPT_32 = -32 $(DSOSTARTOPT)
+DSOSTARTOPT_N32 = -n32 $(DSOSTARTOPT)
+
+# To ensure 32 bits linking of whirl2f.so:
+#LDFLAGS += -32
+
+#----------------------------------------------------------------------
+# File containing the list of symbols exported outside of whirl2f.so
+#----------------------------------------------------------------------
+ifeq ($(BUILD_COMPILER), EDG)
+EXPORT_LIST = -exports_file $(BE_WHIRL2F_DIR)/Exported
+else
+EXPORT_LIST =
+endif
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+ifeq ($(BUILD_TYPE), SHARED)
+TARGETS = whirl2f.so whirl2f_be whirl2f
+else
+TARGETS = libwhirl2f.a whirl2f
+endif
+
+# extra files to be removed with make clobber
+LDIRT += be be.so $(TARGETS)
+
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+ifeq ($(BUILD_COMPILER), EDG)
+LLDLIBS	= -none -lc
+endif
+
+.PHONY: default first last install
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is
+#  built.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+	$(call submake,$(TARGDIR)/be)
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last : make_deps
+
+#----------------------------------------------------------------------
+#  Build 'whirl2f.so', 'whirl2f_be' and 'whirl2f'
+#
+#  These rules build the 'whirl2f.so" by default, and can install
+#  it in the $(STD_MONGOOSE_LOC) directory.
+#----------------------------------------------------------------------
+
+install:: default
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) whirl2f.so whirl2f
+	$(STD_INSTALL) -lns be -F $(STD_MONGOOSE_LOC) whirl2f_be
+
+
+whirl2f.so: $(WHIRL2F_C_OBJS)  $(BE_WHIRL2F_DIR)/Exported \
+		$(WHIRL2F_DSOS) $(BE_BE_DIR)/so_locations
+	$(cxx) -o $@ $(STD_DSO_LOADOPTS) $(EXPORT_LIST) $(LDFLAGS) \
+	$(WHIRL2F_C_OBJS) $(WHIRL2F_DSOS) $(LLDLIBS)
+
+libwhirl2f.a: $(WHIRL2F_C_OBJS)
+	$(ar) cru $@ $^
+
+# Make the back-end executable, then create a link to it named
+# "whirl2f_be".  Make a driver "whirl2f" which MUST reside in the 
+# same directory as whirl2f_be and whirl2f.so.  Need to set 
+# LD_LIBRARY_PATH to the location of the dso's to directly execute
+# "whirl2f_be".
+#
+whirl2f_be: whirl2f.so
+	(cd $(TARGDIR)/be; \
+	 $(MAKE) BE_OPT_DIR='$(BE_OPT_DIR)' \
+                   LINK_DSO='$(LINK_DSO)' \
+                   LINK_DSO_OPTS='$(LINK_DSO_OPTS) -L.' \
+                   be)
+	if ! test -e whirl2f_be; then ln -sf $(TARGDIR)/be/be whirl2f_be ; fi
+
+ifeq ($(BUILD_TYPE), SHARED)
+whirl2f: whirl2f.so whirl2f_be $(WHIRL2F_MAIN_OBJS)
+	$(link.c++f) -o whirl2f $(WHIRL2F_MAIN_OBJS) $(LDFLAGS)
+
+be.so:
+	if ! test -e be.so; then ln -sf $(TARGDIR)/be/be.so .; fi
+
+be:
+	if ! test -e be; then ln -sf $(TARGDIR)/be/be .; fi
+else
+whirl2f: $(WHIRL2F_MAIN_OBJS) libwhirl2f.a $(TARG_BE_DIR)/libbe.a $(TARG_TARG_INFO_DIR)/libtarginfo.a
+	$(link.cxxf) $(LDFLAGS) -o $@ $^
+endif
+
+#For debugging, set LD_LIBRARY_PATH manually and invoke whirl2f_dbg
+# directly.
+#
+#whirl2f_dbg: whirl2f.so $(WHIRL2F_DRIVER_OBJS) $(WHIRL2F_DSOS)
+#		$(CCF) -o $(.TARGET) $(WHIRL2F_DRIVER_OBJS) $(LDFLAGS) \
+#		whirl2f.so $(WHIRL2F_DSOS)
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+#----------------------------------------------------------------------
+#  Special case rules for files that want to be individualistic
+#----------------------------------------------------------------------
+
+#SKIP bedriver.o: bedriver.c
+#SKIP 	$(CCF) -xansi -c $<
+

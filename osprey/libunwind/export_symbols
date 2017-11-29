@@ -1,0 +1,8 @@
+__leb128_decode
+__leb128_encode
+
+unwind_process
+unwind_dump2ascii
+
+unwind_init
+unwind_fini

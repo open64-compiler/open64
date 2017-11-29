@@ -1,0 +1,51 @@
+ This file contains the instructions to configure and build ekopath-gcc. The 
+ steps to be followed are as detailed below.
+
+Requirements
+------------
+
+Clone the libspin repository at the same directory level as the 
+ekopath-gcc repository (i.e. sibling of ekopath-gcc).
+
+Building ekopath-gcc
+--------------------
+
+Step 1: cd objdir 
+
+	(The 'objdir' directory is a sibling of this README.pathscale file).
+
+Step 2: make distclean
+
+Step 3: ./CONFIGURE
+
+    Note: --enable-checking *** is for development *** only; else, for 
+	  production use, specify: --disable-checking instead with the rest
+	  of the invocation to configure.
+
+Step 4: A. for production builds:
+
+	  make clean; make CFLAGS='-O2' LIBCFLAGS='-O2' LIBCXXFLAGS='-O2 -fno-implicit-templates' 
+
+	  (Doing so ensures that the gcc image built is without -g for the most 
+	  part (i.e. about 90%. There still is about 10% of the image that would
+	  have been built -g, which is mostly library code)).
+
+	B. for development builds:
+
+	  make clean; make
+
+Installing
+----------
+
+Step 5: make install
+
+	The compiler would be installed in directory 'bin', beneath the 
+	directory specified to the --prefix option above; in our case,
+	it is:
+		 ekopath-gcc/install/bin
+
+Installing for pathcc/pathCC
+----------------------------
+
+Step 6: install objdir/gcc/cc1 and objdir/gcc/cc1plus in the ekopath compiler 
+	lib dir (where we have gfec and gfecc).

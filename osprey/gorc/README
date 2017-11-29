@@ -1,0 +1,11 @@
+Google Open Research Compiler Project
+
+A few research efforts require to share code in a
+publicly available open source repository in order
+to avoid export license issues.
+
+This directory is Google's place to share such
+code and data.
+
+In case of questions, please contact Robert
+  rhundt@google.com

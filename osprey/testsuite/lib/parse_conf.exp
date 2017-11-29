@@ -1,0 +1,103 @@
+#!/usr/bin/expect -f
+##################################################################
+# DEJAGNU library for parsing configuration files
+# Each line of the configuration file should be of this formation:
+#    aa=bb
+# which means variable aa should be configured to value bb
+# 
+# Currently, we define the following varibles:
+#   cc cxx fc : 
+#           C C++ FORTRAN compiler
+#   clfags cxxflags fflags:
+#           Compile option for C C++ FORTRAN source 
+#   compiler
+#           Home for the source of our compiler
+#################################################################
+
+proc parse_conf { conf } {
+	global cc cxx fc cflags cxxflags fflags sim comp_home sim_home lib_home
+	# Check if given configuration file exists
+	set bFileExists [file exists $conf];
+
+	if { $bFileExists == 0 } {
+		error "$conf file does not exist";
+	}
+
+	set fConf [open $conf RDONLY];
+	while { [gets $fConf line] >=0} {
+		set lst [split $line "="];
+		set var [lindex $lst 0];
+		set val [lindex $lst 1];
+		switch $var {
+			COMP_TARGET_ROOT { set sl1_toolchain $val; }
+			CC { set cc $val; }
+			CXX { set cxx $val; }
+			FC { set fc $val; }
+			CFLAGS { set cflags $val; }
+			CXXFLAGS { set cxxflags $val;}
+			FFLAGS { set fflags $val; }
+			COMPILER {set comp_home $val;}
+			SIMHOME { set sim_home  $val;}
+                        LIBHOME { set lib_home $val;}
+			SIM { set sim $val; }
+			default { }
+		}
+	}
+        if { $comp_home != "" } {
+          if { $profilelibtarget == "" } {
+             set profilelibtarget "$comp_home/targia32_sl1/libinstr"
+          }
+        }
+}
+
+proc replace_conf_args { str } {
+	global cc cxx fc cflags cxxflags fflags
+
+	regsub {\$cc} $str $cc str
+	regsub {\$cxx} $str $cxx str
+	regsub {\$fc} $str $fc str
+	regsub {\$cflags} $str $cflags str
+	regsub {\$cxxflags} $str $cxxflags str
+	regsub {\$fflags} $str $fflags str
+
+	return $str
+}
+
+# Command to print current configurations
+# This command is used for debugging
+proc print_conf_vars {} { 
+    global cc cxx fc cflags cxxflags fflags sim comp_home sim_home lib_home platform
+#    note ""
+    note "====================================================================="    
+    note "****** Test Configurations ******"
+    note "====================================================================="
+    note "Machine type: $platform"
+    if { $cc != "" } { note "CC: $cc"; }
+    if { $cxx != "" } { note "CXX: $cxx"; }
+    if { $fc != "" } { note "FC: $fc"; }
+
+    regsub {[ \t]+} $cflags "" cflags; if { $cflags != "" } { note "CFLAGS: $cflags"; }
+    regsub {[ \t]+} $cxxflags "" cxxflags; if { $cxxflags != "" } { note "CXXFLAGS: $cxxflags"; }
+    regsub {[ \t]+} $fflags "" fflags; if { $fflags != "" } { note "FFLAGS: $fflags"; }
+    if { $sim != "" } { note "SIM: $fsim1"; }
+    if { $comp_home != "" } { note "The Compiler's source code directory:	$comp_home"; }
+    if { $sim_home != "" } { note "The Simulator's source code directory:$sim_home"; }
+    if { $lib_home != "" } { note "The Newlib's source code directory:   $lib_home"; }
+    note ""
+}
+proc print_this_conf_vars { testcasesuit } { 
+    global cc cxx fc cflags cxxflags fflags sim
+
+    note ""
+    note "====================================================================="    
+    note "We test \"$testcasesuit\" with following Configurations:"
+    note "====================================================================="
+    note "CC: $cc"; 
+    note "CXX: $cxx"; 
+    note "FC: $fc"; 
+    note "CFLAGS: $cflags"; 
+    note "CXXFLAGS: $cxxflags"; 
+    note "FFLAGS: $fflags"; 
+    note "SIM:  $sim";
+    note ""
+}

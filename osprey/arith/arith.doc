@@ -1,0 +1,1161 @@
+                    THE CONSTANT EXPRESSION EVALUATOR
+
+                              May 15, 1995
+
+To use the Constant Expression Evaluator (Evaluator) in your program,
+you must include header arith.h in your code and link with the arith.a
+library.  Use /cray/uss/compiler/cost/bin/get.obj.arith to
+get the appropriate arith.h header and arith.a library for your machine.
+
+WARNING!  The header arith.h contains information on the internals of
+the Evaluator.  Use only those things which are mentioned in this
+document.  Other macros, types, members of types, etc. which are not
+mentioned in this document are for internal use only and may change at
+any time.  Under no circumstances should you reference or make use of
+undocumented items!  You've been warned.
+
+The 2.0 and later releases of the Evaluator require an external file
+(arith data file) from which target platform information is obtained
+such as intrinsic instructions and data as well as numeric features
+available in the target system's hardware and software.  The appropriate
+arith data file is selected by setting environment variable CRAYLIBS to
+a path containing a file named "arith" for the target platform.  Most
+compiler products automatically set this variable.
+
+Arithmetic values are represented in the Evaluator in type AR_DATA.
+
+There are a number of types supported in the Evaluator.  These types are
+enumerated in the type AR_TYPE.  The permissible values for type AR_TYPE
+are:
+
+   AR_Int_8_S                8 bit signed integer
+   AR_Int_8_U                8 bit unsigned integer
+   AR_Int_16_S              16 bit signed integer
+   AR_Int_16_U              16 bit unsigned integer
+   AR_Int_24_S              24 bit signed integer
+   AR_Int_24_U              24 bit unsigned integer
+   AR_Int_32_S              32 bit signed integer
+   AR_Int_32_U              32 bit unsigned integer
+   AR_Int_46_S              46 bit signed integer
+   AR_Int_64_S              64 bit signed integer
+   AR_Int_64_U              64 bit unsigned integer
+*  AR_Int_128_S            128 bit signed integer
+*  AR_Int_128_U            128 bit unsigned integer
+   AR_Logical              All 64 bits = 0 is false, else true
+   AR_Pointer_Byte         byte pointer ala CRAY-T3D
+   AR_Pointer_Char_24      Y-MP style character pointer with 24-bit ptr field
+   AR_Pointer_Char_32      Y-MP style character pointer with 32-bit ptr field
+   AR_Pointer_Char_64      Triton style character pointer with 64-bit ptr field
+   AR_Pointer_Fctn_24      24-bit parcel pointer
+   AR_Pointer_Fctn_32      32-bit parcel pointer
+   AR_Pointer_Fctn_64      64-bit parcel pointer
+   AR_Pointer_Word_24      24-bit word pointer
+   AR_Pointer_Word_32      32-bit word pointer
+   AR_Pointer_Word_64      64-bit word pointer
+   AR_Float_32             32-bit float (IEEE only)
+   AR_Float_64             64-bit float
+   AR_Float_128            128-bit float
+   AR_Complex_32           32-bit float (IEEE only)
+   AR_Complex_64           64-bit float
+   AR_Complex_128          128-bit float
+
+********************************  SPECIAL NOTE  ****************************
+* THE FOLLOWING AR_TYPE VALUES ARE AVAILABLE IN 1.0 AND 2.0 ARITH.  HOWEVER,
+* THEY WILL BE ELIMINATED IN 3.0 ARITH.  PLEASE CHANGE YOUR USAGE TO THE FLOAT
+* VALUES LISTED ABOVE.  USE AR_set_rounding_mode TO CHANGE THE ROUNDING MODE.
+* THE DEFAULT ROUNDING MODE IS ROUND-TO-NEAREST FOR IEEE AND ROUNDED FOR CRAY.
+* FOR 2.0 AND FUTURE VERSIONS OF ARITH, THE FLOATING POINT FORMAT IS DETERMINED
+* FROM THE ARITH DATA FILE SPECIFIED VIA THE CRAYLIBS ENVIRONMENT VARIABLE.
+* THE FLOATING POINT FORMAT SPECIFIED IN THE VALUES BELOW IS IGNORED.
+****************************************************************************
+   
+   AR_Float_Cray1_64
+   AR_Float_Cray1_128
+   AR_Float_IEEE_NR_32
+   AR_Float_IEEE_NR_64
+   AR_Float_IEEE_NR_128
+   AR_Float_IEEE_ZE_32
+   AR_Float_IEEE_ZE_64
+   AR_Float_IEEE_ZE_128
+   AR_Float_IEEE_UP_32
+   AR_Float_IEEE_UP_64
+   AR_Float_IEEE_UP_128
+   AR_Float_IEEE_DN_32
+   AR_Float_IEEE_DN_64
+   AR_Float_IEEE_DN_128
+   AR_Complex_Cray1_64
+   AR_Complex_Cray1_128
+   AR_Complex_IEEE_NR_32
+   AR_Complex_IEEE_NR_64
+   AR_Complex_IEEE_NR_128
+   AR_Complex_IEEE_ZE_32
+   AR_Complex_IEEE_ZE_64
+   AR_Complex_IEEE_ZE_128
+   AR_Complex_IEEE_UP_32
+   AR_Complex_IEEE_UP_64
+   AR_Complex_IEEE_UP_128
+   AR_Complex_IEEE_DN_32
+   AR_Complex_IEEE_DN_64
+   AR_Complex_IEEE_DN_128
+
+* Not currently supported.  Do not use.
+
+Types which occupy less than 64 bits are right justified in the
+first 64 bits of an AR_DATA.  Thus, 46-bit integers occupy the lower
+46 bits, 32-bit integers occupy the lower 32 bits, and so on.  An IEEE
+32-bit floating point value occupies the lower 32 bits in the first 64
+bits of an AR_DATA.
+
+Type AR_Logical uses the first 64 bits of an AR_DATA.  All zero bits
+define a false logical value.  Otherwise, the value is considered true.
+
+Most functions in the Evaluator accept one or more AR_DATA operands and
+their corresponding AR_TYPE types as arguments.  In addition, the result
+and result type must often be specified.  Unless otherwise documented,
+the Evaluator will modify only the result argument.  All functions in
+the evaluator are written to allow a single AR_DATA object to be passed
+as the result and/or one or more operands, without affecting the final
+result value.
+
+In addition, most functions in the Evaluator will return a mask of one
+or more status flags.  These flags are as follows:
+
+   AR_STAT_OK                   No errors
+   AR_STAT_OVERFLOW             Result overflowed or is invalid
+   AR_STAT_UNDERFLOW            Result underflowed (floating-point only)
+   AR_STAT_UNDEFINED            Result or operation is undefined
+   AR_STAT_INEXACT              Precision lost in result
+   AR_STAT_ZERO                 Result is zero
+   AR_STAT_NEGATIVE             Result is negative
+   AR_STAT_INVALID_TYPE         Invalid type(s) passed to function
+   AR_STAT_SEMIVALID		Result is valid but semantically different
+
+Status flag AR_STAT_SEMIVALID means that an arith operation could be
+performed and no precision or bits were lost in the result.  However, the
+meaning of the result bits may be different than expected.  In most cases,
+AR_STAT_OVERFLOW will also be set to indicate than the result is probably
+invalid if it is used as an operand in any subsequent arith operation.  The
+only case where AR_STAT_OVERFLOW is not set is if both the operand and
+result is the maximum negative integer.
+
+The following are known cases in which AR_STAT_SEMIVALID is set:
+
+	a.  Float to integer conversions in which leading coefficient bit
+	    is shifted into the sign bit position.
+
+	b.  Integer to integer signed to unsigned or unsigned to signed
+	    conversions in which operand sign bit was set. 
+
+	c.  Negation of maximum negative integer.
+
+
+When using the Evaluator, by including <arith.h> in your source code or
+linking arith.a, all names beginning with ar_ or AR_ are reserved for
+use by the evaluator.  No other names are reserved.  All names beginning
+with ar_ identify internal objects within the Evaluator and must not be
+used externally.
+
+For your convenience, several special objects are defined by the Evaluator.
+
+Two constant integer objects are defined by the evaluator:
+
+   AR_const_zero	the AR_DATA representation of integer 0
+   AR_const_one		the AR_DATA representation of integer 1
+   AR_const_two		the AR_DATA representation of integer 2
+
+   AR_const_false	the AR_DATA representation of logical false
+   AR_const_true	the AR_DATA representation of logical true
+
+A version character constant is defined:
+
+   char AR_version[2]	the version number of the evaluation library
+
+A typedef for a signed 64-bit integer, AR_HOST_SINT64, is defined.
+It is needed in calls to AR_convert_host_sint64_to_int and
+AR_convert_int_to_host_sint64.
+
+Several values are defined for managing floating point arithmetic:
+
+   AR_IEEE_FLOATING_POINT		Identifies IEEE Floating point format
+   AR_CRAY_FLOATING_POINT		Identifies Cray Floating point format
+
+   AR_ROUND_NEAREST             Specifies round-to-nearest IEEE rounding
+                                (default)
+   AR_ROUND_ZERO                Specifies round-to-zero(truncate) IEEE rounding
+   AR_ROUND_PLUS_INFINITY       Specifies round-to-plus-infinity IEEE rounding
+   AR_ROUND_MINUS_INFINITY      Specifies round-to-minus-infinity IEEE rounding
+
+   AR_ROUNDED                   Specifies rounded Cray FP multiply (default)
+   AR_UNROUNDED                 Specifies truncated Cray FP multiply
+
+   AR_UNDERFLOW_TO_DENORM       Specifies the keeping and usage of denorms
+   AR_UNDERFLOW_TO_PLUS_ZERO    Specifies that underflows are returned as +0
+   AR_UNDERFLOW_TO_SIGNED_ZERO  Specifies that underflows are returned as +/-0
+   AR_UNDERFLOW_TO_SIGNED_TINY  Specifies that underflows are returned as
+                                +/-TINY, the tiniest non-underflow FP value
+
+   AR_128BIT_EXTENDED_DOUBLE	Identifies extended-double format for 128-bit
+                                floating point numbers (Cray/Sun default)
+
+   AR_128BIT_DOUBLE_DOUBLE		Identifies extended-double format for 128-bit
+                                floating point numbers (IBM format)
+
+
+The following list documents all of the user-callable entry points to
+the Evaluator.  For those functions which accept operands or results
+with type AR_Int_46_S, (unless otherwise indicated) each function treats
+AR_Int_46_S as AR_Int_64_S when determining result value and return
+status.
+
+
+Name:  AR_get_state_register
+Prototype:
+    AR_HOST_SINT64 AR_get_state_register();
+Input:  None.
+Output:  64-bit value of the internal arith state register.
+Diagnostics:  None.
+
+Name:  AR_set_state_register
+Prototype:
+    int AR_set_state_register(AR_HOST_SINT64 new_state_register);
+Input:  New 64-bit value for the internal arith state register.
+Output:  None except status flags.
+Diagnostics:  AR_STAT_UNDEFINED returned if the new value for the internal
+	      state register is not valid.
+
+
+Name:  AR_get_rounding_mode
+Prototype:
+    int AR_get_rounding_mode();
+Input:  None.
+Output:  Value of the current rounding mode.
+Diagnostics:  None.
+
+Name:  AR_set_rounding_mode
+Prototype:
+    int AR_set_rounding_mode(int new_rounding_mode);
+Input:  New value for the rounding mode.
+Output:  None except status flags.
+Diagnostics:  AR_STAT_UNDEFINED returned if the new value for the rounding
+	      mode is not valid.
+
+
+Name:  AR_get_underflow_mode
+Prototype:
+    int AR_get_underflow_mode();
+Input:  None.
+Output:  Value of the current underflow mode.
+Diagnostics:  None.
+
+Name:  AR_set_underflow_mode
+Prototype:
+    int AR_set_underflow_mode(int new_underflow_mode);
+Input:  New value for the underflow mode.
+Output:  None except status flags.
+Diagnostics:  AR_STAT_UNDEFINED returned if the new value for the underflow
+	      mode is not valid.
+
+
+Name:  AR_get_floating_point_format
+Prototype:
+    int AR_get_floating_point_format();
+Input:  None.
+Output:  Value of the floating point format in use.
+Diagnostics:  None.
+
+
+Name:  AR_get_128bit_format
+Prototype:
+    int AR_get_128bit_format();
+Input:  None.
+Output:  Value of the 128-bit floating point format in use.
+Diagnostics:  None.
+
+
+Name:  AR_index
+Prototype:
+    int AR_index(AR_DATA *result, const AR_TYPE *resulttype,
+                 const char *str1, const char *str2,
+                 const AR_DATA *backward, const AR_TYPE *backwardtype);
+Input:  Two character string pointers and a logical type third operand.
+	If the pointer to the third operand is null or contains a false value,
+	the index to the leftmost occurrance is returned.  Otherwise, the index
+	to the rightmost occurrance is returned (the third operand is true
+	indicating a backwards search).  If the second string is has zero
+	length, a value of 1 is returned for a forward search or the length+1
+	of the first string for a backward search.
+Output: The result is the 1-origin index to the second string in the first
+	string or 0 if it does not exist in the first string or the first
+	string has zero length.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the result type is not integral
+	      or the third operand is not logical type.
+	      AR_STAT_UNDEFINED if either character string pointer is NULL.
+              AR_STAT_ZERO returned if the result value is zero.
+
+
+Name:  AR_scan
+Prototype:
+    int AR_scan(AR_DATA *result, const AR_TYPE *resulttype,
+                const char *str1, const char *str2,
+                const AR_DATA *backward, const AR_TYPE *backwardtype);
+Input:  Two character string pointers and a logical type third operand.
+	If the pointer to the third operand is null or contains a false value,
+	the index to the leftmost occurrance is returned.  Otherwise, the index
+	to the rightmost occurrance is returned (the third operand is true
+	indicating a backwards search).
+Output: The result is the 1-origin index into the first string to any character
+	in the second string or 0 if none exists.  Returns 0 if either string
+	has zero length.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the result type is not integral
+	      or the third operand is not logical type.
+	      AR_STAT_UNDEFINED if either character string pointer is NULL.
+              AR_STAT_ZERO returned if the result value is zero.
+
+
+Name:  AR_verify
+Prototype:
+    int AR_verify(AR_DATA *result, const AR_TYPE *resulttype,
+                  const char *str1, const char *str2,
+                  const AR_DATA *backward, const AR_TYPE *backwardtype);
+Input:  Two character string pointers and a logical type third operand.
+	If the pointer to the third operand is null or contains a false value,
+	the index to the leftmost occurrance is returned.  Otherwise, the index
+	to the rightmost occurrance is returned (the third operand is true
+	indicating a backwards search).
+Output: The result is the 1-origin index into the first string to a character
+	which is not in the second string or 0 if all characters in the first
+	string exist in the second string or the first string has zero length.
+	If the length of the second string is zero, return 1 for a forward
+	search or the length of the first string on a backward search.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the result type is not integral
+	      or the third operand is not logical type.
+	      AR_STAT_UNDEFINED if either character string pointer is NULL.
+              AR_STAT_ZERO returned if the result value is zero.
+
+
+Name:  AR_reshape
+Prototype:
+    int AR_reshape(void *result, const void *source, const void *shape,
+                   void *pad, void *order);
+Input:  Pointers to five dope vector structures.  The first item in each dope
+	vector is assumed to contain a right-justified host system
+	memory address either defined by the caller or to be defined in
+	the reshape routine via a call to the host system's malloc
+	routine.  Beyond this first item, the dope vector pointers are
+	merely passed through to the native or simulated library
+	routine.  Because the target system's library routine may be
+	simulated, the dope vector contents must already be in
+	target-system format.  If the pointers to pad and order are null,
+	the Fortran-90 defined defaults for these will be used.
+Output: The result of performing the Fortran-90 reshape function.  If a call
+	to malloc occurs to allocate memory for the result, the result dope
+	vector's base address is filled in with the address returned by malloc.
+	The caller is responsible for freeing this space if necessary.
+Diagnostics:  AR_STAT_UNDEFINED if any of the first three dope vector pointers
+	      are null or if the base address field of the source or shape dope
+	      vectors is null.
+	      AR_STAT_OVERFLOW if any out-of-bounds memory reference occurs
+	      while accessing the space referred to in a dope vector.
+
+Name:  AR_transfer
+Prototype:
+    int AR_transfer(void *result, const void *source, const void *mold,
+                    const AR_DATA *size, const AR_TYPE *sizetype);
+Input:  Pointers to three dope vector structures and an integral value
+	defining the size of the result.  The first item in each dope
+	vector (the base address field) is assumed to contain a
+	right-justified host system memory address either defined by
+	the caller or to be defined in the transfer routine via a call to
+	the host system's malloc routine.  Beyond this first item, the
+	dope vector pointers are merely passed through to the native or
+	simulated library routine.  Because the target system's library
+	routine may be simulated, the dope vector contents must already
+	be in target-system format.  If the pointer to size is null, the
+	Fortran-90 defined default for an unspecified size will be used.
+Output: The result of performing the Fortran-90 transfer function.  If a call
+	to malloc occurs to allocate memory for the result, the result dope
+	vector's base address is filled in with the address returned by malloc.
+	The caller is responsible for freeing this space if necessary.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the size type is not unsigned
+	      integral.
+	      AR_STAT_UNDEFINED if any of the dope vector pointers are null or
+	      if the base address field of the source or mold dope vectors is
+	      null.
+	      AR_STAT_OVERFLOW if any out-of-bounds memory reference occurs
+	      while accessing the space referred to in a dope vector or if
+	      the size exceeds a 32-bit value.
+
+
+Name:  AR_bitor
+Prototype:
+    int AR_bitor(AR_DATA *result, const AR_TYPE *resulttype,
+                 const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                 const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output:  The result is the bitwise OR of the operands.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_bitand
+Prototype:
+    int AR_bitand(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                  const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output:  The result is the bitwise AND of the operands.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_bitxor
+Prototype:
+    int AR_bitxor(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                  const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output:  The result is the bitwise exclusive OR of the operands.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_bitcomplement
+Prototype:
+    int AR_bitcomplement(AR_DATA *result, const AR_TYPE *resulttype,
+                         const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand, with 32, 46, or 64-bit integral type.
+        The result type must match the operand type.
+Output:  The result is the bitwise complement of the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operand
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_dshiftl
+Prototype:
+    int AR_dshiftl(AR_DATA *result, const AR_TYPE *resulttype,
+                   const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                   const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type,
+                   const AR_DATA *ar_opnd3, const AR_TYPE *ar_opnd3type);
+Input:  Three integral operands. Operands 1 and 2 must have 32, 46, or 64-bit
+        integral type.  Operand 3 may have any integral type, but must
+        have a value in the range 0-64.
+        The result type must match the type of the first two operands.
+Output:  The left shift of opnd3 bits of opnd2 shifted into opnd1.  The
+         result is the value of opnd1 after the shift.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of opnd1, opnd2,
+              or resulttype are not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED if the value of opnd3 is greater than 64 or
+              less than 0.  Result value is 0.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_dshiftr
+Prototype:
+    int AR_dshiftr(AR_DATA *result, const AR_TYPE *resulttype,
+                   const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                   const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type,
+                   const AR_DATA *ar_opnd3, const AR_TYPE *ar_opnd3type);
+Input:  Three integral operands. Operands 1 and 2 must have 32, 46, or 64-bit
+        integral type.  Operand 3 may have any integral type, but must
+        have a value in the range 0-64.
+        The result type must match the type of the first two operands.
+Output:  The right shift of opnd3 bits of opnd1 shifted into opnd2.  The
+         result is the value of opnd2 after the shift.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of opnd1, opnd2,
+              or resulttype are not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED if the value of opnd3 is greater than 64 or
+              less than 0.  Result value is 0.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_shiftl
+Prototype:
+    int AR_shiftl(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                  const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two integral operands. Operand 1 must have 32, 46, or 64-bit integral
+        type.  Operand 2 may have any integral type, but must have a
+        value in the range 0-63.
+        The result type must match the type of the first operand.
+Output:  The left shift of opnd1 by opnd2 bits.  Vacated bits are zero-
+         filled.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of opnd1 and/or
+              resulttype is not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED if the value of opnd2 is greater than 63 or
+              less than 0.  Result value is 0.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_shiftr
+Prototype:
+    int AR_shiftr(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                  const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two integral operands. Operand 1 must have 32, 46, or 64-bit integral
+        type.  Operand 2 may have any integral type, but must have a
+        value in the range 0-63.
+        The result type must match the type of the first operand.
+Output:  The left shift of opnd1 by opnd2 bits.  Vacated bits are sign-
+         filled (zero filled for an unsigned operand).
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of opnd1 and/or
+              resulttype is not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED if the value of opnd2 is greater than 63 or
+              less than 0.  Result value is 0.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_mask
+Prototype:
+    int AR_mask(AR_DATA *result, const AR_TYPE *resulttype,
+                const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand with 32, 46, or 64-bit integral type.  Its value must be
+        in the range 0-128.
+        The result type must match the type of the operand.
+Output:  A mask of 1 bits left- or right-justified in a 64-bit int.  The
+         operand specifies the number of 1 bits in the mask.
+         0 <= operand <= 63 creates a left-justified mask of '1' bits.
+         64 <= opnd1 <= 128 creates a right-justified mask of 128-operand
+         '1' bits.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED if the value of the operand is greater
+              than 128 or less than 0.  Result value is 0.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_leadz
+Prototype:
+    int AR_leadz(AR_DATA *result, const AR_TYPE *resulttype,
+                 const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand with 32, 46, or 64-bit integral type or 32 or 64-bit
+        (non-complex) floating type.
+        The result type must have 32, 46, or 64-bit integral type (not
+        necessarily matching the type of the operand).
+Output:  The number of leading zeros (from the left) in the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_popcnt
+Prototype:
+    int AR_popcnt(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand with 32, 46, or 64-bit integral type or 32 or 64-bit
+        (non-complex) floating type.
+        The result type must have 32, 46, or 64-bit integral type (not
+        necessarily matching the type of the operand).
+Output:  The number of '1' bits in the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_poppar
+Prototype:
+    int AR_poppar(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand with 32, 46, or 64-bit integral type or 32 or 64-bit
+        (non-complex) floating type.
+        The result type must have 32, 46, or 64-bit integral type (not
+        necessarily matching the type of the operand).
+Output:  The result value is '0' if opnd1 has an even number of '1' bits
+         and '1' if opnd1 has an odd number of '1' bits.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_status
+Prototype:
+    int AR_status(const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand with any pointer or integral type.
+Output:  No result.  Information is returned via status flags.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              is not valid.
+              AR_STAT_ZERO returned if the operand value is zero.
+              AR_STAT_NEGATIVE returned if the operand value is negative
+              (never returned if the operand type is pointer).
+
+Name:  AR_add
+Prototype:
+    int AR_add(AR_DATA *result, const AR_TYPE *resulttype,
+               const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+               const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output:  The result is the sum of the operands.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              NOTE:  Unsigned integer arithmetic never reports overflow.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_add_ptr_int
+Prototype:
+    int AR_add_ptr_int(AR_DATA *result, const AR_TYPE *resulttype,
+                       const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                       const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type,
+                       const AR_DATA *ar_opnd3, const AR_TYPE *ar_opnd3type);
+Input:  Three operands, the first a non-function pointer; the second and
+        third both 46 or 64-bit integral types.  If opnd1 is a char or byte
+        pointer, opnd2 must be evenly divisible by 8.  If opnd1 is a word
+        pointer, opnd2 must be evenly divisible by 64.
+        The result type must match the first operand type.
+Output:  The result is the sum of the first (pointer) operand and the third
+         (integral) operand, given that the pointer is pointing to an object
+         of bitsize indicated by the second (integral) operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED returned if the second operand is too large,
+              or if it is not evenly divisible by 8 or 64, as specified above.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+
+Name:  AR_subtract
+Prototype:
+    int AR_subtract(AR_DATA *result, const AR_TYPE *resulttype,
+                    const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                    const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output:  The result is the difference of the operands.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              NOTE:  Unsigned integer arithmetic never reports overflow.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_subtract_ptr_ptr
+Prototype:
+    int AR_subtract_ptr_ptr(AR_DATA *result, const AR_TYPE *resulttype,
+                          const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                          const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type,
+                          const AR_DATA *ar_opnd3, const AR_TYPE *ar_opnd3type);
+Input:  Three operands, the first and third are identical non-function
+        pointers; the second has 46 or 64-bit integral type.  If opnd1 and
+        opnd3 are char or byte pointers, opnd2 must be evenly divisible by 8.
+        If opnd1 and opnd3 are word pointers, opnd2 must be evenly divisible
+        by 64.
+        The result type must be 46 or 64-bit integral type.
+Output:  The result is the difference of the first and third pointer
+         operands, given that the pointers are pointing to an object
+         of bitsize indicated by the second (integral) operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED returned if the second operand is too large,
+              or if it is not evenly divisible by 8 or 64, as specified above.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+              AR_STAT_INEXACT returned if the result value can not be
+              represented as an integer, for example:
+                   (long double *)3 - (long double *)0
+              The result value is truncated.
+
+Name:  AR_negate
+Prototype:
+    int AR_negate(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand with 32, 46, or 64-bit integral type.
+        The result type must match the type of the operand.
+Output:  The result is negation of the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              NOTE:  Unsigned integer arithmetic never reports overflow.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_abs
+Prototype:
+    int AR_abs(AR_DATA *result, const AR_TYPE *resulttype,
+               const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand with 32, 46, or 64-bit integral type.
+        The result type must match the type of the operand.
+Output:  The result is the absolute value of the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              NOTE:  Unsigned integer arithmetic never reports overflow.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_multiply
+Prototype:
+    int AR_multiply(AR_DATA *result, const AR_TYPE *resulttype,
+                    const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                    const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output:  The result is the product of the operands.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_OVERFLOW returned in the following cases:
+                   - for signed 64-bit integers, if the actual result
+                     of the operation is too large (in magnitude) to
+                     be represented as a signed 64-bit integer result.
+                   - for signed 46-bit integers, if either or both of
+                     the operands or the actual result of the operation
+                     is too large (in magnitude) to be represented as a
+                     signed 46-bit integer.
+              NOTE:  Unsigned integer arithmetic never reports overflow.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_divide
+Prototype:
+    int AR_divide(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                  const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output:  The result is the quotient from the division of the operands.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_OVERFLOW returned in the following cases:
+                   - if the divisor is zero (result value is zero).
+                   - for signed 64-bit integers, if the actual result
+                     of the operation is too large (in magnitude) to
+                     be represented as a signed 64-bit integer result.
+                   - for signed 46-bit integers, if either or both of
+                     the operands or the actual result of the operation
+                     is too large (in magnitude) to be represented as a
+                     signed 46-bit integer.
+              NOTE:  Unsigned integer arithmetic reports overflow only
+                     when the divisor is zero.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_modulo (deprecated name; use AR_mod instead)
+Name:  AR_mod
+Prototype:
+    int AR_mod(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                  const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output:  The result is the remainder from the division of the operands.
+         The sign of the result is the sign of the first operand (except
+         on overflow).
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_OVERFLOW returned in the following cases:
+                   - if the divisor is zero (result value is zero).
+                   - if the actual result of the operation is too large
+                     (in magnitude) to be represented as the result.
+              NOTE:  Unsigned integer arithmetic reports overflow only
+                     when the divisor is zero.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_Modulo
+Prototype:
+    int AR_Modulo(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                  const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types,
+	32 or 64-bit IEEE floating point, or 64 or 128-bit Cray floating point.
+        The result type must match the operand types.
+Output:  The result is the modulo value as defined by the Fortran-90 standard.
+	Note that results are different from AR_mod especially for negative
+	integer values.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_OVERFLOW returned in the following cases:
+                   - if the actual result of the operation is too large
+                     (in magnitude) to be represented as the result.
+                   - if the native Fortran-90 implementation for a zero
+                     divisor returns an overflow condition (the current
+                     CRI implementation returns 0 or 0.0 without overflow).
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_selected_real_kind
+Prototype:
+    int AR_selected_real_kind(AR_DATA *result, const AR_TYPE *resulttype,
+                  const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                  const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical 32, 46, or 64-bit integral types.
+        The result type must match the operand types.
+Output: The result is the real kind value as defined by the Fortran-90 standard
+	for the given precision and range specified by the first and second
+	operands respectively.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the types of the operands
+              or the result are not valid.  Result value is undefined.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.  A
+              negative value of -1 indicates that the precision is not available.
+              A value of -2 indicates that the range is not available.  A value
+              of -3 indicates that neither are available.
+
+Name:  AR_conj
+Prototype:
+    int AR_conj(AR_DATA *result, const AR_TYPE *resulttype,
+                const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+*** NO DESCRIPTION ***
+
+Name:  AR_creal
+Prototype:
+    int AR_creal(AR_DATA *result, const AR_TYPE *resulttype,
+                 const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+*** NO DESCRIPTION ***
+
+Name:  AR_cimag
+Prototype:
+    int AR_cimag(AR_DATA *result, const AR_TYPE *resulttype,
+                 const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+*** NO DESCRIPTION ***
+
+Name:  AR_make_imag
+Prototype:
+    int AR_make_imag(AR_DATA *result, const AR_TYPE *resulttype,
+                     const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+
+*** NO DESCRIPTION ***
+
+Name:  AR_make_complex
+Prototype:
+    int AR_make_complex(AR_DATA *result, const AR_TYPE *resulttype,
+                        const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type,
+                        const AR_DATA *ar_opnd2, const AR_TYPE *ar_opnd2type);
+*** NO DESCRIPTION ***
+
+Name:  AR_compare
+Prototype:
+    AR_COMPARE_TYPE AR_compare(const AR_DATA *ar_opnd1,
+                               const AR_TYPE *ar_opnd1type,
+                               const AR_DATA *ar_opnd2,
+                               const AR_TYPE *ar_opnd2type);
+Input:  Two operands, both identical pointer or 32, 46, or 64-bit integral
+        types.
+Output:  No result.  Information is returned via return value.
+Diagnostics:  AR_Compare_Invalid returned if the types of the operands
+              are not valid.
+              AR_Compare_LT returned if the first operand is less than
+              the second operand; never returned for comparisons of
+              function pointers.
+              AR_Compare_EQ returned if the first operand is equal to
+              the second operand.
+              AR_Compare_GT returned if the first operand is greater than
+              the second operand; never returned for comparisons of
+              function pointers.
+              AR_Compare_NE returned if the first operand is not equal
+              to the second operand; returned only for comparisons of
+              function pointers.
+
+Name:  AR_convert
+Prototype:
+    int AR_convert(AR_DATA *result, const AR_TYPE *resulttype,
+                   const AR_DATA *ar_opnd1, const AR_TYPE *ar_opnd1type);
+Input:  One operand of integral or pointer type.
+        The result type must have integral or pointer type.
+Output:  The result is the conversion of the operand to the result type.
+         Conversion from an integral type to an integral type follow the
+         rules stated by the ANSI/ISO C standard.  Conversions involving
+         pointers follow these rules:
+
+              A pointer can not be converted to a floating type, and
+              vice versa.
+
+              When converting a pointer to a larger integral type,
+              the value is not sign extended.  If the size of the
+              integral type is smaller than the pointer type, the
+              value is truncated.
+              
+              When converting a signed integral value to a larger
+              pointer type, the value is sign extended.  If the
+              size of the pointer is smaller than the integral
+              type, the value is truncated.
+
+              Converting a byte pointer to or from a char,
+              function, or word pointer is not allowed.
+
+              When converting a word pointer to a function pointer,
+              the result value is shifted left 2 bits.  When
+              converting a function pointer to a word pointer, the
+              result value is shifted right 2 bits.
+              When converting to a word or function pointer, the
+              result is truncated to the size of the result type
+              (after any necessary shifting).
+              When converting to a char pointer from a word or
+              function pointer, the result is not sign extended.
+
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              or the result is not valid, or if the operand type can
+              not be converted to the result type.  Result value is
+              undefined.
+              AR_STAT_OVERFLOW returned if the value of the operand can
+              not be preserved when converted to the result type (never
+              returned if converting a pointer type to another pointer
+              type).
+              AR_STAT_OVERFLOW returned if the result type is signed
+              46-bit integer and the actual result of the operation
+              is too large (in magnitude) to be represented as a signed
+              46-bit integer.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative
+              (never returned if the result type is pointer).
+
+Name:  AR_convert_str_to_int
+Prototype:
+    int AR_convert_str_to_int(AR_DATA *result, const AR_TYPE *resulttype,
+                              int *ar_bits_used,
+                              const char *ar_str, const int *ar_base);
+Input:  The printable representation of a positive integral value, and the
+        base in which it is represented.  The string should not contain a
+        leading minus sign.  (Call AR_negate to get a negative integer.)
+        The result type must have unsigned integer type with 64 or fewer bits.
+Output:  The result is the conversion of the character string to the result
+         type.  If ar_bits_used is not a null pointer, the number of bits
+         used in the result (i.e. 64 minus the leading zero count of the
+         result value) is stored in the int pointed to.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the result type is
+              not unsigned, not integer, or not 64 or fewer bits.
+              AR_STAT_UNDEFINED returned if the base is not 2, 8, 10, or 16,
+              or if the format string contains invalid characters for the
+              base type.
+              AR_STAT_OVERFLOW returned if the actual result of the conversion
+              is too large to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+
+Name:  AR_convert_int_to_str
+Prototype:
+    int AR_convert_int_to_str(char *resultstr, const int *ar_base,
+                              const AR_DATA *ar_opnd1,
+                              const AR_TYPE *ar_opnd1type);
+Input:  One operand of integral type.
+        The base for the result string.
+Output:  The result is the conversion of the integral value to a character
+         string containing the printable representation.  If the base is 10
+         and the operand has a signed integral type, a negative value is
+         converted to a string containing a leading minus sign.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the operand does not have
+              integral type.
+              AR_STAT_UNDEFINED returned if the base is not 2, 8, 10, or 16.
+
+Name:  AR_convert_host_sint64_to_int
+Prototype:
+    int AR_convert_host_sint64_to_int(AR_DATA *result,
+                                      const AR_TYPE *resulttype,
+                                      AR_HOST_SINT64 i64val);
+Input:  One operand of signed, 64-bit integral type on the host machine.
+        Note:  operand argument is passed by value.
+Output:  The result is the conversion of the integral value to the result
+         type.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the result does not have
+              integral type.
+              AR_STAT_OVERFLOW returned if the actual result of the conversion
+              is too large to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_convert_int_to_host_sint64
+Prototype:
+    int AR_convert_int_to_host_sint64(AR_HOST_SINT64 *i64val,
+                                      const AR_DATA *opnd,
+                                      const AR_TYPE *opndtype);
+Input:  One operand of integral type.
+Output:  The result is the conversion of the integral value to a 64-bit
+         signed integral type on the host machine.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the operand does not have
+              integral type.
+              AR_STAT_OVERFLOW returned if the actual result of the conversion
+              is too large to be represented as a signed 64-bit integral
+              value on the host machine.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_convert_str_to_float
+Prototype:
+    int AR_convert_str_to_float(AR_DATA *result,
+                                const AR_TYPE *resulttype,
+                                const char *ar_str);
+Input:  The printable representation of a positive floating value.
+        The result type must have non-complex floating type.
+Output:  The result is the conversion of the character string to the result
+         type.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the result is
+              not non-complex floating type.
+              AR_STAT_UNDEFINED returned if the format string contains
+              invalid characters for the base type.
+              AR_STAT_OVERFLOW returned if the actual result of the conversion
+              is too large to be represented as the result.
+              AR_STAT_UNDERFLOW returned if an intermediate, nonzero, higher
+              precision value underflows when converted to the final result.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_convert_float_to_str
+Prototype:
+    int AR_convert_float_to_str(char *resultstr,
+                                const AR_DATA *ar_opnd1,
+                                const AR_TYPE *ar_opnd1type);
+Input:  One operand of non-complex floating type.
+Output:  The result is the conversion of the floating value to a character
+         string containing the printable "e" format representation.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the operand does not have
+              integral type.
+
+Name:  AR_convert_hex_str_to_float
+Prototype:
+    int AR_convert_hex_str_to_float(AR_DATA *result,
+                                    const AR_TYPE *resulttype,
+                                    const char *ar_str);
+Input:  A string containing the hexadecimal bit representation of a
+        floating value.
+        The result type must have non-complex floating type.
+Output:  The floating value of the hexadecimal floating constant.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the result is
+              not a non-complex floating type.
+              AR_STAT_UNDEFINED returned if the format string contains
+              invalid hexadecimal characters.
+
+Name:  AR_CRAY_64_trunc_bits
+Prototype:
+    int AR_CRAY_64_trunc_bits(int truncbits);
+Input:  An integral value in the range 0 - 47 (inclusive).
+        Note:  argument is passed by value.
+Output:  Sets the number of truncation bits for CRAY 64-bit floating-point
+         operations, including complex operations using CRAY 64-bit floats.
+         Functions affected by truncation are AR_add, AR_subtract,
+         AR_multiply, and AR_divide.
+         AR_floating_trunc_bits returns zero if no error; AR_STAT_UNDEFINED if
+         argument is out of range.
+
+Name:  AR_sqrt
+Prototype:
+    int AR_sqrt(AR_DATA *result, const AR_TYPE *resulttype,
+	    const AR_DATA *opnd, const AR_TYPE *opndtype)
+Input:  One operand of floating type.
+        The result type must match the type of the operand.
+Output:  The result is the square root value of the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED returned if the operation is not defined for
+              the given operand value or intrinsic function simulation is
+              requested on a system for which simulation is not supported.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+
+Name:  AR_exp
+Prototype:
+    int AR_exp(AR_DATA *result, const AR_TYPE *resulttype,
+	   const AR_DATA *opnd, const AR_TYPE *opndtype)
+Input:  One operand of floating type.
+        The result type must match the type of the operand.
+Output:  The result is the (natural) exponential value of the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED returned if the operation is not defined for
+              the given operand value or intrinsic function simulation is
+              requested on a system for which simulation is not supported.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+
+Name:  AR_log
+Prototype:
+    int AR_log(AR_DATA *result, const AR_TYPE *resulttype,
+	   const AR_DATA *opnd, const AR_TYPE *opndtype)
+Input:  One operand of floating type.
+        The result type must match the type of the operand.
+Output:  The result is the natural logarithm value of the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED returned if the operation is not defined for
+              the given operand value or intrinsic function simulation is
+              requested on a system for which simulation is not supported.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_cabs
+Prototype:
+    int AR_cabs(AR_DATA *result, const AR_TYPE *resulttype,
+	    const AR_DATA *opnd, const AR_TYPE *opndtype)
+Input:  One operand of complex floating type.
+        The result type must match the type of the real part of the operand.
+Output:  The result is the complex absolute value of the operand.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED returned if the operation is not defined for
+              the given operand value or intrinsic function simulation is
+              requested on a system for which simulation is not supported.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+
+Name:  AR_power
+Prototype:
+    int AR_power(AR_DATA *result,  const AR_TYPE *resulttype,
+	     const AR_DATA *base,  const AR_TYPE *basetype,
+	     const AR_DATA *power, const AR_TYPE *powertyp)
+Input:  Two operands of integer or floating types.  The following are supported:
+		base		power		result type
+		-------------	-------------	--------------------
+		Integer[1]	Integer[1]	Integer
+		Integer[2]	Float		Float type of power
+		Float		Integer[1]	Float type of base
+		Float		Float[3]	Float type of base
+		Float[4]	Float[4]	Float[4]
+		-------------
+		[1] Integer size must be 46- or 64-bit for PVP systems.
+		    Integer size must 32-bit for SPARC systems.
+		[2] Integer converted internally to float type of power
+		[3] Non-complex float type of size less than or equal to
+		    size of base type.  Power is not converted.
+		[4] Base and/or power converted to float type of greater
+		    size and to complex if either are complex.
+        The result type must match the type shown in the result column.
+Output:  The result is the exponential value of the base raised to the value
+	 of the power.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the type of the operand
+              and/or resulttype is not valid.  Result value is undefined.
+              AR_STAT_UNDEFINED returned if the operation is not defined for
+              the given operand values or intrinsic function simulation is
+              requested on a system for which simulation is not supported.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+
+Name:  AR_round_int_div
+Prototype:
+	int AR_round_int_div (AR_DATA *result, const AR_TYPE *resulttype,
+		const AR_DATA *ar_opnd, const AR_TYPE *ar_opndtype);
+Input:  64-bit Cray floating point operand with matching result type.
+Output: The result is the strange round for "rounded integer division" per
+	code sequences in the CMCS backend.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the result type does not match
+	      the operand type or is not a 64-bit Cray floating type.
+              AR_STAT_OVERFLOW returned if the actual result of the operation
+              is too large (in magnitude) to be represented as the result.
+              AR_STAT_ZERO returned if the result value is zero.
+              AR_STAT_NEGATIVE returned if the result value is negative.
+
+Name:  AR_one
+Prototype:
+	int AR_one (AR_DATA *result, const AR_TYPE *resulttype);
+Input:  Type of the result.
+Output: The result is the value of 1 in the requested type.
+Diagnostics:  AR_STAT_INVALID_TYPE returned if the value of 1 cannot be
+	      represented in the result type.

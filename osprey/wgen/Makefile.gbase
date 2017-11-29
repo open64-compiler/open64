@@ -1,0 +1,356 @@
+# -*- Makefile -*-
+#
+#  Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
+#
+
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement
+#  or the like.  Any license provided herein, whether implied or
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with
+#  other software, or any other product whatsoever.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for spin
+#
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+
+# These are here because they are needed both in fecc and in common so just
+# putting them in fecc/defines.h is not enough:
+
+HOSTDEFS += -DIN_GCC -DHAVE_CONFIG_H
+
+HOSTDEFS += -DLONGLONG
+HOSTDEFS += -DFRONT_END
+HOSTDEFS += -DUSE_DECL_SRCPOS
+##########################################################
+# The following line is from original g++fe/Makefile.gbase
+HOSTDEFS += -DNEW_SYMTAB
+HOSTDEFS += -DFRONT_END_C
+HOSTDEFS += -DCFE -DCIL
+HOSTDEFS += -DDO_IL_LOWERING=0
+HOSTDEFS += -DNO_USR_INCLUDE=TRUE
+HOSTDEFS += -DAUTOMATIC_TEMPLATE_INSTANTIATION=0
+HOSTDEFS += -DINSTANTIATION_BY_IMPLICIT_INCLUSION=0
+HOSTDEFS += -DBACK_END_IS_C_GEN_BE=0
+HOSTDEFS += -DMONGOOSE_CIF
+
+HOSTDEFS += -DSGI_RAG_BACKEND
+HOSTDEFS += -DSGI_MONGOOSE
+HOSTDEFS += -DHANDLE_PRAGMA_WEAK
+HOSTDEFS += -DMIPSEL
+
+#define NEW_INITIALIZER
+# This macro is for #420 in BugZilla, should be removed later
+HOSTDEFS += -DNEW_INITIALIZER
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On
+HOSTDEFS += -DDEBUG=1
+HOSTDEFS += -DCHECKING=1
+else
+HOSTDEFS += -DDEBUG=0
+HOSTDEFS += -DCHECKING=0
+endif
+
+ifneq ($(BUILD_VARIANT), DEFAULT)
+HOSTDEFS += -D$(BUILD_VARIANT)
+endif
+##########################################################
+# The following line is from original g++fe/Makefile.gbase
+HOSTDEFS += -DGPLUSPLUS_FE
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+TARGDEFS = -D__MIPS_AND_IA64_ELF_H
+endif
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+FE_DIR                  = $(BUILD_BASE)
+COMMON_COM_DIR          = $(BUILD_TOT)/common/com
+COMMON_COM_TARG_DIR     = $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
+COMMON_TARG_INFO_ACCESS_DIR = $(BUILD_TOT)/common/targ_info/access
+COMMON_UTIL_DIR         = $(BUILD_TOT)/common/util
+COMMON_UTIL_TARG_DIR    = $(BUILD_TOT)/common/util/$(BUILD_TARGET_DIR)
+
+INCLUDE_DIR             = $(BUILD_AREA)/include \
+                          $(BUILD_TOT)/../libspin
+
+TARG_COMUTIL_DIR        = $(TARGDIR)/libcomutil
+TARG_CMPLRS_DIR         = $(TARGDIR)/libcmplrs
+TARG_LIBIBERTY_DIR      = $(TARGDIR)/libiberty
+TARG_LIBSPIN_DIR      	= $(BUILD_OBJ_DIR)/libspin
+TARG_LIBSPIN42_DIR     	= $(TARGDIR)/libspin_4_2_0
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS =              \
+   $(FE_DIR)            \
+   $(COMMON_COM_DIR)    \
+   $(COMMON_COM_TARG_DIR)\
+   $(COMMON_UTIL_DIR)   \
+   $(COMMON_UTIL_TARG_DIR)\
+   $(COMMON_TARG_INFO_ACCESS_DIR)
+INC_DIRS =              \
+   $(INCLUDE_DIR)       \
+   $(COMMON_COM_DIR)    \
+   $(COMMON_COM_TARG_DIR)\
+   $(COMMON_UTIL_DIR)   \
+   $(COMMON_UTIL_TARG_DIR)\
+   $(COMMON_TARG_INFO_ACCESS_DIR) \
+   $(FE_DIR)            \
+   $(BUILD_TOT)/include/gnu \
+   $(BUILD_TOT)/include \
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+FE_C_SRCS =             \
+    main.c         	\
+    varasm.c		\
+    c_int_model.c       
+
+FE_CXX_SRCS =           \
+    wgen_misc.cxx       \
+    wgen_expr.cxx       \
+    wgen_stmt.cxx       \
+    wgen_decl.cxx       \
+    wgen_dst.cxx        \
+    wgen_spin_symbol.cxx \
+    wgen_tracing.cxx
+
+OPENMP_SRCS =           \
+    omp_directive.cxx   \
+    wgen_omp_check_stack.cxx \
+    wgen_omp_directives.cxx
+
+COMMON_COM_CXX_SRCS =   \
+   config.cxx           \
+   const.cxx            \
+   controls.cxx         \
+   dwarf_DST.cxx                \
+   dwarf_DST_dump.cxx   \
+   dwarf_DST_mem.cxx    \
+   dwarf_DST_producer.cxx \
+   err_host.cxx         \
+   glob.cxx             \
+   intrn_info.cxx       \
+   ir_bcom.cxx          \
+   ir_bwrite.cxx                \
+   ir_reader.cxx                \
+   irbdata.cxx          \
+   mtypes.cxx           \
+   opcode.cxx           \
+   opcode_core.cxx      \
+   pu_info.cxx          \
+   strtab.cxx           \
+   symtab.cxx           \
+   symtab_verify.cxx    \
+   ttype.cxx            \
+   wn.cxx               \
+   wn_map.cxx           \
+   wn_pragmas.cxx       \
+   wn_simp.cxx          \
+   wn_util.cxx          \
+   wutil.cxx            \
+   xstats.cxx
+
+COMMON_COM_TARG_SRCS =  \
+   config_host.c                \
+   config_platform.c
+
+COMMON_COM_TARG_CXX_SRCS = \
+   config_targ.cxx      \
+   config_elf_targ.cxx  \
+   targ_const.cxx       \
+   targ_sim.cxx
+
+FRONT_END_C_SRCS =              \
+   $(COMMON_UTIL_SRCS)          \
+   $(COMMON_COM_SRCS)           \
+   $(COMMON_COM_TARG_SRCS)      \
+   $(FE_C_SRCS)
+
+FRONT_END_CXX_SRCS =            \
+   $(COMMON_COM_CXX_SRCS)       \
+   $(COMMON_COM_TARG_CXX_SRCS)  \
+   $(FE_CXX_SRCS)
+
+ifeq ($(BUILD_VARIANT), FE_GNU_4_2_0)
+FRONT_END_CXX_SRCS += $(OPENMP_SRCS)
+endif
+
+FRONT_END_C_OBJS = $(FRONT_END_C_SRCS:T:.c=.o)
+
+FRONT_END_CXX_OBJS = $(FRONT_END_CXX_SRCS:T:.cxx=.o)
+
+FRONT_END_OBJS = $(FRONT_END_C_OBJS) $(FRONT_END_CXX_OBJS)
+
+CFILES = $(FRONT_END_C_SRCS)
+CXXFILES = $(FRONT_END_CXX_SRCS)
+
+VPATH    =  $(SRC_DIRS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(INC_DIRS))
+
+LC++OPTS = $(STD_COMPILE_OPTS)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(LCINCS)
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+LDIRT =
+
+#+----------------------------------------------------------------------
+#  Extra Rules
+#----------------------------------------------------------------------
+.c.E:
+	$(CCF) -MDupdate /dev/null -E ${<} | sed -e '/^ *$$/d'  >${*F}.E
+
+#------------------------------------------------------------
+#  Define target
+#------------------------------------------------------------
+
+ifeq ($(BUILD_VARIANT), FE_GNU_4_2_0)
+TARGETS = wgen42
+LIBSPIN = libgspin42.a
+else
+TARGETS = wgen
+LIBSPIN = libgspin.a
+endif
+
+# Do not name the target: spin
+# gfecc is what a -Yf,<path> would expect - so keep it that way
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+COMUTIL_OBJS = $(TARG_COMUTIL_DIR)/libcomutil.a
+###################################################################
+# This was present in the original g++fe/Makefile.gbase
+# LIBM_OBJS     = $(TARG_LIBM_DIR)/libm.a
+###################################################################
+CMPLRS_OBJS  = $(TARG_CMPLRS_DIR)/libcmplrs.a
+LIBIBERTY_OBJS = $(TARG_LIBIBERTY_DIR)/libiberty.a
+#LIBSPIN_OBJS = $(BUILD_TOT)/../libspin/$(LIBSPIN)
+
+ifeq ($(BUILD_VARIANT), FE_GNU_4_2_0)
+LIBSPIN_OBJS = $(TARG_LIBSPIN42_DIR)/libgspin42.a
+else
+LIBSPIN_OBJS = $(TARG_LIBSPIN_DIR)/libgspin.a
+endif
+
+ifneq ($(BUILD_OS),DARWIN)
+LLDOPTS = -Wl,--export-dynamic
+endif
+LLDLIBS = $(COMUTIL_OBJS) $(LIBIBERTY_OBJS) $(LIBSPIN_OBJS)
+LLDLIBS += -lm $(CMPLRS_OBJS)
+LDIRT += $(TARGETS)
+
+.PHONY: default first last install
+
+#default: first $(TARGETS) last
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is
+#  built.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+	$(call submake,$(TARG_CMPLRS_DIR))
+	$(call submake,$(TARG_COMUTIL_DIR))
+	$(call submake,$(TARG_LIBIBERTY_DIR))
+	$(MAKE) $(LIBSPIN_OBJS)
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last: make_deps
+
+
+install: default
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
+else
+	$(STD_INSTALL) -F $(STD_MONGOOSE_LOC) $(TARGETS)
+endif
+
+
+$(LIBSPIN_OBJS):
+ifeq ($(BUILD_VARIANT), FE_GNU_4_2_0)
+	$(call submake,$(TARG_LIBSPIN42_DIR))
+else
+	$(call submake,$(TARG_LIBSPIN_DIR))
+endif
+
+$(TARGETS) : $(OBJECTS)
+	$(link.cxxf) -g -o $@ $(OBJECTS) $(LDFLAGS)
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+wn_util.o: HOSTDEFS += -DMONGOOSE_BE

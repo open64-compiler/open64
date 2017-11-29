@@ -1,0 +1,36 @@
+
+To build dwarfdump, first build libdwarf in the neighboring
+directory then type
+	./configure
+	make
+
+To use dwarf or libdwarf, you may want to install dwarf.h and
+libdwarf.h somewhere convenient, and you may need the libdwarf
+in the accompanying libdwarf directory
+
+If your headers or libelf/libdwarf are not in the expected places,
+use the configure script to access them (and to add other ld
+or C flags).
+For example, using csh syntax:
+	setenv PRIVATE_LIBDIR /home/davea/lib
+	./configure LDFLAGS="-L$PRIVATE_LIBDIR" \
+		CPPFLAGS="-I/home/davea/inc" CFLAGS="-I/home/davea/inc"
+Set both CFLAGS and CPPFLAGS so that configure works properly.
+
+If $PRIVATE_LIBDIR  has both libelf.so and libelf.a, the libelf.so
+will be picked up and 
+  "./tag_tree_build: error while loading shared libraries: 
+	libelf.so.0: cannot open shared object file: 
+	No such file or directory"
+will probably result.
+Either: remove libelf.so.* from your $PRIVATE_LIBDIR
+or set LD_LIBRARY_PATH to $PRIVATE_LIBDIR, or use LDFLAGS to
+set rpath.   Much simpler all around to ensure that $PRIVATE_LIBDIR
+only has archive libelf, not shared-library libelf.
+
+
+David Anderson.  davea@sgi.com
+
+$Source: /proj/osprey/CVS/open64/osprey1.0/libdwarf/dwarfdump/README,v $
+$Revision: 1.1.1.1 $
+$Date: 2005/10/21 19:00:00 $

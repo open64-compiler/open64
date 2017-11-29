@@ -1,0 +1,142 @@
+# USMID @(#) libfi/mathlb/mathlb.makeinclude	92.10	11/22/99 10:13:02
+
+#
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+IEMIPS =
+ifneq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+ifeq ($(BUILD_ARCH), MIPS3)
+IEMIPS =\
+    ieee_mips.c
+endif
+ifeq ($(BUILD_ARCH), MIPS4)
+IEMIPS =\
+    ieee_mips.c
+endif
+endif
+
+CFILES += \
+    ceiling.c \
+    chtoi.c \
+    chton.c \
+    cot.c \
+    ctoi.c \
+    cton.c \
+    dcot.c \
+    dsign.c \
+    dtan.c \
+    exponent.c \
+    floor.c \
+    fp_class_h.c \
+    fp_class_r.c \
+    fp_class_d.c \
+    fraction.c \
+    hcot.c \
+    hsign.c \
+    htoi.c \
+    hton.c \
+    iabs.c \
+    ieee_binary_scale_d_i.c \
+    ieee_binary_scale_d_n.c \
+    ieee_binary_scale_h_i.c \
+    ieee_binary_scale_h_n.c \
+    ieee_binary_scale_r_i.c \
+    ieee_binary_scale_r_n.c \
+    ieee_exponent_d.c \
+    ieee_exponent_h.c \
+    ieee_exponent_i.c \
+    ieee_exponent_i1.c \
+    ieee_exponent_i2.c \
+    ieee_exponent_n.c \
+    ieee_exponent_r.c \
+    ieee_int.c \
+    ieee_next_after.c \
+    iso_c_binding_support.c
+ifneq ($(BUILD_TARGET), IA64)
+CFILES += \
+    ieee_module_support.c 
+endif
+CFILES += \
+    ilen.c \
+    itoi.c \
+    nabs.c \
+    nearest.c \
+    nton.c \
+    random.c \
+    ransed.c \
+    rrspacing.c \
+    rtoi.c \
+    rton.c \
+    scale.c \
+    set_exponent.c \
+    sign.c \
+    snglr.c \
+    spacing.c \
+    $(IEMIPS)
+
+F90FILES += \
+    ieee_features.F90 \
+    ieee_arithmetic.F90 \
+    ieee_exceptions.F90 \
+    iso_c_binding.F90 \
+    iso_fortran_env.F90
+
+SRC_DIRS += \
+   $(BUILD_TOT)/libfi/mathlb
+
+# We're assuming that any .F90 module in this directory is supposed to be
+# an "intrinsic module" (in the F2003 sense of the term.) If not, this option
+# should be used only for such modules (e.g. ieee_arithmetic, ieee_exceptions,
+# ieee_features, iso_fortran_env.)
+F90FLAGS += \
+#   -Wf,-intrinsic_module_gen
+
+# Program gen_ieee_cpp_macros generates file ieee_cpp_macros.h, which is
+# needed by the TR15580/F2003 IEEE intrinsic modules
+gen_ieee_cpp_macros: gen_ieee_cpp_macros.o
+
+gen_ieee_cpp_macros.o: gen_ieee_cpp_macros.c
+
+ieee_cpp_macros.h: gen_ieee_cpp_macros
+	./gen_ieee_cpp_macros > ieee_cpp_macros.h
+
+ieee_exceptions.o ieee_arithmetic.o iso_fortran_env.o: ieee_cpp_macros.h
+ieee_exceptions.pg.o ieee_arithmetic.pg.o iso_fortran_env.pg.o: ieee_cpp_macros.h
+ieee_exceptions.pic.o ieee_arithmetic.pic.o iso_fortran_env.pic.o: ieee_cpp_macros.h
+
+LF77INCS += -I$(BUILD_AREA)/libfortran
+
+LDIRT = ieee_cpp_macros.h gen_ieee_cpp_macros *.mod $(XMATHLBDIRT)
+

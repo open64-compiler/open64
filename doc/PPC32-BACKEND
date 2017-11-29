@@ -1,0 +1,213 @@
+/*
+
+  Copyright (C) 2006-2009 Tsinghua University.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if 
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+*/
+
+/*
+  Release notes, about Open64 PowerPC 32 backend
+*/
+===================================================================================================
+
+Menu
+------------------------------------------------
+I.   Introduction
+II.  Test cases and results
+III. Kernel compilation
+IV.  Known problems
+V.   Developers
+
+===================================================================================================
+I. Introduction
+------------------------------------------------
+
+This document explains the status of open64 back-end.
+If you want to know how to compile and install Open64 on a powerpc32 
+based system, please check HOWTO-INSTALL-OPEN64 file.
+
+Supported language: C with some gcc inline asm extension.
+Supported processor: freescale's powerpc32
+
+This work is supported by NSFC, CHINA 863 project and Freescale.
+
+II. Test cases and results
+------------------------------------------------
+-Test platform: 
+We use two kinds of hardware to build open64 for powerpc:
+One is MPC7448 with Freescale's Linux system (gcc/g++ 3.3.5). 
+More information like this:
+lixin@MPC7448HPC2:~$ cat /proc/cpuinfo 
+processor       : 0
+cpu             : 7448, altivec supported
+revision        : 2.0 (pvr 8004 0200)
+bogomips        : 1064.96
+vendor          : Freescale Semiconductor
+machine         : Taiga
+PB freq         : 133Mhz
+SDC freq        : 133Mhz
+lixin@MPC7448HPC2:~$  uname -a
+Linux MPC7448HPC2 2.6.11 #1 Tue Mar 20 10:54:24 CST 2007 ppc GNU/Linux
+Freescale's webpage should be:
+http://www.freescale.com/webapp/sps/site/prod_summary.jsp?code=MPC7448
+
+Another one is my Apple ibook G4 14' laptop with ubuntu linux 8.04 for
+powerpc (gcc 3.4.6/g++ 3.3.6).
+Please see http://en.wikipedia.org/wiki/IBook.
+More information like this:
+ydong@ibook:~$ uname -a
+Linux ibook 2.6.24-23-powerpc #1 Wed Apr 1 21:27:27 UTC 2009 ppc GNU/Linux
+ydong@ibook:~$ cat /proc/cpuinfo 
+processor       : 0
+cpu             : 7447A, altivec supported
+clock           : 1333.333000MHz
+revision        : 0.1 (pvr 8003 0101)
+bogomips        : 73.47
+timebase        : 18432000
+platform        : PowerMac
+machine         : PowerBook6,5
+motherboard     : PowerBook6,5 MacRISC3 Power Macintosh 
+detected as     : 287 (iBook G4)
+pmac flags      : 0000001b
+L2 cache        : 512K unified
+pmac-generation : NewWorld
+
+We also use skyeye simulator to debug linux kernel. Skyeye is maintained by
+Professor Yu Chen, one of my colleagues. It works very well and can be checked out here:
+https://skyeye.svn.sourceforge.net/svnroot/skyeye/skyeye-v1/branches/skyeye-1.2.8
+
+-Test framework:
+Osprey test based on dejagnu.
+
+-Test results:
+--gcc.torture version
+	-O0	-O2	-O3
+Good cases	1384	1383	1389
+Building passed	1374	1376	1383
+Building failed	10	7	6
+Run cases	716	719	725
+Running passed	716	704	724
+Running failed	0	15	1
+
+
+--SPEC 2000 C (7448 Development board)
+   Benchmarks       open64 open64   open64 
+   Base Ratio         O0     O2       O3
+---------------int-------------------------------
+   164.gzip          132    325    338                             
+   175.vpr           193    304    270                           
+   176.gcc           239    459    460                             
+   181.mcf           214    261    262                             
+   186.crafty        216    423    423                           
+   197.parser        163    302    349                           
+   253.perlbmk       198    443    431                             
+   254.gap           160    368    368                           
+   255.vortex        256    436    443                           
+   256.bzip2         145    339    353                             
+   300.twolf         284    531    535           
+---------------float ----------------------------
+   177.mesa          208    359    363                             
+   179.art           291    402    400                           
+   183.equake        129    189    199                           
+   188.ammp          138    245    238                             
+
+--kernel suites (v552, developmented by tsinghua, for gcc inline asm extension features)
+ Good cases: 56
+     Building passed: 43
+     Building failed: 13
+
+ Runned cases: 15
+     Running passed: 13
+     Running failed: 2
+         Exit abnormally: 1
+         Error messages : 1
+
+III. Kernel Compilation
+------------------------------------------------
+
+We use a shell scripts file to handle options for kernel compilation.
+It locates in osprey/targppc32_ppc32/driver/
+
+Scripts file "kdriver" mainly does these things:
+1)ignores these options onlyfor GCC and do not pass them to opencc.
+  For options such as omit_frame-pointer that gcc uses for kernel
+  compilation, but are not relavant to osprey. So we must ignore them.
+2)Create and pass correct options such as -OPT:spec=off and -OPT:swp=off
+  for osprey.
+
+First, it gets all the gcc options for kernel compilation (We do not
+need to modify kernel's makefile). Then it adds essential ospry options
+and ignores some options only supported by gcc. Builds and passes
+correct options to osprey for kernel compilation.
+
+I'd like to add it as a seperate file. It is just for kernel building.
+For other application, we still use the origional driver.
+
+We try linux-2.6.23, you can down load it from kernel.org, then patch it. 
+The patch can be download from our websit (see the last section).
+
+When we build kernel for mpc8560, we use it like this:
+
+  make ARCH=ppc mpc8560_ads_defconfig
+  make ARCH=ppc CC=kopencc vmlinux (kopencc=kdriver, just a symbol link)
+
+If you want build kernel for mpc8572 (multi-core), should be:
+
+  make ARCH=powerpc mpc8572_ads_defconfig
+  make ARCH=powerpc CC=kopencc vmlinux (kopencc=kdriver, just a symbol link)
+
+then, it will help us to reorgnize the options.
+That's the way we use it now.
+
+IV. Known problems / Todo List
+------------------------------------------------
+We still need a patch for kernel compilation. 
+If you want it, please visit our website. 
+
+Further work for PPC32 not limited to the following topics:
+C++ Exception
+Fortran
+DWARF debug information output
+GCC extension such as inline asm
+IPA for PPC32
+Code size for embedded application
+
+V. Developers 
+------------------------------------------------
+ZHANG Duo          zhangduo07@mails.tsinghua.edu.cn
+YU Zhenyang        yuzhenyang@gmail.com
+LI Xin             li-xin05@mails.tsinghua.edu.cn
+CAO Zhen           caozhen_86@yahoo.com.cn
+LIN Ming           linming84@gmail.com
+ZHANG Weida        sunshinepascal@gmail.com
+WU Weiyi           w1w2y3@gmail.com>
+CHENG Pengqi       chengpq@gmail.com
+DONG Yuan          dongyuan@tsinghua.edu.cn
+WANG Shengyuan     wwssyy@tsinghua.edu.cn
+LUO Huan           luo_huan_na@126.com
+
+For more information, please see:
+ Retarget Open64 to an Embedded CPU - A practice for automatic approach, 
+   http://www.open64.net/uploads/media/cgo2007-open64-retarget_01.ppt
+ Paper about retarget, 
+   http://www2.computer.org/portal/web/csdl/doi/10.1109/ICESS.Symposia.2008.69 
+ Our website, 
+   http://soft.cs.tsinghua.edu.cn/soft/software.html

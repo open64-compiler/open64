@@ -1,0 +1,2228 @@
+/*
+ * Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
+ */
+
+/* -*- c -*-
+   Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
+   File modified October 3, 2003 by PathScale, Inc. to update Open64 C/C++ 
+   front-ends to GNU 3.3.1 release.
+ */
+
+/* This file contains the definitions and documentation for the
+   builtins used in the GNU compiler.
+   Copyright (C) 2000, 2001 Free Software Foundation, Inc.
+
+This file is part of GCC.
+
+GCC is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 2, or (at your option) any later
+version.
+
+GCC is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
+
+You should have received a copy of the GNU General Public License
+along with GCC; see the file COPYING.  If not, write to the Free
+Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+02111-1307, USA.  */
+
+/* Before including this file, you should define a macro:
+
+     DEF_BUILTIN (ENUM, NAME, CLASS, TYPE, LIBTYPE, BOTH_P,
+                  FALLBACK_P, NONANSI_P, ATTRS)
+
+   This macro will be called once for each builtin function.  The
+   ENUM will be of type `enum built_in_function', and will indicate
+   which builtin function is being processed.  The NAME of the builtin
+   function (which will always start with `__builtin_') is a string
+   literal.  The CLASS is of type `enum built_in_class' and indicates
+   what kind of builtin is being processed.
+
+   Some builtins are actually two separate functions.  For example,
+   for `strcmp' there are two builtin functions; `__builtin_strcmp'
+   and `strcmp' itself.  Both behave identically.  Other builtins
+   define only the `__builtin' variant.  If BOTH_P is TRUE, then this
+   builtin has both variants; otherwise, it is has only the first
+   variant.
+
+   TYPE indicates the type of the function.  The symbols correspond to
+   enumerals from builtin-types.def.  If BOTH_P is true, then LIBTYPE
+   is the type of the non-`__builtin_' variant.  Otherwise, LIBTYPE
+   should be ignored.
+
+   If FALLBACK_P is true then, if for some reason, the compiler cannot
+   expand the builtin function directly, it will call the
+   corresponding library function (which does not have the
+   `__builtin_' prefix.
+
+   If NONANSI_P is true, then the non-`__builtin_' variant is not an
+   ANSI/ISO library function, and so we should pretend it does not
+   exist when compiling in ANSI conformant mode.
+
+   ATTRs is an attribute list as defined in builtin-attrs.def that
+   describes the attributes of this builtin function.  */
+   
+/* A GCC builtin (like __builtin_saveregs) is provided by the
+   compiler, but does not correspond to a function in the standard
+   library.  */
+#undef DEF_GCC_BUILTIN
+#define DEF_GCC_BUILTIN(ENUM, NAME, TYPE, ATTRS)		\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_NORMAL, TYPE, BT_LAST,	\
+               false, false, false, ATTRS)
+
+
+/* A fallback builtin is a builtin (like __builtin_puts) that falls
+   back to the corresopnding library function if necessary -- but
+   for which we should not introduce the non-`__builtin' variant of
+   the name.  */
+#undef DEF_FALLBACK_BUILTIN				
+#define DEF_FALLBACK_BUILTIN(ENUM, NAME, TYPE, ATTRS)	\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_NORMAL, TYPE, TYPE,	\
+	       false, true, false, ATTRS)
+
+/* Like DEF_FALLBACK_BUILTIN, except that the function is not one that
+   is specified by ANSI/ISO C.  So, when we're being fully conformant
+   we ignore the version of these builtins that does not begin with
+   __builtin.  */
+#undef DEF_EXT_FALLBACK_BUILTIN
+#define DEF_EXT_FALLBACK_BUILTIN(ENUM, NAME, TYPE)	\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_NORMAL, TYPE, TYPE,	\
+	       false, true, true, ATTR_NOTHROW_LIST)
+
+/* A library builtin (like __builtin_strchr) is a builtin equivalent
+   of an ANSI/ISO standard library function.  In addition to the
+   `__builtin' version, we will create an ordinary version (e.g,
+   `strchr') as well.  If we cannot compute the answer using the
+   builtin function, we will fall back to the standard library
+   version.  */
+#undef DEF_LIB_BUILTIN					
+#define DEF_LIB_BUILTIN(ENUM, NAME, TYPE, ATTRS)	\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_NORMAL, TYPE, TYPE,	\
+	       true, true, false, ATTRS)
+
+/* Like DEF_LIB_BUILTIN, except that a call to the builtin should
+   never fall back to the library version.  */
+#undef DEF_LIB_ALWAYS_BUILTIN				
+#define DEF_LIB_ALWAYS_BUILTIN(ENUM, NAME, TYPE)	\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_NORMAL, TYPE, TYPE,	\
+    	       true, false, true, ATTR_CONST_NOTHROW_LIST)
+
+/* Like DEF_LIB_BUILTIN, except that the function is not one that is
+   specified by ANSI/ISO C.  So, when we're being fully conformant we
+   ignore the version of these builtins that does not begin with
+   __builtin.  */
+#undef DEF_EXT_LIB_BUILTIN				
+#define DEF_EXT_LIB_BUILTIN(ENUM, NAME, TYPE, ATTRS)	\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_NORMAL, TYPE, TYPE,	\
+   	       true, true, true, ATTRS)
+
+/* Like DEF_LIB_BUILTIN, except that the function is only a part of
+   the standard in C99 or above.  */
+#undef DEF_C99_BUILTIN					
+#define DEF_C99_BUILTIN(ENUM, NAME, TYPE, ATTRS)	\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_NORMAL, TYPE, TYPE,	\
+   	       true, true, !flag_isoc99, ATTRS)
+
+/* Like DEF_LIB_BUILTIN, except that the function is expanded in the
+   front-end.  */
+#undef DEF_FRONT_END_LIB_BUILTIN			
+#define DEF_FRONT_END_LIB_BUILTIN(ENUM, NAME, TYPE, ATTRS)	\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_FRONTEND, TYPE, TYPE,	\
+	       true, true, false, ATTRS)
+
+/* Like DEF_FRONT_END_LIB_BUILTIN, except that the function is not one
+   that is specified by ANSI/ISO C.  So, when we're being fully
+   conformant we ignore the version of these builtins that does not
+   begin with __builtin.  */
+#undef DEF_EXT_FRONT_END_LIB_BUILTIN			
+#define DEF_EXT_FRONT_END_LIB_BUILTIN(ENUM, NAME, TYPE, ATTRS)	\
+  DEF_BUILTIN (ENUM, NAME, BUILT_IN_FRONTEND, TYPE, TYPE,	\
+	       true, true, true, ATTRS)
+
+/* A built-in that is not currently used.  */
+#undef DEF_UNUSED_BUILTIN					
+#define DEF_UNUSED_BUILTIN(X)					\
+  DEF_BUILTIN (X, null, NOT_BUILT_IN, BT_LAST,	\
+	       BT_LAST, false, false, false, ATTR_NOTHROW_LIST)
+
+/* If SMALL_STACK is defined, then `alloca' is only defined in its
+   `__builtin' form.  */
+#if SMALL_STACK  
+DEF_FALLBACK_BUILTIN(BUILT_IN_ALLOCA,
+		     "__builtin_alloca",
+		     BT_FN_PTR_SIZE,
+		     ATTR_MALLOC_NOTHROW_LIST)
+#else
+DEF_EXT_LIB_BUILTIN(BUILT_IN_ALLOCA,
+		    "__builtin_alloca",
+		    BT_FN_PTR_SIZE,
+		    ATTR_MALLOC_NOTHROW_LIST)
+#endif
+
+DEF_LIB_ALWAYS_BUILTIN(BUILT_IN_ABS,
+		       "__builtin_abs",
+		       BT_FN_INT_INT)
+DEF_LIB_ALWAYS_BUILTIN(BUILT_IN_LABS,
+		       "__builtin_labs",
+		       BT_FN_LONG_LONG)
+
+DEF_LIB_ALWAYS_BUILTIN(BUILT_IN_FABS,
+		       "__builtin_fabs",
+		       BT_FN_DOUBLE_DOUBLE)
+DEF_LIB_ALWAYS_BUILTIN(BUILT_IN_FABSF,
+		       "__builtin_fabsf",
+		       BT_FN_FLOAT_FLOAT)
+DEF_LIB_ALWAYS_BUILTIN(BUILT_IN_FABSL,
+		       "__builtin_fabsl",
+		       BT_FN_LONG_DOUBLE_LONG_DOUBLE)
+
+DEF_C99_BUILTIN(BUILT_IN_LLABS,
+		"__builtin_llabs",
+		BT_FN_LONGLONG_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_IMAXABS,
+		"__builtin_imaxabs",
+		BT_FN_INTMAX_INTMAX,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CONJ,
+		"__builtin_conj",
+		BT_FN_COMPLEX_DOUBLE_COMPLEX_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CONJF,
+		"__builtin_conjf",
+		BT_FN_COMPLEX_FLOAT_COMPLEX_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CONJL,
+		"__builtin_conjl",
+		BT_FN_COMPLEX_LONG_DOUBLE_COMPLEX_LONG_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CREAL,
+		"__builtin_creal",
+		BT_FN_DOUBLE_COMPLEX_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CREALF,
+		"__builtin_crealf",
+		BT_FN_FLOAT_COMPLEX_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CREALL,
+		"__builtin_creall",
+		BT_FN_LONG_DOUBLE_COMPLEX_LONG_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CIMAG,
+		"__builtin_cimag",
+		BT_FN_DOUBLE_COMPLEX_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CIMAGF,
+		"__builtin_cimagf",
+		BT_FN_FLOAT_COMPLEX_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_CIMAGL,
+		"__builtin_cimagl",
+		BT_FN_LONG_DOUBLE_COMPLEX_LONG_DOUBLE,
+		ATTR_NOTHROW_LIST)
+
+DEF_UNUSED_BUILTIN(BUILT_IN_DIV)
+DEF_UNUSED_BUILTIN(BUILT_IN_LDIV)
+DEF_UNUSED_BUILTIN(BUILT_IN_FFLOOR)
+DEF_UNUSED_BUILTIN(BUILT_IN_FCEIL)
+DEF_UNUSED_BUILTIN(BUILT_IN_FMOD)
+DEF_UNUSED_BUILTIN(BUILT_IN_FREM)
+
+/* The system prototypes for `bzero', 'bcopy' and `bcmp' functions
+   have many variations, so don't specify parameters to avoid conflicts.
+   The expand_* functions check the argument types anyway.  */
+DEF_BUILTIN (BUILT_IN_BZERO,
+	     "__builtin_bzero",
+	     BUILT_IN_NORMAL,
+	     BT_FN_VOID_PTR_SIZE, 
+	     BT_FN_VOID_VAR,
+	     true, true, true,
+	     ATTR_NOTHROW_LIST)
+DEF_BUILTIN (BUILT_IN_BCOPY,
+	     "__builtin_bcopy",
+	     BUILT_IN_NORMAL,
+	     BT_FN_VOID_CONST_PTR_PTR_SIZE,
+	     BT_FN_VOID_VAR,
+	     true, true, true,
+	     ATTR_NOTHROW_LIST)
+DEF_BUILTIN (BUILT_IN_BCMP,
+	     "__builtin_bcmp",
+	     BUILT_IN_NORMAL,
+	     BT_FN_INT_CONST_PTR_CONST_PTR_SIZE,
+	     BT_FN_INT_VAR,
+	     true, true, true,
+	     ATTR_PURE_NOTHROW_LIST)
+
+DEF_EXT_LIB_BUILTIN(BUILT_IN_FFS,
+		    "__builtin_ffs",
+		    BT_FN_INT_INT,
+		    ATTR_CONST_NOTHROW_LIST)
+DEF_EXT_LIB_BUILTIN(BUILT_IN_INDEX,
+		    "__builtin_index",
+		    BT_FN_STRING_CONST_STRING_INT,
+		    ATTR_PURE_NOTHROW_LIST)
+DEF_EXT_LIB_BUILTIN(BUILT_IN_RINDEX,
+		    "__builtin_rindex",
+		    BT_FN_STRING_CONST_STRING_INT,
+		    ATTR_PURE_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_MEMCPY,
+		"__builtin_memcpy",
+		BT_FN_PTR_PTR_CONST_PTR_SIZE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_MEMMOVE,
+		"__builtin_memmove",
+		BT_FN_PTR_PTR_CONST_PTR_SIZE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_MEMCMP,
+		"__builtin_memcmp",
+		BT_FN_INT_CONST_PTR_CONST_PTR_SIZE,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_MEMSET,
+		"__builtin_memset",
+		BT_FN_PTR_PTR_INT_SIZE,
+		ATTR_NOTHROW_LIST)
+DEF_EXT_LIB_BUILTIN(BUILT_IN_MEMPCPY,
+		"__builtin_mempcpy",
+		BT_FN_PTR_PTR_CONST_PTR_SIZE,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_STRCAT,
+		"__builtin_strcat",
+		BT_FN_STRING_STRING_CONST_STRING,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRNCAT,
+		"__builtin_strncat",
+		BT_FN_STRING_STRING_CONST_STRING_SIZE,
+		ATTR_NOTHROW_LIST)
+DEF_EXT_LIB_BUILTIN(BUILT_IN_STPCPY,
+		"__builtin_stpcpy",
+		BT_FN_STRING_STRING_CONST_STRING,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRCPY,
+		"__builtin_strcpy",
+		BT_FN_STRING_STRING_CONST_STRING,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRNCPY,
+		"__builtin_strncpy",
+		BT_FN_STRING_STRING_CONST_STRING_SIZE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRCMP,
+		"__builtin_strcmp",
+		BT_FN_INT_CONST_STRING_CONST_STRING,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRNCMP,
+		"__builtin_strncmp",
+		BT_FN_INT_CONST_STRING_CONST_STRING_SIZE,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRLEN,
+		"__builtin_strlen",
+		BT_FN_SIZE_CONST_STRING,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRSTR,
+		"__builtin_strstr",
+		BT_FN_STRING_CONST_STRING_CONST_STRING,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRPBRK,
+		"__builtin_strpbrk",
+		BT_FN_STRING_CONST_STRING_CONST_STRING,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRSPN,
+		"__builtin_strspn",
+		BT_FN_SIZE_CONST_STRING_CONST_STRING,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRCSPN,
+		"__builtin_strcspn",
+		BT_FN_SIZE_CONST_STRING_CONST_STRING,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRCHR,
+		"__builtin_strchr",
+		BT_FN_STRING_CONST_STRING_INT,
+		ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_STRRCHR,
+		"__builtin_strrchr",
+		BT_FN_STRING_CONST_STRING_INT,
+		ATTR_PURE_NOTHROW_LIST)
+
+#ifdef KEY
+DEF_LIB_BUILTIN(BUILT_IN_FLOOR,
+		"__builtin_floor",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+
+DEF_LIB_BUILTIN(BUILT_IN_FLOORF,
+		"__builtin_floorf",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+
+DEF_LIB_BUILTIN(BUILT_IN_FLOORL,
+		"__builtin_floorl",
+		BT_FN_LONG_DOUBLE_LONG_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+
+DEF_LIB_BUILTIN(BUILT_IN_POW,
+		"__builtin_pow",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+		                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+
+DEF_LIB_BUILTIN(BUILT_IN_TAN,
+                "__builtin_tan",
+                BT_FN_DOUBLE_DOUBLE,
+                flag_unsafe_math_optimizations ? ATTR_CONST_NOTHROW_LIST
+                                               : ATTR_PURE_NOTHROW_LIST)
+
+#if defined(TARG_SL)
+// following two intrinsic is used to build a code motion barrier
+// to prevent scheduler to change the command order for setting
+// peripheral configuration register. 
+DEF_LIB_BUILTIN(BUILT_IN_PERIPHERAL_RW_BEGIN,
+                "__builtin_intrinsic_peripheral_RW_begin",
+                BT_FN_VOID,
+                ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_PERIPHERAL_RW_END,
+                "__builtin_intrinsic_peripheral_RW_end",
+                BT_FN_VOID,
+                ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_VBUF_OFFSET,
+		"__builtin_intrinsic_vbuf_offset",
+		BT_FN_PTR_PTR,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_VBUF_ABSOLUTE,
+		"__builtin_intrinsic_vbuf_absolute",
+		BT_FN_PTR_PTR,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_SBUF_OFFSET,
+		"__builtin_intrinsic_sbuf_offset",
+		BT_FN_PTR_PTR,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C3_INIT_ACC,
+                "__builtin_SL1_L_acquire_acc",
+                BT_FN_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3_SAVE_ACC,
+                "__builtin_SL1_L_free_acc",
+                BT_FN_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3_MVFS,
+                "__builtin_SL1_L_copy_shr_acc",
+                BT_FN_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3_INIT_ADDR,
+                "__builtin_SL1_acquire_addr",
+                BT_FN_PTR_PTR_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3_SAVE_ADDR,
+                "__builtin_SL1_free_addr",
+                BT_FN_PTR_PTR,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3_INIT_DACC,
+                "__builtin_SL1_L_acquire_dacc",
+                BT_FN_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3_SAVE_DACC,
+                "__builtin_SL1_L_free_dacc",
+                BT_FN_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_SET_ADDR,
+                "__builtin_SL1_set_addr",
+                BT_FN_VOID_PTR_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_SET_CIRCBUF,
+                "__builtin_SL1_set_circularbuf",
+                BT_FN_VOID_PTR_PTR_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3AADDA,
+                "__builtin_Sl1_aadda",
+                BT_FN_INT_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3NEGA,
+                "__builtin_Sl1_nega",
+                BT_FN_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3BITR,
+                "__builtin_Sl1_bitr",
+                BT_FN_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3CS,
+                "__builtin_Sl1_cs",
+                BT_FN_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3DADD,
+                "__builtin_Sl1_dadd",
+                BT_FN_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3DMAC,
+                "__builtin_Sl1_dmac",
+                BT_FN_INT_INT_INT_INT_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3DMACA,
+                "__builtin_Sl1_dmac_p",
+                BT_FN_INT_INT_INT_PTR_INT_PTR_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3DMULA,
+                "__builtin_Sl1_dmula",
+                BT_FN_INT_INT_INT_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3DMULAA,
+                "__builtin_Sl1_dmula_p",
+                BT_FN_INT_INT_INT_PTR_INT_PTR_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3DSHLLI,
+                "__builtin_Sl1_dshll_i",
+                BT_FN_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3FFE,
+                "__builtin_Sl1_ffe",
+                BT_FN_VOID_PTR_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3LD,
+                "__builtin_Sl1_ld",
+                BT_FN_INT_PTR_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3ST,
+                "__builtin_Sl1_st",
+                BT_FN_VOID_INT_PTR_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3LEAD,
+                "__builtin_Sl1_lead",
+                BT_FN_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MAC,
+                "__builtin_Sl1_mac",
+                BT_FN_INT_INT_INT_SHORT_SHORT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MACA,
+                "__builtin_Sl1_mac_p",
+                BT_FN_INT_INT_INT_PTR_INT_PTR_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MACAR,
+                "__builtin_Sl1_mac_v_p",
+                BT_FN_INT_INT_INT_SHORT_PTR_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MACI,
+                "__builtin_Sl1_mac_i",
+                BT_FN_INT_INT_INT_SHORT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MULA,
+                "__builtin_Sl1_mula",
+                BT_FN_INT_INT_INT_SHORT_SHORT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MULAA,
+                "__builtin_Sl1_mula_p",
+                BT_FN_INT_INT_INT_PTR_INT_PTR_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MULAAR,
+                "__builtin_Sl1_mula_v_p",
+                BT_FN_INT_INT_INT_SHORT_PTR_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MULAI,
+                "__builtin_Sl1_mula_i",
+                BT_FN_INT_INT_INT_SHORT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MULS,
+                "__builtin_Sl1_muls_shl",
+                BT_FN_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3MULUS,
+                "__builtin_Sl1_mulus_shl",
+                BT_FN_UNSIGNED_UNSIGNED_UNSIGNED_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3REVB,
+                "__builtin_Sl1_revb",
+                BT_FN_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3ROUND,
+                "__builtin_Sl1_round",
+                BT_FN_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SAADDA,
+                "__builtin_Sl1_saadd_p",
+                BT_FN_INT_PTR_INT_PTR_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SAADDHA,
+                "__builtin_Sl1_saaddh_p",
+                BT_FN_INT_PTR_INT_PTR_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SAADDS,
+                "__builtin_Sl1_saadds",
+                BT_FN_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SAADDSH,
+                "__builtin_Sl1_saaddsh",
+                BT_FN_SHORT_SHORT_SHORT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SADDA,
+                "__builtin_Sl1_sadda",
+                BT_FN_INT_INT_INT_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SADDAA,
+                "__builtin_Sl1_sadda_p",
+                BT_FN_INT_INT_INT_PTR_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SAMULHA,
+                "__builtin_Sl1_samulh_p",
+                BT_FN_INT_PTR_INT_PTR_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SAMULSH,
+                "__builtin_Sl1_samulsh",
+                BT_FN_SHORT_SHORT_SHORT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SHAV,
+                "__builtin_Sl1_shav",
+                BT_FN_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SHLAFAI,
+                "__builtin_Sl1_shlafa_i",
+                BT_FN_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SHLATAI,
+                "__builtin_Sl1_shlata_i",
+                BT_FN_INT_INT_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SHLAI,
+                "__builtin_Sl1_shla_i",
+                BT_FN_INT_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C3SUBC,
+                "__builtin_Sl1_subc",
+                BT_FN_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INIT_HI,
+                "__builtin_Sl1_init_hi",
+                BT_FN_VOID_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_COPY_HI,
+                "__builtin_Sl1_copy_hi",
+                BT_FN_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_C2_MVGR_G2R,
+                "__builtin_intrinsic_c2_mvgr_g2r",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MVGR_R2G,
+		"__builtin_intrinsic_c2_mvgr_r2g",
+        BT_FN_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MVGC_C2G,
+		"__builtin_intrinsic_c2_mvgc_c2g",
+        BT_FN_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MVGC_G2C,
+		"__builtin_intrinsic_c2_mvgc_g2c",
+        BT_FN_VOID_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_LD_V,
+		"__builtin_intrinsic_c2_ld_v",
+        BT_FN_VOID_INT_PTR_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_LD_G,
+		"__builtin_intrinsic_c2_ld_g",
+        BT_FN_INT_PTR_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_LD_S,
+		"__builtin_intrinsic_c2_ld_s",
+        BT_FN_VOID_INT_PTR_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ST_V,
+		"__builtin_intrinsic_c2_st_v",
+        BT_FN_VOID_INT_PTR_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ST_G,
+		"__builtin_intrinsic_c2_st_g",
+        BT_FN_VOID_INT_PTR_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_LD_G_IMM,
+		"__builtin_intrinsic_c2_ld_g_imm",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_LD_C_IMM,
+		"__builtin_intrinsic_c2_ld_c_imm",
+        BT_FN_VOID_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_LD_V_IMM,
+		"__builtin_intrinsic_c2_ld_v_imm",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ST_V_IMM,
+		"__builtin_intrinsic_c2_st_v_imm",
+        BT_FN_VOID_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ST_C_IMM,
+		"__builtin_intrinsic_c2_st_c_imm",
+        BT_FN_VOID_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ST_G_IMM,
+		"__builtin_intrinsic_c2_st_g_imm",
+        BT_FN_VOID_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VADDS,
+		"__builtin_intrinsic_c2_vadds",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VSUBS,
+		"__builtin_intrinsic_c2_vsubs",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VMUL,
+		"__builtin_intrinsic_c2_vmul",
+        BT_FN_VOID_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VNEG,
+		"__builtin_intrinsic_c2_vneg",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VSHFT,
+		"__builtin_intrinsic_c2_vshft",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VCLP,
+		"__builtin_intrinsic_c2_vclp",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VCLG,
+		"__builtin_intrinsic_c2_vclg",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VCMOV,
+		"__builtin_intrinsic_c2_vcmov",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_LCZERO,
+		"__builtin_intrinsic_c2_lczero",
+        BT_FN_VOID_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_VRND,
+		"__builtin_intrinsic_c2_vrnd",
+        BT_FN_VOID_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VSPAS,
+		"__builtin_intrinsic_c2_vspas",
+        BT_FN_VOID_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VSPEL,
+		"__builtin_intrinsic_c2_vspel",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VSPEL_MAC,
+		"__builtin_intrinsic_c2_vspel_mac",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MMUL,
+		"__builtin_intrinsic_c2_mmul",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VMOV,
+		"__builtin_intrinsic_c2_vmov",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VCOPY,
+		"__builtin_intrinsic_c2_vcopy",
+        BT_FN_VOID_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VCMPR,
+		"__builtin_intrinsic_c2_vcmpr",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SAD,
+		"__builtin_intrinsic_c2_sad",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_SAD_TMP,
+		"__builtin_intrinsic_c2_sad_tmp",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SATD,
+		"__builtin_intrinsic_c2_satd",
+        BT_FN_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_INTRA,
+		"__builtin_intrinsic_c2_intra",
+        BT_FN_VOID_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MVSEL,
+		"__builtin_intrinsic_c2_mvsel",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_BCST,
+		"__builtin_intrinsic_c2_bcst",
+        BT_FN_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_VLCS_R,
+		"__builtin_intrinsic_c2_vlcs_r",
+        BT_FN_VOID_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_VLCS,
+		"__builtin_intrinsic_c2_vlcs",
+        BT_FN_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ADDS,
+		"__builtin_intrinsic_c2_adds",
+        BT_FN_INT_INT_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ADDS_R,
+		"__builtin_intrinsic_c2_adds_r",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SUBS,
+		"__builtin_intrinsic_c2_subs",
+        BT_FN_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SUBS_R,
+		"__builtin_intrinsic_c2_subs_r",
+        BT_FN_VOID_INT_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MULS,
+		"__builtin_intrinsic_c2_muls",
+                BT_FN_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MADS,
+		"__builtin_intrinsic_c2_mads",
+        BT_FN_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_SMADS,
+		"__builtin_intrinsic_c2_smads",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_CMOV,
+		"__builtin_intrinsic_c2_cmov",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_MOV,
+		"__builtin_intrinsic_c2_mov",
+           BT_FN_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_MOV_R,
+		"__builtin_intrinsic_c2_mov_r",
+           BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_CLP,
+		"__builtin_intrinsic_c2_clp",
+        BT_FN_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_CHKRNG,
+		"__builtin_intrinsic_c2_chkrng",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_SCOND,
+		"__builtin_intrinsic_c2_scond",
+        BT_FN_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SCOND_R_WB,
+		"__builtin_intrinsic_c2_scond_r_wb",
+        BT_FN_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SCOND_R,
+		"__builtin_intrinsic_c2_scond_r",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SCOND_BR,
+		"__builtin_intrinsic_c2_scond_br",
+        BT_FN_INT_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SCOND_BR_R,
+		"__builtin_intrinsic_c2_scond_br_r",
+        BT_FN_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+	
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_BOP,
+		"__builtin_intrinsic_c2_bop",
+        BT_FN_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_BDEP,
+		"__builtin_intrinsic_c2_bdep",
+        BT_FN_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_WRAP,
+		"__builtin_intrinsic_c2_wrap",
+        BT_FN_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_BXTR,
+		"__builtin_intrinsic_c2_bxtr",
+        BT_FN_INT_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_BXTRR48,
+		"__builtin_intrinsic_c2_bxtrr48",
+        BT_FN_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SUM4,
+		"__builtin_intrinsic_c2_sum4",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SUM3_SADDR,
+		"__builtin_intrinsic_c2_sum3_saddr",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_SUM4_R,
+		"__builtin_intrinsic_c2_sum4_r",
+        BT_FN_VOID_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MED,
+		"__builtin_intrinsic_c2_med",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_GSUMS,
+		"__builtin_intrinsic_c2_gsums",
+        BT_FN_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_CLZOB,
+		"__builtin_intrinsic_c2_clzob",
+        BT_FN_INT_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_THCTRL,
+		"__builtin_intrinsic_c2_thctrl",
+        BT_FN_VOID_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+		
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_LD_V2G,
+		"__builtin_intrinsic_c2_ld_v2g",
+        BT_FN_INT_PTR_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_LD_V2G_IMM,
+		"__builtin_intrinsic_c2_ld_v2g_imm",
+        BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ST_G2V,
+		"__builtin_intrinsic_c2_st_g2v",
+        BT_FN_VOID_INT_PTR_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_ST_G2V_IMM,
+		"__builtin_intrinsic_c2_st_g2v_imm",
+        BT_FN_VOID_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_MVGR_R2S,
+		"__builtin_intrinsic_c2_mvgr_r2s",
+        BT_FN_VOID_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_C2_FORK,
+		"__builtin_intrinsic_c2_fork",
+        BT_FN_VOID_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_C2_JOINT,
+		"__builtin_intrinsic_c2_joint",
+              BT_FN_VOID,
+		ATTR_NOTHROW_LIST)
+#endif // TARG_SL
+
+
+#else
+// This part is ! KEY. Comment out the following since we are not using
+// the following builtins any more. If we ever need the following, change
+// the definitions to take 2 parameters, not 1. For bug 3793.
+#ifdef TARG_X8664
+DEF_LIB_BUILTIN(BUILT_IN_IDIV3,
+		"__builtin___divdi3",
+		BT_FN_LONGLONG_LONGLONG,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+
+DEF_LIB_BUILTIN(BUILT_IN_UIDIV3,
+		"__builtin___udivdi3",
+		BT_FN_LONGLONGUNSIGNED_LONGLONGUNSIGNED,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+
+DEF_LIB_BUILTIN(BUILT_IN_IMOD3,
+		"__builtin___moddi3",
+		BT_FN_LONGLONG_LONGLONG,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+
+DEF_LIB_BUILTIN(BUILT_IN_UIMOD3,
+		"__builtin___umoddi3",
+		BT_FN_LONGLONGUNSIGNED_LONGLONGUNSIGNED,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+#endif  // TARG_X8664
+#endif	// KEY
+
+#ifdef TARG_NVISA
+DEF_LIB_BUILTIN(BUILT_IN_SYNCHRONIZE,
+		"__builtin___syncthreads",
+		BT_FN_VOID,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_BRKPT,
+		"__builtin___brkpt",
+		BT_FN_VOID,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_CLOCK,
+		"__builtin_clock",
+		BT_FN_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_MIN,
+		"__builtin_min",
+		BT_FN_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UMIN,
+		"__builtin_umin",
+		BT_FN_UNSIGNED_UNSIGNED_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMINF,
+		"__builtin_fminf",
+		BT_FN_FLOAT_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMIN,
+		"__builtin_fmin",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_MAX,
+		"__builtin_max",
+		BT_FN_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UMAX,
+		"__builtin_umax",
+		BT_FN_UNSIGNED_UNSIGNED_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMAXF,
+		"__builtin_fmaxf",
+		BT_FN_FLOAT_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMAX,
+		"__builtin_fmax",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_MULHI,
+		"__builtin___mulhi",
+		BT_FN_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UMULHI,
+		"__builtin___umulhi",
+		BT_FN_UNSIGNED_UNSIGNED_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_MUL64HI,
+		"__builtin___mul64hi",
+		BT_FN_LONGLONG_LONGLONG_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UMUL64HI,
+		"__builtin___umul64hi",
+		BT_FN_LONGLONGUNSIGNED_LONGLONGUNSIGNED_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_MUL24,
+                "__builtin___mul24",
+                BT_FN_INT_INT_INT,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UMUL24,
+                "__builtin___umul24",
+                BT_FN_UNSIGNED_UNSIGNED_UNSIGNED,
+                ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT2FLOAT,
+		"__builtin___int_as_float",
+		BT_FN_FLOAT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT2INT,
+		"__builtin___float_as_int",
+		BT_FN_INT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG2DOUBLE,
+		"__builtin___longlong_as_double",
+		BT_FN_DOUBLE_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE2LONGLONG,
+		"__builtin___double_as_longlong",
+		BT_FN_LONGLONG_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ROUND,
+		"__builtin_round",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_ROUNDF,
+		"__builtin_roundf",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_TRUNC,
+		"__builtin_trunc",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_TRUNCF,
+		"__builtin_truncf",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_CEIL,
+		"__builtin_ceil",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_CEILF,
+		"__builtin_ceilf",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+                                : (flag_unsafe_math_optimizations
+                                   ? ATTR_CONST_NOTHROW_LIST
+                                   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_EXP2F,
+		"__builtin_exp2f",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_EXP2,
+		"__builtin_exp2",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_LOG2F,
+		"__builtin_log2f",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_LOG2,
+		"__builtin_log2",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_SATURATE,
+		"__builtin___saturate",
+		BT_FN_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_SATURATEF,
+		"__builtin___saturatef",
+		BT_FN_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMAF,
+		"__builtin_fmaf",
+		BT_FN_FLOAT_FLOAT_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMA_ROUND,
+		"__builtin___fma_rn",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMA_TRUNC,
+		"__builtin___fma_rz",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMA_FLOOR,
+		"__builtin___fma_rd",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FMA_CEIL,
+		"__builtin___fma_ru",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F4ADD_ROUND,
+		"__builtin___fadd_rn",
+		BT_FN_FLOAT_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F4ADD_TRUNC,
+		"__builtin___fadd_rz",
+		BT_FN_FLOAT_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F8ADD_ROUND,
+		"__builtin___dadd_rn",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F8ADD_TRUNC,
+		"__builtin___dadd_rz",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F8ADD_FLOOR,
+		"__builtin___dadd_rd",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F8ADD_CEIL,
+		"__builtin___dadd_ru",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F4MUL_ROUND,
+		"__builtin___fmul_rn",
+		BT_FN_FLOAT_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F4MUL_TRUNC,
+		"__builtin___fmul_rz",
+		BT_FN_FLOAT_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F8MUL_ROUND,
+		"__builtin___dmul_rn",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F8MUL_TRUNC,
+		"__builtin___dmul_rz",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F8MUL_FLOOR,
+		"__builtin___dmul_rd",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_F8MUL_CEIL,
+		"__builtin___dmul_ru",
+		BT_FN_DOUBLE_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_SAD,
+		"__builtin___sad",
+		BT_FN_INT_INT_INT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_USAD,
+		"__builtin___usad",
+		BT_FN_UNSIGNED_UNSIGNED_UNSIGNED_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_FLOAT_ROUND,
+		"__builtin___double2float_rn",
+		BT_FN_FLOAT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_FLOAT_TRUNC,
+		"__builtin___double2float_rz",
+		BT_FN_FLOAT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_FLOAT_FLOOR,
+		"__builtin___double2float_rd",
+		BT_FN_FLOAT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_FLOAT_CEIL,
+		"__builtin___double2float_ru",
+		BT_FN_FLOAT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_INT_ROUND,
+		"__builtin___double2int_rn",
+		BT_FN_INT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_INT_TRUNC,
+		"__builtin___double2int_rz",
+		BT_FN_INT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_INT_FLOOR,
+		"__builtin___double2int_rd",
+		BT_FN_INT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_INT_CEIL,
+		"__builtin___double2int_ru",
+		BT_FN_INT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_UINT_ROUND,
+		"__builtin___double2uint_rn",
+		BT_FN_UNSIGNED_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_UINT_TRUNC,
+		"__builtin___double2uint_rz",
+		BT_FN_UNSIGNED_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_UINT_FLOOR,
+		"__builtin___double2uint_rd",
+		BT_FN_UNSIGNED_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_UINT_CEIL,
+		"__builtin___double2uint_ru",
+		BT_FN_UNSIGNED_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT_TO_DOUBLE_ROUND,
+		"__builtin___int2double_rn",
+		BT_FN_DOUBLE_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT_TO_DOUBLE_TRUNC,
+		"__builtin___int2double_rz",
+		BT_FN_DOUBLE_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT_TO_DOUBLE_FLOOR,
+		"__builtin___int2double_rd",
+		BT_FN_DOUBLE_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT_TO_DOUBLE_CEIL,
+		"__builtin___int2double_ru",
+		BT_FN_DOUBLE_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UINT_TO_DOUBLE_ROUND,
+		"__builtin___uint2double_rn",
+		BT_FN_DOUBLE_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UINT_TO_DOUBLE_TRUNC,
+		"__builtin___uint2double_rz",
+		BT_FN_DOUBLE_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UINT_TO_DOUBLE_FLOOR,
+		"__builtin___uint2double_rd",
+		BT_FN_DOUBLE_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UINT_TO_DOUBLE_CEIL,
+		"__builtin___uint2double_ru",
+		BT_FN_DOUBLE_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT_TO_FLOAT_ROUND,
+		"__builtin___int2float_rn",
+		BT_FN_FLOAT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT_TO_FLOAT_TRUNC,
+		"__builtin___int2float_rz",
+		BT_FN_FLOAT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT_TO_FLOAT_FLOOR,
+		"__builtin___int2float_rd",
+		BT_FN_FLOAT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_INT_TO_FLOAT_CEIL,
+		"__builtin___int2float_ru",
+		BT_FN_FLOAT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UINT_TO_FLOAT_ROUND,
+		"__builtin___uint2float_rn",
+		BT_FN_FLOAT_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UINT_TO_FLOAT_TRUNC,
+		"__builtin___uint2float_rz",
+		BT_FN_FLOAT_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UINT_TO_FLOAT_FLOOR,
+		"__builtin___uint2float_rd",
+		BT_FN_FLOAT_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UINT_TO_FLOAT_CEIL,
+		"__builtin___uint2float_ru",
+		BT_FN_FLOAT_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_INT_ROUND,
+		"__builtin___float2int_rn",
+		BT_FN_INT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_INT_TRUNC,
+		"__builtin___float2int_rz",
+		BT_FN_INT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_INT_FLOOR,
+		"__builtin___float2int_rd",
+		BT_FN_INT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_INT_CEIL,
+		"__builtin___float2int_ru",
+		BT_FN_INT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_UINT_ROUND,
+		"__builtin___float2uint_rn",
+		BT_FN_UNSIGNED_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_UINT_TRUNC,
+		"__builtin___float2uint_rz",
+		BT_FN_UNSIGNED_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_UINT_FLOOR,
+		"__builtin___float2uint_rd",
+		BT_FN_UNSIGNED_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_UINT_CEIL,
+		"__builtin___float2uint_ru",
+		BT_FN_UNSIGNED_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_HILOINT_TO_DOUBLE,
+		"__builtin___hiloint2double",
+		BT_FN_DOUBLE_INT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_LOINT,
+		"__builtin___double2loint",
+		BT_FN_INT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_HIINT,
+		"__builtin___double2hiint",
+		BT_FN_INT_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_LONGLONG_ROUND,
+		"__builtin___float2ll_rn",
+		BT_FN_LONGLONG_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_LONGLONG_TRUNC,
+		"__builtin___float2ll_rz",
+		BT_FN_LONGLONG_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_LONGLONG_FLOOR,
+		"__builtin___float2ll_rd",
+		BT_FN_LONGLONG_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_LONGLONG_CEIL,
+		"__builtin___float2ll_ru",
+		BT_FN_LONGLONG_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_ULONGLONG_ROUND,
+		"__builtin___float2ull_rn",
+		BT_FN_LONGLONGUNSIGNED_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_ULONGLONG_TRUNC,
+		"__builtin___float2ull_rz",
+		BT_FN_LONGLONGUNSIGNED_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_ULONGLONG_FLOOR,
+		"__builtin___float2ull_rd",
+		BT_FN_LONGLONGUNSIGNED_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FLOAT_TO_ULONGLONG_CEIL,
+		"__builtin___float2ull_ru",
+		BT_FN_LONGLONGUNSIGNED_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_LONGLONG_ROUND,
+		"__builtin___double2ll_rn",
+		BT_FN_LONGLONG_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_LONGLONG_TRUNC,
+		"__builtin___double2ll_rz",
+		BT_FN_LONGLONG_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_LONGLONG_FLOOR,
+		"__builtin___double2ll_rd",
+		BT_FN_LONGLONG_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_LONGLONG_CEIL,
+		"__builtin___double2ll_ru",
+		BT_FN_LONGLONG_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_ULONGLONG_ROUND,
+		"__builtin___double2ull_rn",
+		BT_FN_LONGLONGUNSIGNED_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_ULONGLONG_TRUNC,
+		"__builtin___double2ull_rz",
+		BT_FN_LONGLONGUNSIGNED_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_ULONGLONG_FLOOR,
+		"__builtin___double2ull_rd",
+		BT_FN_LONGLONGUNSIGNED_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DOUBLE_TO_ULONGLONG_CEIL,
+		"__builtin___double2ull_ru",
+		BT_FN_LONGLONGUNSIGNED_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG_TO_FLOAT_ROUND,
+		"__builtin___ll2float_rn",
+		BT_FN_FLOAT_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG_TO_FLOAT_TRUNC,
+		"__builtin___ll2float_rz",
+		BT_FN_FLOAT_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG_TO_FLOAT_FLOOR,
+		"__builtin___ll2float_rd",
+		BT_FN_FLOAT_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG_TO_FLOAT_CEIL,
+		"__builtin___ll2float_ru",
+		BT_FN_FLOAT_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULONGLONG_TO_FLOAT_ROUND,
+		"__builtin___ull2float_rn",
+		BT_FN_FLOAT_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULONGLONG_TO_FLOAT_TRUNC,
+		"__builtin___ull2float_rz",
+		BT_FN_FLOAT_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULONGLONG_TO_FLOAT_FLOOR,
+		"__builtin___ull2float_rd",
+		BT_FN_FLOAT_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULONGLONG_TO_FLOAT_CEIL,
+		"__builtin___ull2float_ru",
+		BT_FN_FLOAT_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG_TO_DOUBLE_ROUND,
+		"__builtin___ll2double_rn",
+		BT_FN_DOUBLE_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG_TO_DOUBLE_TRUNC,
+		"__builtin___ll2double_rz",
+		BT_FN_DOUBLE_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG_TO_DOUBLE_FLOOR,
+		"__builtin___ll2double_rd",
+		BT_FN_DOUBLE_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_LONGLONG_TO_DOUBLE_CEIL,
+		"__builtin___ll2double_ru",
+		BT_FN_DOUBLE_LONGLONG,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULONGLONG_TO_DOUBLE_ROUND,
+		"__builtin___ull2double_rn",
+		BT_FN_DOUBLE_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULONGLONG_TO_DOUBLE_TRUNC,
+		"__builtin___ull2double_rz",
+		BT_FN_DOUBLE_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULONGLONG_TO_DOUBLE_FLOOR,
+		"__builtin___ull2double_rd",
+		BT_FN_DOUBLE_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULONGLONG_TO_DOUBLE_CEIL,
+		"__builtin___ull2double_ru",
+		BT_FN_DOUBLE_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_IATOMICADD,
+		"__builtin___iAtomicAdd",
+		BT_FN_INT_PTR_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICADD,
+		"__builtin___uAtomicAdd",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULLATOMICADD,
+		"__builtin___ullAtomicAdd",
+		BT_FN_LONGLONGUNSIGNED_PTR_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FATOMICADD,
+		"__builtin___fAtomicAdd",
+		BT_FN_FLOAT_PTR_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DATOMICADD,
+		"__builtin___dAtomicAdd",
+		BT_FN_DOUBLE_PTR_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_IATOMICMIN,
+		"__builtin___iAtomicMin",
+		BT_FN_INT_PTR_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICMIN,
+		"__builtin___uAtomicMin",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FATOMICMIN,
+		"__builtin___fAtomicMin",
+		BT_FN_FLOAT_PTR_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_IATOMICMAX,
+		"__builtin___iAtomicMax",
+		BT_FN_INT_PTR_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICMAX,
+		"__builtin___uAtomicMax",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FATOMICMAX,
+		"__builtin___fAtomicMax",
+		BT_FN_FLOAT_PTR_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_IATOMICEXCH,
+		"__builtin___iAtomicExch",
+		BT_FN_INT_PTR_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICEXCH,
+		"__builtin___uAtomicExch",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULLATOMICEXCH,
+		"__builtin___ullAtomicExch",
+		BT_FN_LONGLONGUNSIGNED_PTR_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FATOMICEXCH,
+		"__builtin___fAtomicExch",
+		BT_FN_FLOAT_PTR_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DATOMICEXCH,
+		"__builtin___dAtomicExch",
+		BT_FN_DOUBLE_PTR_DOUBLE,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_IATOMICAND,
+		"__builtin___iAtomicAnd",
+		BT_FN_INT_PTR_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICAND,
+		"__builtin___uAtomicAnd",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_IATOMICOR,
+		"__builtin___iAtomicOr",
+		BT_FN_INT_PTR_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICOR,
+		"__builtin___uAtomicOr",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_IATOMICXOR,
+		"__builtin___iAtomicXor",
+		BT_FN_INT_PTR_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICXOR,
+		"__builtin___uAtomicXor",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICINC,
+		"__builtin___uAtomicInc",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICDEC,
+		"__builtin___uAtomicDec",
+		BT_FN_UNSIGNED_PTR_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_IATOMICCAS,
+		"__builtin___iAtomicCAS",
+		BT_FN_INT_PTR_INT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_UATOMICCAS,
+		"__builtin___uAtomicCAS",
+		BT_FN_UNSIGNED_PTR_UNSIGNED_UNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ULLATOMICCAS,
+		"__builtin___ullAtomicCAS",
+		BT_FN_LONGLONGUNSIGNED_PTR_LONGLONGUNSIGNED_LONGLONGUNSIGNED,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_FATOMICCAS,
+		"__builtin___fAtomicCAS",
+		BT_FN_FLOAT_PTR_FLOAT_FLOAT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_DATOMICCAS,
+		"__builtin___dAtomicCAS",
+		BT_FN_DOUBLE_PTR_DOUBLE_DOUBLE,
+		ATTR_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_ALL,
+		"__builtin___all",
+		BT_FN_INT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_ANY,
+		"__builtin___any",
+		BT_FN_INT_INT,
+		ATTR_NOTHROW_LIST)
+		
+DEF_LIB_BUILTIN(BUILT_IN_GETSHAREDMEM,
+		"__builtin___cudaGetSharedMem",
+		BT_FN_PTR_PTR,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_GETBLOCKIDPTR,
+		"__builtin___cudaGetBlockIdxPtr",
+		BT_FN_PTR,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_RSQRTF,
+		"__builtin_rsqrtf",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_RSQRT,
+		"__builtin_rsqrt",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+#endif /* TARG_NVISA */
+
+DEF_LIB_BUILTIN(BUILT_IN_SQRT,
+		"__builtin_sqrt",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_SIN,
+		"__builtin_sin",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_unsafe_math_optimizations ? ATTR_CONST_NOTHROW_LIST
+					       : ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_COS,
+		"__builtin_cos",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_unsafe_math_optimizations ? ATTR_CONST_NOTHROW_LIST
+					       : ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_EXP,
+		"__builtin_exp",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_LOG,
+		"__builtin_log",
+		BT_FN_DOUBLE_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_SQRTF,
+		"__builtin_sqrtf",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_SINF,
+		"__builtin_sinf",
+		BT_FN_FLOAT_FLOAT,
+		flag_unsafe_math_optimizations ? ATTR_CONST_NOTHROW_LIST
+					       : ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_COSF,
+		"__builtin_cosf",
+		BT_FN_FLOAT_FLOAT,
+		flag_unsafe_math_optimizations ? ATTR_CONST_NOTHROW_LIST
+					       : ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_EXPF,
+		"__builtin_expf",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_LOGF,
+		"__builtin_logf",
+		BT_FN_FLOAT_FLOAT,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_SQRTL,
+		"__builtin_sqrtl",
+		BT_FN_LONG_DOUBLE_LONG_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_SINL,
+		"__builtin_sinl",
+		BT_FN_LONG_DOUBLE_LONG_DOUBLE,
+		flag_unsafe_math_optimizations ? ATTR_CONST_NOTHROW_LIST
+					       : ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_COSL,
+		"__builtin_cosl",
+		BT_FN_LONG_DOUBLE_LONG_DOUBLE,
+		flag_unsafe_math_optimizations ? ATTR_CONST_NOTHROW_LIST
+					       : ATTR_PURE_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_EXPL,
+		"__builtin_expl",
+		BT_FN_LONG_DOUBLE_LONG_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+DEF_LIB_BUILTIN(BUILT_IN_LOGL,
+		"__builtin_logl",
+		BT_FN_LONG_DOUBLE_LONG_DOUBLE,
+		flag_errno_math ? ATTR_NOTHROW_LIST
+				: (flag_unsafe_math_optimizations
+				   ? ATTR_CONST_NOTHROW_LIST
+				   : ATTR_PURE_NOTHROW_LIST))
+
+DEF_GCC_BUILTIN(BUILT_IN_INF,
+		"__builtin_inf",
+		BT_FN_DOUBLE,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_INFF,
+		"__builtin_inff",
+		BT_FN_FLOAT,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_INFL,
+		"__builtin_infl",
+		BT_FN_LONG_DOUBLE,
+		ATTR_CONST_NOTHROW_LIST)
+
+DEF_GCC_BUILTIN(BUILT_IN_HUGE_VAL,
+		"__builtin_huge_val",
+		BT_FN_DOUBLE,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_HUGE_VALF,
+		"__builtin_huge_valf",
+		BT_FN_FLOAT,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_HUGE_VALL,
+		"__builtin_huge_vall",
+		BT_FN_LONG_DOUBLE,
+		ATTR_CONST_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_NAN,
+		"__builtin_nan",
+		BT_FN_DOUBLE_CONST_STRING,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_NANF,
+		"__builtin_nanf",
+		BT_FN_FLOAT_CONST_STRING,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_NANL,
+		"__builtin_nanl",
+		BT_FN_LONG_DOUBLE_CONST_STRING,
+		ATTR_CONST_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN(BUILT_IN_NANS,
+		"__builtin_nans",
+		BT_FN_DOUBLE_CONST_STRING,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_NANSF,
+		"__builtin_nansf",
+		BT_FN_FLOAT_CONST_STRING,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_NANSL,
+		"__builtin_nansl",
+		BT_FN_LONG_DOUBLE_CONST_STRING,
+		ATTR_CONST_NOTHROW_LIST)
+
+DEF_GCC_BUILTIN(BUILT_IN_SAVEREGS,
+		"__builtin_saveregs",
+		BT_FN_PTR_VAR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_CLASSIFY_TYPE,
+		"__builtin_classify_type",
+		BT_FN_INT_VAR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_NEXT_ARG,
+		"__builtin_next_arg",
+		BT_FN_PTR_VAR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_ARGS_INFO,
+		"__builtin_args_info",
+		BT_FN_INT_INT,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_CONSTANT_P, 
+		"__builtin_constant_p", 
+		BT_FN_INT_VAR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_FRAME_ADDRESS,
+		"__builtin_frame_address",
+		BT_FN_PTR_UNSIGNED,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_RETURN_ADDRESS, 
+		"__builtin_return_address",
+		BT_FN_PTR_UNSIGNED,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_AGGREGATE_INCOMING_ADDRESS,
+		"__builtin_aggregate_incoming_address",
+		BT_FN_PTR_VAR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_APPLY_ARGS,
+		"__builtin_apply_args",
+		BT_FN_PTR_VAR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_APPLY,
+		"__builtin_apply",
+		BT_FN_PTR_PTR_FN_VOID_VAR_PTR_SIZE,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_RETURN,
+		"__builtin_return",
+		BT_FN_VOID_PTR,
+		ATTR_NORETURN_NOTHROW_LIST)
+#ifdef KEY
+DEF_LIB_BUILTIN(BUILT_IN_SETJMP,
+		"__builtin_setjmp",
+		BT_FN_INT_PTR,
+		ATTR_NULL)
+DEF_LIB_BUILTIN(BUILT_IN_LONGJMP,
+		"__builtin_longjmp",
+		BT_FN_VOID_PTR_INT,
+		ATTR_NORETURN_NOTHROW_LIST)
+#else
+DEF_GCC_BUILTIN(BUILT_IN_SETJMP,
+		"__builtin_setjmp",
+		BT_FN_INT_PTR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_LONGJMP,
+		"__builtin_longjmp",
+		BT_FN_VOID_PTR_INT,
+		ATTR_NORETURN_NOTHROW_LIST)
+#endif /* KEY */
+#ifdef TARG_NVISA
+DEF_LIB_BUILTIN(BUILT_IN_TRAP,
+		"__builtin___trap",
+		BT_FN_VOID,
+		ATTR_NORETURN_NOTHROW_LIST)
+#else
+DEF_GCC_BUILTIN(BUILT_IN_TRAP,
+		"__builtin_trap",
+		BT_FN_VOID,
+		ATTR_NORETURN_NOTHROW_LIST)
+#endif
+DEF_GCC_BUILTIN(BUILT_IN_PREFETCH,
+		"__builtin_prefetch",
+		BT_FN_VOID_CONST_PTR_VAR,
+		ATTR_NULL)
+
+/* stdio.h builtins (without FILE *).  */
+
+#ifdef KEY
+DEF_LIB_BUILTIN(BUILT_IN_PRINTF,
+	  	"__builtin_printf",
+		BT_FN_INT_CONST_STRING_VAR,
+		ATTR_FORMAT_PRINTF_1_2)
+#else
+DEF_FRONT_END_LIB_BUILTIN(BUILT_IN_PRINTF,
+			  "__builtin_printf",
+			  BT_FN_INT_CONST_STRING_VAR,
+			  ATTR_FORMAT_PRINTF_1_2)
+#endif /* KEY */
+DEF_LIB_BUILTIN(BUILT_IN_PUTCHAR,
+		"__builtin_putchar",
+		BT_FN_INT_INT,
+		ATTR_NOTHROW_LIST)
+DEF_LIB_BUILTIN(BUILT_IN_PUTS,
+		"__builtin_puts",
+		BT_FN_INT_CONST_STRING,
+		ATTR_NOTHROW_LIST)
+DEF_C99_BUILTIN(BUILT_IN_SNPRINTF,
+		"__builtin_snprintf",
+		BT_FN_INT_STRING_SIZE_CONST_STRING_VAR,
+		ATTR_FORMAT_PRINTF_3_4)
+DEF_LIB_BUILTIN(BUILT_IN_SPRINTF,
+		"__builtin_sprintf",
+		BT_FN_INT_STRING_CONST_STRING_VAR,
+		ATTR_FORMAT_PRINTF_2_3)
+DEF_LIB_BUILTIN(BUILT_IN_SCANF,
+		"__builtin_scanf",
+		BT_FN_INT_CONST_STRING_VAR,
+		ATTR_FORMAT_SCANF_1_2)
+DEF_LIB_BUILTIN(BUILT_IN_SSCANF,
+		"__builtin_sscanf",
+		BT_FN_INT_CONST_STRING_CONST_STRING_VAR,
+		ATTR_FORMAT_SCANF_2_3)
+DEF_LIB_BUILTIN(BUILT_IN_VPRINTF,
+		"__builtin_vprintf",
+		BT_FN_INT_CONST_STRING_VALIST_ARG,
+		ATTR_FORMAT_PRINTF_1_0)
+DEF_C99_BUILTIN(BUILT_IN_VSCANF,
+		"__builtin_vscanf",
+		BT_FN_INT_CONST_STRING_VALIST_ARG,
+		ATTR_FORMAT_SCANF_1_0)
+DEF_C99_BUILTIN(BUILT_IN_VSSCANF,
+		"__builtin_vsscanf",
+		BT_FN_INT_CONST_STRING_CONST_STRING_VALIST_ARG,
+		ATTR_FORMAT_SCANF_2_0)
+DEF_C99_BUILTIN(BUILT_IN_VSNPRINTF,
+		"__builtin_vsnprintf",
+		BT_FN_INT_STRING_SIZE_CONST_STRING_VALIST_ARG,
+		ATTR_FORMAT_PRINTF_3_0)
+DEF_LIB_BUILTIN(BUILT_IN_VSPRINTF,
+		"__builtin_vsprintf",
+		BT_FN_INT_STRING_CONST_STRING_VALIST_ARG,
+		ATTR_FORMAT_PRINTF_2_0)
+
+
+/* stdio.h builtins (with FILE *).  */
+
+/* Declare the __builtin_ style with arguments and the regular style
+   without them.  We rely on stdio.h to supply the arguments for the
+   regular style declaration since we had to use void* instead of
+   FILE* in the __builtin_ prototype supplied here.  */
+
+DEF_FALLBACK_BUILTIN(BUILT_IN_FPUTC,
+		     "__builtin_fputc",
+		     BT_FN_INT_INT_PTR,
+		     ATTR_NOTHROW_LIST)
+DEF_BUILTIN (BUILT_IN_FPUTS,
+	     "__builtin_fputs",
+	     BUILT_IN_NORMAL,
+	     BT_FN_INT_CONST_STRING_PTR,
+	     BT_FN_INT_VAR,
+	     true, true, false, ATTR_NOTHROW_LIST)
+DEF_FALLBACK_BUILTIN(BUILT_IN_FWRITE,
+		     "__builtin_fwrite",
+		     BT_FN_SIZE_CONST_PTR_SIZE_SIZE_PTR,
+		      ATTR_NOTHROW_LIST)
+#ifdef KEY
+DEF_LIB_BUILTIN(BUILT_IN_FPRINTF,
+		"__builtin_fprintf",
+		BT_FN_INT_PTR_CONST_STRING_VAR,
+		ATTR_FORMAT_PRINTF_2_3)
+#else
+DEF_FRONT_END_LIB_BUILTIN(BUILT_IN_FPRINTF,
+			 "__builtin_fprintf",
+			 BT_FN_INT_PTR_CONST_STRING_VAR,
+			 ATTR_FORMAT_PRINTF_2_3)
+#endif /* KEY */
+
+/* stdio unlocked builtins (without FILE *).  */
+
+DEF_EXT_FALLBACK_BUILTIN(BUILT_IN_PUTCHAR_UNLOCKED,
+			 "__builtin_putchar_unlocked",
+			 BT_FN_INT_INT)
+DEF_EXT_FALLBACK_BUILTIN(BUILT_IN_PUTS_UNLOCKED,
+			 "__builtin_puts_unlocked",
+			 BT_FN_INT_CONST_STRING)
+DEF_EXT_FRONT_END_LIB_BUILTIN(BUILT_IN_PRINTF_UNLOCKED,
+			      "__builtin_printf_unlocked",
+			      BT_FN_INT_CONST_STRING_VAR,
+			      ATTR_FORMAT_PRINTF_1_2)
+
+/* stdio unlocked builtins (with FILE *).  */
+
+/* Declare the __builtin_ style with arguments and the regular style
+   without them.  We rely on stdio.h to supply the arguments for the
+   regular style declaration since we had to use void* instead of
+   FILE* in the __builtin_ prototype supplied here.  */
+
+DEF_EXT_FALLBACK_BUILTIN(BUILT_IN_FPUTC_UNLOCKED,
+			 "__builtin_fputc_unlocked",
+			 BT_FN_INT_INT_PTR)
+DEF_BUILTIN (BUILT_IN_FPUTS_UNLOCKED,
+	     "__builtin_fputs_unlocked",
+	     BUILT_IN_NORMAL,
+	     BT_FN_INT_CONST_STRING_PTR,
+	     BT_FN_INT_VAR,
+	     true, true, true, ATTR_NOTHROW_LIST)
+DEF_EXT_FALLBACK_BUILTIN(BUILT_IN_FWRITE_UNLOCKED,
+			 "__builtin_fwrite_unlocked",
+			 BT_FN_SIZE_CONST_PTR_SIZE_SIZE_PTR)
+DEF_EXT_FRONT_END_LIB_BUILTIN(BUILT_IN_FPRINTF_UNLOCKED,
+			      "__builtin_fprintf_unlocked",
+			      BT_FN_INT_PTR_CONST_STRING_VAR,
+			      ATTR_FORMAT_PRINTF_2_3)
+
+  /* ISO C99 floating point unordered comparisons.  */
+DEF_GCC_BUILTIN(BUILT_IN_ISGREATER, 
+		"__builtin_isgreater",
+		BT_FN_INT_VAR,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_ISGREATEREQUAL,
+		"__builtin_isgreaterequal",
+		BT_FN_INT_VAR,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_ISLESS,
+		"__builtin_isless",
+		BT_FN_INT_VAR,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_ISLESSEQUAL,
+		"__builtin_islessequal",
+		BT_FN_INT_VAR,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_ISLESSGREATER,
+		"__builtin_islessgreater",
+		BT_FN_INT_VAR,
+		ATTR_CONST_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_ISUNORDERED,
+		"__builtin_isunordered",
+		BT_FN_INT_VAR,
+		ATTR_CONST_NOTHROW_LIST)
+
+/* Various hooks for the DWARF 2 __throw routine.  */
+DEF_GCC_BUILTIN(BUILT_IN_UNWIND_INIT,
+		"__builtin_unwind_init",
+		BT_FN_VOID,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_DWARF_CFA,
+		"__builtin_dwarf_cfa",
+		BT_FN_PTR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_DWARF_SP_COLUMN,
+		"__builtin_dwarf_sp_column",
+		BT_FN_UNSIGNED,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_INIT_DWARF_REG_SIZES,
+		"__builtin_init_dwarf_reg_size_table",
+		BT_FN_VOID_PTR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_FROB_RETURN_ADDR,
+		"__builtin_frob_return_addr",
+		BT_FN_PTR_PTR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_EXTRACT_RETURN_ADDR,
+		"__builtin_extract_return_addr",
+		BT_FN_PTR_PTR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_EH_RETURN,
+		"__builtin_eh_return",
+		BT_FN_VOID_PTRMODE_PTR,
+		ATTR_NORETURN_NOTHROW_LIST)
+DEF_GCC_BUILTIN(BUILT_IN_EH_RETURN_DATA_REGNO,
+		"__builtin_eh_return_data_regno",
+		BT_FN_INT_INT,
+		ATTR_NULL)
+
+/* Variable argument list (stdarg.h) support */
+DEF_GCC_BUILTIN(BUILT_IN_VA_START,
+		"__builtin_va_start",
+		BT_FN_VOID_VALIST_REF_VAR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_STDARG_START,		/* backward compat */
+		"__builtin_stdarg_start",
+		BT_FN_VOID_VALIST_REF_VAR,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_VA_END,
+		"__builtin_va_end",
+		BT_FN_VOID_VALIST_REF,
+		ATTR_NULL)
+DEF_GCC_BUILTIN(BUILT_IN_VA_COPY,
+		"__builtin_va_copy",
+		BT_FN_VOID_VALIST_REF_VALIST_ARG,
+		ATTR_NULL)
+
+DEF_GCC_BUILTIN(BUILT_IN_EXPECT,
+		"__builtin_expect",
+		BT_FN_LONG_LONG_LONG,
+		ATTR_NULL)
+
+/* From gcc patch to support __builtin_extend_pointer */
+DEF_GCC_BUILTIN(BUILT_IN_EXTEND_POINTER,
+                "__builtin_extend_pointer",
+                BT_FN_WORD_PTR,
+                ATTR_CONST_NOTHROW_LIST)
+
+/* C++ extensions */
+DEF_UNUSED_BUILTIN(BUILT_IN_NEW)
+DEF_UNUSED_BUILTIN(BUILT_IN_VEC_NEW)
+DEF_UNUSED_BUILTIN(BUILT_IN_DELETE)
+DEF_UNUSED_BUILTIN(BUILT_IN_VEC_DELETE)
+
+/* Declare abort, exit, _exit and _Exit */
+DEF_BUILTIN (BUILT_IN_ABORT,
+	     "__builtin_abort",
+	     NOT_BUILT_IN,
+	     BT_FN_VOID,
+	     BT_FN_VOID,
+	     1, 0, 0,
+	     ATTR_NORETURN_NOTHROW_LIST)
+
+DEF_BUILTIN (BUILT_IN_EXIT,
+	     "__builtin_exit",
+	     NOT_BUILT_IN,
+	     BT_FN_VOID_INT,
+	     BT_FN_VOID_INT,
+	     1, 0, 0,
+	     ATTR_NORETURN_NOTHROW_LIST)
+
+DEF_BUILTIN (BUILT_IN__EXIT,
+	     "__builtin__exit",
+	     NOT_BUILT_IN,
+	     BT_FN_VOID_INT,
+	     BT_FN_VOID_INT,
+	     1, 0, 1,
+	     ATTR_NORETURN_NOTHROW_LIST)
+
+DEF_BUILTIN (BUILT_IN__EXIT2,
+	     "__builtin__Exit",
+	     NOT_BUILT_IN,
+	     BT_FN_VOID_INT,
+	     BT_FN_VOID_INT,
+	     1, 0, !flag_isoc99,
+	     ATTR_NORETURN_NOTHROW_LIST)
+
+DEF_LIB_BUILTIN (BUILT_IN_CTYPE_B_LOC,
+                 "__builtin___ctype_b_loc",
+                 BT_FN_PTR,
+                 ATTR_CONST_NOTHROW_LIST)
+                 
+DEF_LIB_BUILTIN (BUILT_IN_CTYPE_TOUPPER_LOC,
+                 "__builtin___ctype_toupper_loc",
+                 BT_FN_PTR,
+                 ATTR_CONST_NOTHROW_LIST)
+                 
+DEF_LIB_BUILTIN (BUILT_IN_CTYPE_TOLOWER_LOC,
+                 "__builtin___ctype_tolower_loc",
+                 BT_FN_PTR,
+                 ATTR_CONST_NOTHROW_LIST)
+

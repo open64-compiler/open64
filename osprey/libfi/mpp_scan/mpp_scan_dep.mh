@@ -1,0 +1,310 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+/* USMID @(#) libfi/mpp_scan/mpp_scan_dep.mh	92.0	10/08/98 14:37:14 */
+
+scansum_p_1@.o :	segscan_p1_dim0_mask.fh segscan_p1_dim0_nomask.fh
+scansum_p_2@.o :	segscan_p2_dim0_mask.fh segscan_p2_dim0_nomask.fh
+scansum_p_2@.o :	segscan_p2_dim1_mask.fh segscan_p2_dim1_nomask.fh
+scansum_p_2@.o :	segscan_p2_dim2_mask.fh segscan_p2_dim2_nomask.fh
+scansum_p_3@.o :	segscan_p3_dim0_mask.fh segscan_p3_dim0_nomask.fh
+scansum_p_3@.o :	segscan_p3_dim1_mask.fh segscan_p3_dim1_nomask.fh
+scansum_p_3@.o :	segscan_p3_dim2_mask.fh segscan_p3_dim2_nomask.fh
+scansum_p_3@.o :	segscan_p3_dim3_mask.fh segscan_p3_dim3_nomask.fh
+scansum_p_4@.o :	segscan_s4_dim0_mask.fh segscan_s4_dim0_nomask.fh
+scansum_p_4@.o :	segscan_s4_dim1_mask.fh segscan_s4_dim1_nomask.fh
+scansum_p_4@.o :	segscan_s4_dim2_mask.fh segscan_s4_dim2_nomask.fh
+scansum_p_4@.o :	segscan_s4_dim3_mask.fh segscan_s4_dim3_nomask.fh
+scansum_p_4@.o :	segscan_s4_dim4_mask.fh segscan_s4_dim4_nomask.fh
+scansum_p_5@.o :	segscan_s5_dim0_mask.fh segscan_s5_dim0_nomask.fh
+scansum_p_5@.o :	segscan_s5_dim1_mask.fh segscan_s5_dim1_nomask.fh
+scansum_p_5@.o :	segscan_s5_dim2_mask.fh segscan_s5_dim2_nomask.fh
+scansum_p_5@.o :	segscan_s5_dim3_mask.fh segscan_s5_dim3_nomask.fh
+scansum_p_5@.o :	segscan_s5_dim4_mask.fh segscan_s5_dim4_nomask.fh
+scansum_p_5@.o :	segscan_s5_dim5_mask.fh segscan_s5_dim5_nomask.fh
+scansum_p_6@.o :	segscan_s6_dim0_mask.fh segscan_s6_dim0_nomask.fh
+scansum_p_6@.o :	segscan_s6_dim1_mask.fh segscan_s6_dim1_nomask.fh
+scansum_p_6@.o :	segscan_s6_dim2_mask.fh segscan_s6_dim2_nomask.fh
+scansum_p_6@.o :	segscan_s6_dim3_mask.fh segscan_s6_dim3_nomask.fh
+scansum_p_6@.o :	segscan_s6_dim4_mask.fh segscan_s6_dim4_nomask.fh
+scansum_p_6@.o :	segscan_s6_dim5_mask.fh segscan_s6_dim5_nomask.fh
+scansum_p_6@.o :	segscan_s6_dim6_mask.fh segscan_s6_dim6_nomask.fh
+scansum_p_7@.o :	segscan_s7_dim0_mask.fh segscan_s7_dim0_nomask.fh
+scansum_p_7@.o :	segscan_s7_dim1_mask.fh segscan_s7_dim1_nomask.fh
+scansum_p_7@.o :	segscan_s7_dim2_mask.fh segscan_s7_dim2_nomask.fh
+scansum_p_7@.o :	segscan_s7_dim3_mask.fh segscan_s7_dim3_nomask.fh
+scansum_p_7@.o :	segscan_s7_dim4_mask.fh segscan_s7_dim4_nomask.fh
+scansum_p_7@.o :	segscan_s7_dim5_mask.fh segscan_s7_dim5_nomask.fh
+scansum_p_7@.o :	segscan_s7_dim6_mask.fh segscan_s7_dim6_nomask.fh
+scansum_p_7@.o :	segscan_s7_dim7_mask.fh segscan_s7_dim7_nomask.fh
+scansum_s_1@.o :	segscan_s1_dim0_mask.fh segscan_s1_dim0_nomask.fh
+scansum_s_2@.o :	segscan_s2_dim0_mask.fh segscan_s2_dim0_nomask.fh
+scansum_s_2@.o :	segscan_s2_dim1_mask.fh segscan_s2_dim1_nomask.fh
+scansum_s_2@.o :	segscan_s2_dim2_mask.fh segscan_s2_dim2_nomask.fh
+scansum_s_3@.o :	segscan_s3_dim0_mask.fh segscan_s3_dim0_nomask.fh
+scansum_s_3@.o :	segscan_s3_dim1_mask.fh segscan_s3_dim1_nomask.fh
+scansum_s_3@.o :	segscan_s3_dim2_mask.fh segscan_s3_dim2_nomask.fh
+scansum_s_3@.o :	segscan_s3_dim3_mask.fh segscan_s3_dim3_nomask.fh
+scansum_s_4@.o :	segscan_s4_dim0_mask.fh segscan_s4_dim0_nomask.fh
+scansum_s_4@.o :	segscan_s4_dim1_mask.fh segscan_s4_dim1_nomask.fh
+scansum_s_4@.o :	segscan_s4_dim2_mask.fh segscan_s4_dim2_nomask.fh
+scansum_s_4@.o :	segscan_s4_dim3_mask.fh segscan_s4_dim3_nomask.fh
+scansum_s_4@.o :	segscan_s4_dim4_mask.fh segscan_s4_dim4_nomask.fh
+scansum_s_5@.o :	segscan_s5_dim0_mask.fh segscan_s5_dim0_nomask.fh
+scansum_s_5@.o :	segscan_s5_dim1_mask.fh segscan_s5_dim1_nomask.fh
+scansum_s_5@.o :	segscan_s5_dim2_mask.fh segscan_s5_dim2_nomask.fh
+scansum_s_5@.o :	segscan_s5_dim3_mask.fh segscan_s5_dim3_nomask.fh
+scansum_s_5@.o :	segscan_s5_dim4_mask.fh segscan_s5_dim4_nomask.fh
+scansum_s_5@.o :	segscan_s5_dim5_mask.fh segscan_s5_dim5_nomask.fh
+scansum_s_6@.o :	segscan_s6_dim0_mask.fh segscan_s6_dim0_nomask.fh
+scansum_s_6@.o :	segscan_s6_dim1_mask.fh segscan_s6_dim1_nomask.fh
+scansum_s_6@.o :	segscan_s6_dim2_mask.fh segscan_s6_dim2_nomask.fh
+scansum_s_6@.o :	segscan_s6_dim3_mask.fh segscan_s6_dim3_nomask.fh
+scansum_s_6@.o :	segscan_s6_dim4_mask.fh segscan_s6_dim4_nomask.fh
+scansum_s_6@.o :	segscan_s6_dim5_mask.fh segscan_s6_dim5_nomask.fh
+scansum_s_6@.o :	segscan_s6_dim6_mask.fh segscan_s6_dim6_nomask.fh
+scansum_s_7@.o :	segscan_s7_dim0_mask.fh segscan_s7_dim0_nomask.fh
+scansum_s_7@.o :	segscan_s7_dim1_mask.fh segscan_s7_dim1_nomask.fh
+scansum_s_7@.o :	segscan_s7_dim2_mask.fh segscan_s7_dim2_nomask.fh
+scansum_s_7@.o :	segscan_s7_dim3_mask.fh segscan_s7_dim3_nomask.fh
+scansum_s_7@.o :	segscan_s7_dim4_mask.fh segscan_s7_dim4_nomask.fh
+scansum_s_7@.o :	segscan_s7_dim5_mask.fh segscan_s7_dim5_nomask.fh
+scansum_s_7@.o :	segscan_s7_dim6_mask.fh segscan_s7_dim6_nomask.fh
+scansum_s_7@.o :	segscan_s7_dim7_mask.fh segscan_s7_dim7_nomask.fh
+scanprod_p_1@.o :	segscan_p1_dim0_mask.fh segscan_p1_dim0_nomask.fh
+scanprod_p_2@.o :	segscan_p2_dim0_mask.fh segscan_p2_dim0_nomask.fh
+scanprod_p_2@.o :	segscan_p2_dim1_mask.fh segscan_p2_dim1_nomask.fh
+scanprod_p_2@.o :	segscan_p2_dim2_mask.fh segscan_p2_dim2_nomask.fh
+scanprod_p_3@.o :	segscan_p3_dim0_mask.fh segscan_p3_dim0_nomask.fh
+scanprod_p_3@.o :	segscan_p3_dim1_mask.fh segscan_p3_dim1_nomask.fh
+scanprod_p_3@.o :	segscan_p3_dim2_mask.fh segscan_p3_dim2_nomask.fh
+scanprod_p_3@.o :	segscan_p3_dim3_mask.fh segscan_p3_dim3_nomask.fh
+scanprod_p_4@.o :	segscan_s4_dim0_mask.fh segscan_s4_dim0_nomask.fh
+scanprod_p_4@.o :	segscan_s4_dim1_mask.fh segscan_s4_dim1_nomask.fh
+scanprod_p_4@.o :	segscan_s4_dim2_mask.fh segscan_s4_dim2_nomask.fh
+scanprod_p_4@.o :	segscan_s4_dim3_mask.fh segscan_s4_dim3_nomask.fh
+scanprod_p_4@.o :	segscan_s4_dim4_mask.fh segscan_s4_dim4_nomask.fh
+scanprod_p_5@.o :	segscan_s5_dim0_mask.fh segscan_s5_dim0_nomask.fh
+scanprod_p_5@.o :	segscan_s5_dim1_mask.fh segscan_s5_dim1_nomask.fh
+scanprod_p_5@.o :	segscan_s5_dim2_mask.fh segscan_s5_dim2_nomask.fh
+scanprod_p_5@.o :	segscan_s5_dim3_mask.fh segscan_s5_dim3_nomask.fh
+scanprod_p_5@.o :	segscan_s5_dim4_mask.fh segscan_s5_dim4_nomask.fh
+scanprod_p_5@.o :	segscan_s5_dim5_mask.fh segscan_s5_dim5_nomask.fh
+scanprod_p_6@.o :	segscan_s6_dim0_mask.fh segscan_s6_dim0_nomask.fh
+scanprod_p_6@.o :	segscan_s6_dim1_mask.fh segscan_s6_dim1_nomask.fh
+scanprod_p_6@.o :	segscan_s6_dim2_mask.fh segscan_s6_dim2_nomask.fh
+scanprod_p_6@.o :	segscan_s6_dim3_mask.fh segscan_s6_dim3_nomask.fh
+scanprod_p_6@.o :	segscan_s6_dim4_mask.fh segscan_s6_dim4_nomask.fh
+scanprod_p_6@.o :	segscan_s6_dim5_mask.fh segscan_s6_dim5_nomask.fh
+scanprod_p_6@.o :	segscan_s6_dim6_mask.fh segscan_s6_dim6_nomask.fh
+scanprod_p_7@.o :	segscan_s7_dim0_mask.fh segscan_s7_dim0_nomask.fh
+scanprod_p_7@.o :	segscan_s7_dim1_mask.fh segscan_s7_dim1_nomask.fh
+scanprod_p_7@.o :	segscan_s7_dim2_mask.fh segscan_s7_dim2_nomask.fh
+scanprod_p_7@.o :	segscan_s7_dim3_mask.fh segscan_s7_dim3_nomask.fh
+scanprod_p_7@.o :	segscan_s7_dim4_mask.fh segscan_s7_dim4_nomask.fh
+scanprod_p_7@.o :	segscan_s7_dim5_mask.fh segscan_s7_dim5_nomask.fh
+scanprod_p_7@.o :	segscan_s7_dim6_mask.fh segscan_s7_dim6_nomask.fh
+scanprod_p_7@.o :	segscan_s7_dim7_mask.fh segscan_s7_dim7_nomask.fh
+scanprod_s_1@.o :	segscan_s1_dim0_mask.fh segscan_s1_dim0_nomask.fh
+scanprod_s_2@.o :	segscan_s2_dim0_mask.fh segscan_s2_dim0_nomask.fh
+scanprod_s_2@.o :	segscan_s2_dim1_mask.fh segscan_s2_dim1_nomask.fh
+scanprod_s_2@.o :	segscan_s2_dim2_mask.fh segscan_s2_dim2_nomask.fh
+scanprod_s_3@.o :	segscan_s3_dim0_mask.fh segscan_s3_dim0_nomask.fh
+scanprod_s_3@.o :	segscan_s3_dim1_mask.fh segscan_s3_dim1_nomask.fh
+scanprod_s_3@.o :	segscan_s3_dim2_mask.fh segscan_s3_dim2_nomask.fh
+scanprod_s_3@.o :	segscan_s3_dim3_mask.fh segscan_s3_dim3_nomask.fh
+scanprod_s_4@.o :	segscan_s4_dim0_mask.fh segscan_s4_dim0_nomask.fh
+scanprod_s_4@.o :	segscan_s4_dim1_mask.fh segscan_s4_dim1_nomask.fh
+scanprod_s_4@.o :	segscan_s4_dim2_mask.fh segscan_s4_dim2_nomask.fh
+scanprod_s_4@.o :	segscan_s4_dim3_mask.fh segscan_s4_dim3_nomask.fh
+scanprod_s_4@.o :	segscan_s4_dim4_mask.fh segscan_s4_dim4_nomask.fh
+scanprod_s_5@.o :	segscan_s5_dim0_mask.fh segscan_s5_dim0_nomask.fh
+scanprod_s_5@.o :	segscan_s5_dim1_mask.fh segscan_s5_dim1_nomask.fh
+scanprod_s_5@.o :	segscan_s5_dim2_mask.fh segscan_s5_dim2_nomask.fh
+scanprod_s_5@.o :	segscan_s5_dim3_mask.fh segscan_s5_dim3_nomask.fh
+scanprod_s_5@.o :	segscan_s5_dim4_mask.fh segscan_s5_dim4_nomask.fh
+scanprod_s_5@.o :	segscan_s5_dim5_mask.fh segscan_s5_dim5_nomask.fh
+scanprod_s_6@.o :	segscan_s6_dim0_mask.fh segscan_s6_dim0_nomask.fh
+scanprod_s_6@.o :	segscan_s6_dim1_mask.fh segscan_s6_dim1_nomask.fh
+scanprod_s_6@.o :	segscan_s6_dim2_mask.fh segscan_s6_dim2_nomask.fh
+scanprod_s_6@.o :	segscan_s6_dim3_mask.fh segscan_s6_dim3_nomask.fh
+scanprod_s_6@.o :	segscan_s6_dim4_mask.fh segscan_s6_dim4_nomask.fh
+scanprod_s_6@.o :	segscan_s6_dim5_mask.fh segscan_s6_dim5_nomask.fh
+scanprod_s_6@.o :	segscan_s6_dim6_mask.fh segscan_s6_dim6_nomask.fh
+scanprod_s_7@.o :	segscan_s7_dim0_mask.fh segscan_s7_dim0_nomask.fh
+scanprod_s_7@.o :	segscan_s7_dim1_mask.fh segscan_s7_dim1_nomask.fh
+scanprod_s_7@.o :	segscan_s7_dim2_mask.fh segscan_s7_dim2_nomask.fh
+scanprod_s_7@.o :	segscan_s7_dim3_mask.fh segscan_s7_dim3_nomask.fh
+scanprod_s_7@.o :	segscan_s7_dim4_mask.fh segscan_s7_dim4_nomask.fh
+scanprod_s_7@.o :	segscan_s7_dim5_mask.fh segscan_s7_dim5_nomask.fh
+scanprod_s_7@.o :	segscan_s7_dim6_mask.fh segscan_s7_dim6_nomask.fh
+scanprod_s_7@.o :	segscan_s7_dim7_mask.fh segscan_s7_dim7_nomask.fh
+scanmax_p_1@.o :	segscan_p1_dim0_mask.fh segscan_p1_dim0_nomask.fh
+scanmax_p_2@.o :	segscan_p2_dim0_mask.fh segscan_p2_dim0_nomask.fh
+scanmax_p_2@.o :	segscan_p2_dim1_mask.fh segscan_p2_dim1_nomask.fh
+scanmax_p_2@.o :	segscan_p2_dim2_mask.fh segscan_p2_dim2_nomask.fh
+scanmax_p_3@.o :	segscan_p3_dim0_mask.fh segscan_p3_dim0_nomask.fh
+scanmax_p_3@.o :	segscan_p3_dim1_mask.fh segscan_p3_dim1_nomask.fh
+scanmax_p_3@.o :	segscan_p3_dim2_mask.fh segscan_p3_dim2_nomask.fh
+scanmax_p_3@.o :	segscan_p3_dim3_mask.fh segscan_p3_dim3_nomask.fh
+scanmax_p_4@.o :	segscan_s4_dim0_mask.fh segscan_s4_dim0_nomask.fh
+scanmax_p_4@.o :	segscan_s4_dim1_mask.fh segscan_s4_dim1_nomask.fh
+scanmax_p_4@.o :	segscan_s4_dim2_mask.fh segscan_s4_dim2_nomask.fh
+scanmax_p_4@.o :	segscan_s4_dim3_mask.fh segscan_s4_dim3_nomask.fh
+scanmax_p_4@.o :	segscan_s4_dim4_mask.fh segscan_s4_dim4_nomask.fh
+scanmax_p_5@.o :	segscan_s5_dim0_mask.fh segscan_s5_dim0_nomask.fh
+scanmax_p_5@.o :	segscan_s5_dim1_mask.fh segscan_s5_dim1_nomask.fh
+scanmax_p_5@.o :	segscan_s5_dim2_mask.fh segscan_s5_dim2_nomask.fh
+scanmax_p_5@.o :	segscan_s5_dim3_mask.fh segscan_s5_dim3_nomask.fh
+scanmax_p_5@.o :	segscan_s5_dim4_mask.fh segscan_s5_dim4_nomask.fh
+scanmax_p_5@.o :	segscan_s5_dim5_mask.fh segscan_s5_dim5_nomask.fh
+scanmax_p_6@.o :	segscan_s6_dim0_mask.fh segscan_s6_dim0_nomask.fh
+scanmax_p_6@.o :	segscan_s6_dim1_mask.fh segscan_s6_dim1_nomask.fh
+scanmax_p_6@.o :	segscan_s6_dim2_mask.fh segscan_s6_dim2_nomask.fh
+scanmax_p_6@.o :	segscan_s6_dim3_mask.fh segscan_s6_dim3_nomask.fh
+scanmax_p_6@.o :	segscan_s6_dim4_mask.fh segscan_s6_dim4_nomask.fh
+scanmax_p_6@.o :	segscan_s6_dim5_mask.fh segscan_s6_dim5_nomask.fh
+scanmax_p_6@.o :	segscan_s6_dim6_mask.fh segscan_s6_dim6_nomask.fh
+scanmax_p_7@.o :	segscan_s7_dim0_mask.fh segscan_s7_dim0_nomask.fh
+scanmax_p_7@.o :	segscan_s7_dim1_mask.fh segscan_s7_dim1_nomask.fh
+scanmax_p_7@.o :	segscan_s7_dim2_mask.fh segscan_s7_dim2_nomask.fh
+scanmax_p_7@.o :	segscan_s7_dim3_mask.fh segscan_s7_dim3_nomask.fh
+scanmax_p_7@.o :	segscan_s7_dim4_mask.fh segscan_s7_dim4_nomask.fh
+scanmax_p_7@.o :	segscan_s7_dim5_mask.fh segscan_s7_dim5_nomask.fh
+scanmax_p_7@.o :	segscan_s7_dim6_mask.fh segscan_s7_dim6_nomask.fh
+scanmax_p_7@.o :	segscan_s7_dim7_mask.fh segscan_s7_dim7_nomask.fh
+scanmax_s_1@.o :	segscan_s1_dim0_mask.fh segscan_s1_dim0_nomask.fh
+scanmax_s_2@.o :	segscan_s2_dim0_mask.fh segscan_s2_dim0_nomask.fh
+scanmax_s_2@.o :	segscan_s2_dim1_mask.fh segscan_s2_dim1_nomask.fh
+scanmax_s_2@.o :	segscan_s2_dim2_mask.fh segscan_s2_dim2_nomask.fh
+scanmax_s_3@.o :	segscan_s3_dim0_mask.fh segscan_s3_dim0_nomask.fh
+scanmax_s_3@.o :	segscan_s3_dim1_mask.fh segscan_s3_dim1_nomask.fh
+scanmax_s_3@.o :	segscan_s3_dim2_mask.fh segscan_s3_dim2_nomask.fh
+scanmax_s_3@.o :	segscan_s3_dim3_mask.fh segscan_s3_dim3_nomask.fh
+scanmax_s_4@.o :	segscan_s4_dim0_mask.fh segscan_s4_dim0_nomask.fh
+scanmax_s_4@.o :	segscan_s4_dim1_mask.fh segscan_s4_dim1_nomask.fh
+scanmax_s_4@.o :	segscan_s4_dim2_mask.fh segscan_s4_dim2_nomask.fh
+scanmax_s_4@.o :	segscan_s4_dim3_mask.fh segscan_s4_dim3_nomask.fh
+scanmax_s_4@.o :	segscan_s4_dim4_mask.fh segscan_s4_dim4_nomask.fh
+scanmax_s_5@.o :	segscan_s5_dim0_mask.fh segscan_s5_dim0_nomask.fh
+scanmax_s_5@.o :	segscan_s5_dim1_mask.fh segscan_s5_dim1_nomask.fh
+scanmax_s_5@.o :	segscan_s5_dim2_mask.fh segscan_s5_dim2_nomask.fh
+scanmax_s_5@.o :	segscan_s5_dim3_mask.fh segscan_s5_dim3_nomask.fh
+scanmax_s_5@.o :	segscan_s5_dim4_mask.fh segscan_s5_dim4_nomask.fh
+scanmax_s_5@.o :	segscan_s5_dim5_mask.fh segscan_s5_dim5_nomask.fh
+scanmax_s_6@.o :	segscan_s6_dim0_mask.fh segscan_s6_dim0_nomask.fh
+scanmax_s_6@.o :	segscan_s6_dim1_mask.fh segscan_s6_dim1_nomask.fh
+scanmax_s_6@.o :	segscan_s6_dim2_mask.fh segscan_s6_dim2_nomask.fh
+scanmax_s_6@.o :	segscan_s6_dim3_mask.fh segscan_s6_dim3_nomask.fh
+scanmax_s_6@.o :	segscan_s6_dim4_mask.fh segscan_s6_dim4_nomask.fh
+scanmax_s_6@.o :	segscan_s6_dim5_mask.fh segscan_s6_dim5_nomask.fh
+scanmax_s_6@.o :	segscan_s6_dim6_mask.fh segscan_s6_dim6_nomask.fh
+scanmax_s_7@.o :	segscan_s7_dim0_mask.fh segscan_s7_dim0_nomask.fh
+scanmax_s_7@.o :	segscan_s7_dim1_mask.fh segscan_s7_dim1_nomask.fh
+scanmax_s_7@.o :	segscan_s7_dim2_mask.fh segscan_s7_dim2_nomask.fh
+scanmax_s_7@.o :	segscan_s7_dim3_mask.fh segscan_s7_dim3_nomask.fh
+scanmax_s_7@.o :	segscan_s7_dim4_mask.fh segscan_s7_dim4_nomask.fh
+scanmax_s_7@.o :	segscan_s7_dim5_mask.fh segscan_s7_dim5_nomask.fh
+scanmax_s_7@.o :	segscan_s7_dim6_mask.fh segscan_s7_dim6_nomask.fh
+scanmax_s_7@.o :	segscan_s7_dim7_mask.fh segscan_s7_dim7_nomask.fh
+scanmin_p_1@.o :	segscan_p1_dim0_mask.fh segscan_p1_dim0_nomask.fh
+scanmin_p_2@.o :	segscan_p2_dim0_mask.fh segscan_p2_dim0_nomask.fh
+scanmin_p_2@.o :	segscan_p2_dim1_mask.fh segscan_p2_dim1_nomask.fh
+scanmin_p_2@.o :	segscan_p2_dim2_mask.fh segscan_p2_dim2_nomask.fh
+scanmin_p_3@.o :	segscan_p3_dim0_mask.fh segscan_p3_dim0_nomask.fh
+scanmin_p_3@.o :	segscan_p3_dim1_mask.fh segscan_p3_dim1_nomask.fh
+scanmin_p_3@.o :	segscan_p3_dim2_mask.fh segscan_p3_dim2_nomask.fh
+scanmin_p_3@.o :	segscan_p3_dim3_mask.fh segscan_p3_dim3_nomask.fh
+scanmin_p_4@.o :	segscan_s4_dim0_mask.fh segscan_s4_dim0_nomask.fh
+scanmin_p_4@.o :	segscan_s4_dim1_mask.fh segscan_s4_dim1_nomask.fh
+scanmin_p_4@.o :	segscan_s4_dim2_mask.fh segscan_s4_dim2_nomask.fh
+scanmin_p_4@.o :	segscan_s4_dim3_mask.fh segscan_s4_dim3_nomask.fh
+scanmin_p_4@.o :	segscan_s4_dim4_mask.fh segscan_s4_dim4_nomask.fh
+scanmin_p_5@.o :	segscan_s5_dim0_mask.fh segscan_s5_dim0_nomask.fh
+scanmin_p_5@.o :	segscan_s5_dim1_mask.fh segscan_s5_dim1_nomask.fh
+scanmin_p_5@.o :	segscan_s5_dim2_mask.fh segscan_s5_dim2_nomask.fh
+scanmin_p_5@.o :	segscan_s5_dim3_mask.fh segscan_s5_dim3_nomask.fh
+scanmin_p_5@.o :	segscan_s5_dim4_mask.fh segscan_s5_dim4_nomask.fh
+scanmin_p_5@.o :	segscan_s5_dim5_mask.fh segscan_s5_dim5_nomask.fh
+scanmin_p_6@.o :	segscan_s6_dim0_mask.fh segscan_s6_dim0_nomask.fh
+scanmin_p_6@.o :	segscan_s6_dim1_mask.fh segscan_s6_dim1_nomask.fh
+scanmin_p_6@.o :	segscan_s6_dim2_mask.fh segscan_s6_dim2_nomask.fh
+scanmin_p_6@.o :	segscan_s6_dim3_mask.fh segscan_s6_dim3_nomask.fh
+scanmin_p_6@.o :	segscan_s6_dim4_mask.fh segscan_s6_dim4_nomask.fh
+scanmin_p_6@.o :	segscan_s6_dim5_mask.fh segscan_s6_dim5_nomask.fh
+scanmin_p_6@.o :	segscan_s6_dim6_mask.fh segscan_s6_dim6_nomask.fh
+scanmin_p_7@.o :	segscan_s7_dim0_mask.fh segscan_s7_dim0_nomask.fh
+scanmin_p_7@.o :	segscan_s7_dim1_mask.fh segscan_s7_dim1_nomask.fh
+scanmin_p_7@.o :	segscan_s7_dim2_mask.fh segscan_s7_dim2_nomask.fh
+scanmin_p_7@.o :	segscan_s7_dim3_mask.fh segscan_s7_dim3_nomask.fh
+scanmin_p_7@.o :	segscan_s7_dim4_mask.fh segscan_s7_dim4_nomask.fh
+scanmin_p_7@.o :	segscan_s7_dim5_mask.fh segscan_s7_dim5_nomask.fh
+scanmin_p_7@.o :	segscan_s7_dim6_mask.fh segscan_s7_dim6_nomask.fh
+scanmin_p_7@.o :	segscan_s7_dim7_mask.fh segscan_s7_dim7_nomask.fh
+scanmin_s_1@.o :	segscan_s1_dim0_mask.fh segscan_s1_dim0_nomask.fh
+scanmin_s_2@.o :	segscan_s2_dim0_mask.fh segscan_s2_dim0_nomask.fh
+scanmin_s_2@.o :	segscan_s2_dim1_mask.fh segscan_s2_dim1_nomask.fh
+scanmin_s_2@.o :	segscan_s2_dim2_mask.fh segscan_s2_dim2_nomask.fh
+scanmin_s_3@.o :	segscan_s3_dim0_mask.fh segscan_s3_dim0_nomask.fh
+scanmin_s_3@.o :	segscan_s3_dim1_mask.fh segscan_s3_dim1_nomask.fh
+scanmin_s_3@.o :	segscan_s3_dim2_mask.fh segscan_s3_dim2_nomask.fh
+scanmin_s_3@.o :	segscan_s3_dim3_mask.fh segscan_s3_dim3_nomask.fh
+scanmin_s_4@.o :	segscan_s4_dim0_mask.fh segscan_s4_dim0_nomask.fh
+scanmin_s_4@.o :	segscan_s4_dim1_mask.fh segscan_s4_dim1_nomask.fh
+scanmin_s_4@.o :	segscan_s4_dim2_mask.fh segscan_s4_dim2_nomask.fh
+scanmin_s_4@.o :	segscan_s4_dim3_mask.fh segscan_s4_dim3_nomask.fh
+scanmin_s_4@.o :	segscan_s4_dim4_mask.fh segscan_s4_dim4_nomask.fh
+scanmin_s_5@.o :	segscan_s5_dim0_mask.fh segscan_s5_dim0_nomask.fh
+scanmin_s_5@.o :	segscan_s5_dim1_mask.fh segscan_s5_dim1_nomask.fh
+scanmin_s_5@.o :	segscan_s5_dim2_mask.fh segscan_s5_dim2_nomask.fh
+scanmin_s_5@.o :	segscan_s5_dim3_mask.fh segscan_s5_dim3_nomask.fh
+scanmin_s_5@.o :	segscan_s5_dim4_mask.fh segscan_s5_dim4_nomask.fh
+scanmin_s_5@.o :	segscan_s5_dim5_mask.fh segscan_s5_dim5_nomask.fh
+scanmin_s_6@.o :	segscan_s6_dim0_mask.fh segscan_s6_dim0_nomask.fh
+scanmin_s_6@.o :	segscan_s6_dim1_mask.fh segscan_s6_dim1_nomask.fh
+scanmin_s_6@.o :	segscan_s6_dim2_mask.fh segscan_s6_dim2_nomask.fh
+scanmin_s_6@.o :	segscan_s6_dim3_mask.fh segscan_s6_dim3_nomask.fh
+scanmin_s_6@.o :	segscan_s6_dim4_mask.fh segscan_s6_dim4_nomask.fh
+scanmin_s_6@.o :	segscan_s6_dim5_mask.fh segscan_s6_dim5_nomask.fh
+scanmin_s_6@.o :	segscan_s6_dim6_mask.fh segscan_s6_dim6_nomask.fh
+scanmin_s_7@.o :	segscan_s7_dim0_mask.fh segscan_s7_dim0_nomask.fh
+scanmin_s_7@.o :	segscan_s7_dim1_mask.fh segscan_s7_dim1_nomask.fh
+scanmin_s_7@.o :	segscan_s7_dim2_mask.fh segscan_s7_dim2_nomask.fh
+scanmin_s_7@.o :	segscan_s7_dim3_mask.fh segscan_s7_dim3_nomask.fh
+scanmin_s_7@.o :	segscan_s7_dim4_mask.fh segscan_s7_dim4_nomask.fh
+scanmin_s_7@.o :	segscan_s7_dim5_mask.fh segscan_s7_dim5_nomask.fh
+scanmin_s_7@.o :	segscan_s7_dim6_mask.fh segscan_s7_dim6_nomask.fh
+scanmin_s_7@.o :	segscan_s7_dim7_mask.fh segscan_s7_dim7_nomask.fh
+

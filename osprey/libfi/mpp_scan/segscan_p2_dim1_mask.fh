@@ -1,0 +1,145 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+
+************************************************************************
+*
+*	This is the guts for the rank 2 PRESUM and PREPROD routines.
+*	This routine is called if no mask has been specified, or a scalar
+*	value of .true. has been passed as the mask.  All elements in the
+*	block are included in the calculations.
+*
+*	The number of blocks each PE contains is calculated by the calling
+*	the lowidx and hiidx routines.  Then, the value of the carry for
+*	this block is calculated.  If the current block is not the first
+*	block in the array, we will wait for the PE executing the previous
+*	block to copy its carry value into this PE's carryin variable.
+*	Once we have that value, we add it to our carry value to get the
+*	final value for the carry out of this block.  We then do a remote
+*	put to place that value in the carryin variable on the PE which
+*	executes the next block in the array.  Once we have done that,
+*	we can go back and using the previous PE's carryin value as a
+*	starting point, we can determine the partial sum for each element
+*	in this block.  Finally, we wait for an acknowledgement from the
+*	PE to which we sent data, so we do not overwrite that data before
+*	it has a chance to use it.
+*
+************************************************************************
+*
+*	Get my virtual PE number.
+*
+	mype = my_pe()
+*
+	do j = 1, blkcnt(2)
+	    low(2) = lowidx (source,2,mype,j)
+	    hi(2) = hiidx (source,2,mype,j)
+	    do j1 = low(2), hi(2)
+		do i = 1, blkcnt(1)
+		    low(1) = lowidx (source,1,mype,i)
+		    hi(1) = hiidx (source,1,mype,i)
+*
+*	Calculate carry value for this block
+*
+		    carry = init_val
+		    stop_found = .false.
+		    do p = low(1), hi(1)
+			if (mask(p,j1)) then
+			    if (stop(p,j1)) then
+				carry = FUNC (carry, source(p,j1))
+			    else
+				carry = init_val
+				stop_found = .true.
+			    endif
+			endif
+		    enddo
+*
+*	If not first block in array, wait for previous block's carry value.
+*
+		    if (low(1) .gt. 1) then
+			pe_from = home (source(low(1)-1,j1))
+			if (pe_from .ne. mype) then
+			    call shmem_wait (comin, zero)
+			    tcarry = carryin
+			    comin = 0
+			    call shmem_put (ack, gotit, 1, pe_from)
+			else
+			    tcarry = carryout
+			endif
+		    else
+			tcarry = init_val
+		    endif
+*
+*	If not last block in array, calculate carry value and put it
+*	into next PE's local memory.
+*
+		    if (hi(1) .lt. sext(1)) then
+			if (stop_found) then
+			    carryout = carry
+			else
+			    carryout = FUNC (carry, tcarry)
+			endif
+			pe_to = home (source(hi(1)+1,j1))
+			if (pe_to .ne. mype) then
+			    call shmem_put (carryin, carryout, comsize, pe_to)
+			    call shmem_put (comin, comout, 1, pe_to)
+			endif
+		    endif
+*
+*	Calculate result value for each element in this block.
+*
+		    carry = tcarry
+		    do p = low(1), hi(1)
+			if (mask(p,j1)) then
+			    carry = FUNC (carry, source(p,j1))
+			    result(p,j1) = carry
+			    if (.NOT. stop(p,j1)) then
+				carry = init_val
+			    endif
+			endif
+		    enddo
+*
+*	Wait for acknowledgement of data receipt from next block.
+*	
+		    if (hi(1) .lt. sext(1)) then
+			pe_to = home (source(hi(1)+1,j1))
+			if (pe_to .ne. mype) then
+			    call shmem_wait (ack, zero)
+			endif
+			ack = 0
+		    endif
+		enddo
+	    enddo
+	enddo
+cdir$	barrier

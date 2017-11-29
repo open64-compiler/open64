@@ -1,0 +1,30 @@
+# How to use:
+# Do a:
+# #include "gspin-interface.h"
+# NOTE: You may *only* use gspin-interface.h
+# See gspin-test-driver.c as an example.
+
+# How to build libspin.a:
+# Just execute this (README) file.
+# libgspin.a, gspin, gspin-debug get built.
+
+CC=gcc
+
+DEV_HFILES='gspin-gcc-interface.h gspin-wgen-interface.h gspin-tree.h gspin-assert.h gspin-base-types.h gspin-alloc.h gspin-mempool.h gspin-io.h gspin-aux.h gspin-list.h gspin-tel.h'
+DEV_CFILES='gspin-tree.c gspin-assert.c gspin-alloc.c gspin-mempool.c gspin-io.c gspin-aux.c gspin-list.c gspin-tel.c'
+DRI_CFILES='gspin-test-driver.c'
+CFILES="$DEV_CFILES $DRI_CFILES"
+
+rm -f gspin gspin-debug libgspin.a tags *.[iosB]
+ctags *.[ch]
+
+echo PROD-BUILD:
+$CC -UIs_True_On -O0 -m32 -Wformat -Wswitch $DEV_CFILES $DRI_CFILES -o gspin
+
+echo LIBRARY-BUILD:
+$CC -DIs_True_On=1 -O0 -m32 -Wformat -Wswitch -g -c $DEV_CFILES 
+ar rc libgspin.a *.o
+rm -f *.o
+
+echo DEV-BUILD:
+$CC -DIs_True_On=1 -O0 -g -m32 -Wformat -Wswitch $DRI_CFILES -L. -lgspin -o gspin-debug

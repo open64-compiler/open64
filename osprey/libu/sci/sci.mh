@@ -1,0 +1,221 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* USMID @(#) libu/sci/sci.mh	92.1	10/19/98 10:07:05 */
+
+
+LIB_SRC_INFO += \
+		12:sci/isortb.f \
+		12:sci/isortd.f \
+		12:sci/ssortb.f \
+		12:sci/xersor.f \
+
+/*
+ *	Directory c1 
+ */
+LIB_SRC_INFO += \
+		1:sci/c1/cluseq.s \
+		1:sci/c1/clusfge.s \
+		1:sci/c1/clusfgt.s \
+		1:sci/c1/clusfle.s \
+		1:sci/c1/clusflt.s \
+		1:sci/c1/clusige.s \
+		1:sci/c1/clusigt.s \
+		1:sci/c1/clusile.s \
+		1:sci/c1/clusilt.s \
+		1:sci/c1/clusne.s \
+		1:sci/c1/gather.s \
+		1:sci/c1/icamax.s \
+		1:sci/c1/iilz.s \
+		1:sci/c1/illz.s \
+		1:sci/c1/ilsum.s \
+		1:sci/c1/inflmax.s \
+		1:sci/c1/inflmin.s \
+		1:sci/c1/intmax.s \
+		1:sci/c1/intmin.s \
+		1:sci/c1/irecps.s \
+		1:sci/c1/isrcheq.s \
+		1:sci/c1/isrchfge.s \
+		1:sci/c1/isrchfgt.s \
+		1:sci/c1/isrchfle.s \
+		1:sci/c1/isrchflt.s \
+		1:sci/c1/isrchige.s \
+		1:sci/c1/isrchigt.s \
+		1:sci/c1/isrchile.s \
+		1:sci/c1/isrchilt.s \
+		1:sci/c1/isrchmeq.s \
+		1:sci/c1/isrchmge.s \
+		1:sci/c1/isrchmgt.s \
+		1:sci/c1/isrchmle.s \
+		1:sci/c1/isrchmlt.s \
+		1:sci/c1/isrchmne.s \
+		1:sci/c1/isrchne.s \
+		1:sci/c1/isum.s \
+		1:sci/c1/orders.f \
+		1:sci/c1/osrchf.s \
+		1:sci/c1/osrchi.s \
+		1:sci/c1/osrchm.s \
+		1:sci/c1/scieh.s \
+		1:sci/c1/scopy.s \
+		1:sci/c1/wheneq.s \
+		1:sci/c1/whenfge.s \
+		1:sci/c1/whenfgt.s \
+		1:sci/c1/whenfle.s \
+		1:sci/c1/whenflt.s \
+		1:sci/c1/whenige.s \
+		1:sci/c1/whenigt.s \
+		1:sci/c1/whenile.s \
+		1:sci/c1/whenilt.s \
+		1:sci/c1/whenmeq.s \
+		1:sci/c1/whenmge.s \
+		1:sci/c1/whenmgt.s \
+		1:sci/c1/whenmle.s \
+		1:sci/c1/whenmlt.s \
+		1:sci/c1/whenmne.s \
+		1:sci/c1/whenne.s \
+		T:sci/c1/isamax_ieee.s \
+		T:sci/c1/isamin_ieee.s \
+		T:sci/c1/ismax_ieee.s \
+		T:sci/c1/ismin_ieee.s \
+		ct:sci/c1/isamax_c90.s \
+		ct:sci/c1/isamin_c90.s \
+		ct:sci/c1/ismax_c90.s \
+		ct:sci/c1/ismin_c90.s \
+		y:sci/c1/isamax_ymp.s \
+		y:sci/c1/isamin_ymp.s \
+		y:sci/c1/ismax_ymp.s \
+		y:sci/c1/ismin_ymp.s \
+
+/*
+ *	Directory c2 
+ */
+LIB_SRC_INFO += \
+		2:sci/c2/cluseq.f \
+		2:sci/c2/clusfge.f \
+		2:sci/c2/clusfgt.f \
+		2:sci/c2/clusfle.f \
+		2:sci/c2/clusflt.f \
+		2:sci/c2/clusige.f \
+		2:sci/c2/clusigt.f \
+		2:sci/c2/clusile.f \
+		2:sci/c2/clusilt.f \
+		2:sci/c2/clusne.f \
+		2:sci/c2/icamax.s \
+		2:sci/c2/iilz.s \
+		2:sci/c2/illz.s \
+		2:sci/c2/ilsum.s \
+		2:sci/c2/inflmax.f \
+		2:sci/c2/inflmin.f \
+		2:sci/c2/intmax.s \
+		2:sci/c2/intmin.s \
+		2:sci/c2/irecps.s \
+		2:sci/c2/isamax.s \
+		2:sci/c2/isamin.s \
+		2:sci/c2/ismax.s \
+		2:sci/c2/ismin.s \
+		2:sci/c2/isrcheq.s \
+		2:sci/c2/isrchfge.s \
+		2:sci/c2/isrchfgt.s \
+		2:sci/c2/isrchfle.s \
+		2:sci/c2/isrchflt.s \
+		2:sci/c2/isrchige.s \
+		2:sci/c2/isrchigt.s \
+		2:sci/c2/isrchile.s \
+		2:sci/c2/isrchilt.s \
+		2:sci/c2/isrchmeq.f \
+		2:sci/c2/isrchmge.f \
+		2:sci/c2/isrchmgt.f \
+		2:sci/c2/isrchmle.f \
+		2:sci/c2/isrchmlt.f \
+		2:sci/c2/isrchmne.f \
+		2:sci/c2/isrchne.s \
+		2:sci/c2/orders.f \
+		2:sci/c2/osrchf.s \
+		2:sci/c2/osrchi.s \
+		2:sci/c2/osrchm.f \
+		2:sci/c2/scopy.s \
+		2:sci/c2/wheneq.s \
+		2:sci/c2/whenfge.s \
+		2:sci/c2/whenfgt.s \
+		2:sci/c2/whenfle.s \
+		2:sci/c2/whenflt.s \
+		2:sci/c2/whenige.s \
+		2:sci/c2/whenigt.s \
+		2:sci/c2/whenile.s \
+		2:sci/c2/whenilt.s \
+		2:sci/c2/whenmeq.f \
+		2:sci/c2/whenmge.f \
+		2:sci/c2/whenmgt.f \
+		2:sci/c2/whenmle.f \
+		2:sci/c2/whenmlt.f \
+		2:sci/c2/whenmne.f \
+		2:sci/c2/whenne.s \
+
+LIB_DIRS_INFO += \
+		1:sci/c1 \
+		2:sci/c2 \
+		12:sci \
+
+
+#if	!defined(T_CRAY2) && !defined(T_CRAYMPP)
+
+INCSCI = \
+		./clus.sh \
+		./iilz.sh \
+		./isrch.sh \
+		./isrchm.sh \
+		./osrch.sh \
+		./target.sh \
+		./when-cigs.sh \
+		./when-nocigs.sh \
+		./whenm.sh
+
+RMUBIN	+=	$(INCSCI)
+
+#endif
+
+
+.INIT:		_init_sci
+
+_init_sci:	.MAKE .NOTOUCH
+	$("$(ATSRC:T=F)":T=V)$(ATSRC:BS=.o):		(CF90) (CF90FLAGS)
+
+
+ATSRC = isortb.f isortd.f orders.f ssortb.f
+
+(CF90) (CF90FLAGS):	.NOEXPAND
+
+$(ATSRC:BS=.o):		$(<:T=F)
+	$(CF90) -c $(CF90FLAGS) $(>)

@@ -1,0 +1,125 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+/* USMID @(#) libfi/mpp_reduce/mpp_reduce_dep.mh	92.0	10/08/98 14:37:14 */
+
+maxval_i_p2@.o maxval_i_s2@.o minval_i_p2@.o minval_i_s2@.o \
+any_i_p2@.o any_i_s2@.o all_i_p2@.o all_i_s2@.o count_i_p2@.o count_i_s2@.o \
+sum_i_p2@.o sum_i_s2@.o prod_i_p2@.o prod_i_s2@.o: setup_2@.fh
+
+maxval_i_p3@.o maxval_i_s3@.o minval_i_p3@.o minval_i_s3@.o \
+any_i_p3@.o any_i_s3@.o all_i_p3@.o all_i_s3@.o count_i_p3@.o count_i_s3@.o \
+sum_i_p3@.o sum_i_s3@.o prod_i_p3@.o prod_i_s3@.o: setup_3@.fh
+
+maxval_i_p4@.o maxval_i_s4@.o minval_i_p4@.o minval_i_s4@.o \
+any_i_p4@.o any_i_s4@.o all_i_p4@.o all_i_s4@.o count_i_p4@.o count_i_s4@.o \
+sum_i_p4@.o sum_i_s4@.o prod_i_p4@.o prod_i_s4@.o: setup_4@.fh
+
+maxval_i_p5@.o maxval_i_s5@.o minval_i_p5@.o minval_i_s5@.o \
+any_i_p5@.o any_i_s5@.o all_i_p5@.o all_i_s5@.o count_i_p5@.o count_i_s5@.o \
+sum_i_p5@.o sum_i_s5@.o prod_i_p5@.o prod_i_s5@.o: setup_5@.fh
+
+maxval_i_p6@.o maxval_i_s6@.o minval_i_p6@.o minval_i_s6@.o \
+any_i_p6@.o any_i_s6@.o all_i_p6@.o all_i_s6@.o count_i_p6@.o count_i_s6@.o \
+sum_i_p6@.o sum_i_s6@.o prod_i_p6@.o prod_i_s6@.o: setup_6@.fh
+
+maxval_i_p7@.o maxval_i_s7@.o minval_i_p7@.o minval_i_s7@.o \
+any_i_p7@.o any_i_s7@.o all_i_p7@.o all_i_s7@.o count_i_p7@.o count_i_s7@.o \
+sum_i_p7@.o sum_i_s7@.o prod_i_p7@.o prod_i_s7@.o: setup_7@.fh
+
+maxval_w_p2@.o maxval_w_s2@.o: maxval_w_2@.fh
+maxval_w_p3@.o maxval_w_s3@.o: maxval_w_3@.fh
+maxval_w_p4@.o maxval_w_s4@.o: maxval_w_4@.fh
+maxval_w_p5@.o maxval_w_s5@.o: maxval_w_5@.fh
+maxval_w_p6@.o maxval_w_s6@.o: maxval_w_6@.fh
+maxval_w_p7@.o maxval_w_s7@.o: maxval_w_7@.fh
+
+minval_w_p2@.o minval_w_s2@.o: minval_w_2@.fh
+minval_w_p3@.o minval_w_s3@.o: minval_w_3@.fh
+minval_w_p4@.o minval_w_s4@.o: minval_w_4@.fh
+minval_w_p5@.o minval_w_s5@.o: minval_w_5@.fh
+minval_w_p6@.o minval_w_s6@.o: minval_w_6@.fh
+minval_w_p7@.o minval_w_s7@.o: minval_w_7@.fh
+
+any_w_p2@.o any_w_s2@.o: any_w_2@.fh
+any_w_p3@.o any_w_s3@.o: any_w_3@.fh
+any_w_p4@.o any_w_s4@.o: any_w_4@.fh
+any_w_p5@.o any_w_s5@.o: any_w_5@.fh
+any_w_p6@.o any_w_s6@.o: any_w_6@.fh
+any_w_p7@.o any_w_s7@.o: any_w_7@.fh
+
+all_w_p2@.o all_w_s2@.o: all_w_2@.fh
+all_w_p3@.o all_w_s3@.o: all_w_3@.fh
+all_w_p4@.o all_w_s4@.o: all_w_4@.fh
+all_w_p5@.o all_w_s5@.o: all_w_5@.fh
+all_w_p6@.o all_w_s6@.o: all_w_6@.fh
+all_w_p7@.o all_w_s7@.o: all_w_7@.fh
+
+count_w_p2@.o count_w_s2@.o: count_w_2@.fh
+count_w_p3@.o count_w_s3@.o: count_w_3@.fh
+count_w_p4@.o count_w_s4@.o: count_w_4@.fh
+count_w_p5@.o count_w_s5@.o: count_w_5@.fh
+count_w_p6@.o count_w_s6@.o: count_w_6@.fh
+count_w_p7@.o count_w_s7@.o: count_w_7@.fh
+
+sum_w_p2@.o sum_w_s2@.o: sum_w_2@.fh
+sum_w_p3@.o sum_w_s3@.o: sum_w_3@.fh
+sum_w_p4@.o sum_w_s4@.o: sum_w_4@.fh
+sum_w_p5@.o sum_w_s5@.o: sum_w_5@.fh
+sum_w_p6@.o sum_w_s6@.o: sum_w_6@.fh
+sum_w_p7@.o sum_w_s7@.o: sum_w_7@.fh
+
+prod_w_p2@.o prod_w_s2@.o: prod_w_2@.fh
+prod_w_p3@.o prod_w_s3@.o: prod_w_3@.fh
+prod_w_p4@.o prod_w_s4@.o: prod_w_4@.fh
+prod_w_p5@.o prod_w_s5@.o: prod_w_5@.fh
+prod_w_p6@.o prod_w_s6@.o: prod_w_6@.fh
+prod_w_p7@.o prod_w_s7@.o: prod_w_7@.fh
+
+maxloc_p_1@.o maxloc_s_1@.o: maxloc_1@.fh maxloc_nomask_1@.fh
+maxloc_p_2@.o maxloc_s_2@.o: maxloc_2@.fh maxloc_nomask_2@.fh
+maxloc_p_3@.o maxloc_s_3@.o: maxloc_3@.fh maxloc_nomask_3@.fh
+maxloc_p_4@.o maxloc_s_4@.o: maxloc_4@.fh maxloc_nomask_4@.fh
+maxloc_p_5@.o maxloc_s_5@.o: maxloc_5@.fh maxloc_nomask_5@.fh
+maxloc_p_6@.o maxloc_s_6@.o: maxloc_6@.fh maxloc_nomask_6@.fh
+maxloc_p_7@.o maxloc_s_7@.o: maxloc_7@.fh maxloc_nomask_7@.fh
+
+minloc_p_1@.o minloc_s_1@.o: minloc_1@.fh minloc_nomask_1@.fh
+minloc_p_2@.o minloc_s_2@.o: minloc_2@.fh minloc_nomask_2@.fh
+minloc_p_3@.o minloc_s_3@.o: minloc_3@.fh minloc_nomask_3@.fh
+minloc_p_4@.o minloc_s_4@.o: minloc_4@.fh minloc_nomask_4@.fh
+minloc_p_5@.o minloc_s_5@.o: minloc_5@.fh minloc_nomask_5@.fh
+minloc_p_6@.o minloc_s_6@.o: minloc_6@.fh minloc_nomask_6@.fh
+minloc_p_7@.o minloc_s_7@.o: minloc_7@.fh minloc_nomask_7@.fh

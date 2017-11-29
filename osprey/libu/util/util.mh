@@ -1,0 +1,197 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* USMID @(#) libu/util/util.mh	92.0	10/08/98 14:57:41 */
+
+
+LIB_SRC_INFO += \
+		1:util/_pack.s \
+		A:util/_string_cmp.c \
+		1:util/_unpack.s \
+		U:util/abort.c \
+		A:util/asnenv.c \
+		A:util/asnlib.c \
+		A:util/asnparse.c \
+		A:util/asnquery.c \
+		A:util/asntools.c \
+		U:util/btd.c \
+		U:util/bto.c \
+		A:util/c2fcpy.c \
+		A:util/cliblevel.c \
+		U:util/craydump.F \
+		U:util/dtb.c \
+		U:util/errexit.c \
+		A:util/f2ccpy.c \
+		IU:util/fsztab.c \
+		U:util/getarg.c \
+		U:util/getcallerinfo.c \
+		_:util/gethmc.c \
+		U:util/gtstdptr.c \
+		U:util/iceil.f \
+		U:util/ihost.c \
+		A:util/ishell.c \
+		1:util/mtcpu.c \
+		U:util/otb.c \
+		M:util/pack_c.c \
+		U:util/prealloc.c \
+		U:util/rbn.c \
+		U:util/rnb.c \
+		U:util/remark.c \
+		IP:util/rtc.c \
+		U:util/samefile.c \
+		1:util/segrstuf.c \
+		1HEIP:util/second.c \
+		A:util/secondr.c \
+		U:util/sup.c \
+		_:util/target.c \
+		A:util/timef.c \
+		U:util/tremain.c \
+		U:util/tsecnd.c \
+		M:util/unpack_c.c \
+		1:util/c1/bitvec.s \
+		1:util/c1/bitvecm.s \
+		Y:util/c1/bmmerr.c \
+		1:util/c1/btmode.s \
+		1:util/c1/cancreat.c \
+		1:util/c1/char.c \
+		1:util/c1/chconv.s \
+		1:util/c1/dtts.s \
+		1:util/c1/endp.c \
+		1:util/c1/endret.s \
+		1:util/c1/fdlen.c \
+		Yt:util/c1/fimode.s \
+		1:util/c1/findsdt.s \
+		1:util/c1/getbreg.s \
+		1:util/c1/getlpp.c \
+		1:util/c1/getnameq.s \
+		1:util/c1/igtbyt.s \
+		1:util/c1/jname.c \
+		Y:util/c1/mclr.s \
+		Y:util/c1/mld.s \
+		Y:util/c1/mmx.s \
+		1:util/c1/movbit.f \
+		Y:util/c1/mul.s \
+		Y:util/c1/mxl.s \
+		1:util/c1/mttimes.c \
+		1:util/c1/mtts.c \
+		1:util/c1/mtused.s \
+		1:util/c1/mvc.f \
+		1:util/c1/mve.s \
+		1:util/c1/overz000.f \
+		1:util/c1/pack.s \
+		1:util/c1/pts.s \
+		1:util/c1/putbyt.s \
+		1:util/c1/remarkf.s \
+		1:util/c1/rnbr.s \
+		1:util/c1/segres.s \
+		1:util/c1/sysid.c \
+		1:util/c1/tsdt.s \
+		1:util/c1/tsmt.c \
+		1:util/c1/unitts.c \
+		1:util/c1/unpack.s \
+		1:util/c1/uterp.s \
+		1:util/c1/wrterr.c \
+		1:util/c1/xpfmt.f \
+		E:util/i3e/ieee_binary_scale_d_i4.c \
+		TE:util/i3e/ieee_binary_scale_d_i8.c \
+		E:util/i3e/ieee_binary_scale_h_i4.c \
+		E:util/i3e/ieee_binary_scale_h_i8.c \
+		E:util/i3e/ieee_binary_scale_r_i4.c \
+		TE:util/i3e/ieee_binary_scale_r_i8.c \
+		TE:util/i3e/ieee_expon_d_d.c \
+		E:util/i3e/ieee_expon_d_h.c \
+		TE:util/i3e/ieee_expon_d_r.c \
+		E:util/i3e/ieee_expon_h_d.c \
+		E:util/i3e/ieee_expon_h_h.c \
+		E:util/i3e/ieee_expon_h_r.c \
+		TE:util/i3e/ieee_expon_r_d.c \
+		E:util/i3e/ieee_expon_r_h.c \
+		TE:util/i3e/ieee_expon_r_r.c \
+		TE:util/i3e/ieee_next_after_d_d.c \
+		E:util/i3e/ieee_next_after_d_h.c \
+		TE:util/i3e/ieee_next_after_d_r.c \
+		E:util/i3e/ieee_next_after_h_d.c \
+		E:util/i3e/ieee_next_after_h_h.c \
+		E:util/i3e/ieee_next_after_h_r.c \
+		TE:util/i3e/ieee_next_after_r_d.c \
+		E:util/i3e/ieee_next_after_r_h.c \
+		TE:util/i3e/ieee_next_after_r_r.c \
+		TE:util/i3e/ieee_remainder_d_d.c \
+		E:util/i3e/ieee_remainder_d_h.c \
+		TE:util/i3e/ieee_remainder_d_r.c \
+		E:util/i3e/ieee_remainder_h_d.c \
+		E:util/i3e/ieee_remainder_h_h.c \
+		E:util/i3e/ieee_remainder_h_r.c \
+		TE:util/i3e/ieee_remainder_r_d.c \
+		E:util/i3e/ieee_remainder_r_h.c \
+		TE:util/i3e/ieee_remainder_r_r.c \
+		TE:util/i3e/ieee_remainderd.c \
+		TE:util/i3e/ieee_remainderr.c \
+		MIP:util/mpp/_pack.c \
+		MIP:util/mpp/_unpack.c \
+		MI:util/mpp/movbit.c \
+		IP:util/posix/cri_cintrin.c \
+		P:util/posix/movbit32.f \
+		Sd:util/posix/sunos_stuff.c \
+		I:util/posix/utilintrin.c \
+
+LIB_DIRS_INFO += \
+		1:util/c1 \
+		TE:util/i3e \
+		MIP:util/mpp \
+		IPd:util/posix \
+		Ad:util \
+		
+/*
+ *  Put include files on RMUSRC list
+ */
+RMUSRC += \
+		util/i3e/i3eintrin.h \
+		util/targlib.h \
+
+#ifdef	T_CRAY2
+
+.INIT:		_init_util
+
+_init_util:	.MAKE .NOTOUCH
+	$("$("second.s":T=F)":T=V)second.o:	(AS) (ASFLAGS)
+
+
+second.o:	$(<:T=F)
+	$(AS) $(ASFLAGS) -DMULTIP $(>)
+
+#endif
+
+/**/

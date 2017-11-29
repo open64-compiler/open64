@@ -1,0 +1,1216 @@
+/*
+
+  Copyright (C) 2006-2009 Tsinghua University.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+*/
+
+%{
+#include "olive_convert_wn.h"
+#include "olive_convert_longlong.h"
+
+WN* wn1, *wn2;
+TN* tn1;
+OPCODE opcode1;
+
+%}
+
+%term I4INTCONST
+%term I4ABS
+%term I4NEG
+%term I4ADD
+%term I4SUB
+%term I4MPY
+%term I4HIGHMPY
+%term I4DIV
+%term I4REM
+%term I4MOD
+
+%term U4INTCONST
+%term U4NEG
+%term U4ADD
+%term U4SUB
+%term U4MPY
+%term U4HIGHMPY
+%term U4DIV
+%term U4REM
+%term U4MOD
+
+%term BINTCONST
+%term BLNOT
+%term BLAND
+%term BLIOR
+
+%term I4LNOT
+%term I4LIOR
+%term I4LAND
+%term I4BIOR
+%term I4BNOT
+%term I4BAND
+%term I4BXOR
+%term I4BNOR
+
+%term U4BNOT
+%term U4BIOR
+%term U4BAND
+%term U4BXOR
+%term U4BNOR
+
+%term BBEQ
+%term BBNE
+
+%term BI4LT
+%term BI4LE
+%term BI4EQ
+%term BI4NE
+%term BI4GE
+%term BI4GT
+
+%term I4I4LT
+%term I4I4LE
+%term I4I4EQ
+%term I4I4NE
+%term I4I4GE
+%term I4I4GT
+
+%term U4I4LT
+%term U4I4LE
+%term U4I4EQ
+%term U4I4NE
+%term U4I4GE
+%term U4I4GT
+
+%term I4MAX
+%term I4MIN
+
+%term I4SHL
+%term I4ASHR
+%term I4LSHR
+
+%term BU4LT
+%term BU4LE
+%term BU4EQ
+%term BU4NE
+%term BU4GE
+%term BU4GT
+
+%term I4U4LT
+%term I4U4LE
+%term I4U4EQ
+%term I4U4NE
+%term I4U4GE
+%term I4U4GT
+
+%term U4U4LT
+%term U4U4LE
+%term U4U4EQ
+%term U4U4NE
+%term U4U4GE
+%term U4U4GT
+
+%term U4MAX
+%term U4MIN
+
+%term U4SHL
+%term U4ASHR
+%term U4LSHR
+
+%term F4CONST
+%term F4ADD
+%term F4SUB
+%term F4MPY
+%term F4DIV
+%term F4MADD
+%term F4NMADD
+%term F4MSUB
+%term F4NMSUB
+%term F4NEG
+%term F4ABS
+
+%term F8CONST
+%term F8ADD
+%term F8SUB
+%term F8MPY
+%term F8DIV
+%term F8MADD
+%term F8NMADD
+%term F8MSUB
+%term F8NMSUB
+%term F8NEG
+%term F8ABS
+
+%term BF4LT
+%term BF4LE
+%term BF4EQ
+%term BF4NE
+%term BF4GE
+%term BF4GT
+
+%term I4F4LT
+%term I4F4LE
+%term I4F4EQ
+%term I4F4NE
+%term I4F4GE
+%term I4F4GT
+
+%term U4F4LT
+%term U4F4LE
+%term U4F4EQ
+%term U4F4NE
+%term U4F4GE
+%term U4F4GT
+
+%term F4MAX
+%term F4MIN
+
+%term BF8LT
+%term BF8LE
+%term BF8EQ
+%term BF8NE
+%term BF8GE
+%term BF8GT
+
+%term I4F8LT
+%term I4F8LE
+%term I4F8EQ
+%term I4F8NE
+%term I4F8GE
+%term I4F8GT
+
+%term U4F8LT
+%term U4F8LE
+%term U4F8EQ
+%term U4F8NE
+%term U4F8GE
+%term U4F8GT
+
+%term F8MAX
+%term F8MIN
+
+%term I1STID
+%term I2STID
+%term U1STID
+%term U2STID
+
+%term I4I1LDID
+%term I4I2LDID
+%term I4I4LDID
+%term I4I8LDID
+%term I4BSLDID
+
+%term I4STID
+
+%term U4U1LDID
+%term U4U2LDID
+%term U4U4LDID
+%term U4U8LDID
+%term U4BSLDID
+
+%term U4STID
+
+%term F4F4LDID
+%term F4STID
+
+%term F8F8LDID
+%term F8STID
+
+%term I4BCVT
+%term I4U4CVT
+%term I4F4CVT
+%term I4F8CVT
+
+%term I4F4RND
+%term I4F4TRUNC
+%term I4F4CEIL
+%term I4F4FLOOR
+
+%term I4F8RND
+%term I4F8TRUNC
+%term I4F8CEIL
+%term I4F8FLOOR
+
+%term U4BCVT
+%term U4I4CVT
+%term U4F4CVT
+%term U4F8CVT
+
+%term U4F4RND
+%term U4F4TRUNC
+%term U4F4CEIL
+%term U4F4FLOOR
+
+%term U4F8RND
+%term U4F8TRUNC
+%term U4F8CEIL
+%term U4F8FLOOR
+
+%term F4I4CVT
+%term F4U4CVT
+%term F4F8CVT
+
+%term F8I4CVT
+%term F8U4CVT
+%term F8F4CVT
+
+%term I8I1LDID
+%term I8I2LDID
+%term I8I4LDID
+%term I8I8LDID
+%term I8BSLDID
+
+%term I8STID
+
+%term U8U1LDID
+%term U8U2LDID
+%term U8U4LDID
+%term U8U8LDID
+%term U8BSLDID
+
+%term U8STID
+
+%term I8INTCONST
+%term I8ABS
+%term I8NEG
+%term I8ADD
+%term I8SUB
+%term I8MPY
+%term I8HIGHMPY
+%term I8DIV
+%term I8REM
+%term I8MOD
+
+%term U8INTCONST
+%term U8NEG
+%term U8ADD
+%term U8SUB
+%term U8MPY
+%term U8HIGHMPY
+%term U8DIV
+%term U8REM
+%term U8MOD
+
+%term I8BIOR
+%term I8BNOT
+%term I8BAND
+%term I8BXOR
+%term I8BNOR
+
+%term U8BNOT
+%term U8BIOR
+%term U8BAND
+%term U8BXOR
+%term U8BNOR
+
+%term BI8LT
+%term BI8LE
+%term BI8EQ
+%term BI8NE
+%term BI8GE
+%term BI8GT
+
+%term I4I8LT
+%term I4I8LE
+%term I4I8EQ
+%term I4I8NE
+%term I4I8GE
+%term I4I8GT
+
+%term U4I8LT
+%term U4I8LE
+%term U4I8EQ
+%term U4I8NE
+%term U4I8GE
+%term U4I8GT
+
+%term I8I8LT
+%term I8I8LE
+%term I8I8EQ
+%term I8I8NE
+%term I8I8GE
+%term I8I8GT
+
+%term U8I8LT
+%term U8I8LE
+%term U8I8EQ
+%term U8I8NE
+%term U8I8GE
+%term U8I8GT
+
+%term I8MAX
+%term I8MIN
+
+%term BU8LT
+%term BU8LE
+%term BU8EQ
+%term BU8NE
+%term BU8GE
+%term BU8GT
+
+%term I4U8LT
+%term I4U8LE
+%term I4U8EQ
+%term I4U8NE
+%term I4U8GE
+%term I4U8GT
+
+%term U4U8LT
+%term U4U8LE
+%term U4U8EQ
+%term U4U8NE
+%term U4U8GE
+%term U4U8GT
+
+%term I8U8LT
+%term I8U8LE
+%term I8U8EQ
+%term I8U8NE
+%term I8U8GE
+%term I8U8GT
+
+%term U8U8LT
+%term U8U8LE
+%term U8U8EQ
+%term U8U8NE
+%term U8U8GE
+%term U8U8GT
+
+%term U8MAX
+%term U8MIN
+
+%term I8I4LT
+%term I8I4LE
+%term I8I4EQ
+%term I8I4NE
+%term I8I4GE
+%term I8I4GT
+
+%term U8I4LT
+%term U8I4LE
+%term U8I4EQ
+%term U8I4NE
+%term U8I4GE
+%term U8I4GT
+
+%term I8U4LT
+%term I8U4LE
+%term I8U4EQ
+%term I8U4NE
+%term I8U4GE
+%term I8U4GT
+
+%term U8U4LT
+%term U8U4LE
+%term U8U4EQ
+%term U8U4NE
+%term U8U4GE
+%term U8U4GT
+
+%term I8SHL
+%term I8ASHR
+%term I8LSHR
+
+%term U8SHL
+%term U8ASHR
+%term U8LSHR
+
+%term I8F4LT
+%term I8F4LE
+%term I8F4EQ
+%term I8F4NE
+%term I8F4GE
+%term I8F4GT
+
+%term U8F4LT
+%term U8F4LE
+%term U8F4EQ
+%term U8F4NE
+%term U8F4GE
+%term U8F4GT
+
+%term I8F8LT
+%term I8F8LE
+%term I8F8EQ
+%term I8F8NE
+%term I8F8GE
+%term I8F8GT
+
+%term U8F8LT
+%term U8F8LE
+%term U8F8EQ
+%term U8F8NE
+%term U8F8GE
+%term U8F8GT
+
+%term I4I8CVT
+%term I4U8CVT
+%term U4I8CVT
+%term U4U8CVT
+%term I8I4CVT
+%term I8U4CVT
+%term U8I4CVT
+%term U8U4CVT
+%term I8U8CVT
+%term U8I8CVT
+
+%term I4CVTL
+%term I8CVTL
+%term U4CVTL
+%term U8CVTL
+
+%term F8U8CVT
+%term F4U8CVT
+
+%term I4PARM
+%term U4PARM
+%term I8PARM
+%term U8PARM
+%term F4PARM
+%term F8PARM
+
+%term I4ILOAD
+%term U4ILOAD
+%term I8ILOAD
+%term U8ILOAD
+%term F4ILOAD
+%term F8ILOAD
+%term I4ISTORE
+%term U4ISTORE
+%term I8ISTORE
+%term U8ISTORE
+%term F4ISTORE
+%term F8ISTORE
+
+
+%term I4LDBITS
+%term U4LDBITS
+%term I8LDBITS
+%term U8LDBITS
+%term STBITS
+%term I4ILDBITS
+%term U4ILDBITS
+%term I8ILDBITS
+%term U8ILDBITS
+%term ISTBITS
+
+%term I4DIVREM
+%term U4DIVREM
+%term I8DIVREM
+%term U8DIVREM
+
+%term I4DIVPART
+%term U4DIVPART
+%term I4REMPART
+%term U4REMPART
+
+%term F4RECIP
+%term F8RECIP
+%term F4RSQRT
+%term F8RSQRT
+
+%term I4MAXPART
+%term U4MAXPART
+%term I8MAXPART
+%term U8MAXPART
+%term F4MAXPART
+%term F8MAXPART
+
+%term I4MINPART
+%term U4MINPART
+%term I8MINPART
+%term U8MINPART
+%term F4MINPART
+%term F8MINPART
+
+%term I4MINMAX
+%term U4MINMAX
+%term I8MINMAX
+%term U8MINMAX
+%term F4MINMAX
+%term F8MINMAX
+
+%term I4SELECT
+%term U4SELECT
+%term I8SELECT
+%term U8SELECT
+%term F4SELECT
+%term F8SELECT
+
+%term I4EXTRACT_BITS
+%term U4EXTRACT_BITS
+%term I4COMPOSE_BITS
+%term U4COMPOSE_BITS
+%term I8EXTRACT_BITS
+%term U8EXTRACT_BITS
+%term I8COMPOSE_BITS
+%term U8COMPOSE_BITS
+
+%term PREFETCH
+%term PREFETCHX
+
+%term U4LDA
+%term U4LDA_LABEL
+%term U4ALLOCA
+%term U8ALLOCA
+%term DEALLOCA
+
+%term I4INTRINSIC_OP
+%term U4INTRINSIC_OP
+%term I8INTRINSIC_OP
+%term U8INTRINSIC_OP
+%term F4INTRINSIC_OP
+%term F8INTRINSIC_OP
+
+
+%term CALL
+%term ICALL
+%term PICCALL
+
+%term NOUSE
+
+%declare<void> expr<pOPS ops>;
+%declare<void> null<pOPS ops>;
+%declare<void> reg<pOPS ops>;
+%declare<void> imm16<pOPS ops>;
+%declare<void> imm32<pOPS ops>;
+%declare<void> f4reg<pOPS ops>;
+%declare<void> f8reg<pOPS ops>;
+%declare<void> f8regt<pOPS ops>;
+%declare<void> reg64<pOPS ops>;
+%declare<void> reg64t<pOPS ops>;
+%declare<void> tn<pOPS ops>;
+
+%%
+
+expr    : reg
+        {
+            $cost[0].cost = $cost[1].cost;
+        }
+        = {
+            $action[1](ops);
+        };
+
+expr    : null
+        {
+            $cost[0].cost = $cost[1].cost;
+        } 
+        = {
+            $action[1](ops);
+        };
+
+expr    : f4reg
+        {
+            $cost[0].cost = $cost[1].cost;
+        }    
+        = {
+            $action[1](ops);
+        };
+
+expr    : f8reg
+        {
+            $cost[0].cost = $cost[1].cost;
+        }    
+        = {
+            $action[1](ops);
+        };
+
+expr    : reg64
+        {
+            $cost[0].cost = $cost[1].cost;
+        }    
+        = {
+            $action[1](ops);
+        };
+
+
+expr    : imm16, imm32
+        {
+            $cost[0].cost = $cost[1].cost;
+        }
+        = {
+	    $action[1](ops);
+        };
+
+
+imm16	: I4INTCONST, U4INTCONST, I8INTCONST, U8INTCONST
+	{
+	    CHECK(Has_Immediate_Operand($1->parent, $1->wn));
+	    CHECK(IN_RANGE(WN_const_val($0->wn), SIMM16));
+	    $cost[0].cost = 0;
+        }
+        = {
+	    $0->result = Gen_Literal_TN(WN_const_val($1->wn), 4);
+        };
+
+imm32	: I4INTCONST, U4INTCONST, I8INTCONST, U8INTCONST
+        {
+	    CHECK(Has_Immediate_Operand($1->parent, $1->wn));
+	    CHECK(IN_RANGE(WN_const_val($0->wn), SIMM32));
+            $cost[0].cost = 0;
+        }
+        = {
+	    $0->result = Gen_Literal_TN(WN_const_val($1->wn), 4);
+        };
+
+reg	: I4INTCONST
+	{
+	    if(IN_RANGE(WN_const_val($0->wn), SIMM16))
+		$cost[0].cost = 1;
+	    else
+		$cost[0].cost = 2;
+	}
+	= { //#ins addi addis
+	    if (CGSPILL_Rematerialize_Constants && $0->isnull()) {
+		$0->result = Allocate_Result_TN($0->wn, NULL);
+		Set_TN_is_rematerializable($0->result);
+		Set_TN_home ($0->result, $0->wn);
+	    }
+	    $0->init_result();
+	    Expand_Immediate ($0->result, Gen_Literal_TN((INT32)WN_const_val($0->wn), 4), TRUE , ops, WN_rtype($0->wn));
+	};
+
+reg     : U4INTCONST
+        {
+            if(IN_RANGE(WN_const_val($0->wn), UIMM16))
+                $cost[0].cost = 1;
+            else
+                $cost[0].cost = 2;
+        }
+        = { //#ins addi addis
+	    if (CGSPILL_Rematerialize_Constants && $0->isnull()) {
+		$0->result = Allocate_Result_TN($0->wn, NULL);
+		Set_TN_is_rematerializable($0->result);
+		Set_TN_home ($0->result, $0->wn);
+	    }
+	    $0->init_result();
+	    Expand_Immediate ($0->result, Gen_Literal_TN((UINT32)WN_const_val($0->wn), 4), TRUE , ops, WN_rtype($0->wn));
+       };
+
+
+
+reg     : I4ABS(reg64t)
+        {
+            $cost[0].cost = 3 + $cost[2].cost;
+        }
+        = { //#ins srawi xor subf 
+            $action[2](ops);
+
+	    $0->init_result(); 
+            TN* tmp_tn1 = Build_TN_Of_Mtype(MTYPE_I4);
+            Build_OP(TOP_srawi, tmp_tn1, $2->result, Gen_Literal_TN(31, 4), ops);
+            TN* tmp_tn2 = Build_TN_Of_Mtype(MTYPE_I4);
+            Build_OP(TOP_xor, tmp_tn2, tmp_tn1, $2->result, ops);
+            Build_OP(TOP_subf, $0->result, tmp_tn1, tmp_tn2, ops);
+	    Set_OP_cond_def_kind(OPS_last(ops), OP_ALWAYS_UNC_DEF);
+        };
+
+reg     : I4NEG(reg64t), U4NEG(reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins neg
+            $action[2](ops);
+	    $0->init_result();
+            Build_OP(TOP_neg, $0->result, $2->result, ops);
+        };
+
+
+
+
+reg     : I4ADD(reg64t, reg64t), U4ADD(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins add 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Add($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg     : I4ADD(reg64t, imm16), U4ADD(reg64t, imm16)
+        {
+            if (IN_RANGE(WN_const_val($3->wn), SIMM16))
+                $cost[0].cost = 1 + $cost[2].cost;
+            else
+                $cost[0].cost = 2 + $cost[2].cost;
+        }
+        = { //#ins addi addis
+            $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+            Expand_Add($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg     : I4SUB(reg64t, reg64t), U4SUB(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins subf 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Sub($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg     : I4SUB(imm16, reg64t), U4SUB(imm16, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[3].cost;
+        }
+        = { //#ins subfic 
+	    $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_subfic, $0->result, $3->result, $2->result, ops);
+        };
+
+reg     : I4SUB(imm16, reg64t), U4SUB(imm16, reg64t)
+        {
+            $cost[0].cost = 2 + $cost[3].cost;
+        }
+        = { //#ins addi neg subfic
+	    $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    TN * tmp = Build_TN_Like($0->result);
+	    Build_OP(TOP_neg, tmp, $3->result, ops);
+            Build_OP(TOP_addi, $0->result, tmp, $2->result, ops);
+        };
+
+reg     : I4MPY(reg64t, imm16), U4MPY(reg64t, imm16)
+        {
+            CHECK(IN_RANGE(WN_const_val($3->wn), SIMM16));
+            $cost[0].cost = 3 + $cost[2].cost;
+        }
+        = { //#ins mulli
+            $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_mulli, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4MPY(reg64t, reg64t), U4MPY(reg64t, reg64t)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins mullw 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_mullw, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4HIGHMPY(reg64t, reg64t)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins mulhw 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_mulhw, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : U4HIGHMPY(reg64t, reg64t)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_mulhwu, $0->result, $2->result, $3->result, ops);
+        };
+
+
+reg     : I4DIV(reg, reg)
+        {
+            $cost[0].cost = 6 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins divw 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_divw, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : U4DIV(reg, reg)
+        {
+            $cost[0].cost = 6 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins divwu
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_divwu, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4MOD(reg64t, tn)
+        {
+            $cost[0].cost = 33 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins divw mullw subf xor neg srawi and add 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Mod($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg     : I4REM(reg64t, tn), U4REM(reg64t, tn), U4MOD(reg64t, tn)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins divwu mullw subf
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Rem($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg	: I4DIVREM, U4DIVREM
+	{
+	    $cost[0].cost = 64;
+	}
+	= {
+	    $0->result = Handle_DIVREM($0->wn, $0->parent, $0->result, $1->opcode);
+	};
+
+reg	: I4DIVPART, U4DIVPART
+	{
+	    $cost[0].cost = 64;
+	}
+	= {
+	    $0->result = Handle_DIVPART($0->wn, $0->parent, $0->result);
+	};
+
+reg	: I4REMPART, U4REMPART
+	{
+	    $cost[0].cost = 64;
+	}
+	= {
+	    $0->result = Handle_REMPART($0->wn, $0->parent, $0->result);
+	};
+
+
+reg	: I4SELECT, U4SELECT
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    $0->result = Handle_SELECT($0->wn, $0->result, $1->opcode);
+	};
+
+reg	: I4MAXPART, U4MAXPART
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MAXPART($0->wn, $0->parent, $0->result);
+	};
+
+reg	: I4MINPART, U4MINPART
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MINPART($0->wn, $0->parent, $0->result);
+	};
+
+reg	: I4MINMAX, U4MINMAX
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MINMAX($0->wn, $0->parent, $0->result, $0->opcode);
+	};
+
+
+reg     : I4MAX(reg, reg), U4MAX(reg64t, reg64t)
+        {
+            $cost[0].cost = 6 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins xoris subfc subfe andc add
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Max($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg     : I4MIN(reg, reg), U4MIN(reg64t, reg64t)
+        {
+            $cost[0].cost = 6 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins xoris subfc subfe and add
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Min($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+
+
+
+reg     : I4U4CVT(reg), U4I4CVT(reg)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = {
+	    $2->result = $0->result;
+            $action[2](ops);
+	    $0->result = $2->result;
+        };
+
+reg     : I4CVTL(reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins extsb extsh slwi srawi
+            $action[2](ops);
+	    $0->init_result();
+            INT16 bits = WN_cvtl_bits($0->wn);
+            switch (bits)
+            {
+                case 8:
+                    Build_OP(TOP_extsb, $0->result, $2->result, ops);
+                    break;
+                case 16:
+                    Build_OP(TOP_extsh, $0->result, $2->result, ops);
+                    break;
+		case 32:
+		case 64:
+		    Expand_Convert_Length ($0->result, $2->result, Gen_Literal_TN (bits, 4), WN_rtype($0->wn), WN_rtype($0->wn), ops);
+		    break;
+                default:
+		    TN* tn = Build_TN_Like($0->result);
+		    Build_OP(TOP_slwi, tn, $2->result, Gen_Literal_TN(32 - bits, 4), ops);
+		    Build_OP(TOP_srawi, $0->result, tn, Gen_Literal_TN(32 - bits, 4), ops);
+            }
+        };
+
+reg     : U4CVTL(reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins andi slwi srwi
+            $action[2](ops);
+	    $0->init_result();
+            INT16 bits = WN_cvtl_bits($0->wn);
+            switch (bits)
+            {
+                case 8:
+                    Build_OP(TOP_andi_, $0->result, $2->result, Gen_Literal_TN(0xff, 4), ops);
+                    break;
+                case 16:
+                    Build_OP(TOP_andi_, $0->result, $2->result, Gen_Literal_TN(0xffff, 4), ops);
+                    break;
+		case 32:
+		case 64:
+		    Expand_Convert_Length ($0->result, $2->result, Gen_Literal_TN (bits, 4), WN_rtype($0->wn), WN_rtype($0->wn), ops);
+		    break;
+                default:
+		    TN* tn = Build_TN_Like($0->result);
+		    Build_OP(TOP_slwi, tn, $2->result, Gen_Literal_TN(32 - bits, 4), ops);
+		    Build_OP(TOP_srwi, $0->result, tn, Gen_Literal_TN(32 - bits, 4), ops);
+            }
+        };
+
+
+
+
+reg     : I4I1LDID, I4I2LDID, U4U1LDID, U4U2LDID, I4I4LDID, U4U4LDID
+        {
+            $cost[0].cost = 2;
+        }
+        = { //#ins add addi addis mr srawi lbz lwz 
+	    $0->result = Handle_LDID($0->wn, $0->result, $1->opcode);
+        };
+
+null    : I1STID, U1STID, I2STID, U2STID, I4STID, U4STID
+        {
+            $cost[0].cost = 2;
+        }
+        = { //#ins add addi addis mr srawi stb sth stw
+            Handle_STID($0->wn, $1->opcode); 
+        };
+
+
+
+reg	: I4ILOAD, U4ILOAD
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    $0->result = Handle_ILOAD($0->wn, $0->result, $1->opcode);
+	};
+
+null	: I4ISTORE, U4ISTORE
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    Handle_ISTORE($0->wn, $1->opcode);
+	};
+
+reg	: I4LDBITS, U4LDBITS
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    $0->result = Handle_LDBITS($0->wn, $0->result, $1->opcode);
+	};
+
+null	: STBITS
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    Handle_STBITS($0->wn);
+	};
+
+reg     : I4ILDBITS, U4ILDBITS
+        {
+            $cost[0].cost = 2;
+        }
+        = {
+            $0->result = Handle_ILDBITS($0->wn, $0->result, $1->opcode);
+        };
+
+null	: ISTBITS
+        {
+            $cost[0].cost = 2;
+        }
+        = {
+            Handle_ISTBITS($0->wn);  
+        };
+
+reg	: I4EXTRACT_BITS, U4EXTRACT_BITS
+	{
+	    $cost[0].cost = 3;
+	}
+	= {
+	    $0->result = Handle_EXTRACT_BITS($0->wn, $0->result, $1->opcode);
+	};
+
+reg	: I4COMPOSE_BITS, U4COMPOSE_BITS
+	{
+	    $cost[0].cost = 3;
+	}
+	= {
+	    $0->result = Handle_COMPOSE_BITS($0->wn, $0->result, $1->opcode);
+	};
+
+
+reg	: U4LDA
+	{
+	    $cost[0].cost = 2;
+	}
+	= { //#ins add addi addis mr srawi
+	    $0->result = Handle_LDA($0->wn, $0->parent, $0->result, WN_opcode($0->wn));
+	};
+
+reg	: U4LDA_LABEL
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    ST *st = New_ST (CURRENT_SYMTAB);
+	    ST_Init (st, 
+		Save_Str ( LABEL_name( Get_WN_Label($0->wn) ) ),
+		CLASS_NAME, SCLASS_UNKNOWN, EXPORT_LOCAL, WN_ty($0->wn)
+	    );
+	    $0->init_result();
+	    Expand_Lda_Label($0->result, Gen_Symbol_TN (st, 0, 0), ops);
+	};
+
+null    : CALL, ICALL, PICCALL
+        {
+            $cost[0].cost = 2;
+        }
+        = { //#ins addi mr bl 
+            Handle_Call_Site($0->wn, $0->opr);
+        };
+
+reg	: U4ALLOCA
+	{
+	    $cost[0].cost = 3;
+	}
+	= {
+	    $0->result = Handle_ALLOCA($0->wn, $0->result);
+	};
+
+null	: DEALLOCA
+	{
+	    $cost[0].cost = 3;
+	}
+	= {
+	    Handle_DEALLOCA($0->wn);
+	};
+
+reg	: I4INTRINSIC_OP, U4INTRINSIC_OP
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    if (WN_intrinsic($0->wn) == INTRN_EXPECT){
+		$0->result = Expand_Expr(WN_kid0(WN_kid0($0->wn)), WN_kid0($0->wn), $0->result);
+	    }
+	    else{
+		$0->result = Handle_INTRINSIC_OP($0->wn, $0->result);
+	    }
+	};
+
+null	: PREFETCH
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    if (Prefetch_Kind_Enabled($0->wn)) {
+		VARIANT variant = V_NONE;
+		Set_V_pf_flags(variant, WN_prefetch_flag($0->wn));
+		Last_Mem_OP = OPS_last(ops);
+		Exp_Prefetch ($0->top,
+			Expand_Expr (WN_kid0($0->wn), $0->wn, NULL),
+			Gen_Literal_TN (WN_offset($0->wn), 4),
+			variant, ops
+		);
+		Set_OP_To_WN_Map($0->wn);
+	    }
+	};
+
+null	: PREFETCHX
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    if (Prefetch_Kind_Enabled($0->wn)) {
+		VARIANT variant = V_NONE;
+		Set_V_pf_flags(variant, WN_prefetch_flag($0->wn));
+		Last_Mem_OP = OPS_last(ops);
+		Exp_Prefetch ($0->top, 
+			Expand_Expr (WN_kid0($0->wn), $0->wn, NULL),
+			Expand_Expr (WN_kid1($0->wn), $0->wn, NULL),
+			variant, ops
+		);
+		Set_OP_To_WN_Map($0->wn);
+	    }
+	};
+
+
+

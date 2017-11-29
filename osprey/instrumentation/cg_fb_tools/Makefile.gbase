@@ -1,0 +1,245 @@
+#
+#  Makefile.base for cg_fb_tools
+#
+
+#----------------------------------------------------------------------
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#----------------------------------------------------------------------
+
+
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  This Makefile is used to build libinstr
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARG_LIBINSTR_DIR: is the be directory in which we do build... this can
+#               be retargeted (e.g., for building be with different options)
+#               by setting LOCAL_BE_DIR in localdefs
+#----------------------------------------------------------------------
+TARG_LIBINSTR_DIR = $(TARGDIR)/cg_fb_tools
+TARG_BE_DIR = $(TARGDIR)/be
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dsgi
+HOSTDEFS += -Dlonglong
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+HOSTDEFS += -D_USE_PROFILE_ERROR_ROUTINES
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+LIBINSTR_DIRS		= \
+ $(BUILD_TOT)/instrumentation/cg_fb_tools \
+ $(BUILD_TOT)/common/instrument
+
+LIBINSTR_HEADER_DIRS    = \
+ $(BUILD_TOT)/instrumentation/libcginstr \
+ $(BUILD_TOT)/common/instrument   \
+ $(BUILD_TOT)/common/com         \
+ $(BUILD_TOT)/common/util         \
+ $(BUILD_TOT)/linux/include       \
+ $(BUILD_TOT)/gnu_common/libstdc++  
+# These are the directories in which to look for source files.
+
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+LIBINSTR_CXX_SRCS = \
+		dump_cg_fb.cxx	
+
+LIBINSTR_CXX_OBJS   = $(LIBINSTR_CXX_SRCS:.cxx=.o)
+
+# extra files to be removed with make clobber
+LDIRT = ii_files *.pch so_locations
+
+VPATH    =  $(LIBINSTR_DIRS)
+
+LCOPTS += $(STD_COMPILE_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(LIBINSTR_HEADER_DIRS))
+
+ifeq ($(BUILD_COMPILER), EDG)
+CVERSION  =  -xansi
+WOFF = -fullwarn -woff 1172,1174,1201,1202,1209,1356,1375
+WOFF = -fullwarn
+# allows unused parameters
+OPTIMIZER += -woff 3201
+endif
+
+LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS) $(WOFF)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(LCINCS)
+LASOPTS = $(STD_COMPILE_OPTS)
+LASDEFS = $(HOSTDEFS) $(TARGDEFS)
+LASINCS = $(LCINCS)
+
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+#DSOSTARTOPT = -update_registry $(TARG_LIBINSTR_DIR)/so_locations -Wl,-no_unresolved
+#DSOSTARTOPT = -Wl,-no_unresolved
+DSOSTARTOPT = -check_registry $(TARG_LIBINSTR_DIR)/so_locations -Wl,-no_unresolved
+DSOSTARTOPT_32 = $(DSOSTARTOPT)
+DSOSTARTOPT_N32 = $(DSOSTARTOPT)
+
+#----------------------------------------------------------------------
+# File containing the list of symbols exported outside of libinstr.so
+#----------------------------------------------------------------------
+
+ifeq ($(BUILD_OS), IRIX)
+EXPORT_LIST = -exports_file $(SO_LOCATION_DIR)/Exported
+endif
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+EXECUTABLE = dump_cg_fb	
+
+ifeq ($(BUILD_TYPE), NONSHARED)
+TARGETS = $(EXECUTABLE)
+endif
+ifeq ($(BUILD_VARIANT), ABI)
+TARGETS = $(EXECUTABLE)
+endif
+ifndef TARGETS
+TARGETS = $(EXECUTABLE) 
+endif
+
+
+#--------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+ifeq ($(BUILD_OS), IRIX)
+LLDLIBS += -none -lm
+else
+LLDLIBS += 
+endif
+
+LLDLIBS += -lstdc++
+
+ifeq ($(BUILD_OS), IRIX)
+default: so_locations $(TARGETS) last
+else
+default:
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last : make_libdeps
+
+#----------------------------------------------------------------------
+#  Build 'cg_fb_tools.so'
+#
+#  These rules build the 'cg_fb_tools.so' executable by default, and can install
+#  it in the $(BUILD_INSTALL)/usr/lib32/mips3 directory.
+#
+#----------------------------------------------------------------------
+
+install: default
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_EXECUTABLE_LOC) $(TARGETS)
+ifeq ($(BUILD_TYPE), SHARED)
+	$(STD_INSTALL) -F $(STD_DSO_LOC) -lns $(LINK) $(DSO)
+endif
+
+so_locations: $(SO_LOCATION_DIR)/so_locations
+	cp $(SO_LOCATION_DIR)/so_locations so_locations
+	chmod u+w so_locations
+
+ifeq ($(BUILD_OS), IRIX)
+cg_fb_tools.so: $(LIBINSTR_CXX_OBJS) $(SO_LOCATION_DIR)/Exported \
+	 $(SO_LOCATION_DIR)/so_locations
+	$(C++F) -o libinstr.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+	 $(LIBINSTR_CXX_OBJS) \
+	 $(LLDLIBS) -show
+else
+.PRECIOUS : $(EXECUTABLE)
+$(EXECUTABLE): $(LIBINSTR_CXX_OBJS)
+
+$(DSO): $(EXECUTABLE)
+	$(LD) $(STD_DSO_LOADOPTS) -exports_file $(BUILD_BASE)/common.exports $(EXTRA_EXPORTS) \
+	$(EXECUTABLE) -o $@ -lc
+endif
+
+
+
+LDIRT += $(EXECUTABLE)
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+

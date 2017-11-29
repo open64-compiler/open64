@@ -1,0 +1,312 @@
+/* USMID @(#)include/make/libmac.mh	100.0	07/11/97 00:26:19 */
+
+
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+#ifndef _LIBMAC_MH
+#define _LIBMAC_MH
+
+#include <make/libdefs.mh>	/* if not already #include'd */
+
+/*
+ *  Targets used by the .MAKEINIT step
+ */
+
+.MAKEINIT:	_makeinit1_ _makeinit2_ 
+
+/*
+ *  Clear .SOURCE.a, so we only look for our libraries in the
+ *  current directory, not /lib or /usr/lib.
+ *  NOTE:  This needs .POST, so we clear the target AFTER
+ *  nmake puts /lib and /usr/lib on the .SOURCE.a list.
+ */
+
+_makeinit1_:	.NOTOUCH .MAKE .POST
+	.SOURCE.a:	.CLEAR
+
+
+/*
+ *  In our library makefiles, we support these variables for
+ *  doing special builds:
+ *
+ *	$(INCLUDE):	directory where C include files are
+ *	$(INCLUDE2):	2nd directory where C include files are
+ *	$(INCLUDE3):	3rd directory where C include files are
+ *	$(ASDEF):	pathname of asdef (assembler include file)
+ *
+ *  If any of the $(INCLUDE*) variables is set, add them to
+ *  the .SOURCE.h target (nmake will then automatically append
+ *  '-I$(INCLUDE)' to $(CCFLAGS)); also explicitly add the
+ *  directories to $(CPPFLAGS) (and $(ASFLAGS) on MPP machines).
+ *  Note that the $(INCLUDE) directory will be searched first,
+ *  then $(INCLUDE2), then $(INCLUDE3).
+ * 
+ *  Add -I/usr/gen/include to ASFLAGS for MPP targets (for cam
+ *  pre-processing) AFTER the $(INCLUDE*) variables.  This mirrors
+ *  how /usr/gen/include is handled in other situations.
+ *
+ *  If $(ASDEF) is set, we add '-B -b$(ASDEF)' to $(ASFLAGS).
+ *  On MPP machines, add the '-P' option to $(ASFLAGS) to cause the
+ *  assembler to use CPP (also add '-I$(INCLUDE*)' if necessary).
+ *
+ *  Finally, set up default $(CCFLAGS) and Fortran flags according
+ *  to the machine type.
+ *
+ *  -I/usr/gen/include is added to CPPFLAGS to match nmake's new
+ *  rules for include file locations.  In this way, /usr/gen/include
+ *  should be last (just prior to /usr/include).
+ */
+
+_makeinit2_:	.NOTOUCH .MAKE
+#if architecture(cray)
+	CPPFLAGS +=		-N
+#endif
+$(INCLUDE3:T=V)	.SOURCE.h:	$(INCLUDE3) .INSERT
+$(INCLUDE2:T=V)	.SOURCE.h:	$(INCLUDE2) .INSERT
+$(INCLUDE:T=V)	.SOURCE.h:	$(INCLUDE) .INSERT
+$(INCLUDE:T=V)	CPPFLAGS +=	-I$(INCLUDE)
+$(INCLUDE2:T=V)	CPPFLAGS +=	-I$(INCLUDE2)
+$(INCLUDE3:T=V)	CPPFLAGS +=	-I$(INCLUDE3)
+#if defined(C1_TARGET)
+$(ASDEF:T=V)	ASFLAGS	+=	-B -b$(ASDEF)
+	CFT77FLAGS +=		-a stack
+	CF77FLAGS +=		-W f-astack
+#elif defined(MPP_TARGET)
+	ASFLAGS +=		-P -DASM
+$(INCLUDE:T=V)	ASFLAGS	+=	-I$(INCLUDE)
+$(INCLUDE2:T=V)	ASFLAGS	+=	-I$(INCLUDE2)
+$(INCLUDE3:T=V)	ASFLAGS	+=	-I$(INCLUDE3)
+	ASFLAGS +=		-I/usr/gen/include
+#if defined(T_CRAYT3D)
+	ASFLAGS +=		-D_UNICOS_MAX
+	CCFLAGS +=		-D_UNICOS_MAX
+	CPPFLAGS +=		-D_UNICOS_MAX
+#endif
+#endif
+#if defined(T_MIPS3_N32) 
+	CCFLAGS +=		-mips3 -n32 -D_WORD32
+	CF90FLAGS +=		-mips3 -n32 
+#elif defined(T_MIPS3_64) 
+	CCFLAGS +=		-mips3 -64 
+	CF90FLAGS +=		-mips3 -64 
+#elif defined(T_MIPS4_N32) 
+	CCFLAGS +=		-mips4 -n32 -D_WORD32
+	CF90FLAGS +=		-mips4 -n32 
+#elif defined(T_MIPS4_64) 
+	CCFLAGS +=		-mips4 -64
+	CF90FLAGS +=		-mips4 -64
+#elif defined(T_SPARC) 
+	CCFLAGS +=		-D_SOLARIS -D_WORD32 -D_ADDR32
+#elif defined(T_SUNOS) 
+	CCFLAGS +=		-D_SUNOS -D_WORD32 -D_ADDR32
+#elif defined(T_RS6000) 
+	CCFLAGS +=		-D_AIX -D_WORD32 -D_ADDR32
+#elif defined(T_POSIX32)
+	CCFLAGS +=		-D_WORD32 -D_ADDR32
+#endif
+#if defined(NONUNICOS_TARGET)
+	CF90FLAGS +=		-c
+#endif
+
+.INIT:		_cpp_init
+
+_cpp_init:	.MAKE .POST .NOTOUCH
+	CPPFLAGS +=		-I/usr/gen/include
+
+/*
+ *  Implicit rules
+ */
+#if defined(NONUNICOS_TARGET)
+*.o :	*.f
+	$(CF90) $(CF90FLAGS) $(>)
+#endif
+
+/*
+ *  Adjustments for MPP/T3D
+ */
+#if defined(MPP_TARGET)
+AR =		ar		/* belongs in unicos.mh */
+.SEARCH:	.s		/* nmake will search .s files for #include */
+#endif
+#if defined(T_CRAYT3D)
+LIBDIR =	$(ROOT)/mpp/lib	/* default T3D lib directory */
+#endif
+
+/*
+ *  Macros that can be used by library Nmakefiles:
+ *	$(PERMS) is the standard library permissions for cpset.
+ *	$(PERMSX) is the standard executable permissions for cpset.
+ */
+
+PERMS =		$(CHMODR) $(OWNER) $(GROUP)
+PERMSX =	$(CHMODX) $(OWNER) $(GROUP)
+
+/*
+ *  Build targets:
+ *
+ *	LIB -	name of the 'regular' library to be built
+ *	LIBX -	name of the 'cross' library to be built
+ *		(e.g. X-MP compatible libraries on Y-MP systems,
+ *		or Y-MP compatible libraries on C90 systems).
+ *	LIBMIX - name of the 'cross' library to be built for
+ *		mixed mode CPU systems
+ *
+ *	The LIBX target should be defined under the control
+ *	of the CONFIG_XLIBS variable.  The LIBMIX target should
+ *	be defined under the control of the CONFIG_MIXED variable.
+ *
+ *  The targets above depend on these macros:
+ *
+ *	LIBSRC - list of source files that the LIB* libraries
+ *		 depend on
+ *	LIBDIRS - list of directories that LIBSRC resides in
+ *
+ *  An example from the libu Nmakefile is shown below:
+ *
+ *	LIB =	libu.a		('normal' library)
+ *	#if CONFIG_XLIBS
+ *	LIBX =	$(XDIR)/libxu.a	('cross' library)
+ *	#endif
+ *	#if CONFIG_MIXED
+ *	LIBMIX =	$(MIXDIR)/libmxu.a	('cross' library)
+ *	#endif
+ *	LIBSRC = ...		(source that library depends on)
+ *	LIBDIRS = ...		(source subdirectories; optional if '.')
+ */
+
+TDIR =		.		/* location of top of library source tree */
+$(LIBDIRS:T=V).SOURCE:	$(TDIR) $(LIBDIRS:C;^;$(TDIR)/;)
+$(LIBDIRS:T=N).SOURCE:	$(TDIR)
+
+$(LIBSRC:T=V)$(LIB:T=V)$(LIB)::	$(LIBSRC) .FOREGROUND
+
+#if CONFIG_XLIBS
+
+#if defined(T_CRAYC90)
+XDIR =		ylib		/* 'cross' library created/installed here */
+YDIR =		c90lib		/* 'native' library linked here */
+#elif defined(T_CRAYTS)
+XDIR =		c90lib
+YDIR =		tslib
+#else
+XDIR =		xlib
+YDIR =		ylib
+#endif
+
+$(LIBX:T=V)$(LIBX):	.UNTOUCH
+$(LIBX:T=V)	set +x; if [ ! -d $(XDIR) ]; then $(MKDIR) $(XDIR); fi; set -x
+$(LIBX:T=V)	( cd $(XDIR); env TARGET=CONFIG_XLIBTARGET $(MAKE) $(-) $(=) -f ../Nmakefile TDIR=.. $(LIBX:BS) )
+
+$(LIBSRC:T=V)$(LIBX:T=V)$(LIBX:BS)::	$(LIBSRC) .FOREGROUND
+#endif
+
+#if CONFIG_MIXED
+
+#if defined(T_CRAYTS)
+YDIR =		tslib
+MIXDIR =	tsieeelib
+#elif defined(T_CRAYTS_IE)
+YDIR =		tsieeelib
+MIXDIR =	tslib
+#endif
+
+$(LIBMIX:T=V)$(LIBMIX):	.UNTOUCH
+$(LIBMIX:T=V)	set +x; if [ ! -d $(MIXDIR) ]; then $(MKDIR) $(MIXDIR); fi; set -x
+$(LIBMIX:T=V)	( cd $(MIXDIR); env TARGET=CONFIG_MIXEDTARGET $(MAKE) $(-) $(=) -f ../Nmakefile TDIR=.. $(LIBMIX:BS) )
+
+$(LIBSRC:T=V)$(LIBMIX:T=V)$(LIBMIX:BS)::	$(LIBSRC) .FOREGROUND
+#endif
+
+rmmos:
+$(LIBX:T=V)	ignore $(RM) $(RMFLAGS) $(XDIR)/$(MAKEFILE:BS=.mo) $(XDIR)/$(MAKEFILE:BS=.ms)
+$(LIBMIX:T=V)	ignore $(RM) $(RMFLAGS) $(MIXDIR)/$(MAKEFILE:BS=.mo) $(MIXDIR)/$(MAKEFILE:BS=.ms)
+
+/*
+ *  Remove targets:
+ *	These targets are based on file lists in nmake variables which must
+ *	be set in the library Nmakefile BEFORE doing 
+ *	'#include <make/libmac.mh>'.
+ *
+ *	Targets 
+ *
+ *      rmaltsrc        removes source code not built on this platform
+ *      rmusrc/rmrsrc   removes all unrestricted/restricted source code
+ *      rmubin/rmrbin   removes unrestricted/restricted binary files
+ *      rmupl/rmrpl     removes unrestricted/restricted PLs
+ *
+ *	All these targets correspond to an nmake variable which can be
+ *	defined in the including Nmakefile.  (for example, the rmusrc 
+ *	target removes source files listed in the RMUSRC variable).
+ *
+ *	Note that the rmaltsrc target is defined even if the including 
+ *	Nmakefile did not define the RMALTSRC variable.  This is intended.
+ *	The rmaltsrc target is intented to provide a general method of
+ *	pruning source trees before source code is handed off to customers 
+ *	with special source code rights.  Some PLs may not need to prune
+ *	these source trees, so we don't require RMALTSRC to be defined.
+ */
+
+$(RMEXE:T=V)rmexe:
+$(RMEXE:T=V)	ignore $(RM) $(RMFLAGS) $(RMEXE)
+
+$(RMUBIN:T=V)rmubin:
+$(RMUBIN:T=V)$(MSGEXP:T=N)	ignore $(RM) $(RMFLAGS) $(RMUBIN)
+$(RMUBIN:T=V)$(MSGEXP:T=V)	if whence nroff > /dev/null; then ignore $(RM) $(RMFLAGS) $(RMUBIN); else ignore $(RM) $(RMFLAGS) $(RMUBIN:N!=$(MSGEXP)); fi
+$(RMUBIN:T=V)$(LIBX:T=V)	ignore $(RM) $(RMFLAGS) $(RMUBIN:C;^;$(XDIR)/;)
+$(RMUBIN:T=V)$(LIBMIX:T=V)	ignore $(RM) $(RMFLAGS) $(RMUBIN:C;^;$(MIXDIR)/;)
+
+$(RMRBIN:T=V)rmrbin:
+$(RMRBIN:T=V)$(MSGEXP:T=N)	ignore $(RM) $(RMFLAGS) $(RMRBIN)
+$(RMRBIN:T=V)$(MSGEXP:T=V)	if whence nroff > /dev/null; then ignore $(RM) $(RMFLAGS) $(RMRBIN); else ignore $(RM) $(RMFLAGS) $(RMRBIN:N!=$(MSGEXP)); fi
+$(RMRBIN:T=V)$(LIBX:T=V)	ignore $(RM) $(RMFLAGS) $(RMRBIN:C;^;$(XDIR)/;)
+$(RMRBIN:T=V)$(LIBMIX:T=V)	ignore $(RM) $(RMFLAGS) $(RMRBIN:C;^;$(MIXDIR)/;)
+
+$(RMUSRC:T=V)rmusrc:
+$(RMUSRC:T=V)	ignore $(RM) $(RMFLAGS) $(RMUSRC:T=F) ' ' /* rm needs >=1 arg */
+
+$(RMRSRC:T=V)rmrsrc:
+$(RMRSRC:T=V)	ignore $(RM) $(RMFLAGS) $(RMRSRC:T=F) ' ' /* rm needs >=1 arg */
+
+$(RMUPL:T=V)rmupl:
+$(RMUPL:T=V)	ignore $(RM) $(RMFLAGS) -r $(RMUPL)
+
+$(RMRPL:T=V)rmrpl:
+$(RMRPL:T=V)	ignore $(RM) $(RMFLAGS) -r $(RMRPL)
+
+rmaltsrc:
+$(RMALTSRC:T=V)	ignore $(RM) $(RMFLAGS) -r $(RMALTSRC)
+
+#endif /* !_LIBMAC_MH */

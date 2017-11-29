@@ -1,0 +1,164 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+
+      SUBROUTINE ATX$BP()
+
+CDIR$ ID "@(#) libu/multi/cs_fatx.f	92.0	10/08/98 14:57:41"
+
+      call atx_bp()
+      return
+      end
+
+      SUBROUTINE ATX$EP(param)
+      integer param
+
+      call atx_ep(param)
+      return
+      end
+
+      SUBROUTINE ATX$CP(param)
+      integer param
+
+      call atx_cp(param)
+      return
+      end
+
+      SUBROUTINE ATX$UT()
+
+      call atx_ut()
+      return
+      end
+
+      SUBROUTINE GETATXC(ptr)
+
+      PARAMETER (MAXCPUS=64)
+      PARAMETER (MAXCS=16)
+c.... Communications blocks with the fmp instrumentation
+
+      common /ut$comm/ ut$subr,ut$slave,iatxrloc,ut$trips,
+     .                 ut$sched,ut$case,ut$label,ut$savelast,
+     .                 ut$guard,ut$param,ut$wait
+
+      common /atx$com/ iatxmxcp,iatxcpu
+      common /atx$com/ iatxpst,d1,iatxbp,d2,iatxep,d3
+      common /atx$com/ iatxbcs(MAXCPUS,MAXCS)
+      common /atx$com/ d4(MAXCPUS,MAXCS)
+      common /atx$com/ iatxtop(MAXCPUS,MAXCS)
+      common /atx$com/ d5(MAXCPUS,MAXCS)
+      common /atx$com/ iatxbot(MAXCPUS,MAXCS)
+      common /atx$com/ d6(MAXCPUS,MAXCS)
+      common /atx$com/ iatxitc(MAXCPUS,MAXCS)
+      common /atx$com/ iatxitr(MAXCS)
+      common /atx$com/ iatxdo(MAXCS),iatxtype(MAXCS)
+      common /atx$com/ iatxsavl(MAXCS),iatxgard(MAXCS)
+      common /atx$com/ iatxparm(MAXCS)
+      common /atx$com/ iatxwt(MAXCPUS,MAXCS)
+
+      common /g$tsbptr/ itsbptrs(64)
+
+      integer ptr
+
+      ptr = loc(iatxmxcp)
+      return
+      end
+
+      SUBROUTINE GETUT(ptr)
+
+      PARAMETER (MAXCPUS=64)
+      PARAMETER (MAXCS=16)
+c.... Communications blocks with the fmp instrumentation
+ 
+      common /ut$comm/ ut$subr,ut$slave,iatxrloc,ut$trips,
+     .                 ut$sched,ut$case,ut$label,ut$savelast,
+     .                 ut$guard,ut$param,ut$wait
+ 
+      common /atx$com/ iatxmxcp,iatxcpu
+      common /atx$com/ iatxpst,d1,iatxbp,d2,iatxep,d3
+      common /atx$com/ iatxbcs(MAXCPUS,MAXCS)
+      common /atx$com/ d4(MAXCPUS,MAXCS)
+      common /atx$com/ iatxtop(MAXCPUS,MAXCS)
+      common /atx$com/ d5(MAXCPUS,MAXCS)
+      common /atx$com/ iatxbot(MAXCPUS,MAXCS)
+      common /atx$com/ d6(MAXCPUS,MAXCS)
+      common /atx$com/ iatxitc(MAXCPUS,MAXCS)
+      common /atx$com/ iatxitr(MAXCS)
+      common /atx$com/ iatxdo(MAXCS),iatxtype(MAXCS)
+      common /atx$com/ iatxsavl(MAXCS),iatxgard(MAXCS)
+      common /atx$com/ iatxparm(MAXCS)
+      common /atx$com/ iatxwt(MAXCPUS,MAXCS)
+ 
+      common /g$tsbptr/ itsbptrs(64)
+
+
+      integer ptr
+
+      ptr = loc(ut$subr)
+      return
+      end
+
+      SUBROUTINE GETGTSB(ptr)
+
+      PARAMETER (MAXCPUS=64)
+      PARAMETER (MAXCS=16)
+c.... Communications blocks with the fmp instrumentation
+ 
+      common /ut$comm/ ut$subr,ut$slave,iatxrloc,ut$trips,
+     .                 ut$sched,ut$case,ut$label,ut$savelast,
+     .                 ut$guard,ut$param,ut$wait
+ 
+      common /atx$com/ iatxmxcp,iatxcpu
+      common /atx$com/ iatxpst,d1,iatxbp,d2,iatxep,d3
+      common /atx$com/ iatxbcs(MAXCPUS,MAXCS)
+      common /atx$com/ d4(MAXCPUS,MAXCS)
+      common /atx$com/ iatxtop(MAXCPUS,MAXCS)
+      common /atx$com/ d5(MAXCPUS,MAXCS)
+      common /atx$com/ iatxbot(MAXCPUS,MAXCS)
+      common /atx$com/ d6(MAXCPUS,MAXCS)
+      common /atx$com/ iatxitc(MAXCPUS,MAXCS)
+      common /atx$com/ iatxitr(MAXCS)
+      common /atx$com/ iatxdo(MAXCS),iatxtype(MAXCS)
+      common /atx$com/ iatxsavl(MAXCS),iatxgard(MAXCS)
+      common /atx$com/ iatxparm(MAXCS)
+      common /atx$com/ iatxwt(MAXCPUS,MAXCS)
+ 
+      common /g$tsbptr/ itsbptrs(64)
+
+      integer ptr
+
+      ptr = loc(itsbptrs(1))
+      return
+      end
+

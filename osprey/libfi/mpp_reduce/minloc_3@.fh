@@ -1,0 +1,179 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+      mype = my_pe()
+*
+*     Check the mask. If it is a scalar set to false (mask = -1)
+*     then set the result to zero and return to the caller.
+*
+      if (maskflg .eq. -1) then
+          result(mype,1) = 0
+          result(mype,2) = 0
+          result(mype,3) = 0
+          goto 9999
+      endif
+*
+*     Initialize the local minimum value and local index to that
+*     minimum value. Then search for the local minimum value.
+*
+      local_idx(1) = 0
+      local_idx(2) = 0
+      local_idx(3) = 0
+*
+*         Only search through the values of source identified
+*         by mask.
+*
+cdir$ doshared (i3,i2,i1) on source(i1,i2,i3)
+      do i3 = 1, ext(3)
+      do i2 = 1, ext(2)
+      do i1 = 1, ext(1)
+          if (mask(i1,i2,i3)) then
+              if ((source(i1,i2,i3) .xor. local_min) .ge. 0) then
+                  if (source(i1,i2,i3) .lt. local_min) then
+                      local_min = source(i1,i2,i3)
+                      local_idx(1) = i1
+                      local_idx(2) = i2
+                      local_idx(3) = i3
+                  endif
+              else
+                  if (source(i1,i2,i3) .lt. 0) then
+                      local_min = source(i1,i2,i3)
+                      local_idx(1) = i1
+                      local_idx(2) = i2
+                      local_idx(3) = i3
+                  endif
+              endif
+          endif
+      enddo
+      enddo
+      enddo
+cdir$ no barrier
+*
+*     Move the local minimum and its index into shared memory.
+*
+      result(mype,1) = local_idx(1)
+      result(mype,2) = local_idx(2)
+      result(mype,3) = local_idx(3)
+      min_value(mype) = local_min
+*
+*     If running in parallel, then find the global minimum,
+*     else if running in a master region, then just return
+*     to the caller; the global minimum has already been
+*     found by processor 0.
+
+      if (.not. in_parallel()) goto 9999
+*
+*     Wait for all processors to write their local minimum.
+*
+cdir$ barrier
+*
+*     Find the location of the first occurance of the global
+*     minimum value.
+*
+      mod_factor = 2
+      offset = 1
+      tripcnt = 63 - leadz(n$pes)
+      do i = 1, tripcnt
+          if (mod(mype,mod_factor) .eq. 0) then
+              local_min = min_value(mype)
+              local_idx(1) = result(mype,1)
+              local_idx(2) = result(mype,2)
+              local_idx(3) = result(mype,3)
+              far_min = min_value(mype+offset)
+              far_idx(1) = result(mype+offset,1)
+              far_idx(2) = result(mype+offset,2)
+              far_idx(3) = result(mype+offset,3)
+*
+*             If two local minimums are equal, then choose the
+*             minimum value with the lower index.
+*
+              if (local_min .eq. far_min) then
+                  if (local_idx(3) .gt. far_idx(3)) then
+                      min_value(mype) = far_min
+                      result(mype,1) = far_idx(1)
+                      result(mype,2) = far_idx(2)
+                      result(mype,3) = far_idx(3)
+                  elseif (local_idx(3) .eq. far_idx(3)) then
+                      if (local_idx(2) .gt. far_idx(2)) then
+                          min_value(mype) = far_min
+                          result(mype,1) = far_idx(1)
+                          result(mype,2) = far_idx(2)
+                          result(mype,3) = far_idx(3)
+                      elseif (local_idx(2) .eq. far_idx(2)) then
+                          if (local_idx(1) .gt. far_idx(1)) then
+                              min_value(mype) = far_min
+                              result(mype,1) = far_idx(1)
+                              result(mype,2) = far_idx(2)
+                              result(mype,3) = far_idx(3)
+                          endif
+                      endif
+                  endif
+*
+*             If two local minimums have the same sign, then
+*             it is safe to compare the two values without the
+*             fear of overflowing.
+*
+              elseif ((local_min .xor. far_min) .ge. 0) then
+                  if (local_min .gt. far_min) then
+                      min_value(mype) = far_min
+                      result(mype,1) = far_idx(1)
+                      result(mype,2) = far_idx(2)
+                      result(mype,3) = far_idx(3)
+                  endif
+*
+*             If two local minimums have different signs, then
+*             choose the one that has a positive value.
+*
+              else
+                  if (local_min .ge. 0) then
+                      min_value(mype) = far_min
+                      result(mype,1) = far_idx(1)
+                      result(mype,2) = far_idx(2)
+                      result(mype,3) = far_idx(3)
+                  endif
+              endif
+          endif
+          mod_factor = mod_factor * 2
+          offset = offset * 2
+cdir$ barrier
+      enddo
+*
+9999  continue
+*
+cdir$	master
+	fresult(1) = result(mype,1)
+	fresult(2) = result(mype,2)
+	fresult(3) = result(mype,3)
+cdir$	end master

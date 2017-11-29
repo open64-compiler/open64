@@ -1,0 +1,122 @@
+echo "---------Test 01--------------"
+cd root/TRandom3
+make clean
+make XF2=" "
+time ./testTRandom3
+make clean
+make XF1=" "
+time ./testTRandom3
+echo "----------Test 02-------------"
+cd ../TRandom
+make clean
+make XF2=" "
+time ./testTRandom
+make clean
+make XF1=" "
+time ./testTRandom
+echo "----------Test 03-------------"
+cd ../TGeoCone
+make clean
+make XF2=" "
+time ./testTGeoCone
+make clean
+make XF1=" "
+time ./testTGeoCone
+echo "----------Test 04-------------"
+cd ../TGeoArb8
+make clean
+make XF2=" "
+time ./testTGeoArb8
+make clean
+make XF1=" "
+time ./testTGeoArb8
+echo "----------Test 05-------------"
+cd ../TGeoPgon
+make clean
+make XF2=" "
+time ./testTGeoPgon
+make clean
+make XF1=" "
+time ./testTGeoPgon
+echo "----------Test 06-------------"
+cd ../TGeoBBox
+make clean
+make XF2=" "
+time ./testTGeoBBox
+make clean
+make XF1=" "
+time ./testTGeoBBox
+echo "----------Test 07-------------"
+cd ../TMatrixDSparse
+make clean
+make XF2=" "
+time ./testTMatrixDSparse
+make clean
+make XF1=" "
+time ./testTMatrixDSparse
+echo "----------Test 08-------------"
+cd ../TMatrixTSparse
+make clean
+make XF2=" "
+time ./testTMatrixTSparse
+make clean
+make XF1=" "
+time ./testTMatrixTSparse
+echo "----------Test 09-------------"
+cd ../TBuffer 
+make clean
+make XF2=" "
+time ./testTBuffer 
+make clean
+make XF1=" "
+time ./testTBuffer 
+echo "----------Test 10-------------"
+cd ../../clhep/Ranlux
+make clean
+make XF2=" "
+time ./testRanluxEngine
+make clean
+make XF1=" "
+time ./testRanluxEngine
+echo "-----------Test 11------------"
+cd ../Rotation
+make clean
+make XF2=" "
+time ./testRotation
+make clean
+make XF1=" "
+time ./testRotation
+echo "-----------Test 12---------"
+cd ../../clhep/matrix_inversion
+make clean
+make XF2=" "
+time ./testMatrixInversion
+make clean
+make XF1=" "
+time ./testMatrixInversion
+echo "-----------Test 13------------"
+cd ../../geant4/G4Mag
+make clean
+make XF2=" "
+time ./testG4Mag_EqRhs
+make clean
+make XF1=" "
+time ./testG4Mag_EqRhs
+echo "-----------Test 14------------"
+cd ../G4Tubs
+make clean
+make XF2=" "
+time ./testG4Tubs
+make clean
+make XF1=" "
+time ./testG4Tubs
+echo "-----------Test 15------------"
+cd ../G4AffineTransform
+make clean
+make XF2=" "
+time ./testG4AffineTransform
+make clean
+make XF1=" "
+time ./testG4AffineTransform
+echo "------------------------------"
+cd ../..

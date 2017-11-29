@@ -1,0 +1,483 @@
+README.Pro64.src
+-----------------------------------------------------------------------
+NOTICE: This is the README.src file for SGI Pro64(TM) compiler.
+        SGI Pro64 compiler is the ancestor of the Open64 compiler.
+-----------------------------------------------------------------------
+
+This document contains information about installing and building
+the SGI Pro64 compiler source release.
+
+Installation Information
+
+Untar the tar file that you downloaded from the ftp site:
+
+  % cd installation_directory 
+  % gunzip pro64-0.01.0-13-sources.tar.gz 
+  % tar xvf pro64-0.01.0-13-sources.tar 
+
+HOW TO BUILD
+
+Prerequisites:
+
+We used the following version of gcc to compile the binaries
+include in our rpm:
+
+   gcc version 2.96 19991114 (experimental)
+
+We also used g77 for compiling parts of the Fortran 90
+front-end. The version that we used was:
+
+   GNU F77 version egcs-2.91.66 19990314/Linux (egcs-1.1.2 release) 
+   (i386-redhat)
+
+For this release we have not verified the build with
+gcc version 2.95 19990728 (release).
+
+
+You will also need to install the NUE environment in order to build 
+IA64 libraries. Information about NUE can be found at:
+
+       http://www.software.hp.com/ia64linux
+
+We used our own sgicc and sgif90 compilers to
+build the IA-64 libraries. You will need to install those
+from the sgicc rpm under the NUE environment.
+
+
+Installing the pro64 RPMs
+
+You need to install the pro64 rpm from the nue environment.
+Note that the nue command will put you under your home
+directory in NUE, which may not be your regular home
+directory. You should move the pro64 rpm and osprey
+source tree to a directory that is accessible under NUE.
+
+To install the pro64 rpm do the following:
+
+  %su
+  #nue
+  #rpm -i --force --nodeps pro64-0.01.0-13.ia64.rpm
+
+The --nodeps flag is needed because the installation
+under NUE only sees files installed under NUE. It does
+not see the files installed from the NUE rpm.
+
+To remove it:
+
+  #rpm -e --nodeps pro64
+
+To update it:
+
+  #rpm -U --force --nodeps pro64-0.01.0-13.ia64.rpm
+
+You can verify your installation by doing a simple
+hello world test under NUE:
+
+  %cat hello.c
+  #include <stdio.h>
+
+  main()
+  {
+     printf("hello world\n");
+  }
+
+  %sgicc hello.c
+  %./a.out
+  hello world 
+  %
+
+
+Doing the Build
+
+Before doing the build make sure you have permissions
+in the tree where you will be doing the builds. You
+can do this by:
+
+       %chown -R your_username kpro64
+
+Each of the programs below is included in the rpm
+that you downloaded from the ftp site. A short description
+of each rpm entry is provided along with instructions
+how to build it.
+
+The compilers suite contains CROSS compiler components and IA-64
+Libraries.
+
+
+CROSS compiler components
+
+The following components are CROSS components in that
+they will be built by IA-32 tools and run on IA-32 platforms
+but they produce IA-64 code. They are built by doing a make 
+in the corresponding 
+kpro64/targia32_ia64_nodebug directories.
+
+
+A sample makefile has been provided for your convenience
+to build all of the CROSS components listed below.
+To do a full build of the CROSS components:
+
+          %make build -f Make.cross
+
+NOTE**********************************************
+
+You must NOT be in the NUE environment when running this
+makefile (Make.cross).
+
+**************************************************
+
+Each component may also be built separately as described
+below:
+
+==================================================
+Compiler Drivers
+
+/usr/bin/sgicc  -- C   compiler driver
+/usr/bin/sgiCC  -- C++ compiler driver
+/usr/bin/sgi++  -- C++ compiler driver (alternate name)
+/usr/bin/sgif90 -- Fortran90 compiler driver
+
+These are links to 
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/driver
+
+To build the driver:
+% cd kpro64/targia32_ia64_nodebug/driver; gmake
+
+==================================================
+C Front-End
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/gfec
+
+is the C compiler front-end. We have upgraded it
+from gcc version 2.95 19990929 to gcc version
+2.96 20000530.
+
+To build:
+
+% cd kpro64/targia32_ia64_nodebug/gccfe; gmake
+
+==================================================
+C++ Front-End
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/gfecc
+
+is the C++ compiler front-end. We have upgraded
+it from g++ version 2.96 20000111 (experimental)
+to g++ version 2.96 20000605 (experimental).
+
+To build:
+
+% cd kpro64/targia32_ia64_nodebug/g++fe; gmake
+
+==================================================
+Fortran 90 Front-End
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/mfef90
+
+is the Fortran90 compiler front-end. 
+
+And
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/cf90.cat
+
+Is the message catalog file for it:
+
+To build:
+
+% cd kpro64/targia32_ia64_nodebug/crayf90; gmake
+
+NOTE: mfef90 does not build at this time because it
+      needs an IA-32 version of f90 to compile parts
+      of itself. While SGI has a prototype of such
+      a compiler, it is good enough only to compile
+      what is needed and thus we are not making it
+      available. Mfef90 contains only code 
+      developed by SGI.
+
+==================================================
+
+Backend
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/be
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/be.so
+
+are the backend components
+
+To build:
+
+%cd kpro64/targia32_ia64_nodebug/be ; gmake
+
+
+==================================================
+
+Code Generator
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/cg.so
+
+is the code generator
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/cg ; gmake
+
+==================================================
+
+Global Optimizer
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/wopt.so
+
+is the global optimizer. It is invoked when sgicc
+is run with -O2.
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/wopt ; gmake
+
+==================================================
+
+Loop Nest Optimizer
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/lno.so
+
+is the loop nest optimizer. It is invoked when
+sgicc is run with -O3.
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/lno ; gmake
+
+==================================================
+
+Stand-Alone Inliner
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/inline
+
+is the stand-alone inliner
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/lw_inline; gmake
+
+(lw_inline is built which is renamed to inline)
+
+==================================================
+
+Interprocedural analysis optimizer
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/ipa.so
+
+is the interprocedural analysis optimizer
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/ipa; gmake
+
+==================================================
+
+Interprocedural analysis optimizer (local summary phase)
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/ipl.so
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/ipl
+
+is the interprocedural analysis optimizer 
+(local summary phase).
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/ipl; gmake
+
+==================================================
+
+Interprocedural analysis linker driver (ipa_link)
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/ipa_link
+
+is the interprocedural analysis linker driver
+
+To build:
+%cd kpro64/targcygnus_ia32_ia64; ./CONFIGURE ; gmake
+
+ld-new is created under the targcygnus_ia32_ia64/ld
+directory. It is renamed to ipa_link in the INSTALL
+script.
+
+==================================================
+
+Itanium(TM) processor target description module
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/itanium.so
+
+is the Itanium(TM) processor target description
+module.
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/targ_info; gmake
+
+==================================================
+
+WHIRL (the sgicc intermediate language) to C converter
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/whirl2c
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/whirl2c.so
+
+is the WHIRL (the sgicc intermediate language)
+to C converter.
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/whirl2c; gmake
+
+==================================================
+
+WHIRL to Fortran converter
+
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/whirl2f
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/whirl2f.so
+
+is the WHIRL (the sgicc intermediate language)
+to Fortran converter.
+
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/whirl2f; gmake
+
+==================================================
+
+WHIRL to ASCII converter
+
+/usr/local/bin/ir_b2a
+
+is the WHIRL (the sgicc intermediate language)
+to ASCII converter utility.
+
+To build:
+%cd kpro64/targia32_ia64_nodebug/ir_tools; gmake
+
+==================================================
+
+
+IA64 NATIVE LIBRARIES
+
+
+The following components are IA-64 native libraries. 
+in that they will be built by the IA-64 tools. As
+a result, you must do the builds under the NUE
+environment.
+
+To run under NUE, you will need to install the NUE
+environment. Information about NUE can be found at:
+
+     http://www.software.hp.com/ia64linux
+
+
+To get into the NUE environment, simply type:
+
+          %nue
+
+A sample makefile has been provided for your convenience
+to build all of the CROSS components listed below.
+To do a full build of the CROSS components:
+
+          %make build -f Make.NUE.lib
+
+Each library may also be built separately 
+by doing a make in the corresponding 
+kpro64/targia64 directories as described below.
+
+==================================================
+/usr/lib/libfortran.a
+
+is the Fortran90 runtime library:
+
+To build:
+%cd kpro64/targia64/include; gmake
+%cd kpro64/targia64/libfortran; gmake
+
+==================================================
+/usr/lib/libffio.a
+
+is the Fast Fortran I/O runtime library:
+
+To build:
+%cd kpro64/targia64/include; gmake
+%cd kpro64/targia64/libu; gmake
+
+
+==================================================
+/usr/lib/libmsgi.a
+
+is the SGI math library:
+
+To build:
+%cd kpro64/targia64/libmsgi; gmake
+
+==================================================
+/usr/lib/libmv.a
+
+is the SGI math library (vector version):
+
+To build:
+%cd kpro64/targia64/libmv; gmake
+
+==================================================
+/usr/lib/libgcc.a
+
+To build:
+%cd kpro64/targia64/libgcc; gmake
+
+==================================================
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/libstdc++.a.2.10.0
+
+To build:
+%cd kpro64/targia64/libstdc++; gmake
+
+==================================================
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/libinstr.a
+
+is the SGI feedback instrumentation library
+
+To build:
+%cd kpro64/targia64/libinstr; gmake
+
+==================================================
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/ftz.o
+
+is the SGI implementation for turning on 
+FLUSH to ZERO
+
+To build:
+%cd kpro64/targia64/init; gmake
+
+==================================================
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/lib.cat
+/usr/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0/lib.exp
+
+Are already provided under:
+
+kpro64/targia32_ia64_nodebug/temp_f90/libs
+==================================================
+==================================================
+
+
+
+INSTALLING YOUR NEWLY BUILT COMPILER
+
+
+An INSTALL script has been provided under kpro64.
+What it does is install all of the components into their
+proper locations in the NUE environment after they 
+have been built.
+
+To run it:
+
+NOTE***********************************
+
+Be Extremely CAREFUL using this script
+as you will be overwriting the files
+from the rpm's that you installed
+
+***************************************
+
+       # INSTALL
+
+
+The spec file for creating the sgicc rpms has also
+been provided. After you have rebuilt and re-installed
+the sgicc compilers using the script above, you can
+create the pro64 rpm by doing:
+
+       # rpm -bb pro64.rpm
+
+

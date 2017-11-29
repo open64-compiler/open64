@@ -1,0 +1,238 @@
+#
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for intrinsics header files
+#
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build. 
+#               e.g.  /cmplrs.src/v7.00/targ32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#----------------------------------------------------------------------
+ifeq ($(BUILD_COMPILER), EDG)
+CVERSION = -xansi
+WOFF = -fullwarn
+else
+CVERSION =
+WOFF =
+endif
+
+RUN =
+ifeq ($(BUILD_ARCH), IA64)
+  ifeq ($(BUILD_HOSTARCH), IA32)
+    RUN = medusa -batch
+  endif
+endif
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+
+ifeq ($(BUILD_ABI), N32BIT)
+HOST_CC = $(CC) -n32 -mips3 -woff 1185 $(CINCS) $(CDEFS) $(MKDEPOPT)
+HOST_CXX = $(C++) -n32 -mips3 $(CXXINCS) $(CXXDEFS) $(MKDEPOPT)
+else
+HOST_CC = $(CC) $(CINCS) $(CDEFS) $(MKDEPOPT)
+HOST_CXX = $(C++) $(CXXINCS) $(CXXDEFS) $(MKDEPOPT)
+endif
+
+# Optionally remove "-MDupdate Makedepend" from link lines so executables
+# don't get rebuilt every time LATEST libC etc. changes
+ifdef BUILD_EXEC_NO_MAKEDEPEND
+HOST_LD_CC1 = $(HOST_CC:N-MDupdate)
+HOST_LD_CC = $(HOST_LD_CC1:NMakedepend)
+HOST_LD_CXX1 = $(HOST_CXX:N-MDupdate)
+HOST_LD_CXX = $(HOST_LD_CXX1:NMakedepend)
+else
+HOST_LD_CC = $(HOST_CC)
+HOST_LD_CXX = $(HOST_CXX)
+endif
+
+HOSTDEFS += -Dlonglong
+HOSTDEFS += -DSGI_RAG_BACKEND
+HOSTDEFS += -DSGI_MONGOOSE
+HOSTDEFS += -DSGI_EXTENSIONS
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+
+ifeq ($(BUILD_OS), IRIX)
+DIFF = $(TOOLROOT)/bin/diff
+else
+DIFF = diff
+endif
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+INTR_DIR 		= $(BUILD_BASE)
+COMMON_COM_DIR 		= $(BUILD_TOT)/common/com
+COMMON_COM_TARG_DIR	= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
+COMMON_LIB_DIR 		= $(BUILD_TOT)/common/lib
+COMMON_UTIL_DIR		= $(BUILD_TOT)/common/util
+ifeq ($(BUILD_OS), IRIX)
+INCLUDE_DIR 		= $(ROOT)/usr/include
+endif
+
+# These are the directories in which to look for source files.
+
+RAG_DIRS = \
+  $(CURDIR)		\
+  $(INTR_DIR)		\
+  $(COMMON_UTIL_DIR)	\
+  $(COMMON_COM_DIR)	\
+  $(COMMON_COM_TARG_DIR)\
+  $(COMMON_LIB_DIR)	\
+  $(INCLUDE_DIR)
+
+
+VPATH    =  $(RAG_DIRS)
+
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(RAG_DIRS))
+ifeq ($(BUILD_VARIANT), USE_UCODE)
+LCDEFS += -DBUILD_USING_UCODE
+endif
+
+LCXXDEFS = $(LCDEFS)
+LCXXINCS = $(LCINCS)
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+LDIRT = intr_tool intr_table.tmp* wint_tool
+
+#------------------------------------------------------------
+#  Define target
+#------------------------------------------------------------
+TARGETS = wtable.h intr_table.h intr_wrapper.h
+
+default: first $(TARGETS) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is 
+#  built.
+#----------------------------------------------------------------------
+first:
+ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is 
+#  built.
+#----------------------------------------------------------------------
+ifeq ($(BUILD_VARIANT), NO_INTR_TOOL)
+# no compiles so no deps
+last:
+else
+last: make_deps
+endif
+
+install: default
+
+ifeq ($(BUILD_VARIANT), NO_INTR_TOOL)
+# can't use intr_tool, so instead copy prebuilt headers
+
+intr_wrapper.h: $(INTR_DIR)/prebuilt/intr_wrapper.h
+	cp $< .
+
+intr_table.h: $(INTR_DIR)/prebuilt/intr_table.h
+	cp $< .
+
+wtable.h: $(INTR_DIR)/prebuilt/wtable.h
+	cp $< .
+
+else
+# has intr_tool
+
+# Note: this rule will will not always ensure that intr_wrapper.h gets
+#  built, but a good way to handle this dependency has yet to be found
+intr_wrapper.h: intr_table.h
+
+intr_table.h: intr_tool intr_table
+#this step gets rid of the # comments from the intr_table file
+	egrep -v '^#' $(INTR_DIR)/intr_table > intr_table.tmp1.c
+#this step combines lines followed by a backslash, gets rid of the #line
+#directives generated by cc, and eliminates whitespace
+	$(CC) -E $(CVERSION) intr_table.tmp1.c | egrep -v '^#|^ *$$' | sed 's/[ 	][ 	]*//g' > intr_table.tmp2
+	$(RUN) ./intr_tool intr_table.tmp2 intr_table.tmp.h intr_wrapper.tmp.h
+	if $(DIFF) -qbiw intr_table.tmp.h intr_table.h 1> /dev/null 2>&1 ; then echo "no differences" ; else rm -f intr_table.h ; mv intr_table.tmp.h intr_table.h ; fi
+	if $(DIFF) -qbiw intr_wrapper.tmp.h intr_wrapper.h  1> /dev/null 2>&1 ; then echo "no differences" ; else rm -f intr_wrapper.h ; mv intr_wrapper.tmp.h intr_wrapper.h ; fi
+	rm -f intr_wrapper.tmp.h intr_table.tmp.h
+
+wtable.h: wint_tool
+	rm -f wtable.h
+	$(RUN) ./wint_tool > wtable.h
+
+INTR_TOOL_OBJ = intr_tool.o
+WINT_TOOL_OBJS = wint_tool.o wutil.o
+
+intr_tool: $(INTR_TOOL_OBJ)
+	$(HOST_LD_CC) -o intr_tool $(INTR_TOOL_OBJ)
+
+intr_tool.o: $(INTR_DIR)/intr_tool.c
+	$(HOST_CC) -c $(INTR_DIR)/intr_tool.c
+
+wint_tool: $(WINT_TOOL_OBJS)
+	$(HOST_LD_CXX) -o wint_tool $(WINT_TOOL_OBJS)
+
+wint_tool.o: intr_table.h $(INTR_DIR)/wint_tool.c
+	$(HOST_CC) -c $(INTR_DIR)/wint_tool.c
+
+wutil.o: $(COMMON_COM_DIR)/wutil.cxx
+	$(HOST_CXX) -c $(COMMON_COM_DIR)/wutil.cxx
+endif
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)

@@ -1,0 +1,78 @@
+echo "---------Test 01--------------"
+cd root/TRandom3
+make clean
+make 
+time ./testTRandom3
+echo "----------Test 02-------------"
+cd ../TRandom
+make clean
+make
+time ./testTRandom
+echo "----------Test 03-------------"
+cd ../TGeoCone
+make clean
+make
+time ./testTGeoCone
+echo "----------Test 04-------------"
+cd ../TGeoArb8
+make clean
+make
+time ./testTGeoArb8
+echo "----------Test 05-------------"
+cd ../TGeoPgon
+make clean
+make
+time ./testTGeoPgon
+echo "----------Test 06-------------"
+cd ../TGeoBBox
+make clean
+make
+time ./testTGeoBBox
+echo "----------Test 07-------------"
+cd ../TMatrixDSparse
+make clean
+make
+time ./testTMatrixDSparse
+echo "----------Test 08-------------"
+cd ../TMatrixTSparse
+make clean
+make
+time ./testTMatrixTSparse
+echo "----------Test 09-------------"
+cd ../TBuffer 
+make clean
+make
+time ./testTBuffer
+echo "----------Test 10-------------"
+cd ../../clhep/Ranlux
+make clean
+make
+time ./testRanluxEngine
+echo "-----------Test 11------------"
+cd ../Rotation
+make clean
+make
+time ./testRotation
+echo "-----------Test 12------------"
+cd ../matrix_inversion
+make clean
+make
+time ./testMatrixInversion
+echo "-----------Test 13-----------"
+cd ../../geant4/G4Mag
+make clean
+make
+time ./testG4Mag_EqRhs
+echo "-----------Test 14------------"
+cd ../G4Tubs
+make clean
+make
+time ./testG4Tubs
+echo "-----------Test 15------------"
+cd ../G4AffineTransform
+make clean
+make
+time ./testG4AffineTransform
+echo "------------------------------"
+cd ../..
+

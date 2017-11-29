@@ -1,0 +1,20 @@
+#  Define build parameters
+
+BUILD_BASE     = @top_srcdir@/osprey/libopen64rt
+BUILD_BASE_ARCH = @top_srcdir@/osprey/libopen64rt/x8664
+BUILD_BOTH     =
+#BUILD_OPTIMIZE = -O
+
+ifeq ($(BUILD_TARGET), X8664)
+  ASFILES = fastcopy_gh.s
+endif
+
+#  Include setup file which will then include Makefile.base
+include @top_builddir@/osprey/Makefile.gsetup
+
+memset.o: $(BUILD_BASE_ARCH)/memset.S
+	gcc -m64 -c -I$(BUILD_BASE_ARCH) -MMD -include $(BUILD_BASE_ARCH)/libc-symbols.h $(BUILD_BASE_ARCH)/memset.S
+
+cacheinfo.o: $(BUILD_BASE_ARCH)/cacheinfo.c
+	gcc -m64 -O -c -I$(BUILD_BASE_ARCH) -MMD -include $(BUILD_BASE_ARCH)/libc-symbols.h $(BUILD_BASE_ARCH)/cacheinfo.c
+

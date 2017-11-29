@@ -1,0 +1,224 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+
+************************************************************************
+*
+* Purpose: This is the guts of the maxval routines for arrays of
+*          rank 2. For further information, see related files
+*          maxval_w_p2@.f and/or maxval_w_s2@.f.
+*
+************************************************************************
+*
+*     Get a local copy of my virtual pe number.
+*
+      mype = my_pe()
+*
+*     Check the mask. If it is a scalar set to false (mask = -1)
+*     then set the result to the smallest possible integer and
+*     return to the caller.
+*
+      if (maskflg .eq. -1) then
+          goto 9999
+      endif
+*
+*     Search for the local maximum value.
+*
+      if (maskflg .eq. 0) then
+*
+*         Do not use the mask argument. Search the entire dimension
+*         for the maximum value.
+*
+          if (dim .eq. 1) then
+              do j = 1, sext(2)
+              do i = 1, sext(1)
+                  if (source(i,j) .gt. local_max(j)) then
+                      local_max(j) = source(i,j)
+                  endif
+              enddo
+              enddo
+          else
+              do i = 1, sext(1)
+              do j = 1, sext(2)
+                  if (source(i,j) .gt. local_max(i)) then
+                      local_max(i) = source(i,j)
+                  endif
+              enddo
+              enddo
+          endif
+      else
+*
+*         Only search through the values of source identified
+*         by mask.
+*
+          if (dim .eq. 1) then
+              do j = 1, sext(2)
+              do i = 1, sext(1)
+                  if (mask(i,j)) then
+                      if (source(i,j) .gt. local_max(j)) then
+                          local_max(j) = source(i,j)
+                      endif
+                  endif
+              enddo
+              enddo
+          else
+              do i = 1, sext(1)
+              do j = 1, sext(2)
+                  if (mask(i,j)) then
+                      if (source(i,j) .gt. local_max(i)) then
+                          local_max(i) = source(i,j)
+                      endif
+                  endif
+              enddo
+              enddo
+          endif
+      endif
+*
+*     If running in parallel, then find the global maximums,
+*     else if running in a master region, then return to
+*     the caller; the global maximums have already been
+*     found by processor 0.
+*
+
+      if (.not. in_parallel()) then
+          goto 9999
+      endif
+*
+*     In order to find the global result values in an efficient manner
+*     that keeps all of the processors busy all of the time without
+*     memory contention, we need to direct the processors to work on
+*     independent portions of the global result array simultaneously.
+*     To this end, we need to compute a PE offset value that will
+*     insure that for each trip through the j loops below, each processor
+*     is working on a unique portion of the result array.
+*
+      if ((npes .eq. 1) .or. (npes .eq. n$pes)) then
+          pe_offset = mod(mype,npes)
+      else
+          pe_offset = mod(mype/dist_cnt,npes)
+      endif
+*
+*     Find the global maximums along dimension dim. For dim = 1,
+*     If the number of blocks in the second dimension is less than
+*     the number of processors that the first dimension is spread
+*     across, then divide up each block into sub-blocks. For dim
+*     > 1, compare the number of blocks in the first dimension with
+*     the number of processors that dimension dim is spread across.
+*
+      if (blkcnt .lt. npes) then
+          if (blkcnt .eq. 0) then
+              do j = 1, npes
+cdir$ barrier
+              enddo
+          else
+              do k = 1, blkcnt
+                  l = hi(k) - low(k) + 1
+                  length = l/npes
+                  if ((length * npes) .lt. l) length = length + 1
+*
+*                 Calculate the offset of the starting point for
+*                 each block and the length of the result array
+*                 that each processor will update during every
+*                 time step.
+*
+                  offset = 0
+                  do i = 1, k-1
+                      offset = offset + (hi(i) - low(i) + 1)
+                  enddo
+*
+*                 Calculate the global maximum on npes subgroups
+*                 concurrently and the offset within each block
+*                 that the processor will use for each time step.
+*
+                  do j = 1, npes
+                      j_offset = mod(pe_offset+j-1,npes)*length
+                      isize = min0(length,lmext-j_offset)
+                      do i = j_offset+1, j_offset + isize
+                          l = offset + low(k) + i - 1
+                          if (local_max(i) .gt. result(l)) then
+                              result(l) = local_max(i)
+                          endif
+                      enddo
+cdir$ barrier
+                  enddo
+              enddo
+          endif
+      else
+*
+*         Since the number of blocks in dimension dim is larger
+*         than the number of processors that the first dimension
+*         is spread across, the cost of interprocessor communication
+*         begins to dominate. So, instead of dividing up the blocks,
+*         each processor will do one complete block at each time
+*         step and then rotate blocks between time steps. Begin by
+*         computing the offset into local_max for the first iteration.
+*
+          offset = 0
+          do i = 1, pe_offset
+              offset = offset + (hi(i) - low(i) + 1)
+          enddo
+*
+*         Search for the global maximums on a block-by-block basis.
+*         Every processor is allocated a different block for each
+*         time step.
+*
+          do j = 1, blkcnt
+*
+*             Calculate the block number and the high and low index
+*             for the current block, then process the block.
+*
+              j_block = mod(pe_offset+j-1,blkcnt) + 1
+              do i = 1, hi(j_block) - low(j_block) + 1
+                  l = low(j_block) + i - 1
+                  k = offset + i
+                  if (local_max(k) .gt. result(l)) then
+                      result(l) = local_max(k)
+                  endif
+              enddo
+cdir$ barrier
+*
+*             Update the offset for the next block.
+*
+              if (j_block .eq. blkcnt) then
+                  offset = 0
+              else
+                  offset = offset + 
+     +                       (hi(j_block) - low(j_block) + 1)
+              endif
+          enddo
+      endif
+*
+9999  continue
+*

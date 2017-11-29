@@ -1,0 +1,561 @@
+#
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for orc_intel
+#
+
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  This Makefile is used to build the 32 bit host/target version of the
+#  back-end
+#
+#  *  This Makefile does not require that targ_info has already been built.
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#  *  Because orc_intel.so depends on cg.so and be.so, it normally builds
+#     them first.  But it does so only if the make target is "default"
+#     or "install", so a "quick" build can be done by specifying the
+#     target as orc_intel.so or a .o file.  (It can't currently be installed
+#     that way, however.)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+
+ifndef TARG_BE
+TARG_BE = $(TARGDIR)/be
+endif
+
+ifndef TARG_CG
+TARG_CG = $(TARGDIR)/cg
+endif
+
+ifndef TARG_ORC_INTEL
+TARG_ORC_INTEL = $(TARGDIR)/orc_intel
+endif
+
+ifndef TARG_ORC_ICT
+TARG_ORC_ICT = $(TARGDIR)/orc_ict
+endif
+
+TARG_TARG_INFO = $(TARGDIR)/targ_info
+TARG_LIBUNWIND = $(TARGDIR)/libunwindP
+
+ifeq ($(BUILD_OS), IRIX)
+TARG_LIBELF = $(TARGDIR)/libelf_xtnd
+TARG_LIBELFUTIL = $(TARGDIR)/libelfutil_xtnd
+TARG_LIBDWARF = $(TARGDIR)/libdwarf_xtnd
+else
+TARG_LIBELF = $(TARGDIR)/libelf
+TARG_LIBELFUTIL = $(TARGDIR)/libelfutil
+TARG_LIBDWARF = $(TARGDIR)/libdwarf
+endif
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#----------------------------------------------------------------------
+ifdef LOCAL_BE_DIR
+CVERSION  =  -xansi
+TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
+else
+CVERSION = 
+TARG_BE_DIR = $(TARGDIR)/be
+endif
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dsgi -DIPFEC
+HOSTDEFS += -DBACK_END -DMONGOOSE_BE
+HOSTDEFS += -Dlonglong
+HOSTDEFS += -D__STDC_LIMIT_MACROS
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+ifeq ($(BUILD_PCH), USE_PCH)
+HOSTDEFS += -DUSE_PCH
+endif
+
+# TMP: add _NEW_SYMTAB until orc gets cleaned up
+HOSTDEFS += -D_NEW_SYMTAB
+
+WOFF = -fullwarn
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+BE_DIR 			= $(BUILD_TOT)/be
+BE_TARG_DIR 		= $(BE_DIR)/$(BUILD_TARGET_DIR)
+BE_BE_DIR		= $(BE_DIR)/be
+BE_CG_TARG_DIR		= $(BE_DIR)/cg/ia64
+BE_CG_DIR 		= $(BE_DIR)/cg
+BE_CG_GRA_DIR		= $(BE_CG_DIR)/gra_mon
+BE_COM_DIR 		= $(BE_DIR)/com
+BE_REGION_DIR		= $(BE_DIR)/region
+ifndef BE_OPT_DIR
+BE_OPT_DIR 		= $(BE_DIR)/opt
+endif
+BE_ORC_INTEL_DIR 		= $(BE_CG_DIR)/orc_intel
+BE_ORC_ICT_DIR 		= $(BE_CG_DIR)/orc_ict
+BE_ORC_TARGET_DIR	= $(BE_ORC_INTEL_DIR)/$(BUILD_TARGET_DIR)
+COMMON_DIR 		= $(BUILD_TOT)/common
+COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+COMMON_LIB_DIR 		= $(COMMON_DIR)/lib
+COMMON_TARG_INFO_DIR	= $(COMMON_DIR)/ipfec_targ_info
+COMMON_TARG_INFO_ACCESS_DIR = $(COMMON_TARG_INFO_DIR)/access
+COMMON_TARG_INFO_GENERATE_DIR = $(COMMON_TARG_INFO_DIR)/generate
+COMMON_MSCHED_TABLE     = $(COMMON_DIR)/ipfec_targ_info/msched
+COMMON_UTIL_DIR 	= $(COMMON_DIR)/util
+COMMON_UTIL_TARG_DIR 	= $(COMMON_UTIL_DIR)/$(BUILD_TARGET_DIR)
+INCLUDE_DIR 		= $(ROOT)/usr/include
+IPA_COM_DIR 		= $(BUILD_TOT)/ipa/common/
+LIBCOMUTIL_DIR 		= $(BUILD_TOT)/libcomutil
+TARG_TARG_INFO          = $(TARGDIR)/targ_info
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS = \
+  $(BE_COM_DIR)		\
+  $(BE_ORC_INTEL_DIR)	\
+  $(BE_ORC_TARGET_DIR)	\
+  $(BE_REGION_DIR)	
+
+HEADER_DIRS = \
+  $(SRC_DIRS)		\
+  $(BE_OPT_DIR)		\
+  $(BE_REGION_DIR)	\
+  $(COMMON_COM_DIR)	\
+  $(COMMON_COM_TARG_DIR)\
+  $(COMMON_TARG_INFO_ACCESS_DIR)\
+  $(COMMON_TARG_INFO_GENERATE_DIR)\
+  $(COMMON_MSCHED_TABLE)   \
+  $(TARGDIR)/targ_info	\
+  $(TARGDIR)/include	\
+  $(COMMON_UTIL_DIR)	\
+  $(TARG_BE)		\
+  $(BE_CG_DIR)          \
+  $(BE_CG_TARG_DIR)	\
+  $(BE_ORC_INTEL_DIR)	\
+  $(BE_ORC_ICT_DIR)	\
+  $(BE_BE_DIR)		\
+  $(TARG_ORC_INTEL)	\
+  $(TARG_ORC_ICT)	\
+  $(TARG_TARG_INFO)	\
+  $(TARG_CG)		\
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+DERIVED_ORC_SRCS = \
+
+DERIVED_SRCS = \
+	$(DERIVED_ORC_SRCS)
+
+BE_COM_CXX_SRCS = \
+  cxx_template.cxx		\
+  dep_graph.cxx			\
+
+BE_ORC_SRCS = 		\
+  if_conv.cxx			\
+  track_cycle.cxx		\
+  dag.cxx			\
+  sched_dump.cxx    \
+  sched_cflow.cxx   \
+  sched_dflow.cxx   \
+  sched_heur.cxx    \
+  sched_util.cxx    \
+  sched_cand.cxx    \
+  sched_seq.cxx     \
+  scheduler.cxx     \
+  sched_res_aware.cxx \
+  sched_rgn_info.cxx \
+  speculation.cxx		\
+  cggrp_microsched.cxx		\
+  msched_util.cxx		\
+  recovery.cxx			\
+  prdb.cxx			\
+  prdb_util.cxx			\
+  init.cxx			\
+  multi_branch.cxx		\
+  cache_analysis.cxx            \
+  sched_spec_itf.cxx     \
+  $(DERIVED_SRCS)
+
+
+ifeq "$(ORC_TARG)" "KAPI"
+  CXXFLAGS += -DIPFEC_Enable_New_Targ
+endif
+
+ifeq ($(BUILD_PCH), USE_PCH)
+ORC_PCH_OBJS = $(BE_ORC_CXX_SRCS:.cxx=.o)
+ORC_CXX_SRCS = $(BE_COM_CXX_SRCS) 
+else
+ORC_CXX_SRCS = $(BE_COM_CXX_SRCS) $(BE_ORC_CXX_SRCS)
+endif
+
+BE_REGION_CXX_SRCS = \
+  rail.cxx			\
+  rbi.cxx			\
+
+ORC_SRCS = \
+  $(BE_ORC_SRCS)		\
+
+ORC_OBJS = $(ORC_SRCS:.cxx=.o)
+ORC_CXX_OBJS = $(ORC_CXX_SRCS:.cxx=.o)
+
+ifeq ($(BUILD_OS), IRIX)
+ORC_DSOS = $(TARG_BE)/be.so 
+else
+ORC_DSOS = cg.so be.so 
+ifeq ($(BUILD_HOST), IA64)
+ifeq ($(BUILD_COMPILER), SGI)
+STD_DSO_LOADOPTS += -Wl,-relax
+endif
+endif
+endif
+
+# extra files to be removed with make clobber
+LDIRT = ii_files *.pch *.cxx *.h *.td
+
+VPATH    =  $(SRC_DIRS)
+
+LCOPTS = $(STD_COMPILE_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+ifeq ($(BUILD_OS), LINUX)
+LCINCS += -I$(BUILD_AREA)/include
+endif
+
+ifeq ($(BUILD_COMPILER), EDG)
+WOFF = -fullwarn -woff 1172,1174,1209,1375
+else
+WOFF = 
+endif
+
+LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS) $(WOFF) $(PCH_OPTS)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(addprefix -I, $(HEADER_DIRS))
+
+LASDEFS = $(HOSTDEFS) $(TARGDEFS)
+LASINCS = $(addprefix -I, $(HEADER_DIRS))
+LASOPTS = $(STD_COMPILE_OPTS)
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS) $(LD_QUICKSTART_INFO)
+
+DSOSTARTOPT = -check_registry $(TARG_BE)/so_locations -Wl,-no_unresolved
+DSOSTARTOPT_32 = $(DSOSTARTOPT)
+DSOSTARTOPT_N32 = $(DSOSTARTOPT)
+
+ifeq ($(BUILD_VARIANT), MEM_STATS)
+LLDLIBS +=  -lmalloc
+LDFLAGS += -lmalloc
+endif
+
+#----------------------------------------------------------------------
+# File containing the list of symbols exported outside of cg.so
+#----------------------------------------------------------------------
+ifeq ($(BUILD_COMPILER), EDG)
+EXPORT_LIST = -exports_file $(BE_ORC_INTEL_DIR)/Exported
+else
+EXPORT_LIST =
+endif
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+ifdef LINK_DSO
+TARGETS = debug-orc
+else
+TARGETS = orc_intel.so
+endif
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+ifeq ($(BUILD_COMPILER), EDG)
+LLDLIBS = -none
+else
+LLDLIBS =
+endif 
+
+ifeq ($(BUILD_OS), IRIX)
+LLDLIBS += -lelf_xtnd -ldwarf_xtnd -lelfutil_xtnd -lm -lc
+else
+ ifeq ($(BUILD_TARGET), IA64)
+LLDLIBS += $(TARG_LIBUNWIND)/libunwindP.a
+ endif
+LLDLIBS += $(TARG_LIBDWARF)/libdwarf.a \
+	$(TARG_LIBELFUTIL)/libelfutil.a \
+	$(TARG_LIBELF)/libelf.a \
+	$(TARG_TARG_INFO)/libtarginfo.a \
+        -lm -lc
+endif  
+
+default:
+	$(MAKE) first
+	$(MAKE) derived_files
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is
+#  built.  If we are making default or install, we first make cg.so,
+#  which makes be.so; otherwise, we just make the specifically
+#  requested target.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+ ## verify that cg.so is up to date
+ #	cd $(TARG_BE) && $(MAKE)
+	cd $(TARG_CG) && $(MAKE)
+ ## verify that  if up to date
+ ifeq ($(BUILD_PCH), USE_PCH)
+ ## build pch files first so that we can use precompiled headers
+	( $(MAKE) $(.MAKEFLAGS) BUILD_PCH=USE_PCH PCH_OPTS="-LANG:create_pch=orc_pch.pch" orc_pch.pch orc_pch.o )
+	( $(MAKE) $(.MAKEFLAGS) BUILD_PCH=USE_PCH PCH_OPTS="-LANG:use_pch=orc_pch.pch" orc_pch_files )
+ endif
+endif
+ifeq ($(BUILD_OS), LINUX)
+	if ! test -e be.so; then ln -sf $(TARG_BE)/be.so .; fi
+	if ! test -e cg.so; then ln -sf $(TARG_CG)/cg.so .; fi
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last: make_deps
+
+#----------------------------------------------------------------------
+#  Build 'orc'
+#
+#  These rules build the 'orc_intel' executable by default, and can install
+#  it in the $(BUILD_INSTALL)/usr/lib directory.
+#
+#----------------------------------------------------------------------
+
+
+install:: default
+ifeq ($(BUILD_OS), LINUX)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
+else
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) orc_intel.so
+ ifeq ($(BUILD_TYPE), SHARED)
+ ifndef NOSYSGEN
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) orc_intel.so
+ endif
+ endif
+endif
+
+ifeq ($(BUILD_PCH), USE_PCH)
+
+orc_pch_files: $(ORC_PCH_OBJS) orc_pch.pch
+
+orc_intel.so:  $(ORC_OBJS) $(ORC_CXX_OBJS) $(ORC_PCH_OBJS) \
+         $(ORC_DSOS) $(BE_ORC_INTEL_DIR)/Exported $(BE_BE_DIR)/so_locations
+	$(C++F) -o orc_intel.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+         $(ORC_OBJS) $(ORC_CXX_OBJS) $(ORC_PCH_OBJS) \
+         $(ORC_DSOS) $(LLDLIBS) -show
+	if [ ! -l be.so ]; then ln -sf $(TARG_BE)/be.so .; fi
+	if [ ! -l cg.so ]; then ln -sf $(TARG_CG)/cg.so .; fi
+	if [ ! -l be ]; then ln -sf $(TARG_BE)/be .; fi
+
+else
+
+orc_intel.so:	$(ORC_OBJS) $(ORC_CXX_OBJS) $(BE_ORC_INTEL_DIR)/Exported \
+	$(ORC_DSOS) $(BE_BE_DIR)/so_locations
+	$(C++F) -o orc_intel.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+	$(ORC_OBJS) $(ORC_CXX_OBJS) $(ORC_DSOS) $(LLDLIBS)
+
+cg.so:	
+	if ! test -e cg.so; then ln -sf $(TARG_CG)/cg.so .; fi
+
+be.so:	
+	if ! test -e be.so; then ln -sf $(TARG_BE)/be.so .; fi
+
+:	
+
+
+endif
+
+LDIRT += be.so cg.so  be bedriver orc_intel.so
+
+
+ifdef LINK_DSO
+LINK_DSO_OPTS += -L .
+
+debug-orc: orc_intel.so
+	rm -f ../be/bedriver ../be/be
+	(cd $(TARG_BE); $(MAKE) BE_OPT_DIR='$(BE_OPT_DIR)' \
+                                     LINK_DSO='$(LINK_DSO)' \
+                                     LINK_DSO_OPTS='$(LINK_DSO_OPTS) -L.' \
+                                 be)
+endif
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+#----------------------------------------------------------------------
+#  Special case rules for files that want to be individualistic
+#----------------------------------------------------------------------
+
+ifeq ($(BUILD_COMPILER), EDG)
+DSONAMEOPT = -soname orc_intel.so
+else
+DSONAMEOPT =
+endif
+
+DERIVED_INCS += bb_list.h
+bb_list.cxx : bb_list.h
+bb_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh                   \
+$(BE_CG_DIR)/gen_bb_list.sh
+	sh  $(BE_CG_DIR)/gen_bb_list.sh $(COMMON_UTIL_DIR)
+
+DERIVED_INCS += gra_bb_list.h
+gra_bb_list.cxx : gra_bb_list.h
+gra_bb_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh                   \
+$(BE_CG_GRA_DIR)/gen_gra_bb_list.sh
+	sh  $(BE_CG_GRA_DIR)/gen_gra_bb_list.sh $(COMMON_UTIL_DIR)
+ 
+DERIVED_INCS += lrange_list.h
+lrange_list.cxx : lrange_list.h
+lrange_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh       \
+                $(BE_CG_GRA_DIR)/gen_lrange_list.sh
+	sh  $(BE_CG_GRA_DIR)/gen_lrange_list.sh $(COMMON_UTIL_DIR)
+
+DERIVED_INCS += op_list.h
+op_list.cxx : op_list.h
+op_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh                   \
+$(BE_CG_DIR)/gen_op_list.sh
+	sh  $(BE_CG_DIR)/gen_op_list.sh $(COMMON_UTIL_DIR)
+ 
+DERIVED_INCS += st_list.h
+st_list.cxx : st_list.h
+st_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh   \
+            $(BE_CG_DIR)/gen_st_list.sh
+	sh  $(BE_CG_DIR)/gen_st_list.sh $(COMMON_UTIL_DIR)
+DERIVED_INCS += tn_list.h
+tn_list.cxx : tn_list.h
+tn_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh   \
+            $(BE_CG_DIR)/gen_tn_list.sh
+	sh  $(BE_CG_DIR)/gen_tn_list.sh $(COMMON_UTIL_DIR)
+ 
+DERIVED_INCS += void_list.h
+void_list.cxx : void_list.h
+void_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh         \
+            $(BE_CG_DIR)/gen_void_list.sh
+	sh  $(BE_CG_DIR)/gen_void_list.sh $(COMMON_UTIL_DIR)
+ 
+#SKIP DERIVED_SRCS += bb_set.cxx
+DERIVED_INCS += bb_set.h bb_set.td
+#SKIP bb_set.cxx : bb_set.h
+bb_set.h : bb_set.td
+bb_set.td : $(SETGEN) $(BE_CG_DIR)/gen_bb_set
+	sh $(BE_CG_DIR)/gen_bb_set $(COMMON_UTIL_DIR) $(GEN_X_SET_OPTS)                                   
+
+DERIVED_INCS += lrange_set.h lrange_set.td
+lrange_set.h : lrange_set.td
+lrange_set.cxx : lrange_set.td
+lrange_set.td : $(SETGEN) $(BE_CG_GRA_DIR)/gen_lrange_set
+	sh $(BE_CG_GRA_DIR)/gen_lrange_set $(COMMON_UTIL_DIR)
+ 
+DERIVED_INCS += cg_loop_scc_prop.h
+cg_loop_scc_prop.cxx : cg_loop_scc_prop.h
+cg_loop_scc_prop.h :    $(COMMON_UTIL_DIR)/gen_x_prop.sh               \
+$(BE_CG_DIR)/gen_cg_loop_scc_prop.sh
+	sh  $(BE_CG_DIR)/gen_cg_loop_scc_prop.sh $(COMMON_UTIL_DIR)
+ 
+DERIVED_INCS += tn_prop.h
+tn_prop.cxx : tn_prop.h
+tn_prop.h : $(COMMON_UTIL_DIR)/gen_x_prop.sh $(BE_CG_DIR)/gen_tn_prop.sh
+	sh  $(BE_CG_DIR)/gen_tn_prop.sh $(COMMON_UTIL_DIR)   
+
+#SKIP DERIVED_SRCS += tn_set.cxx
+DERIVED_INCS += tn_set.h tn_set.td
+#SKIP tn_set.cxx : tn_set.h
+tn_set.h : tn_set.td
+tn_set.td : $(SETGEN) $(BE_CG_DIR)/gen_tn_set
+	sh $(BE_CG_DIR)/gen_tn_set $(COMMON_UTIL_DIR) $(GEN_X_SET_OPTS)
+ 
+#SKIP DERIVED_SRCS += gtn_set.cxx
+DERIVED_INCS += gtn_set.h gtn_set.td
+#SKIP gtn_set.cxx : gtn_set.h
+gtn_set.h : gtn_set.td
+gtn_set.td : $(SETGEN) $(BE_CG_DIR)/gen_gtn_set
+	sh $(BE_CG_DIR)/gen_gtn_set $(COMMON_UTIL_DIR) $(GEN_X_SET_OPTS)
+
+
+ifneq "$(ORC_TARG)" "KAPI"
+ 
+targ_issue_port.o : $(BE_ORC_INTEL_DIR)/targ_issue_port.cxx
+	$(CXX) $(CXXFLAGS) -c $(BE_ORC_INTEL_DIR)/targ_issue_port.cxx -o targ_issue_port.o
+else
+targ_bypass.o : $(TARG_TARG_INFO)/targ_bypass.cxx
+	$(CXX) $(CXXFLAGS) -DIPFEC_Enable_New_Targ -c $(TARG_TARG_INFO)/targ_bypass.cxx
+endif
+
+
+derived_files : $(DERIVED_SRCS) $(DERIVED_INCS)                                                               

@@ -1,0 +1,8 @@
+#  Define build parameters
+#
+BUILD_BASE     = @top_srcdir@/osprey/libm$(PSC_MATH)
+#BUILD_OPTIMIZE = NODEBUG
+BUILD_VARIANT  = LIBMV
+
+#  Include setup file which will then include Makefile.base
+include @top_builddir@/osprey/Makefile.gsetup

@@ -1,0 +1,24 @@
+
+  For performance, should treat nested arrays as multidimensional arrays.
+
+  For performance, do dynamic aggregate initialization of small aggregates
+  as multiple stores instead of copy of init'ed value.
+
+  Handling of VLAs.
+
+  __builtin functions
+
+  Range checking
+
+  Long Double
+
+  Figure out how to get rid of SAVE_TREE nodes
+
+  BIND_EXPR with a value
+
+  LROTATE_EXPR/RROTATE_EXPR
+
+  Following node kinds from gnu/tree.def (incomplete as I do not
+  know whether we need all the nodes listed there)
+
+    CONSTRUCTOR

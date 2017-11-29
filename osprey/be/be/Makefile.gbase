@@ -1,0 +1,919 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for be
+#
+
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  This Makefile is used to build the 32 bit host/target version of the
+#  code generator.
+#
+#  *  This Makefile does not require that targ_info has already been built.
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARG_BE_DIR: is the be directory in which we do build... this can
+#               be retargeted (e.g., for building be with different options)
+#               by setting LOCAL_BE_DIR in localdefs
+#  TARG_OPT_DIR: is the wopt directory in which we build wopt.so. This can
+#               be retargeted (e.g., for building using opt_dev)
+#               by setting LOCAL_WOPT_DIR in localdefs.  BE_OPT_DIR
+#		later is similarly retarged based on LOCAL_OPT_DIR --
+#		you should generally set them together.
+#----------------------------------------------------------------------
+
+ifdef LOCAL_BE_DIR
+TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
+else
+TARG_BE_DIR = $(TARGDIR)/be
+endif
+ifdef LOCAL_IPL_DIR
+TARG_IPL_DIR = $(TARGDIR)/$(LOCAL_IPL_DIR)
+else
+TARG_IPL_DIR = $(TARGDIR)/ipl
+endif
+ifdef LOCAL_LNO_DIR
+TARG_LNO_DIR = $(TARGDIR)/$(LOCAL_LNO_DIR)
+else
+TARG_LNO_DIR = $(TARGDIR)/lno
+endif
+ifdef LOCAL_WOPT_DIR
+TARG_WOPT_DIR = $(TARGDIR)/$(LOCAL_WOPT_DIR)
+else
+TARG_WOPT_DIR = $(TARGDIR)/wopt
+endif
+ifdef LOCAL_CG_DIR
+TARG_CG_DIR = $(TARGDIR)/$(LOCAL_CG_DIR)
+else
+TARG_CG_DIR = $(TARGDIR)/cg
+endif
+ifdef LOCAL_TARG_INFO_DIR
+TARG_TARG_INFO_DIR = $(TARGDIR)/$(LOCAL_TARG_INFO_DIR)
+else
+TARG_TARG_INFO_DIR = $(TARGDIR)/targ_info
+endif
+ifdef LOCAL_WHIRL2C_DIR
+TARG_WHIRL2C_DIR = $(TARGDIR)/$(LOCAL_WHIRL2C_DIR)
+else
+TARG_WHIRL2C_DIR = $(TARGDIR)/whirl2c
+endif
+ifdef LOCAL_WHIRL2F_DIR
+TARG_WHIRL2F_DIR = $(TARGDIR)/$(LOCAL_WHIRL2F_DIR)
+else
+TARG_WHIRL2F_DIR = $(TARGDIR)/whirl2f
+endif
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -D_LEGO_CLONER
+HOSTDEFS += -DBACK_END
+HOSTDEFS += -Dlonglong
+HOSTDEFS += -DSTD_MONGOOSE_LOC='"$(STD_MONGOOSE_LOC)"' -DMONGOOSE_BE
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+HOSTDEFS += -D_NEW_SYMTAB
+ifeq ($(BUILD_TARGET), IA64)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), IA32)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), SL)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), X8664)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+endif
+ifeq ($(BUILD_PCH), USE_PCH)
+HOSTDEFS += -DUSE_PCH 
+endif
+
+TARG_INFO_INC_DIR = $(TARG_TARG_INFO_DIR)
+TARG_INFO_LIB_DIR = $(TARGDIR)/targ_info
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+BE_DIR 			= $(BUILD_TOT)/be
+BE_BE_DIR		= $(BE_DIR)/be
+BE_BE_TARG_DIR		= $(BE_BE_DIR)/$(BUILD_TARGET_DIR)
+BE_CG_DIR 		= $(BE_DIR)/cg
+BE_COM_DIR 		= $(BE_DIR)/com
+BE_COM_TARG_DIR		= $(BE_COM_DIR)/$(BUILD_TARGET_DIR)
+BE_REGION_DIR 		= $(BE_DIR)/region
+ifdef LOCAL_OPT_DIR
+BE_OPT_DIR 		= $(BE_DIR)/$(LOCAL_OPT_DIR)
+else
+BE_OPT_DIR 		= $(BE_DIR)/opt
+endif
+BE_LNO_DIR		= $(BE_DIR)/lno
+BE_WHIRL2C_DIR		= $(BE_DIR)/whirl2c
+BE_WHIRL2F_DIR		= $(BE_DIR)/whirl2f
+BE_VHO_DIR		= $(BE_DIR)/vho
+IPL_DIR			= $(BUILD_TOT)/ipa/local
+IPA_DIR			= $(BUILD_TOT)/ipa/main/analyze
+IPO_DIR			= $(BUILD_TOT)/ipa/main/optimize
+IPC_DIR			= $(BUILD_TOT)/ipa/common
+COMMON_DIR 		= $(BUILD_TOT)/common
+COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_UTIL_DIR		= $(COMMON_DIR)/util
+COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+COMMON_TARG_INFO_ACCESS_DIR = $(TARG_INFO_SRC)/access
+COMMON_UTIL_DIR 	= $(COMMON_DIR)/util
+COMMON_UTIL_TARG_DIR 	= $(COMMON_UTIL_DIR)/$(BUILD_TARGET_DIR)
+COMMON_INSTR_DIR 	= $(BUILD_TOT)/common/instrument
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS = \
+  $(BE_COM_DIR)		\
+  $(BE_COM_TARG_DIR)	\
+  $(BE_REGION_DIR)	\
+  $(BE_VHO_DIR)		\
+  $(BE_LNO_DIR)		\
+  $(COMMON_COM_DIR)	\
+  $(COMMON_COM_TARG_DIR)\
+  $(COMMON_TARG_INFO_ACCESS_DIR)\
+  $(COMMON_UTIL_DIR)	\
+  $(COMMON_UTIL_TARG_DIR)\
+  $(BE_BE_DIR)		\
+  $(BE_BE_TARG_DIR)	\
+  $(COMMON_INSTR_DIR)	\
+  $(IPL_DIR)		\
+  $(IPO_DIR)
+
+HEADER_DIRS = \
+  $(SRC_DIRS)		\
+  $(COMMON_TARG_INFO_ACCESS_DIR)\
+  $(TARG_INFO_INC_DIR)	\
+  $(COMMON_UTIL_DIR)	\
+  $(CURDIR)		\
+  $(BE_DIR)		\
+  $(BE_COM_TARG_DIR)	\
+  $(BE_CG_DIR)		\
+  $(BE_CG_DIR)/$(BUILD_TARGET_DIR)		\
+  $(BE_OPT_DIR)		\
+  $(BE_LNO_DIR)		\
+  $(BE_REGION_DIR)	\
+  $(BE_WHIRL2C_DIR)	\
+  $(BE_WHIRL2F_DIR)	\
+  $(BE_VHO_DIR)		\
+  $(IPL_DIR)	 	\
+  $(IPA_DIR)		\
+  $(IPO_DIR)		\
+  $(IPC_DIR)		\
+  $(COMMON_INSTR_DIR)	\
+  $(BUILD_TOT)/include
+
+ifeq ($(BUILD_OS), LINUX)
+HEADER_DIRS += $(TARGDIR)/include/libelf
+endif
+
+HEADER_DIRS += $(BUILD_TOT)/include/gnu
+
+#----------------------------------------------------------------------
+# Build derived files
+#
+# Be sure to also add .c files to the DERIVED_SRCS list, and the 
+# various include files to the DERIVED_INCS list
+# 
+#----------------------------------------------------------------------
+
+DERIVED_SRCS += preg_list.cxx
+DERIVED_INCS += preg_list.h
+# remove all derived files with make clobber.
+LDIRT = $(DERIVED_INCS) $(DERIVED_SRCS)
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+BE_BE_CXX_SRCS = 	\
+  cleanup.cxx		\
+  fill_align.cxx        \
+  goto_conv.cxx         \
+  mem_ctr.cxx           \
+  dra_ec.cxx		\
+  dra_file_util.cxx     \
+  dra_clone.cxx     	\
+  dra_mangle.cxx	\
+  omp_lower.cxx		\
+  privatize_common.cxx	\
+  rewrite_pragmas.cxx	\
+  wb_omp.cxx		\
+  wb_lwr.cxx
+
+ifeq ($(BUILD_TARGET), MIPS)
+  BE_BE_CXX_SRCS +=  isr.cxx
+endif
+ifeq ($(BUILD_TARGET), SL)
+  BE_BE_CXX_SRCS +=  isr.cxx
+endif
+
+
+BE_BE_TARG_CXX_SRCS =	\
+  fill_align_targ.cxx	\
+  driver_targ.cxx
+
+BE_REGION_CXX_SRCS = \
+  ori.cxx		\
+  rbi.cxx		\
+  region_init.cxx	\
+  region_bounds.cxx	\
+  region_util.cxx
+
+BE_VHO_CXX_SRCS = \
+  f90_lower.cxx           \
+  f90_lower_dep.cxx     \
+  vho_lower.cxx		\
+  wb_f90_lower.cxx	\
+
+COMMON_COM_CXX_SRCS = \
+  com_whirlview.cxx     \
+  config.cxx		\
+  config_cache.cxx	\
+  dra_demangle.cxx	\
+  dwarf_DST.cxx		\
+  dwarf_DST_dump.cxx	\
+  dwarf_DST_producer.cxx	\
+  fb_info.cxx		\
+  intrn_info.cxx	\
+  ll.cxx		\
+  mtypes.cxx		\
+  opcode.cxx		\
+  opcode_core.cxx	\
+  wutil.cxx		\
+  DaVinci.cxx           \
+  comp_decl.cxx
+
+COMMON_COM_PCH_CXX_SRCS = \
+  const.cxx		\
+  dwarf_DST_mem.cxx	\
+  err_host.cxx		\
+  f90_utils.cxx		\
+  glob.cxx		\
+  ir_bcom.cxx		\
+  ir_bread.cxx		\
+  ir_bwrite.cxx		\
+  ir_reader.cxx		\
+  irbdata.cxx		\
+  pu_info.cxx		\
+  strtab.cxx		\
+  symtab.cxx		\
+  symtab_verify.cxx	\
+  ttype.cxx		\
+  wn.cxx		\
+  wn_map.cxx		\
+  wn_pragmas.cxx	\
+  wn_simp.cxx           \
+  wn_util.cxx		\
+  xstats.cxx
+
+IPA_OPTIMIZE_CXX_SRCS = \
+  ipo_tlog_utils.cxx
+
+ifeq ($(BUILD_PCH), USE_PCH)
+COMMON_COM_PCH_OBJS=$(COMMON_COM_PCH_CXX_SRCS:.cxx=.o)
+else
+COMMON_COM_CXX_SRCS += $(COMMON_COM_PCH_CXX_SRCS)
+endif 
+
+COMMON_COM_TARG_SRCS =	\
+  config_host.c		\
+  config_platform.c
+
+COMMON_COM_TARG_CXX_SRCS =	\
+  config_cache_targ.cxx	\
+  config_targ.cxx	\
+  config_elf_targ.cxx	\
+  targ_const.cxx	\
+  targ_sim.cxx
+
+COMMON_TARG_INFO_ACCESS_SRCS= \
+  ti_init.c
+
+ifeq ($(BUILD_TARGET), MIPS)
+COMMON_TARG_INFO_ACCESS_SRCS = \
+  ti_init.c		\
+  ti_res.c		\
+  ti_res_count.c	\
+  ti_res_res.c
+endif
+
+ifeq ($(BUILD_TARGET), SL)
+COMMON_TARG_INFO_ACCESS_SRCS = \
+  ti_init.c		\
+  ti_res.c              \
+  ti_res_count.c        \
+  ti_res_res.c
+endif
+
+ifeq ($(BUILD_TARGET), LOONGSON)
+COMMON_TARG_INFO_ACCESS_SRCS = \
+  ti_init.c		\
+  ti_res.c              \
+  ti_res_count.c        \
+  ti_res_res.c
+endif
+
+ifeq ($(BUILD_TARGET), X8664)
+COMMON_UTIL_QUAD_SRCS = \
+  c_q_add.c		\
+  c_q_div.c		\
+  c_q_mul.c		\
+  c_q_neg.c		\
+  c_q_rel.c		\
+  c_q_sqrt.c		\
+  c_q_sub.c		\
+  c_q_to_a.c		\
+  c_qtenscale.c		\
+  c_qwmultu.c		\
+  quadsim.c
+else
+  ifeq ($(BUILD_TARGET), MIPS)
+    ifeq ($(BUILD_OS), LINUX)
+      COMMON_UTIL_QUAD_SRCS =
+    else
+      COMMON_UTIL_QUAD_SRCS = \
+        c_q_add.c             \
+        c_q_div.c             \
+        c_q_mul.c             \
+        c_q_neg.c             \
+        c_q_rel.c             \
+        c_q_sqrt.c            \
+        c_q_sub.c             \
+        c_q_to_a.c            \
+        c_qtenscale.c         \
+        quadsim.c
+    endif
+  else
+    ifeq ($(BUILD_TARGET), SL)
+      ifeq ($(BUILD_OS), LINUX)
+        COMMON_UTIL_QUAD_SRCS =
+      else
+        COMMON_UTIL_QUAD_SRCS = \
+          c_q_add.c             \
+          c_q_div.c             \
+          c_q_mul.c             \
+          c_q_neg.c             \
+          c_q_rel.c             \
+          c_q_sqrt.c            \
+          c_q_sub.c             \
+          c_q_to_a.c            \
+          c_qtenscale.c         \
+          quadsim.c
+      endif
+    else
+      ifeq ($(BUILD_TARGET), LOONGSON)
+        COMMON_UTIL_QUAD_SRCS = \
+          softfloat.c           \
+          c_q_to_a.c            \
+          c_qtenscale.c         \
+          c_qwmultu.c           \
+          quadsim.c		
+      else
+        COMMON_UTIL_QUAD_SRCS = 	
+      endif
+    endif
+  endif
+endif
+
+COMMON_UTIL_SRCS =	\
+  $(COMMON_UTIL_QUAD_SRCS)	\
+  bitset.c		\
+  file_util.c		\
+  flags.c		\
+  memory.c		\
+  priority_queue.c	\
+  resource.c		\
+  tlog.c		\
+  tracing.c		\
+  util.c		\
+  vstring.c
+ifneq ($(BUILD_TYPE), NONSHARED)
+COMMON_UTIL_SRCS +=  dso.c	
+endif
+
+ifdef LOCAL_COMMON_UTIL_SRCS
+COMMON_UTIL_SRCS += $(LOCAL_COMMON_UTIL_SRCS)
+endif
+
+BE_C_SRCS = \
+  $(COMMON_TARG_INFO_ACCESS_SRCS)\
+  $(COMMON_UTIL_SRCS)           \
+  $(COMMON_COM_TARG_SRCS)
+
+
+BE_C_OBJS =  $(BE_C_SRCS:.c=.o)
+
+BE_COM_CXX_SRCS = \
+  be_util.cxx           \
+  be_version.cxx        \
+  cxx_base.cxx		\
+  cxx_graph.cxx		\
+  cxx_hash_util.cxx	\
+  mfmc_misc.cxx		\
+  mfmc_query.cxx	\
+  mfmc_setup.cxx	\
+  mfmc_solve.cxx	\
+  opt_addr_flags.cxx	\
+  opt_cvtl_rule.cxx	\
+  printsrc.cxx		\
+  timing.cxx	 	\
+  weak.cxx		\
+  output_func_start_profiler.cxx        \
+  wn_cyg_instrument.cxx \
+  wn_instrument.cxx \
+  wn_cfg.cxx            \
+  tls.cxx               \
+  be_memop_annot.cxx    \
+  wssa_update.cxx       \
+  wssa_utils.cxx        \
+  wssa_defs.cxx         \
+  wssa_sym.cxx          \
+  wssa_mgr.cxx          \
+  wssa_points_to.cxx    \
+  wssa_du.cxx           \
+  wssa_wn.cxx           \
+  wssa_io.cxx           \
+  comp_driver.cxx
+
+ifneq ($(BUILD_SKIP_LNO), TRUE)
+BE_COM_CXX_SRCS += \
+  ipa_lno_file.cxx      \
+  ipa_lno_summary.cxx   \
+  ipa_lno_util.cxx  
+endif
+
+BE_COM_PCH_CXX_SRCS = \
+  alias_analyzer.cxx    \
+  be_symtab.cxx		\
+  constraint_graph.cxx	\
+  constraint_graph_solve.cxx \
+  constraint_graph_escanal.cxx \
+  cse_table.cxx         \
+  data_layout.cxx	\
+  dep_graph.cxx		\
+  dvector.cxx		\
+  emulate.cxx		\
+  fb_cfg.cxx		\
+  fb_whirl.cxx		\
+  ipa_be_read.cxx       \
+  nystrom_alias_analyzer.cxx \
+  opt_alias_mgr.cxx	\
+  opt_alias_rule.cxx	\
+  opt_goto.cxx		\
+  opt_ipaa_io.cxx	\
+  opt_points_to_non_template.cxx	\
+  opt_points_to_summary.cxx \
+  standardize.cxx	\
+  stblock.cxx		\
+  w2op.cxx		\
+  wb.cxx		\
+  wb_browser.cxx	\
+  wb_buffer.cxx		\
+  wb_carray.cxx		\
+  wb_ipl.cxx		\
+  wb_util.cxx		\
+  whirl2src.cxx		\
+  wn_fio.cxx		\
+  wn_lower.cxx		\
+  u64_lower_wn.cxx	\
+  wn_mp.cxx		\
+  wn_verifier.cxx       \
+  wn_retype_expr.cxx	\
+  wn_unroll.cxx	\
+  $(DERIVED_SRCS)
+
+ifeq ($(BUILD_PCH), USE_PCH)
+BE_COM_PCH_OBJS=$(BE_COM_PCH_CXX_SRCS:.cxx=.o)
+else
+BE_COM_CXX_SRCS += $(BE_COM_PCH_CXX_SRCS)
+endif 
+
+BE_COM_TARG_CXX_SRCS = \
+  betarget.cxx		\
+  sections.cxx
+
+BE_COM_CXX_SRCS +=	\
+  clone.cxx		\
+  clone_DST_utils.cxx	\
+
+BE_LNO_CXX_SRCS = \
+  soe.cxx \
+  mat.cxx 
+
+COMMON_UTIL_CXX_SRCS = \
+  cxx_memory.cxx	\
+  errors.cxx		\
+  vcg.cxx               \
+  options_stack.cxx
+
+INSTR_COM_CXX_SRCS = \
+  instr_reader.cxx
+
+BE_CXX_SRCS = \
+  $(BE_BE_CXX_SRCS)	\
+  $(BE_BE_TARG_CXX_SRCS) \
+  $(BE_COM_CXX_SRCS)	\
+  $(COMMON_COM_CXX_SRCS) \
+  $(COMMON_UTIL_CXX_SRCS) \
+  $(BE_REGION_CXX_SRCS)	\
+  $(BE_LNO_CXX_SRCS)	\
+  $(BE_VHO_CXX_SRCS)    \
+  $(BE_COM_TARG_CXX_SRCS) \
+  $(COMMON_COM_TARG_CXX_SRCS) \
+  $(INSTR_COM_CXX_SRCS) \
+  $(IPA_OPTIMIZE_CXX_SRCS)
+
+BE_CXX_OBJS = $(BE_CXX_SRCS:.cxx=.o)
+
+ifeq ($(BUILD_TARGET), MIPS)
+COMMON_UTIL_TARG_AS_SRCS = \
+  c_qwmultu.s
+else
+ifeq ($(BUILD_TARGET), SL)
+COMMON_UTIL_TARG_AS_SRCS = \
+  c_qwmultu.s
+else
+ifeq ($(BUILD_TARGET), LOONGSON)
+COMMON_UTIL_TARG_AS_SRCS = \
+  c_qwmultu.s
+else
+COMMON_UTIL_TARG_AS_SRCS =
+endif
+endif
+endif
+
+BE_AS_OBJS = $(COMMON_UTIL_TARG_AS_SRCS:.s=.o)
+
+#
+# source files for be
+#
+
+BE_DRIVER_CXX_SRCS = \
+  driver.cxx	        \
+  driver_util.cxx	\
+  iter.cxx
+
+BE_DRIVER_C_SRCS = \
+  phase.c        \
+
+BE_DRIVER_CXX_OBJS = $(BE_DRIVER_CXX_SRCS:.cxx=.o) 
+BE_DRIVER_C_OBJS = $(BE_DRIVER_C_SRCS:.c=.o) 
+BE_DRIVER_OBJS = \
+  $(BE_DRIVER_CXX_OBJS)	\
+  $(BE_DRIVER_C_OBJS)   \
+
+# extra files to be removed with make clobber
+LDIRT += ii_files so_locations  *.pch
+
+ifneq ($(BUILD_ARCH), MIPS64)
+ifeq ($(shell test -e /usr/include/valgrind/valgrind.h && echo y || echo n), y)
+HEADER_DIRS += /usr/include/valgrind
+else
+LCOPTS += -DNO_VALGRIND
+endif
+else
+LCOPTS += -DNO_VALGRIND
+endif
+
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+LC++INCS = $(addprefix -I, $(HEADER_DIRS))
+LASINCS = $(addprefix -I, $(HEADER_DIRS))
+
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+
+#
+# we specify -p_tused because there is only one C++ source file in be.so
+#
+LC++OPTS += $(STD_COMPILE_OPTS)
+LC++OPTS += $(PCH_OPTS)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS) 
+LASOPTS = $(STD_COMPILE_OPTS)
+LASDEFS = $(HOSTDEFS) $(TARGDEFS)
+
+# setup stuff to build shared or non-shared
+#GLDOPTS = $(STD_LOAD_OPTS) $(LD_QUICKSTART_INFO)
+
+#DSOSTARTOPT = -update_registry $(TARG_BE_DIR)/so_locations -Wl,-no_unresolved
+DSOSTARTOPT = 
+#DSOSTARTOPT = -Wl,-no_unresolved
+DSOSTARTOPT_N32 = $(DSOSTARTOPT)
+DSOSTARTOPT_32 = $(DSOSTARTOPT)
+BE_DSO_OPTS =  -lm -ldl
+
+EXPORT_FILE_BE_SO =
+EXPORT_FILE_BE_SO_SRCS =
+EXPORT_FILE_BE =
+EXPORT_LIST_BE_SO =
+EXPORT_LIST_BE =
+ifdef LOCAL_BE_LIBS
+BE_DSO_OPTS += $(LOCAL_BE_LIBS)
+LDFLAGS += $(LOCAL_BE_LIBS)
+endif
+
+ifneq ($(BUILD_TYPE), NONSHARED)
+LDFLAGS += -Wl,--allow-shlib-undefined
+endif
+
+ifeq ($(BUILD_VARIANT), MEM_STATS)
+BE_DSO_OPTS +=  -lmalloc
+LDFLAGS += -lmalloc
+endif
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+ifeq ($(BUILD_VARIANT), BEDRIVER)
+TARGETS = be
+else
+ifneq ($(BUILD_TYPE), NONSHARED)
+TARGETS = be.so be
+else
+TARGETS = libbe.a
+endif
+endif
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+TARG_LIBIBERTY_DIR = $(TARGDIR)/libiberty
+LIBIBERTY_OBJS = $(TARG_LIBIBERTY_DIR)/libiberty.a
+
+ifneq ($(BUILD_TYPE), NONSHARED)
+LLDOPTS = -Wl,--export-dynamic
+endif
+LLDLIBS = 
+LLDLIBS += $(LIBIBERTY_OBJS)
+
+VPATH    =  $(SRC_DIRS)
+
+.PHONY: default install first derived_files last
+
+default: 
+	$(MAKE) first
+	$(MAKE) derived_files
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is
+#  built.
+#----------------------------------------------------------------------
+first:
+ifeq ($(BUILD_OS), LINUX)
+ ifndef SKIP_DEP_BUILD
+	$(call submake,$(BUILD_AREA)/include)
+	$(call submake,$(BUILD_AREA)/libiberty)
+ endif
+endif
+ifndef SKIP_DEP_BUILD
+## verify that the targ info stuff is up to date.
+	$(call submake,$(TARG_TARG_INFO_DIR))
+ ifeq ($(BUILD_PCH), USE_PCH)
+## build the files in common/com and be/com that can use precompiled headers.
+	($(MAKE) PCH_OPTS="-LANG:create_pch=common_com_pch.pch"  \
+				common_com_pch.pch common_com_pch.o)
+	($(MAKE) PCH_OPTS="-LANG:use_pch=common_com_pch.pch"  \
+				common_com_pch_files )
+	($(MAKE) PCH_OPTS="-LANG:create_pch=be_com_pch.pch"  \
+				be_com_pch.pch be_com_pch.o)
+	($(MAKE) PCH_OPTS="-LANG:use_pch=be_com_pch.pch"  \
+				be_com_pch_files )
+ endif
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last: make_deps
+
+
+#----------------------------------------------------------------------
+#  Build 'be'
+#
+#  These rules build the 'be' executable by default, and can install
+#  it in the $(BUILD_INSTALL)/usr/lib32/cmplrs directory.
+#
+#----------------------------------------------------------------------
+
+install:: default
+ifeq ($(BUILD_OS), LINUX)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
+else
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) be be.so 
+ ifeq ($(BUILD_TYPE), SHARED)
+ ifndef NOSYSGEN
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) be be.so
+ endif
+ endif
+endif
+
+preg_list.cxx : preg_list.h
+preg_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh                   \
+$(BE_COM_DIR)/gen_preg_list.sh
+	sh 	$(BE_COM_DIR)/gen_preg_list.sh $(COMMON_UTIL_DIR)
+#preg_list.h : $(COMMON_UTIL_DIR)/gen_x_list.sh
+#       $(CSH) $(COMMON_UTIL_DIR)/gen_x_list.sh \
+#       PREG_NUM PREG preg_list.h
+
+# here's the target that gets made recursively
+derived_files : $(DERIVED_SRCS) $(DERIVED_INCS)
+
+ifneq ($(BUILD_TARGET), X8664)
+# the -OPT: option is not accepted by gcc
+c_q_add.o: c_q_add.c $(COMMON_COM_DIR)/defs.h $(COMMON_UTIL_DIR)/quad.h
+	$(CCF) -OPT:roundoff=0 -c $<
+
+c_q_div.o: c_q_div.c $(COMMON_COM_DIR)/defs.h $(COMMON_UTIL_DIR)/quad.h
+	$(CCF) -OPT:roundoff=0 -c $<
+
+c_q_mul.o: c_q_mul.c $(COMMON_COM_DIR)/defs.h $(COMMON_UTIL_DIR)/quad.h
+	$(CCF) -OPT:roundoff=0 -c $<
+
+c_q_sqrt.o: c_q_sqrt.c $(COMMON_COM_DIR)/defs.h $(COMMON_UTIL_DIR)/quad.h
+	$(CCF) -OPT:roundoff=0 -c $<
+
+c_q_sub.o: c_q_sub.c $(COMMON_COM_DIR)/defs.h $(COMMON_UTIL_DIR)/quad.h
+	$(CCF) -OPT:roundoff=0 -c $<
+endif
+
+ifeq ($(BUILD_COMPILER), OSP)
+wn_fio.o: wn_fio.cxx
+        $(CXXF) -OPT:alias=no_typed -c $<
+endif
+
+LDIRT += be wopt.so be.so cg.so lno.so whirl2c.so whirl2f.so ipl.so inline.so
+
+
+ifeq ($(BUILD_PCH), USE_PCH)
+common_com_pch_files: $(COMMON_COM_PCH_OBJS) common_com_pch.pch
+be_com_pch_files: 	  $(BE_COM_PCH_OBJS) be_com_pch.pch
+endif
+
+ifeq ($(BUILD_TYPE), NONSHARED)
+
+ifneq ($(BUILD_SKIP_LNO), TRUE)
+LLDLIBS += $(TARG_LNO_DIR)/liblno.a $(TARG_IPL_DIR)/libipl.a
+endif
+
+LLDLIBS += $(TARG_WOPT_DIR)/libwopt.a $(TARG_CG_DIR)/libcg.a $(TARG_BE_DIR)/libbe.a
+
+ifneq ($(BUILD_SKIP_WHIRL2C), TRUE)
+LLDLIBS += $(TARG_WHIRL2C_DIR)/libwhirl2c.a
+endif
+
+ifneq ($(BUILD_SKIP_WHIRL2F), TRUE)
+LLDLIBS += $(TARG_WHIRL2F_DIR)/libwhirl2f.a
+endif
+
+LLDLIBS += $(TARGDIR)/libdwarf/libdwarf.a $(TARGDIR)/libelfutil/libelfutil.a \
+	$(TARGDIR)/libelf/libelf.a $(TARG_TARG_INFO_DIR)/libtarginfo.a \
+	$(LIBIBERTY_OBJS)
+
+be:  $(BE_DRIVER_OBJS) $(LLDLIBS)
+	$(link.c++f) -o be $(BE_DRIVER_OBJS) $(LDFLAGS) -lm
+
+else
+# not NONSHARED build
+be:  $(BE_DRIVER_OBJS) $(LINK_DSO) be.so
+	$(link.c++f) -o be $(BE_DRIVER_OBJS)	\
+		$(LDFLAGS) be.so  $(LINK_DSO_OPTS) $(LINK_DSO) -ldl
+endif
+
+.PHONY: so_locations
+so_locations : 
+	cp $(BE_BE_DIR)/so_locations so_locations
+	chmod u+w so_locations
+
+
+$(EXPORT_FILE_BE_SO): $(EXPORT_FILE_BE_SO_SRCS)
+	cat $(EXPORT_FILE_BE_SO_SRCS) | sort | uniq > $(EXPORT_FILE_BE_SO)
+
+ifeq ($(BUILD_PCH), USE_PCH)
+be.so:  $(BE_C_OBJS) $(BE_CXX_OBJS) $(COMMON_COM_PCH_OBJS) $(BE_COM_PCH_OBJS) \
+		$(BE_AS_OBJS) $(BE_BE_DIR)/so_locations $(EXPORT_FILE_BE_SO) 
+	$(link.c++f) $(STD_DSO_LOADOPTS) $(EXPORT_LIST_BE_SO) $(BE_C_OBJS) \
+		$(BE_CXX_OBJS) $(COMMON_COM_PCH_OBJS) $(BE_COM_PCH_OBJS) \
+		$(BE_AS_OBJS) $(TARG_INFO_LIB_DIR)/libtarginfo.a \
+		-o $@ $(BE_DSO_OPTS)
+
+else
+be.so:	$(BE_C_OBJS) $(BE_CXX_OBJS) $(BE_AS_OBJS) $(BE_BE_DIR)/so_locations \
+		$(EXPORT_FILE_BE_SO) 
+	$(link.c++f) $(STD_DSO_LOADOPTS) $(EXPORT_LIST_BE_SO) $(BE_C_OBJS) \
+		$(BE_CXX_OBJS) $(BE_AS_OBJS) \
+		$(TARG_INFO_LIB_DIR)/libtarginfo.a \
+		-o $@ $(BE_DSO_OPTS)
+endif
+
+libbe.a : $(BE_C_OBJS) $(BE_CXX_OBJS)
+	$(ar) cru $@ $^
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+#----------------------------------------------------------------------
+#  Special case rules for files that want to be individualistic
+#----------------------------------------------------------------------
+
+.cxx.pch:
+	$(c++f) -c $(.IMPSRC)
+
+DSONAMEOPT = -o be.so
+
+## Purify versions:
+TARGETS_PURE = be.so.pure
+be.so.pure: be.so
+	purify be.so
+pure: $(TARGETS_PURE)
+install.pure:: pure
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) be.so.pure
+
+ifeq (gcc,$(firstword $(CCNAME)))
+# work around gcc bug optimizing this file on ia32
+flags.o: OPTIMIZER = -O0
+endif

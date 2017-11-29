@@ -1,0 +1,39 @@
+#!/bin/csh -f
+### ====================================================================
+### ====================================================================
+###
+### Module: gen_gtn_set
+### $Revision: 1.1.1.1 $
+### $Date: 2005/06/23 02:15:36 $
+### $Author: sxyang $
+### $Source: /u/cvs/Pathscale.MIPS/be/cg/gen_gtn_set,v $
+### Revision history:
+###   5-May-92 - Original version
+###
+### Usage:      gen_gtn_set utildir opts
+###
+###     Generate the gtn_set.[ch] module.  'Utildir' is where to find
+###     the gen_x_set stuff. 'Opts' is passed as the first argument
+###     to gen_x_set to allow specification of functional or macro
+###     interfaces.
+###
+###     We do this in a file so the make rule can depend on it and
+###     the modules can be rebuilt when the procedure changes
+###
+### ====================================================================
+### ====================================================================
+
+
+perl $1/gen_x_set $2                                                    \
+                gtn_set                                                 \
+                'TN*'                                                   \
+                GTN_SET                                                 \
+                GTN_UNIVERSE_TN_int                                     \
+                GTN_UNIVERSE_INT_tn                                     \
+                'defs.h'                                                \
+                'tn.h'                                                  \
+                'gtn_universe.h'                                        \
+                'mempool.h'
+
+
+

@@ -1,0 +1,204 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+
+#
+# Remember to update both ffio.mh and ffio.makeinclude files
+# for the list of files to be built by mips.  For other
+# architectures, update only ffio.mh. 
+#
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+FFIONLE = \
+    evntlistio.c
+
+else
+FFIONLE = \
+    globopen.c \
+    globall.c \
+    globfcntl.c \
+    globgrmpi.c \
+    globgrshmem.c \
+    globutil.c \
+    tmfbksp.c \
+    tmfclose.c \
+    tmfclosev.c \
+    tmfeov.c \
+    tmffcntl.c \
+    tmfgtpos.c \
+    tmfopen.c \
+    tmfpos.c \
+    tmfread.c \
+    tmfseek.c \
+    tmfskipf.c \
+    tmfstpos.c \
+    tmftptsi.c \
+    tmfwrite.c
+endif
+
+CFILES += \
+    _ffopen.c \
+    asgrls.c \
+    binhex.c \
+    ccaclearpg.c \
+    ccaclose.c \
+    ccafcntl.c \
+    ccaflush.c \
+    ccagetblk.c \
+    ccagetblkp.c \
+    ccaopen.c \
+    ccardabuf.c \
+    ccaread.c \
+    ccaseek.c \
+    ccasyncpage.c \
+    ccatracker.c \
+    ccaweod.c \
+    ccawrabuf.c \
+    ccawrite.c \
+    cchclose.c \
+    cchfcntl.c \
+    cchgetblk.c \
+    cchopen.c \
+    cchrdabuf.c \
+    cchread.c \
+    cchseek.c \
+    cchweod.c \
+    cchwrabuf.c \
+    cchwrite.c \
+    class_vf_check.c \
+    class_vms_check.c \
+    class_mr_sds_check.c \
+    convertc.c \
+    cosbksp.c \
+    cosclose.c \
+    cosfcntl.c \
+    cosopen.c \
+    cospos.c \
+    cosread.c \
+    cosseek.c \
+    coswrite.c \
+    evnt_close_diags.c \
+    evnt_get_parent_child.c \
+    evnt_get_tracker.c \
+    evnt_trace_flush.c \
+    evntatexit.c \
+    evntbksp.c \
+    evntclose.c \
+    evntfcntl.c \
+    evntflush.c \
+    evntopen.c \
+    evntread.c \
+    evntreada.c \
+    evntreadc.c \
+    evntseek.c \
+    evntweod.c \
+    evntweof.c \
+    evntwrite.c \
+    evntwritea.c \
+    evntwritec.c \
+    f77bksp.c \
+    f77close.c \
+    f77fcntl.c \
+    f77open.c \
+    f77read.c \
+    f77write.c \
+    fd_open.c \
+    ffbksp.c \
+    ffclose.c \
+    fferr.c \
+    fffcntl.c \
+    ffflush.c \
+    ffnoop.c \
+    ffopen.c \
+    ffopens.c \
+    ffopensg.c \
+    ffpos.c \
+    ffread.c \
+    ffreadc.c \
+    ffseek.c \
+    ffspec.c \
+    ffstrerror.c \
+    ffweof.c \
+    ffwrite.c \
+    ffwritec.c \
+    fxrmain.c \
+    fxrmisc.c \
+    gffcntl.c \
+    gfopen.c \
+    gfread.c \
+    gfwrite.c \
+    gvfcntl.c \
+    gvopen.c \
+    gvread.c \
+    gvwrite.c \
+    lockclose.c \
+    lockfcntl.c \
+    lockopen.c \
+    lockpos.c \
+    lockread.c \
+    lockwrite.c \
+    parse_data.c \
+    set_layer_options.c \
+    sqbclose.c \
+    sqbfcntl.c \
+    sqbopen.c \
+    sqbpos.c \
+    sqbread.c \
+    sqbseek.c \
+    sqbweod.c \
+    sqbweof.c \
+    sqbwrite.c \
+    sysasg.c \
+    sysclose.c \
+    sysfcntl.c \
+    syslistio.c \
+    syslseek.c \
+    sysopen.c \
+    sysread.c \
+    systrunc.c \
+    syswrite.c \
+    txtbksp.c \
+    txtfcntl.c \
+    txtopen.c \
+    txtread.c \
+    txtwrite.c \
+    $(FFIONLE)
+
+CFILES_NOT_LINUX = \
+    sysreada.c \
+    syswritea.c
+
+SRC_DIRS += \
+   $(BUILD_TOT)/libu/ffio

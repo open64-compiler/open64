@@ -1,0 +1,337 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2007. PathScale, LLC. All Rights Reserved.
+#
+#  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for ipl
+#
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARG_BE_DIR: is the be directory with which we do build... this can
+#               be retargeted (e.g., for building be with different options)
+#               by setting LOCAL_BE_DIR in localdefs
+#  TARG_OPT_DIR: is the opt directory with which we do build... this can
+#               be retargeted (e.g., for building opt with different options)
+#               by setting LOCAL_OPT_DIR in localdefs
+#----------------------------------------------------------------------
+
+ifdef LOCAL_BE_DIR
+TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
+else
+TARG_BE_DIR = $(TARGDIR)/be
+endif
+ifdef LOCAL_OPT_DIR
+TARG_OPT_DIR = $(TARGDIR)/$(LOCAL_OPT_DIR)
+else
+TARG_OPT_DIR = $(TARGDIR)/wopt
+endif
+
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dsgi -DMONGOOSE_BE
+HOSTDEFS += -Dlonglong -DIPA_SUMMARY
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On	
+HOSTDEFS += -DInsist_On
+endif
+
+ifeq ($(BUILD_TARGET), IA64)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), IA32)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), SL)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), X8664)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+IPA_DIR                 = $(BUILD_TOT)/ipa
+IPA_COMMON_DIR          = $(IPA_DIR)/common
+IPA_LOCAL_DIR           = $(IPA_DIR)/local
+IPA_MAIN_DIR            = $(IPA_DIR)/main
+IPA_OPTIMIZE_DIR        = $(IPA_MAIN_DIR)/optimize
+IPA_ANALYZE_DIR         = $(IPA_MAIN_DIR)/analyze
+BE_DIR                  = $(BUILD_TOT)/be
+BE_BE_DIR		= $(BE_DIR)/be
+BE_TARG_DIR             = $(BE_DIR)/$(BUILD_TARGET_DIR)
+BE_CG_DIR               = $(BE_DIR)/cg
+BE_COM_DIR              = $(BE_DIR)/com
+BE_OPT_DIR              = $(BE_DIR)/opt
+BE_LNOPT_DIR            = $(BE_DIR)/lno
+BE_VHO_DIR		= $(BE_DIR)/vho
+BE_REGION_DIR           = $(BE_DIR)/region
+COMMON_DIR              = $(BUILD_TOT)/common
+COMMON_COM_DIR          = $(COMMON_DIR)/com
+COMMON_COM_TARG_DIR     = $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+COMMON_UTIL_DIR         = $(COMMON_DIR)/util
+COMMON_UTIL_TARG_DIR    = $(COMMON_UTIL_DIR)/$(BUILD_TARGET_DIR)
+INCLUDE_DIR             = $(ROOT)/usr/include
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS = \
+  $(IPA_LOCAL_DIR)    \
+  $(IPA_COMMON_DIR)   \
+  $(IPA_ANALYZE_DIR)  \
+  $(BE_COM_DIR)   \
+  $(BE_LNOPT_DIR) \
+
+HEADER_DIRS = \
+  $(SRC_DIRS)		\
+  $(COMMON_COM_DIR)	\
+  $(COMMON_COM_TARG_DIR)\
+  $(COMMON_UTIL_DIR)	\
+  $(COMMON_TDT_DIR)	\
+  $(BE_COM_DIR)		\
+  $(BE_OPT_DIR)		\
+  $(BE_CG_DIR)		\
+  $(BE_LNOPT_DIR)       \
+  $(BE_VHO_DIR)		\
+  $(BE_REGION_DIR)      \
+  $(TARGDIR)/be         \
+  $(BUILD_SRC_AREA)/be  \
+  $(BUILD_TOT)/include
+
+IPA_LOCAL_CXX_SRCS = \
+	loop_info.cxx \
+	ipl_main.cxx \
+	ipl_bread_write.cxx \
+	ipl_summary_print.cxx \
+	ipl_summarize_util.cxx \
+	ipl_linex.cxx \
+	ipl_array_bread_write.cxx \
+	ipl_tlog.cxx \
+	ipl_outline.cxx \
+	ipl_elfsym.cxx \
+	ipl_reorder.cxx
+
+IPA_ANALYZE_SRCS = \
+
+IPA_COMMON_SRCS = \
+
+BE_COM_CXX_SRCS = \
+   ipa_section.cxx \
+   ipa_section_main.cxx \
+   ipa_section_print.cxx \
+   ipl_lno_util.cxx \
+   reshape.cxx \
+   wb_summary.cxx \
+   wb_ipl_summary.cxx \
+   ipa_cost_util.cxx \
+
+ifeq ($(BUILD_TYPE), SHARED)
+BE_LNO_CXX_SRCS = \
+   lwn_util.cxx \
+   access_vector.cxx \
+   if_info.cxx \
+   lno_bv.cxx 
+endif
+
+IPA_SRCS = \
+   $(IPA_COMMON_SRCS) \
+   $(IPA_ANALYZE_SRCS) \
+
+IPA_CXX_SRCS = \
+   $(IPA_LOCAL_CXX_SRCS)	\
+   $(BE_LNO_CXX_SRCS) \
+   $(BE_COM_CXX_SRCS) \
+
+IPA_OBJS = $(IPA_SRCS:.c=.o)
+
+IPA_CXX_OBJS = $(IPA_CXX_SRCS:.cxx=.o)
+
+VPATH    =  $(SRC_DIRS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+
+LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS) 
+
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(LCINCS)
+LASOPTS = $(STD_COMPILE_OPTS)
+LASDEFS = $(HOSTDEFS) $(TARGDEFS)
+LASINCS = $(LCINCS)
+
+GLDOPTS = $(STD_LOAD_OPTS) $(LD_QUICKSTART_INFO)
+
+DSOSTARTOPT = 
+DSOSTARTOPT_32 = $(DSOSTARTOPT)
+DSOSTARTOPT_N32 = $(DSOSTARTOPT)
+
+ifeq ($(BUILD_VARIANT), MEM_STATS)
+LCDEFS += -DMEM_STATS
+LC++DEFS += -DMEM_STATS
+LLDLIBS +=  -lmalloc
+LDFLAGS += -lmalloc
+endif
+
+#----------------------------------------------------------------------
+# File containing the list of symbols exported outside of ipl.so
+#----------------------------------------------------------------------
+
+ifeq ($(BUILD_TYPE), SHARED)
+TARGETS = ipl.so
+else
+TARGETS = libipl.a
+endif
+
+LDIRT = be.so wopt.so be ipl ii_files
+
+#----------------------------------------------------------------------
+#  For parallel makes, makefile must satisfy:
+#  -> Submake for include/ finished before building any objects;
+#  -> All archive/library submakes finished before linking targets;
+#  -> All targets finished before make_deps or make_libdeps.
+#----------------------------------------------------------------------
+
+DEP_OBJECTS = $(IPA_OBJS) $(IPA_CXX_OBJS)
+
+.PHONY: default first make_deps install
+
+default:
+	$(MAKE) first
+	$(MAKE) make_deps
+
+make_deps: $(TARGETS)
+$(DEP_OBJECTS): $(BUILD_AREA)/be/preg_list.h
+.PHONY: default make_deps
+
+#----------------------------------------------------------------------
+#  Library prerequisites are updated via submake
+#----------------------------------------------------------------------
+
+.PHONY: first
+first:
+ifndef SKIP_DEP_BUILD
+	$(call submake,$(TARG_BE_DIR))
+endif
+	ln -sf $(TARG_BE_DIR)/be.so .
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+
+install:: default
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
+else
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) ipl.so
+	$(STD_INSTALL) -lns be -F $(STD_MONGOOSE_LOC) ipl
+ ifeq ($(BUILD_TYPE), SHARED)
+ ifndef NOSYSGEN
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) ipl.so
+	$(STD_INSTALL) -lns be -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) ipl
+ endif
+ endif
+endif
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+# dso's must be in same directory
+IPL_LINK_DSOS = be.so
+else
+IPL_LINK_DSOS = $(TARG_BE_DIR)/be.so
+endif
+
+# BUILD OF ipl IS BROKEN
+ipl: $(IPA_OBJS) $(IPA_CXX_OBJS) $(IPA_DSOS) \
+		$(TARG_OPT_DIR)/wopt.so $(TARG_BE_DIR)/be.so
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+	if ! test -e be.so; then ln -sf $(TARG_BE_DIR)/be.so .; fi
+endif
+	$(link.c++f) -o $@ $(IPA_OBJS) $(IPA_CXX_OBJS) $(IPA_DSOS) \
+	$(IPL_LINK_DSOS) $(LDFLAGS)
+	if ! test -e wopt.so; then ln -sf $(TARG_OPT_DIR)/wopt.so .; fi
+
+ipl.so: $(IPA_OBJS) $(IPA_CXX_OBJS) $(LINK_DSOS) \
+		$(BE_BE_DIR)/so_locations $(IPA_LOCAL_DIR)/Exported
+	$(link.c++f) -o $@  $(STD_DSO_LOADOPTS) $(EXPORT_LIST)	\
+		$(IPA_OBJS) $(IPA_CXX_OBJS) $(LINK_DSOS) $(LLDLIBS)
+	if ! test -e ipl ; then ln -sf ../be/be ipl; fi
+
+libipl.a: $(IPA_OBJS) $(IPA_CXX_OBJS)
+	$(ar) cru $@ $^
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+

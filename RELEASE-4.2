@@ -1,0 +1,444 @@
+Open64 Compiler Version 4.2 Release Notes 
+
+
+                Sep 30, 2008
+
+
+1. Overview
+
+2. Features
+  2.1 Front End Features
+  2.2 Back End Features
+
+3. The Packages of the Compiler Suite
+
+4. Installing the Compiler Suite
+  4.1 Install from bz2 Package
+  4.2 Install from RPM packages
+
+5. Build the compiler Suite - directly from source
+  5.1 Prerequisites
+  5.2 Build Steps
+  5.3 Build FORTRAN Front-End
+  5.4 Build the archives
+  5.5 Some Notes on Build
+
+6. Bug Reporting
+
+7. Known Problems, Limitation and Some Notes
+
+8. Acknowledgements
+
+
+1. Overview
+=============
+
+ Open64 is an open source, optimizing compiler for multiple architectures. 
+ Open64 supports Fortran 77/95/2003 and C/C++, as well as the shared memory 
+ programming model OpenMP. Open64 derives from the SGI compilers for the MIPS 
+ called MIPSPro. It was released under the GNU GPL in 2000. The initial release 
+ of Open64 only supports Intel IA-64(Itanium). Now it has been extended to 
+ generate code for CISC, RISC, VLIW architectures, including x86, MIPS, IA-64 
+ and others.
+
+ The objective of the Osprey project is to bring the Open64 compiler
+ to that of a production quality compiler and catch up with the GCC/G++
+ features evolution. This release was merged with PathScale 3.2 release.
+ Thanks to this PathScale release, GCC 4.2 based FE is enabled and works
+ for IA64 also. We improved the performance, integrated many bug fixes 
+ by leveraging efforts from PathScale, NVIDIA and SimpLight. We also
+ enhanced the scalability, capability and correctness of IPA. 
+ It is worth noting that several new code generators and programming 
+ system are integrated into this release, including CUDA from NVIDIA,
+ SL (a 32-bit multi-threaded architecture for embedded systems and DSP 
+ in telecommunications) from SimpLight, MIPS (prototype) from ICT with 
+ input from both PathScale and SimpLight.
+ 
+ The source code of the latest release and all previous archives can be 
+ found in the subversion tree and it is readily available for researchers 
+ and developers to join the development and incrementally check in changes. 
+
+ The website for that is 
+ http://www.open64.net/
+
+ The release consists of two kinds of packages: a suite of pre-built 
+ compiler binaries including C, C++, F95 and related archives, and 
+ a suite of corresponding compiler source codes. The pre-built compilers 
+ are built using a self-build bootstrap process. They are provided both in
+ .bz2 and RPM packages. These files can be downloaded from sourceforge.net:
+ http://sourceforge.net/project/showfiles.php?group_id=34861
+
+ After this release, we will continue to update the GCC/G++ front end to the 
+ latest version, improve the quality and scalability. Another important 
+ focus after this release is further performance improvement to follow the 
+ latest CPU and architecture evolution, especially for the multicore. Besides 
+ this, Open64 based static analysis tool, runtime optimization framework, 
+ security checking tool are highly expected. 
+ 
+ We are looking forward for collaboration from the open source community 
+ for this effort. The SVN source control and Bugzilla system are built up 
+ to facilitate this. Our check-in testing will be continuously improved 
+ to achieve the "check-in early and check-in fast with little to no impact 
+ to overall quality" development environment.
+
+ For a more detailed description of the quality and performance of the compiler, 
+ please visit Open64 website:
+ http://www.open64.net
+
+
+2. Features
+=============
+
+2.1 Front End Features
+-------------------
+
+ Open64 C/C++ Front End is based on GNU C/C++ Compiler (GCC). The C/C++ Front 
+ End provides the compatibility with GCC from 3.x to latest 4.x. Open64 FORTRAN 
+ Front End is based on CRAY-FORTRAN, which supports FORTRAN 77/95/2003 and CRAY 
+ extensions. 
+
+ In this release, we enabled the GCC 4.2.0 based FE to get better compatibility 
+ with the latest GCC revision. Several bugs in previous GCC 3.3.1 and 4.0.2 
+ based FE are also fixed.
+ 
+ Now the compiler contains three different GCC based front-ends:
+  o. GCC 3.3.1 based FE
+    Provides the compatibility with GCC 3.x
+
+  o. GCC 4.0.2 based FE
+    Provides the compatibility with GCC 4.0.x
+    
+  o. GCC 4.2.0 based FE
+    Provides the compatibility with GCC 4.1.x and above
+  
+ The right FE will be chosen automatically based on the version of the GCC 
+ on the host. The command line options: '-gnu3', '-gnu40' and '-gnu42', can
+ be used to designate the FE explicitly.
+
+ We also improve the conformance of the FORTRAN Front End for new FORTRAN
+ 2003 features:
+  o. Using 'intent' and 'pointer' attributes together
+  o. 'volatile' attribute and declaration
+
+2.2 Back End Features
+-------------------
+
+ Open64 Back End contains several optimizers and code generator.
+  o. Interprocedural Analyzer and Optimizer (IPA)
+  o. Loop Nest Optimizer (LNO)
+  o. Global Optimizer (WOPT)
+
+ The Code Generator (CG) can generate code for several targets, including 
+ IA-64, IA-32 and x86_64 and others.
+
+ In this release, we reduced the memory footprint of IPA to get better 
+ scalability to enable building large C++ application with IPA. Also, we enhanced 
+ the IPA to handle mixed archives which may contains both WHIRL IR files 
+ and object files. Several bugs to build shared libraries (.so) with IPA are 
+ also fixed. Besides IPA, Some bugs in LNO, WOPT and CG are fixed. 
+
+ We also introduced several performance improvements in BE.  
+  o. Better loop vectorization and loop factorization from PathScale
+  o. New dead store elimination (DSE) algorithm from SimpLight
+  o. Improved prefetch efficiency for ix86 and x86_64 from PathScale
+  o. Improved instruction scheduling for ix86 and x86_64 from PathScale
+  o. Better tuning for both AMD and Intel new multicore CPU from PathScale
+
+ Several new targets were also supported in this release besides IA-64, x86 
+ and x86_64:
+  o. SL (an embedded DSP architecture) code generation from SimpLight
+  o. CUDA code generation from NVIDIA
+  o. A MIPS code generation prototype from ICT based on input from PathScale
+     and SimpLight
+ 
+  
+3. The Packages of the Compiler Suite
+=============
+
+ This compiler is available in both binary and source-code form for
+ different target machines.
+
+ o. open64-4.2-0.src.tar.bz2
+   This package contains the compiler's source code. It's machine independent.
+
+ o. open64-4.2-0.ia64.tar.bz2
+   This package contains all the binary code for ia64 machine including
+   pre-built library. The compiler is built on an Itanium2 based system with
+   kernel 2.6.18 and glibc 2.5. The OS is RHEL5 on IA64. The GCC version 
+   is 4.1.1. The compiler is built twice for releasing. The first stage 
+   is built by open64 4.1 at '-O2', then we use the compiler built in the 
+   first stage to build the release compiler at '-O2'. The libraries are built 
+   by the release compiler. 
+
+ o. open64-4.2-0.i386.tar.bz2, open64-4.2-0.x86_64.tar.bz2
+   These two packages are the same; contain all the binary code for i386 and 
+   x86_64 machines. The compiler is built on an IA32 based system with 
+   kernel 2.6.18 and glibc 2.5. The OS is RHEL5 on IA32. The compiler is 
+   built twice for releasing. The first stage is built by Open64 4.1 at '-O2', 
+   then we use the compiler built in the first stage to build the release 
+   compiler at '-O2'. The 32-bit libraries are built on the same 
+   system by this compiler. 
+   The 64-bit libraries are built on an RHEL5 x86_84 system by this compiler.
+
+ o. open64-4.2-0.i386.rpm, open64-4.2-0.x86_64.rpm, open64-4.2-0.ia64.rpm    
+   These three packages are binaries rpm for different targets. The binaries 
+   are the same in both bz2 and rpm packages. It's easier to install the 
+   compiler from the rpm.
+
+4. Installing the Compiler Suite
+=============
+
+4.1 Install from bz2 Package
+-------------------
+
+ Before installing the compiler, the environment variable $TOOLROOT
+ should be set properly. As the name suggests, this variable specifies
+ the root of the installation hierarchy. You can set it to anywhere
+ you have write permission. For example, in GNU BASH this may be done
+ with the following command: may set this variable by adding this
+ command to the $HOME/.bash_profile file:
+
+   export TOOLROOT=$HOME/mycompiler
+
+ After that, run 'source $HOME/.bash_profile' to make the change effective.
+ Now, to complete the installation:
+
+ o. Expand open64-4.2-0-ia64.tar.gz with the command:
+
+    tar zxvf open64-4.2-0-ia64.tar.gz
+
+ o. Run script 'INSTALL.sh'
+
+ The C, C++, FORTRAN compilers are now available in folder
+ $TOOLROOT/bin. They are opencc, openCC, openf90 respectively.
+ 
+4.2 Install from RPM Package
+-------------------
+
+ To install the compiler from rpm:
+
+ $ rpm -ivh open64-4.2-0.ia64.rpm
+
+ This command will install the Open64 compiler to /opt/open64. The C, C++, 
+ FORTRAN compilers are in folder /opt/open64/bin.
+
+ To install the compiler to another location:
+
+ $ rpm --prefix=/path/to/folder -ivh open64-4.2-0.ia64.rpm
+
+ Then the compiler will be installed to /path/to/folder
+
+5. Build the compiler Suite - directly from source
+=============
+
+ If you choose to build the compiler suite from the source tar ball,
+ follow the steps outlined below.
+
+5.1 Prerequisites
+-------------------
+
+ In order to compile Open64 successfully, your system should meet the
+ following requirements:
+
+ o. Linux OS on IA64/ix86/x86_64
+
+   Open64 as well as its variants have been successfully built on many UNIX
+   variants and UNIX-like systems. This release has only been tested extensively
+   on IA64/ix86/x86_64 running Linux operating systems. If you are going to
+   build it on any platform other than Linux on IA64/ix86/x86_64, you may need 
+   to make some minor changes to the source code.
+
+ o. Miscellaneous Tools
+   
+   To build the open64 compiler from source, these tools are needed:
+  
+   awk, csh, bash, gmake, flex and bison
+   
+   On some Ubuntu distributions, you need to set the environment variable 
+   'SHELL' to '/bin/bash' or change the symbol link '/bin/sh' to '/bin/bash' 
+   to make the shell scripts work.
+ 
+ o. GNU Compiler Collection
+
+   Currently, GCC 3.3.x through 4.1.x are supported. GCC 4.1.x is preferred.
+
+ o. An open64 binary for building the FORTRAN Front End
+
+   You can just download the Open64 binary for system and install it to 
+   some place and make sure that openf90 is in your PATH before building 
+   the FORTRAN Front End. 
+   
+   Intel Fortran Compiler (on IA64/IA-32/x86_64) or PathScale Fortran Compiler
+   (on IA-32/x86_64) can also be used to build the FORTRAN Front End.
+
+5.2 Build Steps
+-------------------
+
+  Follow these steps to build the compiler:
+
+ Step 1. Expand the source tarball
+
+   After that, the whole source hierarchy will be in directory rooted at
+   open64-4.2-0/. Change working directory to open64-4.2-0/.
+
+ Step 2. Build the compiler components by simply invoking command:
+
+     make or make V=1(V=1 will show all building information)
+
+   If you want to build a debuggable compiler, use this command instead:
+
+     make BUILD_OPTIMIZE=DEBUG
+
+   Note that, if you type "make", it will only build the compiler's source 
+   code by default it won't build the necessary libraries. If you want to 
+   build them by yourself, type 
+
+     make library
+
+   The default FORTRAN compiler in source code is openf90. If the openf90 is 
+   not in the PATH, the FORTRAN front end will not be built. During the 
+   installation, the pre-built version will be picked up. Then, we can use
+   it to build the FORTRAN front end again. 
+
+   Developers may find this command handy in building individual component,     
+   say wopt.so:
+
+     make BUILD_OPTIMIZE=DEBUG wopt.so 
+
+ step 3. Set environment variable TOOLROOT to anywhere you have write
+  permission as detailed in section 3. 
+  If you do not want to use $TOOLROOT, just skip this step.
+
+ step 4. Call 'make install' or 'install_compiler.sh' to install
+  all compiler components and archives.
+  If $TOOLROOT is set, the compiler will be installed to that folder. 
+  Otherwise, a path will be prompted.
+
+  The C, C++, FORTRAN compilers are now available in folder
+
+  $TOOLROOT/bin/ 
+  
+  They are opencc, openCC, openf90 respectively.
+
+  People interested in building the compiler for CUDA or SL should contact 
+  NVIDIA or SimpLight directly. 
+
+
+5.3 Build FORTRAN Front-End
+-------------------
+
+ The FORTRAN front-end executable is provided in both binary and source 
+ packages. Normally, you need *NOT* to build it by yourself. If you are 
+ going to build one, make sure that an Openf90 is already in your $PATH
+ (you need to download a binary form and install it somewhere).
+
+ Then just type:
+
+   make mfef95.
+
+ The Makefile will use a pre-hand openf90 to build the new mfef95 for you.
+
+5.4 Build the archives
+-------------------
+
+  The archives required by Open64 are provided in both binary and source 
+  packages. Normally, you need *NOT* to build it by yourself. These libraries
+  can be built by Open64. Add $TOOLROOT/bin into your $PATH and type:
+ 
+   make BUILD_COMPILER=OSP lib
+   
+  Then, you can follow the step 3 and step 4 in section 5.2 to install these
+  archives.
+
+5.5 Some Notes on Build
+-------------------
+
+ o. The compiler is built with flag '-Werror' which treats warnings as error.
+  If the build process terminates due to warnings, you can get around this
+  with:
+
+      make ... ERROR_ON_WARNINGS="" ...
+
+  i.e. simply repeat the make process with ERROR_ON_WARNINGS="".
+
+
+6. Bug Reporting
+=============
+
+   You are WELCOME to report bugs. The bugs tracked at
+   
+   http://bugs.open64.net/. 
+   
+   Bug reports should include these items in order to be reproduced:
+
+ o. The compiler release version;
+
+ o. System details -- the OS, libc etc;
+
+ o. The compilation flags that trigger the bug;
+
+ o. The test file if applicable (it is highly appreciated if the test file
+   is minimized);
+
+ o. The correct output of the test file.
+
+7. Known Problems, Limitation and Some Notes
+=============
+
+ o. Currently, we built the compiler *ONLY* on Linux/IA64, x86_64, i386.
+  'make cross' is supposed to be used to build the cross compiler on
+  Linux/IA32 systems targeting IA64. However, we have not tested this 
+  thoroughly.
+
+ o. On x86_64, Open64 can be built in either 32-bit or 64-bit. We find 
+  several bugs in building 32-bit applications by 64-bit compiler. All 
+  executables in Open64 4.2 binary release on x86_64 are 32-bit. These bugs 
+  will be fixed in the next release.
+
+ o. Auto-Parallel Optimization (enabled by '-apo') has been implemented in the 
+  compiler. But now it does not work. We will fix this problem in the next 
+  release.
+
+ o. The perlbench benchmark in CPU2006 suite may not run successfully without
+  some changes to its source code on IA-64. It is *NOT* an Open64 bug. 
+  The problem is with the perlbench benchmark itself. Please check the bug-81
+  (https://bugs.open64.net/) for details. This problem can be solved by
+  deleting following lines from file spec_config.h (of perlbench benchmark):
+
+     1172 #undef HASATTRIBUTE
+     1173 #ifndef HASATTRIBUTE
+     1174 #define __attribute__(_arg_)
+     1175 #endif
+
+ o. A full list of known bugs can be found in our bug database. You can visit
+
+  http://bugs.open64.net
+
+  to view them.
+
+
+8. Acknowledgements
+=============
+
+ This project is led by Shin-Ming Liu at HP Inc. It is the result of
+ partnership between these academies and companies:
+  o. Tsinghua University
+  o. CAPSL research laboratory at the University of Delaware
+  o. NVIDIA Inc.
+  o. SimpLight Nanoelectronics Inc.
+  o. Hewlett-Packard Inc.
+  o. Institute of Computing Technology (ICT) at the Chinese Academy of Science
+
+ We upgraded the GCC front end in Open64 by leveraging PathScale's effort.
+ We also got a lot of suggestions, bug fixes, especially the performance 
+ enhancements from Fred Chow and others in PathScale Inc. Their help is
+ greatly appreciated.
+ 
+ Thanks all of the Pro64 developers, the ORC developers and ORC/Open64 users.
+ In this release, Cui Huimin at ICT did the prototype of MIPS retarget based on 
+ input from PathScale and SimpLight.
+ 
+ The following individuals also contributed a lot to our previous releases:
+   o. Paul Yuan at Peking University
+
+

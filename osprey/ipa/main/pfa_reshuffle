@@ -1,0 +1,363 @@
+#!/bin/perl5
+
+#
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+
+# This script reshuffles the .anl and .m files so that they're
+# broken down into files reflecting the original program organization
+# rather than the organization created by ipa.
+#
+# Usage: pfa_reshuffle <1.anl> <2.anl> ...
+# The .m files aren't provided explicitly; the program assumes that
+# every .anl file has a corresponding .m file with the same name.
+
+
+# Pass 1: read every .anl file and construct a sorted list for each
+# output file.
+
+%Output_Files     = ();
+%Srcfile_Fullname = ();
+$verbose = 0;
+
+Read_ANL_loop:
+foreach $f (@ARGV) {
+  $verbose = 1, next Read_ANL_loop if $f =~ /^-v$/;
+
+  $f =~ /\.\w+$/ or die "RESHUFFLE SCRIPT ERROR: Usage: pfa_reshuffle [-v] <1.anl> <2.anl> ...\n";
+  $input_file = $f;
+  $input_file =~ s/\.\w+$/\.anl/;
+          
+  open(IN, $input_file)
+          or die "RESHUFFLE SCRIPT ERROR: Can't open $input_file\n";
+  
+  @current_function_blocks = ();
+  $current_block = "";
+  $curpos = 0;
+  $language = "";
+
+  print "Pass 1 through $input_file\n" if $verbose;
+  Function_blocks: while (<IN>) {
+    if (/^language\s+"([-a-zA-Z0-9]+)"\s*$/) {
+      !$language or die "RESHUFFLE SCRIPT ERROR: Language declaration seen twice:\n$_\n";
+      $language = $1;
+      print "Language declaration seen:\n    $_" if $verbose;
+    }
+
+    if (/^function \d+/) {      # Start of function block, end of last block.
+      print "Start of function block seen:\n  $_" if $verbose;
+
+      $language or die "RESHUFFLE SCRIPT ERROR: Language declaration not seen in $input_file\n";
+
+      ($fn_id, $srcfile_id, $line) = 
+        /^function (\d+) ".*?" range \[(\d+) (\d+) \d+\]/
+              or die "RESHUFFLE SCRIPT ERROR: Incorrect format for function header:\n$_\n";
+
+      if ($current_block) {
+        $current_block .= " $curpos";
+        push @current_function_blocks, $current_block;
+        print "Adding block to current_function_blocks:\n  $current_block\n"
+                if $verbose;
+      }
+
+      $current_block =
+        "$srcfile_id $line $fn_id $language \"$input_file\" $curpos";
+    }
+    elsif (/^SRCPOS_MAP_BEGIN\s*$/) { # End of the last function block
+      $language or die "RESHUFFLE SCRIPT ERROR: Language declaration not seen in $input_file\n";
+
+      if ($current_block) {
+        $current_block .= " $curpos";
+        push @current_function_blocks, $current_block;
+        print "Adding block to current_function_blocks:\n  $current_block\n"
+                if $verbose;
+      }
+      last Function_blocks;
+    }
+
+    $curpos = tell IN;
+  }
+                                # Discard everything until the srcfile map.
+  Srcpos_Map: while (<IN>) {
+    if (/^SRCFILE_MAP_BEGIN\s*$/) {
+      last Srcpos_Map;
+    }
+  }
+                                # References to source files aren't direct;
+                                # they're references to an integer index.  The
+                                # map is at the end of the file.  We'll now 
+                                # use it to fix up the references.
+  %Srcfiles = ();
+  print "Processing srcfiles in $input_file\n" if $verbose;
+  Srcfile_Map: while (<IN>) {
+    last Srcfile_Map if /^SRCFILE_MAP_END/;
+    ($srcfile_id, $srcfile_name) = /\s*\[(\d+)\s*"(.*?)"\]\s*$/
+          or die "RESHUFFLE SCRIPT ERROR: Incorrect syntax in srcfile map:\n$_\n";
+    ($srcfile_base) = $srcfile_name =~ m|.*/(.+)\.\w+$|
+      or die "RESHUFFLE SCRIPT ERROR: Can't find basename for filename $srcfile_name\n";
+    print "  Srcfile id $srcfile_id -> $srcfile_base -> $srcfile_name\n"
+            if $verbose;
+    $Srcfiles{$srcfile_id} = $srcfile_base;
+    if (!$Srcfile_Fullname{$srcfile_base}) {
+      $Srcfile_Fullname{$srcfile_base} = $srcfile_name;
+      $Output_Files{$srcfile_base}     = [];
+    }
+  }
+
+  foreach (@current_function_blocks) {
+    $srcfile_id = /^(\d+)\s+/
+            or die "RESHUFFLE SCRIPT ERROR: Incorrect internal function map entry:\n$_\n";
+    $srcfile_name = $Srcfiles{$srcfile_id};
+    die "RESHUFFLE SCRIPT ERROR: srcfile id $srcfile_id not present in SRCFILE_MAP for $input_file\n"
+      if !$srcfile_name;
+    s/^\d+\s+//;
+    print "Processing function block:\n  $_\n" if $verbose;
+    print "Adding to output list for $srcfile_name\n" if $verbose;
+    push @{$Output_Files{$srcfile_name}}, $_;
+  }
+
+  close IN;
+}
+
+# Sort the output file lists by function id.
+# Format of an entry in an output file list:
+# <lineno> "<fn_id>" <language> "<input_file>" <offset_begin> <offset_end>
+
+sub by_fn_id {
+  ($a_id) = $a =~ /^\d+ (\d+)/ or die "RESHUFFLE SCRIPT ERROR: No function id in\n$a\n";
+  ($b_id) = $b =~ /^\d+ (\d+)/ or die "RESHUFFLE SCRIPT ERROR: No function id in\n$b\n";
+  return $a_id <=> $b_id;
+}
+
+foreach (values %Output_Files) {
+  @{$_} = sort by_fn_id @{$_};
+}
+
+if ($verbose) {
+  print "\nOutput lists sorted.  Printing output lists:\n";
+  foreach (sort keys %Output_Files) {
+    print "$_:\n";
+    foreach (@{$Output_Files{$_}}) {
+      print "  $_\n";
+    }
+  }
+  print "\n\n";
+}
+
+# Construct much the same database, but for the .m files.
+# A key in Mfile_Map is a function id, and a value has the format:
+# "<mfile_name>" <off_begin> <off_end>
+%Mfile_Map = ();
+
+print "CONSTRUCTING MFILE MAP\n" if $verbose;
+Mfile_loop:
+foreach (@ARGV) {
+  next Mfile_loop if /^-v$/;
+  die "RESHUFFLE SCRIPT ERROR: Bad input filename $_" if !/\.\w+$/;
+  $mfile = $_;
+
+  ($mfile) =~ s/\.\w+$/\.m/;
+  open(IN, $mfile) or die "RESHUFFLE SCRIPT ERROR: Can't open input file $mfile\n";
+  print "Processing input file $mfile\n" if $verbose;
+  
+  $pos = 0;
+  $cur_id = 0;
+
+  while (<IN>) {
+    if ($cur_id == 0 and
+        ($dummy, $id) = m%^(/\*\$SGI|CSGI\$) start (\d+)%) {
+      $cur_id = $id;
+      $cur_begin = $pos;
+      print "Saw start line for id $cur_id:\n  $_" if $verbose;
+    }
+    elsif ($cur_id != 0 and m%^(/\*\$SGI|CSGI\$) end $cur_id\D*$%) {
+      $cur_id or die "RESHUFFLE SCRIPT ERROR: Saw end line without corresponding begin: $_\n";
+      $cur_end = $pos + length;
+      $mfile_map_entry = "\"$mfile\" $cur_begin $cur_end";
+      $Mfile_Map{$cur_id} = $mfile_map_entry;
+      print "Saw end line for id $cur_id:\n  $_" if $verbose;
+      print "Adding entry to Mfile_Map: \n  $mfile_map_entry\n" if $verbose;
+      $cur_id = 0;
+    }
+    $pos = tell IN;
+  }
+
+  close IN;
+}
+
+# Pass 2: Write each output file, using the information in the
+# %Output_Files lists.
+
+print "\nWRITING ANL OUTPUT FILES\n" if $verbose;
+foreach (keys %Output_Files) {
+  $base = $_;
+  $output_file_name = $base . ".anl";
+  open OUT, ">" . $output_file_name
+          or die "RESHUFFLE SCRIPT ERROR: Can't open $output_file_name for writing.\n";
+  print "Processing output file $output_file_name\n" if $verbose;
+
+  $wrote_header = 0;
+  $last_input_file = "";
+
+  foreach (@{$Output_Files{$base}}) {
+    print "Processing output entry:\n  $_\n" if $verbose;
+    ($language, $input_file, $off_begin, $off_end) =
+      /^\d+ \d+ ([-a-zA-Z0-9]+) "(.+)" (\d+) (\d+)/
+            or die "RESHUFFLE SCRIPT ERROR: Incorrect format in output file list:\n$_\n";    
+    if (!$wrote_header) {
+      print "Writing header for output file $output_file_name\n" if $verbose;
+      print OUT "product \"Mongoose\"\n";
+      print OUT "version \"7.30\"\n";
+      print OUT "language \"$language\"\n";
+      if ($language =~ /c$/i) {
+        print OUT "whirl2c \"$base.m\"\n\n";
+      }
+      else {
+        print OUT "whirl2f \"$base.m\"\n\n";
+      }
+      $wrote_header = 1;
+    }
+
+    if ($last_input_file and $last_input_file ne $input_file) {
+      close IN;
+      $last_input_file = "";
+    }
+
+    if (!$last_input_file) {
+      $last_input_file = $input_file;
+      open IN, $input_file
+              or die "RESHUFFLE SCRIPT ERROR: Can't open $input_file for reading.\n";
+    }
+
+    seek IN, $off_begin, 0
+            or die "RESHUFFLE SCRIPT ERROR: Can't seek to $off_begin in file $input_file\n";
+
+    # We need to read the first line separately, and do a small fixup.
+    $block_header = <IN>;
+    ($id, $fn, $l1, $c1, $l2, $c2) =
+      $block_header =~ /^function (\d+) "(.+)" range \[\d+ (\d+) (\d+)\]-\[\d+ (\d+) (\d+)\]/
+              or die "RESHUFFLE SCRIPT ERROR: In $input_file, can't parse header: \n$block_header\n";
+    print OUT "function $id \"$fn\" range [1 $l1 $c1]-[1 $l2 $c2]\n";
+
+    # Now read the rest of the block.
+    $pos = tell IN;
+    $remaining = $off_end - $pos;
+
+    $n = read IN, $block, $remaining;
+    $n == $remaining or die "RESHUFFLE SCRIPT ERROR: Read failed in file $input_file\n";
+    print OUT $block;
+    print OUT "\n";
+  }
+
+  # Write the file trailer, i.e. the srcfile map.
+  
+  print OUT "SRCFILE_MAP_BEGIN\n";
+  print OUT " [1 \"$Srcfile_Fullname{$base}\"]\n";
+  print OUT "SRCFILE_MAP_END\n";
+
+  close OUT;
+  close IN if $last_input_file;
+}
+
+# Reshuffle the .m files.
+
+print "\nRESHUFFLING .M FILES\n" if $verbose;
+foreach (keys %Output_Files) {
+  $base = $_;
+  $output_file_name = $base . ".m";
+  open OUT, ">" . $output_file_name
+    or die "RESHUFFLE SCRIPT ERROR: Can't open $output_file_name for writing.\n";
+  print "Writing output file $output_file_name\n" if $verbose;
+
+  $wrote_header = 0;
+  $last_mfile = "";
+
+  foreach (@{$Output_Files{$base}}) {
+    ($id, $language) = /^\d+ (\d+) ([-a-zA-Z0-9]+)/
+            or die "RESHUFFLE SCRIPT ERROR: Incorrect format in output file list:\n$_\n";    
+    print "  Writing function id $id\n" if $verbose;
+    if (!$wrote_header) {
+      print "  Writing header for $output_file_name\n" if $verbose;
+      $now = `date`;
+      chomp $now;
+      if ($language =~ /c$/i) {
+        print OUT "/*******************************************************\n";
+        print OUT "* C file translated from WHIRL $now\n";
+        print OUT "*******************************************************/\n\n";
+      }
+      else {
+        print OUT "C *******************************************************\n";
+        print OUT "C * Fortran file translated from WHIRL $now\n";
+        print OUT "C *******************************************************/\n\n";
+      }
+      $wrote_header = 1;
+    }
+
+    $mfile_entry = $Mfile_Map{$id};
+    die "RESHUFFLE SCRIPT ERROR: id $id not found in mfile map" if !$mfile_entry;
+    print "  Processing mfile entry: $mfile_entry\n" if $verbose;
+    $mfile_entry =~ /^"(.+)" (\d+) (\d+)$/
+            or die "RESHUFFLE SCRIPT ERROR: Invalid mfile entry:\n$mfile_entry\n";
+    $mfile     = $1;
+    $off_begin = $2;
+    $off_end   = $3;
+
+    $mfile or die "RESHUFFLE SCRIPT ERROR: invalid input file in entry |$mfile_entry|\n";
+    $off_end > $off_begin or die "RESHUFFLE SCRIPT ERROR: zero-length function in entry |$mfile_entry|\n";
+
+    if ($last_mfile and $last_mfile ne $mfile) {
+      close IN;
+      $last_mfile = "";
+    }
+    if (!$last_mfile) {
+      $last_mfile = $mfile;
+      open IN, $mfile
+              or die "RESHUFFLE SCRIPT ERROR: Can't open $mfile for reading.\n";
+    }
+
+    seek IN, $off_begin, 0
+            or die "RESHUFFLE SCRIPT ERROR: Can't seek to $off_begin in file $mfile\n";
+    $n = read IN, $block, $off_end - $off_begin;
+    $n == $off_end - $off_begin or die "RESHUFFLE SCRIPT ERROR: Read failed in file $mfile\n";
+    print OUT $block;
+    print OUT "\n";
+  }
+
+  close OUT;
+  close IN if $last_mfile;
+}
+
+# Local variables:
+# mode: Perl
+# End:

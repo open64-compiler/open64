@@ -1,0 +1,180 @@
+# -*- Makefile -*-
+#
+# Makefile.base for libunwind
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of version 2 of the GNU General Public License as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it would be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+# Further, this software is distributed without any warranty that it is
+# free of the rightful claim of any third person regarding infringement 
+# or the like.  Any license provided herein, whether implied or 
+# otherwise, applies only to this software file.  Patent licenses, if 
+# any, provided herein do not apply to combinations of this program with 
+# other software, or any other product whatsoever.  
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write the Free Software Foundation, Inc., 59
+# Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+
+include	$(COMMONDEFS)
+
+# set install in default place
+STD_LIBRARY_LOC = $(DEF_LIBRARY_LOC)
+
+# set compilation defines
+LCDEFS = -DELF -DSYSV -D_SYSV -D__MIPS_AND_IA64_ELF_H
+LC++DEFS = -DELF -DSYSV -D_SYSV -D__MIPS_AND_IA64_ELF_H
+
+# modified compilation defines if building for gdb
+ifeq ($(BUILD_VARIANT), GDB)
+CFLAGS += -DFOR_GDB
+endif
+
+# set compilation options
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LC++OPTS = $(STD_COMPILE_OPTS)
+
+LC++INCS = -I$(BUILD_TOT)/common/com \
+	   -I$(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR) \
+	   -I$(BUILD_TOT)/common/util
+# set compilation includes
+ifeq ($(BUILD_VARIANT), PRODUCER)
+LCINCS = -I$(BUILD_TOT)/common/com -I$(BUILD_AREA)/targ_info
+else
+LCINCS = -I$(BUILD_TOT)/common/com -I.
+endif
+
+# set linker options
+ifeq ($(BUILD_VARIANT), PRODUCER)
+LDOPTS =
+LD_CONSUMER_EXPORT_FILE =
+LD_CONSUMER_INIT_FINI_SECTS =
+#LDLIBS = ../libelf/libelf.a ../libelfutil/libelfutil.a
+else
+LDOPTS = $(STD_DSO_LOADOPTS)
+LD_CONSUMER_EXPORT_FILE = -exports_file $(BUILD_BASE)/export_symbols
+LD_CONSUMER_INIT_FINI_SECTS = -init unwind_init -fini unwind_fini
+#LDLIBS = -lelf -lelfutil -ldwarf
+endif
+
+ifeq ($(BUILD_TYPE), NONSHARED)
+LCDEFS += -DNONSHARED
+endif
+
+ifneq ($(BUILD_VARIANT), GDB)
+LCDEFS += -DSIMULATOR
+LCDEFS += -DSIMULATOR2
+endif
+
+CONSUMER_LIBRARY = libunwind.a
+GDB_LIBRARY = libunwind_gdb.a
+PRODUCER_LIBRARY = libunwindP.a
+
+ifeq ($(BUILD_VARIANT), PRODUCER)
+LIBRARY = $(PRODUCER_LIBRARY)
+endif
+ifeq ($(BUILD_VARIANT), CONSUMER)
+LIBRARY = $(CONSUMER_LIBRARY)
+endif
+ifeq ($(BUILD_VARIANT), GDB)
+LIBRARY = $(GDB_LIBRARY)
+endif
+TARGETS = $(LIBRARY)
+INSTALL_TARGETS = $(TARGETS)
+
+UTILS_CFILES = \
+	leb.c \
+	dump.c \
+	process.c
+
+PRODUCER_CFILES	= \
+	producer.c \
+	header.c \
+	body.c \
+	memstack.c \
+	rp.c \
+	pfs.c \
+	preds.c \
+	preserve.c \
+	unat.c \
+	lc.c \
+	fpsr.c \
+	priunat.c \
+	bsp.c \
+	bspstore.c \
+	rnat.c \
+	overall.c \
+	spill.c \
+	dumpelf.c
+
+PRODUCER_C++FILES = \
+	em_elf.cxx \
+	config_elf_targ.cxx \
+	targ_em_elf.cxx
+
+CONSUMER_CFILES = \
+	consumer.c \
+	state.c \
+	output.c
+
+HFILES = \
+	unwind.h
+
+PRODUCER_HFILES = \
+	unwind_producer.h
+
+CONSUMER_HFILES = \
+	unwind_consumer.h
+
+UTILS_OBJECTS = $(UTILS_CFILES:.c=.o)
+PRODUCER_OBJECTS = $(UTILS_OBJECTS) $(PRODUCER_CFILES:.c=.o)
+CONSUMER_OBJECTS = $(UTILS_OBJECTS) $(CONSUMER_CFILES:.c=.o)
+
+LDIRT = $(UTILS_OBJECTS) $(PRODUCER_OBJECTS) $(CONSUMER_OBJECTS) 
+
+VPATH =  $(BUILD_BASE)/utils $(BUILD_BASE)/producer $(BUILD_BASE)/consumer \
+	$(BUILD_BASE)/../common/com $(BUILD_BASE)/../common/com/$(BUILD_TARGET_DIR)
+
+.PHONY: default first last install
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+	
+include $(COMMONRULES)
+
+first :
+ifndef SKIP_DEP_BUILD
+	$(call submake,$(BUILD_AREA)/include)
+ ifeq ($(BUILD_VARIANT), PRODUCER)
+	$(call submake,$(BUILD_AREA)/targ_info)
+ endif
+endif
+
+last:  make_libdeps
+
+exports: default
+	$(INSTALL) -m 444 -F $(STD_LIBRARY_LOC) $(INSTALL_TARGETS)
+
+install: default
+	$(STD_INSTALL) -m 444 -F $(STD_LIBRARY_LOC) $(INSTALL_TARGETS)
+
+$(PRODUCER_LIBRARY): $(PRODUCER_OBJECTS)
+	$(ar) cru $@ $^
+
+$(CONSUMER_LIBRARY): $(CONSUMER_OBJECTS)
+	$(ar) cru $@ $^
+
+$(GDB_LIBRARY): $(CONSUMER_OBJECTS)
+	$(ar) cru $@ $^
+
+# $(CONSUMER_DSO): $(CONSUMER_LIBRARY)
+#	$(LD) $(LDOPTS) $(LD_CONSUMER_EXPORT_FILE) $(LD_CONSUMER_INIT_FINI_SECTS) $(CONSUMER_LIBRARY) -o $@ -soname $@ $(LDLIBS)
+

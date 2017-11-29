@@ -1,0 +1,333 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for Cray F90 libf90sgi.a
+#
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  *  This Makefile does not require that tdt has already been built.
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+USE_GEN_F90INTRIN = YES
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dlonglong
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE -D_WORD32 -D_ADDR32 -D__=__P
+# following added at PathScale
+HOSTDEFS += -D_LP64 -DKEY -D_GNU_SOURCE
+
+ifeq ($(BUILD_ARCH), MIPS3)
+TARGDEFS  = -DTARG_MIPS
+endif
+
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+FE90_INCLUDES           = $(BUILD_TOT)/linux/mfef90_includes
+endif
+
+LIBF90SGI_DIR		= $(BUILD_TOT)/crayf90/libf90sgi
+LIBCSUP_GEN_DIR		= $(BUILD_TOT)/libcsup/gen
+LIBCSUP_MSG_DIR		= $(BUILD_TOT)/libcsup/msgnew
+LIBU_ERRMSG_DIR		= $(BUILD_TOT)/libu/errmsg
+COMMON_DIR 		= $(BUILD_TOT)/common
+INCLUDE_DIR 		= $(ROOT)/usr/include
+CRAY_INCLUDE_DIR	= $(BUILD_TOT)/clibinc
+CRAY_INCLUDE_DIR_1	= $(BUILD_TOT)/clibinc/cray
+LIBFI_INCLUDE_DIR	= $(BUILD_TOT)/libfi/include
+LIBF_INCLUDE_DIR	= $(BUILD_TOT)/libf/include
+LIBFI_BASE_DIR		= $(BUILD_TOT)/libfi
+LIBFIO_SRC_DIR		= $(BUILD_TOT)/libf/fio
+LIBFI_SRC_DIRS 		= $(LIBFI_BASE_DIR)/array \
+			  $(LIBFI_BASE_DIR)/element \
+			  $(LIBFI_BASE_DIR)/char
+LIBF77_SRC_DIR		= $(BUILD_TOT)/libF77
+LIBF77_QUAD_SRC_DIR     = $(BUILD_TOT)/libF77/mips/quad
+LIBF90_SRC_DIR		= $(BUILD_TOT)/libf90
+
+HEADER_DIRS = \
+	$(CRAY_INCLUDE_DIR) \
+	$(CRAY_INCLUDE_DIR_1) \
+	$(LIBFI_INCLUDE_DIR) \
+	$(LIBF_INCLUDE_DIR)
+
+SOURCE_DIRS = \
+	$(LIBCSUP_MSG_DIR) \
+	$(LIBCSUP_GEN_DIR) \
+	$(LIBU_ERRMSG_DIR) \
+	$(LIBFI_SRC_DIRS) \
+	$(LIBFIO_SRC_DIR) \
+	$(LIBF77_SRC_DIR) \
+	$(LIBF77_QUAD_SRC_DIR) \
+	$(LIBF90_SRC_DIR) 
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+ifeq ($(USE_GEN_F90INTRIN), YES)
+INTRIN_SRCS = \
+	reshape_gen.c \
+	transfer_gen.c 
+else
+INTRIN_SRCS = \
+	reshape.c \
+	transfer.c 
+endif
+
+ifeq ($(BUILD_ARCH), MIPS3)
+MSG_SRC = \
+	cat_init.c \
+	catclose.c \
+	catgets.c \
+	catopen.c \
+	catgetmsg.c \
+	catmsgfmt.c 
+else
+MSG_SRC = \
+	catgetmsg.c \
+	catmsgfmt.c 
+#	catpathnm.c
+endif
+
+LIB_SRCS = \
+	dumppfmt.c \
+	f90_index.c \
+	f90_scan.c \
+	f90_verify.c \
+	fmtparse.c \
+	index.c \
+	lbound.c \
+	lerror.c \
+	lmessage.c \
+	lwarn.c \
+	modulo.c \
+	parsfmt.c \
+	repeat.c \
+	scan.c \
+	selrealkind.c \
+	shape.c \
+	size.c \
+	strnrstrn.c \
+	strnstrn.c \
+	trim.c \
+	ubound.c \
+	verify.c \
+	pow_ii.c \
+	pow_ri.c \
+	pow_di.c \
+	pow_qi.c \
+	pow_ci.c \
+	pow_cc.c \
+	q_sqrt.c \
+	cq_sqrt.c \
+	cq_log.c \
+	cq_exp.c \
+	pow_zi.c \
+	pow_cqi.c \
+	pow_zz.c \
+	cq_pow.c \
+	z_div.c \
+	c_div.c \
+	cq_div.c \
+	q_cis.c \
+	$(MSG_SRC) \
+        $(INTRIN_SRCS)
+
+ifeq ($(BUILD_TARGET),IA64)
+ifeq ($(BUILD_COMPILER),GNU)
+LIB_SRCS += \
+        _powci.c \
+        _powcl.c \
+        _powdi.c \
+        _powdl.c \
+        _powii.c \
+        _powll.c \
+        _powri.c \
+        _powrl.c \
+        _powzi.c \
+        _powzl.c
+endif
+endif
+
+ifeq ($(BUILD_TARGET),X8664)
+ifeq ($(BUILD_COMPILER),GNU)
+LIB_SRCS += \
+        _powci.c \
+        _powcl.c \
+        _powdi.c \
+        _powdl.c \
+        _powii.c \
+        _powll.c \
+        _powri.c \
+        _powrl.c \
+        _powzi.c \
+        _powzl.c
+endif
+endif
+
+ifeq ($(BUILD_TARGET),LOONGSON)
+ifeq ($(BUILD_COMPILER),GNU)
+LIB_SRCS += \
+        _powci.c \
+        _powcl.c \
+        _powdi.c \
+        _powdl.c \
+        _powii.c \
+        _powll.c \
+        _powri.c \
+        _powrl.c \
+        _powzi.c \
+        _powzl.c
+endif
+endif
+
+F77FILES = z_sqrtf.F \
+	z_logf.F \
+	z_expf.F
+
+CFILES = $(LIB_SRCS)
+OBJECTS += $(F77FILES:.F=.o)
+
+# extra files to be removed with make clobber
+LDIRT = 
+
+.F.o:
+	$(F77) $(FFLAGS) -c $<
+
+VPATH    =  $(SOURCE_DIRS)
+
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+LCINCS += -I$(LIBF77_QUAD_SRC_DIR) -I$(LIBF77_SRC_DIR)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS) -D_LIBU
+
+LCDEFS += -D_LITTLE_ENDIAN
+# needed for libcsup/msgnew files
+LCDEFS +=-DTARG_IA64 -D__NLS_INTERNALS -D_SGI_SOURCE
+LCINCS += -I$(TARGDIR)/include -I$(BUILD_AREA)/include -I$(FE90_INCLUDES)
+LF77OPTS = $(LCDEFS) -ansi $(LCINCS)
+
+
+LIBRARY = libf90sgi.a
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+#----------------------------------------------------------------------
+#  Extra Rules
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+TARGETS = $(LIBRARY)
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+
+LIBRARIES = 
+
+LLDLIBS +=
+
+#----------------------------------------------------------------------
+#  For parallel makes, makefile must satisfy:
+#  -> Submake for include/ finished before building any objects;
+#  -> All archive/library submakes finished before linking targets;
+#  -> All targets finished before make_deps or make_libdeps.
+#----------------------------------------------------------------------
+
+default: 
+	$(MAKE) first
+	$(MAKE) make_libdeps
+
+make_libdeps: $(TARGETS)
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+endif
+
+.PHONY: default install make_libdeps first 
+
+#----------------------------------------------------------------------
+
+exports:
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+#----------------------------------------------------------------------
+#  Special case rules for files that want to be individualistic
+#----------------------------------------------------------------------
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^

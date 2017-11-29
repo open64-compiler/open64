@@ -1,0 +1,368 @@
+/*
+
+  Copyright (C) 2006-2009 Tsinghua University.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+*/
+
+
+reg64t	: reg64, reg
+	{
+	    $cost[0].cost = $cost[1].cost;
+	}
+	= {
+	    $action[1](ops);
+	};
+
+
+
+tn	: reg64, reg, f4reg, f8reg, imm16, imm32
+	{
+	    $cost[0].cost = $cost[1].cost;
+	}
+	= {
+	    $action[1](ops);
+	};
+
+reg64	: I4INTCONST
+	{
+	    $cost[0].cost = 3;
+	}
+	= {
+	    $0->init_result();
+	    Expand_Immediate ($0->result, Gen_Literal_TN ((INT32)WN_const_val($0->wn), 4), true, ops, WN_rtype($0->wn));
+	};
+
+reg64	: U4INTCONST
+	{
+	    $cost[0].cost = 3;
+	}
+	= {
+	    $0->init_result();
+	    Expand_Immediate ($0->result, Gen_Literal_TN ((UINT32)WN_const_val($0->wn), 4), true, ops, WN_rtype($0->wn));
+	};
+
+reg64   : I8INTCONST, U8INTCONST
+        {
+            $cost[0].cost = 4;
+        }
+        = {
+	    $0->init_result();
+	    Expand_Immediate ($0->result, Gen_Literal_TN (WN_const_val($0->wn), 8), true, ops, WN_rtype($0->wn));
+        };
+
+
+
+
+reg64   : I8CVTL(reg64t), U8CVTL(reg64t)
+        {
+            $cost[0].cost = 2 + $cost[2].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $0->init_result();
+	    TN* len_tn = Gen_Literal_TN(WN_cvtl_bits($0->wn), 4);
+	    Expand_Convert_Length($0->result, $2->result, len_tn, WN_rtype($0->wn), WN_rtype($0->wn), ops);
+        };
+
+reg     : I4I8CVT(reg64t), U4U8CVT(reg64t), I4U8CVT(reg64t), U4I8CVT(reg64t)
+        {
+            $cost[0].cost = $cost[2].cost;
+        }
+        = {
+ 	    $action[2](ops);
+	    $0->init_result();
+	    TN* len_tn = Gen_Literal_TN(32, 4);
+	    Expand_Convert_Length($0->result, $2->result, len_tn, WN_rtype($0->wn), WN_desc($0->wn), ops);
+        };
+
+reg64   : I8I4CVT(reg64t), U8U4CVT(reg64t), I8U4CVT(reg64t), U8I4CVT(reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = {
+            $action[2](ops);
+	    $0->init_result();
+	    TN* len_tn = Gen_Literal_TN(32, 4);
+ 	    Expand_Convert_Length($0->result, $2->result, len_tn, WN_rtype($0->wn), WN_desc($0->wn), ops);
+        };
+
+reg64   : I8U8CVT(reg64), U8I8CVT(reg64)
+        {
+            $cost[0].cost = $cost[2].cost;
+        }
+        = {
+	    $2->result = $0->result;
+            $action[2](ops);
+	    $0->result = $2->result;
+        };
+
+
+reg64   : I8ABS(reg64t)
+        {
+            $cost[0].cost = 2 + $cost[2].cost;
+        }
+        = {
+            $action[2](ops);
+	    $0->init_result();
+	    Expand_Abs($0->result, $2->result, WN_rtype($0->wn), ops);
+        };
+
+reg64   : I8NEG(reg64t), U8NEG(reg64t)
+        {
+            $cost[0].cost = 2 + $cost[2].cost;
+        }
+        = {
+            $action[2](ops);
+	    $0->init_result();
+	    Handle_64Bit_Unary_OP(OPR_NEG, WN_rtype($0->wn), $0->result, $2->result, ops);
+        };
+
+reg64   : I8ADD(tn, tn), U8ADD(tn, tn)
+        {
+            $cost[0].cost = 2 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, $3->result, $3->result_high, WN_rtype($0->wn), ops); 
+	    Build_OP(TOP_addc, $0->result, $2->result, $3->result, ops);
+	    Build_OP(TOP_adde, $0->result_high, $2->result_high, $3->result_high, ops);
+        };
+
+reg64   : I8SUB(tn, tn), U8SUB(tn, tn)
+        {
+            $cost[0].cost = 2 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, $3->result, $3->result_high, WN_rtype($0->wn), ops);
+	    Build_OP(TOP_subfc, $0->result, $3->result, $2->result, ops);
+	    Build_OP(TOP_subfe, $0->result_high, $3->result_high, $2->result_high, ops);
+        };
+
+reg64   : I8MPY(reg64t, reg64t), U8MPY(reg64t, reg64t)
+	{
+            $cost[0].cost = 20 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Handle_64Bit_Multiply($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg64   : I8HIGHMPY(reg64t, reg64t), U8HIGHMPY(reg64t, reg64t)
+        {
+            $cost[0].cost = 20 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            FmtAssert(false, ("Not Implemented"));
+        };
+
+reg64   : I8DIV(reg64t, reg64t), U8DIV(reg64t, reg64t)
+        {
+            $cost[0].cost = 64 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+	    Expand_Divide($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg64   : I8REM(reg64t, reg64t), U8REM(reg64t, reg64t), U8MOD(reg64t, reg64t)
+        {
+            $cost[0].cost = 64 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+	    Expand_Rem($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg64   : I8MOD(reg64t, reg64t)
+        {
+            $cost[0].cost = 64 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+	    Expand_Mod($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg64	: I8DIVREM(reg64t, reg64t, reg64t), U8DIVREM(reg64t, reg64t, reg64t)
+        {
+            $cost[0].cost = 64 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $0->result = Handle_DIVREM($0->wn, $0->parent, $0->result, $1->opcode);
+        };
+
+
+reg64	: I8SELECT, U8SELECT
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    $0->result = Handle_SELECT($0->wn, $0->result, $1->opcode);
+	};
+
+reg64   : I8MAX(reg64t, reg64t), U8MAX(reg64t, reg64t)
+        {
+            $cost[0].cost = 20 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Max($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg64   : I8MIN(reg64t, reg64t), U8MAX(reg64t, reg64t)
+        {
+            $cost[0].cost = 20 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Min($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg64	: I8MAXPART, U8MAXPART
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MAXPART($0->wn, $0->parent, $0->result);
+	};
+
+reg64	: I8MINPART, U8MINPART
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MINPART($0->wn, $0->parent, $0->result);
+	};
+
+reg64	: I8MINMAX, U8MINMAX
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MINMAX($0->wn, $0->parent, $0->result, $0->opcode);
+	};
+
+
+
+
+reg64   : I8I1LDID, U8U1LDID, I8I2LDID, U8U2LDID, I8I4LDID, U8U4LDID, I8I8LDID, U8U8LDID
+        {
+            $cost[0].cost = 8;
+        }
+        = {
+	    $0->result = Handle_LDID($0->wn, $0->result, $1->opcode);
+        };
+
+null    : I8STID, U8STID
+        {
+            $cost[0].cost = 6;
+        }
+        = {
+	    Handle_STID($0->wn, $1->opcode);
+        };
+
+reg64	: I8ILOAD, U8ILOAD
+	{
+	    $cost[0].cost = 8;
+	}
+	= {
+	    $0->result = Handle_ILOAD($0->wn, $0->result, $1->opcode);
+	};
+
+null	: I8ISTORE, U8ISTORE
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    Handle_ISTORE($0->wn, $1->opcode);
+	};
+
+reg64	: I8LDBITS, U8LDBITS
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    $0->result = Handle_LDBITS($0->wn, $0->result, $1->opcode);
+	};
+
+reg64	: I8ILDBITS, U8ILDBITS
+        {
+            $cost[0].cost = 2;
+        }
+        = {
+            $0->result = Handle_ILDBITS($0->wn, $0->result, $1->opcode);
+        };
+
+reg64	: I8EXTRACT_BITS, U8EXTRACT_BITS
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_EXTRACT_BITS($0->wn, $0->result, $1->opcode);
+	};
+
+reg64	: I8COMPOSE_BITS, U8COMPOSE_BITS
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_COMPOSE_BITS($0->wn, $0->result, $1->opcode);
+	};
+
+
+reg64	: U8ALLOCA
+	{
+	    $cost[0].cost = 3;
+	}
+	= {
+	    $0->result = Handle_ALLOCA($0->wn, $0->result);
+	};
+
+reg64	: I8INTRINSIC_OP, U8INTRINSIC_OP
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+	    if (WN_intrinsic($0->wn) == INTRN_EXPECT){
+		$0->result = Expand_Expr(WN_kid0(WN_kid0($0->wn)), WN_kid0($0->wn), $0->result);
+	    }
+	    else{
+		$0->result = Handle_INTRINSIC_OP($0->wn, $0->result);
+	    }
+	};
+

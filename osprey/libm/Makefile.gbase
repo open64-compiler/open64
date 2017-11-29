@@ -1,0 +1,340 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for libm
+#
+
+include	$(COMMONDEFS)
+
+LCOPTS =  $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS =  -D_IP_NAN_SETS_ERRNO -D_HDW_SQRT -DNO_LONG_DOUBLE
+LCINCS =  -I$(BUILD_AREA)/include -I$(BUILD_BASE) 
+
+LASOPTS = $(STD_COMPILE_OPTS) -cpp
+LASDEFS = -D_IP_NAN_SETS_ERRNO
+LASINCS = -I$(BUILD_BASE)
+
+ifeq ($(BUILD_ABI), I64BIT)
+LCDEFS += -DMACHINE_IA64
+endif
+
+LCDEFS += -D__floor=floor
+
+EXTRA_EXPORTS =
+
+ifeq ($(BUILD_ABI), N32BIT)
+EXTRA_EXPORTS += -exports_file $(BUILD_BASE)/mips3.exports 
+endif
+
+ifeq ($(BUILD_OPTIMIZE), NODEBUG)
+OPTIMIZER = -O3
+endif
+
+ifeq ($(BUILD_COMPILER), OSP)
+OPTIMIZER += -fno-fast-stdlib
+endif
+ifeq ($(BUILD_COMPILER), PSC)
+OPTIMIZER += -fno-fast-stdlib
+endif
+
+ifeq ($(BUILD_VARIANT), LIBMV)
+LCDEFS += -D_SW_PIPELINE
+ ifeq ($(BUILD_ABI), I64BIT)
+CFLAGS += -OPT:alias=restrict:alias=unnamed -TENV:X=2
+CFLAGS += -WOPT:cse_fcmp=off
+CCFVSQRT = $(CCF)
+CCFVLOG = $(CC) $(CFLAGS) -WOPT:cse_fcmp=on
+ else
+CCFVSQRT = $(CCF)
+CCFVLOG = $(CCF) 
+ endif
+endif
+
+ifeq ($(BUILD_TYPE), SHARED)
+LCDEFS +=  -DPIC
+LASDEFS += -DPIC
+endif
+
+ifeq ($(BUILD_VARIANT), LIBMV)
+LIBRARY = libmv.a
+PROF_LIB = libmv_p.a
+dso_version := 1
+DSO = libmv.so.$(dso_version)
+else
+ifeq ($(BUILD_TARGET), IA64)
+LIBRARY = libmsgi.a
+PROF_LIB = libmsgi_p.a
+dso_version := 1
+DSO = libmsgi.so.$(dso_version)
+CFLAGS += -Wa,"-x assembler-with-cpp"
+else
+LIBRARY = libmsgi.a
+PROF_LIB = libmsgi_p.a
+dso_version := 1
+DSO = libmsgi.so.$(dso_version)
+endif
+endif
+
+ifeq ($(BUILD_TYPE), NONSHARED)
+TARGETS = $(LIBRARY)
+else
+TARGETS = $(LIBRARY) $(PROF_LIB) $(DSO)
+endif
+
+ifeq ($(BUILD_ABI), I64BIT)
+  ifeq ($(BUILD_COMPILER), OSP)
+LCDEFS += -OPT:IEEE_comparisons -OPT:roundoff=0 -TENV:X=1 -LNO:prefetch=0
+  endif
+endif
+ifeq ($(BUILD_ABI), N32BIT)
+LCDEFS += -n32 -Wa,-mips4
+endif
+
+LDIRT = $(LIBRARY)
+
+ifeq ($(BUILD_VARIANT), LIBMV)
+CFILES = \
+        vacos.c \
+        vacosf.c \
+        vasin.c \
+        vasinf.c \
+        vatan.c \
+        vatanf.c \
+        vcis.c \
+        vcisf.c \
+        vcos.c \
+        vcosf.c \
+        vexp.c \
+        vexpf.c \
+	vexptab.c \
+	vexpftab.c \
+        vlog.c \
+        vlog10.c \
+        vlog10f.c \
+        vlogf.c \
+        vlogftab.c \
+	vlogtab.c \
+        vsin.c \
+        vsinf.c \
+        vsqrt.c \
+        vsqrtf.c \
+        vtan.c \
+        vtanf.c
+else
+CFILES	= \
+	acos.c  \
+	acosf.c  \
+	asin.c  \
+	asinf.c  \
+	atan.c  \
+	atan2.c  \
+	atan2f.c  \
+	atan2ftab.c  \
+	atan2tab.c  \
+	atanf.c  \
+	cabs.c  \
+	cabsf.c  \
+	cos.c  \
+	cosf.c  \
+	dcis.c  \
+	erf.c  \
+	exp.c  \
+	expf.c  \
+	expftab.c  \
+	expm1.c  \
+	expm1f.c  \
+	exptab.c  \
+	hypot.c  \
+	hypotf.c  \
+	j0.c  \
+	j1.c  \
+	jn.c  \
+	lgamma.c  \
+	lgammatab.c  \
+	log.c  \
+	log10.c  \
+	log10f.c  \
+	log1p.c  \
+	log1pf.c  \
+	logf.c  \
+	logftab.c  \
+	logtab.c  \
+	pow.c  \
+	powf.c  \
+	powtab.c  \
+	rcis.c  \
+	sin.c  \
+	sincos.c \
+	sincosf.c \
+	sinf.c  \
+	sinh.c  \
+	sinhf.c  \
+	sinhtab.c  \
+	tan.c  \
+	tanf.c  \
+	tanh.c \
+	tanhf.c 
+
+ ifeq ($(BUILD_ABI), I64BIT)
+CFILES  += \
+	ceill.c \
+	copysignl.c \
+	fabsl.c \
+	finitel.c \
+	floorl.c \
+	logbl.c \
+	rintl.c \
+	sqrtl.c \
+	truncl.c
+ endif
+
+ ifneq ($(BUILD_TARGET), X8664)
+ ifeq ($(BUILD_ABI), I32BIT)
+CFILES	+= \
+	sqrtf.c \
+	trunc.c
+ else
+CFILES	+= \
+	drem.c \
+	fmodf.c \
+	fmod.c
+ endif
+ endif
+
+ ifeq ($(BUILD_TARGET), IA64)
+ASFILES	= \
+	ceil.s \
+	ceilf.s \
+	copysign.s \
+	fabs.s \
+	fabsf.s \
+	finite.s \
+	floor.s \
+	floorf.s \
+	libm_vals.s \
+	logb.s \
+	rint.s \
+	sqrt.s \
+	sqrtf.s \
+	swapINX.s \
+	swapRM.s \
+	trunc.s \
+	truncf.s
+ else
+ASFILES =
+ endif
+
+endif
+
+HFILES	= \
+	complex.h \
+	libm.h \
+	sgi_libm.h
+
+ifeq ($(BUILD_ARCH), IA32)
+VPATH = $(BUILD_BASE) $(BUILD_BASE)/mips $(BUILD_BASE)/mips/extra
+endif
+ifeq ($(BUILD_ARCH), MIPS4)
+VPATH = $(BUILD_BASE) $(BUILD_BASE)/mips $(BUILD_BASE)/mips/extra
+endif
+ifeq ($(BUILD_ARCH), MIPS64)
+VPATH = $(BUILD_BASE) $(BUILD_BASE)/mips $(BUILD_BASE)/mips/extra
+endif
+ifeq ($(BUILD_ARCH), IA64)
+VPATH = $(BUILD_BASE) $(BUILD_BASE)/mips $(BUILD_BASE)/intel/asm
+endif
+ifeq ($(BUILD_ARCH), X8664)
+VPATH = $(BUILD_BASE) $(BUILD_BASE)/mips $(BUILD_BASE)/mips/extra
+endif
+ifeq ($(BUILD_ARCH), PPC32)
+VPATH = $(BUILD_BASE) $(BUILD_BASE)/mips $(BUILD_BASE)/mips/extra
+endif
+
+default:
+	$(MAKE)  first
+	$(MAKE)  $(TARGETS)
+	$(MAKE)  last
+
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+endif
+
+last : make_deps
+
+exports: default
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_LIBRARY_LOC) $(TARGETS)
+
+install: default
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_LIBRARY_LOC) $(TARGETS)
+
+vlog.o: vlog.c libm.h 
+	$(CCFVLOG) -c $<
+
+vlog10.o: vlog10.c libm.h 
+	$(CCFVLOG) -c $<
+
+vsqrt.o: vsqrt.c libm.h 
+	$(CCFVSQRT) -c $<
+
+vlogf.o: vlogf.c libm.h 
+	$(CCFVLOG) -c $<
+
+vlog10f.o: vlog10f.c libm.h 
+	$(CCFVLOG) -c $<
+
+vsqrtf.o: vsqrtf.c libm.h 
+	$(CCFVSQRT) -c $<
+
+include $(COMMONRULES)
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+	$(ranlib) $@
+
+$(PROF_LIB): $(OBJECTS:%.o=%.pg.o)
+	$(ar) cru $@ $^
+	$(ranlib) $@
+
+$(DSO): $(OBJECTS:%.o=%.pic.o)
+ifeq ($(BUILD_OS), DARWIN)
+	$(ld) $(STD_DSO_LOADOPTS) -Wl,-x -o $@ $^ -lm -L.
+else
+	$(ld) $(STD_DSO_LOADOPTS) -Wl,-x -Wl,-soname=$(DSO) -Wl,--version-script=$(BUILD_BASE)/$(DSO:%.so.$(dso_version)=%.vs) -o $@ $^ -lm -L.
+endif
+	$(ln) -sf $(DSO) $(basename $(DSO))

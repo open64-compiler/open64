@@ -1,0 +1,290 @@
+#
+#  Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+# Modified from ./Makefile.  Most modifications are marked with "MOD" for future reference.
+#
+# Changes:
+# replace environment variable BUILDTYPE with BUILD_LIB_TYPE.
+# add a new environment variable: BUILD_BASE, which points to the root of source.
+# add a default rule to build version and libs.
+
+LIBOBJS = hugeutils.o version.o init.o morecore.o debug.o
+INSTALL_OBJ_LIBS = libhugetlbfs_open64.so libhugetlbfs_open64.a
+LDSCRIPT_TYPES = B BDT
+LDSCRIPT_DIST_ELF = elf32ppclinux elf64ppc elf_i386 elf_x86_64
+INSTALL_OBJSCRIPT = ld.hugetlbfs
+VERSION=version.h
+SOURCE = $(shell find $(BUILD_BASE) -maxdepth 1 -name '*.[h]')
+SOURCE += $(BUILD_BASE)/*.c $(BUILD_BASE)/*.lds $(BUILD_BASE)/Makefile
+NODEPTARGETS=<version.h> <clean>
+
+INSTALL = install
+
+LDFLAGS += -Wl,--no-undefined-version -Wl,--version-script=$(BUILD_BASE)/version.lds
+CFLAGS ?= -O2 -g -DOPEN64_MOD -DM_PAGE
+CFLAGS += -Wall -fPIC
+CPPFLAGS += -D__LIBHUGETLBFS__ -I.
+
+ARCH = $(shell uname -m | sed -e s/i.86/i386/)
+
+ifeq ($(ARCH),ppc64)
+CC64 = gcc -m64
+ELF64 = elf64ppc
+LIB64 = lib64
+LIB32 = lib
+ifneq ($(BUILD_LIB_TYPE),NATIVEONLY)
+CC32 = gcc
+ELF32 = elf32ppclinux
+endif
+else
+ifeq ($(ARCH),ppc)
+CC32 = gcc
+ELF32 = elf32ppclinux
+LIB32 = lib
+else
+ifeq ($(ARCH),i386)
+CC32 = gcc
+ELF32 = elf_i386
+LIB32 = lib
+else
+#MOD if not building native binaries on a 64-bit x86 machine, build 32-bit binaries instead.
+ifeq ($(ARCH),x86_64)
+ifneq ($(BUILD_LIB_TYPE),NATIVEONLY)
+CC32 = gcc -m32
+ELF32 = elf_i386
+LIB32 = lib
+else
+CC64 = gcc -m64
+ELF64 = elf_x86_64
+LIB64 = lib64
+endif
+else
+ifeq ($(ARCH),ia64)
+CC64 = gcc
+LIB64 = lib64
+CFLAGS += -DNO_ELFLINK
+else
+ifeq ($(ARCH),sparc64)
+CC64 = gcc -m64
+LIB64 = lib64
+CFLAGS += -DNO_ELFLINK
+else
+$(error "Unrecognized architecture ($(ARCH))")
+endif
+endif
+endif
+endif
+endif
+endif
+
+ifdef CC32
+OBJDIRS += obj32
+endif
+ifdef CC64
+OBJDIRS +=  obj64
+endif
+
+ifdef ELF32
+LIBOBJS32 = obj32/elflink.o obj32/sys-$(ELF32).o
+endif
+ifdef ELF64
+LIBOBJS64 = obj64/elflink.o obj64/sys-$(ELF64).o
+endif
+ifeq ($(ELF32),elf32ppclinux)
+LIBOBJS32 += obj32/$(ELF32).o
+endif
+ifeq ($(ELF64),elf64ppc)
+LIBOBJS64 += obj64/$(ELF64).o
+endif
+LIBOBJS32 += $(LIBOBJS:%=obj32/%)
+LIBOBJS64 += $(LIBOBJS:%=obj64/%)
+
+LIBDIR32 = $(PREFIX)/$(LIB32)
+LIBDIR64 = $(PREFIX)/$(LIB64)
+LDSCRIPTDIR = $(PREFIX)/share/libhugetlbfs/ldscripts
+BINDIR = $(PREFIX)/share/libhugetlbfs
+DOCDIR = $(PREFIX)/share/doc/libhugetlbfs
+
+EXTRA_DIST = \
+	README \
+	HOWTO \
+	LGPL-2.1
+
+INSTALL_LDSCRIPTS = $(foreach type,$(LDSCRIPT_TYPES),$(LDSCRIPT_DIST_ELF:%=%.x$(type)))
+
+ifdef V
+VECHO = :
+else
+VECHO = echo "	"
+ARFLAGS = rc
+.SILENT:
+endif
+
+DEPFILES = $(LIBOBJS:%.o=%.d)
+
+export ARCH
+export OBJDIRS
+export CC32
+export CC64
+export ELF32
+export ELF64
+export LIBDIR32
+export LIBDIR64
+
+# MOD
+default: ldscripts
+	make $(VERSION)
+	make libs
+
+.PHONY:	tests libs ldscripts always
+
+ldscripts: elf.xBD elf_1G.xBD
+
+elf.xBD: $(BUILD_BASE)/ldscripts/elf_$(BUILD_HOST_TAG).xBDT
+	sed '/htext.*0x00100005/s/0x00100005/0x01100005/' < $(BUILD_BASE)/ldscripts/elf_$(BUILD_HOST_TAG).xBDT > elf.xBD
+
+elf_1G.xBD: $(BUILD_BASE)/ldscripts/elf_$(BUILD_HOST_TAG)_1G.xBDT
+	sed '/htext.*0x00100005/s/0x00100005/0x01100005/' < $(BUILD_BASE)/ldscripts/elf_$(BUILD_HOST_TAG)_1G.xBDT > elf_1G.xBD
+
+
+
+libs:	$(foreach file,$(INSTALL_OBJ_LIBS),$(OBJDIRS:%=%/$(file)))
+
+# <Version handling> MOD
+$(VERSION): version always
+	@$(VECHO) VERSION
+	$(BUILD_BASE)/localversion version $(SOURCE)
+# </Version handling>
+
+version: $(BUILD_BASE)/version
+	@cp $(BUILD_BASE)/version version
+
+# Avoid implicit rule for source version file.
+$(BUILD_BASE)/version:
+	;
+
+snapshot: $(VERSION)
+
+.SECONDARY:
+
+obj32/%.o: $(BUILD_BASE)/%.c
+	@$(VECHO) CC32 $@
+	@mkdir -p obj32
+	$(CC32) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
+
+obj64/%.o: $(BUILD_BASE)/%.c
+	@$(VECHO) CC64 $@
+	@mkdir -p obj64
+	$(CC64) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
+
+obj32/%.o: $(BUILD_BASE)/%.S
+	@$(VECHO) AS32 $@
+	@mkdir -p obj32
+	$(CC32) $(CPPFLAGS) -o $@ -c $<
+
+obj64/%.o: $(BUILD_BASE)/%.S
+	@$(VECHO) AS64 $@
+	@mkdir -p obj64
+	$(CC64) $(CPPFLAGS) -o $@ -c $<
+
+obj32/libhugetlbfs_open64.a: $(LIBOBJS32)
+	@$(VECHO) AR32 $@
+	$(AR) $(ARFLAGS) $@ $^
+
+obj64/libhugetlbfs_open64.a: $(LIBOBJS64)
+	@$(VECHO) AR64 $@
+	$(AR) $(ARFLAGS) $@ $^
+
+obj32/libhugetlbfs_open64.so: $(LIBOBJS32)
+	@$(VECHO) LD32 "(shared)" $@
+	$(CC32) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ $(LDLIBS)
+
+obj64/libhugetlbfs_open64.so: $(LIBOBJS64)
+	@$(VECHO) LD64 "(shared)" $@
+	$(CC64) $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ $(LDLIBS)
+
+obj32/%.i:	$(BUILD_BASE)/%.c
+	@$(VECHO) CPP $@
+	$(CC32) $(CPPFLAGS) -E $< > $@
+
+obj64/%.i:	$(BUILD_BASE)/%.c
+	@$(VECHO) CPP $@
+	$(CC64) $(CPPFLAGS) -E $< > $@
+
+obj32/%.s:	$(BUILD_BASE)/%.c
+	@$(VECHO) CC32 -S $@
+	$(CC32) $(CPPFLAGS) $(CFLAGS) -o $@ -S $<
+
+obj64/%.s:	$(BUILD_BASE)/%.c
+	@$(VECHO) CC64 -S $@
+	$(CC64) $(CPPFLAGS) $(CFLAGS) -o $@ -S $<
+
+clobber: clean
+	@$(VECHO) CLOBBER
+
+clean:
+	@$(VECHO) CLEAN
+	rm -f *~ *.o *.so *.a *.d *.i core a.out version $(VERSION)
+	rm -rf obj*
+	rm -f ldscripts/*~
+	rm -f libhugetlbfs-sock
+	rm -f libhugetlbfs-sock
+	rm -f elf.xBD elf_1G.xBD
+
+%.d: %.c $(VERSION)
+	@$(CC) $(CPPFLAGS) -MM -MT "$(foreach DIR,$(OBJDIRS),$(DIR)/$*.o) $@" $< > $@
+
+# Workaround: Don't build dependencies for certain targets
+#    When the include below is executed, make will use the %.d target above to
+# generate missing files.  For certain targets (clean, version.h, etc) we don't
+# need or want these dependency files, so don't include them in this case.
+ifeq (,$(findstring <$(MAKECMDGOALS)>,$(NODEPTARGETS)))
+-include $(DEPFILES)
+endif
+
+obj32/install:
+	@$(VECHO) INSTALL32 $(LIBDIR32)
+	$(INSTALL) -d $(DESTDIR)$(LIBDIR32)
+	$(INSTALL) $(INSTALL_OBJ_LIBS:%=obj32/%) $(DESTDIR)$(LIBDIR32)
+
+obj64/install:
+	@$(VECHO) INSTALL64 $(LIBDIR64)
+	$(INSTALL) -d $(DESTDIR)$(LIBDIR64)
+	$(INSTALL) $(INSTALL_OBJ_LIBS:%=obj64/%) $(DESTDIR)$(LIBDIR64)
+
+objscript.%: %
+	@$(VECHO) OBJSCRIPT $*
+	sed "s!### SET DEFAULT LDSCRIPT PATH HERE ###!HUGETLB_LDSCRIPT_PATH=$(LDSCRIPTDIR)!" < $< > $@
+
+install: libs $(OBJDIRS:%=%/install) $(INSTALL_OBJSCRIPT:%=objscript.%)
+	@$(VECHO) INSTALL
+	$(INSTALL) -d $(DESTDIR)$(LDSCRIPTDIR)
+	$(INSTALL) -m 644 $(INSTALL_LDSCRIPTS:%=ldscripts/%) $(DESTDIR)$(LDSCRIPTDIR)
+	$(INSTALL) -d $(DESTDIR)$(BINDIR)
+	for x in $(INSTALL_OBJSCRIPT); do \
+		$(INSTALL) -m 755 objscript.$$x $(DESTDIR)$(BINDIR)/$$x; done
+	cd $(DESTDIR)$(BINDIR) && ln -sf ld.hugetlbfs ld
+
+install-docs:
+	$(INSTALL) -d $(DESTDIR)$(DOCDIR)
+	for x in $(EXTRA_DIST); do $(INSTALL) -m 755 $$x $(DESTDIR)$(DOCDIR)/$$x; done
+

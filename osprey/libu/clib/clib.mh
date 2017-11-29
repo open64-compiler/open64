@@ -1,0 +1,135 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* USMID @(#) libu/clib/clib.mh	92.0	10/08/98 14:57:41 */
+
+
+LIB_SRC_INFO += \
+		Y:clib/access.c \
+		U:clib/alarm.c \
+		U:clib/atexit.c \
+		U:clib/brk.c \
+		Y:clib/chdir.c \
+		Y:clib/chmod.c \
+		Y:clib/chown.c \
+		Y:clib/chroot.c \
+		U:clib/clibcall.c \
+		U:clib/close.c \
+		1:clib/cpselect.c \
+		Y:clib/creat.c \
+		U:clib/dup.c \
+		A:clib/exit.c \
+		U:clib/fclose.c \
+		U:clib/fcntl.c \
+		U:clib/fdopen.c \
+		U:clib/fflush.c \
+		U:clib/fgets.c \
+		U:clib/fileno.c \
+		U:clib/fopen.c \
+		1HE:clib/fork.c \
+		U:clib/fputs.c \
+		U:clib/fread.c \
+		U:clib/freopen.c \
+		U:clib/fseek.c \
+		U:clib/ftell.c \
+		U:clib/fwrite.c \
+		U:clib/getcwd.c \
+		U:clib/getegid.c \
+		Y:clib/getenv.c \
+		U:clib/geteuid.c \
+		U:clib/getgid.c \
+		U:clib/gethost.c \
+		U:clib/getopt.c \
+		U:clib/getpgrp.c \
+		U:clib/getpid.c \
+		U:clib/getppid.c \
+		U:clib/getuid.c \
+		U:clib/ialloc.c \
+		U:clib/ioctl.c \
+		U:clib/kill.c \
+		U:clib/limit.c \
+		Y:clib/link.c \
+		U:clib/lseek.c \
+		U:clib/mknod.c \
+		U:clib/mktemp.c \
+		1:clib/newexit.c \
+		1:clib/newgetpid.c \
+		1:clib/newgetppid.c \
+		U:clib/nice.c \
+		U:clib/nicem.c \
+		U:clib/nlimit.c \
+		Y:clib/open.c \
+		U:clib/pause.c \
+		U:clib/pipe.c \
+		1HE:clib/plock.c \
+		1:clib/ptrace.c \
+		U:clib/putenv.c \
+		U:clib/reada.c \
+		Y:clib/rename.c \
+		U:clib/resume.c \
+		U:clib/sbreak.c \
+		U:clib/sbrk.c \
+		1:clib/setgid.c \
+		U:clib/setpgrp.c \
+		1HE:clib/setuid.c \
+		1:clib/shutdreg.c \
+		1:clib/shutdsav.c \
+		U:clib/sigctl.c \
+		U:clib/signal.c \
+		U:clib/sleep.c \
+		Y:clib/stat.c \
+		U:clib/suspend.c \
+		U:clib/sync.c \
+		U:clib/tempnam.c \
+		U:clib/time.c \
+		U:clib/times.c \
+		U:clib/tmpfile.c \
+		U:clib/trunc.c \
+		U:clib/ulimit.c \
+		U:clib/umask.c \
+		Y:clib/uname.c \
+		Y:clib/unlink.c \
+		U:clib/ustat.c \
+		Y:clib/utime.c \
+		1HE:clib/wait.c \
+		U:clib/writea.c \
+		1D:clib/c1/ssbreak.c \
+		1D:clib/c1/ssread.c \
+		1D:clib/c1/sswrite.c \
+
+LIB_DIRS_INFO += \
+		1M:clib/c1 \
+		A:clib \
+/**/

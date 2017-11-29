@@ -1,0 +1,699 @@
+# -*- Makefile -*-
+#
+#
+#  Copyright (C) 2009, 2012 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#ident "$Revision: 1.1.1.1 $"
+# 
+# This file has been heavily hacked for building on Linux
+#
+# Common makefile definitions.
+#
+# Notes:
+#   - Definitions with the same names only need to be passed on the
+#     command line of recursive makes if they would be redefined by
+#     the sub-makefile.  Definitions passed on the command line are
+#     not reset by the environment or the definitions in the makefile.
+#   - C++ style macros are deprecated and will be removed when out of use.
+#     They must be interwoven in definitions to keep upward compatibility.
+#
+#   - The contents of this header are changed based on some variables
+#     should be defined BEFORE including this file:
+#     OBJECT_STYLE - define basic ABI/ISA that should be used to create product.
+#	this also sets LD search paths, C/C++/Fortran/Pascal options.
+#     NO_OBJECT_STYLE - disable all this new OBJECT_STYLE business.
+#	Note that if one does this all the info in releasedefs about
+#	compiler versions, default compilation modes etc will be ignored.
+#	Only smake-files can do this.
+#     NO_LSRCH - do not set any library searching rules for LD options.
+#     ASTYLE  - by default, the ABI/ISA for C is used for assembler -
+#	setting ASTYLE (to be assembler options) can override the OBJECT_STYLE
+#	to permit fine-tuning of asm code.
+#     NO_STARTOPT - don't set any of the DSO start option macros - this
+#	will keep the global so_locations files from being updated.
+#
+COMMONRULES= $(BUILD_TOT)/linux/make/gcommonrules
+COMMONTARGS= clobber clean rmtargets fluff tags
+
+#
+# Make tools, i.e., programs which must exist on both native and cross
+# development systems to build the software.
+#
+
+SIZEDEFS = -D_LONGLONG -D_MIPS_SZINT=32
+
+PTRSIZE = 32
+ifeq ($(BUILD_ABI), 64BIT)
+ PTRSIZE = 64
+endif
+ifeq ($(BUILD_ABI), I64BIT)
+ PTRSIZE = 64
+endif
+ifeq ($(BUILD_ABI), W64BIT)
+ PTRSIZE = 64
+endif
+ifeq ($(PTRSIZE), 32)
+ SIZEDEFS += -D_MIPS_SZPTR=32 -D_MIPS_SZLONG=32
+else
+ SIZEDEFS += -D_MIPS_SZPTR=64
+ ifeq ($(BUILD_ABI), W64BIT)
+  # W64BIT is win64, which has 64bit ptr but 32bit long
+  SIZEDEFS += -D_MIPS_SZLONG=32 -DWIN64
+ else
+  SIZEDEFS += -D_MIPS_SZLONG=64 -D_LP64
+ endif
+endif
+
+ifneq ($(BUILD_ARCH), MIPS)
+ENDIAN = -D_MIPSEL
+else
+ENDIAN = -D_MIPSEB
+endif
+
+
+ifeq ($(BUILD_COMPILER), GNU)
+  ASNAME = gcc 
+  ifeq ($(BUILD_HOST), PPC32)
+    CCNAME = gcc -DHOST_PPC32 
+    C++NAME = g++ -DHOST_PPC32 
+  else
+    CCNAME = gcc 
+    C++NAME = g++ 
+  endif
+  F90 = gfortran -fsecond-underscore
+  F90_RTLIBS = -Wl,-Bstatic -lgfortran -Wl,-Bdynamic
+  #F90 = ifort -assume 2underscores
+  #F90_RTLIBS = $(INTEL_COMPILER_FC_HOME)/lib/libifcore.a $(INTEL_COMPILER_FC_HOME)/lib/libimf.a
+
+  ifeq ($(BUILD_TARGET), X8664)
+    # only 64bit libraries set the BUILD_ARCH to X8664 
+    #
+    CCNAME  += 
+    C++NAME +=  
+    F90 +=
+  endif
+  ifeq ($(BUILD_TARGET), IA32)
+    # only 64bit libraries set the BUILD_ARCH to X8664 
+    CCNAME  +=
+    C++NAME +=
+    ASNAME +=
+    F90 +=
+  endif
+  ifeq ($(BUILD_TARGET), IA64)
+    # only 64bit libraries set the BUILD_ARCH to X8664 
+    CCNAME  += 
+    C++NAME +=  
+    F90 += 
+  endif
+  ifeq ($(BUILD_TARGET), NVISA)
+    ROOT_DIR := $(dir $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST)))/../../../..
+    ifneq ($(BUILD_OS), LINUX)
+      ifneq ($(BUILD_OS), DARWIN)
+        ifndef USE_NATIVE
+          USE_CYGWIN := 1
+        endif
+      endif
+    endif
+    include $(ROOT_DIR)/build/Platform.mk
+ 
+    CCNAME  = $(GCC_BIN)gcc
+    C++NAME = $(GCC_BIN)g++
+  endif
+
+  AR      = ar
+  F77 = $(F90)
+endif # GNU
+
+ifeq ($(BUILD_COMPILER), SLC)
+  CCNAME = $(TOOLROOT)/usr/bin/slcc
+  C++NAME = $(TOOLROOT)/usr/bin/slCC
+endif
+
+ifeq ($(BUILD_COMPILER), PSC)
+  ASNAME = pathcc 
+  CCNAME = pathcc
+  C++NAME = pathCC
+  F90 = pathf90  
+  F77 = $(F90)
+  AR      = ar
+endif
+
+ifeq ($(BUILD_COMPILER), OSP)
+  ASNAME = opencc
+  CCNAME = opencc
+  C++NAME = openCC
+  F90 = openf90
+  F90_RTLIBS = -Wl,-Bstatic -lfortran -Wl,-Bdynamic
+  F77 = $(F90)
+  AR      = ar
+endif
+
+ifeq ($(BUILD_COMPILER), SELF)
+  ASNAME = $(COMPILER_TARG_DIR)/driver/opencc
+  CCNAME = $(COMPILER_TARG_DIR)/driver/opencc
+  C++NAME = $(COMPILER_TARG_DIR)/driver/openCC
+  F90 = $(COMPILER_TARG_DIR)/driver/openf90
+  F90_RTLIBS = -Wl,-Bstatic -lfortran -Wl,-Bdynamic
+
+  ASNAME += -run-build=$(TOP_BUILDDIR)
+  CCNAME += -run-build=$(TOP_BUILDDIR) -L$(BUILD_AREA)/libopen64rt -L$(BUILD_AREA)/libacml_mv
+  C++NAME += -run-build=$(TOP_BUILDDIR)
+  F90 += -run-build=$(TOP_BUILDDIR)
+  F77 = $(F90)
+  AR      = ar
+endif
+
+ifeq ($(BUILD_ARCH), IA32)
+# only 32bit libraries set the BUILD_TARGET to IA32
+  CCNAME  += -m32
+  C++NAME += -m32
+  F90 += -m32
+  ifeq ($(BUILD_COMPILER), GNU)
+    # Adding -mfpmath=sse -msse, to prevent compiler built
+    # 32 or 64 bit from producing different code in GRA.
+    # Note that -ffloat-store should be just as effective
+    # but -mfpmath=sse -msse produces better code.
+    CCNAME  += -mfpmath=sse -msse2
+    C++NAME += -mfpmath=sse -msse2
+    F90 += -mfpmath=sse -msse2
+  endif
+endif
+
+ifeq ($(BUILD_ARCH), X8664)
+  # both the 64bit libraries and executables set the BUILD_TARGET to X8664
+  # we should distinguish them
+  CCNAME  += -m64 
+  C++NAME += -m64 
+  F90 += -m64
+endif
+
+ifeq ($(BUILD_ARCH), IA64)
+  CCNAME  += 
+  C++NAME += 
+  F90 += 
+endif
+
+AS	= $(ASNAME) -D_SGI_SOURCE
+
+C++	= $(C++NAME) -D_SGI_SOURCE -D_LANGUAGE_C_PLUS_PLUS
+
+CC	= $(CCNAME) -D_SGI_SOURCE -D_LANGUAGE_C
+
+AS	+= -funsigned-char -D__GNU_BUG_WORKAROUND
+CC	+= -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND
+C++	+= -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND -D_NOTHREADS
+
+ifeq ($(BUILD_OS), MINGW)
+  CC	+= -mno-cygwin
+  C++	+= -mno-cygwin
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+# FUTURE_SUPPORT is items that will not be enabled in current release
+  CC	+= $(GCC_OPTS) -DFUTURE_SUPPORT
+  C++	+= $(GXX_OPTS) -DFUTURE_SUPPORT
+ endif
+ ifeq ($(BUILD_ARCH), IA32)
+  ifeq ($(BUILD_ABI), I64BIT)
+   AS += -m64
+   CC += -m64
+   C++ += -m64
+  endif
+endif
+
+C++C	= $(C++)
+CXX	= $(C++)
+ECHO	= echo
+FC	= $(F77)
+LEX	= flex
+LD	= $(CCNAME)
+
+ifeq ($(BUILD_TARGET), NVISA)
+CSH	= $(TOOL_PREFIX)tcsh -f
+LINT	= $(TOOL_PREFIX)glint
+LN	= $(TOOL_PREFIX)ln
+MKDIR	= $(TOOL_PREFIX)mkdir
+NM	= $(TOOL_PREFIX)nm
+RANLIB	= $(TOOL_PREFIX)ranlib
+SIZE	= $(TOOL_PREFIX)size
+STRIP	= $(TOOL_PREFIX)strip
+YACC    = $(TOOL_PREFIX)yacc
+BISON   = $(TOOL_PREFIX)bison
+#BISON   = $(YACC)
+
+else
+CSH	= tcsh -f
+RANLIB  = ranlib
+LINT    = glint
+LN	= ln
+MKDIR	= mkdir
+NM      = nm
+SHELL   = sh
+SIZE    = size
+STRIP   = strip
+YACC    = yacc
+BISON   = bison
+endif # TARG_NVISA
+
+AR     = ar
+AWK	= awk
+M4	= m4
+
+#
+# The native C compiler, which must be used when building programs that are
+# run on the build host from a makefile.
+#
+ifeq ($(BUILD_ABI),I32BIT)
+HOST_ABIFLAGS = -D_MIPS_SZPTR=32 -D_MIPS_SZINT=32 -D_MIPS_SZLONG=32
+else
+HOST_ABIFLAGS = -D_MIPS_SZPTR=64 -D_MIPS_SZINT=32 -D_MIPS_SZLONG=64
+endif
+
+HOST_CC  = gcc -funsigned-char -D_SGI_SOURCE -D__GNU_BUG_WORKAROUND -D_LONGLONG -D_LANGUAGE_C $(HOST_ABIFLAGS)
+HOST_C++ = g++ -funsigned-char -D_SGI_SOURCE -D__GNU_BUG_WORKAROUND -D_NOTHREADS -D_LONGLONG -D_LANGUAGE_C_PLUS_PLUS $(HOST_ABIFLAGS)
+HOST_CXX = $(HOST_C++)
+
+#
+# Default optimizer, common global options, and make-depend options.
+#
+ifndef OPTIMIZER
+OPTIMIZER  = -O
+endif
+MKDEPOPT   = -MMD
+
+CSTYLE=
+
+GCOPTS	= $(CSTYLE) $(OPTIMIZER) $(ENDIAN) $(SIZEDEFS) $(MKDEPOPT)
+GCDEFS	=
+GCINCS  = $(INCLDIRS)
+
+#
+# Cc flags, composed of:
+#	variable (V*) (set on the command line),
+#	local (L*) (defined in the makefile),
+#	global (defined in this file),
+# parts, in that order.  This ordering has been used so that the variable or
+# locally specified include directories are searched before the globally
+# specified ones.
+#
+CFLAGS	= $(VCFLAGS) $(LCFLAGS) $(GCFLAGS)
+
+#
+# Each of these three components is divided into defines (-D's and -U's),
+# includes (-I's), and other options.  By segregating the different
+# classes of flag to cc, the defines (CDEFS) and includes (CINCS) can be
+# easily given to other programs, e.g., lint.
+#
+# Notes:
+#   - The local assignments should be to LCOPTS, LCDEFS, and LCINCS, not to
+#     LCFLAGS, although CFLAGS will be correctly set if this is done.
+#   - If a program cannot be optimized, it should override the setting of
+#     OPTIMIZER with a line such as "OPTIMIZER=" in its make file.
+#
+VCFLAGS	= $(VCDEFS) $(VCINCS) $(VCOPTS)
+LCFLAGS	= $(LCDEFS) $(LCINCS) $(LCOPTS)
+GCFLAGS	= $(GCDEFS) $(GCINCS) $(GCOPTS)
+
+COPTS	= $(VCOPTS) $(LCOPTS) $(GCOPTS)
+CDEFS	= $(VCDEFS) $(LCDEFS) $(GCDEFS)
+CINCS	= $(VCINCS) $(LCINCS) $(GCINCS)
+
+#
+# CXX flags are decomposed using the same hierarchy as C flags.
+#
+C++FLAGS  = $(VCXXFLAGS) $(LCXXFLAGS) $(GCXXFLAGS)
+CXXFLAGS  = $(C++FLAGS)
+
+VCXXFLAGS = $(VCXXDEFS) $(VCXXINCS) $(VCXXOPTS) $(VC++FLAGS)
+LCXXFLAGS = $(LCXXDEFS) $(LCXXINCS) $(LCXXOPTS) $(LC++FLAGS)
+GCXXFLAGS = $(GC++FLAGS)
+
+CXXOPTS   = $(VCXXOPTS) $(LCXXOPTS) $(GCXXOPTS) $(C++OPTS)
+CXXDEFS   = $(VCXXDEFS) $(LCXXDEFS) $(GCXXDEFS) $(C++DEFS)
+CXXINCS   = $(VCXXINCS) $(LCXXINCS) $(GCXXINCS) $(C++INCS)
+
+VC++FLAGS = $(VC++DEFS) $(VC++INCS) $(VC++OPTS)
+LC++FLAGS = $(LC++DEFS) $(LC++INCS) $(LC++OPTS)
+GC++FLAGS = $(GC++DEFS) $(GC++INCS) $(GC++OPTS)
+
+C++OPTS   = $(VC++OPTS) $(LC++OPTS) $(GC++OPTS)
+C++DEFS   = $(VC++DEFS) $(LC++DEFS) $(GC++DEFS)
+C++INCS   = $(VC++INCS) $(LC++INCS) $(GC++INCS)
+
+GC++OPTS  = $(CSTYLE) $(OPTIMIZER) $(ENDIAN) $(SIZEDEFS) $(MKDEPOPT)
+GC++INCS  = $(INCLDIRS)
+GC++DEFS  = 
+
+#
+# Loader flags, composed of library (-l's) and option parts, with
+# the libraries appearing last.  Both of these are divided into variable,
+# local, and global parts.  The composition of LDFLAGS is done in the
+# other "direction" from CFLAGS so that all the -L's, which are part of
+# LDOPTS, appear before any of the -l's, which are part of LDLIBS.
+# Another benefit of segregating the libraries from the remaining of the
+# loader options is that the libraries alone can easily be given to
+# another program, e.g., lint.
+#
+# Notes:
+#   - -s belongs in GCOPTS or in the IDB program that does the actual
+#     installation.
+#
+#if !defined(NO_LSRCH)
+LSRCH_N32_M3 =  -L$(ROOT)/usr/lib32/mips3 -L$(ROOT)/usr/lib32
+LSRCH_N32_M4 =  -L$(ROOT)/usr/lib32/mips4 -L$(ROOT)/usr/lib32
+LSRCH_64_M3 =   -L$(ROOT)/usr/lib64/mips3 -L$(ROOT)/usr/lib64
+LSRCH_64_M4 =   -L$(ROOT)/usr/lib64/mips4 -L$(ROOT)/usr/lib64
+#endif
+
+GLDOPTS=
+GLDLIBS= 
+GLDOPTS_I32   =
+GLDOPTS_N32_M3= -mips3 -n32 $(LD_QUICKSTART_INFO) -nostdlib $(LSRCH_N32_M3)
+GLDOPTS_N32_M4= -mips4 -n32 $(LD_QUICKSTART_INFO) -nostdlib $(LSRCH_N32_M4)
+GLDOPTS_R32   = -r32 $(LD_QUICKSTART_INFO) -nostdlib $(LSRCH_R32)
+GLDOPTS_64_M3 = -mips3 -64 $(LD_QUICKSTART_INFO) -nostdlib $(LSRCH_64_M3)
+GLDOPTS_64_M4 = -mips4 -64 $(LD_QUICKSTART_INFO) -nostdlib $(LSRCH_64_M4)
+
+
+#
+# LDFLAG layout
+#
+LDFLAGS=
+# must put library paths before LDLIBS
+ifeq ($(BUILD_COMPILER), GNU)
+ifeq ($(BUILD_TARGET), NVISA)
+ LDFLAGS += $(GCC_LINKOPTS)
+endif
+endif
+LDFLAGS	+= $(LDOPTS) $(LDLIBS) $(ENDIAN)
+LDOPTS	= $(VLDOPTS) $(LLDOPTS) $(GLDOPTS)
+LDLIBS	= $(VLDLIBS) $(LLDLIBS) $(GLDLIBS)
+
+LDOPTS_I32   =$(VLDOPTS) $(LLDOPTS) $(LLDOPTS_I32) $(GLDOPTS_I32)
+LDOPTS_N32   =$(VLDOPTS) $(LLDOPTS) $(LLDOPTS_N32_M3) $(GLDOPTS_N32)
+LDOPTS_N32_M3=$(VLDOPTS) $(LLDOPTS) $(LLDOPTS_N32_M3) $(GLDOPTS_N32_M3)
+LDOPTS_N32_M4=$(VLDOPTS) $(LLDOPTS) $(LLDOPTS_N32_M4) $(GLDOPTS_N32_M4)
+LDOPTS_64    =$(VLDOPTS) $(LLDOPTS) $(LLDOPTS_64_M3) $(GLDOPTS_64)
+LDOPTS_64_M3 =$(VLDOPTS) $(LLDOPTS) $(LLDOPTS_64_M3) $(GLDOPTS_64_M3)
+LDOPTS_64_M4 =$(VLDOPTS) $(LLDOPTS) $(LLDOPTS_64_M4) $(GLDOPTS_64_M4)
+
+
+#
+# Loader options for making shared objects. By default, shared objects
+# are all registered in a global location file.
+# Redefine $(DSOSTARTOPT) to not update the registry file
+#
+# By default the DT_SONAME section is set to the name of the target shared
+# object. Redefine $(DSONAMEOPT) to allow the DT_SONAME section to be
+# something other than the targeted shared object name.
+#
+# DSOs are typically all made in one top level makefile, in place, rather
+#	than in subdirectories - therefore all the various flags must be
+#	present with no conditionals
+#
+#
+# To build a DSO that doesn't use lib*rules:
+#
+# $(LD) $(LDDSOOPTS) $(LDOPTS) $(OBJECTS) $(LDLIBS) -o $@
+#
+# Note that LDOPTS must be before the OBJECTS and LDLIBS must be after.
+# For local .so's make it easy to not update any registry files
+#
+
+DSONAMEOPT  =
+
+#
+# SGI specific versioning. Redefine $(DSOVERSION) to change version number.
+# Redefine $(DSOVERSIONOPT) to skip versioning.
+#
+DSOVERSION  = sgi1.0
+DSOVERSIONOPT  = -set_version $(DSOVERSION)
+
+LDDSOOPTS= $(VLDDSOOPTS) $(LLDDSOOPTS) $(GLDDSOOPTS)
+LDDSOOPTS_I32= $(LDDSOOPTS)
+LDDSOOPTS_N32= $(LDDSOOPTS) $(GLDDSOOPTS_N32)
+LDDSOOPTS_632= $(LDDSOOPTS) $(GLDDSOOPTS_64)
+
+GLDDSOOPTS  = -shared 
+GLDDSOOPTS += $(DSONAMEOPT)
+
+GLDDSOOPTS_N32  = $(LD_NO_UNRESOLVED) $(LD_QUICKSTART_INFO) \
+		$(DSOSTARTOPT_N32) $(DSOVERSIONOPT)
+GLDDSOOPTS_64   = $(LD_NO_UNRESOLVED) $(LD_QUICKSTART_INFO) \
+		$(DSOSTARTOPT_64) $(DSOVERSIONOPT)
+
+#
+# F77 flags are just like cc flags.
+#
+FFLAGS= $(VFFLAGS) $(LFFLAGS) $(GFFLAGS)
+
+VFFLAGS	= $(VF77DEFS) $(VF77INCS) $(VF77OPTS)
+LFFLAGS	= $(LF77DEFS) $(LF77INCS) $(LF77OPTS)
+GFFLAGS	= $(GF77DEFS) $(GF77INCS) $(GF77OPTS)
+
+F77OPTS	= $(VF77OPTS) $(LF77OPTS) $(GF77OPTS)
+F77DEFS	= $(VF77DEFS) $(LF77DEFS) $(GF77DEFS)
+F77INCS	= $(VF77INCS) $(LF77INCS) $(GF77INCS)
+
+GF77OPTS= $(CSTYLE) $(OPTIMIZER) $(ENDIAN) $(SIZEDEFS)
+GF77DEFS= $(GCDEFS)
+GF77INCS= $(GCINCS)
+
+#
+# as flags are just like cc flags.
+# By default, ASTYLE is the same as CSTYLE, but some may need to make
+# the asm more aggressive than 'C' and can set ASTYLE. Users of 'make'
+# always get ASTYLE == CSTYLE
+#
+ifndef ASTYLE
+ASTYLE=$(CSTYLE)
+endif
+
+ASFLAGS	= $(VASFLAGS) $(LASFLAGS) $(GASFLAGS)
+
+VASFLAGS = $(VASDEFS) $(VASINCS) $(VASOPTS)
+LASFLAGS = $(LASDEFS) $(LASINCS) $(LASOPTS)
+GASFLAGS = $(GASDEFS) $(GASINCS) $(GASOPTS)
+
+ASOPTS	= $(VASOPTS) $(LASOPTS) $(GASOPTS)
+ASDEFS	= $(VASDEFS) $(LASDEFS) $(GASDEFS)
+ASINCS	= $(VASINCS) $(LASINCS) $(GASINCS)
+
+GASOPTS	= $(ASTYLE) $(OPTIMIZER) $(ENDIAN) $(SIZEDEFS) $(MKDEPOPT)
+GASDEFS	= $(GCDEFS)
+GASINCS	= $(GCINCS)
+
+#
+# The install command to use.
+#
+INSTALL	= install
+
+#
+# MKDEPFILE is the name of the dependency database, included by commonrules.
+#
+MKDEPFILE = Makedepend
+
+#
+# Flags to handle yacc and lex automatic dependency generation
+#
+YACCMKDEPFLAGS=
+LEXMKDEPFLAGS=
+
+#
+# Include directory shorthands, used in CFLAGS and LDFLAGS components.
+#
+ifneq ($(BUILD_OS), IRIX)
+INCLDIRS = -I$(BUILD_AREA)/include -I$(BUILD_OBJ_DIR) -I$(TARGDIR)/include -I$(BUILD_TOT)/include
+else
+INCLDIRS = -I$(ROOT)/usr/include
+endif
+
+#
+# Convenient command macros that include the flags macros.
+#
+# You should always invoke make in makefiles via $(MAKE), as make passes
+# all command-line variables through the environment to sub-makes.
+#
+# Never use just $(CCF), etc. in rules that link executables; LDFLAGS
+# needs to be included after your objects in the command line.
+#
+ASF	= $(AS) $(ASFLAGS)
+C++F	= $(CXX) $(CXXFLAGS)
+CXXF	= $(C++F)
+CCF	= $(CC) $(CFLAGS)
+F77F	= $(F77) $(FFLAGS)
+F90F	= $(F90) $(FFLAGS)
+LDF	= $(LD) $(LDFLAGS)
+LEXF	= $(LEX) $(LFLAGS)
+YACCF	= $(YACC) $(YFLAGS)
+
+#
+# Rule macros for nonterminal makefiles that iterate over subdirectories,
+# making the current target.  Set *SUBDIRS to the relevant list of kids.
+#
+# Set NOSUBMESG to any value to suppress a warning that subdirectories 
+# are not present. This is useful with mandefs/rules
+#
+SUBDIR_MAKERULE= \
+	if test ! -d $$d; then \
+		if test "$(NOSUBMESG)" = "" ; then \
+			echo "SKIPPING $$d: No such directory."; \
+		fi \
+	else \
+		echo "	(cd $$d; $(MAKE) $${RULE:=$@})"; \
+		(cd $$d; ${MAKE} $${RULE:=$@}); \
+	fi
+
+SUBDIRS_MAKERULE= \
+	@for d in $(SUBDIRS); do $(SUBDIR_MAKERULE); done
+
+HEADERS_SUBDIRS_MAKERULE= \
+	@for d in $(HEADERS_SUBDIRS); do $(SUBDIR_MAKERULE); done
+
+EXPORTS_SUBDIRS_MAKERULE= \
+	@for d in $(EXPORTS_SUBDIRS); do $(SUBDIR_MAKERULE); done
+
+#
+# Override the system.mk rule for assembly files.
+#
+.s.o :
+	$(AS) $(ASFLAGS) -c $<
+
+#
+# Library .c.o rule macros -- someday, cc -r will do the right thing and
+# the G-number will be happily forgotten.
+#
+LIBRARY_AS_MAKERULE= \
+	$(ASF) -c $<
+
+LIBRARY_CC_MAKERULE= \
+	$(CCF) -c $<
+
+LIBRARY_CXX_MAKERULE= \
+	$(CXXF) -c $<
+
+LIBRARY_C++_MAKERULE= \
+	$(C++F) -c $<
+
+#
+# The macro naming commonrules' always-unsatisfied target, which is useful
+# in directory dependencies to guarantee that even directories having future
+# mtimes due to timewarps will be "made".
+#
+_FORCE=$(COMMONPREF)_force
+
+#
+# Permit dependencies for Null-suffix targets
+#
+.MAKEOPTS: -N
+
+
+#
+# Convenience file list macros:
+#	- Commondefs defines the following lists: SOURCES, enumerating all
+#	  source files; OBJECTS, the .o files derived from compilable source;
+#	  and DIRT, which lists intermediates and temporary files to be
+#	  removed by clean.
+#	- The including (parent) makefile may define source file lists for
+#	  the standard suffixes: CFILES for .c, ASFILES for .s, YFILES for
+#	  .y, etc.  We combine all such lists into SOURCES.  The including
+#	  makefile need not define CFILES &c before including commondefs.
+#
+# CXXFILES=$(C++FILES)
+SOURCES=$(HFILES) $(ASFILES) $(CXXFILES) $(CFILES) $(EFILES) $(FFILES) \
+	$(LFILES) $(PFILES) $(RFILES) $(SHFILES) $(YFILES)
+
+ASO1=$(ASFILES:.s=.o)
+ASO2=$(ASO1:.S=.o)
+ASOALL=$(ASO2)
+CXXO1=$(CXXFILES:.c++=.o)
+CXXO2=$(CXXO1:.cxx=.o)
+CXXO3=$(CXXO2:.C=.o)
+CXXOALL=$(CXXO3)
+YO1=$(YFILES:.y=.o)
+YO2=$(YO1:.yxx=.o)
+YO3=$(YO2:.Y=.o)
+YOALL=$(YO3)
+LO1=$(LFILES:.l=.o)
+LO2=$(LO1:.lxx=.o)
+LO3=$(LO2:.L=.o)
+LOALL=$(LO3)
+OBJECTS=$(ASOALL) $(CXXOALL) $(CFILES:.c=.o) $(EFILES:.e=.o) \
+	$(FFILES:.f=.o) $(LOALL) $(PFILES:.p=.o) $(RFILES:.r=.o) \
+	$(YOALL) 
+
+#
+# Makefiles should set LDIRT only 
+#
+# Make include files that extend commondefs should set XDIRT for dirt
+# generated by the extension. It should also provide an XfooDIRT macro for
+# the benefit of any extensions to itself. The intent is that the user's
+# Makefile will just worry about its own dirt.
+#
+DIRT=$(GDIRT) $(VDIRT) $(LDIRT) $(XDIRT)
+GDIRT=Makedepend *.[douea] *.so *.so.[0-9] a.out core lex.yy.[co] y.tab.[cho] $(_FORCE) ar.tmp.*
+ifeq ($(BUILD_OS), MINGW)
+GDIRT += *.exe
+endif
+
+#
+#  This exitop should be used by those who are building the FTR database.
+#  The reason for this is that inst will sort a 'sort -u' on the exitops,
+#  so if all of them are identical, we only do the work once.
+#  A typical install line that uses the FTR_EXITOP_IDB should look similar
+#  to this:
+#
+#  $(INSTALL) $(FTR_EXITOP_IDB) -idb $(IDB_TAG) -m 444 -F $(FTRDIR) sgidemos.ftr#
+#  IDB_TAG      - is defined in the spec file for a given subsystem.
+#  FTRDIR       - is the directory usr/lib/filetype/{install,system,default}
+#  sgidemos.ftr - is the ftr file that goes into FTRDIR.
+#
+FTR_EXITOP_IDB= -idb 'exitop( " \
+	if [ -r \$$rbase/usr/lib/filetype/Makefile ]; then \
+	  chroot $$rbase /bin/sh -c \"cd usr/lib/filetype; make > /dev/null\"; \
+	fi" )'
+
+#
+# Local definitions.  These are used for debugging purposes.  Make sure that
+# the product builds properly without the local definitions, unless you check
+# in the local definitions!
+#
+# To access a localdefs file outside the current directory, set LOCALDEFS on
+# the command line, and likewise for localrules.  Or you can have localdefs
+# just sinclude the appropriate other include file.
+#
+LOCALDEFS  = ./localdefs
+LOCALRULES = ./localrules
+
+-include $(LOCALDEFS)

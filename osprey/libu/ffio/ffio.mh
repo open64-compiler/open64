@@ -1,0 +1,408 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* USMID @(#) libu/ffio/ffio.mh	92.5	06/18/99 11:14:57 */
+
+
+LIB_SRC_INFO += \
+		A:ffio/_ffopen.c \
+		UI:ffio/asgrls.c \
+		A:ffio/binhex.c \
+		U:ffio/blxfcntl.c \
+		U:ffio/blxopen.c \
+		U:ffio/blxread.c \
+		U:ffio/blxwrite.c \
+		UI:ffio/ccaclearpg.c \
+		U:ffio/ccaclosdiag.c \
+		UI:ffio/ccaclose.c \
+		U:ffio/ccadmpcache.c \
+		UI:ffio/ccafcntl.c \
+		UI:ffio/ccaflush.c \
+		UI:ffio/ccagetblk.c \
+		UI:ffio/ccagetblkp.c \
+		U:ffio/ccalistio.c \
+		UI:ffio/ccaopen.c \
+		UI:ffio/ccardabuf.c \
+		UI:ffio/ccaread.c \
+		U:ffio/ccareada.c \
+		UI:ffio/ccaseek.c \
+		UI:ffio/ccasyncpage.c \
+		UI:ffio/ccatracker.c \
+		UI:ffio/ccaweod.c \
+		UI:ffio/ccawrabuf.c \
+		UI:ffio/ccawrite.c \
+		U:ffio/ccawritea.c \
+		UI:ffio/cchclose.c \
+		UI:ffio/cchfcntl.c \
+		UI:ffio/cchgetblk.c \
+		UI:ffio/cchopen.c \
+		UI:ffio/cchrdabuf.c \
+		UI:ffio/cchread.c \
+		UI:ffio/cchseek.c \
+		UI:ffio/cchweod.c \
+		UI:ffio/cchwrabuf.c \
+		UI:ffio/cchwrite.c \
+		U:ffio/cdcfcntl.c \
+		U:ffio/cdcopen.c \
+		U:ffio/cdcread.c \
+		U:ffio/cdcwrite.c \
+		UI:ffio/class_vf_check.c \
+		UI:ffio/class_vms_check.c \
+		UI:ffio/class_mr_sds_check.c \
+		1E:ffio/cmpclose.c \
+		1E:ffio/cmpfcntl.c \
+		1E:ffio/cmplz.c \
+		1E:ffio/cmpopen.c \
+		1E:ffio/cmppos.c \
+		1E:ffio/cmpread.c \
+		1E:ffio/cmptrace.c \
+		1E:ffio/cmpwrite.c \
+		A:ffio/convertc.c \
+		UI:ffio/cosbksp.c \
+		UI:ffio/cosclose.c \
+		UI:ffio/cosfcntl.c \
+		UI:ffio/cosopen.c \
+		UI:ffio/cospos.c \
+		UI:ffio/cosread.c \
+		UI:ffio/cosseek.c \
+		UI:ffio/coswrite.c \
+		1:ffio/defaults.s \
+		M:ffio/defaults_mpp.s \
+		U:ffio/errlist.c \
+		UEI:ffio/evnt_close_diags.c \
+		UEI:ffio/evnt_get_parent_child.c \
+		UEI:ffio/evnt_get_tracker.c \
+		UEI:ffio/evnt_trace_flush.c \
+		UEI:ffio/evntatexit.c \
+		UEI:ffio/evntbksp.c \
+		UEI:ffio/evntclose.c \
+		UEI:ffio/evntfcntl.c \
+		UEI:ffio/evntflush.c \
+		UEI:ffio/evntlistio.c \
+		UEI:ffio/evntopen.c \
+		UEI:ffio/evntread.c \
+		UEI:ffio/evntreada.c \
+		UEI:ffio/evntreadc.c \
+		UEI:ffio/evntseek.c \
+		UEI:ffio/evntweod.c \
+		UEI:ffio/evntweof.c \
+		UEI:ffio/evntwrite.c \
+		UEI:ffio/evntwritea.c \
+		UEI:ffio/evntwritec.c \
+		A:ffio/f77bksp.c \
+		A:ffio/f77close.c \
+		A:ffio/f77fcntl.c \
+		A:ffio/f77open.c \
+		A:ffio/f77read.c \
+		A:ffio/f77write.c \
+		A:ffio/fd_open.c \
+		UI:ffio/ffbksp.c \
+		A:ffio/ffclose.c \
+		A:ffio/fferr.c \
+		UI:ffio/fffcntl.c \
+		UI:ffio/ffflush.c \
+		1:ffio/ffiolock.c \
+		UP:ffio/fflistio.c \
+		UI:ffio/ffnoop.c \
+		A:ffio/ffopen.c \
+		UI:ffio/ffopens.c \
+		UI:ffio/ffopensg.c \
+		A:ffio/ffpos.c \
+		UI:ffio/ffread.c \
+		U:ffio/ffreada.c \
+		A:ffio/ffreadc.c \
+		UI:ffio/ffseek.c \
+		A:ffio/ffspec.c \
+		A:ffio/ffstrerror.c \
+		UI:ffio/ffweof.c \
+		UI:ffio/ffwrite.c \
+		U:ffio/ffwritea.c \
+		A:ffio/ffwritec.c \
+		U:ffio/fssfcntl.c \
+		U:ffio/fssovfl.c \
+		A:ffio/fxrmain.c \
+		A:ffio/fxrmisc.c \
+		U:ffio/gfdc.c \
+		UI:ffio/gffcntl.c \
+		UI:ffio/gfopen.c \
+		UI:ffio/gfread.c \
+		UI:ffio/gfwrite.c \
+		IM:ffio/globopen.c \
+		IM:ffio/globall.c \
+		IM:ffio/globfcntl.c \
+		IM:ffio/globgrmpi.c \
+		IM:ffio/globgrshmem.c \
+		IM:ffio/globutil.c \
+		UI:ffio/gvfcntl.c \
+		UI:ffio/gvopen.c \
+		UI:ffio/gvread.c \
+		UI:ffio/gvwrite.c \
+		U:ffio/gxbksp.c \
+		U:ffio/gxfcntl.c \
+		U:ffio/gxopen.c \
+		U:ffio/gxread.c \
+		U:ffio/gxwrite.c \
+		1I:ffio/lockclose.c \
+		1I:ffio/lockfcntl.c \
+		1:ffio/locklistio.c \
+		1I:ffio/lockopen.c \
+		1I:ffio/lockpos.c \
+		1I:ffio/lockread.c \
+		1I:ffio/lockwrite.c \
+		U:ffio/mrclose.c \
+		U:ffio/mrgrow.c \
+		U:ffio/mropen.c \
+		U:ffio/mrread.c \
+		U:ffio/mrset.c \
+		U:ffio/mrwrite.c \
+		UI:ffio/parse_data.c \
+		U:ffio/sectorsize.c \
+		UI:ffio/set_layer_options.c \
+		UI:ffio/sqbclose.c \
+		UI:ffio/sqbfcntl.c \
+		UI:ffio/sqbopen.c \
+		UI:ffio/sqbpos.c \
+		UI:ffio/sqbread.c \
+		UI:ffio/sqbseek.c \
+		UI:ffio/sqbweod.c \
+		UI:ffio/sqbweof.c \
+		UI:ffio/sqbwrite.c \
+		UI:ffio/sysasg.c \
+		A:ffio/sysclose.c \
+		A:ffio/sysfcntl.c \
+		UPI:ffio/syslistio.c \
+		A:ffio/syslseek.c \
+		A:ffio/sysopen.c \
+		A:ffio/sysread.c \
+		UI:ffio/sysreada.c \
+		A:ffio/systrunc.c \
+		A:ffio/syswrite.c \
+		UI:ffio/syswritea.c \
+		I:ffio/tmfbksp.c \
+		I:ffio/tmfclose.c \
+		I:ffio/tmfclosev.c \
+		I:ffio/tmfeov.c \
+		I:ffio/tmffcntl.c \
+		I:ffio/tmfgtpos.c \
+		I:ffio/tmfopen.c \
+		I:ffio/tmfpos.c \
+		I:ffio/tmfread.c \
+		I:ffio/tmfseek.c \
+		I:ffio/tmfskipf.c \
+		I:ffio/tmfstpos.c \
+		I:ffio/tmftptsi.c \
+		I:ffio/tmfwrite.c \
+		U:ffio/trcbksp.c \
+		U:ffio/trcclose.c \
+		U:ffio/trcfcntl.c \
+		U:ffio/trclistio.c \
+		U:ffio/trcopen.c \
+		U:ffio/trcpos.c \
+		U:ffio/trcprint.c \
+		U:ffio/trcread.c \
+		U:ffio/trcwrite.c \
+		UI:ffio/txtbksp.c \
+		UI:ffio/txtfcntl.c \
+		UI:ffio/txtopen.c \
+		UI:ffio/txtread.c \
+		UI:ffio/txtwrite.c \
+		U:ffio/xrtrace.c \
+		1HE:ffio/c1/bmxbdr.c \
+		1HE:ffio/c1/bmxbksp.c \
+		1HE:ffio/c1/bmxchecktp.c \
+		1HE:ffio/c1/bmxclose.c \
+		1HE:ffio/c1/bmxendsp.c \
+		1HE:ffio/c1/bmxeov.c \
+		1HE:ffio/c1/bmxfcntl.c \
+		1HE:ffio/c1/bmxgabs.c \
+		1HE:ffio/c1/bmxgtpos.c \
+		1HE:ffio/c1/bmxgtq.c \
+		1HE:ffio/c1/bmxopen.c \
+		1HE:ffio/c1/bmxpos.c \
+		1HE:ffio/c1/bmxquiet.c \
+		1HE:ffio/c1/bmxread.c \
+		1HE:ffio/c1/bmxrewind.c \
+		1HE:ffio/c1/bmxseek.c \
+		1HE:ffio/c1/bmxsetsp.c \
+		1HE:ffio/c1/bmxskipf.c \
+		1HE:ffio/c1/bmxstartsp.c \
+		1HE:ffio/c1/bmxstpos.c \
+		1HE:ffio/c1/bmxswitchv.c \
+		1HE:ffio/c1/bmxweod.c \
+		1HE:ffio/c1/bmxweof.c \
+		1HE:ffio/c1/bmxwrite.c \
+		1D:ffio/c1/cchsds.c \
+		1D:ffio/c1/er90bclose.c \
+		1D:ffio/c1/er90bfcntl.c \
+		1D:ffio/c1/er90bgtpos.c \
+		1D:ffio/c1/er90blseek.c \
+		1D:ffio/c1/er90bopen.c \
+		1D:ffio/c1/er90bpos.c \
+		1D:ffio/c1/er90bread.c \
+		1D:ffio/c1/er90breada.c \
+		1D:ffio/c1/er90brewind.c \
+		1D:ffio/c1/er90bstpos.c \
+		1D:ffio/c1/er90bweod.c \
+		1D:ffio/c1/er90bwrite.c \
+		1D:ffio/c1/er90bwritea.c \
+		1HE:ffio/c1/ffsetsp.c \
+		1D:ffio/c1/sdsclose.c \
+		1D:ffio/c1/sdsgrow.c \
+		1D:ffio/c1/sdsopen.c \
+		1D:ffio/c1/sdsread.c \
+		1D:ffio/c1/sdsset.c \
+		1D:ffio/c1/sdswrite.c \
+		U:ffio/c1/tapeclosev.c \
+		U:ffio/c1/tapegtpos.c \
+		U:ffio/c1/taperewd.c \
+		U:ffio/c1/tapesync.c \
+		U:ffio/c1/tapetptsi.c \
+		P:ffio/posix/sysasg.c \
+		P:ffio/posix/chknset.c \
+
+LIB_DIRS_INFO += \
+		U:ffio/c1 \
+		P:ffio/posix \
+		E:ffio/t3e \
+		A:ffio \
+/**/
+
+/*
+ *  SEGLDR directives files:
+ *
+ *	DIRFILES_INSTALL_INFO files are installed on specified machine
+ *	DIRFILES_INFO is the complete list
+ */
+DIRFILES_INSTALL_INFO = \
+		A:ffio/ff_all.cpp \
+		A:ffio/ff_blx.cpp \
+		A:ffio/ff_buf.cpp \
+		A:ffio/ff_cache.cpp \
+		Yt:ffio/ff_cdc.cpp \
+		1D:ffio/ff_er90.cpp \
+		Yt:ffio/ff_eta.cpp \
+		U:ffio/ff_event.cpp \
+		A:ffio/ff_f77.cpp \
+		M:ffio/ff_global.cpp \
+		A:ffio/ff_ibm.cpp \
+		MYt:ffio/ff_ieee.cpp \
+		A:ffio/ff_mr.cpp \
+		Yt:ffio/ff_nosve.cpp \
+		1D:ffio/ff_sds.cpp \
+		A:ffio/ff_site.cpp \
+		A:ffio/ff_tape.cpp \
+		A:ffio/ff_text.cpp \
+		A:ffio/ff_trace.cpp \
+		A:ffio/ff_user.cpp \
+		A:ffio/ff_vms.cpp \
+		E:ffio/t3e/craylibs.cpp
+
+DIRFILES_INFO = \
+		$(DIRFILES_INSTALL_INFO) \
+		ffio/def_skel.cpp \
+
+/*
+ *  Put include files on RMUSRC list
+ */
+RMUSRC += \
+		ffio/blx_parse.h \
+		ffio/blxio.h \
+		ffio/bmx_parse.h \
+		ffio/bufa_parse.h \
+		ffio/c205_parse.h \
+		ffio/cca_parse.h \
+		ffio/ccaio.h \
+		ffio/cch_parse.h \
+		ffio/cchio.h \
+		ffio/cdc_parse.h \
+		ffio/cdcio.h \
+		ffio/cmp_parse.h \
+		ffio/cmpio.h \
+		ffio/common_parse.h \
+		ffio/cos_parse.h \
+		ffio/cosio.h \
+		ffio/er90_parse.h \
+		ffio/error_parse.h \
+		ffio/event_parse.h \
+		ffio/evntio.h \
+		ffio/f77_parse.h \
+		ffio/f77io.h \
+		ffio/fd_parse.h \
+		ffio/fdio.h \
+		ffio/fflock.h \
+		ffio/fssio.h \
+		ffio/fxlist.h \
+		ffio/gfio.h \
+		ffio/global_parse.h \
+		ffio/globio.h \
+		ffio/gvio.h \
+		ffio/gxio.h \
+		ffio/ibm_parse.h \
+		ffio/layer_def.h \
+		ffio/locklyr.h \
+		ffio/mr_parse.h \
+		ffio/nosve_parse.h \
+		ffio/null_parse.h \
+		ffio/sds_parse.h \
+		ffio/spec_parse.h \
+		ffio/sqbio.h \
+		ffio/sys_parse.h \
+		ffio/syscall_parse.h \
+		ffio/sysio.h \
+		ffio/text_parse.h \
+		ffio/trace_parse.h \
+		ffio/trcio.h \
+		ffio/txtio.h \
+		ffio/user_parse.h \
+		ffio/vms_def.h \
+		ffio/vms_parse.h \
+		ffio/c1/bmxio.h \
+		ffio/c1/er90by.h \
+		ffio/c1/tapeio.h \
+
+
+/*
+ *  Set up macros for building SEGLDR directives files
+ */
+.SUFFIXES:	.cpp
+.SEARCH:	.cpp
+
+CPPTEXTFLAGS += -UCRAY -Ucray -Uunix -P
+
+*.dir:		*.cpp (CPP) (CPPFLAGS) (CPPTEXTFLAGS)
+	$(CPP) $(CPPFLAGS) $(CPPTEXTFLAGS) $(>) > $(>:B:S).temp
+	ignore grep -v '^[ 	]*$' $(>:B:S).temp > $(<)
+        ignore $(RM) $(>:B:S).temp
+/**/

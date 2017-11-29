@@ -1,0 +1,72 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+
+C      BUFFMAX is one less than 2**n, where n is the size in bits of the
+C      "NUMBER OF 512 BLKS" field in the FET table.
+
+       PARAMETER (BUFFMAX=2**28 - 1)
+
+       PARAMETER (BSIZE=512,MAXREC=256000000)
+       PARAMETER (B1MAX=18)                   ! number of words per FET entry
+       PARAMETER (PAGES=16)                   ! default number of buffers
+
+       COMMON /G@WAVARS/
+     1  FETPTR,
+     2  COUNT,ADDRESS,PRU,START,INDEX,
+     3  BLKCNT,FIRST,LAST,FBWA,LBWA,PARTF,
+     4  PARTEND,IBLOCK,MSK,READ,WABA,
+     5  SIGNBIT,WRITE,FILE,MOVED,EOIB,
+     6  BUFFERS,FIND,WABB,PBLKS,EOIBW
+
+
+       LOGICAL INITIAL,WRITE,READ,PARTF,PARTEND
+
+       INTEGER G@DSNMAXW
+       COMMON /G@DSNMAXW/G@DSNMAXW
+       INTEGER FET(B1MAX,1)
+
+       LOGICAL ERROR, BEGIN,HIT,NOHIT,FLIP
+
+       POINTER (WABA,WAA(1))
+       POINTER (WABB,WABP(1))
+
+       POINTER (FETPTR,FET)
+C
+C      Error code equates
+C      Master list is in usr/include/liberrno.h
+       PARAMETER (FENOMEMY=1205)
+       PARAMETER (FEWTOMNY=1063)
+       PARAMETER (FEWABLKS=1064)

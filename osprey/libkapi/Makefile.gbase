@@ -1,0 +1,121 @@
+##
+## Copyright (c) 2000, Intel Corporation
+## All rights reserved.
+##
+## WARRANTY DISCLAIMER
+##
+## THESE MATERIALS ARE PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+## "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+## LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+## A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL INTEL OR ITS 
+## CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+## EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+## PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR 
+## PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+## OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY OR TORT (INCLUDING
+## NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THESE
+## MATERIALS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+##
+## Intel Corporation is the author of the Materials, and requests that all
+## problem reports or change requests be submitted to it directly at
+## http://developer.intel.com/opensource.
+##
+
+VPATH		= $(BUILD_BASE)
+
+OBJSUF		= o
+LEX_BIN		= lex
+YACC_BIN	= yacc
+TAB_NAME	= y.tab
+LIBSUF		= a
+AR 		= /usr/bin/ar
+AR_OUT		= r 
+
+GENFILES        = kapi_y.tab.c kapi_lex.yy.c kapi_parse.new.c \
+                  y.output $(TAB_NAME).c $(TAB_NAME).h kapi_y.tab.h
+
+KAPI_LINKOBJSr = \
+	kapi_bv \
+	kapi_error \
+	kapi_general \
+	kapi_generic \
+	kapi_lex.yy \
+	kapi_parse.new \
+	kapi_symbol \
+	kapi_util \
+	kapi_version \
+	kapi_y.tab
+
+KAPI_ia64_LINKOBJSr = \
+	kapi_debug \
+	kapi_ia64 \
+	kapi_ia64_bundle \
+	kapi_ia64_cache \
+	kapi_ia64_instruction \
+	kapi_ia64_latency \
+	kapi_ia64_ports \
+	kapi_ia64_version \
+	kapi_save_source_ia64
+
+KMAPI_LINKOBJSr = \
+	kmapi_error \
+	kmapi_map	\
+	kmapi_split_issue	\
+	kmapi_save_source	\
+	kmapi_version
+
+KAPI_LINKOBJS = $(addsuffix .$(OBJSUF),$(KAPI_LINKOBJSr))
+KAPI_ia64_LINKOBJS = $(addsuffix .$(OBJSUF),$(KAPI_ia64_LINKOBJSr))
+KMAPI_LINKOBJS = $(addsuffix .$(OBJSUF),$(KMAPI_LINKOBJSr))
+
+DEBUG_FLAGS = -D_DEBUG -g
+
+VERSION_FLAGS=-D XVER_MINOR=$(XVERSION_MINOR) -D XVER_MAJOR=$(XVERSION_MAJOR)
+
+CFLAGS+= -MD $(DEBUG_FLAGS) $(VERSION_FLAGS) -I$(BUILD_BASE)
+
+#
+#  Tools versions/paths
+#
+
+
+# EAS_REL = eas2.4
+
+.SUFFIXES: $(OBJSUF)
+
+libkapi.$(LIBSUF): $(KAPI_LINKOBJS)
+	rm -f libkapi.$(LIBSUF)
+	$(AR) $(AR_OUT)libkapi.$(LIBSUF) $(KAPI_LINKOBJS)
+
+libkapi_ia64.$(LIBSUF): libkapi.$(LIBSUF) $(KAPI_ia64_LINKOBJS)
+	rm -f libkapi_ia64.$(LIBSUF)
+	$(AR) $(AR_OUT)libkapi_ia64.$(LIBSUF) $(KAPI_ia64_LINKOBJS)
+
+libkmapi.$(LIBSUF): libkapi_ia64.$(LIBSUF) $(KMAPI_LINKOBJS)
+	rm -f libkmapi.$(LIBSUF)
+	$(AR) $(AR_OUT)libkmapi.$(LIBSUF) $(KMAPI_LINKOBJS)
+
+kapi_y.tab.c: $(BUILD_BASE)/kapi_parser.y
+	$(YACC_BIN) -dv $(BUILD_BASE)/kapi_parser.y
+	cat $(TAB_NAME).c | sed -f $(BUILD_BASE)/rename.sed > kapi_y.tab.c
+
+kapi_y.tab.h: $(BUILD_BASE)/kapi_parser.y kapi_y.tab.c
+	cat $(TAB_NAME).h | sed -f $(BUILD_BASE)/rename.sed > kapi_y.tab.h
+
+kapi_y.tab.$(OBJSUF): kapi_y.tab.c
+	$(CC) -c $(CFLAGS) kapi_y.tab.c
+
+kapi_parse.new.$(OBJSUF): $(BUILD_BASE)/kapi_parse.c
+	cat $(BUILD_BASE)/kapi_parse.c | sed -f $(BUILD_BASE)/rename.sed > kapi_parse.new.c
+	$(CC) -c $(CFLAGS) kapi_parse.new.c 
+
+kapi_lex.yy.c: $(BUILD_BASE)/kapi_scanner.l kapi_y.tab.h
+	$(LEX_BIN) -t $(BUILD_BASE)/kapi_scanner.l | sed -f $(BUILD_BASE)/rename.sed > kapi_lex.yy.c
+
+kapi_lex.yy.o: kapi_lex.yy.c
+	$(CC) -c $(CFLAGS) kapi_lex.yy.c
+
+clobber: clean
+
+clean: 
+	rm -f $(KAPI_LINKOBJS) $(KAPI_ia64_LINKOBJS) $(BINARY) $(GENFILES) libkapi.$(LIBSUF) libkapi_ia64.$(LIBSUF) src.tar *.d

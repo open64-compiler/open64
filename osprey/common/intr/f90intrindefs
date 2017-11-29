@@ -1,0 +1,148 @@
+
+#
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+# See f90generate.pl for a description of this file. 
+#
+EXPONENT ; AF ; I4,I4,I4 ; _EXPONENT_4,_EXPONENT, _EXPONENT_16
+FRACTION ; AF ; ; _FRACTION_4,_FRACTION,_FRACTION_16
+MODULO ; AF ; ; _modulo4, _modulo8, _moduloq
+NEAREST ; AF ;; _NEAREST_4,_NEAREST,_NEAREST_16
+RRSPACING ; AF ;; _RRSPACING_4,_RRSPACING,_RRSPACING_16
+SCALE ; AF ;; _SCALE_4,_SCALE,_SCALE_16
+SET_EXPONENT ; AF ;; _SET_EXPONENT_4,_SET_EXPONENT,_SET_EXPONENT_16
+SPACING ; AF ;;  _SPACING_4,_SPACING,_SPACING_16
+
+# miscellaneous
+# KEY Bug 11103
+# The GNU libm -m32 version of "nextafter" fails to set exceptions. If that
+# bug is fixed, we could resume calling "nextafter" directly, and for that
+# matter, we could call "nextafterf" for F4NEXTAFTER.
+NEXTAFTER ; AF ;; _IEEE_NEXT_AFTER_H, _IEEE_NEXT_AFTER, qnextafter
+#NEXTAFTER ; AF ;; _IEEE_NEXT_AFTER_H, nextafter, qnextafter
+ISNAN ; AF ;; isnanf, isnan, isnanq
+SCALB ; AF ;; ldexp, ldexp, qldexp
+# KEY Bug 10261
+# GNU libm drem and remainder have a bug: they don't ignore the rounding
+# mode as required by C99 (and F90 ieee_rem.) Using "remainder" instead of
+# "drem" causes pathcc (and pathf90) to link the version provided by
+# libmpath, which works correctly.
+IEEE_REMAINDER ; AF ;; remainder, remainder, _IEEE_REMAINDER_Q
+#IEEE_REMAINDER ; AF ;; drem, drem, _IEEE_REMAINDER_Q
+LOGB ; AF ;; logb, logb, __qlogb
+ILOGB ; AF ; I4,I4,I4 ; __ilogbf, __ilogb, __iqlogb
+FPCLASS ; AF; I4,I4,I4;_fp_class_f, _fp_class_d, _fp_class_q
+FINITE ; AF; I4,I4,I4; finite, finite, __qfinite
+UNORDERED ; AF; I4, I4, I4; unordered, unordered, unorderedl
+POPCNT ; AJ ; I4,I4,I4,I4; __popcnt1,__popcnt2,__popcnt4, __popcnt8
+LEADZ ; AJ ; I4,I4,I4,I4; __leadz1,__leadz2,__leadz4, __leadz8
+
+#
+# Character library routines
+#
+# LENTRIM is already in the F77 library
+LENTRIM ; L ; I4 ; i_lentrim
+F90INDEX ; L ; I4 ; _index90
+SCAN ; L ; I4 ; _scan90
+VERIFY ; L ; I4 ; _verify90
+ADJUSTL ; LC ; V ; _F90_ADJUSTL
+ADJUSTR ; LC ; V ; _F90_ADJUSTR
+
+#
+# IEEE library routines
+#
+#fei_get_all_estat
+GET_IEEE_EXCEPTIONS ; LC; I4 ; __get_ieee_exceptions
+#fei_get_interrupt
+GET_IEEE_INTERRUPTS ; LC ; I4 ; __get_ieee_interrupts
+#fei_get_rmode
+GET_IEEE_ROUNDING_MODE ; LC ; I4 ; fpgetround
+#fei_readsr
+GET_IEEE_STATUS ; LC ; I4 ; __get_ieee_status
+#fei_set_all_estat
+SET_IEEE_EXCEPTIONS ; LC ; V ; __set_ieee_exceptions
+#fei_set_estat
+SET_IEEE_EXCEPTION ; LC ; V ; __set_ieee_exception
+#fei_set_interrupt
+SET_IEEE_INTERRUPTS ; LC ; V ; __set_ieee_interrupts
+#fei_set_rmode
+SET_IEEE_ROUNDING_MODE ; LC ; V ; fpsetround
+#fei_set_ieee_stat
+SET_IEEE_STATUS ; LC ; V ; __set_ieee_status
+#fei_enbl_interupt
+ENABLE_IEEE_INTERRUPT ; LC ; V ; __enable_ieee_interrupt
+#fei_dsbl_interupt
+DISABLE_IEEE_INTERRUPT ; LC ; V ; __disable_ieee_interrupt
+#fei_test_estat
+TEST_IEEE_EXCEPTION ; LC ; I4 ; __test_ieee_exception
+#fei_test_interrupt
+TEST_IEEE_INTERRUPT ; LC ; I4 ; __test_ieee_interrupt
+
+
+#
+#VH WHIRL intrinsics
+#
+
+MATMUL ; V ; ; 
+SPREAD ; V ; ; 
+RESHAPE ; V ; ; 
+TRANSPOSE ; V ; ; 
+ALL ; V ; ; 
+ANY ; V ; ; 
+COUNT ; V ; ; 
+PRODUCT ; V ; ; 
+SUM ; V ; ; 
+EOSHIFT ; V ; ; 
+MAXVAL ; V ; ; 
+MINVAL ; V ; ; 
+MAXLOC ; V ; ; 
+MINLOC ; V ; ; 
+CSHIFT ; V ; ; 
+DOT_PRODUCT ; V ; ; 
+PACK ; V ; ; 
+UNPACK ; V ; ; 
+MERGE ; V ; ;
+CHAR ; V ; ;
+#
+# IEEE_INT intrisics
+#
+IEEE_INT ; AJ ; AJ; _IEEE_INT_D_I1, _IEEE_INT_D_I2, _IEEE_INT_D_I4, _IEEE_INT_D_I8
+IEEE_INT ; AF ; AF; _IEEE_INT_D_H, _IEEE_INT_D_R, _IEEE_INT_D_D
+
+#
+# Bounds check
+#
+F90BOUNDS_CHECK ; LC ; V ; __f90_bounds_check
+F90CONFORM_CHECK ; LC ; V ; __f90_conform_check

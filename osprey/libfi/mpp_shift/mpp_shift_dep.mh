@@ -1,0 +1,95 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* USMID @(#) libfi/mpp_shift/mpp_shift_dep.mh	92.0	10/08/98 14:37:14 */
+
+eoshift_p_spec_1@.o : eoshift_spec_1@.fh
+eoshift_p_spec_2@.o : eoshift_spec_2@.fh
+eoshift_p_spec_3@.o : eoshift_spec_3@.fh
+eoshift_p_1@.o : eoshift_p1_dim1@.fh
+eoshift_p_2@.o : eoshift_p2_dim1@.fh eoshift_p2_dim2@.fh
+eoshift_p_3@.o : eoshift_p3_dim1@.fh eoshift_p3_dim2@.fh eoshift_p3_dim3@.fh
+eoshift_p_4@.o : eoshift_p4_dim1@.fh eoshift_p4_dim2@.fh
+eoshift_p_4@.o : eoshift_p4_dim3@.fh eoshift_p4_dim4@.fh
+eoshift_p_5@.o : eoshift_p5_dim1@.fh eoshift_p5_dim2@.fh eoshift_p5_dim3@.fh
+eoshift_p_5@.o : eoshift_p5_dim4@.fh eoshift_p5_dim5@.fh
+eoshift_p_6@.o : eoshift_p6_dim1@.fh eoshift_p6_dim2@.fh eoshift_p6_dim3@.fh
+eoshift_p_6@.o : eoshift_p6_dim4@.fh eoshift_p6_dim5@.fh eoshift_p6_dim6@.fh
+eoshift_p_7@.o : eoshift_p7_dim1@.fh eoshift_p7_dim2@.fh eoshift_p7_dim3@.fh
+eoshift_p_7@.o : eoshift_p7_dim4@.fh eoshift_p7_dim5@.fh
+eoshift_p_7@.o : eoshift_p7_dim6@.fh eoshift_p7_dim7@.fh
+
+eoshift_s_1@.o : eoshift_s1_dim1@.fh
+eoshift_s_2@.o : eoshift_s2_dim1@.fh eoshift_s2_dim2@.fh
+eoshift_s_3@.o : eoshift_s3_dim1@.fh eoshift_s3_dim2@.fh eoshift_s3_dim3@.fh
+eoshift_s_4@.o : eoshift_s4_dim1@.fh eoshift_s4_dim2@.fh
+eoshift_s_4@.o : eoshift_s4_dim3@.fh eoshift_s4_dim4@.fh
+eoshift_s_5@.o : eoshift_s5_dim1@.fh eoshift_s5_dim2@.fh eoshift_s5_dim3@.fh
+eoshift_s_5@.o : eoshift_s5_dim4@.fh eoshift_s5_dim5@.fh
+eoshift_s_6@.o : eoshift_s6_dim1@.fh eoshift_s6_dim2@.fh eoshift_s6_dim3@.fh
+eoshift_s_6@.o : eoshift_s6_dim4@.fh eoshift_s6_dim5@.fh eoshift_s6_dim6@.fh
+eoshift_s_7@.o : eoshift_s7_dim1@.fh eoshift_s7_dim2@.fh eoshift_s7_dim3@.fh
+eoshift_s_7@.o : eoshift_s7_dim4@.fh eoshift_s7_dim5@.fh
+eoshift_s_7@.o : eoshift_s7_dim6@.fh eoshift_s7_dim7@.fh
+
+cshift_p_spec_1@.o : cshift_spec_1@.fh
+cshift_p_spec_2@.o : cshift_spec_2@.fh
+cshift_p_spec_3@.o : cshift_spec_3@.fh
+cshift_p_1@.o : cshift_p1_dim1@.fh
+cshift_p_2@.o : cshift_p2_dim1@.fh cshift_p2_dim2@.fh
+cshift_p_3@.o : cshift_p3_dim1@.fh cshift_p3_dim2@.fh cshift_p3_dim3@.fh
+cshift_p_4@.o : cshift_p4_dim1@.fh cshift_p4_dim2@.fh
+cshift_p_4@.o : cshift_p4_dim3@.fh cshift_p4_dim4@.fh
+cshift_p_5@.o : cshift_p5_dim1@.fh cshift_p5_dim2@.fh cshift_p5_dim3@.fh
+cshift_p_5@.o : cshift_p5_dim4@.fh cshift_p5_dim5@.fh
+cshift_p_6@.o : cshift_p6_dim1@.fh cshift_p6_dim2@.fh cshift_p6_dim3@.fh
+cshift_p_6@.o : cshift_p6_dim4@.fh cshift_p6_dim5@.fh cshift_p6_dim6@.fh
+cshift_p_7@.o : cshift_p7_dim1@.fh cshift_p7_dim2@.fh cshift_p7_dim3@.fh
+cshift_p_7@.o : cshift_p7_dim4@.fh cshift_p7_dim5@.fh
+cshift_p_7@.o : cshift_p7_dim6@.fh cshift_p7_dim7@.fh
+
+cshift_s_1@.o : cshift_s1_dim1@.fh
+cshift_s_2@.o : cshift_s2_dim1@.fh cshift_s2_dim2@.fh
+cshift_s_3@.o : cshift_s3_dim1@.fh cshift_s3_dim2@.fh cshift_s3_dim3@.fh
+cshift_s_4@.o : cshift_s4_dim1@.fh cshift_s4_dim2@.fh
+cshift_s_4@.o : cshift_s4_dim3@.fh cshift_s4_dim4@.fh
+cshift_s_5@.o : cshift_s5_dim1@.fh cshift_s5_dim2@.fh cshift_s5_dim3@.fh
+cshift_s_5@.o : cshift_s5_dim4@.fh cshift_s5_dim5@.fh
+cshift_s_6@.o : cshift_s6_dim1@.fh cshift_s6_dim2@.fh cshift_s6_dim3@.fh
+cshift_s_6@.o : cshift_s6_dim4@.fh cshift_s6_dim5@.fh cshift_s6_dim6@.fh
+cshift_s_7@.o : cshift_s7_dim1@.fh cshift_s7_dim2@.fh cshift_s7_dim3@.fh
+cshift_s_7@.o : cshift_s7_dim4@.fh cshift_s7_dim5@.fh
+cshift_s_7@.o : cshift_s7_dim6@.fh cshift_s7_dim7@.fh
+

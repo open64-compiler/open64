@@ -1,0 +1,332 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2011 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for gcc-based driver
+#
+
+include	$(COMMONDEFS)
+
+# setup stuff to build shared or non-shared
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+GLDOPTS = $(STD_LOAD_OPTS)
+
+ifeq ($(BUILD_TARGET), IA64)
+LCDEFS += -DIA64
+endif
+ifeq ($(BUILD_TARGET), IA32)
+LCDEFS += -DIA32
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+LCDEFS += -DMIPS
+# Need to change OPEN64_PRODNAME to denote a MIPS product.
+#LCDEFS += -DOPEN64_PRODNAME='"Compiler"'
+endif
+ifeq ($(BUILD_TARGET), SL)
+LCDEFS += -DSL
+LCDEFS += -DMIPS
+# Need to change OPEN64_PRODNAME to denote a MIPS product.
+#LCDEFS += -DOPEN64_PRODNAME='"Compiler"'
+endif
+
+
+ifeq ($(BUILD_TARGET), X8664)
+LCDEFS += -DX8664
+endif
+
+ifeq ($(BUILD_TARGET), LOONGSON)
+LCDEFS += -DLOONGSON
+endif
+
+ifeq ($(BUILD_GNU3), YES)
+LCDEFS += -DBUILD_GNU3
+endif
+
+ifeq ($(BUILD_SKIP_IPA), YES)
+LCDEFS += -DBUILD_SKIP_IPA
+endif
+
+LCDEFS += -DOPEN64_PRODNAME='"Compiler"'
+
+LCDEFS += -DGCC_CONFIGURE_TARG=\"${GCC_CONFIGURE_TARG}\" -DGCC_DIR=\"${GCC_DIR}\" -DBUILD_SRC=\"${BUILD_SRC}\"
+
+# Get the date of the build for perpetual licenses
+psc_build_date := $(shell date '+"%F/%T"')
+LCDEFS += -DOPEN64_BUILD_DATE='$(psc_build_date)'
+
+# Remove the following line to disable the PathScale subscription checking software
+LCDEFS += -DOPSCSUB
+
+ifeq ($(BUILD_HOST), IA32)
+ ifeq ($(BUILD_VARIANT), NUE)
+ # NUE is special environment built on ia32 but looks like ia64
+ LCDEFS += -DLITTLE_ENDIAN_HOST -DHOST_IA64
+ else
+ LCDEFS += -DLITTLE_ENDIAN_HOST -DHOST_IA32
+ endif
+endif
+ifeq ($(BUILD_HOST), IA64)
+LCDEFS += -DLITTLE_ENDIAN_HOST -DHOST_IA64
+endif
+ifeq ($(BUILD_HOST), X8664)
+LCDEFS += -DLITTLE_ENDIAN_HOST -DHOST_IA32
+endif
+ifeq ($(BUILD_HOST), MIPS)
+LCDEFS += -DHOST_MIPS
+endif
+
+RUN =
+ifeq ($(BUILD_ARCH), IA64)
+  ifeq ($(BUILD_HOSTARCH), IA32)
+    RUN = medusa -batch
+  endif
+endif
+
+ifeq ($(BUILD_ARCH), IA32)
+  LCDEFS += -DBUILD_ARCH_IA32 
+endif 
+
+ifeq ($(BUILD_VARIANT), NOOPT)
+# special driver for no optimization
+LCDEFS += -DNOOPT
+endif
+ifeq ($(BUILD_VARIANT), NUE)
+# special driver for NUE cross environment
+LCDEFS += -DNUE
+endif
+
+ifeq ($(BUILD_VARIANT), NO_LICENSE)
+LCDEFS += -DNO_LICENSE
+endif
+
+ifeq ($(BUILD_ABI), W64BIT)
+LCDEFS += -DWIN64
+endif
+
+ifeq ($(BUILD_OS), MINGW)
+# have to pass -Wno-format because mingw requires %I64 for printf of long long,
+# but Wformat complains because it is non-ansi.  sigh.
+LCDEFS += -Wno-format
+
+# link with libiberty so get asprintf
+LDFLAGS += $(BUILD_AREA)/libiberty/libiberty.a
+endif
+
+# don't want to use common/com/defs.h
+LCINCS	= -I. -I$(BUILD_BASE) -I$(BUILD_TOT)/common/com
+
+
+TARGETS	= driver
+
+# generated header files (including .i files)
+GEN_HFILES = \
+	option_names.h \
+	init_options.i \
+	get_option.i \
+	opt_action.i
+
+SHARED_HFILES = \
+	basic.h \
+	errors.h \
+	file_utils.h \
+	lang_defs.h \
+	string_utils.h
+
+SRC_HFILES = \
+	options.h \
+	option_seen.h \
+	opt_actions.h \
+	get_options.h \
+	file_names.h \
+	objects.h \
+	phases.h \
+	run.h 
+
+HFILES= \
+	$(SHARED_HFILES) \
+	$(SRC_HFILES) \
+	$(GEN_HFILES)
+
+GEN_CFILES = \
+	implicits.c
+
+SHARED_CFILES = \
+	errors.c \
+	file_utils.c \
+	lang_defs.c \
+	string_utils.c
+
+SRC_CFILES = \
+	main.c \
+	options.c \
+	option_seen.c \
+	get_options.c \
+	opt_actions.c \
+	file_names.c \
+	objects.c \
+	phases.c \
+	run.c \
+	special_options.c \
+	version_hg.c 
+
+CFILES=	\
+	$(SHARED_CFILES) \
+	$(GEN_CFILES) \
+	$(SRC_CFILES)
+
+OPTIONS_SRC = \
+	OPTIONS \
+	sort_options.csh \
+	sort_options.awk
+
+SRC_OBJECTS = $(SRC_CFILES:.c=.o)
+SHARED_OBJECTS = $(SHARED_CFILES:.c=.o)
+
+LDIRT = OPTIONS.P table generated $(GEN_HFILES) $(GEN_CFILES) driver version_hg.c
+
+LANGS = as cc c89 CC f77 fort77 f90
+
+.PHONY: default first last install
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+ ifeq ($(BUILD_OS), MINGW)
+	$(call submake,$(BUILD_AREA)/include)
+	$(call submake,$(BUILD_AREA)/libiberty)
+ endif
+endif
+
+last: make_deps
+	rm -f opencc openCC openf90
+	ln -s driver opencc
+	ln -s driver openCC
+	ln -s driver openf90
+
+ifeq ($(BUILD_VARIANT), NO_LICENSE)
+
+install: default 
+ ifndef NOSYSGEN
+	$(STD_INSTALL) -F /usr/cpu/sysgen/root/usr/bin -src driver cc
+ endif
+
+else
+
+ifeq ($(BUILD_TARGET), MIPS)
+install: default 
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) driver
+	$(STD_INSTALL) -lns driver -F $(STD_MONGOOSE_LOC) $(LANGS)
+	# assume that 3.19 installed driverwrap, but need new f90
+	$(STD_INSTALL) -lns ../lib/driverwrap -F /usr/bin f90
+	$(STD_INSTALL) -lns driver -F /usr/lib f90
+
+else # IA32 or IA64
+ifeq ($(BUILD_TARGET), SL)
+install: default
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) driver
+	$(STD_INSTALL) -lns driver -F $(STD_MONGOOSE_LOC) $(LANGS)
+	# assume that 3.19 installed driverwrap, but need new f90
+	$(STD_INSTALL) -lns ../lib/driverwrap -F /usr/bin f90
+	$(STD_INSTALL) -lns driver -F /usr/lib f90
+else
+install: default
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D driver $(STD_MONGOOSE_LINUX_LOC)/driver
+	rm -f $(STD_MONGOOSE_LINUX_LOC)/sgicc  $(STD_MONGOOSE_LINUX_LOC)/sgiCC
+	rm -f $(STD_MONGOOSE_LINUX_LOC)/sgif90
+	ln -s $(STD_MONGOOSE_LINUX_LOC)/driver $(STD_MONGOOSE_LINUX_LOC)/sgicc
+	ln -s $(STD_MONGOOSE_LINUX_LOC)/driver $(STD_MONGOOSE_LINUX_LOC)/sgiCC
+	ln -s $(STD_MONGOOSE_LINUX_LOC)/driver $(STD_MONGOOSE_LINUX_LOC)/sgif90
+endif
+endif
+
+endif
+
+include $(COMMONRULES)
+
+VPATH = $(BUILD_BASE)
+
+$(GEN_CFILES) $(GEN_HFILES) : generated
+
+generated : OPTIONS.P table
+	$(run) ./table < OPTIONS.P
+	touch generated
+
+table : table.o $(SHARED_OBJECTS)
+	$(link.ccf) -o $@ table.o $(SHARED_OBJECTS) $(LDFLAGS)
+
+OPTIONS.P : OPTIONS
+	$(CC) -E -P $(LCDEFS) $(STD_COMPILE_OPTS) -x c $(BUILD_BASE)/OPTIONS > OPTIONS.P
+
+driver: $(OBJECTS)
+	$(link.ccf) -o $@ $(OBJECTS) $(LDFLAGS)
+
+ifeq ($(BUILD_TARGET), NVISA)
+hg_csetid := $(GPGPU_COMPILER_TOOLS_VERSION)
+hg_root := unknown
+hg_date := $(shell date +'%Y-%m-%d')
+else
+hg_csetid := $(shell hg parents --template {node} || echo unknown)
+hg_root := $(shell hg root 2>/dev/null || echo unknown)
+hg_date := $(shell date +'%Y-%m-%d %H:%M:%S %z')
+endif
+ifneq ($(BUILD_OS), CYGWIN)
+hg_hostname := $(shell hostname -f)
+else
+# -f not accepted on cygwin
+hg_hostname := $(shell hostname)
+endif
+
+version_hg.c:
+	@echo 'GEN    $@'
+	@echo '#include "version.h"' > $@
+	@echo 'const char *const cset_id = "$(hg_csetid)";' >> $@
+	@echo 'const char *const build_root = "$(hg_root)";' >> $@
+	@echo 'const char *const build_host = "$(hg_hostname)";' >> $@
+	@echo 'const char *const build_user = "$(shell id -un)";' >> $@
+	@echo 'const char *const build_date = "$(hg_date)";' >> $@
+
+.PHONY: version_hg.c
+
+# need to make generated headers before compiling src files
+$(SRC_OBJECTS) : $(GEN_HFILES)
+

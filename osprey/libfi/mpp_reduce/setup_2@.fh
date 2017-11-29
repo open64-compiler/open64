@@ -1,0 +1,111 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+
+************************************************************************
+*
+*     This is the guts for the intermediate Fortran routines for 
+*     rank 2 maxval, minval, any, all, and count.
+*
+*     This code sets up the arguments for the work routines. This setup
+*     cannot be done in the work routine itself because the source array
+*     is coerced private in the work routine. This implies that the
+*     programming model intrinsics blkct, hiidx, lowidx, and pes cannot
+*     be used in the work routine.
+*
+************************************************************************
+*
+*     Get my virtual PE number.
+*
+      mype = my_pe()
+*
+*     Set up the hi and low indexes for each block on mype.
+*
+      do i = 1, blkcnts(1)
+          low1(i) = lowidx(source,1,mype,i)
+          hi1(i) = hiidx(source,1,mype,i)
+      enddo
+      do i = 1, blkcnts(2)
+          low2(i) = lowidx(source,2,mype,i)
+          hi2(i) = hiidx(source,2,mype,i)
+      enddo
+*
+*     If executing in parallel, then calculate the *local* extents
+*     of the source array, else set it up so that PE 0 will search
+*     the entire distributed source array for the maximum or minimum
+*     value.
+*
+      if (in_parallel()) then
+          loc_sext = 0
+          do i = 1, blkcnts(1)
+              loc_sext(1) = loc_sext(1) + (hi1(i) - low1(i) + 1)
+          enddo
+          do i = 1, blkcnts(2)
+              loc_sext(2) = loc_sext(2) + (hi2(i) - low2(i) + 1)
+          enddo
+      else
+          loc_sext(1) = sext(1)
+          loc_sext(2) = sext(2)
+      endif
+*
+*     Get the number of PEs dim-1 is spread across. This value is
+*     used to determine the PE offset into the shared blocks of the
+*     source array when computing the global result array.
+*
+      dist_cnt = 1
+      if (dim .ne. 1) then
+          dist_cnt = pes(source,dim-1)
+      endif
+*
+*     Set up the block count, the number of PEs that the desired
+*     dimension is spread across, the extent for the array of local
+*     minimums or maximums, and the hi and low indexes for the desired
+*     dimension.
+*
+      if (dim .eq. 1) then
+          npes = pes(source,1)
+          lmext = loc_sext(2)
+          do i = 1, dim_bcnt
+              low(i) = low2(i)
+              hi(i) = hi2(i)
+          enddo
+      else
+          npes = pes(source,2)
+          lmext = loc_sext(1)
+          do i = 1, dim_bcnt
+              low(i) = low1(i)
+              hi(i) = hi1(i)
+          enddo
+      endif

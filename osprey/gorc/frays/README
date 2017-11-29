@@ -1,0 +1,495 @@
+Google Open Research Compiler
+
+
+Project: Frays
+
+
+An implementation of a prefetch-and-switch programming paradigm
+based on co-routines to hide memory latencies for programs with
+large degree of parallalism.
+
+Initial Implementation: Simon Kahan. 
+TL at time of commit  : Robert Hundt.
+
+
+
+Objective
+
+Cache misses degrade the performance of applications that irregularly
+reference large data-sets.  Our goal is to develop a simple API for
+exploring the efficacy of a prefetch-and-switch paradigm to reduce
+sensitivity of application performance to memory latency.  Background
+
+
+Some applications frequently reference data not already in cache.
+This usually results in processor stalls during which no instructions
+are executed.
+
+Cache misses are of increasing concern as platform architectures
+evolves to employ an increasing number of processors per shared-memory
+node.  Enabling these additional processors to be effective requires
+increasing the amount of node memory in proportion.  As this memory
+increases in size, so does its latency, and correspondingly the impact
+of missing cache.  Already we build out our machines to less than
+their full memory capacity because we find that maxing-out memory
+means greater latency and worse performance on certain applications;
+unfortunately, this means we need more machines where latency
+sensitive applications depend upon all data being in RAM, increasing
+costs.
+
+
+Looking towards the future, we anticipate tension between providing
+greater capability plus economy of scale -- which dictates larger
+memory per node -- and ensuring high quality of service on latency
+sensitive applications -- which dictates relatively smaller, hence
+faster, memory per machine.  There are a host of tradeoffs when
+architecting new systems.  By reducing the sensitivity of application
+performance to memory latency, we would broaden the range of
+architectures, decreasing the likelihood that an architecture optimal
+among other axes is eliminated only because its internal latencies are
+too great.
+
+For these reasons -- improving performance, reducing cost, and
+relaxing architectural constraints -- reducing the sensitivity of
+applications to memory latency is a worthwhile endeavor.
+
+
+One possible way to accomplish this desensitization is to employ
+concurrency.  Concurrency is already expressed in applications to
+utilize multiple cores on multiple processors on multiple machines.
+Such concurrency increases performance by engaging more resources,
+each on a portion of the original computation.  We wish to explore
+using concurrency at a yet finer grain: to tolerate memory latency
+within a single core, prefetching and switching to another computation
+whenever the current computation is likely about to miss cache.  We
+aim to do this in software.
+
+
+On hyper-threaded cores, this would augment the latency tolerance
+already provided in hardware by virtue of funneling multiple
+instruction streams into the same processor pipeline -- the tolerance
+to latency within such a core rises in proportion to the memory
+concurrency sustained: this is the product of what can be tolerated
+within a thread and what can be tolerated across threads.
+
+
+Were massively hyper-threaded cores practical, fetch-and-switch in
+software would be unnecessary; however, such cores would have
+substantial internal latency in the instruction selection hardware and
+in the pathways required to distribute operational results to register
+files.  These latencies are ever-present.
+
+
+Switching in software is complementary: it incurs non-trivial
+overhead, but that overhead is incurred only when a switch occurs.
+Consequently, we envision thread-level parallelism to be consumed by a
+modest level of hardware hyper-threading first; then, when that level
+of concurrency is saturated yet proves insufficient to tolerate
+latency experienced by a given application, by a software
+prefetch-and-switch mechanism.  Ideally, the programmer would be
+oblivious, only expressing the parallelism and not being concerned
+with the details of how it is instantiated and exploited.  Before
+constructing such a programming model, we need to see that there is a
+performance benefit in actual applications.
+
+
+While the "prefetch-and-switch" methodology has been studied in many
+contexts already, both in hardware and in software, throughout
+academics and industry, I am not aware of any effort to apply it
+directly to latency sensitive application problems.  Just prior to
+this work, I studied the prefetch-and-switch primitive, measuring its
+performance in isolation.  Notes on methodology and observations are
+reported in a separate document on [reference omitted]
+
+
+Additional References and Prior Work
+
+The approach dates back at least to TAM, a UC Berkeley project in
+which the compiler actually identified remote memory references and
+introduced prefetch & switch automatically.
+
+
+At Cray, Simon Kahan used an implementation of frays (where name of
+this particular implementation comes from) to provide additional
+parallelism specifically to tolerate latency in leaf computations, or
+where all called routines were either inlined or known to be pure.
+
+
+All members of the same fray executed sharing the one pipeline and
+owning a portion of the parent thread's stack, in the same way that
+Google Frays share one core and are most quickly instantiated by using
+the stack space of their parent. They were much more effective at
+tolerating latency because the prefetch depth was greater and context
+switching was faster. This implementation is a poor man's
+approximation to what was possible there. Frays were only applied when
+the computational structure below was known, so that the stack depth
+was known, and stack overflow a non-issue. Google Frays must be used
+with the same caveat: programmer beware of stack overflow; there are
+no guard pages when Fray stacks are allocated on the parent's
+stack. Google Frays are less effective only in that Software prefetch
+was effected by a load operation with a lookahead value set by the
+programmer (or compiler) instructing the hardware how many more
+instructions could be executed before the prefetched value would be
+used. If the hardware arrived at the use before the value arrived,
+that fray member would stall, All fray members shared a stack was part
+of the parent thread's stack. Either the compiler generated them
+automatically, or we wrote them by hand.
+
+Maybe gcc can be taught to do the same?
+
+
+The innovation is not in the implementation of Frays, but in their
+application to new algorithms (e.g. graph algorithms, internet search).
+
+Frays constitute a specific, simple, prototype implementation of the
+software prefetch-and-switch concept.  A Fray is a collection of
+coroutines, or "fray-members", defined by the programmer within any
+thread -- in our case, a pthread -- of execution.
+
+
+The need for this additional abstraction is dictated by implementation
+constraints and efficiency considerations: were thread context
+switching already sufficiently lightweight, this thread-fray hierarchy
+would be unnecessary.  A flat threading model is indeed preferable.
+However, to introduce additional concurrency with negligible execution
+overhead and user-level scheduling into a world of applications
+implemented already in terms of heavier-weight threads is not feasible
+within the short time-frame allotted to this project.  We could modify
+the pthread interface to support a variant not scheduled by the kernel
+-- but it is easier is to develop a simple abstraction not integrated
+into the existing world at all that provides just the features
+required for proof-of-concept work. Specifically, we need:
+
+
+    * fast user level context switching
+    * a trivial scheduling paradigm -- can afford just a few instructions, so round-robin
+    * small memory footprint -- avoid introducing additional cache misses!
+    * fast creation/destruction -- avoid negating gains by adding overheads
+
+An implementation of Frays is a couple-hundred lines of C code.
+Similar packages (eg libtask) exist already for coroutines and offer
+functionality that we do not need while not providing all the
+functionality that I do.  For example, libtask introduces its own main
+-- we prefer something less invasive, that can be applied locally,
+towards the leaf routines of a google3 application, without affecting
+its higher-level structure.
+
+A simple C API that gets the job done provides the following.
+
+The ability to allocate on the stack some space for a fray:
+
+fray_block fb;
+
+Options may include specification of the number of fray members, size
+of each member's stack, and a pointer to data shared amongst the
+members.
+
+The ability to begin execution of a Fray:
+
+inline void fray(fray_block *fb,
+                 void (*fn) (fray_block * fb, int64_t id),
+                 void * data,
+                 int num);
+
+
+This begins num interleaved executions of fn for each value of id from
+0 to num-1.  The value of data is accessible by fn through fb and is
+provided as a means of sharing data amongst the fray members.
+
+
+An execution continues until it either voluntarily yields to another
+execution or completes.
+
+We're interested in yielding after prefetching a specified location p:
+
+
+inline void fray_fetch_and_yield(fray_block *fb, void *p);
+
+
+This redirects execution to another fray-member after prefetching p.
+We do not return the value of p, thus allowing for additional code
+before its use.
+
+
+When the function fn is about to complete, before it returns in the
+C-language sense, we demand that the fray-member declare its
+completion.  Not calling this function before returning is fatal:
+
+
+inline void fray_return(fray_block *fb); 
+
+
+
+Multichase
+
+A simple example of use is an adaptation of Dean Gaudet's benchmark
+used to measure memory system characteristics at Google.  The core is
+code that chases linked lists indefinitely:
+
+
+static void chase_simple(per_thread_t *t)
+{
+        void *p = t->x.cycle[0];
+
+        do {
+                x200(p = *(void **)p;)
+                t->x.count += 200;
+        } while (always_zero == 0);
+
+        // we never actually reach here, but the compiler doesn't know that
+        t->x.dummy = (uintptr_t)p;
+}
+
+The x200 macro merely repeats its argument 200 times.  Rewriting the
+code to use Frays is straightforward.  We rename chase_simple to
+fray_chase_simple and make a few changes highlighted in boldface.
+This routine happens to contain an infinite loop by design, so the
+call to fray_return is superfluous.  (Note that the computation
+performed is no longer identical: it is chasing some number of lists
+concurrently, switching between each, similarly to multichase when
+running in parallel mode.  There is no way to apply this technique to
+accelerate an individual thread of multichase running in isolation,
+because a single chase is inherently serial.)
+
+#include "fray.h"
+
+static void fray_chase_simple(fray_block *fb, int64_t id)
+{
+        per_thread_t * t = (per_thread_t *) fb->data;
+        void *p = t->x.cycle[id];
+
+        do {
+                x200(fray_fetch_and_yield(fb, p); p = *(void **)p;)
+                t->x.count += 200;
+        } while (always_zero == 0);
+
+        // we never actually reach here, but the compiler doesn't know that
+        t->x.dummy = (uintptr_t)p;
+        fray_return(fb); //just for show, since its unreachable
+}
+
+In its main routine, we added a command-line flag to Multichase so
+that we could experiment with different numbers of fray-members to see
+their effect on performance:
+
+
+int global_fray_size = 1; //command line flag -f <num_tasks>
+
+
+We replace the body of the original chase_simple routine so that it
+becomes a wrapper.
+
+
+static void chase_simple(per_thread_t *t)
+{
+        fray_block fb;
+        fray(&fb, fray_chase_simple, t, global_fray_size);
+}
+
+
+
+
+Breadth-First Search
+
+
+A slightly more complex example is counting the number of connected
+components in a graph using breadth-first search.  The following
+routine is called repeatedly, iterating through each node v that has
+not yet been explored:
+
+void bfs(int v) {
+  active->push(v);
+  while (!active->empty()) {
+    v = active->front(); active->pop();
+    EDGE * edg = nodes[v].out;
+    while (edg) {
+      int n = edg->dst;
+      if (!nodes[n].explored) {nodes[n].explored = 1; active->push (n);}
+      edg = edg->next;
+    }
+  }
+}
+
+Using frays once again requires introduction of a function to be
+called by each fray member:
+
+
+void fray_bfs(fray_block *fb, int64_t id) {
+  while (!active->empty()) {
+    int v = active->front(); active->pop();
+    EDGE * edg = (EDGE *) fray_fetch_and_yield(fb, &nodes[v].out);
+    while (edg) {
+      int n = (int) fray_fetch_and_yield(fb, &edg->dst);
+      fray_prefetch_and_yield(fb, &nodes[n].explored);
+      if (!nodes[n].explored) {nodes[n].explored = 1; active->push (n);}
+      edg = edg->next;
+    }
+  }
+  fray_return(fb);
+}
+
+
+We have chosen to prefetch and switch on each edge as well as on the
+explored flag: both loads are likely to induce a cache miss on large
+graphs.  The wrapper that creates the fray is simply:
+
+
+void bfs(int v) {
+  fray_block fb;
+  active->push(v);
+  fray(&fb, co_bfs, 0, global_fray_size);
+}
+
+Measured performance of the fray version is easily 2x that of the
+non-fray version on today's platforms, for, say, a random graph of
+size one-million nodes and average degree 5.
+
+
+
+Future plans:
+
+
+(1) Proving advantage in a real application and 
+
+2) proving that the (method can be applied with no more programmer
+pain than is warranted (by the results are prerequisites for work
+beyond the quarter.
+
+
+Such positive results would provide evidence that data and request
+parallelism is not enough.
+
+
+Some may have regarded this as obvious, but contrary to that believe
+is today's reality in which many workloads, while often multithreaded,
+employ only the parallelism that comes from chopping up a problem's
+data into coarse grain chunks or from having a lot of concurrent
+requests.  Few computations use, for example, recursive or
+unstructured parallelism.  
+
+
+Frays are an instance of fine-grained parallelism.  Fetch-and-switch
+is a mechanism for applying fine-grained parallelism to tolerate
+latency.  If such parallelism proves important, support for it both in
+hardware and software should be improved.  
+
+
+
+
+Detailed Design
+
+Implementation in C of the simple prototype API described above is
+straightforward, and expected to change in response to needs as they
+become evident from use (this is a draft design doc!)  Intention is to
+provide enough code snippets here to support thoughtful review of the
+overall concept with respect to its usage in existing applications.
+
+
+Basic Fray state.  For now, we assume STACK_SIZE_64 and the
+MAX_FRAY_MEMBERS is fixed at compile-time.  Keeping the stacks small
+enough to fit on a page to reduce TLB pressure seems prudent -- this
+dictates eventually making these values more dynamic.  sptrs provides
+storage for pointers to the each fray member's stack;
+sptrs[MAX_FRAY_MEMBERS] points to the main thread's stack, to be
+restored on fray completion.  data may be set to point to data to be
+shared amongst the fray members.  num is the number of fray members;
+completed is the number that have executed fray_return since execution
+of fray.
+
+
+typedef struct {
+
+  stacks[STACK_SIZE_64 * MAX_FRAY_MEMBERS];
+  uint64_t * sptrs[MAX_FRAY_MEMBERS+1];
+
+  void * data;
+  int num;
+  int completed;
+} fray_block;
+
+
+Once this structure is allocated, the program can begin execution of a
+Fray by calling fray.  Stack pointers are set and corresponding stacks
+initialized to begin execution when switched to via the assembly
+language function swap_frays.
+
+
+inline void fray(fray_block *fb,
+                 void (*fn) (fray_block * fb, int64_t id),
+                 void * data,
+                 int num) {
+
+  fb->data = data;
+  fb->num = num;
+
+  for (int i = 0; i < num; i++) {
+    fb->sptrs[i] = &(fb->stacks[STACK_SIZE_64 *(i+1) - REGOFF_N]);
+    stack_init(fb->sptrs[i], (voidfn)(fn), (uint64_t*)(fb),(uint64_t*)(i));
+  }
+  fb->completed = 0;
+  swap_frays(&fb->sptrs[MAX_FRAY_MEMBERS], &fb->sptrs[0]);
+}
+
+
+swap_frays merely pushes the six callee-save registers onto the stack,
+stores the stack pointer at the first argument, loads the stack
+pointer from the second argument, and pops the callee-save registers.
+Consequently, the call in fray returns only once swap_frays is
+executed with second argument equal to &fb->sptrs[MAX_FRAY_MEMBERS].
+
+Once a fray member is executing, it can prefetch a value and yield
+via:
+
+inline void fray_prefetch_and_yield(fray_block *fb, int64_t id, void *p) {
+  __builtin_prefetch(p, 0, 0);
+  swap_tasks(&fb->sptrs[id], &fb->sptrs[(id+1) < fb->num ? (id+1) : 0]);
+}
+
+A simplifying assumption for now is that values prefetched experience
+little reuse, so we always direct __builtin_prefetch to use
+prefetchnta.  In the future, we may add variants.
+
+Once a fray-member completes its work, rather than fn returning to its
+caller (there is none), the fray_return function must be executed:
+
+inline void fray_return(fray_block *fb, int64_t id) {
+  fb->completed++;
+  while (fb->completed < fb->num) fray_yield(fb, id);
+  swap_tasks(&fb->sptrs[id], &fb->sptrs[MAX_FRAY_MEMBERS]);
+}
+
+
+The last fray-member standing returns control to the main thread.
+
+
+Caveats
+
+This is an old idea, similar to work done by many others that has yet
+to lead to use of fetch-and-switch on cache misses in production.  A
+simpler approach is to rely on hyper-threading to provide latency
+tolerance.  However, it seems unlikely hyper-threading alone will be
+extensive enough to provide the concurrency required to tolerate
+stalls that are three orders of magnitude longer than clock speed,
+especially for applications that have a high density of dependent
+remote accesses.  Fetch-and-switch adds complexity in an attempt to
+supplement (or act in place of) hyper-threading.
+
+That added complexity introduces risks:
+
+    * software becomes more complex
+          o even greater concurrency must be available and expressed
+          o there are overheads associated with software concurrency
+                + not just in switching, but also in managing more partial computations 
+    * opportunities may be too sparse
+          o only works where cache misses occur at known locations with very high probability
+          o requires availability of adequate thread-like parallelism
+          o may just not provide enough bang for the buck
+    * hardware bandwidth may be insufficient
+          o requires prefetch buffer of size equal to concurrency required
+                + typically, only 8 prefetches may be outstanding 
+          o requires that off-chip and memory bandwidth be adequate
+                + currently, not a problem because we are limited by 20ns 
+                  switch speed to about 50M fetches/sec * 64 bytes/fetch = 
+                  3.2GB/sec, only half available BW. 
+          o to achieve potential reqs hardware support for faster switch & deep prefetch buffer
+                + leads to risky hardware changes

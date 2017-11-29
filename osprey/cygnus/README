@@ -1,0 +1,5 @@
+Copyright 2003, 2004, 2005 PathScale, Inc.  All Rights Reserved.
+
+This directory contains the binutils-2.16.1 linker that is modified
+to handle IPA.  The IPA enhencements are extracted from the corresponding
+files in the cygnus_20000828 directory from the original open64 release.

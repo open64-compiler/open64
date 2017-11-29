@@ -1,0 +1,112 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+	if (shflag) then
+	    if (bndflag) then
+cdir$	do shared (i1,i2,i3,i4,i5) on result(i1,i2,i3,i4,i5)
+		do i1 = 1, sx(1)
+		do i2 = 1, sx(2)
+		do i3 = 1, sx(3)
+		do i4 = 1, sx(4)
+		do i5 = 1, sx(5)
+		    s_i3 = i3 + shftval
+		    if (s_i3 .le. 0 .OR. s_i3 .gt. sx(3)) then
+			result(i1,i2,i3,i4,i5) = bndval
+		    else
+			result(i1,i2,i3,i4,i5) = source(i1,i2,s_i3,i4,i5)
+		    endif
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+	    else
+cdir$	do shared (i1,i2,i3,i4,i5) on result(i1,i2,i3,i4,i5)
+		do i1 = 1, sx(1)
+		do i2 = 1, sx(2)
+		do i3 = 1, sx(3)
+		do i4 = 1, sx(4)
+		do i5 = 1, sx(5)
+		    s_i3 = i3 + shftval
+		    if (s_i3 .le. 0 .OR. s_i3 .gt. sx(3)) then
+			result(i1,i2,i3,i4,i5) = bound(i1,i2,i4,i5)
+		    else
+			result(i1,i2,i3,i4,i5) = source(i1,i2,s_i3,i4,i5)
+		    endif	
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+	    endif
+	else
+	    if (bndflag) then
+cdir$	do shared (i1,i2,i3,i4,i5) on result(i1,i2,i3,i4,i5)
+		do i1 = 1, sx(1)
+		do i2 = 1, sx(2)
+		do i3 = 1, sx(3)
+		do i4 = 1, sx(4)
+		do i5 = 1, sx(5)
+		    s_i3 = i3 + shift(i1,i2,i4,i5)
+		    if (s_i3 .le. 0 .OR. s_i3 .gt. sx(3)) then
+			result(i1,i2,i3,i4,i5) = bndval
+		    else
+			result(i1,i2,i3,i4,i5) = source(i1,i2,s_i3,i4,i5)
+		    endif
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+	    else
+cdir$	do shared (i1,i2,i3,i4,i5) on result(i1,i2,i3,i4,i5)
+		do i1 = 1, sx(1)
+		do i2 = 1, sx(2)
+		do i3 = 1, sx(3)
+		do i4 = 1, sx(4)
+		do i5 = 1, sx(5)
+		    s_i3 = i3 + shift(i1,i2,i4,i5)
+		    if (s_i3 .le. 0 .OR. s_i3 .gt. sx(3)) then
+			result(i1,i2,i3,i4,i5) = bound(i1,i2,i4,i5)
+		    else
+			result(i1,i2,i3,i4,i5) = source(i1,i2,s_i3,i4,i5)
+		    endif	
+		enddo
+		enddo
+		enddo
+		enddo
+		enddo
+	    endif
+	endif

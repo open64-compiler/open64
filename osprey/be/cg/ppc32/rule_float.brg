@@ -1,0 +1,493 @@
+/*
+
+  Copyright (C) 2006-2009 Tsinghua University.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+*/
+
+
+f4reg    : F4CONST
+        {            
+            $cost[0].cost = 4;
+        }
+        = { //#ins addis lfs
+            if (CGSPILL_Rematerialize_Constants && $0->isnull()) {
+		$0->result = Allocate_Result_TN($0->wn, NULL);
+                Set_TN_is_rematerializable($0->result);
+                Set_TN_home ($0->result, $0->wn);
+            }
+	    $0->init_result();
+            Expand_Const($0->result, Gen_Symbol_TN (WN_st($0->wn), 0, 0), WN_rtype($0->wn), ops);
+        };
+
+f4reg   : F4ADD(f4reg, f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins fadds
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_fadds, $0->result, $2->result, $3->result, ops);
+        };
+
+f4reg   : F4SUB(f4reg, f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins fsubs
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_fsubs, $0->result, $2->result, $3->result, ops);
+        };
+
+f4reg   : F4MPY(f4reg, f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins fmuls
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_fmuls, $0->result, $2->result, $3->result, ops);
+        };
+
+f4reg   : F4DIV(f4reg, f4reg)
+        {
+            $cost[0].cost = 21 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins fdivs
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_fdivs, $0->result, $2->result, $3->result, ops);
+        };
+
+f4reg   : F4MADD(f4reg, f4reg, f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins fmadds
+	    $action[2](ops);
+	    $action[3](ops);
+	    $action[4](ops);
+	    $0->init_result();
+	    Build_OP(TOP_fmadds, $0->result, $3->result, $4->result, $2->result, ops);
+        };
+
+f4reg   : F4MADD(f4reg, f4reg, f4reg)
+        {
+            $cost[0].cost = 6 + $cost[2].cost + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins fmuls fadds
+	    $action[2](ops);
+	    $action[3](ops);
+	    $action[4](ops);
+	    $0->init_result();
+	    TN * tmp = Build_TN_Like($0->result);
+	    Build_OP(TOP_fmuls, tmp, $3->result, $4->result, ops);
+	    Build_OP(TOP_fadds, $0->result, tmp, $2->result, ops);
+        };
+
+f4reg   : F4NMADD(f4reg, f4reg, f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins fnmadds
+	    $action[2](ops);
+	    $action[3](ops);
+	    $action[4](ops);
+	    $0->init_result();
+	    Build_OP(TOP_fnmadds, $0->result, $3->result, $4->result, $2->result, ops);
+        };
+
+f4reg   : F4NMADD(f4reg, f4reg, f4reg)
+        {
+            $cost[0].cost = 7 + $cost[2].cost + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins fmuls fadds fneg
+	    $action[2](ops);
+	    $action[3](ops);
+	    $action[4](ops);
+	    $0->init_result();
+	    TN * tn1 = Build_TN_Like($0->result);
+	    TN * tn2 = Build_TN_Like($0->result);
+	    Build_OP(TOP_fmuls, tn1, $3->result, $4->result, ops);
+	    Build_OP(TOP_fadds, tn2, tn1, $2->result, ops);
+	    Build_OP(TOP_fneg, $0->result, tn2, ops);
+        };
+
+
+f4reg   : F4NEG(F4MADD(f4reg, f4reg, f4reg))
+        {
+            $cost[0].cost = 5 + $cost[3].cost + $cost[4].cost + $cost[5].cost;
+        }
+        = { //#ins fnmadds
+	    $action[3](ops);
+	    $action[4](ops);
+	    $action[5](ops);
+	    $0->init_result();
+	    Build_OP(TOP_fnmadds, $0->result, $4->result, $5->result, $3->result, ops);
+        };
+
+f4reg    : F4MSUB(f4reg, f4reg, f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins fmsubs
+	    $action[2](ops);
+	    $action[3](ops);
+	    $action[4](ops);
+	    $0->init_result();
+	    Build_OP(TOP_fmsubs, $0->result, $3->result, $4->result, $2->result, ops);
+        };
+
+f4reg   : F4MSUB(f4reg, f4reg, f4reg)
+        {
+            $cost[0].cost = 6 + $cost[2].cost + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins fmuls fsubs
+	    $action[2](ops);
+	    $action[3](ops);
+	    $action[4](ops);
+	    $0->init_result();
+	    TN * tmp = Build_TN_Like($0->result);
+	    Build_OP(TOP_fmuls, tmp, $3->result, $4->result, ops);
+	    Build_OP(TOP_fsubs, $0->result, tmp, $2->result, ops);
+        };
+
+f4reg   : F4NMSUB(f4reg, f4reg, f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins fnmsubs
+	    $action[2](ops);
+	    $action[3](ops);
+	    $action[4](ops);
+	    $0->init_result();
+	    Build_OP(TOP_fnmsubs, $0->result, $3->result, $4->result, $2->result, ops);
+        };
+
+f4reg   : F4NMSUB(f4reg, f4reg, f4reg)
+        {
+            $cost[0].cost = 6 + $cost[2].cost + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins fmuls fsubs
+	    $action[2](ops);
+	    $action[3](ops);
+	    $action[4](ops);
+	    $0->init_result();
+	    TN * tmp = Build_TN_Like($0->result);
+	    Build_OP(TOP_fmuls, tmp, $3->result, $4->result, ops);
+	    Build_OP(TOP_fsubs, $0->result, $2->result, tmp, ops);
+        };
+
+f4reg   : F4NEG(F4MSUB(f4reg, f4reg, f4reg))
+        {
+            $cost[0].cost = 5 + $cost[3].cost + $cost[4].cost + $cost[5].cost;
+        }
+        = { //#ins fnmsubs
+	    $action[3](ops);
+	    $action[4](ops);
+	    $action[5](ops);
+	    $0->init_result();
+	    Build_OP(TOP_fnmsubs, $0->result, $4->result, $5->result, $3->result, ops);
+        };
+
+f4reg   : F4NEG(f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost;
+        }
+        = { //#ins fneg
+            $action[2](ops);
+	    $0->init_result();
+            Build_OP(TOP_fneg, $0->result, $2->result, ops);
+        };
+
+f4reg   : F4ABS(f4reg)
+        {
+            $cost[0].cost = 5 + $cost[2].cost;
+        }
+        = { //#ins fabs
+            $action[2](ops);
+	    $0->init_result();
+            Build_OP(TOP_fabs, $0->result, $2->result, ops);
+        };
+
+f4reg   : F4NEG(F4ABS(f4reg))
+        {
+            $cost[0].cost = 5 + $cost[3].cost;
+        }
+        = { //#ins fnabs
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_fnabs, $0->result, $3->result, ops);
+        };
+
+
+f4reg	: F4RECIP(f8regt)
+	{
+	    $cost[0].cost = 5 + $cost[2].cost;
+	}
+	= {
+	    $action[2](ops);
+	    $0->init_result();
+	    Build_OP(TOP_fres, $0->result, $2->result, ops);
+	};
+
+f4reg	: F4RSQRT(f8regt, f8regt, f8regt)
+	{
+	    $cost[0].cost = 5 + $cost[2].cost;
+	}
+	= {
+	    $action[2](ops);
+	    $0->init_result();
+	    TN* tn = Build_TN_Like($0->result);
+	    Build_OP(TOP_frsqrte, tn, $2->result, ops);
+	    Build_OP(TOP_frsp, $0->result, tn, ops);
+	};
+
+
+f4reg   : F4F4LDID
+        {
+            $cost[0].cost = 4;
+        }
+        = { //#ins add addi addis fmr lfs
+	    $0->result = Handle_LDID($0->wn, $0->result, $1->opcode);
+        };
+
+null    : F4STID
+        {
+            $cost[0].cost = 3;
+        }
+        = { //#ins add addi addis stfs
+	    Handle_STID($0->wn, $1->opcode);
+        };
+
+
+f4reg	: F4ILOAD
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_ILOAD($0->wn, $0->result, $1->opcode);
+	};
+
+null    : F4ISTORE
+        {
+            $cost[0].cost = 4;
+        }   
+        = {
+            Handle_ISTORE($0->wn, $1->opcode);
+        };
+
+
+f8reg   : F8SELECT
+        { 
+            $cost[0].cost = 2;
+        }   
+        = {
+            $0->result = Handle_SELECT($0->wn, $0->result, $1->opcode);
+        };
+
+f4reg	: F4INTRINSIC_OP
+	{
+	    $cost[0].cost = 2;
+	}
+	= {
+            if (WN_intrinsic($0->wn) == INTRN_EXPECT){
+                $0->result = Expand_Expr(WN_kid0(WN_kid0($0->wn)), WN_kid0($0->wn), $0->result);
+            }
+            else{
+                $0->result = Handle_INTRINSIC_OP($0->wn, $0->result);
+            }
+	};
+
+f4reg   : F4MAX(f4reg, f4reg)
+        {
+            $cost[0].cost = 10 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins fsubs fsel
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Max($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+f4reg   : F4MIN(f4reg, f4reg)
+        {
+            $cost[0].cost = 10 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins fsubs fsel
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Min($0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+f4reg	: F4MAXPART
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MAXPART($0->wn, $0->parent, $0->result);
+	};
+
+f4reg	: F4MINPART
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MINPART($0->wn, $0->parent, $0->result);
+	};
+
+f4reg	: F4MINMAX
+	{
+	    $cost[0].cost = 4;
+	}
+	= {
+	    $0->result = Handle_MINMAX($0->wn, $0->parent, $0->result, $0->opcode);
+	};
+
+
+reg     : I4F4RND(f4reg), I4F8RND(f8reg)
+        {
+            $cost[0].cost = 13 + $cost[2].cost;
+        }
+        = { //#ins fctiw add addi addis stfd lwz
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Float_Int_Cvt(ROUND_NEAREST, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+reg     : I4F4CEIL(f4reg), I4F8CEIL(f8reg)
+        {
+            $cost[0].cost = 13 + $cost[2].cost;
+        }
+        = { //#ins mtfsb0 mtfsb1 fctiw addi addis stfd lwz
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Float_Int_Cvt(ROUND_PLUS_INF, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+reg     : I4F4FLOOR(f4reg), I4F8FLOOR(f8reg)
+        {
+            $cost[0].cost = 13 + $cost[2].cost;
+        }
+        = { //#ins mtfsb0 mtfsb1 fctiw addi addis stfd lwz
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Float_Int_Cvt(ROUND_NEG_INF, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+reg     : I4F4CVT(f4reg), I4F8CVT(f8reg)
+        {
+            $cost[0].cost = 11 + $cost[2].cost;
+        }
+        = { //#ins fctiw add addi addis stfd lwz
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Float_Int_Cvt(ROUND_USER, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+reg     : I4F4TRUNC(f4reg), I4F8TRUNC(f8reg)
+        {
+            $cost[0].cost = 11 + $cost[2].cost;
+        }
+        = { //#ins fctiw add addi addis stfd lwz
+            $action[2](ops);
+            $0->init_result();
+            Handle_Float_Int_Cvt(ROUND_CHOP, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+
+reg     : U4F4RND(f4reg), U4F8RND(f8reg)
+        {
+            $cost[0].cost = 13 + $cost[2].cost;
+        }
+        = { //#ins fsub fsel fcmpu mfcr rlwinm xoris fctiw xor add addi addis stfd lwz
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Float_Uint_Cvt(ROUND_NEAREST, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+reg     : U4F4CEIL(f4reg), U4F8CEIL(f8reg)
+        {
+            $cost[0].cost = 13 + $cost[2].cost;
+        }
+        = { //#ins fsub fsel fcmpu mfcr rlwinm xoris fctiw mtfsb0 mtfsb1 xor add addi addis stfd lwz
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Float_Uint_Cvt(ROUND_PLUS_INF, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+reg     : U4F4FLOOR(f4reg), U4F8FLOOR(f8reg)
+        {
+            $cost[0].cost = 13 + $cost[2].cost;
+        }
+        = { //#ins fsub fsel fcmpu mfcr rlwinm xoris fctiw mtfsb0 mtfsb1 xor add addi addis stfd lwz
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Float_Uint_Cvt(ROUND_NEG_INF, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+reg     : U4F4CVT(f4reg), U4F8CVT(f8reg)
+        {
+            $cost[0].cost = 11 + $cost[2].cost;
+        }
+        = { //#ins fsub fsel fcmpu mfcr rlwinm xoris fctiw add addi addis xor stfd lwz
+            $action[2](ops);
+            $0->init_result();
+            Handle_Float_Uint_Cvt(ROUND_USER, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+reg     : U4F4TRUNC(f4reg), U4F8TRUNC(f8reg)
+        {
+            $cost[0].cost = 11 + $cost[2].cost;
+        }
+        = { //#ins fsub fsel fcmpu mfcr rlwinm xoris fctiw add addi addis xor stfd lwz
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Float_Uint_Cvt(ROUND_CHOP, WN_rtype($2->wn), $0->result, $2->result, ops);
+        };
+
+f4reg   : F4I4CVT(reg)
+        {
+            $cost[0].cost = 13 + $cost[2].cost;
+        }
+        = { //#ins add addi addis stw lfs fsub xoris
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Int_Float_Cvt($0->result, $2->result, ops, false, false);
+        };
+
+f4reg   : F4U4CVT(reg)
+        {
+            $cost[0].cost = 13 + $cost[2].cost;
+        }
+        = { //#ins add addi addis stw lfs fsub xoris
+            $action[2](ops);
+	    $0->init_result();
+            Handle_Int_Float_Cvt($0->result, $2->result, ops, true, false);
+        };
+
+

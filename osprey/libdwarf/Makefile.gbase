@@ -1,0 +1,198 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+include	$(COMMONDEFS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+
+LCINCS += \
+	-I. \
+	-I$(BUILD_BASE)/libdwarf \
+	-I$(BUILD_TOT)/include/libelf \
+	-I$(BUILD_TOT)/include
+
+LCDEFS = -D_SYSV -DSYSV
+
+#use the next line for cygnus, plain 32bit offset with 64bit pointer
+#dwarf2
+LCDEFS += -DHAVE_OLD_DWARF2_32BIT_OFFSET
+
+LIBRARY = libdwarf.a
+DSO     = libdwarf.so
+DUMP := dwarfdump
+
+LDIRT := _tag_*_table.c dwarf_names.[ch] stamp-names tag_*_build $(DUMP)
+
+TARGG_LOC  = /usr/share/src/compiler/dwarf
+
+TARGETS = $(DUMP)
+
+#
+# any source added to this list should be added to the install list
+# below
+CFILES	= \
+	dwarf_abbrev.c \
+	dwarf_alloc.c \
+	dwarf_arange.c \
+	dwarf_die_deliv.c \
+	dwarf_error.c \
+	dwarf_form.c \
+	dwarf_frame.c \
+	dwarf_funcs.c \
+	dwarf_global.c \
+	dwarf_init_finish.c  \
+	dwarf_line.c \
+	dwarf_macro.c \
+	dwarf_loc.c \
+	dwarf_query.c \
+	dwarf_string.c \
+	dwarf_stubs.c \
+	dwarf_types.c \
+	dwarf_util.c \
+	dwarf_leb.c \
+	dwarf_vars.c \
+	dwarf_weaks.c    \
+	dwarf_addr_finder.c \
+	dwarf_print_lines.c \
+	dwarf_sort_line.c \
+	pro_alloc.c \
+	pro_arange.c \
+	pro_die.c \
+	pro_encode_nm.c \
+	pro_error.c \
+	pro_expr.c \
+	pro_finish.c \
+	pro_forms.c \
+	pro_funcs.c \
+	pro_frame.c \
+	pro_init.c \
+	pro_line.c \
+	pro_reloc.c \
+	pro_reloc_stream.c \
+	pro_reloc_symbolic.c \
+	pro_macinfo.c \
+	pro_pubnames.c \
+	pro_section.c \
+	pro_types.c \
+	pro_vars.c \
+	pro_weaks.c \
+	dwf_forms.c \
+	dwf_frame.c \
+	dwf_section.c
+
+ifeq ($(BUILD_OS),DARWIN)
+DUMP_CFILES := \
+	dwarfdump.c \
+	makename.c
+else
+DUMP_CFILES := \
+	dwarfdump.c \
+	makename.c \
+	print_die.c \
+	print_reloc.c \
+	print_sections.c
+endif
+
+DUMP_OBJECTS := \
+	$(DUMP_CFILES:.c=.o) \
+	dwarf_names.o
+
+#----------------------------------------------------------------------
+#  For parallel makes, makefile must satisfy:
+#  -> Submake for include/ finished before building any objects;
+#  -> All archive/library submakes finished before linking targets;
+#  -> All targets finished before make_deps or make_libdeps.
+#----------------------------------------------------------------------
+
+default:
+	$(MAKE) first
+	$(MAKE) make_libdeps
+
+make_libdeps: $(TARGETS)
+$(OBJECTS): $(BUILD_AREA)/include/pathscale_defs.h
+.PHONY: default install make_libdeps first 
+
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+endif
+
+#----------------------------------------------------------------------
+
+exports: default
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_LIBRARY_LOC) $(TARGETS)
+
+include $(COMMONRULES)
+
+VPATH = $(BUILD_BASE) $(BUILD_BASE)/dwarfdump $(BUILD_BASE)/libdwarf
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+
+print_sections.o: dwarf_names.h
+
+dwarf_names.h dwarf_names.c: stamp-names
+
+stamp-names: dwarf_names.awk dwarf.h
+	awk -f $^ > dwarf_names.c
+	touch stamp-names
+
+squish = $(cc) -xc $(LCINCS) -E $(2) | awk '!/^\#/ && !/^[ \t]*$$/' | ./$(1)_build > $@
+
+_tag_attr_table.c: tag_attr.list tag_attr_build dwarf.h
+	$(call squish,tag_attr,$<)
+
+_tag_tree_table.c: tag_tree.list tag_tree_build dwarf.h
+	$(call squish,tag_tree,$<)
+
+%_build: %.c dwarf.h
+	$(cc) -o $@ $(LCINCS) $<
+
+print_die.o: _tag_attr_table.c _tag_tree_table.c dwarf_names.h
+
+ifeq ($(BUILD_OS), DARWIN)
+LELF=
+else
+LELF=-lelf
+endif
+
+
+$(DUMP): $(DUMP_OBJECTS) $(LIBRARY)
+	$(cc) -o $@ $^ -L. -L$(BUILD_AREA)/libelf -ldwarf -lelf
+
+dwarf_names.o: LCINCS += -I$(BUILD_BASE)/dwarfdump
+dwarfdump.o print_%.o: _MIPS_SZLONG:=32

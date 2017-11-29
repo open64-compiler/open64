@@ -1,0 +1,74 @@
+#/usr/bin/expect -f
+load_lib test_multifile.exp
+
+# Do not use "load_lib test_utils.exp".
+# Cause it is provided by DejaGnu, does not support overloading.
+uplevel #0 source $testhome/lib/test_utils.exp
+
+proc CheckResultDistr { result } {
+    global exetime
+    set results [split $result "\n"]
+    foreach line $results {
+        set line [string trim $line]
+	if { [string first "FAILURE" $line] >= 0 } {
+	    set exetime -1
+	    return 0
+	} elseif { [string match -nocase "time = *" $line] } {
+	    set exetime [string range $line 7 [expr [string length $line] - 1]]
+	} elseif { $exetime < 0 && [string is double $line] } {
+	    set exetime $line
+	}
+    }
+    return 1
+}
+
+proc TestOneDir { dirname } {
+    global testhome testoutput logdir summary exetime runtimes
+    
+    cd $testhome/cases/cern/$dirname
+    set cases [exec ls -1]
+    set cases [split $cases "\n"]
+
+    system mkdir -p $testoutput/cern/$dirname
+
+    foreach case $cases {
+        if { ![file isdirectory $case] } {
+	    system cp -f $case $testoutput/cern/$dirname
+	}
+    }
+
+    foreach case $cases {
+        cd $testhome/cases/cern/$dirname
+        if { [file isdirectory $case] } {
+	    set exetime -1
+	    C_CLASS::TestMakefile $case test$case [file normalize $testoutput/cern/$dirname/$case] $summary CheckResultDistr
+#	    set runtimes($case) $exetime
+	}
+    }
+}
+
+set curdir $testhome/cases/cern
+cd $curdir
+system mkdir -p $testoutput/cern
+system cp timing.* $testoutput/cern
+set summary [open $logdir/cern.log w+]
+
+C_CLASS::ResetFlags
+C_CLASS::InitCounters
+C_CLASS::ReportTitle "Cern Loop Test" $summary
+
+#array set runtimes {}
+TestOneDir clhep
+TestOneDir geant4
+TestOneDir root
+#WriteSummary $summary
+#WriteTimeResult $summary runtimes "cern.dat"
+
+incr_count FAIL [expr $C_CLASS::err_run + $C_CLASS::err_build]
+incr_count PASS $C_CLASS::pass_run
+incr_count TOTAL [expr $C_CLASS::pass_build + $C_CLASS::err_build]
+
+C_CLASS::ReportSum "Cern Loop Test" $summary
+
+cd $testhome
+

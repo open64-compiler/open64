@@ -1,0 +1,35 @@
+
+README
+$Revision: 1.1.1.1 $
+
+The xlate reader code is written with the idea that on opening
+a handle one decides what functions to call to implement the
+externally visible functions.  Each function, then, need not
+do run-time checks every time called to determine what
+kind of table is involved: where necessary different functions
+are provided for each 'kind of table'.
+
+This is a sort of primitive object-oriented-programming
+approach to reading the xlate table.
+
+It makes for more functions, but each function is tailored
+to what it has to do.
+
+One hopes the result is both easy to understand and efficient.
+
+The #define TURN_OFF_MEMO
+will, if presented, to the code, turn off the memoization
+functionality.  The only reason to do this would be to
+verify that without the memo stuff the code still works.
+The memoization code (all conditionalized with TURN_OFF_MEMO)
+makes the library much faster and this code should allways be on
+so except possibly for certain experiments or debugging
+TURN_OFF_MEMO should never be defined.
+
+I did not want to have a mysterious #define required to
+get the fast performance.   Instead use it to get bog slow performance
+if you really want slow :-)
+
+
+davea Aug 6,1996.
+

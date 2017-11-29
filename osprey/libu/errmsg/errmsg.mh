@@ -1,0 +1,94 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* USMID @(#) libu/errmsg/errmsg.mh	92.0	10/08/98 14:57:41 */
+
+
+LIB_SRC_INFO += \
+		Ad:errmsg/lmessage.c \
+		Ad:errmsg/lerror.c \
+		Ad:errmsg/lwarn.c \
+
+LIB_DIRS_INFO += \
+		Ad:errmsg \
+
+/*
+ * The following kludge is necessary because the Fortran library error
+ * numbers have different values on UNICOS and IRIX systems.  On UNICOS,
+ * library error numbers are in the range 1000-2000; on IRIX, they're in
+ * the range 4000-5000.  The way this is handled in liberrno.h is to
+ * make the error number a C expression (e.g., BASE+OFFSET).  However,
+ * caterr cannot handle expressions so we have to massage liberrno.h
+ * into a local header file (numbers.h).  This is done with an awk
+ * script which generates a C program to massage the header file.  The
+ * C program is an essential step as we want to get a consistent
+ * treatment of these expressions.
+ *
+ * Normally cross-targeting for other platforms is allowed, however
+ * the massage binary is expected to run on the host.  Therefore, we
+ * temporarily unset TARGET to create the right type of executable and
+ * reset it when we're done.  LDFLAGS has been omitted from the loading
+ * of massage because host libraries must be used.
+ */
+
+numbers.h:	.ALWAYS
+	ignore $(RM) $(RMFLAGS) massage massage.o massage.c numbers.h
+	if [ -f $(INCLUDE)/liberrno.h ] ; then
+		awk -f errmsg/massage.awk $(INCLUDE)/liberrno.h > massage.c
+	elif [ -f $(INCLUDE2)/liberrno.h ] ; then
+		awk -f errmsg/massage.awk $(INCLUDE2)/liberrno.h > massage.c
+	else
+		awk -f errmsg/massage.awk $(INCLUDE3)/liberrno.h > massage.c
+	fi
+	targ=$TARGET
+	if [ "$targ" != "" ] ; then unset TARGET; fi
+#ifdef UNICOS_TARGET
+#if tmachine(crayt3d) || (tmachine(crayt3e) && !machine(crayt3e))
+	gencc=cc
+#else 
+	gencc=$(CC)
+#endif /* end tmachine... */
+#else
+	gencc=$(CC)
+#endif  /* end UNICOS_TARGET */
+	${gencc} $(CCFLAGS) -o massage massage.c
+	if [ "$targ" != "" ] ; then export TARGET=$targ; fi
+	./massage > $(<)
+
+lib.msg:	numbers.h
+
+RMUBIN +=	massage.o massage.c massage
+
+/**/

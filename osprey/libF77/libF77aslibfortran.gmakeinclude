@@ -1,0 +1,803 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  libF77aslibfortran.makeinclude included by Makefile.base for libfortran
+#
+
+
+# from libI77
+LCDEFS += -D_LONGLONG
+# from libisam
+LCDEFS += -DPLI
+# from libF77
+ifneq ($(BUILD_COMPILER), GNU)
+LCDEFS += -OPT:IEEE_comparisons
+endif
+
+# we add -DI90 to insert code needed for fortran 90 library (libI77)
+LCDEFS += -DI90
+
+# we add -DFTN90_IO for compiling using the new fortran 90 I/O library
+LCDEFS += -DFTN90_IO
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+CFILES_FOOBAR = \
+	pow_ci.c \
+	pow_di.c \
+	pow_ii.c \
+	pow_ri.c \
+	_powzi.c \
+	pow_zi.c
+
+CFILES_NON_FOOBAR = \
+	_powci.c \
+	_powcl.c \
+	_powdi.c \
+	_powdl.c \
+	_powii.c \
+	_powll.c \
+	_powzl.c \
+	abort_.c \
+	i_abs.c \
+	l_abs.c \
+	s_cmp.c \
+	s_copy.c
+
+CFILES += \
+	and_b.c \
+	and_h.c \
+	and_l.c \
+	and_ll.c \
+	b_abs.c \
+	b_dim.c \
+	b_mod.c \
+	b_sign.c \
+	bclr_b.c \
+	bclr_h.c \
+	bclr_l.c \
+	bclr_ll.c \
+	bext_b.c \
+	bext_h.c \
+	bext_l.c \
+	bext_ll.c \
+	bittab.c \
+	bset_b.c \
+	bset_h.c \
+	bset_l.c \
+	bset_ll.c \
+	btest_b.c \
+	btest_h.c \
+	btest_l.c \
+	btest_ll.c \
+	c_abs.c \
+	c_cos.c \
+	c_div.c \
+	c_exp.c \
+	c_log.c \
+	c_sin.c \
+	c_sqrt.c \
+	d_abs.c \
+	d_acos.c \
+	d_acosd.c \
+	d_asin.c \
+	d_asind.c \
+	d_atan.c \
+	d_atand.c \
+	d_atn2.c \
+	d_atn2d.c \
+	d_cnjg.c \
+	d_cos.c \
+	d_cosd.c \
+	d_cosh.c \
+	d_dim.c \
+	d_exp.c \
+	d_imag.c \
+	d_imagalt.c \
+	d_int.c \
+	d_lg10.c \
+	d_log.c \
+	d_mod.c \
+	d_nint.c \
+	d_prod.c \
+	d_sign.c \
+	d_sin.c \
+	d_sind.c \
+	d_sinh.c \
+	d_sqrt.c \
+	d_tan.c \
+	d_tand.c \
+	d_tanh.c \
+	derf_.c \
+	derfc_.c \
+	ef1asc_.c \
+	ef1cmc_.c \
+	erf_.c \
+	erfc_.c \
+	frts.c \
+        gamma.c \
+	h_abs.c \
+	h_dim.c \
+	h_dnnt.c \
+	h_indx.c \
+	h_len.c \
+	h_lentrim.c \
+	h_mod.c \
+	h_nint.c \
+	h_sign.c \
+	hl_ge.c \
+	hl_gt.c \
+	hl_le.c \
+	hl_lt.c \
+	i_dim.c \
+	i_dnnt.c \
+	i_indx.c \
+	i_len.c \
+	i_lentrim.c \
+	i_mod.c \
+	i_nint.c \
+	i_sign.c \
+	idint.c \
+	irint.c \
+	l_dim.c \
+	l_dnnt.c \
+	l_ge.c \
+	l_gt.c \
+	l_indx.c \
+	l_le.c \
+	l_len.c \
+	l_lentrim.c \
+	l_lt.c \
+	l_mod.c \
+	l_nint.c \
+	l_sign.c \
+        lgamma.c \
+	lnblnk_.c \
+	mclock_.c \
+	mvbits.c \
+	not_b.c \
+	not_h.c \
+	not_l.c \
+	not_ll.c \
+	or_b.c \
+	or_h.c \
+	or_l.c \
+	or_ll.c \
+	outstr_.c \
+	pow_cc.c \
+	pow_dd.c \
+	pow_hh.c \
+	pow_zz.c \
+	r_abs.c \
+	r_acos.c \
+	r_acosd.c \
+	r_asin.c \
+	r_asind.c \
+	r_atan.c \
+	r_atand.c \
+	r_atn2.c \
+	r_atn2d.c \
+	r_cnjg.c \
+	r_cos.c \
+	r_cosd.c \
+	r_cosh.c \
+	r_dim.c \
+	r_exp.c \
+	r_imag.c \
+	r_int.c \
+	r_lg10.c \
+	r_log.c \
+	r_mod.c \
+	r_nint.c \
+	r_sign.c \
+	r_sin.c \
+	r_sind.c \
+	r_sinh.c \
+	r_sqrt.c \
+	r_tan.c \
+	r_tand.c \
+	r_tanh.c \
+	ran_.c \
+	s_abort.c \
+	s_paus.c \
+	s_rnge.c \
+	s_srng.c \
+	s_stop.c \
+	shift_b.c \
+	shift_h.c \
+	shift_l.c \
+	shift_ll.c \
+	shiftc_b.c \
+	shiftc_h.c \
+	shiftc_l.c \
+	shiftc_ll.c \
+	subout.c \
+	xor_b.c \
+	xor_h.c \
+	xor_l.c \
+	xor_ll.c \
+	z_abs.c \
+	z_cos.c \
+	z_div.c \
+	z_exp.c \
+	z_log.c \
+	z_sin.c \
+	z_sqrt.c \
+	$(CFILES_FOOBAR)
+
+# other files common to f77 and f90
+CFILES += \
+	abort_.c \
+	access_.c \
+	alarm_.c \
+	bes.c \
+	dbes.c \
+	charutil.c \
+	chdir_.c \
+	chmod_.c \
+	cmd_line.c \
+	ctime_.c \
+	date_.c \
+	dtime_.c \
+	etime_.c \
+	exit_.c \
+        fdate_.c \
+	gerror_.c \
+	getarg_.c \
+	getcwd_.c \
+	getenv_.c \
+	getgid_.c \
+	getlog_.c \
+	getpid_.c \
+	getuid_.c \
+	gmtime_.c \
+	hostnm_.c \
+	iargc_.c \
+	ierrno_.c \
+	irand_.c \
+	itime_.c \
+	legacy_access_.c \
+	legacy_alarm_.c \
+	legacy_chdir_.c \
+	legacy_chmod_.c \
+	legacy_dtime_.c \
+	legacy_etime_.c \
+	legacy_fdate_.c \
+	legacy_getarg_.c \
+	legacy_getcwd_.c \
+	legacy_getenv_.c \
+	legacy_getgid_.c \
+	legacy_getlog_.c \
+	legacy_getpid_.c \
+	legacy_getuid_.c \
+	legacy_gmtime_.c \
+	legacy_hostnm_.c \
+	legacy_iargc_.c \
+	legacy_itime_.c \
+	legacy_ltime_.c \
+	legacy_rename_.c \
+	legacy_sleep_.c \
+	legacy_stat_.c \
+	legacy_symlnk_.c \
+	legacy_system_.c \
+	legacy_time_.c \
+	legacy_unlink_.c \
+	link_.c \
+	ltime_.c \
+	malloc_.c \
+	output.c \
+	perror_.c \
+	putenv_.c \
+	qsort_.c \
+	rand_.c \
+	rename_.c \
+	secnds_.c \
+	sleep_.c \
+	srand_.c \
+        stat_.c \
+	symlnk_.c \
+	system_.c \
+        time_.c \
+	umask_.c \
+	unlink_.c \
+	wait_.c
+
+
+else
+# IRIX
+CFILES	+= \
+	and_b.c \
+	and_h.c \
+	and_l.c \
+	and_ll.c \
+	b_abs.c \
+	b_dim.c \
+	b_mod.c \
+	b_sign.c \
+	bclr_b.c \
+	bclr_h.c \
+	bclr_l.c \
+	bclr_ll.c \
+	bext_b.c \
+	bext_h.c \
+	bext_l.c \
+	bext_ll.c \
+	bittab.c \
+	bset_b.c \
+	bset_h.c \
+	bset_l.c \
+	bset_ll.c \
+	btest_b.c \
+	btest_h.c \
+	btest_l.c \
+	btest_ll.c \
+	c_cos.c \
+	c_div.c \
+	c_exp.c \
+	c_log.c \
+	c_sin.c \
+	c_sqrt.c \
+	c_abs.c \
+	cis_stubs.c \
+	d_abs.c \
+	d_acos.c \
+	d_acosd.c \
+	d_asin.c \
+	d_asind.c \
+	d_atan.c \
+	d_atand.c \
+	d_atn2.c \
+	d_atn2d.c \
+	d_cnjg.c \
+	d_cos.c \
+	d_cosd.c \
+	d_cosh.c \
+	d_dim.c \
+	d_exp.c \
+	d_imag.c \
+	d_imagalt.c \
+	d_int.c \
+	d_lg10.c \
+	d_log.c \
+	d_mod.c \
+	d_nint.c \
+	d_prod.c \
+	d_sign.c \
+	d_sin.c \
+	d_sind.c \
+	d_sinh.c \
+	d_sqrt.c \
+	d_tan.c \
+	d_tand.c \
+	d_tanh.c \
+	h_abs.c \
+	h_dim.c \
+	h_dnnt.c \
+	h_mod.c \
+	h_nint.c \
+	h_sign.c \
+	i_dim.c \
+	i_dnnt.c \
+	i_indx.c \
+	i_len.c \
+	i_mod.c \
+	i_nint.c \
+	i_sign.c \
+	idint.c \
+	iqint.c \
+	irint.c \
+	l_abs.c \
+	l_dim.c \
+	l_dnnt.c \
+	l_ge.c \
+	l_gt.c \
+	l_le.c \
+	l_lt.c \
+	l_mod.c \
+	l_nint.c \
+	l_sign.c \
+	mvbits.c \
+	not_b.c \
+	not_h.c \
+	not_l.c \
+	not_ll.c \
+	or_b.c \
+	or_h.c \
+	or_l.c \
+	or_ll.c \
+	pow_cc.c \
+	pow_ci.c \
+	pow_dd.c \
+	pow_di.c \
+	pow_hh.c \
+	pow_ii.c \
+	pow_ri.c \
+	pow_zi.c \
+	pow_zz.c \
+	r_abs.c \
+	r_acos.c \
+	r_acosd.c \
+	r_asin.c \
+	r_asind.c \
+	r_atan.c \
+	r_atand.c \
+	r_atn2.c \
+	r_atn2d.c \
+	r_cnjg.c \
+	r_cos.c \
+	r_cosd.c \
+	r_cosh.c \
+	r_dim.c \
+	r_exp.c \
+	r_imag.c \
+	r_int.c \
+	r_lg10.c \
+	r_log.c \
+	r_mod.c \
+	r_nint.c \
+	r_sign.c \
+	r_sin.c \
+	r_sind.c \
+	r_sinh.c \
+	r_sqrt.c \
+	r_tan.c \
+	r_tand.c \
+	r_tanh.c \
+	shift_b.c \
+	shift_h.c \
+	shift_l.c \
+	shift_ll.c \
+	shiftc_b.c \
+	shiftc_h.c \
+	shiftc_l.c \
+	shiftc_ll.c \
+	xor_b.c \
+	xor_h.c \
+	xor_l.c \
+	xor_ll.c \
+	z_abs.c \
+	z_cos.c \
+	z_div.c \
+	z_exp.c \
+	z_log.c \
+	z_sin.c \
+	z_sqrt.c \
+	date_.c \
+	exit_.c \
+	idate_.c \
+	secnds_.c \
+	time_.c \
+	frts.c \
+	pow_cc.c \
+	charutil.c \
+	s_abort.c
+
+# other files common to f77 and f90
+CFILES += \
+	abort_.c \
+	derf_.c \
+	derfc_.c \
+	ef1asc_.c \
+	ef1cmc_.c \
+	erf_.c \
+	erfc_.c \
+	h_indx.c \
+	h_len.c \
+	h_lentrim.c \
+	hl_ge.c \
+	hl_gt.c \
+	hl_le.c \
+	hl_lt.c \
+	i_lentrim.c \
+	l_indx.c \
+	l_len.c \
+	l_lentrim.c \
+	lnblnk_.c \
+	outstr_.c \
+	ran_.c \
+	subout.c \
+	access_.c \
+	alarm_.c \
+	chdir_.c \
+	chmod_.c \
+	ctime_.c \
+	dtime_.c \
+	etime_.c \
+	fdate_.c \
+	getarg_.c \
+	getcwd_.c \
+	getenv_.c \
+	getgid_.c \
+	gethostname_.c \
+	getlog_.c \
+	getpid_.c \
+	getuid_.c \
+	gmtime_.c \
+	hostnm_.c \
+	iargc_.c \
+	ierrno_.c \
+	itime_.c \
+	link_.c \
+	loc_.c \
+	ltime_.c \
+	malloc_.c \
+	putenv_.c \
+	qsort_.c \
+	rename_.c \
+	setfpe_.c \
+	sleep_.c \
+	tapeio.c \
+	unlink_.c \
+	wait_.c \
+	s_paus.c \
+	s_stop.c
+endif
+
+ifeq ($(BUILD_VARIANT), LIBFTN)
+# we will not need these in F90 library
+
+# used for MATRA varargs
+CFILES += \
+	nargum.c \
+	set_args.c
+endif
+
+
+#These are needed for a 7.1.1 release of the library
+ifeq ($(BUILD_VARIANT), LIBFTN90)
+CFILES += \
+	q_cis.c 
+endif
+
+
+ifeq ($(BUILD_VARIANT), LIBFTN)
+CFILES += \
+	fgetc_.c \
+	fork_.c \
+	fputc_.c \
+	fseek_.c \
+	fstat_.c \
+	ftell_.c \
+	getc_.c \
+	isatty_.c \
+	putc_.c \
+	ttynam_.c \
+	usdumplock_.c \
+	usdumpsema_.c
+
+CFILES += errsns_.c
+endif
+
+
+ifeq ($(BUILD_VARIANT), LIBFTN90)
+CFILES += \
+	main.c
+endif 
+
+ifeq ($(BUILD_VARIANT), LIBFTN)
+# files to include in the fortran 77 library
+CFILES += \
+	main.c \
+	backspace.c \
+	backward.c \
+	close.c \
+	dfe.c \
+	due.c \
+	ecvt_mp.c \
+	endfile.c \
+	err.c \
+	fio_direct_io.c \
+	fmt.c \
+	fmtlib.c \
+	globals.c \
+	idxio.c \
+	iio.c \
+	inquire.c \
+	ioutil.c \
+	lib.c \
+	lio.c \
+	lread.c \
+	nio.c \
+	open.c \
+	rdfmt.c \
+	rewind.c \
+	rsfe.c \
+	sfe.c \
+	sue.c \
+	tools.c \
+	uio.c \
+	util.c \
+	wrtfmt.c \
+	wsfe.c \
+	bcompat.c
+
+endif 
+
+#ifeq ($(BUILD_ABI), 64BIT)
+#
+#CFILES += \
+#	func64_.c
+#
+#endif
+
+ifneq ($(BUILD_OS),DARWIN)
+# Their underscoring collides with that of .c files, it's hard to see what
+# the underscoring is supposed to match, and it probably wouldn't match on
+# DARWIN anyway
+CAPFFILES += \
+	c_cosf.F \
+	c_divf.F \
+	c_expf.F \
+	c_logf.F \
+	c_sinf.F \
+	c_sqrtf.F \
+	d_cnjgf.F \
+	pow_cif.F \
+	pow_clf.F \
+	pow_zif.F \
+	pow_zlf.F \
+	pow_zzf.F \
+	r_cnjgf.F \
+	z_cosf.F \
+	z_divf.F \
+	z_expf.F \
+	z_logf.F \
+	z_sinf.F \
+	z_sqrtf.F
+endif
+
+
+HFILES	+= \
+	externals.h \
+	fp.h \
+	head.h \
+	backspace.h \
+	bcompat.h \
+	close.h \
+	dfe.h \
+	due.h \
+	ecvt_mp.h \
+	endfile.h \
+	err.h \
+	fio_direct_io.h \
+	fmt.h \
+	fmtlib.h \
+	globals.h \
+	idxio.h \
+	iio.h \
+	inquire.h\
+	iomode.h \
+	lib.h \
+	lio.h \
+	lread.h \
+	ltostr.h \
+	nio.h \
+	nio_decl.h \
+	nio_work.h \
+	open.h \
+	open_dfnf.h \
+	rdfmt.h \
+	rewind.h \
+	rsfe.h \
+	sfe.h \
+	sue.h \
+	tools.h \
+	uio.h \
+	util.h \
+	varfmt.h \
+	vmsflags.h \
+	wrtfmt.h \
+	wsfe.h \
+	btree.h \
+	decconv.h \
+	decimal.h \
+	decmath.h \
+	isasmb.h \
+	isaudit.h \
+	isbtree.h \
+	isbuf.h \
+	isbuild.h \
+	isclustr.h \
+	iscmpede.h \
+	iscoll.h \
+	isdec.h \
+	isdef.h \
+	iserrmsg.h \
+	isitem.h \
+	iskey.h \
+	islock.h \
+	isnode.h \
+	isopen.h \
+	isread.h \
+	isrecovr.h \
+	issupp.h \
+	isutil.h \
+	isvaldat.h \
+	iswrite.h \
+	isxactn.h \
+	machine.h \
+	sn.h
+
+
+OBJECTS += $(CAPFFILES:.F=.o)
+OBJECTS += $(F90FILES:.F90=.o)
+
+
+LIBFTN_DIR   = $(BUILD_BASE)
+LIBF77_DIR   = $(BUILD_TOT)/libF77
+LIBI77_DIR   = $(BUILD_TOT)/libI77
+LIBU77_DIR   = $(BUILD_TOT)/libU77
+LIBISAM_DIR  = $(BUILD_TOT)/libisam
+
+
+SRC_DIRS += \
+  $(LIBFTN_DIR)    \
+  $(LIBF77_DIR)    \
+  $(LIBU77_DIR)
+
+ifeq ($(BUILD_OS), IRIX)
+SRC_DIRS += \
+  $(LIBF77_DIR)/mips/quad    \
+  $(LIBISAM_DIR)   \
+  $(LIBU77_DIR)
+endif
+
+ifeq ($(BUILD_VARIANT), LIBFTN)
+# additional dirs for fortran 77 library
+SRC_DIRS += \
+  $(LIBI77_DIR)
+endif
+
+pow_ri.o: pow_ri.c
+	$(CC) $(CFLAGS) -TENV:X=1 -c $<
+pow_di.o: pow_di.c
+	$(CC) $(CFLAGS) -TENV:X=1 -c $<
+pow_hh.o: pow_hh.c
+	$(CC) $(CFLAGS) -TENV:X=1 -c $<
+pow_ii.o: pow_ii.c
+	$(CC) $(CFLAGS) -TENV:X=1 -c $<
+dtime_.o: dtime_.c
+	$(CC) $(CFLAGS)  -DHAVE_GETRUSAGE -DHAVE_STDLIB_H -c $<
+stat_.o: stat_.c
+	$(CC) $(CFLAGS)  -DHAVE_GETRUSAGE -DHAVE_STDLIB_H -c $<
+dtime_.pic.o: dtime_.c
+	$(CC) $(CFLAGS) $(pic_flag) -DHAVE_GETRUSAGE -DHAVE_STDLIB_H -c $< -o $@
+stat_.pic.o: stat_.c
+	$(CC) $(CFLAGS) $(pic_flag) -DHAVE_GETRUSAGE -DHAVE_STDLIB_H -c $< -o $@
+dtime_.pg.o: dtime_.c
+	$(CC) $(CFLAGS) $(pg_flag) -DHAVE_GETRUSAGE -DHAVE_STDLIB_H -c $< -o $@
+stat_.pg.o: stat_.c
+	$(CC) $(CFLAGS) $(pg_flag) -DHAVE_GETRUSAGE -DHAVE_STDLIB_H -c $< -o $@
+

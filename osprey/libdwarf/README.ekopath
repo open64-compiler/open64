@@ -1,0 +1,6 @@
+If you are adding new functions to libdwarf-related code, please put
+them in files in this directory, *not* in the existing source files in
+the libdwarf directory.
+
+The more we touch the files under libdwarf, the more difficult it is
+to merge with upstream versions of libdwarf.

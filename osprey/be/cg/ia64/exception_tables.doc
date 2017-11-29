@@ -1,0 +1,61 @@
+
+I) Mnemonics:
+
+IALU =>  add, addl, adds, shladd, sub, chk.s movl
+LD => cmpxch, fetchadd, ld, lfetch, xchg
+ILOG => addp4, and, andcm, or, shladdp4, xor, czx, sxt, zxt
+MMMUL => parallel multiply (pmpy2, pmpyshr2)
+MMSHF => mix, mux, pack, pshl, pshr, shl, shr, unpack
+MMALU => padd, paddpl, pavg, pavgsub, pcmp, pmax, pmin, pshladd2, psub, ppopc2,
+	 psad
+FRAR => mov = ar.XX  (move from application register)
+FRBR => mov = br (move from branch register)
+FRCR => rum, rsm. mov = cr (move from control register)
+FRFR => getf (move from floating point register)
+SFCVTINT => fpcvt
+SFMAC => fpma, fpms, fpnma
+SFMISC => fpamax, fpamin, fpcmp, fpmax, fpmerge, fpmin, fprcpa, fprsqrta
+ST => st, stf, stdfd, stf8, stfe, stfs
+FCLD => chk.a, chk.s ldf8.c, ldfd.c, ldfe.c, ldfs.c, ldfp8.c,ldfpd.c
+FCMP => fclass.m, fcmp
+FCVTFP => fcvt.xf
+FCVTINT => fcvt.fx, fcvt.fxu
+FLD => ldf8.fill, ldf8, ldfd, ldfe, ldfs
+FLDP => ldfp8, ldfpd, ldpfs
+FMAC => fma, fms, fnma
+FMISC => famax, famin, fand, fadncm, fchkf, fmax, fmerge, fmin, fmic, for,
+         fpack, frcpa, frsqrta, fselect, fsetc, fswap, fsxt, fxor
+
+The latencies of these mnemonic classes are available in 
+common/targ_info/proc/ia64/merced_si.cxx
+
+II) Sumamry of Exceptions to total latency: The necessary adjustments are
+provided in the rightmost column.
+
+Source Instruction Class     Target Instruction Class    Total Latency
+========================================================================
+
+IALU				LD/address register	IALU + 1
+
+ILOG				LD/address register	ILOG + 1
+
+LD 				LD/address register	LD + 1
+
+IALU, ILOG 			MMMUL, MMSHF, MMALU	4 cycles (10 clk pipe
+							flush if scheduled <
+							4 cycles apart)
+
+LD				MM operation		LD + 1
+
+MM operations			IALU, ILOG, ISHF, ST, 	3
+				LD 
+
+FRFR, FRBR, FRCR, or FRAR	MMMUL, MMSHF, MMALU	FRxx + 1
+(FRxx)
+
+SFxxx (32-bit parallel		Fxxx (64/82-bit		SFxxx + 2 cycles 
+floating point)			floating point)
+
+Fxxx (64/82-bit floating	SFxxx (32-bit 		Fxxx + 2 cycles
+point)				parallel floating 
+				point)

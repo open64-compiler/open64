@@ -1,0 +1,459 @@
+/*
+
+  Copyright (C) 2006-2009 Tsinghua University.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+*/
+
+
+reg64   : I8BNOT(reg64), U8BNOT(reg64)
+        {
+            $cost[0].cost = 2 + $cost[2].cost;
+        }
+        = {
+            $action[2](ops);
+	    $0->init_result();
+	    Handle_64Bit_Unary_OP(OPR_BNOT, WN_rtype($0->wn), $0->result, $2->result, ops);
+        };
+
+reg64   : I8BAND(reg64t, reg64t), U8BAND(reg64t, reg64t)
+        {
+            $cost[0].cost = 2 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, $3->result, $3->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_and, $0->result, $2->result, $3->result, ops);
+	    Build_OP(TOP_and, $0->result_high, $2->result_high, $3->result_high, ops);
+        };
+
+reg64   : I8BIOR(reg64t, reg64t), U8BIOR(reg64t, reg64t)
+        {
+            $cost[0].cost = 2 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, $3->result, $3->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_or, $0->result, $2->result, $3->result, ops);
+	    Build_OP(TOP_or, $0->result_high, $2->result_high, $3->result_high, ops);
+	};
+
+reg64   : I8BXOR(reg64t, reg64t), U8BXOR(reg64t, reg64t)
+        {
+            $cost[0].cost = 2 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, $3->result, $3->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_xor, $0->result, $2->result, $3->result, ops);
+	    Build_OP(TOP_xor, $0->result_high, $2->result_high, $3->result_high, ops);
+        };
+
+reg64   : I8BNOR(reg64t, reg64t), U8BNOR(reg64t, reg64t)
+        {
+            $cost[0].cost = 2 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, $3->result, $3->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_nor, $0->result, $2->result, $3->result, ops);
+	    Build_OP(TOP_nor, $0->result_high, $2->result_high, $3->result_high, ops);
+	};
+
+reg64   : I8BNOT(I8BAND(reg64t, reg64t)), U8BNOT(U8BAND(reg64t, reg64t))
+        {
+            $cost[0].cost = 2 + $cost[3].cost + $cost[4].cost;
+        }
+        = {
+            $action[3](ops);
+            $action[4](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $3->result, $3->result_high, $4->result, $4->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_nand, $0->result, $3->result, $4->result, ops);
+	    Build_OP(TOP_nand, $0->result_high, $3->result_high, $4->result_high, ops);
+        };
+
+reg64   : I8BNOT(I8BIOR(reg64t, reg64t)), U8BNOT(U8BIOR(reg64t, reg64t))
+        {
+            $cost[0].cost = 2 + $cost[3].cost + $cost[4].cost;
+        }
+        = {
+            $action[3](ops);
+            $action[4](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $3->result, $3->result_high, $4->result, $4->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_nor, $0->result, $3->result, $4->result, ops);
+	    Build_OP(TOP_nor, $0->result_high, $3->result_high, $4->result_high, ops);
+        };
+
+reg64   : I8BNOT(I8BXOR(reg64t, reg64t)), U8BNOT(U8BXOR(reg64t, reg64t))
+        {
+            $cost[0].cost = 2 + $cost[3].cost + $cost[4].cost;
+        }
+        = {
+            $action[3](ops);
+            $action[4](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $3->result, $3->result_high, $4->result, $4->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_eqv, $0->result, $3->result, $4->result, ops);
+	    Build_OP(TOP_eqv, $0->result_high, $3->result_high, $4->result_high, ops);        
+        };
+
+reg64   : I8BAND(reg64t, I8BNOT(reg64t)), U8BAND(reg64t, U8BNOT(reg64t))
+        {
+            $cost[0].cost = 2 + $cost[2].cost + $cost[4].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[4](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, $4->result, $4->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_andc, $0->result, $2->result, $4->result, ops);
+	    Build_OP(TOP_andc, $0->result_high, $2->result_high, $4->result_high, ops);        
+        };
+
+reg64   : I8BIOR(reg64t, I8BNOT(reg64t)), U8BIOR(reg64t, U8BNOT(reg64t))
+        {
+            $cost[0].cost = 2 + $cost[2].cost + $cost[4].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[4](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, $4->result, $4->result_high, WN_rtype($0->wn), ops);
+
+	    Build_OP(TOP_orc, $0->result, $2->result, $4->result, ops);
+	    Build_OP(TOP_orc, $0->result_high, $2->result_high, $4->result_high, ops);	    
+        };
+
+
+reg64   : I8SHL(reg64t, imm16), U8SHL(reg64t, imm16)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, WN_rtype($0->wn), ops);
+	    Expand_64Bit_Shift(shift_left, $0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg64   : I8LSHR(reg64t, imm16), U8LSHR(reg64t, imm16), U8ASHR(reg64t, imm16)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, WN_rtype($0->wn), ops);
+	    Expand_64Bit_Shift(shift_lright, $0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+reg64   : I8ASHR(reg64t, imm16), U8ASHR(reg64t, reg64t)
+        {
+            $cost[0].cost = 5 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+
+	    $0->init_result();
+	    Handle_High_TNs($0->result, $0->result_high, $2->result, $2->result_high, WN_rtype($0->wn), ops);
+	    Expand_64Bit_Shift(shift_aright, $0->result, $2->result, $3->result, WN_rtype($0->wn), ops);
+        };
+
+
+
+
+
+
+
+
+
+reg     : BI8LT(tn, tn), I4I8LT(tn, tn), U4I8LT(tn, tn), BU8LT(tn, tn), I4U8LT(tn, tn), U4U8LT(tn, tn)
+        {
+            $cost[0].cost = 6 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_LT, TOP_blt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI8LE(tn, tn), I4I8LE(tn, tn), U4I8LE(tn, tn), BU8LE(tn, tn), I4U8LE(tn, tn), U4U8LE(tn, tn)
+        {
+            $cost[0].cost = 6 + $cost[2].cost;
+        }
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_LE, TOP_ble, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+	};
+
+reg     : BI8EQ(tn, tn), I4I8EQ(tn, tn), U4I8EQ(tn, tn), BU8EQ(tn, tn), I4U8EQ(tn, tn), U4U8EQ(tn, tn)
+        {
+            $cost[0].cost = 6 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_EQ, TOP_beq, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+	};
+
+reg     : BI8NE(tn, tn), I4I8NE(tn, tn), U4I8NE(tn, tn), BU8NE(tn, tn), I4U8NE(tn, tn), U4U8NE(tn, tn)
+        {
+            $cost[0].cost = 6 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_NE, TOP_bne, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI8GE(tn, tn), I4I8GE(tn, tn), U4I8GE(tn, tn), BU8GE(tn, tn), I4U8GE(tn, tn), U4U8GE(tn, tn)
+        {
+            $cost[0].cost = 6 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_GE, TOP_bge, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+       };
+
+reg     : BI8GT(tn, tn), I4I8GT(tn, tn), U4I8GT(tn, tn), BU8GT(tn, tn), I4U8GT(tn, tn), U4U8GT(tn, tn)
+        {
+            $cost[0].cost = 6 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_GT, TOP_bgt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+       };
+
+
+reg64   : I8I4LT(tn, tn), I8U4LT(tn, tn), U8I4LT(tn, tn), U8U4LT(tn, tn), I8I8LT(tn, tn), I8U8LT(tn, tn), U8I8LT(tn, tn), U8U8LT(tn, tn)
+        {
+            $cost[0].cost = 4 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_LT, TOP_blt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+       };
+
+reg64	: I8I4LE(tn, tn), I8U4LE(tn, tn), U8I4LE(tn, tn), U8U4LE(tn, tn), I8I8LE(tn, tn), I8U8LE(tn, tn), U8I8LE(tn, tn), U8U8LE(tn, tn)
+        {
+            $cost[0].cost = 5 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_LE, TOP_ble, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+       };
+
+reg64   : I8I4EQ(tn, tn), I8U4EQ(tn, tn), U8I4EQ(tn, tn), U8U4EQ(tn, tn), I8I8EQ(tn, tn), I8U8EQ(tn, tn), U8I8EQ(tn, tn), U8U8EQ(tn, tn)
+        {
+            $cost[0].cost = 4 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+ 	    Expand_Int_Cmp(OPR_EQ, TOP_beq, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+       };
+
+reg64   : I8I4NE(tn, tn), I8U4NE(tn, tn), U8I4NE(tn, tn), U8U4NE(tn, tn), I8I8NE(tn, tn), I8U8NE(tn, tn), U8I8NE(tn, tn), U8U8NE(tn, tn)
+        {
+            $cost[0].cost = 5 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+ 	    Expand_Int_Cmp(OPR_NE, TOP_bne, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+       };
+
+reg64   : I8I4GE(tn, tn), I8U4GE(tn, tn), U8I4GE(tn, tn), U8U4GE(tn, tn), I8I8GE(tn, tn), I8U8GE(tn, tn), U8I8GE(tn, tn), U8U8GE(tn, tn)
+        {
+            $cost[0].cost = 5 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+ 	    Expand_Int_Cmp(OPR_GE, TOP_bge, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+       };
+
+reg64   : I8I4GT(tn, tn), I8U4GT(tn, tn), U8I4GT(tn, tn), U8U4GT(tn, tn), I8I8GE(tn, tn), I8U8GT(tn, tn), U8I8GT(tn, tn), U8U8GT(tn, tn)
+        {
+            $cost[0].cost = 4 + $cost[2].cost;
+        }    
+        = {
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+ 	    Expand_Int_Cmp(OPR_GT, TOP_bgt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+       };
+
+
+
+reg64   : I8F4LT(tn, tn), U8F4LT(tn, tn), I8F8LT(tn, tn), U8F8LT(tn, tn)
+        {
+            $cost[0].cost = 9 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+	    Handle_Cond_Move_Float(OPR_LT, $0->result, $2->result, $3->result, ops);
+        };
+
+reg64   : I8F4LE(tn, tn), U8F4LE(tn, tn), I8F8LE(tn, tn), U8F8LE(tn, tn)
+        {
+            $cost[0].cost = 11 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+ 	    Handle_Cond_Move_Float(OPR_LE, $0->result, $2->result, $3->result, ops);
+       };
+
+reg64   : I8F4EQ(tn, tn), U8F4EQ(tn, tn), I8F8EQ(tn, tn), U8F8EQ(tn, tn)
+        {
+            $cost[0].cost = 9 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+ 	    Handle_Cond_Move_Float(OPR_EQ, $0->result, $2->result, $3->result, ops);
+       };
+
+reg64   : I8F4NE(tn, tn), U8F4NE(tn, tn), I8F8NE(tn, tn), U8F8NE(tn, tn)
+        {
+            $cost[0].cost = 11 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+ 	    Handle_Cond_Move_Float(OPR_NE, $0->result, $2->result, $3->result, ops);
+       };
+
+reg64   : I8F4GE(tn, tn), U8F4GE(tn, tn), I8F8GE(tn, tn), U8F8GE(tn, tn)
+        {
+            $cost[0].cost = 10 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+ 	    Handle_Cond_Move_Float(OPR_GE, $0->result, $2->result, $3->result, ops);
+       };
+
+reg64   : I8F4GT(tn, tn), U8F4GT(tn, tn), I8F8GT(tn, tn), U8F8GT(tn, tn)
+        {
+            $cost[0].cost = 8 + $cost[2].cost + $cost[3].cost;
+        }
+        = {
+	    $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+ 	    Handle_Cond_Move_Float(OPR_GT, $0->result, $2->result, $3->result, ops);
+       };
+
+
+%% 
+
+
+extern void Add_TN_Pair(TN* key, TN* pair);
+extern TN* Get_TN_Pair(TN* key);
+
+TN * Burm_Expand_Expr (WN *expr, WN *parent, TN *result, INTRINSIC intrn_id)
+{
+    TREE  ptree = new olive_node(expr, parent, result, intrn_id);
+//aa=1;return Expand_Expr(expr,parent,result, intrn_id);
+    STATE state = new burm_state;
+    SET_STATE(ptree, state);
+
+    if (burm_label(ptree) == 0) {
+	dump_tree(expr);
+        FmtAssert(FALSE, ("olive no cover\n"));
+    } else {
+        if (OPS_length(&New_OPs)==0) {
+                OPS_Init(&New_OPs);
+        }
+        expr_action(ptree->state_label(), &New_OPs);
+    }
+
+
+    if (result == NULL) {  
+        result = ptree->result;  
+    }
+    if (ptree->result_high != NULL && Get_TN_Pair(result) == NULL) {
+        Add_TN_Pair(result, ptree->result_high);
+    }
+    delete ptree;   // ptree->result is still valid  
+    delete state;
+
+    PU_WN_Cnt++;
+    Set_OP_To_WN_Map(expr);
+    return result;    
+}
+

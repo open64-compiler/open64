@@ -1,0 +1,19 @@
+#  Define build parameters
+
+BUILD_BASE     = @top_srcdir@/osprey/libopenmp
+#BUILD_OPTIMIZE = NODEBUG
+
+#
+# !!! Temporary setting. !!!
+# Open64 has a bug when expanding atomic operations, like fetch_and_add.
+# We need to compile libopenmp library with gcc or TOT compiler. 
+#
+# Here we set to use gcc compiler.
+#
+# If you want to compile with TOT compiler, commend out the 
+# "BUILD_COMPIER" here and set the path to the TOT compiler.
+#
+override BUILD_COMPILER = GNU
+
+#  Include setup file which will then include Makefile.base
+include @top_builddir@/osprey/Makefile.gsetup

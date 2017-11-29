@@ -1,0 +1,21 @@
+#set default vendor
+ifndef BUILD_VENDOR
+  BUILD_VENDOR=OSP
+endif
+
+#set flags according to vendor
+ifeq ($(BUILD_VENDOR), OSP)
+  CPPFLAGS += -DVENDOR_OSP
+endif
+
+ifeq ($(BUILD_VENDOR), PSC)
+  CPPFLAGS += -DVENDOR_PSC
+endif
+
+ifeq ($(BUILD_VENDOR), SL)
+  CPPFLAGS += -DVENDOR_SL
+endif
+
+ifeq ($(BUILD_VENDOR), NVIDIA)
+  CPPFLAGS += -DVENDOR_NVIDIA
+endif

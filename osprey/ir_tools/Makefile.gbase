@@ -1,0 +1,205 @@
+#
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for ir_tools
+#
+
+include	$(COMMONDEFS)
+
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+HOSTDEFS += -DIR_TOOLS
+HOSTDEFS += -D_NEW_SYMTAB
+ifeq ($(BUILD_COMPILER), GNU)
+HOSTDEFS += -D__GNU_BUG_WORKAROUND
+endif
+ifeq ($(BUILD_TARGET), IA64)
+TARGDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), IA32)
+TARGDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), SL)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), X8664)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+# don't use is_true_on because ir_a2b doesn't have config info
+LCDEFS += -DInsist_On -DDEBUG_IR
+endif
+
+LCDEFS += $(HOSTDEFS) $(TARGDEFS)
+LC++DEFS += $(HOSTDEFS) $(TARGDEFS)
+
+GLDOPTS = $(STD_LOAD_OPTS)
+
+LIBCOMUTIL = $(BUILD_AREA)/libcomutil/libcomutil.a
+LLDLIBS	= $(LIBCOMUTIL) -lm
+
+TARGETS = ir_b2a ir_size ir_sel ir_all
+
+COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
+COMMON_COM_DIR= $(BUILD_TOT)/common/com
+COMMON_COM_TARG_DIR= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
+BE_COM_DIR= $(BUILD_TOT)/be/com
+BE_OPT_DIR= $(BUILD_TOT)/be/opt
+
+LDIRT = $(TARGETS)
+
+LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
+	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_OPT_DIR) $(XINC)  \
+        -I$(BUILD_TOT)/include
+ifeq ($(BUILD_OS), LINUX)
+LCINCS += -I$(BUILD_AREA)/include/libelf
+endif
+
+LCXXOPTS = $(LCOPTS:-std%=)
+LCXXDEFS = $(LCDEFS)
+LCXXINCS = $(LCINCS)
+
+COMMON_COM_TARG_SRC = \
+	config_host.c \
+	config_platform.c \
+
+CFILES= \
+	$(COMMON_COM_SRC) \
+	$(COMMON_COM_TARG_SRC)
+
+COMMON_COM_CXX_SRC =	\
+	config.cxx	\
+	config_elf_targ.cxx \
+	const.cxx	\
+	dwarf_DST.cxx	\
+	dwarf_DST_dump.cxx	\
+	dwarf_DST_mem.cxx	\
+	glob.cxx	\
+	ir_bcom.cxx	\
+	ir_bread.cxx	\
+	ir_bwrite.cxx	\
+	ir_reader.cxx	\
+	irbdata.cxx	\
+	mtypes.cxx	\
+	opcode.cxx	\
+	opcode_core.cxx	\
+	pu_info.cxx	\
+	strtab.cxx	\
+	symtab.cxx	\
+	symtab_verify.cxx	\
+	wn.cxx		\
+	wn_map.cxx	\
+	wn_pragmas.cxx	\
+	wn_simp.cxx	\
+	wn_util.cxx	\
+	wutil.cxx	\
+	xstats.cxx	\
+	intrn_info.cxx
+
+BE_COM_SRCS =           \
+        wssa_defs.cxx   \
+        wssa_sym.cxx    \
+        wssa_mgr.cxx    \
+        wssa_wn.cxx     \
+        wssa_io.cxx     \
+        wssa_utils.cxx 
+ 
+
+COMMON_COM_TARG_CXX_SRCS =	\
+	config_targ.cxx	\
+	targ_const.cxx	\
+	targ_sim.cxx	\
+
+CXXFILES =		\
+	$(COMMON_COM_CXX_SRC) \
+	$(COMMON_COM_TARG_CXX_SRCS) \
+        $(BE_COM_SRCS)
+
+.PHONY: default first last install
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+first:
+ifndef SKIP_DEP_BUILD
+	$(call submake,$(BUILD_AREA)/libcomutil)
+endif
+
+last: make_deps
+
+install: default 
+	$(STD_INSTALL) -F /usr/sbin ir_b2a
+	$(STD_INSTALL) -lns ir_b2a -F /usr/sbin ir_a2b
+	$(STD_INSTALL) -lns ir_b2a -F /usr/sbin ir_sel
+	$(STD_INSTALL) -lns ir_b2a -F /usr/sbin ir_all
+	$(STD_INSTALL) -F /usr/sbin ir_size
+
+include $(COMMONRULES)
+
+VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_COM_TARG_DIR) $(BE_COM_DIR)
+
+ir_b2a: $(OBJECTS) ir_a2b.o
+	$(link.c++f) -o ir_b2a ir_a2b.o $(OBJECTS) $(LDFLAGS)
+
+ir_a2b: ir_b2a
+	ln -sf ir_b2a ir_a2b
+
+ir_sel: ir_b2a
+	ln -sf ir_b2a ir_sel
+
+ir_all: ir_b2a
+	ln -sf ir_b2a ir_all
+
+ir_size: $(OBJECTS) ir_size.o ir_b2a
+	$(link.c++f) -o ir_size ir_size.o $(OBJECTS) $(LDFLAGS)
+
+ir_walker: $(OBJECTS) ir_walker.o
+	$(link.c++f) -o ir_walker ir_walker.o $(OBJECTS) $(LDFLAGS)
+wn_util.o: HOSTDEFS += -DMONGOOSE_BE
+

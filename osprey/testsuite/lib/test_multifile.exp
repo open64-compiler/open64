@@ -1,0 +1,144 @@
+#!/usr/bin/expect -f 
+
+load_lib test_utils.exp
+
+###############################################################################
+# Command to test a single case with multiple sources
+# We assume:
+#  there is an shell script indicating how to testing the case
+#  This shell script should return 0 for success while 1 for failure
+###############################################################################
+proc CheckOutput { targetfile makefileout errormsg } {
+    if { ![string equal $targetfile all] } {
+        puts $makefileout "\tif \[ ! -e $targetfile \]; then \\"
+        puts $makefileout "\t\techo \"!!!Message:$errormsg (Cannot find output file)!!! \";\\"
+        puts $makefileout "\t\texit 1;\\"
+        puts $makefileout "\tfi;"
+    }
+}
+
+proc PrintLines { info } {
+    global summary
+    set lines [ split $info "\n" ]
+    foreach line $lines { 
+        puts $summary "        $line"
+    }
+}
+
+namespace eval C_CLASS {
+
+    proc TestMakefile { case caseexe case_out_dir summary checker } {
+	global cc cxx fc cflags cxxflags fflags sim #Flags
+	global curdir
+	global C_CLASS::err_compile C_CLASS::err_link C_CLASS::err_build C_CLASS::pass_build #Counters
+	global C_CLASS::err_runexit C_CLASS::err_runout C_CLASS::err_run C_CLASS::pass_run   #Counters
+	
+	system mkdir -p $case_out_dir
+	system cp -rf $case/* $case_out_dir
+
+	#Parse and generate Makefile
+	set makefileout [open $case_out_dir/Makefile w]
+	set makefilein [open $case/Makefile r]
+	set targetfile ""
+	set execute 1
+	puts $makefileout "CC=$cc"
+	puts $makefileout "CXX=$cxx"
+	puts $makefileout "FC=$fc"
+	puts $makefileout "CFLAGS=$cflags"
+	puts $makefileout "CXXFLAGS=$cxxflags"
+	puts $makefileout "FFLAGS=$fflags"
+	puts $makefileout "TARGET=$case"
+	puts $makefileout "SIM=$sim"
+	puts $makefileout ""
+	set lineno 0
+	while { [gets $makefilein line] >= 0 } {
+	    set line [string trimright $line]
+	    set commentpos [string first "#" $line]
+	    if { [expr $commentpos == 0] } {
+		switch -glob $line {
+		    "#NOEXEC" { set execute 0 }	    
+		}
+	    }
+	    set lineno [expr $lineno + 1]
+	    if { [expr $commentpos >= 0] } {
+		set line [string range $line 0 [expr $commentpos - 1]]
+	    }
+	    if { [string is space [string index $line 0]] } { #Parsing command lines
+		if { [string equal $line ""] } {
+		    if { ![string equal $targetfile ""] } {
+			CheckOutput $targetfile $makefileout $errormsg
+			set targetfile ""
+		    }
+		    puts $makefileout $line
+		} elseif {[string equal [string index $line end] "\\"] || [string equal $targetfile ""]} {
+		    puts $makefileout $line
+		} else {
+		    puts $makefileout "$line >& $case_out_dir/$targetfile.ci || (echo \"!!!Message:$errormsg (Makefile:$lineno) !!!\" && exit 1)"
+		}
+	    } else {	#Parsing headers
+		set colonpos [string first ":" $line]
+		if { [expr $colonpos >= 0] } {
+		    set targetfile [string range $line 0 [expr $colonpos - 1]]
+		    set targetfile [string trimright $targetfile]
+		    if { [string match -nocase "*.o" $targetfile] || [string match -nocase "*.s" $targetfile] } {
+			set errormsg "\[$targetfile\] Fail at compiling"
+		    } else {
+			set errormsg "\[$targetfile\] Fail at linking"
+		    }
+		    puts $makefileout $line
+		} else {
+		    puts $makefileout $line
+		}
+	    }
+	}
+	if { ![string equal $targetfile ""] } {
+	    CheckOutput $targetfile $makefileout $errormsg
+	    set targetfile ""
+	}
+	close $makefilein
+	close $makefileout
+
+	cd $case_out_dir
+
+	set buildres 0
+	set runres 0
+	set cmpres 0
+
+	if { [catch {exec make -s} makeresult] } {
+	    incr err_build
+	    set mpos [string first "!!!Message:" $makeresult]
+	    if { [expr $mpos < 0] } {
+		#Bad Makefile
+		set buildres -1 
+	    } else {
+		set mpos2 [string first "!!!" $makeresult 11]
+		set makeresult [string range $makeresult 11 [expr $mpos2 - 1]]
+		set mpos3 [string first "]" $makeresult]
+		set buildres -1 
+	    }
+	} else {
+	    incr pass_build
+	    if { $execute == 1 } {
+		set rc [catch {exec ./$caseexe > $case_out_dir/$caseexe.run}]
+		set runresult ""
+		if { $rc } {
+		    set runres -1
+		    incr err_run
+		} else {
+		    catch {exec cat $case_out_dir/$caseexe.run} runresult
+		    if { [expr [$checker $runresult] == 1]} {
+			incr pass_run
+		    } else {
+			set cmpres 1
+			incr err_run
+		    }
+		}
+	    }
+	}
+
+	Report_TestCase_Result $case $buildres $runres $cmpres
+	cd $curdir
+	
+    }
+
+}

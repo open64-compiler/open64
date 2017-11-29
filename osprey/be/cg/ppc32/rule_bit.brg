@@ -1,0 +1,538 @@
+/*
+
+  Copyright (C) 2006-2009 Tsinghua University.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+*/
+
+
+reg     : I4SHL(reg64t, reg64t), U4SHL(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins slw
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_slw, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4ASHR(reg64t, imm16)
+        {
+            CHECK(IN_RANGE(WN_const_val($3->wn), 0, 31));
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins  srawi
+            $action[2](ops);
+	    $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_srawi, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4ASHR(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins sraw
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_sraw, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4LSHR(reg64t, reg64t), U4LSHR(reg64t, reg64t), U4ASHR(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins srw
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_srw, $0->result, $2->result, $3->result, ops);
+        };
+
+
+reg     : BLNOT(reg64t), I4LNOT(reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins xori 
+	    $0->result = Handle_LNOT($0->wn, $0->parent, $0->result);
+        };
+
+reg     : BLAND(reg64t, imm16), I4LAND(reg64t, imm16)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins andi 
+            $0->result = Handle_LAND_LIOR($0->wn, $0->parent, $0->result);
+        };
+
+reg     : BLAND(reg64t, reg64t), I4LAND(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins and 
+            $0->result = Handle_LAND_LIOR($0->wn, $0->parent, $0->result);
+        };
+
+reg     : BLIOR(reg64t, imm16), I4LIOR(reg64t, imm16)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins ori 
+            $0->result = Handle_LAND_LIOR($0->wn, $0->parent, $0->result);
+        };
+
+reg     : BLIOR(reg64t, reg64t), I4LIOR(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins or 
+            $0->result = Handle_LAND_LIOR($0->wn, $0->parent, $0->result);
+        };
+
+reg     : I4BNOT(reg64t), U4BNOT(reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins nand 
+            $action[2](ops);
+	    $0->init_result();
+            Build_OP(TOP_nor, $0->result, $2->result, $2->result, ops);
+        };
+
+reg     : I4BAND(reg64t, reg64t), U4BAND(reg64t, reg64t), I4LAND(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins and 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Build_OP(TOP_and, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4BIOR(reg64t, reg), U4BIOR(reg64t, reg), I4LIOR(reg64t, reg)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins or 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_or, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4BXOR(reg64t, reg64t), U4BXOR(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins xor 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_xor, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4BNOR(reg64t, reg64t), U4BNOR(reg64t, reg64t)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins nor 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Build_OP(TOP_nor, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : I4BNOT(I4BAND(reg64t, reg64t)), U4BNOT(U4BAND(reg64t, reg64t))
+        {
+            $cost[0].cost = 1 + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins nand 
+            $action[3](ops);
+            $action[4](ops);
+	    $0->init_result();
+            Build_OP(TOP_nand, $0->result, $3->result, $4->result, ops);
+        };
+
+reg     : I4BNOT(I4BIOR(reg64t, reg64t)), U4BNOT(U4BIOR(reg64t, reg64t))
+        {
+            $cost[0].cost = 1 + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins nor 
+            $action[3](ops);
+            $action[4](ops);
+	    $0->init_result();
+            Build_OP(TOP_nor, $0->result, $3->result, $4->result, ops);
+        };
+
+reg     : I4BNOT(I4BXOR(reg64t, reg64t)), U4BNOT(U4BXOR(reg64t, reg64t))
+        {
+            $cost[0].cost = 1 + $cost[3].cost + $cost[4].cost;
+        }
+        = { //#ins eqv 
+            $action[3](ops);
+            $action[4](ops);
+	    $0->init_result();
+            Build_OP(TOP_eqv, $0->result, $3->result, $4->result, ops);
+        };
+
+reg     : I4BAND(reg64t, I4BNOT(reg64t)), U4BAND(reg64t, U4BNOT(reg64t))
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[4].cost;
+        }
+        = { //#ins andc 
+            $action[2](ops);
+            $action[4](ops);
+	    $0->init_result();
+            Build_OP(TOP_andc, $0->result, $2->result, $4->result, ops);
+        };
+
+reg     : I4BIOR(reg64t, I4BNOT(reg64t)), U4BIOR(reg64t, U4BNOT(reg64t))
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[4].cost;
+        }
+        = { //#ins orc 
+            $action[2](ops);
+            $action[4](ops);
+	    $0->init_result();
+            Build_OP(TOP_orc, $0->result, $2->result, $4->result, ops);
+        };
+
+
+
+reg     : BBEQ(reg, BINTCONST)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins xori 
+            $action[2](ops);
+	    DevWarn("BBEQ reg int ----------------------------------------\n");
+	    $0->init_result();
+            Build_OP(TOP_xori, $0->result, $2->result, Gen_Literal_TN(1 - WN_const_val($3->wn), 4), ops);
+        };
+
+reg     : BBEQ(reg, reg)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins eqv 
+            $action[2](ops);
+            $action[3](ops);
+ 	    DevWarn("BBEQ reg reg ----------------------------------------\n");
+	    $0->init_result();
+            Build_OP(TOP_eqv, $0->result, $2->result, $3->result, ops);
+        };
+
+reg     : BBNE(reg, BINTCONST)
+        {
+            $cost[0].cost = 1 + $cost[2].cost;
+        }
+        = { //#ins xori 
+            $action[2](ops);
+ 	    DevWarn("BBNE reg int ----------------------------------------\n");
+	    $0->init_result();
+            Build_OP(TOP_xori, $0->result, $2->result, Gen_Literal_TN(WN_const_val($3->wn), 4), ops);
+        };
+
+reg     : BBNE(reg, reg)
+        {
+            $cost[0].cost = 1 + $cost[2].cost + $cost[3].cost;
+        }
+        = { //#ins xor 
+            $action[2](ops);
+            $action[3](ops);
+ 	    DevWarn("BBNE reg reg ----------------------------------------\n");
+	    $0->init_result();
+            Build_OP(TOP_xor, $0->result, $2->result, $3->result, ops);
+        };
+
+
+
+reg     : BI4LT(reg64t, imm16), I4I4LT(reg64t, imm16)
+        {
+            $cost[0].cost = 3 + $cost[2].cost;
+        }    
+        = { //#ins cmpwi mfcr rlwinm
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+	    Expand_Int_Cmp(OPR_LT, TOP_blt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4LT(reg64t, reg64t), I4I4LT(reg64t, reg64t)
+        {
+            $cost[0].cost = 3 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmpw mfcr rlwinm 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_LT, TOP_blt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4LE(reg64t, imm16), I4I4LE(reg64t, imm16)
+        {
+            $cost[0].cost = 4 + $cost[2].cost;
+        }    
+        = { //#ins cmpwi mfcr rlwinm xori 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_LE, TOP_ble, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4LE(reg64t, reg64t), I4I4LE(reg64t, reg64t)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmpw mfcr rlwinm xori
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_LE, TOP_ble, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4EQ(reg64t, imm16), I4I4EQ(reg64t, imm16)
+        {
+            $cost[0].cost = 3 + $cost[2].cost;
+        }    
+        = { //#ins cmpwi mfcr rlwinm 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_EQ, TOP_beq, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4EQ(reg64t, reg64t), I4I4EQ(reg64t, reg64t)
+        {
+            $cost[0].cost = 3 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmpw mfcr rlwinm 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_EQ, TOP_beq, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4NE(reg64t, imm16), I4I4NE(reg64t, imm16)
+        {
+            $cost[0].cost = 4 + $cost[2].cost;
+        }    
+        = { //#ins cmpwi mfcr rlwinm xori 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_NE, TOP_bne, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4NE(reg64t, reg64t), I4I4NE(reg64t, reg64t)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmpw mfcr rlwinm xori 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_NE, TOP_bne, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4GE(reg64t, imm16), I4I4GE(reg64t, imm16)
+        {
+            $cost[0].cost = 4 + $cost[2].cost;
+        }    
+        = { //#ins cmpwi mfcr rlwinm xori 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_GE, TOP_bge, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4GE(reg64t, reg64t), I4I4GE(reg64t, reg64t)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmpw mfcr rlwinm xori 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_GE, TOP_bge, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4GT(reg64t, imm16), I4I4GT(reg64t, imm16)
+        {
+            $cost[0].cost = 3 + $cost[2].cost;
+        }    
+        = { //#ins cmpwi mfcr rlwinm 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_GT, TOP_bgt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BI4GT(reg64t, reg64t), I4I4GT(reg64t, reg64t), U4I4GT(reg64t, reg64t)
+        {
+            $cost[0].cost = 3 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmpw mfcr rlwinm 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_GT, TOP_bgt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+
+
+reg     : BU4LT(reg64t, imm16), I4U4LT(reg64t, imm16), U4I4LT(reg64t, imm16), U4U4LT(reg64t, imm16)
+        {
+            $cost[0].cost = 3 + $cost[2].cost;
+        }    
+        = { //#ins cmplwi mfcr rlwinm
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_LT, TOP_blt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4LT(reg64t, reg64t), I4U4LT(reg64t, reg64t), U4I4LT(reg64t, reg64t),  U4U4LT(reg64t, reg64t)
+        {
+            $cost[0].cost = 3 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmplw mfcr rlwinm 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_LT, TOP_blt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4LE(reg64t, imm16), I4U4LE(reg64t, imm16), U4I4LE(reg64t, imm16),  U4U4LE(reg64t, imm16)
+        {
+            $cost[0].cost = 4 + $cost[2].cost;
+        }    
+        = { //#ins cmplwi mfcr rlwinm xorwi
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_LE, TOP_ble, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4LE(reg64t, reg64t), I4U4LE(reg64t, reg64t), U4I4LE(reg64t, reg64t), U4U4LE(reg64t, reg64t)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmplw mfcr rlwinm xori
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_LE, TOP_ble, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4EQ(reg64t, imm16), I4U4EQ(reg64t, imm16), U4I4EQ(reg64t, imm16), U4U4EQ(reg64t, imm16)
+        {
+            $cost[0].cost = 3 + $cost[2].cost;
+        }    
+        = { //#ins cmplwi mfcr rlwinm xori
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_EQ, TOP_beq, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4EQ(reg64t, reg64t), I4U4EQ(reg64t, reg64t), U4I4EQ(reg64t, reg64t), U4U4EQ(reg64t, reg64t)
+        {
+            $cost[0].cost = 3 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmplw mfcr rlwinm xori
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_EQ, TOP_beq, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4NE(reg64t, imm16), I4U4NE(reg64t, imm16), U4I4NE(reg64t, imm16), U4U4NE(reg64t, imm16)
+        {
+            $cost[0].cost = 4 + $cost[2].cost;
+        }    
+        = { //#ins cmplwi mfcr rlwinm xori
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_NE, TOP_bne, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4NE(reg64t, reg64t), I4U4NE(reg64t, reg64t), U4I4NE(reg64t, reg64t), U4U4NE(reg64t, reg64t)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmplw mfcr rlwinm xori
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_NE, TOP_bne, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4GE(reg64t, imm16), I4U4GE(reg64t, imm16), U4I4GE(reg64t, imm16), U4U4GE(reg64t, imm16)
+        {
+            $cost[0].cost = 4 + $cost[2].cost + $cost[3].cost;
+        }    
+        = { //#ins cmplwi mfcr rlwinm xori
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_GE, TOP_bge, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4GE(reg64t, reg64t), I4U4GE(reg64t, reg64t), U4I4GE(reg64t, reg64t), U4U4GE(reg64t, reg64t)
+        {
+            $cost[0].cost = $cost[2].cost + $cost[3].cost + 3;
+        }    
+        = { //#ins cmplw mfcr rlwinm xori
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_GE, TOP_bge, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4GT(reg64t, imm16), I4U4GT(reg64t, imm16), U4I4GT(reg64t, imm16), U4U4GT(reg64t, imm16)
+        {
+            $cost[0].cost = $cost[2].cost + $cost[3].cost + 3;
+        }    
+        = { //#ins cmplwi mfcr rlwinm 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_GT, TOP_bgt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+reg     : BU4GT(reg64t, reg64t), I4U4GT(reg64t, reg64t), U4I4GT(reg64t, reg64t), U4U4GT(reg64t, reg64t)
+        {
+            $cost[0].cost = $cost[2].cost + $cost[3].cost + 3;
+        }    
+        = { //#ins cmplw mfcr rlwinm 
+            $action[2](ops);
+            $action[3](ops);
+	    $0->init_result();
+            Expand_Int_Cmp(OPR_GT, TOP_bgt, $0->result, $2->result, $3->result, WN_desc($0->wn), ops);
+        };
+
+

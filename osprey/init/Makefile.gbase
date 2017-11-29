@@ -1,0 +1,35 @@
+#
+#  Makefile.base for init 
+#
+
+include $(COMMONDEFS)
+
+TARG_DIR = $(BUILD_BASE)/$(BUILD_TARGET_DIR)
+
+ifeq ($(BUILD_COMPILER), EDG)
+CVERSION = -xansi
+endif
+
+LCOPTS = $(STD_COMPILE_OPTS)
+LASOPTS = $(STD_COMPILE_OPTS)
+
+ifeq ($(BUILD_TARGET), IA64)
+CRT = ftz.o
+else
+CRT  = bpcrt.o
+endif
+
+TARGETS = $(CRT) 
+
+default: $(TARGETS)
+
+exports: default
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -F $(DEF_LIBRARY_LOC) $(TARGETS)
+
+install: default
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(DEF_LIBRARY_LOC) $(TARGETS)
+
+include $(COMMONRULES)
+
+VPATH = $(BUILD_BASE) $(TARG_DIR)
+

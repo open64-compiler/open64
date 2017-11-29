@@ -1,0 +1,156 @@
+/* USMID @(#) libf/pxf/pxf.mh	92.2	01/07/99 22:50:09 */
+
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/*
+ *  pxf.mh - source list and special options for libf/pxf
+ */
+
+LIB_SRC_INFO += \
+		A:pxf/ipxfargc.c \
+		1IEHP:pxf/ipxfwexitstatus.c \
+		1IEHP:pxf/ipxfwstopsig.c \
+		1IEHP:pxf/ipxfwtermsig.c \
+		1IEHP:pxf/pxfalarm.c \
+		A:pxf/pxfaccess.c \
+		A:pxf/pxfaintget.c \
+		A:pxf/pxfcfgetospeed.c \
+		A:pxf/pxfchdir.c \
+		A:pxf/pxfchmod.c \
+		A:pxf/pxfchown.c \
+		A:pxf/pxfchroot.c \
+		A:pxf/pxfclearenv.c \
+		A:pxf/pxfclose.c \
+		A:pxf/pxfclosedir.c \
+		A:pxf/pxfconst.c \
+		A:pxf/pxfcreat.c \
+		A:pxf/pxfctermid.c \
+		A:pxf/pxfdup.c \
+		1IEHP:pxf/pxfexecv.c \
+		1IEHP:pxf/pxfexecve.c \
+		1IEHP:pxf/pxfexecvp.c \
+		A:pxf/pxfestrget.c \
+		A:pxf/pxffastexit.c \
+		A:pxf/pxffcntl.c \
+		A:pxf/pxffileno.c \
+		1IEHP:pxf/pxffork.c \
+		A:pxf/pxfget.c \
+		A:pxf/pxfgetarg.c \
+		A:pxf/pxfgetcwd.c \
+                A:pxf/pxfgetegid.c \
+		A:pxf/pxfgetenv.c \
+                A:pxf/pxfgeteuid.c \
+		A:pxf/pxfgetgid.c \
+		A:pxf/pxfgetgroups.c \
+		A:pxf/pxfgetgrgid.c \
+		A:pxf/pxfgetgrnam.c \
+		A:pxf/pxfgetlogin.c \
+		A:pxf/pxfgetpgrp.c \
+		A:pxf/pxfgetpid.c \
+		A:pxf/pxfgetppid.c \
+		A:pxf/pxfgetpwnam.c \
+		A:pxf/pxfgetpwuid.c \
+		A:pxf/pxfgetuid.c \
+		A:pxf/pxfisatty.c \
+		A:pxf/pxfisblk.c \
+		A:pxf/pxfischr.c \
+		A:pxf/pxfisdir.c \
+		A:pxf/pxfisfifo.c \
+		A:pxf/pxfisreg.c \
+		1IEHP:pxf/pxfkill.c \
+		A:pxf/pxflocaltime.c \
+		A:pxf/pxflink.c \
+		A:pxf/pxflseek.c \
+		A:pxf/pxfmkfifo.c \
+		A:pxf/pxfopen.c \
+		A:pxf/pxfopendir.c \
+		A:pxf/pxfpipe.c \
+		1IEHP:pxf/pxfpause.c \
+		A:pxf/pxfread.c \
+		A:pxf/pxfreaddir.c \
+		A:pxf/pxfrename.c \
+		A:pxf/pxfrewinddir.c \
+		A:pxf/pxfrmdir.c \
+		A:pxf/pxfsetenv.c \
+		1IEHP:pxf/pxfsetgid.c \
+		A:pxf/pxfsetpgid.c \
+		A:pxf/pxfsetsid.c \
+		1IEHP:pxf/pxfsetuid.c \
+		1IEHP:pxf/pxfsigaddset.c \
+		1IEHP:pxf/pxfsigdelset.c \
+		1IEHP:pxf/pxfsigemptyset.c \
+		1IEHP:pxf/pxfsigfillset.c \
+		1IEHP:pxf/pxfsigismember.c \
+		1IEHP:pxf/pxfsigpending.c \
+		1IEHP:pxf/pxfsigprocmask.c \
+		1IEHP:pxf/pxfsigsuspend.c \
+		1IEHP:pxf/pxfsleep.c \
+		A:pxf/pxfstat.c \
+		A:pxf/pxfstrget.c \
+		A:pxf/pxfstructcopy.c \
+		A:pxf/pxfstructcreate.c \
+		A:pxf/pxfsysconf.c \
+		A:pxf/pxfsystem.c \
+		A:pxf/pxftcgetattr.c \
+		A:pxf/pxftcgetpgrp.c \
+		A:pxf/pxftcsendbreak.c \
+		A:pxf/pxftcsetpgrp.c \
+		A:pxf/pxftime.c \
+		A:pxf/pxftimes.c \
+		A:pxf/pxfucompare.c \
+		A:pxf/pxfumask.c \
+		A:pxf/pxfuname.c \
+		A:pxf/pxfunlink.c \
+		A:pxf/pxfutime.c \
+		1IEHP:pxf/pxfwait.c \
+		1IEHP:pxf/pxfwaitpid.c \
+		1IEHP:pxf/pxfwifexited.c \
+		1IEHP:pxf/pxfwifsignaled.c \
+		1IEHP:pxf/pxfwifstopped.c \
+		A:pxf/pxfwrite.c \
+		A:pxf/table.c \
+
+LIB_DIRS_INFO += \
+		A:pxf
+
+RMUSRC += \
+		pxf/pxfdir.h \
+                pxf/pxfstruct.h \
+		pxf/pxfstructtable.h \
+		pxf/table.h \
+
+
+

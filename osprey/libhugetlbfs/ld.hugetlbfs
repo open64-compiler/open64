@@ -1,0 +1,65 @@
+#! /bin/bash
+
+# Paranoid check to make sure we don't reinvoke ourselves, effectively
+# making a fork()bomb
+if [ -n "$LD_HUGETLBFS_RECURSION" ]; then
+    exit 99
+fi
+export LD_HUGETLBFS_RECURSION=1
+
+### SET DEFAULT LDSCRIPT PATH HERE ###
+if [ -z "$HUGETLB_LDSCRIPT_PATH" ]; then
+    # Assume this script is running from the libhugetlbfs source tree,
+    # and look for the ldscripts accordingly
+    HUGETLB_LDSCRIPT_PATH=$(dirname $(readlink $0))/ldscripts
+fi
+
+# Try to figure out what's the underlying linker to invoke
+if [ -z "$LD" ]; then
+    for x in $(which -a ld); do
+	if [ "$x" != "$0" ]; then
+	    LD="$x"
+	    break
+	fi
+    done
+fi
+
+i=0
+while [ -n "$1" ]; do
+    arg="$1"
+    case "$arg" in
+	-m*)
+	    EMU="${arg#-m}"
+	    args[$i]="$arg"
+	    i=$[i+1]
+	    if [ -z "$EMU" ]; then
+		shift
+		EMU="$1"
+		args[$i]="$1"
+		i=$[i+1]
+	    fi
+	    ;;
+	--hugetlbfs-link=*)
+	    HTLB_LINK="${arg#--hugetlbfs-link=}"
+	    ;;
+	--hugetlbfs-script-path=*)
+	    HUGETLB_LDSCRIPT_PATH="${arg#--hugetlbfs-script-path=}"
+	    ;;
+	--)
+	    args=("${args[@]}" "$@")
+	    break
+	    ;;	   
+	*)
+	    args[$i]="$arg"
+	    i=$[i+1]
+	    ;;
+    esac
+    shift
+done
+
+if [ -n "$HTLB_LINK" ]; then
+    LDSCRIPT="$EMU.x$HTLB_LINK"
+    HTLBOPTS="-T${HUGETLB_LDSCRIPT_PATH}/${LDSCRIPT}"
+fi
+
+${LD} "${args[@]}" ${HTLBOPTS}

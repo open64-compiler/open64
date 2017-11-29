@@ -1,0 +1,78 @@
+Index: mathlb.makeinclude
+===================================================================
+--- mathlb.makeinclude	(revision 741)
++++ mathlb.makeinclude	(working copy)
+@@ -79,6 +79,8 @@
+     ieee_exponent_n.c \
+     ieee_exponent_r.c \
+     ieee_int.c \
++    ieee_module_support.c \
++    ieee_next_after.c \
+     ilen.c \
+     itoi.c \
+     nabs.c \
+@@ -96,5 +98,10 @@
+     spacing.c \
+     $(IEMIPS)
+ 
++F90FILES += \
++    ieee_features.F90 \
++    ieee_arithmetic.F90 \
++    ieee_exceptions.F90
++
+ SRC_DIRS += \
+    $(BUILD_TOT)/libfi/mathlb
+Index: mathlb.gmakeinclude
+===================================================================
+--- mathlb.gmakeinclude	(revision 741)
++++ mathlb.gmakeinclude	(working copy)
+@@ -1,6 +1,7 @@
+ # USMID @(#) libfi/mathlb/mathlb.makeinclude	92.10	11/22/99 10:13:02
+ 
+ #
++#  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
+ #
+ #  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+ #
+@@ -82,6 +83,8 @@
+     ieee_exponent_n.c \
+     ieee_exponent_r.c \
+     ieee_int.c \
++    ieee_module_support.c \
++    ieee_next_after.c \
+     ilen.c \
+     itoi.c \
+     nabs.c \
+@@ -99,5 +102,32 @@
+     spacing.c \
+     $(IEMIPS)
+ 
++F90FILES += \
++    ieee_features.F90 \
++    ieee_arithmetic.F90 \
++    ieee_exceptions.F90 \
++    iso_fortran_env.F90
++
+ SRC_DIRS += \
+    $(BUILD_TOT)/libfi/mathlb
++
++# We're assuming that any .F90 module in this directory is supposed to be
++# an "intrinsic module" (in the F2003 sense of the term.) If not, this option
++# should be used only for such modules (e.g. ieee_arithmetic, ieee_exceptions,
++# ieee_features, iso_fortran_env.)
++F90FLAGS += \
++   -Wf,-intrinsic_module_gen
++
++# Program gen_ieee_cpp_macros generates file ieee_cpp_macros.h, which is
++# needed by the TR15580/F2003 IEEE intrinsic modules
++gen_ieee_cpp_macros: gen_ieee_cpp_macros.c
++
++ieee_cpp_macros.h: gen_ieee_cpp_macros
++	./gen_ieee_cpp_macros > ieee_cpp_macros.h
++	rm -f ./gen_ieee_cpp_macros
++
++ieee_exceptions.o ieee_arithmetic.o iso_fortran_env.o: ieee_cpp_macros.h
++
++LF77INCS += -I$(BUILD_AREA)/libfortran
++
++LDIRT = ieee_cpp_macros.h $(XMATHLBDIRT)

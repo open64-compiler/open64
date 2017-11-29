@@ -1,0 +1,16 @@
+#  Define build parameters
+
+BUILD_BASE     = @top_srcdir@/osprey/libelf
+override BUILD_COMPILER = GNU
+
+#  Include setup file which will then include Makefile.base
+include @top_builddir@/osprey/Makefile.gsetup
+
+LCFLAGS += -fpic
+OPTIMIZER = -O3 
+ifeq ($(BUILD_COMPILER), OSP)
+OPTIMIZER += -fno-fast-stdlib
+endif
+ifeq ($(BUILD_COMPILER), PSC)
+OPTIMIZER += -fno-fast-stdlib
+endif

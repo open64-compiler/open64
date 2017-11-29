@@ -1,0 +1,303 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2012 Advanced Micro Devices, Inc.  All Rights Reserved.
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for Cray F90 front-end
+#
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  *  This Makefile does not require that tdt has already been built.
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+ARITH_TARG_DIR = $(TARGDIR)/arith
+F90SGI_TARG_DIR = ../libf90sgi
+LIBCIF_TARG_DIR = $(TARGDIR)/libcif
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dlonglong
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+
+ifeq ($(BUILD_FFE_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+
+ifeq ($(BUILD_ARCH), MIPS3)
+TARGDEFS  = -DTARG_MIPS
+endif
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+ARITH_DIR               = $(BUILD_TOT)/arith
+CRAYF90_DIR             = $(BUILD_TOT)/crayf90
+FE90_DIR                = $(CRAYF90_DIR)/fe90
+CLIBINC                 = $(BUILD_TOT)/clibinc/cray
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+FE90_INCLUDES           = $(BUILD_TOT)/linux/mfef90_includes
+INCLUDE_DIR             = 
+else
+INCLUDE_DIR 		= $(ROOT)/usr/include
+endif
+
+COMMON_DIR 		= $(BUILD_TOT)/common
+COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+
+HEADER_DIRS = \
+  $(FE90_DIR)		\
+  $(ARITH_DIR)	\
+  $(COMMON_COM_DIR)	\
+  $(COMMON_COM_TARG_DIR)
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+HEADER_DIRS += $(FE90_INCLUDES) $(CLIBINC) $(INCLUDE_DIR)
+else
+HEADER_DIRS += $(BUILD_TOT)/include
+endif
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+FOLD = utils.c fold.o
+
+FE90_SRCS = \
+	cifcmnrecs.c \
+	cifftnrecs.c \
+	cmd_line.c \
+	cond_comp.c \
+	debug.c \
+	fecif.c \
+	fold_drive.c \
+	fortout.c \
+	i_cvrt.c \
+	inline.c \
+	ir.c \
+	lex.c \
+	main.c \
+	messages.c \
+	module.c \
+	nameres.c \
+	p_asg_expr.c \
+	p_ctl_flow.c \
+	p_dcl_attr.c \
+	p_dcl_pu.c \
+	p_dcl_util.c \
+	p_dcls.c \
+	p_directiv.c \
+	p_driver.c \
+	p_end.c \
+	p_io.c \
+	p_utils.c \
+	release.c \
+	s_asg_expr.c \
+	s_call.c \
+	s_cnstrct.c \
+	s_ctl_flow.c \
+	s_data.c \
+	s_dcl_pu.c \
+	s_dcls.c \
+	s_directiv.c \
+	s_driver.c \
+	s_end.c \
+	s_interoperable.c \
+	s_intrin.c \
+	s_io.c \
+	s_rcnstrct.c \
+	s_typ_init.c \
+	s_utils.c \
+	src_input.c \
+	sytb.c \
+	$(FOLD)
+
+CFILES = $(FE90_SRCS)
+
+# extra files to be removed with make clobber
+LDIRT = 
+
+VPATH    =  $(FE90_DIR)
+
+LCDEFS = -funsigned-char
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+LCDEFS += -D_$(BUILD_OS)_$(BUILD_OS)
+else
+LCDEFS += $(HOSTDEFS) $(TARGDEFS) -D_SGI_SGI
+endif
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+
+ifeq ($(BUILD_FFE_OPTIMIZE), DEBUG)
+LCDEFS += -D_DEBUG
+endif
+
+LIBRARY = fe90.a
+TARGETS = $(LIBRARY)
+
+ifeq ($(BUILD_TARGET), MIPS)
+LCDEFS += -D_TARGET_MONGOOSE 
+endif
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+# target defined above
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+
+LIBRARIES = $(ARITH_TARG_DIR)/arith.a $(LIBCIF_TARG_DIR)/libcif.a
+
+LLDLIBS += $(LIBRARIES) -lftn -lu  -lm
+
+#----------------------------------------------------------------------
+#  For parallel makes, makefile must satisfy:
+#  -> Submake for include/ finished before building any objects;
+#  -> All archive/library submakes finished before linking targets;
+#  -> All targets finished before make_deps or make_libdeps.
+#----------------------------------------------------------------------
+
+default:
+	$(MAKE) first
+	$(MAKE) make_libdeps
+
+
+make_libdeps: $(TARGETS)
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+endif
+
+
+.PHONY: default first make_libdeps install
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#----------------------------------------------------------------------
+
+.PHONY: force
+force: ;
+
+$(ARITH_TARG_DIR)/arith.a: force
+	$(call submake,$(ARITH_TARG_DIR),arith.a)
+$(LIBCIF_TARG_DIR)/libcif.a: force
+	$(call submake,$(LIBCIF_TARG_DIR),libcif.a)
+
+#----------------------------------------------------------------------
+#  Build 'cf90fe'
+#
+#  These rules build the 'cf90fe' executable by default, and can install
+#  it in the mongoose compilers directory.
+#----------------------------------------------------------------------
+
+exports:
+
+install:: default
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+#----------------------------------------------------------------------
+#  Special case rules for files that want to be individualistic
+#----------------------------------------------------------------------
+
+$(LIBRARY): $(LIBRARIES) $(OBJECTS)
+	$(ar) cru $@ $(OBJECTS)
+
+
+# We have bootstrapping problems due to the fix for bug 4656, so (kludge)
+# if it fails with the new -intrinsic=EVERY option, try it without.
+# At present, we build only IA32, so no need to do it in the "else" clause
+# (which appears to be wrong anyway.)
+
+fold.o: fold.f
+ifeq ($(BUILD_ARCH), IA32)
+	if $(F77) -intrinsic=EVERY -m32 -mno-sse2 $(FFLAGS) -c $(CRAYF90_DIR)/fe90/fold.f; \
+	then : ; \
+	else $(F77) -m32 -mno-sse2 $(FFLAGS) -c $(CRAYF90_DIR)/fe90/fold.f; \
+	fi
+else
+ifeq ($(BUILD_TARGET), IA64)
+	$(F90) $(FFLAGS) -c $(CRAYF90_DIR)/fe90/fold.f
+else
+	$(F90) -m64 -mno-sse2 $(FFLAGS) -c $(CRAYF90_DIR)/fe90/fold.f
+endif
+endif
+
+ifeq ($(BUILD_COMPILER), OSP)
+s_data.o:s_data.c
+	$(CCF) -OPT:alias=no_typed -c $<
+endif

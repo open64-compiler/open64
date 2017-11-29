@@ -1,0 +1,150 @@
+/*
+ * Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
+ */
+
+
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if 
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* ====================================================================
+ * ====================================================================
+ * Module: erfe.desc
+ * $Revision$
+ * $Date$
+ * $Author$
+ * $Source$
+ *
+ * Revision history:
+ *  12-Sep-89 - Original Version
+ *  11-Mar-91 - Copied for TP/Muse
+ *
+ * Description:
+ *
+ * Define the compiler front end error message descriptors for use with
+ * the error message handler errors.c.  The associated error codes are
+ * defined in the file erfe.h.
+ *
+ * ====================================================================
+ * ====================================================================
+ */
+
+static char *erfe_desc_rcs_id = "$Source$ $Revision$";
+
+#include "erfe.h"
+
+ERROR_DESC EDESC_FE[] = {
+
+  /* Semantic Errors */
+  { EC_Not_Same_Type,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Both sides of %s do not have the same type",
+    1, ET_STRING, 0,0,0,0,0 },
+  { EC_Not_Typed,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s has not been type",
+    1, ET_STRING, 0,0,0,0,0 },
+  { EC_Dup_Decl,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s has already been declared",
+    1, ET_STRING, 0,0,0,0,0 },
+  { EC_Not_Class,       EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Expecting %s to be a %s but is instead a %s",
+    3, ET_STRING, ET_STRING, ET_STRING, 0,0,0 },
+  { EC_Undeclared,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s has not been declared",
+    1, ET_STRING, 0,0,0,0,0 },
+  { EC_Intcon_Expected,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Integer constant expected for %s",
+    1, ET_STRING, 0,0,0,0,0 },
+  { EC_Fltcon_Expected,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Floating point constant expected for %s",
+    1, ET_STRING, 0,0,0,0,0 },
+  { EC_Return_Num,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Number of values to be returned should be %d instead of %d",
+    2, ET_INT, ET_INT, 0,0,0,0 },
+  { EC_Return_Type,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Return type for argument %d should be %s instead of %s",
+    3, ET_INT, ET_STRING, ET_STRING, 0,0,0 },
+  { EC_Missing_Spec,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Missing specification for %s",
+    1, ET_STRING, 0,0,0,0,0 },
+  { EC_Sets_Num,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Number of values to be set should be %d instead of %d",
+    2, ET_INT, ET_INT, 0,0,0,0 },
+  { EC_Sets_Type,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Type for set %d should be %s instead of %s",
+    3, ET_INT, ET_STRING, ET_STRING, 0,0,0 },
+  { EC_Skip_Stmt,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s(looking at %s): statement skipped",
+    2, ET_STRING, ET_STRING,0,0,0,0 },
+  { EC_Spec_Prev,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Current definition of %s does not agree with previous one",
+    1, ET_STRING, 0,0,0,0,0 },
+  { EC_Int_Expected,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s operand of %s expected to be integer type",
+    2, ET_STRING, ET_STRING, 0,0,0,0 },
+  { EC_Spec_Lib,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Definition of %s does not agree with program library",
+    1, ET_STRING, 0, 0,0,0,0 },
+  { EC_Invalid_Regno,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s cannot be assigned to register %d",
+    2, ET_STRING, ET_INT, 0,0,0,0 },
+  { EC_GE_Only,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s is only available in the GE",
+    1, ET_STRING, 0, 0,0,0,0 },
+  { EC_PE_Only,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s is only available in the PE",
+    1, ET_STRING, 0, 0,0,0,0 },
+  { EC_Diff_Decl,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "%s was previously declared differently",
+    1, ET_STRING, 0, 0,0,0,0 },
+  { EC_Flag_Var,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Illegal flag variable '%s' in SET_FLAG",
+    1, ET_SYMTAB, 0, 0,0,0,0 },
+
+#if defined(FRONT_END_C) || defined(FRONT_END_CPLUSPLUS) || \
+    defined(FRONT_END_FORTRAN)
+  /* IR building: */
+  { EC_Null_Backptr,	EM_Compiler | ES_WARNING,	RAG_EN_NONE,
+    "Null ND_backptr for node %s in %s",
+    2, ET_NODE, ET_STRING, 0,0,0,0 },
+#endif /* FRONT_END_C || FRONT_END_CPLUSPLUS || FRONT_END_FORTRAN */
+
+#ifdef KEY
+  { EC_Unsupported_Type, EM_User | ES_ERRABORT,	RAG_EN_NONE,
+    "%s data type not supported",
+    1, ET_STRING, 0,0,0,0,0 },
+#endif
+  
+  /* All error descriptor lists must end with a -1 error code: */
+  { -1,	0, RAG_EN_NONE, "", 0, 0,0,0,0,0,0 }
+};
+

@@ -1,0 +1,450 @@
+# -*- Makefile -*-
+#  Copyright (C) 2010, 2012 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for Cray F90 front-end
+#
+
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  *  This Makefile does not require that tdt has already been built.
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+ARITH_TARG_DIR = $(TARGDIR)/arith
+FE90_TARG_DIR = ../fe90
+SGI_TARG_DIR   = ../sgi
+F90SGI_TARG_DIR = ../libf90sgi
+LIBCIF_TARG_DIR = $(TARGDIR)/libcif
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Install the messages file to the standard nls directory
+#----------------------------------------------------------------------
+LANG_C_MSG_DIR=/usr/lib/locale/C/LC_MESSAGES
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -DSGI_DIRS
+HOSTDEFS += -Dlonglong
+HOSTDEFS += -DSGI_MONGOOSE
+HOSTDEFS += -DFRONT_END
+HOSTDEFS += -DFRONT_F90
+HOSTDEFS += -D_PDGCS 
+HOSTDEFS += -DUSE_STANDARD_TYPES
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+HOSTDEFS += -D __MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_OS), LINUX)
+HOSTDEFS += -Dlinux
+endif
+ifeq ($(BUILD_OS), DARWIN)
+HOSTDEFS += -Ddarwin
+endif
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+HOSTDEFS += -D__USE_BSD
+HOSTDEFS += -D_GNU_SOURCE
+endif
+
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE 
+
+ifeq ($(BUILD_FFE_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+CRAYF90_DIR		= $(BUILD_TOT)/crayf90
+ARITH_DIR 		= $(BUILD_TOT)/arith
+FE90_DIR		= $(CRAYF90_DIR)/fe90
+SGI_DIR			= $(CRAYF90_DIR)/sgi
+COMMON_DIR 		= $(BUILD_TOT)/common
+COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+COMMON_LIB_DIR 		= $(COMMON_DIR)/lib
+COMMON_UTIL_DIR 	= $(COMMON_DIR)/util
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+FE90_INCLUDES           = $(BUILD_TOT)/linux/mfef90_includes
+LINUX_INC		= $(BUILD_TOT)/linux/include
+INCLUDE_DIR		= $(BUILD_AREA)/include
+else
+INCLUDE_DIR 		= $(ROOT)/usr/include
+endif
+
+ifeq ($(BUILD_TARGET), X8664)
+LIBFORTRAN_DIR          = $(TARGDIR)/libfortran
+endif
+LIBCOMUTIL_DIR 		= $(BUILD_TOT)/libcomutil
+
+TARG_COMUTIL_DIR	= $(TARGDIR)/libcomutil
+
+SRC_DIRS                = $(SGI_DIR) \
+	                  $(COMMON_COM_DIR) \
+                          $(COMMON_UTIL_DIR)\
+	                  $(COMMON_COM_TARG_DIR)
+
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+TRANS_SRCS = \
+	cwh_unimp.cxx  \
+	cwh_addr.cxx   \
+	cwh_auxst.cxx  \
+	cwh_block.cxx  \
+	cwh_data.cxx   \
+	cwh_directive.cxx	\
+	cwh_dope.cxx   \
+	cwh_dst.cxx   \
+	cwh_expr.cxx   \
+	cwh_intrin.cxx \
+	cwh_io.cxx     \
+	cwh_mkdepend.cxx \
+	cwh_pdgcs.cxx  \
+	cwh_preg.cxx   \
+	cwh_types.cxx  \
+	cwh_targ_info.cxx \
+	cwh_stab.cxx   \
+	cwh_stmt.cxx   \
+	cwh_stk.cxx    \
+        decorate_utils.cxx \
+        f2c_abi_utils.cxx     \
+	sgi_cmd_line.cxx \
+	path_intrinsic_list.cxx
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+TRANS_SRCS += \
+	make_depend.cxx 
+endif
+ 
+
+COMMON_COM_CXX_SRCS =	\
+  config.cxx		\
+  const.cxx		\
+  controls.cxx		\
+  dwarf_DST.cxx		\
+  dwarf_DST_dump.cxx	\
+  dwarf_DST_mem.cxx	\
+  dwarf_DST_producer.cxx	\
+  err_host.cxx		\
+  f90_utils.cxx		\
+  glob.cxx		\
+  ir_bcom.cxx		\
+  ir_bwrite.cxx		\
+  ir_reader.cxx		\
+  irbdata.cxx		\
+  mtypes.cxx		\
+  opcode.cxx		\
+  opcode_core.cxx	\
+  pu_info.cxx		\
+  strtab.cxx		\
+  symtab.cxx            \
+  symtab_verify.cxx	\
+  ttype.cxx		\
+  wn.cxx		\
+  wn_map.cxx		\
+  wn_pragmas.cxx	\
+  wn_simp.cxx		\
+  wn_util.cxx		\
+  wutil.cxx		\
+
+
+COMMON_COM_TARG_SRCS = \
+  config_host.c		\
+  config_platform.c	\
+
+COMMON_COM_TARG_CXX_SRCS = \
+  config_targ.cxx	\
+  config_elf_targ.cxx	\
+  targ_const.cxx	\
+  targ_sim.cxx
+
+SGI_C_SRCS = $(COMMON_FE_SRCS)		\
+	   $(COMMON_COM_SRCS)		\
+	   $(COMMON_COM_TARG_SRCS)	
+
+SGI_CXX_SRCS = $(COMMON_COM_CXX_SRCS) $(COMMON_COM_TARG_CXX_SRCS) $(TRANS_SRCS)
+
+CFILES = $(SGI_C_SRCS)
+CXXFILES = $(SGI_CXX_SRCS)
+
+# extra files to be removed with make clobber
+LDIRT = mfef95 cf95.i cf95.cat cf95.exp cf95.cat.m cf95.exp.m ii_files compiler_build_date.c
+
+HEADER_DIRS = $(FE90_DIR) $(SRC_DIRS) $(CURDIR) $(BUILD_TOT)/include
+
+VPATH    =  $(FE90_DIR) $(SRC_DIRS) 
+
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+LCINCS += -I$(FE90_INCLUDES) -I$(LINUX_INC) -I$(BUILD_TOT)/include/cmplrs -I$(INCLUDE_DIR)/cmplrs
+endif
+LCXXINCS = $(LCINCS)
+
+LCDEFS = $(HOSTDEFS) $(TARGDEFS) -D_SGI_SGI -D_TARGET_MONGOOSE -D_SGI_WHIRLCONVERT
+LCXXDEFS = $(LCDEFS)
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCXXOPTS += $(STD_COMPILE_OPTS)
+
+
+ifeq ($(BUILD_FFE_OPTIMIZE), DEBUG)
+LCDEFS += -D_DEBUG
+LCXXDEFS += -D_DEBUG
+endif
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+#----------------------------------------------------------------------
+#  Extra Rules
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+
+TARGETS = mfef95 cf95.cat
+
+LIBRARY = fe90_sgi.a
+
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+
+LIBRARIES = $(FE90_TARG_DIR)/fe90.a $(ARITH_TARG_DIR)/arith.a \
+	$(LIBCIF_TARG_DIR)/libcif.a #$(F90SGI_TARG_DIR)/libf90sgi.a
+ifeq ($(BUILD_TARGET), IA64)
+LIBRARIES += $(F90SGI_TARG_DIR)/libf90sgi.a
+endif
+ifeq ($(BUILD_TARGET), X8664)
+LIBRARIES += $(F90SGI_TARG_DIR)/libf90sgi.a
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+LIBRARIES += $(F90SGI_TARG_DIR)/libf90sgi.a
+endif
+
+
+LLDLIBS += $(LIBRARIES)
+ifeq ($(BUILD_ARCH), IA64)
+LLDLIBS += -L/usr/ia64-sgi-linux/bin
+endif
+ifeq ($(BUILD_ARCH), IA32)
+LLDLIBS += -L/usr/ia32-sgi-linux/bin
+endif
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+LLDLIBS += -lm 
+ifeq ($(BUILD_HOST), IA64)
+LDFLAGS += -Wl,-relax
+endif
+else
+# need latest libm cause of sincos, but ROOT is old so don't use ROOT
+# LLDLIBS += -lcmplrs -lm
+LLDLIBS += -lcmplrs $(TARGDIR)/libm/libm.a
+endif
+
+.PHONY: default first last install
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is
+#  built.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+## verify that arith.a, fe90.a, libcif.a, and libf90sgi.a are up to date
+	$(call submake,$(TARG_COMUTIL_DIR))
+	$(call submake,$(LIBCIF_TARG_DIR))
+	$(call submake,$(ARITH_TARG_DIR))
+	$(call submake,$(FE90_TARG_DIR))
+ ifeq ($(BUILD_TARGET),IA64)
+	$(call submake,$(F90SGI_TARG_DIR))
+ endif
+ ifeq ($(BUILD_TARGET),X8664)
+	$(call submake,$(F90SGI_TARG_DIR))
+ endif
+ ifeq ($(BUILD_TARGET),LOONGSON)
+       $(call submake,$(F90SGI_TARG_DIR))
+ endif
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last : make_deps
+
+#----------------------------------------------------------------------
+#  Build 'mfef95'
+#
+#  These rules build the 'mfef95' executable by default, and can install
+#  it in the mongoose compilers directory.
+#
+#----------------------------------------------------------------------
+
+exports: cf95.cat cf95.exp
+	$(INSTALL) -m 444 -F $(LANG_C_MSG_DIR) -src cf95.cat cf95.cat
+	$(INSTALL) -m 444 -F $(LANG_C_MSG_DIR) -src cf95.cat.m cf95.cat.m
+	$(INSTALL) -m 444 -F $(LANG_C_MSG_DIR) -src cf95.exp cf95.exp
+	$(INSTALL) -m 444 -F $(LANG_C_MSG_DIR) -src cf95.exp.m cf95.exp.m
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+install: default
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D mfef95 $(STD_MONGOOSE_LINUX_LOC)/mfef95
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D cf95.cat $(STD_MONGOOSE_LINUX_LOC)/cf95.cat
+else
+install: default cf95.cat cf95.exp
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) mfef95
+	$(STD_INSTALL) -m 444 -F $(LANG_C_MSG_DIR) -src cf95.cat cf95.cat
+	$(STD_INSTALL) -m 444 -F $(LANG_C_MSG_DIR) -src cf95.cat.m cf95.cat.m
+	$(STD_INSTALL) -m 444 -F $(LANG_C_MSG_DIR) -src cf95.exp cf95.exp
+	$(STD_INSTALL) -m 444 -F $(LANG_C_MSG_DIR) -src cf95.exp.m cf95.exp.m
+endif
+
+
+
+mfef95: $(OBJECTS) $(LIBRARIES) compiler_build_date.o
+ifeq ($(BUILD_ARCH),IA32)
+ifeq ($(BUILD_TARGET),IA64)
+	$(link.c++f) -o $@ $(OBJECTS) compiler_build_date.o  -L./ $(TARG_COMUTIL_DIR)/libcomutil.a $(LDFLAGS) $(F90_RTLIBS) -m32 -lm
+else
+ifeq ($(BUILD_TARGET),X8664)
+	$(link.c++f) -o $@ $(OBJECTS) compiler_build_date.o  -L./ $(TARG_COMUTIL_DIR)/libcomutil.a $(LDFLAGS) $(F90_RTLIBS) -lm
+else
+ifeq ($(BUILD_TARGET), LOONGSON)
+	$(link.c++f) -o $@ $(OBJECTS) compiler_build_date.o  -L./ $(TARG_COMUTIL_DIR)/libcomutil.a $(LDFLAGS) $(F90_RTLIBS) -lm 
+else
+	$(link.c++f) -o $@ $(OBJECTS) compiler_build_date.o  -L./ $(TARG_COMUTIL_DIR)/libcomutil.a $(LDFLAGS) $$($(F90) -m32 -print-file-name=libfortran.a)
+endif
+endif
+endif
+else
+ifeq ($(BUILD_TARGET),IA64)
+	$(link.c++f) -o $@ $(OBJECTS) compiler_build_date.o  -L./ $(TARG_COMUTIL_DIR)/libcomutil.a $(LDFLAGS) $(F90_RTLIBS) -lm
+else
+ifeq ($(BUILD_TARGET),X8664)
+	$(link.c++f) -o $@ $(OBJECTS) compiler_build_date.o  -L./ $(TARG_COMUTIL_DIR)/libcomutil.a $(LDFLAGS) $(F90_RTLIBS) -m64 -lm 
+else
+	$(link.c++f) -o $@ $(OBJECTS) compiler_build_date.o  -L./ $(TARG_COMUTIL_DIR)/libcomutil.a $(LDFLAGS) $(OPEN64_PREFIX)/lib/libm.a $$($(F90) -m32 -print-file-name=libfortran.a) 
+endif
+endif
+endif
+
+hg_root := $(shell hg root 2>/dev/null || echo unknown)
+
+compiler_build_date.c:
+	@echo 'GEN    $@'
+	@echo '#include "version.h"' > $@
+	@echo 'const char *const cset_id = "$(shell hg parents --template "{node}" || echo unknown)";' >> $@
+	@echo 'const char *const build_root = "$(hg_root)";' >> $@
+	@echo 'const char *const build_host = "$(shell hostname -f)";' >> $@
+	@echo 'const char *const build_user = "$(shell id -un)";' >> $@
+	@echo 'const char *const mfef90_compiler_build_date = "$(shell date +'%Y-%m-%d %H:%M:%S %z')";' >> $@
+
+.PHONY: compiler_build_date.c
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+
+cf95.i: $(FE90_DIR)/cf95.msgs
+	$(CCF) -E $(FE90_DIR)/cf95.msgs > cf95.i
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+cf95.cat: $(BUILD_TOT)/crayf90/fe90/cf95.msgs
+	awk -f $(BUILD_TOT)/linux/tools/caterr.awk < $(BUILD_TOT)/crayf90/fe90/cf95.msgs | gencat -o cf95.cat
+else
+cf95.cat: cf95.i
+	rm -f cf95.cat
+	$(TOOLROOT)/usr/bin/caterr -Yc,$(TOOLROOT)/usr/bin/gencat -Ym,$(ROOT)/usr/lib/tmac/tmac.sg -c cf95.cat cf95.i
+
+cf95.exp: cf95.i
+	rm -f cf95.exp
+	$(TOOLROOT)/usr/bin/caterr -Yc,$(TOOLROOT)/usr/bin/gencat -Ym,$(ROOT)/usr/lib/tmac/tmac.sg -Yn,/usr/bin/nroff -e -c cf95.exp cf95.i
+endif
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+#----------------------------------------------------------------------
+#  Special case rules for files that want to be individualistic
+#----------------------------------------------------------------------
+
+wn_util.o: HOSTDEFS += -DMONGOOSE_BE

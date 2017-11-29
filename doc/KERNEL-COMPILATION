@@ -1,0 +1,89 @@
+/*
+  Copyright (C) 2008-2009, Tsinghua University.  All rights reserved.
+
+  Copyright (C) 2006-2007, Hewlett-Packard Company & Tsinghua University.  All rights reserved.
+  
+  Redistribution and use in source and binary forms, with or without modification,
+  are permitted provided that the following conditions are met:
+  
+  Redistributions of source code must retain the above copyright notice, this list
+  of conditions and the following disclaimer. 
+
+  Redistributions in binary form must reproduce the above copyright notice, this list
+  of conditions and the following disclaimer in the documentation and/or other materials
+  provided with the distribution. 
+
+  Neither the name of the owner nor the names of its contributors may be used to endorse or
+  promote products derived from this software without specific prior written permission. 
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+  IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+  FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE CONTRIBUTORS BE LIABLE FOR
+  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+  BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+KernelCompile
+=================================================================================================
+
+Menu
+------------------------------------------------
+I.   Introduction
+II.  The scripts
+III. Kernel compilation
+IV.  Known problems
+V.   Developers
+
+I. Introduction
+------------------------------------------------
+This document explains the status of open64 linux kernel compilation.
+Tested platform: x86/IA64/PowerPC32
+
+II.  The scripts
+------------------------------------------------
+We use a shell scripts file to handle options for kernel compilation.
+It locates in osprey/targtarget_target[-nodebug]/driver/
+
+Scripts file kdriver mainly does these things:
+1)ignores these options onlyfor GCC and do not pass them to opencc.
+  For options such as omit_frame-pointer that gcc uses for kernel
+  compilation, but are not relavant to osprey. So we must ignore them.
+2)Create and pass correct options such as -OPT:spec=off and -OPT:swp=off
+  for osprey.
+
+First, it gets all the gcc options for kernel compilation (We do not
+need to modify kernel's makefile). Then it adds essential ospry options
+and ignores some options only supported by gcc. Builds and passes
+correct options to osprey for kernel compilation.
+
+I'd like to add it as a seperate file. It is just for kernel building.
+For other application, we still use the origional driver.
+
+III. Kernel compilation
+------------------------------------------------
+When we build kernel, we use it like this:
+
+  make CC=kopencc (kopencc=kdriver, just a symbol link)
+
+then, it will help us to reorgnize the options.
+That's the way we use it now.
+
+X86 Example:
+Tested platform: ubuntu linux 8.10/X86 with local 
+gcc 4.2.4/g++4.1.3/Binutils 2.18.93.
+1) download and uncompress linux kernel package (version 2.6.27.7/9)
+2) make i386_defconfig
+3) make CC=kopencc
+
+Good luck and enjoy it.
+
+IV. Known problems
+------------------------------------------------
+We still need a patch for kernel compilation for IA64 and PPC32.
+If you want it, please see our website.
+
+If you want source code and more infomation, please visit our website:
+    http://soft.cs.tsinghua.edu.cn/soft/software.html

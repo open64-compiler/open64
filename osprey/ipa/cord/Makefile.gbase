@@ -1,0 +1,185 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for inline
+#
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARG_BE_DIR: is the be directory with which we do build... this can
+#               be retargeted (e.g., for building be with different options)
+#               by setting LOCAL_BE_DIR in localdefs
+#----------------------------------------------------------------------
+ifdef LOCAL_BE_DIR
+TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
+else
+TARG_BE_DIR = $(TARGDIR)/be
+endif
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dsgi -DMONGOOSE_BE -D_LIGHTWEIGHT_INLINER
+HOSTDEFS += -Dlonglong
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+HOSTDEFS += -D_NEW_SYMTAB
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On
+#HOSTDEFS += -DIPA_DEBUG
+endif
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+IPA_DIR                 = $(BUILD_TOT)/ipa
+IPA_COMMON_DIR          = $(IPA_DIR)/common
+IPA_CORD_DIR            = $(IPA_DIR)/cord
+IPA_LOCAL_DIR           = $(IPA_DIR)/local
+IPA_MAIN_DIR            = $(IPA_DIR)/main
+IPA_OPTIMIZE_DIR        = $(IPA_MAIN_DIR)/optimize
+IPA_ANALYZE_DIR         = $(IPA_MAIN_DIR)/analyze
+IPA_INLINE_DIR          = $(IPA_DIR)/inline
+BE_DIR                  = $(BUILD_TOT)/be
+BE_MIPS_DIR             = $(BE_DIR)/MIPS
+BE_CG_DIR               = $(BE_DIR)/cg
+BE_COM_DIR              = $(BE_DIR)/com
+BE_LNO_DIR              = $(BE_DIR)/lno
+BE_REGION_DIR           = $(BE_DIR)/region
+BE_OPT_DIR              = $(BE_DIR)/opt
+BE_VHO_DIR              = $(BE_DIR)/vho
+GNU_DIR                 = $(BUILD_TOT)/kgccfe/gnu
+COMMON_DIR              = $(BUILD_TOT)/common
+COMMON_COM_DIR          = $(COMMON_DIR)/com
+COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+COMMON_LIB_DIR          = $(COMMON_DIR)/lib
+COMMON_UTIL_DIR         = $(COMMON_DIR)/util
+COMMON_UTIL_TARG_DIR 	= $(COMMON_UTIL_DIR)/$(BUILD_TARGET_DIR)
+LD_DIR			= $(BUILD_TOT)/ld
+LD_COMMON_DIR		= $(LD_DIR)/common
+INCLUDE_DIR             = $(ROOT)/usr/include
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS = \
+  $(IPA_CORD_DIR)   \
+
+HEADER_DIRS = \
+  $(IPA_CORD_DIR)   \
+  .
+
+IPA_CORD_CXX_SRCS = \
+	ipa_cord.cxx \
+        obj_info.cxx \
+
+IPA_CXX_SRCS = \
+   $(IPA_CORD_CXX_SRCS) \
+
+IPA_OBJS = $(IPA_SRCS:.c=.o)
+
+IPA_CXX_OBJS = $(IPA_CXX_SRCS:.cxx=.o)
+
+VPATH    =  $(SRC_DIRS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(LCINCS)
+LASOPTS = $(STD_COMPILE_OPTS)
+LASDEFS = $(HOSTDEFS) $(TARGDEFS)
+LASINCS = $(LCINCS)
+
+LDFLAGS += -lm
+
+GLDOPTS = $(STD_LOAD_OPTS) 
+
+TARGETS = gen_cord
+
+LDIRT = be.so ii_files
+
+LLDLIBS = 
+
+default: first $(TARGETS) 
+first: 
+	-@rm -f ./lib_phase_dir.h; ln -s $(BUILD_TOT)/common/com/lib_phase_dir.h . 
+	-@rm -f ./cord_prologue; ln -s ../../ipa/cord/cord_prologue . 
+	-@rm -f ./cord_epilogue; ln -s ../../ipa/cord/cord_epilogue .
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last : make_deps
+
+install:: default
+ifeq ($(BUILD_OS), LINUX)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/inline
+else
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) lw_inline
+ ifeq ($(BUILD_TYPE), SHARED)
+ ifndef NOSYSGEN
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) lw_inline
+ endif
+ endif
+endif
+
+gen_cord: $(IPA_CXX_OBJS)
+	$(link.c++f) -o $@ $(IPA_CXX_OBJS)  $(LDFLAGS)
+
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)

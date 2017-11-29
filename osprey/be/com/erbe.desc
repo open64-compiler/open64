@@ -1,0 +1,349 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if 
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* ====================================================================
+ * ====================================================================
+ *
+ * Module: erbe.desc
+ * $Revision: 1.1.1.1 $
+ * $Date: 2005/06/23 02:15:38 $
+ * $Author: sxyang $
+ * $Source: /u/cvs/Pathscale.MIPS/be/com/erbe.desc,v $
+ *
+ * Revision history:
+ *  02-Nov-89 - Original Version
+ *  01-Feb-91 - Copied for TP/Muse
+ *
+ * Description:
+ *
+ * Define the Muse back end error message descriptors for use with
+ * the error message handler errors.c.  The associated error codes are
+ * defined in the file erbe.h.
+ *
+ * See also ercg.h and ercg.desc for code generator error codes.
+ *
+ * ====================================================================
+ * ====================================================================
+ */
+
+static char *erbe_desc_rcs_id = "$Source: /u/cvs/Pathscale.MIPS/be/com/erbe.desc,v $ $Revision: 1.1.1.1 $";
+
+#include "erbe.h"
+
+ERROR_DESC EDESC_BE[] = {
+
+  /* Global live range analysis: */
+  { EC_Alias_Interfere,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Definition of '%s' interferes with live range of '%s'",
+    2, ET_SYMTAB, ET_SYMTAB, 0,0,0,0 },
+  { EC_Alias_Kill,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Definition of '%s' in '%s' interferes with live range of '%s'",
+    3, ET_SYMTAB, ET_SYMTAB, ET_SYMTAB, 0,0,0 },
+  { EC_Alias_Def,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Definition of '%s' in '%s' interferes with live range of '%s'",
+    3, ET_SYMTAB, ET_SYMTAB, ET_SYMTAB, 0,0,0 },
+  { EC_Alias_Ref,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "Use of '%s' in '%s' interferes with live range of '%s'",
+    3, ET_SYMTAB, ET_SYMTAB, ET_SYMTAB, 0,0,0 },
+  { EC_Glob_Exposed,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "Global register '%s' declared dead is used",
+    1, ET_SYMTAB, 0,0,0,0,0 },
+  { EC_Not_Live_Out,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Global register '%s' is not live on exit",
+    1, ET_SYMTAB, 0,0,0,0,0 },
+  { EC_Not_Avail,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Register '%s' is not available -- copy added",
+    1, ET_SYMTAB, 0,0,0,0,0 },
+  { EC_Part_Avail,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "Register '%s' may not be available",
+    1, ET_SYMTAB, 0,0,0,0,0 },
+  { EC_Not_Live_In,	EM_User | ES_ADVISORY,	RAG_EN_NONE,
+    "Global register '%s' is not live on entry",
+    1, ET_SYMTAB, 0,0,0,0,0 },
+
+  { EC_Rtn_Conflict,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "'%s' has both 'return;' and 'return expr;'",
+    1, ET_STRING, 0, 0,0,0,0 },
+  { EC_Rtn_Uninit,	EM_User | ES_WARNING,	RAG_EN_RTN_UNINIT,
+    "Return value in function '%s' may not be initialized",
+    1, ET_STRING, 0, 0,0,0,0 },
+  { EC_Formal_Ref,	EM_User | ES_WARNING,	RAG_EN_FORMAL_REF,
+    "Subroutine may reference formal '%s' without executing defining ENTRY",
+    1, ET_STRING, 0, 0,0,0,0 },
+  { EC_Uninit_Ref,	EM_User | ES_WARNING,	RAG_EN_UNINIT_REF,
+    "Possible uninitialized reference to '%s' in subprogram '%s'",
+    2, ET_STRING, ET_STRING, 0,0,0,0 },
+
+  /* Call processing: */
+  { EC_Invalid_Call,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Invalid call operator %s in %s",
+    2, ET_STRING, ET_STRING, 0,0,0,0 },
+  { EC_Callee_TN,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Missing dedicated TN for callee-saved register %s (%d)",
+    2, ET_STRING, ET_INT, 0,0,0,0 },
+
+  /* FE input (btom, sgiops): */
+  { EC_B_Synch,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    ".B file input out of synch: %d should be %d (after reading %s)",
+    3, ET_INT, ET_INT, ET_STRING, 0,0,0 },
+  { EC_Inv_Offset,	EM_Compiler | ES_WARNING,	RAG_EN_NONE,
+    "Invalid offset %d to load/store operator %s",
+    2, ET_INT, ET_STRING, 0,0,0,0 },
+  { EC_Inv_Flist,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Invalid %s field of FLD %s of TY %s",
+    3, ET_STRING, ET_STRING, ET_STRING, 0,0,0 },
+
+  /* Alias analysis: */
+  { EC_Tree_Class,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Bad Tree, %s: class %d is incompatible with %s",
+    3, ET_TN, ET_INT, ET_NODE, 0,0,0 },
+  { EC_Xar_Sclass,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Illegal storage class (%s) for XAR%d (%s) in %s",
+    4, ET_STRING, ET_INT, ET_SYMTAB, ET_STRING, 0,0 },
+  { EC_Bad_MOS_Tree,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Bad TO_MOS subtree %s for TN%d: %s",
+    3, ET_NODE, ET_INT, ET_STRING, 0,0,0 },
+  { EC_Store_Const,     EM_User | ES_WARNING,   RAG_EN_NONE,
+    "Potential store to read-only data.",
+    0, 0, 0, 0, 0, 0, 0 },
+
+  /* Control flow analysis and optimization: */
+  { EC_TO_Missed,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Topological ordering missed reachable BBs",
+    0, 0, 0, 0, 0,0,0 },
+  { EC_Expanded,	EM_Compiler | ES_WARNING,	RAG_EN_NONE,
+    "BB:%d already expanded in %s",
+    2, ET_INT, ET_STRING, 0, 0,0,0 },
+
+  /* RB Support */
+  { EC_Mult_RB_Reg,     EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "%s register assignment (%d) differs from previous assignment (%d)",
+    3, ET_TN, ET_INT, ET_INT, 0,0,0 },
+  { EC_Mult_RB_Tn,      EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "%s has already been inserted in the list",
+    1, ET_TN, 0,0,0,0,0 },
+
+  /* Global optimizer */
+  { EC_Fold_Arith_Too_Big, EM_User | ES_WARNING,	RAG_EN_FOLD_ARITH_TOO_BIG,
+    "Subprogram '%s' exceeds default limit for optimization of"
+    " arithmetic expressions -",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_Fold_Arith_Too_Big2, EM_Continuation | ES_WARNING,	RAG_EN_FOLD_ARITH_TOO_BIG2,
+    "Use -OPT:fold_arith_limit=%d to enable optimization",
+    1, ET_INT, 0, 0, 0, 0, 0 },
+  { EC_Const_Copy_Too_Big, EM_User | ES_WARNING,	RAG_EN_CONST_COPY_TOO_BIG,
+    "Subprogram '%s' exceeds default limit for constant/copy propagation -",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_Const_Copy_Too_Big2, EM_Continuation | ES_WARNING,	RAG_EN_CONST_COPY_TOO_BIG2,
+    "Use -OPT:const_copy_limit=%d to enable optimization",
+    1, ET_INT, 0, 0, 0, 0, 0 },
+  { EC_Gopt_Too_Big, EM_User | ES_WARNING,	RAG_EN_GOPT_TOO_BIG,
+    "Subprogram '%s' exceeds default limit for global optimizations -",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_Gopt_Too_Big2, EM_Continuation | ES_WARNING,	RAG_EN_GOPT_TOO_BIG2,
+    "Use -OPT:global_limit=%d to enable optimization",
+    1, ET_INT, 0, 0, 0, 0, 0 },
+  { EC_Gopt_Space, EM_Compiler | ES_WARNING,	RAG_EN_NONE,
+    "Insufficient memory for pass '%s' - may exceed memory limit",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_Gopt_Space_Skip, EM_Compiler | ES_WARNING,	RAG_EN_NONE,
+    "Insufficient memory for pass '%s' - skipped",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+
+  { EC_LNO_Bad_Pragma_Int, EM_User | ES_WARNING, RAG_EN_LNO,
+    "Pragma '%s' has bad value: %d",
+    2, ET_STRING, ET_INT, 0, 0, 0, 0 },
+  { EC_LNO_Bad_Pragma_String, EM_User | ES_WARNING, RAG_EN_LNO,
+    "Pragma '%s': %s",
+    2, ET_STRING, ET_STRING, 0, 0, 0, 0 },
+  { EC_LNO_Bad_Pragma_Int_Advisory, EM_User | ES_ADVISORY, RAG_EN_LNO,
+    "Pragma '%s' has bad value: %d",
+    2, ET_STRING, ET_INT, 0, 0, 0, 0 },
+  { EC_LNO_Bad_Pragma_String_Advisory, EM_User | ES_ADVISORY, RAG_EN_LNO,
+    "Pragma '%s': %s",
+    2, ET_STRING, ET_STRING, 0, 0, 0, 0 },
+  { EC_LNO_Generic, EM_User | ES_WARNING, RAG_EN_LNO,
+    "%s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_LNO_Generic_Error, EM_User | ES_ERRPHASE, RAG_EN_LNO,
+    "%s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_LNO_Generic_Advisory, EM_User | ES_ADVISORY, RAG_EN_LNO,
+    "Pragma '%s': %s",
+    1, ET_STRING, 0, 0, 0, 0 },
+  { EC_LNO_Generic2String, EM_User | ES_WARNING, RAG_EN_LNO,
+    "%s: %s",
+    2, ET_STRING, ET_STRING, 0, 0, 0, 0 },
+
+  { EC_Bad_Pragma_Abort, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Pragma %s(%s): %s",
+    3, ET_STRING, ET_STRING, ET_STRING, 0,0,0 },
+
+  /* MP Lowerer */
+  { EC_MPLOWER_red_mult_use, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Reduction variable %s was used multiple times",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_red_not_found, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "No reduction operator could be inferred for %s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_red_conflict, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Inconsistent reduction operator for variable %s",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_red_misuse, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Reduction variable %s was used in an illegal reduction context",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_red_badop, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "Illegal reduction operator for reduction variable %s",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_shared_store, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Referenced scalar variable %s is SHARED by default",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_local_nosize, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "An unsized array (%s) has been used in a LOCAL or LASTLOCAL clause",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_used_noscope, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Variable %s used without scope declaration in a parallel region with "
+    "DEFAULT(NONE) scope",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_priv_equiv, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "Variable %s is part of an EQUIVALENCE and is privatized",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_defpriv_equiv, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Variable %s is part of an EQUIVALENCE: cannot apply DEFAULT(PRIVATE)",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_first_last_priv, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "FIRSTPRIVATE and LASTPRIVATE on same variable not yet implemented "
+    "for PARALLEL DO",
+    0, 0, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_reprivatization, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "Privatized variable %s not SHARED in enclosing parallel region",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_red_of_private, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "Reduction variable %s not SHARED in enclosing parallel region",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_thrpriv_scope, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "THREADPRIVATE variable %s appears in a scope clause",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_Generic_Error, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "%s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_MPLOWER_Generic_Warning, EM_User | ES_WARNING, RAG_EN_NONE,
+    "%s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+
+  { EC_LAY_stack_limit, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Stack frame size (%s) larger than system limit (%s)", 
+    2, ET_INT64, ET_INT64, 0,0,0,0 },
+  { EC_LAY_section_name, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Assigned section name (%s) has ambiguous attributes (both %s and %s)",
+    3, ET_STRING, ET_STRING, ET_STRING, 0,0,0 },
+
+  { EC_Skip_PU,	EM_Compiler | ES_WARNING, RAG_EN_NONE,
+    "Skipping%s optimization for PU #%d: %s", 
+    3, ET_STRING, ET_INT, ET_STRING, 0,0,0 },
+
+  { EC_Uninitialized,	EM_User | ES_WARNING, RAG_EN_NONE,
+    "Variable %s in function %s might be used uninitialized",
+    2, ET_STRING, ET_STRING, 0,0,0,0 },
+
+  /* DRA cloning errors */
+  { EC_DRA_rii_file_io, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Cannot read/write prelinker file (%s): %s",
+    2, ET_STRING, ET_SYSERR, 0,0,0,0 },
+
+  { EC_DRA_rii_file_format, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Corrupted prelinker file (%s) has been removed - please recompile",
+    1, ET_STRING, 0,0,0,0,0 },
+
+  { EC_DRA_unsupported_type, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Pragma %s %s: %s",
+    3, ET_STRING, ET_STRING, ET_STRING, 0,0,0 },
+
+  { EC_DRA_all_stars, EM_User | ES_WARNING, RAG_EN_NONE,
+    "DISTRIBUTE_RESHAPE %s: * distribution in all dimensions, ignoring reshape",
+    1, ET_STRING, 0, 0,0,0,0 },
+
+  { EC_DRA_indirect_call, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Reshaped arrays cannot be arguments to indirect calls",
+    0, 0, 0, 0,0,0,0 },
+
+  { EC_DRA_clone_altentry, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Reshaped arguments to subroutines with alternate entry points must be fully and consistently specified",
+    0, 0, 0, 0,0,0,0 },
+
+  { EC_DRA_bad_clone_request, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Call to %s %s",
+    2, ET_STRING, ET_STRING, 0,0,0,0 },
+
+#if defined(KEY)
+  { EC_MPLOWER_copyin_st, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "illegal copy in symbol which is not threadprivate",
+    0, 0, 0, 0,0,0,0 },
+#endif
+
+#ifdef TARG_NVISA
+  { EC_No_Calls, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "External calls are not supported (found non-inlined call to %s)",
+    1, ET_STRING, 0,0,0,0 },
+  { EC_Too_Many_Args, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Formal parameter space overflowed in function %s",
+    1, ET_STRING, 0,0,0,0 },
+  { EC_Const_Space_Overflow, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Const space overflowed",
+    0, 0, 0,0,0,0 },
+  { EC_Unaligned_Memory, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Unaligned memory accesses not supported",
+    0, 0, 0,0,0,0 },
+  { EC_Ptr_Assumed_Global, EM_User | ES_ADVISORY, RAG_EN_NONE,
+    "Cannot tell what pointer points to, assuming global memory space",
+    0, 0, 0,0,0,0 },
+  { EC_Load_Past_Struct, EM_User | ES_WARNING, RAG_EN_NONE,
+    "Read past end of struct",
+    0, 0, 0,0,0,0 },
+  { EC_Shared_Atomic64_Opnd, EM_User | ES_ERRPHASE, RAG_EN_NONE,
+    "Operand to 64-bit atomic instruction points at __shared__ memory",
+    0, 0, 0,0,0,0 },
+  { EC_Memset_Too_Large, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "memset (%d) initialization too large. Please use a loop.",
+    1, ET_INT, 0,0,0,0 },
+#endif /* TARG_NVISA */
+
+  { EC_Invalid_Asm_Constrain, EM_User | ES_ERRABORT, RAG_EN_NONE,
+    "Invalid 'asm' constrain %s",
+    1, ET_STRING, 0,0,0,0 },
+
+  /* All error descriptor lists must end with a -1 error code: */
+  { -1,	0, RAG_EN_NONE, "", 0, 0,0,0,0,0,0 }
+};
+

@@ -1,0 +1,374 @@
+[TODO: code sequence for FP recip, FP rsqrt, int rem, int mod]
+
+
+Reference:
+Computation of Elementary Functions on the IBM RISC
+System/6000 Processor, by P. W. Markstein, IBM Journal of
+Research and Development, Vol. 34, No. 1, Jan. 1990.
+
+The intel documentation suggests using f.p. status register 0
+(sf0) as the main status register for floating point computations.
+In general, I believe that this is the only f.p. status register
+that should be made visible to the user.  Of course you can't
+prevent a user from writing an assembly language subroutine
+and changing the other f.p. status registers, but you can 
+advertise in a man page that this will trash the results of
+the compiled code.  The documentation also suggests that sf1
+should be used for the (software) divide and square root
+functions.  Note that single/double precision can be
+specified explicitly on floating point instructions via
+the .pc completer.
+
+Within sf0, I think the defaults should be
+ftz	0	(no flush to zero)
+wre	0	(use narrow exponent range, i.e. IEEE format)
+pc	11	(80 bit ops, unless specified in instruction)
+rc	00	(round to nearest)
+td	1	(all traps disabled)
+d	1
+z	1
+o	1
+u	1
+i	1
+
+defaults for sf1:
+ftz     0       (no flush to zero)
+wre     0       (use narrow exponent range, i.e. IEEE format)
+pc      11      (80 bit ops, unless specified in instruction)
+rc      00      (round to nearest)
+td      1       (all traps disabled)
+d       1
+z       1
+o       1
+u       1
+i       1
+
+Note that it will be possible for a user to change some of
+the fields within sf0 (by appropriate subroutine calls),
+however the compiler won't have to manage any of these fields.
+(Possible exception:  integer divide).  The following algorithms
+produce an IEEE compliant divide.  (Note that for some extreme
+values of the arguments, the first instruction traps to the
+o.s. and the divide instruction sequence must be emulated
+by kernel software.  All this is transparent, except for
+excution time, to the user level code.  This will only occur
+in rare cases).
+
+
+Given these settings for sf0 and sf1, the code for single and
+double precision divide is:
+
+double div( double x, double y )
+
+Assumptions:
+1.  args in f12, f13
+2.  predicate qp controls operation
+3.  result in f2
+
+	(qp) frcpa.s0	f2,p2=f12,f13	# z = ~1/y
+
+	(p2) fnma.d.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.d.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.d.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fmpy.d.s1  f3=f12,f2       # q = x*z
+	(p2) fnma.d.s1  f6=f13,f3,f12   # r = x - y*q
+	(p2) fma.d.s0   f2=f6,f2,f3     # result = q + r*z
+
+
+
+float divf( float x, float y )
+
+Assumptions:
+1.  args in f12, f13
+2.  predicate qp controls operation
+3.  result in f2
+
+	(qp) frcpa.s0	f2,p2=f12,f13	# z = ~1/y
+
+	(p2) fnma.s.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.s.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.s.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.s.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fmpy.s.s1  f3=f12,f2       # q = x*z
+	(p2) fnma.s.s1  f6=f13,f3,f12   # r = x - y*q
+	(p2) fma.s.s0   f2=f6,f2,f3     # result = q + r*z
+
+
+
+
+double sqrt( double x )
+
+Assumptions:
+1.  args in f12, f13
+2.  predicate qp controls operation
+3.  result in f6
+4.  sf0 and sf1 set up like divide op
+
+	(qp) frsqrta.s0 f6,p2=f12	# y2 = ~1/sqrt(x)
+
+	(p2) ldfd	f4=half		# f4 = 0.5
+	(p2) ldfd	f7=ah		# f7 = 0x3fe0000000000001
+
+	(p2) fmpy.s1	f3=f12,f6	# g = x*y2
+	(p2) fmpy.s1	f2=f4,f6	# y = 0.5*y2
+
+	(p2) fnma.s1	f5=f3,f3,f12	# d = x - g*g
+
+	(p2) fma.s1	f3=f2,f5,f3	# g = g + y*d  16 bit approximation
+
+	(p2) fnma.s1	f8=f2,f3,f7	# e = ah - y*g
+	(p2) fnma.s1	f5=f3,f3,f12    # d = x - g*g
+	(p2) fma.s1	f2=f8,f6,f2	# y = y + e*y2
+
+	(p2) fma.s1     f3=f2,f5,f3     # g = g + y*d  32 bit approximation
+	(p2) fadd.s1    f6=f2,f2        # y2 = y + y
+
+	(p2) fnma.s1	f8=f2,f3,f7	# e = ah - y*g
+	(p2) fnma.s1	f5=f3,f3,f12    # d = x - g*g
+	(p2) fma.s1	f2=f8,f6,f2	# y = y + e*y2
+
+	(p2) fma.s1     f3=f2,f5,f3     # g = g + y*d  64 bit approximation before rounding
+	(p2) fadd.s1    f6=f2,f2        # y2 = y + y
+
+	(p2) fnma.s1	f8=f2,f3,f7	# e = ah - y*g
+	(p2) fnma.s1	f5=f3,f3,f12    # d = x - g*g
+	(p2) fma.s1	f2=f8,f6,f2	# y = y + e*y2
+
+	(p2) fma.d.s0   f6=f2,f5,f3     # result = g + y*d
+
+half	data8	0x3fe0000000000000
+ah	data8	0x3fe0000000000001
+
+
+
+float sqrtf( float x )
+
+Assumptions:
+1.  args in f12, f13
+2.  predicate qp controls operation
+3.  result in f6
+4.  sf0 and sf1 set up like divide op
+
+	(qp) frsqrta.s0 f6,p2=f12	# y2 = ~1/sqrt(x)
+
+	(p2) ldfs	f4=half		# f4 = 0.5
+	(p2) ldfs	f7=ah		# f7 = 0x3f000001
+
+	(p2) fmpy.s.s1	f3=f12,f6	# g = x*y2
+	(p2) fmpy.s.s1	f2=f4,f6	# y = 0.5*y2
+
+	(p2) fnma.s.s1	f5=f3,f3,f12	# d = x - g*g
+
+	(p2) fma.s.s1	f3=f2,f5,f3	# g = g + y*d # 16 bit approximation
+
+	(p2) fnma.s.s1	f8=f2,f3,f7	# e = ah - y*g
+	(p2) fnma.s.s1	f5=f3,f3,f12    # d = x - g*g
+	(p2) fma.s.s1	f2=f8,f6,f2	# y = y + e*y2
+
+	(p2) fma.s.s1   f3=f2,f5,f3     # g = g + y*d # 32 bit approximation
+	(p2) fadd.s.s1  f6=f3,f3        # y2 = y + y
+
+	(p2) fnma.s.s1	f8=f2,f3,f7	# e = ah - y*g
+	(p2) fnma.s.s1	f5=f3,f3,f12    # d = x - g*g
+	(p2) fma.s.s1	f2=f8,f6,f2	# y = y + e*y2
+
+	(p2) fma.s.s0   f6=f2,f5,f3     # result = g + y*d
+
+half	data4	0x3f000000
+ah	data4	0x3f000001
+
+It's useful for the compiler to be able to compute 1/x = recip(x)
+for floating point values x.  The following code sequences accomplish
+that calculation.  Notice however that not all finite floating point
+numbers have a finite reciprocal.  Consequently, the compiler needs
+to generate a range check (on x) before computing recip(x).  This 
+isn't any different than on mips cpus, so I'll omit details here.
+
+
+Using the same settings for sf0 and sf1, the code for single and
+double precision recip is:
+
+double recip( double x )
+
+Assumptions:
+1.  arg in f12
+2.  predicate qp controls operation
+3.  result in f2
+
+	(qp) frcpa.s0	f2,p2=f1,f12	# z = ~1/x
+
+	(p2) fnma.d.s1	f4=f12,f2,f1	# e = 1.0 - x*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.d.s1	f4=f12,f2,f1	# e = 1.0 - x*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.d.s1	f4=f12,f2,f1	# e = 1.0 - x*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.d.s1  f6=f12,f2,f1    # r = 1.0 - x*z
+	(p2) fma.d.s0   f2=f6,f2,f2     # result = z + r*z
+
+
+
+float recipf( float x )
+
+Assumptions:
+1.  arg in f12
+2.  predicate qp controls operation
+3.  result in f2
+
+	(qp) frcpa.s0	f2,p2=f12,f13	# z = ~1/x
+
+	(p2) fnma.s.s1	f4=f13,f2,f1	# e = 1.0 - x*z
+	(p2) fma.s.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.s.s1	f4=f13,f2,f1	# e = 1.0 - x*z
+	(p2) fma.s.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.s.s1  f6=f12,f2,f1    # r = 1.0 - x*z
+	(p2) fma.s.s0   f2=f6,f2,f2     # result = z + r*z
+
+It's also useful for the compiler to be able to compute 1/sqrt(x) = 
+rsqrt(x) for floating point values x.  The following code sequences
+accomplish that calculation.  Notice however that one must check
+for zero/infinite args separately, because the hardware instruction
+is set up mainly for calculating sqrt(x).  Consequently, the compiler 
+needs to test separately for zero and infinite args and handle them
+separately.
+
+Using the same settings for sf0 and sf1, the code for single and
+double precision reciprocal square root is:
+
+double rsqrt( double x )
+
+Assumptions:
+1.  arg in f12
+2.  predicate qp controls operation
+3.  result in f2
+4.  sf0 and sf1 set up like sqrt op
+
+	(qp) frsqrta.s0 f2,p2=f12	# y = ~1/sqrt(x)
+
+	(p2) ldfd	f4=half		# f4 = 0.5
+	(p2) fmpy.d.s1	f5=f4,f12	# hx = 0.5*x
+
+	(p2) fmpy.d.s1	f3=f2,f2	# y2 = y*y
+	(p2) fnma.d.s1	f6=f5,f3,f4	# z = 0.5 - 0.5*x*y*y
+	(p2) fma.d.s1   f2=f2,f6,f2	# y = y + y*z
+
+	(p2) fmpy.d.s1	f3=f2,f2	# y2 = y*y
+	(p2) fnma.d.s1	f6=f5,f3,f4	# z = 0.5 - 0.5*x*y*y
+	(p2) fma.d.s1   f2=f2,f6,f2	# y = y + y*z
+
+	(p2) fmpy.d.s1	f3=f2,f2	# y2 = y*y
+	(p2) fnma.d.s1	f6=f5,f3,f4	# z = 0.5 - 0.5*x*y*y
+	(p2) fma.d.s0   f2=f2,f6,f2	# result = y + y*z
+
+
+half	data8	0x3fe0000000000000
+
+
+float rsqrtf( float x )
+
+Assumptions:
+1.  arg in f12
+2.  predicate qp controls operation
+3.  result in f2
+4.  sf0 and sf1 set up like sqrt op
+
+	(qp) frsqrta.s0 f2,p2=f12	# y = ~1/sqrt(x)
+
+	(p2) ldfs	f4=half		# f4 = 0.5
+	(p2) fmpy.s.s1	f5=f4,f12	# hx = 0.5*x
+
+	(p2) fmpy.s.s1	f3=f2,f2	# y2 = y*y
+	(p2) fnma.s.s1	f6=f5,f3,f4	# z = 0.5 - 0.5*x*y*y
+	(p2) fma.s.s1   f2=f2,f6,f2	# y = y + y*z
+
+	(p2) fmpy.s.s1	f3=f2,f2	# y2 = y*y
+	(p2) fnma.s.s1	f6=f5,f3,f4	# z = 0.5 - 0.5*x*y*y
+	(p2) fma.s.s0   f2=f2,f6,f2	# result = y + y*z
+
+
+half	data4	0x3f000000
+
+
+int idiv( int x, int y )
+
+Assumptions:
+  1.  args in r1, r2
+  2.  predicate qp controls operation
+  3.  result in r3
+  4.  status register s1 set up as for fp divide
+  5.  status register s2 set up as status register 1, except rounding mode = RZ
+
+	(qp) setf.sig	f12=r1		# move x to f.p. unit
+	(qp) setf.sig	f13=r2		# move y to f.p. unit
+	(qp) fcvt.xf	f12=f12		# convert x to a float
+	(qp) fcvt.xf	f13=f13		# convert y to a float
+
+	(qp) frcpa.s0	f2,p2=f12,f13	# z = ~1/y
+
+	(p2) fnma.d.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.d.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.d.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.d.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fmpy.d.s1  f3=f12,f2       # q = x*z
+	(p2) fnma.d.s1  f6=f13,f3,f12   # r = x - y*q
+	(p2) fma.d.s1   f2=f6,f2,f3     # result = q + r*z
+	(qp) fcvt.fx.trunc.s1 f2,f2	# convert result to integer
+	(qp) getf.sig	r3=f2		# move result to integer unit
+
+
+
+long long lldiv( long long x, long long y )
+
+Assumptions:
+  1.  args in r1, r2
+  2.  predicate qp controls operation
+  3.  result in r3
+  4.  status register s1 set up as for fp divide
+  5.  status register s2 set up as status register 1, except rounding mode = RZ
+
+NOTE: we are using 80 bit arithmetic in this algorithm so that we 
+      have enough bits to contain the entire 64 bit operands.
+
+	(qp) setf.sig	f12=r1		# move x to f.p. unit
+	(qp) setf.sig	f13=r2		# move y to f.p. unit
+	(qp) fcvt.xf	f12=f12		# convert x to f.p.
+	(qp) fcvt.xf	f13=f13		# convert y to f.p.
+
+	(qp) frcpa.s0	f2,p2=f12,f13	# z = ~1/y
+
+	(p2) fnma.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fnma.s1	f4=f13,f2,f1	# e = 1.0 - y*z
+	(p2) fma.s1	f2=f4,f2,f2	# z = z + e*z
+
+	(p2) fmpy.s1    f3=f12,f2       # q = x*z
+	(p2) fnma.s1    f6=f13,f3,f12   # r = x - y*q
+	(p2) fma.s1     f2=f6,f2,f3     # result = q + r*z
+	(qp) fcvt.fx.trunc.s1 f2,f2	# convert result to integer
+	(qp) getf.sig	r3=f2		# move result to integer unit
+

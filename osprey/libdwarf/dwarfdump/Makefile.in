@@ -1,0 +1,112 @@
+#
+#  Makefile for dwarfdump
+#  This is made very simple so it should work with
+#  any 'make'.
+
+#
+
+srcdir =	@srcdir@
+VPATH =		@srcdir@
+
+prefix =	@prefix@
+exec_prefix =	@exec_prefix@
+bindir =	$(exec_prefix)/bin
+libdir =	$(exec_prefix)/lib
+mandir = 	@mandir@
+man1dir =       $(mandir)/man1
+
+INSTALL =	@INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA =	@INSTALL_DATA@
+SHELL =		/bin/sh
+CC =		@CC@
+AR =		@AR@
+ARFLAGS =	@ARFLAGS@
+RM =		rm
+RANLIB =	@RANLIB@
+DEFS =		@DEFS@
+LIBS =		@LIBS@ -L../libdwarf -ldwarf -lelf
+INCLUDES =	-I. -I$(srcdir) -I$(srcdir)/../libdwarf
+CFLAGS =	@CFLAGS@ $(INCLUDES)
+LDFLAGS =	@LDFLAGS@  $(LIBS)
+
+# ../libdwarf gets us to local headers
+
+DIRINC =  $(srcdir)/../libdwarf
+INSTALL = cp
+
+binprefix =
+
+GEN_CFILES = \
+	dwarf_names.c
+
+OBJECTS =  tag_tree_table.o \
+	tag_attr_table.o \
+	dwarfdump.o \
+	print_sections.o \
+	print_die.o \
+	print_reloc.o \
+	dwarf_names.o \
+	makename.o 
+GEN_HFILES = \
+	dwarf_names.h    \
+	_tag_tree_table.c \
+	_tag_attr_table.c
+
+all: dwarfdump
+
+$(OBJECTS): $(GEN_HFILES) globals.h
+
+default: $(TARGETS)
+
+
+dwarfdump: $(OBJECTS)
+	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(LDFLAGS) 
+
+
+at_list.i: at_list.awk $(DIRINC)/dwarf.h
+	awk -f $(srcdir)/at_list.awk $(DIRINC)/dwarf.h > $@
+#at_list.o: at_list.i
+#	 $(CC) $(CFLAGS) -c at_list.i -o $@
+
+_tag_tree_table.c: tag_tree.list tag_tree.c $(DIRINC)/dwarf.h
+	$(CC) $(CFLAGS)  $(LDFLAGS) -o tag_tree_build $(srcdir)/tag_tree.c
+	# gcc -E tag_tree.list does not work, so use a .c name
+	rm -f _tmp.c && ln -s $(srcdir)/tag_tree.list _tmp.c
+	$(CC) $(CFLAGS) -E _tmp.c \
+		| awk '!/^#/ && !/^[ \t]*$$/' | ./tag_tree_build > $@
+	rm -f tag_tree_build
+tag_tree_table.o: _tag_tree_table.c
+	$(CC) $(CFLAGS) -c _tag_tree_table.c -o $@ 
+
+_tag_attr_table.c: tag_attr.list tag_attr.c $(DIRINC)/dwarf.h
+	$(CC) $(CFLAGS)  $(LDFLAGS) -o tag_attr_build $(srcdir)/tag_attr.c
+	# gcc -E tag_attr.list does not work, so use a .c name
+	rm -f _tmp.c && ln -s $(srcdir)/tag_attr.list _tmp.c
+	$(CC) $(CFLAGS)  -E _tmp.c \
+		| awk '!/^#/ && !/^[ \t]*$$/' | ./tag_attr_build > $@
+	rm -f tag_attr_build
+tag_attr_table.o: _tag_attr_table.c
+	$(CC) $(CFLAGS) -c _tag_attr_table.c -o $@ 
+
+dwarf_names.h dwarf_names.c: dwarf_names.awk $(DIRINC)/dwarf.h
+	awk -f $(srcdir)/dwarf_names.awk $(DIRINC)/dwarf.h > dwarf_names.c
+
+
+install: all
+	$(INSTALL) dwarfdump $(bindir)/dwarfdump
+	$(INSTALL) $(srcdir)/dwarfdump.1 $(man1dir)/dwarfdump.1
+uninstall:
+	-rm -f $(bindir)/dwarfdump
+	-rm -f $(man1dir)/dwarfdump.1
+
+clean:
+	rm -f *.o dwarfdump dwarf_names.h *~ _tag_attr_table.c _tag_tree_table.c dwarf_names.c
+
+distclean: clean
+	rm -f config.log config.h config.cache config.status dwarf_names.c
+
+shar:
+	@echo "shar not set up yet"
+dist:
+	@echo "dist not set up yet"

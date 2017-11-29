@@ -1,0 +1,105 @@
+.TH DWARFDUMP
+.SH NAME
+dwarfdump \- dumps DWARF debug information of an ELF object
+.SH SYNOPSIS
+.B dwarfdump
+[-abcdefilmoprsvy] [-t{afv}] [-u\f2objectfile\fP] \f2filename\fP
+.SH DESCRIPTION
+The 
+.B dwarfdump
+command prints DWARF sections as requested by specific options.
+With no options nothing prints!
+.PP
+The format is intended to be human readable.
+If a script is to parse the output, the
+.B \-d
+option is useful.
+.P
+Not all sections actually exist in any given object file.
+.P
+The format may change from release to release, so it is
+unwise to depend too heavily on the format.
+.PP
+The 
+.B dwarfdump
+command accepts one or more of the following options:
+.RS
+.TP
+.B \-a
+Dumps all sections.
+Same as 
+.B \-bcfilmoprsy
+.BR \-tfv .
+.TP
+.B \-b
+Dumps the .debug_abbrev section.  
+.TP
+.B \-c
+Dumps the .debug_loc section.
+.TP
+.B \-d
+Dense mode.  Each die information of the .debug_info section is 
+printed in one-line format.  This option does not imply \fB\-i\fP.  
+.TP
+.B \-e
+Ellipsis mode.  Short names for DW_TAG_* and DW_ATTR_* are used 
+in the output for the .debug_info section.  
+.TP
+.B \-f
+Dumps the .debug_frame section.
+.TP
+.B \-i
+Dumps the .debug_info section.
+.TP
+.B \-l
+Dumps the .debug_line information.  
+.TP
+.B \-m
+Dumps the .debug_macinfo section.
+.TP
+.B \-o
+Dumps the .reloc_debug_* sections.
+.TP
+.B \-p
+Dumps the .debug_pubnames section.
+.TP
+.B \-r
+Dumps the .debug_aranges section.
+.TP
+.B \-s
+Dumps .debug_string section.
+.TP
+.B \-ta
+Same as 
+.B \-tfv.
+.TP
+.B \-tf
+Dumps the .debug_static_funcs section.
+.TP
+.B \-tv
+Dumps the .debug_static_vars section.
+.TP
+.BI \-u ofile
+Restricts the dumping of sections to the named
+compilation unit.
+.TP
+.B \-v
+Verbose mode.  Shows more detailed information.  
+More detailed information about the .debug_frame section prints if
+2 or 3 
+.B \-v
+options are given.
+.TP
+.B \-w
+Dumps the .debug_weaknames section.
+.TP
+.B \-y
+Dumps the .debug_types section.
+.SH FILES
+dwarfdump
+.SH BUGS
+Currently won't deal with dwarf information
+in objects of a different endianness than the host.
+Won't show .debug_loc information.
+Won't show .debug_macinfo information.
+Restrictions in libdwarf affect  its capabilities.

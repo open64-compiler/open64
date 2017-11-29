@@ -1,0 +1,60 @@
+using namespace std;
+
+inline G4AffineTransform::G4AffineTransform()
+ : rxx(1),rxy(0),rxz(0),
+   ryx(0),ryy(1),ryz(0),
+   rzx(0),rzy(0),rzz(1),
+   tx(0),ty(0),tz(0)
+{}
+
+inline G4AffineTransform&
+G4AffineTransform::InverseProduct( const G4AffineTransform& tf1,
+                                   const G4AffineTransform& tf2)
+{
+        G4double itf2tx = - tf2.tx*tf2.rxx - tf2.ty*tf2.rxy - tf2.tz*tf2.rxz;
+        G4double itf2ty = - tf2.tx*tf2.ryx - tf2.ty*tf2.ryy - tf2.tz*tf2.ryz;
+        G4double itf2tz = - tf2.tx*tf2.rzx - tf2.ty*tf2.rzy - tf2.tz*tf2.rzz;
+
+        rxx=tf1.rxx*tf2.rxx+tf1.rxy*tf2.rxy+tf1.rxz*tf2.rxz;
+        rxy=tf1.rxx*tf2.ryx+tf1.rxy*tf2.ryy+tf1.rxz*tf2.ryz;
+        rxz=tf1.rxx*tf2.rzx+tf1.rxy*tf2.rzy+tf1.rxz*tf2.rzz;
+
+        ryx=tf1.ryx*tf2.rxx+tf1.ryy*tf2.rxy+tf1.ryz*tf2.rxz;
+        ryy=tf1.ryx*tf2.ryx+tf1.ryy*tf2.ryy+tf1.ryz*tf2.ryz;
+        ryz=tf1.ryx*tf2.rzx+tf1.ryy*tf2.rzy+tf1.ryz*tf2.rzz;
+
+        rzx=tf1.rzx*tf2.rxx+tf1.rzy*tf2.rxy+tf1.rzz*tf2.rxz;
+        rzy=tf1.rzx*tf2.ryx+tf1.rzy*tf2.ryy+tf1.rzz*tf2.ryz;
+        rzz=tf1.rzx*tf2.rzx+tf1.rzy*tf2.rzy+tf1.rzz*tf2.rzz;
+        
+        tx=tf1.tx*tf2.rxx+tf1.ty*tf2.rxy+tf1.tz*tf2.rxz+itf2tx;
+        ty=tf1.tx*tf2.ryx+tf1.ty*tf2.ryy+tf1.tz*tf2.ryz+itf2ty;
+        tz=tf1.tx*tf2.rzx+tf1.ty*tf2.rzy+tf1.tz*tf2.rzz+itf2tz;
+
+        return *this;
+}
+
+// Debugging function, isn't part of HepMatrix class
+void fill_matrix(G4AffineTransform *matrix) {
+//	srand48(clock()+getpid());
+
+	matrix->rxx=0.0;
+	matrix->rxy=0.0;
+	matrix->rxz=0.0;
+	matrix->ryx=0.0;
+	matrix->ryy=0.0;
+	matrix->ryz=0.0;
+	matrix->rzx=0.0;
+	matrix->rzy=0.0;
+	matrix->rzz=0.0;
+	
+}
+
+void print_matrix(G4AffineTransform *matrix) {
+	cout << "-------------------------------" << endl;
+	cout << matrix->rxx << "\t" << matrix->rxy << "\t" << matrix->rxz << endl;
+	cout << matrix->ryx << "\t" << matrix->ryy << "\t" << matrix->ryz << endl;
+	cout << matrix->rzx << "\t" << matrix->rzy << "\t" << matrix->rzz << endl;
+	cout << "-------------------------------" << endl;
+}
+

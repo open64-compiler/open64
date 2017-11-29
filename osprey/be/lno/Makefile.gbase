@@ -1,0 +1,484 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for lnopt
+#
+
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  This Makefile is used to build the 32 bit host/target version of the
+#  back-end
+#
+#  *  This Makefile does not require that targ_info has already been built.
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#  *  Because lno.so depends on wopt.so and be.so, it normally builds
+#     them first.  But it does so only if the make target is "default"
+#     or "install", so a "quick" build can be done by specifying the
+#     target as lno.so or a .o file.  (It can't currently be installed
+#     that way, however.)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+ifndef TARG_OPT_DIR
+TARG_OPT_DIR = ../wopt
+endif
+
+ifndef TARG_IPL_DIR
+TARG_IPL_DIR = ../ipl
+endif
+
+ifndef TARG_BE
+TARG_BE = $(TARGDIR)/be
+endif
+
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#----------------------------------------------------------------------
+ifdef LOCAL_BE_DIR
+TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
+else
+TARG_BE_DIR = $(TARGDIR)/be
+endif
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dsgi -DLNO
+HOSTDEFS += -DBACK_END -DMONGOOSE_BE
+HOSTDEFS += -Dlonglong
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+ifeq ($(BUILD_PCH), USE_PCH)
+HOSTDEFS += -DUSE_PCH
+endif
+
+# TMP: add _NEW_SYMTAB until lno gets cleaned up
+HOSTDEFS += -D_NEW_SYMTAB
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+BE_DIR 			= $(BUILD_TOT)/be
+BE_TARG_DIR 		= $(BE_DIR)/$(BUILD_TARGET_DIR)
+BE_BE_DIR		= $(BE_DIR)/be
+BE_CG_DIR 		= $(BE_DIR)/cg
+BE_COM_DIR 		= $(BE_DIR)/com
+BE_REGION_DIR		= $(BE_DIR)/region
+ifndef BE_OPT_DIR
+BE_OPT_DIR 		= $(BE_DIR)/opt
+endif
+BE_LNOPT_DIR 		= $(BE_DIR)/lno
+BE_LNO_TARGET_DIR	= $(BE_LNOPT_DIR)/$(BUILD_TARGET_DIR)
+COMMON_DIR 		= $(BUILD_TOT)/common
+COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+COMMON_LIB_DIR 		= $(COMMON_DIR)/lib
+COMMON_TARG_INFO_DIR	= $(COMMON_DIR)/targ_info
+COMMON_TARG_INFO_ACCESS_DIR = $(TARG_INFO_SRC)/access
+COMMON_TARG_INFO_GENERATE_DIR = $(COMMON_TARG_INFO_DIR)/generate
+COMMON_UTIL_DIR 	= $(COMMON_DIR)/util
+COMMON_UTIL_TARG_DIR 	= $(COMMON_UTIL_DIR)/$(BUILD_TARGET_DIR)
+INCLUDE_DIR 		= $(ROOT)/usr/include
+IPA_COM_DIR 		= $(BUILD_TOT)/ipa/common/
+IPA_IPL_DIR		= $(BUILD_TOT)/ipa/local/
+LIBCOMUTIL_DIR 		= $(BUILD_TOT)/libcomutil
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS = \
+  $(BE_COM_DIR)		\
+  $(BE_LNOPT_DIR)	\
+  $(BE_LNO_TARGET_DIR)	\
+  $(BE_REGION_DIR)	
+
+HEADER_DIRS = \
+  $(SRC_DIRS)		\
+  $(BE_OPT_DIR)		\
+  $(BE_REGION_DIR)	\
+  $(COMMON_COM_DIR)	\
+  $(COMMON_COM_TARG_DIR)\
+  $(COMMON_TARG_INFO_ACCESS_DIR)\
+  $(COMMON_TARG_INFO_GENERATE_DIR)\
+  $(TARGDIR)/targ_info	\
+  $(TARGDIR)/include	\
+  $(COMMON_UTIL_DIR)	\
+  $(TARG_BE)		\
+  $(BE_CG_DIR)          \
+  $(BE_BE_DIR)		\
+  $(IPA_IPL_DIR)	\
+  $(BUILD_TOT)/include  \
+  $(TARGDIR)/be
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+BE_COM_CXX_SRCS = \
+  cxx_template.cxx		\
+  dep_graph.cxx			\
+
+BE_LNOPT_SRCS = 
+
+BE_LNOPT_CXX_SRCS = \
+  lnodriver.cxx			\
+  lnopt_main.cxx		\
+  lnoutils.cxx			\
+  access_main.cxx               \
+  access_vector.cxx		\
+  soe.cxx			\
+  mat_textra.cxx		\
+  pad.cxx			\
+  lu_mat_textra.cxx		\
+  vs_textra.cxx			\
+  frac.cxx			\
+  fission.cxx			\
+  fis_gthr.cxx 			\
+  fusion.cxx			\
+  fiz_fuse.cxx			\
+  inner_fission.cxx		\
+  lnopt_hoistif.cxx		\
+  vintr_fis.cxx			\
+  ff_utils.cxx			\
+  ff_pragmas.cxx		\
+  name.cxx			\
+  outer.cxx			\
+  lno_bv.cxx			\
+  scalar_expand.cxx		\
+  can.cxx			\
+  aequiv.cxx			\
+  sclrze.cxx			\
+  dead.cxx			\
+  minvariant.cxx                \
+  oinvar.cxx                	\
+  lno_split.cxx			\
+  cse.cxx			\
+  model.cxx			\
+  cache_model.cxx		\
+  dep.cxx 			\
+  reduc.cxx			\
+  zmult.cxx			\
+  snl_deps.cxx 			\
+  snl_dist.cxx 			\
+  snl_nest.cxx			\
+  snl_test.cxx 			\
+  snl_trans.cxx			\
+  snl_xbounds.cxx		\
+  snl_utils.cxx			\
+  snl_gen.cxx			\
+  snl_inv.cxx			\
+  cond.cxx			\
+  prefetch.cxx          	\
+  pf_ref.cxx            	\
+  pf_loop.cxx           	\
+  lwn_util.cxx			\
+  lno_scc.cxx 			\
+  debug.cxx			\
+  lego_pragma.cxx  \
+  lego_io.cxx  \
+  lego_local.cxx		\
+  lego_gen.cxx      \
+  lego_util.cxx    \
+  lego.cxx 			\
+  array_lower.cxx		\
+  pf_manual.cxx			\
+  forward.cxx                   \
+  ara.cxx                       \
+  ara_region.cxx                \
+  ara_loop.cxx                  \
+  ara_live.cxx                  \
+  ara_utils.cxx			\
+  reverse.cxx			\
+  permute.cxx			\
+  move.cxx			\
+  tile.cxx			\
+  lego_opts.cxx			\
+  lego_affinity.cxx		\
+  al_ref.cxx            	\
+  al_loop.cxx   		\
+  lego_ec.cxx			\
+  array_bounds.cxx		\
+  lego_skew.cxx			\
+  small_trips.cxx		\
+  sxlist.cxx			\
+  sxlimit.cxx			\
+  parallel.cxx			\
+  if_info.cxx 			\
+  call_info.cxx 			\
+  parmodel.cxx			\
+  sdlist.cxx			\
+  doacross.cxx			\
+  autod.cxx			\
+  parids.cxx			\
+  ifminmax.cxx			\
+  split_tiles.cxx		\
+  wind_down.cxx			\
+  dnf.cxx			\
+  cxx_queue.cxx			\
+  shackle.cxx 			\
+  shackle_ifs.cxx		\
+  ipa_lno_read.cxx		\
+  ipa_lno_reshape.cxx		\
+  mem_sim.cxx			\
+  shackle_mem.cxx		\
+  eliminate.cxx			\
+  ipa_lno_cost.cxx		\
+  cross_snl.cxx			\
+  cross_cache.cxx		\
+  lnotarget.cxx			\
+  array_copy.cxx		\
+  array_copy_aggr.cxx
+
+ifeq ($(BUILD_TARGET), X8664)
+BE_LNOPT_CXX_SRCS += simd.cxx
+BE_LNOPT_CXX_SRCS += simd_util.cxx
+endif
+
+ifeq ($(BUILD_PCH), USE_PCH)
+LNOPT_PCH_OBJS = $(BE_LNOPT_CXX_SRCS:.cxx=.o)
+LNOPT_CXX_SRCS = $(BE_COM_CXX_SRCS) 
+else
+LNOPT_CXX_SRCS = $(BE_COM_CXX_SRCS) $(BE_LNOPT_CXX_SRCS)
+endif
+
+BE_REGION_CXX_SRCS = \
+  rail.cxx			\
+  rbi.cxx			\
+
+LNOPT_SRCS = \
+  $(BE_LNOPT_SRCS)		\
+
+LNOPT_OBJS = $(LNOPT_SRCS:.c=.o)
+LNOPT_CXX_OBJS = $(LNOPT_CXX_SRCS:.cxx=.o)
+
+LNOPT_DSOS = wopt.so be.so ipl.so
+
+# extra files to be removed with make clobber
+LDIRT = ii_files *.pch
+
+VPATH    =  $(SRC_DIRS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(HEADER_DIRS))
+ifeq ($(BUILD_OS), LINUX)
+LCINCS += -I$(BUILD_AREA)/include
+endif
+
+LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS) $(PCH_OPTS)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(addprefix -I, $(HEADER_DIRS))
+
+LASDEFS = $(HOSTDEFS) $(TARGDEFS)
+LASINCS = $(addprefix -I, $(HEADER_DIRS))
+LASOPTS = $(STD_COMPILE_OPTS)
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS) $(LD_QUICKSTART_INFO)
+
+DSOSTARTOPT = -check_registry $(TARG_BE)/so_locations -Wl,-no_unresolved
+DSOSTARTOPT_32 = $(DSOSTARTOPT)
+DSOSTARTOPT_N32 = $(DSOSTARTOPT)
+
+ifeq ($(BUILD_VARIANT), MEM_STATS)
+LLDLIBS +=  -lmalloc
+LDFLAGS += -lmalloc
+endif
+
+#----------------------------------------------------------------------
+# File containing the list of symbols exported outside of cg.so
+#----------------------------------------------------------------------
+EXPORT_LIST =
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+ifdef LINK_DSO
+TARGETS = debug-lno
+else
+ ifeq ($(BUILD_TYPE), NONSHARED)
+TARGETS = liblno.a
+ else
+TARGETS = lno.so
+ endif
+endif
+
+.PHONY: default	first last install
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is
+#  built.  If we are making default or install, we first make wopt.so,
+#  which makes be.so; otherwise, we just make the specifically
+#  requested target.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+## verify that wopt.so is up to date
+	$(call submake,$(TARG_OPT_DIR))
+## verify that ipl.so if up to date
+	$(call submake,$(TARG_IPL_DIR))
+ ifeq ($(BUILD_PCH), USE_PCH)
+## build pch files first so that we can use precompiled headers
+	( $(MAKE) $(.MAKEFLAGS) BUILD_PCH=USE_PCH PCH_OPTS="-LANG:create_pch=lno_pch.pch" lno_pch.pch lno_pch.o )
+	( $(MAKE) $(.MAKEFLAGS) BUILD_PCH=USE_PCH PCH_OPTS="-LANG:use_pch=lno_pch.pch" lno_pch_files )
+ endif
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last: make_deps
+
+#----------------------------------------------------------------------
+#  Build 'lnopt'
+#
+#  These rules build the 'lnopt' executable by default, and can install
+#  it in the $(BUILD_INSTALL)/usr/lib directory.
+#
+#----------------------------------------------------------------------
+
+
+install:: default
+ifeq ($(BUILD_OS), LINUX)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
+else
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) lno.so
+ ifeq ($(BUILD_TYPE), SHARED)
+ ifndef NOSYSGEN
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) lno.so
+ endif
+ endif
+endif
+
+ifeq ($(BUILD_PCH), USE_PCH)
+
+lno_pch_files: $(LNOPT_PCH_OBJS) lno_pch.pch
+
+lno.so:  $(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(LNOPT_PCH_OBJS) \
+         $(LNOPT_DSOS) $(BE_LNOPT_DIR)/Exported $(BE_BE_DIR)/so_locations
+	$(link.c++f) -o lno.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+         $(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(LNOPT_PCH_OBJS) \
+         $(LNOPT_DSOS) $(LLDLIBS) -show
+	if [ ! -l be.so ]; then ln -sf $(TARG_BE_DIR)/be.so .; fi
+	if [ ! -l wopt.so ]; then ln -sf $(TARG_OPT_DIR)/wopt.so .; fi
+	if [ ! -l ipl.so ]; then ln -sf $(TARG_IPL_DIR)/ipl.so .; fi
+	if [ ! -l be ]; then ln -sf $(TARG_BE)/be .; fi
+	if [ ! -l lnopt ]; then ln -sf $(TARG_BE)/be lnopt; fi
+
+else
+
+lno.so:	$(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(BE_LNOPT_DIR)/Exported \
+	$(LNOPT_DSOS) $(BE_BE_DIR)/so_locations
+	$(link.c++f) -o lno.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+	$(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(LNOPT_DSOS) $(LLDLIBS)
+
+wopt.so:	
+	if ! test -e wopt.so; then ln -sf $(TARG_OPT_DIR)/wopt.so .; fi
+
+be.so:	
+	if ! test -e be.so; then ln -sf $(TARG_BE_DIR)/be.so .; fi
+
+ipl.so:	
+	if ! test -e ipl.so; then ln -sf $(TARG_IPL_DIR)/ipl.so .; fi
+
+liblno.a: $(LNOPT_CXX_OBJS) $(LNOPT_OBJS)
+	$(ar) cru $@ $^
+
+endif
+
+LDIRT += be.so wopt.so ipl.so be bedriver lnopt
+
+
+ifdef LINK_DSO
+LINK_DSO_OPTS += -L .
+
+debug-lno: lno.so
+	rm -f ../be/bedriver ../be/be
+	(cd $(TARG_BE); $(MAKE) BE_OPT_DIR='$(BE_OPT_DIR)' \
+                                     LINK_DSO='$(LINK_DSO)' \
+                                     LINK_DSO_OPTS='$(LINK_DSO_OPTS) -L.' \
+                                 be)
+endif
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+#----------------------------------------------------------------------
+#  Special case rules for files that want to be individualistic
+#----------------------------------------------------------------------
+
+DSONAMEOPT =
+

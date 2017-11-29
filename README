@@ -1,0 +1,63 @@
+README
+-----------------------------------------------------------------------
+
+The Open64 compiler suite includes optimizing compilers and runtime
+support for C, C++ and FORTRAN 77/90/95. These compilers produce code
+that follows the corresponding ABI on IA-32/Linux, x86_64/Linux and
+IA-64/Linux and be compatible with the latest GCC revesion. This means
+that objects produced by the Open64 compilers can link with objects
+produced by other ABI compliant compilers.
+
+The latest information and updates for the Open64 compilers will
+eventually be found at http://www.open64.net. The latest code in 
+development can be obtained via SVN at http://svn.open64.net. 
+The downloadable packages of sources or binaries can be found at
+http://www.sf.net/projects/open64.
+
+Please send problem reports to the mailing list described to the
+BugZilla system at https://bugs.open64.net
+
+Language highlights:
+
+  C compatible with gcc, with gcc extensions
+  C++ compatible g++, with g++ extensions
+  FORTRAN 77/90/95 support
+
+Optimization highlights:
+
+  Platform-independent optimizations:
+  Code Motion
+  Constant propagation
+  Dead code elimination
+  Expression simplification
+  Common subexpression elimination
+  Strength reduction
+  Partial redundency elimination
+  Loop optimizations, enabled at '-O3'
+  Interprocedural analysis and optimization, enabled with '-ipa'
+
+  Platform-dependent optimizations:
+  Software pipelining on IA-64
+  Control and Data speculation on IA-64
+  Integrated instruction scheduling with resource management
+
+Other features
+
+  OpenMP support in C/C++/Fortran
+
+Upcoming features
+  Advanced data prefetch
+  New alias analysis framework
+  New interprocedural analysis and optimization framework
+  More optimizations
+
+
+Installation Information
+
+  The Open64 compiler is available in both binary and source-code form
+on IA32/x86_64/IA-64. For more details about how to install compiler from
+binary package or source, please refer HOWTO-INSTALL-OPEN64 and the
+RELEASE.
+
+
+Your Open64 Team

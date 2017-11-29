@@ -1,0 +1,289 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for arith component of Cray front-end
+#
+
+include	$(COMMONDEFS)
+
+LCOPTS += -ansi -I. -I$(BUILD_TOT)/clibinc -D _LITTLE_ENDIAN -D__mips
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+LCDEFS += -DInsist_On -DDEBUG_IR
+endif
+
+ifeq ($(BUILD_ARCH),IA32)
+LCOPTS += -DTARG_X8664
+endif
+
+ifeq ($(BUILD_ARCH),X8664)
+LCOPTS += -DTARG_X8664
+endif
+
+ifeq ($(BUILD_ARCH),IA64)
+LCOPTS += -DTARG_IA64
+endif
+
+F90FLAGS = $(OPTIMIZER) $(CSTYLE)
+F77FLAGS = $(OPTIMIZER) $(CSTYLE)
+
+#----------------------------------------------------------------------
+#  Install the messages file to the standard nls directory
+#----------------------------------------------------------------------
+
+
+GLDOPTS = $(STD_LOAD_OPTS)
+LLDLIBS	= 
+
+
+LIBRARY = arith.a
+
+TARGETS = $(LIBRARY)
+
+COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
+COMMON_COM_DIR= $(BUILD_TOT)/common/com
+COMMON_COM_MIPS_DIR= $(BUILD_TOT)/common/com/MIPS
+COMMON_TDT_DIR= $(BUILD_TOT)/common/tdt
+COMMON_TDT_MIPS_DIR= $(BUILD_TOT)/common/tdt/MIPS
+
+LDIRT = arith.i arith.cat
+
+LCINCS = -I$(BUILD_BASE) \
+	$(XINC)
+
+ARITH_SRC = \
+	bits.c \
+	compare.c \
+	convert.c \
+	cray_fadd.c \
+	cray_fdiv.c \
+	cray_fmul.c \
+	cvt.c \
+	edition.c \
+	ieee_fadd.c \
+	ieee_fdiv.c \
+	ieee_fmul.c \
+	ieee_norm.c \
+	ieee_sqrt.c \
+	intrin.c \
+	math.c \
+	miscmath.c \
+	strcvt.c
+
+ifeq ($(BUILD_TARGET), IA64)
+ARITH_SRC += \
+	native.c \
+	test_ar_intrin.c
+else
+ifeq ($(BUILD_TARGET), MIPS)
+ARITH_SRC += \
+	native.c \
+	test_ar_intrin.c
+else
+ifeq ($(BUILD_TARGET), SL)
+ARITH_SRC += \
+	native.c \
+	test_ar_intrin.c
+else
+ifeq ($(BUILD_TARGET), X8664)
+ARITH_SRC += \
+	native.c \
+	test_ar_intrin.c
+else
+ifeq ($(BUILD_TARGET), LOONGSON)
+ARITH_SRC += \
+	native.c \
+	test_ar_intrin.c
+else
+ARITH_SRC += \
+	simulate.c
+endif
+endif
+endif
+endif
+endif
+
+ARITH_SRC += \
+	cray1_sim.c
+
+CFILES= $(ARITH_SRC)
+
+ifeq ($(BUILD_TARGET), IA64)
+#
+# these files have the routines stubed out.
+# When we can fold these and compile with f90
+# we will use the regular files.
+#
+FFILES= \
+	fintrin_dc_irix_tmp.f \
+	fintrin_irix_tmp.f
+
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+#
+# these files have the routines stubed out.
+# When we can fold these and compile with f90
+# we will use the regular files.
+#
+#FFILES= \
+#	fintrin_dc_irix.f \
+#	fintrin_irix.f
+FFILES= \
+	fintrin_dc_irix_tmp.f \
+	fintrin_irix_tmp.f
+endif
+ifeq ($(BUILD_TARGET), IA32)
+FFILES= \
+	dummy_dc.f \
+	fintrin.f
+endif
+ifeq ($(BUILD_TARGET), SL)
+#
+# these files have the routines stubed out.
+# When we can fold these and compile with f90
+# we will use the regular files.
+#
+#FFILES= \
+#	fintrin_dc_irix.f \
+#	fintrin_irix.f
+FFILES= \
+	fintrin_dc_irix_tmp.f \
+	fintrin_irix_tmp.f
+endif
+ifeq ($(BUILD_TARGET), IA32)
+FFILES= \
+	dummy_dc.f \
+	fintrin.f
+endif
+
+ifeq ($(BUILD_TARGET), X8664)
+#
+# these files have the routines stubed out.
+# When we can fold these and compile with f90
+# we will use the regular files.
+#
+#FFILES= \
+#	fintrin_dc_irix.f \
+#	fintrin_irix.f
+FFILES= \
+	fintrin_dc_irix_tmp.f \
+	fintrin_irix_tmp.f
+endif
+
+ifeq ($(BUILD_TARGET), LOONGSON)
+#
+# these files have the routines stubed out.
+# When we can fold these and compile with f90
+# we will use the regular files.
+#
+FFILES= \
+        fintrin_dc_irix_tmp.f \
+        fintrin_irix_tmp.f
+endif
+
+
+
+FC_COMPILER = $(shell echo $(FC) | awk '{print $$1}' )
+WHICH_FC = $(shell basename `which $(FC_COMPILER) 2>/dev/null` 2>/dev/null )
+
+ifneq (X$(WHICH_FC), X)
+default:
+	$(MAKE)  $(TARGETS)
+	$(MAKE)  last
+else
+default:
+	@echo "--------------------------------------------"
+	@echo "Warning: arith is not build!"
+	@echo "  Can not find the $(FC_COMPILER)"
+	@echo "--------------------------------------------"
+endif
+
+exports: default
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_LIBRARY_LOC) $(TARGETS)
+
+install: default
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_LIBRARY_LOC) $(TARGETS)
+
+include $(COMMONRULES)
+
+VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_COM_MIPS_DIR) $(COMMON_TDT_DIR)
+
+dummy_dc.o: dummy_dc.f
+	$(f90) $(F90FLAGS) -c $(BUILD_BASE)/dummy_dc.f
+
+fintrin.o: fintrin.f
+	$(f90) $(F90FLAGS) -c $(BUILD_BASE)/fintrin.f
+
+fintrin_dc_irix.o: fintrin_dc_irix.f
+	$(f90) $(F90FLAGS) -c $(BUILD_BASE)/fintrin_dc_irix.f
+
+fintrin_irix.o: fintrin_irix.f
+	$(f90) $(F90FLAGS) -c $(BUILD_BASE)/fintrin_irix.f
+
+fintrin_irix_f77.o: fintrin_irix_f77.f
+	$(f77) $(F77FLAGS) -c $(BUILD_BASE)/fintrin_irix_f77.f
+
+###################################################################
+# These are tmp targets for the stubed routines.
+###################################################################
+fintrin_irix_tmp.o: fintrin_irix_tmp.f
+	$(f77) $(F77FLAGS) -c $(BUILD_BASE)/fintrin_irix_tmp.f
+
+fintrin_dc_irix_tmp.o: fintrin_dc_irix_tmp.f
+	$(f77) $(F90FLAGS) -c $(BUILD_BASE)/fintrin_dc_irix_tmp.f
+###################################################################
+
+edition.o:
+	$(cc) $(CFLAGS) -c -DEDITION=\"`cat $(BUILD_BASE)/edition`\" $(BUILD_BASE)/edition.c
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+
+ifeq ($(BUILD_OS), LINUX)
+arith.cat: $(BUILD_BASE)/arith.msg
+	cpp $(CFLAGS) -E $(BUILD_BASE)/arith.msg > arith.i
+	$(BUILD_TOT)/linux/tools/caterr -c arith.cat arith.i
+else
+arith.cat: $(BUILD_BASE)/arith.msg
+	$(CCF) -E $(BUILD_BASE)/arith.msg > arith.i
+	$(TOOLROOT)/usr/bin/caterr -Yc,$(TOOLROOT)/usr/bin/gencat -Ym,$(ROOT)/usr/lib/tmac/tmac.sg -c arith.cat arith.i
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last: make_libdeps

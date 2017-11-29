@@ -1,0 +1,1191 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if 
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+# Intrinsic table for Fortran front ends.
+#
+# The form of each entry is:
+#
+# name [*] [%] , nargs , specific-descr [ , specific-descr ]
+#
+# where name  is the intrinsic name (generic if there is one, otherwise
+#             the specific name),
+#       *     indicates the intrinsic is an extension (something not in
+#             FORTRAN 77),
+#       %     indicates a routine that may not be passed as an actual
+#             argument,
+#       nargs is the number of arguments, or ">=2" (e.g., for MAX), or "1-2"
+#             (e.g., for CMPLX).
+#
+# each specific-descr has the form
+#
+# type [->type] [:specific-name [*] [%]] [@op] [;[byval_rout];[byaddr_rout]]
+#      [![Whirl node]![external Whirl node]] [+Whirl opcode]
+#
+# where type is H for INTEGER*1,
+#               I for INTEGER*2,
+#               J for INTEGER*4,
+#               K for INTEGER*8,
+#               R for REAL*4,
+#               D for REAL*8,
+#               Q for REAL*16,
+#               X for COMPLEX*8,
+#               Y for COMPLEX*16,
+#               Z for COMPLEX*32,
+#               C for CHARACTER,
+#               L for LOGICAL*1,
+#               M for LOGICAL*2,
+#               N for LOGICAL*4,
+#               O for LOGICAL*8,
+#               A for INTEGER (default),
+#               B for LOGICAL (default),
+#               E for REAL (default),
+#               F for DOUBLE PRECISION (default),
+#               G for COMPLEX (default),
+#               S for DOUBLE COMPLEX (default),
+#               P for POINTER,
+#               T for pointer-sized integer,
+#               ? for any type,
+#               V for void (used as the return type of a subroutine).
+#
+# The first type is the argument type.  The second type is the result type;
+# it may be omitted to indicate the same type as the argument.
+# "@" indicates a routine that is inline in the IL (i.e., it has
+# no ifc_xxx code); "operator" is the IL operator name (without eok_).
+# The specific-name may be omitted if no specific name is needed (but
+# not if the specific name is the same as the generic name).  The "*" and
+# "%" have the same meanings as on the generic name.
+#
+# "byval_rout" is the math library routine callable by value (if it
+# exists); "byaddr_rout" is the routine callable by address (if the
+# intrinsic may be passed as an actual argument).  These must be both set
+# to "invalid" if the intrinsic return type toggles on -r8, -d16, -i2, or -i8
+# (a second lookup in the table will be done to find the right routine).
+# Either routine may be blank, but not both (that is, there may be two
+# semi-colons or none; if there are two semi-colons, there must be at
+# least one routine name).
+#
+# "Whirl node" is the Whirl node (if any) used for the intrinsic in a normal
+# call; "external Whirl node" is the Whirl node (if any) used when the
+# intrinsic is passed as an actual argument.  Obviously, if "external Whirl
+# node" is present, there must be a routine specified for "byaddr_rout".
+#
+# "Whirl opcode" is the Whirl opcode to be used if the intrinsic is inlined
+# in Whirl (not as an OPC_INTRINSIC_CALL, but as a regular opcode).
+#
+# Information here is from table 5, pages 15-22 ff. in the FORTRAN 77
+# standard, plus mil-std-1753.
+#
+# wsj 1/24/94 additional info:
+#
+#  In the case where a specific intrinsic function has the same name as
+#  the corresponding generic, it *must* be listed twice -- if the specific
+#  name is left out (with just an entry for that type being valid), then
+#  the compiler will determine that that function can't be passed as an
+#  actual argument (since generics can't be passed as actuals).  This leads
+#  to a weird situation for some specifics, such as IABS -- this was changed
+#  in VAX Fortran from a specific to a generic function.  This means that
+#  the entry for INTEGER under ABS must be left blank (rather than being
+#  IABS, as the ANSI 77 Standard would specify), and that a generic
+#  entry be created for IABS.  Since the VAX specific for IABS(INTEGER*4)
+#  is JIABS, this means that there must be two entries for that specific
+#  under the generic IABS -- one for JIABS, and one for IABS.  (This is
+#  the way aliases are created -- there are several cases like that in
+#  this table.)
+#
+ACOS, \
+  1, \
+  R:ACOS;acosf;r_acos!INTRN_F4ACOS!INTRN_F4ACOSe, \
+  D:DACOS;acos;d_acos!INTRN_F8ACOS!INTRN_F8ACOSe, \
+  Q:QACOS*;__qacos;__q_acos!INTRN_FQACOS!INTRN_FQACOSe, \
+  Q:QARCOS*;__qacos;__q_acos!INTRN_FQACOS!INTRN_FQACOSe
+ACOSD*, \
+  1, \
+  R:ACOSD*;__racosd;r_acosd!INTRN_F4ACOSD!INTRN_F4ACOSDe, \
+  D:DACOSD*;__dacosd;d_acosd!INTRN_F8ACOSD!INTRN_F8ACOSDe, \
+  Q:QACOSD*;;__q_acosd!INTRN_FQACOSD!INTRN_FQACOSDe
+ASIN, \
+  1, \
+  R:ASIN;asinf;r_asin!INTRN_F4ASIN!INTRN_F4ASINe, \
+  D:DASIN;asin;d_asin!INTRN_F8ASIN!INTRN_F8ASINe, \
+  Q:QASIN*;__qasin;__q_asin!INTRN_FQASIN!INTRN_FQASINe, \
+  Q:QARSIN*;__qasin;__q_asin!INTRN_FQASIN!INTRN_FQASINe
+ASIND*, \
+  1, \
+  R:ASIND*;__rasind;r_asind!INTRN_F4ASIND!INTRN_F4ASINDe, \
+  D:DASIND*;__dasind;d_asind!INTRN_F8ASIND!INTRN_F8ASINDe, \
+  Q:QASIND*;;__q_asind!INTRN_FQASIND!INTRN_FQASINDe
+ATAN, \
+  1, \
+  R:ATAN;atanf;r_atan!INTRN_F4ATAN!INTRN_F4ATANe, \
+  D:DATAN;atan;d_atan!INTRN_F8ATAN!INTRN_F8ATANe, \
+  Q:QATAN*;__qatan;__q_atan!INTRN_FQATAN!INTRN_FQATANe
+ATAND*, \
+  1, \
+  R:ATAND*;__ratand;r_atand!INTRN_F4ATAND!INTRN_F4ATANDe, \
+  D:DATAND*;__datand;d_atand!INTRN_F8ATAND!INTRN_F8ATANDe, \
+  Q:QATAND*;;__q_atand!INTRN_FQATAND!INTRN_FQATANDe
+ATAN2, \
+  2, \
+  R:ATAN2;atan2f;r_atn2!INTRN_F4ATAN2!INTRN_F4ATAN2e, \
+  D:DATAN2;atan2;d_atn2!INTRN_F8ATAN2!INTRN_F8ATAN2e, \
+  Q:QATAN2*;__qatan2;__q_atn2!INTRN_FQATAN2!INTRN_FQATAN2e
+ATAN2D*, \
+  2, \
+  R:ATAN2D*;__ratn2d;r_atn2d!INTRN_F4ATAN2D!INTRN_F4ATAN2De, \
+  D:DATAN2D*;__datn2d;d_atn2d!INTRN_F8ATAN2D!INTRN_F8ATAN2De, \
+  Q:QATAN2D*;__qatan2d;__q_atn2d!INTRN_FQATAN2D!INTRN_FQATAN2De
+COS, \
+  1, \
+  R:COS;cosf;r_cos!INTRN_F4COS!INTRN_F4COSe, \
+  D:DCOS;cos;d_cos!INTRN_F8COS!INTRN_F8COSe, \
+  Q:QCOS*;__qcos;__q_cos!INTRN_FQCOS!INTRN_FQCOSe, \
+  X:CCOS;__ccos;c_cos_!INTRN_C4COS!INTRN_C4COSe, \
+  Y:ZCOS*;__zcos;z_cos_!INTRN_C8COS!INTRN_C8COSe, \
+  Y:CDCOS*;__zcos;z_cos_!INTRN_C8COS!INTRN_C8COSe, \
+  Z:CQCOS*;__cqcos;__cq_cos!INTRN_CQCOS!INTRN_CQCOSe
+COSD*, \
+  1, \
+  R:COSD*;__rcosd;r_cosd!INTRN_F4COSD!INTRN_F4COSDe, \
+  D:DCOSD*;__dcosd;d_cosd!INTRN_F8COSD!INTRN_F8COSDe, \
+  Q:QCOSD*;;__q_cosd!INTRN_FQCOSD!INTRN_FQCOSDe
+COSH, \
+  1, \
+  R:COSH;coshf;r_cosh!INTRN_F4COSH!INTRN_F4COSHe, \
+  D:DCOSH;cosh;d_cosh!INTRN_F8COSH!INTRN_F8COSHe, \
+  Q:QCOSH*;__qcosh;__q_cosh!INTRN_FQCOSH!INTRN_FQCOSHe
+EXP, \
+  1, \
+  R:EXP;expf;r_exp!INTRN_F4EXP!INTRN_F4EXPe, \
+  D:DEXP;exp;d_exp!INTRN_F8EXP!INTRN_F8EXPe, \
+  Q:QEXP*;__qexp;__q_exp!INTRN_FQEXP!INTRN_FQEXPe, \
+  X:CEXP;__cexp;c_exp_!INTRN_C4EXP!INTRN_C4EXPe, \
+  Y:ZEXP*;__zexp;z_exp_!INTRN_C8EXP!INTRN_C8EXPe, \
+  Y:CDEXP*;__zexp;z_exp_!INTRN_C8EXP!INTRN_C8EXPe, \
+  Z:CQEXP*;__cqexp;__cq_exp!INTRN_CQEXP!INTRN_CQEXPe
+LOG, \
+  1, \
+  R:ALOG;logf;r_log!INTRN_F4LOG!INTRN_F4LOGe, \
+  D:DLOG;log;d_log!INTRN_F8LOG!INTRN_F8LOGe, \
+  Q:QLOG*;__qlog;__q_log!INTRN_FQLOG!INTRN_FQLOGe, \
+  X:CLOG;__clog;c_log_!INTRN_C4LOG!INTRN_C4LOGe, \
+  Y:ZLOG*;__zlog;z_log_!INTRN_C8LOG!INTRN_C8LOGe, \
+  Y:CDLOG*;__zlog;z_log_!INTRN_C8LOG!INTRN_C8LOGe, \
+  Z:CQLOG*;__cqlog;__cq_log!INTRN_CQLOG!INTRN_CQLOGe
+LOG10, \
+  1, \
+  R:ALOG10;log10f;r_lg10!INTRN_F4LOG10!INTRN_F4LOG10e, \
+  D:DLOG10;log10;d_lg10!INTRN_F8LOG10!INTRN_F8LOG10e, \
+  Q:QLOG10*;log10l;__q_lg10!INTRN_FQLOG10!INTRN_FQLOG10e
+SIN, \
+  1, \
+  R:SIN;sinf;r_sin!INTRN_F4SIN!INTRN_F4SINe, \
+  D:DSIN;sin;d_sin!INTRN_F8SIN!INTRN_F8SINe, \
+  Q:QSIN*;__qsin;__q_sin!INTRN_FQSIN!INTRN_FQSINe, \
+  X:CSIN;__csin;c_sin_!INTRN_C4SIN!INTRN_C4SINe, \
+  Y:ZSIN*;__zsin;z_sin_!INTRN_C8SIN!INTRN_C8SINe, \
+  Y:CDSIN*;__zsin;z_sin_!INTRN_C8SIN!INTRN_C8SINe, \
+  Z:CQSIN*;__cqsin;__cq_sin!INTRN_CQSIN!INTRN_CQSINe
+SIND*, \
+  1, \
+  R:SIND*;__rsind;r_sind!INTRN_F4SIND!INTRN_F4SINDe, \
+  D:DSIND*;__dsind;d_sind!INTRN_F8SIND!INTRN_F8SINDe, \
+  Q:QSIND*;;__q_sind!INTRN_FQSIND!INTRN_FQSINDe
+SINH, \
+  1, \
+  R:SINH;sinhf;r_sinh!INTRN_F4SINH!INTRN_F4SINHe, \
+  D:DSINH;sinh;d_sinh!INTRN_F8SINH!INTRN_F8SINHe, \
+  Q:QSINH*;__qsinh;__q_sinh!INTRN_FQSINH!INTRN_FQSINHe
+SQRT, \
+  1, \
+  R:SQRT;sqrtf;r_sqrt!!INTRN_F4SQRTe+OPC_F4SQRT, \
+  D:DSQRT;sqrt;d_sqrt!!INTRN_F8SQRTe+OPC_F8SQRT, \
+  Q:QSQRT*;__qsqrt;__q_sqrt!!INTRN_FQSQRTe+OPC_FQSQRT, \
+  X:CSQRT;__csqrt;c_sqrt_!!INTRN_C4SQRTe+OPC_C4SQRT, \
+  Y:ZSQRT*;__zsqrt;z_sqrt_!!INTRN_C8SQRTe+OPC_C8SQRT, \
+  Y:CDSQRT*;__zsqrt;z_sqrt_!!INTRN_C8SQRTe+OPC_C8SQRT, \
+  Z:CQSQRT*;__cqsqrt;__cq_sqrt!!INTRN_CQSQRTe+OPC_CQSQRT
+TAN, \
+  1, \
+  R:TAN;tanf;r_tan!INTRN_F4TAN!INTRN_F4TANe, \
+  D:DTAN;tan;d_tan!INTRN_F8TAN!INTRN_F8TANe, \
+  Q:QTAN*;__qtan;__q_tan!INTRN_FQTAN!INTRN_FQTANe
+TAND*, \
+  1, \
+  R:TAND*;__rtand;r_tand!INTRN_F4TAND!INTRN_F4TANDe, \
+  D:DTAND*;__dtand;d_tand!INTRN_F8TAND!INTRN_F8TANDe, \
+  Q:QTAND*;;__q_tand!INTRN_FQTAND!INTRN_FQTANDe
+TANH, \
+  1, \
+  R:TANH;tanhf;r_tanh!INTRN_F4TANH!INTRN_F4TANHe, \
+  D:DTANH;tanh;d_tanh!INTRN_F8TANH!INTRN_F8TANHe, \
+  Q:QTANH*;__qtanh;__q_tanh!INTRN_FQTANH!INTRN_FQTANHe
+ABS, \
+  1, \
+  H;;b_abs+OPC_I4ABS, \
+  I;;h_abs+OPC_I4ABS, \
+  J;;i_abs+OPC_I4ABS, \
+  K;;l_abs+OPC_I8ABS, \
+  R:ABS;;r_abs!!INTRN_F4ABSe+OPC_F4ABS, \
+  D:DABS;;d_abs!!INTRN_F8ABSe+OPC_F8ABS, \
+  Q:QABS*;__qabs;__q_abs!!INTRN_FQABSe+OPC_FQABS, \
+  X->R:CABS;__c8abs;c_abs_!INTRN_F4C4ABS!INTRN_F4C4ABSe, \
+  Y->D:ZABS*;__zabs;z_abs_!INTRN_F8C8ABS!INTRN_F8C8ABSe, \
+  Y->D:CDABS*;__zabs;z_abs_!INTRN_F8C8ABS!INTRN_F8C8ABSe, \
+  Z->Q:CQABS*;__cqabs;__cq_abs!INTRN_FQCQABS!INTRN_FQCQABSe
+IABS, \
+  1, \
+  H;;b_abs+OPC_I4ABS, \
+  I:IIABS*;;h_abs!!INTRN_I2ABSe+OPC_I4ABS, \
+  I:HABS*;;h_abs!!INTRN_I2ABSe+OPC_I4ABS, \
+  J:JIABS*;;i_abs!!INTRN_I4ABSe+OPC_I4ABS, \
+  J:IABS;;i_abs!!INTRN_I4ABSe+OPC_I4ABS, \
+  K:KIABS*;;l_abs!!INTRN_I8ABSe+OPC_I8ABS
+CMPLX%, \
+  1-2, \
+  H->G@complex, \
+  I->G@complex, \
+  J->G@complex, \
+  K->G@complex, \
+  R->G@complex, \
+  D->G@complex, \
+  Q->G@complex, \
+  X->G@complex, \
+  Y->G@complex, \
+  Z->G@complex
+CONJG, \
+  1, \
+  X:CONJG;__rconjg;r_cnjg_!INTRN_C4CONJG!INTRN_C4CONJGe, \
+  Y:DCONJG*;__dconjg;d_cnjg_!INTRN_C8CONJG!INTRN_C8CONJGe, \
+  Z:QCONJG*;__qconjg;__cq_conjg!INTRN_CQCONJG!INTRN_CQCONJGe
+DBLE%, \
+  1, \
+  H->D@cast, \
+  I->D@cast, \
+  J->D@cast, \
+  K->D@cast, \
+  R->D:DBLE%@cast, \
+  D->D@cast, \
+  Q->D:DBLEQ*%@cast, \
+  X->D@cast, \
+  Y->D:DREAL*%@cast, \
+  Z->D@cast
+DCMPLX*%, \
+  1-2, \
+  H->Y@complex, \
+  I->Y@complex, \
+  J->Y@complex, \
+  K->Y@complex, \
+  R->Y@complex, \
+  D->Y@complex, \
+  Q->Y@complex, \
+  X->Y@complex, \
+  Y->Y@complex, \
+  Z->Y@complex
+QCMPLX*%, \
+  1-2, \
+  H->Z@complex, \
+  I->Z@complex, \
+  J->Z@complex, \
+  K->Z@complex, \
+  R->Z@complex, \
+  D->Z@complex, \
+  Q->Z@complex, \
+  X->Z@complex, \
+  Y->Z@complex, \
+  Z->Z@complex
+DFLOAT*%, \
+  1, \
+  H->D@cast, \
+  I->D:DFLOTI*%@cast, \
+  J->D:DFLOTJ*%@cast, \
+  K->D:DFLOTK*%@cast, \
+  K->D:DFLOATK*%@cast, \
+  R->D@cast, \
+  D->D@cast, \
+  Q->D@cast, \
+  X->D@cast, \
+  Y->D@cast, \
+  Z->D@cast
+DIM, \
+  2, \
+  H;;b_dim!INTRN_I1DIM, \
+  I;;h_dim!INTRN_I2DIM, \
+  J;;i_dim!INTRN_I4DIM, \
+  K;;l_dim!INTRN_I8DIM, \
+  R:DIM;;r_dim!INTRN_F4DIM!INTRN_F4DIMe, \
+  D:DDIM;;d_dim!INTRN_F8DIM!INTRN_F8DIMe, \
+  Q:QDIM*;;__qdim!INTRN_FQDIM!INTRN_FQDIMe
+IDIM, \
+  2, \
+  H;;b_dim!INTRN_I1DIM, \
+  I:IIDIM*;;h_dim!INTRN_I2DIM!INTRN_I2DIMe, \
+  I:HDIM*;;h_dim!INTRN_I2DIM!INTRN_I2DIMe, \
+  J:JIDIM*;;i_dim!INTRN_I4DIM!INTRN_I4DIMe, \
+  J:IDIM;;i_dim!INTRN_I4DIM!INTRN_I4DIMe, \
+  K:KIDIM*;;l_dim!INTRN_I8DIM!INTRN_I8DIMe
+DPROD, \
+  2, \
+  R->D:DPROD;;d_prod!INTRN_F8F4PROD!INTRN_F8F4PRODe
+QPROD*, \
+  2, \
+  D->Q:QPROD*;__qprod;__q_prod!INTRN_FQF8PROD!INTRN_FQF8PRODe
+FLOAT%, \
+  1, \
+  H->E@cast, \
+  I->E:FLOATI*%@cast, \
+  J->E:FLOATJ*%@cast, \
+  J->E:FLOAT%@cast, \
+  K->E:FLOATK*%@cast, \
+  R->E@cast, \
+  D->E@cast, \
+  Q->E@cast, \
+  X->E@cast, \
+  Y->E@cast, \
+  Z->E@cast
+IFIX%, \
+  1, \
+  C->A@cast, \
+  H->A@cast, \
+  I->A@cast, \
+  J->A@cast, \
+  K->A@cast, \
+  L->A@cast, \
+  M->A@cast, \
+  N->A@cast, \
+  O->A@cast, \
+  R->I:IIFIX*%@cast, \
+  R->I:HFIX*%@cast, \
+  R->J:JIFIX*%@cast, \
+  R->K:KIFIX*%@cast, \
+  R->A:IFIX%@cast, \
+  D->A@cast, \
+  Q->A@cast, \
+  X->A@cast, \
+  Y->A@cast, \
+  Z->A@cast
+IMAG*, \
+  1, \
+  X->R;;r_imag!!INTRN_F4IMAGe+OPC_F4IMAGPART, \
+  X->D;;d_imagalt!!INTRN_F8IMAGe+OPC_F8IMAGPART, \
+  X->E:AIMAG;invalid;invalid!!INTRINSIC_INVALID+OPCODE_INVALID, \
+  Y->D:DIMAG*;;d_imag!!INTRN_F8IMAGe+OPC_F8IMAGPART, \
+  Z->Q:QIMAG*;;__cq_imag!!INTRN_FQIMAGe+OPC_FQIMAGPART
+INT%, \
+  1, \
+  C->A@cast, \
+  H->A@cast, \
+  I->A@cast, \
+  J->A@cast, \
+  K->A@cast, \
+  L->A@cast, \
+  M->A@cast, \
+  N->A@cast, \
+  O->A@cast, \
+  R->A:INT%@cast, \
+  R->I:IINT*@cast;;__iirint!!INTRN_I2F4INTe, \
+  R->J:JINT*@cast;;__jirint!!INTRN_I4F4INTe, \
+  R->K:KINT*@cast;;__kirint!!INTRN_I8F4INTe, \
+  D->A@cast, \
+  Q->A@cast, \
+  X->A@cast, \
+  Y->A@cast, \
+  Z->A@cast
+INT1*%, \
+  1, \
+  C->H@cast, \
+  H->H@cast, \
+  I->H@cast, \
+  J->H@cast, \
+  K->H@cast, \
+  L->H@cast, \
+  M->H@cast, \
+  N->H@cast, \
+  O->H@cast, \
+  R->H@cast, \
+  D->H@cast, \
+  Q->H@cast, \
+  X->H@cast, \
+  Y->H@cast, \
+  Z->H@cast
+INT2*%, \
+  1, \
+  C->I@cast, \
+  H->I@cast, \
+  I->I@cast, \
+  J->I@cast, \
+  K->I@cast, \
+  L->I@cast, \
+  M->I@cast, \
+  N->I@cast, \
+  O->I@cast, \
+  R->I@cast, \
+  D->I@cast, \
+  Q->I@cast, \
+  X->I@cast, \
+  Y->I@cast, \
+  Z->I@cast
+SHORT*%, \
+  1, \
+  C->I@cast, \
+  H->I@cast, \
+  I->I@cast, \
+  J->I@cast, \
+  K->I@cast, \
+  L->I@cast, \
+  M->I@cast, \
+  N->I@cast, \
+  O->I@cast, \
+  R->I@cast, \
+  D->I@cast, \
+  Q->I@cast, \
+  X->I@cast, \
+  Y->I@cast, \
+  Z->I@cast
+INT4*%, \
+  1, \
+  C->J@cast, \
+  H->J@cast, \
+  I->J@cast, \
+  J->J@cast, \
+  K->J@cast, \
+  L->J@cast, \
+  M->J@cast, \
+  N->J@cast, \
+  O->J@cast, \
+  R->J@cast, \
+  D->J@cast, \
+  Q->J@cast, \
+  X->J@cast, \
+  Y->J@cast, \
+  Z->J@cast
+LONG*%, \
+  1, \
+  C->J@cast, \
+  H->J@cast, \
+  I->J@cast, \
+  J->J@cast, \
+  K->J@cast, \
+  L->J@cast, \
+  M->J@cast, \
+  N->J@cast, \
+  O->J@cast, \
+  R->J@cast, \
+  D->J@cast, \
+  Q->J@cast, \
+  X->J@cast, \
+  Y->J@cast, \
+  Z->J@cast
+INT8*%, \
+  1, \
+  C->K@cast, \
+  H->K@cast, \
+  I->K@cast, \
+  J->K@cast, \
+  K->K@cast, \
+  L->K@cast, \
+  M->K@cast, \
+  N->K@cast, \
+  O->K@cast, \
+  R->K@cast, \
+  D->K@cast, \
+  Q->K@cast, \
+  X->K@cast, \
+  Y->K@cast, \
+  Z->K@cast
+AINT, \
+  1, \
+  R:AINT;truncf;r_int!INTRN_F4AINT!INTRN_F4AINTe, \
+  D:DINT;trunc;d_int!INTRN_F8AINT!INTRN_F8AINTe, \
+  Q:QINT*;__qint;__q_int!INTRN_FQAINT!INTRN_FQAINTe
+IDINT%, \
+  1, \
+  D->I:IIDINT*@cast;;__iidint!!INTRN_I2F8IDINTe, \
+  D->J:JIDINT*@cast;;__jidint!!INTRN_I4F8IDINTe, \
+  D->K:KIDINT*@cast;;__kidint!!INTRN_I8F8IDINTe, \
+  D->A:IDINT%@cast
+IQINT*%, \
+  1, \
+  Q->I:IIQINT*@cast;;__iiqint!!INTRN_I2FQIQINTe, \
+  Q->J:JIQINT*@cast;;__jiqint!!INTRN_I4FQIQINTe, \
+  Q->K:KIQINT*@cast;;__kiqint!!INTRN_I8FQIQINTe, \
+  Q->A:IQINT*%@cast
+MAX%, \
+  >=2, \
+  H+OPC_I4MAX, \
+  I+OPC_I4MAX, \
+  J+OPC_I4MAX, \
+  K+OPC_I8MAX, \
+  R:AMAX1%+OPC_F4MAX, \
+  D:DMAX1%+OPC_F8MAX, \
+  Q:QMAX1*%+OPC_FQMAX
+MAX0%, \
+  >=2, \
+  H+OPC_I4MAX, \
+  I:IMAX0*%+OPC_I4MAX, \
+  J:JMAX0*%+OPC_I4MAX, \
+  J:MAX0%+OPC_I4MAX, \
+  K:KMAX0*%+OPC_I8MAX
+MAX1%, \
+  >=2, \
+  R->I:IMAX1*%+OPC_F4MAX, \
+  R->J:JMAX1*%+OPC_F4MAX, \
+  R->K:KMAX1*%+OPC_F4MAX, \
+  R->A:MAX1%+OPC_F4MAX
+AMAX0%, \
+  >=2, \
+  H->R+OPC_I4MAX, \
+  I->R:AIMAX0*%+OPC_I4MAX, \
+  J->R:AJMAX0*%+OPC_I4MAX, \
+  J->R:AMAX0%+OPC_I4MAX, \
+  K->R:AKMAX0*%+OPC_I8MAX
+MIN%, \
+  >=2, \
+  H+OPC_I4MIN, \
+  I+OPC_I4MIN, \
+  J+OPC_I4MIN, \
+  K+OPC_I8MIN, \
+  R:AMIN1%+OPC_F4MIN, \
+  D:DMIN1%+OPC_F8MIN, \
+  Q:QMIN1*%+OPC_FQMIN
+MIN0%, \
+  >=2, \
+  H+OPC_I4MIN, \
+  I:IMIN0*%+OPC_I4MIN, \
+  J:JMIN0*%+OPC_I4MIN, \
+  J:MIN0%+OPC_I4MIN, \
+  K:KMIN0*%+OPC_I8MIN
+MIN1%, \
+  >=2, \
+  R->I:IMIN1*%+OPC_F4MIN, \
+  R->J:JMIN1*%+OPC_F4MIN, \
+  R->K:KMIN1*%+OPC_F4MIN, \
+  R->A:MIN1%+OPC_F4MIN
+AMIN0%, \
+  >=2, \
+  H->R+OPC_I4MIN, \
+  I->R:AIMIN0*%+OPC_I4MIN, \
+  J->R:AJMIN0*%+OPC_I4MIN, \
+  J->R:AMIN0%+OPC_I4MIN, \
+  K->R:AKMIN0*%+OPC_I8MIN
+MOD, \
+  2, \
+  H;;b_mod+OPC_I4REM, \
+  I:IMOD*;;h_mod!!INTRN_I2MODe+OPC_I4REM, \
+  I:HMOD*;;h_mod!!INTRN_I2MODe+OPC_I4REM, \
+  J:JMOD*;;i_mod!!INTRN_I4MODe+OPC_I4REM, \
+  J:MOD;;i_mod!!INTRN_I4MODe+OPC_I4REM, \
+  K:KMOD*;;l_mod!!INTRN_I8MODe+OPC_I8REM, \
+  R:AMOD;__rmod;r_mod!INTRN_F4MOD!INTRN_F4MODe, \
+  D:DMOD;__dmod;d_mod!INTRN_F8MOD!INTRN_F8MODe, \
+  Q:QMOD*;__qmod;__q_mod!INTRN_FQMOD!INTRN_FQMODe
+NINT, \
+  1, \
+  R->I:ININT*;;h_nint!INTRN_I2F4NINT!INTRN_I2F4NINTe, \
+  R->J:JNINT*;;i_nint!INTRN_I4F4NINT!INTRN_I4F4NINTe, \
+  R->K:KNINT*;;l_nint!INTRN_I8F4NINT!INTRN_I8F4NINTe, \
+  R->A:NINT;invalid;invalid!INTRINSIC_INVALID!INTRINSIC_INVALID, \
+  D->A;invalid;invalid!!INTRINSIC_INVALID, \
+  D->I;;h_dnnt!INTRN_I2F8IDNINT!INTRN_I2F8IDNINTe, \
+  D->J;;i_dnnt!INTRN_I4F8IDNINT!INTRN_I4F8IDNINTe, \
+  D->K;;l_dnnt!INTRN_I8F8IDNINT!INTRN_I8F8IDNINTe, \
+  Q->A;invalid;invalid!INTRINSIC_INVALID!INTRINSIC_INVALID, \
+  Q->I;__iiqnnt;__ii_qnnt!INTRN_I2FQIQNINT!INTRN_I2FQIQNINTe, \
+  Q->J;__jiqnnt;__ji_qnn!INTRN_I4FQIQNINT!INTRN_I4FQIQNINTe, \
+  Q->K;__kiqnnt;__ki_qnn!INTRN_I8FQIQNINT!INTRN_I8FQIQNINTe
+ANINT, \
+  1, \
+  R:ANINT;__rnint;r_nint!INTRN_F4ANINT!INTRN_F4ANINTe, \
+  D:DNINT;__dnint;d_nint!INTRN_F8ANINT!INTRN_F8ANINTe, \
+  Q:QNINT*;__qnint;__q_nint!INTRN_FQANINT!INTRN_FQANINTe
+IDNINT, \
+  1, \
+  D->I:IIDNNT*;;h_dnnt!INTRN_I2F8IDNINT!INTRN_I2F8IDNINTe, \
+  D->J:JIDNNT*;;i_dnnt!INTRN_I4F8IDNINT!INTRN_I4F8IDNINTe, \
+  D->K:KIDNNT*;;l_dnnt!INTRN_I8F8IDNINT!INTRN_I8F8IDNINTe, \
+  D->A:IDNINT;invalid;invalid!INTRINSIC_INVALID!INTRINSIC_INVALID
+IQNINT*, \
+  1, \
+  Q->I:IIQNNT*;__iiqnnt;__ii_qnnt!INTRN_I2FQIQNINT!INTRN_I2FQIQNINTe, \
+  Q->J:JIQNNT*;__jiqnnt;__ji_qnnt!INTRN_I4FQIQNINT!INTRN_I4FQIQNINTe, \
+  Q->K:KIQNNT*;__kiqnnt;__ki_qnnt!INTRN_I8FQIQNINT!INTRN_I8FQIQNINTe, \
+  Q->A:IQNINT*;invalid;invalid!INTRINSIC_INVALID!INTRINSIC_INVALID
+QEXT*%, \
+  1, \
+  H->Q@cast, \
+  I->Q@cast, \
+  J->Q@cast, \
+  K->Q@cast, \
+  R->Q:QEXT*%@cast, \
+  D->Q:QEXTD*%@cast, \
+  Q->Q@cast, \
+  X->Q@cast, \
+  Y->Q@cast, \
+  Z->Q:QREAL*%@cast
+QFLOAT*%, \
+  1, \
+  H->Q@cast, \
+  I->Q:QFLOTI*%@cast, \
+  I->Q:QFLOATI*%@cast, \
+  J->Q:QFLOTJ*%@cast, \
+  J->Q:QFLOATJ*%@cast, \
+  K->Q:QFLOTK*%@cast, \
+  K->Q:QFLOATK*%@cast, \
+  R->Q@cast, \
+  D->Q@cast, \
+  Q->Q@cast, \
+  X->Q@cast, \
+  Y->Q@cast, \
+  Z->Q@cast
+REAL%, \
+  1, \
+  H->E@cast, \
+  I->E@cast, \
+  J->E@cast, \
+  K->E@cast, \
+  R->E@cast, \
+  D->E@cast, \
+  Q->E@cast, \
+  X->E:REAL%@cast, \
+  Y->E@cast, \
+  Z->E@cast
+SNGL%, \
+  1, \
+  H->E@cast, \
+  I->E@cast, \
+  J->E@cast, \
+  K->E@cast, \
+  R->E@cast, \
+  D->E:SNGL%@cast, \
+  Q->E:SNGLQ*%@cast, \
+  X->E@cast, \
+  Y->E@cast, \
+  Z->E@cast
+SIGN, \
+  2, \
+  H;__bsign;b_sign!INTRN_I1SIGN, \
+  I;__hsign;h_sign!INTRN_I2SIGN, \
+  J;__isign;i_sign!INTRN_I4SIGN, \
+  K;__lsign;l_sign!INTRN_I8SIGN, \
+  R:SIGN;__rsign;r_sign!INTRN_F4SIGN!INTRN_F4SIGNe, \
+  D:DSIGN;__dsign;d_sign!INTRN_F8SIGN!INTRN_F8SIGNe, \
+  Q:QSIGN*;__qsign;__q_sign!INTRN_FQSIGN!INTRN_FQSIGNe
+ISIGN, \
+  2, \
+  H;__bsign;b_sign!INTRN_I1SIGN, \
+  I:IISIGN*;__hsign;h_sign!INTRN_I2SIGN!INTRN_I2SIGNe, \
+  I:HSIGN*;__hsign;h_sign!INTRN_I2SIGN!INTRN_I2SIGNe, \
+  J:JISIGN*;__isign;i_sign!INTRN_I4SIGN!INTRN_I4SIGNe, \
+  J:ISIGN;__isign;i_sign!INTRN_I4SIGN!INTRN_I4SIGNe, \
+  K:KISIGN*;__lsign;l_sign!INTRN_I8SIGN!INTRN_I8SIGNe
+ZEXT*%, \
+  1, \
+  H->A@zext, \
+  I->A@zext, \
+  J->A@zext, \
+  K->A@zext, \
+  L->A@zext, \
+  M->A@zext, \
+  N->A@zext, \
+  O->A@zext
+IZEXT*%, \
+  1, \
+  H->I@zext, \
+  I->I@zext, \
+  L->I@zext, \
+  M->I@zext
+JZEXT*%, \
+  1, \
+  H->J@zext, \
+  I->J@zext, \
+  J->J@zext, \
+  L->J@zext, \
+  M->J@zext, \
+  N->J@zext
+KZEXT*%, \
+  1, \
+  H->K@zext, \
+  I->K@zext, \
+  J->K@zext, \
+  K->K@zext, \
+  L->K@zext, \
+  M->K@zext, \
+  N->K@zext, \
+  O->K@zext
+BTEST*, \
+  2, \
+  H->L;;btest_b!INTRN_I1BTEST, \
+  I->M:BITEST*;;btest_h!INTRN_I2BTEST!INTRN_I2BTESTe, \
+  J->N:BJTEST*;;btest_l!INTRN_I4BTEST!INTRN_I4BTESTe, \
+  K->O:BKTEST*;;btest_ll!INTRN_I8BTEST!INTRN_I8BTESTe
+IAND*, \
+  2, \
+  H;;and_b+OPC_I4BAND, \
+  I:IIAND*;;and_h!!INTRN_I2BANDe+OPC_I4BAND, \
+  J:JIAND*;;and_l!!INTRN_I4BANDe+OPC_I4BAND, \
+  K:KIAND*;;and_ll!!INTRN_I8BANDe+OPC_I8BAND
+AND*, \
+  2, \
+  H;;and_b+OPC_I4BAND, \
+  I;;and_h+OPC_I4BAND, \
+  J;;and_l+OPC_I4BAND, \
+  K;;and_ll+OPC_I8BAND
+IBCLR*, \
+  2, \
+  H;;bclr_b!INTRN_I1BCLR, \
+  I:IIBCLR*;;bclr_h!INTRN_I2BCLR!INTRN_I2BCLRe, \
+  J:JIBCLR*;;bclr_l!INTRN_I4BCLR!INTRN_I4BCLRe, \
+  K:KIBCLR*;;bclr_ll!INTRN_I8BCLR!INTRN_I8BCLRe
+IBITS*, \
+  3, \
+  H;;bext_b!INTRN_I1BITS, \
+  I:IIBITS*;;bext_h!INTRN_I2BITS!INTRN_I2BITSe, \
+  J:JIBITS*;;bext_l!INTRN_I4BITS!INTRN_I4BITSe, \
+  K:KIBITS*;;bext_ll!INTRN_I8BITS!INTRN_I8BITSe
+IBSET*, \
+  2, \
+  H;;bset_b!INTRN_I1BSET, \
+  I:IIBSET*;;bset_h!INTRN_I2BSET!INTRN_I2BSETe, \
+  J:JIBSET*;;bset_l!INTRN_I4BSET!INTRN_I4BSETe, \
+  K:KIBSET*;;bset_ll!INTRN_I8BSET!INTRN_I8BSETe
+IEOR*, \
+  2, \
+  H;;xor_b+OPC_I4BXOR, \
+  I:IIEOR*;;xor_h!!INTRN_I2BXORe+OPC_I4BXOR, \
+  J:JIEOR*;;xor_l!!INTRN_I4BXORe+OPC_I4BXOR, \
+  K:KIEOR*;;xor_ll!!INTRN_I8BXORe+OPC_I8BXOR
+XOR*, \
+  2, \
+  H;;xor_b+OPC_I4BXOR, \
+  I;;xor_h+OPC_I4BXOR, \
+  J;;xor_l+OPC_I4BXOR, \
+  K;;xor_ll+OPC_I8BXOR
+IOR*, \
+  2, \
+  H;;or_b+OPC_I4BIOR, \
+  I:IIOR*;;or_h!!INTRN_I2BIORe+OPC_I4BIOR, \
+  J:JIOR*;;or_l!!INTRN_I4BIORe+OPC_I4BIOR, \
+  K:KIOR*;;or_ll!!INTRN_I8BIORe+OPC_I8BIOR
+OR*, \
+  2, \
+  H;;or_b+OPC_I4BIOR, \
+  I;;or_h+OPC_I4BIOR, \
+  J;;or_l+OPC_I4BIOR, \
+  K;;or_ll+OPC_I8BIOR
+ISHFT*, \
+  2, \
+  H;;shft_b!INTRN_I1SHFT, \
+  I:IISHFT*;;shft_h!INTRN_I2SHFT!INTRN_I2SHFTe, \
+  J:JISHFT*;;shft_l!INTRN_I4SHFT!INTRN_I4SHFTe, \
+  K:KISHFT*;;shft_ll!INTRN_I8SHFT!INTRN_I8SHFTe
+LSHIFT*%, \
+  2, \
+  H;;shft_b!INTRN_I1SHL, \
+  I;;shft_h!INTRN_I2SHL, \
+  J;;shft_l+OPC_I4SHL, \
+  K;;shft_ll+OPC_I8SHL
+RSHIFT*%, \
+  2, \
+  H;;rshft_b!INTRN_I1SHR, \
+  I;;rshft_h!INTRN_I2SHR, \
+  J;;rshft_l+OPC_I4LSHR, \
+  K;;rshft_ll+OPC_I8LSHR
+ISHFTC*, \
+  3, \
+  H;;shftc_b!INTRN_I1SHFTC, \
+  I:IISHFTC*;;shftc_h!INTRN_I2SHFTC!INTRN_I2SHFTCe, \
+  J:JISHFTC*;;shftc_l!INTRN_I4SHFTC!INTRN_I4SHFTCe, \
+  K:KISHFTC*;;shftc_ll!INTRN_I8SHFTC!INTRN_I8SHFTCe
+IASHR*%, \
+  2, \
+  H+OPC_I4ASHR, \
+  I:IIASHR*%+OPC_I4ASHR, \
+  J:JIASHR*%+OPC_I4ASHR, \
+  K:KIASHR*%+OPC_I8ASHR
+NOT*, \
+  1, \
+  H;;not_b+OPC_I4BNOT, \
+  I:INOT*;;not_h!!INTRN_I2BNOTe+OPC_I4BNOT, \
+  J:JNOT*;;not_l!!INTRN_I4BNOTe+OPC_I4BNOT, \
+  K:KNOT*;;not_ll!!INTRN_I8BNOTe+OPC_I8BNOT
+CHAR%, \
+  1, \
+  H->C@cast, \
+  I->C@cast, \
+  J->C:CHAR%@cast, \
+  K->C@cast, \
+  L->C@cast, \
+  M->C@cast, \
+  N->C@cast, \
+  O->C@cast
+ACHAR*%, \
+  1, \
+  H->C@cast, \
+  I->C@cast, \
+  J->C:ACHAR*%@cast, \
+  K->C@cast, \
+  L->C@cast, \
+  M->C@cast, \
+  N->C@cast, \
+  O->C@cast
+ICHAR%, \
+  1, \
+  C->A:ICHAR%@cast
+IACHAR*%, \
+  1, \
+  C->A:IACHAR*%@cast
+INDEX, \
+  2, \
+  C->A:INDEX;;i_indx!INTRN_I4CINDEX!INTRN_I4CINDEXe
+LEN, \
+  1, \
+  C->A:LEN@char_length;;i_len!INTRN_I4CLEN!INTRN_I4CLENe
+LGE, \
+  2, \
+  C->B:LGE;;l_ge!INTRN_CLGE!INTRN_CLGEe
+LGT, \
+  2, \
+  C->B:LGT;;l_gt!INTRN_CLGT!INTRN_CLGTe
+LLE, \
+  2, \
+  C->B:LLE;;l_le!INTRN_CLLE!INTRN_CLLEe
+LLT, \
+  2, \
+  C->B:LLT;;l_lt!INTRN_CLLT!INTRN_CLLTe
+SIZEOF*%, \
+  1, \
+  ?->T:SIZEOF*%@sizeof
+LOC*%, \
+  1, \
+  ?->P:LOC*%@loc
+%LOC*%, \
+  1, \
+  ?->P:%LOC*%@loc
+%VAL*%, \
+  1, \
+  ?->T:%VAL*%@val
+%REF*%, \
+  1, \
+  ?->P:%REF*%@ref
+%DESCR*%, \
+  1, \
+  ?->P:%DESCR*%@descr
+ALLOCA*%, \
+  1, \
+  H->P;alloca;!INTRINSIC_INVALID, \
+  I->P;alloca;!INTRINSIC_INVALID, \
+  J->P;alloca;!INTRINSIC_INVALID, \
+  K->P:ALLOCA*%;alloca;!INTRINSIC_INVALID
+MALLOC*%, \
+  1, \
+  H->P;malloc;!INTRINSIC_INVALID, \
+  I->P;malloc;!INTRINSIC_INVALID, \
+  J->P;malloc;!INTRINSIC_INVALID, \
+  K->P:MALLOC*%;malloc;!INTRINSIC_INVALID
+FREE*%, \
+  1, \
+  J->V;free;!INTRINSIC_INVALID, \
+  K->V;free;!INTRINSIC_INVALID, \
+  P->V:FREE*%;free;!INTRINSIC_INVALID
+MVBITS*, \
+  5, \
+  H->V;;mvbits_byte!INTRN_I1MVBITS, \
+  I->V;;mvbits_short!INTRN_I2MVBITS, \
+  J->V:MVBITS*;;mvbits_long!INTRN_I4MVBITS, \
+  K->V;;mvbits_long_long!INTRN_I8MVBITS
+CIS*, \
+  1, \
+  R->X:CIS*;__rcis;r_cis!INTRN_F4CIS!INTRN_F4CISe, \
+  D->Y:DCIS*;__dcis;d_cis!INTRN_F8CIS!INTRN_F8CISe, \
+  Q->Z:QCIS*;__qcis;q_cis!INTRN_FQCIS!INTRN_FQCISe
+DATE*, \
+  1, \
+  ?->V;;date_vms!INTRN_MDATE
+IDATE*, \
+  3, \
+  H->V;;idate_byte!INTRN_I1DATE, \
+  I->V;;idate_short!INTRN_I2DATE, \
+  J->V;;idate_long!INTRN_I4DATE, \
+  K->V;;idate_long_long!INTRN_I8DATE
+EXIT*, \
+  0-1, \
+  V;;exit_noargs!INTRN_VEXIT, \
+  H->V;;exit_byte!INTRN_I1EXIT, \
+  I->V;;exit_short!INTRN_I2EXIT, \
+  J->V;;exit_long!INTRN_I4EXIT, \
+  K->V;;exit_long_long!INTRN_I8EXIT
+SECNDS*, \
+  1, \
+  R;;secnds_vms!INTRN_F4SECNDS, \
+  D;;dsecnds_vms!INTRN_F8SECNDS
+TIME*, \
+  1, \
+  ?->V;;time_vms!INTRN_TIME
+ERRSNS*, \
+  5, \
+  H->V;;errsns_byte!INTRN_I1ERRSNS, \
+  I->V;;errsns_short!INTRN_I2ERRSNS, \
+  J->V;;errsns_long!INTRN_I4ERRSNS, \
+  K->V;;errsns_long_long!INTRN_I8ERRSNS
+INTRN_DIVFLOOR*%, \
+  2, \
+  J:INTRN_I4DIVFLOOR*%!INTRN_I4DIVFLOOR, \
+  K:INTRN_I8DIVFLOOR*%!INTRN_I8DIVFLOOR
+INTRN_DIVCEIL*%, \
+  2, \
+  J:INTRN_I4DIVCEIL*%!INTRN_I4DIVCEIL, \
+  K:INTRN_I8DIVCEIL*%!INTRN_I8DIVCEIL
+INTRN_MODFLOOR*%, \
+  2, \
+  J:INTRN_I4MODFLOOR*%!INTRN_I4MODFLOOR, \
+  K:INTRN_I8MODFLOOR*%!INTRN_I8MODFLOOR
+INTRN_MODCEIL*%, \
+  2, \
+  J:INTRN_I4MODCEIL*%!INTRN_I4MODCEIL, \
+  K:INTRN_I8MODCEIL*%!INTRN_I8MODCEIL
+INTRN_SETSTACKPOINTER*%, \
+  1, \
+  J->P:INTRN_U4I4SETSTACKPOINTER*%!INTRN_U4I4SETSTACKPOINTER, \
+  K->P:INTRN_U8I8SETSTACKPOINTER*%!INTRN_U8I8SETSTACKPOINTER
+INTRN_U4READSTACKPOINTER*%, \
+  0, \
+  V->P:INTRN_U4READSTACKPOINTER*%!INTRN_U4READSTACKPOINTER
+INTRN_U8READSTACKPOINTER*%, \
+  0, \
+  V->P:INTRN_U8READSTACKPOINTER*%!INTRN_U8READSTACKPOINTER
+WHIRL_OPR_CEIL*%, \
+  1, \
+  R->J:OPC_I4F4CEIL*%+OPC_I4F4CEIL, \
+  D->J:OPC_I4F8CEIL*%+OPC_I4F8CEIL, \
+  Q->J:OPC_I4FQCEIL*%+OPC_I4FQCEIL, \
+  R->K:OPC_I8F4CEIL*%+OPC_I8F4CEIL, \
+  D->K:OPC_I8F8CEIL*%+OPC_I8F8CEIL, \
+  Q->K:OPC_I8FQCEIL*%+OPC_I8FQCEIL
+WHIRL_OPR_FLOOR*%, \
+  1, \
+  R->J:OPC_I4F4FLOOR*%+OPC_I4F4FLOOR, \
+  D->J:OPC_I4F8FLOOR*%+OPC_I4F8FLOOR, \
+  Q->J:OPC_I4FQFLOOR*%+OPC_I4FQFLOOR, \
+  R->K:OPC_I8F4FLOOR*%+OPC_I8F4FLOOR, \
+  D->K:OPC_I8F8FLOOR*%+OPC_I8F8FLOOR, \
+  Q->K:OPC_I8FQFLOOR*%+OPC_I8FQFLOOR
+ADD_AND_FETCH*%, \
+  2, \
+  J:ADD_AND_FETCH_I4*%!INTRN_ADD_AND_FETCH_I4, \
+  K:ADD_AND_FETCH_I8*%!INTRN_ADD_AND_FETCH_I8, \
+  R:ADD_AND_FETCH_F4*%!INTRN_ADD_AND_FETCH_F4, \
+  D:ADD_AND_FETCH_F8*%!INTRN_ADD_AND_FETCH_F8
+SUB_AND_FETCH*%, \
+  2, \
+  J:SUB_AND_FETCH_I4*%!INTRN_SUB_AND_FETCH_I4, \
+  K:SUB_AND_FETCH_I8*%!INTRN_SUB_AND_FETCH_I8, \
+  R:SUB_AND_FETCH_F4*%!INTRN_SUB_AND_FETCH_F4, \
+  D:SUB_AND_FETCH_F8*%!INTRN_SUB_AND_FETCH_F8
+OR_AND_FETCH*%, \
+  2, \
+  J:OR_AND_FETCH_I4*%!INTRN_OR_AND_FETCH_I4, \
+  K:OR_AND_FETCH_I8*%!INTRN_OR_AND_FETCH_I8, \
+  R:OR_AND_FETCH_F4*%!INTRN_OR_AND_FETCH_F4, \
+  D:OR_AND_FETCH_F8*%!INTRN_OR_AND_FETCH_F8
+XOR_AND_FETCH*%, \
+  2, \
+  J:XOR_AND_FETCH_I4*%!INTRN_XOR_AND_FETCH_I4, \
+  K:XOR_AND_FETCH_I8*%!INTRN_XOR_AND_FETCH_I8, \
+  R:XOR_AND_FETCH_F4*%!INTRN_XOR_AND_FETCH_F4, \
+  D:XOR_AND_FETCH_F8*%!INTRN_XOR_AND_FETCH_F8
+AND_AND_FETCH*%, \
+  2, \
+  J:AND_AND_FETCH_I4*%!INTRN_AND_AND_FETCH_I4, \
+  K:AND_AND_FETCH_I8*%!INTRN_AND_AND_FETCH_I8, \
+  R:AND_AND_FETCH_F4*%!INTRN_AND_AND_FETCH_F4, \
+  D:AND_AND_FETCH_F8*%!INTRN_AND_AND_FETCH_F8
+NAND_AND_FETCH*%, \
+  2, \
+  J:NAND_AND_FETCH_I4*%!INTRN_NAND_AND_FETCH_I4, \
+  K:NAND_AND_FETCH_I8*%!INTRN_NAND_AND_FETCH_I8, \
+  R:NAND_AND_FETCH_F4*%!INTRN_NAND_AND_FETCH_F4, \
+  D:NAND_AND_FETCH_F8*%!INTRN_NAND_AND_FETCH_F8
+MPY_AND_FETCH*%, \
+  2, \
+  J:MPY_AND_FETCH_I4*%!INTRN_MPY_AND_FETCH_I4, \
+  K:MPY_AND_FETCH_I8*%!INTRN_MPY_AND_FETCH_I8, \
+  R:MPY_AND_FETCH_F4*%!INTRN_MPY_AND_FETCH_F4, \
+  D:MPY_AND_FETCH_F8*%!INTRN_MPY_AND_FETCH_F8
+MIN_AND_FETCH*%, \
+  2, \
+  J:MIN_AND_FETCH_I4*%!INTRN_MIN_AND_FETCH_I4, \
+  K:MIN_AND_FETCH_I8*%!INTRN_MIN_AND_FETCH_I8, \
+  R:MIN_AND_FETCH_F4*%!INTRN_MIN_AND_FETCH_F4, \
+  D:MIN_AND_FETCH_F8*%!INTRN_MIN_AND_FETCH_F8
+MAX_AND_FETCH*%, \
+  2, \
+  J:MAX_AND_FETCH_I4*%!INTRN_MAX_AND_FETCH_I4, \
+  K:MAX_AND_FETCH_I8*%!INTRN_MAX_AND_FETCH_I8, \
+  R:MAX_AND_FETCH_F4*%!INTRN_MAX_AND_FETCH_F4, \
+  D:MAX_AND_FETCH_F8*%!INTRN_MAX_AND_FETCH_F8
+FETCH_AND_ADD*%, \
+  2, \
+  J:FETCH_AND_ADD_I4*%!INTRN_FETCH_AND_ADD_I4, \
+  K:FETCH_AND_ADD_I8*%!INTRN_FETCH_AND_ADD_I8, \
+  R:FETCH_AND_ADD_F4*%!INTRN_FETCH_AND_ADD_F4, \
+  D:FETCH_AND_ADD_F8*%!INTRN_FETCH_AND_ADD_F8
+FETCH_AND_SUB*%, \
+  2, \
+  J:FETCH_AND_SUB_I4*%!INTRN_FETCH_AND_SUB_I4, \
+  K:FETCH_AND_SUB_I8*%!INTRN_FETCH_AND_SUB_I8, \
+  R:FETCH_AND_SUB_F4*%!INTRN_FETCH_AND_SUB_F4, \
+  D:FETCH_AND_SUB_F8*%!INTRN_FETCH_AND_SUB_F8
+FETCH_AND_OR*%, \
+  2, \
+  J:FETCH_AND_OR_I4*%!INTRN_FETCH_AND_OR_I4, \
+  K:FETCH_AND_OR_I8*%!INTRN_FETCH_AND_OR_I8, \
+  R:FETCH_AND_OR_F4*%!INTRN_FETCH_AND_OR_F4, \
+  D:FETCH_AND_OR_F8*%!INTRN_FETCH_AND_OR_F8
+FETCH_AND_XOR*%, \
+  2, \
+  J:FETCH_AND_XOR_I4*%!INTRN_FETCH_AND_XOR_I4, \
+  K:FETCH_AND_XOR_I8*%!INTRN_FETCH_AND_XOR_I8, \
+  R:FETCH_AND_XOR_F4*%!INTRN_FETCH_AND_XOR_F4, \
+  D:FETCH_AND_XOR_F8*%!INTRN_FETCH_AND_XOR_F8
+FETCH_AND_AND*%, \
+  2, \
+  J:FETCH_AND_AND_I4*%!INTRN_FETCH_AND_AND_I4, \
+  K:FETCH_AND_AND_I8*%!INTRN_FETCH_AND_AND_I8, \
+  R:FETCH_AND_AND_F4*%!INTRN_FETCH_AND_AND_F4, \
+  D:FETCH_AND_AND_F8*%!INTRN_FETCH_AND_AND_F8
+FETCH_AND_NAND*%, \
+  2, \
+  J:FETCH_AND_NAND_I4*%!INTRN_FETCH_AND_NAND_I4, \
+  K:FETCH_AND_NAND_I8*%!INTRN_FETCH_AND_NAND_I8, \
+  R:FETCH_AND_NAND_F4*%!INTRN_FETCH_AND_NAND_F4, \
+  D:FETCH_AND_NAND_F8*%!INTRN_FETCH_AND_NAND_F8
+FETCH_AND_MPY*%, \
+  2, \
+  J:FETCH_AND_MPY_I4*%!INTRN_FETCH_AND_MPY_I4, \
+  K:FETCH_AND_MPY_I8*%!INTRN_FETCH_AND_MPY_I8, \
+  R:FETCH_AND_MPY_F4*%!INTRN_FETCH_AND_MPY_F4, \
+  D:FETCH_AND_MPY_F8*%!INTRN_FETCH_AND_MPY_F8
+FETCH_AND_MIN*%, \
+  2, \
+  J:FETCH_AND_MIN_I4*%!INTRN_FETCH_AND_MIN_I4, \
+  K:FETCH_AND_MIN_I8*%!INTRN_FETCH_AND_MIN_I8, \
+  R:FETCH_AND_MIN_F4*%!INTRN_FETCH_AND_MIN_F4, \
+  D:FETCH_AND_MIN_F8*%!INTRN_FETCH_AND_MIN_F8
+FETCH_AND_MAX*%, \
+  2, \
+  J:FETCH_AND_MAX_I4*%!INTRN_FETCH_AND_MAX_I4, \
+  K:FETCH_AND_MAX_I8*%!INTRN_FETCH_AND_MAX_I8, \
+  R:FETCH_AND_MAX_F4*%!INTRN_FETCH_AND_MAX_F4, \
+  D:FETCH_AND_MAX_F8*%!INTRN_FETCH_AND_MAX_F8
+LOCK_TEST_AND_SET*%, \
+  2, \
+  J:LOCK_TEST_AND_SET_I4*%!INTRN_LOCK_TEST_AND_SET_I4, \
+  K:LOCK_TEST_AND_SET_I8*%!INTRN_LOCK_TEST_AND_SET_I8
+LOCK_RELEASE*%, \
+  1, \
+  J->V:LOCK_RELEASE_I4*%!INTRN_LOCK_RELEASE_I4, \
+  K->V:LOCK_RELEASE_I8*%!INTRN_LOCK_RELEASE_I8
+COMPARE_AND_SWAP*%, \
+  3, \
+  J->N:COMPARE_AND_SWAP_I4*%!INTRN_COMPARE_AND_SWAP_I4, \
+  K->O:COMPARE_AND_SWAP_I8*%!INTRN_COMPARE_AND_SWAP_I8
+SYNCHRONIZE*%, \
+  0, \
+  V:SYNCHRONIZE*%!INTRN_SYNCHRONIZE
+GET_RETURN_ADDRESS*%, \
+  0, \
+  V->P:GET_RETURN_ADDRESS*%!INTRN_RETURN_ADDRESS
+DSM_NUMTHREADS*%, \
+  2, \
+  ?->K:DSM_NUMTHREADS*%;dsm_numthreads;!INTRN_DSM_NUMTHREADS
+DSM_CHUNKSIZE*%, \
+  2, \
+  ?->K:DSM_CHUNKSIZE*%;dsm_chunksize;!INTRN_DSM_CHUNKSIZE
+DSM_THIS_CHUNKSIZE*%, \
+  3, \
+  ?->K:DSM_THIS_CHUNKSIZE*%;dsm_this_chunksize;!INTRN_DSM_THIS_CHUNKSIZE
+DSM_REM_CHUNKSIZE*%, \
+  3, \
+  ?->K:DSM_REM_CHUNKSIZE*%;dsm_rem_chunksize;!INTRN_DSM_REM_CHUNKSIZE
+DSM_NUMCHUNKS*%, \
+  2, \
+  ?->K:DSM_NUMCHUNKS*%;dsm_numchunks;!INTRN_DSM_NUMCHUNKS
+DSM_THIS_THREADNUM*%, \
+  3, \
+  ?->K:DSM_THIS_THREADNUM*%;dsm_this_threadnum;!INTRN_DSM_THIS_THREADNUM
+DSM_DISTRIBUTION_BLOCK*%, \
+  2, \
+  ?->K:DSM_DISTRIBUTION_BLOCK*%;dsm_distribution_block;!INTRN_DSM_DISTRIBUTION_BLOCK
+DSM_DISTRIBUTION_STAR*%, \
+  2, \
+  ?->K:DSM_DISTRIBUTION_STAR*%;dsm_distribution_star;!INTRN_DSM_DISTRIBUTION_STAR
+DSM_ISRESHAPED*%, \
+  1, \
+  ?->K:DSM_ISRESHAPED*%;dsm_isreshaped;!INTRN_DSM_ISRESHAPED
+DSM_ISDISTRIBUTED*%, \
+  1, \
+  ?->K:DSM_ISDISTRIBUTED*%;dsm_isdistributed;!INTRN_DSM_ISDISTRIBUTED
+DSM_THIS_STARTINGINDEX*%, \
+  3, \
+  ?->K:DSM_THIS_STARTINGINDEX*%;dsm_this_startingindex;!INTRN_DSM_THIS_STARTINDEX
+DSM_DISTRIBUTION_CYCLIC*%, \
+  2, \
+  ?->K:DSM_DISTRIBUTION_CYCLIC*%;dsm_distribution_cyclic;!INTRN_DSM_DISTRIBUTION_CYCLIC
+LOCK_ACQUIRE*%, \
+  1, \
+  J->V:LOCK_ACQUIRE_I4*%!INTRN_LOCK_ACQUIRE_I4, \
+  K->V:LOCK_ACQUIRE_I8*%!INTRN_LOCK_ACQUIRE_I8
+OMP_TEST_LOCK*%, \
+  1, \
+  ?->N:OMP_TEST_LOCK*%;;omp_test_lock_!INTRN_OMP_TEST_LOCK
+OMP_GET_NUM_THREADS*%, \
+  0, \
+  ?->J:OMP_GET_NUM_THREADS*%;omp_get_num_threads_;!INTRN_OMP_GET_NUM_THREADS
+OMP_GET_MAX_THREADS*%, \
+  0, \
+  ?->J:OMP_GET_MAX_THREADS*%;omp_get_max_threads_;!INTRN_OMP_GET_MAX_THREADS
+OMP_GET_THREAD_NUM*%, \
+  0, \
+  ?->J:OMP_GET_THREAD_NUM*%;omp_get_thread_num_;!INTRN_OMP_GET_THREAD_NUM
+OMP_GET_NUM_PROCS*%, \
+  0, \
+  ?->J:OMP_GET_NUM_PROCS*%;omp_get_num_procs_;!INTRN_OMP_GET_NUM_PROCS
+OMP_IN_PARALLEL*%, \
+  0, \
+  ?->N:OMP_IN_PARALLEL*%;omp_in_parallel_;!INTRN_OMP_IN_PARALLEL
+OMP_GET_DYNAMIC*%, \
+  0, \
+  ?->N:OMP_GET_DYNAMIC*%;omp_get_dynamic_;!INTRN_OMP_GET_DYNAMIC
+OMP_GET_NESTED*%, \
+  0, \
+  ?->N:OMP_GET_NESTED*%;omp_get_nested_;!INTRN_OMP_GET_NESTED

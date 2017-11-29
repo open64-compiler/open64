@@ -1,0 +1,901 @@
+'\"  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+'\"
+'\"  This program is free software; you can redistribute it and/or modify it
+'\"  under the terms of version 2 of the GNU General Public License as
+'\"  published by the Free Software Foundation.
+'\"
+'\"  This program is distributed in the hope that it would be useful, but
+'\"  WITHOUT ANY WARRANTY; without even the implied warranty of
+'\"  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+'\"
+'\"  Further, this software is distributed without any warranty that it is
+'\"  free of the rightful claim of any third person regarding infringement 
+'\"  or the like.  Any license provided herein, whether implied or 
+'\"  otherwise, applies only to this software file.  Patent licenses, if 
+'\"  any, provided herein do not apply to combinations of this program with 
+'\"  other software, or any other product whatsoever.  
+'\"
+'\"  You should have received a copy of the GNU General Public License along
+'\"  with this program; if not, write the Free Software Foundation, Inc., 59
+'\"  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+'\"
+'\"  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+'\"  Mountain View, CA 94043, or:
+'\"
+'\"  http://www.sgi.com
+'\"
+'\"  For further information regarding this notice, see:
+'\"
+'\"  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+'\"
+'\"
+'\"									'\"
+'\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\" '\"
+'\"	Registers possibly set via ?roff -r option:
+'\"	F register set to 1 on invocation means NewCenturySchoolBook font
+'\"	P register set to 1 on invocation means small manual (7" x 9")
+'\"	N register set to 1 on invocation means no section/subsection numbers
+'\"	Y register set to 1 on invocation prints RELEASE footer 
+'\"	y register set to 1 on invocation prints DRAFT footer 
+'\"
+'\" Test for ditroff or old troff (old troff has no Courier font):
+.ft C
+.nr cA \n(.f
+.ft R
+.ie \n(.f=\n(cA .nr cA 0  \" Courier not available
+.el .nr cA 1  \" Courier is available
+'\"####################### START STRING DEFINITIONS ############################
+.ds x "\s-1\%CRAY\ X-MP\s+1
+.ds 2 "\s-1\%CRAY-2\s+1
+.ds e "\s-1\%CRAY\ X-MP\ EA\s+1
+.ds y "\s-1\%CRAY\ Y-MP\s+1
+.ds ys "\s-1\%CRAY\ Y-MP\ EL\s+1
+.ds c9 "\s-1\%CRAY\ C90\s+1
+.ds m "\%\s-1CRAY\ T3D\s+1
+.ds YE "\s-1\%CRAY\ Y-MP/IOS-E\s+1
+.ds Ie "\s-1\%IOS-E\s+1
+.ds a "\\v'-2u*\\n(.sp/3u',\\v'2u*\\n(.sp/3u'
+.ds Cr "Cray Research, Inc.
+.ds Ca "\s-1CRI\s+1
+.ds u "\s-1UNICOS\s+1
+.ds UR "\*u\ \s-18.0\s+1
+'\"
+'\" NEW 8.0 STRINGS:
+.ds UM \%\s-1UNICOS\s+1\ \s-1MAX\s+1
+.ds MX \%\s-1MAX\s+1
+.ds EL \%\s-1EL\s+1\ series
+.ds EO \%\s-1EL\s+1\ \s-1IOS\s+1
+.ds MP Cray \s-1MPP\s+1 systems
+.ds ID \s-1IOS\s+1 models B, C, or D
+.ds IE \s-1IOS\s+1 model\ E
+.ds YM \%\s-1CRAY\s+1\ \s-1Y-MP\s+1 systems
+'\"
+'\"	Man page section cross-reference strings:
+.ds 11 "\s-1(1)\s+1
+.ds 1b "\s-1(1B)\s+1
+.ds 12 "\s-1(2)\s+1
+.ds 3 "\s-1(3)\s+1
+.ds 4 "\s-1(4)\s+1
+.ds 4p "\s-1(4P)\s+1
+.ds 5 "\s-1(5)\s+1
+.ds 7 "\s-1(7)\s+1
+.ds 8 "\s-1(8)\s+1
+'\"
+'	\" Manual title strings:
+.ds Ba "\fI\*u Basic Administration Guide\fR
+.ds Ui "\fI\*u Installation Guide\fR
+.ds Cc "\fI\*u User Commands Reference Manual\fR
+.ds Cm "\fI\*u Administrator Commands Reference Manual\fR
+.ds Cs "\fI\*u System Calls Reference Manual\fR
+.ds l1 "\fI\*u Math and Scientific Library Reference Manual\fR
+.ds l2 "\fI\*u Macros and Opdefs Reference Manual for \%\s-1CRAY\s+1-2 Computer Systems\fR
+.ds l4 "\fI\*u Internal Library Reference Manual\fR
+.ds l6 "\fI\*u C Library Reference Manual\fR
+.ds l7 "\fI\*u Specialized Libraries Reference Manual\fR
+.ds l9 "\fI\*u Fortran Library Reference Manual\fR
+.ds Cp "\fI\*u File Formats and Special Files Reference Manual\fR
+.ds Cx "\fI\*u System Administration\fR
+.ds Ft "\fI\s-1CF77\s+1 Compiling System, Volume 1:  Fortran Reference Manual\fR
+.ds Ss "\fI\*u Source Code Control System (\s-1SCCS\s+1) User's Guide\fR
+'\" Ag is for HP printer problem with Courier accent grave (`) character:
+.ds Ag "\`
+'\"######################## END STRING DEFINITIONS #############################
+'\" NOTE:  "\&" in Z string required to prevent psdit errors (8-27-91):
+.ds Z "\&\!\p 
+.nr nQ 0 1  \" initialize counter for \*n string (see also .CR macro)
+.ds n \\n+(nQ
+'\"
+'\" STRINGS AND FLAGS FOR INTERNAL USE:
+.nr mD 0.2i  \" Margin Distance--distance into the margin change bars are put.
+.nr vA 0.6v  \" Vertical Adjustment to length of change bars
+.nr vO 1.3v  \" vertical offset for change bars (amount to move UP)
+.nr mL 0  \" initialize manual title string width register
+.nr cL 0  \" initialize chapter title string width register
+.nr 2F 0  \" initialize 2-column flag to false.
+'\"-----------------------------------------------------------------------------
+.de IZ  \" INTERNAL:  Initialization macro; executed before text file is read.
+.nr bD 0  \" set Break Diversion flag to false
+.nr pP 0  \" initialize page-counter for new sections to 0.
+.nr nS 0  \" init. New Section Flag to true
+.nr nH 1  \" init. No Header Flag to true
+.if \\nY \{.ds Cf Cray Research, Inc.
+.	rm CF \}
+.if \\ny \{.ie !\\nQ .ds Cf \\n(mo-\\n(dy-\\n(yr  REVIEW DRAFT - CRI PRIVATE
+.	el  .ds Cf CRI PRIVATE DRAFT
+.	rm CF \}
+.ie t \{.ie \\n(cA \{.ds C \\&\\fC
+.		ds F \\&\\fC
+.		ds Cb \\&\\f(CB
+.		ds Co \\&\\f(CO
+'		\}
+.	el \{.ds C \\fB
+.		ds F \\fB
+.		ds Cb \\fB
+.		ds Co \\fB
+'		\}
+.	ds V \\&\\fI
+.	ds I \\*V
+.	ds z "\&\!\p 
+.	ie !\\nP \{.nr LL 6.85i  \" Default line length
+.		nr FM 1.2i  \" Default footer margine
+.		nr BM \\n(FMu/2u
+.		nr VS 12  \" Default leading (interline spacing)
+.		nr PO 1.0i  \" Default Page Offset (for odd-numbered pages)
+'	\}  \" End case for normal-sized manual, start else for 7" x 9" manual:
+.	el \{.nr LL 5.675i  \" Default line length
+.		nr FM 3.25i
+.		nr BM 2.63i
+.		nr VS 11  \" Default leading (interline spacing)
+.		nr PO 1.35i  \" Default Page Offset (for odd-numbered pages)
+'	\}  \" End case for small-sized manual (7" x 9")
+.	nr LT \\n(LLu
+'\"  HM defined here only for 1st page (w/.ST).  At end of .ST, it's redefined:
+.	nr HM 1.4i
+.	ds Bu \s-1\(bu\s+1
+.	vs \\n(VS
+.	nr PD 0.12i  \" Default inter-paragraph spacing
+.	nr PL 11i
+.	wh 0 NP
+.	wh -17i MC
+.	wh -15.5i 2%
+.	wh -\\n(FMu FO
+.	wh -\\n(BMu BT
+'	\}
+.el \{.ds C \\fB
+.	ds F \\fB
+.	ds V \\fI
+.	ds I \\*V
+.	fp 5 C  \" makes courier work in nroff
+.	fp 6 CB  \" makes courier bold work in nroff
+.	nr LL 77n
+.	nr LT \\n(LLu
+.	nr nL \\n(LLu
+.	nr PO 4n
+.	nr FM 0
+.	nr HM 6v
+.	ds Bu *
+.	nr VS 12
+.	vs \\n(VS
+.	nr PD 26u
+.	nr PL 15i
+.	rn M0 MS
+.	rn M1 M#
+.	rn M2 ME
+.	rm PT NP FO BT HX BS BE CD 2S 2E 2% MC
+'	\}
+.pl \\n(PLu
+.ie !\\nP .nr PS 11  \" Default point size for normal-sized manual
+.el .nr PS 10  \" Default point size for 7" x 9" manual
+.ps \\n(PSp
+.ll \\n(LLu
+.nr SI 0  \" Standard Indent for 2-col message format...
+'in \\n(SIu
+.nh
+.na
+.ZN
+'\" following are for .TL, .DL, .BL, & .NL:
+.rr i0 i1 b1 l1 Z1
+..
+.de PT  \" INTERNAL:  Page Titles, called from .NP
+'sp |\\n(HMu/2u
+.lt \\n(LLu
+.pc %
+.ps 9p
+.ie o .tl \\*(O1
+.el .tl \\*(E2
+.ev 1
+.sp 5p
+.po \\n(POu
+.ie t \{.sp -1.2
+\\s7\l'\\n(LLu'\\s0
+'	br \}
+.el \l'\\n(LLu~'
+.sp
+.ev
+.lt \\n(.lu
+.ll \\n(LLu
+..
+.de NP  \" INTERNAL:  New Page macro
+.nr iH 0  \" zero first-page flag for 2-column indexes (see .2S).
+.if t \{.ie e \{.ie !\\nP .nr PO 0.65i  \" Page offset for even page, reg. manual
+.		el .nr PO 1.36i \}  \" Page offset for even page, 7" x 9" manual
+.	el \{.ie !\\nP .nr PO 1.0i  \" Page offset for odd page, reg. manual
+.	    el .nr PO 1.35i \} \}  \" Page offset for odd page, 7" x 9" manual
+.po \\n(POu
+.nr eF \\n(.f
+.nr eS \\n(.s
+.ft 1
+.ie !\\n(nH \{.PT
+'	sp |\\n(HMu \}
+.el \{'sp |\\n(HMu/2u
+.	rr nH  \}
+.ps \\n(eS
+'in \\n(eKu  \" eK set in .FO to indent existing there & reinstated here
+.ft \\n(eF
+.rr eF eS eK
+.os
+.ns
+.if \\n(aF .mk bS
+.if \\n(2F \{.ch FO -15.5i
+.		nr iS \\n(HM
+.		nr 1F 1  \" set col-1 flag true
+.		nr SI 0  \" in case it's reset in .MS
+'		in 0
+.		ll \\n(nLu
+.		ch 2% -\\n(FMu  \}
+..
+.de FO  \" INTERNAL:  FOoter macro
+.if \\n(aF \{.nr bF \\n(.h  \" This ends change bars where *text* ends on page
+.	CD
+'	\}
+.nr eK \\n(.i  \" DON'T Remove eK at end, .NP uses it to reinstate indent.
+.if \\n(nH \&\c
+'bp
+..
+.de BT  \" INTERNAL:  Bottom Title macro (does footer)
+.nr eF \\n(.f
+.nr eS \\n(.s
+.ft 1
+.ie !\\nP .ps 9  \" Footer point size for reg. manual
+.el .ps 8  \" Footer point size for 7" x 9" manual
+.lt \\n(LLu
+.ie o .tl \fR\\*(Mn\fR\\*(Cf\\*(Sn%
+.el .tl \\*(Sn%\fR\\*(Cf\fR\\*(Mn
+.ft \\n(eF
+.ps \\n(eS
+.rr eF eS
+..
+.de TS  \" EXTERNAL:  Table Start macro
+.nr eP \\n(.s
+.br
+.ul 0
+.ti \\n(.iu
+.SP
+..
+.de TE  \" EXTERNAL:  Table End macro
+.SQ
+.ps \\n(eP
+.rr eP
+..
+.de MN  \" EXTERNAL:  Manual Number; Puts pub # in a string for footer
+.ds Mn \\$1
+..
+.de CN  \" EXTERNAL:  Chapter Number (mostly for release notices)
+.ds Sn "\\$1\^\-\^
+.br
+\s+1\fBI am a blank page \- recycle me.\fR\s-1
+.pn 1
+.bp
+..
+.de CF  \" EXTERNAL:  Center Footer; gets string for center of footer
+.ds Cf \\$1
+..
+.de MT  \" EXTERNAL:  Manual Title; gets manual title string for headers
+.nr mL \\w\\$1u
+.nr sU \\n(LLu-\\n(mLu
+.if \\n(sU<0 .ab #@ FORMAT ERROR, source file line \\n(.c: Manual title too long
+.ds Mt \\$1
+.rr sU
+..
+.de HD  \" INTERNAL:  Header Definitions; called in .ST, to set up headers
+.ie (\\n(mLu+\\n(cLu)>\\n(LLu \{.ds O1 \fR\\*(Ct  \\*(No
+.			ds E2 \fI\\*(Mt\fR
+'			\}
+.el \{.ds O1 \fI\\*(Mt\fR\fR\\*(Ct  \\*(No
+.	ds E2 \fR\\*(Ct  \\*(No\fI\\*(Mt\fR
+'	\}
+..
+.de SF  \" EXTERNAL:  Section Front; section title w/o sect. numbering.
+.nr N 1  \" Flag to turn off section numbering.
+.ST "\\$1"
+..
+.de ST	\" EXTERNAL:  Section Title macro
+'\"	1 argument: $1 - String for section title
+.fl
+.nr s0 +1  \" Increment section number
+.nr tC \\n(s0
+.af tC A  \" set count and format for reg. used in TOC generation (.GA macro)
+.if \\n(nlu>(\\n(HMu/2u) \{.nr nH 1  \" No Header flag so .NP doesn't do header
+\&\c
+'			bp \}
+.ie \\nN .ds No "
+.el .ds No "[\\n(s0]
+'in 0
+.ll \\n(LLu
+.ft R
+.ad r
+.ns
+.ps \\n(PS-1 \" do this so \w[$1] is correct.
+.br
+.if \\n(nlu>(\\n(HMu/2u) .sp -1v  \" absolute positioning doesn't work
+.nr cL \\w\\$1  \\*(Nou
+.ds Ct "\\$1
+.ad r
+'in 0
+.ll \\n(LLu
+.ps 24p
+.vs 26p
+\&\c
+.sp -0.42i
+\\$1  \\*(No
+.fl
+.vs \\n(VS
+.ps \\n(PS
+.ll \\n(LLu
+'in 0
+.ie t \{'\" Start drawing Thick Line
+.	ps 36
+\l'\\n(LLu'
+.	sp -0.89v
+\l'\\n(LLu'
+.	sp -0.89v
+\l'\\n(LLu'
+.	sp -0.89v
+\l'\\n(LLu'
+.	ps \\n(PS
+.	fl  \}  \" End drawing Thick Line (troff)
+.el \l'\\n(LLu#'
+'in \\n(SIu
+.ad l
+.fl
+.ie !\\nP .sp |2.55i  \" start of text after .ST for reg. manual
+.el .sp |2.55i  \" start of text after .ST for 7" x 9" manual 
+.fl
+.ps \\n(PS
+.HD
+.nr HM 1.4i
+.nr tA \\n(.pu-\\n(HMu-\\n(FMu
+.rm No
+.rr nH
+..
+.de SP  \" EXTERNAL:  space macro that doesn't reset anything like .PP
+.sp \\n(PDu
+.if !"\\$1"" .KT \\$1
+..
+.de SQ  \" EXTERNAL:  half paragraph space macro that doesn't reset anything:
+.sp \\n(PDu/2u
+.if !"\\$1"" .KT \\$1
+..
+.de PP  \" EXTERNAL:  Paragraph macro
+'\" optional $1 is # output lines to keep together
+.fl
+.if !"\\$1"" .KT \\$1
+.ZN  \" Zeros .NL numbers & redefines list spacings (d0 & d1).
+.ie t .sp \\n(PDu
+.el .sp
+'in 0
+.CL
+.ft R
+..
+.de CS  \" EXTERNAL:  Code-segment Start
+.fl
+.if n .in +5n
+.sp 1v
+.nf
+.ft R
+.if t \{.ie \\n(cA .ft C  \" if hardcopy with ditroff change to Courier font
+.	el .cs R 22
+'	\}
+..
+.de CE  \" EXTERNAL:  Code-segment End
+.fl
+.if t \{.ie \\n(cA .ft R
+.	el .cs R
+'	\}
+.if t .sp \\n(PDu/2u \" followed by .PP, this makes 1v--same as in .CS
+.fi
+.if n .in -5n
+..
+.de FP	\" EXTERNAL:  First Paragraph macro
+.sp 3v
+.vs \\n(VS
+.fl
+..
+.de CH  \" EXTERNAL:  Column Headings;  $1 = indent, $2 = Head1, $3 = Head2
+.nr c1 1  \" set column heading flag to true.
+.fl
+.sp \\n(PDu
+'br  \" hep added this 11-30-89 to fix page-bottom space squishing
+.fl
+.ie "\\n(.z"" .if (\\n(nlu+\\n(FMu+4v)>\\n(.pu .sp \\n(.tu
+.el \\!.if (\\n(nlu+\\n(FMu+4v)>\\n(.pu .sp \\n(.tu
+.ds H1 \\$2
+.ds h1 \\$3
+.nr Z1 \\w\\$2u
+.nr z1 \\w\\$3u
+.ie (\\n(.lu-\\n(.iu-\\$1)<5n .nr hW \\$1u  \" if Col2 < 5n, then Col1 = $1u
+.el .nr hW \\$1n
+.ie n .nr iW 17u*\\n(hWu/24u
+.el .nr iW \\n(hW
+.ie \\n(iW<(\\n(Z1u+3n) .nr w1 \\n(Z1u+3n
+.el .nr w1 \\n(iW
+.rr hW iW
+.nr i0 \\n(.iu
+.nr i1 \\n(.iu+\\n(w1u
+.HC
+\\$2
+\\$3
+.fl
+.ie t \{.sp -0.73v
+.	nr eS \\n(.s
+.	HC
+\\s8\l'\\n(Z1u'
+\l'\\n(z1u'\\s0
+'	\}
+.el \{.HC
+\l'\\n(Z1u\-'
+\l'\\n(z1u\-'
+'	\}
+.fl
+.rr eS
+..
+.de HC  \" INTERNAL:  Headings Continue; repeats col headings at page tops
+'in 0
+.fi
+.it 1 T]
+.di Tt
+..
+.de LP  \" INTERNAL:  Adjusts .TL indents based on .TL argument 
+.ie !\\n(w1 \{.ie \\$1<56 .nr iI \\$1*\\n(.s*4u
+.	el .nr iI \\$1
+.	if n \{.nr iJ 17u*\\n(iIu/24u
+.		nr iI \\n(iJ
+.		rm iJ \}
+.	nr i1 \\n(iIu
+.	nr Z1 \\n(iI
+.	rm iI  \}
+.el .nr w1 0
+..
+.de HX  \" INTERNAL:  Called to repeat col heads at page top.
+.HC
+\\*(H1
+\\*(h1
+.sp -0.73v
+.fl
+.ie t \{.nr eS \\n(.s
+.	HC
+\\s8\l'\\n(Z1u'
+\l'\\n(z1u'\\s0
+'	\}
+.el \{.HC
+\l'\\n(Z1u'
+\l'\\n(z1u' \}
+.fl
+.sp \\n(d1u
+..
+.de TL  \" EXTERNAL:  Tagged List macro  (analogous to .TP -man macro)
+.fl
+.ds Lo "
+.if !"\\$1"" \{.ie "\\$1"d" .nr d1 \\n(PDu
+.		el \{.ie "\\$1"s" .nr d1 \\n(PDu/2u
+.			el .LP \\$1
+'			\} \}
+.if !"\\$2"" \{.ie "\\$2"d" .nr d1 \\n(PDu
+.		el \{.ie "\\$2"s" .nr d1 \\n(PDu/2u
+.			el .ds Lo "KT \\$2
+'			\} \}
+.if !"\\$3"" .ds Lo "KT \\$3
+'\"
+.if !\\n(i1 .nr i1 5n
+'\"
+.sp \\n(d1u
+'br
+.fl
+.\\*(Lo
+'\"	Top-of-page check to repeat column heads:
+.ie "\\n(.z"" .if \\n(nl<(\\n(HMu+0.71v) .if \\n(c1 .HX
+.el \\!.if \\n(nl<(\\n(HMu+0.71v) .if \\n(c1 .HX
+'in 0
+.fi
+.it 1 T]
+.di Tt
+..
+.de T]  \" INTERNAL:  Tag Finish macro (completes .TL & .HC)
+.br
+.di
+.ds Ss \&\\*(Tt\\
+'in \\n(i1u
+.ti \\n(i0u
+.ie (\w\\*(Ssu+3p)>(\\n(i1u-\\n(i0u) \{.fi
+\\*(Ss
+.	br \}
+.el \\*(Ss\h'|\\n(i1u-\\n(i0u'\c
+.rm Ss
+..
+.de BL  \" EXTERNAL:  Bullet macro (actually uses .TL)
+.ie !\\n(b1 \{.nr b1 1
+.	if \\n(d1u<\\n(PDu .SQ
+.	ds La "2.9 \\$1 \\$2
+'\}
+.el .ds La "\\$1 \\$2
+.TL \\*(La
+\\*(Bu
+.rm La
+..
+.de DL  \" EXTERNAL:  Dashed List macro
+.ie !\\n(b1 \{.nr b1 1
+.	if \\n(d1u<\\n(PDu .SQ
+.	ds La "2.9 \\$1 \\$2
+'\}
+.el .ds La "\\$1 \\$2
+.TL \\*(La
+\-
+.rm La
+..
+.de NL  \" EXTERNAL:  Numbered List macro
+'\"  $1 = counter character or "d" for double-spacing
+'\"  $2 = dist between tag & para;  $3 'number' value at which to start
+'\"  $4 = d for double-spacing
+.ie !"\\$2"" \{.ie "\\$1"d" .ds Ia \\$2 d
+.	el \{.ds Ia \\$2
+.		af l1 \\$1 \} \}
+.el .ie !"\\$1"" \{.ds Ia 3.3
+.	ie "\\$1"a" .af l1 \\$1
+.	el .ie "\\$1"A" \{.ds Ia 4
+.			af l1 \\$1 \}
+.	el .ie "\\$1"i" \{.ds Ia 4.5
+.			af l1 \\$1 \}
+.	el .ie "\\$1"I" \{.ds Ia 5
+.			af l1 \\$1 \}
+.	el .if "\\$1"d" .ds Ia 3.3 d
+.	if \\n(l1<0 .nr l1 0  \}
+.el .if "\\n(l1"0" .ds Ia 3.3
+.if !"\\$3"" .nr l1 \\$3-1  \" subtracting one allows for +1 later:
+.if "\\$4"d" .ds Ia "\\*(Ia d
+.TL \\*(Ia
+.nr l1 +1
+\\n(l1.
+.rm Ia
+..
+.de NN  \" EXTERNAL:  Resets .NL numbers for current indent level (iN=x)
+.nr l1 0
+.rm Ia
+..
+.de RN  \" EXTERNAL:  ReNumber macro; renumbers pages, figures, and tables.
+'\" $2 page number is taken care of by the calling shell script (troff -n opt.)
+.if !\\n(nS \{.if !\\$1 \{.nr fN \\$1-1 1  \" reset figure #'s
+.		if !\\$2 \{.if \\n%=1 .pn \\$2
+.			if !\\$3 \{.nr tN \\$3-1 1  \" reset table #'s
+.				if !\\$4 .nr s0 \\$4-1  \" reset sect. #'s
+'	\} \} \} \}
+.if !\\$5\\g(s0 \{.af s0 \\$5  \" set format of section numbers, if new
+.	nr s0 \\$4-1 \}  \" if format changes, then reset sec. #'s also.
+..
+.de SN  \" EXTERNAL:  Sequential Numbering macro (goes between sections)
+.ie e .nr pA 1
+.el \{.ie \\n(nl<(\\n(HMu+0.71v) .nr pA 0
+.	el .nr pA 2 \}
+.nr nS 1  \" set New Section flag to true
+.nr nH 1  \" set No Header flag to true (checked & reset in .NP)
+.nr pP \\n%+\\n(pA
+.pn \\n(pP    \" set page # for cases of more than one section in one file.
+.na
+..
+.de CL  \" INTERNAL:  CLear macro; clears various flags & strings
+.rr b0 b1 c1 i0 i1 w1 Z1
+.rm H1 h1 z1
+.fi
+..
+'\"			BEGIN TWO-COLUMN MACROS:
+.de 2S  \" EXTERNAL:  Start 2-Column format:
+.rn 2S 2s
+.sp 1v
+.if \\n(.tu<6.5v .sp \\n(.tu
+.mk iS
+.nr sF 1
+.nr 2F 1 \" set 2-column Flag to true
+.nr 1F 1 \" set Column-1 flag to true
+.ch FO -15i
+.ch 2% -\\n(FMu
+.nr F2 \\n(.f   \"Save existing text properties:
+.nr I2 \\n(SI
+.nr V2 \\n(VS
+.nr P2 \\n(PS
+.nr SI 0  \" must be reset for .TL to work in 2-col format.
+'in \\n(SIu
+.ie \\nF .nr PS 9  \" Use 9 pt. for NewCenturySchoolBook font
+.el .nr PS 10  # Use bigger point size for the small default Times font
+.ps \\n(PSp
+'\"	.nr VS \\n(PS+2
+.nr VS 12
+.vs \\n(VS
+.nr nL (\\n(LLu-0.25i)/2u
+.nr iD \\n(nLu+0.25i \" define second-column indent
+.ll \\n(nLu
+.br
+.sp |\\n(iSu
+.br
+..
+.de 2%  \" INTERNAL:  Ends column-1 in two-column format, starts col-2
+.if \\n(aF \{.nr bF \\n(.h  \" This ends change bars where *text* ends on page
+.	CD
+'	\}
+.nr 1F 0  \" set col-1 flag false
+.ch 2% -15.5i
+.ch FO -\\n(FMu
+.sp |\\n(iSu
+.if \\n(aF .mk bS
+.ll \\n(LLu
+.nr SI \\n(iDu  \" must be reset for .TL to work in 2-col format.
+'in \\n(iDu
+..
+.de 2E  \" EXTERNAL:  End 2-column format:
+.nr 2F 0  \" Set 2-col flag false
+.ch 2% -15.5i  \" set 2nd-col macro to deep space
+.nr SI \\n(I2
+.nr VS \\n(V2
+.nr PS \\n(P2
+.ft \\n(F2
+.ps \\n(PS
+.vs \\n(VS
+'in \\n(SIu
+.ll \\n(LLu
+.rn 2s 2S
+..
+'\"			END TWO-COLUMN MACROS
+.de RS  \" EXTERNAL:  Revision Start
+.ie \\n(.z \{.nr aF 1
+.	mk bS
+'	\}
+.el \\!.RS
+..
+.de RE  \" EXTERNAL:  Revision End
+.ie \\n(.z \{.CD
+.	rr aF
+'	\}
+.el \\!.RE
+..
+.de CD  \" INTERNAL:  Called from .FO and .RE to draw change bars
+.ie !\\n(1F .ch FO -14i
+.el .ch 2% -15.5i
+.if \\n(bD .ch MC -16i
+.nr eI \\n(.iu
+.nr hP \\n(.k  \" save current Horizontal Position
+.ev 2
+.nr eS \\n(.s
+.nr eJ \\n(.iu
+.if (\\n(hPu+\w'\ n')>(\\n(LLu-\\n(.iu) \{.nr hP 0
+.	br \}
+.mk vP  \" save current Vertical Position
+.fl
+.if !\\n(bS .nr bS \\n(HM  \" Just in case bS is unset somehow
+.if !\\n(bF .nr bF \\n(nlu
+.nr bV \\n(bFu+\\n(vAu-\\n(bSu
+.if \\n(bV<0.5v .nr bV 0.75v
+'in 0
+.sp |\\n(bSu
+.ps 36
+.ie !\\n(1F \v'-\\n(vOu'\h'\\n(LLu-\\n(.iu+\\n(mDu'\L'\\n(bVu'\h'0.05c'\L'-\\n(bVu'
+.el \v'-\\n(vOu'\h'|-\\n(mDu'\L'\\n(bVu'\h'-0.05c'\L'-\\n(bVu'
+.ps \\n(eS
+'in \\n(eJu
+.sp |\\n(vPu
+.if \\n(hP \h'\\n(hPu'\c
+.ev
+.ie !\\n(1F .ch FO -\\n(FMu
+.el .ch 2% -\\n(FMu
+.if \\n(bD .ch MC -\\n(FMu-2v
+'in \\n(eIu
+.rr bF bV eS eI hP vP
+..
+.de CR  \" EXTERNAL:  Counter Reset macro; resets counter accessed by \*n
+'\" $1 is number at which to start count, $2 is type of counter character.
+.ie !"\\$1"" \{.ie !"\\$3"" \{.nr n\\$3 (\\$1-1) 1
+.				.af n\\$3 \\$2 \}
+.		el \{.nr nQ (\\$1-1) 1
+.			if !"\\$2"" .af nQ \\$2 \} \}
+.el .nr nQ 0 1
+..
+.de ZN  \" INTERNAL:  Zero Numbers; zeros .NL numbers.  Called from .SH & .PP 
+.rr l0 l1
+.ie t \{.nr d0 \\n(PDu/2u  \" initialize inter-list spacing (.TL, .BL, etc):
+.	nr d1 \\n(PDu/2u \}
+.el \{.nr d0 \\n(PDu
+.	nr d1 \\n(PDu \}
+..
+'\"-----------------------------------------------------------------------------
+'\" START MESSAGE-SPECIFIC MACROS
+'\"
+.de KT  \" EXTERNAL:  Keep Together next $1 lines or inches of output (like .ne)
+.fl
+.ie !"\\n(.z"" \\!.KT \\$1
+.el  \{.ie 0\\$1>(\\n(tAu/\\n(VS) .nr kT 0\\$1u
+.	el .nr kT \\$1v
+.	if \\n(kTu<=\\n(tAu .if \\n(kTu>\\n(.tu .sp \\n(.tu
+'	\}
+..
+.de GC  \" EXTERNAL:  Defines 'group code' for one product's msgs.
+.ds Gc "\\$1 \- 
+.nr SI 0
+..
+.de MC  \" INTERNAL:  Message Continued; puts note at pg bottom
+.sp 1v
+.fl
+.ta \\n(nLuR
+	(continued)
+'\"	.ie \\n(1F \{	(continued next column)
+'\"	'	\}
+'\"	.el \{	(continued next page)
+'\"	'	\}
+.fl
+..
+'\" START TROFF DEFINITIONS OF MESSAGE START/END MACROS:
+.de MS  \" EXTERNAL:  Message Start; keeps together text for one message
+'\" $1 is either "$exp" or msg-#
+'\" $2 is either msg-# or optional "b"
+'\" $3 is optional "b"
+.fl
+.ps 10p
+.vs \\n(VS
+.fi
+.ie \\$1$exp \{.ds Gc "\\$1 
+.		nr bD 1
+.		if !\\$2 \{.ds No "\\$2
+.				.if \\$3b .nr bD 1  \} \}
+.el \{.ds No "\\$1
+.	if \\$2b .nr bD 1  \}
+.di Kt
+.ll \\n(nLu
+'in 0
+.ie !\\*(No \{\l'\\n(nLu'
+\\*(Gc\\*(No
+.			sp -0.55v
+\l'\\n(nLu'
+'		\}
+.el \{\l'\\n(nLu'
+.	sp -0.1i
+\l'\\n(nLu'
+.	sp 0.33v  \}
+.it 1 M#
+.vs \\n(VS
+.ps 10p
+.ie \\n(cA .ft C
+.el .ft B
+..
+.de M#  \" INTERNAL:  Returns to normal font & pt. size after message text done
+.fl
+.ft R
+.ps \\n(PSp
+.vs \\n(VS
+..
+.de ME  \" EXTERNAL:  Message End; ends .MS block
+'\"   $1 = amount to .KT after the message is printed
+.br  \" break and end diversion to "Kt"
+.sp -1v
+.di
+.ie \\n(nlu>(\\n(iSu+1.9v) .sp 2.1v  \" Shortest possible msg >= 1.9v
+.el .sp |\\n(iSu
+.if \\n(dnu>\\n(tAu .nr bD 1
+.ie !\\n(bD .if \\n(dnu>=\\n(.tu .sp \\n(.tu
+.el \{.if \\n(.tu<6.5v .sp \\n(.tu
+.	ch MC -\\n(FMu-2v  \}
+.ps \\n(PSp
+.vs \\n(VS
+.ie \\n(1F \{'in 0
+.		ll \\n(nLu  \}
+.el \{'in \\n(iDu
+.	ll \\n(LLu  \}
+.nf
+\\*(Kt
+.fl
+.fi
+.rm Kt No
+.if \\n(bD \{.nr bD 0
+.		ch MC -17i \}
+.if !\\$1 .KT \\$1
+..
+'\" END TROFF DEFINITIONS OF MESSAGE START/END MACROS:
+'\"
+'\" START NROFF DEFINITIONS OF MESSAGE START/END MACROS:
+.de M0  \" EXTERNAL:  NROFF Message Start; keeps together text for one message
+'\" $1 is either "$exp" or msg-#
+'\" $2 is either msg-# or optional "b"
+'\" $3 is optional "b"
+.vs \\n(VS
+.fi
+.ie \\$1$exp \{.ds Gc "\\$1 
+.		nr bD 1
+.		if !\\$2 \{.ds No "\\$2
+.				.if \\$3b .nr bD 1  \} \}
+.el \{.ds No "\\$1
+.	if \\$2b .nr bD 1  \}
+.ll \\n(nLu
+'in 0
+.if !\\*(No \{\\*(Gc\\*(No
+.		br \}
+.it 1 M#
+.ft B
+..
+.de M1  \" INTERNAL:  NROFF returns to normal font & pt. size after message text done
+.fl
+.ft R
+..
+.de M2  \" EXTERNAL:  NROFF Message End; ends .MS block
+'\"   $1 = amount to .KT after the message is printed
+.fl
+.rm No
+..
+'\" END NROFF DEFINITIONS OF MESSAGE START/END MACROS:
+'\"- - - - - - - - - - - - - Start -ms EQN macros
+.de EQ  \" EXTERNAL:  start EQuation
+'\" $1 = "C", "L", or "I" 
+'\" $2 = 
+'\" $3 = amount to move horizontally
+'\" .ft 1 = roman, .ft 2= italic, .ft 3 = bold
+.nr UR \\n(.u
+.rm EE
+.nr LE 1  \" default centered
+.ds E! \fR\\$1\fP
+.if \\$1C .ds E! \fR\\$2\fP
+.if \\$1L \{.ds E! \fR\\$2\fP
+.	nr LE 0  \}
+.if \\$1I \{.ds E! \fR\\$2\fP
+.	nr LE 0
+.	ds EE \\h'|10n'
+.	if !\\$3 .ds EE \\h'\\$3'  \}
+.di EZ
+..
+.de EN  \" EXTERNAL:  end EQuation
+.if !\\*(10 .br
+.di
+.rm EZ
+.nr dL \\n(dn
+.ie \\n(dL .PP
+.el .if !\\*(E! .nr dL 1
+.ie "\\n(.z"" \{.if \\n(dL>0 .if !\\n(nl=\\n(PE .SQ
+'	\}
+.el \{.if \\n(dL>0 .if !\\n(.d=\\n(PE .SQ
+'	\}
+.pc
+.if \\n(BD>0 .nr LE 0	\" can't mean centering in this case.
+.if \\n(MK>0 .if \\n(LE=1 .ds EE \\h'|10n'
+.if \\n(MK>0 .nr LE 0	\" don't center if mark/lineup
+.lt \\n(.lu
+.if \\n(EP=0 .if \\n(dL>0 \{\
+.	if \\n(LE>0 .tl \\*(10\\*(E!
+.	if \\n(LE=0 .if \\n(BD=0 .tl \\*(EE\\*(10\\*(E!
+.	if \\n(LE=0 .if \\n(BD>0 .if \\n(BD<\\w\\*(10 .nr BD \\w\\*(10
+.	if \\n(LE=0 .if \\n(BD>0 \!\\*(10\\t\\*(E!
+.\}
+.if \\n(EP>0 .if \\n(dL>0 \{\
+.	if \\n(LE>0 .tl \\*(E!\\*(10
+.	if \\n(LE=0 .if \\n(BD=0 .tl \\*(E!\\*(EE\\*(10
+.	if \\n(LE=0 .if \\n(BD>0 .if \\n(BD<\\w\\*(10 .nr BD \\w\\*(10
+.	if \\n(LE=0 .if \\n(BD>0 \!\\h'-\\\\n(.iu'\\*(E!\\h'|0'\\*(10
+.\}
+.lt \\n(LLu
+.pc %
+.if \\n(UR>0 .fi
+.rm 10 11 12 13 14 15 16 17 18 19 20 21 22 23 E!
+.rr 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+.if \\n(dL>0 .if t .SQ
+.ie "\\n(.z"" .nr PE \\n(nl
+.el .nr PE \\n(.d
+..
+'\"	End EQN macros
+'\"
+'\" END ALL MACRO DEFINITIONS; set print defaults:
+'\"
+.co  \" WHAT DOES THIS DO?
+.IZ
+.rm IZ

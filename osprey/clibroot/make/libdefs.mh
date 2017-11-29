@@ -1,0 +1,328 @@
+/* USMID @(#)include/make/libdefs.mh	100.0	07/11/97 00:26:19 */
+
+
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2.1 of the GNU Lesser General Public License 
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU Lesser General Public 
+  License along with this program; if not, write the Free Software 
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+  USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+#ifndef _LIBDEFS_MH
+#define _LIBDEFS_MH
+
+/*******************************************************************************
+ *									       *
+ *	libdefs.mh    -	This is an nmake include file for the libraries        *
+ *			which sets up some general purpose macro definitions.  *
+ *									       *
+ ******************************************************************************/
+
+/*
+ *	Targetting Macros
+ *	-----------------
+ *
+ *	T_MIPS3_N32	MIPS 3 ISA, New 32 Bit ABI (R4000)
+ *	T_MIPS3_64	MIPS 3 ISA, 64 Bit ABI 	   (R4000)
+ *	T_MIPS4_N32	MIPS 4 ISA, New 32 Bit ABI (R8000, R10000)
+ *	T_MIPS4_64	MIPS 4 ISA, 64 Bit ABI     (R8000, R10000)
+ *	T_CRAYT3D 	CRAY T3D systems (non-self-hosted)
+ *	T_CRAYMPP 	synonym for T_CRAYT3D (deprecated--see note below)
+ *	T_CRAYT3D_SH 	CRAY T3D systems (self-hosted)
+ *	T_CRAYT3E	CRAY T3E systems
+ *	T_CRAYXMP 	CRAY X-MP systems
+ *	T_CRAYYMP 	CRAY Y-MP systems
+ *	T_CRAYC90 	CRAY Y-MP C90 systems
+ *	T_CRAYTS 	CRAY TS systems (CRI floating point)
+ *	T_CRAYTS_IE	CRAY TS systems (IEEE floating point)
+ *	T_POSIX32 	generic 32 bit POSIX platform.  Useful if no more 
+ *			specific macro is yet available for a platform.
+ *			(This is most useful for early porting work and for
+ *			use with DPE_GEN_LIB).
+ *	T_SPARC		Sparc/Solaris 32 bit systems
+ *	T_SUNOS		Sparc/Sunos 32 bit systems
+ *	T_RS6000	IBM RS6000 32 bit systems
+ *
+ *	Other Macros
+ *	------------
+ *
+ *	(the first four below are derived from the T_* macros)
+ *	UNICOS_TARGET	UNICOS or UNICOS-MAX platform
+ *	NONUNICOS_TARGET platform which is not UNICOS or UNICOS-MAX
+ *	C1_TARGET	CRAY YMP/C90/TS/... platform
+ *	MPP_TARGET	CRAY-T3* platform
+ *
+ *	DPE_GEN_LIB	Indicates that the DPE gen lib subset is to be built
+ *
+ *
+ *	Note regarding use of the T_CRAYMPP/T_CRAYT3D macros (4/14/95): 
+ *
+ *		Use of the deprecated T_CRAYMPP macro may be replaced with 
+ *		T_CRAYT3D in all Nmakefiles for Craylibs, CrayLibs_M, 
+ *		UNICOS, and UNICOS-MAX libraries.  BUT, replacement of 
+ *		T_CRAYMPP with T_CRAYT3D in *.mk installation makefiles 
+ *		(like libu.mk, etc.) may only be done when support for 
+ *		UNICOS 8.0 is dropped.  This is because the T_CRAYT3D is 
+ *		only defined in the version of libdefs.mh from UNICOS 9.0 
+ *		and higher.
+ */
+
+#if \
+ !defined(T_MIPS3_N32) && !defined(T_MIPS3_64)  && !defined(T_MIPS4_N32)  && \
+ !defined(T_MIPS4_64)  &&						     \
+ !defined(T_CRAYT3D)   && !defined(T_CRAYMPP)   && !defined(T_CRAYT3D_SH) && \
+ !defined(T_CRAYT3E)   && !defined(T_CRAYXMP)   && !defined(T_CRAYYMP)    && \
+ !defined(T_CRAYC90)   && !defined(T_CRAYTS)    && !defined(T_CRAYTS_IE)  && \
+ !defined(T_POSIX32)   && !defined(T_SPARC)     && !defined(T_SUNOS)      && \
+ !defined(T_RS6000)    
+
+#if release(solaris)
+#define T_SPARC		1
+#elif release(aix)
+#define T_RS6000	1
+#elif tmachine(crayxmp)
+#define T_CRAYXMP	1
+#elif tmachine(crayymp)
+#define T_CRAYYMP	1
+#elif tmachine(crayc90)
+#define T_CRAYC90	1
+#elif tmachine(crayts)
+#if ttrait(ieee)
+#define T_CRAYTS_IE	1
+#else
+#define T_CRAYTS	1
+#endif
+#elif tmachine(crayt3d)
+#define T_CRAYT3D	1
+#elif tmachine(crayt3e)
+#define T_CRAYT3E	1
+#endif
+
+#endif /* T_* symbol not defined */
+
+/*
+ *	Source list Format
+ *	------------------
+ *	
+ *	The source lists have the following format:
+ *
+ *		TARGET_LIST:SOURCE_FILE_NAME
+ *
+ *	TARGET_LIST is a nonempty list of codes which indicate the list
+ *	of target platforms for which the SOURCE_FILE_NAME file is built and
+ *	installed.
+ *
+ *	SOURCE_FILE_NAME is the include file path name within the PL.
+ *
+ *	For example: "A:util/secondr.c" means util/secondr.c is built for
+ *	all platforms.
+ *
+ *	Valid code letters for TARGET_LIST are:
+ *
+ *		A	- all platforms
+ *
+ *			Hardware Categories
+ *			-------------------
+ *
+ *		U	- all UNICOS and UNICOS-MAX platforms
+ *
+ *		1	- all X-MP, Y-MP, C90, TS (Triton) ... platforms
+ *		T	- CRAY TS platforms with IEEE arithmetic (and possible
+ *			  follow-ons)
+ *		t	- CRAY TS platforms with CRI arithmetic 
+ *		Y	- X-MP, Y-MP and C90 platforms
+ *		y	- X-MP and Y-MP platforms
+ *		c	- C90 platforms
+ *
+ *		M	- all CRAY MPP platforms
+ *		E	- CRAY T3E platforms (and possible follow-ons)
+ *		H	- CRAY T3D self-hosted platforms
+ *		D	- CRAY T3D non-self-hosted platforms
+ *
+ *		I	- all MIPs/IRIX platforms
+ *		3	- MIPS 3 ISA systems (R4000)
+ *		4	- MIPS 4 ISA systems (R8000 and R10000)
+ *
+ *		P	- all POSIX-portable, non-UNICOS platforms
+ *		S	- SUN Sparc/Solaris 
+ *
+ *			Other reserved code letters
+ *			---------------------------
+ *
+ *		d	- source files needed for DPE (all platforms).  This
+ *			  letter is selected on after the architecture source
+ *			  selection if DPE_GEN_LIB is set by the user with the 
+ *			  "-D DPE_GEN_LIB" option on nmake.
+ *
+ *
+ *	Here is a diagram of the nesting of hardware code letters:
+ *
+ *                                        A
+ *                                       /|\
+ *                                     /  |  \
+ *                                   /    |    \
+ *                                 /      |      \
+ *                               /        |        \
+ *                             /          |          \
+ *                           /            |            \
+ *                         /              |              \
+ *                        U               I               P
+ *                       / \             / \              |
+ *                     /     \          /   \             |
+ *                   /         \       /     \            |
+ *                  1           M     3       4           S
+ *                 /|\         /|\
+ *                / | \       / | \
+ *               /  |  \     /  |  \
+ *              Y   t   T   D   H   E
+ *             / \
+ *            /   \
+ *           y     c
+ *
+ *
+ *
+ *	Below is the setup of PAT to the list of key letters used to select 
+ *	source list entries for all supported platforms.
+ */
+
+#if defined(T_MIPS3_N32)
+PAT = [AI3]
+
+#elif defined(T_MIPS3_64)
+PAT = [AI3]
+
+#elif defined(T_MIPS4_N32)
+PAT = [AI4]
+
+#elif defined(T_MIPS4_64)
+PAT = [AI4]
+
+#elif defined(T_POSIX32)
+PAT = [AP]
+
+#elif defined(T_SPARC) || defined(T_SUNOS)
+PAT = [APS]
+
+#elif defined(T_CRAYT3E)
+#define UNICOS_TARGET	1
+#define MPP_TARGET	1
+PAT = [AUME]
+
+#elif defined(T_CRAYT3D_SH)
+#define UNICOS_TARGET	1
+#define MPP_TARGET	1
+PAT = [AUMH]
+
+#elif defined(T_CRAYT3D)
+#define UNICOS_TARGET	1
+#define MPP_TARGET	1
+#ifndef T_CRAYMPP
+#define T_CRAYMPP	1
+#endif
+PAT = [AUMD]
+
+#elif defined(T_CRAYMPP)
+#define UNICOS_TARGET	1
+#define MPP_TARGET	1
+#ifndef T_CRAYT3D
+#define T_CRAYT3D	1
+#endif
+PAT = [AUMD]
+
+#elif defined(T_CRAYTS_IE)
+#define UNICOS_TARGET	1
+#define C1_TARGET	1
+PAT = [AU1T]
+
+#elif defined(T_CRAYTS)
+#define UNICOS_TARGET	1
+#define C1_TARGET	1
+PAT = [AU1t]
+
+#elif defined(T_CRAYC90)
+#define UNICOS_TARGET	1
+#define C1_TARGET	1
+PAT = [AU1Yc]
+
+#elif defined(T_CRAYXMP) || defined(T_CRAYYMP)
+#define UNICOS_TARGET	1
+#define C1_TARGET	1
+PAT = [AU1Yy]
+
+#else
+PAT = NO_SUCH_MACHINE
+
+#endif
+
+#ifndef	UNICOS_TARGET
+#define	NONUNICOS_TARGET 1	/* inverse of UNICOS_TARGET */
+#endif
+
+#ifndef _LIBMAC_MH
+
+/*
+ * Don't expose these macros if being included from <make/libmac.mh>
+ */
+
+/*
+ *	Nmake Variables
+ *	---------------
+ *
+ *	LIBDIR is the location where libraries are installed.
+ */
+#if defined(T_CRAYT3D)
+LIBDIR =        $(ROOT)/mpp/lib 
+#else
+LIBDIR =        $(ROOT)/lib
+#endif
+
+/*
+ *	Utility Macros
+ *      --------------
+ *
+ *	MAKE_LIB_NAME - creates the correct primary library name.
+ */
+
+#if defined(DPE_GEN_LIB)
+_libname_suffix = _dpe.a
+
+#elif !defined(UNICOS_TARGET)
+_libname_suffix = _cri.a
+
+#else
+_libname_suffix = .a
+
+#endif
+
+#define MAKE_LIB_NAME(base)	base$(_libname_suffix)
+
+#endif /* !_LIBMAC_MH */
+#endif /* !_LIBDEFS_MH */

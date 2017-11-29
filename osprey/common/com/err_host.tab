@@ -1,0 +1,127 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if 
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* ====================================================================
+ * ====================================================================
+ *
+ * Module: err_host.tab
+ * $Revision: 1.1.1.1 $
+ * $Date: 2005/06/23 02:15:40 $
+ * $Author: sxyang $
+ * $Source: /u/cvs/Pathscale.MIPS/common/com/err_host.tab,v $
+ *
+ * Revision history:
+ *  18-Feb-94 - Original Version, extracted from err_host.h.
+ *
+ * Description:
+ *
+ * This file contains the initialization of the error descriptor table.
+ * It should only be included by errors.c.  See also err_host.h for
+ * host-program-specific defines.
+ *
+ * ====================================================================
+ * ====================================================================
+ */
+#ifdef _KEEP_RCS_ID
+static char *err_host_tab_rcs_id = "$Source: /u/cvs/Pathscale.MIPS/common/com/err_host.tab,v $ $Revision: 1.1.1.1 $";
+#endif /* _KEEP_RCS_ID */
+
+/* Include the typedef for our various tables */
+#include "errdesc.h"
+
+/* Include the common error descriptor lists: */
+#include "erglob.desc"		/* Global error codes */
+#include "erlib.desc"		/* Program library error codes */
+
+#ifndef MONGOOSE_BE
+#include "erirb.desc"		/* IR builder error codes */
+#include "erlink.desc"		/* Linker error codes */
+#include "erauxdesc.h"		/* Process specific error codes */
+#endif /* MONGOOSE_BE */
+
+
+/* Build the phase table: */
+static ERROR_DESC_TABLE Phases[] = {
+  /* Common phases: */
+#ifndef MONGOOSE_BE
+  { EP_UNIX,		NULL,		"Unix" },
+  { EP_GLOBAL,		EDESC_Globals,	"Global" },
+  { EP_LIB,		EDESC_Lib,	"Program Librarian" },
+  { EP_LINK,		EDESC_Link,	"Linker" },
+  /* Compiler-specific phases from errors.h: */
+#ifdef FRONT_END
+  { EP_FE,		EDESC_FE,	"Front End" },
+#else
+  { EP_FE,		NULL,		"Front End" },
+#endif /* FRONT_END */
+#ifdef BACK_END
+  { EP_BE,		EDESC_BE,	"Back End" },
+  { EP_CG,		EDESC_CG,	"Code Generator" },
+#else
+  { EP_BE,		NULL,		"Back End" },
+  { EP_CG,		NULL,		"Code Generator" },
+#endif /* BACK_END */
+  /* Compiler-specific phases from above: */
+  { EP_DRIVER,		NULL,		"Compiler driver" },
+  { EP_IR_BUILDER,	EDESC_Irb,	"IR builder" },
+  { EP_IR_READER,	NULL,		"IR reader" },
+  { EP_GLOB_OPT,	NULL,		"Global optimizer" },
+  { EP_GRA,		NULL,		"Global allocator" },
+  { EP_TARGET,		NULL,		"Target-specific" },
+#else
+  { EP_GLOBAL,		EDESC_Globals,	"Global" },
+  { EP_LIB,		EDESC_Lib,	"Program Librarian" },
+  { EP_BE,		NULL,		"Back End" },
+  { EP_CG,		NULL,		"Code Generator" },
+#endif /* MONGOOSE_BE */
+  /* Terminating record must be present: */
+  { -1,		NULL,		NULL }
+};
+
+static const char *host_errlist[] = {
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	"file is locked",
+	"file has a bad magic number",
+	"file exists",
+	"file is not locked",
+};

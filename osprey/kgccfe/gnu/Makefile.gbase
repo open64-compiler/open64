@@ -1,0 +1,749 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
+#
+#  Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
+#  File modified October 3, 2003 by PathScale, Inc. to update Open64 C/C++ 
+#  front-ends to GNU 3.3.1 release.
+#
+
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for kgccfe
+#
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build. 
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+
+# These are here because they are needed both in fecc and in common so just
+# putting them in fecc/defines.h is not enough:
+
+HOSTDEFS += -DIN_GCC -DHAVE_CONFIG_H
+
+ifeq ($(BUILD_TARGET), IA64)
+HOSTDEFS += -DTARGET_NAME=\"ia64-linux\"
+endif
+ifeq ($(BUILD_TARGET), IA32)
+HOSTDEFS += -DTARGET_NAME=\"i686-pc-linux-gnu\"
+endif
+ifeq ($(BUILD_TARGET), X8664)
+HOSTDEFS += -DTARGET_NAME=\"$(PSC_TARGET)\"
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+HOSTDEFS += -DTARGET_NAME=\"key-linux\"
+endif
+ifeq ($(BUILD_TARGET), SL)
+HOSTDEFS += -DTARGET_NAME=\"sl-linux\"
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+HOSTDEFS += -DTARGET_NAME=\"nvisa\"
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+HOSTDEFS += -DTARGET_NAME=\"ppc32-linux\"
+endif
+ifeq ($(BUILD_TARGET),LOONGSON)
+HOSTDEFS += -DTARGET_NAME=\"$(PSC_TARGET)\"
+endif
+
+HOSTDEFS += -DLONGLONG
+HOSTDEFS += -DFRONT_END
+HOSTDEFS += -DUSE_DECL_SRCPOS
+
+HOSTDEFS += -DFRONT_END_C
+HOSTDEFS += -DCFE -DCIL
+HOSTDEFS += -DDO_IL_LOWERING=0
+HOSTDEFS += -DNO_USR_INCLUDE=TRUE
+HOSTDEFS += -DAUTOMATIC_TEMPLATE_INSTANTIATION=0
+HOSTDEFS += -DINSTANTIATION_BY_IMPLICIT_INCLUSION=0
+HOSTDEFS += -DBACK_END_IS_C_GEN_BE=0
+HOSTDEFS += -DMONGOOSE_CIF
+
+HOSTDEFS += -DSGI_RAG_BACKEND
+HOSTDEFS += -DSGI_MONGOOSE
+HOSTDEFS += -DMIPSEL
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+HOSTDEFS += -DDEBUG=1
+HOSTDEFS += -DCHECKING=1
+else
+HOSTDEFS += -DDEBUG=0 
+HOSTDEFS += -DCHECKING=0 
+endif
+
+ifeq ($(BUILD_COMPILER), GNU)
+TARGDEFS = -D__MIPS_AND_IA64_ELF_H
+endif
+
+ifeq ($(BUILD_OS),DARWIN)
+LDFLAGS += -flat_namespace
+endif
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+FE_DIR 			= $(BUILD_TOT)/kgccfe
+
+INCLUDE_DIR 		= $(BUILD_AREA)/include
+
+GNU_DIR			= $(BUILD_BASE)
+GNU_CONFIG_DIR		= $(BUILD_BASE)/config
+
+GNU_TARG_DIR = $(GNU_DIR)/$(BUILD_TARGET_DIR)
+GNU_CONFIG_TARG_DIR = $(GNU_CONFIG_DIR)/$(BUILD_TARGET_DIR)
+ifeq ($(BUILD_TARGET), IA32)
+GNU_TARG_DIR = $(GNU_DIR)/i386
+GNU_CONFIG_TARG_DIR = $(GNU_CONFIG_DIR)/i386
+endif
+ifeq ($(BUILD_TARGET), X8664)
+GNU_TARG_DIR = $(GNU_DIR)/i386
+GNU_CONFIG_TARG_DIR = $(GNU_CONFIG_DIR)/i386
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+GNU_CONFIG_TARG_DIR = $(GNU_CONFIG_DIR)/mips
+endif
+ifeq ($(BUILD_TARGET), SL)
+GNU_CONFIG_TARG_DIR = $(GNU_CONFIG_DIR)/sl
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+GNU_TARG_DIR = $(GNU_DIR)/i386
+GNU_CONFIG_TARG_DIR = $(GNU_CONFIG_DIR)/i386
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+GNU_CONFIG_TARG_DIR = $(GNU_CONFIG_DIR)/rs6000
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+GNU_TARG_DIR = $(GNU_DIR)/loongson
+GNU_CONFIG_TARG_DIR = $(GNU_CONFIG_DIR)/loongson
+endif
+
+TARG_COMUTIL_DIR	= $(TARGDIR)/libcomutil
+TARG_LIBM_DIR		= $(TARGDIR)/libm
+TARG_CMPLRS_DIR		= $(TARGDIR)/libcmplrs
+TARG_CSUP_DIR		= $(TARGDIR)/libcsup
+TARG_LIBIBERTY_DIR      = $(TARGDIR)/libiberty
+TARG_GNU_DIR		= $(TARGDIR)/gccfe/gnu
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS =		\
+  $(GNU_DIR)		\
+  $(GNU_CONFIG_DIR)	\
+  $(GNU_TARG_DIR)	\
+  $(GNU_CONFIG_TARG_DIR) 
+
+INC_DIRS =		\
+  $(TARG_GNU_DIR)	\
+  $(FE_DIR)		\
+  $(GNU_DIR)		\
+  $(GNU_TARG_DIR)	\
+  $(GNU_CONFIG_DIR)	\
+  $(GNU_CONFIG_TARG_DIR)\
+  $(BUILD_TOT)/include/gnu
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+GNU_SRCS =		\
+  alias.c		\
+  attribs.c		\
+  bb-reorder.c		\
+  bitmap.c		\
+  builtins.c		\
+  caller-save.c		\
+  calls.c		\
+  c-aux-info.c		\
+  c-common.c		\
+  c-convert.c		\
+  c-decl.c		\
+  c-errors.c		\
+  cfganal.c		\
+  cfgbuild.c		\
+  cfg.c			\
+  cfgcleanup.c		\
+  cfglayout.c		\
+  cfgloop.c		\
+  cfgrtl.c		\
+  c-dump.c		\
+  c-format.c		\
+  c-lang.c		\
+  c-lex.c		\
+  c-objc-common.c	\
+  combine.c		\
+  conflict.c		\
+  convert.c		\
+  c-opts.c		\
+  c-pragma.c 		\
+  cppdefault.c		\
+  cpperror.c		\
+  cppexp.c		\
+  cppfiles.c		\
+  cpphash.c		\
+  cppinit.c		\
+  cpplex.c 		\
+  cpplib.c		\
+  cppmacro.c 		\
+  cppmain.c		\
+  cpptrad.c		\
+  cse.c			\
+  cselib.c		\
+  c-semantics.c		\
+  c-typeck.c		\
+  dbxout.c		\
+  debug.c		\
+  dependence.c		\
+  df.c			\
+  diagnostic.c		\
+  doloop.c		\
+  dominance.c		\
+  dwarf2asm.c		\
+  dwarf2out.c		\
+  dwarfout.c		\
+  emit-rtl.c		\
+  et-forest.c		\
+  except.c		\
+  explow.c		\
+  expmed.c		\
+  expr.c		\
+  final.c		\
+  floatlib.c		\
+  flow.c		\
+  fold-const.c		\
+  function.c		\
+  gccspec.c		\
+  gcse.c		\
+  genrtl.c		\
+  ggc-callbacks.c	\
+  ggc-common.c		\
+  ggc-page.c		\
+  global.c		\
+  graph.c		\
+  gtype-desc.c		\
+  haifa-sched.c		\
+  hash.c		\
+  hashtable.c		\
+  hooks.c		\
+  ifcvt.c		\
+  integrate.c		\
+  insn-attrtab.c	\
+  insn-emit.c		\
+  insn-extract.c	\
+  insn-opinit.c		\
+  insn-output.c		\
+  insn-peep.c		\
+  insn-recog.c		\
+  jump.c		\
+  langhooks.c		\
+  lcm.c			\
+  line-map.c		\
+  lists.c		\
+  local-alloc.c		\
+  loop.c		\
+  mbchar.c		\
+  mkdeps.c		\
+  optabs.c		\
+  params.c		\
+  predict.c		\
+  prefix.c		\
+  print-rtl.c		\
+  print-tree.c		\
+  profile.c		\
+  ra.c			\
+  ra-build.c		\
+  ra-colorize.c		\
+  ra-debug.c		\
+  ra-rewrite.c		\
+  read-rtl.c		\
+  real.c		\
+  recog.c		\
+  regclass.c		\
+  regmove.c		\
+  regrename.c		\
+  reg-stack.c		\
+  reload.c		\
+  reload1.c		\
+  reorg.c		\
+  resource.c		\
+  rtl.c			\
+  rtlanal.c		\
+  rtl-error.c		\
+  sbitmap.c		\
+  sched-deps.c		\
+  sched-ebb.c		\
+  sched-rgn.c		\
+  sched-vis.c		\
+  sdbout.c		\
+  sibcall.c		\
+  simplify-rtx.c	\
+  ssa.c			\
+  ssa-ccp.c		\
+  ssa-dce.c		\
+  stmt.c		\
+  stor-layout.c		\
+  stringpool.c		\
+  timevar.c		\
+  toplev.c		\
+  tracer.c		\
+  tree.c		\
+  tree-dump.c		\
+  tree-inline.c		\
+  unroll.c		\
+  varasm.c		\
+  varray.c		\
+  version-hg.c		\
+  vmsdbgout.c		\
+  xcoffout.c
+
+ifeq ($(BUILD_TARGET), IA64)
+  GNU_SRCS += ia64.c
+endif
+ifeq ($(BUILD_TARGET), IA32)
+  GNU_SRCS += i386.c
+endif
+ifeq ($(BUILD_TARGET), X8664)
+  GNU_SRCS += i386.c
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+  GNU_SRCS += mips.c
+endif
+ifeq ($(BUILD_TARGET), SL)
+  GNU_SRCS += mips.c
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+  GNU_SRCS += i386.c
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+  GNU_SRCS += rs6000-c.c \
+              rs6000.c
+endif
+ifeq ($(BUILD_TARGET),LOONGSON)
+  GNU_SRCS += $(GNU_CONFIG_DIR)/loongson/mips.c
+endif
+
+GNU_SRCS += 		\
+  c-aux-info.c		\
+  c-convert.c		\
+  c-decl.c		\
+  c-lang.c		\
+  c-lex.c		\
+  c-parse.c 		\
+  c-typeck.c
+
+GNU_OBJS = $(GNU_SRCS:.c=.o)
+
+CFILES = $(GNU_SRCS)
+
+VPATH    =  $(SRC_DIRS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(INC_DIRS))
+
+LDIRT = c-parse.h c-parse.c version-hg.c \
+	#$(GNU_GEN) genemit genrecog genextract \
+	genattr genflags genattrtab genopinit \
+	gencodes genoutput genconfig genpeep \
+	stamp-attrtab stamp-opinit \
+	stamp-codes stamp-output \
+	stamp-config stamp-peep \
+	stamp-emit stamp-recog \
+	stamp-extract stamp-attr stamp-flags \
+	move-if-change
+
+#------------------------------------------------------------
+#  Define target
+#------------------------------------------------------------
+LIBRARY = libgfec.a
+TARGETS = $(LIBRARY)
+
+.PHONY: default first last install
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is 
+#  built.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+	$(call submake,$(BUILD_AREA)/include)
+	$(call submake,$(TARG_LIBIBERTY_DIR))
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is 
+#  built.
+#----------------------------------------------------------------------
+last: make_libdeps
+
+include $(COMMONRULES)
+
+install: default
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+
+include $(BUILD_TOT)/kgccfe/gnu/frobnicate-version.mk
+
+LDIRT += $(TARGETS)
+
+c-parse.c: c-parse.y
+	@-rm -f $(<:.y=.[ch])
+	$(bison) -d -o $@ $<
+	@grep '#define YYEMPTY' $@ >> $(@:.c=.h)
+c-parse.h: c-parse.c
+
+ifeq ($(BUILD_TARGET), __disable__)
+#----------------------------------------------------------------------
+#----------------------------------------------------------------------
+# Generate header and source files from the machine description, 
+# and compile them.
+
+.PRECIOUS: insn-config.h insn-flags.h insn-codes.h \
+  insn-emit.c insn-recog.c insn-extract.c insn-output.c insn-peep.c \
+  insn-attr.h insn-attrtab.c
+
+ifeq ($(BUILD_TARGET), MIPS)
+TM_FILE = MIPS/mips.h MIPS/mips.c MIPS/mips.md MIPS/linux.h
+BUILD_XM_FILE = 
+HOST_XM_FILE = 
+
+CONFIG_H = $(HOST_XM_FILE) $(TM_FILE)
+RTL_H = rtl.h rtl.def machmode.h machmode.def
+TREE_H = tree.h real.h tree.def machmode.h machmode.def
+BYTECODE_H = bytecode.h bc-emit.h bc-optab.h
+BASIC_BLOCK_H = basic-block.h bitmap.h
+
+HOST_PREFIX =
+
+HOST_RTL = $(HOST_PREFIX)rtl.o $(HOST_PREFIX)bitmap.o \
+		$(HOST_PREFIX)read-rtl.o $(HOST_PREFIX)ggc-none.o \
+		gensupport.o
+HOST_PRINT = $(HOST_PREFIX)print-rtl.o
+HOST_ERRORS = $(HOST_PREFIX)errors.o
+
+MD_FILE = MIPS/mips.md
+PREMADE_ATTRTAB_MD = Makefile  # Guaranteed not to cmp equal to md.
+PREMADE_ATTRTAB = 
+else 
+ifeq ($(BUILD_TARGET), SL)
+TM_FILE = SL/sl.h SL/mips.c SL/mips.md SL/linux.h
+BUILD_XM_FILE =
+HOST_XM_FILE =
+
+CONFIG_H = $(HOST_XM_FILE) $(TM_FILE)
+RTL_H = rtl.h rtl.def machmode.h machmode.def
+TREE_H = tree.h real.h tree.def machmode.h machmode.def
+BYTECODE_H = bytecode.h bc-emit.h bc-optab.h
+BASIC_BLOCK_H = basic-block.h bitmap.h
+
+HOST_PREFIX =
+
+HOST_RTL = $(HOST_PREFIX)rtl.o $(HOST_PREFIX)bitmap.o \
+                $(HOST_PREFIX)read-rtl.o $(HOST_PREFIX)ggc-none.o \
+                gensupport.o
+HOST_PRINT = $(HOST_PREFIX)print-rtl.o
+HOST_ERRORS = $(HOST_PREFIX)errors.o
+
+MD_FILE = SL/mips.md
+PREMADE_ATTRTAB_MD = Makefile  # Guaranteed not to cmp equal to md.
+PREMADE_ATTRTAB =
+endif
+endif
+
+HOST_CFLAGS = $(CFLAGS)
+ALL_CFLAGS = $(CFLAGS)
+
+HOST_LIBS = $(TARGDIR)/libiberty/safe-ctype.o
+
+HOST_LIBS = $(TARGDIR)/libiberty/safe-ctype.o $(TARGDIR)/libiberty/xmalloc.o
+
+# The following pair of rules has this effect:
+# genconfig is run only if the md has changed since genconfig was last run;
+# but the file insn-config.h is touched only when its contents actually change.
+
+# Each of the other insn-* files is handled by a similar pair of rules.
+
+# This causes an anomaly in the results of make -n
+# because insn-* is older than stamp-*
+# and thus make -n thinks that insn-* will be updated
+# and force recompilation of things that depend on it.
+# We use move-if-change precisely to avoid such recompilation.
+# But there is no way to teach make -n that it will be avoided.
+
+# Each of the insn-*.[ch] rules has a semicolon at the end,
+# for otherwise the system Make on SunOS 4.1 never tries
+# to recompile insn-*.o.  To avoid problems and extra noise from
+# versions of make which don't like empty commands (nothing after the
+# trailing `;'), we call true for each.
+
+move-if-change: move-if-change.src
+	ln -sf $< move-if-change
+
+insn-config.h: stamp-config ; @true
+stamp-config : $(MD_FILE) genconfig move-if-change
+	./genconfig $< > tmp-config.h
+	./move-if-change tmp-config.h insn-config.h
+	touch stamp-config
+
+insn-flags.h: stamp-flags ; @true
+stamp-flags : $(MD_FILE) genflags move-if-change
+	./genflags $< > tmp-flags.h
+	./move-if-change tmp-flags.h insn-flags.h
+	touch stamp-flags
+
+insn-codes.h: stamp-codes ; @true
+stamp-codes : $(MD_FILE) gencodes move-if-change
+	./gencodes $< > tmp-codes.h
+	./move-if-change tmp-codes.h insn-codes.h
+	touch stamp-codes
+
+insn-emit.o : insn-emit.c $(CONFIG_H) $(RTL_H) expr.h real.h output.h \
+  insn-config.h insn-flags.h insn-codes.h
+	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) -c insn-emit.c
+
+insn-emit.c: stamp-emit ; @true
+stamp-emit : $(MD_FILE) genemit move-if-change
+	./genemit $< > tmp-emit.c
+	./move-if-change tmp-emit.c insn-emit.c
+	touch stamp-emit
+
+insn-recog.o : insn-recog.c $(CONFIG_H) $(RTL_H) insn-config.h recog.h \
+  real.h output.h flags.h
+	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) -c insn-recog.c
+
+insn-recog.c: stamp-recog ; @true
+stamp-recog : $(MD_FILE) genrecog move-if-change
+	./genrecog $< > tmp-recog.c
+	./move-if-change tmp-recog.c insn-recog.c
+	touch stamp-recog
+
+insn-opinit.o : insn-opinit.c $(CONFIG_H) $(RTL_H) insn-codes.h insn-flags.h \
+  insn-config.h flags.h rtl.h recog.h expr.h reload.h
+	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) -c insn-opinit.c
+
+insn-opinit.c: stamp-opinit ; @true
+stamp-opinit : $(MD_FILE) genopinit move-if-change
+	./genopinit $< > tmp-opinit.c
+	./move-if-change tmp-opinit.c insn-opinit.c
+	touch stamp-opinit
+
+insn-extract.o : insn-extract.c $(CONFIG_H) $(RTL_H)
+	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) -c insn-extract.c
+
+insn-extract.c: stamp-extract ; @true
+stamp-extract : $(MD_FILE) genextract move-if-change
+	./genextract $< > tmp-extract.c
+	./move-if-change tmp-extract.c insn-extract.c
+	touch stamp-extract
+
+insn-peep.o : insn-peep.c $(CONFIG_H) $(RTL_H) regs.h output.h real.h
+	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) -c insn-peep.c
+
+insn-peep.c: stamp-peep ; @true
+stamp-peep : $(MD_FILE) genpeep move-if-change
+	./genpeep $< > tmp-peep.c
+	./move-if-change tmp-peep.c insn-peep.c
+	touch stamp-peep
+
+insn-attrtab.o : insn-attrtab.c $(CONFIG_H) $(RTL_H) regs.h real.h output.h \
+     insn-attr.h insn-config.h
+	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) -c $<
+
+insn-attr.h: stamp-attr ; @true
+stamp-attr : $(MD_FILE) genattr move-if-change
+	./genattr $< > tmp-attr.h
+	./move-if-change tmp-attr.h insn-attr.h
+	touch stamp-attr
+
+insn-attrtab.c: stamp-attrtab ; @true
+stamp-attrtab : $(MD_FILE) genattrtab move-if-change
+	if cmp -s $(PREMADE_ATTRTAB_MD) $<;	\
+	then					\
+	  echo Using $(PREMADE_ATTRTAB);	\
+	  cp $(PREMADE_ATTRTAB) tmp-attrtab.c;	\
+	else					\
+	  ./genattrtab $< > tmp-attrtab.c;	\
+	fi
+	./move-if-change tmp-attrtab.c insn-attrtab.c
+	touch stamp-attrtab
+
+insn-output.o : insn-output.c $(CONFIG_H) $(RTL_H) regs.h real.h conditions.h \
+    hard-reg-set.h insn-config.h insn-flags.h insn-attr.h output.h recog.h \
+    insn-codes.h
+	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) -c insn-output.c
+
+insn-output.c: stamp-output ; @true
+stamp-output : $(MD_FILE) genoutput move-if-change
+	./genoutput $< > tmp-output.c
+	./move-if-change tmp-output.c insn-output.c
+	touch stamp-output
+
+
+#----------------------------------------------------------------------
+# Compile the programs that generate insn-* from the machine description.
+# They are compiled with $(HOST_CC), and associated libraries,
+# since they need to run on this machine
+# even if GCC is being compiled to run on some other machine.
+
+# $(CONFIG_H) is omitted from the deps of the gen*.o
+# because these programs don't really depend on anything 
+# about the target machine.  They do depend on config.h itself,
+# since that describes the host machine.
+
+gensupport.o: gensupport.c $(RTL_H) $(OBSTACK_H) system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genconfig : genconfig.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	  genconfig.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genconfig.o : genconfig.c $(RTL_H) $(BUILD_XM_FILE) \
+  system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genflags : genflags.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genflags.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genflags.o : genflags.c $(RTL_H) $(OBSTACK_H) $(BUILD_XM_FILE) \
+  system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+gencodes : gencodes.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 gencodes.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+gencodes.o : gencodes.c $(RTL_H) $(BUILD_XM_FILE) \
+  system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genemit : genemit.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genemit.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genemit.o : genemit.c $(RTL_H) $(BUILD_XM_FILE) system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genopinit : genopinit.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genopinit.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genopinit.o : genopinit.c $(RTL_H) $(BUILD_XM_FILE) \
+  system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genrecog : genrecog.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genrecog.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genrecog.o : genrecog.c $(RTL_H) $(BUILD_XM_FILE) \
+  system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+genextract : genextract.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genextract.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genextract.o : genextract.c $(RTL_H) $(BUILD_XM_FILE) \
+  system.h insn-config.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genpeep : genpeep.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genpeep.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genpeep.o : genpeep.c $(RTL_H) $(BUILD_XM_FILE) system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genattr : genattr.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genattr.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genattr.o : genattr.c $(RTL_H) $(BUILD_XM_FILE) system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genattrtab : genattrtab.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genattrtab.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genattrtab.o : genattrtab.c $(RTL_H) $(OBSTACK_H) $(BUILD_XM_FILE) \
+  system.h errors.h $(GGC_H) gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+genoutput : genoutput.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 genoutput.o $(HOST_RTL) $(HOST_PRINT) $(HOST_ERRORS) $(HOST_LIBS)
+
+genoutput.o : genoutput.c $(RTL_H) $(BUILD_XM_FILE) \
+  system.h errors.h gensupport.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+gengenrtl : gengenrtl.o $(HOST_LIBDEPS)
+	$(HOST_CC) $(HOST_CFLAGS) $(HOST_LDFLAGS) -o $@ \
+	 gengenrtl.o $(HOST_LIBS)
+
+gengenrtl.o : gengenrtl.c $(RTL_BASE_H) system.h real.h
+	$(HOST_CC) -c $(HOST_CFLAGS) $(HOST_CPPFLAGS) $(INCLUDES) $<
+
+endif
+
+# The obstack code in the gcc front end causes warnings with gcc 3.3.3
+# and above.
+read-rtl.o tree.o: ERROR_ON_WARNINGS =

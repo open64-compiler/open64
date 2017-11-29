@@ -1,0 +1,113 @@
+README
+-----------------------------------------------------------------------
+NOTICE: This is the README file for SGI Pro64(TM) compiler.
+        SGI Pro64 compiler is the ancestor of the Open64 compiler.
+-----------------------------------------------------------------------
+
+The SGI Pro64(TM) compiler suite includes optimizing compilers 
+and runtime support for C, C++, and Fortran90. These compilers 
+produce code that follows the Linux/IA-64 ABI.  This means that 
+objects produced by the SGI compilers can link with objects 
+produced  by other Linux/IA-64 compliant compilers such 
+as RedHat/Cygnus gcc and g++.
+
+The latest information and updates for the Pro64 compilers will 
+eventually be found at http://oss.sgi.com/projects/Pro64. The rpm
+included in this distribution represents a work in progress.  
+
+Please send problem reports to the mailing list described on 
+the SGI OSS Pro64 web site.
+
+Language highlights:
+
+  C compatible with gcc
+  C++ compatible g++
+  Fortran90 with Fortran95 extensions
+
+Optimization highlights:
+
+Software pipelining:  
+
+At the -O2 and -O3 optimization levels the 
+compilers will use the IA-64 software pipelining instructions.  
+At the -O3 level a more powerful data dependence analysis will 
+be performed.  
+
+
+Interprocedural analysis and optimization
+
+When -ipa is used on the command line, the compiler performs 
+interprocedural analysis and optimization. 
+
+
+Scalar Optimizations:  
+
+A partial list of optimizations performed include 
+
+  Code motion
+  Constant propagation 
+  Dead code elimination 
+  Expression simplification 
+  Common subexpression elimination
+  Strength reduction
+
+Upcoming features 
+
+  Exception handling for C++
+  OpenMP support in Fortran90
+  OpenMP support in C and C++
+  More optimizations
+
+
+Installation Information
+
+Untar the tar file that you downloaded from the ftp site:
+
+  % cd installation_directory 
+  % gunzip pro64-0.01.0-13-sources.tar.gz 
+  % tar xvf pro64-0.01.0-13-sources.tar 
+
+The pro64 compilers assume to be operating under an NUE
+environment.  Information about NUE can be found at:
+
+  http://www.software.hp.com/ia64linux
+
+You need to install the pro64 rpm from the nue environment.
+Note that the nue command will put you under your home
+directory in NUE, which may not be your regular home
+directory. You should move the pro64 rpm and osprey
+source tree to a directory that is accessible under NUE.
+
+To install the pro64 rpm do the following:
+
+  %su
+  #nue
+  #rpm -i --force --nodeps pro64-0.01.0-13.ia64.rpm
+
+The --nodeps flag is needed because the installation
+under NUE only sees files installed under NUE. It does
+not see the files installed from the NUE rpm.
+                 
+
+You can verify your installation by doing a simple
+hello world test under NUE:
+
+  %cat hello.c
+  #include <stdio.h>
+
+  main()
+  {
+    printf("hello world\n");
+  }
+
+
+  %sgicc hello.c
+  %./a.out
+  hello world
+  %
+
+The README.src file provides information about building the
+pro64 compilers and libraries from the kpro64 source tree.
+The sgicc(1), sgiCC(1) and sgif90(1) man pages provide information
+about the SGI C, C++ and Fortran90 compiler commands.
+

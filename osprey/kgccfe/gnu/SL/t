@@ -1,0 +1,216 @@
+dp-bit.c
+dp-bit.c
+fp-bit.c
+fp-bit.c
+genrtl.c
+genrtl.c
+gtype-desc.c
+gtype-desc.c
+insn-attrtab.c
+insn-attrtab.c
+insn-conditions.c
+insn-conditions.c
+insn-emit.c
+insn-emit.c
+insn-extract.c
+insn-extract.c
+insn-opinit.c
+insn-opinit.c
+insn-output.c
+insn-output.c
+insn-peep.c
+insn-peep.c
+insn-recog.c
+insn-recog.c
+obstack.c
+obstack.c
+print-rtl1.c
+print-rtl1.c
+auto-host.h
+auto-host.h
+configargs.h
+configargs.h
+config.h
+25,26c25,26
+< # include "MIPS/mips.h"
+< # include "MIPS/linux.h"
+---
+> # include "mips/mips.h"
+> # include "mips/linux.h"
+config.h
+cs-config.h
+cs-config.h
+cs-hconfig.h
+cs-hconfig.h
+cs-tconfig.h
+cs-tconfig.h
+cs-tm_p.h
+cs-tm_p.h
+gencheck.h
+gencheck.h
+genrtl.h
+genrtl.h
+gt-alias.h
+gt-alias.h
+gt-bitmap.h
+gt-bitmap.h
+gt-c-common.h
+gt-c-common.h
+gt-c-decl.h
+gt-c-decl.h
+gt-c-objc-common.h
+gt-c-objc-common.h
+gt-c-parse.h
+gt-c-parse.h
+gt-cp-call.h
+gt-cp-call.h
+gt-cp-decl2.h
+gt-cp-decl2.h
+gt-cp-decl.h
+gt-cp-decl.h
+gt-cp-mangle.h
+gt-cp-mangle.h
+gt-cp-parse.h
+gt-cp-parse.h
+gt-cp-pt.h
+gt-cp-pt.h
+gt-c-pragma.h
+gt-c-pragma.h
+gt-cp-repo.h
+gt-cp-repo.h
+gt-cp-spew.h
+gt-cp-spew.h
+gt-cp-tree.h
+gt-cp-tree.h
+gt-cselib.h
+gt-cselib.h
+gt-dwarf2out.h
+gt-dwarf2out.h
+gt-emit-rtl.h
+gt-emit-rtl.h
+gt-except.h
+gt-except.h
+gt-explow.h
+gt-explow.h
+gt-expr.h
+gt-expr.h
+gt-fold-const.h
+gt-fold-const.h
+gt-function.h
+gt-function.h
+gt-gcse.h
+gt-gcse.h
+gthr-default.h
+gthr-default.h
+gt-integrate.h
+gt-integrate.h
+gt-lists.h
+gt-lists.h
+gt-mips.h
+gt-mips.h
+gt-optabs.h
+gt-optabs.h
+gt-profile.h
+gt-profile.h
+gt-ra-build.h
+gt-ra-build.h
+gt-regclass.h
+gt-regclass.h
+gt-reg-stack.h
+gt-reg-stack.h
+gt-sdbout.h
+gt-sdbout.h
+gt-stmt.h
+gt-stmt.h
+gt-stor-layout.h
+gt-stor-layout.h
+gt-tree.h
+gt-tree.h
+gt-varasm.h
+gt-varasm.h
+gtype-c.h
+gtype-c.h
+gtype-cp.h
+gtype-cp.h
+gtype-desc.h
+gtype-desc.h
+gtyp-gen.h
+gtyp-gen.h
+hconfig.h
+25,26c25,26
+< # include "MIPS/mips.h"
+< # include "MIPS/linux.h"
+---
+> # include "mips/mips.h"
+> # include "mips/linux.h"
+hconfig.h
+insn-attr.h
+insn-attr.h
+insn-codes.h
+insn-codes.h
+insn-config.h
+insn-config.h
+insn-constants.h
+insn-constants.h
+insn-flags.h
+560,574d559
+< #if 1
+< extern rtx gen_seq_si                        PARAMS ((rtx, rtx, rtx));
+< extern rtx gen_seq_di                        PARAMS ((rtx, rtx, rtx));
+< extern rtx gen_sne_si                        PARAMS ((rtx, rtx, rtx));
+< extern rtx  gen_sne_di                        PARAMS ((rtx, rtx, rtx));
+< extern rtx  gen_sge_si                        PARAMS ((rtx, rtx, rtx));
+< extern rtx  gen_sge_di                        PARAMS ((rtx, rtx, rtx));
+< extern rtx gen_sle_si_reg                    PARAMS ((rtx, rtx, rtx));
+< extern rtx  gen_sle_di_reg                    PARAMS ((rtx, rtx, rtx));
+< extern rtx  gen_sgeu_si                       PARAMS ((rtx, rtx, rtx));
+< extern rtx gen_sleu_si_reg                   PARAMS ((rtx, rtx, rtx));
+< extern rtx  gen_sleu_di_reg                   PARAMS ((rtx, rtx, rtx));
+< 
+< 
+< #else
+576,580c561,565
+<  inline rtx
+< gen_seq_si(
+< 	   rtx a ATTRIBUTE_UNUSED,
+< 	   rtx b ATTRIBUTE_UNUSED,
+< 	   rtx c ATTRIBUTE_UNUSED)
+---
+> static inline rtx
+> gen_seq_si(a, b, c)
+>      rtx a ATTRIBUTE_UNUSED;
+>      rtx b ATTRIBUTE_UNUSED;
+>      rtx c ATTRIBUTE_UNUSED;
+697d681
+< #endif
+insn-flags.h
+linux.h
+linux.h
+mips.h
+mips.h
+multilib.h
+multilib.h
+options.h
+options.h
+specs.h
+specs.h
+tconfig.h
+23,24c23,24
+< # include "MIPS/mips.h"
+< # include "MIPS/linux.h"
+---
+> # include "mips/mips.h"
+> # include "mips/linux.h"
+tconfig.h
+tm_p.h
+2c2
+< # include "MIPS/mips-protos.h"
+---
+> # include "mips/mips-protos.h"
+tm_p.h
+tm-preds.h
+tm-preds.h
+tree-check.h
+tree-check.h
+xlimits.h
+xlimits.h

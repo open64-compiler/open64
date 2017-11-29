@@ -1,0 +1,6 @@
+#  Define build parameters
+BUILD_BASE     = @top_srcdir@/osprey/be/lno
+TARG_INFO_SRC  = @top_srcdir@/osprey/common/@TARG_INFO_NAME@
+
+#  Include setup file which will then include Makefile.base
+include @top_builddir@/osprey/Makefile.gsetup

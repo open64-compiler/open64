@@ -1,0 +1,117 @@
+#
+#  Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
+#  File modified June 20, 2003 by PathScale, Inc. to update Open64 C/C++ 
+#  front-ends to GNU 3.2.2 release.
+#
+
+Added defintion of c_strlen_exported in builtins.c
+
+Added definition of get_expr_stmts_for_value in stmt.c 
+
+Copied gcc-3.2.2/gnu.mod/c-parse.c to kgccfe/gnu/.
+parse.c defines RETURN also used in rtl.def (undef and define around include 
+rtl.h).
+
+gen_rtx_CONST_VECTOR not defined anywhere. Comment out code in emit-rtl.c that
+uses it.
+
+Include lbasename.o in kgnu_common/libiberty/Makefile.gbase. It defines 
+lbasename used in kgccfe/gnu/cppfiles.c
+
+Include mkdeps.c in kgccfe/gnu/Makefile.gbase as it defines deps_add_dep used 
+in cppfiles.c
+
+Include prefix.c in kgccfe/gnu/Makefile.gbase as it defines update_path used by
+cppinit.c. Define PREFIX as "" to silence compilation error (lest, need to use
+-DPREFIX=<prefix-value>). This is not usefult to us.
+
+Included gcse.o in kgccfe/gnu/Makefile.gbase. gcse.c defines gcse_main 
+referred in toplev.c.
+
+Included df.c needed by ssa-ccp.c needed by toplev.c.
+
+Included fibheap.c (defines fibheap_delete) in 
+kgnu_common/libiberty/Makefile.gbase.
+
+fibheap.c needs definition of LONG_MAX (defined in kgccfe/gnu/glimits.h).
+Include this file.
+
+print-tree.c needs to define print_tree. print_tree needs oballoc, obfree.
+Used malloc, and free instead (WARNING)
+
+Used permanent_obstack insetad of rtl_obstack in kgccfe/gnu/MIPS/genrtl.c
+(permanent_obstack is defined in tree.c).
+
+Created gengenrtl from gengenrtl.o and rules in gcc-3.2.2/gcc/Makefile.in
+Output from executing gengenrtl was re-deirected to kgccfe/gnu/MIPS/genrtl.c, 
+Ouput from executing gengenrtl -h  was re-directed to kgccfe/gnu/MIPS/genrtl.h
+
+Updated structure Operator_From_Tree in wfe_expr.cxx with new EXPR nodes in 
+kgccfe/gnu/tree.def. Execution of gccfe was giving assertion otherwise.
+
+kgccfe/gnu/varasm.c: assemnble_external can becalled with asm_out_file NULL.
+
+Included insn-flags.h in kgccfe/gnu/calls.c to get defines HAVE_call and 
+HAVE_call_value.
+
+WARNING: builtins have to be enabled in c-decl.c
+
+gen_rtx_CONST_DOUBLE in emit-rtl.c has one less paramater. Update call sites.
+
+make_decl_rtl in varasm.c has one less parameter. Update call sites.
+
+Need to modify config/MIPS/mips.h to use -mel, -meb instead of -mlittle-endian 
+and -mbig-endian.
+
+Commented out code that defines BUILT_IN_PRINTF (c-common.c, builtins.def, 
+builtins.c). Similarly all other BUILT_IN_STR* except STRLEN, STRCMP, STRCPY
+are commented out because supporting code in wfe_expr.cxx is not there yet.
+Also, PRINTF, PRINTF_LOCKED, INDEX, RINDEX were commented out.
+(WARNING).
+
+Called WFE_One_Stmt from expand_expr_stmt_value in kgccfe/gnu/expr.c
+(this function is similar to expand_expr_stmt).
+
+Copied all ifdef KEY, ifndef KEY, ifdef TARG_MIPS from gccfe/gnu.
+
+For Zero_Length arrays gcc3.2 creates a range with TYPE_MAX_VALUE NULL tree.
+Fix dereference in kgccfe/tree_symtab.cxx.
+
+Moved WFE_Null_Return from c-typeck.c to stmt.c under expand_null_return;
+
+Call mark_varargs before calling WFE_Start_Function in c-decl.c.
+
+Moved around calls to WFE_Record_Swicth_Default_Label and WFE_Add_Case_Node in 
+stmt.c
+
+Include "insn_flags.h" in stmt.c to get HAVE_tablejump.
+
+BUILT_IN_VA_START in gccfe is the same as BUILT_IN_VARARGS_START in kgccfe.
+
+Added definition of c-common.def enum tree structure to get 
+COMPOUND_LITERAL_EXPR in wfe_expr.cxx
+
+Handled COMPUND_LITERAL_EXPR in wfe_expr.cxx under ADDR_EXPR by getting to
+CONSTRUCTOR node from COMPOUND_LITERAL_EXPR node.
+
+Handle STMT_EXPR by looking at GCC documentation of tree nodes.
+
+WARNING: c-common.h defines all new nodes and can be included in wfe_expr.cxx
+There are some problems in compilation currently. That is why we have used
+c-common.def instead.
+
+Handle OPR_LDA_LABEL in wfe_decl.cxx because address of labels are handled
+differently in new kgccfe/gnu.
+
+Handle (constraints for asm in) Wfe_Expand_Asm_Operands in wfe_stmt.cxx:
+tail purpose represents a TREE_LIST and not a STRING_CST. First operand gives
+a STRING_CST.
+
+In the event that swn operator is not OPR_LDID, save expr node swn and use 
+LDID of that stored address as swn.  Copied from Wfe_Save_Expr in wfe_expr.cxx
+(This change in tree_symtab.cxx)
+
+Handle weak symbols by defining SUPPORTS_WEAK in defaults.h, and by special
+handling files that re-define such symbols (ST will show weak symbol but
+storage class will not show SCLASS_EXTERN). 
+

@@ -1,0 +1,367 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2.1 of the GNU Lesser General Public License 
+#  as published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU Lesser General Public 
+#  License along with this program; if not, write the Free Software 
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+#  USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for libu
+#
+include $(COMMONDEFS)
+
+CLIB_INCLUDE = $(BUILD_TOT)/clibroot
+
+#
+# Check for IA32, IA64 systems
+#
+#  Need nlcatmsg.h in clibinc
+LCDEFS += -D_LIB_INTERNAL
+LCDEFS += -D_XOPEN_SOURCE -D_XOPEN_SOURCE_EXTENDED
+LCDEFS += -U__mips
+LCDEFS += -D_LITTLE_ENDIAN
+LCINCS += -I$(BUILD_TOT)/clibinc
+LCINCS += -I$(BUILD_TOT)/clibinc/cray
+
+LCDEFS += -DKEY $(ERROR_ON_WARNINGS)
+
+LCINCS += -I$(CLIB_INCLUDE)
+#   $(BUILD_TOT)/include needed for any #include <nl_types.h> in libu source
+
+#  needed for libcsup/msgnew files
+LCDEFS += -D_LIBU
+ifeq ($(BUILD_ABI), N32BIT)
+LCDEFS += -D_WORD32 -Wa,-mips4 
+endif
+ifeq ($(BUILD_ABI), I32BIT)
+LCDEFS += -D_WORD32
+endif
+
+LASOPTS = $(STD_COMPILE_OPTS)
+ifeq ($(BUILD_TYPE), SHARED)
+ifeq ($(BUILD_ABI), 64BIT)
+ifeq ($(BUILD_ARCH), MIPS4)
+LASDEFS += -DPIC
+endif
+endif
+endif
+
+LF77OPTS = $(STD_COMPILE_OPTS)
+
+ifeq ($(BUILD_TARGET), IA32)
+LCDEFS += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
+endif
+
+ifeq ($(BUILD_OPTIMIZE), NODEBUG)
+OPTIMIZER = -O3
+endif
+
+ifeq ($(BUILD_COMPILER), OSP)
+OPTIMIZER += -fno-fast-stdlib
+endif
+ifeq ($(BUILD_COMPILER), PSC)
+OPTIMIZER += -fno-fast-stdlib
+endif
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+LCDEFS += -DLIBDEBUG -D_ASSERT_ON -DDEBUG_MTIO
+endif
+
+ifeq ($(BUILD_ABI), N32BIT)
+O_abi=N32
+endif
+ifeq ($(BUILD_ABI), 64BIT)
+O_abi=64
+endif
+ifeq ($(BUILD_ARCH), MIPS3)
+O_mipsisa=3
+endif
+ifeq ($(BUILD_ARCH), MIPS4)
+O_mipsisa=4
+endif
+ifdef O_abi
+LCDEFS += -DT_MIPS$(O_mipsisa)_$(O_abi)
+endif
+
+# use the f90 compiler for fortran
+#  temporary comment out until we can bootstrap
+#ifndef TOOLROOT_F90
+# Abort .DEFAULT:
+# 	echo Error: TOOLROOT_F90 not defined
+# 	exit 1
+#endif
+
+
+#----------------------------------------------------------------------
+#  Install the messages file to the standard nls directory
+#----------------------------------------------------------------------
+LANG_C_MSG_DIR=/usr/lib/locale/C/LC_MESSAGES
+
+LIBRARY = libffio.a
+PROF_LIB = libffio_p.a
+DSO     = libffio.so
+MSGFILE = lib.cat
+EXPFILE = lib.exp
+
+#----------------------------
+# Until the correct installation of the message system for the c front end,
+# install both libffio.a and libffio.so for c.
+#----------------------------
+ifeq ($(BUILD_TYPE), NONSHARED)
+LIB_TARGETS = $(LIBRARY)
+else
+LIB_TARGETS = $(DSO) $(PROF_LIB) $(LIBRARY)
+LDIRT += $(LIBRARY)
+endif
+
+TARGETS = $(LIB_TARGETS)
+LDIRT += lib.i numbers.h massage massage.c lib.cat lib.exp lib.cat.m lib.exp.m defgets.c
+
+include $(BUILD_BASE)/aqio/aqio.makeinclude
+#include $(BUILD_BASE)/cdc/cdc.makeinclude
+include $(BUILD_BASE)/clib/clib.makeinclude
+include $(BUILD_BASE)/errmsg/errmsg.makeinclude
+include $(BUILD_BASE)/ffio/ffio.gmakeinclude
+#include $(BUILD_BASE)/ibm/ibm.gmakeinclude
+include $(BUILD_BASE)/ieg/ieg.gmakeinclude
+include $(BUILD_BASE)/multi/multi.makeinclude
+include $(BUILD_BASE)/numconv/numconv.makeinclude
+include $(BUILD_BASE)/sci/sci.makeinclude
+include $(BUILD_BASE)/sci/scidep.makeinclude
+include $(BUILD_BASE)/tblmgr/tblmgr.makeinclude
+include $(BUILD_BASE)/trbk/trbk.makeinclude
+include $(BUILD_BASE)/util/util.makeinclude
+#include $(BUILD_BASE)/vms/vms.gmakeinclude
+include $(BUILD_BASE)/waio/waio.makeinclude
+
+#
+#  Add PREPFFILES to SOURCES and OBJECTS.  These definitions are
+#  for .F files which use f90 (see the rule that follows).
+#
+
+ifeq ($(BUILD_ARCH), MIPS3)
+FC = TOOLROOT=$(TOOLROOT_F90) LD_LIBRARYN32_PATH=$(TOOLROOT_F90)/usr/lib32/mips3:$(TOOLROOT_F90)/usr/lib32 $(TOOLROOT_F90)/usr/bin/f90
+endif
+ifeq ($(BUILD_ABI), N32BIT)
+FC += -Wa,-mips4 
+endif
+ifeq ($(BUILD_ABI), I32BIT)
+  FC += -m32
+endif
+ifeq ($(BUILD_ARCH), IA32)
+## Do not build the f90 routines yet.
+#SKIP_F90_ROUTINES = TRUE
+endif
+ifeq ($(BUILD_ARCH), IA64)
+endif
+
+ifndef SKIP_F90_ROUTINES
+SOURCES += $(PREPFFILES)
+OBJECTS += $(PREPFFILES:.F=.o)
+endif
+
+## include errmsg/targetlist
+## include ffio/targetlist
+## include util/targetlist
+
+# from libcsup
+## Use the catclose, catopen, etc from the ia32 system
+## C front end needs all the routines
+include $(BUILD_TOT)/libcsup/gen/gen.makeinclude
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+CFILES += \
+	catgetmsg.c \
+	catmsgfmt.c \
+	defgets.c
+else
+CFILES += \
+	catclose.c \
+	catgetmsg.c \
+	catgets.c \
+	catmsgfmt.c \
+	catopen.c \
+	cat_init.c
+endif
+
+SRC_DIRS += \
+        $(BUILD_TOT)/libcsup/msgnew
+LCINCS += -I$(BUILD_TOT)/libcsup/include
+
+.PHONY: default first last install
+
+# for now don't build msg catalog
+# default: $(TARGETS) $(MSGFILE) $(EXPFILE)
+
+ifeq ($(BUILD_COMPILER), GNU)
+default:
+	@echo "--------------------------------------------"
+	@echo "Warning: libu is not build!"
+	@echo "build libfortran with GNU compiler is not supported" 
+	@echo "--------------------------------------------"
+else
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+endif
+
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+endif
+
+last : make_libdeps
+
+# we export the .a file into the root so we can static link the f90 FE
+# but we dont install into the customers images
+exports: default
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_LIBRARY_LOC) $(LIB_TARGETS)
+
+##-------------------------------
+# Until the correct installation of the message system for the c front end,
+# install both libffio.a and libffio.so for c.  Do not install the library
+# libffio.a twice.
+##-------------------------------
+##if ($(BUILD_TYPE) == "SHARED")
+#	$(INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_LIBRARY_LOC) $(LIBRARY)
+##endif
+
+install: default
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) $(LIB_TARGETS)
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -src $(MSGFILE) $(MSGFILE)
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -src $(MSGFILE).m $(MSGFILE).m
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -src $(EXPFILE) $(EXPFILE)
+	$(INSTALL) $(STD_INSTALL_READ_MASK) -src $(EXPFILE).m $(EXPFILE).m
+else
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(STD_LIBRARY_LOC) $(LIB_TARGETS)
+ ifeq ($(BUILD_TYPE), SHARED)
+	$(STD_INSTALL) -F $(STD_DSO_LOC) $(IDBTAG) -lns $(LINK) $(DSO)
+  ifeq ($(BUILD_ABI), N32BIT)
+  ifeq ($(BUILD_ARCH), MIPS3)
+# we only install lib.cat from one of the build flavors
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(LANG_C_MSG_DIR) -src $(MSGFILE) $(MSGFILE)
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(LANG_C_MSG_DIR) -src $(MSGFILE).m $(MSGFILE).m
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(LANG_C_MSG_DIR) -src $(EXPFILE) $(EXPFILE)
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(LANG_C_MSG_DIR) -src $(EXPFILE).m $(EXPFILE).m
+  endif
+  endif
+ endif
+endif
+
+LF77OPTS = $(STD_COMPILE_OPTS)
+FFLAGS_NOLANG = $(FFLAGS:N-LANG\:exceptions=O*) -shared
+
+include $(COMMONRULES)
+
+
+VPATH = $(SRC_DIRS)
+LF77INCS = $(LCINCS)
+
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+	$(ranlib) $@
+
+$(PROF_LIB): $(OBJECTS:%.o=%.pg.o)
+	$(ar) cru $@ $^
+	$(ranlib) $@
+
+ifeq ($(BUILD_ABI),I32BIT)
+ld += -m32
+endif
+
+### Until hpc is built for linux or until library uses its own ###
+$(DSO): $(OBJECTS:%.o=%.pic.o)
+ifeq ($(BUILD_OS), DARWIN)
+	@echo "Skipping unneeded " $(DSO)
+else
+	$(ld) $(STD_DSO_LOADOPTS) -o $@ $^
+endif
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+lib.i: $(BUILD_BASE)/errmsg/lib.msg numbers.h
+	/usr/bin/cpp -traditional -E -I. $(BUILD_BASE)/errmsg/lib.msg > lib.i
+else
+lib.i: $(BUILD_BASE)/errmsg/lib.msg numbers.h
+	$(CCF) -E -I. $(BUILD_BASE)/errmsg/lib.msg > lib.i
+endif
+
+defgets.c: lib.i
+	$(AWK) -f $(BUILD_BASE)/errmsg/extract.awk lib.i > defgets.c
+
+ifeq ($(BUILD_OS), LINUX)
+lib.cat: lib.i
+	rm -f lib.cat
+	../../linux/tools/caterr -c lib.cat lib.i
+
+lib.exp: lib.i
+	rm -f lib.exp
+	caterr -Yc,/usr/bin/gencat -Ym,$(BUILD_TOT)/linux/include/tmac.sg -Yn,/usr/bin/nroff -e -c lib.exp lib.i
+
+numbers.h :  $(BUILD_BASE)/errmsg/massage.awk  $(BUILD_TOT)/clibinc/liberrno.h
+	$(AWK) -f $(BUILD_BASE)/errmsg/massage.awk $(BUILD_TOT)/clibinc/liberrno.h  > massage.c
+ ifeq ($(BUILD_ARCH), IA64)
+	/usr/bin/gcc -o massage -D_LITTLE_ENDIAN massage.c
+	./massage > numbers.h
+ else
+	$(CC) -o massage -D_LITTLE_ENDIAN massage.c
+	./massage > numbers.h
+ endif
+else
+lib.cat: lib.i
+	rm -f lib.cat
+	$(TOOLROOT)/usr/bin/caterr -Yc,$(TOOLROOT)/usr/bin/gencat -Ym,$(ROOT)/usr/lib/tmac/tmac.sg -c lib.cat lib.i
+
+lib.exp: lib.i
+	rm -f lib.exp
+	$(TOOLROOT)/usr/bin/caterr -Yc,$(TOOLROOT)/usr/bin/gencat -Ym,$(ROOT)/usr/lib/tmac/tmac.sg -Yn,/usr/bin/nroff -e -c lib.exp lib.i
+
+numbers.h :  $(BUILD_BASE)/errmsg/massage.awk  $(ROOT)/usr/include/liberrno.h
+	$(AWK) -f $(BUILD_BASE)/errmsg/massage.awk $(ROOT)/usr/include/liberrno.h  > massage.c
+	$(CC) -o massage massage.c
+	./massage > numbers.h
+endif
+
+ifeq ($(BUILD_COMPILER), OSP)
+defgu2s.o defgu2s.pic.o defgu2s.pg.o : CFLAGS += -OPT:ro=1 
+endif
+
+ifeq ($(BUILD_COMPILER), SELF)
+defgu2s.o defgu2s.pic.o defgu2s.pg.o : CFLAGS += -OPT:ro=1 
+endif

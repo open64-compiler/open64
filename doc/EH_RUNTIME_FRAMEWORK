@@ -1,0 +1,586 @@
+
+	C++ Exception Handling Runtime on IPF
+-----------------------------------------------------------
+Organization:
+    Institute of High Performance Computing,
+    Department of Computer Science and Technology,
+    Tsinghua University, Beijing, China, 100084.
+-----------------------------------------------------------
+	    
+-----------------------------------------------------------
+Document Revision History:
+
+2006-4-19 zhenyu.guo@gmail.com
+    The initial version of this document is established.
+    LSDA specification is added.
+
+2006-4-25 zhangjia
+    Two sections are added.
+	    Case Study (throw eh).
+	    Case Study (eh spec).
+
+2006-5-20 zhenyang.yu
+    Two sections are added.
+	    why/what exception handling.
+	    Grammar in standard C++.
+2006-7-20 zhou.hucheng@gmai.com
+    The revised version and refinement were established.
+-----------------------------------------------------------
+
+1. Slow Start
+
+1.1. Why Exception Handling
+
+  When a program is composed of separate modules, and especially when those 
+  modules come from separately developed libraries, error handling needs to be
+  separated into two distinct parts: 1) The reporting of error conditions that
+  cannot be resolved locally. 2) The handling of errors detected elsewhere.
+
+  The author of a library can detect runtime errors but does not in general 
+  have any idea what to do about them. The user of a library may know how to 
+  cope with such errors but cannot detect them - or else they would be handled
+  in the user's code and not left for the library to find.
+
+  Exceptions are C++'s means of separating error reporting from error handling.
+  Exceptions let us separate problem detection from problem resolution. The part
+  of the program that detects a problem need not know how to deal with it.
+
+0.2. What is Exception Handling
+
+  Exception Handling provides a way of transferring control and information from
+  a point in the execution of a program to an exception handler associated with 
+  a point previously passed by the execution. A handler will be invoked only by 
+  a throw-expression invoked in code executed in the handler's try block or 
+  functions called from the handler's try block.
+
+  In C++, an exception is raised by throwing an object. A handler will be 
+  invoked only by a throw-expression invoked in code executed in the handler's
+  try block of in functions called from the handler's try block. The type of 
+  that object determines which handler will be invoked. The selected handler is
+  the one nearest in the call chain that matches the type of the object. 
+  Exceptions are thrown and caught in ways that are similar to how arguments are
+  passed to functions. An exception can be an object of any type that can be 
+  passed to a nonreference parameter, meaning that it must be possible to copy 
+  objects of that type.
+
+2. Grammar in standard C++
+
+2.1. EBNF
+ 
+  ------------------------------------------------------
+  try-block:
+    try compound-statement handler-seq
+
+  function-try-block:
+    try ctor-initializeropt function-body handler-seq
+
+  handler-seq:
+    handler handler-seqopt
+
+  handler:
+    catch ( exception-declaration ) compound-statement
+
+  exception-declaration:
+    type-specifier-seq declarator
+    type-specifier-seq abstract-declarator
+    type-specifier-seq
+    ...
+    
+  throw-expression:
+    throw assignment-expressionopt
+
+  exception-specification:
+    throw ( typeidlistopt )
+    
+  typeidlist:
+    typeid
+    typeidlist, typeid
+  ------------------------------------------------------
+
+2.2. Try-block
+
+  A try-block may looks as following:
+
+  ------------------------------------------------------
+	try{
+		//бн..
+	}
+	catch( class_type A) {/* handler 1*/}
+	catch( class_type B) {/* handler 2*/}
+	бн.
+	catch(бн){/*handler n*/}
+  ------------------------------------------------------
+
+2.3. Function-try-block
+  
+  A function-try-block associates a handler-seq with the ctor-initializer, if 
+  present, and the function-body. An exception throw during the execution of the
+  initializer expressions in the ctor-initializer or during the execution of the
+  function-body transfers control to a handler in a function-try-block.
+  A function-try-block may looks as following:
+
+  ------------------------------------------------------
+    int f(int);
+    
+    class C {
+        int i;
+        double d;
+    public:
+        C(int, double);
+    };
+    
+    C::C(int ii, double id)
+    try
+    : i(f(ii)), d(id)// 
+    {
+    	// constructor function body
+    }
+    catch (...)
+    {
+    	// handles exceptions thrown from the ctorinitializer
+    	// and from the constructor function body
+    }
+  ------------------------------------------------------
+    
+2.4. Exception specifications
+
+  An exception-specification shall appear only on a function declarator in a 
+  function, pointer, reference or pointer to member declaration or definition. 
+
+  The followings are good styles:
+
+  ------------------------------------------------------
+  void f() throw(int);  
+  // only throw int type of exception, if others type of exception occur, 
+  // _unexcepted_handler() is called.
+
+
+  int g() throw(); // no exception thrown
+  int h();        // may throw any exception
+
+  void (*pf1)();
+  void (*pf2)() throw (int);
+  pf1 = pf2;  // ok: pf1 is less restrictive
+  pf2 = pf1;  // error: pf2 is more restrictive
+
+  struct B {
+    virtual void f() throw (int, double);
+    virtual void g();
+  };
+
+  struct D {
+    virtual void f();       // ill-formed
+    virtual void g() throw (int);   // OK
+  };
+
+  class X{ };
+  class Y{ };
+  class Z: public X{ };
+  class W{ };
+
+  void f(int i) throw (X, Y)
+  { 
+    switch (i)
+    {
+    case 1: throw X();  // OK
+    case 2: throw Y();  // OK
+    case 3: throw Z();  // OK
+    default: throw W(); // will call unexpected()
+  }
+  ------------------------------------------------------
+
+3. Runtime Specification
+
+3.1. Definition
+
+  Unwind Table: A container which holds unwind descriptions needed by unwinder 
+                to restore registers when switching up and down of stack frames.
+  LSDA: Language Specific Data Area, which describes the data structure that are
+        needed by exception handling runtime of specific languages, e.g. C++.
+  Landing Pad: It is a section of user code intended to catch, or otherwise 
+               clean up after, an exception. It gains control from the exception
+	       runtime, and after doing the appropriate processing either merges
+	       into the normal user code or returns to the runtime by resuming 
+	       or raising a new exception.
+
+3.2. Data Structure
+
+  There is an IA_64_UNWIND segment in ia64 native elf executables. This segment
+  contains only an array of unwind tables, while each table describes the 
+  unwind actions needed for a specific procedure .
+
+  ------------------------------------------------------
+  struct UnwindTable
+  {
+        uint64  startSegOffsetOfProcedure;
+        uint64  endSegOffsetOfProcedure;
+        uint64  infoPtr;
+  };
+  ------------------------------------------------------
+
+  Note that the @infoPtr of unwind table indicates an info block which is the 
+  true container of unwind descriptors.
+
+  ------------------------------------------------------
+  struct InfoBlock
+  {
+        uint32  descriptLength;
+        uint16  flag;
+        uint16  version;
+        char    descript[0];
+  //    char    descript[descriptLength*sizeof(uint64)];
+  //    void*   personalityRoutine;
+  //    char    lsda[0];
+  };
+
+  #define UNW_VER(ib)             (ib)->version
+  #define UNW_FLAG(ib)            (ib)->flag
+  #define UNW_LENGTH(ib)          (ib)->descriptLength
+  #define UNW_OS                  (ib)->flag & 0xf000
+  #define UNW_EHANDLER(ib)        (ib)->flag & 0x0001  
+  #define UNW_UHANDLER(ib)        (ib)->flag & 0x0002 
+  ------------------------------------------------------
+
+  The @lsda pointer of InfoBlock leads us to the LSDA structure. For now, there
+  is still no standard specification or conventions of this structure. Howver,
+  we have to keep compatible with gnu compilers, and we also need runtime 
+  support from libstdc++. We dig out the structure from the runtime access
+  functions in libstdc++, generally the personality routine of C++ exception 
+  handling.
+
+  ------------------------------------------------------
+  !!! CONCEPTUAL STRUCTURE
+  struct LSDA
+  {
+  char    	lpstart_encoding; 
+  uleb128   	lpStart;   				// OPTIONAL
+  char    	ttype_encoding;
+  uleb128       ttType;					// OPTIONAL
+  char    	call_site_encoding;
+  uleb128  	lenOfCallSiteTable;
+  char    	callSiteTable[lenOfCallSiteTable];
+  char    	actionTable[бн];
+  char		typeTable[бн];
+  char		typeSpecTable[бн];
+  };
+  ------------------------------------------------------
+
+  The upper structure is a conceptual view of the structure. It is stored with 
+  leb128 algorithm except the fields named 'xxx_encodings'. When
+  @lpstart_encoding is 0xff, @lpStart is missing. And so is @ttype_encoding and
+  @ttType. 
+
+  Comment of important fields:
+  @lpStart indicates the start point of current procedure.
+  @ttType indicates the type table of current procedure. It is described below.
+  @callSiteTable describes code range of current procedure, which is used to 
+  query the address of landing pad according to the IP of the exception. It is
+  compressed with leb128/@call_site_encoding. It is an array of CallSiteRecod
+  described below.
+  @actionTable describes the action kind of the landing pad. It is an array of
+  ActionRecord described below.
+  @typeTable is an array of pointers to the typeinfo objects.
+  @typeSpecTalbe is an array of list of indices into the @typeTable, it is used 
+  to described the exception type specifications.
+
+  ------------------------------------------------------
+  !!! CONCEPTUAL STRUCTURE
+  struct CallSiteRecord
+  {
+  uleb128 	cs_start;	//	start offset of the code range
+  uleb128 	cs_len;		//	length of the code range
+  uleb128 	cs_lp;		//	landing pad pointer
+  uleb128 	cs_action;	// 	offset in the action table
+  };
+  ------------------------------------------------------
+
+  C++ personality routine gets the specific call site record when the exception
+  IP is inside the code range [@lpStart + cs_start, @lpStart + cs_start + 
+  cs_len). Note that the cs_action pointer is biased by 1, coz 0 means no 
+  action records followed.
+
+  ------------------------------------------------------
+  !!! CONCEPTUAL STRUCTURE
+  struct ActionRecord
+  {
+  sleb128 	ar_filter;
+  sleb128 	ar_next;
+  };
+  ------------------------------------------------------
+
+  @ar_filter indicates three types of actions, listed as:
+  > 0, the landing pad is an exception handler, usually from catch clause of 
+  use programs. @typeTable[@ar_filter] describes the parameter type in catch
+  clause.
+  = 0, the landing pad is a cleanup action (to deconstruct the objects if 
+  necessary), usually generated by compiler.
+  < 0, it is nothing to do with landing pad, @typeSpecTable[-@ar_filter] holds
+  a list of indices into @typeTable, ended with 0. Each of them presents one 
+  type of exception type specifications.
+  @ar_next leads to the next action records as a relative offset from the point.
+
+  Note that @ar_filter and @ar_next might be less than 0, so they are encoded 
+  with sleb128.
+
+  The following figure shows layout of @typeTable and @typeSpecTable.
+
+  ------------------------------------------------------
+  Example:
+  void f() throw (double) {try{бн} catch(double){}}
+
+  ---------
+  Pointer to typeinfo(double)
+  ---------            <----- @typeTable
+  1
+  ---------
+  0
+  ------------------------------------------------------
+ 
+  Hence, when we mentioned @typeTable[@ar_filter] above, it actually means 
+  @typeTable[-@ar_filter]. For @typeSepcTable[-@ar_filter], we mean 
+  @typeTable[-@typeTable[-@ar_filter -1]].
+
+3.3. Case Study 0 (LSDA)
+
+  ------------------------------------------------------
+  Source:
+  void f() throw (double) {try{бн} catch(double){}}
+
+  LSDA:
+  .thu_LSDA_1:
+        data1   255 		//	@lpStarting_encoding, it is 0xff now
+        data1   180		//	@ttype_encoding			
+	.uleb128        .thu_LSDA_TT_End_1-.thu_LSDA_TT_Start_1
+				//	@TTtype	
+  .thu_LSDA_TT_Start_1:
+        data1   1		//	@call-site-encoding
+        .uleb128        .thu_LSDA_CS_End_1-.thu_LSDA_CS_Start_1
+				//	@callSiteLength
+  .thu_LSDA_CS_Start_1:		//	call site table begin
+        .uleb128        .L_0_24-main#  	//	@cs_start <1>
+        .uleb128        .L_0_25-.L_0_24 //	@cs_len
+        .uleb128        .Lt_0_5-main#	//	@cs_lp
+        .uleb128        0x1		//	@cs_action
+        .uleb128        .L_0_27-main#	//	@cs_start <2>
+        .uleb128        .L_0_28-.L_0_27	//	@cs_len
+        .uleb128        0x0		//	@cs_lp
+        .uleb128        0x0		//	@cs_action
+        .uleb128        .L_0_29-main#	//	code range <3>
+        .uleb128        .L_0_30-.L_0_29
+        .uleb128        0x0
+        .uleb128        0x0                     
+        .uleb128        .L_0_31-main#	//	code range <4>
+        .uleb128        .L_0_32-.L_0_31         
+        .uleb128        .Lt_0_11-main#
+        .uleb128        0x5                     
+        .uleb128        .L_0_33-main#   //	code range <5>
+        .uleb128        .L_0_34-.L_0_33
+        .uleb128        0x0
+        .uleb128        0x0
+        .uleb128        .L_0_35-main#	//	code range <6>
+        .uleb128        .L_0_36-.L_0_35
+        .uleb128        0x0
+        .uleb128        0x0
+  .thu_LSDA_CS_End_1:		//	call site end, action table begin
+        .uleb128        0x1     //	ar_filter
+        .uleb128        0x1     //	ar_next
+        data1   0x7f		//	ar_filter
+        .uleb128        0x0	//	ar_next
+        data1   0x7f		//	ar_filter
+        .uleb128        0x0	//	ar_next
+				//	action table end, type table begin
+        .align  8		//	note that type table must be .align 8
+        data8.ua        @gprel(DW.ref._ZTId)	// double type
+  .thu_LSDA_TT_End_1:		//	@typeTable points here
+				//	type table end, type spec table begin
+        .uleb128        0x1	//	index in @typeTable
+        .uleb128        0x0	//	spec list end
+				//	type spec table end
+  ------------------------------------------------------
+
+3.4. Case Study 1 (throw)
+
+  First, we can see the process of the EH (Exception Handling); then, we will 
+  use a simple example to show how the EH implement at runtime.
+
+  ------------------------------------------------------
+  __cxa_allocate_exception
+         |
+        \ /
+  __cxa_throw
+         |
+        \ /
+  __Unwind_RaiseException
+         |
+        \ /
+  PHASE1 (personality routine)
+         |
+        \ /
+  PHASE2 (personality routine)
+         |
+        \ /
+  Install thread context
+  ------------------------------------------------------
+
+  From the figure above, we can see, when the user program throw an exception, 
+  the runtime library will first call the __cxa_allocate_exception to create a 
+  exception object for personality routine, then, call __cxa_throw to throw the
+  object. After that, the library will call __Unwind_RaiseException, and enter
+  the unwind process.
+
+  The unwind process can divide into 2 phases. The first phase is the search
+  phase, in this phase the personality routine only search the landingpad, but
+  does not do any stack operation. If it find a handler, it will return
+  _URC_HANDLER_FOUND, if not, return _URC_CONTINUE_UNWIND, and the 
+  __Unwind_RaiseException will continue to do call the personality routine to
+  find the handler in the next frame. If it can't find a handler until at the 
+  end of the stack, it will call terminate().
+
+  If __Unwind_RaiseException can find a handler in phase 1, then it enter the 
+  phase 2. 
+  
+  Phase 2 is the cleanup phase. In this phase, the personality routine will 
+  find the handler like the pahse1. But when it find a landingpad in this 
+  frame, it will check whether it is a handler or a cleanup action. If it is 
+  only a cleanup action, the personality routine will return
+  _URC_CONTINUE_UNWIND, but the __Unwind_RaiseException will deconstruct objects
+  in this frame, and continue to call personality routine to find the handler. 
+  If it find one, the personality routine will set registers which are used for
+  the handler and return _URC_INSTALL_CONTEXT and the __Unwind_RaiseException 
+  will install the handler and transfer the control to the handler.
+
+  Now we can see the process with a simple test.
+
+  ------------------------------------------------------
+  class CTest
+     {
+      public:
+              CTest(){printf("CTOR %llx\n", this);}
+             ~CTest(){printf("DTOR %llx\n", this);}
+      };
+      int f() 
+      {
+              CTest test;
+              throw test;
+      }
+  int main(int argc, char** argv)
+      {
+              try {
+                      f();
+              }
+              catch(CTest t)
+              {
+                      printf("catch CTest\n");
+              }
+              printf("after catch\n");
+              return 0;
+      }
+  ------------------------------------------------------
+
+  With this simple test we can trace how the runtime do EH in detail.
+  Now we can trace the personality routine to show the process.
+
+  Phase 1:
+  ==================================================================
+  PERSONALITY: action = 0x1
+ 			|------------->0x1 means the phase1
+  unwind_get_ip = 0x4000000000000bd0, private_2 = 0x0
+  Search call-site table for ip = 0x4000000000000bcf
+	/*  <start,len,lp,act> */
+        call-site-record:<0x4000000000000b72, 0xe, 0x0, 0x0>
+        call-site-record:<0x4000000000000bc2, 0xe, 0x4000000000000bd0, 0x0>
+        Found matched call-site-record
+			|------------>find a landing pad but don't have hndler
+  Found_type = 2, swithValue = 0
+			|------------>find clean_up , continue to find
+
+  PERSONALITY: action = 0x1---------->call personality the second time in phase1
+  unwind_get_ip = 0x4000000000000c60, private_2 = 0x0
+  Search call-site table for ip = 0x4000000000000c5f
+        call-site-record:<0x4000000000000c52, 0xe, 0x4000000000000c70, 0x1>
+        Found matched call-site-record
+  Check action records with throw type 0x4000000000001180 (5CTest)
+        Action Record: <0x1, 0x0> (filter, disp)
+        saw_handler = true;
+  Found_type = 3, swithValue = 1
+			|------------->find a handler return.
+  return _URC_HANDLER_FOUND
+
+  Phase2
+  ==================================================================
+  PERSONALITY: action = 0x2
+			 |------------->0x2 means Phase2
+  unwind_get_ip = 0x4000000000000bd0, private_2 = 0x4000000000000c60
+  Search call-site table for ip = 0x4000000000000bcf
+        call-site-record:<0x4000000000000b72, 0xe, 0x0, 0x0> <start,len,lp,act>
+        call-site-record:<0x4000000000000bc2, 0xe, 0x4000000000000bd0, 0x0> 
+        Found matched call-site-record
+  Found_type = 2, swithValue = 0
+  __builtin_eh_return_data_regno (0) = 15, &unwindHeader = 0x6000000000004060
+  __builtin_eh_return_data_regno (1) = 16, switchValue = 0
+
+  DTOR 60000fffffffb420-------------->deconstruct the object in this frame.
+
+  PERSONALITY: action = 0x2
+			|-------------> continue unwind in this frame(Phase 2)
+  unwind_get_ip = 0x4000000000000c10, private_2 = 0x4000000000000c60
+  Search call-site table for ip = 0x4000000000000c0f
+        call-site-record:<0x4000000000000b72, 0xe, 0x0, 0x0> <start,len,lp,act>
+        call-site-record:<0x4000000000000bc2, 0xe, 0x4000000000000bd0, 0x0>
+        call-site-record:<0x4000000000000c02, 0xf, 0x0, 0x0> <start,len,lp,act>
+        Found matched call-site-record
+  Found_type = 0, swithValue = 0
+  return _URC_CONTINUE_UNWIND
+			|----------->can't find handler in this frame, continue
+
+  PERSONALITY: action = 0x6
+		    |------>0x6=0x2|0x4, means has found a handler in this frame
+		    in phase1, and the personality routine must do Install
+		    in this frame, 0x6 flag will speed up the unwind.
+  unwind_get_ip = 0x4000000000000c60, private_2 = 0x4000000000000c60
+  __builtin_eh_return_data_regno (0) = 15, &unwindHeader = 0x6000000000004060
+  __builtin_eh_return_data_regno (1) = 16, switchValue = 1
+
+  Transfer the control to user code (handler):
+  ==================================================================
+  catch CTest
+  DTOR 60000fffffffb450
+  DTOR 6000000000004080
+  after catch
+  ==================================================================
+
+  From the process we showed above, we can see the process of the personality
+  routine doing unwind. In the user code, in function f(), it only throw an
+  exception, but don't have a catch block, so in the first frame, the
+  personality routine only find the clean_up but not the handler in the first
+  frame. When it enters the next frame, in the second time, the personality
+  routine found a catch block in the main() function, and the phase1 is end. 
+
+  The phase 2 is similar with phase1, but one thing we should point out is that
+  when the personality routine in phase2, if it finds a clean up, it will do
+  deconstruct. After that, the user code will call __libunwind_Unwind_Resume 
+  (a runtime library routine) and this function will continue to call the 
+  personality routine in the same frame, in this process, the personality 
+  routine also can't find handler and return. Then, it will enter the next 
+  frame and the process is the same to what we showed above.
+
+  A call to __libunwind_Unwind_Resume routine is inserted at the end of a 
+  landing pad that performed cleanup, but did not resume normal execution. It
+  causes unwinding to proceed further.
+
+3.5. Case Study 2 (eh spec)
+
+  The process of eh with spec is similar with the process we said above, one 
+  special point is that in phase1 the personality routine will check whether
+  the throw_type and the throw_spec is the same. If the type is match, the 
+  process is the same as eh without spec.
+
+  If not, the personality routine in phase1 will set handler_switch_value<0 and
+  assume the handler has been found, then return _URC_HANDLER_FOUND. In phase2,
+  the personality routine will check the hander_switch_value, if this value is
+  less than 0, the personality routine return and begins to install context. In
+  fact the handler which the personality routine found is the
+  __cxa_call_unexpected() routine. So the user code will call the
+  __cxa_call_unexpected() routine to do exception handling. This routine will
+  call abort().
+

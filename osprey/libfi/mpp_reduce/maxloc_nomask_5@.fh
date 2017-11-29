@@ -1,0 +1,196 @@
+C
+C
+C  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+C
+C  This program is free software; you can redistribute it and/or modify it
+C  under the terms of version 2.1 of the GNU Lesser General Public License 
+C  as published by the Free Software Foundation.
+C
+C  This program is distributed in the hope that it would be useful, but
+C  WITHOUT ANY WARRANTY; without even the implied warranty of
+C  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+C
+C  Further, this software is distributed without any warranty that it is
+C  free of the rightful claim of any third person regarding infringement 
+C  or the like.  Any license provided herein, whether implied or 
+C  otherwise, applies only to this software file.  Patent licenses, if
+C  any, provided herein do not apply to combinations of this program with 
+C  other software, or any other product whatsoever.  
+C
+C  You should have received a copy of the GNU Lesser General Public 
+C  License along with this program; if not, write the Free Software 
+C  Foundation, Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, 
+C  USA.
+C
+C  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+C  Mountain View, CA 94043, or:
+C
+C  http://www.sgi.com
+C
+C  For further information regarding this notice, see:
+C
+C  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+C
+C
+
+      mype = my_pe()
+*
+*     Initialize the local maximum value and local index to that
+*     maximum value. Then search for the local maximum value.
+*
+      do i = 1, 5
+          local_idx(i) = 0
+      enddo
+*
+*         Do not use the mask argument. Search the entire array
+*         for the maximum value.
+*
+cdir$ doshared (i5,i4,i3,i2,i1) on source(i1,i2,i3,i4,i5)
+      do i5 = 1, ext(5)
+      do i4 = 1, ext(4)
+      do i3 = 1, ext(3)
+      do i2 = 1, ext(2)
+      do i1 = 1, ext(1)
+          if ((source(i1,i2,i3,i4,i5) .xor. local_max) .ge. 0)
+     +    then
+              if (source(i1,i2,i3,i4,i5) .gt. local_max) then
+                  local_max = source(i1,i2,i3,i4,i5)
+                  local_idx(1) = i1
+                  local_idx(2) = i2
+                  local_idx(3) = i3
+                  local_idx(4) = i4
+                  local_idx(5) = i5
+              endif
+          else
+              if (source(i1,i2,i3,i4,i5) .ge. 0) then
+                  local_max = source(i1,i2,i3,i4,i5)
+                  local_idx(1) = i1
+                  local_idx(2) = i2
+                  local_idx(3) = i3
+                  local_idx(4) = i4
+                  local_idx(5) = i5
+              endif
+          endif
+      enddo
+      enddo
+      enddo
+      enddo
+      enddo
+cdir$ no barrier
+*
+*     Move the local maximum and its index into shared memory.
+*
+      result(mype,1) = local_idx(1)
+      result(mype,2) = local_idx(2)
+      result(mype,3) = local_idx(3)
+      result(mype,4) = local_idx(4)
+      result(mype,5) = local_idx(5)
+      max_value(mype) = local_max
+*
+*     If running in parallel, then find the global maximum,
+*     else if running in a master region, then just return
+*     to the caller; the global maximum has already been
+*     found by processor 0.
+
+      if (.not. in_parallel()) goto 9999
+*
+*     Wait for all processors to write their local maximum.
+*
+cdir$ barrier
+*
+*     Find the location of the first occurance of the global
+*     maximum value.
+*
+      mod_factor = 2
+      offset = 1
+      tripcnt = 63 - leadz(n$pes)
+      do i = 1, tripcnt
+          if (mod(mype,mod_factor) .eq. 0) then
+              local_max = max_value(mype)
+              do j = 1,5
+                  local_idx(j) = result(mype,j)
+              enddo
+              far_max = max_value(mype+offset)
+              do j = 1,5
+                  far_idx(j) = result(mype+offset,j)
+              enddo
+*
+*             If two local maximums are equal, then choose the
+*             maximum value with the lower index.
+*
+              if (local_max .eq. far_max) then
+                  if (local_idx(5) .gt. far_idx(5)) then
+                      max_value(mype) = far_max
+                      do j = 1,5
+                          result(mype,j) = far_idx(j)
+                      enddo
+                  elseif (local_idx(5) .eq. far_idx(5)) then
+                      if (local_idx(4) .gt. far_idx(4)) then
+                          max_value(mype) = far_max
+                          do j = 1,5
+                              result(mype,j) = far_idx(j)
+                          enddo
+                      elseif (local_idx(4) .eq. far_idx(4)) then
+                          if (local_idx(3) .gt. far_idx(3)) then
+                              max_value(mype) = far_max
+                              do j = 1,5
+                                  result(mype,j) = far_idx(j)
+                              enddo
+                          elseif (local_idx(3) .eq. far_idx(3)) then
+                              if (local_idx(2) .gt. far_idx(2)) then
+                                  max_value(mype) = far_max
+                                  do j = 1,5
+                                      result(mype,j) = far_idx(j)
+                                  enddo
+                              elseif (local_idx(2) .eq. far_idx(2))
+     +                        then
+                                  if (local_idx(1) .gt. far_idx(1))
+     +                            then
+                                      max_value(mype) = far_max
+                                      do j = 1,5
+                                          result(mype,j) = far_idx(j)
+                                      enddo
+                                  endif
+                              endif
+                          endif
+                      endif
+                  endif
+*
+*             If two local maximums have the same sign, then
+*             it is safe to compare the two values without the
+*             fear of overflowing.
+*
+              elseif ((local_max .xor. far_max) .ge. 0) then
+                  if (local_max .lt. far_max) then
+                      max_value(mype) = far_max
+                      do j = 1,5
+                          result(mype,j) = far_idx(j)
+                      enddo
+                  endif
+*
+*             If two local maximums have different signs, then
+*             choose the one that has a positive value.
+*
+              else
+                  if (local_max .lt. 0) then
+                      max_value(mype) = far_max
+                      do j = 1,5
+                          result(mype,j) = far_idx(j)
+                      enddo
+                  endif
+              endif
+          endif
+          mod_factor = mod_factor * 2
+          offset = offset * 2
+cdir$ barrier
+      enddo
+*
+9999  continue
+*
+cdir$	master
+	fresult(1) = result(mype,1)
+	fresult(2) = result(mype,2)
+	fresult(3) = result(mype,3)
+	fresult(4) = result(mype,4)
+	fresult(5) = result(mype,5)
+cdir$	end master

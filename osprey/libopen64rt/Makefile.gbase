@@ -1,0 +1,77 @@
+# -*- makefile -*-
+#
+#
+#  Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  The Open64 Runtime Library is free software; you can redistribute it
+#  and/or modify it under the terms of the GNU Lesser General Public
+#  License as published by the Free Software Foundation; either
+#  version 2.1 of the License, or (at your option) any later version.
+#
+#  The Open64 Runtime Library is distributed in the hope that it will be
+#  useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+#  Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public
+#  License along with the Open64 Runtime Library; if not, write to the
+#  Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+#  02111-1307 USA.
+#
+
+
+#
+#  Makefile.base for libopen64rt
+#
+
+include $(COMMONDEFS)
+
+# NO -ansi in LCOPTS, otherwise x8664 memset will not preprocess correctly
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS =
+LCINCS += -I$(BUILD_BASE)
+
+LIBRARY = libopen64rt.a
+
+TARGETS = $(LIBRARY)
+
+CFILES	=	malloc_opt.c
+
+
+
+SRC_DIRS = $(BUILD_BASE)
+
+default:
+	$(MAKE)  first
+	$(MAKE)  $(TARGETS)
+	$(MAKE)  last
+
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+endif
+
+last: make_deps
+
+exports: default
+
+install: default
+
+include $(COMMONRULES)
+
+VPATH =    $(BUILD_BASE)
+
+ifeq ($(BUILD_TARGET), X8664)
+OBJECTS_NONSHARED = memset.o cacheinfo.o
+OBJECTS += $(OBJECTS_NONSHARED)
+endif
+
+# Currently X8664 memset is provided for the non-shared run-time
+# library (there are still PIC issues with memset.S that still
+# need to be resolved).
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^
+	$(AR) cru libopen64rt_shared.a $^
+	$(AR) dv libopen64rt_shared.a $(OBJECTS_NONSHARED)

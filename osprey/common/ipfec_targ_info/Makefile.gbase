@@ -1,0 +1,1051 @@
+#
+#  Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#  Makefile.base for ipfec_targ_info
+#
+
+#
+#  Verify that BUILD_TYPE is "SHARED" only.
+#
+ifneq ($(BUILD_TYPE), SHARED)
+default:
+	@echo Error: Only BUILD_TYPE = SHARED is supported - $(BUILD_TYPE).
+	@exit 1
+endif
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#----------------------------------------------------------------------
+ifeq ($(BUILD_COMPILER), EDG)
+CVERSION = -xansi
+WOFF = -fullwarn
+else
+CVERSION =
+WOFF =
+endif
+
+RUN =
+ifeq ($(BUILD_ARCH), IA64)
+  ifeq ($(BUILD_HOSTARCH), IA32)
+    RUN = medusa -batch
+  endif
+endif
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+
+HOSTDEFS =
+
+TARGDEFS =
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+CURRENT_DIR		= .
+COMMON_DIR		= $(BUILD_TOT)/common
+KAPI_DIR		= $(BUILD_AREA)/libkapi
+COMMON_COM_DIR		= $(COMMON_DIR)/com $(COMMON_DIR)/util
+TARGINFO_DIR		= $(BUILD_BASE)
+
+OLD_TARGINFO_DIR       = $(COMMON_DIR)/targ_info
+
+TARGINFO_ACCESS_DIR	= $(TARGINFO_DIR)/access
+TARGINFO_GENERATE_DIR 	= $(TARGINFO_DIR)/gen
+TARGINFO_MSCHED_DIR	= $(TARGINFO_DIR)/msched
+
+ifeq ($(BUILD_TARGET), MIPS)
+BUILD_TARGET_DIR = mips
+endif
+
+ifeq ($(BUILD_TARGET), SL)
+BUILD_TARGET_DIR = SL
+endif
+
+OLD_TARGINFO_ISA_DIR 	= $(OLD_TARGINFO_DIR)/isa/$(BUILD_TARGET_DIR)
+OLD_TARGINFO_ABI_DIR 	= $(OLD_TARGINFO_DIR)/abi/$(BUILD_TARGET_DIR)
+TARGINFO_PROC_DIR 	= $(OLD_TARGINFO_DIR)/proc/$(BUILD_TARGET_DIR)
+OLD_TARGINFO_GENERATE_DIR	= $(OLD_TARGINFO_DIR)/generate
+OLD_TARGINFO_ACCESS_DIR     = $(OLD_TARGINFO_DIR)/access
+TARG_INCLUDE_DIR        = $(BUILD_AREA)/include  \
+                          $(BUILD_TOT)/libkapi
+OLD_PRO64_TARGINFO	= \
+  $(OLD_TARGINFO_ACCESS_DIR)	\
+  $(OLD_TARGINFO_GENERATE_DIR)	\
+  $(OLD_TARGINFO_ISA_DIR)		\
+  $(OLD_TARGINFO_PROC_DIR)		\
+  $(OLD_TARGINFO_ABI_DIR)
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS = \
+  $(CURRENT_DIR)		\
+  $(TARGINFO_ACCESS_DIR)	\
+  $(TARGINFO_GENERATE_DIR)	\
+  $(TARGINFO_DIR)         \
+  $(TARG_INCLUDE_DIR)     \
+  $(TARGINFO_MSCHED_DIR)  \
+  $(OLD_PRO64_TARGINFO)   \
+  $(COMMON_COM_DIR)	  
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+# File containing the list of symbols exported outside of si.so
+#----------------------------------------------------------------------
+ifeq ($(BUILD_COMPILER), EDG)
+SI_EXPORT_LIST = $(TARGINFO_GENERATE_DIR)/si.Exported
+endif
+
+VPATH    =  \
+  $(CURRENT_DIR)		\
+  $(TARGINFO_ACCESS_DIR)	\
+  $(TARGINFO_GENERATE_DIR)	\
+  $(TARGINFO_DIR)		\
+  $(TARGINFO_MSCHED_DIR)  	\
+  $(COMMON_COM_DIR)	  
+
+LCOPTS = $(STD_COMPILE_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(SRC_DIRS))
+
+LCXXOPTS = $(STD_COMPILE_OPTS)
+LCXXDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCXXINCS = $(addprefix -I, $(SRC_DIRS))
+
+# Optionally remove "-MDupdate Makedepend" so executables don't get
+# rebuilt every time LATEST libC etc. changes
+ifdef BUILD_EXEC_NO_MAKEDEPEND
+CXXLDFLAGS1 = $(CXXFLAGS:N-MDupdate) $(LDFLAGS)
+CXXLDFLAGS = $(CXXLDFLAGS1:NMakedepend)
+else
+CXXLDFLAGS = $(CXXFLAGS) $(LDFLAGS)
+endif
+
+# setup stuff to build shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+# we don't have a so_locations to update, so don't do anything
+DSOSTARTOPT = 
+DSOSTARTOPT_32 = $(DSOSTARTOPT)
+DSOSTARTOPT_N32 = $(DSOSTARTOPT)
+
+
+LDIRT += *.[ch] *.cxx *.Exported isa_gen isa_subset_gen isa_operands_gen \
+	 isa_properties_gen isa_hazards_gen isa_pack_gen isa_print_gen \
+	 isa_decode_gen isa_pseudo_gen isa_registers_gen isa_enums_gen \
+	 isa_lits_gen abi_properties_gen proc_gen proc_properties_gen \
+	 isa_bundle_gen si_gen.so ii_files so_locations *.knb  \
+         ipfec_targ_gen ptn_table_gen ptn_table_gen_mck
+
+ifeq ($(BUILD_TARGET), MIPS)
+LDIRT += r10000_si_gen r8000_si_gen r5000_si_gen r4000_si_gen 
+SO_TARGETS = \
+	r10000.so	\
+	r8000.so	\
+	r5000.so	\
+	r4000.so
+endif
+ifeq ($(BUILD_TARGET), SL)
+LDIRT += r10000_si_gen r8000_si_gen r5000_si_gen r4000_si_gen
+SO_TARGETS = \
+        r10000.so       \
+        r8000.so        \
+        r5000.so        \
+        r4000.so
+endif
+
+
+ifeq ($(BUILD_TARGET), IA64)
+LDIRT += itanium_si_gen
+SO_TARGETS = \
+	itanium.so itanium2.so
+endif
+ifeq ($(BUILD_TARGET), IA32)
+LDIRT += pentium_si_gen
+SO_TARGETS = \
+	pentium.so
+endif
+
+HDRS_LOC = /usr/include/cmplrs/$(BUILD_TARGET_DIR)
+
+TARG_INFO_LIB = libtarginfo.a
+ifeq ($(BUILD_OS), LINUX)
+LIB_LOC = $(STD_MONGOOSE_LINUX_LOC)
+else
+LIB_LOC = $(STD_MONGOOSE_LOC)
+endif
+
+TARGINFO_ISA_SRCS = \
+	isa_hazards.cxx		\
+	isa_pack.cxx		\
+	isa_decode.cxx		\
+	isa_pseudo.cxx		\
+	isa_print.cxx
+
+TARGINFO_GENERATE_SRCS = \
+	isa_hazards_gen.cxx	\
+	isa_pack_gen.cxx	\
+	isa_decode_gen.cxx	\
+	isa_pseudo_gen.cxx	\
+	isa_print_gen.cxx	\
+	gen_util.cxx
+
+TARGINFO_GENERATE_HDRS = $(TARGINFO_GENERATE_SRCS:.cxx=.h)
+
+TARGINFO_ACCESS_SRCS = \
+	ti_asm.c		\
+	ti_bundle.c		\
+	ti_latency.c		\
+	ti_errors.c		\
+	ti_res.c		\
+	ti_res_count.c		\
+	ti_res_res.c
+
+TARGINFO_ACCESS_HDRS = $(TARGINFO_ACCESS_SRCS:.c=.h)
+TARGINFO_ACCESS_OBJS = $(TARGINFO_ACCESS_SRCS:.c=.o)
+
+TARG_INFO_SRCS_C = \
+	topcode.c		\
+	targ_isa_subset.c	\
+	targ_isa_properties.c	\
+	targ_isa_enums.c	\
+	targ_isa_lits.c		\
+	targ_isa_bundle.c	\
+	targ_isa_operands.c	\
+	targ_isa_registers.c	\
+	targ_isa_decode.c	\
+	targ_isa_pseudo.c	\
+	targ_isa_hazards.c	\
+	targ_isa_print.c	\
+	targ_isa_pack.c		\
+	targ_abi_properties.c	\
+	targ_proc.c		\
+	targ_proc_properties.c \
+
+TARG_DSO_SRCS_C = \
+	itanium.c
+TARG_DSO_SRCS_CXX = \
+	targ_issue_port.cxx \
+	targ_cache_info.cxx \
+	targ_bypass.cxx \
+	cggrp_ptn_table.cxx
+
+# No head file for this class file
+TARG_INFO_SRCS_ONLY = \
+	targ_bypass.cxx
+
+TARG_INFO_SRCS = $(TARG_INFO_SRCS_C) \
+                 $(TARG_INFO_SRCS_ONLY)
+
+TARG_DSO_SRCS  = $(TARG_DSO_SRCS_C) \
+                 $(TARG_DSO_SRCS_CXX)
+
+TARG_DSO_MCK_SRCS_C = $(TARG_DSO_SRCS_C:.c=_mck.c)
+TARG_DSO_MCK_SRCS_CXX = $(TARG_DSO_SRCS_CXX:.cxx=_mck.cxx)
+
+TARG_DSO_MCK_SRCS = $(TARG_DSO_MCK_SRCS_CXX) \
+                    $(TARG_DSO_MCK_SRCS_C)
+
+TARG_INFO_HDRS_C = $(TARG_INFO_SRCS_C:.c=.h)
+TARG_INFO_HDRS_CXX = $(TARG_INFO_SRCS_CXX:.cxx=.h)
+TARG_INFO_HDRS = $(TARG_INFO_HDRS_C) $(TARG_INFO_HDRS_CXX)
+
+TARG_INFO_OBJS_C = $(TARG_INFO_SRCS_C:.c=.o)
+TARG_INFO_OBJS_CXX = $(TARG_INFO_SRCS_CXX:.cxx=.o)
+TARG_INFO_OBJS = $(TARG_INFO_OBJS_C) $(TARG_INFO_OBJS_CXX)
+
+TARG_DSO_OBJS_C = $(TARG_DSO_SRCS_C:.c=.o)
+TARG_DSO_OBJS_CXX = $(TARG_DSO_SRCS_CXX:.cxx=.o)
+
+TARG_DSO_MCK_OBJS_C = $(TARG_DSO_MCK_SRCS_C:.c=.o)
+TARG_DSO_MCK_OBJS_CXX = $(TARG_DSO_MCK_SRCS_CXX:.cxx=.o)
+
+TARG_DSO_OBJS = $(TARG_DSO_OBJS_C) $(TARG_DSO_OBJS_CXX)
+TARG_DSO_MCK_OBJS = $(TARG_DSO_MCK_OBJS_C) $(TARG_DSO_MCK_OBJS_CXX)
+
+TARG_INFO_EXPORTS_C = $(TARG_INFO_SRCS_C:.c=.Exported)
+TARG_INFO_EXPORTS_CXX = $(TARG_INFO_SRCS_CXX:.cxx=.Exported)
+TARG_INFO_EXPORTS = $(TARG_INFO_EXPORTS_C) $(TARG_INFO_EXPORTS_CXX)
+
+LIBTARGINFO_OBJS = \
+	$(TARGINFO_ACCESS_OBJS)	\
+	$(TARG_INFO_OBJS)
+
+TARGETS = \
+    $(TARG_INFO_SRCS) \
+    $(TARG_INFO_OBJS) \
+    $(TARG_DSO_SRCS)  \
+    $(TARG_DSO_OBJS)  \
+    $(TARG_DSO_MCK_SRCS) \
+    $(TARG_DSO_MCK_OBJS) \
+    $(SO_TARGETS)     \
+    $(TARG_INFO_LIB) 
+    
+
+ifneq ($(BUILD_COMPILER), EDG)
+#TARGETS +=	si_gen.a
+endif
+
+ifeq ($(BUILD_COMPILER), EDG)
+TARG_INFO_EXPORTED = $(TARG_INFO_SRCS:.c=.Exported)
+EXPORT_FILE = targinfo.Exported
+TARGETS += \
+	$(TARG_INFO_EXPORTED)	\
+	$(EXPORT_FILE)
+endif
+
+ifeq ($(BUILD_TARGET), IA64)
+IPFEC_TARG_GEN_FILES = itanium.c \
+			itanium_mck.c \
+			targ_abi_properties.c \
+			targ_abi_properties.h \
+			targ_bypass.cxx \
+			targ_bypass.h \
+			targ_bypass_mck.cxx \
+			targ_bypass_mck.h \
+			targ_cache_info.cxx \
+			targ_cache_info.h \
+			targ_cache_info_mck.cxx \
+			targ_cache_info_mck.h \
+			targ_isa_bundle.c \
+			targ_isa_bundle.h \
+			targ_isa_enums.c \
+			targ_isa_enums.h \
+			targ_isa_lits.c \
+			targ_isa_lits.h \
+			targ_isa_operands.c \
+			targ_isa_operands.h \
+			targ_isa_properties.c \
+			targ_isa_properties.h \
+			targ_isa_registers.c \
+			targ_isa_registers.h \
+			targ_isa_subset.c \
+			targ_isa_subset.h \
+			targ_issue_port.cxx \
+			targ_issue_port.h \
+			targ_issue_port_mck.cxx \
+			targ_issue_port_mck.h \
+			targ_proc.c \
+			targ_proc.h \
+			targ_proc_properties.c \
+			targ_proc_properties.h \
+			topcode.c \
+			topcode.h 
+
+GEN_FILES= $(IPFEC_TARG_GEN_FILES) \
+	   targ_isa_hazards.h \
+	   targ_isa_hazards.c \
+	   targ_isa_pack.h \
+	   targ_isa_pack.c \
+	   targ_isa_decode.h \
+	   targ_isa_decode.c \
+	   targ_isa_pseudo.h \
+	   targ_isa_pseudo.c \
+	   targ_isa_print.h \
+	   targ_isa_print.c \
+	   cggrp_ptn_table.cxx \
+	   cggrp_ptn_table.h \
+	   cggrp_ptn_table_mck.cxx 
+endif
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+LLDLIBS = 
+
+default:
+	$(MAKE) first
+ifeq ($(BUILD_TARGET), IA64)
+	+@for f in $(GEN_FILES); do \
+            echo $(MAKE) $$f ; \
+            $(MAKE)  $$f ; \
+            retval=$$?; \
+            if [ $$retval != 0 ]; then \
+	    	exit $$retval; \
+            fi; \
+        done; 
+endif
+	$(MAKE) $(TARGETS) 
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is 
+#  built.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+  ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+  endif
+endif
+
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is 
+#  built.
+#----------------------------------------------------------------------
+last: make_deps
+
+ifeq ($(BUILD_COMPILER), GNU)
+SETPATH = LD_LIBRARY_PATH=.
+else
+SETPATH = 
+endif
+
+#----------------------------------------------------------------------
+#
+#  These rules build the targ_info objects and install the DSO's in the
+#  /usr/lib32/cmplrs directory.
+#
+#----------------------------------------------------------------------
+
+#
+# Set up links to "old" targ_info source files.
+#
+$(TARGINFO_ACCESS_SRCS) $(TARGINFO_ACCESS_HDRS):
+	ln -sf $(OLD_TARGINFO_ACCESS_DIR)/$@ $@
+
+$(TARGINFO_GENERATE_SRCS) $(TARGINFO_GENERATE_HDRS):
+	ln -sf $(OLD_TARGINFO_GENERATE_DIR)/$@ $@
+
+$(TARGINFO_ISA_SRCS):
+	ln -sf $(OLD_TARGINFO_ISA_DIR)/$@ $@
+
+
+ti_asm.o: ti_asm.c topcode.h targ_isa_operands.h targ_isa_print.h \
+	  targ_isa_pack.h targ_isa_bundle.h targ_isa_decode.h \
+	  targ_isa_pseudo.h ti_errors.h ti_asm.h 
+	$(CC) $(CFLAGS) -c ti_asm.c
+
+ti_bundle.o: ti_bundle.c ti_si.h targ_isa_bundle.h ti_bundle.h 
+	$(CC) $(CFLAGS) -c ti_bundle.c
+
+ti_latency.o: ti_latency.c ti_si.h targ_isa_properties.h targ_isa_hazards.h \
+	      targ_isa_subset.h ti_errors.h ti_latency.h 
+	$(CC) $(CFLAGS) -c ti_latency.c
+
+ti_errors.o: ti_errors.c ti_errors.h 
+	$(CC) $(CFLAGS) -c ti_errors.c
+
+ti_res.o: ti_res.c ti_res.h
+	$(CC) $(CFLAGS) -c ti_res.c
+
+ti_res_res.o: ti_res_res.c ti_res_res.h
+	$(CC) $(CFLAGS) -c ti_res_res.c
+
+ti_res_count.o: ti_res_count.c ti_res_count.h
+	$(CC) $(CFLAGS) -c ti_res_count.c
+
+gen_util.o: gen_util.cxx gen_util.h
+	$(CXX) $(CXXFLAGS) -c gen_util.cxx
+
+
+ifeq ($(BUILD_COMPILER), EDG)
+topcode.Exported: topcode.h
+targ_isa_enums.Exported: targ_isa_enums.h
+targ_isa_lits.Exported: targ_isa_lits.h
+targ_isa_registers.Exported: targ_isa_registers.h
+targ_isa_hazards.Exported: targ_isa_hazards.h
+targ_isa_subset.Exported: targ_isa_subset.h
+targ_isa_properties.Exported: targ_isa_properties.h
+targ_isa_operands.Exported: targ_isa_operands.h
+targ_isa_pack.Exported: targ_isa_pack.h
+targ_isa_decode.Exported: targ_isa_decode.h
+targ_isa_pseudo.Exported: targ_isa_pseudo.h
+targ_isa_print.Exported: targ_isa_print.h
+targ_isa_bundle.Exported: targ_isa_bundle.h
+targ_abi_properties.Exported: targ_abi_properties.h
+targ_proc.Exported: targ_proc.h
+targ_proc_properties.Exported: targ_proc_properties.h
+endif
+
+## targ_isa_hazards.[ch] ##
+
+targ_isa_hazards.c targ_isa_hazards.h: isa_hazards_gen
+	$(RUN) ./isa_hazards_gen
+
+isa_hazards_gen: isa_hazards_gen.o gen_util.o isa_hazards.o topcode.o \
+		targ_isa_subset.o
+	$(CXX) $(CXXLDFLAGS) isa_hazards.o isa_hazards_gen.o \
+	    gen_util.o targ_isa_subset.o topcode.o -o isa_hazards_gen
+
+isa_hazards_gen.o: isa_hazards_gen.cxx isa_hazards_gen.h topcode.h targ_isa_subset.h
+	$(CXX) $(CXXFLAGS) -c isa_hazards_gen.cxx
+
+isa_hazards.o: isa_hazards.cxx isa_hazards_gen.h topcode.h targ_isa_subset.h
+	$(CXX) $(CXXFLAGS) -c isa_hazards.cxx
+
+
+targ_isa_operands.o: targ_isa_operands.c targ_isa_operands.h targ_isa_properties.h
+	$(CC) $(CFLAGS) -c targ_isa_operands.c
+
+
+
+
+## targ_isa_pack.[ch] ##
+
+targ_isa_pack.c targ_isa_pack.h: isa_pack_gen
+	$(RUN) ./isa_pack_gen
+
+isa_pack_gen: gen_util.o isa_pack_gen.o gen_util.o isa_pack.o \
+	      topcode.o targ_isa_properties.o
+	$(CXX) $(CXXLDFLAGS) isa_pack.o isa_pack_gen.o gen_util.o \
+	    topcode.o targ_isa_properties.o -o isa_pack_gen
+
+isa_pack_gen.o: isa_pack_gen.cxx isa_pack_gen.h topcode.h targ_isa_properties.h
+	$(CXX) $(CXXFLAGS) -c isa_pack_gen.cxx
+
+isa_pack.o: isa_pack.cxx isa_pack_gen.h topcode.h
+	$(CXX) $(CXXFLAGS) -c isa_pack.cxx
+
+
+## targ_isa_decode.[ch] ##
+
+targ_isa_decode.c targ_isa_decode.h: isa_decode_gen
+	$(RUN) ./isa_decode_gen
+
+isa_decode_gen: gen_util.o isa_decode_gen.o gen_util.o isa_decode.o topcode.o targ_isa_bundle.o 
+	$(CXX) $(CXXLDFLAGS) isa_decode.o isa_decode_gen.o gen_util.o \
+	    topcode.o targ_isa_bundle.o -o isa_decode_gen
+
+isa_decode_gen.o: isa_decode_gen.cxx isa_decode_gen.h topcode.h 
+	$(CXX) $(CXXFLAGS) -c isa_decode_gen.cxx
+
+isa_decode.o: isa_decode.cxx isa_decode_gen.h topcode.h targ_isa_bundle.h \
+	      targ_isa_pack.h
+	$(CXX) $(CXXFLAGS) -c isa_decode.cxx
+
+
+## targ_isa_pseudo.[ch] ##
+
+targ_isa_pseudo.c targ_isa_pseudo.h: isa_pseudo_gen
+	$(RUN) ./isa_pseudo_gen
+
+isa_pseudo_gen: gen_util.o isa_pseudo_gen.o gen_util.o isa_pseudo.o topcode.o \
+		targ_isa_operands.o targ_isa_operands.o targ_isa_registers.o \
+		targ_isa_lits.o targ_isa_enums.o targ_isa_subset.o
+	$(CXX) $(CXXLDFLAGS) isa_pseudo.o isa_pseudo_gen.o gen_util.o \
+	    topcode.o targ_isa_operands.o targ_isa_registers.o \
+	    targ_isa_lits.o targ_isa_enums.o targ_isa_subset.o \
+	    -o isa_pseudo_gen
+
+isa_pseudo_gen.o: isa_pseudo_gen.cxx isa_pseudo_gen.h topcode.h targ_isa_operands.h
+	$(CXX) $(CXXFLAGS) -c isa_pseudo_gen.cxx
+
+isa_pseudo.o: isa_pseudo.cxx isa_pseudo_gen.h topcode.h
+	$(CXX) $(CXXFLAGS) -c isa_pseudo.cxx
+
+
+## targ_isa_print.[ch] ##
+
+targ_isa_print.c targ_isa_print.h: isa_print_gen
+	$(RUN) ./isa_print_gen
+
+isa_print_gen: gen_util.o isa_print_gen.o isa_print.o \
+	       topcode.o targ_isa_properties.o
+	$(CXX) $(CXXLDFLAGS) isa_print.o isa_print_gen.o gen_util.o \
+	    topcode.o targ_isa_properties.o -o isa_print_gen
+
+isa_print_gen.o: isa_print_gen.cxx isa_print_gen.h topcode.h targ_isa_properties.h
+	$(CXX) $(CXXFLAGS) -c isa_print_gen.cxx
+
+isa_print.o: isa_print.cxx isa_print_gen.h topcode.h
+	$(CXX) $(CXXFLAGS) -c isa_print.cxx
+
+
+## topcode.[ch] ##
+
+topcode.c topcode.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen 
+
+## targ_isa_enums.[ch] ##
+
+targ_isa_enums.c targ_isa_enums.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_isa_lits.[ch] ##
+
+targ_isa_lits.c targ_isa_lits.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+
+## targ_isa_registers.[ch] ##
+
+targ_isa_registers.c targ_isa_registers.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_isa_subset.[ch] ##
+
+targ_isa_subset.c targ_isa_subset.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+
+## targ_isa_properties.[ch] ##
+
+targ_isa_properties.c targ_isa_properties.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+
+## targ_isa_operands.[ch] ##
+
+targ_isa_operands.c targ_isa_operands.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_abi_properties.[ch] ##
+
+targ_abi_properties.c targ_abi_properties.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_isa_bundle.[ch] ##
+
+targ_isa_bundle.c targ_isa_bundle.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_proc.[ch] ##
+
+targ_proc.c targ_proc.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_proc_properties.[ch] ##
+
+targ_proc_properties.c targ_proc_properties.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_bypass.[ch] ##
+
+targ_bypass.cxx targ_bypass.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_cache_info.[ch] ##
+
+targ_cache_info.cxx targ_cache_info.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_issue_port_mck.[ch] ##
+
+targ_issue_port.cxx targ_issue_port.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_issue_port_mck.[ch] ##
+
+targ_issue_port_mck.cxx targ_issue_port_mck.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_cache_info_mck.[ch] ##
+
+targ_cache_info_mck.cxx targ_cache_info_mck.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## targ_bypass_mck.[ch] ##
+
+targ_bypass_mck.cxx targ_bypass_mck.h: ipfec_targ_gen
+	$(RUN) ./ipfec_targ_gen
+
+## si_gen.so ##
+# Need the current working directory so that rld doesn't get confused later
+CWD := $(shell pwd)
+
+si_gen.o: si_gen.cxx si_gen.h topcode.h targ_isa_properties.h \
+          targ_isa_subset.h targ_isa_operands.h
+	$(CXX) $(CXXFLAGS) -c $(OLD_TARGINFO_GENERATE_DIR)/si_gen.cxx 
+
+ifeq ($(BUILD_COMPILER), EDG)
+si_gen.so: si_gen.cxx topcode.h si_gen.h targ_isa_operands.h \
+	targ_isa_subset.o targ_isa_properties.o
+	$(CXX) $(CXXLDFLAGS) $(OLD_TARGINFO_GENERATE_DIR)/si_gen.cxx \
+	targ_isa_subset.o targ_isa_properties.o \
+	-shared -o si_gen.so -rpath $(CWD)
+else
+si_gen.so: si_gen.o topcode.h si_gen.h targ_isa_operands.h \
+        targ_isa_operands.o targ_isa_properties.o targ_isa_registers.o \
+	targ_isa_subset.o targ_isa_enums.o targ_isa_lits.o
+	$(CXX) $(CXXLDFLAGS) si_gen.o \
+	targ_isa_subset.o targ_isa_properties.o targ_isa_operands.o \
+	targ_isa_registers.o targ_isa_enums.o targ_isa_lits.o \
+	-shared -o si_gen.so
+
+si_gen.a: si_gen.o topcode.h si_gen.h targ_isa_operands.h \
+        targ_isa_operands.o targ_isa_properties.o targ_isa_registers.o \
+	targ_isa_subset.o targ_isa_enums.o targ_isa_lits.o
+	$(AR) rc si_gen.a si_gen.o \
+	targ_isa_subset.o targ_isa_properties.o targ_isa_operands.o \
+	targ_isa_registers.o targ_isa_enums.o targ_isa_lits.o 
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+## r10000 ##
+
+r10000.so: r10000.o $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST)       \
+               r10000.o -o r10000.so
+
+r10000.o: r10000.c ti_si.h
+	$(CC) $(CFLAGS) -c r10000.c
+
+r10000.c: r10000_si_gen
+	$(RUN) ./r10000_si_gen
+
+r10000_si_gen: si_gen.so r10000_si.o topcode.o
+	$(CXX) $(CXXLDFLAGS) r10000_si.o topcode.o si_gen.so -o r10000_si_gen
+
+r10000_si.o: r10000_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/r10000_si.cxx
+
+
+## r8000 ##
+
+r8000.so: r8000.o $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST)       \
+               r8000.o -o r8000.so
+
+r8000.o: r8000.c ti_si.h
+	$(CC) $(CFLAGS) -c r8000.c
+
+r8000.c: r8000_si_gen
+	$(RUN) ./r8000_si_gen
+
+r8000_si_gen: si_gen.so r8000_si.o topcode.o
+	$(CXX) $(CXXLDFLAGS) r8000_si.o topcode.o si_gen.so -o r8000_si_gen
+
+r8000_si.o: r8000_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/r8000_si.cxx
+
+
+## r5000 ##
+
+r5000.so: r5000.o $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST)       \
+               r5000.o -o r5000.so
+
+r5000.o: r5000.c ti_si.h
+	$(CC) $(CFLAGS) -c r5000.c
+
+r5000.c: r5000_si_gen
+	$(RUN) ./r5000_si_gen
+
+r5000_si_gen: si_gen.so r5000_si.o topcode.o
+	$(CXX) $(CXXLDFLAGS) r5000_si.o topcode.o si_gen.so -o r5000_si_gen
+
+r5000_si.o: r5000_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/r5000_si.cxx
+
+
+## r4000 ##
+
+r4000.so: r4000.o $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST)       \
+               r4000.o -o r4000.so
+
+r4000.o: r4000.c ti_si.h
+	$(CC) $(CFLAGS) -c r4000.c
+
+r4000.c: r4000_si_gen
+	$(RUN) ./r4000_si_gen
+
+r4000_si_gen: si_gen.so r4000_si.o topcode.o
+	$(CXX) $(CXXLDFLAGS) r4000_si.o topcode.o si_gen.so -o r4000_si_gen
+
+r4000_si.o: r4000_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/r4000_si.cxx
+
+endif
+
+ifeq ($(BUILD_TARGET), SL)
+## r10000 ##
+
+r10000.so: r10000.o $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST)       \
+               r10000.o -o r10000.so
+
+r10000.o: r10000.c ti_si.h
+	$(CC) $(CFLAGS) -c r10000.c
+
+r10000.c: r10000_si_gen
+	$(RUN) ./r10000_si_gen
+
+r10000_si_gen: si_gen.so r10000_si.o topcode.o
+	$(CXX) $(CXXLDFLAGS) r10000_si.o topcode.o si_gen.so -o r10000_si_gen
+
+r10000_si.o: r10000_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/r10000_si.cxx
+
+## r8000 ##
+
+r8000.so: r8000.o $(SI_EXPORT_LIST)	
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST)       \
+               r8000.o -o r8000.so
+
+r8000.o: r8000.c ti_si.h
+	$(CC) $(CFLAGS) -c r8000.c
+
+r8000.c: r8000_si_gen
+	$(RUN) ./r8000_si_gen
+
+r8000_si_gen: si_gen.so r8000_si.o topcode.o
+	$(CXX) $(CXXLDFLAGS) r8000_si.o topcode.o si_gen.so -o r8000_si_gen
+
+r8000_si.o: r8000_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/r8000_si.cxx
+
+
+## r5000 ##
+
+r5000.so: r5000.o $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST)       \
+               r5000.o -o r5000.so
+
+r5000.o: r5000.c ti_si.h
+	$(CC) $(CFLAGS) -c r5000.c
+
+r5000.c: r5000_si_gen
+	$(RUN) ./r5000_si_gen
+
+r5000_si_gen: si_gen.so r5000_si.o topcode.o
+	$(CXX) $(CXXLDFLAGS) r5000_si.o topcode.o si_gen.so -o r5000_si_gen
+
+r5000_si.o: r5000_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/r5000_si.cxx
+## r4000 ##
+
+r4000.so: r4000.o $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST)       \
+               r4000.o -o r4000.so
+
+r4000.o: r4000.c ti_si.h
+	$(CC) $(CFLAGS) -c r4000.c
+
+r4000.c: r4000_si_gen
+	$(RUN) ./r4000_si_gen
+
+r4000_si_gen: si_gen.so r4000_si.o topcode.o	
+	$(CXX) $(CXXLDFLAGS) r4000_si.o topcode.o si_gen.so -o r4000_si_gen
+
+r4000_si.o: r4000_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/r4000_si.cxx
+
+endif
+
+
+ifeq ($(BUILD_TARGET), IA64)
+
+ ifeq ($(BUILD_COMPILER), EDG)
+itanium.so: $(TARG_DSO_OBJS) $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST) \
+               $(TARG_DSO_OBJS) $(TARG_INFO_LIB) -o itanium.so
+
+itanium2.so: $(TARG_DSO_MCK_OBJS) $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST) \
+               $(TARG_DSO_MCK_OBJS) $(TARG_INFO_LIB) -o itanium2.so
+ else
+itanium.so:  $(TARG_DSO_OBJS)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) $(TARG_DSO_OBJS) $(TARG_INFO_LIB) -shared -o itanium.so
+
+itanium2.so: $(TARG_DSO_MCK_OBJS) 
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) $(TARG_DSO_MCK_OBJS) $(TARG_INFO_LIB) -o itanium2.so
+ endif
+
+## DSO file: Itanium.so or Mckinley.so ###
+## targ_issue_port.o ##
+
+itanium.o: itanium.c ti_si.h
+	$(CC) $(CFLAGS) -c itanium.c
+
+itanium_mck.o: itanium_mck.c ti_si.h
+	$(CC) $(CFLAGS) -c itanium_mck.c
+
+itanium.c itanium_mck.c: ipfec_targ_gen 
+	$(RUN) ./ipfec_targ_gen 
+
+cggrp_ptn_table.h cggrp_ptn_table.cxx : ptn_table_gen
+	$(RUN) ./ptn_table_gen
+
+ptn_table_gen.o: $(TARG_INFO_LIB) 
+ptn_table_gen: ptn_table_gen.o  targ_issue_port.o $(TARG_INFO_LIB)
+	$(CXX) $(CXXFLAGS) ptn_table_gen.o targ_issue_port.o  $(TARG_INFO_LIB) -o ptn_table_gen
+
+cggrp_ptn_table_mck.cxx : ptn_table_gen_mck
+	$(RUN) ./ptn_table_gen_mck
+
+ptn_table_gen_mck : ptn_table_gen.o targ_issue_port_mck.o $(TARG_INFO_LIB)
+	$(CXX) $(CXXFLAGS) ptn_table_gen.o targ_issue_port_mck.o $(TARG_INFO_LIB) -o ptn_table_gen_mck
+
+endif
+
+ifeq ($(BUILD_TARGET), IA32)
+
+ ifeq ($(BUILD_COMPILER), EDG)
+pentium.so: pentium.o $(SI_EXPORT_LIST)
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) -exports_file $(SI_EXPORT_LIST) \
+               pentium.o -o pentium.so
+ else
+pentium.so: pentium.o
+	$(CC) $(CFLAGS) $(STD_DSO_LOADOPTS) pentium.o -o pentium.so
+ endif
+
+pentium.o: pentium.c ti_si.h
+	$(CC) $(CFLAGS) -c pentium.c
+
+pentium.c: pentium_si_gen
+	$(SETPATH) $(RUN) ./pentium_si_gen
+
+pentium_si_gen: si_gen.a pentium_si.o topcode.o
+	$(CXX) $(CXXLDFLAGS) pentium_si.o topcode.o si_gen.a -o pentium_si_gen
+
+pentium_si.o: pentium_si.cxx targ_isa_subset.h topcode.h si_gen.h
+	$(CXX) $(CXXFLAGS) -c $(TARGINFO_PROC_DIR)/pentium_si.cxx
+endif
+
+libtarginfo.a: $(LIBTARGINFO_OBJS)
+libtarginfo.a: libtarginfo.a($(LIBTARGINFO_OBJS))
+
+ifeq ($(BUILD_COMPILER), EDG)
+$(EXPORT_FILE): $(TARG_INFO_EXPORTED)
+	cat $(TARG_INFO_EXPORTED) > targinfo.Exported
+endif
+
+##############################################################
+#
+#   Ipfec Project Addition
+#
+##############################################################
+KAPI_LIBS = $(KAPI_DIR)/libkapi.a \
+            $(KAPI_DIR)/libkapi_ia64.a 
+
+KNOBS_ACCESS_SRC = \
+         ekapi_util.cxx \
+         ekapi_opcode_access.cxx \
+         ekapi_subset.cxx \
+         ekapi_register.cxx \
+         ekapi_bundle.cxx \
+         ekapi_enums.cxx \
+         ekapi_lits.cxx \
+         ekapi_operands.cxx \
+         ekapi_properties.cxx  \
+         ekapi_itanium.cxx \
+         ekapi_cache_info.cxx \
+         ekapi_bypass.cxx
+
+KNOBS_GEN_SRC = \
+         gen_base.cxx \
+         issue_port_gen.cxx \
+         opcode_gen.cxx \
+         subset_gen.cxx \
+         properties_gen.cxx \
+         enums_gen.cxx \
+         lits_gen.cxx \
+         bundle_gen.cxx \
+         reg_gen.cxx \
+         operands_gen.cxx \
+         itanium_gen.cxx \
+         bypass_gen.cxx \
+         proc_gen_new.cxx \
+         proc_properties_gen_new.cxx\
+         cache_info_gen.cxx 
+
+KNOBS_SRC = \
+         ipfec_targ_gen.cxx \
+         $(KNOBS_ACCESS_SRC) \
+         $(KNOBS_GEN_SRC) 
+
+KNOBS_OBJ = $(KNOBS_SRC:.cxx=.o)
+
+KNOBS_TARGS = \
+         $(KNOBS_OBJ) \
+         ipfec_targ_gen 
+
+    
+KNOBS_FILES =  v11-itanium-extra.knb v26-itanium-41-external.knb
+KNOBS_FILES +=  v12-itanium-extra.knb mckinley_knobsfile.knb 
+ipfec_targ_gen:  $(KNOBS_OBJ) $(KNOBS_FILES) $(KAPI_DIR)/libkapi_ia64.a
+	$(CXX) $(CXXLDFLAGS) $(KNOBS_OBJ) -o $@ $(KAPI_LIBS) -lm -lc
+	ln -sf $(TARGINFO_DIR)/v12-itanium-extra.knb v12-itanium-extra.knb
+	ln -sf $(TARGINFO_DIR)/mckinley_knobsfile.knb mckinley_knobsfile.knb
+	ln -sf $(TARGINFO_DIR)/v11-itanium-extra.knb v11-itanium-extra.knb
+	ln -sf $(TARGINFO_DIR)/v26-itanium-41-external.knb v26-itanium-41-external.knb
+
+$(KAPI_DIR)/libkapi_ia64.a: $(KAPI_DIR)/libkapi.a
+	$(MAKE) libkapi_ia64.a -C ${KAPI_DIR}
+$(KAPI_DIR)/libkapi.a:
+	$(MAKE) libkapi.a -C ${KAPI_DIR}
+#
+
+clear:
+	rm -f $(KNOBS_TARGS) $(TARGETS) $(TARG_INFO_OBJS) $(TARG_INFO_EXPORTS) core *.d *.a *.o *.h *.knb *.Exported Makedepend $(LDIRT)
+	make clean -C ${KAPI_DIR}
+##  end of IPFEC project
+###########################################################
+
+
+
+
+exports: default
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(HDRS_LOC) $(TARG_INFO_HDRS)
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(HDRS_LOC) $(TARGINFO_ACCESS_HDRS)
+ifeq ($(BUILD_COMPILER), EDG)
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(HDRS_LOC) $(EXPORT_FILE)
+endif
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -F $(LIB_LOC) $(TARG_INFO_LIB)
+
+ifeq ($(BUILD_OS), LINUX)
+install: $(SO_TARGETS) $(TARG_INFO_LIB)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) $(SO_TARGETS) $(STD_MONGOOSE_LINUX_LOC)
+ ifeq ($(BUILD_TARGET), IA64)
+	$(STD_INSTALL) $(STD_INSTALL_READ_MASK) -D $(TARG_INFO_LIB) $(LIB_LOC)/$(TARG_INFO_LIB)
+ endif
+else
+
+install: exports
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) $(SO_TARGETS)
+ ifeq ($(BUILD_TYPE), SHARED)
+  ifndef NOSYSGEN
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) \
+		-F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) $(SO_TARGETS)
+  endif
+ endif
+endif
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+

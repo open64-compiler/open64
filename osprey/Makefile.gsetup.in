@@ -1,0 +1,942 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2011-2012 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2010 Hewlett Packard Company
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+# gmake
+#
+# IMPORTANT:  this file is gmake version of Makefile.setup.
+# Any changes to this or Makefile.setup must be done to both files.
+
+#
+#  This file does all the verification and preliminary processing of the
+#  BUILD_* parameters.  It is one of three files which act together to build
+#  all compiler components and libraries.  There is a Makefile in every build
+#  directory which defines the twelve BUILD_* parameters and includes this file.
+#  This file does its checking, computes some standard (STD_*) variables which
+#  are common to many builds then includes the final piece (Makefile.base)
+#  which does all the real build work.
+#
+#  The BUILD_* parameters are:
+#     BUILD_AREA     = specifies the top of this build area subtree
+#                      (that is, the targ* level)
+#     BUILD_OBJ_DIR  = specifies the top of the object directory build
+#		       location (as opposed to BUILD_TOT which is the
+#		       top of the souce tree)
+#     BUILD_TOT      = specifies the Top-Of-Trunk directory containing
+#                      Makefile.setup
+#     BUILD_BASE     = specifies the base directory containing Makefile.base
+#                      (and almost always the source files)
+#     BUILD_ROOTS    = specifies which ROOT & TOOLROOT to use
+#     BUILD_ABI      = specifies ABI to build for (32BIT/N32BIT/64BIT/
+#                      I32BIT/I64BIT/W64BIT)
+#     BUILD_ARCH     = specifies machine architecture for build 
+#			(MIPS1/MIPS2/MIPS3/MIPS4/IA32/IA64SL/X8664)
+#     BUILD_TYPE     = specifies type of build (SHARED/NONSHARED)
+#     BUILD_OPTIMIZE = specifies default, debug or override optimization options
+#     BUILD_PCH      = specifies whether to use pre-compiled headers for build
+#     BUILD_VARIANT  = specifies special variant to be built
+#     BUILD_INSTALL  = specifies where to install components/libraries
+#     BUILD_TARGET   = specifies target machine for run (MIPS/IA64/IA32/SL/X8664)
+#     BUILD_COMPILER = specifies which compiler to use for build (GNU/PSC)
+#     BUILD_CPU      = specifies cpu (R4000/R5000/R8000/R10000)
+#     BUILD_OS	     = specifies OS (LINUX only right now)
+#     BUILD_HOST     = specifies host that are building on (MIPS/IA32/IA64/SL)
+#			[defaults to $(BUILD_ARCH)].
+#
+#  Default values for BUILD_* parameters are set here with values from the
+#  configure script.  BUILD_BASE is not set by configure but must be set
+#  explicitly by the Makefile that includes this file.  Other BUILD_* variables
+#  only need to be set if different values are desired then the default that
+#  is set here.
+
+
+ifndef BUILD_AREA
+     BUILD_AREA     = @abs_top_builddir@/osprey/targdir
+endif
+ifndef BUILD_OBJ_DIR
+     BUILD_OBJ_DIR  = @abs_top_builddir@
+endif
+ifndef BUILD_SRC
+     BUILD_SRC      = @abs_top_srcdir@
+endif
+ifndef BUILD_TOT
+     BUILD_TOT      = @abs_top_srcdir@/osprey
+endif
+ifndef BUILD_ROOTS
+     BUILD_ROOTS    = TARGET
+endif
+ifndef BUILD_ABI
+     BUILD_ABI      = @BUILD_ABI@
+endif
+ifndef BUILD_ARCH
+     BUILD_ARCH     = @BUILD_ARCH@
+endif
+ifndef BUILD_TYPE
+     BUILD_TYPE     = @BUILD_TYPE@
+endif
+ifndef BUILD_OPTIMIZE
+     BUILD_OPTIMIZE = @BUILD_OPTIMIZE@
+endif
+ifndef BUILD__FFE_OPTIMIZE
+     BUILD_FFE_OPTIMIZE = @BUILD_FFE_OPTIMIZE@
+endif
+ifndef BUILD_PCH
+     BUILD_PCH      = DEFAULT
+endif
+ifndef BUILD_VARIANT
+     BUILD_VARIANT  = DEFAULT
+endif
+ifndef BUILD_INSTALL
+     BUILD_INSTALL  = DEFAULT
+endif
+ifndef BUILD_TARGET
+     BUILD_TARGET   = @BUILD_TARGET@
+endif
+ifndef BUILD_VENDOR
+     BUILD_VENDOR   = @BUILD_VENDOR@
+endif
+ifndef BUILD_COMPILER
+     BUILD_COMPILER = @BUILD_COMPILER@
+endif
+ifndef BUILD_OS
+     BUILD_OS	    = LINUX
+endif
+ifndef BUILD_HOST
+     BUILD_HOST     = @BUILD_HOST@
+endif
+ifndef BUILD_BOTH
+     BUILD_BOTH     = @BUILD_BOTH@
+endif
+ifndef BUILD_GNU3
+     BUILD_GNU3     = @BUILD_GNU3@
+endif
+ifndef BUILD_SKIP_IPA
+     BUILD_SKIP_IPA = @BUILD_SKIP_IPA@
+endif
+ifndef COMPILER_TARG_DIR
+     COMPILER_TARG_DIR = @abs_top_builddir@/osprey/targdir
+endif
+ifndef TOP_BUILDDIR
+     TOP_BUILDDIR   = @abs_top_builddir@
+endif
+ifndef GCC_CONFIGURE_TARG
+     GCC_CONFIGURE_TARG = @GCC_CONFIGURE_TARG@
+endif
+ifndef GCC_DIR
+     GCC_DIR = @GCC_DIR@
+endif
+ifndef WHIRL_HAS_ID_FIELD
+     WHIRL_HAS_ID_FIELD = @WHIRL_HAS_ID_FIELD@
+endif
+
+#  For cross compilers, there are really 3 separate variables:
+#  the build host (machine you are building on), 
+#  the run host (machine you will run on), 
+#  and the run target (machine you will generate code for).
+#  To distinguish these, we use BUILD_HOST as the build host,
+#  BUILD_ARCH as the run host, and BUILD_TARGET as the run target.
+#
+#  Note that only Mips-hosted builds utilize ROOT/TOOLROOT.  For Linux-hosted
+#  builds, the tools installed in / are used (as is the GNU convention).  Any
+#  compiler-required headers, libraries and/or tools are referenced out of the
+#  workarea directly.
+#
+#  The STD_* variables which are computed are:
+#     STD_COMPILE_OPTS = a set of compile options which reflect BUILD_ABI,
+#                        BUILD_ARCH, BUILD_TYPE, BUILD_TARGET.  Typically 
+#			 this would be assigned to LCOPTS, LASOPTS, etc in 
+#			 Makefile.base
+#     STD_C++_OPTS     = a set of compile options specific to C++ compiles
+#                        Should be assigned to LC++OPTS in Makefile.base
+#     STD_C_OPTS       = a set of compile options specific to C compiles
+#                        Should be assigned to LCOPTS in Makefile.base
+#     STD_LOAD_OPTS    = a set of load options which reflect BUILD_ABI,
+#                        BUILD_ARCH & BUILD_TYPE.  Typically this would be
+#                        assigned to GLDOPTS in Makefile.base
+#     STD_DSO_LOADOPTS = a set of dso load options which reflect BUILD_ABI.
+#                        Typically this would be used in the rule for building
+#                        a dso from library
+#     STD_INSTALL      = this replaces $(INSTALL) and includes the alternate
+#                        installation location from BUILD_INSTALL
+#     STD_LIBRARY_LOC  = this is the standard directory to install a library
+#                        based on it's build configuration
+#     STD_PHASE_LOC    = this is the standard directory to install a phase
+#                        based on it's build configuration
+#
+
+#
+#  Verify that BUILD_COMPILER is defined and is either GNU or PSC.
+#  PSC is PathScale EKOPath and GNU is gcc.
+#  Temporarily, allow no BUILD_COMPILER, which defaults to GNU.
+#
+
+ifeq ($(BUILD_OS), LINUX)
+BUILD_OS_LINUX_OR_DARWIN=TRUE
+endif
+ifeq ($(BUILD_OS), DARWIN)
+BUILD_OS_LINUX_OR_DARWIN=TRUE
+endif
+ifndef BUILD_COMPILER
+  BUILD_COMPILER = GNU
+endif
+ifneq ($(BUILD_COMPILER), GNU)
+ifneq ($(BUILD_COMPILER), PSC)
+ifneq ($(BUILD_COMPILER), OSP)
+ifneq ($(BUILD_COMPILER), SLC)
+ifneq ($(BUILD_COMPILER), SELF)
+  ABORT_BUILD = BUILD_COMPILER has bad value - $(BUILD_COMPILER)!
+endif
+endif
+endif
+endif
+endif
+
+#
+#  Verify that BUILD_AREA is defined if doing a build on Linux.
+#
+ifndef BUILD_AREA
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+  ABORT_BUILD = BUILD_AREA must be defined when BUILD_OS is LINUX or DARWIN!
+endif
+endif
+
+#
+#  Verify that BUILD_TOT is defined, is not null and the directory it points
+#  to contains Makefile.setup.
+#
+
+ifdef BUILD_TOT
+ ifeq ($(BUILD_TOT), "")
+   ABORT_BUILD = BUILD_TOT has no value!
+ endif
+else
+  ABORT_BUILD = BUILD_TOT not defined!
+endif
+
+#
+#  Verify that BUILD_BASE is defined, is not null and the directory it points
+#  to contains Makefile.base.
+#
+
+ifdef BUILD_BASE
+ ifeq ($(BUILD_BASE), "")
+   ABORT_BUILD = BUILD_BASE has no value!
+#else
+#ifneq ($(shell ls $(BUILD_BASE)/Makefile.base), Makefile.base)
+#  ABORT_BUILD = $(BUILD_BASE)/Makefile.base does not exist!
+#endif
+ endif
+else
+  ABORT_BUILD = BUILD_BASE not defined!
+endif
+
+
+#
+#  Verify that BUILD_ABI is defined and is either N32BIT, 64BIT, or I{32,64}BIT
+#
+
+ifdef BUILD_ABI
+ ifneq ($(BUILD_ABI), N32BIT)
+ ifneq ($(BUILD_ABI), 64BIT)
+ ifneq ($(BUILD_ABI), I32BIT)
+ ifneq ($(BUILD_ABI), I64BIT)
+ ifneq ($(BUILD_ABI), W64BIT)
+ ifneq ($(BUILD_ABI), P32BIT)
+   ABORT_BUILD = BUILD_ABI has bad value - $(BUILD_ABI)!
+ endif
+ endif
+ endif
+ endif
+ endif
+ endif
+else
+  ABORT_BUILD = BUILD_ABI not defined!
+endif
+
+#
+#  Verify that BUILD_ARCH is defined
+#
+
+ifdef BUILD_ARCH
+ ifneq ($(BUILD_ARCH), MIPS3)
+ ifneq ($(BUILD_ARCH), MIPS4)
+ ifneq ($(BUILD_ARCH), MIPS64)
+ ifneq ($(BUILD_ARCH), IA32)
+ ifneq ($(BUILD_ARCH), IA64)
+ ifneq ($(BUILD_ARCH), X8664)
+ ifneq ($(BUILD_ARCH), SL)
+ ifneq ($(BUILD_ARCH), PPC32)
+   ABORT_BUILD = BUILD_ARCH has bad value - $(BUILD_ARCH)!
+ endif
+ endif
+ endif
+ endif
+ endif
+ endif
+ endif
+ endif
+ ifneq ($(BUILD_ARCH), $(BUILD_TARGET))
+      STD_COMPILE_OPTS += -DCROSS_COMPILATION 
+ endif
+
+else
+  ABORT_BUILD = BUILD_ARCH not defined!
+endif
+
+#
+#  Verify that if BUILD_CPU is defined it is either R4000, R5000, R8000, R10000.
+#
+
+ifdef BUILD_CPU
+ ifneq ($(BUILD_CPU), R4000)
+ ifneq ($(BUILD_CPU), R5000)
+ ifneq ($(BUILD_CPU), R8000)
+ ifneq ($(BUILD_CPU), R10000)
+    ABORT_BUILD = BUILD_CPU has bad value - $(BUILD_CPU)!
+ endif
+ endif
+ endif
+ endif
+endif
+
+#
+#  Verify that BUILD_TYPE is defined and is either SHARED or NONSHARED.
+#
+
+ifdef BUILD_TYPE
+ ifneq ($(BUILD_TYPE), SHARED)
+ ifneq ($(BUILD_TYPE), NONSHARED)
+   ABORT_BUILD = BUILD_TYPE has bad value - $(BUILD_TYPE)!
+ endif
+ endif
+else
+  ABORT_BUILD = BUILD_TYPE not defined!
+endif
+
+#
+#  Verify that BUILD_TARGET is defined and is either MIPS, IA64 or IA32.
+#  Temporarily, allow no BUILD_TARGET, which defaults to MIPS.
+#
+
+ifdef BUILD_TARGET
+ ifneq ($(BUILD_TARGET), MIPS)
+ ifneq ($(BUILD_TARGET), SL)
+ ifneq ($(BUILD_TARGET), IA32)
+ ifneq ($(BUILD_TARGET), IA64)
+ ifneq ($(BUILD_TARGET), X8664)
+ ifneq ($(BUILD_TARGET), NVISA)
+ ifneq ($(BUILD_TARGET), SL)
+ ifneq ($(BUILD_TARGET), PPC32)
+ ifneq ($(BUILD_TARGET), LOONGSON)
+   ABORT_BUILD = BUILD_TARGET has bad value - $(BUILD_TARGET)!
+ endif
+ endif
+ endif
+ endif
+ endif
+ endif
+ endif
+ endif
+ endif
+else
+  BUILD_TARGET = MIPS
+endif
+
+ifeq ($(BUILD_TARGET), MIPS)
+BUILD_TARGET_DIR = MIPS
+endif
+ifeq ($(BUILD_TARGET), SL)
+BUILD_TARGET_DIR = SL
+endif
+ifeq ($(BUILD_TARGET), IA32)
+BUILD_TARGET_DIR = ia32
+endif
+ifeq ($(BUILD_TARGET), IA64)
+BUILD_TARGET_DIR = ia64
+endif
+ifeq ($(BUILD_TARGET), X8664)
+BUILD_TARGET_DIR = x8664
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+BUILD_TARGET_DIR = NVISA
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+BUILD_TARGET_DIR = ppc32
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+BUILD_TARGET_DIR = loongson
+endif
+
+
+#
+#  Verify that BUILD_OPTIMIZE is defined and is not null.  It is either
+#  DEFAULT, DEBUG, NODEBUG or contains a set of optimizer options.  If it is
+#  DEFAULT, replace with "current" default (DEBUG or NODEBUG)
+#
+
+ifdef BUILD_OPTIMIZE
+ ifeq ($(BUILD_OPTIMIZE), DEFAULT)
+   override BUILD_OPTIMIZE = NODEBUG
+ else
+  ifeq ($(BUILD_OPTIMIZE), "")
+    ABORT_BUILD = BUILD_OPTIMIZE has no value!
+  endif
+ endif
+else
+  ABORT_BUILD = BUILD_OPTIMIZE not defined!
+endif
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+   OPTIMIZER = -g -O0
+else
+ ifeq ($(BUILD_OPTIMIZE), NODEBUG)
+   OPTIMIZER = -O2 -fno-strict-aliasing
+ else
+   OPTIMIZER = $(BUILD_OPTIMIZE)
+ endif
+endif
+
+#
+#  Verify that BUILD_PCH is defined and is either DEFAULT or USE_PCH.
+#
+
+ifneq ($(BUILD_PCH), DEFAULT)
+ifneq ($(BUILD_PCH), USE_PCH)
+  ABORT_BUILD = BUILD_PCH has bad value - $(BUILD_PCH)!
+endif
+endif
+
+
+#
+#  Verify that BUILD_VARIANT is defined.  Its value is component specific
+#  and can't be checked here.
+#
+
+ifndef BUILD_VARIANT
+  ABORT_BUILD = BUILD_VARIANT not defined!
+endif
+
+#
+#  Verify that BUILD_INSTALL is defined and is not null.  It is either
+#  DEFAULT or the root path to install into.
+#
+
+ifdef BUILD_INSTALL
+ ifeq ($(BUILD_INSTALL), "")
+   ABORT_BUILD = BUILD_INSTALL has no value!
+ endif
+else
+  ABORT_BUILD = BUILD_INSTALL not defined!
+endif
+
+#
+#  Verify that BUILD_OS is defined and is LINUX.
+#  Temporarily, allow no BUILD_OS, which defaults to LINUX.
+#
+
+ifndef BUILD_OS
+  BUILD_OS = LINUX
+  BUILD_OS_LINUX_OR_DARWIN=TRUE
+endif
+ifneq ($(BUILD_OS), LINUX)
+ifneq ($(BUILD_OS), MINGW)
+ifneq ($(BUILD_OS), CYGWIN)
+ifneq ($(BUILD_OS), DARWIN)
+  ABORT_BUILD = BUILD_OS has bad value - $(BUILD_OS)!
+endif
+endif
+endif
+endif
+
+ifndef BUILD_HOST
+  ifneq (,$(findstring MIPS,$(BUILD_ARCH)))
+    BUILD_HOST = MIPS
+  else
+    BUILD_HOST = $(BUILD_ARCH)
+  endif
+endif
+ifneq ($(BUILD_HOST), MIPS)
+ifneq ($(BUILD_HOST), IA32)
+ifneq ($(BUILD_HOST), IA64)
+ifneq ($(BUILD_HOST), X8664)
+ifneq ($(BUILD_HOST), PPC32)
+   ABORT_BUILD = BUILD_HOST has bad value - $(BUILD_HOST)!
+endif
+endif
+endif
+endif
+endif
+
+#
+#  Set COMMONDEFS as appropriate based on BUILD_OS.
+#
+COMMONDEFS = $(BUILD_TOT)/linux/make/gcommondefs
+
+#
+#  If no errors so far then do some checking that the requested configuration
+#  is valid.
+#
+
+ifeq ($(BUILD_TARGET), MIPS)
+ifndef ABORT_BUILD
+ ifeq ($(BUILD_ABI), N32BIT)
+ ifneq ($(BUILD_ARCH), MIPS3)
+ ifneq ($(BUILD_ARCH), MIPS4)
+ ifneq ($(BUILD_ARCH), MIPS64)
+   ABORT_BUILD = N32BIT requires MIPS3 or MIPS4 or MIPS64!
+ endif
+ endif
+ endif
+ endif
+ ifeq ($(BUILD_ABI), 64BIT)
+ ifneq ($(BUILD_ARCH), MIPS3)
+ ifneq ($(BUILD_ARCH), MIPS4)
+   ABORT_BUILD = 64BIT requires MIPS3 or MIPS4!
+ endif
+ endif
+ endif
+ ifeq ($(BUILD_ABI), I32BIT)
+ ifneq ($(BUILD_ARCH), IA32)
+  ABORT_BUILD = BUILD_ABI=I32BIT requires BUILD_ARCH=IA32
+ endif
+ endif
+ ifeq ($(BUILD_ABI), I64BIT)
+ ifneq ($(BUILD_ARCH), IA64)
+  ABORT_BUILD = BUILD_ABI=I64BIT requires BUILD_ARCH=IA64
+ endif
+ endif
+ ifeq ($(BUILD_ABI), W64BIT)
+ ifneq ($(BUILD_ARCH), IA32)
+  ABORT_BUILD = BUILD_ABI=W64BIT requires BUILD_ARCH=IA32
+ endif
+ endif
+ ifeq ($(BUILD_ABI), SL )
+ ifneq ($(BUILD_ARCH), SL )
+  ABORT_BUILD = BUILD_ABI=SL  requires BUILD_ARCH=SL
+ endif
+ endif
+ ifeq ($(BUILD_ABI), P32BIT)
+ ifneq ($(BUILD_ARCH), PPC32)
+  echo "# ABORT_BUILD = BUILD_ABI=P32BIT requires BUILD_ARCH=PPC32"
+ endif
+ endif
+endif
+endif
+
+ifeq ($(BUILD_TARGET), SL)
+ifndef ABORT_BUILD
+ ifeq ($(BUILD_ABI), N32BIT)
+ ifneq ($(BUILD_ARCH), MIPS3)
+ ifneq ($(BUILD_ARCH), MIPS4)
+ ifneq ($(BUILD_ARCH), MIPS64)
+   ABORT_BUILD = N32BIT requires MIPS3 or MIPS4 or MIPS64!
+ endif
+ endif
+ endif
+ endif
+ ifeq ($(BUILD_ABI), 64BIT)
+ ifneq ($(BUILD_ARCH), MIPS3)
+ ifneq ($(BUILD_ARCH), MIPS4)
+   ABORT_BUILD = 64BIT requires MIPS3 or MIPS4!
+ endif
+ endif
+ endif
+ ifeq ($(BUILD_ABI), I32BIT)
+ ifneq ($(BUILD_ARCH), IA32)
+  ABORT_BUILD = BUILD_ABI=I32BIT requires BUILD_ARCH=IA32
+ endif
+ endif
+ ifeq ($(BUILD_ABI), I64BIT)
+ ifneq ($(BUILD_ARCH), IA64)
+  ABORT_BUILD = BUILD_ABI=I64BIT requires BUILD_ARCH=IA64
+ endif
+ endif
+ ifeq ($(BUILD_ABI), W64BIT)
+ ifneq ($(BUILD_ARCH), IA32)
+  ABORT_BUILD = BUILD_ABI=W64BIT requires BUILD_ARCH=IA32
+ endif
+ endif
+endif
+endif
+
+
+#
+#  Compute STD_COMPILE_OPTS as a usable set of compile options which reflect
+#  BUILD_COMPILER, BUILD_TYPE, BUILD_ARCH, BUILD_ABI.
+#
+
+ifeq ($(BUILD_TYPE), SHARED)
+ ifeq ($(BUILD_BOTH),)
+  STD_COMPILE_OPTS += -fPIC
+ endif
+else
+  STD_COMPILE_OPTS += 
+endif
+
+
+ifneq ($(BUILD_COMPILER), GNU)
+ ifeq ($(BUILD_ABI), 32BIT)
+  STD_COMPILE_OPTS += -32 -Olimit 3000
+ endif
+ ifeq ($(BUILD_ABI), N32BIT)
+  STD_COMPILE_OPTS += -m32
+ endif
+ ifneq ($(BUILD_ARCH), IA64)
+  ifeq ($(BUILD_ABI), 64BIT)
+   STD_COMPILE_OPTS += -m64
+  endif
+  ifeq ($(BUILD_ABI), I64BIT)
+   STD_COMPILE_OPTS += -m64
+  endif
+ endif
+ ifeq ($(BUILD_ABI), P64BIT)
+  STD_COMPILE_OPTS += -m64
+ endif
+ ifeq ($(BUILD_ABI), P32BIT)
+  STD_COMPILE_OPTS += -m32
+ endif
+endif
+
+STD_COMPILE_OPTS += -DTARG_$(BUILD_TARGET)
+
+ifeq ($(BUILD_TARGET), IA32)
+STD_COMPILE_OPTS += -DEMULATE_LONGLONG
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+STD_COMPILE_OPTS += -DEMULATE_LONGLONG
+endif
+
+ifeq ($(BUILD_TARGET), SL)
+STD_COMPILE_OPTS += -DTARG_MIPS
+STD_COMPILE_OPTS += -DSHARED_BUILD -DVENDOR_SL
+STD_COMPILE_OPTS += -DTARG_SL
+STD_COMPILE_OPTS += -DTARG_SL2
+STD_COMPILE_OPTS += -DEMULATE_LONGLONG
+STD_COMPILE_OPTS += -DEMULATE_FLOAT_POINT
+endif
+
+ifeq ($(BUILD_TARGET), NVISA)
+STD_COMPILE_OPTS += -DBUILD_SKIP_LNO -DBUILD_SKIP_WHIRL2C -DBUILD_SKIP_WHIRL2F
+BUILD_SKIP_LNO = TRUE
+BUILD_SKIP_WHIRL2C = TRUE
+BUILD_SKIP_WHIRL2F = TRUE
+endif
+
+include ${BUILD_TOT}/../defs.mk
+
+STD_C_OPTS = -std=gnu99 -D_GNU_SOURCE
+ERROR_ON_WARNINGS = #-Werror
+# Many files use INTn_MAX/INTn_MIN
+STD_COMPILE_OPTS += -D__STDC_LIMIT_MACROS
+STD_COMPILE_OPTS += -DKEY -DOSP_OPT -DPATHSCALE_MERGE -DPSC_TO_OPEN64 $(LOCAL_CFLAGS) $(ERROR_ON_WARNINGS)
+ifeq ($(BUILD_TYPE), SHARED)
+STD_COMPILE_OPTS += -DSHARED_BUILD
+endif
+ifeq ($(WHIRL_HAS_ID_FIELD), YES)
+STD_COMPILE_OPTS += -DWHIRL_USE_UNIQUE_ID_FOR_DEBUG
+endif
+
+#
+#  Assign STD_C++_OPTS here
+#
+
+ifeq ($(BUILD_ABI), N32BIT)
+STD_C++_OPTS = 
+else
+STD_C++_OPTS = 
+endif
+
+#
+#  Compute STD_LOAD_OPTS as a usable set of load options which reflect
+#  BUILD_COMPILER, BUILD_TYPE, BUILD_ARCH and BUILD_ABI.
+#
+
+ifeq ($(BUILD_COMPILER), GNU)
+  STD_LOAD_OPTS =
+endif
+
+ifeq ($(BUILD_ABI), 64BIT)
+ ifeq ($(BUILD_ARCH), MIPS3)
+  ifeq ($(BUILD_TYPE), SHARED)
+    STD_LOAD_OPTS += -L$(ROOT)/usr/lib64/mips3 -L$(ROOT)/usr/lib64
+  else
+    STD_LOAD_OPTS += -L$(ROOT)/usr/lib64/mips3/nonshared -L$(ROOT)/usr/lib64/nonshared
+  endif
+ else # MIPS4
+  ifeq ($(BUILD_TYPE), SHARED)
+    STD_LOAD_OPTS += -L$(ROOT)/usr/lib64/mips4 -L$(ROOT)/usr/lib64
+  else
+    STD_LOAD_OPTS += -L$(ROOT)/usr/lib64/mips4/nonshared -L$(ROOT)/usr/lib64/nonshared
+  endif
+ endif
+endif
+ifeq ($(BUILD_ABI), N32BIT)
+ ifeq ($(BUILD_ARCH), MIPS3)
+  ifeq ($(BUILD_TYPE), SHARED)
+    STD_LOAD_OPTS += -n32 -L$(ROOT)/usr/lib32/mips3 -L$(ROOT)/usr/lib32
+  else
+    STD_LOAD_OPTS += -n32 -L$(ROOT)/usr/lib32/mips3/nonshared -L$(ROOT)/usr/lib32/nonshared
+  endif
+ else # MIPS4
+  ifeq ($(BUILD_TYPE), SHARED)
+    ifneq ($(BUILD_TARGET),SL)
+      STD_LOAD_OPTS += -n32 -L$(ROOT)/usr/lib32/mips4 -L$(ROOT)/usr/lib32
+    endif
+  else
+    STD_LOAD_OPTS += -n32 -L$(ROOT)/usr/lib32/mips4/nonshared -L$(ROOT)/usr/lib32/nonshared
+  endif
+ endif
+endif
+
+ifeq ($(BUILD_ARCH), IA32)
+ ifeq ($(BUILD_TYPE), SHARED)
+   STD_LOAD_OPTS +=
+ else
+   STD_LOAD_OPTS +=
+ endif
+endif
+
+ifeq ($(BUILD_ABI), I64BIT)
+ ifeq ($(BUILD_TYPE), SHARED)
+   STD_LOAD_OPTS +=
+ else
+   STD_LOAD_OPTS +=
+ endif
+endif
+
+ifeq ($(BUILD_ABI), SL)
+ ifeq ($(BUILD_TYPE), SHARED)
+   STD_LOAD_OPTS += 
+ else
+   STD_LOAD_OPTS += 
+ endif
+endif
+
+#
+#  Compute STD_DSO_LOADOPTS as a usable set of dso load options which reflect
+#  BUILD_ABI.
+#
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+   STD_DSO_LOADOPTS = $(LDOPTS_I32) $(LDDSOOPTS_I32)
+else
+ifeq ($(BUILD_ABI), 64BIT)
+ ifeq ($(BUILD_ARCH), MIPS3)
+   STD_DSO_LOADOPTS = $(LDOPTS_64_M3) $(LDDSOOPTS_64)
+ else
+   STD_DSO_LOADOPTS = $(LDOPTS_64_M4) $(LDDSOOPTS_64)
+ endif
+endif
+ifeq ($(BUILD_ABI), N32BIT)
+ ifeq ($(BUILD_ARCH), MIPS3)
+   STD_DSO_LOADOPTS = $(LDOPTS_N32_M3) $(LDDSOOPTS_N32)
+ else
+   STD_DSO_LOADOPTS = $(LDOPTS_N32_M4) $(LDDSOOPTS_N32)
+ endif
+endif
+ifeq ($(BUILD_ABI), I32BIT)
+   STD_DSO_LOADOPTS = $(LDOPTS_I32) $(LDDSOOPTS_I32)
+endif
+ifeq ($(BUILD_ABI), I64BIT)
+   STD_DSO_LOADOPTS = $(LDOPTS_I64) $(LDDSOOPTS_I64)
+endif
+endif
+
+#
+#  standard location and install macros for 64bit shared object links
+#
+
+ifeq ($(BUILD_ABI), N32BIT)
+STD_DSO_LOC = /usr/lib32
+else
+STD_DSO_LOC = /usr/lib64
+endif
+
+ifdef BUILD_CPU
+ ifneq ($(BUILD_ARCH), MIPS3)
+  ifeq ($(BUILD_CPU), R5000)
+    LINK = mips4/r5000/$(DSO)
+    IDBTAG = -idb "mach(CPUARCH=R5000)"
+  endif
+  ifeq ($(BUILD_CPU), R8000)
+    LINK = mips4/r8000/$(DSO)
+    IDBTAG = -idb "mach(CPUARCH=R8000)"
+  endif
+  ifeq ($(BUILD_CPU), R10000)
+    LINK = mips4/r10000/$(DSO)
+    IDBTAG = -idb "mach(CPUARCH=R10000)"
+  endif
+ else
+ endif
+else
+ ifneq ($(BUILD_ARCH), MIPS3)
+  ifeq ($(BUILD_ABI), 64BIT)
+    LINK = mips4/$(DSO)
+    IDBTAG = -idb "mach(CPUARCH=R8000 CPUARCH=R10000)"
+  else # N32BIT 
+    LINK = mips4/$(DSO)
+    IDBTAG = -idb "mach(CPUARCH=R8000 CPUARCH=R10000 CPUARCH=R5000)"
+  endif
+ else # MIPS4
+   LINK = mips3/$(DSO)
+   IDBTAG = -idb "mach(CPUARCH=R4000)"
+ endif
+endif
+
+LBOOT64=-idb "mach(MODE=64bit)"
+
+#
+#  Compute STD_LIBRARY_LOC as the standard location to install a library
+#  based on its build configuration.
+#  (use := so that variable is expanded immediately else recurse)
+#
+
+ifeq ($(BUILD_ABI), 64BIT)
+ ifneq ($(BUILD_ARCH), MIPS3)
+   DEF_LIBRARY_LOC := /usr/lib64
+   ifdef BUILD_CPU
+    ifeq ($(BUILD_CPU), R5000)
+      STD_LIBRARY_LOC := /usr/lib64/mips4/r5000
+    endif
+    ifeq ($(BUILD_CPU), R8000)
+      STD_LIBRARY_LOC := /usr/lib64/mips4/r8000
+    endif
+    ifeq ($(BUILD_CPU), R10000)
+      STD_LIBRARY_LOC := /usr/lib64/mips4/r10000
+    endif
+   else
+      STD_LIBRARY_LOC := /usr/lib64/mips4
+   endif
+ else # MIPS3
+    STD_LIBRARY_LOC := /usr/lib64/mips3
+    DEF_LIBRARY_LOC := /usr/lib64
+ endif
+endif
+ifeq ($(BUILD_ABI), N32BIT)
+ ifneq ($(BUILD_ARCH), MIPS3)
+   DEF_LIBRARY_LOC := /usr/lib32
+   ifdef BUILD_CPU
+    ifeq ($(BUILD_CPU), R5000)
+      STD_LIBRARY_LOC := /usr/lib32/mips4/r5000
+    endif
+    ifeq ($(BUILD_CPU), R8000)
+      STD_LIBRARY_LOC := /usr/lib32/mips4/r8000
+    endif
+    ifeq ($(BUILD_CPU), R10000)
+      STD_LIBRARY_LOC := /usr/lib32/mips4/r10000
+    endif
+   else
+      STD_LIBRARY_LOC := /usr/lib32/mips4
+   endif
+ else # MIPS3
+    STD_LIBRARY_LOC := /usr/lib32/mips3
+    DEF_LIBRARY_LOC := /usr/lib32
+ endif
+endif
+ifndef STD_LIBRARY_LOC
+STD_LIBRARY_LOC := /usr/lib
+DEF_LIBRARY_LOC := /usr/lib
+endif
+ifeq ($(BUILD_TYPE), NONSHARED)
+STD_LIBRARY_LOC := $(STD_LIBRARY_LOC)/nonshared
+DEF_LIBRARY_LOC := $(DEF_LIBRARY_LOC)/nonshared
+endif
+
+
+#
+# standard location to install a compiler phase
+#
+STD_PHASE_LOC = /usr/lib64/cmplrs
+STD_MONGOOSE_LOC = /usr/lib32/cmplrs
+ifeq ($(BUILD_TARGET), IA32)
+STD_MONGOOSE_LINUX_LOC = $(ROOT)/usr/ia32-sgi-linux/bin
+endif
+ifeq ($(BUILD_TARGET), IA64)
+STD_MONGOOSE_LINUX_LOC = $(ROOT)/usr/ia64-sgi-linux/lib/gcc-lib/ia64-sgi-linux/sgicc-1.0
+endif
+ifeq ($(BUILD_TARGET), SL)
+STD_MONGOOSE_LINUX_LOC = $(ROOT)/usr/sl-linux/lib/gcc-lib/sl-linux/slcc
+endif
+
+#
+#  Compute STD_INSTALL as a replacement for $(INSTALL) which reflects an
+#  alternate installation root.
+#
+
+ifeq ($(BUILD_INSTALL), DEFAULT)
+STD_INSTALL = $(INSTALL)
+else
+STD_INSTALL = $(INSTALL) -root $(BUILD_INSTALL)
+endif
+
+#
+#  Optional build parameters (could be set in component's Makefile or in
+#  Makefile.override) controls the permission masks on regular files when
+#  they are installed.
+#
+
+ifndef STD_INSTALL_READ_MASK
+STD_INSTALL_READ_MASK = -m 444
+endif
+
+ifndef STD_INSTALL_EXEC_MASK
+STD_INSTALL_EXEC_MASK =
+endif
+
+#
+#  If any parameter errors have been detected, print an error description
+#  and exit smake.  If no errors, then include Makefile.base which contains
+#  the real make commands.
+#
+
+ifdef ABORT_BUILD
+Abort .DEFAULT:
+	@echo Error: $(ABORT_BUILD)
+	@exit 1
+
+else
+
+include $(BUILD_TOT)/Makefile.cross
+include $(BUILD_BASE)/Makefile.gbase
+endif
+
+# turn off flags from commondefs
+CSTYLE=
+NO_OBJECT_STYLE=""
+
+XDIRT= ii_files
+

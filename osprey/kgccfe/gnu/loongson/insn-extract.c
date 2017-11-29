@@ -1,0 +1,787 @@
+/* Generated automatically by the program `genextract'
+from the machine description file `md'.  */
+
+#include "config.h"
+#include "system.h"
+#include "rtl.h"
+#include "insn-config.h"
+#include "recog.h"
+#include "toplev.h"
+
+static rtx junk ATTRIBUTE_UNUSED;
+void
+insn_extract (insn)
+     rtx insn;
+{
+  rtx *ro = recog_data.operand;
+  rtx **ro_loc = recog_data.operand_loc;
+  rtx pat = PATTERN (insn);
+  int i ATTRIBUTE_UNUSED;
+
+  memset (ro, 0, sizeof (*ro) * MAX_RECOG_OPERANDS);
+  memset (ro_loc, 0, sizeof (*ro_loc) * MAX_RECOG_OPERANDS);
+  switch (INSN_CODE (insn))
+    {
+    case -1:
+      fatal_insn_not_found (insn);
+
+    case 557:
+    case 556:
+    case 555:
+    case 554:
+      for (i = XVECLEN (pat, 0) - 1; i >= 0; i--)
+          ro[i] = *(ro_loc[i] = &XVECEXP (pat, 0, i));
+      break;
+
+    case 342:  /* *mips.md:10868 */
+    case 339:  /* *mips.md:10822 */
+    case 336:  /* *mips.md:10776 */
+    case 333:  /* *mips.md:10730 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (pat, 1), 1));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (pat, 1), 2));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (pat, 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      break;
+
+    case 341:  /* *mips.md:10853 */
+    case 340:  /* *mips.md:10838 */
+    case 338:  /* *mips.md:10807 */
+    case 337:  /* *mips.md:10792 */
+    case 335:  /* *mips.md:10761 */
+    case 334:  /* *mips.md:10746 */
+    case 332:  /* *mips.md:10715 */
+    case 331:  /* *mips.md:10700 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (pat, 1), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (pat, 1), 2));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (pat, 1), 0));
+      break;
+
+    case 329:  /* prefetch_di */
+    case 327:  /* prefetch_si */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (pat, 1));
+      ro[2] = *(ro_loc[2] = &XEXP (pat, 2));
+      break;
+
+    case 328:  /* prefetch_di_address */
+    case 326:  /* prefetch_si_address */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (pat, 1));
+      ro[2] = *(ro_loc[2] = &XEXP (pat, 2));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (pat, 0), 1));
+      break;
+
+    case 325:  /* call_value_multiple_internal2 */
+    case 324:  /* call_value_multiple_internal1 */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      recog_data.dup_loc[0] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 1), 1), 0), 0);
+      recog_data.dup_num[0] = 1;
+      recog_data.dup_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 1), 1), 1);
+      recog_data.dup_num[1] = 2;
+      break;
+
+    case 323:  /* call_value_internal4b */
+    case 322:  /* call_value_internal4a */
+    case 321:  /* call_value_internal3c */
+    case 320:  /* call_value_internal3b */
+    case 319:  /* call_value_internal3a */
+    case 318:  /* call_value_internal2 */
+    case 317:  /* call_value_internal1 */
+    case 316:  /* *mips.md:10398 */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      break;
+
+    case 315:  /* call_internal4b */
+    case 314:  /* call_internal4a */
+    case 313:  /* call_internal3c */
+    case 312:  /* call_internal3b */
+    case 311:  /* call_internal3a */
+    case 310:  /* call_internal2 */
+    case 309:  /* call_internal1 */
+    case 308:  /* *mips.md:10193 */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XVECEXP (pat, 0, 0), 1));
+      ro[2] = *(ro_loc[2] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      break;
+
+    case 306:  /* eh_set_lr_di */
+    case 305:  /* eh_set_lr_si */
+      ro[0] = *(ro_loc[0] = &XVECEXP (XVECEXP (pat, 0, 0), 0, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      break;
+
+    case 304:  /* get_fnaddr */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XVECEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0, 0));
+      break;
+
+    case 303:  /* return_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      break;
+
+    case 300:  /* casesi_internal_di */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      break;
+
+    case 299:  /* casesi_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      break;
+
+    case 298:  /* *mips.md:9829 */
+    case 297:  /* *mips.md:9798 */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 0));
+      recog_data.dup_loc[0] = &XEXP (XEXP (XVECEXP (pat, 0, 1), 0), 0);
+      recog_data.dup_num[0] = 1;
+      break;
+
+    case 296:  /* tablejump_internal2 */
+    case 295:  /* tablejump_internal1 */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 1));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 1), 0), 0));
+      break;
+
+    case 294:  /* indirect_jump_internal2 */
+    case 293:  /* indirect_jump_internal1 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 1));
+      break;
+
+    case 292:  /* *mips.md:9634 */
+    case 291:  /* jump */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 0));
+      break;
+
+    case 230:  /* *mips.md:8169 */
+    case 229:  /* *mips.md:8140 */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (pat, 1), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (pat, 1), 2));
+      break;
+
+    case 228:  /* branch_equality_di_inverted */
+    case 227:  /* branch_equality_inverted */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 2), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (pat, 1), 0), 1));
+      break;
+
+    case 226:  /* branch_equality_di */
+    case 225:  /* branch_equality */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (pat, 1), 0), 1));
+      break;
+
+    case 224:  /* branch_zero_di_inverted */
+    case 222:  /* branch_zero_inverted */
+    case 220:  /* branch_fp_inverted */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 2), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      break;
+
+    case 223:  /* branch_zero_di */
+    case 221:  /* branch_zero */
+    case 219:  /* branch_fp */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      break;
+
+    case 194:  /* movstrsi_internal3 */
+    case 193:  /* *mips.md:6613 */
+    case 192:  /* movstrsi_internal2 */
+    case 191:  /* *mips.md:6532 */
+    case 190:  /* movstrsi_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XVECEXP (pat, 0, 0), 1));
+      ro[2] = *(ro_loc[2] = &XEXP (XVECEXP (pat, 0, 5), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 6), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 3), 0));
+      ro[7] = *(ro_loc[7] = &XEXP (XVECEXP (pat, 0, 4), 0));
+      break;
+
+    case 189:  /* loadgp */
+      ro[0] = *(ro_loc[0] = &XVECEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0, 0));
+      ro[1] = *(ro_loc[1] = &XVECEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0, 1));
+      break;
+
+    case 177:  /* *mips.md:6137 */
+    case 176:  /* *mips.md:6128 */
+    case 175:  /* *mips.md:6119 */
+    case 174:  /* *mips.md:6110 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 1));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 0), 0), 1));
+      break;
+
+    case 348:  /* consttable_df */
+    case 347:  /* consttable_sf */
+    case 346:  /* consttable_di */
+    case 345:  /* consttable_si */
+    case 344:  /* consttable_hi */
+    case 343:  /* consttable_qi */
+    case 168:  /* hilo_delay */
+      ro[0] = *(ro_loc[0] = &XVECEXP (pat, 0, 0));
+      break;
+
+    case 165:  /* *mips.md:5700 */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (XEXP (pat, 0), 0), 1));
+      break;
+
+    case 353:  /* leadi */
+    case 352:  /* leasi */
+    case 188:  /* *mips.md:6451 */
+    case 187:  /* movdf_internal2 */
+    case 186:  /* movdf_internal1a */
+    case 185:  /* movdf_internal1 */
+    case 184:  /* *mips.md:6390 */
+    case 183:  /* movsf_internal2 */
+    case 182:  /* movsf_internal1 */
+    case 181:  /* *mips.md:6297 */
+    case 180:  /* movqi_internal */
+    case 179:  /* *mips.md:6187 */
+    case 178:  /* movhi_internal */
+    case 169:  /* movcc */
+    case 167:  /* *mips.md:5739 */
+    case 166:  /* movsi_internal */
+    case 164:  /* *movdi_internal2_mips16 */
+    case 162:  /* movdi_internal2 */
+    case 161:  /* *mips.md:5275 */
+    case 160:  /* movdi_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (pat, 1));
+      break;
+
+    case 159:  /* *mips.md:5249 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      break;
+
+    case 156:  /* movdi_usd */
+    case 155:  /* movdi_uld */
+    case 154:  /* movsi_usw */
+    case 153:  /* movsi_ulw */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XVECEXP (XEXP (pat, 1), 0, 0));
+      break;
+
+    case 135:  /* *paradoxical_extendhidi2 */
+    case 124:  /* *mips.md:4053 */
+    case 123:  /* *mips.md:4044 */
+    case 122:  /* *mips.md:4035 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      break;
+
+    case 114:  /* *nordi3 */
+    case 113:  /* *norsi3 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 1), 0));
+      break;
+
+    case 146:  /* fix_truncsfsi2_macro */
+    case 144:  /* fix_truncdfsi2_macro */
+    case 92:  /* negdi2_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      break;
+
+    case 90:  /* ffsdi2 */
+    case 89:  /* ffssi2 */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      break;
+
+    case 84:  /* *mips.md:3231 */
+    case 83:  /* *mips.md:3222 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (pat, 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 1), 0));
+      break;
+
+    case 238:  /* sne_di_zero */
+    case 237:  /* sne_si_zero */
+    case 234:  /* *mips.md:8540 */
+    case 233:  /* seq_di_zero */
+    case 232:  /* *mips.md:8522 */
+    case 231:  /* seq_si_zero */
+    case 163:  /* *movdi_internal2_extend */
+    case 157:  /* high */
+    case 152:  /* floatdisf2 */
+    case 151:  /* floatsisf2 */
+    case 150:  /* floatdidf2 */
+    case 149:  /* floatsidf2 */
+    case 148:  /* fix_truncsfdi2 */
+    case 147:  /* fix_truncdfdi2 */
+    case 145:  /* fix_truncsfsi2_insn */
+    case 143:  /* fix_truncdfsi2_insn */
+    case 142:  /* extendsfdf2 */
+    case 141:  /* extendqidi2_insn */
+    case 140:  /* extendqisi2_insn */
+    case 139:  /* extendqihi2_internal */
+    case 138:  /* extendhisi2_internal */
+    case 137:  /* extendhidi2_internal */
+    case 136:  /* *mips.md:4312 */
+    case 134:  /* *mips.md:4279 */
+    case 133:  /* *mips.md:4254 */
+    case 132:  /* *mips.md:4239 */
+    case 131:  /* *mips.md:4214 */
+    case 130:  /* *mips.md:4199 */
+    case 129:  /* *mips.md:4173 */
+    case 128:  /* *mips.md:4158 */
+    case 127:  /* *mips.md:4133 */
+    case 126:  /* *mips.md:4118 */
+    case 125:  /* zero_extendsidi2_internal */
+    case 118:  /* truncdiqi2 */
+    case 117:  /* truncdihi2 */
+    case 116:  /* truncdisi2 */
+    case 115:  /* truncdfsf2 */
+    case 97:  /* one_cmpldi2 */
+    case 96:  /* one_cmplsi2 */
+    case 95:  /* negsf2 */
+    case 94:  /* negdf2 */
+    case 93:  /* negdi2_internal_2 */
+    case 91:  /* negsi2 */
+    case 88:  /* abssf2 */
+    case 87:  /* absdf2 */
+    case 86:  /* absdi2 */
+    case 85:  /* abssi2 */
+    case 82:  /* sqrtsf2 */
+    case 81:  /* sqrtdf2 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (pat, 1), 0));
+      break;
+
+    case 72:  /* div_trap_mips16 */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 0), 1));
+      ro[2] = *(ro_loc[2] = &XEXP (XVECEXP (pat, 0, 0), 1));
+      break;
+
+    case 71:  /* div_trap_normal */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (pat, 0), 1));
+      ro[2] = *(ro_loc[2] = &XEXP (pat, 1));
+      break;
+
+    case 70:  /* udivmoddi4_internal */
+    case 69:  /* udivmodsi4_internal */
+    case 68:  /* divmoddi4_internal */
+    case 67:  /* divmodsi4_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      recog_data.dup_loc[0] = &XEXP (XEXP (XVECEXP (pat, 0, 1), 1), 0);
+      recog_data.dup_num[0] = 1;
+      recog_data.dup_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 1), 1), 1);
+      recog_data.dup_num[1] = 2;
+      break;
+
+    case 62:  /* *mips.md:2573 */
+    case 61:  /* *mips.md:2563 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (pat, 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (pat, 1), 1), 1));
+      break;
+
+    case 60:  /* *mips.md:2553 */
+    case 59:  /* *mips.md:2543 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (pat, 1), 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (pat, 1), 0), 0), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (pat, 1), 0), 1));
+      break;
+
+    case 58:  /* *mips.md:2532 */
+    case 57:  /* *mips.md:2522 */
+    case 56:  /* *mips.md:2512 */
+    case 55:  /* *mips.md:2502 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 0), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (pat, 1), 1));
+      break;
+
+    case 54:  /* *mul_acc_64bit_di */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      recog_data.dup_loc[0] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1);
+      recog_data.dup_num[0] = 0;
+      break;
+
+    case 53:  /* *mul_acc_di */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      recog_data.dup_loc[0] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1);
+      recog_data.dup_num[0] = 0;
+      break;
+
+    case 52:  /* madsi */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      recog_data.dup_loc[0] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1);
+      recog_data.dup_num[0] = 0;
+      break;
+
+    case 51:  /* umuldi3_highpart */
+    case 50:  /* smuldi3_highpart */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      break;
+
+    case 49:  /* *xmulsi3_neg_highpart_mulhi */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0), 1));
+      ro[5] = *(ro_loc[5] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[7] = *(ro_loc[7] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      ro[8] = *(ro_loc[8] = &XEXP (XVECEXP (pat, 0, 3), 0));
+      break;
+
+    case 48:  /* xmulsi3_highpart_mulhi */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 1));
+      ro[5] = *(ro_loc[5] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[7] = *(ro_loc[7] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      ro[8] = *(ro_loc[8] = &XEXP (XVECEXP (pat, 0, 3), 0));
+      break;
+
+    case 47:  /* xmulsi3_highpart_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 1));
+      ro[5] = *(ro_loc[5] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[7] = *(ro_loc[7] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      break;
+
+    case 46:  /* *msac_di */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 0));
+      ro[5] = *(ro_loc[5] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 1));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[7] = *(ro_loc[7] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      break;
+
+    case 45:  /* *muls_di */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      break;
+
+    case 44:  /* mulsidi3_64bit */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      break;
+
+    case 43:  /* mulsidi3_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      break;
+
+    case 39:  /* *muls */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 3), 0));
+      break;
+
+    case 40:  /* *msac */
+    case 38:  /* *mul_sub_si */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 0));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1), 1));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 3), 0));
+      ro[7] = *(ro_loc[7] = &XEXP (XVECEXP (pat, 0, 4), 0));
+      break;
+
+    case 37:  /* *mul_acc_si */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      ro[6] = *(ro_loc[6] = &XEXP (XVECEXP (pat, 0, 3), 0));
+      ro[7] = *(ro_loc[7] = &XEXP (XVECEXP (pat, 0, 4), 0));
+      break;
+
+    case 80:  /* umoddi3_internal */
+    case 79:  /* umodsi3_internal */
+    case 78:  /* udivdi3_internal */
+    case 77:  /* udivsi3_internal */
+    case 76:  /* moddi3_internal */
+    case 75:  /* modsi3_internal */
+    case 74:  /* divdi3_internal */
+    case 73:  /* divsi3_internal */
+    case 41:  /* muldi3_internal */
+    case 35:  /* mulsi3_internal */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      break;
+
+    case 42:  /* muldi3_internal2 */
+    case 36:  /* mulsi3_r4000 */
+    case 34:  /* mulsi3_mult3 */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      ro[4] = *(ro_loc[4] = &XEXP (XVECEXP (pat, 0, 2), 0));
+      ro[5] = *(ro_loc[5] = &XEXP (XVECEXP (pat, 0, 3), 0));
+      break;
+
+    case 173:  /* *mips.md:6101 */
+    case 172:  /* *mips.md:6092 */
+    case 171:  /* *mips.md:6083 */
+    case 170:  /* *mips.md:6074 */
+    case 121:  /* *mips.md:4010 */
+    case 120:  /* *mips.md:3984 */
+    case 119:  /* *mips.md:3960 */
+    case 29:  /* *mips.md:1656 */
+    case 28:  /* subsi3_internal_2 */
+    case 15:  /* *mips.md:1158 */
+    case 14:  /* addsi3_internal_2 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XEXP (pat, 1), 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XEXP (pat, 1), 0), 1));
+      break;
+
+    case 214:  /* lshrdi3_internal3 */
+    case 213:  /* lshrdi3_internal2 */
+    case 212:  /* lshrdi3_internal */
+    case 206:  /* ashrdi3_internal3 */
+    case 205:  /* ashrdi3_internal2 */
+    case 204:  /* ashrdi3_internal */
+    case 199:  /* ashldi3_internal3 */
+    case 198:  /* ashldi3_internal2 */
+    case 197:  /* ashldi3_internal */
+    case 23:  /* subdi3_internal_2 */
+    case 22:  /* subdi3_internal */
+    case 9:  /* adddi3_internal_2 */
+    case 8:  /* adddi3_internal_1 */
+      ro[0] = *(ro_loc[0] = &XEXP (XVECEXP (pat, 0, 0), 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (XVECEXP (pat, 0, 0), 1), 1));
+      ro[3] = *(ro_loc[3] = &XEXP (XVECEXP (pat, 0, 1), 0));
+      break;
+
+    case 26:  /* *mips.md:1535 */
+    case 20:  /* *mips.md:1248 */
+    case 12:  /* *mips.md:1024 */
+    case 6:  /* *mips.md:684 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (pat, 1), 1));
+      break;
+
+    case 25:  /* *mips.md:1522 */
+    case 19:  /* *mips.md:1235 */
+    case 11:  /* *mips.md:1012 */
+    case 5:  /* *mips.md:672 */
+      ro[0] = *(ro_loc[0] = &XEXP (XEXP (pat, 1), 1));
+      break;
+
+    case 290:  /* sge_sf */
+    case 289:  /* sgt_sf */
+    case 288:  /* sle_sf */
+    case 287:  /* slt_sf */
+    case 286:  /* seq_sf */
+    case 285:  /* sunle_sf */
+    case 284:  /* suneq_sf */
+    case 283:  /* sunlt_sf */
+    case 282:  /* sunordered_sf */
+    case 281:  /* sge_df */
+    case 280:  /* sgt_df */
+    case 279:  /* sle_df */
+    case 278:  /* slt_df */
+    case 277:  /* seq_df */
+    case 276:  /* sunle_df */
+    case 275:  /* suneq_df */
+    case 274:  /* sunlt_df */
+    case 273:  /* sunordered_df */
+    case 272:  /* sleu_di_reg */
+    case 271:  /* sleu_si_reg */
+    case 270:  /* *mips.md:9302 */
+    case 269:  /* sleu_di_const */
+    case 268:  /* *mips.md:9273 */
+    case 267:  /* sleu_si_const */
+    case 266:  /* *mips.md:9220 */
+    case 265:  /* sltu_di */
+    case 264:  /* *mips.md:9197 */
+    case 263:  /* sltu_si */
+    case 262:  /* sgeu_di */
+    case 261:  /* sgeu_si */
+    case 260:  /* *mips.md:9086 */
+    case 259:  /* sgtu_di */
+    case 258:  /* *mips.md:9068 */
+    case 257:  /* sgtu_si */
+    case 256:  /* sle_di_reg */
+    case 255:  /* sle_si_reg */
+    case 254:  /* *mips.md:8970 */
+    case 253:  /* sle_di_const */
+    case 252:  /* *mips.md:8941 */
+    case 251:  /* sle_si_const */
+    case 250:  /* *mips.md:8888 */
+    case 249:  /* slt_di */
+    case 248:  /* *mips.md:8865 */
+    case 247:  /* slt_si */
+    case 246:  /* sge_di */
+    case 245:  /* sge_si */
+    case 244:  /* *mips.md:8754 */
+    case 243:  /* sgt_di */
+    case 242:  /* *mips.md:8736 */
+    case 241:  /* sgt_si */
+    case 240:  /* sne_di */
+    case 239:  /* sne_si */
+    case 236:  /* seq_di */
+    case 235:  /* seq_si */
+    case 218:  /* rotrdi3 */
+    case 217:  /* rotrsi3 */
+    case 216:  /* *mips.md:7714 */
+    case 215:  /* lshrdi3_internal4 */
+    case 211:  /* *mips.md:7458 */
+    case 210:  /* lshrsi3_internal2 */
+    case 209:  /* lshrsi3_internal1 */
+    case 208:  /* *mips.md:7330 */
+    case 207:  /* ashrdi3_internal4 */
+    case 203:  /* ashrsi3_internal2 */
+    case 202:  /* ashrsi3_internal1 */
+    case 201:  /* *mips.md:6976 */
+    case 200:  /* ashldi3_internal4 */
+    case 196:  /* ashlsi3_internal2 */
+    case 195:  /* ashlsi3_internal1 */
+    case 158:  /* low */
+    case 112:  /* xordi3_immed */
+    case 111:  /* *mips.md:3815 */
+    case 110:  /* *mips.md:3805 */
+    case 109:  /* *mips.md:3787 */
+    case 108:  /* *mips.md:3760 */
+    case 107:  /* *mips.md:3749 */
+    case 106:  /* *mips.md:3710 */
+    case 105:  /* *mips.md:3692 */
+    case 104:  /* *mips.md:3673 */
+    case 103:  /* *mips.md:3662 */
+    case 102:  /* anddi3_internal1 */
+    case 101:  /* *mips.md:3605 */
+    case 100:  /* *mips.md:3587 */
+    case 99:  /* *mips.md:3564 */
+    case 98:  /* *mips.md:3553 */
+    case 66:  /* *mips.md:2618 */
+    case 65:  /* *mips.md:2609 */
+    case 64:  /* divsf3 */
+    case 63:  /* divdf3 */
+    case 33:  /* mulsf3_r4300 */
+    case 32:  /* mulsf3_internal */
+    case 31:  /* muldf3_r4300 */
+    case 30:  /* muldf3_internal */
+    case 27:  /* *mips.md:1548 */
+    case 24:  /* subdi3_internal_3 */
+    case 21:  /* *mips.md:1262 */
+    case 18:  /* subsi3_internal */
+    case 17:  /* subsf3 */
+    case 16:  /* subdf3 */
+    case 13:  /* *mips.md:1036 */
+    case 10:  /* adddi3_internal_3 */
+    case 7:  /* *mips.md:696 */
+    case 4:  /* addsi3_internal */
+    case 3:  /* addsf3 */
+    case 2:  /* adddf3 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (pat, 1), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (pat, 1), 1));
+      break;
+
+    case 1:  /* *mips.md:584 */
+      ro[0] = *(ro_loc[0] = &XEXP (pat, 0));
+      ro[1] = *(ro_loc[1] = &XEXP (XEXP (pat, 0), 0));
+      ro[2] = *(ro_loc[2] = &XEXP (XEXP (pat, 0), 1));
+      break;
+
+    case 351:  /* align_8 */
+    case 350:  /* align_4 */
+    case 349:  /* align_2 */
+    case 330:  /* nop */
+    case 307:  /* exception_receiver */
+    case 302:  /* return */
+    case 301:  /* blockage */
+    case 0:  /* trap */
+      break;
+
+    default:
+      abort ();
+    }
+}

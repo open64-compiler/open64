@@ -1,0 +1,198 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for libcomutil
+#
+
+include	$(COMMONDEFS)
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+
+ifeq ($(BUILD_COMPILER), EDG)
+CVERSION = -xansi
+WOFF = -fullwarn
+else
+CVERSION =
+WOFF =
+endif
+
+ifeq ($(shell test -e /usr/include/valgrind/valgrind.h && echo y || echo n), y)
+VGINC = -I/usr/include/valgrind
+VGDEF =
+else
+VGINC =
+VGDEF = -DNO_VALGRIND
+endif
+
+LASOPTS = $(STD_COMPILE_OPTS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS += $(HOSTDEFS) $(TARGDEFS) $(VGDEF)
+LCXXOPTS = $(STD_COMPILE_OPTS)
+LCXXDEFS += $(HOSTDEFS) $(TARGDEFS)
+
+LCINCS = -I$(BUILD_BASE) -I$(BUILD_TOT)/common/com -I$(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR) $(VGINC)
+LCXXINCS = -I$(BUILD_BASE) -I$(BUILD_TOT)/common/com -I$(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
+
+#ifneq ($(BUILD_COMPILER), EDG)
+#LCOPTS   += -fwritable-strings
+#LCXXOPTS += -fwritable-strings
+#endif
+
+LIBRARY = libcomutil.a
+
+TARGETS = $(LIBRARY)
+
+# only build mips3 version and install in default place
+ifeq ($(BUILD_TARGET), MIPS)
+STD_LIBRARY_LOC=$(DEF_LIBRARY_LOC)
+endif
+ifeq ($(BUILD_TARGET), SL)
+STD_LIBRARY_LOC=$(DEF_LIBRARY_LOC)
+endif
+
+
+ifeq ($(BUILD_COMPILER), EDG)
+ASFILES	= \
+	c_qwmultu.s
+else
+CFIL	= \
+	c_qwmultu.c
+endif
+
+CFILES	= \
+	bitset.c \
+	file_util.c \
+	flags.c \
+	linklist.c \
+	memory.c \
+	priority_queue.c \
+	resource.c \
+	mstack.c \
+	tracing.c \
+	util.c \
+	vstring.c
+ifneq ($(BUILD_TARGET), LOONGSON)
+ifneq ($(BUILD_TARGET), NVISA)
+CFILES  += \
+	c_a_to_q.c \
+	c_q_add.c \
+	c_q_div.c \
+	c_q_mul.c \
+	c_q_neg.c \
+	c_q_rel.c \
+	c_q_sqrt.c \
+	c_q_sub.c \
+	c_q_to_a.c \
+	c_qtenscale.c \
+	quadsim.c \
+	$(CFIL)
+endif
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+CFILES += \
+	 softfloat.c \
+	 c_a_to_q.c \
+	 c_q_to_a.c \
+	 quadsim.c \
+	 c_qtenscale.c \
+	$(CFIL)	 
+endif
+
+HFILES	= \
+	libcomutil.h \
+	bitset.h \
+	errors.h \
+	file_util.h \
+	flags.h \
+	linklist.h \
+	mempool.h \
+	cxx_memory.h \
+	quad.h \
+	quadsim.h \
+	priority_queue.h \
+	resource.h \
+	mstack.h \
+	tracing.h \
+	util.h \
+	vcg.h\
+	vstring.h
+
+CXXFILES = \
+   cxx_memory.cxx	\
+   errors.cxx		\
+   vcg.cxx
+
+.PHONY: default first last install
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+include $(COMMONRULES)
+
+VPATH =  $(BUILD_BASE) $(BUILD_BASE)/$(BUILD_TARGET_DIR)
+
+ifeq ($(BUILD_ABI), I32BIT)
+ifeq ($(BUILD_TARGET), IA64)
+c_qwmultu.o: $(BUILD_TOT)/common/util/ia32/IA32_host/c_qwmultu.c
+	$(CC) -c $(CFLAGS) $(BUILD_TOT)/common/util/ia32/IA32_host/c_qwmultu.c
+endif
+endif
+
+ifeq ($(BUILD_TARGET), LOONGSON)
+softfloat.o: $(BUILD_TOT)/common/util/loongson/softfloat.c
+	$(CCF) -c $(BUILD_TOT)/common/util/loongson/softfloat.c -o softfloat.o -O2 -I$(BUILD_TOT)/common/util/longson/ -DTARG_LOONGSON
+endif
+
+first:
+ifndef SKIP_DEP_BUILD
+	$(call submake,$(BUILD_AREA)/include)
+endif
+
+last: make_libdeps
+
+exports: default
+#	$(INSTALL) -m 444 -F $(STD_LIBRARY_LOC) $(TARGETS)
+
+install: default
+#	$(STD_INSTALL) -m 444 -F $(STD_LIBRARY_LOC) $(TARGETS)
+
+$(LIBRARY): $(OBJECTS)
+	$(ar) cru $@ $^

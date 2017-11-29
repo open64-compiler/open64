@@ -1,0 +1,263 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#
+# Makefile for include
+#
+
+include	$(COMMONDEFS)
+
+#
+# For Linux builds, ROOT & TOOLROOT aren't used.  The GNU convention
+# is to build using root-installed packages (headers, libraries and
+# tools) and anything unique to the build is self- contained within
+# the build tree.
+#
+#  Unfortunately, because of it's background, osprey needs a mixture of
+#  different header files to build correctly on Linux.  These include:
+#    1.  Component-specific headers in component source directories
+#    2.  Header files dynamically generated as part of the build process
+#    3.  The compiler-specific headers located in v7.4i/include
+#    4.  A small set of Irix-supplied headers
+#    5.  The Linux system headers
+#    6.  The GNU headers
+#    7.  "Extended" versions of headers from #3 & #4
+#    8.  A patched version of STL (the current Mips version is too compiler
+#        specific and the current Linux version is too out-of-date)
+#  In some cases headers from #3 & #4 override headers from #5 & #6.  In some
+#  cases headers from #5 & #6 override headers from #3.  In all cases, headers
+#  from #7 & #8 override headers from #5 & #6.
+#
+#  There isn't an include search path that will work correctly referencing the
+#  headers in place.  We need to build the compiler in both Mips and Linux
+#  environments.  The headers in #1 can't be radically changed (they are
+#  shipped to Mips customers) or eliminated.  We also want to "be a good
+#  citizen" on Linux hosts and not edit/replace "system" headers in #3 & #4.
+#  Finally, we don't want a particular header file to exist in more than one
+#  location in our source tree.
+#
+#  So the scheme is to "install" a subset of the headers from #3 and all the
+#  headers in #4, #7 & #8 in a local target build directory (ie:
+#  targi32/include).  Then the include search path becomes:  #1 (in place in
+#  workarea's source tree), #2 (in appropriate build directory), "installed"
+#  headers, #6, #5.  Since #6 and #5 are automatically supplied by the GNU
+#  compiler driver, we don't need to specify them.  This is very similar to
+#  the include search path for Mips-hosted builds except that item #2 and the
+#  "installed" headers are located in ROOT and we don't have to hand craft
+#  the "installed" headers to avoid conflicts.
+#
+
+LINUX_HFILES = \
+	bstring.h \
+	elf_stuff.h \
+	sgidefs.h \
+	standards.h
+
+ifeq ($(BUILD_OS), CYGWIN)
+LINUX_HFILES += elf.h
+endif
+ifeq ($(BUILD_OS), MINGW)
+LINUX_HFILES += elf.h
+endif
+ifeq ($(BUILD_OS), DARWIN)
+LINUX_HFILES += elf.h malloc.h
+endif
+
+LINUX_SYS_HFILES = \
+	syssgi.h
+
+LIBDWARF_HFILES = \
+	dwarf.h \
+	libdwarf.h 
+
+INCLUDE_HFILES = \
+	compact_reloc.h \
+	defalias.h \
+	dwarf_stuff.h \
+	elf_abi.h \
+	elf_mips.h \
+	elfaccess.h \
+	fp_class.h \
+	isam.h \
+	libXlate.h \
+	objlist.h  \
+	obj_list.h  \
+	obj_type.h  \
+	rld_interface.h \
+	stamp.h \
+	svr4_math.h
+
+ifeq ($(BUILD_OS), MINGW)
+INCLUDE_HFILES += \
+	translatetypes.h \
+	alloca.h \
+	ar.h
+endif
+
+CMPLR_HFILES = \
+	cif_c.h \
+	dwarf_addr_finder.h \
+	elf_interfaces.h \
+	f_errno.h \
+	events.h \
+	fb.h \
+	host.h \
+	leb128.h \
+	make_depend.h \
+	newinst.h \
+	rcodes.h \
+	xlate.h
+
+CMPLR_DIRS = cmplrs 
+
+SYS_HFILES = \
+	elf_whirl.h \
+	inst.h \
+	unwind.h \
+	unwindP.h
+
+ifeq ($(BUILD_TARGET), IA64)
+SYS_DIRS = \
+	ia64
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+SYS_DIRS = \
+	mips
+endif
+ifeq ($(BUILD_TARGET), SL)
+SYS_DIRS = \
+        sl
+endif
+ifeq ($(BUILD_TARGET), X8664)
+SYS_DIRS = \
+	ia64
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+SYS_DIRS = \
+	ia64
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+SYS_DIRS = \
+        ia64
+endif
+
+LIBELF_HFILES = \
+	elf_repl.h \
+	libelf.h \
+	nlist.h \
+	sys_elf.h
+
+LIBELF_DIRS = libelf
+
+.PHONY: default
+default: pathscale_defs.h
+	@: Make directories in case they do not exist.
+	@for d in sys cmplrs libelf; do \
+	    if [ ! -d $$d ]; then \
+		$(MKDIR) $$d && echo Making $$d; \
+	    fi; \
+	done	
+	@for h in $(LINUX_HFILES); do \
+	    if ! test -e $$h; then \
+	      $(LN) -sf $(BUILD_TOT)/linux/include/$$h $$h; \
+	    fi; \
+	done
+	@for h in $(LIBELF_HFILES); do \
+	    if ! test -a $$h; then \
+	      ln -sf $(BUILD_TOT)/libelf/lib/$$h libelf/$$h; \
+	    fi; \
+	done
+	@for h in $(LINUX_SYS_HFILES); do \
+	    if ! test -e $$h; then \
+	      $(LN) -sf $(BUILD_TOT)/../linux/include/sys/$$h sys/$$h; \
+	    fi; \
+	done
+	@for h in $(INCLUDE_HFILES); do \
+	    if ! test -e $$h; then \
+	      $(LN) -sf $(BUILD_TOT)/include/$$h $$h; \
+	    fi; \
+	done
+	@for h in $(LIBDWARF_HFILES); do \
+	    if ! test -e $$h; then \
+	      $(LN) -sf $(BUILD_TOT)/libdwarf/libdwarf/$$h $$h; \
+	    fi; \
+	done
+	@for h in $(CMPLR_DIRS); do \
+	    if ! test -e $$h; then \
+	      $(MKDIR) $$h; \
+	    fi; \
+	done
+	@for h in $(CMPLR_HFILES); do \
+	    if ! test -e cmplrs/$$h; then \
+	      $(LN) -sf $(BUILD_TOT)/include/cmplrs/$$h cmplrs/$$h; \
+	    fi; \
+	done
+	@for h in $(SYS_HFILES); do \
+	    if ! test -e sys/$$h; then \
+	      $(LN) -sf $(BUILD_TOT)/include/sys/$$h sys/$$h; \
+	    fi; \
+	done
+	@for h in $(SYS_DIRS); do \
+	    if ! test -e sys/$$h; then \
+	      $(LN) -sf $(BUILD_TOT)/include/sys/$$h sys/$$h; \
+	    fi; \
+	done
+	@for h in $(LIBELF_HFILES); do \
+	    if ! test -e $$h; then \
+	      $(LN) -sf $(BUILD_TOT)/libelf/lib/$$h libelf/$$h; \
+	    fi; \
+	done
+
+pathscale_defs.h: $(BUILD_TOT)/../defs.mk 
+	echo '#ifndef __pathscale_defs_h' > $@
+	echo '#define __pathscale_defs_h' >> $@
+	echo '#define OPEN64_NAME_PREFIX "${OPEN64_NAME_PREFIX}"' >> $@
+	echo '#define OPEN64_MAJOR_VERSION_NUM ${OPEN64_MAJOR_VERSION}' >> $@
+	echo '#define OPEN64_MINOR_VERSION_NUM ${OPEN64_MINOR_VERSION}' >> $@
+	echo '#define OPEN64_MAJOR_VERSION "${OPEN64_MAJOR_VERSION}"' >> $@
+	echo '#define OPEN64_MINOR_VERSION "${OPEN64_MINOR_VERSION}"' >> $@
+	echo '#define OPEN64_FULL_VERSION "${OPEN64_FULL_VERSION}"' >> $@
+	echo '#define OPEN64_GCC_VERSION "${OPEN64_GCC_VERSION}"' >> $@
+	echo '#define OPEN64_GCC40_VERSION "${OPEN64_GCC40_VERSION}"' >> $@
+	echo '#define OPEN64_GCC42_VERSION "${OPEN64_GCC42_VERSION}"' >> $@
+	echo '#define OPEN64_INSTALL_PREFIX "${OPEN64_INSTALL_PREFIX}"' >> $@
+	echo '#define OPEN64_TARGET "${OPEN64_TARGET}"' >> $@
+	echo '#define OPEN64_PATCH_LEVEL "${OPEN64_PATCH_LEVEL}"' >> $@ 
+	echo "#endif" >> $@
+
+clean clobber:
+	@rm -rf *.h *.sg $(CMPLR_DIRS) $(LIBELF_DIRS) ia64 stl sys
