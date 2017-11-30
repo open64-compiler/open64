@@ -1625,13 +1625,13 @@ struct compare_edge_topological_order {
 	 topo_pos[x.second] < topo_pos[y.second] ) return true;
     return false;
   }
-  compare_edge_topological_order( compare_edge_topological_order &c ):
+  compare_edge_topological_order(const compare_edge_topological_order &c ):
     topo_pos( c.topo_pos ) {}
 
   template <class Container>
-  compare_edge_topological_order( Container& topo_order ) {
+  compare_edge_topological_order(const Container& topo_order ) {
     int pos = 0;
-    for ( typename Container::iterator iv = topo_order.begin();
+    for ( typename Container::const_iterator iv = topo_order.begin();
 	  iv != topo_order.end();
 	  ++iv ) {
       vertex_id v = ( *iv );

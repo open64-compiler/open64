@@ -365,22 +365,19 @@ public:
 
 class EH_RANGE_LIST_PARENT_ITER {
 private:
-  EH_RANGE_LIST::iterator iter;
+  EH_RANGE* range;
 public:
   typedef std::forward_iterator_tag iterator_category;
   typedef EH_RANGE             value_type;
   typedef ptrdiff_t            difference_type;
   typedef value_type *         pointer;
   typedef value_type &         reference;
-  EH_RANGE_LIST_PARENT_ITER(): iter() {}
-  EH_RANGE_LIST_PARENT_ITER(EH_RANGE_LIST::iterator x): iter(x) {}
-  EH_RANGE& operator*() {return *iter;}
+  EH_RANGE_LIST_PARENT_ITER(): range() {}
+  EH_RANGE_LIST_PARENT_ITER(EH_RANGE* x): range(x) {}
+  EH_RANGE& operator*() {return *range;}
   EH_RANGE_LIST_PARENT_ITER& operator++() {
-#ifdef KEY // workaround g++ 3.2 problem
-    iter = EH_RANGE_LIST::iterator(iter->parent); return *this;}
-#else
-    iter = iter->parent; return *this;}
-#endif
+    range = range->parent; return *this;
+  }
   EH_RANGE_LIST_PARENT_ITER operator++(int) {
     EH_RANGE_LIST_PARENT_ITER tmp = *this;
     ++*this;
@@ -396,13 +393,13 @@ public:
 
 inline bool operator==(const EH_RANGE_LIST_PARENT_ITER & x,
 		       const EH_RANGE_LIST_PARENT_ITER &y) {
-  return x.iter == y.iter;
+  return x.range == y.range;
 }
 
 #ifdef KEY 
 inline bool operator!=(const EH_RANGE_LIST_PARENT_ITER & x,
 		       const EH_RANGE_LIST_PARENT_ITER &y) {
-  return x.iter != y.iter;
+  return x.range != y.range;
 }
 #endif
 
@@ -447,11 +444,7 @@ struct SET_PARENT {
   void operator()(EH_RANGE& r) {
     RID_PARENT_ITER first(r.rid);
     RID_PARENT_ITER last(NULL);
-#if (__GNUC__ < 4 ||(__GNUC__ == 4 && __GNUC_MINOR__ == 0))
-    first = find_if(++first, last, IS_EH_RID(), std::__iterator_category(first));
-#else
-    first = std::__find_if(++first, last, IS_EH_RID(), std::__iterator_category(first));
-#endif
+    first = std::find_if(++first, last, IS_EH_RID());
     if (first == last)
       r.parent = NULL;
     else
@@ -829,18 +822,9 @@ struct IS_CLEANUP_RANGE {
 struct FIX_MASK_PARENT {
   void operator()(EH_RANGE& r) {
     if (r.kind == ehk_mask) {
-#ifdef KEY
-      EH_RANGE_LIST_PARENT_ITER first(EH_RANGE_LIST::iterator(r.parent));
-      EH_RANGE_LIST_PARENT_ITER last(EH_RANGE_LIST::iterator(NULL));
-#else
       EH_RANGE_LIST_PARENT_ITER first(r.parent);
       EH_RANGE_LIST_PARENT_ITER last (NULL);
-#endif
-#if (__GNUC__ < 4 || __GNUC_MINOR__ == 0)
-      first = find_if(first, last, IS_CLEANUP_RANGE(), std::__iterator_category(first));
-#else
-      first = std::__find_if(first, last, IS_CLEANUP_RANGE(), std::__iterator_category(first));
-#endif
+      first = std::find_if(first, last, IS_CLEANUP_RANGE());
       Is_True(first != last, ("mask region must have cleanup ancestor"));
       r.parent = (*first).parent;
     }
