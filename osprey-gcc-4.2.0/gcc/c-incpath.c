@@ -172,6 +172,9 @@ add_standard_paths (const char *sysroot, const char *iprefix,
 	  add_path (str, SYSTEM, p->cxx_aware, false);
 	}
     }
+
+  add_path (TARGET_64BIT ? xstrdup("/usr/include/x86_64-linux-gnu") :
+                           xstrdup("/usr/include/i386-linux-gnu"), SYSTEM, false, false);
 }
 
 /* For each duplicate path in chain HEAD, keep just the first one.

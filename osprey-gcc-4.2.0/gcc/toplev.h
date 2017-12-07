@@ -165,7 +165,7 @@ extern int exact_log2                  (unsigned HOST_WIDE_INT);
 extern int floor_log2                  (unsigned HOST_WIDE_INT);
 
 /* Inline versions of the above for speed.  */
-#if GCC_VERSION >= 3004
+#if 0 /* GCC_VERSION >= 3004 */ /* disable for open64 GCC front end */
 # if HOST_BITS_PER_WIDE_INT == HOST_BITS_PER_LONG
 #  define CLZ_HWI __builtin_clzl
 #  define CTZ_HWI __builtin_ctzl

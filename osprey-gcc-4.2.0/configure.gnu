@@ -1,4 +1,5 @@
 ARGS=""
+GCC_ARGS=""
 for i in $*
 do
         case $1 in
@@ -7,6 +8,9 @@ do
                         ;;
                 --prefix=*)
                         prefix=`expr "x$1" : 'x[^=]*=\(.*\)'`
+                        ;;
+                --disable-multilib)
+                        GCC_ARGS="$GCC_ARGS $1"
                         ;;
                 *)
                         ARGS="$ARGS $1"
@@ -22,4 +26,4 @@ then
 	export FLAGS_FOR_TARGET="-m32"
 fi
 
-$srcdir/configure  --prefix=$prefix/open64-gcc-4.2.0 --with-gnu-as --with-gnu-ld --enable-languages=c,c++ --disable-bootstrap --disable-libmudflap --disable-libssp --disable-checking --enable-threads=posix --enable-tls --with-system-zlib --enable-__cxa_atexit --srcdir=$srcdir --host=$GCC_CONFIGURE_HOST --target=$GCC_CONFIGURE_TARG
+$srcdir/configure  --prefix=$prefix/open64-gcc-4.2.0 --with-gnu-as --with-gnu-ld --enable-languages=c,c++ --disable-bootstrap --disable-libmudflap --disable-libssp --disable-checking --enable-threads=posix --enable-tls --with-system-zlib --enable-__cxa_atexit $GCC_ARGS --srcdir=$srcdir --host=$GCC_CONFIGURE_HOST --target=$GCC_CONFIGURE_TARG

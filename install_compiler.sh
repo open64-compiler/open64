@@ -280,7 +280,7 @@ INSTALL_FE () {
     if [ "$TARG_HOST" = "ppc32" ]; then
     LIBEXEC=libexec/gcc/powerpc-redhat-linux/4.2.0
     else
-    LIBEXEC=libexec/gcc/${PHASE_DIR_PREFIX}-redhat-linux/4.2.0
+    LIBEXEC=libexec/gcc/${PHASE_DIR_PREFIX}-linux-gnu/4.2.0
     fi
     (cd $PHASEPATH; ln -sf ../../../../open64-gcc-4.2.0/${LIBEXEC}/cc1 cc142)
     (cd $PHASEPATH; ln -sf ../../../../open64-gcc-4.2.0/${LIBEXEC}/cc1plus cc1plus42)
@@ -377,8 +377,13 @@ INSTALL_PHASE_SPECIFIC_ARCHIVES () {
         INSTALL_DATA_SUB ${LIB32AREA}/libmv/libmv.a           ${PHASEPATH}/32/libmv.a
     else
         # IA32 and x86_64
-	LIBAREA="osprey/targdir_lib2"
-	LIB32AREA="osprey/targdir_lib"
+        if [ "$TARG_HOST" = "x8664" ]; then
+	    LIBAREA="osprey/targdir_lib"
+	    LIB32AREA="osprey/targdir_lib2"
+        else
+	    LIBAREA="osprey/targdir_lib2"
+	    LIB32AREA="osprey/targdir_lib"
+        fi
         HUGETLB=${TOP_SRCDIR}/osprey/libhugetlbfs
 
         INSTALL_DATA_SUB ${LIBAREA}/libinstr2/libinstr.a      ${PHASEPATH}/libinstr.a
@@ -444,8 +449,13 @@ INSTALL_GENERAL_PURPOSE_NATIVE_ARCHIVES () {
 	LIBAREA="osprey/targdir_lib"
 	LIB32AREA="osprey/targdir_lib2"
     else
-	LIBAREA="osprey/targdir_lib2"
-        LIB32AREA="osprey/targdir_lib"
+        if [ "$TARG_HOST" = "x8664" ] ; then
+	    LIBAREA="osprey/targdir_lib"
+            LIB32AREA="osprey/targdir_lib2"
+        else
+	    LIBAREA="osprey/targdir_lib2"
+            LIB32AREA="osprey/targdir_lib"
+        fi
         # 64bit libraries
         [ "$INSTALL_FORTRAN" = "YES" ] && INSTALL_DATA_SUB ${LIBAREA}/libfortran/libfortran.a ${PHASEPATH}/libfortran.a
         [ "$INSTALL_FORTRAN" = "YES" ] && INSTALL_DATA_SUB ${LIBAREA}/libfortran/libfortran.so ${PHASEPATH}/libfortran.so

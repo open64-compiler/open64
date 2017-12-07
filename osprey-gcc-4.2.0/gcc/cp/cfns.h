@@ -37,7 +37,7 @@ static unsigned int hash (const char *, unsigned int);
 #ifdef __GNUC__
 __inline
 #endif
-const char * libc_name_p (const char *, unsigned int);
+static const char * libc_name_p (const char *, unsigned int);
 /* maximum key range = 391, duplicates = 0 */
 
 #ifdef __GNUC__
@@ -108,7 +108,7 @@ hash (register const char *str, register unsigned int len)
 #ifdef __GNUC__
 __inline
 #endif
-const char *
+static const char *
 libc_name_p (register const char *str, register unsigned int len)
 {
   enum

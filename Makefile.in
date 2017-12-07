@@ -74,19 +74,19 @@ BUILD_SKIP_IPA      = @BUILD_SKIP_IPA@
 
 ifeq ($(MACHINE_TYPE), ia64)
 # ia64
-  GNUFE_BUILD_HOST    = ia64-redhat-linux
+  GNUFE_BUILD_HOST    = ia64-linux-gnu
   TARGET_EXTRA_OBJ    = $(NATIVE_BUILD_DIR)/targ_info/itanium.so 
   TARGET_EXTRA_OBJ   += $(NATIVE_BUILD_DIR)/orc_ict/orc_ict.so
   TARGET_EXTRA_OBJ   += $(NATIVE_BUILD_DIR)/orc_intel/orc_intel.so
 endif
 ifeq ($(MACHINE_TYPE), i386)
 # i386
-  GNUFE_BUILD_HOST    = x86_64-redhat-linux
+  GNUFE_BUILD_HOST    = x86_64-linux-gnu
 endif
 
 ifeq ($(MACHINE_TYPE), x86_64)
 # x86_64
-  GNUFE_BUILD_HOST    = x86_64-redhat-linux
+  GNUFE_BUILD_HOST    = x86_64-linux-gnu
 endif
 
 CROSS_BUILD = false
