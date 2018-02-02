@@ -795,6 +795,7 @@ Optional Features:
   --disable-fortran       Disable Fortran language support
   --enable-whirl-id       Enable debugging ID in WHIRL node
   --disable-ipa           Disable IPA compilation support (EXPERIMENTAL)
+  --disable-multilib      Disable multilib support for IA32/x86-64
   --disable-shared        Disable shared libraries (EXPERIMENTAL)
 
 Optional Packages:
@@ -1525,6 +1526,20 @@ fi;
 if test "x$enable_ipa" = "xno"; then
 
   BUILD_SKIP_IPA=YES
+
+fi
+
+
+# Set whether to support multilib for IA32/x86-64
+# Check whether --enable-multilib or --disable-multilib was given.
+if test "${enable_multilib+set}" = set; then
+  enableval="$enable_multilib"
+
+fi;
+
+if test "x$enable_multilib" != "xno"; then
+
+  BUILD_MULTILIB=YES
 
 fi
 

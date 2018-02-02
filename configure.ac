@@ -162,6 +162,14 @@ AS_IF([test "x$enable_ipa" = "xno"], [
   BUILD_SKIP_IPA=YES
 ])
 
+# Set whether to support multilib for IA32/x86-64
+AC_ARG_ENABLE([multilib],
+  AS_HELP_STRING([--disable-multilib], [Disable multilib support for IA32/x86-64]))
+
+AS_IF([test "x$enable_multilib" != "xno"], [
+  BUILD_MULTILIB=YES
+])
+
 # Set whether shared libraries will be built.  Implies --disable-ipa.
 BUILD_TYPE=NONSHARED
 AC_ARG_ENABLE([shared],
