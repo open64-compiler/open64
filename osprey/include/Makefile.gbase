@@ -197,7 +197,7 @@ default: pathscale_defs.h
 	    fi; \
 	done
 	@for h in $(LIBELF_HFILES); do \
-	    if ! test -a $$h; then \
+	    if ! test -e $$h; then \
 	      ln -sf $(BUILD_TOT)/libelf/lib/$$h libelf/$$h; \
 	    fi; \
 	done
