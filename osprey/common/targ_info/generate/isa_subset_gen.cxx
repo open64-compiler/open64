@@ -267,6 +267,8 @@ void ISA_Subset_End(void)
       int members = 0;
       for (int j = 0; j < 8; ++j ) {
         TOP top = (TOP) ((i * 8) + j);
+        if (top == TOP_UNDEFINED)
+          break;
         ISA_SUBSET ss;
         for (ss = subset; ss != NULL ; ss = ss->superset) {
           if (opcode_subset[top] == ss) {
