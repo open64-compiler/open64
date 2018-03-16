@@ -4932,7 +4932,7 @@ Expand_Expr (WN *expr, WN *parent, TN *result)
   	return Expand_Expr (WN_kid0(expr), parent, result, intrn_id);
   }
 #endif
-  if (TOP_is_noop(top)
+  if (top != TOP_UNDEFINED && TOP_is_noop(top)
 #if defined(TARG_IA64) || defined(TARG_LOONGSON)
 	&& (opr == OPR_PAREN || opr == OPR_TAS || opr == OPR_PARM)) 
 #else
