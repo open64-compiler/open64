@@ -5595,9 +5595,10 @@ Adjust_X86_Style_For_BB (BB* bb, BOOL* redundant_code, MEM_POOL* pool)
   FOR_ALL_BB_OPs( bb, op ){
     opnum++;
 
+    if (OP_results(op) == 0)
+      continue;
+
     TN* result = OP_result( op, 0 );
-    TN* opnd0 = OP_opnd( op, 0 );
-    TN* opnd1 = OP_opnd( op, 1 );
 
     if( Is_Target_Orochi() && OP_sse5( op ) ){
       if( check_uses_destructive_dest(result, bb) == FALSE )
@@ -5620,9 +5621,11 @@ Adjust_X86_Style_For_BB (BB* bb, BOOL* redundant_code, MEM_POOL* pool)
         continue;
     }
 
+    TN* opnd0 = OP_opnd( op, 0 );
     if( TNs_Are_Equivalent( result, opnd0 ) )
       continue;
 
+    TN* opnd1 = OP_opnd( op, 1 );
     if( ( opnd0 != opnd1 ) &&
 	TOP_is_commutative( OP_code(op) ) ){
       const LIVE_RANGE* opnd1_lr = LR_For_TN( opnd1 );
