@@ -67,7 +67,7 @@ public:
 	count = 0;
     };
 
-    ~VVECTOR (void) { CXX_DELETE (a, Malloc_Mem_Pool); };
+    ~VVECTOR (void) { CXX_DELETE_ARRAY (a, Malloc_Mem_Pool); };
 
     void Append(NODE_INDEX vtx) {
 	FmtAssert(count <=  size,
