@@ -542,7 +542,7 @@ void REG_LIVE_Analyze_Region(void)
   REGSET kill;
   BB *last_bb = NULL;
 
-  Is_True(Register_Livein == FALSE,
+  Is_True(Register_Livein == NULL,
 	  ("REG_LIVE_Analyze_Region called while facility is already in use"));
 
   if (!pool_initialized) {

@@ -1366,7 +1366,7 @@ public:
 	return data[node->Array_Index ()];
     }
     const NODE& operator[] (const IPA_NODE* node) const {
-#if defined(_LIGHTWEIGHT_INLINER) || !defined(_STANDALONE_INLINER)
+#if 0 //defined(_LIGHTWEIGHT_INLINER) || !defined(_STANDALONE_INLINER)
         if (node->Array_Index () >= node_size) {
             UINT size = sizeof(NODE) * node_size;
             node_size *= 2;
@@ -1393,7 +1393,7 @@ public:
 	return data[n_idx];
     }
     const NODE& operator[] (UINT32 n_idx) const {
-#if defined(_LIGHTWEIGHT_INLINER) || !defined(_STANDALONE_INLINER)
+#if 0 //defined(_LIGHTWEIGHT_INLINER) || !defined(_STANDALONE_INLINER)
         if (n_idx >= node_size) {
             UINT size = sizeof(NODE) * node_size;
             node_size *= 2;

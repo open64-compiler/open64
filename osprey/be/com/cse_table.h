@@ -356,7 +356,7 @@ private:
 
   typedef hash_map<const char*, 
                    CallSideEffectInfo*, 
-                   hash<const char*>, StringEqual_ > SideEffectTableType_;
+                   __gnu_cxx::hash<const char*>, StringEqual_ > SideEffectTableType_;
   // Standard library call side-effect table -- implied by their semantics:
   SideEffectTableType_ SideEffectTable_;
 };

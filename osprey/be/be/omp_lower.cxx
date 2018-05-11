@@ -1468,7 +1468,7 @@ static void Convert_Section_To_Pdo(WN *sections, WN *pragma)
 static WN *Is_Section_Begin(WN *wn)
 {
   if (WN_opcode(wn) != OPC_REGION) {
-    return FALSE;
+    return NULL;
   }
   WN *pragmas = WN_region_pragmas(wn);
   if (pragmas) {

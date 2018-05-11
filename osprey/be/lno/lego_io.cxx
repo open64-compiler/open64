@@ -132,7 +132,7 @@ typedef STACK<WN *> STACK_OF_WN;
 typedef STACK<REFERENCE> STACK_OF_REFERENCES;
 
 static ST* Create_Tmp_Array(ST *st, WN *IO_node, WN **tmp_array_def,
-				mBOOL *const_dimensions=FALSE);
+				mBOOL *const_dimensions=NULL);
 static void Copy_Array(WN *orig_array, ST* local_st, WN *IO_node, 
 			BOOL copy_in, WN *tmp_array_def);
 static void Copy_Array_Section(WN *orig_array, ST* local_st, WN *IO_node, 

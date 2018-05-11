@@ -114,7 +114,7 @@ public:
   }
   BINARY_TREE_NODE<BINARY_NODE>* Find(BINARY_NODE element) const { 
     if (!_binary_tree_node) {
-      return(FALSE);
+      return(NULL);
     } else {
       return(_binary_tree_node->Find(element));
    }

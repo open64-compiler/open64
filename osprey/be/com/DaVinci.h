@@ -351,7 +351,7 @@ typedef enum {
 } Item_status;
 
 typedef hash_map< const char *, Item_status,
-			     hash<const char *>, Equal_obj > Item_info;
+			     __gnu_cxx::hash<const char *>, Equal_obj > Item_info;
 
 class Menu_info {
 private:

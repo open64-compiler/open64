@@ -1594,7 +1594,7 @@ SYSTEM_OF_EQUATIONS::Change_Base(const INT32 dim, const INT32 pos, MEM_POOL *poo
       for (k = 0; k <_vars; ++k) {
 	if (abs(work[k] <= INT32_MAX)) {
 	  _Aeq(i,k) = work[k];
-	  g = Gcd(g,abs(work[k]));
+	  g = Gcd(g,(INT32)abs(work[k]));
 	} else {
 	  CXX_DELETE(work, pool);
 	  return -1;
@@ -1637,7 +1637,7 @@ SYSTEM_OF_EQUATIONS::Change_Base(const INT32 dim, const INT32 pos, MEM_POOL *poo
       for (k = 0; k < _vars; ++k) {
 	if (abs(work[k] <= INT32_MAX)) {
 	  _Ale(i,k) = work[k];
-	  g = Gcd(g, abs(work[k]));
+	  g = Gcd(g, (INT32)abs(work[k]));
 	} else {
 	  CXX_DELETE(work, pool);
 	  return -1;

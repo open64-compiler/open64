@@ -561,7 +561,7 @@ Avg_Cost_Path(BB_SET *region, BB *entry, BB_MAP ests, SCHED_EST_TYPE type)
 
       UINT32 res_cost = CG_SCHED_EST_Resource_Cycles(se);
       UINT32 critical_len = CG_SCHED_EST_Critical_Length(se);
-      UINT32 diff = abs(critical_len - res_cost);
+      UINT32 diff = critical_len > res_cost ? critical_len - res_cost : res_cost - critical_len;
       UINT32 num_bbs = BB_SET_Size(region);
       
       // Adjust the bias factor, by calculating the difference (or disparity)

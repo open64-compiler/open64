@@ -509,19 +509,19 @@ static ACCESS_VECTOR* Inner_LB_Outer_IV_Offset(WN* wn_inner_loop,
   DO_LOOP_INFO* dli_outer = Get_Do_Loop_Info(wn_outer_loop); 
   ACCESS_ARRAY* aa_inner_lb = dli_inner->LB;
   if (Bound_Is_Too_Messy(aa_inner_lb))
-    return FALSE; 
+    return NULL; 
   if (aa_inner_lb->Num_Vec() > 1)
-    return FALSE;
+    return NULL;
   ACCESS_VECTOR* av_inner_lb = aa_inner_lb->Dim(0); 
   for (INT i = 0; i < av_inner_lb->Nest_Depth(); i++) {
     if (i == dli_outer->Depth) {
       if (av_inner_lb->Loop_Coeff(i) != (mINT32) 1)
-        return FALSE; 
+        return NULL; 
     } else if (i == dli_inner->Depth) {
       if (av_inner_lb->Loop_Coeff(i) != (mINT32) -1)
-	return FALSE; 
+	return NULL; 
     } else if (av_inner_lb->Loop_Coeff(i) != 0) {
-      return FALSE; 
+      return NULL; 
     }
   }
   ACCESS_VECTOR* av = CXX_NEW(ACCESS_VECTOR(av_inner_lb, &LNO_local_pool), 

@@ -216,7 +216,7 @@ extern WN* SNL_SPL_Loop_Is_Inner_Tile(WN* wn_loop,
     }
   }    
   if (!Is_Multiple(wn_outer_step, tile_const))
-    return FALSE; 
+    return NULL; 
 
   // Perform forward substitution as needed 
   if (need_lb_fs)

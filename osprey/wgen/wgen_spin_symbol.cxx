@@ -1918,7 +1918,7 @@ Create_ST_For_Tree (gs_t decl_node)
 
         if (TY_kind (ty_idx) == KIND_ARRAY &&
             gs_tree_static (decl_node) &&
-            gs_decl_initial (decl_node) == FALSE &&
+            gs_decl_initial (decl_node) == NULL &&
             TY_size (ty_idx) == 0) {
 	  Set_TY_size (ty_idx, TY_size (Get_TY (gs_tree_type (gs_tree_type (decl_node)))));
         }
