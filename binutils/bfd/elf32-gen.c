@@ -62,6 +62,7 @@ elf_generic_info_to_howto_rel (bfd *abfd ATTRIBUTE_UNUSED,
 static void
 check_for_relocs (bfd * abfd, asection * o, void * failed)
 {
+#if 0
   if ((o->flags & SEC_RELOC) != 0)
     {
       Elf_Internal_Ehdr *ehdrp;
@@ -74,6 +75,7 @@ check_for_relocs (bfd * abfd, asection * o, void * failed)
       bfd_set_error (bfd_error_wrong_format);
       * (bfd_boolean *) failed = TRUE;
     }
+#endif
 }
 
 static bfd_boolean
