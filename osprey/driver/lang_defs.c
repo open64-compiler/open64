@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  *  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
  */
 
@@ -153,6 +157,7 @@ static phase_info_t phase_info[] = {
    {'f',  0x0000000000400000LL, "cc1"   ,PHASEPATH, TRUE , FALSE}, /* spin_cc1  */
    {'f',  0x0000000000800000LL, "cc1plus",PHASEPATH,    TRUE , FALSE}, /* spin_cc1plus */
    {'w',  0x0000000001000000LL, "wgen",PHASEPATH,   TRUE , FALSE}, /* wgen      */
+   {'f',  0x0000000000300060LL, "clangfe",PHASEPATH,   TRUE , FALSE}, /* clangfe */
    /* place-holder for generic fe, whose mask unites all fe's; */
    /* this is so -Wf will apply to whatever fe is being invoked. */
    {'f',  0x0000000000ff0000LL,	"",	"",		FALSE, FALSE},	/* any_fe */

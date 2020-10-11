@@ -282,6 +282,10 @@ INSTALL_FE () {
     else
     LIBEXEC=libexec/gcc/${PHASE_DIR_PREFIX}-linux-gnu/4.2.0
     fi
+
+    # CLANG based FE
+    INSTALL_EXEC_SUB ${AREA}/clang2whirl/clangfe ${PHASEPATH}/clangfe
+
     (cd $PHASEPATH; ln -sf ../../../../open64-gcc-4.2.0/${LIBEXEC}/cc1 cc142)
     (cd $PHASEPATH; ln -sf ../../../../open64-gcc-4.2.0/${LIBEXEC}/cc1plus cc1plus42)
 

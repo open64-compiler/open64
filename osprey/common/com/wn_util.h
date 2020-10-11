@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -180,6 +184,11 @@
 ***  To copy node wn.
 ***  No annotations are copied at this point. This is strictly a tree copy,
 ***  and a recursive one
+***
+***  WN* WN_COPY_Tree_Without_Commas(
+***    WN* wn)
+***
+***  Same as WN_COPY_Tree() except operations with side effects are excluded
 ***
 ***
 ***  WN* WN_COPY_Tree_With_Map(
@@ -378,6 +387,10 @@ extern void WN_INSERT_BlockAfter(
     WN_INSERT_BlockAfter(b, WN_last(b), in)
 
 extern WN* WN_COPY_Tree(
+       WN *tree_node
+);
+
+extern WN* WN_COPY_Tree_Without_Commas(
        WN *tree_node
 );
 

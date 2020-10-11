@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -2977,6 +2981,11 @@ WGEN_Set_Line_And_File (UINT line, const char* f, bool check)
            return;
         current_file_name = f;
 
+        current_file = WGEN_Get_Filenum(f);
+}
+
+UINT WGEN_Get_Filenum(const char* f)
+{
         // We aren't really modifying f, this is just so we can
         // call legacy code.
         char* file = const_cast<char*>(f);
@@ -3002,8 +3011,22 @@ WGEN_Set_Line_And_File (UINT line, const char* f, bool check)
 		dir = buf;
 	}
 
-	current_dir = Get_Dir_Dst_Info (dir);
-	current_file = Get_File_Dst_Info (file_name, current_dir);
+	UINT current_dir = Get_Dir_Dst_Info (dir);
+	return Get_File_Dst_Info (file_name, current_dir);
+}
+
+SRCPOS WGEN_Get_Line_And_File (unsigned int line, const char* f)
+{
+  SRCPOS s;
+  SRCPOS_clear(s);
+  if (f == NULL)
+    return s;
+  if (strcmp(current_file_name, f) == 0)
+    SRCPOS_filenum(s) = current_file;
+  else
+    SRCPOS_filenum(s) = WGEN_Get_Filenum(f);
+  SRCPOS_linenum(s) = line;
+  return s;
 }
 
 #ifdef KEY

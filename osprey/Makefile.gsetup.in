@@ -424,7 +424,7 @@ ifeq ($(BUILD_OPTIMIZE), DEBUG)
    OPTIMIZER = -g -O0
 else
  ifeq ($(BUILD_OPTIMIZE), NODEBUG)
-   OPTIMIZER = -O2 -fno-strict-aliasing
+   OPTIMIZER = -O2 -fno-strict-aliasing -fno-delete-null-pointer-checks
  else
    OPTIMIZER = $(BUILD_OPTIMIZE)
  endif

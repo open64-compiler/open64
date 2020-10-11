@@ -445,6 +445,7 @@ AC_CONFIG_FILES([
   osprey/targdir/libcomutil/Makefile
   osprey/targdir/ir_tools/Makefile
   osprey/targdir/libcmplrs/Makefile
+  osprey/targdir/clang2whirl/Makefile
   osprey/targdir/wgen/Makefile
   osprey/targdir/libcif/Makefile
   osprey/targdir/arith/Makefile
@@ -563,3 +564,18 @@ AC_CONFIG_SUBDIRS(osprey/cygnus)
 AC_CONFIG_SUBDIRS(osprey-gcc-4.2.0)
 
 AC_OUTPUT
+
+printf "checking CLANG_HOME is set ..."
+if @<:@ -z $CLANG_HOME @:>@
+then
+        echo "no"
+        echo "=========================================================="
+        echo "please set CLANG_HOME which include the clang prebuild libs"
+        echo "=========================================================="
+        exit 1
+else
+        echo "yes"
+        echo "            CLANG_HOME = $CLANG_HOME"
+fi
+
+

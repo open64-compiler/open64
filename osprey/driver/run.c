@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -644,6 +648,7 @@ run_phase (phases_t phase, char *name, string_list_t *args)
 				    phase == P_f_coco ||	// bug 9058
 				    phase == P_spin_cc1 ||
 				    phase == P_spin_cc1plus ||
+                                    phase == P_clangfe ||
 				    status == RC_GCC_INTERNAL_ERROR ||  //bug 9637
 				    phase == P_gcpp || phase == P_gcpp_plus) {
 					if (phase == P_gas ||

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -560,10 +564,10 @@ Process_Targ_Group ( char *targ_args )
 #ifdef TARG_X8664
 	if (!strncasecmp(cp, "fma=on", 7)){
 	  add_option_seen(O_mfma);
-	  toggle(&fma, TRUE);
+	  toggle(&fma3, TRUE);
 	}else if (!strncasecmp(cp, "fma=off", 8)){
 	  add_option_seen(O_mfma);
-	  toggle(&fma, FALSE);
+	  toggle(&fma3, FALSE);
         }
 	if (!strncasecmp(cp, "fma4=on", 7)){
 	  add_option_seen(O_mfma4);
@@ -1982,7 +1986,7 @@ Get_x86_ISA_extensions ()
     return FALSE;
   }
 
-  if (fma == TRUE &&
+  if (fma3 == TRUE &&
       !target_supports_fma) {
     error("Target processor does not support FMA3.");
     return FALSE;
@@ -2065,9 +2069,9 @@ Get_x86_ISA_extensions ()
   }
   if (target_supports_fma &&
       sse2 != FALSE &&  
-      fma != FALSE){//not explicitly turned off
+      fma3 != FALSE){//not explicitly turned off
     sse2 = TRUE;
-    fma = TRUE;
+    fma3 = TRUE;
   }
   if (target_supports_fma4 &&
       sse2 != FALSE &&  

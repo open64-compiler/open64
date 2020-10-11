@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1060,7 +1064,7 @@ print_defaults(int argc, char *argv[])
   // AVX, XOP, FMA3, FMA4
   fprintf(stderr, " %s", avx == TRUE ? "-mavx" : "-mno-avx");
   fprintf(stderr, " %s", xop == TRUE ? "-mxop" : "-mno-xop");
-  fprintf(stderr, " %s", fma == TRUE ? "-mfma" : "-mno-fma");
+  fprintf(stderr, " %s", fma3 == TRUE ? "-mfma" : "-mno-fma");
   fprintf(stderr, " %s", fma4 == TRUE ? "-mfma4" : "-mno-fma4");
 #endif
 

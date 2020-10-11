@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
  */
 
@@ -139,7 +143,9 @@ extern "C" {
 #endif
 
 /* set current line number and current file */
+extern UINT   WGEN_Get_Filenum(const char* file);
 extern void WGEN_Set_Line_And_File (unsigned int line, const char* file, bool check = false);
+extern SRCPOS WGEN_Get_Line_And_File (unsigned int line, const char* file);
 #ifdef KEY
 extern void WGEN_Macro_Define (unsigned int line, const char* buffer);
 extern void WGEN_Macro_Undef (unsigned int line, const char* buffer);

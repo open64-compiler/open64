@@ -130,6 +130,7 @@ endif
 
 GNU4_FE_COMPONENTS = \
                 $(NATIVE_BUILD_DIR)/wgen/wgen42 \
+                $(NATIVE_BUILD_DIR)/clang2whirl/clangfe \
                 $(GNUFE_BUILD_SUBDIR)/gcc/cc1 \
                 $(GNUFE_BUILD_SUBDIR)/gcc/cc1plus
 
@@ -235,6 +236,9 @@ $(NATIVE_BUILD_DIR)/g++fe/gfecc gfecc: libiberty libcomutil libcmplrs
 
 $(NATIVE_BUILD_DIR)/wgen/wgen42 wgen42: libiberty libcomutil libcmplrs $(NATIVE_BUILD_DIR)/libspin_4_2_0/libgspin42.a
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/wgen
+
+$(NATIVE_BUILD_DIR)/clang2whirl/clangfe clangfe: include libiberty libcomutil libcmplrs
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/clang2whirl
 
 ifeq ($(BUILD_TYPE), SHARED)
 
@@ -436,6 +440,7 @@ clobber: clean
 clean: $(CLEAN_LIB)
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/driver clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/wgen clobber 
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/clang2whirl clobber
 ifeq ($(BUILD_GNU3), YES)
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/gccfe clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/g++fe clobber

@@ -9,13 +9,12 @@ that objects produced by the Open64 compilers can link with objects
 produced by other ABI compliant compilers.
 
 The latest information and updates for the Open64 compilers will
-eventually be found at http://www.open64.net. The latest code in 
-development can be obtained via SVN at http://svn.open64.net. 
-The downloadable packages of sources or binaries can be found at
-http://www.sf.net/projects/open64.
+eventually be found at https://github.com/open64-compiler/open64. The
+latest code in development can be obtained via GIT at:
+https://github.com/open64-compiler/open64
 
 Please send problem reports to the mailing list described to the
-BugZilla system at https://bugs.open64.net
+BugZilla system at https://github.com/open64-compiler/open64
 
 Language highlights:
 

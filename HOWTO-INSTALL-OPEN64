@@ -29,7 +29,8 @@ In order to compile Open64 successfully, you should meet the following
 requirements:
 
     * Linux based OS
-      Currently, Open64 is intensively tested on Linux on IA64/X86_64/IA32.
+      Currently, Open64 is intensively tested on Linux on IA64/X86_64/IA32. The
+      recommended OS is Ubuntu 16.04 LTS.
 
     * IA32/x86_64/IA64 based machine
       In this release, Open64 is supported and tested for the Itanium 2 and
@@ -42,10 +43,8 @@ requirements:
       Makefile.
 
     * GCC (GNU Compiler Collection)
-      In order to compile the Open64 source code, you need GCC 3.3.x - 4.2.x.
-      Support for GCC 2.x has been dropped since release 1.0. If you don't have
-      any of the suggested GCC versions above, we recommend that you to install
-      GCC 4.1.x.
+      In order to compile the Open64 source code, you need GCC 5.x - 7.x. The
+      recommended GCC version is GCC 5.4.0 available on Ubuntu 16.04 LTS.
 
 
 Obtaining the Source Code
@@ -56,25 +55,25 @@ To compile Open64 you need to obtain the source code first.
 There are two ways:
 
     * Obtain the Source Code as Archive
-      You can download the source code from Sourceforge.net
-      You will find the links to the different versions in our download section.
-      (http://www.open64.net/download.html)
+      You can download the source code from github.com. You can download
+      different versions from github.com. The master zip file is available
+      at:
+        https://github.com/open64-compiler/open64/archive/master.zip
 
-      Extract the source code and the prebuild binaries/libraries
+      Extract the source code:
 
-        tar xzf open64-4.2.tar.gz
+        unzip master.zip
 
     * Obtain the Source Code from our Subversion Repository
       You can also obtain the latest version of our source code from the sub-
       version repository.
       To get the latest version issue the following command:
 
-        svn export https://svn.open64.net/svnroot/open64/trunk open64
+        git clone https://github.com/open64-compiler/open64.git open64
 
       This will copy the latest code to the directory open64.
 
-      You can also surf through our subversion repository online.
-      (http://svn.open64.net)
+      You can also surf through the git repository online on github.com.
 
 Compiling
 ---------
@@ -84,6 +83,9 @@ many other opensource products use.  In the old build process, it was
 necessary to set variables on the make command to control the build;
 MACHINE_TYPE, BUILD_OPTIMIZE, and TOOLROOT arguments were passed to the
 make command to control what type of open64 compiler to build.
+
+To build open64 with CLANG front end, please check and follow the instructions
+available in osprey/clang2whirl/README.md.
 
 In the new build process, these arguments are passed to the configure
 script (using a different syntax) and then the 'make all' and 'make

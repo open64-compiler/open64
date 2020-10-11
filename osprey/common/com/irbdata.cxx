@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -598,7 +602,7 @@ extern void dump_INITV_idx(INITV_IDX idx)
 }
 
 
-static UINT
+UINT
 Get_INITV_Size (INITV_IDX inv)
 {
 	INITV_IDX temp_inv = inv;

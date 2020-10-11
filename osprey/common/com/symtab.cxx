@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1837,7 +1841,7 @@ ST::Print (FILE *f, BOOL verbose) const
 	fprintf (f, "\n");
 	extern char *Orig_Src_File_Name, *Src_File_Name;
 	fprintf (f, "\t\tlocation: file %s, line %d\n", 
-	         (Orig_Src_File_Name ? Orig_Src_File_Name : Src_File_Name), line);
+	         (Orig_Src_File_Name ? Orig_Src_File_Name : Src_File_Name), SRCPOS_linenum(spos));
 
 	fprintf (f, "\t\tFlags:\t0x%08x", flags);
 	if (flags) {
@@ -1887,6 +1891,8 @@ ST::Print (FILE *f, BOOL verbose) const
 	        fprintf (f, " global_as_local");
             if (flags_ext & ST_IS_VTABLE)
                 fprintf (f, " vtable");
+            if (flags_ext & ST_IS_ODR)
+                fprintf (f, " odr");
 	}
 #endif
 #ifdef TARG_NVISA

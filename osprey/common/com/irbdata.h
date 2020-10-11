@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -460,6 +464,9 @@ INITV_Next_Idx(void) { return Initv_Table.Size(); }
 // return total size of initvs under inito
 extern UINT
 Get_INITO_Size (INITO_IDX ino);
+
+extern UINT
+Get_INITV_Size (INITV_IDX inv);
 
 extern INITO_IDX
 Find_INITO_For_Symbol (const ST *st);

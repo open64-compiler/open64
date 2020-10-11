@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -433,7 +437,7 @@ add_targ_options ( string_list_t *args )
   else
     add_string(args, "-TARG:xop=off");
 
-  if (fma == TRUE)
+  if (fma3 == TRUE)
     add_string(args, "-TARG:fma=on");
   else
     add_string(args, "-TARG:fma=off");
@@ -783,6 +787,40 @@ add_file_args_first (string_list_t *args, phases_t index)
 	add_string(args, "-D__OPENCC_PATCHLEVEL__=" OPEN64_PATCH_LEVEL);
       }
       #endif
+      break;
+    case P_clangfe: {
+      char *root = directory_path(get_executable_dir());
+      char p[PATH_BUF_LEN];
+      add_string(args, "-cc1");
+      add_string(args, "-emit-llvm");
+      // handle -m32/-m64
+      add_string(args, "-triple");
+      if( abi == ABI_N32 )
+        add_string(args, "i386-unknown-linux-gnu");
+      else
+        add_string(args, "x86_64-unknown-linux-gnu");
+      add_string(args, "-D__clang__");
+      add_string(args, "-D__BLOCKS__");
+      if (source_lang == L_CC) {
+        if (!option_was_seen(O_fno_exceptions) && !option_was_seen(O_fno_cxx_exceptions))
+          add_string(args, "-fcxx-exceptions");
+        add_string(args, "-internal-isystem");
+        sprintf(p, "%s/include/clang/c++", root);
+        add_string(args, p);
+      }
+      add_string(args, "-internal-isystem");
+      sprintf(p, "%s/include/clang", root);
+      add_string(args, p);
+      add_string(args, "-internal-isystem");
+      add_string(args, "/usr/local/include");
+      add_string(args, "-internal-externc-isystem");
+      add_string(args, "/usr/include/x86_64-linux-gnu");
+      add_string(args, "-internal-externc-isystem");
+      add_string(args, "/include");
+      add_string(args, "-internal-externc-isystem");
+      add_string(args, "/usr/include");
+      break;
+    }
   }
 }
 
@@ -1338,6 +1376,19 @@ add_file_args (string_list_t *args, phases_t index)
 		add_string(args, buf);
 		sprintf(buf, "-fB,%s", construct_name(the_file, "B"));
 		add_string(args, buf);
+		break;
+	case P_clangfe:
+		switch (source_lang) {
+		case L_CC:
+			add_string(args, "-xc++");
+			break;
+		default:
+			add_string(args, "-xc");
+			break;
+		}
+		add_string(args, input_source);
+		add_string(args, "-o");
+		add_string(args, construct_name(the_file,"B"));
 		break;
 	case P_inline:
 		if (source_kind == S_B)
@@ -2170,6 +2221,17 @@ add_final_ld_args (string_list_t *args, phases_t ld_phase)
 	  }
 	}
 #endif
+
+  if (invoked_lang == L_CC &&
+      option_was_seen(O_clang) &&
+      !external_gcc && !internal_gcc) {
+    add_string(args, "-lc++");
+    add_string(args, "-lc++abi");
+    char *root = directory_path(get_executable_dir());
+    char p[PATH_BUF_LEN];
+    sprintf(p, "-L%s/lib/clang", root);
+    add_string(args, p);
+  }
 }
 
 #ifdef TARG_IA64
@@ -2456,10 +2518,19 @@ determine_phase_order (void)
 	phases_t cplus_fe = P_cplus_gfe;
 #endif
 
+	if (option_was_seen(O_clang)) {
+		c_fe = P_clangfe;
+		cplus_fe = P_clangfe;
+		cpp_phase = P_NONE;
+	}
+
 	switch (source_kind) {
 	case S_c:
 	case S_C:
-		if (first_phase != P_any_cpp) {
+		if (first_phase != P_any_cpp ||
+		    (c_fe == P_clangfe &&
+                     external_gcc != TRUE &&
+                     internal_gcc != TRUE)) {
 		    next_phase = (source_lang == L_CC ? cplus_fe : c_fe);
 		} else {
 		    if (source_lang == L_CC)
@@ -2556,6 +2627,7 @@ determine_phase_order (void)
 		case P_lister:
 		case P_c_gfe:
 		case P_cplus_gfe:
+		case P_clangfe:
 			add_phase(next_phase);
 			next_phase = post_fe_phase ();
 			break;
@@ -3258,6 +3330,7 @@ run_compiler (int argc, char *argv[])
 			    phase_order[i] != P_spin_cc1 &&
 			    phase_order[i] != P_spin_cc1plus &&
 			    phase_order[i] != P_wgen &&
+			    phase_order[i] != P_clangfe &&
 			    phase_order[i] < P_any_fe)
 			{
 			    add_command_line_arg(args, source_file);

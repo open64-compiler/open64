@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -202,6 +206,6 @@ has_current_errors(void)
 void 
 clear_current_errors(void)
 {
-	previous_errors = errors;
+	previous_errors += errors;
 	errors = 0;
 }

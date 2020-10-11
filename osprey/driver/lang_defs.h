@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  *  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
  */
 
@@ -117,6 +121,7 @@ typedef enum {
 	P_spin_cc1,	/* gnu gcc4 C fe */
 	P_spin_cc1plus,	/* gnu gcc4 C++ fe */
 	P_wgen,		/* wgen */
+	P_clangfe,      /* clangfe */
 	P_any_fe,	/* generic union of all fe's */
 	P_pseudo_f_fe,	/* not a real phase, just a placeholder 
 			 * for options for f_fe but not c_fe */

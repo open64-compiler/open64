@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -69,6 +73,7 @@
 
 /* dummy for option referenced in lang_defs.c */
 int external_gcc = 0;
+int internal_gcc = 0;
 
 typedef enum {
 	normal, 

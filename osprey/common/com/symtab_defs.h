@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -62,6 +66,7 @@
 // and friends.
 // Last notable change: changing STR_IDX from UINT32 to UINT64.
 
+#include "srcpos.h"
 
 enum ST_CLASS
 {
@@ -215,7 +220,12 @@ enum ST_FLAGS_EXT
     ST_IS_SBUF_OFFSET = 0x10000, // same as above and will be deleted for we don't have sbuf in the future.
 #endif     
     ST_IS_GLOBAL_AS_LOCAL = 0x20000, // Is a global variable that can be treated as a local variable.
-    ST_IS_VTABLE = 0x40000,        //st is a vtalbe
+    ST_IS_VTABLE = 0x40000,        // st is a vtalbe
+    ST_IS_CLASS_SYMBOL = 0x80000,  // st is class symbol
+    ST_IS_CLASS_CONST_DATA = 0x100000,  // st is constant data
+    ST_IS_MODIFIED = 0x200000,     // st is modified by code
+    ST_IS_ODR = 0x400000,          // st is "one-definition-rule"
+    ST_IS_RTTI = 0x800000,         // st is RTTI
 }; // ST_FLAGS_EXT
 #endif
 
@@ -261,7 +271,7 @@ public:
 
     TY_IDX vtable_ty_idx;
 
-    mUINT32 line;           // The line num where define the sym in the source file.
+    SRCPOS spos;           // The line num where define the sym in the source file.
 
     // operations
     

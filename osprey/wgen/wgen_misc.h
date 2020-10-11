@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -78,6 +82,7 @@ extern void WGEN_Check_Errors (int *error_count, int *warning_count, BOOL *need_
 
 #include "wn.h"
 #include "srcpos.h"
+#include "wgen_dst.h"
 
 typedef enum {
   wgen_stmk_unknown,
@@ -168,6 +173,21 @@ Get_Srcpos (void)
   SRCPOS_filenum(s) = current_file;
   SRCPOS_linenum(s) = lineno; 
   return s;
+}
+
+inline SRCPOS
+Get_Srcpos(gs_t t)
+{
+  if (gs_tree_code_class(t) == GS_TCC_DECLARATION &&
+      gs_decl_source_file(t) && gs_decl_source_line(t))
+    return WGEN_Get_Line_And_File(gs_decl_source_line(t),
+                                  gs_decl_source_file(t));
+  else if (gs_tree_has_location(t) == gs_true &&
+           gs_expr_lineno(t))
+    return WGEN_Get_Line_And_File(gs_expr_lineno(t),
+                                  gs_expr_filename(t));
+  else
+    return 0;
 }
 
 #define TVAR_PREFIX ".anon_"

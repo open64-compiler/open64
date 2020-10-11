@@ -1,0 +1,388 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2019, 2020 XC5 Limited, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement
+#  or the like.  Any license provided herein, whether implied or
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with
+#  other software, or any other product whatsoever.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+
+# These are here because they are needed both in fecc and in common so just
+# putting them in fecc/defines.h is not enough:
+
+HOSTDEFS += -DIN_GCC -DHAVE_CONFIG_H
+HOSTDEFS += -DCLANG_2_WHIRL
+HOSTDEFS += -Dlinux
+
+HOSTDEFS += -DLONGLONG
+HOSTDEFS += -DFRONT_END
+HOSTDEFS += -DUSE_DECL_SRCPOS
+##########################################################
+# The following line is from original g++fe/Makefile.gbase
+HOSTDEFS += -DNEW_SYMTAB
+HOSTDEFS += -DFRONT_END_C
+HOSTDEFS += -DCFE -DCIL
+HOSTDEFS += -DDO_IL_LOWERING=0
+HOSTDEFS += -DNO_USR_INCLUDE=TRUE
+HOSTDEFS += -DAUTOMATIC_TEMPLATE_INSTANTIATION=0
+HOSTDEFS += -DINSTANTIATION_BY_IMPLICIT_INCLUSION=0
+HOSTDEFS += -DBACK_END_IS_C_GEN_BE=0
+HOSTDEFS += -DMONGOOSE_CIF
+
+HOSTDEFS += -DSGI_RAG_BACKEND
+HOSTDEFS += -DSGI_MONGOOSE
+HOSTDEFS += -DHANDLE_PRAGMA_WEAK
+HOSTDEFS += -DMIPSEL
+
+#define NEW_INITIALIZER
+# This macro is for #420 in BugZilla, should be removed later
+HOSTDEFS += -DNEW_INITIALIZER
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On
+HOSTDEFS += -DDEBUG=1
+HOSTDEFS += -DCHECKING=1
+else
+HOSTDEFS += -DNDEBUG
+HOSTDEFS += -DCHECKING=0
+endif
+
+ifneq ($(BUILD_VARIANT), DEFAULT)
+HOSTDEFS += -D$(BUILD_VARIANT)
+endif
+##########################################################
+# The following line is from original g++fe/Makefile.gbase
+HOSTDEFS += -DGPLUSPLUS_FE
+
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+TARGDEFS = -D__MIPS_AND_IA64_ELF_H
+endif
+
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+FE_DIR                  = $(BUILD_BASE)
+COMMON_COM_DIR          = $(BUILD_TOT)/common/com
+COMMON_COM_TARG_DIR     = $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
+COMMON_TARG_INFO_ACCESS_DIR = $(BUILD_TOT)/common/targ_info/access
+COMMON_UTIL_DIR         = $(BUILD_TOT)/common/util
+COMMON_UTIL_TARG_DIR    = $(BUILD_TOT)/common/util/$(BUILD_TARGET_DIR)
+BE_COM_DIR              = $(BUILD_TOT)/be/com
+INCLUDE_DIR             = $(BUILD_AREA)/include
+TARG_COMUTIL_DIR        = $(TARGDIR)/libcomutil
+TARG_CMPLRS_DIR         = $(TARGDIR)/libcmplrs
+TARG_LIBIBERTY_DIR      = $(TARGDIR)/libiberty
+CLANG_INCLUDE_DIR       = $(CLANG_HOME)/include
+CLANG_LIB_DIR           = $(CLANG_HOME)/lib
+
+# These are the directories in which to look for source files.
+
+SRC_DIRS =              \
+   $(FE_DIR)            \
+   $(COMMON_COM_DIR)    \
+   $(COMMON_COM_TARG_DIR)\
+   $(COMMON_UTIL_DIR)   \
+   $(COMMON_UTIL_TARG_DIR)\
+   $(BE_COM_DIR)        \
+   $(COMMON_TARG_INFO_ACCESS_DIR)
+
+INC_DIRS =              \
+   $(INCLUDE_DIR)       \
+   $(COMMON_COM_DIR)    \
+   $(COMMON_COM_TARG_DIR)\
+   $(COMMON_UTIL_DIR)   \
+   $(COMMON_UTIL_TARG_DIR)\
+   $(COMMON_TARG_INFO_ACCESS_DIR) \
+   $(FE_DIR)            \
+   $(BUILD_TOT)/include/gnu \
+   $(BUILD_TOT)/include \
+   $(CLANG_INCLUDE_DIR)
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+FE_C_SRCS =             \
+    c_int_model.c
+
+FE_CXX_SRCS =           \
+    c2w_builder.cxx     \
+    c2w_builtin.cxx     \
+    c2w_const.cxx       \
+    c2w_consumer.cxx    \
+    c2w_cxxabi.cxx      \
+    c2w_decl.cxx        \
+    c2w_dst.cxx         \
+    c2w_expr.cxx        \
+    c2w_func.cxx        \
+    c2w_init.cxx        \
+    c2w_lambda.cxx      \
+    c2w_ldst.cxx        \
+    c2w_misc.cxx        \
+    c2w_result.cxx      \
+    c2w_scope.cxx       \
+    c2w_stmt.cxx        \
+    c2w_sym.cxx         \
+    c2w_target.cxx      \
+    c2w_type.cxx        \
+    c2w_utils.cxx
+
+CLANG_SRCS =           \
+    cc1_main.cxx       \
+    driver.cxx         \
+    whirl_gen.cxx
+
+COMMON_COM_CXX_SRCS =   \
+   config.cxx           \
+   const.cxx            \
+   controls.cxx         \
+   dwarf_DST.cxx        \
+   dwarf_DST_dump.cxx   \
+   dwarf_DST_mem.cxx    \
+   dwarf_DST_producer.cxx \
+   err_host.cxx         \
+   glob.cxx             \
+   intrn_info.cxx       \
+   ir_bcom.cxx          \
+   ir_bwrite.cxx        \
+   ir_reader.cxx        \
+   irbdata.cxx          \
+   mtypes.cxx           \
+   opcode.cxx           \
+   opcode_core.cxx      \
+   pu_info.cxx          \
+   strtab.cxx           \
+   symtab.cxx           \
+   symtab_verify.cxx    \
+   ttype.cxx            \
+   wn.cxx               \
+   wn_map.cxx           \
+   wn_pragmas.cxx       \
+   wn_simp.cxx          \
+   wn_util.cxx          \
+   wutil.cxx            \
+   xstats.cxx
+
+COMMON_COM_TARG_SRCS =  \
+   config_host.c        \
+   config_platform.c
+
+COMMON_COM_TARG_CXX_SRCS = \
+   config_targ.cxx      \
+   config_elf_targ.cxx  \
+   targ_const.cxx       \
+   targ_sim.cxx
+
+BE_COM_CXX_SRCS = \
+   wn_verifier.cxx
+
+FRONT_END_C_SRCS =              \
+   $(COMMON_UTIL_SRCS)          \
+   $(COMMON_COM_SRCS)           \
+   $(COMMON_COM_TARG_SRCS)      \
+   $(FE_C_SRCS)
+
+FRONT_END_CXX_SRCS =            \
+   $(COMMON_COM_CXX_SRCS)       \
+   $(COMMON_COM_TARG_CXX_SRCS)  \
+   $(BE_COM_CXX_SRCS)           \
+   $(FE_CXX_SRCS)
+
+FRONT_END_CXX_SRCS += $(CLANG_SRCS)
+
+FRONT_END_C_OBJS = $(FRONT_END_C_SRCS:T:.c=.o)
+
+FRONT_END_CXX_OBJS = $(FRONT_END_CXX_SRCS:T:.cxx=.o)
+
+FRONT_END_OBJS = $(FRONT_END_C_OBJS) $(FRONT_END_CXX_OBJS)
+
+CFILES = $(FRONT_END_C_SRCS)
+CXXFILES = $(FRONT_END_CXX_SRCS)
+
+VPATH  =  $(SRC_DIRS)
+
+LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = -I. $(addprefix -I, $(INC_DIRS))
+
+CLANG_OPTS = -fno-pie -Wl,-no-pie -std=c++14 -fno-exceptions -fno-rtti -fvisibility-inlines-hidden -fno-common -fno-strict-aliasing -pthread
+LC++OPTS = $(STD_COMPILE_OPTS) $(CLANG_OPTS)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(LCINCS)
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+LDIRT =
+
+#+----------------------------------------------------------------------
+#  Extra Rules
+#----------------------------------------------------------------------
+.c.E:
+	$(CCF) -MDupdate /dev/null -E ${<} | sed -e '/^ *$$/d'  >${*F}.E
+
+#------------------------------------------------------------
+#  Define target
+#------------------------------------------------------------
+
+TARGETS = clangfe
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+COMUTIL_OBJS = $(TARG_COMUTIL_DIR)/libcomutil.a
+
+#----------------------------------------------------------------------
+#  Clang and LLVM libraries
+#----------------------------------------------------------------------
+CLANG_LIBS = -lclangFrontendTool -lclangEdit -lclangSerialization -lclangRewrite -lclangRewriteFrontend \
+             -lclangFrontend -lclangDriver -lclangSerialization -lclangParse -lclangSema \
+             -lclangAnalysis -lclangTooling -lclangAST -lclangLex -lclangBasic
+
+LLVM_LIBS = -lLLVMProfileData -lLLVMBitReader -lLLVMMC -lLLVMMCParser \
+            -lLLVMBinaryFormat -lLLVMCore -lLLVMOption -lLLVMSupport
+
+# get clang major version from llvm-coonfig.h
+CLANG_VERSION = $(shell grep LLVM_VERSION_MAJOR $(CLANG_INCLUDE_DIR)/llvm/Config/llvm-config.h | awk '{print $$3}')
+ifeq ($(CLANG_VERSION), 11)
+  LLVM_LIBS += -lLLVMBitstreamReader -lLLVMDemangle -lLLVMRemarks -lLLVMFrontendOpenMP
+endif
+
+#----------------------------------------------------------------------
+#  Special hack for LLVM libraries. ld.bfd is too slow
+#----------------------------------------------------------------------
+LDFLAGS += -fuse-ld=gold -L$(CLANG_LIB_DIR)
+
+###################################################################
+# This was present in the original g++fe/Makefile.gbase
+# LIBM_OBJS     = $(TARG_LIBM_DIR)/libm.a
+###################################################################
+CMPLRS_OBJS  = $(TARG_CMPLRS_DIR)/libcmplrs.a
+LIBIBERTY_OBJS = $(TARG_LIBIBERTY_DIR)/libiberty.a
+
+ifneq ($(BUILD_OS),DARWIN)
+LLDOPTS = -Wl,--export-dynamic
+endif
+LLDLIBS = -Wl,--start-group $(CLANG_LIBS) $(LLVM_LIBS) -Wl,--end-group $(COMUTIL_OBJS) $(LIBIBERTY_OBJS)
+LLDLIBS += -lm $(CMPLRS_OBJS) -ldl
+LDIRT += $(TARGETS) build_version.h
+
+# .PHONY: default first last install build_version.h
+.PHONY: default first last install
+
+#default: first $(TARGETS) last
+#default: build_version.h
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is
+#  built.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_OS), LINUX)
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+	$(call submake,$(TARG_CMPLRS_DIR))
+	$(call submake,$(TARG_COMUTIL_DIR))
+	$(call submake,$(TARG_LIBIBERTY_DIR))
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last: make_deps
+
+BUILD_DATE := $(shell date '+%d%b%Y %H:%M:%S')
+SCM_ROOT := $(shell GIT_DIR=$(BUILD_SRC)/.git git symbolic-ref --short -q HEAD || echo unknown)
+SCM_REVISION := $(shell GIT_DIR=$(BUILD_SRC)/.git git rev-parse HEAD || echo unknown)
+SCM_VERSION := $(SCM_ROOT)-$(SCM_REVISION)
+build_version.h:
+	echo "#ifndef BUILD_DATE_H" >  $@
+	echo "#define BUILD_DATE_H" >> $@
+	echo "" >> $@
+	echo "#include \"clang/Basic/Version.inc\"" >> $@
+	echo "" >> $@
+	echo "#define TO_STRING(x) #x" >> $@
+	echo "#ifndef CLANG_VERSION_STRING" >> $@
+	echo "#define CLANG_VERSION_STRING TO_STRING(CLANG_VERSION)" >> $@
+	echo "#endif" >> $@
+	echo "" >> $@
+	echo "#define BUILD_DATE \"${BUILD_DATE}\"" >> $@
+	echo "#define OPEN64_VERSION \"Open64 ${OPEN64_FULL_VERSION}\"" >> $@
+	echo "#define SCM_VERSION \"${SCM_VERSION}\"" >> $@
+	echo "#define COMPILER_FULL_VERSION OPEN64_VERSION \" \" BUILD_DATE \" \" SCM_VERSION \" ( Clang \" CLANG_VERSION_STRING \" )\"" >> $@
+	echo "" >> $@
+	echo "#endif /* BUILD_DATE_H */" >> $@
+
+install: default
+ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
+else
+	$(STD_INSTALL) -F $(STD_MONGOOSE_LOC) $(TARGETS)
+endif
+
+
+$(TARGETS) : $(OBJECTS)
+	$(link.cxxf) -v -g -o $@ $(OBJECTS) $(LDFLAGS)
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+wn_util.o: HOSTDEFS += -DMONGOOSE_BE

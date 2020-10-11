@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1912,9 +1916,9 @@ Create_ST_For_Tree (gs_t decl_node)
 
         // Set line number where define sym in source file
         if (gs_operand (decl_node, GS_DECL_SOURCE_LINE))
-          Set_ST_Line(*st, gs_decl_source_line(decl_node));
+          Set_ST_Srcpos(*st, Get_Srcpos(decl_node));
         else
-          Set_ST_Line(*st, 0);
+          Set_ST_Srcpos(*st, 0);
 
         if (TY_kind (ty_idx) == KIND_ARRAY &&
             gs_tree_static (decl_node) &&

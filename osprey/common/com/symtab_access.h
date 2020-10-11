@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -60,6 +64,7 @@
 #ifndef symtab_access_INCLUDED
 #define symtab_access_INCLUDED
 
+#include "srcpos.h"
 //----------------------------------------------------------------------
 // unique handles for each structure
 //----------------------------------------------------------------------
@@ -240,13 +245,37 @@ Set_ST_st_idx (ST& s, ST_IDX idx)	{ s.st_idx = idx; }
 
 inline TY_IDX
 ST_vtable_ty_idx (const ST& s)			{ return s.vtable_ty_idx; }
+inline TY_IDX
+ST_vtable_ty_idx (ST_IDX idx)			{ return St_Table[idx].vtable_ty_idx; }
 inline void
 Set_ST_vtable_ty_idx (ST& s, TY_IDX idx)	{ s.vtable_ty_idx = idx; }
 
-inline mUINT32
-ST_Line (const ST& s)    { return s.line; }
+
+inline TY_IDX
+ST_class_symbol_ty_idx (const ST& s)             { return s.vtable_ty_idx; }
+inline TY_IDX
+ST_class_symbol_ty_idx (ST_IDX idx)              { return St_Table[idx].vtable_ty_idx; }
 inline void
-Set_ST_Line (ST& s, mUINT32 lineno)    { s.line = lineno; }
+Set_ST_class_symbol_ty_idx (ST& s, TY_IDX idx)   { s.vtable_ty_idx = idx; }
+
+inline TY_IDX
+ST_rtti_ty_idx (const ST& s)                  { return s.vtable_ty_idx; }
+inline TY_IDX
+ST_rtti_ty_idx (ST_IDX idx)                   { return St_Table[idx].vtable_ty_idx; }
+inline void
+Set_ST_rtti_ty_idx (ST& s, TY_IDX idx)        { s.vtable_ty_idx = idx; }
+
+inline mUINT32
+ST_Line (const ST& s)    { return SRCPOS_linenum(s.spos); }
+
+inline SRCPOS
+ST_Srcpos (const ST& s)    { return s.spos; }
+
+inline SRCPOS
+ST_Srcpos (ST_IDX idx)    { return St_Table[idx].spos; }
+
+inline void
+Set_ST_Srcpos (ST& s, SRCPOS pos)    { s.spos = pos; }
 
 inline ST*
 ST_ptr (ST_IDX idx)                     { return &(St_Table[idx]); }
@@ -724,7 +753,30 @@ Set_ST_is_vtable (ST* s)    { s->flags_ext |= ST_IS_VTABLE; }
 inline void
 Reset_ST_is_vtable (ST* s)  { s->flags_ext &= ~ST_IS_VTABLE; }
 
+
+inline BOOL
+ST_is_rtti (const ST* s)  { return s->flags_ext & ST_IS_RTTI; }
+inline void
+Set_ST_is_rtti (ST* s)    { s->flags_ext |= ST_IS_RTTI; }
+inline void
+Reset_ST_is_rtti (ST* s)  { s->flags_ext &= ~ST_IS_RTTI; }
 #endif /* KEY */
+
+
+inline BOOL
+ST_is_odr (const ST* s)
+        { return s->flags_ext & ST_IS_ODR; }
+inline void
+Set_ST_is_odr (ST* s)
+        { s->flags_ext |= ST_IS_ODR; }
+
+inline BOOL
+ST_is_odr (ST_IDX sti)
+        { return ST_is_odr(ST_ptr(sti)); }
+inline void
+Set_ST_is_odr (ST_IDX sti)
+        { ST_is_odr(ST_ptr(sti)); }
+
 
 //----------------------------------------------------------------------
 // access functions for PU

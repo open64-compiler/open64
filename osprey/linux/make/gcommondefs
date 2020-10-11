@@ -232,8 +232,8 @@ C++	= $(C++NAME) -D_SGI_SOURCE -D_LANGUAGE_C_PLUS_PLUS
 CC	= $(CCNAME) -D_SGI_SOURCE -D_LANGUAGE_C
 
 AS	+= -funsigned-char -D__GNU_BUG_WORKAROUND
-CC	+= -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND
-C++	+= -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND -D_NOTHREADS
+CC	+= -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND -Wno-unused-result
+C++	+= -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND -D_NOTHREADS -Wno-deprecated -Wno-unused-result
 
 ifeq ($(BUILD_OS), MINGW)
   CC	+= -mno-cygwin

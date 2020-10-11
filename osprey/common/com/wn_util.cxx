@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ */
+
+/*
  *  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
  */
 
@@ -662,6 +666,72 @@ WN_COPY_Tree (WN *wn)
 
     return new_wn;
 } /* WN_COPY_Tree */
+
+/*-------------------------------------------------------------*/
+/* copy a node recursively but exclude comma operands          */
+/*-------------------------------------------------------------*/
+WN *
+WN_COPY_Tree_Without_Commas (WN *wn)
+{
+    WN *new_wn;
+    WN *kid;
+    OPCODE op;
+
+    if (wn == NULL)
+	return NULL;
+
+    if (WN_operator(wn) == OPR_COMMA)
+      return WN_COPY_Tree_Without_Commas(WN_kid1(wn));
+    else if (WN_operator(wn) == OPR_RCOMMA)
+      return WN_COPY_Tree_Without_Commas(WN_kid0(wn));
+
+    new_wn = WN_CopyNode (wn);
+
+    op = WN_opcode(wn);
+    Is_True (OPCODE_operator(op) >= OPERATOR_FIRST &&
+	     OPCODE_operator(op) <= OPERATOR_LAST,
+	     ("Bad OPERATOR %d", OPCODE_operator(op)));
+
+    if (op == OPC_BLOCK) {
+	WN *prev_kid, *new_kid;
+
+	new_kid = NULL;
+	kid = WN_first(wn);
+	if (kid) {
+	    new_kid = WN_COPY_Tree_Without_Commas (kid);
+	    WN_prev(new_kid) = NULL;
+	    WN_first(new_wn) = new_kid;
+	    kid = WN_next(kid);
+	    prev_kid = new_kid;
+
+	    while (kid) {
+		new_kid = WN_COPY_Tree_Without_Commas (kid);
+		WN_next(prev_kid) = new_kid;
+		WN_prev(new_kid) = prev_kid;
+		prev_kid = new_kid;
+		kid = WN_next(kid);
+	    }
+
+	    WN_next(new_kid) = NULL;
+
+	} else
+	    WN_first(new_wn) = NULL;
+
+	WN_last(new_wn) = new_kid;
+
+    } else {
+	INT kidno;
+	for (kidno = 0; kidno < WN_kid_count(wn); kidno++) {
+	    kid = WN_kid(wn, kidno);
+	    if (kid)
+		WN_kid(new_wn, kidno) = WN_COPY_Tree_Without_Commas (kid);
+	    else
+		WN_kid(new_wn, kidno) = NULL;
+	}
+    }
+
+    return new_wn;
+} /* WN_COPY_Tree_Without_Commas */
 
 
 #ifdef MONGOOSE_BE

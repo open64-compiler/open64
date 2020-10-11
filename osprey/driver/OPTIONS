@@ -1,4 +1,8 @@
 %
+%  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+%
+
+%
 % Copyright 2005-2008 NVIDIA Corporation.  All rights reserved.
 %
 
@@ -244,6 +248,8 @@ I-include=%D  ;		FTN     ffe,PFA     "-include=%D"
 	"Do not link with libopen64rt"
 -external-gcc	toggle(&external_gcc,TRUE);	ALL	ipap	self
 	"Do not use internal gcc to preprocess and link"
+-internal-gcc	toggle(&internal_gcc,TRUE);	ALL	ipap	self
+	"Use internal gcc to preprocess and link"
 %I-split_common	;		LINK	ld	"-split_common"
 %	"check split COMMON for inconsistencies and fix them"
 
@@ -569,18 +575,46 @@ I-cpp_extensions	;		ALL	NONE	"-D__EXTENSIONS__ -D__MATH_HAS_NO_SIDE_EFFECTS"
 	"Support revised ISO C, from 1999"
 -std=iso9899:1999	;		Cc,CPP	CPP,cfe	self
 	"Support revised ISO C, from 1999"
--std=iso9899:199x	;		Cc,CPP	CPP,cfe	self
+-std=iso9899:199x	;		Cc,CPP	CPP,cfe	"-std=iso9899:1999"
 	"Support revised ISO C, from 1999"
+-std=c11		;		Cc,CPP	CPP,cfe	self
+	"Support revised ISO C, from 2011"
+-std=c1x		;		Cc,CPP	CPP,cfe	"-std=c11"
+	"Support revised ISO C, from 2011"
+-std=iso9899:2011	;		Cc,CPP	CPP,cfe	"-std=iso9899:2011"
+	"Support revised ISO C, from 2011"
+-std=iso9899:201x	;		Cc,CPP	CPP,cfe	"-std=iso9899:2011"
+	"Support revised ISO C, from 2011"
 -std=gnu89		;		Cc,CPP	CPP,cfe	self
 	"Support ISO C from 1990, with GNU extensions"
 -std=gnu99		;		Cc,CPP	CPP,cfe	self
 	"Support ISO C from 1999, with GNU extensions"
 -std=gnu9x		;		Cc,CPP	CPP,cfe	self
 	"Support ISO C from 1999, with GNU extensions"
+-std=gnu11		;		Cc,CPP	CPP,cfe	self
+	"Support ISO C from 2011, with GNU extensions"
+-std=gnu1x		;		Cc,CPP	CPP,cfe	"-std=gnu11"
+	"Support ISO C from 2011, with GNU extensions"
 -std=c++98		;		CC,CPP	CPP,cfe	self
 	"Support 1998 ISO C++ standard plus amendments"
 -std=gnu++98		;		CC,CPP	CPP,cfe	self
 	"The same as '-std=c++98' plus GNU extensions.  This is the default for C++ code."
+-std=c++11		;		CC,CPP	CPP,cfe	"-std=c++11"
+	"Support 2011 ISO C++ standard plus amendments"
+-std=gnu++11		;		CC,CPP	CPP,cfe	"-std=gnu++11"
+	"The same as '-std=c++11' plus GNU extensions"
+-std=c++14		;		CC,CPP	CPP,cfe	"-std=c++14"
+	"Support 2014 ISO C++ standard plus amendments"
+-std=gnu++14		;		CC,CPP	CPP,cfe	"-std=gnu++14"
+	"The same as '-std=c++14' plus GNU extensions"
+-std=c++17		;		CC,CPP	CPP,cfe	"-std=c++17"
+	"Support 2017 ISO C++ standard plus amendments"
+-std=gnu++17		;		CC,CPP	CPP,cfe	"-std=gnu++17"
+	"The same as '-std=c++17' plus GNU extensions"
+-std=c++2a		;		CC,CPP	CPP,cfe	"-std=c++2a"
+	"Support 2020 ISO C++ standard plus amendments"
+-std=gnu++2a		;		CC,CPP	CPP,cfe	"-std=gnu++2a"
+	"The same as '-std=c++2a' plus GNU extensions"
 % these options are only set for cc:
 I-Xansi                 ;       cc      mpc     self
         ""
@@ -704,6 +738,8 @@ I-D_LANGUAGE_FORTRAN	;		FTN	CPP	self
 -gnu42	toggle(&gnu_major_version,4);toggle(&gnu_minor_version,2);	Cc	NONE	""
 	""
 #endif
+-clang  				;	Cc	NONE	""
+	"Use Clang C/C++ front-end."
 -gstabs		warn_ignored(option_name);	ALL	NONE	""
 	""
 -gstabs+	warn_ignored(option_name);	ALL	NONE	""
@@ -1348,7 +1384,7 @@ I-u%s		;		Cc	ld	"-u %s"
 %	"Suppress warnings"
 -W	;		Cc	f	self
 	"Enable extra warnings"
--Wall	;		Cc,CPP	CPP,f	self "-WOPT:warn_uninit=on"
+-Wall	;		Cc,CPP	CPP,f	self 
 	"Enable most warning messages"
 -Waggregate-return	;		Cc	f	self
 	"Warn about returning structures, unions or arrays"
@@ -1540,6 +1576,10 @@ I-u%s		;		Cc	ld	"-u %s"
 	"Warn when a variable is unused"
 -Wno-unused	;		Cc	f	self
 	"Do not warn when a variable is unused"
+-Wunused-result	;		Cc	f	""
+	""
+-Wno-unused-result	;		Cc	f	""
+	""
 -Wwrite-strings	;		Cc	f	self
 	"Mark strings as 'const char *'"
 -Wno-write-strings	;		Cc	f	self
@@ -1700,6 +1740,8 @@ I-u%s		;		Cc	ld	"-u %s"
 -fforce-mem	;		Cc	f	self
 	""
 -fdata-sections	;		Cc	f	self
+	""
+-fno-delete-null-pointer-checks	;		Cc	f	""
 	""
 -ffunction-sections	;		Cc	f	self
 	""
@@ -1922,6 +1964,8 @@ I-u%s		;		Cc	ld	"-u %s"
 #ifdef X8664
 -fexceptions	;	Cc	CPP,cfe	"-fexceptions -TENV:frame_pointer=on"
 	"Enable exception handling"
+-fcxx-exceptions	;	Cc	CPP,cfe	"-fcxx-exceptions -TENV:frame_pointer=on"
+	"Enable exception handling"
 #else
 -fexceptions	;	Cc	CPP,cfe	self
 	"Enable exception handling"
@@ -1931,6 +1975,8 @@ I-u%s		;		Cc	ld	"-u %s"
 -fhandle-exceptions	;	Cc	CPP,cfe	self
 	""
 -fno-exceptions	;	Cc	CPP,cfe	"-fno-exceptions"
+	"Disable exception handling"
+-fno-cxx-exceptions	;	Cc	CPP,cfe	"-fno-cxx-exceptions"
 	"Disable exception handling"
 -fno-emit-exceptions	;	Cc	w	self
 	"Do not emit code to handle exceptions"
@@ -2126,9 +2172,9 @@ I-u%s		;		Cc	ld	"-u %s"
 	"Enable XOP extensions"
 -mno-xop	toggle(&xop,FALSE);	ALL	CPP,cfe		self
 	"Disable XOP extensions"
--mfma	toggle(&sse2,TRUE);toggle(&fma,TRUE);	ALL	CPP,cfe		self
+-mfma	toggle(&sse2,TRUE);toggle(&fma3,TRUE);	ALL	CPP,cfe		self
 	"Enable FMA3 extensions"
--mno-fma	toggle(&fma,FALSE);	ALL	CPP,cfe		self
+-mno-fma	toggle(&fma3,FALSE);	ALL	CPP,cfe		self
 	"Disable FMA3 extensions"
 -mfma4	toggle(&sse2,TRUE);toggle(&fma4,TRUE);	ALL	CPP,cfe		self
 	"Enable FMA4 extensions"
