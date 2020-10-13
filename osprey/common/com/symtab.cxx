@@ -305,6 +305,28 @@ FLD_get_to_field (TY_IDX struct_ty_idx, UINT field_id, UINT &cur_field_id)
     return FLD_HANDLE();
 } // FLD_get_to_field
 
+/* ====================================================================
+ *
+ *
+ * ==================================================================== */
+UINT
+FLD_get_count (TY_IDX struct_ty_idx)
+{
+  UINT count = 1;
+  FLD_ITER fld_iter = Make_fld_iter(TY_fld(struct_ty_idx));
+  do {
+    FLD_HANDLE fld(fld_iter);
+    if (fld.Is_Null())
+      break;
+    if (TY_kind(FLD_type(fld)) == KIND_STRUCT &&
+        TY_fld(FLD_type(fld)) != FLD_HANDLE())
+      count += FLD_get_count(FLD_type(fld));
+    else
+      count ++;
+  } while (!FLD_last_field(fld_iter++));
+  return count;
+}
+
 
 // reverse map for getting the pointer TY given the pointee
 

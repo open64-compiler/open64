@@ -285,6 +285,9 @@ FLD_are_equivalent(FLD_HANDLE fld_id1,
 extern FLD_HANDLE 
 FLD_get_to_field (TY_IDX struct_ty_idx, UINT field_id, UINT &cur_field_id);
 
+extern UINT
+FLD_get_count (TY_IDX struct_ty_idx);
+
 //----------------------------------------------------------------------
 // TYLIST utilities
 //----------------------------------------------------------------------
