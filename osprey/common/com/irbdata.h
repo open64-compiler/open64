@@ -252,6 +252,11 @@ inline INT16
 INITV_lab_flags (const INITV_IDX initv) {
     return INITV_lab_flags (Initv_Table[initv]);
 }
+inline void
+Set_INITV_lab_flags (INITV_IDX inv, INT16 flags) {
+    INITV_read_check (Initv_Table[inv].kind == INITVKIND_LABEL);
+    Initv_Table[inv].u.lab.flags = flags;
+}
 inline mTYPE_ID
 INITV_lab_mtype (const INITV& initv) {
     INITV_read_check (initv.kind == INITVKIND_LABEL);
@@ -260,6 +265,11 @@ INITV_lab_mtype (const INITV& initv) {
 inline mTYPE_ID
 INITV_lab_mtype (const INITV_IDX initv) {
     return INITV_lab_mtype (Initv_Table[initv]);
+}
+inline void
+Set_INITV_lab_mtype (INITV_IDX inv, mTYPE_ID mtype) {
+    INITV_read_check (Initv_Table[inv].kind == INITVKIND_LABEL);
+    Initv_Table[inv].u.lab.mtype = mtype;
 }
 inline void
 Set_INITV_lab (INITV& inv, LABEL_IDX lab) { 

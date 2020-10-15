@@ -1360,6 +1360,7 @@ WN *WhirlStmtBuilder::ConvertCompoundStmt(const CompoundStmt *stmt, ST_IDX st_id
       // convert expr to stmt
       if (OPERATOR_is_expression(WN_operator(ret)))
         ret = WN_CreateEval(ret);
+      WN_Set_Linenum(ret, SetSrcPos(getLocation(handle_stmt)));
 
       if (WN_operator(ret) == OPR_BLOCK && WN_first(ret) == NULL) {
         // do not add empty block
@@ -2615,6 +2616,8 @@ WN *WhirlStmtBuilder::ConvertIndirectGotoStmt(const IndirectGotoStmt *stmt) {
   WhirlExprBuilder expr_bldr(_builder);
   WN *addr = expr_bldr.ConvertToNode(stmt->getTarget());
 
+  Set_PU_no_inline(Get_Current_PU());
+
   if (WN_operator(addr) == OPR_LDA) {
     WN_set_operator(addr, OPR_LDID);
     WN_set_desc(addr, WN_rtype(addr));
@@ -2638,9 +2641,12 @@ WhirlStmtBuilder::ConvertLabelStmt(const LabelStmt *stmt) {
 
 WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
   TRACE_FUNC();
+  WN *ret = NULL;
   const Expr *retv = stmt->getRetValue();
   if (retv == NULL) {
-    return WN_CreateReturn();
+    ret = WN_CreateReturn();
+    WN_Set_Linenum(ret, GetSrcPos());
+    return ret;
   } else {
     TY_IDX ret_ty = _builder->TB().ConvertType(retv->getType());
     BOOL rv = retv->getType()->isVoidType() ? FALSE : TRUE;
@@ -2658,14 +2664,18 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
         Is_True(OPERATOR_is_stmt(WN_operator(retw)), ("not a stmt"));
         WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), retw);
       }
-      return WN_CreateReturn();
+      ret = WN_CreateReturn();
+      WN_Set_Linenum(ret, GetSrcPos());
+      return ret;
     }
 
     if (retw == NULL) {
       Is_True(!dest.isNone(), ("dest is none"));
       retw = dest.GetRValue();
-      return WN_CreateReturn_Val(OPR_RETURN_VAL, TY_mtype(ret_ty),
-                                 MTYPE_V, retw);
+      ret = WN_CreateReturn_Val(OPR_RETURN_VAL, TY_mtype(ret_ty),
+                                MTYPE_V, retw);
+      WN_Set_Linenum(ret, GetSrcPos());
+      return ret;
     }
 
     // if the function returns a reference, take the address of the
@@ -2731,7 +2741,9 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
     pop_dtor_call_for_return(cur_blk);
 
     Is_True(OPERATOR_is_expression(WN_operator(retw)), ("ret is not value"));
-    return WN_CreateReturn_Val(OPR_RETURN_VAL, mtype, MTYPE_V, retw);
+    ret = WN_CreateReturn_Val(OPR_RETURN_VAL, mtype, MTYPE_V, retw);
+    WN_Set_Linenum(ret, GetSrcPos());
+    return ret;
   }
 }
 
@@ -2832,6 +2844,7 @@ WN *WhirlStmtBuilder::ConvertSwitchStmt(const SwitchStmt *stmt) {
     } else {
       case_entry = WN_CreateCasegoto(low, case_label_idx);
       WN_INSERT_BlockLast(case_block, case_entry);
+      WN_Set_Linenum(case_entry, GetSrcPos());
     }
   }
   switch_wn = WN_CreateSwitch(n,
@@ -2961,19 +2974,21 @@ WN *WhirlStmtBuilder::ConvertWhileStmt(const WhileStmt *stmt) {
 WN *
 WhirlStmtBuilder::ConvertExpr(const Expr *stmt, Result target) {
   TRACE_FUNC();
+  SRCPOS srcpos = SetSrcPos(getLocation(stmt));
   WhirlExprBuilder expr_bldr(_builder);
   Result r = expr_bldr.ConvertExpr(stmt, target, FALSE);
   if (r.isNode()) {
     WN *ret = r.Node();
     if (ret && OPCODE_is_expression(WN_opcode(ret)))
-      return WN_CreateEval(ret);
+      ret = WN_CreateEval(ret);
+      WN_Set_Linenum(ret, srcpos);
+      return ret;
     // insert node should be a structured control flow node or a statement node
     // TODO: need improvement
     if (!ret || !OPCODE_is_stmt(WN_opcode(ret)) && !OPCODE_is_scf(WN_opcode(ret)))
       return NULL;
 
     if (OPCODE_has_next_prev(WN_opcode(ret))) {
-      SRCPOS srcpos = SetSrcPos(getLocation(stmt));
       WN_Set_Linenum(ret, srcpos);
     }
 

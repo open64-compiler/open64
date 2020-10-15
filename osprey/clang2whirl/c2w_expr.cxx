@@ -474,14 +474,15 @@ WhirlExprBuilder::ConvertBinaryConditionalOperator(const BinaryConditionalOperat
   // save expr node cond, and use LDID of that stored address as cond
   if (WN_operator(cond) != OPR_CONST &&
       !OPCODE_is_load(WN_opcode(cond))) {
-    ST *tmp_st = Gen_Temp_Symbol(ty, "__save_expr");
-    WN *st_wn = WN_Stid(TY_mtype(ty), 0, tmp_st, ty, cond);
+    TY_IDX cond_ty = _builder->TB().ConvertType(cond_expr->getType());
+    ST *tmp_st = Gen_Temp_Symbol(cond_ty, "__save_expr");
+    WN *st_wn = WN_Stid(TY_mtype(cond_ty), 0, tmp_st, cond_ty, cond);
     WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), st_wn);
     WN_Set_Linenum(st_wn, GetSrcPos());
-    cond = WN_Ldid(TY_mtype(ty), 0, tmp_st, ty);
+    cond = WN_Ldid(TY_mtype(cond_ty), 0, tmp_st, cond_ty);
   }
 
-  if (true_expr = cond_expr)
+  if (true_expr == cond_expr)
     true_wn = WN_COPY_Tree(cond);
   else
     true_wn = ConvertToNode(true_expr);
@@ -602,7 +603,7 @@ WhirlExprBuilder::EmitAssignNode(Result lhs, Result rhs, TY_IDX ty, RV rv) {
   }
   else if (rv != R_NVALUE) {
     WN_INSERT_BlockLast(block, ret);
-    lhs = lhs.ConvertToRValue(lhs.Ty());
+    lhs = lhs.ConvertToRValue(ty);
     WN *lhs_wn = WN_COPY_Tree_Without_Commas(lhs.GetRValue());
     WN *comma = WGEN_CreateComma(rtype, block, lhs_wn);
     rhs = Result::nwNode(comma, ty);
@@ -1202,8 +1203,8 @@ WhirlExprBuilder::EmitCallee(const Expr *expr) {
       WN *ret = ConvertToNode(mem_expr->getBase());
       if (OPERATOR_is_expression(WN_operator(ret)))
         ret = WN_CreateEval(ret);
-      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), ret);
       WN_Set_Linenum(ret, GetSrcPos());
+      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), ret);
     }
   }
 }
@@ -1560,7 +1561,7 @@ WhirlExprBuilder::ConvertConditionalOperator(const ConditionalOperator *expr, BO
       WN *ret = Gen_null_const(ty);
       true_wn = WGEN_CreateComma(WN_rtype(ret), true_blk, ret);
     } else if (WN_first(true_blk) != NULL) {
-      WN *comma = WGEN_CreateComma(TY_mtype(ty), true_blk, true_wn);
+      WN *comma = WGEN_CreateComma(Mtype_comparison(TY_mtype(ty)), true_blk, true_wn);
       true_wn = comma;
     }
   }
@@ -1572,7 +1573,7 @@ WhirlExprBuilder::ConvertConditionalOperator(const ConditionalOperator *expr, BO
       WN *ret = Gen_null_const(ty);
       false_wn = WGEN_CreateComma(WN_rtype(ret), false_blk, ret);
     } else if (WN_first(false_blk) != NULL) {
-      WN *comma = WGEN_CreateComma(TY_mtype(ty), false_blk, false_wn);
+      WN *comma = WGEN_CreateComma(Mtype_comparison(TY_mtype(ty)), false_blk, false_wn);
       false_wn = comma;
     }
   }
@@ -4150,10 +4151,6 @@ Result
 WhirlExprBuilder::EmitVectorInitialization(const InitListExpr *expr, Result dest, UINT current_offset) {
   TRACE_FUNC();
   Is_True(!dest.isNone(), ("no dest for vector init"));
-  INITV_IDX inv_blk = New_INITV();
-  INITV_Init_Block(inv_blk, INITV_Next_Idx());
-  INITV_IDX last = 0;
-
   TY_IDX ty_idx = _builder->TB().ConvertType(expr->getType());
 
   const VectorType *VT = expr->getType()->getAs<VectorType> ();
@@ -4645,6 +4642,14 @@ WhirlExprBuilder::ConvertParenExpr(const ParenExpr *expr, Result dest, BOOL retv
   return ConvertExpr(expr->getSubExpr(), dest, retv);
 }
 
+#if LLVM_VERSION_MAJOR == 11
+Result
+WhirlExprBuilder::ConvertConstantExpr(const ConstantExpr *expr, Result dest, BOOL retv) {
+  TRACE_FUNC();
+  return ConvertExpr(expr->getSubExpr(), dest, retv);
+}
+#endif
+
 Result
 WhirlExprBuilder::ConvertPredefinedExpr(const PredefinedExpr *expr) {
   TRACE_FUNC();
@@ -5045,6 +5050,7 @@ WhirlExprBuilder::ConvertToNode(const clang::Expr *expr, Result dest, BOOL retv)
       WN *node = r.Node();
       if (OPERATOR_is_expression(WN_operator(node)))
         node = WN_CreateEval(node);
+      WN_Set_Linenum(node, GetSrcPos());
       WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), node);
     }
     return NULL;
@@ -5436,7 +5442,7 @@ WhirlExprBuilder::ConvertVAArgExpr(const VAArgExpr *expr) {
                     WN_COPY_Tree(ap_wn));
       // adjust with the amount just incremented
       wn1 = WN_Intconst(MTYPE_I8, -delta);
-      wn = WN_Binary(OPR_ADD, Pointer_Mtype, wn0, wn1);
+      wn = WN_Binary(OPR_ADD, Pointer_Mtype, WN_COPY_Tree(wn0), wn1);
     }
     else if (n == 1) {
       wn = Gen_x8664_va_arg(ap_wn, classes[0] == X86_64_SSE_CLASS,
@@ -5932,6 +5938,11 @@ WhirlExprBuilder::ConvertExpr(const Expr *expr, Result dest, BOOL retv) {
     case Expr::ParenExprClass:
       r = ConvertParenExpr(cast<ParenExpr>(expr), dest, retv);
       break;
+#if LLVM_VERSION_MAJOR == 11
+    case Expr::ConstantExprClass:
+      r = ConvertConstantExpr(cast<ConstantExpr>(expr), dest, retv);
+      break;
+#endif
     case Expr::PredefinedExprClass:
       r = ConvertPredefinedExpr(cast<PredefinedExpr>(expr));
       break;

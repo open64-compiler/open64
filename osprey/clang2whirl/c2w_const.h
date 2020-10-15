@@ -70,6 +70,8 @@ private:
 
   Result EmitVectorInitialization(const clang::InitListExpr *expr);
 
+  void ResetINITVLabel(clang::BinaryOperatorKind opr, Result lhs, Result rhs, UINT size, BOOL first_child = TRUE, BOOL last_child = TRUE);
+
 public:
   Result ConvertTargetConstant(const clang::StringLiteral *expr);
   

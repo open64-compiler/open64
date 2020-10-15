@@ -319,6 +319,7 @@ WhirlFuncBuilder::EmitCXXGlobalInitialization(ST_IDX st_idx, int priority_size) 
   // create entry
   WN *body = WhirlBlockUtil::nwBlock();
   pu_tree = WN_CreateEntry(0, global_st_idx, body, NULL, NULL);
+  WN_Set_Linenum(pu_tree, GetSrcPos());
 
   // call
   WN *ret = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, 2);
@@ -341,7 +342,9 @@ WhirlFuncBuilder::EmitCXXGlobalInitialization(ST_IDX st_idx, int priority_size) 
                                     true /* is_dtor_or_ctor_call */);
     WN_INSERT_BlockLast(body, ret);
   }
-  WN_INSERT_BlockLast(body, WN_CreateReturn());
+  ret = WN_CreateReturn();
+  WN_Set_Linenum(ret, GetSrcPos());
+  WN_INSERT_BlockLast(body, ret);
   WhirlBlockUtil::popCurrentBlock();
   DBG_VERIFY_WHIRL_IR(pu_tree);
   Set_PU_Info_tree_ptr (pu_info, pu_tree);
@@ -400,6 +403,7 @@ WhirlFuncBuilder::EmitDtorPtr(const VarDecl *decl, ST_IDX &dtor_st_idx) {
   WN *pu_tree = NULL;
   WN *body = WhirlBlockUtil::nwBlock();
   pu_tree = WN_CreateEntry(1, dtor_st_idx, body, NULL, NULL);
+  WN_Set_Linenum(pu_tree, GetSrcPos());
   // create ptr st
   SYMTAB_IDX symtab = _builder->Scope().CurrentSymtab();
   Is_True(symtab > GLOBAL_SYMTAB,
@@ -417,7 +421,9 @@ WhirlFuncBuilder::EmitDtorPtr(const VarDecl *decl, ST_IDX &dtor_st_idx) {
   WN *dtor_call = stmt_bldr.Emit_cxx_destructor_call(type, var_st);
   WN_INSERT_BlockLast(body, dtor_call);
 
-  WN_INSERT_BlockLast(body, WN_CreateReturn());
+  WN *ret = WN_CreateReturn();
+  WN_Set_Linenum(ret, GetSrcPos());
+  WN_INSERT_BlockLast(body, ret);
   WhirlBlockUtil::popCurrentBlock();
   DBG_VERIFY_WHIRL_IR(pu_tree);
   Set_PU_Info_tree_ptr (tcf_pu_info, pu_tree);
@@ -449,6 +455,7 @@ WhirlFuncBuilder::EmitCXXGlobalVarDeclInitialization(ST_IDX st_idx) {
   WN *body = WN_CreateBlock();
   UINT num_of_param = 2;
   pu_tree = WN_CreateEntry(num_of_param, st_idx, body, NULL, NULL);
+  WN_Set_Linenum(pu_tree, GetSrcPos());
   // create __initialize_p & __priority
   TY_IDX pty = MTYPE_To_TY(MTYPE_I4);
   SYMTAB_IDX symtab = _builder->Scope().CurrentSymtab();
@@ -604,10 +611,17 @@ WhirlFuncBuilder::EmitCXXGlobalVarDeclInitialization(ST_IDX st_idx) {
         TY_IDX var_ty = ST_type(var_st);
         WN *ldid_wn = init_expr->isGLValue() ? init.GetLValue()
                                              : init.GetRValue();
-        WN *init_wn = WN_Stid(TY_mtype(var_ty), 0, ST_ptr(var_st),
-                            var_ty, ldid_wn);
-        WN_INSERT_BlockLast(stmt, init_wn);
-        WN_Set_Linenum(init_wn, spos);
+        if (isa<StringLiteral>(init_expr) && TY_kind(var_ty) == KIND_ARRAY) {
+          WN *addr_wn = WN_Lda(Pointer_Mtype, 0, ST_ptr(var_st));
+          Set_ST_addr_saved(ST_ptr(var_st));
+          UINT len = cast<StringLiteral>(init_expr)->getByteLength();
+          GenMstoreForString(addr_wn, ldid_wn, var_ty, len, 0, spos);
+        } else {
+          WN *init_wn = WN_Stid(TY_mtype(var_ty), 0, ST_ptr(var_st),
+                                var_ty, ldid_wn);
+          WN_INSERT_BlockLast(stmt, init_wn);
+          WN_Set_Linenum(init_wn, spos);
+        }
       }
       // dtor temps created in cpnvert init_expr
       WhirlStmtBuilder stmt_bldr(_builder);
@@ -1210,6 +1224,10 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
   }
 
   WhirlBlockUtil::popCurrentBlock();
+
+  // reset must_inline if we have set the PU no_inline
+  if (PU_no_inline(Get_Current_PU()))
+    Clear_PU_must_inline(Get_Current_PU());
 
   Is_True(pu_tree != NULL,
           ("invalid pu tree"));

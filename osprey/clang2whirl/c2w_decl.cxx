@@ -1025,19 +1025,9 @@ WhirlDeclBuilder::ConvertFriendTemplate(const FriendTemplateDecl *decl) {
   Is_True(false, ("unsupported ConvertFriendTemplate"));
 }
 
-BOOL
-WhirlDeclBuilder::ConvertFunction(GlobalDecl gd) {
-  TRACE_FUNC();
-
-  const FunctionDecl *decl = cast<FunctionDecl>(gd.getDecl());
-  ST_IDX st_idx = (ST_IDX) 0;
-  if (decl->doesThisDeclarationHaveABody() ||
-      decl->doesDeclarationForceExternallyVisibleDefinition()) {
-    // generate function declaration
-    st_idx = _builder->SB().ConvertSymbol(gd);
-  }
-
-  if (decl->hasAttrs()) {
+void
+WhirlDeclBuilder::HandleAttrs(const NamedDecl *decl, ST_IDX st_idx) {
+  Is_True(decl->hasAttrs(), ("decl has no attrs"));
     const AttrVec &attrs = decl->getAttrs();
     for (AttrVec::const_iterator it = attrs.begin();
          it != attrs.end(); ++it) {
@@ -1056,7 +1046,22 @@ WhirlDeclBuilder::ConvertFunction(GlobalDecl gd) {
         break;
       }
     }
+}
+
+BOOL
+WhirlDeclBuilder::ConvertFunction(GlobalDecl gd) {
+  TRACE_FUNC();
+
+  const FunctionDecl *decl = cast<FunctionDecl>(gd.getDecl());
+  ST_IDX st_idx = (ST_IDX) 0;
+  if (decl->doesThisDeclarationHaveABody() ||
+      decl->doesDeclarationForceExternallyVisibleDefinition()) {
+    // generate function declaration
+    st_idx = _builder->SB().ConvertSymbol(gd);
   }
+
+  if (decl->hasAttrs())
+    HandleAttrs(decl, st_idx);
 
   if (!decl->doesThisDeclarationHaveABody()) {
     if (!decl->getDeclContext()->isRecord())
@@ -1476,6 +1481,9 @@ WhirlDeclBuilder::ConvertVar(const VarDecl *decl) {
   // reset st_idx's sclass & eclass after redecllaration
   if (ST_sclass(st) == SCLASS_EXTERN && !decl->hasExternalStorage())
     Set_ST_sclass(st, SCLASS_COMMON);
+
+  if (decl->hasAttrs())
+    HandleAttrs(decl, st_idx);
 
   // return prematurely if decl has no init to avoid redeclarations
   if (!decl->hasInit() ||

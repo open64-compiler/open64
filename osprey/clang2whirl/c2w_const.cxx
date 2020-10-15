@@ -525,6 +525,10 @@ WhirlConstBuilder::EmitRecordInitialization(const clang::InitListExpr *expr) {
     }
 
     Result ret = Result::nwNone();
+#if LLVM_VERSION_MAJOR == 11
+    if (isa<ConstantExpr>(init))
+      init = cast<ConstantExpr>(init)->getSubExpr();
+#endif
     if (const UnaryOperator *unary_expr = dyn_cast<UnaryOperator>(init)) {
       if (unary_expr->getOpcode() == clang::UO_AddrOf) {
         const Expr *sub_expr = unary_expr->getSubExpr()->IgnoreParenImpCasts();
@@ -625,7 +629,6 @@ WhirlConstBuilder::EmitVectorInitialization(const InitListExpr *expr) {
     const Expr *init = expr->getInit(i);
     Result ret = ConvertConst(init);
 
-    Is_True(ret.isTCon(), ("invalid return type"));
     // Emit INITV
     INITV_IDX cur = EmitInitV(ret, init->getType());
     if (last != 0) {
@@ -750,6 +753,48 @@ Gen_symoff_initv(ST_IDX st, UINT64 offset) {
   return Result::nwInitV(inv, ty);
 }
 
+static inline
+mTYPE_ID Size_To_MTYPE(UINT size) {
+  switch (size) {
+    case 1:  return MTYPE_I1;
+    case 2:  return MTYPE_I2;
+    case 4:  return MTYPE_I4;
+    case 8:  return MTYPE_I8;
+    default:
+      Is_True(FALSE, ("unexpected size=%d", size));
+      return MTYPE_UNKNOWN;
+  }
+} /* Size_To_MTYPE */
+
+void
+WhirlConstBuilder::ResetINITVLabel(BinaryOperatorKind opcode, Result lhs, Result rhs, UINT size, BOOL first_child, BOOL last_child)
+{
+  Is_True(opcode == BO_Add || opcode == BO_Sub,
+          ("Only BO_Add and BO_Sub is allowed in Label Values"));
+
+  if (lhs.isInitV() && INITV_kind(lhs.InitV()) == INITVKIND_LABEL) {
+    Is_True(opcode == BO_Sub, ("only Label Substraction is allowed"));
+    INT16 flags = first_child == TRUE ? INITVLABELFLAGS_VALUES_FIRST :
+                                        INITVLABELFLAGS_VALUES_PLUS;
+    Set_INITV_lab_flags(lhs.InitV(), flags);
+    Set_INITV_lab_mtype(lhs.InitV(), Size_To_MTYPE(size));
+  }
+  else {
+    ResetINITVLabel(opcode, lhs, rhs, size, first_child, FALSE);
+  }
+
+  if (rhs.isInitV() && INITV_kind(rhs.InitV()) == INITVKIND_LABEL) {
+    Is_True(opcode == BO_Sub, ("only Label Substraction is allowed"));
+    INT16 flags = last_child == TRUE ? INITVLABELFLAGS_VALUES_LAST :
+                                        INITVLABELFLAGS_VALUES_MINUS;
+    Set_INITV_lab_flags(rhs.InitV(), flags);
+    Set_INITV_lab_mtype(rhs.InitV(), Size_To_MTYPE(size));
+  }
+  else {
+    ResetINITVLabel(opcode, lhs, rhs, size, FALSE, last_child);
+  }
+}
+
 Result
 WhirlConstBuilder::ConvertBinaryOperator(const BinaryOperator *expr, QualType type) {
   TRACE_FUNC();
@@ -772,6 +817,19 @@ WhirlConstBuilder::ConvertBinaryOperator(const BinaryOperator *expr, QualType ty
     Is_True(imag_val != 0, ("invalid imaginary value"));
     TCON_IDX tcon_idx = Gen_complex_tcon(ty_idx, lhs.IntConst(), imag_val);
     return Result::nwTcon(tcon_idx, ty_idx);
+  }
+
+  // handle AddrLabelExpr
+  if (isa<AddrLabelExpr>(lhs_expr) || isa<AddrLabelExpr>(rhs_expr)) {
+    INITV_IDX inv_blk = New_INITV();
+    INITV_Init_Block(inv_blk, INITV_Next_Idx());
+    Result lhs = ConvertConst(lhs_expr);
+    Is_True(lhs.isInitV(), ("should be initv"));
+    Result rhs = ConvertConst(rhs_expr);
+    Is_True(rhs.isInitV(), ("should be initv"));
+    Set_INITV_next(lhs.InitV(), rhs.InitV());
+    ResetINITVLabel(opcode, lhs, rhs, TY_size(ty_idx));
+    return Result::nwInitV(inv_blk, ty_idx);
   }
 
   Result lhs = ConvertConst(lhs_expr);
@@ -1085,6 +1143,7 @@ WhirlConstBuilder::ConvertAddrLabelExpr(const AddrLabelExpr *expr) {
   mTYPE_ID mtype = MTYPE_UNKNOWN;
   INITV_Init_Label(inv, label_idx, 1, flag, mtype);
   Set_LABEL_addr_saved(label_idx);
+  Set_PU_no_inline(Get_Current_PU());
 
   return Result::nwInitV(inv, 0);
 }
@@ -1209,6 +1268,11 @@ WhirlConstBuilder::ConvertConst(const clang::Expr *expr, QualType type, RV rv) {
     case Expr::SubstNonTypeTemplateParmExprClass:
       r = ConvertConst(cast<SubstNonTypeTemplateParmExpr>(expr)->getReplacement());
       break;
+#if LLVM_VERSION_MAJOR == 11
+    case Expr::ConstantExprClass:
+      r = ConvertConst(cast<ConstantExpr>(expr)->getSubExpr());
+      break;
+#endif
     default:
       Is_True(false,
               ("unsupport expr: %s", expr->getStmtClassName()));

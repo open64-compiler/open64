@@ -78,6 +78,7 @@ namespace wgen {
 //
 class InitExprChecker : public ConstStmtVisitor<InitExprChecker> {
   WhirlBuilder *_builder;
+  GLOBALDECL_SET _visited;
 
 public:
   InitExprChecker(WhirlBuilder *bldr) : _builder(bldr) { }
@@ -92,10 +93,13 @@ public:
   void VisitCallExpr(const CallExpr *expr) {
     const FunctionDecl *callee = expr->getDirectCallee();
     // check direct callee
-    if (callee != NULL &&
-        !callee->isTrivial() &&
-        callee->getBuiltinID() != 0) {
-      _builder->Get_func_st(GetGlobalDecl(callee));
+    if (callee != NULL) {
+      if (!callee->isTrivial() &&
+          callee->getBuiltinID() != 0)
+        _builder->Get_func_st(GetGlobalDecl(callee));
+      if (isa<CXXMethodDecl>(callee))
+        if (!(cast<CXXMethodDecl>(callee)->isTrivial()))
+          _builder->Get_func_st(GetGlobalDecl(callee));
     }
     // check indirect callee
     if (const Expr *ce = expr->getCallee())
@@ -125,6 +129,11 @@ public:
   }
 
   void VisitCXXMemberCallExpr(const CXXMemberCallExpr *expr) {
+
+    if (_visited.find((void *)expr) != _visited.end())
+      return;
+    _visited.insert((void *)expr);
+
     // check this
     if (const Expr *e = expr->getImplicitObjectArgument())
       Visit(e);

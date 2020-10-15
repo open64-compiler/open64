@@ -208,6 +208,10 @@ private:
   Result ConvertOpaqueValueExpr(const clang::OpaqueValueExpr *expr);
   
   Result ConvertParenExpr(const clang::ParenExpr *expr, Result dest, BOOL retv);
+
+#if LLVM_VERSION_MAJOR == 11
+  Result ConvertConstantExpr(const clang::ConstantExpr *expr, Result dest, BOOL retv);
+#endif
   
   Result ConvertPredefinedExpr(const clang::PredefinedExpr *expr);
   

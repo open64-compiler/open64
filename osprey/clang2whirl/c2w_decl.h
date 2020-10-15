@@ -163,6 +163,8 @@ private:
 
   INITV_IDX ConvertVTableComponent(const clang::VTableLayout &layout, unsigned idx, unsigned &thunk_idx);
 
+  void HandleAttrs(const clang::NamedDecl *decl, ST_IDX st_idx);
+
 public:
   STR_IDX ConvertName(const clang::Decl *decl, const llvm::StringRef &str, INT variant = 0);
 

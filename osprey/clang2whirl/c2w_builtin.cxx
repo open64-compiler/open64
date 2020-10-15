@@ -866,6 +866,15 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
 
   // ignore win64 va_start/va_end/va_copy
 
+#if LLVM_VERSION_MAJOR == 11
+  case Builtin::BIwmemcpy:
+  case Builtin::BIwmemmove:
+  case Builtin::BImemccpy:
+  case Builtin::BImempcpy:
+  case Builtin::BIpthread_create:
+    return Result::nwNone();
+#endif
+
   default:
     Is_True(false, ("unsupported builtin %d\n", builtin_id));
     return Result::nwNone();

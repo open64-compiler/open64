@@ -207,8 +207,7 @@ Result::ConvertToRValue(TY_IDX rty) {
     if (!IsRValue() ||
         IsArray() || IsArrow() || IsDeref() || IsRef()) {
       TY_IDX pty = Ty();
-      Is_True(TY_kind(pty) == KIND_POINTER, ("not pointer type"));
-      TY_IDX lty = TY_pointed(pty);
+      TY_IDX lty = TY_kind(pty) == KIND_POINTER ? TY_pointed(pty) : pty;
       UINT64 ofst = 0;
       TYPE_ID desc = TY_mtype(rty);
       TYPE_ID rtype = Mtype_comparison(desc);
