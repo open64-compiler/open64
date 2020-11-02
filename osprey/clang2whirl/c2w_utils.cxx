@@ -592,6 +592,13 @@ WGEN_CreateParm(TYPE_ID rtype, WN *parm, TY_IDX ty) {
   return WN_CreateParm(rtype, parm, ty, WN_PARM_BY_VALUE);
 }
 
+WN *
+WGEN_CreateReturn(SRCPOS spos) {
+  WN *ret = WN_CreateReturn();
+  WN_Set_Linenum(ret, spos);
+  return ret;
+}
+
 long double
 convertToLongDouble(const llvm::APFloat val) {
   union {
@@ -712,7 +719,8 @@ Convert_string_to_tcon(const clang::StringLiteral *expr, TY_IDX ty_idx) {
   TCON tcon;
   if (expr->getCharByteWidth() == 1) {
     str = expr->getString();
-    tcon = Host_To_Targ_String(MTYPE_STRING, str.str().c_str(), length);
+    tcon = Host_To_Targ_String(MTYPE_STRING, str.str().c_str(),
+                               TY_size(ty_idx) < length ? TY_size(ty_idx) : length);
   }
   else {
     str = expr->getBytes();

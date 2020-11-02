@@ -1702,6 +1702,7 @@ WhirlTypeBuilder::GetSTForRTTIName(QualType qtype) {
   ST_Init (type_name_st, type_name, CLASS_VAR, SCLASS_DGLOBAL, EXPORT_PREEMPTIBLE, ty_idx);
   Set_ST_is_initialized(type_name_st);
   New_INITO(type_name_st, cur);
+  Set_ST_is_weak_symbol(type_name_st);
 
   return ST_st_idx(type_name_st);
 }
@@ -2124,6 +2125,7 @@ WhirlTypeBuilder::ConvertRTTIForType(QualType qtype) {
   // set record ty for rtti st
   Set_ST_is_rtti(st);
   Set_ST_vtable_ty_idx(st, ty);
+  Set_ST_is_weak_symbol(st);
 
 
   New_INITO(st, inv_blk);

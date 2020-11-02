@@ -79,13 +79,6 @@ WhirlExprBuilder::InitializeBuiltinTable() {
   BuiltinTable[BI__builtin_isnormal]       = INTRN_ISNORMAL;
   BuiltinTable[BI__builtin_isunordered]    = INTRN_ISUNORDERED;
 
-  BuiltinTable[BI__builtin_nan] = INTRN_NAN;
-  BuiltinTable[BI__builtin_nans] = INTRN_NANS;
-  BuiltinTable[BI__builtin_nanf] = INTRN_NANF;
-  BuiltinTable[BI__builtin_nansf] = INTRN_NANSF;
-  BuiltinTable[BI__builtin_nanl] = INTRN_NANL;
-  BuiltinTable[BI__builtin_nansl] = INTRN_NANSL;
-
   BuiltinTable[BI__builtin_object_size] = INTRN_OBJECT_SIZE;
 
   BuiltinTable[BI__builtin_popcount]   = INTRN_I4POPCNT;
@@ -317,6 +310,37 @@ WhirlExprBuilder::GenerateIntrinsic(const CallExpr *expr, TY_IDX rtype, INTRINSI
 }
 
 Result
+WhirlExprBuilder::EvaluateBuiltinNaN(QualType type, const Expr *arg0, bool snan) {
+  TY_IDX ty = _builder->TB().ConvertType(type);
+  const StringLiteral *str = dyn_cast<StringLiteral>(arg0->IgnoreParenCasts());
+  if (!str) return Result::nwNone();
+  const llvm::fltSemantics &sem =
+    _builder->Context()->getFloatTypeSemantics(type);
+
+  llvm::APInt fill;
+  if (str->getString().empty())
+    fill = llvm::APInt(32, 0);
+  else if (str->getString().getAsInteger(0, fill))
+    return Result::nwNone();
+
+  llvm::APFloat result(static_cast<float>(0.0));
+  if (_builder->Context()->getTargetInfo().isNan2008()) {
+    if (snan)
+      result = llvm::APFloat::getSNaN(sem, false, &fill);
+    else
+      result = llvm::APFloat::getQNaN(sem, false, &fill);
+  } else {
+    if (snan)
+      result = llvm::APFloat::getQNaN(sem, false, &fill);
+    else
+      result = llvm::APFloat::getSNaN(sem, false, &fill);
+  }
+  TCON_IDX tcon = Convert_float_to_tcon(ty, result);
+  ST *st = New_Const_Sym(tcon, ty);
+  return Result::nwNode(WN_CreateConst(OPR_CONST, TY_mtype(ty), MTYPE_V, st), ty);
+}
+
+Result
 WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *decl,
                                      unsigned builtin_id, BOOL retv) {
   Is_True(decl->getBuiltinID() == builtin_id, ("bad builtin expr"));
@@ -360,7 +384,14 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
     }
 
   case Builtin::BI__builtin_atan2 ... Builtin::BI__builtin_frexpl:  // libc/libm
-  case Builtin::BI__builtin_ldexp ... Builtin::BI__builtin_nansf128:
+  case Builtin::BI__builtin_ldexp ... Builtin::BI__builtin_modfl:
+
+  case Builtin::BI__builtin_nan ... Builtin::BI__builtin_nanf128:
+    return EvaluateBuiltinNaN(expr->getType(), expr->getArg(0), false);
+
+  case Builtin::BI__builtin_nans ... Builtin::BI__builtin_nansf128:
+    return EvaluateBuiltinNaN(expr->getType(), expr->getArg(0), true);
+
   case Builtin::BI__builtin_acos ... Builtin::BI__builtin_truncl: // libc/libm float/double/long variants
   case Builtin::BI__builtin_cabs ... Builtin::BI__builtin_ctanhl: // complex
   case Builtin::BI__builtin_clzs ... Builtin::BI__builtin_popcountll: // arithmetic

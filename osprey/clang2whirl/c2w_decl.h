@@ -55,6 +55,9 @@ private:
   typedef std::list< std::pair<const clang::NamedDecl*, const clang::AliasAttr*> > AliasList;
   AliasList _alias_list;
 
+  // map between OpaqueValueExpr and st_idx
+  OPAQUE_VALUE_MAP _opaque_value_map;
+
 public:
   WhirlDeclBuilder(WhirlBuilder *builder);
 
@@ -204,6 +207,10 @@ public:
   const clang::Expr *GetNonTrivialInitializer(const clang::Expr *init);
 
   BOOL Call_nothrow(const clang::Decl *decl);
+
+  ST_IDX FindOpaqueValue(const clang::OpaqueValueExpr *expr);
+
+  void AddOpaqueValue(const clang::OpaqueValueExpr *expr, ST_IDX st);
 };
 
 } // namespace wgen

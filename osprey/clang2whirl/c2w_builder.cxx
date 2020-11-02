@@ -668,9 +668,11 @@ WhirlBuilder::Get_thunk_st(const clang::GlobalDecl gd, clang::ThunkInfo ti) {
   if (st == ST_IDX_ZERO) {
     st = SB().ConvertThunkFunction(cast<NamedDecl>(gd.getDecl()), name);
     // set gd to ti's Method field
-    ti.Method = (CXXMethodDecl *)gd.getAsOpaquePtr();
-    ti.Method = (CXXMethodDecl *)ti.Method->getDefinition();
-    AddDeferredThunk(st, ti);
+    const FunctionDecl *func = cast<FunctionDecl>(gd.getDecl());
+    if (func->isDefined()) {
+      ti.Method = (CXXMethodDecl *)GetGlobalDecl(func->getDefinition(), gd).getAsOpaquePtr();
+      AddDeferredThunk(st, ti);
+    }
   }
   return st;
 }

@@ -104,6 +104,7 @@ WN *WGEN_StidTemp(TY_IDX ty, WN *val, const char *name = NULL);
 WN *WGEN_CreateComma(TYPE_ID rtype, WN* blk, WN* ldid);
 WN *WGEN_CreateCselect(TYPE_ID rtype, WN *cond, WN *twn, WN *fwn);
 WN *WGEN_CreateParm(TYPE_ID rtype, WN *parm, TY_IDX ty);
+WN *WGEN_CreateReturn(SRCPOS spos);
 
 long double convertToLongDouble(const llvm::APFloat val);
 TCON_IDX createTconFromValue(TY_IDX ty_idx, long double value);

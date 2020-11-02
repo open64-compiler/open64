@@ -711,7 +711,7 @@ WhirlConstBuilder::ConvertUnaryOperator(const UnaryOperator *expr, QualType type
     long double val = _tcon_value_map[sub.Tcon()];
     switch (opcode) {
       case UO_Plus: val = +val; break;
-      case UO_Minus: val = -val; break;
+      case UO_Minus: if (!isnanf(val)) val = -val; break;
       case UO_Not: val = val; break;
       case UO_LNot: val = !val; break;
       default:
@@ -1169,6 +1169,24 @@ WhirlConstBuilder::ConvertMaterializeTemporaryExpr(const MaterializeTemporaryExp
 }
 
 Result
+WhirlConstBuilder::ConvertCallExpr(const clang::CallExpr *expr) {
+  TY_IDX ty = _builder->TB().ConvertType(expr->getType());
+  WhirlExprBuilder expr_bldr(_builder);
+  Result ret = expr_bldr.ConvertExpr(expr);
+  Is_True(!ret.isNone(), ("invalid init"));
+  if (ret.isNode()) {
+    WN *node = ret.Node();
+    if (WN_operator(node) == OPR_INTCONST)
+      return Result::nwIntConst(WN_const_val(node), ty);
+    else if (WN_operator(node) == OPR_CONST)
+      return Result::nwTcon(ST_tcon(WN_st(node)), ty);
+    else
+      Is_True(FALSE, ("invalid init whirl node"));
+  } else
+    return ret;
+}
+
+Result
 WhirlConstBuilder::ConvertConstForDecl(const clang::VarDecl *decl) {
   Is_True(decl->getInit() != NULL, ("no init for decl"));
   Result r = ConvertConst(decl->getInit());
@@ -1267,6 +1285,9 @@ WhirlConstBuilder::ConvertConst(const clang::Expr *expr, QualType type, RV rv) {
       break;
     case Expr::SubstNonTypeTemplateParmExprClass:
       r = ConvertConst(cast<SubstNonTypeTemplateParmExpr>(expr)->getReplacement());
+      break;
+    case Expr::CallExprClass:
+      r = ConvertCallExpr(cast<CallExpr>(expr));
       break;
 #if LLVM_VERSION_MAJOR == 11
     case Expr::ConstantExprClass:

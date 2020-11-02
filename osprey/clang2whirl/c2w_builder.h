@@ -56,6 +56,8 @@ extern INT64
 ComputeOffsetHind(clang::ASTContext *ctx, const clang::CXXRecordDecl *src, const clang::CXXRecordDecl *dst);
 extern clang::GlobalDecl
 GetGlobalDecl(const clang::FunctionDecl *decl);
+extern clang::GlobalDecl
+GetGlobalDecl(const clang::FunctionDecl *decl, clang::GlobalDecl gd);
 
 enum DECL_TYPE {
   TOP_DECL,      // processing a top level decl

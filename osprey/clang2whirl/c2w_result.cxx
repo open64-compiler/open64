@@ -149,6 +149,8 @@ Result::GetRValue() {
     TYPE_ID desc = mty;
     TYPE_ID rtype = Mtype_comparison(desc);
     if (FieldId()) {
+      if (TY_kind(sty) == KIND_ARRAY)
+        sty = TY_etype(sty);
       IDTYPE fld = 0;
       FLD_HANDLE fh = get_fld_and_offset(sty, FieldId(), fld, ofst);
       Is_True(!fh.Is_Null(), ("not find the field"));

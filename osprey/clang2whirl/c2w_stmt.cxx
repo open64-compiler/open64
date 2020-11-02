@@ -1284,7 +1284,7 @@ void WhirlStmtBuilder::SetEHRegionForCall(WN *blk, WN *wn) {
         if (!OPCODE_is_expression(WN_opcode(kid)) ||
             (WN_operator(kid) == OPR_COMMA &&
              !(WN_operator(WN_kid1(kid)) == OPR_LDID &&
-               strcmp(ST_name(WN_st(WN_kid1(kid))), ".preg_return_val") == 0))) {
+               WN_st(WN_kid1(kid)) == Return_Val_Preg))) {
           WN *blk = kid;
           if (WN_operator(kid) == OPR_COMMA) {
             blk = WN_kid0(kid);
@@ -1294,6 +1294,29 @@ void WhirlStmtBuilder::SetEHRegionForCall(WN *blk, WN *wn) {
           }
           if (WN_operator(blk) == OPR_BLOCK) {
             WN *nw_blk = WN_CreateBlock();
+            if (WN_operator(kid) == OPR_COMMA &&
+                (WN_operator(WN_last(blk)) == OPR_CALL ||
+                 WN_operator(WN_last(blk)) == OPR_ICALL) &&
+                WN_rtype(WN_last(blk)) != MTYPE_V) {
+              WN *tmp_blk = WN_CreateBlock();
+              WN *kid1 = WN_kid1(kid);
+              WN *tmp_kid1 = kid1;
+              while (WN_operator(tmp_kid1) != OPR_LDID) {
+                if (WN_operator(WN_kid0(tmp_kid1)) == OPR_LDID &&
+                    WN_st(WN_kid0(tmp_kid1)) == Return_Val_Preg) {
+                  WN *tmp_kid = WN_COPY_Tree(kid);
+                  WN_kid0(tmp_kid) = WN_kid0(kid);
+                  WN_kid1(tmp_kid) = WN_COPY_Tree(WN_kid0(tmp_kid1));
+                  kid1 = Handle_expr_for_copy(tmp_blk, tmp_kid,
+                                              MTYPE_To_TY(WN_rtype(tmp_kid)),
+                                              GetSrcPos());
+                  WN_kid0(tmp_kid1) = kid1;
+                  break;
+                }
+              }
+              blk = tmp_blk;
+              WN_kid1(kid) = tmp_kid1;
+            }
             SetEHRegionForCall(nw_blk, blk);
             blk = nw_blk;
           }
@@ -2644,9 +2667,7 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
   WN *ret = NULL;
   const Expr *retv = stmt->getRetValue();
   if (retv == NULL) {
-    ret = WN_CreateReturn();
-    WN_Set_Linenum(ret, GetSrcPos());
-    return ret;
+    return WGEN_CreateReturn(GetSrcPos());
   } else {
     TY_IDX ret_ty = _builder->TB().ConvertType(retv->getType());
     BOOL rv = retv->getType()->isVoidType() ? FALSE : TRUE;
@@ -2664,9 +2685,7 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
         Is_True(OPERATOR_is_stmt(WN_operator(retw)), ("not a stmt"));
         WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), retw);
       }
-      ret = WN_CreateReturn();
-      WN_Set_Linenum(ret, GetSrcPos());
-      return ret;
+      return WGEN_CreateReturn(GetSrcPos());
     }
 
     if (retw == NULL) {

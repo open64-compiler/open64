@@ -137,6 +137,7 @@ typedef hash_map<uint64_t, TY_IDX> RTTI_TY_MAP;
 typedef hash_map<const clang::Expr *, ST_IDX, wgen_ptr_hash> VLA_SIZE_MAP;
 
 typedef hash_map<const clang::CXXCatchStmt *, LABEL_IDX, wgen_ptr_hash> HANDLER_LABEL_MAP;
+typedef hash_map<const clang::OpaqueValueExpr *, ST_IDX, wgen_ptr_hash> OPAQUE_VALUE_MAP;
 
 // clang to R for const initialization
 typedef hash_map<const clang::VarDecl *, Result, wgen_ptr_hash> VAR_INITR_MAP;

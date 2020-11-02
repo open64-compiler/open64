@@ -100,6 +100,7 @@ private:
 
   Result GenerateIntrinsic(const clang::CallExpr *expr, TYPE_ID rtype, INTRINSIC iopc, BOOL is_op, BOOL retv);
 
+  Result EvaluateBuiltinNaN(clang::QualType, const clang::Expr*, bool);
 private:
   Result ConvertArrayInitLoopExpr(const clang::ArrayInitLoopExpr *expr, Result dest);
 

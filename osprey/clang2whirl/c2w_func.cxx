@@ -342,9 +342,7 @@ WhirlFuncBuilder::EmitCXXGlobalInitialization(ST_IDX st_idx, int priority_size) 
                                     true /* is_dtor_or_ctor_call */);
     WN_INSERT_BlockLast(body, ret);
   }
-  ret = WN_CreateReturn();
-  WN_Set_Linenum(ret, GetSrcPos());
-  WN_INSERT_BlockLast(body, ret);
+  WN_INSERT_BlockLast(body, WGEN_CreateReturn(GetSrcPos()));
   WhirlBlockUtil::popCurrentBlock();
   DBG_VERIFY_WHIRL_IR(pu_tree);
   Set_PU_Info_tree_ptr (pu_info, pu_tree);
@@ -421,9 +419,7 @@ WhirlFuncBuilder::EmitDtorPtr(const VarDecl *decl, ST_IDX &dtor_st_idx) {
   WN *dtor_call = stmt_bldr.Emit_cxx_destructor_call(type, var_st);
   WN_INSERT_BlockLast(body, dtor_call);
 
-  WN *ret = WN_CreateReturn();
-  WN_Set_Linenum(ret, GetSrcPos());
-  WN_INSERT_BlockLast(body, ret);
+  WN_INSERT_BlockLast(body, WGEN_CreateReturn(GetSrcPos()));
   WhirlBlockUtil::popCurrentBlock();
   DBG_VERIFY_WHIRL_IR(pu_tree);
   Set_PU_Info_tree_ptr (tcf_pu_info, pu_tree);
@@ -1211,9 +1207,8 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
   WN *wn = WN_last(body);
   if (wn == NULL || WN_operator(wn) != OPR_RETURN &&
       WN_operator(wn) != OPR_RETURN_VAL) {
-    WN *return_wn = WN_CreateReturn();
-    WN_Set_Linenum(return_wn, SetSrcPos(getEndLocation(decl)));
-    WN_INSERT_BlockLast(body, return_wn);
+    WN_INSERT_BlockLast(body,
+                        WGEN_CreateReturn(SetSrcPos(getEndLocation(decl))));
   }
 
   if (_builder->Lang_CPP()) {
@@ -1333,6 +1328,9 @@ WhirlFuncBuilder::EmitThunkFunction(const clang::ThunkInfo &ti, ST_IDX st_idx) {
   Set_PU_Info_pu_dst(pu_info, func_dst);
   WN *pu_tree = NULL;
 
+  if (_builder->Lang_CPP() && emit_exceptions)
+    Setup_entry_for_eh();
+
   // create entry
   WN *body = WhirlBlockUtil::nwBlock();
   WN *pragma = WN_CreatePragma(WN_PRAGMA_PREAMBLE_END, (ST_IDX)0, 0, 0);
@@ -1401,10 +1399,6 @@ WhirlFuncBuilder::EmitThunkFunction(const clang::ThunkInfo &ti, ST_IDX st_idx) {
                                   ldid, fst_ty);
     WN_kid(call_wn, i) = parm_wn;
   }
-  WhirlStmtBuilder stmt_bldr(_builder);
-  call_wn = stmt_bldr.Setup_eh_region(call_wn, srcpos,
-                                      true, /* for unwinding */
-                                      false /* for ctor for dtor */);
 
   // insert return WN at last
   WN *return_wn;

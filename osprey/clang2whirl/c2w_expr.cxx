@@ -397,9 +397,9 @@ WhirlExprBuilder::ConvertArraySubscriptExpr(const ArraySubscriptExpr *expr) {
               ("no variable that stores the non-constant upper bound"));
       ST* var_st = &St_Table[ARB_ubnd_var(arb)];
       TY_IDX ty = ST_type(var_st);
-      wn1 = WN_Add(TY_mtype(ty),
-                   WN_Ldid(TY_mtype(ty), 0, var_st, ty),
-                   WN_Intconst(TY_mtype(ty), 1));
+      TYPE_ID mtyp = Mtype_comparison(TY_mtype(ty));
+      wn1 = WN_Add(mtyp, WN_Ldid(mtyp, 0, var_st, ty),
+                   WN_Intconst(mtyp, 1));
     }
   }
 
@@ -407,26 +407,14 @@ WhirlExprBuilder::ConvertArraySubscriptExpr(const ArraySubscriptExpr *expr) {
   // check if current dimensions could be expanded
   bool expand_dimensions = false;
   if (WN_operator(wn0) == OPR_ARRAY && base_r.FieldId() == 0) {
-    WN *wn0_base = WN_array_base(wn0);
-    while (WN_operator(wn0_base) == OPR_ADD)
-      wn0_base = WN_kid0(wn0_base);
-    if (WN_operator(wn0_base) == OPR_LDA || WN_operator(wn0_base) == OPR_LDID) {
-      TY_IDX wn0_base_ty = TY_pointed(WN_ty(wn0_base));
-      if (WN_field_id(wn0_base)) {
-        Is_True(TY_kind(wn0_base_ty) == KIND_STRUCT, ("base not struct"));
-        UINT fld_id = 0;
-        UINT64 ofst = 0;
-        FLD_HANDLE fh = get_fld_and_offset(wn0_base_ty, WN_field_id(wn0_base),
-                                           fld_id, ofst);
-        Is_True(!fh.Is_Null(), ("not find the field"));
-        wn0_base_ty = FLD_type(fh);
-      }
-      Is_True(TY_kind(wn0_base_ty) == KIND_ARRAY, ("should be KIND_ARRAY"));
-      while (TY_kind(wn0_base_ty) == KIND_ARRAY) {
-        wn0_base_ty = TY_etype(wn0_base_ty);
-        if (wn0_base_ty == TY_etype(obj_ty)) {
+    if (const CastExpr *ce = dyn_cast<CastExpr>(base)) {
+      if (ce->getCastKind() == CK_ArrayToPointerDecay) {
+        const Expr *sub_expr = ce->getSubExpr();
+        if (isa<ArraySubscriptExpr>(sub_expr) &&
+            !(sub_expr->getType()->isVariableArrayType())) {
+          Is_True(sub_expr->getType()->isArrayType(),
+                  ("array to pointer decay must have array source type"));
           expand_dimensions = true;
-          break;
         }
       }
     }
@@ -526,7 +514,7 @@ WhirlExprBuilder::EmitAssignNode(Result lhs, Result rhs, TY_IDX ty, RV rv) {
   WN* rhs_wn = rhs.GetRValue();
   WN* block;
   TYPE_ID rtype = WN_rtype(rhs_wn);
-  if (rv != R_NVALUE) {
+  if (rv == R_LVALUE) {
     block = WN_CreateBlock();
     rhs_wn = Handle_expr_for_copy(block, rhs_wn, ty, GetSrcPos());
   }
@@ -605,8 +593,7 @@ WhirlExprBuilder::EmitAssignNode(Result lhs, Result rhs, TY_IDX ty, RV rv) {
     WN_INSERT_BlockLast(block, ret);
     lhs = lhs.ConvertToRValue(ty);
     WN *lhs_wn = WN_COPY_Tree_Without_Commas(lhs.GetRValue());
-    WN *comma = WGEN_CreateComma(rtype, block, lhs_wn);
-    rhs = Result::nwNode(comma, ty);
+    rhs = Result::nwNode(lhs_wn, ty);
     rhs.SetRValue();
   }
   else {
@@ -2337,80 +2324,86 @@ WhirlExprBuilder::ConvertCXXDynamicCastExpr(const CXXDynamicCastExpr *expr) {
   sub_wn = Handle_expr_for_copy(WhirlBlockUtil::getCurrentBlock(),
                                 sub_wn, from_ty, GetSrcPos(), ".dyncast");
 
-  // create call to __dynamic_cast
-  // TODO: improve __dynamic_cast st later
-  static ST* dyncast_st;
-  if (dyncast_st == NULL) {
-    /*
-     * extern "C"
-     * void* __dynamic_cast ( const void *sub,
-     *                        const abi::__class_type_info *src,
-     *                        const abi::__class_type_info *dst,
-     *                        std::ptrdiff_t src2dst_offset);
-     * sub: source address to be adjusted; nonnull, and since the
-     *      source object is polymorphic, *(void**)sub is a virtual
-     *      pointer.
-     * src: static type of the source object.
-     * dst: destination type (the "T" in "dynamic_cast<T>(v)").
-     * src2dst_offset: a static hint about the location of the
-     *    source subobject with respect to the complete object;
-     *    special negative values are:
-     *       -1: no hint
-     *       -2: src is not a public base of dst
-     *       -3: src is a multiple public base type but never a
-     *           virtual base type
-     *    otherwise, the src type is a unique public nonvirtual
-     *    base type of dst at offset src2dst_offset from the
-     *    origin of dst.
-     */
-    TY_IDX ptr_ty = Make_Pointer_Type(MTYPE_To_TY(Pointer_Mtype));
-    dyncast_st = Create_function("__dynamic_cast",
-                                 ptr_ty,
-                                 ptr_ty,
-                                 ptr_ty,
-                                 ptr_ty,
-                                 Pointer_Mtype,
-                                 TY_IDX_ZERO);
+  WN *value = NULL;
+  Is_True(sub_ty->isRecordType(), ("sub type of DynamicCast must be a record type"));
+  if (expr_ty->isVoidType()) {
+    value = EmitAdjustVirtualBase(sub_wn, from_ty, sub_ty->getAsCXXRecordDecl());
+  } else {
+    // create call to __dynamic_cast
+    // TODO: improve __dynamic_cast st later
+    static ST* dyncast_st;
+    if (dyncast_st == NULL) {
+      /*
+       * extern "C"
+       * void* __dynamic_cast ( const void *sub,
+       *                        const abi::__class_type_info *src,
+       *                        const abi::__class_type_info *dst,
+       *                        std::ptrdiff_t src2dst_offset);
+       * sub: source address to be adjusted; nonnull, and since the
+       *      source object is polymorphic, *(void**)sub is a virtual
+       *      pointer.
+       * src: static type of the source object.
+       * dst: destination type (the "T" in "dynamic_cast<T>(v)").
+       * src2dst_offset: a static hint about the location of the
+       *    source subobject with respect to the complete object;
+       *    special negative values are:
+       *       -1: no hint
+       *       -2: src is not a public base of dst
+       *       -3: src is a multiple public base type but never a
+       *           virtual base type
+       *    otherwise, the src type is a unique public nonvirtual
+       *    base type of dst at offset src2dst_offset from the
+       *    origin of dst.
+       */
+      TY_IDX ptr_ty = Make_Pointer_Type(MTYPE_To_TY(Pointer_Mtype));
+      dyncast_st = Create_function("__dynamic_cast",
+                                   ptr_ty,
+                                   ptr_ty,
+                                   ptr_ty,
+                                   ptr_ty,
+                                   Pointer_Mtype,
+                                   TY_IDX_ZERO);
+    }
+    WN *call_wn = WN_Create(OPR_CALL, Pointer_Mtype, MTYPE_V, 4);
+    WN_st_idx(call_wn) = ST_st_idx(dyncast_st);
+    WN_Set_Call_Default_Flags(call_wn);
+    Mark_call_region(call_wn);
+
+    // from ptr
+    WN_kid(call_wn, 0) = WGEN_CreateParm(Pointer_Mtype,
+                                         WN_COPY_Tree(sub_wn),
+                                         from_ty);
+    // from rtti
+    ST_IDX from_rtti = _builder->TB().ConvertRTTIForType(sub_ty);
+    WN *from_lda = WN_Lda(Pointer_Mtype, 0, ST_ptr(from_rtti));
+    Set_ST_addr_saved(ST_ptr(from_rtti));
+    Set_ST_addr_passed(ST_ptr(from_rtti));
+    WN_kid(call_wn, 1) = WGEN_CreateParm(Pointer_Mtype,
+                                         from_lda,
+                                         WN_ty(from_lda));
+    // to  rtti
+    ST_IDX  to_rtti = _builder->TB().ConvertRTTIForType(expr_ty);
+    WN *to_lda = WN_Lda(Pointer_Mtype, 0, ST_ptr(to_rtti));
+    Set_ST_addr_saved(ST_ptr(to_rtti));
+    Set_ST_addr_passed(ST_ptr(to_rtti));
+    WN_kid(call_wn, 2) = WGEN_CreateParm(Pointer_Mtype,
+                                         to_lda,
+                                         WN_ty(to_lda));
+    // offset hint
+    const CXXRecordDecl *from_decl = sub_ty->getAsCXXRecordDecl();
+    const CXXRecordDecl *to_decl = expr_ty->getAsCXXRecordDecl();
+    INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl);;
+    WN_kid(call_wn, 3) = WGEN_CreateParm(MTYPE_I8,
+                                         WN_Intconst(MTYPE_I4, ofst),
+                                         MTYPE_To_TY(MTYPE_I4));
+
+    // create comma for call
+    WN *comma_blk = WN_CreateBlock();
+    WN_INSERT_BlockLast(comma_blk, call_wn);
+    WN_Set_Linenum(call_wn, spos);
+    WN *call_ret = WN_Ldid(Pointer_Mtype, -1, Return_Val_Preg, to_ty);
+    value = WGEN_CreateComma(Pointer_Mtype, comma_blk, call_ret);
   }
-  WN *call_wn = WN_Create(OPR_CALL, Pointer_Mtype, MTYPE_V, 4);
-  WN_st_idx(call_wn) = ST_st_idx(dyncast_st);
-  WN_Set_Call_Default_Flags(call_wn);
-  Mark_call_region(call_wn);
-
-  // from ptr
-  WN_kid(call_wn, 0) = WGEN_CreateParm(Pointer_Mtype,
-                                       WN_COPY_Tree(sub_wn),
-                                       from_ty);
-  // from rtti
-  ST_IDX from_rtti = _builder->TB().ConvertRTTIForType(sub_ty);
-  WN *from_lda = WN_Lda(Pointer_Mtype, 0, ST_ptr(from_rtti));
-  Set_ST_addr_saved(ST_ptr(from_rtti));
-  Set_ST_addr_passed(ST_ptr(from_rtti));
-  WN_kid(call_wn, 1) = WGEN_CreateParm(Pointer_Mtype,
-                                       from_lda,
-                                       WN_ty(from_lda));
-  // to  rtti
-  ST_IDX  to_rtti = _builder->TB().ConvertRTTIForType(expr_ty);
-  WN *to_lda = WN_Lda(Pointer_Mtype, 0, ST_ptr(to_rtti));
-  Set_ST_addr_saved(ST_ptr(to_rtti));
-  Set_ST_addr_passed(ST_ptr(to_rtti));
-  WN_kid(call_wn, 2) = WGEN_CreateParm(Pointer_Mtype,
-                                       to_lda,
-                                       WN_ty(to_lda));
-  // offset hint
-  const CXXRecordDecl *from_decl = sub_ty->getAsCXXRecordDecl();
-  const CXXRecordDecl *to_decl = expr_ty->getAsCXXRecordDecl();
-  INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl);;
-  WN_kid(call_wn, 3) = WGEN_CreateParm(MTYPE_I8,
-                                       WN_Intconst(MTYPE_I4, ofst),
-                                       MTYPE_To_TY(MTYPE_I4));
-
-  // create comma for call
-  WN *comma_blk = WN_CreateBlock();
-  WN_INSERT_BlockLast(comma_blk, call_wn);
-  WN_Set_Linenum(call_wn, spos);
-  WN *call_ret = WN_Ldid(Pointer_Mtype, -1, Return_Val_Preg, to_ty);
-  WN *comma = WGEN_CreateComma(Pointer_Mtype, comma_blk, call_ret);
 
   // create null for check fail
   WN *null_wn = Gen_null_const(MTYPE_To_TY(Pointer_Mtype));
@@ -2419,7 +2412,7 @@ WhirlExprBuilder::ConvertCXXDynamicCastExpr(const CXXDynamicCastExpr *expr) {
   WN *cond = Handle_cond_wn(WN_COPY_Tree(sub_wn));
 
   // create CSELECT
-  WN *cselect = WGEN_CreateCselect(Pointer_Mtype, cond, comma, null_wn);
+  WN *cselect = WGEN_CreateCselect(Pointer_Mtype, cond, value, null_wn);
   return Result::nwNode(cselect, to_ty);
 }
 
@@ -4633,7 +4626,24 @@ WhirlExprBuilder::ConvertObjCSelectorExpr(const ObjCSelectorExpr *expr)
 Result
 WhirlExprBuilder::ConvertOpaqueValueExpr(const OpaqueValueExpr *expr) {
   TRACE_FUNC();
-  return ConvertExpr(expr->getSourceExpr());
+  TY_IDX ty = _builder->TB().ConvertType(expr->getType());
+
+  if (ST_IDX st_idx = _builder->DeclBuilder().FindOpaqueValue(expr))
+    return Result::nwSym(st_idx, ty);
+
+  Result ret = ConvertExpr(expr->getSourceExpr());
+  if (ret.isSym()) {
+    return ret;
+  } else if (ret.isNode()) {
+    ST *tmp_st = Gen_Temp_Symbol(ty, "__save_expr");
+    WN *st_wn = WN_Stid(TY_mtype(ty), 0, tmp_st, ty, ret.GetRValue());
+    WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), st_wn);
+    WN_Set_Linenum(st_wn, GetSrcPos());
+    _builder->DeclBuilder().AddOpaqueValue(expr, ST_st_idx(tmp_st));
+    return Result::nwSym(ST_st_idx(tmp_st), ty);
+  } else {
+    Is_True(FALSE, ("invalid return for OpaqueValueExpr"));
+  }
 }
 
 Result
@@ -4991,9 +5001,20 @@ WhirlExprBuilder::ConvertUnaryOperator(const UnaryOperator *expr, BOOL retv) {
     case clang::UO_Minus:
       wn_rt = WN_Unary(OPR_NEG, WN_rtype(wn_sub), wn_sub);
       break;
-    case clang::UO_Not:
-      wn_rt = WN_Unary(OPR_BNOT, WN_rtype(wn_sub), wn_sub);
-      break;
+    case clang::UO_Not: {
+      QualType sub_type = expr->getSubExpr()->getType();
+      if (sub_type->isComplexType() || sub_type->isComplexIntegerType()) {
+        TY_IDX sub_ty = _builder->TB().ConvertType(sub_type);
+        TYPE_ID real_mtyp = Mtype_complex_to_real(TY_mtype(sub_ty));
+        WN *real_wn = WN_Unary(OPR_FIRSTPART, real_mtyp, WN_COPY_Tree(wn_sub));
+        WN *imag_wn = WN_Unary(OPR_SECONDPART, real_mtyp, WN_COPY_Tree(wn_sub));
+        wn_rt = WN_Binary(OPR_PAIR, WN_rtype(wn_sub), real_wn,
+                          WN_Unary(OPR_NEG, real_mtyp, imag_wn));
+      } else {
+        wn_rt = WN_Unary(OPR_BNOT, WN_rtype(wn_sub), wn_sub);
+      }
+       break;
+    }
     case clang::UO_LNot:
       wn_rt = WN_EQ(MTYPE_I4, Handle_cond_wn(wn_sub),
                     WN_Intconst(MTYPE_I4, 0));

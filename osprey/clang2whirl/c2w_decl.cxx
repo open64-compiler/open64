@@ -63,6 +63,15 @@ GetGlobalDecl(const FunctionDecl *decl) {
   return GlobalDecl(decl);
 }
 
+GlobalDecl
+GetGlobalDecl(const FunctionDecl *decl, GlobalDecl gd) {
+  if (const CXXConstructorDecl *ctor = dyn_cast<CXXConstructorDecl>(decl))
+    return GlobalDecl(ctor, gd.getCtorType());
+  if (const CXXDestructorDecl *dtor = dyn_cast<CXXDestructorDecl>(decl))
+    return GlobalDecl(dtor, gd.getDtorType());
+  return GlobalDecl(decl);
+}
+
 WhirlDeclBuilder::WhirlDeclBuilder(WhirlBuilder *builder)
   : _builder(builder) {
 }
@@ -320,6 +329,15 @@ WhirlDeclBuilder::ConvertAPValue(QualType type, const APValue *value, INT repeat
           inv = New_INITV();
           INITV_Init_Symoff(inv, &St_Table[st], ofst, repeat);
         }
+#if LLVM_VERSION_MAJOR == 11
+        // handle typeid
+        else if (TypeInfoLValue ti = base.dyn_cast<TypeInfoLValue>()) {
+          ST_IDX st = _builder->TB().ConvertRTTIForType(QualType(ti.getType(), 0));
+          Is_True(st != ST_IDX_ZERO, ("rtti st is zero"));
+          inv = New_INITV();
+          INITV_Init_Symoff(inv, ST_ptr(st), 0, repeat);
+        }
+#endif
         else if (const Expr *expr = base.dyn_cast<const Expr*>()) {
           Is_True(ofst == 0, ("TODO: ofst is not 0"));
           WhirlConstBuilder const_bldr(_builder);
@@ -1088,6 +1106,7 @@ WhirlDeclBuilder::ConvertFunction(GlobalDecl gd) {
     ScopeHelper<GlobalDecl> shlp(_builder->Scope(), gd);
     WhirlFuncBuilder func_bldr(_builder);
     func_bldr.ConvertFunction(gd, st_idx);
+    _opaque_value_map.clear();
     return TRUE;
   }
   return FALSE;
@@ -1937,6 +1956,20 @@ WhirlDeclBuilder::Call_nothrow(const Decl *decl) {
     }
   }
   return FALSE;
+}
+
+ST_IDX
+WhirlDeclBuilder::FindOpaqueValue(const OpaqueValueExpr *expr) {
+  OPAQUE_VALUE_MAP::iterator it = _opaque_value_map.find(expr);
+  if (it != _opaque_value_map.end())
+    return it->second;
+  return NULL;
+}
+
+void
+WhirlDeclBuilder::AddOpaqueValue(const OpaqueValueExpr *expr, ST_IDX st) {
+  Is_True(st != ST_IDX_ZERO, ("not a valid ST_IDX"));
+  _opaque_value_map.insert(std::make_pair(expr, st));
 }
 
 } // namespace wgen
