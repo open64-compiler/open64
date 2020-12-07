@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -116,7 +116,7 @@ private:
 
   void EmitCallee(const clang::Expr *expr);
 
-  Result ConvertCallExpr(const clang::CallExpr *expr, BOOL retv);
+  Result ConvertCallExpr(const clang::CallExpr *expr, Result dest, BOOL retv);
   
   Result ConvertChooseExpr(const clang::ChooseExpr *expr);
 
@@ -150,9 +150,9 @@ private:
 
   Result ConvertCXXMFPFromWhirl(WN *value, TY_IDX ty, INT64 ofst);
 
-  Result ConvertCXXMemberCallExpr(const clang::CXXMemberCallExpr *expr, BOOL retv);
+  Result ConvertCXXMemberCallExpr(const clang::CXXMemberCallExpr *expr, Result dest, BOOL retv);
   
-  Result ConvertCXXOperatorCallExpr(const clang::CXXOperatorCallExpr *expr, BOOL retv);
+  Result ConvertCXXOperatorCallExpr(const clang::CXXOperatorCallExpr *expr, Result dest, BOOL retv);
   
   Result ConvertCXXReinterpretCastExpr(const clang::CXXReinterpretCastExpr *expr);
   
@@ -234,7 +234,7 @@ private:
 
   Result ConvertUnaryOperator(const clang::UnaryOperator *expr, BOOL retv);
   
-  Result ConvertUserDefinedLiteral(const clang::UserDefinedLiteral *expr, BOOL retv);
+  Result ConvertUserDefinedLiteral(const clang::UserDefinedLiteral *expr, Result dest, BOOL retv);
   
   Result ConvertVAArgExpr(const clang::VAArgExpr *expr);
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -1107,6 +1107,7 @@ WhirlDeclBuilder::ConvertFunction(GlobalDecl gd) {
     WhirlFuncBuilder func_bldr(_builder);
     func_bldr.ConvertFunction(gd, st_idx);
     _opaque_value_map.clear();
+    _real_parm_map.clear();
     return TRUE;
   }
   return FALSE;
@@ -1963,13 +1964,29 @@ WhirlDeclBuilder::FindOpaqueValue(const OpaqueValueExpr *expr) {
   OPAQUE_VALUE_MAP::iterator it = _opaque_value_map.find(expr);
   if (it != _opaque_value_map.end())
     return it->second;
-  return NULL;
+  return ST_IDX_ZERO;
 }
 
 void
 WhirlDeclBuilder::AddOpaqueValue(const OpaqueValueExpr *expr, ST_IDX st) {
   Is_True(st != ST_IDX_ZERO, ("not a valid ST_IDX"));
   _opaque_value_map.insert(std::make_pair(expr, st));
+}
+
+ST_IDX
+WhirlDeclBuilder::GetRealParmST(ST_IDX st) {
+  ST_IDX real_st = ST_IDX_ZERO;
+  REAL_PARM_MAP::iterator it = _real_parm_map.find(st);
+  if (it != _real_parm_map.end())
+    real_st =  it->second;
+  return real_st;
+}
+
+void
+WhirlDeclBuilder::AddRealParmST(ST_IDX orig_st, ST_IDX real_st) {
+  Is_True(orig_st != ST_IDX_ZERO, ("not a valid parm st"));
+  Is_True(real_st != ST_IDX_ZERO, ("not a valid real parm st"));
+  _real_parm_map.insert(std::make_pair(orig_st, real_st));
 }
 
 } // namespace wgen

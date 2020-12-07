@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -159,6 +159,8 @@ public:
   TY_IDX EmitGlobalInitializerType();
 
   TY_IDX EmitCXXPureVirtualType();
+
+  bool NeedFakeParm(clang::QualType type);
 };
 
 } // namespace wgen

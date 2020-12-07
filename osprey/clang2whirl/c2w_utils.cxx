@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -38,6 +38,16 @@ namespace wgen {
 std::vector<WN *> WhirlBlockUtil::blockVector;
 extern TCON_VALUE_MAP _tcon_value_map;
 std::stack<WN *> stmt_call_region_stack;
+
+std::vector<WN*> curr_entry_wn;
+void PushCurrentEntryWN(WN *wn) { curr_entry_wn.push_back(wn); }
+void PopCurrentEntryWN() { curr_entry_wn.pop_back(); }
+WN *CurrentEntryWN(void) {
+  if (curr_entry_wn.size()==0)
+    return NULL;
+  else
+    return curr_entry_wn.back();
+}
 
 WN *WhirlBlockUtil::nwBlock() {
   WN *blk = WN_CreateBlock();

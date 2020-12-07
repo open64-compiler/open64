@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -44,6 +44,7 @@ using namespace clang;
 // open64 header files
 #include "open64inc.h"
 
+std::set<ST_IDX> eh_cleanup_set; // set of ST_IDX for EH cleanups
 
 static const CompoundStmt *current_stmt;
 typedef std::pair<const clang::CompoundStmt *, DTOR_ST_PAIR> DTOR_CALL_ITEM;
@@ -969,22 +970,32 @@ WhirlStmtBuilder::Lookup_cleanups(WN *wn, INITV_IDX& iv, bool is_dtor_or_ctor_ca
   }
 
   // get cleanups from dtor_for_copy_ctor_stack
-  bool has_cleanup = false;
   if (scope_cleanup_i != -1 && Check_dtor_for_copy_ctor()) {
     DTOR_COPY_STACK may_cleanup = dtor_for_copy_ctor_stack;
+    bool has_cleanup = false;
+    bool reset_eh_cleanup = false;
+    if (WN_operator(wn) == OPR_CALL &&
+        strcmp(ST_name(WN_st(wn)), "__cxa_throw") &&
+        eh_cleanup_set.find(WN_st_idx(wn)) != eh_cleanup_set.end())
+      reset_eh_cleanup = true;
+
     while (!may_cleanup.empty()) {
       const DTOR_ST_PAIR& item = may_cleanup.top();
       if (item.second) {
-        if (WN_operator(wn) == OPR_CALL && strcmp(ST_name(WN_st(wn)), "__cxa_throw")) {
+        if (reset_eh_cleanup) {
+          WN *arg0 = WN_kid0(WN_kid0(wn));
+          Is_True(WN_has_sym(arg0), ("whirl node should have st"));
+          if (WN_st_idx(arg0) == item.second)
+            has_cleanup = true;
+          else
+            if (has_cleanup)
+              cleanups->push_back(item);
+        } else if (WN_operator(wn) == OPR_CALL &&
+                   strcmp(ST_name(WN_st(wn)), "__cxa_throw")) {
           cleanups->push_back(item);
           may_cleanup.pop();
           continue;
         }
-        if (WN_operator(wn) == OPR_STID && WN_st_idx(wn) == item.second)
-          has_cleanup = true;
-        else
-          if (has_cleanup)
-            cleanups->push_back(item);
       }
       may_cleanup.pop();
     }
@@ -2676,6 +2687,25 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
                     ? Result::nwSym(ST_st_idx(Create_tmp_sym(ret_ty, ".ret", GetSrcPos())),
                                     ret_ty)
                     : Result::nwNone();
+    const Decl *decl = _builder->Scope().CurrentDecl();
+    Is_True(isa<FunctionDecl>(decl),
+            ("current decl for return stmt should be FunctionDecl"));
+    QualType rtype =
+      dyn_cast<FunctionDecl>(decl)->getFunctionType()->getReturnType();
+
+    // get real return ty and pass the fake parm st to return Expr
+    if (!retv->isGLValue() && _builder->TB().NeedFakeParm(retv->getType())) {
+      if (!rtype->isReferenceType() || retv->getType()->isReferenceType()) {
+        ret_ty = TY_ret_type(Get_Current_PU_TY());
+        rv = FALSE;
+        // get the st for the fake first parm
+        WN *first_formal = WN_formal(CurrentEntryWN(), 0);
+        ST_IDX parm_st = WN_st_idx(first_formal);
+        dest = Result::nwSym(parm_st, ST_type(parm_st));
+        dest.SetRef();
+      }
+    }
+
     WhirlExprBuilder expr_bldr(_builder);
     WN *retw = expr_bldr.ConvertToNode(retv, dest, rv);
     BOOL need_eh_region = Check_call_region();
@@ -2688,7 +2718,7 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
       return WGEN_CreateReturn(GetSrcPos());
     }
 
-    if (retw == NULL) {
+    if (retw == NULL && TY_mtype(ret_ty) != MTYPE_V) {
       Is_True(!dest.isNone(), ("dest is none"));
       retw = dest.GetRValue();
       ret = WN_CreateReturn_Val(OPR_RETURN_VAL, TY_mtype(ret_ty),
@@ -2699,11 +2729,6 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
 
     // if the function returns a reference, take the address of the
     // expression rather than the value
-    const Decl *decl = _builder->Scope().CurrentDecl();
-    Is_True(isa<FunctionDecl>(decl),
-            ("current decl for return stmt should be FunctionDecl"));
-    QualType rtype =
-      dyn_cast<FunctionDecl>(decl)->getFunctionType()->getReturnType();
     if (rtype->isReferenceType() && !retv->getType()->isReferenceType()) {
       ret_ty = _builder->TB().ConvertType(rtype);
       if (WN_operator(retw) == OPR_ILOAD)
@@ -2717,52 +2742,51 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
         }
       }
     }
-#if 0
-    else if (retv->getType()->isRecordType()) {
-      // don't call dtor if return type is RecordType
-      if (dtor_call_stack.top().first == current_stmt &&
-          dtor_call_stack.top().second != NULL) {
-        const VarDecl *var_decl = dtor_call_stack.top().second;
-        Is_True(var_decl->getType()->isRecordType(), ("should be RecordType"));
-        dtor_call_stack.pop();
-      }
-    }
-#endif
-
-    TYPE_ID mtype = TY_mtype(ret_ty);
-    if (WN_rtype(retw) != mtype && mtype == MTYPE_M)
-      mtype = WN_rtype(retw);
-
-    if (OPERATOR_is_call(WN_operator(retw))) {
-      Is_True(mtype != MTYPE_M, ("mtype is M"));
-      mtype = Mtype_comparison(mtype);
-      WN* blk = WN_CreateBlock();
-      WN_INSERT_BlockLast(blk, retw);
-      WN* ldid = WN_Ldid(mtype, -1, Return_Val_Preg, ret_ty);
-      retw = WN_CreateComma(OPR_COMMA, mtype, MTYPE_V, blk, ldid);
-    }
 
     WN *cur_blk = WhirlBlockUtil::getCurrentBlock();
-    // create a temp so that return stmt is EH-free
-    WN *call_wn = NULL;
-    if (_builder->Lang_CPP() && emit_exceptions && need_eh_region &&
-        WN_operator(retw) != OPR_INTCONST &&
-        WN_operator(retw) != OPR_LDID) {
-      WN *tmp_wn = WGEN_StidTemp(ret_ty, retw, ".ret.val");
-      WN_Set_Linenum(tmp_wn, GetSrcPos());
-      WN_INSERT_BlockLast(cur_blk, tmp_wn);
-      retw = WN_Ldid(TY_mtype(ret_ty), WN_offset(tmp_wn), WN_st(tmp_wn), ret_ty);
+    if (retw == NULL) {
+      // pop dtor for copy ctor stack
+      pop_dtor_for_copy_ctor_stack(cur_blk, rtype);
+      // pop dtor call before return
+      pop_dtor_call_for_return(cur_blk);
+      return WGEN_CreateReturn(GetSrcPos());
+    } else {
+      TYPE_ID mtype = TY_mtype(ret_ty);
+      if (WN_rtype(retw) != mtype && mtype == MTYPE_M)
+        mtype = WN_rtype(retw);
+
+      if (OPERATOR_is_call(WN_operator(retw))) {
+        Is_True(mtype != MTYPE_M, ("mtype is M"));
+        mtype = Mtype_comparison(mtype);
+        WN* blk = WN_CreateBlock();
+        WN_INSERT_BlockLast(blk, retw);
+        WN* ldid = WN_Ldid(mtype, -1, Return_Val_Preg, ret_ty);
+        retw = WN_CreateComma(OPR_COMMA, mtype, MTYPE_V, blk, ldid);
+      }
+
+      // create a temp so that return stmt is EH-free
+      WN *call_wn = NULL;
+      if (TY_mtype(ret_ty) != MTYPE_V &&
+          _builder->Lang_CPP() && emit_exceptions && need_eh_region &&
+          WN_operator(retw) != OPR_INTCONST &&
+          WN_operator(retw) != OPR_LDID) {
+        WN *tmp_wn = WGEN_StidTemp(ret_ty, retw, ".ret.val");
+        WN_Set_Linenum(tmp_wn, GetSrcPos());
+        WN_INSERT_BlockLast(cur_blk, tmp_wn);
+        retw = WN_Ldid(TY_mtype(ret_ty), WN_offset(tmp_wn), WN_st(tmp_wn), ret_ty);
+      }
+
+      // pop dtor for copy ctor stack
+      pop_dtor_for_copy_ctor_stack(cur_blk, rtype);
+      // pop dtor call before return
+      pop_dtor_call_for_return(cur_blk);
+
+      Is_True(OPERATOR_is_expression(WN_operator(retw)), ("ret is not value"));
+
+      ret = WN_CreateReturn_Val(OPR_RETURN_VAL, mtype, MTYPE_V, retw);
+      WN_Set_Linenum(ret, GetSrcPos());
+      return ret;
     }
-
-    // pop dtor for copy ctor stack
-    pop_dtor_for_copy_ctor_stack(cur_blk, rtype);
-    // pop dtor call before return
-    pop_dtor_call_for_return(cur_blk);
-
-    Is_True(OPERATOR_is_expression(WN_operator(retw)), ("ret is not value"));
-    ret = WN_CreateReturn_Val(OPR_RETURN_VAL, mtype, MTYPE_V, retw);
-    WN_Set_Linenum(ret, GetSrcPos());
-    return ret;
   }
 }
 

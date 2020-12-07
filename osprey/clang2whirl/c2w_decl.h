@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -57,6 +57,9 @@ private:
 
   // map between OpaqueValueExpr and st_idx
   OPAQUE_VALUE_MAP _opaque_value_map;
+
+  // map between parm st and real parm st
+  REAL_PARM_MAP _real_parm_map;
 
 public:
   WhirlDeclBuilder(WhirlBuilder *builder);
@@ -211,6 +214,10 @@ public:
   ST_IDX FindOpaqueValue(const clang::OpaqueValueExpr *expr);
 
   void AddOpaqueValue(const clang::OpaqueValueExpr *expr, ST_IDX st);
+
+  ST_IDX GetRealParmST(ST_IDX st);
+
+  void AddRealParmST(ST_IDX orig_st, ST_IDX real_st);
 };
 
 } // namespace wgen

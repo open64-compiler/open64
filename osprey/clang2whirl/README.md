@@ -1,6 +1,6 @@
 Clang based Open64 Front End
 ================
-Copyright (C) 2019, 2020 XC5 Limited, Inc.  All Rights Reserved.
+Copyright (C) 2019, 2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
 1. Prepare LLVM & Clang and build from source
  So far CLANG 7.0.1 and 11.0.0 are supported. Replace x.y.z with 7.0.1 or 11.0.0 below.

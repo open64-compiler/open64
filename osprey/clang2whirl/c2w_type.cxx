@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -337,6 +337,16 @@ WhirlTypeBuilder::EmitCXXPureVirtualType() {
   return ty_idx;
 }
 
+// determine whether a type is permitted to be passed or
+// returned in registers
+bool
+WhirlTypeBuilder::NeedFakeParm(QualType type) {
+  const RecordDecl *decl = type->getAsRecordDecl();
+  if (decl && !decl->canPassInRegisters())
+    return true;
+  return false;
+}
+
 TY_IDX
 WhirlTypeBuilder::ConvertFunctionType(const FunctionType *type, const Type *record_type) {
   TY_IDX ty_idx;
@@ -370,6 +380,13 @@ WhirlTypeBuilder::ConvertFunctionType(const FunctionType *type, const Type *reco
   // return type
   TYLIST tylist_idx;
   TY_IDX rty = ConvertType(type->getReturnType());
+
+  if (NeedFakeParm(type->getReturnType())) {
+    parm_types.insert(parm_types.begin(), Make_Pointer_Type(rty));
+    rty = MTYPE_To_TY(MTYPE_V);
+    Set_TY_return_to_param(ty_idx);
+  }
+
   Set_TYLIST_type(New_TYLIST(tylist_idx), rty);
   Set_TY_tylist(ty_idx, tylist_idx);
 

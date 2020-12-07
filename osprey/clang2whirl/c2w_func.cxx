@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -868,6 +868,11 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
                                (isa<CXXMethodDecl>(decl) && 
                                 !(cast<CXXMethodDecl>(decl))->isStatic())))
     append_this = true;
+
+  bool add_fake_parm = false;
+  if (_builder->TB().NeedFakeParm(decl->getReturnType()))
+    add_fake_parm = true;
+
   CreateLocalSymtab(st_idx);
   PU_Info *pu_info = CreatePUInfo(st_idx);
   Set_PU_Info_pu_dst(pu_info, _builder->Scope().CurrentDst());
@@ -887,9 +892,22 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
   WN_Set_Linenum(pragma, srcpos);
 
   UINT num_of_param = decl->getNumParams();
+  if (add_fake_parm) num_of_param++;
   if (append_this) num_of_param++;
   pu_tree = WN_CreateEntry(num_of_param, st_idx, body, NULL, NULL);
   WN_Set_Linenum(pu_tree, srcpos);
+  PushCurrentEntryWN(pu_tree);
+
+  // add a fake arg0 for function needs to return the object in memory
+  if (add_fake_parm) {
+    TY_IDX return_ty = _builder->TB().ConvertType(decl->getReturnType());
+    ST *st = New_ST();
+    ST_Init(st, Save_Str2i(".arg", "", i), CLASS_VAR, SCLASS_FORMAL,
+            EXPORT_LOCAL, Make_Pointer_Type(return_ty, FALSE));
+    Set_ST_is_value_parm(st);
+    WN_formal(pu_tree, i) = WN_CreateIdname(0, st);
+    i++;
+  }
 
   // create st for *this in constructor & destructor
   const CXXRecordDecl *record_decl = NULL;
@@ -945,8 +963,10 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
   WN_VECTOR args;
   for (i; i < num_of_param; ++i) {
     UINT real_parm = i;
+    if (add_fake_parm)
+      real_parm--;
     if (append_this)
-      real_parm = i - 1;
+      real_parm--;
     const ParmVarDecl *parm = decl->getParamDecl(real_parm);
 
     // If any of the arguments have a variably modified type,
@@ -958,6 +978,12 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
 
     TY_IDX fty_idx = _builder->TB().ConvertType(parm->getType());
     ST_IDX fst_idx = _builder->SB().ConvertSymbol(parm);
+    if (_builder->TB().NeedFakeParm(parm->getType())) {
+      fty_idx = Make_Pointer_Type(fty_idx);
+      ST *tmp_st = Gen_Temp_Symbol(fty_idx, ".anon");
+      _builder->DeclBuilder().AddRealParmST(fst_idx, ST_st_idx(tmp_st));
+      fst_idx = ST_st_idx(tmp_st);
+    }
     WN_formal(pu_tree, i) = WN_CreateIdname(0, fst_idx);
     WN *ldid = WN_Ldid(TY_mtype(fty_idx), 0, ST_ptr(fst_idx), fty_idx);
     args.push_back(std::pair<WN *, TY_IDX>(ldid, fty_idx));
@@ -1219,6 +1245,7 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
   }
 
   WhirlBlockUtil::popCurrentBlock();
+  PopCurrentEntryWN();
 
   // reset must_inline if we have set the PU no_inline
   if (PU_no_inline(Get_Current_PU()))
@@ -1331,6 +1358,10 @@ WhirlFuncBuilder::EmitThunkFunction(const clang::ThunkInfo &ti, ST_IDX st_idx) {
   if (_builder->Lang_CPP() && emit_exceptions)
     Setup_entry_for_eh();
 
+  bool add_fake_parm = false;
+  if (_builder->TB().NeedFakeParm(decl->getReturnType()))
+    add_fake_parm = true;
+
   // create entry
   WN *body = WhirlBlockUtil::nwBlock();
   WN *pragma = WN_CreatePragma(WN_PRAGMA_PREAMBLE_END, (ST_IDX)0, 0, 0);
@@ -1339,8 +1370,23 @@ WhirlFuncBuilder::EmitThunkFunction(const clang::ThunkInfo &ti, ST_IDX st_idx) {
   WN_Set_Linenum(body, srcpos);
 
   UINT num_of_param = decl->getNumParams();
+  if (add_fake_parm) num_of_param++;
   pu_tree = WN_CreateEntry(++num_of_param, st_idx, body, NULL, NULL);
   WN_Set_Linenum(pu_tree, srcpos);
+  PushCurrentEntryWN(pu_tree);
+
+  TY_IDX return_ty = _builder->TB().ConvertType(decl->getReturnType());
+
+  // add a fake arg0 for function needs to return the object in memory
+  ST *fake_param_st;
+  if (_builder->TB().NeedFakeParm(decl->getReturnType())) {
+    fake_param_st = New_ST();
+    ST_Init(fake_param_st, Save_Str2i(".arg", "", i), CLASS_VAR, SCLASS_FORMAL,
+            EXPORT_LOCAL, Make_Pointer_Type(return_ty, FALSE));
+    Set_ST_is_value_parm(fake_param_st);
+    WN_formal(pu_tree, i) = WN_CreateIdname(0, fake_param_st);
+    i++;
+  }
 
   // create the fake first parm .arg0 (this ptr)
   this_ty = _builder->TB().ConvertType(record_decl->getTypeForDecl());
@@ -1349,7 +1395,7 @@ WhirlFuncBuilder::EmitThunkFunction(const clang::ThunkInfo &ti, ST_IDX st_idx) {
   Is_True(symtab > GLOBAL_SYMTAB,
           ("invalid scope for function param"));
   this_st = New_ST(symtab);
-  STR_IDX str_idx = Save_Str(".arg0");
+  STR_IDX str_idx = Save_Str2i(".arg", "", i);
   ST_Init(this_st, str_idx, CLASS_VAR,
           SCLASS_FORMAL, EXPORT_LOCAL,
           Make_Pointer_Type(this_ty));
@@ -1359,7 +1405,6 @@ WhirlFuncBuilder::EmitThunkFunction(const clang::ThunkInfo &ti, ST_IDX st_idx) {
   i++;
   ST_IDX real_st = _builder->SB().GetST(decl);
   Is_True(real_st, ("bad thunk st"));
-  TY_IDX return_ty = _builder->TB().ConvertType(decl->getReturnType());
   WN *ldid_wn = WN_Ldid(TY_mtype(ST_type(this_st)), 0,
                         this_st, ST_type(this_st));
 
@@ -1377,15 +1422,24 @@ WhirlFuncBuilder::EmitThunkFunction(const clang::ThunkInfo &ti, ST_IDX st_idx) {
   if (!_builder->DeclBuilder().Call_nothrow(decl))
     Mark_call_region(call_wn);
 
+  UINT current_parm = 0;
+  if (add_fake_parm) {
+    WN *target_wn = WN_Lda(Pointer_Mtype, 0, fake_param_st);
+    WN *arg_wn = WN_CreateParm(Pointer_Mtype, target_wn,
+                               Make_Pointer_Type(ST_type(fake_param_st), FALSE),
+                               WN_PARM_BY_VALUE);
+    WN_kid(call_wn, current_parm++) = arg_wn;
+  }
+
   // first parm
   TY_IDX parm_ty = WN_type(ldid_wn);
   WN *parm_first = WGEN_CreateParm(TY_mtype(parm_ty),
                                    WN_COPY_Tree(ldid_wn), parm_ty);
-  WN_kid(call_wn, 0) = parm_first;
+  WN_kid(call_wn, current_parm++) = parm_first;
 
   // formal list
   for (i; i < num_of_param; ++i) {
-    UINT real_parm = i - 1;
+    UINT real_parm = i - current_parm;
     const ParmVarDecl *parm = decl->getParamDecl(real_parm);
     TY_IDX fst_ty = _builder->TB().ConvertType(parm->getType());
     ST *fst = New_ST(symtab);
@@ -1440,6 +1494,7 @@ WhirlFuncBuilder::EmitThunkFunction(const clang::ThunkInfo &ti, ST_IDX st_idx) {
   WN_INSERT_BlockLast(body, return_wn);
   WN_Set_Linenum(return_wn, srcpos);
   WhirlBlockUtil::popCurrentBlock();
+  PopCurrentEntryWN();
 
   Is_True(pu_tree != NULL,
           ("invalid pu tree"));

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -138,6 +138,7 @@ typedef hash_map<const clang::Expr *, ST_IDX, wgen_ptr_hash> VLA_SIZE_MAP;
 
 typedef hash_map<const clang::CXXCatchStmt *, LABEL_IDX, wgen_ptr_hash> HANDLER_LABEL_MAP;
 typedef hash_map<const clang::OpaqueValueExpr *, ST_IDX, wgen_ptr_hash> OPAQUE_VALUE_MAP;
+typedef hash_map<ST_IDX, ST_IDX> REAL_PARM_MAP;
 
 // clang to R for const initialization
 typedef hash_map<const clang::VarDecl *, Result, wgen_ptr_hash> VAR_INITR_MAP;

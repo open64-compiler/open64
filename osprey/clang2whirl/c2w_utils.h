@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -121,6 +121,9 @@ void Unmark_call_region();
 void Clear_call_region();
 void GenMstoreForString(WN *addr, WN *value, TY_IDX ty, UINT len, UINT off, SRCPOS spos);
 void AddBitfieldInitvForTree(INT64 val, FLD_HANDLE fld, INITV_IDX &last_initv, UINT64 &bytes);
+void PushCurrentEntryWN(WN *wn);
+void PopCurrentEntryWN();
+WN *CurrentEntryWN(void);
 } // namespace wgen
 
 
