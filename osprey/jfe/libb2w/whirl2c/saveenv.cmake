@@ -1,0 +1,10 @@
+#add_library(whirl2c_lib ${W2C_LIB_SRC})
+#target_compile_options(wgen_util_o PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+#target_include_directories(wgen_util_o PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+#target_compile_definitions(wgen_util_o PRIVATE ${HOST_DEF} ${LOCAL_DEF} -DMONGOOSE_BE)
+
+add_executable(whirl2c ${W2C_SRC})
+target_compile_options(whirl2c PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(whirl2c PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(whirl2c PUBLIC ${HOST_DEF} ${LOCAL_DEF})
+# target_link_libraries(whirl2c)

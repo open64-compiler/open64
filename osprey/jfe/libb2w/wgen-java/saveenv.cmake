@@ -1,0 +1,10 @@
+add_library(wgen_java_util_o ${WGENUTILO_SRC})
+target_compile_options(wgen_java_util_o PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(wgen_java_util_o PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(wgen_java_util_o PRIVATE ${HOST_DEF} ${LOCAL_DEF} -DMONGOOSE_BE)
+
+add_executable(wgen_java ${WGEN_SRC})
+target_compile_options(wgen_java PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(wgen_java PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(wgen_java PUBLIC ${HOST_DEF} ${LOCAL_DEF})
+target_link_libraries(wgen_java comutils spin cmplrs iberty wgen_java_util_o)

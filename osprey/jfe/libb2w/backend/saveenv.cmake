@@ -1,0 +1,10 @@
+add_library(wgen_util_o ${WGENUTILO_SRC})
+target_compile_options(wgen_util_o PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(wgen_util_o PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(wgen_util_o PRIVATE ${HOST_DEF} ${LOCAL_DEF} -DMONGOOSE_BE)
+
+add_executable(wgen ${WGEN_SRC})
+target_compile_options(wgen PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(wgen PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(wgen PUBLIC ${HOST_DEF} ${LOCAL_DEF})
+target_link_libraries(wgen comutils spin cmplrs iberty wgen_util_o)

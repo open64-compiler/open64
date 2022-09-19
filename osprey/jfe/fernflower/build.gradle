@@ -1,0 +1,49 @@
+apply plugin: 'java'
+
+compileJava {
+  sourceCompatibility '1.8'
+  targetCompatibility '1.8'
+  if(project.hasProperty("javaBuildType")) {
+    options.compilerArgs << javaBuildType
+  }
+}
+
+sourceSets {
+  main.java.srcDirs 'src'
+  test.java.srcDirs 'test'
+}
+
+processResources {
+  from('src/resources') {
+    include '*'
+  }
+}
+
+repositories { jcenter() }
+
+dependencies {
+  compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.11.1'
+  compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.11.1'
+  testCompile 'junit:junit:4.+'
+  testCompile 'org.assertj:assertj-core:3.+'
+
+}
+
+jar {
+  archiveName 'fernflower.jar'
+
+  manifest {
+    attributes 'Main-Class': 'org.jetbrains.java.decompiler.main.decompiler.ConsoleDecompiler'
+  }
+
+  from('src/resources') {
+    include '*'
+  }
+  from {
+    configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+  }
+}
+
+task cmakeBuild(type: Exec) {
+  commandLine '/bin/bash', "${project.buildscript.sourceFile.parent}/../libb2w/configure"
+}

@@ -1,0 +1,231 @@
+#!/usr/sbin/perl -- -*-Perl-*-
+
+#
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+### ====================================================================
+### ====================================================================
+###
+### Module: gen_x_prop.csh
+### $Revision: 1.1.1.1 $
+### $Date: 2005/10/21 19:00:00 $
+### $Author: marcel $
+### $Source: /proj/osprey/CVS/open64/osprey1.0/common/util/gen_x_set,v $
+###
+### Usage: gen_x_set [-f] file_name base_type set_type
+###                       elt_num num_elt [include_file...]
+###        gen_x_set [-f] -s file_name base_type set_type
+###                       elt_num num_elt sub_elt_num sub_num_elt
+###                       [include_file...]
+###
+### --------------------------------------------------------------------
+###
+###     Generate an interface and an implementation for sets of a
+###     specific type.  This can be implemented either with macros for
+###     speed or functions for typedefs.  The semantics are the same
+###     either way, allowing the functional interface to be used during
+###     development and the macro interface to be used for production.
+###     The default is to make the macro interface.  The -p flag
+###     specifies that a functional implementation should be generated.
+###
+###     file_name           is the base of the file names to generate.
+###                         Both a c and a .h file with this name are
+###                         generated.
+###
+###     base_type           is the underlying data type over which the
+###                         sets will be defined.  It will also be
+###                         used as the prefix for generated
+###                         functions.
+###
+###     set_type            is the name to be given to the generated
+###                         set type.
+###
+###     elt_num             is the name of a function or macro that
+###                         given a member of the base type, evaluates
+###                         to a unique non-negative INT.
+###
+###     num_elt             is the inverse of elt_num.  In other words
+###                         it takes non-negative INTs and returns
+###                         members of the base type.
+###
+###     include_file        Name of a file to include in the generated
+###                         .cxx file.  Typically, this will be where the
+###                         base type is declared as well as the
+###                         mapping functions.
+###
+###     With the -s flag, a subuniverse interface is also generated.  Two
+###     additional arguments must be supplied:
+###
+###     elt_num_sub         is the name of a function or macro that given
+###                         an element of the type and an
+###                         <set_type>_SUBUNIVERSE* returns a unique
+###                         non-negative integer.
+###
+###     num_elt_sub         is the inverse of sub_elt_num.  It takes a
+###                         non-negative integer and a
+###                         <set_type>_SUBUNIVERSE* and returns a element
+###                         of the type
+###
+###     The generated interface has a function or macro for each
+###     function in common/util/bitset.h.  However, the new functions
+###     take XX_SET's in place of BS's, XX's in place of BS_ELT's, and
+###     XX_SET_ITER's inplace of BS_ITER's.  The name XX_SET replaces
+###     the name BS in the function and type names.  Not quite all
+###     BS_ELT's are replaced with XX's.  The "...Range..." functions
+###     still use BS_ELTs as arguments for delineating the low and high
+###     points of the range.  This might allow a little more
+###     flexibility.  If it becomes an issue, both forms of the Range
+###     functions be provided.
+###
+### ====================================================================
+### ====================================================================
+
+require "getopts.pl";
+
+# Look for the templates in the same directory as this script resides.
+#
+$utildir = $0;
+$utildir =~ s=/[^/]*$==;
+$utildir = '.' if ( $utildir eq $0 );
+
+&Getopts("fs");
+
+# Macro or functional interface?
+#
+$itype = $opt_f ? 'func' : 'macro';
+
+# Generate the subuniverse relative forms?
+#
+if ($opt_s) {
+    ($filename,$base_type,$set_type,$elt_num,$num_elt,$sub_elt_num,
+                                                      $sub_num_elt,
+                                                      @includes) = @ARGV;
+}
+else {
+    ($filename,$base_type,$set_type,$elt_num,$num_elt,@includes) = @ARGV;
+    # We need strings for the substitution below.  This will be harmless:
+    $sub_elt_num = "#sub_elt_num#";
+    $sub_num_elt = "#sub_num_elt#";
+}
+
+$uset_type = $set_type;
+$uset_type =~ tr/a-z/A-Z/;
+$lset_type = $set_type;
+$lset_type =~ tr/A-Z/a-z/;
+
+$rev = '$Revision: 1.1.1.1 $ ';
+
+# Write the .cxx file.
+#
+&Init("$filename.cxx");
+foreach $include (@includes) {
+    print OF "#include \"$include\"\n";
+}
+&Filter("$utildir/x_set_$itype.c");
+&Final();
+
+# Write the .h file
+#
+&Init("$filename.h");
+&Filter("$utildir/x_set_interface","$utildir/x_set_$itype.h");
+&Final();
+
+# write the .td file
+#
+&Init("$filename.td");
+&Filter("$utildir/x_set_$itype.td");
+&Final();
+
+
+# Initialize and open the file on OF.
+#
+sub Init {
+    local ($fname) = @_;
+    open(OF,">$fname") || die("Can't write to $fname");
+    print OF "/* Generated by gen_s_set $rev */\n";
+}
+
+
+sub Final {
+    close(OF);
+}
+
+
+# Filter the input files into the OF.  Everything above the "BEGIN" line
+# is stripped.  If a RCS revision is found, it is passed along as a comment.
+# All the instances of the #..# names are replaced.
+#
+sub Filter {
+    local (@files) = @_;
+    local ($l);
+    local ($subu) = 0;
+
+    foreach $file (@files) {
+        open(IF,"<$file") || die("Can't open $file for input");
+
+        while ( $l = <IF> ) {
+            if ( $l =~ /^BEGIN/ ) {
+                last;
+            }
+            elsif ( ($rev) = ($l =~ /\$Revision: *([0-9\.]+)/) ) {
+                print OF "/* Generated from $file Rev $rev */\n";
+            }
+        }
+
+        while ( $l = <IF> ) {
+            if ( $l =~ /^BEGIN SUBUNIVERSES/ ) {
+                $subu = 1;
+                next;
+            }
+            elsif ( $l =~ /^END SUBUNIVERSES/ ) {
+                $subu = 0;
+                next;
+            }
+            elsif ( $subu && ! $opt_s ) {
+                next;
+            }
+            
+            $l =~ s/#base_type#/$base_type/g;
+            $l =~ s/#num_elt#/$num_elt/g;
+            $l =~ s/#elt_num#/$elt_num/g;
+            $l =~ s/#uset#/$uset_type/g;
+            $l =~ s/#lset#/$lset_type/g;
+            $l =~ s/#filename#/$filename/g;
+            $l =~ s/#elt_num_sub#/$sub_elt_num/g;
+            $l =~ s/#num_elt_sub#/$sub_num_elt/g;
+            print OF $l;
+        }
+
+    }
+}

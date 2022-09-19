@@ -1,0 +1,205 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if 
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* ====================================================================
+ * ====================================================================
+ *
+ * Module: erirb.desc
+ * $Revision: 1.1.1.1 $
+ * $Date: 2005/10/21 19:00:00 $
+ * $Author: marcel $
+ * $Source: /proj/osprey/CVS/open64/osprey1.0/common/com/erirb.desc,v $
+ *
+ * Revision history:
+ *  23-Jun-89 - Original Version
+ *  12-Jun-91 - Integrated from Josie
+ *
+ * Description:
+ *
+ * IR Builder error code descriptors.
+ *
+ * ====================================================================
+ * ====================================================================
+ */
+
+#ifndef erirb_desc_INCLUDED
+#define erirb_desc_INCLUDED
+
+static char *erirb_desc_rcs_id = "$Source$ $Revision$";
+
+/* Include the error code definitions: */
+#include "erirb.h"
+
+ERROR_DESC EDESC_Irb[] = {
+
+  /* General IRB error codes: */
+  { EC_Irb_Internal,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Internal screwup: %s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+
+  /* irbmain error codes: */
+  { EC_No_ASSIGN,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "\'%s\' has Assigned GO TO statement but no ASSIGN statements",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+
+  /* irbmem error codes: */
+  { EC_Array_OOB,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "Out-of-bounds array reference in \'%s\'",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_Bad_Formal,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Inconsistent base (Formal_Sym) and ST_is_formal for \'%s\'",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_Addr_Formal,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Attempt to take address of register formal \'%s\'",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+  { EC_Null_Base,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Non-PSEUDOTERM tree node (0x%x: %s) should have valid base",
+    2, ET_POINTER, ET_NODE, 0, 0, 0, 0 },
+  { EC_Invalid_Addr,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Invalid addressing in %s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_Var_TN,		EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Non-literal address TN (%s) in %s",
+    2, ET_TN, ET_STRING, 0, 0, 0, 0 },
+  { EC_Bad_Const,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Bad constant (%d) in %s",
+    2, ET_INT, ET_STRING, 0, 0, 0, 0 },
+  { EC_Mult_Defer,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Invalid addressing (sym:%s, def:%s)",
+    2, ET_SYMTAB, ET_NODE, 0, 0, 0, 0 },
+  { EC_Abs_Addr,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Absolute address invalid for node (0x%x: %s) in %s",
+    3, ET_POINTER, ET_NODE, ET_STRING, 0, 0, 0 },
+  { EC_Load_Opnds,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Unexpected load operand count %d for %s in %s",
+    3, ET_INT, ET_STRING, ET_STRING, 0, 0, 0 },
+
+  /* irbcall/callutil error codes: */
+  { EC_Return_Style,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Invalid function return style (%d) in %s",
+    2, ET_INT, ET_STRING, 0, 0, 0, 0 },
+  { EC_Need_Value,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Result required for call: %s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_Inv_Actual,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Invalid actual parameter node %s in BB:%d: "
+    "expected TO_REF or TO_VAL",
+    2, ET_NODE, ET_INT, 0,0,0,0 },
+  { EC_Mem_Actual,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Actual parameter %d expected to be in memory in BB:%d",
+    2, ET_INT, ET_INT, 0,0,0,0 },
+  { EC_No_Einfo,	EM_Compiler | ES_WARNING,	RAG_EN_NONE,
+    "No EINFO record found for entry %s",
+    1, ET_NODE, 0, 0,0,0,0 },
+  { EC_Not_Entry,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Return value ID '%s' not an entry to function '%s'",
+    2, ET_SYMTAB, ET_SYMTAB, 0, 0, 0, 0 },
+  { EC_Flt_Varargs1,	EM_User | ES_WARNING,		RAG_EN_NONE,
+    "Prototype required when passing floating point parameter"
+    " to varargs routine: %s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_Flt_Varargs2,
+    EM_Continuation | EM_User | ES_WARNING,		RAG_EN_NONE,
+    "%s(see ANSI X3.159-1989, Section 3.3.2.2)",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+
+  /* irbexec error codes: */
+  { EC_Agt_Uninit,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "Uninitialized variable '%s' in assigned GOTO statement",
+    1, ET_SYMTAB, 0, 0, 0, 0, 0 },
+
+  /* irbdo error codes: */
+  { EC_Inv_GOTO,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "Label %d within DO loop of %s is a target of an improper GOTO",
+    2, ET_INT, ET_SYMTAB, 0, 0, 0, 0 },
+
+  /* irbexpr error codes: */
+  { EC_Inv_Field_At,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Invalid field specification: "
+    "offset (%d) + size (%d) > struct size (%d)",
+    3, ET_INT, ET_INT, ET_INT, 0, 0, 0 },
+  { EC_Inv_Alloca_Size,	EM_User | ES_ERRPHASE,	RAG_EN_NONE,
+    "Invalid size (%s) for alloca()",
+    1, ET_INT64, 0, 0, 0, 0, 0 },
+  { EC_Zero_Alloca_Size,	EM_User | ES_WARNING,	RAG_EN_NONE,
+    "Zero size for alloca()",
+    0, 0, 0, 0, 0, 0, 0 },
+  { EC_Inv_TAS_Size,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Invalid TAS sizes: %s size %d <> %s size %d in %s",
+    5, ET_NODE, ET_INT, ET_NODE, ET_INT, ET_STRING, 0 },
+  { EC_TAS_Nonload,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "TAS (%s) operand %s (%s) is not a load TN",
+    3, ET_NODE, ET_NODE, ET_TN, 0, 0, 0 },
+
+  /* Memory model support (memmodel.c): */
+  { EC_Ill_TDT_Seg,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Illegal TDT segment (%d) for variable '%s'",
+    2, ET_INT, ET_SYMTAB, 0,0,0,0 },
+  { EC_Large_Temp,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Unexpectedly large (%d) temporary variable '%s'",
+    2, ET_INT, ET_SYMTAB, 0,0,0,0 },
+  { EC_Ill_Stack_Base,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Illegal base (%s) for stack variable '%s'",
+    2, ET_SYMTAB, ET_SYMTAB, 0,0,0,0 },
+  { EC_Huge_Frame,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Stack frame size (%d) larger than supported offset %d",
+    2, ET_INT, ET_INT, 0,0,0,0 },
+  { EC_Huge_Frame2,
+    EM_Continuation | EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Use -TENV:use_fp option as workaround",
+    0, 0, 0, 0,0,0,0 },
+  { EC_Not_Sorted,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Stack must be sorted before calling %s",
+    1, ET_STRING, 0, 0, 0, 0, 0 },
+  { EC_Pop_Scope,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Stack underflow when popping allocation scope",
+    0, 0, 0, 0, 0, 0, 0 },
+  { EC_Ill_Frame_Seg,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Illegal stack frame segment (%d) in %s",
+    2, ET_INT, ET_STRING, 0,0,0,0 },
+  { EC_Ill_Stack_Model,	EM_Compiler | ES_ERRPHASE,	RAG_EN_NONE,
+    "Illegal stack model %d in %s",
+    2, ET_INT, ET_STRING, 0,0,0,0 },
+  { EC_Sym_Removal,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "Symbol '%s' not found for removal from segment %s",
+    2, ET_SYMTAB, ET_STRING, 0,0,0,0 },
+  { EC_Gnum_Range,	EM_Compiler | ES_ERRABORT,	RAG_EN_NONE,
+    "GP relative section '%s' too large, recompile with smaller -G option",
+    1, ET_STRING, 0,0,0,0,0 },
+
+  /* Note that we must terminate with a dummy record for code -1 */
+  { -1, 0, RAG_EN_NONE, "", 0, 0, 0, 0, 0, 0, 0 }
+};
+
+#endif /* erirb_desc_INCLUDED */

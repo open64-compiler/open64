@@ -1,0 +1,355 @@
+common/util/memory.c:49:#if defined(BUILD_OS_DARWIN)
+common/util/memory.c:51:#else /* defined(BUILD_OS_DARWIN) */
+common/util/memory.c:53:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_mul.c:88:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_mul.c:92:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_mul.c:95:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_a_to_q.c:142:#if defined(BUILD_OS_DARWIN)
+common/util/c_a_to_q.c:146:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_a_to_q.c:149:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/resource.c:201:#if !(defined(linux) || defined(BUILD_OS_DARWIN))
+common/util/resource.c:357:#if !(defined(linux) || defined(BUILD_OS_DARWIN))
+common/util/errors.cxx:215:#if !defined(linux) && !defined(__APPLE__) && !defined(BUILD_OS_DARWIN)
+common/util/quadsim.c:120:#if defined(BUILD_OS_DARWIN)
+common/util/quadsim.c:142:#else /* defined(BUILD_OS_DARWIN) */
+common/util/quadsim.c:163:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_div.c:88:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_div.c:92:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_div.c:95:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_neg.c:55:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_neg.c:59:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_neg.c:63:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:57:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:60:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:63:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:82:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:85:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:88:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:107:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:110:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:113:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:129:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:132:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:135:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:151:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:154:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:157:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:176:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:179:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:182:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/vcg.cxx:4:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_sqrt.c:105:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_sqrt.c:109:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sqrt.c:112:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/vstring.c:41:#if defined(BUILD_OS_DARWIN)
+common/util/vstring.c:43:#else /* defined(BUILD_OS_DARWIN) */
+common/util/vstring.c:45:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_to_a.c:142:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_to_a.c:147:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_to_a.c:150:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_add.c:76:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_add.c:80:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_add.c:83:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sub.c:76:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_sub.c:80:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sub.c:83:#endif /* defined(BUILD_OS_DARWIN) */
+common/targ_info/access/ti_errors.c:43:#if defined(BUILD_OS_DARWIN)
+common/targ_info/access/ti_errors.c:47:#else /* defined(BUILD_OS_DARWIN) */
+common/targ_info/access/ti_errors.c:49:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/defs.h:128:#if defined(BUILD_OS_DARWIN)
+common/com/defs.h:130:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/config.h:277:#elif defined(BUILD_OS_DARWIN) || defined(__CYGWIN__) || defined(__APPLE__)
+common/com/config.h:565:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/em_elf.cxx:1138:#if ! (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/config_opt.cxx:274:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/config_opt.cxx:913:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/ir_bwrite.cxx:144:#if ! (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/ir_bwrite.cxx:161:#if (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/ir_bcom.cxx:60:#if defined(BUILD_OS_DARWIN)
+common/com/ir_bcom.cxx:62:#else /* defined(BUILD_OS_DARWIN) */
+common/com/ir_bcom.cxx:64:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/ir_bcom.cxx:225:#if !(defined(linux) || defined(BUILD_OS_DARWIN) || defined(__APPLE__))
+common/com/config.cxx:92:#if ! defined(BUILD_OS_DARWIN)
+common/com/config.cxx:95:#endif /* ! defined(BUILD_OS_DARWIN) */
+common/com/strtab.cxx:73:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/pu_info.cxx:67:#if defined(BUILD_OS_DARWIN)
+common/com/pu_info.cxx:69:#else /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.cxx:71:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/ir_reader.cxx:253:#if defined(__linux__) || defined(BUILD_OS_DARWIN) || !defined(SHARED_BUILD)
+common/com/x8664/config_asm.h:187:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/config_asm.h:190:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:193:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:199:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/config_asm.h:202:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:205:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:104:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:107:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:109:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:330:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:367:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:526:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:528:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:531:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:627:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:629:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:632:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:639:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:643:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:645:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_targ.cxx:652:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/x8664/config_targ.cxx:789:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_em_const.cxx:425:#if defined(KEY) && ! defined(BUILD_OS_DARWIN)	// Use .rept/.endr to reduce .s file size.  Bug 4620.
+common/com/x8664/targ_em_const.cxx:1281:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_em_const.cxx:1283:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_em_const.cxx:1422:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/instr_reader.h:89:#if defined(BUILD_OS_DARWIN)
+common/com/instr_reader.h:93:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.h:43:#if defined(BUILD_OS_DARWIN)
+common/com/pu_info.h:45:#else /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.h:47:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/memory.c:49:#if defined(BUILD_OS_DARWIN)
+common/util/memory.c:51:#else /* defined(BUILD_OS_DARWIN) */
+common/util/memory.c:53:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_mul.c:88:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_mul.c:92:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_mul.c:95:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_a_to_q.c:142:#if defined(BUILD_OS_DARWIN)
+common/util/c_a_to_q.c:146:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_a_to_q.c:149:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/resource.c:201:#if !(defined(linux) || defined(BUILD_OS_DARWIN))
+common/util/resource.c:357:#if !(defined(linux) || defined(BUILD_OS_DARWIN))
+common/util/errors.cxx:215:#if !defined(linux) && !defined(__APPLE__) && !defined(BUILD_OS_DARWIN)
+common/util/quadsim.c:120:#if defined(BUILD_OS_DARWIN)
+common/util/quadsim.c:142:#else /* defined(BUILD_OS_DARWIN) */
+common/util/quadsim.c:163:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_div.c:88:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_div.c:92:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_div.c:95:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_neg.c:55:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_neg.c:59:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_neg.c:63:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:57:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:60:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:63:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:82:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:85:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:88:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:107:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:110:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:113:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:129:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:132:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:135:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:151:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:154:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:157:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:176:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:179:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:182:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/vcg.cxx:4:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_sqrt.c:105:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_sqrt.c:109:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sqrt.c:112:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/vstring.c:41:#if defined(BUILD_OS_DARWIN)
+common/util/vstring.c:43:#else /* defined(BUILD_OS_DARWIN) */
+common/util/vstring.c:45:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_to_a.c:142:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_to_a.c:147:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_to_a.c:150:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_add.c:76:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_add.c:80:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_add.c:83:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sub.c:76:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_sub.c:80:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sub.c:83:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/memory.c:49:#if defined(BUILD_OS_DARWIN)
+common/util/memory.c:51:#else /* defined(BUILD_OS_DARWIN) */
+common/util/memory.c:53:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_mul.c:88:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_mul.c:92:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_mul.c:95:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_a_to_q.c:142:#if defined(BUILD_OS_DARWIN)
+common/util/c_a_to_q.c:146:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_a_to_q.c:149:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/resource.c:201:#if !(defined(linux) || defined(BUILD_OS_DARWIN))
+common/util/resource.c:357:#if !(defined(linux) || defined(BUILD_OS_DARWIN))
+common/util/errors.cxx:215:#if !defined(linux) && !defined(__APPLE__) && !defined(BUILD_OS_DARWIN)
+common/util/quadsim.c:120:#if defined(BUILD_OS_DARWIN)
+common/util/quadsim.c:142:#else /* defined(BUILD_OS_DARWIN) */
+common/util/quadsim.c:163:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_div.c:88:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_div.c:92:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_div.c:95:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_neg.c:55:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_neg.c:59:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_neg.c:63:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:57:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:60:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:63:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:82:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:85:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:88:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:107:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:110:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:113:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:129:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:132:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:135:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:151:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:154:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:157:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:176:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_rel.c:179:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_rel.c:182:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sqrt.c:105:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_sqrt.c:109:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sqrt.c:112:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/vstring.c:41:#if defined(BUILD_OS_DARWIN)
+common/util/vstring.c:43:#else /* defined(BUILD_OS_DARWIN) */
+common/util/vstring.c:45:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_to_a.c:142:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_to_a.c:147:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_to_a.c:150:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_add.c:76:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_add.c:80:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_add.c:83:#endif /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sub.c:76:#if defined(BUILD_OS_DARWIN)
+common/util/c_q_sub.c:80:#else /* defined(BUILD_OS_DARWIN) */
+common/util/c_q_sub.c:83:#endif /* defined(BUILD_OS_DARWIN) */
+common/targ_info/access/ti_errors.c:43:#if defined(BUILD_OS_DARWIN)
+common/targ_info/access/ti_errors.c:47:#else /* defined(BUILD_OS_DARWIN) */
+common/targ_info/access/ti_errors.c:49:#endif /* defined(BUILD_OS_DARWIN) */
+common/targ_info/access/ti_errors.c:43:#if defined(BUILD_OS_DARWIN)
+common/targ_info/access/ti_errors.c:47:#else /* defined(BUILD_OS_DARWIN) */
+common/targ_info/access/ti_errors.c:49:#endif /* defined(BUILD_OS_DARWIN) */
+common/targ_info/access/ti_errors.c:43:#if defined(BUILD_OS_DARWIN)
+common/targ_info/access/ti_errors.c:47:#else /* defined(BUILD_OS_DARWIN) */
+common/targ_info/access/ti_errors.c:49:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/defs.h:128:#if defined(BUILD_OS_DARWIN)
+common/com/defs.h:130:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/config.h:277:#elif defined(BUILD_OS_DARWIN) || defined(__CYGWIN__) || defined(__APPLE__)
+common/com/config.h:565:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/em_elf.cxx:1138:#if ! (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/config_opt.cxx:274:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/config_opt.cxx:913:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/ir_bwrite.cxx:144:#if ! (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/ir_bwrite.cxx:161:#if (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/ir_bcom.cxx:60:#if defined(BUILD_OS_DARWIN)
+common/com/ir_bcom.cxx:62:#else /* defined(BUILD_OS_DARWIN) */
+common/com/ir_bcom.cxx:64:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/ir_bcom.cxx:225:#if !(defined(linux) || defined(BUILD_OS_DARWIN) || defined(__APPLE__))
+common/com/config.cxx:92:#if ! defined(BUILD_OS_DARWIN)
+common/com/config.cxx:95:#endif /* ! defined(BUILD_OS_DARWIN) */
+common/com/strtab.cxx:73:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/pu_info.cxx:67:#if defined(BUILD_OS_DARWIN)
+common/com/pu_info.cxx:69:#else /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.cxx:71:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/ir_reader.cxx:253:#if defined(__linux__) || defined(BUILD_OS_DARWIN) || !defined(SHARED_BUILD)
+common/com/x8664/config_asm.h:187:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/config_asm.h:190:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:193:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:199:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/config_asm.h:202:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:205:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:104:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:107:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:109:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:330:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:367:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:526:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:528:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:531:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:627:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:629:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:632:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:639:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:643:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:645:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_targ.cxx:652:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/x8664/config_targ.cxx:789:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_em_const.cxx:425:#if defined(KEY) && ! defined(BUILD_OS_DARWIN)	// Use .rept/.endr to reduce .s file size.  Bug 4620.
+common/com/x8664/targ_em_const.cxx:1281:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_em_const.cxx:1283:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_em_const.cxx:1422:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/instr_reader.h:89:#if defined(BUILD_OS_DARWIN)
+common/com/instr_reader.h:93:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.h:43:#if defined(BUILD_OS_DARWIN)
+common/com/pu_info.h:45:#else /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.h:47:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/defs.h:128:#if defined(BUILD_OS_DARWIN)
+common/com/defs.h:130:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/config.h:277:#elif defined(BUILD_OS_DARWIN) || defined(__CYGWIN__) || defined(__APPLE__)
+common/com/config.h:565:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/em_elf.cxx:1138:#if ! (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/config_opt.cxx:274:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/config_opt.cxx:913:#if defined(__linux__) || defined(BUILD_OS_DARWIN)
+common/com/ir_bwrite.cxx:144:#if ! (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/ir_bwrite.cxx:161:#if (defined(linux) || defined(BUILD_OS_DARWIN))
+common/com/ir_bcom.cxx:60:#if defined(BUILD_OS_DARWIN)
+common/com/ir_bcom.cxx:62:#else /* defined(BUILD_OS_DARWIN) */
+common/com/ir_bcom.cxx:64:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/ir_bcom.cxx:225:#if !(defined(linux) || defined(BUILD_OS_DARWIN) || defined(__APPLE__))
+common/com/config.cxx:92:#if ! defined(BUILD_OS_DARWIN)
+common/com/config.cxx:95:#endif /* ! defined(BUILD_OS_DARWIN) */
+common/com/strtab.cxx:73:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/pu_info.cxx:67:#if defined(BUILD_OS_DARWIN)
+common/com/pu_info.cxx:69:#else /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.cxx:71:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/ir_reader.cxx:253:#if defined(__linux__) || defined(BUILD_OS_DARWIN) || !defined(SHARED_BUILD)
+common/com/x8664/config_asm.h:187:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/config_asm.h:190:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:193:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:199:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/config_asm.h:202:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:205:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:104:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:107:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:109:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:330:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:367:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:526:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:528:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:531:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:627:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:629:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:632:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:639:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:643:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:645:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_targ.cxx:652:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/x8664/config_targ.cxx:789:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_em_const.cxx:425:#if defined(KEY) && ! defined(BUILD_OS_DARWIN)	// Use .rept/.endr to reduce .s file size.  Bug 4620.
+common/com/x8664/targ_em_const.cxx:1281:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_em_const.cxx:1283:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_em_const.cxx:1422:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:187:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/config_asm.h:190:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:193:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:199:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/config_asm.h:202:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_asm.h:205:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:104:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:107:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:109:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:330:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:367:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:526:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:528:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:531:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:627:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:629:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:632:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:639:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_sim.cxx:643:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_sim.cxx:645:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/config_targ.cxx:652:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/x8664/config_targ.cxx:789:#if defined(linux) || defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_em_const.cxx:425:#if defined(KEY) && ! defined(BUILD_OS_DARWIN)	// Use .rept/.endr to reduce .s file size.  Bug 4620.
+common/com/x8664/targ_em_const.cxx:1281:#if defined(BUILD_OS_DARWIN)
+common/com/x8664/targ_em_const.cxx:1283:#else /* defined(BUILD_OS_DARWIN) */
+common/com/x8664/targ_em_const.cxx:1422:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/instr_reader.h:89:#if defined(BUILD_OS_DARWIN)
+common/com/instr_reader.h:93:#endif /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.h:43:#if defined(BUILD_OS_DARWIN)
+common/com/pu_info.h:45:#else /* defined(BUILD_OS_DARWIN) */
+common/com/pu_info.h:47:#endif /* defined(BUILD_OS_DARWIN) */

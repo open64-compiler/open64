@@ -1,0 +1,121 @@
+#! /bin/bash
+SHOW="no"
+echo $@ | grep "\-show" >/dev/null 2>/dev/null
+if [ $? -eq 0 ] ; then
+    SHOW="yes"
+fi
+
+
+function show() {
+    if [ ${SHOW} = "yes" ] ; then
+	echo $1
+    fi
+}
+
+show "-----------------------------------------"
+show "         Java Front End (Script)"
+show "-----------------------------------------"
+
+if [ $# -lt 2  ]
+then
+  echo " JFE is a .class(Java Bytecode) -> .B (Whirl) translator"
+  echo " Usage : jfe -fC,<path_to_class_file>  -fB,<path_to_B_output> [... additional params ]"
+  echo "-----------------------------------------"
+  exit 1
+fi
+
+
+# Used after install !
+JFE_PATH=$(dirname $(realpath $0))
+show "JFE_PATH = $JFE_PATH"
+
+
+# 1. Check if Java is present
+
+if [ $(which java) ]
+then
+  show " -- java ... ok"
+else
+  echo " -- *ERROR* -- Please check if JAVA is installed "
+  echo " -- if not, please run : "
+  echo " -- sudo apt install -y openjdk-8-jdk"
+  exit 1
+fi
+
+if [ "k$JAVA_HOME" != "k" ]
+then
+    show " -- found JAVA_HOME : $JAVA_HOME "
+else
+    echo " -- please check if JAVA_HOME is properly set "
+    echo " -- to double check, run echo \$JAVA_HOME"
+    exit 1
+fi
+
+if [ ${SHOW} = "yes" ] ; then
+    echo " -- inside JFE "
+fi
+
+# 2. Check if macbcb.so is present
+jlib="libmacbcb.so"
+if [ -f ${JFE_PATH}/$jlib ]
+then
+    show " -- found $jlib"
+else
+    echo " -- not-found : $jlib, exitting"
+    exit 1
+fi
+
+
+# 3. Check if jar is present
+jjar="macbcr.jar"
+fernjar="fernflower.jar"
+if [ -f ${JFE_PATH}/$jjar ]
+then
+    show " -- found $jjar"
+    show " -- inside : $(pwd) "
+    JFE_RUN_LINE="java ${JVM_HEAP} -Djava.library.path=${JFE_PATH} -ea -jar ${JFE_PATH}/$jjar"
+    if [ ! -z ${RUN_DECOMP} ]
+    then
+      className=`echo $@|awk -F-fC,  '{print $2}'|awk '{print $1}'`
+      show " -- running : fernflower java -jar ${JFE_PATH}/$fernjar $className "
+      java -jar ${JFE_PATH}/$fernjar $className decompile/
+    fi
+    if [ ${SHOW} = "yes" ] ; then
+	echo " -- running : $JFE_RUN_LINE $@"
+    fi
+    JVM_OPTS=""
+    JFE_OPTS=""
+    JVM_OPT_PREFIX="-JVM="
+    for ARG in $*
+    do
+      if [[ ${ARG} == $JVM_OPT_PREFIX* ]]
+      then
+        JVM_OPTS="${JVM_OPTS} ${ARG:5}"
+      else
+        JFE_OPTS="${JFE_OPTS} ${ARG}"
+      fi
+    done
+    java ${JVM_OPTS} -Djava.library.path=${JFE_PATH} -ea -jar ${JFE_PATH}/$jjar ${JFE_OPTS}
+    if [ $? -eq 0 ]
+    then
+        show "-- returned 0; --"
+    else
+        show "-- returned $?; quitting --"
+        exit 2
+    fi
+# elif [ -f ${JFE_PATH}/fernflower.jar ]
+# then
+#     echo " -- found fernflower.jar"
+#     echo " -- current dir: $(pwd)"
+# 	JFE_RUN_LINE="java -Djava.library.path=${JFE_PATH} -ea -jar ${JFE_PATH}/fernflower.jar"
+#     echo " -- running:  $JFE_RUN_LINE $@"
+#     java -Djava.library.path=${JFE_PATH} -ea -jar ${JFE_PATH}/fernflower.jar $@
+# else
+# 	echo " -- not-found : fernflower.jar, exitting"
+# 	exit 1
+fi
+
+# Runnning the fernflower central
+
+show " -----------  End of JFE -----------------"
+exit 0

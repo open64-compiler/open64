@@ -1,0 +1,463 @@
+Reading simple.c
+Int main(){
+	Return 3;
+}
+
+Class a {
+ Int I;
+}
+
+OPEN OUTPUT(fileName)
+wgen`::WN_open_output(file_name="one_var/middle.B") at ir_bwrite.cxx:441
+
+WN_MAP_TAB_CREATE(pool)
+frame #0: 0x000000010014a239 wgen`::WN_MAP_TAB_Create(pool=0x00000001002341b0) at wn_map.cxx:135
+    frame #1: 0x0000000100078fd4 wgen`WGEN_Start_Function(fndecl=0x000000010070c448) at wgen_decl.cxx:1252
+    frame #2: 0x000000010006bffe wgen`WGEN_Expand_Function_Body(decl=0x000000010070c448) at wgen_decl.cxx:424
+    frame #3: 0x000000010006d116 wgen`::WGEN_Expand_Decl(decl=0x000000010070c448, can_skip=YES) at wgen_decl.cxx:792
+    frame #4: 0x00000001000028eb wgen`main(argc=3, argv=0x00007ffeefbffa68, envp=0x00007ffeefbffa88) at main.c:363
+
+WN_CreateBlock()  — creation of WN* ————— { Parsing Bracket }
+
+WN_Create — Inside Create_Block
+frame #0: 0x0000000100141b18 wgen`WN_Create(opr=OPR_BLOCK, rtype=20, desc=20, kid_count=0) at wn.cxx:589
+    frame #1: 0x00000001001420e1 wgen`WN_Create(opcode=OPC_BLOCK, kid_count=0) at wn.h:678
+    frame #2: 0x00000001001427e4 wgen`WN_CreateBlock() at wn.cxx:773
+    frame #3: 0x000000010007904c wgen`WGEN_Start_Function(fndecl=0x000000010070c448) at wgen_decl.cxx:1262
+    frame #4: 0x000000010006bffe wgen`WGEN_Expand_Function_Body(decl=0x000000010070c448) at wgen_decl.cxx:424
+    frame #5: 0x000000010006d116 wgen`::WGEN_Expand_Decl(decl=0x000000010070c448, can_skip=YES) at wgen_decl.cxx:792
+    frame #6: 0x00000001000028eb wgen`main(argc=3, argv=0x00007ffeefbffa68, envp=0x00007ffeefbffa88) at main.c:363
+
+4.1 Which_WN_FREE_LIST —> Determine Whether Expr Or Stmt
+
+4.2  MEM_POOL_Initialize(WN_mem_pool_ptr)
+
+4.3. MEM_POOL_Push (WN_mem_pool_ptr)
+
+4.4 WN_set_operator(wn=0x0000000101020430, opr=OPR_BLOCK). (Inside Create Block)
+4.5    some what settings
+
+  636 	    WN_set_operator(wn, opr);
+   637 	    WN_set_rtype(wn, rtype);
+-> 638 	    WN_set_desc(wn, desc);
+   639 	    WN_set_kid_count(wn, kid_count);    // kid_count = 0
+   640 	    WN_set_map_id(wn, New_Map_Id()); 
+   641 	    wn->set_unique_id();
+   642 	
+   643 	#ifdef TARG_SL
+   644 	    /* SL initialization
+   645 	     */
+   646 	    WN_Set_vbuf_ofst_adjusted(wn, FALSE);
+   647 	    WN_Set_is_internal_mem_ofst(wn, FALSE);
+   648 	    WN_Set_is_compgoto_para(wn, FALSE);
+   649 	    WN_Set_is_compgoto_for_minor(wn, FALSE);
+
+4.5.1 New_Map_Id()
+	
+2 WN_Create_Block 
+wn = WN_Create(OPC_BLOCK, 0)
+WN_first(wn) = WN_last(wn) = NULL 
+Return (wn). // WN is 
+
+WN_Set_Linenum(wn=0x0000000101020430, ln=4294967297). => Wn_Linenum(wn) = linepos;
+
+WN_cast_WN_to_STMT_WN
+
+frame #0: 0x0000000100005fd8 wgen`WN_offset_in_STMT_WN(x=0x0000000101020430) at wn_core.h:1017
+    frame #1: 0x0000000100005fc0 wgen`WN_cast_WN_to_STMT_WN(x=0x0000000101020430) at wn_core.h:1022
+    frame #2: 0x0000000100005f95 wgen`WN_linenum(wn=0x0000000101020430) at wn_core.h:1031
+    frame #3: 0x0000000100003c71 wgen`WN_Set_Linenum(wn=0x0000000101020430, ln=4294967297) at wn_core.h:1354
+    frame #4: 0x0000000100003bed wgen`WGEN_Stmt_Push(wn=0x0000000101020430, kind=wgen_stmk_func_body, srcpos=4294967297) at wgen_misc.cxx:555
+    frame #5: 0x000000010007907c wgen`WGEN_Start_Function(fndecl=0x000000010070c448) at wgen_decl.cxx:1263
+
+WN_set_map_id(wn=0x0000000101020468, m=-1)
+
+WN_CreateEntry(nkids=0, name=12801, body=0x0000000101020468, pragmas=0x0000000000000000, varrefs=0x0000000000000000)
+
+	7.1 WN_CreateEntry = 
+	          WN *wn;
+   960 	  wn = WN_Create (OPC_FUNC_ENTRY, nkids + 3);
+   961 	  WN_entry_name(wn) = name;
+   962 	  WN_func_body(wn) = body;
+   963 	  WN_func_pragmas(wn) = WN_block_element(pragmas);
+   964 	  WN_func_varrefs(wn) = WN_block_element(varrefs);
+
+ 8.     /* from 1..nkids=num_args, create IDNAME args for OPR_FUNC_ENTRY */
+   1576	    INT i = 0;
+   1577	 
+   1578	    // Create the fake first param.
+   1579	    if (TY_return_in_mem(ret_ty_idx)) {
+   1580	      ST *st = New_ST ();
+   1581	      ST_Init (st, Save_Str2i(".arg", "", i), CLASS_VAR, SCLASS_FORMAL,
+   1582		       EXPORT_LOCAL, Make_Pointer_Type(ret_ty_idx, FALSE));
+   1583	      Set_ST_is_value_parm(st);
+   1584	      WN_kid(entry_wn,i) = WN_CreateIdname ( 0, ST_st_idx(st) );
+   1585	      ++i;
+   1586	    }
+
+
+WGEN_Stmt_Push —> WN_Set_Linenum ( wn, srcpos );
+	WGEN_Stmt_Push (WN* wn, WGEN_STMT_KIND kind, SRCPOS srcpos)
+(lldb)  l
+   531 	{
+   532 	  INT new_stack_size;
+   533 	  
+   534 	#ifdef KEY
+   535 	  // Close any existing EH region before we push a new stmt, since we don't
+   536 	  // know what the new stmt offers, and may have difficulty closing the region
+   537 	  // then.
+(lldb) 
+   538 	  if (opt_regions && wn_stmt_sp)
+   539 	    Check_For_Call_Region ();
+   540 	#endif
+   541 	
+   542 	  if (wn_stmt_sp == wn_stmt_stack_last) {
+   543 	    new_stack_size = ENLARGE(wn_stmt_stack_size);
+   544 	    wn_stmt_stack =
+(lldb) 
+   545 	      (WN_STMT *) realloc (wn_stmt_stack, new_stack_size * sizeof (WN_STMT));
+   546 	    wn_stmt_sp = wn_stmt_stack + wn_stmt_stack_size - 1;
+   547 	    wn_stmt_stack_size = new_stack_size;
+   548 	    wn_stmt_stack_last = wn_stmt_stack + wn_stmt_stack_size - 1;
+   549 	  }
+   550 	  ++wn_stmt_sp;
+   551 	  wn_stmt_sp->wn   = wn;
+(lldb) 
+   552 	  wn_stmt_sp->kind = kind;
+   553 	
+   554 	  if (srcpos)
+   555 	    WN_Set_Linenum ( wn, srcpos );
+   556 	} /* WGEN_Stmt_Push */
+
+WN_CreatePragma
+ wn = WN_CreatePragma (WN_PRAGMA_PREAMBLE_END, (ST_IDX) NULL, 0, 0);
+   1687	    WGEN_Stmt_Append (wn, Get_Srcpos());
+   1688	    WGEN_Stmt_Append (vla_block, Get_Srcpos());
+
+
+WN_INSERT_BlockAfter
+
+
+
+
+WGEN_Expand_Expr_With_Sequence_Point()
+	WGEN_Expand_Stmt (stmt=0x000000010070c968, target_wn=0x0000000000000000)-> WGEN_Expand_Return(stmt=0x000000010070c968, retval=0x000000010070ca30)->WGEN_Expand_Expr_With_Sequence_Point
+->  
+
+-> WGEN_Expand_Expr(exp=0x000000010070ca30, need_result=true, nop_ty_idx=0, component_ty_idx=0, component_offset=0x0000000000000000, field_id=0, is_bit_field=false, is_aggr_init_via_ctor=false, target_wn=0x0000000000000000)
+
+
+
+
+WN_Intconst(rtype=4, value=3) at wn.cxx:2344
+* thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 14.240
+  * frame #0: 0x0000000100145475 wgen`WN_CreateIntconst(opr=OPR_INTCONST, rtype=4, desc=20, const_val=3) at wn.cxx:1960
+    frame #1: 0x00000001001462b7 wgen`WN_Intconst(rtype=4, value=3) at wn.cxx:2344
+    frame #2: 0x000000010001372c wgen`WGEN_Expand_Expr(exp=0x000000010070ccf0, need_result=true, nop_ty_idx=0, component_ty_idx=0, component_offset=0x0000000000000000, field_id=0, is_bit_field=false, is_aggr_init_via_ctor=false, target_wn=0x0000000000000000) at wgen_expr.cxx:6801
+    frame #3: 0x000000010001b735 wgen`WGEN_Expand_Expr(exp=0x000000010070ca30, need_result=true, nop_ty_idx=0, component_ty_idx=0, component_offset=0x0000000000000000, field_id=0, is_bit_field=false, is_aggr_init_via_ctor=false, target_wn=0x0000000000000000) at wgen_expr.cxx:8234
+    frame #4: 0x0000000100029f45 wgen`WGEN_Expand_Expr_With_Sequence_Point(exp=0x000000010070ca30, mtype=4, target_wn=0x0000000000000000) at wgen_expr.cxx:2449
+    frame #5: 0x0000000100045609 wgen`WGEN_Expand_Return(stmt=0x000000010070c968, retval=0x000000010070ca30) at wgen_stmt.cxx:2370
+    frame #6: 0x000000010004ba6e wgen`::WGEN_Expand_Stmt(stmt=0x000000010070c968, target_wn=0x0000000000000000) at wgen_stmt.cxx:4245
+    frame #7: 0x000000010004bc06 wgen`::WGEN_Expand_Stmt(stmt=0x000000010070c8a0, target_wn=0x0000000000000000) at wgen_stmt.cxx:4309
+    frame #8: 0x000000010006c0b9 wgen`WGEN_Expand_Function_Body(decl=0x000000010070c448) at wgen_decl.cxx:435
+    frame #9: 0x000000010006d116 wgen`::WGEN_Expand_Decl(decl=0x000000010070c448, can_skip=YES) at wgen_decl.cxx:792
+    frame #10: 0x00000001000028eb wgen`main(argc=3, argv=0x00007ffeefbffa68, envp=0x00007ffeefbffa88) at main.c:363
+    frame #11: 0x00007fff6a60a015 libdyld.dylib`start + 1
+    frame #12: 0x00007fff6a60a015 libdyld.dylib`start + 1
+
+WN_CreateStid(opr=OPR_STID, rtype=20, desc=4, offset=0, st=0x000000010101d038, ty=1026, value=0x00000001010205a8, field_id=0)
+
+WN_CreateStid(opr=OPR_STID, rtype=20, desc=4, offset=0, st=0x000000010101d038, ty=1026, value=0x00000001010205a8, field_id=0) at wn.cxx:1360
+    frame #1: 0x00000001000286c8 wgen`WGEN_CreateStid(opr=OPR_STID, rtype=20, desc=4, offset=0x0000000000000000, st=0x000000010101d038, ty=1026, value=0x00000001010205a8, field_id=0) at wgen_expr.cxx:1019
+    frame #2: 0x000000010000d38f wgen`WGEN_Lhs_Of_Modify_Expr(assign_code=GS_MODIFY_EXPR, lhs=0x000000010070cad8, lhs_retval=0x0000000000000000, need_result=true, component_ty_idx=0, component_offset=0x0000000000000000, field_id=0, is_bit_field=false, rhs_wn=0x00000001010205a8, rhs_preg_num=0, is_realpart=false, is_imagpart=false) at wgen_expr.cxx:1801
+    frame #3: 0x000000010001b890 wgen`WGEN_Expand_Expr(exp=0x000000010070ca30, need_result=true, nop_ty_idx=0, component_ty_idx=0, component_offset=0x0000000000000000, field_id=0, is_bit_field=false, is_aggr_init_via_ctor=false, target_wn=0x0000000000000000) at wgen_expr.cxx:8242
+    frame #4: 0x0000000100029f45 wgen`WGEN_Expand_Expr_With_Sequence_Point(exp=0x000000010070ca30, mtype=4, target_wn=0x0000000000000000) at wgen_expr.cxx:2449
+    frame #5: 0x0000000100045609 wgen`WGEN_Expand_Return(stmt=0x000000010070c968, retval=0x000000010070ca30) at wgen_stmt.cxx:2370
+    frame #6: 0x000000010004ba6e wgen`::WGEN_Expand_Stmt(stmt=0x000000010070c968, target_wn=0x0000000000000000) at wgen_stmt.cxx:4245
+    frame #7: 0x000000010004bc06 wgen`::WGEN_Expand_Stmt(stmt=0x000000010070c8a0, target_wn=0x0000000000000000) at wgen_stmt.cxx:4309
+    frame #8: 0x000000010006c0b9 wgen`WGEN_Expand_Function_Body(decl=0x000000010070c448) at wgen_decl.cxx:435
+    frame #9: 0x000000010006d116 wgen`::WGEN_Expand_Decl(decl=0x000000010070c448, can_skip=YES) at wgen_decl.cxx:792
+    frame #10: 0x00000001000028eb wgen`main(argc=3, argv=0x00007ffeefbffa68, envp=0x00007ffeefbffa88) at main.c:363
+    frame #11: 0x00007fff6a60a015 libdyld.dylib`start + 1
+    frame #12: 0x00007fff6a60a015 libdyld.dylib`start + 1
+
+In the middle, one STMT_WN Snapshot
+
+WN_opcode(wn=0x00000001010205a8)
+
+WN_cast_WN_to_STMT_WN(x=0x00000001010205e0)
+
+WN_INSERT_BlockAfter(blck=0x0000000101020588, wn=0x0000000000000000, in=0x00000001010205e0)
+
+WGEN_Stmt_Append(wn=0x00000001010205e0, srcpos=8589934593
+
+WN_CreateLdid(opr=OPR_LDID, rtype=4, desc=4, offset=0, st=0x000000010101d038, ty=1026, field_id=0)
+
+WN_CreateLdid(opr=OPR_LDID, rtype=4, desc=4, offset=0, st=258, ty=1026, field_id=0)
+
+WN_CreateComma(opr=OPR_COMMA, rtype=4, desc=20, block=0x0000000101020588, value=0x0000000101020600)
+
+
+20.   WN_CreateReturn_Val(opr=OPR_RETURN_VAL, rtype=4, desc=20, val=0x00000001010205a8) at wn.cxx:1077.  
+
+     Val is the value returned
+
+
+Upon Function Ending 
+   2394.        WN * cleanup_block = WN_CreateBlock ();
+   2395	    WGEN_Stmt_Push (cleanup_block, wgen_stmk_temp_cleanup, Get_Srcpos ());
+
+if (block) {
+   2535	    if (wn)
+-> 2536	      WN_INSERT_BlockLast(block, wn);
+   2537	    WGEN_Stmt_Append(block, Get_Srcpos());
+
+Finish Function 
+WGEN_Finish_Function(fndecl=0x000000010070c448) at wgen_decl.cxx:1881
+
+// deallocate the old map table
+   1880	    if (Current_Map_Tab) {
+-> 1881	        WN_MAP_TAB_Delete(Current_Map_Tab);
+   1882	        Current_Map_Tab = NULL;
+   1883	    }
+   1884	
+(lldb) l
+   1885	    Write_PU_Info (pu_info);
+   1886	
+   1887	    PU_Info_Table [CURRENT_SYMTAB+1] = NULL;
+   1888	
+   1889	    if (Return_Address_ST [CURRENT_SYMTAB]) {
+   1890	      Set_PU_has_return_address (Get_Current_PU ());
+   1891	      Set_PU_no_inline (Get_Current_PU ());
+(lldb) 
+   1892	      Return_Address_ST [CURRENT_SYMTAB] = NULL;
+   1893	    }
+   1894	
+   1895	#ifdef KEY
+   1896	    // Bug 14417: Wgen may have set the PU no_inline, so we must reset
+   1897	    // must_inline.
+   1898	    if (PU_no_inline (Get_Current_PU()))
+(lldb) 
+   1899	      Clear_PU_must_inline (Get_Current_PU());
+   1900	#endif
+   1901	
+   1902	    try_block_seen = false;
+   1903	
+   1904	    // dump_tree(Current_Entry_WN());
+   1905	    // Restore the previous entry wn, if any.
+(lldb) 
+   1906	    Pop_Current_Entry_WN();
+   1907	
+   1908	    Delete_Scope (CURRENT_SYMTAB);
+
+
+
+  23.  WN_write_symtab (PU_Info *pu, Output_File *fl)
+
+WGEN_File_Finish (void)
+   443 	{
+   444 	    Verify_SYMTAB (GLOBAL_SYMTAB);
+-> 445 	    Write_Global_Info (PU_Tree_Root);
+   446 	    Close_Output_Info ();
+   447 	    IR_reader_finish ();
+   448 	    MEM_POOL_Pop (&MEM_src_pool);
+(lldb) l
+   449 	}
+
+Write_Global_Info (PU_Info *pu_tree)
+   1569	{
+   1570	    Set_Error_Phase ("Writing WHIRL file" );
+-> 1571	    WN_write_PU_Infos (pu_tree, ir_output);
+   1572	
+   1573	
+   1574	    WN_write_globals (ir_output);
+(lldb) l
+   1575	
+   1576	    WN_write_dst(Current_DST, ir_output);
+   1577	
+   1578	    WN_write_strtab(Index_To_Str (0), STR_Table_Size (), ir_output);
+   1579	
+   1580	#if defined(KEY) && defined(BACK_END)
+   1581	    if (Mod_Ref_Info_Table_Size() != 0) 
+(lldb) 
+   1582	      IPA_write_summary (IPA_irb_write_mod_ref_info, ir_output);
+   1583	#endif
+   1584	
+   1585	}
+
+
+WGEN_Finish ()
+   453 	{
+   454 	  WGEN_Stmt_Stack_Free ();
+   455 	}
+
+
+(STMT_WN) $2 = {
+  prev = 0x0000000000000000
+  next = 0x0000000000000000
+  linenum = 0
+  wn = {
+    u1u2 = {
+      uu = {
+        ua = {
+          load_offset = 0
+          lda_offset = 0
+          store_offset = 0
+          idname_offset = 0
+          num_entries = 0
+          loadx_addr_ty = 0
+          cvtl_bits = 0
+          label_number = 0
+          call_flag = 0
+          if_flag = 0
+          io_flag = 0
+          asm_flag = 0
+          asm_operand_num = 0
+          li = (trip_est = 0, loop_depth = 0)
+          pragma = (pragma_flags = 0, pragma_id = 0)
+          io_item_ty = 0
+          region = (region_kind = REGION_KIND_PRAGMA, region_id = 0)
+        }
+        ub = {
+          st_idx = 0
+          ty = 0
+          id = 0
+          intrinsic = INTRINSIC_NONE
+          iostatement = 0
+          ioitem = IOITEM_ERROR
+          prefetch_flag = 0
+          loop_flag = 0
+          last_label = 0
+          ereg_supp = 0
+          label_level = 0
+        }
+      }
+      element_size = 0
+    }
+    common = (wn_operator = OPERATOR_UNKNOWN, rtype = 0, kid_count = 0, map_id = 0, desc = 0)
+    u3 = {
+      ty_fields = {
+        dummy1 = 0x0000000000000000
+        ty = 0
+      }
+      kids = {
+        [0] = 0x0000000000000000
+        [1] = 0x0000000000000000
+      }
+      const_val = 0
+      asm_fields = (num_inputs = 0, num_clobbers = 0)
+      label_flag_fields = {
+        dummy2 = 0x0000000000000000
+        label_flag = 0
+      }
+      block = {
+        first = 0x0000000000000000
+        last = 0x0000000000000000
+      }
+      pragma = {
+        pragma_arg64 = 0
+        up1 = {
+           = {
+            dummy3 = 0x0000000000000000
+            pragma_arg1 = 0
+          }
+           = {
+            pragma_arg2 = 0
+            asm_pragma = (pragma_asm_opnd_num = 0, pragma_asm_copyout_preg = 0)
+          }
+        }
+        up2 = {
+          pragma_pad1 = 0
+          pragma_distr_type = '\0'
+          pragma_index = '\0'
+          pragma_preg = 0
+        }
+      }
+    }
+  }
+}
+
+
+
+
+WN SnapShot that WN_CreateBlock is returning
+
+(WN) $6 = {
+  u1u2 = {
+    uu = {
+      ua = {
+        load_offset = 0
+        lda_offset = 0
+        store_offset = 0
+        idname_offset = 0
+        num_entries = 0
+        loadx_addr_ty = 0
+        cvtl_bits = 0
+        label_number = 0
+        call_flag = 0
+        if_flag = 0
+        io_flag = 0
+        asm_flag = 0
+        asm_operand_num = 0
+        li = (trip_est = 0, loop_depth = 0)
+        pragma = (pragma_flags = 0, pragma_id = 0)
+        io_item_ty = 0
+        region = (region_kind = REGION_KIND_PRAGMA, region_id = 0)
+      }
+      ub = {
+        st_idx = 0
+        ty = 0
+        id = 0
+        intrinsic = INTRINSIC_NONE
+        iostatement = 0
+        ioitem = IOITEM_ERROR
+        prefetch_flag = 0
+        loop_flag = 0
+        last_label = 0
+        ereg_supp = 0
+        label_level = 0
+      }
+    }
+    element_size = 0
+  }
+  common = (wn_operator = OPR_BLOCK, rtype = 20, kid_count = 0, map_id = -1, desc = 20)
+  u3 = {
+    ty_fields = {
+      dummy1 = 0x0000000000000000
+      ty = 0
+    }
+    kids = {
+      [0] = 0x0000000000000000
+      [1] = 0x0000000000000000
+    }
+    const_val = 0
+    asm_fields = (num_inputs = 0, num_clobbers = 0)
+    label_flag_fields = {
+      dummy2 = 0x0000000000000000
+      label_flag = 0
+    }
+    block = {
+      first = 0x0000000000000000
+      last = 0x0000000000000000
+    }
+    pragma = {
+      pragma_arg64 = 0
+      up1 = {
+         = {
+          dummy3 = 0x0000000000000000
+          pragma_arg1 = 0
+        }
+         = {
+          pragma_arg2 = 0
+          asm_pragma = (pragma_asm_opnd_num = 0, pragma_asm_copyout_preg = 0)
+        }
+      }
+      up2 = {
+        pragma_pad1 = 0
+        pragma_distr_type = '\0'
+        pragma_index = '\0'
+        pragma_preg = 0
+      }
+    }
+  }
+}

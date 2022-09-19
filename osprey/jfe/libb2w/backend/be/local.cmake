@@ -1,0 +1,28 @@
+set(BE_BE_DIR  be/be)
+set(BE_BE_TARG_DIR  be/be/${BUILD_TARGET_PREFIX})
+set(BE_CG_DIR  be/cg)
+set(BE_COM_DIR be/com)
+set(BE_OPT_DIR be/opt)
+set(BE_REGION_DIR be/region)
+set(BE_COM_TARG_DIR be/com/${BUILD_TARGET_PREFIX})
+set(BE_LNO_DIR be/lno)
+set(BE_WHIRL2C_DIR be/whirl2c)
+set(BE_WHIRL2F_DIR be/whirl2f)
+set(BE_VHO_DIR be/vho)
+
+set(IPL_DIR ipa/local)
+set(IPA_ANALYZE_DIR ipa/main/analyze)
+set(IPA_OPTIMIZE_DIR ipa/main/optimize)
+set(IPA_COMMON_DIR ipa/common)
+
+set(COMMON_DIR common)
+set(COMMON_UTIL_DIR common/util)
+set(COMMON_COM_DIR common/com)
+set(COMMON_COM_TARG_DIR common/com/${BUILD_TARGET_PREFIX})
+set(COMMON_UTIL_TARG_DIR common/util/${BUILD_TARGET_PREFIX})
+set(INSTR_COM_DIR common/instrument)
+set(LD_PLUGIN_DIR be/ld_plugin)
+
+set(PREG_DIR ${LINUX_BINARY_GMAKE_DIR}/osprey/targdir/targ_info)
+
+set(BUILD_BASE )

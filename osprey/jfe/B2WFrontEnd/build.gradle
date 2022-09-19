@@ -1,0 +1,88 @@
+plugins {
+    id 'java'
+}
+
+group 'io.xcalibyte'
+version '1.2'
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+//    maven {
+//        url "https://soot-build.cs.uni-paderborn.de/nexus/repository/soot-release/"
+//    }
+
+}
+
+compileJava {
+    sourceCompatibility '1.8'
+    targetCompatibility '1.8'
+    if (project.hasProperty("javaBuildType")) {
+        options.compilerArgs << javaBuildType
+    }
+}
+
+sourceSets {
+    main {
+        java.srcDirs 'src/main/java'
+        resources.srcDirs "src/main/resources"
+    }
+    test {
+        java.srcDirs 'src/test'
+    }
+}
+
+dependencies {
+//    implementation            'ca.mcgill.sable:soot:3.1.0'
+    implementation 'org.apache.logging.log4j:log4j-api:2.11.1'
+    implementation 'org.apache.logging.log4j:log4j-core:2.11.1'
+    implementation 'org.json:json:20190722'
+    implementation 'junit:junit:4.12'
+    implementation 'org.assertj:assertj-core:3.11.1'
+    implementation 'com.github.rvesse:airline:2.6.0'
+    testImplementation 'junit:junit:4.12'
+    GradleVersion gradleVersion = GradleVersion.version('4.8')
+    if (GradleVersion.current() != gradleVersion) {
+        throw new GradleException("Curent gradle version : ${GradleVersion.current()}, is not to fit expected version ${gradleVersion}")
+    }
+    compile files('jfe_libs/sootclasses-trunk-jar-with-dependencies.jar')
+}
+
+reporting.baseDir = "test-report"
+testResultsDirName = "$buildDir/unit-test-result"
+
+jar {
+    archiveName 'macbcr.jar'
+
+    manifest {
+        attributes 'Main-Class': 'io.xcalibyte.B2WFrontEnd'
+    }
+
+    from('src/resources') {
+        include '*'
+    }
+    from {
+        configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+task ideRun(type: Exec) {
+    dependsOn jar
+    commandLine '/bin/bash', "${project.buildscript.sourceFile.parent}/../libb2w/configure"
+}
+
+task genjni(type: Exec) {
+    dependsOn jar
+    commandLine 'javah', "io.xcalibyte.BGenDriver"
+}
+
+test {
+    useJUnit()
+    maxParallelForks = 8
+    forkEvery = 5
+    ignoreFailures = true
+    maxHeapSize = '1G'
+    dependsOn ideRun
+    allJvmArgs = ["-Djava.library.path=${project.buildscript.sourceFile.parent}/../libb2w/cmake-build-debug/libb2w"]
+}

@@ -1,0 +1,20 @@
+#!/bin/bash
+echo " ----- OPENCC CMAKE ---  2018.7.0  -------"
+echo " --  Starting to bootstrap out sources  --"
+echo " -----------------------------------------"
+echo " -- Source not found in global/dir.cmake -"
+echo " -- Downloading Opencc in $(pwd)/opencc  -"
+#mkdir ../mastiff
+#git clone http://git.xc5.io/git/xc5-sz/mastiff.git ../mastiff
+which realpath  > /dev/null
+if [[ $? -eq 0 ]]
+then
+    SCRIPT_DIR=$(dirname $(realpath $0))
+else
+    SCRIPT_DIR=$(dirname $0)
+fi    
+OPENCC_DIR=${SCRIPT_DIR}/../../../
+#./utils/checkout.sh
+echo " - Cloning has completed -----------------"
+echo " ---------   OPENCC FOUND  ---------------"
+${SCRIPT_DIR}/utils/build.sh $@

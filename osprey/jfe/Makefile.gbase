@@ -1,0 +1,129 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#
+#  Copyright 2018 XC5 Inc. All Rights Reserved.
+#  Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
+#
+
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement
+#  or the like.  Any license provided herein, whether implied or
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with
+#  other software, or any other product whatsoever.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+CURRENT_BUILD_DIR := $(shell pwd)
+CMAKE_BUILD_TYPE :=
+GRADLE_BUILD_TYPE :=
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+	CMAKE_BUILD_TYPE = Debug
+	GRADLE_BUILD_TYPE = -g
+else
+	CMAKE_BUILD_TYPE = Release
+	GRADLE_BUILD_TYPE = -g:none
+endif
+
+ifeq ($(shell which java), 1)
+	echo "Cannot locate java, please run \n sudo apt install openjdk-8-jdk \n"
+endif
+
+ifeq ($(shell which gradle), 1)
+	echo "Cannot locate java, please run \n sudo apt install gradle \n"
+endif
+
+
+.PHONY: default clean clobber
+
+default: jfe
+
+jfe: verify_intrn_entry_def b2whirlcmake b2w_soot_gradle copyjfescript
+
+// please update this variable, after change intrn_entry.def, use: md5sum intrn_entry.def | awk '{print $1}'
+SAVED_CHECK_SUM := ce23b176f49d5af512c4eea30dbf2480
+CURRENT_CHECK_SUM := $(shell md5sum $(BUILD_TOT)/common/com/intrn_entry.def | awk '{print $$1}')
+
+verify_intrn_entry_def:
+ifeq ($(CURRENT_CHECK_SUM), $(SAVED_CHECK_SUM))
+	@echo ""
+else
+	@echo "The checksum of $(BUILD_TOT)/common/com/intrn_entry.def is not correct, please check."
+	@echo "Current checksum: [$(CURRENT_CHECK_SUM)]."
+	@echo "Saved checksum:   [$(SAVED_CHECK_SUM)]."
+	@echo "If the intrn_entry.def is modified, please check the intrn id related with jfe."
+	@echo "If some ids were changed, please update the ids located at WhirlConstants.java"
+	@echo "If no id was changed, please update the 'SAVED_CHECK_SUM' located at $(BUILD_TOT)/jfe/Makefile.gbase"
+	@exit -1
+endif
+
+copyjfescript:
+	cp $(BUILD_TOT)/jfe/mapfej $(CURRENT_BUILD_DIR)/mapfej
+	ln -s -f $(TARGDIR)/jfe/libb2w/libb2w/libmacbcb.so libmacbcb.so
+	ln -s -f $(TARGDIR)/jfe/B2WFrontEnd/libs/macbcr.jar macbcr.jar
+
+b2whirlcmake:
+	if ! test -e libb2w; then mkdir libb2w; fi
+	echo "-- JAVA_HOME = $JAVA_HOME "
+	echo "-- building jfe from "$(BUILD_TOT)/jfe/libb2w "to this folder above;" 
+	echo cmake -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DOSPREY_CMAKE_SOURCE_DIR=$(BUILD_TOT)/jfe/libb2w -DOSPREY_CMAKE_OUTPUT_DIR=$(TARGDIR) $(BUILD_TOT)/jfe/libb2w
+	cd libb2w && cmake -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DOSPREY_CMAKE_SOURCE_DIR=$(BUILD_TOT)/jfe/libb2w -DOSPREY_CMAKE_OUTPUT_DIR=$(TARGDIR) $(BUILD_TOT)/jfe/libb2w
+	cmake --build libb2w --target macbcb
+	cmake --build libb2w --target b2wtest
+
+fernflower_gradle:
+	which gradle || echo "**** ERROR **** Gradle Not Exists !"
+	which java   || echo "**** ERROR **** Java Not Exits    !"
+	gradle -p $(BUILD_TOT)/jfe/fernflower -PbuildDir=$(CURRENT_BUILD_DIR)/fernflower -PjavaBuildType=$(GRADLE_BUILD_TYPE) jar
+
+b2w_soot_gradle:
+	bash $(BUILD_TOT)/jfe/B2WFrontEnd/gradlew -p $(BUILD_TOT)/jfe/B2WFrontEnd -PbuildDir=$(CURRENT_BUILD_DIR)/B2WFrontEnd -PjavaBuildType=$(GRADLE_BUILD_TYPE) jar --project-cache-dir $(CURRENT_BUILD_DIR)/B2WFrontEnd/.gradle
+
+last: make_deps
+
+clobber: clean
+	echo "do nothing"
+
+clean:
+	bash $(BUILD_TOT)/jfe/B2WFrontEnd/gradlew -p $(BUILD_TOT)/jfe/fernflower -PbuildDir=$(CURRENT_BUILD_DIR)/fernflower clean
+	bash $(BUILD_TOT)/jfe/B2WFrontEnd/gradlew -p $(BUILD_TOT)/jfe/B2WFrontEnd -PbuildDir=$(CURRENT_BUILD_DIR)/B2WFrontEnd clean
+	rm -rf macbcr.jar libmacbcb.so

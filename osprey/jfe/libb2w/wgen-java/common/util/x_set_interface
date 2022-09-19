@@ -1,0 +1,648 @@
+/*
+
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement 
+  or the like.  Any license provided herein, whether implied or 
+  otherwise, applies only to this software file.  Patent licenses, if 
+  any, provided herein do not apply to combinations of this program with 
+  other software, or any other product whatsoever.  
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+/* ====================================================================
+ * ====================================================================
+ *
+ * Module: x_set_interface
+ * $Revision: 1.1.1.1 $
+ * $Date: 2005/10/21 19:00:00 $
+ * $Author: marcel $
+ * $Source: /proj/osprey/CVS/open64/osprey1.0/common/util/x_set_interface,v $
+ *
+ * Revision history:
+ *  05-05-93 - Original Version
+ *
+ * Description:
+ *
+ *      Template for functional interface documentation to sets of objects.
+ *      This is processed by common/util/gen_x_set into a particular
+ *      instantiation for a particular base type.  See below for a complete
+ *      interface documentation.
+ *
+ * ====================================================================
+ * ====================================================================
+ */
+
+BEGIN
+
+
+/* ====================================================================
+ * ====================================================================
+ *
+ *  This package implements sets of #base_type#'s.  These can be
+ *  manipulated with a fairly complete repertoire of set functions.
+ *  The sets are represented with bit strings for efficiency of both
+ *  space and run time.  The vector that represents these sets is
+ *  grown as necessary to accommodate the results of the various
+ *  operations.  In spite of this, the client of the package retains
+ *  control over storage allocation by providing memory allocation
+ *  pools (MEM_POOLs).  The representations are never automatically
+ *  trimmed, so that the representation of any given bit set will be
+ *  large enough to hold the element with the greatest number that it
+ *  ever held.
+ *
+ *
+ *  Destructive Operations Conventions
+ *  ==================================
+ *
+ *  This package contains a number of functions that implement
+ *  destructive operations.  The purpose of these operations is
+ *  efficiency both of the operations themselves and of memory usage.
+ *  Some of the destructive operations may still need to expand the
+ *  storage allocated to the set.  When this happens, the set may need
+ *  to be copied.  Thus you can not count on the side effects of these
+ *  operations, only on the correctness of their returned values.
+ *  Functions in this package that can have a destructive effect on a
+ *  one of their arguments always have a name that ends with the
+ *  letter D.  Only the first argument of such functions is ever
+ *  destructively modified.  All destructive operations return a
+ *  pointer to the set.  In the normal case this will be the same as
+ *  their first argument, but sometimes the set will have to be copied
+ *  in order to perform the operation.  So the client should not rely
+ *  on the side effects of destructive operations.  Instead, one
+ *  should use their returned values.  For now, destructive operations
+ *  only expand storage, and never shrink it.
+ *
+ *
+ *  Storage Allocation
+ *  ==================
+ *
+ *  The client of this package has full control over storage
+ *  allocation for #uset#'s.  This is achieved by passing storage
+ *  allocation pools (MEM_POOLs) to the functions that may need to use
+ *  them.  All storage allocated for a set is "flat", which is to say
+ *  that from the point of view of storage allocation, each BS may be
+ *  seen as a single array containing no pointers to additional
+ *  storage.  This allows the client to free this storage directly if
+ *  its allocation pool supports freeing (See the discussion under
+ *  BS_Create below).
+BEGIN SUBUNIVERSES
+ *
+ *
+ *  Subuniverses
+ *  ============
+ *
+ *  Sometimes it is desirable to have sets over one or more
+ *  subuniverses.  For example, we may want to have sets only over
+ *  those TNs that are global or which are referenced in a particular
+ *  block.  The advantage is that the bit numbering space may be much
+ *  denser once it is relativized this way.
+ *
+ *  Every function that relies on the elt<->num mapping also has a from
+ *  that is relativized to a subuniverse.  The names of these functions
+ *  all end in "S" and take a "#uset#_SUBUNIVERSE*" (see below) as
+ *  a final argument.
+END SUBUNIVERSES
+ *
+ *
+ *  Types
+ *  =====
+ *
+ *
+ *  TYPE struct #lset# #uset#
+ *
+ *      This is the client visible type of a set of #base_type# objects.
+ *      It has no client visible fields.
+ *
+ *
+ *  TYPE #base_type#
+ *
+ *      This is the type of an element of a #uset#.  It can be mapped
+ *      to a numeric type with the range 0..BS_ELT_MAX by the function
+ *      #elt_num#.  Numbers can be mapped to #base_type#'s with the
+ *      function #num_elt#.  It is a requirement of this mapping that
+ *      #num_elt#(-1) == #uset#_CHOOSE_FAILURE.
+ *
+ *
+BEGIN SUBUNIVERSES
+ *  class #uset#_SUBUNIVERSE
+ *
+ *      This is a client defined type that defines a subuniverse mapping.
+ *      The client must also have supplied subuniverse relative mapping
+ *      functions: #elt_num_sub# and #num_elt_sub# just like #elt_num# and
+ *      #num_elt#, respectively, except they take a second argument that
+ *      specifies the subuniverse as a #uset#_SUBUNIVERSE*.
+ *
+ *      
+END SUBUNIVERSES
+ *  Creation, Clearing, and Freeing
+ *  ===============================
+ *
+ *
+ *  #uset# *#uset#_Create(
+ *    size_t    size,
+ *    MEM_POOL *pool
+ *  )
+ *
+ *      Creates and returns a new #uset# capable of holding (without
+ *      expansion) any set of #base_type#'s with #elt_num# values in
+ *      the range 0 through size - 1.  'Size' must be nonnegative or
+ *      an error is caused.  The newly created #uset# is
+ *      uninitialized, and may contain any of the possible sets.
+ *      'Pool' is used to allocate the space for the set.  Storage for
+ *      the space is "flat", that is the set is allocated as a single
+ *      array and contains no pointers to any additionally allocated
+ *      memory.  The client is thus free to free the #uset# directly
+ *      (if 'pool' supports this.)  (the allocated size may be
+ *      obtained from #uset#_AllocSize).
+ *
+ *
+ *  size_t #uset#_Size_Alloc_Size(
+ *    size_t    size
+ *  )
+ *
+ *      Returns the number of bytes which would be required to
+ *      allocate a set of 'size' size, i.e., the minimum number of
+ *      bytes required to hold a set containing the elements that map
+ *      to 0 through size - 1.
+ *
+ *
+ *  size_t #uset#_Alloc_Size(
+ *    #uset# *set
+ *  )
+ *
+ *      Returns the number of bytes used to allocate the 'set'.
+ *
+ *
+ *  #uset# *#uset#_ClearD(
+ *    #uset# *set
+ *  )
+ *
+ *      Destructive clear operation.  After this 'set' will be empty.
+ *      However, this does not change the allocated size of the set
+ *      (it will still be able to contain the same members that it
+ *      could before it was cleared without expansion.)
+ *
+ *
+ *  #uset# *#uset#_Create_Empty(
+ *    size_t    size,
+ *    MEM_POOL *pool
+ *  )
+ *
+ *      Create an empty set large enough to hold the #base_type# whose
+ *      #elt_num# value is 'size' - 1 without expansion.  Equivalent
+ *      to #uset#_ClearD( #uset#_Create( size ), pool )
+ *
+ *
+ *  #uset# *#uset#_Range(
+ *    BS_ELT      low,
+ *    BS_ELT      high,
+ *    MEM_POOL   *pool
+ *  )
+ *  #uset# *#uset#_RangeD(
+ *    #uset#     *set,
+ *    BS_ELT      low,
+ *    BS_ELT      high,
+ *    MEM_POOL   *pool
+ *  )
+ *
+ *      Returns a set whose members are the #num_elt# values of the
+ *      numbers 'low' ... 'high'.  Both 'low' and the size of the
+ *      range must be nonnegative or an error is caused.  I.e., 'low'
+ *      >= 0 and ('high' - 'low' + 1) >= 0.  Note that 'high' may be
+ *      -1 if 'low' is 0.
+ *
+ *
+ *  #uset# *#uset#_Singleton(
+ *    #base_type# element,
+ *    MEM_POOL   *pool
+ *  )
+BEGIN SUBUNIVERSES
+ *  #uset# *#uset#_SingletonS(
+ *    #base_type# element,
+ *    MEM_POOL   *pool,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *  #uset# *#uset#_SingletonD(
+ *    #uset#     *set,
+ *    #base_type# element,
+ *    MEM_POOL   *pool
+ *  )
+BEGIN SUBUNIVERSES
+ *  #uset# *#uset#_SingletonDS(
+ *    #uset#     *set,
+ *    #base_type# element,
+ *    MEM_POOL   *pool,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns a set with 'element' as its sole member.
+ *
+ *
+ *  #uset# *#uset#_Universe(
+ *    size_t    size,
+ *    MEM_POOL *pool
+ *  )
+ *  #uset# *#uset#_UniverseD(
+ *    #uset#   *set,
+ *    size_t    size,
+ *    MEM_POOL *pool
+ *  )
+ *
+ *      Returns a set containing the #num_elt# values of the numbers
+ *      0...'size' - 1.  'Size' must be nonnegative or an error is
+ *      caused.
+ *
+ *
+ *
+ *  Copying
+ *  =======
+ *
+ *
+ *  #uset# *#uset#_Copy(
+ *    #uset#   *set,
+ *    MEM_POOL *pool
+ *  )
+ *  #uset# *#uset#_CopyD(
+ *    #uset#   *set1,
+ *    #uset#   *set2,
+ *    MEM_POOL *pool
+ *  )
+ *
+ *      Returns an exact copy of set.  Note that for BS_CopyD, if
+ *      storage is allocated it will be the same as the storage
+ *      actually allocated to set2, regardless of the current size of
+ *      set2.  Thus the following sequence:
+ *
+ *          #uset# *set1, set2;
+ *          set1 = #uset#_Create( 32, pool );
+ *          set2 = #uset#_Create( 1024, pool );
+ *          set2 = #uset#_ClearD( set2 );
+ *          set1 = #uset#_CopyD( set1, set2, pool );
+ *
+ *      will result in set1 being grown to be large enough to contain
+ *      the #base_type# whose #elt_num# value is 1023, even though it
+ *      will be empty.
+ *
+ *
+ *  Set Operations
+ *  ==============
+ *
+ *
+ *  #base_type# #uset#_Choose(
+ *    #uset# *set
+ *  )
+BEGIN SUBUNIVERSES
+ *  #base_type# #uset#_ChooseS(
+ *    #uset# *set,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns some element of 'set', if 'set' is nonempty.  Else
+ *      returns #uset#_CHOOSE_FAILURE.  In fact, this is defined so
+ *      that it always returns the least element of the set.
+ *
+ *
+ *  #base_type# #uset#_Choose_Next(
+ *    #uset#     *set,
+ *    #base_type# x
+ *  )
+BEGIN SUBUNIVERSES
+ *  #base_type# #uset#_Choose_NextS(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns the "next" element of 'set', starting after 'x', if
+ *	'set' is nonempty.  Else returns #uset#_CHOOSE_FAILURE.
+ *	This is used for looping over the elements of a set.
+ *
+ *
+ *  #base_type# #uset#_Choose_Range(
+ *    #uset#   *set,
+ *    BS_ELT    low,
+ *    BS_ELT    high
+ *  )
+BEGIN SUBUNIVERSES
+ *  #base_type# #uset#_Choose_RangeS(
+ *    #uset#   *set,
+ *    BS_ELT    low,
+ *    BS_ELT    high,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns some element of 'set' whose #elt_num# value is in the
+ *      range low..high if there is one.  Else returns
+ *      #uset#_CHOOSE_FAILURE.  Both 'low' and the size of the range
+ *	must be nonnegative or an error is caused.  I.e., 'low' >= 0 and
+ *      ('high' - 'low' + 1) >= 0.  Note that 'high' may be -1 if
+ *      'low' is 0.  As with the _Choose function, always returns the
+ *      last element of the set that's in range.
+ *
+ *
+ *  CONST #base_type# #uset#_CHOOSE_FAILURE
+ *
+ *      A special value that #uset#_Choose and #uset#_ChooseRange
+ *      return when they are unable to choose an element.
+ *
+ *
+ *  #uset# *#uset#_Difference(
+ *    #uset#   *set1,
+ *    #uset#   *set2,
+ *    MEM_POOL *pool
+ *  )
+ *  #uset# *#uset#_DifferenceD(
+ *    #uset# *set1,
+ *    #uset# *set2
+ *  )
+ *
+ *      Returns { x : member( x, 'set1' ) & ~ member( x, 'set2' ) }.
+ *
+ *
+ *  #uset# *#uset#_Difference1(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    MEM_POOL   *pool
+ *  )
+ *  #uset# *#uset#_Difference1D(
+ *    #uset#     *set,
+ *    #base_type# x
+ *  )
+BEGIN SUBUNIVERSES
+ *  #uset# *#uset#_Difference1S(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    MEM_POOL   *pool,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+ *  #uset# *#uset#_Difference1DS(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns { y : member( y , set ) & ~ ( y = x ) }.  X must be
+ *      nonnegative or an error is caused.
+ *
+ *
+ *  #uset# *#uset#_Intersection(
+ *    #uset#   *set1,
+ *    #uset#   *set2,
+ *    MEM_POOL *pool
+ *  )
+ *  #uset# *#uset#_IntersectionD(
+ *    #uset# *set1,
+ *    #uset# *set2
+ *  )
+ *
+ *      Returns the intersection of 'set1' and 'set2'.
+ *
+ *
+ *  size_t #uset#_Size(
+ *    #uset# *set
+ *  )
+ *
+ *
+ *  #uset# *#uset#_Union(
+ *    #uset#   *set1,
+ *    #uset#   *set2,
+ *    MEM_POOL *pool
+ *  )
+ *  #uset# *#uset#_UnionD(
+ *    #uset#   *set1,
+ *    #uset#   *set2,
+ *    MEM_POOL *pool
+ *  )
+ *
+ *      Returns the union of set1 and set2.
+ *
+ *
+ *  #uset# *#uset#_Union1(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    MEM_POOL   *pool
+ *  )
+ *  #uset# *#uset#_Union1D(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    MEM_POOL   *pool
+ *  )
+BEGIN SUBUNIVERSES
+ *  #uset# *#uset#_Union1S(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    MEM_POOL   *pool,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+ *  #uset# *#uset#_Union1DS(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    MEM_POOL   *pool,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns set union { x }.  X must be nonnegative or an error is
+ *      caused.
+ *
+ *
+ *  #uset# *#uset#_UnionD_Intersection(
+ *      #uset#    *set1,
+ *      #uset#    *set2,
+ *      #uset#    *set3,
+ *      MEM_POOL   *pool
+ *  )
+ *
+ *      Returns set1 | (set2 & set3).
+ *      
+ *
+ *  Testing Sets
+ *  ============
+ *
+ *
+ *  BOOL #uset#_ContainsP(
+ *    #uset# *set1,
+ *    #uset# *set2
+ *  )
+ *
+ *      Returns TRUE iff every element of 'set2' is in 'set1'.  Else
+ *      FALSE.
+ *
+ *
+ *  BOOL #uset#_EmptyP(
+ *    #uset# *set
+ *  )
+ *
+ *      Returns TRUE iff 'set' is empty.  Else FALSE.
+ *
+ *
+ *  BOOL #uset#_EqualP(
+ *    #uset# *set1,
+ *    #uset# *set2
+ *  )
+ *
+ *      Returns TRUE iff 'set1' has exactly the same members as
+ *      'set2'.  Else FALSE.
+ *
+ *
+ *  BOOL #uset#_IntersectsP(
+ *    #uset# *set1,
+ *    #uset# *set2
+ *  )
+ *
+ *      Returns TRUE iff 'set1' and 'set2' have at least one member in
+ *      common.  Else FALSE.
+ *
+ *
+ *  BOOL #uset#_MemberP(
+ *    #uset#     *set,
+ *    #base_type# x
+ *  )
+BEGIN SUBUNIVERSES
+ *  BOOL #uset#_MemberPS(
+ *    #uset#     *set,
+ *    #base_type# x,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ * 
+ *      Returns TRUE iff 'x' is a member of 'set'.  Else FALSE.  'X'
+ *      must be nonnegative or an error is caused.
+ *
+ *
+ *
+ *  Looping Over Members
+ *  ====================
+ *
+ *
+ *  This is done using #uset#_Choose and #uset#_Choose_Next.  Here is an
+ *  example:
+ *
+ *	#base_type# x;
+ *
+ *	for ( x = #uset#_Choose( set );
+ *	      x != #uset#_CHOOSE_FAILURE;
+ *            x = #uset#_Choose_Next( set, x )
+ *      ) {
+ *        x is a member of the set
+ *      }
+ *
+BEGIN SUBUNIVERSES
+*   Note that the subuniverse forms are also available.
+END SUBUNIVERSES
+ *
+ *  FOR_ALL_#uset#_members(set,x)
+ *
+ *      This macro can be used instead of the above 'for' loop. It expands
+ *      into the same code.
+ *
+ *  Handling Intersections Effeciently
+ *  ===================================
+ *
+ *
+ *  Often, once wants to perform operations on the intersection of two
+ *  sets without having to create the intersection.  This can be thought
+ *  of as an "operation with a mask".  Anyway, a set of functions is
+ *  provided to support this:
+ *
+ *
+ *  BOOL #uset#_Intersection_MemberP(
+ *    #uset#     *set1,
+ *    #uset#     *set2,
+ *    #base_type# x
+ *  )
+BEGIN SUBUNIVERSES
+ *  BOOL #uset#_Intersection_MemberPS(
+ *    #uset#     *set1,
+ *    #uset#     *set2,
+ *    #base_type# x,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns TRUE iff 'x' is a member of the intersection of 'set1' and
+ *      'set2' .  Else FALSE.  'X' must be nonnegative or an error is
+ *      caused.
+ *
+ *
+ *  #base_type# #uset#_Intersection_Choose(
+ *    #uset# *set1,
+ *    #uset# *set2
+ *  )
+BEGIN SUBUNIVERSES
+ *  #base_type# #uset#_Intersection_ChooseS(
+ *    #uset# *set1,
+ *    #uset# *set2,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns some element of of the intersection of 'set1' and 'set2',
+ *      if the intersection is nonempty.  Else returns
+ *      #uset#_CHOOSE_FAILURE.  In fact, this is defined so that it always
+ *      returns the least element of the set.
+ *
+ *
+ *  #base_type# #uset#_Intersection_Choose_Next(
+ *    #uset#     *set1,
+ *    #uset#     *set2,
+ *    #base_type# x
+ *  )
+BEGIN SUBUNIVERSES
+ *  #base_type# #uset#_Intersection_Choose_NextS(
+ *    #uset#     *set1,
+ *    #uset#     *set2,
+ *    #base_type# x,
+ *    #uset#_SUBUNIVERSE *sub
+ *  )
+END SUBUNIVERSES
+ *
+ *      Returns the "next" element of the intersection of 'set1' and
+ *      'set2', starting after 'x', if there is such a member.  Else
+ *      returns #uset#_CHOOSE_FAILURE.  This is very useful for looping
+ *	over the elements of a set.
+ *
+ *
+ *  Printing Sets
+ *  =============
+ *
+ *
+ *  void #uset#_Print(
+ *    #uset# *set,
+ *    FILE   *f
+ *  )
+ *
+ *      Prints 'set' on 'f'.  The type FILE is as defined in stdio.h.
+ *
+ * ====================================================================
+ * ====================================================================
+ */

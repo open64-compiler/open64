@@ -1,0 +1,9 @@
+CMakeFiles
+**/CMakeFiles
+cmake-build-debug
+**/cmake-build-debug
+*~
+**/*~
+.idea
+opencc
+**/.DS_Store

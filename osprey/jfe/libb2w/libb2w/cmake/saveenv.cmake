@@ -1,0 +1,32 @@
+add_library(b2w_util_o ${WNUTILO_SRC})
+target_compile_options(b2w_util_o PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(b2w_util_o PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(b2w_util_o PRIVATE ${HOST_DEF} ${LOCAL_DEF} -DMONGOOSE_BE)
+
+add_library(bcommon_gen_func ${COMMON_WN_FUNCS})
+target_compile_options(bcommon_gen_func PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(bcommon_gen_func PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(bcommon_gen_func PUBLIC ${HOST_DEF} ${LOCAL_DEF})
+target_link_libraries(bcommon_gen_func comutils spin cmplrs iberty b2w_util_o)
+
+
+if(DEBUG_CMAKE)
+    foreach(ONE_INC_DIR IN LISTS LOCAL_INC_DIR)
+        message(STATUS "==== B2W Local INC_DIR " ${ONE_INC_DIR})
+    endforeach()
+    message(STATUS "==== B2W_SRCS: " ${B2w_SRCS})
+endif()
+
+add_library(macbcb SHARED ${B2w_SRCS})
+set_target_properties(macbcb PROPERTIES LINK_SEARCH_START_STATIC 1)
+set_target_properties(macbcb PROPERTIES LINK_SEARCH_END_STATIC 1)
+target_compile_options(macbcb PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(macbcb PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(macbcb PUBLIC ${HOST_DEF} ${LOCAL_DEF})
+target_link_libraries(macbcb bcommon_gen_func -static-libgcc -static-libstdc++)
+
+add_executable(b2wtest ${B2wTEST_SRCS})
+target_compile_options(b2wtest PUBLIC ${TEMP_C_OPT} ${HOST_COMPILER_OPT} ${LOCAL_COMPLER_OPT} ${HOST_C_OPT} ${LOCAL_C_OPT})
+target_include_directories(b2wtest PUBLIC ${LOCAL_INC_DIR} ${HOST_INC_DIR})
+target_compile_definitions(b2wtest PUBLIC ${HOST_DEF} ${LOCAL_DEF})
+target_link_libraries(b2wtest macbcb)
