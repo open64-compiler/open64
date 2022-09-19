@@ -1,0 +1,384 @@
+/*
+   Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+// DECLARE_RULE:
+// DECLARE_RULE(id, lang, code, name, desc, detail, url, category, severity, priority, likelihood, fix_cost)
+
+// in alphabetical order below
+
+// ARR38-C
+DECLARE_RULE(_ERR_CERTC_ARR38,
+             VL_C | VL_CXX,
+             "ARR38-C",
+             "CERT ARR38-C",
+             "Invalid pointer formed via library functions",
+             "The program has tried to use a C library call with arguments that include a pointer to an object and the size of that object. Supplying arguments to such a function might cause the function to form a pointer that does not point into or just past the end of the object, resulting in undefined behavior. Either the pointer is invalid or the size of object is not the same as the parameter that indicates its size. This type of inconsistency will cause an indeterminate behaviour in the C library function.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/ARR38-C.+Guarantee+that+library+functions+do+not+form+invalid+pointers",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// ENV32-C
+DECLARE_RULE(_ERR_CERTC_ENV32,
+             VL_C | VL_CXX,
+             "ENV32-C",
+             "CERT ENV32-C",
+             "All exit handlers must return normally",
+             "Any exit handlers for the program must always be returned normally. The handlers should be registered with the function atexit()  or at quick_exit() respectively. If the program ends through an exit() function then the exit handlers will not be called. It is important and critical that all exit handlers perform their cleanup actions.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/ENV32-C.+All+exit+handlers+must+return+normally",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// ENV33-C
+DECLARE_RULE(_ERR_CERTC_ENV33,
+             VL_C | VL_CXX,
+             "ENV33-C",
+             "CERT ENV33-C",
+             "system call is dangerous",
+             "The program  is invoking a system function (e.g. system, execve, strcpy, ... etc) which, if not properly used, could introduce vulnerabilities. Risks inlcude 1) Passing an improperly sanitized command string from a tainted source. 2) A command is specified without a path name and the command processor path name resolution mechanism is accessible to an attacker 3) If a relative path to an executable is specified and control over the current working directory is accessible to an attacker 4) If the specified executable program can be spoofed by an attacker.",
+             "https://wiki.sei.cmu.edu/confluence/pages/viewpage.action?pageId=87152177",
+             RC_SECURITY,
+             SEV_LOW,
+             PRI_LOW,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// ERR33-C
+DECLARE_RULE(_ERR_CERTC_ERR33,
+             VL_C | VL_CXX,
+             "ERR33-C",
+             "CERT ERR33-C",
+             "Return value of standard library is not verified",
+             "The program has incorrectly (or neglected to) checked a return value from a standard library function.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/ERR33-C.+Detect+and+handle+standard+library+errors",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// FIO30-C
+DECLARE_RULE(_ERR_CERTC_FIO30,
+             VL_C | VL_CXX,
+             "FIO30-C",
+             "CERT FIO30-C",
+             "Format-string vulnerability",
+             "The program is receiving an input that originated from an external source for a formatted I/O function. Any external, unmediated data may be tainted, and this can cause unextended behaviour. An attacker who can fully or partially control the contents of a format string can crash a vulnerable process, view the contents of the stack, view memory content, or write to an arbitrary memory location.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/FIO30-C.+Exclude+user+input+from+format+strings",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// FIO34-C
+DECLARE_RULE(_ERR_CERTC_FIO34,
+             VL_C | VL_CXX,
+             "FIO34-C",
+             "CERT FIO34-C",
+             "Distinguish between characters read from a file and EOF or WEOF",
+             "A byte I/O function (such as fgetc, getc, fgetwc, getwc, ... etc) has returned the character read as an int. When used by the program, an EOF and a valid character may become indistinguishable, and this may cause an unexpected program behaviour.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/FIO34-C.+Distinguish+between+characters+read+from+a+file+and+EOF+or+WEOF",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// FIO37-C
+DECLARE_RULE(_ERR_CERTC_FIO37,
+             VL_C | VL_CXX,
+             "FIO37-C",
+             "CERT FIO37-C",
+             "Do not assume that fgets() or fgetws() returns a nonempty string when successful",
+             "The program is trying to call file access functions (e.g. gets, fgets, fgetws, ... etc) and is assuming a non-empty string will be returned.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/FIO37-C.+Do+not+assume+that+fgets%28%29+or+fgetws%28%29+returns+a+nonempty+string+when+successful",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// FIO42-C
+DECLARE_RULE(_ERR_CERTC_FIO42,
+             VL_C | VL_CXX,
+             "FIO42-C",
+             "CERT FIO42-C",
+             "Close files when they are no longer needed",
+             "Close files when they are no longer needed",
+             "https://wiki.sei.cmu.edu/confluence/display/c/FIO42-C.+Close+files+when+they+are+no+longer+needed",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_UNLIKELY,
+             FC_MEDIUM)
+
+// FIO47-C
+DECLARE_RULE(_ERR_CERTC_FIO47,
+             VL_C | VL_CXX,
+             "FIO47-C",
+             "CERT FIO47-C",
+             "Do not supply an unknown or invalid conversion specification or an invalid combination of flag character, precision, length modifier, or conversion specifier to a formatted IO function",
+             "Check the format string and ensure the arguments of the function match their respective format specifications",
+             "https://wiki.sei.cmu.edu/confluence/display/c/FIO47-C.+Use+valid+format+strings",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_UNLIKELY,
+             FC_LOW)
+
+// MEM35-C
+DECLARE_RULE(_ERR_CERTC_MEM35,
+             VL_C | VL_CXX,
+             "MEM35-C",
+             "CERT MEM35-C",
+             "Inadequate memory allocated",
+             "Allocate sufficient memory for an object",
+             "https://wiki.sei.cmu.edu/confluence/display/c/MEM35-C.+Allocate+sufficient+memory+for+an+object",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_HIGH)
+
+// MSC32-C
+DECLARE_RULE(_ERR_CERTC_MSC32,
+             VL_C | VL_CXX,
+             "MSC32-C",
+             "CERT MSC32-C",
+             "The same sequence of random numbers will appear each time it is run",
+             "The program has improperly used a pseudo random number generator. This could mean that the sequence of random numbers that will be generatored could be easily predicted.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/MSC32-C.+Properly+seed+pseudorandom+number+generators",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_LOW)
+
+// MSC33-C
+DECLARE_RULE(_ERR_CERTC_MSC33,
+             VL_C | VL_CXX,
+             "MSC33-C",
+             "CERT MSC33-C",
+             "Data passed to asctime() is not sanitized",
+             "The program is trying to use  an asctime() function that is deprecated. Passing any invalid data to this function will then result in a buffer overflow which could lead to an unintended program behaviour.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/MSC33-C.+Do+not+pass+invalid+data+to+the+asctime%28%29+function",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// MSC37-C
+DECLARE_RULE(_ERR_CERTC_MSC37,
+             VL_C | VL_CXX,
+             "MSC37-C",
+             "CERT MSC37-C",
+             "Ensure that control never reaches the end of a non-void function",
+             "Always returns a value for non-void function",
+             "https://wiki.sei.cmu.edu/confluence/display/c/MSC37-C.+Ensure+that+control+never+reaches+the+end+of+a+non-void+function",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// MSC41-C
+DECLARE_RULE(_ERR_CERTC_MSC41,
+             VL_C | VL_CXX,
+             "MSC41-C",
+             "CERT MSC41-C",
+             "Hard coded password",
+             "Sensitive information such as a password or encryption keys are being used in the program. This information could be easily obtained in a binary that would lead to leakage of sensitive data.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/MSC41-C.+Never+hard+code+sensitive+information",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// POS30-C
+DECLARE_RULE(_ERR_CERTC_POS30,
+             VL_C | VL_CXX,
+             "POS30-C",
+             "CERT POS30-C",
+             "Buffer passed to readlink may be written out of bound",
+             "The program is trying to  use a  readlink() function. This could then return a string sequence to the second argument that doesn't ensure that the string sequence is null terminated. This could lead to a potential result in an array out of bounds.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/POS30-C.+Use+the+readlink%28%29+function+properly",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// POS34-C
+DECLARE_RULE(_ERR_CERTC_POS34,
+             VL_C | VL_CXX,
+             "POS34-C",
+             "CERT POS34-C",
+             "Do not call putenv() with a pointer to an automatic variable as the argument",
+             "Use static array or dynamically allocated memory to holds parameter or use setenv()",
+             "https://wiki.sei.cmu.edu/confluence/display/c/POS34-C.+Do+not+call+putenv%28%29+with+a+pointer+to+an+automatic+variable+as+the+argument",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_UNLIKELY,
+             FC_MEDIUM)
+
+// POS35-C
+DECLARE_RULE(_ERR_CERTC_POS35,
+             VL_C | VL_CXX,
+             "POS35-C",
+             "CERT POS35-C",
+             "lstat TOCTOU",
+             "A race condition could happen due to the use of the pattern Time of check and Time of Use during file open and access on shared directories. This is happening without the proper use of file descriptors and st_ino or st_dev fields made available through use of fstat() function.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/POS35-C.+Avoid+race+conditions+while+checking+for+the+existence+of+a+symbolic+link",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// POS37-C
+DECLARE_RULE(_ERR_CERTC_POS37,
+             VL_C | VL_CXX,
+             "POS37-C",
+             "CERT POS37-C",
+             "Ensure that privilege relinquishment is successful",
+             "The program is attempting to relinquish a privilege (such as setuid, ... etc) and has failed to verify if the drop was successful. Be aware that \'privileges\' vary from platform to platform.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/POS37-C.+Ensure+that+privilege+relinquishment+is+successful",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// POS54-C
+DECLARE_RULE(_ERR_CERTC_POS54,
+             VL_C | VL_CXX,
+             "POS54-C",
+             "CERT POS54-C",
+             "Return value of POSIX library is not verified",
+             "All standard library functions can return something that indicates if or when an error has occured. The program has failed to check the return value of the library function call.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/POS54-C.+Detect+and+handle+POSIX+library+errors",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SIG30-C
+DECLARE_RULE(_ERR_CERTC_SIG30,
+             VL_C | VL_CXX,
+             "SIG30-C",
+             "CERT SIG30-C",
+             "Signal handler is not asynchronous-safe",
+             "Call only asynchronous-safe functions within signal handlers",
+             "https://wiki.sei.cmu.edu/confluence/display/c/SIG30-C.+Call+only+asynchronous-safe+functions+within+signal+handlers",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SIG31-C
+DECLARE_RULE(_ERR_CERTC_SIG31,
+             VL_C | VL_CXX,
+             "SIG31-C",
+             "CERT SIG31-C",
+             "Do not access shared objects in signal handler",
+             "Signal handlers in the programs are trying to call functions that are not asynchronous-safe (such as I/O functions).  A list of safe functions can be found here: https://wiki.sei.cmu.edu/confluence/display/c/SIG30-C.+Call+only+asynchronous-safe+functions+within+signal+handlers",
+             "https://wiki.sei.cmu.edu/confluence/display/c/SIG31-C.+Do+not+access+shared+objects+in+signal+handlers",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_HIGH)
+
+// STR02-C
+DECLARE_RULE(_ERR_CERTC_STR02,
+             VL_C | VL_CXX,
+             "STR02-C",
+             "CERT STR02-C",
+             "Sanitize data passed to complex subsystems",
+             "String data passed to complex subsystems may contain special characters that can trigger commands or actions, resulting in a software vulnerability",
+             "https://wiki.sei.cmu.edu/confluence/display/c/STR02-C.+Sanitize+data+passed+to+complex+subsystems",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// STR31-C
+DECLARE_RULE(_ERR_CERTC_STR31,
+             VL_C | VL_CXX,
+             "STR31-C",
+             "CERT STR31-C",
+             "Guarantee that storage for strings has sufficient space for character data and the null terminator",
+             "String manipulation functions were used on objects with insufficient memory that results in a buffer overflow. Either limit copies through truncation or, preferably, ensure that the destination is of sufficient size to hold the character data to be copied and the null-termination character",
+             "https://wiki.sei.cmu.edu/confluence/display/c/STR31-C.+Guarantee+that+storage+for+strings+has+sufficient+space+for+character+data+and+the+null+terminator",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// STR32-C
+DECLARE_RULE(_ERR_CERTC_STR32,
+             VL_C | VL_CXX,
+             "STR32-C",
+             "CERT STR32-C",
+             "strncpy() buffer overflow",
+             "The program is trying to pass a non-null terminated character sequence to a library function when it expects a null terminated string. Passing a character sequence or wide character sequence that is not null-terminated to such a function can result in accessing memory that is outside the bounds of the object. Do not pass a character sequence or wide character sequence that is not null-terminated to a library function that expects a string or wide string argument.",
+             "https://wiki.sei.cmu.edu/confluence/display/c/STR32-C.+Do+not+pass+a+non-null-terminated+character+sequence+to+a+library+function+that+expects+a+string",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// STR38-C
+DECLARE_RULE(_ERR_CERTC_STR38,
+             VL_C | VL_CXX,
+             "STR38-C",
+             "CERT STR38-C",
+             "Incompatible parameter type of narrow and wide char strings",
+             "The program is using a string function that that is not expected for the argument. Passing narrow string arguments to wide string functions or wide string arguments to narrow string functions. This can cause unexpected behaviour at runtime",
+             "https://wiki.sei.cmu.edu/confluence/display/c/STR38-C.+Do+not+confuse+narrow+and+wide+character+strings+and+functions",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// STR50-CPP
+DECLARE_RULE(_ERR_CERTCPP_STR50,
+             VL_CXX,
+             "STR50-CPP",
+             "CERT STR50-CPP",
+             "Guarantee that storage for strings has sufficient space for character data and the null terminator",
+             "Call cin.width before every cin >>",
+             "https://wiki.sei.cmu.edu/confluence/display/cplusplus/STR50-CPP.+Guarantee+that+storage+for+strings+has+sufficient+space+for+character+data+and+the+null+terminator",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)

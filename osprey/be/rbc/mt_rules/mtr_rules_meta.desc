@@ -1,0 +1,106 @@
+/*
+   Copyright (C) 2022 Xcalibyte (Shenzhen) Limited.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+// DECLARE_RULE:
+// DECLARE_RULE(id, lang, code, name, desc, detail, url, category, severity, priority, likelihood, fix_cost)
+
+// in alphabetical order below
+
+// DBLI
+DECLARE_RULE(_ERR_DOUBLE_LOCK_INIT,
+             VL_C | VL_CXX,
+             "DBLI",
+             "XCALMT DBLI",
+             "Double lock initialization",
+             "",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// LIIT
+DECLARE_RULE(_ERR_LOCK_INIT_IN_THREAD,
+             VL_C | VL_CXX,
+             "LIIT",
+             "XCALMT LIIT",
+             "Lock initialized in thread",
+             "",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// MLU
+DECLARE_RULE(_ERR_MISMATCH_LOCK_UNLOCK,
+             VL_C | VL_CXX,
+             "MLU",
+             "XCALMT MLU",
+             "Mismatched lock and unlock",
+             "",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SAC
+DECLARE_RULE(_ERR_SLEEP_IN_ATOMIC_CONTEXT,
+             VL_C | VL_CXX,
+             "SAC",
+             "XCALMT SAC",
+             "Sleep in atomic context",
+             "",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SLAE
+DECLARE_RULE(_ERR_SPIN_LOCK_ADDR_EXPR,
+             VL_C | VL_CXX,
+             "SLAE",
+             "XCALMT SLAE",
+             "Pass spinlock address in parameter",
+             "",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// UIL
+DECLARE_RULE(_ERR_UNINITIALIZED_LOCK,
+             VL_C | VL_CXX,
+             "UIL",
+             "XCALMT UIL",
+             "Uninitialized lock",
+             "",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+

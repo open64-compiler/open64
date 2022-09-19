@@ -1,0 +1,78 @@
+/*
+   Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+/*
+ * ATTENTION: THIS FILE IS NO LONGER USED
+ * Please check builtin_rbc_rule_meta.desc, builtin_certc_rule_meta.desc
+ */
+/*
+ * Format. Follow the ERROR_DESC so far
+ * DEFINE_RBC_RULE(rule_id, flag, rag_errnum, emsg, params, param_kinds)
+ *
+ * Example:
+ * DEFINE_RBC_RULE(RBC_Rule_blah, EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+ *                 "%s,[%s],[%s],%s",
+ *                 4, ET_STRING, ET_STRING, ET_STRING, ET_STRING, 0, 0)
+ */
+
+#ifndef DEFINE_RBC_RULE
+#  error "DEFINE_RBC_RULE" is not defined
+#endif
+
+DEFINE_RBC_RULE(__MVSA_MEMCPY_OVERFLOW, 0, 0,
+                "memcpy_overflow",
+                "memcpy() buffer overflow. buffer size=%d, copy size=%d",
+                2, ET_INT, ET_INT, 0, 0, 0, 0)
+
+DEFINE_RBC_RULE(__MVSA_WRONG_FORMAT_STRING, 0, 0,
+                "format_string_wrong",
+                "format string %s for %s is wrong",
+                2, ET_STRING, ET_STRING, 0, 0, 0, 0)
+
+DEFINE_RBC_RULE(__MVSA_SCANF_OVERFLOW, 0, 0,
+                "scanf_overflow",
+                "scanf() buffer overflow",
+                0, 0, 0, 0, 0, 0, 0)
+
+DEFINE_RBC_RULE(__MVSA_SPRINTF_OVERFLOW, 0, 0,
+                "sprintf_overflow",
+                "sprintf() buffer overflow",
+                0, 0, 0, 0, 0, 0, 0)
+
+DEFINE_RBC_RULE(__MVSA_SNPRINTF_OVERFLOW, 0, 0,
+                "snprintf_overflow",
+                "snprintf() buffer overflow",
+                0, 0, 0, 0, 0, 0, 0)
+
+DEFINE_RBC_RULE(__MVSA_SNPRINTF_TRUNCATED, 0, 0,
+                "snprintf_truncated",
+                "snprintf() message truncated",
+                0, 0, 0, 0, 0, 0, 0)
+
+DEFINE_RBC_RULE(__MVSA_MISSING_FORMAT_PARAM, 0, 0,
+                "missing_format_param",
+                "missing format parameter %d for string %s",
+                2, ET_INT, ET_STRING, 0, 0, 0, 0)
+
+DEFINE_RBC_RULE(__MVSA_PARAM_MISMATCH, 0, 0,
+                "param_mismatch",
+                "parameter mismatch to call %s in %s",
+                2, ET_STRING, ET_STRING, 0, 0, 0, 0)
+
+DEFINE_RBC_RULE(__MVSA_STRCPY_OVERFLOW, 0, 0,
+                "strcpy_overflow",
+                "strcpy() buffer overflow. buffer size=%d, copy size=%d",
+                2, ET_INT, ET_INT, 0, 0, 0, 0)

@@ -1,0 +1,243 @@
+# -*- Makefile -*-
+
+#  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+include $(COMMONDEFS)
+
+
+RBC_CC = $(COMPILER_TARG_DIR)/driver/driver
+JFE = $(COMPILER_TARG_DIR)/jfe/mapfej
+RBC_OPTS = -run-build=$(TOP_BUILDDIR) -INLINE:=off $(MKDEPOPT) -I. -Ww,-RBC
+RBC_JAVA_OPTS = "-run-build=$(TOP_BUILDDIR)"
+JAVAC = $(JAVA_HOME)/bin/javac
+PYTHON = python3
+PYTHON_OPTS = -B
+
+#LCINCS   = -I$(BUILD_BASE)
+#LCOPTS   = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+
+# settings for certc
+CERTC_DESC_H = certc_ruleset_desc.h
+# !!! JSON file must end with "ruleset.json"
+CERTC_DESC_JSON = certc_ruleset.json
+CERTJ_DESC_JSON = certj_ruleset.json
+CERTC_DIR = $(BUILD_BASE)/certc
+CERTC_CXX_FILES= \
+	certc.cxx certcpp.cxx
+CERTC32_OBJS = $(CERTC_CXX_FILES:.cxx=32.o)
+CERTC32_SKIP = $(CERTC_CXX_FILES:.cxx=32.inlskip)
+CERTC64_OBJS = $(CERTC_CXX_FILES:.cxx=64.o)
+CERTC64_SKIP = $(CERTC_CXX_FILES:.cxx=64.inlskip)
+CERTC32_LIB = libcertc32.a
+CERTC32_LIB_SKIP = libcertc32.inlskip
+CERTC64_LIB = libcertc64.a
+CERTC64_LIB_SKIP = libcertc64.inlskip
+CERTC_PKG = $(CERTC32_LIB) $(CERTC64_LIB) $(CERTC32_LIB_SKIP) $(CERTC64_LIB_SKIP)
+
+#settings for cxx intrinsics
+CXX_INTRN_DIR = $(BUILD_BASE)/cxx_intent
+CXX_INTRN_CXX_FILES = rbc_cxx_intrn.cxx
+CXX_INTRN32_OBJS = $(CXX_INTRN_CXX_FILES:.cxx=32.o)
+CXX_INTRN64_OBJS = $(CXX_INTRN_CXX_FILES:.cxx=64.o)
+CXX_INTRN32_LIB = libcxx_intrn32.a
+CXX_INTRN64_LIB = libcxx_intrn64.a
+CXX_INTRN_LIB = $(CXX_INTRN32_LIB) $(CXX_INTRN64_LIB)
+
+#settings for RBC_ENGINE
+RBC_ENGINE = $(COMPILER_TARG_DIR)/include/RBC_ENGINE.java
+RBC_ENGINE_CLS = io/xc5/RBC_ENGINE.class
+
+#settings for certj
+CERTJ_DIR = $(BUILD_BASE)/certj
+CERTJ_JAR = libcertj/libs/certj.jar
+CERTJ_OBJS = libcertj/libs/certj.o
+CERTJ_LIB = libcertj.a
+
+#settings for rule examples 
+RULE_EX_DIR = $(BUILD_BASE)/rule_example/certj
+RULE_EX_JAR = librulex/libs/rulex.jar
+RULE_EX_OBJS = librulex/libs/rulex.o
+RULE_EX_LIB = librulex.a
+
+#settings for rule from intent-table
+XMLREADER = $(BUILD_TOT)/be/rbc/xmlread.py
+INTENT_TABLE_DIR = $(BUILD_TOT)/be/rbc/intent_tables/java
+INTENT_TABLES = java-rt.xlsx spring-framework.xlsx
+UDR_PREFIX = udr/java/lib
+INTENT_UDRS = $(INTENT_TABLES:%.xlsx=$(UDR_PREFIX)%.udr)
+
+#settings for jni
+JNI_DIR = $(BUILD_BASE)/jni
+JNI_CXX_FILES = jni.cxx
+JNI_OBJS = $(JNI_CXX_FILES:.cxx=.o)
+JNI_LIB = libjni.a
+
+#settings for xcalibyte
+XCBR_DIR = $(BUILD_BASE)/xcalibyte
+XCBR_CXX_FILES = xcalibyte.cxx
+XCBR_DESC_JSON = xcbr_ruleset.json
+XCBR32_OBJS = $(XCBR_CXX_FILES:.cxx=32.o)
+XCBR64_OBJS = $(XCBR_CXX_FILES:.cxx=64.o)
+XCBR32_LIB = libxcbr32.a
+XCBR64_LIB = libxcbr64.a
+XCBR_LIB = $(XCBR32_LIB) $(XCBR64_LIB)
+
+#settings for multithread rules
+MTR_DIR = $(BUILD_BASE)/mt_rules
+MTR_CXX_FILES = lock_rules.cxx
+MTR_DESC_JSON = mt_ruleset.json
+MTR32_OBJS = $(MTR_CXX_FILES:.cxx=32.o)
+MTR64_OBJS = $(MTR_CXX_FILES:.cxx=64.o)
+MTR32_LIB = libmtr32.a
+MTR64_LIB = libmtr64.a
+MTR_LIB = $(MTR32_LIB) $(MTR64_LIB)
+
+#json
+JSON_FILES = $(CERTC_DESC_JSON) $(CERTJ_DESC_JSON) $(XCBR_DESC_JSON) $(MTR_DESC_JSON)
+
+TARGETS = $(CERTC_PKG) $(CXX_INTRN_LIB) $(JNI_LIB) $(CERTJ_LIB) $(XCBR_LIB) $(MTR_LIB) $(JSON_FILES) $(RULE_EX_LIB) INTENT_TARGETS build_every_time
+
+# general rules
+default: first $(TARGETS) last
+
+.PHONY: build_every_time
+
+build_every_time:
+	@echo
+
+first: $(CERTC_DESC_H)
+ifeq ($(BUILD_OS), LINUX)
+ ifndef SKIP_DEP_BUILD
+	$(call submake,$(BUILD_AREA)/include)
+ endif
+endif
+
+last: make_libdeps
+
+VPATH = $(CERTC_DIR) $(CXX_INTRN_DIR) $(JNI_DIR) $(XCBR_DIR) $(MTR_DIR) $(INTENT_TABLE_DIR)
+
+CURRENT_DIR=$(BUILD_AREA)/../targdir_lib/librbc
+
+%32.o : %.cxx $(BUILD_AREA)/include/rbc_base.h
+	$(RBC_CC) -I$(BUILD_BASE) $(RBC_OPTS) -m32 -xfa -c -o $@ $<
+
+%64.o : %.cxx $(BUILD_AREA)/include/rbc_base.h
+	$(RBC_CC) -I$(BUILD_BASE) $(RBC_OPTS) -m64 -xfa -c -o $@ $<
+
+%.o : %.cxx $(BUILD_AREA)/include/rbc_base.h
+	$(RBC_CC) -I$(BUILD_BASE) $(RBC_OPTS) -m64 -xfa -c -o $@ $<
+
+include $(COMMONRULES)
+
+$(CERTC_DESC_H) : $(BUILD_TOT)/be/rbc/certc/gen_certc_rules_desc.h $(BUILD_TOT)/be/rbc/certc/certc_rules_meta.desc
+	$(CPP) -xc $< | grep -v '^#' | sed -e 's/^define/#define/g' > $@
+
+$(CERTC_DESC_JSON) : $(BUILD_TOT)/be/rbc/certc/gen_certc_rules_desc.py $(BUILD_TOT)/be/rbc/certc/certc_rules_meta.desc
+	$(CPP) -xc $< | grep -v '^#' > gen_certc_ruleset.py
+	PYTHONPATH=$(BUILD_BASE):$(CERTC_DIR) $(PYTHON) $(PYTHON_OPTS) gen_certc_ruleset.py > $@
+
+$(CERTJ_DESC_JSON) : $(BUILD_TOT)/be/rbc/certj/gen_certj_rules_desc.py $(BUILD_TOT)/be/rbc/certj/certj_rules_meta.desc
+	$(CPP) -xc $< | grep -v '^#' > gen_certj_ruleset.py
+	PYTHONPATH=$(BUILD_BASE):$(CERTJ_DIR) $(PYTHON) $(PYTHON_OPTS) gen_certj_ruleset.py > $@
+
+$(XCBR_DESC_JSON) : $(XCBR_DIR)/gen_xcbr_rules_desc.py $(XCBR_DIR)/xcbr_rules_meta.desc
+	$(CPP) -xc $< | grep -v '^#' > gen_xcbr_ruleset.py
+	PYTHONPATH=$(BUILD_BASE):$(XCBR_DIR) $(PYTHON) $(PYTHON_OPTS) gen_xcbr_ruleset.py > $@
+
+$(MTR_DESC_JSON) : $(MTR_DIR)/gen_mtr_rules_desc.py $(MTR_DIR)/mtr_rules_meta.desc
+	$(CPP) -xc $< | grep -v '^#' > gen_mtr_ruleset.py
+	PYTHONPATH=$(BUILD_BASE):$(MTR_DIR) $(PYTHON) $(PYTHON_OPTS) gen_mtr_ruleset.py > $@
+
+$(RBC_ENGINE_CLS): $(RBC_ENGINE) $(BUILD_TOT)/be/rbc/rbc_base.h
+	$(JAVAC) -d . $<
+
+$(CERTJ_JAR): $(RBC_ENGINE_CLS) build_every_time
+	mkdir -p libcertj
+	# link RBC_ENGINE classes
+	cd libcertj; ln -s -f ../io .
+	$(BUILD_TOT)/be/rbc/certj/gradlew -p $(BUILD_TOT)/be/rbc/certj -PbuildDir=$(CURRENT_DIR)/libcertj -PjavaBuildType=-g -PRBC_CC=$(RBC_CC) -PRBC_JAVA_OPTS=$(RBC_JAVA_OPTS) jar --project-cache-dir $(CURRENT_DIR)/libcertj/.gradle
+
+# rules for certj
+$(CERTJ_OBJS): $(CERTJ_JAR)
+	$(RBC_CC) $(RBC_OPTS) -m64 -xfa -c -INLINE:none -Wf,-RBC=true -Wf,-noSootOutput=true -Wf,-cp=$(CURRENT_DIR)/libcertj -o $@ $<
+
+$(RULE_EX_JAR): $(RBC_ENGINE_CLS) build_every_time
+	mkdir -p librulex
+	# link RBC_ENGINE classes
+	cd librulex; ln -s -f ../io .
+	$(BUILD_TOT)/be/rbc/rule_example/certj/gradlew -p $(BUILD_TOT)/be/rbc/rule_example/certj -PbuildDir=$(CURRENT_DIR)/librulex -PjavaBuildType=-g -PRBC_CC=$(RBC_CC) -PRBC_JAVA_OPTS=$(RBC_JAVA_OPTS) jar --project-cache-dir $(CURRENT_DIR)/librulex/.gradle
+
+$(RULE_EX_OBJS): $(RULE_EX_JAR)
+	$(RBC_CC) $(RBC_OPTS) -m64 -xfa -c -INLINE:none -Wf,-RBC=true -Wf,-noSootOutput=true -Wf,-cp=$(CURRENT_DIR)/librulex -o $@ $<
+
+# rules for intent-table
+INTENT_TARGETS : $(INTENT_UDRS)
+
+$(UDR_PREFIX)%.udr : %.xlsx $(RBC_ENGINE_CLS)
+	rm -rf $@.workdir; mkdir -p $@.workdir
+	cd $@.workdir; python3 $(XMLREADER)  --input $< --output $(CURRENT_DIR)/$@ --jfe_path $(JFE) --rbc_engine_path $(RBC_ENGINE)
+
+# rules for certc
+$(CERTC32_SKIP): $(CERTC32_OBJS)
+
+$(CERTC32_LIB): $(CERTC32_OBJS) $(CERTC_DESC_JSON)
+	$(ar) cru $@ $^
+
+$(CERTC32_LIB_SKIP): $(CERTC32_SKIP)
+	@rm -rf $@
+	@for f in `echo "$^"`; do if [ -f $$f ]; then cat $$f >> $@; fi ; done
+
+$(CERTC64_SKIP): $(CERTC64_OBJS)
+
+$(CERTC64_LIB): $(CERTC64_OBJS) $(CERTC_DESC_JSON)
+	$(ar) cru $@ $^
+
+$(CERTC64_LIB_SKIP): $(CERTC64_SKIP)
+	@rm -rf $@
+	@for f in `echo "$^"`; do if [ -f $$f ]; then cat $$f >> $@; fi ; done
+
+$(CXX_INTRN32_LIB): $(CXX_INTRN32_OBJS)
+	$(ar) cru $@ $^
+
+$(CXX_INTRN64_LIB): $(CXX_INTRN64_OBJS)
+	$(ar) cru $@ $^
+
+$(CERTJ_LIB): $(CERTJ_OBJS) $(CERTJ_DESC_JSON)
+	$(ar) cru $@ $^
+
+$(RULE_EX_LIB): $(RULE_EX_OBJS)
+	$(ar) cru $@ $^
+
+
+$(JNI_LIB): $(JNI_OBJS)
+	$(ar) cru $@ $^
+
+$(XCBR32_LIB): $(XCBR32_OBJS) $(XCBR_DESC_JSON)
+	$(ar) cru $@ $^
+
+$(XCBR64_LIB): $(XCBR64_OBJS) $(XCBR_DESC_JSON)
+	$(ar) cru $@ $^
+
+$(MTR32_LIB): $(MTR32_OBJS) $(MTR_DESC_JSON)
+	$(ar) cru $@ $^
+
+$(MTR64_LIB): $(MTR64_OBJS) $(MTR_DESC_JSON)
+	$(ar) cru $@ $^
+
+clean:
+	rm -rf Makedepend *.[douea] *.inlskip *.so *.so.[0-9] a.out core lex.yy.[co] y.tab.[cho] _force ar.tmp.*   ii_files *.java $(CERTC_DESC_H) $(JSON_FILES) io udr
+	$(BUILD_TOT)/be/rbc/certj/gradlew -p $(BUILD_TOT)/be/rbc/certj -PbuildDir=$(CURRENT_DIR)/libcertj -PRBC_CC=$(RBC_CC) -PRBC_JAVA_OPTS=$(RBC_JAVA_OPTS) clean
+	$(BUILD_TOT)/be/rbc/certj/gradlew -p $(BUILD_TOT)/be/rbc/rule_example/certj -PbuildDir=$(CURRENT_DIR)/librulex -PRBC_CC=$(RBC_CC) -PRBC_JAVA_OPTS=$(RBC_JAVA_OPTS) clean
+

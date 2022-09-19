@@ -1,0 +1,179 @@
+/*
+   Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+// DECLARE_RULE:
+// DECLARE_RULE(id, lang, code, name, desc, detail, url, category, severity, priority, likelihood, fix_cost)
+
+// in alphabetical order below
+
+// AOB
+DECLARE_RULE(AOB,
+             VL_C | VL_CXX | VL_JAVA,
+             "AOB",
+             "Array out of bound",
+             "While writing data to a buffer, the access overruns the buffer\'s boundary into adjacent memory locations",
+             "",
+             "",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_HIGH)
+// DBF
+DECLARE_RULE(DBF,
+             VL_C | VL_CXX,
+             "DBF",
+             "Heap object double free",
+             "Memory resource in heap space has been freed more than once",
+             "",
+             "",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+// DBZ
+DECLARE_RULE(DBZ,
+             VL_C | VL_CXX | VL_JAVA,
+             "DBZ",
+             "Division by zero",
+             "The expression has a division operation with a zero divisor (denominator), result of the operation is indeterminate",
+             "",
+             "",
+             RC_CORRECTNESS,
+             SEV_LOW,
+             PRI_LOW,
+             RL_UNLIKELY,
+             FC_LOW)
+// DDV
+DECLARE_RULE(DDV,
+             VL_C | VL_CXX | VL_JAVA,
+             "DDV",
+             "Dead variable",
+             "The expression has been assigned to a variable that will never be used, this is either a performance issue or unintended typo",
+             "",
+             "",
+             RC_PERFORMANCE,
+             SEV_LOW,
+             PRI_LOW,
+             RL_UNLIKELY,
+             FC_LOW)
+// FAM
+DECLARE_RULE(FAM,
+             VL_C | VL_CXX | VL_JAVA,
+             "FAM",
+             "Formal and actual parameter mismatch",
+             "Formal and actual parameter mismatch, causing illegal memory read or write or output difference ",
+             "",
+             "",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_UNLIKELY,
+             FC_LOW)
+// FMT
+DECLARE_RULE(FMT,
+             VL_C | VL_CXX,
+             "FMT",
+             "Format string",
+             "There are issues in the format string used in printf/scanf/etc, causing illegal read or write out of bound or output difference.",
+             "",
+             "",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_UNLIKELY,
+             FC_LOW)
+// MSF
+DECLARE_RULE(MSF,
+             VL_C | VL_CXX,
+             "MSF",
+             "Missing free",
+             "Memory resource in heap space has been allocated but never released (freed), resulting in possible memory leakage.",
+             "",
+             "",
+             RC_ROBUSTNESS,
+             SEV_HIGH,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+// NPD
+DECLARE_RULE(NPD,
+             VL_C | VL_CXX | VL_JAVA,
+             "NPD",
+             "Null pointer dereference",
+             "The program is trying to access data through a pointer that is NULL, or invalid, at runtime. Typically these types of defects result in a system fault or an abnormal program termination.",
+             "",
+             "",
+             RC_ROBUSTNESS,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+// RAL
+DECLARE_RULE(RAL,
+             VL_C | VL_CXX,
+             "RAL",
+             "Return address of local",
+             "Address of a local variable (stack space) has been passed to the caller, causing illegal memory access",
+             "",
+             "",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+// UAF
+DECLARE_RULE(UAF,
+             VL_C | VL_CXX,
+             "UAF",
+             "Use after free",
+             "Heap memory is assessed after it has been freed. The original pointer is now accessing illegal memory",
+             "",
+             "",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+// UDR
+DECLARE_RULE(UDR,
+             VL_C | VL_CXX,
+             "UDR",
+             "Use dangling reference",
+             "The program is trying to free memory that has not been dynamically allocated. The pointer value is not on the heap along an execution path.",
+             "",
+             "",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_UNLIKELY,
+             FC_MEDIUM)
+// UIV
+DECLARE_RULE(UIV,
+             VL_C | VL_JAVA,
+             "UIV",
+             "Uninitialised variable",
+             "You have used a variable that has an indeterminate value in the program. This can cause the program to execute in an unpredictable manner and could provide a possible route for attack.",
+             "",
+             "",
+             RC_CORRECTNESS,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_UNLIKELY,
+             FC_LOW)
+
+#include "../rbc/builtin_rbc_rule_meta.desc"

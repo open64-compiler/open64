@@ -1,0 +1,482 @@
+/*
+   Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+// DECLARE_RULE:
+// DECLARE_RULE(id, lang, code, name, desc, detail, url, category, severity, priority, likelihood, fix_cost)
+
+// in alphabetical order below
+
+// ENV01-J
+DECLARE_RULE(_ERR_CERTJ_ENV01,
+             VL_JAVA,
+             "ENV01-J",
+             "CERT ENV01-J",
+             "Place all security-sensitive code in a single JAR and sign and seal it",
+             "Place all security-sensitive code in a single JAR and sign and seal it",
+             "https://wiki.sei.cmu.edu/confluence/display/java/ENV01-J.+Place+all+security-sensitive+code+in+a+single+JAR+and+sign+and+seal+it",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// ENV03-J
+DECLARE_RULE(_ERR_CERTJ_ENV03,
+             VL_JAVA,
+             "ENV03-J",
+             "CERT ENV03-J",
+             "Do not grant dangerous combinations of permissions",
+             "Do not grant dangerous combinations of permissions",
+             "https://wiki.sei.cmu.edu/confluence/display/java/ENV03-J.+Do+not+grant+dangerous+combinations+of+permissions",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// ENV06-J
+DECLARE_RULE(_ERR_CERTJ_ENV06,
+             VL_JAVA,
+             "ENV06-J",
+             "CERT ENV06-J",
+             "Production code must not contain debugging entry points",
+             "Remove main() method",
+             "https://wiki.sei.cmu.edu/confluence/display/java/ENV06-J.+Production+code+must+not+contain+debugging+entry+points",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// ERR08-J
+DECLARE_RULE(_ERR_CERTJ_ERR08-J,
+             VL_JAVA,
+             "ERR08-J",
+             "CERT ERR08-J",
+             "Do not catch NullPointerException or any of its ancestors",
+             "Explicitly checks the String argument for null",
+             "https://wiki.sei.cmu.edu/confluence/display/java/ERR08-J.+Do+not+catch+NullPointerException+or+any+of+its+ancestors",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// EXP02-J
+DECLARE_RULE(_ERR_CERTJ_EXP02-J,
+             VL_JAVA,
+             "EXP02-J",
+             "CERT EXP02-J",
+             "Do not use Object.equals() to compare two arrays",
+             "Use Arrays.equals() or operator== to compare two array",
+             "https://wiki.sei.cmu.edu/confluence/display/java/EXP02-J.+Do+not+use+the+Object.equals%28%29+method+to+compare+two+arrays",
+             RC_SECURITY,
+             SEV_LOW,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_LOW)
+
+// FIO02-J
+DECLARE_RULE(_ERR_CERTJ_FIO02,
+             VL_JAVA,
+             "FIO02-J",
+             "CERT FIO02-J",
+             "Detect and handle file-related errors",
+             "Checks the return value of delete()",
+             "https://wiki.sei.cmu.edu/confluence/display/java/FIO02-J.+Detect+and+handle+file-related+errors",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// FIO05-J
+DECLARE_RULE(_ERR_CERTJ_FIO05,
+             VL_JAVA,
+             "FIO05-J",
+             "CERT FIO05-J",
+             "Do not expose buffers created using the wrap() or duplicate() methods to untrusted code",
+             "Returns in the form of a read-only CharBuffer or allocates a new copy",
+             "https://wiki.sei.cmu.edu/confluence/display/java/FIO05-J.+Do+not+expose+buffers+created+using+the+wrap%28%29+or+duplicate%28%29+methods+to+untrusted+code",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_LOW)
+
+// FIO08-J
+DECLARE_RULE(_ERR_CERTJ_FIO08,
+             VL_JAVA,
+             "FIO08-J",
+             "CERT FIO08-J",
+             "Distinguish between characters or bytes read from a stream and -1",
+             "Use a variable of type int to capture the return value of the byte input method",
+             "https://wiki.sei.cmu.edu/confluence/display/java/FIO08-J.+Distinguish+between+characters+or+bytes+read+from+a+stream+and+-1",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// FIO14-j
+DECLARE_RULE(_ERR_CERTJ_FIO14,
+             VL_JAVA,
+             "FIO14-J",
+             "CERT FIO14-J",
+             "Perform proper cleanup at program termination",
+             "Explicitly closes the file before exiting",
+             "https://wiki.sei.cmu.edu/confluence/display/java/FIO14-J.+Perform+proper+cleanup+at+program+termination",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// IDS00-J
+DECLARE_RULE(_ERR_CERTJ_IDS00,
+             VL_JAVA,
+             "IDS00-J",
+             "CERT IDS00-J",
+             "Prevent SQL injection",
+             "Validate String in used",
+             "https://wiki.sei.cmu.edu/confluence/display/java/IDS00-J.+Prevent+SQL+injection",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// IDS01-J
+DECLARE_RULE(_ERR_CERTJ_IDS01,
+             VL_JAVA,
+             "IDS01-J",
+             "CERT IDS01-J",
+             "Normalize strings before validating them",
+             "Normalize strings before validating them",
+             "https://wiki.sei.cmu.edu/confluence/display/java/IDS01-J.+Normalize+strings+before+validating+them",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// IDS07-J
+DECLARE_RULE(_ERR_CERTJ_IDS07,
+             VL_JAVA,
+             "IDS07-J",
+             "CERT IDS07-J",
+             "Sanitize untrusted data passed to the Runtime.exec() method",
+             "Sanitize untrusted data passed to the Runtime.exec() method",
+             "https://wiki.sei.cmu.edu/confluence/display/java/IDS07-J.+Sanitize+untrusted+data+passed+to+the+Runtime.exec%28%29+method",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// IDS11-J
+DECLARE_RULE(_ERR_CERTJ_IDS11,
+             VL_JAVA,
+             "IDS11-J",
+             "CERT IDS11-J",
+             "Perform any string modifications before validation",
+             "Perform any string modifications before validation",
+             "https://wiki.sei.cmu.edu/confluence/display/java/IDS11-J.+Perform+any+string+modifications+before+validation",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// IDS16-J
+DECLARE_RULE(_ERR_CERTJ_IDS16,
+             VL_JAVA,
+             "IDS16-J",
+             "CERT IDS16-J",
+             "Prevent XML Injection",
+             "Using a schema or DTD to validate XML is convenient when receiving XML that may have been loaded with unsanitized input",
+             "https://wiki.sei.cmu.edu/confluence/display/java/IDS16-J.+Prevent+XML+Injection",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// IDS17-J
+DECLARE_RULE(_ERR_CERTJ_IDS17,
+             VL_JAVA,
+             "IDS17-J",
+             "CERT IDS17-J",
+             "Prevent XML External Entity Attacks",
+             "Use EntityResolver to customize handling of external entities",
+             "https://wiki.sei.cmu.edu/confluence/display/java/IDS17-J.+Prevent+XML+External+Entity+Attacks",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// JNI01-J
+DECLARE_RULE(_ERR_CERTJ_JNI01,
+             VL_JAVA,
+             "JNI01-J",
+             "CERT JNI01-J",
+             "Safely invoke standard APIs that perform tasks using the immediate caller's class loader instance (loadLibrary)",
+             "Safely invoke standard APIs that perform tasks using the immediate caller's class loader instance (loadLibrary)",
+             "https://wiki.sei.cmu.edu/confluence/pages/viewpage.action?pageId=88487334",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// MET06-J
+DECLARE_RULE(_ERR_CERTJ_MET06,
+             VL_JAVA,
+             "MET06-J",
+             "CERT MET06-J",
+             "Do not invoke overridable methods in clone()",
+             "Do not invoke overridable methods in clone()",
+             "https://wiki.sei.cmu.edu/confluence/pages/viewpage.action?pageId=88487921",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_LOW)
+
+// MSC02-J
+DECLARE_RULE(_ERR_CERTJ_MSC02,
+             VL_JAVA,
+             "MSC02-J",
+             "CERT MSC02-J",
+             "Generate strong random numbers",
+             "Uses java.security.SecureRandom",
+             "https://wiki.sei.cmu.edu/confluence/display/java/MSC02-J.+Generate+strong+random+numbers",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// MSC61-J
+DECLARE_RULE(_ERR_CERTJ_MSC61,
+             VL_JAVA,
+             "MSC61-J",
+             "CERT MSC61-J",
+             "Do not use insecure or weak cryptographic algorithms",
+             "Uses strong cryptographic algorithms",
+             "https://wiki.sei.cmu.edu/confluence/display/java/MSC61-J.+Do+not+use+insecure+or+weak+cryptographic+algorithms",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// MSC03-J
+DECLARE_RULE(_ERR_CERTJ_MSC03,
+             VL_JAVA,
+             "MSC03-J",
+             "CERT MSC03-J",
+             "Never hard code sensitive information",
+             "Never hard code sensitive information",
+             "https://wiki.sei.cmu.edu/confluence/display/java/MSC03-J.+Never+hard+code+sensitive+information",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// OBJ01-J
+DECLARE_RULE(_ERR_CERTJ_OBJ01,
+             VL_JAVA,
+             "OBJ01-J",
+             "CERT OBJ01-J",
+             "Limit accessibility of fields",
+             "Declare fields as private and provide public accessor",
+             "https://wiki.sei.cmu.edu/confluence/display/java/OBJ01-J.+Limit+accessibility+of+fields",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// OBJ05-J
+DECLARE_RULE(_ERR_CERTJ_OBJ05,
+             VL_JAVA,
+             "OBJ05-J",
+             "CERT OBJ05-J",
+             "Do not return references to private mutable class members",
+             "Clone one",
+             "https://wiki.sei.cmu.edu/confluence/display/java/OBJ05-J.+Do+not+return+references+to+private+mutable+class+members",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// OBJ11-J
+DECLARE_RULE(_ERR_CERTJ_OBJ11,
+             VL_JAVA,
+             "OBJ11-J",
+             "CERT OBJ11-J",
+             "Be wary of letting constructors throw exceptions",
+             "Be wary of letting constructors throw exceptions",
+             "https://wiki.sei.cmu.edu/confluence/display/java/OBJ11-J.+Be+wary+of+letting+constructors+throw+exceptions",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// OBJ13-J
+DECLARE_RULE(_ERR_CERTJ_OBJ13,
+             VL_JAVA,
+             "OBJ13-J",
+             "CERT OBJ13-J",
+             "Ensure that references to mutable objects are not exposed",
+             "Copy one or make it immutable",
+             "https://wiki.sei.cmu.edu/confluence/display/java/OBJ13-J.+Ensure+that+references+to+mutable+objects+are+not+exposed",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_LOW)
+
+// SEC01-J
+DECLARE_RULE(_ERR_CERTJ_SEC01,
+             VL_JAVA,
+             "SEC01-J",
+             "CERT SEC01-J",
+             "Do not allow tainted variables in privileged blocks",
+             "Sanitize data in privileged blocks",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SEC01-J.+Do+not+allow+tainted+variables+in+privileged+blocks",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// SEC02-J
+DECLARE_RULE(_ERR_CERTJ_SEC02,
+             VL_JAVA,
+             "SEC02-J",
+             "CERT SEC02-J",
+             "Do not base security checks on untrusted sources",
+             "Do not base security checks on untrusted sources",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SEC02-J.+Do+not+base+security+checks+on+untrusted+sources",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SEC03-J
+DECLARE_RULE(_ERR_CERTJ_SEC03,
+             VL_JAVA,
+             "SEC03-J",
+             "CERT SEC03-J",
+             "Do not load trusted classes after allowing untrusted code to load arbitrary classes",
+             "Do not load trusted classes after allowing untrusted code to load arbitrary classes",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SEC03-J.+Do+not+load+trusted+classes+after+allowing+untrusted+code+to+load+arbitrary+classes",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SEC04-J
+DECLARE_RULE(_ERR_CERTJ_SEC04,
+             VL_JAVA,
+             "SEC04-J",
+             "CERT SEC04-J",
+             "Protect sensitive operations with security manager checks",
+             "Protect sensitive operations with security manager checks",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SEC04-J.+Protect+sensitive+operations+with+security+manager+checks",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SEC05-J
+DECLARE_RULE(_ERR_CERTJ_SEC05,
+             VL_JAVA,
+             "SEC05-J",
+             "CERT SEC05-J",
+             "Do not use reflection to increase accessibility of classes, methods, or fields",
+             "Do not use reflection to increase accessibility of classes, methods, or fields",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SEC05-J.+Do+not+use+reflection+to+increase+accessibility+of+classes%2C+methods%2C+or+fields",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SEC06-J
+DECLARE_RULE(_ERR_CERTJ_SEC06,
+             VL_JAVA,
+             "SEC06-J",
+             "CERT SEC06-J",
+             "Do not rely on the default automatic signature verification provided by URLClassLoader and java.util.jar",
+             "Do not rely on the default automatic signature verification provided by URLClassLoader and java.util.jar",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SEC06-J.+Do+not+rely+on+the+default+automatic+signature+verification+provided+by+URLClassLoader+and+java.util.jar",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// SEC07-J
+DECLARE_RULE(_ERR_CERTJ_SEC07,
+             VL_JAVA,
+             "SEC07-J",
+             "CERT SEC07-J",
+             "Call the superclass's getPermissions() method when writing a custom class loader",
+             "Call the superclass's getPermissions() method when writing a custom class loader",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SEC07-J.+Call+the+superclass%27s+getPermissions%28%29+method+when+writing+a+custom+class+loader",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// SER01-J
+DECLARE_RULE(_ERR_CERTJ_SER01,
+             VL_JAVA,
+             "SER01-J",
+             "CERT SER01-J",
+             "Do not deviate from the proper signatures of serialization methods",
+             "Do not deviate from the proper signatures of serialization methods",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SER01-J.+Do+not+deviate+from+the+proper+signatures+of+serialization+methods",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_LOW)
+
+// SER05-J
+DECLARE_RULE(_ERR_CERTJ_SER05,
+             VL_JAVA,
+             "SER05-J",
+             "CERT SER05-J",
+             "Do not serialize instances of inner classes",
+             "Do not serialize instances of inner classes",
+             "https://wiki.sei.cmu.edu/confluence/display/java/SER05-J.+Do+not+serialize+instances+of+inner+classes",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)

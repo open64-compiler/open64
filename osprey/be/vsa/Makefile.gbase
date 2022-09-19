@@ -1,0 +1,604 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+#
+#  Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement 
+#  or the like.  Any license provided herein, whether implied or 
+#  otherwise, applies only to this software file.  Patent licenses, if 
+#  any, provided herein do not apply to combinations of this program with 
+#  other software, or any other product whatsoever.  
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for vsa
+#
+
+#----------------------------------------------------------------------
+#  Information about Makefile
+#
+#  This Makefile is used to build the 32 bit host/target version of the
+#  back-end
+#
+#  *  This Makefile does not require that targ_info has already been built.
+#
+#  *  Because the Makefile removes temporary files that are in the
+#     current directory (at startup and on interrupts) you can't
+#     run two or more makes in the same directory at the same time.
+#     (Perhaps, If I could force the temp files out to a temp directory,
+#     this could be changed?)
+#
+#----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+CURDIR  = .
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARG_BE_DIR: is the be directory in which we do build... this can
+#               be retargeted (e.g., for building be with different options)
+#               by setting LOCAL_BE_DIR in localdefs
+#----------------------------------------------------------------------
+ifdef LOCAL_BE_DIR
+TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
+else
+TARG_BE_DIR = $(TARGDIR)/be
+endif
+
+#----------------------------------------------------------------------
+#  Compiler Options
+#----------------------------------------------------------------------
+HOSTDEFS += -Dsgi
+HOSTDEFS += -DBACK_END 
+HOSTDEFS += -Dlonglong
+# need to define _LONGLONG and _SVR4_SOURCE to allow compilation with -ansi.
+HOSTDEFS += -D_LONGLONG -D_SVR4_SOURCE
+HOSTDEFS += -DMONGOOSE_BE
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+HOSTDEFS += -DIs_True_On
+HOSTDEFS += -DInsist_On 
+endif
+
+ifeq ($(BUILD_PCH), USE_PCH)
+HOSTDEFS += -DUSE_PCH
+endif
+
+INSTALL_LOC = $(STD_MONGOOSE_LOC)
+
+BUILD_WITH_PROTECT_VSA=NO
+CPPFLAGS += -Wreturn-type
+CFLAGS += -Wreturn-type
+#----------------------------------------------------------------------
+#  List of directories, and source files of interest
+#----------------------------------------------------------------------
+
+BE_DIR 			= $(BUILD_TOT)/be
+BE_BE_DIR		= $(BE_DIR)/be
+BE_CG_DIR 		= $(BE_DIR)/cg
+BE_COM_DIR 		= $(BE_DIR)/com
+BE_OPT_DIR 		= $(BE_DIR)/opt
+BE_VHO_DIR 		= $(BE_DIR)/vho
+BE_VSA_DIR 		= $(BE_DIR)/vsa
+BE_REGION_DIR 		= $(BE_DIR)/region
+COMMON_DIR 		= $(BUILD_TOT)/common
+COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_STL_DIR 		= $(COMMON_DIR)/stl
+COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
+COMMON_LIB_DIR 		= $(COMMON_DIR)/lib
+COMMON_TARG_INFO_ACCESS = $(COMMON_DIR)/targ_info/access
+COMMON_UTIL_DIR 	= $(COMMON_DIR)/util
+COMMON_UTIL_TARG_DIR 	= $(COMMON_UTIL_DIR)/$(BUILD_TARGET_DIR)
+INCLUDE_DIR 		= $(ROOT)/usr/include
+LD_PLUGIN_DIR           = $(BE_DIR)/ld_plugin
+LIBCOMUTIL_DIR 		= $(BUILD_TOT)/libcomutil
+LIBPROTECT_DIR          = $(BUILD_TOT)/pro/util
+LIBPROTECT_INC_DIR      = $(LIBPROTECT_DIR)/vsa_include
+LIBPROTECT_SRC_DIR      = $(LIBPROTECT_DIR)
+LIBCRYPTOPP_DIR         = $(LIBPROTECT_DIR)/cryptopp
+BE_RBC_DIR              = $(BE_DIR)/rbc
+
+ifeq ($(BUILD_WITH_PROTECT_VSA), YES)
+PROTECT_EX_DIRS=$(LIBPROTECT_SRC_DIR) $(LIBCRYPTOPP_DIR)
+PROTECT_EX_HEADER_DIRS=$(LIBPROTECT_INC_DIR)
+else
+PROTECT_EX_DIRS=
+PROTECT_EX_HEADER_DIRS=$(LIBPROTECT_INC_DIR)
+endif
+
+# These are the directories in which to look for source files.
+
+VSA_DIRS = \
+  $(BE_OPT_DIR)		\
+  $(BE_VSA_DIR)         \
+  $(BE_RBC_DIR)         \
+  $(LIBPROTECT_SRC_DIR) \
+  $(LIBCRYPTOPP_DIR)
+
+VSA_HEADER_DIRS = \
+  $(VSA_DIRS)		\
+  $(BE_COM_DIR)		\
+  $(BE_OPT_DIR)		\
+  $(COMMON_UTIL_DIR)    \
+  $(COMMON_COM_DIR)	\
+  $(COMMON_STL_DIR)     \
+  $(COMMON_TARG_INFO_ACCESS) \
+  $(COMMON_UTIL_DIR)	\
+  $(BE_COM_DIR)		\
+  $(BE_VHO_DIR)		\
+  $(BE_REGION_DIR)	\
+  $(COMMON_COM_TARG_DIR) \
+  $(LD_PLUGIN_DIR)      \
+  $(TARGDIR)/targ_info	\
+  $(TARGDIR)/include	\
+  $(TARG_BE_DIR)        \
+  $(LIBPROTECT_INC_DIR) \
+  $(TARGDIR)/include/libelf
+
+
+#----------------------------------------------------------------------
+#  List of source files.  Please keep them in alphabetical order.
+#----------------------------------------------------------------------
+
+BE_RBC_CXX_SRCS = \
+  rbc_rule_defs.cxx \
+  opt_vsa_rbc.cxx \
+  opt_vsa_fsm.cxx \
+  opt_vsa_format.cxx \
+  opt_vsa_tag.cxx
+
+METAMGR_CXX_SRCS = \
+  meta_manager.cxx \
+  opt_vsa_meta.cxx \
+  builtin_rule_defs.cxx
+
+BE_VSA_CXX_SRCS = \
+  opt_addr_util.cxx	\
+  opt_cr_util.cxx       \
+  opt_cda.cxx           \
+  opt_dna.cxx		\
+  opt_vra_builder.cxx	\
+  opt_vra_bounds.cxx	\
+  opt_vra_demo.cxx	\
+  opt_vra_simp.cxx	\
+  opt_vra_util.cxx	\
+  opt_vra.cxx		\
+  opt_vsa.cxx	        \
+  opt_vsa_aofb.cxx	\
+  opt_vsa_checker.cxx	\
+  opt_vsa_cprop.cxx     \
+  opt_vsa_graph.cxx     \
+  opt_vsa_hprop.cxx     \
+  opt_vsa_du.cxx        \
+  opt_vsa_oob.cxx	\
+  opt_vsa_eh.cxx	\
+  opt_vsa_heap.cxx      \
+  opt_vsa_icall.cxx     \
+  opt_vsa_jni.cxx       \
+  opt_vsa_npd.cxx       \
+  opt_vsa_heap_checker.cxx \
+  opt_vsa_report.cxx    \
+  opt_vsa_var_def.cxx   \
+  opt_vsa_tag_prop.cxx  \
+  opt_vsa_tag_checker.cxx \
+  opt_vsa_hva.cxx       \
+  opt_vsa_vcg.cxx       \
+  opt_vsa_vsym.cxx      \
+  opt_vsa_util.cxx      \
+  vsa_annot.cxx         \
+  class_hierarchy.cxx   \
+  cxx_class_hierarchy_bldr.cxx \
+  j_class_hierarchy_bldr.cxx \
+  builtin_rule_defs.cxx \
+  opt_vsa_uiv.cxx
+
+ifeq ($(BUILD_PROTECT_HTTP_TINY), YES)
+  PROTECT_HTTP_LIB_SRCS=http_lib.cxx
+else
+  PROTECT_HTTP_LIB_SRCS=
+endif
+
+PROTECT_CXX_SRCS = \
+  crypto_cipher.cxx    \
+  network_util.cxx     \
+  protect_util.cxx     \
+  $(PROTECT_HTTP_LIB_SRCS)   \
+  sysinfo_util.cxx
+
+#  algebra.cxx 
+#  test.cxx \
+
+LIBCRYPTOPP_SRCS = \
+  cryptlib.cxx \
+  cpu.cxx \
+  integer.cxx \
+  ecp.cxx \
+  salsa.cxx \
+  fipsalgt.cxx \
+  osrng.cxx \
+  ttmac.cxx \
+  authenc.cxx \
+  zdeflate.cxx \
+  arc4.cxx \
+  pssr.cxx \
+  shacal2.cxx \
+  des.cxx \
+  mqv.cxx \
+  tea.cxx \
+  padlkrng.cxx \
+  filters.cxx \
+  strciphr.cxx \
+  polynomi.cxx \
+  xtr.cxx \
+  modes.cxx \
+  shake.cxx \
+  poly1305.cxx \
+  wake.cxx \
+  speck.cxx \
+  zlib.cxx \
+  eprecomp.cxx \
+  cham.cxx \
+  oaep.cxx \
+  chachapoly.cxx \
+  queue.cxx \
+  base64.cxx \
+  rc2.cxx \
+  ppc_power8.cxx \
+  pubkey.cxx \
+  ec2n.cxx \
+  safer.cxx \
+  ccm.cxx \
+  twofish.cxx \
+  luc.cxx \
+  rsa.cxx \
+  donna_32.cxx \
+  blumshub.cxx \
+  fips140.cxx \
+  threefish.cxx \
+  lea.cxx \
+  hc256.cxx \
+  hrtimer.cxx \
+  rc5.cxx \
+  sha3.cxx \
+  adler32.cxx \
+  files.cxx \
+  ariatab.cxx \
+  sm4.cxx \
+  gf2n.cxx \
+  rijndael.cxx \
+  rng.cxx \
+  emsa2.cxx \
+  md5.cxx \
+  rabbit.cxx \
+  simeck.cxx \
+  hc128.cxx \
+  simon.cxx \
+  sharkbox.cxx \
+  idea.cxx \
+  whrlpool.cxx \
+  cast.cxx \
+  nbtheory.cxx \
+  3way.cxx \
+  cmac.cxx \
+  tiger.cxx \
+  basecode.cxx \
+  panama.cxx \
+  casts.cxx \
+  marss.cxx \
+  donna_64.cxx \
+  sm3.cxx \
+  darn.cxx \
+  rdrand.cxx \
+  gost.cxx \
+  hex.cxx \
+  scrypt.cxx \
+  hmac.cxx \
+  mars.cxx \
+  xed25519.cxx \
+  tweetnacl.cxx \
+  md4.cxx \
+  tftables.cxx \
+  donna_sse.cxx \
+  gfpcrypt.cxx \
+  crc.cxx \
+  pkcspad.cxx \
+  dh.cxx \
+  serpent.cxx \
+  blowfish.cxx \
+  skipjack.cxx \
+  square.cxx \
+  md2.cxx \
+  blake2.cxx \
+  randpool.cxx \
+  aria.cxx \
+  channels.cxx \
+  default.cxx \
+  rabin.cxx \
+  keccak_core.cxx \
+  vmac.cxx \
+  gzip.cxx \
+  seal.cxx \
+  gcm.cxx \
+  kalyna.cxx \
+  ppc_power7.cxx \
+  bfinit.cxx \
+  algparam.cxx \
+  kalynatab.cxx \
+  asn.cxx \
+  esign.cxx \
+  gf2_32.cxx \
+  misc.cxx \
+  ida.cxx \
+  dll.cxx \
+  rw.cxx \
+  ppc_power9.cxx \
+  tigertab.cxx \
+  iterhash.cxx \
+  elgamal.cxx \
+  camellia.cxx \
+  dsa.cxx \
+  chacha.cxx \
+  base32.cxx \
+  cbcmac.cxx \
+  mqueue.cxx \
+  rdtables.cxx \
+  shark.cxx \
+  ripemd.cxx \
+  eax.cxx \
+  dessp.cxx \
+  squaretb.cxx \
+  hight.cxx \
+  sosemanuk.cxx \
+  gf256.cxx \
+  rc6.cxx \
+  xtrcrypt.cxx \
+  dh2.cxx \
+  keccak.cxx \
+  sha.cxx \
+  eccrypto.cxx \
+  seed.cxx \
+  zinflate.cxx
+
+# TestScripts/cryptest-coverity.cpp
+
+ifeq ($(BUILD_WITH_PROTECT_VSA), YES)
+PROTECT_EX_SRCS=$(PROTECT_CXX_SRCS) $(LIBCRYPTOPP_SRCS)
+else
+PROTECT_EX_SRCS=
+endif
+
+
+ifeq ($(BUILD_PCH), USE_PCH)
+BACK_END_PCH_OBJS = $(BE_VSA_CXX_SRCS:.cxx=.o)
+else
+BACK_END_CXX_SRCS = $(BE_VSA_CXX_SRCS) $(PROTECT_EX_SRCS)
+endif
+
+BACK_END_CXX_OBJS = $(BACK_END_CXX_SRCS:.cxx=.o)
+BE_RBC_CXX_OBJS = $(BE_RBC_CXX_SRCS:.cxx=.o)
+
+METAMGR_CXX_OBJS = $(METAMGR_CXX_SRCS:.cxx=.o)
+METAMGR_EXE = meta_mgr
+METAMGR_LIBS = $(TARGDIR)/libelf/libelf.a -ldl
+
+# extra files to be removed with make clobber
+LDIRT = ii_files *.pch
+
+VPATH    =  $(VSA_DIRS)
+
+
+# Protection related
+ifeq ($(BUILD_WITH_PROTECT_VSA), YES)
+PROTECT_LC_OPTS= -DXVSA_PROTECT_FULL -DCRYPTOPP_DISABLE_ASM -DCRYPTOPP_DISABLE_SSE4 -DCRYPTOPP_DISABLE_AVX2 -DCRYPTOPP_DISABLE_AESNI  -DCRYPTOPP_DISABLE_AVX
+PROTECT_LCXX_OPTS= -DXVSA_PROTECT_FULL -DCRYPTOPP_DISABLE_ASM -DCRYPTOPP_DISABLE_SSE4 -DCRYPTOPP_DISABLE_AVX2 -DCRYPTOPP_DISABLE_AESNI  -DCRYPTOPP_DISABLE_AVX
+else
+PROTECT_LC_OPTS= -DXVSA_PROTECT_NONE
+PROTECT_LCXX_OPTS= -DXVSA_PROTECT_NONE
+endif
+
+
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS) $(PROTECT_LC_OPTS)
+LCDEFS = $(HOSTDEFS) $(TARGDEFS)
+LCINCS = $(addprefix -I, $(VSA_HEADER_DIRS))
+ifeq ($(BUILD_OS), LINUX)
+LCINCS += -I$(BUILD_AREA)/include
+endif
+
+# -Wno-deprecated -Wno-int-to-pointer-cast -Wno-conversion-null
+LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS) $(PCH_OPTS) $(PROTECT_LCXX_OPTS)
+LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
+LC++INCS = $(addprefix -I, $(VSA_HEADER_DIRS))
+LASOPTS = $(STD_COMPILE_OPTS)
+LASDEFS = $(HOSTDEFS) $(TARGDEFS)
+LASINCS = $(addprefix -I, $(VSA_HEADER_DIRS))
+
+# setup stuff to build shared or non-shared
+GLDOPTS = $(STD_LOAD_OPTS)
+
+DSOSTARTOPT = 
+DSOSTARTOPT_32 = $(DSOSTARTOPT)
+DSOSTARTOPT_N32 = $(DSOSTARTOPT)
+
+ifeq ($(BUILD_VARIANT), MEM_STATS)
+LLDLIBS +=  -lmalloc
+LDFLAGS += -lmalloc
+endif
+
+# for cplus_demangle
+TARG_LIBIBERTY_DIR = $(TARGDIR)/libiberty
+LLDLIBS += $(TARG_LIBIBERTY_DIR)/libiberty.a
+
+#----------------------------------------------------------------------
+# File containing the list of symbols exported outside of cg.so
+#----------------------------------------------------------------------
+EXPORT_LIST =
+
+#----------------------------------------------------------------------
+#  Define target
+#----------------------------------------------------------------------
+
+ifdef LINK_DSO
+TARGETS = debug-vsa
+else
+ ifeq ($(BUILD_TYPE), NONSHARED)
+TARGETS = libvsa.a
+ else
+TARGETS = $(VSA_SO) $(RBC_SO) $(METAMGR_EXE)
+ endif
+endif
+
+#----------------------------------------------------------------------
+#  Variables describing additional sources, objects, and libraries
+#----------------------------------------------------------------------
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+#----------------------------------------------------------------------
+#  The commands in this section are done BEFORE any other target is
+#  built.
+#----------------------------------------------------------------------
+first:
+ifndef SKIP_DEP_BUILD
+## verify that be.so is up to date
+	$(call submake,$(TARG_BE_DIR))
+endif
+ifeq ($(BUILD_OS), LINUX)
+	if ! test -e $(BE_SO); then ln -sf $(TARG_BE_DIR)/$(BE_SO) .; fi
+endif
+ifndef SKIP_DEP_BUILD
+ ifeq ($(BUILD_PCH), USE_PCH)
+## build pch files first so that we can use precompiled headers
+	( $(MAKE) $(.MAKEFLAGS) BUILD_PCH=USE_PCH PCH_OPTS="-LANG:create_pch=opt_pch.pch" opt_pch.pch opt_pch.o )
+	( $(MAKE) $(.MAKEFLAGS) BUILD_PCH=USE_PCH BUILD_OPTIMIZE="$(BUILD_OPTIMIZE)" PCH_OPTS="-LANG:use_pch=opt_pch.pch" opt_pch_files )
+ endif
+endif
+
+#----------------------------------------------------------------------
+#  The commands in this section are done AFTER every other target is
+#  built.
+#----------------------------------------------------------------------
+last: make_deps
+
+#----------------------------------------------------------------------
+#  Build 'vsa'
+#
+#  These rules build the 'vsa' executable by default, and can install
+#  it in the $(BUILD_INSTALL)/usr/lib directory.
+#
+#----------------------------------------------------------------------
+
+install:: default
+ifeq ($(BUILD_OS), LINUX)
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
+else
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(INSTALL_LOC) $(VSA_SO)
+ ifeq ($(BUILD_TYPE), SHARED)
+ ifndef NOSYSGEN
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(INSTALL_LOC) $(VSA_SO)
+ endif
+ endif
+endif
+
+.PHONY: default first last install make_deps
+
+ifeq ($(BUILD_PCH), USE_PCH)
+
+opt_pch_files: $(BACK_END_PCH_OBJS) opt_pch.pch
+
+$(VSA_SO): $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) $(BACK_END_PCH_OBJS) \
+	 $(TARG_BE_DIR)/$(BE_SO) $(BE_OPT_DIR)/Exported $(BE_BE_DIR)/so_locations
+	$(link.c++f) -o $(VSA_SO) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+	 $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) $(BACK_END_PCH_OBJS) \
+	 $(TARG_BE_DIR)/$(BE_SO) $(LLDLIBS) -show
+	if [ ! -l $(BE_SO) ]; then ln -sf $(TARG_BE_DIR)/$(BE_SO) .; fi
+	if [ ! -l be ]; then ln -sf $(TARG_BE_DIR)/be .; fi
+	if [ ! -l vsa ]; then ln -sf $(TARG_BE_DIR)/be vsa; fi
+
+else
+
+ ifeq ($(BUILD_OS), LINUX)
+# dso's must be in same directory
+LINK_DSOS = $(BE_SO)
+ else
+LINK_DSOS = $(TARG_BE_DIR)/$(BE_SO)
+ endif
+
+$(RBC_SO): $(BE_RBC_CXX_OBJS) $(TARG_BE_DIR)/$(BE_SO)
+	$(link.c++f) -o $(RBC_SO) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+	$(BE_RBC_CXX_OBJS) $(LINK_DSOS) $(LLDLIBS)
+
+$(VSA_SO): $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) $(BE_OPT_DIR)/Exported \
+	 $(TARG_BE_DIR)/$(BE_SO) $(BE_BE_DIR)/so_locations
+	$(link.c++f) -o $(VSA_SO) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+	 $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) \
+	 $(LINK_DSOS) $(LLDLIBS)
+
+$(METAMGR_EXE): $(METAMGR_CXX_OBJS)
+	$(link.c++f) -o $(METAMGR_EXE) $(METAMGR_CXX_OBJS) $(METAMGR_LIBS)
+
+endif
+
+libvsa.a: $(BACK_END_CXX_OBJS) $(BACK_END_OBJS)
+	$(ar) cru $@ $^
+
+LDIRT += $(BE_SO) bedriver be wopt $(TARGETS)
+
+ifdef LINK_DSO
+debug-vsa: $(VSA_SO)
+	(cd $(TARG_BE_DIR); $(MAKE) LINK_DSO='$(LINK_DSO)' \
+		LINK_DSO_OPTS='$(LINK_DSO_OPTS) -L.' be)
+endif
+
+#----------------------------------------------------------------------
+#  Include the usual commonrules
+#----------------------------------------------------------------------
+include $(COMMONRULES)
+
+#----------------------------------------------------------------------
+#  Special case rules for files that want to be individualistic
+#----------------------------------------------------------------------
+
+DSONAMEOPT =
+

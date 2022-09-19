@@ -1,0 +1,215 @@
+/*
+   Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+/* ATTENTION: THIS FILE IS NO LONGER USED !!!
+ * PLEASE CHECK certc_rules_meta.desc
+ */
+#define       DESC_ERR_MEMCPY_OVERFLOW \
+                 __ERR_MEMCPY_OVERFLOW,\
+                 "MEMCPY_OVERFLOW",\
+                 "memcpy() buffer overflow.",\
+                 RBC_ENGINE::RULE_CATEGORY_BUILTIN,\
+                 "Allocate more memory for the target buffer.", 0
+
+
+#define       DESC_ERR_LIB_INVALID_POINTER \
+                 __ERR_LIB_INVALID_POINTER,\
+                 "ARR38-C",\
+                 "Invalid pointer formed via library functions.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Make sure the size is proper.", 0
+
+#define       DESC_ERR_LIB_INVALID_POINTER1 \
+                 __ERR_LIB_INVALID_POINTER,\
+                 "ARR38-C-1",\
+                 "Invalid pointer formed via library functions.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Make sure the size is proper.", 0
+
+#define       DESC_ERR_ATEXIT_MAY_NOT_RETURN \
+                 __ERR_ATEXIT_MAY_NOT_RETURN,\
+                 "ENV32-C",\
+                 "All exit handlers must return normally.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Do not call exit, longjmp or _Exit in exit handlers.", 0
+
+#define       DESC_ERR_ATEXIT_MAY_ENTER_RECURSION \
+                 __ERR_ATEXIT_MAY_ENTER_RECURSION,\
+                 "ENV32-C-1",\
+                 "All exit handlers must return normally, may enter recursion here.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Do not use funcations that may enter recursion as exit handlers.", 0
+
+#define       DESC_ERR_CHECK_BEFORE_USE \
+                 __ERR_CHECK_BEFORE_USE,\
+                 "INVALID-FILE-POINTER",\
+                 "Return value of fopen() may be NULL when used.",\
+                 RBC_ENGINE::RULE_CATEGORY_USER,\
+                 "Ensure file pointer is not NULL before use.", 0
+
+#define       DESC_ERR_FILE_NOT_OPEN \
+                 __ERR_FILE_NOT_OPEN,\
+                 "FILE-NOT-OPEN",\
+                 "File is not opened.",\
+                 RBC_ENGINE::RULE_CATEGORY_BUILTIN,\
+                 "Open file with for write first.", 0
+
+#define       DESC_ERR_MAY_BE_SYMBOLIC_LINK \
+                 __ERR_MAY_BE_SYMBOLIC_LINK,\
+                 "POS35-C",\
+                 "File can be symbolic link.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Open file with exclusive attribute, like \'x\'.", 0
+
+#define       DESC_ERR_FILE_WRITABLE \
+                 __ERR_FILE_WRITABLE,\
+                 "FILE-NOT-WRITABLE",\
+                 "File is not opened for write.",\
+                 RBC_ENGINE::RULE_CATEGORY_BUILTIN,\
+                 "Open file with write attribute, like \'w\'.", 0
+
+#define       DESC_ERR_SEED_PSEUDORANDOM \
+                 __ERR_SEED_PSEUDORANDOM,\
+                 "MSC32-C",\
+                 "The same sequence of random numbers will appear each time it is run",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Call srandom() before invoking random().", 0
+
+#define       DESC_ERR_VERIFY_SL_RETURN \
+                 __ERR_VERIFY_SL_RETURN,\
+                 "ERR33-C",\
+                 "Return value of standard library is not verified.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Detect and handle standard library errors.", 0
+
+#define       DESC_ERR_VERIFY_POS_RETURN \
+                 __ERR_VERIFY_POS_RETURN,\
+                 "POS54-C",\
+                 "Return value of POSIX library is not verified.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Detect and handle POSIX library errors.", 0
+
+#define       DESC_ERR_NOT_ENOUGH_MEMORY_MALLOCED \
+                 __ERR_NOT_ENOUGH_MEMORY_MALLOCED,\
+                 "MEM35-C",\
+                 "Inadequate memory allocated.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Allocate sufficient memory for an object.", 0
+
+#define       DESC_ERR_NO_SYSTEM_CALL \
+                 __ERR_NO_SYSTEM_CALL,\
+                 "ENV33-C",\
+                 "system call is dangerous.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Do not call system().", 0
+
+#define       DESC_ERR_READLINK_SIZE \
+                 __ERR_READLINK_SIZE,\
+                 "POS30-C",\
+                 "Buffer passed to readlink may be written out of bound.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Use the readlink() function properly.", 0
+
+#define       DESC_ERR_ASCTIME_PARAMETER \
+                 __ERR_ASCTIME_PARAMETER,\
+                 "MSC33-C",\
+                 "Data passed to asctime() is not sanitized.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Do not pass invalid data to asctime(), use strftime() or asctime_s() instead.", 0
+
+#define       DESC_ERR_PUTENV_PARAMETER \
+                 __ERR_PUTENV_PARAMETER,\
+                 "POS34-C",\
+                 "Do not call putenv() with a pointer to an automatic variable as the argument.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Use static array or dynamically allocated memory to holds parameter or use setenv().", 0
+
+#define       DESC_ERR_SIGHDL_ASYN_SAFE \
+                 __ERR_SIGHDL_ASYN_SAFE,\
+                 "SIG30-C",\
+                 "Signal handler is not asynchronous-safe.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Call only asynchronous-safe functions within signal handlers.", 0
+
+#define       DESC_ERR_SIGHDL_ACCESS_SHARED \
+                 __ERR_SIGHDL_ACCESS_SHARED,\
+                 "SIG31-C",\
+                 "Do not access shared objects in signal handler.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Use volatile sig_atomic_t or atomic_int.", 0
+
+#define       DESC_ERR_GETENV_RESULT \
+                 __ERR_GETENV_RESULT,\
+                 "STR31-C",\
+                 "Copy environmental string to a fixed-length can cause buffer overflow.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Allocate adequate memory dynamically.", 0
+
+#define       DESC_ERR_GETS_BUF \
+                 __ERR_GETS_BUF,\
+                 "STR31-C",\
+                 "Gets can cause buffer overflow on its parameter.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Do not use gets, use fgets instead.", 0
+
+#define       DESC_ERR_STRNCPY_OVERFLOW \
+                 __ERR_STRNCPY_OVERFLOW,\
+                 "STR32-C",\
+                 "strncpy() buffer overflow.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Allocate more memory for the target buffer or use strncpy_s().", 0
+
+#define       DESC_ERR_STRCPY_OVERFLOW \
+                 __ERR_STRCPY_OVERFLOW,\
+                 "STRCPY_OVERFLOW",\
+                 "strcpy() buffer overflow.",\
+                 RBC_ENGINE::RULE_CATEGORY_BUILTIN,\
+                 "Allocate more memory for the target buffer.", 0
+
+#define       DESC_ERR_NARROW_WIDE_CHAR \
+                 __ERR_NARROW_WIDE_CHAR,\
+                 "STR38-C",\
+                 "Incompatible parameter type of narrow and wide char strings.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Use narrow and wide char strings properly as parameters.", 0
+
+#define       DESC_ERR_GETCHAR_RETV \
+                 __ERR_GETCHAR_RETV,\
+                 "FIO34-C",\
+                 "Distinguish between characters read from a file and EOF or WEOF.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Uses feof() to test for end-of-file and ferror() to test for errors", 0
+
+#define       DESC_ERR_FGETS_RETV \
+                 __ERR_FGETS_RETV,\
+                 "FIO37-C",\
+                 "Do not assume that fgets() or fgetws() returns a nonempty string when successful.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Uses strchr() to replace the newline character in the string if it exists.", 0
+
+#define       DESC_ERR_TAINTED_INPUT \
+                 __ERR_TAINTED_INPUT,\
+                 "FIO30-C",\
+                 "Format-string vulnerability.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Exclude user input from format strings.", 0
+
+#define       DESC_ERR_HARD_CODED_PASSWORD \
+                 __ERR_HARD_CODED_PASSWORD,\
+                 "MSC41-C",\
+                 "Hard coded password.",\
+                 RBC_ENGINE::RULE_CATEGORY_CERT,\
+                 "Do not use hard coded passwords.", 0

@@ -1,0 +1,65 @@
+/*
+   Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+// DECLARE_RULE:
+// DECLARE_RULE(id, lang, code, name, desc, detail, url, category, severity, priority, likelihood, fix_cost)
+
+// builtin CERT-C rules: cert-c rules implemented in VSA
+
+// in alphabetical order below
+
+// STR38-C
+DECLARE_RULE(_MVSA_LIB_INVALID_POINTER,
+             VL_C | VL_CXX,
+             "ARR38-C",
+             "CERT ARR38-C",
+             "Invalid pointer formed via library functions",
+             "",
+             "https://wiki.sei.cmu.edu/confluence/display/c/ARR38-C.+Guarantee+that+library+functions+do+not+form+invalid+pointers",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// MSC37-C
+DECLARE_RULE(_MVSA_MISSING_RETURN,
+             VL_C | VL_CXX,
+             "MSC37-C",
+             "CERT MSC37-C",
+             "non-void function must return a value when exits",
+             "",
+             "https://wiki.sei.cmu.edu/confluence/display/c/MSC37-C.+Ensure+that+control+never+reaches+the+end+of+a+non-void+function",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// STR38-C
+DECLARE_RULE(_MVSA_NARROW_WIDE_CHAR,
+             VL_C | VL_CXX,
+             "STR38-C",
+             "CERT STR38-C",
+             "Incompatible parameter type of narrow and wide char strings",
+             "",
+             "https://wiki.sei.cmu.edu/confluence/display/c/STR38-C.+Do+not+confuse+narrow+and+wide+character+strings+and+functions",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+

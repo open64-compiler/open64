@@ -1,0 +1,119 @@
+/*
+   Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+// DECLARE_RULE:
+// DECLARE_RULE(id, lang, code, name, desc, detail, url, category, severity, priority, likelihood, fix_cost)
+
+// in alphabetical order below
+
+// CRF: Call Recursive Function
+DECLARE_RULE(_ERR_CALL_RECURSIVE_FUNCTION,
+             VL_C | VL_CXX | VL_JAVA,
+             "CRF",
+             "XCALIBYTE CRF",
+             "Call recursive function",
+             "Call recursive function is forbidden.",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// CSL: Call Stack Level
+DECLARE_RULE(_ERR_CALL_STACK_LEVEL,
+             VL_C | VL_CXX | VL_JAVA,
+             "CSL",
+             "XCALIBYTE CSL",
+             "Call stack level",
+             "Call stack level exceeds the limit.",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// CSS: Call Stack Size
+DECLARE_RULE(_ERR_CALL_STACK_Size,
+             VL_C | VL_CXX | VL_JAVA,
+             "CSS",
+             "XCALIBYTE CSS",
+             "Call stack size",
+             "Call stack size exceeds the limit.",
+             "",
+             RC_BAD_PRACTICE,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_MEDIUM)
+
+// _ERR_EMPTY_CATCH_BLOCK
+DECLARE_RULE(_ERR_EMPTY_CATCH_BLOCK,
+             VL_CXX,
+             "ECB",
+             "BUILTIN ECB",
+             "Empty catch block",
+             "Handle exception in catch blocks",
+             "",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_LOW)
+
+// _ERR_READ_EXTERNAL_SOCKET
+DECLARE_RULE(_ERR_READ_EXTERNAL_SOCKET,
+             VL_C | VL_CXX,
+             "RXS",
+             "BUILTIN RXS",
+             "Read data from external socket",
+             "Read data from external socket",
+             "",
+             RC_SECURITY,
+             SEV_MEDIUM,
+             PRI_MEDIUM,
+             RL_LIKELY,
+             FC_LOW)
+
+// _ERR_THROW_NOT_HANDLED
+DECLARE_RULE(_ERR_THROW_NOT_HANDLED,
+             VL_CXX | VL_JAVA,
+             "TNH",
+             "BUILTIN TNH",
+             "Throwed exception not been catched or marked in function annotation",
+             "",
+             "",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_HIGH)
+
+// _ERR_WRITE_READ_ONLY_FILE
+DECLARE_RULE(_ERR_WRITE_READ_ONLY_FILE,
+             VL_C | VL_CXX,
+             "WRF",
+             "BUILTIN WRF",
+             "Attempt to write read-only file",
+             "Open file with write attribute, like \'w\'",
+             "",
+             RC_SECURITY,
+             SEV_HIGH,
+             PRI_HIGH,
+             RL_LIKELY,
+             FC_MEDIUM)
+
