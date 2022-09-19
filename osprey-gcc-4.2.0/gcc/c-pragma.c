@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* Handle #pragma, system V.4 style.  Supports #pragma weak and #pragma pack.
    Copyright (C) 1992, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
    2006 Free Software Foundation, Inc.
@@ -750,13 +754,13 @@ handle_pragma_diagnostic(cpp_reader *ARG_UNUSED(dummy))
   enum cpp_ttype token;
   diagnostic_t kind;
   tree x;
-
+#if 0
   if (cfun)
     {
       error ("#pragma GCC diagnostic not allowed inside functions");
       return;
     }
-
+#endif
   token = pragma_lex (&x);
   if (token != CPP_NAME)
     GCC_BAD ("missing [error|warning|ignored] after %<#pragma GCC diagnostic%>");
@@ -767,6 +771,9 @@ handle_pragma_diagnostic(cpp_reader *ARG_UNUSED(dummy))
     kind = DK_WARNING;
   else if (strcmp (kind_string, "ignored") == 0)
     kind = DK_IGNORED;
+  else if (strcmp (kind_string, "push") == 0 ||
+           strcmp (kind_string, "pop") == 0)
+    return;    // ignore diagnostic push|pop
   else
     GCC_BAD ("expected [error|warning|ignored] after %<#pragma GCC diagnostic%>");
 
@@ -786,7 +793,7 @@ handle_pragma_diagnostic(cpp_reader *ARG_UNUSED(dummy))
 	    *(int *) cl_options[option_index].flag_var = 1;
 	return;
       }
-  GCC_BAD ("unknown option after %<#pragma GCC diagnostic%> kind");
+  //GCC_BAD ("unknown option after %<#pragma GCC diagnostic%> kind");
 }
 
 /* A vector of registered pragma callbacks.  */

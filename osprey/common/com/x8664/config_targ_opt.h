@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -100,9 +104,9 @@ extern "C" {
  */
 
 /* General target control: */
-extern char *ABI_Name;		/* -TARG:abi=xxx */
-extern char *Processor_Name;	/* -TARG:processor=xxx */
-extern char *ISA_Name;		/* -TARG:isa=xxx */
+extern const char *ABI_Name;		/* -TARG:abi=xxx */
+extern const char *Processor_Name;	/* -TARG:processor=xxx */
+extern const char *ISA_Name;		/* -TARG:isa=xxx */
 extern INT16 Target_FPRs;	/* Number of target FP registers */
 extern BOOL Pure_ABI;		/* Avoid non-ABI constructs? */
 

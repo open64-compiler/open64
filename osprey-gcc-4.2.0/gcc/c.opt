@@ -874,6 +874,10 @@ std=c9x
 C ObjC
 Deprecated in favor of -std=c99
 
+std=c11
+C ObjC
+Conform to the ISO 2011 C standard
+
 std=gnu++98
 C++ ObjC++
 Conform to the ISO 1998 C++ standard with GNU extensions
@@ -890,6 +894,10 @@ std=gnu9x
 C ObjC
 Deprecated in favor of -std=gnu99
 
+std=gnu11
+C ObjC
+Conform to the ISO 2011 C standard with GNU extensions
+
 std=iso9899:1990
 C ObjC
 Conform to the ISO 1990 C standard
@@ -905,6 +913,14 @@ Conform to the ISO 1999 C standard
 std=iso9899:199x
 C ObjC
 Deprecated in favor of -std=iso9899:1999
+
+std=iso9899:2011
+C ObjC
+Conform to the ISO 2011 C standard
+
+fmastiff
+C C++
+Option work for mastiff
 
 traditional-cpp
 C ObjC C++ ObjC++

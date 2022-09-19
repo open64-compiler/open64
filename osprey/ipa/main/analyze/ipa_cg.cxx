@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -402,7 +406,8 @@ IPA_mark_commons_used_in_io (const IP_FILE_HDR& hdr)
 void
 IPA_update_ehinfo_in_pu (IPA_NODE *node)
 {
-	if (!(PU_src_lang (node->Get_PU()) & PU_CXX_LANG) ||
+	if ((!(PU_cxx_lang (node->Get_PU())) &&
+	     !(PU_java_lang(node->Get_PU()))) ||
 	    !PU_misc_info (node->Get_PU()))
 	    return;
 
@@ -868,7 +873,8 @@ Add_One_Node (IP_FILE_HDR& s, INT32 file_idx, INT i, NODE_INDEX& orig_entry_inde
     // If lang of main pu is C++, -IPA:pu_reorder defaults to 1 w/ feedback
     if (!IPA_Enable_PU_Reorder_Set && Annotation_Filename &&
         ipa_node && !strcmp (ipa_node->Name(), "main") &&
-	(PU_src_lang (ipa_node->Get_PU()) & PU_CXX_LANG))
+        (PU_cxx_lang(ipa_node->Get_PU()) ||
+         PU_java_lang(ipa_node->Get_PU())))
     {
       // Remind us to fix this place if default changes
       Is_True (IPA_Enable_PU_Reorder == REORDER_DISABLE,
@@ -1202,8 +1208,8 @@ Add_Edges_For_Node (IP_FILE_HDR& s, INT i, SUMMARY_PROCEDURE* proc_array, SUMMAR
 #ifdef KEY
 		// If we have no WHIRL, we assume any C++ PU can throw
 		if (IPA_Enable_EH_Region_Removal &&
-		    (PU_src_lang (Pu_Table [ST_pu (caller->Func_ST())]) & 
-		     PU_CXX_LANG))
+		    (PU_cxx_lang (Pu_Table [ST_pu (caller->Func_ST())]) ||
+		     PU_java_lang (Pu_Table [ST_pu (caller->Func_ST())])))
 		    caller->Set_PU_Can_Throw ();
 
 		// If we have no WHIRL, assume it may have side-effect
@@ -3747,7 +3753,7 @@ IPA_CALL_GRAPH::Print_vobose (FILE* fp, TRAVERSAL_ORDER order, BOOL do_callsite_
 #endif
 
 fprintf(fp, "Finally, Total_Prog_Size = %d\n", Total_Prog_Size);
-fprintf(fp, SBar);
+fprintf(fp, "%s", SBar);
 fprintf(fp, "Reason0: callee is skipped\n");			
 fprintf(fp, "Reason1: edge is skipped\n");				
 fprintf(fp, "Reason2: call deleted by DCE\n");			
@@ -3792,7 +3798,8 @@ fprintf(fp, "Reason38: not inlining nested functions\n");
 fprintf(fp, "Reason39: not inlining non-tiny noreturn functions\n");
 fprintf(fp, "Reason40: not inlining __builtin_apply_args functions\n");
 #endif
-fprintf(fp, SBar);
+fprintf(fp, "Reason41: non-native caller not inlining native callees\n");
+fprintf(fp, "%s", SBar);
   
   for (cg_iter.First(); !cg_iter.Is_Empty(); cg_iter.Next()) //all nodes
   {

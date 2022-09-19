@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -54,6 +54,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <sys/param.h>
 #if !defined(_WIN32)
 #include <sys/utsname.h>
@@ -97,7 +98,7 @@ boolean xpg_flag = FALSE;
 // default to modified O3 (supports unrolling)
 int default_olevel = 3;
 #else
-int default_olevel = 2;
+int default_olevel = 3;
 #endif
 static int default_isa = UNDEFINED;
 static int default_proc = UNDEFINED;
@@ -742,7 +743,10 @@ Check_Target ( void )
 
   // Uses ABI to determine ISA.  If ABI isn't set, it guesses and sets the ABI.
   Get_x86_ISA();
+#elif TARG_UWASM
+	isa = ISA_UWASM;
 #endif
+
 
   if (abi == UNDEFINED) {
 #ifdef TARG_IA64
@@ -774,6 +778,11 @@ Check_Target ( void )
 	  add_option_seen (O_m64);
 	else
 	  add_option_seen (O_m32);
+#elif TARG_UWASM
+	// default abi for uwasm
+	abi = ABI_N32;
+	add_option_seen (O_m32);
+	isa = ISA_UWASM;
 #elif TARG_NVISA
 	abi = get_platform_abi();
 	if (abi == ABI_64)
@@ -1167,7 +1176,7 @@ run_from_build (char *builddir)
 	if (ld_library_path)
 		strcpy(new_ld_path, ld_library_path);
 	else
-		new_ld_path[0] = NULL;
+		new_ld_path[0] = '\0';
 
 	builddir_len = strlen(builddir);
 	strcpy(new_path, builddir);
@@ -1181,49 +1190,55 @@ run_from_build (char *builddir)
 	override_phase(P_ldplus, "P_ldplus", new_path, "xgcc");
 	override_phase(P_spin_cc1, "P_spin_cc1", new_path, "cc1");
 	override_phase(P_spin_cc1plus, "P_spin_cc1plus", new_path, "cc1plus");
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/crayf90/sgi");
 	override_phase(P_f90_fe, "P_f90_fe", new_path, "mfef95");
-	new_path[builddir_len] = NULL;
-        strcat(new_path, "/osprey/targdir/lw_inline");
+	new_path[builddir_len] = '\0';
+	strcat(new_path, "/osprey/targdir/jfe");
+	strcat(new_ld_path, ":");
+	strcat(new_ld_path, new_path);
+	strcat(new_ld_path, "/libb2w/libb2w");
+	override_phase(P_jfe, "P_jfe", new_path, "mapfej");
+	new_path[builddir_len] = '\0';
+	strcat(new_path, "/osprey/targdir/lw_inline");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
 	override_phase(P_inline, "P_inline", new_path, "lw_inline");
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
         strcat(new_path, "/osprey/targdir/wgen");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
 	override_phase(P_wgen, "P_wgen", new_path, "wgen42");
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/be");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
 	override_phase(P_be, "P_be", new_path, "be");
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/cg");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/lno");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/wopt");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/targ_info");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/orc_ict");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/orc_intel");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);
-	new_path[builddir_len] = NULL;
+	new_path[builddir_len] = '\0';
 
 	ld_library_path = malloc(strlen(new_ld_path) + 1);
 
@@ -1528,7 +1543,7 @@ print_file_path (char *fname, int exe)
   asprintf(&argv[2], "-print-%s-name=%s", exe ? "prog" : "file", fname);
   argv[3] = NULL;
   /* MINGW doesn't support execvp, everyone supports execlp */
-  execlp(argv[0], argv[0], argv[1], argv[2], argv[3]);
+  execlp(argv[0], argv[0], argv[1], argv[2], NULL);
   fprintf(stderr, "could not execute %s: %m\n", argv[0]);
   exit(1);
 }
@@ -1545,7 +1560,7 @@ print_multi_lib ()
   asprintf(&argv[1], "-print-multi-lib");
   argv[2] = NULL;
   /* MINGW doesn't support execvp, everyone supports execlp */
-  execlp(argv[0], argv[0], argv[1], argv[2]);
+  execlp(argv[0], argv[0], argv[1], NULL);
   fprintf(stderr, "could not execute %s: %m\n", argv[0]);
   exit(1);
 }
@@ -1642,6 +1657,8 @@ static struct
   { "bdver2",   "bdver2",		ABI_64,		TRUE,	TRUE,  TRUE,
     TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE,  TRUE, TRUE  },
   { "barcelona","barcelona",		ABI_64,		TRUE,	TRUE,  TRUE,
+    FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE },
+  { "uwasm",	"uwasm",	ABI_64,		TRUE,	FALSE, FALSE,
     FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE },
   { NULL,	NULL, },
 };

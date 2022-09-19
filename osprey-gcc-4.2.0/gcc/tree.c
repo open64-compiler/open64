@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -3481,6 +3485,18 @@ is_attribute_with_length_p (const char *attr, int attr_len, tree ident)
       && strcmp (attr, p) == 0)
     return 1;
 
+  /* KEIL compiler may use __text or __text__ in p.
+     If p is '__text'/'__text__', check if ATTR is `text' */
+  if (flag_keil_compat && p[0] == '_')
+    {
+      gcc_assert (p[1] == '_');
+      if (ident_len == attr_len + 2
+          && strcmp(attr, p + 2) == 0)
+        return 1;
+      else if (ident_len == attr_len + 4
+               && strncmp(attr, p + 2, attr_len) == 0)
+        return 1;
+    }
   /* If ATTR is `__text__', IDENT must be `text'; and vice versa.  */
   if (attr[0] == '_')
     {
@@ -7822,15 +7838,16 @@ enum language language = C;
 #define CR()  (language == C)
 
 /* C++ Dummy Variables Section Begins. */
-tree global_namespace; /* CP_DECL_CONTEXT () references this variable in cp/name-lookup.c */
-int (*p_uses_template_parms) (tree);
-tree (*p_most_general_template) (tree);
-int (*p_copy_fn_p) (tree);
-int (*p_is_empty_class) (tree);
-tree (*p_namespace_binding) (tree, tree);
+#define DUMMY_WEAK __attribute__((weak))
+tree global_namespace DUMMY_WEAK; /* CP_DECL_CONTEXT () references this variable in cp/name-lookup.c */
+int (*p_uses_template_parms) (tree) DUMMY_WEAK;
+tree (*p_most_general_template) (tree) DUMMY_WEAK;
+int (*p_copy_fn_p) (tree) DUMMY_WEAK;
+int (*p_is_empty_class) (tree) DUMMY_WEAK;
+tree (*p_namespace_binding) (tree, tree) DUMMY_WEAK;
 /* tree p_complete_ctor_identifier; */
-tree cp_global_trees[CPTI_MAX];
-tree (*p_get_tinfo_decl) (tree);
+tree cp_global_trees[CPTI_MAX] DUMMY_WEAK;
+tree (*p_get_tinfo_decl) (tree) DUMMY_WEAK;
 /* C++ Dummy Variables Section Ends. */
 
 /* GSPIN stuff follows: */
@@ -8521,6 +8538,9 @@ gcc_built_in2gsbi (enum built_in_function code)
     case BUILT_IN_APPLY: return GSBI_BUILT_IN_APPLY;
     case BUILT_IN_APPLY_ARGS: return GSBI_BUILT_IN_APPLY_ARGS;
     case BUILT_IN_ARGS_INFO: return GSBI_BUILT_IN_ARGS_INFO;
+    case BUILT_IN_BSWAP16: return GSBI_BUILT_IN_BSWAP16;
+    case BUILT_IN_BSWAP32: return GSBI_BUILT_IN_BSWAP32;
+    case BUILT_IN_BSWAP64: return GSBI_BUILT_IN_BSWAP64;
     case BUILT_IN_CALLOC: return GSBI_BUILT_IN_CALLOC;
     case BUILT_IN_CLASSIFY_TYPE: return GSBI_BUILT_IN_CLASSIFY_TYPE;
     case BUILT_IN_CLZ: return GSBI_BUILT_IN_CLZ;
@@ -8566,6 +8586,10 @@ gcc_built_in2gsbi (enum built_in_function code)
     case BUILT_IN_FINITED64: return GSBI_BUILT_IN_FINITED64;
     case BUILT_IN_FINITED128: return GSBI_BUILT_IN_FINITED128;
 #endif
+    case BUILT_IN_FPCLASSIFY: return GSBI_BUILT_IN_FPCLASSIFY;
+    case BUILT_IN_ISFINITE: return GSBI_BUILT_IN_ISFINITE;
+    case BUILT_IN_ISINF_SIGN: return GSBI_BUILT_IN_ISINF_SIGN;
+
     case BUILT_IN_ISINF: return GSBI_BUILT_IN_ISINF;
     case BUILT_IN_ISINFF: return GSBI_BUILT_IN_ISINFF;
     case BUILT_IN_ISINFL: return GSBI_BUILT_IN_ISINFL;
@@ -8612,6 +8636,8 @@ gcc_built_in2gsbi (enum built_in_function code)
     case BUILT_IN_TRAP: return GSBI_BUILT_IN_TRAP;
     case BUILT_IN_UNWIND_INIT: return GSBI_BUILT_IN_UNWIND_INIT;
     case BUILT_IN_UPDATE_SETJMP_BUF: return GSBI_BUILT_IN_UPDATE_SETJMP_BUF;
+    case BUILT_IN_VA_ARG_PACK: return GSBI_BUILT_IN_VA_ARG_PACK;
+    case BUILT_IN_VA_ARG_PACK_LEN: return GSBI_BUILT_IN_VA_ARG_PACK_LEN;
     case BUILT_IN_VA_COPY: return GSBI_BUILT_IN_VA_COPY;
     case BUILT_IN_VA_END: return GSBI_BUILT_IN_VA_END;
     case BUILT_IN_VA_START: return GSBI_BUILT_IN_VA_START;
@@ -8856,7 +8882,7 @@ gcc_built_in2gsbi (enum built_in_function code)
     case END_BUILTINS: return GSBI_END_BUILTINS;
   }
   gcc_assert (0);
-  return (gsbi_t) 0;
+  return (gsbi_t) GSBI_END_BUILTINS;
 }
 
 static inline gsbi_class_t
@@ -9830,6 +9856,14 @@ gspin_init(void)
 
   /* cc1 command line args */
   arg_list  = __gs (EMPTY);
+  // append cwd "-w $cwd" in reverse order
+  arg = __gs (IB_STRING);
+  _gs_s (arg, (gs_string_t)get_src_pwd(), 1 + strlen (get_src_pwd()));
+  arg_list = gs_cons (arg, arg_list);
+  arg = __gs (IB_STRING);
+  _gs_s (arg, (gs_string_t)"-w", 3);
+  arg_list = gs_cons (arg, arg_list);
+  // end cwd
   for (i = gs_argc - 1; i >= 0; i--) {
     arg = __gs (IB_STRING);
     _gs_s (arg, (gs_string_t)gs_argv[i], 1 + strlen (gs_argv[i]));

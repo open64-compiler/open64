@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #
 #  Copyright (C) 2009, 2012 Advanced Micro Devices, Inc.  All Rights Reserved.
@@ -104,15 +108,16 @@ endif
 
 
 ifeq ($(BUILD_COMPILER), GNU)
-  ASNAME = gcc 
+  ASNAME = gcc
+  CCNAME = gcc
+  C++NAME = g++
   ifeq ($(BUILD_HOST), PPC32)
-    CCNAME = gcc -DHOST_PPC32 
-    C++NAME = g++ -DHOST_PPC32 
+    NCFLAGS = -DHOST_PPC32
+    NCXXFLAGS = -DHOST_PPC32
   else
-    CCNAME = gcc 
-    C++NAME = g++ 
   endif
-  F90 = gfortran -fsecond-underscore
+  F90 = gfortran
+  NFFLAGS += -fsecond-underscore
   F90_RTLIBS = -Wl,-Bstatic -lgfortran -Wl,-Bdynamic
   #F90 = ifort -assume 2underscores
   #F90_RTLIBS = $(INTEL_COMPILER_FC_HOME)/lib/libifcore.a $(INTEL_COMPILER_FC_HOME)/lib/libimf.a
@@ -187,36 +192,41 @@ ifeq ($(BUILD_COMPILER), SELF)
   F90 = $(COMPILER_TARG_DIR)/driver/openf90
   F90_RTLIBS = -Wl,-Bstatic -lfortran -Wl,-Bdynamic
 
-  ASNAME += -run-build=$(TOP_BUILDDIR)
-  CCNAME += -run-build=$(TOP_BUILDDIR) -L$(BUILD_AREA)/libopen64rt -L$(BUILD_AREA)/libacml_mv
-  C++NAME += -run-build=$(TOP_BUILDDIR)
-  F90 += -run-build=$(TOP_BUILDDIR)
+  NASFLAGS += -run-build=$(TOP_BUILDDIR)
+  NCFLAGS += -run-build=$(TOP_BUILDDIR) -L$(BUILD_AREA)/libopen64rt -L$(BUILD_AREA)/libacml_mv
+  NCXXFLAGS += -run-build=$(TOP_BUILDDIR)
+  NFFLAGS += -run-build=$(TOP_BUILDDIR)
   F77 = $(F90)
   AR      = ar
+  ifeq ($(BUILD_PRODUCT), MASTIFF)
+    NCFLAGS += -noxa
+    NCXXFLAGS += -noxa
+    NFFLAGS += -noxa
+  endif
 endif
 
 ifeq ($(BUILD_ARCH), IA32)
 # only 32bit libraries set the BUILD_TARGET to IA32
-  CCNAME  += -m32
-  C++NAME += -m32
-  F90 += -m32
+  NCFLAGS  += -m32
+  NCXXFLAGS += -m32
+  NFFLAGS += -m32
   ifeq ($(BUILD_COMPILER), GNU)
     # Adding -mfpmath=sse -msse, to prevent compiler built
     # 32 or 64 bit from producing different code in GRA.
     # Note that -ffloat-store should be just as effective
     # but -mfpmath=sse -msse produces better code.
-    CCNAME  += -mfpmath=sse -msse2
-    C++NAME += -mfpmath=sse -msse2
-    F90 += -mfpmath=sse -msse2
+    NCFLAGS  += -mfpmath=sse -msse2
+    NCXXFLAGS += -mfpmath=sse -msse2
+    NFFLAGS += -mfpmath=sse -msse2
   endif
 endif
 
 ifeq ($(BUILD_ARCH), X8664)
   # both the 64bit libraries and executables set the BUILD_TARGET to X8664
   # we should distinguish them
-  CCNAME  += -m64 
-  C++NAME += -m64 
-  F90 += -m64
+  NCFLAGS  += -m64
+  NCXXFLAGS += -m64
+  NFFLAGS += -m64
 endif
 
 ifeq ($(BUILD_ARCH), IA64)
@@ -225,30 +235,33 @@ ifeq ($(BUILD_ARCH), IA64)
   F90 += 
 endif
 
-AS	= $(ASNAME) -D_SGI_SOURCE
+AS = $(ASNAME)
+NASFLAGS = -D_SGI_SOURCE -Dlinux
 
-C++	= $(C++NAME) -D_SGI_SOURCE -D_LANGUAGE_C_PLUS_PLUS
+C++ = $(C++NAME)
+NCXXFLAGS += -D_SGI_SOURCE -Dlinux -D_LANGUAGE_C_PLUS_PLUS -std=c++98
 
-CC	= $(CCNAME) -D_SGI_SOURCE -D_LANGUAGE_C
+CC = $(CCNAME)
+NCFLAGS += -D_SGI_SOURCE -Dlinux -D_LANGUAGE_C
 
-AS	+= -funsigned-char -D__GNU_BUG_WORKAROUND
-CC	+= -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND -Wno-unused-result
-C++	+= -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND -D_NOTHREADS -Wno-deprecated -Wno-unused-result
+NASFLAGS += -funsigned-char -D__GNU_BUG_WORKAROUND
+NCFLAGS += -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND -Wno-deprecated -Wno-unused-result
+NCXXFLAGS += -Wformat -funsigned-char -D__GNU_BUG_WORKAROUND -D_NOTHREADS -Wno-deprecated -Wno-unused-result
 
 ifeq ($(BUILD_OS), MINGW)
-  CC	+= -mno-cygwin
-  C++	+= -mno-cygwin
+  NCFLAGS += -mno-cygwin
+  NCXXFLAGS += -mno-cygwin
 endif
 ifeq ($(BUILD_TARGET), NVISA)
 # FUTURE_SUPPORT is items that will not be enabled in current release
-  CC	+= $(GCC_OPTS) -DFUTURE_SUPPORT
-  C++	+= $(GXX_OPTS) -DFUTURE_SUPPORT
+  NCFLAGS += $(GCC_OPTS) -DFUTURE_SUPPORT
+  NCXXFLAGS += $(GXX_OPTS) -DFUTURE_SUPPORT
  endif
  ifeq ($(BUILD_ARCH), IA32)
   ifeq ($(BUILD_ABI), I64BIT)
-   AS += -m64
-   CC += -m64
-   C++ += -m64
+   NASFLAGS += -m64
+   NCFLAGS += -m64
+   NCXXFLAGS += -m64
   endif
 endif
 
@@ -300,9 +313,13 @@ else
 HOST_ABIFLAGS = -D_MIPS_SZPTR=64 -D_MIPS_SZINT=32 -D_MIPS_SZLONG=64
 endif
 
-HOST_CC  = gcc -funsigned-char -D_SGI_SOURCE -D__GNU_BUG_WORKAROUND -D_LONGLONG -D_LANGUAGE_C $(HOST_ABIFLAGS)
-HOST_C++ = g++ -funsigned-char -D_SGI_SOURCE -D__GNU_BUG_WORKAROUND -D_NOTHREADS -D_LONGLONG -D_LANGUAGE_C_PLUS_PLUS $(HOST_ABIFLAGS)
+HOST_CC  = gcc
+HOST_CFLAGS += -funsigned-char -D_SGI_SOURCE -D__GNU_BUG_WORKAROUND -D_LONGLONG -D_LANGUAGE_C $(HOST_ABIFLAGS)
+HOST_C++ = g++
+HOST_C++FLAGS += -funsigned-char -D_SGI_SOURCE -D__GNU_BUG_WORKAROUND -D_NOTHREADS -D_LONGLONG -D_LANGUAGE_C_PLUS_PLUS $(HOST_ABIFLAGS)
 HOST_CXX = $(HOST_C++)
+HOST_CXXFLAGS = $(HOST_C++)
+HOST_CPPFLAGS = $(HOST_C++)
 
 #
 # Default optimizer, common global options, and make-depend options.
@@ -548,13 +565,20 @@ endif
 # Never use just $(CCF), etc. in rules that link executables; LDFLAGS
 # needs to be included after your objects in the command line.
 #
-ASF	= $(AS) $(ASFLAGS)
-C++F	= $(CXX) $(CXXFLAGS)
+ASN	= $(AS) $(NASFLAGS)
+C++N	= $(CXX) $(NCXXFLAGS)
+CXXN	= $(C++N)
+CCN	= $(CC) $(NCFLAGS)
+F77N	= $(F77) $(NFFLAGS)
+F90N	= $(F90) $(NFFLAGS)
+LDN	= $(LD) $(NCFLAGS)
+ASF	= $(ASN) $(ASFLAGS)
+C++F	= $(C++N) $(CXXFLAGS)
 CXXF	= $(C++F)
-CCF	= $(CC) $(CFLAGS)
-F77F	= $(F77) $(FFLAGS)
-F90F	= $(F90) $(FFLAGS)
-LDF	= $(LD) $(LDFLAGS)
+CCF	= $(CCN) $(CFLAGS)
+F77F	= $(F77N) $(FFLAGS)
+F90F	= $(F90N) $(FFLAGS)
+LDF	= $(LDN) $(LDFLAGS)
 LEXF	= $(LEX) $(LFLAGS)
 YACCF	= $(YACC) $(YFLAGS)
 

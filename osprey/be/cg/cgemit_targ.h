@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2002, 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -107,3 +111,7 @@ extern void CGEMIT_Call (OP *);
 extern void CGEMIT_Print_Variable (ST *);
 extern void CGEMIT_Print_Initialized_Variable (ST *, INITO *);
 #endif
+
+// uwasm emit global decls for text segment patching
+extern void CGEMIT_Uwasm_Nat_Data(FILE *f);
+

@@ -209,7 +209,7 @@
 #define HAVE_SYSCONF 1
 
 /* Define if you have the sysctl function.  */
-#define HAVE_SYSCTL 1
+/* #define HAVE_SYSCTL */
 
 /* Define if you have the sysmp function.  */
 /* #undef HAVE_SYSMP */
@@ -288,9 +288,12 @@
 #define HAVE_SYS_STAT_H 1
 
 /* Define if you have the <sys/sysctl.h> header file.  */
+/*
 #if !defined(__CYGWIN__) && !defined(__MINGW32__)
 #define HAVE_SYS_SYSCTL_H 1
-#endif /* __CYGWIN__ __MINGW32__ */
+#endif
+*/
+/* __CYGWIN__ __MINGW32__ */
 
 /* Define if you have the <sys/sysinfo.h> header file.  */
 #define HAVE_SYS_SYSINFO_H 1

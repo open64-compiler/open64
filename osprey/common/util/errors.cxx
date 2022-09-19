@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -78,6 +82,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <string.h>
+#include <time.h>
 #if (__GNUC__==2)
 extern "C" char *strsignal (int __sig);
 #endif
@@ -109,14 +114,21 @@ extern "C" {
 #include "erglob.h"
 #include "file_util.h"
 #include "tracing.h"
+#include "config.h"
 #include "glob.h"
 #include "errdesc.h"
 #include "vstring.h"
+#include "config_vsa.h"
+#include "report.h"
+#include "config_product.h"    /* PRODUCT_NAME_PREFIX */
 
 #ifdef MONGOOSE_BE
 #include "wn.h"
 #include "wn_map.h"
 #include "ir_reader.h"
+extern "C" void Get_Srcpos_Filename(SRCPOS srcpos,         /* in */
+                                    const char **fname,    /* out */
+                                    const char **dirname); /* out */
 #endif
 
 
@@ -150,6 +162,12 @@ static char  source_file_name[256];
 static char *Source_File_Name = &source_file_name[0];
 static INT   Source_Line = ERROR_LINE_UNKNOWN;	/* Line number */
 
+char  Vsa_Report_File[FILENAME_MAX+1];
+FILE *VsaRpt_File = NULL;    /* File ptr for static analysis */
+char  Vsa_TxtRpt_File[FILENAME_MAX+1];
+FILE *VsaTxt_File = NULL;    /* File ptr for static analysis */
+#define Alterr VsaTxt_File
+
 /* Current compiler/tool phase: */
 static const char *Current_Phase = "<unknown phase>";
 
@@ -179,16 +197,37 @@ static SEVERITY_DESCRIPTOR Severities[] = {
     {ES_IGNORE,		"??? ",	"Ignore"},
     {ES_ADVISORY,	"--- ", "Advisory"},
     {ES_WARNING,	"!!! ", "Warning"},
-    {ES_CONFORMANCE,	"!!! ", "Conformance warning"},
+    {ES_SAADV1,  	"!!! ", "[Vul],[D]"},
+    {ES_SAADV2,  	"!!! ", "[Vul],[M]"},
+    {ES_SAADV3,  	"!!! ", "[Vul],[R]"},
+    {ES_SAADV4,  	"!!! ", "[Pfm],[D]"},
+    {ES_CONFORMANCE,	"!!! ", "[SML],[D]"},
     {ES_ERRBENIGN,	"### ", "Error"},
     {ES_ERRPHASE,	"### ", "Error"},
-    {ES_ERRABORT,	"### ", "Error"}
+    {ES_ERRABORT,	"### ", "Error"},    
 };
 
 /* Access functions: */
 #define SEV_level(n)	(Severities[n].level)
 #define SEV_symbol(n)	(Severities[n].symbol)
 #define SEV_name(n)	(Severities[n].name)
+
+void
+Get_VsaRpt_Severity(INT ecode, const char **category, const char **severity)
+{
+  ERROR_DESC *edesc = Find_Error_Desc(ecode);
+  INT dlevel = ED_severity(edesc);
+  switch (dlevel) {
+  case ES_SAADV1: *category = "Vul"; *severity = "D"; break;
+  case ES_SAADV2: *category = "Vul"; *severity = "M"; break;
+  case ES_SAADV3: *category = "Vul"; *severity = "R" ; break;
+  case ES_SAADV4: *category = "Pfm"; *severity = "D"; break;
+  case ES_CONFORMANCE: *category = "SML"; *severity = "D"; break;
+  default:
+    FmtAssert(FALSE, ("Wrong level %d", dlevel)); break;
+  }
+}
+
 
 /* ====================================================================
  *
@@ -225,6 +264,39 @@ static char dont_print[RAG_EN_LAST-RAG_EN_FIRST+1];
 
 extern void Rag_Handle_Woff_Args(char	*wstring);
 
+static int  total_output_char = 0;
+
+static void incr_fuzz_char(FILE* fp)
+{
+  if (total_output_char > 0) {
+    if (total_output_char % 32 == 0)
+      fputc('\n', fp);
+    else if (total_output_char % 8 == 0)
+      fputc(' ', fp);
+  }
+  ++ total_output_char;
+}
+
+static void fputs_fuzz(FILE* fp, const char* str, int style)
+{
+    unsigned char ch;
+    while ((ch = *str++) != '\0') {
+      incr_fuzz_char(fp);
+      // if fuzz changed, strace_dec.cxx must be changed to
+      // decode this right.
+      if (style == 1)
+        fprintf(fp, "%02x", ch ^ 0x39);
+      else
+        fprintf(fp, "%02x", ch ^ 0x23);
+    }
+    if (style == 2) {
+      incr_fuzz_char(fp);
+      fprintf(fp, "%02x", '\n' ^ 0x23);
+    }
+    incr_fuzz_char(fp);
+    fputs("00", fp);
+}
+
 static void dump_backtrace(FILE *fp = stderr, size_t start_frame = 1)
 {
 #if defined(KEY) && defined(linux) /* "backtrace" is unique to GNU/Linux libc */
@@ -236,11 +308,19 @@ static void dump_backtrace(FILE *fp = stderr, size_t start_frame = 1)
     size = backtrace(buf, nframes);
     strings = backtrace_symbols(buf, size);
 
-    fprintf(fp, "*** Internal stack backtrace:\n");
+    fprintf(fp, "Support Message:\n");
+    total_output_char = 0;
 
     for (size_t i = start_frame; i < size; i++) {
+#if defined(BUILD_MASTIFF) && !defined(Is_True_On)
+        fputs_fuzz(fp, strings[i], 2);
+#else
 	fprintf(fp, "    %s\n", strings[i]);
+#endif
     }
+#if defined(BUILD_MASTIFF) && !defined(Is_True_On)
+    fputs("\n", fp);
+#endif
     fflush(fp);
 #endif
 }
@@ -356,6 +436,36 @@ Handle_Signals ( void )
     syssgi(SGI_SET_FP_PRESERVE, 1);
 #endif
 }
+
+
+void
+Set_VsaRpt_File(const char *fname)
+{
+  if (VsaRpt_File) {
+    fclose(VsaRpt_File); 
+    VsaRpt_File = NULL;
+    // VsaTxt_File must also be available
+    Is_True(VsaTxt_File != NULL, ("vsatxt file is not open"));
+    fclose(VsaTxt_File); 
+    VsaTxt_File = NULL;
+  }
+
+  strncpy(Vsa_Report_File, fname, FILENAME_MAX);
+  if (Is_File(Vsa_Report_File)) {
+    unlink(Vsa_Report_File);
+  }
+}
+
+FILE *Get_VsaRpt_File(void)
+{
+  return VsaRpt_File;
+}
+
+FILE *Get_VsaTxt_File(void)
+{
+  return VsaTxt_File;
+}
+
 
 /* ====================================================================
  *
@@ -476,7 +586,7 @@ Set_Error_Srcpos ( SRCPOS srcpos )
   const char *dname;
 
   Set_Error_Line(Srcpos_To_Line(srcpos));
-  IR_Srcpos_Filename(srcpos, &fname, &dname);
+  Get_Srcpos_Filename(srcpos, &fname, &dname);
   Set_Error_Source(fname);
 }
 #endif
@@ -645,7 +755,7 @@ Init_Error_Handler ( INT Max_Errors_Allowed )
  * ====================================================================
  */
 
-static ERROR_DESC *
+ERROR_DESC *
 Find_Error_Desc ( INT ecode )
 {
   INT phase = ecode/1000;
@@ -677,7 +787,7 @@ Init_Crash_Report (void)
     return TRUE;
 
 #if defined(VENDOR_OSP)  
-  char *name = getenv("OPEN64_CRASH_REPORT");
+  char *name = getenv(PRODUCT_NAME_PREFIX "_CRASH_REPORT");
 #elif defined(VENDOR_SL)
   char *name = getenv("SL_CRASH_REPORT");
 #else
@@ -710,13 +820,28 @@ Emit ( FILE *File,
        char *msg,
        char *hmsg,
        char *emsg,
-       BOOL report_location )
+       BOOL report_location,
+       BOOL encode)
 {
-  if ( report_location ) {
-    fputs ( msg, File );
+#if defined(BUILD_MASTIFF) && !defined(Is_True_On)
+  if (encode) {
+    fputs("Support Message:\n", File);
+    if ( report_location ) {
+      fputs_fuzz (File, msg, 1);
+    }
+    fputs_fuzz (File, hmsg, 1);
+    fputs_fuzz (File, emsg, 1);
+    fputc ('\n', File);
   }
-  fputs ( hmsg, File );
-  fputs ( emsg, File );
+  else
+#endif
+  {
+    if ( report_location ) {
+      fputs ( msg, File );
+    }
+    fputs ( hmsg, File );
+    fputs ( emsg, File );
+  }
   fflush ( File );
   if ( do_traceback ) {
     dump_backtrace ( File );
@@ -726,7 +851,8 @@ Emit ( FILE *File,
 static void
 Emit_Message (
   char *hmsg,		/* Header line of message */
-  char *emsg )		/* Error line of message */
+  char *emsg,		/* Error line of message */
+  ERROR_DESC *edesc )   /* error descriptor - SC */
 {
   char msg[1024];
   BOOL report_location = FALSE;
@@ -738,12 +864,18 @@ Emit_Message (
     report_location = TRUE;
   }
 
+  BOOL encode = (edesc == NULL || !ED_user(edesc));
   /* Write to standard error first: */
-  Emit ( stderr, msg, hmsg, emsg, report_location );
-  
+  Emit ( stderr, msg, hmsg, emsg, report_location, encode );
+  /* Write to alternative error file first: see be/com/erbe.h */
+  if ( Alterr != NULL && edesc != NULL &&
+       edesc->ecode > EP_BE*1000+159 && edesc->ecode < EP_CG*1000) {
+    Emit ( Alterr, msg, hmsg, emsg, report_location, encode );
+  }
+
   /* Then dump to crash report file if enabled: */
   if ( Init_Crash_Report() ) {
-    Emit ( Crash_File, msg, hmsg, emsg, report_location );
+    Emit ( Crash_File, msg, hmsg, emsg, report_location, encode );
   }
   
   if ( Compiler_File != NULL ) {
@@ -752,17 +884,34 @@ Emit_Message (
   
   /* Then write to error file if enabled: */
   if ( Init_Error_File() ) {
-    Emit ( Error_File, msg, hmsg, emsg, report_location );
+    Emit ( Error_File, msg, hmsg, emsg, report_location, encode );
   }
 
   /* Finally write to trace file: */
   if ( Trace_File != NULL ) {
-    Emit ( Trace_File, msg, hmsg, emsg, report_location );
+    Emit ( Trace_File, msg, hmsg, emsg, report_location, encode );
+  }
+
+  /* running vsa, we always output result to report file */
+  /* vsa_extra is for normal and also msg that in other than vsa analysis */
+  if (((edesc != 0) && ED_vsa_extra(edesc)) && Need_vsafile()) {
+    if (RFile != NULL && VSA_Output_Json == FALSE) {
+      Write_vsarpt_issue(RFile, hmsg, emsg);
+    }
   }
 
   if ( do_traceback )
     do_traceback = false;
 }
+
+void
+Write_vsarpt_issue(FILE* fp, const char* hmsg, const char* emsg) {
+  Is_True(fp != NULL && VSA_Output_Json == FALSE, ("vsarpt file or format is wrong"));
+  fputs(hmsg, fp);
+  fputs(emsg, fp);
+  fflush(fp);
+}
+
 
 /* ====================================================================
  *
@@ -809,7 +958,7 @@ ErrMsg_Report_Nonuser ( ERROR_DESC *edesc, INT ecode, INT line,
   if ( dlevel >= ES_ERRPHASE) Phase_Error = TRUE;
 
   /* Convert conformance error severity level: */
-  if ( dlevel == ES_CONFORMANCE ) mlevel = Conformance_Level; 
+  //if ( dlevel == ES_CONFORMANCE ) mlevel = Conformance_Level;
 
   /* Filter out errors with severity lower than threshhold: */
   if ( mlevel < Min_Error_Severity ) return;
@@ -947,8 +1096,11 @@ ErrMsg_Report_Nonuser ( ERROR_DESC *edesc, INT ecode, INT line,
 		mparm[1], mparm[2], mparm[3], mparm[4], mparm[5] );
   emsg = vstr_concat (emsg, "\n");
 
+  /* do traceback for non-user issue */
+  do_traceback = true;
+
   /* Produce the message: */
-  Emit_Message ( hmsg, vstr_str(emsg) );
+  Emit_Message ( hmsg, vstr_str(emsg), (ERROR_DESC *)0 );
   vstr_end(emsg);
 
   if (ED_compiler(edesc)) Had_Compiler_Error = TRUE;
@@ -975,7 +1127,7 @@ ErrMsg_Report_Nonuser ( ERROR_DESC *edesc, INT ecode, INT line,
 
 
 static void
-ErrMsg_Report_User (ERROR_DESC *edesc, INT ecode, INT line,
+ErrMsg_Report_User (ERROR_DESC *edesc, INT ecode, INT line, INT file_id,
 #ifdef TARG_NVISA
                     const char *file, const char *dname, va_list vp )
 #else
@@ -1004,7 +1156,7 @@ ErrMsg_Report_User (ERROR_DESC *edesc, INT ecode, INT line,
   if ( dlevel >= ES_ERRPHASE) Phase_Error = TRUE;
 
   /* Convert conformance error severity level: */
-  if ( dlevel == ES_CONFORMANCE ) mlevel = Conformance_Level; 
+  //if ( dlevel == ES_CONFORMANCE ) mlevel = Conformance_Level;
 
   /* Filter out errors with severity lower than threshhold: */
   if ( mlevel < Min_Error_Severity ) return;
@@ -1017,9 +1169,11 @@ ErrMsg_Report_User (ERROR_DESC *edesc, INT ecode, INT line,
       loc += sprintf (&hmsg[0], "%s/", dname);
     }  
     loc += sprintf ( &hmsg[loc], "%s(%d): ", file && *file? file: "<input>", line);
-#else    
-    if ( file != NULL && *file != 0 && line != ERROR_LINE_UNKNOWN ) {
-      loc = sprintf ( &hmsg[0], "\"%s\", line %d: ", file, line );
+#else
+      
+    // SC - always line number to flush out all wrong lines
+    if ( file != NULL && *file != 0 /* && line != ERROR_LINE_UNKNOWN */ ) {
+      loc = sprintf ( &hmsg[0], "[%s],[%d:%d],", file, file_id, line );
     }
     else if ( file != NULL && *file != 0 ) {
       loc = sprintf ( &hmsg[0], "\"%s\": ", file );
@@ -1030,15 +1184,20 @@ ErrMsg_Report_User (ERROR_DESC *edesc, INT ecode, INT line,
     else {
       loc = 0;
     }
-#endif  /* TARG_NVISA */    
+  
+#endif  /* TARG_NVISA */
+#if 1 // suitable for post processing format
+    sprintf ( &hmsg[loc], "%s%s,",
+#else
     sprintf ( &hmsg[loc], "%s%s: ",
+#endif
 	      ED_unknown(edesc) ? "unknown compiler "
 			        : (ED_compiler(edesc) ? "compiler " : ""),
 	      SEV_name(mlevel) );
   } else {
     hmsg[0] = 0;
   }
-
+  
   loc = 0;
   /* Prepare message parameters: */
   for ( pnum = 0; pnum < MAX_ERR_PARMS; pnum++ ) {
@@ -1138,7 +1297,7 @@ ErrMsg_Report_User (ERROR_DESC *edesc, INT ecode, INT line,
   /* efficiently enough.  A minor headache. */
 
   /* Produce the message: */
-  Emit_Message ( hmsg, vstr_str(emsg) );
+  Emit_Message ( hmsg, vstr_str(emsg), edesc );
   vstr_end(emsg);
 
   if (ED_compiler(edesc)) Had_Compiler_Error = TRUE;
@@ -1165,18 +1324,18 @@ ErrMsg_Report_User (ERROR_DESC *edesc, INT ecode, INT line,
 
 static void
 #ifdef TARG_NVISA
-ErrMsg_Report ( INT ecode, INT line, const char *file, const char *dname, va_list vp )
+ErrMsg_Report ( INT ecode, INT line, INT file_id, const char *file, const char *dname, va_list vp )
 #else
-ErrMsg_Report ( INT ecode, INT line, const char *file, va_list vp )
+ErrMsg_Report ( INT ecode, INT line, INT file_id, const char *file, va_list vp )
 #endif
 {
   ERROR_DESC *edesc = Find_Error_Desc (ecode);
 
   if ( ED_user(edesc) )
 #ifdef TARG_NVISA
-    ErrMsg_Report_User ( edesc, ecode, line, file, dname, vp );
+    ErrMsg_Report_User ( edesc, ecode, line, file_id, file, dname, vp );
 #else  
-    ErrMsg_Report_User ( edesc, ecode, line, file, vp );
+    ErrMsg_Report_User ( edesc, ecode, line, file_id, file, vp );
 #endif
   else
 #ifdef TARG_NVISA
@@ -1188,9 +1347,9 @@ ErrMsg_Report ( INT ecode, INT line, const char *file, va_list vp )
 
 #ifdef TARG_NVISA
 static void
-ErrMsg_Report ( INT ecode, INT line, const char *file, va_list vp )
+ErrMsg_Report ( INT ecode, INT line, INT file_id, const char *file, va_list vp )
 {
-  ErrMsg_Report (ecode, line, file, NULL, vp);
+  ErrMsg_Report (ecode, line, 1, file, NULL, vp);
 }
 #endif  /* TARG_NVISA */
 
@@ -1210,7 +1369,7 @@ ErrMsg ( INT ecode, ... )
   va_list vp;
   
   va_start ( vp, ecode);
-  ErrMsg_Report ( ecode, Source_Line, Source_File_Name, vp );
+  ErrMsg_Report ( ecode, Source_Line, 1, Source_File_Name, vp );
   va_end ( vp );
 }
 
@@ -1222,7 +1381,7 @@ ErrMsgLine ( INT ecode, INT line, ... )
   va_list vp;
   
   va_start ( vp, line );
-  ErrMsg_Report ( ecode, line, Source_File_Name, vp );
+  ErrMsg_Report ( ecode, line, 1, Source_File_Name, vp );
   va_end ( vp );
 }
 
@@ -1234,17 +1393,21 @@ void
 ErrMsgSrcpos ( INT ecode, SRCPOS srcpos, ... )
 {
   INT32  line = Srcpos_To_Line(srcpos);
+  INT32  file = SRCPOS_filenum(srcpos);
   const char   *fname = NULL;
   const char   *dname;
 
   va_list vp;
   va_start ( vp, srcpos );
 
-  IR_Srcpos_Filename(srcpos, &fname, &dname);
+  if (file != 0)
+    Get_Srcpos_Filename(srcpos, &fname, &dname);
+  else
+    fname = Source_File_Name;
 #ifdef TARG_NVISA  
-  ErrMsg_Report ( ecode, line, fname, dname, vp );
+  ErrMsg_Report ( ecode, line, file, fname, dname, vp );
 #else  
-  ErrMsg_Report ( ecode, line, fname, vp );
+  ErrMsg_Report ( ecode, line, file, fname, vp );
 #endif
   va_end ( vp );
 }
@@ -1294,7 +1457,7 @@ Fail_Assertion ( INT ecode, ... )
   
   va_start ( vp, ecode);
   do_traceback = true;
-  ErrMsg_Report ( ecode, Source_Line, Source_File_Name, vp );
+  ErrMsg_Report ( ecode, Source_Line, 1, Source_File_Name, vp );
   va_end ( vp );
 }
 
@@ -1341,8 +1504,11 @@ Fail_FmtAssertion ( const char *fmt, ... )
   sprintf ( &emsg[loc], "\n" );
   va_end ( vp );
 
+  /* do tracestack */
+  do_traceback = true;
+
   /* Report the error: */
-  Emit_Message ( hmsg, emsg );
+  Emit_Message ( hmsg, emsg, (ERROR_DESC *)0  );
 
   /* Abort: */
   Signal_Cleanup( 0 );
@@ -1393,8 +1559,11 @@ Fatal_Error ( const char *fmt, ... )
   sprintf ( &emsg[loc], "\n" );
   va_end ( vp );
 
+  /* do traceback for fatal error */
+  do_traceback = true;
+
   /* Report the error: */
-  Emit_Message ( hmsg, emsg );
+  Emit_Message ( hmsg, emsg, (ERROR_DESC *)0  );
 
   /* Abort: */
   Signal_Cleanup( 0 );
@@ -1674,4 +1843,64 @@ extern BOOL
 Had_Internal_Error (void)
 {
 	return Had_Compiler_Error;
+}
+
+/* ====================================================================
+ * Report_Message
+ * ====================================================================
+ */
+static const char *msg_kind_desc[] = {
+  "info", "warn", "error"
+};
+
+extern void
+Report_Message(MESSAGE_KIND kind, MESSAGE_ID id)
+{
+  const char* desc = (kind >= MSG_INFO && kind <= MSG_ERROR)
+                       ? msg_kind_desc[kind] : "fatal";
+  fprintf(stderr, "%s:0x%08x\n", desc, id);
+
+  // if this is an error, abort the scan
+  if (kind == MSG_ERROR) {
+    Signal_Cleanup(0);
+    exit(RC_INTERNAL_ERROR);
+  }
+}
+
+extern void
+Report_Message_Fmt(MESSAGE_KIND kind, MESSAGE_ID id, const char *fmt, ...)
+{
+  const char* desc = (kind >= MSG_INFO && kind <= MSG_ERROR)
+                       ? msg_kind_desc[kind] : "fatal";
+  fprintf(stderr, "%s:0x%08x: ", desc, id);
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+
+  // if this is an error, abort the scan
+  if (kind == MSG_ERROR) {
+    Signal_Cleanup(0);
+    exit(RC_INTERNAL_ERROR);
+  }
+}
+
+/* ====================================================================
+ * Display_Progress
+ * ====================================================================
+ */
+extern void
+Display_Progress(UINT progress, BOOL force)
+{
+  static UINT prev_prog;
+  static time_t prev_time;
+  time_t cur_time = time(NULL);
+  // only report progress when progress changed and
+  // no more than 1 in 5 seconds
+  if (progress != prev_prog &&
+      (force || cur_time >= prev_time + 5)) {
+    Report_Message_Fmt(MSG_INFO, I_SCAN_PROGRESS, "scan progress %d%%\n", progress);
+    prev_prog = progress;
+    prev_time = cur_time;
+  }
 }

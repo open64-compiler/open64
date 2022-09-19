@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -202,9 +206,9 @@ WHIRL2F_C_OBJS = $(WHIRL2F_C_SRCS:.cxx=.o)
 WHIRL2F_DRIVER_OBJS = $(WHIRL2F_DRIVER_SRCS:.cxx=.o)
 WHIRL2F_MAIN_OBJS = $(WHIRL2F_MAIN_SRCS:.cxx=.o)
 ifeq ($(BUILD_OS), LINUX)
-WHIRL2F_DSOS = be.so
+WHIRL2F_DSOS = maccom.so
 else
-WHIRL2F_DSOS = $(TARGDIR)/be/be.so
+WHIRL2F_DSOS = $(TARGDIR)/be/maccom.so
 endif
 
 VPATH    =  $(SRC_DIRS)
@@ -260,7 +264,7 @@ TARGETS = libwhirl2f.a whirl2f
 endif
 
 # extra files to be removed with make clobber
-LDIRT += be be.so $(TARGETS)
+LDIRT += be maccom.so $(TARGETS)
 
 
 #----------------------------------------------------------------------
@@ -330,8 +334,8 @@ ifeq ($(BUILD_TYPE), SHARED)
 whirl2f: whirl2f.so whirl2f_be $(WHIRL2F_MAIN_OBJS)
 	$(link.c++f) -o whirl2f $(WHIRL2F_MAIN_OBJS) $(LDFLAGS)
 
-be.so:
-	if ! test -e be.so; then ln -sf $(TARGDIR)/be/be.so .; fi
+maccom.so:
+	if ! test -e maccom.so; then ln -sf $(TARGDIR)/be/maccom.so .; fi
 
 be:
 	if ! test -e be; then ln -sf $(TARGDIR)/be/be .; fi

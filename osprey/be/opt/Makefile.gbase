@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -81,6 +85,7 @@ TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
 else
 TARG_BE_DIR = $(TARGDIR)/be
 endif
+TARG_VSA_DIR = $(TARGDIR)/vsa
 
 #----------------------------------------------------------------------
 #  Compiler Options
@@ -101,6 +106,9 @@ ifeq ($(BUILD_PCH), USE_PCH)
 HOSTDEFS += -DUSE_PCH
 endif
 
+BUILD_WITH_PROTECT=NO
+BUILD_WITH_PROTECT_VSA=NO
+
 INSTALL_LOC = $(STD_MONGOOSE_LOC)
 
 #----------------------------------------------------------------------
@@ -113,6 +121,7 @@ BE_CG_DIR 		= $(BE_DIR)/cg
 BE_COM_DIR 		= $(BE_DIR)/com
 BE_OPT_DIR 		= $(BE_DIR)/opt
 BE_VHO_DIR 		= $(BE_DIR)/vho
+BE_VSA_DIR 		= $(BE_DIR)/vsa
 BE_REGION_DIR 		= $(BE_DIR)/region
 COMMON_DIR 		= $(BUILD_TOT)/common
 COMMON_COM_DIR 		= $(COMMON_DIR)/com
@@ -123,14 +132,29 @@ COMMON_TARG_INFO_ACCESS = $(COMMON_DIR)/targ_info/access
 COMMON_UTIL_DIR 	= $(COMMON_DIR)/util
 COMMON_UTIL_TARG_DIR 	= $(COMMON_UTIL_DIR)/$(BUILD_TARGET_DIR)
 INCLUDE_DIR 		= $(ROOT)/usr/include
+LD_PLUGIN_DIR 		= $(BE_DIR)/ld_plugin
 LIBCOMUTIL_DIR 		= $(BUILD_TOT)/libcomutil
+LIBPROTECT_DIR          = $(BUILD_TOT)/pro/util
+LIBPROTECT_INC_DIR      = $(LIBPROTECT_DIR)/vsa_include
+LIBPROTECT_SRC_DIR      = $(LIBPROTECT_DIR)
+LIBCRYPTOPP_DIR         = $(LIBPROTECT_DIR)/cryptopp
+BE_RBC_DIR              = $(BE_DIR)/rbc
+
+ifeq ($(BUILD_WITH_PROTECT), YES)
+PROTECT_EX_DIRS=$(LIBPROTECT_SRC_DIR) $(LIBCRYPTOPP_DIR)
+PROTECT_EX_HEADER_DIRS=$(LIBPROTECT_INC_DIR)
+else
+PROTECT_EX_DIRS=
+PROTECT_EX_HEADER_DIRS=$(LIBPROTECT_INC_DIR)
+endif
 
 # These are the directories in which to look for source files.
-
 WOPT_DIRS = \
   $(BE_COM_DIR)		\
   $(BE_OPT_DIR)		\
-  $(COMMON_UTIL_DIR)
+  $(BE_RBC_DIR)         \
+  $(COMMON_UTIL_DIR)    \
+  $(PROTECT_EX_DIRS)
 
 WOPT_HEADER_DIRS = \
   $(WOPT_DIRS)		\
@@ -140,11 +164,18 @@ WOPT_HEADER_DIRS = \
   $(COMMON_UTIL_DIR)	\
   $(BE_COM_DIR)		\
   $(BE_VHO_DIR)		\
+  $(BE_VSA_DIR)		\
   $(BE_REGION_DIR)	\
   $(COMMON_COM_TARG_DIR) \
+  $(LD_PLUGIN_DIR)      \
   $(TARGDIR)/targ_info	\
   $(TARGDIR)/include	\
-  $(TARG_BE_DIR)
+  $(TARG_BE_DIR)        \
+  $(PROTECT_EX_HEADER_DIRS)
+
+#  No longer using OpenSSL
+#  $(LIBPROTECT_SSL_DIR)
+
 
 
 
@@ -240,18 +271,29 @@ BE_OPT_CXX_SRCS = \
   opt_peel_unroll.cxx  \
   opt_zdl.cxx
 
+
+# TestScripts/cryptest-coverity.cpp
+
+ifeq ($(BUILD_WITH_PROTECT), YES)
+PROTECT_EX_SRCS=$(PROTECT_CXX_SRCS) $(LIBCRYPTOPP_SRCS)
+else
+PROTECT_EX_SRCS=
+endif
+
 ifeq ($(BUILD_PCH), USE_PCH)
 BACK_END_PCH_OBJS = $(BE_OPT_CXX_SRCS:.cxx=.o)
 BACK_END_CXX_SRCS = $(BE_COM_CXX_SRCS)
 else
-BACK_END_CXX_SRCS = $(BE_COM_CXX_SRCS) $(BE_OPT_CXX_SRCS)
+BACK_END_CXX_SRCS = $(BE_COM_CXX_SRCS) $(BE_OPT_CXX_SRCS) $(PROTECT_EX_SRCS)
 endif
+
 
 COMMON_UTIL_SRCS = \
   bitset.c
 
 BACK_END_SRCS = \
   $(COMMON_UTIL_SRCS)
+
 
 BACK_END_OBJS = $(BACK_END_SRCS:.c=.o)
 BACK_END_CXX_OBJS   = $(BACK_END_CXX_SRCS:.cxx=.o)
@@ -261,14 +303,34 @@ LDIRT = ii_files *.pch
 
 VPATH    =  $(WOPT_DIRS)
 
-LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+vsa_build_date=$(shell date '+%s')
+TARGDEFS += -DVSA_BUILD_DATE=$(vsa_build_date)
+
+ifeq ($(BUILD_SANITIZE), 1)
+STD_COMPILE_OPTS += -fsanitize=address
+TARGDEFS += -fsanitize=address
+LDFLAGS += -fsanitize=address
+endif
+
+
+# Protection related
+ifeq ($(BUILD_WITH_PROTECT), YES)
+PROTECT_LC_OPTS= -DXVSA_PROTECT_FULL -DCRYPTOPP_DISABLE_ASM -DCRYPTOPP_DISABLE_SSE4 -DCRYPTOPP_DISABLE_AVX2 -DCRYPTOPP_DISABLE_AESNI  -DCRYPTOPP_DISABLE_AVX
+PROTECT_LCXX_OPTS= -DXVSA_PROTECT_FULL -DCRYPTOPP_DISABLE_ASM -DCRYPTOPP_DISABLE_SSE4 -DCRYPTOPP_DISABLE_AVX2 -DCRYPTOPP_DISABLE_AESNI  -DCRYPTOPP_DISABLE_AVX
+else ifneq ($(BUILD_WITH_PROTECT_VSA), YES)
+PROTECT_LC_OPTS= -DXVSA_PROTECT_NONE
+PROTECT_LCXX_OPTS= -DXVSA_PROTECT_NONE
+endif
+
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS) $(PROTECT_LC_OPTS)
 LCDEFS = $(HOSTDEFS) $(TARGDEFS)
 LCINCS = $(addprefix -I, $(WOPT_HEADER_DIRS))
 ifeq ($(BUILD_OS), LINUX)
 LCINCS += -I$(BUILD_AREA)/include
 endif
 
-LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS) $(PCH_OPTS)
+# -Wno-deprecated -Wno-int-to-pointer-cast -Wno-conversion-null
+LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS) $(PCH_OPTS) $(PROTECT_LCXX_OPTS)
 LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
 LC++INCS = $(addprefix -I, $(WOPT_HEADER_DIRS))
 LASOPTS = $(STD_COMPILE_OPTS)
@@ -285,9 +347,13 @@ DSOSTARTOPT_32 = $(DSOSTARTOPT)
 DSOSTARTOPT_N32 = $(DSOSTARTOPT)
 
 ifeq ($(BUILD_VARIANT), MEM_STATS)
-LLDLIBS +=  -lmalloc
+LLDLIBS +=  -lmalloc 
 LDFLAGS += -lmalloc
 endif
+
+# for cplus_demangle
+TARG_LIBIBERTY_DIR = $(TARGDIR)/libiberty
+LLDLIBS += $(TARG_LIBIBERTY_DIR)/libiberty.a
 
 #----------------------------------------------------------------------
 # File containing the list of symbols exported outside of cg.so
@@ -304,7 +370,7 @@ else
  ifeq ($(BUILD_TYPE), NONSHARED)
 TARGETS = libwopt.a
  else
-TARGETS = wopt.so
+TARGETS = $(WOPT_SO)
  endif
 endif
 
@@ -327,7 +393,7 @@ ifndef SKIP_DEP_BUILD
 	$(call submake,$(TARG_BE_DIR))
 endif
 ifeq ($(BUILD_OS), LINUX)
-	if ! test -e be.so; then ln -sf $(TARG_BE_DIR)/be.so .; fi
+	if ! test -e $(BE_SO); then ln -sf $(TARG_BE_DIR)/$(BE_SO) .; fi
 endif
 ifndef SKIP_DEP_BUILD
  ifeq ($(BUILD_PCH), USE_PCH)
@@ -355,10 +421,10 @@ install:: default
 ifeq ($(BUILD_OS), LINUX)
 	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
 else
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(INSTALL_LOC) wopt.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(INSTALL_LOC) $(WOPT_SO)
  ifeq ($(BUILD_TYPE), SHARED)
  ifndef NOSYSGEN
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(INSTALL_LOC) wopt.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(INSTALL_LOC) $(WOPT_SO)
  endif
  endif
 endif
@@ -369,12 +435,12 @@ ifeq ($(BUILD_PCH), USE_PCH)
 
 opt_pch_files: $(BACK_END_PCH_OBJS) opt_pch.pch
 
-wopt.so: $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) $(BACK_END_PCH_OBJS) \
-	 $(TARG_BE_DIR)/be.so $(BE_OPT_DIR)/Exported $(BE_BE_DIR)/so_locations
-	$(link.c++f) -o wopt.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+$(WOPT_SO): $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) $(BACK_END_PCH_OBJS) \
+	 $(TARG_BE_DIR)/$(BE_SO) $(BE_OPT_DIR)/Exported $(BE_BE_DIR)/so_locations
+	$(link.c++f) -o $(WOPT_SO) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
 	 $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) $(BACK_END_PCH_OBJS) \
-	 $(TARG_BE_DIR)/be.so $(LLDLIBS) -show
-	if [ ! -l be.so ]; then ln -sf $(TARG_BE_DIR)/be.so .; fi
+	 $(TARG_BE_DIR)/$(BE_SO) $(LLDLIBS) -show
+	if [ ! -l $(BE_SO) ]; then ln -sf $(TARG_BE_DIR)/$(BE_SO) .; fi
 	if [ ! -l be ]; then ln -sf $(TARG_BE_DIR)/be .; fi
 	if [ ! -l wopt ]; then ln -sf $(TARG_BE_DIR)/be wopt; fi
 
@@ -382,14 +448,14 @@ else
 
  ifeq ($(BUILD_OS), LINUX)
 # dso's must be in same directory
-LINK_DSOS = be.so
+LINK_DSOS = $(BE_SO)
  else
-LINK_DSOS = $(TARG_BE_DIR)/be.so
+LINK_DSOS = $(TARG_BE_DIR)/$(BE_SO)
  endif
 
-wopt.so: $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) $(BE_OPT_DIR)/Exported \
-	 $(TARG_BE_DIR)/be.so $(BE_BE_DIR)/so_locations
-	$(link.c++f) -o wopt.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+$(WOPT_SO): $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) $(BE_OPT_DIR)/Exported \
+	 $(TARG_BE_DIR)/$(BE_SO) $(BE_BE_DIR)/so_locations
+	$(link.c++f) -o $(WOPT_SO) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
 	 $(BACK_END_OBJS) $(BACK_END_CXX_OBJS) \
 	 $(LINK_DSOS) $(LLDLIBS)
 endif
@@ -406,10 +472,10 @@ opt_wovp.o: opt_wovp.cxx
 endif
 endif
 
-LDIRT += be.so bedriver be wopt $(TARGETS)
+LDIRT += $(BE_SO) bedriver be wopt $(TARGETS)
 
 ifdef LINK_DSO
-debug-wopt: wopt.so
+debug-wopt: $(WOPT_SO)
 	(cd $(TARG_BE_DIR); $(MAKE) LINK_DSO='$(LINK_DSO)' \
 		LINK_DSO_OPTS='$(LINK_DSO_OPTS) -L.' be)
 endif

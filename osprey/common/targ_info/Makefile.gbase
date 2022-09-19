@@ -217,7 +217,6 @@ else
 COPYSOURCEDIR = FALSE
 endif
 
-
 .PHONY: default first last install
 
 default:
@@ -731,6 +730,25 @@ endif
 ifeq ($(BUILD_TARGET), NVISA)
 PROC_SI_OBJS = \
 	nvisa1_si.o
+endif
+
+ifeq ($(BUILD_TARGET), UWASM)
+PROC_SI_OBJS = \
+  uwasm_si.o
+
+UWASM_DEF_FILE = \
+  isa.def \
+  isa_operand.def \
+  isa_print.def
+
+$(UWASM_DEF_FILE): $(UWASM_VM_DIR)/doc/u_opcode_list.csv
+	python3 $(TARGINFO_ISA_DIR)/instr_cvt.py -p $(UWASM_VM_DIR)
+
+isa.cxx: isa.def
+isa_operands.cxx: isa_operand.def
+isa_print.cxx: isa_print.def
+isa_subset.cxx: isa.def
+uwasm_si.cxx : isa.def
 endif
 
 targ_si.o: targ_si.c ti_si_types.h targ_proc.h

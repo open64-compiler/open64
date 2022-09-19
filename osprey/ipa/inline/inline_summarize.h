@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -186,7 +190,7 @@ SUMMARIZE<INLINER>::Process_procedure (WN *w)
 
     ST* st = WN_st(w);
 
-    if (PU_src_lang(pu) == PU_CXX_LANG) {
+    if (PU_src_lang(pu) == PU_CXX_LANG || PU_src_lang(pu) == PU_JAVA_LANG ) {
 	if ((Opt_Level > 1) && !INLINE_Static_Set)
 	    INLINE_Static = TRUE;
 	if (!IPA_Enable_DFE_Set)
@@ -235,7 +239,8 @@ SUMMARIZE<INLINER>::Process_procedure (WN *w)
 	// attribute
 
 	if ((PU_src_lang(pu) == PU_C_LANG) ||
-	    ((PU_src_lang(pu) == PU_CXX_LANG))) {
+	    (PU_src_lang(pu) == PU_CXX_LANG) ||
+	    (PU_src_lang(pu) == PU_JAVA_LANG )) {
 	    if (PU_is_inline_function (pu))
 		    proc->Set_may_inline();
 

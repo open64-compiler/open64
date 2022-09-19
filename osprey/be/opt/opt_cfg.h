@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -227,6 +231,7 @@ private:
   STACK<RID *> _mp_rid;         // the rid of the region
   STACK<BB_REGION *> _bb_region;// the BB_REGION of the parent (not just mp)
   STACK<RID *> _eh_rid;         // the stack of eh_region's rid
+  STACK<INLCXT *> _inlcxt;      // the current inline context
   
 #if defined(TARG_SL) //PARA_EXTENSION
   STACK<SL2_PARA_TY> _sl2_para_type;  // the sl2_para region type
@@ -284,6 +289,7 @@ private:
   BB_NODE     *Create_bb( BB_KIND k = BB_GOTO )
 			{ BB_NODE *tmp= CXX_NEW(BB_NODE(), _mem_pool);
 			  tmp->Set_kind(k);
+			  tmp->Set_inlinecxt(Top_inlcxt());
 			  return tmp;
 			}
   // SC tree manipulation routines.
@@ -291,16 +297,16 @@ private:
   SC_NODE *   Unlink_sc(BB_NODE *bb);
   SC_NODE    *Get_sc_from_bb(BB_NODE * bb) const
   {
-    return (SC_NODE *) _sc_map->Get_val((POINTER) bb->Id());
+    return (SC_NODE *) _sc_map->Get_val((POINTER)(INTPTR)bb->Id());
   }
 
   void        Add_sc_map (BB_NODE * bb, SC_NODE *sc)
   {
-    _sc_map->Add_map((POINTER) bb->Id(), (POINTER)sc);
+    _sc_map->Add_map((POINTER)(INTPTR)bb->Id(), (POINTER)sc);
   }
 
   void Remove_sc_map (BB_NODE * bb, SC_NODE *sc) {
-    MAP_LIST * map_lst = _sc_map->Find_map_list((POINTER) bb->Id());
+    MAP_LIST * map_lst = _sc_map->Find_map_list((POINTER)(INTPTR)bb->Id());
     if (map_lst->Val() == (POINTER) sc)
       map_lst->Set_val(NULL);
   }
@@ -376,7 +382,7 @@ private:
   void         Lower_do_while(WN *wn, END_BLOCK *ends_bb );
   void         Lower_while_do(WN *wn, END_BLOCK *ends_bb );
   INT	       Is_simple_expr(WN *wn);
-  void         Lower_if_stmt(WN *wn, END_BLOCK *ends_bb );
+  void         Lower_if_stmt(WN *wn, END_BLOCK *ends_bb, SRCPOS next_spos );
   WN          *if_convert(WN *wn);
   BOOL         wn_is_return_convert(WN *wn);
   // add various high-level construct statements to CFG so they can
@@ -385,10 +391,10 @@ private:
   void         Add_one_do_loop_stmt(WN *wn, END_BLOCK *ends_bb );
   void         Add_one_do_while_stmt(WN *wn, END_BLOCK *ends_bb );
   void         Add_one_while_do_stmt(WN *wn, END_BLOCK *ends_bb );
-  void         Add_one_if_stmt(WN *wn, END_BLOCK *ends_bb );
+  void         Add_one_if_stmt(WN *wn, END_BLOCK *ends_bb, SRCPOS next_spos );
   void         Add_one_compgoto_stmt(WN *wn, END_BLOCK *ends_bb );
   void         Add_one_region(WN *wn, END_BLOCK *ends_bb );
-  void         Add_one_stmt(WN *func_nd, END_BLOCK *ends_bb );
+  void         Add_one_stmt(WN *func_nd, END_BLOCK *ends_bb, SRCPOS next_spos );
   BB_NODE     *Process_entry( WN *wn, END_BLOCK *ends_bb );
 
   void         Create_label_stmt(BB_NODE *bb);  // in the bb
@@ -397,14 +403,14 @@ private:
   void         Copy_xpragmas_into(BB_NODE *bb, WN *pragmas);
 
   // Create a BB with label
-  BB_NODE     *Create_labelled_bb(BB_KIND k=BB_GOTO);
+  BB_NODE     *Create_labelled_bb(SRCPOS, BB_KIND k=BB_GOTO);
   // Add loop entry test to current block
-  BB_NODE     *Create_entrytest(WN *cond, BB_NODE *target);
+  BB_NODE     *Create_entrytest(WN *cond, BB_NODE *target, SRCPOS);
   BB_NODE     *Create_loopbody(WN *);
   // Create loop exit test bb
-  BB_NODE     *Create_exittest(WN *, BB_NODE*, BB_KIND);
+  BB_NODE     *Create_exittest(WN *, BB_NODE*, BB_KIND, SRCPOS);
   // Create conditional test
-  BB_NODE     *Create_conditional(WN *, BB_NODE *, BB_NODE *, BOOL, WN **);
+  BB_NODE     *Create_conditional(WN *, BB_NODE *, BB_NODE *, BOOL, WN **, SRCPOS);
   // generate the opc_loop_info and attach to the body_bb
   void         Create_loop_info( BB_NODE *body_bb, WN *loop_wn );
   void         Create_blank_loop_info( BB_NODE *body_bb );
@@ -454,7 +460,9 @@ public:
 
   BOOL	       Trace(void) const { return _trace; }
   void         Print(FILE *fp=stderr, 
-		     BOOL dfs_order = TRUE, IDTYPE bb_id = (IDTYPE) -1);
+		     BOOL dfs_order = TRUE, IDTYPE bb_id = (IDTYPE) -1,
+                     DNA_NODE* dna = NULL);
+  void         Print(FILE *fp, DNA_NODE *dna);
   void         PrintLoopVis(BB_LOOP * loop, int & id);
   void         PrintVis(BOOL draw_loops);
   void         PrintCDVis(void);
@@ -508,6 +516,10 @@ public:
 
   BB_NODE     *Func_entry_bb(void) const;
 
+  SRCPOS       Entry_spos(void) const    { return _fake_entry_bb ?
+                                                  _first_bb->Linenum() :
+                                                  _entry_bb->Linenum(); }
+
   // Split one BB into two consecutive ones.  The new BB is returned
   // to the caller.  Assumes only whirl statements.
   // The given wn becomes the last statement in the old block.
@@ -556,6 +568,13 @@ public:
   OPT_FEEDBACK *Feedback(void) const          { return _feedback; }
   void         Set_feedback(OPT_FEEDBACK *fb) { _feedback = fb; }
   BOOL         Has_feedback(void) const       { return _feedback != NULL; }
+
+  // stack for INLCXT when processing inside an inline context
+  void         Push_inlcxt(INLCXT *inl)       { _inlcxt.Push(inl); }
+  INLCXT      *Pop_inlcxt(void)               { return _inlcxt.Pop(); }
+  INLCXT      *Top_inlcxt(void) const         { return _inlcxt.Top(); }
+  BOOL         NULL_inlcxt(void) const        { return _inlcxt.Is_Empty(); }
+  void         Clear_inlcxt(void)             { _inlcxt.Clear(); }
 
   // stack for BB_REGION when processing inside a region
   // (all regions, not just mp)
@@ -717,6 +736,7 @@ public:
 
   BB_NODE     *Find_entry_bb(void);  // used by emitters to find code block
   
+  static
   BOOL         Fall_through(BB_NODE *bb1, BB_NODE *bb2);  // bb1 falls through to bb2
 
   void         Delete_empty_BB();

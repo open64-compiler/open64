@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -80,6 +84,7 @@ void CG_force_link(void);
 #include "timing.h"		    /* for Initialize_Timing() */
 #include "tracing.h"		    /* for Set_Trace () */
 #include "inline.h"
+#include "inline_skip.h"
 
 /* Default file	extensions: */
 #define	IRB_FILE_EXTENSION ".B"	/* Binary WHIRL IR file */
@@ -97,7 +102,27 @@ BOOL Verbose = FALSE;
  */
 SKIPLIST *IPA_Skip_List = NULL;		/* List of skip options */
 
+class INLINER {
+  INL_SKIPLST _inl_skip_filter;
 
+  INLINER(const INLINER&);              // REQUIRED UNDEFINED UNWANTED methods
+  INLINER& operator = (const INLINER&); // REQUIRED UNDEFINED UNWANTED methods
+
+
+public:
+  INLINER(void): _inl_skip_filter(NULL) { }
+  ~INLINER(void) {}
+
+  INL_SKIPLST& Filter(void)             { return _inl_skip_filter; }
+  void Process_Command_Line (INT argc, char **argv);
+};
+
+/*
+ * hack for unresolved symbol to Write_vsarpt_footer
+ * inline doesn't use vsa nor issue json vsa report file
+ */
+extern "C"
+void Write_vsarpt_footer(FILE*) { }
 
 /* ====================================================================
  *
@@ -109,8 +134,8 @@ SKIPLIST *IPA_Skip_List = NULL;		/* List of skip options */
  * ====================================================================
  */
 
-static void
-Process_Command_Line (INT argc, char **argv)
+void
+INLINER::Process_Command_Line (INT argc, char **argv)
 {
     INT i;
     INT Src_Count = 0;
@@ -163,6 +188,9 @@ Process_Command_Line (INT argc, char **argv)
 		    case 'I':
 			Irb_Output_Name = argv[i] + 4;
 			break;
+                    case 'N':
+                        _inl_skip_filter.Build_skiplst(argv[i] + 4);
+                        break;
  
                     default:
                         ErrMsg ( EC_File_Flag, argv[i][2], argv[i] );
@@ -175,13 +203,13 @@ Process_Command_Line (INT argc, char **argv)
 		break;
 
 	    case 's':
-		if (strcmp (argv[i]+1, "show") == 0)
+		if (strcmp (argv[i]+1, "sw") == 0) // MASTIFF-OPT: "-show" --> "-sw"
 		    Verbose = TRUE;
 		else
 		    ErrMsg ( EC_Unknown_Flag, argv[i][0], argv[i] );
 		break;
 
-	    case 't':
+	    case 'x':  // MASTIFF-OPT: "-tt:0xffff" --> "-xt:0xffff"
 		Process_Trace_Option ( argv[i] );
 		break;
 
@@ -323,7 +351,12 @@ main (INT argc, char **argv)
 #endif // _LIGHTWEIGHT_INLINER
 
     Preconfigure ();
-    Process_Command_Line (argc, argv);
+    INLINER inliner;
+
+    inliner.Process_Command_Line (argc, argv);
+    /* make a copy to Ipa_File_Name so that when error hit, Ipa_File_Name
+       can be removed by Cleanup_Files() */
+    Ipa_File_Name = Irb_Output_Name;
     if ( ! INLINE_Enable ) {
       INT rc;
       /* inline is off - link the output file to the input file,
@@ -344,7 +377,7 @@ main (INT argc, char **argv)
       Configure ();
       Set_Error_Source (Src_File_Name);
       Init_Operator_To_Opcode_Table();
-      BOOL close_output = Inliner(Irb_File_Name, Irb_Output_Name);
+      BOOL close_output = Inliner(Irb_File_Name, Irb_Output_Name, inliner.Filter());
  
 
       if ( Get_Trace ( TKIND_ALLOC, TP_IPA ) ) {

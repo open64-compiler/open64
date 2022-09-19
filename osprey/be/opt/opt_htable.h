@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -250,7 +254,7 @@ enum ISOP_FLAG {
   // at most 22 bits for this enumeration, due to size of isop_flags field
 };
 
-enum ISVAR_FLAG {
+enum ISVAR_FLAG {                       // for CR of CK_VAR : 16 bits max
   ISVAR_SAFE_TO_RENUMBER_PREG = 0x01,
   ISVAR_BIT_FIELD_VALID       = 0X02,	// Bit_size() and Bit_offset() valid
 #ifdef KEY
@@ -259,6 +263,13 @@ enum ISVAR_FLAG {
   					// extract/compose
   ISVAR_MP_SHARED	      = 0x08,   // shared variable in MP region
 #endif
+  ISVAR_VALUE_DEF             = 0x10,   // all paths lead to the use are defined
+  ISVAR_VALUE_MAYDEF          = 0x20,   // some paths lead to the use are defined
+  ISVAR_VALUE_CHECKED         = 0x40,   // made valid check
+  ISVAR_VALUE_INVALID_ADDR    = 0x80,   // value is defined with value zero
+  ISVAR_VALUE_MAYDANGLING     = 0x100,  // value maybe contain value zero
+  ISVAR_VALUE_MALLOC          = 0x200,  // value comes from malloc
+  ISVAR_VALUE_ESCAPED         = 0x400,  // value assigned to global var, return value, output param
 };
 
 enum ISCONST_FLAG {
@@ -375,8 +386,10 @@ private:
 	PHI_NODE *phi;               // the phi node that define this cr
       } def;
       mUINT16   _isvar_flags;        // flags specific to CK_VAR
-      mUINT16  fieldid;		     // field id (also used as bit ofst/size)
+      mUINT16   fieldid;	     // field id (also used as bit ofst/size)
+      mUINT32   _use_chain;          // D-U chain
       STMTREP  *defstmt;             // statement that defines this var
+      V_ANNOT   _vsa_annot;          // vsa annotation
       TY_IDX    ty;                  // LOD type  
     } isvar;
     struct {                         // for code kind CK_LDA
@@ -386,7 +399,14 @@ private:
       mUINT16   afieldid;	     // field id of the LDA
     } islda;
     union {                          // ISCONST ISRCONST
+#ifdef BUILD_MASTIFF
+      struct {
+        ST     *const_id;            // symbolic constant or constant, ISRCONST
+        double  fconst_val;          // floating point value in host rep
+      } fconst_val;
+#else
       ST        *const_id;            // symbolic constant or constant, ISRCONST
+#endif
 #if defined(TARG_SL)
       struct {
         INT64    const_val;           // constant value, ISCONST
@@ -548,7 +568,11 @@ public:
 #ifdef KEY
       Set_dsctyp(MTYPE_V);
 #endif
-
+#ifdef BUILD_MASTIFF
+      if (MTYPE_is_float(wt) && !MTYPE_is_complex(wt) && !MTYPE_is_vector(wt) )
+        u2.isconst.fconst_val.fconst_val = Targ_To_Host_Float(
+                                               STC_val(v));
+#endif
     }
 
   void Init_op(OPCODE c, mINT16 kcnt)
@@ -590,6 +614,9 @@ public:
 
   void	    Copy(const CODEREP &cr);  // copy fields, no allocate
 
+  CODEREP  *Find_actual_arg(void);    // find argument of a call
+  CODEREP  *Find_nth_arg(INT32 n);    // find nth argument of a call
+
   BOOL      Match(CODEREP *cr, 
 		  INT32 mu_vsym_depth = 0,
 		  OPT_STAB *opt_stab = NULL); // compare two nodes
@@ -609,9 +636,12 @@ public:
   BOOL      Removed_by_LDX(BB_NODE *bb)const;
 
   void      Print(INT32 indent,       // print the content for debugging
-                  FILE *fp = stderr)
+                  FILE *fp, const STMTREP *, DNA_NODE *)
                   const;
-
+  void      Print(INT32 indent,       // print the content for debugging
+                  FILE *fp)
+                  const;
+  void      Print(FILE *fp) const;
   void      Print_node(INT32 indent,  // print the CODEREP
 		       FILE *fp = stderr) const;
 
@@ -623,7 +653,7 @@ public:
   INT	    Count_parents(CFG *, CODEMAP *);
   				      // part of verification, # parents
 
-  WN       *Gen_wn(EMITTER*);	      // generate WN node from CODEREP
+  WN       *Gen_wn(EMITTER*, STMTREP*);	      // generate WN node from CODEREP
   WN       *Gen_wn(MAIN_EMITTER*, BB_NODE*);// mainopt emitter
   // mainopt emitter -- checks non-required exprs to see if any
   // must be saved to pregs
@@ -657,7 +687,7 @@ public:
   MTYPE     Asm_input_rtype(void)  const    { return u2.isop._asm_input_dtyp; }
   void      Set_asm_input_rtype(MTYPE dt)   { u2.isop._asm_input_dtyp = dt; }
   MTYPE     Asm_input_dsctype(void) const   { return u2.isop._asm_input_dsctyp; }
-  MTYPE     Set_asm_input_dsctype(MTYPE dt) {  u2.isop._asm_input_dsctyp = dt; }
+  MTYPE     Set_asm_input_dsctype(MTYPE dt) {  u2.isop._asm_input_dsctyp = dt; return dt; }
 #endif
 #if defined(TARG_SL) || defined(TARG_NVISA)
   void	    Set_dtyp_const_val(MTYPE dt, INT64 v) { 
@@ -806,6 +836,18 @@ public:
   void      Set_defchi(CHI_NODE *chi) { Is_True(Kind() == CK_VAR,
 				        ("CODEREP::Set_defchi, illegal kind"));
 					u2.isvar.def.chi = chi; }
+  UINT32    Use_chain() const         { Is_True(Kind() == CK_VAR,
+                                        ("CODEREP::Use_chain, illegal kind"));
+                                        return u2.isvar._use_chain; }
+  void      Set_use_chain(UINT32 use) { Is_True(Kind() == CK_VAR,
+                                        ("CODEREP::Set_use_chain, illegal kind"));
+                                        u2.isvar._use_chain = use; }
+  V_ANNOT   Vsa_annot() const         { Is_True(Kind() == CK_VAR,
+                                        ("CODEREP::Vsa_annot, illegal kind"));
+                                        return u2.isvar._vsa_annot; }
+  void      Set_vsa_annot(V_ANNOT v)  { Is_True(Kind() == CK_VAR,
+                                        ("CODEREP::Set_vsa_annot, illegal kind"));
+                                        u2.isvar._vsa_annot = v; }
   BB_NODE  *Defbb(void) const;        // the BB that defines this coderep
   BOOL      Def_at_entry(void) const; // the CR is defined at entry
   TY_IDX    Lod_ty(void) const        { Is_True(Kind() == CK_VAR,
@@ -843,6 +885,59 @@ public:
 
   BOOL Safe_to_renumber_preg(void) const
   { return u2.isvar._isvar_flags & ISVAR_SAFE_TO_RENUMBER_PREG; }
+
+  UINT32 Value_flags(void) const
+  { return u2.isvar._isvar_flags & (ISVAR_VALUE_CHECKED|
+				    ISVAR_VALUE_DEF|
+				    ISVAR_VALUE_MAYDEF|
+				    ISVAR_VALUE_INVALID_ADDR|
+				    ISVAR_VALUE_MAYDANGLING|
+                                    ISVAR_VALUE_MALLOC); }
+  void Set_value_flags(UINT32 f)
+  { Reset_value_checked(); u2.isvar._isvar_flags |= f; }
+
+  void Reset_value_checked(void)
+  { u2.isvar._isvar_flags &=
+      ~(ISVAR_VALUE_CHECKED|ISVAR_VALUE_DEF|ISVAR_VALUE_MAYDEF|
+        ISVAR_VALUE_INVALID_ADDR|ISVAR_VALUE_MAYDANGLING|ISVAR_VALUE_MALLOC); }
+  void Reset_value_defmaydef(void)
+  { u2.isvar._isvar_flags &= ~(ISVAR_VALUE_MAYDEF|ISVAR_VALUE_DEF); }
+  void Set_value_def(void)
+  { u2.isvar._isvar_flags |= (ISVAR_VALUE_DEF|ISVAR_VALUE_CHECKED); }
+  void Set_value_maydef(void)
+  { u2.isvar._isvar_flags |= (ISVAR_VALUE_MAYDEF|ISVAR_VALUE_CHECKED); }
+  void Set_value_checked(void)
+  { u2.isvar._isvar_flags |= ISVAR_VALUE_CHECKED; }
+  void Set_value_not_def(void)
+  { Reset_value_checked(); Set_value_checked(); }
+
+  BOOL Value_checked(void) const
+  { return u2.isvar._isvar_flags & ISVAR_VALUE_CHECKED; }
+  BOOL Value_not_def(void) const
+  { return ( u2.isvar._isvar_flags & 
+	    ( ISVAR_VALUE_CHECKED | ISVAR_VALUE_DEF | ISVAR_VALUE_MAYDEF) ) 
+      == ISVAR_VALUE_CHECKED; }
+  BOOL Value_def(void) const
+  { return (u2.isvar._isvar_flags &  ISVAR_VALUE_DEF ); }
+  BOOL Value_maydef(void) const
+  { return (u2.isvar._isvar_flags & ISVAR_VALUE_MAYDEF ); }
+
+  void Reset_value_invalidmaydangling(void)
+  { u2.isvar._isvar_flags &= ~(ISVAR_VALUE_MAYDANGLING|ISVAR_VALUE_INVALID_ADDR); }
+  void Set_value_invalid_addr(void) { Reset_value_invalidmaydangling(); u2.isvar._isvar_flags |= ISVAR_VALUE_INVALID_ADDR;  }
+  BOOL Value_invalid_addr(void) const { return u2.isvar._isvar_flags & ISVAR_VALUE_INVALID_ADDR;  }
+  void Set_value_maydangling(void) { Reset_value_invalidmaydangling(); u2.isvar._isvar_flags |= ISVAR_VALUE_MAYDANGLING;  }
+  BOOL Value_maydangling(void) const { return u2.isvar._isvar_flags & ISVAR_VALUE_MAYDANGLING;  }
+
+  void Reset_value_malloc(void)
+  { u2.isvar._isvar_flags &= ~(ISVAR_VALUE_MALLOC); }
+  void Set_value_malloc(void) { u2.isvar._isvar_flags |= ISVAR_VALUE_MALLOC;  }
+  BOOL Value_malloc(void) const { return u2.isvar._isvar_flags & ISVAR_VALUE_MALLOC;  }
+
+  void Reset_value_escaped(void)
+  { u2.isvar._isvar_flags &= ~(ISVAR_VALUE_ESCAPED); }
+  void Set_value_escaped(void) { u2.isvar._isvar_flags |= ISVAR_VALUE_ESCAPED;  }
+  BOOL Value_escaped(void) const { return u2.isvar._isvar_flags & ISVAR_VALUE_ESCAPED;  }
 
   void Set_bit_field_valid() {
     u2.isvar._isvar_flags |= ISVAR_BIT_FIELD_VALID;
@@ -992,6 +1087,23 @@ public:
   double    Const_fval(const CODEMAP *htable) const
                                       { return Targ_To_Host_Float(
 					  Const_ftcon2(htable)); }
+  BOOL      Has_const_fval() const    { return Kind() == CK_RCONST &&
+                                               MTYPE_is_float(Dtyp()) &&
+                                               !MTYPE_is_complex(Dtyp()) &&
+                                               !MTYPE_is_vector(Dtyp()) ; }
+  double    Const_fval() const
+                                      { Is_True(Kind() == CK_RCONST,
+                                        ("CODEREP::Const_fval, illegal kind"));
+                                        Is_True(MTYPE_is_float(Dtyp()) &&
+                                                !MTYPE_is_complex(Dtyp()) &&
+                                                !MTYPE_is_vector(Dtyp()) ,
+                                        ("CODEREP::Const_fval, illegal type"));
+#ifdef BUILD_MASTIFF
+                                        return u2.isconst.fconst_val.fconst_val;
+#else
+                                        return Const_fval(NULL);
+#endif
+                                      }
   TCON_IDX  Const_ftcon(const CODEMAP *) const
                                       { Is_True(Kind() == CK_RCONST,
 					("CODEREP::Const_fval, illegal kind"));
@@ -1006,10 +1118,25 @@ public:
 					return STC_val(Const_id()); }
   ST        *Const_id(void) const     { Is_True(Kind() == CK_RCONST,
 					  ("CODEREP::Const_id, illegal kind"));
-					return u2.isconst.const_id; }
+#ifdef BUILD_MASTIFF
+                                        return u2.isconst.fconst_val.const_id;
+#else
+					return u2.isconst.const_id;
+#endif
+                                      }
   void      Set_const_id(ST *v)       { Is_True(Kind() == CK_RCONST,
 				      ("CODEREP::Set_const_id, illegal kind"));
-					u2.isconst.const_id = v; }
+#ifdef BUILD_MASTIFF
+                                        u2.isconst.fconst_val.const_id = v;
+                                        if (MTYPE_is_float(Dtyp()) &&
+                                            !MTYPE_is_complex(Dtyp())&&
+                                            !MTYPE_is_vector(Dtyp()) )
+                                          u2.isconst.fconst_val.fconst_val =
+                                              Targ_To_Host_Float(STC_val(v));
+#else
+					u2.isconst.const_id = v;
+#endif
+                                      }
   OPCODE    Op(void) const            { Is_True(Non_leaf(),
 				                ("CODEREP::Op, illegal kind"));
 					return OPCODE_make_op(Opr(), Dtyp(), Dsctyp()); }
@@ -1504,14 +1631,16 @@ private:
   CODEREP   **hash_vec;
   WN_MAP      _prefetch_map;            // point from pretetch WN* to CR*
   INT32	      _coderep_id_cnt;		// for assigning unique ID's to CR nodes
+  INT32	      _stmtrep_id_cnt;		// for assigning unique ID's to SR nodes
   IDTYPE      _pre_temp_id;             // for PRE step1/6 book keeping
   INT32	      _num_iloadfolds;		// for statistics only
   INT32	      _num_istorefolds;		// for statistics only
   INT32	      _num_inputprops;		// for statistics only (icopy phase)
   INT32	      _num_mainprops;		// for statistics only (main prop phase)
   INT32	      _num_shrinks;		// for statistics only (shrink phase)
+  INT32	      _num_vsas; 		// for statistics only (vsa phase)
   BOOL        _tracing;
-  BOOL                        _phi_hash_valid;
+  BOOL        _phi_hash_valid;
   ID_MAP<PHI_NODE *, PHI_KEY> _phi_id_map;
 
   CODEMAP(void);
@@ -1697,18 +1826,20 @@ public:
   CODEREP    *Rehash(CODEREP *cr,
                      BOOL canon=TRUE);
 
-  void        New_temp_id(void)      { ++_pre_temp_id; }
-  IDTYPE      Cur_temp_id(void) const{ return _pre_temp_id; }
+  void        New_temp_id(void)         { ++_pre_temp_id; }
+  IDTYPE      Cur_temp_id(void) const   { return _pre_temp_id; }
 
   void	      Remove(CODEREP *cr);   // remove this node from htable
 
-  SSA        *Ssa(void) const        { return _ssa; } 
-  OPT_STAB   *Sym(void) const        { return sym; } 
-  OPT_STAB   *Opt_stab(void) const   { return sym; }
-  MEM_POOL   *Mem_pool(void) const   { return mem_pool; }
-  WN_MAP      Prefetch_map(void)const{ return _prefetch_map; }
-  INT32	      Coderep_id_cnt(void)const{ return _coderep_id_cnt; }
-  INT32	      Next_coderep_id(void)  { return _coderep_id_cnt++; }
+  SSA        *Ssa(void) const           { return _ssa; } 
+  OPT_STAB   *Sym(void) const           { return sym; } 
+  OPT_STAB   *Opt_stab(void) const      { return sym; }
+  MEM_POOL   *Mem_pool(void) const      { return mem_pool; }
+  WN_MAP      Prefetch_map(void)const   { return _prefetch_map; }
+  INT32	      Coderep_id_cnt(void)const { return _coderep_id_cnt; }
+  INT32	      Next_coderep_id(void)     { return _coderep_id_cnt++; }
+  INT32	      Stmtrep_id_cnt(void)const { return _stmtrep_id_cnt; }
+  INT32	      Next_stmtrep_id(void)     { return _stmtrep_id_cnt++; }
 
   void        Update_pref(CODEREP *ivar) const;
 
@@ -1723,6 +1854,8 @@ public:
   void	      Inc_mainprops(void)	{ _num_mainprops++; }
   INT32	      Num_shrinks(void)   const { return _num_shrinks; }
   void	      Inc_shrinks(void)	        { _num_shrinks++; }
+  INT32	      Num_vsas(void) const      { return _num_vsas; }
+  void	      Inc_vsas(void)	        { _num_vsas++; }
 
   // Expand the expression into loop-invariants or defined by phi, chi
   CODEREP    *Expand_expr(CODEREP *, const BB_LOOP *, INT32 *limit);    
@@ -1832,12 +1965,13 @@ private:
     // field.
   };
 
-  OPERATOR  _opr:8;
-  MTYPE     _rtype:8;        // result type
-  MTYPE     _desc:8;         // descriptor type 
-  CODEREP   *_lhs;          // the lhs if it is assignment statement
+  OPERATOR   _opr:8;
+  MTYPE      _rtype:8;        // result type
+  MTYPE      _desc:8;         // descriptor type 
+  IDX_32     _stmtrep_id;     // unique id of stmtrep for ID_MAP use
+  CODEREP   *_lhs;            // the lhs if it is assignment statement
   // TODO: define the alias variable list in case of pointer dereference
-  CODEREP   *_rhs;          // the rhs of an assignment statement, or
+  CODEREP   *_rhs;            // the rhs of an assignment statement, or
                               // the expression in a OPR_TRUEBR
 
   // this union should be almost identical to that in WN, with as
@@ -1964,10 +2098,13 @@ public:
 				_opr = OPCODE_operator(opc); 
 				_rtype = OPCODE_rtype(opc);
 				_desc = OPCODE_desc(opc); }
+  INT32	    Stmtrep_id(void) const    { return _stmtrep_id; }
+  void	    Set_stmtrep_id(INT32 i)   { _stmtrep_id = i; }
   void      Enter_rhs(CODEMAP*, OPT_STAB*, COPYPROP*, EXC*); // enter rhs of the stmt to HASH
   void      Enter_lhs(CODEMAP*, OPT_STAB*, COPYPROP*); // enter rhs of the stmt to HASH
-  void      Print(FILE *fp = stderr) const;
-				     // print out this STMTREP and its subtree
+  void      Print(FILE *fp, DNA_NODE *dna) const; // print out this STMTREP and its subtree
+  void      Print(FILE *fp = stderr) const; // print out this STMTREP and its subtree
+  
   void      Print_node(FILE *fp = stderr) const; // print out this STMTREP
   char     *Print_str(BOOL);		    // print out STMTREP to a string
   BOOL	    Verify_IR(CFG *, CODEMAP *, INT);    // consistency check on opt IR
@@ -1996,15 +2133,19 @@ public:
 
   CODEREP  *Lhs(void) const                 { return _lhs; }
   CODEREP  *Rhs(void) const                 { return _rhs; }
+  CODEREP  *Const_val(void) const           { Is_True(OPERATOR_is_call(_opr),
+                                              ("Illegal access")); return _lhs; }
   BB_NODE  *Bb(void) const                  { return bb; }
-  void	    Set_op(OPCODE opc)		    { _opr = OPCODE_operator(opc); 
+  void      Set_op(OPCODE opc)              { _opr = OPCODE_operator(opc); 
 					      _rtype = OPCODE_rtype(opc);
 					      _desc = OPCODE_desc(opc); }
-  void	    Set_opr(OPERATOR opr)	    { _opr = opr; }
-  void	    Set_rtype(MTYPE rtype)	    { _rtype = rtype; }
-  void	    Set_desc(MTYPE desc)	    { _desc = desc; }
+  void      Set_opr(OPERATOR opr)           { _opr = opr; }
+  void      Set_rtype(MTYPE rtype)          { _rtype = rtype; }
+  void      Set_desc(MTYPE desc)            { _desc = desc; }
   void      Set_bb(BB_NODE *b)              { bb = b; }
   void      Set_lhs(CODEREP *l)             { _lhs = l; }
+  void      Set_const_val(CODEREP *l)       { Is_True(OPERATOR_is_call(_opr),
+                                              ("Illegal access")); _lhs = l; }
   void      Set_rhs(CODEREP *r)             { _rhs = r; }
 
   STMTREP  *Duplicate(MEM_POOL *p);
@@ -2287,7 +2428,55 @@ public:
     _constraint_graph_callsite_id = c;
   }
 
+  BOOL      Callee_returns_new_heap_memory(void) const;
+  BOOL      Callee_frees_heap_memory(void) const;
+ 
+
 }; // end of class STMTREP
+
+
+class STMTREP_LIST : public SLIST_NODE {
+private:
+  STMTREP *node;
+        STMTREP_LIST(const STMTREP_LIST&);
+        STMTREP_LIST& operator = (const STMTREP_LIST&);
+public:
+        STMTREP_LIST(void)              {}
+        STMTREP_LIST(STMTREP *nd)       { node = nd; }
+       ~STMTREP_LIST(void)              {}
+
+  DECLARE_SLIST_NODE_CLASS( STMTREP_LIST )
+
+  void          Init(STMTREP *nd)       { node = nd; }
+  STMTREP_LIST *Prepend (STMTREP *sr,   // insert in front, return head
+                         MEM_POOL *pool);
+  // BOOL          Contains(STMTREP *sr) ; // check membership in list
+
+  // member access functions
+  STMTREP      *Node(void) const        { return node; }
+}; // end of class STMTREP_LIST
+
+class STMTREP_LIST_CONTAINER : public SLIST {
+private:
+  STMTREP_LIST_CONTAINER(const STMTREP_LIST_CONTAINER&);
+  STMTREP_LIST_CONTAINER& operator = (const STMTREP_LIST_CONTAINER&);
+
+  DECLARE_SLIST_CLASS( STMTREP_LIST_CONTAINER, STMTREP_LIST )
+public:  
+  ~STMTREP_LIST_CONTAINER(void)         {};
+  // BOOL Contains(STMTREP *sr) ;          // check membership in list
+  void Prepend (STMTREP *sr,            // prepend sr to the head
+                MEM_POOL *pool);
+};
+
+class STMTREP_LIST_ITER : public SLIST_ITER {
+  DECLARE_SLIST_ITER_CLASS( STMTREP_LIST_ITER, STMTREP_LIST, STMTREP_LIST_CONTAINER )
+public:
+  void     Init(void)       { }
+  STMTREP *First_elem(void) { return (First()) ? Cur()->Node():NULL; }
+  STMTREP *Next_elem(void)  { return (Next())  ? Cur()->Node():NULL; }
+};
+
 
 //============================================================================
 // Internal representation for an expression being built.
@@ -2321,7 +2510,7 @@ public:
   INT64     Scale(void) const       { return _scale; }
   void      Set_scale(INT64 s)      { _scale = s; }
 
-  void      Print(FILE *fp = stderr) const;
+  void      Print(FILE *fp) const;
 };
 
 

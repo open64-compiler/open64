@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -57,7 +61,7 @@
  * ====================================================================
  */
 
-static char *erbe_desc_rcs_id = "$Source: /u/cvs/Pathscale.MIPS/be/com/erbe.desc,v $ $Revision: 1.1.1.1 $";
+static const char *erbe_desc_rcs_id = "$Source: /u/cvs/Pathscale.MIPS/be/com/erbe.desc,v $ $Revision: 1.1.1.1 $";
 
 #include "erbe.h"
 
@@ -277,7 +281,106 @@ ERROR_DESC EDESC_BE[] = {
     "Variable %s in function %s might be used uninitialized",
     2, ET_STRING, ET_STRING, 0,0,0,0 },
 
-  /* DRA cloning errors */
+  { EC_VSA_Uninitialized, EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Uninit_param, EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT1,  
+    3, ET_STRING, ET_STRING, ET_STRING, 0,0,0 },
+
+  { EC_VSA_Maybe_uninitialized,	EM_VSA_User | ES_SAADV2, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING, 0,0 },
+
+  { EC_VSA_Mult_free,	      EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Free_without_alloc,	EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_F_Redundant_free, EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_F_Free_alloc,     EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Nullptr_deref,    EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Nullptr_may_deref,    EM_VSA_User | ES_SAADV2, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Array_oob,        EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Array_may_oob,    EM_VSA_User | ES_SAADV2, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Missing_free,     EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+    
+  { EC_VSA_may_Missing_free, EM_VSA_User | ES_SAADV2, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Use_after_free,   EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+    
+  { EC_VSA_DSE_S,	     EM_VSA_User | ES_SAADV4, RAG_EN_NONE,
+    VSA_FMT,
+    3, ET_STRING, ET_STRING, ET_STRING, 0,0,0 },
+    
+  { EC_VSA_DSE_C,	     EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT1,  
+    3, ET_STRING, ET_STRING, ET_STRING, 0,0,0 },
+    
+  { EC_VSA_RAL,		     EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+    
+  { EC_VSA_Npd_noname_deref,     EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Div_by_zero,      EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Div_may_by_zero,  EM_VSA_User | ES_SAADV2, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Div_by_zero_noname,   EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Rbc_violation,    EM_VSA_User | ES_SAADV1, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Rbc_may_violation, EM_VSA_User | ES_SAADV2, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_RVSA_def_var, EM_VSA_User | ES_SAADV3, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
+  { EC_VSA_Sml_violation, EM_VSA_User | ES_CONFORMANCE, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
   { EC_DRA_rii_file_io, EM_User | ES_ERRABORT, RAG_EN_NONE,
     "Cannot read/write prelinker file (%s): %s",
     2, ET_STRING, ET_SYSERR, 0,0,0,0 },

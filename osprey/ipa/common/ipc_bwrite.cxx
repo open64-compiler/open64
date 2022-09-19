@@ -806,6 +806,7 @@ void output_queue::flush() {
 
     // Pop the mempool.
     MEM_POOL_Pop_Unfreeze(&pool);
+    pool_initd = FALSE;
 
     // Zero the head and tail pointers.
     head = 0;

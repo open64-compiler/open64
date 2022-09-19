@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -578,7 +582,42 @@ public:
       return (Is_preg() &&
 	      _st_ofst <= Last_Dedicated_Preg_Offset);
     }
-  
+
+  BOOL    Is_int_return_preg(void) const
+    {
+#ifdef TARG_UWASM
+      return (Is_preg() && Is_Int_Return_Preg(_st_ofst));
+#else
+      return (Is_preg() &&
+              _st_ofst >= First_Int_Preg_Return_Offset &&
+              _st_ofst <= Last_Int_Preg_Return_Offset);
+#endif
+    }
+
+  BOOL    Is_return_preg(void) const
+    {
+#ifdef TARG_UWASM
+      return (Is_preg() && Is_Return_Preg(_st_ofst));
+#else
+      return (Is_preg() &&
+              ((_st_ofst >= First_Int_Preg_Return_Offset &&
+                _st_ofst <= Last_Int_Preg_Return_Offset) ||
+               (_st_ofst >= First_Float_Preg_Return_Offset &&
+                _st_ofst <= Last_Float_Preg_Return_Offset)));
+#endif
+    }
+
+  BOOL    Is_global(void) const
+    {
+      return (St() &&
+              ST_class(St()) == CLASS_VAR &&
+              (ST_sclass(St()) == SCLASS_FSTATIC ||
+               ST_sclass(St()) == SCLASS_UGLOBAL ||
+               ST_sclass(St()) == SCLASS_DGLOBAL ||
+               ST_sclass(St()) == SCLASS_COMMON ||
+               ST_sclass(St()) == SCLASS_EXTERN));
+    }
+
   void     Change_to_new_preg(OPT_STAB *opt_stab, CODEMAP *htable);
 
   VER_STAB_LIST_NODE *Nonzerophis(void) const { return v._nonzerophis; }
@@ -971,6 +1010,7 @@ private:
   void     Collect_f90_pointer_info(POINTS_TO *, const WN *);
   void     Collect_nested_ref_info(void);
   void     Generate_mu_and_chi_list(WN *, BB_NODE *);
+  void     Compute_FSA_call(WN *);              // low sensitive alias analysis for call
   void     Compute_FSA_stmt_or_expr(WN *);	// Flow sensitive alias analysis for one WN stmt
   void     Compute_FSA_dominator_order(BB_NODE *);
   void     Compute_black_box_mu_chi(const WN *, OCC_TAB_ENTRY *);// Handle boxes
@@ -992,6 +1032,8 @@ private:
 
   // Misc 
   BOOL     Its_ret_val_of_malloc (VER_ID ver);
+  void     Reset_ver_stab(void)     { _ver_stab = NULL; }
+
 #if defined(TARG_SL)
   void     Generate_call_mu_chi_by_intrninfo(WN *wn, MU_LIST *mu, CHI_LIST *chi);
   void     Refine_intrn_alias_info(WN *intrn);
@@ -1075,6 +1117,7 @@ public:
   BOOL     Special_vsym(AUX_ID var) const{ return aux_stab[var].Special_vsym(); }
 
   UINT16   Field_id(AUX_ID var) const	 { return aux_stab[var].Field_id(); }
+  AUX_ID   St_group(AUX_ID var) const    { return aux_stab[var].St_group(); }
 
   POINTS_TO *Points_to(AUX_ID var) const { return aux_stab[var].Points_to(); }
   void     Set_version(AUX_ID var,
@@ -1115,6 +1158,8 @@ public:
   BOOL     Is_volatile(AUX_ID id) const   { return aux_stab[id].Is_volatile(); }
   BOOL     Du_is_volatile(VER_ID du)const { return Is_volatile(Du_aux_id(du)); }
 
+  BOOL     Is_global(AUX_ID id) const     { return aux_stab[id].Is_global(); }
+
   AUX_ID_LIST *Aux_id_list(AUX_ID id) const 
 			{ return aux_stab[id].Aux_id_list(); }
 
@@ -1134,6 +1179,21 @@ public:
   AUX_ID   Allocate_vsym(WN *, POINTS_TO *);
 #endif
   void     Count_syms(WN *);	// count the number of symbols in the PU
+  INT32    Get_aux_sym_cnt() const;
+  void     Set_aux_sym_cnt(INT32 cnt);
+  void     Set_aux_stab_idx(INT32 idx)
+    {
+      INT32 lastidx = aux_stab.Lastidx();
+      Is_True(idx > lastidx, ("try shrink array"));
+      aux_stab.Setidx(idx);
+      AUX_STAB_ENTRY* sym = &aux_stab[lastidx + 1];
+      BZERO(sym, sizeof(AUX_STAB_ENTRY) * (idx - lastidx));
+    }
+  void     Shrink_aux_stab(INT cnt)
+    {
+      INT32 idx = aux_stab.Lastidx() - cnt;
+      aux_stab.Setidx(idx);
+    }
 
   //  Enter into VER_STAB
   void     Enter_du(AUX_ID du, WN *wn, BB_NODE *bb)
@@ -1152,6 +1212,7 @@ public:
     {
       OPT_POOL_Pop(&_ver_pool, MEM_DUMP_FLAG+8);
       OPT_POOL_Delete(&_ver_pool, MEM_DUMP_FLAG+8);
+      Reset_ver_stab();
       // _ver_pool = NULL;
     }
 

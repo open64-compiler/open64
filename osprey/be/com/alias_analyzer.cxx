@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  Copyright (C) 2010, Hewlett-Packard Development Company, L.P.
  All Rights Reserved.
 
@@ -69,9 +73,9 @@ AliasAnalyzer::Create_Alias_Analyzer(ALIAS_CONTEXT &ac, WN *tree)
     else
       _alias_analyzer = new NystromAliasAnalyzer(ac, tree);
     if (Get_Trace(TP_ALIAS,NYSTROM_CG_POST_FLAG)){
-      fdump_tree(stderr, tree);
-      fprintf(stderr, "Printing final ConstraintGraph\n");
-      ((NystromAliasAnalyzer*)_alias_analyzer)->constraintGraph()->print(stderr);
+      fdump_tree(TFile, tree);
+      fprintf(TFile, "Printing final ConstraintGraph\n");
+      ((NystromAliasAnalyzer*)_alias_analyzer)->constraintGraph()->print(TFile);
     }
  
     return _alias_analyzer;
@@ -114,7 +118,7 @@ AliasAnalyzer::~AliasAnalyzer()
   if (_queryFileMap)
     delete _queryFileMap;
   if (Get_Trace(TP_ALIAS,NYSTROM_QUERY_TRACE_FLAG))
-    fprintf(stderr, "Query stats: Proc: %s(%d) total: %d aliased: %d (%f)\n",
+    fprintf(TFile, "Query stats: Proc: %s(%d) total: %d aliased: %d (%f)\n",
             ST_name(Current_PU_Info->proc_sym), Current_PU_Count(),
             _aliasQueryCount, _aliasedCount, 
             (float)_aliasedCount/(float)_aliasQueryCount * 100.0);
@@ -196,7 +200,7 @@ AliasAnalyzer::loadQueryFile(char *filename)
         bool alias = (result[0] == 'N') ? false : true;
         (*_queryFileMap)[key] = alias;
 
-        fprintf(stderr,"QueryMap <%d,%d,%d>: %s\n",
+        fprintf(TFile,"QueryMap <%d,%d,%d>: %s\n",
                 pu,tag1,tag2,alias ? "May" : "No");
       }
     }

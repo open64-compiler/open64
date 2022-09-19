@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ * Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
  */
 
 /*

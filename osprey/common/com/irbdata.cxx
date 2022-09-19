@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -463,26 +463,26 @@ Print_INITV (const INITV& initv)
 
     case INITVKIND_ZERO:
 	repeat = INITV_repeat2 (initv);
-	fprintf (TFile, " VAL: 0");
+	fprintf (TFile, " VAL: 0 %s", MTYPE_name(initv.Mtype()));
 	break;
 
     case INITVKIND_ONE:
 	repeat = INITV_repeat2 (initv);
-	fprintf (TFile, " VAL: 1");
+	fprintf (TFile, " VAL: 1 %s", MTYPE_name(initv.Mtype()));
 	break;
 
     case INITVKIND_VAL:
 	repeat = INITV_repeat2 (initv);
-	fprintf (TFile," VAL: %s", 
-		 Targ_Print (NULL, Tcon_Table[INITV_tc (initv)])); 
+	fprintf (TFile," VAL: %s mtype=%d",
+		 Targ_Print (NULL, Tcon_Table[INITV_tc (initv)]), initv.Mtype());
 	break;
 	
     case INITVKIND_SYMOFF:
 	repeat = INITV_repeat1 (initv);
-	fprintf (TFile," SYMOFF: %s(0x%x)+%d(0x%x)",
+	fprintf (TFile," SYMOFF: %s [%d,%d]+%d(0x%x)",
 		ST_class(INITV_st(initv)) == CLASS_CONST ?
 		"<constant>" : ST_name(INITV_st(initv)),
-		 INITV_st (initv),
+		 ST_IDX_level(INITV_st (initv)), ST_IDX_index(INITV_st(initv)),
 		 INITV_ofst (initv), INITV_ofst (initv)); 
 	break;
 #ifdef TARG_IA64
@@ -558,7 +558,7 @@ void
 INITO::Print (FILE *f) const
 {
     if (st_idx != 0)
-	fprintf (f, "%s (0x%x):\n", ST_name (st_idx), st_idx);
+	fprintf (f, "%s [%d,%d]:\n", ST_name (st_idx), ST_IDX_level(st_idx), ST_IDX_index(st_idx));
     else
 	fputs ("<noname>:\n", f);
 
@@ -660,3 +660,119 @@ Get_INITO_Size (INITO_IDX ino)
 	return sum;
 }
 
+// =============================================================================
+// Get_initv_entry
+// store initv entries to a vector
+// @parm entries: stores the entry pair
+//   pair.first: initv kind - comes from enum INITVKIND and INITV_VAL_KIND
+//               INITVKIND_VAL stores different type of values based on tcon type
+//               extend the INITV_VAL_KIND to specify detailed VAL_KIND
+//               for value length <= 64 bit, pair.second store the value
+//               for value length > 64 bit, pair.second store the tcon index
+//   pair.second: initv value
+//
+// =============================================================================
+void 
+Get_initv_entry(INITV_IDX idx, INITV_ENTRIES *entries)
+{
+  while (idx) {
+    const INITV& initv = Initv_Table[idx];
+    INITV_VAL val;
+    val.data = 0;
+    switch(INITV_kind(initv)) {
+      case INITVKIND_BLOCK:
+        for (INT i = 0; i < INITV_repeat1(initv); i++) {
+          Get_initv_entry(INITV_blk(initv), entries);
+        }
+        break;
+      case INITVKIND_PAD:
+        break;
+      case INITVKIND_SYMOFF:
+      {
+        val.st_idx = INITV_st(initv);
+        for (INT i = 0; i < INITV_repeat1(initv); i++) {
+          entries->Push(INITVKIND_SYMOFF, val);
+        }
+        break;
+      }
+      case INITVKIND_VAL:
+      {
+        UINT32 kind = INITVKIND_UNK;
+        TCON &tc = Tcon_Table.Entry(INITV_tc(initv));
+        switch(TCON_ty(tc)) {
+          case MTYPE_B:
+          case MTYPE_I1:
+          case MTYPE_I2:
+          case MTYPE_I4:
+            val.i32 = TCON_ival(tc);
+            kind = INITVKIND_VAL_INT32;
+            break;
+          case MTYPE_U1:
+          case MTYPE_U2:
+          case MTYPE_U4:
+            val.u32 = TCON_uval(tc);
+            kind = INITVKIND_VAL_UINT32;
+            break;
+          case MTYPE_I8:
+            val.i64 = TCON_i0(tc);
+            kind = INITVKIND_VAL_INT64;
+            break;
+          case MTYPE_U8:
+            val.u64 = TCON_i0(tc);
+            kind = INITVKIND_VAL_UINT64;
+            break;
+          case MTYPE_F4:
+            val.f32 = TCON_fval(tc);
+            kind = INITVKIND_VAL_FLOAT;
+            break;
+          case MTYPE_F8:
+            val.f64 = TCON_dval(tc);
+            kind = INITVKIND_VAL_DOUBLE;
+            break;
+          case MTYPE_STRING:
+            val.str.str_idx = TCON_str_idx(tc);
+            val.str.str_len = TCON_str_len(tc);
+            kind = INITVKIND_VAL_STR;
+            break;
+          default:
+            // other types store TCON index
+            val.tcon_idx = INITV_tc(initv);
+            kind = INITVKIND_VAL;
+          break;
+        }
+        for (INT i = 0; i < INITV_repeat2(initv); i++) {
+          entries->Push(kind, val);
+        }
+        break;
+      }
+      case INITVKIND_ONE:
+      {
+        val.i32 = 1;
+        for (INT i = 0; i < INITV_repeat2(initv); i++) {
+          entries->Push(INITVKIND_VAL_INT32, val);
+        }
+        break;
+      }
+      case INITVKIND_ZERO:
+      {
+        val.i32 = 0;
+        for (INT i = 0; i < INITV_repeat2(initv); i++) {
+          entries->Push(INITVKIND_VAL_INT32, val);
+        }
+        break;
+      }
+      default:
+        Is_True(FALSE, ("invalid kind"));
+    }
+    idx = INITV_next (initv);
+  }
+}
+
+void
+Get_initv_entry_by_st(ST_IDX st_idx, INITV_ENTRIES* entries)
+{
+  INITO_IDX inito = Find_INITO_For_Symbol(&St_Table[st_idx]);
+  if(inito != (INITO_IDX) 0) {
+    Get_initv_entry(Inito_Table[inito].val, entries);
+  }
+}

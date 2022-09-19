@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 // ====================================================================
 // ====================================================================
@@ -64,9 +68,19 @@ sstatic char *opt_utilrcs_id = 	opt_util_INCLUDED"$Revision$";
 #include "opcode_gen_core.h"
 #endif
 
+#include "symtab_idx.h"
+#include "wintrinsic.h"
+
 class BB_NODE;
+class INLCXT;
 class CODEREP;
+class STMTREP;
 class CODEMAP;
+class AUX_STAB_ENTRY;
+class WN;
+class ST;
+class COMP_UNIT;
+class FLD_HANDLE;
 
 // warning for things to do
 /*PRINTFLIKE1*/

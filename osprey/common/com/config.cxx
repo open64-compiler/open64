@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -117,6 +121,7 @@ static INT32 Ignore_Int;
 #include "config_opt.cxx"
 #include "config_wopt.cxx"
 #include "config_vho.cxx"
+#include "config_vsa.cxx"
 #include "config_flist.cxx"
 #include "config_clist.cxx"
 
@@ -607,6 +612,15 @@ static OPTION_DESC Options_TENV[] = {
     0, 0, 0,    &Sl2_Ibuf_Name, NULL, "function name to Init buf for sl2" },
 #endif
 
+  { OVK_INT32,	OV_VISIBLE,	FALSE, "uwasm_iso",	NULL,
+    0, 0, 2,	&Uwasm_Isolation, NULL, "Turn on uwasm software-based isolation." },
+  { OVK_BOOL,   OV_VISIBLE,	FALSE, "uwasm_early_instr",	NULL,
+    0, 0, 0,    &Uwasm_Early_Instr, NULL, "Turn on early instrumentation for uwasm-iso" },
+  { OVK_BOOL,   OV_VISIBLE,	FALSE, "uwasm_early_exp",	NULL,
+    0, 0, 0,    &Uwasm_Early_Expand, NULL, "Turn on early expansion for uwasm guard code" },
+  { OVK_BOOL,   OV_VISIBLE,	FALSE, "uwasm_extern_sym",	NULL,
+    0, 0, 0,    &Uwasm_Extern_Symbol, NULL, "Use extern symbol in guard code" },
+
   { OVK_COUNT }		/* List terminator -- must be last */
 };
 
@@ -616,6 +630,10 @@ static OPTION_DESC Options_TENV[] = {
 static OPTION_DESC Options_PHASE[] = {
     { OVK_BOOL,	OV_INTERNAL,	FALSE, "lno",	  "l",	 0, 0, 0,
       &Run_lno,	NULL},
+    { OVK_BOOL,	OV_INTERNAL,	FALSE, "vsaopt",  "v",	 0, 0, 0,
+      &Run_vsaopt,	NULL},
+    { OVK_BOOL,	OV_INTERNAL,	FALSE, "xpsaopt", "x", 0, 0, 0,
+      &Run_ipsaopt,	NULL},
     { OVK_BOOL,	OV_INTERNAL,	FALSE, "wopt",	  "w",	 0, 0, 0,
       &Run_wopt,	NULL},
     { OVK_BOOL,	OV_INTERNAL,	FALSE, "preopt", "p",	 0, 0, 0,
@@ -860,6 +878,8 @@ OPTION_GROUP Common_Option_Groups[] = {
     "Options to control internal WHIRL optimization" },
   { "VHO",	':', '=', Options_VHO, NULL,
     "Options to control internal VH WHIRL optimization" },
+  { "VSA",	':', '=', Options_VSA, NULL,
+    "Options to control internal VSA" },
   { "FLIST", ':', '=', Options_FLIST, NULL,
        "Options to control listing of transformed f77 source" },
   { "CLIST", ':', '=', Options_CLIST, NULL,
@@ -950,6 +970,12 @@ const char *Gen_Profile_Name = "__profile_call";
 BOOL Call_Mcount = FALSE;	/* generate a call to mcount in pu entry */
 BOOL GP_Is_Preserved = FALSE;	/* GP is neither caller or callee-save */
 
+/* UWASM native memory isolation related */
+INT  Uwasm_Isolation = 0;         /* 0: off, 1: wrap-around, 2: assert if out of range */
+BOOL Uwasm_Early_Instr = TRUE;    /* early instrument in VHO */
+BOOL Uwasm_Early_Expand = FALSE;  /* early expand into existing WHIRL/CGIR */
+BOOL Uwasm_Extern_Symbol = FALSE; /* use extern symbol for ranges */
+
 char *Emit_Global_Data = NULL;	/* only emit global data */
 char *Read_Global_Data = NULL;	/* only read global data */
 
@@ -988,9 +1014,20 @@ BOOL Enable_EBO_Post_Proc_Rgn = TRUE ;
 
 #ifdef BACK_END
 /* back end phases options */
-BOOL Run_lno = FALSE;		    /* run loop-nest optimizer */
-BOOL Run_wopt = FALSE;		    /* run WHIRL global optimizer */
-BOOL Run_preopt = FALSE;	    /* run WHIRL preopt optimizer */
+#ifdef BUILD_MASTIFF
+BOOL Run_vsaopt = TRUE;	            /* run vsa only global optimizer */
+BOOL Run_ipsaopt = TRUE;	          /* run context and object sensitive vsa */
+BOOL Run_wopt = TRUE;		            /* run WHIRL global optimizer */
+BOOL Run_lno = TRUE;		           /* run loop-nest optimizer */
+#else
+BOOL Run_vsaopt = FALSE;            /* run vsa only global optimizer */
+BOOL Run_ipsaopt = FALSE;	          /* run context and object sensitive vsa */
+BOOL Run_wopt = FALSE;		         /* run WHIRL global optimizer */
+BOOL Run_lno = FALSE;		           /* run loop-nest optimizer */
+#endif
+BOOL Run_iast = FALSE;              /* run iast */
+BOOL Run_ipsacomp = FALSE;          /* run final compile after ipsa */
+BOOL Run_preopt = FALSE;            /* run WHIRL preopt optimizer */
 BOOL Run_ipl = FALSE;		    /* run procedure summary phase  */
 BOOL Run_cg = FALSE;		    /* run code generator */
 BOOL Run_w2c = FALSE;		    /* run whirl2c */
@@ -1841,6 +1878,8 @@ Configure_Alias_Options()
       Alias_F90_Pointer_Unaliased = FALSE;
     } else if (strncasecmp( val, "field_sensitive", len) == 0) {
       Alias_Nystrom_Analyzer = TRUE;
+    } else if (strncasecmp( val, "nofield_sensitive", len) == 0) {
+      Alias_Nystrom_Analyzer = FALSE;
     } else {
       ErrMsg ( EC_Inv_OPT, "alias", val );
     }
@@ -2106,7 +2145,7 @@ Process_Trace_Option ( char *option )
 
   Tracing_Enabled = TRUE;
 
-  while ( cp && *cp == 't' ) {
+  while ( cp && *cp == 'x' ) {  // MASTIFF-OPT: "-tt:0xffff" --> "-xt:0xffff"
     cp += 2;
 
     switch ( *(cp-1) ) {

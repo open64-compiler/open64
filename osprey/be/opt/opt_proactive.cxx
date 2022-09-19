@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 // This program is free software; you can redistribute it and/or modify
@@ -315,11 +319,11 @@ CFG_TRANS::Get_upper_bound(SC_NODE * sc, WN * wn)
       return NULL;
     }
     else if (!wn_last) {
-      wn_last = WN_COPY_Tree_With_Map(wn_tmp);
+      wn_last = WN_copy_tree_with_map(wn_tmp);
     }
     else 
       wn_last = WN_CreateExp2(OPR_ADD, MTYPE_I4, MTYPE_V, wn_last, 
-			      WN_COPY_Tree_With_Map(wn_tmp));
+			      WN_copy_tree_with_map(wn_tmp));
   }
   
   wn_tmp = NULL;
@@ -5746,7 +5750,7 @@ PRO_LOOP_INTERCHANGE_TRANS::Top_down_do_precomp(SC_NODE * outer_loop, SC_NODE * 
 	  // Change loop upper bound.
 	  WN * wn_index = Get_index_load(sc_pre);
 	  WN * wn_new = WN_CreateExp2(OPR_LE, MTYPE_I4, MTYPE_I4, 
-				      WN_COPY_Tree_With_Map(wn_index),
+				      WN_copy_tree_with_map(wn_index),
 				      WN_CreateIntconst(OPR_INTCONST, MTYPE_I4, MTYPE_V, 
 							upper_bound));
 	  SC_NODE * sc_end = sc_pre->Find_kid_of_type(SC_LP_COND);
@@ -5774,11 +5778,11 @@ PRO_LOOP_INTERCHANGE_TRANS::Top_down_do_precomp(SC_NODE * outer_loop, SC_NODE * 
 	      sc_last = sc_cur->Last_kid();
 	      bb_end = sc_last->Last_bb();
 	      WN * wn_val = WN_Intconst(MTYPE_I4, (j == 0) ? 1 : 0);
-	      WN * wn_st = Create_array_store(array_st, WN_COPY_Tree_With_Map(wn_index), wn_val);
+	      WN * wn_st = Create_array_store(array_st, WN_copy_tree_with_map(wn_index), wn_val);
 	      bb_end->Prepend_stmt(wn_st);
 	    }
 	    // Reload precomputed values.
-	    WN * wn_stid = Create_array_load(array_st, WN_COPY_Tree_With_Map(wn_index));
+	    WN * wn_stid = Create_array_load(array_st, WN_copy_tree_with_map(wn_index));
 	    if (wn_stid) {
 	      SC_NODE * sc_tmp = cfg->Insert_block_before(sc_if);
 	      BB_NODE * bb_tmp = sc_tmp->Last_bb();
@@ -6584,7 +6588,7 @@ CFG_TRANS::Copy_prop(WN * wn)
       if (aux_id) {
 	WN * wn_val = _def_map[aux_id];
 	if (wn_val) {
-	  WN_kid(wn, i) = WN_COPY_Tree_With_Map(wn_val); 
+	  WN_kid(wn, i) = WN_copy_tree_with_map(wn_val); 
 	  continue;
 	}
       }
@@ -7883,7 +7887,7 @@ CFG_TRANS::Get_cond(SC_NODE * sc, BOOL do_invert)
     OPCODE opc_inv = get_inverse_relop(WN_opcode(old_cond));
       
     if (opc_inv != OPCODE_UNKNOWN) {
-      WN *new_cond = WN_COPY_Tree_With_Map(old_cond);
+      WN *new_cond = WN_copy_tree_with_map(old_cond);
       if (do_invert) 
 	WN_set_opcode(new_cond, opc_inv);
       return new_cond;
@@ -12001,7 +12005,7 @@ PRO_LOOP_EXT_TRANS::Find_cand(SC_NODE * sc, SC_NODE ** cand1, SC_NODE ** cand2)
 		      && !Has_dependency(next, op2)) {
 		    for (int i = 0; i < 2; i++) {
 		      // Create a comparison expression 'if (cnt < 32)'.
-		      WN * wn_tmp = WN_COPY_Tree_With_Map((i == 0) ? op1 : op2);
+		      WN * wn_tmp = WN_copy_tree_with_map((i == 0) ? op1 : op2);
 		      wn_tmp = WN_CreateExp2(OPR_LT, MTYPE_I4, MTYPE_I4, wn_tmp,
 					     WN_CreateIntconst(OPR_INTCONST, MTYPE_I4, MTYPE_V, 32));
 		      // Create a CFG block to host 'wn_tmp'.
@@ -12024,7 +12028,7 @@ PRO_LOOP_EXT_TRANS::Find_cand(SC_NODE * sc, SC_NODE ** cand1, SC_NODE ** cand2)
 			FmtAssert(sc_tmp, ("Expect a SC_IF"));
 			WN * branch_l = sc_tmp->Head()->Branch_wn();
 			WN * branch_s = sc_s->Head()->Branch_wn();
-			WN_kid0(branch_l) = WN_COPY_Tree_With_Map(WN_kid0(branch_s));
+			WN_kid0(branch_l) = WN_copy_tree_with_map(WN_kid0(branch_s));
 		      }
 		    }
 		    Set_pass(s_pass);

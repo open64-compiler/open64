@@ -437,7 +437,7 @@ ESSA::Ilod_modified_real_occ_real_occ(const BB_NODE *def_bb,
     STMTREP *sr = vsym->Defstmt();
     if (sr == NULL || !OPCODE_is_store(sr->Op())) return TRUE;
 
-#ifdef KEY // bug 7814
+#if 0 // ifdef KEY // bug 7814 -Shin 031022
     if (vsym->Aux_id() == Opt_stab()->Default_vsym())
       return TRUE;
 #endif
@@ -1191,7 +1191,7 @@ ESSA::Rename(void)
 	if (occur->Mult_real())
 	  Worklist()->Inc_realocc_count();
 #endif
-	Create_new_version(occur);           
+        Create_new_version(occur);
 	break;
       case EXP_OCCURS::OCC_PHI_PRED_OCCUR:   // do nothing
       case EXP_OCCURS::OCC_EXIT_OCCUR:       // do nothing

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -47,6 +51,7 @@ extern int show_version;	/* show the compiler version */
 extern boolean show_copyright;	/* show the compiler copyright */
 extern boolean dump_version;	/* dump the compiler version */
 extern boolean show_flag;	/* show what driver does */
+extern boolean show_progress;   /* show progress in percent */
 extern boolean v_flag;		/* show what driver does, except link call */
 extern boolean execute_flag;	/* execute phases */
 extern boolean time_flag;	/* give time info */

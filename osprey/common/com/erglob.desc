@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  *  Copyright (C) 2007 PathScale, LLC.  All Rights Reserved.
  */
 
@@ -67,7 +71,7 @@
  * ====================================================================
  */
 
-static char *erglob_desc_rcs_id = "$Source: /home/bos/bk/kpro64-pending/common/com/SCCS/s.erglob.desc $ $Revision: 1.18 $";
+static const char *erglob_desc_rcs_id = "$Source: /home/bos/bk/kpro64-pending/common/com/SCCS/s.erglob.desc $ $Revision: 1.18 $";
 
 #include "erglob.h"
 
@@ -111,7 +115,7 @@ ERROR_DESC EDESC_Globals[] = {
     "Lazy error report in %s: %s",
     2, ET_STRING, ET_NODE, 0,0,0,0 },
 
-  { EC_Signal,		EM_User | ES_ERRABORT,	RAG_EN_NONE,
+  { EC_Signal,		ES_ERRABORT,	RAG_EN_NONE,
     "Signal %s in phase %s -- processing aborted",
     2, ET_STRING, ET_STRING, 0,0,0,0 },
   { EC_Too_Many,	EM_User | ES_ERRABORT,	RAG_EN_NONE,

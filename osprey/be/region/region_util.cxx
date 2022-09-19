@@ -418,7 +418,7 @@ void RID_replace (RID *old_rid, RID *new_rid)
 /* =======================================================================
    finds last kid, used by RID_Delete2()
    =======================================================================*/
-static RID *RID_last_kid(RID *parent)
+RID *RID_last_kid(RID *parent)
 {
   RID *rtmp;
   Is_True(parent != NULL && RID_first_kid(parent) != NULL,

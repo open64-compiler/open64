@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -71,7 +75,11 @@ extern void *sbrk ();
 /* EXPORTS */
 
 char *default_target;
+#ifdef TARG_UWASM
+const char *output_filename = "out.uwm";
+#else
 const char *output_filename = "a.out";
+#endif
 
 /* Name this program was invoked by.  */
 char *program_name;

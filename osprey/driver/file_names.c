@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -69,6 +73,7 @@
 #include "option_names.h"
 #include "run.h"
 #include "version.h"
+#include "config_product.h"    /* PRODUCT_NAME_PREFIX */
 
 extern int errno;
 
@@ -360,12 +365,12 @@ init_crash_reporting (void)
 #if !defined(_WIN32) /* don't generate crash reports on windows */
 
 	#ifdef PSC_TO_OPEN64
-	if ((report_file = getenv("OPEN64_CRASH_REPORT")) != NULL)
+	if ((report_file = getenv(PRODUCT_NAME_PREFIX "_CRASH_REPORT")) != NULL)
 	#endif
 		goto bail;
 
 	#ifdef PSC_TO_OPEN64 
-	if (asprintf(&report_file, "%s/open64_crash_XXXXXX", tmpdir) == -1) {
+	if (asprintf(&report_file, "%s/" PRODUCT_NAME_PREFIX "_crash_XXXXXX", tmpdir) == -1) {
 	#endif
 		report_file = NULL;
 		goto bail;
@@ -377,7 +382,7 @@ init_crash_reporting (void)
 	}
 
 	#ifdef PSC_TO_OPEN64
-	setenv("OPEN64_CRASH_REPORT", report_file, 1);
+	setenv(PRODUCT_NAME_PREFIX "_CRASH_REPORT", report_file, 1);
 	#endif
 bail:
 #endif /* !_WIN32 */

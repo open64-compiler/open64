@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -73,10 +77,10 @@ typedef hash_map<UINT64, INT32, ihash<UINT64> > ADDRESS_PUSIZE_MAP;
 extern ADDRESS_NAME_MAP PU_Addr_Name_Map;
 extern ADDRESS_PUSIZE_MAP PU_Addr_Pusize_Map;
 
-static char* ERR_POS = "Error in positioning within %s";
-static char* ERR_READ = "Error in reading from %s";
+static const char* ERR_POS = "Error in positioning within %s";
+static const char* ERR_READ = "Error in reading from %s";
 
-static char* ERR_WRITE = "Error in writing to %s";
+static const char* ERR_WRITE = "Error in writing to %s";
 
 #ifndef _BUILD_INSTR
 

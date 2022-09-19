@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* -*- c++ -*-
  *
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
@@ -316,6 +320,9 @@ public:
     } else {
       WN_kid (parent, Get_kid_index ()) = new_wn;
     }
+    if(WN_Get_Linenum(new_wn) == 0 &&
+       WN_Get_Linenum(_wn) != 0)
+      WN_Set_Linenum(new_wn, WN_Get_Linenum(_wn));
     _wn = new_wn;
   }
 

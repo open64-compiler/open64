@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2006, 2007. QLogic Corporation. All Rights Reserved.
  */
 
@@ -86,7 +90,7 @@ extern BOOL is_attribute (const char * str, gs_t attrib);
 
 /* generate a temp with extension 'name' having the initialization as specified
    by 'init' */
-extern ST *WGEN_Generate_Temp_For_Initialized_Aggregate (gs_t init, char *name);
+extern ST *WGEN_Generate_Temp_For_Initialized_Aggregate (gs_t init, const char *name);
 #ifdef NEW_INITIALIZER
 extern ST *WGEN_Generate_Initialized_Aggregate(WN *target, gs_t init);
 #endif

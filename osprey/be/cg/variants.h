@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -368,8 +372,29 @@ extern const char *BR_Variant_Name(VARIANT variant);
 #define V_param_mem(v)		((v) & V_PARAM_MEM)
 #define Set_V_param_mem(v)	((v) |= V_PARAM_MEM)
 #define V_memory_space(v)	((v) & V_MEM_SPACE)
+#elif defined(TARG_UWASM)
+/* memory space flags */
+#define V_GLOBAL_MEM        0x00010000
+#define V_STACK_MEM         0x00020000
+#define V_HEAP_MEM          0x00040000
+#define V_REG_MEM           0x00080000
+#define V_UPSTK_MEM         0x00100000  /* Upper stack memory */
+#define V_EXTERN_MEM        0x00200000
+#define V_MEM_SPACE         0x003f0000  /* Mask for memory space */
+#define V_global_mem(v)     ((v) & V_GLOBAL_MEM)
+#define Set_V_global_mem(v) ((v) |= V_GLOBAL_MEM)
+#define V_stack_mem(v)      ((v) & V_STACK_MEM)
+#define Set_V_stack_mem(v)  ((v) |= V_STACK_MEM)
+#define V_heap_mem(v)       ((v) & V_HEAP_MEM)
+#define Set_V_reg_mem(v)    ((v) |= V_REG_MEM)
+#define V_reg_mem(v)        ((v) & V_REG_MEM)
+#define Set_V_upstk_mem(v)  ((v) |= V_UPSTK_MEM)
+#define V_upstk_mem(v)      ((v) & V_UPSTK_MEM)
+#define Set_V_heap_mem(v)   ((v) |= V_HEAP_MEM)
+#define V_extern_mem(v)     ((v) & V_EXTERN_MEM)
+#define Set_V_extern_mem(v) ((v) |= V_EXTERN_MEM)
+#define V_memory_space(v)   ((v) & V_MEM_SPACE)
 #endif
-
 /* ====================================================================
  *
  * Variants for logical operations

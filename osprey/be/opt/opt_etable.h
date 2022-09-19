@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -122,6 +126,7 @@ class COMP_UNIT;
 class CFG;
 class ETABLE;
 class EXP_OCCURS;
+class EXP_PHI;
 class EXP_ALL_REAL_ITER;
 class EXP_WORKLST;
 class LFTR;
@@ -134,12 +139,14 @@ class REHASH_CACHE_LIST; // list of rehashed expr
 class EXP_HOISTING;
 class SSU;
 class OCCUR_REPLACEMENT; // Private to opt_etable.cxx (for codemotion)
+class VSA;
 
 enum PRE_KIND {
   PK_EPRE  = 0,
   PK_LPRE  = 1,
   PK_SPRE  = 2,
   PK_VNFRE = 3,  // Value numbering full redundancy elimination
+  PK_VSA   = 4,  // Vulnerability Static Analysis
 };
 
 extern const char *pre_kind_name(PRE_KIND);
@@ -168,7 +175,71 @@ public:
   EXP_OCCURS *Node(void) const             { return _node; }
 
   mINT32      Opnd_idx(void) const         { return _opnd_idx; }
+
+  void        Print(FILE *fp) const        { }
 };
+
+// ====================================================================
+//
+// Two notions coexist in the DEF-USE Chain:
+//
+// EXP_OCCURS node make use of the REF_LIST_ENTRY as the container for its
+// REFernence list and connect this REF list on the EXP_OCCURS node with
+// "is_store" flag.  The use list entry could be a MU list entry or any
+// statement which references the load operation for the same symbol.
+//
+// EXP_PHI node in the worklst uses the USE_LIST_ENTRY defined in the
+// opt_etable.h.  Such DEF-USE chain connects the phi_node to references in
+// the EXP_PHI chain within the worklst.  However, it's use list uses the
+// EXP_OCCURS node for the exp_phi and the index into the operands to
+// represent the virtual occurrence inside the phi operand.
+//
+// THe EXP_PHI node's predecessor elements and its phi_result are in the
+// form of EXP_OCCURS.
+//
+// We adopt the above design to honor the original PHI DEF-USE chian design
+// in the SSAPRE designed during Mongoose project.  At that time, the team
+// decided to minimize the effort since there were no immediate needs to
+// implement a full blown DEF-USE chain.
+//
+// With the Mastiff Project, the full blown DEF-USE chain simplifies a few
+// important algorithm.
+//
+
+class REF_LIST_ENTRY : public SLIST_NODE {
+private:
+  EXP_OCCURS *_node;
+
+              REF_LIST_ENTRY(const REF_LIST_ENTRY&);
+              REF_LIST_ENTRY& operator = (const REF_LIST_ENTRY&);
+public:
+              REF_LIST_ENTRY(void)         { }
+              REF_LIST_ENTRY(EXP_OCCURS *node)
+					   { Init(node); }
+              ~REF_LIST_ENTRY(void)        { }
+
+  DECLARE_SLIST_NODE_CLASS(REF_LIST_ENTRY)
+
+  void        Init(EXP_OCCURS *node)
+                                           { _node = node; }
+
+  EXP_OCCURS *Node(void) const             { return _node; }
+
+};
+
+class REF_LIST_ITER : public SLIST_ITER {
+public:
+  // Declared by hand since DECLARE_SLIST_ITER_CLASS requires
+  // extraneous garbage.
+  REF_LIST_ITER(REF_LIST_ENTRY *nd) { SLIST_ITER::Init(nd); }
+  REF_LIST_ITER(void)               { SLIST_ITER::Init();   }
+  REF_LIST_ENTRY *First(void)
+    { return (REF_LIST_ENTRY *) SLIST_ITER::First(); }
+  REF_LIST_ENTRY *Next(void)
+    { return (REF_LIST_ENTRY *) SLIST_ITER::Next(); }
+};
+
+// ====================================================================
 
 class USE_LIST_ENTRY : public SLIST_NODE {
 private:
@@ -296,7 +367,7 @@ private:
 
   //              _uses:       holds a list of phi occurrences that are
   //                           uses of the phi result of this occurrence.
-  USE_LIST_ENTRY *_uses;    // used only during
+  USE_LIST_ENTRY *_uses;    // for SSAPRE, used only during
                             // EXP_WORKLST::Compute_forward_attributes() and
                             // EXP_WORKLST::Minimize_temp_ssa()
 
@@ -605,9 +676,10 @@ private:
   UINT32          _stmt_kid_num:16; // for real occurrence, which kid
                                     // of the stmt has the occurrence
   UINT32          _saved_flags:13;
+  UINT32          _phi_opnd_idx:16; // opnd index of the phi_node for PHI_PREDECESSOR node
 
   union {
-    CODEREP      *_occurrence;      // the occurence
+    CODEREP      *_occurrence;      // the occurence of real occurrence
   } _oc;
   IDTYPE          _e_version:24;    // the expression version number
 
@@ -638,6 +710,7 @@ private:
                                     // node, and used by rename phase.
                                     // After rename phase, this field get
                                     // invalid value.
+    REF_LIST_ENTRY *_refs;          // for VSA only: to build complete U-D chain
   } _temp;			    // corresponding to _e_version, used in step 6
   
   union {
@@ -677,6 +750,7 @@ public:
 #if defined(TARG_SL)
     OCC_PI_OCCUR       = 6, // the occurrence enclosed in a parallel region
 #endif
+    OCC_MU_CHI_OCCUR   = 7, // mu/chi for function call arguments and return
   };
 
   enum E_VERSION_VALUE {
@@ -691,6 +765,12 @@ public:
   OCC_KIND        Occ_kind(void) const     { return (OCC_KIND)_kind; }
   void            Set_kind(OCC_KIND k)     { _kind = k; }
 
+  mINT16          Phi_opnd_idx(void) const
+    { Is_True(Occ_kind() == OCC_PHI_PRED_OCCUR,
+	      ("EXP_OCCURS::Phi_opnd_idx: Must be phi_pred occ!"));
+      return _phi_opnd_idx;
+    }
+  void            Set_phi_opnd_idx(mINT16 idx) {_phi_opnd_idx = idx;}
   mINT16          Stmt_kid_num(void) const
     { Is_True(Occ_kind() == OCC_REAL_OCCUR || Occ_kind() == OCC_COMP_OCCUR,
 	      ("EXP_OCCURS::Stmt_kid_num: Must be real occ!"));
@@ -789,6 +869,26 @@ public:
               ("EXP_OCCURS::Set_spre_wk: Must be phi occur"));
       _temp._spre_wk = wk;
     }
+
+  REF_LIST_ENTRY   *Refs(void) const         { return _temp._refs; }
+
+  void            Set_refs(REF_LIST_ENTRY *ref)
+    { _temp._refs = ref; }
+
+  void            Trace_add_ref(ETABLE *etable);
+  void            Add_ref(EXP_OCCURS *ref,
+                          MEM_POOL   *pool)
+    {
+      REF_LIST_ENTRY *new_ll_node =
+	CXX_NEW(REF_LIST_ENTRY(ref), pool);
+      if (Refs() == NULL) {
+	Set_refs(new_ll_node);
+      }
+      else {
+	Refs()->Insert_After(new_ll_node);
+      }
+    }
+
 
   STMTREP        *Stmt(void) const;
   STMTREP  	 *Enclosed_in_stmt(void) const
@@ -1431,8 +1531,8 @@ private:
   CODEREP              *_exp;              // the coderep node
   IDTYPE                _preg;             // the preg containing value of _exp;
 					   // in SPRE, preg assigned to variable
-  UINT32		_flags:30;         // EWF_... flags
-  UINT32		_pre_kind:2;       // PRE_KIND
+  UINT32		_flags:29;         // EWF_... flags
+  UINT32		_pre_kind:3;       // PRE_KIND
 
   EXP_OCCURS_CONTAINER  _real_occurs;      // real occurrences
   EXP_OCCURS_CONTAINER  _phi_occurs;       // phi occurrences
@@ -1467,7 +1567,7 @@ private:
                                    EXP_OCCURS *occ);
   BOOL            Verify_dpo_order(EXP_OCCURS_CONTAINER &worklist);
 
-  void            Compute_du_info(MEM_POOL *);
+  void            Compute_du_info(ETABLE *);
   void            Compute_user_avail(BOOL);
   void            Compute_avail(BOOL);
   void            Compute_stops(BOOL);
@@ -1750,8 +1850,15 @@ public:
   void            SPRE_perform_insert_delete(ETABLE *etable);
   void            Estimate_cost(ETABLE *, PRE_KIND);
   void            Save_flags();
-};
 
+  // VSA specific functions
+  BOOL            VSA_collect_phi_occurrences(ETABLE *);
+  void            VSA_collect_defphi_recursive(PHI_NODE    *phi_node,
+					       BB_NODE_SET &phi_list,
+					       BOOL         tracing,
+					       ETABLE      *etable);
+  void            Compute_modref_info(ETABLE *);
+};
 // EXP_WORKLST_CONTAINER and EXP_WORKLST_ITER are used by the hash table
 class EXP_WORKLST_CONTAINER : public SLIST {
   DECLARE_SLIST_CLASS( EXP_WORKLST_CONTAINER, EXP_WORKLST )
@@ -1898,6 +2005,7 @@ private:
   ALIAS_RULE             *_arule;
   STR_RED		 *_str_red;
   LFTR			 *_lftr;
+  VSA                    *_vsa;
   MEM_POOL               *_etable_pool;
   MEM_POOL               *_per_expr_pool;
   MEM_POOL               *_etable_local_pool;
@@ -1929,7 +2037,7 @@ private:
   COMP_UNIT		 *_comp_unit;
   EXP_HOISTING           *_exp_hoisting;        // data structure for code hoisting
 
-  STMTREP                *_entry_chi;           // used by SPRE rename
+  STMTREP                *_entry_chi;           // used by SPRE rename and VSA
 
   std::map<IDTYPE, BOOL> _complex_loop_map;
 
@@ -1988,12 +2096,12 @@ private:
 				       const BOOL         replacing_istr_base,
 				       UINT               depth,
   				       OPCODE		  opc);
-   CODEREP       *Rehash_and_replace(CODEREP           *x,
-				     EXP_OCCURS        *occur,
-				     OCCUR_REPLACEMENT *repl,
-				     const BOOL         replacing_istr_base,
-				     OPCODE		parent_opc);
-   void           Replace_occurs(EXP_OCCURS *occur, OCCUR_REPLACEMENT *repl);
+  CODEREP       *Rehash_and_replace(CODEREP           *x,
+				    EXP_OCCURS        *occur,
+				    OCCUR_REPLACEMENT *repl,
+				    const BOOL         replacing_istr_base,
+				    OPCODE		parent_opc);
+  void           Replace_occurs(EXP_OCCURS *occur, OCCUR_REPLACEMENT *repl);
 
   // remove a single occurrence from one of the worklsts
   BOOL            Remove_real_occurrence(EXP_WORKLST_CONTAINER *worklist,
@@ -2036,6 +2144,7 @@ public:
   ALIAS_RULE     *Arule(void) const        { return _arule; }
   STR_RED     	 *Str_red(void) const      { return _str_red; }
   LFTR     	 *Lftr(void) const         { return _lftr; }
+  VSA     	 *Vsa(void) const          { return _vsa; }
   MEM_POOL       *Per_expr_pool(void) const{ return _per_expr_pool; }
   EXP_HOISTING   *Exp_hoisting(void) const { return _exp_hoisting; }
   EXP_WORKLST_CONTAINER  *Exp_worklst(void)    { return &_exp_worklst; }
@@ -2093,6 +2202,17 @@ public:
 				    UINT     depth,
 				    CODEREP *parent,
 				    INT      whichkid);
+
+  // used by VSA
+  void            VSA_bottom_up_stmt(STMTREP *stmt);
+  void            VSA_bottom_up_cr(STMTREP *stmt,
+				   INT      stmt_kid_num,
+				   CODEREP *cr,
+				   BOOL     is_store,
+				   UINT     depth,
+				   CODEREP *parent,
+				   INT      whichkid);
+
 
   // used by CSE
   STMTREP 	 *Generate_stid_to_preg( CODEREP *lhs, CODEREP *rhs,
@@ -2233,6 +2353,9 @@ public:
   BOOL            RHS_is_fully_avail(CODEREP *, CODEREP *);
 
   void            Add_to_occ_freelist(EXP_OCCURS *node);
+
+  // VSA analysis
+  void            VSA_perform_analysis_iterations(VSA *);
 
    // -----------------------
    // VNFRE related utilities

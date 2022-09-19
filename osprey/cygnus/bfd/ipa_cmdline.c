@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -563,7 +567,11 @@ ipa_search_command_line(int argc,
 		blank_arg(argv,i);
 	    	continue;
 	    }
-	    if ((strcmp (&string[2], "keep") == 0)) {
+#ifdef BUILD_MASTIFF
+	    if (strcmp (&string[2], "kp") == 0) {
+#else
+	    if (strcmp (&string[2], "keep") == 0) {
+#endif
     	    	ld_ipa_opt[LD_IPA_KEEP_TEMPS].flag = TRUE;
 		    /* Blank out argument */
 		blank_arg(argv,i);
@@ -640,16 +648,24 @@ ipa_search_command_line(int argc,
 		blank_arg(argv,i+1);
 	    	continue;
 	    }
-	    else if ((strcmp(string,"-keep")) == 0) {
+#ifdef BUILD_MASTIFF
+	    else if ((strcmp(string,"-kp")) == 0) {
+#else
+	    else if ((strcmp(string,"-keep") == 0)) {
+#endif
     	    	ld_ipa_opt[LD_IPA_KEEP_TEMPS].flag = TRUE;
 
 		    /* Blank out argument */
 		blank_arg(argv,i);
 		continue;
 	    }
-	    else if ((strcmp(string,"-show")) == 0) {
-    	    	ld_ipa_opt[LD_IPA_SHOW].flag = TRUE;
 
+#ifdef BUILD_MASTIFF
+	    else if ((strcmp(string,"-sw")) == 0) {
+#else
+	    else if ((strcmp(string,"-show")) == 0) {
+#endif
+    	    	ld_ipa_opt[LD_IPA_SHOW].flag = TRUE;
 		    /* Blank out argument */
 		blank_arg(argv,i);
 		continue;

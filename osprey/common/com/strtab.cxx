@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -366,7 +370,32 @@ initialize_strtab (STRTAB& strtab, const char *buf, UINT32 size)
     
 
 // Global String table
-static STR_TAB<NULL_TERMINATED_STRING> Strtab (1000);			       
+static STR_TAB<NULL_TERMINATED_STRING>  Default_Strtab (1000);			       
+static STR_TAB<NULL_TERMINATED_STRING> *Strtab_ptr = &Default_Strtab;
+#define Strtab  (*Strtab_ptr)
+
+void*
+New_Strtab() {
+  return (void *)new STR_TAB<NULL_TERMINATED_STRING>(1000);
+}
+
+void
+Set_Strtab(void *tab) {
+  Strtab_ptr = (STR_TAB<NULL_TERMINATED_STRING> *)tab;
+}
+
+void*
+Get_Strtab() {
+  return (void *)Strtab_ptr;
+}
+
+char*
+Strtab_to_char(void *tab, STR_IDX idx)
+{
+  STR_TAB<NULL_TERMINATED_STRING> *stab = (STR_TAB<NULL_TERMINATED_STRING>*)tab;
+  Is_True (idx < stab->last_idx, ("Invalid TCON str index"));
+  return NULL_TERMINATED_STRING::get_str (stab->buffer + idx);
+}
 
 STRING_TABLE Str_Table;
 
@@ -432,7 +461,32 @@ Index_To_Str (STR_IDX idx)
 
 // character array table
 const UINT32 TCON_STRTAB_HASH_SIZE = 512;
-static STR_TAB<CHARACTER_ARRAY> TCON_strtab (TCON_STRTAB_HASH_SIZE);
+static STR_TAB<CHARACTER_ARRAY>  Default_TCON_strtab (TCON_STRTAB_HASH_SIZE);
+static STR_TAB<CHARACTER_ARRAY> *TCON_strtab_ptr = &Default_TCON_strtab;
+#define TCON_strtab (*TCON_strtab_ptr)
+
+void*
+New_TCON_Strtab() {
+  return (void*) new STR_TAB<CHARACTER_ARRAY>(TCON_STRTAB_HASH_SIZE);
+}
+
+void
+Set_TCON_Strtab(void *tab) {
+  TCON_strtab_ptr = (STR_TAB<CHARACTER_ARRAY> *)tab;
+}
+
+void*
+Get_TCON_Strtab() {
+  return (void *)TCON_strtab_ptr;
+}
+
+char*
+TCON_strtab_to_char(void *tab, UINT32 idx)
+{
+  STR_TAB<CHARACTER_ARRAY> *stab = (STR_TAB<CHARACTER_ARRAY>*)tab;
+  Is_True (idx < stab->last_idx, ("Invalid TCON str index"));
+  return CHARACTER_ARRAY::get_str (stab->buffer + idx);
+}
 
 UINT32
 TCON_strtab_size ()
@@ -479,6 +533,12 @@ Index_to_char_array (UINT32 idx)
     return CHARACTER_ARRAY::get_str (TCON_strtab.buffer + idx);
 }
 
+UINT32
+Index_to_length(UINT32 idx)
+{
+    Is_True (idx < TCON_strtab.last_idx, ("Invalid TCON str index"));
+    return CHARACTER_ARRAY::get_length (TCON_strtab.buffer + idx);
+}
 
 #ifdef MONGOOSE_BE
 

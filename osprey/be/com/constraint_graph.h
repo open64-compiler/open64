@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  Copyright (C) 2010, Hewlett-Packard Development Company, L.P.
  All Rights Reserved.
 
@@ -186,7 +190,7 @@ enum PtsType {
 // where we assume the file and pu num is zero and the ST_IDX will be able
 // to uniquely identify the ST
 #define CG_ST_st_idx(s) (ST_st_idx((s)) & 0x00000000ffffffffLL)
-#define IPA_CG_ST_st_idx(filePUIdx, s) (((filePUIdx) << 32) | ST_st_idx((s)) & 0x00000000ffffffffLL)
+#define IPA_CG_ST_st_idx(filePUIdx, s) ((UINT64(filePUIdx) << 32) | ST_st_idx((s)) & 0x00000000ffffffffLL)
   
 using namespace std;
 using namespace __gnu_cxx;

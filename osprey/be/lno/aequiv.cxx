@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -117,8 +121,8 @@
 #endif // USE_PCH
 #pragma hdrstop
 
-static char *source_file = __FILE__;
-static char *rcs_id = "$Source: be/lno/SCCS/s.aequiv.cxx $ $Revision: 1.5 $";
+static const char *source_file = __FILE__;
+static const char *rcs_id = "$Source: be/lno/SCCS/s.aequiv.cxx $ $Revision: 1.5 $";
 
 #include <sys/types.h>
 #include "pu_info.h"

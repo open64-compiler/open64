@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -382,7 +386,7 @@ void expand_start_do_loop (gs_t init_expr, gs_t logical_expr, gs_t incr_expr)
     WN *tdecl;
     ST *tst;
     ST_IDX stlcv;
-    char *detail = NULL;
+    const char *detail = NULL;
 
     TYPE_ID lcv_t;
 

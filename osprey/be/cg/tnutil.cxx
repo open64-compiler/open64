@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -92,7 +96,10 @@
 #include "stblock.h"
 #include "data_layout.h"	// for FP/SP
 #include "findloops.h"
-#if defined(TARG_SL)
+#ifdef TARG_UWASM
+#include "expand.h"
+#endif
+#if defined(TARG_SL) || defined(TARG_UWASM)
 #include <map>
 using std::map;
 #endif
@@ -205,6 +212,10 @@ TN **TN_Vec = NULL;		/* TN_number (TN_Vec[i]) == i */
 
 
 static TN_LIST *Hash_Table[HASH_TABLE_SIZE];
+
+#if defined(TARG_UWASM)
+static map<ST *, TN *> ST_TN_Map;
+#endif
 
 #ifdef Is_True_On
 int trace_tn_number_ = -1;
@@ -459,13 +470,17 @@ Create_Dedicated_TN (ISA_REGISTER_CLASS rclass, REGISTER reg)
 {
   INT size = REGISTER_bit_size(rclass, reg) / 8;
 #ifndef TARG_SL
-  BOOL is_float = rclass == ISA_REGISTER_CLASS_float;
+  BOOL is_float = (rclass == ISA_REGISTER_CLASS_float);
 #else
   BOOL is_float = FALSE;
 #endif
 
 #ifdef TARG_X8664
   is_float |= ( rclass == ISA_REGISTER_CLASS_x87 );
+#endif
+
+#ifdef TARG_UWASM
+  is_float |= (rclass == ISA_REGISTER_CLASS_float64);
 #endif
 
   /* Allocate the dedicated TN at file level, because we reuse them 
@@ -481,6 +496,10 @@ Create_Dedicated_TN (ISA_REGISTER_CLASS rclass, REGISTER reg)
   Set_TN_register(tn, reg);
   Set_TN_size(tn, size);
   if ( is_float ) Set_TN_is_float(tn);
+  if (Get_Trace(TP_CG, 8)) {
+    fprintf(TFile, "Create dedicated tn: ");
+    Print_TN(tn, FALSE);
+  }
   return(tn);
 }
 
@@ -505,7 +524,7 @@ Init_Dedicated_TNs (void)
 	 reg <= REGISTER_CLASS_last_register(rclass);
 	 reg++
     ) {
-#ifdef TARG_NVISA
+#if defined(TARG_NVISA) || defined(TARG_UWASM)
       // don't waste space by creating dedicated tns for allocatable regs
       if (REGISTER_allocatable (rclass, reg))
         continue;
@@ -596,7 +615,7 @@ Init_Dedicated_TNs (void)
 #endif
 
 
-#ifndef TARG_NVISA
+#if !defined(TARG_NVISA) && !defined(TARG_UWASM)
     for (reg = REGISTER_MIN; 
 	 reg <= REGISTER_CLASS_last_register(ISA_REGISTER_CLASS_float);
 	 reg++
@@ -718,6 +737,12 @@ Build_Dedicated_TN (ISA_REGISTER_CLASS rclass, REGISTER reg, INT size)
   }
 #endif // TARG_SL
 
+#if defined(TARG_UWASM)
+  // not all ded tns are initialized, create it when used
+  if (ded_tns[rclass][reg] == NULL)
+    ded_tns[rclass][reg] = Create_Dedicated_TN(rclass, reg);
+#endif // TARG_UWASM
+
   return ded_tns[rclass][reg];
 }
  
@@ -746,6 +771,8 @@ Gen_Register_TN (ISA_REGISTER_CLASS rclass, INT size)
 #endif
 #ifdef TARG_X8664
   	if ( rclass == ISA_REGISTER_CLASS_x87)  Set_TN_is_float(tn);
+#elif defined(TARG_UWASM)
+    if ( rclass == ISA_REGISTER_CLASS_float64)  Set_TN_is_float(tn);
 #endif
     	Set_TN_register_class(tn, rclass);
   	return tn;
@@ -782,6 +809,8 @@ Gen_Typed_Register_TN (TYPE_ID mtype, INT size)
   	if ( rclass == ISA_REGISTER_CLASS_float
 #ifdef TARG_X8664
 	     || rclass == ISA_REGISTER_CLASS_x87
+#elif defined(TARG_UWASM)
+       || rclass == ISA_REGISTER_CLASS_float64
 #endif
            )
 	  Set_TN_is_float(tn);
@@ -911,7 +940,73 @@ Gen_Symbol_TN ( ST *st, INT64 offset, INT32 relocs)
   }
   return tn;
 }
- 
+
+#ifdef TARG_UWASM
+// =======================================================================
+//
+//  Gen_Reg_TN_For_Symbol
+//
+//  Generate Register TN for symbol
+//
+// =======================================================================
+TN *
+Gen_Reg_TN_For_Symbol(ST *st)
+{
+  TN *tn = NULL;
+  BOOL found = FALSE;
+  INT hash_value;
+  INT64 offset = 0;
+  INT32 relocs = 0;
+
+  /* First try to find an existing TN */
+  if (ST_TN_Map.find(st) != ST_TN_Map.end()) {
+    tn = ST_TN_Map[st];
+    return tn;
+  }
+  TYPE_ID mtype = TY_mtype(ST_type(st));
+  switch(ST_sclass(st)) {
+    case SCLASS_AUTO:
+      if(mtype <= MTYPE_F8)
+        tn =  Build_TN_Of_Mtype(mtype);
+      else {
+        FmtAssert(FALSE, ("UNIMPLEMENTED"));
+      }
+    break;
+    default:
+      // TODO:
+    break;
+  }
+  if (tn != NULL) {
+    Set_TN_var(tn, st);
+    ST_TN_Map[st] = tn;
+  }
+  return tn;
+}
+
+// =======================================================================
+//
+//  Allocate_Object_Uwasm
+//
+//  Generate TN for symbol, if cannot gen a register tn, fall back to
+//  orignal Allocate_Object
+//
+// =======================================================================
+TN *
+Allocate_Object_Uwasm( ST *st )
+{
+  TN *st_tn = NULL;
+  if(Is_Local_Reg_ST(st)) {
+    st_tn = Gen_Reg_TN_For_Symbol(st);
+  } else if(Is_Formal_Offset_ST(st)) {
+    // No need to allocate space for formal offset ST
+    return NULL;
+  }
+  if(!st_tn) {
+    Allocate_Object(st);
+  }
+  return st_tn;
+}
+#endif
 
 /* ====================================================================
  *
@@ -1006,7 +1101,7 @@ Gen_Adjusted_TN ( TN *tn, INT64 adjust )
  * ====================================================================
  */
 
-#if !defined(TARG_IA64) && !defined(TARG_SL) && !defined(TARG_MIPS)
+#if !defined(TARG_IA64) && !defined(TARG_SL) && !defined(TARG_MIPS) && !defined(TARG_UWASM)
 static
 #endif
 char *
@@ -1141,6 +1236,14 @@ fPrint_TN ( FILE *f, const char *fmt, TN *tn)
   fprintf(f, fmt, s);
 }
 
+void
+fPrint_TN_Verbose( FILE *f, const char *fmt, TN *tn)
+{
+  char buf[1024];
+  char *s = sPrint_TN (tn, TRUE, buf);
+  Is_True(strlen(s) < 1024, ("fPrint_TN buf overflowed"));
+  fprintf(f, fmt, s);
+}
 
 /* ====================================================================
  *
@@ -1169,8 +1272,8 @@ Print_TN_List(FILE *f, TN_LIST *tnl)
     for (TN_LIST *tmp=tnl; tmp; tmp=TN_LIST_rest(tmp)) {
       fPrint_TN(f, "%s ", TN_LIST_first(tmp));
       if (++count == 5) {
-	count = 0;
-	fprintf(f, "\n\t");
+        count = 0;
+        fprintf(f, "\n\t");
       }
     }
     fprintf(f, "\n");
@@ -1181,7 +1284,7 @@ Print_TN_List(FILE *f, TN_LIST *tnl)
 void
 dump_tn (TN *tn)
 {
-  fPrint_TN (stdout, "%s\n", tn);
+  fPrint_TN_Verbose(stdout, "%s\n", tn);
 }
 
 /* ====================================================================
@@ -1236,6 +1339,7 @@ Init_TNs_For_PU (void)
   TN *tn;
   TN_NUM tnnum;
 
+  Check_TN_Vec_Size();
   /* reset the fields of dedicated TNs */
   for ( tnnum = 0; tnnum <= Last_Dedicated_TN; tnnum++ ) {
     if ((tn = TNvec(tnnum)) != NULL) {
@@ -1246,6 +1350,9 @@ Init_TNs_For_PU (void)
 
   /* clear out the hash table */
   BZERO(Hash_Table, sizeof(Hash_Table));
+#if defined(TARG_UWASM)
+  ST_TN_Map.clear();
+#endif
 
   /* reset Last_TN*/
   Last_TN = Last_Dedicated_TN;
@@ -2026,3 +2133,106 @@ Potential_Immediate_TN_Expr (
 	   && TOP_Can_Have_Immediate ( lbound, opcode )
 	   && TOP_Can_Have_Immediate ( hbound, opcode );
 }
+
+#ifdef Is_True_On
+INT
+TN_flags_d(TN *t)
+{
+  return TN_flags(t);
+}
+
+BOOL
+TN_is_constant_d(TN *t)
+{
+  return TN_is_constant(t);
+}
+
+BOOL
+TN_is_register_d(TN *t)
+{
+  return TN_is_register(t);
+}
+
+INT
+TN_size_d(TN *t)
+{
+  return TN_size(t);
+}
+
+INT
+TN_number_d(TN *t)
+{
+  return TN_number(t);
+}
+
+CLASS_REG_PAIR
+TN_class_reg_d(TN *t)
+{
+  return TN_class_reg(t);
+}
+
+REGISTER TN_register_d(TN *t) {
+  return TN_register(t);
+}
+
+ISA_REGISTER_CLASS
+TN_register_class_d(TN *t)
+{
+  return TN_register_class(t);
+}
+
+INT64
+TN_value_d(TN *t)
+{
+  return TN_value(t);
+}
+
+INT64
+TN_offset_d(TN *t)
+{
+  return TN_offset(t);
+}
+
+LABEL_IDX
+TN_label_d(TN *t)
+{
+  return TN_label(t);
+}
+
+ST *
+TN_var_d(TN *t)
+{
+  return TN_var(t);
+}
+
+BOOL
+TN_has_value_d(TN *t)
+{
+  return TN_has_value(t);
+}
+
+BOOL
+TN_is_label_d(TN *t)
+{
+  return TN_is_label(t);
+}
+
+BOOL
+TN_is_symbol_d(TN *t)
+{
+  return TN_is_symbol(t);
+}
+
+BOOL
+TN_is_float_d(TN *t)
+{
+  return TN_is_float(t);
+}
+
+BOOL
+TN_is_dedicated_d(TN *t)
+{
+  return TN_is_dedicated(t);
+}
+
+#endif

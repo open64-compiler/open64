@@ -1,3 +1,5 @@
+Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+
 Copyright 2010 Hewlett Packard Company
 Copyright (C) 2012 Advanced Micro Devices, Inc.  All Rights Reserved.
 
@@ -96,6 +98,23 @@ case "$BUILD_OPTIMIZE" in
     ;;
 esac
 
+AC_ARG_WITH(build-product,
+[  --with-build-product=OPEN64|MASTIFF  To build OPEN64 or MASTIFF compiler],
+BUILD_PRODUCT="$with_build_product",
+BUILD_PRODUCT=OPEN64)
+
+case "$BUILD_PRODUCT" in
+  OPEN64|open64)
+    BUILD_PRODUCT=OPEN64
+    ;;
+  MASTIFF|mastiff)
+    BUILD_PRODUCT=MASTIFF
+    ;;
+  *)
+    AC_MSG_ERROR(["BUILD_PRODUCT=$BUILD_PRODUCT is not supported"])
+    ;;
+esac
+
 # TODO cleanup Fortran Front-End (FFE) so that extra debugging checks
 # can be enabled when BUILD_OPTIMIZE is set to DEBUG.
 AC_ARG_WITH(build-ffe-optimize,
@@ -190,6 +209,9 @@ TARG_INFO_NAME=targ_info
 # Specify the GCC src directory.
 GCC_DIR=osprey-gcc-4.2.0
 
+# Specify the binutils src directory
+BINUTILS_DIR=binutils
+
 # LIB_* and LIB2_* variables will default to the BUILD_* variables if not
 # overridden in one of the case statements below so most platforms will
 # not have to set these.
@@ -259,6 +281,22 @@ case "$target" in
 		GCC_CONFIGURE_TARG=x86_64-linux-gnu
 		GCC_CONFIGURE_CFLAGS+=" -DTARG_X8664"
 		;;
+	uwasm*-*-linux*)
+		MACHINE_TYPE=x86_64
+		BUILD_TARGET=UWASM
+		LIB_MACHINE_TYPE=X86_64
+		LIB_BUILD_TARGET=X8664
+		LIB_BUILD_ABI=I64BIT
+		LIB_BUILD_ARCH=X8664
+		LIB2_MACHINE_TYPE=IA32
+		LIB2_BUILD_TARGET=IA32
+		LIB2_BUILD_ABI=I32BIT
+		LIB2_BUILD_ARCH=IA32
+		CYGNUS_CONFIGURE_TARG=x86_64-linux-gnu
+		GCC_CONFIGURE_TARG=x86_64-linux-gnu
+		GCC_CONFIGURE_CFLAGS+=" -DTARG_UWASM"
+		;;
+
 	i*86*-*-linux*)
 		MACHINE_TYPE=i386
 		BUILD_TARGET=X8664
@@ -385,6 +423,7 @@ export GCC_CONFIGURE_COMPILER
 export GCC_CONFIGURE_HOST
 export GCC_CONFIGURE_TARG
 export GCC_CONFIGURE_CFLAGS
+export BUILD_PRODUCT
 
 # Variables to replace in the configurable files.
 AC_SUBST([MACHINE_TYPE])
@@ -417,8 +456,10 @@ AC_SUBST([BUILD_FORTRAN])
 AC_SUBST([WHIRL_HAS_ID_FIELD])
 AC_SUBST([BUILD_SKIP_IPA])
 AC_SUBST([BUILD_TYPE])
+AC_SUBST([BUILD_PRODUCT])
 AC_SUBST([GCC_CONFIGURE_TARG])
 AC_SUBST([GCC_DIR])
+AC_SUBST([BINUTILS_DIR])
 
 # List of configurable files to create in object directory.
 AC_CONFIG_FILES([
@@ -429,6 +470,7 @@ AC_CONFIG_FILES([
   osprey/targdir/include/Makefile
   osprey/targdir/driver/Makefile
   osprey/targdir/libiberty/Makefile
+  osprey/targdir/libjson/Makefile
   osprey/targdir/targ_info/Makefile
   osprey/targdir/be/Makefile
   osprey/targdir/libelf/Makefile
@@ -436,6 +478,7 @@ AC_CONFIG_FILES([
   osprey/targdir/libdwarf/Makefile
   osprey/targdir/libunwindP/Makefile
   osprey/targdir/cg/Makefile
+  osprey/targdir/vsa/Makefile
   osprey/targdir/wopt/Makefile
   osprey/targdir/ipl/Makefile
   osprey/targdir/lno/Makefile
@@ -447,6 +490,8 @@ AC_CONFIG_FILES([
   osprey/targdir/libcmplrs/Makefile
   osprey/targdir/clang2whirl/Makefile
   osprey/targdir/wgen/Makefile
+  osprey/targdir/jfe/Makefile
+  osprey/targdir/js2mplref/Makefile
   osprey/targdir/libcif/Makefile
   osprey/targdir/arith/Makefile
   osprey/targdir/orc_ict/Makefile
@@ -518,7 +563,8 @@ if test "${BUILD_FORTRAN}" = "YES"; then
 fi
 
 if test "${BUILD_TARGET}" = "X8664" || test "${BUILD_TARGET}" = "IA32"; then
-  LIBLIST="libopen64rt libacml_mv $LIBLIST libinstr2"
+  #LIBLIST="libopen64rt libacml_mv $LIBLIST libinstr2"
+  LIBLIST="libopen64rt libacml_mv $LIBLIST" 
   AC_CONFIG_FILES([
     osprey/targdir_lib/libopen64rt/Makefile
     osprey/targdir_lib/libinstr2/Makefile
@@ -555,6 +601,14 @@ if test $BUILD_MULTILIB = "YES"; then
   fi
 fi
 
+# build librbc for mastiff
+if test $BUILD_PRODUCT = "MASTIFF"; then
+  AC_CONFIG_FILES([
+    osprey/targdir_lib/librbc/Makefile:osprey/targdir_lib/librbc/Makefile.in
+    osprey/targdir_lib/libwffi/Makefile:osprey/targdir_lib/libwffi/Makefile.in
+  ])
+fi
+
 AC_SUBST([LIBLIST])
 
 # Configure cygnus and GCC subdirectories.
@@ -562,8 +616,87 @@ AC_CONFIG_SUBDIRS(osprey/cygnus)
 # We do not use $GCC_DIR because using AC_CONFIG_SUBDIRS with variables
 # breaks "configure --help=recursive".  See autoconf documentation.
 AC_CONFIG_SUBDIRS(osprey-gcc-4.2.0)
+# Configure binutils directory
+AC_CONFIG_SUBDIRS(binutils)
 
 AC_OUTPUT
+
+#
+# Starting JFE Checks
+#
+
+ISRUNNABLE_JFE=1
+printf "checking whether gradle works "
+if @<:@ $(which gradle) @:>@
+then
+	echo "... yes   "
+else
+	echo "... no"
+	echo "=============================="
+	echo "please run :"
+	echo "sudo apt install -y gradle "
+	echo "=============================="
+	ISRUNNABLE_JFE=0
+fi
+
+printf "checking whether java works"
+if @<:@ $(which java) @:>@
+then
+	echo "... yes   "
+else
+	echo "... no"
+	echo "=============================="
+	echo "please run :"
+	echo "sudo apt install -y openjdk-8-jdk "
+	echo "=============================="
+	ISRUNNABLE_JFE=0
+fi
+
+printf "checking for cmake "
+if @<:@ $(which java) @:>@
+then
+	echo "... yes   "
+else
+	echo "... no"
+	echo "=============================="
+	echo "please run :"
+	echo "sudo apt install -y cmake "
+	echo "=============================="
+	ISRUNNABLE_JFE=0
+fi
+
+printf "checking whether java -version == 1.8.0 "
+JAVA_VERSION=$(java -version 2>&1|awk -F '"' '/version/ {print $2}')
+if @<:@@<:@ $JAVA_VERSION =~ "1.8.0" @:>@@:>@
+then
+	echo "... $JAVA_VERSION  "
+else
+	echo "... no"
+	echo "=============================="
+	echo "please reinstall jdk to version 1.8.0, now:$JAVA_VERSION"
+	echo "=============================="
+	ISRUNNABLE_JFE=0
+fi
+
+printf "checking whether java_home is set correctly and jni.h presents ..."
+if @<:@ -f $JAVA_HOME/include/jni.h @:>@
+then
+	echo "yes"
+else
+	echo "no"
+	echo "========================================================"
+	echo "please double check if JAVA_HOME is set correctly, and exported"
+	echo " if not, please edit the ~/.bash_profile or ~/.bashrc accordingly"
+	echo "========================================================"
+	ISRUNNABLE_JFE=0
+fi
+echo "            JAVA_HOME = $JAVA_HOME"
+
+
+if @<:@ $ISRUNNABLE_JFE = 0 @:>@
+then
+	exit 1
+fi
 
 printf "checking CLANG_HOME is set ..."
 if @<:@ -z $CLANG_HOME @:>@
@@ -578,4 +711,29 @@ else
         echo "            CLANG_HOME = $CLANG_HOME"
 fi
 
+printf "checking MAPLE_HOME is set ..."
+if @<:@ -z $MAPLE_HOME @:>@
+then
+	echo "no"
+	echo "=========================================================="
+	echo "please set MAPLE_HOME which include the maple prebuilt libs"
+	echo "**** js2mpl and mpl2whirl won't be built ****"
+	echo "=========================================================="
+else
+	echo "yes"
+	echo "            MAPLE_HOME = $MAPLE_HOME"
+fi
+
+printf "checking MOZJS_HOME is set ..."
+if @<:@ -z $MOZJS_HOME @:>@
+then
+	echo "no"
+	echo "=========================================================="
+	echo "please set MOZJS_HOME which include the mozjs prebuilt libs"
+	echo "**** js2mpl won't be built ****"
+	echo "=========================================================="
+else
+	echo "yes"
+	echo "            MOZJS_HOME = $MOZJS_HOME"
+fi
 

@@ -76,7 +76,7 @@ LCDEFS += -D_SW_PIPELINE
 CFLAGS += -OPT:alias=restrict:alias=unnamed -TENV:X=2
 CFLAGS += -WOPT:cse_fcmp=off
 CCFVSQRT = $(CCF)
-CCFVLOG = $(CC) $(CFLAGS) -WOPT:cse_fcmp=on
+CCFVLOG = $(CCN) $(CFLAGS) -WOPT:cse_fcmp=on
  else
 CCFVSQRT = $(CCF)
 CCFVLOG = $(CCF) 

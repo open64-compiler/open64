@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1198,7 +1202,12 @@ WN_CreateIstore (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
 	  ("Bad return type in WN_CreateIstore"));
   Is_True(opr == OPR_ISTORE || opr == OPR_ISTBITS,
           ("Bad opcode in WN_CreateIstore"));
-
+  Is_True(ty != TY_IDX_ZERO && TY_kind(ty) == KIND_POINTER,
+          ("Bad type in WN_CreateIstore"));
+  Is_True(field_id == 0 ||
+          (TY_kind(TY_pointed(ty)) == KIND_STRUCT &&
+           field_id < FLD_get_count(TY_pointed(ty))),
+          ("Bad field in WN_CreateIstore"));
 #ifdef FRONT_END
  if (desc == MTYPE_M) { 
    Set_PU_has_very_high_whirl (Get_Current_PU ());
@@ -1363,6 +1372,12 @@ WN_CreateStid (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
 
     Is_True(OPCODE_is_expression(WN_opcode(value)),
 	    ("Bad value in WN_CreateStid"));
+    Is_True(ty != TY_IDX_ZERO,
+            ("Bad type in WN_CreateStid"));
+    Is_True(field_id == 0 ||
+            (TY_kind(ty) == KIND_STRUCT &&
+             field_id < FLD_get_count(ty)),
+            ("Bad field id in WN_CreateStid"));
 #ifndef KEY	// g++ can create cases where the actual parameter to a
 		// function is a ptr, but the formal parameter is a struct.
     Is_True(Types_Are_Compatible(OPCODE_desc(opc),value),
@@ -1382,6 +1397,7 @@ WN_CreateStid (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
    if (desc == MTYPE_M && CURRENT_SYMTAB > GLOBAL_SYMTAB) {
    	 Set_PU_has_very_high_whirl (Get_Current_PU ());
    }
+   Set_ST_is_modified(st);
 #endif /* FRONT_END */
 
 #if (defined(FRONT_END_C) || defined(FRONT_END_CPLUSPLUS)) && !defined(FRONT_END_MFEF77)
@@ -1754,6 +1770,12 @@ WN_CreateIload (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
 
   Is_True(opr == OPR_ILOAD || opr == OPR_ILDBITS,
           ("Bad opcode in WN_CreateIload"));
+  Is_True(ty != TY_IDX_ZERO,
+          ("Bad type in WN_CreateIload"));
+  Is_True(field_id == 0 ||
+          (TY_kind(ty) == KIND_STRUCT &&
+           field_id < FLD_get_count(ty)),
+          ("Bad field id in WN_CreateIload. Type kind = %d, field_id = %d, ty_fld_count = %d", TY_kind(ty), field_id, FLD_get_count(ty)));
 
 #if (defined(FRONT_END_C) || defined(FRONT_END_CPLUSPLUS)) && !defined(FRONT_END_MFEF77) 
 
@@ -1855,12 +1877,19 @@ WN_CreateLdid (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
 
     Is_True (opr == OPR_LDID || opr == OPR_LDBITS,
 	    ("Bad opcode in WN_CreateLdid"));
+    Is_True (ty != TY_IDX_ZERO,
+	    ("Bad ty in WN_CreateLdid"));
+    Is_True(field_id == 0 ||
+            (TY_kind(ty) == KIND_STRUCT &&
+             field_id < FLD_get_count(ty)),
+            ("Bad field id in WN_CreateLdid"));
 #ifdef FRONT_END
     Is_True (!((offset == 0) && (&St_Table [st] == Int32_Preg ||
 				 &St_Table [st] == Int64_Preg ||
 				 &St_Table [st] == Float32_Preg ||
 				 &St_Table [st] == Float64_Preg)),
 	     ("Preg offset 0 in WN_CreateLdid"));
+    Set_ST_is_used(st);
 #endif /* FRONT_END */
 #ifdef TARG_NVISA
     if ((MTYPE_byte_size(rtype) == 8 && MTYPE_byte_size(desc) == 4)
@@ -1925,6 +1954,26 @@ WN_CreateIlda (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
   wn = WN_Create(opr,rtype,desc,0);
   WN_load_offset(wn) = offset;
   WN_set_ty(wn,ty);
+
+  return(wn);
+}
+
+WN *
+WN_CreateIlda2 (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
+	       WN_OFFSET offset, TY_IDX ty, ST_IDX st, WN* wn_sym, UINT field_id)
+{
+  OPCODE opc = OPCODE_make_op (opr, rtype, desc);
+  WN *wn;
+
+  Is_True(MTYPE_is_pointer(OPCODE_rtype(opc)),
+          ("Bad addr in WN_CreateIlda2"));
+  Is_True(OPCODE_operator(opc) == OPR_ILDA,
+          ("Bad opcode in WN_CreateIlda2"));
+  wn = WN_CreateExp1(opr,rtype,desc,wn_sym);
+  WN_load_offset(wn) = offset;
+  WN_st_idx(wn) = st;
+  WN_set_ty(wn,ty);
+  WN_set_field_id(wn, field_id);
 
   return(wn);
 }
@@ -2656,6 +2705,25 @@ WN_Lda (TYPE_ID rtype, WN_OFFSET ldaOffset, ST* sym, UINT field_id)
 
 
     return WN_CreateLda(OPR_LDA, rtype, MTYPE_V, ldaOffset, pty, sym, field_id);
+}
+
+WN *
+WN_Ilda (TYPE_ID rtype, WN_OFFSET ldaOffset, WN* wn_sym, UINT field_id)
+{
+    TY_IDX pty;
+    TY_IDX ty;
+
+    ST* sym = WN_st(wn_sym);
+    ST_IDX sym_idx = ST_st_idx(sym);
+    if (ST_class (sym) == CLASS_BLOCK)
+      ty = Make_Align_Type (MTYPE_To_TY(rtype), STB_align(sym));
+    else
+      ty = ST_class (sym) == CLASS_FUNC ? ST_pu_type (sym) : ST_type(sym);
+    Is_True (ty != 0, ("WN_lda(): NULL ty"));
+    pty = Make_Pointer_Type (ty);
+
+
+    return WN_CreateIlda2(OPR_ILDA, rtype, MTYPE_V, ldaOffset, pty, sym_idx, wn_sym, field_id);
 }
 
 WN *

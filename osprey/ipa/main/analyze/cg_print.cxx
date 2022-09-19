@@ -279,11 +279,11 @@ INT CG_BROWSER::Print_Projected_Node(char* cp,
   cc = Print_Projected_Node_Upper_Bound(cp, cc, pn);
   cc += sprintf(cp + cc, ":"); 
   cc = Print_Projected_Node_Step(cp, cc, pn);
-  if (pn->Get_segment_length_linex() > 0) {
+  if (pn->Get_segment_length_linex() != NULL) {
     cc += sprintf(cp + cc, ":"); 
     cc = Print_Projected_Node_Segment_Length(cp, cc, pn);
   } 
-  if (pn->Get_segment_stride_linex() > 0) {
+  if (pn->Get_segment_stride_linex() != NULL) {
     cc += sprintf(cp + cc, ":"); 
     cc = Print_Projected_Node_Segment_Stride(cp, cc, pn);
   } 

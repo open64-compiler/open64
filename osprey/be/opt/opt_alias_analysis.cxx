@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -115,6 +119,7 @@
 #include "pu_info.h"                    // for PU_Info_proc_sym
 #include "opt_base.h"			// FOR_ALL_NODE
 #include "opt_util.h"
+#include "opt_vsa_util.h"
 #include "opt_sym.h"			// aux_id
 #include "opt_ssa.h"
 #include "opt_htable.h"
@@ -129,6 +134,8 @@
 #include "opt_main.h"                   // for COMP_UNIT
 #include "opt_alias_analysis.h"
 #include "intrn_info.h"
+#include "config_vsa.h"
+#include "opt_util.h"
 
 extern "C" {
 #include "bitset.h"
@@ -2495,7 +2502,20 @@ OPT_STAB::Generate_call_mu_chi_by_ref(WN *wn, ST *call_st,
   AUX_ID idx;
   const BS *alias_set;
 
+  // no mu/chi if vsa intent says the function is malloc
+  const char* fname = call_st ? ST_name(call_st) : NULL;
+  if (WN_operator(wn) == OPR_INTRINSIC_CALL) {
+    fname = INTRINSIC_name(WN_intrinsic(wn));
+  }
+  ALIAS_INTENT intent_alias = ALIAS_WOPT;
+#if defined(BUILD_MASTIFF)
+  if (VSA_Alias_Intent && fname) {
+    intent_alias = Vsa_check_alias_intent(fname);
+  }
+#endif
+
   alias_set = Rule()->Alias_Set_Call_By_Ref(this);
+  bool extern_call = call_st && ST_sclass(call_st) == SCLASS_EXTERN;
   for (idx = BS_Choose( alias_set );
        idx != (AUX_ID) BS_CHOOSE_FAILURE;
        idx = BS_Choose_Next ( alias_set, idx ))  {
@@ -2505,9 +2525,21 @@ OPT_STAB::Generate_call_mu_chi_by_ref(WN *wn, ST *call_st,
 	!Aux_stab_entry(idx)->Is_virtual() )
       continue;
     
+    POINTS_TO* pt = aux_stab[idx].Points_to();
+    // only write to dedicated register for intent call without side effect
+    if (!pt->Dedicated()) {
+      if (extern_call && pt->Global() && pt->Not_addr_passed())
+        continue;
+      if (intent_alias == NO_ALIAS)
+        continue;
+      if (intent_alias == ALIAS_VSYM &&
+          idx != Default_vsym() && idx != Return_vsym())
+        continue;
+    }
+
     READ_WRITE how = Rule()->Aliased_with_Call(call_st,
 					       WN_call_flag(wn),
-					       aux_stab[idx].Points_to());
+					       pt);
     
     // skip the following if function has no parm_mod
     if (how != READ_AND_WRITE)
@@ -2703,7 +2735,42 @@ OPT_STAB::Generate_call_mu_chi_by_value(WN *wn, ST *call_st,
   AUX_ID idx;
   const BS *alias_set;
 
+  // no mu/chi if vsa intent says the function is malloc
+  const char* fname = call_st ? ST_name(call_st) : NULL;
+  if (WN_operator(wn) == OPR_INTRINSIC_CALL) {
+    fname = INTRINSIC_name(WN_intrinsic(wn));
+  }
+  ALIAS_INTENT intent_alias = ALIAS_WOPT;
+#if defined(BUILD_MASTIFF)
+  if (VSA_Alias_Intent && fname) {
+    intent_alias = Vsa_check_alias_intent(fname);
+  }
+#endif
+
+  POINTS_TO *aliased_pt[ALIAS_INTENT_PARM_MAX] = { NULL };
+  READ_WRITE aliased_how[ALIAS_INTENT_PARM_MAX] = { NO_READ_NO_WRITE };
+  INT aliased_pt_num = 0;
+  if (intent_alias & ALIAS_PARM) {
+    INT max_parm = num_parms > ALIAS_INTENT_PARM_MAX ? ALIAS_INTENT_PARM_MAX : num_parms;
+    for (INT i = 0; i < max_parm; ++i) {
+      ALIAS_INTENT parm_intent = Get_parm_alias_intent(intent_alias, i);
+      if (parm_intent != NO_ALIAS) {
+        WN *parm = WN_kid0(WN_actual(wn, i));
+        if (WN_operator(parm) == OPR_LDA) {  // TODO: ADD/SUB of LDA?
+          aliased_pt[aliased_pt_num] = aux_stab[WN_aux(parm)].Points_to();
+          if ((parm_intent & MOD_PARM) && (parm_intent & REF_PARM)) {
+            aliased_how[aliased_pt_num] = READ_AND_WRITE;
+          } else {
+            aliased_how[aliased_pt_num] = (parm_intent & MOD_PARM) ? WRITE : READ;
+          }
+          ++ aliased_pt_num;
+        }
+      }
+    }
+  }
+
   alias_set = Rule()->Alias_Set_Call_By_Value(this);
+  bool extern_call = call_st && ST_sclass(call_st) == SCLASS_EXTERN;
   for (idx = BS_Choose( alias_set );
        idx != (AUX_ID) BS_CHOOSE_FAILURE;
        idx = BS_Choose_Next ( alias_set, idx )) {
@@ -2714,10 +2781,36 @@ OPT_STAB::Generate_call_mu_chi_by_value(WN *wn, ST *call_st,
       continue;
 
     POINTS_TO *pt = aux_stab[idx].Points_to();
-    READ_WRITE how = Rule()->Aliased_with_Call(call_st,
-					       WN_call_flag(wn),
-					       pt);
-    
+    // only write to dedicated register for intent call without side effect
+    READ_WRITE how = NO_READ_NO_WRITE;
+    if (!pt->Dedicated()) {
+      if (extern_call && pt->Global() && pt->Not_addr_passed())
+        continue;
+      if (intent_alias == NO_ALIAS)
+        continue;
+      if (intent_alias == ALIAS_VSYM &&
+          idx != Default_vsym() && idx != Return_vsym())
+        continue;
+      if (intent_alias & ALIAS_PARM) {
+        if (idx == Default_vsym() || idx == Return_vsym())
+          continue;
+        for (INT i = 0; i < aliased_pt_num; ++i) {
+          if (Rule()->Aliased_Memop(pt, aliased_pt[i])) {
+            how = aliased_how[i];
+            break;
+          }
+        }
+        if (how == NO_READ_NO_WRITE)
+          continue;
+      }
+    }
+
+    if (how == NO_READ_NO_WRITE) {
+      how = Rule()->Aliased_with_Call(call_st,
+                                      WN_call_flag(wn),
+                                      pt);
+    }
+
     if ((how & WRITE) && // no need to do the following if !write-able
 	pt->Not_addr_saved()) { // the only way is modification thru the parameters
 
@@ -3124,6 +3217,7 @@ OPT_STAB::Generate_mu_and_chi_list(WN *wn, BB_NODE *bb)
   case OPR_ILOADX:
     occ = Get_occ(wn);
     if (!occ->Points_to()->No_alias()) {
+#if 0
       Is_True(!WOPT_Enable_Alias_Classification ||
 	      REGION_has_black_regions(g_comp_unit->Rid()) ||
 	      occ->Points_to()->Alias_class() != OPTIMISTIC_AC_ID,
@@ -3133,6 +3227,7 @@ OPT_STAB::Generate_mu_and_chi_list(WN *wn, BB_NODE *bb)
 	      REGION_has_black_regions(g_comp_unit->Rid()) ||
 	      occ->Points_to()->Alias_class() != PESSIMISTIC_AC_ID,
 	      ("indirect load has PESSIMISTIC_AC_ID"));
+#endif
     }
     vp_idx = occ->Aux_id();
     occ->New_mem_mu_node(vp_idx, Occ_pool());
@@ -3692,7 +3787,7 @@ OPT_STAB::Transfer_alias_tag_to_occ_and_aux(RID *const rid,
         POINTS_TO *pt = psym->Points_to();
 
         if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-          fprintf(stderr,"xfer alias tag: IDX %d -> ST_IDX %d\n",
+          fprintf(TFile,"xfer alias tag: IDX %d -> ST_IDX %d\n",
                   idx,pt->Base()->st_idx);
 
         // Extract the alias tag from the current WN and associate
@@ -3960,7 +4055,7 @@ void OPT_STAB::Compute_FFA(RID *const rid)
   if (Get_Trace(TP_ALIAS, NYSTROM_ALIAS_TAG_FLAG)) {
     AliasAnalyzer *aa = AliasAnalyzer::aliasAnalyzer();
     if (aa) {
-      aa->print_All_AliasTag(stderr);
+      aa->print_All_AliasTag(TFile);
     }
   }
 
@@ -4145,6 +4240,176 @@ void OPT_STAB::Compute_FFA_for_copy( WN *wn, BB_NODE *bb, BOOL complete_list )
 //
 // ======================================================================
 
+// Flow sensitive analysis for call and its parameter
+//
+static BOOL Collect_lda_in_wn(OPT_STAB *, WN *, hash_set<AUX_ID> &,
+                              hash_set<IDTYPE> &);
+
+static void
+Collect_lda_in_ver(OPT_STAB *stab, VER_ID ver_id, hash_set<AUX_ID> &lda_set,
+                hash_set<IDTYPE> &visited)
+{
+  VER_STAB_ENTRY *ver = stab->Ver_stab_entry(ver_id);
+  Is_True(ver != NULL, ("ver entry not found"));
+  if (ver->Type() == PHI_STMT) {
+    // def by phi
+    PHI_NODE *phi = ver->Phi();
+    Is_True(phi != NULL, ("defphi is NULL"));
+    if (visited.find(phi->Bb()->Id()) != visited.end())
+      return;
+    visited.insert(phi->Bb()->Id());
+
+    for (INT i = 0; i < phi->Size(); ++i) {
+      Collect_lda_in_ver(stab, phi->Opnd(i), lda_set, visited);
+    }
+  }
+  else if (ver->Type() == CHI_STMT) {
+    // def by chi
+    CHI_NODE *chi = ver->Chi();
+    Is_True(chi != NULL, ("defchi is NULL"));
+    Collect_lda_in_ver(stab, chi->Opnd(), lda_set, visited);
+  }
+  else if (ver->Type() == WHIRL_STMT) {
+    // def by stmt
+    WN *def = ver->Wn();
+    Is_True(def != NULL, ("defstmt is NULL"));
+    if (WN_operator(def) == OPR_STID)
+      Collect_lda_in_wn(stab, WN_kid0(def), lda_set, visited);
+  }
+}
+
+static BOOL
+Collect_lda_in_wn(OPT_STAB *stab, WN *wn, hash_set<AUX_ID> &lda_set,
+               hash_set<IDTYPE> &visited)
+{
+  Is_True(wn != NULL, ("invalid wn"));
+  OPERATOR opr = WN_operator(wn);
+  if (opr == OPR_LDA) {
+    AUX_ID aux_id = WN_aux(wn);
+    ST *st = stab->St(aux_id);
+    if (ST_level(st) == CURRENT_SYMTAB) {
+      // add whole st chain to lda_set
+      AUX_ID grp_id = aux_id;
+      do {
+        lda_set.insert(grp_id);
+        grp_id = stab->St_group(grp_id);
+      } while (grp_id != aux_id && grp_id != 0);
+    }
+    return TRUE;
+  }
+  else if (opr == OPR_LDID) {
+    if (TY_kind(WN_ty(wn)) != KIND_POINTER) {
+      return FALSE;
+    }
+    // follow U-D to add LDA to lda_set
+    VER_ID ver_id = WN_ver(wn);
+    Collect_lda_in_ver(stab, WN_ver(wn), lda_set, visited);
+    return TRUE;
+  }
+  else if (opr == OPR_ADD || opr == OPR_SUB) {
+    if (MTYPE_byte_size(WN_desc(wn)) != Pointer_Size) {
+      return FALSE;
+    }
+    BOOL ret = Collect_lda_in_wn(stab, WN_kid0(wn), lda_set, visited);
+    if (ret == FALSE && opr == OPR_ADD) {
+      ret = Collect_lda_in_wn(stab, WN_kid1(wn), lda_set, visited);
+    }
+    return ret;
+  }
+  return FALSE;
+}
+
+void
+OPT_STAB::Compute_FSA_call(WN *wn)
+{
+  Is_True(wn && OPERATOR_is_call(WN_operator(wn)),
+          ("not call wn"));
+
+  BOOL is_icall = (WN_operator(wn) == OPR_ICALL);
+  INT  parm_count = is_icall ? WN_kid_count(wn) - 1
+                             : WN_kid_count(wn);
+  hash_set<AUX_ID> lda_set;
+  // collect LDA on params
+  for (INT i = 0; i < parm_count; ++i) {
+    WN *parm_wn = WN_kid(wn, i);
+    Is_True(parm_wn && WN_operator(parm_wn) == OPR_PARM,
+            ("bad parm wn"));
+    Compute_FSA_stmt_or_expr(parm_wn);
+    if (VSA_Alias_Local_Lda == TRUE)
+      continue;
+
+    if (WN_Parm_By_Reference(parm_wn)) {
+      // pass by reference
+      AUX_ID aux = Get_occ(wn)->Aux_id();
+      lda_set.insert(aux);
+    }
+    else if (TY_kind(WN_ty(parm_wn)) == KIND_POINTER) {
+      // pass by value
+      hash_set<IDTYPE> visited;
+      Collect_lda_in_wn(this, WN_kid0(parm_wn), lda_set, visited);
+    }
+  }
+  if (is_icall) {
+    Compute_FSA_stmt_or_expr(WN_kid(wn, parm_count));
+  }
+
+  if (VSA_Alias_Local_Lda == TRUE)
+    return;
+
+  // refine mu/chi list according to lda_set
+  MU_LIST *mu_list = Get_stmt_mu_list(wn);
+  if (mu_list) {
+    MU_NODE *mprev = NULL;
+    MU_NODE *mnode = mu_list->Head();
+    while (mnode != NULL) {
+      AUX_ID v = mnode->Aux_id();
+      ST *st = St(v);
+      BOOL can_remove = (st != NULL) &&
+                        (ST_level(st) == CURRENT_SYMTAB) &&
+                        (lda_set.find(v) == lda_set.end());
+
+      if (can_remove) {
+        Is_Trace(Get_Trace(TP_GLOBOPT, ALIAS_DUMP_FLAG),
+                 (TFile, "<alias> Remove the mu node lda %d on call at line %d.\n",
+                         v,
+                         Srcpos_To_Line(WN_Get_Linenum(wn))));
+        mu_list->Remove(mprev, mnode);
+        mnode = mprev ? mprev->Next() : mu_list->Head();
+      }
+      else {
+        mprev = mnode;
+        mnode = mprev->Next();
+      }
+    }
+  }
+
+  CHI_LIST *chi_list = Get_stmt_chi_list(wn);
+  if (chi_list) {
+    CHI_NODE *cprev = NULL;
+    CHI_NODE *cnode = chi_list->Head();
+    while (cnode != NULL) {
+      AUX_ID v = cnode->Aux_id();
+      ST *st = St(v);
+      BOOL can_remove = (st != NULL) &&
+                        (ST_level(st) == CURRENT_SYMTAB) &&
+                        (lda_set.find(v) == lda_set.end());
+
+      if (can_remove) {
+        Is_Trace(Get_Trace(TP_GLOBOPT, ALIAS_DUMP_FLAG),
+                 (TFile, "<alias> Remove the chi node lda %d on call at line %d.\n",
+                         v,
+                         Srcpos_To_Line(WN_Get_Linenum(wn))));
+        Ver_stab_entry(cnode->Result())->Set_synonym(cnode->Opnd());
+        chi_list->Remove(cprev, cnode);
+        cnode = cprev ? cprev->Next() : chi_list->Head();
+      }
+      else {
+        cprev = cnode;
+        cnode = cprev->Next();
+      }
+    }
+  }
+}
 
 //  Flow sensitive analysis for the STMT and its subtree.
 //
@@ -4302,6 +4567,9 @@ OPT_STAB::Compute_FSA_stmt_or_expr(WN *wn)
   if ( opc == OPC_COMPGOTO ) {
     // only first kid is important, others are control-flow stuff
     Compute_FSA_stmt_or_expr(WN_kid(wn, 0));
+  }
+  else if ( OPCODE_is_call( opc ) ) {
+    Compute_FSA_call(wn);
   }
   else if ( ! OPCODE_is_black_box( opc ) ) {
     INT32 i = (opr == OPR_ASM_STMT ? 2 : 0);
@@ -4942,7 +5210,7 @@ OPT_STAB::Summarize_points_to (void) {
     fprintf (TFile, "Points-to summary for PU %s\n%s", 
              ST_name(PU_Info_proc_sym(Current_PU_Info)), DBar);
     sum->Print (TFile);
-    fprintf (TFile, DBar); // to mark the end
+    fprintf (TFile, "%s", DBar); // to mark the end
   }
 }
 

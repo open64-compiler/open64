@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -69,6 +73,19 @@ extern "C" {
         ((n) >= Fcc_Preg_Min_Offset && (n) <= Fcc_Preg_Max_Offset)
 #define Preg_Is_Dedicated(n) (n <= Last_Dedicated_Preg_Offset)
 
+#ifdef TARG_UWASM
+#define Preg_Offset_Is_Int32(n) \
+        ((n) >= Int32_Preg_Min_Offset && (n) <= Int32_Preg_Max_Offset)
+#define Preg_Offset_Is_Int64(n) \
+        ((n) >= Int64_Preg_Min_Offset && (n) <= Int64_Preg_Max_Offset)
+#define Preg_Offset_Is_Float32(n) \
+        ((n) >= Float32_Preg_Min_Offset && (n) <= Float32_Preg_Max_Offset)
+#define Preg_Offset_Is_Float64(n) \
+        ((n) >= Float64_Preg_Min_Offset && (n) <= Float64_Preg_Max_Offset)
+#endif
+
+/* return whether preg is a int return preg */
+extern BOOL Is_Int_Return_Preg(PREG_NUM preg);
 
 /* return whether preg is a return preg */
 extern BOOL Is_Return_Preg (PREG_NUM preg);
@@ -103,14 +120,14 @@ public:
   friend inline PREG_NUM RETURN_INFO_preg (const RETURN_INFO&, INT32);
   friend RETURN_INFO Get_Return_Info (TY_IDX rtype, Mtype_Return_Level level
 #ifdef TARG_X8664
-  				      , BOOL ff2c_abi = FALSE
+  				      , BOOL ff2c_abi
 #endif
 				     );
 };
 
 extern RETURN_INFO Get_Return_Info (TY_IDX rtype, Mtype_Return_Level level
 #ifdef TARG_X8664
-  				      , BOOL ff2c_abi
+  				      , BOOL ff2c_abi = FALSE
 #endif
 				     );
 
@@ -163,7 +180,7 @@ extern void Get_Return_Pregs (
  */
 typedef struct {
 	PREG_NUM reg;
-#if defined(TARG_X8664) || defined(TARG_IA32)
+#if defined(TARG_X8664) || defined(TARG_IA32) || defined(TARG_UWASM)
 	PREG_NUM reg2;	/* for second register used in passing a struct */
 #endif
 	INT32 start_offset;

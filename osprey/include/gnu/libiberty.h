@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -45,12 +49,36 @@ extern "C" {
 
 #include "ansidecl.h"
 
-#ifdef ANSI_PROTOTYPES
 /* Get a definition for size_t.  */
 #include <stddef.h>
 /* Get a definition for va_list.  */
 #include <stdarg.h>
-#endif
+
+#include <stdio.h>
+
+/* If the OS supports it, ensure that the supplied stream is setup to
+   avoid any multi-threaded locking.  Otherwise leave the FILE pointer
+   unchanged.  If the stream is NULL do nothing.  */
+
+extern void unlock_stream (FILE *);
+
+/* If the OS supports it, ensure that the standard I/O streams, stdin,
+   stdout and stderr are setup to avoid any multi-threaded locking.
+   Otherwise do nothing.  */
+
+extern void unlock_std_streams (void);
+
+/* Open and return a FILE pointer.  If the OS supports it, ensure that
+   the stream is setup to avoid any multi-threaded locking.  Otherwise
+   return the FILE pointer unchanged.  */
+
+extern FILE *fopen_unlocked (const char *, const char *);
+extern FILE *fdopen_unlocked (int, const char *);
+extern FILE *freopen_unlocked (const char *, const char *, FILE *);
+
+/* Build an argument vector from a string.  Allocates memory using
+   malloc.  Use freeargv to free the vector.  */
+
 
 /* Build an argument vector from a string.  Allocates memory using
    malloc.  Use freeargv to free the vector.  */
@@ -71,17 +99,23 @@ extern char **dupargv PARAMS ((char **)) ATTRIBUTE_MALLOC;
    prototype here because the parameter is declared inconsistently
    across different systems, sometimes as "char *" and sometimes as
    "const char *" */
-
+#define HAVE_DECL_BASENAME 1
 /* HAVE_DECL_* is a three-state macro: undefined, 0 or 1.  If it is
    undefined, we haven't run the autoconf check so provide the
    declaration without arguments.  If it is 0, we checked and failed
    to find the declaration so provide a fully prototyped one.  If it
    is 1, we found it so don't provide any declaration at all.  */
 #if !HAVE_DECL_BASENAME
-#if defined (__GNU_LIBRARY__ ) || defined (__linux__) || defined (__FreeBSD__) || defined (__OpenBSD__) || defined(__NetBSD__) || defined (__CYGWIN__) || defined (__CYGWIN32__) || defined (HAVE_DECL_BASENAME)
-extern char *basename PARAMS ((const char *));
+#if defined (__GNU_LIBRARY__ ) || defined (__linux__) \
+ || defined (__FreeBSD__) || defined (__OpenBSD__) || defined (__NetBSD__) \
+ || defined (__CYGWIN__) || defined (__CYGWIN32__) || defined (__MINGW32__) \
+ || defined (__DragonFly__) || defined (HAVE_DECL_BASENAME)
+extern char *basename (const char *) ATTRIBUTE_RETURNS_NONNULL ATTRIBUTE_NONNULL(1);
 #else
-extern char *basename ();
+/* Do not allow basename to be used if there is no prototype seen.  We
+   either need to use the above prototype or have one from
+   autoconf which would result in HAVE_DECL_BASENAME being set.  */
+#define basename basename_cannot_be_used_without_a_prototype
 #endif
 #endif
 
@@ -249,6 +283,47 @@ extern PTR xmemdup PARAMS ((const PTR, size_t, size_t)) ATTRIBUTE_MALLOC;
 /* Physical memory routines.  Return values are in BYTES.  */
 extern double physmem_total PARAMS ((void));
 extern double physmem_available PARAMS ((void));
+
+/* Compute the 32-bit CRC of a block of memory.  */
+extern unsigned int xcrc32 (const unsigned char *, int, unsigned int);
+
+/* These macros provide a K&R/C89/C++-friendly way of allocating structures
+   with nice encapsulation.  The XDELETE*() macros are technically
+   superfluous, but provided here for symmetry.  Using them consistently
+   makes it easier to update client code to use different allocators such
+   as new/delete and new[]/delete[].  */
+
+/* Scalar allocators.  */
+
+#define XALLOCA(T)		((T *) alloca (sizeof (T)))
+#define XNEW(T)			((T *) xmalloc (sizeof (T)))
+#define XCNEW(T)		((T *) xcalloc (1, sizeof (T)))
+#define XDUP(T, P)		((T *) xmemdup ((P), sizeof (T), sizeof (T)))
+#define XDELETE(P)		free ((void*) (P))
+
+/* Array allocators.  */
+
+#define XALLOCAVEC(T, N)	((T *) alloca (sizeof (T) * (N)))
+#define XNEWVEC(T, N)		((T *) xmalloc (sizeof (T) * (N)))
+#define XCNEWVEC(T, N)		((T *) xcalloc ((N), sizeof (T)))
+#define XDUPVEC(T, P, N)	((T *) xmemdup ((P), sizeof (T) * (N), sizeof (T) * (N)))
+#define XRESIZEVEC(T, P, N)	((T *) xrealloc ((void *) (P), sizeof (T) * (N)))
+#define XDELETEVEC(P)		free ((void*) (P))
+
+/* Allocators for variable-sized structures and raw buffers.  */
+
+#define XALLOCAVAR(T, S)	((T *) alloca ((S)))
+#define XNEWVAR(T, S)		((T *) xmalloc ((S)))
+#define XCNEWVAR(T, S)		((T *) xcalloc (1, (S)))
+#define XDUPVAR(T, P, S1, S2)	((T *) xmemdup ((P), (S1), (S2)))
+#define XRESIZEVAR(T, P, S)	((T *) xrealloc ((P), (S)))
+
+/* Type-safe obstack allocator.  */
+
+#define XOBNEW(O, T)		((T *) obstack_alloc ((O), sizeof (T)))
+#define XOBNEWVEC(O, T, N)	((T *) obstack_alloc ((O), sizeof (T) * (N)))
+#define XOBNEWVAR(O, T, S)	((T *) obstack_alloc ((O), (S)))
+#define XOBFINISH(O, T)         ((T) obstack_finish ((O)))
 
 /* hex character manipulation routines */
 

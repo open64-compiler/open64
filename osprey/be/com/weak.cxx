@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -139,6 +143,17 @@ WN* (*Perform_Global_Optimization_p) (WN *, WN *, struct ALIAS_MANAGER *);
 // from be/opt/optimizer.h
 WN* (*Pre_Optimizer_p) (INT32, WN*, DU_MANAGER*, ALIAS_MANAGER*);
 void (*choose_from_complete_struct_for_relayout_candidates_p)();
+void (*Init_ipsa_context_p) (void);
+void (*IPSA_analyze_p) (void);
+void (*IPSA_emit_p) (char *);
+BOOL (*IPSA_insession_p) (void);
+class DNA_NODE;
+DNA_NODE* (*Get_cur_dna_p) (void);
+void (*IPSA_verify_p) (void);
+void (*IPSA_build_cha_begin_p) (void);
+void (*IPSA_build_cha_end_p) (void);
+void (*IPSA_build_cha_p) (void);
+void (*Terminate_ipsa_context_p) (void);
 DU_MANAGER* (*Create_Du_Manager_p) (MEM_POOL *);
 void (*Delete_Du_Manager_p) (DU_MANAGER *, MEM_POOL *);
 
@@ -181,7 +196,7 @@ void (*EH_Generate_Range_List_p) (WN *);
 #if defined(TARG_IA64) || defined(TARG_X8664) 
 void (*EH_Dump_INITOs_p) (WN *, FILE *);
 #endif
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 void (*CG_Set_Is_Stack_Used_p) ();
 INT (*Push_Pop_Int_Saved_Regs_p) (void);
 #endif

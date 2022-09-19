@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 
 /*
@@ -1513,6 +1517,7 @@ void Fix_do_loop(BB_LOOP *loop, CODEMAP *htable)
 				       MTYPE_To_TY(dtype),
 				       init_value->Field_id(), TRUE);
     STMTREP *init_stmt = init_value->Create_cpstmt(init_cr, htable->Mem_pool());
+    init_stmt->Set_stmtrep_id(htable->Next_stmtrep_id());
     loop->Preheader()->Append_stmtrep(init_stmt);
     init_stmt->Set_bb(loop->Preheader());
     phi->Set_opnd(loop->Preheader_pred_num(), init_cr);

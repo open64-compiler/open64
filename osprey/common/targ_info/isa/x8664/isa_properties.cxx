@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -735,6 +739,7 @@ int main()
                      TOP_vtestxps,
                      TOP_vtestxxps,
                      TOP_vtestxxxps,
+                     TOP_checkptr,
                      TOP_UNDEFINED);
 
   /* ===== Move operator ====== */
@@ -3281,6 +3286,8 @@ int main()
                      TOP_fandx128v32,
                      TOP_fandxx128v32,
                      TOP_fandxxx128v32,
+                     TOP_bswap32,
+                     TOP_bswap64,
                      TOP_cmovb,
                      TOP_cmovae,
                      TOP_cmovp,
@@ -13999,6 +14006,8 @@ int main()
 		     TOP_addi32,
 		     TOP_adci32,
 		     TOP_addi64,
+		     TOP_bswap32,
+		     TOP_bswap64,
 		     TOP_inc8,
 		     TOP_inc16,
 		     TOP_inc32,
@@ -14182,14 +14191,6 @@ int main()
 		     TOP_subxxss,
 		     TOP_subxxxsd,
 		     TOP_subxxxss,
-                     TOP_ucomisd,
-                     TOP_ucomixsd,
-                     TOP_ucomixxsd,
-                     TOP_ucomixxxsd,
-                     TOP_ucomiss,
-                     TOP_ucomixss,
-                     TOP_ucomixxss,
-                     TOP_ucomixxxss,
 		     TOP_not32,
 		     TOP_not64,
 		     TOP_andnps,
@@ -14813,6 +14814,7 @@ int main()
                      TOP_xfnmsub231xss,
                      TOP_xfnmsub231xxss,
                      TOP_xfnmsub231xxxss,
+                     TOP_checkptr,
                      TOP_UNDEFINED );
 
   /* ===== Predicated instructions ====== */

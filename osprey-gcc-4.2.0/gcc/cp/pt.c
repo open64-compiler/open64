@@ -5161,7 +5161,7 @@ for_each_template_parm (tree t, tree_fn_t fn, void* data,
 
 #ifdef KEY
 /* For gs_x (). */
-int (*p_uses_template_parms) (tree) = uses_template_parms;
+extern int (*p_uses_template_parms) (tree) = uses_template_parms;
 #endif
 
 /* Returns true if T depends on any template parameter.  */

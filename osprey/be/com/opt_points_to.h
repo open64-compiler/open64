@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -823,7 +827,7 @@ private:
 
 public:
   PT_MEMOP_ANNOT_STIKER (POINTS_TO* pt) { 
-    if (_has_annot = pt->Has_annotation()) {
+    if ((_has_annot = pt->Has_annotation())) {
       _mem_annot = pt->Mem_annot () ;
       _pt = pt;
     }

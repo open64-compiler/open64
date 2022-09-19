@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -391,7 +395,7 @@ typedef struct lno_flags {
 /* One bit per saved field, indicating whether the field's orginal value is 
  * saved in the next element on the LNO configuration stack.
  */
-typedef enum LNO_FLAGS_MASK {
+enum LNO_FLAGS_MASK {
     LNO_FLAGS_UNDEF = 0,
     OLF_UPPER_BOUND = 1,
     LNO_FLAGS_BM_NEXT = 2 /* next unused bit mask */

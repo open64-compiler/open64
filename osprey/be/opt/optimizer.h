@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -80,6 +84,7 @@ typedef enum {
 } PREOPT_PHASES;
 
 typedef PREOPT_PHASES OPT_PHASE;
+class IPSA;
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,13 +94,25 @@ extern "C" {
 /* Clients of the optimizer pass a WHIRL tree for the function, and
  * receive back a possibly optimized version of the tree.
  */
-struct DU_MANAGER;
+extern WN *Pre_Optimizer( OPT_PHASE, WN *, struct DU_MANAGER *, struct ALIAS_MANAGER *);
 
-extern WN *Pre_Optimizer( INT32 /* PREOPT_PHASES */,  WN *, struct DU_MANAGER * , struct ALIAS_MANAGER *);
-
-extern WN *Proactive_Optimizer( INT32 /* PREOPT_PHASES */,  WN *, struct DU_MANAGER * , struct ALIAS_MANAGER *);
+extern WN *Proactive_Optimizer( OPT_PHASE, WN *, struct DU_MANAGER *, struct ALIAS_MANAGER *);
 
 extern void choose_from_complete_struct_for_relayout_candidates();
+
+extern void Init_ipsa_context(void);
+extern void IPSA_analyze(void);
+extern void IPSA_emit(char *);
+extern BOOL IPSA_insession(void);
+extern void IPSA_verify(void);
+extern void IPSA_build_cha_begin(void);
+extern void IPSA_build_cha(void);
+extern void IPSA_build_cha_end(void);
+extern void Terminate_ipsa_context(void);
+class DNA_NODE;
+extern DNA_NODE* Get_cur_dna(void);
+
+struct DU_MANAGER;
 
 struct DU_MANAGER* Create_Du_Manager(MEM_POOL *);
 void               Delete_Du_Manager(struct DU_MANAGER *, MEM_POOL *);

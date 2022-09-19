@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -200,6 +204,8 @@ extern char *Sharps;	/* Sharps w/NL, full page width */
 #define TP_WOPT2	26	/* More global optimization */
 #define TP_WOPT3	27	/* Even more global optimization */
 #define TP_GLOBOPT	TP_WOPT1
+#define TP_VSA          28      /* VSA tracing */
+#define TP_RBC          29      /* RBC tracing */
 
 /* Loop nest optimizer phases: */
 #define TP_VECDD	30	/* Vector data dependency analysis */
@@ -258,12 +264,16 @@ extern char *Sharps;	/* Sharps w/NL, full page width */
 #define TP_CMOVE        77
 
 #define TP_DSCHED       78      /* "DSP", "Dispatch Scheduling" */
+#define TP_PRO          79      /* "PRO", "Authentication Related" */
+#define TP_AOT          80      /* "AOT", "Ahead of time compilation" */
+
+#define TP_CHECKER      100     /* "VSA checker tracing" */
 
 /* WARNING: TP_LAST must be at least as large as the largest phase
  * number above, and TP_COUNT must be at least one larger.
  */
-#define TP_LAST		78	/* Largest valid phase number */
-#define TP_COUNT	79	/* Number of valid phase numbers */
+#define TP_LAST         100     /* Largest valid phase number */
+#define TP_COUNT        101     /* Number of valid phase numbers */
 
 /* Retrieve 3-character phase id, given a phase number */
 extern char *Get_Trace_Phase_Id(INT32 number);

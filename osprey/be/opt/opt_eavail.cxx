@@ -643,7 +643,8 @@ BOOL   PARTIAL_AVAIL_SEARCH::_tracing = FALSE;
 EXP_WORKLST *PARTIAL_AVAIL_SEARCH::_worklst = NULL;
 
 void
-EXP_WORKLST::Compute_du_info(MEM_POOL *const def_use_pool)
+EXP_WORKLST::Compute_du_info(ETABLE *etable
+                             /* etable contains def_use_pool*/)
 {
   EXP_OCCURS_ITER  phi_occ_iter;
   EXP_OCCURS      *phi_occ;
@@ -660,7 +661,7 @@ EXP_WORKLST::Compute_du_info(MEM_POOL *const def_use_pool)
       if (def != NULL) {
 	// Record the def-use arc if the def is by phi
 	if (def->Occ_kind() == EXP_OCCURS::OCC_PHI_OCCUR) {
-	  def->Exp_phi()->Add_use(phi, i, def_use_pool);
+	  def->Exp_phi()->Add_use(phi, i, etable->Etable_local_pool());
 	}
 	else {
 	  Is_True(def->Occ_kind() == EXP_OCCURS::OCC_REAL_OCCUR,
@@ -779,7 +780,7 @@ EXP_WORKLST::Compute_forward_attributes(// etable carries
   Is_Trace_cmd(etable->Tracing(), Print(TFile));
 
   // Compute the local def-use information
-  Compute_du_info(etable->Etable_local_pool());
+  Compute_du_info(etable);
 
   Compute_avail(etable->Tracing());
  
@@ -811,7 +812,7 @@ EXP_WORKLST::Compute_fully_avail(ETABLE *etable)
 
   // Compute the local def-use information and calculate availability.
   //
-  Compute_du_info(etable->Etable_local_pool()); // Allocates du-info
+  Compute_du_info(etable); // Allocates du-info
   Compute_user_avail(etable->Tracing());
 
   Is_Trace(etable->Tracing(),

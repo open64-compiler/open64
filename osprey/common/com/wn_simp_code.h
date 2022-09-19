@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1031,6 +1035,14 @@ INT32 SIMPNODE_Simp_Compare_Trees(simpnode t1, simpnode t2)
       if (SIMPNODE_lda_offset(t1) > SIMPNODE_lda_offset(t2)) return(1);
       return SIMPNODE_Compare_Symbols(t1,t2);
 
+    case OPR_ILDA:
+      if (SIMPNODE_lda_offset(t1) < SIMPNODE_lda_offset(t2)) return(-1);
+      if (SIMPNODE_lda_offset(t1) > SIMPNODE_lda_offset(t2)) return(1);
+      if (SIMPNODE_field_id(t1) < SIMPNODE_field_id(t2)) return(-1);
+      if (SIMPNODE_field_id(t1) > SIMPNODE_field_id(t2)) return(1);
+      return (SIMPNODE_Simp_Compare_Trees(SIMPNODE_kid0(t1),
+                                          SIMPNODE_kid0(t2)));
+
     case OPR_LDA_LABEL:
       if (SIMPNODE_label_number(t1) < SIMPNODE_label_number(t2)) return(-1);
       if (SIMPNODE_label_number(t1) > SIMPNODE_label_number(t2)) return(1);
@@ -1074,7 +1086,16 @@ INT32 SIMPNODE_Simp_Compare_Trees(simpnode t1, simpnode t2)
     case OPR_COMMA:
     case OPR_RCOMMA:
     case OPR_CSELECT:
-
+#ifdef BACK_END
+      if (Run_vsaopt) {
+        for (i=0; i<SIMPNODE_kid_count(t1); i++) {
+          rv = SIMPNODE_Simp_Compare_Trees(SIMPNODE_kid(t1,i),
+                                           SIMPNODE_kid(t2,i));
+          if (rv != 0) return (rv);
+        }
+        return (0);
+      }
+#endif
       return ((INTPS)t1 - (INTPS)t2);
 
 #ifdef KEY
@@ -1093,6 +1114,57 @@ INT32 SIMPNODE_Simp_Compare_Trees(simpnode t1, simpnode t2)
 #endif
 
     default:
+
+#ifdef BACK_END
+       if (Run_vsaopt) {
+         // handle commutative_op for VSA
+         if (OPCODE_commutative_op(SIMPNODE_opcode(t1)) &&
+             SIMPNODE_Simp_Compare_Trees(SIMPNODE_kid(t1, 0),
+                                         SIMPNODE_kid(t2, 1)) == 0 &&
+             SIMPNODE_Simp_Compare_Trees(SIMPNODE_kid(t1, 1),
+                                         SIMPNODE_kid(t2, 0)) == 0)
+           return (0);
+
+         // handle OPC_BLOCK
+         if (SIMPNODE_opcode(t1) == OPC_BLOCK) {
+           simpnode n1 = SIMPNODE_first(t1);
+           simpnode n2 = SIMPNODE_first(t2);
+           while (n1 != NULL && n2 != NULL) {
+             rv = SIMPNODE_Simp_Compare_Trees(n1, n2);
+             if (rv != 0)
+               return rv;
+             n1 = SIMPNODE_next(n1);
+             n2 = SIMPNODE_next(n2);
+           }
+           return n1 != NULL ? (-1) : (n2 != NULL ? 1 : 0);
+         }
+
+         // handle OPC_CALL
+         if (SIMPNODE_operator(t1) == OPR_CALL ||
+             SIMPNODE_operator(t1) == OPR_ICALL ||
+             SIMPNODE_operator(t1) == OPR_INTRINSIC_CALL) {
+           // compare kid count
+           if ((rv = SIMPNODE_kid_count(t1) - SIMPNODE_kid_count(t2)) != 0)
+             return (rv);
+           // for call, compare call_st
+           if (SIMPNODE_operator(t1) == OPR_CALL &&
+               (rv = SIMPNODE_Compare_Symbols(t1, t2)) != 0)
+             return rv;
+           // for intrinsic call, compare intrinsic id
+           if (SIMPNODE_operator(t1) == OPR_INTRINSIC_CALL &&
+               (rv = SIMPNODE_intrinsic(t1) - SIMPNODE_intrinsic(t2)) != 0)
+             return rv;
+           // compare kids
+           for (i=0; i<SIMPNODE_kid_count(t1); i++) {
+             rv = SIMPNODE_Simp_Compare_Trees(SIMPNODE_kid(t1,i),
+                                              SIMPNODE_kid(t2,i));
+             if (rv != 0) return (rv);
+           }
+           return (0);
+         }
+       }
+#endif
+
        if (OPCODE_is_expression(SIMPNODE_opcode(t1))) {
 	  for (i=0; i<SIMPNODE_kid_count(t1); i++) {
 	     rv = SIMPNODE_Simp_Compare_Trees(SIMPNODE_kid(t1,i),
@@ -2150,6 +2222,8 @@ static simpnode  simp_add_sub(OPCODE opc,
    BOOL s[4], bt, constant_moved;
    INT32 num_const,num_ops,i,j,k,ic1,ic2,d1,d2;
    
+   Is_True (k0, ("k0 should not be NULL"));
+   Is_True (k1, ("k1 should not be NULL"));
    ty = OPCODE_rtype(opc);
 #if defined(TARG_MIPS) || defined(TARG_LOONGSON) // bug 13069
    if (ty == MTYPE_FQ)
@@ -4690,6 +4764,15 @@ static simpnode cancel_in_relop(OPCODE opc, TYPE_ID ty, simpnode k0, simpnode k1
       return (r);
    }
 
+   if (op0 == OPR_NEG && SIMP_Is_Constant(k1)) {
+      SHOW_RULE("-x relop constant");
+      r = SIMPNODE_SimpCreateExp2(OPCODE_commutative_op(opc),
+                                  SIMPNODE_kid0(k0),
+                                  SIMPNODE_ConstantFold1(SIMPNODE_opcode(k0), k1));
+      SIMPNODE_DELETE(k0);
+      return r;
+   }
+
    /* Special for a pair of LDA's */
    if (op0 == OPR_LDA && op1 == OPR_LDA &&
        SIMPNODE_Compare_Symbols(k0,k1) == 0) {
@@ -5005,6 +5088,15 @@ simp_eq_neq (OPCODE opc, simpnode k0, simpnode k1, BOOL k0const, BOOL k1const)
    inv_op = get_inverse_relop(firstop);
    ty = OPCODE_rtype(firstop);
 
+   if (OPCODE_operator(firstop) == OPR_NEG && SIMP_Is_Constant(k1)) {
+      SHOW_RULE("-x ==/!= constant");
+      r = SIMPNODE_SimpCreateExp2(opc,
+                                  SIMPNODE_kid0(k0),
+                                  SIMPNODE_ConstantFold1(SIMPNODE_opcode(k0), k1));
+      SIMPNODE_DELETE(k0);
+      return r;
+   }
+
    if (k1const && SIMP_IS_TYPE_INTEGRAL(ty)) {
 #ifdef KEY // bug 5208
       if (SIMP_Is_Str_Constant (k1))
@@ -5222,7 +5314,7 @@ simp_eq_neq (OPCODE opc, simpnode k0, simpnode k1, BOOL k0const, BOOL k1const)
 	  *  (j * c2) op c1    j op (c1 / c2), if c2 divides c1
 	  */
 	 c2 = SIMP_Int_ConstVal(SIMPNODE_kid1(k0));
-	 if (c2 != 0) {
+	 if (c2 != 0 && c1 != 0) {
 	    if ((c1/c2)*c2 == c1) { 
 	       SHOW_RULE("(j * c2) == c1 divides");
            /* c2*exp == c1   does NOT always equal to:  exp == c1/c2, 

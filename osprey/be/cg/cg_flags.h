@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -544,6 +548,9 @@ extern BOOL CG_merge_counters_x86_set;
 extern BOOL CG_interior_ptrs_x86;  // enable,disable interior pointer trans
 extern BOOL CG_NoClear_Avx_Simd;
 #endif
+#ifdef TARG_UWASM
+extern BOOL CG_branch_fuse;
+#endif
 extern INT CG_opt_level;
 extern BOOL CG_localize_tns;
 extern BOOL CG_localize_tns_Set;
@@ -924,6 +931,10 @@ extern BOOL CG_skip_local_16bit;  // to skip individual 16bit optimizations
 
 #endif
 
+#ifdef TARG_UWASM
+extern BOOL CG_Gen_Direct_Acc_Mem;
+#endif
+
 #ifdef TARG_LOONGSON
 extern BOOL CGEXP_float_use_madd;
 /* Use Loongson 2e's special mult/div/mod without hi/lo registers 
@@ -931,5 +942,18 @@ extern BOOL CGEXP_float_use_madd;
  ddivu.g mod.g modu.g dmod.g dmodu.g */
 extern BOOL CGEXP_use_Loongson2e_MultDivMod;
 #endif
+
+// =======================================================================
+//
+//  Tracing flags:  -xtPHASE_NUMBER:FLAG
+//
+// =======================================================================
+
+// TP_ALLOC
+#define LRA_GENERAL_TRACE_FLAG               0x0001
+#define LRA_DETAIL_TRACE_FLAG                0x0002
+#define LRA_SPILL_TRACE_FLAG                 0x0004
+#define LRA_ENTRY_EXIT_TRACE_FLAG            0x0008
+#define LRA_COPY_REM_TRACE_FLAG              0x0010
 
 #endif /* cg_flags_INCLUDED */

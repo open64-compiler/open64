@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -57,6 +61,7 @@
 #include <vector>
 #include "gen_util.h"
 #include "isa_enums_gen.h"
+#include "isa_gen_def.h"
 
 typedef struct {
 	const char *ecv_ecname;
@@ -249,9 +254,9 @@ void ISA_Enums_End(void)
 		"  ISA_ENUM_CLASS_VALUE first;\n"
 		"  ISA_ENUM_CLASS_VALUE last;\n"
 		"} ISA_ENUM_CLASS_INFO;\n");
-  fprintf(hfile, "extern const ISA_ENUM_CLASS_INFO ISA_ENUM_CLASS_info[];\n");
-  fprintf(efile, "ISA_ENUM_CLASS_info\n");
-  fprintf(cfile, "const ISA_ENUM_CLASS_INFO ISA_ENUM_CLASS_info[] = {\n");
+  fprintf(hfile, "extern const ISA_ENUM_CLASS_INFO ISA_ENUM_CLASS_info" TI_SUFFIX "[];\n");
+  fprintf(efile, "ISA_ENUM_CLASS_info" TI_SUFFIX "\n");
+  fprintf(cfile, "const ISA_ENUM_CLASS_INFO ISA_ENUM_CLASS_info" TI_SUFFIX "[] = {\n");
   for ( iec = all_ec.begin(); iec != all_ec.end(); ++iec) {
   	fprintf(cfile, "\t{ \"EC%s\",", Print_ECV_EName(iec->ec_name));
 	tecv = all_ecv[iec->first_ecv];
@@ -265,9 +270,9 @@ void ISA_Enums_End(void)
 		"  char *name;\n"
 		"  INT intval;\n"
 		"} ISA_ENUM_CLASS_VALUE_INFO;\n");
-  fprintf(hfile, "extern const ISA_ENUM_CLASS_VALUE_INFO ISA_ENUM_CLASS_VALUE_info[];\n\n");
-  fprintf(efile, "ISA_ENUM_CLASS_VALUE_info\n");
-  fprintf(cfile, "const ISA_ENUM_CLASS_VALUE_INFO ISA_ENUM_CLASS_VALUE_info[] = {\n");
+  fprintf(hfile, "extern const ISA_ENUM_CLASS_VALUE_INFO ISA_ENUM_CLASS_VALUE_info" TI_SUFFIX "[];\n\n");
+  fprintf(efile, "ISA_ENUM_CLASS_VALUE_info" TI_SUFFIX "\n");
+  fprintf(cfile, "const ISA_ENUM_CLASS_VALUE_INFO ISA_ENUM_CLASS_VALUE_info" TI_SUFFIX "[] = {\n");
   for ( iecv = all_ecv.begin(); iecv != all_ecv.end(); ++iecv) {
   	fprintf(cfile, "\t{ \"%s\",\t%d },\n", iecv->ecv_name, iecv->ecv_int);
   }
@@ -275,27 +280,27 @@ void ISA_Enums_End(void)
 
   fprintf(hfile, "inline const char * ISA_EC_Name (ISA_ENUM_CLASS ec)\n"
 		 "{\n"
-		 "  return ISA_ENUM_CLASS_info[ec].name;\n"
+		 "  return ISA_ENUM_CLASS_info" TI_SUFFIX "[ec].name;\n"
 		 "}\n\n");
 
   fprintf(hfile, "inline ISA_ENUM_CLASS_VALUE ISA_EC_First_Value (ISA_ENUM_CLASS ec)\n"
 		 "{\n"
-		 "  return ISA_ENUM_CLASS_info[ec].first;\n"
+		 "  return ISA_ENUM_CLASS_info" TI_SUFFIX "[ec].first;\n"
 		 "}\n\n");
 
   fprintf(hfile, "inline ISA_ENUM_CLASS_VALUE ISA_EC_Last_Value (ISA_ENUM_CLASS ec)\n"
 		 "{\n"
-		 "  return ISA_ENUM_CLASS_info[ec].last;\n"
+		 "  return ISA_ENUM_CLASS_info" TI_SUFFIX "[ec].last;\n"
 		 "}\n\n");
 
   fprintf(hfile, "inline const char * ISA_ECV_Name (ISA_ENUM_CLASS_VALUE ecv)\n"
 		 "{\n"
-		 "  return ISA_ENUM_CLASS_VALUE_info[ecv].name;\n"
+		 "  return ISA_ENUM_CLASS_VALUE_info" TI_SUFFIX "[ecv].name;\n"
 		 "}\n\n");
 
   fprintf(hfile, "inline INT ISA_ECV_Intval (ISA_ENUM_CLASS_VALUE ecv)\n"
 		 "{\n"
-		 "  return ISA_ENUM_CLASS_VALUE_info[ecv].intval;\n"
+		 "  return ISA_ENUM_CLASS_VALUE_info" TI_SUFFIX "[ecv].intval;\n"
 		 "}\n\n");
 
   Emit_Footer (hfile);

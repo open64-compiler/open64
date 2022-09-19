@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -94,11 +98,19 @@
 #include "sections.h"
 #include "targ_isa_print.h"
 #include "config_debug.h"
+#include "uwasm_nat_util.h"
 
 // Holds name of function used to retrieve the Instruction Pointer.
 extern const char * ip_calc_funcname;
 
 static ST *current_pu = NULL;
+
+ /*
+ * Uwasm icall/ijmp guard count
+ */
+static INT uwasm_ijmp_guard;
+static INT uwasm_ldst_wrap;
+static INT uwasm_ldst_guard;
 
 static BOOL
 Non_Default_Text_Section (ST *pu)
@@ -165,16 +177,16 @@ CGEMIT_Prn_Line_Dir_In_Asm (USRCPOS usrcpos)
   }
 #if defined(BUILD_OS_DARWIN)
   /* Darwin as provides .line, not .loc */
-  fprintf (Asm_File, "\t.line\t%d\n", 
+  fprintf (Asm_File, "\t.line\t%u\n",
 	   USRCPOS_linenum(usrcpos));
 #else /* defined(BUILD_OS_DARWIN) */
   if (CG_emit_non_gas_syntax)
-    fprintf (Asm_File, "\t.loc\t%d\t%d\t%d\n", 
+    fprintf (Asm_File, "\t.loc\t%u\t%u\t%u\n",
 	     USRCPOS_filenum(usrcpos)-1,
 	     USRCPOS_linenum(usrcpos),
 	     USRCPOS_column(usrcpos));
   else
-    fprintf (Asm_File, "\t.loc\t%d\t%d\t%d\n", 
+    fprintf (Asm_File, "\t.loc\t%u\t%u\t%u\n",
 	     USRCPOS_filenum(usrcpos),
 	     USRCPOS_linenum(usrcpos),
 	     USRCPOS_column(usrcpos));    
@@ -264,7 +276,7 @@ CGEMIT_Prn_Scn_In_Asm (FILE       *asm_file,
     if (CG_emit_non_gas_syntax && strcmp(scn_name, ".srdata") == 0) {
       static BOOL printed = FALSE;
       if (!printed) {
-	fprintf(asm_file, ", %d, %#x, %lld, ", 
+	fprintf(asm_file, ", %d, %#x, %ld, ",
 		scn_type, scn_flags, scn_entsize);
 	int tmp1 = 1, tmp2 = scn_align;
 	for (; tmp2 >= 1; tmp1 *= 2, tmp2 --);
@@ -619,7 +631,7 @@ void CGEMIT_Write_Literal_Symbol (ST *lit_st, ST *sym,
     if (sym_ofst == 0)
       fprintf (Asm_File, "\n");
     else
-      fprintf (Asm_File, " %+lld\n", sym_ofst);
+      fprintf (Asm_File, " %+ld\n", sym_ofst);
   }
 }
 
@@ -785,6 +797,8 @@ static void Init_OP_Name()
   OP_Name[TOP_fandx128v64] = "andpd";
   OP_Name[TOP_fandxx128v64] = "andpd";
   OP_Name[TOP_fandxxx128v64] = "andpd";
+  OP_Name[TOP_bswap32] = "bswap";
+  OP_Name[TOP_bswap64] = "bswap";
   OP_Name[TOP_or128v8] = "por";
   OP_Name[TOP_orx128v8] = "por";
   OP_Name[TOP_orxx128v8] = "por";
@@ -4306,6 +4320,53 @@ INT CGEMIT_Print_Inst( OP* op, const char* result[], const char* opnd[], FILE* f
     opnd_i++;
   }
 
+  if (Uwasm_Isolation != UWASM_ISO_NONE &&
+      (OP_code(op) == TOP_icall || OP_code(op) == TOP_ijmp)) {
+    // TODO: icallx, icallxx, icallxxx, ijmpx, ijmpxx, ijmpxxx
+    fprintf(f, "# guard for indirect branch\n");
+    fprintf(f, "\tcmpl $0xbeefdead, %s\n", opnd_name[0]+1); // skip first '*'
+    fprintf(f, ".L_ijmp_gurd_%d:\n", uwasm_ijmp_guard);
+    fprintf(f, "\tjbe .L_ijmp_fail_%d\n", uwasm_ijmp_guard);
+    fprintf(f, "\tcmpl $0xdeadbeef, %s\n", opnd_name[0]+1); // skip first '*'
+    fprintf(f, "\tjbe .L_ijmp_succ_%d\n", uwasm_ijmp_guard);
+    fprintf(f, ".L_ijmp_fail_%d:\n", uwasm_ijmp_guard);
+    fprintf(f, "\tcall __uwasm_natcall_invalid@PLT\n");
+    fprintf(f, ".L_ijmp_succ_%d:\n\t", uwasm_ijmp_guard);
+    ++ uwasm_ijmp_guard;
+  }
+  else if (OP_code(op) == TOP_checkptr) {
+    // load:  segment, offset, base, value
+    // store: value, segment, offset, base
+    const char* reg_name = opnd_name[0];
+    if (Uwasm_Isolation == UWASN_ISO_WRAP) {
+      // wrap around
+      fprintf(f, "# wrap-around for load/store base\n");
+      //fprintf(f, "\tpushf\n");
+      fprintf(f, "\tandl $0xbeefdead, %s\n", reg_name);
+      fprintf(f, ".L_ldst_wrap_%d:\n", uwasm_ldst_wrap);
+      fprintf(f, "\taddl $0xdeadbeef, %s\n\t", reg_name);
+      //fprintf(f, "\tpopf\n");
+      ++ uwasm_ldst_wrap;
+    }
+    else if (Uwasm_Isolation == UWASM_ISO_ASSERT) {
+      // range check
+      fprintf(f, "# guard for load/store base\n");
+      //fprintf(f, "\tpushf\n");
+      fprintf(f, "\tcmpl $0xbeefdead, %s\n", reg_name);
+      fprintf(f, ".L_ldst_gurd_%d:\n", uwasm_ldst_guard);
+      fprintf(f, "\tjbe .L_ldst_fail_%d\n", uwasm_ldst_guard);
+      fprintf(f, "\tcmpl $0xdeadbeef, %s\n", reg_name);
+      fprintf(f, "\tjbe .L_ldst_succ_%d\n", uwasm_ldst_guard);
+      fprintf(f, ".L_ldst_fail_%d:\n", uwasm_ldst_guard);
+      fprintf(f, "\tcall __uwasm_nat%s_invalid@PLT\n",
+                   OP_load(op) ? "load" : "store");
+      fprintf(f, ".L_ldst_succ_%d:\n\t", uwasm_ldst_guard);
+      //fprintf(f, "\tpopf\n");
+      ++ uwasm_ldst_guard;
+    }
+    return 0;
+  }
+
   INT st = fprintf( f, ISA_PRINT_INFO_Format(pinfo),
 		    op_name,
 		    opnd_name[0], opnd_name[1], opnd_name[2], opnd_name[3], 
@@ -4444,3 +4505,31 @@ void CGEMIT_Setup_IP_Calc (void)
   fprintf (Asm_File, "\tmovl (%%esp),%%ebx\n");
   fprintf (Asm_File, "\tret\n");
 }
+
+static void Print_Uwasm_Nat_Data(FILE *f, INT cnt, const char *var, const char *label)
+{
+  if (cnt > 0) {
+    fprintf(Asm_File, "\t# symbol for __uwasm_%s\n", var);
+    fprintf(Asm_File, "\t.globl __uwasm_%s\n", var);
+    fprintf(Asm_File, "\t.type __uwasm_%s, @object\n", var);
+    fprintf(Asm_File, "\t.size __uwasm_%s, %d\n", var, 4 * cnt + 4);  // for last 0
+    fprintf(Asm_File, "__uwasm_%s:\n", var);
+    for (INT i = 0; i < cnt; ++i) {
+      fprintf(Asm_File, "\t.long .L_%s_%d\n", label, i);
+    }
+    // add NULL at end of the table
+    fprintf(Asm_File, "\t.long 0\n\n");
+  }
+}
+
+// Emits uwasm native data
+void CGEMIT_Uwasm_Nat_Data(FILE *f)
+{
+  fprintf(Asm_File, "\t.section .rodata\n");
+  fprintf(Asm_File, "\t.align 4\n");
+  // uwasm_ijmp_guard
+  Print_Uwasm_Nat_Data(f, uwasm_ijmp_guard, "ijmp_guard", "ijmp_gurd");
+  Print_Uwasm_Nat_Data(f, uwasm_ldst_guard, "ldst_guard", "ldst_gurd");
+  Print_Uwasm_Nat_Data(f, uwasm_ldst_wrap,  "ldst_wrap",  "ldst_wrap");
+}
+

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2002, 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -94,6 +98,7 @@ typedef enum {
   ISA_COMPUTE_13 = 17,
   ISA_SL         = 18,
   ISA_PPC32	= 19,
+  ISA_UWASM      = 20,
 #ifdef TARG_LOONGSON /* add support for 2e,2f and 3 decoding*/
   ISA_LOONGSON2e =14,
   ISA_LOONGSON2f =15,

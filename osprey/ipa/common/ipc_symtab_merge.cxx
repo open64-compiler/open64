@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1377,7 +1381,7 @@ Enter_Original_St(const IPC_GLOBAL_TABS& original_tabs,
 			 original_tabs);
     Set_ST_raw_base_idx(new_st, base_idx);
 
-#if defined(TARG_X8664) || defined(TARG_SL)
+#if defined(TARG_X8664) || defined(TARG_SL) || defined(TARG_UWASM)
     if ( ST_sclass(new_st) != SCLASS_COMMON &&
 	 // Avoid Fortran Equivalenced arrays (to complete fix for bug 1988)
 	 !ST_is_equivalenced(new_st) &&
@@ -1567,7 +1571,7 @@ Merge_St_With_St(const IPC_GLOBAL_TABS &original_tabs,
     Synch_St_With_St (original_tabs, merged_st, original_st);
 
     (*New_St_Idx).set_map (ST_st_idx(original_st), ST_st_idx(merged_st));
-#if defined(TARG_X8664) || defined(TARG_SL)
+#if defined(TARG_X8664) || defined(TARG_SL) || defined(TARG_UWASM)
     if ( ST_sclass(merged_st) != SCLASS_COMMON &&
 	 // Avoid Fortran Equivalenced arrays (to complete fix for bug 1988)
 	 !ST_is_equivalenced(merged_st) &&
@@ -1592,8 +1596,17 @@ Verify_Predefined_Symbols (const ST& st)
 {
     ST mapped_st = st;
     Set_ST_name_idx (mapped_st, (*New_Symstr_Idx)[ST_name_idx (st)]);
-    
-    FmtAssert (bcmp (&mapped_st, &St_Table[ST_st_idx (st)], sizeof(ST)) == 0,
+
+    // merge predefined st flags
+    ST *merge_st = &St_Table[ST_st_idx (st)];
+    mUINT32 flags = merge_st->flags | mapped_st.flags;
+    mUINT32 flags_ext = mapped_st.flags_ext | merge_st->flags_ext;
+    merge_st->flags = flags;
+    mapped_st.flags = flags;
+    merge_st->flags_ext = flags_ext;
+    mapped_st.flags_ext = flags_ext;
+
+    FmtAssert (bcmp (&mapped_st, merge_st, sizeof(ST)) == 0,
 	       ("Incompatible predefined pregs in global symbol table"));
     (*New_St_Idx).set_map (ST_st_idx (st), ST_st_idx (st));
 }
@@ -1762,7 +1775,7 @@ Merge_Global_St(UINT                   idx,
     //
     char *st_name = &original_tabs.symstr_tab[ST_name_idx (original_st)];
 
-#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON)
+#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
     void *pext = ld_slookup_mext(st_name,
     	    	    	    	(ST_storage_class (original_st) == SCLASS_EXTERN));
 #else
@@ -1988,6 +2001,11 @@ Merge_Global_St_Attr(const ST_ATTR* st_attr_tab, UINT32 size)
 	    case ST_ATTR_SECTION_NAME:
 		ST_ATTR_Init (new_st_attr, st_idx, ST_ATTR_SECTION_NAME,
 			      (*New_Symstr_Idx) [ST_ATTR_section_name (old_st_attr)]);
+		break;
+
+	    case ST_ATTR_ABSOLUTE_LOCATION:
+		ST_ATTR_Init (new_st_attr, st_idx, ST_ATTR_ABSOLUTE_LOCATION,
+			      (*New_Symstr_Idx) [ST_ATTR_value (old_st_attr)]);
 		break;
 
 	    default:

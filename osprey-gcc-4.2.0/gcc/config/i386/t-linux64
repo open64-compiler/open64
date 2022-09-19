@@ -6,7 +6,7 @@ SHLIB_MAPFILES = $(srcdir)/libgcc-std.ver \
 
 MULTILIB_OPTIONS = m64/m32
 MULTILIB_DIRNAMES = 64 32 
-MULTILIB_OSDIRNAMES = $(shell if file /usr/lib/crti.o  -Lb |fgrep "ELF 32-bit" >/dev/null ; then  echo  "../lib64 ../lib"; elif [ -d /usr/lib64 ] ; then echo  "../lib64 ../lib32" ; else echo "../lib/x86_64-linux-gnu ../lib32" ; fi)
+MULTILIB_OSDIRNAMES = $(shell if file /usr/lib/crti.o  -Lb |fgrep "ELF 32-bit" >/dev/null ; then  echo  "../lib64 ../lib"; elif [ -d /usr/lib/x86_64-linux-gnu ] ; then echo "../lib/x86_64-linux-gnu ../lib32"; else echo "../lib64 ../lib32" ; fi)
 
 LIBGCC = stmp-multilib
 INSTALL_LIBGCC = install-multilib

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -134,6 +138,12 @@ IP_set_target(void)
     Use_32_Bit_Pointers = IPA_Target_Type == IP_32_bit_ABI;
 #endif
 
+#ifdef TARG_UWASM
+    Target_ABI = IPA_Target_Type == IP_64_bit_ABI ? ABI_n64 : ABI_n32;
+    Target_ISA = TARGET_ISA_UWASM;
+    Use_32_Bit_Pointers = IPA_Target_Type == IP_32_bit_ABI;
+#endif
+
     IPA_Configure_Target ();
 }
 
@@ -194,7 +204,7 @@ extern ARGV *ld_flags_part2;
 
 // list of known system libraries, this list is not complete
 
-static char * known_library[] = {
+static const char * known_library[] = {
     "-lgcc", "-lc", "-lopenmp", "-lopen64rt", "-lm", "-lmv",
     "-lacml_mv", "-lffio","-lfortran", "-lhugetlbfs_open64", "-linstr",
     "-lopen64rt_shared","-lrt","-lrpcsvc","-lpthread",

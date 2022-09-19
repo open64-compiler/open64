@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  *  Copyright (C) 2007. QLogic Corporation. All Rights Reserved.
  */
 
@@ -194,6 +198,7 @@ private:
   void Create_Truebr(GDESCRIPTOR *gd);
   void Promote_Do_While(WN *wn);
   void Patch_Do_While(WN *while_wn, WN *parent);
+  void Convert_To_While_Do(WN *while_wn, WN *parent);
   WN *Func_Nd() { return _func_nd;};
   BOOL Is_Truebr(const GDESCRIPTOR *gd) const;
   BOOL Goto_Is_Noop(const GDESCRIPTOR *gd) const;

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -54,7 +58,7 @@
 #pragma hdrstop
 
 #define snl_utils_CXX      "snl_utils.cxx"
-static char *rcs_id =   snl_utils_CXX "$Revision: 1.6 $";
+static const char *rcs_id =   snl_utils_CXX "$Revision: 1.6 $";
 
 #include <sys/types.h>
 #include "snl.h"

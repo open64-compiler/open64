@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -95,6 +99,7 @@ INT32   VHO_Switch_Opt_Threshold        = 25;
 #ifdef KEY
 BOOL    VHO_Switch_Reduce_Branch        = FALSE;
 #endif
+BOOL    VHO_Agoto_Reduce_Edge           = TRUE;
 BOOL    VHO_Cselect_Opt                 = FALSE;
 #ifdef KEY
 BOOL    VHO_Cselect_Opt_Set             = FALSE;
@@ -183,6 +188,8 @@ static OPTION_DESC Options_VHO[] = {
   { OVK_BOOL,	OV_INTERNAL,	FALSE, "switch_reduce_branch", "switch_reduce_branch",
     TRUE, 0, 0,  &VHO_Switch_Reduce_Branch,      NULL },
 #endif
+  { OVK_BOOL,	OV_INTERNAL,	FALSE, "agoto",              "",
+    TRUE, 0, 0,  &VHO_Agoto_Reduce_Edge, NULL },
   { OVK_BOOL,	OV_INTERNAL,	FALSE, "cselect_opt",        "cselect",
     TRUE, 0, 0,  &VHO_Cselect_Opt,      &VHO_Cselect_Opt_Set },
   { OVK_BOOL,	OV_INTERNAL,	FALSE, "iload_opt",          "iload",

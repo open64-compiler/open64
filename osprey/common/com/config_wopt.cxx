@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -169,10 +173,13 @@ BOOL  WOPT_Enable_Ivar_Hoisting = TRUE;
 BOOL  WOPT_Enable_I8_Primary_IV = FALSE;
 BOOL  WOPT_Enable_Improved_Addr_Taken = TRUE;
 BOOL  WOPT_Enable_Input_Prop = TRUE;
+BOOL  WOPT_Enable_Innerloop_Unroll = FALSE;
 BOOL  WOPT_Enable_Itself_Prop = TRUE;
 BOOL  WOPT_Enable_IPAA = FALSE;
 BOOL  WOPT_Enable_Ivar_Common = TRUE;
 BOOL  WOPT_Enable_Ivar_PRE = TRUE;
+BOOL  WOPT_Enable_Ivar_SPRE = FALSE;
+BOOL  WOPT_Enable_Ivar_SPRE_Agg = TRUE;
 BOOL  WOPT_Enable_Ivincr_Cand = FALSE;
 BOOL  WOPT_Enable_IVE = TRUE;
 BOOL  WOPT_Enable_IVE_Old = FALSE;
@@ -222,7 +229,11 @@ INT32 WOPT_Enable_Doend_Prop_Limit = 26; /* based on bug 13003 */
 #else
 INT32 WOPT_Enable_Prop_Limit = 14;	/* this is a guess, PV 468862 */
 #endif
+#if defined(BUILD_MASTIFF)
+INT32 WOPT_Enable_Prop_Weight_Limit = 50; // reduced from 50000 from VSA
+#else
 INT32 WOPT_Enable_Prop_Weight_Limit = 50000;
+#endif
 #ifdef KEY
 BOOL  WOPT_Enable_Prop_Dope = FALSE;	/* propagate dope vector fields? */
 #endif
@@ -252,7 +263,7 @@ SKIPLIST *WOPT_Unroll_Skip_List = NULL;	/* Processed unroll skiplist */
 BOOL  WOPT_Enable_SLT = TRUE;
 BOOL  WOPT_Enable_Small_Br_Target = FALSE; /* propagation into branch BBs */
 INT32  WOPT_Enable_Simple_If_Conv = 1;   /* simple if-conversion at CFG build time: 0 - off, 1 - conservative, 2 - aggressive */
-INT32 WOPT_Enable_If_Conv_Limit = 6;    /* max number of leaf nodes allowed in a
+INT32 WOPT_Enable_If_Conv_Limit = 6;     /* max number of leaf nodes allowed in a
 					   simple expr in simple if conv */
 BOOL  WOPT_Enable_If_Conv_For_Istore = TRUE;   /* if-conversion is applied if lhs is istore */
 #if defined(TARG_SL)
@@ -267,16 +278,29 @@ INT32 WOPT_Enable_Store_PRE_Limit = -1;
 INT32 WOPT_Enable_Local_Rvi_Limit = -1;
 BOOL  WOPT_Enable_Update_Vsym = TRUE;
 BOOL  WOPT_Enable_Unique_Pt_Vsym = TRUE;
-INT32 WOPT_Enable_Value_Numbering = 1; /* 0=OFF, 1=after_pre, 2=befr_n_aftr */
-INT32 WOPT_Enable_Vn_Ivc = 1;    /* 0=OFF, see be/opt/opt_vn_ivc.h */
-UINT32 WOPT_Enable_Vnfre_After = 0;    /* Disable vnfre after given valnum */
+INT32 WOPT_Enable_Value_Numbering = 1;   /* 0=OFF, 1=after_pre, 2=befr_n_aftr */
+INT32 WOPT_Enable_Vn_Ivc = 1;            /* 0=OFF, see be/opt/opt_vn_ivc.h */
+UINT32 WOPT_Enable_Vnfre_After = 0;      /* Disable vnfre after given valnum */
 UINT32 WOPT_Enable_Vnfre_Before = UINT32_MAX; /* Disable before given valnum */
 BOOL  WOPT_Enable_Verbose = FALSE;
 INT32 WOPT_Enable_Verify = 1;
+BOOL  WOPT_Enable_VSA_AOB = FALSE;       /* VSA Array Out of Bound */
+BOOL  WOPT_Enable_VSA_NPD = TRUE;       /* VSA Null Pointer Deeference */
+BOOL  WOPT_Enable_VSA_UAF = FALSE;       /* VSA Use After Free */
+BOOL  WOPT_Enable_VSA_UIV = TRUE;       /* VSA Uninitialized Variable Reference */
+BOOL  WOPT_Enable_VSA_MUCHI = FALSE;     /* Turn on errors that are off by default */
+BOOL  WOPT_Enable_NOT_VSA_MUCHI = FALSE; /* Turn off errors that are on by default */
+BOOL  WOPT_Enable_VSA_DSE = TRUE;
+BOOL  WOPT_Enable_VSA_RAL = TRUE;
+INT32 WOPT_Enable_VSA_Limit = -1;
 BOOL  WOPT_Enable_Vsym_Unique = FALSE;
 BOOL  WOPT_Enable_While_Loop = TRUE;
 BOOL  WOPT_Enable_Worklist_Pruning = TRUE;
+#if defined(BUILD_MASTIFF)
+BOOL  WOPT_Enable_Zero_Version = FALSE;
+#else
 BOOL  WOPT_Enable_Zero_Version = TRUE;
+#endif
 BOOL  WOPT_Enable_Call_Zero_Version = TRUE;
 BOOL  WOPT_Enable_Dse_Aggressive = TRUE;
 BOOL  WOPT_Enable_Prop_Aggressive = TRUE;
@@ -338,9 +362,9 @@ INT32 WOPT_Enable_Pro_Loop_Interchange_Func_Limit = -1; // Enable proactive loop
                                                         // functions within the limit.
 INT32 WOPT_Enable_Pro_Loop_Ext_Func_Limit = -1; // Enable proactive loop extended transformation for
                                                 // functions within the limit.
-BOOL  WOPT_Enable_Pro_Loop_Fusion_Trans = TRUE;  // Enables proactive loop fusion transformation
-BOOL  WOPT_Enable_Pro_Loop_Interchange_Trans = TRUE; // Enables proactive loop interchange transformation
-BOOL WOPT_Enable_Pro_Loop_Ext_Trans = TRUE; // Enables proactive loop extended transformation.
+BOOL  WOPT_Enable_Pro_Loop_Fusion_Trans = FALSE;  // Enables proactive loop fusion transformation
+BOOL  WOPT_Enable_Pro_Loop_Interchange_Trans = FALSE; // Enables proactive loop interchange transformation
+BOOL WOPT_Enable_Pro_Loop_Ext_Trans = FALSE; // Enables proactive loop extended transformation.
 BOOL  WOPT_Simplify_Bit_Op = TRUE; // Enable specialized bit operation optimizations.
 BOOL  WOPT_Enable_Reassociation_CSE = TRUE;  // Enables Reassociation based CSE
 
@@ -538,7 +562,9 @@ static OPTION_DESC Options_WOPT[] = {
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "addr",			"addr",
     0, 0, 0,	&WOPT_Enable_Improved_Addr_Taken, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "icopy_propagate",	"icopy",
-    0, 0, 0,	&WOPT_Enable_Input_Prop, NULL },
+    0, 0, 0,	&WOPT_Enable_Input_Prop, NULL }, 
+  { OVK_BOOL,	OV_VISIBLE,	TRUE, "inner_loop_unroll",	"inner",
+    0, 0, 0,	&WOPT_Enable_Innerloop_Unroll, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "itself_prop",		"itself",
     0, 0, 0,	&WOPT_Enable_Itself_Prop, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "ipaa",			"ipaa",
@@ -549,6 +575,10 @@ static OPTION_DESC Options_WOPT[] = {
     0, 0, 0,	&WOPT_Enable_Ivar_Common, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "ivar_pre",		"ivar_pre",
     0, 0, 0,	&WOPT_Enable_Ivar_PRE, NULL },
+  { OVK_BOOL,	OV_VISIBLE,	TRUE, "ivar_spre",		"ivar_spre",
+    0, 0, 0,	&WOPT_Enable_Ivar_SPRE, NULL },
+  { OVK_BOOL,	OV_VISIBLE,	TRUE, "agg_ivar_spre",		"agg_ivar_spre",
+    0, 0, 0,	&WOPT_Enable_Ivar_SPRE_Agg, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "ivincr_cand",		"ivincr",
     0, 0, 0,	&WOPT_Enable_Ivincr_Cand, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "iv_elimination",	"iv_elim",
@@ -711,6 +741,12 @@ static OPTION_DESC Options_WOPT[] = {
     0, 0, 0,	&WOPT_Enable_Zero_Version, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "call_zero_version",	"call_zero",
     0, 0, 0,	&WOPT_Enable_Call_Zero_Version, NULL },
+  { OVK_BOOL,	OV_VISIBLE,	TRUE, "vsa_muchi_on",		"",
+    0, 0, 0,	&WOPT_Enable_VSA_MUCHI, NULL },
+  { OVK_BOOL,	OV_VISIBLE,	TRUE, "vsa_muchi_off",		"",
+    0, 0, 0,	&WOPT_Enable_NOT_VSA_MUCHI, NULL },
+  { OVK_INT32,	OV_VISIBLE,	TRUE, "vsa_limit",		"",
+    INT32_MAX, 0, INT32_MAX,	&WOPT_Enable_VSA_Limit, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "vsym_unique",		"vsym",
     0, 0, 0,	&WOPT_Enable_Vsym_Unique, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "dse_aggressive",	"dse",

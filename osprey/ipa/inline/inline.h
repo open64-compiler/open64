@@ -40,10 +40,12 @@
 #ifndef ip_inline_INCLUDED
 #define ip_inline_INCLUDED
 
+class INL_SKIPLST;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-extern BOOL Inliner(char* input_name, char* output_name);
+extern BOOL Inliner(char* input_name, char* output_name, INL_SKIPLST& filter);
 
 extern SCOPE** Inliner_Aux_Pu_Table;
 

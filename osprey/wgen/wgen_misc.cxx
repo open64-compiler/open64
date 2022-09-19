@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -167,6 +171,7 @@ mUINT32 Cif_Level = 0;       	/* CIF level */
 #define	LST_FILE_EXTENSION ".l"	/* Listing file */
 #define	TRC_FILE_EXTENSION ".t"	/* Trace file */
 #define DSTDUMP_FILE_EXTENSION ".fe.dst" /* DST dump-file extension */
+#define INLSKIP_FILE_EXTENSION ".inlskip" /* inline skip file */
 
 int trace_verbose = FALSE;
 // an_error_severity error_threshold = es_warning;
@@ -336,6 +341,11 @@ Prepare_Source ( void )
   /* We're ready to pre-process: */
   IR_File_Name = Src_File_Name;
 
+  if (FILE_INFO_is_rbc(File_info)) {
+      Inlskip_File_Name = New_Extension(Irb_File_Name ? Irb_File_Name : fname,
+                                        INLSKIP_FILE_EXTENSION);
+  }
+
   /* Open the IR file for compilation: */
   if ( Irb_File_Name == NULL ) {
     /* Replace source file extension to get listing file: */
@@ -381,7 +391,7 @@ WGEN_Init (INT argc, char **argv, char **envp )
   ABI_Name = "i64";
 #endif
 
-#if defined(TARG_IA32) || defined(TARG_X8664)
+#if defined(TARG_IA32) || defined(TARG_X8664) || defined(TARG_UWASM)
   if (TARGET_64BIT)
     ABI_Name = "n64"; // TARGET_64BIT should be defined somewhere
   else ABI_Name = "n32";
@@ -443,6 +453,7 @@ WGEN_File_Finish (void)
 {
     Verify_SYMTAB (GLOBAL_SYMTAB);
     Write_Global_Info (PU_Tree_Root);
+    Write_Inlskip (Inlskip_File_Name);
     Close_Output_Info ();
     IR_reader_finish ();
     MEM_POOL_Pop (&MEM_src_pool);
@@ -463,6 +474,12 @@ WGEN_Check_Errors (int *error_count, int *warning_count, BOOL *need_inliner)
   *need_inliner = wgen_invoke_inliner;
 }
 
+void
+WGEN_Set_File_Rbc()
+{
+  Set_FILE_INFO_is_rbc(File_info);
+}
+
 #define ENLARGE(x) (x + (x >> 1))
 #define WN_STMT_STACK_SIZE 32
 
@@ -476,7 +493,7 @@ static WN_STMT *wn_stmt_sp;
 static WN_STMT *wn_stmt_stack_last;
 static INT      wn_stmt_stack_size;
 
-char * WGEN_Stmt_Kind_Name [wgen_stmk_last+1] = {
+const char * WGEN_Stmt_Kind_Name [wgen_stmk_last+1] = {
   "'unknown'",
   "'function entry'",
   "'function pragma'",

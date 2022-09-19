@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 // ====================================================================
 // ====================================================================
@@ -192,7 +196,7 @@ public:
 
   MEMOP_ANNOT* Alloc_annot (void);
   // virtual function provided for class PT_MEM_ANNOT 
-  virtual MEMOP_ANNOT* Alloc_annot_v (void) { Alloc_annot (); }
+  virtual MEMOP_ANNOT* Alloc_annot_v (void) { return Alloc_annot (); }
 
   BOOL Alloc_by_this_class (MEMOP_ANNOT* a) {
     return a->Id() > 0 && a->Id() <= _last_id && _all_annot[a->Id()] == a;

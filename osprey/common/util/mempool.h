@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -548,6 +552,7 @@ Trace_Memory_Allocation(
 );
 
 extern void MEM_Tracing_Enable(void);
+extern void Sub_Mem_Tracing_Enabled(BOOL);
 
 extern MEM_PTR
 MEM_POOL_Alloc_P

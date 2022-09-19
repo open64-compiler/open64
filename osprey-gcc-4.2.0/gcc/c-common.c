@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* Subroutines shared by all languages that are variants of C.
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
    2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
@@ -620,7 +624,7 @@ const struct attribute_spec c_common_attribute_table[] =
      to prevent its usage in source code.  */
   { "no vops",                0, 0, true,  false, false,
 			      handle_novops_attribute },
-  { "deprecated",             0, 0, false, false, false,
+  { "deprecated",             0, 1, false, false, false,
 			      handle_deprecated_attribute },
   { "vector_size",	      1, 1, false, true, false,
 			      handle_vector_size_attribute },
@@ -639,6 +643,15 @@ const struct attribute_spec c_common_attribute_table[] =
 			      handle_warn_unused_result_attribute },
   { "sentinel",               0, 1, false, true, true,
 			      handle_sentinel_attribute },
+  /* KEIL extension attribute */
+  { "at",                     1, 1, true, false, false, NULL },
+  { "bitband",                0, 0, false, true, false, NULL },
+  { "nomerge",                0, 0, true, false, false, NULL },
+  { "notailcall",             0, 0, true, false, false, NULL },
+  { "pcs",                    1, 1, true, false, false, NULL },
+  { "zero_init",              0, 0, true, false, false, NULL },
+  /* IAR extension attribute */
+  { "location",               1, 1, false, false, false, NULL },
   { NULL,                     0, 0, false, false, false, NULL }
 };
 
@@ -3292,6 +3305,7 @@ c_common_nodes_and_builtins (void)
 
   record_builtin_type (RID_FLOAT, NULL, float_type_node);
   record_builtin_type (RID_DOUBLE, NULL, double_type_node);
+  record_builtin_type (RID_FLOAT128, "long double", long_double_type_node);
   record_builtin_type (RID_MAX, "long double", long_double_type_node);
 
   /* Only supported decimal floating point extension if the target

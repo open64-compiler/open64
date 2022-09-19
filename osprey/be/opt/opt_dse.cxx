@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -87,17 +91,27 @@ static char *rcs_id = 	opt_dse_CXX"$Revision: 1.17 $";
 #include "opt_ssa.h"
 #include "opt_mu_chi.h"
 #include "opt_util.h"
+#include "opt_vsa_util.h"
 #include <vector> 
 using std::vector;
 #include "opt_alias_rule.h"
 #include "idx_32_set.h"
+#include "config_vsa.h"
+#include "glob.h"  // for Cur_PU_Name
+#include "erbe.h"
+#include "opt_dbg.h"  // for g_ipsa_manager
+#ifdef BUILD_MASTIFF
+#include "opt_vsa.h"
+#include "opt_vsa_report.h"
+#endif
 
 // ====================================================================
 // ====================================================================
 
 class DSE {
   private:
-    
+   
+    COMP_UNIT *_comp_unit;      // handle on compile unit
     CFG *_cfg;			// handle on control-flow graph
     OPT_STAB *_opt_stab;	// handle on symbol table
     EXC      *_exc;
@@ -173,12 +187,15 @@ class DSE {
     VER_ID Prop_vsym_new_result( VER_ID vid ) const;
     void Propagate_vsym_wn( WN *wn ) const;
     void Propagate_vsym_bb( BB_NODE *bb ) const;
+#ifdef BUILD_MASTIFF
+    void Check_aob(WN *wn, BB_NODE *bb, SRCPOS spos) const;
+#endif
 
   public:
 
-    DSE( CFG *cfg, OPT_STAB *opt_stab, MEM_POOL *pool, EXC *exc, BOOL tracing )
-      : _cfg(cfg), _opt_stab(opt_stab), _loc_pool(pool), _exc(exc),
-	_tracing(tracing)
+    DSE( COMP_UNIT *cu, MEM_POOL *pool, BOOL tracing )
+      : _comp_unit(cu), _cfg(cu->Cfg()), _opt_stab(cu->Opt_stab()),
+        _loc_pool(pool), _exc(cu->Exc()), _tracing(tracing)
       {
 	// create a map to track live WNs
 	_live_wns = WN_MAP32_Create(Loc_pool());
@@ -313,6 +330,24 @@ DSE::Required_stid( const WN *wn ) const
     Append_Injured_AuxIntrnOp((WN *)wn);
   }
 #endif
+
+  // do not delete store of exec obj so that the exception object symbol can be reported.
+  WN *rhs = WN_kid0(wn);
+  if (Run_vsaopt && PU_java_lang(Get_Current_PU()) &&
+      WN_operator(wn) == OPR_STID &&
+      WN_desc(wn) == Pointer_Mtype &&
+      (!ST_is_temp_var(s) ||
+       !WN_next(wn) ||
+       WN_operator(WN_next(wn)) == OPR_RETURN ||
+       WN_operator(WN_next(wn)) == OPR_GOTO) &&
+      WN_operator(rhs) == OPR_ILOAD &&
+      WN_operator(WN_kid0(rhs)) == OPR_LDID) {
+    IDTYPE aux = WN_ver(WN_kid0(rhs));
+    ST *s = Opt_stab()->St(Opt_stab()->Du_aux_id(aux));
+    if (ST_one_per_pu(s) && strcmp(ST_name(s), "__Exc_Ptr__") == 0) {
+      return TRUE;
+    }
+  }
   
   return FALSE;
 }
@@ -1038,6 +1073,40 @@ DSE::Propagate_vsym_bb( BB_NODE *bb ) const
   }
 }
 
+#ifdef BUILD_MASTIFF
+// ====================================================================
+// DSE::Check_aob
+// check if there are AOB in deleted STID/LDID by compare the offset
+// with the st size
+// ====================================================================
+void
+DSE::Check_aob(WN *wn, BB_NODE *bb, SRCPOS spos) const
+{
+  if (WN_operator(wn) == OPR_STID || WN_operator(wn) == OPR_LDID) {
+    AUX_ID auxid = Opt_stab()->Du_aux_id(WN_ver(wn));
+    ST *st = Opt_stab()->St(auxid);
+    if (st && ST_class(st) != CLASS_PREG &&
+        WN_offset(wn) + MTYPE_byte_size(WN_desc(wn)) > ST_size(st)) {
+      INLCXT *cxt = bb->Inlinecxt();
+      const char *fname = cxt ? ST_name(cxt->Inlcxt_call_st())
+                              : ST_name(Get_Current_PU_ST());
+      SIMPLE_STACK<SRCPOS, 16> stk;
+      stk.Push(spos);
+      while (cxt != NULL) {
+        if (cxt->Inlcxt_line_num())
+          stk.Push(cxt->Inlcxt_line_num());
+        cxt = cxt->Parent();
+      }
+      Report_vsa_error(fname, ST_name(st), "AOB", FALSE, stk.Data(), stk.Size());
+    }
+  }
+  else if (WN_kid_count(wn)) {
+    for (INT i = 0; i < WN_kid_count(wn); ++i)
+      Check_aob(WN_kid(wn, i), bb, spos);
+  }
+}
+#endif
+
 
 #if defined(TARG_SL)
 /* result = intrnsic_slave_op( master, ar2,ar3...)
@@ -1232,49 +1301,106 @@ DSE::Dead_store_elim( void ) const
 
   Propagate_vsym_bb( Cfg()->Entry_bb() );
 
-  if ( Tracing() ) {
-    fprintf ( TFile, "SSA::Dead_store_elim (after dse)\n" );
-    FOR_ALL_NODE( ssa_id, ver_stab_iter, Init() ) {
-      VER_STAB_ENTRY *vse = Opt_stab()->Ver_stab_entry(ssa_id);
-      fprintf(TFile, " [%3d]", ssa_id);
-      vse->Print(TFile, ssa_id);
+  if ( Tracing() || Run_vsaopt ) {
+    if (Tracing()) {
+      fprintf ( TFile, "SSA::Dead_store_elim (after dse)\n" );
+      FOR_ALL_NODE( ssa_id, ver_stab_iter, Init() ) {
+	VER_STAB_ENTRY *vse = Opt_stab()->Ver_stab_entry(ssa_id);
+	fprintf(TFile, " [%3d]", ssa_id);
+	vse->Print(TFile, ssa_id);
+      }
     }
     FOR_ALL_NODE( bb, cfg_iter, Init() ) {
-      bb->Print_head(TFile);
+      if (Tracing()) bb->Print_head(TFile);
       STMT_ITER stmt_iter;
       WN *wn;
-      bb->Phi_list()->PRINT(TFile);
+      if (Tracing()) bb->Phi_list()->PRINT(TFile);
       FOR_ALL_ELEM(wn, stmt_iter, Init(bb->Firststmt(),bb->Laststmt())){
         if ( Is_deleted_statement( wn ) ) {
-	  fprintf(TFile, "*** the following stmt is deleted. ***\n");
-	}
-
-	if ( WN_has_mu(wn, Cfg()->Rgn_level()) ) {
-	  MU_LIST *mu_list = _opt_stab->Get_stmt_mu_list(wn);
-	  if (mu_list) {
-	    MU_LIST_ITER mu_iter;
-	    fprintf(TFile, " mu<");
-	    MU_NODE *mnode;
-	    FOR_ALL_NODE( mnode, mu_iter, Init(mu_list)) {
-	      fprintf(TFile, "%d/%d ", mnode->Aux_id(), mnode->Opnd());
+#ifdef BUILD_MASTIFF
+          // if the deleted statement is an assignment from dedicated return preg to
+          // common preg and the common preg has been annotated with a ST,
+          // annotate the call stmt with the same ST
+          if (IPSA_insession && IPSA_insession() &&
+              WN_operator(wn) == OPR_STID &&
+              WN_operator(WN_kid0(wn)) == OPR_LDID) {
+            VER_STAB_ENTRY *stid_vse = Opt_stab()->Ver_stab_entry(WN_ver(wn));
+            AUX_STAB_ENTRY *stid_aux = Opt_stab()->Aux_stab_entry(stid_vse->Aux_id());
+            VER_STAB_ENTRY *ldid_vse = Opt_stab()->Ver_stab_entry(WN_ver(WN_kid0(wn)));
+            AUX_STAB_ENTRY *ldid_aux = Opt_stab()->Aux_stab_entry(ldid_vse->Aux_id());
+            if (stid_aux->Is_preg() &&
+                ! Preg_Is_Dedicated(WN_offset(wn)) &&
+                Preg_Assign_To(WN_offset(wn)) != ST_IDX_ZERO &&
+                ldid_aux->Is_preg() &&
+                Is_Return_Preg(WN_offset(WN_kid0(wn)))) {
+              WN* prev = WN_prev(wn);
+              if (prev != NULL && WN_operator(prev) == OPR_CALL) {
+                if (Get_Trace(TP_WOPT2, VSA_DUMP_FLAG))
+                  fprintf(TFile, "[STPATH Trace] Map_st_node: MAP CALL WN %p with ST %s\n", prev,
+                          ST_name(Preg_Assign_To(WN_offset(wn))));
+                // annotate the call stmt with the ST
+                Get_cur_dna()->Map_st_node(prev, Preg_Assign_To(WN_offset(wn)));
+              }
+            }
+          }
+#if 0
+          // DDV in DSE doesn't make sense.
+	  if (VSA_Ddv && WN_has_ver(wn)) {  // TODO: warnings on WN without ver?
+	    AUX_ID auxid = Opt_stab()->Du_aux_id(WN_ver(wn));
+	    AUX_STAB_ENTRY *sym = Opt_stab()->Aux_stab_entry(auxid);
+	    char *symname = Vsa_sym_name(sym);
+	    if (!Vsa_check_sym_ignore(symname) && !Is_ident_asgn(wn)) {
+                SRCPOS spos = WN_Get_Linenum(wn);
+                SRCPOS entry_spos = WN_Get_Linenum(_comp_unit->Input_tree());
+                char path_buf[ISKEY_MAX_PATH_LEN];
+                const char *path = Vsa_spos_key(path_buf, sizeof(path_buf), spos, entry_spos, bb->Inlinecxt());
+                char key_buf[ISKEY_MAX_KEY_LEN];
+                const char *key = Vsa_issue_key(key_buf, sizeof(key_buf), SRCPOS_filenum(spos),
+                                                Cur_PU_Name, symname, "DDV", path);
+                VSA_ISSUE issue("BUILTIN", "DDV", key, 0,
+                                symname, Cur_PU_Name,
+                                spos, IC_DEFINITELY, NULL);
+                Vsa_error_print(&issue);
 	    }
-	    fprintf(TFile, ">\n");
 	  }
+#endif
+          if (VSA_Aob && WN_Get_Linenum(wn)) {   // check STID/LDID AOB in deleted wn
+            Check_aob(wn, bb, WN_Get_Linenum(wn));
+          }
+#endif
+	  if (Tracing())
+	    fprintf(TFile, "*** the following stmt is deleted. ***\n");
 	}
-	
-	fdump_tree_no_st(TFile, wn);
 
-	if ( WN_has_chi(wn, Cfg()->Rgn_level()) ) {
-	  CHI_LIST *chi_list = _opt_stab->Get_generic_chi_list(wn);
-	  if (chi_list) {
-	    CHI_LIST_ITER chi_iter;
-	    fprintf(TFile, " chi<");
-	    CHI_NODE *cnode;
-	    FOR_ALL_NODE( cnode, chi_iter, Init(chi_list)) {
-	      fprintf(TFile, "%d/%d/%d ",
-		      cnode->Aux_id(), cnode->Result(), cnode->Opnd());
+	if (Tracing()) {
+	  if ( WN_has_mu(wn, Cfg()->Rgn_level()) ) {
+	    MU_LIST *mu_list = _opt_stab->Get_stmt_mu_list(wn);
+	    if (mu_list) {
+	      MU_LIST_ITER mu_iter;
+	      
+	      fprintf(TFile, " mu<");
+	      MU_NODE *mnode;
+	      FOR_ALL_NODE( mnode, mu_iter, Init(mu_list)) {
+		fprintf(TFile, "%d/%d ", mnode->Aux_id(), mnode->Opnd());
+	      }
+	      fprintf(TFile, ">\n");
 	    }
-	    fprintf(TFile, ">\n");
+	  }
+	
+	  fdump_tree_no_st(TFile, wn);
+	  
+	  if ( WN_has_chi(wn, Cfg()->Rgn_level()) ) {
+	    CHI_LIST *chi_list = _opt_stab->Get_generic_chi_list(wn);
+	    if (chi_list) {
+	      CHI_LIST_ITER chi_iter;
+	      fprintf(TFile, " chi<");
+	      CHI_NODE *cnode;
+	      FOR_ALL_NODE( cnode, chi_iter, Init(chi_list)) {
+		fprintf(TFile, "%d/%d/%d ",
+			cnode->Aux_id(), cnode->Result(), cnode->Opnd());
+	      }
+	      fprintf(TFile, ">\n");
+	    }
 	  }
 	}
       }
@@ -1511,13 +1637,14 @@ DSE::Add_MU_list_for_calls( void ) const
 // ====================================================================
 
 void
-SSA::Dead_store_elim( CFG *cfg, OPT_STAB *opt_stab, EXC *exc )
+SSA::Dead_store_elim( COMP_UNIT *cu )
 {
+  MEM_POOL *loc_pool = cu->Cfg()->Loc_pool();
   // get a local memory area
-  OPT_POOL_Push( cfg->Loc_pool(), DSE_DUMP_FLAG );
+  OPT_POOL_Push( loc_pool, DSE_DUMP_FLAG );
 
   { // scope so we destruct this item before popping the mem pool
-    DSE dse( cfg, opt_stab, cfg->Loc_pool(), exc,
+    DSE dse( cu, loc_pool,
 	     Get_Trace( TP_GLOBOPT, DSE_DUMP_FLAG ) );
 
     // do it
@@ -1526,5 +1653,5 @@ SSA::Dead_store_elim( CFG *cfg, OPT_STAB *opt_stab, EXC *exc )
   }
 
   // free up the our local memory area
-  OPT_POOL_Pop( cfg->Loc_pool(), DSE_DUMP_FLAG );
+  OPT_POOL_Pop( loc_pool, DSE_DUMP_FLAG );
 }

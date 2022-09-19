@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -223,7 +227,7 @@ turn_down_opt_level (int new_olevel, char *msg)
 {
 	int flag;
 	int new_flag;
-	if (fullwarn) warning(msg);
+	if (fullwarn) warning("%s", msg);
 	flag = get_olevel_flag(olevel);
 	new_flag = get_olevel_flag(new_olevel);
 	if (option_was_seen(O_O))
@@ -239,7 +243,7 @@ static void
 turn_off_ipa (char *msg)
 {
 	int flag;
-	warning (msg);
+	warning ("%s", msg);
 	ipa = FALSE;
 	/* remove all ipa flags from option_seen list */
 	FOREACH_OPTION_SEEN(flag) {
@@ -286,7 +290,7 @@ add_special_options (void)
 		prepend_option_seen (flag);
 		prepend_option_seen (O_cpp_nonansi);
 		if (keep_flag) {
-			add_phase_for_option (O_keep, P_cppf90_fe);
+			add_phase_for_option (O_kp, P_cppf90_fe); // MASTIFF-OPT: "-keep" --> "-kp"
 		}
 	}
 
@@ -406,10 +410,17 @@ add_special_options (void)
 	      error ("IPA not supported with -fprofile-arcs");
 	    if (option_was_seen (O_ftest_coverage))
 	      error ("IPA not supported with -ftest-coverage");
+
 	    if (olevel <= 1)
 		flag = add_string_option (O_PHASE_, "i");
 	    else
 		flag = add_string_option (O_PHASE_, "p:i");
+#ifdef BUILD_MASTIFF
+	    if (noxa == TRUE) {
+	      prepend_option_seen (flag);
+	      flag = add_string_option(O_PHASE_, "v=off:x=off");
+	    }
+#endif
 	} else {
 	    /*
 	     * Determine which back end phase(s) need to be run.
@@ -423,15 +434,27 @@ add_special_options (void)
 	    if (source_kind == S_O)
 		warning("compiles of WOPT-generated .O files will usually fail due to missing state information");
 	    if (olevel <= 1 || source_kind == S_O)
-		flag = add_string_option(O_PHASE_, "c");
+		flag = add_string_option(O_PHASE_, "l=off:w=off:c"); // turn off lno and wopt, mastiff default is on
 	    else if (olevel == 2 || source_kind == S_N)
-		flag = add_string_option(O_PHASE_, "w:c");
+		flag = add_string_option(O_PHASE_, "l=off:w:c");
 	    else 
 #ifdef TARG_NVISA
 		/* only add preopt for now */
 		flag = add_string_option(O_PHASE_, "p:w:c");
 #else
 		flag = add_string_option(O_PHASE_, "l:w:c");
+#ifdef BUILD_MASTIFF
+                if (noxa == TRUE) {
+                    prepend_option_seen (flag);
+                    flag = add_string_option(O_PHASE_, "v=off:x=off");
+                } else {
+                  if (option_was_seen(O_sa))
+                      flag = add_string_option(O_PHASE_, "p:v:l=off:c=off");
+
+                  if (option_was_seen(O_xa))
+                      flag = add_string_option(O_PHASE_, "p:x:v:l=off:c=off");
+                }
+#endif
 #endif
 	}
 	prepend_option_seen (flag);

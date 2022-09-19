@@ -498,6 +498,9 @@ extern BOOL REGION_scan_exits(WN *, INT32);
    If wn is NULL, fill in reasonable default values. */
 extern RID *RID_Create(INT, INT, WN *);
 
+/* finds last kid */
+extern RID *RID_last_kid(RID *);
+
 /* Given two RIDs make the first the kid of the second */
 extern void RID_Add_kid(RID *, RID *);
 

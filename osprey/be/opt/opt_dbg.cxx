@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -84,8 +88,11 @@ static char *rcs_id = 	opt_dbg_CXX"$Revision: 1.4 $";
 #include "opt_cfg_trans.h"
 #include "opt_htable.h"
 
+class IPSA;
+
 COMP_UNIT *g_comp_unit;
-OPT_STAB *g_opt_stab;
+OPT_STAB  *g_opt_stab;
+IPSA      *g_ipsa_manager;
 
 extern "C" void Dump_cfg(void);
 extern FILE *Init_daVinci(void);
@@ -104,7 +111,7 @@ void Dump_bb(BB_NODE *bb)
 
 void Dump_cr(CODEREP *cr)
 {
-   cr->Print(2);
+  cr->Print(2, stdout);
 }
 
 void Dump_sr(STMTREP *sr)

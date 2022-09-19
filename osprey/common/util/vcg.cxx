@@ -111,7 +111,7 @@ const char *layoutMnemonic[VCGLayoutAlgorithmEnumCount] =
 const char * lineStyleMnemonic[VCGEdgeLineStyleCount] =
 {
    "",
-   "continuous",
+   "solid", // "continuous",
    "dashed",
    "dotted",
    "invisible"
@@ -177,9 +177,9 @@ VCGGraph::emit(FILE *out) const
       fprintf(out, "finetuning: %s \n", fineTuning() ? "yes" : "no"); 
       fprintf(out, "xspace: %d\n", xspace()); 
       fprintf(out, "yspace: %d\n", yspace()); 
-      fprintf(out, "nearedges: %s \n", allowNearEdges() ? "yes" : "no"); 
+      //fprintf(out, "nearedges: %s \n", allowNearEdges() ? "yes" : "no");
       fprintf(out, "splines: %s \n", splines() ? "yes" : "no");
-      fprintf(out, "port_sharing: %s \n", portSharing() ? "yes" : "no");
+      //fprintf(out, "port_sharing: %s \n", portSharing() ? "yes" : "no");
       fprintf(out, "priority_phase: %s \n", priorityPhase() ? "yes" : "no");
       if (displayEdgeLabels())
       {

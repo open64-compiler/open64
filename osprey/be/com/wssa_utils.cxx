@@ -68,7 +68,7 @@ Print_ver(FILE* fp, VER_IDX idx) {
   UINT32 ver_num = mgr->Get_ver_num(idx);
   const WST_Symbol_Entry& sym = mgr->Get_wst(wst_idx);
   if (sym.Sym_type() == WST_PREG)
-    fprintf(fp, "%s:%dv%d", 
+    fprintf(fp, "%s[%d]v%d", 
                 mgr->WST_name(wst_idx), sym.Preg_num(), ver_num);
   else
     fprintf(fp, "%sv%d", mgr->WST_name(wst_idx), ver_num);

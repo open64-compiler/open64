@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -34,7 +38,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 //
 // Further, this software is distributed without any warranty that it
-// is free of the rightful claim of any third person regarding
+// is free of the rigxfxfhtful claim of any third person regarding
 // infringement  or the like.  Any license provided herein, whether
 // implied or otherwise, applies only to this software file.  Patent
 // licenses, if any, provided herein do not apply to combinations of
@@ -98,6 +102,9 @@
 #include "opt_alias_mgr.h"	// for ALIAS_MANAGER
 #endif
 
+#ifdef BUILD_MASTIFF
+#include "opt_vsa.h"            // for VSA
+#endif
 
 const char *pre_kind_name(PRE_KIND kind)
 {
@@ -106,6 +113,7 @@ const char *pre_kind_name(PRE_KIND kind)
   case PK_LPRE:  return "lpre";
   case PK_SPRE:  return "spre";
   case PK_VNFRE: return "vnfre";
+  case PK_VSA: return "vsa";
   }
   return "unknown";
 }
@@ -1342,12 +1350,12 @@ EXP_WORKLST::Append_occurrence(EXP_OCCURS *occ)
     Real_occurs().Append(occ);
     break;
   case EXP_OCCURS::OCC_PHI_OCCUR:
-    Is_True(Verify_dpo_order(Phi_occurs(), occ),
+    Is_True(Run_vsaopt || Verify_dpo_order(Phi_occurs(), occ),
             ("EXP_WORKLST::Append_occurrence: failed dpo_order test"));
     Phi_occurs().Append(occ);
     break;
   case EXP_OCCURS::OCC_PHI_PRED_OCCUR:
-    Is_True(Verify_dpo_order(Phi_pred_occurs(), occ),
+    Is_True(Run_vsaopt || Verify_dpo_order(Phi_pred_occurs(), occ),
             ("EXP_WORKLST::Append_occurrence: failed dpo_order test"));
     Phi_pred_occurs().Append(occ);
     break;
@@ -1531,7 +1539,7 @@ EXP_WORKLST::Is_the_same_as(const CODEREP *cr)
 {
 
 #ifdef Is_True_On
-  if (Pre_kind() == PK_LPRE) {
+  if (Pre_kind() == PK_LPRE || Pre_kind() == PK_VSA) {
     Is_True(inCODEKIND(Exp()->Kind(), CK_CONST|CK_RCONST|CK_LDA|CK_VAR),
             ("EXP_WORKLST::Is_the_same_as(cr), not a leaf node, kind=0x%x",
              Exp()->Kind()));
@@ -1540,11 +1548,11 @@ EXP_WORKLST::Is_the_same_as(const CODEREP *cr)
              cr->Kind()));
   }
   else if (Pre_kind() == PK_SPRE) {
-    Is_True(Exp()->Kind() == CK_VAR,
-            ("EXP_WORKLST::Is_the_same_as(cr), not a VAR, kind=0x%x",
+    Is_True(inCODEKIND(Exp()->Kind(), CK_VAR|CK_IVAR),
+            ("EXP_WORKLST::Is_the_same_as(cr), neither a VAR nor IVAR, kind=0x%x",
              Exp()->Kind()));
-    Is_True(cr->Kind() == CK_VAR,
-            ("EXP_WORKLST::Is_the_same_as(cr), not a VAR, kind=0x%x",
+    Is_True(inCODEKIND(cr->Kind(), CK_VAR|CK_IVAR),
+            ("EXP_WORKLST::Is_the_same_as(cr), neither a VAR nor IVAR, kind=0x%x",
              cr->Kind()));
   }
   else {
@@ -1565,7 +1573,9 @@ EXP_WORKLST::Is_the_same_as(const CODEREP *cr)
   if (inCODEKIND(cr->Kind(), CK_CONST|CK_RCONST|CK_LDA) ||
       inCODEKIND(Exp()->Kind(), CK_CONST|CK_RCONST|CK_LDA)) return FALSE;
 
-  if (Pre_kind() == PK_LPRE || Pre_kind() == PK_SPRE)
+  if (Pre_kind() == PK_LPRE || 
+      (Pre_kind() == PK_SPRE && Exp()->Kind() == CK_VAR) ||
+      Pre_kind() == PK_VSA)
     return Exp()->Aux_id() == cr->Aux_id();
 
   if (Exp()->Kind() == CK_IVAR && cr->Kind() == CK_IVAR) {       // IVAR
@@ -1778,6 +1788,7 @@ EXP_WORKLST::Remove_occurs(ETABLE *etable)
     case PK_LPRE:
     case PK_SPRE:
     case PK_VNFRE:
+    case PK_VSA:
       ok_to_remove = TRUE; // since we do not do second order effect 
       break;
     case PK_EPRE:
@@ -2615,6 +2626,7 @@ ETABLE::ETABLE(CFG *cfg,
   _opt_stab = opt_stab;
   _htable = htable;
   _ssu = NULL;
+  _vsa = NULL;
   _arule = ar;
   _etable_pool = etable_pool;
   _per_expr_pool = per_expr_pool;
@@ -4261,6 +4273,8 @@ ETABLE::Find_new_1st_order_exprs(EXP_OCCURS *occur, CODEREP *tempcr)
 void
 EXP_WORKLST::Adjust_combined_types(CODEREP *cr)
 {
+  if (Pre_kind() == PK_VSA) return; //VSA does not transform the code, hence return
+
   Is_True(Exp()->Is_integral_load_store(), ("EXP_WORKLST::Adjust_combined_types: wrong cr"));
 #if defined(TARG_NVISA)
   if ( (cr->Kind() == CK_VAR) && 
@@ -4391,8 +4405,12 @@ ETABLE::Insert_real_occurrence(CODEREP *cr, STMTREP *stmt, INT stmt_kid_num,
 #endif 
 
   cr->Set_e_num(worklist->E_num());
-  if (is_istore)
+  if (is_istore) {
     occurs->Set_occurs_as_lvalue();
+#ifdef BUILD_MASTIFF
+    if (Vsa()) Vsa()->Enter_cr_occ_map(cr, occurs);
+#endif
+  }
 
   // call the WORKLST append or insert depends on whether it is already
   // in DPO order

@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -184,7 +188,7 @@ LIBELF_HFILES = \
 LIBELF_DIRS = libelf
 
 .PHONY: default
-default: pathscale_defs.h
+default: pathscale_defs.h rbc_base.h RBC_ENGINE.java
 	@: Make directories in case they do not exist.
 	@for d in sys cmplrs libelf; do \
 	    if [ ! -d $$d ]; then \
@@ -203,7 +207,7 @@ default: pathscale_defs.h
 	done
 	@for h in $(LINUX_SYS_HFILES); do \
 	    if ! test -e $$h; then \
-	      $(LN) -sf $(BUILD_TOT)/../linux/include/sys/$$h sys/$$h; \
+	      $(LN) -sf $(BUILD_TOT)/linux/include/sys/$$h sys/$$h; \
 	    fi; \
 	done
 	@for h in $(INCLUDE_HFILES); do \
@@ -259,5 +263,12 @@ pathscale_defs.h: $(BUILD_TOT)/../defs.mk
 	echo '#define OPEN64_PATCH_LEVEL "${OPEN64_PATCH_LEVEL}"' >> $@ 
 	echo "#endif" >> $@
 
+# for RBC only
+rbc_base.h: $(BUILD_TOT)/be/rbc/rbc_base.h
+	$(CPP) -P $(BUILD_TOT)/be/rbc/$@ > $@
+
+RBC_ENGINE.java: $(BUILD_TOT)/be/rbc/rbc_base.h
+	$(CPP) -DLANG_JAVA -P $(BUILD_TOT)/be/rbc/rbc_base.h > $@
+
 clean clobber:
-	@rm -rf *.h *.sg $(CMPLR_DIRS) $(LIBELF_DIRS) ia64 stl sys
+	@rm -rf *.h *.sg *.java $(CMPLR_DIRS) $(LIBELF_DIRS) ia64 stl sys

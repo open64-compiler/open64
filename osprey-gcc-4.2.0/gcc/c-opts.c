@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* C/ObjC/C++ command line option handling.
    Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007
    Free Software Foundation, Inc.
@@ -294,6 +298,10 @@ c_common_handle_option (size_t scode, const char *arg, int value)
       Long_Long_Support = true;
       break;
 #endif
+
+    case OPT_fmastiff:
+      for_mastiff = true;
+      break;
 
     case OPT__output_pch_:
       pch_file = arg;
@@ -940,12 +948,15 @@ c_common_handle_option (size_t scode, const char *arg, int value)
     case OPT_std_c9x:
     case OPT_std_iso9899_1999:
     case OPT_std_iso9899_199x:
+    case OPT_std_c11:   /* MASTIFF, treat c11 as c99 */
+    case OPT_std_iso9899_2011:
       if (!preprocessing_asm_p)
 	set_std_c99 (true /* ISO */);
       break;
 
     case OPT_std_gnu99:
     case OPT_std_gnu9x:
+    case OPT_std_gnu11:  /* MASTIFF, treat c11 as c99 */
       if (!preprocessing_asm_p)
 	set_std_c99 (false /* ISO */);
       break;
@@ -1435,6 +1446,11 @@ finish_options (void)
 	      cpp_scan_nooutput (parse_in);
 	    }
 	}
+    }
+  else if (flag_iar_compat)
+    {
+      /* handle IAR _Pragma("key = value") */
+      iar_init_builtins (parse_in);
     }
 
   include_cursor = 0;

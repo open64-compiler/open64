@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -74,6 +78,7 @@ typedef enum {
   LANG_KR_C,	/* Kernighan & Richie C */
   LANG_ANSI_C,	/* ANSI standard C */
   LANG_CPLUS,	/* simple C++ */
+  LANG_JAVA,	/* Java */
   LANG_DELTA,	/* Delta C++ */
   LANG_COUNT	/* Must be last */
 } LANGUAGE;

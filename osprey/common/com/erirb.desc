@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -56,7 +60,7 @@
 #ifndef erirb_desc_INCLUDED
 #define erirb_desc_INCLUDED
 
-static char *erirb_desc_rcs_id = "$Source: /u/cvs/Pathscale.MIPS/common/com/erirb.desc,v $ $Revision: 1.1.1.1 $";
+static const char *erirb_desc_rcs_id = "$Source: /u/cvs/Pathscale.MIPS/common/com/erirb.desc,v $ $Revision: 1.1.1.1 $";
 
 /* Include the error code definitions: */
 #include "erirb.h"

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -499,6 +503,7 @@ inline void
 IPO_SYMTAB::fix_table_entry<ST>::operator () (UINT idx, ST* st) const
 {
     Set_ST_st_idx(st, make_ST_IDX(idx, _sym->Get_cloned_level()));
+    Set_ST_is_inlined(st, ST_st_idx(_sym->Get_orig_st()));
     if (ST_IDX_level (ST_base_idx (st)) == _sym->Get_orig_level ())
 	Set_ST_base_idx(st, make_ST_IDX (ST_IDX_index (ST_base_idx (st)) +
 					 _sym->Get_cloned_st_last_idx (),
@@ -543,8 +548,9 @@ IPO_SYMTAB::fix_table_entry<ST_ATTR>::operator () (UINT idx, ST_ATTR* st_attr) c
 {
     // bug fix for OSP_125
     Is_True (ST_ATTR_kind (*st_attr) == ST_ATTR_DEDICATED_REGISTER || 
-             ST_ATTR_kind (*st_attr) == ST_ATTR_SECTION_NAME,
-	     ("expecting ST_ATTR_DEDICATED_REGISTER or ST_ATTR_SECTION_NAME"));
+             ST_ATTR_kind (*st_attr) == ST_ATTR_SECTION_NAME ||
+             ST_ATTR_kind (*st_attr) == ST_ATTR_ABSOLUTE_LOCATION,
+	     ("expecting DEDICATED_REGISTER or SECTION_NAME or ABSOLUTE_LOCATION"));
     ST_IDX st_idx = ST_ATTR_st_idx (*st_attr);
     Set_ST_ATTR_st_idx (*st_attr, make_ST_IDX (ST_IDX_index (st_idx) +
 					 _sym->Get_cloned_st_last_idx(),
@@ -597,7 +603,7 @@ IPO_SYMTAB::Copy_Local_Tables(BOOL label_only)
 	Set_cloned_label_last_idx((_cloned_scope_tab[_cloned_level].label_tab)->Size()-1);
 	Set_cloned_inito_last_idx((_cloned_scope_tab[_cloned_level].inito_tab)->Size()-1);
 #ifdef KEY
-	if (PU_src_lang (Get_Current_PU()) & PU_CXX_LANG)
+	if (PU_cxx_lang(Get_Current_PU()) || PU_java_lang (Get_Current_PU()))
 	{
 	    // bug 4091: for C++ copy all INITOs
 	    // We really need to clone only the EH initos here, but if
@@ -765,7 +771,7 @@ IPO_SYMTAB::promote_entry<ST>::operator () (UINT idx, ST* old_st) const
 	}
 #endif
         // Walk through the INITV entries that was pointed to by each INITO of current PU
-        // if the INITV¡¯s type is INITVKIND_SYMOFF and the symbol is being promoted
+        // if the INITV's type is INITVKIND_SYMOFF and the symbol is being promoted
         // to global symtab, update it with the new st in global symtab
 	for(INITO_IDX it_idx = 1; it_idx<(INITO_IDX)it_tab_size; it_idx++) {
 	  INITV_IDX iv_idx = (*it_tab)[it_idx].val;
@@ -809,7 +815,7 @@ IPO_SYMTAB::promote_entry<ST_ATTR>::operator () (UINT idx, ST_ATTR* old_attr) co
       ST_ATTR_IDX new_attr_idx;
       ST_ATTR& new_attr = New_ST_ATTR(GLOBAL_SYMTAB, new_attr_idx);
       ST_ATTR_Init(new_attr, ST_st_idx(cloned_ST),
-		   ST_ATTR_kind(*old_attr), ST_ATTR_section_name(*old_attr) );
+		   ST_ATTR_kind(*old_attr), ST_ATTR_value(*old_attr) );
     }
 }
 

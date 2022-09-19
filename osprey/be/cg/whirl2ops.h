@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -155,6 +159,33 @@ extern INT total_bb_insts;
 extern BB *Cur_BB;
 extern void Process_New_OPs(void);
 extern BB_MAP outer_label_map;
+extern BOOL Trace_WhirlToOp;
+extern BOOL In_Glue_Region;
+extern RID **region_stack_base;
+extern RID **region_stack_ptr;
+extern INT   region_stack_size;
+#define current_region (*(region_stack_ptr - 1))
+#define region_depth   (region_stack_ptr - region_stack_base)
+extern BB_NUM min_bb_id;
+extern WN *last_loop_pragma;
+extern BOOL WN_pragma_preamble_end_seen;
+extern OP *Last_Mem_OP;
+extern OP_MAP OP_to_WN_map;
+extern WN_MAP WN_to_OP_map;
+extern TN *Allocate_Result_TN(WN *wn, TN **opnd_tn);
+extern void initialize_region_stack(WN *);
+extern RID *region_stack_pop(void);
+extern void region_stack_push(RID *value);
+extern void region_stack_eh_set_has_call(void);
+extern LABEL_IDX Get_WN_Label(WN *wn, BOOL *is_non_local_label = NULL);
+extern BOOL Has_Immediate_Operand(WN *parent, WN *expr);
+extern void Set_OP_To_WN_Map(WN *wn);
+extern SRCPOS get_loop_srcpos(WN *body_label);
+extern BB *Add_Label_With_Forced_New_BB(LABEL_IDX label);
+extern WN *Handle_INTRINSIC_CALL(WN *intrncall);
+extern BOOL Only_Has_Exc_Label(BB *bb);
+extern void Add_PregTNs_To_BB(PREG_LIST *prl0, BB *bb, BOOL prepend);
+extern PREG_NUM Find_PREG_For_Symbol(const ST *st);
 #endif
 #if defined(TARG_X8664) || defined(TARG_SL)
 extern BOOL W2OPS_Pragma_Preamble_End_Seen (void);

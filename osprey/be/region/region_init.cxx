@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -231,6 +235,7 @@ private:
   BOOL _trace_flag;	// for tracing the recursion
   MEM_POOL *_mem_pool;	// local mem_pool
   RID *_rid;		// so we know which one we are processing
+  RID *_last_rid;       // last RID in _rid's children
   INT32 _nregions;	// number of non-MP regions processed
   INT32 _nexits;	// number of exits from the region
   RGN_LABEL *_head_list;// list of labels at very top of region (entry point)
@@ -256,6 +261,15 @@ public:
   void Set_label_list(RGN_LABEL *label) { _label_list = label; }
   void Set_goto_list(GOTO *goto_) { _goto_list = goto_; }
   void Set_label_alias(LABEL_ALIAS *la) { _label_alias = la; }
+  void Add_rid(RID *rid, RID *root) {
+    Is_True(root == _rid, ("root rid changed?"));
+    if (_last_rid)
+      RID_next(_last_rid) = rid;
+    else
+      RID_first_kid(root) = rid;
+    RID_parent(rid) = root;
+    _last_rid = rid;
+  }
   void Add_goto(WN *, WN *, BOOL, BOOL);//add a goto/region_exit/truebr/falsebr
   void Concat_goto(GOTO *);             // concatenate two goto lists
   RGN_LABEL *Add_label(WN *, WN *);	// labels mention in a region,
@@ -563,6 +577,7 @@ RINIT::RINIT(RID *rid, MEM_POOL *mem_pool) :
   _trace_flag = Get_Trace(TP_REGION, TT_REGION_RGN_INIT_DEBUG);
   _nregions = 0;
   _nexits = 0;
+  _last_rid = RID_first_kid(rid) ? RID_last_kid(rid) : NULL;
   _head_list = NULL;
   _label_list = NULL;
   _goto_list = NULL;
@@ -1134,7 +1149,7 @@ RINIT::Process_region(WN *wtmp, WN *block, INT32 level, RID *root,
   }
 
   WN_MAP_Set(RID_map, wtmp, (void *)rid);
-  RID_Add_kid(rid, root);
+  Add_rid(rid, root);
   // Insert a REGION_EXIT for fall through unless last statement
   // is a goto or return or region_exit.
   // MP and EH regions are single exit and so do not add a
@@ -1611,6 +1626,19 @@ extern "C" void REGION_Finalize(void)
   WN_MAP_Delete(RID_map);
   MEM_POOL_Pop(&REGION_mem_pool);
 
+  region_map_index--;
+  if (region_map_index >= 0) {
+    // if there is a saved region map, then restore it
+    RID_map = region_map_array[region_map_index];
+  }
+  else {
+    // otherwise, set it to undefined
+    RID_map = WN_MAP_UNDEFINED;
+  }
+}
+
+extern "C" void REGION_Finalize_wo_delete(void)
+{
   region_map_index--;
   if (region_map_index >= 0) {
     // if there is a saved region map, then restore it

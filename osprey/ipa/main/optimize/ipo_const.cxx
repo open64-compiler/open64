@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
  */
 
@@ -613,6 +617,7 @@ Generate_Assignment_Stmt (ST* formal, WN* block, WN* const_wn)
     TYPE_ID desc = TY_mtype (ST_type (formal));
     const_wn = WN_Type_Conversion (const_wn, desc);
     WN* stmt = WN_Stid (desc, 0, formal, ST_type (formal), const_wn);
+    WN_Set_Linenum(stmt, WN_Get_Linenum(const_wn));
     LWN_Set_Parent (const_wn, stmt);
     WN_INSERT_BlockBefore(block, NULL, stmt);
 	    
@@ -817,6 +822,7 @@ Replace_Formal_By_LDA (WN* func_body, ST_IDX formal, ST* actual)
 					   WN_kid0(wn)));
 		} else
 		    ++fail_count;
+		WN_Set_Linenum (iter.Wn(), WN_Get_Linenum (wn));
 	    }
 	    break;
 		

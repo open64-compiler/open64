@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -111,9 +115,13 @@ typedef mINT16  IDX_16;
 typedef mINT32  IDX_32;
 typedef mINT64  IDX_64;
 
+typedef mUINT64 V_ANNOT;  // VSA annotation type
+
 typedef IDTYPE  AUX_ID;
 typedef IDTYPE  VER_ID;
 typedef IDTYPE  EXP_ID;
+
+typedef enum { MAX_ID = (4294967295u) } IDTYPE_MAX;
 
 enum STMT_ID {
   INVALID_STMT_ID = -1
@@ -122,9 +130,11 @@ enum STMT_ID {
 #ifdef Is_True_On
 #define Is_Trace(Cond, Parmlist) { if (Cond) fprintf Parmlist ; }
 #define Is_Trace_cmd(Cond, Cmd) { if (Cond) Cmd ; }
+#define Is_Trace_cmdn(Cond, Cmd, File) { if (Cond) { Cmd ; fprintf(File, "\n"); } }
 #else
 #define Is_Trace(Cond, Parmlist) ((void) 1)
 #define Is_Trace_cmd(Cond, Cmd)  ((void) 1)
+#define Is_Trace_cmdn(Cond, Cmd, File)  ((void) 1)
 #endif
 
 #ifdef __cplusplus
@@ -221,10 +231,16 @@ Is_fortran(void)
 #define PRO_TRANS_TRACE_FLAG 0x00000400 /* trace proactive loop fusion transformation */
 #define PRO_TRANS_DUMP_FLAG  0x00000800 /* dump proactive loop fusion transformation */
 #define ULSE_TRACE_FLAG      0x00001000 /* trace the useless store remove transformation */
-#define REASSO_DUMP_FLAG_DEBUG	     0x2000 /* reassociation before and after dump flag */
-#define REASSO_DUMP_FLAG	     0x4000 /* trace into reassociation flag */
-#define ZDL_DUMP_FLAG                0x8000 /* dump the zdl gen */
-
+#define REASSO_DUMP_FLAG_DEBUG	 0x2000 /* reassociation before and after dump flag */
+#define REASSO_DUMP_FLAG	 0x4000 /* trace into reassociation flag */
+#define ZDL_DUMP_FLAG            0x8000 /* dump the zdl gen */
+#define VSA_DUMP_FLAG           0x10000 /* trace VSA */ 
+#define VSA_VRA_DUMP_FLAG       0x20000 /* trace VSA VRA (value range analysis) */ 
+#define VSA_VRA_DEMO_FLAG       0x40000 /* run VSA VRA (value range analysis) demo */ 
+#define VSA_OOB_DUMP_FLAG       0x80000 /* trace VSA OOB (out-of-bounds) checker */ 
+#define IPSA_DUMP_CG           0x100000 /* Dump IPSA call graph */ 
+#define FSM_RBC_DUMP_FLAG      0x200000 /* Dump FSM & RBC info */
+#define LD_PLUGIN_TRACE_FLAG   0x400000 /* Dump ld plugin trace info */
 
 /* Flags associated with value numbering scheme and the 
  * WOPT_Enable_Value_Numbering option.

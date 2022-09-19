@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -158,6 +162,9 @@ extern void Free_Local_Info (PU_Info *pu);
 extern void Free_Dep_Graph (void);
 extern void Free_Local_Input(void);
 extern void Free_Input_Info (void);
+
+extern void Set_Global_Info(char* file, void* handle);
+extern void Set_Local_Info(char* file, void* handle);
 
 #endif
 

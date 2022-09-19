@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009, 2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -74,6 +78,7 @@ string_list_t *lib_objects;
 static string_list_t *cxx_prelinker_objects;
 static string_list_t *ar_objects; 
 static string_list_t *library_dirs;
+static string_list_t *udr_dirs;
 
 static int check_for_whirl(char *name);
 
@@ -85,6 +90,7 @@ init_objects (void)
  	cxx_prelinker_objects = init_string_list();
  	ar_objects = init_string_list();
 	library_dirs = init_string_list();
+	udr_dirs = init_string_list();
 }
 
 /* This function figure out the full path of components <comp_name>
@@ -393,7 +399,7 @@ add_object (int flag, char *arg)
                     || strcmp(arg, "mpath") == 0
 #endif
                  ) {	// bug 5184
-
+#ifndef BUILD_MASTIFF // do not add -lmv for MASTIFF
 			/* add -lmv -lmblah */		
 			if (xpg_flag && invoked_lang == L_f77) {
 #ifdef TARG_X8664
@@ -429,6 +435,7 @@ add_object (int flag, char *arg)
 			// use this to add -lacml_mv in add_final_ld_args.
 			link_with_mathlib = 1;
 #endif
+#endif
 		}
 
 		/* xpg fort77 has weird rule about putting all libs after objects */
@@ -460,6 +467,9 @@ add_object (int flag, char *arg)
 #ifdef TARG_SL
                  // ld didn't support -Wl in SL
                  add_string(objects, arg);
+#elif defined(BUILD_MASTIFF)
+	         add_string(objects, "-plugin-opt");
+	         add_string(objects, arg);
 #else
 	         add_string(objects, concat_strings("-Wl,", arg));
 #endif
@@ -524,6 +534,26 @@ append_objects_to_list (string_list_t *list)
 	if (xpg_flag && invoked_lang == L_f77) {
 		append_string_lists (list, lib_objects);
 	}
+}
+
+/* append objects to end of xfa arg list */
+void
+append_objects_to_xfa_list (string_list_t *list)
+{
+  string_list_t *object_list = objects;
+  if(ipsa == TRUE) {
+    object_list = init_string_list();
+    for(string_item_t *item = objects->head; item != NULL; item = item->next) {
+      if(strncmp(item->name, "-l", 2) == 0) {
+        add_string(object_list, "-plugin-opt");
+        char *new_obj = concat_strings("-IPSA:", item->name);
+        add_string(object_list, new_obj);
+      } else {
+        add_string(object_list, item->name);
+      }
+    }
+  }
+  append_string_lists (list, object_list);
 }
 
 /* append cxx_prelinker_objects to end of list */
@@ -706,6 +736,17 @@ finalize_maybe_linker_options (boolean is_linker)
   }
 }
 
+void
+add_udr_dir (char *path)
+{
+	add_string(udr_dirs, path);
+}
+
+string_list_t *
+get_udr_dirs(void)
+{
+	return udr_dirs;
+}
 
 #ifdef BUILD_SKIP_IPA
 // ignore ipa elf issues

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -79,6 +83,13 @@ static char *rcs_id = 	opt_util_CXX"$Revision: 1.8 $";
 #if defined(TARG_SL)
 #include "intrn_info.h"
 #endif
+#include "defs.h"
+#include "srcpos.h"
+#include "glob.h"
+#include "printsrc.h"
+#include "erglob.h"
+#include "whirl_file_mgr.h"
+#include "opt_vsa_report.h"
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //
@@ -168,6 +179,11 @@ Opt_tlog( char *keyword, long long srcpos, const char *fmt, ...)
 #include "erglob.h"
 #include "opt_htable.h"
 #include "opt_cfg.h"
+#include "erglob.h"
+#include "erbe.h"
+#include "report.h"
+#include "config_vsa.h"
+#include "java_defs.h"
 
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -216,7 +232,7 @@ Set_tlog_phase(const INT32 phase)
 
 
 // ====================================================================
-const INT32    PHASE_STRLEN = 72;
+const INT32    PHASE_STRLEN = 100;
 const INT32    MAX_SUBPHASES = 200;
 static char    phase_name[PHASE_STRLEN];
 static const   char   *phases[MAX_SUBPHASES];
@@ -241,6 +257,7 @@ INT Set_opt_phase(INT32 *phase_id, const char *subphase)
   void  *curr_mem;
 
   if (Get_Trace(TKIND_INFO, TINFO_TIME)) {
+    if (curr_phase >= MAX_SUBPHASES) return 0;   // quietly ignore the extra phases.
     curr_time = CLOCK_IN_MS();
 #ifdef __MINGW32__
     DevWarn("sbrk not supported on Win NT");
@@ -261,13 +278,12 @@ INT Set_opt_phase(INT32 *phase_id, const char *subphase)
       curr_phase = *phase_id;
       reps[curr_phase] += 1;
     }
-    if (curr_phase >= MAX_SUBPHASES) return 0;   // quietly ignore the extra phases.
     phases[curr_phase] = subphase;
     prev_time = curr_time;
     prev_mem  = curr_mem;
   }
   strncpy(phase_name, "Global Optimization -- ", PHASE_STRLEN);
-  strncat(phase_name, subphase, PHASE_STRLEN);
+  strncat(phase_name, subphase, PHASE_STRLEN - 24);  // 24 is the length of previous string
   Set_Error_Phase(phase_name);
   return 1;
 }

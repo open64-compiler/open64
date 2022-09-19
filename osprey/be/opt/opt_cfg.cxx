@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -84,8 +88,10 @@ static char *rcs_id = 	opt_cfg_CXX"$Revision: 1.30 $";
 #include "errors.h"
 #include "erglob.h"
 #include "tracing.h"
+#include "config.h"
 #include "config_targ.h"
 #include "config_opt.h"		// For Instrumentation_Enabled
+#include "config_vsa.h"
 #include "region_util.h"
 #include "fb_whirl.h"		// For TP_FEEDBACK_CFG
 #include "opt_cfg.h"
@@ -101,6 +107,12 @@ static char *rcs_id = 	opt_cfg_CXX"$Revision: 1.30 $";
 #include "w2op.h"
 #include "wn_tree_util.h"
 #include "cxx_hash.h"
+
+#ifdef BUILD_MASTIFF
+#include "opt_dbg.h"    // for g_ipsa_manager
+#include "opt_dna.h"    // for IPSA
+#endif
+
 CFG::CFG(MEM_POOL *pool, MEM_POOL *lpool)
      : _bb_vec(pool),
        _entry_vec(pool),
@@ -110,6 +122,7 @@ CFG::CFG(MEM_POOL *pool, MEM_POOL *lpool)
        _agoto_succ_vec(pool),
        _mp_rid(pool),
        _mp_type(pool),
+       _inlcxt(pool),
 #if defined(TARG_SL) //PARA_EXTENSION
        _sl2_para_rid(pool),
        _sl2_para_type(pool),
@@ -161,6 +174,7 @@ CFG::CFG(MEM_POOL *pool, MEM_POOL *lpool)
   _trace = Get_Trace(TP_GLOBOPT, CFG_DUMP_FLAG);
   _loops_valid = FALSE;
   _clone_map = NULL;
+  Push_inlcxt((INLCXT *)NULL);            // no inline context in the beginning
 }
 
 CFG::~CFG()
@@ -651,6 +665,7 @@ CFG::Create_label_stmt( BB_NODE *bb )
     label = Alloc_label();
 
   WN *new_wn = WN_CreateLabel(0, label, 0, NULL);
+  WN_Set_Linenum(new_wn, bb->Linenum());
   Init_stmtlist(bb, new_wn);
   Append_label_map(label, bb);
 }
@@ -661,10 +676,11 @@ CFG::Create_label_stmt( BB_NODE *bb )
 // ====================================================================
 
 BB_NODE *
-CFG::Create_labelled_bb( BB_KIND k /*=BB_GOTO*/ )
+CFG::Create_labelled_bb(SRCPOS linenum, BB_KIND k /*=BB_GOTO*/ )
 {
   BB_NODE *retbb = Create_bb( k );
-  Create_label_stmt( retbb );
+  retbb->Set_linenum(linenum);
+  Create_label_stmt(retbb );
   return retbb;
 }
 
@@ -677,7 +693,8 @@ CFG::Create_conditional(WN      *cond,
 			BB_NODE *true_bb,
 			BB_NODE *false_bb,
 			BOOL	 true_branch,
-			WN     **created_branch)
+			WN     **created_branch,
+                        SRCPOS linenum)
 {
   Is_True(cond != NULL, ("CFG::Create_conditional: NULL cond"));
   Is_True(true_bb != NULL || false_bb != NULL,
@@ -685,12 +702,12 @@ CFG::Create_conditional(WN      *cond,
 
   if ( WN_operator(cond) == OPR_CAND ) {
     // get block where right-side kid will end up being evaluated
-    BB_NODE *short_circuit = Create_labelled_bb();
+    BB_NODE *short_circuit = Create_labelled_bb(linenum);
     BOOL append_false_bb = FALSE;
 
     // will we need a false-target block
     if ( false_bb == NULL && true_branch ) {
-      false_bb = Create_labelled_bb();
+      false_bb = Create_labelled_bb(linenum);
       append_false_bb = TRUE;
     }
 
@@ -701,11 +718,11 @@ CFG::Create_conditional(WN      *cond,
 	 WN_operator(WN_kid0(cond)) == OPR_CIOR ) 
     {
       Create_conditional( WN_kid0(cond), short_circuit, false_bb, FALSE,
-			  &wn_left_branch );
+			  &wn_left_branch, linenum );
     }
     else {
       Create_conditional( WN_kid0(cond), true_bb, false_bb, FALSE,
-			  &wn_left_branch );
+			  &wn_left_branch, linenum );
     }
 
     // and connect in short-circuit
@@ -715,7 +732,7 @@ CFG::Create_conditional(WN      *cond,
     // evaluate the right-side kid normally
     WN *wn_right_branch;
     Create_conditional( WN_kid1(cond), true_bb, false_bb, true_branch,
-			&wn_right_branch);
+			&wn_right_branch, linenum);
 
     // and connect in our false target if necessary
     if ( append_false_bb ) {
@@ -732,11 +749,11 @@ CFG::Create_conditional(WN      *cond,
   }
   else if ( WN_operator(cond) == OPR_CIOR ) {
     // get block where right-side kid will end up being evaluated
-    BB_NODE *short_circuit = Create_labelled_bb();
+    BB_NODE *short_circuit = Create_labelled_bb(linenum);
     BOOL append_true_bb = FALSE;
 
     if ( true_bb == NULL && !true_branch ) {
-      true_bb = Create_labelled_bb();
+      true_bb = Create_labelled_bb(linenum);
       append_true_bb = TRUE;
     }
 
@@ -747,11 +764,11 @@ CFG::Create_conditional(WN      *cond,
 	 WN_operator(WN_kid0(cond)) == OPR_CIOR )
     {
       Create_conditional( WN_kid0(cond), true_bb, short_circuit, TRUE,
-			  &wn_left_branch );
+			  &wn_left_branch, linenum);
     }
     else {
       Create_conditional( WN_kid0(cond), true_bb, false_bb, TRUE,
-			  &wn_left_branch );
+			  &wn_left_branch, linenum);
     }
 
 
@@ -762,7 +779,7 @@ CFG::Create_conditional(WN      *cond,
     // evaluate the right-side kid normally
     WN *wn_right_branch;
     Create_conditional( WN_kid1(cond), true_bb, false_bb, true_branch,
-			&wn_right_branch);
+			&wn_right_branch, linenum);
 
     // and connect in our true block
     if ( append_true_bb ) {
@@ -785,7 +802,7 @@ CFG::Create_conditional(WN      *cond,
       if ( true_bb->Labnam() == 0 )
 	Create_label_stmt( true_bb );
 
-      end_cond = WN_CreateTruebr( true_bb->Labnam(), cond );
+      end_cond = WN_CreateTruebr(true_bb->Labnam(), cond );
     }
     else {
       // ! true_branch
@@ -793,13 +810,13 @@ CFG::Create_conditional(WN      *cond,
       if ( false_bb->Labnam() == 0 )
 	Create_label_stmt( false_bb );
 
-      end_cond = WN_CreateFalsebr( false_bb->Labnam(), cond );
+      end_cond = WN_CreateFalsebr(false_bb->Labnam(), cond );
     }
-    WN_Set_Linenum( end_cond, WN_Get_Linenum(cond) );
+    WN_Set_Linenum( end_cond, linenum );
     *created_branch = end_cond;
 
     // add the statement to this block
-    Add_one_stmt(end_cond, NULL);
+    Add_one_stmt(end_cond, NULL, 0);
   }
 
   return _current_bb;
@@ -812,7 +829,7 @@ CFG::Create_conditional(WN      *cond,
 // ====================================================================
 
 BB_NODE *
-CFG::Create_entrytest(WN *cond, BB_NODE *target)
+CFG::Create_entrytest(WN *cond, BB_NODE *target, SRCPOS linenum)
 {
   FmtAssert(cond != NULL, ("CFG::Create_entrytest: NULL cond"));
   FmtAssert(target->Labnam() != 0, 
@@ -820,10 +837,10 @@ CFG::Create_entrytest(WN *cond, BB_NODE *target)
 
   WN *end_cond;
   end_cond = WN_CreateFalsebr(target->Labnam(), cond);
-  WN_Set_Linenum( end_cond, WN_Get_Linenum(cond) );
+  WN_Set_Linenum( end_cond, linenum );
 
   BB_NODE *retbb = _current_bb;
-  Add_one_stmt(end_cond, NULL);
+  Add_one_stmt(end_cond, NULL, 0);
   return retbb;
 }
 
@@ -835,12 +852,11 @@ CFG::Create_entrytest(WN *cond, BB_NODE *target)
 BB_NODE *
 CFG::Create_loopbody( WN *body )
 {
-  BB_NODE *body_bb = Create_labelled_bb();
-  body_bb->Set_linenum(WN_Get_Linenum(body));
+  BB_NODE *body_bb = Create_labelled_bb(WN_Get_Linenum(body));
   Append_bb(body_bb);
 
   END_BLOCK body_bb_end;
-  Add_one_stmt(body, &body_bb_end);
+  Add_one_stmt(body, &body_bb_end, 0);
 
   // did the body block end with a branch to someplace else?
   if ( body_bb_end == END_FALLTHRU || body_bb_end == END_BREAK ) {
@@ -858,17 +874,18 @@ CFG::Create_loopbody( WN *body )
 BB_NODE *
 CFG::Create_exittest(WN      *cond,
 		     BB_NODE *body_bb,
-		     BB_KIND  k)
+		     BB_KIND  k, 
+                     SRCPOS linenum)
 {
   Is_True(cond != NULL, ("CFG::Create_exittest: NULL cond"));
   FmtAssert( body_bb->Labnam() != 0,
     ("CFG::Create_exittest: body_bb:%d has no label", body_bb->Id()) );
 
   WN *end_cond = WN_CreateTruebr(body_bb->Labnam(), cond);
-  WN_Set_Linenum( end_cond, WN_Get_Linenum(cond) );
+  WN_Set_Linenum( end_cond, linenum );
 
   // Set the loop end test target to be the body_bb
-  Add_one_stmt(end_cond, NULL);
+  Add_one_stmt(end_cond, NULL, 0);
 
   _current_bb->Set_kind(k);
   return _current_bb;
@@ -961,11 +978,14 @@ CFG::Lower_do_loop( WN *wn, END_BLOCK *ends_bb )
   FmtAssert(start_wn != NULL, ("CFG::Lower_do_loop: NULL start"));
 
   // create the doinit block, which contains the iv initialization
-  Add_one_stmt( start_wn, NULL );
+  Add_one_stmt( start_wn, NULL, 0 );
   
   // create, but do not connect, the exit bb
-  BB_NODE *exit_bb = Create_labelled_bb(/* BB_GOTO */);
-  BB_NODE *dohead_bb = Create_labelled_bb( BB_DOHEAD );
+  SRCPOS linenum = WN_Get_Linenum(wn);
+  BB_NODE *exit_bb = Create_labelled_bb(linenum, BB_GOTO );
+  BB_NODE *dohead_bb = Create_labelled_bb(linenum, BB_DOHEAD );
+  exit_bb->Set_linenum(linenum);
+  dohead_bb->Set_linenum(linenum);
 
   // do we need an entry test?  Do so only if we have no info about
   // the loop, or it says it's not a non-zero trip count loop.
@@ -980,7 +1000,8 @@ CFG::Lower_do_loop( WN *wn, END_BLOCK *ends_bb )
       Cur_PU_Feedback->FB_clone_loop_test( WN_end(wn), endcopy, wn );
 
     entry_test_bb = Create_conditional( endcopy, dohead_bb, exit_bb, FALSE,
-					&wn_top_branch );
+					&wn_top_branch, linenum );
+    entry_test_bb->Set_linenum(linenum);
   }
 
   // Create the loop head, and connect it
@@ -996,15 +1017,16 @@ CFG::Lower_do_loop( WN *wn, END_BLOCK *ends_bb )
 
   // Append the loop increment statement to the end of the loop_body
   FmtAssert(WN_step(wn), ("CFG::Lower_do_loop: NULL do step"));
-  Add_one_stmt(WN_step(wn), NULL);
+  Add_one_stmt(WN_step(wn), NULL, 0);
 
   // Create the loop tail
-  BB_NODE *dotail_bb = Create_labelled_bb( BB_DOTAIL );
+  BB_NODE *dotail_bb = Create_labelled_bb(linenum, BB_DOTAIL );
+  dotail_bb->Set_linenum(linenum);
 
   // Create the loop exit test
   WN *wn_back_branch;
   BB_NODE *cond_bb = Create_conditional( WN_end(wn), body_bb, dotail_bb, TRUE,
-					 &wn_back_branch);
+					 &wn_back_branch, linenum);
   cond_bb->Set_kind(BB_DOEND);
 
   // Create and connect the loop tail
@@ -1066,8 +1088,11 @@ CFG::Lower_while_do( WN *wn, END_BLOCK *ends_bb )
   // Exit:
 
   // create, but do not connect, the exit bb
-  BB_NODE *exit_bb = Create_labelled_bb();
-  BB_NODE *dohead_bb = Create_labelled_bb( BB_DOHEAD );
+  SRCPOS linenum = WN_Get_Linenum(wn);
+  BB_NODE *exit_bb = Create_labelled_bb(linenum);
+  BB_NODE *dohead_bb = Create_labelled_bb(linenum, BB_DOHEAD );
+  exit_bb->Set_linenum(linenum);
+  dohead_bb->Set_linenum(linenum);
 
   // Create loop entry test bb, and make a copy of original expn.
   WN *testcopy = WN_copy(WN_while_test(wn));
@@ -1077,7 +1102,7 @@ CFG::Lower_while_do( WN *wn, END_BLOCK *ends_bb )
 
   WN *wn_top_branch;
   BB_NODE *entry_test_bb = 
-    Create_conditional( testcopy, dohead_bb, exit_bb, FALSE , &wn_top_branch);
+    Create_conditional( testcopy, dohead_bb, exit_bb, FALSE , &wn_top_branch, linenum);
 
   // Create and connect the loop head
   Connect_predsucc( entry_test_bb, dohead_bb );
@@ -1091,12 +1116,13 @@ CFG::Lower_while_do( WN *wn, END_BLOCK *ends_bb )
   Create_blank_loop_info(body_bb);
 
   // Create the loop tail
-  BB_NODE *dotail_bb = Create_labelled_bb( BB_DOTAIL );
+  BB_NODE *dotail_bb = Create_labelled_bb(linenum, BB_DOTAIL );
+  dotail_bb->Set_linenum(linenum);
 
   // Create the loop exit test
   WN *wn_back_branch;
   BB_NODE *cond_bb = Create_conditional( WN_while_test(wn), body_bb,
-					 dotail_bb, TRUE , &wn_back_branch);
+					 dotail_bb, TRUE , &wn_back_branch, linenum);
   cond_bb->Set_kind(BB_WHILEEND);
 
   // connect the loop tail
@@ -1161,6 +1187,7 @@ CFG::Lower_do_while( WN *wn, END_BLOCK *ends_bb )
   // Create the loop head as an empty block
   BB_NODE *dohead_bb;
 
+  SRCPOS linenum = WN_Get_Linenum(wn);
   // The head block should be empty at this point.
   if (_current_bb->Firststmt() == NULL) {
     dohead_bb = _current_bb;
@@ -1168,7 +1195,8 @@ CFG::Lower_do_while( WN *wn, END_BLOCK *ends_bb )
     Create_label_stmt( dohead_bb );
   }
   else {
-    dohead_bb = Create_labelled_bb( BB_DOHEAD );
+    dohead_bb = Create_labelled_bb(linenum, BB_DOHEAD );
+    dohead_bb->Set_linenum(linenum);
     Connect_predsucc( _current_bb, dohead_bb );
     Append_bb( dohead_bb );
   }
@@ -1182,12 +1210,13 @@ CFG::Lower_do_while( WN *wn, END_BLOCK *ends_bb )
   Create_blank_loop_info(body_bb);
 
   // Create the loop tail
-  BB_NODE *dotail_bb = Create_labelled_bb( BB_DOTAIL );
+  BB_NODE *dotail_bb = Create_labelled_bb(linenum, BB_DOTAIL );
+  dotail_bb->Set_linenum(linenum);
 
   // Create the loop exit test
    WN *wn_back_branch;
    BB_NODE *cond_bb = Create_conditional( WN_while_test(wn), body_bb,
-					  dotail_bb, TRUE , &wn_back_branch);
+					  dotail_bb, TRUE , &wn_back_branch, linenum);
   cond_bb->Set_kind(BB_REPEATEND);
 
   // connect up the loop tail
@@ -1781,7 +1810,7 @@ CFG::if_convert(WN *wn)
     return wn;
 
   WN *return_wn = NULL;
-  WN *wn_bk = WN_COPY_Tree_With_Map(wn); /* back up wn */
+  WN *wn_bk = WN_copy_tree_with_map(wn); /* back up wn */
 
   if (if_select_return) {
     /* store return_wn */
@@ -1815,7 +1844,7 @@ CFG::if_convert(WN *wn)
   WN *stmt = WN_first(empty_then ? else_wn : then_wn);
 
   WN *load = NULL;
-  WN *store = WN_COPY_Tree_With_Map(stmt);
+  WN *store = WN_copy_tree_with_map(stmt);
   MTYPE dsctyp = WN_desc(stmt);
 
   if (WN_operator(stmt) == OPR_STID || WN_operator(stmt) == OPR_STBITS)
@@ -1934,8 +1963,23 @@ CFG::if_convert(WN *wn)
                   test_wn, true_expr, false_expr);
    } else
 #endif
-    sel = WN_Select(Mtype_comparison(dsctyp),
-          WN_if_test(wn), then_expr, else_expr);
+    if (WN_operator(then_expr) == OPR_INTCONST && WN_const_val(then_expr) == 1 &&
+        WN_operator(else_expr) == OPR_INTCONST && WN_const_val(else_expr) == 0) {
+      sel = WN_if_test(wn);
+    }
+    else if (WN_operator(then_expr) == OPR_INTCONST && WN_const_val(then_expr) == 0 &&
+             WN_operator(else_expr) == OPR_INTCONST && WN_const_val(else_expr) == 1) {
+      sel = WN_CreateExp1(OPC_I4LNOT, WN_if_test(wn));
+    }
+    else {
+#ifdef BUILD_MASTIFF
+      // for mastiff, dosn't generate select
+      return wn_bk;
+#else
+      sel = WN_Select(Mtype_comparison(dsctyp),
+            WN_if_test(wn), then_expr, else_expr);
+#endif
+    }
     WN_kid0(store) = sel;
     WN_Set_Linenum(store, WN_Get_Linenum(wn));
 
@@ -1951,14 +1995,14 @@ CFG::if_convert(WN *wn)
 }
 
 void
-CFG::Lower_if_stmt(WN *wn, END_BLOCK *ends_bb)
+CFG::Lower_if_stmt(WN *wn, END_BLOCK *ends_bb, SRCPOS next_spos)
 {
   Is_True(Lower_fully(), ("CFG::Lower_if_stmt: Lower_fully not true"));
   WN *conv_wn = if_convert(wn);
   if (WN_operator(conv_wn) == OPR_IF)
-    Add_one_if_stmt(conv_wn, ends_bb);
+    Add_one_if_stmt(conv_wn, ends_bb, next_spos);
   else
-    Add_one_stmt(conv_wn, ends_bb);
+    Add_one_stmt(conv_wn, ends_bb, next_spos);
 
   // Lower feedback data
   if (Cur_PU_Feedback)
@@ -2015,7 +2059,7 @@ CFG::Add_one_do_loop_stmt( WN *wn, END_BLOCK *ends_bb )
   // Put the init statement in it
   WN *start_wn = WN_start(wn);
   Is_True(start_wn != NULL, ("CFG::Add_one_do_loop_stmt: NULL start"));
-  Add_one_stmt( start_wn, NULL );
+  Add_one_stmt( start_wn, NULL, 0 );
 
   if (Do_pro_loop_trans()) {
     SC_NODE * sc = _sc_parent_stack->Pop();
@@ -2038,7 +2082,7 @@ CFG::Add_one_do_loop_stmt( WN *wn, END_BLOCK *ends_bb )
   }
 
   BB_NODE *cond_bb = New_bb( TRUE/*connect*/ );
-  Add_one_stmt(end_cond, NULL);
+  Add_one_stmt(end_cond, NULL, 0);
   cond_bb->Set_kind(BB_DOEND);
   if ( cond_bb->Labnam() == 0 )
     Append_label_map(Alloc_label(), cond_bb);
@@ -2056,7 +2100,7 @@ CFG::Add_one_do_loop_stmt( WN *wn, END_BLOCK *ends_bb )
   BB_NODE *body_bb = New_bb( TRUE/*connect*/ );
   body_bb->Set_linenum(WN_Get_Linenum(WN_do_body(wn)));
   END_BLOCK body_end;
-  Add_one_stmt(WN_do_body(wn), &body_end);
+  Add_one_stmt(WN_do_body(wn), &body_end, 0);
 
   if (Do_pro_loop_trans()) {
     SC_NODE * sc = _sc_parent_stack->Pop();
@@ -2070,13 +2114,13 @@ CFG::Add_one_do_loop_stmt( WN *wn, END_BLOCK *ends_bb )
 	    ("CFG::Add_one_do_loop_stmt: NULL step pointer"));
   // connect from body if it doesn't break
   BB_NODE *step_bb = New_bb( body_end!=END_BREAK, BB_DOSTEP );
-  Add_one_stmt( WN_step(wn), NULL );
+  Add_one_stmt( WN_step(wn), NULL, 0 );
   FmtAssert( _current_bb == step_bb,
 	     ("CFG::Add_one_do_loop_stmt: step block not current block") );
 
   // create back edge from step to cond
   WN *gotocond = WN_CreateGoto(cond_bb->Labnam());
-  Add_one_stmt( gotocond, NULL );
+  Add_one_stmt( gotocond, NULL, 0 );
 
   if (Do_pro_loop_trans()) {
     SC_NODE * sc = _sc_parent_stack->Pop();
@@ -2144,9 +2188,10 @@ CFG::Add_one_while_do_stmt( WN *wn, END_BLOCK *ends_bb )
 
   // create loop cond bb 
   BB_NODE *cond_bb = NULL;
+  SRCPOS linenum = WN_Get_Linenum(wn); 
   // do not reuse the empty bb, because it can be a merge bb of do loop
   cond_bb = New_bb( TRUE/*connect*/ );
-  cond_bb->Set_linenum(WN_Get_Linenum(wn));
+  cond_bb->Set_linenum(linenum);
   // assign a label to the condition block
   if ( cond_bb->Labnam() == 0 )
     Append_label_map( Alloc_label(), cond_bb );
@@ -2154,10 +2199,11 @@ CFG::Add_one_while_do_stmt( WN *wn, END_BLOCK *ends_bb )
   // create, but do not connect merge bb
   BB_NODE *merge_bb = Create_bb();
   Append_label_map( Alloc_label(), merge_bb );
+  merge_bb->Set_linenum(linenum);
 
   WN *end_cond = WN_CreateFalsebr( merge_bb->Labnam(), WN_while_test(wn) );
-  WN_Set_Linenum( end_cond, WN_Get_Linenum(wn) );
-  Add_one_stmt( end_cond, NULL );
+  WN_Set_Linenum( end_cond, linenum );
+  Add_one_stmt( end_cond, NULL, 0 );
   cond_bb->Set_kind( BB_WHILEEND );
 
   if (Do_pro_loop_trans()) {
@@ -2170,7 +2216,7 @@ CFG::Add_one_while_do_stmt( WN *wn, END_BLOCK *ends_bb )
   // add the loop body bb now
   BB_NODE *body_bb = New_bb( TRUE/*connect*/ );
   END_BLOCK body_end;
-  Add_one_stmt( WN_while_body(wn), &body_end );
+  Add_one_stmt( WN_while_body(wn), &body_end, 0 );
 
   
   if (Do_pro_loop_trans()) {
@@ -2182,9 +2228,11 @@ CFG::Add_one_while_do_stmt( WN *wn, END_BLOCK *ends_bb )
 
   // create back edge to loop cond_bb
   BB_NODE *loop_back = New_bb( body_end != END_BREAK );
+  loop_back->Set_linenum(linenum);
   // create back edge from step to cond
   WN *gotocond = WN_CreateGoto(cond_bb->Labnam());
-  Add_one_stmt( gotocond, NULL );
+  WN_Set_Linenum(gotocond, linenum);
+  Add_one_stmt( gotocond, NULL, 0 );
 
   if (Do_pro_loop_trans()) {
     SC_NODE * sc = _sc_parent_stack->Pop();
@@ -2244,7 +2292,7 @@ CFG::Add_one_do_while_stmt( WN *wn, END_BLOCK *ends_bb )
   // create blocks for the stuff within the loop
   BB_NODE *first_block = New_bb( TRUE/*connect*/ );
   END_BLOCK body_end;
-  Add_one_stmt( WN_while_body(wn), &body_end );
+  Add_one_stmt( WN_while_body(wn), &body_end, 0 );
 
   if (Do_pro_loop_trans()) {
     SC_NODE * sc = _sc_parent_stack->Pop();
@@ -2257,10 +2305,10 @@ CFG::Add_one_do_while_stmt( WN *wn, END_BLOCK *ends_bb )
 
   // create loop cond bb, and connect from body if it doesn't goto
   BB_NODE *cond_bb = New_bb( body_end != END_BREAK );
-  cond_bb->Set_linenum(WN_Get_Linenum(WN_while_test(wn)));
+  cond_bb->Set_linenum(WN_Get_Linenum(wn));
   WN *end_cond = WN_CreateTruebr( body_bb->Labnam(), WN_while_test(wn));
-  WN_Set_Linenum( end_cond, WN_Get_Linenum(WN_while_test(wn)) );
-  Add_one_stmt( end_cond, NULL );
+  WN_Set_Linenum( end_cond, WN_Get_Linenum(wn) );
+  Add_one_stmt( end_cond, NULL, 0 );
   cond_bb->Set_kind(BB_REPEATEND);
 
   if (Do_pro_loop_trans()) {
@@ -2301,17 +2349,25 @@ CFG::Add_one_do_while_stmt( WN *wn, END_BLOCK *ends_bb )
 // ====================================================================
 
 void
-CFG::Add_one_if_stmt( WN *wn, END_BLOCK *ends_bb )
+CFG::Add_one_if_stmt( WN *wn, END_BLOCK *ends_bb, SRCPOS next_spos )
 {
   // create, but do not connect, the "else" block
   BB_NODE *else_bb = Create_bb();
+  /*
+   * TODO: need to fixed else block linenum in wgen
+  if(WN_first(WN_else(wn)))
+    else_bb->Set_linenum(WN_Get_Linenum(WN_first(WN_else(wn))));
+  else
+  */
+  else_bb->Set_linenum(WN_Get_Linenum(WN_else(wn)));
   Append_label_map(Alloc_label(), else_bb);
 
   // create if bb
   WN *end_cond = WN_CreateFalsebr(else_bb->Labnam(), WN_if_test(wn));
   WN_Set_Linenum( end_cond, WN_Get_Linenum(wn));
   BB_NODE *cond_bb = _current_bb;
-  Add_one_stmt( end_cond, NULL );
+  cond_bb->Set_linenum(WN_Get_Linenum(wn));
+  Add_one_stmt( end_cond, NULL, 0 );
 
   if (Do_pro_loop_trans()) {
     SC_NODE * sc = Add_sc(cond_bb, SC_IF);
@@ -2320,6 +2376,8 @@ CFG::Add_one_if_stmt( WN *wn, END_BLOCK *ends_bb )
 
   // create, but do not connect, the merge point
   BB_NODE *merge_bb = Create_bb();
+//  merge_bb->Set_linenum(WN_Get_Linenum(wn));
+  merge_bb->Set_linenum(next_spos);
   merge_bb->Set_ifmerge();
 
   if (Do_pro_loop_trans()) {
@@ -2329,8 +2387,9 @@ CFG::Add_one_if_stmt( WN *wn, END_BLOCK *ends_bb )
 
   // process then block first so as maintain source order for the BBs
   BB_NODE *then_bb = New_bb( TRUE/*connect*/ );
+  then_bb->Set_linenum(WN_Get_Linenum(WN_then(wn)));
   END_BLOCK block_end;
-  Add_one_stmt( WN_then(wn), &block_end );
+  Add_one_stmt( WN_then(wn), &block_end, next_spos );
   if ( block_end != END_BREAK ) {
     if ( block_end == END_FALLTHRU ) {
       // always make the fall-thru block the Next one which matches
@@ -2351,7 +2410,7 @@ CFG::Add_one_if_stmt( WN *wn, END_BLOCK *ends_bb )
   // now process the "else" part using the block created earlier
   Append_bb( else_bb );
 
-  Add_one_stmt( WN_else(wn), &block_end );
+  Add_one_stmt( WN_else(wn), &block_end, next_spos );
   if ( block_end != END_BREAK )
     Connect_predsucc(_current_bb, merge_bb);
 
@@ -2660,7 +2719,7 @@ CFG::Add_one_region( WN *wn, END_BLOCK *ends_bb )
   BB_NODE *first_body_bb = New_bb( TRUE/*connect*/ );
 
   END_BLOCK block_end;
-  Add_one_stmt( WN_region_body(wn), &block_end );
+  Add_one_stmt( WN_region_body(wn), &block_end, 0 );
 
   if (REGION_is_mp(wn)) {
     // add an empty region exit block for MP regions
@@ -2773,8 +2832,8 @@ CFG::Process_entry( WN *wn, END_BLOCK *ends_bb )
       WN_formal(copy_wn, i) = WN_CopyNode(WN_formal(wn, i));
 
     if (opr == OPR_FUNC_ENTRY) { // save pragmas and varrefs also
-      WN_func_pragmas(copy_wn) = WN_COPY_Tree_With_Map(WN_func_pragmas(wn));
-      WN_func_varrefs(copy_wn) = WN_COPY_Tree_With_Map(WN_func_varrefs(wn));
+      WN_func_pragmas(copy_wn) = WN_copy_tree_with_map(WN_func_pragmas(wn));
+      WN_func_varrefs(copy_wn) = WN_copy_tree_with_map(WN_func_varrefs(wn));
       WN_func_body(copy_wn) = WN_CreateBlock();
     }
   }
@@ -2792,8 +2851,10 @@ CFG::Process_entry( WN *wn, END_BLOCK *ends_bb )
     // and process the function body
     FmtAssert(WN_func_body(wn) != NULL, 
               ("CFG::Process_entry: NULL body pointer"));
+    
+    _current_bb->Set_linenum(WN_Get_Linenum(WN_func_body(wn)));
+    Add_one_stmt( WN_func_body(wn), NULL, 0 );
 
-    Add_one_stmt( WN_func_body(wn), NULL );
 
     // keep us from following down this kid again
     WN_func_body(wn) = NULL;
@@ -2907,11 +2968,29 @@ BOOL CFG::bottom_test_loop(WN* scf_loop){
   }
 }
 
+static
+BOOL Call_never_return( WN *wn )
+{
+  if (WN_Call_Never_Return (wn)) return TRUE;
+  const ST *const st = WN_st(wn);
 
+  if ((strcmp("Fail_FmtAssertion", ST_name(st)) == 0) ||
+      (strcmp("Fail_Assertion", ST_name(st)) == 0) ||
+      (strcmp("Fatal_Error", ST_name(st)) == 0) ) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+extern void fdump_wn_no_st(FILE*, WN *);
+ 
 void
-CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
+CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb, SRCPOS next_spos )
 {
   BB_NODE *label_bb;
+
+  if(_current_bb->Ifmerge() && _current_bb->Linenum() == 0)
+    _current_bb->Set_linenum(WN_Get_Linenum(wn));
 
   if ( ends_bb )
     *ends_bb = END_UNKNOWN;
@@ -2920,6 +2999,7 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
 
   const OPCODE   opc = WN_opcode(wn);
   const OPERATOR opr = OPCODE_operator(opc);
+  SRCPOS linenum = WN_Get_Linenum(wn);
 
   switch ( opr ) {
 
@@ -2931,7 +3011,8 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
 	nextstmt = WN_next(stmt);
 	WN_next(stmt) = NULL;
 	WN_prev(stmt) = NULL;
-	Add_one_stmt( stmt, &endsbb );
+	SRCPOS spos = nextstmt ? WN_Get_Linenum(nextstmt) : next_spos;
+	Add_one_stmt( stmt, &endsbb, spos );
 
         if (WN_operator(stmt) == OPR_CALL && WOPT_Enable_Noreturn_Attr_Opt) {
           if (PU_has_attr_noreturn(Pu_Table[ST_pu(WN_st(stmt))])) {
@@ -2942,6 +3023,7 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
                  WN_operator(nextstmt) != OPR_RETURN_VAL)) {
                 WN *nextstmt_save = nextstmt;
                 nextstmt = WN_Create (OPC_RETURN, 0);
+		WN_Set_Linenum(nextstmt, WN_Get_Linenum(stmt));
                 WN_next(nextstmt) = nextstmt_save;
 		if (nextstmt_save)
                   WN_prev(nextstmt_save) = nextstmt;
@@ -3070,10 +3152,10 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
 
   case OPR_IF:
     if (Lower_fully()) {
-      Lower_if_stmt( wn, ends_bb );
+      Lower_if_stmt( wn, ends_bb, next_spos );
     }
     else {
-      Add_one_if_stmt( wn, ends_bb );
+      Add_one_if_stmt( wn, ends_bb, next_spos );
     }
     break;
 
@@ -3127,9 +3209,9 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
     {
       WN *wn_branch;
       if ( opr == OPR_TRUEBR )
-	Create_conditional( WN_kid0(wn), label_bb, NULL, TRUE,  &wn_branch);
+	Create_conditional( WN_kid0(wn), label_bb, NULL, TRUE,  &wn_branch, linenum );
       else
-	Create_conditional( WN_kid0(wn), NULL, label_bb, FALSE, &wn_branch);
+	Create_conditional( WN_kid0(wn), NULL, label_bb, FALSE, &wn_branch, linenum );
 
       // Lower feedback data for TRUEBR or FALSEBR
       if ( Cur_PU_Feedback ) {
@@ -3198,13 +3280,12 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
             (OPCODE_operator(WN_opcode(last_wn)) == OPR_FALSEBR ||
              OPCODE_operator(WN_opcode(last_wn)) == OPR_TRUEBR) &&
             Get_bb_from_label( WN_label_number(last_wn)) == label_bb) {
-          BB_NODE* fall_through_bb= Create_bb();
-          Connect_predsucc(_current_bb,fall_through_bb);
-          Append_bb(fall_through_bb);
-            }
+          BB_NODE* fall_through_bb= New_bb(TRUE /* connect */);
+	}
         if ( ! _current_bb->Hasujp() )
           Connect_predsucc( _current_bb, label_bb );
         Append_bb( label_bb );
+        label_bb->Set_linenum(linenum);
       }
       else if ( _current_bb->Firststmt() != NULL ||
                _current_bb->Labnam() != 0 ||
@@ -3214,6 +3295,7 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
           // so need a new one
           label_bb = New_bb( TRUE/*connect*/ );
           Append_label_map(WN_label_number(wn), label_bb);
+          label_bb->Set_linenum(linenum);
         }
       else {
         // empty block, so let's use this one
@@ -3224,9 +3306,8 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
       }
       Is_True( _current_bb == label_bb,
               ("Label block not same as current block") );
-      label_bb->Set_linenum(WN_Get_Linenum(wn));
       if ( WN_label_loop_info(wn) != NULL ) {
-        WN *loop_info = WN_COPY_Tree_With_Map(WN_label_loop_info(wn));
+        WN *loop_info = WN_copy_tree_with_map(WN_label_loop_info(wn));
         label_bb->Set_label_loop_info(loop_info);
       }
 
@@ -3251,9 +3332,21 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
       _exc->Link_top_es(wn);
     _current_bb->Set_hascall();
     Append_wn_in(_current_bb, wn);
+#if 1 // changed for VSA
+    if (opr == OPR_CALL && OPERATOR_has_sym(opr) && Call_never_return(wn)) {
+      _current_bb->Set_kind( BB_EXIT );
+      _current_bb->Set_hasujp();
+      if ( ends_bb )
+	*ends_bb = END_BREAK;
+    } else {
+      if ( ends_bb )
+	*ends_bb = Calls_break() ? END_FALLTHRU : END_NOT;
+    }
+#else
     if (ends_bb) {
       *ends_bb = Calls_break() ? END_FALLTHRU : END_NOT;
     }
+#endif
     break;
 
   case OPR_INTRINSIC_CALL:
@@ -3303,6 +3396,27 @@ CFG::Add_one_stmt( WN *wn, END_BLOCK *ends_bb )
   case OPR_XPRAGMA:
     _current_bb->Set_haspragma();
     Append_wn_in(_current_bb, wn);
+    {
+      WN_PRAGMA_ID pragma = (WN_PRAGMA_ID)WN_pragma(wn);
+      if (pragma == WN_PRAGMA_INLINE_BODY_START) {
+        New_bb(TRUE/* connect */);
+        INLCXT *new_inlcxt = CXX_NEW(INLCXT(Top_inlcxt(),
+                                            WN_Get_Linenum(wn),
+                                            ST_st_idx(WN_st(wn)),
+                                            FALSE),  // in local pool
+                                     _mem_pool);;
+        Push_inlcxt(new_inlcxt);
+        _current_bb->Set_inlinecxt(new_inlcxt);
+
+      } else if (pragma == WN_PRAGMA_INLINE_BODY_END) {
+	if (Top_inlcxt()) { // DCE have caused the INLINE mark unbalanced
+	  //Top_inlcxt()->Set_inlcxt_end(_current_bb);
+	  Pop_inlcxt();
+
+	  New_bb(TRUE/* connect */);
+	}
+      }
+    }
     if ( ends_bb )
       *ends_bb = END_NOT;
     break;
@@ -3896,6 +4010,7 @@ CFG::Create(WN *func_wn, BOOL lower_fully, BOOL calls_break,
   // create the first entry block
   _last_bb = NULL;
   _first_bb = Create_bb();
+  _first_bb->Set_linenum(WN_Get_Linenum(func_wn));
   Append_bb( _first_bb );
 
   // assign the RID for this section of code, can be func_entry (RID tree)
@@ -3904,7 +4019,7 @@ CFG::Create(WN *func_wn, BOOL lower_fully, BOOL calls_break,
   _rid = REGION_get_rid(func_wn); 
 
   END_BLOCK endsbb;
-  Add_one_stmt(func_wn, &endsbb);
+  Add_one_stmt(func_wn, &endsbb, 0);
   if (opr == OPR_REGION)
     Add_altentry(_first_bb); // make an entrypoint for the region
 
@@ -4120,7 +4235,7 @@ CFG::Find_not_reached(void)
 }
 
 void
-CFG::Process_not_reached( BOOL /* can_disconnect */ )
+CFG::Process_not_reached( BOOL is_whirl/* can_disconnect */ )
 {
   CFG_ITER cfg_iter(this);
   BB_NODE *bb;
@@ -4158,6 +4273,30 @@ CFG::Process_not_reached( BOOL /* can_disconnect */ )
       Is_Trace(Trace(),
 	       (TFile,"CFG::Process_not_reached() 1, deleting BB%d %s\n",
 		bb->Id(),bb->Kind_name()));
+#ifdef BUILD_MASTIFF
+      if (Run_vsaopt && VSA_Ddc) {
+        if (is_whirl && bb->Firststmt() &&
+            Is_ddc_candidate(bb->Firststmt())) {
+          enum { MAX_INLCXT = 16 };
+          SRCPOS spos[MAX_INLCXT];  // max 16 levels of spos. 1 for last 0
+          INT spos_level = 0;
+          spos[spos_level ++] = WN_Get_Linenum(bb->Firststmt());
+          INLCXT *cxt = bb->Inlinecxt();
+          const char *fname = cxt ? ST_name(cxt->Inlcxt_call_st())
+                                  : ST_name(Get_Current_PU_ST());
+          while (cxt) {
+            spos[spos_level ++] = cxt->Inlcxt_line_num();
+            if (spos_level == MAX_INLCXT)
+              break;
+            cxt = cxt->Parent();
+          }
+          Report_vsa_error(fname, "", "DDC", FALSE, spos, spos_level);
+          if (VSA_Xsca) {
+            Report_xsca_error(fname, "", "MISRA_2_1", FALSE, spos, spos_level);
+          }
+        }
+      }
+#endif
       Change_block_kind(bb, BB_GOTO);
       Add_notreach(bb);
     }
@@ -6124,7 +6263,7 @@ CFG::Verify_cfg(void)
 }
 
 void 
-CFG::Print(FILE *fp, BOOL rpo, IDTYPE bb_id)
+CFG::Print(FILE *fp, BOOL rpo, IDTYPE bb_id, DNA_NODE* dna)
 {
   // Should we instead always print in source order (i.e. in order of 
   // basic block numbers)? 
@@ -6136,7 +6275,7 @@ CFG::Print(FILE *fp, BOOL rpo, IDTYPE bb_id)
      FOR_ALL_ELEM(tmp, rpo_iter, Init()) {
        // print if bb_id is not set or just print a particular BB
        if (bb_id == -1 || bb_id == tmp->Id())
-	 tmp->Print(fp);
+	 tmp->Print(fp, dna);
      }
   }
   else
@@ -6146,9 +6285,15 @@ CFG::Print(FILE *fp, BOOL rpo, IDTYPE bb_id)
     FOR_ALL_NODE(tmp, cfg_iter, Init()) {
       // print if bb_id is not set or just print a particular BB
       if (bb_id == -1 || bb_id == tmp->Id())
-	tmp->Print(fp);
+	tmp->Print(fp, dna);
     }
   }
+}
+
+void 
+CFG::Print(FILE *fp, DNA_NODE* dna)
+{
+  Print(fp, TRUE, -1, dna);
 }
 
 void
@@ -6683,7 +6828,7 @@ BB_NODE *
 CFG::Get_cloned_bb(BB_NODE * bb)
 {
   FmtAssert(_clone_map, ("NULL clone map"));
-  IDTYPE new_id = (IDTYPE) (unsigned long) (_clone_map->Get_val((POINTER) bb->Id()));
+  IDTYPE new_id = (IDTYPE) (unsigned long) (_clone_map->Get_val((POINTER)(INTPTR)bb->Id()));
   if (new_id)
     return Get_bb(new_id);
 
@@ -6846,7 +6991,7 @@ void CFG::Clone_bb(IDTYPE src, IDTYPE dst, BOOL clone_wn)
     WN * prev_wn = NULL;
 
     FOR_ALL_ELEM (wn_iter, stmt_iter, Init(srcbb->Firststmt(), srcbb->Laststmt())) {
-      WN * wn_new = WN_COPY_Tree_With_Map(wn_iter);
+      WN * wn_new = WN_copy_tree_with_map(wn_iter);
       Append_wn_in(destbb, wn_new);
     }
   }
@@ -6896,7 +7041,7 @@ void CFG::Clone_bbs
     if (bb_cur == bb_last)
       *new_last = bb_new;
     
-    _clone_map->Add_map((POINTER) src_id, (POINTER) dst_id);
+    _clone_map->Add_map((POINTER)(INTPTR)src_id, (POINTER)(INTPTR)dst_id);
     if (bb_cur == bb_last)
       break;
   }
@@ -7030,7 +7175,7 @@ CFG::Clone_loop(BB_LOOP * bb_loop)
     return new_merge->Loop();
 
   if (old_index)
-    new_index = WN_COPY_Tree_With_Map(old_index);
+    new_index = WN_copy_tree_with_map(old_index);
 
   BB_LOOP * new_loopinfo = CXX_NEW(BB_LOOP(new_index,
 					   new_start,

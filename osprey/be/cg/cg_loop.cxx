@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -6663,7 +6667,8 @@ Do_Loop_Determine_SWP_Or_Unroll (CG_LOOP& cg_loop, BOOL trace) {
   // Applicable to C and C++ only. Other kind of programming languages
   // are not well tuned yet. So, return return TRUE to retain orginal logic
   if (PU_src_lang(Get_Current_PU()) != PU_C_LANG &&
-      PU_src_lang(Get_Current_PU()) != PU_CXX_LANG) {
+      PU_src_lang(Get_Current_PU()) != PU_CXX_LANG &&
+      PU_src_lang(Get_Current_PU()) != PU_JAVA_LANG) {
     // Precise alias information is easy to obtain for the those
     // programming languages other than C and C++. Data speculation
     // is in genreal has little improvement on them.
@@ -7692,7 +7697,7 @@ static void Dead_Code_Elimination_Within_BB(TN* probably_not_liveout_tn)
 
 
 void Report_Loop_Info(LOOP_DESCR *loop, 
-                      char *usage_str, 
+                      const char *usage_str,
                       BOOL after_prescheduling,
                       MEM_POOL *pool)
 {
@@ -7800,7 +7805,7 @@ void Report_Loop_Info(LOOP_DESCR *loop,
   } 
 }
 
-void Examine_Loop_Info(char *usage_str, BOOL after_presched)
+void Examine_Loop_Info(const char *usage_str, BOOL after_presched)
 {
   if (CG_opt_level > 0) {
     MEM_POOL loop_descr_pool;

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -2307,6 +2311,7 @@ SUMMARIZE<program>:: Record_mod (WN* w)
     switch (PU_src_lang (Get_Current_PU ())) {
     case PU_C_LANG:
     case PU_CXX_LANG:
+    case PU_JAVA_LANG:
 
 	switch (WN_operator (w)) {
 	case OPR_ISTORE:

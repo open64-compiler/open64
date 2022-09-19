@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -49,7 +53,7 @@
 #include "cgdriver.h"
 #include "cg.h"
 #include "eh_region.h"
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 #include "cgexp.h"
 #include "calls.h"
 #endif
@@ -70,7 +74,7 @@ extern void (*CG_Dump_Region_p) (FILE*, WN*);
 // from be/cg/eh_region.h
 extern void (*EH_Generate_Range_List_p) (WN *);
 
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 extern void (*CG_Set_Is_Stack_Used_p) ();
 extern INT (*Push_Pop_Int_Saved_Regs_p) (void);
 #endif
@@ -87,7 +91,7 @@ struct CG_INIT
 	CG_Generate_Code_p = CG_Generate_Code;
 	CG_Dump_Region_p = CG_Dump_Region;
 	EH_Generate_Range_List_p = EH_Generate_Range_List;
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 	CG_Set_Is_Stack_Used_p = CG_Set_Is_Stack_Used;
 	Push_Pop_Int_Saved_Regs_p = Push_Pop_Int_Saved_Regs;
 #endif

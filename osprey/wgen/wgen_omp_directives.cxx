@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -121,7 +125,7 @@ WN *  WGEN_region(REGION_KIND kind)
 /////////////////////////
 //////  error report routine:
 
-void WGEN_omp_error(CHECK_STMT* cs, bool chkflag, char * msg)
+void WGEN_omp_error(CHECK_STMT* cs, bool chkflag, const char * msg)
 {
   char dirname[100];
   if(chkflag==false)
@@ -1370,7 +1374,7 @@ void WGEN_check_master()
     //and single directives if the master directives bind to the same parallel 
     //as the work-sharing directives.
     bool chkflag=false;
-    char * msg = NULL;
+    const char * msg = NULL;
 
     if( WGEN_bind_to_same(wgen_omp_master,wgen_omp_for,wgen_omp_parallel)||
         WGEN_bind_to_same(wgen_omp_master,wgen_omp_sections,wgen_omp_parallel)||

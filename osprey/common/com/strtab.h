@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -141,6 +145,9 @@ Save_StrN (const char *s1, UINT32 len);
 extern char *
 Index_to_char_array (UINT32 idx);
 
+extern UINT32
+Index_to_length(UINT32 idx);
+
 #ifdef MONGOOSE_BE
 
 #include <ext/hash_map>
@@ -184,6 +191,14 @@ Merge_Strtab (const char *buf, UINT32 size, STR_IDX_MAP& map);
 extern void
 Merge_TCON_Strtab (const char *buf, UINT32 size, STR_IDX_MAP& map);
 
+extern void *New_Strtab();
+extern void  Set_Strtab(void *tab);
+extern void *Get_Strtab();
+extern void *New_TCON_Strtab();
+extern void  Set_TCON_Strtab(void *tab);
+extern void *Get_TCON_Strtab();
+extern char *Strtab_to_char(void* tab, STR_IDX idx);
+extern char *TCON_strtab_to_char(void* tab, UINT32 idx);
 #endif // MONGOOSE_BE
 
 

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -566,8 +570,9 @@ Prepare_Target ( void )
     }
     else if ( strcasecmp ( Processor_Name, "anyx86" ) == 0 ) {
       targ = TARGET_anyx86;
-    }
-    else {
+    } else if ( strcasecmp ( Processor_Name, "wasm" ) == 0 ) {
+      targ = TARGET_anyx86;
+    } else {
       ErrMsg ( EC_Inv_TARG, "processor", Processor_Name );
       targ = TARGET_UNDEF;
     }

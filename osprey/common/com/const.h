@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -42,10 +46,22 @@
 #endif /* targ_const_INCLUDED */
 
 class WN;
+typedef struct mem_pool MEM_POOL;
 
 extern ST *
 New_Const_Sym (TCON_IDX tcon, TY_IDX ty);
 
+extern void *
+New_TCON_Merge_Map(MEM_POOL* mp);
+
+extern void
+Delete_TCON_Merge_Map(MEM_POOL* mp, void* map);
+
+extern void *
+Get_TCON_Merge_Map();
+
+extern void
+Set_TCON_Merge_Map(void* map);
 
 extern ST *
 Gen_String_Sym (TCON *val, TY_IDX ty, BOOL unique);

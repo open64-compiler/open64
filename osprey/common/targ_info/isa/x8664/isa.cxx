@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -241,6 +245,8 @@ int main ()
 	      "andi16",
 	      "andi32",
 	      "andi64",
+	      "bswap32",
+	      "bswap64",
 	      "call",
 	      "icall",
 	      "icallx",
@@ -1529,6 +1535,7 @@ int main ()
 	      "intrncall",
 	      "spadjust",
 	      "savexmms",
+              "checkptr",
 
               /* Instruction to zero out integer registers */
 	      "zero32",

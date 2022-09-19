@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -117,6 +121,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
 
 #ifndef	_ANSIDECL_H
 #define _ANSIDECL_H	1
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Every source file includes this file,
    so they will all get the switch for lint.  */
@@ -274,12 +282,30 @@ So instead we use the macro below and test it against specific values.  */
 
 /* Attribute `nonnull' was valid as of gcc 3.3.  */
 #ifndef ATTRIBUTE_NONNULL
-# if (GCC_VERSION >= 3003)
+# if (GCC_VERSION >= 6090)
 #  define ATTRIBUTE_NONNULL(m) __attribute__ ((__nonnull__ (m)))
 # else
 #  define ATTRIBUTE_NONNULL(m)
 # endif /* GNUC >= 3.3 */
 #endif /* ATTRIBUTE_NONNULL */
+
+/* Attribute `returns_nonnull' was valid as of gcc 4.9.  */
+#ifndef ATTRIBUTE_RETURNS_NONNULL
+# if (GCC_VERSION >= 6090)
+#  define ATTRIBUTE_RETURNS_NONNULL __attribute__ ((__returns_nonnull__))
+# else
+#  define ATTRIBUTE_RETURNS_NONNULL
+# endif /* GNUC >= 4.9 */
+#endif /* ATTRIBUTE_RETURNS_NONNULL */
+
+/* Attribute `pure' was valid as of gcc 3.0.  */
+#ifndef ATTRIBUTE_PURE
+# if (GCC_VERSION >= 3000)
+#  define ATTRIBUTE_PURE __attribute__ ((__pure__))
+# else
+#  define ATTRIBUTE_PURE
+# endif /* GNUC >= 3.0 */
+#endif /* ATTRIBUTE_PURE */
 
 /* Use ATTRIBUTE_PRINTF when the format specifier must not be NULL.
    This was the case for the `printf' format attribute by itself
@@ -293,6 +319,22 @@ So instead we use the macro below and test it against specific values.  */
 #define ATTRIBUTE_PRINTF_4 ATTRIBUTE_PRINTF(4, 5)
 #define ATTRIBUTE_PRINTF_5 ATTRIBUTE_PRINTF(5, 6)
 #endif /* ATTRIBUTE_PRINTF */
+
+/* Use ATTRIBUTE_FPTR_PRINTF when the format attribute is to be set on
+   a function pointer.  Format attributes were allowed on function
+   pointers as of gcc 3.1.  */
+#ifndef ATTRIBUTE_FPTR_PRINTF
+# if (GCC_VERSION >= 3001)
+#  define ATTRIBUTE_FPTR_PRINTF(m, n) ATTRIBUTE_PRINTF(m, n)
+# else
+#  define ATTRIBUTE_FPTR_PRINTF(m, n)
+# endif /* GNUC >= 3.1 */
+# define ATTRIBUTE_FPTR_PRINTF_1 ATTRIBUTE_FPTR_PRINTF(1, 2)
+# define ATTRIBUTE_FPTR_PRINTF_2 ATTRIBUTE_FPTR_PRINTF(2, 3)
+# define ATTRIBUTE_FPTR_PRINTF_3 ATTRIBUTE_FPTR_PRINTF(3, 4)
+# define ATTRIBUTE_FPTR_PRINTF_4 ATTRIBUTE_FPTR_PRINTF(4, 5)
+# define ATTRIBUTE_FPTR_PRINTF_5 ATTRIBUTE_FPTR_PRINTF(5, 6)
+#endif /* ATTRIBUTE_FPTR_PRINTF */
 
 /* Use ATTRIBUTE_NULL_PRINTF when the format specifier may be NULL.  A
    NULL format specifier was allowed as of gcc 3.3.  */
@@ -309,11 +351,171 @@ So instead we use the macro below and test it against specific values.  */
 # define ATTRIBUTE_NULL_PRINTF_5 ATTRIBUTE_NULL_PRINTF(5, 6)
 #endif /* ATTRIBUTE_NULL_PRINTF */
 
+
+/* Attribute `sentinel' was valid as of gcc 3.5.  */
+#ifndef ATTRIBUTE_SENTINEL
+# if (GCC_VERSION >= 3005)
+#  define ATTRIBUTE_SENTINEL __attribute__ ((__sentinel__))
+# else
+#  define ATTRIBUTE_SENTINEL
+# endif /* GNUC >= 3.5 */
+#endif /* ATTRIBUTE_SENTINEL */
+
+
+#ifndef ATTRIBUTE_ALIGNED_ALIGNOF
+# if (GCC_VERSION >= 3000)
+#  define ATTRIBUTE_ALIGNED_ALIGNOF(m) __attribute__ ((__aligned__ (__alignof__ (m))))
+# else
+#  define ATTRIBUTE_ALIGNED_ALIGNOF(m)
+# endif /* GNUC >= 3.0 */
+#endif /* ATTRIBUTE_ALIGNED_ALIGNOF */
+
+/* Useful for structures whose layout must match some binary specification
+   regardless of the alignment and padding qualities of the compiler.  */
+#ifndef ATTRIBUTE_PACKED
+# define ATTRIBUTE_PACKED __attribute__ ((packed))
+#endif
+
+/* Attribute `hot' and `cold' was valid as of gcc 4.3.  */
+#ifndef ATTRIBUTE_COLD
+# if (GCC_VERSION >= 4003)
+#  define ATTRIBUTE_COLD __attribute__ ((__cold__))
+# else
+#  define ATTRIBUTE_COLD
+# endif /* GNUC >= 4.3 */
+#endif /* ATTRIBUTE_COLD */
+#ifndef ATTRIBUTE_HOT
+# if (GCC_VERSION >= 4003)
+#  define ATTRIBUTE_HOT __attribute__ ((__hot__))
+# else
+#  define ATTRIBUTE_HOT
+# endif /* GNUC >= 4.3 */
+#endif /* ATTRIBUTE_HOT */
+
+/* Attribute 'no_sanitize_undefined' was valid as of gcc 4.9.  */
+#ifndef ATTRIBUTE_NO_SANITIZE_UNDEFINED
+# if (GCC_VERSION >= 4009)
+#  define ATTRIBUTE_NO_SANITIZE_UNDEFINED __attribute__ ((no_sanitize_undefined))
+# else
+#  define ATTRIBUTE_NO_SANITIZE_UNDEFINED
+# endif /* GNUC >= 4.9 */
+#endif /* ATTRIBUTE_NO_SANITIZE_UNDEFINED */
+
+/* Attribute 'nonstring' was valid as of gcc 8.  */
+#ifndef ATTRIBUTE_NONSTRING
+# if GCC_VERSION >= 8000
+#  define ATTRIBUTE_NONSTRING __attribute__ ((__nonstring__))
+# else
+#  define ATTRIBUTE_NONSTRING
+# endif
+#endif
+
 /* We use __extension__ in some places to suppress -pedantic warnings
    about GCC extensions.  This feature didn't work properly before
    gcc 2.8.  */
 #if GCC_VERSION < 2008
 #define __extension__
+#endif
+
+
+/* This is used to declare a const variable which should be visible
+   outside of the current compilation unit.  Use it as
+     EXPORTED_CONST int i = 1;
+   This is because the semantics of const are different in C and C++.
+   "extern const" is permitted in C but it looks strange, and gcc
+   warns about it when -Wc++-compat is not used.  */
+#ifdef __cplusplus
+#define EXPORTED_CONST extern const
+#else
+#define EXPORTED_CONST const
+#endif
+
+/* Be conservative and only use enum bitfields with C++ or GCC.
+   FIXME: provide a complete autoconf test for buggy enum bitfields.  */
+
+#ifdef __cplusplus
+#define ENUM_BITFIELD(TYPE) enum TYPE
+#elif (GCC_VERSION > 2000)
+#define ENUM_BITFIELD(TYPE) __extension__ enum TYPE
+#else
+#define ENUM_BITFIELD(TYPE) unsigned int
+#endif
+
+#if __cpp_constexpr >= 200704
+#define CONSTEXPR constexpr
+#else
+#define CONSTEXPR
+#endif
+
+/* C++11 adds the ability to add "override" after an implementation of a
+   virtual function in a subclass, to:
+     (A) document that this is an override of a virtual function
+     (B) allow the compiler to issue a warning if it isn't (e.g. a mismatch
+         of the type signature).
+
+   Similarly, it allows us to add a "final" to indicate that no subclass
+   may subsequently override the vfunc.
+
+   Provide OVERRIDE and FINAL as macros, allowing us to get these benefits
+   when compiling with C++11 support, but without requiring C++11.
+
+   For gcc, use "-std=c++11" to enable C++11 support; gcc 6 onwards enables
+   this by default (actually GNU++14).  */
+
+#if defined __cplusplus
+# if __cplusplus >= 201103
+   /* C++11 claims to be available: use it.  Final/override were only
+      implemented in 4.7, though.  */
+#  if GCC_VERSION < 4007
+#   define OVERRIDE
+#   define FINAL
+#  else
+#   define OVERRIDE override
+#   define FINAL final
+#  endif
+# elif GCC_VERSION >= 4007
+   /* G++ 4.7 supports __final in C++98.  */
+#  define OVERRIDE
+#  define FINAL __final
+# else
+   /* No C++11 support; leave the macros empty.  */
+#  define OVERRIDE
+#  define FINAL
+# endif
+#else
+/* No C++11 support; leave the macros empty.  */
+# define OVERRIDE
+# define FINAL
+#endif
+
+/* A macro to disable the copy constructor and assignment operator.
+   When building with C++11 and above, the methods are explicitly
+   deleted, causing a compile-time error if something tries to copy.
+   For C++03, this just declares the methods, causing a link-time
+   error if the methods end up called (assuming you don't
+   define them).  For C++03, for best results, place the macro
+   under the private: access specifier, like this,
+
+   class name_lookup
+   {
+     private:
+       DISABLE_COPY_AND_ASSIGN (name_lookup);
+   };
+
+   so that most attempts at copy are caught at compile-time.  */
+
+#if __cplusplus >= 201103
+#define DISABLE_COPY_AND_ASSIGN(TYPE)		\
+  TYPE (const TYPE&) = delete;			\
+  void operator= (const TYPE &) = delete
+#else
+#define DISABLE_COPY_AND_ASSIGN(TYPE)		\
+  TYPE (const TYPE&);				\
+  void operator= (const TYPE &)
+#endif /* __cplusplus >= 201103 */
+
+#ifdef __cplusplus
+}
 #endif
 
 /* Bootstrap support:  Adjust certain macros defined by Autoconf,

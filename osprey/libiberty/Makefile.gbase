@@ -1,4 +1,8 @@
 # -*- makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright 2003, 2004, 2005 PathScale, Inc.  All Rights Reserved.
 #
@@ -62,6 +66,7 @@ OBJS =	alloca.o	\
 	concat.o	\
 	cp-demangle.o 	\
 	cplus-dem.o 	\
+	d-demangle.o    \
 	dyn-string.o	\
 	fdmatch.o	\
 	fibheap.o	\
@@ -81,6 +86,7 @@ OBJS =	alloca.o	\
 	partition.o	\
 	pexecute.o	\
 	physmem.o	\
+	rust-demangle.o \
 	safe-ctype.o	\
 	spaces.o 	\
 	splay-tree.o	\

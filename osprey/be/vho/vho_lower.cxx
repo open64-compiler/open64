@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -54,6 +54,7 @@
 #include "config.h"
 #include "config_opt.h"
 #include "config_debug.h"
+#include "config_vsa.h"
 #include "mempool.h"
 #include "wn.h"
 #include "wn_util.h"
@@ -72,6 +73,7 @@
 #include "wb_f90_lower.h"
 #include "wn_lower.h"
 #include "be_util.h"            // For Current_PU_Count
+#include "uwasm_nat_util.h"     // Uwasm_check_addr/etc
 #include "glob.h"               // For Show_Progress
 #ifdef KEY
 #include "w2op.h"		// For OPCODE_Can_Be_Spculative
@@ -91,6 +93,8 @@ typedef enum {
 #include "config_vho.h"
 #include "targ_const.h"
 #include "erbe.h"
+#include "opt_vsa_report.h"
+#include <stack>
 
 #define DO_VHO_LOWERING 1
 #define IS_POWER_OF_2(x) (((x)!=0) && ((x) & ((x)-1))==0)
@@ -162,6 +166,18 @@ VHO_WN_has_side_effects ( WN * wn )
   return has_side_effects;
 } /* VHO_WN_has_side_effects */
 
+
+// stack to track inlined function body to report right function name for VSA
+static std::stack<ST*> VHO_Inline_Stack;
+
+static const char *
+VHO_Get_VSA_PU_Name()
+{
+  if (!VHO_Inline_Stack.empty())
+    return ST_name(VHO_Inline_Stack.top());
+  else
+    return ST_name(Get_Current_PU_ST());
+}
 
 typedef struct bool_expr_info_t {
   OPCODE opcode;
@@ -265,11 +281,57 @@ static BOOL VHO_Struct_Field_Is_Array_Table[255]; /* field is array? */
 static INT32  VHO_Struct_Last_Field_Offset; /* offset of last field          */
 static INT32  VHO_Struct_Last_Field_Size;   /* size of last field            */
 
+static BOOL      VHO_Agoto_Initialized;
+static PREG_NUM  VHO_Agoto_Target;
+static LABEL_IDX VHO_Agoto_Pad;
+
 #define LESS    -1
 #define EQUAL    0
 #define GREATER  1
 
 #define SWITCH_key(i)  (VHO_Switch_Signed ? WN_const_val(VHO_SWITCH_wn(i)) : (UINT64) WN_const_val(VHO_SWITCH_wn(i)))
+
+WN*
+VHO_Lower_Agoto ( WN* wn, WN* block )
+{
+  if (VHO_Agoto_Initialized == FALSE) {
+    VHO_Agoto_Initialized = TRUE;
+    VHO_Agoto_Target = Create_Preg(Pointer_Mtype, "__agoto_target");
+    LABEL_Init (New_LABEL( CURRENT_SYMTAB, VHO_Agoto_Pad), 0, LKIND_DEFAULT);
+  }
+  WN* ret = NULL;
+  if (block == NULL) {
+    block = WN_CreateBlock();
+    ret = block;
+  }
+  WN* stid = WN_StidPreg(Pointer_Mtype, VHO_Agoto_Target, WN_kid0(wn));
+  WN_INSERT_BlockLast(block, stid);
+  WN_Delete(wn);
+  WN* pad = WN_CreateGoto((ST_IDX) 0, VHO_Agoto_Pad);
+  WN_INSERT_BlockLast(block, pad);
+  return ret;
+}
+
+void
+VHO_Create_Agoto_Pad ( WN* block )
+{
+  if (VHO_Agoto_Initialized == FALSE)
+    return;
+  VHO_Agoto_Initialized = FALSE; // reset flag
+
+  WN* last = WN_last(block);
+  if (last == NULL ||
+      (WN_operator(last) != OPR_RETURN &&
+       WN_operator(last) != OPR_RETURN_VAL)) {
+    WN* ret = WN_CreateReturn();
+    WN_INSERT_BlockLast(block, ret);
+  }
+  WN* label = WN_CreateLabel( (ST_IDX) 0, VHO_Agoto_Pad, 0, NULL);
+  WN_INSERT_BlockLast(block, label);
+  WN* ldid = WN_LdidPreg(Pointer_Mtype, VHO_Agoto_Target);
+  WN* agoto = WN_CreateAgoto(ldid);
+  WN_INSERT_BlockLast(block, agoto);
+}
 
 INT32
 VHO_Switch_Compare_Value ( const void *v_item1, const void *v_item2 )
@@ -748,6 +810,7 @@ VHO_Switch_Generate_Compgoto ( SRCPOS srcpos )
   wn = WN_CreateCompgoto ( n, test, block, VHO_Switch_Default_Goto,
                            VHO_Switch_Last_Label );
 
+  WN_Set_Linenum ( wn, srcpos );
   if ( Cur_PU_Feedback ) {
 
     FB_Info_Switch info_switch( n );
@@ -2444,6 +2507,7 @@ vho_lower_comma ( WN * wn, WN *block, BOOL_INFO * bool_info, BOOL is_return=FALS
   WN       * result_block;
   WN       * result;
   WN       * first;
+  WN       * last;
   WN       * value;
   WN       * stmt;
   WN       * prev_call;
@@ -2451,7 +2515,8 @@ vho_lower_comma ( WN * wn, WN *block, BOOL_INFO * bool_info, BOOL is_return=FALS
   BOOL       call;
 
   result = WN_kid1 (wn);
-  if( PU_cxx_lang (Get_Current_PU()) && WN_operator(WN_last(WN_kid0(wn))) == OPR_STID)
+  if( (PU_cxx_lang (Get_Current_PU()) || PU_java_lang (Get_Current_PU())) && 
+      WN_operator(WN_last(WN_kid0(wn))) == OPR_STID)
     prev_call = WN_kid0(WN_last(WN_kid0(wn)));
   else
     prev_call = NULL;
@@ -2459,7 +2524,7 @@ vho_lower_comma ( WN * wn, WN *block, BOOL_INFO * bool_info, BOOL is_return=FALS
           && WN_operator(result) == OPR_LDID
           && WN_st(result) == Return_Val_Preg;
 
-  if ( PU_cxx_lang (Get_Current_PU())&&
+  if ( (PU_cxx_lang (Get_Current_PU()) || PU_java_lang (Get_Current_PU())) &&
        prev_call && 
        WN_operator(prev_call) == OPR_LDID &&
        (WN_st(prev_call) == Return_Val_Preg || is_return)&&
@@ -2487,6 +2552,28 @@ vho_lower_comma ( WN * wn, WN *block, BOOL_INFO * bool_info, BOOL is_return=FALS
 
   result_block = WN_CreateBlock ();
   result = vho_lower_expr (WN_kid1(wn), result_block, bool_info);
+
+  last = WN_last(comma_block);
+  if (last &&
+      WN_operator(last) == OPR_MSTORE &&
+      result &&
+      WN_operator(result) == OPR_LDID &&
+      WN_st(result) == Return_Val_Preg) {
+    // memmove/memcpy/etc was lowered into MLOAD/MSTORE,
+    // change result Return_Val_Preg to dest
+    WN *dst = WN_kid1(last);
+    if (WN_operator(dst) != OPR_LDID) {
+      PREG_NUM dst_preg = Create_Preg(Pointer_Mtype, ("_mstore_dst"));
+      ST* dst_st = MTYPE_To_PREG(Pointer_Mtype);
+      WN *stid = WN_StidIntoPreg(Pointer_Mtype, dst_preg, dst_st, dst);
+      WN_INSERT_BlockBefore(comma_block, last, stid);
+      WN_Set_Linenum(stid, WN_Get_Linenum(last));
+      dst = WN_LdidPreg(Pointer_Mtype, dst_preg);
+      WN_kid1(last) = dst;
+    }
+    WN_Delete(result);
+    result = WN_COPY_Tree(dst);
+  }
 
   if (    VHO_Call_Opt
        && first
@@ -3150,6 +3237,38 @@ vho_simplify_cand_cior ( WN * wn )
   return wn;
 } /* vho_simplify_cand_cior */
 
+/*
+ * vho_lower_cselect_bool
+ * lower cselect which returns bool value without introducing temp variable
+ *   kid0 (select test)
+ *   kid1 (kid taken when test is TRUE)
+ *   kid2 (kid taken when test is FALSE)
+ * CSELECT
+ * -->
+ *     kid0
+ *     kid1
+ *   CAND
+ *       kid0
+ *     LNOT
+ *     kid2
+ *   CAND
+ * CIOR
+ */
+static WN *
+vho_lower_cselect_bool ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
+{
+  /* lower cselect test at first so that the kids with side effects are only
+     evaluated once */
+  WN* cst_test = vho_lower_expr ( WN_kid0(wn_cselect), block, NULL );
+  /* generate !cst_test */
+  WN* cst_test_not = WN_LNOT ( WN_COPY_Tree ( cst_test ) );
+  /* generate (cst_test && kid1) || (!cst_test && kid2) */
+  WN* cior = WN_CIOR(WN_CAND(cst_test, WN_kid1(wn_cselect)),
+                     WN_CAND(cst_test_not, WN_kid2(wn_cselect)));
+  /* lower the new cior tree */
+  return vho_lower_expr ( cior, block, bool_info );
+}
+
 
 static WN *
 vho_lower_cand_cior ( WN *wn, WN *block, BOOL_INFO *bool_info )
@@ -3217,8 +3336,15 @@ vho_lower_cand_cior ( WN *wn, WN *block, BOOL_INFO *bool_info )
     }
   }
 
-  lwn = vho_lower_expr (WN_kid0(wn), cflow_block1, &cflow_bool_info1);
-  rwn = vho_lower_expr (WN_kid1(wn), cflow_block2, &cflow_bool_info2);
+  if ( VSA_New_Cselect_Lower && WN_operator(WN_kid0(wn)) == OPR_CSELECT )
+    lwn = vho_lower_cselect_bool ( WN_kid0(wn), cflow_block1, &cflow_bool_info1 );
+  else
+    lwn = vho_lower_expr ( WN_kid0(wn), cflow_block1, &cflow_bool_info1 );
+  if ( VSA_New_Cselect_Lower && WN_operator(WN_kid1(wn)) == OPR_CSELECT )
+    rwn = vho_lower_cselect_bool ( WN_kid1(wn), cflow_block2, &cflow_bool_info2 );
+  else
+    rwn = vho_lower_expr (WN_kid1(wn), cflow_block2, &cflow_bool_info2);
+
   WN_kid0(wn) = lwn;
   WN_kid1(wn) = rwn;
 
@@ -3227,7 +3353,8 @@ vho_lower_cand_cior ( WN *wn, WN *block, BOOL_INFO *bool_info )
   if ( WN_first(cflow_block1) )
     WN_INSERT_BlockLast ( block, cflow_block1 );
 
-  if (    WN_first(cflow_block2)
+  if ( Run_vsaopt  // Always lower CAND/CIOR into FALSEBR/TRUEBR when vsa is on
+       || WN_first(cflow_block2)
        || cflow_bool_info1.used_true_label
        || cflow_bool_info1.used_false_label
        || cflow_bool_info2.used_true_label
@@ -3442,8 +3569,10 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
   WN_OFFSET   offset;
   WN_OFFSET   lwn_offset;
   WN_OFFSET   rwn_offset;
-  WN        * swn;
+  WN         *swn;
   BOOL        has_side_effects;
+  BOOL        mcselect_mldid = FALSE;
+  WN         *mcselect_mldid_wn = NULL;
 
   vcselect     = FALSE;
   mcselect     = FALSE;
@@ -3468,8 +3597,12 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
   lwn    = vho_lower_expr ( WN_kid1(wn_cselect), cflow_block1, NULL );
   rwn    = vho_lower_expr ( WN_kid2(wn_cselect), cflow_block2, NULL );
 
-  if (    WHIRL_Mldid_Mstid_On && opcode == OPC_MCSELECT && test != NULL ) {
+  if ( WHIRL_Mldid_Mstid_On && opcode == OPC_MCSELECT &&
+       (test != NULL ||
+        WN_opcode(lwn) != OPC_MLOAD ||
+        WN_opcode(rwn) != OPC_MLOAD)) {
 
+    // case 1: test != NULL
     // CSELECT                             IF
     //  <test>                              <test>
     //  <then_expr>                        THEN
@@ -3479,7 +3612,18 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
     //                                       <else_expr>
     //                                      STID <preg>
     //                                     END_IF
-
+    // case 2: test == NULL. original test is expanded into
+    // truebr/falsebr
+    // CSELECT                             FALSEBR
+    //  <test>                               <sth from test>
+    //  <then_expr>                        TRUE_LABEL
+    //  <else_expr>            ===>          <then_expr>
+    //                                     STID <temp>
+    //                                     GOTO CONT_LABEL
+    //                                     FALSE_LABEL
+    //                                       <else_expr>
+    //                                     STID <temp>
+    //                                     CONT_LABEL
     ty_idx = WN_ty(lwn);
 #ifdef KEY // bug 5179
     if (WN_field_id(lwn) != 0)
@@ -3497,20 +3641,27 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
     WN_Set_Linenum (wn, VHO_Srcpos);
     WN_INSERT_BlockLast (cflow_block2, wn);
 
-    wn = WN_CreateIf (test, cflow_block1, cflow_block2);
-    WN_Set_Linenum ( wn, VHO_Srcpos );
-    if ( Cur_PU_Feedback ) {
-      Cur_PU_Feedback->FB_lower_branch( wn_cselect, wn );
+    mcselect_mldid_wn = WN_CreateLdid (OPR_LDID, MTYPE_M, MTYPE_M,
+                                       0, ST_st_idx (temp), ty_idx);
+
+    if (test != NULL) {
+      wn = WN_CreateIf (test, cflow_block1, cflow_block2);
+      WN_Set_Linenum ( wn, VHO_Srcpos );
+      if ( Cur_PU_Feedback ) {
+        Cur_PU_Feedback->FB_lower_branch( wn_cselect, wn );
+      }
+
+      if (WN_first (cflow_block))
+        WN_INSERT_BlockLast (block, cflow_block);
+
+      WN_INSERT_BlockLast (block, wn);
+      return mcselect_mldid_wn;
     }
 
-    if (WN_first (cflow_block))
-      WN_INSERT_BlockLast (block, cflow_block);
+    else {
+      mcselect_mldid = TRUE;
+    }
 
-    WN_INSERT_BlockLast (block, wn);
-
-    wn = WN_CreateLdid (OPR_LDID, MTYPE_M, MTYPE_M, 
-                        0, ST_st_idx (temp), ty_idx);
-    return wn;
   }
 
   if (    VHO_Cselect_Opt
@@ -3753,7 +3904,7 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
   if ( opcode == OPC_VCSELECT )
     vcselect = TRUE;
 
-  else {
+  else if ( !mcselect_mldid ) {
 
     if ( opcode == OPC_MCSELECT ) {
 
@@ -3802,7 +3953,10 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
     preg = Create_Preg (preg_mtype, vho_lower_cselect_name);
 
     preg_st     = MTYPE_To_PREG ( preg_mtype );
-    preg_ty_idx = Be_Type_Tbl(preg_mtype);
+    TY_IDX lwn_ty = WN_object_ty(lwn);
+    TY_IDX rwn_ty = WN_object_ty(rwn);
+    preg_ty_idx = lwn_ty != TY_IDX_ZERO ? lwn_ty :
+                    rwn_ty != TY_IDX_ZERO ? rwn_ty : Be_Type_Tbl(preg_mtype);
     opcode      = OPCODE_make_op ( OPR_STID, MTYPE_V, preg_mtype );
   }
 
@@ -3823,7 +3977,7 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
     if ( WN_first(cflow_block1 ) )
       WN_INSERT_BlockLast ( block, cflow_block1 );
 
-    if ( ! vcselect ) {
+    if ( !vcselect && !mcselect_mldid ) {
 
       lwn = WN_CreateStid ( opcode, preg, preg_st, preg_ty_idx, lwn );
       WN_Set_Linenum ( lwn, VHO_Srcpos );
@@ -3846,7 +4000,7 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
     if ( WN_first(cflow_block2 ) )
       WN_INSERT_BlockLast ( block, cflow_block2 );
 
-    if ( ! vcselect ) {
+    if ( !vcselect && !mcselect_mldid ) {
 
       rwn = WN_CreateStid ( opcode, preg, preg_st, preg_ty_idx, rwn );
       WN_Set_Linenum ( rwn, VHO_Srcpos );
@@ -3893,6 +4047,9 @@ vho_lower_cselect ( WN * wn_cselect, WN * block, BOOL_INFO * bool_info )
 
     WN_INSERT_BlockLast ( block, wn );
   }
+
+  if (mcselect_mldid)
+    return mcselect_mldid_wn;
 
   if ( !vcselect ) {
 
@@ -4463,6 +4620,16 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
 
       WN_kid0(wn) = vho_lower_expr (WN_kid0(wn), block, NULL);
 
+#if defined(BUILD_MASTIFF)
+      if (VSA_Ddv && !FILE_INFO_is_rbc(File_info)) {
+        // mark LDA of ILOAD to be used in case addr_saved/addr_passed not marked
+        WN *wn0 = Find_Ldid_Under_Iload(WN_kid0(wn));
+        if (wn0 != NULL && WN_operator(wn0) == OPR_LDA) {
+          Set_ST_is_used(WN_st(wn0));
+        }
+      }
+#endif
+
       if (    VHO_Iload_Opt
            && WN_operator(WN_kid0(wn)) == OPR_LDA 
 	   && !VHO_WN_has_side_effects(wn)) {
@@ -4491,7 +4658,12 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
           wn = wn1;
         }
       }
-
+#if defined(TARG_X8664)
+      if (Uwasm_Isolation != UWASM_ISO_NONE &&
+          Uwasm_Early_Instr == TRUE) {
+        Uwasm_instru_load_in_vho(block, wn, VHO_Srcpos);
+      }
+#endif
       break;
 
     case OPR_ILOADX:
@@ -4556,6 +4728,18 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
 	  }
 	} 
 
+#if defined(BUILD_MASTIFF)
+        if ( Run_vsaopt && WN_intrinsic(wn) == INTRN_EXPECT ) {
+          // lower __builtin_expect(exp, c) to 'exp' directly for VSA
+          WN* exp = WN_kid0(WN_kid0(wn)); // get 'exp'
+          WN_DELETE_Tree (WN_kid1(wn));   // delete kid1 for 'c'
+          WN_Delete(WN_kid0(wn));         // delete kid0 PARM
+          WN_Delete(wn);                  // delete INTRINSIC_OP EXPECT
+          wn = vho_lower_expr (exp, block, NULL);  // lower 'exp'
+          break;
+        }
+#endif
+
 	for ( i = 0; i < nkids; i++ )
 	  WN_kid(wn,i) = vho_lower_expr (WN_kid(wn,i), block, NULL);
 	break;
@@ -4568,6 +4752,11 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
       break;
 
     case OPR_SELECT:
+#if defined(BUILD_MASTIFF)
+      if (Run_vsaopt && VSA_Scb &&
+          WN_Simp_Compare_Trees(WN_kid1(wn), WN_kid2(wn)) == 0)
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB", FALSE, VHO_Srcpos);
+#endif
 
       WN_kid0(wn) = vho_lower_expr (WN_kid0(wn), block, NULL);
       WN_kid1(wn) = vho_lower_expr (WN_kid1(wn), block, NULL);
@@ -4575,6 +4764,11 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
       break;
 
     case OPR_CSELECT:
+#if defined(BUILD_MASTIFF)
+      if (Run_vsaopt && VSA_Scb &&
+          WN_Simp_Compare_Trees(WN_kid1(wn), WN_kid2(wn)) == 0)
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB", FALSE, VHO_Srcpos);
+#endif
 
       wn = vho_lower_cselect ( wn, block, bool_info);
       break;
@@ -4658,6 +4852,11 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
     case OPR_BXOR:
     case OPR_LAND:
     case OPR_LIOR:
+#if defined(BUILD_MASTIFF)
+      if (Run_vsaopt && VSA_Sse &&
+          WN_Simp_Compare_Trees(WN_kid0(wn), WN_kid1(wn)) == 0)
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SSE", FALSE, VHO_Srcpos);
+#endif
 
       WN_kid0(wn) = vho_lower_expr (WN_kid0(wn), block, NULL);
       WN_kid1(wn) = vho_lower_expr (WN_kid1(wn), block, NULL);
@@ -4668,6 +4867,11 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
 
     case OPR_CAND:
     case OPR_CIOR:
+#if defined(BUILD_MASTIFF)
+      if (Run_vsaopt && VSA_Sse &&
+          WN_Simp_Compare_Trees(WN_kid0(wn), WN_kid1(wn)) == 0)
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SSE", FALSE, VHO_Srcpos);
+#endif
 
       wn = vho_lower_cand_cior ( wn, block, bool_info );
       break;
@@ -4725,6 +4929,17 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
         }
       }
 #endif
+
+#if defined(BUILD_MASTIFF)
+      if (VSA_Ddv && !FILE_INFO_is_rbc(File_info)) {
+        ST *st = WN_st(wn);
+        if (ST_class(st) == CLASS_VAR && !ST_is_used(st)) {
+          // mark LDID to be used in case it's generated from LDA-ILOAD folding
+          Set_ST_is_used(st);
+        }
+      }
+#endif
+
       break;
 
     case OPR_LDA:
@@ -4782,7 +4997,7 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
 #ifdef TARG_X8664
       // By default, generate rotate instruction only if it is C++ (bug 7932)
       // Can be crontrolled by internal flag -VHO:rotate
-      if (!VHO_Generate_Rrotate_Set && PU_cxx_lang (Get_Current_PU()) &&
+      if (!VHO_Generate_Rrotate_Set && (PU_cxx_lang (Get_Current_PU())  || PU_java_lang (Get_Current_PU())) &&
       	  (Is_Target_64bit() || MTYPE_byte_size(WN_desc(wn)) <= 4))
         VHO_Generate_Rrotate = TRUE;
 
@@ -4936,6 +5151,12 @@ vho_lower_istore ( WN * wn, WN * block )
   } else {
     WN_kid1(wn) = vho_lower_expr(kid1, block, NULL);
   }
+#if defined(TARG_X8664)
+  if (Uwasm_Isolation != UWASM_ISO_NONE &&
+      Uwasm_Early_Instr == FALSE) {
+    Uwasm_instru_load_in_vho(block, wn, VHO_Srcpos);
+  }
+#endif
   return wn;
 } /* vho_lower_istore */
 
@@ -4961,9 +5182,84 @@ vho_lower_stid ( WN * wn, WN * block )
     wn = VHO_Lower_Mstid (wn);
   }
 
+  // do a simple prop here to store load of _Exc_Ptr_ from preg
+  // to real symbol to keep the variable name in the report
+  // match the followint pattern:
+  //   LDID _Exc_Ptr_
+  //  ILOAD
+  // STID .stack
+  //  LDID .stack
+  // STID sym
+  // Convert to:
+  //   LDID _Exc_Ptr_
+  //  ILOAD
+  // STID .stack
+  //   LDID _Exc_Ptr_
+  //  ILOAD
+  // STID sym
+  WN *rhs = WN_kid0(wn);
+  if (Run_vsaopt && PU_java_lang(Get_Current_PU()) &&
+      WN_desc(wn) == Pointer_Mtype &&
+      ST_is_temp_var(WN_st(wn)) &&      // .stack is temp var
+      WN_operator(rhs) == OPR_ILOAD &&
+      WN_operator(WN_kid0(rhs)) == OPR_LDID &&
+      ST_one_per_pu(WN_st(WN_kid0(rhs))) &&
+      strcmp(ST_name(WN_st(WN_kid0(rhs))), "__Exc_Ptr__") == 0) {
+    WN *next = WN_next(wn);
+    if (next &&
+        WN_operator(next) == OPR_STID &&
+        WN_operator(WN_kid0(next)) == OPR_LDID &&
+        WN_st(WN_kid0(next)) == WN_st(wn) &&
+        WN_offset(WN_kid0(next)) == WN_offset(wn)) {
+      // delete old kid0 and COPY ILOAD of Exc_Ptr as new kid0
+      WN_Delete(WN_kid0(next));
+      WN_kid0(next) = WN_COPY_Tree(WN_kid0(wn));
+    }
+  }
+
   return wn;
 } /* vho_lower_stid */
 
+static WN *
+vho_gen_mload(WN* src, TY_IDX sty, WN* cnt, WN* block)
+{
+  WN_OFFSET ofst = 0;
+  INT fld_id = 0;
+  TY_IDX ty = sty;
+  if (WN_operator(src) == OPR_ILDA) {
+    ofst = WN_offset(src);
+    fld_id = WN_field_id(src);
+    ty = WN_ty(src);
+    src = WN_kid0(src);
+  }
+
+  src = vho_lower_expr(src, block, NULL);
+  WN* mload = WN_CreateMload(ofst, ty, src, cnt);
+  WN_set_field_id(mload, fld_id);
+  return mload;
+}
+
+static WN *
+vho_gen_mstore(WN* dst, TY_IDX dty, WN* src, TY_IDX sty, WN* cnt, WN* block)
+{
+  WN_OFFSET ofst = 0;
+  INT fld_id = 0;
+  TY_IDX ty = dty;
+  if (WN_operator(dst) == OPR_ILDA) {
+    ofst = WN_offset(dst);
+    fld_id = WN_field_id(dst);
+    ty = WN_ty(dst);
+    dst = WN_kid0(dst);
+  }
+
+  dst = vho_lower_expr(dst, block, NULL);
+  cnt = vho_lower_expr(cnt, block, NULL);
+  src = vho_gen_mload(src, sty, WN_COPY_Tree(cnt), block);
+  WN* mstore = WN_CreateMstore(ofst, ty, src, dst, cnt);
+  WN_set_field_id(mstore, fld_id);
+  WN_Set_Linenum(mstore, VHO_Srcpos);
+  return mstore;
+}
 
 static WN *
 vho_lower_call ( WN * wn, WN * block )
@@ -4975,6 +5271,24 @@ vho_lower_call ( WN * wn, WN * block )
   {
     // We only support calls to locally defined functions
     ErrMsgSrcpos(EC_No_Calls, WN_Get_Linenum(wn), ST_name(WN_st(wn)));
+  }
+#endif
+
+#if defined(BUILD_MASTIFF)
+  if (WN_operator(wn) == OPR_CALL) {
+    const char* call = ST_name(WN_st(wn));
+    if (WN_kid_count(wn) == 3 &&
+        strcmp(call, "memmove") == 0) {
+      VHO_Srcpos = WN_Get_Linenum(wn);
+      Is_True(WN_operator(WN_kid0(wn)) == OPR_PARM &&
+              WN_operator(WN_kid1(wn)) == OPR_PARM &&
+              WN_operator(WN_kid2(wn)) == OPR_PARM, ("bad call param"));
+      return vho_gen_mstore(WN_kid0(WN_kid0(wn)),
+                            WN_ty(WN_kid0(wn)),
+                            WN_kid0(WN_kid1(wn)),
+                            WN_ty(WN_kid1(wn)),
+                            WN_kid0(WN_kid2(wn)), block);
+    }
   }
 #endif
 
@@ -5424,6 +5738,16 @@ vho_lower_eval ( WN * wn, WN * block )
 static WN *
 vho_lower_pragma ( WN * wn, WN * block )
 {
+  if (WN_pragma(wn) == WN_PRAGMA_INLINE_BODY_START) {
+    VHO_Inline_Stack.push(WN_st(wn));
+  }
+  else if (WN_pragma(wn) == WN_PRAGMA_INLINE_BODY_END) {
+    Is_True(!VHO_Inline_Stack.empty() &&
+            WN_st(wn) == VHO_Inline_Stack.top(),
+            ("inline stack mismatch"));
+    if (!VHO_Inline_Stack.empty())
+      VHO_Inline_Stack.pop();
+  }
   return wn;
 } /* vho_lower_pragma */
 
@@ -5595,9 +5919,13 @@ vho_lower_stmt ( WN * wn, WN * block )
 
     case OPR_XGOTO:
     case OPR_GOTO:
-    case OPR_AGOTO:
     case OPR_ALTENTRY:
 
+      break;
+
+    case OPR_AGOTO:
+      if (VHO_Agoto_Reduce_Edge)
+        wn = VHO_Lower_Agoto( wn, block );
       break;
 
     case OPR_TRUEBR:
@@ -6030,7 +6358,8 @@ vho_lower_do_loop ( WN * wn, WN *block )
   // relax assertion, and convert it to debug mode
   Is_True (WN_first (lower_block) == NULL ||
            PU_c_lang (Get_Current_PU())  ||
-           PU_cxx_lang (Get_Current_PU()) || 
+           PU_cxx_lang (Get_Current_PU()) ||
+           PU_java_lang(Get_Current_PU()) ||
 	   Instrumentation_Enabled,
            ("lowering of do loop test generated statements in Fortran"));
 #endif
@@ -7961,6 +8290,7 @@ vho_lower_if ( WN * wn, WN *block )
   LABEL_IDX   join_label;
   BOOL        emit_join_label;
   WN        * rcomma_block;
+  SRCPOS      spos;
 
 #ifdef KEY
   /* Handle saturation arithmetic SUB operator by converting it 
@@ -8018,7 +8348,7 @@ vho_lower_if ( WN * wn, WN *block )
 				INTRN_SUBSU2, 2, kids);
       wn = WN_COPY_Tree(WN_first(wn_then));
       WN_kid0(wn) = tmp;
-      return wn;
+      return vho_lower_stmt(wn, block);
     }
   }
 #endif // TARG_X8664 
@@ -8061,7 +8391,7 @@ vho_lower_if ( WN * wn, WN *block )
       WN_CreateExp3(MTYPE_is_size_double(WN_desc(istore)) ?
 		    OPC_F8SELECT : OPC_F4SELECT,
 		    test, t1, t2);
-    return wn;		       
+    return vho_lower_stmt(wn, block);
   }
 
   //bug 13853: if_conv for one stmt in then that is scalar store
@@ -8089,7 +8419,7 @@ vho_lower_if ( WN * wn, WN *block )
         WN_CreateExp3(MTYPE_is_size_double(WN_desc(stid)) ?
                       OPC_F8SELECT : OPC_F4SELECT,
                       test, t1, t2);
-    return wn;
+    return vho_lower_stmt(wn, block);
   }
 
   // If-Convert:
@@ -8130,14 +8460,17 @@ vho_lower_if ( WN * wn, WN *block )
       WN_CreateExp3(MTYPE_is_size_double(WN_desc(istore)) ?
 		    OPC_F8SELECT : OPC_F4SELECT,
 		    test, t1, t2);
-    return wn;		       
+    return vho_lower_stmt(wn, block);
   }
 #endif
   ++vho_if_nest_level;
 
   then_block = vho_lower_block ( WN_then(wn) );
+  VHO_Srcpos = WN_Get_Linenum ( wn );
   else_block = vho_lower_block ( WN_else(wn) );
 
+  // reset VHO_Srcpos to IF's srcpos because it's changed in lower then/else block
+  VHO_Srcpos = WN_Get_Linenum ( wn );
   test_block = WN_CreateBlock ();
   WN_Set_Linenum ( test_block, VHO_Srcpos );
 
@@ -8161,6 +8494,10 @@ vho_lower_if ( WN * wn, WN *block )
 
     WN_INSERT_BlockFirst ( then_block, rcomma_block_copy );
     WN_INSERT_BlockFirst ( else_block, rcomma_block );
+  }
+
+  else if ( VSA_New_Cselect_Lower && WN_operator(WN_if_test(wn)) == OPR_CSELECT ) {
+    WN_if_test (wn) = vho_lower_cselect_bool ( WN_if_test(wn), test_block, &bool_info );
   }
 
   else
@@ -8201,13 +8538,17 @@ vho_lower_if ( WN * wn, WN *block )
       if ( ! bool_info.used_false_label ) {
 
         WN *wn_goto = WN_CreateGoto ( (ST_IDX) NULL, bool_info.false_label );
-        WN_Set_Linenum ( wn_goto, VHO_Srcpos );
+        spos = WN_last(block) ? WN_Get_Linenum(WN_last(block))
+                              : VHO_Srcpos;
+        WN_Set_Linenum ( wn_goto, spos );
         WN_INSERT_BlockLast ( block, wn_goto );
       }
 
       WN *wn_label
 	= WN_CreateLabel ( (ST_IDX) 0, bool_info.true_label, 0, NULL );
-      WN_Set_Linenum ( wn_label, VHO_Srcpos );
+      spos = WN_first(then_block) ? WN_Get_Linenum(WN_first(then_block))
+                                  : VHO_Srcpos;
+      WN_Set_Linenum ( wn_label, spos );
       WN_INSERT_BlockLast ( block, wn_label );
     }
       
@@ -8217,7 +8558,9 @@ vho_lower_if ( WN * wn, WN *block )
 
       bool_info.used_false_label = TRUE;
       WN *wn_goto = WN_CreateGoto ( (ST_IDX) NULL, join_label );
-      WN_Set_Linenum ( wn_goto, VHO_Srcpos );
+      spos = WN_last(block) ? WN_Get_Linenum(WN_last(block))
+                                   : VHO_Srcpos;
+      WN_Set_Linenum ( wn_goto, spos );
       WN_INSERT_BlockLast ( block, wn_goto );
     }
 
@@ -8225,7 +8568,9 @@ vho_lower_if ( WN * wn, WN *block )
 
       WN *wn_label
 	= WN_CreateLabel ( (ST_IDX) 0, bool_info.false_label, 0, NULL );
-      WN_Set_Linenum ( wn_label, VHO_Srcpos );
+      spos = WN_first(else_block) ? WN_Get_Linenum(WN_first(else_block))
+                                  : VHO_Srcpos;
+      WN_Set_Linenum ( wn_label, spos );
       WN_INSERT_BlockLast ( block, wn_label );
     }
       
@@ -8234,7 +8579,9 @@ vho_lower_if ( WN * wn, WN *block )
     if ( emit_join_label ) {
 
       WN *wn_label = WN_CreateLabel ( (ST_IDX) 0, join_label, 0, NULL );
-      WN_Set_Linenum ( wn_label, VHO_Srcpos );
+      spos = WN_next(wn) ? WN_Get_Linenum(WN_next(wn))
+                         : VHO_Srcpos;
+      WN_Set_Linenum ( wn_label, spos );
       WN_INSERT_BlockLast ( block, wn_label );
     }
 
@@ -8438,6 +8785,13 @@ vho_lower_scf ( WN * wn, WN * block )
 
     case OPC_IF:
 
+#if defined(BUILD_MASTIFF)
+      if (Run_vsaopt && VSA_Scb &&
+          WN_operator(WN_kid0(wn)) != OPR_INTCONST &&
+          WN_Simp_Compare_Trees(WN_kid1(wn), WN_kid2(wn)) == 0)
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB", FALSE, VHO_Srcpos);
+#endif
+
       wn = vho_lower_if ( wn, block );
 #ifdef KEY // bug 8581
       if (wn != NULL && WN_opcode(wn) == OPC_IF) {
@@ -8576,6 +8930,12 @@ VHO_Lower ( WN * wn )
 {
   wn = vho_lower ( wn, NULL );
 
+  // add agoto pad if there are agoto
+  VHO_Create_Agoto_Pad ( WN_func_body (wn) );
+
+  // clear the inline stack
+  std::stack<ST*> empty;
+  std::swap(VHO_Inline_Stack, empty);
   return wn;
 } /* VHO_Lower */
 
@@ -8667,6 +9027,7 @@ WN * VHO_Lower_Driver (PU_Info* pu_info,
 
    VHO_SCL_Debug = Get_Trace ( TP_VHO_LOWER, 0x4 );
    VHO_M_Debug_Type_Mismatch = Get_Trace ( TP_VHO_LOWER, 0x8 );
+   LOWER_ACTIONS is_lowering_offset = 0;
 
    if (Get_Trace ( TKIND_IR, TP_VHO_LOWER )) {
 
@@ -8696,6 +9057,31 @@ WN * VHO_Lower_Driver (PU_Info* pu_info,
      wn = VHO_Lower(wn);
    }
 
+#if defined(BUILD_MASTIFF)
+   // check local variable DDV
+   if (VSA_Ddv && !FILE_INFO_is_rbc(File_info)) {
+      ST *st;
+      INT32 i;
+      FOREACH_SYMBOL(CURRENT_SYMTAB, st, i) {
+        if (ST_sclass(st) != SCLASS_EH_REGION_SUPP &&
+            !ST_addr_saved(st) &&
+            !ST_addr_passed(st) &&
+            !ST_is_used(st) &&
+            !ST_is_not_used(st)) {
+          const char *name = ST_name(st);
+          SRCPOS spos = ST_Srcpos(*st);
+          if (name && name[0] != '.' && spos > 0) {
+            const char *fname = ST_name(Get_Current_PU_ST());
+            if (ST_is_inlined(st) && ST_orig_pu_st(st)) {
+              fname = ST_name(ST_orig_pu_st(st));
+            }
+            Report_vsa_error(fname, name, "DDV", FALSE, spos);
+          }
+        }
+      }
+    }
+#endif
+
    if (Get_Trace ( TKIND_IR, TP_VHO_LOWER )) {
 
      if ( Get_Trace ( TP_VHO_LOWER, 2 ) == 0 ) {
@@ -8715,16 +9101,27 @@ WN * VHO_Lower_Driver (PU_Info* pu_info,
      // Trace_SYMTAB (TFile, Current_Symtab, TRUE);
    }
 
+
+   if (OPT_Lower_field_offset_pre_vho &&
+       PU_src_lang(Get_Current_PU()) == PU_JAVA_LANG) {
+     // Do the field id to offset transformation for front ends
+     // that use field id only     ...   e.g. Java FE     
+     is_lowering_offset |= LOWER_FIELD_OFFSET;
+   }
+   
+
    if (Inline_Intrinsics_Early) {
       /* Lower intrinsics and reduce tree height if running at high
        * optimization levels */
-      wn = WN_Lower(wn, LOWER_TREEHEIGHT | LOWER_INLINE_INTRINSIC, NULL,
+      wn = WN_Lower(wn, LOWER_TREEHEIGHT | LOWER_INLINE_INTRINSIC | is_lowering_offset, NULL,
 		    "Intrinsic lowering");
    }
 #ifndef TARG_NVISA // don't need this extra lowering
-   else wn = WN_Lower(wn, LOWER_FAST_EXP, NULL,
+   else wn = WN_Lower(wn, LOWER_FAST_EXP | is_lowering_offset , NULL,
 		      "Fast exponents lowering");
 #endif
+
+   
 
    return (wn);
 }

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2002, 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -397,7 +401,7 @@ GRA_Trace_Preference_Copy(LRANGE* lrange0, LRANGE* lrange1, GRA_BB* gbb )
   char buff0[80], buff1[80];
 
   if ( trace_preference ) {
-    char *str;
+    const char *str;
     if (lrange0->Type() == LRANGE_TYPE_REGION ||
 	lrange1->Type() == LRANGE_TYPE_REGION) {
       str = "Glue";
@@ -445,7 +449,7 @@ GRA_Trace_Possible_Preference_Copy(LRANGE* lrange0, LRANGE* lrange1, GRA_BB* gbb
   char buff0[80], buff1[80];
 
   if ( trace_preference ) {
-    char *str;
+    const char *str;
     if (lrange0->Type() == LRANGE_TYPE_REGION ||
 	lrange1->Type() == LRANGE_TYPE_REGION) {
       str = "Glue";

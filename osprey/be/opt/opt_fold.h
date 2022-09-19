@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 
 /*
@@ -84,7 +88,7 @@ public:
 private:
   // a pointer is returned
 #define NOHASH NULL	// did nothing
-#define CONST  NULL	// folded to a constant
+#define FCONST NULL	// folded to a constant
 
   // debugging print
   void Print(const char *, const CODEREP *);
@@ -142,6 +146,8 @@ typedef CODEREP * simpnode;
 #define SIMPNODE_op_bit_offset(x)	(x)->Op_bit_offset()
 #define SIMPNODE_op_bit_size(x)		(x)->Op_bit_size()
 #define SIMPNODE_is_volatile(x)         (x)->Is_var_volatile()
+#define SIMPNODE_first(x)               (NULL)
+#define SIMPNODE_next(x)                (NULL)
 /* on/off switch and trace file */
 #define SIMPNODE_enable			WOPT_Enable_CRSIMP
 #define TRACEFILE			TFile
@@ -169,8 +175,23 @@ extern simpnode SIMPNODE_SimplifyCvtl(OPCODE, INT16, simpnode);
 extern simpnode SIMPNODE_SimplifyIntrinsic(OPCODE, UINT32, INT32, simpnode *);
 
 // to interface for coderep rehash mechanism
-extern void  Initialize_CR_simp(CODEMAP*);
+extern CODEMAP*  Initialize_CR_simp(CODEMAP*);
 extern INT32 CR_Compare_Symbols(CODEREP*, CODEREP*);
 extern INT32 CR_Compare_Trees(CODEREP*, CODEREP*);
+
+class FOLD_CONTEXT {
+private:
+  CODEMAP* _htable;
+public:
+  FOLD_CONTEXT(CODEMAP* htable)
+  {
+    _htable = Initialize_CR_simp(htable);
+  }
+  ~FOLD_CONTEXT()
+  {
+    if (_htable != NULL)
+      Initialize_CR_simp(_htable);
+  }
+};
 
 #endif  // opt_fold_INCLUDED

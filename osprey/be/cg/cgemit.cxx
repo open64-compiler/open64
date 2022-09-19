@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -183,7 +187,15 @@ extern void EETARG_Emit_IP_Calc_Func(void);
 #include "targ_const_private.h"
 #endif
 
+#ifdef TARG_UWASM
+#include "cgemit_uwasm.h"
+#endif
+
 extern void Early_Terminate (INT status);
+
+#include "dwarf_DST.h" // lsj
+extern DST_language Dwarf_Language; // lsj
+static BOOL write_eh_table = FALSE;
 
 #define PAD_SIZE_LIMIT	2048	/* max size to be padded in a section */
 
@@ -359,6 +371,8 @@ vector<UINT32>  *mvtcop = NULL;
 vector<UINT32>  *mvfcop = NULL;
 static int using_section = -1; // text 1: hot 2: cold 3
 #endif
+
+typedef vector<ST *> SYMVEC;
 
 #if defined(BUILD_OS_DARWIN)
 /*
@@ -1883,7 +1897,7 @@ static void r_assemble_list (
 	} else {
 	  buf = vstr_concat(buf, rname);
 	}
-      } 
+      }
     }
     // need end-of-string between each operand
     buf = vstr_append(buf, '\0');
@@ -2381,6 +2395,8 @@ static INT r_assemble_binary ( OP *op, BB *bb, ISA_PACK_INST *pinst )
 	  if (!ISA_LC_Value_In_Class(val, LC_simm16)) {
 #elif defined(TARG_NVISA)
 	  if (FALSE) {
+#else
+    if (FALSE) {
 #endif
 		/* 
 		 * Put in addend instead of in instruction,
@@ -2411,12 +2427,12 @@ static INT r_assemble_binary ( OP *op, BB *bb, ISA_PACK_INST *pinst )
 	    Em_Add_New_Rel (EMT_Put_Elf_Symbol (st), R_MIPS_GPREL, PC,
 			  PU_section);
 	  }
-	}
+	} // else if (ST_is_gp_relative(st))
 	ISA_LIT_CLASS lc = OP_opnd_lit_class(op, i);
 	FmtAssert(ISA_LC_Value_In_Class(val, lc),
 		  ("r_assemble_binary: illegal immediate value %lld for %s",
 		   val, ISA_LC_Name(lc)));
-      } 
+      } // else if (TN_is_symbol(t))
       else if (TN_is_enum(t)) {
         val = ISA_ECV_Intval(TN_enum(t));
       }
@@ -6772,9 +6788,16 @@ Write_Symbol (
 	fprintf(Asm_File, "\t%s\t", Use_32_Bit_Pointers ? ".word" : ".dword");
       else
 #endif
-	fprintf (Asm_File, "\t%s\t", 
-		 (scn_ofst % address_size) == 0 ? 
-		 AS_ADDRESS : AS_ADDRESS_UNALIGNED);
+	// lsj
+	// require .long type in exception table by gcj
+	if (write_eh_table && Dwarf_Language == DW_LANG_Java) {
+		fprintf (Asm_File, "\t%s\t", AS_WORD);
+	} else {
+		fprintf (Asm_File, "\t%s\t", 
+			(scn_ofst % address_size) == 0 ? 
+			AS_ADDRESS : AS_ADDRESS_UNALIGNED);
+	}
+
       if (ST_class(sym) == CLASS_CONST) {
 	EMT_Write_Qualified_Name (Asm_File, basesym);
 	fprintf (Asm_File, " %+lld\n", base_ofst);
@@ -7491,7 +7514,10 @@ Write_LSDA_INITO (ST* st, INITO* ino, INT scn_idx, Elf64_Xword scn_ofst)
 #define LSDA_CS_END		"thu_LSDA_CS_End_"
 
   fprintf(Asm_File, ".%s%d:\n", LSDA_HANDLER_START, nRangeTable);
+if(Dwarf_Language == DW_LANG_C_plus_plus)		//lsj
   fprintf(Asm_File, "\t.personality\t__gxx_personality_v0#\n");
+if(Dwarf_Language == DW_LANG_Java)				//lsj
+  fprintf(Asm_File, "\t.personality\t__gcj_personality_v0#\n");
   fprintf(Asm_File, "\t.handlerdata\n");
   fprintf(Asm_File, "\t.align\t8\n");
   fprintf(Asm_File, ".%s%d:\n", LSDA_START, nRangeTable);
@@ -7621,7 +7647,8 @@ static void
 Write_INITO (
   INITO* inop,		/* Constant to emit */
   INT scn_idx,		/* Section to emit it into */
-  Elf64_Xword scn_ofst)	/* Section offset to emit it at */
+  Elf64_Xword scn_ofst,	/* Section offset to emit it at */
+  SYMVEC *java_class_syms)
 {
   pSCNINFO scn = em_scn[scn_idx].scninfo;
   Elf64_Xword inito_ofst;
@@ -7662,6 +7689,11 @@ Write_INITO (
     if (Assembly) {
         char *name = ST_name(sym);
         if (name != NULL && *name != 0) {
+          if(strcmp(name + strlen(name) - 8, "6class$E") == 0) // @Jason: CG for Java
+          {
+                Is_True(java_class_syms != NULL, ("Write_INITO: Cannot add java::lang::Class symbol to the JCR(class_name) array : %s", name));
+                java_class_syms->push_back(sym);
+          }
 #if defined(TARG_SL) 
           if(ST_in_v2buf(sym))
             Print_Label (Asm_File, sym, (TY_size(ST_type(sym))<<1));
@@ -7688,6 +7720,7 @@ Write_INITO (
     } else {
 	INITV_IDX inv;
 #if !defined(TARG_IA64) && !defined(TARG_LOONGSON)
+	write_eh_table = FALSE; // lsj
         char *name = ST_name (sym);
         bool range_table = (name != NULL) &&
                 (!strncmp (".range_table.", name,strlen(".range_table."))) &&
@@ -7697,6 +7730,7 @@ Write_INITO (
         {
             exception_table_id++;
             scn_ofst = Generate_Exception_Table_Header (scn_idx, scn_ofst, labels);
+	    write_eh_table = TRUE; // lsj
         }
         bool action_table_started = false;
 	bool type_label_emitted = false;
@@ -7734,6 +7768,7 @@ Write_INITO (
 		scn_ofst = Write_INITV (inv, scn_idx, scn_ofst);
 #endif // KEY
         }
+	write_eh_table = FALSE; // lsj
 #if !defined(TARG_IA64) && !defined(TARG_LOONGSON)
         if (range_table && !type_label_emitted)
             fprintf ( Asm_File, "%s:\n", LABEL_name(labels[1]));
@@ -7788,7 +7823,12 @@ Generate_Exception_Table_Header (INT scn_idx, Elf64_Xword scn_ofst, LABEL_IDX *l
     	ttype = Host_To_Targ (MTYPE_I1, 0x9b);
     else
 #endif
-    	ttype = Host_To_Targ (MTYPE_I1, 0);
+    if(Dwarf_Language == DW_LANG_Java) {
+	ttype = Host_To_Targ (MTYPE_I1, 3);
+    } else {
+	ttype = Host_To_Targ (MTYPE_I1, 0);
+    }
+    	
     scn_ofst = Write_TCON (&ttype, scn_idx, scn_ofst, 1);
 
     // Generate TType base offset
@@ -7942,6 +7982,7 @@ Process_Initos_And_Literals (SYMTAB_IDX stab)
 
   vector<ST*> st_list;
   vector<ST*>::iterator st_iter;
+  SYMVEC java_class_syms;
 
   typedef 
   hash_map < ST_IDX, INITO*, __gnu_cxx::hash<ST_IDX>, __gnu_cxx::equal_to<ST_IDX> > ST_INITO_MAP;
@@ -8100,7 +8141,7 @@ Process_Initos_And_Literals (SYMTAB_IDX stab)
 #elif ! defined (TARG_IA64)
       fprintf ( Asm_File, "\t%s\t0\n", AS_ALIGN );
 #endif
-      Write_INITO (ino, STB_scninfo_idx(base), ofst);
+      Write_INITO (ino, STB_scninfo_idx(base), ofst, &java_class_syms);
 #else
       CGEMIT_Print_Initialized_Variable (st, ino);	
 #endif // EMIT_DATA_SECTIONS
@@ -8150,6 +8191,19 @@ Process_Initos_And_Literals (SYMTAB_IDX stab)
 #endif
     }
   }
+
+  if (java_class_syms.size() > 0) {
+  	fprintf ( Asm_File, "\t.section\t.jcr,\"aw\",@progbits\n");
+	  fprintf ( Asm_File, "\t.align 8\n");
+	  fprintf( Asm_File, ".type	_Jv_JCR_SECTION_data, @object\n");
+	  fprintf( Asm_File, ".size	_Jv_JCR_SECTION_data, %lu\n", java_class_syms.size() * 8);
+    fprintf( Asm_File, "_Jv_JCR_SECTION_data:\n");
+    for (int i = 0; i < java_class_syms.size(); i++) {
+	    fprintf(Asm_File, "%s%s%s", "\t.quad\t", ST_name(java_class_syms[i]),  "\n"); //TODO: 32bit Initialization
+	  }
+  	fprintf ( Asm_File, "\t.section\t.data\n");
+  }
+  
 }
 
 
@@ -8184,7 +8238,7 @@ Process_Distr_Array ()
 #elif !defined (TARG_IA64)
       fprintf ( Asm_File, "\t%s\t0\n", AS_ALIGN );
 #endif
-      Write_INITO(ino, STB_scninfo_idx(base), ofst);
+      Write_INITO(ino, STB_scninfo_idx(base), ofst, NULL);
     }
   }
 }
@@ -9425,6 +9479,13 @@ EMT_Begin_File (
 {
   char *buff;
 
+#ifdef TARG_UWASM
+  // emit function prototypes and global variables in the beginning
+  EMT_Emit_prototype_uwasm();
+  EMT_Emit_global_uwasm();
+  return;
+#endif
+
   /* Initialize: */
   Trace_Elf	= Get_Trace ( TP_EMIT, 2 );
   Trace_Init	= Get_Trace ( TP_EMIT, 4 );
@@ -9531,7 +9592,7 @@ EMT_Begin_File (
 #endif // TARG_NVISA
     if (*ism_name != '\0')
     	fprintf ( Asm_File, "\t%s%s\t%s\n", ASM_CMNT, "ism", ism_name);
-    List_Compile_Options ( Asm_File, "\t"ASM_CMNT, FALSE, TRUE, TRUE );
+    List_Compile_Options ( Asm_File, "\t" ASM_CMNT, FALSE, TRUE, TRUE );
 
 #ifdef KEY 
     if (! CG_emit_non_gas_syntax)
@@ -9627,7 +9688,7 @@ extern INT be_command_line_argc;
 
 #ifdef TARG_X8664
 // similar to Targ_Name, but return all lower-case names
-static char *
+static const char *
 Target_Name (TARGET_PROCESSOR t)
 {
   switch (t)
@@ -9774,6 +9835,11 @@ EMT_End_File( void )
 {
   INT16 i;
   ST *sym;
+
+#ifdef TARG_UWASM
+  EMT_End_File_Uwasm();
+  return;
+#endif
 
 #ifdef TARG_X8664
   EETARG_Emit_IP_Calc_Func();
@@ -9957,6 +10023,9 @@ EMT_End_File( void )
   if (generate_elf_symbols && PU_section != NULL) {
     end_previous_text_region(PU_section, Em_Get_Section_Offset(PU_section));
   }
+
+  // Emit uwasm native data
+  CGEMIT_Uwasm_Nat_Data(Asm_File);
 
   if (Object_Code) {
     Em_Options_Scn();

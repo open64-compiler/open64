@@ -169,6 +169,7 @@ extern void Write_Global_Info (PU_Info *pu_tree);
 extern void Close_Output_Info (void);
 extern void WN_write_elf_symtab (const void* symtab, UINT64 size,
 				 UINT64 entsize, UINT align, Output_File* fl);
+extern void Write_Inlskip(const char *skip_fname);
 
 #endif
 

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -60,7 +64,19 @@
 
 #include "pathscale_defs.h"
 
-#if defined(linux) && (defined(TARG_IA64) || defined(TARG_X8664))
+#if defined(BUILD_MASTIFF)
+
+    #define NAMEPREFIX          ""
+    #define BINPATH             "/bin"
+    #define ALTBINPATH          BINPATH
+    #define LIBPATH             "/lib/" OPEN64_FULL_VERSION
+    #define ALTLIBPATH          LIBPATH
+    #define PHASEPATH           "/lib/" OPEN64_FULL_VERSION
+    #define GNUPHASEPATH        "/lib/" OPEN64_FULL_VERSION
+    #undef  INTERNAL_GCC_BIN
+    #define INTERNAL_GCC_BIN    "compat/gcc-4/bin"
+
+#elif defined(linux) && (defined(TARG_IA64) || defined(TARG_X8664))
     #if CROSS_COMPILATION && defined(TARG_IA64)
 	    #define NAMEPREFIX	""
 	    #define INTERPOSE   "/ia64-open64-linux"
@@ -203,6 +219,12 @@
     #define OPEN64_PHASE_PATH "x8664-linux/bin"
     #define OPEN64_CMPLR_NAME_PREFIX "open"
     #define OPEN64_TARGET_NAME "x8664"
+#elif defined(TARG_UWASM)
+    #define OPEN64_TARGET "uwasm" 
+    #define VERSION ""
+    #define OPEN64_PHASE_PATH "uwasm/bin"
+    #define OPEN64_CMPLR_NAME_PREFIX "open"
+    #define OPEN64_TARGET_NAME "uwasm"
 #elif defined(TARG_IA32)
     #define OPEN64_TARGET ""
     #define VERSION ""

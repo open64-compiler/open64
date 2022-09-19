@@ -1,4 +1,8 @@
 #  Copyright (C) 2006. QLogic Corporation. All Rights Reserved.
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  This program is free software; you can redistribute it and/or modify it
 #  under the terms of version 2 of the GNU General Public License as
@@ -96,7 +100,7 @@ $(LIBSPIN): $(LIBSPIN_OBJECTS)
 	$(AR) rc $@ $(LIBSPIN_OBJECTS)
 
 $(GSPIN): $(GSPIN_OBJECTS)
-	$(CC) $(GSPIN_OBJECTS) $(LIBSPIN) -o $@
+	$(CCN) $(GSPIN_OBJECTS) $(LIBSPIN) -o $@
 
 
 -include $(COMMONRULES)

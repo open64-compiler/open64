@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 // This program is free software; you can redistribute it and/or modify
@@ -204,7 +208,7 @@ public:
 };
 
 // bit mask for if-merging actions.
-typedef enum IF_MERGE_ACTION {
+enum IF_MERGE_ACTION {
   DO_NONE = 0x0,
   DO_IFMERGE = 0x1,
   DO_IFCOLLAPSE = 0x2,
@@ -212,7 +216,7 @@ typedef enum IF_MERGE_ACTION {
 };
 
 // bit mask for if-merging pass
-typedef enum IF_MERGE_PASS {
+enum IF_MERGE_PASS {
   PASS_NONE = 0x0,
   PASS_GLOBAL = 0x1,
   PASS_FUSION = 0x2,
@@ -287,7 +291,7 @@ public:
 };
 
 // bit mask for proactive loop interchange actions.
-typedef enum IF_COND_ACTION {
+enum IF_COND_ACTION {
     DO_IF_COND_NONE = 0x0,
     DO_TREE_HEIGHT_RED = 0x1,  // do if-condition tree height reduction
     DO_IF_COND_DIS = 0x2,  // do if-condition distribution
@@ -295,7 +299,7 @@ typedef enum IF_COND_ACTION {
     DO_LOOP_UNS = 0x8  // do loop-unswitching
 };
 
-typedef enum CANON_ACTION {
+enum CANON_ACTION {
     CANON_NONE = 0x0,
     SPLIT_IF_HEAD = 0x1, // Split head of SC_IF so that it only contains one statement.
     HEAD_DUP = 0x2, // Head duplicate preceding siblings of SC_IF's head.

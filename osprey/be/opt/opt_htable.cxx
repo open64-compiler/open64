@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -106,6 +110,35 @@
 
 #include <strings.h>   // bcopy
 #include "opt_sys.h"
+
+#ifdef BUILD_MASTIFF
+#include "opt_dbg.h"   // g_ipsa_manager
+#include "opt_dna.h"
+#endif
+
+static void Vsa_annotate_coderep(WN *wn, STMTREP* stmt, CODEREP* cr)
+{
+#ifdef BUILD_MASTIFF
+  DNA_NODE *cur_dna = Get_cur_dna();
+  if (cur_dna){
+    BOOL result = FALSE;
+    CODEREP *cr_used = cr;
+    if(cr && cr->Kind() == CK_OP && cr->Opr() == OPR_CALL) {
+      result = cur_dna->Update_stpath(wn, stmt, NULL);
+      cr_used = NULL;
+    }
+    else
+      result = cur_dna->Update_stpath(wn, stmt, cr);
+
+    if (result && Get_Trace(TP_WOPT2, VSA_DUMP_FLAG)) {
+      fprintf(TFile, "[STPATH Trace] Add_expr: Update_stpath on wn %p to stmt %d, cr %d with ST: %s\n",
+              wn, stmt?stmt->Stmtrep_id():0, cr?cr->Coderep_id():0, cur_dna->Get_stpath(stmt, cr_used)->St_name());
+      fdump_tree_no_st(TFile, wn);
+    }
+  }
+#endif
+}
+
 
 EXP_KIDS_ITER::EXP_KIDS_ITER(mUINT32 cnt, CODEREP **kp)
 {
@@ -258,7 +291,7 @@ CODEREP::Copy(const CODEREP &cr)
   Set_dtyp_strictly(cr.Dtyp());
   Set_dsctyp(cr.Dsctyp());
   Set_usecnt(cr.Usecnt());
-  Assign_flags(cr.flags);
+  Assign_flags(cr.Flags());
   Assign_is_lcse(cr.Is_lcse());
   Assign_is_saved(cr.Is_saved());
   Assign_is_volatile(cr.Is_volatile());
@@ -769,21 +802,28 @@ CODEREP::Contains_image( const CODEREP *cr ) const
   return FALSE;
 }
 
+
 void
-CODEREP::Print(INT indent, FILE *fp) const
+CODEREP::Print(INT indent, FILE *fp, const STMTREP *stmt, DNA_NODE *dna) const
 {
   INT i;
   if (Kind() == CK_OP) {
     for (i = 0; i < Kid_count(); i++)
-      Get_opnd(i)->Print(indent+1, fp);
+      Get_opnd(i)->Print(indent+1, fp, stmt, dna);
   } else if (Kind() == CK_IVAR) {
     if (Ilod_base() != NULL)
-      Ilod_base()->Print(indent+1, fp);
+      Ilod_base()->Print(indent+1, fp, stmt, dna);
     else
-      Istr_base()->Print(indent+1, fp);
+      Istr_base()->Print(indent+1, fp, stmt, dna);
   }
   Print_node(indent, fp);
   fprintf(fp, " b=%s",Print_bit());
+
+#ifdef BUILD_MASTIFF
+  if(dna)
+    dna->Dump_stpath(stmt, this, fp);
+#endif
+    
   if (Kind() == CK_IVAR) {
     fprintf(fp, " mu<");
     if (Ivar_mu_node() && Ivar_mu_node()->OPND())  // Check if the MU has been deleted.
@@ -806,13 +846,24 @@ CODEREP::Print(INT indent, FILE *fp) const
   }
 }
 
+void CODEREP::Print(INT indent, FILE *fp) const
+{
+  Print(indent, fp, NULL, NULL);
+}
 
+void CODEREP::Print(FILE *fp) const
+{
+  Print(0, fp);
+}
+
+#ifdef Is_True_On
 // this is to make it easier to print codereps in the debugger
 void
 dump_coderep (CODEREP *cr)
 {
   cr->Print(0,stdout);
 }
+#endif // Is_True_On
 
 void
 CODEREP::Print_node(INT32 indent, FILE *fp) const
@@ -869,11 +920,15 @@ CODEREP::Print_node(INT32 indent, FILE *fp) const
 	      Opr() == OPR_ILOAD ? "ILOAD" : "ILDBITS",
               Offset(), Ilod_ty());
     fprintf(fp, "%s", buf+4);
+    if (I_field_id() != 0)
+      fprintf(fp, " field=%d", I_field_id());
     break;
   case CK_LDA:
     fprintf(fp, ">");	// mark line visually as htable dump
     for (i = 0; i < indent; i++) fprintf(fp, " ");
     fprintf(fp, "LDA %s sym%d %d", MTYPE_name(Dtyp()),Lda_aux_id(),Offset());
+    if (Afield_id() != 0)
+      fprintf(fp, " field=%d", Afield_id());
     break;
   case CK_VAR:
 #ifdef TARG_NVISA
@@ -894,6 +949,8 @@ CODEREP::Print_node(INT32 indent, FILE *fp) const
     fprintf(fp, " %s %s sym%dv%d %d ty=%x ", MTYPE_name(Dsctyp()),
 	    MTYPE_name(Dtyp()), Aux_id(), Version(), Offset(), Lod_ty());
 #endif
+    if (Field_id() != 0)
+      fprintf(fp, " field=%d", Field_id());
     break;
   case CK_CONST:
     fprintf(fp, ">");	// mark line visually as htable dump
@@ -1002,6 +1059,10 @@ CODEREP::Print_str(BOOL name_format) const
     if (name_format) {
       ST_IDX st_idx = ST_st_idx(Const_id());
       sprintf(buf,"LDRC <%d,%d>", ST_IDX_level (st_idx), ST_IDX_index (st_idx));
+#ifdef BUILD_MASTIFF
+      if (MTYPE_is_float(Dtyp()) && !MTYPE_is_complex(Dtyp()))
+        sprintf(buf,"%0.4lf", Const_fval());
+#endif
     }
     break;
   default:
@@ -1663,6 +1724,7 @@ CODEMAP::CODEMAP(mUINT32   hash_size,
   Alloc_hash_vec();
   _prefetch_map  = WN_MAP_Create(pool);
   _coderep_id_cnt = 1;				// ID of 0 is unused
+  _stmtrep_id_cnt = 1;				// ID of 0 is unused
   _num_iloadfolds = _num_istorefolds = _num_inputprops = _num_mainprops = _num_shrinks = 0;
   _tracing = Get_Trace( TP_GLOBOPT, CR_DUMP_FLAG );
   _phi_hash_valid = FALSE;
@@ -2007,6 +2069,8 @@ CODEMAP::Add_expr(WN       *wn,
   CANON_CR ccr;
   *proped |= Add_expr(wn, opt_stab, stmt, &ccr, copyprop, no_complex_preg);
   CODEREP *cr = ccr.Convert2cr(wn, this, *proped);
+  if(_phase == MAINOPT_PHASE)
+    Vsa_annotate_coderep(wn, stmt, cr);
   return cr;
 }
 
@@ -3117,7 +3181,7 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
 
       retv->IncUsecnt();
       if (WOPT_Enable_Input_Prop && !copyprop->Disabled()) {
-        CODEREP *newtree = copyprop->Prop_var(retv_var, stmt->Bb(), TRUE, TRUE,TRUE/*in_array*/, no_complex_preg);
+        CODEREP *newtree = copyprop->Prop_var(retv_var, stmt, stmt->Bb(), TRUE, TRUE,TRUE/*in_array*/, no_complex_preg);
         if (newtree) {
 	  if (retv->Kind() == CK_VAR)
              retv = newtree;
@@ -3209,6 +3273,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
         MEMOP_ANNOT* annot = WN_MEMOP_ANNOT_MGR::WN_mem_annot_mgr()->Get_annot (wn);
         if (annot) { opt_stab->Cr_sr_annot_mgr()->Import_annot (retv, annot); }
       }
+      if(_phase == MAINOPT_PHASE)
+        Vsa_annotate_coderep(wn, stmt, retv);
       return TRUE;
     }
     else if (oper == OPR_LDA) {
@@ -3237,6 +3303,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
 #endif 
       retv = Hash_Lda(cr);
       ccr->Set_tree(retv);
+      if(_phase == MAINOPT_PHASE && ccr->Scale() == 0)
+        Vsa_annotate_coderep(wn, stmt, retv);
       return FALSE;
     }
     else if (oper == OPR_LDA_LABEL) {
@@ -3246,6 +3314,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
       retv = Hash_Lda(cr);
       ccr->Set_tree(retv);
       ccr->Set_scale(0);
+      if(_phase == MAINOPT_PHASE)
+        Vsa_annotate_coderep(wn, stmt, retv);
       return FALSE;
     }
     else if (oper == OPR_INTCONST) {
@@ -3258,6 +3328,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
       retv = Hash_Rconst(cr);
       ccr->Set_tree(retv);
       ccr->Set_scale(0);
+      if(_phase == MAINOPT_PHASE)
+        Vsa_annotate_coderep(wn, stmt, retv);
       return FALSE;
     }
     else {
@@ -3299,6 +3371,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
 	  }
 	  ccr->Set_tree(retv);
 	  ccr->Set_scale(0);
+	  if(_phase == MAINOPT_PHASE)
+	    Vsa_annotate_coderep(wn, stmt, retv);
 	  return FALSE;
 	}
       }
@@ -3320,6 +3394,9 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
 
     _ssa->Value_number_mu_node(opt_stab->Get_mem_mu_node(wn));
     CODEREP *lbase = base_ccr.Tree() ? base_ccr.Tree() : Add_const(Pointer_type,(INT64)0);
+    if(_phase == MAINOPT_PHASE)
+      Vsa_annotate_coderep(WN_kid0(wn), stmt, lbase);
+    
     retv = Add_idef(op, opt_stab->Get_occ(wn), NULL,
 		    opt_stab->Get_mem_mu_node(wn), WN_rtype(wn),
 		    WN_desc(wn), WN_ty(wn), WN_field_id(wn),
@@ -3384,6 +3461,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
 		  ccr->Set_scale(0 - cr->Const_val());
 		else
 		  ccr->Set_scale(cr->Const_val());
+		if(_phase == MAINOPT_PHASE && ccr->Scale() == 0)
+		  Vsa_annotate_coderep(wn, stmt, retv);
 		return TRUE;
 	      }
 	} // if (retv->Kind() == CK_OP)
@@ -3396,6 +3475,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
       }
       ccr->Set_tree(retv);
       ccr->Set_scale(0);
+      if(_phase == MAINOPT_PHASE)
+	Vsa_annotate_coderep(wn, stmt, retv);
       return TRUE;
     }
     if ((Split_64_Bit_Int_Ops || Only_Unsigned_64_Bit_Ops) &&
@@ -3412,6 +3493,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
       if (annot) { opt_stab->Cr_sr_annot_mgr()->Import_annot (retv, annot); }
     }
 
+    if(_phase == MAINOPT_PHASE)
+      Vsa_annotate_coderep(wn, stmt, retv);
     return FALSE;
   }
   else if (oper == OPR_ILOADX) {
@@ -3435,6 +3518,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
       stmt->Set_volatile_stmt();
     ccr->Set_tree(retv);
     ccr->Set_scale(0);
+    if(_phase == MAINOPT_PHASE)
+      Vsa_annotate_coderep(wn, stmt, retv);
 
     if (WN_MEMOP_ANNOT_MGR::WN_mem_annot_mgr()) {
       MEMOP_ANNOT* annot = WN_MEMOP_ANNOT_MGR::WN_mem_annot_mgr()->Get_annot (wn);
@@ -3491,6 +3576,8 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
       stmt->Set_volatile_stmt();
     ccr->Set_tree(retv);
     ccr->Set_scale(0);
+    if(_phase == MAINOPT_PHASE)
+      Vsa_annotate_coderep(wn, stmt, retv);
 
     if (WN_MEMOP_ANNOT_MGR::WN_mem_annot_mgr()) {
       MEMOP_ANNOT* annot = WN_MEMOP_ANNOT_MGR::WN_mem_annot_mgr()->Get_annot (wn);
@@ -3524,6 +3611,9 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
     retv = Hash_Ivar(cr);
     ccr->Set_tree(retv);
     ccr->Set_scale(0);
+    if(_phase == MAINOPT_PHASE)
+      Vsa_annotate_coderep(wn, stmt, retv);
+
     return propagated; // return propagated instead of FALSE - transparent PARM
   }
   else if ( oper == OPR_CALL  ||
@@ -3674,7 +3764,12 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
       switch (oper) {
       case OPR_ADD: case OPR_SUB:
 	if ((MTYPE_type_class(OPCODE_rtype(op)) & MTYPE_CLASS_INTEGER) != 0)
-	  return Canon_add_sub(wn, opt_stab, stmt, ccr, cr, copyprop);
+	{
+	  BOOL propagated = Canon_add_sub(wn, opt_stab, stmt, ccr, cr, copyprop);
+	  if(_phase == MAINOPT_PHASE && ccr->Scale() == 0)
+	    Vsa_annotate_coderep(wn, stmt, ccr->Tree());
+	  return propagated;
+	}
 	break;
       case OPR_NEG:
 	if ((MTYPE_type_class(OPCODE_rtype(op)) & MTYPE_CLASS_INTEGER) != 0)
@@ -3682,7 +3777,12 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
 	break;
       case OPR_MPY:
 	if ((MTYPE_type_class(OPCODE_rtype(op)) & MTYPE_CLASS_INTEGER) != 0)
-	  return Canon_mpy(wn, opt_stab, stmt, ccr, cr, copyprop);
+	{
+	  BOOL propagated = Canon_mpy(wn, opt_stab, stmt, ccr, cr, copyprop);
+	  if(_phase == MAINOPT_PHASE && ccr->Scale() == 0)
+	    Vsa_annotate_coderep(wn, stmt, ccr->Tree());
+	  return propagated; 
+	}
 	break;
       case OPR_CVT:
 	if ((MTYPE_type_class(OPCODE_rtype(op)) & MTYPE_CLASS_INTEGER) != 0
@@ -3755,6 +3855,7 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
     }
 
     BOOL do_canonicalization = TRUE;
+    OPERATOR old_opr = cr->Opr();
     if (WOPT_Enable_Canon_Compare && _phase == MAINOPT_PHASE) {
       BOOL modified;
       do_canonicalization = !Canonicalize_compare(cr, stmt->Bb(), &modified);
@@ -3785,6 +3886,9 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
 
     ccr->Set_tree(retv);
     ccr->Set_scale(0);
+    if(_phase == MAINOPT_PHASE)
+      Vsa_annotate_coderep(wn, stmt, retv);
+    
     return propagated;
   }
 }
@@ -3915,7 +4019,7 @@ STMTREP::Enter_rhs(CODEMAP *htable, OPT_STAB *opt_stab, COPYPROP *copyprop, EXC 
       // any region nodes not taken out during construction of CFG are black
       // boxes.
       Set_black_box();
-      WN *new_wn = WN_COPY_Tree_With_Map(Wn()); // copy the tree in case we delete WHIRL
+      WN *new_wn = WN_copy_tree_with_map(Wn()); // copy the tree in case we delete WHIRL
       Set_black_box_wn( new_wn );
     }
     break;
@@ -4424,7 +4528,7 @@ STMTREP::Enter_lhs(CODEMAP *htable, OPT_STAB *opt_stab, COPYPROP *copyprop)
     return;
 
   case OPR_REGION:
-    copy_wn = WN_COPY_Tree_With_Map(Wn());
+    copy_wn = WN_copy_tree_with_map(Wn());
     Set_orig_wn(copy_wn);
     return;
 
@@ -4549,7 +4653,7 @@ CODEMAP::Remove_var_phi_hash(PHI_NODE *phi)
 }
 
 void
-STMT_LIST::Print(FILE *fp) const
+STMT_LIST::Print(FILE *fp, DNA_NODE* dna) const
 {
   STMTREP_CONST_ITER  stmt_iter(this);
   const    STMTREP   *tmp;
@@ -4560,8 +4664,14 @@ STMT_LIST::Print(FILE *fp) const
       last_line = Srcpos_To_Line(tmp->Linenum());
       fprintf(fp, ">LINE %d___\n", last_line);
       }
-    tmp->Print(fp);
+    tmp->Print(fp, dna);
     }
+}
+
+void
+STMT_LIST::Print(FILE *fp) const
+{
+  Print(fp, NULL);
 }
 
 // Get the pointer information from opt_stab
@@ -5164,7 +5274,7 @@ CODEREP::Check_if_result_is_address(OPT_STAB *opt_stab) const
 // Print STMTREP tree
 //
 void
-STMTREP::Print(FILE *fp) const
+STMTREP::Print(FILE *fp, DNA_NODE *dna) const
 {
   if (_opr == OPR_PRAGMA) {
     fprintf(fp, ">");	// mark line visually as htable dump
@@ -5184,14 +5294,14 @@ STMTREP::Print(FILE *fp) const
     fprintf(fp, ">\n"); 
   }
 
-  if (Rhs()) Rhs()->Print(1, fp);
+  if (Rhs()) Rhs()->Print(1, fp, this, dna);
   if (OPERATOR_is_scalar_istore (_opr) || _opr == OPR_ISTOREX ||
       _opr == OPR_MSTORE)
-    Lhs()->Istr_base()->Print(1, fp);
+    Lhs()->Istr_base()->Print(1, fp, this, dna);
   if (_opr == OPR_MSTORE)
-    Lhs()->Mstore_size()->Print(1, fp);
+    Lhs()->Mstore_size()->Print(1, fp, this, dna);
   if (_opr == OPR_ISTOREX)
-    Lhs()->Index()->Print(1, fp);
+    Lhs()->Index()->Print(1, fp, this, dna);
   Print_node(fp);
   if (OPERATOR_is_call(_opr)) 
     fprintf(fp, " call-flag:0x%x", Call_flags());
@@ -5203,7 +5313,13 @@ STMTREP::Print(FILE *fp) const
     ST* st = St();
     if (st && ST_name (*st)) { fprintf (fp, " #%s", ST_name (*st)); }
   }
-  fprintf (fp, "\n");
+  fprintf (fp, " {line: %d/%d} STMTREP_ID:%d", SRCPOS_filenum(_linenum), SRCPOS_linenum(_linenum), Stmtrep_id());
+
+#ifdef BUILD_MASTIFF
+  if(dna)
+    dna->Dump_stpath(this, NULL, fp);
+#endif
+   fprintf (fp, "\n");
 
   if (Has_chi()) {
     CHI_NODE *cnode;
@@ -5221,10 +5337,18 @@ STMTREP::Print(FILE *fp) const
 }
 
 void
+STMTREP::Print(FILE *fp) const
+{
+  Print(fp, NULL);
+}
+
+#ifdef Is_True_On
+void
 dump_stmtrep (STMTREP *sr)
 {
   sr->Print(stdout);
 }
+#endif // Is_True_On
 
 // Print the STMTREP node
 //
@@ -6182,3 +6306,23 @@ MEMOP_ANNOT_CR_SR_MGR::Print (FILE* f, BOOL verbose) const {
   }
   fprintf (f, "\n");
 }
+
+STMTREP_LIST*
+STMTREP_LIST::Prepend(STMTREP *sr, MEM_POOL *pool)
+{
+  STMTREP_LIST_CONTAINER stmtrep_list_container(this);
+  STMTREP_LIST *new_srlst = (STMTREP_LIST*)CXX_NEW( STMTREP_LIST(sr), pool );
+  if ( new_srlst == NULL ) ErrMsg ( EC_No_Mem, "STMTREP_LIST::Prepend" );
+  stmtrep_list_container.Prepend(new_srlst);
+  return (STMTREP_LIST*)stmtrep_list_container.Head();
+}
+
+void
+STMTREP_LIST_CONTAINER::Prepend(STMTREP *sr, MEM_POOL *pool)
+{
+  STMTREP_LIST *new_srlst = (STMTREP_LIST*)CXX_NEW( STMTREP_LIST(sr), pool );
+  if ( new_srlst == NULL )
+    ErrMsg ( EC_No_Mem, "STMTREP_LIST_CONTAINER::Prepend" );
+  Prepend(new_srlst);
+}
+

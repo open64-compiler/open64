@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -84,8 +88,11 @@ PU_KIND	Cur_PU_Kind = PU_UNKNOWN;
 
 BOOL Symbol_Table_Out = FALSE;	/* Symbol table output (list or trace) */
 BOOL Show_Progress = FALSE;     /* Report progress to stdout */
+BOOL Show_Progress_Percent = FALSE; /* Report progress percent to stdout */
+BOOL Keep_Flag = FALSE;             /* Keep intermediate files(-kp) */
 BOOL Create_Cycle_Output = FALSE;  
 BOOL OpenMP_Profiling = FALSE;
+UINT32 File_Index;
 
 /* ====================================================================
  *
@@ -132,6 +139,8 @@ char *IR_File_Name  = NULL;	/* SGIR	file */
 char *Irb_File_Name = NULL;	/* ACIR	intermediate file */
 char *Asm_File_Name = NULL;	/* Assembly file */
 char *Obj_File_Name = NULL;	/* Relocatable object file */
+char *Ipsa_File_Name = NULL;	/* IPSA intermedidate file */
+char *Inlskip_File_Name = NULL; /* Skip inline functions list file */
 char *Instrumentation_File_Name = NULL; /* instrumentation file */
 char *Feedback_File_Name = NULL; /* Feedback file */
 char *call_graph_file_name = NULL; /* Function call graph file */

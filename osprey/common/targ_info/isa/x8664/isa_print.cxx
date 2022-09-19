@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -753,6 +757,7 @@ int main()
                            TOP_decxr16_n32,
                            TOP_decxr32_n32,
                            TOP_decxr64_off,
+                           TOP_checkptr,
                            TOP_UNDEFINED );
 
   ISA_PRINT_TYPE resbase = ISA_Print_Type_Create("resbase", "%s %s,%s%s(%s)");
@@ -3129,6 +3134,8 @@ int main()
   Name();
   Result(0);
   Instruction_Print_Group( r,
+			   TOP_bswap32,
+			   TOP_bswap64,
 			   TOP_not8,
 			   TOP_not16,
 			   TOP_not32,

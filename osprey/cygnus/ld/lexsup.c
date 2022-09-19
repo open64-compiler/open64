@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -551,10 +555,17 @@ static const struct ld_option ld_options[] =
 #ifdef IPA_LINK
   { {"ipa", no_argument, NULL, OPTION_IPA},
       '\0', NULL, N_("Use Inter Process Analysis"), TWO_DASHES },
+#ifdef BUILD_MASTIFF
+  { {"sw", no_argument, NULL, OPTION_SHOW},
+      '\0', NULL, N_("If IPA then show phases, otherwise unused"), ONE_DASH },
+  { {"kp", no_argument, NULL, OPTION_KEEP},
+      '\0', NULL, N_("Don't delete intermediate files"), TWO_DASHES },
+#else
   { {"show", no_argument, NULL, OPTION_SHOW},
       '\0', NULL, N_("If IPA then show phases, otherwise unused"), ONE_DASH },
   { {"keep", no_argument, NULL, OPTION_KEEP},
       '\0', NULL, N_("Don't delete intermediate files"), TWO_DASHES },
+#endif
   { {"DEFAULT", no_argument, NULL, OPTION_DEFAULT_GROUP},
       '\0', NULL, N_("Message about xxxxxx"), TWO_DASHES },
   { {"IPA:", no_argument, NULL, OPTION_IPA_GROUP},

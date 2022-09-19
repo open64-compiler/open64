@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -143,7 +147,7 @@ public:
     }
     void Print(FILE *fp)
     {
-        fprintf(fp, "\tVF:%s   offset:%d   overriders: \n"
+        fprintf(fp, "\tVF:%s   offset:%ld   overriders: \n"
             , ST_name(st_idx), offset);
         for(UINT32 i = 0; i < overriders.size(); i++)
         {

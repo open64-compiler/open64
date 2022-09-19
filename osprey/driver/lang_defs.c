@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -90,6 +90,9 @@ static lang_info_t language_info[] = {
 	{'F',	0x00000010,	{"f90", OPEN64_NAME_PREFIX "f95"}},		/* f90/95 */
 	{'a',	0x00000020,	{"as", OPEN64_NAME_PREFIX "as","gas"}},		/* as */
 	{'l',	0x00000040,	{"ld", OPEN64_NAME_PREFIX "ld"}},		/* ld */
+// java
+	{'j',	0x00000080, {"java", OPEN64_NAME_PREFIX "java"}},	/* java */
+	{'J',	0x00000080, {"javascript", OPEN64_NAME_PREFIX "js"}},	/* javascript */
 	#endif
 	{'I',	0x80000000,	{"int"}},		/* Internal option */
 };
@@ -154,23 +157,40 @@ static phase_info_t phase_info[] = {
    {'f',  0x0000000000080000LL,	"mfef95",PHASEPATH,	FALSE, FALSE},	/* cppf90_fe */
    {'f',  0x0000000000100000LL,	"gfec",PHASEPATH,	TRUE , FALSE}, /* c_gfe */
    {'f',  0x0000000000200000LL,	"gfecc",PHASEPATH,	TRUE , FALSE}, /* cplus_gfe */
+#ifdef BUILD_MASTIFF
+   {'f',  0x0000000000400000LL, "mapfec",PHASEPATH, TRUE , FALSE}, /* spin_cc1  */
+   {'f',  0x0000000000800000LL, "mapfex",PHASEPATH,    TRUE , FALSE}, /* spin_cc1plus */
+// java
+   {'f',  0x0000000001000000LL, "mapfej",PHASEPATH,  TRUE,  FALSE},	/* java front-end, java or class to to WHIRL */
+   {'w',  0x0000000400000000LL, "mapirg",PHASEPATH,   TRUE , FALSE}, /* wgen      */
+#else
    {'f',  0x0000000000400000LL, "cc1"   ,PHASEPATH, TRUE , FALSE}, /* spin_cc1  */
    {'f',  0x0000000000800000LL, "cc1plus",PHASEPATH,    TRUE , FALSE}, /* spin_cc1plus */
-   {'w',  0x0000000001000000LL, "wgen",PHASEPATH,   TRUE , FALSE}, /* wgen      */
-   {'f',  0x0000000000300060LL, "clangfe",PHASEPATH,   TRUE , FALSE}, /* clangfe */
+   {'f',  0x0000000001000000LL, "jfe", PHASEPATH,  TRUE,  FALSE},	/* java front-end, java or class to to WHIRL */
+   {'w',  0x0000000400000000LL, "wgen",PHASEPATH,   TRUE , FALSE}, /* wgen      */
+#endif
+   {'f',  0x0000000010000000LL, "js2mpl", PHASEPATH,  TRUE,  FALSE},   /* javascript front-end, javascript to maple */
+   {'z',  0x0000000800000000LL, "mpl2whirl",PHASEPATH, TRUE, FALSE},   /* maple to WHIRL */
+   {'f',  0x0000000000300060LL, "mapclang",PHASEPATH,   TRUE , FALSE}, /* clangfe */
    /* place-holder for generic fe, whose mask unites all fe's; */
    /* this is so -Wf will apply to whatever fe is being invoked. */
-   {'f',  0x0000000000ff0000LL,	"",	"",		FALSE, FALSE},	/* any_fe */
+   {'f',  0x000000000fff0000LL,	"",	"",		FALSE, FALSE},	/* any_fe */
    {'F',  0x00000000000f0000LL,	"",	"",		FALSE, FALSE},	/* pseudo_f_fe */
    {'C',  0x0000000000f00000LL,	"",	"",		FALSE, FALSE},	/* pseudo_c_fe */
 
-   {'X',  0x0000000002000000LL, "ftnlx", PHASEPATH,	FALSE, FALSE}, /* Lister */ 
-
+   {'X',  0x0000000800000000LL, "ftnlx", PHASEPATH,	FALSE, FALSE}, /* Lister */ 
+#ifdef BUILD_MASTIFF
+   {'i',  0x0000000010000000LL,	"mapinl",PHASEPATH,	TRUE, FALSE},	/* inline */
+   {'i',  0x0000000020000000LL,	"mapdls",PHASEPATH,	TRUE, FALSE},	/* ipl */
+   {'i',  0x00000000f0000000LL,	"",	"",		TRUE, FALSE},	/* empty */
+   {'b',  0x0000000100000000LL,	"mapcbe",PHASEPATH,	TRUE, FALSE},	/* be */
+#else
    {'i',  0x0000000010000000LL,	"inline",PHASEPATH,	TRUE, FALSE},	/* inline */
    {'i',  0x0000000020000000LL,	"ipl",	PHASEPATH,	TRUE, FALSE},	/* ipl */
    {'i',  0x00000000f0000000LL,	"",	"",		TRUE, FALSE},	/* ipl, inline*/
 
    {'b',  0x0000000100000000LL,	"be",	PHASEPATH,	TRUE, FALSE},	/* be */
+#endif
 #if defined(TARG_NVISA)
    {'b',  0x0000000200000000LL,	"bec", PHASEPATH, TRUE, FALSE}, /* bec */
    {'b',  0x0000000f00000000LL,	"", "", TRUE, FALSE}, /* any_be */
@@ -191,17 +211,21 @@ static phase_info_t phase_info[] = {
    {'a',  0x0000003000000000LL,	"",	"",		FALSE, FALSE},	/* any_as */
 
    {'d',  0x0000008000000000LL, "dsm_prelink", PHASEPATH,FALSE, FALSE},/* dsm_prelink*/
+#ifdef BUILD_MASTIFF
+   {'j',  0x0000010000000000LL,	"maplink", GNUPHASEPATH, TRUE, FALSE},	/* ipa_link */
+#else
 #ifndef TARG_SL
    {'j',  0x0000010000000000LL,	"ipa_link", GNUPHASEPATH, TRUE, FALSE},	/* ipa_link */
 #else
    {'j',  0x0000010000000000LL, "ipa_link", BINPATH, TRUE, FALSE}, /* ipa_link */
+#endif
 #endif
 #ifdef TARG_LOONGSON
    {'l',  0x0000020000000000LL,	"collect2", GNUPHASEPATH,TRUE, FALSE},	/* collect */
 #else
    {'l',  0x0000020000000000LL,	"ld", BINPATH, TRUE, TRUE},	/* collect */
 #endif
-#if defined(TARG_X8664) || defined(TARG_LOONGSON) || !defined(CROSS_COMPILATION)
+#if defined(TARG_X8664) || defined(TARG_LOONGSON) || !defined(CROSS_COMPILATION) || defined(TARG_UWASM)
    /* on x8664, we alwayse use gcc/g++ as the linker */
    {'l',  0x0000040000000000LL,	NAMEPREFIX "gcc", BINPATH, FALSE, TRUE}, /* ld */
    {'l',  0x0000080000000000LL,	NAMEPREFIX "g++", BINPATH, FALSE, TRUE}, /* ldplus */
@@ -272,6 +296,9 @@ static source_info_t source_info[] = {
 	{"O"},				/* O */
 #endif
 	{"o"},				/* o */
+// java
+	{"java","class","jar", "apk", "war"}, 			/* java */
+	{"js"}
 };
 
 languages_t invoked_lang;
@@ -561,6 +588,10 @@ get_lang_name (languages_t index)
 languages_t
 get_named_language (char *name)
 {
+#ifdef BUILD_MASTIFF
+	/* C compiler. driver will adjust according to input file extension */
+	return L_cc;
+#endif
 	languages_t i, lang = L_NONE;
 	int j;
 	char *p;
@@ -649,6 +680,9 @@ get_source_kind (char *src)
 			case L_f77: return S_f;
 			case L_f90: return S_f90;
 			case L_as: return S_s;
+// java
+			case L_java:  return S_java;
+			case L_javascript:  return S_javascript;
 			}
 		}
 	}
@@ -712,6 +746,11 @@ get_source_lang (source_kind_t sk)
 		return L_f90;
 	case S_o:
 		return invoked_lang;
+// java
+	case S_java:
+		return L_java;
+	case S_javascript:
+		return L_javascript;
 	}
 	return L_NONE;
 }

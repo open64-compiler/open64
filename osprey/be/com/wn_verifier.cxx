@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -116,6 +120,8 @@
 #include "config_asm.h"         // for User_Label_Number_Format
 #include "glob.h"
 #include "pu_info.h"
+#include "dwarf.h"
+#include "dwarf_DST.h"
 
 // Turning this switch to turn the debuging messages of the Verifier
 
@@ -220,6 +226,7 @@ class WN_Verifier{
     BOOL     STID_check_st_class(WN *wn);
     BOOL     TY_is_not_NULL(WN *wn, OPCODE op);
     BOOL     ST_is_not_NULL(WN *wn, OPCODE op); 
+    BOOL     STID_check_type(WN *wn);
     BOOL     Load_addr_TY_is_not_NULL(WN *wn, OPCODE op); 
     BOOL     Are_enclosed_pragmas(WN *wn, WN *parent_wn);
     BOOL     Field_id_valid (WN* wn);
@@ -316,12 +323,12 @@ WN_Verifier::WN_traverse_tree(WN *wn, WN *parent_wn)
 	   _is_tree_OK &= ST_is_not_NULL(wn,op);
 	   break;
       case OPR_STID:
-	    // Here check the class of the ST
-	    // Also check if TY and ST aren't NULLs
-            _is_tree_OK &= STID_check_st_class(wn);
-            _is_tree_OK &= TY_is_not_NULL(wn,op);
-	    _is_tree_OK &= ST_is_not_NULL(wn,op);
-	    _is_tree_OK &= Field_id_valid(wn);
+        // Here check the class of the ST
+        // Also check if TY and ST aren't NULLs
+        _is_tree_OK &= STID_check_st_class(wn);
+        _is_tree_OK &= TY_is_not_NULL(wn,op);
+        _is_tree_OK &= ST_is_not_NULL(wn,op);
+        _is_tree_OK &= Field_id_valid(wn);
 	    break;
       case OPR_MLOAD:
       case OPR_ISTORE:
@@ -932,6 +939,34 @@ BOOL WN_Verifier::STID_check_st_class(WN *wn)
 		   "is unknown");
 	   Print_ST(stderr, st, FALSE);
 	   return FALSE;
+    }
+  }
+  return TRUE;
+}
+
+BOOL WN_Verifier::STID_check_type(WN *wn) {
+  OPCODE   opc = WN_opcode(wn);
+  OPERATOR opr = OPCODE_operator(opc);
+
+  if (opr == OPR_STID) {
+    TYPE_ID desc_mtype = WN_desc(wn);
+    TY_IDX wn_type = WN_ty(wn);
+
+    if (Is_Structure_Type(wn_type) &&
+      (WN_field_id(wn) != 0)) {
+      UINT cur_field_id = 0;
+      FLD_HANDLE fld = FLD_get_to_field(wn_type,
+                                        WN_field_id(wn),
+                                        cur_field_id);
+      if (!fld.Is_Null()) {
+        wn_type = FLD_type(fld);
+      }
+    }
+
+    TYPE_ID wn_mtype = TY_mtype(Ty_Table[wn_type]);
+    if(wn_mtype != desc_mtype) {
+      Fail_FmtAssertion("WN_verifier Error (STID_check_type): STID whirl mtype [%s] != wn desc mtype[%s]", Mtype_Name(wn_mtype), Mtype_Name(desc_mtype));
+      return FALSE;
     }
   }
   return TRUE;

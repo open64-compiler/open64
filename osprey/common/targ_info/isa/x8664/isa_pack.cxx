@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -102,6 +106,7 @@ int main()
 			 TOP_subxxxsd,	0x000000ff,
 			 TOP_mulxxxsd,	0x000000ff,
 			 TOP_mulxxxss,	0x000000ff,
+			 TOP_checkptr,	0x000000ff,
 			 TOP_cmpxxx8,	0x000000ff,
 			 TOP_cmpi8,	0x000000ff,
 			 TOP_cmpxi8,	0x000000ff,
@@ -139,6 +144,8 @@ int main()
 		    TOP_nop,	0x000000ff,
 		    TOP_andnps,	0x000000ff,
 		    TOP_andnpd,	0x000000ff,
+		    TOP_bswap32,	0x000000ff,
+		    TOP_bswap64,	0x000000ff,
 		    TOP_cmpss,	0x000000ff,
 		    TOP_cmpsd,	0x000000ff,
 		    TOP_cmpps,	0x000000ff,

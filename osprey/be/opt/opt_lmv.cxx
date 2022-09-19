@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1398,7 +1402,7 @@ CFG::LMV_clone_BB_LOOP (LMV_CFG_ADAPTOR* adaptor, BB_LOOP* model) {
     clone->Set_header_pred_count (model->Header_pred_count ());
 
     if (WN* idx = model->Index ()) {
-        clone->Set_index (WN_COPY_Tree_With_Map (idx));
+        clone->Set_index (WN_copy_tree_with_map (idx));
     }
 
     clone->Set_orig_wn (model->Orig_wn());

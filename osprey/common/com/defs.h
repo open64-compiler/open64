@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -212,8 +216,10 @@ extern "C" {
 #ifdef __GNUC__
 /* gcc allows us to put attribute weak after a prototype */
 #define WEAK __attribute__((weak))
+#define NOINLINE __attribute__((noinline))
 #else
 #define WEAK
+#define NOINLINE
 #endif
 
 

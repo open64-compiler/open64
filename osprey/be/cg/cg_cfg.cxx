@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2011, Hewlett-Packard Development Company, L.P. All Rights Reserved.
 
@@ -174,6 +178,7 @@ CG_STMT_CONTAINER::Print(FILE* fp, INT32 dump_flag) const {
 VCGNode*
 CG_STMT_CONTAINER::VCG_dump(MEM_POOL* mpool, VCGGraph& vcg, INT32 dump_flag) const {
   VCGNode* bb_node = NULL;
+#ifndef BUILD_MASTIFF
   if (dump_flag & DUMP_AIR) {
     std::stringstream ss;
     for (OP* op = _first_stmt; op != NULL; op = Next_stmt(op)) {
@@ -189,6 +194,7 @@ CG_STMT_CONTAINER::VCG_dump(MEM_POOL* mpool, VCGGraph& vcg, INT32 dump_flag) con
     bb_node = CXX_NEW(VCGNode(NULL, label), mpool); // title will be set later
     vcg.addNode(*bb_node);
   }
+#endif
   return bb_node;
 }
 

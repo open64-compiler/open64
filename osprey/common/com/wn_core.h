@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -575,7 +579,7 @@ public:
   WN (const WN& wn) {}
   WN (const WN* wn) {}
 #pragma set woff 1116
-  WN& operator= (const WN& wn) {}
+  WN& operator= (const WN& wn) { return *this; }
 #pragma reset woff 1116
 #pragma reset woff 3201
   ~WN () {}
@@ -1562,6 +1566,9 @@ inline INT64 WN_Get_Linenum(const WN *wn)
 					      relationships */
 #define WN_CALL_REPLACE_BY_JUMP 0x1000	/* replace call by jump in thunks */
 #define WN_CALL_IS_VIRTUAL      0x2000  /* it is a virtual function call */
+#define WN_CALL_IS_INTERFACE    0x4000  /* interface call */
+#define WN_CALL_IS_CONSTRUCTOR  0x8000  /* call constructor */
+#define WN_CALL_IS_DESTRUCTOR   0x10000 /* call destructor */
 
      /* Some flags make promises when they're clear, and others when
       * they're set. The following macro tells us which are
@@ -1624,6 +1631,18 @@ inline INT64 WN_Get_Linenum(const WN *wn)
 #define WN_Call_Is_Virtual(x)        (WN_call_flag(x) & WN_CALL_IS_VIRTUAL)
 #define WN_Set_Call_Is_Virtual(x)    (WN_call_flag(x) |= WN_CALL_IS_VIRTUAL)
 #define WN_Reset_Call_Is_Virtual(x)  (WN_call_flag(x) &= ~WN_CALL_IS_VIRTUAL)
+
+#define WN_Call_Is_Interface(x)        (WN_call_flag(x) & WN_CALL_IS_INTERFACE)
+#define WN_Set_Call_Is_Interface(x)    (WN_call_flag(x) |= WN_CALL_IS_INTERFACE)
+#define WN_Reset_Call_Is_Interface(x)  (WN_call_flag(x) &= ~WN_CALL_IS_INTERFACE)
+
+#define WN_Call_Is_Constructor(x)       (WN_call_flag(x) & WN_CALL_IS_CONSTRUCTOR)
+#define WN_Set_Call_Is_Constructor(x)   (WN_call_flag(x) |= WN_CALL_IS_CONSTRUCTOR)
+#define WN_Reset_Call_Is_Constructor(x) (WN_call_flag(x) &= ~WN_CALL_IS_CONSTRUCTOR)
+
+#define WN_Call_Is_Destructor(x)        (WN_call_flag(x) & WN_CALL_IS_DESTRUCTOR)
+#define WN_Set_Call_Is_Destructor(x)    (WN_call_flag(x) |= WN_CALL_IS_DESTRUCTOR)
+#define WN_Reset_Call_Is_Destructor(x)  (WN_call_flag(x) &= ~WN_CALL_IS_DESTRUCTOR)
 
 /* Macros for OPR_ASM_STMT flag access */
 

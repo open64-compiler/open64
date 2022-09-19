@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -74,6 +78,7 @@
 #include "w2f_driver.h"		    /* Whirl2f related */
 #include "instr_reader.h"
 #include "be_symtab.h"
+#include "report.h"                 /* VSA Report related */
 
 
 BOOL Whirl2f_loaded = FALSE;
@@ -131,6 +136,10 @@ Cleanup_Files (BOOL report,         /* Report errors during cleanup? */
     }
     Obj_File = NULL;
 
+    /* Delete Ipa_File_Name if error hit */
+    if (delete_dotofile && Ipa_File_Name)
+      unlink (Ipa_File_Name);
+
     /* Close listing file: */
     if ( Lst_File != NULL && Lst_File != stdout && fclose (Lst_File) ) {
 	if ( report )
@@ -144,6 +153,14 @@ Cleanup_Files (BOOL report,         /* Report errors during cleanup? */
 	    ErrMsg ( EC_Tlog_Close, Tlog_File_Name, errno );
     }
     Lst_File = NULL;
+
+#if defined(BUILD_MASTIFF)
+    /* Close report file */
+    if (VsaRpt_File != NULL && VsaRpt_File != stdout) {
+      Write_vsarpt_footer(VsaRpt_File);
+    }
+    VsaRpt_File = NULL;
+#endif
 
     if (Whirl2c_loaded)
        W2C_Cleanup();

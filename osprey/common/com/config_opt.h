@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -150,6 +154,7 @@ extern BOOL Optimize_CVTL_Exp;	/* Optimize expansion of CVTL operators */
 extern BOOL Enable_CVT_Opt;	/* Optimize expansion of CVT operators */
 extern BOOL Force_IEEE_Comparisons;	/* IEEE NaN comparisons? */
 extern BOOL Inline_Intrinsics_Early;    /* Inline intrinsics just after VHO */
+extern BOOL OPT_Lower_field_offset_pre_vho;  /* Lower field id in load/store ops to offset */
 extern BOOL Enable_extract_bits;     /* Enable use of the extract/compose whirl ops */
 extern BOOL Enable_compose_bits;     /* Enable use of the extract/compose whirl ops */
 

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -179,11 +183,14 @@ extern BOOL WOPT_Enable_Improved_Addr_Taken;
 extern BOOL WOPT_Enable_Input_Prop;     /* copy prop at value number time */
 extern BOOL WOPT_Enable_Itself_Prop;     /* copy prop of t=func(t) where func
 					    contains only t plus other constants */
+extern BOOL WOPT_Enable_Innerloop_Unroll;/* innerloop unroll */
 extern BOOL WOPT_Enable_IPAA;           /* enable the use of IPA alias analysis result */
 extern BOOL WOPT_Enable_IVE;		/* induction-var elimination */
 extern BOOL WOPT_Enable_IVE_Old;        /* use old IVE with bug in it */
 extern BOOL WOPT_Enable_Ivar_Common;
 extern BOOL WOPT_Enable_Ivar_PRE;       /* enable *p as PRE candidate */
+extern BOOL WOPT_Enable_Ivar_SPRE;      /* enable *p as SPRE candidate */
+extern BOOL WOPT_Enable_Ivar_SPRE_Agg;  /* enable *p as SPRE candidate aggressively */
 extern BOOL WOPT_Enable_Ivincr_Cand;
 extern BOOL WOPT_Enable_IVR;		/* induction-var recognition */
 extern INT32 WOPT_Enable_IVR_Expand_Limit;  /* limit of expr expansion to search for incr */
@@ -275,6 +282,7 @@ extern UINT32 WOPT_Enable_Vnfre_After;  /* Disable vnfre after given valnum */
 extern UINT32 WOPT_Enable_Vnfre_Before; /* Disable vnfre before given valnum */
 extern BOOL WOPT_Enable_Verbose;
 extern INT32 WOPT_Enable_Verify;	/* verify data structures */
+extern INT32 WOPT_Enable_VSA_Limit;
 extern BOOL WOPT_Enable_Vsym_Unique;
 extern BOOL WOPT_Enable_VN_Full;	/* full value number for ivars */
 extern BOOL WOPT_Enable_While_Loop;	/* cvt while-do to do-loop */

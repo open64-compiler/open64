@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -64,6 +64,7 @@ extern "C" {
 #endif
 
 extern int  WGEN_Keep_Zero_Length_Structs;
+extern char *Preprocessor_Working_Dir;  /* def in wgen_dst.cxx and assigned from main.c */
 #ifdef TARG_X8664
 extern int Reg_Parm_Count;
 extern BOOL SSE_Reg_Parm;
@@ -74,6 +75,7 @@ extern void WGEN_Finish (void);
 extern void WGEN_File_Init (INT argc, char **argv);
 extern void WGEN_File_Finish (void);
 extern void WGEN_Check_Errors (int *error_count, int *warning_count, BOOL *need_inliner);
+extern void WGEN_Set_File_Rbc();
 #ifdef __cplusplus
 }
 #endif

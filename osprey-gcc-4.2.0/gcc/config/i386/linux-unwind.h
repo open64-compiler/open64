@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* DWARF2 EH unwinding support for AMD x86-64 and x86.
    Copyright (C) 2004, 2005, 2006 Free Software Foundation, Inc.
 
@@ -143,12 +147,12 @@ x86_fallback_frame_state (struct _Unwind_Context *context,
 	struct siginfo *pinfo;
 #endif
 	void *puc;
-#if defined(__have_siginfo_t) || defined(__siginfo_t_defined)
+#ifdef __have_siginfo_t
 	siginfo_t info;
 #else
 	struct siginfo info;
 #endif
-	ucontext_t uc;
+	struct ucontext uc;
       } *rt_ = context->cfa;
       /* The void * cast is necessary to avoid an aliasing warning.
          The aliasing warning is correct, but should not be a problem

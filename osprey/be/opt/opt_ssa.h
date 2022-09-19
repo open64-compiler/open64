@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 
 /*
@@ -118,14 +122,14 @@ public:
   
   CODEREP  *Get_zero_version_CR(AUX_ID aux_id, OPT_STAB *, VER_ID);
   void      Pointer_Alias_Analysis(void);         
-  void      Dead_store_elim(CFG *, OPT_STAB *, EXC *);
+  void      Dead_store_elim(COMP_UNIT *cu);
   void	    Find_zero_versions();
   void      Create_CODEMAP(void);
   void      Value_number_mu_list(MU_LIST *mu_list);
   void      Value_number_mu_node(MU_NODE *mu_node);
   void	    Resurrect_phi(PHI_NODE *phi);
   void	    Resurrect_chi(CHI_NODE *chi);
-  void      Print();
+  void      Print(FILE*);
 };
 
 class CODEREP;
@@ -217,8 +221,8 @@ public:
 
   PHI_KEY  Key(void) const               { PHI_KEY key; key.Init(_bb->Id(), _aux_id); return key; }
   
-  mUINT8   Flags(void) const             { return _flags; }
-  void     Set_flags(mUINT8 i)           { _flags = i; }
+  mUINT32  Flags(void) const             { return _flags; }
+  void     Set_flags(mUINT32 i)          { _flags = i; }
   void     Set_opnd(const INT32 i, AUX_ID cr)
                                          { vec[i+1].version = cr;}
   void     Set_result(AUX_ID cr)         { vec[0].version = cr; }
@@ -292,18 +296,19 @@ public:
   PHI_LIST(BB_NODE *bb);
   ~PHI_LIST(void)			{}
 
-  PHI_NODE *New_phi_node(IDTYPE var, MEM_POOL *pool, BB_NODE *bb)
+  PHI_NODE *New_phi_node(IDTYPE var, MEM_POOL *pool, BB_NODE *bb, BOOL append = FALSE)
     { PHI_NODE *p = (PHI_NODE *) CXX_NEW (PHI_NODE(in_degree, pool, bb), pool); 
       for (INT32 i = 0; i < in_degree; i++)
 	p->Set_opnd(i, (AUX_ID)0);
       p->Set_result((AUX_ID)0);
       p->Set_aux_id(var);
-      Append(p);
+      append ? Append(p) : Prepend(p);
       return p;
     }
 
   PHI_LIST *Dup_phi_node(MEM_POOL *pool, BB_NODE *bb, INT pos);
   PHI_LIST *Dup_phi_node(MEM_POOL *pool, BB_NODE *bb);
+  PHI_NODE *Search_phi_node(AUX_ID var);
   // Remove the i'th operand from the phi-nodes (0 is first opnd)
   void     Remove_opnd(INT32 i);
 	

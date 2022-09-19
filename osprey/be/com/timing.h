@@ -175,6 +175,10 @@ typedef enum {
 #endif
 	T_WSSA_EMIT_CU,		/* WSSA PreOpt emitter */
 	T_WSSA_EMIT_Comp,	
+	T_AOT_PTN,		/* AOT partition */
+	T_AOT_COMP,		/* AOT compile */
+	T_BUILD_CHA,		/* BUILD CLASS HIERARCHY */
+	T_TAG_PROP,		/* Tag propagation */
 
 	T_LAST			/* Last index defined */
 } TIMER_ID;

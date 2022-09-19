@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  Copyright (C) 2010, Hewlett-Packard Development Company, L.P.
  All Rights Reserved.
 
@@ -28,18 +32,18 @@ static PointsTo emptyPointsToSet;
 void
 EscapeAnalysis::printStFlags(UINT32 flags) const
 {
-  fprintf(stderr,"[");
+  fprintf(TFile,"[");
   if (flags & CG_ST_FLAGS_HOLDING)
-    fprintf(stderr," HOLDING");
+    fprintf(TFile," HOLDING");
   if (flags & CG_ST_FLAGS_HOLDING_ESC)
-    fprintf(stderr," HOLDING_ESC");
+    fprintf(TFile," HOLDING_ESC");
   if (flags & CG_ST_FLAGS_OPAQUE)
-    fprintf(stderr," OPAQUE");
+    fprintf(TFile," OPAQUE");
   if (flags & CG_ST_FLAGS_PROPAGATES)
-    fprintf(stderr," PROPAGATES");
+    fprintf(TFile," PROPAGATES");
   if (flags & CG_ST_FLAGS_PROPAGATES_RET)
-    fprintf(stderr," PROPAGATES_RET");
-  fprintf(stderr,"]");
+    fprintf(TFile," PROPAGATES_RET");
+  fprintf(TFile,"]");
 }
 
 UINT32
@@ -94,7 +98,7 @@ EscapeAnalysis::addToWorkList(ConstraintGraphNode *node)
   if (node == ConstraintGraph::notAPointer())
     return;
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-    fprintf(stderr, "ESCANAL:       node %d (single)\n",node->id());
+    fprintf(TFile, "ESCANAL:       node %d (single)\n",node->id());
   _workList.push(node);
 }
 
@@ -105,14 +109,14 @@ EscapeAnalysis::addStToWorkList(ConstraintGraphNode *node)
     return;
 
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-    fprintf(stderr,"ESCANAL:      adding all nodes for this ST to worklist- ");
+    fprintf(TFile,"ESCANAL:      adding all nodes for this ST to worklist- ");
     printStFlags(findStFlags(node));
-    fprintf(stderr,"\n");
+    fprintf(TFile,"\n");
   }
 
   if (node->stInfo()->checkFlags(CG_ST_FLAGS_PREG)) {
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-      fprintf(stderr, "ESCANAL:       node %d (ST)\n",node->id());
+      fprintf(TFile, "ESCANAL:       node %d (ST)\n",node->id());
     _workList.push(node);
     return;
   }
@@ -122,7 +126,7 @@ EscapeAnalysis::addStToWorkList(ConstraintGraphNode *node)
     cur = cur->nextOffset();
   while (cur) {
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-      fprintf(stderr, "ESCANAL:       node %d (ST)\n",cur->id());
+      fprintf(TFile, "ESCANAL:       node %d (ST)\n",cur->id());
     _workList.push(cur);
     cur = cur->nextOffset();
   }
@@ -172,7 +176,7 @@ EscapeAnalysis::newContEscapeNode(ConstraintGraphNode *node, UINT32 flags)
       return;
 
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-      fprintf(stderr,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked holding\n",
+      fprintf(TFile,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked holding\n",
                node->id(),node->cg_st_idx(),node->stName());
     addStFlags(node,CG_ST_FLAGS_LCONT_ESC);
     if (node->checkFlags(CG_NODE_FLAGS_MERGED))
@@ -213,7 +217,7 @@ EscapeAnalysis::newPropEscapeNode(ConstraintGraphNode *node, UINT32 flags)
        return;
 
      if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-       fprintf(stderr,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked propagates\n",
+       fprintf(TFile,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked propagates\n",
                node->id(),node->cg_st_idx(),node->stName());
      addStFlags(node,CG_ST_FLAGS_LPROP_ESC);
      if (node->checkFlags(CG_NODE_FLAGS_MERGED))
@@ -226,7 +230,7 @@ EscapeAnalysis::newPropEscapeNode(ConstraintGraphNode *node, UINT32 flags)
     UINT32 stFlags = findStFlags(node);
     if (!(stFlags & CG_ST_FLAGS_RETPROP_ESC)) {
       if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-        fprintf(stderr,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked propagates_ret\n",
+        fprintf(TFile,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked propagates_ret\n",
                 node->id(),node->cg_st_idx(),node->stName());
       addStFlags(node,CG_ST_FLAGS_RETPROP_ESC);
       if (node->checkFlags(CG_NODE_FLAGS_MERGED))
@@ -269,7 +273,7 @@ EscapeAnalysis::newFullEscapeNode(ConstraintGraphNode *node, UINT32 flags)
     }
 #endif
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-      fprintf(stderr,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked opaque\n",
+      fprintf(TFile,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked opaque\n",
               node->id(),node->cg_st_idx(),node->stName());
 
     addStFlagsAll(node,CG_ST_FLAGS_LFULL_ESC|
@@ -307,7 +311,7 @@ EscapeAnalysis::newFullEscapeNode(ConstraintGraphNode *node, UINT32 flags)
       return;
 
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-      fprintf(stderr,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked opaque\n",
+      fprintf(TFile,"ESCANAL:     Node %d CG_ST_IDX %lld (%s) marked opaque\n",
               node->id(),node->cg_st_idx(),node->stName());
 
     addStFlagsAll(node,CG_ST_FLAGS_LFULL_ESC|
@@ -331,7 +335,7 @@ EscapeAnalysis::newFullEscapeNode(ConstraintGraphNode *node, UINT32 flags)
   }
 }
 
-extern void printPointsTo(const PointsTo &pts);
+extern void printPointsTo(const PointsTo &pts, FILE *fp);
 
 void
 EscapeAnalysis::examineCallSites(ConstraintGraph *graph)
@@ -384,7 +388,7 @@ EscapeAnalysis::examineCallSites(ConstraintGraph *graph)
             continue;
 
           if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-            fprintf(stderr,"ESCANAL: cse param %d of %s prop\n",
+            fprintf(TFile,"ESCANAL: cse param %d of %s prop\n",
                     argPos,
                     !callsite->isIntrinsic()?ST_name(callsite->st_idx()):
                         INTRN_c_name(callsite->intrinsic()));
@@ -392,9 +396,9 @@ EscapeAnalysis::examineCallSites(ConstraintGraph *graph)
               PointsTo &pts = *pti;
               for (PointsTo::SparseBitSetIterator iter(&pts,0); iter != 0; ++iter) {
                 ConstraintGraphNode *node = ConstraintGraph::cgNode(*iter);
-                fprintf(stderr,"<%d,%d> ",node->id(),node->offset());
+                fprintf(TFile,"<%d,%d> ",node->id(),node->offset());
               }
-              fprintf(stderr,"\n");
+              fprintf(TFile,"\n");
             }
           }
           newPropEscapeSt(actual,CG_ST_FLAGS_LPROP_ESC);
@@ -408,7 +412,7 @@ EscapeAnalysis::examineCallSites(ConstraintGraph *graph)
                                ConstraintGraph::cgNode(callsite->returnId());
           if (!callsite->actualReturnModeled()) {
             if(Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-              fprintf(stderr,"ESCANAL: cse return of %s holding\n",
+              fprintf(TFile,"ESCANAL: cse return of %s holding\n",
                       !callsite->isIntrinsic()?ST_name(callsite->st_idx()):
                           INTRN_c_name(callsite->intrinsic()));
             newContEscapeSt(actual,CG_ST_FLAGS_LCONT_ESC);
@@ -440,7 +444,7 @@ EscapeAnalysis::examineCallSites(ConstraintGraph *graph)
         continue;
       else {
         if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-          fprintf(stderr,"ESCANAL: external call %s\n",ST_name(callsite->st_idx()));
+          fprintf(TFile,"ESCANAL: external call %s\n",ST_name(callsite->st_idx()));
       }
     }
 
@@ -452,7 +456,7 @@ EscapeAnalysis::examineCallSites(ConstraintGraph *graph)
         li != callsite->parms().end(); ++li, ++argPos) {
       ConstraintGraphNode *actual = ConstraintGraph::cgNode(*li);
       if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-        fprintf(stderr,"ESCANAL: call to %s (param %d) not in cse table\n",
+        fprintf(TFile,"ESCANAL: call to %s (param %d) not in cse table\n",
                    callsite->isDirect() ?
                        (!callsite->isIntrinsic() ?
                            ST_name(callsite->st_idx()) :
@@ -462,9 +466,9 @@ EscapeAnalysis::examineCallSites(ConstraintGraph *graph)
           PointsTo &pts = *pti;
           for (PointsTo::SparseBitSetIterator iter(&pts,0); iter != 0; ++iter) {
             ConstraintGraphNode *node = ConstraintGraph::cgNode(*iter);
-            fprintf(stderr,"<%d,%d> ",node->id(),node->offset());
+            fprintf(TFile,"<%d,%d> ",node->id(),node->offset());
           }
-          fprintf(stderr,"\n");
+          fprintf(TFile,"\n");
         }
       }
       newPropEscapeSt(actual,CG_ST_FLAGS_LPROP_ESC);
@@ -538,12 +542,12 @@ EscapeAnalysis::initGraph(ConstraintGraph *graph)
 
       if (node->checkFlags(CG_NODE_FLAGS_FORMAL_PARAM)) {
         if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-          fprintf(stderr,"ESCANAL: formal param of %s\n",graph->name());
+          fprintf(TFile,"ESCANAL: formal param of %s\n",graph->name());
         newContEscapeSt(node,CG_ST_FLAGS_LCONT_ESC);
       }
       if (node->checkFlags(CG_NODE_FLAGS_FORMAL_RETURN)) {
         if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-          fprintf(stderr,"ESCANAL: formal return of %s\n",graph->name());
+          fprintf(TFile,"ESCANAL: formal return of %s\n",graph->name());
         newPropEscapeSt(node,CG_ST_FLAGS_RETPROP_ESC);
       }
     }
@@ -572,7 +576,7 @@ void
 EscapeAnalysis::processContEscapeNode(ConstraintGraphNode *node)
 {
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"ESCANAL:   Process Holding\n");
+    fprintf(TFile,"ESCANAL:   Process Holding\n");
 
   /* New CE node effects:
    *    - IN : store edges
@@ -643,7 +647,7 @@ void
 EscapeAnalysis::processPropEscapeNode(ConstraintGraphNode *node)
 {
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"ESCANAL:   Process Propagates\n");
+    fprintf(TFile,"ESCANAL:   Process Propagates\n");
 
   /* New PE node effects:
    *    - IN : copy/skew, points-to contents
@@ -689,7 +693,7 @@ void
 EscapeAnalysis::processFullEscapeNode(ConstraintGraphNode *node)
 {
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"ESCANAL:   Process Opaque\n");
+    fprintf(TFile,"ESCANAL:   Process Opaque\n");
 
   /* New FE node effects:
    *    - IN : copy/skew, points-to contents, store
@@ -755,7 +759,7 @@ void
 EscapeAnalysis::perform(void)
 {
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"ESCANAL: Summary %d, IPA %d, WPM %d\n",
+    fprintf(TFile,"ESCANAL: Summary %d, IPA %d, WPM %d\n",
             _summaryMode, _ipaMode, _wholeProgramMode);
 
   init();
@@ -767,7 +771,7 @@ EscapeAnalysis::perform(void)
     ConstraintGraphNode *node = _workList.pop();
 
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-      fprintf(stderr,"ESCANAL: Processing node %d\n",node->id());
+      fprintf(TFile,"ESCANAL: Processing node %d\n",node->id());
 
     UINT32 stFlags = findStFlags(node);
     if (stFlags & (CG_ST_FLAGS_LPROP_ESC|CG_ST_FLAGS_RETPROP_ESC))
@@ -779,15 +783,15 @@ EscapeAnalysis::perform(void)
   }
 
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-    fprintf(stderr,"ESCANAL: local escape  = %d\n",_localEscapeCnt);
-    fprintf(stderr,"ESCANAL: global escape = %d\n",_globalEscapeCnt);
-    fprintf(stderr,"ESCANAL: observed      = %d\n",_observedCnt);
+    fprintf(TFile,"ESCANAL: local escape  = %d\n",_localEscapeCnt);
+    fprintf(TFile,"ESCANAL: global escape = %d\n",_globalEscapeCnt);
+    fprintf(TFile,"ESCANAL: observed      = %d\n",_observedCnt);
   }
 
   time_t endTime = time(NULL);
 
   if (Get_Trace(TP_ALIAS,NYSTROM_LW_SOLVER_FLAG))
-    fprintf(stderr,"EscapeAnalysis required %lds\n", endTime-startTime);
+    fprintf(TFile,"EscapeAnalysis required %lds\n", endTime-startTime);
 }
 
 void
@@ -859,6 +863,6 @@ EscapeAnalysis::identifyMallocWrappers()
   }
 
   if (Get_Trace(TP_ALIAS,NYSTROM_LW_SOLVER_FLAG))
-    fprintf(stderr, "%s is malloc wrapper\n", ST_name(Get_Current_PU_ST()));
+    fprintf(TFile, "%s is malloc wrapper\n", ST_name(Get_Current_PU_ST()));
   Set_PU_has_attr_malloc(Get_Current_PU());
 }

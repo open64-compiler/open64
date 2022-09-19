@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -64,6 +64,7 @@
 #include <sys/resource.h>
 #endif
 #include <sys/time.h>
+#include <dirent.h>
 #include "pathscale_defs.h"
 
 #include "phases.h"
@@ -81,6 +82,7 @@
 #include "profile_type.h"    /* for PROFILE_TYPE */
 #include "lib_phase_dir.h"   /* for LIBPATH */
 #include "get_options.h"
+#include "config_product.h"  /* PHASE_BE_NAME, BE_SO_NAME, etc */
 
 int subverbose ;
 
@@ -114,12 +116,24 @@ boolean expand_ftpp_macros = TRUE;	// bug 2258
 int     fortran_line_length = 72; /* Fortran line length */
 char roundoff=0;
 boolean nocpp_flag = FALSE;
+#ifndef BUILD_MASTIFF
+boolean xfa_flag = FALSE; /* no xfa if not for mastiff */
+#else
+boolean xfa_flag = TRUE;  /* turn on xfa by default */
+#endif
+boolean vsa_jni_flag = FALSE;
+boolean vsa_certj_flag = FALSE;
+boolean vsa_certc_flag = TRUE;
+boolean vsa_cxx_intrn_flag = FALSE;
+boolean vsa_xcbr_flag = TRUE;
+boolean vsa_mtr_flag = TRUE;
 
 char *global_toolroot = NULL;
 char *ld_library_path = NULL;
 char *ld_libraryn32_path = NULL;
 char *orig_program_name = NULL;
 char *old_ld_library_path = NULL;
+boolean dump_outfile_to_stdout;
 #ifdef TARG_SL
 boolean ldscript_file = FALSE;
 boolean Long_Long_Support = FALSE;
@@ -148,6 +162,87 @@ static void set_f90_source_form(string_list_t *args,boolean set_line_length) ;
 static void set_stack_size();
 
 extern int run_build;
+
+// MASTIFF VSA options
+static const char* vsa_prefix = "-VSA:";
+
+struct vsa_opt_desc {
+  const char* key;          // option key
+  const char* lib64;        // 64-bit library
+  const char* lib32;        // 32-bit library
+  const char *lib64_skip;   // 64-bit library inline skip
+  const char* lib32_skip;   // 32-bit library inline skip
+  boolean*    flag;         // flag
+};
+
+static struct vsa_opt_desc vsa_opts[] = {
+  { "jni=",       "/libjni.a",         "/libjni.a",         NULL, NULL, &vsa_jni_flag },
+  { "certj=",     "/libcertj.a",       "/libcertj.a",       NULL, NULL, &vsa_certj_flag },
+  { "certc=",     "/libcertc64.a",     "/libcertc32.a",     "/libcertc64.inlskip", "/libcertc32.inlskip", &vsa_certc_flag },
+  { "cxx_intrn=", "/libcxx_intrn64.a", "/libcxx_intrn32.a", NULL, NULL, &vsa_cxx_intrn_flag },
+  { "xcbr=",      "/libxcbr64.a",      "/libxcbr32.a",      NULL, NULL, &vsa_xcbr_flag },
+  { "mtr=",       "/libmtr64.a",       "/libmtr32.a",       NULL, NULL, &vsa_mtr_flag },
+};
+
+static boolean
+parse_bool_value(const char* opt)
+{
+  if (strcmp(opt, "1") == 0 || strcasecmp(opt, "true") == 0)
+    return TRUE;
+  return FALSE;
+}
+
+void
+parse_vsa_options(const char* opt)
+{
+  int i;
+  for (i = 0; i < sizeof(vsa_opts) / sizeof(vsa_opts[0]); ++i) {
+    int len = strlen(vsa_opts[i].key);
+    if (strncmp(opt, vsa_opts[i].key, len) == 0) {
+      *(vsa_opts[i].flag) = parse_bool_value(opt + len);
+      break;
+    }
+  }
+}
+
+static void
+append_vsa_options(string_list_t *args, phases_t ldphase)
+{
+  int i;
+  char buf[32];
+  for (i = 0; i < sizeof(vsa_opts) / sizeof(vsa_opts[0]); ++i) {
+    if (*(vsa_opts[i].flag) == TRUE) {
+      // append -VSA:blah=1
+      snprintf(buf, sizeof(buf), "%s%s1", vsa_prefix, vsa_opts[i].key);
+      add_string(args, "-plugin-opt");
+      add_string(args, string_copy(buf));
+      // append library path
+      char* libname = NULL;
+#ifdef TARG_UWASM
+      // for uwasm there is no difference 32 or 64 bit, alwasys use 32bit
+      libname = (char *) vsa_opts[i].lib32;
+#else
+      libname = (char *) (option_was_seen(O_m32) ? vsa_opts[i].lib32
+                                                 : vsa_opts[i].lib64);
+#endif
+      if (libname != NULL) {
+        char *libpath = concat_strings(get_phase_dir(ldphase), libname);
+        add_string(args, libpath);
+      }
+    }
+    // "-VSA:key=0|1" already appended in run_xfa()
+    //add_string(args, "-plugin-opt");
+    //add_string(args, buf);
+  }
+}
+
+static void
+append_machine_options(string_list_t *args)
+{
+	add_string(args, "-m");
+	// TODO: c51/stm8/stm32/arm/etc
+	add_string(args, abi == ABI_N32 ? "elf_i386" : "elf_x86_64");
+}
 
 static phases_t
 post_fe_phase (void);
@@ -261,6 +356,11 @@ add_implied_string (string_list_t *list, int iflag, int flag, phases_t phase)
 			 && (phase == P_spin_cc1 || phase == P_spin_cc1plus)) {
 			add_string(list, "-fopenmp");
 		}
+		else if (strcmp(iname, "-aot") == 0 &&
+			 (phase == P_ipa_link)) {
+			add_string(list, "-ipa");
+			add_string(list, "-IPA:aot=1");
+		}
 		else
 			add_string(list, iname);
 	}
@@ -271,6 +371,9 @@ copy_phase_options (string_list_t *phase_list, phases_t phase)
 {
 	int flag;
 	int iflag;
+	if (phase == P_js2mpl || phase == P_mpl2whirl)
+		return;  // not copy options to js2mpl or mpl2whirl
+
 	FOREACH_OPTION_SEEN(flag) {
 		FOREACH_IMPLIED_OPTION(iflag, flag) {
 			boolean matches_phase = FALSE;
@@ -290,6 +393,7 @@ copy_phase_options (string_list_t *phase_list, phases_t phase)
 			  if (phase == P_spin_cc1 ||
 			      phase == P_spin_cc1plus)
 			    continue;
+// java
 			  else if (phase == P_wgen)
 			    matches_phase = TRUE;
 			  else
@@ -346,6 +450,10 @@ add_language_option ( string_list_t *args )
     case L_CC:
 	add_string ( args, "-LANG:=cplus" );
 	break;
+// java
+	case L_java:
+	add_string ( args, "-LANG:=java" );
+	break;
   }
 }
 
@@ -368,6 +476,7 @@ add_targ_options ( string_list_t *args )
     add_string(args, buf);
   }
 
+#ifndef BUILD_MASTIFF  // MASTIFF: not add these -TARG
 #ifdef TARG_X8664
   // MMX, SSE, SSE2, SSE3, 3DNow, SSE4a
   if (sse2 == TRUE) {
@@ -446,6 +555,7 @@ add_targ_options ( string_list_t *args )
     add_string(args, "-TARG:fma4=on");
   else
     add_string(args, "-TARG:fma4=off");
+#endif
 #endif
 }
 
@@ -741,6 +851,20 @@ specify_ipa_dyn_linker (string_list_t *args) {
 #endif
 }
 
+static const char*
+clang_target_cpu_name(const char *cpu) {
+  if (!cpu)
+    return NULL;
+  if (strcmp(cpu, "native") == 0)
+    return "skylake";  // assume skylake for native CPU
+  if (strcmp(cpu, "anyx86") == 0)
+    return (abi == ABI_N32) ? "i686" : "x86-64";
+  if (strcmp(cpu, "core") == 0 || strcmp(cpu, "em64t") == 0 ||
+      strcmp(cpu, "wolfdale") == 0)
+    return "core2";    // clang only have core2
+  return cpu;
+}
+
 // Like add_file_args but add args that must precede options specified on the
 // command line.
 static void
@@ -779,7 +903,7 @@ add_file_args_first (string_list_t *args, phases_t index)
       // -Dfoo before user options, since user might specify -Ufoo.  Bug 6874.
       if (option_was_seen(O_pthread))
 	add_string(args, "-D_REENTRANT");
-      #ifdef PSC_TO_OPEN64
+      #if defined(PSC_TO_OPEN64) && !defined(BUILD_MASTIFF)
       if (!option_was_seen(O_no_opencc)) {
 	add_string(args, "-D__OPEN64__=\"" OPEN64_FULL_VERSION "\"");
 	add_string(args, "-D__OPENCC__=" OPEN64_MAJOR_VERSION);
@@ -792,15 +916,22 @@ add_file_args_first (string_list_t *args, phases_t index)
       char *root = directory_path(get_executable_dir());
       char p[PATH_BUF_LEN];
       add_string(args, "-cc1");
-      add_string(args, "-emit-llvm");
+      if (option_was_seen(O_E))
+        add_string(args, "-E");
+      else
+        add_string(args, "-emit-llvm");
       // handle -m32/-m64
       add_string(args, "-triple");
       if( abi == ABI_N32 )
         add_string(args, "i386-unknown-linux-gnu");
       else
         add_string(args, "x86_64-unknown-linux-gnu");
+      //const char *cpu = clang_target_cpu_name(target_cpu);
+      //if (cpu) {
+      //  add_string(args, "-target-cpu");
+      //  add_string(args, (char *)cpu);
+      //}
       add_string(args, "-D__clang__");
-      add_string(args, "-D__BLOCKS__");
       if (source_lang == L_CC) {
         if (!option_was_seen(O_fno_exceptions) && !option_was_seen(O_fno_cxx_exceptions))
           add_string(args, "-fcxx-exceptions");
@@ -808,6 +939,13 @@ add_file_args_first (string_list_t *args, phases_t index)
         sprintf(p, "%s/include/clang/c++", root);
         add_string(args, p);
       }
+      if (external_gcc != TRUE && internal_gcc != TRUE) {
+        add_string(args, "-D__GNUC__=4");
+        add_string(args, "-D__GNUC_MINOR__=2");
+      }
+      add_string(args, "-internal-isystem");
+      sprintf(p, "%s/include", root);
+      add_string(args, p);
       add_string(args, "-internal-isystem");
       sprintf(p, "%s/include/clang", root);
       add_string(args, p);
@@ -819,6 +957,10 @@ add_file_args_first (string_list_t *args, phases_t index)
       add_string(args, "/include");
       add_string(args, "-internal-externc-isystem");
       add_string(args, "/usr/include");
+      if (vsa_cxx_intrn_flag) {
+        add_string(args, "-mllvm");
+        add_string(args, "-use-cpp-intrn=1");
+      }
       break;
     }
   }
@@ -911,7 +1053,11 @@ add_file_args (string_list_t *args, phases_t index)
 	case P_gcpp_plus:
 		if (show_but_not_run)
 			add_string(args, "-###");
-#if defined(TARG_X8664) || defined(TARG_NVISA)
+		if (ansi == STRICT_ANSI) {
+		  add_string(args, "-ansi");
+		  add_string(args, "-D__STRICT_ANSI__");
+		}
+#if defined(TARG_X8664) || defined(TARG_NVISA) || defined(TARG_UWASM)
 		if( abi == ABI_N32 ){
 		  add_string(args, "-m32");
 		}
@@ -1290,9 +1436,18 @@ add_file_args (string_list_t *args, phases_t index)
 		  add_string(args, "-fno-cxx-openmp");
 		}
 #endif
+#ifdef BUILD_MASTIFF
+               // add "-fmastiff" for mastiff
+               add_string(args, "-fmastiff");
+#endif
 	        // fall through
 	case P_c_gfe:
 	case P_cplus_gfe:
+	  if(olevel >= 1 )
+	    add_string(args, "-finline-functions-called-once");
+	  if(olevel >= 3)
+	    add_string(args, "-finline-functions");
+
 		if (sse2 == TRUE)
 			add_string(args, "-msse2");
 		else if(sse == TRUE)
@@ -1309,7 +1464,7 @@ add_file_args (string_list_t *args, phases_t index)
 		}
 		if (quiet_flag) 
 			add_string(args, "-quiet");
-#if defined(TARG_X8664) || defined(TARG_NVISA)
+#if defined(TARG_X8664) || defined(TARG_NVISA) || defined(TARG_UWASM)
 		if( abi == ABI_N32 )
 		  add_string(args, "-m32");
 #elif defined (TARG_LOONGSON)
@@ -1348,6 +1503,21 @@ add_file_args (string_list_t *args, phases_t index)
 
 		if( ffast_math == 1 )
 		  add_string(args, "-ffast-math");
+
+		if( fstrict_aliasing == 0 )
+		  add_string(args, "-fno-strict-aliasing");
+
+                if( fomit_fp == 0 )
+                  add_string(args, "-fno-omit-frame-pointer");
+                else if( fomit_fp == 1)
+                  add_string(args, "fomit-frame-pointer");
+
+                if( fexpensive_opt == 1)
+                  add_string(args, "-fexpensive-optimizations");
+
+                if( fno_exception == 1)
+                  add_string(args, "-fno-exceptions");
+
 #ifdef TARG_SL
                 if ((index == P_cplus_gfe) || (index == P_spin_cc1plus)) {
                   // no exception support for embedded systems
@@ -1371,24 +1541,91 @@ add_file_args (string_list_t *args, phases_t index)
 		add_string(args, "-o");
 		add_string(args, construct_name(the_file,"B"));
 		break;
+	case P_jfe:
 	case P_wgen:
-		sprintf(buf, "-fS,%s", construct_name(the_file, "spin"));
-		add_string(args, buf);
-		sprintf(buf, "-fB,%s", construct_name(the_file, "B"));
-		add_string(args, buf);
-		break;
 	case P_clangfe:
-		switch (source_lang) {
-		case L_CC:
-			add_string(args, "-xc++");
-			break;
-		default:
-			add_string(args, "-xc");
-			break;
+		// get output file name
+		if (inline_t == FALSE && xfa_flag == TRUE) {
+			if (option_was_seen(O_c) && !multiple_source_files && outfile)
+				temp = outfile;
+			else if (option_was_seen(O_c))
+				temp = change_suffix(drop_path(the_file), "o");
+			else
+				temp = get_object_file(the_file);
 		}
-		add_string(args, input_source);
-		add_string(args, "-o");
-		add_string(args, construct_name(the_file,"B"));
+		else {
+			temp = construct_name(the_file, "B");
+		}
+		// append options
+		if (index == P_jfe) {
+			sprintf(buf, "-fC,%s", the_file);
+			add_string(args, buf);
+			sprintf(buf, "-fB,%s", temp);
+			add_string(args, buf);
+		}
+		else if (index == P_wgen) {
+			sprintf(buf, "-fS,%s", construct_name(the_file, "spin"));
+			add_string(args, buf);
+			sprintf(buf, "-fB,%s", temp);
+			add_string(args, buf);
+		}
+		else {  // clangfe
+			switch (source_lang) {
+			case L_CC:
+				add_string(args, "-xc++");
+				break;
+			default:
+				add_string(args, "-xc");
+				break;
+			}
+			add_string(args, input_source);
+			if (option_was_seen(O_E)) {
+				if (!multiple_source_files && outfile) {
+					add_string(args, "-o");
+					add_string(args, outfile);
+				}
+			} else {
+				add_string(args, "-o");
+				add_string(args, temp);
+			}
+
+                        if ( fstrict_aliasing == 0 )
+                          add_string(args, "-relaxed-aliasing");
+
+//#if LLVM_VERSION_MAJOR == 11
+//                        if( fomit_fp == 0 || fomit_fp == -1)
+//                          add_string(args, "-mframe-pointer=all");
+//                        else
+//                          add_string(args, "-mframe-pointer=none");
+//#else
+//                        if( fomit_fp == 0 || fomit_fp == -1)
+//                          add_string(args, "-mdisable-fp-elim");
+//                        else
+//                          replace_string(args, "-mdisable-fp-elim", "");
+//#endif
+                        if( ffast_math == 1 ) {
+                          add_string(args, "-ffast-math");
+                          replace_string(args, "-OPT:ffast_math=ON", "");
+                        } else
+                          replace_string(args, "-OPT:ffast_math=OFF", "");
+
+                        if( fno_exception == 1)
+                          replace_string(args, "-fcxx-exceptions", "");
+
+                        if ( finstrument_func == 1 )
+                          replace_string(args, "-OPT:cyg_instr=3", "-finstrument-functions");
+		}
+		break;
+	case P_js2mpl:
+		add_string (args, input_source);
+		add_string (args, "-o");
+		add_string (args, construct_name(the_file, "bpl"));
+		break;
+	case P_mpl2whirl:
+		add_string (args, "-bpl");
+		add_string (args, construct_name(the_file, "bpl"));
+		add_string (args, "-o");
+		add_string (args, construct_name(the_file, "B"));
 		break;
 	case P_inline:
 		if (source_kind == S_B)
@@ -1397,9 +1634,33 @@ add_file_args (string_list_t *args, phases_t index)
 		    sprintf(buf, "-fB,%s",
 			    construct_name(the_file,"B"));
 		add_string (args, buf);
-		sprintf (buf, "-fI,%s", 
-			construct_name(the_file,get_suffix_string(S_I)) );
+		if (option_was_seen(O_c) && xfa_flag == TRUE && !multiple_source_files && outfile)
+			temp = outfile;
+		else if (option_was_seen(O_c) && xfa_flag == TRUE)
+			temp = change_suffix(drop_path(the_file), "o");
+		else if (xfa_flag == TRUE)
+			temp = get_object_file(the_file);
+		else
+			temp = construct_name(the_file, get_suffix_string(S_I));
+		sprintf(buf, "-fI,%s", temp);
 		add_string (args, buf);
+
+		// add inline skip file for rules
+		for (int i = 0; i < sizeof(vsa_opts) / sizeof(vsa_opts[0]); ++i) {
+			if (*(vsa_opts[i].flag) == TRUE) {
+				const char *inlskip = (option_was_seen(O_m32)) ? vsa_opts[i].lib32_skip
+					: vsa_opts[i].lib64_skip;
+				if (inlskip) {
+					char *inlskip_path = concat_strings(get_phase_dir(P_inline), inlskip);
+					if (file_exists(inlskip_path)) {
+						sprintf(buf, "-fN,%s", inlskip_path);
+						add_string (args, buf);
+					} else {
+						warning("inline skip (%s) does not exists", inlskip_path);
+					}
+				}
+			}
+		}
 		if (dashdash_flag)
 		  add_string(args,"--");
 		add_string(args, the_file);
@@ -1578,6 +1839,17 @@ add_file_args (string_list_t *args, phases_t index)
 			  }
 			  add_string(args, buf);
 		}
+#ifdef TARG_UWASM
+  if(outfile != NULL && !multiple_source_files)
+  {
+    sprintf(buf, "-fo,%s", outfile);
+  } else {
+    char * uwasm_suffix = OBJ_FILE_EXTENSION + 1;
+    sprintf(buf, "-fo,%s", construct_given_name(the_file, uwasm_suffix, TRUE));
+  }
+
+  add_string(args, buf);
+#endif
 		if (dashdash_flag)
 		  add_string(args,"--");
 		add_string(args, the_file);
@@ -1603,7 +1875,7 @@ add_file_args (string_list_t *args, phases_t index)
 			add_string(args, "-###");
 		{
 		  int len;
-#if defined(TARG_X8664) || defined(TARG_NVISA)
+#if defined(TARG_X8664) || defined(TARG_NVISA) || defined(TARG_UWASM)
 		  if( abi == ABI_N32 )
 		    add_string(args, "-m32");
 #elif defined(TARG_LOONGSON) || defined(TARG_MIPS) && !defined(TARG_SL) 
@@ -1690,7 +1962,7 @@ add_file_args (string_list_t *args, phases_t index)
 		append_libraries_to_list (args);
 		if (show_but_not_run)
 			add_string(args, "-###");
-#if defined(TARG_X8664) || defined(TARG_NVISA)
+#if defined(TARG_X8664) || defined(TARG_NVISA) || defined(TARG_UWASM)
 		if( abi == ABI_N32 )
 		  add_string(args, "-m32");
 #elif defined(TARG_LOONGSON) || defined(TARG_MIPS) && !defined(TARG_SL)
@@ -1728,7 +2000,7 @@ add_file_args (string_list_t *args, phases_t index)
                 add_string(args, "-IPA:scale=ON");
 	case P_collect:
 
-#if defined(TARG_X8664) || defined(TARG_NVISA)
+#if defined(TARG_X8664) || defined(TARG_NVISA) || defined(TARG_UWASM)
 		if( abi == ABI_N32 ) {
 		  add_string(args, "-m32");
 		  add_string(args, "-m");
@@ -2223,10 +2495,11 @@ add_final_ld_args (string_list_t *args, phases_t ld_phase)
 #endif
 
   if (invoked_lang == L_CC &&
-      option_was_seen(O_clang) &&
-      !external_gcc && !internal_gcc) {
+      (option_was_seen(O_clang) || vsa_cxx_intrn_flag) &&
+      external_gcc != TRUE && internal_gcc != TRUE) {
     add_string(args, "-lc++");
     add_string(args, "-lc++abi");
+    add_string(args, "-lpthread");
     char *root = directory_path(get_executable_dir());
     char p[PATH_BUF_LEN];
     sprintf(p, "-L%s/lib/clang", root);
@@ -2447,13 +2720,17 @@ determine_phase_order (void)
  
 	/* determine which cpp to use */
 	if (source_lang == L_CC) {
-		if (option_was_seen(O_usegfe)) {
+		if (option_was_seen(O_clang)) {
+			cpp_phase = P_clangfe;
+		} else if (option_was_seen(O_usegfe)) {
 			cpp_phase = P_gcpp_plus;
 		} else {
 			cpp_phase = P_cplus_cpp;
 		}
 	} else if (source_lang == L_cc) {
-		if (option_was_seen(O_usegfe)) {
+		if (option_was_seen(O_clang)) {
+			cpp_phase = P_clangfe;
+		} else if (option_was_seen(O_usegfe)) {
 			cpp_phase = P_gcpp;
 		} else {
 			cpp_phase = P_c_cpp;
@@ -2518,7 +2795,7 @@ determine_phase_order (void)
 	phases_t cplus_fe = P_cplus_gfe;
 #endif
 
-	if (option_was_seen(O_clang)) {
+	if (option_was_seen(O_clang) || vsa_cxx_intrn_flag) {
 		c_fe = P_clangfe;
 		cplus_fe = P_clangfe;
 		cpp_phase = P_NONE;
@@ -2539,6 +2816,13 @@ determine_phase_order (void)
 		    	add_phase(P_gcpp);
 		    next_phase = (source_lang == L_CC ? cplus_fe : c_fe);
 		}
+		break;
+// java
+	case S_java:
+		next_phase = P_jfe;
+		break;
+	case S_javascript:
+		next_phase = P_js2mpl;
 		break;
 	case S_i:
 	case S_ii:
@@ -2637,7 +2921,19 @@ determine_phase_order (void)
 			next_phase = P_wgen;
 			break;
 
+		case P_jfe:
+			add_phase(next_phase);
+			next_phase = post_fe_phase();
+			break;
 		case P_wgen:
+			add_phase(next_phase);
+			next_phase = post_fe_phase ();
+			break;
+		case P_js2mpl:
+			add_phase(next_phase);
+			next_phase = P_mpl2whirl;
+			break;
+		case P_mpl2whirl:
 			add_phase(next_phase);
 			next_phase = post_fe_phase ();
 			break;
@@ -2676,6 +2972,10 @@ determine_phase_order (void)
 			   }
 			}
 			else next_phase = asm_phase;
+#if defined(TARG_UWASM)
+			// uwasm need not to run asm and liner phases for now
+			next_phase = P_NONE;
+#endif
 			break;
 #if defined(TARG_NVISA)
 		case P_bec:
@@ -2757,9 +3057,9 @@ check_existence_of_phases (void)
 	case P_ipl:
 	    if (!file_exists (concat_strings (get_phase_dir(phase_order[i]),
 #ifndef SHARED_BUILD
-					      "/ipl"EXE)))
+					      "/"PHASE_IPL_NAME)))
 #else
-					      "/ipl"DSO)))
+					      "/"IPL_SO_NAME)))
 #endif
 		give_warning = TRUE;
 
@@ -2769,9 +3069,9 @@ check_existence_of_phases (void)
 
 	    if (!file_exists (concat_strings (get_phase_dir(phase_order[i]),
 #ifndef SHARED_BUILD
-                                            "/be"EXE)))
+                                            "/"PHASE_BE_NAME)))
 #else
-                                            "/be"DSO)))
+                                            "/"BE_SO_NAME)))
 #endif
 		give_warning = TRUE;
 
@@ -2981,7 +3281,8 @@ init_phase_names (void)
   for (i = P_LAST-1; i >= (int) P_NONE; i--) {
     char *phase_name = get_phase_name(i);
     if (strcmp(phase_name, "gcc") == 0 ||
-        strcmp(phase_name, "g++") == 0) {
+        strcmp(phase_name, "g++") == 0 ||
+	strcmp(phase_name, "jfe")) {
       set_phase_name (i, concat_strings(prefix, phase_name));
     }
   }
@@ -2992,6 +3293,7 @@ init_phase_names (void)
 void
 init_frontend_phase_names (int gnu_major_version, int gnu_minor_version)
 {
+#ifndef BUILD_MASTIFF
   // Select the appropriate GNU 4 front-end.
   if ((gnu_major_version == 4) && !run_build) {
     switch (gnu_minor_version) {
@@ -2999,11 +3301,13 @@ init_frontend_phase_names (int gnu_major_version, int gnu_minor_version)
 	set_phase_name(P_spin_cc1, "cc142");
 	set_phase_name(P_spin_cc1plus, "cc1plus42");
 	set_phase_name(P_wgen, "wgen42");
+	set_phase_name(P_jfe, "jfe");
 	break;
       default:
         error("no support for GNU 4.%d front-end", gnu_minor_version);
     }
   }
+#endif
 }
 
 void
@@ -3087,7 +3391,11 @@ run_ld (void)
 	if (ipa == TRUE) {
 	    char *str;
 	    ldpath = get_phase_dir (ldphase);
+#ifdef BUILD_MASTIFF
+	    ldpath = concat_strings (ldpath, "/macdip.so");
+#else
 	    ldpath = concat_strings (ldpath, "/ipa.so");
+#endif
 	    if (!file_exists (ldpath)) {
 		error ("ipa.so is not installed on %s", get_phase_dir (ldphase));
 		return;
@@ -3119,6 +3427,9 @@ run_ld (void)
 	      case L_f90:	str = "F90";	break;
 	      case L_cc:	str = "C";	break;
 	      case L_CC:	str = "CC";	break;
+// java
+	      case L_java:	str = "java";	break;
+	      case L_javascript:str = "javascript";	break;
 	      default:		internal_error("run_ld: unknown language\n");
 	    }
 	    add_string(args, concat_strings("-INTERNAL:lang=", str));
@@ -3163,8 +3474,9 @@ run_ld (void)
 #endif
 
 	add_instr_archive (args);
-
+#ifndef TARG_UWASM
     add_final_ld_args (args,ldphase);
+#endif
 #ifndef TARG_SL
     if ( ldphase == P_ipa_link ) {
       specify_ipa_dyn_linker(args);
@@ -3273,6 +3585,163 @@ run_prof (void)
 #endif				
 }
 
+// suffix for user defined rule
+#define udr_suffix ".udr"
+static void
+add_udr_files(string_list_t *args)
+{
+	// TODOL 32bit/64bit?
+	string_item_t *p;
+	string_list_t *dirs = get_udr_dirs();
+	for (p = dirs->head; p != NULL; p = p->next) {
+		const char *dir_name = p->name;
+		DIR *dir_ent = opendir(dir_name);
+		if (dir_ent == NULL)
+			continue;
+		int dir_len = strlen(dir_name);
+		struct dirent *entry;
+		while ((entry = readdir(dir_ent)) != NULL) {
+			if (entry->d_name[0] == '.')
+				continue;
+			int len = strlen(entry->d_name);
+                        if (len < sizeof(udr_suffix) ||
+                            strcmp(entry->d_name + len - sizeof(udr_suffix) + 1,
+                                   udr_suffix) != 0)
+				continue;
+			int size = dir_len + len + 2;  /* for '/' and '\0' */
+			char *file_name = (char *)malloc(size);
+			snprintf(file_name, size, "%s/%s", dir_name, entry->d_name);
+			add_string(args, file_name);
+		}
+		closedir(dir_ent);
+	}
+}
+
+void
+run_xfa(void)
+{
+	phases_t ldphase = P_ipa_link;
+        char *ldpath = concat_strings(get_phase_dir(ldphase), "/mapxfa");
+	string_list_t *args = init_string_list();
+	char *plugin;
+
+	// check if ld exists
+	if (!file_exists (ldpath)) {
+		error ("%s is not found", ldpath);
+		return;
+	}
+
+	// get plugin path
+	plugin = concat_strings(get_phase_dir(P_be), "/macldp.so");
+	if (!file_exists (plugin)) {
+		error ("macldp.so is not installed on %s", get_phase_dir (ldphase));
+		return;
+	}
+	add_string(args, concat_strings("-plugin=", plugin));
+
+	if(ipsa == TRUE) {
+		add_string(args, "-plugin-opt");
+		add_string(args, "-ipsa");
+	}
+	// add '-v' if -show is set
+	if (show_flag) {
+		add_string(args, "-v");
+		add_string(args, "-plugin-opt");
+		add_string(args, "-sw");  // MASTIFF-OPT: "-show" --> "-sw"
+	}
+	// add '-kp' if -kp is set
+	if (keep_flag) {
+		add_string(args, "-plugin-opt");
+		add_string(args, "-kp");
+	}
+	// add '-sp' if -sp is set
+	if (show_progress) {
+		add_string(args, "-plugin-opt");
+		add_string(args, "-sp");
+	}
+	// add -VSA:json if -json is set
+	if (option_was_seen(O_json)) {
+		add_string(args, "-plugin-opt");
+		add_string(args, "-VSA:json=1");
+	}
+	// add -VSA:cbor if -cbor is set
+	if (option_was_seen(O_cbor)) {
+		add_string(args, "-plugin-opt");
+		add_string(args, "-VSA:cbor=1");
+	}
+	// add -VSA:msgid if -msgid is set
+	if (option_was_seen(O_msgid)) {
+		add_string(args, "-plugin-opt");
+		add_string(args, "-VSA:msgid=1");
+	}
+
+	// set input file format
+	append_machine_options(args);
+
+        // ignore multi defs
+        add_string(args, "-z");
+        add_string(args, "muldefs");
+        // m32/m64
+#ifdef TARG_UWASM
+        add_string(args, "-plugin-opt");
+        add_string(args, "-TARG:abi=n32");
+#else
+        add_string(args, "-plugin-opt");
+        add_string(args, option_was_seen(O_m32) ?
+                         "-TARG:abi=n32" : "-TARG:abi=n64");
+#endif
+	// -TARG:processor=xxx
+	if (target_cpu != NULL) {
+		add_string(args, "-plugin-opt");
+		char buf[100];
+		sprintf(buf, "-TARG:processor=%s", target_cpu);
+		add_string(args, buf);
+	}
+
+	// append more options
+	// append "-VSA:blah"
+	// append model files
+	// append object files
+	append_objects_to_xfa_list(args);
+
+	// add xfa extra libraries
+	add_string(args, "-plugin-opt");
+	add_string(args, concat_strings("libpath=", get_phase_dir(ldphase)));
+	int i;
+	FOREACH_OPTION_SEEN(i) {
+		if (i == O_Unrecognized) continue;
+		if (strncmp(get_option_name(i), "-VSA:", strlen("-VSA:")) == 0) {
+			add_string(args, "-plugin-opt");
+			add_string(args, get_option_name(i));
+		}
+	}
+
+	append_vsa_options(args, ldphase);
+	if (vsa_certc_flag) {
+		// add default udr folder
+		char *udr_path = concat_strings(directory_path(get_executable_dir()), "/udr/c");
+		add_udr_dir(udr_path);
+	} else if (vsa_certj_flag) {
+		char *udr_path = concat_strings(directory_path(get_executable_dir()), "/udr/java");
+		add_udr_dir(udr_path);
+	}
+
+	// add user defined rule files
+	add_udr_files(args);
+
+	if(ipsa == TRUE) {
+		if(outfile) {
+			add_string(args, "-o");
+			add_string(args, outfile);
+		}
+	} else {
+		add_string(args, "-o");
+		add_string(args, outfile ? outfile : "xvsa-xfa-dummy");
+	}
+
+	run_phase(ldphase, ldpath, args);
+}
+
 void
 run_compiler (int argc, char *argv[])
 {
@@ -3298,8 +3767,14 @@ run_compiler (int argc, char *argv[])
 	        /* special case where the frontend decided that
 		   inliner should not be run */
 	        if (run_inline == FALSE &&	// bug 11325
+		    xfa_flag == FALSE &&  // special case for MVSA always run inliner
 		    phase_order[i] == P_inline)
 		    continue;
+
+		/* special case for MVSA xfa don't run be & as */
+		if (xfa_flag == TRUE &&
+		    phase_order[i] > P_inline && phase_order[i] <= P_any_as)
+			continue;
 
 		if (is_matching_phase(get_phase_mask(phase_order[i]), P_any_ld)) {
 			source_kind = S_o;
@@ -3329,6 +3804,7 @@ run_compiler (int argc, char *argv[])
 			    phase_order[i] != P_cplus_gfe &&
 			    phase_order[i] != P_spin_cc1 &&
 			    phase_order[i] != P_spin_cc1plus &&
+				phase_order[i] != P_jfe &&
 			    phase_order[i] != P_wgen &&
 			    phase_order[i] != P_clangfe &&
 			    phase_order[i] < P_any_fe)
@@ -3882,7 +4358,7 @@ save_ipl_commands (void)
     }
     
     FOREACH_OPTION_SEEN(i) {
-	if ( i == O_Unrecognized || i == O_show )
+	if ( i == O_Unrecognized || i == O_sw ) // MASTIFF-OPT: "-show" --> "-sw"
 	    continue;
 	if (option_matches_language (i, invoked_lang)) {
 	    FOREACH_IMPLIED_OPTION(iflag, i) {

@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -95,6 +99,8 @@ TARG_BE_DIR = $(TARGDIR)/$(LOCAL_BE_DIR)
 else
 TARG_BE_DIR = $(TARGDIR)/be
 endif
+
+TARG_TARG_INFO = $(TARGDIR)/targ_info
 
 #----------------------------------------------------------------------
 #  Compiler Options
@@ -312,7 +318,7 @@ LNOPT_SRCS = \
 LNOPT_OBJS = $(LNOPT_SRCS:.c=.o)
 LNOPT_CXX_OBJS = $(LNOPT_CXX_SRCS:.cxx=.o)
 
-LNOPT_DSOS = wopt.so be.so ipl.so
+LNOPT_DSOS = $(WOPT_SO) $(BE_SO) $(IPL_SO)
 
 # extra files to be removed with make clobber
 LDIRT = ii_files *.pch
@@ -345,6 +351,7 @@ ifeq ($(BUILD_VARIANT), MEM_STATS)
 LLDLIBS +=  -lmalloc
 LDFLAGS += -lmalloc
 endif
+LLDLIBS += $(TARG_TARG_INFO)/libtarginfo.a
 
 #----------------------------------------------------------------------
 # File containing the list of symbols exported outside of cg.so
@@ -361,7 +368,7 @@ else
  ifeq ($(BUILD_TYPE), NONSHARED)
 TARGETS = liblno.a
  else
-TARGETS = lno.so
+TARGETS = $(LNO_SO)
  endif
 endif
 
@@ -413,10 +420,10 @@ install:: default
 ifeq ($(BUILD_OS), LINUX)
 	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
 else
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) lno.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) $(LNO_SO)
  ifeq ($(BUILD_TYPE), SHARED)
  ifndef NOSYSGEN
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) lno.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) $(LNO_SO)
  endif
  endif
 endif
@@ -425,45 +432,45 @@ ifeq ($(BUILD_PCH), USE_PCH)
 
 lno_pch_files: $(LNOPT_PCH_OBJS) lno_pch.pch
 
-lno.so:  $(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(LNOPT_PCH_OBJS) \
+$(LNO_SO):  $(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(LNOPT_PCH_OBJS) \
          $(LNOPT_DSOS) $(BE_LNOPT_DIR)/Exported $(BE_BE_DIR)/so_locations
-	$(link.c++f) -o lno.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+	$(link.c++f) -o $(LNO_SO) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
          $(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(LNOPT_PCH_OBJS) \
          $(LNOPT_DSOS) $(LLDLIBS) -show
-	if [ ! -l be.so ]; then ln -sf $(TARG_BE_DIR)/be.so .; fi
-	if [ ! -l wopt.so ]; then ln -sf $(TARG_OPT_DIR)/wopt.so .; fi
-	if [ ! -l ipl.so ]; then ln -sf $(TARG_IPL_DIR)/ipl.so .; fi
+	if [ ! -l $(BE_SO) ]; then ln -sf $(TARG_BE_DIR)/$(BE_SO) .; fi
+	if [ ! -l $(WOPT_SO) ]; then ln -sf $(TARG_OPT_DIR)/$(WOPT_SO) .; fi
+	if [ ! -l $(IPL_SO) ]; then ln -sf $(TARG_IPL_DIR)/$(IPL_SO) .; fi
 	if [ ! -l be ]; then ln -sf $(TARG_BE)/be .; fi
 	if [ ! -l lnopt ]; then ln -sf $(TARG_BE)/be lnopt; fi
 
 else
 
-lno.so:	$(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(BE_LNOPT_DIR)/Exported \
-	$(LNOPT_DSOS) $(BE_BE_DIR)/so_locations
-	$(link.c++f) -o lno.so $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
+$(LNO_SO):	$(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(BE_LNOPT_DIR)/Exported \
+	$(LNOPT_DSOS) $(BE_BE_DIR)/so_locations $(TARG_TARG_INFO)/libtarginfo.a
+	$(link.c++f) -o $(LNO_SO) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
 	$(LNOPT_OBJS) $(LNOPT_CXX_OBJS) $(LNOPT_DSOS) $(LLDLIBS)
 
-wopt.so:	
-	if ! test -e wopt.so; then ln -sf $(TARG_OPT_DIR)/wopt.so .; fi
+$(WOPT_SO):
+	if ! test -e $(WOPT_SO); then ln -sf $(TARG_OPT_DIR)/$(WOPT_SO) .; fi
 
-be.so:	
-	if ! test -e be.so; then ln -sf $(TARG_BE_DIR)/be.so .; fi
+$(BE_SO):
+	if ! test -e $(BE_SO); then ln -sf $(TARG_BE_DIR)/$(BE_SO) .; fi
 
-ipl.so:	
-	if ! test -e ipl.so; then ln -sf $(TARG_IPL_DIR)/ipl.so .; fi
+$(IPL_SO):
+	if ! test -e $(IPL_SO); then ln -sf $(TARG_IPL_DIR)/$(IPL_SO) .; fi
 
 liblno.a: $(LNOPT_CXX_OBJS) $(LNOPT_OBJS)
 	$(ar) cru $@ $^
 
 endif
 
-LDIRT += be.so wopt.so ipl.so be bedriver lnopt
+LDIRT += $(BE_SO) $(WOPT_SO) $(IPL_SO) be bedriver lnopt
 
 
 ifdef LINK_DSO
 LINK_DSO_OPTS += -L .
 
-debug-lno: lno.so
+debug-lno: $(LNO_SO)
 	rm -f ../be/bedriver ../be/be
 	(cd $(TARG_BE); $(MAKE) BE_OPT_DIR='$(BE_OPT_DIR)' \
                                      LINK_DSO='$(LINK_DSO)' \

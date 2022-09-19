@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -222,7 +226,7 @@
 ***                WN_OFFSET offset, TY_IDX ty, ST *st, UINT field_id)
 ***	    WN *WN_CreateIlda(
 ***                OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
-***                WN_OFFSET offset, TY_IDX ty)
+***                WN_OFFSET offset, TY_IDX ty, ST *st, WN *wn_sym, UINT field_id)
 ***	    WN *WN_CreateIdname(
 ***                WN_OFFSET offset,ST *st)
 ***	    WN *WN_CreateConst(
@@ -1173,6 +1177,10 @@ extern WN *WN_Lda(TYPE_ID rtype,
 		  ST *sym,
 		  UINT field_id = 0);
 
+extern WN *WN_Ilda(TYPE_ID rtype,
+                  WN_OFFSET ldaOffset,
+                  WN *wn_sym,
+                  UINT field_id = 0);
 
 extern WN *WN_LdaString(const char *str,
 			WN_OFFSET ldaOffset,

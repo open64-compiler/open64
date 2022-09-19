@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -429,7 +433,19 @@ ALIAS_MANAGER::ALIAS_MANAGER(WN *entryWN)
       ac |= RAG_RESTRICTED_RULE;
     if (Alias_Pointer_Disjoint)
       ac |= IBM_DISJOINT_RULE;
-
+  case PU_JAVA_LANG:
+    ac |= DEFAULT_C_RULES;
+    ac |= DEFAULT_CXX_RULES;
+    if (Alias_Pointer_Types)
+      ac |= C_ANSI_RULE;
+    if (Alias_Pointer_Strongly_Typed)
+      ac |= C_STRONGLY_TYPED_RULE;
+    if (Alias_Pointer_Named_Data)
+      ac |= RAG_UNNAMED_RULE;
+    if (Alias_Pointer_Restricted)
+      ac |= RAG_RESTRICTED_RULE;
+    if (Alias_Pointer_Disjoint)
+      ac |= IBM_DISJOINT_RULE;
     break;
   default:
     Is_True(FALSE, ("Language is unknown; mixed-language inlining illegal."));

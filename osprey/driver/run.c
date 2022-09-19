@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -91,6 +91,7 @@
 #include "lib_phase_dir.h"
 
 boolean show_flag = FALSE;
+boolean show_progress = FALSE;
 boolean v_flag = FALSE;
 boolean show_but_not_run = FALSE;
 boolean execute_flag = TRUE;
@@ -424,8 +425,8 @@ run_phase (phases_t phase, char *name, string_list_t *args)
 			asprintf(&l32_path, "%s:%s", my_path,
 				 ld_libraryn32_path);
 
-		my_putenv("LD_LIBRARY_PATH", l_path);
-		my_putenv("LD_LIBRARYN32_PATH", l32_path);
+		my_putenv("LD_LIBRARY_PATH", "%s", l_path);
+		my_putenv("LD_LIBRARYN32_PATH", "%s", l32_path);
 		
 		// Set up NLSPATH, for the Fortran front end.
 

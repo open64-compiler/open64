@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2010, Hewlett-Packard Development Company, L.P. All Rights Reserved.
 
@@ -380,7 +384,7 @@ typedef struct option_group {
   char		valmarker;	/* ... between option name and value */
   OPTION_DESC *	options;	/* Array of option descriptors */
   void *	aux;		/* Auxiliary info for internal use */
-  char *	description;	/* Short description of group */
+  const char *	description;	/* Short description of group */
 } OPTION_GROUP;
 
 #define OGROUP_name(o)		((o)->name)

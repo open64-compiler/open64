@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -115,6 +119,9 @@ ifeq ($(BUILD_TARGET), PPC32)
 HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
 endif
 ifeq ($(BUILD_TARGET), LOONGSON)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), UWASM)
 HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
 endif
 
@@ -248,12 +255,12 @@ endif
 #----------------------------------------------------------------------
 
 ifeq ($(BUILD_TYPE), SHARED)
-TARGETS = ipl.so
+TARGETS = $(IPL_SO)
 else
 TARGETS = libipl.a
 endif
 
-LDIRT = be.so wopt.so be ipl ii_files
+LDIRT = $(BE_SO) $(WOPT_SO) be ipl ii_files
 
 #----------------------------------------------------------------------
 #  For parallel makes, makefile must satisfy:
@@ -283,7 +290,7 @@ first:
 ifndef SKIP_DEP_BUILD
 	$(call submake,$(TARG_BE_DIR))
 endif
-	ln -sf $(TARG_BE_DIR)/be.so .
+	ln -sf $(TARG_BE_DIR)/$(BE_SO) .
 
 #----------------------------------------------------------------------
 #  The commands in this section are done AFTER every other target is
@@ -294,11 +301,11 @@ install:: default
 ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
 	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
 else
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) ipl.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) $(IPL_SO)
 	$(STD_INSTALL) -lns be -F $(STD_MONGOOSE_LOC) ipl
  ifeq ($(BUILD_TYPE), SHARED)
  ifndef NOSYSGEN
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) ipl.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) $(IPL_SO)
 	$(STD_INSTALL) -lns be -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) ipl
  endif
  endif
@@ -306,22 +313,22 @@ endif
 
 ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
 # dso's must be in same directory
-IPL_LINK_DSOS = be.so
+IPL_LINK_DSOS = $(BE_SO)
 else
-IPL_LINK_DSOS = $(TARG_BE_DIR)/be.so
+IPL_LINK_DSOS = $(TARG_BE_DIR)/$(BE_SO)
 endif
 
 # BUILD OF ipl IS BROKEN
 ipl: $(IPA_OBJS) $(IPA_CXX_OBJS) $(IPA_DSOS) \
-		$(TARG_OPT_DIR)/wopt.so $(TARG_BE_DIR)/be.so
+		$(TARG_OPT_DIR)/$(WOPT_SO) $(TARG_BE_DIR)/$(BE_SO)
 ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)
-	if ! test -e be.so; then ln -sf $(TARG_BE_DIR)/be.so .; fi
+	if ! test -e $(BE_SO); then ln -sf $(TARG_BE_DIR)/$(BE_SO) .; fi
 endif
 	$(link.c++f) -o $@ $(IPA_OBJS) $(IPA_CXX_OBJS) $(IPA_DSOS) \
 	$(IPL_LINK_DSOS) $(LDFLAGS)
-	if ! test -e wopt.so; then ln -sf $(TARG_OPT_DIR)/wopt.so .; fi
+	if ! test -e $(WOPT_SO); then ln -sf $(TARG_OPT_DIR)/$(WOPT_SO) .; fi
 
-ipl.so: $(IPA_OBJS) $(IPA_CXX_OBJS) $(LINK_DSOS) \
+$(IPL_SO): $(IPA_OBJS) $(IPA_CXX_OBJS) $(LINK_DSOS) \
 		$(BE_BE_DIR)/so_locations $(IPA_LOCAL_DIR)/Exported
 	$(link.c++f) -o $@  $(STD_DSO_LOADOPTS) $(EXPORT_LIST)	\
 		$(IPA_OBJS) $(IPA_CXX_OBJS) $(LINK_DSOS) $(LLDLIBS)

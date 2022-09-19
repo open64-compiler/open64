@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -162,6 +166,8 @@ int main()
 		    TOP_andixxr64,
 		    TOP_andixxxr64,
 		    TOP_andixr64_off,
+		    TOP_bswap32,
+		    TOP_bswap64,
 		    TOP_orxr8,
 		    TOP_orxxr8,
 		    TOP_orxxxr8,
@@ -333,6 +339,7 @@ int main()
                     TOP_tls_global_dynamic_32,
                     TOP_tls_local_dynamic_64,
                     TOP_tls_local_dynamic_32,
+		    TOP_checkptr,
 		    TOP_cmp8,
 		    TOP_cmpx8,
 		    TOP_cmpxr8,

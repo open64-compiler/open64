@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -490,7 +494,10 @@ fix_tree (PU_Info* pu, WN *node, char *base, Elf64_Word size)
 	Set_PU_has_altentry (Get_Current_PU ());
     
     /* Count whirl nodes that are useful for Olimit and other stats */
-    Count_WN_Opcode (opcode, &PU_WN_BB_Cnt, &PU_WN_Stmt_Cnt);
+    if (opcode != OPC_VCALL ||
+        strncmp(ST_name(WN_st(node)), "__builtin_xvsa", 14) != 0) {
+        Count_WN_Opcode (opcode, &PU_WN_BB_Cnt, &PU_WN_Stmt_Cnt);
+    }
 #endif
 
     if (opcode == OPC_BLOCK) {
@@ -604,6 +611,7 @@ check_elf_header (char* baseaddr, Elf64_Word size, const ELF& tag)
 	return ERROR_RETURN;
     typename ELF::Elf_Shdr* shdr =
 	(typename ELF::Elf_Shdr *) (baseaddr + ehdr->e_shoff);
+#ifndef BUILD_MASTIFF  // in archive, shdr isn't aligned at 8-byte boundary
     if ((long) shdr & (
 #ifndef __GNUC__
 		       __builtin_alignof(typename ELF::Elf_Shdr)
@@ -612,6 +620,7 @@ check_elf_header (char* baseaddr, Elf64_Word size, const ELF& tag)
 #endif
 		       - 1))
 	return ERROR_RETURN;
+#endif
     return tag.Elf_class();
 }
 
@@ -665,10 +674,11 @@ check_section_headers (char *baseaddr, Elf64_Word size, char* file_revision,
 	    return ERROR_RETURN;
 	if (shdr[i].sh_addralign & (shdr[i].sh_addralign - 1))
 	    return ERROR_RETURN; 
+#if 0 // in archive, shdr isn't aligned at 8-byte boundary
 	if (shdr[i].sh_addralign > 1 &&
 	    (long)(baseaddr + shdr[i].sh_offset) & ((shdr[i].sh_addralign - 1)))
 	    return ERROR_RETURN;
-	
+#endif
 	/* search for and verify the revision string */
 	if (shdr[i].sh_type == SHT_PROGBITS &&
 	    strcmp (shstrtab + shdr[i].sh_name, ELF_COMMENT) == 0) {
@@ -891,7 +901,7 @@ PU_Info *
 WN_get_PU_Infos (void *handle, INT32 *p_num_PUs)
 {
     char *base;
-    INT32 size;
+    UINT64 size;
     PU_Info *pu_tree;
 
     OFFSET_AND_SIZE shdr = get_section (handle, SHT_MIPS_WHIRL, WT_PU_SECTION);
@@ -1254,6 +1264,9 @@ WN_get_prefetch (void *handle, PU_Info *pu)
 static void
 WN_get_mod_ref_table (void * handle)
 {
+  // IPSA, not backend mod_ref_table here
+  return;
+
   OFFSET_AND_SIZE shdr = get_section (handle, SHT_MIPS_WHIRL, WT_IPA_SUMMARY);
 
   if (shdr.offset == 0)
@@ -1719,6 +1732,18 @@ Free_Input_Info (void)
     global_fhandle = 0;
 }
 #endif /* __MINGW32__ */
+
+void
+Set_Global_Info(char* file, void* handle) {
+  global_ir_file = file;
+  global_fhandle = handle;
+}
+
+void
+Set_Local_Info(char* file, void* handle) {
+  local_ir_file = file;
+  local_fhandle = handle;
+}
 
 #endif	/* OWN_ERROR_PACKAGE */
 

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -132,6 +136,10 @@ extern char * Targ_Print (const char *fmt, TCON c );
 #include "wssa_mgr.h"
 #include "wssa_wn.h"
 #include "pu_info.h"
+#endif
+
+#if defined(BACK_END)
+void dump_st_path(const void*, FILE*);
 #endif
 
 #include <sstream> 
@@ -453,7 +461,7 @@ static void ir_error(const char *s)
  ========================================================================*/
 
 typedef struct {
-  char *filename;
+  const char *filename;
   INT incl_index;
   FILE *fileptr;
   INT max_line_printed;
@@ -463,6 +471,11 @@ static file_info *file_table = NULL;
 static char **incl_table;
 static INT cur_file_index = 0;
 static BOOL file_table_generated = FALSE;
+
+#ifdef IR_TOOLS
+// only used by whirl2mpl
+std::vector<std::string> srcFileTable;
+#endif
 
 // separated the following functionality from IR_Dwarf_Gen_File_Table
 // ir_print_filename allows us to print path names from DST onto the
@@ -479,7 +492,7 @@ static void ir_print_filename(BOOL dump_filenames)
   INT count;
   DST_IDX idx;
   DST_FILE_NAME *file;
-  char *name;
+  const char *name;
   INT file_table_size;
   INT new_size;
 
@@ -518,6 +531,10 @@ static void ir_print_filename(BOOL dump_filenames)
                  count,
                  incl_table[DST_FILE_NAME_dir(file)],
                  name);
+ #ifdef IR_TOOLS
+      std::string filestring(incl_table[DST_FILE_NAME_dir(file)]);
+      srcFileTable.push_back(filestring + "/" + name);
+ #endif
       count++;
     }
   /* make sure all fileptr values are NULL */
@@ -1163,7 +1180,11 @@ static void ir_put_wn(WN * wn, INT indent)
 	{
 	    if (Preg_Is_Dedicated(WN_offset(wn))) {
 		if (Preg_Offset_Is_Int(WN_offset(wn))) {
-	    		fprintf(ir_ofile, " # $r%d", WN_offset(wn));
+#ifdef TARG_UWASM
+		fprintf(ir_ofile, " # preg%d", WN_offset(wn));
+#else
+		fprintf(ir_ofile, " # $%d", WN_offset(wn));
+#endif
 		}
 		else if (Preg_Offset_Is_Float(WN_offset(wn))) {
 	    		fprintf(ir_ofile, " # $f%d", 
@@ -1333,6 +1354,7 @@ static void ir_put_wn(WN * wn, INT indent)
     AliasAnalyzer *aa = AliasAnalyzer::aliasAnalyzer();
     if (Current_Map_Tab != NULL && aa != NULL && aa->getAliasTag(wn) != 0)
       fprintf(ir_ofile," {alias_tag %d}", aa->getAliasTag(wn));
+//    dump_st_path(wn, ir_ofile);
 #endif
 
     fprintf(ir_ofile, "\n");
@@ -1755,7 +1777,7 @@ extern void dump_wn(WN *wn)
   if (!is_initialized) IR_reader_init();
   save = ir_ofile;
   ir_ofile = stdout; 
-  IR_Dwarf_Gen_File_Table(TRUE/*dump_filenames*/); /* read source pathnames */
+  IR_Dwarf_Gen_File_Table(FALSE/*dump_filenames*/); /* read source pathnames */
   ir_put_wn(wn, 0);
   ir_ofile = save;
 }
@@ -1834,7 +1856,7 @@ extern void fdump_tree(FILE *f, WN *wn)
   if (!is_initialized) IR_reader_init();
   save = ir_ofile;
   ir_ofile = f;
-  IR_Dwarf_Gen_File_Table(TRUE/*dump_filenames*/); /* read source pathnames */
+  IR_Dwarf_Gen_File_Table(FALSE/*dump_filenames*/); /* read source pathnames */
   if (!wn) {
      fprintf(ir_ofile, "<null whirl tree>\n");
   } else if (OPCODE_is_stmt(WN_opcode(wn)) || OPCODE_is_scf(WN_opcode(wn)))

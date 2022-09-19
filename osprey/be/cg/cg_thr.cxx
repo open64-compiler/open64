@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2002, 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -238,7 +242,7 @@ CG_THR::OP_Has_Restrictions(OP *pred_op, OP *succ_op, BOOL before_regalloc)
       if (TNs_Are_Equivalent(succ_result_tn, succ_base_tn)) return TRUE;
     }
 
-#if !defined(TARG_MIPS) && !defined(TARG_X8664) && !defined(TARG_PPC32)
+#if !defined(TARG_MIPS) && !defined(TARG_X8664) && !defined(TARG_PPC32) && !defined(TARG_UWASM)
     //TODO: Need to add support for post-increment loads as well.
     if (OP_load(succ_op) && 
 	TOP_Find_Operand_Use(OP_code(succ_op), OU_postincr) >= 0)

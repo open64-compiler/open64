@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  *  Copyright (C) 2006, 2007. QLogic Corporation. All Rights Reserved.
  */
 
@@ -83,14 +87,20 @@ extern boolean nocpp_flag;	/* don't invoke cpp */
 extern boolean use_cpp;		/* Use cpp instead of ftpp for F90 */
 extern boolean expand_ftpp_macros; /* fully macro-expand in ftpp */
 extern int     fortran_line_length;	/* Line length for fixed form fortran */
+extern boolean xfa_flag;        /* xfa flag */
+extern boolean vsa_jni_flag;
+extern boolean vsa_certj_flag;
+extern boolean vsa_certc_flag;
+extern boolean vsa_cxx_intrn_flag;
+extern boolean vsa_xcbr_flag;
+extern boolean vsa_mtr_flag;
 
 extern char *ld_library_path;	/* env. variable LD_LIBRARY_PATH */
 extern char *ld_libraryn32_path;   /* env. variable LD_LIBRARYN32_PATH */
 
 extern char *orig_program_name; /* actual name passed in to argv[0] */
 
-boolean dump_outfile_to_stdout;	// for "-o -"
-
+extern boolean dump_outfile_to_stdout;	// for "-o -"
 
 /* call once before running compiler */
 extern void init_phase_info (void);
@@ -104,6 +114,7 @@ extern void run_ld (void);
 extern void run_ar (void);
 extern void run_pixie (void);
 extern void run_prof (void);
+extern void run_xfa(void);
 
 /* run whole compiler */
 extern void run_compiler (int argc, char *argv[]);
@@ -130,6 +141,8 @@ extern void init_phase_names (void);
 // Get the system GCC's major version number.
 extern int get_gcc_major_version(void);
 extern void init_frontend_phase_names(int, int);
+
+extern void parse_vsa_options(const char* opt);
 
 #define PASS1 0
 #define PASS2 1

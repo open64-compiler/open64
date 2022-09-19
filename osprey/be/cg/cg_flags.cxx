@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -131,6 +135,9 @@ BOOL CG_merge_counters_x86 = FALSE;
 BOOL CG_merge_counters_x86_set = FALSE;
 BOOL CG_interior_ptrs_x86 = FALSE;
 BOOL CG_NoClear_Avx_Simd = FALSE;
+#endif
+#ifdef TARG_UWASM
+BOOL CG_branch_fuse = TRUE;
 #endif
 BOOL CG_opt_level;
 BOOL CG_localize_tns = FALSE;
@@ -556,4 +563,8 @@ BOOL CG_optimize_copies = FALSE; // leave off as OCG seems to handle this now
 
 BOOL CG_use_16bit_ops = TRUE;    // try to replace 32bit ops with 16bit ops
 BOOL CG_skip_local_16bit = FALSE;
+#endif
+
+#ifdef TARG_UWASM
+BOOL CG_Gen_Direct_Acc_Mem = FALSE;  // CG generate code to access uvm memory directly
 #endif

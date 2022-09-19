@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -104,7 +108,10 @@ static char *rcs_id = 	opt_wn_CXX"$Revision: 1.31 $";
 #include "opt_cvtl_rule.h"
 #include "opt_main.h"
 #include "wn_simp.h"
-
+#ifdef BUILD_MASTIFF
+#include "opt_dbg.h"
+#include "opt_dna.h"
+#endif
 
 STMT_ITER::STMT_ITER(WN *f)
 {
@@ -225,6 +232,19 @@ WN *WN_copy(WN *wn)
 {
   return WN_COPY_Tree(wn);
 }
+
+/*-------------------------------------------------------------*/
+/* copy a node and its maps, recursive copy                    */
+/* to call dna->Dup_stpath, we cannot call dna->Dup_stpath     */
+/* in common/com code                                          */
+/*-------------------------------------------------------------*/
+WN *
+WN_copy_tree_with_map (WN *wn)
+{
+  WN *new_wn = WN_copy(wn);
+  WN_copy_stmap(wn, new_wn);
+  return new_wn;
+} /* WN_copy_tree_with_map */
 
 MTYPE Mtype_from_class_size(MTYPE t1, MTYPE t2)
 // return the mtype that is of the class of t1 but the size of t2;
@@ -511,9 +531,29 @@ void WN_copy_stmap(WN *src, WN *dst)
       }
     }
   }
-  if (!OPCODE_is_leaf(WN_opcode(src)))
-    for (i = 0; i < WN_kid_count(src); i++)
+
+#ifdef BUILD_MASTIFF
+  DNA_NODE *cur_dna = Get_cur_dna();
+  if (cur_dna) {
+    cur_dna->Dup_stpath(src, dst);
+  }
+#endif
+
+  if(WN_opcode(src) == OPC_BLOCK) {
+    WN *src_kid = WN_first(src);
+    WN *dst_kid = WN_first(dst);
+    while(src_kid && dst_kid) {
+      WN_copy_stmap(src_kid, dst_kid);
+      src_kid = WN_next(src_kid);
+      dst_kid = WN_next(dst_kid);
+      Is_True(((src_kid && dst_kid) || (!src_kid && !dst_kid)), ("illegal src dst"));
+    }
+  }
+  else if (!OPCODE_is_leaf(WN_opcode(src))) {
+    for (i = 0; i < WN_kid_count(src); i++) {
       WN_copy_stmap(WN_kid(src, i), WN_kid(dst, i));
+    }
+  }
 }
 
 
@@ -1389,6 +1429,14 @@ Identity_assignment_type( AUX_STAB_ENTRY *sym, OPT_PHASE phase )
   ST     *st  = sym->St();
   TY_IDX  ty = ST_type(st);
 
+  // Java const data array element type is ptr to void
+  // do not use it as it will lose oringal type when propagate
+  if(PU_java_lang(Get_Current_PU()) &&
+     ST_is_class_const_data(st) &&
+     sym->Byte_size() < TY_size(ty)) {
+    return TY_IDX_ZERO;
+  }
+
   // The following is a heuristic:
   //  if we try to get one element of an one-dimension or multi-dimension  array,
   //  use its element type!
@@ -2263,3 +2311,60 @@ Collect_operands(WN * wn, STACK<WN *> * l_stk, STACK<WN *> * r_stk)
     }
   }
 }
+
+// Get field id from struct offset and try to match the given type
+static BOOL
+Get_field_id_from_offset_r(TY_IDX to_search, UINT64 ofst, TY_IDX to_match, UINT* fld_id)
+{
+  Is_True(Is_Structure_Type(to_search), ("need a struct type"));
+  UINT64 cur_ofst = 0;
+  UINT   cur_fld = 0;
+  UINT   cand_fld = 0;
+  FLD_ITER fld_iter = Make_fld_iter(TY_fld(to_search));
+  do {
+    ++ cur_fld;
+    FLD_HANDLE fld(fld_iter);
+    cur_ofst = FLD_ofst(fld);
+    TY_IDX cur_fld_ty = FLD_type(fld);
+    if (cur_ofst == ofst) {
+      if (cur_fld_ty == to_match) {
+        *fld_id += cur_fld;
+        return TRUE;
+      }
+      else if (TY_kind(cur_fld_ty) == TY_kind(to_match) ||
+               cand_fld == 0)  // always find one? or more strictly?
+        cand_fld = cur_fld;
+    }
+    else if (cur_ofst > ofst) {
+      break;
+    }
+    if (TY_kind(cur_fld_ty) == KIND_STRUCT &&
+        TY_fld(cur_fld_ty) != FLD_HANDLE()) {
+      INT64 new_ofst = ofst - cur_ofst;
+      *fld_id += cur_fld;
+      cur_fld = 0;
+      if (Get_field_id_from_offset_r(cur_fld_ty, new_ofst, to_match, fld_id))
+        return TRUE;
+    }
+  } while (!FLD_last_field(fld_iter++));
+
+  if (cand_fld != 0) {
+    *fld_id += cand_fld;
+    return TRUE;
+  }
+  else {
+    *fld_id += cur_fld;
+    return FALSE;
+  }
+}
+
+UINT
+Get_field_id_from_offset(TY_IDX to_search, UINT64 ofst, TY_IDX to_match)
+{
+  UINT fld_id = 0;
+  if (Get_field_id_from_offset_r(to_search, ofst, to_match, &fld_id))
+    return fld_id;
+  Is_True(TY_kind(to_match) != KIND_POINTER, ("failed to search field for pointer type"));
+  return 0;
+}
+

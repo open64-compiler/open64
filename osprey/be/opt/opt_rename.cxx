@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -61,6 +65,10 @@
 
 #include "opt_transform.h"
 #include "bb_node_set.h"
+
+#ifdef BUILD_MASTIFF
+#include "opt_dna.h"
+#endif
 
 #ifdef Is_True_On
 static int transform_stop_bb;
@@ -322,6 +330,8 @@ struct SSA_RENAME : public NULL_TRANSFORM {
       CODEREP *tmp = cur_version(cr->Aux_id(), cr);
       if (is_mu && tmp->Is_flag_set(CF_IS_ZERO_VERSION)) {
 	tmp = non_zero_cur_version(cr->Aux_id(), cr);
+	if (tmp == NULL)
+	  return NULL;
 	Is_True(tmp != NULL, ("Second rename: cannot find non-zero version."));
       }
       if (tmp->Is_flag_set((CR_FLAG)(CF_DEF_BY_CHI|CF_DEF_BY_PHI))) {
@@ -429,6 +439,17 @@ void
 Rename_CODEMAP(COMP_UNIT *cu)
 {
   BOOL trace = Get_Trace(TP_WOPT2, SECOND_RENAME_FLAG);
+  const char *func_name = ST_name(WN_st(cu->Input_tree()));
+  if (trace) {
+    fprintf( TFile, "%sBefore COMP_UNIT::Rename_CODEMAP: %s\n%s",
+	     DBar, func_name, DBar );
+#ifdef BUILD_MASTIFF
+    cu->Cfg()->Print(TFile, cu->Dna());
+#else
+    cu->Cfg()->Print(TFile);
+#endif
+  }
+
   Insert_delete_phi(cu, trace);
 
   SSA_RENAME ssa_rename(cu);
@@ -437,8 +458,12 @@ Rename_CODEMAP(COMP_UNIT *cu)
   UPDATE_ssa.Process_PU();
 
   if (trace) {
-    fprintf( TFile, "%sAfter COMP_UNIT::Rename_CODEMAP\n%s",
-	     DBar, DBar );
+    fprintf( TFile, "%sAfter COMP_UNIT::Rename_CODEMAP: %s\n%s",
+	     DBar, func_name, DBar );
+#ifdef BUILD_MASTIFF
+    cu->Cfg()->Print(TFile, cu->Dna());
+#else
     cu->Cfg()->Print(TFile);
+#endif
   }
 }

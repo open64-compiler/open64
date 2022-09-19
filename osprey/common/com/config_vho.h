@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -85,6 +89,7 @@ extern INT32 VHO_Switch_Opt_Threshold;
 #ifdef KEY
 extern BOOL  VHO_Switch_Reduce_Branch;
 #endif
+extern BOOL  VHO_Agoto_Reduce_Edge;  // Reduce CFG edge for AGOTO
 extern BOOL  VHO_Cselect_Opt;
 extern BOOL  VHO_Iload_Opt;
 extern BOOL  VHO_Istore_Opt;

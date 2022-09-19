@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -368,6 +372,9 @@ typedef HASH_TABLE<WN*,INT> WN2INT;
 #endif
 #ifdef TARG_X8664
 #define Reserved_Int_Regs	3	// $sp, $bp, fudge(1)
+#endif
+#ifdef TARG_UWASM
+#define Reserved_Int_Regs	0
 #endif
 
 #define MTYPE_is_double(m)	(MTYPE_size_reg(m)==MTYPE_size_reg(MTYPE_I8))
@@ -1879,7 +1886,7 @@ LOOP_MODEL::OP_Resources_R(WN* wn,
         case OPR_TAS: 
           (*num_instr)++; 
           break;
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
         case OPR_SELECT:
           *num_instr += LNOTARGET_Int_Select_Res(resource_count, rtype);
           break;
@@ -1893,7 +1900,7 @@ LOOP_MODEL::OP_Resources_R(WN* wn,
           break;
 #endif /* TARG_X8664 */
         case OPR_CVTL:
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
           *num_instr += LNOTARGET_Int_Cvtl_Res(resource_count, rtype, 
 					       WN_cvtl_bits(wn));
 #elif defined(TARG_LOONGSON)
@@ -1957,7 +1964,7 @@ LOOP_MODEL::OP_Resources_R(WN* wn,
         case OPR_SUB:  
           *num_instr += LNOTARGET_Int_Sub_Res(resource_count, double_word);
           break;
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
         case OPR_DIV: 
 	  if (WN_operator_is(WN_kid1(wn), OPR_INTCONST))
 	    *num_instr += LNOTARGET_Int_Div_Str_Red_Res(resource_count, 
@@ -2113,7 +2120,7 @@ LOOP_MODEL::OP_Resources_R(WN* wn,
         case OPR_LSHR: 
           *num_instr += LNOTARGET_Int_Lshr_Res(resource_count, double_word); 
           break;
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
         case OPR_EQ:  
           *num_instr += LNOTARGET_Int_Eq_Res(resource_count, desc); 
           break;

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -62,6 +62,9 @@ typedef enum {
 	L_f90,
 	L_as,
 	L_ld,
+// java
+	L_java,
+	L_javascript,
 	L_internal,	/* pseudo-language to mark internal options */
 	L_LAST
 } languages_t;
@@ -86,6 +89,9 @@ typedef enum {
 	S_N,
 	S_O,
 	S_o,
+// java
+	S_java,
+	S_javascript,
 	S_LAST
 } source_kind_t;
 
@@ -120,7 +126,12 @@ typedef enum {
 	P_cplus_gfe,	/* gnu c++ fe */
 	P_spin_cc1,	/* gnu gcc4 C fe */
 	P_spin_cc1plus,	/* gnu gcc4 C++ fe */
+
+// java
+	P_jfe,		/* jfe */
 	P_wgen,		/* wgen */
+	P_js2mpl,       /* javascript to maple */
+	P_mpl2whirl,    /* maple to whirl */
 	P_clangfe,      /* clangfe */
 	P_any_fe,	/* generic union of all fe's */
 	P_pseudo_f_fe,	/* not a real phase, just a placeholder 

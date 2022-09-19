@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -214,6 +218,7 @@ OPTIONS_SRC = \
 
 SRC_OBJECTS = $(SRC_CFILES:.c=.o)
 SHARED_OBJECTS = $(SHARED_CFILES:.c=.o)
+GEN_C_OBJECTS = $(GEN_CFILES:.c=.o)
 
 LDIRT = OPTIONS.P table generated $(GEN_HFILES) $(GEN_CFILES) driver version_hg.c
 
@@ -238,10 +243,10 @@ ifndef SKIP_DEP_BUILD
 endif
 
 last: make_deps
-	rm -f opencc openCC openf90
-	ln -s driver opencc
-	ln -s driver openCC
-	ln -s driver openf90
+	rm -f  opencc openCC openf90
+	ln -s  driver opencc
+	ln -sf driver openCC
+	ln -s  driver openf90
 
 ifeq ($(BUILD_VARIANT), NO_LICENSE)
 
@@ -295,15 +300,19 @@ table : table.o $(SHARED_OBJECTS)
 	$(link.ccf) -o $@ table.o $(SHARED_OBJECTS) $(LDFLAGS)
 
 OPTIONS.P : OPTIONS
-	$(CC) -E -P $(LCDEFS) $(STD_COMPILE_OPTS) -x c $(BUILD_BASE)/OPTIONS > OPTIONS.P
+	$(CCN) -E -P $(LCDEFS) $(STD_COMPILE_OPTS) -x c $(BUILD_BASE)/OPTIONS > OPTIONS.P
 
 driver: $(OBJECTS)
-	$(link.ccf) -o $@ $(OBJECTS) $(LDFLAGS)
+	$(link.ccf) -static -o $@ $(OBJECTS) $(LDFLAGS)
 
 ifeq ($(BUILD_TARGET), NVISA)
 hg_csetid := $(GPGPU_COMPILER_TOOLS_VERSION)
 hg_root := unknown
 hg_date := $(shell date +'%Y-%m-%d')
+else ifeq ($(BUILD_PRODUCT), MASTIFF)
+hg_csetid := $(shell GIT_DIR=$(BUILD_SRC)/.git git rev-parse HEAD || echo unknown)
+hg_root := $(shell GIT_DIR=$(BUILD_SRC)/.git git symbolic-ref --short -q HEAD || echo unknown)
+hg_date := $(shell date +'%Y-%m-%d %H:%M:%S %z')
 else
 hg_csetid := $(shell hg parents --template {node} || echo unknown)
 hg_root := $(shell hg root 2>/dev/null || echo unknown)
@@ -328,5 +337,6 @@ version_hg.c:
 .PHONY: version_hg.c
 
 # need to make generated headers before compiling src files
-$(SRC_OBJECTS) : $(GEN_HFILES)
+$(GEN_C_OBJECTS) : $(GEN_CFILES) OPTIONS
+$(SRC_OBJECTS) : $(GEN_HFILES) OPTIONS
 

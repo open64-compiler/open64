@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -73,11 +77,13 @@ typedef struct mem_pool MEM_POOL;
 class ALIAS_MANAGER;
 class ALIAS_RULE;
 class CFG;
+class DNA_NODE;
 class EXC;
 class CODEMAP;
 class DF_LOCAL;
 class EMITTER;
 class ITABLE;
+class IPSA;
 class MAIN_EMITTER;
 class OPT_STAB;
 class RVI;
@@ -85,11 +91,16 @@ class SSA;
 class FENCEPOSTING;
 class PRE_RVI_HOOKS;
 class VN;
+class CDA;
+class VRA;
+class VSA;
+class VSA_ACCESS_INFO;
+class VSA_ADDRESS_INFO;
+class EH_TABLE;
 
 #include "opt_config.h"
 #include "optimizer.h"
 #include "region_util.h"
-
 
 class COMP_UNIT {
 private:
@@ -103,6 +114,13 @@ private:
   ALIAS_MANAGER *_alias_mgr;
   ALIAS_RULE    *_arule;
   CODEMAP       *_htable;
+#if defined(BUILD_MASTIFF)
+  DNA_NODE      *_dna;
+  CDA           *_cda;
+  VRA           *_vra;    // value range analyzer
+  VSA           *_vsa;
+  EH_TABLE      *_eh_table;
+#endif
 
   union {
     PRE_RVI_HOOKS *_pre_rvi_hooks;
@@ -155,28 +173,53 @@ public:
   void         Do_load_pre(BOOL do_consts, 
 			   BOOL do_loads);  // LOAD PRE based on SSA
   void         Do_local_rvi(void);          // Fast rvi of local variables
-  void         Find_lr_shrink_cand(void);   // if Do_local_rvi is not called
-  void	       Introduce_mtype_bool(void);  // introduce MTYPE_B 
   void         Do_reasso(void);             // Redundancy elimination with reassociation
   void         Do_new_pre(void);            // PRE based on SSA
   void         Do_store_pre(void);          // STORE PRE based on SSA
   void         Do_update_dead_sources(void);// IV elimination (part 2)
-  void	       U64_lower_cr(BOOL leave_CVTL_at_leaf); // coderep U64 lowerer 
-  void	       Lower_to_extract_compose(void); // lower {I,}{LD,ST}BITS
-  void	       Fold_lda_iload_istore(void); // lda-iload/istore folding on cr
   void         Do_zdl(RVI *);               // Do zdl transformation
   WN          *Emit_ML_WHIRL(RVI *);        // Emit the mid-low level whirl
-  void         Find_iv(void);               // Find IVs for strength reduction
-  void         Init_df_sets(void);          // Initialize all bitsets
-  WN          *Normalize_loop(WN *wn);
-  BOOL	       Verify_IR(CFG *, CODEMAP *, INT);// consistency check
-  BOOL         Verify_CODEMAP(void);
-  void         Verify_version(void);
+  void         Find_lr_shrink_cand(void);   // if Do_local_rvi is not called
 #ifdef KEY
   void	       Find_uninitialized_locals(void); // find uninitialized local vars
   void	       Find_uninit_locals_for_entry(BB_NODE*); // find uninitialized local vars for an entry to the PU
 #endif
+  void	       Fold_lda_iload_istore(void); // lda-iload/istore folding on cr
+  void         Find_iv(void);               // Find IVs for strength reduction
+  void         Init_df_sets(void);          // Initialize all bitsets
+  void	       Introduce_mtype_bool(void);  // introduce MTYPE_B 
+  void	       Lower_to_extract_compose(void); // lower {I,}{LD,ST}BITS
+  WN          *Normalize_loop(WN *wn);
+  void	       U64_lower_cr(BOOL leave_CVTL_at_leaf); // coderep U64 lowerer 
+  BOOL	       Verify_IR(CFG *, CODEMAP *, INT);// consistency check
+  BOOL         Verify_CODEMAP(void);
+  void         Verify_version(void);
   void         Pro_loop_trans();         // The driver for proactive loop transformations.
+
+#if defined(BUILD_MASTIFF)
+  void         Do_cda(IPSA *ipsa_mgr);      // control dependency analysis
+  void         Do_vra(IPSA *ipsa_mgr);      // Value Range Analysis
+  void         Do_vsa(IPSA *ipsa_mgr);      // Vulnerability Static Analysis
+  void         Build_eh_table();            // Build EH table
+  CODEREP     *Analyze_base_info(STMTREP* use,
+                                 CODEREP* cr,
+                                 BOOL check_ud); // analyze address expression to get base
+  BOOL         Analyze_pointer_info(STMTREP* use,
+                                    CODEREP* cr,
+                                    VSA_ADDRESS_INFO* info,
+                                    BOOL check_ud); // analyze address expression
+  BOOL         Analyze_address_info(STMTREP* use,
+                                    CODEREP* cr,
+                                    VSA_ADDRESS_INFO* info,
+                                    BOOL store,
+                                    BOOL check_ud);  // Analyze IVAR cr to get address information
+  BOOL         Analyze_access_info(STMTREP* use,
+                                   CODEREP* cr,
+                                   VSA_ACCESS_INFO* info); // Analyze IVAR cr to get access information
+  BOOL         Is_stmt_in_loop(STMTREP *sr);
+  CODEREP     *Find_return_value(STMTREP *call_stmt);
+  CODEREP     *Find_return_value(STMTREP *call_stmt, CODEREP *lda_node);
+#endif
 
   // member access functions
   WN          *Input_tree(void)         { return _input_tree; }
@@ -198,6 +241,19 @@ public:
   PRE_RVI_HOOKS *Pre_rvi_hooks(void)    { return _pre_rvi_hooks; }
   void           Set_pre_rvi_hooks(PRE_RVI_HOOKS *pre_rvi_hooks)
     { _pre_rvi_hooks = pre_rvi_hooks; }
+#if defined(BUILD_MASTIFF)
+  DNA_NODE    *Dna(void)                { return _dna; }
+  CDA         *Cda(void)                { return _cda; }
+  VRA         *Vra(void)                { return _vra; }
+  VSA         *Vsa(void)                { return _vsa; }
+  EH_TABLE    *EH_table(void)           { return _eh_table; }
+  void        Set_dna(DNA_NODE *dna)    { _dna =  dna; }
+  void        Set_vsa(VSA *vsa)         { _vsa =  vsa; }
+  SRCPOS         End_srcpos(void)
+    { WN *blk = WN_func_varrefs(_input_tree);
+      return WN_Get_Linenum(blk);     }
+  SRCPOS         Get_end_srcpos(void);
+#endif
 };
 
 

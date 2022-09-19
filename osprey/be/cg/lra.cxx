@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -871,7 +875,7 @@ Calculate_All_Conflicts(BB *bb, INT *regs_in_use, ISA_REGISTER_CLASS rclass)
     if (LR_last_use(lr) == 0) continue;
     // true degree does not include the live range itself.
     num_conflicts = Find_Max_Degree_For_LR(regs_in_use, lr) - 1;
-    TN_MAP_Set(conflict_map, tn, (void*)num_conflicts);
+    TN_MAP_Set(conflict_map, tn, (void*)(INTPTR)num_conflicts);
   }
 
   return conflict_map;

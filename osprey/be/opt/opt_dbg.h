@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 // ====================================================================
 // ====================================================================
@@ -59,7 +63,7 @@
 static char *opt_dbgrcs_id = opt_dbg_INCLUDED"$Revision$";
 #endif /* _KEEP_RCS_ID */
 
-#ifdef Is_True_On
+//#ifdef Is_True_On
 
 class BB_NODE;
 class CODEREP;
@@ -67,7 +71,8 @@ class STMTREP;
 
 extern FILE *DFile;
 extern COMP_UNIT *g_comp_unit;
-extern OPT_STAB *g_opt_stab;
+extern OPT_STAB  *g_opt_stab;
+extern IPSA      *g_ipsa_manager;
 
 extern "C" void Dump_cfg(void);
 extern "C" void Dump_bbs_reached(void);
@@ -76,5 +81,5 @@ extern "C" void Dump_cr(CODEREP *cr);
 extern "C" void Dump_sr(STMTREP *sr);
 extern "C" void show_cfg(CFG *cfg);
 
-#endif	// Is_True_On
+//#endif	// Is_True_On
 #endif  // opt_main_INCLUDED

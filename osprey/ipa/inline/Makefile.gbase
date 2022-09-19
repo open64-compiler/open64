@@ -135,6 +135,7 @@ HEADER_DIRS = \
 IPA_INLINE_CXX_SRCS = \
 	inline_driver.cxx \
         inline_stub.cxx \
+        inline_skip.cxx \
         inline.cxx \
 	inline_utils.cxx \
 	inline_split_common.cxx \

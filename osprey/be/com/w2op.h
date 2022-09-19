@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -96,6 +100,24 @@ extern BOOL WN_Can_Be_Speculative (WN *wn, struct ALIAS_MANAGER *alias);
 extern BOOL WN_Expr_Can_Be_Speculative (WN *wn, struct ALIAS_MANAGER *alias);
 extern BOOL OPCODE_Can_Be_Speculative(OPCODE opcode);
 
+#ifdef TARG_UWASM
+typedef struct mtype_to_cvt_top
+{
+  TYPE_ID src_mtype;
+  TYPE_ID res_mtype;
+  UINT8   comb_top;  // require combined TOPs to do convert
+  TOP     top;
+
+  BOOL Top_avail() { return (top != TOP_UNDEFINED || comb_top == TRUE); }
+
+} Mtype_To_Cvt_Top;
+
+extern Mtype_To_Cvt_Top &Get_Cvt_Top(TYPE_ID src_mtype, TYPE_ID res_mtype);
+extern BOOL Req_Sign_Ext(TYPE_ID src_mtype, TYPE_ID res_mtype);
+extern BOOL Req_Unsigned_Ext(TYPE_ID src_mtype, TYPE_ID res_mtype);
+extern BOOL Req_Truncate(TYPE_ID src_mtype, TYPE_ID res_mtype);
+
+#endif
 #ifdef __cplusplus
 }
 #endif

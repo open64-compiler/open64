@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  Copyright (C) 2010, Hewlett-Packard Development Company, L.P.
  All Rights Reserved.
 
@@ -93,9 +97,9 @@ NystromAliasAnalyzer::NystromAliasAnalyzer(ALIAS_CONTEXT &ac,
 
   _constraintGraph = CXX_NEW(ConstraintGraph(entryWN, &_memPool), &_memPool);
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_PRE_FLAG)) {
-    fprintf(stderr, "Printing initial ConstraintGraph\n");
-    _constraintGraph->print(stderr);
-    fdump_tree(stderr, entryWN);
+    fprintf(TFile, "Printing initial ConstraintGraph\n");
+    _constraintGraph->print(TFile);
+    fdump_tree(TFile, entryWN);
   }
 
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_VCG_FLAG)) {
@@ -117,9 +121,9 @@ NystromAliasAnalyzer::NystromAliasAnalyzer(ALIAS_CONTEXT &ac,
   }
 
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_POST_FLAG)) {
-    fprintf(stderr,"Nystrom analysis...complete\n");
-    fprintf(stderr, "Printing final ConstraintGraph\n");
-    _constraintGraph->print(stderr);
+    fprintf(TFile,"Nystrom analysis...complete\n");
+    fprintf(TFile, "Printing final ConstraintGraph\n");
+    _constraintGraph->print(TFile);
   }
 
   // Map WNs to AliasTags
@@ -332,10 +336,10 @@ NystromAliasAnalyzer::genAliasTag(ST *st, INT64 offset, INT64 size, bool direct)
     }
     if (aliasTag != InvalidAliasTag &&
         Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-      fprintf(stderr, "genAliasTag: new aliasTag %d for %s <%d,%d,%d> with aliasTagInfo: ",
+      fprintf(TFile, "genAliasTag: new aliasTag %d for %s <%d,%d,%d> with aliasTagInfo: ",
               (UINT32)aliasTag,ST_name(ST_st_idx(st)),(INT32)ST_st_idx(st),(INT32)offset,(INT32)size);
-      _aliasTagInfo[aliasTag]->print(stderr);
-      fprintf(stderr, "\n");
+      _aliasTagInfo[aliasTag]->print(TFile);
+      fprintf(TFile, "\n");
     }
   }
   return aliasTag;
@@ -403,10 +407,10 @@ NystromAliasAnalyzer::meet(AliasTag dstTag, AliasTag srcTag)
     retTag = newAliasTag();
   mergePointsTo(retTag,srcTag);
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-    fprintf(stderr,"meet: aliasTag %d, aliasTag %d ->",dstTag,srcTag);
-    fprintf(stderr," result aliasTag %d [",retTag);
-    pointsTo(retTag).print(stderr);
-    fprintf(stderr,"]\n");
+    fprintf(TFile,"meet: aliasTag %d, aliasTag %d ->",dstTag,srcTag);
+    fprintf(TFile," result aliasTag %d [",retTag);
+    pointsTo(retTag).print(TFile);
+    fprintf(TFile,"]\n");
   }
   return retTag;
 }
@@ -477,10 +481,10 @@ NystromAliasAnalyzer::transferAliasTag(WN *dstWN, const WN *srcWN)
       WN_MAP_CGNodeId_Set(dstWN,id);
 
       if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-        fprintf(stderr, "transferAliasTag: mapping aliasTag %d to aliasTagInfo: ",
+        fprintf(TFile, "transferAliasTag: mapping aliasTag %d to aliasTagInfo: ",
                 (UINT32)tag);
-        _aliasTagInfo[tag]->print(stderr);
-        fprintf(stderr, "\n");
+        _aliasTagInfo[tag]->print(TFile);
+        fprintf(TFile, "\n");
       }
     }
   }
@@ -620,10 +624,10 @@ NystromAliasAnalyzer::createAliasTags(WN *entryWN)
     setAliasTag(wn, aliasTag);
 
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-      fprintf(stderr, "createAliasTag: mapping aliasTag %d to aliasTagInfo: ",
+      fprintf(TFile, "createAliasTag: mapping aliasTag %d to aliasTagInfo: ",
               (UINT32)aliasTag);
-      _aliasTagInfo[aliasTag]->print(stderr);
-      fprintf(stderr, "\n");
+      _aliasTagInfo[aliasTag]->print(TFile);
+      fprintf(TFile, "\n");
     }
   }
 }
@@ -759,11 +763,12 @@ ConstraintGraph::buildCGFromSummary()
   UINT32 formalsIdx =   cur_hdr.cgFormalsIdx();
   UINT32 returnsIdx =   cur_hdr.cgReturnsIdx();
   
-  if (Get_Trace(TP_ALIAS,NYSTROM_SUMMARY_FLAG))
-    fprintf(stderr, 
+  if (Get_Trace(TP_ALIAS,NYSTROM_SUMMARY_FLAG)) {
+    fprintf(TFile, 
             "*** nodes = %d, stinfos = %d, callsites = %d, nodeids = %d\n",
             nodesCount, stInfosCount,callsitesCount, nodeIdsCount);
-
+  }
+  
   // add the STInfos
   for (UINT32 i = 0; i < stInfosCount; i++)
   {

@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -140,6 +144,7 @@ HEADER_DIRS = \
 IPA_INLINE_CXX_SRCS = \
 	inline_driver.cxx \
         inline_stub.cxx \
+        inline_skip.cxx \
         inline.cxx \
 	inline_utils.cxx \
 	timelib.cxx \
@@ -232,12 +237,17 @@ GLDOPTS = $(STD_LOAD_OPTS) $(LD_QUICKSTART_INFO)
 
 TARGETS = lw_inline
 
-LDIRT = be.so ii_files ${TARGETS}
+LDIRT = $(BE_SO) ii_files ${TARGETS}
+
+TARG_LIBIBERTY_DIR = $(TARGDIR)/libiberty
+LIBIBERTY_OBJS = $(TARG_LIBIBERTY_DIR)/libiberty.a
 
 ifeq ($(BUILD_TYPE), SHARED)
 LLDOPTS = -Wl,--export-dynamic
 endif
 LLDLIBS = 
+
+LLDLIBS += $(LIBIBERTY_OBJS)
 
 .PHONY: default first last install
 
@@ -275,8 +285,8 @@ endif
 
 ifeq ($(BUILD_TYPE), SHARED)
 lw_inline: $(IPA_OBJS) $(IPA_CXX_OBJS)
-	if ! test -e be.so; then ln -sf $(TARG_BE_DIR)/be.so .; fi
-	$(link.c++f) -o $@ $(IPA_OBJS) $(IPA_CXX_OBJS) be.so  $(LDFLAGS)
+	if ! test -e $(BE_SO); then ln -sf $(TARG_BE_DIR)/$(BE_SO) .; fi
+	$(link.c++f) -o $@ $(IPA_OBJS) $(IPA_CXX_OBJS) $(BE_SO) $(LDFLAGS)
 else
 lw_inline: $(IPA_OBJS) $(IPA_CXX_OBJS) $(TARG_BE_DIR)/libbe.a $(TARG_TARG_INFO_DIR)/libtarginfo.a
 	$(link.c++f) -o $@ $^ $(LDFLAGS)

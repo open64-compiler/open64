@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -133,7 +137,6 @@ extern TN *Gen_Literal_TN_Pair(UINT64);
 #endif
 
 BOOL Compiling_Proper_REGION;
-static BOOL Trace_WhirlToOp = FALSE;
 
 /* reference to a dedicated TN in Cur_BB */
 static BOOL dedicated_seen;
@@ -144,11 +147,11 @@ static BOOL dedicated_seen;
 #if !defined(TARG_SL) && !defined(TARG_PPC32)
 static TN * Expand_Expr (WN *expr, WN *parent, TN *result);
 #endif
-static void initialize_region_stack(WN *);
-static RID *region_stack_pop(void);
-static void region_stack_push(RID *value);
-static void region_stack_eh_set_has_call(void);
+void initialize_region_stack(WN *);
+RID *region_stack_pop(void);
+void region_stack_push(RID *value);
 static VARIANT WHIRL_Compare_To_OP_variant (OPCODE opcode, BOOL invert);
+void region_stack_eh_set_has_call(void);		//lsj
 
 #ifdef KEY
 // Expose the vars to the target-specific expand routines.
@@ -168,15 +171,16 @@ WHIRL2OPS_STATIC INT total_bb_insts;
 
 /* The current basic block being generated. */
 WHIRL2OPS_STATIC BB *Cur_BB;
+WHIRL2OPS_STATIC BOOL Trace_WhirlToOp = FALSE;
 
-static RID **region_stack_base;
-static RID **region_stack_ptr;
-static INT   region_stack_size;
-#define current_region (*(region_stack_ptr - 1))
-#define region_depth   (region_stack_ptr - region_stack_base)
-static BB_NUM min_bb_id;
+WHIRL2OPS_STATIC RID **region_stack_base;
+WHIRL2OPS_STATIC RID **region_stack_ptr;
+WHIRL2OPS_STATIC INT   region_stack_size;
+WHIRL2OPS_STATIC BB_NUM min_bb_id;
 
-static WN *last_loop_pragma;
+WHIRL2OPS_STATIC WN *last_loop_pragma;
+
+WHIRL2OPS_STATIC BOOL WN_pragma_preamble_end_seen = FALSE;
 
 #define return_max 3
 
@@ -550,7 +554,7 @@ void Get_Memory_OP_Predicate_Info(OP *memop, TN **pred_tn, UINT8 *omega,
  *
  * =======================================================================
  */
-static void initialize_region_stack(WN *wn)
+void initialize_region_stack(WN *wn)
 {
   RID *rid = REGION_get_rid(wn);
   Is_True(rid != NULL, ("initialize_region_stack, NULL RID"));
@@ -571,7 +575,7 @@ static void initialize_region_stack(WN *wn)
  *
  * =======================================================================
  */
-static RID *region_stack_pop(void)
+RID *region_stack_pop(void)
 {
   if ( region_stack_ptr == region_stack_base )
     return NULL;
@@ -587,7 +591,7 @@ static RID *region_stack_pop(void)
  *
  * =======================================================================
  */
-static void region_stack_push(RID *value)
+void region_stack_push(RID *value)
 {
   *(region_stack_ptr++) = value;
   if ( ( region_stack_ptr - region_stack_base ) == region_stack_size ) {
@@ -621,8 +625,6 @@ static void region_stack_push(RID *value)
 }
   
 
-
-static BOOL WN_pragma_preamble_end_seen = FALSE;
 
 BOOL W2OPS_Pragma_Preamble_End_Seen ()
 {
@@ -963,7 +965,7 @@ Allocate_Result_TN (WN *wn, TN **opnd_tn)
 
 /* set the op2wn mappings for memory ops
  */
-#if !defined(TARG_SL) && !defined(TARG_PPC32)
+#if !defined(TARG_SL) && !defined(TARG_PPC32) && !defined(KEY)
 static 
 #endif
 void
@@ -1145,6 +1147,9 @@ static void Realloc_Preg_To_TN_Arrays (PREG_NUM preg_num)
 TN *
 PREG_To_TN (TY_IDX preg_ty, PREG_NUM preg_num)
 {
+#ifdef TARG_UWASM
+  return NULL;
+#endif
   TN *tn;
   TYPE_ID mtype = TY_mtype(preg_ty);
 #ifdef TARG_NVISA
@@ -1509,7 +1514,7 @@ TN_LIST_From_PREG_LIST( PREG_LIST *prl0, MEM_POOL *pool )
 
 /* add list of TOP_pregtn to bb, so tn renaming and splitting keeps
  * track of the preg associated with the tn */
-static void
+void
 Add_PregTNs_To_BB (PREG_LIST *prl0, BB *bb, BOOL prepend)
 {
   PREG_LIST *prl;
@@ -2453,6 +2458,9 @@ Handle_ILOAD (WN *iload, TN *result, OPCODE opcode)
   }
 #endif   
   Set_OP_To_WN_Map(iload);
+
+  if(Current_pu->src_lang == PU_JAVA_LANG)
+  	region_stack_eh_set_has_call();		//lsj
   return result;
 }
 
@@ -4342,7 +4350,7 @@ Get_Non_Local_Label_Name (SYMTAB_IDX level, LABEL_IDX index)
 static
 #endif
 LABEL_IDX
-Get_WN_Label (WN *wn, BOOL *is_non_local_label = NULL)
+Get_WN_Label (WN *wn, BOOL *is_non_local_label)
 {
   LABEL_IDX label = WN_label_number(wn);
   char *name;
@@ -4932,7 +4940,7 @@ Expand_Expr (WN *expr, WN *parent, TN *result)
   	return Expand_Expr (WN_kid0(expr), parent, result, intrn_id);
   }
 #endif
-  if (top != TOP_UNDEFINED && TOP_is_noop(top)
+  if (TOP_is_noop(top)
 #if defined(TARG_IA64) || defined(TARG_LOONGSON)
 	&& (opr == OPR_PAREN || opr == OPR_TAS || opr == OPR_PARM)) 
 #else
@@ -5801,7 +5809,7 @@ BOOL Has_External_Branch_Target( BB *bb )
  *
  * =======================================================================
  */
-BOOL Has_External_Fallthru( BB *bb )
+static BOOL Has_External_Fallthru( BB *bb )
 {
   WN *branch_wn = BB_branch_wn( bb );
 
@@ -6126,7 +6134,7 @@ static void Build_CFG(void)
 	  label = ANNOT_label(ant);
 	} else {
 	  label = Gen_Temp_Label();
-	  BB_Add_Annotation (region_entry, ANNOT_LABEL, (void *)label);
+	  BB_Add_Annotation (region_entry, ANNOT_LABEL, (void *)(INTPTR)label);
 	  Set_Label_BB (label,region_entry);
 	}
 	target_tn = Gen_Label_TN (label, 0);
@@ -6962,7 +6970,7 @@ Handle_ASM (const WN* asm_wn)
         sprintf(preg_name,"_asm_result_%d",WN_pragma_asm_opnd_num(out_pragma));
 	new_preg = Create_Preg (TY_mtype(ST_type(WN_st(load))), preg_name);
 	Realloc_Preg_To_TN_Arrays (new_preg);
-        TN_MAP_Set(TN_To_PREG_Map, tn, (void*)new_preg);
+        TN_MAP_Set(TN_To_PREG_Map, tn, (void*)(INTPTR)new_preg);
         PREG_To_TN_Array[new_preg] = tn;
         PREG_To_TN_Mtype[new_preg] = TY_mtype(ST_type(WN_st(load)));
       }
@@ -7154,7 +7162,7 @@ Modify_Asm_String (char *asm_string, INT pattern_index, TN *tn, char *tn_name)
  * Since this is only for notes/debugging purposes, give up fairly
  * easily.
  */
-static SRCPOS get_loop_srcpos(WN *body_label)
+SRCPOS get_loop_srcpos(WN *body_label)
 {
   if (current_srcpos) {
     return current_srcpos;
@@ -7466,7 +7474,7 @@ static void Expand_Statement (WN *stmt)
     {
       OPCODE opcode = WN_opcode(stmt);
       if (OPCODE_has_sym(opcode)){
-        BB_Add_Annotation (Cur_BB, ANNOT_INLINE, (void *)WN_st_idx(stmt));
+        BB_Add_Annotation (Cur_BB, ANNOT_INLINE, (void *)(INTPTR)WN_st_idx(stmt));
       }
     }
     if (WN_pragma(stmt) == WN_PRAGMA_INLINE_BODY_END)
@@ -7476,7 +7484,7 @@ static void Expand_Statement (WN *stmt)
         ST *st = WN_st(stmt);
         BB_Add_Annotation (Cur_BB, 
                            ANNOT_INLINE, 
-                           (void *)(WN_st_idx(stmt)+ST_index(st)));
+                           (void *)(INTPTR)(WN_st_idx(stmt)+ST_index(st)));
       }
     }
 #endif
@@ -7510,7 +7518,7 @@ static void Expand_Statement (WN *stmt)
 WN *
 Handle_INTRINSIC_CALL (WN *intrncall)
 {
-  enum {max_intrinsic_opnds = 4};
+  enum {max_intrinsic_opnds = 8};
   TN *result;
   TN *opnd_tn[max_intrinsic_opnds];
   INT i;
@@ -7537,7 +7545,7 @@ Handle_INTRINSIC_CALL (WN *intrncall)
 			     Expand_Expr(WN_kid0(intrncall), intrncall, NULL), 
 			     &label, &New_OPs);
       BB *bb = Start_New_Basic_Block();
-      BB_Add_Annotation (bb, ANNOT_LABEL, (void *)label);
+      BB_Add_Annotation (bb, ANNOT_LABEL, (void *)(INTPTR)label);
       Set_Label_BB (label,bb);
       return next_stmt;
     }
@@ -7660,7 +7668,7 @@ Handle_INTRINSIC_CALL (WN *intrncall)
 }
 
 /* very similar to routine in cflow; someday should commonize */
-static BOOL
+BOOL
 Only_Has_Exc_Label(BB *bb)
 {
   if (BB_has_label(bb)) {

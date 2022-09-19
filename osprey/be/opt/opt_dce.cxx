@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P. All Rights Reserved.  
  */
 
@@ -84,7 +88,6 @@
 
 #include "cxx_base.h"
 #include "erbe.h"
-
 #include "opt_base.h"
 #include "opt_bb.h"
 #include "opt_config.h"
@@ -103,6 +106,13 @@
 #include "opt_util.h"
 #include "opt_project.h"
 #include "opt_dce.h"
+#include "erbe.h"
+#include "config_vsa.h"
+#ifdef BUILD_MASTIFF
+#include "opt_dna.h"
+#include "opt_vsa_report.h"
+#endif
+
 
 // ====================================================================
 //
@@ -1538,6 +1548,14 @@ DCE::Remove_unreached_statements( BB_NODE *bb ) const
       if (stmt->Opr() == OPR_REGION_EXIT) // need to update RID structure
 	Remove_region_exit(bb, FALSE);
       bb->Remove_stmtrep(stmt); // does the actual work
+#if defined(BUILD_MASTIFF)
+      const char *fname = ST_name(Get_Current_PU_ST());
+      SRCPOS spos = stmt->Linenum();
+      Report_vsa_error(fname, "", "DDC", FALSE, spos);
+      if (VSA_Xsca) {
+        Report_xsca_error(fname, "", "MISRA_2_1", FALSE, spos);
+      }
+#endif
     }
   }
 
@@ -1845,6 +1863,7 @@ DCE::Unreachable_code_elim( void )
             (bb->Loop()->Flags() & LOOP_ORIGINAL_DO))
           DevWarn("DO-loop is demoted to WHILE-loop in preopt.");
 #endif
+
 	if ( Tracing() ) {
 	  fprintf( TFile, "DCE: Removed BB%d\n",bb->Id());
 	  fflush( TFile );
@@ -2001,6 +2020,23 @@ DCE::Required_store( const STMTREP *stmt, OPERATOR oper ) const
     return TRUE;
 #endif
 
+  // do not delete store of exec obj so that the exception object symbol can be reported.
+  CODEREP *rhs = stmt->Rhs();
+  if (Run_vsaopt && PU_java_lang(Get_Current_PU()) &&
+      stmt->Opr() == OPR_STID &&
+      stmt->Desc() == Pointer_Mtype &&
+      (!ST_is_temp_var(s) ||
+       !stmt->Next() ||
+       stmt->Next()->Opr() == OPR_RETURN ||
+       stmt->Next()->Opr() == OPR_GOTO) &&
+      rhs->Kind() == CK_IVAR && rhs->Opr() == OPR_ILOAD &&
+      rhs->Ilod_base()->Kind() == CK_VAR) {
+    ST *s = Opt_stab()->St(rhs->Ilod_base()->Aux_id());
+    if (ST_one_per_pu(s) && strcmp(ST_name(s), "__Exc_Ptr__") == 0) {
+      return TRUE;
+    }
+  }
+
   // maybe it just isn't required
   return ( FALSE );
 }
@@ -2128,7 +2164,11 @@ DCE::Required_pragma( const STMTREP *stmt ) const
   switch ( pragma ) {
     case WN_PRAGMA_INLINE_BODY_START:
     case WN_PRAGMA_INLINE_BODY_END:
+#if defined(BUILD_MASTIFF)
+      return TRUE;
+#else
       return FALSE;
+#endif
   }
 
   return TRUE;
@@ -4818,17 +4858,58 @@ DCE::Remove_dead_statements( void )
       STMTREP *stmt, *nextstmt = NULL;
 
       // trace loop first
-      if ( Tracing() ) {
-	for (stmt = bb->First_stmtrep(); stmt != NULL; stmt = nextstmt){
-	  nextstmt = stmt->Next();
-	  if ( ! stmt->Live_stmt() ) {
-	    fprintf( TFile, "Remove dead statement from live BB:%d\n",
-		     bb->Id() );
-	    stmt->Print( TFile );
+      if ( Tracing() || Run_vsaopt ) {
+        for (stmt = bb->First_stmtrep(); stmt != NULL; stmt = nextstmt){
+          nextstmt = stmt->Next();
+          if ( ! stmt->Live_stmt() ) {
+#ifdef BUILD_MASTIFF
+            DNA_NODE *cur_dna = Get_cur_dna();
+            if(cur_dna) {
+              // find the following pattern
+              // >OPR_CALL
+              //   >LDID d_preg
+              // >STID preg1
+              //   >LDID preg1
+              // >STID st
+              // And Map st to OPR_CALL
+              CODEREP *rhs = stmt->Rhs();
+              CODEREP *lhs = stmt->Lhs();
+              if( stmt->Opr() == OPR_STID &&
+                  rhs->Kind() == CK_VAR) {
+                STMTREP *defstmt = rhs->Defstmt();
+                if( defstmt &&
+                    defstmt->Opr() == OPR_STID &&
+                    defstmt->Rhs()->Kind() == CK_VAR) {
+                  CODEREP *rhs2 = defstmt->Rhs();
+                  AUX_STAB_ENTRY* rhs_aux = Opt_stab()->Aux_stab_entry(rhs->Aux_id());
+                  AUX_STAB_ENTRY* rhs2_aux = Opt_stab()->Aux_stab_entry(rhs2->Aux_id());
+                  if( rhs_aux->Is_non_dedicated_preg() &&
+                      rhs2_aux->Is_dedicated_preg()){
+                    // stmt is a non_dedicated preg assign to a regular st
+                    // defstmt is a dedicated preg assign to a non dedicated preg
+                    STMTREP * call_stmt = rhs2->Defstmt();
+                    if( call_stmt &&
+                        call_stmt->Opr() == OPR_CALL &&
+                        call_stmt->Callee_returns_new_heap_memory() ){
+                      ST_IDX st_idx = Opt_stab()->Aux_stab_entry(lhs->Aux_id())->St()->st_idx;
+                      if (Get_Trace(TP_WOPT2, VSA_DUMP_FLAG))
+                        fprintf(TFile, "[STPATH Trace] Map_st_node: MAP CALL STMTREP %d with ST %s\n",
+                                call_stmt->Stmtrep_id(), ST_name(st_idx));
+                      cur_dna->Map_st_node(call_stmt, st_idx);
+                    }
+                  }
+                }
+              }
+            }
+#endif
+
+	    if (Tracing()) {
+	      fprintf( TFile, "Remove dead statement from live BB:%d\n", bb->Id() );
+	      stmt->Print( TFile );
+	    }
 	  }
 	}
       }
-
       // then real delete loop
       for ( stmt = bb->First_stmtrep(), nextstmt = NULL;
 	    stmt != NULL;
@@ -4874,7 +4955,7 @@ DCE::Remove_dead_statements( void )
 	changed_cflow = TRUE;
 
 	if ( Tracing() ) {
-	  fprintf( TFile, "DCE_A: Removed BB%d (%p)\n", bb->Id(), bb );
+	  fprintf( TFile, "DCE_A: Removed BB%d (%d)\n", bb->Id(), (INT32)bb->Linenum() );
 	}
       }
       else {

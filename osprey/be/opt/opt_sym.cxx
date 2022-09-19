@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -403,6 +407,17 @@ static void Collect_addr_passed_for_PU(WN *wn)
 
 static INT32 aux_sym_cnt;
 
+INT32
+OPT_STAB::Get_aux_sym_cnt() const
+{
+  return aux_sym_cnt;
+}
+
+void
+OPT_STAB::Set_aux_sym_cnt(INT32 cnt)
+{
+  aux_sym_cnt = cnt;
+}
 
 void
 OPT_STAB::Count_syms(WN *wn)
@@ -1002,7 +1017,7 @@ OPT_STAB::Enter_symbol(OPERATOR opr, ST* st, INT64 ofst,
   BOOL const_initialized = ST_is_const_initialized(st);
   if (const_initialized || (ST_is_initialized(st) && 
       ST_sclass(st) == SCLASS_PSTATIC)) {
-    if (ST_is_const_initialized(st))
+    if (const_initialized)
       sym->Set_const_init();
     INITV_IDX initv;
     if ((initv = ST_has_initv(st)) &&
@@ -1209,6 +1224,11 @@ AUX_STAB_ENTRY::Change_to_new_preg(OPT_STAB *opt_stab, CODEMAP *htable)
   }
 
   if (preg_ty == 0) return;
+#ifdef TARG_UWASM
+  if(was_formal && ST_assigned_to_dedicated_preg(st)) {
+    return;
+  }
+#endif
 
   // Turn the variable into a PREG
   const char * name = St_name();

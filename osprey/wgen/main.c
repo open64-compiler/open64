@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -41,10 +45,14 @@
 #include "config.h"
 #include "file_util.h" // for Last_Pathname_Component
 #include "wgen_misc.h"
+#include "config_product.h"   // for PHASE_SPIN_CC1PLUS_NAME
 
 extern BOOL List_Enabled;
 extern INT Opt_Level;
 extern BOOL Enable_WFE_DFE;
+
+BOOL Run_vsaopt = FALSE; // hack to workaround undefine since
+                         // errors.cxx is compiled twice for different purposes and no -Dxxx 
 
 #ifndef TARG_MIPS
 BOOL TARGET_64BIT = TRUE;
@@ -139,6 +147,11 @@ Process_Command_Line(INT argc, char **argv)
 		Process_Command_Line_Group (cp-1, Common_Option_Groups);
 	      break;
 	    
+          case 'R':
+              if (strncmp(cp, "BC", 2) == 0)
+                WGEN_Set_File_Rbc();
+              break;
+
           case 't':
               Process_Trace_Option(cp-2);
               break;
@@ -171,7 +184,8 @@ Process_Cc1_Command_Line(gs_t arg_list)
   argv = gs_s(gs_index(arg_list, 0));
   char *command = Last_Pathname_Component(argv);
 //printf("%s\n", command);
-  lang_cplus = !strncmp(command, "cc1plus", strlen("cc1plus"));
+  lang_cplus = !strncmp(command, PHASE_SPIN_CC1PLUS_NAME,
+                                 strlen(PHASE_SPIN_CC1PLUS_NAME));
 
   // if not set by the command line, set default value by language
   if (emit_exceptions == -1)
@@ -310,6 +324,14 @@ Process_Cc1_Command_Line(gs_t arg_list)
 	      Show_Progress = TRUE;
 	      break;
 	    
+	  case 'w':
+	      if (*cp == '\0')
+	      {
+		i++;
+		Preprocessor_Working_Dir = gs_s(gs_index(arg_list, i));
+	      }
+	      break;
+
 	  default:		    /* What's this? */
 	      break;
 	  }

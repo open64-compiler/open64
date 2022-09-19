@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -92,6 +96,11 @@ static char *rcs_id = 	opt_du_CXX"$Revision$";
 #ifdef Is_True_On
 // for cross-checking with alias analysis
 #include "optimizer.h"
+#endif
+
+#include "opt_dbg.h"    // for g_ipsa_manager
+#ifdef BUILD_MASTIFF
+#include "opt_dna.h"    // for IPSA
 #endif
 
 // Egads, a global variable.  Used to keep us from visiting a
@@ -240,6 +249,16 @@ EMITTER::Connect_sr_wn( STMTREP *sr, WN *wn )
 {
   // set the WN -> sr relationship (1 to 1 relationship)
   WN_MAP_Set( _wn_to_cr_map, wn, sr );
+
+#ifdef BUILD_MASTIFF
+  // update IPSA WN/STMT -> ST_IDX map
+  DNA_NODE *cur_dna = Get_cur_dna();
+  if (cur_dna &&
+      cur_dna->Update_stpath(sr, NULL, wn))
+    Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+             (TFile, "[STPATH Trace] PREOPT EMITTER: Update_stpath on stmtrep id=%d to wn %p with st %s\n",
+              sr->Stmtrep_id(), wn, cur_dna->Get_stpath(wn)->St_name()));
+#endif
 
   // set the sr -> WN relationship (1 to possibly many)
   if ( sr->Wn() == NULL ) {

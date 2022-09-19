@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -64,7 +68,8 @@
 #include "targ_isa_subset.h"
 #include "isa_hazards_gen.h"
 #include "bstring.h"
-
+#include "isa_gen_def.h"
+#include "isa_gen_targ_extra.h"
 
 struct isa_hazard {
   const char *name;         // hazard name
@@ -302,9 +307,9 @@ void ISA_Hazards_End(void)
 		 "  mUINT8 next;\n"
   		 "} ISA_HAZARD_INFO;\n");
 
-  fprintf(efile, "ISA_HAZARD_hazard_info\n");
+  fprintf(efile, "ISA_HAZARD_hazard_info" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nISA_HAZARD_INFO ISA_HAZARD_hazard_info[%d] = {\n", 
+  fprintf(cfile, "\nISA_HAZARD_INFO ISA_HAZARD_hazard_info" TI_SUFFIX "[%d] = {\n",
 	  haz_index + 1);
   fprintf(cfile, isa_hazard_info_format,
 	  "UNDEFINED", 0, 0, 0, 0, 0, 0);
@@ -337,9 +342,9 @@ void ISA_Hazards_End(void)
   }
   fprintf(cfile, "};\n");
 
-  fprintf(efile, "ISA_HAZARD_hazard_index\n");
+  fprintf(efile, "ISA_HAZARD_hazard_index" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nmUINT8 ISA_HAZARD_hazard_index[%d] = {\n", TOP_count);
+  fprintf(cfile, "\nmUINT8 ISA_HAZARD_hazard_index" TI_SUFFIX "[%d] = {\n", TOP_count);
   for ( top = 0; top < TOP_count; ++top ) {
     op_haz *op_hazard = op_hazards[top];
     fprintf(cfile, "  %3d, ", op_hazard ? op_hazard->index : 0);
@@ -349,26 +354,26 @@ void ISA_Hazards_End(void)
 
   fprintf(hfile, "\ninline BOOL ISA_HAZARD_TOP_Has_Hazard(TOP topcode)\n"
 		 "{\n"
-		 "  extern mUINT8 ISA_HAZARD_hazard_index[%d];\n"
-		 "  return ISA_HAZARD_hazard_index[(INT)topcode] != 0;\n"
+		 "  extern mUINT8 ISA_HAZARD_hazard_index" TI_SUFFIX "[%d];\n"
+		 "  return ISA_HAZARD_hazard_index" TI_SUFFIX "[(INT)topcode] != 0;\n"
 		 "}\n",
 		 TOP_count);
 
   fprintf(hfile, "\ninline ISA_HAZARD_INFO *ISA_HAZARD_First(TOP topcode)\n"
 		 "{\n"
-		 "  extern mUINT8 ISA_HAZARD_hazard_index[%d];\n"
-		 "  extern ISA_HAZARD_INFO ISA_HAZARD_hazard_info[%d];\n"
-		 "  INT index = ISA_HAZARD_hazard_index[(INT)topcode];\n"
-		 "  return index ? ISA_HAZARD_hazard_info + index : (ISA_HAZARD_INFO *)0;\n"
+		 "  extern mUINT8 ISA_HAZARD_hazard_index" TI_SUFFIX "[%d];\n"
+		 "  extern ISA_HAZARD_INFO ISA_HAZARD_hazard_info" TI_SUFFIX "[%d];\n"
+		 "  INT index = ISA_HAZARD_hazard_index" TI_SUFFIX "[(INT)topcode];\n"
+		 "  return index ? ISA_HAZARD_hazard_info" TI_SUFFIX " + index : (ISA_HAZARD_INFO *)0;\n"
 		 "}\n",
 		 TOP_count,
 		 haz_index + 1);
 
   fprintf(hfile, "\ninline ISA_HAZARD_INFO *ISA_HAZARD_Next(ISA_HAZARD_INFO *info)\n"
 		 "{\n"
-		 "  extern ISA_HAZARD_INFO ISA_HAZARD_hazard_info[%d];\n"
+		 "  extern ISA_HAZARD_INFO ISA_HAZARD_hazard_info" TI_SUFFIX "[%d];\n"
 		 "  INT index = info->next;\n"
-		 "  return index ? ISA_HAZARD_hazard_info + index : (ISA_HAZARD_INFO *)0;\n"
+		 "  return index ? ISA_HAZARD_hazard_info" TI_SUFFIX " + index : (ISA_HAZARD_INFO *)0;\n"
 		 "}\n",
 		 haz_index + 1);
 
@@ -392,26 +397,26 @@ void ISA_Hazards_End(void)
 		 "  return info->post_ops;\n"
 		 "}\n");
 
-  fprintf(hfile, "\nextern void ISA_HAZARD_Initialize(void);\n");
+  fprintf(hfile, "\nextern void ISA_HAZARD_Initialize" TI_SUFFIX "(void);\n");
 
-  fprintf(efile, "ISA_HAZARD_Initialize\n");
+  fprintf(efile, "ISA_HAZARD_Initialize" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nvoid ISA_HAZARD_Initialize(void)\n"
+  fprintf(cfile, "\nvoid ISA_HAZARD_Initialize" TI_SUFFIX "(void)\n"
 		 "{\n"
 		 "  INT top;\n"
-		 "  INT mask = 1 << (INT)ISA_SUBSET_Value;\n"
+		 "  INT mask = 1 << (INT)ISA_SUBSET_Value" TI_SUFFIX ";\n"
 		 "  for ( top = 0; top < TOP_count; ++top ) {\n"
 		 "    INT j, k;\n"
-		 "    INT i = ISA_HAZARD_hazard_index[top];\n"
+		 "    INT i = ISA_HAZARD_hazard_index" TI_SUFFIX "[top];\n"
 		 "    for (j = i; j != 0; j = k) {\n"
-		 "      for (k = ISA_HAZARD_hazard_info[j].next;\n"
-		 "           k != 0 && (ISA_HAZARD_hazard_info[k].isa_mask & mask) == 0;\n"
-		 "           k = ISA_HAZARD_hazard_info[k].next\n"
+		 "      for (k = ISA_HAZARD_hazard_info" TI_SUFFIX "[j].next;\n"
+		 "           k != 0 && (ISA_HAZARD_hazard_info" TI_SUFFIX "[k].isa_mask & mask) == 0;\n"
+		 "           k = ISA_HAZARD_hazard_info" TI_SUFFIX "[k].next\n"
 		 "      );\n"
-		 "      ISA_HAZARD_hazard_info[j].next = k;\n"
+		 "      ISA_HAZARD_hazard_info" TI_SUFFIX "[j].next = k;\n"
 		 "    }\n"
-		 "    if ((ISA_HAZARD_hazard_info[i].isa_mask & mask) == 0) {\n"
-		 "      ISA_HAZARD_hazard_index[top] = ISA_HAZARD_hazard_info[i].next;\n"
+		 "    if ((ISA_HAZARD_hazard_info" TI_SUFFIX "[i].isa_mask & mask) == 0) {\n"
+		 "      ISA_HAZARD_hazard_index" TI_SUFFIX "[top] = ISA_HAZARD_hazard_info" TI_SUFFIX "[i].next;\n"
 		 "    }\n"
 		 "  }\n"
 		 "}\n");

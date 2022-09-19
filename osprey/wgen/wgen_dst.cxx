@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -84,9 +84,9 @@
  * ====================================================================
  */
 
-static char *source_file = __FILE__;
+static const char *source_file = __FILE__;
 #ifdef _KEEP_RCS_ID
-static char *rcs_id = "$Source: kg++fe/SCCS/s.wfe_dst.cxx $ $Revision: 1.72 $";
+static const char *rcs_id = "$Source: kg++fe/SCCS/s.wfe_dst.cxx $ $Revision: 1.72 $";
 #endif /* _KEEP_RCS_ID */
 
 extern "C"{
@@ -125,7 +125,7 @@ extern "C"{
 #include "demangle.h"
 extern "C" char *cplus_demangle (const char *, int);
 #endif
-
+#include "config_product.h"   /* for C_DRIVER_NAME, CPP_DRIVER_NAME */
 
 /*
 extern FILE *tree_dump_file; //for debugging only
@@ -145,6 +145,7 @@ static char *current_working_dir = &cwd_buffer[0];
 static char *current_host_dir = &cwd_buffer[0];
 #endif
 
+char *Preprocessor_Working_Dir;    /* assigned in main.c from command line */
 
 // A file-global current scope is not useful, as with gcc we see
 // declarations out of context and must derive right context.
@@ -155,7 +156,6 @@ static DST_INFO_IDX comp_unit_idx = DST_INVALID_INIT;	// Compilation unit
 static void DST_enter_file (char *, UINT);
 
 static UINT last_dir_num = 0;
-static UINT current_dir = 1;
 static UINT last_file_num = 0;
 UINT current_file = 1;
 
@@ -342,10 +342,10 @@ Get_File_Dst_Info (char *name, UINT dir)
 
 // drops path prefix in string 
 static char *
-drop_path (char *s)
+drop_path (char *s, char sep)
 {
         char *tail;
-        tail = strrchr (s, '/');
+        tail = strrchr (s, sep);
         if (tail == NULL) {
                 return s;       // no path prefix 
         } else {
@@ -1304,7 +1304,7 @@ DST_enter_enum(gs_t type_tree, TY_IDX ttidx  , TY_IDX idx,
 #ifdef KEY
 typedef struct type_trans {
 	DST_size_t size;
-	char *name;
+	const char *name;
 	DST_ATE_encoding encoding;
 } type_trans;
 
@@ -2220,7 +2220,7 @@ DST_Create_Parmvar(ST *var_st, gs_t param)
 // not found.
 //
 static DST_INFO_IDX
-DST_find_class_member(char * linkage_name_in, gs_t myrecord)
+DST_find_class_member(const char *linkage_name_in, gs_t myrecord)
 {
     DST_INFO_IDX return_member_dst = DST_INVALID_INIT;
     if(!linkage_name_in)
@@ -2301,14 +2301,14 @@ DST_Create_var(ST *var_st, gs_t decl)
     DST_INFO_IDX class_var_idx = DST_INVALID_INIT;
     if (lang_cplus) { // wgen
 #ifdef KEY
-    char *linkage_name = "";	
+    const char *linkage_name = "";
     if (!gs_decl_artificial (decl) && gs_decl_name(decl) 
         && gs_decl_assembler_name_set_p(decl) 
 	&& gs_decl_assembler_name(decl) != NULL // bug 12666
        )
       linkage_name = gs_identifier_pointer(gs_decl_assembler_name (decl));
 #else
-    char *linkage_name = 	
+    const char *linkage_name =
 		gs_identifier_pointer(gs_decl_assembler_name (decl));
 #endif // KEY
 
@@ -2875,7 +2875,8 @@ DST_build(int num_copts, /* Number of options passed to fec(c) */
 {
    char         *src_path, *comp_info;
 #ifdef KEY
-   char         *cur_dir = Get_Current_Working_Directory();
+   char         *cur_dir = Preprocessor_Working_Dir ? Preprocessor_Working_Dir :
+                           Get_Current_Working_Directory();
 
    current_working_dir = current_host_dir = cwd_buffer =
                       (char *) malloc (strlen(cur_dir) + MAXHOSTNAMELEN + 10);
@@ -2944,7 +2945,8 @@ DST_build(int num_copts, /* Number of options passed to fec(c) */
    comp_info = DST_get_command_line_options(num_copts, copts);
 #else
    comp_info = (char *)malloc(sizeof(char)*100);
-   strcpy(comp_info, lang_cplus? "openCC ": "opencc ");
+   strcpy(comp_info, lang_cplus? CPP_DRIVER_NAME " ":
+                                 C_DRIVER_NAME " ");
    if (INCLUDE_STAMP)
      strcat(comp_info, INCLUDE_STAMP);
 #endif
@@ -2989,23 +2991,32 @@ UINT WGEN_Get_Filenum(const char* f)
         // We aren't really modifying f, this is just so we can
         // call legacy code.
         char* file = const_cast<char*>(f);
+        BOOL is_windows = file[1] == ':' && file[2] == '\\';
+        char sep = is_windows ? '\\' : '/';
+        const char* cur_dir = is_windows ? ".\\" : "./";
 
 	// split file into directory path and file name
 	char *dir;
-	char *file_name = drop_path(file);;
-	char * buf = (char *) alloca (strlen(file) + 1);
+	char *file_name = drop_path(file, sep);
+	UINT max_len = strlen(current_working_dir) + strlen(file) + 2;
+	char * buf = (char *) alloca (max_len);
 	if (file_name == file) {
 		// no path
 		dir = current_working_dir;
 	}
-	else if (strncmp(file, "./", 2) == 0) {
-		// current dir
-		dir = current_working_dir;
-	}
 	else {
-		// copy specified path
-		strcpy (buf, file);
-		dir = drop_path(buf);	// points inside string, after slash
+		if (file[0] == sep || is_windows) {
+			// copy specified path
+			strcpy (buf, file);
+		}
+		else {
+			// skip leading "./"
+			while (strncmp(file, cur_dir, 2) == 0) {
+				file += 2;
+			}
+			snprintf(buf, max_len, "%s%c%s", current_working_dir, sep, file);
+		}
+		dir = drop_path(buf, sep);	// points inside string, after slash
 		--dir;			// points before slash
 		*dir = '\0';		// terminate path string
 		dir = buf;

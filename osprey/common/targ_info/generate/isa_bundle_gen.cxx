@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -63,6 +67,8 @@
 #include "gen_util.h"
 #include "isa_bundle_gen.h"
 #include "bstring.h"
+#include "isa_gen_def.h"
+#include "isa_gen_targ_extra.h"
 
 #define MAX_SLOTS 3	// max # of slots the generator can handle
 #define TAG_SHIFT 12    // max # of bits required to encode all the
@@ -414,8 +420,8 @@ static void Emit_Bundle_Scheduling(FILE *hfile, FILE *cfile, FILE *efile)
 		  max_slots ? max_slots : 1,
 		  max_slots ? max_slots : 1);
 
-  fprintf(efile, "ISA_BUNDLE_info\n");
-  fprintf(cfile, "\nconst ISA_BUNDLE_INFO ISA_BUNDLE_info[] = {\n");
+  fprintf(efile, "ISA_BUNDLE_info" TI_SUFFIX "\n");
+  fprintf(cfile, "\nconst ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[] = {\n");
 
   int slot_mask_digits = ((TAG_SHIFT * max_slots) + 3) / 4;
   for (ibi = all_bundles.begin(); ibi != all_bundles.end(); ++ibi) {
@@ -469,8 +475,8 @@ static void Emit_Bundle_Scheduling(FILE *hfile, FILE *cfile, FILE *efile)
 
   fprintf(hfile,"\n#define ISA_MAX_BUNDLES %d\n",num_bundles);
 
-  fprintf (efile, "ISA_EXEC_unit_prop\n");
-  fprintf (cfile, "\nconst ISA_EXEC_UNIT_PROPERTY ISA_EXEC_unit_prop[%d] = {\n",
+  fprintf (efile, "ISA_EXEC_unit_prop" TI_SUFFIX "\n");
+  fprintf (cfile, "\nconst ISA_EXEC_UNIT_PROPERTY ISA_EXEC_unit_prop" TI_SUFFIX "[%d] = {\n",
 	  TOP_count);
 
   for (int top = 0; top < TOP_count; ++top) {
@@ -493,81 +499,81 @@ static void Emit_Bundle_Scheduling(FILE *hfile, FILE *cfile, FILE *efile)
   }
   fprintf(cfile, "};\n");
 
-  fprintf(hfile, "\nextern const ISA_EXEC_UNIT_PROPERTY ISA_EXEC_unit_prop[];\n");
+  fprintf(hfile, "\nextern const ISA_EXEC_UNIT_PROPERTY ISA_EXEC_unit_prop" TI_SUFFIX "[];\n");
   fprintf(hfile, "\n");
   for (iei = all_exec_types.begin(); iei != all_exec_types.end(); ++iei) {
     ISA_EXEC_UNIT_TYPE exec_type = *iei;
     fprintf(hfile,
-             "#define EXEC_PROPERTY_is_%s(t)\t (ISA_EXEC_unit_prop[(INT)t] & ISA_EXEC_PROPERTY_%s)\n",
+             "#define EXEC_PROPERTY_is_%s(t)\t (ISA_EXEC_unit_prop" TI_SUFFIX "[(INT)t] & ISA_EXEC_PROPERTY_%s)\n",
              exec_type->name, exec_type->name);
   }
 
   fprintf (hfile, "\ninline ISA_EXEC_UNIT_PROPERTY "
                    "ISA_EXEC_Unit_Prop(TOP topcode)\n"
                  "{\n"
-                 "  return ISA_EXEC_unit_prop[(INT)topcode];\n"
+                 "  return ISA_EXEC_unit_prop" TI_SUFFIX "[(INT)topcode];\n"
                  "}\n");
 		   
   fprintf (hfile, "\ninline ISA_BUNDLE_INFO "
                    "ISA_EXEC_Bundle_Info(INT index)\n"
                  "{\n"
-		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info[];\n"
-                 "  return ISA_BUNDLE_info[index];\n"
+		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[];\n"
+                 "  return ISA_BUNDLE_info" TI_SUFFIX "[index];\n"
                  "}\n");
 		   
   fprintf (hfile, "\ninline ISA_EXEC_UNIT_PROPERTY "
                    "ISA_EXEC_Slot_Prop(INT bundle, INT slot_index)\n"
                  "{\n"
-		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info[];\n"
-		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info + bundle;\n"
+		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[];\n"
+		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info" TI_SUFFIX " + bundle;\n"
                  "  return info->slot[slot_index];\n"
                  "}\n");
 
   fprintf (hfile, "\ninline UINT64 "
                    "ISA_EXEC_Slot_Mask(INT bundle)\n"
                  "{\n"
-		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info[];\n"
-		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info + bundle;\n"
+		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[];\n"
+		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info" TI_SUFFIX " + bundle;\n"
                  "  return info->slot_mask;\n"
                  "}\n");
 
   fprintf (hfile, "\ninline BOOL "
                    "ISA_EXEC_Stop(INT bundle, INT slot_index)\n"
                  "{\n"
-		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info[];\n"
-		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info + bundle;\n"
+		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[];\n"
+		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info" TI_SUFFIX " + bundle;\n"
                  "  return info->stop[slot_index];\n"
                  "}\n");
 
   fprintf (hfile, "\ninline ISA_EXEC_UNIT "
                    "ISA_EXEC_Unit(INT bundle, INT slot_index)\n"
                  "{\n"
-		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info[];\n"
-		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info + bundle;\n"
+		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[];\n"
+		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info" TI_SUFFIX " + bundle;\n"
                  "  return (ISA_EXEC_UNIT)info->unit[slot_index];\n"
                  "}\n");
 
   fprintf (hfile, "\ninline UINT32 "
                    "ISA_EXEC_Stop_Mask(INT bundle)\n"
                  "{\n"
-		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info[];\n"
-		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info + bundle;\n"
+		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[];\n"
+		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info" TI_SUFFIX " + bundle;\n"
                  "  return info->stop_mask;\n"
                  "}\n");
 
   fprintf (hfile, "\ninline const char * "
                    "ISA_EXEC_Name(INT bundle)\n"
                  "{\n"
-		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info[];\n"
-		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info + bundle;\n"
+		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[];\n"
+		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info" TI_SUFFIX " + bundle;\n"
                  "  return info->name;\n"
                  "}\n");
 
   fprintf (hfile, "\ninline const char * "
                    "ISA_EXEC_AsmName(INT bundle)\n"
                  "{\n"
-		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info[];\n"
-		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info + bundle;\n"
+		 "  extern const ISA_BUNDLE_INFO ISA_BUNDLE_info" TI_SUFFIX "[];\n"
+		 "  const ISA_BUNDLE_INFO *info = ISA_BUNDLE_info" TI_SUFFIX " + bundle;\n"
                  "  return info->asm_name;\n"
                  "}\n");
 }
@@ -808,9 +814,9 @@ static void Emit_Bundle_Packing(FILE *hfile, FILE *cfile, FILE *efile)
 		"  UINT64 mask;\n" 
 		"} ISA_BUNDLE_PACK_INFO;\n");
 
-  fprintf(efile, "ISA_BUNDLE_pack_info\n");
+  fprintf(efile, "ISA_BUNDLE_pack_info" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst ISA_BUNDLE_PACK_INFO ISA_BUNDLE_pack_info[] = {\n");
+  fprintf(cfile, "\nconst ISA_BUNDLE_PACK_INFO ISA_BUNDLE_pack_info" TI_SUFFIX "[] = {\n");
   pack_index = 0;
   if (bundle_pack_info->ftemplate.width != 0) {
     Emit_Pack_Component(cfile,
@@ -837,8 +843,8 @@ static void Emit_Bundle_Packing(FILE *hfile, FILE *cfile, FILE *efile)
 
   fprintf(hfile, "\ninline const ISA_BUNDLE_PACK_INFO *ISA_BUNDLE_Pack_Info(void)\n"
 		 "{\n"
-		 "  extern const ISA_BUNDLE_PACK_INFO ISA_BUNDLE_pack_info[];\n"
-		 "  return ISA_BUNDLE_pack_info;\n"
+		 "  extern const ISA_BUNDLE_PACK_INFO ISA_BUNDLE_pack_info" TI_SUFFIX "[];\n"
+		 "  return ISA_BUNDLE_pack_info" TI_SUFFIX ";\n"
 		 "}\n");
 
   fprintf(hfile, "\ninline INT ISA_BUNDLE_PACK_INFO_Comp(const ISA_BUNDLE_PACK_INFO *info)\n"
@@ -866,9 +872,9 @@ static void Emit_Bundle_Packing(FILE *hfile, FILE *cfile, FILE *efile)
 		 "  return info->mask;\n"
 		 "}\n");
 
-  fprintf(efile, "ISA_BUNDLE_pack_info_index\n");
+  fprintf(efile, "ISA_BUNDLE_pack_info_index" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst mUINT8 ISA_BUNDLE_pack_info_index[%d] = {\n",
+  fprintf(cfile, "\nconst mUINT8 ISA_BUNDLE_pack_info_index" TI_SUFFIX "[%d] = {\n",
 		 MAX_PACK_COMPS);
   for (i = 0; i < MAX_PACK_COMPS; ++i) {
     int index = first_comps[i];
@@ -879,8 +885,8 @@ static void Emit_Bundle_Packing(FILE *hfile, FILE *cfile, FILE *efile)
 
   fprintf(hfile, "\ninline INT ISA_BUNDLE_Pack_Info_Index(ISA_BUNDLE_PACK_COMP comp)\n"
 		 "{\n"
-		 "  extern const mUINT8 ISA_BUNDLE_pack_info_index[%d];\n"
-		 "  return ISA_BUNDLE_pack_info_index[(INT)comp];\n"
+		 "  extern const mUINT8 ISA_BUNDLE_pack_info_index" TI_SUFFIX "[%d];\n"
+		 "  return ISA_BUNDLE_pack_info_index" TI_SUFFIX "[(INT)comp];\n"
 		 "}\n",
 		 MAX_PACK_COMPS);
 }

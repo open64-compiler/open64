@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 #
@@ -149,6 +153,7 @@ HFILES	= \
 	resource.h \
 	mstack.h \
 	tracing.h \
+	report.h \
 	util.h \
 	vcg.h\
 	vstring.h

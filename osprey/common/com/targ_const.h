@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -355,6 +359,7 @@ extern TCON Host_To_Targ ( TYPE_ID ctype, INT64 ivalue );
 /* Convert host floating point value to a TCON of given type: */
 extern TCON Host_To_Targ_Float ( TYPE_ID ctype, double fvalue );
 extern TCON Host_To_Targ_Float_10 ( TYPE_ID ctype, long double fvalue );
+extern TCON Host_To_Targ_Float_10_I4 ( TYPE_ID ctype, INT32 v0, INT32 v1, INT32 v2 );
 extern TCON Host_To_Targ_Float_4 ( TYPE_ID ctype, float fvalue );
 extern TCON Host_To_Targ_Quad  ( QUAD_TYPE fvalue );
 #ifdef KEY

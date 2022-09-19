@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -65,6 +69,7 @@ extern string_list_t *get_library_dirs (void);
 
 /* append objects to end of list */
 extern void append_objects_to_list (string_list_t *list);
+extern void append_objects_to_xfa_list (string_list_t *list);
 extern void append_libraries_to_list (string_list_t *list);
 extern void append_cxx_prelinker_objects_to_list (string_list_t *list);
 extern void append_ar_objects_to_list (string_list_t *list);
@@ -89,3 +94,10 @@ extern char *find_crt_path (char *crtname);
 boolean is_maybe_linker_option (int flag);
 void add_maybe_linker_option (int flag);
 void finalize_maybe_linker_options (boolean is_linker);
+
+/* add library to list */
+extern void add_udr_dir (char *path);
+
+/* get list of library dirs */
+extern string_list_t *get_udr_dirs (void);
+

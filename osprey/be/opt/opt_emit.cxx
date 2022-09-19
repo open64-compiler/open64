@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -109,6 +113,7 @@ static char *rcs_id = 	opt_emit_CXX"$Revision: 1.13 $";
 #include "opt_emit_template.h"
 #include "wssa_emitter.h"  // WSSA emitter
 #include "pu_info.h"
+#include "config_vsa.h"
 
 #if defined(TARG_NVISA)
 // To get better loop depth comments in the ptx file
@@ -132,9 +137,9 @@ STMT_LIST::Gen_wn(STMT_CONTAINER *stmt_container, EMITTER *emitter)
 }
 
 inline WN*
-CODEREP::Gen_wn(EMITTER *emitter)
+CODEREP::Gen_wn(EMITTER *emitter, STMTREP *stmt)
 {
-  WN *wn = Gen_exp_wn(this, emitter);
+  WN *wn = Gen_exp_wn(stmt, this, emitter);
   if (Kind() == CK_VAR || 
       (Kind() == CK_IVAR && Opr() == OPR_PARM))
     emitter->Connect_cr_wn(this, wn);
@@ -241,6 +246,10 @@ Create_block_stmt(BB_NODE *ff, BB_NODE *ll)
 static WN*
 Create_block(EMITTER *emitter, BB_NODE *ff, BB_NODE *ll)
 {
+
+  if (Run_vsaopt && VSA_Emit_Whirl == FALSE)  // bypass emitter when VSA is ON
+    return WN_CreateBlock();
+
   emitter->Gen_wn(ff, ll);
   return Create_block_stmt( ff, ll);
 }
@@ -395,7 +404,7 @@ Raise_if_stmt(EMITTER *emitter, BB_NODE **bb)
   // pull out the test from the falsebr statement, which is the only
   // one statement in bb_cond
   WN *rwn = WN_CreateIf(WN_kid0(bb_cond->Laststmt()), block_then, block_else);
-  WN_Set_Linenum(rwn, bb_cond->Linenum());
+  WN_Set_Linenum(rwn, WN_Get_Linenum(bb_cond->Laststmt()));
   if (emitter->Cfg()->Feedback()) {
     emitter->Cfg()->Feedback()->Emit_feedback( rwn, bb_cond );
   }
@@ -412,6 +421,7 @@ Raise_if_stmt(EMITTER *emitter, BB_NODE **bb)
   // if bb_cond has more than one statement, create a BLOCK ...
   if (bb_cond->Firststmt() != bb_cond->Laststmt()) {
     WN *block = WN_CreateBlock();
+    WN_Set_Linenum(block, bb_cond->Linenum());
     STMT_CONTAINER stmtcon(bb_cond->Firststmt(), bb_cond->Laststmt());
     stmtcon.Remove(bb_cond->Laststmt());
     stmtcon.Append(rwn);
@@ -557,7 +567,7 @@ Build_new_loop_info( WN *do_loop, WN *old_info )
     Is_True( WN_opcode(induction) == OPC_IDNAME,
       ("Build_new_loop_info: bad induction var: %s",
 	OPCODE_name(WN_opcode(induction))) );
-    induction = WN_COPY_Tree_With_Map(induction);
+    induction = WN_copy_tree_with_map(induction);
   }
   trip_count= WN_LOOP_TripCount( do_loop );
 
@@ -1522,14 +1532,32 @@ EMITTER::Gen_wn(BB_NODE *first_bb, BB_NODE *last_bb)
 	    if (bb != last_bb && bb->Succ() && !bb->Succ()->Multiple_bbs() &&
 		bb->Succ()->Node() == bb->Next()) { 
 	      // only 1 successor: delete this BB
+
 	      // fix up predecessor list of successor
 	      BB_LIST *pred = bb->Next()->Pred();
 	      while (pred->Node() != bb)
 		pred = pred->Next();
 	      pred->Set_node(prev_bb);
-
 	      // fix up successor list of predecessor
 	      prev_bb->Succ()->Set_node(bb->Next());
+
+	      // fix up Ipdom and Dom_bbs of it's Idom
+	      BB_NODE *idom = bb->Idom();
+	      idom->Set_ipdom(bb->Ipdom());
+	      BB_LIST *dom_bb = idom->Dom_bbs();
+	      while (dom_bb->Node() != bb)
+		dom_bb = dom_bb->Next();
+	      dom_bb->Set_node(bb->Ipdom());
+	      // fix up Idom and Pdom_bbs of it's Ipdom
+	      BB_NODE *ipdom = bb->Ipdom();
+	      ipdom->Set_idom(bb->Idom());
+	      BB_LIST *pdom_bb = ipdom->Pdom_bbs();
+	      while (pdom_bb->Node() != bb)
+		pdom_bb = pdom_bb->Next();
+	      pdom_bb->Set_node(bb->Idom());
+	      // remove bb from the prev-next link
+	      prev_bb->Set_next(bb->Next());
+	      bb->Next()->Set_prev(prev_bb);
 
 	      bb = bb->Next(); // delete this BB
 	      break;
@@ -1619,6 +1647,13 @@ EMITTER::Emit(COMP_UNIT *cu, DU_MANAGER *du_mgr,
   
   // generate all of the Whirl
   Raise_func_entry(Cfg()->Func_entry_bb(), Cfg()->Last_bb());
+  if (_trace)  {
+    fprintf( TFile, "%sDuring EMITTER\n%s", DBar, DBar );
+    _cfg->Print(TFile);
+  }
+
+  if (Run_vsaopt && VSA_Emit_Whirl == FALSE)  // bypass use-def when VSA is ON
+    return _opt_func;
 
   if (OPT_Enable_WHIRL_SSA) {
     _wssa_emitter->WSSA_Build_MU_CHI_Version(_opt_func);
@@ -1686,6 +1721,7 @@ EMITTER::Emit(COMP_UNIT *cu, DU_MANAGER *du_mgr,
       fdump_tree( TFile, _opt_func);
     }
     else fdump_tree_with_freq( TFile, _opt_func, WN_MAP_FEEDBACK);
+    _cfg->Print(TFile);
   }
 
   return _opt_func;

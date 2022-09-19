@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2005-2007 NVIDIA Corporation.  All rights reserved.
  */
 
@@ -168,6 +172,9 @@ static char *erbe_rcs_id = "$Source: /home/bos/bk/kpro64-pending/be/com/SCCS/s.e
 #define EC_LAY_section_name	EC_BASE_BE+127
 
 /* Miscellaneous */
+/* VSA_F, VSA_C, VSA_O or combination of VSA_FCO where FCO stands for */
+/* flow, context and object sensitivity */
+/* Absence of any of FCO means insensitive */
 #define EC_Skip_PU		EC_BASE_BE+130	/* str, int, str */
 #define EC_Uninitialized	EC_BASE_BE+131  /* str, str */
 
@@ -194,7 +201,37 @@ static char *erbe_rcs_id = "$Source: /home/bos/bk/kpro64-pending/be/com/SCCS/s.e
 #endif /* TARG_NVISA */
 
 #define EC_Invalid_Asm_Constrain EC_BASE_BE+156 /* str */
-
+/* VSA_F, VSA_C, VSA_O or combination of VSA_FCO where FCO stands for */
+/* flow, context and object sensitivity */
+/* Absence of any of FCO means insensitive */
+#define EC_VSA_Uninitialized       EC_BASE_BE+160  /* str, str, str */
+#define EC_VSA_Uninit_param        EC_BASE_BE+161  /* str, str, str */
+#define EC_VSA_Maybe_uninitialized EC_BASE_BE+162  /* str, str, str, str */
+#define EC_VSA_Mult_free           EC_BASE_BE+163  /* str, str, str, str */
+#define EC_VSA_Free_without_alloc  EC_BASE_BE+164  /* str, str, str */
+#define EC_VSA_F_Redundant_free    EC_BASE_BE+165  /* str, str, str */
+#define EC_VSA_F_Free_alloc        EC_BASE_BE+166  /* str, str, str */
+#define EC_VSA_Nullptr_deref       EC_BASE_BE+167  /* str, str, str */
+#define EC_VSA_Nullptr_may_deref   EC_BASE_BE+168  /* str, str, str */
+#define EC_VSA_Array_oob           EC_BASE_BE+169  /* str, str, str */
+#define EC_VSA_Array_may_oob       EC_BASE_BE+170  /* str, str, str */
+#define EC_VSA_Missing_free        EC_BASE_BE+171  /* str, str, str */
+#define EC_VSA_may_Missing_free    EC_BASE_BE+172  /* str, str, str */
+#define EC_VSA_Use_after_free      EC_BASE_BE+173  /* str, str, str */
+#define EC_VSA_DSE_S               EC_BASE_BE+174  /* str, str, str */
+#define EC_VSA_DSE_C               EC_BASE_BE+175  /* str, str, str */
+#define EC_VSA_RAL                 EC_BASE_BE+176  /* str, str, str */
+#define EC_VSA_Npd_noname_deref    EC_BASE_BE+177  /* str, str, str */
+#define EC_VSA_Div_by_zero         EC_BASE_BE+178  /* str, str, str */
+#define EC_VSA_Div_may_by_zero     EC_BASE_BE+179  /* str, str, str */
+#define EC_VSA_Div_by_zero_noname  EC_BASE_BE+180  /* str, str, str */
+#define EC_VSA_Rbc_violation       EC_BASE_BE+181  /* str, str, str */
+#define EC_VSA_Rbc_may_violation   EC_BASE_BE+182  /* str, str, str */
+#define EC_VSA_Sml_violation       EC_BASE_BE+183  /* str, str, str */
+  
+#define EC_RVSA_def_var            EC_BASE_BE+200  /* str, str, str */
+#define VSA_FMT                    "%s,[%s],[%s],%s"
+#define VSA_FMT1                   "%s,[%s],[%s]"
 #ifdef __cplusplus
 }
 #endif

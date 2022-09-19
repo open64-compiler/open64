@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  *  Copyright (C) 2007. QLogic Corporation. All Rights Reserved.
  */
 
@@ -494,7 +498,9 @@ static char *model_rcs_id = "$Source: ../../be/lno/SCCS/s.model.h $ $Revision: 1
 #ifdef TARG_X8664
 #define	Target_INTRs	16
 #endif
-
+#ifdef TARG_UWASM
+#define Target_INTRs	1024
+#endif
 typedef HASH_TABLE<WN*,INT> WN2INT;
 
 // full declarations are in "ti_res_count.h"

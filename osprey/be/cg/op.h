@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -750,7 +754,7 @@ extern BOOL OP_use_return_value(OP*);
 #define OP_likely(o)		(TOP_is_likely(OP_code(o)))
 #endif
 #define OP_call(o)		(TOP_is_call(OP_code(o)))
-#if defined(TARG_X8664) || defined(TARG_SL) || defined(TARG_NVISA) || defined(TARG_MIPS) || defined(TARG_PPC32) || defined(TARG_LOONGSON)
+#if defined(TARG_X8664) || defined(TARG_SL) || defined(TARG_NVISA) || defined(TARG_MIPS) || defined(TARG_PPC32) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
 #define OP_xfer(o)		(TOP_is_xfer(OP_code(o)))
 #endif
 #define OP_cond(o)		(TOP_is_cond(OP_code(o)))
