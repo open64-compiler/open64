@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -151,10 +155,15 @@ static BOOL     fold_trace;
 
 static CODEREP * CR_CreateFPconst(TCON tc);
 
-void
+CODEMAP*
 Initialize_CR_simp(CODEMAP *htable)
 {
-  fold_htable = htable;
+  if (fold_htable != htable) {
+    CODEMAP* old_htable = fold_htable;
+    fold_htable = htable;
+    return old_htable;
+  }
+  return NULL;
 }
 
 // entry point for single level constant folder

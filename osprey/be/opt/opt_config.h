@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 // ====================================================================
 // ====================================================================
@@ -108,6 +112,7 @@ enum { CODE_ITABLE_SIZE = 1619 };	/* should be prime */
 enum { EMITTER_COLOR_TAB_SIZE = 10 };
 enum { RVI_CTAB_SIZE = 521 };		/* should be prime */
 enum { LFTR_HASH_SIZE = 50 };		
+enum { DELETED_ST_HTABLE_SIZE = 31 };   /* should be prime */
 
 #endif  /* opt_config_INCLUDED */
 

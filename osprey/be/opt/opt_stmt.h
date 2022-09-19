@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 // ====================================================================
 // ====================================================================
@@ -74,7 +78,7 @@ class STMT_CONTAINER;
 class STMTREP;
 class EMITTER;
 class DU_MANAGER;
-
+class DNA_NODE;
 
 // ====================================================================
 
@@ -82,6 +86,7 @@ class DU_MANAGER;
 class STMT_LIST : public CHAIN {
   DECLARE_CHAIN_CLASS( STMT_LIST, STMTREP )
 public:
+  void     Print(FILE *fp, DNA_NODE *dna) const;         // print out the STMT_LIST
   void     Print(FILE *fp = stderr) const;         // print out the STMT_LIST
   void     Gen_wn(STMT_CONTAINER *, EMITTER *);    // WN list from STMT_LIST
 };

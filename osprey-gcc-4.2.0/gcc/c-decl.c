@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2007. QLogic Corporation. All Rights Reserved.
  */
 
@@ -524,6 +528,15 @@ bind (tree name, tree decl, struct c_scope *scope, bool invisible, bool nested)
     case PARM_DECL:
     case ERROR_MARK:     here = &I_SYMBOL_BINDING (name);  break;
 
+    /* IAR extension, allow COMPONENT_REF bind to symbol */
+    case COMPONENT_REF:
+      if (flag_iar_compat)
+        {
+          here = &I_SYMBOL_BINDING (name);
+          break;
+        }
+      /* fail through */
+
     default:
       gcc_unreachable ();
     }
@@ -866,6 +879,14 @@ pop_scope (void)
 		TREE_TYPE (b->shadowed->decl) = b->shadowed->type;
 	    }
 	  break;
+
+        case COMPONENT_REF:
+          /* IAR extensions for anonymous union */
+          if (flag_iar_compat)
+            {
+              break;
+            }
+          /* fall through */
 
 	default:
 	  gcc_unreachable ();
@@ -1286,12 +1307,20 @@ diagnose_mismatched_decls (tree newdecl, tree olddecl,
      header.  (Conflicting redeclarations were handled above.)  */
   if (TREE_CODE (newdecl) == TYPE_DECL)
     {
-      if (DECL_IN_SYSTEM_HEADER (newdecl) || DECL_IN_SYSTEM_HEADER (olddecl))
+      if (DECL_IN_SYSTEM_HEADER (newdecl) ||
+          DECL_IN_SYSTEM_HEADER (olddecl) ||
+          TREE_NO_WARNING(newdecl) ||
+          TREE_NO_WARNING(olddecl))
 	return true;  /* Allow OLDDECL to continue in use.  */
 
-      error ("redefinition of typedef %q+D", newdecl);
-      locate_old_decl (olddecl, error);
-      return false;
+      if (variably_modified_type_p (newtype, NULL))
+        {
+          error ("redefinition of typedef %q+D", newdecl);
+          locate_old_decl (olddecl, error);
+          return false;
+        }
+
+      return true;
     }
 
   /* Function declarations can either be 'static' or 'extern' (no
@@ -3164,6 +3193,7 @@ start_decl (struct c_declarator *declarator, struct c_declspecs *declspecs,
 {
   tree decl;
   tree tem;
+  struct c_scope *saved_scope;
 
   /* An object declared as __attribute__((deprecated)) suppresses
      warnings of uses of other deprecated items.  */
@@ -3303,9 +3333,21 @@ start_decl (struct c_declarator *declarator, struct c_declspecs *declspecs,
     warning (OPT_Wattributes, "inline function %q+D given attribute noinline",
 	     decl);
 
+  /* IAR allows static function declared in function scope,
+     promote it to file scope */
+  saved_scope = current_scope;
+  if (flag_iar_compat
+      && TREE_CODE (decl) == FUNCTION_DECL
+      && declspecs->storage_class == csc_static)
+    current_scope = file_scope;
+
   /* Add this decl to the current scope.
      TEM may equal DECL or it may be a previous decl of the same name.  */
   tem = pushdecl (decl);
+
+  /* restore scope for IAR */
+  if (current_scope != saved_scope)
+    current_scope = saved_scope;
 
   if (initialized && DECL_EXTERNAL (tem))
     {
@@ -4726,7 +4768,9 @@ grokdeclarator (const struct c_declarator *declarator,
 		if (pedantic)
 		  pedwarn ("invalid storage class for function %qs", name);
 	      }
-	    else if (storage_class == csc_static)
+            /* IAR and KEIL allows static function declated in function scope */
+	    else if ((!flag_iar_compat && !flag_keil_compat)
+                     && storage_class == csc_static)
 	      {
 		error ("invalid storage class for function %qs", name);
 		if (funcdef_flag)
@@ -5791,7 +5835,12 @@ finish_enum (tree enumtype, tree values, tree attributes)
      as one of the integral types - the narrowest one that fits, except
      that normally we only go as narrow as int - and signed iff any of
      the values are negative.  */
-  unsign = (tree_int_cst_sgn (minnode) >= 0);
+
+  /* IAR prefer signed type than unsigned type */
+  if (flag_iar_compat)
+    unsign = 0;
+  else
+    unsign = (tree_int_cst_sgn (minnode) >= 0);
   precision = MAX (min_precision (minnode, unsign),
 		   min_precision (maxnode, unsign));
 
@@ -7213,6 +7262,7 @@ build_null_declspecs (void)
   ret->const_p = false;
   ret->volatile_p = false;
   ret->restrict_p = false;
+  ret->asm_p = false;
   return ret;
 }
 
@@ -7508,6 +7558,9 @@ declspecs_add_type (struct c_declspecs *specs, struct c_typespec spec)
 	    case RID_INT:
 	      specs->typespec_word = cts_int;
 	      return specs;
+	    case RID_INT64:
+	      specs->typespec_word = cts_int64;
+	      return specs;
 	    case RID_FLOAT:
 	      if (specs->long_p)
 		error ("both %<long%> and %<float%> in "
@@ -7524,6 +7577,8 @@ declspecs_add_type (struct c_declspecs *specs, struct c_typespec spec)
 	      else
 		specs->typespec_word = cts_float;
 	      return specs;
+            case RID_FLOAT128:
+              specs->long_p = 1;  // treat float128 as `long double'
 	    case RID_DOUBLE:
 	      if (specs->long_long_p)
 		error ("both %<long long%> and %<double%> in "
@@ -7858,6 +7913,16 @@ finish_declspecs (struct c_declspecs *specs)
 	  specs->type = build_complex_type (specs->type);
 	}
       break;
+    case cts_int64:
+      if (specs->complex_p)
+        {
+          error ("Unsupported complex int64 types");
+        }
+      /* KEIL __int64 */
+      specs->type = (specs->unsigned_p
+                     ? unsigned_intDI_type_node
+                     : intDI_type_node);
+      break;
     case cts_float:
       gcc_assert (!specs->long_p && !specs->short_p
 		  && !specs->signed_p && !specs->unsigned_p);
@@ -7931,6 +7996,28 @@ finish_declspecs (struct c_declspecs *specs)
     }
 
   return specs;
+}
+
+/* Bind each field in anonymous union into current scope.
+   This is for IAR extension like
+   union {
+     int a;
+     int b;
+   };
+   a = b = 1;
+   needs create decl for anonymous in current scope and bind `a`
+   and `b' with component_ref */
+
+void
+iar_bind_anonymous_union(tree decl, tree type)
+{
+  tree memb, name, ref;
+  for (memb = TYPE_FIELDS (type); memb; memb = TREE_CHAIN (memb))
+    {
+      name = DECL_NAME (memb);
+      ref = build_component_ref(decl, name);
+      bind (name, ref, current_scope, false, false);
+    }
 }
 
 /* Synthesize a function which calls all the global ctors or global

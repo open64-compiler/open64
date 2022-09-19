@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -86,6 +90,8 @@
 #include "w2op.h"
 
 BOOL Trace_Exp = FALSE;	/* General code expansion trace */
+
+extern void region_stack_eh_set_has_call();		//lsj
 
 #ifdef TARG_NVISA
 // fp ops are same as int ops
@@ -237,6 +243,10 @@ Expand_OP (OPCODE opcode, TN *result, TN *op1, TN *op2, TN *op3, VARIANT variant
 #else
 	Expand_Rem (result, op1, op2, rtype, ops);
 #endif
+	// lsj
+	if(Current_pu->src_lang == PU_JAVA_LANG) {
+		region_stack_eh_set_has_call();
+	}
 	break;
   case OPR_MOD:
 	if (MTYPE_is_signed(rtype))
@@ -252,12 +262,20 @@ Expand_OP (OPCODE opcode, TN *result, TN *op1, TN *op2, TN *op3, VARIANT variant
 #else
 	Expand_Rem (result, op1, op2, rtype, ops);
 #endif
+	// lsj
+	if(Current_pu->src_lang == PU_JAVA_LANG) {
+		region_stack_eh_set_has_call();
+	}
 	break;
   case OPR_DIV:
 	if (MTYPE_is_float(rtype))
 		Expand_Flop (opcode, result, op1, op2, op3, ops);
 	else
 		Expand_Divide (result, op1, op2, rtype, ops);
+	// lsj
+	if(Current_pu->src_lang == PU_JAVA_LANG) {
+		region_stack_eh_set_has_call();
+	}
 	break;
   case OPR_DIVREM:
 #if defined(TARG_IA64) || defined(TARG_LOONGSON)
@@ -343,6 +361,9 @@ Expand_OP (OPCODE opcode, TN *result, TN *op1, TN *op2, TN *op3, VARIANT variant
 	break;
   case OPR_CVT:
 	Is_True(rtype != MTYPE_B, ("conversion to bool unsupported"));
+#ifdef TARG_UWASM
+	Expand_Convert(result, rtype, op1, desc, ops);
+#else
 	if (MTYPE_is_float(rtype) && MTYPE_is_float(desc)) {
 #if defined(TARG_X8664) || defined(TARG_SL) || defined(TARG_MIPS) || defined(TARG_PPC32) || defined(TARG_LOONGSON)
 		Expand_Float_To_Float (result, op1, rtype, desc, ops);
@@ -398,6 +419,7 @@ Expand_OP (OPCODE opcode, TN *result, TN *op1, TN *op2, TN *op3, VARIANT variant
 #endif
 #endif // TARG_NVISA TARG_PPC32
 	}
+#endif // TARG_UWASM
 	break;
 #ifdef TARG_X8664
   case OPR_TAS:
@@ -504,7 +526,13 @@ Expand_OP (OPCODE opcode, TN *result, TN *op1, TN *op2, TN *op3, VARIANT variant
 		("Expand_OP:  unexpected SECONDPART opcode %s", OPCODE_name(opcode)));
 	Expand_Secondpart(opcode, result, op1, ops);
 	break;
+  case OPR_ASSERT:
+        Expand_Checkptr(op1, Gen_Literal_TN(0,4), Gen_Literal_TN(0,4), ops);
+        break;
+
 #endif
+  case OPR_COMMENT:
+  break;
   default:
 	FmtAssert(FALSE, 
 		("Expand_OP:  unexpected opcode %s", OPCODE_name(opcode)));

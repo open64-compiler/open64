@@ -137,6 +137,9 @@ bool Long_Long_Support = FALSE;
 bool Float_Point_Support = FALSE;
 #endif
 
+/* True if work for mastiff */
+bool for_mastiff = FALSE;
+
 /* Nonzero to dump debug info whilst parsing (-dy option).  */
 static int set_yydebug;
 

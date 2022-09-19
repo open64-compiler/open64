@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1815,6 +1819,11 @@ do_inline (IPA_EDGE *ed, IPA_NODE *caller,
 	    }
 	}
     }
+    else if(ST_is_native(callee->Func_ST()) && !ST_is_native(caller->Func_ST())) {
+	reason = "callee is native";
+	ed->Set_reason_id(41);
+	result = FALSE;
+    }
 
     if ( result == FALSE ) {
 	Report_Reason ( callee, caller, reason , ed);
@@ -2457,7 +2466,7 @@ Inline_Analyzer::inline_calls_in_caller
 }
 
 static
-char *reason(IPA_EDGE *edge)
+const char *reason(IPA_EDGE *edge)
 { 
   INT32 reason_id = edge->reason_id();
   switch (reason_id)

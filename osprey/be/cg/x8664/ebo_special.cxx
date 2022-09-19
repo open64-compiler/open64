@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -6495,7 +6499,7 @@ static bool remove_cands_from_sib_gen_and_correlate(
     clear_all = true;
   } else if (clear_all == false) {
     if (EBO_Trace_Optimization) {
-      printf("reclaim regs=%d: num base regs = %d, idx = %d, improved = %d\n",
+      printf("reclaim regs=%d: num base regs = %ld, idx = %d, improved = %d\n",
              num_regs, counted_base_regs.size(), 
              max_pattern, num_ranges_mitigated);
     }

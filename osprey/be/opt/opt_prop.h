@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 // ====================================================================
 // ====================================================================
@@ -101,7 +105,7 @@ private:
 			       AUX_ID propagating_var, BOOL icopy_phase,
 			       BOOL inside_cse, INT32 *height,INT32*weight,
 			       BOOL in_array, BB_NODE *curbb );
-  CODEREP *Copy_propagate_cr(CODEREP *x, BB_NODE *curbb, 
+  CODEREP *Copy_propagate_cr(CODEREP *x, STMTREP *stmt, BB_NODE *curbb, 
 			     BOOL inside_cse, BOOL in_array, BOOL no_complex_preg = FALSE);
   void     Copy_propagate_stmt(STMTREP *stmt, BB_NODE *bb); 
   BOOL	   Var_has_as_value_on_the_other_path(CODEREP *var, CODEREP *value,
@@ -110,8 +114,8 @@ private:
 				  CODEREP *phi_simp_var,
 				  PROP_THRU_PHI_PREFERENCE *pref);
   CODEREP *Rehash_thru_phis(CODEREP *cr, BB_NODE *bb);
-  CODEREP *Strictly_identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb);
-  CODEREP *Identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb);
+  CODEREP *Strictly_identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb, SRCPOS &pos);
+  CODEREP *Identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb, SRCPOS &pos);
   INT32 Invertible_occurrences(CODEREP *var, CODEREP *cr);
   BOOL Is_function_of_itself(STMTREP *stmt, OPT_STAB *sym);
   BOOL Is_function_of_cur(CODEREP *var, CODEREP *cur_var);
@@ -121,6 +125,9 @@ private:
   CODEREP *Get_node_rehashed_to(CODEREP *x);
   CODEREP *Prop_const_init_scalar(CODEREP *x, AUX_ID var_aux_id);
   void     Fix_identity_assignment(STMTREP *);
+  static CODEREP *Prop_identity_assignment(CODEREP *cr);
+  static BOOL     Contains_only_the_var(AUX_ID id, CODEREP *cr);
+  static void     Vsa_annotate_srcr(CODEREP* old_cr, STMTREP* stmt, CODEREP* new_cr, OPT_STAB* stab);
 
 public:
   COPYPROP( CODEMAP *htable, OPT_STAB *opt_stab, CFG *cfg, MEM_POOL *lpool):
@@ -133,7 +140,7 @@ public:
 		    _rehashed_to_vec.Free_array(); }
 
   void      Unvisit_nodes(void);
-  CODEREP *Prop_var(CODEREP *x, BB_NODE *curbb, BOOL icopy_phase, 
+  CODEREP *Prop_var(CODEREP *x, STMTREP *curstmt, BB_NODE *curbb, BOOL icopy_phase, 
 		    BOOL inside_cse, BOOL in_array, BOOL no_complex_preg = FALSE);
   CODEREP *Prop_ivar(CODEREP *x, BB_NODE *curbb, BOOL icopy_phase, 
 		     BOOL inside_cse, BOOL in_array, BOOL no_complex_preg = FALSE);

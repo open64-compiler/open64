@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -348,6 +352,17 @@ WN_intrinsic_return_ty(OPCODE wn_opc, INTRINSIC intr_opc, const WN *call)
    case IRETURN_PPI4:
      ret_ty = Stab_Pointer_To(Stab_Pointer_To(Stab_Mtype_To_Ty(MTYPE_I4)));
      break;
+#if defined(DYNAMICLANG) && !defined(IRETURN_DYNANY)
+   case IRETURN_DYNANY:
+     ret_ty = Stab_Mtype_To_Ty(MTYPE_DYNANY);
+     break;
+   case IRETURN_DYNOBJ:
+     ret_ty = Stab_Mtype_To_Ty(MTYPE_DYNOBJ);
+     break;
+   case IRETURN_DYNSTR:
+     ret_ty = Stab_Mtype_To_Ty(MTYPE_DYNSTR);
+     break;
+#endif
    default:
       Is_True(FALSE, 
 	      ("Unexpected INTRN_RETKIND in WN_intrinsic_return_ty()"));

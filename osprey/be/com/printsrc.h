@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -64,7 +68,32 @@ extern "C" {
 static const char rcs_id[] = "$Source: /scratch/mee/2.4-65/kpro64-pending/be/com/SCCS/s.printsrc.h $ $Revision: 1.2 $";
 #endif /* _KEEP_RCS_ID */
 
+struct file_info;
+struct FILE_INFO_CONTEXT {
+  struct file_info *_file_table;
+  INT               _file_info_count;
+  char            **_incl_table;
+  INT               _cur_file_index;
+  BOOL              _initialized;
+};
+
+extern void Set_file_info_context(const FILE_INFO_CONTEXT* ctx);
+
 extern void Print_Src_Line(SRCPOS srcpos, FILE *f);
+extern void Get_Local_Srcpos_Filename(SRCPOS spos, const char **fname, const char **dirname);
+extern void Get_Srcpos_Filename(SRCPOS spos, const char **fname, const char **dirname);
+
+extern const char* Get_Local_File_Full_Path(INT filenum, char* buf, INT buf_len);
+extern const char* Get_Local_File_Name(INT filenum, char* buf, INT buf_len);
+extern INT Get_Local_File_Count();
+
+extern INT Get_Global_File_Number(INT file_index, INT filenum);
+extern const char* Get_Global_File_Full_Path(INT id, char* buf, INT buf_len);
+extern const char* Get_Global_File_Name(INT id, char* buf, INT buf_len);
+extern INT Get_Global_File_Count();
+
+extern void Print_Local_File_Name(INT filename, FILE* fp);
+extern void Print_Global_File_Name(INT file_index, INT filenum, FILE *f);
 
 #ifdef __cplusplus
 }

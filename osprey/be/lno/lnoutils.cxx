@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -4944,7 +4948,7 @@ extern void Replace_Index_Variable(WN* loop,
   ST* st = WN_st(WN_index(loop));
   WN_OFFSET offset = WN_offset(WN_index(loop));
   TYPE_ID wtype = WN_desc(WN_start(loop));
-  bufcnt = sprintf(buf, prefix);
+  bufcnt = sprintf(buf, "%s", prefix);
   (SYMBOL(WN_index(loop))).Name(buf+bufcnt, bufsz-bufcnt);
   Replace_Symbol(cp_loop, SYMBOL(st, offset, wtype),
   Create_Preg_Symbol(buf, wtype), NULL, cp_loop);

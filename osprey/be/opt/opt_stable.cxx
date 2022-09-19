@@ -178,16 +178,30 @@ static void
 SPRE_force_rhs_to_preg(STMTREP *stmt, IDTYPE preg, ETABLE *etable)
 {
   CODEREP *rhs = stmt->Rhs();
+
   if (rhs->Kind() == CK_VAR && rhs->Aux_id() == preg) {
     etable->Htable()->Insert_var_phi(rhs, rhs->Defbb());
     return;
   }
+
+  CODEREP *lhs = stmt->Lhs();
+  if (lhs->Kind() == CK_IVAR && rhs->Kind() == CK_VAR) {
+    AUX_STAB_ENTRY *aux= etable->Htable()->Opt_stab()->Aux_stab_entry( rhs->Aux_id() );
+    // with ivar_spre, do nothing if PREG on rhs already - Shin
+    if (aux->Is_preg())
+      return;
+  }
+
   // create a new coderep node for the preg
+  Is_Trace(etable->Tracing(),
+           (TFile, "SPRE_force_rhs_to_preg: store to preg%d inserted at BB%d\n", 
+            preg, stmt->Bb()->Id()));
   CODEREP *pregcr =
       etable->Htable()->Add_def(preg, -1, NULL /* defstmt */, 
-				stmt->Lhs()->Dtyp(), stmt->Lhs()->Dtyp(),
+				stmt->Lhs()->Dtyp(), lhs->Dtyp(),
 				etable->Htable()->Sym()->St_ofst(preg),
-				stmt->Lhs()->Lod_ty(), 0, TRUE);
+				lhs->Kind() == CK_VAR ? lhs->Lod_ty() : lhs->Ilod_ty(),
+                                0, TRUE);
   STMTREP *newstmt = etable->Save_replace_rhs_by_preg(stmt, pregcr, NULL);  
   etable->Add_stmt(newstmt, stmt->Bb());
 }
@@ -507,11 +521,12 @@ EXP_WORKLST::SPRE_perform_insert_delete(ETABLE *etable)
       }
     }
     else { // defined by STID
-      SPRE_force_rhs_to_preg(old_lhs->Defstmt(), Preg(), etable);
-      rhs = old_lhs->Defstmt()->Rhs();
-      Is_True(rhs->Kind() == CK_VAR && rhs->Aux_id() == Preg(),
+      SPRE_force_rhs_to_preg(old_lhs->Get_defstmt(), Preg(), etable);
+      rhs = old_lhs->Get_defstmt()->Rhs();
+      Is_True((old_lhs->Kind() == CK_IVAR || // bypass this check for ivar_spre - Shin
+               (rhs->Kind() == CK_VAR && rhs->Aux_id() == Preg())),
 	      ("EXP_WORKLST::SPRE_perform_insert_delete: at insertion, store of current version has bad rhs"));
-      old_chi_list = old_lhs->Defstmt()->Chi_list();
+      old_chi_list = old_lhs->Get_defstmt()->Chi_list();
       chi_opnd_not_current = FALSE;
     }
     rhs->IncUsecnt();	// increment use count of preg
@@ -523,17 +538,30 @@ EXP_WORKLST::SPRE_perform_insert_delete(ETABLE *etable)
       old_lhs->Set_dtyp(Exp()->Dtyp());
     }
 #endif
-    CODEREP *new_lhs = etable->Htable()->Add_def(old_lhs->Aux_id(), -1,
-	  NULL /* defstmt */, old_lhs->Dtyp(), old_lhs->Dsctyp(),
-	  old_lhs->Offset(), old_lhs->Lod_ty(), old_lhs->Field_id(), TRUE);
 
     // create the inserted store statement
     stmt = CXX_NEW(STMTREP, etable->Htable()->Mem_pool());
-    stmt->Init(new_lhs, rhs, OPCODE_make_op(OPR_STID, MTYPE_V, new_lhs->Dsctyp()));
+
+    // create the lhs for the inserted store statement
+    CODEREP *new_lhs = NULL;
+    if (old_lhs->Kind() == CK_VAR) {
+      new_lhs = etable->Htable()->Add_def(
+        old_lhs->Aux_id(), -1, stmt /* defstmt */, old_lhs->Dtyp(), old_lhs->Dsctyp(),
+        old_lhs->Offset(), old_lhs->Lod_ty(), old_lhs->Field_id(), TRUE);
+      stmt->Init(new_lhs, rhs, OPCODE_make_op(OPR_STID, MTYPE_V, new_lhs->Dsctyp()));
+    }
+    else {
+      new_lhs = etable->Htable()->Add_idef(
+        old_lhs->Op(), old_lhs->Ivar_occ(), old_lhs->Get_defstmt() /* defstmt */,
+        NULL /* mnode */, old_lhs->Dtyp(), old_lhs->Dsctyp(), old_lhs->Ilod_ty(),
+        old_lhs->I_field_id(), old_lhs->Offset(), old_lhs->Mstore_size()/* size */,
+        NULL /* ilod_base */, old_lhs->Istr_base(), etable->Opt_stab());
+      stmt->Init(new_lhs, rhs, OPCODE_make_op(OPR_ISTORE, MTYPE_V, new_lhs->Dsctyp()));
+      new_lhs->Set_ivar_defstmt(stmt);
+    }
     stmt->Set_chi_list(SPRE_clone_chi_list(old_chi_list, 
 				chi_opnd_not_current, stmt, etable));
     // stmt->Set_rhs_type(rhs->Dtyp());
-    new_lhs->Set_defstmt(stmt);
     stmt->Set_bb(bb);
     if (bb->First_stmtrep() == NULL)
       stmt->Set_linenum(bb->Linenum());
@@ -593,7 +621,9 @@ ETABLE::Add_stmt(STMTREP *stmt, BB_NODE *bb)
 {
   // verify that all inserted definitions have their corr phi already in place.
   CODEREP *new_lhs = stmt->Lhs();
-  Htable()->Insert_var_phi(new_lhs, bb);
+  if (new_lhs->Kind() == CK_VAR) {  // ivar does not have phi -Shin
+    Htable()->Insert_var_phi(new_lhs, bb);
+  }
   CHI_LIST_ITER chi_iter;
   CHI_NODE *chi;
   FOR_ALL_NODE(chi, chi_iter, Init(stmt->Chi_list())) {
@@ -614,6 +644,7 @@ ETABLE::Perform_SPRE_optimization(void)
 	     DBar, DBar );
     Cfg()->Print(TFile);
   }
+  Is_Trace(Tracing(), (TFile, "%sPerform SPRE:\n%s", DBar, DBar));
 
   Cfg()->Pdo_vec();  // To initialize Pdo_vec before Cfg()->Pdo_Bb(pdo_id)
 

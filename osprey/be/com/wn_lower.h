@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -99,7 +103,7 @@ typedef INT64 LOWER_ACTIONS;
 #define LOWER_MLDID_MSTID	  0x004000000000ll
 #define LOWER_BIT_FIELD_ID	  0x008000000000ll
 #define LOWER_BITS_OP		  0x010000000000ll 
-#if defined(TARG_IA32) || defined(TARG_X8664)
+#if defined(TARG_IA32) || defined(TARG_X8664) || defined(TARG_UWASM)
 #define LOWER_SLINK_SAVE	  0x020000000000ll
 #endif
 #define LOWER_TO_MEMLIB           0x040000000000ll
@@ -107,6 +111,7 @@ typedef INT64 LOWER_ACTIONS;
 #define LOWER_EARLY_MLOAD         0x100000000000ll
 #define LOWER_SIMPLIFY_BIT_OP     0x200000000000ll
 #define LOWER_TO_CG		  0x800000000000ll
+#define LOWER_FIELD_OFFSET       0x1000000000000ll  
 #if defined(TARG_SL)
 #define LOWER_FP_EMULATE  0x400000000000ll
 #endif

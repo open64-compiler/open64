@@ -698,10 +698,11 @@ LFTR::Check_for_obsolete_comparison(EXP_OCCURS *comp)
 // x is the induction expression containing the IV with aux_id being used in 
 // test replacement; check that the result of x can only be a larger value
 // than the IV; if it sees any other variable in the expression, has to 
-// return false because the variable can be -ve.
+// return false because the variable can be -ve, unless it returns TRUE
+// when that variable gets TRUE from Track_value_change() call
 // ======================================================================
 BOOL
-LFTR::Can_only_increase(CODEREP *x, AUX_ID aux_id)
+LFTR::Can_only_increase(CODEREP *x, AUX_ID aux_id, CRVISIT_T& visited)
 {
   switch (x->Kind()) {
   case CK_LDA: 
@@ -711,7 +712,36 @@ LFTR::Can_only_increase(CODEREP *x, AUX_ID aux_id)
   case CK_RCONST:
     return FALSE;
   case CK_VAR:
-    return x->Aux_id() == aux_id;
+    {
+      if ( x->Aux_id() == aux_id )
+        return TRUE;
+      if ( x->Is_flag_set(CF_DEF_BY_CHI))
+        return FALSE;
+
+      if (visited.find(x) != visited.end()) {
+        // already visited
+        return TRUE;
+      }
+      else {
+        // add to visited list
+        visited.insert(x);
+      }
+      if ( x->Is_flag_set(CF_DEF_BY_PHI)) {
+        PHI_NODE *phi = x->Defphi();
+        Is_True(phi != NULL && phi->Live(), ("LFTR::Can_only_incrsease, phi is dead"));
+        Is_Trace(Trace(), (TFile, "LFTR::Can_only_incrsease, cr%d sym%dv%d def by phi:\n",
+                           x->Coderep_id(), x->Aux_id(), x->Version()));
+        Is_Trace_cmd(Trace(), phi->Print(TFile));
+        for (INT i = 0; i < phi->Size(); i++) {
+          CODEREP *cr = phi->OPND(i);
+          if (! Can_only_increase(cr, x->Aux_id(), visited))
+            return FALSE;
+        }
+        return TRUE;
+      }
+      STMTREP *defstmt = x->Defstmt();
+      return Can_only_increase(defstmt->Rhs(), x->Aux_id(), visited);
+    }
   case CK_IVAR:
     return FALSE;
   case CK_OP:
@@ -721,7 +751,7 @@ LFTR::Can_only_increase(CODEREP *x, AUX_ID aux_id)
     case OPR_ADD: case OPR_MPY: 
       {
 	for (INT i = 0; i < x->Kid_count(); i++) {
-	  if (! Can_only_increase(x->Opnd(i), aux_id))
+	  if (! Can_only_increase(x->Opnd(i), aux_id, visited))
 	    return FALSE;
 	}
       }
@@ -1199,11 +1229,20 @@ LFTR::Replace_comparison(EXP_OCCURS *comp, BOOL cur_expr_is_sr_candidate)
     // current at the point of definition of tempcr.
     Is_Trace(Trace(),
 	     (TFile, "LFTR::Replace_comparison: temp is def by phi\n"));
-    if (tos_lftr_var != comp_lftr_var) {
+    STMTREP *iv_defstmt = comp_lftr_var->Defstmt();
+    // the LFTR introduced comp_lftr_var won't have the Defstmt yet
+    if (iv_defstmt == NULL)
+      return;
+    CODEREP *comp_lftr_var_updated_from =
+      Find_aux_id_use_in_expr(tos_lftr_var->Aux_id(),
+                              iv_defstmt->Rhs());
+    if (tos_lftr_var != comp_lftr_var_updated_from) {
       Is_Trace(Trace(), (TFile, "LFTR return 8 - lftr var in comp "
 			 "not current at temp def\n"));
       return;
     }
+    // get the tempcr's SR introduced iv increment result
+    tempcr = Find_SR_tempcr(iv_defstmt,tempcr);
     iv_init = NULL;
   }
   else {
@@ -1292,10 +1331,11 @@ LFTR::Replace_comparison(EXP_OCCURS *comp, BOOL cur_expr_is_sr_candidate)
     return;
 
   ADDRESSABILITY addressable = tos->Occurrence()->Check_if_result_is_address(Htable()->Sym());
+  CRVISIT_T      visited;
 
   if (MTYPE_is_unsigned(comp->Occurrence()->Dsctyp()) && ! eq_neq &&
       addressable != ADDRESSABILITY_IS_ADDRESS &&
-      ! Can_only_increase(tos->Occurrence(), tos_lftr_var_id))
+      ! Can_only_increase(tos->Occurrence(), tos_lftr_var_id, visited))
     return;
 
   // Assert that the loop header's block contains a phi for the

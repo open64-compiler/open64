@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -159,7 +163,11 @@ static char *Argv0;		    /* argv[0] from main */
 
 /* Default file	extensions: */
 #define	ASM_FILE_EXTENSION ".s"	/* Assembly code file */
+#ifdef TARG_UWASM
+#define	OBJ_FILE_EXTENSION ".uwm"	/* Uwasm object file */
+#else
 #define	OBJ_FILE_EXTENSION ".o"	/* Relocatable object file */
+#endif
 #define DSTDUMP_FILE_EXTENSION ".be.dst" /* DST dump-file extension */
 
 /* Internal flags: */
@@ -1394,7 +1402,10 @@ static OPTION_DESC Options_CG[] = {
 
   { OVK_BOOL,	OV_INTERNAL, TRUE,"rename", "",
     0, 0, 0, &CG_enable_rename, NULL },
-
+#ifdef TARG_UWASM
+  { OVK_BOOL,	OV_INTERNAL, TRUE,"direct_acc_mem", "",
+    0, 0, 0, &CG_Gen_Direct_Acc_Mem, NULL },
+#endif
   { OVK_COUNT }
 };
 

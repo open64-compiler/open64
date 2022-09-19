@@ -226,12 +226,15 @@ EOCC::Collect_real_occurrences( void )
       stmt->Reset_saved_RHS();
       if ( Etable()->Pre_kind() == PK_EPRE )
 	Etable()->Bottom_up_stmt(stmt);
-      else {
-	Is_True(Etable()->Pre_kind() == PK_LPRE, 
-		("EOCC::Collect_real_occurrences: illegal kind"));
+      else if (Etable()->Pre_kind() == PK_LPRE) {
 	Etable()->LPRE_bottom_up_stmt(stmt);
 	if (OPERATOR_is_scalar_store (stmt->Opr())) // set flag for SPRE to use
 	  Etable()->Opt_stab()->Aux_stab_entry(stmt->Lhs()->Aux_id())->Set_has_store_in_PU();
+      } 
+      else {
+	Is_True(Etable()->Pre_kind() == PK_VSA, 
+		("EOCC::Collect_real_occurrences: illegal kind"));
+	Etable()->VSA_bottom_up_stmt(stmt);
       }
     }
 

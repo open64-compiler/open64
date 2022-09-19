@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -60,7 +64,8 @@
 #include "topcode.h"
 #include "gen_util.h"
 #include "isa_subset_gen.h"
-
+#include "isa_gen_def.h"
+#include "isa_gen_targ_extra.h"
 
 struct isa_subset {
   const char* name;         // Name given for documentation and debugging
@@ -96,10 +101,10 @@ static const char * const interface[] = {
   " *   extern ISA_SUBSET ISA_SUBSET_Value",
   " *       A variable containing the current subset value.",
   " *",
-  " *   const char* ISA_SUBSET_Name( ISA_SUBSET subset )",
+  " *   const char* ISA_SUBSET_Name" TI_SUFFIX "( ISA_SUBSET subset )",
   " *       Returns a name suitable for printing.",
   " *",
-  " *   int ISA_SUBSET_Member( ISA_SUBSET subset, TOP opcode )",
+  " *   int ISA_SUBSET_Member" TI_SUFFIX "( ISA_SUBSET subset, TOP opcode )",
   " *       Is the given <opcode> a member of the given <subset>?",
   " *",
   " * ====================================================================",
@@ -246,17 +251,17 @@ void ISA_Subset_End(void)
   fprintf(cfile,"  \"UNDEFINED\"\n"
 		"};\n");
 
-  fprintf(hfile,"extern ISA_SUBSET ISA_SUBSET_Value;\n\n");
-  fprintf(efile,"ISA_SUBSET_Value\n");
-  fprintf(cfile,"ISA_SUBSET ISA_SUBSET_Value = ISA_SUBSET_UNDEFINED;\n\n");
+  fprintf(hfile,"extern ISA_SUBSET ISA_SUBSET_Value" TI_SUFFIX ";\n\n");
+  fprintf(efile,"ISA_SUBSET_Value" TI_SUFFIX "\n");
+  fprintf(cfile,"ISA_SUBSET ISA_SUBSET_Value" TI_SUFFIX " = ISA_SUBSET_UNDEFINED;\n\n");
 
-  fprintf(hfile,"extern const char* ISA_SUBSET_Name( ISA_SUBSET subset );\n");
-  fprintf(efile,"ISA_SUBSET_Name\n");
-  fprintf(cfile,"const char* ISA_SUBSET_Name( ISA_SUBSET subset ) {\n");
+  fprintf(hfile,"extern const char* ISA_SUBSET_Name" TI_SUFFIX "( ISA_SUBSET subset );\n");
+  fprintf(efile,"ISA_SUBSET_Name" TI_SUFFIX "\n");
+  fprintf(cfile,"const char* ISA_SUBSET_Name" TI_SUFFIX "( ISA_SUBSET subset ) {\n");
   fprintf(cfile,"  return isa_subset_names[(INT)subset];\n");
   fprintf(cfile,"}\n");
 
-  fprintf(cfile,"static const char isa_subset_opcode_table[%d][%d] = {\n",
+  fprintf(cfile,"static const char isa_subset_opcode_table[%d][%ld] = {\n",
           isa_subset_count+1,bit_vector_sizeof);
 
   for ( isi = subsets.begin(); isi != subsets.end(); ++isi ) {
@@ -267,8 +272,6 @@ void ISA_Subset_End(void)
       int members = 0;
       for (int j = 0; j < 8; ++j ) {
         TOP top = (TOP) ((i * 8) + j);
-        if (top == TOP_UNDEFINED)
-          break;
         ISA_SUBSET ss;
         for (ss = subset; ss != NULL ; ss = ss->superset) {
           if (opcode_subset[top] == ss) {
@@ -293,11 +296,11 @@ void ISA_Subset_End(void)
 		"  }\n");
   fprintf(cfile,"};\n");
 
-  fprintf(hfile,"extern INT ISA_SUBSET_Member( ISA_SUBSET subset,\n"
+  fprintf(hfile,"extern INT ISA_SUBSET_Member" TI_SUFFIX "( ISA_SUBSET subset,\n"
                 "                              TOP opcode );\n");
-  fprintf(efile,"ISA_SUBSET_Member\n");
+  fprintf(efile,"ISA_SUBSET_Member" TI_SUFFIX "\n");
   fprintf(cfile,
-	  "int ISA_SUBSET_Member( ISA_SUBSET subset, TOP opcode )\n"
+	  "int ISA_SUBSET_Member" TI_SUFFIX "( ISA_SUBSET subset, TOP opcode )\n"
 	  "{\n"
 	  "  INT byte_index = ((UINT) opcode) / 8;\n"
 	  "  INT bit_index = ((UINT) opcode) %% 8;\n"

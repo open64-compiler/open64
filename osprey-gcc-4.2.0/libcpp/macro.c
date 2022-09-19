@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* Part of CPP library.  (Macro and #define handling.)
    Copyright (C) 1986, 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1998,
    1999, 2000, 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
@@ -1122,7 +1126,8 @@ cpp_get_token (cpp_reader *pfile)
 
       if (!(node->flags & NODE_DISABLED))
 	{
-	  if (!pfile->state.prevent_expansion
+	  if ((!pfile->state.prevent_expansion
+               || node->value.builtin == BT_PRAGMA)  /* allow IAR _Pragma */
 	      && enter_macro_context (pfile, node))
 	    {
 	      if (pfile->state.in_directive)

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -61,7 +65,8 @@
 #include "topcode.h"
 #include "gen_util.h"
 #include "isa_properties_gen.h"
-
+#include "isa_gen_def.h"
+#include "isa_gen_targ_extra.h"
 
 struct isa_property {
   const char* name;         // Name given for documentation and debugging
@@ -197,9 +202,9 @@ void ISA_Properties_End(void)
     int_suffix = "ULL";
     int_size = 64;
   }
-  fprintf (hfile, "extern const %s ISA_PROPERTIES_flags[];\n\n", int_type);
-  fprintf (efile, "ISA_PROPERTIES_flags\n");
-  fprintf (cfile,"const %s ISA_PROPERTIES_flags[] = {\n", int_type);
+  fprintf (hfile, "extern const %s ISA_PROPERTIES_flags" TI_SUFFIX "[];\n\n", int_type);
+  fprintf (efile, "ISA_PROPERTIES_flags" TI_SUFFIX "\n");
+  fprintf (cfile,"const %s ISA_PROPERTIES_flags" TI_SUFFIX "[] = {\n", int_type);
 
   for (code = 0; code < TOP_count; code++) {
     unsigned long long flag_value = 0;
@@ -242,7 +247,7 @@ void ISA_Properties_End(void)
 		      property->name, 
 		      bit_position == BIT_POS_ALL ? "TRUE" : "FALSE");
     } else {
-      fprintf (hfile, "#define TOP_is_%s(t)\t (ISA_PROPERTIES_flags[(INT)t] & PROP_%s)\n",
+      fprintf (hfile, "#define TOP_is_%s(t)\t (ISA_PROPERTIES_flags" TI_SUFFIX "[(INT)t] & PROP_%s)\n",
 		      property->name, 
 		      property->name);
     }

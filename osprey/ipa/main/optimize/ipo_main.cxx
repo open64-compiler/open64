@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -131,7 +135,7 @@
 #include "ipa_builtins.h"
 #include "ipo_parent.h"
 #endif
-
+#include "aot_mgr.h"
 #ifndef KEY
 #include "inline_script_parser.h"
 #else
@@ -527,14 +531,14 @@ Inline_Call (IPA_NODE *caller, IPA_NODE *callee, IPA_EDGE *edge,
     if (!caller->EHinfo_Updated())
     {
       PU p = caller->Get_PU();
-      if ((PU_src_lang (p) & PU_CXX_LANG) && PU_has_region (p))
+      if ((PU_cxx_lang (p) || PU_java_lang(p)) && PU_has_region (p))
         Fixup_EHinfo_In_PU (caller);
       caller->Set_EHinfo_Updated();
     }
     if (!callee->EHinfo_Updated())
     {
       PU p = callee->Get_PU();
-      if ((PU_src_lang (p) & PU_CXX_LANG) && PU_has_region (p))
+      if ((PU_cxx_lang (p) || PU_java_lang(p)) && PU_has_region (p))
       {
         IPA_NODE_CONTEXT temp_context (callee);
         Fixup_EHinfo_In_PU (callee);
@@ -675,7 +679,7 @@ IPO_Process_node (IPA_NODE* node, IPA_CALL_GRAPH* cg)
   }
 
 #ifdef KEY
-  if (PU_src_lang (node->Get_PU()) & PU_CXX_LANG)
+  if (PU_cxx_lang (node->Get_PU()) || PU_java_lang(node->Get_PU()))
     IPA_update_ehinfo_in_pu (node);
 
   if (IPA_Enable_Icall_Opt && node->Has_Pending_Icalls()) {
@@ -1446,7 +1450,8 @@ Perform_Transformation (IPA_NODE* caller, IPA_CALL_GRAPH* cg)
 #ifdef KEY
 		if (IPA_Enable_PU_Reorder == REORDER_DISABLE && 
 		    !Opt_Options_Inconsistent &&
-		    !IPA_Enable_Source_PU_Order)
+		    !IPA_Enable_Source_PU_Order &&
+		    !IPA_Enable_AOT)
 		{
 #endif // KEY
 		IPA_Rename_Builtins(callee);
@@ -1515,7 +1520,8 @@ Perform_Transformation (IPA_NODE* caller, IPA_CALL_GRAPH* cg)
 #ifdef KEY
 	    if (IPA_Enable_PU_Reorder == REORDER_DISABLE && 
 	        !Opt_Options_Inconsistent &&
-	        !IPA_Enable_Source_PU_Order)
+	        !IPA_Enable_Source_PU_Order &&
+		!IPA_Enable_AOT)
 	    {
 #endif // KEY
 	    IPA_Rename_Builtins(caller);
@@ -2163,7 +2169,7 @@ IPA_Remove_Regions (IPA_NODE_VECTOR v, IPA_CALL_GRAPH * cg)
     {
       PU pu = Pu_Table[ST_pu((*node)->Func_ST())];
 
-      if (!(PU_src_lang (pu) & PU_CXX_LANG) || !PU_has_region (pu))
+      if ((!PU_cxx_lang (pu) && !PU_java_lang(pu)) || !PU_has_region (pu))
       	continue;
 
       IPA_NODE_CONTEXT context (*node);	// switch to the node context
@@ -2532,6 +2538,7 @@ IPO_main (IPA_CALL_GRAPH* cg)
 #endif // TARG_SL
 
 #ifdef KEY
+    if(!IPA_Enable_AOT)
     { // PU reordering heuristics
       if (IPA_Enable_Source_PU_Order || Opt_Options_Inconsistent)
       { // We cannot do any PU-reordering
@@ -2624,8 +2631,9 @@ IPO_main (IPA_CALL_GRAPH* cg)
 
     if(IPA_Enable_Reorder)
        IPO_Finish_reorder(); //MEM_POOL_Pop (&reorder_local_pool);pop reorder_candidate
-	 
-    IP_flush_output ();			// Finish writing the PUs
+
+    if(!IPA_Enable_AOT)
+      IP_flush_output ();			// Finish writing the PUs
     
     if (IPA_Enable_Array_Sections)
 	IPA_LNO_Write_Summary (IPA_LNO_Summary);
@@ -2814,6 +2822,13 @@ Perform_Interprocedural_Optimization (void)
   }
 #endif
 
+  if(IPA_Enable_AOT) {
+    IPA_AOT_EXECUTOR aot_exec(IPA_Call_Graph);
+    IPA_AOT_MGR mgr(aot_exec);
+    mgr.Do_ptn();
+    mgr.Do_emit();
+    mgr.Do_comp();
+  }
   Ip_alias_class->Release_resources();
   Ip_alias_class = NULL;
 
@@ -2834,8 +2849,11 @@ Perform_Interprocedural_Optimization (void)
 #endif
 
   BE_Symtab_Finalize();
+  if(IPA_Enable_AOT) {
+    exit(RC_OKAY);
+  }
 
-  if (IPA_Enable_ipacom) {
+  if (IPA_Enable_ipacom && !IPA_Enable_AOT) {
 #ifdef Is_True_On
       CGB_IPA_Terminate();
 #endif

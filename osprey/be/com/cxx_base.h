@@ -467,8 +467,8 @@ class SLIST_ITER {
 private:
   SLIST_NODE  *_head;
   SLIST_NODE  *_cur;
-  mINT16       _len;
-  mINT16       _idx;          // simulate indexing, default to -1
+  mINT32       _len;
+  mINT32       _idx;          // simulate indexing, default to -1
 
   SLIST_ITER& operator= (const SLIST_ITER& sl);
   SLIST_ITER(const SLIST_ITER&);
@@ -515,8 +515,8 @@ public:
   SLIST_NODE  *Peek_Next(void) const {return _cur->Next();} 
   SLIST_NODE  *Head(void) const		{return _head;}
   SLIST_NODE  *Cur(void) const		{return _cur;}
-  INT          Idx(void) const		{return _idx;}
-  INT32        Len(void);		// get the length of the list
+  mINT32       Idx(void) const		{return _idx;}
+  mINT32       Len(void);		// get the length of the list
   BOOL         Is_Empty(void) const	{ return _cur == NULL; }
 };
 

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -88,8 +92,8 @@ const float DEFAULT_MIN_PROBABILITY = 0.20;
 
 
 #define DEFAULT_BLOAT_FACTOR	100
-#define DEFAULT_PU_LIMIT	2500
-#define DEFAULT_SMALL_PU	30
+#define DEFAULT_PU_LIMIT	3000
+#define DEFAULT_SMALL_PU	50
 #define DEFAULT_HARD_LIMIT	(DEFAULT_PU_LIMIT + (DEFAULT_PU_LIMIT >> 2))
 #define DEFAULT_SMALL_CALLEE	500
 #define DEFAULT_MIN_FREQ	100
@@ -136,7 +140,11 @@ BOOL IPA_Enable_Assert = FALSE;		// generate assert statement for
 					// cprop debugging
 BOOL IPA_Enable_daVinci = FALSE;	/* Graphical display of call graph */
 BOOL IPA_Enable_ipacom = TRUE;		/* Call ipacom after IPA */
+#ifdef TARG_UWASM
+BOOL IPA_Enable_final_link = FALSE;	/* Disable final link for uwasm until uwasm linker ready */
+#else
 BOOL IPA_Enable_final_link = TRUE;	/* Final link step */
+#endif
 BOOL IPA_Enable_Memtrace = FALSE;	/* Memory trace */
 BOOL IPA_Enable_DST = TRUE;		/* Generate DST */
 BOOL IPA_Enable_DCE = TRUE;		/* Enable Dead Call Elimination */
@@ -352,6 +360,7 @@ BOOL IPA_Enable_Whole_Program_Mode = FALSE;
 BOOL IPA_Enable_Whole_Program_Mode_Set = FALSE;
 
 BOOL IPA_Enable_Scale = FALSE;
+BOOL IPA_Enable_AOT = FALSE;
 
 static OPTION_DESC Options_IPA[] = {
     { OVK_BOOL,	OV_VISIBLE,	FALSE, "addressing",	"",
@@ -686,6 +695,9 @@ static OPTION_DESC Options_IPA[] = {
        0, 0, UINT32_MAX, &IPA_Enable_Global_As_Local, NULL,
        "Enable global-as-local optimizations"},
 #endif      
+    { OVK_BOOL, OV_VISIBLE,     FALSE, "aot", "",
+      0, 0, 0,              &IPA_Enable_AOT, NULL,
+      "Enable AOT compilation"},
     /* The following option is temporary, and should be removed soon */
     { OVK_UINT32, OV_INTERNAL,	FALSE, "update_struct",	"",
 	  0, 0, UINT32_MAX, &IPA_Update_Struct, NULL,
@@ -748,6 +760,7 @@ BOOL    INLINE_Get_Time_Info = FALSE; 	       /* Generate timing info for differ
 
 char    *INLINE_Script_Name = NULL;
 BOOL   INLINE_Enable_Script = FALSE;;
+BOOL   INLINE_Enable_Devirtualize = FALSE;
 	
 static OPTION_DESC Options_INLINE[] = {
     { OVK_BOOL,	OV_VISIBLE,	FALSE, "",	NULL,
@@ -895,5 +908,8 @@ static OPTION_DESC Options_INLINE[] = {
     { OVK_NAME,	OV_VISIBLE,	TRUE, "inline_script", "", 
           0, 0, 0,	&INLINE_Script_Name, &INLINE_Enable_Script, 
           "Enable call-site specific inlining based on inline description file" },
+    { OVK_BOOL,	OV_VISIBLE,	TRUE, "devirtualize", "", 
+          0, 0, 0,	&INLINE_Enable_Devirtualize, NULL, 
+          "Enable virtual call dispatch" },
     { OVK_COUNT }	    /* List terminator -- must be last */
 };

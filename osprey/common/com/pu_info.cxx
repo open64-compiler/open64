@@ -265,7 +265,7 @@ write_PU_subsect_info (PU_Info *pu_tree, INT32 k, char *addr)
  */
 
 PU_Info *
-Read_PU_Infos (char *base, INT32 size, INT32 *p_num_PUs)
+Read_PU_Infos (char *base, UINT64 size, INT32 *p_num_PUs)
 {
     INT n, k;
     char *addr;

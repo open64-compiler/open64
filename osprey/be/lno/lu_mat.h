@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -213,7 +217,7 @@
 #ifndef lu_mat_INCLUDED
 #define lu_mat_INCLUDED "lu_mat.h"
 
-static char *lu_mat_rcs_id = lu_mat_INCLUDED "$Revision: 1.5 $";
+static const char *lu_mat_rcs_id = lu_mat_INCLUDED "$Revision: 1.5 $";
 
 // system  headers
 

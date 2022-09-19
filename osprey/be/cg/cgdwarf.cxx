@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -127,7 +131,7 @@ static DST_INFO_IDX cu_idx;
 static Dwarf_Unsigned cu_text_begin = 0;
 static Dwarf_Unsigned cu_text_end = 0;
 static Elf64_Word cur_text_index;
-static DST_language Dwarf_Language;
+DST_language Dwarf_Language;
 //static INT Current_Tree_Level;
 
 /* used as array to hold pointers to enclosing procedure's DIEs */
@@ -2572,7 +2576,7 @@ Cg_Dwarf_Process_PU (Elf64_Word	scn_index,
 
 }
 
-static DST_language
+DST_language
 Get_Dwarf_Language (DST_INFO *cu_info)
 {
 	return DST_COMPILE_UNIT_language( DST_ATTR_IDX_TO_PTR(
@@ -2889,13 +2893,15 @@ print_source (SRCPOS srcpos)
       return;
     }
     for (i = 0; i < cur_file->max_line_printed; i++) {
-      fgets (text, sizeof(text), cur_file->fileptr);
+      if (fgets (text, sizeof(text), cur_file->fileptr) == NULL)
+        break;
     }
   }
   newmax = USRCPOS_linenum(usrcpos) - 5;
   if (cur_file->max_line_printed < newmax) {
     for (i = cur_file->max_line_printed; i < newmax; i++) {
-      fgets (text, sizeof(text), cur_file->fileptr);
+      if (fgets (text, sizeof(text), cur_file->fileptr) == NULL)
+        break;
     }
     cur_file->max_line_printed = newmax;
   }

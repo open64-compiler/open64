@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -101,6 +105,7 @@
 #include "ipo_inline.h"     // Init_inline(), ...
 #include "inline.h"         // extern "C" Inliner()
 #include "inline_utils.h"   // Setup_Inliner_File_Header
+#include "inline_skip.h"    // filter that block inline action
 #include "ipc_symtab_merge.h"
 #include "ipa_nested_pu.h" // Build_Nested_Pu_Relations
 #include "privatize_common.h"   // for Rename_Privatized_COMMON
@@ -486,13 +491,13 @@ Write_caller(IPA_NODE* node)
 }
 
 static void
-Inline_callees_into_caller(IPA_NODE* caller)
+Inline_callees_into_caller(IPA_NODE* caller, INL_SKIPLST& filter)
 {
     caller->Scope ();
 
     IPA_SUCC_ITER succ_iter (caller->Node_Index());
 
-    
+    BOOL is_caller_perform_inline = FALSE;
     for (succ_iter.First(); !succ_iter.Is_Empty(); succ_iter.Next()) {
 
 	set_timer();
@@ -512,8 +517,9 @@ Inline_callees_into_caller(IPA_NODE* caller)
 #endif
 
 	BOOL inline_performed = FALSE;
-	if (Is_do_inline(call, e->Array_Index()) && !caller->Is_Deletable()) {
 
+	if (Is_do_inline(call, e->Array_Index()) && !caller->Is_Deletable() &&
+            !filter.Inl_skip(callee->Name() )) {
 	    MEM_POOL_Popper pool (&Ipo_mem_pool);
             if ( Get_Trace ( TKIND_ALLOC, TP_IPA ) ) {
                 fprintf ( TFile,
@@ -549,6 +555,7 @@ Inline_callees_into_caller(IPA_NODE* caller)
             }
 	    ITotal_Inlined++;
 	    inline_performed = TRUE;
+	    is_caller_perform_inline = TRUE;
 	}
 	else
 	    ITotal_Not_Inlined++;
@@ -558,8 +565,10 @@ Inline_callees_into_caller(IPA_NODE* caller)
 	get_timer(PHASE_INLINING);
 
 #ifdef Is_True_On
-	Scope_tab = callee->Scope();
-        Verify_SYMTAB (callee->Lexical_Level());
+	if(inline_performed == TRUE) {
+	  Scope_tab = callee->Scope();
+	  Verify_SYMTAB (callee->Lexical_Level());
+	}
 #endif 
 
 #ifdef _LIGHTWEIGHT_INLINER
@@ -580,9 +589,10 @@ Inline_callees_into_caller(IPA_NODE* caller)
     }
 
 #ifdef Is_True_On
-    Scope_tab = caller->Scope();
-    Verify_SYMTAB (GLOBAL_SYMTAB);
-    Verify_SYMTAB (caller->Lexical_Level());
+    if(is_caller_perform_inline == TRUE) {
+      Scope_tab = caller->Scope();
+      Verify_SYMTAB (caller->Lexical_Level());
+    }
 #endif
 
 #ifdef _LIGHTWEIGHT_INLINER
@@ -594,7 +604,7 @@ Inline_callees_into_caller(IPA_NODE* caller)
 
 
 static void
-Perform_inlining()
+Perform_inlining(INL_SKIPLST& filter)
 {
 
     Init_inline();
@@ -635,7 +645,7 @@ Perform_inlining()
 #endif // _LIGHTWEIGHT_INLINER
 		    Write_inline_succ_pu();
  	} else {
-	    Inline_callees_into_caller(caller);
+          Inline_callees_into_caller(caller, filter);
 #ifdef DEBUG_SYMTAB
         Scope_tab = caller->Scope();
 	Print_local_symtab(TFile, Scope_tab[caller->Lexical_Level()]);
@@ -643,6 +653,11 @@ Perform_inlining()
 #endif // DEBUG_SYMTAB
 	}
     }
+#ifdef Is_True_On
+    // FIX DEBUG VERSION inliner long time issue
+    // verify global symtab after all call site been handled
+    Verify_SYMTAB (GLOBAL_SYMTAB);
+#endif
 
     if (Verbose)
         fputc ('\n', stderr);
@@ -801,11 +816,12 @@ Inliner_Write_PUs (PU_Info *pu_tree, INT *p_num_PU)
             if ((INLINE_Inlined_Pu_Call_Graph || INLINE_Inlined_Pu_Call_Graph) && PU_is_inline_function(this_pu))
 #endif // _LIGHTWEIGHT_INLINER
 	    {
+              BOOL all_calls_inlined = All_Calls_Inlined(node, IPA_Call_Graph);
 	      if (IPA_Enable_DFE
 #ifdef KEY
 		  && ! OPT_Cyg_Instrument
 #endif
-		  && All_Calls_Inlined (node, IPA_Call_Graph)
+		  && all_calls_inlined
 		  && !node->Is_Externally_Callable ()
 #ifdef KEY
 		  && ! PU_no_delete(Pu_Table[ST_pu(node->Func_ST())])
@@ -816,6 +832,17 @@ Inliner_Write_PUs (PU_Info *pu_tree, INT *p_num_PU)
                     /* mark this ST not_used */
                     Set_ST_is_not_used(node->Func_ST());
 	        }
+                if (IPA_Enable_DFE
+                    && ! OPT_Cyg_Instrument
+                    && PU_is_extern_inline(this_pu)) {
+                    // we've done inline, delete all extern inline PU
+                    node->Set_Deletable();
+                    // if all calls inlined, mark ST not used. Otherwise change it to extern
+                    if (all_calls_inlined)
+                        Set_ST_is_not_used(node->Func_ST());
+                    else
+                        Set_ST_sclass(node->Func_ST(), SCLASS_EXTERN);
+                }
 	    }
             deletable = node->Is_Deletable();
         }
@@ -865,7 +892,7 @@ Inliner_Write_PUs (PU_Info *pu_tree, INT *p_num_PU)
 #ifdef _LIGHTWEIGHT_INLINER
 
 static void
-Process_Uninlinable_PU (const IP_FILE_HDR& file_header, PU_Info *current_pu, int& num_PU)
+Process_Uninlinable_PU (const IP_FILE_HDR& file_header, PU_Info *current_pu, int& num_PU, INL_SKIPLST& filter)
 {
     
     Read_PU (current_pu);
@@ -906,7 +933,7 @@ Process_Uninlinable_PU (const IP_FILE_HDR& file_header, PU_Info *current_pu, int
 	Add_Edges_For_Node((IP_FILE_HDR&)file_header, num_PU, NULL, NULL);
 
 
-	Inline_callees_into_caller(caller);
+	Inline_callees_into_caller(caller, filter);
 
 #ifdef DEBUG_SYMTAB
         Scope_tab = caller->Scope();
@@ -927,7 +954,7 @@ Process_Uninlinable_PU (const IP_FILE_HDR& file_header, PU_Info *current_pu, int
 //----------------------------------------------------------------
 
 static PU_Info *
-Process_Remaining_PUs (const IP_FILE_HDR& file_header, PU_Info *pu_tree, int& num_PU)
+Process_Remaining_PUs (const IP_FILE_HDR& file_header, PU_Info *pu_tree, int& num_PU, INL_SKIPLST& filter)
 {
     PU_Info *current_pu;
 
@@ -939,12 +966,12 @@ Process_Remaining_PUs (const IP_FILE_HDR& file_header, PU_Info *pu_tree, int& nu
      	if (cg_node == INVALID_NODE_INDEX) {
 		// && (!PU_is_inline_function(this_pu)) {
 	// Only process those PU that has not been put into IPA_Call_Graph
-	    Process_Uninlinable_PU(file_header, current_pu, num_PU);
+          Process_Uninlinable_PU(file_header, current_pu, num_PU, filter);
 	}
 
         if (PU_Info_child(current_pu)) {
             PU_Info_child(current_pu) =
-                Process_Remaining_PUs(file_header, PU_Info_child(current_pu), num_PU);
+              Process_Remaining_PUs(file_header, PU_Info_child(current_pu), num_PU, filter);
         }
     }
 
@@ -1033,7 +1060,6 @@ Process_Local_File(char* input_name, void *handle, INT& num_PU)
         Inliner_Aux_Pu_Table =  (SCOPE**) MEM_POOL_Alloc (&scope_mpool, size);
     else
         Inliner_Aux_Pu_Table =  (SCOPE**) MEM_POOL_Realloc (&scope_mpool, Inliner_Aux_Pu_Table, size, size*2);
-
     num_PU = Inliner_Read_PUs(file_header, pu_tree, 0);
 
     ((SUMMARY *)IP_FILE_HDR_summary(file_header))->Set_global_addr_taken_attrib ();
@@ -1053,7 +1079,7 @@ Process_Local_File(char* input_name, void *handle, INT& num_PU)
 // the name of the input and output files
 //----------------------------------------------------------------
 BOOL 
-Inliner(char* input_name, char* output_name)
+Inliner(char* input_name, char* output_name, INL_SKIPLST& filter)
 {
     void *handle;
     PU_Info *pu_tree;
@@ -1204,7 +1230,7 @@ Inliner(char* input_name, char* output_name)
     fclose(f);
 #endif
 
-    Perform_inlining();
+    Perform_inlining(filter);
 
 #ifdef _LIGHTWEIGHT_INLINER
     if (INLINE_Inlined_Pu_Call_Graph || INLINE_Inlined_Pu_Call_Graph2) {
@@ -1212,7 +1238,7 @@ Inliner(char* input_name, char* output_name)
         // calls a node that needs to be inlined
 
 	if (INLINE_Inlined_Pu_Call_Graph) {
-            (void)Process_Remaining_PUs(IP_File_header[inliner_main_file_index], IP_FILE_HDR_pu_list(IP_File_header[inliner_main_file_index]), num_PU);
+          (void)Process_Remaining_PUs(IP_File_header[inliner_main_file_index], IP_FILE_HDR_pu_list(IP_File_header[inliner_main_file_index]), num_PU, filter);
 
             ((SUMMARY *)IP_FILE_HDR_summary(IP_File_header[inliner_main_file_index]))->Set_global_addr_taken_attrib ();
 	}

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  Copyright (C) 2010, Hewlett-Packard Development Company, L.P.
  All Rights Reserved.
 
@@ -105,11 +109,11 @@ ConstraintGraph::remapDeletedNode(WN *wn)
     if (parent == old ||
         _toBeDeletedNodes.find(parent->id()) != _toBeDeletedNodes.end())  {
       if (Get_Trace(TP_ALIAS,NYSTROM_CG_OPT_FLAG))
-        fprintf(stderr, "Unmapping WN->CGNodeId for node: %d\n", old->id());
+        fprintf(TFile, "Unmapping WN->CGNodeId for node: %d\n", old->id());
       WN_MAP_CGNodeId_Set(wn, 0);
     } else {
       if (Get_Trace(TP_ALIAS,NYSTROM_CG_OPT_FLAG))
-        fprintf(stderr, "WN->CGNodeId: Remapping deleted node : %d to "
+        fprintf(TFile, "WN->CGNodeId: Remapping deleted node : %d to "
                 "parent: %d\n", old->id(), parent->id());
       WN_MAP_CGNodeId_Set(wn, parent->id());
     }
@@ -129,7 +133,7 @@ ConstraintGraph::deleteOptimizedNodes()
     }
     node->deletePointsToSet();
     if (Get_Trace(TP_ALIAS,NYSTROM_CG_OPT_FLAG))
-      fprintf(stderr, "Deleting node %d\n", node->id());
+      fprintf(TFile, "Deleting node %d\n", node->id());
     deleteNode(node);
   }
 }
@@ -468,7 +472,7 @@ StInfo::init(TY_IDX ty_idx, UINT32 flags, MEM_POOL *memPool)
     addFlags(CG_ST_FLAGS_MODRANGE);
     _u._modRange = ModulusRange::build(ty_idx,0,memPool);
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-      _u._modRange->print(stderr);
+      _u._modRange->print(TFile);
 #if 1
     if ( _u._modRange->mod() > 2000 )
     {
@@ -476,8 +480,8 @@ StInfo::init(TY_IDX ty_idx, UINT32 flags, MEM_POOL *memPool)
       applyModulus();
       if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
       {
-        fprintf(stderr,"Clamping modulus at: %d\n",2000);
-        _u._modRange->print(stderr);
+        fprintf(TFile,"Clamping modulus at: %d\n",2000);
+        _u._modRange->print(TFile);
       }
     }
 #endif
@@ -662,19 +666,19 @@ StInfo::setModulus(UINT32 mod, UINT32 offset)
   }
 
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-    fprintf(stderr,"Setting modulus of ");
+    fprintf(TFile,"Setting modulus of ");
     CG_ST_IDX idx = _firstOffset->cg_st_idx();
     if (!ConstraintGraph::inIPA() ||
         ST_IDX_level(SYM_ST_IDX(idx)) == GLOBAL_SYMTAB)
-      fprintf(stderr,"%s",ST_name(&St_Table[SYM_ST_IDX(idx)]));
+      fprintf(TFile,"%s",ST_name(&St_Table[SYM_ST_IDX(idx)]));
     else
-      fprintf(stderr, " <file:%d pu:%d st_idx:%d> %llu",
+      fprintf(TFile, " <file:%d pu:%d st_idx:%d> %llu",
               FILE_NUM_ST_IDX(idx),
               PU_NUM_ST_IDX(idx),
               SYM_ST_IDX(idx),
               idx);
 
-    fprintf(stderr," to %d\n",mod);
+    fprintf(TFile," to %d\n",mod);
   }
 
   applyModulus();
@@ -730,9 +734,9 @@ ConstraintGraph::adjustNodeForKCycle(ConstraintGraphNode *destNode,
 #if 1
         // Instead of -1, reduce the symbol to a single node
         if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-          fprintf(stderr, "Collapsing St cg_st_idx: %llu\n", 
+          fprintf(TFile, "Collapsing St cg_st_idx: %llu\n", 
                   pointedToNode->cg_st_idx());
-          st->print(stderr, true);
+          st->print(TFile, true);
         }
         st->collapse();
         adjPointedToNode = 
@@ -1213,12 +1217,12 @@ ConstraintGraph::processInitv(TY &ty, INITV_IDX initv_idx, UINT32 startOffset,
           (_processedInitVals.find(ST_st_idx(base_st)) ==
            _processedInitVals.end())) {
         if (Get_Trace(TP_ALIAS,NYSTROM_CG_BUILD_FLAG))
-          fprintf(stderr, "Processing symbol value...\n");
+          fprintf(TFile, "Processing symbol value...\n");
         _processedInitVals.insert(ST_st_idx(base_st));
         processInitValues(ST_st_idx(base_st));
       }
       if (Get_Trace(TP_ALIAS,NYSTROM_CG_BUILD_FLAG))
-        fprintf(stderr, "End processing symbol value...\n");
+        fprintf(TFile, "End processing symbol value...\n");
       node = getCGNode(CG_ST_st_idx(base_st), base_offset);
     }
     PointsTo *pts = CXX_NEW(PointsTo(memPool), memPool);
@@ -1260,7 +1264,7 @@ ConstraintGraph::processInitv(TY &ty, INITV_IDX initv_idx, UINT32 startOffset,
         while (r < repeat) {
           // FmtAssert(!fld.Is_Null(), ("Premature end of fld"));
           if (fld.Is_Null()) {
-            fprintf(stderr, "Premature end of fld");
+            fprintf(TFile, "Premature end of fld");
             return NULL;
           }
           TY &fty = Ty_Table[FLD_type(fld)];
@@ -1323,7 +1327,7 @@ ConstraintGraph::processInitv(TY &ty, INITV_IDX initv_idx, UINT32 startOffset,
         while (r < repeat) {
           // FmtAssert(i < numElems, ("Premature end of array elems"));
           if (i >= numElems) {
-            fprintf(stderr, "Premature end of array elems");
+            fprintf(TFile, "Premature end of array elems");
             return NULL;
           }
           OffsetPointsToList *elemList;
@@ -1349,7 +1353,7 @@ ConstraintGraph::processInitv(TY &ty, INITV_IDX initv_idx, UINT32 startOffset,
       // FmtAssert(i == numElems && child_initv_idx == 0,
       //           ("Inconsistent init values for array"));
       if (i != numElems || child_initv_idx != 0) {
-        fprintf(stderr, "Inconsistent init values for array");
+        fprintf(TFile, "Inconsistent init values for array");
         return NULL;
       }
     }
@@ -1369,9 +1373,9 @@ ConstraintGraph::processInito(const INITO *const inito)
   Expand_ST_into_base_and_ofst(st, offset, &base_st, &base_offset);
 
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_BUILD_FLAG)) {
-    fprintf(stderr, "Processing inito for symbol: ");
-    base_st->Print(stderr);
-    fprintf(stderr, " offset: %lld\n", base_offset);
+    fprintf(TFile, "Processing inito for symbol: ");
+    base_st->Print(TFile);
+    fprintf(TFile, " offset: %lld\n", base_offset);
   }
 
   MEM_POOL memPool;
@@ -1383,7 +1387,7 @@ ConstraintGraph::processInito(const INITO *const inito)
                 processInitv(base_st_ty, initv_idx, base_offset, &memPool);
   if (valList == NULL) {
     if (Get_Trace(TP_ALIAS,NYSTROM_CG_BUILD_FLAG))
-      fprintf(stderr, "processInitv returning null\n");
+      fprintf(TFile, "processInitv returning null\n");
     // The init section was not consistent with the type
     // Lump all the init data for this symbol to this node and 
     // make it field insensitive :( (unless its all not a pointer)
@@ -1411,9 +1415,9 @@ ConstraintGraph::processInito(const INITO *const inito)
     node->unionPointsTo(tmp, CQ_GBL);
     node->stInfo()->setModulus(1, node->offset());
     if (Get_Trace(TP_ALIAS,NYSTROM_CG_BUILD_FLAG)) {
-      fprintf(stderr, "processInito: Setting modulus to 1 for node:\n");
-      node->print(stderr);
-      fprintf(stderr, "\n");
+      fprintf(TFile, "processInito: Setting modulus to 1 for node:\n");
+      node->print(TFile);
+      fprintf(TFile, "\n");
     }
     MEM_POOL_Delete(&memPool);
     tmp.clear();
@@ -1454,12 +1458,11 @@ ConstraintGraph::processInito(const INITO *const inito)
     ConstraintGraphNode::sanitizePointsTo(*pts,NULL,CQ_NONE);
     node->unionPointsTo(*pts, CQ_HZ);
     if (Get_Trace(TP_ALIAS,NYSTROM_CG_BUILD_FLAG)) {
-      fprintf(stderr, "  node offset: %d val offset: %d, pts: ",
+      fprintf(TFile, "  node offset: %d val offset: %d, pts: ",
               node->offset(), offset);
-      pts->print(stderr);
-      fprintf(stderr, "\n");
+      pts->print(TFile);
+      fprintf(TFile, "\n");
     }
-    // node->print(stderr);
   }
 
   MEM_POOL_Delete(&memPool);
@@ -1476,9 +1479,9 @@ void
 ConstraintGraph::buildCG(WN *entryWN)
 {
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_PRE_FLAG)){
-    fprintf(stderr, "Building ConstraintGraph for func %s\n",
+    fprintf(TFile, "Building ConstraintGraph for func %s\n",
         ST_name(WN_st(entryWN)));
-    fdump_tree(stderr, entryWN);
+    fdump_tree(TFile, entryWN);
   }
 
   // Create a varArg symbol to denote all parameters after the last fixed one
@@ -1637,9 +1640,9 @@ ConstraintGraph::handleAssignment(WN *stmt)
   if (cgNodeRHS == NULL) {
     cgNodeRHS = genTempCGNode();
     cgNodeRHS->addFlags(CG_NODE_FLAGS_UNKNOWN);
-    fprintf(stderr, "***WARNING!!! Setting RHS of STORE to UNKNOWN*******\n");
-    fdump_tree(stderr, stmt);
-    fprintf(stderr, "****************************************************\n");
+    fprintf(TFile, "***WARNING!!! Setting RHS of STORE to UNKNOWN*******\n");
+    fdump_tree(TFile, stmt);
+    fprintf(TFile, "****************************************************\n");
   }
 
   OPERATOR opr = WN_operator(stmt);
@@ -2109,9 +2112,9 @@ ConstraintGraph::processLHSofStore(WN *stmt)
     ConstraintGraphNode *tmpCGNode = genTempCGNode();
     tmpCGNode->addFlags(CG_NODE_FLAGS_UNKNOWN);
     cgNodeLHS = tmpCGNode;
-    fprintf(stderr, "***WARNING!!! Setting LHS of STORE to UNKNOWN*******\n");
-    fdump_tree(stderr, stmt);
-    fprintf(stderr, "****************************************************\n");
+    fprintf(TFile, "***WARNING!!! Setting LHS of STORE to UNKNOWN*******\n");
+    fdump_tree(TFile, stmt);
+    fprintf(TFile, "****************************************************\n");
   }
     
   cgNodeLHS->addFlags(CG_NODE_FLAGS_MEMOP);
@@ -2139,9 +2142,9 @@ ConstraintGraph::processParam(WN *wn)
     // Create a temp preg and set it UNKNOWN
     ConstraintGraphNode *tmpCGNode = genTempCGNode();
     tmpCGNode->addFlags(CG_NODE_FLAGS_UNKNOWN);
-    fprintf(stderr, "***WARNING!!! Setting param to UNKNOWN**********\n");
-    fdump_tree(stderr, wn);
-    fprintf(stderr, "************************************************\n");
+    fprintf(TFile, "***WARNING!!! Setting param to UNKNOWN**********\n");
+    fdump_tree(TFile, wn);
+    fprintf(TFile, "************************************************\n");
     return tmpCGNode;
   } 
 }
@@ -2536,7 +2539,7 @@ ConstraintGraph::handleCall(WN *callWN)
       stInfo(heapCGNode->cg_st_idx())->addFlags(CG_ST_FLAGS_HEAP);
       cgNode->addPointsTo(heapCGNode,CQ_HZ);
       if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-        fprintf(stderr, "Adding heap (ipl) due to callee: %s to caller: %s\n",
+        fprintf(TFile, "Adding heap (ipl) due to callee: %s to caller: %s\n",
                 !callSite->isIntrinsic() ? ST_name(callSite->st_idx()) :
                    INTRN_c_name(callSite->intrinsic()), 
                 ST_name(ST_st_idx(Get_Current_PU_ST())));
@@ -2961,9 +2964,8 @@ ConstraintGraph::getCGNode(CG_ST_IDX cg_st_idx, INT64 offset)
   if (!si->checkFlags(CG_ST_FLAGS_PREG)) {
     if (offset != -1 && (si->numOffsets() >= si->maxOffsets())) {
       if(Get_Trace(TP_ALIAS, NYSTROM_LW_SOLVER_FLAG)) {
-        fprintf(stderr, "getCGNode: too many offsets..collapsing %llu!\n",
+        fprintf(TFile, "getCGNode: too many offsets..collapsing %llu!\n",
                 cg_st_idx);
-        //si->print(stderr,true);
       }
       si->collapse();
       offset = 0;
@@ -3004,9 +3006,9 @@ ConstraintGraph::getCGNode(CG_ST_IDX cg_st_idx, INT64 offset)
     seedOffsetMinusOnePointsTo(si,cgNode);
 
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-    fprintf(stderr,"Creating node:\n");
-    cgNode->print(stderr);
-    si->print(stderr);
+    fprintf(TFile,"Creating node:\n");
+    cgNode->print(TFile);
+    si->print(TFile);
   }
 
   return cgNode;
@@ -3138,30 +3140,30 @@ ConstraintGraph::stats()
         totalStore++;
     }
   }
-  fprintf(stderr,"Points to set statistics\n");
-  fprintf(stderr,"  CG Node count:   %d\n",nodeCount);
-  fprintf(stderr,"  Points-to count: %d\n",ptsCount);
-  fprintf(stderr,"     Empty:        %d\n",emptyPtsCount);
-  fprintf(stderr,"  Bits / pts:      %d\n",
+  fprintf(TFile,"Points to set statistics\n");
+  fprintf(TFile,"  CG Node count:   %d\n",nodeCount);
+  fprintf(TFile,"  Points-to count: %d\n",ptsCount);
+  fprintf(TFile,"     Empty:        %d\n",emptyPtsCount);
+  fprintf(TFile,"  Bits / pts:      %d\n",
           ptsCount > 0 ? totalCardinality/ptsCount : 0);
-  fprintf(stderr,"  Bits / elem:     %d\n",
+  fprintf(TFile,"  Bits / elem:     %d\n",
           ptsCount > 0 ? totalCardinality/ptsElemCount : 0);
-  fprintf(stderr,"  Elem / pts:      %d\n",
+  fprintf(TFile,"  Elem / pts:      %d\n",
           ptsCount > 0 ? ptsElemCount/ptsCount : 0);
 
-  fprintf(stderr,"  Rev Points-to count: %d\n",r_ptsCount);
-  fprintf(stderr,"     Rev Empty:        %d\n",r_emptyPtsCount);
-  fprintf(stderr,"  Rev Bits / pts:      %d\n",
+  fprintf(TFile,"  Rev Points-to count: %d\n",r_ptsCount);
+  fprintf(TFile,"     Rev Empty:        %d\n",r_emptyPtsCount);
+  fprintf(TFile,"  Rev Bits / pts:      %d\n",
           r_ptsCount > 0 ? r_totalCardinality/r_ptsCount : 0);
-  fprintf(stderr,"  Rev Bits / elem:     %d\n",
+  fprintf(TFile,"  Rev Bits / elem:     %d\n",
           r_ptsCount > 0 ? r_totalCardinality/r_ptsElemCount : 0);
-  fprintf(stderr,"  Rev Elem / pts:      %d\n",
+  fprintf(TFile,"  Rev Elem / pts:      %d\n",
           r_ptsCount > 0 ? r_ptsElemCount/r_ptsCount : 0);
 
-  fprintf(stderr,"  Total Elem memory:     %d\n",
+  fprintf(TFile,"  Total Elem memory:     %ld\n",
           (ptsElemCount+r_ptsElemCount) * sizeof(SparseBitSetElement));
 
-  fprintf(stderr, "Node/edge stats: %d nodes %d c, %d s, %d l, %d s "
+  fprintf(TFile, "Node/edge stats: %d nodes %d c, %d s, %d l, %d s "
           "edges\n", ConstraintGraph::globalCG()->totalCGNodes(),
           totalCopy, totalSkew, totalLoad, totalStore);
 }
@@ -3172,9 +3174,9 @@ ConstraintGraph::print(FILE *file)
   for (CGNodeToIdMapIterator iter = _cgNodeToIdMap.begin();
       iter != _cgNodeToIdMap.end(); iter++) {
     iter->first->print(file);
-    fprintf(stderr, " StInfo:\n");
+    fprintf(file, " StInfo:\n");
     stInfo(iter->first->cg_st_idx())->print(file);
-    fprintf(stderr, "\n");
+    fprintf(file, "\n");
   }
 
   for (CallSiteIterator iter = _callSiteMap.begin(); 
@@ -3182,12 +3184,10 @@ ConstraintGraph::print(FILE *file)
     iter->second->print(file);
 
   list<CGNodeId>::iterator iter;
-  fprintf(stderr, "parameters: "); 
-  for (iter = _parameters.begin(); iter != _parameters.end(); iter++)
+  fprintf(file, "parameters: "); 
+  for (iter = _returns.begin(); iter != _returns.end(); iter++) 
     fprintf(file, " %d", *iter);
-  fprintf(stderr, ", returns: "); 
-  for (iter = _returns.begin(); iter != _returns.end(); iter++)
-    fprintf(file, " %d", *iter);
+  fprintf(file, ", returns: "); 
   fprintf(file, "\n");
 
   fprintf(file, "StInfos:\n");
@@ -3317,9 +3317,10 @@ ConstraintGraphNode::collapse(ConstraintGraphNode *cur)
 void
 ConstraintGraphNode::merge(ConstraintGraphNode *src)
 {
-  if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"Merge: %d <- %d\n",id(),src->id());
-
+  if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
+    fprintf(TFile,"Merge: %d <- %d\n",id(),src->id());
+  }
+  
   // 0) The source node may be the rep of another cycle or
   //    have inKCycle() set for some other reason.  Make
   //    sure we merge it into the destination node
@@ -3613,8 +3614,9 @@ dbgPrintCGNode(CGNodeId nodeId)
   ConstraintGraphNode *node = ConstraintGraph::cgNode(nodeId);
   if (node)
     node->dbgPrint();
-  else
+  else {
     fprintf(stderr,"Invalid CGNodeId %d\n",nodeId);
+  }
 }
 
 void
@@ -3644,10 +3646,11 @@ ConstraintGraphNode::print(FILE *file)
   fprintf(file, "*CGNodeId: %d*\n ", _id);
   fprintf(file, "sym: ");
   if (!cg()->inIPA()) {
-    (&St_Table[SYM_ST_IDX(_cg_st_idx)])->Print(stderr);
+    (&St_Table[SYM_ST_IDX(_cg_st_idx)])->Print(TFile);
   } else {
-    if (ST_IDX_level(SYM_ST_IDX(_cg_st_idx)) == GLOBAL_SYMTAB)
-      (&St_Table[SYM_ST_IDX(_cg_st_idx)])->Print(stderr);
+    if (ST_IDX_level(SYM_ST_IDX(_cg_st_idx)) == GLOBAL_SYMTAB) {     
+      (&St_Table[SYM_ST_IDX(_cg_st_idx)])->Print(TFile);
+    }
     else
       fprintf(file, " <file:%d pu:%d st_idx:%d>\n",
               FILE_NUM_ST_IDX(_cg_st_idx),
@@ -3999,7 +4002,7 @@ void
 ConstraintGraphEdge::print(FILE *file) const
 {
   fprintf(file, "(src: %d dest: %d ", _srcCGNode->id(), _destCGNode->id());
-  char *es, *qs;
+  const char *es, *qs;
   switch (_etype) {
   case ETYPE_COPY:
     es = "COPY";
@@ -4224,12 +4227,13 @@ ConstraintGraph::cloneCGNode(ConstraintGraphNode *node, CG_ST_IDX new_cg_st_idx)
   _cgNodeToIdMap[newCGNode] = node->id();
   char buf1[128];
   char buf2[128];
-  if (Get_Trace(TP_ALIAS, NYSTROM_CG_BE_MAP_FLAG))
-    fprintf(stderr, "  cloneCGNode: node id:%d idx:%s off:%d cg:%s "
+  if (Get_Trace(TP_ALIAS, NYSTROM_CG_BE_MAP_FLAG)) {
+    fprintf(TFile, "  cloneCGNode: node id:%d idx:%s off:%d cg:%s "
             "to node idx:%s off:%d cg:%s\n", node->id(),
             printCGStIdx(node->cg_st_idx(), buf1, 128), node->offset(),
             node->cg()->name(), printCGStIdx(newCGNode->cg_st_idx(), buf2, 128),
             newCGNode->offset(), name());
+  }
   return newCGNode;
 }
 
@@ -4255,12 +4259,13 @@ ConstraintGraph::remapCGNode(ConstraintGraphNode *node, CG_ST_IDX new_cg_st_idx)
 {
   char buf1[128];
   char buf2[128];
-  if (Get_Trace(TP_ALIAS, NYSTROM_CG_BE_MAP_FLAG))
-    fprintf(stderr, "  remapCGNode: node id:%d: off:%d old idx: %s to "
+  if (Get_Trace(TP_ALIAS, NYSTROM_CG_BE_MAP_FLAG)) {
+    fprintf(TFile, "  remapCGNode: node id:%d: off:%d old idx: %s to "
             "new idx:%s in cg: %s\n", node->id(), node->offset(),
              printCGStIdx(node->cg_st_idx(), buf1, 128),
              printCGStIdx(new_cg_st_idx, buf2, 128),
              name());
+  }
   // Set the new cg_st_idx
   node->cg_st_idx(new_cg_st_idx);
   FmtAssert(_cgNodeToIdMap.find(node) == _cgNodeToIdMap.end(),
@@ -4277,10 +4282,11 @@ ConstraintGraph::mapCGNode(ConstraintGraphNode *node)
             ("Node already mapped"));
   _cgNodeToIdMap[node] = node->id();
   char buf1[128];
-  if (Get_Trace(TP_ALIAS, NYSTROM_CG_BE_MAP_FLAG))
-    fprintf(stderr, "  mapCGNode: node id:%d: idx:%s off:%d cg:%s to cg:%s\n",
+  if (Get_Trace(TP_ALIAS, NYSTROM_CG_BE_MAP_FLAG)) {
+    fprintf(TFile, "  mapCGNode: node id:%d: idx:%s off:%d cg:%s to cg:%s\n",
             node->id(), printCGStIdx(node->cg_st_idx(), buf1, 128), 
             node->offset(), node->cg()->name(), name());
+  }
 }
 
 // Add StInfo to this CG indexed using new_cg_st_idx
@@ -4294,10 +4300,11 @@ ConstraintGraph::mapStInfo(StInfo *stInfo,
   _cgStInfoMap[new_cg_st_idx] = stInfo;
   char buf1[128];
   char buf2[128];
-  if (Get_Trace(TP_ALIAS, NYSTROM_CG_BE_MAP_FLAG))
-    fprintf(stderr, " mapStInfo: old idx:%s new idx:%s to cg:%s\n",
+  if (Get_Trace(TP_ALIAS, NYSTROM_CG_BE_MAP_FLAG)) {
+    fprintf(TFile, " mapStInfo: old idx:%s new idx:%s to cg:%s\n",
             printCGStIdx(cg_st_idx, buf1, 128),
             printCGStIdx(new_cg_st_idx, buf2, 128), name());
+  }
 }
 
 void 
@@ -4364,9 +4371,10 @@ ConstraintGraphNode::collapseTypeIncompatibleNodes()
       if (!incompatible)
         continue;
 
-      if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-        fprintf(stderr, "Found incompatible node %d in pts set of %d\n",
+      if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
+        fprintf(TFile, "Found incompatible node %d in pts set of %d\n",
                 ptdNode->id(), this->id());
+      }
       //ptdNode->print(stderr);
       //fprintf(stderr, " in pts set of: \n");
       ptdNode->stInfo()->collapse();
@@ -4375,10 +4383,10 @@ ConstraintGraphNode::collapseTypeIncompatibleNodes()
                   ("Only single offset expected"));
         repNode = ptdNode->stInfo()->firstOffset();
         if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-          fprintf(stderr, "ptr stinfo:\n");
-          stInfo()->print(stderr);
-          fprintf(stderr, "Identifying rep: %d\n", repNode->id());
-          repNode->stInfo()->print(stderr);
+          fprintf(TFile, "ptr stinfo:\n");
+          stInfo()->print(TFile);
+          fprintf(TFile, "Identifying rep: %d\n", repNode->id());
+          repNode->stInfo()->print(TFile);
         }
       } else {
         FmtAssert(ptdNode->stInfo()->firstOffset()->nextOffset() == NULL,
@@ -4398,10 +4406,10 @@ ConstraintGraphNode::collapseTypeIncompatibleNodes()
           continue;
         repNode->collapse(ptdNode);
         if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-          fprintf(stderr, "Collapsing node: %d with %d\n", ptdNode->id(),
+          fprintf(TFile, "Collapsing node: %d with %d\n", ptdNode->id(),
                   repNode->id());
-          fprintf(stderr, "ptd stinfo:\n");
-          ptdNode->stInfo()->print(stderr);
+          fprintf(TFile, "ptd stinfo:\n");
+          ptdNode->stInfo()->print(TFile);
         }
         // Find the last collasped St of repNode
         ConstraintGraphNode *c = repNode;
@@ -4581,10 +4589,10 @@ ConstraintGraph::mapAliasedSyms()
         newSts.insert(ST_st_idx(base_st));
         n = getCGNode(CG_ST_st_idx(base_st), base_offset);
         if (Get_Trace(TP_ALIAS,NYSTROM_CG_BUILD_FLAG)) {
-          fprintf(stderr, "mapNewBase: mapping node:\n");
-          cur->print(stderr);
-          fprintf(stderr, "          : to node:\n");
-          n->print(stderr);
+          fprintf(TFile, "mapNewBase: mapping node:\n");
+          cur->print(TFile);
+          fprintf(TFile, "          : to node:\n");
+          n->print(TFile);
         }
         _aliasedSyms[n->id()] = cur->id();
       }
@@ -4681,7 +4689,7 @@ char *
 ConstraintGraphVCG::getEdgeLabel(ConstraintGraphEdge *cgEdge)
 {
   char buf[256];
-  char *qs;
+  const char *qs;
   switch (cgEdge->edgeQual()) {
     case CQ_HZ:
       qs = "HZ";

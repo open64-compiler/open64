@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -225,6 +225,79 @@ Get_Name (gs_t node)
 		return NULL;
 }
 
+#define MAX_STRUCT_NAME_LEN 2048
+static char struct_name_buf[MAX_STRUCT_NAME_LEN];
+static char*
+Get_Struct_Name_Rec (gs_t decl, char* buf)
+{
+  gs_t ctx = NULL;
+  const char* name = NULL;
+  if (gs_tree_code(decl) == GS_NAMESPACE_DECL) {
+    gs_t decl_name = gs_decl_name(decl);
+    name = decl_name ? gs_identifier_pointer(decl_name)
+                     : "(anonymous namespace)";
+    ctx = gs_decl_context(decl);
+  }
+  else if (gs_tree_code(decl) == GS_RECORD_TYPE ||
+           gs_tree_code(decl) == GS_UNION_TYPE) {
+    gs_t type_name = gs_type_name(decl);
+    if (type_name == NULL || gs_type_anonymous_p(decl)) {
+      name = "(anonymous struct)";
+    }
+    else {
+      if (gs_tree_code(type_name) == GS_IDENTIFIER_NODE) {
+        name = gs_identifier_pointer(type_name);
+      }
+      else {
+        name = gs_identifier_pointer(gs_decl_name(type_name));
+      }
+    }
+    if (type_name && gs_tree_code(type_name) != GS_IDENTIFIER_NODE)
+      ctx = gs_decl_context(gs_type_name(decl));
+  }
+  else {
+    // nothing append
+    return buf;
+  }
+
+  BOOL has_ctx = FALSE;
+  if (ctx &&
+      (gs_tree_code(ctx) == GS_NAMESPACE_DECL ||
+       gs_tree_code(ctx) == GS_RECORD_TYPE ||
+       gs_tree_code(ctx) == GS_UNION_TYPE)) {
+    buf = Get_Struct_Name_Rec(ctx, buf);
+    has_ctx = TRUE;
+  }
+
+  int name_len = strlen(name);
+  int extr_len = has_ctx ? sizeof("::") : 1;   // include last '\0'
+  if (buf + name_len + extr_len >= struct_name_buf + MAX_STRUCT_NAME_LEN)
+    // buffer exceeds limit. nothing append
+    return buf;
+
+  if (has_ctx) {
+    // append "::"
+    buf[0] = ':';
+    buf[1] = ':';
+    buf += 2;
+  }
+
+  // append name
+  strncpy(buf, name, name_len + 1);    // copy last '\0'
+
+  return buf + name_len;
+}
+
+static char*
+Get_Struct_Name(gs_t decl)
+{
+  if (gs_type_anonymous_p(decl))
+    return (char*)"(anon)";
+
+  Get_Struct_Name_Rec(decl, struct_name_buf);
+  return struct_name_buf;
+}
+
 static void
 dump_field(gs_t field)
 {
@@ -349,7 +422,7 @@ is_empty_base_class (gs_t type_tree)
 
 // look up the attribute given by attr_name in the attribute list
 gs_t 
-lookup_attribute(char *attr_name, gs_t attr_list)
+lookup_attribute(const char *attr_name, gs_t attr_list)
 {
   gs_t nd;
   for (nd = attr_list; nd; nd = gs_tree_chain(nd)) {
@@ -861,7 +934,7 @@ Create_TY_For_Tree (gs_t type_tree, TY_IDX idx)
 			tsize = 0;
 #endif	// KEY
 		TY_Init (ty, tsize, KIND_STRUCT, MTYPE_M, 
-			Save_Str(Get_Name(gs_type_name(type_tree))) );
+			Save_Str(Get_Struct_Name(type_tree)));
 
 		if (gs_type_name(type_tree) == NULL || gs_type_anonymous_p(type_tree))
 		    Set_TY_anonymous(ty);
@@ -1239,6 +1312,7 @@ Create_TY_For_Tree (gs_t type_tree, TY_IDX idx)
 		Set_TY_align (idx, 1);
 		TY_IDX ret_ty_idx;
 		TY_IDX arg_ty_idx;
+		TY_IDX fake_parm_idx = TY_IDX_ZERO;
 		TYLIST tylist_idx;
 
 		// allocate TYs for return as well as parameters
@@ -1273,12 +1347,17 @@ Create_TY_For_Tree (gs_t type_tree, TY_IDX idx)
 		// If the front-end adds the fake first param, then convert the
 		// function to return void.
 		if (TY_return_in_mem(ret_ty_idx)) {
+		  fake_parm_idx = Make_Pointer_Type(ret_ty_idx, FALSE);
 		  ret_ty_idx = Be_Type_Tbl (MTYPE_V);
 		  Set_TY_return_to_param(idx);		// bugs 2423 2424
 		}
 #endif
 		Set_TYLIST_type (New_TYLIST (tylist_idx), ret_ty_idx);
 		Set_TY_tylist (ty, tylist_idx);
+		if(fake_parm_idx != TY_IDX_ZERO) {
+		  // If exists fake parm, add to type list
+		  Set_TYLIST_type (New_TYLIST (tylist_idx), fake_parm_idx);
+		}
 		for (num_args = 0, arg = gs_type_arg_types(type_tree);
 		     arg;
 		     num_args++, arg = gs_tree_chain(arg))
@@ -1685,8 +1764,15 @@ Create_ST_For_Tree (gs_t decl_node)
         ST_Init (st, Save_Str(p),
                  CLASS_FUNC, sclass, eclass, TY_IDX (pu_idx));
 
+        // Set line number where define sym in source file
+        if (gs_operand (decl_node, GS_DECL_SOURCE_LINE))
+          Set_ST_Srcpos(*st, Get_Srcpos(decl_node));
+        else
+          Set_ST_Srcpos(*st, 0);
+
         // St is a constructor
-        if (gs_decl_complete_constructor_p(decl_node) && !gs_decl_copy_constructor_p(decl_node))
+        // VSA fix: mark copy constructor with PU construtor flag, to identify dna vtbl_map
+        if (gs_decl_complete_constructor_p(decl_node)) // && !gs_decl_copy_constructor_p(decl_node))
             Set_PU_is_constructor(pu);
         // St is a pure virual function
         if (gs_decl_pure_virtual_p(decl_node) || strncmp(p, "__cxa_pure_virtual", 18) == 0)
@@ -1946,7 +2032,8 @@ Create_ST_For_Tree (gs_t decl_node)
 #ifdef KEY
         // Handle aligned attribute (bug 7331)
         if (gs_decl_user_align (decl_node))
-          Set_TY_align (ty_idx, gs_decl_align_unit(decl_node));
+          Set_TY_align (ty_idx, gs_decl_align_unit(decl_node) ?
+                                    gs_decl_align_unit(decl_node) : Pointer_Size);
         // NOTE: we do not update the ty_idx value in the TYPE_TREE. So
         // if any of the above properties are set, the next time we get into
         // Get_ST, the ty_idx in the TYPE_TREE != ty_idx in st. The solution
@@ -1963,8 +2050,15 @@ Create_ST_For_Tree (gs_t decl_node)
       if (gs_decl_virtual_p(decl_node) && strncmp(name, "_ZTV", 4) == 0)
       {
           Set_ST_is_vtable(st);
-          Set_ST_vtable_ty_idx(st, Get_TY(gs_cp_decl_context(decl_node)));
+          TY_IDX ty_idx = Get_TY(gs_cp_decl_context(decl_node));
+          Set_ST_vtable_ty_idx(st, ty_idx);
+          Set_TY_vtable(ty_idx, ST_st_idx(st));
       }
+
+        if (lang_cplus && sclass == SCLASS_FORMAL &&
+            gs_decl_artificial(decl_node) &&
+            strcmp(p, "this") == 0)
+          Set_ST_is_this_ptr(st);
 	  
 #ifdef KEY
 #ifdef FE_GNU_4_2_0
@@ -2010,6 +2104,24 @@ Create_ST_For_Tree (gs_t decl_node)
 #endif // KEY
         if (gs_tree_code(decl_node) == GS_PARM_DECL) {
 		Set_ST_is_value_parm(st);
+        }
+
+        // IAR data placement
+        gs_t attr_list = gs_decl_attributes(decl_node);
+        gs_t loc_attr;
+        if (attr_list != NULL &&
+            (loc_attr = lookup_attribute("location", attr_list)) != NULL) {
+          Is_True(gs_tree_code(loc_attr) == GS_TREE_LIST, ("not tree list"));
+          gs_t location = gs_tree_value(loc_attr);
+          Is_True(gs_tree_code(location) == GS_INTEGER_CST, ("not integer cst"));
+          UINT64 val = gs_get_integer_value(location);
+          ST_ATTR_IDX st_attr_idx;
+          ST_ATTR&    st_attr = New_ST_ATTR (level, st_attr_idx);
+          ST_ATTR_Init (st_attr, ST_st_idx (st), ST_ATTR_ABSOLUTE_LOCATION, val);
+        }
+        if (attr_list != NULL &&
+            (loc_attr = lookup_attribute("unused", attr_list)) != NULL) {
+          Set_ST_is_not_used(st);
         }
       }
       break; 

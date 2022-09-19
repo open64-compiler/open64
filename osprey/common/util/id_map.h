@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -183,10 +187,12 @@ extern double   ceil(double);
 #define GROWTH_FACTOR   2.0
 
 template <class NODE_TYPE, class KEY_TYPE> class ID_MAP;
+template <class NODE_TYPE, class KEY_TYPE> class ID_MAP_ITER;
 
 template <class NODE_TYPE, class KEY_TYPE>
 class ID_MAP_HASH_ENTRY {
 friend class ID_MAP<NODE_TYPE, KEY_TYPE>;
+friend class ID_MAP_ITER<NODE_TYPE, KEY_TYPE>;
   NODE_TYPE  _node;	// _not_found_value for entries in the free list
   union {
     KEY_TYPE _key;	// For entries in use
@@ -205,6 +211,7 @@ friend class ID_MAP<NODE_TYPE, KEY_TYPE>;
 
 template <class NODE_TYPE, class KEY_TYPE>
 class ID_MAP {
+friend class ID_MAP_ITER<NODE_TYPE, KEY_TYPE>;
 private:
   NODE_TYPE                                     _not_found_value;
   BOOL                                          _constructed;
@@ -403,7 +410,6 @@ public:
   void Print(FILE *) const;
 };
 
-
 // here starts templatized function declarations
 
 template <class KEY_TYPE>
@@ -429,7 +435,49 @@ UINT64 Key_as_llu(const KEY_TYPE k)
    return llu;
 } // Key_as_llu
 
-      
+template <class NODE_TYPE, class KEY_TYPE>
+class ID_MAP_ITER {
+private:
+  ID_MAP<NODE_TYPE, KEY_TYPE> &_id_map;
+  UINT32                       _current_idx;
+  UINT32                       _table_size;
+
+public:
+  ID_MAP_ITER(ID_MAP<NODE_TYPE, KEY_TYPE> &id_map) : _id_map(id_map), _table_size(_id_map._table_size)
+  {
+    _table_size = id_map._table_size;
+    for (_current_idx = 0; _current_idx < _table_size; _current_idx++) {
+      if (_id_map._table[_current_idx]._node != _id_map._not_found_value)
+        break;
+    }
+  }
+
+  void        Next()
+  {
+    _current_idx++;
+    for (; _current_idx < _table_size; _current_idx++) {
+      if (_id_map._table[_current_idx]._node != _id_map._not_found_value)
+        break;
+    }
+  }
+
+  BOOL        Is_end()
+  {
+    return _table_size == 0 ? TRUE :  _current_idx == _table_size;
+  }
+
+  KEY_TYPE    Key()
+  {
+    return _id_map._table[_current_idx]._key;
+  }
+
+  NODE_TYPE   Node()
+  {
+    Is_True(_id_map._table[_current_idx]._node != _id_map._not_found_value, 
+      ("Node value not found, current idx : %d.\n", _current_idx));
+    return _id_map._table[_current_idx]._node;
+  }
+};
 
 // The constructor only squirrels away the information required to
 // build the object. The object is built only by the Init() function,

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -156,7 +160,7 @@ extern void Instru_Call_Mcount(void );
 /* Tail calls: */
 extern void Optimize_Tail_Calls( ST* pu );
 
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 void Adjust_SP_After_Call( BB* );
 extern INT Push_Pop_Int_Saved_Regs (void);
 #endif

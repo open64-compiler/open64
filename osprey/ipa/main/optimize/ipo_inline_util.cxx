@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -108,13 +112,13 @@ Compute_Return_Preg_Offset (WN *Callee, RETURN_PREG& rp,
 	if (TY_mtype (return_type) == MTYPE_M) {
 	    // for structures , we use a tmp var
 	    ST* st = New_ST (CURRENT_SYMTAB);
-	    ST_Init (st, Save_Str ("rr"), CLASS_VAR, SCLASS_AUTO,
+	    ST_Init (st, Save_Str (".retval"), CLASS_VAR, SCLASS_AUTO,
 		     EXPORT_LOCAL, TY_ret_type (func_type));
 	    Set_ST_is_temp_var (st);
 	    rp.insert (st);
 	} else
 	    rp.insert (Create_Preg_explicit (TY_mtype (return_type),
-					     "rr", caller_scope_tab,
+					     ".retval", caller_scope_tab,
 					     caller_level),
 		       MTYPE_To_PREG (TY_mtype (return_type)));
 	return;
@@ -232,9 +236,10 @@ Fix_Return_Pregs (WN *Call, const RETURN_PREG& rp)
     
     if (node != NULL) {
 
-	if (WN_operator (node) == OPR_COMPGOTO) {
-	    // this is a special case for computed gotos, the preg could
-	    // occur in the comp goto switch value 
+	if (WN_operator (node) == OPR_COMPGOTO ||
+	    WN_operator (node) == OPR_IF) {
+	    // this is a special case for computed gotos/if, the preg could
+	    // occur in the comp goto switch value or if condition
 	    Fix_LDID_Of_Return_Preg (node, rp);
 	    return;
 	}
@@ -287,7 +292,9 @@ void
 Get_enclosing_region (IPA_NODE * n, IPA_EDGE * e)
 {
     PU caller = Pu_Table[ST_pu(n->Func_ST())];
-    if (!(PU_src_lang (caller) & PU_CXX_LANG) || !PU_has_region (caller))
+    if ( (!(PU_src_lang (caller) & PU_CXX_LANG) && 
+          !(PU_src_lang (caller) & PU_JAVA_LANG)) ||
+         !PU_has_region (caller))
         return;
     // get caller scope
     SCOPE * old_scope = Scope_tab;

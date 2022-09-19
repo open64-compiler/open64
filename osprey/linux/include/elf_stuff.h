@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2005 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -710,7 +714,7 @@ typedef struct
 #define R_68K_GLOB_DAT	20		/* Create GOT entry */
 #define R_68K_JMP_SLOT	21		/* Create PLT entry */
 #define R_68K_RELATIVE	22		/* Adjust by program base */
-#define R_68K_NUM	23
+#define R_68K_NUM	43              /* keep same value as /usr/include/elf.h */
 
 /* Intel 80386 specific definitions.  */
 
@@ -983,9 +987,17 @@ enum {
 
 /* Legal values for MIPS architecture level.  */
 
+#ifndef E_MIPS_ARCH_1
 #define E_MIPS_ARCH_1	  0x00000000	/* -mips1 code.  */
+#endif
+
+#ifndef E_MIPS_ARCH_2
 #define E_MIPS_ARCH_2	  0x10000000	/* -mips2 code.  */
+#endif
+
+#ifndef E_MIPS_ARCH_3
 #define E_MIPS_ARCH_3	  0x20000000	/* -mips3 code.  */
+#endif
 
 /* 
  * special p_flags

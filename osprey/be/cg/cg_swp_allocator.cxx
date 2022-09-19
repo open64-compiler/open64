@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -730,7 +734,7 @@ SWP_ALLOCATOR::_print_status(FILE *outf)
 	    _num_allocated_lifetimes,
 	    (long) _lifetime.size(),
 #else /* defined(BUILD_OS_DARWIN) */
-	    "gave up after allocating %d (of %d) lifetimes.\n"
+	    "gave up after allocating %d (of %ld) lifetimes.\n"
 	    "The last allocation ran the register count up to %d\n", 
 	    _num_allocated_lifetimes,
 	    _lifetime.size(),

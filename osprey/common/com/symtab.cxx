@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -59,6 +59,7 @@
 
 #include <ext/hash_map>			// stl hash table
 #include <ext/algorithm>
+#include <ostream>
 
 #include "defs.h"
 #include "config.h"
@@ -73,21 +74,30 @@
 #include "config_asm.h"
 
 // global tables
-FILE_INFO	File_info;
+FILE_INFO	Default_File_info;
+FILE_INFO	*File_info_ptr = &Default_File_info;
 SCOPE		*Scope_tab;
-PU_TAB		Pu_Table;
+PU_TAB		Default_Pu_Table;
+PU_TAB		*Pu_Table_ptr = &Default_Pu_Table;
 SYMBOL_TABLE	St_Table;
-TY_TAB		Ty_tab;
+TY_TAB		Default_Ty_tab;
+TY_TAB		*Ty_tab_ptr = &Default_Ty_tab;
 TYPE_TABLE	Ty_Table;
-FLD_TAB		Fld_Table;
-TYLIST_TAB	Tylist_Table;
-ARB_TAB		Arb_Table;
-TCON_TAB	Tcon_Table;
-INITV_TAB	Initv_Table;
+FLD_TAB		Default_Fld_Table;
+FLD_TAB		*Fld_Table_ptr = &Default_Fld_Table;
+TYLIST_TAB	Default_Tylist_Table;
+TYLIST_TAB	*Tylist_Table_ptr = &Default_Tylist_Table;
+ARB_TAB		Default_Arb_Table;
+ARB_TAB		*Arb_Table_ptr = &Default_Arb_Table;
+TCON_TAB	Default_Tcon_Table;
+TCON_TAB	*Tcon_Table_ptr = &Default_Tcon_Table;
+INITV_TAB	Default_Initv_Table;
+INITV_TAB	*Initv_Table_ptr = &Default_Initv_Table;
 INITO_TABLE	Inito_Table;
 PREG_TABLE	Preg_Table;
 LABEL_TABLE	Label_Table;
-BLK_TAB		Blk_Table;
+BLK_TAB		Default_Blk_Table;
+BLK_TAB		*Blk_Table_ptr = &Default_Blk_Table;
 ST_ATTR_TABLE	St_Attr_Table;
 
 SYMTAB_IDX Current_scope;		// index to current scope
@@ -292,6 +302,8 @@ FLD_get_to_field (TY_IDX struct_ty_idx, UINT field_id, UINT &cur_field_id)
     FLD_ITER fld_iter = Make_fld_iter(TY_fld(struct_ty_idx));
     do {
 	FLD_HANDLE fld(fld_iter);
+        if (fld.Is_Null())
+            break;
 	cur_field_id++;
 	if (cur_field_id == field_id)
 	    return fld;
@@ -304,6 +316,44 @@ FLD_get_to_field (TY_IDX struct_ty_idx, UINT field_id, UINT &cur_field_id)
     } while (!FLD_last_field(fld_iter++));
     return FLD_HANDLE();
 } // FLD_get_to_field
+
+/* ====================================================================
+ *
+ * FLD_get_from_offset
+ *
+ * Given the TY of a struct, get the field corresponding to offset.
+ * cur_field_id gives the field_id of the struct itself.  If the field
+ * at given offset found, cur_field_id is set equal to field_id. Otherwise,
+ * Is_Null() is true for the field handle returned, and cur_field_id is
+ * set to correspond to the last field of this struct.
+ *
+ * ==================================================================== */
+FLD_HANDLE
+FLD_get_from_offset (TY_IDX struct_ty_idx, UINT offset, UINT &cur_field_id)
+{
+    Is_True(Is_Structure_Type(struct_ty_idx), ("need a struct type"));
+    UINT64 cur_ofst = 0;
+    FLD_ITER fld_iter = Make_fld_iter(TY_fld(struct_ty_idx));
+    do {
+	FLD_HANDLE fld(fld_iter);
+        if (fld.Is_Null())
+            break;
+	cur_field_id++;
+        cur_ofst = FLD_ofst(fld);
+	if (cur_ofst == offset)
+	    return fld;
+        else if (cur_ofst > offset)
+            break;
+	if (TY_kind(FLD_type(fld)) == KIND_STRUCT &&
+            TY_fld(FLD_type(fld)) != FLD_HANDLE()) {
+            INT64 new_ofst = offset - cur_ofst;
+	    fld = FLD_get_from_offset(FLD_type(fld), new_ofst, cur_field_id);
+	    if (!fld.Is_Null())
+		return fld;
+	}
+    } while (!FLD_last_field(fld_iter++));
+    return FLD_HANDLE();
+} // FLD_get_from_offset
 
 /* ====================================================================
  *
@@ -327,6 +377,114 @@ FLD_get_count (TY_IDX struct_ty_idx)
   return count;
 }
 
+FLD_HANDLE 
+FLD_get_to_field_name (TY_IDX struct_ty_idx, char *name, UINT &field_id)
+{
+  FLD_ITER fld_iter = Make_fld_iter(TY_fld(struct_ty_idx));
+  do {
+    field_id++;
+    FLD_HANDLE fld(fld_iter);
+    if (fld.Is_Null())
+      break;
+    if(strcmp(name, FLD_name(fld)) == 0) {
+      return fld;
+    }
+    if (TY_kind(FLD_type(fld)) == KIND_STRUCT &&
+        TY_fld(FLD_type(fld)) != FLD_HANDLE()) {
+        fld = FLD_get_to_field_name(FLD_type(fld), name, field_id);
+      if(!fld.Is_Null()) {
+        return fld;
+      }
+    }
+  } while (!FLD_last_field(fld_iter++));
+  return FLD_HANDLE();
+}
+
+// Get field name by filed idx
+char *
+Get_fld_name(TY_IDX struct_ty_idx, UINT field_id)
+{
+  Is_True(Is_Structure_Type(struct_ty_idx), ("should be a struct type"));
+  UINT curr_id = 0;
+  FLD_HANDLE fld_handle = FLD_get_to_field (struct_ty_idx, field_id, curr_id);
+  if(fld_handle.Is_Null())
+    return NULL;
+  else
+    return FLD_name(fld_handle);
+}
+
+void
+Get_composed_flds(TY_IDX struct_ty_idx, UINT field_id, 
+                  UINT &cur_field_id, vector<FLD_HANDLE> &flds)
+{
+  FLD_ITER fld_iter = Make_fld_iter(TY_fld(struct_ty_idx));
+  do {
+    FLD_HANDLE fld(fld_iter);
+    if (fld.Is_Null())
+      break;
+    cur_field_id++;
+    if (cur_field_id == field_id) {
+      flds.push_back(fld);
+      return;
+    }
+    if (TY_kind(FLD_type(fld)) == KIND_STRUCT &&
+        TY_fld(FLD_type(fld)) != FLD_HANDLE()) {
+        flds.push_back(fld);
+        Get_composed_flds(FLD_type(fld), field_id, cur_field_id, flds);
+        if (cur_field_id == field_id)
+          return;
+        else
+          flds.pop_back();
+    } 
+  } while (!FLD_last_field(fld_iter++));
+}
+
+// Get field name by field idx, if return not null, caller should free the memory
+char *
+Get_composed_fld_name(TY_IDX struct_ty_idx, UINT field_id, char *compzed_name, INT max_len)
+{
+  Is_True(Is_Structure_Type(struct_ty_idx), ("should be a struct type"));
+  if(compzed_name == NULL || max_len < 5) {
+    return NULL;
+  }
+  UINT cur_field_id = 0;
+  vector<FLD_HANDLE> flds;
+  flds.clear();
+  Get_composed_flds(struct_ty_idx, field_id, cur_field_id, flds);
+  if(flds.size() > 0) {
+    memset(compzed_name, '\0', max_len);
+    for (int fld_idx = 0; fld_idx < flds.size(); fld_idx++) {
+      FLD_HANDLE fld = flds[fld_idx];
+      // one fld is null, do not compose the string
+      if(fld.Is_Null()) {
+        return NULL;
+      } else {
+        const char *fld_name = FLD_name(fld);
+        // skip fld name with .anonymous prefix, for ex: no name union
+        if(!strncmp(fld_name, ".anonymous", strlen(".anonymous")))
+          continue;
+        if(PU_java_lang(Get_Current_PU()) && FLD_ofst(fld) == 0) {
+          // for java super class fld, use "super" instead of long fld_name
+          fld_name = "super";
+        }
+        INT req_len = strlen(compzed_name) + strlen(fld_name) + strlen(".") + 1;
+        if(req_len > max_len - 5) {
+          // exceed max_len, append with "...$", for ex:"st1.fld1.fld2...$"
+          strcat(compzed_name, "...$");
+          return compzed_name;
+        } else {
+          if(compzed_name[0] != '\0') {
+            strcat(compzed_name, ".");
+          }
+          strcat(compzed_name, fld_name);
+          compzed_name[req_len -1] = '\0';
+        }
+      }
+    }
+    return compzed_name;
+  }
+  return NULL;
+}
 
 // reverse map for getting the pointer TY given the pointee
 
@@ -1235,6 +1393,20 @@ TY_is_unique (const TY_IDX ty_idx)
   };
 } // TY_is_unique
 
+void
+Reset_misc_symtab()
+{
+  // reset ty unique tables
+  Hash_ty_scalar_table.clear();
+  Hash_ty_array_table.clear();
+  Hash_ty_pointer_table.clear();
+  Hash_ty_function_table.clear();
+  Hash_ty_struct_table.clear();
+
+  // reset intrinsic table
+  intrinsic_list.clear();
+}
+
 /* ty either is union or has union in one of its fields (called recursively) */
 BOOL
 TY_has_union (TY_IDX ty)
@@ -1247,6 +1419,8 @@ TY_has_union (TY_IDX ty)
   FLD_HANDLE fld = TY_fld (ty);
   TY_IDX fty;
   do {
+    if (fld.Is_Null())
+      break;
     fty = FLD_type(fld);
     if (TY_has_union(fty))
       return TRUE;
@@ -1268,6 +1442,8 @@ TY_has_volatile (TY_IDX ty)
   
   FLD_HANDLE fld = TY_fld(ty);
   do {
+    if (fld.Is_Null())
+      break;
     TY_IDX fty = FLD_type(fld);
     if (TY_has_volatile(fty)) {
       return TRUE;
@@ -1305,6 +1481,8 @@ Mtype_For_Type_Offset (TY_IDX ty, INT64 offset)
       FLD_ITER fld_iter = Make_fld_iter(TY_fld(ty));
       do {
         FLD_HANDLE fld(fld_iter);
+        if (fld.Is_Null())
+          break;
         if (Is_Composite_Type(FLD_type(fld))
           && offset >= FLD_ofst(fld)
           && offset < FLD_ofst(fld) + TY_size(FLD_type(fld)))
@@ -1777,6 +1955,7 @@ ST::Print (FILE *f, BOOL verbose) const
 	    fprintf (f, "PU[%d] ", u2.pu);
 	    if (Pu_Table[u2.pu].src_lang & PU_C_LANG)	fprintf (f, "C  ");
 	    if (Pu_Table[u2.pu].src_lang & PU_CXX_LANG)	fprintf (f, "C++  ");
+	    if (Pu_Table[u2.pu].src_lang & PU_JAVA_LANG) fprintf (f, "Java  ");
 	    if (Pu_Table[u2.pu].src_lang & PU_F77_LANG)	fprintf (f, "F77  ");
 	    if (Pu_Table[u2.pu].src_lang & PU_F90_LANG)	fprintf (f, "F90  ");
 
@@ -1830,6 +2009,7 @@ ST::Print (FILE *f, BOOL verbose) const
 	    if (flags & PU_IS_CDECL) fprintf (f, " cdecl");
 	    if (TY_return_to_param(ty_idx))	fprintf (f, " return_to_param");
 	    if (TY_is_varargs(ty_idx))		fprintf (f, " varargs");
+            if (TY_has_optional_args(ty_idx))   fprintf (f, " optional");
 	    if (TY_has_prototype(ty_idx))	fprintf (f, " prototype");
 #ifdef TARG_X8664
 	    if (TY_has_sseregister_parm(ty_idx)) fprintf (f, " sseregisterparm");
@@ -1913,8 +2093,22 @@ ST::Print (FILE *f, BOOL verbose) const
 	        fprintf (f, " global_as_local");
             if (flags_ext & ST_IS_VTABLE)
                 fprintf (f, " vtable");
+            if (flags_ext & ST_IS_CLASS_SYMBOL)
+                fprintf (f, " class symbol");
+            if (flags_ext & ST_IS_CLASS_CONST_DATA)
+                fprintf (f, " class const data symbol");
+            if (flags_ext & ST_IS_MODIFIED)
+                fprintf (f, " modified");
+            if (flags_ext & ST_IS_USED)
+                fprintf (f, " used");
+            if (flags_ext & ST_IS_INLINED)
+                fprintf (f, " inlined");
             if (flags_ext & ST_IS_ODR)
                 fprintf (f, " odr");
+            if (flags_ext & ST_IS_NATIVE)
+                fprintf (f, " native");
+            if (flags_ext & ST_IS_THIS_PTR)
+                fprintf (f, " this_ptr");
 	}
 #endif
 #ifdef TARG_NVISA
@@ -1994,7 +2188,12 @@ ST::Print (FILE *f, BOOL verbose) const
 	fprintf (f, "\n\t\tSclass: %s\n", Sclass_Name (storage_class));
 	if(vtable_ty_idx)
 	{
-	    fprintf (f, "\t\tVtable for type: %s\n", TY_name (vtable_ty_idx));
+	  if(flags_ext & ST_IS_VTABLE)
+	      fprintf (f, "\t\tVtable for type: %s\n", TY_name (vtable_ty_idx));
+	  else if(flags_ext & ST_IS_CLASS_SYMBOL)
+	      fprintf (f, "\t\tClass symbol for type: %s\n", TY_name (vtable_ty_idx));
+          else if(flags_ext & ST_IS_RTTI)
+              fprintf (f, "\t\tRTTI for type: %s\n", TY_name (vtable_ty_idx));
 	}
     }
 } // ST::Print
@@ -2111,6 +2310,7 @@ std::ostream& operator<<(std::ostream &os, const ST &st )
 
 	    if (Pu_Table[st.u2.pu].src_lang & PU_C_LANG)	os <<  "C  ";
 	    if (Pu_Table[st.u2.pu].src_lang & PU_CXX_LANG)	os << "C++  ";
+	    if (Pu_Table[st.u2.pu].src_lang & PU_JAVA_LANG)	os << "Java  ";
 	    if (Pu_Table[st.u2.pu].src_lang & PU_F77_LANG)	os << "F77  ";
 	    if (Pu_Table[st.u2.pu].src_lang & PU_F90_LANG)	os << "F90  ";
 
@@ -2398,6 +2598,14 @@ TY::Print (FILE *f) const
 #ifdef TARG_NVISA
 	if (flags & TY_CAN_BE_VECTOR) 	fprintf (f, "  vector");
 #endif
+
+      if (flags & TY_IS_ARRAY_CLASS) {
+        if(TY_vtable(*this)) {
+          fprintf(f, " sensitive_class");
+        } else {
+          fprintf(f, " array_class");
+        }
+      } 
     }
     fprintf (f, ")");
 
@@ -2440,8 +2648,11 @@ TY::Print (FILE *f) const
 	    } while (! FLD_last_field (iter++));
 	} else
 	    fputc ('\n', f);
-	if (TY_vtable(*this))
-	    fprintf(f, "VTABLE: %s\n", ST_name(TY_vtable(*this)));
+	if (Vtable())
+	    fprintf(f, "      VTABLE(%s)", ST_name(Vtable()));
+	if (Copy_constructor())
+	    fprintf(f, "      COPY_CTOR_ST(0x%x)", Copy_constructor());
+	fprintf(f, "\n");
 	break;
 
     case KIND_POINTER:
@@ -2544,8 +2755,11 @@ ST_ATTR::Print (FILE* f) const
     case ST_ATTR_SECTION_NAME:
 	fprintf (f, "(SECTION) %s\n", Index_To_Str (u.section_name));
 	break;
+    case ST_ATTR_ABSOLUTE_LOCATION:
+	fprintf (f, "(LOCATION) 0x%llx\n", u.value);
+	break;
     default:
-	fprintf (f, "(UNKNOWN) 0x%x\n", u.value);
+	fprintf (f, "(UNKNOWN) 0x%llx\n", u.value);
 	break;
     }
 }
@@ -2559,6 +2773,8 @@ FILE_INFO::Print (FILE *f) const
 	if (flags & FI_NEEDS_LNO)	fputs (" needs_LNO", f);
 	if (flags & FI_HAS_INLINES)	fputs (" has_inlines", f);
 	if (flags & FI_HAS_MP)		fputs (" has_mp", f);
+	if (flags & FI_IS_RBC)		fputs (" rbc file", f);
+    if (flags & FI_IS_VTABLE)   fputs (" vtable file", f);
     }
 
     fputs ("\n", f);
@@ -2819,7 +3035,8 @@ Promoted_Parm_Type(const ST *formal_parm)
 //----------------------------------------------------------------------
 
 // for fast conversion of predefined types and preg.
-ST *MTYPE_TO_PREG_array[MTYPE_LAST+1];
+//ST *MTYPE_TO_PREG_array[MTYPE_LAST+1];
+ST **MTYPE_TO_PREG_array;
 
 ST *Int_Preg, *Float_Preg, *Return_Val_Preg;
 // bug fix for OSP_87
@@ -2828,7 +3045,8 @@ ST *Branch_Preg;
 ST* X87_Preg = NULL;
 #endif
 
-TY_IDX MTYPE_TO_TY_array[MTYPE_LAST+1];
+//TY_IDX MTYPE_TO_TY_array[MTYPE_LAST+1];
+TY_IDX *MTYPE_TO_TY_array;
 
 TY_IDX Quad_Type, Void_Type, FE_int_Type, FE_double_Type;
 TY_IDX Spill_Int_Type, Spill_Float_Type;
@@ -2836,6 +3054,7 @@ TY_IDX Spill_Int_Type, Spill_Float_Type;
 TY_IDX Spill_Int32_Type;
 TY_IDX Spill_Float32_Type;
 #endif
+TY_IDX Char_Star_Type;
 
 #if defined(FRONT_END) && !defined(FRONT_END_MFEF77)
 extern "C" TYPE_ID FE_int_To_Mtype (void);
@@ -3166,6 +3385,8 @@ Initialize_Special_Global_Symbols ()
 #endif // KEY
     Void_Type = MTYPE_To_TY (MTYPE_V);
 
+    Char_Star_Type = Make_Pointer_Type (MTYPE_To_TY (MTYPE_U1));
+
 #if defined(TARG_X8664) || defined(TARG_MIPS)
     Spill_Int32_Type   = MTYPE_To_TY (Spill_Int32_Mtype);
     Spill_Float32_Type = MTYPE_To_TY (Spill_Float32_Mtype);
@@ -3189,7 +3410,11 @@ Initialize_Symbol_Tables (BOOL reserve_index_zero)
 					  Max_scope * sizeof(SCOPE));
     BZERO(Scope_tab, Max_scope * sizeof(SCOPE));
 
+    MTYPE_TO_PREG_array = (ST**) MEM_POOL_Alloc (Malloc_Mem_Pool,
+                                                 sizeof(ST*) * (MTYPE_LAST + 1));
     BZERO (MTYPE_TO_PREG_array, sizeof(ST*) * (MTYPE_LAST + 1));
+    MTYPE_TO_TY_array = (TY_IDX*) MEM_POOL_Alloc (Malloc_Mem_Pool,
+                                                  sizeof(TY_IDX) * (MTYPE_LAST + 1));
     BZERO (MTYPE_TO_TY_array, sizeof(TY_IDX) * (MTYPE_LAST + 1));
 
     if (reserve_index_zero) {

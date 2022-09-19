@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -2240,6 +2244,8 @@ ALIAS_CLASSIFICATION::Finalize_ac_map_wn(WN *wn)
       // gives the alias class member corresponding to the WN.
       ALIAS_CLASS_MEMBER *acm =
 	(ALIAS_CLASS_MEMBER *) WN_MAP_Get(Indir_classification_map(), wn);
+      if (acm == NULL)
+        return;
       ALIAS_CLASS_REP    *acr = acm->Alias_class();
 
       if (Tracing()) {
@@ -2545,16 +2551,14 @@ ALIAS_CLASSIFICATION::Release_resources(void)
   if (_memops_classified) {
     WN_MAP_Delete(Memop_classification_map());
 
-    // Can not call destructor here. These objects
-    // will be destructed in destructor of ALIAS_CLASSIFICATION
-    // But we must clear all data because the MEM_POOL is deleted.
-
+    // Can not call destructor here. These objects will be destructed in
+    // destructor of ALIAS_CLASSIFICATION. But we must clear call data
+    // because the MEM_POOL is deleted.
     //(&_preg_num_base_id_map)->~ID_MAP();
     //(&_st_idx_to_base_id_map)->~ID_MAP();
     //(&_ac_id_to_acr_map)->~ID_MAP();
     //(&_altered_non_points_to_parms)->~ALIAS_CLASS_MEMBER_LIST();
     //(&_alloca_memory_members)->~ALIAS_CLASS_MEMBER_LIST();
-
     _altered_non_points_to_parms.clear();
     _alloca_memory_members.clear();
   }

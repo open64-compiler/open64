@@ -133,6 +133,7 @@ extern string Y_flags;
 extern int ipa_argc;
 extern string *ipa_argv;
 extern int ipa_use_intrinsic;
+extern string tmpdir;
 
 extern void ld_to_ipa_option_update(void);
 extern void ipa_to_ld_option_update(void);

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2002, 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -89,7 +93,7 @@ LNOTARGET_Complex_Mult_Res (TI_RES_COUNT* resource_count, TYPE_ID mtype);
 extern double
 LNOTARGET_Complex_Neg_Res (TI_RES_COUNT* resource_count, TYPE_ID mtype);
 
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 extern double
 LNOTARGET_Fp_Compare_Res (TI_RES_COUNT* resource_count, TYPE_ID rtype);
 
@@ -155,7 +159,7 @@ LNOTARGET_Int_Add_Res (TI_RES_COUNT* resource_count, BOOL eight_bytes);
 extern double
 LNOTARGET_Int_Sub_Res (TI_RES_COUNT* resource_count, BOOL eight_bytes);
 
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 extern double
 LNOTARGET_Int_Div_Res (TI_RES_COUNT* resource_count, TYPE_ID rtype);
 
@@ -292,7 +296,7 @@ LNOTARGET_Int_Ashr_Res (TI_RES_COUNT* resource_count, BOOL eight_bytes);
 extern double
 LNOTARGET_Int_Lshr_Res (TI_RES_COUNT* resource_count, BOOL eight_bytes);
 
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 extern double
 LNOTARGET_Int_Eq_Res (TI_RES_COUNT* resource_count, TYPE_ID desc);
 

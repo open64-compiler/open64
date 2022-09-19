@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  Copyright (C) 2010, Hewlett-Packard Development Company, L.P.
  All Rights Reserved.
 
@@ -1654,7 +1658,7 @@ IPA_NystromAliasAnalyzer::solver(IPA_CALL_GRAPH *ipaCallGraph)
 
     if (Get_Trace(TP_ALIAS,NYSTROM_MEMORY_TRACE_FLAG)) {
       void *sbrk2 = sbrk(0);
-      fprintf(stderr,"High water: %d after core solver\n",
+      fprintf(stderr,"High water: %ld after core solver\n",
               (char *)sbrk2 - (char *)sbrk1);
       fprintf(TFile,("Memory usage after core solver, before fixup.\n"));
       MEM_Trace();
@@ -1682,7 +1686,7 @@ IPA_NystromAliasAnalyzer::solver(IPA_CALL_GRAPH *ipaCallGraph)
 
   if (Get_Trace(TP_ALIAS,NYSTROM_MEMORY_TRACE_FLAG)) {
     void *sbrk2 = sbrk(0);
-    fprintf(stderr,"High water: %d after indirect update solve\n",
+    fprintf(stderr,"High water: %ld after indirect update solve\n",
                 (char *)sbrk2 - (char *)sbrk1);
   }
 
@@ -1698,7 +1702,7 @@ IPA_NystromAliasAnalyzer::solver(IPA_CALL_GRAPH *ipaCallGraph)
 
   if (Get_Trace(TP_ALIAS,NYSTROM_MEMORY_TRACE_FLAG)) {
     void *sbrk2 = sbrk(0);
-    fprintf(stderr,"High water: %d after final escape analysis\n",
+    fprintf(stderr,"High water: %ld after final escape analysis\n",
                 (char *)sbrk2 - (char *)sbrk1);
     fprintf(TFile,("Memory usage after IPA solve.\n"));
     MEM_Trace();

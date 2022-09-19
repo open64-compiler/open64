@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  *  Copyright (C) 2007 PathScale, LLC.  All Rights Reserved.
  */
 
@@ -66,6 +70,8 @@
 #include "gen_util.h"
 #include "isa_print_gen.h"
 #include "targ_isa_operands.h"
+#include "isa_gen_def.h"
+#include "isa_gen_targ_extra.h"
 
 /* The maximum number of operands and results used by ANY target.
  * (It would be better to get the max operands and results from the
@@ -167,7 +173,7 @@ static const char * const interface[] = {
   " *   const char *ISA_PRINT_AsmName(TOP topcode)",
   " *       Returns the assembly language name for <topcode>.",
   " *",
-  " *   BOOL ISA_PRINT_Operand_Is_Part_Of_Name(TOP topcode, INT opindex)",
+  " *   BOOL ISA_PRINT_Operand_Is_Part_Of_Name" TI_SUFFIX "(TOP topcode, INT opindex)",
   " *       Returns whether the operand is part of the full asm name.",
   " *",
   " * ====================================================================",
@@ -420,12 +426,12 @@ void ISA_Print_End(void)
   		"  mUINT8 comp[%d];\n" 
 		"} ISA_PRINT_INFO;\n",MAX_LISTING_OPERANDS);
 
-  fprintf(hfile, "\nextern const ISA_PRINT_INFO ISA_PRINT_info[%d];\n",
+  fprintf(hfile, "\nextern const ISA_PRINT_INFO ISA_PRINT_info" TI_SUFFIX "[%d];\n",
 						list_index + 1);
 
-  fprintf(efile, "ISA_PRINT_info\n");
+  fprintf(efile, "ISA_PRINT_info" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst ISA_PRINT_INFO ISA_PRINT_info[%d] = {\n",
+  fprintf(cfile, "\nconst ISA_PRINT_INFO ISA_PRINT_info" TI_SUFFIX "[%d] = {\n",
 						list_index + 1);
 
   fprintf (cfile, isa_print_format_format, "\"\",");
@@ -453,11 +459,11 @@ void ISA_Print_End(void)
   }
   fprintf (cfile, "};\n");
 
-  fprintf(hfile, "\nextern const unsigned char ISA_PRINT_info_index[%d];\n", TOP_count);
+  fprintf(hfile, "\nextern const unsigned char ISA_PRINT_info_index" TI_SUFFIX "[%d];\n", TOP_count);
 
-  fprintf(efile, "ISA_PRINT_info_index\n");
+  fprintf(efile, "ISA_PRINT_info_index" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst mUINT8 ISA_PRINT_info_index[%d] = {\n", TOP_count);
+  fprintf(cfile, "\nconst mUINT8 ISA_PRINT_info_index" TI_SUFFIX "[%d] = {\n", TOP_count);
   for (top = 0; top < TOP_count; ++top ) {
   	op_pr *op_print = op_prints[top];
     	if (op_print) {
@@ -475,8 +481,8 @@ void ISA_Print_End(void)
 
   fprintf(hfile, "\ninline const ISA_PRINT_INFO *ISA_PRINT_Info(TOP topcode)\n"
 		 "{\n"
-		 "  INT index = ISA_PRINT_info_index[(INT)topcode];\n"
-		 "  return index == 0 ? 0 : &ISA_PRINT_info[index];\n"
+		 "  INT index = ISA_PRINT_info_index" TI_SUFFIX "[(INT)topcode];\n"
+		 "  return index == 0 ? 0 : &ISA_PRINT_info" TI_SUFFIX "[index];\n"
 		 "}\n");
 
   fprintf(hfile, "\ninline const char* ISA_PRINT_INFO_Format(const ISA_PRINT_INFO *info)\n"
@@ -507,13 +513,13 @@ void ISA_Print_End(void)
   } else {
     fprintf(hfile, "\ninline const char *ISA_PRINT_AsmName(TOP topcode)\n"
 		   "{\n"
-		   "  return TOP_Name(topcode);\n"
+		   "  return TOP_Name" TI_SUFFIX "(topcode);\n"
 		   "}\n");
   }
 
-  fprintf(hfile, "\nextern BOOL ISA_PRINT_Operand_Is_Part_Of_Name(TOP topcode, INT opindex);\n");
-  fprintf(efile, "ISA_PRINT_Operand_Is_Part_Of_Name\n");
-  fprintf(cfile, "\nBOOL ISA_PRINT_Operand_Is_Part_Of_Name(TOP topcode, INT opindex)\n"
+  fprintf(hfile, "\nextern BOOL ISA_PRINT_Operand_Is_Part_Of_Name" TI_SUFFIX "(TOP topcode, INT opindex);\n");
+  fprintf(efile, "ISA_PRINT_Operand_Is_Part_Of_Name" TI_SUFFIX "\n");
+  fprintf(cfile, "\nBOOL ISA_PRINT_Operand_Is_Part_Of_Name" TI_SUFFIX "(TOP topcode, INT opindex)\n"
 		"{\n"
   		"  const ISA_PRINT_INFO *info = ISA_PRINT_Info(topcode);\n"
   		"  const char *place_in_format = ISA_PRINT_INFO_Format(info);\n"

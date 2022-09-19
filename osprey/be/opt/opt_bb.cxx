@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1465,7 +1469,7 @@ BB_NODE::Print_wn (FILE *fp) const
 }
 
 void
-BB_NODE::Print (FILE *fp) const
+BB_NODE::Print (FILE *fp, DNA_NODE* dna) const
 {
   Print_head(fp);
   // print the bb structure
@@ -1474,9 +1478,14 @@ BB_NODE::Print (FILE *fp) const
     Phi_list()->Print(fp);
   //if (Iphi_list())
   //Iphi_list()->Print(fp);
-  _stmtlist.Print(fp);
+  _stmtlist.Print(fp, dna);
 }
 
+void
+BB_NODE::Print (FILE *fp) const
+{
+  Print(fp, NULL);
+}
 void
 BB_NODE::PrintVis (void) const
 {

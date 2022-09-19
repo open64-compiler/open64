@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -479,8 +483,23 @@ OPT_REVISE_SSA::Find_scalars_from_lda_iloads(CODEREP *cr)
       }
     } else
     WN_st_idx(&wn) = ST_st_idx(_opt_stab->St(lda->Lda_aux_id()));
-    WN_set_ty(&wn, cr->Ilod_ty());
-    WN_set_field_id(&wn, cr->I_field_id());
+    if (cr->I_field_id() == 0 &&
+        TY_kind(ST_type(WN_st(&wn))) == KIND_STRUCT &&
+        TY_kind(ST_type(WN_st(&wn))) != TY_kind(cr->Ilod_ty())) {
+      // recovery field-id from offset
+      WN_set_ty(&wn, ST_type(WN_st(&wn)));
+      UINT fld_id = Get_field_id_from_offset(ST_type(WN_st(&wn)),
+                                             WN_store_offset(&wn),
+                                             cr->Ilod_ty());
+      WN_set_field_id(&wn, fld_id);
+      cr->Set_i_field_id(fld_id);
+      cr->Set_ilod_ty(ST_type(WN_st(&wn)));
+      cr->Set_ilod_base_ty(Make_Pointer_Type(ST_type(WN_st(&wn))));
+    }
+    else {
+      WN_set_ty(&wn, cr->Ilod_ty());
+      WN_set_field_id(&wn, cr->I_field_id());
+    }
     WN_set_map_id(&wn, 0);
     if (_tracing)
       fdump_wn(TFile, &wn);
@@ -1313,7 +1332,7 @@ OPT_REVISE_SSA::Form_extract_compose(void)
 			  OPCODE_make_op(OPR_ILOAD, lhs->Dtyp(), lhs->Dsctyp()),
 			  lhs->Scalar_ivar_occ(), stmt, NULL/*mu*/,
 			  lhs->Dtyp(), lhs->Dsctyp(), lhs->Ilod_ty(), 0, 
-			  lhs->Offset(), (CODEREP *)Make_Pointer_Type(MTYPE_To_TY(lhs->Dsctyp())), 
+			  lhs->Offset(), (CODEREP*)(INTPTR)Make_Pointer_Type(MTYPE_To_TY(lhs->Dsctyp())), 
    		      NULL, lhs->Istr_base(), _opt_stab));
 	  stmt->Set_opr(OPR_ISTORE);
 	}

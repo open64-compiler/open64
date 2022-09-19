@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1090,7 +1094,7 @@ Process_Actual (WN* actual, WN* copy_in_block, IPO_INLINE& inliner)
 	pair<WN*, ST*> copy_stmt = Create_Copy_Expr (wn, inliner.Call_Wn(),
 		inliner.Caller_node()->Summary_Proc ()->Has_parallel_pragma () ||
 		inliner.Caller_node()->Summary_Proc ()->Has_parallel_region_pragma());
-
+        WN_Set_Linenum (copy_stmt.first, WN_Get_Linenum (inliner.Call_Wn()));
 
 	LWN_Insert_Block_Before (copy_in_block, NULL, copy_stmt.first);
 
@@ -1406,6 +1410,7 @@ IPO_INLINE::Process_Alloca_Preamble()
   sp_tmp_def = LWN_CreateStid(stop, saved_sp, MTYPE_To_PREG(Pointer_type),
 			      pty, rreg_ldid);
 
+  WN_Set_Linenum(sp_tmp_def, WN_Get_Linenum(Call_Wn()));
   LWN_Insert_Block_Before(LWN_Get_Parent(Call_Wn ()),Call_Wn (), 
 			  sp_tmp_def);
   return saved_sp;
@@ -1661,6 +1666,7 @@ Insert_Labels (WN *Call, LABEL_IDX return_label, LABEL_IDX entry_label,
     WN* ret_wn;
     if (return_label) {
 	ret_wn = WN_CreateLabel (return_label, 0, NULL);
+	WN_Set_Linenum (ret_wn, WN_Get_Linenum (Call));
 
 	// delete unwanted GOTO
 	Is_True (WN_operator (inlined_block) == OPR_BLOCK,
@@ -1679,6 +1685,8 @@ Insert_Labels (WN *Call, LABEL_IDX return_label, LABEL_IDX entry_label,
 	ret_wn = NULL;
 
     WN* entry_wn = entry_label ? WN_CreateLabel (entry_label, 0, NULL) : NULL;
+    if (entry_wn)
+      WN_Set_Linenum (entry_wn, WN_Get_Linenum (Call));
 
     Insert_Block_Around (parent_wn, Call, entry_wn, ret_wn);
 
@@ -2066,6 +2074,7 @@ IPO_INLINE::Process_Op_Code (TREE_ITER& iter, IPO_INLINE_AUX& aux)
 					  aux.rp.find ((PREG_IDX) -1),
 					  aux.rp.find_st (),
 					  WN_kid0 (wn)));
+        WN_Set_Linenum (iter.Wn(), WN_Get_Linenum (wn));
 	// at this point the iterator points to the newly inserted node
 	++iter;				// skip the STID node
 
@@ -2200,9 +2209,10 @@ IPO_INLINE::Process_Op_Code (TREE_ITER& iter, IPO_INLINE_AUX& aux)
 	      current_st = TCON_uval (INITV_tc_val (i));
 	    }
 #ifdef Is_True_On
-	    {// DGLOBAL: user defined types. EXTERN: builtin types like 'char'
+	    {// DGLOBAL: user defined types. EXTERN: builtin types like 'char'. 
+	     // STATIC: java exception symbol XXException_ref
 	    	ST_SCLASS s = ST_sclass (St_Table[current_st]);
-	    	FmtAssert (s == SCLASS_DGLOBAL || s == SCLASS_EXTERN, ("Typeinfo symbol should be global"));
+		FmtAssert (s == SCLASS_DGLOBAL || s == SCLASS_EXTERN || s == SCLASS_FSTATIC, ("Typeinfo symbol should be global"));
 	    }
 #endif
 	    Set_Tables (Caller_node());
@@ -3117,7 +3127,7 @@ IPO_INLINE::Process_Copy_In (PARM_ITER parm, WN* copy_in_block)
 	    // copy a struct
 	    copy_wn = Copy_Struct (copy_st, actual, TY_size (formal_ty));
 	}
-
+        WN_Set_Linenum (copy_wn, WN_Get_Linenum (Callee_Wn()));
 	LWN_Insert_Block_Before (copy_in_block, NULL, copy_wn);
 
 
@@ -3144,7 +3154,7 @@ IPO_INLINE::Process_Copy_In (PARM_ITER parm, WN* copy_in_block)
             copy_stmt = Create_Copy_Expr_For_Ptr (actual, Call_Wn(),
                 Caller_node()->Summary_Proc ()->Has_parallel_pragma () ||
                 Caller_node()->Summary_Proc ()->Has_parallel_region_pragma());
-
+            WN_Set_Linenum (copy_stmt.first, WN_Get_Linenum (Call_Wn()));
             LWN_Insert_Block_Before (copy_in_block, NULL, copy_stmt.first);
 
             parm->Set_actual (WN_Ldid (Pointer_type, 0,
@@ -3155,7 +3165,7 @@ IPO_INLINE::Process_Copy_In (PARM_ITER parm, WN* copy_in_block)
             copy_stmt = Create_Copy_Expr (actual, Call_Wn(),
                 Caller_node()->Summary_Proc ()->Has_parallel_pragma () ||
                 Caller_node()->Summary_Proc ()->Has_parallel_region_pragma());
-
+            WN_Set_Linenum (copy_stmt.first, WN_Get_Linenum (Call_Wn()));
 
             LWN_Insert_Block_Before (copy_in_block, NULL, copy_stmt.first);
 
@@ -3207,6 +3217,7 @@ IPO_INLINE::Process_Copy_In_Copy_Out (PARM_ITER p, IPO_INLINE_AUX& aux)
 	     ("Incorrect parameter passing method"));
 
 
+    WN* call = Call_Wn();
     WN* actual = IPO_Copy_Tree (p->Actual_Wn ());
     ST* formal_st = p->Formal_St ();
     const TY& formal_ty = Ty_Table[ST_type (formal_st)];
@@ -3227,6 +3238,7 @@ IPO_INLINE::Process_Copy_In_Copy_Out (PARM_ITER p, IPO_INLINE_AUX& aux)
 
     WN* copy_in = WN_Stid (mtype, wn_offset, copy_st, ST_type (copy_st),
 			   WN_Type_Conversion (wn_iload, mtype));
+    WN_Set_Linenum (copy_in, WN_Get_Linenum (call));
 
     LWN_Insert_Block_Before (aux.copy_in_block, NULL, copy_in);
 
@@ -3239,6 +3251,7 @@ IPO_INLINE::Process_Copy_In_Copy_Out (PARM_ITER p, IPO_INLINE_AUX& aux)
 			   ST_type (copy_st));
     WN* copy_wn = WN_Istore (mtype, 0, Make_Pointer_Type (ST_type (copy_st)),
 			     actual, load_wn);
+    WN_Set_Linenum (copy_wn, WN_Get_Linenum (call));
 
     if (aux.copy_out_block == NULL)
 	aux.copy_out_block = WN_CreateBlock ();
@@ -3299,7 +3312,7 @@ IPO_INLINE::Process_Barriers (PARM_ITER parm, WN* copy_in_block)
 
     WN* copy_wn = Copy_Scalar (copy_st, 0, TY_mtype (formal_ty),
 			       IPO_Copy_Tree (parm->Actual_Wn ()));
-
+    WN_Set_Linenum (copy_wn, WN_Get_Linenum (Call_Wn()));
     LWN_Insert_Block_Before (copy_in_block, NULL, copy_wn);
 
     parm->Set_replace_st (ST_st_idx (copy_st));
@@ -3364,7 +3377,7 @@ Copy_Non_Constant_Parm (WN* parm, WN* copy_in_block, PARAMETER_ATTRIBUTES& p, IP
     pair<WN*, ST*> copy_stmt = Create_Copy_Expr (parm, inliner.Call_Wn(),
 		inliner.Caller_node()->Summary_Proc ()->Has_parallel_pragma () ||
 		inliner.Caller_node()->Summary_Proc ()->Has_parallel_region_pragma());
-
+    WN_Set_Linenum (copy_stmt.first, WN_Get_Linenum (inliner.Call_Wn()));
     
     LWN_Insert_Block_Before (copy_in_block, NULL, copy_stmt.first);
     
@@ -3621,7 +3634,8 @@ void
 IPO_INLINE::Merge_EH_Spec_Tables (void)
 {
     INITV_IDX start, blk;
-    if (!PU_cxx_lang (Callee_node()->Get_PU()))
+    if (!PU_cxx_lang (Callee_node()->Get_PU()) &&
+        !PU_java_lang(Callee_node()->Get_PU()))
       return;
 
     // callee side
@@ -3720,7 +3734,8 @@ IPO_INLINE::Merge_EH_Typeinfo_Tables (void)
 {
     vector<ST_IDX> callee_typeinfos, caller_typeinfos;
     INITV_IDX start, blk, last_blk=0;
-    if (!PU_cxx_lang (Callee_node()->Get_PU()))
+    if (!PU_cxx_lang (Callee_node()->Get_PU()) &&
+        !PU_java_lang(Callee_node()->Get_PU()))
       return;
     // callee side
     INITO_IDX tmp = PU_misc_info (Callee_node()->Get_PU());
@@ -4555,6 +4570,7 @@ IPO_INLINE::Post_Process_Caller (IPO_INLINE_AUX& aux)
 
 	WN* pragma_node_end =
 	    WN_CreatePragma (WN_PRAGMA_INLINE_BODY_END, cp, lang, 0);  
+	WN_Set_Linenum (pragma_node_end, WN_Get_Linenum (call));
     
 	Insert_Block_Around (parent_wn, call, pragma_node_begin,
 			     pragma_node_end);

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -873,7 +877,7 @@ Add_Object_To_Frame_Segment ( ST *sym, SF_SEGMENT seg, BOOL allocate )
 #endif
     ST_Block_Merge (SF_Block(seg), sym, lpad, rpad, SF_Maxsize(seg));
 
-#ifndef TARG_X8664
+#if !defined(TARG_X8664) && !defined(TARG_UWASM)
     if (seg == SFSEG_FORMAL)
     {
 #if defined(TARG_PPC32)    
@@ -1269,9 +1273,12 @@ Calc_Actual_Area ( TY_IDX pu_type, WN *pu_tree )
        		for (i = 0; i < num_parms; i++) {
 			TY_IDX ty = TY_Of_Parameter(WN_actual(pu_tree,i));
 		  ploc = Get_Output_Parameter_Location (ty);
-#ifdef TARG_X8664
+#if defined(TARG_X8664)
 		  if (ploc.reg == 0)  // not passed in register
 		    size = PLOC_total_size(ploc);
+#elif defined(TARG_UWASM)
+      if (ploc.reg == 0 || TY_mtype(ty) == MTYPE_M)
+        size = PLOC_total_size(ploc);
 #endif
 #if defined(TARG_PPC32)
     if (ploc.reg == 0) {
@@ -1287,7 +1294,7 @@ Calc_Actual_Area ( TY_IDX pu_type, WN *pu_tree )
 #if defined(TARG_PPC32)   
     size = int_type + double_type;
 #endif
-#if !defined(TARG_X8664) && !defined(TARG_PPC32)
+#if !defined(TARG_X8664) && !defined(TARG_PPC32) && !defined(TARG_UWASM)
 		size = PLOC_total_size(ploc);
 #endif
 		break;
@@ -1546,7 +1553,12 @@ Allocate_Entry_Formal(ST *formal, BOOL on_stack, BOOL in_formal_reg)
     	Add_Object_To_Frame_Segment ( formal, SFSEG_FTEMP, TRUE );
       }
       else {
+#ifdef TARG_UWASM
+      	/* UWASM stores offset for stack parameter */
+      	Add_Object_To_Frame_Segment ( formal, SFSEG_FORMAL, TRUE );
+#else
       	Add_Object_To_Frame_Segment ( formal, SFSEG_UPFORMAL, TRUE );
+#endif
       }
     }
 #ifdef TARG_MIPS // bug 12772
@@ -1672,6 +1684,9 @@ Allocate_All_Formals (WN *pu)
   BOOL varargs;
   TY_IDX pu_type = ST_pu_type (WN_st (pu));
 
+  // clean vararg symbols in initialization instead of finalization
+  Clear_Vararg_Symbols();
+
   Init_ST_formal_info_for_PU (WN_num_formals(pu));
   varargs = TY_is_varargs (pu_type);
   ploc = Setup_Input_Parameter_Locations(pu_type);
@@ -1687,7 +1702,15 @@ Allocate_All_Formals (WN *pu)
     sym = WN_st(WN_formal(pu, i));
  
     ploc = Get_Input_Parameter_Location( Formal_ST_type(sym));
-
+#ifdef TARG_UWASM
+    // set formal sym's dedicated preg
+    if(ploc.reg != 0) {
+      ST_ATTR_IDX st_attr_idx;
+      ST_ATTR& st_attr = New_ST_ATTR (ST_level(sym), st_attr_idx);
+      ST_ATTR_Init (st_attr, ST_st_idx (sym), ST_ATTR_DEDICATED_REGISTER, ploc.reg);
+      Set_ST_assigned_to_dedicated_preg(sym);
+    }
+#endif
     sym =  Formal_Sym(sym, PLOC_on_stack(ploc) || varargs);
 
     Allocate_Entry_Formal (sym, PLOC_on_stack(ploc), Is_Formal_Preg(PLOC_reg(ploc)));
@@ -1930,7 +1953,7 @@ Get_Altentry_UpFormal_Symbol (ST *formal, PLOC ploc)
 
 /* Calculate size needed for formals and upformals */
 /* TODO:  account for FTEMP area needed for alt-entry */
-static void 
+void
 Calc_Formal_Area (WN *pu_tree, INT32 *formal_size, INT32 *upformal_size)
 {
   INT maxsize;
@@ -1949,9 +1972,12 @@ Calc_Formal_Area (WN *pu_tree, INT32 *formal_size, INT32 *upformal_size)
 	/* don't set PU_arg_area_size, cause changes with each call */
 	return;
   } 
+#ifndef TARG_UWASM
+  // uwasm always calculate the formal reg usage
   else if (Get_PU_arg_area_size(pu_ty) > 0) {
 	;	/* size is known */
   } 
+#endif
   else {
 	PLOC ploc;
 	INT i;
@@ -2488,13 +2514,17 @@ Process_Stack_Variable ( ST *st )
            ("Process_Stack_Variable: Invalid SCLASS %d\n",ST_sclass(st)) );
 
    size = (is_root_block) ? STB_size(st) : TY_size(ST_type(st));
+#ifdef TARG_UWASM
+   /* uwasm alwasy use SP base */
+   base = SP_Sym;
+#else
    /* attach large objects to FP (if exists), else attach to SP */
    if (Current_PU_Stack_Model == SMODEL_SMALL || 
 	(Current_PU_Stack_Model == SMODEL_LARGE && size < Large_Object_Bytes))
 	base = SP_Sym;
    else
 	base = FP_Sym;
-
+#endif
    if (ST_class (st) == CLASS_VAR) {
      INT16 align = Adjusted_Alignment (st);
      TY_IDX ty = ST_type(st);
@@ -3478,6 +3508,9 @@ Allocate_Object ( ST *st )
 #endif  
 	sec = _SEC_BSS;
     sec = Shorten_Section ( st, sec );
+#ifdef TARG_UWASM
+    sec = _SEC_DATA;
+#endif
     Allocate_Object_To_Section ( base_st, sec, Adjusted_Alignment (base_st) );
     break;
   case SCLASS_REG:
@@ -3541,6 +3574,9 @@ Allocate_Object ( ST *st )
 #endif
     else sec = _SEC_BSS;
     sec = Shorten_Section ( st, sec );
+#ifdef TARG_UWASM
+    sec = _SEC_DATA;
+#endif
     Allocate_Object_To_Section ( base_st, sec, Adjusted_Alignment(base_st));
     break;
   case SCLASS_DGLOBAL :
@@ -3572,6 +3608,9 @@ Allocate_Object ( ST *st )
 #endif
     else sec = _SEC_DATA;
     sec = Shorten_Section ( st, sec );
+#ifdef TARG_UWASM
+    sec = _SEC_DATA;
+#endif
     Allocate_Object_To_Section ( base_st, sec, Adjusted_Alignment(base_st));
     break;
   case SCLASS_TEXT :

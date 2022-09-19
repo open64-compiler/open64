@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -65,7 +69,8 @@
 #include "topcode.h"
 #include "gen_util.h"
 #include "isa_operands_gen.h"
-
+#include "isa_gen_def.h"
+#include "isa_gen_targ_extra.h"
 
 struct operand_value_type {
   const char* name;         // Name given for documentation and debugging
@@ -227,28 +232,28 @@ static const char * const interface[] = {
   " *       Return a boolean to specify if the operand specifed",
   " *       by 'otype' is an enum.",
   " *",
-  " *   BOOL TOP_Can_Have_Immediate(INT64 value, TOP topcode)",
+  " *   BOOL TOP_Can_Have_Immediate" TI_SUFFIX "(INT64 value, TOP topcode)",
   " *       Return a boolean to specify if the 64-bit integer value can fit",
   " *       in the literal field of an instruction with the given topcode.",
   " *",
-  " *   INT TOP_Immediate_Operand(TOP topcode, ISA_LIT_CLASS *lclass)",
+  " *   INT TOP_Immediate_Operand" TI_SUFFIX "(TOP topcode, ISA_LIT_CLASS *lclass)",
   " *       If 'topcode' has an immediate operand, return its operand",
   " *       number by value and literal class by reference through 'lclass'",
   " *       (a null pointer can be passed for 'lclass' if the literal",
   " *       class is not needed). If there is no immediate operand, return -1.",
   " *",
-  " *   INT TOP_Relocatable_Operand(TOP topcode, ISA_LIT_CLASS *lclass)",
+  " *   INT TOP_Relocatable_Operand" TI_SUFFIX "(TOP topcode, ISA_LIT_CLASS *lclass)",
   " *       If 'topcode' has a relocatable operand, return its operand",
   " *       number by value and literal class by reference through 'lclass'",
   " *       (a null pointer can be passed for 'lclass' if the literal",
   " *       class is not needed). If there is no relocatable operand, return -1.",
   " *",
-  " *   INT TOP_Find_Operand_Use(TOP topcode, ISA_OPERAND_USE use)",
+  " *   INT TOP_Find_Operand_Use" TI_SUFFIX "(TOP topcode, ISA_OPERAND_USE use)",
   " *       For the instruction specified by 'topcode', give the",
   " *       operand number with the use 'use'. If there is no such",
   " *       operand, return -1.",
   " *",
-  " *   void TOP_Operand_Uses(TOP topcode, ISA_OPERAND_USE *uses)",
+  " *   void TOP_Operand_Uses" TI_SUFFIX "(TOP topcode, ISA_OPERAND_USE *uses)",
   " *       For the instruction specified by 'topcode', return",
   " *       the usage of all its operands in the array pointed to",
   " *       by 'uses'. The use of operand n corresponds to 'uses'[n].",
@@ -584,9 +589,9 @@ void ISA_Operands_End(void)
 		 "  mUINT8 flags;\n"
 		 "} ISA_OPERAND_VALTYP;\n");
 
-  fprintf(efile, "ISA_OPERAND_operand_types\n");
+  fprintf(efile, "ISA_OPERAND_operand_types" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst ISA_OPERAND_VALTYP ISA_OPERAND_operand_types[] = {\n");
+  fprintf(cfile, "\nconst ISA_OPERAND_VALTYP ISA_OPERAND_operand_types" TI_SUFFIX "[] = {\n");
   for (ivti = all_operand_types.begin(); ivti != all_operand_types.end(); ++ivti) {
     unsigned int flags;
     OPERAND_VALUE_TYPE val_type = *ivti;
@@ -627,9 +632,9 @@ void ISA_Operands_End(void)
 		  "  mUINT8 result[%s];\n"
 		  "} ISA_OPERAND_INFO;\n",
 		  max_operands_name, max_operands_name, max_results_name);
-  fprintf(efile, "ISA_OPERAND_info\n");
+  fprintf(efile, "ISA_OPERAND_info" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst ISA_OPERAND_INFO ISA_OPERAND_info[] = {\n");
+  fprintf(cfile, "\nconst ISA_OPERAND_INFO ISA_OPERAND_info" TI_SUFFIX "[] = {\n");
   for (ogi = all_groups.begin(); ogi != all_groups.end(); ++ogi) {
     int i;
     int pos;
@@ -708,8 +713,8 @@ void ISA_Operands_End(void)
   info_index_type = max_groups < 256 ? "mUINT8" : "mUINT16";
   assert(max_groups <= 0xffff);
 
-  fprintf (efile, "ISA_OPERAND_info_index\n");
-  fprintf (cfile, "\nconst %s ISA_OPERAND_info_index[] = {\n", info_index_type);
+  fprintf (efile, "ISA_OPERAND_info_index" TI_SUFFIX "\n");
+  fprintf (cfile, "\nconst %s ISA_OPERAND_info_index" TI_SUFFIX "[] = {\n", info_index_type);
   for (code = 0; code < TOP_count; code++) {
     OPERANDS_GROUP oper_group = op_groups[code];
     fprintf (cfile, "  %3d,  /* %s: %s */\n",
@@ -719,8 +724,8 @@ void ISA_Operands_End(void)
   }
   fprintf (cfile, "};\n");
 
-  fprintf(efile, "ISA_OPERAND_relocatable_opnd\n");
-  fprintf(cfile, "\nconst mINT8 ISA_OPERAND_relocatable_opnd[] = {\n");
+  fprintf(efile, "ISA_OPERAND_relocatable_opnd" TI_SUFFIX "\n");
+  fprintf(cfile, "\nconst mINT8 ISA_OPERAND_relocatable_opnd" TI_SUFFIX "[] = {\n");
   for (code = 0; code < TOP_count; code++) {
     OPERANDS_GROUP oper_group = op_groups[code];
     fprintf(cfile, "  %2d,  /* %s */\n",
@@ -732,10 +737,10 @@ void ISA_Operands_End(void)
   fprintf(hfile, "\ninline const ISA_OPERAND_INFO *"
 		   "ISA_OPERAND_Info(TOP topcode)\n"
 		 "{\n"
-		 "  extern const %s ISA_OPERAND_info_index[];\n"
-		 "  extern const ISA_OPERAND_INFO ISA_OPERAND_info[];\n"
-		 "  INT index = ISA_OPERAND_info_index[(INT)topcode];\n"
-		 "  return &ISA_OPERAND_info[index];\n"
+		 "  extern const %s ISA_OPERAND_info_index" TI_SUFFIX "[];\n"
+		 "  extern const ISA_OPERAND_INFO ISA_OPERAND_info" TI_SUFFIX "[];\n"
+		 "  INT index = ISA_OPERAND_info_index" TI_SUFFIX "[(INT)topcode];\n"
+		 "  return &ISA_OPERAND_info" TI_SUFFIX "[index];\n"
 		 "}\n",
 		 info_index_type);
 
@@ -749,9 +754,9 @@ void ISA_Operands_End(void)
 		 "  const ISA_OPERAND_INFO *oinfo,\n"
 		 "  INT opnd)\n"
 		 "{\n"
-		 "  extern const ISA_OPERAND_VALTYP ISA_OPERAND_operand_types[];\n"
+		 "  extern const ISA_OPERAND_VALTYP ISA_OPERAND_operand_types" TI_SUFFIX "[];\n"
 		 "  INT index = oinfo->opnd[opnd];\n"
-		 "  return &ISA_OPERAND_operand_types[index];\n"
+		 "  return &ISA_OPERAND_operand_types" TI_SUFFIX "[index];\n"
 		 "}\n");
 
   fprintf(hfile, "\ninline INT ISA_OPERAND_INFO_Results("
@@ -764,9 +769,9 @@ void ISA_Operands_End(void)
 		 "  const ISA_OPERAND_INFO *oinfo,\n"
 		 "  INT result)\n"
 		 "{\n"
-		 "  extern const ISA_OPERAND_VALTYP ISA_OPERAND_operand_types[];\n"
+		 "  extern const ISA_OPERAND_VALTYP ISA_OPERAND_operand_types" TI_SUFFIX "[];\n"
 		 "  INT index = oinfo->result[result];\n"
-		 "  return &ISA_OPERAND_operand_types[index];\n"
+		 "  return &ISA_OPERAND_operand_types" TI_SUFFIX "[index];\n"
 		 "}\n");
 
   fprintf(hfile, "\ninline ISA_REGISTER_CLASS ISA_OPERAND_VALTYP_Register_Class(\n"
@@ -862,9 +867,9 @@ void ISA_Operands_End(void)
 		 use_mask);
 
   assert(first_literal <= last_literal); // incorrect if arch has no literals!
-  fprintf(hfile, "\nextern INT TOP_Immediate_Operand(TOP topcode, ISA_LIT_CLASS *lclass);\n");
-  fprintf(efile, "TOP_Immediate_Operand\n");
-  fprintf(cfile, "\nINT TOP_Immediate_Operand(TOP topcode, ISA_LIT_CLASS *lclass)\n"
+  fprintf(hfile, "\nextern INT TOP_Immediate_Operand" TI_SUFFIX "(TOP topcode, ISA_LIT_CLASS *lclass);\n");
+  fprintf(efile, "TOP_Immediate_Operand" TI_SUFFIX "\n");
+  fprintf(cfile, "\nINT TOP_Immediate_Operand" TI_SUFFIX "(TOP topcode, ISA_LIT_CLASS *lclass)\n"
 		 "{\n"
 		 "  INT iopnd;\n"
 		 "  const ISA_OPERAND_INFO *opinfo = ISA_OPERAND_Info(topcode);\n"
@@ -890,12 +895,12 @@ void ISA_Operands_End(void)
 		 "  return -1;\n"
 		 "}\n");
 
-  fprintf(hfile, "\nextern INT TOP_Relocatable_Operand(TOP topcode, ISA_LIT_CLASS *lclass);\n");
-  fprintf(efile, "TOP_Relocatable_Operand\n");
-  fprintf(cfile, "\nINT TOP_Relocatable_Operand(TOP topcode, ISA_LIT_CLASS *lclass)\n"
+  fprintf(hfile, "\nextern INT TOP_Relocatable_Operand" TI_SUFFIX "(TOP topcode, ISA_LIT_CLASS *lclass);\n");
+  fprintf(efile, "TOP_Relocatable_Operand" TI_SUFFIX "\n");
+  fprintf(cfile, "\nINT TOP_Relocatable_Operand" TI_SUFFIX "(TOP topcode, ISA_LIT_CLASS *lclass)\n"
 		 "{\n"
-		 "  extern const mINT8 ISA_OPERAND_relocatable_opnd[];\n"
-		 "  INT iopnd = ISA_OPERAND_relocatable_opnd[(INT)topcode];\n"
+		 "  extern const mINT8 ISA_OPERAND_relocatable_opnd" TI_SUFFIX "[];\n"
+		 "  INT iopnd = ISA_OPERAND_relocatable_opnd" TI_SUFFIX "[(INT)topcode];\n"
 		 "  if (lclass && iopnd >= 0) {\n"
 		 "    const ISA_OPERAND_INFO *opinfo = ISA_OPERAND_Info(topcode);\n"
 		 "    const ISA_OPERAND_VALTYP *vtype = ISA_OPERAND_INFO_Operand(opinfo,iopnd);\n"
@@ -904,20 +909,20 @@ void ISA_Operands_End(void)
 		 "  return iopnd;\n"
 		 "}\n");
 
-  fprintf(hfile, "\nextern BOOL TOP_Can_Have_Immediate(INT64 value, TOP topcode);\n");
-  fprintf(efile, "TOP_Can_Have_Immediate\n");
-  fprintf(cfile, "\nBOOL TOP_Can_Have_Immediate(INT64 value, TOP topcode)\n"
+  fprintf(hfile, "\nextern BOOL TOP_Can_Have_Immediate" TI_SUFFIX "(INT64 value, TOP topcode);\n");
+  fprintf(efile, "TOP_Can_Have_Immediate" TI_SUFFIX "\n");
+  fprintf(cfile, "\nBOOL TOP_Can_Have_Immediate" TI_SUFFIX "(INT64 value, TOP topcode)\n"
 		 "{\n"
 		 "  ISA_LIT_CLASS lclass;\n"
-		 "  if (TOP_Immediate_Operand(topcode, &lclass) < 0) return %d;\n"
+		 "  if (TOP_Immediate_Operand" TI_SUFFIX "(topcode, &lclass) < 0) return %d;\n"
 		 "  return ISA_LC_Value_In_Class(value, lclass);\n"
 		 "}\n",
 		 false);
 
-  fprintf(hfile, "\nextern INT TOP_Find_Operand_Use(TOP topcode, "
+  fprintf(hfile, "\nextern INT TOP_Find_Operand_Use" TI_SUFFIX "(TOP topcode, "
 		 "ISA_OPERAND_USE use);\n");
-  fprintf(efile, "TOP_Find_Operand_Use\n");
-  fprintf(cfile, "\nINT TOP_Find_Operand_Use(TOP topcode, ISA_OPERAND_USE use)\n"
+  fprintf(efile, "TOP_Find_Operand_Use" TI_SUFFIX "\n");
+  fprintf(cfile, "\nINT TOP_Find_Operand_Use" TI_SUFFIX "(TOP topcode, ISA_OPERAND_USE use)\n"
 		 "{\n"
 		 "  INT i;\n"
 		 "  const ISA_OPERAND_INFO *oinfo = ISA_OPERAND_Info(topcode);\n"
@@ -929,10 +934,10 @@ void ISA_Operands_End(void)
 		 "  return -1;\n"
 		 "}\n");
 
-  fprintf(hfile, "\nextern void TOP_Operand_Uses(TOP topcode, "
+  fprintf(hfile, "\nextern void TOP_Operand_Uses" TI_SUFFIX "(TOP topcode, "
 		 "ISA_OPERAND_USE *uses);\n");
-  fprintf(efile, "TOP_Operand_Uses\n");
-  fprintf(cfile, "\nvoid TOP_Operand_Uses(TOP topcode, ISA_OPERAND_USE *uses)\n"
+  fprintf(efile, "TOP_Operand_Uses" TI_SUFFIX "\n");
+  fprintf(cfile, "\nvoid TOP_Operand_Uses" TI_SUFFIX "(TOP topcode, ISA_OPERAND_USE *uses)\n"
 		 "{\n"
 		 "  INT i;\n"
 		 "  const ISA_OPERAND_INFO *oinfo = ISA_OPERAND_Info(topcode);\n"

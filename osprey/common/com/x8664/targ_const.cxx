@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -3812,6 +3816,29 @@ Host_To_Targ_Float_10 ( TYPE_ID ty, long double v )
      TCON_clear(c);
      TCON_ty(c) = ty;
      TCON_R10(c) = v;
+     return c;
+
+   default:
+     ErrMsg ( EC_Inv_Mtype, Mtype_Name(ty), "Host_To_Targ_Float_10" );
+     TCON_clear(c);
+     TCON_ty(c) = MTYPE_F4;
+     return c;
+  }
+}
+
+TCON
+Host_To_Targ_Float_10_I4 ( TYPE_ID ty, INT32 v0, INT32 v1, INT32 v2 )
+{
+  TCON c;
+
+  switch (ty) {
+   case MTYPE_F10:
+     TCON_clear(c);
+     TCON_ty(c) = ty;
+     TCON_v0(c) = v0;
+     TCON_v1(c) = v1;
+     TCON_v2(c) = v2;
+     TCON_v3(c) = 0;
      return c;
 
    default:

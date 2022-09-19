@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1973,6 +1977,8 @@ void IPA_VIRTUAL_FUNCTION_TRANSFORM::Apply_Virtual_Function_Transform (
                  WN *miss_store = WN_Stid (MTYPE_I4,
                          (WN_OFFSET)(Num_VFs_Count*4), Miss_st,
                          ST_type(Miss_st), miss_add_op);
+                 WN_Set_Linenum(hit_store, WN_Get_Linenum(old_wn));
+                 WN_Set_Linenum(miss_store, WN_Get_Linenum(old_wn));
                  WN_INSERT_BlockLast (then_blk,hit_store);
                  WN_INSERT_BlockLast (else_blk,miss_store);
                  list <string> mytags;

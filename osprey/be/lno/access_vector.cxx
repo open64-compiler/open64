@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -121,7 +125,7 @@ INT snprintfs(char* buf,
 {
   INT len = strlen(fstring);
   if (ccount + len < tcount) {
-    INT new_char_count = sprintf(buf + ccount, fstring);
+    INT new_char_count = sprintf(buf + ccount, "%s", fstring);
     return ccount + new_char_count;
   } 
   for (INT i = 0; i < ccount; i++)

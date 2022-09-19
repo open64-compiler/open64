@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -53,8 +57,11 @@
  * The register values are the PREG offsets, so these values can be
  * used in WHIRL.
  */
-
+#ifdef TARG_UWASM
+typedef mUINT16 mDED_PREG_NUM; /* uwasm regs >127, need 16 bits */
+#else
 typedef mUINT8 mDED_PREG_NUM;	/* physical pregs will be in 0..127 range */
+#endif
 
 /* Preg_Range defines a sequence of preg values */
 typedef struct {
@@ -75,13 +82,13 @@ typedef struct subprogram_interface {
 
   /* Registers used for parameters and results */
   Preg_Range int_args;
-#ifdef TARG_NVISA
+#if defined(TARG_NVISA) || defined(TARG_UWASM)
   Preg_Range int64_args;
 #endif
   Preg_Range flt_args;
   Preg_Range dbl_args;
   Preg_Range int_results;
-#ifdef TARG_NVISA
+#if defined(TARG_NVISA) || defined(TARG_UWASM)
   Preg_Range int64_results;
 #endif
   Preg_Range flt_results;
@@ -89,7 +96,7 @@ typedef struct subprogram_interface {
 
   /* Argument conversion: */
   mTYPE_ID int_type : 8;	/* Convert to at least this type */
-#ifdef TARG_NVISA
+#if defined(TARG_NVISA) || defined(TARG_UWASM)
   mTYPE_ID int64_type : 8;	/* Convert to at least this type */
 #endif
   mTYPE_ID flt_type : 8;	/* Convert to at least this type */

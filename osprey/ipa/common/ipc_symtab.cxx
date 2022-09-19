@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -388,7 +392,7 @@ process_whirl (an_object_file_ptr p_obj, int nsec, const Shdr* section_table,
     gtabs.symstr_tab = (char*) ld_get_section_base (p_obj, strtab_idx);
     get_global_symtab (gtabs, IP_FILE_HDR_file_info (file_header), p_obj,
 		       gsymtab); 
-#if !defined(TARG_IA64) && !defined(TARG_X8664) && !defined(TARG_MIPS) && !defined(TARG_SL)&& !defined(TARG_LOONGSON)
+#if !defined(TARG_IA64) && !defined(TARG_X8664) && !defined(TARG_MIPS) && !defined(TARG_SL)&& !defined(TARG_LOONGSON) && !defined(TARG_UWASM)
     // Merge the new ELF symbol table entries with the existing ones.
     pair<Sym *, UINT> ext_symtab = walk_st_list (gtabs, elf_symtab);
 

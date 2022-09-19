@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1572,6 +1576,12 @@ WGEN_Start_Function(gs_t fndecl)
     WN *body, *wn;
     body = WN_CreateBlock ( );
     entry_wn = WN_CreateEntry (num_args, func_st, body, NULL, NULL );
+    // set srcpos for end of function to varrefs block
+    gs_t saved_tree;
+    if ((saved_tree = gs_decl_saved_tree(fndecl)) != NULL) {
+      WN_Set_Linenum(WN_func_varrefs(entry_wn), Get_Srcpos(saved_tree));
+    }
+
     /* from 1..nkids=num_args, create IDNAME args for OPR_FUNC_ENTRY */
     INT i = 0;
  
@@ -1856,8 +1866,10 @@ WGEN_Finish_Function (gs_t fndecl)
     // Insert a RETURN if it does not exist
     WN * wn = WN_last (WGEN_Stmt_Top ());
     if (wn == NULL || WN_operator (wn) != OPR_RETURN &&
-		      WN_operator (wn) != OPR_RETURN_VAL)
-      WGEN_Stmt_Append (WN_CreateReturn (), Get_Srcpos ());
+		      WN_operator (wn) != OPR_RETURN_VAL) {
+      gs_t saved_tree = gs_decl_saved_tree(fndecl);
+      WGEN_Stmt_Append (WN_CreateReturn (), Get_Srcpos (saved_tree));
+    }
 
 #if defined (KEY) && defined(TARG_IA64)
     if (PU_has_syscall_linkage (Get_Current_PU ())) {
@@ -3955,6 +3967,10 @@ AGGINIT::Add_Init_For_WHIRL(WN *init_wn, UINT size, INT64 ofst)
     Set_ST_initv_in_other_st (WN_st(init_wn));
 #endif
     return;
+  case OPR_ILDA:
+    Add_Init_For_WHIRL(WN_kid0(init_wn), size,
+                       ofst + WN_offset(init_wn));
+    return;
   case OPR_ADD:
     if (WN_operator(WN_kid0(init_wn)) == OPR_INTCONST) {
       Add_Init_For_WHIRL(WN_kid1(init_wn), size, 
@@ -4449,7 +4465,7 @@ AGGINIT::Add_Inito_For_Tree (gs_t init, ST *st)
 
 
 extern ST *
-WGEN_Generate_Temp_For_Initialized_Aggregate (gs_t init, char * name)
+WGEN_Generate_Temp_For_Initialized_Aggregate (gs_t init, const char * name)
 {
   TY_IDX ty_idx = Get_TY(gs_tree_type(init));
   ST *temp = New_ST (CURRENT_SYMTAB);

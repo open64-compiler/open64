@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 // ====================================================================
 //
 // Copyright (C) 2011, Hewlett-Packard Development Company, L.P.
@@ -96,7 +100,7 @@ typedef std::map<AliasTag, WN *> TAG_WN_MAP;
 
 static void Print_aliasTag_set(const ALIAS_TAG_SET &tag_set, FILE *fout = stderr)
 {
-	fprintf(fout, "\nCount: %d\n", tag_set.size());
+	fprintf(fout, "\nCount: %ld\n", tag_set.size());
 	for(ALIAS_TAG_SET::const_iterator cit = tag_set.begin();
 			cit != tag_set.end(); cit++) {
 		AliasTag tag = *cit;

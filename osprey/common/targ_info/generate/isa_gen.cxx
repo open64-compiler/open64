@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -53,6 +57,7 @@
 
 #include "gen_util.h"
 #include "isa_gen.h"
+#include "isa_gen_def.h"
 
 static const char * const interface[] = {
   "/* ====================================================================",
@@ -79,7 +84,7 @@ static const char * const interface[] = {
   " *   const int TOP_count",
   " *      Gives the number of topcodes.",
   " *",
-  " *   const char* TOP_Name(TOP topcode)",
+  " *   const char* TOP_Name" TI_SUFFIX "(TOP topcode)",
   " *      Returns an assembler style name for the given TOP.",
   " *",
   " * ====================================================================",
@@ -240,9 +245,9 @@ void ISA_Create (const char *isa_name, ...)
 
   fprintf(hfile,"\n#define TOP_count %d\n", instruction_count);
 
-  fprintf(hfile,"\nextern const char* TOP_Name(TOP topcode);\n");
-  fprintf(efile,"TOP_Name\n");
-  fprintf(cfile,"\nconst char* TOP_Name(TOP topcode)\n{\n"
+  fprintf(hfile,"\nextern const char* TOP_Name" TI_SUFFIX "(TOP topcode);\n");
+  fprintf(efile,"TOP_Name" TI_SUFFIX "\n");
+  fprintf(cfile,"\nconst char* TOP_Name" TI_SUFFIX "(TOP topcode)\n{\n"
                 "  return top_names[(int)topcode];\n"
 		"}\n");
 

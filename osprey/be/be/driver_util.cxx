@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -72,6 +76,7 @@
 #include "config_list.h"
 #include "timing.h"		    /* for Initialize_Timing() */
 #include "tracing.h"		    /* for Set_Trace() */
+#include "report.h"                 /* for VSA report */
 #include "wn.h"			    /* for WN */
 #include "stab.h"
 #include "stblock.h"
@@ -80,6 +85,10 @@
 #include "wn_instrument.h"
 #include "driver_util.h"
 #include "comp_decl.h"
+#include "printsrc.h"
+#include "config_vsa.h"
+#include "whirl_file_mgr.h"
+#include "be_ver_info.h"
 
 BOOL warnings_are_errors = FALSE;
 
@@ -87,6 +96,8 @@ BOOL warnings_are_errors = FALSE;
 static UINT phase_argc[PHASE_COUNT];
 static STRING *phase_argv[PHASE_COUNT];
 static UINT phase_max_argc[PHASE_COUNT];
+
+extern const char* git_revision_string;
 
 /* Options based on user flags:	*/
 # define MAX_MSG_LEVEL 2
@@ -179,6 +190,11 @@ Handle_Phase_Specific_Options (char *flag)
  *
  * ==================================================================== */
 
+#ifdef BUILD_MASTIFF
+extern INT    saved_argc;
+extern char** saved_argv;
+#endif
+
 void
 Process_Command_Line (INT argc, char **argv)
 {
@@ -189,9 +205,18 @@ Process_Command_Line (INT argc, char **argv)
     char *myname;
     BOOL opt_set = FALSE;
     BOOL dashdash_flag = FALSE;
-    
+
+#ifdef BUILD_MASTIFF
+    saved_argc = argc;
+    saved_argv = (char**)malloc(argc * sizeof(char*));
+    saved_argv[0] = argv[0];
+#endif
+
     /* Check the command line flags: */
     for (i = 1; i < argc; i++) {
+#ifdef BUILD_MASTIFF
+        saved_argv[i] = argv[i];
+#endif
 	if ( argv[i] != NULL && (strcmp(argv[i],"--")==0)) {
 	  dashdash_flag = TRUE;
 	  continue;
@@ -336,6 +361,19 @@ Process_Command_Line (INT argc, char **argv)
 				      DEF_SDATA_ELT_SIZE, argv[i] ); 
 		break;
               
+	    case 'i':
+		if(!strcmp(cp, "psa")) {
+		  Run_ipsacomp = TRUE;
+		  cp +=3;
+		}
+	    break;
+
+	    case 'k':
+		if(!strcmp(cp, "p")) {
+		  Keep_Flag = TRUE;
+		  cp +=1;
+		}
+	    break;
 	    case 'm':		    /* Message reporting: */
 		if (!strcmp( cp, "pio" )) {
 		  mp_io = TRUE;
@@ -384,8 +422,12 @@ Process_Command_Line (INT argc, char **argv)
 		break;
 
 	    case 's':
-		if (strcmp (cp, "how") == 0) {
+		if (strcmp (cp, "w") == 0) {  // MASTIFF-OPT: "-show" --> "-sw"
 		    Show_Progress = TRUE;
+		    break;
+		}
+		else if (strcmp (cp, "p") == 0) {  // MASTIFF-OPT: "-sp"
+		    Show_Progress_Percent = TRUE;
 		    break;
 		}
 #if defined(TARG_SL)
@@ -406,11 +448,7 @@ Process_Command_Line (INT argc, char **argv)
 		/* handle the -tfprev10 option to fix tfp hardware bugs. */
                 if ( strncmp ( cp-1, "tfprev10", 8 ) == 0 ) {
 		  add_phase_args (PHASE_CG, argv[i]);
-		  break;
-		} else {
-		  Process_Trace_Option ( cp-2 );
 		}
-
 		break;
 
 	    case 'w':		    /* Suppress warnings */
@@ -435,6 +473,10 @@ Process_Command_Line (INT argc, char **argv)
 		  ErrMsg (EC_Unknown_Flag, *(cp-1), argv[i]); 
                 break;
               
+	    case 'x':  // MASTIFF-OPT: "-tt:0xffff" --> "-xt:0xffff"
+	        Process_Trace_Option ( cp-2 );
+		break;
+
 	    default:		    /* What's this? */
 		ErrMsg ( EC_Unknown_Flag, *(cp-1), argv[i] );
 		break;
@@ -568,6 +610,29 @@ Prepare_Source (void)
 	Trc_File_Name = NULL;
     }
     Set_Trace_File ( Trc_File_Name );
+
+#if defined(BUILD_MASTIFF)
+    git_revision_string = BE_GIT_REVISION_STRING;
+
+    if (Need_vsafile()) {
+      // Always use source file name (fname may be a tmp file name)
+      strncpy(Vsa_Report_File, New_Extension(Src_File_Name, VSA_FILE_EXTENSION), FILENAME_MAX+1);
+      strncpy(Vsa_TxtRpt_File, New_Extension(Src_File_Name, VSA_TXTFILE_EXTENSION), FILENAME_MAX+1);
+      // Set_VsaRpt_File(Vsa_Report_File);
+      if ((VsaRpt_File = fopen(Vsa_Report_File, "w")) == NULL) {
+	ErrMsg( EC_Tlog_Open, Vsa_Report_File, errno);
+	Vsa_Report_File[0] = '\0';
+      }
+      else if ((VsaTxt_File = fopen(Vsa_TxtRpt_File, "w")) == NULL) {
+	ErrMsg( EC_Tlog_Open, Vsa_TxtRpt_File, errno);
+	Vsa_TxtRpt_File[0] = '\0';
+      }
+      else {
+        Write_vsarpt_header(VsaRpt_File);
+      }
+    }
+#endif
+
     if ( Get_Trace (TKIND_INFO, TINFO_TIME) )
 	Tim_File = TFile;
     else if ( Get_Trace (TKIND_INFO, TINFO_CTIME) )
@@ -620,3 +685,4 @@ Lowering_Initialize (void)
     */
     Lower_Init();
 }
+

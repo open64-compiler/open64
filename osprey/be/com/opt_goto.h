@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -147,9 +151,11 @@ class LABEL_DESCRIPTOR {
 public:
   WN *Label_Wn;
   INT Offset;
+  INT Goto_Cnt;
   LABEL_DESCRIPTOR(WN *label_wn,INT offset) {
     Label_Wn = label_wn;
     Offset = offset;
+    Goto_Cnt = 0;
   }
 };
 
@@ -192,7 +198,7 @@ private:
   BOOL Parent_Through_If(GOTO_DESCRIPTOR *gd);
   BOOL Sibling(GOTO_DESCRIPTOR *gd);
   void Move_Goto_Out(GOTO_DESCRIPTOR *gd);
-  void Replace_Goto_With_If(GOTO_DESCRIPTOR *gd);
+  BOOL Replace_Goto_With_If(GOTO_DESCRIPTOR *gd);
   void Replace_Goto_With_While(GOTO_DESCRIPTOR *gd);
   void Move_Into_Else(GOTO_DESCRIPTOR *gd);
   void Create_Truebr(GOTO_DESCRIPTOR *gd);
@@ -204,6 +210,7 @@ private:
   INT Find_Level(WN *wn);
   WN *Find_Common_Ancestor(WN *wn1, WN *wn2);
   void Dismantle(WN *bad, WN *parent);
+  void Try_remove_label(WN* label);
   enum {MAX_GOTO_EXPANDING_TRANSFORMATIONS = 20 };
 };
 

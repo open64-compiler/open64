@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* CPP Library.
    Copyright (C) 1986, 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
    1999, 2000, 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
@@ -389,6 +393,19 @@ cpp_init_builtins (cpp_reader *pfile, int hosted)
 
   if (CPP_OPTION (pfile, objc))
     _cpp_define_builtin (pfile, "__OBJC__ 1");
+}
+
+/* Init built-ins for IAR compiler,
+ * Only add _Pragma so far */
+void
+iar_init_builtins (cpp_reader *pfile)
+{
+  cpp_hashnode *hp = cpp_lookup (pfile, "_Pragma", 7);
+  if (hp != NULL) {
+    hp->type = NT_MACRO;
+    hp->flags |= NODE_BUILTIN | NODE_WARN;
+    hp->value.builtin = BT_PRAGMA;
+  }
 }
 
 /* Sanity-checks are dependent on command-line options, so it is

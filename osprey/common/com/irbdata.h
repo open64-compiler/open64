@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -68,7 +68,6 @@
 #ifndef irbdata_defs_INCLUDED
 #include "irbdata_defs.h"
 #endif
-
 // access functions for INITO
 
 inline ST_IDX
@@ -657,5 +656,157 @@ Irb_Init_Complex_Quad (INT size, QUAD_TYPE real, QUAD_TYPE imag,
 		       INT32 repeat, INITO_IDX ino, INITV_IDX inv);
 
 #endif /* MONGOOSE_BE */
+
+// extend INITVKIND_VAL for differnt types
+enum INITV_VAL_KIND {
+  INITVKIND_VAL_MIN     = 400,
+  INITVKIND_VAL_INT32   = 400,
+  INITVKIND_VAL_UINT32  = 401,
+  INITVKIND_VAL_INT64   = 402,
+  INITVKIND_VAL_UINT64  = 403,
+  INITVKIND_VAL_FLOAT   = 404,
+  INITVKIND_VAL_DOUBLE  = 405,
+  INITVKIND_VAL_QUAD    = 406,
+  INITVKIND_VAL_STR     = 407,
+  INITVKIND_VAL_MAX     = 407,
+};
+
+inline BOOL
+Is_initv_val(int kind)
+{
+  return (kind == INITVKIND_VAL ||
+          (kind >= INITVKIND_VAL_MIN && kind <= INITVKIND_VAL_MAX));
+}
+
+inline BOOL
+Is_initv_integer(int kind)
+{
+  return (kind == INITVKIND_VAL ||
+          kind == INITVKIND_ZERO || kind == INITVKIND_ONE ||
+          (kind >= INITVKIND_VAL_INT32 && kind <= INITVKIND_VAL_UINT64));
+}
+
+typedef union initv_val
+{
+  ST_IDX   st_idx;
+  TCON_IDX tcon_idx;
+  INT32    i32;
+  UINT32   u32;
+  INT64    i64;
+  UINT64   u64;
+  float    f32;
+  double   f64;
+  struct {
+    UINT32 str_idx;
+    UINT32 str_len;
+  } str;
+  INT64    data;
+} INITV_VAL;
+
+// ====================================================================
+//
+// INITV_ENTRIES: store symbol initv kind and value pair for easy access
+//
+// ====================================================================
+class INITV_ENTRIES
+{
+private:
+  vector<pair<UINT32, INITV_VAL> > _initvs;
+
+  INITV_ENTRIES(const INITV_ENTRIES&);              // REQUIRED UNDEFINED UNWANTED methods
+  INITV_ENTRIES& operator = (const INITV_ENTRIES&); // REQUIRED UNDEFINED UNWANTED methods
+public:
+  INITV_ENTRIES(void)                { _initvs.clear(); }
+
+  void   Push(UINT32 k, INITV_VAL v) { _initvs.push_back(std::make_pair(k, v)); }
+  UINT32 Size(void)                  { return _initvs.size(); }
+
+  UINT32 Get_kind(UINT32 idx)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), INITVKIND_UNK);
+    return _initvs[idx].first;
+  }
+
+  ST_IDX Get_initv_st(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), ST_IDX_ZERO);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_SYMOFF, 
+                ("Get_initv_st: invalid initv kind %d", _initvs[idx].first), ST_IDX_ZERO);
+    return _initvs[idx].second.st_idx;
+  }
+
+  INT32 Get_initv_i32(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), 0);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_VAL_INT32,
+                ("Get_initv_i32: invalid initv kind %d", _initvs[idx].first), 0);
+    return _initvs[idx].second.i32;
+  }
+
+  UINT32 Get_initv_u32(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), 0);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_VAL_UINT32,
+                ("Get_initv_u32: invalid initv kind %d", _initvs[idx].first), 0);
+    return _initvs[idx].second.u32;
+  }
+
+  INT64 Get_initv_i64(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), 0);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_VAL_INT64,
+                ("Get_initv_i64: invalid initv kind %d", _initvs[idx].first), 0);
+    return _initvs[idx].second.i64;
+  }
+
+  UINT64 Get_initv_u64(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), 0);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_VAL_UINT64,
+                ("Get_initv_u64: invalid initv kind %d", _initvs[idx].first), 0);
+    return _initvs[idx].second.u64;
+  }
+
+  float Get_initv_f32(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), 0);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_VAL_FLOAT,
+                ("Get_initv_f32: invalid initv kind %d", _initvs[idx].first), 0);
+    return _initvs[idx].second.f32;
+  }
+
+  double Get_initv_f64(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), 0);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_VAL_DOUBLE,
+                ("Get_initv_f64: invalid initv kind %d", _initvs[idx].first), 0);
+    return _initvs[idx].second.f64;
+  }
+
+  STR_IDX Get_initv_str_idx(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), STR_IDX_ZERO);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_VAL_STR,
+                ("Get_initv_str_idx: invalid initv kind %d", _initvs[idx].first), STR_IDX_ZERO);
+    return _initvs[idx].second.str.str_idx;
+  }
+
+  UINT32 Get_initv_str_len(UINT32 idx, BOOL check = FALSE)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), 0);
+    Is_True_Ret(!check || _initvs[idx].first == INITVKIND_VAL_STR,
+                ("Get_initv_str_len: invalid initv kind %d", _initvs[idx].first), 0);
+    return _initvs[idx].second.str.str_len;
+  }
+
+  INT64 Get_initv_data(UINT32 idx)
+  {
+    Is_True_Ret(idx < _initvs.size(), ("initv idx outof bound"), 0);
+    return _initvs[idx].second.data;
+  }
+};
+
+extern void Get_initv_entry(INITV_IDX idx, INITV_ENTRIES *entries);
+extern void Get_initv_entry_by_st(ST_IDX st_idx, INITV_ENTRIES *entries);
 
 #endif /* irbdata_INCLUDED */

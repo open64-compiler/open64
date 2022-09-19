@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -491,6 +495,12 @@ ST_is_const_and_has_initv(const ST *);
 extern INITV_IDX
 ST_has_initv(const ST *);
 
+extern pair<UINT32, pair<ST_IDX, INITV_IDX> >
+ST_has_initv_cross(const ST *);
+
+extern BOOL
+ST_is_initialized_cross(const ST *st);
+
 
 // Back-end-specific information about each PU
 
@@ -505,17 +515,21 @@ class BE_PREG {
 private:
   WN *home_location;
   WN *lda;
+  ST_IDX assign_to;   // the symbol that the preg is assigned to
 public:
-  BE_PREG(void) : home_location(NULL), lda(NULL)  { }
+  BE_PREG(void) : home_location(NULL), lda(NULL), assign_to(ST_IDX_ZERO)  { }
   void  Set_home_location(WN *wn)       { home_location = wn; }
   WN   *Home_location(void) const       { return home_location; }
   void  Set_lda(WN *wn)    { lda = wn; }
   WN   *Lda(void) const    { return lda; }
+  void   Set_assign_to(ST_IDX st) { assign_to = st; }
+  ST_IDX Assign_to(void) const    { return assign_to; }
 };
 
 typedef RELATED_SEGMENTED_ARRAY<BE_PREG> BE_PREG_TAB;
 
-extern BE_PREG_TAB Be_preg_tab;
+extern BE_PREG_TAB *Be_preg_tab_ptr;
+#define Be_preg_tab (*Be_preg_tab_ptr)
 
 // Create_Preg for back end components that want to associate a
 // home location with each register.
@@ -549,6 +563,21 @@ Set_Preg_Lda(PREG_NUM preg, WN *wn)
   Be_preg_tab[preg - Last_Dedicated_Preg_Offset].Set_lda(wn);
 }
 
+static inline ST_IDX
+Preg_Assign_To(PREG_NUM preg)
+{
+  const UINT idx = preg - Last_Dedicated_Preg_Offset;
+  return (idx < Be_preg_tab.Size()) ? Be_preg_tab[idx].Assign_to() : 0; // changed from NULL
+}
+
+static inline void
+Set_Preg_Assign_To(PREG_NUM preg, ST_IDX st)
+{
+  const UINT idx = preg - Last_Dedicated_Preg_Offset;
+  if (Be_preg_tab[idx].Assign_to() == ST_IDX_ZERO)
+    Be_preg_tab[idx].Set_assign_to(st);
+}
+
 // Search tree for a LDA, returning NULL if not found.
 // Will search through preg homes to find LDA.
 // Can also return LDID if is LDID of parameter pointer.
@@ -558,4 +587,8 @@ extern WN* Find_Lda (WN *tree);
 extern void BE_symtab_initialize_be_scopes(void);
 extern void BE_symtab_free_be_scopes(void);
 extern void BE_symtab_alloc_scope_level(SYMTAB_IDX);
+
+extern void   BE_set_next_level(UINT32 level);
+extern UINT32 BE_get_next_level();
+
 #endif // be_symtab_INCLUDED

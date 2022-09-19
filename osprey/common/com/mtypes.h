@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -108,7 +112,7 @@ enum MTYPE_t {
     MTYPE_I16=26,        /* 128-bit signed integer              */
     MTYPE_U16=27,        /* 128-bit unsigned integer            */
 
-#ifdef TARG_X8664
+#if defined(TARG_X8664)
     MTYPE_V16C4=28,       /* vector type for C4 */
     MTYPE_V16C8=29,       /* vector type for C8 */
     MTYPE_V16I1=30,       /* 128-bit vector of signed bytes            */
@@ -137,7 +141,7 @@ enum MTYPE_t {
     MTYPE_V32I8=50,       /* 256-bit vector of signed long long ints */
     MTYPE_V32F4=51,       /* 256-bit vector of floats                */
     MTYPE_V32F8=52,       /* 256-bit vector of doubles               */
-    MTYPE_LAST = MTYPE_V32F8
+    MTARG_LAST = MTYPE_V32F8,
 #elif defined(TARG_SL)
   /* mtype list for sbuf type */
     MTYPE_SB1=28,
@@ -161,10 +165,25 @@ enum MTYPE_t {
     MTYPE_VBUF1=44,
     MTYPE_VBUF2=45,
     MTYPE_VBUF4=46,
-    MTYPE_LAST = MTYPE_VBUF4
+    MTARG_LAST = MTYPE_VBUF4,
 #else
-    MTYPE_LAST = MTYPE_U16
+    MTARG_LAST = MTYPE_U16,
 #endif // TARG_X8664
+#ifdef DYNAMICLANG
+    MTYPE_DYNANY=MTARG_LAST+1,      /* dynamic any type  */
+    MTYPE_DYNUNDEF=MTARG_LAST+2,    /* dynamic undefined type */
+    MTYPE_DYNNULL=MTARG_LAST+3,     /* dynamic null type */
+    MTYPE_DYNBOOL=MTARG_LAST+4,     /* dynamic bool type */
+    MTYPE_DYNI4=MTARG_LAST+5,       /* dynamic int32 type */
+    MTYPE_DYNSTR=MTARG_LAST+6,      /* dynamic string type */
+    MTYPE_DYNOBJ=MTARG_LAST+7,      /* dynamic object type */
+    MTYPE_DYNF4=MTARG_LAST+8,       /* dynamic float type */
+    MTYPE_DYNF8=MTARG_LAST+9,       /* dynamic double type */
+    MTYPE_DYNNONE=MTARG_LAST+10,    /* dynamic none type */
+    MTYPE_LAST = MTYPE_DYNNONE
+#else
+    MTYPE_LAST = MTARG_LAST
+#endif
 };
 
 /* Define the type: */
@@ -179,10 +198,11 @@ typedef UINT8	mTYPE_ID;
 #define MTYPE_CLASS_UNSIGNED	0x08
 #define MTYPE_CLASS_STR		0x10
 #define MTYPE_CLASS_VECTOR	0x20
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 #define MTYPE_CLASS_SVECTOR	0x60  // 2 bits for short vector (64-bit vector)
 #define MTYPE_CLASS_MVECTOR	0xa0  // 2 bits for MMX vector (64-bit vector)
 #define MTYPE_CLASS_AVECTOR	0x120 // 2 bits for AVX vector (256-bit vector)
+#define MTYPE_CLASS_DYNAMIC     0x200
 #endif
 #define MTYPE_CLASS_UNSIGNED_INTEGER (MTYPE_CLASS_UNSIGNED|MTYPE_CLASS_INTEGER)
 #define MTYPE_CLASS_COMPLEX_FLOAT (MTYPE_CLASS_COMPLEX|MTYPE_CLASS_FLOAT)

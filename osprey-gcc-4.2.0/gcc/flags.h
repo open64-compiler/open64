@@ -271,6 +271,9 @@ extern bool flag_speculative_prefetching_set;
 
 extern const char *flag_random_seed;
 
+/* True if work for mastiff */
+extern bool for_mastiff;
+
 /* Returns TRUE if generated code should match ABI version N or
    greater is in use.  */
 

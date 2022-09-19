@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 
 
 /*
@@ -73,7 +77,7 @@ enum _sec_kind {
   _SEC_EH_REGION,
   _SEC_EH_REGION_SUPP,
   _SEC_DISTR_ARRAY,
-#if defined(TARG_X8664) || defined(TARG_LOONGSON)
+#if defined(TARG_X8664) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
   _SEC_DATA_REL_RO,
 #endif
 #ifdef TARG_SL

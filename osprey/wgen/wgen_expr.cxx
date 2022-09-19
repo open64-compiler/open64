@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -76,7 +80,7 @@ extern "C"{
 #define BITS_PER_UNIT 8
 
 extern void WGEN_Expand_Return(gs_t, gs_t);
-extern WN *guard_var_init_block = NULL; 
+extern WN *guard_var_init_block;
 
 LABEL_IDX loop_expr_exit_label = 0; // exit label for LOOP_EXPRs
 
@@ -1113,6 +1117,8 @@ WGEN_Save_Expr (gs_t save_exp,
     wn = WGEN_Expand_Expr (exp);
 
     st = Gen_Temp_Symbol (ty_idx, "__save_expr");
+    if (WN_has_sym(wn))
+      Set_ST_name_idx(st, ST_name_idx(WN_st(wn)));
 #ifdef FE_GNU_4_2_0
     WGEN_add_pragma_to_enclosing_regions (WN_PRAGMA_LOCAL, st);
 #endif
@@ -1916,7 +1922,7 @@ WGEN_Lhs_Of_Modify_Expr(gs_code_t assign_code,
 #ifdef KEY
       // Bug 8056: Need to preserve the semantics on the preg if it's size
       // is less than 4 bytes.
-      if (MTYPE_byte_size(desc) < 4) {
+      if (desc != MTYPE_M && MTYPE_byte_size(desc) < 4) {
                                                                                                                                                             
          rhs_wn = WN_CreateCvtl(!MTYPE_signed(desc) ? OPC_U4CVTL : OPC_I4CVTL,
                                 MTYPE_bit_size(desc),
@@ -2443,6 +2449,7 @@ WGEN_Expand_Expr_With_Sequence_Point (gs_t exp, TYPE_ID mtype, WN* target_wn)
   else {
 
     WN *comma_block      = WN_CreateBlock ();
+    WN_Set_Linenum(comma_block, Get_Srcpos());
 
     WGEN_Stmt_Push (comma_block, wgen_stmk_comma, Get_Srcpos ());
 #ifdef KEY
@@ -2746,6 +2753,20 @@ get_string_pointer (WN *wn)
   return ptr;
 } /* get_string_pointer */
 
+static WN*
+WGEN_Ilda_From_Iload(WN* iload, WN_OFFSET ofst)
+{
+  Is_True(WN_operator(iload) == OPR_ILOAD, ("not ILOAD"));
+  WN* addr = WN_kid0(iload);
+  WN* ret = WN_CreateExp1(OPR_ILDA, Pointer_Mtype, MTYPE_V, addr);
+  WN_load_offset(ret) = ofst;
+  if (WN_has_sym(addr))
+    WN_st_idx(ret) = WN_st_idx(addr);
+  WN_set_ty(ret, WN_load_addr_ty(iload));
+  WN_set_field_id(ret, WN_field_id(iload));
+  return ret;
+}
+
 // Auxiliary function for WGEN_Expand_Expr, return the address of
 // a tree operand.  (Used for ADDR_EXPR.)
 WN*
@@ -2971,9 +2992,10 @@ WGEN_Address_Of(gs_t arg0)
       }
       else
       if (WN_operator (wn) == OPR_ILOAD) {
-        wn0 = WN_kid0 (wn);
-        wn1 = WN_Intconst (Pointer_Mtype, WN_offset (wn));
-        wn  = WN_Binary (OPR_ADD, Pointer_Mtype, wn0, wn1);
+        //wn0 = WN_kid0 (wn);
+        //wn1 = WN_Intconst (Pointer_Mtype, WN_offset (wn));
+        //wn  = WN_Binary (OPR_ADD, Pointer_Mtype, wn0, wn1);
+        wn = WGEN_Ilda_From_Iload(wn, WN_offset(wn));
       }
       else
         Fail_FmtAssertion ("WGEN_Address_Of has unhandled %s",
@@ -2997,25 +3019,14 @@ WGEN_Address_Of(gs_t arg0)
 #ifdef KEY
     case GS_COMPOUND_LITERAL_EXPR:
     {
-      arg0 = gs_decl_initial (gs_tree_operand (gs_tree_operand (arg0, 0), 0));
-      st = WGEN_Generate_Temp_For_Initialized_Aggregate (arg0, "");
-
-      if (CURRENT_SYMTAB == GLOBAL_SYMTAB) 
-	wn = WN_Lda (Pointer_Mtype, ST_ofst(st), st); // bug 10507
-      else {
-	// bug 10281: need to make a copy so any potential store will not 
-	// 	overwrite the original
-	ST *copy = New_ST(CURRENT_SYMTAB);
-	ST_Init(copy, Save_Str(".cpfrominit"), CLASS_VAR, SCLASS_AUTO, 
-		EXPORT_LOCAL, ST_type(st));
-	WN *init_wn = WN_CreateLdid(OPR_LDID, MTYPE_M, MTYPE_M, 0, st, 
-				    ST_type(st));
-	WGEN_Stmt_Append( WN_CreateStid(OPR_STID, MTYPE_V, MTYPE_M,
-					0, copy, ST_type(copy), init_wn),
-			  Get_Srcpos());
-
-	wn = WN_Lda (Pointer_Mtype, ST_ofst(copy), copy);
-      }
+      wn = WGEN_Expand_Expr (arg0);
+      if (WN_operator (wn) == OPR_ILOAD)
+        wn = WN_kid0 (wn);
+      else if (WN_operator (wn) == OPR_LDID)
+        wn = WN_Lda (Pointer_Mtype, WN_offset(wn), WN_st(wn));
+      else
+        Fail_FmtAssertion ("WGEN_Address_Of: NYI for GS_COMPOUND_LITERAL_EXPR");
+      break;
     }
     break;
 
@@ -3080,8 +3091,9 @@ WGEN_Address_Of(gs_t arg0)
 	}
 	else ofst = MTYPE_byte_size (imag_mtype);
 
-	wn1 = WN_Intconst (Pointer_Mtype, ofst);
-	wn  = WN_Binary (OPR_ADD, Pointer_Mtype, wn0, wn1);
+	//wn1 = WN_Intconst (Pointer_Mtype, ofst);
+	//wn  = WN_Binary (OPR_ADD, Pointer_Mtype, wn0, wn1);
+        wn = WGEN_Ilda_From_Iload(wn, ofst);
       }
       else if (WN_operator (wn) == OPR_LDID)
 	wn = WN_Lda (Pointer_Mtype, 
@@ -3106,9 +3118,10 @@ WGEN_Address_Of(gs_t arg0)
       Is_True( WN_operator(wn) == OPR_ILOAD, 
                 ("expand VA_ARG_EXPR does not return OPR_ILOAD") );
       if (WN_operator(wn) == OPR_ILOAD) {
-        wn0 = WN_kid0 (wn);
-        wn1 = WN_Intconst (Pointer_Mtype, WN_offset (wn));
-        wn  = WN_Binary (OPR_ADD, Pointer_Mtype, wn0, wn1);
+        //wn0 = WN_kid0 (wn);
+        //wn1 = WN_Intconst (Pointer_Mtype, WN_offset (wn));
+        //wn  = WN_Binary (OPR_ADD, Pointer_Mtype, wn0, wn1);
+        wn = WGEN_Ilda_From_Iload(wn, WN_offset(wn));
       }
       break;
 
@@ -5922,6 +5935,16 @@ WGEN_target_builtins (gs_t exp, INTRINSIC * iopc, BOOL * intrinsic_op)
 
 #endif
 
+    case GSBI_BUILT_IN_BSWAP16:
+      *iopc = INTRN_BSWAP16;
+      break;
+    case GSBI_BUILT_IN_BSWAP32:
+      *iopc = INTRN_BSWAP32;
+      break;
+    case GSBI_BUILT_IN_BSWAP64:
+      *iopc = INTRN_BSWAP64;
+      break;
+
     default:
 unsupported:
       if (Opt_Level > 0)
@@ -6214,6 +6237,54 @@ Fold_Object_Size (WN* intrinsic_op) {
     return res;
 }
 
+static WN * Devirtual_jni_icall(WN *tree, WN *iload)
+{
+    TY_IDX iload_ty = WN_ty(iload);
+    if((TY_size(iload_ty) != 1864) || strcmp(TY_name(iload_ty), "JNINativeInterface_")) {
+      return tree;
+    }
+    INT32 kid_cnt = WN_kid_count(tree);
+    UINT field_id = WN_field_id(iload);
+    UINT32 curr_fd_id = 0;
+    FLD_HANDLE fld = FLD_get_to_field (iload_ty, field_id, curr_fd_id);
+    Is_True (! fld.Is_Null (), ("JNI: invalid bit-field ID for %s", TY_name(iload_ty)));
+    char *fun_name = FLD_name(fld);
+    TY_IDX ret_ty_idx = FLD_type(fld);
+    TY_IDX idx = TY_IDX_ZERO;
+    TY *ty = &(New_TY(idx));
+    
+    TY_Init(*ty, 0, KIND_FUNCTION, MTYPE_UNKNOWN, 0);
+    Set_TY_align(idx, 1);
+    TYLIST tylist_idx = 0;
+    Set_TYLIST_type(New_TYLIST(tylist_idx), ret_ty_idx);
+    Set_TY_tylist(*ty, tylist_idx);
+    for(int i=0; i <kid_cnt -1; i++) {
+      Set_TYLIST_type(New_TYLIST(tylist_idx), WN_ty(WN_kid(tree, i)));
+    }
+    if(kid_cnt > 1) {
+      Set_TY_has_prototype(idx);
+      if(WN_ty(WN_kid(tree, kid_cnt - 2)) != Be_Type_Tbl(MTYPE_V)) {
+        Set_TYLIST_type(New_TYLIST(tylist_idx), 0);
+      }
+    } else {
+      Set_TYLIST_type(New_TYLIST(tylist_idx), 0);
+    }
+    ST *fun_st = New_ST(1);
+    PU_IDX pu_idx = 0;
+    PU *pu = &(New_PU)(pu_idx);
+    PU_Init(*pu, idx, 2);
+    ST_Init(fun_st, FLD_name_idx(fld), CLASS_FUNC, SCLASS_EXTERN, EXPORT_PREEMPTIBLE, TY_IDX(pu_idx));
+    Set_PU_cxx_lang(Pu_Table[pu_idx]);
+
+    WN *new_tree = WN_Call(WN_rtype(tree), WN_desc(tree), kid_cnt - 1, fun_st);
+    for(int i=0; i<kid_cnt -1; i++) {
+      WN_kid(new_tree, i) = WN_COPY_Tree(WN_kid(tree,i));
+    }
+    WN_Set_Linenum(new_tree, WN_linenum(tree));
+    WN_DELETE_Tree(tree);
+    tree = new_tree;
+    return tree;
+}
 WN * 
 WGEN_Expand_Expr (gs_t exp,
 		  bool need_result,
@@ -7164,11 +7235,14 @@ WGEN_Expand_Expr (gs_t exp,
 	  // kid1 and kid2 must be type M and must be of the same struct type
 	  Is_True (WN_rtype (WN_kid1(wn)) == MTYPE_M, ("Unexpected type"));
 	  // code adapted from vho
-	  TY_IDX temp_ty_idx = WN_ty (WN_kid1 (wn));
+          WN *kid1 = WN_kid1 (wn);
+          if (WN_operator (kid1) == OPR_COMMA)
+            kid1 = WN_kid1 (kid1);
+	  TY_IDX temp_ty_idx = WN_ty (kid1);
 	  // Get the struct type corresponding to the field
-	  if (WN_field_id (WN_kid1 (wn)))
+	  if (WN_field_id (kid1))
 	    temp_ty_idx = get_field_type (temp_ty_idx,
-	                                  WN_field_id (WN_kid1 (wn)));
+	                                  WN_field_id (kid1));
 	  // Store into temp symbol
 	  ST * temp = Gen_Temp_Symbol (temp_ty_idx, ".mcselect_store");
 	  wn = WN_Stid (MTYPE_M, 0, temp, temp_ty_idx, wn);
@@ -7762,11 +7836,18 @@ WGEN_Expand_Expr (gs_t exp,
          // "then" statement
           WGEN_Stmt_Push (then_block, wgen_stmk_if_then, Get_Srcpos());
           WGEN_Guard_Var_Push();
+          // set srcpos for then-block in case then isn't a stmt-list
+          gs_t then_exp = gs_tree_operand(exp, 1);
+          if (gs_tree_has_location(then_exp) == gs_true) {
+            lineno = gs_expr_lineno(then_exp);
+            WGEN_Set_Line_And_File(lineno, gs_expr_filename(then_exp), TRUE);
+          }
+
           if (!typed_ite)
-	    wn1 = WGEN_Expand_Expr (gs_tree_operand (exp, 1), FALSE);
+	    wn1 = WGEN_Expand_Expr (then_exp, FALSE);
           else
    	  {
-   	    wn1 = WGEN_Expand_Expr (gs_tree_operand(exp, 1), FALSE, 0, 0, 0, 0, FALSE, FALSE, target_wn);
+   	    wn1 = WGEN_Expand_Expr (then_exp, FALSE, 0, 0, 0, 0, FALSE, FALSE, target_wn);
 	  }
 	  gs_t guard_var1 = WGEN_Guard_Var_Pop();
           if (wn1 && !typed_ite) {
@@ -7781,13 +7862,20 @@ WGEN_Expand_Expr (gs_t exp,
           }
 
           // "else" statement
-          if (gs_tree_operand(exp, 2) != NULL) {
+          gs_t else_exp = gs_tree_operand(exp, 2);
+          if (else_exp != NULL) {
             WGEN_Stmt_Push (else_block, wgen_stmk_if_else, Get_Srcpos());
             WGEN_Guard_Var_Push();
+            // set srcpos for then-block in case then isn't a stmt-list
+            if (gs_tree_has_location(else_exp) == gs_true) {
+              lineno = gs_expr_lineno(else_exp);
+              WGEN_Set_Line_And_File(lineno, gs_expr_filename(else_exp), TRUE);
+            }
+
             if(!typed_ite)
- 	      wn2 = WGEN_Expand_Expr (gs_tree_operand (exp, 2), FALSE);
+ 	      wn2 = WGEN_Expand_Expr (else_exp, FALSE);
             else
-   	      wn2 = WGEN_Expand_Expr (gs_tree_operand(exp, 2), FALSE, 0, 0, 0, 0, FALSE, FALSE, target_wn);
+   	      wn2 = WGEN_Expand_Expr (else_exp, FALSE, 0, 0, 0, 0, FALSE, FALSE, target_wn);
             gs_t guard_var2 = WGEN_Guard_Var_Pop();
             if (wn2 && !typed_ite) {
               comma_value = wn2;
@@ -8555,6 +8643,16 @@ WGEN_Expand_Expr (gs_t exp,
 		wn = NULL;
 		break;
 	      }
+
+	      case GSBI_BUILT_IN_VA_ARG_PACK:
+	        iopc = INTRN_VA_ARG_PACK;
+		intrinsic_op = TRUE;
+		break;
+
+	      case GSBI_BUILT_IN_VA_ARG_PACK_LEN:
+	        iopc = INTRN_VA_ARG_PACK_LEN;
+		intrinsic_op = TRUE;
+		break;
 
 	      case GSBI_BUILT_IN_VA_COPY:
 	      {
@@ -10216,6 +10314,13 @@ WGEN_Expand_Expr (gs_t exp,
           }
         }
 
+        if(WN_operator(call_wn) == OPR_CALL &&
+           WN_has_sym(call_wn) &&
+           !PU_is_rbc(Get_Current_PU()) &&
+           !strncmp(ST_name(WN_st(call_wn)), "_ZN10RBC_ENGINE", 15)) {
+            Set_PU_is_rbc(Get_Current_PU());
+        }
+
         i = 0;
 #ifdef KEY
 	// If the object must be returned through memory, create the fake first
@@ -10297,7 +10402,12 @@ WGEN_Expand_Expr (gs_t exp,
 		    		  arg_ty_idx, WN_PARM_BY_VALUE);
           WN_kid (call_wn, i++) = arg_wn;
         }
-
+  if(WN_operator(call_wn) == OPR_ICALL) {
+    WN *iload_base = WN_kid(call_wn, WN_kid_count(call_wn) - 1);
+    if(WN_operator(iload_base) == OPR_ILOAD) {
+      call_wn = Devirtual_jni_icall(call_wn, iload_base);
+    }
+  }
 #ifdef ADD_HANDLER_INFO
 	if (num_handlers) 
 	  Add_Handler_Info (call_wn, i, num_handlers);
@@ -10360,6 +10470,7 @@ WGEN_Expand_Expr (gs_t exp,
 
 	else {
           wn0 = WN_CreateBlock ();
+          WN_Set_Linenum(wn0, WN_Get_Linenum(call_wn));
           WN_INSERT_BlockLast (wn0, call_wn);
 
 #ifdef KEY

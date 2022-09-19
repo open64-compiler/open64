@@ -2844,7 +2844,7 @@ build_delete (tree type, tree addr, special_function_kind auto_delete,
       if (do_delete)
 	expr = build2 (COMPOUND_EXPR, void_type_node, expr, do_delete);
 
-      if (flags & LOOKUP_DESTRUCTOR)
+      if (flags & LOOKUP_DESTRUCTOR || for_mastiff)
 	/* Explicit destructor call; don't check for null pointer.  */
 	ifexp = integer_one_node;
       else

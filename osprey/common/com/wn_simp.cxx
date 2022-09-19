@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -138,6 +142,8 @@ typedef WN * simpnode;
 #define SIMPNODE_enable Enable_WN_Simp
 #define SIMPNODE_op_bit_offset WN_bit_offset
 #define SIMPNODE_op_bit_size WN_bit_size
+#define SIMPNODE_first WN_first
+#define SIMPNODE_next  WN_next
 
 /* Functions */
 
@@ -249,6 +255,7 @@ WN *WN_Simplify_Tree(WN *t, ALIAS_MANAGER *alias_manager)
 	    Copy_alias_info(alias_manager,t,r);
 	 }
 #endif
+	 WN_Set_Linenum(r, WN_Get_Linenum(t));
 	 WN_Delete(t);
 	 result = r;
       } else {

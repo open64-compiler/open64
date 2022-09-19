@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2007 PathScale, LLC.  All Rights Reserved.
  */
 /*
@@ -101,6 +105,9 @@
 #include "wn_lower.h"
 #include "targ_sim.h"
 #include "fb_whirl.h"
+#include "tracing.h"
+#include "ir_reader.h"
+#include "config_vsa.h"
 
 
 // Utility function to check for structured-control-flow nodes that
@@ -277,6 +284,16 @@ void GTABLE::Backpatch()
 // TODO: Consider enabling of converting gotos to IFs.
 void GTABLE::Remove_Gotos()
 {
+  if (Get_Trace( TP_MISC, 0x1000)) {
+    fprintf(TFile, "%sDump before early GOTO conversion ..\n%s\n", DBar, DBar);
+    fdump_tree(TFile, _func_nd);
+  }
+
+  if (Get_Trace(TP_MISC, 0x2000)) {
+    fprintf(TFile, "\nDump GTABLE for early GOTO conversion ..\n%s\n", DBar);
+    Print(TFile);
+
+  }
   INT goto_expanding_transformations = 0;
   // go backwards, seems to be cleaner
   INT i;
@@ -352,6 +369,11 @@ void GTABLE::Remove_Gotos()
       }
       tmp = next_tmp;
     }
+  }
+
+  if ( Get_Trace( TP_MISC, 0x1000 ) ) {
+    fprintf(TFile, "%sDump after early GOTO conversion ..\n%s\n", DBar, DBar);
+    fdump_tree(TFile, _func_nd);
   }
 }
 
@@ -703,6 +725,143 @@ void GTABLE::Patch_Do_While (WN * while_wn, WN * parent)
   }
 }
 
+static OPCODE get_oppsite_cmp_op(WN *test)
+{
+  OPCODE cmp_op = OPCODE_UNKNOWN;
+  if(test) {
+    cmp_op = WN_opcode(test);
+    // get opposite compare
+    switch(WN_operator(test)) {
+      case OPR_LT:
+        cmp_op = OPCODE_make_op(OPR_GE,OPCODE_rtype(cmp_op),OPCODE_desc(cmp_op));
+        break;
+      case OPR_LE:
+        cmp_op = OPCODE_make_op(OPR_GT,OPCODE_rtype(cmp_op),OPCODE_desc(cmp_op));
+        break;
+      case OPR_GT:
+        cmp_op = OPCODE_make_op(OPR_LE,OPCODE_rtype(cmp_op),OPCODE_desc(cmp_op));
+        break;
+      case OPR_GE:
+        cmp_op = OPCODE_make_op(OPR_LT,OPCODE_rtype(cmp_op),OPCODE_desc(cmp_op));
+        break;
+      case OPR_NE:
+        cmp_op = OPCODE_make_op(OPR_EQ,OPCODE_rtype(cmp_op),OPCODE_desc(cmp_op));
+        break;
+      case OPR_EQ:
+        cmp_op = OPCODE_make_op(OPR_NE,OPCODE_rtype(cmp_op),OPCODE_desc(cmp_op));
+        break;
+      default:
+        cmp_op = OPCODE_UNKNOWN;
+        break;
+    }
+  }
+  return cmp_op;
+}
+
+// Convert 
+//
+// L1
+// do                                   while(!test)
+//   if(test)                           do
+//     GOTO L2                           <statements lists>
+//   <statements lists>                 done
+// while(true)
+// L2
+void GTABLE::Convert_To_While_Do(WN *while_wn, WN *parent)
+{
+  Is_True (Get_Parent(while_wn) == parent, ("Invalid parent of while node"));
+  WN *test = WN_while_test(while_wn);
+  WN *while_next = WN_next(while_wn);
+  if(while_next && WN_operator(while_next) == OPR_LABEL &&
+     WN_operator(test) == OPR_INTCONST && WN_const_val(test) > 0) {
+    WN *body = WN_while_body(while_wn);
+    OPCODE opcode = WN_opcode(body);
+    if(opcode == OPC_BLOCK) {
+      WN *kid = WN_first(body);
+      while (kid && WN_operator(kid) == OPR_LABEL) {
+        for (INT i = _gd.Elements() - 1; i >= 0; i--) {
+            GDESCRIPTOR *gd = &_gd.Bottom_nth(i);
+          if (kid == gd->Label_Wn) {
+            if (gd->Is_Dismantled) {
+              break;
+            } else {
+              return;
+            }
+          }
+        }
+        // if not found or marked Dismantled, skip the label
+        kid = WN_next(kid);
+      }
+      if(kid == NULL)
+        return;
+      WN *new_test = NULL;
+      BOOL matched = FALSE;
+      WN *goto_wn = NULL;
+      OPCODE new_cmp = OPCODE_UNKNOWN;
+      if(WN_opcode(kid) == OPC_IF &&
+          WN_next(kid) == NULL &&
+          WN_then(kid) != NULL) {
+        goto_wn = WN_first(WN_then(kid));
+        new_test = WN_COPY_Tree_With_Map(WN_if_test(kid));
+        new_cmp = get_oppsite_cmp_op(new_test);
+        if(new_cmp != OPCODE_UNKNOWN &&
+           goto_wn && WN_opcode(goto_wn) == OPC_GOTO &&
+           WN_label_number(goto_wn) == WN_label_number(while_next) &&
+           WN_next(goto_wn) == NULL) {
+          WN *else_body = WN_else(kid);
+          if(else_body != NULL) {
+            WN_else(kid) = NULL;
+            WN *prev = WN_prev(kid);
+            WN_prev(else_body) = prev;
+            if(prev) {
+              WN_next(prev) = else_body;
+            } else {
+              WN_first(body) = else_body;
+            }
+            WN_next(else_body) = kid;
+            WN_prev(kid) = else_body;
+            Fixup_Parents(else_body, body);
+          }
+          WN_EXTRACT_FromBlock(body, kid);
+          WN_Delete(kid);
+          matched = TRUE;
+        }
+      } // end of OPC_IF
+      else if(WN_opcode(kid) == OPC_TRUEBR &&
+              WN_label_number(kid) == WN_label_number(while_next)) {
+        new_test = WN_COPY_Tree_With_Map(WN_kid(kid, 0));
+        new_cmp = get_oppsite_cmp_op(new_test);
+        if(new_cmp != OPCODE_UNKNOWN) {
+          goto_wn = kid;
+          WN_EXTRACT_FromBlock(body, kid);
+          WN_Delete(kid);
+          matched = TRUE;
+        }
+      }
+
+      if(matched == TRUE && new_test) {
+        WN_set_opcode(new_test, new_cmp);
+        WN_while_test(while_wn) = new_test;
+        WN_set_opcode(while_wn, OPC_WHILE_DO);
+        WN_Delete(test);
+        // remove the goto info from goto table
+        if(goto_wn) {
+          for (INT i = _gd.Elements() - 1; i >= 0; i--) {
+            GDESCRIPTOR *gd = &_gd.Bottom_nth(i);
+            if (goto_wn == gd->Goto_Wn) {
+              gd->Label_Wn = NULL;
+              gd->Is_Dismantled = TRUE;
+              break;
+            }
+          }
+        }
+      }
+    } // end of while body is block
+  } // while next is a label and test cond is always true
+  return;
+}
+
+
 // Do sanity checks on the statements about to form the loop body.
 // Return TRUE if OK, else return FALSE.
 static BOOL sanity_check_loop_body (WN * label_wn, WN * goto_wn)
@@ -811,6 +970,10 @@ BOOL GTABLE::Replace_Goto_With_While(GDESCRIPTOR *gd)
   }
 
   Patch_Do_While (while_wn, parent);
+
+  // enable the convert for c/c++ until full test
+  if (VSA_Java_Tmp && PU_java_lang(Get_Current_PU()))
+    Convert_To_While_Do(while_wn, parent);
 
   WN_Delete(goto_wn);
 

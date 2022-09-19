@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -259,6 +263,8 @@ BOOL OPT_shared_memory = TRUE;	// assume use of shared memory
 /* Put each function in its own text section */
 BOOL Section_For_Each_Function = FALSE;
 BOOL Inline_Intrinsics_Early=FALSE;    /* Inline intrinsics just after VHO */
+/* Lowering field id in load/store ops to offset for some front ends (e.g. Java) */
+BOOL OPT_Lower_field_offset_pre_vho=TRUE;
 #if defined(TARG_PPC32)
 BOOL Enable_extract_bits=FALSE;
 #else
@@ -617,6 +623,10 @@ static OPTION_DESC Options_OPT[] = {
     0, 0, 0,	&Inline_Intrinsics_Allowed, &Inline_Intrinsics_Set,
     "Allow inlining of Fortran intrinsic functions" },
 
+  { OVK_BOOL,	OV_VISIBLE,	TRUE, "lower_field_offset",	"lower_field_offset",
+    0, 0, 0,	&OPT_Lower_field_offset_pre_vho, NULL,
+    "Loweing the field id in store/load ops to field offset" },  
+  
   { OVK_BOOL,	OV_SHY,		TRUE, "ldx",			"ldx",
     0, 0, 0,	&Indexed_Loads_Allowed,	NULL,
     "Allow generation of indexed load/store operations" },

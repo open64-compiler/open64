@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -804,6 +808,10 @@ decode_reg_name (const char *asmspec)
 
       /* Get rid of confusing prefixes.  */
       asmspec = strip_reg_name (asmspec);
+
+      /* hard-code KEIL register name to 0 which is "ax" */
+      if (flag_keil_compat)
+        return 0;
 
       /* Allow a decimal number as a "register name".  */
       for (i = strlen (asmspec) - 1; i >= 0; i--)

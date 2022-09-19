@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -82,9 +86,19 @@ extern void (*Wopt_Fini_p) ();
 extern WN* (*Perform_Preopt_Optimization_p) (WN *, WN *);
 extern WN* (*Perform_Global_Optimization_p) (WN *, WN *, ALIAS_MANAGER *);
 
-// from be/opt/optimizer.h
-extern WN* (*Pre_Optimizer_p) (INT32, WN*, DU_MANAGER*, ALIAS_MANAGER*);
+// from be/com/weak.cxx & be/opt/optimizer.h
+extern WN* (*Pre_Optimizer_p) (OPT_PHASE, WN*, DU_MANAGER*, ALIAS_MANAGER*);
 extern void (*choose_from_complete_struct_for_relayout_candidates_p)();
+extern void (*Init_ipsa_context_p) (void);
+extern void (*IPSA_analyze_p) (void);
+extern void (*IPSA_emit_p) (char *);
+extern BOOL (*IPSA_insession_p) (void);
+extern DNA_NODE* (*Get_cur_dna_p) (void);
+extern void (*IPSA_build_cha_begin_p) (void);
+extern void (*IPSA_build_cha_end_p) (void);
+extern void (*IPSA_build_cha_p) (void);
+extern void (*IPSA_verify_p) (void);
+extern void (*Terminate_ipsa_context_p) (void);
 extern DU_MANAGER* (*Create_Du_Manager_p) (MEM_POOL *);
 extern void (*Delete_Du_Manager_p) (DU_MANAGER *, MEM_POOL *);
 
@@ -118,7 +132,19 @@ struct WOPT_INIT
 	Perform_Global_Optimization_p = Perform_Global_Optimization;
 
 	Pre_Optimizer_p = Pre_Optimizer;
- choose_from_complete_struct_for_relayout_candidates_p = choose_from_complete_struct_for_relayout_candidates;
+	choose_from_complete_struct_for_relayout_candidates_p = choose_from_complete_struct_for_relayout_candidates;
+#ifdef BUILD_MASTIFF
+	Init_ipsa_context_p = Init_ipsa_context;
+	IPSA_analyze_p = IPSA_analyze;
+	IPSA_emit_p = IPSA_emit;
+	IPSA_insession_p = IPSA_insession;
+	IPSA_build_cha_begin_p = IPSA_build_cha_begin;
+	IPSA_build_cha_end_p = IPSA_build_cha_end;
+	IPSA_build_cha_p = IPSA_build_cha;
+	IPSA_verify_p = IPSA_verify;
+	Get_cur_dna_p = Get_cur_dna;
+	Terminate_ipsa_context_p = Terminate_ipsa_context;
+#endif
 	Create_Du_Manager_p = Create_Du_Manager;
 	Delete_Du_Manager_p = Delete_Du_Manager;
 

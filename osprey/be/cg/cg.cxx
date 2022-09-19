@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -159,6 +163,9 @@
 #include "cg_cfg.h"
 #include "cgssa_core.h"
 #include "gpo.h"
+#ifdef TARG_UWASM
+#include "cgtarget_uwasm.h"
+#endif
 
 using namespace CGSSA_NAME;
 
@@ -430,11 +437,13 @@ CG_PU_Finalize(void)
 
   /* TN_To_PREG_Map is allocated from MEM_pu_pool and so can't be popped
      but it can be put on the free list and cleared at the end of the PU */
-  TN_MAP_Delete(TN_To_PREG_Map);
+  if (TN_To_PREG_Map)
+    TN_MAP_Delete(TN_To_PREG_Map);
   TN_To_PREG_Map = NULL;
 
 #ifdef TARG_X8664
-  BB_MAP_Delete( BBs_Map );
+  if (BBs_Map)
+    BB_MAP_Delete( BBs_Map );
   BBs_Map = NULL;
 
   Expand_Finish();
@@ -744,6 +753,10 @@ CG_Generate_Code(
     DST_IDX pu_dst, 
     BOOL region )
 {
+#ifdef TARG_UWASM
+  return CG_generate_code_uwasm(rwn, alias_mgr, pu_dst, region);
+#endif
+
 #ifdef TARG_IA64
   BOOL value_profile_need_gra = FALSE;
   /* Initialize RGN_Formed to FALSE. */

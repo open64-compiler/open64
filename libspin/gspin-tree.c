@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -908,6 +912,9 @@ gs_string_t gsbi_name (gsbi_t code)
     case GSBI_BUILT_IN_APPLY: return "GSBI_BUILT_IN_APPLY";
     case GSBI_BUILT_IN_APPLY_ARGS: return "GSBI_BUILT_IN_APPLY_ARGS";
     case GSBI_BUILT_IN_ARGS_INFO: return "GSBI_BUILT_IN_ARGS_INFO";
+    case GSBI_BUILT_IN_BSWAP16: return "GSBI_BUILT_IN_BSWAP16";
+    case GSBI_BUILT_IN_BSWAP32: return "GSBI_BUILT_IN_BSWAP32";
+    case GSBI_BUILT_IN_BSWAP64: return "GSBI_BUILT_IN_BSWAP64";
     case GSBI_BUILT_IN_CALLOC: return "GSBI_BUILT_IN_CALLOC";
     case GSBI_BUILT_IN_CLASSIFY_TYPE: return "GSBI_BUILT_IN_CLASSIFY_TYPE";
     case GSBI_BUILT_IN_CLZ: return "GSBI_BUILT_IN_CLZ";
@@ -953,6 +960,10 @@ gs_string_t gsbi_name (gsbi_t code)
     case GSBI_BUILT_IN_FINITED64: return "GSBI_BUILT_IN_FINITED64";
     case GSBI_BUILT_IN_FINITED128: return "GSBI_BUILT_IN_FINITED128";
 #endif
+    case GSBI_BUILT_IN_FPCLASSIFY: return "GSBI_BUILT_IN_FPCLASSIFY";
+    case GSBI_BUILT_IN_ISFINITE: return "GSBI_BUILT_IN_ISFINITE";
+    case GSBI_BUILT_IN_ISINF_SIGN: return "GSBI_BUILT_IN_ISINF_SIGN";
+
     case GSBI_BUILT_IN_ISINF: return "GSBI_BUILT_IN_ISINF";
     case GSBI_BUILT_IN_ISINFF: return "GSBI_BUILT_IN_ISINFF";
     case GSBI_BUILT_IN_ISINFL: return "GSBI_BUILT_IN_ISINFL";
@@ -999,6 +1010,8 @@ gs_string_t gsbi_name (gsbi_t code)
     case GSBI_BUILT_IN_TRAP: return "GSBI_BUILT_IN_TRAP";
     case GSBI_BUILT_IN_UNWIND_INIT: return "GSBI_BUILT_IN_UNWIND_INIT";
     case GSBI_BUILT_IN_UPDATE_SETJMP_BUF: return "GSBI_BUILT_IN_UPDATE_SETJMP_BUF";
+    case GSBI_BUILT_IN_VA_ARG_PACK: return "GSBI_BUILT_IN_VA_ARG_PACK";
+    case GSBI_BUILT_IN_VA_ARG_PACK_LEN: return "GSBI_BUILT_IN_VA_ARG_PACK_LEN";
     case GSBI_BUILT_IN_VA_COPY: return "GSBI_BUILT_IN_VA_COPY";
     case GSBI_BUILT_IN_VA_END: return "GSBI_BUILT_IN_VA_END";
     case GSBI_BUILT_IN_VA_START: return "GSBI_BUILT_IN_VA_START";

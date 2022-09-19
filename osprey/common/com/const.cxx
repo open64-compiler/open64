@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -71,6 +75,7 @@
 #include "symtab.h"
 #include "wn.h"
 #include "config_targ.h"
+#include "cxx_memory.h"
 #include <ext/hash_map>
 #include <math.h>
 using __gnu_cxx::hash_map;
@@ -130,25 +135,53 @@ namespace {
     };
 } // unnamed namespace
 		
+typedef pair<TCON_IDX, ST *> TCON_IDX_TO_ST;
+typedef mempool_allocator<TCON_IDX_TO_ST> TCON_MERGE_ALLOCATOR;
+typedef hash_map<TCON_IDX, ST *, tcon_hash, eq_tcon,
+                 TCON_MERGE_ALLOCATOR> TCON_MERGE;
+static TCON_MERGE  Default_merge;
+static TCON_MERGE *merge_ptr = &Default_merge;
 
-typedef hash_map<TCON_IDX, ST *, tcon_hash, eq_tcon> TCON_MERGE;
+void *
+New_TCON_Merge_Map(MEM_POOL* mp)
+{
+  return CXX_NEW(TCON_MERGE(100, tcon_hash(), eq_tcon(), TCON_MERGE_ALLOCATOR(mp)), mp);
+}
+
+void
+Delete_TCON_Merge_Map(MEM_POOL* mp, void* map)
+{
+  TCON_MERGE* ptr = (TCON_MERGE*)map;
+  ptr->clear();
+  CXX_DELETE(ptr, mp);
+}
+
+void *
+Get_TCON_Merge_Map()
+{
+  return merge_ptr;
+}
+
+void
+Set_TCON_Merge_Map(void* map)
+{
+  merge_ptr = (TCON_MERGE*)map;
+}
 
 ST *
 New_Const_Sym (TCON_IDX tcon, TY_IDX ty)
 {
-    static TCON_MERGE merge;
-
-    TCON_MERGE::iterator iter = merge.find (tcon);
+    TCON_MERGE::iterator iter = merge_ptr->find (tcon);
 
     ST* st;
-    if (iter == merge.end ()) {
+    if (iter == merge_ptr->end ()) {
 	// create new constant
 	st = New_ST (GLOBAL_SYMTAB);
 
 	ST_Init (st, 0, CLASS_CONST, SCLASS_FSTATIC, EXPORT_LOCAL, ty);
 	Set_ST_tcon (st, tcon);
 	Set_ST_is_initialized (st);
-	merge[tcon] = st;
+	(*merge_ptr)[tcon] = st;
     } else {
 	st = (*iter).second;
 	Is_True (ST_class (st) == CLASS_CONST &&

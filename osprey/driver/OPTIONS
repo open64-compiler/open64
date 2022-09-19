@@ -1,7 +1,5 @@
 %
-%  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
-%
-
+% Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
 %
 % Copyright 2005-2008 NVIDIA Corporation.  All rights reserved.
 %
@@ -130,6 +128,8 @@
 #define ld	l
 #define ipap	j
 #define pwrc	K
+#define vsa	z
+#define ipsap	x
 % pfa used in option name, so use PFA for define
 #define PFA	K
 #define mpc	M
@@ -150,15 +150,23 @@
 -help:%s	save_name(&help_pattern,optargs); 	ALL	NONE	""
 	"print list of possible options that contain given string"
 %
-
--show	{show_flag = TRUE; }	ALL	GRP	self
-	"show phases as they are being invoked"
--show1	{show_flag = TRUE; }	ALL	NONE	""
-	""
--show0	{show_flag = TRUE; execute_flag = FALSE;} ALL	NONE	""
-	"show what phases would be called, but do not invoke anything"
--showt	{time_flag = TRUE; }	ALL	NONE	""
-	"show time taken by each phase"
+% MASTIFF-OPT: "-show" --> "-sw"
+-sw	{show_flag = TRUE; }    ALL     GRP     self
+	"sw"
+-sw0	{show_flag = TRUE; execute_flag = FALSE;} ALL   NONE    ""
+	"sw0"
+-swt	{time_flag = TRUE; }    ALL     NONE    ""
+	"swt"
+-sp     {show_progress = TRUE; }	ALL	be	self
+	"show progress in percent"
+%-show	{show_flag = TRUE; }	ALL	GRP	self
+%	"show phases as they are being invoked"
+%-show1	{show_flag = TRUE; }	ALL	NONE	""
+%	""
+%-show0	{show_flag = TRUE; execute_flag = FALSE;} ALL	NONE	""
+%	"show what phases would be called, but do not invoke anything"
+%-showt	{time_flag = TRUE; }	ALL	NONE	""
+%	"show time taken by each phase"
 -Q 	{quiet_flag = FALSE; }	ALL	NONE	""
 	"suppress timing information (g++) "
 -version {show_version++; show_copyright = TRUE; execute_flag = FALSE;} ALL	NONE	""
@@ -169,12 +177,16 @@
 -dumpversion {dump_version = TRUE; execute_flag = FALSE;} ALL	NONE	""
 	"Show the version of the compiler being used, and nothing else"
 % -showd turns on internal driver debugging 
--showd	{show_flag = debug = TRUE; execute_flag = FALSE;} ALL NONE ""
+-swd	{show_flag = debug = TRUE; execute_flag = FALSE;} ALL NONE ""
 	""
--show-defaults	{show_defaults = TRUE; execute_flag = FALSE;} ALL	NONE	""
-	"Show the default compiler options being used"
+-swdef	{show_flag = debug = TRUE; execute_flag = FALSE;} ALL NONE ""
+	""
+%-showd	{show_flag = debug = TRUE; execute_flag = FALSE;} ALL NONE ""
+%	""
+%-show-defaults	{show_defaults = TRUE; execute_flag = FALSE;} ALL	NONE	""
+%	"Show the default compiler options being used"
 % gcc has -v show version as well as phases, so take that meaning
--v	{v_flag = TRUE; show_version++;} ALL	CPP,as,ld	self "-show"
+-v	{v_flag = TRUE; show_version++;} ALL	CPP,as,ld	self ""
 	"show phases and version as they are being invoked"
 -fullwarn toggle(&msglevel,2);		FTN  CPP	"-m2"
 	"give more warnings, especially about missing prototypes"
@@ -208,6 +220,18 @@
 	"produce a .o and stop"
 -r	toggle(&shared,RELOCATABLE);last_phase=P_any_ld;  ALL	 ld	self
 	"produce a relocatable .o and stop"
+-sa	last_phase=earliest_phase(P_be,last_phase);	 Cc,FTN NONE	""
+	"produce a .v and stop"
+-xa	last_phase=((noxa==TRUE)||(aot==TRUE)?last_phase:earliest_phase(P_be,last_phase));	 Cc,FTN NONE	""
+	"produce a .v and stop"
+-noxa	toggle(&noxa,TRUE);				 Cc,FTN NONE	""
+	"produce a .out and stop"
+-xfa		;					 Cc,FTN NONE    ""
+	"MVSA perform cross file analysis"
+-noxfa		;					 Cc,FTN NONE    ""
+	"MVSA not perform cross file analysis"
+-udr:%s	add_udr_dir(optargs);	ALL	NONE	""
+	"add following directory to the user defined rule search path list"
 -S	last_phase=earliest_phase(P_be,last_phase);	 Cc,FTN NONE	""
 	"produce a .s and stop"
 -fe	last_phase=earliest_phase(P_any_fe,last_phase);	 Cc,FTN NONE	""
@@ -276,10 +300,13 @@ I-include=%D  ;		FTN     ffe,PFA     "-include=%D"
 	""
 #endif
 % encourage people to replace -K with -keep
--keep	keep_flag=TRUE;		ALL	ipap	self
-	"keep intermediate files"
--save-temps	keep_flag=TRUE;	ALL	NONE	""
-	""
+% MASTIFF-OPT: "-keep" --> "-kp"
+-kp	keep_flag=TRUE;         ALL     ipap    self
+	"kp"
+%-keep	keep_flag=TRUE;		ALL	ipap	self
+%	"keep intermediate files"
+%-save-temps	keep_flag=TRUE;	ALL	NONE	""
+%	""
 -pass-exit-codes	pass_exit_codes=TRUE;	ALL	NONE	""
 	"Return the highest error code encountered by any phase"
 % there are three shared modes:  non, dso, call; call-shared is the default.
@@ -363,7 +390,7 @@ I-cpp_pic	;		ALL	NONE	"-D_PIC -D__DSO__"
 
 % Basic option groups:
 % See opt_actions.c::Process_Ofast if you change the -OPT: item.
--OPT:%s		Process_Opt_Group(optargs); 	ALL	CMP,ipap "-OPT:%s"
+-OPT:%s		Process_Opt_Group(optargs); 	ALL	ipl,be,ipap "-OPT:%s"
 	"option group to control optimization"
 -OPT:unroll_level=n ;		ALL	be	""
 	"where n=1,2 controls unrolling, default=1, aggressive=2"
@@ -415,7 +442,10 @@ I-cpp_pic	;		ALL	NONE	"-D_PIC -D__DSO__"
     "options for internal use in each component"
 -VHO:%s		;		ALL	ffe,be,ipl	"-VHO:%s"
 	"option group to control vho lowering"
-
+-VSA:%s		;		ALL	bei,ld	"-VSA:%s"
+	"option group to control vsa"
+-IAST:%s		;		ALL	be,ld	"-IAST:%s"
+	"option group to control iast"
 % C and Fortran listing related options:
 -CLIST:%s	;		cc	be	"-PHASE:clist -CLIST:%s"
 	"option group to control C source listing of compiler intermediate"
@@ -525,6 +555,12 @@ I-fini%s		;		CC	ld	"-fini %s"
   "Using appointed link file"
 #endif
 #ifdef X8664 /* Bug #381, here the MACRO is X8664/IA64, no 'TARG_' prefix */
+-m32	toggle(&abi,ABI_N32);	ALL	be	"-TARG:abi=n32"
+        "Compile for 32-bit ABI"
+-m64	toggle(&abi,ABI_64);	ALL	be	"-TARG:abi=n64"
+	"Compile for 64-bit ABI"
+#endif
+#ifdef TARG_UWASM
 -m32	toggle(&abi,ABI_N32);	ALL	be	"-TARG:abi=n32" 
         "Compile for 32-bit ABI"
 -m64	toggle(&abi,ABI_64);	ALL	be	"-TARG:abi=n64"
@@ -561,7 +597,7 @@ I-cpp_extensions	;		ALL	NONE	"-D__EXTENSIONS__ -D__MATH_HAS_NO_SIDE_EFFECTS"
 % Do not list FTN here because while FTN fe and FTN cpp take -ansi, gcc for
 %      FTN preprocessing does not.  Handle FTN -ansi when calling individual
 %      phases.
--ansi	toggle(&ansi,STRICT_ANSI);	cc	CPP,anyfe	self ANSI
+-ansi	toggle(&ansi,STRICT_ANSI);	cc	CPP,anyfe	""
 	"strict ansi and standard intrinsics only"
 -std=c89		;		Cc,CPP	CPP,cfe	self
 	"Support ISO C from 1990"
@@ -679,17 +715,17 @@ I-D_LANGUAGE_FORTRAN	;		FTN	CPP	self
 	"Run compiler from build directory specified in option."
 
 % XPG requires ability to do -O 0 as well as -O0
--O*0	toggle(&olevel,0);		ALL	CMP,CPP	"-O0"
+-O*0	toggle(&olevel,0);		ALL	CPP,ipl,be	"-O0"
 	"no optimization"
--O*1	toggle(&olevel,1);		ALL	CMP,CPP	"-O1 -D__OPTIMIZE__"
+-O*1	toggle(&olevel,1);		ALL	CPP,ipl,be	"-O1 -D__OPTIMIZE__"
 	"minimal optimization"
--O	toggle(&olevel,2);		ALL	CMP,CPP	"-O2 -D__OPTIMIZE__"
+-O	toggle(&olevel,2);		ALL	CPP,ipl,be	"-O2 -D__OPTIMIZE__"
 	"same as -O2"
--O*2	toggle(&olevel,2);		ALL	CMP,CPP	"-O2 -D__OPTIMIZE__"
+-O*2	toggle(&olevel,2);		ALL	CPP,ipl,be	"-O2 -D__OPTIMIZE__"
 	"global optimization"
--O*3	O3_flag=TRUE;toggle(&olevel,3);	ALL	CMP,CPP	"-O3 -D__OPTIMIZE__"
+-O*3	O3_flag=TRUE;toggle(&olevel,3);	ALL	CPP,ipl,be	"-O3 -D__OPTIMIZE__"
 	"full optimization"
--O*%d	;				ALL	CMP,CPP	"-O3"
+-O*%d	;				ALL	CPP,ipl,be	"-O3"
 	"full optimization"
 -Os	toggle(&ospace,TRUE);	ALL	CMP	"-OPT:space"
 	"Optimize for space"
@@ -1172,6 +1208,13 @@ I-scan%s		;		FTN	PFA	self
 % for kernel folks
 -jalr		;		ALL	NONE	"-TARG:force_jalr"
 	""
+% for MASTIFF report file
+-json		;		ALL	be	"-VSA:json=1"
+	"output vsa report in json"
+-cbor		;		ALL	be	"-VSA:cbor=1"
+	"output vsa report in cbor"
+-msgid		;		ALL	be	"-VSA:msgid=1"
+	"Use message id in vsa report"
 -align8		;		Cc,f77	ffe,be	self
 	"align data in common blocks to 8-bit boundaries"
 -align16	;		Cc,f77	ffe,be	self
@@ -1212,7 +1255,21 @@ I-u%s		;		Cc	ld	"-u %s"
 -no-prelink	prelink_flag=FALSE;		CC	cfe	self
 	"do not use prelinker (i.e. instantiate all templates immediately)"
 
+% IAST-related options:
+-iast	toggle(&iast,TRUE);		ALL	be,ld	self
+	"Perform interactive application security testing instrumentation"
+
+-IAST	toggle(&iast,TRUE);		ALL	NONE	"-iast"
+	"Perform interactive application security testing instrumentation"
+
+% AOT-related options:
+-aot	toggle(&aot,TRUE);		ALL	ipap	self
+	"Perform ahead of time compilation"
+
 % IPA-related options:
+-ipsa	toggle(&ipsa,TRUE);		ALL	ipap	self
+	"Perform context & object sensitive analysis"
+
 -ipa	toggle(&ipa,TRUE);		ALL	ipap	self
 	"Perform interprocedural analysis and optimization"
 
@@ -1576,10 +1633,6 @@ I-u%s		;		Cc	ld	"-u %s"
 	"Warn when a variable is unused"
 -Wno-unused	;		Cc	f	self
 	"Do not warn when a variable is unused"
--Wunused-result	;		Cc	f	""
-	""
--Wno-unused-result	;		Cc	f	""
-	""
 -Wwrite-strings	;		Cc	f	self
 	"Mark strings as 'const char *'"
 -Wno-write-strings	;		Cc	f	self
@@ -1719,7 +1772,7 @@ I-u%s		;		Cc	ld	"-u %s"
 	""
 -fdelayed-branch	;		Cc	f	self
 	""
--fexpensive-optimizations	;		Cc	f	self
+-fexpensive-optimizations	toggle(&fexpensive_opt,1);	Cc	f	""
 	""
 -ffast-math	toggle(&ffast_math,1);		Cc,FTN	f,be	"-OPT:ffast_math=ON -fno-math-errno"
 	"Improve FP speed by violating ANSI & IEEE rules"
@@ -1740,8 +1793,6 @@ I-u%s		;		Cc	ld	"-u %s"
 -fforce-mem	;		Cc	f	self
 	""
 -fdata-sections	;		Cc	f	self
-	""
--fno-delete-null-pointer-checks	;		Cc	f	""
 	""
 -ffunction-sections	;		Cc	f	self
 	""
@@ -1785,9 +1836,9 @@ I-u%s		;		Cc	ld	"-u %s"
 	"Do not treat operator keywords and, bitand, bitor, compl, not, or and xor as keywords."
 -fno-peephole		;		Cc	f	self
 	""
--fomit-frame-pointer	;		Cc	f	self
+-fomit-frame-pointer	toggle(&fomit_fp,1);	Cc	f	""
 	"When possible do not generate stack frames"
--fno-omit-frame-pointer	;		Cc	f	self
+-fno-omit-frame-pointer	toggle(&fomit_fp,0);	Cc	f	""
 	""
 -fregmove	;		Cc	f	self
 	""
@@ -1827,7 +1878,7 @@ I-u%s		;		Cc	ld	"-u %s"
 	"Assume strictest aliasing rules"
 -Wstrict-aliasing	;		Cc	f	self
 	"Warn about code that breaks strict aliasing rules"
--fno-strict-aliasing	;		Cc	f	self
+-fno-strict-aliasing	toggle(&fstrict_aliasing,0);	Cc	f	""
 	"Do not assume strict aliasing rules"
 -Wno-strict-aliasing	;		Cc	f	self
 	"Do not warn about code that breaks strict aliasing rules"
@@ -1974,7 +2025,7 @@ I-u%s		;		Cc	ld	"-u %s"
 #endif
 -fhandle-exceptions	;	Cc	CPP,cfe	self
 	""
--fno-exceptions	;	Cc	CPP,cfe	"-fno-exceptions"
+-fno-exceptions	toggle(&fno_exception,1);	Cc	CPP,cfe	""
 	"Disable exception handling"
 -fno-cxx-exceptions	;	Cc	CPP,cfe	"-fno-cxx-exceptions"
 	"Disable exception handling"
@@ -2007,7 +2058,7 @@ I-u%s		;		Cc	ld	"-u %s"
 -mno-sdata	;		Cc	NONE	"-G0"
 	""
 #endif
--finstrument-functions	;	ALL	NONE	"-OPT:cyg_instr=3"
+-finstrument-functions	toggle(&finstrument_func,1);	ALL	NONE	"-OPT:cyg_instr=3"
 	""
 -finhibit-size-directive	;		Cc	be	"-CG:inhibit_size_directive=1:emit_asm_dwarf=0"
 	"Do not generate .size directives"
@@ -2294,8 +2345,8 @@ I-u%s		;		Cc	ld	"-u %s"
 	""
 --profile	;	ALL	NONE	"-p"
 	""
---save-temps	;	ALL	NONE	"-save-temps"
-	""
+%--save-temps	;	ALL	NONE	"-save-temps"
+%	""
 --shared	;	ALL	NONE	"-shared"
 	""
 --specs%s	;	ALL	NONE	"-specs=%s"

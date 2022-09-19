@@ -1,4 +1,8 @@
 #
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -46,6 +50,8 @@ NATIVE_BUILD_DIR    = osprey/targdir
 NATIVE_BUILD_DIR_LD = osprey/cygnus
 GNUFE_BUILD_DIR     = osprey-gcc-4.2.0
 GNUFE_BUILD_SUBDIR  = osprey-gcc-4.2.0/host-unknown
+LD_BUILD_DIR        = binutils
+LD_BUILD_SUBDIR     = binutils/ld
 
 LIB_MACHINE_TYPE    = @LIB_MACHINE_TYPE@
 LIB_BUILD_TARGET    = @LIB_BUILD_TARGET@
@@ -71,6 +77,7 @@ BUILD_GNU3          = @BUILD_GNU3@
 BUILD_FORTRAN       = @BUILD_FORTRAN@
 BUILD_TYPE          = @BUILD_TYPE@
 BUILD_SKIP_IPA      = @BUILD_SKIP_IPA@
+BUILD_PRODUCT       = @BUILD_PRODUCT@
 
 ifeq ($(MACHINE_TYPE), ia64)
 # ia64
@@ -130,7 +137,9 @@ endif
 
 GNU4_FE_COMPONENTS = \
                 $(NATIVE_BUILD_DIR)/wgen/wgen42 \
+                $(NATIVE_BUILD_DIR)/jfe/jfe \
                 $(NATIVE_BUILD_DIR)/clang2whirl/clangfe \
+                $(NATIVE_BUILD_DIR)/js2mplref/js2mpl \
                 $(GNUFE_BUILD_SUBDIR)/gcc/cc1 \
                 $(GNUFE_BUILD_SUBDIR)/gcc/cc1plus
 
@@ -153,7 +162,8 @@ FIRST_COMPONENTS = \
 		$(NATIVE_BUILD_DIR)/libelfutil \
 		$(NATIVE_BUILD_DIR)/libdwarf \
 		$(NATIVE_BUILD_DIR)/libunwindP \
-		$(NATIVE_BUILD_DIR)/libcif
+		$(NATIVE_BUILD_DIR)/libcif \
+		$(NATIVE_BUILD_DIR)/libjson
 
 NATIVE_COMPONENTS = $(BASIC_COMPONENTS) $(TARGET_EXTRA_OBJ)  \
                     $(GNU4_FE_COMPONENTS) $(FORT_FE_COMPONENTS) \
@@ -181,9 +191,24 @@ PHONY_TARGET = $(shell for i in $(NATIVE_COMPONENTS); do basename "$$i" ; done)
 #define SKIP_DEP_BUILD will disable the unnecessary dependency check
 export SKIP_DEP_BUILD=1 
 
+ifeq ($(BUILD_PRODUCT), MASTIFF)
+# Only build basic components and front ends for mastiff
+MASTIFF_COMPONENTS = $(BASIC_COMPONENTS) \
+                     $(GNU4_FE_COMPONENTS) \
+                     $(NATIVE_BUILD_DIR)/vsa/vsa.so \
+                     mapxfa
+PHONY_TARGET = $(shell for i in $(MASTIFF_COMPONENTS); do basename "$$i" ; done)
+ifeq ($(BUILD_TARGET), X8664)
+ALL_TARGETS = build librbc libwffi libopen64rt
+else
+ALL_TARGETS = build
+endif
+else
 # Use all to build compiler (build) and libraries (lib)
-# If BUILD_MULTILIB is YES, build a second library as well.
 ALL_TARGETS = build lib
+endif
+
+# If BUILD_MULTILIB is YES, build a second library as well.
 CLEAN_LIB = clean-lib
 ifeq ($(BUILD_MULTILIB), YES)
 ALL_TARGETS += lib2
@@ -225,6 +250,9 @@ libcif: include
 arith:
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/arith
 
+libjson:
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/libjson
+
 $(NATIVE_BUILD_DIR)/driver/driver driver: include
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/driver
 
@@ -237,8 +265,14 @@ $(NATIVE_BUILD_DIR)/g++fe/gfecc gfecc: libiberty libcomutil libcmplrs
 $(NATIVE_BUILD_DIR)/wgen/wgen42 wgen42: libiberty libcomutil libcmplrs $(NATIVE_BUILD_DIR)/libspin_4_2_0/libgspin42.a
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/wgen
 
+$(NATIVE_BUILD_DIR)/jfe/jfe jfe:
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/jfe
+
 $(NATIVE_BUILD_DIR)/clang2whirl/clangfe clangfe: include libiberty libcomutil libcmplrs
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/clang2whirl
+
+$(NATIVE_BUILD_DIR)/js2mplref/js2mpl js2mpl: include libiberty libcomutil libcmplrs
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/js2mplref
 
 ifeq ($(BUILD_TYPE), SHARED)
 
@@ -248,6 +282,9 @@ $(NATIVE_BUILD_DIR)/be/be.so be.so: include libiberty targ_info
 
 $(NATIVE_BUILD_DIR)/cg/cg.so cg.so: be.so libelf libelfutil libdwarf libunwindP
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/cg
+
+$(NATIVE_BUILD_DIR)/vsa/vsa.so vsa.so: be.so wopt.so
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/vsa
 
 $(NATIVE_BUILD_DIR)/wopt/wopt.so wopt.so: be.so 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/wopt
@@ -318,7 +355,7 @@ $(NATIVE_BUILD_DIR)/orc_intel/orc_intel.so orc_intel.so: cg.so
 $(NATIVE_BUILD_DIR)/targ_info/itanium.so itanium.so: targ_info
 endif
 
-$(NATIVE_BUILD_DIR)/ir_tools/ir_b2a ir_b2a: libcomutil
+$(NATIVE_BUILD_DIR)/ir_tools/ir_b2a ir_b2a: libcomutil libjson
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/ir_tools
 
 $(NATIVE_BUILD_DIR)/crayf90/sgi/mfef95 mfef95: libcomutil libcif arith
@@ -338,6 +375,20 @@ cc1plus: cc1
 $(GNUFE_BUILD_SUBDIR)/gcc/cc1plus cc1plus: $(GNUFE_BUILD_SUBDIR)/gcc/cc1
 $(GNUFE_BUILD_SUBDIR)/gcc/cc1 cc1: $(NATIVE_BUILD_DIR)/libspin_4_2_0/libgspin42.a
 	$(MAKE) -C $(GNUFE_BUILD_DIR)
+
+# ld in binutils
+mapxfa: $(LD_BUILD_SUBDIR)/ld-new
+$(LD_BUILD_SUBDIR)/ld-new mapxfa:
+	$(MAKE) -C $(LD_BUILD_DIR) MAKEINFO=true
+
+librbc: build include
+	$(MAKE) -C $(LIB_BUILD_AREA)/librbc
+
+libopen64rt: build
+	$(MAKE) -C $(LIB_BUILD_AREA)/libopen64rt
+
+libwffi: build include
+	$(MAKE) -C $(LIB_BUILD_AREA)/libwffi
 
 build:
 	$(MAKE) first
@@ -386,10 +437,26 @@ install_fe:
 	    install
 endif
 
+ifeq ($(BUILD_PRODUCT), MASTIFF)
+include @abs_top_srcdir@/mastiff.mk
+install_compiler:
+	export TOOLROOT=@prefix@; \
+	export TOP_SRCDIR=$(TOP_SRCDIR); \
+		$(TOP_SRCDIR)/install_mastiff.sh $(BUILD_TARGET) $(OPEN64_FULL_VERSION)
+
+# distribution installation
+dist: install_fe
+	export TOOLROOT=@prefix@; \
+	export TOP_SRCDIR=$(TOP_SRCDIR); \
+		$(TOP_SRCDIR)/install_mastiff.sh $(BUILD_TARGET) $(OPEN64_FULL_VERSION) dist
+
+else
 install_compiler:
 	export TOOLROOT=@prefix@; \
 	export TOP_SRCDIR=$(TOP_SRCDIR); \
 		$(TOP_SRCDIR)/install_compiler.sh $(MACHINE_TYPE) $(if $(BUILD_FORTRAN),"YES","NO") @CROSS_TARGET@ 
+endif
+
 endif
 install-cross:
 	export TOOLROOT=@prefix@; $(TOP_SRCDIR)/install_compiler.sh ia64-cross $(if $(BUILD_FORTRAN),"YES","NO")
@@ -439,15 +506,23 @@ clobber: clean
 
 clean: $(CLEAN_LIB)
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/driver clobber 
-	$(MAKE) -C $(NATIVE_BUILD_DIR)/wgen clobber 
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/wgen clobber
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/jfe clobber
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/clang2whirl clobber
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/js2mplref clobber
 ifeq ($(BUILD_GNU3), YES)
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/gccfe clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/g++fe clobber
 endif
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/be clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/cg clobber 
-	$(MAKE) -C $(NATIVE_BUILD_DIR)/wopt clobber 
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/wopt clobber
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/vsa clobber
+	$(MAKE) -C $(LIB_BUILD_DIR)/librbc clobber
+	$(MAKE) -C $(LIB_BUILD_DIR)/libwffi clobber
+ifneq ($(BUILD_TARGET), UWASM)
+	$(MAKE) -C $(LIB_BUILD_DIR)/libopen64rt clobber
+endif
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/lno clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/ipa clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/ipl clobber 
@@ -469,8 +544,9 @@ ifeq ($(MACHINE_TYPE), ia64)
 endif
 	$(MAKE) -C $(NATIVE_BUILD_DIR_LD) clean
 	$(MAKE) -C $(GNUFE_BUILD_DIR) clean
+	$(MAKE) -C $(LD_BUILD_DIR) clean
 	@for i in libcif libcmplrs libcomutil libcsup libdwarf libelf libelfutil \
-		libiberty libunwindP; do  \
+		libiberty libunwindP libjson; do  \
 		$(MAKE) -C "$(NATIVE_BUILD_DIR)/$${i}" clobber; \
 	done
 

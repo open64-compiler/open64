@@ -56,6 +56,8 @@ extern "C" {
 
 extern void wopt_main (INT argc, char **argv, INT, char **);
 
+extern void Disable_opts(void);
+
 extern void Wopt_Init (void);
 
 extern void Wopt_Fini (void);

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -2908,6 +2912,10 @@ INT Push_Pop_Int_Saved_Regs(void)
     }
   }
   return size;
+}
+#elif defined(TARG_UWASM)
+INT Push_Pop_Int_Saved_Regs(void)
+{
 }
 #endif
 

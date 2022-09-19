@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -589,6 +589,13 @@ Set_ST_initv_in_other_st (ST* s)       { s->flags_ext |= ST_INITV_IN_OTHER_ST; }
 inline void
 Clear_ST_initv_in_other_st (ST* s)     { s->flags_ext &= ~ST_INITV_IN_OTHER_ST; }
 
+inline BOOL
+ST_java_abstract (const ST* s)     { return s->flags_ext & ST_JAVA_ABSTRACT; }
+inline void
+Set_ST_java_abstract (ST *s)       { s->flags_ext |= ST_JAVA_ABSTRACT; }
+inline void
+Clear_ST_java_abstract (ST *s)     { s->flags_ext &= ~ST_JAVA_ABSTRACT; }
+
 #ifdef TARG_SL
 inline BOOL
 ST_in_v1buf (const ST* s)     { return s->flags_ext & ST_IN_V1BUF; }
@@ -753,6 +760,19 @@ Set_ST_is_vtable (ST* s)    { s->flags_ext |= ST_IS_VTABLE; }
 inline void
 Reset_ST_is_vtable (ST* s)  { s->flags_ext &= ~ST_IS_VTABLE; }
 
+inline BOOL
+ST_is_class_symbol (const ST* s)  { return s->flags_ext & ST_IS_CLASS_SYMBOL; }
+inline void
+Set_ST_is_class_symbol (ST* s)    { s->flags_ext |= ST_IS_CLASS_SYMBOL; }
+inline void
+Reset_ST_is_class_symbol (ST* s)  { s->flags_ext &= ~ST_IS_CLASS_SYMBOL; }
+
+inline BOOL
+ST_is_class_const_data (const ST* s)  { return s->flags_ext & ST_IS_CLASS_CONST_DATA; }
+inline void
+Set_ST_is_class_const_data (ST* s)    { s->flags_ext |= ST_IS_CLASS_CONST_DATA; }
+inline void
+Reset_ST_is_class_const_data (ST* s)  { s->flags_ext &= ~ST_IS_CLASS_CONST_DATA; }
 
 inline BOOL
 ST_is_rtti (const ST* s)  { return s->flags_ext & ST_IS_RTTI; }
@@ -760,8 +780,71 @@ inline void
 Set_ST_is_rtti (ST* s)    { s->flags_ext |= ST_IS_RTTI; }
 inline void
 Reset_ST_is_rtti (ST* s)  { s->flags_ext &= ~ST_IS_RTTI; }
+
+inline BOOL
+ST_is_native (const ST* s)  { return s->flags_ext & ST_IS_NATIVE; }
+inline void
+Set_ST_is_native (ST* s)    { s->flags_ext |= ST_IS_NATIVE; }
+inline void
+Reset_ST_is_native (ST* s)  { s->flags_ext &= ~ST_IS_NATIVE; }
 #endif /* KEY */
 
+inline BOOL
+ST_is_modified (const ST* s)
+        { return s->flags_ext & ST_IS_MODIFIED; }
+inline void
+Set_ST_is_modified (ST* s)
+        { s->flags_ext |= ST_IS_MODIFIED; }
+inline void
+Clear_ST_is_modified (ST* s)
+        { s->flags_ext &= ~ST_IS_MODIFIED; }
+
+inline BOOL
+ST_is_modified (ST_IDX sti)
+        { return ST_is_modified(ST_ptr(sti)); }
+inline void
+Set_ST_is_modified (ST_IDX sti)
+        { Set_ST_is_modified(ST_ptr(sti)); }
+
+inline BOOL
+ST_is_used (const ST* s)
+        { return s->flags_ext & ST_IS_USED; }
+inline void
+Set_ST_is_used (ST* s)
+        { s->flags_ext |= ST_IS_USED; }
+inline void
+Clear_ST_is_used (ST* s)
+        { s->flags_ext &= ~ST_IS_USED; }
+
+inline BOOL
+ST_is_used (ST_IDX sti)
+        { return ST_is_used(ST_ptr(sti)); }
+inline void
+Set_ST_is_used (ST_IDX sti)
+        { Set_ST_is_used(ST_ptr(sti)); }
+
+inline BOOL
+ST_is_inlined (const ST* s)
+        { return s->flags_ext & ST_IS_INLINED; }
+inline void
+Set_ST_is_inlined (ST* s, ST_IDX orig_func)
+        { s->flags_ext |= ST_IS_INLINED; s->pad = orig_func; }
+inline void
+Clear_ST_is_inlined (ST* s)
+        { s->flags_ext &= ~ST_IS_INLINED; }
+inline ST_IDX
+ST_orig_pu_st(ST *s)
+        { return (ST_IDX)s->pad; }
+
+inline BOOL
+ST_is_inlined (ST_IDX sti)
+        { return ST_is_inlined(ST_ptr(sti)); }
+inline void
+Set_ST_is_inlined (ST_IDX sti, ST_IDX orig_func)
+        { Set_ST_is_inlined(ST_ptr(sti), orig_func); }
+inline ST_IDX
+ST_orig_pu_st(ST_IDX sti)
+        { return ST_orig_pu_st(ST_ptr(sti)); }
 
 inline BOOL
 ST_is_odr (const ST* s)
@@ -1248,6 +1331,14 @@ Set_PU_is_constructor (PU& pu)          { pu.flags |= PU_IS_CONSTRUCTOR; }
 inline void
 Clear_PU_is_constructor (PU &pu)        { pu.flags &= ~PU_IS_CONSTRUCTOR; }
 
+
+inline BOOL
+PU_is_rbc (const PU& pu)        { return (pu.flags & PU_IS_RBC) != 0; }
+inline void
+Set_PU_is_rbc (PU& pu)          { pu.flags |= PU_IS_RBC; }
+inline void
+Clear_PU_is_rbc (PU &pu)        { pu.flags &= ~PU_IS_RBC; }
+
 // PU_ftn_lang (f77 or f90) is defined in symtab.h
 // PU_has_nested (f77 or f90) is defined in symtab.h
 //----------------------------------------------------------------------
@@ -1443,6 +1534,33 @@ inline void
 Set_TY_can_be_vector (TY_IDX tyi)	{ Set_TY_flags(Ty_Table[tyi], TY_flags(Ty_Table[tyi]) | TY_CAN_BE_VECTOR); }
 #endif
 
+
+inline BOOL
+TY_is_array_class (const TY& ty)      { return ty.flags & TY_IS_ARRAY_CLASS; }
+inline void
+Set_TY_is_array_class (TY& ty)        { ty.flags |= TY_IS_ARRAY_CLASS; }
+inline void
+Clear_TY_is_array_class (TY& ty)      { ty.flags &= ~TY_IS_ARRAY_CLASS; }
+inline BOOL
+TY_is_array_class (const TY_IDX tyi)  { return TY_is_array_class(Ty_Table[tyi]); }
+inline void
+Set_TY_is_array_class (TY_IDX tyi)    { Set_TY_is_array_class(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_array_class (TY_IDX tyi)  { Clear_TY_is_array_class(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_sensitive_class (const TY& ty)      { return ty.flags & TY_IS_SENSITIVE_CLASS; }
+inline void
+Set_TY_is_sensitive_class (TY& ty)        { ty.flags |= TY_IS_SENSITIVE_CLASS; }
+inline void
+Clear_TY_is_sensitive_class (TY& ty)      { ty.flags &= ~TY_IS_SENSITIVE_CLASS; }
+inline BOOL
+TY_is_sensitive_class (const TY_IDX tyi)  { return TY_is_sensitive_class(Ty_Table[tyi]); }
+inline void
+Set_TY_is_sensitive_class (TY_IDX tyi)    { Set_TY_is_sensitive_class(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_sensitive_class (TY_IDX tyi)  { Clear_TY_is_sensitive_class(Ty_Table[tyi]); }
+
 inline BOOL
 TY_anonymous (const TY& ty)		{ return ty.flags & TY_ANONYMOUS; }
 inline void
@@ -1593,6 +1711,275 @@ Clear_TY_complete_struct_relayout_candidate(TY_IDX tyi)
   { Clear_TY_complete_struct_relayout_candidate(Ty_Table[tyi]); }
 #endif
 
+inline BOOL
+TY_is_atomic (const TY& ty)             { return ty.flags_ext & TY_IS_ATOMIC; }
+inline void
+Set_TY_is_atomic (TY& ty)               { ty.flags_ext |= TY_IS_ATOMIC; }
+inline void
+Clear_TY_is_atomic (TY& ty)             { ty.flags_ext &= ~TY_IS_ATOMIC; }
+inline BOOL
+TY_is_atomic (const TY_IDX tyi)         { return TY_is_atomic(Ty_Table[tyi]); }
+inline void
+Set_TY_is_atomic (TY_IDX tyi)           { Set_TY_is_atomic(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_atomic (TY_IDX tyi)         { Clear_TY_is_atomic(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_mutex (const TY& ty)              { return ty.flags_ext & TY_IS_MUTEX; }
+inline void
+Set_TY_is_mutex (TY& ty)                { ty.flags_ext |= TY_IS_MUTEX; }
+inline void
+Clear_TY_is_mutex (TY& ty)              { ty.flags_ext &= ~TY_IS_MUTEX; }
+inline BOOL
+TY_is_mutex (const TY_IDX tyi)          { return TY_is_mutex(Ty_Table[tyi]); }
+inline void
+Set_TY_is_mutex (TY_IDX tyi)            { Set_TY_is_mutex(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_mutex (TY_IDX tyi)          { Clear_TY_is_mutex(Ty_Table[tyi]); }
+
+// attribute query functions; TY_is_iterator is an attribute applicable to both direction
+inline BOOL
+TY_iter_reverse_dir (const TY& ty)      { return ty.flags_ext & TY_IS_REVERSE_ITERATOR; }
+inline BOOL
+TY_iter_reverse_dir (const TY_IDX tyi)  { return TY_iter_reverse_dir(Ty_Table[tyi]); }
+inline BOOL
+TY_is_iterator (const TY& ty)           { return ty.flags_ext & TY_IS_ITERATOR ||
+                                          ty.flags_ext & TY_IS_REVERSE_ITERATOR; }
+inline void
+Set_TY_is_iterator (TY& ty)             { ty.flags_ext |= TY_IS_ITERATOR; }
+inline void
+Clear_TY_is_iterator (TY& ty)           { ty.flags_ext &= ~TY_IS_ITERATOR; }
+inline BOOL
+TY_is_iterator (const TY_IDX tyi)       { return TY_is_iterator(Ty_Table[tyi]); }
+inline void
+Set_TY_is_iterator (TY_IDX tyi)         { Set_TY_is_iterator(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_iterator (TY_IDX tyi)       { Clear_TY_is_iterator(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_reverse_iterator (const TY& ty)   { return ty.flags_ext & TY_IS_REVERSE_ITERATOR; }
+inline void
+Set_TY_is_reverse_iterator (TY& ty)     { ty.flags_ext |= TY_IS_REVERSE_ITERATOR; }
+inline void
+Clear_TY_is_reverse_iterator (TY& ty)   { ty.flags_ext &= ~TY_IS_REVERSE_ITERATOR; }
+inline BOOL
+TY_is_reverse_iterator (const TY_IDX tyi) { return TY_is_reverse_iterator(Ty_Table[tyi]); }
+inline void
+Set_TY_is_reverse_iterator (TY_IDX tyi)   { Set_TY_is_reverse_iterator(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_reverse_iterator (TY_IDX tyi) { Clear_TY_is_reverse_iterator(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_hash_map (const TY& ty)           { return ty.flags_ext & TY_IS_HASH_MAP; }
+inline void
+Set_TY_is_hash_map (TY& ty)             { ty.flags_ext |= TY_IS_HASH_MAP; }
+inline void
+Clear_TY_is_hash_map (TY& ty)           { ty.flags_ext &= ~TY_IS_HASH_MAP; }
+inline BOOL
+TY_is_hash_map (const TY_IDX tyi)       { return TY_is_hash_map(Ty_Table[tyi]); }
+inline void
+Set_TY_is_hash_map (TY_IDX tyi)         { Set_TY_is_hash_map(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_hash_map (TY_IDX tyi)       { Clear_TY_is_hash_map(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_hash_multimap (const TY& ty)      { return ty.flags_ext & TY_IS_HASH_MULTIMAP; }
+inline void
+Set_TY_is_hash_multimap (TY& ty)        { ty.flags_ext |= TY_IS_HASH_MULTIMAP; }
+inline void
+Clear_TY_is_hash_multimap (TY& ty)      { ty.flags_ext &= ~TY_IS_HASH_MULTIMAP; }
+inline BOOL
+TY_is_hash_multimap (const TY_IDX tyi)  { return TY_is_hash_multimap(Ty_Table[tyi]); }
+inline void
+Set_TY_is_hash_multimap (TY_IDX tyi)    { Set_TY_is_hash_multimap(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_hash_multimap (TY_IDX tyi)  { Clear_TY_is_hash_multimap(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_hash_multiset (const TY& ty)      { return ty.flags_ext & TY_IS_HASH_MULTISET; }
+inline void
+Set_TY_is_hash_multiset (TY& ty)        { ty.flags_ext |= TY_IS_HASH_MULTISET; }
+inline void
+Clear_TY_is_hash_multiset (TY& ty)      { ty.flags_ext &= ~TY_IS_HASH_MULTISET; }
+inline BOOL
+TY_is_hash_multiset (const TY_IDX tyi)  { return TY_is_hash_multiset(Ty_Table[tyi]); }
+inline void
+Set_TY_is_hash_multiset (TY_IDX tyi)    { Set_TY_is_hash_multiset(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_hash_multiset (TY_IDX tyi)  { Clear_TY_is_hash_multiset(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_hash_set (const TY& ty)           { return ty.flags_ext & TY_IS_HASH_SET; }
+inline void
+Set_TY_is_hash_set (TY& ty)             { ty.flags_ext |= TY_IS_HASH_SET; }
+inline void
+Clear_TY_is_hash_set (TY& ty)           { ty.flags_ext &= ~TY_IS_HASH_SET; }
+inline BOOL
+TY_is_hash_set (const TY_IDX tyi)       { return TY_is_hash_set(Ty_Table[tyi]); }
+inline void
+Set_TY_is_hash_set (TY_IDX tyi)         { Set_TY_is_hash_set(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_hash_set (TY_IDX tyi)       { Clear_TY_is_hash_set(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_array (const TY& ty)              { return ty.flags_ext & TY_IS_ARRAY; }
+inline void
+Set_TY_is_array (TY& ty)                { ty.flags_ext |= TY_IS_ARRAY; }
+inline void
+Clear_TY_is_array (TY& ty)              { ty.flags_ext &= ~TY_IS_ARRAY; }
+inline BOOL
+TY_is_array (const TY_IDX tyi)          { return TY_is_array(Ty_Table[tyi]); }
+inline void
+Set_TY_is_array (TY_IDX tyi)            { Set_TY_is_array(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_array (TY_IDX tyi)          { Clear_TY_is_array(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_deque (const TY& ty)              { return ty.flags_ext & TY_IS_DEQUE; }
+inline void
+Set_TY_is_deque (TY& ty)                { ty.flags_ext |= TY_IS_DEQUE; }
+inline void
+Clear_TY_is_deque (TY& ty)              { ty.flags_ext &= ~TY_IS_DEQUE; }
+inline BOOL
+TY_is_deque (const TY_IDX tyi)          { return TY_is_deque(Ty_Table[tyi]); }
+inline void
+Set_TY_is_deque (TY_IDX tyi)            { Set_TY_is_deque(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_deque (TY_IDX tyi)          { Clear_TY_is_deque(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_list (const TY& ty)               { return ty.flags_ext & TY_IS_LIST; }
+inline void
+Set_TY_is_list (TY& ty)                 { ty.flags_ext |= TY_IS_LIST; }
+inline void
+Clear_TY_is_list (TY& ty)               { ty.flags_ext &= ~TY_IS_LIST; }
+inline BOOL
+TY_is_list (const TY_IDX tyi)           { return TY_is_list(Ty_Table[tyi]); }
+inline void
+Set_TY_is_list (TY_IDX tyi)             { Set_TY_is_list(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_list (TY_IDX tyi)           { Clear_TY_is_list(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_map (const TY& ty)                { return ty.flags_ext & TY_IS_MAP; }
+inline void
+Set_TY_is_map (TY& ty)                  { ty.flags_ext |= TY_IS_MAP; }
+inline void
+Clear_TY_is_map (TY& ty)                { ty.flags_ext &= ~TY_IS_MAP; }
+inline BOOL
+TY_is_map (const TY_IDX tyi)            { return TY_is_map(Ty_Table[tyi]); }
+inline void
+Set_TY_is_map (TY_IDX tyi)              { Set_TY_is_map(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_map (TY_IDX tyi)            { Clear_TY_is_map(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_multimap (const TY& ty)           { return ty.flags_ext & TY_IS_MULTIMAP; }
+inline void
+Set_TY_is_multimap (TY& ty)             { ty.flags_ext |= TY_IS_MULTIMAP; }
+inline void
+Clear_TY_is_multimap (TY& ty)           { ty.flags_ext &= ~TY_IS_MULTIMAP; }
+inline BOOL
+TY_is_multimap (const TY_IDX tyi)       { return TY_is_multimap(Ty_Table[tyi]); }
+inline void
+Set_TY_is_multimap (TY_IDX tyi)         { Set_TY_is_multimap(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_multimap (TY_IDX tyi)       { Clear_TY_is_multimap(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_multiset (const TY& ty)           { return ty.flags_ext & TY_IS_MULTISET; }
+inline void
+Set_TY_is_multiset (TY& ty)             { ty.flags_ext |= TY_IS_MULTISET; }
+inline void
+Clear_TY_is_multiset (TY& ty)           { ty.flags_ext &= ~TY_IS_MULTISET; }
+inline BOOL
+TY_is_multiset (const TY_IDX tyi)       { return TY_is_multiset(Ty_Table[tyi]); }
+inline void
+Set_TY_is_multiset (TY_IDX tyi)         { Set_TY_is_multiset(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_multiset (TY_IDX tyi)       { Clear_TY_is_multiset(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_set (const TY& ty)                { return ty.flags_ext & TY_IS_SET; }
+inline void
+Set_TY_is_set (TY& ty)                  { ty.flags_ext |= TY_IS_SET; }
+inline void
+Clear_TY_is_set (TY& ty)                { ty.flags_ext &= ~TY_IS_SET; }
+inline BOOL
+TY_is_set (const TY_IDX tyi)            { return TY_is_set(Ty_Table[tyi]); }
+inline void
+Set_TY_is_set (TY_IDX tyi)              { Set_TY_is_set(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_set (TY_IDX tyi)            { Clear_TY_is_set(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_unordered_map (const TY& ty)      { return ty.flags_ext & TY_IS_UNORDERED_MAP; }
+inline void
+Set_TY_is_unordered_map (TY& ty)        { ty.flags_ext |= TY_IS_UNORDERED_MAP; }
+inline void
+Clear_TY_is_unordered_map (TY& ty)      { ty.flags_ext &= ~TY_IS_UNORDERED_MAP; }
+inline BOOL
+TY_is_unordered_map (const TY_IDX tyi)  { return TY_is_unordered_map(Ty_Table[tyi]); }
+inline void
+Set_TY_is_unordered_map (TY_IDX tyi)    { Set_TY_is_unordered_map(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_unordered_map (TY_IDX tyi)  { Clear_TY_is_unordered_map(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_unordered_multimap (const TY& ty) { return ty.flags_ext & TY_IS_UNORDERED_MULTIMAP; }
+inline void
+Set_TY_is_unordered_multimap (TY& ty)   { ty.flags_ext |= TY_IS_UNORDERED_MULTIMAP; }
+inline void
+Clear_TY_is_unordered_multimap (TY& ty) { ty.flags_ext &= ~TY_IS_UNORDERED_MULTIMAP; }
+inline BOOL
+TY_is_unordered_multimap (const TY_IDX tyi) { return TY_is_unordered_multimap(Ty_Table[tyi]); }
+inline void
+Set_TY_is_unordered_multimap (TY_IDX tyi)   { Set_TY_is_unordered_multimap(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_unordered_multimap (TY_IDX tyi) { Clear_TY_is_unordered_multimap(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_unordered_multiset (const TY& ty) { return ty.flags_ext & TY_IS_UNORDERED_MULTISET; }
+inline void
+Set_TY_is_unordered_multiset (TY& ty)   { ty.flags_ext |= TY_IS_UNORDERED_MULTISET; }
+inline void
+Clear_TY_is_unordered_multiset (TY& ty) { ty.flags_ext &= ~TY_IS_UNORDERED_MULTISET; }
+inline BOOL
+TY_is_unordered_multiset (const TY_IDX tyi) { return TY_is_unordered_multiset(Ty_Table[tyi]); }
+inline void
+Set_TY_is_unordered_multiset (TY_IDX tyi)   { Set_TY_is_unordered_multiset(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_unordered_multiset (TY_IDX tyi) { Clear_TY_is_unordered_multiset(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_unordered_set (const TY& ty)      { return ty.flags_ext & TY_IS_UNORDERED_SET; }
+inline void
+Set_TY_is_unordered_set (TY& ty)        { ty.flags_ext |= TY_IS_UNORDERED_SET; }
+inline void
+Clear_TY_is_unordered_set (TY& ty)      { ty.flags_ext &= ~TY_IS_UNORDERED_SET; }
+inline BOOL
+TY_is_unordered_set (const TY_IDX tyi)  { return TY_is_unordered_set(Ty_Table[tyi]); }
+inline void
+Set_TY_is_unordered_set (TY_IDX tyi)    { Set_TY_is_unordered_set(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_unordered_set (TY_IDX tyi)  { Clear_TY_is_unordered_set(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_vector (const TY& ty)             { return ty.flags_ext & TY_IS_VECTOR; }
+inline void
+Set_TY_is_vector (TY& ty)               { ty.flags_ext |= TY_IS_VECTOR; }
+inline void
+Clear_TY_is_vector (TY& ty)             { ty.flags_ext &= ~TY_IS_VECTOR; }
+inline BOOL
+TY_is_vector (const TY_IDX tyi)         { return TY_is_vector(Ty_Table[tyi]); }
+inline void
+Set_TY_is_vector (TY_IDX tyi)           { Set_TY_is_vector(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_vector (TY_IDX tyi)         { Clear_TY_is_vector(Ty_Table[tyi]); }
+
+
+
+
 // TY pu_flags
 
 inline BOOL
@@ -1602,11 +1989,9 @@ Set_TY_return_to_param (TY& ty)		{ ty.Set_pu_flag (TY_RETURN_TO_PARAM); }
 inline void
 Clear_TY_return_to_param (TY& ty)	{ ty.Clear_pu_flag (TY_RETURN_TO_PARAM); }
 inline BOOL
-TY_return_to_param (const TY_IDX tyi)   {
-  return TY_return_to_param(Ty_Table[tyi]);
-}
+TY_return_to_param (const TY_IDX tyi)   { return TY_return_to_param(Ty_Table[tyi]); }
 inline void
-Set_TY_return_to_param (TY_IDX tyi)  { Set_TY_return_to_param(Ty_Table[tyi]); }
+Set_TY_return_to_param (TY_IDX tyi)     { Set_TY_return_to_param(Ty_Table[tyi]); }
 inline void
 Clear_TY_return_to_param (TY_IDX tyi){
   Clear_TY_return_to_param(Ty_Table[tyi]);
@@ -1619,46 +2004,31 @@ Set_TY_is_varargs (TY& ty)		{ ty.Set_pu_flag (TY_IS_VARARGS); }
 inline void
 Clear_TY_is_varargs (TY& ty)		{ ty.Clear_pu_flag (TY_IS_VARARGS); }
 inline BOOL
-TY_is_varargs (const TY_IDX tyi)    { return TY_is_varargs(Ty_Table[tyi]); }
+TY_is_varargs (const TY_IDX tyi)        { return TY_is_varargs(Ty_Table[tyi]); }
 inline void
-Set_TY_is_varargs (TY_IDX tyi)      { Set_TY_is_varargs(Ty_Table[tyi]); }
+Set_TY_is_varargs (TY_IDX tyi)          { Set_TY_is_varargs(Ty_Table[tyi]); }
 inline void
-Clear_TY_is_varargs (TY_IDX tyi)    { Clear_TY_is_varargs(Ty_Table[tyi]); }
+Clear_TY_is_varargs (TY_IDX tyi)        { Clear_TY_is_varargs(Ty_Table[tyi]); }
 
 inline BOOL
-TY_has_prototype (const TY_IDX tyi) {
-	return Ty_Table[tyi].Pu_flags() & TY_HAS_PROTOTYPE;
-}
+TY_has_prototype (const TY_IDX tyi)     { return Ty_Table[tyi].Pu_flags() & TY_HAS_PROTOTYPE; }
 inline void
-Set_TY_has_prototype (TY_IDX tyi) {
-	Ty_Table[tyi].Set_pu_flag (TY_HAS_PROTOTYPE);
-}
+Set_TY_has_prototype (TY_IDX tyi)       { Ty_Table[tyi].Set_pu_flag (TY_HAS_PROTOTYPE); }
 inline void
-Clear_TY_has_prototype (TY_IDX tyi) {
-	Ty_Table[tyi].Clear_pu_flag (TY_HAS_PROTOTYPE);
-}
+Clear_TY_has_prototype (TY_IDX tyi)     { Ty_Table[tyi].Clear_pu_flag (TY_HAS_PROTOTYPE); }
 
 #ifdef TARG_X8664
 inline BOOL
-TY_has_sseregister_parm (const TY& ty) {
-	return ty.Pu_flags () & TY_HAS_SSEREG_PARM;
-}
+TY_has_sseregister_parm (const TY& ty)  { return ty.Pu_flags () & TY_HAS_SSEREG_PARM; }
 inline void
-Set_TY_has_sseregister_parm (TY& ty) {
-	ty.Set_pu_flag (TY_HAS_SSEREG_PARM);
-}
+Set_TY_has_sseregister_parm (TY& ty)    { ty.Set_pu_flag (TY_HAS_SSEREG_PARM); }
 inline BOOL
-TY_has_sseregister_parm (const TY_IDX tyi) {
-	return TY_has_sseregister_parm(Ty_Table[tyi]);
-}
+TY_has_sseregister_parm (const TY_IDX tyi) { return TY_has_sseregister_parm(Ty_Table[tyi]); }
 inline void
-Set_TY_has_sseregister_parm (TY_IDX tyi) {
-	Set_TY_has_sseregister_parm(Ty_Table[tyi]);
-}
+Set_TY_has_sseregister_parm (TY_IDX tyi){ Set_TY_has_sseregister_parm(Ty_Table[tyi]); }
 
 inline INT
-TY_register_parm (const TY& ty)
-{
+TY_register_parm (const TY& ty) {
 	if ((ty.Pu_flags() & TY_HAS_1_REG_PARM) == 0 &&
 	    (ty.Pu_flags() & TY_HAS_2_REG_PARM) == 0)
 		return 0;
@@ -1681,51 +2051,60 @@ Set_TY_register_parm (TY& ty, INT num)
 }
 
 inline INT
-TY_register_parm (const TY_IDX tyi) {
-	return TY_register_parm (Ty_Table[tyi]);
-}
+TY_register_parm (const TY_IDX tyi)     { return TY_register_parm (Ty_Table[tyi]); }
 
 inline void
-Set_TY_register_parm (TY_IDX tyi, INT num) {
-	Set_TY_register_parm (Ty_Table[tyi], num);
-}
+Set_TY_register_parm (TY_IDX tyi, INT num) { Set_TY_register_parm (Ty_Table[tyi], num); }
 
 inline BOOL
-TY_has_stdcall (const TY& ty) {
-	return ty.Pu_flags () & TY_HAS_STDCALL;
-}
+TY_has_stdcall (const TY& ty)           { return ty.Pu_flags () & TY_HAS_STDCALL; }
 inline void
-Set_TY_has_stdcall (TY& ty) {
-	ty.Set_pu_flag (TY_HAS_STDCALL);
-}
+Set_TY_has_stdcall (TY& ty)             { ty.Set_pu_flag (TY_HAS_STDCALL); }
 inline BOOL
-TY_has_stdcall (const TY_IDX tyi) {
-	return TY_has_stdcall(Ty_Table[tyi]);
-}
+TY_has_stdcall (const TY_IDX tyi)       { return TY_has_stdcall(Ty_Table[tyi]); }
 inline void
-Set_TY_has_stdcall (TY_IDX tyi) {
-	Set_TY_has_stdcall(Ty_Table[tyi]);
-}
+Set_TY_has_stdcall (TY_IDX tyi)         { Set_TY_has_stdcall(Ty_Table[tyi]); }
 
 inline BOOL
-TY_has_fastcall (const TY& ty) {
-	return ty.Pu_flags () & TY_HAS_FASTCALL;
-}
+TY_has_fastcall (const TY& ty)          { return ty.Pu_flags () & TY_HAS_FASTCALL; }
 inline void
 Set_TY_has_fastcall (TY& ty) {
 	ty.Set_pu_flag (TY_HAS_FASTCALL);
 	Set_TY_register_parm (ty, 2);  // fastcall uses ECX and EDX
 }
 inline BOOL
-TY_has_fastcall (const TY_IDX tyi) {
-	return TY_has_fastcall(Ty_Table[tyi]);
-}
+TY_has_fastcall (const TY_IDX tyi)      { return TY_has_fastcall(Ty_Table[tyi]); }
 inline void
-Set_TY_has_fastcall (TY_IDX tyi) {
-	Set_TY_has_fastcall(Ty_Table[tyi]);
-}
+Set_TY_has_fastcall (TY_IDX tyi)        { Set_TY_has_fastcall(Ty_Table[tyi]); }
 
 #endif
+
+inline BOOL
+TY_has_optional_args (const TY& ty)     { return ty.Pu_flags () & TY_IS_OPTIONAL; }
+inline void
+Set_TY_has_optional_args (TY& ty)       { ty.Set_pu_flag (TY_IS_OPTIONAL); }
+inline void
+Clear_TY_has_optional_args (TY& ty)     { ty.Clear_pu_flag (TY_IS_OPTIONAL); }
+inline BOOL
+TY_has_optional_args (const TY_IDX tyi) { return TY_has_optional_args(Ty_Table[tyi]); }
+inline void
+Set_TY_has_optional_args (TY_IDX tyi)   { Set_TY_has_optional_args(Ty_Table[tyi]); }
+inline void
+Clear_TY_has_optional_args (TY_IDX tyi) { Clear_TY_has_optional_args(Ty_Table[tyi]); }
+
+inline BOOL
+TY_is_thread (const TY& ty)		{ return ty.Pu_flags () & TY_IS_THREAD; }
+inline void
+Set_TY_is_thread (TY& ty)		{ ty.Set_pu_flag (TY_IS_THREAD); }
+inline void
+Clear_TY_is_thread (TY& ty)		{ ty.Clear_pu_flag (TY_IS_THREAD); }
+inline BOOL
+TY_is_thread (const TY_IDX tyi)         { return TY_is_thread(Ty_Table[tyi]); }
+inline void
+Set_TY_is_thread (TY_IDX tyi)           { Set_TY_is_thread(Ty_Table[tyi]); }
+inline void
+Clear_TY_is_thread (TY_IDX tyi)         { Clear_TY_is_thread(Ty_Table[tyi]); }
+
 
 //----------------------------------------------------------------------
 // access functions for FLD
@@ -2036,6 +2415,11 @@ Set_ST_ATTR_section_name (ST_ATTR& st_attr, STR_IDX name)
     st_attr.kind = ST_ATTR_SECTION_NAME;
     st_attr.Set_section_name (name);
 }
+inline UINT64
+ST_ATTR_value(const ST_ATTR& st_attr)
+{
+    return st_attr.Get_value();
+}
 
 //----------------------------------------------------------------------
 // access functions for FILE_INFO
@@ -2081,6 +2465,19 @@ Set_FILE_INFO_has_global_asm (FILE_INFO& f)    { f.flags |= FI_HAS_GLOBAL_ASM; }
 inline void
 Clear_FILE_INFO_has_global_asm (FILE_INFO& f)  { f.flags &= ~FI_HAS_GLOBAL_ASM; }
 
+inline BOOL
+FILE_INFO_is_rbc (const FILE_INFO& f)  { return f.flags & FI_IS_RBC; }
+inline void
+Set_FILE_INFO_is_rbc (FILE_INFO& f)    { f.flags |= FI_IS_RBC; }
+inline void
+Clear_FILE_INFO_is_rbc (FILE_INFO& f)  { f.flags &= ~FI_IS_RBC; }
+
+inline BOOL
+FILE_INFO_is_vtable (const FILE_INFO& f)  { return f.flags & FI_IS_VTABLE; }
+inline void
+Set_FILE_INFO_is_vtable (FILE_INFO& f)    { f.flags |= FI_IS_VTABLE; }
+inline void
+Clear_FILE_INFO_is_vtable (FILE_INFO& f)  { f.flags &= ~FI_IS_VTABLE; }
 
 //----------------------------------------------------------------------
 // access functions for the TABLES

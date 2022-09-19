@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -355,9 +359,12 @@ extern BOOL WN_has_disjoint_val_range(WN *, WN *, std::map<WN *, WN *> &, std::m
 extern BOOL WN_has_indir_load(WN *);
 extern void Collect_operands(WN *, STACK<WN *> *, STACK<WN *> *);
 extern WN * WN_get_deriv(WN *, std::map<AUX_ID, WN *> &map);
+extern UINT Get_field_id_from_offset(TY_IDX to_search, UINT64 ofst, TY_IDX to_match);
 
   WN * WN_copy(WN *wn);  // copy a WN node
   WN * WN_copy_with_map (WN *wn);
+  WN * WN_copy_tree_with_map(WN *wn);
+
   MTYPE Mtype_from_class_size(MTYPE t1, MTYPE t2);
   void fdump_tree(FILE *f, WN *wn);
   void fdump_wn(FILE *f,WN *wn);

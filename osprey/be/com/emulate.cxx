@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -585,7 +589,11 @@ static COERCE INTR_coerce_runtime(WN *tree, INT32 arg);
 static TYPE_ID INTR_parameter_type(WN *tree, INT32 arg);
 static TY_IDX aux_compute_alignment(WN *tree);
 
-
+static WN *em_dcmp(WN *block, WN *l, WN *r, TYPE_ID type);
+static WN *em_lcmp(WN *block, WN *l, WN *r, TYPE_ID type);
+static WN *em_fcmpl(WN *block, WN *l, WN *r, TYPE_ID type);
+static WN *em_fcmpg(WN *block, WN *l, WN *r, TYPE_ID type);
+static WN *em_dcmpl(WN *block, WN *l, WN *r, TYPE_ID type);
 
 /* ====================================================================
  *                       private variables
@@ -593,7 +601,6 @@ static TY_IDX aux_compute_alignment(WN *tree);
  */
 static INT32 em_exp_int_max = 256;
 static struct ALIAS_MANAGER *alias_manager = NULL;
-#define MAX_INTRINSIC_ARGS      20
 
 
 
@@ -632,6 +639,11 @@ TYPE_ID INTR_return_mtype(INTRINSIC id)
   case IRETURN_M8I4:    return MTYPE_M8I4;
 #endif
   case IRETURN_V:	return MTYPE_V;
+#if defined(DYNAMICLANG) && !defined(IRETURN_DYNANY)
+  case IRETURN_DYNANY:  return MTYPE_DYNANY;
+  case IRETURN_DYNOBJ:  return MTYPE_DYNOBJ;
+  case IRETURN_DYNSTR:  return MTYPE_DYNSTR;
+#endif
   case IRETURN_PV:
   case IRETURN_PU1:
   case IRETURN_DA1:
@@ -978,11 +990,8 @@ static WN *aux_CreateMstore(WN_OFFSET offset, TY_IDX type, WN *value, WN *addr,
   if (ty_size != 0 && WN_const_val (size) % ty_size != 0) {
       // size copied is not a multiple of the size of the type, which means 
       // that we are copying part of the type.  We then change the pointer
-      // to (void*)
-      static TY_IDX void_star = TY_IDX_ZERO;
-      if (void_star == TY_IDX_ZERO)
-	  void_star = Make_Pointer_Type (MTYPE_To_TY (MTYPE_V));
-      Set_TY_IDX_index (type, TY_IDX_index (void_star));
+      // to (char*)
+      Set_TY_IDX_index (type, TY_IDX_index (Char_Star_Type));
   }
   return WN_CreateMstore(offset, type, value, addr, size);
 }
@@ -3084,6 +3093,111 @@ static WN *em_bset(WN *block, WN *n, WN *i)
   return WN_Select(type, cond, bor, WN_Zerocon(type));
 }
 
+static WN *em_dcmp(WN *block, WN *lhs, WN *rhs, TYPE_ID rty) {
+  TYPE_ID	i4_ty = MTYPE_I4;
+  TYPE_ID       in_ty = WN_rtype(lhs);
+  PREG_NUM      lN    = AssignExpr(block, lhs, in_ty);
+  PREG_NUM      rN    = AssignExpr(block, rhs, in_ty);
+  WN           *lt    = WN_LT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *gt    = WN_GT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *part  = WN_Select(i4_ty, gt,
+				  WN_Intconst(MTYPE_I4, 1),
+				  WN_Intconst(MTYPE_I4, 0));
+  WN           *whole = WN_Select(i4_ty, lt,
+				  WN_Intconst(MTYPE_I4, -1),
+				  part);
+  return whole;
+}
+
+
+static WN *em_lcmp(WN *block, WN *lhs, WN *rhs, TYPE_ID rty) {
+  TYPE_ID	i4_ty = MTYPE_I4;
+  TYPE_ID       in_ty = WN_rtype(lhs);
+  PREG_NUM      lN    = AssignExpr(block, lhs, in_ty);
+  PREG_NUM      rN    = AssignExpr(block, rhs, in_ty);
+  WN           *lt    = WN_LT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *gt    = WN_GT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *part  = WN_Select(i4_ty, gt,
+				  WN_Intconst(MTYPE_I4, 1),
+				  WN_Intconst(MTYPE_I4, 0));
+  WN           *whole = WN_Select(i4_ty, lt,
+				  WN_Intconst(MTYPE_I4, -1),
+				  part);
+
+  return whole;
+}
+
+static WN *em_fcmpl(WN *block, WN *lhs, WN *rhs, TYPE_ID rty) {
+  TYPE_ID	i4_ty = MTYPE_I4;
+  TYPE_ID       in_ty = WN_rtype(lhs);
+  PREG_NUM      lN    = AssignExpr(block, lhs, in_ty);
+  PREG_NUM      rN    = AssignExpr(block, rhs, in_ty);
+  WN           *lt    = WN_LT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *gt    = WN_GT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *part  = WN_Select(i4_ty, gt,
+				  WN_Intconst(MTYPE_I4, 1),
+				  WN_Intconst(MTYPE_I4, 0));
+  WN           *whole = WN_Select(i4_ty, lt,
+				  WN_Intconst(MTYPE_I4, -1),
+				  part);
+
+  return whole;
+}
+
+static WN *em_fcmpg(WN *block, WN *lhs, WN *rhs, TYPE_ID rty) {
+  TYPE_ID	i4_ty = MTYPE_I4;
+  TYPE_ID       in_ty = WN_rtype(lhs);
+  PREG_NUM      lN    = AssignExpr(block, lhs, in_ty);
+  PREG_NUM      rN    = AssignExpr(block, rhs, in_ty);
+  WN           *lt    = WN_LT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *gt    = WN_GT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *part  = WN_Select(i4_ty, gt,
+				  WN_Intconst(MTYPE_I4, 1),
+				  WN_Intconst(MTYPE_I4, 0));
+  WN           *whole = WN_Select(i4_ty, lt,
+				  WN_Intconst(MTYPE_I4, -1),
+				  part);
+
+  return whole;
+}
+
+static WN *em_dcmpl(WN *block, WN *lhs, WN *rhs, TYPE_ID rty) {
+  TYPE_ID	i4_ty = MTYPE_I4;
+  TYPE_ID       in_ty = WN_rtype(lhs);
+  PREG_NUM      lN    = AssignExpr(block, lhs, in_ty);
+  PREG_NUM      rN    = AssignExpr(block, rhs, in_ty);
+  WN           *lt    = WN_LT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *gt    = WN_GT(Mtype_comparison(in_ty),
+			      WN_LdidPreg(in_ty, lN),
+			      WN_LdidPreg(in_ty, rN));
+  WN           *part  = WN_Select(i4_ty, gt,
+				  WN_Intconst(MTYPE_I4, 1),
+				  WN_Intconst(MTYPE_I4, 0));
+  WN           *whole = WN_Select(i4_ty, lt,
+				  WN_Intconst(MTYPE_I4, -1),
+				  part);
+  return whole;
+}
+
+
 /* ====================================================================
  *
  *	test bit i (n, i)
@@ -3719,8 +3833,8 @@ static WN *aux_memcpy(WN *src, WN *dst, WN *size)
       WN_const_val(size) % TY_size(srcTY) != 0) {
     // size copied is not a multiple of the size of the type, which means
     // that we are copying part of the type.  We then change the pointer
-    // to (void*)
-    srcTY_ptr = Make_Pointer_Type (MTYPE_To_TY (MTYPE_V));
+    // to (char*)
+    srcTY_ptr = Char_Star_Type;
   }
   else srcTY_ptr = Make_Pointer_Type(srcTY);
 
@@ -4395,7 +4509,8 @@ extern WN *intrinsic_runtime(WN *block, WN *tree)
 {
   INT16	n;
   INT16	argC = 0;
-  WN	*args[MAX_INTRINSIC_ARGS];
+  INT32 max_arg_cnt = 2 * WN_num_actuals(tree) + 1;
+  WN	*args[max_arg_cnt];
   const char	*function = INTR_intrinsic_name(tree);
   BOOL   byvalue = FALSE;
   BOOL   parmMod= FALSE;
@@ -4816,6 +4931,17 @@ static WN *emulate_intrinsic_op(WN *block, WN *tree)
     */
     return em_exp_int(block, by_value(tree, 0), by_value(tree,1), rtype);
 
+  case INTRN_LCMP:
+    return em_lcmp(block, by_value(tree, 0), by_value(tree,1), rtype);
+  case INTRN_FCMPLEXPR:
+    return em_fcmpl(block, by_value(tree, 0), by_value(tree,1), rtype);
+  case INTRN_FCMPGEXPR:  
+    return em_fcmpg(block, by_value(tree, 0), by_value(tree,1), rtype);
+  case INTRN_DCMPLEXPR:
+    return em_dcmpl(block, by_value(tree, 0), by_value(tree,1), rtype);
+  case INTRN_DCMP:
+    return em_dcmp(block, by_value(tree, 0), by_value(tree,1), rtype);
+    
   case INTRN_F4I4EXPEXPR:
   case INTRN_F4I8EXPEXPR:
   case INTRN_F8I4EXPEXPR:

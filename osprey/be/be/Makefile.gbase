@@ -1,5 +1,9 @@
 # -*- Makefile -*-
 #
+#  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+#
+
+#
 #  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
 #  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
@@ -154,6 +158,9 @@ ifeq ($(BUILD_TARGET), PPC32)
 HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
 endif
 ifeq ($(BUILD_TARGET), LOONGSON)
+HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), UWASM)
 HOSTDEFS += -D__MIPS_AND_IA64_ELF_H
 endif
 
@@ -449,7 +456,22 @@ else
           c_qwmultu.c           \
           quadsim.c		
       else
-        COMMON_UTIL_QUAD_SRCS = 	
+        ifeq ($(BUILD_TARGET), UWASM)
+          COMMON_UTIL_QUAD_SRCS = \
+            c_q_add.c		\
+            c_q_div.c		\
+            c_q_mul.c		\
+            c_q_neg.c		\
+            c_q_rel.c		\
+            c_q_sqrt.c		\
+            c_q_sub.c		\
+            c_q_to_a.c		\
+            c_qtenscale.c	\
+            c_qwmultu.c		\
+            quadsim.c
+        else
+          COMMON_UTIL_QUAD_SRCS =
+        endif
       endif
     endif
   endif
@@ -513,7 +535,9 @@ BE_COM_CXX_SRCS = \
   wssa_du.cxx           \
   wssa_wn.cxx           \
   wssa_io.cxx           \
-  comp_driver.cxx
+  comp_driver.cxx	\
+  whirl_file_mgr.cxx	\
+  whirl_file_ctx.cxx
 
 ifneq ($(BUILD_SKIP_LNO), TRUE)
 BE_COM_CXX_SRCS += \
@@ -545,6 +569,7 @@ BE_COM_PCH_CXX_SRCS = \
   opt_points_to_summary.cxx \
   standardize.cxx	\
   stblock.cxx		\
+  uwasm_nat_util.cxx    \
   w2op.cxx		\
   wb.cxx		\
   wb_browser.cxx	\
@@ -561,6 +586,11 @@ BE_COM_PCH_CXX_SRCS = \
   wn_retype_expr.cxx	\
   wn_unroll.cxx	\
   $(DERIVED_SRCS)
+
+ifeq ($(BUILD_PRODUCT), MASTIFF)
+BE_COM_PCH_CXX_SRCS += \
+  opt_vsa_report_base.cxx
+endif
 
 ifeq ($(BUILD_PCH), USE_PCH)
 BE_COM_PCH_OBJS=$(BE_COM_PCH_CXX_SRCS:.cxx=.o)
@@ -659,6 +689,12 @@ LCINCS = $(addprefix -I, $(HEADER_DIRS))
 LC++INCS = $(addprefix -I, $(HEADER_DIRS))
 LASINCS = $(addprefix -I, $(HEADER_DIRS))
 
+ifeq ($(BUILD_SANITIZE), 1)
+STD_COMPILE_OPTS += -fsanitize=address -O0 -g
+TARGDEFS += -fsanitize=address -O0 -g
+LDFLAGS += -fsanitize=address -O0 -g
+endif
+
 LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
 LCDEFS = $(HOSTDEFS) $(TARGDEFS)
 
@@ -705,12 +741,12 @@ endif
 #----------------------------------------------------------------------
 
 ifeq ($(BUILD_VARIANT), BEDRIVER)
-TARGETS = be
+TARGETS_BE = be
 else
 ifneq ($(BUILD_TYPE), NONSHARED)
-TARGETS = be.so be
+TARGETS_BE = $(BE_SO) be
 else
-TARGETS = libbe.a
+TARGETS_BE = libbe.a
 endif
 endif
 
@@ -728,7 +764,37 @@ LLDLIBS += $(LIBIBERTY_OBJS)
 
 VPATH    =  $(SRC_DIRS)
 
-.PHONY: default install first derived_files last
+#----------------------------------------------------------------------
+#  Variables for ld_plugin.so
+#----------------------------------------------------------------------
+RAPIDJSON_INCS = $(BUILD_TOT)
+
+LD_PLUGIN_DIR = $(BE_DIR)/ld_plugin
+LD_PLUGIN_TARGET = macldp.so
+LD_PLUGIN_LIBS = $(BE_SO)
+
+LD_PLUGIN_CXX_SRCS =	\
+    ld_plugin.cxx	\
+    whirl_utils.cxx	\
+    whirl_driver.cxx    \
+    driver_util.cxx     \
+    phase.cxx           \
+    ipsa_compile.cxx
+
+LD_PLUGIN_CXX_OBJS = $(LD_PLUGIN_CXX_SRCS:.cxx=.o)
+LD_PLUGIN_OBJS = $(LD_PLUGIN_CXX_OBJS)
+LD_PLUGIN_DSO_OPTS = -Wl,--export-dynamic -shared
+LD_PLUGIN_DSO_LIBS = $(LD_PLUGIN_LIBS) $(LIBIBERTY_OBJS) $(TARGDIR)/libelf/libelf.a
+VPATH += $(LD_PLUGIN_DIR)
+LC++INCS += -I $(LD_PLUGIN_DIR) -I $(RAPIDJSON_INCS)
+
+ifeq ($(BUILD_PRODUCT), MASTIFF)
+TARGETS = $(TARGETS_BE) $(LD_PLUGIN_TARGET)
+else
+TARGETS = $(TARGETS_BE)
+endif
+
+.PHONY: default install first derived_files last be_ver_info.h
 
 default: 
 	$(MAKE) first
@@ -782,10 +848,10 @@ install:: default
 ifeq ($(BUILD_OS), LINUX)
 	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
 else
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) be be.so 
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) be $(BE_SO)
  ifeq ($(BUILD_TYPE), SHARED)
  ifndef NOSYSGEN
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) be be.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) be $(BE_SO)
  endif
  endif
 endif
@@ -798,10 +864,26 @@ $(BE_COM_DIR)/gen_preg_list.sh
 #       $(CSH) $(COMMON_UTIL_DIR)/gen_x_list.sh \
 #       PREG_NUM PREG preg_list.h
 
+be_git_revision := $(shell GIT_DIR=$(BUILD_SRC)/.git git rev-parse HEAD || echo unknown)
+be_git_branch := $(shell GIT_DIR=$(BUILD_SRC)/.git git symbolic-ref --short -q HEAD || echo unknown)
+define new_line =
+
+
+endef
+define file_content =
+#ifndef be_ver_info_INCLUDED
+#define be_ver_info_INCLUDED
+#define BE_GIT_REVISION_STRING "$(be_git_revision)($(be_git_branch))"
+#endif /* be_ver_info_INCLUDED */
+endef
+be_ver_info.h:
+	@/bin/echo -e '$(subst $(new_line),\n,${file_content})' > $@
+
 # here's the target that gets made recursively
-derived_files : $(DERIVED_SRCS) $(DERIVED_INCS)
+derived_files : $(DERIVED_SRCS) $(DERIVED_INCS) be_ver_info.h
 
 ifneq ($(BUILD_TARGET), X8664)
+ifneq ($(BUILD_TARGET), UWASM)
 # the -OPT: option is not accepted by gcc
 c_q_add.o: c_q_add.c $(COMMON_COM_DIR)/defs.h $(COMMON_UTIL_DIR)/quad.h
 	$(CCF) -OPT:roundoff=0 -c $<
@@ -818,13 +900,13 @@ c_q_sqrt.o: c_q_sqrt.c $(COMMON_COM_DIR)/defs.h $(COMMON_UTIL_DIR)/quad.h
 c_q_sub.o: c_q_sub.c $(COMMON_COM_DIR)/defs.h $(COMMON_UTIL_DIR)/quad.h
 	$(CCF) -OPT:roundoff=0 -c $<
 endif
-
+endif
 ifeq ($(BUILD_COMPILER), OSP)
 wn_fio.o: wn_fio.cxx
         $(CXXF) -OPT:alias=no_typed -c $<
 endif
 
-LDIRT += be wopt.so be.so cg.so lno.so whirl2c.so whirl2f.so ipl.so inline.so
+LDIRT += be $(WOPT_SO) $(BE_SO) $(LNO_SO) $(IPL_SO) $(CG_SO) whirl2c.so whirl2f.so inline.so $(LD_PLUGIN_TARGET)
 
 
 ifeq ($(BUILD_PCH), USE_PCH)
@@ -857,9 +939,9 @@ be:  $(BE_DRIVER_OBJS) $(LLDLIBS)
 
 else
 # not NONSHARED build
-be:  $(BE_DRIVER_OBJS) $(LINK_DSO) be.so
+be:  $(BE_DRIVER_OBJS) $(LINK_DSO) $(BE_SO)
 	$(link.c++f) -o be $(BE_DRIVER_OBJS)	\
-		$(LDFLAGS) be.so  $(LINK_DSO_OPTS) $(LINK_DSO) -ldl
+		$(LDFLAGS) $(BE_SO) $(LINK_DSO_OPTS) $(LINK_DSO) -ldl
 endif
 
 .PHONY: so_locations
@@ -872,7 +954,7 @@ $(EXPORT_FILE_BE_SO): $(EXPORT_FILE_BE_SO_SRCS)
 	cat $(EXPORT_FILE_BE_SO_SRCS) | sort | uniq > $(EXPORT_FILE_BE_SO)
 
 ifeq ($(BUILD_PCH), USE_PCH)
-be.so:  $(BE_C_OBJS) $(BE_CXX_OBJS) $(COMMON_COM_PCH_OBJS) $(BE_COM_PCH_OBJS) \
+$(BE_SO): $(BE_C_OBJS) $(BE_CXX_OBJS) $(COMMON_COM_PCH_OBJS) $(BE_COM_PCH_OBJS) \
 		$(BE_AS_OBJS) $(BE_BE_DIR)/so_locations $(EXPORT_FILE_BE_SO) 
 	$(link.c++f) $(STD_DSO_LOADOPTS) $(EXPORT_LIST_BE_SO) $(BE_C_OBJS) \
 		$(BE_CXX_OBJS) $(COMMON_COM_PCH_OBJS) $(BE_COM_PCH_OBJS) \
@@ -880,7 +962,7 @@ be.so:  $(BE_C_OBJS) $(BE_CXX_OBJS) $(COMMON_COM_PCH_OBJS) $(BE_COM_PCH_OBJS) \
 		-o $@ $(BE_DSO_OPTS)
 
 else
-be.so:	$(BE_C_OBJS) $(BE_CXX_OBJS) $(BE_AS_OBJS) $(BE_BE_DIR)/so_locations \
+$(BE_SO): $(BE_C_OBJS) $(BE_CXX_OBJS) $(BE_AS_OBJS) $(BE_BE_DIR)/so_locations \
 		$(EXPORT_FILE_BE_SO) 
 	$(link.c++f) $(STD_DSO_LOADOPTS) $(EXPORT_LIST_BE_SO) $(BE_C_OBJS) \
 		$(BE_CXX_OBJS) $(BE_AS_OBJS) \
@@ -890,6 +972,11 @@ endif
 
 libbe.a : $(BE_C_OBJS) $(BE_CXX_OBJS)
 	$(ar) cru $@ $^
+
+$(LD_PLUGIN_TARGET) : $(LD_PLUGIN_OBJS)
+	$(call submake,$(BUILD_AREA)/libelf)
+	$(link.c++f) $(LD_PLUGIN_DSO_OPTS) $(LD_PLUGIN_OBJS) \
+		-o $@ $(LD_PLUGIN_DSO_LIBS)
 
 #----------------------------------------------------------------------
 #  Include the usual commonrules
@@ -903,15 +990,15 @@ include $(COMMONRULES)
 .cxx.pch:
 	$(c++f) -c $(.IMPSRC)
 
-DSONAMEOPT = -o be.so
+DSONAMEOPT = -o $(BE_SO)
 
 ## Purify versions:
-TARGETS_PURE = be.so.pure
-be.so.pure: be.so
-	purify be.so
+TARGETS_PURE = $(BE_SO).pure
+$(BE_SO).pure: $(BE_SO)
+	purify $(BE_SO)
 pure: $(TARGETS_PURE)
 install.pure:: pure
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) be.so.pure
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) $(BE_SO).pure
 
 ifeq (gcc,$(firstword $(CCNAME)))
 # work around gcc bug optimizing this file on ia32

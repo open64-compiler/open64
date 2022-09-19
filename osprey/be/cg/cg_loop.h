@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -706,7 +710,7 @@ struct OP_VECTOR {
 
 extern CG_LOOP *Current_CG_LOOP;
 
-extern void Examine_Loop_Info(char *usage_str, BOOL after_presched);
+extern void Examine_Loop_Info(const char *usage_str, BOOL after_presched);
 
 #if defined(TARG_IA64) || defined(TARG_SL)  || defined(TARG_MIPS)
 extern void Perform_Loop_Optimizations(void *rgn_loop_update=NULL);

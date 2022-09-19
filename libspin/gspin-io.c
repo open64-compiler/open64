@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -174,7 +178,7 @@ gs_unsigned_char_t *gs_read (const gs_string_t filename)
         if (gs_operand(q, j) != NULL) {
 	  GS_ASSERT((long)gs_operand(q, j) < statbuf.st_size, 
 	  	    "right offset out of bounds!.\n");
-	  gs_set_operand(q, j, (gs_t) (mem_seg + (int) gs_operand(q,j)));
+	  gs_set_operand(q, j, (gs_t) (mem_seg + (int)(intptr_t)gs_operand(q,j)));
 	}
     }
     else if (gs_code(q) == IB_STRING) { // convert string index to pointer

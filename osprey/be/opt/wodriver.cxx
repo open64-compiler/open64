@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 // ====================================================================
 // ====================================================================
 //
@@ -151,11 +155,11 @@ Perform_Global_Optimization (WN *pu_wn, WN *region_wn,
     Start_Timer ( T_Wopt_CU );
     Set_Error_Phase ( "Global Optimizer" );
 
-    du_mgr = Create_Du_Manager(MEM_pu_nz_pool_ptr);
+    du_mgr = Create_Du_Manager(&MEM_local_pool);
 
     opt_pu = Pre_Optimizer(MAINOPT_PHASE, region_wn, du_mgr, alias_mgr);
 
-    Delete_Du_Manager(du_mgr,MEM_pu_nz_pool_ptr);
+    Delete_Du_Manager(du_mgr,&MEM_local_pool);
 
     Stop_Timer ( T_Wopt_CU );
 
@@ -179,13 +183,13 @@ Perform_Preopt_Optimization(WN *pu_wn, WN *region_wn)
     Start_Timer ( T_Preopt_CU );
     Set_Error_Phase ( "Global Optimizer" );
 
-    du_mgr = Create_Du_Manager(MEM_pu_nz_pool_ptr);
+    du_mgr = Create_Du_Manager(&MEM_local_pool);
+    alias_mgr = Create_Alias_Manager(&MEM_local_pool, pu_wn);
 
-    alias_mgr = Create_Alias_Manager(MEM_pu_nz_pool_ptr,pu_wn);
     opt_pu = Pre_Optimizer(PREOPT_PHASE, region_wn, du_mgr, alias_mgr);
 
-    Delete_Du_Manager(du_mgr,MEM_pu_nz_pool_ptr);
-    Delete_Alias_Manager(alias_mgr,MEM_pu_nz_pool_ptr);
+    Delete_Du_Manager(du_mgr,&MEM_local_pool);
+    Delete_Alias_Manager(alias_mgr,&MEM_local_pool);
 
     Stop_Timer ( T_Preopt_CU );
 

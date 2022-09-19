@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* 
  * Copyright (C) 2010, Hewlett-Packard Development Company, L.P. All Rights Reserved.
  */
@@ -97,6 +101,7 @@
 #include "config_list.h"	    /* for List_Enabled, etc. */
 #include "config_lno.h"		    /* for LNO_Run_Lego, etc. */
 #include "config_cache.h"           /* for Mhd and Mhd_Options */
+#include "config_product.h"         /* for so names, etc. */
 #include "file_util.h"		    /* for New_Extension () */
 #include "xstats.h"		    /* for Print_Stats () */
 #include "data_layout.h"	    /* for Initialize_Stack_Frame() */
@@ -157,6 +162,8 @@
 #endif
 #include "wn_mp.h"    // for Verify_No_MP()
 #include "comp_decl.h"
+#include "report.h"
+#include "config_vsa.h"
 
 extern ERROR_DESC EDESC_BE[], EDESC_CG[];
 
@@ -245,6 +252,37 @@ extern WN* (*Perform_Global_Optimization_p) (WN *, WN *, ALIAS_MANAGER *);
 extern WN* (*Pre_Optimizer_p) (INT32, WN*, DU_MANAGER*, ALIAS_MANAGER*);
 #define Pre_Optimizer (*Pre_Optimizer_p)
 
+extern void (*Init_ipsa_context_p) (void);
+#define Init_ipsa_context (*Init_ipsa_context_p)
+
+extern void (*IPSA_analyze_p) (void);
+#define IPSA_analyze (*IPSA_analyze_p)
+
+extern void (*IPSA_emit_p) (char *);
+#define IPSA_emit (*IPSA_emit_p)
+
+extern BOOL (*IPSA_insession_p) (void);
+#define IPSA_insession (*IPSA_insession_p)
+
+class DNA_NODE;
+extern DNA_NODE* (*Get_cur_dna_p) (void);
+#define Get_cur_dna (*Get_cur_dna_p)
+
+extern void (*IPSA_verify_p) (void);
+#define IPSA_verify (*IPSA_verify_p)
+
+extern void (*IPSA_build_cha_begin_p) (void);
+#define IPSA_build_cha_begin (*IPSA_build_cha_begin_p)
+
+extern void (*IPSA_build_cha_end_p) (void);
+#define IPSA_build_cha_end (*IPSA_build_cha_end_p)
+
+extern void (*IPSA_build_cha_p) (void);
+#define IPSA_build_cha (*IPSA_build_cha_p)
+
+extern void (*Terminate_ipsa_context_p) (void);
+#define Terminate_ipsa_context (*Terminate_ipsa_context_p)
+
 extern void (*choose_from_complete_struct_for_relayout_candidates_p)();
 #define choose_from_complete_struct_for_relayout_candidates (*choose_from_complete_struct_for_relayout_candidates_p)
 
@@ -263,6 +301,12 @@ extern void Wopt_Fini ();
 extern WN* Perform_Preopt_Optimization (WN *, WN *);
 extern WN* Perform_Global_Optimization (WN *, WN *, ALIAS_MANAGER *);
 extern WN* Pre_Optimizer (INT32, WN*, DU_MANAGER*, ALIAS_MANAGER*);
+extern void Init_ipsa_context(void);
+extern void IPSA_analyze(void);
+extern void IPSA_emit(char *);
+extern BOOL IPSA_insession(void);
+extern void IPSA_verify(void);
+extern void Terminate_ipsa_context(void);
 extern void choose_from_complete_struct_for_relayout_candidates();
 extern DU_MANAGER* Create_Du_Manager (MEM_POOL *);
 extern void Delete_Du_Manager (DU_MANAGER *, MEM_POOL *);
@@ -276,6 +320,12 @@ extern BOOL Verify_alias (ALIAS_MANAGER *, WN *);
 #pragma weak Perform_Global_Optimization
 #pragma weak Perform_Preopt_Optimization
 #pragma weak Pre_Optimizer
+#pragma weak Init_ipsa_context
+#pragma weak IPSA_analyze
+#pragma weak IPSA_emit
+#pragma weak IPSA_insession
+#pragma weak IPSA_verify
+#pragma weak Terminate_ipsa_context
 #pragma weak choose_from_complete_struct_for_relayout_candidates
 #pragma weak Create_Du_Manager
 #pragma weak Delete_Du_Manager
@@ -362,6 +412,7 @@ extern void (*Preprocess_struct_access_p)(void);
 #endif // BUILD_SKIP_LNO
 
 static INT ecount = 0;
+static INT total_pu_count;
 static BOOL need_wopt_output = FALSE;
 static BOOL need_lno_output = FALSE;
 static BOOL need_ipl_output = FALSE;
@@ -386,13 +437,16 @@ extern BOOL   Whirl2c_loaded;    /* Defined in cleanup.c */
 extern void *Current_Dep_Graph;
 FILE *DFile = stderr;
 
+extern char *Processor_Name;
+
 static void
 load_components (INT argc, char **argv)
 {
     INT phase_argc;
     char **phase_argv;
 
-    if (!(Run_lno || Run_wopt || Run_preopt || Run_cg || Run_w2c || Run_w2f
+    if (!(Run_lno || (Run_wopt || (Run_vsaopt || Run_ipsaopt))
+	  || Run_preopt || Run_cg || Run_w2c || Run_w2f
           || Run_w2fc_early || Run_ipl))
       Run_cg = TRUE;		    /* if nothing is set, run CG */
 
@@ -409,47 +463,55 @@ load_components (INT argc, char **argv)
     if (Run_cg) {
       Get_Phase_Args (PHASE_CG, &phase_argc, &phase_argv);
 #ifdef TARG_IA64
-      load_so ("orc_ict.so", CG_Path, Show_Progress);
-      load_so ("orc_intel.so", CG_Path, Show_Progress);
+      load_so (ORC_ICT_SO_NAME, CG_Path, Show_Progress);
+      load_so (ORC_INTEL_SO_NAME, CG_Path, Show_Progress);
 #endif
 #if !defined(BUILD_FAST_BIN)
-      load_so ("cg.so", CG_Path, Show_Progress);
+      load_so (CG_SO_NAME, CG_Path, Show_Progress);
 #endif
       CG_Process_Command_Line (phase_argc, phase_argv, argc, argv);
     }
 
-    if (Run_wopt || Run_preopt || Run_lno || Run_autopar) {
+    if ((Run_wopt || (Run_vsaopt || Run_ipsaopt))
+	|| Run_preopt || Run_lno || Run_autopar) {
       Get_Phase_Args (PHASE_WOPT, &phase_argc, &phase_argv);
 #if !defined(BUILD_FAST_BIN)
-      load_so ("wopt.so", WOPT_Path, Show_Progress);
+      load_so (WOPT_SO_NAME, WOPT_Path, Show_Progress);
+#if defined(BUILD_MASTIFF)
+      load_so (VSA_SO_NAME, WOPT_Path, Show_Progress);
+      load_so (RBC_SO_NAME, WOPT_Path, Show_Progress);
 #endif
+#endif
+
+      if (Run_ipsaopt)
+	Run_vsaopt = TRUE;  // we only keep track of vsaopt inside wopt.so
       wopt_main (phase_argc, phase_argv, argc, argv);
       wopt_loaded = TRUE;
     }
 
     if (Run_ipl) {
       Get_Phase_Args (PHASE_IPL, &phase_argc, &phase_argv);
-      load_so ("ipl.so", Ipl_Path, Show_Progress);
+      load_so (IPL_SO_NAME, Ipl_Path, Show_Progress);
       ipl_main (phase_argc, phase_argv);
     }
 
     if (Run_lno || Run_autopar) {
       Get_Phase_Args (PHASE_LNO, &phase_argc, &phase_argv);
-      load_so ("lno.so", LNO_Path, Show_Progress);
+      load_so (LNO_SO_NAME, LNO_Path, Show_Progress);
       lno_main (phase_argc, phase_argv, argc, argv);
 
       // load in ipl.so if we need to perform automatic
       // parallelization and interprocedural analysis has
       // been performed
       if (Run_autopar && LNO_IPA_Enabled) {
-	  load_so("ipl.so", Ipl_Path, Show_Progress);
+	  load_so(IPL_SO_NAME, Ipl_Path, Show_Progress);
       }
   }
 
     if (Run_w2c)
     {
       Get_Phase_Args (PHASE_W2C, &phase_argc, &phase_argv);
-      load_so("whirl2c.so", W2C_Path, Show_Progress);
+      load_so(WHIRL2C_SO_NAME, W2C_Path, Show_Progress);
       Whirl2c_loaded = TRUE;
       W2C_Process_Command_Line(phase_argc, phase_argv, argc, argv);
     }
@@ -457,7 +519,7 @@ load_components (INT argc, char **argv)
     if (Run_w2f)
     {
       Get_Phase_Args (PHASE_W2F, &phase_argc, &phase_argv);
-      load_so("whirl2f.so", W2F_Path, Show_Progress);
+      load_so(WHIRL2F_SO_NAME, W2F_Path, Show_Progress);
       Whirl2f_loaded = TRUE;
       W2F_Process_Command_Line(phase_argc, (const char**)phase_argv, argc, (const char**)argv);
     }
@@ -475,7 +537,7 @@ Phase_Init (void)
     if (Run_Distr_Array      && 
         (Run_w2c || Run_w2f) &&
         !Run_lno             &&
-        !Run_wopt            &&
+        !(Run_wopt || (Run_vsaopt || Run_ipsaopt)) &&
         !Run_cg)
     {
        /* A special case, where it looks as though we only wish to
@@ -490,7 +552,7 @@ Phase_Init (void)
 
     if (Run_cg)
 	CG_Init ();
-    if (Run_wopt || Run_preopt)
+    if ((Run_wopt || (Run_vsaopt || Run_ipsaopt))  || Run_preopt)
 	Wopt_Init ();
     if (Run_ipl)
 	Ipl_Init ();
@@ -502,10 +564,12 @@ Phase_Init (void)
 	W2C_Outfile_Init (TRUE/*emit_global_decls*/);
     if (Run_w2f)
 	W2F_Outfile_Init ();
-    if ((Run_lno || Run_preopt) && !Run_cg && !Run_wopt)
+    if ((Run_lno || Run_preopt) && !Run_cg && !(Run_wopt || (Run_vsaopt || Run_ipsaopt)))
 	need_lno_output = TRUE;
-    if (Run_wopt && !Run_cg)
+    if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) && !Run_cg)
 	need_wopt_output = TRUE;
+    if ((Run_vsaopt || Run_ipsaopt) && strncmp(Irb_File_Name, "/tmp/", 5) == 0)
+        need_wopt_output = FALSE;  // disable .O if no -keep
 
     if (Run_ipl) {
 	need_ipl_output = TRUE;
@@ -548,13 +612,18 @@ Phase_Init (void)
 	ir_output = Open_Output_Info (Global_File_Name);
     }
 	
-    if (Run_wopt) {
+    if (Run_wopt || (Run_vsaopt || Run_ipsaopt)) {
       if (Language != LANG_KR_C) {
         Pad_Global_Arrays();
       }
     }
-    if ((Run_cg || Run_wopt) && !Read_Global_Data)
+    if ((Run_cg || (Run_wopt || (Run_vsaopt || Run_ipsaopt))) && !Read_Global_Data)
 	Allocate_File_Statics();	/* allocate globals */
+
+#if defined(BUILD_MASTIFF)
+    if (Run_vsaopt || Run_ipsaopt)
+        Write_vsarpt_source(VsaRpt_File);
+#endif
 
 } /* Phase_Init */
 
@@ -579,7 +648,7 @@ Phase_Fini (void)
 	Lno_Fini ();
     if (Run_ipl)
 	Ipl_Fini ();
-    if (Run_wopt || Run_preopt)
+    if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt)
 	Wopt_Fini ();
     if (Run_cg)
 	CG_Fini ();
@@ -713,7 +782,7 @@ Adjust_Opt_Level (PU_Info* current_pu, WN *pu, char *pu_name)
     } 
     if (reset_opt_level) {
 	Opt_Level = new_opt_level;
-	Run_lno = Run_preopt = Run_wopt = Run_autopar = FALSE;
+	Run_lno = Run_preopt = Run_wopt = Run_vsaopt = Run_ipsaopt = Run_autopar = FALSE;
 	alias_mgr = NULL;
 	Olimit_opt = FALSE;
     }
@@ -967,7 +1036,8 @@ Do_WOPT_and_CG_with_Regions (PU_Info *current_pu, WN *pu)
     BOOL cg_one_time = TRUE;
 
     /* look over whole PU and set up stack model */
-    Initialize_Stack_Frame (pu);	
+    if(!Run_ipsacomp)
+      Initialize_Stack_Frame (pu);
 
     // decide whether the PU has regions that need bounds in it
     { RID *rid = REGION_get_rid(pu);
@@ -985,7 +1055,7 @@ Do_WOPT_and_CG_with_Regions (PU_Info *current_pu, WN *pu)
     // this is the alias manager for all region instances of
     // MainOpt and CG. Preopt uses it's own local alias manager,
     // one for each region. Deleted by Post_Process_PU.
-    if ((Run_wopt || Run_region_bounds) && alias_mgr == 0)
+    if (((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_region_bounds) && alias_mgr == 0)
       alias_mgr = Create_Alias_Manager(MEM_pu_nz_pool_ptr, pu);
 
     // Create the region boundary sets, be/region/region_bounds.cxx
@@ -1060,7 +1130,7 @@ Do_WOPT_and_CG_with_Regions (PU_Info *current_pu, WN *pu)
       }
       Set_Error_Phase ( "Before WOPT" );
 
-      if (Run_wopt) {
+      if (Run_wopt/* || (Run_vsaopt || Run_ipsaopt)*/) {
 	rwn = WOPT_Processing (current_pu, pu, &rgn_iter, rwn);
         if (WN_opcode(rwn) == OPC_FUNC_ENTRY)
           Verify_SYMTAB (CURRENT_SYMTAB);
@@ -1216,7 +1286,10 @@ Post_Process_Backend (PU_Info *current_pu, WN *pu)
   }
   // Delete alias manager after CG finished, PV 525127, 527977
   if (alias_mgr) {
-    Delete_Alias_Manager(alias_mgr, MEM_pu_nz_pool_ptr);
+    // do not delete alias manager, will be used in IPSA::Emit to emit whirl
+    if(!Run_ipsacomp) {
+      Delete_Alias_Manager(alias_mgr, MEM_pu_nz_pool_ptr);
+    }
     alias_mgr = NULL;
   }
 
@@ -1406,10 +1479,10 @@ Backend_Processing (PU_Info *current_pu, WN *pu)
     /* First round output (.N file, w2c, w2f, etc.) */
     Set_Error_Phase ( "Post LNO Processing" );
     Post_LNO_Processing (current_pu, pu);
-    if (!Run_wopt && !Run_cg) return;
+    if (!(Run_wopt || (Run_vsaopt || Run_ipsaopt)) && !Run_cg) return;
 
 #ifdef KEY // bug 7741
-    if (Run_lno && Run_wopt) {
+    if (Run_lno && (Run_wopt || (Run_vsaopt || Run_ipsaopt))) {
       // Adapted from code in PU_adjust_addr_flags()
       // Some LDAs may have been removed in preopt, so recompute
       // addr_saved flag.
@@ -1447,7 +1520,7 @@ Backend_Processing (PU_Info *current_pu, WN *pu)
     }
 
 #ifdef KEY
-    if (PU_cxx_lang (Get_Current_PU()))
+    if (PU_cxx_lang (Get_Current_PU()) || PU_java_lang (Get_Current_PU()))
 #endif
     Update_EHRegion_Inito (pu);
 
@@ -1469,7 +1542,7 @@ Backend_Processing (PU_Info *current_pu, WN *pu)
     if (Run_cg) 
 	EH_Generate_Range_List(pu);
 
-    BOOL save_run_wopt = Run_wopt;
+    BOOL save_run_wopt = Run_wopt; 
     // I believe I can assert that WN_operator(pu) == OPR_FUNC_ENTRY
     // here, but I won't, simply because I don't need to. Might as
     // well check. -- RK 990713
@@ -1545,9 +1618,10 @@ Preprocess_PU (PU_Info *current_pu)
   Initialize_PU_Stats ();  /* Needed for Olimit as well as tracing */
 
   Current_PU_Info = current_pu;
-  MEM_POOL_Push(MEM_pu_nz_pool_ptr);
-  MEM_POOL_Push(MEM_pu_pool_ptr);
-
+  if (IPSA_insession && !IPSA_insession()) {
+    MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+    MEM_POOL_Push(MEM_pu_pool_ptr);
+  }
   Cur_PU_Feedback    = NULL;
 
   BOOL is_mp_nested_pu = FALSE;
@@ -1664,9 +1738,15 @@ Preprocess_PU (PU_Info *current_pu)
   Check_for_IR_Dump(TP_IR_READ,pu,"IR_READ");
 
   if (Show_Progress) {
-    fprintf(stderr, "Compiling %s(%d)\n",
+    fprintf(stderr, "Compiling %s(%d)",
 	    ST_name(PU_Info_proc_sym(current_pu)),
 	    Current_PU_Count());
+#if defined(BUILD_MASTIFF)
+    if (Run_vsaopt || Run_ipsaopt )
+      fprintf(stderr, " Dbf:%1d Ral:%1d Aob:%1d Uiv:%1d Ddv:%1d Npd:%1d Rbc:%1d Uaf:%1d Msf:%1d Dbz:%1d Rvsa:%1d",
+	      VSA_Dbf, VSA_Ral, VSA_Aob, VSA_Uiv, VSA_Ddv, VSA_Npd, VSA_Rbc, VSA_Uaf, VSA_Msf, VSA_Dbz, VSA_Rvsa);
+#endif
+    fprintf(stderr, "\n");
   }
 
   if (Get_Trace(TP_REGION,TT_REGION_ALL)) {
@@ -1678,9 +1758,9 @@ Preprocess_PU (PU_Info *current_pu)
     fprintf(Tlog_File,"BEGIN %s\n",ST_name(PU_Info_proc_sym(current_pu)));
   }
 
-  WN_Mem_Push ();
+  if (IPSA_insession && ! IPSA_insession()) WN_Mem_Push ();
 
-  if (Run_wopt || Run_cg) {	    /* PU level initialization for lowerer */
+  if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_cg) {    /* PU level initialization for lowerer */
     Lowering_Initialize();
   }
 
@@ -1760,22 +1840,23 @@ Postprocess_PU (PU_Info *current_pu)
     fprintf (Tlog_File, "END %s\n", ST_name(PU_Info_proc_sym(current_pu)));
   }
 
-  if (Run_ipl != 0 && (Run_wopt || Run_preopt))
+  if (Run_ipl != 0 && ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt))
     choose_from_complete_struct_for_relayout_candidates(); // among all the
     // structures marked by ipl while compiling all the functions in this file,
     // choose the most profitable one
 
   Current_Map_Tab = PU_Info_maptab(current_pu);
  
-  REGION_Finalize();
+  if (IPSA_insession && ! IPSA_insession()) REGION_Finalize();
+  else REGION_Finalize_wo_delete();
 
-  if (Run_wopt || Run_cg) {
+  if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_cg) {
     // delete lowering map
     Lowering_Finalize();
   }
 
   // Delete alias manager after CG finished ? PV 525127, 527977
-  WN_Mem_Pop (); // WN pool
+  if (IPSA_insession && ! IPSA_insession()) WN_Mem_Pop(); // when IPSA in session, push/pop at Perform_ipsa
 
   if (wopt_loaded) {
     Delete_Restricted_Map();
@@ -1783,14 +1864,21 @@ Postprocess_PU (PU_Info *current_pu)
 
   SYMTAB_IDX scope_level = PU_lexical_level(PU_Info_pu(current_pu));
 
-  Scope_tab[scope_level].st_tab->
-    Un_register(*Be_scope_tab[scope_level].be_st_tab);
-  Be_scope_tab[scope_level].be_st_tab->Clear();
+  if (IPSA_insession && IPSA_insession()) {
+    Be_scope_tab[scope_level].be_st_tab = NULL;
+  }
+  else {
+    Scope_tab[scope_level].st_tab->
+      Un_register(*Be_scope_tab[scope_level].be_st_tab);
+    Be_scope_tab[scope_level].be_st_tab->Clear();
+    Free_Local_Info(current_pu); // deletes all maps
+    MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+    MEM_POOL_Pop(MEM_pu_pool_ptr);
+  }
 
-  Free_Local_Info(current_pu); // deletes all maps
-  MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
-  MEM_POOL_Pop(MEM_pu_pool_ptr);
-
+  // total_pu_count is only set when xfa is off
+  if (Show_Progress_Percent && total_pu_count > 0)
+    Display_Progress(PS_WOPT_S + Current_PU_Count() * PS_WOPT_C / total_pu_count, FALSE);
 } /* Postprocess_PU */
 
 /* compile each PU through all phases before going to the next PU */
@@ -1801,6 +1889,8 @@ Preorder_Process_PUs (PU_Info *current_pu)
   BOOL orig_run_lno = Run_lno;
   BOOL orig_run_preopt = Run_preopt;
   BOOL orig_run_wopt = Run_wopt;
+  BOOL orig_run_vsaopt = Run_vsaopt;
+  BOOL orig_run_ipsaopt = Run_ipsaopt;
   BOOL orig_olimit_opt = Olimit_opt;
 
   WN *pu;
@@ -1829,6 +1919,7 @@ Preorder_Process_PUs (PU_Info *current_pu)
   // Quick! Before anyone risks creating any PREGs in the back end,
   // register the back end's PREG table with the main PREG table so
   // they will grow together as PREGs are created.
+  Be_preg_tab_ptr = CXX_NEW(BE_PREG_TAB(Malloc_Mem_Pool), Malloc_Mem_Pool);
   Scope_tab[CURRENT_SYMTAB].preg_tab->Register(Be_preg_tab);
 
   WN_verifier(pu);
@@ -1861,14 +1952,19 @@ Preorder_Process_PUs (PU_Info *current_pu)
   if (reset_opt_level) {
     Opt_Level = orig_opt_level;
     Run_lno = orig_run_lno;
+    Run_vsaopt = orig_run_vsaopt;
+    Run_ipsaopt = orig_run_ipsaopt;
     Run_preopt = orig_run_preopt;
+
     Run_wopt = orig_run_wopt;
     reset_opt_level = FALSE;
     Olimit_opt = orig_olimit_opt;
   }
 
-  Scope_tab[CURRENT_SYMTAB].preg_tab->Un_register(Be_preg_tab);
-  Be_preg_tab.Clear();
+  if (!Run_vsaopt && !Run_ipsaopt) {
+    Scope_tab[CURRENT_SYMTAB].preg_tab->Un_register(Be_preg_tab);
+    Be_preg_tab.Clear();
+  }
 
   Stop_Timer(T_BE_PU_CU);
   Finish_BE_Timing ( Tim_File, ST_name(PU_Info_proc_sym(current_pu)) );
@@ -1914,6 +2010,31 @@ static void Print_Tlog_Header(INT argc, char **argv)
   fprintf(Tlog_File,"}\n");
 }
 
+static void
+Perform_ipsa(PU_Info *pu_tree)
+{
+  Init_ipsa_context(); // ipsa needs to preserve optimizer internal data
+  WN_Mem_Push();
+  MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+  MEM_POOL_Push(MEM_pu_pool_ptr);
+
+  // build class hierarchy
+  IPSA_build_cha_begin();
+  IPSA_build_cha();
+  IPSA_build_cha_end();
+
+  for (PU_Info *current_pu = pu_tree;
+       current_pu != NULL;
+       current_pu = PU_Info_next(current_pu)) {
+    Preorder_Process_PUs(current_pu);
+  }
+
+  IPSA_analyze();
+  MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+  MEM_POOL_Pop(MEM_pu_pool_ptr);
+  WN_Mem_Pop();
+  Terminate_ipsa_context();
+}
 
 #define FEEDBACK_PATH_MAXLEN 1024
 
@@ -1990,6 +2111,8 @@ extern "C" {
   void be_debug(void) {}
 }
 
+#ifndef LD_PLUGIN_REMOVE_MAIN
+
 INT
 main (INT argc, char **argv)
 {
@@ -2038,6 +2161,9 @@ main (INT argc, char **argv)
     List_Compile_Options ( Lst_File, "", FALSE, List_All_Options, FALSE );
   }
 
+  if (Show_Progress_Percent)
+    Display_Progress(PS_BE_INIT, FALSE);   // progress 1%
+
   Init_Operator_To_Opcode_Table();
 
   /* decide which phase to call */
@@ -2072,8 +2198,12 @@ main (INT argc, char **argv)
   Initialize_Symbol_Tables (FALSE);
   New_Scope (GLOBAL_SYMTAB, Malloc_Mem_Pool, FALSE);
 
+  if (Show_Progress_Percent)
+    Display_Progress(PS_BE_P1, FALSE);  // progress 5%
+
   INT pu_num;
   pu_tree = Read_Global_Info (&pu_num);
+  total_pu_count = pu_num;
 
 #if defined(TARG_SL)
   if (Run_ipisr) {
@@ -2130,16 +2260,18 @@ main (INT argc, char **argv)
       INT phase_argc;
       char **phase_argv;
 
-      if (!Run_wopt && !Run_preopt) {
+      if (!(Run_wopt || (Run_vsaopt || Run_ipsaopt)) && !Run_preopt) {
 	/* load wopt */
 	Get_Phase_Args (PHASE_WOPT, &phase_argc, &phase_argv);
-	load_so ("wopt.so", WOPT_Path, Show_Progress);
+	load_so (WOPT_SO_NAME, WOPT_Path, Show_Progress);
+	if (Run_ipsaopt)
+	  Run_vsaopt = TRUE;  // we only keep track of vsaopt inside wopt.so
 	wopt_main (phase_argc, phase_argv, argc, argv);
 	wopt_loaded = TRUE;
       }
 
       Get_Phase_Args (PHASE_LNO, &phase_argc, &phase_argv);
-      load_so ("lno.so", LNO_Path, Show_Progress);
+      load_so (LNO_SO_NAME, LNO_Path, Show_Progress);
       lno_main (phase_argc, phase_argv, argc, argv);
     }
   }
@@ -2170,6 +2302,9 @@ main (INT argc, char **argv)
   if (Tlog_File)
     Print_Tlog_Header(argc, argv);
 
+  if (Show_Progress_Percent)
+    Display_Progress(PS_BE_P2, FALSE);  // progress 8%
+
   if (Run_ipl)
     Preprocess_struct_access();// for field reorder
 #ifdef KEY
@@ -2199,10 +2334,16 @@ main (INT argc, char **argv)
     }
   }
 #else
-  for (PU_Info *current_pu = pu_tree;
-       current_pu != NULL;
-       current_pu = PU_Info_next(current_pu)) {
-    Preorder_Process_PUs(current_pu);
+  if (!Run_ipsaopt) {
+    for (PU_Info *current_pu = pu_tree;
+	 current_pu != NULL;
+	 current_pu = PU_Info_next(current_pu)) {
+      Preorder_Process_PUs(current_pu);
+    }
+  } else { // file level vsaopt here
+#if defined(BUILD_MASTIFF)
+    Perform_ipsa(pu_tree);
+#endif
   }
 #endif
 
@@ -2295,3 +2436,6 @@ main (INT argc, char **argv)
   /*NOTREACHED*/
 
 } /* main */
+
+#endif /* LD_PLUGIN_REMOVE_MAIN */
+

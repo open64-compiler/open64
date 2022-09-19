@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -183,9 +187,9 @@ WHIRL2C_CXX_OBJS = $(WHIRL2C_CXX_SRCS:.cxx=.o)
 WHIRL2C_DRIVER_OBJS = $(WHIRL2C_DRIVER_SRCS:.c=.o)
 WHIRL2C_MAIN_OBJS = $(WHIRL2C_MAIN_SRCS:.cxx=.o)
 ifeq ($(BUILD_OS), LINUX)
-WHIRL2C_DSOS = be.so 
+WHIRL2C_DSOS = $(BE_SO)
 else
-WHIRL2C_DSOS = $(TARGDIR)/be/be.so
+WHIRL2C_DSOS = $(TARGDIR)/be/$(BE_SO)
 endif
 
 VPATH    =  $(SRC_DIRS)
@@ -287,7 +291,7 @@ install:: default
 endif
 
 # extra files to be removed with make clobber
-LDIRT += whirl2c_be whirl2c be be.so whirl2c_dbg
+LDIRT += $(BE_SO) whirl2c_be whirl2c be whirl2c_dbg
 
 whirl2c.so:  $(WHIRL2C_CXX_OBJS) $(BE_WHIRL2C_DIR)/Exported \
 		$(WHIRL2C_DSOS) $(BE_BE_DIR)/so_locations
@@ -316,8 +320,8 @@ ifeq ($(BUILD_TYPE), SHARED)
 whirl2c: whirl2c.so whirl2c_be $(WHIRL2C_MAIN_OBJS)
 	$(link.cxxf) -o whirl2c $(WHIRL2C_MAIN_OBJS) $(LDFLAGS)
 
-be.so:
-	if ! test -e be.so; then ln -sf $(TARGDIR)/be/be.so .; fi
+$(BE_SO):
+	if ! test -e $(BE_SO); then ln -sf $(TARGDIR)/be/$(BE_SO) .; fi
 
 be:
 	if ! test -e be; then ln -sf $(TARGDIR)/be/be .; fi  

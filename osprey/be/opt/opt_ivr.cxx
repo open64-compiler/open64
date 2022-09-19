@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -120,6 +124,7 @@ static char *rcs_id = 	opt_ivr_CXX"$Revision: 1.19 $";
 #include "opt_mu_chi.h"
 #include "opt_fold.h"
 #include "stab.h"
+#include "config_vsa.h"  // VSA_Vra
 
 // provided for compatibility
 
@@ -931,10 +936,17 @@ CODEMAP::Convert_to_loop_invar(CODEREP *cr, BB_LOOP *loop)
 
     STMTREP *stmt = cr->Defstmt()->Rhs()->Create_cpstmt(new_cr,
 							Mem_pool());
+    stmt->Set_stmtrep_id(Next_stmtrep_id());
+    stmt->Set_linenum(cr->Defstmt()->Linenum());
     loop->Preheader()->Insert_stmtrep_before(stmt, cr->Defstmt());
 
   } else {
     STMTREP *stmt = cr->Create_cpstmt(new_cr, Mem_pool());
+    stmt->Set_stmtrep_id(Next_stmtrep_id());
+    if(loop->Preheader()->Laststmt())
+      stmt->Set_linenum(loop->Preheader()->Last_stmtrep()->Linenum());
+    else
+      stmt->Set_linenum(loop->Preheader()->Linenum());
     loop->Preheader()->Append_stmtrep(stmt);
   }
 
@@ -1316,6 +1328,7 @@ IVR::Choose_primary_IV(const BB_LOOP *loop)
       
       CODEREP *init_value = Htable()->Add_const(mtype, 0);
       STMTREP *init_stmt = init_value->Create_cpstmt(init_cr, Htable()->Mem_pool());
+      init_stmt->Set_stmtrep_id(Htable()->Next_stmtrep_id());
       Loop()->Preheader()->Append_stmtrep(init_stmt);
       init_stmt->Set_bb(Loop()->Preheader());
       init_stmt->Set_linenum(Loop()->Preheader()->Linenum());
@@ -1326,6 +1339,11 @@ IVR::Choose_primary_IV(const BB_LOOP *loop)
 
       STMTREP *incr_stmt =
 	incr_rhs->Create_cpstmt(incr_cr, Htable()->Mem_pool());
+      incr_stmt->Set_stmtrep_id(Htable()->Next_stmtrep_id());
+      if(Loop()->Loopback()->Last_stmtrep())
+	incr_stmt->Set_linenum(Loop()->Loopback()->Last_stmtrep()->Linenum());
+      else
+	incr_stmt->Set_linenum(Loop()->Loopback()->Linenum());
 // Bug 2569
 # ifdef KEY
       Loop()->Loopback()->Append_stmt_before_branch(incr_stmt);
@@ -2154,14 +2172,21 @@ IVR::Compute_trip_count(const OPCODE cmp_opc,
   //    Generate a trip-count to attach to the LOOP_INFO?
   // ************************************************************************
   
-  if (Phase() == MAINOPT_PHASE) {
+  if (Phase() == MAINOPT_PHASE ||
+      (VSA_Vra && Phase() == PREOPT_PHASE)) {
     // Generate an EVAL statement for the trip count expression if the
     // expression is a constant, it does not need to be optimized,
     // there is no need to enter in the BB. 
     if (trip_count->Kind() != CK_CONST) {
       STMTREP *loop_info_stmt = CXX_NEW(STMTREP(OPC_EVAL),
                                         Htable()->Mem_pool());
+      loop_info_stmt->Set_stmtrep_id(Htable()->Next_stmtrep_id());
       loop_info_stmt->Set_rhs(trip_count);
+      if(loop->Preheader()->Last_stmtrep())
+	loop_info_stmt->Set_linenum(loop->Preheader()->Last_stmtrep()->Linenum());
+      else
+	loop_info_stmt->Set_linenum(loop->Preheader()->Linenum());
+
       loop->Preheader()->Append_stmtrep(loop_info_stmt);
       loop->Set_trip_count_stmt(loop_info_stmt);
     } else 
@@ -2336,6 +2361,9 @@ IVR::Determine_trip_IV_and_exit_count(BB_LOOP *loopinfo,
   *trip_iv_found = trip_cand;
 
   loopinfo->Set_iv(trip_cand->Var());
+  if (Htable()->Phase() == MAINOPT_PHASE &&
+      !trip_cand->Incr_var()->Is_flag_set(CF_DEF_BY_PHI))
+    loopinfo->Set_step(trip_cand->Incr_var()->Defstmt()->Bb());
 
   // make sure the init is loop invariant
   CODEREP *trip_init =
@@ -2551,6 +2579,7 @@ IVR::Replace_secondary_IV(const IV_CAND *primary,
 
   STMTREP *newstmt =
     second_iv->Create_cpstmt(secondary->Var(), Htable()->Mem_pool());
+  newstmt->Set_stmtrep_id(_htable->Next_stmtrep_id());
   newstmt->Set_ivr_introduced();
   secondary->Var()->Reset_flag(CF_DEF_BY_PHI);
   secondary->Var()->Reset_flag(CF_DONT_PROP);

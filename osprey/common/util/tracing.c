@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -192,6 +196,11 @@ PDESC Phases[] = {
   { TP_WOPT2,		"OP2",	"More global optimization" },
   { TP_WOPT3,		"OP3",	"Even more global optimization" },
 
+  /* VSA & RBC */
+  { TP_VSA,             "VSA",  "VSA tracing" },
+  { TP_RBC,             "RBC",  "RBC tracing" },
+  { TP_CHECKER,         "CHK",  "VSA Checker tracing" },
+
   /* Loop nest optimizer: */
   { TP_VECDD,		"VDD",	"Vector data dependency analysis" },
   { TP_LNOPT,		"LNO",	"Loop Nest Optimization" },
@@ -226,6 +235,7 @@ PDESC Phases[] = {
   { TP_WSSA,		"WSA",	"WHIRL SSA" },
   { TP_CMOVE,           "CMV",  "CMOVE CONVERSION"},
   { TP_DSCHED,          "DSP",  "Dispatch Scheduling" },
+  { TP_PRO,             "PRO",  "Protection Related" },
 
   /* This one must be last: */
   { TP_COUNT,		NULL,  NULL }

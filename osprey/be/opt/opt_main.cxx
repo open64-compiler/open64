@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -344,9 +348,11 @@
 #include "opt_alias_mgr.h"
 #include "opt_alias_interface.h"	/* for Verify_alias() */
 #include "opt_vn.h"                     /* Global value numbering (gvn) */
+#include "opt_fold.h"
 
 #include "config_lno.h"
 #include "config_opt.h"			// for Delay_U64_Lowering
+#include "config_vsa.h"
 
 #include "dep_graph.h"			/* for tracing Current_Dep_Graph */
 #include "wb_ipl.h"			/* whirl browser for ipl */ 
@@ -363,6 +369,13 @@
 
 #if defined(TARG_SL)
 #include "opt_lclsc.h"
+#endif
+
+#if defined(BUILD_MASTIFF)
+#include "opt_dna.h"
+#include "opt_cda.h"
+#include "opt_vra.h"
+#include "opt_vsa_eh.h"
 #endif
 
 #include "wssa_utils.h"   // WHIRL SSA
@@ -386,7 +399,9 @@ extern void Simplify_bool_expr(COMP_UNIT *);
 extern void WN_unroll(WN *);
 
 static MEM_POOL  Opt_global_pool;
+static MEM_POOL  Opt_preopt_pool;
 static MEM_POOL  Opt_local_pool;
+static IPSA     *IPSA_manager = NULL;
 static ST       *Opt_current_pu_st = NULL;
 static PU_IDX    Opt_current_pu;
 
@@ -398,23 +413,111 @@ remove_redundant_mem_clears(WN *func,
                             ALIAS_MANAGER *alias_mgr,
                             DU_MANAGER *du_mgr);
 
-static void Opt_memory_init_pools(void)
+static BOOL Opt_memory_initialized = FALSE;
+static void Init_opt_memory_pools(void)
 {
-  OPT_POOL_Initialize(&Opt_global_pool, "Opt_global_pool", FALSE,
+  if (Opt_memory_initialized) return;
+
+  OPT_POOL_Initialize(&Opt_global_pool, "Opt_global_pool", TRUE,
 		      MEM_DUMP_FLAG + 1);
-  OPT_POOL_Initialize(&Opt_local_pool,  "Opt_local_pool",  FALSE,
+  OPT_POOL_Initialize(&Opt_preopt_pool, "Opt_preopt_pool", TRUE,
+		      MEM_DUMP_FLAG + 1);
+  OPT_POOL_Initialize(&Opt_local_pool,  "Opt_local_pool",  TRUE,
 		      MEM_DUMP_FLAG + 1);
   OPT_POOL_Push(&Opt_global_pool, MEM_DUMP_FLAG+1);
   OPT_POOL_Push(&Opt_local_pool, MEM_DUMP_FLAG+1);
+
+  Opt_memory_initialized = TRUE;
 }
 
-static void Opt_memory_terminate_pools(void)
+static void Terminate_opt_memory_pools(void)
 {
+  if (!Opt_memory_initialized) return;
+
   OPT_POOL_Pop(&Opt_global_pool, MEM_DUMP_FLAG+1);
   OPT_POOL_Pop(&Opt_local_pool, MEM_DUMP_FLAG+1);
   OPT_POOL_Delete(&Opt_global_pool, MEM_DUMP_FLAG+1);
   OPT_POOL_Delete(&Opt_local_pool, MEM_DUMP_FLAG+1);
+
+  Opt_memory_initialized = FALSE;
 }
+
+static void Manage_pu_level_memory(COMP_UNIT *comp_unit, MEM_POOL *pool)
+{
+  if (comp_unit->Phase() == PREOPT_PHASE) {
+    CXX_DELETE(comp_unit, &Opt_preopt_pool);
+    OPT_POOL_Pop(&Opt_preopt_pool, MEM_DUMP_FLAG+1);
+  }
+
+#ifdef BUILD_MASTIFF
+  if (IPSA_manager != NULL) return;
+#endif
+
+  CXX_DELETE(comp_unit, &Opt_global_pool);
+  Terminate_opt_memory_pools();
+}
+
+#if defined(BUILD_MASTIFF)
+void Init_ipsa_context(void)
+{
+  Init_opt_memory_pools();
+  IPSA_manager = CXX_NEW(IPSA(), Malloc_Mem_Pool);
+  g_ipsa_manager = IPSA_manager;
+}
+
+void IPSA_analyze(void)
+{
+  OPT_POOL_Delete(&Opt_preopt_pool, MEM_DUMP_FLAG+1);
+  IPSA_manager->Transition_state();
+  IPSA_manager->Analyze();
+}
+
+void IPSA_emit(char *workdir)
+{
+  if(!IPSA_manager) return;
+  IPSA_manager->Emit(workdir);
+}
+
+BOOL IPSA_insession(void)
+{
+  return (Run_vsaopt && IPSA_manager != NULL);
+}
+
+DNA_NODE* Get_cur_dna(void)
+{
+  return IPSA_manager ? IPSA_manager->Cur_dna() : NULL;
+}
+
+void IPSA_verify(void)
+{
+  IPSA_manager->Verify();
+}
+
+void IPSA_build_cha_begin(void)
+{
+  if(!IPSA_manager) return;
+  IPSA_manager->Build_cha_begin();
+}
+
+void IPSA_build_cha(void)
+{
+  if(!IPSA_manager) return;
+  IPSA_manager->Build_and_merge_cha();
+}
+
+void IPSA_build_cha_end(void)
+{
+  if(!IPSA_manager) return;
+  IPSA_manager->Build_cha_end();
+}
+
+void Terminate_ipsa_context(void)
+{
+  CXX_DELETE(IPSA_manager, Malloc_Mem_Pool);
+  Terminate_opt_memory_pools();
+  IPSA_manager = NULL;
+}
+#endif
 
 static void Opt_set_current_pu_name(WN *wn_tree)
 {
@@ -482,6 +585,7 @@ private:
   BOOL  _alias_classification;
   BOOL  _alias_class_fortran_rule;
   BOOL  _alias_pointer_parms;
+  BOOL  _bits_load_store;
   BOOL  _combine_operations;
   BOOL  _call_zero_version; 
   BOOL  _compare_simp;
@@ -527,7 +631,18 @@ private:
   BOOL  _verbose;
   INT32 _verify;	/* verify data structures      	                */
   BOOL  _vn_full;
+  BOOL  _vsa_aob;       /* Array out of bound */
+  BOOL  _vsa_npd;       /* Null pointer dereference */
+  BOOL  _vsa_rbc;       /* Rule based check */
+  BOOL  _vsa_uaf;       /* Use after free */
+  BOOL  _vsa_uiv;       /* Uninitialized variable reference */
+  BOOL  _vsa_ubf;
+  BOOL  _vsa_msf;
+  BOOL  _vsa_ddv;
+  BOOL  _vsa_ral;
+  BOOL  _vsa_rvsa;
   BOOL  _vsym_unique;
+  BOOL  _warn_uninit;
   BOOL  _while_loop;	/* cvt while-do to do-loop			*/
   BOOL  _wn_simp;	/* WHIRL node simplifier			*/
   BOOL  _whirl_ssa;     /* emit WHIRL SSA in WOPT emitter               */
@@ -554,6 +669,23 @@ private:
   WOPT_SWITCHES& operator = (const WOPT_SWITCHES&);
   void Adjust_Optimization(void) {
     switch (_phase) {
+    case PREOPT_PHASE:
+      if (Run_vsaopt) {
+	  WOPT_Enable_Bits_Load_Store = FALSE;
+	  WOPT_Enable_Input_Prop = FALSE; // we perform vsa after coderep creation
+	  WOPT_Enable_IVR = TRUE;
+          //let -VSA:aob|npd|uaf|uiv|ral|dead to control these flags
+	  //VSA_Aob = TRUE;
+	  //VSA_Npd = TRUE;
+	  //VSA_Uaf = FALSE;
+	  //VSA_Uiv = TRUE;
+	  //VSA_Ral = TRUE;
+	  //VSA_Ddv = TRUE;
+      }
+      else {
+          VSA_Alias_Local_Lda = TRUE;  // force LDA on local var aliased with call
+      }
+      break;
     case PREOPT_DUONLY_PHASE:
       /* set all optimizations off */
       WOPT_Enable_Add_Do_Loop_Info =
@@ -677,6 +809,61 @@ private:
 
       if (!OPT_Enable_EH_CFG_OPT_Set)
         OPT_Enable_EH_CFG_OPT = TRUE;
+
+      // Disable all makor opts when we are running vsa 
+      if (Run_vsaopt) {
+	  WOPT_Bottom_Test_Loop_Check = FALSE;
+	  WOPT_Enable_Aggressive_Code_Motion = FALSE;
+	  WOPT_Enable_Aggr_Invariant == FALSE;
+	  WOPT_Enable_Aggressive_Lftr == FALSE;
+	  WOPT_Enable_Autoaggstr_Reduction_Threshold = 0;
+	  WOPT_Enable_Bitwise_DCE = FALSE;
+	  WOPT_Enable_Bits_Load_Store = FALSE;
+	  WOPT_Enable_CFG_Opt = FALSE; WOPT_Enable_Compare_Simp = FALSE;
+	  WOPT_Enable_CSE_FP_comparison = FALSE;
+	  WOPT_Enable_Const_PRE = FALSE;
+	  WOPT_Enable_DIVREM = FALSE;
+	  WOPT_Enable_Edge_Placement = WOPT_Enable_Backedge_Placement = WOPT_Enable_Exp_PRE = FALSE;
+	  OPT_Enable_EH_CFG_OPT = FALSE;
+	  WOPT_Enable_Hoisting = FALSE;
+	  WOPT_Enable_Invariant_Loop_Bounds = FALSE;
+	  WOPT_Enable_Ivar_Hoisting = FALSE;
+	  WOPT_Enable_Ivar_PRE = FALSE;
+	  WOPT_Enable_IVE_Old = FALSE;
+	  //WOPT_Enable_IVR = FALSE;    /* enable IVR for value range analysis */
+	  WOPT_Enable_LFTR_Ivar = FALSE;
+	  WOPT_Enable_LFTR2 = FALSE;
+	  WOPT_Enable_Load_PRE = FALSE;
+	  WOPT_Enable_Loopinvarexp_Str_Reduction = FALSE;
+	  WOPT_Enable_Local_Rvi = FALSE;
+	  WOPT_Enable_Move_Intrinsicop = FALSE;
+	  WOPT_Enable_New_SR = FALSE;
+	  WOPT_Enable_Parm = FALSE;
+	  WOPT_Enable_Pro_Loop_Fusion_Trans = FALSE;
+	  WOPT_Enable_Pro_Loop_Interchange_Trans = FALSE;
+	  WOPT_Enable_Pro_Loop_Limit = -1;
+	  WOPT_Enable_Reassociation_CSE = FALSE;
+	  WOPT_Enable_Replace_Second_IV = FALSE; 
+	  WOPT_Enable_Rsv_Bits = 0;
+	  WOPT_Enable_RVI = FALSE;
+	  WOPT_Enable_SLT = FALSE;
+	  //WOPT_Enable_Simple_If_Conv = 0; /* enable if-conv for simplify JAVA boolean expression */
+	  WOPT_Enable_SSA_PRE = FALSE;
+	  WOPT_Enable_Store_PRE = FALSE;
+	  WOPT_Enable_Shrink = FALSE;
+	  WOPT_Enable_Tail_Recur = FALSE;
+	  WOPT_Enable_Value_Numbering = FALSE;
+	  WOPT_Enable_Verify = 0;
+	  WOPT_Enable_VN_Full = FALSE;
+	  WOPT_Enable_Vn_Ivc = 0;
+	  WOPT_Enable_WN_Unroll = 0;
+	  WOPT_Enable_WOVP = FALSE;
+	  WOPT_Simplify_Bit_Op = FALSE;
+	  WOPT_Enable_Tail_Recur = FALSE;
+      } // end Run_vsaopt
+      else {
+          VSA_Alias_Local_Lda = TRUE;  // force LDA on local var aliased with call
+      }
       break; // end MAINOPT_PHASE
 
 #ifdef TARG_NVISA
@@ -763,6 +950,21 @@ private:
 
   void Unadjust_Optimization(void) {
     switch (_phase) {
+    case PREOPT_PHASE:
+      WOPT_Enable_Input_Prop  = _input_prop;  /* For both NVISA and VSA */
+      if (Run_vsaopt) {
+	WOPT_Enable_Warn_Uninit = _warn_uninit;
+	VSA_Aob = _vsa_aob;       /* Array out of bound */
+	VSA_Npd = _vsa_npd;       /* Null pointer dereference */
+	VSA_Rbc = _vsa_rbc;       /* Rule based check */
+	VSA_Uaf = _vsa_uaf;       /* Use after free */
+	VSA_Uiv = _vsa_uiv;       /* Uninitialized variable reference */
+	VSA_Ral = _vsa_ral;
+	VSA_Ddv = _vsa_ddv;
+	VSA_Msf = _vsa_msf;
+        VSA_Rvsa = _vsa_rvsa;
+      }
+      break;
     case PREOPT_DUONLY_PHASE:
       /* reset all optimizations */
       WOPT_Enable_Compare_Simp = _compare_simp;
@@ -861,6 +1063,7 @@ private:
     WOPT_Enable_Nothrow_Opt = _nothrow;
     WOPT_Enable_Simple_If_Conv = _simp_if_conv;
     WOPT_Enable_Bool_Simp = _bool_simp;
+    WOPT_Enable_Bits_Load_Store = _bits_load_store;
     WOPT_Enable_Fold_Lda_Iload_Istore = _fold_lda_iload_istore;
     Enable_WN_Simp = _wn_simp;
     WOPT_Enable_Goto = _goto;
@@ -897,6 +1100,7 @@ public:
     _aggressive_code_motion = WOPT_Enable_Aggressive_Code_Motion;
     _alias_classification = WOPT_Enable_Alias_Classification;
     _alias_class_fortran_rule = WOPT_Enable_Alias_Class_Fortran_Rule;
+    _bits_load_store = WOPT_Enable_Bits_Load_Store;
     _call_zero_version = WOPT_Enable_Call_Zero_Version;
     _combine_operations = WOPT_Enable_Combine_Operations;
     _compare_simp = WOPT_Enable_Compare_Simp;
@@ -934,8 +1138,18 @@ public:
     _update_vsym = WOPT_Enable_Update_Vsym;
     _value_numbering = WOPT_Enable_Value_Numbering;
     _verbose = WOPT_Enable_Verbose;
+    _vsa_aob = VSA_Aob;       /* Array out of bound */
+    _vsa_npd = VSA_Npd;       /* Null pointer dereference */
+    _vsa_rbc = VSA_Rbc;       /* Rule based check */
+    _vsa_uaf = VSA_Uaf;       /* Use after free */
+    _vsa_uiv = VSA_Uiv;       /* Uninitialized variable reference */
+    _vsa_ddv = VSA_Ddv;
+    _vsa_ral = VSA_Ral;
+    _vsa_msf = VSA_Msf;
+    _vsa_rvsa = VSA_Rvsa;
     _vsym_unique = WOPT_Enable_Vsym_Unique;
     _verify = WOPT_Enable_Verify;	/* verify data structures */
+    _warn_uninit = WOPT_Enable_Warn_Uninit;
     _while_loop = WOPT_Enable_While_Loop;/*cvt while-do to do-loop */
     _wn_simp = Enable_WN_Simp;
     _whirl_ssa = OPT_Enable_WHIRL_SSA;
@@ -978,7 +1192,7 @@ public:
 COMP_UNIT::COMP_UNIT(WN *t, ALIAS_MANAGER *am, OPT_PHASE phase, 
 		     MEM_POOL *gpool,MEM_POOL *lpool)
 {
-  extern void  Initialize_CR_simp(CODEMAP*); // or we include opt_fold.h
+  // extern void  Initialize_CR_simp(CODEMAP*); // or we include opt_fold.h
 
   _phase = phase;
   Set_tlog_phase(phase);
@@ -998,10 +1212,18 @@ COMP_UNIT::COMP_UNIT(WN *t, ALIAS_MANAGER *am, OPT_PHASE phase,
 			    _opt_stab, _ssa,
                             VAR_PHI_HASH_SIZE, phase, gpool),
 		    gpool);
+#ifdef BUILD_MASTIFF
+  _cda = NULL;
+  _vra = NULL;
+  _vsa = NULL;
+  _dna = NULL;
+  _eh_table = NULL;
+#endif
   _main_emitter = NULL;
   WN_init_flags(gpool);            // Create a debugging WN map
   Initialize_CR_simp(_htable);     // CR simplifier needs to be initialized
   VN_EXPR::Init_Free_Lists(gpool); // Initialize free lists for value numbering
+
 }
 
 
@@ -1011,6 +1233,11 @@ COMP_UNIT::~COMP_UNIT(void)
 {
   VN_EXPR::Reclaim_Free_Lists(); // Reclaim free lists for value numbering
   WN_fini_flags();                // Delete the debugging WN map
+#ifdef BUILD_MASTIFF
+  CXX_DELETE(_eh_table, _mem_pool);
+  CXX_DELETE(_cda,      _mem_pool);
+  CXX_DELETE(_vra,      _mem_pool);
+#endif
   CXX_DELETE(_cfg,      _mem_pool);
   CXX_DELETE(_opt_stab, _mem_pool);
   CXX_DELETE(_ssa,      _mem_pool);
@@ -1212,7 +1439,7 @@ Do_Pre_Before_Ivr(COMP_UNIT *comp_unit)
 
 
 WN *
-Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
+Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 	      ALIAS_MANAGER *alias_mgr)
 {
   WN *wn_orig = wn_tree; // needed for region <--> RID consistency
@@ -1257,8 +1484,7 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
     disable_parm_alias = TRUE;
   }
 
-  WOPT_SWITCHES WOPT_Enable((OPT_PHASE)phase, pragma_flags,
-			    disable_parm_alias);
+  WOPT_SWITCHES WOPT_Enable(phase, pragma_flags, disable_parm_alias);
 
   // A nested function that is not MP does not inherit the 
   // restricted mapping. e.g. varfmt nested functions.
@@ -1327,7 +1553,8 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
 #endif
 
 #if defined(KEY) && !(defined(TARG_IA64) || defined(TARG_SL))
-    WN_unroll(wn_tree);
+    if (WOPT_Enable_Innerloop_Unroll)
+      WN_unroll(wn_tree);
 #endif
 
     if (Cur_PU_Feedback)
@@ -1340,6 +1567,10 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
     // return if we should not optimize this function
     if (dont_opt) return wn_tree;
+
+#if defined(BUILD_MASTIFF) && defined(XVSA_PROTECT_NONE)
+    if (time(NULL) - VSA_BUILD_DATE >= 60 * 60 * 24 * 120) return wn_tree;  // expire in 120 days
+#endif
 
     WN_Simplifier_Enable(FALSE);
     
@@ -1390,7 +1621,7 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
   }
 
-  Opt_memory_init_pools();
+  Init_opt_memory_pools();
 
   // goto conversion
   if (WOPT_Enable_Goto &&
@@ -1448,14 +1679,22 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
 #endif
 
   // allocate space for cfg, htable, and itable
+  MEM_POOL* gpool;
+  if (phase == PREOPT_PHASE) {
+    gpool = &Opt_preopt_pool;
+    OPT_POOL_Push(gpool, MEM_DUMP_FLAG+1);
+  }
+  else {
+    gpool = &Opt_global_pool;
+  }
   COMP_UNIT *comp_unit = CXX_NEW(COMP_UNIT(wn_tree, alias_mgr,
-		(OPT_PHASE)phase, &Opt_global_pool, &Opt_local_pool),
-				 &Opt_global_pool);
+		                 phase, gpool, &Opt_local_pool),
+				 gpool);
 
-#ifdef Is_True_On
+//#ifdef Is_True_On
   g_comp_unit = comp_unit;
   // comp_unit->Verify_addr_taken();
-#endif
+//#endif
 
   Is_True(comp_unit->Cfg()->Verify_tree(comp_unit->Input_tree()), 
 	  ("Verifying CFG wrong"));
@@ -1497,6 +1736,16 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
     ac.Classify_memops(comp_unit->Input_tree());
     comp_unit->Opt_stab()->Incorporate_alias_class_info();
   }
+
+#ifdef BUILD_MASTIFF
+  if (phase == PREOPT_PHASE && Run_vsaopt ) {
+    SET_OPT_PHASE("Create DNA_NODE");
+    // just to create DNA_NODE
+    // and initialize INLCXT_MAP and STPATH_MAP
+    // For INLCXT_MAP, need to do this before create CFG
+    comp_unit->Do_vsa(IPSA_manager);
+  }
+#endif
 
 #ifdef Is_True_On
   g_opt_stab = comp_unit->Opt_stab();
@@ -1566,7 +1815,7 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
   if (Get_Trace(TP_GLOBOPT, SSA_DUMP_FLAG)) {
     fprintf(TFile, "\nAfter SSA Construction...\n");
-    comp_unit->Ssa()->Print();
+    comp_unit->Ssa()->Print(TFile);
   }
 
   // Why do we wait until now to free the alias class resources? It
@@ -1585,9 +1834,7 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
   SET_OPT_PHASE("SSA Pointer Alias Analysis");
   comp_unit->Ssa()->Pointer_Alias_Analysis();
   SET_OPT_PHASE("Dead Store Elimination");
-  comp_unit->Ssa()->Dead_store_elim(comp_unit->Cfg(),
-                                    comp_unit->Opt_stab(),
-                                    comp_unit->Exc());
+  comp_unit->Ssa()->Dead_store_elim(comp_unit);
   if (phase == MAINOPT_PHASE) {
     SET_OPT_PHASE("Reassociation enabled CSE");
     comp_unit->Do_reasso();
@@ -1633,6 +1880,13 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
     comp_unit->Do_iv_recognition();
   }
 
+#if 0
+  // do vulnerability scan
+  if (Run_vsaopt) {
+    SET_OPT_PHASE("Vulnerability Static Analysis");
+    comp_unit->Do_vsa(IPSA_manager);
+  }
+#endif
   // do flow free copy propagation
   if (WOPT_Enable_Copy_Propagate) {
     SET_OPT_PHASE("Copy Propagation");
@@ -1662,7 +1916,7 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
   }
 
 #ifdef KEY
-  if (WOPT_Enable_Warn_Uninit && phase == MAINOPT_PHASE)
+  if (WOPT_Enable_Warn_Uninit) // just wanted to gurantee run once with this funciton; && phase == MAINOPT_PHASE)
     comp_unit->Find_uninitialized_locals();
 #endif
 
@@ -1749,6 +2003,14 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
   Is_True(comp_unit->Verify_IR(comp_unit->Cfg(), comp_unit->Htable(), 3),
 	  ("Verify CFG wrong after extra passes"));
+
+#ifdef BUILD_MASTIFF
+  // do vulnerability scan
+  if (phase == MAINOPT_PHASE && Run_vsaopt) {
+    SET_OPT_PHASE("Vulnerability Static Analysis");
+    comp_unit->Do_vsa(IPSA_manager);
+  }
+#endif
 
   if (WOPT_Enable_Edge_Placement && phase == MAINOPT_PHASE) {
     SET_OPT_PHASE("Remove Critical Edge");
@@ -1956,80 +2218,84 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
         }
       }
 #endif
+    }  // WOPT_Enable_SSA_PRE
 
-      if (OPT_Enable_WHIRL_SSA) {
-        // remove dead ssa nodes before emit WHIRL
-        comp_unit->Do_dead_code_elim(TRUE, TRUE, TRUE, TRUE,
-                                     TRUE,
-                                     FALSE,
-                                     NULL);
-        Is_True(comp_unit->Verify_IR(comp_unit->Cfg(),comp_unit->Htable(),7),
-                ("Verify CFG wrong after creating RVI instance"));
-      }
+    if (OPT_Enable_WHIRL_SSA) {
+      // remove dead ssa nodes before emit WHIRL
+      comp_unit->Do_dead_code_elim(TRUE, TRUE, TRUE, TRUE,
+				   TRUE,
+				   FALSE,
+				   NULL);
+      Is_True(comp_unit->Verify_IR(comp_unit->Cfg(),comp_unit->Htable(),7),
+	      ("Verify CFG wrong after creating RVI instance"));
+    }
 
-      if (WOPT_Enable_RVI) {
-	// Hacky invocation of new PRE RVI hooks for testing. TODO:
-	// Clean this up.
-	SET_OPT_PHASE("RVI hooks for SSA PRE");
-	comp_unit->
-	  Set_pre_rvi_hooks(CXX_NEW(PRE_RVI_HOOKS(comp_unit->Opt_stab(),
-						  comp_unit->Cfg(),
-						  &Opt_local_pool,
-						  Get_Trace(TP_GLOBOPT,
-							    EPRE_DUMP_FLAG)),
-				    &Opt_local_pool));
-      }
+    if (WOPT_Enable_RVI) {
+      // Hacky invocation of new PRE RVI hooks for testing. TODO:
+      // Clean this up.
+      SET_OPT_PHASE("RVI hooks for SSA PRE");
+      comp_unit->
+	Set_pre_rvi_hooks(CXX_NEW(PRE_RVI_HOOKS(comp_unit->Opt_stab(),
+						comp_unit->Cfg(),
+						&Opt_local_pool,
+						Get_Trace(TP_GLOBOPT,
+							  EPRE_DUMP_FLAG)),
+				  &Opt_local_pool));
+    }
 
-      // create RVI instance before emitting anything
-      RVI rvi(WOPT_Enable_RVI, comp_unit->Opt_stab(), 
-	      WOPT_Enable_RVI ? comp_unit->Pre_rvi_hooks()->Nbits() : 0,
-	      alias_mgr );
+    // create RVI instance before emitting anything
+    RVI rvi(WOPT_Enable_RVI, comp_unit->Opt_stab(),
+	    WOPT_Enable_RVI ? comp_unit->Pre_rvi_hooks()->Nbits() : 0,
+	    alias_mgr );
 
-      Is_True(comp_unit->Verify_IR(comp_unit->Cfg(),comp_unit->Htable(),6),
-              ("Verify CFG wrong after creating RVI instance"));
+    Is_True(comp_unit->Verify_IR(comp_unit->Cfg(),comp_unit->Htable(),6),
+	    ("Verify CFG wrong after creating RVI instance"));
 
-      if (Get_Trace(TP_GLOBOPT, ENABLE_STAT)) {
-      	comp_unit->Collect_statistics();
-      }
+    if (Get_Trace(TP_GLOBOPT, ENABLE_STAT)) {
+      comp_unit->Collect_statistics();
+    }
 
-      if (WOPT_Enable_ZDL) {
-        SET_OPT_PHASE("ZDL transformation");
-        comp_unit->Do_zdl(&rvi);
-      }
+    if (WOPT_Enable_ZDL) {
+      SET_OPT_PHASE("ZDL transformation");
+      comp_unit->Do_zdl(&rvi);
+    }
+    
+    SET_OPT_PHASE("MainOpt emitter");
 
-      SET_OPT_PHASE("MainOpt emitter");
+    if ( comp_unit->Cfg()->Feedback() )
+      comp_unit->Cfg()->Feedback()->Verify( comp_unit->Cfg(),
+					    "before MainOpt emitter" );
+    if (comp_unit->Cfg()->Feedback() &&
+	comp_unit->Cfg()->Feedback()->Trace())
+      comp_unit->Cfg()->Feedback()->Print( TFile );
 
-      if ( comp_unit->Cfg()->Feedback() )
-	comp_unit->Cfg()->Feedback()->Verify( comp_unit->Cfg(),
-					      "before MainOpt emitter" );
-      if (comp_unit->Cfg()->Feedback() &&
-	  comp_unit->Cfg()->Feedback()->Trace())
-	comp_unit->Cfg()->Feedback()->Print( TFile );
-
+    // if ipsa cg is on, emit whirl later in IPSA::Emit phase
+    if(Run_ipsacomp) {
+      opt_wn = wn_orig;
+      comp_unit->Cfg()->Analyze_loops();
+    } else {
       opt_wn = comp_unit->Emit_ML_WHIRL(&rvi);
+    }
+    if (Cur_PU_Feedback)
+      Cur_PU_Feedback->Reset_Root_WN(opt_wn);
+
+    Is_True(REGION_consistency_check(opt_wn),(""));
+    Is_True(Verify_alias(alias_mgr,opt_wn),(""));
+
+#if !defined(TARG_IA32) && !defined(TARG_X8664) && !defined(TARG_UWASM)
+    if ( WOPT_Enable_RVI ) {
+      SET_OPT_PHASE("RVI");
+      opt_wn = rvi.Perform_RVI( opt_wn, alias_mgr );
       if (Cur_PU_Feedback)
 	Cur_PU_Feedback->Reset_Root_WN(opt_wn);
-
       Is_True(REGION_consistency_check(opt_wn),(""));
       Is_True(Verify_alias(alias_mgr,opt_wn),(""));
-
-#if !defined(TARG_IA32) && !defined(TARG_X8664)
-      if ( WOPT_Enable_RVI ) {
-        SET_OPT_PHASE("RVI");
-        opt_wn = rvi.Perform_RVI( opt_wn, alias_mgr );
-	if (Cur_PU_Feedback)
-	  Cur_PU_Feedback->Reset_Root_WN(opt_wn);
-        Is_True(REGION_consistency_check(opt_wn),(""));
-        Is_True(Verify_alias(alias_mgr,opt_wn),(""));
-      }
+    }
 #endif
 
-      // free up optimizer's pools
-      // NOTE that the rvi phase uses its own
-      CXX_DELETE(comp_unit, &Opt_global_pool);
-      Opt_memory_terminate_pools();
-
-    }
+    // free up optimizer's pools
+    // NOTE that the rvi phase uses its own
+    Manage_pu_level_memory(comp_unit, &Opt_global_pool);
 
   } /* if ( phase == MAINOPT_PHASE ) */
   else { 
@@ -2083,6 +2349,13 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
     opt_wn = comp_unit->Emitter()->Emit(comp_unit, du_mgr, alias_mgr);
     if (Cur_PU_Feedback)
       Cur_PU_Feedback->Reset_Root_WN(opt_wn);
+
+#ifdef BUILD_MASTIFF
+    /* remove dead STPATH after PREOPT emit */
+    if (IPSA_insession()) {
+      comp_unit->Dna()->Remove_dead_stpath();
+    }
+#endif
 
     if (OPT_Enable_WHIRL_SSA) {
 #ifdef Is_True_On
@@ -2150,8 +2423,7 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
     // Identify redudant mem clears that follow a calloc and remove them
     remove_redundant_mem_clears(opt_wn, alias_mgr, du_mgr);
 
-    CXX_DELETE(comp_unit, &Opt_global_pool);
-    Opt_memory_terminate_pools();
+    Manage_pu_level_memory(comp_unit, &Opt_global_pool);
 
     if (WN_opcode(opt_wn) == OPC_FUNC_ENTRY)
       Verify_SYMTAB (CURRENT_SYMTAB);
@@ -2194,7 +2466,7 @@ Pre_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
 // Proactive loop optimizer.
 WN * 
-Proactive_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
+Proactive_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 		    ALIAS_MANAGER *alias_mgr)
 {
   if (Get_Trace(TP_GLOBOPT, -1)) 
@@ -2222,8 +2494,7 @@ Proactive_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
     disable_parm_alias = TRUE;
   }
 
-  WOPT_SWITCHES WOPT_Enable((OPT_PHASE)phase, pragma_flags,
-			      disable_parm_alias);
+  WOPT_SWITCHES WOPT_Enable(phase, pragma_flags, disable_parm_alias);
 
   // A nested function that is not MP does not inherit the 
   // restricted mapping. e.g. varfmt nested functions.
@@ -2237,15 +2508,15 @@ Proactive_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
   BOOL Fold_LDA_save = WN_Simp_Fold_LDA;
 
   enable_tree_freq_display();  // enable frequency display for ascii WHIRL dumps
-  Opt_memory_init_pools();
+  Init_opt_memory_pools();
 
   // allocate space for cfg, htable, and itable
   COMP_UNIT *comp_unit = CXX_NEW(COMP_UNIT(wn_tree, alias_mgr,
-					   (OPT_PHASE)phase, &Opt_global_pool, &Opt_local_pool),
+					   phase, &Opt_global_pool, &Opt_local_pool),
 				 &Opt_global_pool);
-#ifdef Is_True_On
+//#ifdef Is_True_On
   g_comp_unit = comp_unit;
-#endif
+//#endif
 
   REGION_LEVEL rgn_level = RID_preopt_level(phase);
 
@@ -2334,9 +2605,7 @@ Proactive_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
   comp_unit->Opt_stab()->Alias_classification()->Release_resources();
 
   SET_OPT_PHASE("Dead Store Elimination");
-  comp_unit->Ssa()->Dead_store_elim(comp_unit->Cfg(),
-				    comp_unit->Opt_stab(),
-				    comp_unit->Exc());
+  comp_unit->Ssa()->Dead_store_elim(comp_unit);
 
   comp_unit->Opt_stab()->Update_return_mu();
   
@@ -2368,8 +2637,7 @@ Proactive_Optimizer(INT32 phase, WN *wn_tree, DU_MANAGER *du_mgr,
   if (Cur_PU_Feedback)
     Cur_PU_Feedback->Reset_Root_WN(opt_wn);
 
-  CXX_DELETE(comp_unit, &Opt_global_pool);
-  Opt_memory_terminate_pools();
+  Manage_pu_level_memory(comp_unit, &Opt_global_pool);
 
   if (WN_opcode(opt_wn) == OPC_FUNC_ENTRY)
     Verify_SYMTAB (CURRENT_SYMTAB);

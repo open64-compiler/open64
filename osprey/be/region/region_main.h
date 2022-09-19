@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -62,6 +66,8 @@ extern INT REGION_Initialize(WN *, BOOL);
 
 /* Pop the REGION_mem_pool */
 extern void REGION_Finalize(void);
+
+extern void REGION_Finalize_wo_delete(void);
 
 /* Iterate over a REGION tree, finding those REGIONs with no "earlier"
    sub-REGION.  When First or Next returns, iter points to a REGION_CS_ITER

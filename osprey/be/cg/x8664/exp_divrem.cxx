@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -879,7 +883,7 @@ Expand_Divide (TN *result, TN *src1, TN *src2, TYPE_ID mtype, OPS *ops)
   if (const_src2) {
     if (src2_val == 0){
       /* Instead of triggering an assertion, give a warning mesg could be good
-	 enought. Since this piece of code might never be executed, especially
+	 enough. Since this piece of code might never be executed, especially
 	 when the code is compiled at -O0 level.
 	 Does opteron provide any break instruction like ia64 does?
       */
@@ -999,8 +1003,14 @@ Expand_Mod (TN *result, TN *src1, TN *src2, TYPE_ID mtype, OPS *ops)
   }
 
   if (const_src2)
-    if (src2_val == 0) // Division by Zero!
-      FmtAssert (FALSE, ("Division by zero detected.\n"));
+    if (src2_val == 0) { // Division by Zero!
+      /* Instead of triggering an assertion, give a warning mesg could be good
+	 enough. Since this piece of code might never be executed, especially
+	 when the code is compiled at -O0 level.
+	 Does opteron provide any break instruction like ia64 does?
+      */
+      DevWarn("Division by zero detected.\n");
+	}
 
   // Calculate remainder.
   TN *remainder = result;

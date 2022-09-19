@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2002, 2003, 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -470,9 +474,20 @@ extern void ErrMsgSrcpos ( INT ErrCode, SRCPOS SrcPos, ... );
 /* Check assertion only if Is_True_On flag is set: */
 #ifdef Is_True_On
 # define Is_True FmtAssert
+# define Is_True_Ret(cond, msg, ...) Is_True(cond, msg)
 #else
 # define Is_True(a, b) ((void) 1)
+# define Is_True_Ret(cond, msg, ...)    \
+  if(!(cond)) {                         \
+    return __VA_ARGS__;                 \
+  }
 #endif
+
+/* condition should be satisfied so that the following code works
+ * NEED to check cond and do graceful cancelling if cond checking fails */
+#define Is_True_Weak   Is_True
+/* condition must be satisfied at any time with any input */
+#define Is_True_Strong Is_True
 
 /*PRINTFLIKE1*/
 extern void DevWarn( const char* FormatString,... )
@@ -497,6 +512,59 @@ extern BOOL Count_Limit_DevWarn( const char *const src_fname,
 	  DevWarn args : \
 	  (void) 1 )
 
+/* Message kind
+ * INFO: this message is for information
+ * WARN: this message is a warning
+ * ERROR: this message is a error and the scan will stop
+ */
+typedef enum {
+  MSG_INFO,   // information, like scan progress
+  MSG_WARN,   // warning, like can't apply a single rule
+  MSG_ERROR   // error, scan can't be performed
+} MESSAGE_KIND;
+
+// register new message id on sharepoint
+// https://xcalibyteadmin.sharepoint.com/:x:/s/Xcalibyte/ET4e1nelC6VLhjKjicah6CcBC5uqcJFw-LwLsEgy7xI_pA?e=oWeak6
+// ATTENTION: always append to the end of list.
+// ATTENTION: check comments on Who/Where/Which/What to set the right value
+typedef enum {
+  I_SCAN_PROGRESS         = 0x81440318,        // scan progress
+  E_SCAN_LIB_INCOMPATIBLE = 0x81450301,        // vtable library version incompatible
+} MESSAGE_ID;
+
+/* Report_Message
+ * Write message to stderr without extra information.
+ * Example:
+ * info:0x01440318
+ */
+extern void Report_Message(MESSAGE_KIND kind, MESSAGE_ID id);
+
+/* Report_Message_Fmt
+ * Write message to stderr with extra information.
+ * Example:
+ * info:0x01440318: scan progress 1%
+ */
+extern void Report_Message_Fmt(MESSAGE_KIND kind, MESSAGE_ID id, const char *fmt, ...);
+
+/* Display progress during compilation
+ * front end/wgen/inliner:  0 ~  10%, file based
+ * pre-opt/main-opt:       11 ~  30%, PU based for no-xfa, file based for xfa
+ * ipsa link:              31 ~  50%, PU based
+ * ipsa analyze:           51 ~ 100%, PU based
+ */
+enum PROGRESS_STATS {
+  PS_BE_INIT = 1,
+  PS_BE_P1 = 5,
+  PS_BE_P2 = 8,
+  PS_WOPT_S = 11,    PS_WOPT_C = 9,      // from 11 to 30
+  PS_LINK_P1_S = 21, PS_LINK_P1_C = 9,   // from 21 to 50
+  PS_LINK_P2_S = 31, PS_LINK_P2_C = 9,   // from 21 to 50
+  PS_LINK_P3_S = 41, PS_LINK_P3_C = 9,   // from 21 to 50
+  PS_ANALYZE_S = 51, PS_ANALYZE_C = 49,  // from 51 to 100
+  PS_DONE = 100,                         // finish
+};
+
+extern void Display_Progress(UINT progress, BOOL force);
 
 /* DevAssert is just a synonym for Is_True. It's use is deprecated.
  * Please use Is_True instead.
@@ -517,12 +585,18 @@ extern BOOL Count_Limit_DevWarn( const char *const src_fname,
 #define	ES_IGNORE	0	/* Ignore completely */
 #define ES_ADVISORY	1	/* Advisory only */
 #define ES_WARNING	2	/* Warning - potential problem */
-#define ES_CONFORMANCE	3	/* May not conform to standard */
-#define ES_ERROR	4	/* Minimum error level */
-#define ES_ERRBENIGN	4	/* Error: finish processing */
-#define ES_ERRPHASE	5	/* Error: finish phase, other files */
-#define ES_ERRABORT	6	/* Error: terminate immediately */
-#define ES_MAX		6	/* Maximum severity */
+#define ES_SAADVBRNG    (3-1)   /* begin range of test for analysis adv */
+#define ES_SAADV1       3       /* Static analysis advisory cat 1 */
+#define ES_SAADV2       4       /* Static analysis advisory cat 2 */
+#define ES_SAADV3       5       /* Static analysis advisory cat 3 */
+#define ES_SAADV4       6       /* Static analysis advisory cat 4 - Perf */
+#define ES_SAADVERNG    (5+1)   /* end   range of test for analysis adv */
+#define ES_CONFORMANCE	7	/* May not conform to standard */
+#define ES_ERROR	8	/* Minimum error level */
+#define ES_ERRBENIGN	8	/* Error: finish processing */
+#define ES_ERRPHASE	9	/* Error: finish phase, other files */
+#define ES_ERRABORT	10	/* Error: terminate immediately */
+#define ES_MAX	        10	/* Maximum severity */
 
 /* Predefined phase numbers.  These are more coarse than the phases
  * named by calls to Set_Error_Phase, and represent the collections
@@ -580,6 +654,9 @@ extern INT errno;
 extern INT Min_Error_Severity;
 extern INT Conformance_Level;
 
+extern void Set_VsaRpt_File(const char *filename);
+extern void Get_VsaRpt_Severity(INT ecode, const char **category, const char **seveirty);
+
 /* Error table initialization.  All users of this package must call
  * this routine before emitting any error messages.
  */
@@ -591,6 +668,9 @@ extern void Set_Error_Tables(
 
 extern void
 Set_Error_Descriptor (INT, ERROR_DESC *);
+
+extern ERROR_DESC *
+Find_Error_Desc (INT);
 
 /* Control files to report errors to: */
 extern void Set_Error_File (

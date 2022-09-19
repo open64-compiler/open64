@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* CPP Library. (Directive handling.)
    Copyright (C) 1986, 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
    1999, 2000, 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
@@ -142,7 +146,7 @@ D(if,		T_IF,		KANDR, COND | IF_COND | EXPAND) /*  18162 */ \
 D(else,		T_ELSE,		KANDR,     COND)	   /*   9863 */ \
 D(ifndef,	T_IFNDEF,	KANDR,     COND | IF_COND) /*   9675 */ \
 D(undef,	T_UNDEF,	KANDR,     IN_I)	   /*   4837 */ \
-D(line,		T_LINE,		KANDR,     EXPAND)	   /*   2465 */ \
+D(line,		T_LINE,		KANDR,     IN_I | EXPAND)  /*   2465 */ \
 D(elif,		T_ELIF,		STDC89,    COND | EXPAND)  /*    610 */ \
 D(error,	T_ERROR,	STDC89,    0)		   /*    475 */ \
 D(pragma,	T_PRAGMA,	STDC89,    IN_I)	   /*    195 */ \
@@ -407,6 +411,11 @@ _cpp_handle_directive (cpp_reader *pfile, int indented)
 	cpp_error (pfile, CPP_DL_PEDWARN,
 		   "style of line directive is a GCC extension");
     }
+
+  /* ignore indent before #pragma for KEIL preprocess file */
+  if (dname->type == CPP_NAME && indented > 0
+      && dname->val.node->directive_index == T_PRAGMA)
+    indented = 0;
 
   if (dir)
     {

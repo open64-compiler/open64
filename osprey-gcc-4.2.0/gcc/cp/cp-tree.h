@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2007. QLogic Corporation. All Rights Reserved.
  */
 /* Definitions for C++ parsing and type checking.
@@ -3703,6 +3707,8 @@ typedef struct cp_decl_specifier_seq {
   BOOL_BITFIELD explicit_int_p : 1;
   /* True iff "char" was explicitly provided.  */
   BOOL_BITFIELD explicit_char_p : 1;
+  /* True iff '__asm' was explicitly provided. */
+  BOOL_BITFIELD asm_p : 1;
 } cp_decl_specifier_seq;
 
 /* The various kinds of declarators.  */

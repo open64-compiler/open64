@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -77,6 +81,11 @@ CVERSION =
 WOFF =
 endif
 
+ifeq ($(BUILD_VARIANT), UWASM)
+BUILD_TARGET_DIR = uwasm
+BUILD_TARGET = UWASM
+endif
+
 #----------------------------------------------------------------------
 #  Compiler Options
 #----------------------------------------------------------------------
@@ -128,6 +137,9 @@ endif
 ifeq ($(BUILD_TARGET), LOONGSON)
 TARGDEFS = -D__MIPS_AND_IA64_ELF_H
 endif
+ifeq ($(BUILD_TARGET), UWASM)
+TARGDEFS = -D__MIPS_AND_IA64_ELF_H
+endif
 
 TARG_TARG_INFO = $(TARGDIR)/targ_info
 ifeq ($(BUILD_OS), IRIX)
@@ -141,6 +153,9 @@ TARG_LIBDWARF = $(TARGDIR)/libdwarf
 endif
 TARG_LIBUNWIND = $(TARGDIR)/libunwindP
 
+ifeq ($(BUILD_VARIANT), UWASM)
+TARG_TARG_INFO := $(TARG_TARG_INFO)/uwasm
+endif
 
 #----------------------------------------------------------------------
 #  Generator options
@@ -229,6 +244,11 @@ ifeq ($(BUILD_OS), LINUX)
 HEADER_DIRS += $(TARGDIR)/include/libelf
 endif
 
+ifeq ($(BUILD_TARGET), UWASM)
+HEADER_DIRS += $(UWASM_VM_DIR)/include \
+               $(UWASM_VM_DIR)/src
+UWASM_VM_LIB = $(UWASM_VM_DIR)/build/libuvm_encoder.a
+endif
 #----------------------------------------------------------------------
 # Build derived files
 #
@@ -240,8 +260,8 @@ SETGEN  = $(COMMON_UTIL_DIR)/gen_x_set		\
           $(COMMON_UTIL_DIR)/x_set_func.c	\
           $(COMMON_UTIL_DIR)/x_set_func.h	\
           $(COMMON_UTIL_DIR)/x_set_macro.h	\
-	  $(COMMON_UTIL_DIR)/x_set_macro.td	\
-	  $(COMMON_UTIL_DIR)/x_set_func.td	\
+          $(COMMON_UTIL_DIR)/x_set_macro.td	\
+          $(COMMON_UTIL_DIR)/x_set_func.td	\
           $(COMMON_UTIL_DIR)/x_set_interface
 
 DERIVED_SRCS = \
@@ -400,7 +420,7 @@ CG_REGION_SRCS = \
     profile_util.cxx    \
     ipfec_options.cxx   \
     db_dump.cxx
-    
+
 CG_GLOBAL_SCHED_SRCS =  \
     dag.cxx				\
 	sched_cand.cxx		\
@@ -550,6 +570,15 @@ CG_CXX_SRCS = 		\
   tn_prop.cxx
 endif
 
+ifeq ($(BUILD_TARGET), UWASM)
+CG_CXX_SRCS += \
+	cgtarget_uwasm.cxx	\
+	whirl2ops_uwasm.cxx	\
+	cgemit_uwasm.cxx		\
+	cgemit_targ_uwasm.cxx
+CXXFLAGS += -std=c++03
+endif
+
 CG_C_OBJS = $(CG_C_SRCS:.c=.o)
 
 CG_CXX_OBJS = $(CG_CXX_SRCS:.cxx=.o)
@@ -611,7 +640,7 @@ else
  ifeq ($(BUILD_TYPE), NONSHARED)
 TARGETS = libcg.a
  else
-TARGETS = cg.so
+TARGETS = $(CG_SO)
  endif
 endif
 
@@ -647,6 +676,10 @@ LLDLIBS += $(TARG_LIBDWARF)/libdwarf.a \
 	$(TARG_LIBELF)/libelf.a \
 	$(TARG_TARG_INFO)/libtarginfo.a $(TARG_LIBUNWIND)/libunwindP.a \
 	-lm -lc
+endif
+
+ifeq ($(BUILD_TARGET), UWASM)
+LLDLIBS += $(UWASM_VM_DIR)/build/libuvm_encoder.a
 endif
 
 .PHONY: default first last install
@@ -701,8 +734,11 @@ ifndef SKIP_DEP_BUILD
  endif
 endif
 ifeq ($(BUILD_OS), LINUX)
-	if ! test -e be.so; then ln -sf $(TARG_BE)/be.so .; fi
+	if ! test -e $(BE_SO); then ln -sf $(TARG_BE)/$(BE_SO) .; fi
 	if ! test -e be; then ln -sf $(TARG_BE)/be .; fi
+endif
+ifeq ($(BUILD_TARGET), UWASM)
+	sh $(UWASM_VM_DIR)/build.sh
 endif
 
 #----------------------------------------------------------------------
@@ -724,10 +760,10 @@ install:: default
 ifeq ($(BUILD_OS), LINUX)
 	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -D $(TARGETS) $(STD_MONGOOSE_LINUX_LOC)/$(TARGETS)
 else
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) cg.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) $(CG_SO)
  ifeq ($(BUILD_TYPE), SHARED)
  ifndef NOSYSGEN
-	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) cg.so
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F /usr/cpu/sysgen/root$(STD_MONGOOSE_LOC) $(CG_SO)
  endif
  endif
 endif
@@ -743,45 +779,46 @@ ifeq ($(BUILD_PCH), USE_PCH)
 cg_pch_files: $(CG_PCH_OBJS) cg_pch.pch
 cg_gra_pch_files: $(CG_GRA_PCH_OBJS) cg_gra_pch.pch
 
-cg.so:  $(CG_CXX_OBJS) $(CG_C_OBJS) $(CG_PCH_OBJS) $(CG_GRA_PCH_OBJS)\
-	$(BE_CG_DIR)/Exported $(TARG_BE)/be.so \
+$(CG_SO):  $(CG_CXX_OBJS) $(CG_C_OBJS) $(CG_PCH_OBJS) $(CG_GRA_PCH_OBJS) \
+	$(BE_CG_DIR)/Exported $(TARG_BE)/$(BE_SO) \
 	$(BE_BE_DIR)/so_locations
 	$(link.c++f) $(UNRESOLVED_FLAGS) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
-	$(CG_C_OBJS) $(CG_CXX_OBJS) $(CG_PCH_OBJS) $(CG_GRA_PCH_OBJS)\
-	-o $@ $(TARG_BE)/be.so $(LLDLIBS)
+	$(CG_C_OBJS) $(CG_CXX_OBJS) $(CG_PCH_OBJS) $(CG_GRA_PCH_OBJS) \
+	-o $@ $(TARG_BE)/$(BE_SO) $(LLDLIBS)
 
 else
  ifeq ($(BUILD_OS), LINUX)
 # dso's must be in same directory
-LINK_DSOS = be.so
+LINK_DSOS = $(BE_SO)
 ifeq ($(BUILD_HOST), IA64)
 ifeq ($(BUILD_COMPILER), SGI)
 STD_DSO_LOADOPTS += -Wl,-relax
 endif
 endif
  else
-LINK_DSOS = $(TARG_BE)/be.so
+LINK_DSOS = $(TARG_BE)/$(BE_SO)
  endif
-cg.so:  $(CG_CXX_OBJS) $(CG_C_OBJS) $(BE_CG_DIR)/Exported $(TARG_BE)/be.so \
-		$(BE_BE_DIR)/so_locations
+
+$(CG_SO):  $(CG_CXX_OBJS) $(CG_C_OBJS) $(BE_CG_DIR)/Exported $(TARG_BE)/$(BE_SO) \
+		$(BE_BE_DIR)/so_locations $(UWASM_VM_LIB)
 	$(link.c++f) $(UNRESOLVED_FLAGS) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
 		$(CG_C_OBJS) $(CG_CXX_OBJS) -v \
 		-o $@ $(LINK_DSOS) $(LLDLIBS)
 
 endif
 #else
-#cg.so:  $(CG_CXX_OBJS) $(CG_C_OBJS) $(BE_CG_DIR)/Exported
+#$(CG_SO):  $(CG_CXX_OBJS) $(CG_C_OBJS) $(BE_CG_DIR)/Exported
 #	$(C++F) $(UNRESOLVED_FLAGS) $(STD_DSO_LOADOPTS) $(EXPORT_LIST) \
-#		$(CG_C_OBJS) $(CG_CXX_OBJS) -o $@ be.so $(LLDLIBS)
+#		$(CG_C_OBJS) $(CG_CXX_OBJS) -o $@ $(BE_SO) $(LLDLIBS)
 #endif
 
 libcg.a: $(CG_CXX_OBJS) $(CG_C_OBJS)
 	$(ar) cru $@ $^
 
-LDIRT += $(TARGETS) be.so be ii_files
+LDIRT += $(TARGETS) $(BE_SO) be ii_files
 
 ifdef LINK_DSO
-debug-cg: cg.so
+debug-cg: $(CG_SO)
 	(cd $(TARG_BE); $(MAKE) LINK_DSO='$(LINK_DSO)' \
 		LINK_DSO_OPTS='$(LINK_DSO_OPTS) -L.' be)
 endif
@@ -877,14 +914,14 @@ gtn_set.td : $(SETGEN) $(BE_CG_DIR)/gen_gtn_set
 
 ifeq ($(OLIVE_AUTO_CG), TRUE)
   BE_CG_OLIVE_DIR	= $(BE_CG_DIR)/olive
-  
+
   OLIVE_GRAMMY		= $(BE_CG_OLIVE_DIR)/gram.y
   OLIVE_GRAMMY_C	= $(BE_CG_OLIVE_DIR)/gram.c
   OLIVE_GRAM_OBJ	= gram.o
   OLIVE_OBJS		= x_arrayc.o x_arrayp.o	code.o iburg.o
   OLIVE_SRCS		= $(BE_CG_OLIVE_DIR)/x_arrayc.c	$(BE_CG_OLIVE_DIR)/x_arrayp.c \
-			 $(BE_CG_OLIVE_DIR)/code.c	$(BE_CG_OLIVE_DIR)/iburg.c 
-  
+			 $(BE_CG_OLIVE_DIR)/code.c	$(BE_CG_OLIVE_DIR)/iburg.c
+
   OLIVE_TOOL		= olive
   OLIVE_CG_GRAMMY	= $(BE_CG_TARG_DIR)/olive_gen_expr.brg
   OLIVE_CG_OUTPUT	= olive_gen_expr.cxx
@@ -904,14 +941,14 @@ ifeq ($(OLIVE_AUTO_CG), TRUE)
 			./$(OLIVE_TOOL) -I -L $(OLIVE_CG_GRAMMY)
   $(OLIVE_TOOL):	$(OLIVE_OBJS) $(OLIVE_GRAM_OBJ)
 			$(CC) -o $(OLIVE_TOOL) $(LDFLAGS) $(OLIVE_OBJS) $(OLIVE_GRAM_OBJ)
-					
+
   $(OLIVE_GRAM_OBJ):	$(OLIVE_GRAMMY_C)
 			$(CC) -c $(OLIVE_GRAMMY_C)		
   $(OLIVE_GRAMMY_C):	$(OLIVE_GRAMMY)	
 			$(YACC)	-o $@ $?
   $(OLIVE_OBJS):	$(OLIVE_SRCS)
 			$(CC) -c $?
-			
+
 endif
 # here's the target that gets made recursively
 derived_files : $(DERIVED_SRCS) $(DERIVED_INCS)

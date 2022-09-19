@@ -89,6 +89,32 @@ class COPYPROP;
 class EXP_OCCURS;
 class ETABLE;
 
+enum CAND_KIND { SCK_DONTCARE = 0,
+                 SCK_VAR      = 1,
+                 SCK_IVAR     = 0x010,
+                 SCK_ISTORE   = 0x100,
+                 SCK_IVARALL  = 0x110};
+
+typedef std::set<CODEREP*> CRVISIT_T;
+// ====================================================================
+// SSU:     carries the essential data structure for SPRE phase.
+//          it contains one memory pool that is used for this phase
+//          only.
+//
+//          _cfg          keeps the source code
+//          _htable       such that we could create new CODEREP and
+//                        STMTREP node.
+//          _opt_stab     keeps the variable info
+//          _etable       managing data structure for EPRE/LPRE
+//          _mem_pool     is set up by the function that creates the
+//                        instance of SSU.
+//          _loc_pool     is freed after each expr is done
+//          _cur_e_num    keeps track of the e-number
+//          _e_num_set    a bitvector set for e-number
+//          _make_diff_ssu_version_called_in_bb  array indexed by BB id
+//                        of set of aux_id's processed already by
+//                        Make_diff_ssu_version
+// ====================================================================
 class SSU {
 private:
   MEM_POOL *_mem_pool;
@@ -98,10 +124,8 @@ private:
   OPT_STAB *_opt_stab;
   ETABLE   *_etable;
   BOOL      _tracing;
-  IDX_32_SET *_e_num_set;
-  IDX_32_SET **_make_diff_ssu_version_called_in_bb; // array indexed
-  		// by BB id of set of aux_id's processed already by 
-		// Make_diff_ssu_version
+  IDX_32_SET  *_e_num_set;
+  IDX_32_SET **_make_diff_ssu_version_called_in_bb;
 
             SSU(const SSU&);
             SSU& operator = (const SSU&);
@@ -111,6 +135,23 @@ private:
   CODEMAP  *Htable(void)   const { return _htable; }
   ETABLE   *Etable(void)   const { return _etable; }
   BOOL      Tracing(void)  const { return _tracing; }
+
+  CAND_KIND SPRE_ivar_filter(STMTREP *sr);
+  BOOL      Use_defined_by(STMTREP *sr,
+                           CODEREP *defcr,
+                           CODEREP *usecr,
+                           BB_NODE *usebb);
+  BOOL      Operator_is_scalar_store(OPERATOR opr);
+  CODEREP  *Find_variant_cr(CODEREP   *cr,
+                            BB_NODE   *refbb,
+                            CRVISIT_T& visited,
+                            CODEREP   *ref_defvsym = NULL);
+  BOOL      Set_diff_ssu_version(CODEREP *cr);
+
+  ALIAS_RULE  *Rule(void)  const { return _etable->Arule(); }
+  EXP_WORKLST *SPRE_worklst(CODEREP *cr);
+  EXP_WORKLST *SPRE_worklst(STMTREP *sr);
+  EXP_WORKLST *SPRE_ivar_candidate(CODEREP *cr);
 
   EXP_WORKLST *SPRE_candidate(CODEREP *cr);
   void	    Insert_iphis_recursive(EXP_WORKLST *, BB_NODE *);
@@ -128,9 +169,10 @@ private:
   void	    Make_diff_ssu_version(EXP_WORKLST *wk, 
 				  CODEREP *v, 
 				  BB_NODE *usebb,
-				  BOOL only_itself);
-  void      Traverse_mu_read(MU_LIST *, BB_NODE *);
-  void      Traverse_cr_rw(CODEREP *, BB_NODE *, BOOL is_store);
+				  BOOL only_itself,
+                                  CODEREP *usecr = NULL);
+  void      Traverse_mu_read(MU_LIST *, BB_NODE *, CODEREP *);
+  void      Traverse_cr_rw(CODEREP *, BB_NODE *, CAND_KIND cand_kind);
   void      Iphi_insertion(void);
   inline void Reset_tos_downsafe(void);
   void	    Propagate_occurrences(EXP_OCCURS *iphi_occ, CODEREP *cr);

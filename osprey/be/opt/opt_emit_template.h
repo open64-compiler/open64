@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -80,14 +84,17 @@
 #include "be_symtab.h"		// for Preg_Home
 
 #include "opt_cvtl_rule.h"
-#include "wn_util.h"            // for WN_COPY_Tree_With_Map
 
 #include "nystrom_alias_analyzer.h"
 
+#ifdef BUILD_MASTIFF
+#include "opt_dna.h"    // for IPSA
+#endif
+
 extern BOOL OPT_Enable_WHIRL_SSA;
-
+
 template < class EMITTER >WN*
-Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
+Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
 {
   WN      *wn;
   OPCODE   op;
@@ -147,7 +154,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 		kid->Set_dtyp(MTYPE_U8);
 	      }
 	      kid->Set_dsctyp(Mtype_TransferSign(kid->Dtyp(), kid->Dsctyp()));
-	      wn = Gen_exp_wn(kid, emitter);
+	      wn = Gen_exp_wn(stmt, kid, emitter);
 	      kid->Set_dtyp(mtype_d);
 	      kid->Set_dsctyp(mtype_dsc);
 	      connect_cr_to_wn = FALSE;
@@ -157,14 +164,14 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 		       exp->Dtyp() == MTYPE_V16F8 &&
 		       kid->Kind() == CK_OP &&
 		       (kid->Opr() == OPR_ADD || kid->Opr() == OPR_SUB)) {
-	      wn = Gen_exp_wn(kid, emitter);
+	      wn = Gen_exp_wn(stmt, kid, emitter);
 	      WN_kid0(wn) = WN_CreateExp1(exp->Op(), WN_kid0(wn));
 	      WN_kid1(wn) = WN_CreateExp1(exp->Op(), WN_kid1(wn));
 	      WN_set_rtype(wn, MTYPE_V16F8);
 	      connect_cr_to_wn = FALSE;
 #endif
 	    } else {
-	      WN* wn_kid = Gen_exp_wn(kid, emitter);
+	      WN* wn_kid = Gen_exp_wn(stmt, kid, emitter);
 	      BOOL enabled = WN_Simplifier_Enable(TRUE);
 	      wn = WN_CreateExp1(exp->Op(), wn_kid);
 	      WN_Simplifier_Enable(enabled);
@@ -174,13 +181,13 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 	    }
 
 	  } else if (cvt_kind == NOT_AT_ALL) {
-	    wn = Gen_exp_wn(kid, emitter);
+	    wn = Gen_exp_wn(stmt, kid, emitter);
 	    connect_cr_to_wn = FALSE;
 	  } else
 	    Is_True(FALSE, ("Gen_exp_wn: Bad type sequence"));
 	  break;
 	} else {
-	  WN    *opnd = Gen_exp_wn(exp->Get_opnd(0), emitter);
+	  WN    *opnd = Gen_exp_wn(stmt, exp->Get_opnd(0), emitter);
 	  INT    cvt_kind;
 	  OPCODE opc;
 
@@ -225,7 +232,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 		MTYPE mtype_dsc = kid->Dsctyp();
 		kid->Set_dtyp(exp->Dtyp());
 		kid->Set_dsctyp(Mtype_TransferSign(exp->Dtyp(), kid->Dsctyp()));
-		wn = Gen_exp_wn(kid, emitter);
+		wn = Gen_exp_wn(stmt, kid, emitter);
 		kid->Set_dtyp(mtype_d);
 		kid->Set_dsctyp(mtype_dsc);
 		connect_cr_to_wn = FALSE;
@@ -245,7 +252,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 		  MTYPE mtype_dsc = kid->Dsctyp();
 		  kid->Set_dtyp(exp->Dtyp());
 		  kid->Set_dsctyp(actual_type);
-		  wn = Gen_exp_wn(kid, emitter);
+		  wn = Gen_exp_wn(stmt, kid, emitter);
 		  kid->Set_offset( offset_old );
 		  kid->Set_dtyp(mtype_d);
 		  kid->Set_dsctyp(mtype_dsc);
@@ -254,10 +261,10 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 		}
 	      }
 	    }
-	    opnd = Gen_exp_wn(kid, emitter);
+	    opnd = Gen_exp_wn(stmt, kid, emitter);
 	  }
 	  else {
-	    opnd = Gen_exp_wn(kid, emitter);
+	    opnd = Gen_exp_wn(stmt, kid, emitter);
 	    actual_opnd_type = Actual_result_type(opnd);
 	  }
 
@@ -280,7 +287,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 	  break;
 
 	} else {
-	  WN *opnd = Gen_exp_wn(exp->Get_opnd(0), emitter);
+	  WN *opnd = Gen_exp_wn(stmt, exp->Get_opnd(0), emitter);
 #if defined(TARG_X8664)
           // cannot remove CVTL when loading value from return register,
           // the return value needs to be zero/sign extended in order to
@@ -328,7 +335,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 	WN_set_bit_offset_size(wn,exp->Op_bit_offset(),exp->Op_bit_size());
 	for (INT i = 0; i < exp->Kid_count(); i++) {
 	  CODEREP *opnd = exp->Get_opnd(i);
-	  WN_kid(wn, i) = Gen_exp_wn(opnd, emitter);
+	  WN_kid(wn, i) = Gen_exp_wn(stmt, opnd, emitter);
 	}
       }
       break;
@@ -360,7 +367,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 
 	for (INT i = 0; i < exp->Kid_count(); i++) {
 	  CODEREP *opnd = exp->Get_opnd(i);
-	  WN_kid(wn, i) = Gen_exp_wn(opnd, emitter);
+	  WN_kid(wn, i) = Gen_exp_wn(stmt, opnd, emitter);
 	}
       }
       break;
@@ -370,7 +377,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 	wn = WN_Create(exp->Op(), exp->Kid_count() + 2);
 	for (INT i = 0; i < exp->Kid_count(); ++i) {
 	  CODEREP *opnd = exp->Get_opnd(i);
-	  WN_kid(wn, i + 2) = Gen_exp_wn(opnd, emitter);
+	  WN_kid(wn, i + 2) = Gen_exp_wn(stmt, opnd, emitter);
 	}
       }
       break;
@@ -382,7 +389,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 	WN_st_idx(wn) = exp->Asm_constraint();
 	for (INT i = 0; i < exp->Kid_count(); ++i) {
 	  CODEREP *opnd = exp->Get_opnd(i);
-	  WN_kid(wn, i) = Gen_exp_wn(opnd, emitter);
+	  WN_kid(wn, i) = Gen_exp_wn(stmt, opnd, emitter);
 #ifdef KEY
           if (opnd->Kind() == CK_OP){
             if (opnd->Opr() == OPR_CVT){
@@ -436,7 +443,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
     case OPR_TAS:
       wn = WN_Tas(exp->Dtyp(), 
 		  exp->Ty_index(), 
-		  Gen_exp_wn(exp->Get_opnd(0), emitter));
+		  Gen_exp_wn(stmt, exp->Get_opnd(0), emitter));
 #if defined(TARG_X8664) || defined(TARG_LOONGSON) // bug 11752: make sure operand type has same size
       if (MTYPE_byte_size(WN_rtype(wn)) > MTYPE_byte_size(WN_rtype(WN_kid0(wn))) &&
           WN_operator(WN_kid0(wn)) == OPR_INTCONST)
@@ -472,17 +479,17 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 	  // substitute back so we get the correct recombination in
 	  // the routine Uncombine_operations (sic) below.
 	  wn = WN_CreateExp1(exp->Op(),
-			     Gen_exp_wn(exp->Opnd(0)->Defstmt()->Rhs(),
+			     Gen_exp_wn(stmt, exp->Opnd(0)->Defstmt()->Rhs(),
 					emitter));
 	}
 	else if (exp->Kid_count() == 0) {
 	  wn = WN_CreateExp0(exp->Op());
 	} else if (exp->Kid_count() == 1) {
 	  wn = WN_CreateExp1(exp->Op(),
-			     Gen_exp_wn(exp->Get_opnd(0), emitter));
+			     Gen_exp_wn(stmt, exp->Get_opnd(0), emitter));
 	} else if (exp->Kid_count() == 2) {
-          WN *opnd0 = Gen_exp_wn(exp->Get_opnd(0), emitter);
-          WN *opnd1 = Gen_exp_wn(exp->Get_opnd(1), emitter);
+          WN *opnd0 = Gen_exp_wn(stmt, exp->Get_opnd(0), emitter);
+          WN *opnd1 = Gen_exp_wn(stmt, exp->Get_opnd(1), emitter);
 #ifdef KEY // make the desc type of the comparison smaller if possible
 	  if (MTYPE_byte_size(WN_rtype(opnd0))==MTYPE_byte_size(WN_rtype(opnd1))
 	     && MTYPE_byte_size(WN_rtype(opnd0))< MTYPE_byte_size(exp->Dsctyp())
@@ -553,9 +560,9 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 #endif
 	  wn = WN_CreateExp2(exp->Op(), opnd0, opnd1);
 	} else if (exp->Kid_count() == 3) {
-          WN *opnd0 = Gen_exp_wn(exp->Get_opnd(0), emitter);
-          WN *opnd1 = Gen_exp_wn(exp->Get_opnd(1), emitter);
-          WN *opnd2 = Gen_exp_wn(exp->Get_opnd(2), emitter);
+          WN *opnd0 = Gen_exp_wn(stmt, exp->Get_opnd(0), emitter);
+          WN *opnd1 = Gen_exp_wn(stmt, exp->Get_opnd(1), emitter);
+          WN *opnd2 = Gen_exp_wn(stmt, exp->Get_opnd(2), emitter);
 	  wn = WN_CreateExp3(exp->Op(), opnd0, opnd1, opnd2);
 	} else {
 	  Is_True(FALSE, ("Kid count > 3."));
@@ -576,14 +583,14 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
   case CK_IVAR:
     if (exp->Opr() == OPR_MLOAD) {
       CODEREP *num_byte = exp->Mload_size();
-      WN *kid0 = Gen_exp_wn(exp->Ilod_base(), emitter);
-      WN *kid1 = Gen_exp_wn(num_byte, emitter);
+      WN *kid0 = Gen_exp_wn(stmt, exp->Ilod_base(), emitter);
+      WN *kid1 = Gen_exp_wn(stmt, num_byte, emitter);
       wn = WN_CreateMload(exp->Offset(), exp->Ilod_ty(), kid0, kid1);
       emitter->Alias_Mgr()->Gen_alias_id(wn, exp->Points_to(emitter->Opt_stab()));
       WN_set_field_id (wn, exp->I_field_id());
     }
     else if ( exp->Opr() == OPR_PARM ) {
-      wn = Gen_exp_wn(exp->Ilod_base(), emitter);
+      wn = Gen_exp_wn(stmt, exp->Ilod_base(), emitter);
 #ifdef KEY // bug 12161: fix INTCONSTs unnecessarily made 64-bit
       if (WN_operator(wn) == OPR_INTCONST && MTYPE_byte_size(WN_rtype(wn)) == 8
 	  && MTYPE_byte_size(exp->Dtyp()) == 4) {
@@ -614,15 +621,15 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
 #endif
     }
     else if ( exp->Opr() == OPR_ILOADX ) {
-      WN *kid0 = Gen_exp_wn(exp->Ilod_base(), emitter);
-      WN *kid1 = Gen_exp_wn(exp->Index(), emitter);
+      WN *kid0 = Gen_exp_wn(stmt, exp->Ilod_base(), emitter);
+      WN *kid1 = Gen_exp_wn(stmt, exp->Index(), emitter);
       wn = WN_CreateIloadx(exp->Op(), exp->Ilod_ty(), exp->Ilod_base_ty(), kid0, kid1);
       emitter->Alias_Mgr()->Gen_alias_id(wn, exp->Points_to(emitter->Opt_stab()));
       if (emitter->Gen_lno_info())
         WN_add_lno_info(wn, exp); // for mainopt
     }
     else {
-      WN *kid0 = Gen_exp_wn(exp->Ilod_base(), emitter);
+      WN *kid0 = Gen_exp_wn(stmt, exp->Ilod_base(), emitter);
 
       wn = WN_CreateIload (exp->Opr(), exp->Dtyp(), exp->Dsctyp(),
 			   exp->Offset(), exp->Ilod_ty(),
@@ -632,6 +639,7 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
       emitter->Alias_Mgr()->Gen_alias_id(wn, exp->Points_to(emitter->Opt_stab()));
       if (emitter->Gen_lno_info())
         WN_add_lno_info(wn, exp); // for mainopt
+      emitter->Connect_cr_wn(exp, wn);
     } 
     break;
   case CK_LDA:
@@ -782,11 +790,18 @@ Gen_exp_wn(CODEREP *exp, EMITTER *emitter)
     if ( exp->Kind() == CK_IVAR && exp->Ivar_mu_node() != NULL )
       emitter->Rvi()->Map_mu_node( wn, exp->Ivar_mu_node() );
   }
-
+#ifdef BUILD_MASTIFF
+  // update IPSA WN/STMT -> ST_IDX map
+  DNA_NODE *cur_dna = Get_cur_dna();
+  if (cur_dna && emitter->For_preopt() &&
+      cur_dna->Update_stpath(stmt, exp, wn))
+    Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+	     (TFile, "[STPATH Trace] PREOPT EMITTER: Update_stpath on sr %d cr %d to wn %p with ST:%s\n",
+              stmt->Stmtrep_id(), exp->Coderep_id(), wn, cur_dna->Get_stpath(wn)->St_name()));
+#endif
   return wn;
 }
 
-
 template < class EMITTER >WN *
 Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
 {
@@ -826,15 +841,15 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
   case OPR_AGOTO:
     // FmtAssert( FALSE,
     //  ("Gen_stmt_wn: opcode OPR_AGOTO is not implemented yet") );
-    rhs_wn = Gen_exp_wn( srep->Rhs(), emitter );
+    rhs_wn = Gen_exp_wn(srep, srep->Rhs(), emitter );
     rwn = WN_CreateAgoto(rhs_wn);
     break;
   case OPR_FALSEBR:
-    rhs_wn = Gen_exp_wn( srep->Rhs(), emitter );
+    rhs_wn = Gen_exp_wn(srep, srep->Rhs(), emitter );
     rwn = WN_CreateFalsebr(srep->Label_number(), rhs_wn);
     break;
   case OPR_TRUEBR:
-    rhs_wn = Gen_exp_wn( srep->Rhs(), emitter );
+    rhs_wn = Gen_exp_wn(srep, srep->Rhs(), emitter );
     rwn = WN_CreateTruebr(srep->Label_number(), rhs_wn);
     break;
   case OPR_COMPGOTO:
@@ -857,7 +872,7 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
         default_wn = 
           WN_CreateGoto((ST_IDX) NULL, srep->Bb()->Switchdefault()->Labnam());
       }
-      rhs_wn = Gen_exp_wn( srep->Rhs(), emitter );
+      rhs_wn = Gen_exp_wn(srep, srep->Rhs(), emitter );
       rwn = WN_CreateCompgoto(num_entries, rhs_wn, block_wn, default_wn, 0);
     }
 #ifdef TARG_SL //fork_joint
@@ -871,7 +886,7 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
       // Reconstruct the clobber and constraint pragmas from the
       // information saved aside about them.
 
-      rwn = Gen_exp_wn(srep->Rhs(), emitter);
+      rwn = Gen_exp_wn(srep, srep->Rhs(), emitter);
       WN_st_idx(rwn) = srep->Asm_string_idx();
       WN_asm_flag(rwn) = srep->Asm_stmt_flags();
 
@@ -936,7 +951,7 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
     {
       OPCODE opc = srep->Op();
       OPERATOR opr = OPCODE_operator(opc);
-      rwn = Gen_exp_wn( srep->Rhs(), emitter );
+      rwn = Gen_exp_wn(srep, srep->Rhs(), emitter );
 
       // Restore the callsite id for the Nystrom alias analyzer
       if (srep->Get_constraint_graph_callsite_id() != 0)
@@ -1033,7 +1048,7 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
 	}  // PV 486445
 	/* CVTL-RELATED finish */
 	
-	rhs_wn = Gen_exp_wn( rhs_cr, emitter );
+	rhs_wn = Gen_exp_wn(srep, rhs_cr, emitter );
 	opcode = OPCODE_make_op(srep->Opr(), MTYPE_V, lhs->Dsctyp());
 	AUX_STAB_ENTRY *aux_entry =
 	  emitter->Opt_stab()->Aux_stab_entry(lhs->Aux_id());
@@ -1108,7 +1123,7 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
     break;
   case OPR_PREFETCH:
     {
-      WN *addr_wn = Gen_exp_wn( srep->Rhs()->Ilod_base(), emitter );
+      WN *addr_wn = Gen_exp_wn(srep, srep->Rhs()->Ilod_base(), emitter );
       // Prefetch_wn already pre-allocated
       // update it with the canonicalized address
       rwn = srep->Prefetch_wn();
@@ -1121,12 +1136,12 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
   case OPR_ISTBITS:
     {
       if (!emitter->For_preopt() &&
-	  srep->Rhs()->Kind() == CK_IVAR &&
-	  srep->Rhs()->Ilod_base() == srep->Lhs()->Istr_base() &&
-	  srep->Rhs()->Offset() == srep->Lhs()->Offset() &&
-	  MTYPE_size_min(srep->Rhs()->Dsctyp()) == MTYPE_size_min(srep->Lhs()->Dsctyp()) &&
-	  !srep->Rhs()->Is_ivar_volatile() &&
-	  !srep->Lhs()->Is_ivar_volatile()) {
+          srep->Rhs()->Kind() == CK_IVAR &&
+          srep->Rhs()->Ilod_base() == srep->Lhs()->Istr_base() &&
+          srep->Rhs()->Offset() == srep->Lhs()->Offset() &&
+          MTYPE_size_min(srep->Rhs()->Dsctyp()) == MTYPE_size_min(srep->Lhs()->Dsctyp()) &&
+          !srep->Rhs()->Is_ivar_volatile() &&
+          !srep->Lhs()->Is_ivar_volatile()) {
         WN* rwn = NULL;
         if (OPT_Enable_WHIRL_SSA) {
           // WHIRL SSA: process chi list
@@ -1136,6 +1151,15 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
             stmt_container->Append(rwn);
           }
         }
+#ifdef BUILD_MASTIFF
+        // update IPSA WN/STMT -> ST_IDX map
+        DNA_NODE *cur_dna = Get_cur_dna();
+        if (cur_dna && emitter->For_preopt() && 
+            cur_dna->Update_stpath(srep, NULL,  rwn))
+          Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+                   (TFile, "[STPATH Trace] PREOPT EMITTER: Update_stpath on %d to wn %p with ST %s: \n",
+                    srep->Stmtrep_id(), rwn, cur_dna->Get_stpath(rwn)->St_name()));
+#endif
         return rwn;
       }
 
@@ -1177,11 +1201,11 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
       }  // PV 486445
       /* CVTL-RELATED finish */
       
-      rhs_wn = Gen_exp_wn( rhs_cr, emitter );
+      rhs_wn = Gen_exp_wn(srep, rhs_cr, emitter );
 
       Is_True(lhs->Istr_base() != NULL,
 	      ("Gen_stmt_wn: istr_base has NULL lhs"));
-      base_wn = Gen_exp_wn( lhs->Istr_base(), emitter );
+      base_wn = Gen_exp_wn(srep, lhs->Istr_base(), emitter );
       opcode = OPCODE_make_op(srep->Opr(), MTYPE_V, lhs->Dsctyp());
       rwn = WN_Create(opcode, 2);
       WN_kid0(rwn) = rhs_wn;
@@ -1241,10 +1265,10 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
       }  // PV 486445
       /* CVTL-RELATED finish */
 	
-      rhs_wn = Gen_exp_wn( rhs_cr, emitter );
+      rhs_wn = Gen_exp_wn(srep, rhs_cr, emitter );
 
-      base_wn = Gen_exp_wn( lhs->Istr_base(), emitter );
-      index_wn = Gen_exp_wn( lhs->Index(), emitter );
+      base_wn = Gen_exp_wn(srep, lhs->Istr_base(), emitter );
+      index_wn = Gen_exp_wn(srep, lhs->Index(), emitter );
       opcode = OPCODE_make_op(OPR_ISTOREX, MTYPE_V, lhs->Dsctyp());
       rwn = WN_Create(opcode, 3);
       WN_kid0(rwn) = rhs_wn;
@@ -1260,10 +1284,10 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
 
   case OPR_MSTORE:
     {
-      rhs_wn = Gen_exp_wn( srep->Rhs(), emitter );
+      rhs_wn = Gen_exp_wn(srep, srep->Rhs(), emitter );
       CODEREP *num_bytes = srep->Lhs()->Mstore_size();
-      WN *num_bytes_wn = Gen_exp_wn(num_bytes, emitter );
-      base_wn = Gen_exp_wn( srep->Lhs()->Istr_base(), emitter );
+      WN *num_bytes_wn = Gen_exp_wn(srep, num_bytes, emitter );
+      base_wn = Gen_exp_wn(srep, srep->Lhs()->Istr_base(), emitter );
       rwn = WN_CreateMstore(srep->Lhs()->Offset(),
                             srep->Lhs()->Ilod_ty(), rhs_wn, 
 			    base_wn, num_bytes_wn);
@@ -1300,8 +1324,8 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
 
   case OPR_ASSERT:
   case OPR_RETURN_VAL:
-    rwn = WN_COPY_Tree_With_Map(srep->Orig_wn());
-    rhs_wn = Gen_exp_wn( srep->Rhs(), emitter );
+    rwn = WN_copy_tree_with_map(srep->Orig_wn());
+    rhs_wn = Gen_exp_wn(srep, srep->Rhs(), emitter );
 #ifdef KEY // bug 5224
     if (srep->Opr() == OPR_RETURN_VAL &&
 	OPERATOR_is_load(WN_operator(rhs_wn)) &&
@@ -1317,10 +1341,12 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
 #ifdef KEY
   case OPR_GOTO_OUTER_BLOCK:
 #endif
-    rwn = WN_COPY_Tree_With_Map(srep->Orig_wn());
+  {
+    rwn = WN_copy_tree_with_map(srep->Orig_wn());
     if (OPCODE_has_aux(srep->Op()))
       WN_st_idx(rwn) = ST_st_idx(emitter->Opt_stab()->St(WN_aux(rwn)));
-    break;
+  }
+  break;
 
   case OPR_XPRAGMA:
 #ifdef KEY
@@ -1328,15 +1354,15 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
 	WN_pragma(srep->Orig_wn()) == WN_PRAGMA_COPYIN_BOUND)
       return NULL; // delete here instead of in opt_ssa.cxx
 #endif
-    rwn = WN_COPY_Tree_With_Map(srep->Orig_wn());
+    rwn = WN_copy_tree_with_map(srep->Orig_wn());
     if (OPCODE_has_aux(srep->Op()))
       WN_st_idx(rwn) = ST_st_idx(emitter->Opt_stab()->St(WN_aux(rwn)));
-    rhs_wn = Gen_exp_wn( srep->Rhs(), emitter );
+    rhs_wn = Gen_exp_wn(srep, srep->Rhs(), emitter );
     WN_kid0(rwn) = rhs_wn;
     break;
   
   case OPR_EVAL:
-    rhs_wn = Gen_exp_wn( srep->Rhs(), emitter );
+    rhs_wn = Gen_exp_wn(srep, srep->Rhs(), emitter );
     if (srep->Bb()->Kind() == BB_DOHEAD && srep->Bb()->Loop()->Trip_count_stmt() == srep) {
       IDTYPE preg = emitter->Opt_stab()->Alloc_preg(srep->Rhs()->Dtyp());
       ST *preg_st = MTYPE_To_PREG(srep->Rhs()->Dtyp());
@@ -1378,7 +1404,7 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
       return NULL;  // do not do anything more
     }
   case OPR_IO:	// one of the "black-box" statements
-    rwn = WN_COPY_Tree_With_Map(srep->Black_box_wn());
+    rwn = WN_copy_tree_with_map(srep->Black_box_wn());
     emitter->Alias_Mgr()->Gen_black_box_alias(rwn);
     break;
 #ifdef KEY
@@ -1418,7 +1444,7 @@ Gen_stmt_wn(STMTREP *srep, STMT_CONTAINER *stmt_container, EMITTER *emitter)
   return rwn;
 }
 
-
+
 template < class EMITTER > void
 Gen_stmt_list_wn(STMT_LIST *stmt_list,
                  STMT_CONTAINER *stmt_container,
@@ -1431,7 +1457,7 @@ Gen_stmt_list_wn(STMT_LIST *stmt_list,
   }
 }
 
-
+
 template < class EMITTER >void
 Gen_bb_wn(BB_NODE *bb, EMITTER *emitter)
 {

@@ -300,6 +300,7 @@ public:
 
   SCOPE* Get_orig_scope_tab    () const { return _orig_scope_tab; }
   SCOPE* Get_cloned_scope_tab   () const { return _cloned_scope_tab; }
+  ST*    Get_orig_st            () const { return _orig_scope_tab[_orig_level].st; }
   SYMTAB_IDX Get_orig_level     () const { return _orig_level;}
   SYMTAB_IDX Get_cloned_level   () const { return _cloned_level;}
   UINT Get_cloned_st_last_idx   () const { return _cloned_st_last_idx;}

@@ -136,8 +136,10 @@ Process_IPA_Options ( INT argc, char **argv )
 		    ErrMsg ( EC_Unknown_Flag, argv[i][0], argv[i] );
 		}
 		break;
-
 	    case 't':
+#ifdef BUILD_MASTIFF
+		argv[i][1] = 'x';   // change to '-xtN:0xxxxxx or -xrN' prefix for mastiff
+#endif
 		Process_Trace_Option ( argv[i] );
 		break;
 

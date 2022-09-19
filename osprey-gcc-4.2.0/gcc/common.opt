@@ -1,4 +1,6 @@
 ;
+; Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+;
 ; Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
 ;
 ; Copyright (C) 2007 PathScale, LLC.  All Rights Reserved.
@@ -507,6 +509,14 @@ fi386-host
 Common Undocumented Var(key_i386_host)
 Internal flag indicating compilation host is i386
 
+fiar
+Common Var(flag_iar_compat) Init(0)
+Turn on IAR compiler compatibility
+
+ffloat128
+Common Var(flag_float128) Init(0)
+Turn on Float128/Float128x support
+
 ; Nonzero means ignore `#ident' directives.  0 means handle them.
 ; Generate position-independent code for executables if possible
 ; On SVR4 targets, it also controls whether or not to emit a
@@ -586,6 +596,10 @@ Optimize induction variables on trees
 fjump-tables
 Common Var(flag_jump_tables) Init(1)
 Use jump tables for sufficiently large switch statements
+
+fkeil
+Common Var(flag_keil_compat) Init(0)
+Turn on Keil compiler compatibility
 
 fkeep-inline-functions
 Common Report Var(flag_keep_inline_functions)

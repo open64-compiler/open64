@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 //-*-c++-*-
 
 // ====================================================================
@@ -433,11 +437,11 @@ public:
   // with <new_pt_set>.
   void Substitute_If_More_Precise (UNIFORM_NAME* name, PT_SET* new_pt_set);
 
-  UNIFORM_NAME* Add_global (ST* st) { _name_space->Add_global (st);}
-  UNIFORM_NAME* Add_malloc (mUINT64 id) { _name_space->Add_malloc(id);}
-  UNIFORM_NAME* Add_alloca (mUINT64 id) { _name_space->Add_alloca(id);}
-  UNIFORM_NAME* Add_formal (INT idx){ _name_space->Add_formal(idx);}
-  UNIFORM_NAME* Add_caller_local (ST* localst) {_name_space->Add_caller_local(localst);}
+  UNIFORM_NAME* Add_global (ST* st) { return _name_space->Add_global (st);}
+  UNIFORM_NAME* Add_malloc (mUINT64 id) { return _name_space->Add_malloc(id);}
+  UNIFORM_NAME* Add_alloca (mUINT64 id) { return _name_space->Add_alloca(id);}
+  UNIFORM_NAME* Add_formal (INT idx){ return _name_space->Add_formal(idx);}
+  UNIFORM_NAME* Add_caller_local (ST* localst) { return _name_space->Add_caller_local(localst);}
 
   void Print (FILE* f);
 };

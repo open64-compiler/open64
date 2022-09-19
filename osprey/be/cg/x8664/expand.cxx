@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -101,6 +105,7 @@
 #include "config_opt.h" /* For Force_IEEE_Comparisons */
 #include "intrn_info.h" // for INTRN_rt_name
 #include "cg.h"
+#include "uwasm_nat_util.h"  // Uwasm
 #ifdef KEY
 #include "ebo.h"
 #endif
@@ -4986,7 +4991,7 @@ Exp_Select_And_Condition (
     fprintf(TFile, " :- (");
     if (cmp_kid1) Print_TN(cmp_kid1,FALSE);
     fprintf(TFile, " ");
-    fprintf(TFile, OPCODE_name(compare));
+    fprintf(TFile, "%s", OPCODE_name(compare));
     fprintf(TFile, " ");
     if (cmp_kid2) Print_TN(cmp_kid2,FALSE);
     fprintf(TFile, ") ? ");
@@ -7277,6 +7282,323 @@ Expand_INTRN_PCMPISTR(INTRINSIC id, TN* result, TN* op0, TN* op1, TN* op2, OPS* 
   }
 }
 
+static void
+Expand_Isfinite(TN *result, TN *op0, TYPE_ID mtype, OPS *ops)
+{
+  TCON tcn1, tcn2;
+  ST *sym1 = NULL;
+  ST *sym2 = NULL;
+  TOP and_top = TOP_UNDEFINED;
+  TOP com_top = TOP_UNDEFINED;
+  switch (mtype) {
+  case MTYPE_F4:
+    tcn1 = Host_To_Targ(MTYPE_I4, 0x7FFFFFFFUL);
+    sym1 = New_Const_Sym(Enter_tcon(tcn1), Be_Type_Tbl(MTYPE_I4));
+    tcn2 = Host_To_Targ(MTYPE_I4, 0x7F7FFFFFUL);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_I4));
+    and_top = TOP_andps;
+    com_top = TOP_ucomiss;
+    break;
+  case MTYPE_F8:
+    tcn1 = Host_To_Targ(MTYPE_I8, 0x7FFFFFFFFFFFFFFFULL);
+    sym1 = New_Const_Sym(Enter_tcon(tcn1), Be_Type_Tbl(MTYPE_I8));
+    tcn2 = Host_To_Targ(MTYPE_I4, 0x7FEFFFFFFFFFFFFFULL);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_I8));
+    and_top = TOP_andpd;
+    com_top = TOP_ucomisd;
+    break;
+  case MTYPE_F10:
+    tcn2 = Host_To_Targ_Float_10_I4(MTYPE_F10, 0xFFFFFFFFUL, 0xFFFFFFFFUL, 0x7FFE);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_F10));
+    com_top = TOP_fucomi;
+    break;
+  default:
+    Is_True(FALSE, ("unknown mtype"));
+    return;
+  }
+
+  // create tmp and do a fabs
+  TN *tmp = Build_TN_Of_Mtype(mtype);
+  if (mtype != MTYPE_F10) {
+    Allocate_Object(sym1);
+    TN *sym1_tn = Gen_Symbol_TN(sym1, 0, 0);
+    TN *cst1_tn = Build_TN_Of_Mtype(mtype);
+    Exp_Load(mtype, mtype, cst1_tn, TN_var(sym1_tn), TN_offset(sym1_tn), ops, 0);
+    // tmp = op0 & 0x7fff...
+    Build_OP( and_top, tmp, op0, cst1_tn, ops );
+  }
+  else {
+    Build_OP( TOP_fabs, tmp, op0, ops );
+  }
+
+  Allocate_Object(sym2);
+  // load sym2_tn into cst2_tn, 0x7f7f...
+  TN *sym2_tn = Gen_Symbol_TN(sym2, 0, 0);
+  TN *cst2_tn = Build_TN_Of_Mtype(mtype);
+  Exp_Load(mtype, mtype, cst2_tn, TN_var(sym2_tn), TN_offset(sym2_tn), ops, 0);
+  // clear result
+  Build_OP( TOP_zero32, result, ops );
+  // compare tmp with cst2_tn and set result
+  if (mtype != MTYPE_F10) {
+    Build_OP( com_top, Rflags_TN(), tmp, cst2_tn, ops );
+  }
+  else {
+    // swap tmp and cst2_tn because x87 is a stack
+    Build_OP( com_top, Rflags_TN(), cst2_tn, tmp, ops );
+  }
+  Build_OP( TOP_setae, result, Rflags_TN(), ops );
+}
+
+static void
+Expand_Isinf_Sign(TN *result, TN *op0, TYPE_ID mtype, OPS *ops)
+{
+  BB *bb_entry = Cur_BB;
+  BB *bb_then = Gen_And_Append_BB(bb_entry);
+  BB *bb_exit = Gen_And_Append_BB(bb_then);
+  const LABEL_IDX bb_exit_label = Gen_Label_For_BB(bb_exit);
+  //BB_branch_wn(bb_then) = WN_Create(OPC_GOTO, 0);
+  //WN_label_number(BB_branch_wn(bb_then)) = bb_exit_label;
+
+  BB_branch_wn(bb_entry) = WN_Create(OPC_TRUEBR, 1);
+  WN_kid0(BB_branch_wn(bb_entry)) = NULL;
+  WN_label_number(BB_branch_wn(bb_entry)) = bb_exit_label;
+
+  TCON tcn1, tcn2;
+  ST *sym1 = NULL;
+  ST *sym2 = NULL;
+  TOP and_top = TOP_UNDEFINED;
+  TOP com_top = TOP_UNDEFINED;
+  INT64 andi_val = 0;
+  switch (mtype) {
+  case MTYPE_F4:
+    tcn1 = Host_To_Targ(MTYPE_I4, 0x7FFFFFFFUL);
+    sym1 = New_Const_Sym(Enter_tcon(tcn1), Be_Type_Tbl(MTYPE_I4));
+    tcn2 = Host_To_Targ(MTYPE_I4, 0x7F7FFFFFUL);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_I4));
+    and_top = TOP_andps;
+    com_top = TOP_ucomiss;
+    andi_val = -0x80000000UL;
+    break;
+  case MTYPE_F8:
+    tcn1 = Host_To_Targ(MTYPE_I8, 0x7FFFFFFFFFFFFFFFULL);
+    sym1 = New_Const_Sym(Enter_tcon(tcn1), Be_Type_Tbl(MTYPE_I8));
+    tcn2 = Host_To_Targ(MTYPE_I4, 0x7FEFFFFFFFFFFFFFULL);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_I8));
+    and_top = TOP_andpd;
+    com_top = TOP_ucomisd;
+    andi_val = 1;
+    break;
+  case MTYPE_F10:
+    tcn1 = Host_To_Targ_Float_10_I4(MTYPE_F10, 0xFFFFFFFFUL, 0xFFFFFFFFUL, 0xFFFF);
+    sym1 = New_Const_Sym(Enter_tcon(tcn1), Be_Type_Tbl(MTYPE_F10));
+    tcn2 = Host_To_Targ_Float_10_I4(MTYPE_F10, 0xFFFFFFFFUL, 0xFFFFFFFFUL, 0x7FFF);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_F10));
+    com_top = TOP_fucomi;
+    break;
+  default:
+    Is_True(FALSE, ("unknown mtype"));
+  }
+
+  Allocate_Object(sym1);
+  Allocate_Object(sym2);
+  TN *tmp = NULL;
+  if (mtype != MTYPE_F10) {
+    // for F4 and F8
+    TN *sym1_tn = Gen_Symbol_TN(sym1, 0, 0);
+    TN *cst1_tn = Build_TN_Of_Mtype(mtype);
+    Exp_Load(mtype, mtype, cst1_tn, TN_var(sym1_tn), TN_offset(sym1_tn), ops, 0);
+    tmp = Build_TN_Of_Mtype(mtype);
+    Build_OP(TOP_zero32, result, ops);
+    Build_OP(and_top, tmp, op0, cst1_tn, ops);
+    TN *sym2_tn = Gen_Symbol_TN(sym2, 0, 0);
+    TN *cst2_tn = Build_TN_Of_Mtype(mtype);
+    Exp_Load(mtype, mtype, cst2_tn, TN_var(sym2_tn), TN_offset(sym2_tn), ops, 0);
+    Build_OP(com_top, Rflags_TN(), tmp, cst2_tn, ops);
+    // generate a conditional jmp to bb_exit
+    Build_OP(TOP_jbe, Rflags_TN(), Gen_Label_TN(bb_exit_label, 0), ops);
+  }
+  else {
+    // for F10
+    TN *sym1_tn = Gen_Symbol_TN(sym1, 0, 0);
+    TN *cst1_tn = Build_TN_Of_Mtype(mtype);
+    Exp_Load(mtype, mtype, cst1_tn, TN_var(sym1_tn), TN_offset(sym1_tn), ops, 0);
+    Build_OP(TOP_ldc32, result, Gen_Literal_TN(-1, 4), ops);
+    Build_OP(com_top, Rflags_TN(), cst1_tn, op0, ops);
+    Build_OP(TOP_je, Rflags_TN(), Gen_Label_TN(bb_exit_label, 0), ops);
+  }
+
+  // wrap up existing OPS and initialize new OPS
+  if (&New_OPs != ops)
+    OPS_Append_Ops(&New_OPs, ops);
+  Process_New_OPs();
+  BB_Append_Ops(bb_entry, &New_OPs);
+  OPS_Init(&New_OPs);
+  OPS_Init(ops);
+  OPS *then_ops = &New_OPs;
+
+  // generate code in new OPS
+  if (mtype != MTYPE_F10) {
+    // for F4 and F8
+    TN *res0 = Build_TN_Of_Mtype(MTYPE_I4);
+    TN *res1 = Build_TN_Of_Mtype(MTYPE_I4);
+    TN *res2 = Build_TN_Of_Mtype(MTYPE_I4);
+    TN *res3 = Build_TN_Of_Mtype(MTYPE_I4);
+    Build_OP(TOP_movx2g, res0, tmp, then_ops);
+    Build_OP(TOP_andi32, res1, res0, Gen_Literal_TN(andi_val, 4), then_ops);
+    Build_OP(TOP_cmpi32, Rflags_TN(), res1, Gen_Literal_TN(1, 4), then_ops);
+    Build_OP(TOP_sbb32, res2, res1, res1, then_ops);
+    Build_OP(TOP_andi32, res3, res2, Gen_Literal_TN(2, 4), then_ops);
+    Build_OP(TOP_subi32, result, res3, Gen_Literal_TN(1, 4), then_ops);
+  }
+  else {
+    // for F10
+    TN *sym2_tn = Gen_Symbol_TN(sym2, 0, 0);
+    TN *cst2_tn = Build_TN_Of_Mtype(mtype);
+    Exp_Load(mtype, mtype, cst2_tn, TN_var(sym2_tn), TN_offset(sym2_tn), then_ops, 0);
+    Build_OP(TOP_zero32, result, then_ops);
+    Build_OP(com_top, Rflags_TN(), cst2_tn, op0, then_ops);
+    Build_OP(TOP_sete, result, Rflags_TN(), then_ops);
+  }
+
+  // wrap up existing OPS and initialize new OPS
+  total_bb_insts = 0;
+  Last_Processed_OP = NULL;
+  Process_New_OPs();
+  BB_Append_Ops(bb_then, then_ops);
+  OPS_Init(then_ops);
+
+  // set Cur_BB to bb_exit
+  Cur_BB = bb_exit;
+}
+
+static void
+Expand_Isnormal(TN *result, TN *op0, TYPE_ID mtype, OPS *ops)
+{
+  TCON tcn1, tcn2, tcn3;
+  ST *sym1 = NULL;
+  ST *sym2 = NULL;
+  ST *sym3 = NULL;
+  TOP and_top = TOP_UNDEFINED;
+  TOP com_top = TOP_UNDEFINED;
+  switch (mtype) {
+  case MTYPE_F4:
+    tcn1 = Host_To_Targ(MTYPE_I4, 0x7FFFFFFFUL);
+    sym1 = New_Const_Sym(Enter_tcon(tcn1), Be_Type_Tbl(MTYPE_I4));
+    tcn2 = Host_To_Targ(MTYPE_I4, 0x7F7FFFFFUL);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_I4));
+    tcn3 = Host_To_Targ(MTYPE_I4, 0x800000UL);
+    sym3 = New_Const_Sym(Enter_tcon(tcn3), Be_Type_Tbl(MTYPE_I4));
+    and_top = TOP_andps;
+    com_top = TOP_ucomiss;
+    break;
+  case MTYPE_F8:
+    tcn1 = Host_To_Targ(MTYPE_I8, 0x7FFFFFFFFFFFFFFFULL);
+    sym1 = New_Const_Sym(Enter_tcon(tcn1), Be_Type_Tbl(MTYPE_I8));
+    tcn2 = Host_To_Targ(MTYPE_I4, 0x7FEFFFFFFFFFFFFFULL);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_I8));
+    tcn3 = Host_To_Targ(MTYPE_I4, 0x10000000000000ULL);
+    sym3 = New_Const_Sym(Enter_tcon(tcn3), Be_Type_Tbl(MTYPE_I4));
+    and_top = TOP_andpd;
+    com_top = TOP_ucomisd;
+    break;
+  case MTYPE_F10:
+    tcn2 = Host_To_Targ_Float_10_I4(MTYPE_F10, 0xFFFFFFFFUL, 0xFFFFFFFFUL, 0x7FFE);
+    sym2 = New_Const_Sym(Enter_tcon(tcn2), Be_Type_Tbl(MTYPE_F10));
+    tcn3 = Host_To_Targ_Float_10_I4(MTYPE_F10, 0, 0x80000000UL, 1);
+    sym3 = New_Const_Sym(Enter_tcon(tcn3), Be_Type_Tbl(MTYPE_F10));
+    com_top = TOP_fucomi;
+    break;
+  default:
+    Is_True(FALSE, ("unknown mtype"));
+    return;
+  }
+
+  // create tmp and do a fabs
+  TN *tmp = Build_TN_Of_Mtype(mtype);
+  if (mtype != MTYPE_F10) {
+    Allocate_Object(sym1);
+    // load sym1_tn into cst1_tn: 0x7ff...
+    TN *sym1_tn = Gen_Symbol_TN(sym1, 0, 0);
+    TN *cst1_tn = Build_TN_Of_Mtype(mtype);
+    Exp_Load(mtype, mtype, cst1_tn, TN_var(sym1_tn), TN_offset(sym1_tn), ops, 0);
+    // tmp = op0 & cst1_tn
+    Build_OP( and_top, tmp, op0, cst1_tn, ops );
+  }
+  else {
+    Build_OP( TOP_fabs, tmp, op0, ops );
+  }
+
+  Allocate_Object(sym2);
+  Allocate_Object(sym3);
+  // load sym2_tn into cst2_tn
+  TN *sym2_tn = Gen_Symbol_TN(sym2, 0, 0);
+  TN *cst2_tn = Build_TN_Of_Mtype(mtype);
+  Exp_Load(mtype, mtype, cst2_tn, TN_var(sym2_tn), TN_offset(sym2_tn), ops, 0);
+  // clear tmp result
+  TN *res1_tn = Build_TN_Like( result );
+  Build_OP( TOP_zero32, res1_tn, ops );
+  // compare tmp with cst2_tn and set tmp result
+  if (mtype != MTYPE_F10) {
+    Build_OP( com_top, Rflags_TN(), tmp, cst2_tn, ops );
+  }
+  else {
+    // swap tmp and cst2_tn because x87 is a stack
+    Build_OP( com_top, Rflags_TN(), cst2_tn, tmp, ops );
+  }
+  Build_OP( TOP_setae, res1_tn, Rflags_TN(), ops );
+  // load sym3_tn into cst3_tn
+  TN *sym3_tn = Gen_Symbol_TN(sym3, 0, 0);
+  TN *cst3_tn = Build_TN_Of_Mtype(mtype);
+  Exp_Load(mtype, mtype, cst3_tn, TN_var(sym3_tn), TN_offset(sym3_tn), ops, 0);
+  // clear result
+  Build_OP( TOP_zero32, result, ops );
+  // compare cst3_tn with tmp and set result
+  if (mtype != MTYPE_F10) {
+    Build_OP( com_top, Rflags_TN(), cst3_tn, tmp, ops );
+  }
+  else {
+    // swap tmp and cst2_tn because x87 is a stack
+    Build_OP( com_top, Rflags_TN(), tmp, cst3_tn, ops );
+  }
+  Build_OP( TOP_setae, result, Rflags_TN(), ops );
+}
+
+static void
+Expand_Nan(TN *result, TYPE_ID mtype, BOOL quiet, OPS *ops)
+{
+  TCON tc;
+  switch (mtype) {
+  case MTYPE_F4:
+    tc = Host_To_Targ(MTYPE_I4, quiet ? 0x7FC00000U
+                                      : 0x7FA00000U);
+    break;
+  case MTYPE_F8:
+    tc = Host_To_Targ(MTYPE_I8, quiet ? 0x7FF8000000000000ULL
+                                      : 0x7FF4000000000000ULL);
+    break;
+  case MTYPE_F10:
+    tc = Host_To_Targ_Float_10_I4(MTYPE_F10, 0,
+                                  quiet ? 0xC0000000U : 0xA0000000U,
+                                  0x7FFFF);
+    break;
+  default:
+    Is_True(FALSE, ("unknown mtype"));
+    return;
+  }
+  ST *st = New_Const_Sym(Enter_tcon(tc), Be_Type_Tbl(mtype));
+  Allocate_Object(st);
+  TN *tn = Gen_Symbol_TN(st, 0, 0);
+  Exp_Load(mtype, mtype, result, TN_var(tn), TN_offset(tn), ops, 0);
+}
+
+static void
+Expand_Atomic_Load_N(TN *result, TN *op0, TYPE_ID mtype, OPS *ops)
+{
+  TYPE_ID rtype = Mtype_comparison(mtype);
+  OPCODE opc = OPCODE_make_op(OPR_LDID, rtype, mtype);
+  Expand_Load(opc, result, op0, Gen_Literal_TN(0, 4), ops);
+}
+
 void
 Exp_Intrinsic_Op (INTRINSIC id, TN *result, TN *op0, TN *op1, TN *op2, TN *op3, TN *op4, TYPE_ID mtype, OPS *ops)
 {
@@ -7325,6 +7647,35 @@ Exp_Intrinsic_Op (INTRINSIC id, TN *result, TN *op0, TN *op1, TN *op2, TN *op3, 
     // Note: Frontend generates INTRN_CLZ/INTRN_CTZ64 for library calls,
     // and INTRN_CLZ32/INTRN_CTZ for clz/dclz/ctz/dctz instruction.
     // (Reasons related to x86.)  mtype is the rtype from op0.
+  case INTRN_BSWAP16:
+    Build_OP( TOP_rori16, result, op0, Gen_Literal_TN (8, 4), ops );
+    break;
+  case INTRN_BSWAP32:
+    Build_OP( TOP_bswap32, result, op0, ops );
+    break;
+  case INTRN_BSWAP64:
+    Build_OP( TOP_bswap64, result, op0, ops );
+    break;
+  case INTRN_CHECK_ADDRESS:
+    {
+      if (Uwasm_Extern_Symbol) {
+        TN* ofst_mask = Build_TN_Like(result);
+        Exp_Load(Pointer_Mtype, Pointer_Mtype,
+                 ofst_mask, Uwasm_ofst_mask_st(), 0, ops, 0);
+        TN* ofst_val = Build_TN_Like(result);
+        Build_OP(TOP_and32, ofst_val, op0, ofst_mask, ops);
+        TN* addr_base = Build_TN_Like(result);
+        Exp_Load(Pointer_Mtype, Pointer_Mtype,
+                 addr_base, Uwasm_addr_base_st(), 0, ops, 0);
+        Build_OP(TOP_or32, result, ofst_val, addr_base, ops);
+      }
+      else {
+        TN *res = Build_TN_Like(op0);
+        Build_OP (TOP_checkptr, res, op0, Gen_Literal_TN(0, 4), Gen_Literal_TN(0, 4), ops);
+        Exp_COPY(result, res, ops);
+      }
+    }
+    break;
   case INTRN_CTZ:
     Expand_Count_Trailing_Zeros (result, op0, mtype, ops);
     break;
@@ -7413,7 +7764,10 @@ Exp_Intrinsic_Op (INTRINSIC id, TN *result, TN *op0, TN *op1, TN *op2, TN *op3, 
       // bitwise OR to get result
       Build_OP(TOP_orps, result, tmpx, tmpy, ops);
     }
-   break;
+    break;
+  case INTRN_ISFINITE:
+    Expand_Isfinite(result, op0, mtype, ops);
+    break;
   case INTRN_ISGREATER:
     Build_OP( cmp_opcode, rflags, op1, op0, ops );
     Build_OP( TOP_setb, result_tmp, rflags, ops );
@@ -7423,6 +7777,9 @@ Exp_Intrinsic_Op (INTRINSIC id, TN *result, TN *op0, TN *op1, TN *op2, TN *op3, 
     Build_OP( cmp_opcode, rflags, op1, op0, ops );
     Build_OP( TOP_setbe, result_tmp, rflags, ops );
     need_zero_ext = TRUE;
+    break;
+  case INTRN_ISINF_SIGN:
+    Expand_Isinf_Sign(result, op0, mtype, ops);
     break;
   case INTRN_ISLESS:
     Build_OP( cmp_opcode, rflags, op0, op1, ops );
@@ -7439,6 +7796,9 @@ Exp_Intrinsic_Op (INTRINSIC id, TN *result, TN *op0, TN *op1, TN *op2, TN *op3, 
     Build_OP( TOP_setne, result_tmp, rflags, ops );
     need_zero_ext = TRUE;
     break;
+  case INTRN_ISNORMAL:
+    Expand_Isnormal(result, op0, mtype, ops);
+    break;
   case INTRN_ISUNORDERED:
     Build_OP( cmp_opcode, rflags, op1, op0, ops );
     Build_OP( TOP_setp, result_tmp, rflags, ops );
@@ -7449,6 +7809,34 @@ Exp_Intrinsic_Op (INTRINSIC id, TN *result, TN *op0, TN *op1, TN *op2, TN *op3, 
     Build_OP( TOP_setnp, result_tmp, rflags, ops );
     need_zero_ext = TRUE;
     break;
+  case INTRN_NAN:
+    Expand_Nan(result, MTYPE_F8, TRUE, ops);
+    break;
+  case INTRN_NANS:
+    Expand_Nan(result, MTYPE_F8, FALSE, ops);
+    break;
+  case INTRN_NANF:
+    Expand_Nan(result, MTYPE_F4, TRUE, ops);
+    break;
+  case INTRN_NANSF:
+    Expand_Nan(result, MTYPE_F4, FALSE, ops);
+    break;
+  case INTRN_NANL:
+    Expand_Nan(result, MTYPE_F10, TRUE, ops);
+    break;
+  case INTRN_NANSL:
+    Expand_Nan(result, MTYPE_F10, FALSE, ops);
+    break;
+
+  case INTRN_ATOM_LOAD_N:
+    Expand_Atomic_Load_N(result, op0, mtype, ops);
+    break;
+  case INTRN_ATOM_ALWAYS_LOCK_FREE:
+  case INTRN_ATOM_LOCK_FREE:
+    // temporary implementation
+    Build_OP(TOP_ldc32, result, Gen_Literal_TN(1, 4), ops);
+    break;
+
   case INTRN_V16C8MPY_ADDSUB:
     {      
       TN* tmp1 = Build_TN_Like(result);
@@ -9848,6 +10236,30 @@ Intrinsic_Returns_New_Value (INTRINSIC id)
   }
 }
 
+static void
+Exp_Atomic_Exchange(TN *ptr, TN *val, TN *ret, TYPE_ID mtype, OPS *ops)
+{
+  TYPE_ID rtype = Mtype_comparison(mtype);
+  OPCODE opc = OPCODE_make_op(OPR_LDID, rtype, mtype);
+  TN *tmp = Build_TN_Of_Mtype(rtype);
+  Expand_Load(opc, tmp, val, Gen_Literal_TN(0, 4), ops);
+  TN *res = Exp_Test_and_Set(ptr, tmp, mtype, ops);
+  Expand_Store(mtype, res, ret, Gen_Literal_TN(0, 4), 0, ops);
+}
+
+static void
+Exp_Atomic_Store(TN *op0, TN *op1, TYPE_ID mtype, BOOL load, OPS *ops)
+{
+  TYPE_ID rtype = Mtype_comparison(mtype);
+  if (load) {
+    OPCODE opc = OPCODE_make_op(OPR_LDID, rtype, mtype);
+    TN *tmp = Build_TN_Of_Mtype(rtype);
+    Expand_Load(opc, tmp, op1, Gen_Literal_TN(0, 4), ops);
+    op1 = tmp;
+  }
+  Expand_Store(mtype, op1, op0, Gen_Literal_TN(0, 4), 0, ops);
+}
+
 // initial expansion of intrinsic call (may not be complete lowering).
 // return result TN (if set).
 // If the intrinsic requires a label and loop (2 bb's)
@@ -10219,6 +10631,49 @@ Exp_Intrinsic_Call (INTRINSIC id, TN *op0, TN *op1, TN *op2,
     break;
   case INTRN_RETURN:
     result = Exp_Builtin_Return(op0, ops);
+    break;
+
+  case INTRN_ATOM_XCHG_1:
+    Exp_Atomic_Exchange(op0, op1, op2, MTYPE_I1, ops);
+    break;
+  case INTRN_ATOM_XCHG_2:
+    Exp_Atomic_Exchange(op0, op1, op2, MTYPE_I2, ops);
+    break;
+  case INTRN_ATOM_XCHG_4:
+    Exp_Atomic_Exchange(op0, op1, op2, MTYPE_I4, ops);
+    break;
+  case INTRN_ATOM_XCHG_8:
+    Exp_Atomic_Exchange(op0, op1, op2, MTYPE_I8, ops);
+    break;
+  case INTRN_ATOM_STORE_1:
+    Exp_Atomic_Store(op0, op1, MTYPE_I1, TRUE, ops);
+    break;
+  case INTRN_ATOM_STORE_2:
+    Exp_Atomic_Store(op0, op1, MTYPE_I2, TRUE, ops);
+    break;
+  case INTRN_ATOM_STORE_4:
+    Exp_Atomic_Store(op0, op1, MTYPE_I4, TRUE, ops);
+    break;
+  case INTRN_ATOM_STORE_8:
+    Exp_Atomic_Store(op0, op1, MTYPE_I8, TRUE, ops);
+    break;
+  case INTRN_ATOM_STORE_N_1:
+    Exp_Atomic_Store(op0, op1, MTYPE_I1, FALSE, ops);
+    break;
+  case INTRN_ATOM_STORE_N_2:
+    Exp_Atomic_Store(op0, op1, MTYPE_I2, FALSE, ops);
+    break;
+  case INTRN_ATOM_STORE_N_4:
+    Exp_Atomic_Store(op0, op1, MTYPE_I4, FALSE, ops);
+    break;
+  case INTRN_ATOM_STORE_N_8:
+    Exp_Atomic_Store(op0, op1, MTYPE_I8, FALSE, ops);
+    break;
+
+  case INTRN_ATOM_THREAD_FENCE:
+  case INTRN_ATOM_SIGNAL_FENCE:
+    // temporaty implementation
+    Build_OP (TOP_mfence, ops);
     break;
 
   default:  
@@ -11213,3 +11668,10 @@ void Expand_Conv_From_Vector(TN * dest, TN * src, TYPE_ID desc, TYPE_ID rtype,
     else Build_OP (TOP_movx2g, dest, src, ops);
   }
 }
+
+// expand checkptr
+void Expand_Checkptr(TN *base, TN *lb, TN *ub, OPS *ops)
+{
+  Build_OP (TOP_checkptr, base, lb, ub, ops);
+}
+

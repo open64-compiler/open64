@@ -308,7 +308,7 @@ case $basic_machine in
 	# We use `pc' rather than `unknown'
 	# because (1) that's what they normally are, and
 	# (2) the word "unknown" tends to confuse beginning users.
-	i*86 | x86_64)
+	i*86 | x86_64 | uwasm)
 	  basic_machine=$basic_machine-pc
 	  ;;
 	# Object if more than one company name word.

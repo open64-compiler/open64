@@ -111,6 +111,81 @@ Fix_var_mtypes(CODEREP *x, AUX_STAB_ENTRY *aux) {
 #endif
 
 // =====================================================================
+// determine if an ISTORE is a candidate for SPRE;
+// create the SPRE worklist node if it is and return it
+// =====================================================================
+CAND_KIND SSU::SPRE_ivar_filter(STMTREP *sr)
+{
+  if (! OPERATOR_is_scalar_store (sr->Opr()) &&
+      ! OPERATOR_is_scalar_istore(sr->Opr()) ) return SCK_DONTCARE;
+
+  CODEREP *lhs = sr->Lhs();
+
+  if (lhs->Kind() == CK_VAR) return SCK_VAR;
+
+  if (lhs->Is_ivar_volatile()) return SCK_IVAR;
+
+  if (lhs->Dtyp() == MTYPE_V || lhs->Dtyp() == MTYPE_UNKNOWN) return SCK_IVAR;
+
+  if (sr->Opr() != OPR_ISTORE)  return SCK_IVAR;
+
+  CODEREP *rhs = sr->Rhs();
+  if (! WOPT_Enable_Ivar_SPRE_Agg) {
+    if (rhs->Kind() != CK_VAR)  return SCK_IVAR;
+    AUX_STAB_ENTRY *aux= Opt_stab()->Aux_stab_entry( rhs->Aux_id() );
+    if (! aux->Is_preg()) return SCK_IVAR;
+  }
+
+  return SCK_ISTORE;
+}
+
+
+// =====================================================================
+// Get the worklst for the lhs of a scalar store statement
+// =====================================================================
+EXP_WORKLST * SSU::SPRE_worklst(CODEREP *store)
+{
+  EXP_WORKLST *wk;
+
+  if (store->Kind() == CK_VAR) {
+    AUX_STAB_ENTRY *aux = Opt_stab()->Aux_stab_entry(store->Aux_id());
+    wk = aux->Spre_node();
+    if (wk) {
+      Is_True(store->Aux_id() == wk->Exp()->Aux_id(),
+              ("SSU::SPRE_worklst: inconsistent aux_id found"));
+    }
+    return wk;
+  }
+  if (! WOPT_Enable_Ivar_SPRE)
+    return NULL;
+
+  if (store->Kind() == CK_IVAR) {
+    wk = Etable()->Get_worklst(store, FALSE, TRUE);
+    if (wk) {
+      Is_Trace(Tracing(), (TFile, "SSU::SPRE_worklst got the worklst :\n"));
+      Is_Trace_cmd(Tracing(), wk->Real_occurs().Print(TFile));
+    }
+    else {
+      Is_Trace(Tracing(), (TFile, "SSU::SPRE_worklst got no worklst :\n"));
+      Is_Trace_cmd(Tracing(), store->Print(5, TFile));
+    }
+    return wk;
+  }
+}
+
+// =====================================================================
+// Get the worklst for the stmt, the stmt must be scalar_store
+// =====================================================================
+EXP_WORKLST * SSU::SPRE_worklst(STMTREP *sr)
+{
+  Is_True(Operator_is_scalar_store (sr->Opr()),
+          ("SSU::SPRE_Worklst must be called for stmt w/ scalar_store"));
+
+  CODEREP *store = sr->Lhs();
+  return SPRE_worklst(store);
+}
+
+// =====================================================================
 // cr must be a CK_VAR node; determine if it is a candidate for SPRE, and
 // create the SPRE worklist node if it is, and return it
 // =====================================================================
@@ -120,8 +195,11 @@ EXP_WORKLST * SSU::SPRE_candidate(CODEREP *cr)
 	  ("SSU::SPRE_candidate: parameter must be CK_VAR node"));
   AUX_STAB_ENTRY *aux= Opt_stab()->Aux_stab_entry( cr->Aux_id() );
   EXP_WORKLST *wk = aux->Spre_node();
-  if (wk)
+  if (wk) {
+    Is_Trace(Tracing(), (TFile, "ALREADY A SPRE_CANDIDATE : "));
+    Is_Trace_cmd(Tracing(), wk->Real_occurs().Print(TFile));
     return wk;
+  }
   if (aux->No_spre()) return NULL; // this flag added to speed up checking
   if (!aux->Is_real_var() || 
       aux->No_register() || // Screen out MSTID
@@ -134,8 +212,10 @@ EXP_WORKLST * SSU::SPRE_candidate(CODEREP *cr)
     return NULL;
   }
 
-  wk = Etable()->Get_worklst(cr);
+  wk = Etable()->Get_worklst(cr, FALSE, FALSE);
   aux->Set_spre_node(wk);
+  Is_Trace(Tracing(), (TFile, "CREATE A SPRE_CANDIDATE WORKLST for CR:\n"));
+  Is_Trace_cmd(Tracing(), cr->Print(3, TFile));
   // if LPRE has not been run or there is no load, home_sym will be 0;
   // create a new preg and set home_sym
   if (aux->Home_sym() == 0) {
@@ -169,6 +249,58 @@ EXP_WORKLST * SSU::SPRE_candidate(CODEREP *cr)
     wk->Set_temp_id(0);		// initialize it
   }
   return wk;
+}
+
+// =====================================================================
+// cr must be a CK_IVAR node; create the SPRE worklist node & return it
+// the candidate selection is performed by SPRE_ivar_filter().
+// =====================================================================
+EXP_WORKLST * SSU::SPRE_ivar_candidate(CODEREP *cr)
+{
+  Is_True(cr->Kind() == CK_IVAR,
+	  ("SSU::SPRE_ivar_candidate: parameter must be CK_IVAR node"));
+
+  CODEREP *base = (cr->Ilod_base() != NULL)? cr->Ilod_base() : cr->Istr_base();
+  if (base->Kind() == CK_OP) return NULL;
+
+  EXP_WORKLST *  wk = Etable()->Get_worklst(cr, FALSE, TRUE);
+
+  if (wk) {
+    Is_Trace(Tracing(), (TFile, "ALREADY A SPRE_CANDIDATE : "));
+    Is_Trace_cmd(Tracing(), wk->Real_occurs().Print(TFile));
+    return wk;
+  }
+  wk = Etable()->Get_worklst(cr, FALSE, FALSE);
+
+  Is_Trace(Tracing(), (TFile, "CREATE A SPRE_CANDIDATE WORKLST for CR:\n"));
+  Is_Trace_cmd(Tracing(), cr->Print(3, TFile));
+
+  if (cr->Is_sign_extd())
+    wk->Set_sign_extd();
+
+  if (wk->Iphi_bbs() == NULL) {
+    wk->Set_iphi_bbs(CXX_NEW(BB_NODE_SET(Cfg()->Last_bb_id()+1, Cfg(),
+			     Loc_pool(), BBNS_EMPTY), Loc_pool()));
+    wk->Set_temp_id(0);		// initialize it
+  }
+
+  AUX_ID home_auxid = Opt_stab()->Create_preg(cr->Dtyp());
+  wk->Set_preg(home_auxid);
+
+  return wk;
+}
+
+// =====================================================================
+// Simplified test for the operation whether it is an SSU handled store
+// This is one of the place we use -WOPT:ivar_spre test for bug triaging
+// =====================================================================
+BOOL SSU::Operator_is_scalar_store(OPERATOR opr)
+{
+  if (OPERATOR_is_scalar_store(opr))
+    return TRUE;
+  if (! WOPT_Enable_Ivar_SPRE)
+    return FALSE;
+  return (OPERATOR_is_scalar_istore(opr));
 }
 
 // =====================================================================
@@ -230,7 +362,7 @@ BOOL SSU::Find_intervening_iphi(EXP_WORKLST *wk,
     return FALSE;
   if (v->Is_flag_set(CF_DEF_BY_CHI)) {
     STMTREP *stmt = v->Defstmt();
-    if (! OPERATOR_is_scalar_store (stmt->Opr()))
+    if (! Operator_is_scalar_store (stmt->Opr()))
       return FALSE;
   }
   EXP_PHI *iphi;
@@ -295,7 +427,7 @@ void SSU::Make_diff_ssu_version_at_phi(EXP_WORKLST *wk,
     }
     else { // call recursively
       opnd = phi->OPND(pos);
-      Make_diff_ssu_version(wk, opnd, bbpred, FALSE);
+      Make_diff_ssu_version(wk, opnd, bbpred, FALSE, NULL);
     }
     pos++;
   }
@@ -355,6 +487,52 @@ void SSU::Make_null_ssu_version_in_iphi_for_e_num_set(BB_NODE *iphibb,
   }
 }
 
+BOOL SSU::Use_defined_by(STMTREP *sr,
+                         CODEREP *defcr,
+                         CODEREP *usecr,
+                         BB_NODE *usebb)
+{
+  if (usecr == NULL)
+    return TRUE; // maybe
+
+  if (usecr->Kind() == CK_VAR)
+    return TRUE; // use other ways to determine alias relation
+
+  if (defcr->Aux_id() != Opt_stab()->Default_vsym())
+    return TRUE; // maybe
+
+  const POINTS_TO *def_pt = sr->Lhs()->Points_to(Opt_stab());
+  const POINTS_TO *use_pt = usecr->Points_to(Opt_stab());
+  ALIAS_KIND ak;
+  ak = Rule()->Aliased_Memop(def_pt, use_pt,
+                             sr->Lhs()->Kind() == CK_VAR ? sr->Lhs()->Lod_ty() :
+                             sr->Lhs()->Ilod_ty(),
+                             usecr->Ilod_ty(), TRUE);
+
+  if (ak.Alias_kind() == AR_NOT_ALIAS)
+    return FALSE;
+
+#if 1
+  // if usebb dominates defbb, sr->Bb(), def reaches use by back edge
+  if ( usebb->Dominates(sr->Bb()) && usebb != sr->Bb())
+    return FALSE;
+#endif
+#if 0
+  if (ak.Definite() &&
+      usecr->Kind() == CK_IVAR &&
+      sr->Lhs()->Kind() == CK_IVAR &&
+      usebb == sr->Bb()) {
+    // return FALSE if loop independent ILOAD / ISTORE relation
+    CODEREP *base1 = usecr->Ilod_base() ? usecr->Ilod_base() : usecr->Istr_base();
+    CODEREP *base2 = sr->Lhs()->Istr_base();
+    if (base1 == base2)
+      return FALSE;
+  }
+#endif
+
+  return TRUE; // maybe
+}
+
 // =====================================================================
 // set the DIFF_SSU_VERSION flag at either a real store or the iphi result
 // that is post-dominated by usebb.  If usebb does not post-dominates v's 
@@ -363,12 +541,15 @@ void SSU::Make_null_ssu_version_in_iphi_for_e_num_set(BB_NODE *iphibb,
 // Defbb(), and v is defined by phi or chi, call recursively for each operand 
 // of the phi or chi.  If wk is NULL, the variable itself is not an SPRE
 // candidate, so only need to apply to aliased variables and continue up its
-// u-d chain.  If only_itself is TRUE, do not apply to aliased variables. 
+// u-d chain.  If only_itself is TRUE, do not apply to aliased variables.
+// If wk is NULL and it is called for mu of an ivar, usecr is to check
+// possible store that is aliased with it..
 // =====================================================================
 void SSU::Make_diff_ssu_version(EXP_WORKLST *wk, 
 				CODEREP *v, 
 				BB_NODE *usebb,
-				BOOL only_itself)
+				BOOL only_itself,
+                                CODEREP *usecr)
 {
   STMTREP *stmt;
   CHI_NODE *cnode;
@@ -379,8 +560,9 @@ void SSU::Make_diff_ssu_version(EXP_WORKLST *wk,
     return;
   BB_NODE *defbb = v->Defbb();
   if (defbb == NULL) {
-    Is_True(v->Is_var_volatile(),
-	    ("SSU::Make_diff_ssu_version: variable has no def"));
+    if (v->Kind() == CK_VAR)
+      Is_True(v->Is_var_volatile(),
+              ("SSU::Make_diff_ssu_version: variable has no def"));
     return;
   }
   if (usebb->Postdominates(defbb) || wk == NULL) {
@@ -397,7 +579,7 @@ void SSU::Make_diff_ssu_version(EXP_WORKLST *wk,
 	  INT32 pos = 0;
 	  FOR_ALL_ELEM(bbpred, bb_list_iter, Init(defbb->Pred())) {
 	    opnd = phi->OPND(pos);
-	    Make_diff_ssu_version(NULL, opnd, bbpred, FALSE);
+	    Make_diff_ssu_version(NULL, opnd, usebb/*bbpred Shin */, FALSE, usecr);
 	    pos++;
 	  }
 	}
@@ -410,12 +592,16 @@ void SSU::Make_diff_ssu_version(EXP_WORKLST *wk,
     }
     else if (v->Is_flag_set(CF_DEF_BY_CHI)) {
       stmt = v->Defstmt();
-      if (OPERATOR_is_scalar_store (stmt->Opr()) && 
+      if (Operator_is_scalar_store (stmt->Opr()) &&
+          Use_defined_by(stmt, v, usecr, usebb) &&
 	  ! stmt->Is_diff_ssu_version()) {
         CODEREP *lhs = stmt->Lhs();
-        wk2 = Opt_stab()->Aux_stab_entry(lhs->Aux_id())->Spre_node();
-        if (! Find_intervening_iphi(wk2, lhs, usebb))
+        wk2 = SPRE_worklst(lhs);
+        if (! Find_intervening_iphi(wk2, lhs, usebb)) {
 	  stmt->Set_diff_ssu_version();
+          Is_Trace(Tracing(), (TFile, "Make_diff_ssu_version Set_diff_ssu_version (chi) for:\n"));
+          Is_Trace_cmd(Tracing(), stmt->Print(TFile));
+        }
       }
       BOOL first_one = TRUE;
       FOR_ALL_NODE(cnode, chi_iter, Init(stmt->Chi_list())) {
@@ -429,13 +615,15 @@ void SSU::Make_diff_ssu_version(EXP_WORKLST *wk,
 	  if (wk2 == NULL) {
 	    // continue up the u-d chain 
 	    cnode->Set_ssu_processed(TRUE);
-	    Make_diff_ssu_version(NULL, cnode->OPND(), defbb, ! first_one);
+	    Make_diff_ssu_version(NULL, cnode->OPND(), usebb/*defbb-shin*/,
+                                  ! first_one, usecr);
 	    first_one = FALSE;
 	  }
 	  else if (! Find_intervening_iphi(wk2, cnode->RESULT(), usebb)) {
 	    cnode->Set_ssu_processed(TRUE);
 	    // call recursively for the chi operand
-	    Make_diff_ssu_version(wk2, cnode->OPND(), defbb, ! first_one);
+	    Make_diff_ssu_version(wk2, cnode->OPND(), defbb/*defbb-shin*/,
+                                  ! first_one, usecr);
 	    first_one = FALSE;
 	  }
 	  if (only_itself)
@@ -450,8 +638,11 @@ void SSU::Make_diff_ssu_version(EXP_WORKLST *wk,
         stmt->Set_iphi_inserted();
       }
       if (! stmt->Is_diff_ssu_version() &&
-	  ! Find_intervening_iphi(wk, v, usebb)) 
+	  ! Find_intervening_iphi(wk, v, usebb)) {
         stmt->Set_diff_ssu_version();
+        Is_Trace(Tracing(), (TFile, "Make_diff_ssu_version Set_diff_ssu_version(real) for:\n"));
+        Is_Trace_cmd(Tracing(), stmt->Print(TFile));
+      }
       if (! only_itself) {
 	BOOL first_one = TRUE;
         FOR_ALL_NODE(cnode, chi_iter, Init(stmt->Chi_list())) {
@@ -465,7 +656,7 @@ void SSU::Make_diff_ssu_version(EXP_WORKLST *wk,
 	  if (! Find_intervening_iphi(wk2, cnode->RESULT(), usebb)) {
 	    cnode->Set_ssu_processed(TRUE);
 	    // call recursively for the chi operand
-	    Make_diff_ssu_version(wk2, cnode->OPND(), defbb, ! first_one);
+	    Make_diff_ssu_version(wk2, cnode->OPND(), defbb, ! first_one, usecr);
 	    first_one = FALSE;
 	  }
 	}
@@ -538,9 +729,99 @@ void SSU::Make_diff_ssu_version(EXP_WORKLST *wk,
 }
 
 // =====================================================================
+// Find the sub-expression of a cr that is defined by phi and one of
+// the phi operand is defined in a BB that domminates and post-dominates
+// reference bb; or defined by chi and it's defining BB dominates
+// reference bb.
+// =====================================================================
+CODEREP *SSU::Find_variant_cr(CODEREP   *cr,
+                              BB_NODE   *refbb,
+                              CRVISIT_T& visited,
+                              CODEREP   *ref_defvsym)
+{
+  STMTREP *defstmt;
+  BB_NODE *defbb;
+  CODEREP *var_opnd;
+  switch (cr->Kind()) {
+  case CK_VAR:
+    {
+      if (cr->Is_flag_set(CF_DEF_BY_CHI)) {
+        defstmt = cr->Defstmt();
+        defbb = defstmt->Bb();
+        if (!defbb->Dominates(refbb))
+          return NULL;
+
+        // check the chi-list default_vsym of the defstmt.
+        // such default_vsym must be postdominated by the ref version
+        return cr;
+      }
+
+      if (visited.find(cr) != visited.end()) {
+        // already visited
+        return cr;
+      }
+      else {
+        // add to visited list
+        visited.insert(cr);
+      }
+      if (cr->Is_flag_set(CF_DEF_BY_PHI)) {
+        PHI_NODE *phi = cr->Defphi();
+        if (phi->Bb()->Postdominates(refbb))
+          return cr;
+        for (INT i = 0; i < phi->Size(); i++) {
+
+          var_opnd = Find_variant_cr(phi->OPND(i), refbb, visited, ref_defvsym);
+          if (var_opnd != NULL)
+            return var_opnd;
+        }
+        return NULL;
+      }
+      else {
+        defstmt = cr->Defstmt();
+        if (defstmt->Bb()->Postdominates(refbb))
+          return cr;
+        else
+          return NULL;
+      }
+    }
+  case CK_OP:
+    {
+      for (INT i = 0; i < cr->Kid_count(); i++) {
+        var_opnd = Find_variant_cr(cr->Opnd(i), refbb, visited, ref_defvsym);
+        if ( var_opnd != NULL )
+          return var_opnd;
+      }
+      return NULL;
+    }
+  default:
+    return NULL;
+  }
+  return NULL;
+}
+
+// =====================================================================
+// Determine by whether an IVAR's base is different in every iteration.
+// =====================================================================
+BOOL SSU::Set_diff_ssu_version(CODEREP *cr)
+{
+  Is_True(cr->Kind() == CK_IVAR, ("Set_diff_ssu_version for IVAR only"));
+  STMTREP  *defstmt = cr->Get_defstmt();
+  CODEREP  *base = (cr->Istr_base())? cr->Istr_base() : cr->Ilod_base();
+  BB_NODE  *defbb = defstmt->Bb();
+  CRVISIT_T visited;
+  CODEREP  *var_base = Find_variant_cr(base, defbb, visited, NULL); // TODO defvsym
+  if (var_base != NULL) {
+    defstmt->Set_diff_ssu_version();
+    return TRUE;
+  }
+  return FALSE;
+}
+
+
+// =====================================================================
 // Traverse MU_LIST set the read bb
 // =====================================================================
-void SSU::Traverse_mu_read(MU_LIST *mu_list, BB_NODE *bb)
+void SSU::Traverse_mu_read(MU_LIST *mu_list, BB_NODE *bb, CODEREP *usecr)
 {
   Is_True(mu_list != NULL, ("SSU::Traverse_mu_read: Null mu_list ptr"));
 
@@ -548,17 +829,20 @@ void SSU::Traverse_mu_read(MU_LIST *mu_list, BB_NODE *bb)
   MU_NODE      *mnode;
   
   FOR_ALL_NODE( mnode, mu_iter, Init(mu_list) ) {
+
     if (mnode->Aux_id() == Opt_stab()->Return_vsym()) // ignore return vsym
       continue;
+
     EXP_WORKLST *wk = SPRE_candidate(mnode->OPND());
     if (wk != NULL) {
-      Make_diff_ssu_version(wk, mnode->OPND(), bb, FALSE);
+      Make_diff_ssu_version(wk, mnode->OPND(), bb, FALSE, usecr);
       if (wk->Temp_id() != bb->Id() && 
 	  ! mnode->OPND()->Is_flag_set(CF_IS_ZERO_VERSION)) 
 	// mark it so won't process iphi insertion the 2nd time
 	wk->Set_temp_id(bb->Id());
+    } else { // Default_vsym
+      Make_diff_ssu_version(NULL, mnode->OPND(), bb, FALSE, usecr);
     }
-    else Make_diff_ssu_version(NULL, mnode->OPND(), bb, FALSE);
   }
 }
 
@@ -571,7 +855,7 @@ void SSU::Traverse_mu_read(MU_LIST *mu_list, BB_NODE *bb)
 // =====================================================================
 void SSU::Traverse_cr_rw(CODEREP *cr, 
 			 BB_NODE *bb, 
-			 BOOL is_store)
+			 CAND_KIND ck)
 {
   switch (cr->Kind()) {
 
@@ -583,48 +867,72 @@ void SSU::Traverse_cr_rw(CODEREP *cr,
   case CK_VAR:
     { EXP_WORKLST *wk = SPRE_candidate(cr);
       if (wk != NULL) {
-        if (is_store && ! cr->Defstmt()->Is_iphi_inserted()) {
+        if (ck == SCK_VAR && ! cr->Defstmt()->Is_iphi_inserted()) {
 	  Insert_iphis_recursive(wk, bb);
 	  cr->Defstmt()->Set_iphi_inserted();
 	}
-        if (! is_store)
-	  Make_diff_ssu_version(wk, cr, bb, FALSE);
+        if (ck == SCK_DONTCARE)
+	  Make_diff_ssu_version(wk, cr, bb, FALSE, cr);
   
         if (wk->Temp_id() != bb->Id()) 
 	  // mark it so won't process iphi insertion the 2nd time
 	  wk->Set_temp_id(bb->Id());	
+        Is_Trace(Tracing(), (TFile, "Got Worklst during Iphi Insertion (BB%d) in stmt for %s:\n",
+                             bb->Id(), (ck == SCK_VAR)? "(store)" : ("load")));
+        Is_Trace_cmd(Tracing(), cr->Print(5, TFile));
       }
-      else if (! is_store && ! cr->Points_to(Opt_stab())->No_alias())
-        Make_diff_ssu_version(NULL, cr, bb, FALSE);
+      else if (ck == SCK_DONTCARE && ! cr->Points_to(Opt_stab())->No_alias())
+        Make_diff_ssu_version(NULL, cr, bb, FALSE, cr);
       break;
     }
 
   case CK_IVAR:
     {
-#ifdef KEY
-      Traverse_cr_rw( ! is_store ? 
-#else
-      Traverse_cr_rw( cr->Ilod_base() ? 
-#endif
-		     cr->Ilod_base() : cr->Istr_base(), bb, FALSE);
+      // ISTORE SPRE related iphi insertion -Shin 03282022
+      if (ck == SCK_ISTORE) {
+        EXP_WORKLST *wk = SPRE_ivar_candidate(cr);
+        if (wk != NULL) {
+          Is_Trace(Tracing(), (TFile, "Got Worklst during Iphi Insertion (BB%d) in stmt for %s:\n",
+                               bb->Id(), "istore"));
+          Is_Trace_cmd(Tracing(), cr->Print(5, TFile));
+          STMTREP *defstmt = cr->Get_defstmt();
+          if (defstmt && ! defstmt->Is_iphi_inserted()) {
+            Insert_iphis_recursive(wk, bb);
+            defstmt->Set_iphi_inserted();
+          }
+
+          if (ck == SCK_DONTCARE) // shin 082122 should be same ssu version if it's lhs
+            Set_diff_ssu_version(cr);
+        }
+        else if (ck == SCK_DONTCARE && ! cr->Points_to(Opt_stab())->No_alias()) {
+          Is_Trace(Tracing(), (TFile, "Create ILOAD U-D during Iphi Insertion (BB%d) in expr:\n",
+                               bb->Id()));
+          Is_Trace_cmd(Tracing(), cr->Print(5, TFile));
+          Make_diff_ssu_version(NULL, cr, bb, FALSE, cr);
+        }
+      }
+      Traverse_cr_rw( /*(ck == SCK_DONTCARE)*/ cr->Ilod_base()  ?
+		     cr->Ilod_base() : cr->Istr_base(), bb, SCK_DONTCARE);
       if ( cr->Opr() == OPR_MLOAD ) {
 	Traverse_cr_rw( cr->Mload_size() ? 
-		       cr->Mload_size() : cr->Mstore_size(), bb, FALSE);
+		       cr->Mload_size() : cr->Mstore_size(), bb, SCK_DONTCARE);
       }
       if ( cr->Opr() == OPR_ILOADX ) {
-	Traverse_cr_rw( cr->Index(), bb, FALSE);
+	Traverse_cr_rw( cr->Index(), bb, SCK_DONTCARE);
       }
       if ( cr->Ivar_mu_node() != NULL ) {
 	MU_LIST mu_list( cr->Ivar_mu_node() );
-	Traverse_mu_read( &mu_list, bb );
+	Traverse_mu_read( &mu_list, bb, cr );
       }
+      if (! WOPT_Enable_Ivar_SPRE) break;
+
     }
     break;
 
   case CK_OP:
     {
       for ( INT32 i = 0; i < cr->Kid_count(); ++i ) {
-	Traverse_cr_rw( cr->Opnd(i), bb, FALSE);
+	Traverse_cr_rw( cr->Opnd(i), bb, SCK_DONTCARE);
       }
     }
     break;
@@ -655,6 +963,7 @@ void SSU::Iphi_insertion(void)
   EXP_WORKLST *wk;
   
   FOR_ALL_ELEM ( bb, cfg_iter, Init() ) {
+    Is_Trace(Tracing(), (TFile, "%sSPRE Iphi_insertion for BB%d:\n%s", SBar, bb->Id(), SBar));
     STMTREP_ITER   stmt_iter(bb->Stmtlist());
     STMTREP       *stmt;
     FOR_ALL_NODE ( stmt, stmt_iter, Init() ) {
@@ -662,7 +971,9 @@ void SSU::Iphi_insertion(void)
       if (stmt->Has_mu()) {
 	MU_LIST *mu_list = stmt->Mu_list();
 	if ( mu_list != NULL ) {
-	  Traverse_mu_read( mu_list, bb );
+          Is_Trace(Tracing(), (TFile, "Iphi Insertion (BB%d) for stmt's MU_LIST:\n", bb->Id()));
+          Is_Trace_cmd(Tracing(), stmt->Print(TFile));
+	  Traverse_mu_read( mu_list, bb, NULL );
 	}
       }
 
@@ -670,14 +981,13 @@ void SSU::Iphi_insertion(void)
       CODEREP *lhs = stmt->Lhs();
 
       // RHS 
-      if ( rhs ) 
-	Traverse_cr_rw( stmt->Rhs(), bb, FALSE);
-
+      if ( rhs ) {
+        Traverse_cr_rw( stmt->Rhs(), bb, SCK_DONTCARE);
+      }
       // LHS 
       if ( lhs ) {
-	Traverse_cr_rw( lhs, bb, TRUE);
-
-	if (OPERATOR_is_scalar_store (stmt->Opr()))
+        Traverse_cr_rw( lhs, bb, SPRE_ivar_filter(stmt));
+	if (Operator_is_scalar_store (stmt->Opr()))
 	  stmt->Reset_RHS_saved_saved_RHS();
       }
 
@@ -693,7 +1003,9 @@ void SSU::Iphi_insertion(void)
 	    continue;
 	  stmt->Set_diff_ssu_version();
 	  wk = SPRE_candidate(cnode->OPND());
-	  Make_diff_ssu_version(wk, cnode->OPND(), bb, FALSE);
+	  Make_diff_ssu_version(wk, cnode->OPND(), bb, FALSE, NULL);
+          Is_Trace(Tracing(), (TFile, "Iphi Insertion (BB%d) for stmt's CHI_LIST & Set_diff_ssu_version:\n", bb->Id()));
+          Is_Trace_cmd(Tracing(), stmt->Print(TFile));
 	  // cannot use TRUE (for only itself) because there may be a dead
 	  // chi aliased with it not handled in this loop
 	}
@@ -712,7 +1024,7 @@ void SSU::Iphi_insertion(void)
 	    (phi->RESULT()->Is_flag_set(CF_IS_ZERO_VERSION) ||
 	     phi->RESULT()->Is_flag_set(CF_INCOMPLETE_USES))) {
           wk = SPRE_candidate(phi->OPND(pos));
-	  Make_diff_ssu_version(wk, phi->OPND(pos), bb, FALSE);
+	  Make_diff_ssu_version(wk, phi->OPND(pos), bb, FALSE, NULL);
         }
       }
     }
@@ -738,8 +1050,8 @@ inline SSU::Reset_tos_downsafe(void)
 }
 
 // =====================================================================
-// By following the iphi du chain, propagate the occurrence info to
-// adjacent iphi's
+// By following the iphi du chain, propagate the occurrence info and
+// important attributes to adjacent iphi's
 // =====================================================================
 void
 SSU::Propagate_occurrences(EXP_OCCURS *iphi_occ, CODEREP *cr)
@@ -750,6 +1062,7 @@ SSU::Propagate_occurrences(EXP_OCCURS *iphi_occ, CODEREP *cr)
     if (opnd != NULL && opnd->Occ_kind() == EXP_OCCURS::OCC_PHI_OCCUR &&
 	opnd->Occurrence() == NULL) {
       opnd->Set_occurrence(cr);
+      opnd->Exp_phi()->Set_not_down_safe();   // attribute setting delayed - Shin
       Propagate_occurrences(opnd, cr);
     }
   }
@@ -774,6 +1087,7 @@ void SSU::Rename(BB_NODE *bb)
   AUX_STAB_ENTRY    *psym;
   EXP_WORKLST       *wk;
 
+  Is_Trace(Tracing(), (TFile, "%sSPRE Rename for BB%d:\n%s", SBar, bb->Id(), SBar));
   // iterate through each iphi node
   FOR_ALL_NODE(iphi, iphi_iter, Init(bb->Iphi_list())) {
     occur = iphi->Result();
@@ -785,20 +1099,18 @@ void SSU::Rename(BB_NODE *bb)
       // push the occurrence node onto the stack
       wk->Spre_stack()->Push(occur);
       // add to the appropriate occurrence list in the work list node
+      Is_Trace(Tracing(), (TFile, "Process iphi/SPRE_append_occurence:\n!!! "));
+      Is_Trace_cmd(Tracing(), occur->Print(TFile, 0));
       wk->SPRE_append_occurrence(occur);
     }
   }
 
-
   // iterate through each statement (backward order)
   FOR_ALL_NODE_REVERSE(stmt, stmt_iter, Init()) {
     // process the store
-    if (OPERATOR_is_scalar_store (stmt->Opr())) {
-      psym = Opt_stab()->Aux_stab_entry(stmt->Lhs()->Aux_id());
-      wk = psym->Spre_node();
+    if (Operator_is_scalar_store (stmt->Opr())) {
+      wk = SPRE_worklst(stmt);
       if (wk != NULL) {
-        Is_True(stmt->Lhs()->Aux_id() == wk->Exp()->Aux_id(),
-	        ("SSU::Rename: inconsistent aux_id found"));
 	if (! wk->Spre_stack()->Is_Empty())
 	  tos = wk->Spre_stack()->Top();
 	else tos = NULL;
@@ -816,12 +1128,18 @@ void SSU::Rename(BB_NODE *bb)
 	  // assign a new version
           occur->Set_e_version(wk->Cur_e_version());
           wk->New_e_version();
+          Is_Trace(Tracing(), (TFile, "Append_spre_real_occurrence w/ new version:\n!!! "));
+          Is_Trace_cmd(Tracing(), occur->Print(TFile, 0));
+          Is_Trace_cmd(Tracing(), stmt->Print(TFile));
 	}
 	else {
 	  // create occurrence node using the version on top of the stack
 	  occur = _etable->Append_spre_real_occurrence(stmt, wk);
 	  occur->Set_e_version(tos->E_version());
           occur->Set_def_occur(tos);
+          Is_Trace(Tracing(), (TFile, "Append_spre_real_occurrence use same version as IPHI:\n!!! "));
+          Is_Trace_cmd(Tracing(), occur->Print(TFile, 0));
+          Is_Trace_cmd(Tracing(), stmt->Print(TFile));
 
 	  if (tos->Occ_kind() == EXP_OCCURS::OCC_PHI_OCCUR) {
 	    wk->Spre_stack()->Push(occur); // push real occurrence 
@@ -983,17 +1301,26 @@ struct REMOVE_EMPTY_WORKLIST {
   BOOL operator()(EXP_WORKLST *wk)
   { 
     if (wk->Real_occurs().Head() == NULL) {
-      Is_True(wk->Exp()->Kind() == CK_VAR, ("REMOVE_EMPTY_WORKLIST(): not CK_VAR."));
-      AUX_STAB_ENTRY *psym = _opt_stab->Aux_stab_entry(wk->Exp()->Aux_id());
+      CODEREP *exp = wk->Exp();
+      switch (exp->Kind()) {
+        case CK_VAR: {
+          AUX_STAB_ENTRY *psym = _opt_stab->Aux_stab_entry(wk->Exp()->Aux_id());
 
-      Is_True(psym->Spre_node() == NULL || psym->Spre_node() == wk,
-	      ("REMOVE_EMPTY_WORKLIST():  psym->Spre_node() is inconsistent."));
+          Is_True(psym->Spre_node() == NULL || psym->Spre_node() == wk,
+                  ("REMOVE_EMPTY_WORKLIST():  psym->Spre_node() is inconsistent."));
 
-      Is_Trace(_trace, 
-	       (TFile, "REMOVE_EMPTY_WORKLIST:  remove worklist for auxid %d\n", wk->Exp()->Aux_id()));
-      psym->Set_spre_node(NULL);
-      wk->Set_spre_stack(NULL);
-      return TRUE;
+          Is_Trace(_trace, 
+                   (TFile, "REMOVE_EMPTY_WORKLIST:  remove worklist for auxid %d\n", wk->Exp()->Aux_id()));
+          psym->Set_spre_node(NULL);
+          wk->Set_spre_stack(NULL);
+          return TRUE;
+        }
+        case CK_IVAR: {
+          // do something
+          wk->Set_spre_stack(NULL);
+          return TRUE;
+        }
+      }
     }
     return FALSE;
   }
@@ -1027,7 +1354,10 @@ void SSU::Construct(void)
     
     // Placement of iphi functions.
     SET_OPT_PHASE("SPRE: Iphi Insertion");
+
+    Is_Trace(Tracing(), (TFile, "%sStart SPRE Iphi Insertion:\n%s", SBar, SBar));
     Iphi_insertion();
+    Is_Trace(Tracing(), (TFile, "%sEnd SPRE Iphi Insertion:\n%s", SBar, SBar));
   }
   OPT_POOL_Pop(Loc_pool(), SSA_DUMP_FLAG);
 
@@ -1043,23 +1373,31 @@ void SSU::Construct(void)
     // Iterate through all the SPRE candidates
     FOR_ALL_NODE(wk, worklst_iter, Init()) {
       wk->Set_spre_stack(CXX_NEW(STACK<EXP_OCCURS*>(Loc_pool()), Loc_pool()));
-      AUX_STAB_ENTRY *psym = Opt_stab()->Aux_stab_entry(wk->Exp()->Aux_id());
-      if (psym->Points_to()->Local()) {// for locals, assign a version at exit
-        EXP_OCCURS *occur =
-	  _etable->Append_spre_real_occurrence(dummy_exit_stmt, wk);
-        wk->Spre_stack()->Push(occur);
-        occur->Set_fake_store();
-        // assign a new version
-        occur->Set_e_version(wk->Cur_e_version());
-        wk->New_e_version();
+      CODEREP *cr = wk->Exp();
+      if (cr->Kind() == CK_VAR) {
+        AUX_STAB_ENTRY *psym = Opt_stab()->Aux_stab_entry(wk->Exp()->Aux_id());
+        if (psym->Points_to()->Local()) {// for locals, assign a version at exit
+          EXP_OCCURS *occur =
+            _etable->Append_spre_real_occurrence(dummy_exit_stmt, wk);
+          wk->Spre_stack()->Push(occur);
+          occur->Set_fake_store();
+          // assign a new version
+          occur->Set_e_version(wk->Cur_e_version());
+          wk->New_e_version();
+          Is_Trace(Tracing(), (TFile, "Append_spre_real_occurrence for all worklsts:\n!!! "));
+          Is_Trace_cmd(Tracing(), occur->Print(TFile, 0));
+        }
       }
       // else, leave stack empty at exit
     } 
 
     //  Rename into SSU names.
+    Is_Trace(Tracing(), (TFile, "%sStart SPRE Rename:\n%s", SBar, SBar));
     Rename(_cfg->Exit_bb());
+    Is_Trace(Tracing(), (TFile, "%sEnd SPRE Rename:\n%s", SBar, SBar));
 
     // propagate occurrences through the iphi's
+    // delayed process due to the SSU::Construct is one pass on all BBs -Shin 042022
     EXP_OCCURS *occur;
     EXP_OCCURS_ITER phi_occur_iter;
     FOR_ALL_NODE(wk, worklst_iter, Init(_etable->Exp_worklst())) {

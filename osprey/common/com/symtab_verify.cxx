@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -668,6 +672,7 @@ void INITV::Verify(UINT) const
 #endif // KEY
 #ifdef KEY
     Is_True ( repeat1 != 0, (msg, "repeat1: should not be 0"));
+    Is_True ( Blk () < INITV_Table_Size (), (msg, "blk: exceeds table size"));
     break;	// we are using 'unused' as flags
 #endif // KEY
   case INITVKIND_LABEL:
@@ -867,12 +872,17 @@ ST_ATTR::Verify (UINT level) const
     const ST& st = St_Table[st_idx];
     switch (kind) {
     case ST_ATTR_UNKNOWN:
+    case ST_ATTR_ABSOLUTE_LOCATION:
 	break;
     case ST_ATTR_DEDICATED_REGISTER:
 	Is_True(ST_assigned_to_dedicated_preg (st),
 		("ST_ASSIGNED_TO_DEDICATED_PREG not set"));
+#ifndef TARG_UWASM
+	// uwasm added dedicated register attr for formal st
+	// which is not volatile type
 	Is_True(TY_is_volatile (ST_type (st)),
 		("dedicated registers must be marked volatile"));
+#endif
 	break;
     case ST_ATTR_SECTION_NAME:
 	Is_True(u.section_name < STR_Table_Size (), ("Invalid section name"));
@@ -1081,7 +1091,7 @@ void PU::Verify(UINT) const
 #ifdef KEY
 // We are using 'misc' to store ST_IDXs of 2 special variables for
 // C++ exception handling, or for C nested functions.
-  if (!(src_lang & PU_CXX_LANG) && !(src_lang & PU_C_LANG))
+  if (!(src_lang & PU_CXX_LANG) && !(src_lang & PU_C_LANG) && !(src_lang & PU_JAVA_LANG))
     Is_True (misc == 0, ("misc fields must be zero"));
 #endif // KEY
 
@@ -1099,8 +1109,8 @@ void PU::Verify(UINT) const
     Fail_FmtAssertion (msg, "must_inline and no_inline");
 
   if ( PU_has_exc_scopes (*this))
-    Is_True( PU_cxx_lang (*this),
-            (msg, "exception scopes can only be set for a C++ language pu"));
+    Is_True( PU_cxx_lang (*this) || PU_java_lang (*this),
+            (msg, "exception scopes can only be set for a C++/Java language pu"));
 
   Is_True (PU_lexical_level (*this) > 1,
 	   (msg, "Lexical level for pu should be > 1"));

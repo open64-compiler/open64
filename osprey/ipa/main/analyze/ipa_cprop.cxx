@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -245,7 +249,7 @@ Report_Reason (const IPA_EDGE * e, const char * reason, float count=0.0,
   if (limit)
     fprintf (stderr, reason, count, limit);
   else
-    fprintf (stderr, reason);
+    fprintf (stderr, "%s", reason);
 }
 
 // TODO: tune these consts

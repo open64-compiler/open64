@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2011-2012 Advanced Micro Devices, Inc.  All Rights Reserved.
 #
@@ -161,6 +165,9 @@ ifndef GCC_DIR
 endif
 ifndef WHIRL_HAS_ID_FIELD
      WHIRL_HAS_ID_FIELD = @WHIRL_HAS_ID_FIELD@
+endif
+ifndef BUILD_PRODUCT
+     BUILD_PRODUCT = @BUILD_PRODUCT@
 endif
 
 #  For cross compilers, there are really 3 separate variables:
@@ -358,11 +365,13 @@ ifdef BUILD_TARGET
  ifneq ($(BUILD_TARGET), IA32)
  ifneq ($(BUILD_TARGET), IA64)
  ifneq ($(BUILD_TARGET), X8664)
+ ifneq ($(BUILD_TARGET), UWASM)
  ifneq ($(BUILD_TARGET), NVISA)
  ifneq ($(BUILD_TARGET), SL)
  ifneq ($(BUILD_TARGET), PPC32)
  ifneq ($(BUILD_TARGET), LOONGSON)
    ABORT_BUILD = BUILD_TARGET has bad value - $(BUILD_TARGET)!
+ endif
  endif
  endif
  endif
@@ -399,6 +408,9 @@ BUILD_TARGET_DIR = ppc32
 endif
 ifeq ($(BUILD_TARGET), LOONGSON)
 BUILD_TARGET_DIR = loongson
+endif
+ifeq ($(BUILD_TARGET), UWASM)
+BUILD_TARGET_DIR = uwasm
 endif
 
 
@@ -656,7 +668,28 @@ BUILD_SKIP_WHIRL2C = TRUE
 BUILD_SKIP_WHIRL2F = TRUE
 endif
 
+ifeq ($(BUILD_PRODUCT), MASTIFF)
+STD_COMPILE_OPTS += -DBUILD_MASTIFF -DDYNAMICLANG
+include ${BUILD_TOT}/../mastiff.mk
+BE_SO   = maccom.so
+WOPT_SO = macdfa.so
+VSA_SO  = macvsa.so
+RBC_SO  = macrbc.so
+LNO_SO  = maclpa.so
+CG_SO   = macdcg.so
+IPL_SO  = macdls.so
+IPA_SO  = macdip.so
+else
 include ${BUILD_TOT}/../defs.mk
+BE_SO   = be.so
+WOPT_SO = wopt.so
+VSA_SO  = vsa.so
+RBC_SO  = rbc.so
+LNO_SO  = lno.so
+CG_SO   = cg.so
+IPL_SO  = ipl.so
+IPA_SO  = ipa.so
+endif
 
 STD_C_OPTS = -std=gnu99 -D_GNU_SOURCE
 ERROR_ON_WARNINGS = #-Werror

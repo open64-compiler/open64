@@ -1,4 +1,8 @@
 #!/bin/bash
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #
 #  Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
@@ -275,6 +279,9 @@ INSTALL_FE () {
       INSTALL_EXEC_SUB ${AREA}/g++fe/gfecc ${PHASEPATH}/gfecc
     fi
 
+    # clangfe
+    INSTALL_EXEC_SUB ${AREA}/clang2whirl/mapclang ${PHASEPATH}/mapclang
+
     # GNU 4.2.0 based FE
     INSTALL_EXEC_SUB ${AREA}/wgen/wgen42 ${PHASEPATH}/wgen42
     if [ "$TARG_HOST" = "ppc32" ]; then
@@ -282,10 +289,6 @@ INSTALL_FE () {
     else
     LIBEXEC=libexec/gcc/${PHASE_DIR_PREFIX}-linux-gnu/4.2.0
     fi
-
-    # CLANG based FE
-    INSTALL_EXEC_SUB ${AREA}/clang2whirl/clangfe ${PHASEPATH}/clangfe
-
     (cd $PHASEPATH; ln -sf ../../../../open64-gcc-4.2.0/${LIBEXEC}/cc1 cc142)
     (cd $PHASEPATH; ln -sf ../../../../open64-gcc-4.2.0/${LIBEXEC}/cc1plus cc1plus42)
 
@@ -293,6 +296,12 @@ INSTALL_FE () {
       INSTALL_EXEC_SUB ${AREA}/crayf90/sgi/mfef95   ${PHASEPATH}/mfef95
       INSTALL_EXEC_SUB ${AREA}/crayf90/sgi/cf95.cat ${PHASEPATH}/cf95.cat
     fi
+
+    # install jfe
+    INSTALL_EXEC_SUB ${AREA}/jfe/libb2w/libb2w/libb2w.so ${PHASEPATH}/libjfe/libb2w.so
+    INSTALL_EXEC_SUB ${AREA}/jfe/fernflower/libs/fernflower.jar ${PHASEPATH}/libjfe/fernflower.jar
+    INSTALL_EXEC_SUB ${AREA}/jfe/B2WFrontEnd/libs/b2wfrontend.jar ${PHASEPATH}/libjfe/b2wfrontend.jar
+    INSTALL_EXEC_SUB ${AREA}/jfe/jfe ${PHASEPATH}/jfe
     return 0
 }
 
@@ -628,6 +637,7 @@ INSTALL_MAN_PAGE () {
 }
 
 INSTALL_MISC () {
+    INSTALL_EXEC_SUB ${AREA}/vsa/vsa.so           ${PHASEPATH}/vsa.so
     INSTALL_EXEC_SUB ${AREA}/wopt/wopt.so         ${PHASEPATH}/wopt.so
     INSTALL_EXEC_SUB ${AREA}/lw_inline/lw_inline  ${PHASEPATH}/inline
     INSTALL_EXEC_SUB ${AREA}/lno/lno.so           ${PHASEPATH}/lno.so

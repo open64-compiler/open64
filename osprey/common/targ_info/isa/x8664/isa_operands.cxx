@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -261,6 +265,14 @@ int main()
                     TOP_vzeroupper,
                     TOP_vzeroall,
 		    TOP_UNDEFINED);
+
+  Instruction_Group("range expr",
+                    TOP_checkptr,
+                    TOP_UNDEFINED);
+  Result(0, int32);
+  Operand(0, int32, base);
+  Operand(1, simm32, opnd1);
+  Operand(2, simm32, opnd2);
 
   Instruction_Group("sse2 clflush",
                     TOP_clflush,
@@ -3358,6 +3370,7 @@ int main()
 		     TOP_not32,
   		     TOP_inc32,
 		     TOP_dec32,
+		     TOP_bswap32,
 		     TOP_UNDEFINED);
   Result(0, int32);
   Operand(0, int32, opnd1);
@@ -3367,6 +3380,7 @@ int main()
 		     TOP_not64,
 		     TOP_inc64,
 		     TOP_dec64,
+		     TOP_bswap64,
 		     TOP_UNDEFINED);
   Result(0, int64);
   Operand(0, int64, opnd1);

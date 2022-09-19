@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -264,7 +268,8 @@ extern BOOL     IPA_Enable_Inline_Char_Array;   /* Enable inlining of PU with ch
 extern BOOL     IPA_Enable_Inline_Optional_Arg;   /* Enable inlining of PU with optional arguments */
 extern BOOL     IPA_Enable_Inline_Struct_Array_Actual;   /* Enable inlining of PU with F90 structures with actuals being array type */
 extern BOOL     IPA_Enable_Inline_Var_Dim_Array;   /* Enable inlining of PU with param that is variable-dimensioned array */
-extern BOOL  IPA_Enable_Reorder;   /*Enable structure field reordering */
+extern BOOL     IPA_Enable_Reorder;   /*Enable structure field reordering */
+extern BOOL     IPA_Enable_AOT;       /* Enable AOT */
 #ifdef KEY
 typedef enum
 {
@@ -376,6 +381,9 @@ extern BOOL IPA_Enable_Whole_Program_Mode_Set;
 
 // Enable multi-core scalability optimization.
 extern BOOL IPA_Enable_Scale;
+
+// Enable virutal call dispatch
+extern BOOL INLINE_Enable_Devirtualize;
 
 #ifdef __cplusplus
 }

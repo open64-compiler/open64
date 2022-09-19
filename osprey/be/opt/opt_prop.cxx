@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -97,6 +101,11 @@
 #include "opt_prop.h"
 #include "opt_cvtl_rule.h"
 
+#ifdef BUILD_MASTIFF
+#include "opt_dna.h"
+#include "opt_vsa.h"
+#endif
+
 // ====================================================================
 // Contains_only_constants - see if the expr contains only constants
 // ====================================================================
@@ -131,8 +140,8 @@ CODEREP::Contains_only_constants() const
 // The caller must call Reset_isop_visited afterwards because
 // another caller may call it with a different aux_id. 
 // ====================================================================
-static BOOL
-Contains_only_the_var(AUX_ID id, CODEREP *cr)
+BOOL
+COPYPROP::Contains_only_the_var(AUX_ID id, CODEREP *cr)
 {
 
   switch (cr->Kind()) {
@@ -732,8 +741,8 @@ CODEREP::Convert_type(CODEMAP *htable, CODEREP *expr, BOOL icopy_phase)
 //    so that COPYPROP and DCE is working on the same set of 
 //    "identity assignments".
 //
-static CODEREP *
-Prop_identity_assignment(CODEREP *cr)
+CODEREP *
+COPYPROP::Prop_identity_assignment(CODEREP *cr)
 {
   STMTREP *dstmt;
   if (cr->Is_flag_set(CF_DEF_BY_PHI)) 
@@ -999,6 +1008,13 @@ COPYPROP::Prop_const_init_scalar(CODEREP *x, AUX_ID var_aux_id)
 
   AUX_STAB_ENTRY *psym = Opt_stab()->Aux_stab_entry(var_aux_id);
 
+  // ignore vector type so far
+  if ( MTYPE_is_vector(x->Dsctyp()) ||
+       (psym->St() && MTYPE_is_vector(ST_mtype(psym->St()))) ) {
+    Warn_todo("Prop_const_init_scalar: handle vector type.");
+    return NULL;
+  }
+
   // is this variable a constant initialized scalar?
   BOOL const_initialized = 
     psym->Is_flag_const_init() &&
@@ -1017,7 +1033,10 @@ COPYPROP::Prop_const_init_scalar(CODEREP *x, AUX_ID var_aux_id)
       {
 	// if the ST's initialized value can be represented with a TCON
 	// first convert the init value to the type of the variable
-	if ( x->Dsctyp() != TCON_ty(init_tcon) ) {
+	if ( (x->Dtyp() == MTYPE_M ||
+              x->Dsctyp() == MTYPE_M ||
+              TCON_ty(init_tcon) == MTYPE_M) &&
+             x->Dsctyp() != TCON_ty(init_tcon) ) {
 	  // init_tcon = Targ_Conv( x->Dsctyp(), init_tcon );
 	  // Do not use Targ_Conv.  Consider when the INITO is a
 	  // structure type and x is a member of the structure.
@@ -1051,10 +1070,11 @@ COPYPROP::Prop_const_init_scalar(CODEREP *x, AUX_ID var_aux_id)
 	  }
 	  AUX_STAB_ENTRY *psym2 = Opt_stab()->Aux_stab_entry(aux_id);
 	  CODEREP  *cr = Alloc_stack_cr(0);
+          TY_IDX ptr_ty = Make_Pointer_Type(ST_type(psym2->St()));
 	  cr->Init_lda(Pointer_type,
 		       aux_id,
 		       psym2->St_ofst(),     // redundant info
-		       ST_type(psym2->St()), // redundant info
+		       ptr_ty,               // redundant info
 		       psym2->St());         // redundant info
 	  return Htable()->Rehash(cr, FALSE);
 	}
@@ -1064,12 +1084,36 @@ COPYPROP::Prop_const_init_scalar(CODEREP *x, AUX_ID var_aux_id)
   return NULL;
 }
 
+void
+COPYPROP::Vsa_annotate_srcr(CODEREP* cr_old, STMTREP* stmt, CODEREP* cr_new, OPT_STAB* stab)
+{
+#ifdef BUILD_MASTIFF
+  DNA_NODE *cur_dna = Get_cur_dna();
+  if (cur_dna == NULL)
+    return ;
+  if(cr_old == cr_new)
+    return ;
+
+  Is_True(cr_old->Kind() == CK_VAR || cr_old->Kind() == CK_IVAR,
+    ("cr_old's kind is not CK_VAR or CK_IVAR, cr_old: cr%d, kind: %d", cr_old->Coderep_id(), cr_old->Kind()));
+
+  cur_dna->Map_stpath(stab, cr_old, stmt, cr_new);
+  if (cur_dna->Get_stpath(stmt, cr_new) != NULL) {
+    const char *st_name = cur_dna->Get_stpath(stmt, cr_new)->St_name();
+    Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+      (TFile, "[STPATH Trace] COPYPROP::Vsa_annotate_srcr: SR %d, old cr: cr%d, new cr: cr%d, saved name: %s\n",
+      stmt->Stmtrep_id(), cr_old->Coderep_id(), cr_new->Coderep_id(), st_name));
+  }
+  cur_dna->Prop_stpath(cr_old->Get_defstmt(), stmt, cr_new);
+#endif
+}
+
 // ====================================================================
 //  COPYPROP::Prop_var - return the new root of the tree if copy 
 //  propagation results in a new tree
 // ====================================================================
 CODEREP *
-COPYPROP::Prop_var(CODEREP *x, BB_NODE *curbb, BOOL icopy_phase, 
+COPYPROP::Prop_var(CODEREP *x, STMTREP *curstmt, BB_NODE *curbb, BOOL icopy_phase, 
 		   BOOL inside_cse, BOOL in_array,
 		   BOOL no_complex_preg)
 {
@@ -1093,6 +1137,7 @@ COPYPROP::Prop_var(CODEREP *x, BB_NODE *curbb, BOOL icopy_phase,
       Htable()->Inc_inputprops();
     else 
       Htable()->Inc_mainprops();
+    Vsa_annotate_srcr(x, curstmt, retv, Opt_stab());
     return retv;
   }
 
@@ -1242,10 +1287,19 @@ COPYPROP::Prop_var(CODEREP *x, BB_NODE *curbb, BOOL icopy_phase,
       stmt->Bb()->Dominates_strictly(insertbb)) {
     // insert an eval at insertbb to promote loop-invariant motion by PRE
     STMTREP *eval_stmt = CXX_NEW(STMTREP(OPC_EVAL), Htable()->Mem_pool());
+    eval_stmt->Set_stmtrep_id(Htable()->Next_stmtrep_id());
     expr->IncUsecnt();
     eval_stmt->Set_rhs(expr);
+    SRCPOS srcpos = 0;
+    if(insertbb->Last_stmtrep())
+      srcpos = insertbb->Last_stmtrep()->Linenum();
+    else
+      srcpos = insertbb->Linenum();
+    eval_stmt->Set_linenum(srcpos);
     insertbb->Append_stmtrep(eval_stmt);
+    
   }
+  Vsa_annotate_srcr(x, curstmt, expr, Opt_stab());
   return expr;
 }
 
@@ -1319,6 +1373,7 @@ COPYPROP::Prop_ivar(CODEREP *x, BB_NODE *curbb, BOOL icopy_phase,
       stmt->Bb()->Dominates_strictly(insertbb)) {
     // insert an eval at insertbb to promote loop-invariant motion by PRE
     STMTREP *eval_stmt = CXX_NEW(STMTREP(OPC_EVAL), Htable()->Mem_pool());
+    eval_stmt->Set_stmtrep_id(Htable()->Next_stmtrep_id());
     expr->IncUsecnt();
     eval_stmt->Set_rhs(expr);
     insertbb->Append_stmtrep(eval_stmt);
@@ -1343,13 +1398,12 @@ COPYPROP::Get_node_rehashed_to(CODEREP *x)
   return NULL;
 }
 
-
 // ====================================================================
 //  COPYPROP::Copy_propagate_cr - return the new root of the tree if copy 
 //  propagation results in a new tree
 // ====================================================================
 CODEREP *
-COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb, 
+COPYPROP::Copy_propagate_cr(CODEREP *x, STMTREP* curstmt, BB_NODE *curbb, 
 			    BOOL inside_cse, BOOL in_array,
 			    BOOL no_complex_preg)
 {
@@ -1388,12 +1442,12 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
       }
 #ifdef KEY // bug 3009
       if (Prop_identity_assignment(id_cr)) // bug 3091
-        return Copy_propagate_cr(id_cr, curbb, inside_cse, in_array); // recurse
+        return Copy_propagate_cr(id_cr, curstmt, curbb, inside_cse, in_array); // recurse
 #endif
       id_cr = x->Convert_type(Htable(), id_cr, FALSE);
       return id_cr;
      }
-     return Prop_var(x, curbb, FALSE, inside_cse, in_array, no_complex_preg);
+     return Prop_var(x, curstmt, curbb, FALSE, inside_cse, in_array, no_complex_preg);
     }
   case CK_IVAR: {
     MU_NODE *mnode = x->Ivar_mu_node();
@@ -1407,10 +1461,11 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
     expr = Prop_ivar(x, curbb, FALSE, inside_cse, in_array, no_complex_preg);
     if (expr) {
       x->DecUsecnt_rec();
+      Vsa_annotate_srcr(x, curstmt, expr, Opt_stab());
       return expr;
     }
     inside_cse = inside_cse || x->Usecnt() > 1;
-    expr = Copy_propagate_cr(x->Ilod_base(), curbb, inside_cse, in_array
+    expr = Copy_propagate_cr(x->Ilod_base(), curstmt, curbb, inside_cse, in_array
 #ifdef KEY // bug 10577
     			     , TRUE
 #endif
@@ -1432,10 +1487,10 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
       if (canon_expr) expr = canon_expr;
     }
     if (x->Opr() == OPR_MLOAD)
-      expr2 = Copy_propagate_cr(x->Mload_size(), curbb, 
+      expr2 = Copy_propagate_cr(x->Mload_size(), curstmt, curbb, 
 				inside_cse, in_array);
     else if (x->Opr() == OPR_ILOADX)
-      expr2 = Copy_propagate_cr(x->Index(), curbb, inside_cse, in_array);
+      expr2 = Copy_propagate_cr(x->Index(), curstmt, curbb, inside_cse, in_array);
     else
       expr2 = NULL;
     if (expr || expr2) { // need rehash
@@ -1487,7 +1542,6 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
     inside_cse = inside_cse || x->Usecnt() > 1;
 
     const OPERATOR opr = x->Opr();
-
     if (opr != OPR_ADD && opr != OPR_SUB && opr != OPR_NEG && opr != OPR_MPY) {
       for  (INT32 i = 0; i < x->Kid_count(); i++) {
 
@@ -1501,14 +1555,14 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
 #if defined(KEY) && !defined(TARG_NVISA)
         if (opr != OPR_ASM_INPUT ||
             (x->Opnd(i)->Kind() != CK_VAR && x->Opnd(i)->Kind() != CK_IVAR) )
-	  expr = Copy_propagate_cr(x->Opnd(i), curbb, inside_cse, in_array);
+	  expr = Copy_propagate_cr(x->Opnd(i), curstmt, curbb, inside_cse, in_array);
         else {
 	  // OSP_384
 	  if(opr == OPR_ASM_INPUT) {
             // open64.net bug787. Try propagate for VAR first, if the propagated expr is the same
             // kind to the original one,i.e, also a VAR. we allow this propagation. otherwise, disable it.
             if ( x->Opnd(i)->Kind() == CK_VAR ) {
-              CODEREP *possible_prop = Copy_propagate_cr(x->Opnd(i), curbb, inside_cse, in_array);
+              CODEREP *possible_prop = Copy_propagate_cr(x->Opnd(i), curstmt, curbb, inside_cse, in_array);
               if (possible_prop && possible_prop->Kind() == x->Opnd(i)->Kind()) 
                 expr = possible_prop;
               // open64.net bug963. If the Asm_input constraint is "i", i.e, required immediate
@@ -1534,7 +1588,7 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
 	// for NVISA, the usage of asm is an array of const val,
 	// then was passing arr[3] and was seeing the array node
 	// rather than the const val under the asm_input
-	expr = Copy_propagate_cr(x->Opnd(i), curbb, inside_cse, in_array);
+	expr = Copy_propagate_cr(x->Opnd(i), curstmt, curbb, inside_cse, in_array);
 #endif
 	if (expr) {
 	  need_rehash = TRUE;
@@ -1548,10 +1602,10 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
       }
     } else {
       for  (INT32 i = 0; i < x->Kid_count(); i++) {
-	expr = Copy_propagate_cr(x->Opnd(i), curbb, inside_cse, in_array);
+	expr = Copy_propagate_cr(x->Opnd(i), curstmt, curbb, inside_cse, in_array);
 	if (expr) {
-	  need_rehash = TRUE;
 	  cr->Set_opnd(i, expr);
+	  need_rehash = TRUE;
 	}
 	else cr->Set_opnd(i, x->Opnd(i));
       }
@@ -1608,6 +1662,7 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
     // Canonicalize comparison for LFTR2 in MAINOPT phase only.
     if (Htable()->Phase() == MAINOPT_PHASE && OPERATOR_is_compare(cr->Opr())) {
       BOOL modified;
+      // TODO:: may need Map_stpath here
       canonicalized = Htable()->Canonicalize_compare(cr, curbb, &modified);
       if (modified)      // Canonicalize_compare will overwrite cr!
 	need_rehash = TRUE;
@@ -1626,6 +1681,7 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, BB_NODE *curbb,
         if (expr->Kind()==CK_OP) expr->Set_isop_flag(ISOP_FOLD_EXPR_VISITED);
 	expr->Set_flag(CF_C_P_PROCESSED);
       }
+      
       x->Set_flag(CF_C_P_REHASHED);
       // to record rehashed entry for use if visited again
       Add_rehashed_node(x, expr);
@@ -1666,8 +1722,9 @@ COPYPROP::Copy_propagate_stmt(STMTREP *stmt, BB_NODE *bb)
       WN_pragma(stmt->Orig_wn()) == WN_PRAGMA_COPYIN_BOUND)
     return;
 
-  if (stmt->Rhs()) {
-    x = Copy_propagate_cr(stmt->Rhs(), bb, FALSE, FALSE/*in_array*/);
+  CODEREP* orig_rhs = stmt->Rhs();
+  if (orig_rhs) {
+    x = Copy_propagate_cr(stmt->Rhs(), stmt, bb, FALSE, FALSE/*in_array*/);
     if (x) {
       CODEREP *y = Htable()->Canon_rhs(x);
       if (y)
@@ -1676,10 +1733,10 @@ COPYPROP::Copy_propagate_stmt(STMTREP *stmt, BB_NODE *bb)
 	stmt->Set_rhs(x);
     }
   }
-  switch (stmt->Opr()) { 
+  switch (stmt->Opr()) {
   case OPR_ISTORE:
   case OPR_ISTBITS:
-    x = Copy_propagate_cr(stmt->Lhs()->Istr_base(), bb, FALSE,
+    x = Copy_propagate_cr(stmt->Lhs()->Istr_base(), stmt, bb, FALSE,
     			  FALSE/*in_array*/);
     if (x) {
       INT64 ofst = stmt->Lhs()->Offset();
@@ -1695,7 +1752,7 @@ COPYPROP::Copy_propagate_stmt(STMTREP *stmt, BB_NODE *bb)
     break;
   case OPR_MSTORE:
     {
-      x = Copy_propagate_cr(stmt->Lhs()->Istr_base(), bb, FALSE,
+      x = Copy_propagate_cr(stmt->Lhs()->Istr_base(), stmt, bb, FALSE,
                             FALSE/*in_array*/ );
       if (x) {
         INT64 ofst = stmt->Lhs()->Offset();
@@ -1710,7 +1767,7 @@ COPYPROP::Copy_propagate_stmt(STMTREP *stmt, BB_NODE *bb)
           stmt->Lhs()->Set_istr_base(x);
       }
       CODEREP *num_bytes = (CODEREP *)stmt->Lhs()->Mstore_size();
-      x = Copy_propagate_cr(num_bytes, bb, FALSE, FALSE/*in_array*/);
+      x = Copy_propagate_cr(num_bytes, stmt, bb, FALSE, FALSE/*in_array*/);
       if (x) stmt->Lhs()->Set_mstore_size(x);
     }
     break;
@@ -1994,15 +2051,16 @@ COPYPROP::Rehash_thru_phis(CODEREP *x, BB_NODE *bb)
 }
 
 CODEREP*
-COPYPROP::Strictly_identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb)
+COPYPROP::Strictly_identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb, SRCPOS &pos)
 {
   CODEREP *popnd = NULL;
+  STMTREP *defstmt = NULL;
   BB_NODE *pred; BB_LIST_ITER bb_iter;
   INT32 height, weight;
 
   FOR_ALL_ELEM (pred, bb_iter, Init(bb->Pred())) {
     CODEREP *tmp = phi->OPND(bb_iter.Idx());
-    STMTREP *defstmt = tmp->Get_defstmt();
+    defstmt = tmp->Get_defstmt();
     if (defstmt == NULL || ! OPERATOR_is_scalar_store (defstmt->Opr()) ||
         tmp->Is_flag_set(CF_DEF_BY_CHI)) {
       popnd = NULL; break;
@@ -2013,6 +2071,8 @@ COPYPROP::Strictly_identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb)
       popnd = defstmt->Rhs();
     if (popnd != defstmt->Rhs()) { popnd = NULL; break; }
   }
+  if(defstmt)
+    pos = defstmt->Linenum();
   return popnd;
 }
 
@@ -2020,9 +2080,11 @@ COPYPROP::Strictly_identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb)
 // COPYPROP::Identical_phi_opnd -
 //   Test if the phi operands are all the same, return it if its TRUE,
 //   return NULL otherwise
+//   2018.09.14 wu yongchong
+//   add pos to return a line number
 // ====================================================================
 CODEREP *
-COPYPROP::Identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb)
+COPYPROP::Identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb, SRCPOS &pos)
 {
   CODEREP *res = phi->RESULT();
   INT32 height, weight;
@@ -2030,7 +2092,7 @@ COPYPROP::Identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb)
   if (!WOPT_Enable_Aggressive_Phi_Simp || 
       bb->Pred()->Len() > 2 ||
       bb->Pred()->Len() == 1) {
-    return Strictly_identical_phi_opnd(phi, bb);
+    return Strictly_identical_phi_opnd(phi, bb, pos);
   }
 
   // for 2 operands phi's, do not require identical codereps for the two rhs
@@ -2053,12 +2115,18 @@ COPYPROP::Identical_phi_opnd(PHI_NODE *phi, BB_NODE *bb)
   if (ldefstmt->Rhs() == rdefstmt->Rhs()) {
     if (Propagatable(ldefstmt->Rhs(), FALSE, 0, FALSE, FALSE,
 		     &height, &weight, FALSE/*in_array*/, NULL) == PROPAGATABLE)
+    {
+      pos = ldefstmt->Linenum();
       return ldefstmt->Rhs();	// trivial case (equivalent to above) 
+    }
     else return NULL;
   }
   PROP_THRU_PHI_PREFERENCE pref;
   if (Propagatable_thru_phis(ldefstmt->Rhs(), rdefstmt->Rhs(), bb, res, &pref)) 
+  {
+    pos = (pref != RIGHT_SIDE)? ldefstmt->Linenum() : rdefstmt->Linenum();
     return Rehash_thru_phis((pref != RIGHT_SIDE) ? ldefstmt->Rhs() : rdefstmt->Rhs(), bb);
+  }
   else return NULL;
 }
 
@@ -2143,7 +2211,8 @@ COPYPROP::Copy_propagate(BB_NODE *bb)
 	if (! WOPT_Enable_Phi_Simp) continue;
 	if (cr->Is_flag_set(CF_IS_ZERO_VERSION)) continue;
 	if (!Opt_stab()->Aux_stab_entry(cr->Aux_id())->Is_real_var()) continue;
-	CODEREP *popnd = Identical_phi_opnd(phi, bb);
+	SRCPOS linenum=0;
+	CODEREP *popnd = Identical_phi_opnd(phi, bb, linenum);
 	if (popnd) { // all operands are the same 
 	  cr->Reset_flag(CF_DEF_BY_PHI);
 	  // Fix 461984 (don't change the dtyp and dsctyp)
@@ -2162,6 +2231,8 @@ COPYPROP::Copy_propagate(BB_NODE *bb)
 	    cr->Reset_flag(CF_MADEUP_TYPE);
 	  }
 	  STMTREP *copy_stmt = popnd->Create_cpstmt(cr, Htable()->Mem_pool());
+	  copy_stmt->Set_stmtrep_id(Htable()->Next_stmtrep_id());
+	  copy_stmt->Set_linenum(linenum);
 	  bb->Prepend_stmtrep(copy_stmt);
 	  phi->Reset_live(); 
 	}
@@ -2299,6 +2370,16 @@ COMP_UNIT::Do_copy_propagate()
   OPT_POOL_Initialize(&cp_pool, "copy prop pool", FALSE, PROP_DUMP_FLAG);
   OPT_POOL_Push(&cp_pool, PROP_DUMP_FLAG);
   
+  if ( Get_Trace(TP_GLOBOPT, PROP_DUMP_FLAG)) {
+    fprintf( TFile, "%sBefore COMP_UNIT::Do_copy_propagate\n%s",
+	     DBar, DBar );
+#ifdef BUILD_MASTIFF
+    Cfg()->Print(TFile, _dna);
+#else
+    Cfg()->Print(TFile);
+#endif
+  }
+  
   Opt_stab()->New_coderep(&cp_pool);
   _opt_stab->Clear_coderep();
 
@@ -2314,7 +2395,6 @@ COMP_UNIT::Do_copy_propagate()
 #endif
   OPT_POOL_Pop(&cp_pool, PROP_DUMP_FLAG);
   OPT_POOL_Delete(&cp_pool, PROP_DUMP_FLAG);
-
 
   // Move IVR-generated assignment for secondary IV into the subsequent block
   // to ensure the DO-loop can be promoted back.
@@ -2359,7 +2439,11 @@ COMP_UNIT::Do_copy_propagate()
   if ( Get_Trace(TP_GLOBOPT, PROP_DUMP_FLAG)) {
     fprintf( TFile, "%sAfter COMP_UNIT::Do_copy_propagate\n%s",
 	     DBar, DBar );
+#ifdef BUILD_MASTIFF
+    Cfg()->Print(TFile, Dna());
+#else
     Cfg()->Print(TFile);
+#endif
   }
 
   Opt_tlog( "MAINPROP", 0, "%d copy propagations",

@@ -233,6 +233,10 @@ Initialize_Timing ( BOOL enable )
 	    Resource_Alloc ( "   WHIRL SSA PreOPT Emitter", NULL );
     Timer ( T_WSSA_EMIT_CU) =
 	    Resource_Alloc ( "  WHIRL SSA PreOPT Emitter", Timer(T_WSSA_EMIT_Comp));
+    Timer ( T_BUILD_CHA) =
+	    Resource_Alloc ( "  Build Class Hierarchy", NULL);
+    Timer ( T_TAG_PROP) =
+	    Resource_Alloc ( "  Tag propagation", NULL);
 
   }
 }
@@ -498,6 +502,8 @@ Finish_Compilation_Timing (
 	Report_Delta_Time ( file, T_ReadIR_Comp );
 	Report_Delta_Time ( file, T_Lower_Comp );
 	Report_Delta_Time ( file, T_ORI_Comp );
+	Report_Delta_Time ( file, T_BUILD_CHA );
+	Report_Delta_Time ( file, T_TAG_PROP );
 
 	fprintf ( file, "\n" );
 	Report_Delta_Time ( file, T_Preopt_Comp );

@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2007. PathScale, LLC. All Rights Reserved.
 #
@@ -207,7 +211,8 @@ IPA_ANALYZE_CXX_SRCS = \
 	ipa_struct_opt.cxx \
 	ipa_nystrom_alias_analyzer.cxx \
 	ipa_be_write.cxx \
-	ipa_pcg.cxx 
+	ipa_pcg.cxx \
+	ipa_aot.cxx
 
 IPA_OPTIMIZE_SRCS = \
 #	ipo_parent.c \
@@ -238,6 +243,7 @@ BE_COM_CXX_SRCS = \
 	wb_summary.cxx		\
 	ipa_cost_util.cxx	\
 	be_util.cxx		\
+	aot_mgr.cxx		\
 #	cxx_template.cxx	\
 #	wb_buffer.cxx		\
 #	wb_util.cxx		\
@@ -270,7 +276,7 @@ IPA_OBJS = $(IPA_SRCS:.c=.o)
 IPA_ALL_OBJS = $(IPA_LD_CXX_OBJS) $(IPA_LD_OBJS) $(IPA_OBJS) $(IPA_CXX_OBJS)
 
 # extra files to be removed with make clobber
-LDIRT = ii_files be.so ipl.so
+LDIRT = $(BE_SO) $(IPL_SO) ii_files
 
 VPATH    =  $(SRC_DIRS)
 
@@ -310,8 +316,8 @@ DSOSTARTOPT = -check_registry $(TARG_BE_DIR)/so_locations -show -Wl,-no_unresolv
 DSOSTARTOPT_32 = $(DSOSTARTOPT)
 DSOSTARTOPT_N32 = $(DSOSTARTOPT)
 
-TARGETS = ipa.so
-TARGETS_PURE = ipa.so.pure
+TARGETS = $(IPA_SO)
+TARGETS_PURE = $(IPA_SO).pure
 
 #----------------------------------------------------------------------
 #  For parallel makes, makefile must satisfy:
@@ -343,8 +349,8 @@ ifndef SKIP_DEP_BUILD
  endif
 	$(call submake,$(TARG_IPL_DIR))
 endif
-	ln -sf $(TARG_BE_DIR)/be.so .
-	ln -sf $(TARG_IPL_DIR)/ipl.so .
+	ln -sf $(TARG_BE_DIR)/$(BE_SO) .
+	ln -sf $(TARG_IPL_DIR)/$(IPL_SO) .
 
 
 #----------------------------------------------------------------------
@@ -358,14 +364,14 @@ install: default
 install.pure: $(TARGETS_PURE)
 	$(STD_INSTALL) -F $(STD_MONGOOSE_LOC) $(TARGETS_PURE)
 
-ipa.so: $(IPA_ALL_OBJS) $(BE_BE_DIR)/so_locations \
-		$(TARG_BE_DIR)/be.so be.so $(TARG_IPL_DIR)/ipl.so ipl.so 
+$(IPA_SO): $(IPA_ALL_OBJS) $(BE_BE_DIR)/so_locations \
+		$(TARG_BE_DIR)/$(BE_SO) $(BE_SO) $(TARG_IPL_DIR)/$(IPL_SO) $(IPL_SO)
 	$(link.c++f) $(STD_DSO_LOADOPTS) \
 		$(IPA_ALL_OBJS) -o $@ $(NONE_OPT) \
-		be.so ipl.so  $(LLDLIBS)
+		$(BE_SO) $(IPL_SO)  $(LLDLIBS)
 
-ipa.so.pure: ipa.so
-	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH):$(TARG_BE_DIR) purify ipa.so
+$(IPA_SO).pure: $(IPA_SO)
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH):$(TARG_BE_DIR) purify $(IPA_SO)
 
 ipc_partition32.o: $(IPA_COMMON_DIR)/ipc_partition.c
 	$(CCF) -c -o ipc_partition32.o $(IPA_COMMON_DIR)/ipc_partition.c

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -367,6 +371,9 @@ DST_put_language_attribute(const char *at_name, DST_language lang_code)
       break;
    case DW_LANG_Modula2:
       DST_put_string("Modula2");
+      break;
+   case DW_LANG_Java:
+      DST_put_string("Java");
       break;
    }
    DST_nput_char(1, ')');

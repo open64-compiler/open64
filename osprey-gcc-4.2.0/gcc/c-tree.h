@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2007. QLogic Corporation. All Rights Reserved.
  */
 
@@ -221,6 +225,7 @@ enum c_typespec_keyword {
   cts_bool,
   cts_char,
   cts_int,
+  cts_int64,
   cts_float,
   cts_double,
   cts_dfloat32,
@@ -270,7 +275,7 @@ struct c_declspecs {
   BOOL_BITFIELD deprecated_p : 1;
   /* Whether the type defaulted to "int" because there were no type
      specifiers.  */
-  BOOL_BITFIELD default_int_p;
+  BOOL_BITFIELD default_int_p : 1;
   /* Whether "long" was specified.  */
   BOOL_BITFIELD long_p : 1;
   /* Whether "long" was specified more than once.  */
@@ -293,6 +298,8 @@ struct c_declspecs {
   BOOL_BITFIELD volatile_p : 1;
   /* Whether "restrict" was specified.  */
   BOOL_BITFIELD restrict_p : 1;
+  /* Whether "__asm" was specified */
+  BOOL_BITFIELD asm_p : 1;
 };
 
 /* The various kinds of declarators in C.  */
@@ -516,6 +523,9 @@ extern struct c_declspecs *declspecs_add_type (struct c_declspecs *,
 extern struct c_declspecs *declspecs_add_scspec (struct c_declspecs *, tree);
 extern struct c_declspecs *declspecs_add_attrs (struct c_declspecs *, tree);
 extern struct c_declspecs *finish_declspecs (struct c_declspecs *);
+
+/* IAR extension for anonymous union */
+extern void iar_bind_anonymous_union(tree, tree);
 
 /* in c-objc-common.c */
 extern int c_disregard_inline_limits (tree);

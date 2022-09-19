@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  *  Copyright (C) 2007. QLogic Corporation. All Rights Reserved.
  */
 
@@ -174,7 +178,7 @@ void GOTO_TABLE::Fixup_Parents(WN *wn, WN *parent)
   }
 
   if ((opcode ==  OPC_GOTO) || (opcode == OPC_TRUEBR) ||
-      (opcode == OPC_FALSEBR)) {
+      (opcode == OPC_FALSEBR) || (opcode == OPC_REGION_EXIT)) {
     Set_Parent(wn, parent);
   } else if (opcode == OPC_LABEL) {
     Set_Parent(wn, parent);
@@ -218,7 +222,7 @@ void GOTO_TABLE::Build_Rec(WN *wn, WN *parent, BOOL inside_compgoto)
   }
 
   if ((opcode ==  OPC_GOTO) || (opcode == OPC_TRUEBR) ||
-      (opcode == OPC_FALSEBR)) {
+      (opcode == OPC_FALSEBR) || (opcode == OPC_REGION_EXIT)) {
     Set_Parent(wn, parent);
     _gd.Push(GOTO_DESCRIPTOR(wn, NULL, _offset, 0, inside_compgoto));
     _offset++;
@@ -246,6 +250,7 @@ void GOTO_TABLE::Backpatch()
     INT label_num = WN_label_number(gd->Goto_Wn);
     LABEL_DESCRIPTOR *ld = _label_table->Find(label_num);
     if (ld != NULL) {
+      ++ ld->Goto_Cnt;
       gd->Label_Wn = ld->Label_Wn;
       gd->Label_Offset = ld->Offset;
     }
@@ -259,40 +264,51 @@ void GOTO_TABLE::Remove_Gotos()
   // go backwards, seems to be cleaner
   INT i;
   BOOL created_whiles=FALSE;
-  for (i = _gd.Elements() - 1; i >= 0; i--) {
-    GOTO_DESCRIPTOR *gd = &_gd.Bottom_nth(i);
-    // don't touch breaks or compgotos
-    if (gd->Label_Wn && ! WN_Label_Is_Break(gd->Label_Wn)
-	&& ! gd->Is_Compgoto) {
-      if (Is_Truebr(gd)) {
-	Create_Truebr(gd);
-      }
-      if (Can_Move_Into_Else(gd)) {
-        Move_Into_Else(gd);
-      } 
-      if (Goto_Is_Noop(gd)) {
-        WN_DELETE_FromBlock(Get_Parent(gd->Goto_Wn), gd->Goto_Wn);
-	gd->Is_Dismantled = TRUE;
-      } else {
-        //while (Ancestor_Through_If(gd) && 
-	//     !_contains_altentry &&
-	//    (goto_expanding_transformations < 
-	//	   MAX_GOTO_EXPANDING_TRANSFORMATIONS)) {
-        if (Parent_Through_If(gd) && !_contains_altentry) { 
-          Move_Goto_Out(gd);
-	  goto_expanding_transformations++;
+  BOOL changed;
+  do {
+    changed = FALSE;
+    for (i = _gd.Elements() - 1; i >= 0; i--) {
+      GOTO_DESCRIPTOR *gd = &_gd.Bottom_nth(i);
+      if (gd->Is_Dismantled ||
+          WN_operator(gd->Goto_Wn) == OPR_REGION_EXIT)
+        continue;
+      // don't touch breaks or compgotos
+      if (gd->Label_Wn && ! WN_Label_Is_Break(gd->Label_Wn)
+          && ! gd->Is_Compgoto) {
+        if (Is_Truebr(gd)) {
+          Create_Truebr(gd);
         }
-        if (Sibling(gd)) {
-          if (gd->Goto_Offset < gd->Label_Offset) {
-	    Replace_Goto_With_If(gd);
-          } else {
-	    Replace_Goto_With_While(gd);
-	    created_whiles = TRUE;
+        if (Can_Move_Into_Else(gd)) {
+          Move_Into_Else(gd);
+        }
+        if (Goto_Is_Noop(gd)) {
+          WN_DELETE_FromBlock(Get_Parent(gd->Goto_Wn), gd->Goto_Wn);
+          Try_remove_label(gd->Label_Wn);
+          gd->Is_Dismantled = TRUE;
+        } else {
+          //while (Ancestor_Through_If(gd) &&
+          //     !_contains_altentry &&
+          //    (goto_expanding_transformations <
+          //	   MAX_GOTO_EXPANDING_TRANSFORMATIONS)) {
+
+          // Disable Move_Goto_Out because of wrong CFG issue.
+          // by wu yongchong 2018.09.05
+          // if (Parent_Through_If(gd) && !_contains_altentry) {
+          //   Move_Goto_Out(gd);
+          //   goto_expanding_transformations++;
+          // }
+          if (Sibling(gd)) {
+            if (gd->Goto_Offset < gd->Label_Offset) {
+              changed |= Replace_Goto_With_If(gd);
+            } else {
+              Replace_Goto_With_While(gd);
+              created_whiles = TRUE;
+            }
           }
         }
       }
     }
-  }
+  } while (changed);
 
   if (created_whiles) {
     Promote_Do_While(Func_Nd());
@@ -393,17 +409,16 @@ BOOL GOTO_TABLE::Goto_Is_Noop(GOTO_DESCRIPTOR *gd) const
   } 
 
   WN *tmp = goto_wn;
-  WN *grand_parent = goto_wn;
   while (!WN_next(tmp)) {
-    tmp = grand_parent;
     WN *parent = Get_Parent(tmp);
     if (WN_opcode(parent) != OPC_BLOCK) {
       return FALSE;
     }
-    grand_parent = Get_Parent(parent);
+    WN *grand_parent = Get_Parent(parent);
     if (WN_opcode(grand_parent) != OPC_IF) {
       return FALSE;
     }
+    tmp = grand_parent;
   }
   return (WN_next(tmp) == gd->Label_Wn);
 }
@@ -745,7 +760,7 @@ void GOTO_TABLE::Move_Goto_Out(GOTO_DESCRIPTOR *gd)
 // LABEL <label>                ===>        THEN
 //                                            <statements>
 //                                          END_IF
-void GOTO_TABLE::Replace_Goto_With_If(GOTO_DESCRIPTOR *gd)
+BOOL GOTO_TABLE::Replace_Goto_With_If(GOTO_DESCRIPTOR *gd)
 {
   WN *goto_wn = gd->Goto_Wn;
   WN *label_wn = gd->Label_Wn;
@@ -754,7 +769,8 @@ void GOTO_TABLE::Replace_Goto_With_If(GOTO_DESCRIPTOR *gd)
   if (WN_next(goto_wn) == label_wn) {  // not really jumping anywhere
     WN_DELETE_FromBlock(parent, goto_wn);
     gd->Is_Dismantled = TRUE;
-    return;
+    Try_remove_label(label_wn);
+    return TRUE;
   }
 
   const OPCODE goto_opcode = WN_opcode(goto_wn);
@@ -762,7 +778,7 @@ void GOTO_TABLE::Replace_Goto_With_If(GOTO_DESCRIPTOR *gd)
   if (goto_opcode == OPC_GOTO) { // an unconditional branch, we don't get rid 
 				 // of these as preopt promises it will 
 				 // remove them
-    return;
+    return FALSE;
     //cond = WN_CreateIntconst(
    //	OPCODE_make_op(OPR_INTCONST,Boolean_type, MTYPE_V), 0);
   } else if (goto_opcode == OPC_TRUEBR) {
@@ -797,11 +813,13 @@ void GOTO_TABLE::Replace_Goto_With_If(GOTO_DESCRIPTOR *gd)
   WN_INSERT_BlockAfter(parent, goto_wn, if_wn);
   WN_EXTRACT_FromBlock(parent, goto_wn);
   gd->Is_Dismantled = TRUE;
+  Try_remove_label(label_wn);
 
   if (Cur_PU_Feedback) {
     Cur_PU_Feedback->FB_convert_goto_to_if(goto_wn, if_wn);
   }
   WN_Delete(goto_wn);
+  return TRUE;
 }
 
 // Are two expressions equivalent, assumes that there are no intervening writes
@@ -939,6 +957,20 @@ void GOTO_TABLE::Dismantle(WN *bad, WN *parent)
 				       LOWER_SCF | LOWER_FREQUENCY_MAPS);
   WN_INSERT_BlockLast(block, scf_wn);
 
+  // fixup the srcpos for cont label, which should be next of parent
+  WN* cont_lbl = WN_last(block);
+  if (cont_lbl && WN_operator(cont_lbl) == OPR_LABEL) {
+    WN *tmp = parent;
+    do {
+      WN *next = WN_next(tmp);
+      if (next != NULL) {
+        WN_Set_Linenum(cont_lbl, WN_Get_Linenum(next));
+        break;
+      }
+      tmp = Get_Parent(tmp);
+    } while (tmp != NULL);
+  }
+
   // move everything in block to be after prev
   while (WN_last(block)) {
     WN *element = WN_EXTRACT_FromBlock(block, WN_last(block));
@@ -948,3 +980,16 @@ void GOTO_TABLE::Dismantle(WN *bad, WN *parent)
   WN_Delete(block);
 }
 
+// Try remove label according to label use count
+void GOTO_TABLE::Try_remove_label(WN *label)
+{
+  INT label_num = WN_label_number(label);
+  LABEL_DESCRIPTOR *ld = _label_table->Find(label_num);
+  Is_True(ld != NULL && ld->Goto_Cnt > 0,
+          ("invalid label descriptor"));
+  if ((-- ld->Goto_Cnt) == 0) {
+    const LABEL& lab = Label_Table[label_num];
+    if (lab.kind == LKIND_DEFAULT && lab.flags == 0)
+      WN_DELETE_FromBlock(Get_Parent(label), label);
+  }
+}

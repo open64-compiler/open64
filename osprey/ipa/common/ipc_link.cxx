@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -64,7 +68,7 @@ ARGV *current_ld_flags;
 ARGV *comma_list;
 UINT32 comma_list_byte_count = 0;
 
-#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON)
+#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
 
 #ifdef TARG_LOONGSON
 #define LINKER_NAME "mips64el-n32-linux-gcc"
@@ -184,7 +188,7 @@ ipa_init_link_line (int argc, char** argv)
     comma_list = CXX_NEW (ARGV, Malloc_Mem_Pool);
 
     // Push the path and name of the final link tool
-#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_LOONGSON)
+#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
 
     ld_flags_part1->push_back (get_linker_name(arg_count, arg_vector));
 #if defined(TARG_IA64) && defined(CROSS_COMPILATION) 

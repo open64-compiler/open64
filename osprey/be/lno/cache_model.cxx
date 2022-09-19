@@ -6447,7 +6447,7 @@ one_cache_model_return_point:
     }
     fprintf(TFile, "  Strips must be outside loop %d\n", *stripdepth);
     fprintf(TFile, "  List of stripped loops: \n"); 
-    if (striplevel > 0) { 
+    if (striplevel != NULL) { 
       INT i;
       for (i = 0; i < *nstrips; i++)
 	fprintf(TFile, "    Loop = %d, Strip Size = %d Strip Level = %d\n", 

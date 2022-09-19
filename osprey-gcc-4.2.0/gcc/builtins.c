@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* Expand builtin functions.
    Copyright (C) 1988, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
    2000, 2001, 2002, 2003, 2004, 2005, 2006 Free Software Foundation, Inc.
@@ -7539,6 +7543,58 @@ fold_builtin_bitop (tree fndecl, tree arglist)
   return NULL_TREE;
 }
 
+/* fold bswap if opnd0 is constant */
+#define x_bswap16(x) ((((x) & 0xff00 ) >> 8) | \
+                      (((x) & 0xff) << 8))
+
+#define x_bswap32(x) ((((x) & 0xff000000) >> 24) | \
+                      (((x) & 0xff0000) >> 8) | \
+                      (((x) & 0xff00) << 8) | \
+                      (((x) & 0xff) >> 24))
+
+#define x_bswap64(x) ((((x) & 0xff00000000000000ull) >> 56) | \
+                      (((x) & 0xff000000000000ull) >> 40) | \
+                      (((x) & 0xff0000000000ull) >> 24) | \
+                      (((x) & 0xff00000000ull) >> 8) | \
+                      (((x) & 0xff000000ull) << 8) | \
+                      (((x) & 0xff0000ull) << 24) | \
+                      (((x) & 0xff00ull) << 40) | \
+                      (((x) & 0xffull) << 56))
+
+static tree
+fold_builtin_bswap (tree fndecl, tree arglist)
+{
+  tree arg;
+
+  if (! validate_arglist (arglist, INTEGER_TYPE, VOID_TYPE))
+    return NULL_TREE;
+
+  arg = TREE_VALUE (arglist);
+  if (TREE_CODE (arg) == INTEGER_CST && !TREE_CONSTANT_OVERFLOW (arg))
+    {
+      tree type = TREE_TYPE (TREE_TYPE (fndecl));
+      HOST_WIDE_INT width = TYPE_PRECISION (type);
+      unsigned HOST_WIDE_INT lo = TREE_INT_CST_LOW (arg);
+      unsigned HOST_WIDE_INT hi = TREE_INT_CST_HIGH (arg);
+      switch (DECL_FUNCTION_CODE (fndecl))
+        {
+          case BUILT_IN_BSWAP16:
+            return build_int_cst (type, x_bswap16(lo));
+          case BUILT_IN_BSWAP32:
+            return build_int_cst (type, x_bswap32(lo));
+          case BUILT_IN_BSWAP64:
+            if (width > HOST_BITS_PER_WIDE_INT)
+              return build_int_cst_wide (type, x_bswap32(hi), x_bswap32(lo));
+            else
+              return build_int_cst (type, x_bswap64(lo));
+          default:
+            gcc_unreachable ();
+        }
+    }
+
+  return NULL_TREE;
+}
+
 /* Return true if EXPR is the real constant contained in VALUE.  */
 
 static bool
@@ -9052,6 +9108,11 @@ fold_builtin_1 (tree fndecl, tree arglist, bool ignore)
     CASE_FLT_FN (BUILT_IN_LRINT):
     CASE_FLT_FN (BUILT_IN_LLRINT):
       return fold_fixed_mathfn (fndecl, arglist);
+
+    case BUILT_IN_BSWAP16:
+    case BUILT_IN_BSWAP32:
+    case BUILT_IN_BSWAP64:
+      return fold_builtin_bswap (fndecl, arglist);
 
     CASE_INT_FN (BUILT_IN_FFS):
     CASE_INT_FN (BUILT_IN_CLZ):

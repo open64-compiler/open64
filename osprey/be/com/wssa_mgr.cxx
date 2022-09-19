@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2010, Hewlett-Packard Development Company, L.P. All Rights Reserved.
 
@@ -83,6 +87,8 @@ WHIRL_SSA_MANAGER::Clear() {
   _field_table.clear();
   _vsym_table.clear();
   _sym_table.clear();
+  _st_to_rwst_map.clear();
+  _st_to_vwst_map.clear();
 
   // clear wn idx map
   _wn_idx_map.clear();
@@ -1095,16 +1101,16 @@ WHIRL_SSA_MANAGER::Print_wst_table(FILE* fp) const {
 void
 WHIRL_SSA_MANAGER::Print_wst(WST_IDX wst_idx, FILE* fp) const {
   const WST_Symbol_Entry& sym = Get_wst(wst_idx);
-  fprintf(fp,"Index [%d], WST type: ", wst_idx);
+  fprintf(fp,"[%d] ", wst_idx);
   switch (sym.Sym_type()) {
     case WST_WHIRL:
       fprintf(fp,"WST_WHIRL\n");
       Print_ST(fp, &St_Table[sym.St_idx()], TRUE);
       break;
     case WST_PREG:
-      fprintf(fp,"WST_PREG\n");
+      fprintf(fp,"WST_PREG, ");
+      fprintf(fp,"PREG[%d]\n", sym.Preg_num());
       Print_ST(fp, &St_Table[sym.St_idx()], TRUE);
-      fprintf(fp, "preg num %d\n", sym.Preg_num());
       break;
     case WST_FIELD:
       {
@@ -1135,6 +1141,7 @@ WHIRL_SSA_MANAGER::Print_ver_table(FILE* fp) const {
 
 void
 WHIRL_SSA_MANAGER::Print_ver(VER_IDX ver_idx, FILE* fp) const {
+  WSSA::Print_ver(fp, ver_idx); fprintf(fp, " : ");
   const WST_Version_Entry& ver = Get_ver(ver_idx);
   ver.Print(fp);
 }

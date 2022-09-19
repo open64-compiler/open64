@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -218,6 +218,8 @@ enum ST_FLAGS_EXT
     ST_IN_SBUF =  0x4000,               // ST is explcitly declared sbuf so 
     ST_IS_VBUF_OFFSET = 0x8000,  // represent this symbol means offset instead of a absolute address
     ST_IS_SBUF_OFFSET = 0x10000, // same as above and will be deleted for we don't have sbuf in the future.
+#else
+    ST_JAVA_ABSTRACT = 0x400,
 #endif     
     ST_IS_GLOBAL_AS_LOCAL = 0x20000, // Is a global variable that can be treated as a local variable.
     ST_IS_VTABLE = 0x40000,        // st is a vtalbe
@@ -226,6 +228,9 @@ enum ST_FLAGS_EXT
     ST_IS_MODIFIED = 0x200000,     // st is modified by code
     ST_IS_ODR = 0x400000,          // st is "one-definition-rule"
     ST_IS_RTTI = 0x800000,         // st is RTTI
+    ST_IS_NATIVE = 0x1000000,      // st is native function
+    ST_IS_USED = 0x2000000,        // st is used by code
+    ST_IS_INLINED = 0x4000000,     // st is inlined from callee
 }; // ST_FLAGS_EXT
 #endif
 
@@ -269,7 +274,9 @@ public:
 
     ST_IDX st_idx;			// my own st_idx
 
-    TY_IDX vtable_ty_idx;
+    TY_IDX vtable_ty_idx;  // for vtable st, the field store the vtable's class type
+                           // for class symbol, the field store the class type of the symbol
+                           // for rtti, the field store rtti's class type
 
     SRCPOS spos;           // The line num where define the sym in the source file.
 
@@ -488,7 +495,8 @@ enum ST_ATTR_KIND
 {
     ST_ATTR_UNKNOWN		= 0,
     ST_ATTR_DEDICATED_REGISTER	= 1,	// physical register number
-    ST_ATTR_SECTION_NAME	= 2	// name of sections where defined.
+    ST_ATTR_SECTION_NAME	= 2,	// name of sections where defined.
+    ST_ATTR_ABSOLUTE_LOCATION   = 3,	// absolute location for the st
 };
 
 class ST_ATTR
@@ -498,7 +506,7 @@ class ST_ATTR
     ST_ATTR_KIND kind;
     private:
     union {
-	mUINT32 value;			// generic 32-bit value
+	mUINT64 value;			// generic 64-bit value for absolute location
 	mPREG_NUM reg_id;
 	STR_IDX section_name;
     } u;
@@ -511,7 +519,7 @@ class ST_ATTR
 
     ST_ATTR (ST_IDX idx, ST_ATTR_KIND akind, UINT64 val) :
 	st_idx (idx), kind (akind) {
-	u.section_name = val;
+	u.value = val;
     }
 
     // Access the union value
@@ -536,7 +544,14 @@ class ST_ATTR
     STR_IDX Get_section_name (void) const {
         return u.section_name;
     }
-	    
+
+    void Set_value (UINT64 loc) {
+        u.value = loc;
+    }
+
+    UINT64 Get_value (void) const {
+        return u.value;
+    }
 
     void Verify (UINT level) const;
 
@@ -589,8 +604,33 @@ enum TY_FLAGS
 #ifdef TARG_NVISA
     TY_CAN_BE_VECTOR	= 0x8000,	// vector type like int4
 #endif
+    TY_IS_ARRAY_CLASS     = 0x8000,     // array class
+    TY_IS_SENSITIVE_CLASS = 0x8000,     // ok to share with TY_IS_ARRAY_CLASS
+                                        // only set for class type
     TY_COMPLETE_STRUCT_RELAYOUT_CANDIDATE = 0x0001, // it's OK to share this
       // with TY_IS_CHARACTER above for now, since this has to be a struct
+
+    TY_IS_ATOMIC        = 0x00000001,   // C++11 introduced 
+    TY_IS_MUTEX         = 0x00000002,   // C++11 introduced
+    TY_IS_ITERATOR	= 0x00000004,   // C++ STL concept
+    TY_IS_REVERSE_ITERATOR = 0x00000008,// C++ STL container
+    TY_IS_HASH_MAP	= 0x00000010,   // C++ STL container
+    TY_IS_HASH_MULTIMAP	= 0x00000020,   // C++ STL container
+    TY_IS_HASH_MULTISET	= 0x00000040,   // C++ STL container
+    TY_IS_HASH_SET	= 0x00000080,   // C++ STL container
+    TY_IS_ARRAY	        = 0x00000100,   // C++ STL container
+    TY_IS_DEQUE		= 0x00000200,   // C++ STL container
+    TY_IS_LIST		= 0x00000400,   // C++ STL container
+    TY_IS_MAP		= 0x00000800,   // C++ STL container
+    TY_IS_MULTIMAP	= 0x00001000,   // C++ STL container
+    TY_IS_MULTISET	= 0x00002000,   // C++ STL container
+    TY_IS_SET		= 0x00004000,   // C++ STL container
+    TY_IS_UNORDERED_MAP	= 0x00008000,   // C++ STL container
+    TY_IS_UNORDERED_MULTIMAP = 0x00010000,   // C++ STL container
+    TY_IS_UNORDERED_MULTISET = 0x00020000,   // C++ STL container
+    TY_IS_UNORDERED_SET	= 0x00040000,   // C++ STL container
+    TY_IS_VECTOR	= 0x00080000    // C++ STL container
+
 };
 
 
@@ -606,8 +646,10 @@ enum TY_PU_FLAGS
     TY_HAS_2_REG_PARM	= 0x00000020,	// 2 register parameters under i386
     TY_HAS_3_REG_PARM	= 0x00000030,	// 3 register parameters under i386
     TY_HAS_STDCALL      = 0x00000040,   // stdcall calling convention under i386
-    TY_HAS_FASTCALL     = 0x00000080    // fastcall calling convention under i386
+    TY_HAS_FASTCALL     = 0x00000080,   // fastcall calling convention under i386
 #endif
+    TY_IS_OPTIONAL      = 0x00000100,   // optional argument for typescript
+    TY_IS_THREAD        = 0x00000200    // C++11 introduced
 };
 
 class TY
@@ -618,8 +660,9 @@ public:
     TY_KIND kind : 8;			// kind of type
     mTYPE_ID mtype : 8;			// WHIRL data type
     mUINT16 flags;			// misc. attributes
+    mUINT32 flags_ext;                  // extension for TY flags, for C++11
 
-    union {
+    union {                             // u1 will have 32 bit padding
 	FLD_IDX fld;
 	TYLIST_IDX tylist;
 	ARB_IDX arb;
@@ -779,6 +822,7 @@ public:
 #define PU_NOTHROW              0x0004000000000000LL // doesn't throw, e.g. decl as "void foo() throw()".
 #define PU_HAS_APPLY_ARGS       0x0008000000000000LL // __builtin_apply_args
 #define PU_SIMPLE_EH_RANGE      0x0010000000000000LL // there is a single eh range in PU, no clean-up or catch
+#define PU_IS_RBC               0x0020000000000000LL // PU is RBC code
 
 enum PU_SRC_LANG_FLAGS
 {
@@ -887,7 +931,9 @@ enum FILE_INFO_FLAGS
     FI_NEEDS_LNO	= 0x2,		// needs to run LNO
     FI_HAS_INLINES	= 0x4,		// some PUs have PU_HAS_INLINES set
     FI_HAS_MP   	= 0x8,		// need to process MP constructs
-    FI_HAS_GLOBAL_ASM	= 0x10		// contains global asm, do not emit .org
+    FI_HAS_GLOBAL_ASM	= 0x10,		// contains global asm, do not emit .org
+    FI_IS_RBC           = 0x20,		// is rbc file
+    FI_IS_VTABLE        = 0x40      // is vtable file
 };
 
 struct FILE_INFO
@@ -1033,23 +1079,32 @@ struct TYPE_TABLE
 };
 
 // declaration of global tables
-extern FILE_INFO	File_info;
-extern PU_TAB		Pu_Table;
+extern FILE_INFO	*File_info_ptr;
+#define File_info       (*File_info_ptr)
+extern PU_TAB		*Pu_Table_ptr;
+#define Pu_Table        (*Pu_Table_ptr)
 extern SYMBOL_TABLE	St_Table;
-extern TY_TAB		Ty_tab;
+extern TY_TAB		*Ty_tab_ptr;
+#define Ty_tab          (*Ty_tab_ptr)
 extern TYPE_TABLE	Ty_Table;
-extern FLD_TAB		Fld_Table;
-extern TYLIST_TAB	Tylist_Table;
-extern ARB_TAB		Arb_Table;
-extern STRING_TABLE     Str_Table;
-extern TCON_TAB		Tcon_Table;
-extern INITV_TAB	Initv_Table;
+extern FLD_TAB		*Fld_Table_ptr;
+#define Fld_Table       (*Fld_Table_ptr)
+extern TYLIST_TAB	*Tylist_Table_ptr;
+#define Tylist_Table    (*Tylist_Table_ptr)
+extern ARB_TAB		*Arb_Table_ptr;
+#define Arb_Table       (*Arb_Table_ptr)
+extern STRING_TABLE	Str_Table;
+extern TCON_TAB		*Tcon_Table_ptr;
+#define Tcon_Table      (*Tcon_Table_ptr)
+extern INITV_TAB	*Initv_Table_ptr;
+#define Initv_Table     (*Initv_Table_ptr)
 extern INITO_TABLE	Inito_Table;
 extern PREG_TABLE	Preg_Table;
 extern ST_ATTR_TABLE	St_Attr_Table;
 extern LABEL_TABLE	Label_Table;
 // some BLK_TAB items are really local, but make global to ease management
-extern BLK_TAB		Blk_Table;
+extern BLK_TAB		*Blk_Table_ptr;
+#define Blk_Table       (*Blk_Table_ptr)
 
 // global variables
 

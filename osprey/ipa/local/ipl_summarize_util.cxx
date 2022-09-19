@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -193,6 +197,9 @@ Set_lang (SUMMARY_PROCEDURE *proc)
 	
     case PU_CXX_LANG:
  	proc->Set_lang (LANG_CPLUS);
+	break;
+    case PU_JAVA_LANG:
+ 	proc->Set_lang (LANG_JAVA);
 	break;
 
     case PU_F77_LANG:

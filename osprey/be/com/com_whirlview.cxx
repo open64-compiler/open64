@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -368,7 +372,7 @@ static VCGNode *vcg_stmt(VCGGraph &vcg, WN *wn);
 
 static 
 const char *
-get_unique_name(char *prefix)
+get_unique_name(const char *prefix)
 {
   stringstream ss;
   if (prefix)
@@ -404,7 +408,7 @@ const char *node_title(WN *wn)
 }
 
 static 
-const char *node_name(WN *wn, char *prefix = NULL)
+const char *node_name(WN *wn, const char *prefix = NULL)
 { 
   stringstream ss;
 
@@ -523,7 +527,7 @@ const char *get_last_node_title(VCGNode *node, WN *wn)
     return node->title(); 
   } 
 } 
-char *image_funcinfo(WN *wn)
+const char *image_funcinfo(WN *wn)
 { 
   WN *func_wn = (WN_operator(wn) == OPR_FUNC_ENTRY ? wn : NULL);
   if (!func_wn) return "null";
@@ -579,7 +583,7 @@ vcg_wn(WN *wn, char *filename)
      const char *name = node_name(wn);
      VCGNode *funcnode = NEW_VCG(VCGNode(name, node_title(wn),Ellipse));
      vcg.addNode(*funcnode);
-     char *funcinfo = image_funcinfo(wn);
+     const char *funcinfo = image_funcinfo(wn);
      funcnode->info(1,funcinfo);
      VCGNode *body = vcg_whirl_tree(vcg, WN_func_body(wn));
      VCGEdge *edge = NEW_VCG(VCGEdge(funcnode->title(), body->title()));

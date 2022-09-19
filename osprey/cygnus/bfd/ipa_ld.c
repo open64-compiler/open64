@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
 
@@ -113,7 +117,11 @@ string tmpdir = 0;
 static int tmpdir_length = 0;
 static bfd *p_current_bfd = NULL;
 
+#ifdef TARG_UWASM
+string outfilename = "./out.uwm";
+#else
 string outfilename = "./a.out";
+#endif
 string WB_flags = NULL;
 string Y_flags = NULL;
 
@@ -1218,7 +1226,11 @@ ipa_set_syms(void)
     void *p_handle = NULL;
     char *p_error = NULL;
 
+#ifdef BUILD_MASTIFF
+    p_handle = dlopen("macdip.so",RTLD_LAZY);
+#else
     p_handle = dlopen("ipa.so",RTLD_LAZY);
+#endif
     if (!p_handle) {
     	fputs (dlerror(), stderr);
     	exit(1);

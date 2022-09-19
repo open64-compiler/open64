@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -60,6 +64,7 @@
 #include "gen_util.h"
 #include "targ_isa_subset.h"
 #include "isa_registers_gen.h"
+#include "isa_gen_def.h"
 
 typedef struct isa_register_set {
   int isa_mask;
@@ -423,10 +428,16 @@ void ISA_Registers_End(void)
     ISA_REGISTER_CLASS rclass = *rc_iter;
     fprintf(hfile, "  ISA_REGISTER_CLASS_%s,\n", rclass->name);
   }
-  fprintf(hfile, "  ISA_REGISTER_CLASS_MIN = ISA_REGISTER_CLASS_%s,\n",
-	  rclasses.front()->name);
-  fprintf(hfile, "  ISA_REGISTER_CLASS_MAX = ISA_REGISTER_CLASS_%s,\n",
-	  rclasses.back()->name);
+  if (rclasses.empty()) {
+    fprintf(hfile, "  ISA_REGISTER_CLASS_MIN = ISA_REGISTER_CLASS_UNDEFINED,\n");
+    fprintf(hfile, "  ISA_REGISTER_CLASS_MAX = ISA_REGISTER_CLASS_UNDEFINED,\n");
+  } else {
+    fprintf(hfile, "  ISA_REGISTER_CLASS_MIN = ISA_REGISTER_CLASS_%s,\n",
+      rclasses.front()->name);
+    fprintf(hfile, "  ISA_REGISTER_CLASS_MAX = ISA_REGISTER_CLASS_%s,\n",
+      rclasses.back()->name);
+  }
+
   fprintf(hfile, "  ISA_REGISTER_CLASS_COUNT = "
 		 "ISA_REGISTER_CLASS_MAX - ISA_REGISTER_CLASS_MIN + 1\n");
 
@@ -460,7 +471,7 @@ void ISA_Registers_End(void)
   }
   fprintf(hfile, "} ISA_REGISTER_CLASS_INFO;\n");
 
-  fprintf(efile, "ISA_REGISTER_CLASS_info\n");
+  fprintf(efile, "ISA_REGISTER_CLASS_info" TI_SUFFIX "\n");
 
   if (many_regs) {
     // the disadvantage of not having a static array is that the
@@ -471,7 +482,7 @@ void ISA_Registers_End(void)
     fprintf(cfile, "\nstatic char namebuf[16];\n");
   }
   fprintf(cfile, "\nconst ISA_REGISTER_CLASS_INFO"
-		   " ISA_REGISTER_CLASS_info[] = {\n");
+		   " ISA_REGISTER_CLASS_info" TI_SUFFIX "[] = {\n");
   fprintf(cfile, "  { 0x%02x, %2d, %3d, %3d, %1d, %1d, \"%s\",",
 		 0, 0, -1, 0, 0, 0, "UNDEFINED");
   if (many_regs) {
@@ -517,9 +528,9 @@ void ISA_Registers_End(void)
   }
   fprintf(cfile, "};\n");
 
-  fprintf(efile, "ISA_REGISTER_CLASS_info_index\n");
+  fprintf(efile, "ISA_REGISTER_CLASS_info_index" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nmUINT8 ISA_REGISTER_CLASS_info_index[] = {\n");
+  fprintf(cfile, "\nmUINT8 ISA_REGISTER_CLASS_info_index" TI_SUFFIX "[] = {\n");
   fprintf(cfile, "  %d,  /* ISA_REGISTER_CLASS_%s */\n", 0, "UNDEFINED");
   int index = 1;
   for (rc_iter = rclasses.begin(); rc_iter != rclasses.end(); ++rc_iter) {
@@ -576,10 +587,10 @@ void ISA_Registers_End(void)
   }
   fprintf(hfile, "} ISA_REGISTER_SUBCLASS_INFO;\n");
 
-  fprintf(efile, "ISA_REGISTER_SUBCLASS_info\n");
+  fprintf(efile, "ISA_REGISTER_SUBCLASS_info" TI_SUFFIX "\n");
 
   fprintf(cfile, "\nconst ISA_REGISTER_SUBCLASS_INFO"
-		   " ISA_REGISTER_SUBCLASS_info[] = {\n");
+		   " ISA_REGISTER_SUBCLASS_info" TI_SUFFIX "[] = {\n");
   fprintf(cfile, "  { \"%s\", ISA_REGISTER_CLASS_%s, 0", 
 		 "UNDEFINED", "UNDEFINED");
   if ( !many_regs || !subclasses.empty()) {
@@ -625,10 +636,10 @@ void ISA_Registers_End(void)
 		 "  ISA_REGISTER_CLASS rc\n"
 		 ")\n"
 		 "{\n"
-		 "  extern const ISA_REGISTER_CLASS_INFO ISA_REGISTER_CLASS_info[];\n"
-		 "  extern mUINT8 ISA_REGISTER_CLASS_info_index[];\n"
-		 "  INT index = ISA_REGISTER_CLASS_info_index[(INT)rc];\n"
-		 "  return &ISA_REGISTER_CLASS_info[index];\n"
+		 "  extern const ISA_REGISTER_CLASS_INFO ISA_REGISTER_CLASS_info" TI_SUFFIX "[];\n"
+		 "  extern mUINT8 ISA_REGISTER_CLASS_info_index" TI_SUFFIX "[];\n"
+		 "  INT index = ISA_REGISTER_CLASS_info_index" TI_SUFFIX "[(INT)rc];\n"
+		 "  return &ISA_REGISTER_CLASS_info" TI_SUFFIX "[index];\n"
 		 "}\n");
 
   fprintf(hfile, "\ninline INT ISA_REGISTER_CLASS_INFO_First_Reg(\n"
@@ -703,8 +714,8 @@ void ISA_Registers_End(void)
 		 "  ISA_REGISTER_SUBCLASS sc\n"
 		 ")\n"
 		 "{\n"
-		 "  extern const ISA_REGISTER_SUBCLASS_INFO ISA_REGISTER_SUBCLASS_info[];\n"
-		 "  return &ISA_REGISTER_SUBCLASS_info[sc];\n"
+		 "  extern const ISA_REGISTER_SUBCLASS_INFO ISA_REGISTER_SUBCLASS_info" TI_SUFFIX "[];\n"
+		 "  return &ISA_REGISTER_SUBCLASS_info" TI_SUFFIX "[sc];\n"
 		 "}\n");
 
   fprintf(hfile, "\ninline const char *ISA_REGISTER_SUBCLASS_INFO_Name(\n"
@@ -752,21 +763,21 @@ void ISA_Registers_End(void)
   }
   fprintf(hfile, "}\n");
 
-  fprintf(hfile, "\nextern void ISA_REGISTER_Initialize(void);\n");
+  fprintf(hfile, "\nextern void ISA_REGISTER_Initialize" TI_SUFFIX "(void);\n");
 
-  fprintf(efile, "ISA_REGISTER_Initialize\n");
+  fprintf(efile, "ISA_REGISTER_Initialize" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nvoid ISA_REGISTER_Initialize(void)\n"
+  fprintf(cfile, "\nvoid ISA_REGISTER_Initialize" TI_SUFFIX "(void)\n"
 		 "{\n"
 		 "  INT rc;\n"
-		 "  INT mask = 1 << (INT)ISA_SUBSET_Value;\n"
+		 "  INT mask = 1 << (INT)ISA_SUBSET_Value" TI_SUFFIX ";\n"
 		 "  for (rc = ISA_REGISTER_CLASS_MIN; "
 			 "rc <= ISA_REGISTER_CLASS_MAX; ++rc) {\n"
-		 "    INT i = ISA_REGISTER_CLASS_info_index[rc];\n"
+		 "    INT i = ISA_REGISTER_CLASS_info_index" TI_SUFFIX "[rc];\n"
 		 "    const ISA_REGISTER_CLASS_INFO *info = "
-			    "&ISA_REGISTER_CLASS_info[i];\n"
+			    "&ISA_REGISTER_CLASS_info" TI_SUFFIX "[i];\n"
 		 "    while ((info->isa_mask & mask) == 0) ++info, ++i;\n"
-		 "    ISA_REGISTER_CLASS_info_index[rc] = i;\n"
+		 "    ISA_REGISTER_CLASS_info_index" TI_SUFFIX "[rc] = i;\n"
 		 "  }\n"
 		 "}\n");
 

@@ -268,7 +268,7 @@ extern "C" {
 extern void PU_Info_init (PU_Info *pu);
 extern INT Sizeof_PU_Infos (PU_Info *pu_tree);
 extern INT Write_PU_Infos (PU_Info *pu_tree, char *base);
-extern PU_Info *Read_PU_Infos (char *base, INT32 size, INT32 *p_num_PUs);
+extern PU_Info *Read_PU_Infos (char *base, UINT64 size, INT32 *p_num_PUs);
 
 extern PU_Info *Current_PU_Info;
 

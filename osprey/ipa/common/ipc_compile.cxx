@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -78,6 +82,7 @@
 #include "ipc_file.h"                   // for IP_FILE_HDR
 #include "ipa_option.h"                 // ipa option flags
 #include "ipc_link.h"                   // for ipa_link_link_argv
+#include "config_product.h"             // for xvsa driver name
 
 #include "lib_phase_dir.h"              // for BINDIR etc
 
@@ -229,7 +234,7 @@ static const char* abi()
     return "-i32";
 #endif
 
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
     return IPA_Target_Type == IP_64_bit_ABI ? "-m64" : "-m32";
 #endif
 
@@ -300,9 +305,9 @@ ipa_compile_init ()
 
   const char* toolroot = getenv("TOOLROOT");
 
-#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON)
+#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
 
-  static char* smake_base = ALTBINPATH "/usr/bin/make";
+  static const char* smake_base = ALTBINPATH "/usr/bin/make";
 
 #if defined(VENDOR_PSC)
 #include "pathscale_defs.h"
@@ -340,10 +345,15 @@ ipa_compile_init ()
 #endif
 	  tmp_cc_name_base = my_cc;
 	  cc_name_base = my_cc;
-      } else if (looks_like (my_cc, "ipa_link")) {
+      }
+#ifdef BUILD_MASTIFF
+       else if (looks_like (my_cc, "maplink")) {
+#else
+       else if (looks_like (my_cc, "ipa_link")) {
+#endif
 	  char *s = strrchr(my_cc, '/');
 	  if (s) {
-#ifndef TARG_SL
+#if !defined(TARG_SL) && !defined(BUILD_MASTIFF)
 	      *s = '\0';		// remove "/ipa_link"
 	      s = strrchr(my_cc, '/');
 	      (s) ? *s = '\0' : 0;		// remove version number, e.g. "/2.3.99"
@@ -355,6 +365,16 @@ ipa_compile_init ()
 #endif
 
 	      if (s) {
+#ifdef BUILD_MASTIFF
+		  *s = '\0';                 // remove maplink
+		  s = strrchr(my_cc, '/');
+		  (s) ? *s = '\0' : 0;       // remove version number, e.g. "/1.0"
+		  s = strrchr(my_cc, '/');
+		  (s) ? *s = '\0' : 0;       // remove "/lib"
+		  strcpy(s, "/bin/" C_DRIVER_NAME);  // add bin/xvsa
+		  s += strlen("/bin/" C_DRIVER_NAME);
+		  (s) ? *s = '\0' : 0;
+#else
 		  // Invoke the C/C++/Fortran compiler depending on the source
 		  // language.  Bug 8620.
 		  const char *compiler_name_suffix;
@@ -379,7 +399,7 @@ ipa_compile_init ()
 		  s += strlen("bin/" OPEN64_NAME_PREFIX);
 #endif
 		  strcpy(s, compiler_name_suffix);
-
+#endif
 		  if (file_exists (my_cc)) {
 		      tmp_cc_name_base = my_cc;
 		      cc_name_base = my_cc;
@@ -503,11 +523,32 @@ get_command_line (const IP_FILE_HDR& hdr, ARGV& argv, const char* inpath,
   argv.push_back (outpath);
   argv.push_back ("-c");
 
+#ifdef BUILD_MASTIFF
+  if (ld_ipa_opt[LD_IPA_KEEP_TEMPS].flag)
+    argv.push_back ("-kp");
+  argv.push_back("-noxa");
+#else
   if (ld_ipa_opt[LD_IPA_KEEP_TEMPS].flag)
     argv.push_back ("-keep");
-    
+#endif
 } // get_command_line
 
+#ifdef TARG_UWASM
+char *
+create_uwasm_output_name(char *input_file)
+{
+  char *input_prefix = (char *) malloc(strlen(input_file) + 1);
+  strcpy(input_prefix, input_file);
+  char *last_dot = strrchr(input_prefix, '.');
+  if(last_dot != NULL) {
+    *last_dot = '\0'; // remove ".I" suffix
+  }
+  char* output_file = concat_names(input_prefix, OBJ_FILE_EXTENSION);
+  output_file = create_unique_file (output_file, '\0');
+  free(input_prefix);
+  return output_file;
+}
+#endif
 
 // temp. kludge:  ipacom_process_file should really take
 // const IP_FILE_HDR& as argument instead of const PU_Info *
@@ -534,7 +575,11 @@ ipacom_process_symtab (char* symtab_file)
           symtab_command_line == 0,
           ("ipacom_process_symtab: symtab already initialized"));
 
+#ifdef TARG_UWASM
+  char *output_file = create_uwasm_output_name(symtab_file);
+#else
   char* output_file = create_unique_file (symtab_file, 'o');
+#endif
   add_to_tmp_file_list (output_file);
 #ifdef _USE_GNU_MAKE_
   unlink (output_file);
@@ -546,7 +591,7 @@ ipacom_process_symtab (char* symtab_file)
   // Save the three symtab file names in global variables.
   strcpy(input_symtab_name, input_base);
   strcpy(elf_symtab_name,   output_base);
-  strcpy(whirl_symtab_name, output_base);
+  strcpy(whirl_symtab_name, input_base);
   whirl_symtab_name[strlen(whirl_symtab_name) - 1] = 'G';
 
   // Generate a command line to create the .G and .o files.
@@ -560,17 +605,25 @@ ipacom_process_symtab (char* symtab_file)
 
   char* toolroot = getenv("TOOLROOT");
 
+#ifdef BUILD_MASTIFF
+  sprintf(buf, "%s -c -noxa %s %s -o %s %s -TENV:emit_global_data=%s %s",
+#else
 #if defined(VENDOR_OSP) || defined(VENDOR_SL)
   sprintf(buf, "%s -c %s %s -o %s %s -TENV:emit_global_data=%s %s",
 #else
   sprintf(buf, "%s%s -c %s %s -o %s %s -TENV:emit_global_data=%s %s",
 	    (toolroot != 0) ? toolroot : "",
 #endif
+#endif
             (*command_map)["cc"],
             abi(),
             input_symtab_name,
             elf_symtab_name,
+#ifdef BUILD_MASTIFF
+            ld_ipa_opt[LD_IPA_KEEP_TEMPS].flag ? "-kp":"",
+#else
             ld_ipa_opt[LD_IPA_KEEP_TEMPS].flag ? "-keep":"",
+#endif
             whirl_symtab_name,
             IPA_Enable_AutoGnum?"-Gspace 0":"");
 
@@ -611,7 +664,11 @@ size_t ipacom_process_file (char* input_file,
       ProMP_Idx->push_back (ProMP_id);
   }
 
+#ifdef TARG_UWASM
+  char *output_file = create_uwasm_output_name(input_file);
+#else
   char* output_file = create_unique_file (input_file, 'o');
+#endif
 
   add_to_tmp_file_list (output_file);
 
@@ -838,7 +895,6 @@ void ipacom_doit (const char* ipaa_filename)
 
   // The default target: either the executable, or all of the
   // elf object files.
-
   if (IPA_Enable_final_link) {
     // Path (possibly relative to cwd) of the executable we're creating.
     const char* executable = outfilename;
@@ -964,7 +1020,7 @@ void ipacom_doit (const char* ipaa_filename)
     }
 
     // Print the final link command into the makefile.
-#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL)
+#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_UWASM)
     // Create a dir in /tmp and create symbolic links inside it to point to the
     // IPA .o files in the IPA tmpdir.  In the link command file, refer to
     // these symbolic links instead of the IPA tmpdir .o files, in order to
@@ -1076,6 +1132,13 @@ void ipacom_doit (const char* ipaa_filename)
     fprintf(makefile, ".PHONY: default\n");
     fprintf(makefile, "\ndefault: \\\n");      
     print_all_outfiles(tmpdir_macro);
+#ifdef TARG_UWASM
+    // just copy the .uwm files as output
+    for (vector<const char*>::iterator i = outfiles->begin();
+        i != outfiles->end();
+        ++i)
+      fprintf(makefile, "\tcp %s/%s %s\n", tmpdir_macro, *i, outfilename);
+#endif
   }
 
   fputs("\n", makefile);
@@ -1091,7 +1154,7 @@ void ipacom_doit (const char* ipaa_filename)
     if (!symtab_extra_args)
       symtab_extra_args = get_extra_args(0);
 
-#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON)
+#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
 
     if (IPA_Enable_Cord) {
     	const char * obj_listfile_name = create_tmp_file((const string)"obj_file_list");
@@ -1166,7 +1229,7 @@ void ipacom_doit (const char* ipaa_filename)
             tmpdir_macro, elf_symtab_name,
             tmpdir_macro, whirl_symtab_name,
             tmpdir_macro, (*infiles)[i]);
-#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON)
+#if defined(TARG_IA64) || defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_SL) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
     if (Feedback_Filename) {
         fprintf(makefile, "\tcd %s; %s -Wb,-OPT:procedure_reorder=on -fb_create %s %s -Wb,-CG:enable_feedback=off\n",
                 tmpdir_macro, (*commands)[i], Feedback_Filename, extra_args);
@@ -1284,7 +1347,7 @@ void ipacom_doit (const char* ipaa_filename)
     // SEGV should be here too; we're leaving it out because 6.2 sh doesn't
     // like it.
     fprintf(sh_cmdfile, "trap 'cleanup; exit 2' ");
-#if !defined(TARG_IA64) && !defined(TARG_X8664) && !defined(TARG_MIPS) && !defined(TARG_SL) && !defined(TARG_LOONGSON)
+#if !defined(TARG_IA64) && !defined(TARG_X8664) && !defined(TARG_MIPS) && !defined(TARG_SL) && !defined(TARG_LOONGSON) && !defined(TARG_UWASM)
     fprintf(sh_cmdfile, "ABRT EMT SYS POLL ");
 #endif
     fprintf(sh_cmdfile, "HUP INT QUIT ILL TRAP FPE ");
@@ -1406,10 +1469,18 @@ static const char* get_extra_args(const char* ipaa_filename)
   // -IPA:keeplight:=ON, which is the default, means that we keep only
   // the .I files, not the .s files.
   if (ld_ipa_opt[LD_IPA_KEEP_TEMPS].flag && !IPA_Enable_Keeplight)
+#ifdef BUILD_MASTIFF
+    args.push_back("-kp");
+#else
     args.push_back("-keep");
+#endif
 
   if (ld_ipa_opt[LD_IPA_SHOW].flag)
+#ifdef BUILD_MASTIFF
+    args.push_back("-sw");
+#else
     args.push_back("-show");
+#endif
 
 
   /* If there's an IPAA intermediate file, let WOPT know: */

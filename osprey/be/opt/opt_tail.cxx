@@ -367,9 +367,11 @@ BOOL OPT_TAIL::Exit_is_well_behaved(BB_NODE *bb)
 void OPT_TAIL::Create_top_label()
 {
   BB_NODE *first_bb = _entry_bb->Succ()->Node();
+  SRCPOS spos = first_bb->Linenum();
   WN *last_copy = NULL;
+  WN *tmp_wn;
 
-  for ( WN *tmp_wn = first_bb->Firststmt();
+  for ( tmp_wn = first_bb->Firststmt();
 	tmp_wn != NULL;
 	tmp_wn = WN_next(tmp_wn) )
   {
@@ -394,6 +396,8 @@ void OPT_TAIL::Create_top_label()
     // one seen
     last_copy = tmp_wn;
   }
+  if (tmp_wn)
+    spos = WN_Get_Linenum(tmp_wn);
 
   if (_do_trace) {
     fprintf(TFile, "Last arg copy is:\n");
@@ -417,6 +421,7 @@ void OPT_TAIL::Create_top_label()
   _top_label = _label_bb->Label_wn();
   if (_top_label == NULL) {
     _top_label = WN_CreateLabel(0, _cfg->Alloc_label(), 0, NULL);
+    WN_Set_Linenum(_top_label, spos);
     _cfg->Prepend_wn_in(_label_bb, _top_label);
     _cfg->Append_label_map(WN_label_number(_top_label), _label_bb);
   }
@@ -432,6 +437,8 @@ void OPT_TAIL::Create_top_label()
 void OPT_TAIL::Fixup_exit(BB_NODE *bb)
 {
   STMT_CONTAINER bb_stmts(bb->Firststmt(), bb->Laststmt());
+  SRCPOS spos = bb->Laststmt() ? WN_Get_Linenum(bb->Laststmt())
+                               : bb->Linenum();
     
   // Remove the CALL
   bb_stmts.Remove(_call_wn);
@@ -496,6 +503,7 @@ void OPT_TAIL::Fixup_exit(BB_NODE *bb)
 			     _opt_stab->St_ofst(tmp_preg), 
 			     ST_st_idx(_opt_stab->St(tmp_preg)),
 			     Be_Type_Tbl(arg_type_id), arg);
+    WN_Set_Linenum(stid, spos);
     // Set the AUX flag properly
     WN_set_aux(stid, (AUX_ID)tmp_preg);
     bb_stmts.Append(stid);
@@ -534,6 +542,7 @@ void OPT_TAIL::Fixup_exit(BB_NODE *bb)
     /* CVTL-RELATED finish */
     WN *stid = WN_CreateStid(OPR_STID, MTYPE_V, TY_mtype(formal_type),
 			     0, formal_st, formal_type, ldid);
+    WN_Set_Linenum(stid, spos);
     // Set the AUX flag properly
     WN_set_aux(stid, formal_id);
     bb_stmts.Append(stid);
@@ -541,6 +550,7 @@ void OPT_TAIL::Fixup_exit(BB_NODE *bb)
   
   // Create the new GOTO
   WN *goto_wn = WN_CreateGoto((ST *) NULL, WN_label_number(_top_label));
+  WN_Set_Linenum(goto_wn, spos);
   bb_stmts.Append(goto_wn);
   
   // Fix up the BB

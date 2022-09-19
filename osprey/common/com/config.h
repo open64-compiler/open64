@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -276,7 +280,7 @@ static char *config_rcs_id = "$Source: common/com/SCCS/s.config.h $ $Revision: 1
 #endif
 #elif defined(BUILD_OS_DARWIN) || defined(__CYGWIN__) || defined(__APPLE__)
 #include <machine/endian.h>	/* for BIG_ENDIAN, LITTLE_ENDIAN */
-#elif !(defined(linux))
+#elif !(defined(__linux__))
 #include <sys/endian.h>		/* for BIG_ENDIAN, LITTLE_ENDIAN */
 #else
 #include <endian.h>		/* for BIG_ENDIAN, LITTLE_ENDIAN */
@@ -574,8 +578,13 @@ extern BOOL GCM_Eager_Null_Ptr_Deref_Set; /* ... option seen? */
 
 /***** Miscellaneous GOPT options *****/
 #define MAX_OPT_LEVEL	3
+#ifdef BUILD_MASTIFF
+#define DEF_O_LEVEL	3	/* Level implied by -O */
+#define DEF_OPT_LEVEL	3
+#else
 #define DEF_O_LEVEL	2	/* Level implied by -O */
 #define DEF_OPT_LEVEL	1
+#endif
 extern INT32 Opt_Level;		/* -On level */
 extern INT32 OPT_unroll_times;
 extern INT32 OPT_unroll_level;
@@ -668,6 +677,12 @@ extern BOOL Call_Mcount;	/* generate a call to mcount in pu entry */
 extern BOOL GP_Is_Preserved;	/* GP is neither caller or callee-save */
 extern BOOL Constant_GP;	/* GP never changes */
 
+/* UWASM native memory isolation related */
+extern INT  Uwasm_Isolation;     /* 0: off, 1: wrap-around, 2: assert if out of range */
+extern BOOL Uwasm_Early_Instr;   /* early instrument in VHO */
+extern BOOL Uwasm_Early_Expand;  /* early expand into existing WHIRL/CGIR */
+extern BOOL Uwasm_Extern_Symbol; /* use extern symbol for ranges */
+
 extern char *Emit_Global_Data;	/* only emit global data */
 extern char *Read_Global_Data;	/* only read global data */
 
@@ -727,29 +742,33 @@ extern BOOL Implied_Do_Io_Opt;   /* Do implied-do loop optimization for I/O */
 
 /* back end phases options */
 #ifdef BACK_END
-extern BOOL Run_lno;		    /* run loop-nest optimizer */
-extern BOOL Run_lego;               /* run lego-lowering */
-extern BOOL Run_lego_given;         /* was run lego-lowering given/not */
-extern BOOL Run_wopt;		    /* run WHIRL global optimizer */
-extern BOOL Run_preopt;		    /* run WHIRL preopt optimizer */
-extern BOOL Run_cg;		    /* run code generator */
-extern BOOL Run_w2c;		    /* run whirl2c */
-extern BOOL Run_w2f;		    /* run whirl2f */
-extern BOOL Run_w2fc_early;	    /* run whirl2f after LNO parallelization */
-extern BOOL Run_ipl;		    /* run summary phase of IPA */
-extern char *LNO_Path;		    /* path to lno.so */
-extern char *WOPT_Path;		    /* path to wopt.so */
-extern char *CG_Path;		    /* path to cg.so */
-extern char *W2C_Path;		    /* path to whirl2c.so */
-extern char *W2F_Path;		    /* path to whirl2f.so */
-extern char *Ipl_Path;		    /* path to ipl.so */
+extern BOOL Run_lno;                 /* run loop-nest optimizer */
+extern BOOL Run_lego;                /* run lego-lowering */
+extern BOOL Run_lego_given;          /* was run lego-lowering given/not */
+extern BOOL Run_iast;                /* run iast */
+extern BOOL Run_vsaopt;              /* run vsa global analyzer */
+extern BOOL Run_ipsaopt;             /* run context/object sensitive ana */
+extern BOOL Run_ipsacomp;            /* run final compile after ipsa */
+extern BOOL Run_wopt;                /* run WHIRL global optimizer */
+extern BOOL Run_preopt;              /* run WHIRL preopt optimizer */
+extern BOOL Run_cg;                  /* run code generator */
+extern BOOL Run_w2c;                 /* run whirl2c */
+extern BOOL Run_w2f;                 /* run whirl2f */
+extern BOOL Run_w2fc_early;          /* run whirl2f after LNO parallelization */
+extern BOOL Run_ipl;                 /* run summary phase of IPA */
+extern char *LNO_Path;               /* path to lno.so */
+extern char *WOPT_Path;              /* path to wopt.so */
+extern char *CG_Path;                /* path to cg.so */
+extern char *W2C_Path;               /* path to whirl2c.so */
+extern char *W2F_Path;               /* path to whirl2f.so */
+extern char *Ipl_Path;               /* path to ipl.so */
 #if defined(TARG_SL)
-extern BOOL Run_ipisr;  /* run ipisr register allocation */
+extern BOOL Run_ipisr;               /* run ipisr register allocation */
 #endif
 #endif /* BACK_END */
-extern char *Inline_Path;           /* path to inline.so */
+extern char *Inline_Path;            /* path to inline.so */
 #if defined(BACK_END) || defined(QIKKI_BE)
-extern char *Targ_Path;		    /* path to targinfo .so */
+extern char *Targ_Path;              /* path to targinfo .so */
 #endif /* defined(BACK_END) || defined(QIKKI_BE) */
 
 extern char *Schedlist_Option;

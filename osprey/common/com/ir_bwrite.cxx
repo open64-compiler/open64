@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -438,9 +442,11 @@ WN_open_output (char *file_name)
     Output_File *fl;
     Section *cur_section;
 
+#ifndef BUILD_NO_SIGNAL    
     if (old_sigsegv == 0)
 	old_sigsegv = signal (SIGSEGV, reinterpret_cast<void (*)(int)>
 			      (ir_bwrite_signal_handler));
+#endif    
 
 #ifndef __MINGW32__
     if (old_sigbus == 0)
@@ -1619,6 +1625,35 @@ WN_write_elf_symtab (const void* symtab, UINT64 size, UINT64 entsize,
     cur_section->shdr.sh_link = strtab_idx;
     cur_section->shdr.sh_entsize = entsize;
 } // WN_write_elf_symtab
+struct print_inlskip
+{
+  FILE *fp;
+  print_inlskip (FILE *f) : fp(f) {}
+  inline void operator() (UINT32, ST *st) const {
+    if (ST_class(st) == CLASS_FUNC && ST_sclass(st) == SCLASS_TEXT) {
+      fprintf(fp, "%s\n", ST_name(st));
+    }
+  }
+}; 
+
+void
+Write_Inlskip(const char *skip_fname)
+{
+  if (!FILE_INFO_is_rbc(File_info)) {
+    return;
+  }
+  Is_True_Ret(skip_fname, ("Null Inlskip file name"));
+
+  FILE *inlskip_fp = fopen(skip_fname, "w");
+  if (inlskip_fp == NULL) {
+    ErrMsg ( EC_IR_Open, skip_fname, errno );
+    return;
+  }
+  if (ST_Table_Size (GLOBAL_SYMTAB)) {
+    For_all (St_Table, GLOBAL_SYMTAB, print_inlskip(inlskip_fp));
+  }
+  fclose(inlskip_fp);
+}
 
 #endif // OWN_ERROR_PACKAGE
 

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -304,7 +308,10 @@ main (INT argc,                   /* Number of command line arguments */
     new_argv[argc] = (char *)malloc(20);
     strcpy(new_argv[argc],"-run-w2c");
     new_argv[argc+1] = NULL;
-# else
+#elif BUILD_MASTIFF
+    new_argv[argc] = "-PHASE:v=off:x=off:l=off:w=off";
+    new_argv[argc+1] = NULL;
+#else
     new_argv[argc] = NULL;
 #endif     
 

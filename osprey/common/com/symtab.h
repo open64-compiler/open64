@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -426,6 +430,9 @@ Is_Composite_Type (const TY& ty)
 inline BOOL
 Is_Composite_Type (TY_IDX ty)	{ return Is_Composite_Type (Ty_Table[ty]); }
 
+void
+Reset_misc_symtab();
+
 //----------------------------------------------------------------------
 // FLD
 //----------------------------------------------------------------------
@@ -585,6 +592,9 @@ ST_ATTR_Init (ST_ATTR& st_attr, ST_IDX st_idx, ST_ATTR_KIND akind, UINT64 val)
       break;
     case ST_ATTR_SECTION_NAME:
       st_attr.Set_section_name(val);
+      break;
+    case ST_ATTR_ABSOLUTE_LOCATION:
+      st_attr.Set_value(val);
       break;
     default:
       Is_True (FALSE, ("Unknown kind of ST_ATTR_Init "));

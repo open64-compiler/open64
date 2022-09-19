@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -100,6 +104,8 @@ extern void Initialize_Stack_Frame (WN *PU_tree);
 // This is called after lowering, when have more accurate view of code.
 extern void Calculate_Stack_Frame_Sizes (WN *PU_tree);
 
+/* Calculate the formal size */
+extern void Calc_Formal_Area (WN *pu_tree, INT32 *formal_size, INT32 *upformal_size);
 /*
  * Finalize_Stack_Frame should be called once per PU before cgemit;
  * it returns the stack frame size.

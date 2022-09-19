@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2002, 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -392,7 +396,12 @@ Initialize_Register_Class(
     REGISTER_bit_size(rclass, reg) = bit_size;
     REGISTER_machine_id(rclass, reg) = isa_reg;
     REGISTER_allocatable(rclass, reg) = is_allocatable;
-#if !defined(TARG_NVISA) //
+#ifdef TARG_UWASM
+    // for reg cnt >1000, the reg namebuf share same area, copy the memory before
+    // store to REGISTER_CLASS_INFO[rclass].reg_name. refer to isa_register_gen.cxx
+    const char *reg_name = strdup(ISA_REGISTER_CLASS_INFO_Reg_Name(icinfo, isa_reg));
+    REGISTER_name(rclass, reg) = reg_name;
+#elif !defined(TARG_NVISA) //
     REGISTER_name(rclass, reg) = ISA_REGISTER_CLASS_INFO_Reg_Name(icinfo, isa_reg);
 #endif
 
@@ -729,7 +738,7 @@ struct Dont_Allocate_Dreg
         if (ST_ATTR_kind (*st_attr) != ST_ATTR_DEDICATED_REGISTER)
 	    return;
 	PREG_NUM preg = ST_ATTR_reg_id(*st_attr);
-	ISA_REGISTER_CLASS rclass;
+	ISA_REGISTER_CLASS rclass = ISA_REGISTER_CLASS_UNDEFINED;
 	REGISTER reg;
 	CGTARG_Preg_Register_And_Class(preg, &rclass, &reg);
 	REGISTER_Set_Allocatable (rclass, reg, FALSE /* is_allocatable */);
@@ -1098,7 +1107,7 @@ REGISTER_Print(
   FILE *f
 )
 {
-  fprintf(f, REGISTER_name(rclass, reg));
+  fprintf(f, "%s", REGISTER_name(rclass, reg));
 }
 
 /* ====================================================================

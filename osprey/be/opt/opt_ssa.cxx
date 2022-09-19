@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2011, Hewlett-Packard Development Company, L.P. All Rights Reserved.
  */
 //-*-c++-*-
@@ -88,12 +92,17 @@ static char *rcs_id = 	opt_ssa_CXX"$Revision: 1.24 $";
 #include "opt_config.h"
 #include "opt_htable.h"
 #include "opt_util.h"
+#include "opt_vsa_util.h"
 #include "opt_ssa.h"
 #include "opt_mu_chi.h"
 #include "opt_wn.h"
 #include "opt_prop.h"
 #include "wn.h"
 
+#ifdef BUILD_MASTIFF
+#include "opt_dbg.h"   // for g_ipsa_manager
+#include "opt_dna.h"   // for IPSA
+#endif
 
 #ifdef Is_True_On
 static BOOL verify_defs_bb(OPT_STAB *opt_stab)
@@ -349,6 +358,14 @@ SSA::Insert_identity_assignment_4_loopexit(BB_NODE *start, AUX_ID aux_id, MEM_PO
       BB_NODE *merge_bb = start->Loop()->Merge();
 
       WN *copy = Create_identity_assignment(sym, aux_id, ty);
+      WN_Set_Linenum(copy, merge_bb->Linenum());
+      if ( Get_Trace(TP_GLOBOPT, SSA_DUMP_FLAG))  {
+	fprintf(TFile, "Created identity assignment: ");
+	fdump_wn_no_st(TFile, copy);
+      }
+#if defined(BUILD_MASTIFF)
+      Register_ident_asgn(copy);
+#endif
 
       if (!sym->Points_to()->No_alias())
 	Opt_stab()->Compute_FFA_for_copy( copy, merge_bb, TRUE /* complete chi list */ );
@@ -813,19 +830,19 @@ SSA::Find_zero_versions(void)
 #ifdef KEY
   if ( Get_Trace(TP_GLOBOPT, SSA_DUMP_FLAG) ) {
     fprintf(TFile, "ZERO VERSIONING: \n");
-    Print();
+    Print(TFile);
   }
 #endif
   OPT_POOL_Pop(loc_pool, SSA_DUMP_FLAG);
 }
 
-void SSA::Print() {
+void SSA::Print(FILE* fp) {
     CFG_ITER cfg_iter;
     BB_NODE *bb;
     FOR_ALL_ELEM (bb, cfg_iter, Init(_cfg)){
       if (bb->Phi_list()->Len() > 0) {
-        fprintf(TFile, "BB%d: \n", bb->Id());
-        bb->Phi_list()->PRINT(TFile);
+        fprintf(fp, "BB%d: \n", bb->Id());
+        bb->Phi_list()->PRINT(fp);
       }
       WN *wn;
       STMT_ITER stmt_iter;
@@ -834,12 +851,12 @@ void SSA::Print() {
         if (WN_has_mu(wn, _cfg->Rgn_level())) {
           MU_LIST *mu_list = Opt_stab()->Get_stmt_mu_list(wn);
           if (mu_list)
-            mu_list->Print(TFile);
+            mu_list->Print(fp);
         }
         if (WN_has_chi(wn, _cfg->Rgn_level())) {
           CHI_LIST *chi_list = Opt_stab()->Get_generic_chi_list(wn);
           if (chi_list)
-            chi_list->Print(TFile);
+            chi_list->Print(fp);
         }
       }
     }
@@ -874,17 +891,10 @@ SSA::Create_CODEMAP(void)
     extern BOOL Simp_Canonicalize;
     BOOL save_simp_canon = Simp_Canonicalize;
     COPYPROP copyprop(_htable, _opt_stab, _cfg, loc_pool);
-#ifdef TARG_NVISA
-    // in first pass, only want to handle loops, not do optimization
-    // (which may cause performance issues because propagates into loop,
-    // emits whirl, then does mainopt which may not hoist if originates
-    // in loop, unless aggcm which we have turned off).
-    if (Htable()->Phase() == PREOPT_PHASE)
-      copyprop.Set_disabled();
-#endif
 
     //Simp_Canonicalize = FALSE;
     Value_number(_htable, _opt_stab, _cfg->Entry_bb(), &copyprop, _cfg->Exc());
+
 #ifdef Is_True_On
     _opt_stab->Check_stack();
 #endif
@@ -902,10 +912,7 @@ SSA::Create_CODEMAP(void)
 	      _htable->Num_iloadfolds(), _htable->Num_istorefolds() );
     Opt_tlog( "INPUTPROP", 0, "%d copy propagations",
 	      Htable()->Num_inputprops() );
-#ifdef TARG_NVISA
-    if (Htable()->Phase() == PREOPT_PHASE)
-      copyprop.Reset_disabled();
-#endif
+
     Simp_Canonicalize = save_simp_canon;
   }
   
@@ -994,6 +1001,21 @@ PHI_LIST::Dup_phi_node(MEM_POOL *pool, BB_NODE *bb, INT pos)
     newp->Append(p);
   }
   return newp;
+}
+
+// ====================================================================
+// Search_phi_node - search phi node for given aux id
+// ====================================================================
+PHI_NODE *
+PHI_LIST::Search_phi_node(AUX_ID var)
+{
+  PHI_LIST_ITER phi_iter;
+  PHI_NODE     *phi;
+  FOR_ALL_ELEM ( phi, phi_iter, Init(this) ) {
+    if (phi->Aux_id() == var)
+      return phi;
+  }
+  return NULL;
 }
 
 // ====================================================================
@@ -1158,7 +1180,15 @@ SSA::Du2cr( CODEMAP *htable, OPT_STAB *opt_stab, VER_ID du,
 	    rtype = Mtype_TransferSign(MTYPE_U4, rtype);
 #endif
 	}
+
+#ifdef BUILD_MASTIFF
+        // for mastiff keep using st type unless it is invalid
+        if (ty == TY_IDX_ZERO) {
+          ty = MTYPE_To_TY(rtype);
+        }
+#else
         ty = MTYPE_To_TY(rtype);
+#endif
       }
 
       cr = htable->Add_def(opt_stab->Du_aux_id(du),
@@ -1294,6 +1324,7 @@ void SSA::Value_number(CODEMAP *htable, OPT_STAB *opt_stab, BB_NODE *bb,
       stmt->Set_SL2_internal_mem_ofst(FALSE); 
 #endif 
 
+    stmt->Set_stmtrep_id(htable->Next_stmtrep_id());
     stmt->Enter_rhs(htable, opt_stab, copyprop, exc);
     stmt->Enter_lhs(htable, opt_stab, copyprop);
 
@@ -1321,7 +1352,13 @@ void SSA::Value_number(CODEMAP *htable, OPT_STAB *opt_stab, BB_NODE *bb,
 #endif
 
     INT32 linenum = Srcpos_To_Line(stmt->Linenum());	// for debugging
-
+    BB_NODE *succ;
+    BB_LIST_ITER bb_succ_iter;
+    FOR_ALL_ELEM(succ, bb_succ_iter, Init(bb->Succ())) {
+      if (succ->Linenum() == 0)
+        succ->Set_linenum(stmt->Linenum());
+    }
+ 
     // should no longer need the Wn
     stmt->Set_wn(NULL);
 
@@ -1331,13 +1368,21 @@ void SSA::Value_number(CODEMAP *htable, OPT_STAB *opt_stab, BB_NODE *bb,
       WOPT_Enable_Itself_Prop = FALSE; // can cause incorrectness in itself-prop
     }
 
+#ifdef BUILD_MASTIFF
+    DNA_NODE *cur_dna = Get_cur_dna();
+    if (cur_dna) {
+      if (cur_dna->Update_stpath(wn, stmt, NULL))
+        Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+        (TFile, "[STPATH Trace] Value_number: Update_stpath on wn %p to stmtrep id %d with ST:%s\n", 
+         wn, stmt->Stmtrep_id(), cur_dna->Get_stpath(stmt, NULL)->St_name()));
+    }
+#endif
+
     // For a call, set the call site id for the Nystrom alias analyzer
     // so as to restore it during CODEMAP -> WHIRL translation
-    if (OPERATOR_is_call(WN_operator(wn))) {
-      UINT32 callsite_id = WN_MAP32_Get(WN_MAP_ALIAS_CGNODE, wn);
-      if (callsite_id != 0)
-        stmt->Set_constraint_graph_callsite_id(callsite_id);
-    }
+    UINT32 callsite_id = WN_MAP32_Get(WN_MAP_ALIAS_CGNODE, wn);
+    if (callsite_id != 0)
+      stmt->Set_constraint_graph_callsite_id(callsite_id);
 
     // statement has mu only in returns and calls
     if (WN_has_mu(wn, Cfg()->Rgn_level())) {
@@ -1720,7 +1765,7 @@ PHI_NODE::Print(FILE *fp) const
 void
 PHI_NODE::Print(INT32 in_degree, FILE *fp)  const
 {
-  if (! Live())
+  if (! Live() || !Res_is_cr())
     PRINT(in_degree, fp);
   else {
     CODEREP *cr = RESULT();

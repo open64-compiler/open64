@@ -71,6 +71,7 @@ static char *opt_lftr2rcs_id =  opt_lftr2_INCLUDED"$Revision: 1.5 $";
 #endif
 
 //----------------------------------------------------------------------------
+typedef std::set<CODEREP*> CRVISIT_T;
 
 // information needed to maintain the comparisons dealing with a lftr_var
 class LFTR_VAR : public SLIST_NODE {
@@ -219,7 +220,7 @@ private:
 
   void Check_for_obsolete_comparison(EXP_OCCURS *);
 
-  BOOL Can_only_increase(CODEREP *, AUX_ID);
+  BOOL Can_only_increase(CODEREP *, AUX_ID, CRVISIT_T&);
 
   void Replace_use(const BB_LOOP * loop, CODEREP * cr_old, CODEREP * cr_new);
   void Replace_use(CODEREP*, CODEREP *, CODEREP *);

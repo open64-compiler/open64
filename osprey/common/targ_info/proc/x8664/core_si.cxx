@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -98,6 +102,8 @@ int Generate_Core ()
 		     TOP_addi32,
 		     TOP_adci32,
 		     TOP_addi64,
+		     TOP_bswap32,
+		     TOP_bswap64,
 		     TOP_inc8,
 		     TOP_inc16,
 		     TOP_inc32,
@@ -5216,6 +5222,7 @@ int Generate_Core ()
 		    TOP_intrncall,
 		    TOP_spadjust,
 		    TOP_savexmms,
+                    TOP_checkptr,
 		    TOP_UNDEFINED);
   Any_Operand_Access_Time(0);
   Any_Result_Available_Time(1);

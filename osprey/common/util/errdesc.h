@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -86,7 +90,9 @@ typedef enum {
  */
 
 /* Descriptor flag word masks: */
+#define EM_VSA          0x1000  /* Print out to another file */
 #define EM_User		0x8000	/* User error (vs. compiler) */
+#  define EM_VSA_User   (EM_VSA|EM_User)
 #define EM_Compiler	0x0000	/* Compiler error (vs. user) */
 #define EM_Continuation	0x4000	/* Print message line only */
 #define EM_Unknown	0x2000	/* Converted unknown code */
@@ -119,6 +125,7 @@ typedef struct {
 # define ED_continuation(p)	(ED_flags(p)&EM_Continuation)
 # define ED_unknown(p)		(ED_flags(p)&EM_Unknown)
 # define ED_severity(p)		(ED_flags(p)&EM_Severity)
+# define ED_vsa_extra(p)        (ED_flags(p)&EM_VSA)
 #define ED_format(p)		(p->emsg)
 #define ED_parms(p)		(p->parms)
 #define ED_kind(p,n)		(p->kinds[n])

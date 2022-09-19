@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* Definitions for CPP library.
    Copyright (C) 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
    2004, 2005
@@ -645,6 +649,9 @@ extern const char *cpp_read_main_file (cpp_reader *, const char *);
 
 /* Set up built-ins like __FILE__.  */
 extern void cpp_init_builtins (cpp_reader *, int);
+
+/* Set up built-ins like _Pragma() for IAR compability */
+extern void iar_init_builtins (cpp_reader *);
 
 /* This is called after options have been parsed, and partially
    processed.  */

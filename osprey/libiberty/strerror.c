@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* Extended support for using errno values.
    Written by Fred Fish.  fnf@cygnus.com
    This file is in the public domain.  --Per Bothner.  */
@@ -468,7 +472,7 @@ static const char **sys_errlist;
 #else
 
 extern int sys_nerr;
-extern char *sys_errlist[];
+extern const char *const sys_errlist[];
 
 #endif
 

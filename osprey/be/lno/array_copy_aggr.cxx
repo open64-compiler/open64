@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* 
   Copyright (C) 2011 Advanced Micro Devices, Inc.  All Rights Reserved.
 
@@ -2860,7 +2864,7 @@ SAC::Perform_Structure_Split_Opt()
 
       if(Trace_Struct_Split)
       {
-	fprintf(TFile, ">>> found %d candidates, ca_result=%d\n", sac_info->acs.size(), ca_result);
+	fprintf(TFile, ">>> found %ld candidates, ca_result=%d\n", sac_info->acs.size(), ca_result);
       }
 
       // step 3

@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* C++ Parser.
    Copyright (C) 2000, 2001, 2002, 2003, 2004,
    2005  Free Software Foundation, Inc.
@@ -553,6 +557,7 @@ cp_lexer_next_token_is_decl_specifier_keyword (cp_lexer *lexer)
     case RID_BOOL:
     case RID_SHORT:
     case RID_INT:
+    case RID_INT64:
     case RID_LONG:
     case RID_SIGNED:
     case RID_UNSIGNED:
@@ -563,6 +568,13 @@ cp_lexer_next_token_is_decl_specifier_keyword (cp_lexer *lexer)
     case RID_ATTRIBUTE:
     case RID_TYPEOF:
       return true;
+
+      /* IAR extensions. */
+    case RID_INTRINSIC:
+    case RID_SPEC_STRING:
+      if (flag_iar_compat)
+        return true;
+      /* fall through */
 
     default:
       return false;
@@ -7225,6 +7237,10 @@ cp_parser_declaration (cp_parser* parser)
 	       || token2.type == CPP_OPEN_BRACE
 	       || token2.keyword == RID_ATTRIBUTE))
     cp_parser_namespace_definition (parser);
+  /* inline namespace */
+  else if (token1.keyword == RID_INLINE
+	   && token2.keyword == RID_NAMESPACE)
+    cp_parser_namespace_definition (parser);
   /* Objective-C++ declaration/definition.  */
   else if (c_dialect_objc () && OBJC_IS_AT_KEYWORD (token1.keyword))
     cp_parser_objc_declaration (parser);
@@ -7283,7 +7299,12 @@ cp_parser_block_declaration (cp_parser *parser,
     {
       if (statement_p)
 	cp_parser_commit_to_tentative_parse (parser);
-      cp_parser_asm_definition (parser);
+      /* KEIL compiler, __asm in global scope is function decl, not
+         statement. */
+      if (flag_keil_compat && !statement_p)
+        cp_parser_simple_declaration (parser, true);
+      else
+        cp_parser_asm_definition (parser);
     }
   /* If the next keyword is `namespace', we have a
      namespace-alias-definition.  */
@@ -7630,7 +7651,93 @@ cp_parser_decl_specifier_seq (cp_parser* parser,
 	  cp_lexer_consume_token (parser->lexer);
 	  ++decl_specs->specs[(int) ds_thread];
 	  break;
-
+	/* KEIL extensions */
+	case RID_ASM:
+	  if (flag_keil_compat)
+	    {
+	      /* Keil compiler __asm function */
+	      cp_lexer_consume_token (parser->lexer);
+	      decl_specs->storage_class = sc_extern;  /* set decl extern */
+	      decl_specs->specs[(int) ds_inline] = 0; /* reset decl inline flag */
+	      decl_specs->asm_p = true;               /* set decl to be asm */
+	      break;
+	    }
+	    /* fall through to default */
+        case RID_IRQ:
+        case RID_PURE:
+        case RID_SOFTFP:
+        case RID_VALUE_IN_REGS:
+        case RID_WRITEONLY:
+          if (flag_keil_compat)
+            {
+              cp_lexer_consume_token (parser->lexer);
+              break;
+            }
+          /* fall through */
+	case RID_ALIGN:
+	case RID_GLOBAL_REG:
+	case RID_SMC:
+	case RID_SVC:
+	  if (flag_keil_compat)
+	    {
+	      /* Keil compiler:
+                 __align(n), __global_reg(n), __smc(n),
+                 __svc(n), __svc_indirect(n), __svc_indirect_r7(n) */
+	      cp_lexer_consume_token (parser->lexer);
+	      cp_parser_require (parser, CPP_OPEN_PAREN, "`('");
+	      cp_parser_require (parser, CPP_NUMBER, "number");
+	      cp_parser_require (parser, CPP_CLOSE_PAREN, "`)'");
+	      break;
+	    }
+	    /* fall through to default */
+        /* IAR extensions */
+        case RID_ARM:
+        case RID_CODE24: case RID_CODE32:
+        case RID_DATA16: case RID_DATA24: case RID_DATA32:
+        case RID_INTERRUPT:
+        case RID_INTERWORK:
+        case RID_INTRINSIC:
+        case RID_MONITOR:
+        case RID_NO_INIT:
+        case RID_NONSECURE_CALL:
+        case RID_NONSECURE_ENTRY:
+        case RID_NORETURN:
+        case RID_NOUNWIND:
+        case RID_ROOT:
+        case RID_RAMFUNC:
+        case RID_SBDATA16: case RID_SBDATA24:
+        case RID_SPEC_STRING:
+        case RID_SWI:
+        case RID_TASK:
+        case RID_THUMB:
+          if (flag_iar_compat)
+            {
+              /* ignore keywords above */
+              cp_lexer_consume_token (parser->lexer);
+              break;
+            }
+        case RID_CONSTRANGE:
+          if (flag_iar_compat)
+            {
+              /* ignore __constrange(M,N) */
+              cp_lexer_consume_token (parser->lexer);
+              cp_parser_require (parser, CPP_OPEN_PAREN, "`('");
+              cp_parser_require (parser, CPP_NUMBER, "number");
+              cp_parser_require (parser, CPP_COMMA, "`,'");
+              cp_parser_require (parser, CPP_NUMBER, "number");
+              cp_parser_require (parser, CPP_CLOSE_PAREN, "`)'");
+              break;
+            }
+        /* IAR and KEIL extensions */
+        case RID_PACKED:
+        case RID_WEAK:
+          if (flag_iar_compat || flag_keil_compat)
+            {
+              /* ignore keywords above */
+              cp_lexer_consume_token (parser->lexer);
+              break;
+            }
+	  /* fall through to default */
 	default:
 	  /* We did not yet find a decl-specifier yet.  */
 	  found_decl_spec = false;
@@ -9858,6 +9965,14 @@ cp_parser_simple_type_specifier (cp_parser* parser,
 	decl_specs->explicit_int_p = true;
       type = integer_type_node;
       break;
+    case RID_INT64:
+      type = (decl_specs->specs[(int) ds_unsigned]
+              ? unsigned_intDI_type_node
+              : intDI_type_node);
+      /* reset ds_unsigned counter to avoid type being changed
+         in grokdeclarator() */
+      decl_specs->specs[(int) ds_unsigned] = 0;
+      break;
     case RID_LONG:
       if (decl_specs)
 	++decl_specs->specs[(int) ds_long];
@@ -10630,6 +10745,10 @@ cp_parser_namespace_definition (cp_parser* parser)
 {
   tree identifier, attribs;
 
+  /* check if this is inline and consume it */
+  if (cp_lexer_next_token_is_keyword (parser->lexer, RID_INLINE))
+    cp_lexer_consume_token (parser->lexer);
+
   /* Look for the `namespace' keyword.  */
   cp_parser_require_keyword (parser, RID_NAMESPACE, "`namespace'");
 
@@ -10918,6 +11037,30 @@ cp_parser_asm_definition (cp_parser* parser)
       /* Consume the token.  */
       cp_lexer_consume_token (parser->lexer);
     }
+
+  if (flag_keil_compat)
+    {
+      /* KEIL asm block is enclosed by { ... } */
+      if (!cp_parser_require (parser, CPP_OPEN_BRACE, "`{'"))
+        return;
+      cp_parser_skip_to_end_of_block_or_statement(parser);
+      /* skip KEIL asm */
+      string = build_string(8, "#keilasm");
+      finish_asm_stmt(volatile_p, string, NULL_TREE,
+                      NULL_TREE, NULL_TREE);
+      return;
+    }
+
+  if (cp_lexer_next_token_is_keyword (parser->lexer, RID_GOTO))
+    {
+      cp_lexer_consume_token (parser->lexer);
+      /* skip all in asm goto */
+      cp_parser_skip_to_end_of_block_or_statement(parser);
+      string = build_string(8, "#asmgoto");
+      return finish_asm_stmt(volatile_p, string, NULL_TREE,
+                             NULL_TREE, NULL_TREE);
+    }
+
   /* Look for the opening `('.  */
   if (!cp_parser_require (parser, CPP_OPEN_PAREN, "`('"))
     return;
@@ -11142,6 +11285,19 @@ cp_parser_init_declarator (cp_parser* parser,
     {
       asm_specification = NULL_TREE;
       attributes = NULL_TREE;
+    }
+
+  if (flag_keil_compat && decl_specifiers->asm_p)
+    {
+      /* skip KEIL function level asm */
+      cp_parser_skip_to_end_of_block_or_statement (parser);
+      decl = start_decl (declarator, decl_specifiers,
+                         false, attributes, prefix_attributes,
+                         &pushed_scope);
+      cp_finish_decl (decl,
+                      NULL_TREE, false, NULL_TREE, 0);
+      *function_definition_p = true;
+      return decl;
     }
 
   /* Peek at the next token.  */
@@ -14757,6 +14913,7 @@ cp_parser_attributes_opt (cp_parser* parser)
     {
       cp_token *token;
       tree attribute_list;
+      bool single_paren;
 
       /* Peek at the next token.  */
       token = cp_lexer_peek_token (parser->lexer);
@@ -14768,7 +14925,12 @@ cp_parser_attributes_opt (cp_parser* parser)
       cp_lexer_consume_token (parser->lexer);
       /* Look for the two `(' tokens.  */
       cp_parser_require (parser, CPP_OPEN_PAREN, "`('");
-      cp_parser_require (parser, CPP_OPEN_PAREN, "`('");
+      /* compatible with KEIL __desclspec(attr[, attr]) which only
+         has 1 paren. KEIL also support __attribute__((attr[, attr])) */
+      single_paren = (flag_keil_compat
+                      && cp_lexer_next_token_is_not(parser->lexer, CPP_OPEN_PAREN));
+      if (single_paren == false)
+        cp_parser_require (parser, CPP_OPEN_PAREN, "`('");
 
       /* Peek at the next token.  */
       token = cp_lexer_peek_token (parser->lexer);
@@ -14781,7 +14943,8 @@ cp_parser_attributes_opt (cp_parser* parser)
 	attribute_list = NULL;
 
       /* Look for the two `)' tokens.  */
-      cp_parser_require (parser, CPP_CLOSE_PAREN, "`)'");
+      if (single_paren == false)
+        cp_parser_require (parser, CPP_CLOSE_PAREN, "`)'");
       cp_parser_require (parser, CPP_CLOSE_PAREN, "`)'");
 
       /* Add these new attributes to the list.  */

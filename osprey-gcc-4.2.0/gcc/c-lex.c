@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* Mainly the interface between cpplib and the C front ends.
    Copyright (C) 1987, 1988, 1989, 1992, 1994, 1995, 1996, 1997
    1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005
@@ -421,8 +425,23 @@ c_lex_with_flags (tree *value, location_t *loc, unsigned char *cpp_flags)
 	  break;
 	}
 
+      /* IAR extensions @ addr or @ "section" */
+      if (flag_iar_compat)
+        {
+          *value = NULL_TREE;
+          break;
+        }
+
       /* FALLTHROUGH */
     case CPP_HASH:
+      /* KEIL compatibility:
+       * hash may occurs in inline assembly as integer literal prefix,
+       * ignore this hash and pick up next token
+       */
+      if (flag_keil_compat)
+        goto retry;
+
+      /* FALLTHROUGH */
     case CPP_PASTE:
       {
 	unsigned char name[4];

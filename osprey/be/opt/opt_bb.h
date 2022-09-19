@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -568,6 +572,7 @@ class EXP_PHI;
 class EXP_PHI_LIST;
 class MAIN_EMITTER;
 class IDX_32_SET;
+class INLCXT;
 class ITABLE;
 class IVR;
 class IV_CAND;
@@ -981,6 +986,7 @@ enum BB_FLAG {
   BB_SL2_PARA_REGION = 0x2000, // block is inside a SL2 parallel region
 #endif
   BB_EH_REGION = 0x4000,
+  BB_UNREACHABLE = 0x8000,     // BB is unreachable
 };
 
 #define BB_VISIT    (BB_DFORDER)
@@ -1089,6 +1095,7 @@ private:
               *_iphi_list;   // pt to list of EXP_OCCURS (IPHI) nodes
 
   SRCPOS       _linenum;     // the source position starting this block
+  INLCXT      *_inlinecxt;   // inline context, NULL if not w/i inline context
   UINT32       _freq;	     // frequency info (from profile feedback)
 
   union {
@@ -1148,6 +1155,7 @@ public:
 
   ~BB_NODE(void)                           {}
 
+  void         Print(FILE *fp, DNA_NODE* dna) const;
   void         Print(FILE *fp=stderr) const;// print the bb structure
   void         PrintVis(void) const;            // print the bb structure
   void         Print_wn(FILE *fp=stderr) const;  // print the bb structure
@@ -1271,6 +1279,10 @@ public:
   void         Set_EH_region(void)      { _flags=(BB_FLAG)(_flags|BB_EH_REGION);}
   void         Reset_EH_region(void)    { _flags=(BB_FLAG)(_flags&~BB_EH_REGION);}
 
+  BOOL         Unreachable(void) const  { return (_flags & BB_UNREACHABLE); }
+  void         Set_unreachable(void)    { _flags=(BB_FLAG)(_flags|BB_UNREACHABLE);}
+  void         Reset_unreachable(void)  { _flags=(BB_FLAG)(_flags&~BB_UNREACHABLE);}
+
   IDTYPE       layout_Id(void)          const  { return _layout_id;}
   void         Set_layout_id(IDTYPE i )        { _layout_id = i;}
   void         Set_layout_id(BB_NODE * node)   { _layout_id = node->layout_Id() ? node->layout_Id() : node->Id(); }
@@ -1373,6 +1385,8 @@ public:
 
   SRCPOS       Linenum(void)	 const  { return _linenum; }
   void         Set_linenum(SRCPOS ln)	{ _linenum = ln; }
+  INLCXT      *Inlinecxt(void)	 const  { return _inlinecxt; }
+  void         Set_inlinecxt(INLCXT *in){ _inlinecxt = in; }
   UINT32       Freq(void)	 const  { return _freq; }
   void         Set_freq(UINT32 n)	{ _freq = n; }
 
@@ -1672,7 +1686,6 @@ public:
 }; // end BB_NODE class
 
 
-
 // a private class for bb_node class that is used to note which
 // blocks are in a region
 class BB_REGION {
@@ -1711,8 +1724,8 @@ public:
 
     // need to copy the WHIRL nodes for the pragmas and exits
     // we never use the same whirl that came in (mmapped)
-    _region_pragmas = WN_COPY_Tree_With_Map(pragmas);
-    _region_exits = WN_COPY_Tree_With_Map(exits);
+    _region_pragmas = WN_copy_tree_with_map(pragmas);
+    _region_exits = WN_copy_tree_with_map(exits);
 
     if (_region_end != NULL)
        _region_end->Set_regionend();
@@ -1751,6 +1764,69 @@ public:
   void	      Find_first_last_stmt(BB_NODE *, BB_NODE *, WN **, WN **);
 
 }; // end bb_region class
+
+
+// a private class for bb_node class that is used to note which blocks
+// are in an inline context; Region not suitable for lacking region node
+class INLCXT {
+  friend class BB_NODE;
+
+private:
+  //BB_NODE *_inlcxt_start;	// the start of the inlcxt
+  //BB_NODE *_inlcxt_end;	// last block in the inlcxt
+  //WN      *_orig_start_wn;	// original PRAGMA INLINE_BODY_START WN node
+  //WN      *_orig_end_wn;	// original PRAGMA INLINE_BODY_END WN node
+  INLCXT    *_parent;		// the INLCXT of parent
+  INT64	     _inlcxt_line_num;	// line number of inlcxts
+  UINT32     _call_st;          // call st
+  UINT32     _is_global : 1;    // is this INLCXT in global space
+
+public:
+  INLCXT(INLCXT *parent, INT64 linenum, ST_IDX call_st, bool is_global) :
+    _parent(parent),
+    _inlcxt_line_num(linenum),
+    _call_st(call_st),
+    _is_global(is_global)
+  {
+    // need to copy the WHIRL nodes for the pragmas and exits
+    // we never use the same whirl that came in (mmapped)
+    // _orig_start_wn = WN_copy_tree_with_map(orig_start_wn);
+  }
+
+  //BB_NODE *Inlcxt_start(void) const		{ return _inlcxt_start; }
+  //void Set_inlcxt_start(BB_NODE *inlcxt_start)	{ _inlcxt_start= inlcxt_start;}
+  //BB_NODE *Inlcxt_end(void) const		{ return _inlcxt_end; }
+  //void Set_inlcxt_end(BB_NODE *inlcxt_end)      { _inlcxt_end = inlcxt_end; }
+  //WN *Orig_start_wn(void) const                 { return _orig_start_wn; }
+  //void Set_orig_start_wn(WN *wn)                { _orig_start_wn = wn; }
+  //WN *Orig_end_wn(void) const                   { return _orig_end_wn; }
+  //void Set_orig_end_wn(WN *wn)                  { _orig_end_wn = wn; }
+
+  INLCXT *Parent(void) const			{ return _parent; }
+  void Set_parent(INLCXT *parent)		{ _parent = parent; }
+  INT64 Inlcxt_line_num(void) const		{ return _inlcxt_line_num; }
+  ST_IDX Inlcxt_call_st(void) const             { return _call_st; }
+  BOOL Is_global(void) const                    { return _is_global; }
+
+  // compare if two INLCXT match
+  bool operator == (const INLCXT* rhs) const
+  {
+    if (this == rhs)
+      return TRUE;
+    if (this == NULL || rhs == NULL ||
+        Inlcxt_line_num() != rhs->Inlcxt_line_num() ||
+        Inlcxt_call_st() != rhs->Inlcxt_call_st())
+      return FALSE;
+    if (Parent() == rhs->Parent())
+      return TRUE;
+    if (Parent() == NULL || rhs->Parent() == NULL)
+      return FALSE;
+    return *Parent() == rhs->Parent();
+  }
+  bool operator!=(const INLCXT* rhs) const      { return !(*this == rhs); }
+
+  void Print(FILE *fp = stderr) const;
+}; // end bb_inlcxt class
 
 #endif  // opt_bb_INCLUDED
 #endif  // opt_bb_INCLUDED || opt_bb_CXX

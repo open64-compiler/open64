@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
 
   Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 
@@ -63,19 +67,19 @@ static const char rcs_id[] = "$Source: /scratch/mee/2.4-65/kpro64-pending/be/com
 #include "dwarf_DST.h"
 #include "dwarf_DST_mem.h"
 #include "printsrc.h"
+#include "whirl_file_mgr.h"   // WHIRL_FILE_MANAGER
 
-typedef struct {
+struct file_info {
   char *filename;
   INT incl_index;
   FILE *fileptr;
   INT32 foffset;
   INT32 max_line_printed;
   INT32 lastline;
-} file_info;
+};
 
-static file_info *file_table;
-static char **incl_table;
-static INT cur_file_index = 0;
+static struct FILE_INFO_CONTEXT  Default_fi_ctx;
+static struct FILE_INFO_CONTEXT *file_info_ctx = &Default_fi_ctx;
 static BOOL no_source;
 
 static void Gen_File_Table(void)
@@ -85,6 +89,8 @@ static void Gen_File_Table(void)
   DST_INCLUDE_DIR *incl;
   DST_FILE_NAME *file;
   char *name;
+  char **incl_table;
+  struct file_info *file_table;
   INT incl_table_size;
   INT file_table_size;
   INT new_size;
@@ -146,6 +152,16 @@ static void Gen_File_Table(void)
     file_table[count].lastline = 0;
     count++;
   }
+  file_info_ctx->_file_table = file_table;
+  file_info_ctx->_file_info_count = count;
+  file_info_ctx->_incl_table = incl_table;
+  file_info_ctx->_cur_file_index = 0;
+  file_info_ctx->_initialized = TRUE;
+}
+
+void Set_file_info_context(const FILE_INFO_CONTEXT* ctx)
+{
+  file_info_ctx = (FILE_INFO_CONTEXT *)ctx;
 }
 
 
@@ -166,31 +182,31 @@ void Print_Src_Line(SRCPOS srcpos, FILE *f)
   file_info *cur_file;
   FILE *fileptr;
   INT32 line;
-  static BOOL initialized = FALSE;
   INT32 filenum = SRCPOS_filenum(srcpos);
 
   if (filenum == 0) return;
 
-  if (!initialized) {
+  if (!file_info_ctx->_initialized) {
     Gen_File_Table();
-    initialized = TRUE;
   }
 
   if (no_source) return;
 
+  struct file_info *file_table = file_info_ctx->_file_table;
+  char **incl_table = file_info_ctx->_incl_table;
   cur_file = &file_table[filenum];
-  if (filenum != cur_file_index) {
-    if (cur_file_index != 0) {
+  if (filenum != file_info_ctx->_cur_file_index) {
+    if (file_info_ctx->_cur_file_index != 0) {
 
       /* close the previous file, saving it's current position.
        */
-      file_info *prev_file = &file_table[cur_file_index];
+      file_info *prev_file = &file_table[file_info_ctx->_cur_file_index];
       prev_file->foffset = ftell(prev_file->fileptr);
       fclose (prev_file->fileptr);
       prev_file->fileptr = NULL;
     }
-    cur_file_index = filenum;
-    cur_file = &file_table[cur_file_index];
+    file_info_ctx->_cur_file_index = filenum;
+    cur_file = &file_table[file_info_ctx->_cur_file_index];
     /* open the new file. */
     if (cur_file->incl_index == 0)
     sprintf (buf, "%s", cur_file->filename);
@@ -199,7 +215,7 @@ void Print_Src_Line(SRCPOS srcpos, FILE *f)
 			   cur_file->filename);
     cur_file->fileptr = fopen (buf, "r");
     if (cur_file->fileptr == NULL) {
-      cur_file_index = 0;	/* indicate invalid cur_file */
+      file_info_ctx->_cur_file_index = 0;	/* indicate invalid cur_file */
       return;
     }
 
@@ -232,3 +248,181 @@ void Print_Src_Line(SRCPOS srcpos, FILE *f)
 
   if (line > cur_file->max_line_printed) cur_file->max_line_printed = line;
 }
+
+void
+Get_Local_Srcpos_Filename(SRCPOS spos, const char **fname, const char **dirname)
+{
+  if (SRCPOS_filenum(spos) == 0) {
+    *fname = NULL;
+    *dirname = NULL;
+  }
+  else {
+    if (!file_info_ctx->_initialized) {
+      Gen_File_Table();
+    }
+    Is_True(file_info_ctx->_file_info_count > 1, ("empty file info table"));
+    if(file_info_ctx->_file_info_count > 1) {
+      file_info *cur_file = &file_info_ctx->_file_table[SRCPOS_filenum(spos)];
+      *fname = cur_file->filename;
+      *dirname = file_info_ctx->_incl_table[cur_file->incl_index];
+    } else {
+      *fname = NULL;
+      *dirname = NULL;
+    }
+  }
+}
+
+const char*
+Get_Local_File_Full_Path(INT filenum, char* buf, INT buf_len)
+{
+  if (!file_info_ctx->_initialized) {
+    Gen_File_Table();
+  }
+
+  if (filenum <= 0 || filenum >= file_info_ctx->_file_info_count)
+    return NULL;
+
+  struct file_info *file_table = file_info_ctx->_file_table;
+  char **incl_table = file_info_ctx->_incl_table;
+  file_info *fi = &file_table[filenum];
+  const char* dir_name = incl_table[fi->incl_index];
+  char sep = dir_name[1] == ':' && dir_name[2] == '\\' ? '\\' : '/';
+  size_t ret = snprintf(buf, buf_len, "%s%c%s", dir_name, sep, fi->filename);
+  if (ret < buf_len)
+    return buf;
+  else
+    return NULL;
+}
+
+const char*
+Get_Local_File_Name(INT filenum, char* buf, INT buf_len)
+{
+  if (!file_info_ctx->_initialized) {
+    Gen_File_Table();
+  }
+
+  if (filenum <= 0 || filenum >= file_info_ctx->_file_info_count)
+    return NULL;
+
+  struct file_info *file_table = file_info_ctx->_file_table;
+  file_info *fi = &file_table[filenum];
+  size_t ret = snprintf(buf, buf_len, "%s", fi->filename);
+  if (ret < buf_len)
+    return buf;
+  else
+    return NULL;
+}
+
+INT
+Get_Local_File_Count()
+{
+  if (!file_info_ctx->_initialized) {
+    Gen_File_Table();
+  }
+  return file_info_ctx->_file_info_count;
+}
+
+INT
+Get_Global_File_Number(INT file_index, INT filenum)
+{
+  WHIRL_FILE_MANAGER *mgr = WHIRL_FILE_MANAGER::Get();
+  return mgr != NULL ? mgr->Get_file(file_index).Get_global_file_num(filenum) :
+                       filenum;
+}
+
+const char*
+Get_Global_File_Full_Path(INT id, char* buf, INT buf_len)
+{
+  WHIRL_FILE_MANAGER *mgr = WHIRL_FILE_MANAGER::Get();
+  if (mgr != NULL) {
+    const char* fname = mgr->Get_file_name(id);
+    if (fname != NULL && buf != NULL)
+      strncpy(buf, fname, buf_len);
+    return buf;
+  }
+  else {
+    return Get_Local_File_Full_Path(id, buf, buf_len);
+  }
+}
+
+const char*
+Get_Global_File_Name(INT id, char* buf, INT buf_len)
+{
+  WHIRL_FILE_MANAGER *mgr = WHIRL_FILE_MANAGER::Get();
+  if (mgr != NULL) {
+    const char* fname = mgr->Get_file_name(id);
+    Is_True_Ret(fname, ("can't find file name"), NULL);
+    const char* tmp = strrchr(fname, '/');  // try '/' for Linux/Mac
+    if (tmp == NULL)
+      tmp = strrchr(fname, '\\');           // try '\\' for Windows
+    if (tmp == NULL)  // not found, set to fname
+      tmp = fname;
+    else
+      ++ tmp;         // skip '/' or '\\'
+    if (tmp != NULL && buf != NULL)
+      strncpy(buf, tmp, buf_len);
+    return buf;
+  }
+  else {
+    return Get_Local_File_Name(id, buf, buf_len);
+  }
+}
+
+INT
+Get_Global_File_Count()
+{
+  WHIRL_FILE_MANAGER *mgr = WHIRL_FILE_MANAGER::Get();
+  return mgr != NULL ? mgr->Get_file_table_size() :
+                       Get_Local_File_Count();
+}
+
+void
+Get_Srcpos_Filename(SRCPOS spos, const char **fname, const char **dirname)
+{
+  WHIRL_FILE_MANAGER *mgr = WHIRL_FILE_MANAGER::Get();
+  if (mgr == NULL) {
+    Get_Local_Srcpos_Filename(spos, fname, dirname);
+  }
+  else {
+    UINT filenum = SRCPOS_filenum(spos);
+    const char* ptr = mgr->Get_file_name(filenum);
+    *dirname = ptr;
+    while (*ptr != '\0') {
+      if (*ptr == '/')
+        *fname = ptr + 1;
+      ++ptr;
+    }
+  }
+}
+
+void
+Print_Local_File_Name(INT filenum, FILE* f)
+{
+  if (!file_info_ctx->_initialized) {
+    fprintf(f, "not initialized\n");
+    return;
+  }
+
+  if (filenum <= 0 || filenum >= file_info_ctx->_file_info_count) {
+    fprintf(f, "filenum %d out of bound %d\n",
+               filenum, file_info_ctx->_file_info_count);
+    return;
+  }
+
+  struct file_info *file_table = file_info_ctx->_file_table;
+  file_info *fi = &file_table[filenum];
+  fprintf(f, "%s\n", fi->filename);
+}
+
+void
+Print_Global_File_Name(INT file_index, INT filenum, FILE *f)
+{
+  WHIRL_FILE_MANAGER *mgr = WHIRL_FILE_MANAGER::Get();
+  if (mgr == NULL) {
+    fprintf(f, "not xfa, call Print_Local_File_Name instead\n");
+    return;
+  }
+  INT id =  mgr->Get_file(file_index).Get_global_file_num(filenum);
+  fprintf(f, "%s\n", mgr->Get_file_name(id));
+}
+

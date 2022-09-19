@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1337,7 +1341,7 @@ class AUX_IPA_NODE
 private:
     NODE* data;
     MEM_POOL* pool;
-    UINT node_size;
+    mutable UINT node_size;
 
 public:
 
@@ -1366,7 +1370,7 @@ public:
 	return data[node->Array_Index ()];
     }
     const NODE& operator[] (const IPA_NODE* node) const {
-#if 0 //defined(_LIGHTWEIGHT_INLINER) || !defined(_STANDALONE_INLINER)
+#if defined(_LIGHTWEIGHT_INLINER) || !defined(_STANDALONE_INLINER)
         if (node->Array_Index () >= node_size) {
             UINT size = sizeof(NODE) * node_size;
             node_size *= 2;
@@ -1393,7 +1397,7 @@ public:
 	return data[n_idx];
     }
     const NODE& operator[] (UINT32 n_idx) const {
-#if 0 //defined(_LIGHTWEIGHT_INLINER) || !defined(_STANDALONE_INLINER)
+#if defined(_LIGHTWEIGHT_INLINER) || !defined(_STANDALONE_INLINER)
         if (n_idx >= node_size) {
             UINT size = sizeof(NODE) * node_size;
             node_size *= 2;

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -206,6 +210,7 @@ void handle_function_return (WN * block, WN * wn)
     WN_const_val(size) = num_elements * TY_size(Struct_split_types[i]);
     WN * val = WN_Ldid(WN_desc(WN_kid0(wn)), -1, Return_Val_Preg, ptr_ty[i]);
     WN * stid = WN_Stid(WN_rtype(val), 0, fld_st[i], ST_type(fld_st[i]), val);
+    WN_Set_Linenum(stid, WN_Get_Linenum(last_alloc));
     WN_INSERT_BlockLast(block, last_alloc);
     WN_INSERT_BlockLast(block, stid);
     last_alloc = new_call;
@@ -243,6 +248,7 @@ void handle_assignment (WN * block, WN * wn)
                           &St_Table[Struct_field_layout[i].st_idx],
                           ptr_ty,
                           WN_Ldid(WN_desc(wn), 0, fld_st[i], ptr_ty));
+      WN_Set_Linenum(stid, WN_Get_Linenum(wn));
       WN_INSERT_BlockLast(block, stid);
     }
   }
@@ -272,6 +278,7 @@ void handle_assignment (WN * block, WN * wn)
     // generate assignment for next field
     WN * val = WN_Ldid(WN_desc(WN_kid0(wn)), 0, fld_st[1], Make_Pointer_Type(FLD_type(fld)));
     WN * stid = WN_Stid(WN_rtype(val), FLD_ofst(fld), WN_st(wn), WN_ty(wn), val, new_field_id);
+    WN_Set_Linenum(stid, WN_Get_Linenum(wn));
     WN_INSERT_BlockLast(block, stid);
   }
 }
@@ -1576,6 +1583,7 @@ static WN *traverse_wn_tree_for_complete_struct_relayout(WN *block_wn,
         ldid_wn = WN_COPY_Tree(WN_kid0(wn)); // for some reason building a new
           // WN_Ldid with the calloc_returned_ptr does not work
         stid_wn = WN_Stid(desc, 0, gptr_st[0], ptr_to_gptr_ty_idx[0], ldid_wn);
+        WN_Set_Linenum(stid_wn, WN_Get_Linenum(wn));
         WN_INSERT_BlockLast(block_wn, stid_wn);
 
         // gptr[i] = gptr[i-1] + num_elements * sizeof(field[i-1])
@@ -1595,6 +1603,7 @@ static WN *traverse_wn_tree_for_complete_struct_relayout(WN *block_wn,
               ldid_wn, mult_wn);
           }
           stid_wn = WN_Stid(desc, 0, gptr_st[i], ptr_to_gptr_ty_idx[i], add_wn);
+          WN_Set_Linenum(stid_wn, WN_Get_Linenum(wn));
           WN_INSERT_BlockLast(block_wn, stid_wn);
         }
       }
@@ -2983,6 +2992,7 @@ void IPO_Identify_Single_Define_To_HeapAlloced_GlobalVar(WN *wn)
                                      orig_size, WN_ty(WN_kid0(WN_kid0(wn))), 0);
             WN *stid = WN_CreateStid(OPR_STID, MTYPE_V, WN_rtype(ldid), 0, 
                                      new_st, WN_ty(ldid), ldid, 0);
+            WN_Set_Linenum(stid, WN_Get_Linenum(wn));
             LWN_Set_Parent(ldid, stid);
             LWN_Insert_Block_Before(LWN_Get_Parent(wn), wn, stid);
             LWN_Set_Parent(stid, LWN_Get_Parent(wn));

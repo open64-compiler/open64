@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -137,6 +141,8 @@ extern char *IR_File_Name;	/* SGIR intermediate file */
 extern char *Ipa_File_Name;	/* IPA file */
 extern char *Asm_File_Name;	/* Assembly file */
 extern char *Obj_File_Name;	/* Relocatable object file */
+extern char *Ipsa_File_Name;	/* IPSA intermedidate file */
+extern char *Inlskip_File_Name; /* Skip inline functions list file */
 extern char *call_graph_file_name; /* Function call graph file */
 extern char *cord_output_file_name; /* Output file name after function layout */
 extern char *cord_obj_file_name;  /* Object file name which will be reorder function layout */
@@ -191,6 +197,9 @@ extern BOOL Object_Code;	/* Object code */
 extern BOOL Symbol_Table_Out;	/* Symbol table output (list or trace) */
 extern BOOL Create_Cycle_Output; /* added by cbq */
 extern BOOL Show_Progress;	/* Report progress to stdout */
+extern BOOL Show_Progress_Percent; /* Report progress percent to stdout */
+extern BOOL Keep_Flag;             /* Keep intermediate files(-kp) */
+extern UINT32 File_Index;       /* File index for multiple files compilation */
 
 /* Clean up files after failure: */
 extern void Cleanup_Files (

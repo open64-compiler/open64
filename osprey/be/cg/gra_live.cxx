@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  *  Copyright (C) 2007 QLogic Corporation.  All Rights Reserved.
  */
 
@@ -610,7 +614,7 @@ Compute_Force_TNs(void)
   }
 #endif
 
-#if !defined(TARG_X8664) && !defined(TARG_LOONGSON) && !defined(TARG_PPC32)
+#if !defined(TARG_X8664) && !defined(TARG_LOONGSON) && !defined(TARG_PPC32) && !defined(TARG_UWASM)
   // OSP_426, always mark Caller_GP_TN global
   if (Caller_GP_TN != NULL) {
     Force_Live_Add(Caller_GP_TN);

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -1357,6 +1361,8 @@ CG_Instrument_Arcs()
 #elif TARG_MIPS
 	  // mips
 	  Build_OP( TOP_j, Gen_Label_TN(tgt_label, 0), &new_ops);
+#elif defined(TARG_UWASM)
+  FmtAssert(FALSE, ("uwasm not implemented yet."));
 #else
 #ifndef TARG_LOONGSON
           // ia64

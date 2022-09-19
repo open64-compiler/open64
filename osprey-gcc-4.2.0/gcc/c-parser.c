@@ -1,3 +1,7 @@
+/*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
 /* Parser for C and Objective-C.
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
    1999, 2000, 2001, 2002, 2003, 2004, 2005 Free Software Foundation, Inc.
@@ -92,6 +96,9 @@ struct resword
 #define D_EXT	0x02	/* GCC extension */
 #define D_EXT89	0x04	/* GCC extension incorporated in C99 */
 #define D_OBJC	0x08	/* Objective C only */
+#define D_KEIL  0x10    /* Keil compiler only */
+#define D_IAR   0x20    /* IAR compiler only */
+#define D_FLOAT128 0x40 /* Float128/Float128x support */
 
 static const struct resword reswords[] =
 {
@@ -100,6 +107,14 @@ static const struct resword reswords[] =
   { "_Decimal32",       RID_DFLOAT32,  D_EXT },
   { "_Decimal64",       RID_DFLOAT64,  D_EXT },
   { "_Decimal128",      RID_DFLOAT128, D_EXT },
+  //{ "_Float32",         RID_FLOAT,      0 },
+  //{ "_Float32x",        RID_DOUBLE,     0 },
+  //{ "_Float64",         RID_DOUBLE,     0 },
+  //{ "_Float64x",        RID_FLOAT128,   0 },
+  { "_Float128",        RID_FLOAT128,   D_FLOAT128 },
+  { "_Float128x",       RID_FLOAT128,   D_FLOAT128 },
+  { "_Noreturn",        RID_NORETURN,   0 },
+  { "_Static_assert",   RID_STATIC_ASSERT, 0 },
   { "__FUNCTION__",	RID_FUNCTION_NAME, 0 },
   { "__PRETTY_FUNCTION__", RID_PRETTY_FUNCTION_NAME, 0 },
   { "__alignof",	RID_ALIGNOF,	0 },
@@ -108,6 +123,7 @@ static const struct resword reswords[] =
   { "__asm__",		RID_ASM,	0 },
   { "__attribute",	RID_ATTRIBUTE,	0 },
   { "__attribute__",	RID_ATTRIBUTE,	0 },
+  { "__declspec",	RID_ATTRIBUTE,	0 },
   { "__builtin_choose_expr", RID_CHOOSE_EXPR, 0 },
   { "__builtin_offsetof", RID_OFFSETOF, 0 },
   { "__builtin_types_compatible_p", RID_TYPES_COMPATIBLE_P, 0 },
@@ -117,11 +133,14 @@ static const struct resword reswords[] =
   { "__const",		RID_CONST,	0 },
   { "__const__",	RID_CONST,	0 },
   { "__extension__",	RID_EXTENSION,	0 },
+  { "__float128",       RID_FLOAT128,   0 },
   { "__func__",		RID_C99_FUNCTION_NAME, 0 },
   { "__imag",		RID_IMAGPART,	0 },
   { "__imag__",		RID_IMAGPART,	0 },
   { "__inline",		RID_INLINE,	0 },
   { "__inline__",	RID_INLINE,	0 },
+  { "__int128",		RID_INT64,	0 },
+  { "__int64",		RID_INT64,	0 },
   { "__label__",	RID_LABEL,	0 },
   { "__real",		RID_REALPART,	0 },
   { "__real__",		RID_REALPART,	0 },
@@ -170,6 +189,57 @@ static const struct resword reswords[] =
   { "void",		RID_VOID,	0 },
   { "volatile",		RID_VOLATILE,	0 },
   { "while",		RID_WHILE,	0 },
+  /* These are KEIL extension keywords */
+  { "__ALIGNOF__",	RID_ALIGNOF,	D_KEIL },
+  { "__INTADDR__",	RID_INTADDR,	D_KEIL },
+  { "__align",		RID_ALIGN,	D_KEIL },
+  { "__forceinline",	RID_INLINE,	D_KEIL },
+  { "__global_reg",	RID_GLOBAL_REG,	D_KEIL },
+  { "__irq",		RID_IRQ,	D_KEIL },
+  { "__packed", 	RID_PACKED,	D_KEIL },
+  { "__pure",		RID_PURE,	D_KEIL },
+  { "__smc",		RID_SMC, 	D_KEIL },
+  { "__softfp", 	RID_SOFTFP,	D_KEIL },
+  { "__svc",		RID_SVC, 	D_KEIL },
+  { "__svc_indirect",	RID_SVC, 	D_KEIL },
+  { "__svc_indirect_r7", RID_SVC, 	D_KEIL },
+  { "__value_in_regs",	RID_VALUE_IN_REGS,D_KEIL},
+  { "__weak",		RID_WEAK,	D_KEIL },
+  { "__writeonly",	RID_WRITEONLY,	D_KEIL },
+  /* These are IAR extension keyworks */
+  { "__INTADDR__",	RID_INTADDR,	D_IAR },
+  { "__arm",            RID_ARM,        D_IAR },
+  { "__cmse_nonsecure_call", RID_NONSECURE_CALL, D_IAR },
+  { "__cmse_nonsecure_entry", RID_NONSECURE_ENTRY, D_IAR },
+  { "__code24",         RID_CODE24,     D_IAR },
+  { "__code32",         RID_CODE32,     D_IAR },
+  { "__constrange",     RID_CONSTRANGE, D_IAR },
+  { "__data16",         RID_DATA16,     D_IAR },
+  { "__data24",         RID_DATA24,     D_IAR },
+  { "__data32",         RID_DATA32,     D_IAR },
+  { "__fast_interrupt", RID_INTERRUPT,  D_IAR },
+  { "__interrupt",      RID_INTERRUPT,  D_IAR },
+  { "__interwork",      RID_INTERWORK,  D_IAR },
+  { "__intrinsic",      RID_INTRINSIC,  D_IAR },
+  { "__monitor",        RID_MONITOR,    D_IAR },
+  { "__no_init",        RID_NO_INIT,    D_IAR },
+  { "__noreturn",       RID_NORETURN,   D_IAR },
+  { "__nounwind",       RID_NOUNWIND,   D_IAR },
+  { "__packed",         RID_PACKED,     D_IAR },
+  { "__root",           RID_ROOT,       D_IAR },
+  { "__ramfunc",        RID_RAMFUNC,    D_IAR },
+  { "__sbdata16",       RID_SBDATA16,   D_IAR },
+  { "__sbdata24",       RID_SBDATA24,   D_IAR },
+  { "__sfb",            RID_SFB,        D_IAR },
+  { "__sfe",            RID_SFE,        D_IAR },
+  { "__section_end",    RID_SFE,        D_IAR },
+  { "__swi",            RID_SWI,        D_IAR },
+  { "__spec_string",    RID_SPEC_STRING,D_IAR },
+  { "__swi",            RID_SWI,        D_IAR },
+  { "__task",           RID_TASK,       D_IAR },
+  { "__thumb",          RID_THUMB,      D_IAR },
+  { "__weak",           RID_WEAK,       D_IAR },
+
   /* These Objective-C keywords are recognized only immediately after
      an '@'.  */
   { "class",		RID_AT_CLASS,		D_OBJC },
@@ -234,6 +304,18 @@ c_parse_init (void)
 
   if (!c_dialect_objc ())
      mask |= D_OBJC;
+
+  /* disable Keil extension keywords if -fkeil is not specified */
+  if (!flag_keil_compat)
+     mask |= D_KEIL;
+
+  /* disable IAR extension keywords if -fiar is not specified */
+  if (!flag_iar_compat)
+     mask |= D_IAR;
+
+  /* disable Float128/Float128x if -ffloat128 is not specified */
+  if (!flag_float128)
+     mask |= D_FLOAT128;
 
   ridpointers = GGC_CNEWVEC (tree, (int) RID_MAX);
   for (i = 0; i < N_reswords; i++)
@@ -500,9 +582,11 @@ c_token_starts_typename (c_token *token)
 	case RID_SIGNED:
 	case RID_COMPLEX:
 	case RID_INT:
+	case RID_INT64:
 	case RID_CHAR:
 	case RID_FLOAT:
 	case RID_DOUBLE:
+        case RID_FLOAT128:
 	case RID_VOID:
 	case RID_DFLOAT32:
 	case RID_DFLOAT64:
@@ -517,6 +601,28 @@ c_token_starts_typename (c_token *token)
 	case RID_RESTRICT:
 	case RID_ATTRIBUTE:
 	  return true;
+        /* IAR and KEIL keywords which starts type name */
+        case RID_PACKED:
+          {
+            if (flag_iar_compat || flag_keil_compat)
+              return true;
+          }
+          /* fall through */
+        /* IAR keywords which starts type name */
+        case RID_NONSECURE_CALL:
+        case RID_NONSECURE_ENTRY:
+          {
+            if (flag_iar_compat)
+              return true;
+          }
+          /* fall through */
+        /* KEIL keywords which starts type name */
+        case RID_ALIGN:
+          {
+            if (flag_keil_compat)
+              return true;
+          }
+          /* fall through */
 	default:
 	  return false;
 	}
@@ -574,9 +680,11 @@ c_token_starts_declspecs (c_token *token)
 	case RID_SIGNED:
 	case RID_COMPLEX:
 	case RID_INT:
+	case RID_INT64:
 	case RID_CHAR:
 	case RID_FLOAT:
 	case RID_DOUBLE:
+        case RID_FLOAT128:
 	case RID_VOID:
 	case RID_DFLOAT32:
 	case RID_DFLOAT64:
@@ -590,7 +698,37 @@ c_token_starts_declspecs (c_token *token)
 	case RID_VOLATILE:
 	case RID_RESTRICT:
 	case RID_ATTRIBUTE:
+        case RID_NORETURN:
+        case RID_STATIC_ASSERT:
 	  return true;
+        /* KEIL keywords which starts decl */
+        case RID_ALIGN:
+        case RID_SVC:
+        case RID_VALUE_IN_REGS:
+          {
+            if (flag_keil_compat)
+              return true;
+          }
+          /* fail through */
+        /* IAR keywords which starts decl */
+        case RID_INTRINSIC:
+        case RID_NONSECURE_CALL:
+        case RID_NONSECURE_ENTRY:
+        case RID_PACKED:
+        case RID_SPEC_STRING:
+        case RID_THUMB:
+          {
+            if (flag_iar_compat)
+              return true;
+          }
+          /* fail through */
+        /* IAR and KEIL keywords which starts decl */
+        case RID_WEAK:
+          {
+            if (flag_iar_compat || flag_keil_compat)
+              return true;
+          }
+          /* fail through */
 	default:
 	  return false;
 	}
@@ -1139,7 +1277,12 @@ c_parser_external_declaration (c_parser *parser)
 	  restore_extension_diagnostics (ext);
 	  break;
 	case RID_ASM:
-	  c_parser_asm_definition (parser);
+	  /* KEIL doesn't have global scope simple asm definition
+	     parse it as declaration or fndef */
+	  if (flag_keil_compat)
+	    c_parser_declaration_or_fndef (parser, true, true, false, true);
+	  else
+	    c_parser_asm_definition (parser);
 	  break;
 	case RID_AT_INTERFACE:
 	case RID_AT_IMPLEMENTATION:
@@ -1194,6 +1337,153 @@ c_parser_external_declaration (c_parser *parser)
     }
 }
 
+/* parse (skip) a static_assert in c11 */
+static void
+c_parser_static_assert(c_parser *parser)
+{
+  tree value;
+  tree assert_string;
+
+  gcc_assert (c_parser_next_token_is_keyword (parser, RID_STATIC_ASSERT));
+  /* peek and consume the keyword _Static_assert */
+  c_parser_peek_token (parser);
+  c_parser_consume_token (parser);
+  /* peek and consume the '(' */
+  c_parser_peek_token (parser);
+  if (!c_parser_require (parser, CPP_OPEN_PAREN, "expected %<(%>"))
+    {
+      return;
+    }
+  /* peek and consume the static assert value expression */
+  c_parser_peek_token (parser);
+  value = c_parser_expr_no_commas (parser, NULL).value;
+  /* peek and consume the ',' */
+  c_parser_peek_token (parser);
+  if (!c_parser_require (parser, CPP_COMMA, "expected %<,%>"))
+    {
+      return;
+    }
+  /* peek and consume the static assert message */
+  assert_string = c_parser_peek_token (parser)->value;
+  c_parser_consume_token (parser);
+  /* peek and consume the ')' */
+  c_parser_peek_token (parser);
+  if (!c_parser_require (parser, CPP_CLOSE_PAREN, "expected %<)%>"))
+    { 
+      return;
+    }
+  /* peek and consume the ',' */
+  if (!c_parser_require (parser, CPP_SEMICOLON, "expected %<;%>"))
+    { 
+      return;
+    }
+  /* TODO, evaluate value and emit error message if value is false */
+  return;
+}
+
+/* Ignore the IAR data placement as below
+   __no_init int x @ NUMBER;
+   __no_init int y @ "section";
+   __no_init int z @ ((expression)) */
+
+static tree
+c_parser_iar_data_placement (c_parser *parser, struct c_declspecs *specs)
+{
+  tree attr = NULL_TREE, attr_name = NULL_TREE, attr_arg = NULL_TREE;
+  bool is_section = FALSE;
+  /* consume `@' */
+  c_parser_consume_token (parser);
+  /* __no_init int x @ NUMBER */
+  if (c_parser_next_token_is (parser, CPP_NUMBER))
+    {
+      attr_arg = c_parser_peek_token (parser)->value;
+      c_parser_consume_token (parser);
+    }
+  /* __no_init int x @ "section" */
+  else if (c_parser_next_token_is (parser, CPP_STRING))
+    {
+      is_section = TRUE;
+      attr_arg = c_parser_peek_token (parser)->value;
+      c_parser_consume_token (parser);
+      attr_arg = build_tree_list (NULL_TREE, attr_arg);
+    }
+  else if (c_parser_next_token_is (parser, CPP_OPEN_PAREN))
+    {
+      struct c_expr expr = c_parser_expr_no_commas (parser, NULL);
+      attr_arg = expr.value;
+    }
+  else
+    {
+      c_parser_error (parser, "expected NUMBER, STRING or %<(>% expr %<)%>");
+      return NULL_TREE;
+    }
+
+  attr_name = get_identifier(is_section ? "section" : "location");
+  attr = build_tree_list (attr_name, attr_arg);
+
+  return attr;
+}
+
+/* Parse IAR anonymous union:
+   in global scope:
+   union { int a; int b; };
+   union { int a; int b; } = {1};
+   union { int a; int b; } @ addr;
+   union { int a; int b; } @ "section";
+   generate decl of a and b in global scope.
+   in local scope:
+   void foo() {
+     union { int a; int b; };
+     union { int a; int b; } = {1};
+   }
+   generate decl of a and b in local scope.   */
+
+static bool
+c_parser_iar_anonymous_union (c_parser *parser, struct c_declspecs *specs)
+{
+  static int anon_index = 0;
+  char   namebuf[32];
+  tree   memb, decl, attr = NULL_TREE;
+  struct c_declarator *declarator;
+  struct c_expr init;
+  init.value = NULL_TREE;
+
+  /* check if next token is `=' for initialization */
+  if (c_parser_next_token_is (parser, CPP_EQ))
+    {
+      /* handle initialization value */
+      c_parser_consume_token (parser);
+      if (!c_parser_next_token_is (parser, CPP_OPEN_BRACE))
+        {
+          c_parser_error (parser, "expected %<{%>");
+          return false;
+        }
+      init = c_parser_braced_init (parser, specs->type, false);
+    }
+  /* check if next token is `@' for data placement */
+  else if (c_parser_next_token_is (parser, CPP_ATSIGN))
+    {
+      attr = c_parser_iar_data_placement (parser, specs);
+    }
+
+  /* check and consume the `;' */
+  if (!c_parser_next_token_is (parser, CPP_SEMICOLON))
+    return false;
+  c_parser_consume_token(parser);
+
+  /* createa anonymous union decl at first */
+  snprintf(namebuf, 32, ".iar.au.%d", anon_index++);
+  declarator = build_id_declarator (get_identifier (namebuf));
+  decl = start_decl (declarator, specs,
+                     init.value != NULL_TREE, attr);
+  if (!decl)
+    return false;
+  finish_decl (decl, init.value, NULL_TREE);
+
+  /* create bind for each union fields */
+  iar_bind_anonymous_union(decl, specs->type);
+  return true;
+}
 
 /* Parse a declaration or function definition (C90 6.5, 6.7.1, C99
    6.7, 6.9.1).  If FNDEF_OK is true, a function definition is
@@ -1261,8 +1551,25 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok, bool empty_ok,
   tree all_prefix_attrs;
   bool diagnosed_no_specs = false;
 
+  if (c_parser_next_token_is_keyword (parser, RID_STATIC_ASSERT))
+    {
+      c_parser_static_assert (parser);
+      if (parser->error)
+        {
+          c_parser_skip_to_end_of_block_or_statement (parser);
+        }
+      return;
+    }
+
   specs = build_null_declspecs ();
   c_parser_declspecs (parser, specs, true, true, start_attr_ok);
+  if (flag_keil_compat && specs->asm_p)
+    {
+      /* skip KEIL asm body */
+      c_parser_skip_to_end_of_block_or_statement (parser);
+      finish_declspecs (specs);
+      return;
+    }
   if (parser->error)
     {
       c_parser_skip_to_end_of_block_or_statement (parser);
@@ -1275,6 +1582,16 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok, bool empty_ok,
       return;
     }
   finish_declspecs (specs);
+
+  /* IAR anonymous union */
+  if (flag_iar_compat
+      && specs->type_seen_p
+      && TREE_CODE (specs->type) == UNION_TYPE)
+    {
+      if (c_parser_iar_anonymous_union (parser, specs))
+        return;
+    }
+
   if (c_parser_next_token_is (parser, CPP_SEMICOLON))
     {
       if (empty_ok)
@@ -1307,6 +1624,14 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok, bool empty_ok,
 	  c_parser_skip_to_end_of_block_or_statement (parser);
 	  return;
 	}
+
+      if (flag_iar_compat
+          && c_parser_next_token_is (parser, CPP_ATSIGN))
+        {
+          tree attr = c_parser_iar_data_placement (parser, specs);
+          all_prefix_attrs = chainon (all_prefix_attrs, attr);
+        }
+
       if (c_parser_next_token_is (parser, CPP_EQ)
 	  || c_parser_next_token_is (parser, CPP_COMMA)
 	  || c_parser_next_token_is (parser, CPP_SEMICOLON)
@@ -1605,6 +1930,11 @@ c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
       gcc_assert (c_parser_next_token_is (parser, CPP_KEYWORD));
       switch (c_parser_peek_token (parser)->keyword)
 	{
+        case RID_NORETURN:  // ignore RID_NORETURN
+          {
+	    c_parser_consume_token (parser);
+            break;
+          }
 	case RID_STATIC:
 	case RID_EXTERN:
 	case RID_REGISTER:
@@ -1627,9 +1957,11 @@ c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
 	case RID_SIGNED:
 	case RID_COMPLEX:
 	case RID_INT:
+	case RID_INT64:
 	case RID_CHAR:
 	case RID_FLOAT:
 	case RID_DOUBLE:
+        case RID_FLOAT128:
 	case RID_VOID:
 	case RID_DFLOAT32:
 	case RID_DFLOAT64:
@@ -1686,6 +2018,122 @@ c_parser_declspecs (c_parser *parser, struct c_declspecs *specs,
 	  attrs = c_parser_attributes (parser);
 	  declspecs_add_attrs (specs, attrs);
 	  break;
+        /* KEIL extensions */
+        case RID_ASM:
+          if (flag_keil_compat)
+	    {
+              specs->asm_p = true;
+              c_parser_consume_token (parser);
+              break;
+	    }
+	  /* fall through to default */
+        case RID_ALIGN:
+          if (flag_keil_compat)
+            {
+              tree attr, attr_name, attr_arg;
+              c_parser_consume_token (parser);
+              c_parser_require (parser, CPP_OPEN_PAREN, "expected %<(%>");
+              if (!c_parser_next_token_is(parser, CPP_NUMBER))
+                {
+                  c_parser_error(parser, "expected a number");
+                }
+              attr_arg = c_parser_peek_token (parser)->value;
+              c_parser_consume_token (parser);
+              c_parser_require (parser, CPP_CLOSE_PAREN, "expected %<)%>");
+              attr_name = get_identifier("aligned");
+              attr_arg = build_tree_list (NULL_TREE, attr_arg);
+              attr = build_tree_list (attr_name, attr_arg);
+              declspecs_add_attrs (specs, attr);
+              break;
+            }
+          /* fall through to default */
+        case RID_GLOBAL_REG:
+        case RID_SMC:
+        case RID_SVC:
+          if (flag_keil_compat)
+	    {
+              /* ignore these specifiers:
+                 __align(n), __global_reg(n), __smc(n),
+                 __svc(n), __svc_indirect(n), __svc_indirect_r7(n) */
+              c_parser_consume_token (parser);
+              c_parser_require (parser, CPP_OPEN_PAREN, "expected %<(%>");
+              c_parser_require (parser, CPP_NUMBER, "expected a number");
+              c_parser_require (parser, CPP_CLOSE_PAREN, "expected %<)%>");
+              break;
+	    }
+        case RID_PURE:
+          if (flag_keil_compat)
+            {
+              tree attr, attr_name;
+              attr_name = c_parser_peek_token (parser)->value;
+              c_parser_consume_token (parser);
+              attr = build_tree_list (attr_name, NULL_TREE);
+              declspecs_add_attrs (specs, attr);
+              break;
+            }
+          /* fall through */
+        case RID_IRQ:
+        case RID_SOFTFP:
+        case RID_VALUE_IN_REGS:
+        case RID_WRITEONLY:
+          if (flag_keil_compat)
+            {
+              c_parser_consume_token (parser);
+              break;
+            }
+          /* fall through */
+        /* IAR extensions */
+        case RID_ARM:
+        case RID_CODE24: case RID_CODE32:
+        case RID_DATA16: case RID_DATA24: case RID_DATA32:
+        case RID_INTERRUPT:
+        case RID_INTERWORK:
+        case RID_INTRINSIC:
+        case RID_MONITOR:
+        case RID_NO_INIT:
+        case RID_NONSECURE_CALL:
+        case RID_NONSECURE_ENTRY:
+        case RID_NOUNWIND:
+        case RID_ROOT:
+        case RID_RAMFUNC:
+        case RID_SBDATA16: case RID_SBDATA24:
+        case RID_SPEC_STRING:
+        case RID_SWI:
+        case RID_TASK:
+        case RID_THUMB:
+          if (flag_iar_compat)
+            {
+              /* ignore keywords above */
+              c_parser_consume_token (parser);
+              break;
+            }
+	  /* fall through */
+        case RID_CONSTRANGE:
+          if (flag_iar_compat)
+            {
+              /* ignore __constrange(M,N) */
+              c_parser_consume_token (parser);
+              c_parser_require (parser, CPP_OPEN_PAREN, "expected %<(%>");
+              c_parser_require (parser, CPP_NUMBER, "expected a number");
+              c_parser_require (parser, CPP_COMMA, "expected a %<,%>");
+              c_parser_require (parser, CPP_NUMBER, "expected a number");
+              c_parser_require (parser, CPP_CLOSE_PAREN, "expected %<)%>");
+              break;
+            }
+	  /* fall through */
+        /* IAR and KEIL extensions */
+        case RID_PACKED:
+        case RID_WEAK:
+          if (flag_iar_compat || flag_keil_compat)
+            {
+              tree attr, attr_name;
+              attr_name = c_parser_peek_token (parser)->value;
+              c_parser_consume_token (parser);
+              attr = build_tree_list (attr_name, NULL_TREE);
+              declspecs_add_attrs (specs, attr);
+              break;
+            }
+	  /* fall through to default */
 	default:
 	  goto out;
 	}
@@ -1939,6 +2387,12 @@ c_parser_struct_or_union_specifier (c_parser *parser)
 	      c_parser_pragma (parser, pragma_external);
 	      continue;
 	    }
+          /* Parse _Static_assert at struct or union scope.  */
+          if (c_parser_next_token_is_keyword (parser, RID_STATIC_ASSERT))
+            {
+              c_parser_static_assert (parser);
+              continue;
+            }
 	  /* Parse some comma-separated declarations, but not the
 	     trailing semicolon if any.  */
 	  decls = c_parser_struct_declaration (parser);
@@ -2363,6 +2817,14 @@ c_parser_direct_declarator (c_parser *parser, bool type_seen_p, c_dtr_syn kind,
       struct c_declarator *inner;
       c_parser_consume_token (parser);
       attrs = c_parser_attributes (parser);
+
+      /* IAR ignore __thumb keyword */
+      if (flag_iar_compat
+          && (c_parser_next_token_is_keyword (parser, RID_NONSECURE_CALL)
+              || c_parser_next_token_is_keyword (parser, RID_PACKED)
+              || c_parser_next_token_is_keyword (parser, RID_THUMB)))
+        c_parser_consume_token (parser);
+
       if (kind != C_DTR_NORMAL
 	  && (c_parser_next_token_starts_declspecs (parser)
 	      || c_parser_next_token_is (parser, CPP_CLOSE_PAREN)))
@@ -2836,6 +3298,7 @@ static tree
 c_parser_attributes (c_parser *parser)
 {
   tree attrs = NULL_TREE;
+  bool single_paren;
   while (c_parser_next_token_is_keyword (parser, RID_ATTRIBUTE))
     {
       /* ??? Follow the C++ parser rather than using the
@@ -2847,7 +3310,14 @@ c_parser_attributes (c_parser *parser)
 	  c_lex_string_translate = 1;
 	  return attrs;
 	}
-      if (!c_parser_require (parser, CPP_OPEN_PAREN, "expected %<(%>"))
+
+      /* KEIL __declspec(attr[, attr]) only have 1 paren, but
+         keil also support __attribute((attr, [,attr])) which has 2 parens. */
+      single_paren = (flag_keil_compat
+                      && c_parser_next_token_is_not (parser, CPP_OPEN_PAREN));
+
+      if (single_paren == false
+          && !c_parser_require (parser, CPP_OPEN_PAREN, "expected %<(%>"))
 	{
 	  c_lex_string_translate = 1;
 	  c_parser_skip_until_found (parser, CPP_CLOSE_PAREN, NULL);
@@ -2887,9 +3357,11 @@ c_parser_attributes (c_parser *parser)
 		case RID_COMPLEX:
 		case RID_THREAD:
 		case RID_INT:
+		case RID_INT64:
 		case RID_CHAR:
 		case RID_FLOAT:
 		case RID_DOUBLE:
+                case RID_FLOAT128:
 		case RID_VOID:
 		case RID_DFLOAT32:
 		case RID_DFLOAT64:
@@ -2964,7 +3436,7 @@ c_parser_attributes (c_parser *parser)
 	}
       if (c_parser_next_token_is (parser, CPP_CLOSE_PAREN))
 	c_parser_consume_token (parser);
-      else
+      else if (single_paren == false)
 	{
 	  c_lex_string_translate = 1;
 	  c_parser_skip_until_found (parser, CPP_CLOSE_PAREN,
@@ -4123,6 +4595,12 @@ c_parser_for_statement (c_parser *parser)
      asm-string-literal : asm-operands[opt] : asm-operands[opt]
      asm-string-literal : asm-operands[opt] : asm-operands[opt] : asm-clobbers
 
+   asm-goto:
+     asm goto ( asm-goto-argument ) ;
+
+   asm-goto-argument:
+     asm-string-literal : asm-operands[opt] : asm-operands[opt] : asm-clobbers[opt] : c-labels[opt]
+
    Qualifiers other than volatile are accepted in the syntax but
    warned for.  */
 
@@ -4150,6 +4628,32 @@ c_parser_asm_statement (c_parser *parser)
     quals = NULL_TREE;
   /* ??? Follow the C++ parser rather than using the
      c_lex_string_translate kludge.  */
+
+  if (flag_keil_compat)
+    {
+      /* KEIL asm block are enclosed by { ... } */
+      if (!c_parser_require (parser, CPP_OPEN_BRACE, "expected %<{%>"))
+       {
+         c_lex_string_translate = 1;
+         return NULL_TREE;
+       }
+       c_parser_skip_to_end_of_block_or_statement(parser);
+       /* ignore the asm block for now */
+       str = build_string(8, "#keilasm");
+       return build_asm_stmt (quals, build_asm_expr (str, NULL_TREE, NULL_TREE,
+                                                     NULL_TREE, true));
+    }
+
+  if (c_parser_next_token_is_keyword (parser, RID_GOTO))
+    {
+      c_parser_consume_token (parser);
+      /* skip all in asm goto */
+      c_parser_skip_to_end_of_block_or_statement(parser);
+      str = build_string(8, "#asmgoto");
+      return build_asm_stmt (quals, build_asm_expr (str, NULL_TREE, NULL_TREE,
+                                                    NULL_TREE, true));
+    }
+
   c_lex_string_translate = 0;
   if (!c_parser_require (parser, CPP_OPEN_PAREN, "expected %<(%>"))
     {
@@ -4208,6 +4712,11 @@ c_parser_asm_statement (c_parser *parser)
       return NULL_TREE;
     }
   /* Parse clobbers.  */
+  if (c_parser_next_token_is (parser, CPP_CLOSE_PAREN))
+    {
+      clobbers = NULL_TREE;
+      goto done_asm;
+    }  /* MVSA no clobbers after the colon */
   clobbers = c_parser_asm_clobbers (parser);
  done_asm:
   c_lex_string_translate = 1;
@@ -4869,6 +5378,54 @@ c_parser_unary_expression (c_parser *parser)
 	  op = c_parser_cast_expression (parser, NULL);
 	  op = default_function_array_conversion (op);
 	  return parser_build_unary_op (IMAGPART_EXPR, op);
+
+        /* IAR __sfb() and __sfe() */
+        case RID_SFB:
+        case RID_SFE:
+          if (flag_iar_compat)
+            {
+              struct c_expr expr;
+              c_parser_consume_token (parser);
+              if (!c_parser_require (parser, CPP_OPEN_PAREN, "expected %<(%>"))
+                break;
+              if (!c_parser_next_token_is (parser, CPP_STRING))
+                {
+                  error ("expected string liternal");
+                  c_parser_consume_token (parser);
+                  break;
+                }
+              /* create a extern symbol and use its address as expr.value? */
+              expr.value = c_parser_peek_token (parser)->value;
+              expr.original_code = STRING_CST;
+              c_parser_consume_token (parser);
+              if (!c_parser_require (parser, CPP_CLOSE_PAREN, "expected %<)%>"))
+                break;
+              return expr;
+            }
+          /* fall through */
+        case RID_INTADDR:
+          if (flag_iar_compat || flag_keil_compat)
+            {
+              struct c_expr expr;
+              c_parser_consume_token (parser);
+              if (!c_parser_next_token_is (parser, CPP_OPEN_PAREN))
+                {
+                  c_parser_error (parser, "expected %<(%>");
+                  break;
+                }
+              expr = c_parser_expression (parser);
+              if (expr.value == NULL_TREE ||
+                  TREE_CODE (expr.value) != INTEGER_CST)
+                {
+                  c_parser_error (parser, "expected integer constant");
+                  break;
+                }
+              /* convert to integer type */
+              if (!INTEGRAL_TYPE_P (TREE_TYPE (expr.value)))
+                TREE_TYPE (expr.value) = sizetype;
+              return expr;
+            }
+          /* fail through */
 	default:
 	  return c_parser_postfix_expression (parser);
 	}
@@ -6390,6 +6947,7 @@ c_parser_objc_selector (c_parser *parser)
     case RID_BYREF:
     case RID_ONEWAY:
     case RID_INT:
+    case RID_INT64:
     case RID_CHAR:
     case RID_FLOAT:
     case RID_DOUBLE:

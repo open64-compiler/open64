@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -44,16 +48,30 @@
 #include "be_symtab.h"
 #include "pu_info.h"
 #include "cxx_memory.h"
+#include "config_vsa.h"
+#include "whirl_file_mgr.h"
+#include "glob.h"
 
 BE_SCOPE *Be_scope_tab;
 
 BE_SYMBOL_TABLE Be_symbol_table;
 
-BE_PREG_TAB Be_preg_tab;
+BE_PREG_TAB Default_be_preg_tab;
+BE_PREG_TAB *Be_preg_tab_ptr = &Default_be_preg_tab;
 
 static SYMTAB_IDX next_level = 0;
 
 static MEM_POOL Be_symtab_pool;
+
+void
+BE_set_next_level(UINT32 level) {
+  next_level = level;
+}
+
+UINT32
+BE_get_next_level() {
+  return next_level;
+}
 
 void
 BE_symtab_initialize_be_scopes(void)
@@ -101,6 +119,7 @@ ST_is_const_initialized (const ST* st)
     if ( ST_class(st) != CLASS_VAR )
 	return FALSE;
 
+#ifndef BUILD_MASTIFF
     /* make sure it's a constant */
     if (!ST_is_const_var(st))
 	return FALSE;
@@ -112,6 +131,10 @@ ST_is_const_initialized (const ST* st)
     // if is extern const, then is same as unknown const
     if (ST_sclass(st) == SCLASS_EXTERN)
 	return FALSE;
+#endif
+
+    if (strncmp(ST_name(st), "__uwasm", 6) == 0)
+      return FALSE;
 
 #ifdef TARG_NVISA
     if (ST_in_shared_mem(st))
@@ -141,6 +164,34 @@ ST_is_const_initialized (const ST* st)
 	return FALSE;
     }
 
+    /* if not modofied, it's a constant */
+#ifdef BUILD_MASTIFF
+    if (VSA_ST_Modified && TY_kind(ty) == KIND_SCALAR &&
+        !ST_is_modified(st) && !ST_addr_taken(st)) {
+      // local scope
+      if (ST_sclass(st) == SCLASS_FSTATIC || ST_sclass(st) == SCLASS_PSTATIC)
+        return TRUE;
+      // global scope
+      WHIRL_FILE_MANAGER* mgr = WHIRL_FILE_MANAGER::Get();
+      if (mgr &&
+          (ST_sclass(st) == SCLASS_DGLOBAL || ST_sclass(st) == SCLASS_UGLOBAL ||
+           ST_sclass(st) == SCLASS_COMMON))
+        return TRUE;
+      if (mgr && ST_sclass(st) == SCLASS_EXTERN) {
+        UINT32 file_idx = File_Index;
+        ST_IDX st_idx = ST_st_idx(st);
+        if (mgr->Resolve(file_idx, st_idx, file_idx, st_idx)) {
+          ST* nst = mgr->Get_file(file_idx).St_ptr(st_idx);
+          if (!ST_is_modified(nst) && !ST_addr_taken(nst))
+            return TRUE;
+        }
+      }
+    }
+    /* make sure it's a constant */
+    if (!ST_is_const_var(st) || ST_sclass(st) == SCLASS_EXTERN)
+	return FALSE;
+#endif
+
     return TRUE;
 }
 
@@ -168,14 +219,31 @@ public:
 BOOL
 ST_is_const_initialized_scalar(const ST *st, INT64 offset, TCON &tcon_copy)
 {
+#ifndef BUILD_MASTIFF
     // Make sure it is not a constant with an unknown value.
     if (BE_ST_unknown_const(st) != 0) {
       Is_True (FALSE, ("Asking for value of unknown const"));
       return FALSE;
     }
+#endif
 
-    if (!ST_is_const_initialized(st)) 
-	return FALSE;
+#ifdef BUILD_MASTIFF
+    if (ST_sclass(st) == SCLASS_EXTERN) {
+      WHIRL_FILE_MANAGER* mgr = WHIRL_FILE_MANAGER::Get();
+      if (mgr) {
+        UINT32 file_idx = File_Index;
+        ST_IDX st_idx = ST_st_idx(st);
+        if (mgr->Resolve(file_idx, st_idx, file_idx, st_idx)) {
+          ST* nst = mgr->Get_file(file_idx).St_ptr(st_idx);
+          FILE_CONTEXT_SWITCH context(file_idx);
+          return ST_is_const_initialized_scalar(nst, offset, tcon_copy);
+        }
+      }
+    }
+#endif
+
+    if (!ST_is_const_initialized(st))
+      return FALSE;
 
     TY_IDX  ty = ST_type(st);
     TYPE_ID mtype = TY_mtype(ty);
@@ -307,6 +375,65 @@ ST_has_initv(const ST *st)
   }
 }
 
+extern pair<UINT32, pair<ST_IDX, INITV_IDX> >
+ST_has_initv_cross(const ST *st)
+{
+  WHIRL_FILE_MANAGER* mgr = WHIRL_FILE_MANAGER::Get();
+  ST_IDX st_idx = ST_st_idx(st);
+  UINT32 file_idx = File_Index;
+  if (mgr == NULL) {
+    INITV_IDX initv_idx = ST_has_initv(st);
+    return std::make_pair(file_idx, std::make_pair(st_idx, initv_idx));
+  }
+  ST* nst = NULL;
+  if (ST_sclass(st) == SCLASS_EXTERN) {
+    if (mgr->Resolve(file_idx, st_idx, file_idx, st_idx)) {
+      nst = mgr->Get_file(file_idx).St_ptr(st_idx);
+    } else {
+      return std::make_pair(file_idx, std::make_pair((ST_IDX) 0, (INITV_IDX) 0));
+    }
+  }
+  const ST *cst = (nst == NULL) ? st : nst;
+  if (!ST_is_initialized(cst)) {
+    return std::make_pair(file_idx, std::make_pair((ST_IDX) 0, (INITV_IDX) 0));
+  }
+  FILE_CONTEXT_SWITCH file_context(file_idx);
+  SYMTAB_IDX st_level = ST_IDX_level(ST_st_idx(cst));
+  INITO_IDX inito_idx;
+  // local symbol, find in inito table
+  if (st_level != 1) {
+    inito_idx = For_all_until(Inito_Table, st_level, match_inito_by_st(cst));
+  } else {
+    inito_idx = mgr->Get_file(file_idx).St_inito(ST_st_idx(cst));
+  }
+  if (inito_idx == (INITO_IDX) 0) {
+    return std::make_pair(file_idx, std::make_pair((ST_IDX) st_idx, (INITV_IDX) 0));
+  }
+  return std::make_pair(file_idx, std::make_pair(st_idx, INITO_val(inito_idx)));
+}
+
+extern BOOL
+ST_is_initialized_cross(const ST *st)
+{
+  WHIRL_FILE_MANAGER *mgr = WHIRL_FILE_MANAGER::Get();
+  if (mgr == NULL) {
+    return ST_is_initialized(st);
+  }
+  UINT32 file_idx = File_Index;
+  ST *nst = NULL;
+  if (ST_sclass(st) == SCLASS_EXTERN) {
+    ST_IDX st_idx = ST_st_idx(st);
+    if (mgr->Resolve(file_idx, st_idx, file_idx, st_idx)) {
+      nst = mgr->Get_file(file_idx).St_ptr(st_idx);
+    } else {
+      // can't resolve
+      return FALSE;
+    }
+  }
+  FILE_CONTEXT_SWITCH file_context(file_idx);
+  const ST *cst = (nst == NULL) ? st : nst;
+  return ST_is_initialized(cst);
+}
 
 // Determine if the ST represents a constant scalar variable that has
 // a known initialized value. If true, returns the INITV_IDX for the

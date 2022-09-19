@@ -1,4 +1,8 @@
 # -*- Makefile -*-
+#  
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#  
+
 #
 #  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 #
@@ -101,16 +105,16 @@ _space :=	$(_empty) $(_empty)
 
 ifeq ($(BUILD_TARGET), NVISA)
 ar =		$(AR)
-as =		$(CC)
+as =		$(CCN)
 bison =		$(BISON)
 c++f =		$(C++F)
-cc =		$(CC)
+cc =		$(CCN)
 ccf =		$(CCF)
-cxx =		$(CXX)
-f77 =		$(F77)
-f90 =		$(F90)
-fc =		$(FC)
-ld =		$(LD)
+cxx =		$(CXXN)
+f77 =		$(F77N)
+f90 =		$(F90N)
+fc =		$(FCN)
+ld =		$(LDN)
 ln =		$(LN)
 link.c++f =	$(C++F)
 link.ccf =	$(CCF)
@@ -121,16 +125,16 @@ submake =	$(MAKE) -C $(1) $(2)
 
 else
 ar =		$(if $V,,@echo 'AR     $(CWD)/$@';) $(AR)
-as =		$(if $V,,@echo 'AS     $(CWD)/$<';) $(CC)
+as =		$(if $V,,@echo 'AS     $(CWD)/$<';) $(CCN)
 bison =		$(if $V,,@echo 'BISON  $(CWD)/$<';) $(BISON)
 c++f =		$(if $V,,@echo 'C++    $(CWD)/$<';) $(C++F)
-cc =		$(if $V,,@echo 'C      $(CWD)/$<';) $(CC)
+cc =		$(if $V,,@echo 'C      $(CWD)/$<';) $(CCN)
 ccf =		$(if $V,,@echo 'C      $(CWD)/$@';) $(CCF)
-cxx =		$(if $V,,@echo 'C++    $(CWD)/$<';) $(CXX)
-f77 =		$(if $V,,@echo 'F77    $(CWD)/$<';) $(F77)
-f90 =		$(if $V,,@echo 'F90    $(CWD)/$<';) $(F90)
-fc =		$(if $V,,@echo 'F90    $(CWD)/$<';) $(FC)
-ld =		$(if $V,,@echo 'LD     $(CWD)/$@';) $(LD)
+cxx =		$(if $V,,@echo 'C++    $(CWD)/$<';) $(CXXN)
+f77 =		$(if $V,,@echo 'F77    $(CWD)/$<';) $(F77N)
+f90 =		$(if $V,,@echo 'F90    $(CWD)/$<';) $(F90N)
+fc =		$(if $V,,@echo 'F90    $(CWD)/$<';) $(FCN)
+ld =		$(if $V,,@echo 'LD     $(CWD)/$@';) $(LDN)
 ln =		$(if $V,,@echo 'LN     $(CWD)/$@';) $(LN)
 link.c++f =	$(if $V,,@echo 'LD     $(CWD)/$@';) $(C++F)
 link.ccf =	$(if $V,,@echo 'LD     $(CWD)/$@';) $(CCF)

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -114,7 +118,8 @@ Clear_local_symtab_addr_flags (const SCOPE& scope);
 //----------------------------------------------------------------------
 // TY-related utilities
 //----------------------------------------------------------------------
-extern TY_IDX MTYPE_TO_TY_array[MTYPE_LAST+1];
+//extern TY_IDX MTYPE_TO_TY_array[MTYPE_LAST+1];
+extern TY_IDX* MTYPE_TO_TY_array;
 #define MTYPE_To_TY(t)	MTYPE_TO_TY_array[t]
 #define Be_Type_Tbl(t)	MTYPE_TO_TY_array[t]
 		    
@@ -122,6 +127,7 @@ extern TY_IDX MTYPE_TO_TY_array[MTYPE_LAST+1];
 extern TY_IDX Void_Type, FE_int_Type, FE_double_Type;
 extern TY_IDX Spill_Int_Type, Spill_Float_Type;
 extern TY_IDX Quad_Type;
+extern TY_IDX Char_Star_Type;
 
 #ifdef KEY
 extern TY_IDX Spill_Int32_Type;
@@ -228,7 +234,8 @@ TYPE_ID Mtype_For_Type_Offset (TY_IDX ty, INT64 offset);
  * (actually only have pregs for the register-size mtypes and simulated mtypes;
  * in particular, the I1/I2/U1/U2 mtypes point to the 4-byte PREG.
  */
-extern ST* MTYPE_TO_PREG_array[MTYPE_LAST+1];
+//extern ST* MTYPE_TO_PREG_array[MTYPE_LAST+1];
+extern ST** MTYPE_TO_PREG_array;
 #define MTYPE_To_PREG(t)	MTYPE_TO_PREG_array[t]
 #define Int32_Preg	MTYPE_To_PREG (MTYPE_I4)
 #define Int64_Preg	MTYPE_To_PREG (MTYPE_I8)
@@ -284,6 +291,18 @@ FLD_are_equivalent(FLD_HANDLE fld_id1,
 
 extern FLD_HANDLE 
 FLD_get_to_field (TY_IDX struct_ty_idx, UINT field_id, UINT &cur_field_id);
+
+extern FLD_HANDLE
+FLD_get_to_field_name(TY_IDX struct_ty_idx, char *name, UINT &field_id);
+
+extern FLD_HANDLE
+FLD_get_from_offset(TY_IDX struct_ty_idx, UINT offset, UINT &cur_field_id);
+
+extern char *
+Get_fld_name(TY_IDX struct_ty_idx, UINT field_id);
+
+extern char *
+Get_composed_fld_name(TY_IDX struct_ty_idx, UINT field_id, char *compzed_name, INT max_len);
 
 extern UINT
 FLD_get_count (TY_IDX struct_ty_idx);

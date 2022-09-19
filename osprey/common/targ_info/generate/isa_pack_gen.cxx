@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -62,6 +66,8 @@
 #include "targ_isa_properties.h"
 #include "gen_util.h"
 #include "isa_pack_gen.h"
+#include "isa_gen_def.h"
+#include "isa_gen_targ_extra.h"
 
 /* The maximum number of operands and results used by ANY target.
  * (It would be better to get the max operands and results from the
@@ -604,9 +610,9 @@ void ISA_Pack_End(void)
 		"} ISA_PACK_INFO;\n",
 		mask_digits * 4);
 
-  fprintf(efile, "ISA_PACK_info\n");
+  fprintf(efile, "ISA_PACK_info" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst ISA_PACK_INFO ISA_PACK_info[] = {\n");
+  fprintf(cfile, "\nconst ISA_PACK_INFO ISA_PACK_info" TI_SUFFIX "[] = {\n");
 
   fprintf (cfile, isa_pack_null_format, Print_Name(END), -1, -1, mask_digits, -1, "UNDEFINED");
   index = 1;
@@ -656,9 +662,9 @@ void ISA_Pack_End(void)
     info_index_type = "mUINT16";
   }
 
-  fprintf(efile, "ISA_PACK_info_index\n");
+  fprintf(efile, "ISA_PACK_info_index" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst %s ISA_PACK_info_index[%d] = {\n", 
+  fprintf(cfile, "\nconst %s ISA_PACK_info_index" TI_SUFFIX "[%d] = {\n",
 		 info_index_type, TOP_count);
   for (top = 0; top < TOP_count; ++top ) {
   	op_assembly *op_pack = op_packs[top];
@@ -675,9 +681,9 @@ void ISA_Pack_End(void)
   }
   fprintf(cfile, "};\n");
 
-  fprintf(efile, "ISA_PACK_init_mask\n");
+  fprintf(efile, "ISA_PACK_init_mask" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst mUINT%d ISA_PACK_init_mask[%d][%d] = {\n",
+  fprintf(cfile, "\nconst mUINT%d ISA_PACK_init_mask" TI_SUFFIX "[%d][%d] = {\n",
 		 init_digits * 4,
 		 TOP_count,
 		 inst_words);
@@ -710,8 +716,8 @@ void ISA_Pack_End(void)
 
   fprintf(hfile, "\ninline UINT64 ISA_PACK_Init_Mask(TOP topcode, INT iword)\n"
 		 "{\n"
-		 "  extern const mUINT%d ISA_PACK_init_mask[%d][%d];\n"
-		 "  return ISA_PACK_init_mask[(INT)topcode][iword];\n"
+		 "  extern const mUINT%d ISA_PACK_init_mask" TI_SUFFIX "[%d][%d];\n"
+		 "  return ISA_PACK_init_mask" TI_SUFFIX "[(INT)topcode][iword];\n"
 		 "}\n",
 		 init_digits * 4,
 		 TOP_count,
@@ -734,10 +740,10 @@ void ISA_Pack_End(void)
 
   fprintf(hfile, "\ninline const ISA_PACK_INFO *ISA_PACK_Info(TOP topcode)\n"
 		 "{\n"
-		 "  extern const %s ISA_PACK_info_index[];\n"
-		 "  extern const ISA_PACK_INFO ISA_PACK_info[];\n"
-		 "  INT index = ISA_PACK_info_index[(INT)topcode];\n"
-		 "  return index == 0 ? 0 : &ISA_PACK_info[index];\n"
+		 "  extern const %s ISA_PACK_info_index" TI_SUFFIX "[];\n"
+		 "  extern const ISA_PACK_INFO ISA_PACK_info" TI_SUFFIX "[];\n"
+		 "  INT index = ISA_PACK_info_index" TI_SUFFIX "[(INT)topcode];\n"
+		 "  return index == 0 ? 0 : &ISA_PACK_info" TI_SUFFIX "[index];\n"
 		 "}\n",
 		 info_index_type);
 
@@ -772,9 +778,9 @@ void ISA_Pack_End(void)
   fprintf(hfile, "\nenum { ISA_PACK_ADJ_END = %d };\n",
 		 isa_pack_adj_end);
 
-  fprintf(efile, "ISA_PACK_adj_info\n");
+  fprintf(efile, "ISA_PACK_adj_info" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst ISA_PACK_ADJ_INFO ISA_PACK_adj_info[] = {\n"
+  fprintf(cfile, "\nconst ISA_PACK_ADJ_INFO ISA_PACK_adj_info" TI_SUFFIX "[] = {\n"
 		 "  { { %2d, %2d }, -1 },  /* [ 0]: ISA_PACK_ADJ_END */\n",
 		 isa_pack_adj_end, isa_pack_adj_end);
   index = 1;
@@ -815,9 +821,9 @@ void ISA_Pack_End(void)
 		 "  return info->opndidx;\n"
 		 "}\n");
 
-  fprintf(efile, "ISA_PACK_adj_info_index\n");
+  fprintf(efile, "ISA_PACK_adj_info_index" TI_SUFFIX "\n");
 
-  fprintf(cfile, "\nconst mUINT8 ISA_PACK_adj_info_index[] = {\n");
+  fprintf(cfile, "\nconst mUINT8 ISA_PACK_adj_info_index" TI_SUFFIX "[] = {\n");
   for (top = 0; top < TOP_count; ++top ) {
     op_assembly *op_pack = op_packs[top];
     fprintf(cfile, "  %2d,  /* %s */\n",
@@ -828,20 +834,20 @@ void ISA_Pack_End(void)
 
   fprintf(hfile, "\ninline const ISA_PACK_ADJ_INFO *ISA_PACK_Adj_Info(TOP topcode)\n"
 		 "{\n"
-		 "  extern const ISA_PACK_ADJ_INFO ISA_PACK_adj_info[];\n"
-		 "  extern const mUINT8 ISA_PACK_adj_info_index[];\n"
-		 "  INT index = ISA_PACK_adj_info_index[(INT)topcode];\n"
-		 "  return index == 0 ? 0 : &ISA_PACK_adj_info[index];\n"
+		 "  extern const ISA_PACK_ADJ_INFO ISA_PACK_adj_info" TI_SUFFIX "[];\n"
+		 "  extern const mUINT8 ISA_PACK_adj_info_index" TI_SUFFIX "[];\n"
+		 "  INT index = ISA_PACK_adj_info_index" TI_SUFFIX "[(INT)topcode];\n"
+		 "  return index == 0 ? 0 : &ISA_PACK_adj_info" TI_SUFFIX "[index];\n"
 		 "}\n");
 
-  fprintf(hfile, "\nextern void ISA_PACK_Adjust_Operands(const ISA_PACK_ADJ_INFO *info,\n"
+  fprintf(hfile, "\nextern void ISA_PACK_Adjust_Operands" TI_SUFFIX "(const ISA_PACK_ADJ_INFO *info,\n"
 		 "                                       INT64 *opnd,\n"
 		 "                                       BOOL invert);\n");
 
-  fprintf(efile, "ISA_PACK_Adjust_Operands\n");
+  fprintf(efile, "ISA_PACK_Adjust_Operands" TI_SUFFIX "\n");
 
   fprintf(cfile, "\n"
-		 "void ISA_PACK_Adjust_Operands(const ISA_PACK_ADJ_INFO *info,\n"
+		 "void ISA_PACK_Adjust_Operands" TI_SUFFIX "(const ISA_PACK_ADJ_INFO *info,\n"
 		 "                              INT64 *opnd,\n"
 		 "                              BOOL invert)\n"
 		 "{\n"

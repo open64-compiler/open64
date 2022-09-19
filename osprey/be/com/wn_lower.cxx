@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2008-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -76,6 +80,7 @@
 #include "config_asm.h"
 #include "config_debug.h"
 #include "config_opt.h"
+#include "config_vsa.h"
 #include "config_targ_opt.h"
 #include "errors.h"
 #include "erglob.h"
@@ -118,7 +123,9 @@
 #include "targ_const_private.h" // for TCON_R4, TCON_R8, ..
 #endif
 #include "be_memop_annot.h"
+#include "uwasm_nat_util.h"     // for UWASM
 #include "config_wopt.h"        // for WOPT_Enable_Simple_If_Conv
+#include "opt_vsa_report.h"
 
 #ifdef TARG_X8664
 #include <ext/hash_set>
@@ -271,7 +278,11 @@ static WN_OFFSET coerceOFFSET(WN *, TYPE_ID, WN_OFFSET);
 
 static WN *lower_mload(WN *, WN *, LOWER_ACTIONS);
 static void lower_mload_formal(WN *, WN *, PLOC, LOWER_ACTIONS);
+#ifdef TARG_UWASM
+static void lower_mload_actual (WN *, WN *, PLOC, LOWER_ACTIONS, PREG_NUM &);
+#else
 static void lower_mload_actual (WN *, WN *, PLOC, LOWER_ACTIONS);
+#endif
 static void lower_complex_emulation(WN *, WN *, LOWER_ACTIONS, WN **, WN **);
 static void lower_complex_expr(WN *, WN *, LOWER_ACTIONS, WN **, WN **);
 
@@ -3088,6 +3099,16 @@ static WN *WN_Coerce(TYPE_ID dst, WN *expr)
 
 
 
+static TY_IDX
+get_field_type (TY_IDX struct_type, UINT field_id)
+{
+  Is_True (TY_kind (struct_type) == KIND_STRUCT, ("expecting KIND_STRUCT"));
+  UINT cur_field_id = 0;
+  FLD_HANDLE fld = FLD_get_to_field (struct_type, field_id, cur_field_id);
+  Is_True (! fld.Is_Null(), ("Invalid field id %d for type 0x%x",
+                             field_id, struct_type));
+  return FLD_type (fld);
+}
 
 /* ====================================================================
  *
@@ -3128,19 +3149,35 @@ static WN *lower_linearize_array_addr(WN *block, WN *tree,
      element_size = -element_size;
   }
   if (element_size == 0) {
+    WN *base = WN_kid0(tree);
+    // do not lower for array whose base is OPR_ADD
+    if (WN_operator(base) == OPR_ADD)
+      return tree;
+
     // find out the array element size through ARB table
-    TY_IDX aty = TY_pointed( WN_ty( WN_kid0(tree) ));
-    int i;
-    for( i=0; i < n-1; i++ )
-      aty = TY_etype(aty);
-    Is_True((TY_kind(aty) == KIND_ARRAY), ("type of aty should be KIND_ARRAY"));
-    ARB_HANDLE arb = TY_arb(aty);
-    if( ! ARB_const_stride(arb)) {
-      elm_size = WN_Ldid(MTYPE_U8, 0,ARB_stride_var(arb), ST_type(ARB_stride_var(arb)));
+    TY_IDX aty = WN_ty(base);
+    if (TY_kind(aty) == KIND_POINTER)
+      aty = TY_pointed(aty);
+    if (WN_field_id(base) != 0)
+      aty = get_field_type(aty, WN_field_id(base));
+
+    if (TY_kind(aty) == KIND_STRUCT) {
+      // array in struct and field is missing. assume elm_size to be 0
+      elm_size = WN_Intconst(rtype, 0);
     }
     else {
-      // This is an array of empty struct
-      elm_size = WN_Intconst(rtype, 1);
+      int i;
+      for( i=0; i < n-1; i++ )
+        aty = TY_etype(aty);
+      Is_True((TY_kind(aty) == KIND_ARRAY), ("type of aty should be KIND_ARRAY"));
+      ARB_HANDLE arb = TY_arb(aty);
+      if( ! ARB_const_stride(arb)) {
+        elm_size = WN_Ldid(MTYPE_U8, 0,ARB_stride_var(arb), ST_type(ARB_stride_var(arb)));
+      }
+      else {
+        // This is an array of empty struct
+        elm_size = WN_Intconst(rtype, 1);
+      }
     }
   }else {
     elm_size = WN_Intconst(rtype, element_size);
@@ -4780,7 +4817,7 @@ static WN *lower_return_ldid(WN *block, WN *tree, LOWER_ACTIONS actions)
       WN_st_idx(tree) = ST_st_idx(Int64_Preg);
 #endif
       WN_load_offset(tree) = First_Int_Preg_Return_Offset;
-#ifdef TARG_NVISA
+#if defined(TARG_NVISA) || defined(TARG_UWASM)
       // int64 are separate register class, so use unique preg num
       WN_load_offset(tree) = First_Int64_Preg_Return_Offset;
 #endif
@@ -4792,7 +4829,7 @@ static WN *lower_return_ldid(WN *block, WN *tree, LOWER_ACTIONS actions)
     case MTYPE_U1:
     case MTYPE_U2:
     case MTYPE_U4:
-#if defined(TARG_NVISA) || defined(TARG_X8664)
+#if defined(TARG_NVISA) || defined(TARG_X8664) || defined(TARG_UWASM)
       WN_st_idx(tree) = ST_st_idx(Int32_Preg);
 #else
       WN_st_idx(tree) = ST_st_idx(Int_Preg);
@@ -4814,7 +4851,7 @@ static WN *lower_return_ldid(WN *block, WN *tree, LOWER_ACTIONS actions)
 #endif
       WN_st_idx(tree) = (mtype == MTYPE_F8) ? ST_st_idx(Int64_Preg) : ST_st_idx(Int32_Preg);
       WN_load_offset(tree) = First_Int_Preg_Return_Offset; 
-#elif defined(TARG_NVISA)
+#elif defined(TARG_NVISA) || defined(TARG_UWASM)
       if (mtype == MTYPE_F8) {
 	// doubles are separate register class, so use unique preg num
         WN_st_idx(tree) = ST_st_idx(Float64_Preg);
@@ -4891,17 +4928,6 @@ static WN *lower_return_ldid(WN *block, WN *tree, LOWER_ACTIONS actions)
   }
 }
 
-static TY_IDX
-get_field_type (TY_IDX struct_type, UINT field_id)
-{
-  Is_True (TY_kind (struct_type) == KIND_STRUCT, ("expecting KIND_STRUCT"));
-  UINT cur_field_id = 0;
-  FLD_HANDLE fld = FLD_get_to_field (struct_type, field_id, cur_field_id);
-  Is_True (! fld.Is_Null(), ("Invalid field id %d for type 0x%x",
-			     field_id, struct_type));
-  return FLD_type (fld);
-}
-
 /* ====================================================================
  *
  * WN *lower_mldid(WN *block, WN *tree, LOWER_ACTIONS actions)
@@ -4943,6 +4969,64 @@ static WN *lower_mldid(WN *block, WN *tree, LOWER_ACTIONS actions)
 
 /* ====================================================================
  *
+ * void lower_fld_offset(TY_IDX ty, INT64 *size, INT64 *remain, BOOL is_root, INT alignment)
+ *
+ * Perform lowering (see WN_Lower description) on store statement <tree>,
+ * returning lowered tree.
+ *
+ * ==================================================================== */
+
+static INT64 get_fld_offset_from_id(TY_IDX ty, INT64 *size, INT alignment, INT target_fld, INT *current_fld)
+{
+  Is_True(TY_kind(ty) == KIND_STRUCT,
+  ("get_fld_offset_from_id must be on a struct, yet given <%s> %d \n", TY_name(ty), ty));  
+  FLD_HANDLE  fld         = TY_fld(ty);
+  INT64       out         = 0;
+  if (target_fld <= *current_fld) return *size;
+  else (*current_fld)++;
+  do{
+    Is_True(!fld.Is_Null(),  ("Invalid fld Entry, fld<%d>", fld.Idx()));
+    Is_True(fld.Entry() != NULL, ("Invalid fld Entry, fld<%d>", fld.Idx()));
+    TY_IDX fld_ty     = (TY_IDX) FLD_type(fld);
+    UINT   field_size = 0;
+    Is_True(&Ty_Table[fld_ty] != NULL, ("fld's ty is null, %lu \n", fld_ty));     // Setting the FLD_type
+    switch(TY_kind(fld_ty)){
+    case KIND_POINTER:
+      field_size = (UINT) TY_size(fld_ty);
+      if(strstr(FLD_name(fld), ".vptr")) {
+	if(*size > 0) field_size = 0;
+        if(*current_fld == target_fld) return 0;
+      }
+      break;
+    case KIND_ARRAY:
+    case KIND_SCALAR:
+      field_size = (UINT) TY_size(fld_ty);
+      break;
+    case KIND_VOID: break;
+    case KIND_STRUCT:
+      out = get_fld_offset_from_id(fld_ty, size, alignment, target_fld, current_fld);
+      if(out >= 0)  return out;
+      continue;
+    default:
+      Is_True(FALSE, ("Class ty<%s> has a field cannot be parsed #(%d) TY:<%d> \n",  TY_name(fld_ty), current_fld, fld_ty));
+    }
+    //fprintf(stdout,
+    //	    "fld <%s>, current<%d> target<%d> field_size<%d> size<%lld> \n",
+    //	    FLD_name(fld), *current_fld, target_fld, field_size, *size);
+    if(*current_fld == target_fld) return *size;
+    else ++(*current_fld);
+    UINT remain = alignment - *size % alignment;
+    if (remain < field_size && remain != alignment){
+      *size += remain;
+    }
+    *size += field_size;
+  }while((!FLD_last_field(fld)) && (fld = FLD_next(fld), TRUE));
+  return -1;
+}
+
+
+/* ====================================================================
+ *
  * WN *lower_miload(WN *block, WN *tree, LOWER_ACTIONS actions)
  *
  * Perform lowering (see WN_Lower description) on MILOAD nodes returning
@@ -4962,7 +5046,6 @@ static WN *lower_miload(WN *block, WN *tree, LOWER_ACTIONS actions)
 
   Is_True((WN_opcode(tree) == OPC_MMILOAD),
 	  ("expected miload node, not %s", OPCODE_name(WN_opcode(tree))));
-
   swn = WN_CreateIntconst (OPC_U4INTCONST, size);
   wn  = WN_CreateMload (WN_offset(tree), pty_idx, WN_kid0(tree), swn);
   WN_set_field_id(wn, WN_field_id(tree));
@@ -5081,7 +5164,7 @@ lower_store_bits (WN* block, WN* wn, LOWER_ACTIONS actions)
     new_value =
       WN_CreateCvtl (OPR_CVTL,
 		     Mtype_TransferSign (WN_rtype (new_value), cmp_type),
-		     WN_rtype (new_value),
+		     MTYPE_V,
 		     MTYPE_bit_size (WN_rtype (new_value)),
 		     new_value);
   
@@ -6069,6 +6152,31 @@ static WN *lower_expr(WN *block, WN *tree, LOWER_ACTIONS actions)
 	return lower_load_bits (block, tree, actions);
     }
 
+    if(Action(LOWER_FIELD_OFFSET) &&
+       PU_src_lang(Get_Current_PU()) == PU_JAVA_LANG &&
+       WN_operator(tree) == OPR_ILOAD &&
+       MTYPE_is_pointer(WN_rtype(WN_kid0(tree))) &&
+       TY_kind(WN_ty(tree)) == KIND_STRUCT &&
+       WN_field_id(tree) != 0 && WN_offset(tree) == 0)
+    {  
+      	  // Find the correct offset given a field id
+	  TY_IDX      class_ty        = WN_ty(tree);
+	  INT64       size            = 0;
+	  INT         alignment       = TY_align(class_ty);
+	  INT         target_fld      = WN_field_id(tree);
+	  INT         current_fld     = 0;
+	  Is_True(alignment > 0, ("type<%d> alignment should be > 0, yet given %d. \n",
+				  class_ty, alignment));
+	  if(alignment < 4 || alignment > 8){
+	    alignment = Is_Target_32bit() ? 4 : 8;
+	  }
+	  size = get_fld_offset_from_id(class_ty, &size, alignment, target_fld, &current_fld);
+	  Is_True(size >= 0 && current_fld == target_fld,
+		  ("fld_offset cannot locate, ofst:<%lld>, targ<%d>, current<%d> \n",
+		   size, target_fld, current_fld));
+	  WN_offset(tree) = size;
+	  //WN_set_field_id(tree, 0);
+    }
     if (Action(LOWER_SPLIT_CONST_OFFSETS))
     {
      /*
@@ -6137,12 +6245,21 @@ static WN *lower_expr(WN *block, WN *tree, LOWER_ACTIONS actions)
       }
 #endif
     }
+#if defined(TARG_X8664)
+    if (Action(LOWER_TO_CG) &&
+        Uwasm_Isolation != UWASM_ISO_NONE &&
+        Uwasm_Early_Instr == FALSE) {
+      Uwasm_instru_load_before_cg(block, tree, current_srcpos);
+    }
+#endif
     break;
 
   case OPR_LDID:
+#ifndef TARG_UWASM
+    // do not lower Return_Val_Preg to dedicated return preg for uwasm
     if (Action(LOWER_RETURN_VAL) && WN_st(tree) == Return_Val_Preg)
       return lower_return_ldid(block, tree, actions);
-
+#endif
     if (Action(LOWER_MLDID_MSTID) && WN_opcode(tree) == OPC_MMLDID)
       return lower_mldid(block, tree, actions);
 
@@ -6970,7 +7087,7 @@ static WN *lower_expr(WN *block, WN *tree, LOWER_ACTIONS actions)
           LEAF kid1_leaf = Make_Leaf(block, kid1, rtype);
           test = WN_operator(tree) == OPR_MAX ?
 		  	WN_GT(rtype, Load_Leaf(kid0_leaf), Load_Leaf(kid1_leaf)) : 
-		  	WN_LT(rtype, Load_Leaf(kid0_leaf), Load_Leaf(kid1_leaf));
+v		  	WN_LT(rtype, Load_Leaf(kid0_leaf), Load_Leaf(kid1_leaf));
           stid = WN_StidPreg(rtype, result, Load_Leaf(kid0_leaf));
           WN_INSERT_BlockLast(then_block, stid);
           stid = WN_StidPreg(rtype, result, Load_Leaf(kid1_leaf));
@@ -7533,7 +7650,7 @@ static WN *lower_mstid(WN *block, WN *tree, LOWER_ACTIONS actions)
 static WN *lower_mistore(WN *block, WN *tree, LOWER_ACTIONS actions)
 {
   TY_IDX pty_idx  = WN_ty(tree);
-  TY_IDX ty_idx  = TY_pointed(pty_idx);
+  TY_IDX ty_idx   = TY_pointed(pty_idx);
 
   if (WN_field_id (tree) != 0)
     ty_idx = get_field_type (ty_idx, WN_field_id (tree));
@@ -7619,6 +7736,7 @@ static BOOL Is_small_struct(WN* wn)
   return FALSE;
 }
 
+ 
 
 /* ====================================================================
  *
@@ -7941,6 +8059,31 @@ static WN *lower_store(WN *block, WN *tree, LOWER_ACTIONS actions)
     }
     else
     {
+      if (Action(LOWER_FIELD_OFFSET) &&
+         PU_src_lang(Get_Current_PU()) == PU_JAVA_LANG &&
+	  TY_kind(WN_ty(tree)) == KIND_POINTER &&
+	  TY_kind(TY_pointed(WN_ty(tree))) == KIND_STRUCT &&
+	  WN_field_id(tree) != 0 && WN_store_offset(tree) == 0)
+      {
+	// Find the correct offset given a field id
+	TY_IDX      ptr_ty          = WN_ty(tree);
+	TY_IDX      class_ty        = TY_pointed(ptr_ty);
+	INT64       size            = 0;
+	INT         alignment       = TY_align(class_ty);
+	INT         target_fld      = WN_field_id(tree);
+	INT         current_fld     = 0;
+	Is_True(alignment > 0, ("type<%d> alignment should be > 0, yet given %d. \n",
+				class_ty, alignment));
+	if(alignment < 4 || alignment > 8){
+	  alignment = Is_Target_32bit() ? 4 : 8;
+	}
+	get_fld_offset_from_id(class_ty, &size, alignment, target_fld, &current_fld);	  
+	Is_True(target_fld == current_fld && size >= 0,
+		("fld_offset cannot locate, ofst:<%lld>, targ<%d> \n", size, target_fld));
+	WN_store_offset(tree) = size;
+	//WN_set_field_id(tree, 0);
+      }
+    
      /*
       * Split
       *       LDA  (c1) <sym> 
@@ -8033,6 +8176,13 @@ static WN *lower_store(WN *block, WN *tree, LOWER_ACTIONS actions)
 	 
 #endif // TARG_SL
     }
+#if defined(TARG_X8664)
+    if (Action(LOWER_TO_CG) &&
+        Uwasm_Isolation != UWASM_ISO_NONE &&
+        Uwasm_Early_Instr == FALSE) {
+      Uwasm_instru_store_before_cg(block, tree, current_srcpos);
+    }
+#endif
     break;
 
   case OPR_STID:
@@ -8048,6 +8198,15 @@ static WN *lower_store(WN *block, WN *tree, LOWER_ACTIONS actions)
       {
 	  DevWarn("lower_store() pregno %d > SYMTAB_last_preg(%d)",
 		  WN_load_offset(tree), last_preg);
+      }
+      WN *kid0 = WN_kid0(tree);
+      if (Action(LOWER_RETURN_VAL) &&
+         (WN_class(tree) != CLASS_PREG) &&
+          (WN_operator(kid0) == OPR_LDID &&
+           WN_class(kid0) == CLASS_PREG &&
+           !Preg_Is_Dedicated(WN_load_offset(kid0)))) {
+        // PREG in kid0 is assigned to tree's ST
+        Set_Preg_Assign_To(WN_load_offset(kid0), WN_st_idx(tree));
       }
     }
 
@@ -10130,7 +10289,12 @@ static void lower_complex_actual (WN *block, WN *val, PLOC ploc,
 
   mload = WN_CreateMload(0, Make_Pointer_Type(complexType), addr, size);
 
+#ifdef TARG_UWASM
+  PREG_NUM mload_dst_preg = 0;
+  lower_mload_actual (block, mload, ploc, actions, mload_dst_preg);
+#else
   lower_mload_actual (block, mload, ploc, actions);
+#endif
 }
 
 
@@ -10145,9 +10309,13 @@ static void lower_complex_actual (WN *block, WN *val, PLOC ploc,
  *
  *
  * ==================================================================== */
-
+#ifdef TARG_UWASM
+static void lower_mload_actual (WN *block, WN *mload, PLOC ploc,
+				LOWER_ACTIONS actions, PREG_NUM &mload_dst_preg)
+#else
 static void lower_mload_actual (WN *block, WN *mload, PLOC ploc,
 				LOWER_ACTIONS actions)
+#endif
 {
 #if defined(TARG_PPC32)
   FmtAssert(0, ("PowerPC System V ABI: lower_mload_actual should not come here"));
@@ -10201,9 +10369,15 @@ static void lower_mload_actual (WN *block, WN *mload, PLOC ploc,
     addrN = AssignExpr(block, addr, Pointer_type);
   }
 
+  BOOL on_stack = FALSE;
+#ifdef TARG_UWASM
+  // uwasm store structure contents on stack, and pass the offset as actual
+  on_stack = TRUE;
+#endif
+
   while (PLOC_is_nonempty(ploc))
   {
-    if (PLOC_on_stack(ploc))
+    if (PLOC_on_stack(ploc) || on_stack)
     {
       PREG_NUM	dstPreg;
      /*
@@ -10218,11 +10392,16 @@ static void lower_mload_actual (WN *block, WN *mload, PLOC ploc,
 
 	offset = PLOC_offset(ploc) - Formal_Save_Area_Size
 	  + Stack_Offset_Adjustment - mloadOffset; 
-
+#ifdef TARG_UWASM
+	add = WN_Lda(Pointer_type, offset, SP_Sym, 0);
+	dstPreg = AssignExpr(block, add, Pointer_type);
+	mload_dst_preg = dstPreg;
+#else
 	add = WN_Add(Pointer_type,
 		     WN_LdidPreg(Pointer_type, Stack_Pointer_Preg_Offset),
 		     WN_Intconst(Pointer_type, offset));
 	dstPreg = AssignExpr(block, add, Pointer_type);
+#endif
       }
       {
 	TY_IDX srcTY =	mloadTY;
@@ -10367,6 +10546,11 @@ static void lower_mload_actual (WN *block, WN *mload, PLOC ploc,
 static void lower_mload_formal(WN *block, WN *mload, PLOC ploc,
 			       LOWER_ACTIONS actions)
 {
+#ifdef TARG_UWASM
+  // uwasm mload formal put on upper stack, nothing todo
+  return;
+#endif
+
   INT32   size, offset = 0; 
   ST     *sym = WN_st(mload);
   TY_IDX  symTY = ST_type(sym);
@@ -11057,6 +11241,10 @@ static WN *lower_intrinsic(WN *block, WN *tree, LOWER_ACTIONS actions)
  * ==================================================================== */
 static WN *lower_actual(WN *block, WN *actual, TYPE_ID parmType, INT32 reg)
 {
+#ifdef TARG_UWASM
+  // UWasm do not put actual args to ploc location, ignore the lowering
+  return actual;
+#endif
 #ifndef TARG_SL
  /*
   * float parm goes in int register, so convert
@@ -11249,7 +11437,6 @@ static WN *lower_call(WN *block, WN *tree, LOWER_ACTIONS actions)
   SRCPOS       srcpos = WN_Get_Linenum(tree);
   INT	       num_actuals = WN_num_actuals(tree);
   ST          *callee_st = NULL;
-
 #if defined(TARG_PPC32)
   INT         stack_param_offset = Stack_Offset_Adjustment;
   if (actions == LOWER_FAST_EXP) {
@@ -11468,7 +11655,19 @@ static WN *lower_call(WN *block, WN *tree, LOWER_ACTIONS actions)
      /*
       * structure parameter
       */
+#ifdef TARG_UWASM
+      // replace actual mload with load structure offset
+      PREG_NUM mload_dst_preg = 0;
+      lower_mload_actual (callblock, actual, ploc, actions, mload_dst_preg);
+      if(mload_dst_preg != 0) {
+        WN *mload_addr = WN_LdidPreg(Pointer_type, mload_dst_preg);
+        WN *new_parm = WN_CreateParm(Pointer_type, mload_addr, 
+                                     MTYPE_To_TY(Pointer_type), WN_PARM_BY_VALUE);
+        WN_actual(tree, i) = new_parm;
+      }
+#else
       lower_mload_actual (callblock, actual, ploc, actions);
+#endif
     }
 #ifdef TARG_IA64
     else if (parmType == MTYPE_F10 &&
@@ -11945,6 +12144,10 @@ static WN *lower_assert(WN *block, WN *tree, LOWER_ACTIONS actions)
   if (NotAction(LOWER_ASSERT))
     return tree;
 
+  // delay to whirl2ops
+  if (WN_offset(tree) == WN_TRAP_UWASM_BOUNDS_ERROR)
+    return tree;
+
   if_then = WN_CreateBlock();
   if_else = WN_CreateBlock();
   cond = lower_expr(block, WN_kid0(tree), actions);
@@ -12153,6 +12356,9 @@ static WN *lower_return_val(WN *block, WN *tree, LOWER_ACTIONS actions)
 	  		MTYPE_To_PREG(mtype) : Int_Preg;
 #ifdef TARG_NVISA
       preg_st = Standard_Preg_For_Mtype(mtype);
+#endif
+#ifdef TARG_UWASM
+	preg_st = MTYPE_To_PREG(mtype);
 #endif
 
 #ifdef TARG_X8664
@@ -12913,6 +13119,7 @@ WN *lower_block(WN *tree, LOWER_ACTIONS actions)
   *  which causes exception handling to fail ...
   *  
   */
+  BOOL ddc_warn = TRUE;
   if (NotAction(LOWER_TOP_LEVEL_ONLY))
   {
     for (node = WN_first(out); node; node = next_node)
@@ -12921,6 +13128,8 @@ WN *lower_block(WN *tree, LOWER_ACTIONS actions)
   
       if (WN_unconditional_goto(node))
       {
+        ddc_warn = TRUE;   // reset ddc_warn flag to TRUE after each GOTO
+        REVERSE_STACK<SRCPOS, 16> spos;
         for(node = next_node; node; node = next_node)
         {
 	  next_node = WN_next(node);
@@ -12933,8 +13142,13 @@ WN *lower_block(WN *tree, LOWER_ACTIONS actions)
 	    continue;
 	  else if (WN_operator_is(node, OPR_EXC_SCOPE_END))
 	    continue;
-	  else if (WN_operator_is(node, OPR_PRAGMA))
+	  else if (WN_operator_is(node, OPR_PRAGMA)) {
+            if (WN_pragma(node) == WN_PRAGMA_INLINE_BODY_START)
+              spos.Push(WN_Get_Linenum(node));
+            else if (WN_pragma(node) == WN_PRAGMA_INLINE_BODY_END)
+              spos.Pop();
 	    continue;
+          }
 	  else if (WN_operator_is(node, OPR_XPRAGMA))
 	    continue;
 	  else if (WN_operator_is(node, OPR_REGION_EXIT))
@@ -12948,6 +13162,19 @@ WN *lower_block(WN *tree, LOWER_ACTIONS actions)
 
 	  if (OPCODE_is_stmt(WN_opcode(node)))
 	  {
+#ifdef BUILD_MASTIFF
+            if (Run_vsaopt && VSA_Ddc && ddc_warn && Is_ddc_candidate(node)) {
+              spos.Push(WN_Get_Linenum(node));
+              Report_vsa_error(ST_name(Get_Current_PU_ST()), "", "DDC",
+                               FALSE, spos.Data(), spos.Size());
+              if (VSA_Xsca) {
+                Report_xsca_error(ST_name(Get_Current_PU_ST()), "", "MISRA_2_1",
+                                  FALSE, spos.Data(), spos.Size());
+              }
+              spos.Pop();
+              ddc_warn = FALSE;   // only report once after each GOTO
+            }
+#endif
 	    WN_DELETE_FromBlock(out, node);
 	  }
 	  else
@@ -13695,6 +13922,10 @@ static WN *lower_branch_condition(BOOL branchType, LABEL_IDX label, WN *cond,
       WN_INSERT_BlockLast(condBlock, WN_Label(shortcircuit_lbl));
     }
     break;
+  case OPR_LNOT:
+    {
+      return lower_branch_condition(!branchType, label, WN_kid0(cond), branch, actions);
+    }
   default:
     {
       cond = lower_expr(condBlock, cond, actions);
@@ -15531,7 +15762,7 @@ static WN *lower_entry(WN *tree, LOWER_ACTIONS actions)
       WN_INSERT_BlockLast(block, trapuvBlock);
     }
 
-#if defined(TARG_X8664)
+#if defined(TARG_X8664) && !defined(BUILD_MASTIFF)
     /*
      * Optimize the malloc algorithm.
      */
@@ -16423,7 +16654,7 @@ static LOWER_ACTIONS lower_actions(WN *pu, LOWER_ACTIONS actions)
 #if !defined(TARG_SL) // move to below since need to be called multiple timers >= -O2
 				    LOWER_UPLEVEL		|
 #endif
-#if !defined(TARG_IA32) && !defined(TARG_X8664)
+#if !defined(TARG_IA32) && !defined(TARG_X8664) && !defined(TARG_UWASM)
 				    LOWER_SPLIT_SYM_ADDRS	|
 #else
 				    LOWER_SLINK_SAVE		|
@@ -18236,3 +18467,14 @@ if (!alias)
 
   return return_block;
 }
+
+/* ====================================================================
+ * WN *WN_lower_assert(WN *block, WN *tree, LOWER_ACTIONS actions)
+ *
+ * wrapper function to call lower_assert
+ * ==================================================================== */
+WN *WN_lower_assert(WN *block, WN *tree, INT64 actions)
+{
+  lower_assert(block, tree, actions);
+}
+

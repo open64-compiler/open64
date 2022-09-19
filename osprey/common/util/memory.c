@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -375,34 +379,34 @@ static INT_LIST *free_int_lists;    /* Free list of INT_LISTs.
 struct mem_stat {
   const char *file;                   /* File called from
                                  */
-  INT32 line;                   /* Line called from
+  INT32  line;                   /* Line called from
                                  */
-  INT32 total;                  /* Total memory allocated from
+  UINT64 total;                  /* Total memory allocated from
                                  * this site.
                                  */
-  INT32 current;                /* Memory currently allocated from
+  UINT64 current;                /* Memory currently allocated from
                                  * this site
                                  */
-  INT32 max_t;                  /* Maximum memory ever in use and
+  UINT64 max_t;                  /* Maximum memory ever in use and
                                  * allocated from this site (maximum
                                  * value of current.)
                                  */
-  INT32 max_s;                 /* Maximum memory ever allocated
+  UINT64 max_s;                 /* Maximum memory ever allocated
                                  * from this site in a single call to
                                  * malloc
                                  */
-  INT32 last;                   /* Last amount of memory allocated
+  UINT64 last;                   /* Last amount of memory allocated
                                  * from this site
                                  */
-  INT32 last_grew;              /* Count of times the amount of
+  UINT64 last_grew;              /* Count of times the amount of
                                  * memory grew for one call to the
                                  * next
                                  */
-  INT32 last_shrank;            /* Count of times the amount of
+  UINT64 last_shrank;            /* Count of times the amount of
                                  * memory shrank from once call to the
                                  * next
                                  */
-  INT32 count;                  /* How many calls from this callsite
+  UINT64 count;                  /* How many calls from this callsite
                                  */
   MEM_STAT *hash_list_rest;     /* Used to keep the list of
                                  * elements in the hash bucket
@@ -581,6 +585,7 @@ static MEM_POOL *The_Default_Mem_Pool;
 /* Implementation of memory statististics tracking mechanism
  */
 static BOOL mem_tracing_enabled = FALSE;
+static BOOL sub_mem_tracing_enabled = TRUE;
 #ifdef Is_True_On
 static MEM_POOL *initialized_pools =/* List of pools, used for memory
                                      * statistics reporting.
@@ -685,7 +690,7 @@ Site_Account_Alloc(
   MEM_STAT_ARGS(line,file)
 )
 {
-  INT32       size = new_size - old_size;
+  UINT64      size = new_size - old_size;
   UINT32      hn   = Hash(line,file);
   MEM_STAT   *ms   = Hash_Get(hn,pool,line,file);
 
@@ -707,8 +712,8 @@ Site_Account_Alloc(
     ++MEM_STAT_last_grew(ms);
   else if ( size < MEM_STAT_last(ms) )
     ++MEM_STAT_last_shrank(ms);
-  MEM_STAT_max_t(ms) = Max(MEM_STAT_max_t(ms),MEM_STAT_current(ms));
-  MEM_STAT_max_s(ms) = Max(MEM_STAT_max_s(ms),size);
+  MEM_STAT_max_t(ms) = MAX(MEM_STAT_max_t(ms),MEM_STAT_current(ms));
+  MEM_STAT_max_s(ms) = MAX(MEM_STAT_max_s(ms),size);
   MEM_STAT_last(ms) = size;
   ++MEM_STAT_count(ms);
 }
@@ -805,7 +810,7 @@ Site_Account_Push(
 
 static INT32
 Field_Size(
-  INT32 i
+  UINT64 i
 )
 {
   char buff[100];
@@ -813,7 +818,7 @@ Field_Size(
   /* Could certainly be more winning, but who cares.  This will only
    * be compiled for collecting memory stats.
    */
-  sprintf(buff,"%d",i);
+  sprintf(buff,"%llu",i);
   return strlen(buff);
 }
 
@@ -882,31 +887,33 @@ MEM_STAT_In_List(
  * ====================================================================
  */
 
-INT32
+UINT64
 MEM_POOL_Report(
   MEM_POOL   *pool,
-  INT32       used_total
+  UINT64      used_total,
+  UINT64     *total,
+  UINT64     *max,
+  UINT64     *tot_curr
 )
 {
   MEM_STAT  *as;
   MEM_STAT **as_vec;
   INT32 i;
-  INT32 total_current = 0;
-  INT32 total_allocated = 0;
-  INT32 max_allocated = 0;
-  INT32 current_fs = 3;
-  INT32 total_fs = 3;
-  INT32 max_t_fs = 4;
-  INT32 max_s_fs = 4;
-  INT32 count_fs = 5;
-  INT32 last_grew_fs = 4;
-  INT32 last_shrank_fs = 6;
-  INT32 site_count = 0;
+  UINT64 total_current = 0;
+  UINT64 total_allocated = 0;
+  UINT64 max_allocated = 0;
+  UINT32 current_fs = 3;
+  UINT32 total_fs = 3;
+  UINT32 max_t_fs = 4;
+  UINT32 max_s_fs = 4;
+  UINT32 count_fs = 5;
+  UINT32 last_grew_fs = 4;
+  UINT32 last_shrank_fs = 6;
+  UINT64 site_count = 0;
 
   Is_True (MEM_POOL_magic_num(pool) == MAGIC_NUM,
            ("Report from un-initialized MEM_POOL %s\n", MEM_POOL_name(pool)));
 
-  fprintf(TFile,"----- %s callsites\n",MEM_POOL_name(pool));
 
   /* Prepass to count records, figure out size of fields.
    */
@@ -914,14 +921,14 @@ MEM_POOL_Report(
         as != NULL;
         as = MEM_STAT_pool_list_rest(as)
   ) {
-    current_fs     = Max(current_fs,Field_Size(MEM_STAT_current(as)));
-    total_fs       = Max(total_fs,Field_Size(MEM_STAT_total(as)));
-    max_t_fs       = Max(max_t_fs,Field_Size(MEM_STAT_max_t(as)));
-    max_s_fs       = Max(max_s_fs,Field_Size(MEM_STAT_max_s(as)));
-    count_fs       = Max(count_fs,Field_Size(MEM_STAT_count(as)));
-    last_grew_fs   = Max(last_grew_fs,
+    current_fs     = MAX(current_fs,Field_Size(MEM_STAT_current(as)));
+    total_fs       = MAX(total_fs,Field_Size(MEM_STAT_total(as)));
+    max_t_fs       = MAX(max_t_fs,Field_Size(MEM_STAT_max_t(as)));
+    max_s_fs       = MAX(max_s_fs,Field_Size(MEM_STAT_max_s(as)));
+    count_fs       = MAX(count_fs,Field_Size(MEM_STAT_count(as)));
+    last_grew_fs   = MAX(last_grew_fs,
                          Field_Size(MEM_STAT_last_grew(as)));
-    last_shrank_fs = Max(last_shrank_fs,
+    last_shrank_fs = MAX(last_shrank_fs,
                          Field_Size(MEM_STAT_last_shrank(as)));
 
     ++site_count;
@@ -944,61 +951,71 @@ MEM_POOL_Report(
                       sizeof(MEM_STAT*),
                       (QSORT_FUNC) MEM_STAT_Sort);
 
-  /* Print the column headers.
-   */
-  fprintf(TFile,"%*s %*s %*s %*s %*s %*s %*s Site\n",
-                  max_t_fs,
-                  "maxt",
-                  current_fs,
-                  "cur",
-                  total_fs,
-                  "tot",
-                  max_s_fs,
-                  "maxs",
-                  count_fs,
-                  "count",
-                  last_grew_fs,
-                  "grew",
-                  last_shrank_fs,
-                  "shrank");
-
   /* And the records
    */
   for ( i = 0; i < site_count; ++i ) {
     as = as_vec[i];
-
-    fprintf(TFile,"%*d %*d %*d %*d %*d %*d %*d %s %d\n",
-                  max_t_fs,
-                  (INT)MEM_STAT_max_t(as),
-                  current_fs,
-                  (INT)MEM_STAT_current(as),
-                  total_fs,
-                  (INT)MEM_STAT_total(as),
-                  max_s_fs,
-		  (INT)MEM_STAT_max_s(as),
-                  count_fs,
-                  MEM_STAT_count(as),
-                  last_grew_fs,
-                  MEM_STAT_last_grew(as),
-                  last_shrank_fs,
-                  MEM_STAT_last_shrank(as),
-                  MEM_STAT_file(as),
-                  MEM_STAT_line(as));
     total_current += MEM_STAT_current(as);
     total_allocated += MEM_STAT_total(as);
     max_allocated += MEM_STAT_max_t(as);
   }
 
-  MEM_POOL_Pop(&mem_overhead_pool);
+  double perc = (double)  (100.0 * (  ((double) total_current) / ((double) used_total)));
+  if(perc > 0.1) {
+    fprintf(TFile,"----- %s callsites\n",MEM_POOL_name(pool));
+      /* Print the column headers.
+      */
+    fprintf(TFile,"%*s %*s %*s %*s %*s %*s %*s Site\n",
+                    max_t_fs,
+                    "maxt",
+                    current_fs,
+                    "cur",
+                    total_fs,
+                    "tot",
+                    max_s_fs,
+                    "maxs",
+                    count_fs,
+                    "count",
+                    last_grew_fs,
+                    "grew",
+                    last_shrank_fs,
+                    "shrank");
 
-  fprintf(TFile,"++++ Allocated for %s pool: total=%d, max=%d, current=%d (%d%%used)\n",
-                MEM_POOL_name(pool),
-		total_allocated,
-		max_allocated,
-                total_current,
-                (INT)  (100.0 * (  ((double) total_current)
-                                 / ((double) used_total))));
-  return total_allocated;
+    /* And the records
+    */
+    for ( i = 0; i < site_count; ++i ) {
+      as = as_vec[i];
+
+      fprintf(TFile,"%*llu %*llu %*llu %*llu %*llu %*llu %*llu %s %u\n",
+                    max_t_fs,
+                    (UINT64)MEM_STAT_max_t(as),
+                    current_fs,
+                    (UINT64)MEM_STAT_current(as),
+                    total_fs,
+                    (UINT64)MEM_STAT_total(as),
+                    max_s_fs,
+                    (UINT64)MEM_STAT_max_s(as),
+                    count_fs,
+                    MEM_STAT_count(as),
+                    last_grew_fs,
+                    MEM_STAT_last_grew(as),
+                    last_shrank_fs,
+                    MEM_STAT_last_shrank(as),
+                    MEM_STAT_file(as),
+                    MEM_STAT_line(as));
+    }
+
+    fprintf(TFile,"++++ Allocated for %s pool: total=%llu, max=%llu, current=%llu (%.2f%%used)\n",
+                  MEM_POOL_name(pool),
+                  total_allocated,
+                  max_allocated,
+                  total_current,
+                  perc);
+  }
+  MEM_POOL_Pop(&mem_overhead_pool);
+  *total = *total + total_allocated;
+  *max = *max + max_allocated;
+  *tot_curr = *tot_curr + total_current;
 }
 
 /* ====================================================================
@@ -1018,8 +1035,16 @@ MEM_Trace(void)
 #if defined(linux) || defined(MEM_STATS)
   MEM_POOL *pool;
   struct    mallinfo mi = mallinfo();
-  INT32     used_total = mi.usmblks + mi.uordblks;
-  INT32	    total_allocated = 0;
+  UINT64    used_total = 0;
+  UINT64    tenG = (UINT64)10 << 30;
+  if( mi.usmblks >= 0 && mi.uordblks >= 0) {
+    used_total = mi.usmblks + mi.uordblks;
+  } else {
+    used_total = tenG;  // 10 G
+  }
+  UINT64	  total_allocated = 0;
+  UINT64    max_allocated = 0;
+  UINT64    total_current = 0;
 
   fprintf(TFile,"arena    %10d\n",mi.arena);
   fprintf(TFile,"ordblks  %10d\n",mi.ordblks);
@@ -1036,9 +1061,13 @@ MEM_Trace(void)
         pool != NULL;
         pool = MEM_POOL_rest(pool)
   ) {
-    total_allocated += MEM_POOL_Report(pool,used_total);
+    MEM_POOL_Report(pool,used_total, &total_allocated, &max_allocated, &total_current);
   }
-  fprintf(TFile,"++++ Total Allocated = %d\n",total_allocated);
+  fprintf(TFile,"++++ Total Allocated = %llu Max Allocated = %llu total_current = %llu\n",
+          total_allocated, max_allocated, total_current);
+  if(used_total == tenG) {
+    fprintf(TFile,"++++Used total overflowed, set used total to 10 G, only report size > 10M\n");
+  }
 #else
   fprintf(TFile,
           "MEM_Trace: Not available; compiler not compiled with MEM_STATS\n");
@@ -1085,6 +1114,25 @@ MEM_Tracing_Enable(void)
 {
 #ifdef Is_True_On
   mem_tracing_enabled = TRUE;
+#endif
+}
+
+/* ====================================================================
+ *
+ *  MEM_Tracing_Enable
+ *
+ *  Turn on/off sub pool statistics gathering.
+ *  Sometimes we only want to start record memory at specified phase
+ *  but the pool is initlized very early, use this option to control
+ *  when to collect statistics
+ *
+ * ====================================================================
+ */
+void
+Sub_Mem_Tracing_Enabled(BOOL v)
+{
+#ifdef Is_True_On
+  sub_mem_tracing_enabled = v;
 #endif
 }
 
@@ -1304,7 +1352,7 @@ MEM_POOL_Alloc_P
   Is_True(MEM_POOL_blocks(pool) != NULL,
             ("Alloc with uninitialized MEM_POOL"));
 #ifdef Is_True_On
-  if ( mem_tracing_enabled )
+  if ( mem_tracing_enabled && sub_mem_tracing_enabled)
     Site_Account_Alloc(pool,0,size,line,file);
 #endif
 
@@ -1432,7 +1480,7 @@ MEM_POOL_Realloc_P
   Is_True(MEM_POOL_blocks(pool) != NULL,
             ("Alloc with uninitialized MEM_POOL"));
 #ifdef Is_True_On
-  if ( mem_tracing_enabled )
+  if ( mem_tracing_enabled && sub_mem_tracing_enabled)
     Site_Account_Alloc(pool,old_size,new_size,line,file);
 #endif
 
@@ -1566,7 +1614,7 @@ MEM_POOL_Push_P
   }
 
 #ifdef Is_True_On
-  if ( mem_tracing_enabled )
+  if ( mem_tracing_enabled && sub_mem_tracing_enabled)
     Site_Account_Push(pool,line,file);
 #endif
 
@@ -1709,7 +1757,7 @@ MEM_POOL_Pop_P
   FmtAssert(MEM_POOL_blocks(pool),("Freeing an uninitialized pool."));
 
 #ifdef Is_True_On
-  if ( mem_tracing_enabled )
+  if ( mem_tracing_enabled && sub_mem_tracing_enabled)
     Site_Account_Pop(pool,line,file);
 #endif
 

@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -968,7 +972,8 @@ template <PROGRAM program>
 void
 SUMMARIZE<program>::Process_eh_globals (void)
 {
-    if (!(PU_src_lang (Get_Current_PU()) & PU_CXX_LANG) || 
+    if ((!(PU_src_lang (Get_Current_PU()) & PU_CXX_LANG) &&
+         !(PU_src_lang (Get_Current_PU()) & PU_JAVA_LANG)) || 
     	!PU_misc_info (Get_Current_PU()))
     	return;
 

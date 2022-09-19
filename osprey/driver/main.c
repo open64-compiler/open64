@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -97,6 +97,7 @@ boolean add_heap_limit;
 int heap_limit;
 int hugepage_attr;
 
+char *xa_option = "-xa";
 
 extern void toggle_implicits(void);
 extern void set_defaults(void);
@@ -163,7 +164,6 @@ main (int argc, char *argv[])
 	// Append the default options in compiler.defaults to argv so that they
 	// are parsed along with the command line options.
 	append_default_options(&argc, &argv);
-
 	save_command_line(argc, argv);		/* for prelinker    */	
 	files = init_string_list();
 	file_suffixes = init_string_list();
@@ -305,7 +305,10 @@ main (int argc, char *argv[])
 			{
 				source_kind = S_c;
 			}
-			if (source_kind == S_o) {
+			if (source_kind == S_o ||
+                            (xfa_flag &&
+                             ((source_kind == S_B && inline_t == FALSE) ||
+                               source_kind == S_I))) {
 				/* object file or library */
 				add_object (O_object, argv[i]);
 				/* Save away objects should it be necessary
@@ -633,6 +636,22 @@ main (int argc, char *argv[])
             else
                 add_heap_limit = TRUE;
         }
+
+        if (vsa_cxx_intrn_flag && !option_was_seen(O_clang)) {
+		warning("`-VSA:cxx_intrn=1' but `-clang' is not set. Force turn on `-clang'.");
+        }
+
+	// turn off inline if -VSA:certj=1
+	if (xfa_flag == TRUE && inline_t != FALSE) {
+		int i;
+		for (i = 0; i < argc; i++) {
+			if (strncmp(argv[i], "-VSA:certj=1", 12) == 0
+				|| strncmp(argv[i], "-Wl,-VSA:certj=1", 16) == 0) {
+				inline_t = FALSE;
+				run_inline = FALSE;
+			}
+		}
+	}
         
 	if (read_stdin) {
 		if ( option_was_seen(O_E) 
@@ -678,7 +697,10 @@ main (int argc, char *argv[])
 		return error_status;
 	}
 
-	if (num_files == 0 || remember_last_phase != last_phase) {
+	if (!option_was_seen(O_c) && !option_was_seen(O_E) && xfa_flag == TRUE) {
+		run_xfa();
+	}
+	else if (num_files == 0 || remember_last_phase != last_phase) {
 		/* run ld */
 		last_phase = remember_last_phase;
 		source_file = NULL;
@@ -770,7 +792,8 @@ static void
 check_old_CC_options (char *name)
 {
 	if (strcmp(name, "+I") == 0) {
-		warn_no_longer_supported2(name, "-keep");
+		// MASTIFF-OPT: "-keep" --> "-kp", not expose
+		//warn_no_longer_supported2(name, "-keep");
 	} else if (strcmp(name, "+L") == 0) {
 		warn_no_longer_supported(name);
 	} else if (strcmp(name, "+d") == 0) {
@@ -865,6 +888,7 @@ print_help_msg (void)
 	char *msg;
 	char *name;
 	fprintf(stderr, "usage:  %s <options> <files>\n", program_name);
+#ifndef BUILD_MASTIFF
 	if (help_pattern != NULL)
 	  fprintf(stderr, "available options that contain %s:\n", help_pattern);
 	else
@@ -889,6 +913,7 @@ print_help_msg (void)
 	if (help_pattern == NULL && invoked_lang == L_cc) {
 	  fprintf(stderr, "The environment variable OPEN64_CC is also checked\n");
 	}
+#endif
 	do_exit(RC_OKAY);
 }
 
@@ -942,6 +967,9 @@ static struct explicit_lang {
 	{ "f95-cpp-input", S_i, L_f90, },
 	{ "none", S_NONE, L_NONE, },
 	{ "ratfor", S_r, L_f77, },
+// java
+	{ "JAVA", S_java, L_java, },
+	{ "js", S_javascript, L_javascript, },
 	{ NULL, S_NONE, L_NONE, },
 };
 
@@ -981,10 +1009,18 @@ prescan_options (int argc, char *argv[])
     if (!strcasecmp(argv[i], "-ipa") ||
 	!strcmp(argv[i], "-Ofast")) {	// -Ofast implies -ipa.  Bug 3856.
       ipa = TRUE;
-    } else if (!strcmp(argv[i], "-keep")) {	// bug 2181
+    } else if(!strcmp(argv[i], "-aot")) {
+      aot = TRUE;
+    } else if (!strcmp(argv[i], "-xfa")) {
+      xfa_flag = TRUE;
+    } else if (!strcmp(argv[i], "-noxfa")) {
+      xfa_flag = FALSE;
+    } else if(!strcmp(argv[i], "-noxa")) {
+      noxa = TRUE;
+    } else if (!strcmp(argv[i], "-kp")) {	// bug 2181, MASTIFF-OPT: "-keep" --> "-kp"
       keep_flag = TRUE;
-    } else if (!strcmp(argv[i], "-save_temps")) {
-      keep_flag = TRUE;
+    //} else if (!strcmp(argv[i], "-save_temps")) {  // MASTIFF-OPT: no -save_temps
+    //  keep_flag = TRUE;
     } else if (!strcmp(argv[i], "-S")) {
       ipa_conflict_option = argv[i];
     } else if (!strcmp(argv[i], "-fbgen")) {
@@ -1002,9 +1038,19 @@ prescan_options (int argc, char *argv[])
 	  !strcmp(argv[i], "-ggdb3")) {
 	ipa_conflict_option = argv[i];
       }
+    } else if (strncmp(argv[i], "-VSA:", 5) == 0) {
+      parse_vsa_options(argv[i] + 5);
     }
   }
 
+  // default settings
+  if(aot == TRUE) {
+    ipa = TRUE;
+    noxa = TRUE;
+  }
+  if (noxa == TRUE) {
+    xfa_flag = FALSE;  // disable xfa for noxa by default
+  }
   // Disable for SiCortex 5069.
 }
 
@@ -1207,6 +1253,7 @@ read_compiler_defaults(FILE *f, string_list_t *default_options_list)
 static void
 append_default_options (int *argc, char *(*argv[]))
 {
+
   char *compiler_defaults_path =
   #ifdef PSC_TO_OPEN64
 	 string_copy(getenv("OPEN64_COMPILER_DEFAULTS_PATH"));
@@ -1250,9 +1297,14 @@ append_default_options (int *argc, char *(*argv[]))
     }
   }
 
+  
   // Append the default options to the command line options.
   {
     int new_argc = *argc + default_options_count + 1;
+#ifdef BUILD_MASTIFF
+    new_argc++; // -xa option
+#endif
+    
     char **new_argv = malloc(new_argc * sizeof(char*));
     int i, index;
     string_item_t *p;
@@ -1262,6 +1314,10 @@ append_default_options (int *argc, char *(*argv[]))
       new_argv[index] = (*argv)[index];
     }
 
+#ifdef BUILD_MASTIFF
+    new_argv[index++] = "-xa";
+#endif
+    
     // Mark the beginning of default options.
     new_argv[index++] = "-default_options";
 
@@ -1468,6 +1524,9 @@ display_version(boolean dump_version_only)
 {
   int gcc_version;
   char *open64_gcc_version;
+  struct tm tm_info;
+  time_t current_time = time(NULL);
+  localtime_r(&current_time, &tm_info);
 
   // Get GCC version.
 
@@ -1500,6 +1559,18 @@ display_version(boolean dump_version_only)
 
   fprintf(stderr, "Built on :%s \n", build_date);
   fprintf(stderr, "Portions Copyright (c) 2006-2009 Simplnano Corporation\n");
+#elif defined(BUILD_MASTIFF)
+  fprintf(stderr, "Xcalibyte Vulnerability Static Analyzer Version %s\n",
+          compiler_version);
+  if (show_version > 1) {
+    fprintf(stderr, "Internal revision %s(%s)\n", cset_id, build_root);
+    fprintf(stderr, "Built by: %s@%s\n", build_user, build_host);
+  }
+  fprintf(stderr, "Built on: %s\n", build_date);
+  if (tm_info.tm_year + 1900 > 2019)
+    fprintf(stderr, "Copyright (c) 2019-%d XC Software (Shenzhen) Ltd.\n", tm_info.tm_year + 1900);
+  else
+    fprintf(stderr, "Copyright (c) 2019 XC Software (Shenzhen) Ltd.\n");
 #else
   fprintf(stderr, "Open64 Compiler Suite: Version %s\n",
 	  compiler_version);

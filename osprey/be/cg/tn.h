@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -286,6 +290,9 @@ struct tn {
 #define TN_THREAD_SEG_PTR   0x8000  /* TN is pointer to thread-local storage */
 #define TN_NO_RENAME        0x10000 /* TN does not get auto renamed */
 #endif
+#ifdef TARG_UWASM
+#define TN_REG_NEED_FIXUP   0x4000  /* TN register need fixup */
+#endif
 
 #ifdef TARG_IA64
 #define TN_TAKE_NAT         0X4000  /* TN (gr,fpr) may take NaT bit */
@@ -401,7 +408,10 @@ TN_RELOC_GPREL_SL2_V11 = 0x48,
 TN_RELOC_GPREL_SL2_V15 = 0x49,
 /* 14bit offset from sbuf start address */ 
 TN_RELOC_GPREL_SL2_S  = 0x50,
-#endif 
+#endif
+#if defined(TARG_UWASM)
+TN_RELOC_UWASM_64 = 0x41,
+#endif
 } TN_RELOCS;
 
 
@@ -414,6 +424,9 @@ TN_RELOC_GPREL_SL2_S  = 0x50,
 #define       TN_is_constant(r)	(TN_flags(r) &   TN_CONSTANT)
 #define   Set_TN_is_constant(r)	(TN_flags(r) |=  TN_CONSTANT)
 #define       TN_is_register(r)	(!TN_is_constant(r))
+#ifdef TARG_UWASM
+#define       TN_reg_need_fixup(r)	(TN_flags(r) & TN_REG_NEED_FIXUP)
+#endif
 extern  BOOL is_str_expand;
 inline TN * CAN_USE_REG_TN (const TN *t)
 {
@@ -993,10 +1006,14 @@ extern  TN *Gen_Symbol_TN ( ST *s, INT64 offset, INT32 relocs);
 extern  TN *Gen_Label_TN ( LABEL_IDX lab, INT64 offset );
 extern  TN *Gen_Tag_TN ( LABEL_IDX tag);
 extern	TN *Gen_Adjusted_TN( TN *tn, INT64 adjust );
+#ifdef TARG_UWASM
+extern  TN *Gen_Reg_TN_For_Symbol(ST *st);
+extern  TN *Allocate_Object_Uwasm(ST *st);
+#endif
 
 
 /* Trace support: */
-#ifdef TARG_IA64
+#if defined(TARG_IA64) || defined(TARG_UWASM)
 extern char * sPrint_TN ( TN *tn, BOOL verbose, char *buf );
 #endif
 /* Print TN to a file with given 'fmt'; assume fmt has a %s in it. */
@@ -1032,6 +1049,28 @@ extern BOOL Potential_Immediate_TN_Expr (
 );
 
 BOOL Is_OP_Cond(OP *op);
+
+#ifdef Is_True_On
+// debug purpose
+INT TN_flags_d(TN *tn);
+BOOL TN_is_constant_d(TN *t);
+BOOL TN_is_register_d(TN *t);
+INT TN_size_d(TN *t);
+INT TN_number_d(TN *t);
+CLASS_REG_PAIR TN_class_reg_d(TN *t);
+REGISTER TN_register_d(TN *t);
+ISA_REGISTER_CLASS TN_register_class_d(TN *t);
+INT64 TN_value_d(TN *t);
+INT64 TN_offset_d(TN *t);
+LABEL_IDX TN_label_d(TN *t);
+ST *TN_var_d(TN *t);
+BOOL TN_has_value_d(TN *t);
+BOOL TN_is_label_d(TN *t);
+BOOL TN_is_symbol_d(TN *t);
+BOOL TN_is_float_d(TN *t);
+BOOL TN_is_dedicated_d(TN *t);
+
+#endif
 
 #include "tn_targ.h"
 

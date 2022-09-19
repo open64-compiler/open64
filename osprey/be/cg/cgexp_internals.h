@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -39,7 +43,8 @@
   http://oss.sgi.com/projects/GenInfo/NoticeExplan
 
 */
-
+#ifndef cgexp_internals_INCLUDE
+#define cgexp_internals_INCLUDE
 
 /* misc headers for target-specific CGEXP routines */
 
@@ -96,10 +101,10 @@ extern void Expand_Float_Greater_Equal (TN *dest, TN *src1, TN *src2, VARIANT va
 extern void Expand_Float_Equal (TN *dest, TN *src1, TN *src2, VARIANT variant, TYPE_ID mtype, OPS *ops);
 extern void Expand_Float_Not_Equal (TN *dest, TN *src1, TN *src2, VARIANT variant, TYPE_ID mtype, OPS *ops);
 extern void Expand_Convert_Length (TN *dest, TN *src, TN *length, TYPE_ID mtype, BOOL signed_extension, OPS *ops);
-#ifdef TARG_NVISA
+#if defined(TARG_NVISA) || defined(TARG_UWASM)
 extern void Expand_Convert (TN *result, TYPE_ID rtype, TN *src, TYPE_ID stype, OPS *ops);
 #endif
-#if defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_PPC32) || defined(TARG_LOONGSON)
+#if defined(TARG_X8664) || defined(TARG_MIPS) || defined(TARG_PPC32) || defined(TARG_LOONGSON) || defined(TARG_UWASM)
 extern void Expand_Float_To_Float (TN *dest, TN *src, TYPE_ID rtype, TYPE_ID desc, OPS *ops);
 #else
 extern void Expand_Float_To_Float (TN *dest, TN *src, TYPE_ID mtype, OPS *ops);
@@ -184,7 +189,11 @@ extern void Expand_Load (OPCODE opcode, TN *result, TN *src1, TN *src2, VARIANT 
 extern void Expand_Store (TYPE_ID mtype, TN *src1, TN *src2, TN *src3, OPS *ops);
 #else
 extern void Expand_Store (TYPE_ID mtype, TN *src1, TN *src2, TN *src3, VARIANT variant, OPS *ops);
-#endif 
+#endif
+#if defined(TARG_UWASM)
+extern void Expand_IStore(TYPE_ID mtype, TN *src, TN *base, TN *ofst, VARIANT variant, OPS *ops);
+extern void Expand_ILoad(OPCODE opcode, TN *result, TN *base, TN *ofst, VARIANT variant, OPS *ops);
+#endif
 extern void Expand_Misaligned_Load (OPCODE op, TN *result, TN *base, TN *disp, VARIANT variant, OPS *ops);
 extern void Expand_Misaligned_Store (TYPE_ID mtype, TN *obj_tn, TN *base_tn, TN *disp_tn, VARIANT variant, OPS *ops);
 extern void Expand_Lda_Label (TN *dest, TN *lab, OPS *ops);
@@ -221,4 +230,8 @@ extern TN*  Create_TN_Pair(TN*, TYPE_ID);
 #ifdef TARG_NVISA
 extern INT Mtype_Index (TYPE_ID mtype);
 extern void Exp_Ldst_Init(void);
+#endif
+
+extern void Expand_Checkptr(TN *base, TN *lb, TN *ub, OPS *ops);
+
 #endif

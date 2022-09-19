@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -168,6 +172,8 @@ public:
 			{ return WOPT_Enable_RVI1 && _do_rvi; }
   RVI             *Rvi(void) const            { return _rvi; };
 
+  void             Connect_cr_wn(CODEREP* cr, WN *wn)
+    { if (OPT_Enable_WHIRL_SSA) { WN_MAP_Set(_wn_to_cr_map, wn, cr); } }
   void             Connect_sr_wn(STMTREP* sr, WN *wn)
     { if (OPT_Enable_WHIRL_SSA) { WN_MAP_Set(_wn_to_cr_map, wn, sr); } }
   void             Set_region_entry_stmt(STMTREP*) {}
@@ -333,7 +339,7 @@ ML_WHIRL_EMITTER::Build_loop_info( BB_NODE *label_bb )
 
   // did LFTR replace the induction variable?
   if ( bb_loop->Iv_replacement() != NULL ) {
-    induction = Gen_exp_wn(bb_loop->Iv_replacement(), this);
+    induction = Gen_exp_wn(NULL, bb_loop->Iv_replacement(), this);
   }
   else {
     CODEREP *iv = bb_loop->Iv();
@@ -353,9 +359,7 @@ ML_WHIRL_EMITTER::Build_loop_info( BB_NODE *label_bb )
 				iv->Lod_ty(),
 				iv->Field_id());
       // WHIRL SSA
-      if (OPT_Enable_WHIRL_SSA) {
-        Connect_cr_wn(&_wn_to_cr_map, iv, induction);
-      }
+      Connect_cr_wn(iv, induction);
 #ifdef TARG_LOONGSON
       // Need to change operator of induction to OPT_LDBITS when induction is BITs variable
       if (iv->Points_to(Opt_stab())->Bit_Size() != 0)
@@ -379,7 +383,7 @@ ML_WHIRL_EMITTER::Build_loop_info( BB_NODE *label_bb )
       trip_count = bb_loop->Wn_trip_count();
   } else {
     if (bb_loop->Trip_count_expr()) 
-      trip_count = Gen_exp_wn(bb_loop->Trip_count_expr(), this);
+      trip_count = Gen_exp_wn(NULL, bb_loop->Trip_count_expr(), this);
   }
 
   WN *loop_info = WN_CreateLoopInfo( induction, trip_count, 
@@ -411,7 +415,8 @@ ML_WHIRL_EMITTER::Emit(void)
   BOOL saved_wn_simp_enable = WN_Simplifier_Enable(FALSE);
 
   // Fix 592011:  simplify CG's job.
-  Cfg()->Delete_empty_BB();
+  if (!Run_vsaopt && !Run_ipsaopt)
+    Cfg()->Delete_empty_BB();
 
   // WHIRL SSA
   if (OPT_Enable_WHIRL_SSA) {
@@ -632,7 +637,7 @@ ML_WHIRL_EMITTER::Emit(void)
     info for previously processed regions */
   REGION_update_alias_info(_opt_func,_alias_mgr);
 
-  if (Opt_stab()->Phase() == MAINOPT_PHASE) {
+  if (Opt_stab()->Phase() == MAINOPT_PHASE && !Run_vsaopt) {
     BOOL tr = Trace() || Get_Trace (TP_GLOBOPT, ALIAS_DUMP_FLAG);
     Opt_stab()->Cr_sr_annot_mgr()->
       Export_annot (_opt_func, _alias_mgr, TRUE, tr);

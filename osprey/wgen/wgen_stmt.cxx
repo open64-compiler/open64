@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2011 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -78,6 +82,7 @@ static INT32  if_else_info_max;
 typedef struct case_info_t {
   INT64     case_lower_bound_value;
   INT64     case_upper_bound_value;
+  SRCPOS    case_srcpos;
   LABEL_IDX case_label_idx;
 } CASE_INFO;
 
@@ -90,6 +95,7 @@ typedef struct switch_info_t {
   WN        *index;
   INT32      start_case_index;
   LABEL_IDX  default_label_idx;
+  SRCPOS     default_srcpos;
 } SWITCH_INFO;
 
 static SWITCH_INFO *switch_info_stack;
@@ -1004,6 +1010,7 @@ WGEN_Expand_Case (gs_t low, gs_t high
   WN        *lower_bound;
   WN        *upper_bound;
   LABEL_IDX  case_label_idx;
+  SRCPOS srcpos = label_decl ? Get_Srcpos(label_decl) : Get_Srcpos();
 
   if (high != NULL)
     DevWarn("encountered case range");
@@ -1014,6 +1021,7 @@ WGEN_Expand_Case (gs_t low, gs_t high
     else {
       New_LABEL (CURRENT_SYMTAB, case_label_idx);
       switch_info_stack [switch_info_i].default_label_idx = case_label_idx;
+      switch_info_stack [switch_info_i].default_srcpos = srcpos;
     }
   }
 
@@ -1045,6 +1053,7 @@ WGEN_Expand_Case (gs_t low, gs_t high
   	printf ("duplicate case");
     New_LABEL (CURRENT_SYMTAB, case_label_idx);
     case_info_stack [case_info_i].case_label_idx = case_label_idx;
+    case_info_stack [case_info_i].case_srcpos = srcpos;
   }
 
 #ifdef KEY
@@ -1057,7 +1066,7 @@ WGEN_Expand_Case (gs_t low, gs_t high
 #endif
   {
     wn = WN_CreateLabel ((ST_IDX) 0, case_label_idx, 0, NULL);
-    WGEN_Stmt_Append (wn, Get_Srcpos ());
+    WGEN_Stmt_Append (wn, srcpos);
   }
 } /* WGEN_Expand_Case */
 
@@ -2533,7 +2542,10 @@ WGEN_Expand_Return (gs_t stmt, gs_t retval)
   }
   if (block) {
     if (wn)
+    {
+      WN_Set_Linenum(wn, Get_Srcpos());
       WN_INSERT_BlockLast(block, wn);
+    }
     WGEN_Stmt_Append(block, Get_Srcpos());
   } else if (wn) {
     WGEN_Stmt_Append(wn, Get_Srcpos());
@@ -2799,16 +2811,22 @@ WGEN_Expand_End_Case (void)
   WN    *case_range;
 #endif
   LABEL_IDX exit_label_idx;
+  SRCPOS exit_srcpos;
 
   n = case_info_i - switch_info_stack [switch_info_i].start_case_index + 1;
   if (break_continue_info_stack [break_continue_info_i].break_label_idx)
     exit_label_idx = break_continue_info_stack [break_continue_info_i].break_label_idx;
   else
     New_LABEL (CURRENT_SYMTAB, exit_label_idx);
-  if (switch_info_stack [switch_info_i].default_label_idx)
+  if (switch_info_stack [switch_info_i].default_label_idx) {
     def_goto = WN_CreateGoto (switch_info_stack [switch_info_i].default_label_idx);
-  else
+    exit_srcpos = switch_info_stack [switch_info_i].default_srcpos;
+  }
+  else {
     def_goto = WN_CreateGoto (exit_label_idx);
+    exit_srcpos = Get_Srcpos();
+  }
+  WN_Set_Linenum(def_goto, exit_srcpos);
   case_block = WN_CreateBlock ();
 #ifdef KEY
   case_range = WN_CreateBlock ();
@@ -2827,10 +2845,12 @@ WGEN_Expand_End_Case (void)
                                   low,
                                   high,
                                   case_label_idx);
+      WN_Set_Linenum (case_range, case_info_stack [i].case_srcpos);
       WN_INSERT_BlockLast (case_range, case_range_cond);
     }
     else {
       case_entry = WN_CreateCasegoto (low, case_label_idx);
+      WN_Set_Linenum (case_entry, case_info_stack [i].case_srcpos);
       WN_INSERT_BlockLast (case_block, case_entry);
     }
 #else
@@ -2838,6 +2858,7 @@ WGEN_Expand_End_Case (void)
          case_value <= case_info_stack [i].case_upper_bound_value;
          case_value++) {
       case_entry = WN_CreateCasegoto (case_value, case_label_idx);
+      WN_Set_Linenum (case_entry, case_info_stack [i].case_srcpos);
       WN_INSERT_BlockLast (case_block, case_entry);
 #ifdef KEY	// bug 2814.  TODO: Port the switch-related code from kgccfe.
       if (case_value == case_info_stack[i].case_upper_bound_value)
@@ -2857,13 +2878,14 @@ WGEN_Expand_End_Case (void)
   WGEN_Stmt_Append (case_range, Get_Srcpos());
   WN_INSERT_BlockFirst (switch_block, switch_wn);
   wn = WN_CreateLabel ((ST_IDX) 0, exit_label_idx, 0, NULL);
+  WN_Set_Linenum (wn, exit_srcpos);
   WN_INSERT_BlockLast (switch_block, wn);
   WGEN_Stmt_Append (switch_block, Get_Srcpos());
 #else
   WGEN_Stmt_Append (switch_wn, Get_Srcpos ());
   WGEN_Stmt_Append (switch_block, Get_Srcpos ());
   wn = WN_CreateLabel ((ST_IDX) 0, exit_label_idx, 0, NULL);
-  WGEN_Stmt_Append (wn, Get_Srcpos ());
+  WGEN_Stmt_Append (wn, exit_srcpos);
 #endif
   case_info_i = switch_info_stack [switch_info_i].start_case_index - 1;
   --switch_info_i;
@@ -3021,6 +3043,25 @@ Add_Handler_Info (WN * call_wn, INT i, INT num_handlers)
 #endif /* ADD_HANDLER_INFO */
 
 #ifdef KEY
+// set rtti st's class type
+static void
+Set_class_ty_for_rtti_st (gs_t type, ST *st)
+{
+  Is_True(strncmp("_ZTI", ST_name(st), 4) == 0,
+          ("except type info st"));
+
+  TY_IDX record_ty = Get_TY(type);
+  if (gs_tree_code(type) != GS_RECORD_TYPE &&
+      !(gs_tree_code(type) == GS_POINTER_TYPE &&
+        TY_kind(TY_pointed(record_ty)) == KIND_STRUCT))
+    return;
+  if (ST_is_rtti(st))
+    return;
+
+  Set_ST_is_rtti(st);
+  Set_ST_vtable_ty_idx(st, record_ty);
+}
+
 // Given a type tree, return the typeinfo var for the exception tables
 static gs_t
 Get_typeinfo_var (gs_t t)
@@ -3083,6 +3124,7 @@ Create_handler_list (int scope_index)
 	if (type)
 	{
 	  st = ST_st_idx (Get_ST (Get_typeinfo_var(type)));
+          Set_class_ty_for_rtti_st(type, ST_ptr(st));
 	  INITV_Set_VAL (Initv_Table[type_st], Enter_tcon (Host_To_Targ (MTYPE_U4, st)), 1);
 	}
 	else // catch-all handler
@@ -3366,7 +3408,10 @@ Get_handler_list (vector<ST_IDX> *handler_list)
         gs_t type = gs_handler_type(h);
         ST_IDX st = 0;	// catch-all
 	if (type)
+        {
 	    st = ST_st_idx (Get_ST (Get_typeinfo_var(type)));
+            Set_class_ty_for_rtti_st(type, ST_ptr(st));
+        }
 	handler_list->push_back (st);
     }
   }
@@ -3726,6 +3771,7 @@ WGEN_Expand_EH_Spec (gs_t stmt)
         {
           ST_IDX type_st = ST_st_idx (Get_ST ( 
 			Get_typeinfo_var(gs_tree_value(eh_spec))));
+          Set_class_ty_for_rtti_st(gs_tree_value(eh_spec), ST_ptr(type_st));
           eh_spec_vector.push_back (type_st);
 	  eh_spec_func_end.push_back (type_st);
 
@@ -3938,7 +3984,11 @@ WGEN_Expand_Handlers_Or_Cleanup (const HANDLER_INFO &handler_info)
         gs_t t_copy = iter.Current();
         gs_t type = gs_handler_type(t_copy);
         ST_IDX  sym = 0;
-	if (type) sym = ST_st_idx (Get_ST (Get_typeinfo_var(type)));
+	if (type)
+        {
+          sym = ST_st_idx (Get_ST (Get_typeinfo_var(type)));
+          Set_class_ty_for_rtti_st(type, ST_ptr(sym));
+        }
         TYPE_FILTER_ENTRY e;
         e.st = sym;
         e.filter = 0; // do not compare based on filter

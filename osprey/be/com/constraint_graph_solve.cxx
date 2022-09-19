@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  Copyright (C) 2010, Hewlett-Packard Development Company, L.P.
  All Rights Reserved.
 
@@ -130,7 +134,7 @@ void
 SCCDetection::visit(ConstraintGraphNode *v)
 {
   if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"visit: Node %d\n",v->id());
+    fprintf(TFile,"visit: Node %d\n",v->id());
   _I += 1;
   _D[v->id()] = _I;
   _R[v->id()] = v->id();
@@ -219,7 +223,7 @@ void
 IPA_SCCDetection::find(void)
 {
   if (Get_Trace(TP_ALIAS, NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"SCC: Global cycle detection begin\n");
+    fprintf(TFile,"SCC: Global cycle detection begin\n");
 
   // We capture the current number of nodes in the graph.  As we
   // merge nodes, additional offsets may materialize that will not
@@ -270,7 +274,7 @@ SCCDetection::checkUnify(ConstraintGraphNode *node,
     if (!node->inEdge(&dummy)) {
       CGNodeId repId = _R[node->id()];
       if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG))
-        fprintf(stderr,"Unify: Node %d -> Node %d\n",
+        fprintf(TFile,"Unify: Node %d -> Node %d\n",
                 node->id(),repId);
       // We need to track this node so as to update the modulus
       // of the representative points-to set based on the 'new'
@@ -308,7 +312,7 @@ IPA_SCCDetection::unify(UINT32 noMergeMask, NodeToKValMap &nodeToKValMap)
     checkUnify(node,noMergeMask,nodeToKValMap);
   }
   if (Get_Trace(TP_ALIAS, NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"SCC: Global cycle detection end\n");
+    fprintf(TFile,"SCC: Global cycle detection end\n");
 }
 
 void
@@ -379,9 +383,9 @@ EdgeDelta::add(ConstraintGraphEdge *e)
     added = loadStoreList().push(e);
   }
   if (added && Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG)) {
-    fprintf(stderr,"   Added to worklist: ");
-    e->print(stderr);
-    fprintf(stderr,"\n");
+    fprintf(TFile,"   Added to worklist: ");
+    e->print(TFile);
+    fprintf(TFile,"\n");
   }
 }
 
@@ -397,6 +401,9 @@ EdgeDelta::find(CGNodeId src, CGNodeId dst)
       fprintf(stderr,"Found: ");
       edge->print(stderr);
       fprintf(stderr," flags 0x%x\n",edge->flags());
+      fprintf(TFile,"Found: ");
+      edge->print(TFile);
+      fprintf(TFile," flags 0x%x\n",edge->flags());
     }
   }
 
@@ -406,9 +413,9 @@ EdgeDelta::find(CGNodeId src, CGNodeId dst)
     ConstraintGraphEdge *edge = *copyIter;
     if (edge->srcNode()->id() == src &&
         edge->destNode()->id() == dst) {
-      fprintf(stderr,"Found: ");
-      edge->print(stderr);
-      fprintf(stderr," flags 0x%x\n",edge->flags());
+      fprintf(TFile,"Found: ");
+      edge->print(TFile);
+      fprintf(TFile," flags 0x%x\n",edge->flags());
     }
   }
 }
@@ -421,9 +428,9 @@ EdgeDelta::findPtr(ConstraintGraphEdge *e)
   for ( ; copyIter != copyList.end(); ++copyIter ) {
     ConstraintGraphEdge *edge = *copyIter;
     if (edge == e) {
-      fprintf(stderr,"Found: ");
-      edge->print(stderr);
-      fprintf(stderr," flags 0x%x\n",edge->flags());
+      fprintf(TFile,"Found: ");
+      edge->print(TFile);
+      fprintf(TFile," flags 0x%x\n",edge->flags());
     }
   }
 
@@ -432,9 +439,9 @@ EdgeDelta::findPtr(ConstraintGraphEdge *e)
   for ( ; loadIter != loadList.end(); ++loadIter ) {
     ConstraintGraphEdge *edge = *copyIter;
     if (edge == e) {
-      fprintf(stderr,"Found: ");
-      edge->print(stderr);
-      fprintf(stderr," flags 0x%x\n",edge->flags());
+      fprintf(TFile,"Found: ");
+      edge->print(TFile);
+      fprintf(TFile," flags 0x%x\n",edge->flags());
     }
   }
 }
@@ -452,7 +459,7 @@ bool
 ConstraintGraphNode::updatePointsToFromDiff()
 {
   if (Get_Trace(TP_ALIAS, NYSTROM_SOLVER_FLAG))
-    fprintf(stderr,"Update pts of %d\n",id());
+    fprintf(TFile,"Update pts of %d\n",id());
   FmtAssert(!checkFlags(CG_NODE_FLAGS_MERGED),
             ("Node %d should not be merged at the beginning of update.\n",id()));
 
@@ -520,8 +527,8 @@ checkNode(ConstraintGraphNode *n)
   for (PointsToIterator pti(n); pti != 0; ++pti ) {
     PointsTo &curSet = *pti;
     if (curSet.numBits() > 100) {
-      fprintf(stderr, "\nExcess pts set for n (qual:%d)",  pti.qual());
-      n->print(stderr);
+      fprintf(TFile, "\nExcess pts set for n (qual:%d)",  pti.qual());
+      n->print(TFile);
     }
   }
 }
@@ -536,19 +543,19 @@ checkExcessPtsSet(UINT32& dumped, ConstraintGraphNode *node)
       card += pts.numBits();
     }
     if (card > 500) {
-      fprintf(stderr,"Excess pts set (card %d):\n",card);
-      fprintf(stderr,"  Node %d, offset %d, ty %s, cg %s\n",
+      fprintf(TFile,"Excess pts set (card %d):\n",card);
+      fprintf(TFile,"  Node %d, offset %d, ty %s, cg %s\n",
               node->id(),node->offset(), TY_name(node->ty_idx()),
               node->cg()->name());
-      fprintf(stderr,"  Points to...\n");
+      fprintf(TFile,"  Points to...\n");
       for (PointsToIterator pti(node); pti != 0; ++pti) {
         PointsTo &pts = *pti;
         for (PointsTo::SparseBitSetIterator iter(&pts,0); iter != 0; ++iter) {
           ConstraintGraphNode *n = ConstraintGraph::cgNode(*iter);
-          fprintf(stderr,"    Node %d, offset %d, ty %s, cg %s\n",
+          fprintf(TFile,"    Node %d, offset %d, ty %s, cg %s\n",
                   n->id(),n->offset(), TY_name(n->id()),n->cg()->name());
           if (n->id() == 4148)
-            n->print(stderr);
+            n->print(TFile);
         }
       }
       dumped -= 1;
@@ -590,7 +597,7 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
   if (!modNodeList.empty()) {
     UINT32 numNodes = modNodeList.size();
     if (trace)
-      fprintf(stderr, "Processing %d initial modified nodes\n",numNodes);
+      fprintf(TFile, "Processing %d initial modified nodes\n",numNodes);
     ConstraintGraphNode **topoOrderArray =
       (ConstraintGraphNode **)malloc(sizeof(ConstraintGraphNode *)* numNodes);
     UINT32 i = 0;
@@ -603,7 +610,7 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
     // Add edges to be processed in topological order
     for ( UINT32 j = 0; j < i; j++) {
       ConstraintGraphNode *node = topoOrderArray[j];
-      if (trace) fprintf(stderr,"Node %d\n",node->id());
+      if (trace) fprintf(TFile,"Node %d\n",node->id());
       ConstraintGraph::addEdgesToWorkList(node);
     }
     free(topoOrderArray);
@@ -628,7 +635,7 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
     // provided edge delta.
     if (seed) {
       seed = false;
-      if (trace) fprintf(stderr,"\nSeeding solver:\n");
+      if (trace) fprintf(TFile,"\nSeeding solver:\n");
       ConstraintGraphNode **topoOrderArray =
           (ConstraintGraphNode **)malloc(sizeof(ConstraintGraphNode *)*
                                          _cg->totalCGNodes());
@@ -640,7 +647,7 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
       // Add edges to be processed in topological order
       for ( UINT32 j = 0; j < i; j++) {
         ConstraintGraphNode *node = topoOrderArray[j];
-        if (trace) fprintf(stderr,"Node %d\n",node->id());
+        if (trace) fprintf(TFile,"Node %d\n",node->id());
         ConstraintGraph::addEdgesToWorkList(node);
       }
       free(topoOrderArray);
@@ -649,12 +656,12 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
     ++iterCount;
 
     if (trace || lw_trace) {
-      fprintf(stderr,"Solver Iteration %d\n",iterCount);
+      fprintf(TFile,"Solver Iteration %d\n",iterCount);
       ConstraintGraph::stats();
     }
     do {
       if (lw_trace) {
-        fprintf(stderr,"start solve copySkewList, size is %d\n", copySkewList.size());
+        fprintf(TFile,"start solve copySkewList, size is %d\n", copySkewList.size());
       }
       while (!copySkewList.empty()) {
         ConstraintGraphEdge *edge = copySkewList.pop();
@@ -663,9 +670,9 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
           continue;
         }
         if (trace) {
-          fprintf(stderr," Copy Edge:");
-          edge->print(stderr);
-          fprintf(stderr,"\n");
+          fprintf(TFile," Copy Edge:");
+          edge->print(TFile);
+          fprintf(TFile,"\n");
         }
         if (edge->edgeType() == ETYPE_COPY) {
           processAssign(edge);
@@ -680,20 +687,20 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
         }
       }
       if (lw_trace) {
-        fprintf(stderr,"end solve copySkewList\n");
+        fprintf(TFile,"end solve copySkewList\n");
       }
 
       // Determine which edges need to be visited as a result of the
       // most recent round of copy edge processing.  We also do some
       // work on the pts of the modified nodes to improve solver efficiency.
       if (lw_trace) {
-        fprintf(stderr,"start solve modNodeList, size is %d\n", modNodeList.size());
+        fprintf(TFile,"start solve modNodeList, size is %d\n", modNodeList.size());
       }
       NodeWorkList &modNodeList = *(ConstraintGraph::solverModList());
       if (!modNodeList.empty()) {
         UINT32 numNodes = modNodeList.size();
         if (trace)
-          fprintf(stderr, "Processing %d modified nodes\n",numNodes);
+          fprintf(TFile, "Processing %d modified nodes\n",numNodes);
         ConstraintGraphNode **topoOrderArray =
             (ConstraintGraphNode **)malloc(sizeof(ConstraintGraphNode *)*
                                            numNodes);
@@ -744,13 +751,13 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
         free(topoOrderArray);
       }
       if (lw_trace) {
-        fprintf(stderr,"end solve modNodeList\n");
+        fprintf(TFile,"end solve modNodeList\n");
       }
 
     } while (!copySkewList.empty());
 
     if (lw_trace) {
-      fprintf(stderr,"start solve loadStoreList, size is %d\n", loadStoreList.size());
+      fprintf(TFile,"start solve loadStoreList, size is %d\n", loadStoreList.size());
     }
     while (!loadStoreList.empty()) {
       ConstraintGraphEdge *edge = loadStoreList.pop();
@@ -759,9 +766,9 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
         continue;
       }
       if (trace) {
-        fprintf(stderr," Ld/St Edge:");
-        edge->print(stderr);
-        fprintf(stderr,"\n");
+        fprintf(TFile," Ld/St Edge:");
+        edge->print(TFile);
+        fprintf(TFile,"\n");
       }
       if (edge->edgeType() == ETYPE_LOAD) {
         processLoad(edge);
@@ -780,14 +787,14 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
       }
     }
     if (lw_trace) {
-      fprintf(stderr,"end solve loadStoreList\n");
+      fprintf(TFile,"end solve loadStoreList\n");
     }
   } while (!copySkewList.empty());
 
   UINT32 endTime = CLOCK_IN_MS();
 
   if (lw_trace)
-    fprintf(stderr,"Solver required %d iter, "
+    fprintf(TFile,"Solver required %d iter, "
             "processed %d c, %d s, %d l, %d s edges in %.1lfs\n",
             iterCount,copyCount,skewCount,loadCount,storeCount,
             double(endTime-startTime)/1000);
@@ -810,7 +817,7 @@ ConstraintGraphSolve::solveConstraints(UINT32 noMergeMask)
 void
 ConstraintGraphSolve::printStats()
 {
-  fprintf(stderr,"Overall Solver required %d iter, "
+  fprintf(TFile,"Overall Solver required %d iter, "
           "processed %d c, %d s, %d l, %d s edges in %.1lfs\n",
           totalIterCount,totalCopyCount,totalSkewCount,totalLoadCount,
           totalStoreCount,totalTime);
@@ -900,8 +907,8 @@ ConstraintGraphNode::postProcessPointsTo(PointsTo &adjustSet)
           adjustSet.setBit(node->id());
         else {
           if (!node->repParent()) {
-            fprintf(stderr,"Insanity in StInfo %p\n",node->stInfo());
-            node->stInfo()->print(stderr,true);
+            fprintf(TFile,"Insanity in StInfo %p\n",node->stInfo());
+            node->stInfo()->print(TFile,true);
             FmtAssert(FALSE,("Node beyond modulus must have parent\n"));
           }
 
@@ -986,8 +993,8 @@ ConstraintGraphSolve::postProcessPointsTo()
           UINT32 startOffset = applyOffset - (node->offset() % modulus);
           if (node->offset() >= (startOffset+modulus)) {
             if (!node->repParent()) {
-              fprintf(stderr,"Insanity in StInfo %p\n",node->stInfo());
-              node->stInfo()->print(stderr,true);
+              fprintf(TFile,"Insanity in StInfo %p\n",node->stInfo());
+              node->stInfo()->print(TFile,true);
               FmtAssert(FALSE,("Node beyond modulus must have parent\n"));
             }
 
@@ -1251,11 +1258,11 @@ ConstraintGraphNode::addPointsTo(ConstraintGraphNode *node, CGEdgeQual qual)
   return change;
 }
 
-void printPointsTo(const PointsTo &pts)
+void printPointsTo(const PointsTo &pts, FILE *fp)
 {
   for (PointsTo::SparseBitSetIterator iter(&pts,0); iter != 0; ++iter) {
     ConstraintGraphNode *node = ConstraintGraph::cgNode(*iter);
-    fprintf(stderr,"(%d)<%d,%d> ",
+    fprintf(fp,"(%d)<%d,%d> ",
             node->id(),SYM_ST_IDX(node->cg_st_idx()),node->offset());
   }
 }
@@ -1272,18 +1279,17 @@ ConstraintGraphNode::unionDiffPointsTo(const PointsTo &ptsToSet,
   UINT32 trackNodeId = Alias_Nystrom_Solver_Track;
   if (trackNodeId != 0) {
     if (id() == trackNodeId && !diff.isEmpty()) {
-      fprintf(stderr,"TRACK: In union points to:\n");
-      fprintf(stderr,"TRACK:  Cur: ");
-      printPointsTo(dst);
-      fprintf(stderr,"\nTRACK:  New: ");
-      printPointsTo(ptsToSet);
-      fprintf(stderr,"\nTRACK:  Dif: ");
-      printPointsTo(diff);
-      fprintf(stderr,"\n");
+      fprintf(TFile,"TRACK: In union points to:\n");
+      fprintf(TFile,"TRACK:  Cur: ");
+      printPointsTo(dst, TFile);
+      fprintf(TFile,"\nTRACK:  New: ");
+      printPointsTo(ptsToSet, TFile);
+      fprintf(TFile,"\nTRACK:  Dif: ");
+      printPointsTo(diff, TFile);
+      fprintf(TFile,"\n");
     }
-
     if (diff.isSet(trackNodeId))
-      fprintf(stderr,"TRACK: adding %d to pts of %d\n",trackNodeId,id());
+      fprintf(TFile,"TRACK: adding %d to pts of %d\n",trackNodeId,id());
   }
 
 
@@ -1320,18 +1326,18 @@ ConstraintGraphNode::unionPointsTo(const PointsTo &ptsToSet, CGEdgeQual qual)
   UINT32 trackNodeId = Alias_Nystrom_Solver_Track;
   if (trackNodeId != 0) {
     if (id() == trackNodeId && !diff.isEmpty()) {
-      fprintf(stderr,"TRACK: In union points to:\n");
-      fprintf(stderr,"TRACK:  Cur: ");
-      printPointsTo(dst);
-      fprintf(stderr,"\nTRACK:  New: ");
-      printPointsTo(ptsToSet);
-      fprintf(stderr,"\nTRACK:  Dif: ");
-      printPointsTo(diff);
-      fprintf(stderr,"\n");
+      fprintf(TFile,"TRACK: In union points to:\n");
+      fprintf(TFile,"TRACK:  Cur: ");
+      printPointsTo(dst, TFile);
+      fprintf(TFile,"\nTRACK:  New: ");
+      printPointsTo(ptsToSet, TFile);
+      fprintf(TFile,"\nTRACK:  Dif: ");
+      printPointsTo(diff, TFile);
+      fprintf(TFile,"\n");
     }
 
     if (diff.isSet(trackNodeId))
-      fprintf(stderr,"TRACK: adding %d to pts of %d\n",trackNodeId,id());
+      fprintf(TFile,"TRACK: adding %d to pts of %d\n",trackNodeId,id());
   }
 
   // Here is the actual update of the points-to set
@@ -1374,9 +1380,9 @@ ConstraintGraphNode::unionPointsTo(const PointsTo &ptsToSet, CGEdgeQual qual)
 
 
   if ((id() == trackNodeId && !diff.isEmpty()) || diff.isSet(trackNodeId)) {
-    fprintf(stderr,"TRACK:  Mrg: ");
-    printPointsTo(dst);
-    fprintf(stderr,"\n");
+    fprintf(TFile,"TRACK:  Mrg: ");
+    printPointsTo(dst, TFile);
+    fprintf(TFile,"\n");
   }
   diff.clear();
 
@@ -1442,7 +1448,7 @@ ConstraintGraphSolve::processAssign(const ConstraintGraphEdge *edge)
   if (edge->srcNode()->checkFlags(CG_NODE_FLAGS_UNKNOWN)) {
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG) &&
          !edge->destNode()->checkFlags(CG_NODE_FLAGS_UNKNOWN))
-       fprintf(stderr,"processAssign: propagate unknown %d -> %d\n",
+       fprintf(TFile,"processAssign: propagate unknown %d -> %d\n",
            edge->srcNode()->id(),edge->destNode()->id());
     edge->destNode()->addFlags(CG_NODE_FLAGS_UNKNOWN);
   }
@@ -1528,7 +1534,7 @@ ConstraintGraphSolve::processSkew(const ConstraintGraphEdge *edge)
   {
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG) &&
         !dst->checkFlags(CG_NODE_FLAGS_UNKNOWN))
-      fprintf(stderr,"processSkew: propagate unknown %d -> %d\n",
+      fprintf(TFile,"processSkew: propagate unknown %d -> %d\n",
           src->id(),dst->id());
     dst->addFlags(CG_NODE_FLAGS_UNKNOWN);
   }
@@ -1674,10 +1680,10 @@ ConstraintGraphSolve::addCopiesForLoadStore(ConstraintGraphNode *src,
                                           copyDst->inEdge(&cgEdge) :
                                           copySrc->outEdge(&cgEdge);
         if (foundEdge) {
-          fprintf(stderr,"Exist edge <%d,%d>:",
+          fprintf(TFile,"Exist edge <%d,%d>:",
                   SYM_ST_IDX(minusOne->cg_st_idx()),minusOne->offset());
-          foundEdge->print(stderr);
-          fprintf(stderr," makes %s <%d,%d> redundant\n",
+          foundEdge->print(TFo;e);
+          fprintf(TFile," makes %s <%d,%d> redundant\n",
                   (etype == ETYPE_LOAD)?"from":"to",
                       SYM_ST_IDX(nodeRep->cg_st_idx()),nodeRep->offset());
           continue;
@@ -1722,7 +1728,7 @@ ConstraintGraphSolve::processLoad(const ConstraintGraphEdge *edge)
   if (src->checkFlags(CG_NODE_FLAGS_UNKNOWN)) {
     if (Get_Trace(TP_ALIAS,NYSTROM_SOLVER_FLAG) &&
          !dst->checkFlags(CG_NODE_FLAGS_UNKNOWN))
-       fprintf(stderr,"processLoad: propagate unknown %d -> %d\n",
+       fprintf(TFile,"processLoad: propagate unknown %d -> %d\n",
            src->id(),dst->id());
     dst->addFlags(CG_NODE_FLAGS_UNKNOWN);
   }
@@ -1759,13 +1765,13 @@ ConstraintGraphSolve::processStore(const ConstraintGraphEdge *edge)
   // punt.  We simply terminate the solver.
   if (dst->checkFlags(CG_NODE_FLAGS_UNKNOWN)) {
     // Here we dump a giant warning to help track down these issues
-    fprintf(stderr,"=========================================\n");
-    fprintf(stderr,"PU: %d processStore",Current_PU_Count());
-    edge->print(stderr);
-    fprintf(stderr,"\n");
-    src->print(stderr);
-    dst->print(stderr);
-    fprintf(stderr,"=========================================\n");
+    fprintf(TFile,"=========================================\n");
+    fprintf(TFile,"PU: %d processStore",Current_PU_Count());
+    edge->print(TFile);
+    fprintf(TFile,"\n");
+    src->print(TFile);
+    dst->print(TFile);
+    fprintf(TFile,"=========================================\n");
     if (!src->checkFlags(CG_NODE_FLAGS_UNKNOWN)) {
       for (CGIdToNodeMapIterator iter = ConstraintGraph::gBegin();
            iter != ConstraintGraph::gEnd(); iter++) {
@@ -1828,7 +1834,7 @@ void
 ConstraintGraph::simpleOptimizer()
 {
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_OPT_FLAG))
-    fprintf(stderr, "Optimizing ConstraintGraphs...\n");
+    fprintf(TFile, "Optimizing ConstraintGraphs...\n");
   // Iterate over all nodes in the graph
   // Simple optimizer, find nodes that have single outgoing/incoming
   // copy edge connecting the two nodes
@@ -1896,7 +1902,7 @@ ConstraintGraph::simpleOptimizer()
       ConstraintGraph::adjustPointsToForKCycle(parentNode);
 
     if (Get_Trace(TP_ALIAS,NYSTROM_CG_OPT_FLAG))
-      fprintf(stderr, "simpleOptimizer - Merging node %d with %d\n",
+      fprintf(TFile, "simpleOptimizer - Merging node %d with %d\n",
               toBeMergedNode->id(), parentNode->id());
     if (toBeMergedNode->stInfo()->checkFlags(CG_ST_FLAGS_PREG) &&
         toBeMergedNode->canBeDeleted())
@@ -2012,7 +2018,7 @@ ConstraintGraph::simpleOptimizer()
   }
 
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_OPT_FLAG))
-    fprintf(stderr, "Done optimizing ConstraintGraphs\n");
+    fprintf(TFile, "Done optimizing ConstraintGraphs\n");
 }
 
 #define MAX_ALLOWED_ST_PER_TYPE 32
@@ -2021,7 +2027,7 @@ void
 ConstraintGraph::ipaSimpleOptimizer()
 {
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_OPT_FLAG))
-    fprintf(stderr, "IPA optimizing ConstraintGraphs...\n");
+    fprintf(TFile, "IPA optimizing ConstraintGraphs...\n");
 
   CGStInfoMap allStInfos;
   for (CGIdToNodeMapIterator iter = gBegin(); iter != gEnd(); iter++) 
@@ -2046,15 +2052,15 @@ ConstraintGraph::ipaSimpleOptimizer()
     {
       if (stInfoCount[ty_idx] > MAX_ALLOWED_ST_PER_TYPE) {
         // Collapse the StInfo to create a single node for this StInfo
-        fprintf(stderr, "Count: %d exceeded threshold for st cg_st_idx: %llu "
+        fprintf(TFile, "Count: %d exceeded threshold for st cg_st_idx: %llu "
                 "..collapsing\n", stInfoCount[ty_idx], iter->first);
-        stInfo->print(stderr);
+        stInfo->print(TFile);
         stInfo->collapse();
         if (repStofType.find(ty_idx) == repStofType.end()) {
           // Mark this collapsed StInfo as the representative
           repStofType[ty_idx] = stInfo;
-          fprintf(stderr, "Identifying rep:\n");
-          stInfo->print(stderr);
+          fprintf(TFile, "Identifying rep:\n");
+          stInfo->print(TFile);
           FmtAssert(stInfo->firstOffset()->nextOffset() == NULL,
                     ("Only single offset expected"));
         }
@@ -2066,7 +2072,7 @@ ConstraintGraph::ipaSimpleOptimizer()
           ConstraintGraphNode *node = stInfo->firstOffset();
           // Collapse the firstOffset with the rep's firstOffset
           repNode->collapse(node);
-          fprintf(stderr, "Collapsing node: %d with %d\n", node->id(),
+          fprintf(TFile, "Collapsing node: %d with %d\n", node->id(),
                   repNode->id());
         }
       } else
@@ -2075,5 +2081,5 @@ ConstraintGraph::ipaSimpleOptimizer()
   }
 
   if (Get_Trace(TP_ALIAS,NYSTROM_CG_OPT_FLAG))
-    fprintf(stderr, "Done IPA optimizing ConstraintGraphs\n");
+    fprintf(TFile, "Done IPA optimizing ConstraintGraphs\n");
 }

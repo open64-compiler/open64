@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -384,7 +388,7 @@ extern void Expand_Start();
 extern void Expand_Finish();
 #endif 
 
-#ifdef TARG_X8664
+#if defined(TARG_X8664) || defined(TARG_UWASM)
 extern void CG_Set_Is_Stack_Used();
 #endif
 

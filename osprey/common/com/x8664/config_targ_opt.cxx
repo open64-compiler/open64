@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -82,9 +86,9 @@
  */
 
 /* General target control: */
-char *ABI_Name = NULL;		/* -TARG:abi=xxx */
-char *ISA_Name = NULL;		/* -TARG:isa=xxx */
-char *Processor_Name = NULL;	/* -TARG:processor=xxx */
+const char *ABI_Name = NULL;		/* -TARG:abi=xxx */
+const char *ISA_Name = NULL;		/* -TARG:isa=xxx */
+const char *Processor_Name = NULL;	/* -TARG:processor=xxx */
 static char * Platform_Name = NULL;
 INT16 Target_FPRs = 0;		/* -TARG:fp_regs=nn */
 BOOL Pure_ABI = FALSE;		/* Avoid non-ABI constructs? */
