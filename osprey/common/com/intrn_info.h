@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright (C) 2009-2010 Advanced Micro Devices, Inc.  All Rights Reserved.
  */
 
@@ -103,6 +107,13 @@ typedef enum INTRN_RETKIND {
   IRETURN_PPU2,         /* return type of ctype_b_loc() */
   IRETURN_PPI4,         /* return type of ctype_toupper_loc() and ctype_tolower_loc() */
 } INTRN_RETKIND;
+
+#ifdef DYNAMICLANG
+#define IRETURN_DYNANY IRETURN_I8            /* MTYPE_DYNANY */
+#define IRETURN_DYNOBJ IRETURN_I8            /* MTYPE_DYNOBJ */
+#define IRETURN_DYNSTR IRETURN_I8            /* MTYPE_DYNSTR */
+#endif
+
 #define INTRN_RETKIND_LAST IRETURN_F10
 
 #if defined(TARG_IA64) || defined(TARG_X8664)
@@ -209,6 +220,16 @@ inline const char * INTRINSIC_name (const INTRINSIC i)
 	return INTRN_rt_name(i);
   else
   	return intrn_info[i].specific_name;
+}
+
+inline void Print_intrn_entry(FILE *fp, const INTRINSIC id)
+{
+  fprintf(
+    fp,
+    "ID: %d, name: %s, is_by_val: %d, is_pure: %d, has_no_side_effects: %d, never_returns: %d, is_actual: %d, is_cg_intrinsic: %d, return_kind: %d\n",
+    id, INTRINSIC_name(id), INTRN_by_value(id), INTRN_is_pure(id), INTRN_has_no_side_effects(id),
+    INTRN_never_returns(id), INTRN_is_actual(id), INTRN_cg_intrinsic(id), INTRN_RETKIND(id)
+  );
 }
 
 #if defined(TARG_SL)

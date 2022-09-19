@@ -1,0 +1,213 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+
+/* auto-generated intrinsics for c++ std_deque intrinsic. 2021-10-26 11:56:43 */
+
+/* _ZNSt3__15deque6assignESt16initializer_listIT_E deque::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6assignESt16initializer_listIT_E, "_ZNSt3__15deque6assignESt16initializer_listIT_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque6assignESt16initializer_listIT_E", "deque::assign", "std::__1::deque<typename _Tp, typename _Allocator>::assign(initializer_list<std::__1::deque::value_type> __il)")
+/* _ZNSt3__15deque6assignETL0__S1_PNS_9enable_ifIXaasr19__is_input_iteratorIS1_EE5valuentsr27__is_random_access_iteratorIS1_EE5valueEvE4typeE deque::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6assignETL0__S1_PNS_9enable_ifIXaasr19__is_input_iteratorIS1_EE5valuentsr27__is_random_access_iteratorIS1_EE5valueEvE4typeE, "_ZNSt3__15deque6assignETL0__S1_PNS_9enable_ifIXaasr19__is_input_iteratorIS1_EE5valuentsr27__is_random_access_iteratorIS1_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque6assignETL0__S1_PNS_9enable_ifIXaasr19__is_input_iteratorIS1_EE5valuentsr27__is_random_access_iteratorIS1_EE5valueEvE4typeE", "deque::assign", "std::__1::deque<typename _Tp, typename _Allocator>::assign<typename _InputIter>(_InputIter __f, _InputIter __l, typename enable_if<__is_input_iterator<_InputIter>::value && !__is_random_access_iterator<_InputIter>::value>::type * )")
+/* _ZNSt3__15deque6assignETL0__S1_PNS_9enable_ifIXsr27__is_random_access_iteratorIS1_EE5valueEvE4typeE deque::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6assignETL0__S1_PNS_9enable_ifIXsr27__is_random_access_iteratorIS1_EE5valueEvE4typeE, "_ZNSt3__15deque6assignETL0__S1_PNS_9enable_ifIXsr27__is_random_access_iteratorIS1_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque6assignETL0__S1_PNS_9enable_ifIXsr27__is_random_access_iteratorIS1_EE5valueEvE4typeE", "deque::assign", "std::__1::deque<typename _Tp, typename _Allocator>::assign<typename _RAIter>(_RAIter __f, _RAIter __l, typename enable_if<__is_random_access_iterator<_RAIter>::value>::type * )")
+/* _ZNSt3__15deque6assignENS_12__deque_baseIT_T0_E9size_typeERKS2_ deque::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6assignENS_12__deque_baseIT_T0_E9size_typeERKS2_, "_ZNSt3__15deque6assignENS_12__deque_baseIT_T0_E9size_typeERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque6assignENS_12__deque_baseIT_T0_E9size_typeERKS2_", "deque::assign", "std::__1::deque<typename _Tp, typename _Allocator>::assign(std::__1::deque::size_type __n, const std::__1::deque::value_type & __v)")
+/* _ZNKSt3__15deque13get_allocatorEv deque::get_allocator */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque13get_allocatorEv, "_ZNKSt3__15deque13get_allocatorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque13get_allocatorEv", "deque::get_allocator", "std::__1::deque<typename _Tp, typename _Allocator>::get_allocator()")
+/* _ZNSt3__15deque5beginEv deque::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque5beginEv, "_ZNSt3__15deque5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque5beginEv", "deque::begin", "std::__1::deque<typename _Tp, typename _Allocator>::begin()")
+/* _ZNKSt3__15deque5beginEv deque::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque5beginEv, "_ZNKSt3__15deque5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque5beginEv", "deque::begin", "std::__1::deque<typename _Tp, typename _Allocator>::begin()")
+/* _ZNSt3__15deque3endEv deque::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque3endEv, "_ZNSt3__15deque3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque3endEv", "deque::end", "std::__1::deque<typename _Tp, typename _Allocator>::end()")
+/* _ZNKSt3__15deque3endEv deque::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque3endEv, "_ZNKSt3__15deque3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque3endEv", "deque::end", "std::__1::deque<typename _Tp, typename _Allocator>::end()")
+/* _ZNSt3__15deque6rbeginEv deque::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6rbeginEv, "_ZNSt3__15deque6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque6rbeginEv", "deque::rbegin", "std::__1::deque<typename _Tp, typename _Allocator>::rbegin()")
+/* _ZNKSt3__15deque6rbeginEv deque::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque6rbeginEv, "_ZNKSt3__15deque6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque6rbeginEv", "deque::rbegin", "std::__1::deque<typename _Tp, typename _Allocator>::rbegin()")
+/* _ZNSt3__15deque4rendEv deque::rend */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque4rendEv, "_ZNSt3__15deque4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque4rendEv", "deque::rend", "std::__1::deque<typename _Tp, typename _Allocator>::rend()")
+/* _ZNKSt3__15deque4rendEv deque::rend */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque4rendEv, "_ZNKSt3__15deque4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque4rendEv", "deque::rend", "std::__1::deque<typename _Tp, typename _Allocator>::rend()")
+/* _ZNKSt3__15deque4sizeEv deque::size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque4sizeEv, "_ZNKSt3__15deque4sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque4sizeEv", "deque::size", "std::__1::deque<typename _Tp, typename _Allocator>::size()")
+/* _ZNKSt3__15deque8max_sizeEv deque::max_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque8max_sizeEv, "_ZNKSt3__15deque8max_sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque8max_sizeEv", "deque::max_size", "std::__1::deque<typename _Tp, typename _Allocator>::max_size()")
+/* _ZNSt3__15deque6resizeENS_12__deque_baseIT_T0_E9size_typeE deque::resize */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6resizeENS_12__deque_baseIT_T0_E9size_typeE, "_ZNSt3__15deque6resizeENS_12__deque_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque6resizeENS_12__deque_baseIT_T0_E9size_typeE", "deque::resize", "std::__1::deque<typename _Tp, typename _Allocator>::resize(std::__1::deque::size_type __n)")
+/* _ZNSt3__15deque6resizeENS_12__deque_baseIT_T0_E9size_typeERKS2_ deque::resize */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6resizeENS_12__deque_baseIT_T0_E9size_typeERKS2_, "_ZNSt3__15deque6resizeENS_12__deque_baseIT_T0_E9size_typeERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque6resizeENS_12__deque_baseIT_T0_E9size_typeERKS2_", "deque::resize", "std::__1::deque<typename _Tp, typename _Allocator>::resize(std::__1::deque::size_type __n, const std::__1::deque::value_type & __v)")
+/* _ZNKSt3__15deque5emptyEv deque::empty */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque5emptyEv, "_ZNKSt3__15deque5emptyEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I1, "_ZNKSt3__15deque5emptyEv", "deque::empty", "std::__1::deque<typename _Tp, typename _Allocator>::empty()")
+/* _ZNSt3__15dequeixENS_12__deque_baseIT_T0_E9size_typeE deque::operator[] */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15dequeixENS_12__deque_baseIT_T0_E9size_typeE, "_ZNSt3__15dequeixENS_12__deque_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15dequeixENS_12__deque_baseIT_T0_E9size_typeE", "deque::operator[]", "std::__1::deque<typename _Tp, typename _Allocator>::operator[](std::__1::deque::size_type __i)")
+/* _ZNKSt3__15dequeixENS_12__deque_baseIT_T0_E9size_typeE deque::operator[] */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15dequeixENS_12__deque_baseIT_T0_E9size_typeE, "_ZNKSt3__15dequeixENS_12__deque_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15dequeixENS_12__deque_baseIT_T0_E9size_typeE", "deque::operator[]", "std::__1::deque<typename _Tp, typename _Allocator>::operator[](std::__1::deque::size_type __i)")
+/* _ZNSt3__15deque2atENS_12__deque_baseIT_T0_E9size_typeE deque::at */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque2atENS_12__deque_baseIT_T0_E9size_typeE, "_ZNSt3__15deque2atENS_12__deque_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque2atENS_12__deque_baseIT_T0_E9size_typeE", "deque::at", "std::__1::deque<typename _Tp, typename _Allocator>::at(std::__1::deque::size_type __i)")
+/* _ZNKSt3__15deque2atENS_12__deque_baseIT_T0_E9size_typeE deque::at */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque2atENS_12__deque_baseIT_T0_E9size_typeE, "_ZNKSt3__15deque2atENS_12__deque_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque2atENS_12__deque_baseIT_T0_E9size_typeE", "deque::at", "std::__1::deque<typename _Tp, typename _Allocator>::at(std::__1::deque::size_type __i)")
+/* _ZNSt3__15deque5frontEv deque::front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque5frontEv, "_ZNSt3__15deque5frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque5frontEv", "deque::front", "std::__1::deque<typename _Tp, typename _Allocator>::front()")
+/* _ZNKSt3__15deque5frontEv deque::front */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque5frontEv, "_ZNKSt3__15deque5frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque5frontEv", "deque::front", "std::__1::deque<typename _Tp, typename _Allocator>::front()")
+/* _ZNSt3__15deque4backEv deque::back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque4backEv, "_ZNSt3__15deque4backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque4backEv", "deque::back", "std::__1::deque<typename _Tp, typename _Allocator>::back()")
+/* _ZNKSt3__15deque4backEv deque::back */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15deque4backEv, "_ZNKSt3__15deque4backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15deque4backEv", "deque::back", "std::__1::deque<typename _Tp, typename _Allocator>::back()")
+/* _ZNSt3__15deque10push_frontERKT_ deque::push_front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque10push_frontERKT_, "_ZNSt3__15deque10push_frontERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque10push_frontERKT_", "deque::push_front", "std::__1::deque<typename _Tp, typename _Allocator>::push_front(const std::__1::deque::value_type & __v)")
+/* _ZNSt3__15deque9push_backERKT_ deque::push_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque9push_backERKT_, "_ZNSt3__15deque9push_backERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque9push_backERKT_", "deque::push_back", "std::__1::deque<typename _Tp, typename _Allocator>::push_back(const std::__1::deque::value_type & __v)")
+/* _ZNSt3__15deque10push_frontEOT_ deque::push_front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque10push_frontEOT_, "_ZNSt3__15deque10push_frontEOT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque10push_frontEOT_", "deque::push_front", "std::__1::deque<typename _Tp, typename _Allocator>::push_front(std::__1::deque::value_type && __v)")
+/* _ZNSt3__15deque9push_backEOT_ deque::push_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque9push_backEOT_, "_ZNSt3__15deque9push_backEOT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque9push_backEOT_", "deque::push_back", "std::__1::deque<typename _Tp, typename _Allocator>::push_back(std::__1::deque::value_type && __v)")
+/* _ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorEOS2_ deque::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorEOS2_, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorEOS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorEOS2_", "deque::insert", "std::__1::deque<typename _Tp, typename _Allocator>::insert(std::__1::deque::const_iterator __p, std::__1::deque::value_type && __v)")
+/* _ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorESt16initializer_listIS2_E deque::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorESt16initializer_listIS2_E, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorESt16initializer_listIS2_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorESt16initializer_listIS2_E", "deque::insert", "std::__1::deque<typename _Tp, typename _Allocator>::insert(std::__1::deque::const_iterator __p, initializer_list<std::__1::deque::value_type> __il)")
+/* _ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorERKS2_ deque::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorERKS2_, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorERKS2_", "deque::insert", "std::__1::deque<typename _Tp, typename _Allocator>::insert(std::__1::deque::const_iterator __p, const std::__1::deque::value_type & __v)")
+/* _ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorENS4_9size_typeERKS2_ deque::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorENS4_9size_typeERKS2_, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorENS4_9size_typeERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorENS4_9size_typeERKS2_", "deque::insert", "std::__1::deque<typename _Tp, typename _Allocator>::insert(std::__1::deque::const_iterator __p, std::__1::deque::size_type __n, const std::__1::deque::value_type & __v)")
+/* _ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXaasr19__is_input_iteratorIS6_EE5valuentsr21__is_forward_iteratorIS6_EE5valueEvE4typeE deque::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXaasr19__is_input_iteratorIS6_EE5valuentsr21__is_forward_iteratorIS6_EE5valueEvE4typeE, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXaasr19__is_input_iteratorIS6_EE5valuentsr21__is_forward_iteratorIS6_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXaasr19__is_input_iteratorIS6_EE5valuentsr21__is_forward_iteratorIS6_EE5valueEvE4typeE", "deque::insert", "std::__1::deque<typename _Tp, typename _Allocator>::insert<typename _InputIter>(std::__1::deque::const_iterator __p, _InputIter __f, _InputIter __l, typename enable_if<__is_input_iterator<_InputIter>::value && !__is_forward_iterator<_InputIter>::value>::type * )")
+/* _ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXaasr21__is_forward_iteratorIS6_EE5valuentsr27__is_bidirectional_iteratorIS6_EE5valueEvE4typeE deque::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXaasr21__is_forward_iteratorIS6_EE5valuentsr27__is_bidirectional_iteratorIS6_EE5valueEvE4typeE, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXaasr21__is_forward_iteratorIS6_EE5valuentsr27__is_bidirectional_iteratorIS6_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXaasr21__is_forward_iteratorIS6_EE5valuentsr27__is_bidirectional_iteratorIS6_EE5valueEvE4typeE", "deque::insert", "std::__1::deque<typename _Tp, typename _Allocator>::insert<typename _ForwardIterator>(std::__1::deque::const_iterator __p, _ForwardIterator __f, _ForwardIterator __l, typename enable_if<__is_forward_iterator<_ForwardIterator>::value && !__is_bidirectional_iterator<_ForwardIterator>::value>::type * )")
+/* _ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXsr27__is_bidirectional_iteratorIS6_EE5valueEvE4typeE deque::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXsr27__is_bidirectional_iteratorIS6_EE5valueEvE4typeE, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXsr27__is_bidirectional_iteratorIS6_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque6insertENS_12__deque_baseIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXsr27__is_bidirectional_iteratorIS6_EE5valueEvE4typeE", "deque::insert", "std::__1::deque<typename _Tp, typename _Allocator>::insert<typename _BiIter>(std::__1::deque::const_iterator __p, _BiIter __f, _BiIter __l, typename enable_if<__is_bidirectional_iterator<_BiIter>::value>::type * )")
+/* _ZNSt3__15deque9pop_frontEv deque::pop_front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque9pop_frontEv, "_ZNSt3__15deque9pop_frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque9pop_frontEv", "deque::pop_front", "std::__1::deque<typename _Tp, typename _Allocator>::pop_front()")
+/* _ZNSt3__15deque8pop_backEv deque::pop_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque8pop_backEv, "_ZNSt3__15deque8pop_backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque8pop_backEv", "deque::pop_back", "std::__1::deque<typename _Tp, typename _Allocator>::pop_back()")
+/* _ZNSt3__15deque5eraseENS_12__deque_baseIT_T0_E14const_iteratorE deque::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque5eraseENS_12__deque_baseIT_T0_E14const_iteratorE, "_ZNSt3__15deque5eraseENS_12__deque_baseIT_T0_E14const_iteratorE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque5eraseENS_12__deque_baseIT_T0_E14const_iteratorE", "deque::erase", "std::__1::deque<typename _Tp, typename _Allocator>::erase(std::__1::deque::const_iterator __p)")
+/* _ZNSt3__15deque5eraseENS_12__deque_baseIT_T0_E14const_iteratorES5_ deque::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque5eraseENS_12__deque_baseIT_T0_E14const_iteratorES5_, "_ZNSt3__15deque5eraseENS_12__deque_baseIT_T0_E14const_iteratorES5_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15deque5eraseENS_12__deque_baseIT_T0_E14const_iteratorES5_", "deque::erase", "std::__1::deque<typename _Tp, typename _Allocator>::erase(std::__1::deque::const_iterator __f, std::__1::deque::const_iterator __l)")
+/* _ZNSt3__15deque4swapERNS_5dequeIT_T0_EE deque::swap */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque4swapERNS_5dequeIT_T0_EE, "_ZNSt3__15deque4swapERNS_5dequeIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque4swapERNS_5dequeIT_T0_EE", "deque::swap", "std::__1::deque<typename _Tp, typename _Allocator>::swap(deque<_Tp, _Allocator> & __c)")
+/* _ZNSt3__15deque5clearEv deque::clear */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15deque5clearEv, "_ZNSt3__15deque5clearEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15deque5clearEv", "deque::clear", "std::__1::deque<typename _Tp, typename _Allocator>::clear()")
+/* end */

@@ -1,0 +1,293 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+
+/* auto-generated intrinsics for c++ std_map intrinsic. 2021-10-26 11:56:53 */
+
+/* _ZNSt3__13mapC1Ev map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1Ev, "_ZNSt3__13mapC1Ev", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1Ev", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map()")
+/* _ZNSt3__13mapC1ERKT1_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ERKT1_, "_ZNSt3__13mapC1ERKT1_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ERKT1_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(const std::__1::map::key_compare & __comp)")
+/* _ZNSt3__13mapC1ERKT1_RKT2_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ERKT1_RKT2_, "_ZNSt3__13mapC1ERKT1_RKT2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ERKT1_RKT2_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(const std::__1::map::key_compare & __comp, const std::__1::map::allocator_type & __a)")
+/* _ZNSt3__13mapC1ETL0__S1_RKT1_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ETL0__S1_RKT1_, "_ZNSt3__13mapC1ETL0__S1_RKT1_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ETL0__S1_RKT1_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map<typename _InputIterator>(_InputIterator __f, _InputIterator __l, const std::__1::map::key_compare & __comp)")
+/* _ZNSt3__13mapC1ETL0__S1_RKT1_RKT2_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ETL0__S1_RKT1_RKT2_, "_ZNSt3__13mapC1ETL0__S1_RKT1_RKT2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ETL0__S1_RKT1_RKT2_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map<typename _InputIterator>(_InputIterator __f, _InputIterator __l, const std::__1::map::key_compare & __comp, const std::__1::map::allocator_type & __a)")
+/* _ZNSt3__13mapC1ETL0__S1_RKT2_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ETL0__S1_RKT2_, "_ZNSt3__13mapC1ETL0__S1_RKT2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ETL0__S1_RKT2_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map<typename _InputIterator>(_InputIterator __f, _InputIterator __l, const std::__1::map::allocator_type & __a)")
+/* _ZNSt3__13mapC1ERKNS_3mapIT_T0_T1_T2_EE map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ERKNS_3mapIT_T0_T1_T2_EE, "_ZNSt3__13mapC1ERKNS_3mapIT_T0_T1_T2_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ERKNS_3mapIT_T0_T1_T2_EE", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(const map<_Key, _Tp, _Compare, _Allocator> & __m)")
+/* _ZNSt3__13mapC1EONS_3mapIT_T0_T1_T2_EE map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1EONS_3mapIT_T0_T1_T2_EE, "_ZNSt3__13mapC1EONS_3mapIT_T0_T1_T2_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1EONS_3mapIT_T0_T1_T2_EE", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(map<_Key, _Tp, _Compare, _Allocator> && __m)")
+/* _ZNSt3__13mapC1EONS_3mapIT_T0_T1_T2_EERKS5_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1EONS_3mapIT_T0_T1_T2_EERKS5_, "_ZNSt3__13mapC1EONS_3mapIT_T0_T1_T2_EERKS5_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1EONS_3mapIT_T0_T1_T2_EERKS5_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(map<_Key, _Tp, _Compare, _Allocator> && __m, const std::__1::map::allocator_type & __a)")
+/* _ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT1_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT1_, "_ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT1_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT1_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(initializer_list<std::__1::map::value_type> __il, const std::__1::map::key_compare & __comp)")
+/* _ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT1_RKT2_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT1_RKT2_, "_ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT1_RKT2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT1_RKT2_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(initializer_list<std::__1::map::value_type> __il, const std::__1::map::key_compare & __comp, const std::__1::map::allocator_type & __a)")
+/* _ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT2_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT2_, "_ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ESt16initializer_listINS_4pairIKT_T0_EEERKT2_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(initializer_list<std::__1::map::value_type> __il, const std::__1::map::allocator_type & __a)")
+/* _ZNSt3__13mapC1ERKT2_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ERKT2_, "_ZNSt3__13mapC1ERKT2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ERKT2_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(const std::__1::map::allocator_type & __a)")
+/* _ZNSt3__13mapC1ERKNS_3mapIT_T0_T1_T2_EERKS5_ map::map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapC1ERKNS_3mapIT_T0_T1_T2_EERKS5_, "_ZNSt3__13mapC1ERKNS_3mapIT_T0_T1_T2_EERKS5_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapC1ERKNS_3mapIT_T0_T1_T2_EERKS5_", "map::map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::map(const map<_Key, _Tp, _Compare, _Allocator> & __m, const std::__1::map::allocator_type & __a)")
+/* _ZNSt3__13map5beginEv map::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map5beginEv, "_ZNSt3__13map5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map5beginEv", "map::begin", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::begin()")
+/* _ZNKSt3__13map5beginEv map::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map5beginEv, "_ZNKSt3__13map5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map5beginEv", "map::begin", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::begin()")
+/* _ZNSt3__13map3endEv map::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map3endEv, "_ZNSt3__13map3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map3endEv", "map::end", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::end()")
+/* _ZNKSt3__13map3endEv map::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map3endEv, "_ZNKSt3__13map3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map3endEv", "map::end", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::end()")
+/* _ZNSt3__13map6rbeginEv map::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6rbeginEv, "_ZNSt3__13map6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map6rbeginEv", "map::rbegin", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::rbegin()")
+/* _ZNKSt3__13map6rbeginEv map::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map6rbeginEv, "_ZNKSt3__13map6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map6rbeginEv", "map::rbegin", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::rbegin()")
+/* _ZNSt3__13map4rendEv map::rend */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map4rendEv, "_ZNSt3__13map4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map4rendEv", "map::rend", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::rend()")
+/* _ZNKSt3__13map4rendEv map::rend */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map4rendEv, "_ZNKSt3__13map4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map4rendEv", "map::rend", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::rend()")
+/* _ZNKSt3__13map5emptyEv map::empty */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map5emptyEv, "_ZNKSt3__13map5emptyEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I1, "_ZNKSt3__13map5emptyEv", "map::empty", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::empty()")
+/* _ZNKSt3__13map4sizeEv map::size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map4sizeEv, "_ZNKSt3__13map4sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map4sizeEv", "map::size", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::size()")
+/* _ZNKSt3__13map8max_sizeEv map::max_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map8max_sizeEv, "_ZNKSt3__13map8max_sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map8max_sizeEv", "map::max_size", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::max_size()")
+/* _ZNSt3__13mapixERKT_ map::operator[] */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapixERKT_, "_ZNSt3__13mapixERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__13mapixERKT_", "map::operator[]", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::operator[](const std::__1::map::key_type & __k)")
+/* _ZNSt3__13mapixEOT_ map::operator[] */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapixEOT_, "_ZNSt3__13mapixEOT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__13mapixEOT_", "map::operator[]", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::operator[](std::__1::map::key_type && __k)")
+/* _ZNKSt3__13map13get_allocatorEv map::get_allocator */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map13get_allocatorEv, "_ZNKSt3__13map13get_allocatorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map13get_allocatorEv", "map::get_allocator", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::get_allocator()")
+/* _ZNKSt3__13map8key_compEv map::key_comp */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map8key_compEv, "_ZNKSt3__13map8key_compEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map8key_compEv", "map::key_comp", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::key_comp()")
+/* _ZNKSt3__13map10value_compEv map::value_comp */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map10value_compEv, "_ZNKSt3__13map10value_compEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__13map10value_compEv", "map::value_comp", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::value_comp()")
+/* _ZNSt3__13map6insertEOTL0__ map::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6insertEOTL0__, "_ZNSt3__13map6insertEOTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map6insertEOTL0__", "map::insert", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert<typename _Pp, typename >(_Pp && __p)")
+/* _ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEOTL0__ map::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEOTL0__, "_ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEOTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEOTL0__", "map::insert", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert<typename _Pp, typename >(std::__1::map::const_iterator __pos, _Pp && __p)")
+/* _ZNSt3__13map6insertERKNS_4pairIKT_T0_EE map::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6insertERKNS_4pairIKT_T0_EE, "_ZNSt3__13map6insertERKNS_4pairIKT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map6insertERKNS_4pairIKT_T0_EE", "map::insert", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(const std::__1::map::value_type & __v)")
+/* _ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEERKNS_4pairIKS4_S5_EE map::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEERKNS_4pairIKS4_S5_EE, "_ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEERKNS_4pairIKS4_S5_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEERKNS_4pairIKS4_S5_EE", "map::insert", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(std::__1::map::const_iterator __p, const std::__1::map::value_type & __v)")
+/* _ZNSt3__13map6insertEONS_4pairIKT_T0_EE map::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6insertEONS_4pairIKT_T0_EE, "_ZNSt3__13map6insertEONS_4pairIKT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map6insertEONS_4pairIKT_T0_EE", "map::insert", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(std::__1::map::value_type && __v)")
+/* _ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEONS_4pairIKS4_S5_EE map::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEONS_4pairIKS4_S5_EE, "_ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEONS_4pairIKS4_S5_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEONS_4pairIKS4_S5_EE", "map::insert", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(std::__1::map::const_iterator __p, std::__1::map::value_type && __v)")
+/* _ZNSt3__13map6insertESt16initializer_listINS_4pairIKT_T0_EEE map::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6insertESt16initializer_listINS_4pairIKT_T0_EEE, "_ZNSt3__13map6insertESt16initializer_listINS_4pairIKT_T0_EEE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13map6insertESt16initializer_listINS_4pairIKT_T0_EEE", "map::insert", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(initializer_list<std::__1::map::value_type> __il)")
+/* _ZNSt3__13map6insertETL0__S1_ map::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map6insertETL0__S1_, "_ZNSt3__13map6insertETL0__S1_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13map6insertETL0__S1_", "map::insert", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert<typename _InputIterator>(_InputIterator __f, _InputIterator __l)")
+/* _ZNSt3__13map5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEE map::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEE, "_ZNSt3__13map5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEE", "map::erase", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::erase(std::__1::map::const_iterator __p)")
+/* _ZNSt3__13map5eraseENS_14__map_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE8iteratorEEE map::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map5eraseENS_14__map_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE8iteratorEEE, "_ZNSt3__13map5eraseENS_14__map_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE8iteratorEEE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map5eraseENS_14__map_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE8iteratorEEE", "map::erase", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::erase(std::__1::map::iterator __p)")
+/* _ZNSt3__13map5eraseERKT_ map::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map5eraseERKT_, "_ZNSt3__13map5eraseERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map5eraseERKT_", "map::erase", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::erase(const std::__1::map::key_type & __k)")
+/* _ZNSt3__13map5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEESI_ map::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEESI_, "_ZNSt3__13map5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEESI_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEESI_", "map::erase", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::erase(std::__1::map::const_iterator __f, std::__1::map::const_iterator __l)")
+/* _ZNSt3__13map5clearEv map::clear */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map5clearEv, "_ZNSt3__13map5clearEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13map5clearEv", "map::clear", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::clear()")
+/* _ZNSt3__13map4swapERNS_3mapIT_T0_T1_T2_EE map::swap */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map4swapERNS_3mapIT_T0_T1_T2_EE, "_ZNSt3__13map4swapERNS_3mapIT_T0_T1_T2_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13map4swapERNS_3mapIT_T0_T1_T2_EE", "map::swap", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::swap(map<_Key, _Tp, _Compare, _Allocator> & __m)")
+/* _ZNSt3__13map4findERKT_ map::find */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map4findERKT_, "_ZNSt3__13map4findERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map4findERKT_", "map::find", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::find(const std::__1::map::key_type & __k)")
+/* _ZNKSt3__13map4findERKT_ map::find */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map4findERKT_, "_ZNKSt3__13map4findERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map4findERKT_", "map::find", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::find(const std::__1::map::key_type & __k)")
+/* _ZNSt3__13map4findERKTL0__ map::find */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map4findERKTL0__, "_ZNSt3__13map4findERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map4findERKTL0__", "map::find", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::find<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13map4findERKTL0__ map::find */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map4findERKTL0__, "_ZNKSt3__13map4findERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map4findERKTL0__", "map::find", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::find<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13map5countERKT_ map::count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map5countERKT_, "_ZNKSt3__13map5countERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map5countERKT_", "map::count", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::count(const std::__1::map::key_type & __k)")
+/* _ZNKSt3__13map5countERKTL0__ map::count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map5countERKTL0__, "_ZNKSt3__13map5countERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map5countERKTL0__", "map::count", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::count<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__13map11lower_boundERKT_ map::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map11lower_boundERKT_, "_ZNSt3__13map11lower_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map11lower_boundERKT_", "map::lower_bound", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::lower_bound(const std::__1::map::key_type & __k)")
+/* _ZNKSt3__13map11lower_boundERKT_ map::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map11lower_boundERKT_, "_ZNKSt3__13map11lower_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map11lower_boundERKT_", "map::lower_bound", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::lower_bound(const std::__1::map::key_type & __k)")
+/* _ZNSt3__13map11lower_boundERKTL0__ map::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map11lower_boundERKTL0__, "_ZNSt3__13map11lower_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map11lower_boundERKTL0__", "map::lower_bound", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::lower_bound<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13map11lower_boundERKTL0__ map::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map11lower_boundERKTL0__, "_ZNKSt3__13map11lower_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map11lower_boundERKTL0__", "map::lower_bound", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::lower_bound<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__13map11upper_boundERKT_ map::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map11upper_boundERKT_, "_ZNSt3__13map11upper_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map11upper_boundERKT_", "map::upper_bound", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::upper_bound(const std::__1::map::key_type & __k)")
+/* _ZNKSt3__13map11upper_boundERKT_ map::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map11upper_boundERKT_, "_ZNKSt3__13map11upper_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map11upper_boundERKT_", "map::upper_bound", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::upper_bound(const std::__1::map::key_type & __k)")
+/* _ZNSt3__13map11upper_boundERKTL0__ map::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map11upper_boundERKTL0__, "_ZNSt3__13map11upper_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map11upper_boundERKTL0__", "map::upper_bound", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::upper_bound<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13map11upper_boundERKTL0__ map::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map11upper_boundERKTL0__, "_ZNKSt3__13map11upper_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map11upper_boundERKTL0__", "map::upper_bound", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::upper_bound<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__13map11equal_rangeERKT_ map::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map11equal_rangeERKT_, "_ZNSt3__13map11equal_rangeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map11equal_rangeERKT_", "map::equal_range", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::equal_range(const std::__1::map::key_type & __k)")
+/* _ZNKSt3__13map11equal_rangeERKT_ map::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map11equal_rangeERKT_, "_ZNKSt3__13map11equal_rangeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map11equal_rangeERKT_", "map::equal_range", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::equal_range(const std::__1::map::key_type & __k)")
+/* _ZNSt3__13map11equal_rangeERKTL0__ map::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13map11equal_rangeERKTL0__, "_ZNSt3__13map11equal_rangeERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13map11equal_rangeERKTL0__", "map::equal_range", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::equal_range<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13map11equal_rangeERKTL0__ map::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13map11equal_rangeERKTL0__, "_ZNKSt3__13map11equal_rangeERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13map11equal_rangeERKTL0__", "map::equal_range", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::equal_range<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__13mapD1Ev map::~map */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13mapD1Ev, "_ZNSt3__13mapD1Ev", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13mapD1Ev", "map::~map", "std::__1::map<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::~map<_Key, _Tp, _Compare, _Allocator>()")
+/* end */

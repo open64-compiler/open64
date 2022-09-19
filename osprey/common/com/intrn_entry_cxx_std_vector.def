@@ -1,0 +1,265 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+
+/* auto-generated intrinsics for c++ std_vector intrinsic. 2021-10-26 11:57:14 */
+
+/* _ZNSt3__16vectorC1Ev vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1Ev, "_ZNSt3__16vectorC1Ev", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1Ev", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector()")
+/* _ZNSt3__16vectorC1ERKT0_ vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ERKT0_, "_ZNSt3__16vectorC1ERKT0_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ERKT0_", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(const std::__1::vector::allocator_type & __a)")
+/* _ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeE vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeE, "_ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeE", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(std::__1::vector::size_type __n)")
+/* _ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS3_ vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS3_, "_ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS3_", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(std::__1::vector::size_type __n, const std::__1::vector::allocator_type & __a)")
+/* _ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS2_ vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS2_, "_ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS2_", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(std::__1::vector::size_type __n, const std::__1::vector::value_type & __x)")
+/* _ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS2_RKS3_ vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS2_RKS3_, "_ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS2_RKS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ENS_13__vector_baseIT_T0_E9size_typeERKS2_RKS3_", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(std::__1::vector::size_type __n, const std::__1::vector::value_type & __x, const std::__1::vector::allocator_type & __a)")
+/* _ZNSt3__16vectorC1ETL0__NS_9enable_ifIXaaaasr19__is_input_iteratorIS1_EE5valuentsr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueES1_E4typeE vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ETL0__NS_9enable_ifIXaaaasr19__is_input_iteratorIS1_EE5valuentsr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueES1_E4typeE, "_ZNSt3__16vectorC1ETL0__NS_9enable_ifIXaaaasr19__is_input_iteratorIS1_EE5valuentsr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueES1_E4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ETL0__NS_9enable_ifIXaaaasr19__is_input_iteratorIS1_EE5valuentsr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueES1_E4typeE", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector<typename _InputIterator>(_InputIterator __first, typename enable_if<__is_input_iterator<_InputIterator>::value && !__is_forward_iterator<_InputIterator>::value && is_constructible<value_type, typename iterator_traits<_InputIterator>::reference>::value, _InputIterator>::type __last)")
+/* _ZNSt3__16vectorC1ETL0__S1_RKT0_PNS_9enable_ifIXaaaasr19__is_input_iteratorIS1_EE5valuentsr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueEvE4typeE vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ETL0__S1_RKT0_PNS_9enable_ifIXaaaasr19__is_input_iteratorIS1_EE5valuentsr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueEvE4typeE, "_ZNSt3__16vectorC1ETL0__S1_RKT0_PNS_9enable_ifIXaaaasr19__is_input_iteratorIS1_EE5valuentsr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ETL0__S1_RKT0_PNS_9enable_ifIXaaaasr19__is_input_iteratorIS1_EE5valuentsr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueEvE4typeE", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector<typename _InputIterator>(_InputIterator __first, _InputIterator __last, const std::__1::vector::allocator_type & __a, typename enable_if<__is_input_iterator<_InputIterator>::value && !__is_forward_iterator<_InputIterator>::value && is_constructible<value_type, typename iterator_traits<_InputIterator>::reference>::value>::type * )")
+/* _ZNSt3__16vectorC1ETL0__NS_9enable_ifIXaasr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueES1_E4typeE vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ETL0__NS_9enable_ifIXaasr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueES1_E4typeE, "_ZNSt3__16vectorC1ETL0__NS_9enable_ifIXaasr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueES1_E4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ETL0__NS_9enable_ifIXaasr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueES1_E4typeE", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector<typename _ForwardIterator>(_ForwardIterator __first, typename enable_if<__is_forward_iterator<_ForwardIterator>::value && is_constructible<value_type, typename iterator_traits<_ForwardIterator>::reference>::value, _ForwardIterator>::type __last)")
+/* _ZNSt3__16vectorC1ETL0__S1_RKT0_PNS_9enable_ifIXaasr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueEvE4typeE vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ETL0__S1_RKT0_PNS_9enable_ifIXaasr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueEvE4typeE, "_ZNSt3__16vectorC1ETL0__S1_RKT0_PNS_9enable_ifIXaasr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ETL0__S1_RKT0_PNS_9enable_ifIXaasr21__is_forward_iteratorIS1_EE5valuesr16is_constructibleIT_NS_15iterator_traitsIS1_E9referenceEEE5valueEvE4typeE", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector<typename _ForwardIterator>(_ForwardIterator __first, _ForwardIterator __last, const std::__1::vector::allocator_type & __a, typename enable_if<__is_forward_iterator<_ForwardIterator>::value && is_constructible<value_type, typename iterator_traits<_ForwardIterator>::reference>::value>::type * )")
+/* _ZNSt3__16vectorC1ERKNS_6vectorIT_T0_EE vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ERKNS_6vectorIT_T0_EE, "_ZNSt3__16vectorC1ERKNS_6vectorIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ERKNS_6vectorIT_T0_EE", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(const vector<_Tp, _Alloc> & __x)")
+/* _ZNSt3__16vectorC1ERKNS_6vectorIT_T0_EERKS3_ vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ERKNS_6vectorIT_T0_EERKS3_, "_ZNSt3__16vectorC1ERKNS_6vectorIT_T0_EERKS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ERKNS_6vectorIT_T0_EERKS3_", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(const vector<_Tp, _Alloc> & __x, const std::__1::vector::allocator_type & __a)")
+/* _ZNSt3__16vectorC1ESt16initializer_listIT_E vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ESt16initializer_listIT_E, "_ZNSt3__16vectorC1ESt16initializer_listIT_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ESt16initializer_listIT_E", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(initializer_list<std::__1::vector::value_type> __il)")
+/* _ZNSt3__16vectorC1ESt16initializer_listIT_ERKT0_ vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1ESt16initializer_listIT_ERKT0_, "_ZNSt3__16vectorC1ESt16initializer_listIT_ERKT0_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1ESt16initializer_listIT_ERKT0_", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(initializer_list<std::__1::vector::value_type> __il, const std::__1::vector::allocator_type & __a)")
+/* _ZNSt3__16vectorC1EONS_6vectorIT_T0_EE vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1EONS_6vectorIT_T0_EE, "_ZNSt3__16vectorC1EONS_6vectorIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1EONS_6vectorIT_T0_EE", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(vector<_Tp, _Alloc> && __x)")
+/* _ZNSt3__16vectorC1EONS_6vectorIT_T0_EERKS3_ vector::vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorC1EONS_6vectorIT_T0_EERKS3_, "_ZNSt3__16vectorC1EONS_6vectorIT_T0_EERKS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorC1EONS_6vectorIT_T0_EERKS3_", "vector::vector", "std::__1::vector<typename _Tp, typename _Allocator>::vector(vector<_Tp, _Alloc> && __x, const std::__1::vector::allocator_type & __a)")
+/* _ZNSt3__16vector6assignETL0__S1_ vector::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6assignETL0__S1_, "_ZNSt3__16vector6assignETL0__S1_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector6assignETL0__S1_", "vector::assign", "std::__1::vector<typename _Tp, typename _Allocator>::assign<typename _InputIterator>(_InputIterator __first, _InputIterator __last)")
+/* _ZNSt3__16vector6assignENS_13__vector_baseIT_T0_E9size_typeENS4_15const_referenceE vector::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6assignENS_13__vector_baseIT_T0_E9size_typeENS4_15const_referenceE, "_ZNSt3__16vector6assignENS_13__vector_baseIT_T0_E9size_typeENS4_15const_referenceE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector6assignENS_13__vector_baseIT_T0_E9size_typeENS4_15const_referenceE", "vector::assign", "std::__1::vector<typename _Tp, typename _Allocator>::assign(std::__1::vector::size_type __n, std::__1::vector::const_reference __u)")
+/* _ZNSt3__16vector6assignESt16initializer_listIT_E vector::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6assignESt16initializer_listIT_E, "_ZNSt3__16vector6assignESt16initializer_listIT_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector6assignESt16initializer_listIT_E", "vector::assign", "std::__1::vector<typename _Tp, typename _Allocator>::assign(initializer_list<std::__1::vector::value_type> __il)")
+/* _ZNKSt3__16vector13get_allocatorEv vector::get_allocator */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector13get_allocatorEv, "_ZNKSt3__16vector13get_allocatorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector13get_allocatorEv", "vector::get_allocator", "std::__1::vector<typename _Tp, typename _Allocator>::get_allocator()")
+/* _ZNSt3__16vector5beginEv vector::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector5beginEv, "_ZNSt3__16vector5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector5beginEv", "vector::begin", "std::__1::vector<typename _Tp, typename _Allocator>::begin()")
+/* _ZNKSt3__16vector5beginEv vector::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector5beginEv, "_ZNKSt3__16vector5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector5beginEv", "vector::begin", "std::__1::vector<typename _Tp, typename _Allocator>::begin()")
+/* _ZNSt3__16vector3endEv vector::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector3endEv, "_ZNSt3__16vector3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector3endEv", "vector::end", "std::__1::vector<typename _Tp, typename _Allocator>::end()")
+/* _ZNKSt3__16vector3endEv vector::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector3endEv, "_ZNKSt3__16vector3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector3endEv", "vector::end", "std::__1::vector<typename _Tp, typename _Allocator>::end()")
+/* _ZNSt3__16vector6rbeginEv vector::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6rbeginEv, "_ZNSt3__16vector6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector6rbeginEv", "vector::rbegin", "std::__1::vector<typename _Tp, typename _Allocator>::rbegin()")
+/* _ZNKSt3__16vector6rbeginEv vector::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector6rbeginEv, "_ZNKSt3__16vector6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector6rbeginEv", "vector::rbegin", "std::__1::vector<typename _Tp, typename _Allocator>::rbegin()")
+/* _ZNSt3__16vector4rendEv vector::rend */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector4rendEv, "_ZNSt3__16vector4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector4rendEv", "vector::rend", "std::__1::vector<typename _Tp, typename _Allocator>::rend()")
+/* _ZNKSt3__16vector4rendEv vector::rend */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector4rendEv, "_ZNKSt3__16vector4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector4rendEv", "vector::rend", "std::__1::vector<typename _Tp, typename _Allocator>::rend()")
+/* _ZNKSt3__16vector4sizeEv vector::size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector4sizeEv, "_ZNKSt3__16vector4sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector4sizeEv", "vector::size", "std::__1::vector<typename _Tp, typename _Allocator>::size()")
+/* _ZNKSt3__16vector8capacityEv vector::capacity */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector8capacityEv, "_ZNKSt3__16vector8capacityEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector8capacityEv", "vector::capacity", "std::__1::vector<typename _Tp, typename _Allocator>::capacity()")
+/* _ZNKSt3__16vector5emptyEv vector::empty */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector5emptyEv, "_ZNKSt3__16vector5emptyEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I1, "_ZNKSt3__16vector5emptyEv", "vector::empty", "std::__1::vector<typename _Tp, typename _Allocator>::empty()")
+/* _ZNKSt3__16vector8max_sizeEv vector::max_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector8max_sizeEv, "_ZNKSt3__16vector8max_sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector8max_sizeEv", "vector::max_size", "std::__1::vector<typename _Tp, typename _Allocator>::max_size()")
+/* _ZNSt3__16vector7reserveENS_13__vector_baseIT_T0_E9size_typeE vector::reserve */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector7reserveENS_13__vector_baseIT_T0_E9size_typeE, "_ZNSt3__16vector7reserveENS_13__vector_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector7reserveENS_13__vector_baseIT_T0_E9size_typeE", "vector::reserve", "std::__1::vector<typename _Tp, typename _Allocator>::reserve(std::__1::vector::size_type __n)")
+/* _ZNSt3__16vectorixENS_13__vector_baseIT_T0_E9size_typeE vector::operator[] */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorixENS_13__vector_baseIT_T0_E9size_typeE, "_ZNSt3__16vectorixENS_13__vector_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vectorixENS_13__vector_baseIT_T0_E9size_typeE", "vector::operator[]", "std::__1::vector<typename _Tp, typename _Allocator>::operator[](std::__1::vector::size_type __n)")
+/* _ZNKSt3__16vectorixENS_13__vector_baseIT_T0_E9size_typeE vector::operator[] */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vectorixENS_13__vector_baseIT_T0_E9size_typeE, "_ZNKSt3__16vectorixENS_13__vector_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vectorixENS_13__vector_baseIT_T0_E9size_typeE", "vector::operator[]", "std::__1::vector<typename _Tp, typename _Allocator>::operator[](std::__1::vector::size_type __n)")
+/* _ZNSt3__16vector2atENS_13__vector_baseIT_T0_E9size_typeE vector::at */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector2atENS_13__vector_baseIT_T0_E9size_typeE, "_ZNSt3__16vector2atENS_13__vector_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector2atENS_13__vector_baseIT_T0_E9size_typeE", "vector::at", "std::__1::vector<typename _Tp, typename _Allocator>::at(std::__1::vector::size_type __n)")
+/* _ZNKSt3__16vector2atENS_13__vector_baseIT_T0_E9size_typeE vector::at */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector2atENS_13__vector_baseIT_T0_E9size_typeE, "_ZNKSt3__16vector2atENS_13__vector_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector2atENS_13__vector_baseIT_T0_E9size_typeE", "vector::at", "std::__1::vector<typename _Tp, typename _Allocator>::at(std::__1::vector::size_type __n)")
+/* _ZNSt3__16vector5frontEv vector::front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector5frontEv, "_ZNSt3__16vector5frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector5frontEv", "vector::front", "std::__1::vector<typename _Tp, typename _Allocator>::front()")
+/* _ZNKSt3__16vector5frontEv vector::front */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector5frontEv, "_ZNKSt3__16vector5frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector5frontEv", "vector::front", "std::__1::vector<typename _Tp, typename _Allocator>::front()")
+/* _ZNSt3__16vector4backEv vector::back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector4backEv, "_ZNSt3__16vector4backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector4backEv", "vector::back", "std::__1::vector<typename _Tp, typename _Allocator>::back()")
+/* _ZNKSt3__16vector4backEv vector::back */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__16vector4backEv, "_ZNKSt3__16vector4backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__16vector4backEv", "vector::back", "std::__1::vector<typename _Tp, typename _Allocator>::back()")
+/* _ZNSt3__16vector9push_backENS_13__vector_baseIT_T0_E15const_referenceE vector::push_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector9push_backENS_13__vector_baseIT_T0_E15const_referenceE, "_ZNSt3__16vector9push_backENS_13__vector_baseIT_T0_E15const_referenceE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector9push_backENS_13__vector_baseIT_T0_E15const_referenceE", "vector::push_back", "std::__1::vector<typename _Tp, typename _Allocator>::push_back(std::__1::vector::const_reference __x)")
+/* _ZNSt3__16vector9push_backEOT_ vector::push_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector9push_backEOT_, "_ZNSt3__16vector9push_backEOT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector9push_backEOT_", "vector::push_back", "std::__1::vector<typename _Tp, typename _Allocator>::push_back(std::__1::vector::value_type && __x)")
+/* _ZNSt3__16vector8pop_backEv vector::pop_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector8pop_backEv, "_ZNSt3__16vector8pop_backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector8pop_backEv", "vector::pop_back", "std::__1::vector<typename _Tp, typename _Allocator>::pop_back()")
+/* _ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEENS5_15const_referenceE vector::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEENS5_15const_referenceE, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEENS5_15const_referenceE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEENS5_15const_referenceE", "vector::insert", "std::__1::vector<typename _Tp, typename _Allocator>::insert(std::__1::vector::const_iterator __position, std::__1::vector::const_reference __x)")
+/* _ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEEOS3_ vector::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEEOS3_, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEEOS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEEOS3_", "vector::insert", "std::__1::vector<typename _Tp, typename _Allocator>::insert(std::__1::vector::const_iterator __position, std::__1::vector::value_type && __x)")
+/* _ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEENS5_9size_typeENS5_15const_referenceE vector::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEENS5_9size_typeENS5_15const_referenceE, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEENS5_9size_typeENS5_15const_referenceE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEENS5_9size_typeENS5_15const_referenceE", "vector::insert", "std::__1::vector<typename _Tp, typename _Allocator>::insert(std::__1::vector::const_iterator __position, std::__1::vector::size_type __n, std::__1::vector::const_reference __x)")
+/* _ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEETL0__S8_ vector::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEETL0__S8_, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEETL0__S8_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEETL0__S8_", "vector::insert", "std::__1::vector<typename _Tp, typename _Allocator>::insert<typename _InputIterator>(std::__1::vector::const_iterator __position, _InputIterator __first, _InputIterator __last)")
+/* _ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEESt16initializer_listIS3_E vector::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEESt16initializer_listIS3_E, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEESt16initializer_listIS3_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector6insertENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEESt16initializer_listIS3_E", "vector::insert", "std::__1::vector<typename _Tp, typename _Allocator>::insert(std::__1::vector::const_iterator __position, initializer_list<std::__1::vector::value_type> __il)")
+/* _ZNSt3__16vector5eraseENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEE vector::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector5eraseENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEE, "_ZNSt3__16vector5eraseENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector5eraseENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEE", "vector::erase", "std::__1::vector<typename _Tp, typename _Allocator>::erase(std::__1::vector::const_iterator __position)")
+/* _ZNSt3__16vector5eraseENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEES7_ vector::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector5eraseENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEES7_, "_ZNSt3__16vector5eraseENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEES7_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__16vector5eraseENS_11__wrap_iterINS_13__vector_baseIT_T0_E13const_pointerEEES7_", "vector::erase", "std::__1::vector<typename _Tp, typename _Allocator>::erase(std::__1::vector::const_iterator __first, std::__1::vector::const_iterator __last)")
+/* _ZNSt3__16vector5clearEv vector::clear */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector5clearEv, "_ZNSt3__16vector5clearEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector5clearEv", "vector::clear", "std::__1::vector<typename _Tp, typename _Allocator>::clear()")
+/* _ZNSt3__16vector6resizeENS_13__vector_baseIT_T0_E9size_typeE vector::resize */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6resizeENS_13__vector_baseIT_T0_E9size_typeE, "_ZNSt3__16vector6resizeENS_13__vector_baseIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector6resizeENS_13__vector_baseIT_T0_E9size_typeE", "vector::resize", "std::__1::vector<typename _Tp, typename _Allocator>::resize(std::__1::vector::size_type __sz)")
+/* _ZNSt3__16vector6resizeENS_13__vector_baseIT_T0_E9size_typeENS4_15const_referenceE vector::resize */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector6resizeENS_13__vector_baseIT_T0_E9size_typeENS4_15const_referenceE, "_ZNSt3__16vector6resizeENS_13__vector_baseIT_T0_E9size_typeENS4_15const_referenceE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector6resizeENS_13__vector_baseIT_T0_E9size_typeENS4_15const_referenceE", "vector::resize", "std::__1::vector<typename _Tp, typename _Allocator>::resize(std::__1::vector::size_type __sz, std::__1::vector::const_reference __x)")
+/* _ZNSt3__16vector4swapERNS_6vectorIT_T0_EE vector::swap */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vector4swapERNS_6vectorIT_T0_EE, "_ZNSt3__16vector4swapERNS_6vectorIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vector4swapERNS_6vectorIT_T0_EE", "vector::swap", "std::__1::vector<typename _Tp, typename _Allocator>::swap(vector<_Tp, _Alloc> & )")
+/* _ZNSt3__16vectorD1Ev vector::~vector */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__16vectorD1Ev, "_ZNSt3__16vectorD1Ev", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__16vectorD1Ev", "vector::~vector", "std::__1::vector<typename _Tp, typename _Allocator>::~vector<_Tp, _Alloc>()")
+/* end */

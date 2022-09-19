@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020 XC5 Limited, Inc.  All Rights Reserved.
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
  */
 
 /*
@@ -8366,6 +8366,241 @@ DEF_INTRN_ENTRY(INTRN_ATOM_ALWAYS_LOCK_FREE, "ATOM_ALWAYS_LOCK_FREE", BYVAL, PUR
 DEF_INTRN_ENTRY(INTRN_ATOM_LOCK_FREE, "ATOM_LOCK_FREE", BYVAL, PURE, NO_SIDEEFFECTS,
                 DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
                 IRETURN_V, "atomic_lock_free", NULL, NULL)
+
+#ifdef DYNAMICLANG
+/* JavaScript Intrinsics */
+/* __js_init_context */
+DEF_INTRN_ENTRY(INTRN_JSR_INIT_CONTEXT, "JS_INIT_CONTEXT", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__js_init_context", "__js_init_context", "__js_init_context")
+/* __js_require */
+DEF_INTRN_ENTRY(INTRN_JSR_REQUIRE, "JS_REQUIRE", BYVAL, NOT_PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__js_require", NULL, NULL)
+/* __jsobj_get_or_create_builtin */
+DEF_INTRN_ENTRY(INTRN_JSR_GET_BIOBJECT, "JS_GET_BIOBJECT", BYVAL, PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNOBJ, "__jsobj_get_or_create_builtin", NULL, NULL)
+/* __jsstr_get_builtin */
+DEF_INTRN_ENTRY(INTRN_ISR_GET_BISTRING, "JS_GET_BISTRING", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNSTR, "__jsstr_get_builtin", NULL, NULL)
+/* __jsop_this */
+DEF_INTRN_ENTRY(INTRN_JSO_THIS, "JSOP_THIS", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_this", NULL, NULL)
+/* __jsop_add */
+DEF_INTRN_ENTRY(INTRN_JSO_ADD, "JSOP_ADD", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_add", NULL, NULL)
+/* __jsstr_concat_2 */
+DEF_INTRN_ENTRY(INTRN_JSO_CONCAT, "JSOP_CONCAT", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNSTR, "__jsstr_concat_2", NULL, NULL)
+/* __jsop_stricteq */
+DEF_INTRN_ENTRY(INTRN_JSO_STRICTEQ, "JSOP_STRICTEQ", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U1, "__jsop_stricteq", NULL, NULL)
+/* __jsstr_equal */
+DEF_INTRN_ENTRY(INTRN_JSO_STREQ, "JSSTR_STRICTEQ", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U1, "__jsstr_equal", NULL, NULL)
+/* __jsop_strictne */
+DEF_INTRN_ENTRY(INTRN_JSO_STRICTNE, "JSOP_STRICTNE", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U1, "__jsop_strictne", NULL, NULL)
+/* __jsstr_ne */
+DEF_INTRN_ENTRY(INTRN_JSO_STRNE, "JSSTR_STRICTNE", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U1, "__jsstr_ne", NULL, NULL)
+/* __jsop_instanceof */
+DEF_INTRN_ENTRY(INTRN_JSO_INSTANCEOF, "JSOP_INSTANCEOF", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U1, "__jsop_instanceof", NULL, NULL)
+/* __jsop_in */
+DEF_INTRN_ENTRY(INTRN_JSO_IN, "JSOP_IN", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U1, "__jsop_in", NULL, NULL)
+/* __jsop_or */
+DEF_INTRN_ENTRY(INTRN_JSO_OR, "JSOP_OR", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I4, "__jsop_or", NULL, NULL)
+/* __jsop_and */
+DEF_INTRN_ENTRY(INTRN_JSO_AND, "JSOP_AND", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I4, "__jsop_and", NULL, NULL)
+/* __jsop_typeof */
+DEF_INTRN_ENTRY(INTRN_JSO_TYPEOF, "JSOP_TYPEOF", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_typeof", NULL, NULL)
+/* __js_new */
+DEF_INTRN_ENTRY(INTRN_JSR_NEW, "JS_NEW", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "__js_new", NULL, NULL)
+/* __js_ToString */
+DEF_INTRN_ENTRY(INTRN_JSR_STRING, "JS_STRING", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNSTR, "__js_ToString", NULL, NULL)
+/* __jsstr_get_length */
+DEF_INTRN_ENTRY(INTRN_JSO_STRLEN, "JSSTR_LENGTH", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U4, "__jsstr_get_length", NULL, NULL)
+/* __js_ToBoolean */
+DEF_INTRN_ENTRY(INTRN_JSR_BOOLEAN, "JS_BOOLEAN", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U1, "__js_ToBoolean", NULL, NULL)
+/* __js_ToNumber */
+DEF_INTRN_ENTRY(INTRN_JSR_NUMBER, "JS_NUMBER", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I4, "__js_ToNumber", NULL, NULL)
+/* __js_ToInt32 */
+DEF_INTRN_ENTRY(INTRN_JSR_INT32, "JS_INT32", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I4, "__js_ToInt32", NULL, NULL)
+/* __js_ToRegExp */
+DEF_INTRN_ENTRY(INTRN_JSR_REGEXP, "JS_REGEXP", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I4, "__js_ToRegExp", NULL, NULL)
+/* __jsop_print */
+DEF_INTRN_ENTRY(INTRN_JSR_PRINT, "JS_PRINT", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__jsop_print", NULL, NULL)
+/* __js_error */
+DEF_INTRN_ENTRY(INTRN_JSR_ERROR, "JS_ERROR", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__js_error", NULL, NULL)
+/* __js_eval */
+DEF_INTRN_ENTRY(INTRN_JSR_EVAL, "JS_EVAL", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__js_eval", NULL, NULL)
+/* __js_icall */
+DEF_INTRN_ENTRY(INTRN_JSR_ICALL, "JS_ICALL", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__js_icall", NULL, NULL)
+/* __jsop_call */
+DEF_INTRN_ENTRY(INTRN_JSO_CALL, "JSOP_CALL", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_call", NULL, NULL)
+/* __jsop_ccall */
+DEF_INTRN_ENTRY(INTRN_JSO_CCALL, "JSOP_CCALL", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_ccall", NULL, NULL)
+/* __jsop_new */
+DEF_INTRN_ENTRY(INTRN_JSO_NEW, "JSOP_NEW", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_new", NULL, NULL)
+/* __js_setTimeout */
+DEF_INTRN_ENTRY(INTRN_JSR_SETTIMEOUT, "JS_SETTIMEOUT", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__js_setTimeout", NULL, NULL)
+/* __js_setCycleHeader */
+DEF_INTRN_ENTRY(INTRN_JSR_SETCYCLEHEADER, "JS_SETCYCLEHEADER", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__js_setCycleHeader", NULL, NULL)
+/* __js_new_obj_obj_0 */
+DEF_INTRN_ENTRY(INTRN_JSR_NEW_OBJECT_0, "JS_NEW_OBJECT_0", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__js_new_obj_obj_0", NULL, NULL)
+/* __js_new_obj_obj_1 */
+DEF_INTRN_ENTRY(INTRN_JSR_NEW_OBJECT_1, "JS_NEW_OBJECT_1", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__js_new_obj_obj_1", NULL, NULL)
+/* __jsop_setprop */
+DEF_INTRN_ENTRY(INTRN_JSO_SETPROP, "JSOP_SETPROP", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__jsop_setprop", NULL, NULL)
+/* __jsop_callprop */
+DEF_INTRN_ENTRY(INTRN_JSO_CALLPROP, "JSOP_CALLPROP", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_callprop", NULL, NULL)
+/* __jsop_getprop */
+DEF_INTRN_ENTRY(INTRN_JSO_GETPROP, "JSOP_GETPROP", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_getprop", NULL, NULL)
+/* __jsop_delprop */
+DEF_INTRN_ENTRY(INTRN_JSO_DELPROP, "JSOP_DELPROP", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__jsop_delprop", NULL, NULL)
+/* __jsop_setprop_by_name */
+DEF_INTRN_ENTRY(INTRN_JSO_SETPROP_BY_NAME, "JSOP_SETPROP_BY_NAME", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__jsop_setprop_by_name", NULL, NULL)
+/* __jsop_getprop_by_name */
+DEF_INTRN_ENTRY(INTRN_JSO_GETPROP_BY_NAME, "JSOP_GETPROP_BY_NAME", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_getprop_by_name", NULL, NULL)
+/* __jsop_setprop_by_index */
+DEF_INTRN_ENTRY(INTRN_JSO_SETPROP_BY_INDEX, "JSOP_SETPROP_BY_INDEX", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__jsop_setprop_by_index", NULL, NULL)
+/* __jsop_getprop_by_index */
+DEF_INTRN_ENTRY(INTRN_JSO_GETPROP_BY_INDEX, "JSOP_GETPROP_BY_INDEX", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_getprop_by_index", NULL, NULL)
+/* __jsop_initprop */
+DEF_INTRN_ENTRY(INTRN_JSO_INITPROP_BY_NAME, "JSOP_INITPROP_BY_NAME", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__jsop_initprop", NULL, NULL)
+/* __jsop_initprop_getter */
+DEF_INTRN_ENTRY(INTRN_JSO_INITPROP_GETTER, "JSOP_INITPROP_GETTER", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__jsop_initprop_getter", NULL, NULL)
+/* __jsop_initprop_setter */
+DEF_INTRN_ENTRY(INTRN_JSO_INITPROP_SETTER, "JSOP_INITPROP_SETTER", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "__jsop_initprop_setter", NULL, NULL)
+/* __js_new_function */
+DEF_INTRN_ENTRY(INTRN_JSR_NEW_FUNCTION, "JS_NEW_FUNCTION", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNANY, "__js_new_function", "__js_new_function", "__js_new_function")
+/* __js_new_arr_elems */
+DEF_INTRN_ENTRY(INTRN_JSR_NEW_ARR_ELEMS, "JS_NEW_ARR_ELEMS", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNOBJ, "__js_new_arr_elems", NULL, NULL)
+/* __js_new_arr_length */
+DEF_INTRN_ENTRY(INTRN_JSR_NEW_ARR_LENGTH, "JS_NEW_ARR_LENGTH", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNOBJ, "__js_new_arr_length", NULL, NULL)
+/* __jsop_length */
+DEF_INTRN_ENTRY(INTRN_JSO_LENGTH, "JSOP_LENGTH", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I4, "__jsop_length", NULL, NULL)
+/* __jsop_valueto_iterator */
+DEF_INTRN_ENTRY(INTRN_JSO_NEW_ITERATOR, "JSOP_NEW_ITERATOR", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNOBJ, "__jsop_valueto_iterator", NULL, NULL)
+/* __jsop_iterator_next */
+DEF_INTRN_ENTRY(INTRN_JSO_NEXT_ITERATOR, "JSOP_NEXT_ITERATOR", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_DYNOBJ, "__jsop_iterator_next", NULL, NULL)
+/* __jsop_more_iterator */
+DEF_INTRN_ENTRY(INTRN_JSO_MORE_ITERATOR, "JSOP_MORE_ITERATOR", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I4, "__jsop_more_iterator", NULL, NULL)
+/* __js_add_sysevent_listener */
+DEF_INTRN_ENTRY(INTRN_JSR_ADDSYSEVENTLISTENER, "JS_ADDSYSEVENTLISTENER", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U4, "__js_add_sysevent_listener", NULL, NULL)
+
+#endif
+/* __ts_array_concat */
+DEF_INTRN_ENTRY(INTRN_TS_ARRAYCONCAT, "TS_ARRAYCONCAT", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U8, "__ts_array_concat", NULL, NULL)
+
+DEF_INTRN_ENTRY(INTRN_CHECK_ADDRESS, "CHECK_ADDRESS", BYVAL, PURE, NO_SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "__check_address", NULL, NULL)
+
+// ATTENTION: DO NOT ADD ENTRY IN THE MIDDLE OF THE TABLE, ONLY APPEND IS ALLOWED
+// please keep the comment in the end of the table
+// once update this file, please update the checksum variable in osprey/jfe/Makefile.gbase
+
+
+#if defined(BUILD_MASTIFF)
+// Extra intrinsic for C++ standard and well-defined template classes and functions
+#include "intrn_entry_cxx.def"
+#endif
 
 /* END of DEF_INTRN_ENTRY */
 

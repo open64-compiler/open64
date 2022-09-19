@@ -1,0 +1,213 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+
+/* auto-generated intrinsics for c++ std_set intrinsic. 2021-10-26 11:57:00 */
+
+/* _ZNSt3__13set5beginEv set::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set5beginEv, "_ZNSt3__13set5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set5beginEv", "set::begin", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::begin()")
+/* _ZNKSt3__13set5beginEv set::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set5beginEv, "_ZNKSt3__13set5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set5beginEv", "set::begin", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::begin()")
+/* _ZNSt3__13set3endEv set::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set3endEv, "_ZNSt3__13set3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set3endEv", "set::end", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::end()")
+/* _ZNKSt3__13set3endEv set::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set3endEv, "_ZNKSt3__13set3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set3endEv", "set::end", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::end()")
+/* _ZNSt3__13set6rbeginEv set::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set6rbeginEv, "_ZNSt3__13set6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set6rbeginEv", "set::rbegin", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::rbegin()")
+/* _ZNKSt3__13set6rbeginEv set::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set6rbeginEv, "_ZNKSt3__13set6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set6rbeginEv", "set::rbegin", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::rbegin()")
+/* _ZNSt3__13set4rendEv set::rend */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set4rendEv, "_ZNSt3__13set4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set4rendEv", "set::rend", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::rend()")
+/* _ZNKSt3__13set4rendEv set::rend */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set4rendEv, "_ZNKSt3__13set4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set4rendEv", "set::rend", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::rend()")
+/* _ZNKSt3__13set5emptyEv set::empty */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set5emptyEv, "_ZNKSt3__13set5emptyEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I1, "_ZNKSt3__13set5emptyEv", "set::empty", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::empty()")
+/* _ZNKSt3__13set4sizeEv set::size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set4sizeEv, "_ZNKSt3__13set4sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set4sizeEv", "set::size", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::size()")
+/* _ZNKSt3__13set8max_sizeEv set::max_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set8max_sizeEv, "_ZNKSt3__13set8max_sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set8max_sizeEv", "set::max_size", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::max_size()")
+/* _ZNSt3__13set6insertERKT_ set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set6insertERKT_, "_ZNSt3__13set6insertERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set6insertERKT_", "set::insert", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::insert(const std::__1::set::value_type & __v)")
+/* _ZNSt3__13set6insertENS_6__treeIT_T0_T1_E14const_iteratorERKS2_ set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set6insertENS_6__treeIT_T0_T1_E14const_iteratorERKS2_, "_ZNSt3__13set6insertENS_6__treeIT_T0_T1_E14const_iteratorERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set6insertENS_6__treeIT_T0_T1_E14const_iteratorERKS2_", "set::insert", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::insert(std::__1::set::const_iterator __p, const std::__1::set::value_type & __v)")
+/* _ZNSt3__13set6insertETL0__S1_ set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set6insertETL0__S1_, "_ZNSt3__13set6insertETL0__S1_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13set6insertETL0__S1_", "set::insert", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::insert<typename _InputIterator>(_InputIterator __f, _InputIterator __l)")
+/* _ZNSt3__13set6insertEOT_ set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set6insertEOT_, "_ZNSt3__13set6insertEOT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set6insertEOT_", "set::insert", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::insert(std::__1::set::value_type && __v)")
+/* _ZNSt3__13set6insertENS_6__treeIT_T0_T1_E14const_iteratorEOS2_ set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set6insertENS_6__treeIT_T0_T1_E14const_iteratorEOS2_, "_ZNSt3__13set6insertENS_6__treeIT_T0_T1_E14const_iteratorEOS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set6insertENS_6__treeIT_T0_T1_E14const_iteratorEOS2_", "set::insert", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::insert(std::__1::set::const_iterator __p, std::__1::set::value_type && __v)")
+/* _ZNSt3__13set6insertESt16initializer_listIT_E set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set6insertESt16initializer_listIT_E, "_ZNSt3__13set6insertESt16initializer_listIT_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13set6insertESt16initializer_listIT_E", "set::insert", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::insert(initializer_list<std::__1::set::value_type> __il)")
+/* _ZNSt3__13set5eraseENS_6__treeIT_T0_T1_E14const_iteratorE set::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set5eraseENS_6__treeIT_T0_T1_E14const_iteratorE, "_ZNSt3__13set5eraseENS_6__treeIT_T0_T1_E14const_iteratorE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set5eraseENS_6__treeIT_T0_T1_E14const_iteratorE", "set::erase", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::erase(std::__1::set::const_iterator __p)")
+/* _ZNSt3__13set5eraseERKT_ set::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set5eraseERKT_, "_ZNSt3__13set5eraseERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set5eraseERKT_", "set::erase", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::erase(const std::__1::set::key_type & __k)")
+/* _ZNSt3__13set5eraseENS_6__treeIT_T0_T1_E14const_iteratorES6_ set::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set5eraseENS_6__treeIT_T0_T1_E14const_iteratorES6_, "_ZNSt3__13set5eraseENS_6__treeIT_T0_T1_E14const_iteratorES6_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set5eraseENS_6__treeIT_T0_T1_E14const_iteratorES6_", "set::erase", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::erase(std::__1::set::const_iterator __f, std::__1::set::const_iterator __l)")
+/* _ZNSt3__13set5clearEv set::clear */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set5clearEv, "_ZNSt3__13set5clearEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13set5clearEv", "set::clear", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::clear()")
+/* _ZNSt3__13set4swapERNS_3setIT_T0_T1_EE set::swap */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set4swapERNS_3setIT_T0_T1_EE, "_ZNSt3__13set4swapERNS_3setIT_T0_T1_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__13set4swapERNS_3setIT_T0_T1_EE", "set::swap", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::swap(set<_Key, _Compare, _Allocator> & __s)")
+/* _ZNKSt3__13set13get_allocatorEv set::get_allocator */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set13get_allocatorEv, "_ZNKSt3__13set13get_allocatorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set13get_allocatorEv", "set::get_allocator", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::get_allocator()")
+/* _ZNKSt3__13set8key_compEv set::key_comp */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set8key_compEv, "_ZNKSt3__13set8key_compEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set8key_compEv", "set::key_comp", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::key_comp()")
+/* _ZNKSt3__13set10value_compEv set::value_comp */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set10value_compEv, "_ZNKSt3__13set10value_compEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set10value_compEv", "set::value_comp", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::value_comp()")
+/* _ZNSt3__13set4findERKT_ set::find */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set4findERKT_, "_ZNSt3__13set4findERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set4findERKT_", "set::find", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::find(const std::__1::set::key_type & __k)")
+/* _ZNKSt3__13set4findERKT_ set::find */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set4findERKT_, "_ZNKSt3__13set4findERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set4findERKT_", "set::find", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::find(const std::__1::set::key_type & __k)")
+/* _ZNSt3__13set4findERKTL0__ set::find */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set4findERKTL0__, "_ZNSt3__13set4findERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set4findERKTL0__", "set::find", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::find<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13set4findERKTL0__ set::find */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set4findERKTL0__, "_ZNKSt3__13set4findERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set4findERKTL0__", "set::find", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::find<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13set5countERKT_ set::count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set5countERKT_, "_ZNKSt3__13set5countERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set5countERKT_", "set::count", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::count(const std::__1::set::key_type & __k)")
+/* _ZNKSt3__13set5countERKTL0__ set::count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set5countERKTL0__, "_ZNKSt3__13set5countERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set5countERKTL0__", "set::count", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::count<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__13set11lower_boundERKT_ set::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set11lower_boundERKT_, "_ZNSt3__13set11lower_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set11lower_boundERKT_", "set::lower_bound", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::lower_bound(const std::__1::set::key_type & __k)")
+/* _ZNKSt3__13set11lower_boundERKT_ set::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set11lower_boundERKT_, "_ZNKSt3__13set11lower_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set11lower_boundERKT_", "set::lower_bound", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::lower_bound(const std::__1::set::key_type & __k)")
+/* _ZNSt3__13set11lower_boundERKTL0__ set::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set11lower_boundERKTL0__, "_ZNSt3__13set11lower_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set11lower_boundERKTL0__", "set::lower_bound", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::lower_bound<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13set11lower_boundERKTL0__ set::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set11lower_boundERKTL0__, "_ZNKSt3__13set11lower_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set11lower_boundERKTL0__", "set::lower_bound", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::lower_bound<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__13set11upper_boundERKT_ set::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set11upper_boundERKT_, "_ZNSt3__13set11upper_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set11upper_boundERKT_", "set::upper_bound", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::upper_bound(const std::__1::set::key_type & __k)")
+/* _ZNKSt3__13set11upper_boundERKT_ set::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set11upper_boundERKT_, "_ZNKSt3__13set11upper_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set11upper_boundERKT_", "set::upper_bound", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::upper_bound(const std::__1::set::key_type & __k)")
+/* _ZNSt3__13set11upper_boundERKTL0__ set::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set11upper_boundERKTL0__, "_ZNSt3__13set11upper_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set11upper_boundERKTL0__", "set::upper_bound", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::upper_bound<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13set11upper_boundERKTL0__ set::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set11upper_boundERKTL0__, "_ZNKSt3__13set11upper_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set11upper_boundERKTL0__", "set::upper_bound", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::upper_bound<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__13set11equal_rangeERKT_ set::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set11equal_rangeERKT_, "_ZNSt3__13set11equal_rangeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set11equal_rangeERKT_", "set::equal_range", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::equal_range(const std::__1::set::key_type & __k)")
+/* _ZNKSt3__13set11equal_rangeERKT_ set::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set11equal_rangeERKT_, "_ZNKSt3__13set11equal_rangeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set11equal_rangeERKT_", "set::equal_range", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::equal_range(const std::__1::set::key_type & __k)")
+/* _ZNSt3__13set11equal_rangeERKTL0__ set::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__13set11equal_rangeERKTL0__, "_ZNSt3__13set11equal_rangeERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__13set11equal_rangeERKTL0__", "set::equal_range", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::equal_range<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__13set11equal_rangeERKTL0__ set::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__13set11equal_rangeERKTL0__, "_ZNKSt3__13set11equal_rangeERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__13set11equal_rangeERKTL0__", "set::equal_range", "std::__1::set<typename _Key, typename _Compare, typename _Allocator>::equal_range<typename _K2>(const _K2 & __k)")
+/* end */

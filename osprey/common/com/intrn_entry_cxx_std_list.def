@@ -1,0 +1,313 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+
+/* auto-generated intrinsics for c++ std_list intrinsic. 2021-10-27 10:41:22 */
+
+/* _ZNSt3__14listC1Ev list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1Ev, "_ZNSt3__14listC1Ev", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1Ev", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list()")
+/* _ZNSt3__14listC1ERKT0_ list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ERKT0_, "_ZNSt3__14listC1ERKT0_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ERKT0_", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(const std::__1::list::allocator_type & __a)")
+/* _ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeE list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeE, "_ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeE", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(std::__1::list::size_type __n)")
+/* _ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS3_ list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS3_, "_ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS3_", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(std::__1::list::size_type __n, const std::__1::list::allocator_type & __a)")
+/* _ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS2_ list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS2_, "_ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS2_", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(std::__1::list::size_type __n, const std::__1::list::value_type & __x)")
+/* _ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS2_RKS3_ list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS2_RKS3_, "_ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS2_RKS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ENS_10__list_impIT_T0_E9size_typeERKS2_RKS3_", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(std::__1::list::size_type __n, const std::__1::list::value_type & __x, const std::__1::list::allocator_type & __a)")
+/* _ZNSt3__14listC1ETL0__S1_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ETL0__S1_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE, "_ZNSt3__14listC1ETL0__S1_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ETL0__S1_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list<typename _InpIter>(_InpIter __f, _InpIter __l, typename enable_if<__is_input_iterator<_InpIter>::value>::type * )")
+/* _ZNSt3__14listC1ETL0__S1_RKT0_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ETL0__S1_RKT0_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE, "_ZNSt3__14listC1ETL0__S1_RKT0_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ETL0__S1_RKT0_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list<typename _InpIter>(_InpIter __f, _InpIter __l, const std::__1::list::allocator_type & __a, typename enable_if<__is_input_iterator<_InpIter>::value>::type * )")
+/* _ZNSt3__14listC1ERKNS_4listIT_T0_EE list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ERKNS_4listIT_T0_EE, "_ZNSt3__14listC1ERKNS_4listIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ERKNS_4listIT_T0_EE", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(const list<_Tp, _Alloc> & __c)")
+/* _ZNSt3__14listC1ERKNS_4listIT_T0_EERKS3_ list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ERKNS_4listIT_T0_EERKS3_, "_ZNSt3__14listC1ERKNS_4listIT_T0_EERKS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ERKNS_4listIT_T0_EERKS3_", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(const list<_Tp, _Alloc> & __c, const std::__1::list::allocator_type & __a)")
+/* _ZNSt3__14listC1ESt16initializer_listIT_E list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ESt16initializer_listIT_E, "_ZNSt3__14listC1ESt16initializer_listIT_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ESt16initializer_listIT_E", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(initializer_list<std::__1::list::value_type> __il)")
+/* _ZNSt3__14listC1ESt16initializer_listIT_ERKT0_ list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1ESt16initializer_listIT_ERKT0_, "_ZNSt3__14listC1ESt16initializer_listIT_ERKT0_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1ESt16initializer_listIT_ERKT0_", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(initializer_list<std::__1::list::value_type> __il, const std::__1::list::allocator_type & __a)")
+/* _ZNSt3__14listC1EONS_4listIT_T0_EE list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1EONS_4listIT_T0_EE, "_ZNSt3__14listC1EONS_4listIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1EONS_4listIT_T0_EE", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(list<_Tp, _Alloc> && __c)")
+/* _ZNSt3__14listC1EONS_4listIT_T0_EERKS3_ list::list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listC1EONS_4listIT_T0_EERKS3_, "_ZNSt3__14listC1EONS_4listIT_T0_EERKS3_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listC1EONS_4listIT_T0_EERKS3_", "list::list", "std::__1::list<typename _Tp, typename _Alloc>::list(list<_Tp, _Alloc> && __c, const std::__1::list::allocator_type & __a)")
+/* _ZNSt3__14list6assignESt16initializer_listIT_E list::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6assignESt16initializer_listIT_E, "_ZNSt3__14list6assignESt16initializer_listIT_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6assignESt16initializer_listIT_E", "list::assign", "std::__1::list<typename _Tp, typename _Alloc>::assign(initializer_list<std::__1::list::value_type> __il)")
+/* _ZNSt3__14list6assignETL0__S1_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE list::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6assignETL0__S1_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE, "_ZNSt3__14list6assignETL0__S1_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6assignETL0__S1_PNS_9enable_ifIXsr19__is_input_iteratorIS1_EE5valueEvE4typeE", "list::assign", "std::__1::list<typename _Tp, typename _Alloc>::assign<typename _InpIter>(_InpIter __f, _InpIter __l, typename enable_if<__is_input_iterator<_InpIter>::value>::type * )")
+/* _ZNSt3__14list6assignENS_10__list_impIT_T0_E9size_typeERKS2_ list::assign */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6assignENS_10__list_impIT_T0_E9size_typeERKS2_, "_ZNSt3__14list6assignENS_10__list_impIT_T0_E9size_typeERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6assignENS_10__list_impIT_T0_E9size_typeERKS2_", "list::assign", "std::__1::list<typename _Tp, typename _Alloc>::assign(std::__1::list::size_type __n, const std::__1::list::value_type & __x)")
+/* _ZNKSt3__14list13get_allocatorEv list::get_allocator */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list13get_allocatorEv, "_ZNKSt3__14list13get_allocatorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__14list13get_allocatorEv", "list::get_allocator", "std::__1::list<typename _Tp, typename _Alloc>::get_allocator()")
+/* _ZNKSt3__14list4sizeEv list::size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list4sizeEv, "_ZNKSt3__14list4sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__14list4sizeEv", "list::size", "std::__1::list<typename _Tp, typename _Alloc>::size()")
+/* _ZNKSt3__14list5emptyEv list::empty */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list5emptyEv, "_ZNKSt3__14list5emptyEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I1, "_ZNKSt3__14list5emptyEv", "list::empty", "std::__1::list<typename _Tp, typename _Alloc>::empty()")
+/* _ZNKSt3__14list8max_sizeEv list::max_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list8max_sizeEv, "_ZNKSt3__14list8max_sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__14list8max_sizeEv", "list::max_size", "std::__1::list<typename _Tp, typename _Alloc>::max_size()")
+/* _ZNSt3__14list5beginEv list::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5beginEv, "_ZNSt3__14list5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list5beginEv", "list::begin", "std::__1::list<typename _Tp, typename _Alloc>::begin()")
+/* _ZNKSt3__14list5beginEv list::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list5beginEv, "_ZNKSt3__14list5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__14list5beginEv", "list::begin", "std::__1::list<typename _Tp, typename _Alloc>::begin()")
+/* _ZNSt3__14list3endEv list::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list3endEv, "_ZNSt3__14list3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list3endEv", "list::end", "std::__1::list<typename _Tp, typename _Alloc>::end()")
+/* _ZNKSt3__14list3endEv list::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list3endEv, "_ZNKSt3__14list3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__14list3endEv", "list::end", "std::__1::list<typename _Tp, typename _Alloc>::end()")
+/* _ZNSt3__14list6rbeginEv list::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6rbeginEv, "_ZNSt3__14list6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list6rbeginEv", "list::rbegin", "std::__1::list<typename _Tp, typename _Alloc>::rbegin()")
+/* _ZNKSt3__14list6rbeginEv list::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list6rbeginEv, "_ZNKSt3__14list6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__14list6rbeginEv", "list::rbegin", "std::__1::list<typename _Tp, typename _Alloc>::rbegin()")
+/* _ZNSt3__14list4rendEv list::rend */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list4rendEv, "_ZNSt3__14list4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list4rendEv", "list::rend", "std::__1::list<typename _Tp, typename _Alloc>::rend()")
+/* _ZNKSt3__14list4rendEv list::rend */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list4rendEv, "_ZNKSt3__14list4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__14list4rendEv", "list::rend", "std::__1::list<typename _Tp, typename _Alloc>::rend()")
+/* _ZNSt3__14list5frontEv list::front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5frontEv, "_ZNSt3__14list5frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__14list5frontEv", "list::front", "std::__1::list<typename _Tp, typename _Alloc>::front()")
+/* _ZNKSt3__14list5frontEv list::front */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list5frontEv, "_ZNKSt3__14list5frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__14list5frontEv", "list::front", "std::__1::list<typename _Tp, typename _Alloc>::front()")
+/* _ZNSt3__14list4backEv list::back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list4backEv, "_ZNSt3__14list4backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__14list4backEv", "list::back", "std::__1::list<typename _Tp, typename _Alloc>::back()")
+/* _ZNKSt3__14list4backEv list::back */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__14list4backEv, "_ZNKSt3__14list4backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__14list4backEv", "list::back", "std::__1::list<typename _Tp, typename _Alloc>::back()")
+/* _ZNSt3__14list10push_frontEOT_ list::push_front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list10push_frontEOT_, "_ZNSt3__14list10push_frontEOT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list10push_frontEOT_", "list::push_front", "std::__1::list<typename _Tp, typename _Alloc>::push_front(std::__1::list::value_type && __x)")
+/* _ZNSt3__14list9push_backEOT_ list::push_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list9push_backEOT_, "_ZNSt3__14list9push_backEOT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list9push_backEOT_", "list::push_back", "std::__1::list<typename _Tp, typename _Alloc>::push_back(std::__1::list::value_type && __x)")
+/* _ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorEOS2_ list::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorEOS2_, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorEOS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorEOS2_", "list::insert", "std::__1::list<typename _Tp, typename _Alloc>::insert(std::__1::list::const_iterator __p, std::__1::list::value_type && __x)")
+/* _ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorESt16initializer_listIS2_E list::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorESt16initializer_listIS2_E, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorESt16initializer_listIS2_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorESt16initializer_listIS2_E", "list::insert", "std::__1::list<typename _Tp, typename _Alloc>::insert(std::__1::list::const_iterator __p, initializer_list<std::__1::list::value_type> __il)")
+/* _ZNSt3__14list10push_frontERKT_ list::push_front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list10push_frontERKT_, "_ZNSt3__14list10push_frontERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list10push_frontERKT_", "list::push_front", "std::__1::list<typename _Tp, typename _Alloc>::push_front(const std::__1::list::value_type & __x)")
+/* _ZNSt3__14list9push_backERKT_ list::push_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list9push_backERKT_, "_ZNSt3__14list9push_backERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list9push_backERKT_", "list::push_back", "std::__1::list<typename _Tp, typename _Alloc>::push_back(const std::__1::list::value_type & __x)")
+/* _ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorERKS2_ list::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorERKS2_, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorERKS2_", "list::insert", "std::__1::list<typename _Tp, typename _Alloc>::insert(std::__1::list::const_iterator __p, const std::__1::list::value_type & __x)")
+/* _ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorENS4_9size_typeERKS2_ list::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorENS4_9size_typeERKS2_, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorENS4_9size_typeERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorENS4_9size_typeERKS2_", "list::insert", "std::__1::list<typename _Tp, typename _Alloc>::insert(std::__1::list::const_iterator __p, std::__1::list::size_type __n, const std::__1::list::value_type & __x)")
+/* _ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXsr19__is_input_iteratorIS6_EE5valueEvE4typeE list::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXsr19__is_input_iteratorIS6_EE5valueEvE4typeE, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXsr19__is_input_iteratorIS6_EE5valueEvE4typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list6insertENS_10__list_impIT_T0_E14const_iteratorETL0__S6_PNS_9enable_ifIXsr19__is_input_iteratorIS6_EE5valueEvE4typeE", "list::insert", "std::__1::list<typename _Tp, typename _Alloc>::insert<typename _InpIter>(std::__1::list::const_iterator __p, _InpIter __f, _InpIter __l, typename enable_if<__is_input_iterator<_InpIter>::value>::type * )")
+/* _ZNSt3__14list4swapERNS_4listIT_T0_EE list::swap */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list4swapERNS_4listIT_T0_EE, "_ZNSt3__14list4swapERNS_4listIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list4swapERNS_4listIT_T0_EE", "list::swap", "std::__1::list<typename _Tp, typename _Alloc>::swap(list<_Tp, _Alloc> & __c)")
+/* _ZNSt3__14list5clearEv list::clear */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5clearEv, "_ZNSt3__14list5clearEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list5clearEv", "list::clear", "std::__1::list<typename _Tp, typename _Alloc>::clear()")
+/* _ZNSt3__14list9pop_frontEv list::pop_front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list9pop_frontEv, "_ZNSt3__14list9pop_frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list9pop_frontEv", "list::pop_front", "std::__1::list<typename _Tp, typename _Alloc>::pop_front()")
+/* _ZNSt3__14list8pop_backEv list::pop_back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list8pop_backEv, "_ZNSt3__14list8pop_backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list8pop_backEv", "list::pop_back", "std::__1::list<typename _Tp, typename _Alloc>::pop_back()")
+/* _ZNSt3__14list5eraseENS_10__list_impIT_T0_E14const_iteratorE list::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5eraseENS_10__list_impIT_T0_E14const_iteratorE, "_ZNSt3__14list5eraseENS_10__list_impIT_T0_E14const_iteratorE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list5eraseENS_10__list_impIT_T0_E14const_iteratorE", "list::erase", "std::__1::list<typename _Tp, typename _Alloc>::erase(std::__1::list::const_iterator __p)")
+/* _ZNSt3__14list5eraseENS_10__list_impIT_T0_E14const_iteratorES5_ list::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5eraseENS_10__list_impIT_T0_E14const_iteratorES5_, "_ZNSt3__14list5eraseENS_10__list_impIT_T0_E14const_iteratorES5_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__14list5eraseENS_10__list_impIT_T0_E14const_iteratorES5_", "list::erase", "std::__1::list<typename _Tp, typename _Alloc>::erase(std::__1::list::const_iterator __f, std::__1::list::const_iterator __l)")
+/* _ZNSt3__14list6resizeENS_10__list_impIT_T0_E9size_typeE list::resize */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6resizeENS_10__list_impIT_T0_E9size_typeE, "_ZNSt3__14list6resizeENS_10__list_impIT_T0_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6resizeENS_10__list_impIT_T0_E9size_typeE", "list::resize", "std::__1::list<typename _Tp, typename _Alloc>::resize(std::__1::list::size_type __n)")
+/* _ZNSt3__14list6resizeENS_10__list_impIT_T0_E9size_typeERKS2_ list::resize */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6resizeENS_10__list_impIT_T0_E9size_typeERKS2_, "_ZNSt3__14list6resizeENS_10__list_impIT_T0_E9size_typeERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6resizeENS_10__list_impIT_T0_E9size_typeERKS2_", "list::resize", "std::__1::list<typename _Tp, typename _Alloc>::resize(std::__1::list::size_type __n, const std::__1::list::value_type & __x)")
+/* _ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EE list::splice */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EE, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EE", "list::splice", "std::__1::list<typename _Tp, typename _Alloc>::splice(std::__1::list::const_iterator __p, list<_Tp, _Alloc> & __c)")
+/* _ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EE list::splice */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EE, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EE", "list::splice", "std::__1::list<typename _Tp, typename _Alloc>::splice(std::__1::list::const_iterator __p, list<_Tp, _Alloc> && __c)")
+/* _ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EES5_ list::splice */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EES5_, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EES5_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EES5_", "list::splice", "std::__1::list<typename _Tp, typename _Alloc>::splice(std::__1::list::const_iterator __p, list<_Tp, _Alloc> && __c, std::__1::list::const_iterator __i)")
+/* _ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EES5_S5_ list::splice */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EES5_S5_, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EES5_S5_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorEONS_4listIS2_S3_EES5_S5_", "list::splice", "std::__1::list<typename _Tp, typename _Alloc>::splice(std::__1::list::const_iterator __p, list<_Tp, _Alloc> && __c, std::__1::list::const_iterator __f, std::__1::list::const_iterator __l)")
+/* _ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EES5_ list::splice */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EES5_, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EES5_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EES5_", "list::splice", "std::__1::list<typename _Tp, typename _Alloc>::splice(std::__1::list::const_iterator __p, list<_Tp, _Alloc> & __c, std::__1::list::const_iterator __i)")
+/* _ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EES5_S5_ list::splice */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EES5_S5_, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EES5_S5_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6spliceENS_10__list_impIT_T0_E14const_iteratorERNS_4listIS2_S3_EES5_S5_", "list::splice", "std::__1::list<typename _Tp, typename _Alloc>::splice(std::__1::list::const_iterator __p, list<_Tp, _Alloc> & __c, std::__1::list::const_iterator __f, std::__1::list::const_iterator __l)")
+/* _ZNSt3__14list6removeERKT_ list::remove */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6removeERKT_, "_ZNSt3__14list6removeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6removeERKT_", "list::remove", "std::__1::list<typename _Tp, typename _Alloc>::remove(const std::__1::list::value_type & __x)")
+/* _ZNSt3__14list9remove_ifETL0__ list::remove_if */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list9remove_ifETL0__, "_ZNSt3__14list9remove_ifETL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list9remove_ifETL0__", "list::remove_if", "std::__1::list<typename _Tp, typename _Alloc>::remove_if<typename _Pred>(_Pred __pred)")
+/* _ZNSt3__14list6uniqueEv list::unique */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6uniqueEv, "_ZNSt3__14list6uniqueEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6uniqueEv", "list::unique", "std::__1::list<typename _Tp, typename _Alloc>::unique()")
+/* _ZNSt3__14list6uniqueETL0__ list::unique */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list6uniqueETL0__, "_ZNSt3__14list6uniqueETL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list6uniqueETL0__", "list::unique", "std::__1::list<typename _Tp, typename _Alloc>::unique<typename _BinaryPred>(_BinaryPred __binary_pred)")
+/* _ZNSt3__14list5mergeERNS_4listIT_T0_EE list::merge */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5mergeERNS_4listIT_T0_EE, "_ZNSt3__14list5mergeERNS_4listIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list5mergeERNS_4listIT_T0_EE", "list::merge", "std::__1::list<typename _Tp, typename _Alloc>::merge(list<_Tp, _Alloc> & __c)")
+/* _ZNSt3__14list5mergeEONS_4listIT_T0_EE list::merge */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5mergeEONS_4listIT_T0_EE, "_ZNSt3__14list5mergeEONS_4listIT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list5mergeEONS_4listIT_T0_EE", "list::merge", "std::__1::list<typename _Tp, typename _Alloc>::merge(list<_Tp, _Alloc> && __c)")
+/* _ZNSt3__14list5mergeEONS_4listIT_T0_EETL0__ list::merge */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5mergeEONS_4listIT_T0_EETL0__, "_ZNSt3__14list5mergeEONS_4listIT_T0_EETL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list5mergeEONS_4listIT_T0_EETL0__", "list::merge", "std::__1::list<typename _Tp, typename _Alloc>::merge<typename _Comp>(list<_Tp, _Alloc> && __c, _Comp __comp)")
+/* _ZNSt3__14list5mergeERNS_4listIT_T0_EETL0__ list::merge */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list5mergeERNS_4listIT_T0_EETL0__, "_ZNSt3__14list5mergeERNS_4listIT_T0_EETL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list5mergeERNS_4listIT_T0_EETL0__", "list::merge", "std::__1::list<typename _Tp, typename _Alloc>::merge<typename _Comp>(list<_Tp, _Alloc> & __c, _Comp __comp)")
+/* _ZNSt3__14list4sortEv list::sort */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list4sortEv, "_ZNSt3__14list4sortEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list4sortEv", "list::sort", "std::__1::list<typename _Tp, typename _Alloc>::sort()")
+/* _ZNSt3__14list4sortETL0__ list::sort */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list4sortETL0__, "_ZNSt3__14list4sortETL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list4sortETL0__", "list::sort", "std::__1::list<typename _Tp, typename _Alloc>::sort<typename _Comp>(_Comp __comp)")
+/* _ZNSt3__14list7reverseEv list::reverse */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14list7reverseEv, "_ZNSt3__14list7reverseEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14list7reverseEv", "list::reverse", "std::__1::list<typename _Tp, typename _Alloc>::reverse()")
+/* _ZNSt3__14listD1Ev list::~list */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__14listD1Ev, "_ZNSt3__14listD1Ev", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__14listD1Ev", "list::~list", "std::__1::list<typename _Tp, typename _Alloc>::~list<_Tp, _Alloc>()")
+/* end */

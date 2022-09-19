@@ -1,0 +1,193 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+
+/* auto-generated intrinsics for c++ std_unordered_set intrinsic. 2021-10-26 11:57:12 */
+
+/* _ZNKSt3__113unordered_set13get_allocatorEv unordered_set::get_allocator */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set13get_allocatorEv, "_ZNKSt3__113unordered_set13get_allocatorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set13get_allocatorEv", "unordered_set::get_allocator", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::get_allocator()")
+/* _ZNKSt3__113unordered_set5emptyEv unordered_set::empty */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set5emptyEv, "_ZNKSt3__113unordered_set5emptyEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I1, "_ZNKSt3__113unordered_set5emptyEv", "unordered_set::empty", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::empty()")
+/* _ZNKSt3__113unordered_set4sizeEv unordered_set::size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set4sizeEv, "_ZNKSt3__113unordered_set4sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set4sizeEv", "unordered_set::size", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::size()")
+/* _ZNKSt3__113unordered_set8max_sizeEv unordered_set::max_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set8max_sizeEv, "_ZNKSt3__113unordered_set8max_sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set8max_sizeEv", "unordered_set::max_size", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::max_size()")
+/* _ZNSt3__113unordered_set5beginEv unordered_set::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set5beginEv, "_ZNSt3__113unordered_set5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set5beginEv", "unordered_set::begin", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::begin()")
+/* _ZNSt3__113unordered_set3endEv unordered_set::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set3endEv, "_ZNSt3__113unordered_set3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set3endEv", "unordered_set::end", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::end()")
+/* _ZNKSt3__113unordered_set5beginEv unordered_set::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set5beginEv, "_ZNKSt3__113unordered_set5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set5beginEv", "unordered_set::begin", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::begin()")
+/* _ZNKSt3__113unordered_set3endEv unordered_set::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set3endEv, "_ZNKSt3__113unordered_set3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set3endEv", "unordered_set::end", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::end()")
+/* _ZNSt3__113unordered_set6insertEOT_ unordered_set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set6insertEOT_, "_ZNSt3__113unordered_set6insertEOT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set6insertEOT_", "unordered_set::insert", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::insert(std::__1::unordered_set::value_type && __x)")
+/* _ZNSt3__113unordered_set6insertENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorEOS2_ unordered_set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set6insertENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorEOS2_, "_ZNSt3__113unordered_set6insertENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorEOS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set6insertENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorEOS2_", "unordered_set::insert", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::insert(std::__1::unordered_set::const_iterator , std::__1::unordered_set::value_type && __x)")
+/* _ZNSt3__113unordered_set6insertESt16initializer_listIT_E unordered_set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set6insertESt16initializer_listIT_E, "_ZNSt3__113unordered_set6insertESt16initializer_listIT_E", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__113unordered_set6insertESt16initializer_listIT_E", "unordered_set::insert", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::insert(initializer_list<std::__1::unordered_set::value_type> __il)")
+/* _ZNSt3__113unordered_set6insertERKT_ unordered_set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set6insertERKT_, "_ZNSt3__113unordered_set6insertERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set6insertERKT_", "unordered_set::insert", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::insert(const std::__1::unordered_set::value_type & __x)")
+/* _ZNSt3__113unordered_set6insertENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorERKS2_ unordered_set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set6insertENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorERKS2_, "_ZNSt3__113unordered_set6insertENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorERKS2_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set6insertENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorERKS2_", "unordered_set::insert", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::insert(std::__1::unordered_set::const_iterator , const std::__1::unordered_set::value_type & __x)")
+/* _ZNSt3__113unordered_set6insertETL0__S1_ unordered_set::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set6insertETL0__S1_, "_ZNSt3__113unordered_set6insertETL0__S1_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__113unordered_set6insertETL0__S1_", "unordered_set::insert", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::insert<typename _InputIterator>(_InputIterator __first, _InputIterator __last)")
+/* _ZNSt3__113unordered_set5eraseENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorE unordered_set::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set5eraseENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorE, "_ZNSt3__113unordered_set5eraseENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set5eraseENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorE", "unordered_set::erase", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::erase(std::__1::unordered_set::const_iterator __p)")
+/* _ZNSt3__113unordered_set5eraseERKT_ unordered_set::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set5eraseERKT_, "_ZNSt3__113unordered_set5eraseERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set5eraseERKT_", "unordered_set::erase", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::erase(const std::__1::unordered_set::key_type & __k)")
+/* _ZNSt3__113unordered_set5eraseENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorES7_ unordered_set::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set5eraseENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorES7_, "_ZNSt3__113unordered_set5eraseENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorES7_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set5eraseENS_12__hash_tableIT_T0_T1_T2_E14const_iteratorES7_", "unordered_set::erase", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::erase(std::__1::unordered_set::const_iterator __first, std::__1::unordered_set::const_iterator __last)")
+/* _ZNSt3__113unordered_set5clearEv unordered_set::clear */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set5clearEv, "_ZNSt3__113unordered_set5clearEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__113unordered_set5clearEv", "unordered_set::clear", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::clear()")
+/* _ZNSt3__113unordered_set4swapERNS_13unordered_setIT_T0_T1_T2_EE unordered_set::swap */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set4swapERNS_13unordered_setIT_T0_T1_T2_EE, "_ZNSt3__113unordered_set4swapERNS_13unordered_setIT_T0_T1_T2_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__113unordered_set4swapERNS_13unordered_setIT_T0_T1_T2_EE", "unordered_set::swap", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::swap(unordered_set<_Value, _Hash, _Pred, _Alloc> & __u)")
+/* _ZNKSt3__113unordered_set13hash_functionEv unordered_set::hash_function */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set13hash_functionEv, "_ZNKSt3__113unordered_set13hash_functionEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set13hash_functionEv", "unordered_set::hash_function", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::hash_function()")
+/* _ZNKSt3__113unordered_set6key_eqEv unordered_set::key_eq */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set6key_eqEv, "_ZNKSt3__113unordered_set6key_eqEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set6key_eqEv", "unordered_set::key_eq", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::key_eq()")
+/* _ZNSt3__113unordered_set4findERKT_ unordered_set::find */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set4findERKT_, "_ZNSt3__113unordered_set4findERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set4findERKT_", "unordered_set::find", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::find(const std::__1::unordered_set::key_type & __k)")
+/* _ZNKSt3__113unordered_set4findERKT_ unordered_set::find */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set4findERKT_, "_ZNKSt3__113unordered_set4findERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set4findERKT_", "unordered_set::find", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::find(const std::__1::unordered_set::key_type & __k)")
+/* _ZNKSt3__113unordered_set5countERKT_ unordered_set::count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set5countERKT_, "_ZNKSt3__113unordered_set5countERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set5countERKT_", "unordered_set::count", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::count(const std::__1::unordered_set::key_type & __k)")
+/* _ZNSt3__113unordered_set11equal_rangeERKT_ unordered_set::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set11equal_rangeERKT_, "_ZNSt3__113unordered_set11equal_rangeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set11equal_rangeERKT_", "unordered_set::equal_range", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::equal_range(const std::__1::unordered_set::key_type & __k)")
+/* _ZNKSt3__113unordered_set11equal_rangeERKT_ unordered_set::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set11equal_rangeERKT_, "_ZNKSt3__113unordered_set11equal_rangeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set11equal_rangeERKT_", "unordered_set::equal_range", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::equal_range(const std::__1::unordered_set::key_type & __k)")
+/* _ZNKSt3__113unordered_set12bucket_countEv unordered_set::bucket_count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set12bucket_countEv, "_ZNKSt3__113unordered_set12bucket_countEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set12bucket_countEv", "unordered_set::bucket_count", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::bucket_count()")
+/* _ZNKSt3__113unordered_set16max_bucket_countEv unordered_set::max_bucket_count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set16max_bucket_countEv, "_ZNKSt3__113unordered_set16max_bucket_countEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set16max_bucket_countEv", "unordered_set::max_bucket_count", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::max_bucket_count()")
+/* _ZNKSt3__113unordered_set11bucket_sizeENS_12__hash_tableIT_T0_T1_T2_E9size_typeE unordered_set::bucket_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set11bucket_sizeENS_12__hash_tableIT_T0_T1_T2_E9size_typeE, "_ZNKSt3__113unordered_set11bucket_sizeENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set11bucket_sizeENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", "unordered_set::bucket_size", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::bucket_size(std::__1::unordered_set::size_type __n)")
+/* _ZNKSt3__113unordered_set6bucketERKT_ unordered_set::bucket */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set6bucketERKT_, "_ZNKSt3__113unordered_set6bucketERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set6bucketERKT_", "unordered_set::bucket", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::bucket(const std::__1::unordered_set::key_type & __k)")
+/* _ZNSt3__113unordered_set5beginENS_12__hash_tableIT_T0_T1_T2_E9size_typeE unordered_set::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set5beginENS_12__hash_tableIT_T0_T1_T2_E9size_typeE, "_ZNSt3__113unordered_set5beginENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set5beginENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", "unordered_set::begin", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::begin(std::__1::unordered_set::size_type __n)")
+/* _ZNSt3__113unordered_set3endENS_12__hash_tableIT_T0_T1_T2_E9size_typeE unordered_set::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set3endENS_12__hash_tableIT_T0_T1_T2_E9size_typeE, "_ZNSt3__113unordered_set3endENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__113unordered_set3endENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", "unordered_set::end", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::end(std::__1::unordered_set::size_type __n)")
+/* _ZNKSt3__113unordered_set5beginENS_12__hash_tableIT_T0_T1_T2_E9size_typeE unordered_set::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set5beginENS_12__hash_tableIT_T0_T1_T2_E9size_typeE, "_ZNKSt3__113unordered_set5beginENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set5beginENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", "unordered_set::begin", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::begin(std::__1::unordered_set::size_type __n)")
+/* _ZNKSt3__113unordered_set3endENS_12__hash_tableIT_T0_T1_T2_E9size_typeE unordered_set::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set3endENS_12__hash_tableIT_T0_T1_T2_E9size_typeE, "_ZNKSt3__113unordered_set3endENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__113unordered_set3endENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", "unordered_set::end", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::end(std::__1::unordered_set::size_type __n)")
+/* _ZNKSt3__113unordered_set11load_factorEv unordered_set::load_factor */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set11load_factorEv, "_ZNKSt3__113unordered_set11load_factorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_F4, "_ZNKSt3__113unordered_set11load_factorEv", "unordered_set::load_factor", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::load_factor()")
+/* _ZNKSt3__113unordered_set15max_load_factorEv unordered_set::max_load_factor */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__113unordered_set15max_load_factorEv, "_ZNKSt3__113unordered_set15max_load_factorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_F4, "_ZNKSt3__113unordered_set15max_load_factorEv", "unordered_set::max_load_factor", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::max_load_factor()")
+/* _ZNSt3__113unordered_set15max_load_factorEf unordered_set::max_load_factor */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set15max_load_factorEf, "_ZNSt3__113unordered_set15max_load_factorEf", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__113unordered_set15max_load_factorEf", "unordered_set::max_load_factor", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::max_load_factor(float __mlf)")
+/* _ZNSt3__113unordered_set6rehashENS_12__hash_tableIT_T0_T1_T2_E9size_typeE unordered_set::rehash */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__113unordered_set6rehashENS_12__hash_tableIT_T0_T1_T2_E9size_typeE, "_ZNSt3__113unordered_set6rehashENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__113unordered_set6rehashENS_12__hash_tableIT_T0_T1_T2_E9size_typeE", "unordered_set::rehash", "std::__1::unordered_set<typename _Value, typename _Hash, typename _Pred, typename _Alloc>::rehash(std::__1::unordered_set::size_type __n)")
+/* end */

@@ -1,0 +1,129 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+
+/* auto-generated intrinsics for c++ std_array intrinsic. 2021-10-26 11:56:39 */
+
+/* _ZNSt3__15array4swapERNS_5arrayIT_XT0_EEE array::swap */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array4swapERNS_5arrayIT_XT0_EEE, "_ZNSt3__15array4swapERNS_5arrayIT_XT0_EEE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__15array4swapERNS_5arrayIT_XT0_EEE", "array::swap", "std::__1::array<typename _Tp, size_t _Size>::swap(array<_Tp, _Size> & __a)")
+/* _ZNSt3__15array5beginEv array::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array5beginEv, "_ZNSt3__15array5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__15array5beginEv", "array::begin", "std::__1::array<typename _Tp, size_t _Size>::begin()")
+/* _ZNKSt3__15array5beginEv array::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array5beginEv, "_ZNKSt3__15array5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__15array5beginEv", "array::begin", "std::__1::array<typename _Tp, size_t _Size>::begin()")
+/* _ZNSt3__15array3endEv array::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array3endEv, "_ZNSt3__15array3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__15array3endEv", "array::end", "std::__1::array<typename _Tp, size_t _Size>::end()")
+/* _ZNKSt3__15array3endEv array::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array3endEv, "_ZNKSt3__15array3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__15array3endEv", "array::end", "std::__1::array<typename _Tp, size_t _Size>::end()")
+/* _ZNSt3__15array6rbeginEv array::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array6rbeginEv, "_ZNSt3__15array6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15array6rbeginEv", "array::rbegin", "std::__1::array<typename _Tp, size_t _Size>::rbegin()")
+/* _ZNKSt3__15array6rbeginEv array::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array6rbeginEv, "_ZNKSt3__15array6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15array6rbeginEv", "array::rbegin", "std::__1::array<typename _Tp, size_t _Size>::rbegin()")
+/* _ZNSt3__15array4rendEv array::rend */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array4rendEv, "_ZNSt3__15array4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__15array4rendEv", "array::rend", "std::__1::array<typename _Tp, size_t _Size>::rend()")
+/* _ZNKSt3__15array4rendEv array::rend */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array4rendEv, "_ZNKSt3__15array4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__15array4rendEv", "array::rend", "std::__1::array<typename _Tp, size_t _Size>::rend()")
+/* _ZNKSt3__15array4sizeEv array::size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array4sizeEv, "_ZNKSt3__15array4sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U8, "_ZNKSt3__15array4sizeEv", "array::size", "std::__1::array<typename _Tp, size_t _Size>::size()")
+/* _ZNKSt3__15array8max_sizeEv array::max_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array8max_sizeEv, "_ZNKSt3__15array8max_sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_U8, "_ZNKSt3__15array8max_sizeEv", "array::max_size", "std::__1::array<typename _Tp, size_t _Size>::max_size()")
+/* _ZNKSt3__15array5emptyEv array::empty */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array5emptyEv, "_ZNKSt3__15array5emptyEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I1, "_ZNKSt3__15array5emptyEv", "array::empty", "std::__1::array<typename _Tp, size_t _Size>::empty()")
+/* _ZNSt3__15arrayixEm array::operator[] */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15arrayixEm, "_ZNSt3__15arrayixEm", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__15arrayixEm", "array::operator[]", "std::__1::array<typename _Tp, size_t _Size>::operator[](std::__1::array::size_type __n)")
+/* _ZNKSt3__15arrayixEm array::operator[] */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15arrayixEm, "_ZNKSt3__15arrayixEm", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__15arrayixEm", "array::operator[]", "std::__1::array<typename _Tp, size_t _Size>::operator[](std::__1::array::size_type __n)")
+/* _ZNSt3__15array2atEm array::at */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array2atEm, "_ZNSt3__15array2atEm", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__15array2atEm", "array::at", "std::__1::array<typename _Tp, size_t _Size>::at(std::__1::array::size_type __n)")
+/* _ZNKSt3__15array2atEm array::at */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array2atEm, "_ZNKSt3__15array2atEm", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__15array2atEm", "array::at", "std::__1::array<typename _Tp, size_t _Size>::at(std::__1::array::size_type __n)")
+/* _ZNSt3__15array5frontEv array::front */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array5frontEv, "_ZNSt3__15array5frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__15array5frontEv", "array::front", "std::__1::array<typename _Tp, size_t _Size>::front()")
+/* _ZNKSt3__15array5frontEv array::front */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array5frontEv, "_ZNKSt3__15array5frontEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__15array5frontEv", "array::front", "std::__1::array<typename _Tp, size_t _Size>::front()")
+/* _ZNSt3__15array4backEv array::back */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array4backEv, "_ZNSt3__15array4backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__15array4backEv", "array::back", "std::__1::array<typename _Tp, size_t _Size>::back()")
+/* _ZNKSt3__15array4backEv array::back */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array4backEv, "_ZNKSt3__15array4backEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__15array4backEv", "array::back", "std::__1::array<typename _Tp, size_t _Size>::back()")
+/* _ZNSt3__15array4dataEv array::data */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__15array4dataEv, "_ZNSt3__15array4dataEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNSt3__15array4dataEv", "array::data", "std::__1::array<typename _Tp, size_t _Size>::data()")
+/* _ZNKSt3__15array4dataEv array::data */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__15array4dataEv, "_ZNKSt3__15array4dataEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__15array4dataEv", "array::data", "std::__1::array<typename _Tp, size_t _Size>::data()")
+/* end */

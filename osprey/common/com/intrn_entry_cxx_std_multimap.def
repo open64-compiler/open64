@@ -1,0 +1,225 @@
+/*
+ * Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
+  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms of version 2 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it would be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+  Further, this software is distributed without any warranty that it is
+  free of the rightful claim of any third person regarding infringement
+  or the like.  Any license provided herein, whether implied or
+  otherwise, applies only to this software file.  Patent licenses, if
+  any, provided herein do not apply to combinations of this program with
+  other software, or any other product whatsoever.
+
+  You should have received a copy of the GNU General Public License along
+  with this program; if not, write the Free Software Foundation, Inc., 59
+  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+
+  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+  Mountain View, CA 94043, or:
+
+  http://www.sgi.com
+
+  For further information regarding this notice, see:
+
+  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+
+*/
+
+
+/* auto-generated intrinsics for c++ std_multimap intrinsic. 2021-10-26 11:56:55 */
+
+/* _ZNSt3__18multimap5beginEv multimap::begin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap5beginEv, "_ZNSt3__18multimap5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap5beginEv", "multimap::begin", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::begin()")
+/* _ZNKSt3__18multimap5beginEv multimap::begin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap5beginEv, "_ZNKSt3__18multimap5beginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap5beginEv", "multimap::begin", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::begin()")
+/* _ZNSt3__18multimap3endEv multimap::end */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap3endEv, "_ZNSt3__18multimap3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap3endEv", "multimap::end", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::end()")
+/* _ZNKSt3__18multimap3endEv multimap::end */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap3endEv, "_ZNKSt3__18multimap3endEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap3endEv", "multimap::end", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::end()")
+/* _ZNSt3__18multimap6rbeginEv multimap::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6rbeginEv, "_ZNSt3__18multimap6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap6rbeginEv", "multimap::rbegin", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::rbegin()")
+/* _ZNKSt3__18multimap6rbeginEv multimap::rbegin */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap6rbeginEv, "_ZNKSt3__18multimap6rbeginEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap6rbeginEv", "multimap::rbegin", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::rbegin()")
+/* _ZNSt3__18multimap4rendEv multimap::rend */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap4rendEv, "_ZNSt3__18multimap4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap4rendEv", "multimap::rend", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::rend()")
+/* _ZNKSt3__18multimap4rendEv multimap::rend */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap4rendEv, "_ZNKSt3__18multimap4rendEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap4rendEv", "multimap::rend", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::rend()")
+/* _ZNKSt3__18multimap5emptyEv multimap::empty */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap5emptyEv, "_ZNKSt3__18multimap5emptyEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I1, "_ZNKSt3__18multimap5emptyEv", "multimap::empty", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::empty()")
+/* _ZNKSt3__18multimap4sizeEv multimap::size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap4sizeEv, "_ZNKSt3__18multimap4sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap4sizeEv", "multimap::size", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::size()")
+/* _ZNKSt3__18multimap8max_sizeEv multimap::max_size */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap8max_sizeEv, "_ZNKSt3__18multimap8max_sizeEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap8max_sizeEv", "multimap::max_size", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::max_size()")
+/* _ZNKSt3__18multimap13get_allocatorEv multimap::get_allocator */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap13get_allocatorEv, "_ZNKSt3__18multimap13get_allocatorEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap13get_allocatorEv", "multimap::get_allocator", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::get_allocator()")
+/* _ZNKSt3__18multimap8key_compEv multimap::key_comp */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap8key_compEv, "_ZNKSt3__18multimap8key_compEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap8key_compEv", "multimap::key_comp", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::key_comp()")
+/* _ZNKSt3__18multimap10value_compEv multimap::value_comp */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap10value_compEv, "_ZNKSt3__18multimap10value_compEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_PV, "_ZNKSt3__18multimap10value_compEv", "multimap::value_comp", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::value_comp()")
+/* _ZNSt3__18multimap6insertEOTL0__ multimap::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6insertEOTL0__, "_ZNSt3__18multimap6insertEOTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap6insertEOTL0__", "multimap::insert", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert<typename _Pp, typename >(_Pp && __p)")
+/* _ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEOTL0__ multimap::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEOTL0__, "_ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEOTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEOTL0__", "multimap::insert", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert<typename _Pp, typename >(std::__1::multimap::const_iterator __pos, _Pp && __p)")
+/* _ZNSt3__18multimap6insertEONS_4pairIKT_T0_EE multimap::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6insertEONS_4pairIKT_T0_EE, "_ZNSt3__18multimap6insertEONS_4pairIKT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap6insertEONS_4pairIKT_T0_EE", "multimap::insert", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(std::__1::multimap::value_type && __v)")
+/* _ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEONS_4pairIKS4_S5_EE multimap::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEONS_4pairIKS4_S5_EE, "_ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEONS_4pairIKS4_S5_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEEONS_4pairIKS4_S5_EE", "multimap::insert", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(std::__1::multimap::const_iterator __p, std::__1::multimap::value_type && __v)")
+/* _ZNSt3__18multimap6insertESt16initializer_listINS_4pairIKT_T0_EEE multimap::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6insertESt16initializer_listINS_4pairIKT_T0_EEE, "_ZNSt3__18multimap6insertESt16initializer_listINS_4pairIKT_T0_EEE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__18multimap6insertESt16initializer_listINS_4pairIKT_T0_EEE", "multimap::insert", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(initializer_list<std::__1::multimap::value_type> __il)")
+/* _ZNSt3__18multimap6insertERKNS_4pairIKT_T0_EE multimap::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6insertERKNS_4pairIKT_T0_EE, "_ZNSt3__18multimap6insertERKNS_4pairIKT_T0_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap6insertERKNS_4pairIKT_T0_EE", "multimap::insert", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(const std::__1::multimap::value_type & __v)")
+/* _ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEERKNS_4pairIKS4_S5_EE multimap::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEERKNS_4pairIKS4_S5_EE, "_ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEERKNS_4pairIKS4_S5_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap6insertENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEERKNS_4pairIKS4_S5_EE", "multimap::insert", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert(std::__1::multimap::const_iterator __p, const std::__1::multimap::value_type & __v)")
+/* _ZNSt3__18multimap6insertETL0__S1_ multimap::insert */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap6insertETL0__S1_, "_ZNSt3__18multimap6insertETL0__S1_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__18multimap6insertETL0__S1_", "multimap::insert", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::insert<typename _InputIterator>(_InputIterator __f, _InputIterator __l)")
+/* _ZNSt3__18multimap5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEE multimap::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEE, "_ZNSt3__18multimap5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEE", "multimap::erase", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::erase(std::__1::multimap::const_iterator __p)")
+/* _ZNSt3__18multimap5eraseENS_14__map_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE8iteratorEEE multimap::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap5eraseENS_14__map_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE8iteratorEEE, "_ZNSt3__18multimap5eraseENS_14__map_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE8iteratorEEE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap5eraseENS_14__map_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE8iteratorEEE", "multimap::erase", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::erase(std::__1::multimap::iterator __p)")
+/* _ZNSt3__18multimap5eraseERKT_ multimap::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap5eraseERKT_, "_ZNSt3__18multimap5eraseERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap5eraseERKT_", "multimap::erase", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::erase(const std::__1::multimap::key_type & __k)")
+/* _ZNSt3__18multimap5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEESI_ multimap::erase */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEESI_, "_ZNSt3__18multimap5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEESI_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap5eraseENS_20__map_const_iteratorINS_6__treeINS_12__value_typeIT_T0_EENS_19__map_value_compareIS4_S6_T1_Xaasr8is_emptyIS8_EE5valuentsr17__libcpp_is_finalIS8_EE5valueEEENS_21__rebind_alloc_helperINS_16allocator_traitsIT2_EES6_E4typeEE14const_iteratorEEESI_", "multimap::erase", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::erase(std::__1::multimap::const_iterator __f, std::__1::multimap::const_iterator __l)")
+/* _ZNSt3__18multimap5clearEv multimap::clear */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap5clearEv, "_ZNSt3__18multimap5clearEv", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__18multimap5clearEv", "multimap::clear", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::clear()")
+/* _ZNSt3__18multimap4swapERNS_8multimapIT_T0_T1_T2_EE multimap::swap */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap4swapERNS_8multimapIT_T0_T1_T2_EE, "_ZNSt3__18multimap4swapERNS_8multimapIT_T0_T1_T2_EE", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_V, "_ZNSt3__18multimap4swapERNS_8multimapIT_T0_T1_T2_EE", "multimap::swap", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::swap(multimap<_Key, _Tp, _Compare, _Allocator> & __m)")
+/* _ZNSt3__18multimap4findERKT_ multimap::find */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap4findERKT_, "_ZNSt3__18multimap4findERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap4findERKT_", "multimap::find", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::find(const std::__1::multimap::key_type & __k)")
+/* _ZNKSt3__18multimap4findERKT_ multimap::find */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap4findERKT_, "_ZNKSt3__18multimap4findERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap4findERKT_", "multimap::find", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::find(const std::__1::multimap::key_type & __k)")
+/* _ZNSt3__18multimap4findERKTL0__ multimap::find */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap4findERKTL0__, "_ZNSt3__18multimap4findERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap4findERKTL0__", "multimap::find", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::find<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__18multimap4findERKTL0__ multimap::find */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap4findERKTL0__, "_ZNKSt3__18multimap4findERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap4findERKTL0__", "multimap::find", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::find<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__18multimap5countERKT_ multimap::count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap5countERKT_, "_ZNKSt3__18multimap5countERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap5countERKT_", "multimap::count", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::count(const std::__1::multimap::key_type & __k)")
+/* _ZNKSt3__18multimap5countERKTL0__ multimap::count */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap5countERKTL0__, "_ZNKSt3__18multimap5countERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap5countERKTL0__", "multimap::count", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::count<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__18multimap11lower_boundERKT_ multimap::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap11lower_boundERKT_, "_ZNSt3__18multimap11lower_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap11lower_boundERKT_", "multimap::lower_bound", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::lower_bound(const std::__1::multimap::key_type & __k)")
+/* _ZNKSt3__18multimap11lower_boundERKT_ multimap::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap11lower_boundERKT_, "_ZNKSt3__18multimap11lower_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap11lower_boundERKT_", "multimap::lower_bound", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::lower_bound(const std::__1::multimap::key_type & __k)")
+/* _ZNSt3__18multimap11lower_boundERKTL0__ multimap::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap11lower_boundERKTL0__, "_ZNSt3__18multimap11lower_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap11lower_boundERKTL0__", "multimap::lower_bound", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::lower_bound<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__18multimap11lower_boundERKTL0__ multimap::lower_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap11lower_boundERKTL0__, "_ZNKSt3__18multimap11lower_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap11lower_boundERKTL0__", "multimap::lower_bound", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::lower_bound<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__18multimap11upper_boundERKT_ multimap::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap11upper_boundERKT_, "_ZNSt3__18multimap11upper_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap11upper_boundERKT_", "multimap::upper_bound", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::upper_bound(const std::__1::multimap::key_type & __k)")
+/* _ZNKSt3__18multimap11upper_boundERKT_ multimap::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap11upper_boundERKT_, "_ZNKSt3__18multimap11upper_boundERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap11upper_boundERKT_", "multimap::upper_bound", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::upper_bound(const std::__1::multimap::key_type & __k)")
+/* _ZNSt3__18multimap11upper_boundERKTL0__ multimap::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap11upper_boundERKTL0__, "_ZNSt3__18multimap11upper_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap11upper_boundERKTL0__", "multimap::upper_bound", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::upper_bound<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__18multimap11upper_boundERKTL0__ multimap::upper_bound */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap11upper_boundERKTL0__, "_ZNKSt3__18multimap11upper_boundERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap11upper_boundERKTL0__", "multimap::upper_bound", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::upper_bound<typename _K2>(const _K2 & __k)")
+/* _ZNSt3__18multimap11equal_rangeERKT_ multimap::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap11equal_rangeERKT_, "_ZNSt3__18multimap11equal_rangeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap11equal_rangeERKT_", "multimap::equal_range", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::equal_range(const std::__1::multimap::key_type & __k)")
+/* _ZNKSt3__18multimap11equal_rangeERKT_ multimap::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap11equal_rangeERKT_, "_ZNKSt3__18multimap11equal_rangeERKT_", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap11equal_rangeERKT_", "multimap::equal_range", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::equal_range(const std::__1::multimap::key_type & __k)")
+/* _ZNSt3__18multimap11equal_rangeERKTL0__ multimap::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNSt3__18multimap11equal_rangeERKTL0__, "_ZNSt3__18multimap11equal_rangeERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNSt3__18multimap11equal_rangeERKTL0__", "multimap::equal_range", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::equal_range<typename _K2>(const _K2 & __k)")
+/* _ZNKSt3__18multimap11equal_rangeERKTL0__ multimap::equal_range */
+DEF_INTRN_ENTRY(INTRN__ZNKSt3__18multimap11equal_rangeERKTL0__, "_ZNKSt3__18multimap11equal_rangeERKTL0__", BYVAL, NOT_PURE, SIDEEFFECTS,
+                DOES_RETURN, NOT_ACTUAL, NOT_CGINTRINSIC, NOT_SLAVE,
+                IRETURN_I8, "_ZNKSt3__18multimap11equal_rangeERKTL0__", "multimap::equal_range", "std::__1::multimap<typename _Key, typename _Tp, typename _Compare, typename _Allocator>::equal_range<typename _K2>(const _K2 & __k)")
+/* end */
