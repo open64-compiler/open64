@@ -1,0 +1,245 @@
+#
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#
+
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement
+#  or the like.  Any license provided herein, whether implied or
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with
+#  other software, or any other product whatsoever.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for ir_tools
+#
+
+include	$(COMMONDEFS)
+
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+HOSTDEFS += -DFRONT_END
+HOSTDEFS += -D_NEW_SYMTAB
+ifeq ($(BUILD_COMPILER), GNU)
+HOSTDEFS += -D__GNU_BUG_WORKAROUND
+endif
+ifeq ($(BUILD_TARGET), IA64)
+TARGDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), IA32)
+TARGDEFS += -D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), MIPS)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), SL)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), X8664)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), NVISA)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), PPC32)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), LOONGSON)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+ifeq ($(BUILD_TARGET), UWASM)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+
+
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+# don't use is_true_on because ir_a2b doesn't have config info
+LCDEFS += -DInsist_On -DDEBUG_IR -DIs_True_On
+endif
+
+# wrapper related
+WRAPPER_CC = $(COMPILER_TARG_DIR)/driver/driver
+WRAPPER_OPTS = -run-build=$(TOP_BUILDDIR) -INLINE:=off $(MKDEPOPT) -I$(BUILD_BASE)
+WRAPPER_TARGETS = wffi.js
+
+LCDEFS += $(HOSTDEFS) $(TARGDEFS)
+LC++DEFS += $(HOSTDEFS) $(TARGDEFS)
+
+GLDOPTS = $(STD_LOAD_OPTS)
+
+LIBCOMUTIL = $(BUILD_AREA)/libcomutil/libcomutil.a
+LIBJSON = $(BUILD_AREA)/libjson/libjsoncpp.a
+LLDLIBS	= $(LIBCOMUTIL) $(LIBJSON) -lm
+
+TARGETS = wffi.a libwffi.so whirl_ffi_gen whirl_ffi_dummy.o $(WRAPPER_TARGETS)
+
+COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
+COMMON_COM_DIR= $(BUILD_TOT)/common/com
+COMMON_COM_TARG_DIR= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
+BE_COM_DIR= $(BUILD_TOT)/be/com
+BE_OPT_DIR= $(BUILD_TOT)/be/opt
+
+LDIRT = $(TARGETS)
+
+LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
+	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_OPT_DIR) $(XINC)  \
+        -I$(BUILD_TOT)/include
+ifeq ($(BUILD_OS), LINUX)
+LCINCS += -I$(BUILD_AREA)/include/libelf -I$(BUILD_TOT)/libjson/include
+endif
+
+LCXXOPTS = $(LCOPTS:-std%=)
+LCXXDEFS = $(LCDEFS)
+LCXXINCS = $(LCINCS)
+
+# common c files
+COMMON_COM_TARG_SRC = \
+        config_host.c \
+        config_platform.c
+
+# all c files
+CFILES=                   \
+        $(COMMON_COM_SRC) \
+        $(COMMON_COM_TARG_SRC)
+
+# common cxx files
+COMMON_COM_CXX_SRC =	\
+        config.cxx      \
+        const.cxx       \
+        controls.cxx    \
+        dwarf_DST.cxx   \
+        dwarf_DST_dump.cxx     \
+        dwarf_DST_mem.cxx      \
+        dwarf_DST_producer.cxx \
+        glob.cxx        \
+        intrn_info.cxx  \
+        ir_bcom.cxx     \
+        ir_bwrite.cxx   \
+        ir_reader.cxx   \
+        irbdata.cxx     \
+        mtypes.cxx      \
+        opcode.cxx      \
+        opcode_core.cxx \
+        pu_info.cxx     \
+        strtab.cxx      \
+        symtab.cxx      \
+        symtab_verify.cxx      \
+        ttype.cxx       \
+        wn.cxx          \
+        wn_map.cxx      \
+        wn_pragmas.cxx  \
+        wn_simp.cxx     \
+        wn_util.cxx     \
+        wutil.cxx       \
+        xstats.cxx
+
+# common targ cxx files
+COMMON_COM_TARG_CXX_SRCS =  \
+        config_targ.cxx	    \
+        config_elf_targ.cxx \
+        targ_const.cxx	    \
+        targ_sim.cxx
+
+# be com cxx files
+BE_COM_CXX_SRCS = \
+   wn_verifier.cxx
+
+# wffi library cxx files
+WFFI_LIB_CXX_SRCS =                 \
+        $(COMMON_COM_CXX_SRC)       \
+        $(COMMON_COM_TARG_CXX_SRCS) \
+        $(BE_COM_CXX_SRCS)          \
+        wgen_core.cxx               \
+        wgen_misc.cxx
+
+# wffi library object files
+WFFI_LIB_C_OBJS = $(CFILES:.c=.o)
+WFFI_LIB_CXX_OBJS = $(WFFI_LIB_CXX_SRCS:.cxx=.o)
+WFFI_LIB_OBJS = $(WFFI_LIB_C_OBJS) $(WFFI_LIB_CXX_OBJS)
+
+# extra cxx files for whirl_ffi_gen
+WFFI_GEN_EXTRA_SRCS =   \
+        ir_bread.cxx	\
+        wssa_defs.cxx   \
+        wssa_sym.cxx    \
+        wssa_mgr.cxx    \
+        wssa_wn.cxx     \
+        wssa_io.cxx     \
+        wssa_utils.cxx
+
+# full cxx files for whirl_ffi_gen
+CXXFILES =		            \
+        $(COMMON_COM_CXX_SRC)       \
+        $(COMMON_COM_TARG_CXX_SRCS) \
+        $(WFFI_GEN_EXTRA_SRCS)
+
+
+.PHONY: default first last install
+
+default:
+	$(MAKE) first
+	$(MAKE) $(TARGETS)
+	$(MAKE) last
+
+first:
+ifndef SKIP_DEP_BUILD
+	$(call submake,$(BUILD_AREA)/libcomutil)
+	$(call submake,$(BUILD_AREA)/libjson)
+endif
+
+last: make_deps
+
+install: default
+
+include $(COMMONRULES)
+
+VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_COM_TARG_DIR) $(BE_COM_DIR)
+
+wffi.a: $(WFFI_LIB_OBJS)
+	$(AR) rc $@ $^
+
+libwffi.so: $(WFFI_LIB_OBJS)
+	$(link.c++f) -o $@ $(STD_DSO_LOADOPTS) $(EXPORT_LIST) $^ $(LINK_DSOS) $(LLDLIBS)
+
+whirl_ffi_gen: $(OBJECTS) whirl_ffi_gen.o
+	$(link.c++f) -o whirl_ffi_gen whirl_ffi_gen.o $(OBJECTS) $(LDFLAGS)
+
+whirl_ffi_dummy.o: whirl_ffi_dummy.cxx
+	$(WRAPPER_CC) $(WRAPPER_OPTS) -sw -kp -c $(BUILD_BASE)/whirl_ffi_dummy.cxx
+	$(COMPILER_TARG_DIR)/ir_tools/ir_b2a -st whirl_ffi_dummy.o >whirl_ffi_dummy.o.dump
+
+wffi.js: whirl_ffi_gen whirl_ffi_dummy.o
+	./whirl_ffi_gen -x js whirl_ffi_dummy.o -o $@
+
+ir_bread.o: HOSTDEFS += -DIR_TOOLS
+
+wssa_mgr.o: HOSTDEFS += -DIR_TOOLS
+
+whirl_ffi_gen.o: HOSTDEFS += -UFRONT_END
+
+wn_util.o: HOSTDEFS += -DMONGOOSE_BE
+
