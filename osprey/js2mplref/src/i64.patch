@@ -1,0 +1,59 @@
+diff --git a/osprey/js2mplref/src/compiler.cxx b/osprey/js2mplref/src/compiler.cxx
+index f37e4a5..ad33b88 100644
+--- a/osprey/js2mplref/src/compiler.cxx
++++ b/osprey/js2mplref/src/compiler.cxx
+@@ -168,7 +168,7 @@ BaseNode *JSCompiler::CompileOpConstValue(uint32_t jsvalueTag, int32_t payload)
+   PrimType pty;
+   switch (jsvalueTag) {
+     case JSTYPE_NUMBER:
+-      return jsbuilder_->CreateIntConst((uint64_t)(uint32_t)payload, PTY_i32);
++      return jsbuilder_->CreateIntConst((uint64_t)(uint32_t)payload, PTY_i64);
+     case JSTYPE_UNDEFINED:
+       pty = PTY_dynundef;
+       break;
+@@ -185,7 +185,8 @@ BaseNode *JSCompiler::CompileOpConstValue(uint32_t jsvalueTag, int32_t payload)
+       assert(false && "NIY");
+       break;
+   }
+-  int64_t val = (int64_t)((uint64_t)(uint32_t)jsvalueTag << 32 | (uint64_t)(uint32_t)payload);
++  //int64_t val = (int64_t)((uint64_t)(uint32_t)jsvalueTag << 32 | (uint64_t)(uint32_t)payload);
++  int64_t val = (uint64_t)payload;
+   return jsbuilder_->CreateIntConst(val, pty);
+ }
+ 
+@@ -1244,7 +1245,8 @@ bool JSCompiler::CompileOpDefFun(JSFunction *jsfun) {
+   if (!funcname) {
+     return false;
+   }
+-
++static int idx;
++printf("Compiler Compile func [%d] %s ...\n", idx++, funcname);
+   JSMIRFunction *mfun = jsbuilder_->GetFunction(funcname);
+   mfun->SetUserFunc();
+ 
+@@ -1318,6 +1320,8 @@ BaseNode *JSCompiler::CompileOpLambda(jsbytecode *pc, JSFunction *jsfun) {
+     funcname = scope_->GetAnonyFunctionName(pc);
+   }
+ 
++static int idx;
++printf("Compiler Compile lambda [%d] %s ...\n", idx++, funcname);
+   JSMIRFunction *lambda = jsbuilder_->GetFunction(funcname);
+   lambda->SetUserFunc();
+   DEBUGPRINT2(lambda);
+@@ -1757,12 +1761,15 @@ BaseNode *JSCompiler::CheckConvertToJSValueType(BaseNode *data) {
+         if (cv) {
+           cv->primType = PTY_dyni32;
+           MIRIntConst *ic = static_cast<MIRIntConst *>(cv->constVal);
+-          ic->value = (int64_t)((uint64_t)JSTYPE_NUMBER << 32 | (ic->value & 0xffffffff));
++          //ic->value = (int64_t)((uint64_t)JSTYPE_NUMBER << 32 | (ic->value & 0xffffffff));
+           cv->constVal = ic;
+           return cv;
+         }
+       }
+       break;
++    case PTY_i64:
++    case PTY_u64:
++      return data;
+     case PTY_f32:
+       toType = GlobalTables::GetTypeTable().GetDynf32();
+       break;

@@ -1,0 +1,147 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2007 Pathscale, LLC.  All Rights Reserved.
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement
+#  or the like.  Any license provided herein, whether implied or
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with
+#  other software, or any other product whatsoever.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#
+#  Makefile.base for ir_tools
+#
+
+include	$(COMMONDEFS)
+
+
+# MAPLE INC and LIB
+MAPLE_INCLUDE_DIRS = \
+	$(MAPLE_HOME)/include \
+	$(MAPLE_HOME)/include/maple_util/include \
+	$(MAPLE_HOME)/include/mempool/include \
+	$(MAPLE_HOME)/include/third-party/md5/include
+
+MAPLE_LIBS = \
+	$(MAPLE_HOME)/lib/libmplir.a \
+	$(MAPLE_HOME)/lib/libmempool.a \
+	$(MAPLE_HOME)/lib/libmplutil.a \
+	$(MAPLE_HOME)/lib/libhwsecurec.a
+
+# MOZJS INC and LIB
+MOZJS_INCLUDE_DIRS = \
+	$(MOZJS_HOME)/include \
+	$(MOZJS_HOME)/include/nspr \
+	$(MOZJS_HOME)/include/mozjs-31 \
+	$(MOZJS_HOME)/include/js/src
+
+MOZJS_LIBS = \
+	$(MOZJS_HOME)/lib/libmozjs-31.a \
+	$(MOZJS_HOME)/lib/libnspr4.a
+
+JS2MOL_SRC_DIR = $(BUILD_TOT)/js2mplref/src
+JS2MPL_INCLUDE_DIRS = $(MAPLE_INCLUDE_DIRS) $(MOZJS_INCLUDE_DIRS)
+
+LCOPTS += $(STD_COMPILE_OPTS) $(STD_C_OPTS)
+
+STD_COMPILE_OPTS += -std=gnu++0x -Dlinux -DDYNAMICLANG -pthread
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+  STD_COMPILE_OPTS += -DDEBUG -D_DEBUG -DJS_DEBUG -DTRACING
+else
+  STD_COMPILE_OPTS += -DNDEBUG
+endif
+
+LC++OPTS = $(STD_COMPILE_OPTS) $(STD_C++_OPTS) $(PCH_OPTS)
+LC++INCS = $(addprefix -I, $(JS2MPL_INCLUDE_DIRS))
+LCINCS = $(addprefix -I, $(JS2MPL_INCLUDE_DIRS))
+
+# If you include HOSTDEFS twice you'll trigger a bug
+LCDEFS += $(TARGDEFS)
+LC++DEFS += $(HOSTDEFS) $(TARGDEFS)
+
+GLDOPTS = $(STD_LOAD_OPTS)
+
+LIBS = $(MOZJS_LIBS) $(MAPLE_LIBS)  -lz -lpthread -ldl -lm
+
+TARGET = js2mpl
+
+LCXXOPTS = $(LCOPTS:-std%=)
+
+LCXXDEFS = $(LCDEFS)
+
+LCXXINCS = $(LCINCS)
+
+CXXFILES = \
+	closure.cxx   \
+	js2mpl.cxx        \
+	operandstack.cxx \
+	compiler.cxx  \
+	jsfunction.cxx    \
+	scope.cxx \
+	eh.cxx        \
+	jsmirbuilder.cxx  \
+	util.cxx
+
+VPATH = $(JS2MOL_SRC_DIR)
+
+#----------------------------------------------------------------------
+#  For parallel makes, makefile must satisfy:
+#  -> Submake for include/ finished before building any objects;
+#  -> All archive/library submakes finished before linking targets;
+#  -> All targets finished before make_deps or make_libdeps.
+#----------------------------------------------------------------------
+
+ifeq ($(MOZJS_HOME), )
+default:
+	@echo "MOZJS_HOME is not set. Ignore js2mpl"; \
+	exit 0
+else ifeq ($(MAPLE_HOME), )
+default:
+	@echo "MAPLE_HOME is not set. Ignore js2mpl"; \
+	exit 0
+else
+default: make_deps
+endif
+
+make_deps: $(TARGET)
+.PHONY: default make_deps
+
+#----------------------------------------------------------------------
+#  Library prerequisites are updated via submake
+#----------------------------------------------------------------------
+
+.PHONY: force
+force: ;
+
+$(TARGET): $(OBJECTS)
+	$(link.cxxf) $(CXXFLAGS) $(OBJECTS) $(LIBS) -o $@
+
+include $(COMMONRULES)
+
+

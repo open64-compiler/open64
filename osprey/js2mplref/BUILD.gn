@@ -1,0 +1,91 @@
+if(GN_BUILD_TYPE =="DEBUG"){
+    cflags_c += [
+        "-DMIR_DEBUG=1",
+    ]
+    cflags_cc += [
+        "-DMIR_DEBUG=1",
+    ]
+}
+if(GN_BUILD_TYPE == "RELWITHDEBINFO"){
+    cflags_c += [
+        "-DDEBUG=0",
+    ]
+    cflags_cc += [
+        "-DDEBUG=0",
+    ]
+}
+MOZJS_ROOT = "${MAPLE_ROOT}/mozjs"
+MOZJS_SOURCE_DIR = "${MOZJS_ROOT}/mozjs-31.2.0"
+MOZJS_BUILD_DIR = "${MOZJS_ROOT}/mozjs-build"
+MOZJS_INSTALL_DIR = "${MOZJS_BUILD_DIR}/dist"
+
+executable("js2mpl"){
+    sources = [
+        "src/closure.cpp",
+        "src/compiler.cpp",
+        "src/eh.cpp",
+        "src/js2mpl.cpp",
+        "src/jsfunction.cpp",
+        "src/jsmirbuilder.cpp",
+        "src/operandstack.cpp",
+        "src/scope.cpp",
+        "src/util.cpp",
+    ]
+
+    include_dirs = [
+        "${MAPLEALL_ROOT}",
+        "${MOZJS_INSTALL_DIR}/include",
+        "${MOZJS_INSTALL_DIR}/system_wrappers",
+        "${MOZJS_SOURCE_DIR}",
+        "${MOZJS_SOURCE_DIR}/js/src",
+        "${MOZJS_SOURCE_DIR}/mfbt/double-conversion",
+        "${MOZJS_SOURCE_DIR}/intl/icu/source/common",
+        "${MOZJS_SOURCE_DIR}/intl/icu/source/i18n",
+        "${MOZJS_SOURCE_DIR}/js/public",
+        "${MAPLEALL_ROOT}/mapleutil/include",
+    ]
+
+    deps = [
+        "${MAPLEALL_ROOT}/mapleir:libmplir",
+        "${MAPLEALL_ROOT}/mapleutil:libmplutil",
+        "${MAPLEALL_ROOT}/Mempool:libmempool",
+        "${MAPLEALL_ROOT}/HuaweiSecureC:libHWSecureC",
+    ]
+
+    cflags_cc +=[
+        "-DMIR_FEATURE_FULL=1",
+        "-std=c++11",
+        "-w",
+        "-include",
+        "${MOZJS_SOURCE_DIR}/config/gcc_hidden.h",
+        "-include",
+        "${MOZJS_BUILD_DIR}/js/src/js-confdefs.h"
+    ]
+
+    libs = [
+        "${MOZJS_INSTALL_DIR}/lib/libjs_static.a",
+        "-lz",
+        "-lpthread",
+        "-ldl",
+    ]
+
+    ldflags = [
+        "-Wall",
+        "-m32",
+        "-DDYNAMICLANG",
+        "-DRC_NO_MMAP",
+        "-DMIR_FEATURE_FULL=1",
+        "-DMIR_DEX=0",
+        "-std=c++11",
+        "-w",
+        "-O3",
+        "-rdynamic",
+        "-L${MOZJS_INSTALL_DIR}/lib",
+        "-Wl,-rpath,${MOZJS_INSTALL_DIR}/lib",
+        "-ljs_static",
+        "-Wl,-z,relro",
+        "-Wl,-z,now",
+        "-Wl,-z,noexecstack",
+        "-fPIE",
+    ]
+}
