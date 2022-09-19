@@ -1,0 +1,92 @@
+# -*- Makefile -*-
+#
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#
+#  Copyright 2018 XC5 Inc. All Rights Reserved.
+#  Copyright 2003, 2004, 2005, 2006 PathScale, Inc.  All Rights Reserved.
+#
+
+#
+#  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
+#
+#  This program is free software; you can redistribute it and/or modify it
+#  under the terms of version 2 of the GNU General Public License as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it would be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+#  Further, this software is distributed without any warranty that it is
+#  free of the rightful claim of any third person regarding infringement
+#  or the like.  Any license provided herein, whether implied or
+#  otherwise, applies only to this software file.  Patent licenses, if
+#  any, provided herein do not apply to combinations of this program with
+#  other software, or any other product whatsoever.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write the Free Software Foundation, Inc., 59
+#  Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#  Contact information:  Silicon Graphics, Inc., 1600 Amphitheatre Pky,
+#  Mountain View, CA 94043, or:
+#
+#  http://www.sgi.com
+#
+#  For further information regarding this notice, see:
+#
+#  http://oss.sgi.com/projects/GenInfo/NoticeExplan
+#
+#
+
+#----------------------------------------------------------------------
+#  Set environment variables
+#
+#  TARGDIR   :  is the targ specific directory in which we do build.
+#               e.q.  /d1/cmplrs.src/v4.00/host32
+#
+#----------------------------------------------------------------------
+TARGDIR = $(BUILD_AREA)
+
+#----------------------------------------------------------------------
+#  Include the usual commondefs
+#----------------------------------------------------------------------
+include $(COMMONDEFS)
+
+CURRENT_BUILD_DIR := $(shell pwd)
+CMAKE_BUILD_TYPE :=
+GRADLE_BUILD_TYPE :=
+ifeq ($(BUILD_OPTIMIZE), DEBUG)
+	CMAKE_BUILD_TYPE = debug
+else
+	CMAKE_BUILD_TYPE = release
+endif
+
+
+.PHONY: default
+
+default: libjson gen_makefile
+
+CMAKE_BUILD_MAKEFILE = $(BUILD_AREA)/libjson/libjson/Makefile
+JSONLIB = $(BUILD_AREA)/libjson/libjson/src/lib_json/libjsoncpp.a
+
+gen_makefile: 
+	if ! test -e libjson; then mkdir libjson; fi
+	echo "cmake generate makefile for libjson..."	
+	echo "cmake -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DARCHIVE_INSTALL_DIR=$(TARGDIR) $(BUILD_TOT)/libjson"
+	cd libjson && cmake -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DARCHIVE_INSTALL_DIR=$(TARGDIR) $(BUILD_TOT)/libjson
+
+
+libjson: gen_makefile 
+	echo "make libjson"
+	cd libjson && cmake --build src/lib_json
+	cp libjson/src/lib_json/libjsoncpp.a libjsoncpp.a
+
+clobber: clean
+	echo "clean..."
+
+clean:
+	if  test -e libjson; then cd libjson && make clean; fi
+	rm -rf libjsoncpp.a
+last: make_deps
+
