@@ -19,6 +19,11 @@ ifneq (,$(findstring libopen64rt,$(SUBDIRS)))
 $(filter-out libopen64rt,$(SUBDIRS)) : libopen64rt
 endif
 
+# If building include, build it before all other libraries.
+ifneq (,$(findstring include,$(SUBDIRS)))
+$(filter-out include,$(SUBDIRS)) : include
+endif
+
 $(SUBDIRS):
 	@echo "MAKE   $(ACTION) in $(PWD)/$@"; \
 	$(MAKE) $(if $V,,--no-print-directory) -C $@ $(ACTION)
