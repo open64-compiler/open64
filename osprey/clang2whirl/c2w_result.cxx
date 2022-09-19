@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -40,13 +40,13 @@
 namespace wgen {
 
 WN*
-Result::Generate_Ilda(WN *addr, INT64 ofst) {
+Result::Generate_Ilda(WN *addr, INT64 ofst, TY_IDX ty) {
   Is_True(WN_operator(addr) == OPR_LDID ||
           WN_operator(addr) == OPR_ILOAD,
           ("wrong candidate for ilda"));
-  Is_True(TY_kind(Ty()) == KIND_POINTER &&
-          TY_kind(TY_pointed(Ty())) == KIND_STRUCT &&
-          FieldId() < FLD_get_count(TY_pointed(Ty())),
+  Is_True(TY_kind(ty) == KIND_POINTER &&
+          TY_kind(TY_pointed(ty)) == KIND_STRUCT &&
+          FieldId() < FLD_get_count(TY_pointed(ty)),
           ("wrong type"));
   WN *ilda = WN_CreateExp1(OPR_ILDA, Pointer_Mtype, MTYPE_V, addr);
   WN_load_offset(ilda) = ofst;
@@ -55,6 +55,27 @@ Result::Generate_Ilda(WN *addr, INT64 ofst) {
   WN_set_ty(ilda, Ty());
   WN_set_field_id(ilda, FieldId());
   return ilda;
+}
+
+//
+// TY_IDX Result::FieldTy() const
+// Get field ty if ty is struct type and field id is not 0
+TY_IDX
+Result::FieldTy() const {
+  TY_IDX ty = Ty();
+  if (FieldId() == 0) {
+    return ty;
+  }
+  if (IsRef()) {
+    Is_True(TY_kind(ty) == KIND_POINTER, ("not pointer type"));
+    ty = TY_pointed(ty);
+  }
+  Is_True(TY_kind(ty) == KIND_STRUCT, ("not struct type"));
+  UINT64 ofst = 0;
+  IDTYPE fld = 0;
+  FLD_HANDLE fh = get_fld_and_offset(ty, FieldId(), fld, ofst);
+  Is_True(!fh.Is_Null(), ("not find the field"));
+  return FLD_type(fh);
 }
 
 //
@@ -84,7 +105,7 @@ Result::GetLValue() {
                         WN_offset(wn) + ofst, sty, WN_kid0(wn),
                         WN_field_id(wn) + FieldId());
       } else if (WN_operator(wn) == OPR_LDID || WN_operator(wn) == OPR_ILOAD)
-        return Generate_Ilda(wn, ofst);
+        return Generate_Ilda(wn, ofst, ty);
       return WN_Add(Pointer_Mtype, wn, WN_Intconst(Pointer_Mtype, ofst));
     }
     return wn;
@@ -110,7 +131,7 @@ Result::GetLValue() {
       Is_True(TY_kind(ty) == KIND_POINTER, ("not pointer"));
       if (FieldId()) {
         WN* ldid = WN_Ldid(Pointer_Mtype, 0, st, ty, 0);
-        return Generate_Ilda(ldid, ofst);
+        return Generate_Ilda(ldid, ofst, ty);
       }
       return WN_Ldid(Pointer_Mtype, ofst, st, ty, FieldId());
     }
@@ -141,7 +162,7 @@ Result::GetRValue() {
     UINT64 ofst = 0;
     TY_IDX ty = ST_type(st);
     TY_IDX sty = ty;
-    if (IsRef()) {
+    if (IsRef() && TY_kind(ty) != KIND_ARRAY) {
       Is_True(TY_kind(ty) == KIND_POINTER, ("not pointer type"));
       sty = TY_pointed(ty);
     }
@@ -166,6 +187,11 @@ Result::GetRValue() {
         ofst = 0;
       }
     }
+    if (IsRef() && TY_kind(ty) == KIND_ARRAY) {
+      ARB_HANDLE arb = TY_arb(ty);
+      if (ARB_ubnd_var(arb) && !ARB_const_ubnd(arb))
+        ty = Make_Pointer_Type(ty);
+    }
     if (IsAddrOf() || IsConstSym() ||
         TY_kind(ty) == KIND_ARRAY || TY_kind(ty) == KIND_FUNCTION) {
       Set_ST_addr_saved(st);
@@ -182,7 +208,7 @@ Result::GetRValue() {
       Is_True(TY_kind(TY_pointed(ty)) == KIND_STRUCT,
               ("not struct type"));
       WN *ldid = WN_Ldid(Pointer_Mtype, 0, st, ty, 0);
-      return Generate_Ilda(ldid, ofst);
+      return Generate_Ilda(ldid, ofst, ty);
     }
     return WN_CreateLdid(OPR_LDID, rtype, desc,
                          ofst, st, ty, FieldId());
@@ -263,14 +289,22 @@ Result::ConvertToRValue(TY_IDX rty) {
       Is_True(TY_kind(Ty()) == KIND_POINTER, ("not ptr type"));
       TY_IDX lty = TY_pointed(Ty());
       UINT64 ofst = 0;
+      TYPE_ID mtype = TY_mtype(rty);
+      TYPE_ID rtype = Mtype_comparison(mtype);
       if (FieldId()) {
         IDTYPE fld = 0;
         Is_True(TY_kind(lty) == KIND_STRUCT, ("not struct type"));
         FLD_HANDLE fh = get_fld_and_offset(lty, FieldId(), fld, ofst);
         Is_True(!fh.Is_Null(), ("not find the field"));
+        if (FLD_is_bit_field(fh)) {
+          mtype = MTYPE_BS;
+          ofst = 0;
+        }
       }
       WN *addr = WN_Ldid(Pointer_Mtype, 0, st, Ty(), 0);
-      ret = WN_Iload(TY_mtype(rty), ofst, lty, addr, FieldId());
+      ret = WN_CreateIload(OPR_ILOAD, rtype, mtype,
+                           ofst, lty, Ty(),
+                           addr, FieldId());
     }
     else if (IsArrow()) {
       ret = NULL; //WN_Lda();
@@ -284,7 +318,7 @@ Result::ConvertToRValue(TY_IDX rty) {
     return r;
   }
   else if (isIntConst()) {
-    // TODO
+    Is_True(FALSE, ("TODO"));
     return Result::nwNone();
   }
 }

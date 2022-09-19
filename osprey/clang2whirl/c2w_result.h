@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -126,7 +126,7 @@ private:
     _fld = 0;
   }
   // generate ILDA for LValue with LDID of pre and field id
-  WN *Generate_Ilda(WN *addr, INT64 ofst);
+  WN *Generate_Ilda(WN *addr, INT64 ofst, TY_IDX ty);
 
 public:
   // create "None" Result
@@ -245,6 +245,8 @@ public:
   // Set wn
   void SetNode(WN *wn)       { _r._wn = wn;             }
 
+  // get Result field type
+  TY_IDX FieldTy() const;
   // Get whirl node as LValue for this Result
   WN*  GetLValue();
   // Get whirl node as RValue for this Result

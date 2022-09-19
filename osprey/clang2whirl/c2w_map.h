@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -113,6 +113,8 @@ struct wgen_cstr_equal {
 typedef hash_map<const clang::FunctionDecl *, const clang::FunctionDecl *, wgen_ptr_hash> FUNCTION_DECL_MAP;
 // clang VarDecl conanical decl to init decl map
 typedef hash_map<const clang::VarDecl *, const clang::VarDecl *, wgen_ptr_hash> VAR_DECL_MAP;
+// clang CXXRecordDecl to c2w-made destructor decl map
+typedef hash_map<const clang::CXXRecordDecl *, const clang::CXXDestructorDecl *, wgen_ptr_hash> CXX_DTOR_MAP;
 
 // clang GlobalDecl set, use GlobalDecl::getAsOpaquePtr() as key
 typedef hash_set<void *, wgen_ptr_hash> GLOBALDECL_SET;
@@ -152,6 +154,11 @@ typedef hash_map<const clang::Decl *, DST_INFO_IDX, wgen_ptr_hash> ST_DST_MAP;
 // clang lambda
 typedef hash_map<const clang::LambdaExpr *, const clang::VarDecl *, wgen_ptr_hash> LAMBDA_VAR_MAP;
 typedef hash_map<const clang::Decl *, const clang::FieldDecl *, wgen_ptr_hash>  LAMBDA_CAP_FLD;
+
+// cxx intrinsic gen filter
+typedef hash_set<wgen_tstr, wgen_tstr_hash, wgen_tstr_equal> METHOD_SET;
+typedef hash_map<wgen_tstr, METHOD_SET, wgen_tstr_hash, wgen_tstr_equal> CLASS_METHOD_MAP;
+
 } // namespace wgen
 
 

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -71,8 +71,6 @@ private:
   SRCPOS  GetSrcPos(void)                     { return _builder->GetSrcPos(); }
 
   WN  *EmitAdjustThunk(WN *wn, clang::ThunkInfo thunk_info, BOOL adjust_this);
-
-  void EmitVariablyModifiedType(clang::QualType type);
 
 public:
   PU_Info *ConvertFunction(clang::GlobalDecl gd, ST_IDX st_idx);

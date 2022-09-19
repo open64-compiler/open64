@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+// Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 //
 
 //===-- driver.cpp - Clang GCC-Compatible Driver --------------------------===//
@@ -276,11 +276,16 @@ static void FixupDiagPrefixExeName(TextDiagnosticPrinter *DiagClient,
   // If the clang binary happens to be named cl.exe for compatibility reasons,
   // use clang-cl.exe as the prefix to avoid confusion between clang and MSVC.
   StringRef ExeBasename(llvm::sys::path::filename(Path));
+#if LLVM_VERSION_MAJOR == 14
+  if (ExeBasename.equals_insensitive("cl.exe"))
+#else
   if (ExeBasename.equals_lower("cl.exe"))
+#endif
     ExeBasename = "clang-cl.exe";
   DiagClient->setPrefix(ExeBasename.str());
 }
 
+#if LLVM_VERSION_MAJOR <= 11
 // This lets us create the DiagnosticsEngine with a properly-filled-out
 // DiagnosticOptions instance.
 static DiagnosticOptions *
@@ -301,6 +306,7 @@ CreateAndPopulateDiagOpts(ArrayRef<const char *> argv) {
   (void) ParseDiagnosticArgs(*DiagOpts, Args);
   return DiagOpts;
 }
+#endif
 
 static void SetInstallDir(SmallVectorImpl<const char *> &argv,
                           Driver &TheDriver, bool CanonicalPrefixes) {

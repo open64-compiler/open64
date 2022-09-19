@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -187,6 +187,7 @@ WhirlFuncBuilder::EmitDestructorCall(const CXXDestructorDecl *decl,
   WN *ret = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, 1);
   WN_st_idx(ret) = st;
   WN_Set_Call_Default_Flags(ret);
+  WN_Set_Call_Is_Destructor(ret);
   ST_IDX this_st = _builder->Scope().Get_this();
   TY_IDX this_ty = ST_type(this_st);
   Is_True(this_st, ("'this' symbol must have created"));
@@ -197,10 +198,12 @@ WhirlFuncBuilder::EmitDestructorCall(const CXXDestructorDecl *decl,
   WN_kid0(ret) = WGEN_CreateParm(WN_rtype(ld_wn), ld_wn, this_ty);
   WN_set_kid_count(ret, 1);
 
-  WhirlStmtBuilder stmt_bldr(_builder);
-  ret = stmt_bldr.Setup_eh_region(ret, GetSrcPos(),
-                                  false /* for_unwinding */,
-                                  true /* is_dtor_or_ctor_call */);
+  if (emit_exceptions) {
+    WhirlStmtBuilder stmt_bldr(_builder);
+    ret = stmt_bldr.Setup_eh_region(ret, GetSrcPos(),
+                                    false /* for_unwinding */,
+                                    true /* is_dtor_or_ctor_call */);
+  }
   return ret;
 }
 
@@ -335,11 +338,13 @@ WhirlFuncBuilder::EmitCXXGlobalInitialization(ST_IDX st_idx, int priority_size) 
   WN_kid1(ret) = WGEN_CreateParm(WN_rtype(parm_2), parm_2,
                                  MTYPE_To_TY(MTYPE_I4));
   if (ret) {
-    // setup EH region
-    WhirlStmtBuilder stmt_bldr(_builder);
-    ret = stmt_bldr.Setup_eh_region(ret, GetSrcPos(),
-                                    false /* for_unwinding */,
-                                    true /* is_dtor_or_ctor_call */);
+    if (emit_exceptions) {
+      // setup EH region
+      WhirlStmtBuilder stmt_bldr(_builder);
+      ret = stmt_bldr.Setup_eh_region(ret, GetSrcPos(),
+                                      false /* for_unwinding */,
+                                      true /* is_dtor_or_ctor_call */);
+    }
     WN_INSERT_BlockLast(body, ret);
   }
   WN_INSERT_BlockLast(body, WGEN_CreateReturn(GetSrcPos()));
@@ -613,10 +618,14 @@ WhirlFuncBuilder::EmitCXXGlobalVarDeclInitialization(ST_IDX st_idx) {
           UINT len = cast<StringLiteral>(init_expr)->getByteLength();
           GenMstoreForString(addr_wn, ldid_wn, var_ty, len, 0, spos);
         } else {
-          WN *init_wn = WN_Stid(TY_mtype(var_ty), 0, ST_ptr(var_st),
-                                var_ty, ldid_wn);
-          WN_INSERT_BlockLast(stmt, init_wn);
+          WN *init_wn;
+          if (WN_operator(ldid_wn) == OPR_CALL && WN_rtype(ldid_wn) == MTYPE_V)
+            init_wn = ldid_wn;
+          else
+            init_wn = WN_Stid(TY_mtype(var_ty), 0, ST_ptr(var_st),
+                              var_ty, ldid_wn);
           WN_Set_Linenum(init_wn, spos);
+          WN_INSERT_BlockLast(stmt, init_wn);
         }
       }
       // dtor temps created in cpnvert init_expr
@@ -720,131 +729,6 @@ WhirlFuncBuilder::EmitVTableFieldInitialization(WN *blk, const CXXRecordDecl *de
   }
 }
 
-// Capture all the sizes for the VLA expressions in
-// the given variably-modified type and store them in _vla_size_map.
-void WhirlFuncBuilder::EmitVariablyModifiedType(QualType type) {
-  Is_True(type->isVariablyModifiedType(),
-          ("Must pass variably modified type to EmitVariablyModifiedType"));
-
-  // We're going to walk down into the type and look for VLA
-  // expressions.
-  do {
-    Is_True(type->isVariablyModifiedType(),
-            ("should be variably modified type"));
-
-    const Type *ty = type.getTypePtr();
-    switch (ty->getTypeClass()) {
-    // These types are never variably-modified.
-    case Type::Builtin:
-    case Type::Complex:
-    case Type::Vector:
-    case Type::ExtVector:
-    case Type::Record:
-    case Type::Enum:
-    case Type::Elaborated:
-    case Type::TemplateSpecialization:
-    case Type::ObjCTypeParam:
-    case Type::ObjCObject:
-    case Type::ObjCInterface:
-    case Type::ObjCObjectPointer:
-      Is_True(false, ("type class is never variably-modified!"));
-
-    case Type::Adjusted:
-      type = cast<AdjustedType>(ty)->getAdjustedType();
-      break;
-
-    case Type::Decayed:
-      type = cast<DecayedType>(ty)->getPointeeType();
-      break;
-
-    case Type::Pointer:
-      type = cast<PointerType>(ty)->getPointeeType();
-      break;
-
-    case Type::BlockPointer:
-      type = cast<BlockPointerType>(ty)->getPointeeType();
-      break;
-
-    case Type::LValueReference:
-    case Type::RValueReference:
-      type = cast<ReferenceType>(ty)->getPointeeType();
-      break;
-
-    case Type::MemberPointer:
-      type = cast<MemberPointerType>(ty)->getPointeeType();
-      break;
-
-    case Type::ConstantArray:
-    case Type::IncompleteArray:
-      // Losing element qualification here is fine.
-      type = cast<ArrayType>(ty)->getElementType();
-      break;
-
-    case Type::VariableArray: {
-      const VariableArrayType *vat = cast<VariableArrayType>(ty);
-
-      if (const Expr *size = vat->getSizeExpr()) {
-        WhirlExprBuilder bldr(_builder);
-        WN *wn = bldr.ConvertToNode(size);
-        if (WN_operator(wn) != OPR_INTCONST) {
-          TYPE_ID mtyp = WN_rtype(wn);
-          // get vla bound st for size expr
-          ST_IDX tmp_st = _builder->Get_vla_bound_st(size);
-          WN *st_wn = WN_Stid(mtyp, 0, ST_ptr(tmp_st), MTYPE_To_TY(mtyp),
-                              WN_Sub(mtyp, wn, WN_Intconst(mtyp, 1)));
-          WN_Set_Linenum(st_wn, ST_Srcpos(tmp_st));
-          WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), st_wn);
-        }
-      }
-      type = vat->getElementType();
-      break;
-    }
-
-    case Type::FunctionProto:
-    case Type::FunctionNoProto:
-      type = cast<FunctionType>(ty)->getReturnType();
-      break;
-
-    case Type::Paren:
-    case Type::TypeOf:
-    case Type::UnaryTransform:
-    case Type::Attributed:
-    case Type::SubstTemplateTypeParm:
-    case Type::PackExpansion:
-      // Keep walking after single level desugaring.
-      type = type.getSingleStepDesugaredType(*(_builder->Context()));
-      break;
-
-    case Type::Typedef:
-    case Type::Decltype:
-    case Type::Auto:
-    case Type::DeducedTemplateSpecialization:
-      // Stop walking: nothing to do.
-      return;
-
-    case Type::TypeOfExpr:
-    {
-      // Stop walking: emit typeof expression.
-      WhirlExprBuilder bldr(_builder);
-      bldr.ConvertToNode(cast<TypeOfExprType>(ty)->getUnderlyingExpr(),
-                         Result::nwNone(), FALSE);
-      return;
-    }
-
-    case Type::Atomic:
-      type = cast<AtomicType>(ty)->getValueType();
-      break;
-
-    case Type::Pipe:
-      type = cast<PipeType>(ty)->getElementType();
-      break;
-
-    default:
-      Is_True(false, ("unexpected dependent type"));
-    }
-  } while (type->isVariablyModifiedType());
-}
-
 PU_Info *
 WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
   const FunctionDecl *decl = cast<FunctionDecl>(gd.getDecl());
@@ -923,14 +807,19 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
       record_decl = cast<CXXMethodDecl>(decl)->getParent();
     this_ty = _builder->TB().ConvertType(record_decl->getTypeForDecl());
     Is_True(TY_kind(this_ty) == KIND_STRUCT, ("invalid ty"));
+    if (cast<FunctionType>(decl->getType())->isConst())
+      Set_TY_is_const(this_ty);
+    if (cast<FunctionType>(decl->getType())->isVolatile())
+      Set_TY_is_volatile(this_ty);
     this_ptr_ty = Make_Pointer_Type(this_ty);
     SYMTAB_IDX symtab = _builder->Scope().CurrentSymtab();
     Is_True(symtab > GLOBAL_SYMTAB,
             ("invalid scope for function param"));
     this_st = New_ST(symtab);
     STR_IDX str_idx = Save_Str("this");
-    ST_Init(this_st, str_idx, CLASS_VAR, SCLASS_FORMAL, EXPORT_LOCAL, Make_Pointer_Type(this_ty));
+    ST_Init(this_st, str_idx, CLASS_VAR, SCLASS_FORMAL, EXPORT_LOCAL, this_ptr_ty);
     Set_ST_is_value_parm(this_st);
+    Set_ST_is_this_ptr(this_st);
     WN_formal(pu_tree, i) = WN_CreateIdname(0, this_st);
     _builder->Scope().Set_this(ST_st_idx(this_st));
     i++;
@@ -973,14 +862,20 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
     // make sure to emit the type size.
     QualType parm_type = parm->getOriginalType();
     if (parm_type->isVariablyModifiedType()) {
-      EmitVariablyModifiedType(parm_type);
+      _builder->EmitVariablyModifiedType(parm_type);
     }
 
     TY_IDX fty_idx = _builder->TB().ConvertType(parm->getType());
     ST_IDX fst_idx = _builder->SB().ConvertSymbol(parm);
     if (_builder->TB().NeedFakeParm(parm->getType())) {
+      // set original param not used
+      ST *orig_fst = ST_ptr(fst_idx);
+      Set_ST_is_not_used(orig_fst);
+      // create a new param with same name and pointer type
       fty_idx = Make_Pointer_Type(fty_idx);
-      ST *tmp_st = Gen_Temp_Symbol(fty_idx, ".anon");
+      ST *tmp_st = New_ST(CURRENT_SYMTAB);
+      ST_Init(tmp_st, ST_name_idx(orig_fst), CLASS_VAR, SCLASS_FORMAL,
+              EXPORT_LOCAL, fty_idx);
       _builder->DeclBuilder().AddRealParmST(fst_idx, ST_st_idx(tmp_st));
       fst_idx = ST_st_idx(tmp_st);
     }
@@ -1043,7 +938,8 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
         ctor_expr = cast<CXXConstructExpr>(init);
         if (ctor_expr->requiresZeroInitialization())
           need_zero_init = true;
-        if (ctor_expr->getConstructor()->isTrivial() && !need_zero_init && !base_spec)
+        if (ctor_expr->getConstructor()->isDefaultConstructor() &&
+            ctor_expr->getConstructor()->isTrivial() && !need_zero_init && !base_spec)
           continue;
         if (base_spec && base_spec->isVirtual() &&
             gd.getCtorType() == CXXCtorType::Ctor_Base)
@@ -1117,7 +1013,8 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
         init_wn = r == dest ? NULL : r.GetRValue();
       }
       else {
-        init_wn = expr_bldr.ConvertToNode(init, dest);
+        Result r = expr_bldr.ConvertExpr(init, dest);
+        init_wn = r.isNone() || r == dest ? NULL : init->isGLValue() ? r.GetLValue() : r.GetRValue();;
       }
       // destruct temporaries
       WhirlStmtBuilder stmt_bldr(_builder);

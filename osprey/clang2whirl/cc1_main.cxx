@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+// Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 //
 
 //===-- cc1_main.cpp - Clang CC1 Compiler Frontend ------------------------===//
@@ -62,7 +62,7 @@
 
 #endif
 
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
 // a hack to unknown LLVM optioon 'pgo-warn-misexpect'
 namespace llvm {
 static cl::opt<bool> PGOWarnMisExpect(
@@ -79,7 +79,11 @@ using namespace llvm::opt;
 // Main driver
 //===----------------------------------------------------------------------===//
 
+#if LLVM_VERSION_MAJOR == 14
+static void LLVMErrorHandler(void *UserData, const char *Message,
+#else
 static void LLVMErrorHandler(void *UserData, const std::string &Message,
+#endif
                              bool GenCrashDiag) {
   DiagnosticsEngine &Diags = *static_cast<DiagnosticsEngine *>(UserData);
   
@@ -226,7 +230,7 @@ int cc1_main(ArrayRef<const char *> Argv, const char *Argv0, void *MainAddr) {
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
   TextDiagnosticBuffer *DiagsBuffer = new TextDiagnosticBuffer;
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagsBuffer);
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   bool Success = CompilerInvocation::CreateFromArgs(Clang->getInvocation(),
                                                     Argv, Diags, Argv0);
 #else
@@ -267,7 +271,7 @@ int cc1_main(ArrayRef<const char *> Argv, const char *Argv0, void *MainAddr) {
   
   // When running with -disable-free, don't do any destruction or shutdown.
   if (Clang->getFrontendOpts().DisableFree) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
     llvm::BuryPointer(std::move(Clang));
 #else
     BuryPointer(std::move(Clang));

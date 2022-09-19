@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -41,7 +41,7 @@ getLocation(const clang::Decl *decl) {
 
 static inline clang::SourceLocation
 getLocation(const clang::Stmt *stmt) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   return stmt->getBeginLoc();
 #else
   return stmt->getLocStart();
@@ -50,7 +50,7 @@ getLocation(const clang::Stmt *stmt) {
 
 static inline clang::SourceLocation
 getLocation(const clang::Expr *expr) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   return expr->getExprLoc();
 #else
   return expr->getLocStart();
@@ -59,7 +59,7 @@ getLocation(const clang::Expr *expr) {
 
 static inline clang::SourceLocation
 getEndLocation(const clang::Decl *decl) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   return decl->getEndLoc();
 #else
   return decl->getLocEnd();
@@ -68,7 +68,7 @@ getEndLocation(const clang::Decl *decl) {
 
 static inline clang::SourceLocation
 getEndLocation(const clang::Stmt *stmt) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   return stmt->getEndLoc();
 #else
   return stmt->getLocEnd();
@@ -80,10 +80,34 @@ getEndLocation(const clang::Stmt *stmt) {
 //
 static inline clang::Expr *
 getSubExpr(const clang::MaterializeTemporaryExpr *expr) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   return expr->getSubExpr();
 #else
   return expr->GetTemporaryExpr();
+#endif
+}
+
+//
+// API to check if expr is RValue
+//
+static inline bool
+isExprRValue(const clang::Expr *expr) {
+#if LLVM_VERSION_MAJOR == 14
+  return expr->isPRValue();
+#else
+  return expr->isRValue();
+#endif
+}
+
+//
+// API to ignore param/base casts
+//
+static inline const clang::Expr *
+ignoreParenBaseCasts(const clang::Expr *expr) {
+#if LLVM_VERSION_MAJOR == 14
+  return expr->IgnoreParenBaseCasts();
+#else
+  return expr->ignoreParenBaseCasts();
 #endif
 }
 
@@ -92,7 +116,7 @@ getSubExpr(const clang::MaterializeTemporaryExpr *expr) {
 //
 static inline clang::ASTConsumer *
 createASTDumper() {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   return clang::CreateASTDumper(nullptr, "all", true, false, false, false, clang::ADOF_Default).release();
 #else
   return clang::CreateASTDumper(nullptr, "all", true, false, false).release();
@@ -104,7 +128,7 @@ createASTDumper() {
 //
 static inline bool
 evaluateAsInt(const clang::Expr *expr, llvm::APSInt &val, const clang::ASTContext *ctx) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   clang::Expr::EvalResult res;
   if (expr->EvaluateAsInt(res, *ctx)) {
     val = res.Val.getInt();
@@ -122,7 +146,7 @@ evaluateAsInt(const clang::Expr *expr, llvm::APSInt &val, const clang::ASTContex
 static inline void
 mangleCXXName(clang::MangleContext *mc, const clang::CXXConstructorDecl *ctor,
               clang::CXXCtorType variant, llvm::raw_svector_ostream& out) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   mc->mangleCXXName(clang::GlobalDecl(ctor, variant), out);
 #else
   mc->mangleCXXCtor(ctor, variant, out);
@@ -132,7 +156,7 @@ mangleCXXName(clang::MangleContext *mc, const clang::CXXConstructorDecl *ctor,
 static inline void
 mangleCXXName(clang::MangleContext *mc, const clang::CXXDestructorDecl *dtor,
               clang::CXXDtorType variant, llvm::raw_svector_ostream& out) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   mc->mangleCXXName(clang::GlobalDecl(dtor, variant), out);
 #else
   mc->mangleCXXDtor(dtor, variant, out);
@@ -144,10 +168,30 @@ mangleCXXName(clang::MangleContext *mc, const clang::CXXDestructorDecl *dtor,
 //
 static inline const clang::Expr *
 getArraySize(const clang::CXXNewExpr *expr) {
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   return expr->getArraySize().getValue();
 #else
   return expr->getArraySize();
+#endif
+}
+
+//
+// API to create CXXDestructorDecl
+//
+static inline clang::CXXDestructorDecl *
+createCXXDestructorDecl(clang::ASTContext &C,
+                        clang::CXXRecordDecl *RD,
+                        clang::SourceLocation StartLoc,
+                        const clang::DeclarationNameInfo &NameInfo,
+                        clang::QualType	T) {
+#if LLVM_VERSION_MAJOR == 14
+  return clang::CXXDestructorDecl::Create(C, RD, StartLoc, NameInfo, T,
+                                          nullptr, false, false, true,
+                                          clang::ConstexprSpecKind::Unspecified);
+#else
+  return clang::CXXDestructorDecl::Create(C, RD, StartLoc, NameInfo, T,
+                                          nullptr, false, true,
+                                          clang::CSK_unspecified);
 #endif
 }
 

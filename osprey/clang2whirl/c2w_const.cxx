@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -261,7 +261,7 @@ WhirlConstBuilder::ConvertCastExpr(const CastExpr *expr, QualType type) {
               ("null expr mpt or sub mpt"));
       const CXXRecordDecl *to_decl = cast<CXXRecordDecl>(exp_mpt->getClass()->getAs<RecordType>()->getDecl());
       const CXXRecordDecl *from_decl = cast<CXXRecordDecl>(sub_mpt->getClass()->getAs<RecordType>()->getDecl());
-      INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl);
+      INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl, false);
       Is_True(ofst >= 0, ("bad offset"));
       if (exp_mpt->isMemberDataPointer()) {
         Result sub_r = ConvertConst(sub);
@@ -525,7 +525,7 @@ WhirlConstBuilder::EmitRecordInitialization(const clang::InitListExpr *expr) {
     }
 
     Result ret = Result::nwNone();
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
     if (isa<ConstantExpr>(init))
       init = cast<ConstantExpr>(init)->getSubExpr();
 #endif
@@ -1289,7 +1289,7 @@ WhirlConstBuilder::ConvertConst(const clang::Expr *expr, QualType type, RV rv) {
     case Expr::CallExprClass:
       r = ConvertCallExpr(cast<CallExpr>(expr));
       break;
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
     case Expr::ConstantExprClass:
       r = ConvertConst(cast<ConstantExpr>(expr)->getSubExpr());
       break;

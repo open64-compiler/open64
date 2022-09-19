@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -33,6 +33,10 @@
 
 #include "open64decl.h"
 #include "clangdecl.h"
+#include "llvm/Support/CommandLine.h"
+#if LLVM_VERSION_MAJOR == 14
+#include "clang/Basic/Thunk.h"
+#endif
 
 #include "c2w_enum.h"
 #include "c2w_const.h"
@@ -53,7 +57,8 @@ Find_base(const clang::CXXRecordDecl *base, const clang::CXXRecordDecl *derived)
 extern const clang::CXXBaseSpecifier*
 Find_vbase(const clang::CXXRecordDecl *base, const clang::CXXRecordDecl *derived);
 extern INT64
-ComputeOffsetHind(clang::ASTContext *ctx, const clang::CXXRecordDecl *src, const clang::CXXRecordDecl *dst);
+ComputeOffsetHind(clang::ASTContext *ctx, const clang::CXXRecordDecl *src,
+                  const clang::CXXRecordDecl *dst, bool dyncast);
 extern clang::GlobalDecl
 GetGlobalDecl(const clang::FunctionDecl *decl);
 extern clang::GlobalDecl
@@ -87,6 +92,31 @@ private:
   // label idx map
   LABEL_IDX_MAP _label_map;
   VLA_SIZE_MAP _vla_size_map;
+
+private:
+  static llvm::cl::opt<bool>        _verbose;         // verbose
+  static llvm::cl::opt<bool>        _use_cpp_intrn;   // convert c++ known function call to intrinsic
+  static llvm::cl::opt<bool>        _gen_cpp_intrn;   // generate files to describe c++ function with intrinsic
+  static llvm::cl::opt<std::string> _cpp_intrn_prefix;// prefix for c++ library been analyzed to generate code
+  static llvm::cl::opt<std::string> _cpp_intrn_filter;// filter for c++ library been analyzed to generate code
+
+  FILE *_com_intrn_entry_file;  // common/com/cxx_<prefix>_intrn_entry.def
+  FILE *_c2w_intrn_use_file;    // clang2whirl/c2w_cxx_<prefix>_intrn.cxx
+  FILE *_rbc_intrn_model_file;  // be/rnc/certc/cxx_<prefix>.cxx
+  FILE *_verbose_list_file;     // verbose list file for debug purpose
+
+  METHOD_SET       _cpp_func_filter_set;   // set to filter function to generate code
+  CLASS_METHOD_MAP _cpp_class_filter_map;  // map to filter class/method to generate code
+
+  void InitGenCppIntrnFilter(const char* filter);
+  void InitGenCppIntrn();
+  void FiniGenCppIntrn();
+
+  void GenCppIntrnForClassTemplate(const clang::ClassTemplateDecl *decl);
+  void GenCppIntrnForClassMethod(const char *cls_pfx, const char *mtd_pfx, const char *mangle_name,
+                                 const clang::FunctionDecl *method, const clang::FunctionTemplateDecl *tmpl);
+  void GenCppIntrnForFunctionTemplate(const clang::FunctionTemplateDecl *decl);
+  void GenCppIntrnForDecl(const clang::Decl *decl);
 
 private:
   // handled function decl map
@@ -181,6 +211,12 @@ public:
   DECL_TYPE DeclType() const { return _decl_type; }
 
 public:
+  static bool Verbose()     { return _verbose.getValue();       }
+  static bool UseCppIntrn() { return _use_cpp_intrn.getValue(); }
+  static bool GenCppIntrn() { return _gen_cpp_intrn.getValue(); }
+  static std::string CppIntrnPrefix() { return _cpp_intrn_prefix.getValue(); }
+
+public:
   STR_IDX EnterString(const llvm::StringRef &str);
   
   STR_IDX EnterString(const char *str);
@@ -237,6 +273,8 @@ public:
   ST_IDX Get_var_st(const clang::VarDecl *decl);
 
   ST_IDX Get_decl_st(const clang::Decl *decl);
+
+  void EmitVariablyModifiedType(clang::QualType type);
 
   ST_IDX Get_vla_bound_st(const clang::Expr *expr);
 

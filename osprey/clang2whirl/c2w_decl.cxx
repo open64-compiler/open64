@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -213,6 +213,15 @@ WhirlDeclBuilder::GetMangledName(const Decl *decl, INT variant) {
 }
 
 std::string
+WhirlDeclBuilder::GetMangledName(const clang::QualType qty) {
+  SmallString<256> Buffer;
+  llvm::raw_svector_ostream Out(Buffer);
+  MangleContext *MC = _builder->MangleContext();
+  MC->mangleTypeName(qty, Out);
+  return Out.str().str();
+}
+
+std::string
 WhirlDeclBuilder::GetMangledName(const GlobalDecl gd, const ThunkInfo &thunk_info)
 {
   Is_True(_builder->Lang_CPP(), ("only C++ functions needs mangled name"));
@@ -329,7 +338,7 @@ WhirlDeclBuilder::ConvertAPValue(QualType type, const APValue *value, INT repeat
           inv = New_INITV();
           INITV_Init_Symoff(inv, &St_Table[st], ofst, repeat);
         }
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
         // handle typeid
         else if (TypeInfoLValue ti = base.dyn_cast<TypeInfoLValue>()) {
           ST_IDX st = _builder->TB().ConvertRTTIForType(QualType(ti.getType(), 0));
@@ -589,7 +598,7 @@ WhirlDeclBuilder::ConvertAPValue(QualType type, const APValue *value, INT repeat
         const CXXRecordDecl *from_decl = value->getMemberPointerPath().front();
         const CXXRecordDecl *to_decl = value->getMemberPointerPath().back();
         Is_True(FALSE, ("TODO: debug me"));
-        ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl);
+        ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl, false);
       }
       Is_True(ofst >= 0, ("bad offset"));
       if (mpt_type->isMemberDataPointer()) {
@@ -1059,13 +1068,49 @@ WhirlDeclBuilder::HandleAttrs(const NamedDecl *decl, ST_IDX st_idx) {
         if (st_idx != ST_IDX_ZERO)
           Set_ST_is_weak_symbol(ST_ptr(st_idx));
         break;
+      case attr::Target:
+        if (st_idx != ST_IDX_ZERO) {
+          const TargetAttr *TD = decl->getAttr<TargetAttr>();
+          if(TD) {
+            ParsedTargetAttr ParsedAttr = TD->parse();
+            // set x86-64 as native for now
+            if(ParsedAttr.Architecture == "x86-64")
+              Set_ST_is_native(ST_ptr(st_idx));
+          }
+        }
+        break;
+      case attr::NoInline:
+        if (st_idx != ST_IDX_ZERO) {
+          ST* st = ST_ptr(st_idx);
+          if (ST_sym_class(st) == CLASS_FUNC)
+            Set_PU_no_inline(Pu_Table[ST_pu(st)]);
+        }
+        break;
+      case attr::AlwaysInline:
+        if (st_idx != ST_IDX_ZERO) {
+          ST* st = ST_ptr(st_idx);
+          if (ST_sym_class(st) == CLASS_FUNC) {
+            PU &pu = Pu_Table[ST_pu(st)];
+            Set_PU_is_inline_function(pu);
+            Set_PU_is_marked_inline(pu);
+            Set_PU_must_inline(pu);
+            Is_True(isa<FunctionDecl>(decl),
+                    ("should be FunctionDecl"));
+            const FunctionDecl *func_decl =
+              cast<FunctionDecl>(decl);
+            GVALinkage linkage =
+              _builder->Context()->GetGVALinkageForFunction(func_decl);
+            if (linkage == GVA_AvailableExternally || linkage == GVA_StrongExternal)
+              Set_PU_is_extern_inline(pu);
+          }
+        }
+        break;
       default:
         //TRACE_WARN(("Unsupported attributes"));
         break;
       }
     }
 }
-
 BOOL
 WhirlDeclBuilder::ConvertFunction(GlobalDecl gd) {
   TRACE_FUNC();
@@ -1494,6 +1539,10 @@ WhirlDeclBuilder::ConvertVar(const VarDecl *decl) {
         ST_sclass(st_idx) != SCLASS_FSTATIC)))
     return;
 
+  // make sure to evaluate vla bounds
+  if (decl->getType()->isVariablyModifiedType())
+    _builder->EmitVariablyModifiedType(decl->getType());
+
   if (st_idx == ST_IDX_ZERO)
     st_idx = _builder->SB().ConvertSymbol(decl);
 
@@ -1757,7 +1806,12 @@ WhirlDeclBuilder::ConvertDecl(const Decl *decl) {
       break;
     case Decl::Var:
     case Decl::VarTemplateSpecialization:
+    case Decl::Decomposition:
       ConvertVar(cast<VarDecl>(decl));
+      if (auto *DD = dyn_cast<DecompositionDecl>(decl))
+        for (auto *B : DD->bindings())
+          if (auto *HD = B->getHoldingVar())
+            ConvertVar(HD);
       break;
     default:
       Is_True(false, ("unknown decl: %s", decl->getDeclKindName()));
@@ -1979,6 +2033,8 @@ WhirlDeclBuilder::GetRealParmST(ST_IDX st) {
   REAL_PARM_MAP::iterator it = _real_parm_map.find(st);
   if (it != _real_parm_map.end())
     real_st =  it->second;
+  if (real_st != ST_IDX_ZERO)
+    Set_ST_is_value_parm(ST_ptr(real_st));
   return real_st;
 }
 
@@ -1987,6 +2043,59 @@ WhirlDeclBuilder::AddRealParmST(ST_IDX orig_st, ST_IDX real_st) {
   Is_True(orig_st != ST_IDX_ZERO, ("not a valid parm st"));
   Is_True(real_st != ST_IDX_ZERO, ("not a valid real parm st"));
   _real_parm_map.insert(std::make_pair(orig_st, real_st));
+}
+
+const CXXDestructorDecl *
+WhirlDeclBuilder::GetDestructor(const CXXRecordDecl *decl) {
+  Is_True(WhirlBuilder::GenCppIntrn() || WhirlBuilder::UseCppIntrn(),
+          ("only for cpp intrn"));
+  CXXDestructorDecl *dtor = decl->getDestructor();
+  if (dtor)
+    return dtor;
+  CXX_DTOR_MAP::iterator it = _cxx_dtor_map.find(decl);
+  if (it != _cxx_dtor_map.end())
+    return it->second;
+  ASTContext *ctx = _builder->Context();
+  CanQualType cty = ctx->getCanonicalType(ctx->getTypeDeclType(decl));
+  DeclarationName name = ctx->DeclarationNames.getCXXDestructorName(cty);
+  DeclarationNameInfo name_info(name, decl->getLocation());
+  dtor = createCXXDestructorDecl(*ctx,
+                                 const_cast<CXXRecordDecl *>(decl),
+                                 decl->getLocation(),
+                                 name_info, QualType());
+  dtor->setAccess(AS_public);
+  dtor->setDefaulted();
+  FunctionProtoType::ExtProtoInfo epi;
+  epi.ExceptionSpec.Type = EST_None;
+  epi.ExceptionSpec.SourceDecl = dtor;
+  epi.ExtInfo = epi.ExtInfo.withCallingConv(
+                    ctx->getDefaultCallingConvention(false, true));
+  QualType fty = ctx->getFunctionType(ctx->VoidTy, None, epi);
+  dtor->setType(fty);
+  _cxx_dtor_map[decl] = dtor;
+  return dtor;
+}
+
+const FunctionDecl *
+WhirlDeclBuilder::GetTemplatedDecl(const FunctionDecl *decl) {
+  if (isa<CXXMethodDecl>(decl)) {
+    const FunctionDecl *tmpl = decl->getInstantiatedFromMemberFunction();
+    if (tmpl)
+      return tmpl;
+    const FunctionTemplateDecl *tmpl_decl = decl->getPrimaryTemplate();
+    if (tmpl_decl) {
+      const FunctionTemplateDecl *memb_tmpl = tmpl_decl->getInstantiatedFromMemberTemplate();
+      if (memb_tmpl)
+        return memb_tmpl->getTemplatedDecl();
+    }
+  }
+  else {
+    const FunctionTemplateDecl *tmpl_decl = decl->getPrimaryTemplate();
+    if (tmpl_decl) {
+      return tmpl_decl->getTemplatedDecl();
+    }
+  }
+  return nullptr;
 }
 
 } // namespace wgen

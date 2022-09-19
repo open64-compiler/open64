@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -171,10 +171,16 @@ WhirlTypeBuilder::ConvertBuiltinType(const BuiltinType *type) {
       mtype = MTYPE_U4;
       break;
     case BuiltinType::Long:
-      mtype = MTYPE_I8;
+      if (TARGET_64BIT)
+        mtype = MTYPE_I8;
+      else
+        mtype = MTYPE_I4;
       break;
     case BuiltinType::ULong:
-      mtype = MTYPE_U8;
+      if (TARGET_64BIT)
+        mtype = MTYPE_U8;
+      else
+        mtype = MTYPE_U4;
       break;
     case BuiltinType::LongLong:
       mtype = MTYPE_I8;
@@ -266,12 +272,12 @@ WhirlTypeBuilder::ConvertConstantArrayType(const ConstantArrayType *type) {
   TY_IDX elem_ty = ConvertType(type->getElementType());
   TY_IDX ty_idx;
   TY &ty = New_TY(ty_idx);
-  addTypeToMap(type, ty_idx);
   UINT ty_size = type->getSize().getZExtValue() * TY_size(elem_ty);
   TY_Init(ty, ty_size, KIND_ARRAY, MTYPE_M, (STR_IDX) 0);
   Set_TY_etype(ty, elem_ty);
   Set_TY_align(ty_idx, TY_align(elem_ty));
   Set_TY_anonymous(ty);
+  addTypeToMap(type, ty_idx);
   ARB_HANDLE arb = New_ARB();
   ARB_Init(arb, 0, 0, 0);
   Set_TY_arb(ty, arb);
@@ -354,9 +360,9 @@ WhirlTypeBuilder::ConvertFunctionType(const FunctionType *type, const Type *reco
 
   // function type
   TY &func = New_TY(ty_idx);
-  addTypeToMap(type, ty_idx);
   TY_Init(func, 0, KIND_FUNCTION, MTYPE_UNKNOWN, 0);
   Set_TY_align(ty_idx, 1);
+  addTypeToMap(type, ty_idx);
 
   // convert param type and add them into parm_types
   vector<TY_IDX> parm_types;
@@ -381,6 +387,16 @@ WhirlTypeBuilder::ConvertFunctionType(const FunctionType *type, const Type *reco
   TYLIST tylist_idx;
   TY_IDX rty = ConvertType(type->getReturnType());
 
+  if (record_type) {
+    Is_True(_builder->Lang_CPP(), ("Invalid language"));
+    TY_IDX rty = ConvertType(record_type);
+    if (type->isConst())
+      Set_TY_is_const(rty);
+    if (type->isVolatile())
+      Set_TY_is_volatile(rty);
+    parm_types.insert(parm_types.begin(), Make_Pointer_Type(rty));
+  }
+
   if (NeedFakeParm(type->getReturnType())) {
     parm_types.insert(parm_types.begin(), Make_Pointer_Type(rty));
     rty = MTYPE_To_TY(MTYPE_V);
@@ -389,12 +405,6 @@ WhirlTypeBuilder::ConvertFunctionType(const FunctionType *type, const Type *reco
 
   Set_TYLIST_type(New_TYLIST(tylist_idx), rty);
   Set_TY_tylist(ty_idx, tylist_idx);
-
-  if (record_type) {
-    Is_True(_builder->Lang_CPP(), ("Invalid language"));
-    TY_IDX rty = ConvertType(record_type);
-    Set_TYLIST_type(New_TYLIST(tylist_idx), Make_Pointer_Type(rty));
-  }
 
   // set param type into TYLIST
   for (int n = 0; n < parm_types.size(); ++n) {
@@ -414,12 +424,12 @@ WhirlTypeBuilder::ConvertIncompleteArrayType(const IncompleteArrayType *type) {
   // assumed to have zero element for incomplete array type
   TY_IDX ty_idx;
   TY &ty = New_TY(ty_idx);
-  addTypeToMap(type, ty_idx);
   // make a array type with one element
   TY_Init(ty, 0, KIND_ARRAY, MTYPE_M, (STR_IDX) 0);
   Set_TY_etype(ty, elementType);
   Set_TY_align(ty_idx, TY_align(elementType));
   Set_TY_anonymous(ty);
+  addTypeToMap(type, ty_idx);
   ARB_HANDLE arb = New_ARB();
   ARB_Init(arb, 0, 0, 0);
   Set_TY_arb(ty, arb);
@@ -487,12 +497,12 @@ WhirlTypeBuilder::ConvertVariableArrayType(const VariableArrayType *type) {
 
   TY_IDX ty_idx;
   TY &ty = New_TY(ty_idx);
-  addTypeToMap(type, ty_idx);
   // make a array type with zero element
   TY_Init(ty, 0, KIND_ARRAY, MTYPE_M, (STR_IDX) 0);
   Set_TY_etype(ty, elem_ty);
   Set_TY_align(ty_idx, TY_align(elem_ty));
   Set_TY_anonymous(ty);
+  addTypeToMap(type, ty_idx);
   ARB_HANDLE arb = New_ARB();
   ARB_Init(arb, 0, 0, 0);
   Set_TY_arb(ty, arb);
@@ -777,6 +787,11 @@ WhirlTypeBuilder::ConvertRecordType(const RecordType *type, BOOL incomplete, TY_
   BOOL is_empty = TRUE;
   std::vector<FieldLayoutInfo> fields;
 
+  // handle type size and alignment before visit fields
+  Set_TY_align(ty_idx, layout.getAlignment().getQuantity());
+  Set_TY_size(ty_idx, layout.getSize().getQuantity());
+  addTypeToMap(type, ty_idx);
+
   // process base class for c++
   if (!is_cstyle && cxx_decl->hasDefinition()) {
     has_vptr = layout.hasOwnVFPtr();
@@ -808,7 +823,7 @@ WhirlTypeBuilder::ConvertRecordType(const RecordType *type, BOOL incomplete, TY_
   for (RecordDecl::field_iterator iter = decl->field_begin();
        iter != decl->field_end(); iter++, field_index++) {
     FieldDecl *fld_decl = *iter;
-    const Type *fld_type = fld_decl->getType().getCanonicalType().getTypePtr();
+    QualType fld_type = fld_decl->getType().getCanonicalType();
     TY_IDX ty = ConvertType(fld_type);
     long ofst = layout.getFieldOffset(field_index);
     fields.push_back(FieldLayoutInfo(fld_decl, ofst, ty));
@@ -827,8 +842,6 @@ WhirlTypeBuilder::ConvertRecordType(const RecordType *type, BOOL incomplete, TY_
   std::stable_sort(fields.begin(), fields.end(), FieldLayoutInfoCmp());
 
   // process fields
-  long ty_align = layout.getAlignment().getQuantity();
-  long ty_size = layout.getSize().getQuantity();
   int first_field_idx = Fld_Table.Size();
   int next_field_id = 1;
 
@@ -885,9 +898,9 @@ WhirlTypeBuilder::ConvertRecordType(const RecordType *type, BOOL incomplete, TY_
     }
     else {
       fld_type = info.Base()->getType().getCanonicalType().getTypePtr();
+      Set_FLD_is_base_class(fld);
     }
     Set_FLD_is_anonymous(fld);
-    Set_FLD_is_base_class(fld);
     if (info.IsVBase())
       Set_FLD_is_virtual(fld);
     Is_True(_fld_map[info.Field()] == 0 ||
@@ -902,8 +915,6 @@ WhirlTypeBuilder::ConvertRecordType(const RecordType *type, BOOL incomplete, TY_
   _fld_used[type] = next_field_id - 1;
 
   // finalize ty
-  Set_TY_size(ty_idx, ty_size);
-  Set_TY_align(ty_idx, ty_align);
   if (next_field_id > 1) {
     FLD_IDX last_field_idx = Fld_Table.Size() - 1;
     if (last_field_idx >= first_field_idx) {
@@ -1538,7 +1549,7 @@ Build_vtable_pointer(const Type *type) {
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
 #define NON_CANONICAL_TYPE(Class, Base) case Type::Class:
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
 #include "clang/AST/TypeNodes.inc"
 #else
 #include "clang/AST/TypeNodes.def"
@@ -2019,7 +2030,7 @@ WhirlTypeBuilder::ConvertRTTIForType(QualType qtype) {
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
 #define NON_CANONICAL_TYPE(Class, Base) case Type::Class:
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
 #include "clang/AST/TypeNodes.inc"
 #else
 #include "clang/AST/TypeNodes.def"
@@ -2244,14 +2255,6 @@ WhirlTypeBuilder::ConvertType(const Type *type, BOOL incomplete, const Type *rec
       Is_True(false,
               ("Unsupported type class: %s", type->getTypeClassName()));
   }
-#if 0
-  if (T.withConst())
-      Set_TY_is_const(ty_idx);
-  if (T.withRestrict())
-      Set_TY_is_restrict(ty_idx);
-  if (T.withVolatile())
-      Set_TY_is_volatile(ty_idx);
-#endif
   _type_map[type] = ty_idx;
 
   return ty_idx;
@@ -2261,6 +2264,12 @@ TY_IDX WhirlTypeBuilder::ConvertType(QualType qtype, BOOL incomplete) {
   const Type *type = _builder->Context()->getCanonicalType(qtype).getTypePtr();
   TY_IDX ty_idx = ConvertType(type, incomplete);
   DST_INFO_IDX dst = _builder->DstBuilder().CreateDstForType(qtype, ty_idx);
+  if (qtype.isConstQualified())
+    Set_TY_is_const(ty_idx);
+  if (qtype.isVolatileQualified())
+    Set_TY_is_volatile(ty_idx);
+  if (qtype.isRestrictQualified())
+    Set_TY_is_restrict(ty_idx);
   return ty_idx;
 }
 

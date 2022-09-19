@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -646,6 +646,37 @@ WN *FindCallWn(WN *wn) {
   return NULL;
 }
 
+// generate alloca for current scope
+ST *WhirlStmtBuilder::Gen_alloca_0() {
+  WN *wn;
+  TY_IDX ty_idx = Make_Pointer_Type(Be_Type_Tbl(MTYPE_V), FALSE);
+  ST* alloca_st = Gen_Temp_Symbol(ty_idx, "__alloca");
+  wn = WN_CreateAlloca(WN_CreateIntconst(OPC_I4INTCONST, 0));
+  wn = WN_Stid(Pointer_Mtype, 0, alloca_st, ty_idx, wn);
+  WN_Set_Linenum(wn, GetSrcPos());
+  WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), wn);
+  Set_PU_has_alloca(Get_Current_PU());
+  return alloca_st;
+}
+
+// generate dealloca for vars
+void WhirlStmtBuilder::Gen_dealloca(ST *alloca_st, vector<ST*> *vars) {
+  int nkids = vars->size();
+  Is_True(nkids > 0, ("no object allocated by alloca?"));
+
+  WN * wn = WN_CreateDealloca(nkids+1);
+  WN_kid0(wn) = WN_Ldid(Pointer_Mtype, 0, alloca_st, ST_type(alloca_st));
+  nkids = 0;
+
+  while (!vars->empty()) {
+    ST * base_st = vars->back();
+    WN_kid(wn, ++nkids) = WN_Ldid(Pointer_Mtype, 0, base_st, ST_type(base_st));
+    vars->pop_back();
+  }
+  WN_Set_Linenum(wn, GetSrcPos());
+  WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), wn);
+}
+
 WN *WhirlStmtBuilder::Emit_cxx_constructor_call(const VarDecl *decl) {
   ST_IDX arg_st = _builder->Get_var_st(decl);
 
@@ -703,7 +734,32 @@ WN *WhirlStmtBuilder::Emit_cxx_constructor_call(const VarDecl *decl) {
 }
 
 WN *WhirlStmtBuilder::Emit_cxx_destructor_call(QualType type, ST_IDX arg_st) {
-  WN *decl_wn, *call_wn = NULL;
+  WN *arg_wn, *decl_wn, *call_wn, *index_wn = NULL;
+  UINT length = 0;
+
+  // check for VariableArrayType
+  bool is_variable_array = false;
+  if (const VariableArrayType *vat =
+        _builder->Context()->getAsVariableArrayType(type)) {
+    type = vat->getElementType();
+    Is_True(type->isRecordType(), ("elem_ty should be RecordType"));
+    arg_wn = WN_Ldid(Pointer_Mtype, 0, arg_st, Make_Pointer_Type(ST_type(arg_st)));
+    TY_IDX elem_ty = _builder->TB().ConvertType(type);
+    ST *anon_st = New_ST(CURRENT_SYMTAB);
+    ST_Init(anon_st, Save_Str(".anon"), CLASS_VAR,
+            CURRENT_SYMTAB == GLOBAL_SYMTAB ? SCLASS_FSTATIC : SCLASS_AUTO,
+            EXPORT_LOCAL, Make_Pointer_Type(elem_ty));
+    if (const Expr *size = vat->getSizeExpr()) {
+      WhirlExprBuilder expr_bldr(_builder);
+      WN *size_wn = expr_bldr.ConvertToNode(size);
+      length = TY_size(elem_ty);
+      index_wn = WN_Mpy(WN_rtype(arg_wn), size_wn,
+                        WN_Intconst(MTYPE_I8, length));
+    }
+    decl_wn = WN_Ldid(Pointer_Mtype, 0, anon_st, Make_Pointer_Type(elem_ty));
+    is_variable_array = true;
+  }
+
   const CXXRecordDecl *record_decl = type->getAsCXXRecordDecl();
 
   // check for struct array
@@ -719,41 +775,88 @@ WN *WhirlStmtBuilder::Emit_cxx_destructor_call(QualType type, ST_IDX arg_st) {
       is_constant_array = true;
     }
   }
+
+  Is_True(record_decl != NULL, ("record_decl should not be NULL"));
   CXXDestructorDecl *dtor_decl = record_decl->getDestructor();
   Is_True(dtor_decl && !dtor_decl->isTrivial(), ("bad dtor decl"));
 
-  // defer destructor if not exist
-  GlobalDecl gd(dtor_decl, CXXDtorType::Dtor_Complete);
-  ST_IDX st_idx = _builder->Get_func_st(gd);
-  Is_True(st_idx, ("bad dtor st"));
+  INTRINSIC iopc = INTRINSIC_NONE;
+#ifdef BUILD_MASTIFF
+  if (WhirlBuilder::UseCppIntrn()) {
+    std::string name = _builder->DeclBuilder().GetMangledName(dtor_decl, CXXDtorType::Dtor_Complete);
+    CXXRecordDecl *record_tmpl = const_cast<CXXRecordDecl*>(record_decl->getTemplateInstantiationPattern());
+    if (record_tmpl) {
+      const CXXDestructorDecl *tmpl_dtor = _builder->DeclBuilder().GetDestructor(record_tmpl);
+      name = _builder->DeclBuilder().GetMangledName(tmpl_dtor, CXXDtorType::Dtor_Complete);
+    }
+    iopc = FindCXXStdIntrinsic(name.c_str());
+  }
+#endif
 
-  // create destructor call wn
-  call_wn = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, 1);
-  WN_st_idx(call_wn) = st_idx;
+  if (iopc == INTRINSIC_NONE) {
+    // defer destructor if not exist
+    GlobalDecl gd(dtor_decl, CXXDtorType::Dtor_Complete);
+    ST_IDX st_idx = _builder->Get_func_st(gd);
+    Is_True(st_idx, ("bad dtor st"));
+
+    // create destructor call wn
+    call_wn = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, 1);
+    WN_st_idx(call_wn) = st_idx;
+  }
+  else {
+    call_wn = WN_Create(OPR_INTRINSIC_CALL, MTYPE_V, MTYPE_V, 1);
+    WN_intrinsic(call_wn) = iopc;
+  }
+
   WN_Set_Call_Default_Flags(call_wn);
+  WN_Set_Call_Is_Destructor(call_wn);
   WN_Set_Linenum(call_wn, GetSrcPos());
 
-  TY_IDX arg_ty = _builder->TB().ConvertType(type);
-  ST *st = ST_ptr(arg_st);
-  Set_ST_addr_passed(st);
-  Set_ST_addr_saved(st);
-  TY_IDX arg_ptr_ty = Make_Pointer_Type(arg_ty);
-  TYPE_ID arg_mtype = TY_mtype(arg_ptr_ty);
+  TYPE_ID arg_mtype;
+  TY_IDX arg_ptr_ty = TY_IDX_ZERO;
+  TY_IDX arg_ty = TY_IDX_ZERO;
+  ST *st;
+  if (is_variable_array) {
+    Is_True(decl_wn != NULL,
+            ("decl_wn should not be NUll for VariableArrayType"));
+    arg_mtype = WN_rtype(decl_wn);
+    arg_ptr_ty = WN_type(decl_wn);
+    arg_ty = arg_ptr_ty;
+  } else {
+    arg_ty = _builder->TB().ConvertType(type);
+    st = ST_ptr(arg_st);
+    Set_ST_addr_passed(st);
+    Set_ST_addr_saved(st);
+    arg_ptr_ty = Make_Pointer_Type(arg_ty);
+    arg_mtype = TY_mtype(arg_ptr_ty);
+    arg_wn = decl_wn = WN_Lda(Pointer_Mtype, ST_ofst(st), st);
+    if (is_constant_array) {
+      index_wn = WN_Intconst(Pointer_Mtype, TY_size(arg_ty));
+      Is_True(num_element != 0,
+              ("num_element should not be zero for constant array type"));
+      length = TY_size(arg_ty) / num_element;
+    }
+  }
   WN_kid0(call_wn) =
-    WGEN_CreateParm(Mtype_comparison(arg_mtype),
-                    WN_Lda(Pointer_Mtype, ST_ofst(st), st),
+    WGEN_CreateParm(Mtype_comparison(arg_mtype), decl_wn,
                     arg_ptr_ty);
 
-  if (is_constant_array) {
+  if (iopc != INTRINSIC_NONE)
+    return call_wn;
+
+  if (is_constant_array || is_variable_array) {
+    Is_True(arg_ty != TY_IDX_ZERO && arg_ptr_ty != TY_IDX_ZERO,
+            ("invalid arg_ty or arg_ptr_ty"));
+    Is_True(decl_wn != NULL && index_wn != NULL,
+            ("WN should not be NULL for ConstantArrayType or VariableArrayType"));
     // destructors for elements of an array are called
     // in reverse order of their construction
     WN *wn = NULL;
     WN *blk = WN_CreateBlock();
     ST *tmp_st = MTYPE_To_PREG(Pointer_Mtype);
     PREG_NUM tmp_ofst = Create_Preg(Pointer_Mtype, ".ptr.");
-    WN *adjust_wn = WN_Add(Pointer_Mtype,
-                           WN_Lda(Pointer_Mtype, ST_ofst(st), st),
-                           WN_Intconst(Pointer_Mtype, TY_size(arg_ty)));
+    WN *adjust_wn = WN_Add(Pointer_Mtype, WN_COPY_Tree(arg_wn),
+                           WN_COPY_Tree(index_wn));
 
     wn = WN_Stid(Pointer_Mtype, tmp_ofst, tmp_st, arg_ptr_ty, adjust_wn);
     WN_INSERT_BlockLast(blk, wn);
@@ -765,7 +868,7 @@ WN *WhirlStmtBuilder::Emit_cxx_destructor_call(QualType type, ST_IDX arg_st) {
 
     WN *cond_wn = WN_EQ(Pointer_Mtype,
                         WN_Ldid(Pointer_Mtype, tmp_ofst, tmp_st, arg_ptr_ty),
-                        WN_Lda(Pointer_Mtype, ST_ofst(st), st));
+                        arg_wn);
     LABEL_IDX lab;
     New_LABEL (CURRENT_SYMTAB, lab);
     WN *lab_wn = WN_CreateLabel((ST_IDX) 0, lab, 0, NULL);
@@ -774,7 +877,7 @@ WN *WhirlStmtBuilder::Emit_cxx_destructor_call(QualType type, ST_IDX arg_st) {
     // handle array element
     adjust_wn = WN_Sub(Pointer_Mtype,
                        WN_Ldid(Pointer_Mtype, tmp_ofst, tmp_st, arg_ptr_ty),
-                       WN_Intconst(Pointer_Mtype, TY_size(arg_ty) / num_element));
+                       WN_Intconst(Pointer_Mtype, length));
     wn = WN_Stid(Pointer_Mtype, tmp_ofst, tmp_st, arg_ptr_ty, adjust_wn);
     WN_INSERT_BlockLast(body_blk, wn);
     WN_Set_Linenum(wn, GetSrcPos());
@@ -1231,14 +1334,53 @@ void WhirlStmtBuilder::pop_dtor_call_stack(WN *block, bool gen_dtor) {
   dtor_call_stack.pop();
 }
 
-void
-WhirlStmtBuilder::Pop_scope_and_do_cleanups (void)
+// already has alloca, otherwise false. Modifies parameter idx.
+bool WhirlStmtBuilder::Set_current_scope_has_alloca(int &idx) {
+  int i = scope_cleanup_i;
+  while (i != -1) {
+    const Stmt *stmt = scope_cleanup_stack[i].stmt;
+    if (isa<CompoundStmt>(stmt))
+      break;
+    i--;
+  }
+  Is_True(i != -1, ("No scope stmt available"));
+  // return the idx for the scope
+  idx = i;
+  if (scope_cleanup_stack[i].vla.has_alloca)
+    return TRUE;
+  scope_cleanup_stack[i].vla.has_alloca = TRUE;
+  return FALSE;
+}
+
+// save the original sp for scope 'idx'
+void WhirlStmtBuilder::Set_current_scope_alloca_st(ST *st, int idx) {
+  const Stmt *stmt = scope_cleanup_stack[idx].stmt;
+  Is_True(isa<CompoundStmt>(stmt), ("Unexpected tree code"));
+  scope_cleanup_stack[idx].vla.alloca_st = st;
+}
+
+// save st's for kids 1..n of DEALLOCA for scope 'idx'
+void WhirlStmtBuilder::Add_current_scope_alloca_st(ST *st, int idx) {
+  const Stmt *stmt = scope_cleanup_stack[idx].stmt;
+  Is_True(isa<CompoundStmt>(stmt), ("Unexpected tree code"));
+  scope_cleanup_stack[idx].vla.alloca_sts_vector->push_back(st);
+}
+
+void WhirlStmtBuilder::Pop_scope_and_do_cleanups (void)
 {
   Is_True(scope_cleanup_i != -1,
           ("Pop_scope_and_do_cleanups: scope_cleanup-stack is empty"));
 
   while (scope_cleanup_i != -1) {
     const Stmt* t = scope_cleanup_stack [scope_cleanup_i].stmt;
+    if (isa<CompoundStmt>(t)) {
+      // Leaving scope, so use dealloca for any alloca within the scope
+      if (scope_cleanup_stack[scope_cleanup_i].vla.has_alloca)
+          Gen_dealloca(scope_cleanup_stack[scope_cleanup_i].vla.alloca_st,
+                       scope_cleanup_stack[scope_cleanup_i].vla.alloca_sts_vector);
+      --scope_cleanup_i;
+      break;
+    }
     if (t == current_stmt || isa<CXXCatchStmt>(t)) {
       --scope_cleanup_i;
       break;
@@ -1908,16 +2050,23 @@ WhirlStmtBuilder::Build_filter_cmp(int filter, LABEL_IDX label, bool is_throw = 
   WN_Set_Linenum(cmp_insert_pos, GetSrcPos());
 }
 
+// append stmt to current block
+void WhirlStmtBuilder::AppendStmt(const Stmt *stmt) {
+  WN *wn = ConvertStmt(stmt);
+  if (wn && OPCODE_has_next_prev(WN_opcode(wn))) {
+    WN_Set_Linenum(wn, SetSrcPos(getLocation(stmt)));
+    WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), wn);
+  }
+}
+
 WN *WhirlStmtBuilder::ConvertCXXCatchStmt(const CXXCatchStmt *stmt) {
   TRACE_FUNC();
 
   Emit_begin_catch(stmt);
 
   in_catch_stmt = TRUE;
-  WN *ret = ConvertStmt(stmt->getHandlerBlock());
+  AppendStmt(stmt->getHandlerBlock());
   in_catch_stmt = FALSE;
-  if (ret)
-    WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), ret);
 
   Emit_end_catch(SetSrcPos(getLocation(stmt)));
   return NULL;
@@ -1928,9 +2077,9 @@ WN *WhirlStmtBuilder::ConvertCXXForRangeStmt(const CXXForRangeStmt *stmt) {
   // convert init, range stmt, begin stmt and end stmt
   //if (stmt->getInit())
   //  ConvertStmt(stmt->getInit());
-  ConvertStmt(stmt->getRangeStmt());
-  ConvertStmt(stmt->getBeginStmt());
-  ConvertStmt(stmt->getEndStmt());
+  AppendStmt(stmt->getRangeStmt());
+  AppendStmt(stmt->getBeginStmt());
+  AppendStmt(stmt->getEndStmt());
 
   LABEL_IDX break_label = LABEL_IDX_ZERO;
   LABEL_IDX cont_label = LABEL_IDX_ZERO;
@@ -1948,9 +2097,10 @@ WN *WhirlStmtBuilder::ConvertCXXForRangeStmt(const CXXForRangeStmt *stmt) {
 
   // handle body
   WN *body = WhirlBlockUtil::nwBlock();
-  ConvertStmt(stmt->getLoopVarStmt());
+  AppendStmt(stmt->getLoopVarStmt());
+
   const Stmt *body_stmt = stmt->getBody();
-  ConvertStmt(body_stmt);
+  AppendStmt(body_stmt);
 
   // pop loop info and append continue label
   Pop_Loop_Switch(stmt->getStmtClass(), break_label, cont_label);
@@ -1958,7 +2108,7 @@ WN *WhirlStmtBuilder::ConvertCXXForRangeStmt(const CXXForRangeStmt *stmt) {
     Append_label(cont_label, SetSrcPos(getEndLocation(body_stmt)));
 
   // here is a break
-  ConvertStmt(stmt->getInc());
+  AppendStmt(stmt->getInc());
   WhirlBlockUtil::popCurrentBlock(); // pop body
 
   // create loop and append break label
@@ -2305,9 +2455,12 @@ WN *WhirlStmtBuilder::Init_var_decl(const VarDecl *decl) {
           if (WN_operator(init_wn) == OPR_ILOAD) {
             init_wn = WN_kid0(init_wn);
           } else if (WN_operator(init_wn) == OPR_LDID) {
+            QualType pointed_ty = decl->getType()->getPointeeType();
             ST *init_st = WN_st(init_wn);
-            WN_DELETE_Tree(init_wn);
-            init_wn = WN_Lda(Pointer_Mtype, 0, init_st, 0);
+            if (pointed_ty->isPointerType() || TY_kind(ST_type(init_st)) != KIND_POINTER) {
+              WN_DELETE_Tree(init_wn);
+              init_wn = WN_Lda(Pointer_Mtype, 0, init_st, 0);
+            }
             Set_ST_addr_saved(init_st);
           }
         }
@@ -2420,6 +2573,45 @@ WN *WhirlStmtBuilder::Init_var_decl(const VarDecl *decl) {
   return ret;
 }
 
+// create ALLOCA for variable array
+void WhirlStmtBuilder::Handle_variable_array(QualType type, ST_IDX st_idx) {
+  Is_True(st_idx != ST_IDX_ZERO, ("not a valid ST_IDX"));
+  const VariableArrayType *vat =
+    _builder->Context()->getAsVariableArrayType(type);
+  if (!vat)
+    return;
+
+  // if this is the first alloca, save sp
+  int idx;
+  if (!Set_current_scope_has_alloca(idx)) {
+    ST *alloca_st = Gen_alloca_0();
+    Is_True(alloca_st != NULL, ("invalid alloca st"));
+    Set_current_scope_alloca_st(alloca_st, idx);
+  }
+
+  if (const Expr *size = vat->getSizeExpr()) {
+    // get vla bound st
+    ST_IDX ubnd_var_st = _builder->Get_vla_bound_st(size);
+    TY_IDX ty = ST_type(ubnd_var_st);
+    WN *ubnd_wn = WN_Ldid(TY_mtype(ty), 0, ubnd_var_st, ty);
+    // create ALLOCA
+    TY_IDX elem_ty = _builder->TB().ConvertType(vat->getElementType());
+    TYPE_ID mty = Mtype_comparison(TY_mtype(ty));
+    WN *add = WN_Add(mty, ubnd_wn,
+                     WN_Intconst(Pointer_Mtype, 1));
+    WN *index_wn = WN_Mpy(mty, add,
+                      WN_Intconst(MTYPE_I8, TY_size(elem_ty)));
+    WN *alloca_wn = WN_CreateAlloca(index_wn);
+    WN *wn = WN_Stid(Pointer_Mtype, 0, ST_ptr(st_idx),
+                     Make_Pointer_Type(ST_type(st_idx)), alloca_wn);
+    WN_Set_Linenum(wn, GetSrcPos());
+    WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), wn);
+    Set_PU_has_alloca(Get_Current_PU());
+    // For kids 1..n of DEALLOCA
+    Add_current_scope_alloca_st(ST_ptr(st_idx), idx);
+  }
+}
+
 WN *WhirlStmtBuilder::ConvertDeclStmt(const DeclStmt *stmt) {
   TRACE_FUNC();
   WN *block = WhirlBlockUtil::nwBlock();
@@ -2430,6 +2622,13 @@ WN *WhirlStmtBuilder::ConvertDeclStmt(const DeclStmt *stmt) {
     WN *ret = NULL;
     if (isa<VarDecl>(decl)) {
       const VarDecl *var_decl = cast<VarDecl>(decl);
+
+      // create alloca for variable array type
+      if (isa<VariableArrayType>(var_decl->getType())) {
+        ST_IDX st_idx = _builder->SB().ConvertSymbol(var_decl);
+        Handle_variable_array(var_decl->getType(), st_idx);
+      }
+
       if (var_decl->hasInit())
         ret = Init_var_decl(var_decl);
     }
@@ -2465,12 +2664,7 @@ WN *WhirlStmtBuilder::ConvertLoopStmt(const _T *stmt) {
   if (stmt->getStmtClass() == Stmt::ForStmtClass) {
     const ForStmt *for_stmt = cast<ForStmt>(stmt);
     if (for_stmt->getInit()) {
-      WN *init_wn = ConvertStmt(for_stmt->getInit());
-      if (init_wn) {
-        Is_True(!OPERATOR_is_expression(WN_operator(init_wn)),
-                ("bad init wn"));
-        WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), init_wn);
-      }
+      AppendStmt(for_stmt->getInit());
     }
   }
 
@@ -2503,11 +2697,7 @@ WN *WhirlStmtBuilder::ConvertLoopStmt(const _T *stmt) {
   const Stmt *body_stmt = stmt->getBody();
   WN *body_block = WhirlBlockUtil::nwBlock();
   if (body_stmt) {
-    WN *body_wn = ConvertStmt(body_stmt);
-    if (body_wn != NULL) {
-      Is_True(!OPERATOR_is_expression(WN_operator(body_wn)), ("bad stmt"));
-      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), body_wn);
-    }
+    AppendStmt(body_stmt);
   }
 
   // handle inc for for-loop
@@ -2516,15 +2706,8 @@ WN *WhirlStmtBuilder::ConvertLoopStmt(const _T *stmt) {
     const ForStmt *for_stmt = cast<ForStmt>(stmt);
     if (for_stmt->getInc()) {
       inc_block = WhirlBlockUtil::nwBlock();
-      WN *inc_wn = ConvertStmt(for_stmt->getInc());
+      AppendStmt(for_stmt->getInc());
       WhirlBlockUtil::popCurrentBlock();
-      if (inc_wn) {
-        Is_True(!OPERATOR_is_expression(WN_operator(inc_wn)),
-                ("bad inc wn"));
-        SRCPOS spos = SetSrcPos(getLocation(for_stmt->getInc()));
-        WN_Set_Linenum(inc_block, spos);
-        WN_INSERT_BlockLast(inc_block, inc_wn);
-      }
     }
   }
 
@@ -2604,10 +2787,9 @@ void WhirlStmtBuilder::HandleConditionVar(const Decl *decl) {
 WN *WhirlStmtBuilder::ConvertIfStmt(const IfStmt *stmt) {
   TRACE_FUNC();
   TY_IDX cond_ty, then_ty, else_ty;
-  WN *test, *if_stmt;
+  WN *if_stmt;
   if (stmt->getInit()) {
-    Is_True(false, ("append init whirl?"));
-    test = ConvertStmt(stmt->getInit());
+    AppendStmt(stmt->getInit());
   }
   if (stmt->getConditionVariable()) {
     HandleConditionVar(stmt->getConditionVariable());
@@ -2618,20 +2800,12 @@ WN *WhirlStmtBuilder::ConvertIfStmt(const IfStmt *stmt) {
 
   WN *then_block = WhirlBlockUtil::nwBlock();
   if (stmt->getThen()) {
-    WN *then_stmt = ConvertStmt(stmt->getThen());
-    if (then_stmt) {
-      WN_INSERT_BlockLast(then_block, then_stmt);
-      WN_Set_Linenum(then_block, SetSrcPos(getLocation(stmt->getThen()))); 
-    }
+    AppendStmt(stmt->getThen());
   }
   WhirlBlockUtil::popCurrentBlock();
   WN *else_block = WhirlBlockUtil::nwBlock();
   if (stmt->getElse()) {
-    WN *else_stmt = ConvertStmt(stmt->getElse());
-    if (else_stmt) {
-      WN_INSERT_BlockLast(else_block, else_stmt);
-      WN_Set_Linenum(else_block, SetSrcPos(getLocation(stmt->getElse())));
-    }
+    AppendStmt(stmt->getElse());
   }
   WhirlBlockUtil::popCurrentBlock();
   cond_wn = Handle_cond_wn(cond_wn);
@@ -2727,20 +2901,9 @@ WN *WhirlStmtBuilder::ConvertReturnStmt(const ReturnStmt *stmt) {
       return ret;
     }
 
-    // if the function returns a reference, take the address of the
-    // expression rather than the value
+    // if the function returns a reference, get return type from function decl
     if (rtype->isReferenceType() && !retv->getType()->isReferenceType()) {
       ret_ty = _builder->TB().ConvertType(rtype);
-      if (WN_operator(retw) == OPR_ILOAD)
-        retw = WN_kid0(retw);
-      else if (WN_operator(retw) == OPR_LDID) {
-        ST *st = WN_st(retw);
-        if (TY_kind(ST_type(st)) != KIND_POINTER) {
-          WN_DELETE_Tree(retw);
-          retw = WN_Lda(Pointer_Mtype, 0, st, 0);
-          Set_ST_addr_saved(st);
-        }
-      }
     }
 
     WN *cur_blk = WhirlBlockUtil::getCurrentBlock();
@@ -2794,9 +2957,9 @@ WN *WhirlStmtBuilder::ConvertSwitchStmt(const SwitchStmt *stmt) {
   TRACE_FUNC();
 
   SRCPOS spos = SetSrcPos(getLocation(stmt));
-  WN *init_wn, *if_stmt, *body_blk;
+  WN *body_blk;
   if (stmt->getInit()) {
-    init_wn = ConvertStmt(stmt->getInit());
+    AppendStmt(stmt->getInit());
   }
 
   if (stmt->getConditionVariable()) {
@@ -2845,9 +3008,7 @@ WN *WhirlStmtBuilder::ConvertSwitchStmt(const SwitchStmt *stmt) {
 
   if (body_stmt) {
     body_blk = WhirlBlockUtil::nwBlock();
-    WN *body_wn = ConvertStmt(body_stmt);
-    if (body_wn)
-      WN_INSERT_BlockLast(body_blk, body_wn);
+    AppendStmt(body_stmt);
     WhirlBlockUtil::popCurrentBlock();
   }
 
@@ -2975,7 +3136,7 @@ WN *WhirlStmtBuilder::ConvertCaseStmt(const CaseStmt *stmt) {
   WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), wn);
   WN_Set_Linenum(wn, SetSrcPos(getLocation(stmt)));
 
-  // if body oof the case is just a 'break'
+  // if body of the case is just a 'break'
   if (isa<BreakStmt>(stmt->getSubStmt())) {
     // a fallthrouth into this case
   }
@@ -3022,10 +3183,11 @@ WhirlStmtBuilder::ConvertExpr(const Expr *stmt, Result target) {
   Result r = expr_bldr.ConvertExpr(stmt, target, FALSE);
   if (r.isNode()) {
     WN *ret = r.Node();
-    if (ret && OPCODE_is_expression(WN_opcode(ret)))
+    if (ret && OPCODE_is_expression(WN_opcode(ret))) {
       ret = WN_CreateEval(ret);
       WN_Set_Linenum(ret, srcpos);
       return ret;
+    }
     // insert node should be a structured control flow node or a statement node
     // TODO: need improvement
     if (!ret || !OPCODE_is_stmt(WN_opcode(ret)) && !OPCODE_is_scf(WN_opcode(ret)))

@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -218,6 +218,31 @@ public:
   }
 };
 
+// Extra options to control WhirlBuilder
+llvm::cl::opt<bool> WhirlBuilder::_verbose(
+  "verbose", llvm::cl::init(false), llvm::cl::Hidden,
+  llvm::cl::desc("Display verbose message"));
+llvm::cl::opt<bool> WhirlBuilder::_use_cpp_intrn(
+  "use-cpp-intrn", llvm::cl::init(false), llvm::cl::Hidden,
+  llvm::cl::desc("Turn functins in C++ standard library (std) "
+    "and well-defined 3rd party libraries (like boost) "
+    "into intrinsic."));
+llvm::cl::opt<bool> WhirlBuilder::_gen_cpp_intrn(
+  "gen-cpp-intrn", llvm::cl::init(false), llvm::cl::Hidden,
+  llvm::cl::desc("Generate files to describe functions in C++ "
+    "standard library (std) and well-defined 3rd party libraries "
+    "(like boost) with intrinsic."));
+llvm::cl::opt<std::string> WhirlBuilder::_cpp_intrn_prefix(
+  "gen-cpp-intrn-prefix", llvm::cl::init(""), llvm::cl::Hidden,
+  llvm::cl::desc("Prefix used in file names generated from "
+    "`-gen-cpp-intrn'. For example, `std' can be used for standard "
+    "template library (STL) and `boost' can be for BOOST library."));
+llvm::cl::opt<std::string> WhirlBuilder::_cpp_intrn_filter(
+  "gen-cpp-intrn-filter", llvm::cl::init(""), llvm::cl::Hidden,
+  llvm::cl::desc("Filter used to identiify template class should be "
+    "processed to generate intrinsic descriptions. For example, "
+    "`vector.push_back,map.*' to generate intrinsic for vector and map. @filename "
+    "can be used to specify a file contains these filters."));
 
 WhirlBuilder::WhirlBuilder(const INPUT_LANG lang, DiagnosticsEngine &diag)
   : _decl_builder(this),
@@ -233,6 +258,10 @@ WhirlBuilder::WhirlBuilder(const INPUT_LANG lang, DiagnosticsEngine &diag)
     _Diags(diag),
     _Context(NULL),
     _MC(NULL),
+    _com_intrn_entry_file(NULL),
+    _c2w_intrn_use_file(NULL),
+    _rbc_intrn_model_file(NULL),
+    _verbose_list_file(NULL),
     _lambda_helper() {
 }
 
@@ -250,6 +279,24 @@ WhirlBuilder::Initialize(const char *infile, const char *outfile) {
     TARGET_64BIT = TRUE;
     ABI_Name = "n64";
   }
+
+#ifdef BUILD_MASTIFF
+  // initialize use or gen c++ intrinsic
+  if (_use_cpp_intrn.getValue()) {
+    if (_gen_cpp_intrn.getValue()) {
+      printf("Warning: both -use-cpp-intrn and -gen-cpp-intrn are on, turn -gen-cpp-intrn off.\n");
+      _gen_cpp_intrn.setValue(false);
+    }
+  }
+  if (_gen_cpp_intrn.getValue()) {
+    if (_cpp_intrn_prefix.getValue().empty()) {
+      printf("Warning: -gen-cpp-intrn is on but -cpp-intrn-prefix is not set, set it to `temp'.\n");
+      _cpp_intrn_prefix.setValue("temp");
+    }
+    InitGenCppIntrn();
+  }
+#endif
+
   MEM_Initialize();
 //    MEM_POOL_Initialize(&_phase_pool, "Phase pool", FALSE);
 //    MEM_POOL_Push(&_phase_pool);
@@ -303,6 +350,12 @@ WhirlBuilder::Finalize() {
   Close_Output_Info();
   IR_reader_finish();
 //    MEM_POOL_Pop(&_phase_pool);
+
+#ifdef BUILD_MASTIFF
+  if (_gen_cpp_intrn.getValue()) {
+    FiniGenCppIntrn();
+  }
+#endif
 }
 
 STR_IDX
@@ -332,8 +385,14 @@ WhirlBuilder::EmitTopLevelDecl(const Decl *D) {
   TRACE_FUNC();
 
   // ignore dependent declarations.
-  if (D->isTemplated())
+  if (D->isTemplated()) {
+#ifdef BUILD_MASTIFF
+    if (GenCppIntrn()) {
+      GenCppIntrnForDecl(D);
+    }
+#endif
     return;
+  }
 
   // refer CodeGenModule::EmitTopLevelDecl CodeGenModule.cpp:3048
   // ignore dependent declarations.
@@ -703,14 +762,156 @@ WhirlBuilder::Get_var_st(const clang::VarDecl *decl) {
 ST_IDX
 WhirlBuilder::Get_decl_st(const clang::Decl *decl) {
   Is_True(isa<FunctionDecl>(decl) ||
-          isa<VarDecl>(decl), ("not var or func"));
+          isa<VarDecl>(decl) ||
+          isa<BindingDecl>(decl), ("not var or func"));
   if (isa<FunctionDecl>(decl))
     return Get_func_st(GetGlobalDecl(cast<FunctionDecl>(decl)));
   else if (isa<VarDecl>(decl))
     return Get_var_st(cast<VarDecl>(decl));
-  else
+  else if (isa<BindingDecl>(decl)) {
+    const Expr *expr = cast<BindingDecl>(decl)->getBinding();
+    if (isa<DeclRefExpr>(expr)) {
+      decl = cast<DeclRefExpr>(expr)->getDecl();
+      if (isa<VarDecl>(decl))
+        return Get_var_st(cast<VarDecl>(decl));
+    } else if (isa<MemberExpr>(expr)) {
+      const Expr *base= cast<MemberExpr>(expr)->getBase();
+      if (base && isa<DeclRefExpr>(base)) {
+        decl = cast<DeclRefExpr>(base)->getDecl();
+        if (isa<VarDecl>(decl))
+          return Get_var_st(cast<VarDecl>(decl));
+      }
+    }
+    Is_True(FALSE, ("unsupported BindingDecl in Get_decl_st"));
+  } else
     FmtAssert(FALSE, ("wrong decl"));
   return ST_IDX_ZERO;
+}
+
+// Capture all the sizes for the VLA expressions in
+// the given variably-modified type and store them in _vla_size_map.
+void
+WhirlBuilder::EmitVariablyModifiedType(QualType type) {
+  Is_True(type->isVariablyModifiedType(),
+          ("Must pass variably modified type to EmitVariablyModifiedType"));
+
+  // We're going to walk down into the type and look for VLA
+  // expressions.
+  do {
+    Is_True(type->isVariablyModifiedType(),
+            ("should be variably modified type"));
+
+    const Type *ty = type.getTypePtr();
+    switch (ty->getTypeClass()) {
+    // These types are never variably-modified.
+    case Type::Builtin:
+    case Type::Complex:
+    case Type::Vector:
+    case Type::ExtVector:
+    case Type::Record:
+    case Type::Enum:
+    case Type::Elaborated:
+    case Type::TemplateSpecialization:
+    case Type::ObjCTypeParam:
+    case Type::ObjCObject:
+    case Type::ObjCInterface:
+    case Type::ObjCObjectPointer:
+      Is_True(false, ("type class is never variably-modified!"));
+
+    case Type::Adjusted:
+      type = cast<AdjustedType>(ty)->getAdjustedType();
+      break;
+
+    case Type::Decayed:
+      type = cast<DecayedType>(ty)->getPointeeType();
+      break;
+
+    case Type::Pointer:
+      type = cast<PointerType>(ty)->getPointeeType();
+      break;
+
+    case Type::BlockPointer:
+      type = cast<BlockPointerType>(ty)->getPointeeType();
+      break;
+
+    case Type::LValueReference:
+    case Type::RValueReference:
+      type = cast<ReferenceType>(ty)->getPointeeType();
+      break;
+
+    case Type::MemberPointer:
+      type = cast<MemberPointerType>(ty)->getPointeeType();
+      break;
+
+    case Type::ConstantArray:
+    case Type::IncompleteArray:
+      // Losing element qualification here is fine.
+      type = cast<ArrayType>(ty)->getElementType();
+      break;
+
+    case Type::VariableArray: {
+      const VariableArrayType *vat = cast<VariableArrayType>(ty);
+
+      if (const Expr *size = vat->getSizeExpr()) {
+        WhirlExprBuilder bldr(this);
+        WN *wn = bldr.ConvertToNode(size);
+        if (WN_operator(wn) != OPR_INTCONST) {
+          TYPE_ID mtyp = WN_rtype(wn);
+          // get vla bound st for size expr
+          ST_IDX tmp_st = Get_vla_bound_st(size);
+          WN *st_wn = WN_Stid(mtyp, 0, ST_ptr(tmp_st), MTYPE_To_TY(mtyp),
+                              WN_Sub(mtyp, wn, WN_Intconst(mtyp, 1)));
+          WN_Set_Linenum(st_wn, ST_Srcpos(tmp_st));
+          WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), st_wn);
+        }
+      }
+      type = vat->getElementType();
+      break;
+    }
+
+    case Type::FunctionProto:
+    case Type::FunctionNoProto:
+      type = cast<FunctionType>(ty)->getReturnType();
+      break;
+
+    case Type::Paren:
+    case Type::TypeOf:
+    case Type::UnaryTransform:
+    case Type::Attributed:
+    case Type::SubstTemplateTypeParm:
+    case Type::PackExpansion:
+      // Keep walking after single level desugaring.
+      type = type.getSingleStepDesugaredType(*(Context()));
+      break;
+
+    case Type::Typedef:
+    case Type::Decltype:
+    case Type::Auto:
+    case Type::DeducedTemplateSpecialization:
+      // Stop walking: nothing to do.
+      return;
+
+    case Type::TypeOfExpr:
+    {
+      // Stop walking: emit typeof expression.
+      WhirlExprBuilder bldr(this);
+      bldr.ConvertToNode(cast<TypeOfExprType>(ty)->getUnderlyingExpr(),
+                         Result::nwNone(), FALSE);
+      return;
+    }
+
+    case Type::Atomic:
+      type = cast<AtomicType>(ty)->getValueType();
+      break;
+
+    case Type::Pipe:
+      type = cast<PipeType>(ty)->getElementType();
+      break;
+
+    default:
+      Is_True(false, ("unexpected dependent type"));
+    }
+  } while (type->isVariablyModifiedType());
 }
 
 } // namespace wgen

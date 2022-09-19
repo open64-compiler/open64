@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -171,6 +171,8 @@ private:
 
   void Build_filter_cmp(int filter, LABEL_IDX label, bool is_throw);
 
+  void AppendStmt(const clang::Stmt *stmt);
+
   WN *ConvertCXXCatchStmt(const clang::CXXCatchStmt *stmt);
   
   WN *ConvertCXXForRangeStmt(const clang::CXXForRangeStmt *stmt);
@@ -180,6 +182,8 @@ private:
   WN *ConvertCXXTryStmt(const clang::CXXTryStmt *stmt);
 
   WN *Init_var_decl(const clang::VarDecl*);
+
+  void Handle_variable_array(clang::QualType type, ST_IDX st_idx);
   
   WN *ConvertDeclStmt(const clang::DeclStmt *stmt);
 
@@ -227,6 +231,10 @@ private:
 
   void HandleConditionVar(const clang::Decl *decl);
 
+  ST *Gen_alloca_0();
+
+  void Gen_dealloca(ST *alloca_st, vector<ST*> *vars);
+
 public:
   WN *ConvertStmt(const clang::Stmt *stmt);
   
@@ -247,6 +255,12 @@ public:
   void Do_handlers(INT cleanups = 0);
 
   void pop_dtor_for_copy_ctor_stack(WN *block, clang::QualType ret_ty = clang::QualType());
+
+  bool Set_current_scope_has_alloca(int &idx);
+
+  void Set_current_scope_alloca_st(ST *st, int idx);
+
+  void Add_current_scope_alloca_st(ST *st, int idx);
 
 };
 

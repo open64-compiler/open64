@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -91,7 +91,11 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI,
                                                      CI.getCodeGenOpts(),
                                                      CI.getTargetOpts(),
                                                      CI.getLangOpts(),
+#if LLVM_VERSION_MAJOR == 14
+                                                     false,
+#else
                                                      CI.getFrontendOpts().ShowTimers,
+#endif
                                                      InFile.str(),
                                                      OutFile,
                                                      nullptr, /*LinkModule,*/

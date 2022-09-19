@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -101,7 +101,10 @@ private:
   Result GenerateIntrinsic(const clang::CallExpr *expr, TYPE_ID rtype, INTRINSIC iopc, BOOL is_op, BOOL retv);
 
   Result EvaluateBuiltinNaN(clang::QualType, const clang::Expr*, bool);
+
 private:
+  Result ConvertAPValue(clang::QualType type, const clang::APValue *value);
+
   Result ConvertArrayInitLoopExpr(const clang::ArrayInitLoopExpr *expr, Result dest);
 
   Result ConvertArraySubscriptExpr(const clang::ArraySubscriptExpr *expr);
@@ -110,7 +113,7 @@ private:
 
   void Update_pointee_ty(clang::QualType type, TY_IDX ty_idx);
 
-  Result ConvertBinaryOperator(const clang::BinaryOperator *expr, BOOL retv);
+  Result ConvertBinaryOperator(const clang::BinaryOperator *expr, Result dest, BOOL retv);
 
   Result ConvertBuiltinExpr(const clang::CallExpr *expr, const clang::FunctionDecl *decl, unsigned builtin_id, BOOL retv);
 
@@ -126,7 +129,7 @@ private:
   
   Result ConvertCompoundLiteralExpr(const clang::CompoundLiteralExpr *expr, Result dest);
   
-  Result ConvertConditionalOperator(const clang::ConditionalOperator *expr, BOOL retv);
+  Result ConvertConditionalOperator(const clang::ConditionalOperator *expr, Result dest, BOOL retv);
   
   Result ConvertCStyleCastExpr(const clang::CStyleCastExpr *expr, Result dest);
   
@@ -172,7 +175,7 @@ private:
   
   Result ConvertDeclRefExpr(const clang::DeclRefExpr *expr);
   
-  Result ConvertExprWithCleanups(const clang::ExprWithCleanups *expr, Result dest);
+  Result ConvertExprWithCleanups(const clang::ExprWithCleanups *expr, Result dest, BOOL retv);
   
   Result ConvertExtVectorElementExpr(const clang::ExtVectorElementExpr *expr);
   
@@ -210,7 +213,7 @@ private:
   
   Result ConvertParenExpr(const clang::ParenExpr *expr, Result dest, BOOL retv);
 
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   Result ConvertConstantExpr(const clang::ConstantExpr *expr, Result dest, BOOL retv);
 #endif
   

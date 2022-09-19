@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -157,7 +157,7 @@ Get_real_wn(WN *wn, const Expr *expr, TY_IDX ty) {
 
 // check whether the WHIRL operator has subsumed cvtl in its semantics
 // (intended only for integer operations)
-bool
+static bool
 Has_subsumed_cvtl(OPERATOR opr)
 {
   if (OPERATOR_is_load(opr) || OPERATOR_is_leaf(opr))
@@ -178,6 +178,39 @@ WhirlExprBuilder::GetRV(const Expr *expr, BOOL retv) {
   if (!retv || expr->getType()->isVoidType())
     return R_NVALUE;
   return expr->isGLValue() ? R_LVALUE : R_RVALUE;
+}
+
+Result
+WhirlExprBuilder::ConvertAPValue(clang::QualType type, const clang::APValue *value) {
+  ST *st = NULL;
+  TY_IDX ty = _builder->TB().ConvertType(type);
+  switch (value->getKind()) {
+  default:
+    Is_True(FALSE, ("bad kind"));
+    break;
+  case APValue::ValueKind::Int:
+    Is_True(MTYPE_is_integral(TY_mtype(ty)), ("bad ty"));
+    return Result::nwNode(WN_Intconst(Mtype_comparison(TY_mtype(ty)),
+                                      value->getInt().getLimitedValue()),
+                          ty);
+
+  case APValue::ValueKind::Float:
+    Is_True(MTYPE_is_float(TY_mtype(ty)), ("bad ty"));
+    st = New_Const_Sym(Convert_float_to_tcon(ty, value->getFloat()), ty);
+    return Result::nwNode(WN_CreateConst(OPR_CONST, TY_mtype(ty), MTYPE_V, st), ty);
+
+  case APValue::ValueKind::ComplexInt:
+  case APValue::ValueKind::ComplexFloat:
+  case APValue::ValueKind::LValue:
+  case APValue::ValueKind::Vector:
+  case APValue::ValueKind::Array:
+  case APValue::ValueKind::Struct:
+  case APValue::ValueKind::Union:
+  case APValue::ValueKind::MemberPointer:
+  case APValue::ValueKind::AddrLabelDiff:
+    return Result::nwNone();
+  }
+  return Result::nwNone();
 }
 
 Result
@@ -235,6 +268,10 @@ WhirlExprBuilder::ConvertArrayInitLoopExpr(const ArrayInitLoopExpr *expr, Result
             ("not C1?"));
     Is_True(ctor_expr->getNumArgs() == 1, ("more than 1 arg?"));
     array_expr = ctor_expr->getArg(0);
+    // handle CK_NoOp
+    if (isa<ImplicitCastExpr>(array_expr) &&
+        cast<ImplicitCastExpr>(array_expr)->getCastKind() == CK_NoOp)
+      array_expr = cast<ImplicitCastExpr>(array_expr)->getSubExpr();
   }
   else {
     Is_True(isa<ImplicitCastExpr>(sub_expr) &&
@@ -566,6 +603,11 @@ WhirlExprBuilder::EmitAssignNode(Result lhs, Result rhs, TY_IDX ty, RV rv) {
       Is_True(TY_kind(pty) == KIND_POINTER, ("not pointer type"));
       TY_IDX lty = TY_pointed(pty);
       WN* addr = lhs.GetLValue();
+      TY_IDX rhs_ty = rhs.Ty();
+      if (TY_kind(ty) == KIND_STRUCT &&
+          TY_kind(rhs_ty) == KIND_POINTER) {
+        rhs_wn = WN_Iload(TY_mtype(ty), 0, rhs_ty, WN_COPY_Tree(rhs_wn));
+      }
       ret = WN_Istore(TY_mtype(ty), 0, pty, addr, rhs_wn);
     }
     else {
@@ -946,7 +988,7 @@ WhirlExprBuilder::Update_pointee_ty(QualType type, TY_IDX ty_idx) {
 }
 
 Result
-WhirlExprBuilder::ConvertBinaryOperator(const BinaryOperator *expr, BOOL retv) {
+WhirlExprBuilder::ConvertBinaryOperator(const BinaryOperator *expr, Result dest, BOOL retv) {
   TRACE_FUNC();
   ST *st;
   WN *wn, *ret;
@@ -991,7 +1033,7 @@ WhirlExprBuilder::ConvertBinaryOperator(const BinaryOperator *expr, BOOL retv) {
   BOOL lhs_retv = opcode == clang::BO_Comma ? FALSE : TRUE;
   WN *lhs = ConvertToNode(lhs_expr, Result::nwNone(), lhs_retv);
   lhs = Get_real_wn(lhs, lhs_expr, lhs_ty);
-  WN *rhs = ConvertToNode(rhs_expr, Result::nwNone(), TRUE);
+  WN *rhs = ConvertToNode(rhs_expr, lhs_retv ? Result::nwNone() : dest, TRUE);
   rhs = Get_real_wn(rhs, rhs_expr, rhs_ty);
   if (expr->isGLValue())
     ty_idx = Make_Pointer_Type(ty_idx);
@@ -1147,6 +1189,8 @@ WhirlExprBuilder::SetCallParm(const clang::CallExpr *expr, WN *wn, int &start_of
     int i = parm_idx - start_offset;
     WN *arg_wn = ConvertToNode(args);
     TY_IDX arg_ty_idx = _builder->TB().ConvertType(args->getType());
+    Is_True(arg_ty_idx != (TY_IDX) 0 && arg_wn != NULL, ("arg is null"));
+
     if (args->isGLValue())
       arg_ty_idx = Make_Pointer_Type(arg_ty_idx);
 
@@ -1171,8 +1215,6 @@ WhirlExprBuilder::SetCallParm(const clang::CallExpr *expr, WN *wn, int &start_of
       WN *ret = WN_Ldid(TY_mtype(arg_ty_idx), -1, Return_Val_Preg, arg_ty_idx);
       arg_wn = WGEN_CreateComma(WN_rtype(ret), blk, ret);
     }
-
-    Is_True(arg_ty_idx != (TY_IDX) 0 && arg_wn != NULL, ("arg is null"));
 
     TYPE_ID arg_mtype = TY_mtype(arg_ty_idx);
     if (arg_mtype == MTYPE_M)
@@ -1219,7 +1261,7 @@ WhirlExprBuilder::ConvertCallExpr(const CallExpr *expr, Result dest, BOOL retv) 
   num_args = impl_obj ? num_args + 1 : num_args;
 
   bool add_fake_parm = false;
-  if (callee != NULL && !dest.isNone()
+  if (callee != NULL
       && _builder->TB().NeedFakeParm(callee->getReturnType())) {
     add_fake_parm = true;
     num_args++;
@@ -1229,7 +1271,7 @@ WhirlExprBuilder::ConvertCallExpr(const CallExpr *expr, Result dest, BOOL retv) 
   bool mem_expr_is_arrow = false;
   if (cxx_call_expr) {
     const MemberExpr *mem_expr =
-      dyn_cast<MemberExpr>(cxx_call_expr->getCallee());
+      dyn_cast<MemberExpr>(cxx_call_expr->getCallee()->IgnoreParens());
     Is_True(mem_expr, ("invalid MemberExpr"));
     if (mem_expr->isArrow())
       mem_expr_is_arrow = true;
@@ -1275,23 +1317,64 @@ WhirlExprBuilder::ConvertCallExpr(const CallExpr *expr, Result dest, BOOL retv) 
       // fall through to generate normal call
     }
 
-    if (const CXXDestructorDecl *dtor = dyn_cast<CXXDestructorDecl>(callee)) {
+    const CXXDestructorDecl *dtor = dyn_cast<CXXDestructorDecl>(callee);
+    if (dtor) {
       if (dtor->getParent()->hasTrivialDestructor())
         return Result::nwNone();  // do nothing for trivial dtor
     }
 
-    GlobalDecl gd = GetGlobalDecl(callee);
-    ST_IDX ce_st = _builder->Get_func_st(gd);
-    Is_True(ce_st != ST_IDX_ZERO, ("bad st"));
+    INTRINSIC iopc = INTRINSIC_NONE;
+#ifdef BUILD_MASTIFF
+    if (WhirlBuilder::UseCppIntrn()) {
+      const FunctionDecl *tmpl = _builder->DeclBuilder().GetTemplatedDecl(callee);
+      if (tmpl) {
+        INT variant = dtor ? CXXDtorType::Dtor_Complete : 0;
+        std::string name = _builder->DeclBuilder().GetMangledName(tmpl, variant);
+        iopc = FindCXXStdIntrinsic(name.c_str());
+      }
+    }
+#endif
 
     // get right return type from callee type
-    ret_ty_idx = TY_ret_type(ST_pu_type(ce_st));
-    call_wn = WN_Create(OPR_CALL, retv ? TY_mtype(ret_ty_idx) : MTYPE_V, MTYPE_V, num_args);
+    ST_IDX ce_st = ST_IDX_ZERO;
+    if (iopc == INTRINSIC_NONE) {
+      GlobalDecl gd = GetGlobalDecl(callee);
+      ce_st = _builder->Get_func_st(gd);
+      Is_True(ce_st != ST_IDX_ZERO, ("bad st"));
+      ret_ty_idx = TY_ret_type(ST_pu_type(ce_st));
+
+      call_wn = WN_Create(OPR_CALL, retv ? TY_mtype(ret_ty_idx) : MTYPE_V, MTYPE_V, num_args);
+      WN_st_idx(call_wn) = ce_st;
+      if (!_builder->DeclBuilder().Call_nothrow(callee))
+        Mark_call_region(call_wn);
+    }
+    else {
+      if (add_fake_parm) {
+        add_fake_parm = FALSE;
+        num_args --;
+      }
+      TYPE_ID mtype = retv ? TY_mtype(_builder->TB().ConvertType(callee->getReturnType()))
+                           : MTYPE_V;
+      call_wn = WN_Create(OPR_INTRINSIC_CALL, mtype, MTYPE_V, num_args);
+      WN_intrinsic(call_wn) = iopc;
+    }
+
     WN_Set_Linenum(call_wn, SetSrcPos(getLocation(expr)));
-    WN_st_idx(call_wn) = ce_st;
     WN_Set_Call_Default_Flags(call_wn);
-    if (!_builder->DeclBuilder().Call_nothrow(callee))
-      Mark_call_region(call_wn);
+    if (isa<CXXConstructorDecl>(callee))
+      WN_Set_Call_Is_Constructor(call_wn);
+    else if (isa<CXXDestructorDecl>(callee))
+      WN_Set_Call_Is_Destructor(call_wn);
+
+    if (add_fake_parm && dest.isNone()) {
+      // create tmp st for the fake first parm
+      TYLIST_IDX parm_list = TY_parms(ST_pu_type(ce_st));
+      TY_IDX first_parm_ty = TYLIST_ty(parm_list);
+      SRCPOS spos = SetSrcPos(getLocation(expr));
+      ST* st = Create_tmp_sym(first_parm_ty, ".cxx.bind.", spos);
+      dest = Result::nwSym(ST_st_idx(st), first_parm_ty);
+    }
+
   } else {
     indirect_call = true;
     const Expr *ind_callee = expr->getCallee();
@@ -1327,12 +1410,22 @@ WhirlExprBuilder::ConvertCallExpr(const CallExpr *expr, Result dest, BOOL retv) 
   int  parm_idx = 0;
 
   if (!dest.isNone() && add_fake_parm) {
-    Is_True(dest.isSym(), ("dest should be sym"));
-    ST_IDX target_st = dest.Sym();
-    retv = false;
-    WN *target_wn = WN_Lda(Pointer_Mtype, 0, ST_ptr(target_st));
-    WN *arg_wn = WN_CreateParm(Pointer_Mtype, target_wn,
-                               Make_Pointer_Type(ST_type(target_st), FALSE),
+    WN *target_wn = dest.GetLValue();
+    TY_IDX target_ty = TY_IDX_ZERO;
+    if (dest.isSym()) {
+      target_ty = Make_Pointer_Type(ST_type(dest.Sym()), FALSE);
+    } else {
+      if (WN_has_sym(target_wn)) {
+        target_ty = Make_Pointer_Type(ST_type(WN_st_idx(target_wn)), FALSE);
+      } else if (WN_operator(target_wn) == OPR_ADD) {
+        WN *base_wn = WN_kid0(target_wn);
+        target_ty = WN_has_sym(base_wn)
+                    ? Make_Pointer_Type(ST_type(WN_st_idx(base_wn)), FALSE)
+                    : WN_ty(base_wn);
+      } else
+        target_ty = WN_ty(target_wn);
+    }
+    WN *arg_wn = WN_CreateParm(Pointer_Mtype, target_wn, target_ty,
                                WN_PARM_BY_VALUE);
     WN_kid(call_wn, parm_idx++) = arg_wn;
   }
@@ -1359,6 +1452,18 @@ WhirlExprBuilder::ConvertCallExpr(const CallExpr *expr, Result dest, BOOL retv) 
     WN_kid(call_wn, parm_idx) = ld_wn;
   }
 
+  // insert call st into eh_cleanup_set,
+  // so we could get correct cleanups in Lookup_cleanups() for them
+  if (add_fake_parm) {
+    eh_cleanup_set.insert(WN_st_idx(call_wn));
+    if (retv) {
+      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), call_wn);
+      return dest;
+    } else {
+      return Result::nwNode(call_wn, 0);
+    }
+  }
+
   if (retv && !expr->getType()->isVoidType()) {
     ret_ty_idx = _builder->TB().ConvertType(expr->getType());
     TY_IDX ret_obj_idx = ret_ty_idx;
@@ -1378,10 +1483,6 @@ WhirlExprBuilder::ConvertCallExpr(const CallExpr *expr, Result dest, BOOL retv) 
     return r;
   }
   else {
-    // insert call st into eh_cleanup_set,
-    // so we could get correct cleanups in Lookup_cleanups() for them
-    if (add_fake_parm)
-      eh_cleanup_set.insert(WN_st_idx(call_wn));
     return Result::nwNode(call_wn, 0);
   }
 }
@@ -1534,17 +1635,37 @@ WhirlExprBuilder::ConvertCompoundLiteralExpr(const CompoundLiteralExpr *expr, Re
   }
 
   Result ret = ConvertExpr(expr->getInitializer(), dest);
+
+  if (need_tmp_dest && ret.isNode()) {
+      WN *ret_wn = ret.Node();
+      ST_IDX st = dest.Sym();
+      WN *stid = WN_Stid(Pointer_Mtype, WN_offset(ret_wn), ST_ptr(st), ST_type(st), ret_wn);
+      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), stid);
+      WN_Set_Linenum(stid, SetSrcPos(getLocation(expr)));
+      ret = dest;
+    }
+
   return need_tmp_dest && ret.isNone() ? dest : ret;
 }
 
 Result
-WhirlExprBuilder::ConvertConditionalOperator(const ConditionalOperator *expr, BOOL retv) {
+WhirlExprBuilder::ConvertConditionalOperator(const ConditionalOperator *expr, Result dest, BOOL retv) {
   TRACE_FUNC();
   const Expr *cond_expr = expr->getCond();
   const Expr *true_expr = expr->getTrueExpr();
   const Expr *false_expr = expr->getFalseExpr();
   TY_IDX true_ty = _builder->TB().ConvertType(true_expr->getType());
   TY_IDX false_ty = _builder->TB().ConvertType(false_expr->getType());
+
+  // create a new dest if return type is passed by fake parm
+  if (dest.isNone() && TY_kind(true_ty) == KIND_STRUCT &&
+      _builder->TB().NeedFakeParm(true_expr->getType())) {
+    Is_True(true_ty == false_ty,
+            ("true_ty should be equal to false_ty"));
+    ST* st = Create_tmp_sym(true_ty, ".anon",
+                            SetSrcPos(getLocation(expr)));
+    dest = Result::nwSym(ST_st_idx(st), true_ty);
+   }
 
   // convert cond
   WN *cond = ConvertToNode(cond_expr);
@@ -1555,13 +1676,13 @@ WhirlExprBuilder::ConvertConditionalOperator(const ConditionalOperator *expr, BO
 
   // convert true expr
   WN *true_blk = WhirlBlockUtil::nwBlock();
-  WN *true_wn = ConvertToNode(true_expr);
+  WN *true_wn = ConvertToNode(true_expr, dest, TRUE);
   true_wn = Get_real_wn(true_wn, true_expr, true_ty);
   WhirlBlockUtil::popCurrentBlock();  // pop true_blk
 
   // convert false expr
   WN *false_blk = WhirlBlockUtil::nwBlock();
-  WN *false_wn = ConvertToNode(false_expr);
+  WN *false_wn = ConvertToNode(false_expr, dest, TRUE);
   false_wn = Get_real_wn(false_wn, false_expr, false_ty);
   WhirlBlockUtil::popCurrentBlock();  // pop false_blk
 
@@ -1684,7 +1805,7 @@ WhirlExprBuilder::ConvertCXXBindTemporaryExpr(const CXXBindTemporaryExpr *expr, 
     Push_dtor_for_copy_ctor(expr->getType(), dest.Sym());
 
   if (ret.isNone() || ret.isSym())
-    return ret;
+    return is_dest_none ? dest : ret;
   Is_True(ret.isNode(), ("should be whirl node"));
 
   if (is_dest_none) {
@@ -2017,12 +2138,9 @@ WhirlExprBuilder::EmitCXXNewDeleteCall(const CallExpr *expr,
   DeclarationName Name = Ctx.DeclarationNames
     .getCXXOperatorName(is_delete? OO_Delete :OO_New);
 
-  WN *size_wn;
-  TYPE_ID machine_uint_ty = _builder->TB().GetUIntPtrMType();
   for (auto *Decl : Ctx.getTranslationUnitDecl()->lookup(Name))
     if (auto *func = dyn_cast<FunctionDecl>(Decl))
       if (Ctx.hasSameType(func->getType(), QualType(pu_type, 0))) {
-        size_wn = WN_Intconst(machine_uint_ty, 1);
         ST_IDX func_sym_idx = _builder->Get_func_st(func);
         Is_True(func_sym_idx, ("bad func st"));
         TY_IDX ret_ty_idx = _builder->TB().ConvertType(func->getReturnType());
@@ -2031,11 +2149,12 @@ WhirlExprBuilder::EmitCXXNewDeleteCall(const CallExpr *expr,
         WN *call_wn = WN_Create(OPR_CALL, ret_mtype, MTYPE_V, 1);
         WN_Set_Linenum(call_wn, SetSrcPos(getLocation(func)));
         WN_st_idx(call_wn) = func_sym_idx;
+        int parm_idx = 0;
+        SetCallParm(expr, call_wn, parm_idx);
+
         if (!_builder->DeclBuilder().Call_nothrow(func))
           Mark_call_region(call_wn);
 
-        WN_kid(call_wn, 0) = WGEN_CreateParm(machine_uint_ty, size_wn,
-                                             MTYPE_To_TY(machine_uint_ty));
         if (ret_mtype == MTYPE_V)
           return Result::nwNode(call_wn, ret_ty_idx);
 
@@ -2075,8 +2194,20 @@ WhirlExprBuilder::ConvertCXXConstructExpr(const CXXConstructExpr *expr,
   // create the first parm for *`this'
   if (dest.isNone()) {
     // create tmp local st
-    ST *tmp_st = Create_tmp_sym(ty_idx, "ctor.tmp", spos);
+    ST *tmp_st = Create_tmp_sym(ty_idx, ".ctor.tmp", spos);
     dest = Result::nwSym(ST_st_idx(tmp_st), ty_idx);
+  }
+
+  if (const VariableArrayType *vat =
+        _builder->Context()->getAsVariableArrayType(expr->getType())) {
+    TY_IDX elem_ty = _builder->TB().ConvertType(vat->getElementType());
+    TY_IDX sz_ty = Make_Pointer_Type(elem_ty);
+    ST *tmp_st = Create_tmp_sym(sz_ty, ".save.expr", spos);
+    dest.SetRef();
+    WN *st_wn = WN_Stid(TY_mtype(sz_ty), 0, tmp_st, sz_ty, dest.GetRValue());
+    WN_Set_Linenum(st_wn, spos);
+    WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), st_wn);
+    dest = Result::nwSym(ST_st_idx(tmp_st), sz_ty);
   }
 
   WN_VECTOR args;
@@ -2119,6 +2250,40 @@ WhirlExprBuilder::ConvertCXXConstructExpr(const CXXConstructExpr *expr,
                               num_elem);
     WN *parm[1] = { st_wn };
     call_wn = ConvertConstantArray(ele_ty, elem_wn, call_wn, parm, 1);
+  } else if (const VariableArrayType *vat =
+               _builder->Context()->getAsVariableArrayType(expr->getType())) {
+    if (const Expr *size = vat->getSizeExpr()) {
+      ST_IDX ubnd_var_st = _builder->Get_vla_bound_st(size);
+      TY_IDX ty = ST_type(ubnd_var_st);
+      WN *ubnd_wn = WN_Ldid(TY_mtype(ty), 0, ubnd_var_st, ty);
+      WN *size_wn = Handle_expr_for_copy(WhirlBlockUtil::getCurrentBlock(),
+                                         ubnd_wn, ty, spos, ".save.expr");
+      WN *comp_wn = WN_NE(TY_mtype(ty), size_wn,
+                          WN_Intconst(Boolean_type, -1));
+      WN *body_blk = WN_CreateBlock();
+      WN *wn = WN_CreateWhileDo(comp_wn, body_blk);
+      WN_Set_Linenum(wn, spos);
+      WN_INSERT_BlockLast(body_blk, call_wn);
+
+      WN *dest_wn = dest.GetRValue();
+      TY_IDX rty = dest.Ty();
+      Is_True(TY_kind(rty) == KIND_POINTER, ("invalid ty"));
+      WN *adjust_wn = WN_Add(TY_mtype(rty), dest_wn,
+                             WN_Intconst(TY_mtype(rty), TY_size(TY_pointed(rty))));
+      Is_True(WN_has_sym(dest_wn), ("invalid wn"));
+      WN *st_wn = WN_Stid(Pointer_Mtype, WN_offset(dest_wn), WN_st(dest_wn),
+                      WN_ty(dest_wn), adjust_wn);
+      WN_Set_Linenum(st_wn, spos);
+      WN_INSERT_BlockLast(body_blk, st_wn);
+
+      adjust_wn = WN_Sub(WN_rtype(size_wn), WN_COPY_Tree(size_wn),
+                         WN_Intconst(WN_rtype(size_wn), 1));
+      st_wn = WN_Stid(WN_rtype(size_wn), WN_offset(size_wn), WN_st(size_wn),
+                      WN_ty(size_wn), adjust_wn);
+      WN_Set_Linenum(st_wn, spos);
+      WN_INSERT_BlockLast(body_blk, st_wn);
+      call_wn = wn;
+    }
   }
 
   WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), call_wn);
@@ -2229,9 +2394,9 @@ WhirlExprBuilder::ConvertCXXDefaultInitExpr(const CXXDefaultInitExpr *expr, Resu
 }
 
 INT64
-ComputeOffsetHind(ASTContext *ctx, const CXXRecordDecl *src, const CXXRecordDecl *dst) {
-  if (src == NULL || dst == NULL)
-    return -1;
+ComputeOffsetHind(ASTContext *ctx, const CXXRecordDecl *src, const CXXRecordDecl *dst,
+                  bool dyncast) {
+  Is_True(src != NULL && dst != NULL, ("invalid decl"));
 
   CXXBasePaths paths(true,    // FindAmbiguities
                      true,    // RecordPaths
@@ -2242,7 +2407,7 @@ ComputeOffsetHind(ASTContext *ctx, const CXXRecordDecl *src, const CXXRecordDecl
   UINT  pub_paths = 0;
   INT64 ofst = 0;
   for (const CXXBasePath &p : paths) {
-    if (p.Access != AS_public)  // ignore non-public inheritance
+    if (dyncast && p.Access != AS_public)  // ignore non-public inheritance for dyncast
       continue;
     ++ pub_paths;
 
@@ -2276,7 +2441,7 @@ WhirlExprBuilder::ConvertBaseToDerivedMemberPointer(const CastExpr *expr) {
           ("null expr mpt or sub mpt"));
   const CXXRecordDecl *to_decl = cast<CXXRecordDecl>(exp_mpt->getClass()->getAs<RecordType>()->getDecl());
   const CXXRecordDecl *from_decl = cast<CXXRecordDecl>(sub_mpt->getClass()->getAs<RecordType>()->getDecl());
-  INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl);
+  INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl, false);
   Is_True(ofst >= 0, ("bad offset"));
   if (exp_mpt->isMemberDataPointer()) {
     Is_True(sub_mpt->isMemberDataPointer(), ("not member data"));
@@ -2423,7 +2588,7 @@ WhirlExprBuilder::ConvertCXXDynamicCastExpr(const CXXDynamicCastExpr *expr) {
     // offset hint
     const CXXRecordDecl *from_decl = sub_ty->getAsCXXRecordDecl();
     const CXXRecordDecl *to_decl = expr_ty->getAsCXXRecordDecl();
-    INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl);;
+    INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl, true);
     WN_kid(call_wn, 3) = WGEN_CreateParm(MTYPE_I8,
                                          WN_Intconst(MTYPE_I4, ofst),
                                          MTYPE_To_TY(MTYPE_I4));
@@ -2622,7 +2787,9 @@ WN *
 WhirlExprBuilder::EmitAdjustVirtualBase(WN *wn, TY_IDX ty_idx, const CXXRecordDecl *decl) {
   Is_True(wn != NULL, ("invalid wn"));
   Is_True(TY_kind(ty_idx) == KIND_POINTER &&
-          TY_kind(TY_pointed(ty_idx)) == KIND_STRUCT,
+          (TY_kind(TY_pointed(ty_idx)) == KIND_STRUCT ||
+           (TY_kind(TY_pointed(ty_idx)) == KIND_POINTER &&
+            TY_kind(TY_pointed(TY_pointed(ty_idx))) == KIND_STRUCT)),
           ("should be pointer type"));
 
   ASTContext *ast_c = _builder->Context();
@@ -2639,8 +2806,12 @@ WhirlExprBuilder::EmitAdjustVirtualBase(WN *wn, TY_IDX ty_idx, const CXXRecordDe
   TYPE_ID machine_uint_ty = _builder->TB().GetUIntPtrMType();
   UINT64 ofst = idx * MTYPE_byte_size(machine_uint_ty);
 
+  TY_IDX vptr_ty = TY_pointed(ty_idx);
+  if (TY_kind(TY_pointed(ty_idx)) == KIND_POINTER) {
+     vptr_ty = TY_pointed(TY_pointed(ty_idx));
+  }
   // get vptr
-  WN *vptr_wn = WN_Iload(machine_uint_ty, 0, TY_pointed(ty_idx), wn, 1);
+  WN *vptr_wn = WN_Iload(machine_uint_ty, 0, vptr_ty, wn, 1);
   // get vtable address
   WN *adjust_vptr_wn = WN_Iload(machine_uint_ty, -ofst,
                                 MTYPE_To_TY(MTYPE_I8), vptr_wn);
@@ -2651,7 +2822,7 @@ WhirlExprBuilder::EmitAdjustVirtualBase(WN *wn, TY_IDX ty_idx, const CXXRecordDe
 Result
 WhirlExprBuilder::ConvertCXXMemberCallExpr(const CXXMemberCallExpr *expr, Result dest, BOOL retv) {
   CXXMethodDecl *md = expr->getMethodDecl();
-  const Expr *callee = expr->getCallee()->ignoreParenBaseCasts();
+  const Expr *callee = ignoreParenBaseCasts(expr->getCallee());
   if (isa<BinaryOperator>(callee)) {
     return EmitCXXMemberPointerCall(expr, retv);
   }
@@ -2693,19 +2864,29 @@ WhirlExprBuilder::ConvertCXXMemberCallExpr(const CXXMemberCallExpr *expr, Result
              WN_operator(ldid_base_wn) == OPR_COMMA ||
              WN_operator(ldid_base_wn) == OPR_ADD),
              ("Base wn is not ldid, iload or ilda."));
-    TY_IDX ret_ty_idx = _builder->TB().ConvertType(expr->getType());
-    if (expr->isGLValue())
-      ret_ty_idx = Make_Pointer_Type(ret_ty_idx);
-    TY_IDX func_ty_idx = _builder->TB().ConvertType(md->getType());
-    WN *icall_wn = WN_Icall(TY_mtype(ret_ty_idx), MTYPE_V, expr->getNumArgs() + 2, func_ty_idx);
+    bool add_fake_parm = false;
+    if (_builder->TB().NeedFakeParm(md->getType()->getAs<FunctionType>()->getReturnType()))
+      add_fake_parm = true;
+    const Type *record_ty = md->getParent()->getTypeForDecl();
+    TY_IDX func_ty_idx = _builder->TB().ConvertType(md->getType().getTypePtr(), FALSE, record_ty);
+    TY_IDX ret_ty_idx = TY_ret_type(func_ty_idx);
+    WN *icall_wn = WN_Icall(TY_mtype(ret_ty_idx), MTYPE_V,
+                            add_fake_parm ? expr->getNumArgs() + 3 : expr->getNumArgs() + 2,
+                            func_ty_idx);
     WN_Set_Linenum(icall_wn, spos);
     WN_Set_Call_Default_Flags(icall_wn);
     WN_Set_Call_Is_Virtual(icall_wn);
     if (!_builder->DeclBuilder().Call_nothrow(md))
       Mark_call_region(icall_wn);
 
-    WN *parm_first = WGEN_CreateParm(TY_mtype(base_ty_idx), ldid_base_wn, base_ty_idx);
     int parm_idx = 0;
+    if (add_fake_parm) {
+      WN *dest_wn = dest.GetLValue();
+      TY_IDX dest_ty = Make_Pointer_Type(dest.Ty());
+      WN *fake_parm = WGEN_CreateParm(TY_mtype(dest_ty), dest_wn, dest_ty);
+      WN_kid(icall_wn, parm_idx++) = fake_parm;
+    }
+    WN *parm_first = WGEN_CreateParm(TY_mtype(base_ty_idx), ldid_base_wn, base_ty_idx);
     WN_kid(icall_wn, parm_idx++) = parm_first;
     SetCallParm(expr, icall_wn, parm_idx);
     Result base_r2 = ConvertExpr(base);
@@ -2727,15 +2908,23 @@ WhirlExprBuilder::ConvertCXXMemberCallExpr(const CXXMemberCallExpr *expr, Result
     TYPE_ID uintptr_ty = _builder->TB().GetUIntPtrMType();
     WN *ilod_vptr_wn = WN_Iload(uintptr_ty, 0, base_ty_idx, ldid_base_wn2, 0);
     WN *ilod_func_ptr_wn = WN_Iload(uintptr_ty, offset, func_ty_idx, ilod_vptr_wn, 0);
-    WN_kid(icall_wn, expr->getNumArgs() + 1) = ilod_func_ptr_wn;
-    if (retv && !expr->getType()->isVoidType()) {
+    WN_kid(icall_wn, parm_idx) = ilod_func_ptr_wn;
+
+    if (add_fake_parm) {
+      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), icall_wn);
+      return dest;
+    }
+
+    if (retv && TY_mtype(ret_ty_idx) != MTYPE_V) {
       TYPE_ID ret_mty = TY_mtype(ret_ty_idx);
       WN *blk = WN_CreateBlock();
       WN_INSERT_BlockLast(blk, icall_wn);
       WN *ret = WN_Ldid(ret_mty, -1, Return_Val_Preg, ret_ty_idx);
       WN *comma = WGEN_CreateComma(WN_rtype(ret), blk, ret);
       Result r = Result::nwNode(comma, ret_ty_idx);
-      r.SetRValue();
+      if (!expr->isGLValue()) {
+        r.SetRValue();
+      }
       return r;
     }
     return Result::nwNode(icall_wn, 0);
@@ -2754,7 +2943,7 @@ WhirlExprBuilder::ConvertCXXOperatorCallExpr(const CXXOperatorCallExpr *expr, Re
     TY_IDX ty = _builder->TB().ConvertType(expr->getType());
     Result lhs = ConvertExpr(expr->getArg(0));
     Result rhs = ConvertExpr(expr->getArg(1));
-    if (!expr->getArg(1)->isRValue())
+    if (!isExprRValue(expr->getArg(1)))
       rhs = rhs.ConvertToRValue(ty);
     SetSrcPos(getLocation(expr));
     RV rv = GetRV(expr, retv);
@@ -2918,7 +3107,7 @@ WhirlExprBuilder::EmitCXXConstructCall(const CXXConstructorDecl *decl, Result de
                                        CXXCtorType ctor, const WN_VECTOR &args) {
   Is_True(!dest.isNone(), ("dest is none"));
   WN *targ_wn = dest.GetLValue();
-  TY_IDX ty_idx = dest.Ty();
+  TY_IDX ty_idx = dest.FieldTy();
   TY_IDX ty_ptr_idx;
   if (TY_kind(ty_idx) == KIND_STRUCT || TY_kind(ty_idx) == KIND_ARRAY) {
     ty_ptr_idx = Make_Pointer_Type(ty_idx);
@@ -2959,18 +3148,36 @@ WhirlExprBuilder::EmitCXXConstructCall(const CXXConstructorDecl *decl, Result de
     return ret;
   }
 
-  // defer constructor if not exist
-  GlobalDecl gd(decl, ctor);
-  ST_IDX st_idx = _builder->Get_func_st(gd);
-  Is_True(st_idx, ("bad ctor st"));
+  INTRINSIC iopc = INTRINSIC_NONE;
+#ifdef BUILD_MASTIFF
+  if (WhirlBuilder::UseCppIntrn()) {
+    const FunctionDecl *tmpl = _builder->DeclBuilder().GetTemplatedDecl(decl);
+    if (tmpl) {
+      std::string name = _builder->DeclBuilder().GetMangledName(tmpl, ctor);
+      iopc = FindCXXStdIntrinsic(name.c_str());
+    }
+  }
+#endif
 
+  WN *call_wn;
   UINT num_args = decl->getNumParams();
-  Is_True(args.size() >= num_args, ("args less than params"));
-  WN *call_wn = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, num_args + 1);
-  WN_Set_Linenum(call_wn, GetSrcPos());
-  WN_st_idx(call_wn) = st_idx;
-  if (!_builder->DeclBuilder().Call_nothrow(gd.getDecl()))
-    Mark_call_region(call_wn);
+  if (iopc == INTRINSIC_NONE) {
+    // defer constructor if not exist
+    GlobalDecl gd(decl, ctor);
+    ST_IDX st_idx = _builder->Get_func_st(gd);
+    Is_True(st_idx, ("bad ctor st"));
+
+    Is_True(args.size() >= num_args, ("args less than params"));
+    call_wn = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, num_args + 1);
+    WN_Set_Linenum(call_wn, GetSrcPos());
+    WN_st_idx(call_wn) = st_idx;
+    if (!_builder->DeclBuilder().Call_nothrow(gd.getDecl()))
+      Mark_call_region(call_wn);
+  }
+  else {
+    call_wn = WN_Create(OPR_INTRINSIC_CALL, MTYPE_V, MTYPE_V, num_args + 1);
+    WN_intrinsic(call_wn) = iopc;
+  }
 
   // set `this' param
   WN_kid0(call_wn) = WGEN_CreateParm(Pointer_Mtype, targ_wn, ty_ptr_idx);
@@ -2984,6 +3191,7 @@ WhirlExprBuilder::EmitCXXConstructCall(const CXXConstructorDecl *decl, Result de
   }
   WN_set_kid_count(call_wn, num_args + 1);
   WN_Set_Call_Default_Flags(call_wn);
+  WN_Set_Call_Is_Constructor(call_wn);
 
   return call_wn;
 }
@@ -3176,7 +3384,7 @@ WhirlExprBuilder::ConvertLambdaFieldRefExpr(const DeclRefExpr *expr) {
     ST_IDX this_st = _builder->Scope().Get_this();
     Is_True(this_st, ("unable to find lambda function this"));
     TY_IDX this_ty = ST_type(this_st);
-    UINT32 fld_id = fld->getFieldIndex() + 1;
+    UINT32 fld_id= _builder->TB().GetFieldIDFromDecl(fld);
     WN *load_addr = WN_Ldid(Pointer_Mtype, 0, this_st, ST_type(this_st));
     if (isa<ReferenceType>(fld->getType())) {
       TY_IDX ty_idx = _builder->TB().ConvertType(value->getType());
@@ -3204,6 +3412,27 @@ WhirlExprBuilder::ConvertLambdaFieldRefExpr(const DeclRefExpr *expr) {
 Result
 WhirlExprBuilder::ConvertDeclRefExpr(const DeclRefExpr *expr) {
   TRACE_FUNC();
+
+  // handle non_odr_use_constant
+  if (expr->isNonOdrUse() == NOUR_Constant) {
+    // TODO: refer clang CodeGen canEmitSpuriousReferenceToVariable to check
+    // if reference to decl or constant value should be used
+    Is_True(isa<VarDecl>(expr->getDecl()), ("not a VarDecl"));
+    const VarDecl *var = cast<VarDecl>(expr->getDecl()->getCanonicalDecl());
+    Is_True(var->evaluateValue() != NULL, ("not a constant"));
+    Result val = ConvertAPValue(expr->getType(), var->evaluateValue());
+    if (!val.isNone()) {
+#if defined(BUILD_MASTIFF)
+      // mark st not_used so that DDV won't report
+      ST_IDX st = _builder->SB().GetST(var);
+      if (st != ST_IDX_ZERO) {
+        Set_ST_is_not_used(ST_ptr(st));
+      }
+#endif
+      val.SetRValue();
+      return val;
+    }
+  }
 
   // convert declref in lambda
   if(_builder->LambdaHelper().IsInLambda()) {
@@ -3358,9 +3587,9 @@ WhirlExprBuilder::ConvertDeclRefExpr(const DeclRefExpr *expr) {
 }
 
 Result
-WhirlExprBuilder::ConvertExprWithCleanups(const ExprWithCleanups *expr, Result dest) {
+WhirlExprBuilder::ConvertExprWithCleanups(const ExprWithCleanups *expr, Result dest, BOOL retv) {
   TRACE_FUNC();
-  return ConvertExpr(expr->getSubExpr(), dest);
+  return ConvertExpr(expr->getSubExpr(), dest, retv);
 }
 
 Result
@@ -3429,6 +3658,11 @@ WhirlExprBuilder::ConvertCastExpr(const CastExpr *expr, Result dest) {
     if (!isa<CallExpr>(sub))
       return sub_expr;
 
+    if (sub_expr.isSym()) {
+      Is_True(_builder->TB().NeedFakeParm(sub->getType()),
+              ("function call who need fake parm may return st_idx"));
+      return sub_expr;
+    }
 #if 0
     WN *ret_wn;
     if (sub_expr.isSym()) {
@@ -3530,8 +3764,11 @@ WhirlExprBuilder::ConvertCastExpr(const CastExpr *expr, Result dest) {
   {
     Result ret = ConvertExpr(sub, dest);
     if (sub->getStmtClass() == Expr::ArraySubscriptExprClass ||
-        TY_kind(ret.Ty()) == KIND_ARRAY)
+        TY_kind(ret.Ty()) == KIND_ARRAY) {
+      if (isa<VariableArrayType>(sub->getType()))
+        ret.SetRef();
       return ret;
+    }
     if (kind == CK_ArrayToPointerDecay) {
       Is_True(TY_kind(from_ty) == KIND_ARRAY, ("invalid sub ty"));
       if (sub->getStmtClass() == Expr::MemberExprClass &&
@@ -3723,8 +3960,7 @@ WhirlExprBuilder::ConvertCastExpr(const CastExpr *expr, Result dest) {
 
   case CK_NonAtomicToAtomic:
   case CK_AtomicToNonAtomic:
-    // TODO
-    Is_True(FALSE, ("unsupported CK_NonAtomicToAtomic or CK_AtomicToNonAtomic"));
+    return ConvertExpr(sub);
 
   case CK_Dynamic:
     // TODO
@@ -3788,7 +4024,9 @@ WhirlExprBuilder::ConvertCastExpr(const CastExpr *expr, Result dest) {
       UINT32 fld_id = r.FieldId();
       Is_True(WN_rtype(node) == Pointer_Mtype &&
               TY_kind(derived_ty) == KIND_POINTER &&
-              TY_kind(TY_pointed(derived_ty)) == KIND_STRUCT,
+              (TY_kind(TY_pointed(derived_ty)) == KIND_STRUCT ||
+               (TY_kind(TY_pointed(derived_ty)) == KIND_POINTER &&
+                TY_kind(TY_pointed(TY_pointed(derived_ty))) == KIND_STRUCT)),
               ("not return M* for field access"));
       Update_pointee_ty(sub->getType(), derived_ty);
       ST *temp = Gen_Temp_Symbol(derived_ty, ".temp_save");
@@ -3827,11 +4065,25 @@ WhirlExprBuilder::ConvertCastExpr(const CastExpr *expr, Result dest) {
   {
     WN *wn = ConvertToNode(sub);
     Is_True(wn != NULL, ("bad wn"));
-    if (WN_operator(wn) == OPR_ILOAD) {
-      WN *stid = WGEN_StidTemp(to_ty, wn, ".cast.btod");
-      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), stid);
-      WN_Set_Linenum(stid, spos);
-      wn = WN_Ldid(TY_mtype(to_ty), WN_offset(stid), WN_st(stid), to_ty);
+    const CXXRecordDecl *from_decl = sub->getType()->isPointerType()
+                                       ? sub->getType()->getPointeeCXXRecordDecl()
+                                       : sub->getType()->getAsCXXRecordDecl();
+    const CXXRecordDecl *to_decl = expr->getType()->isPointerType()
+                                     ? expr->getType()->getPointeeCXXRecordDecl()
+                                     : expr->getType()->getAsCXXRecordDecl();
+    Is_True(from_decl != NULL && to_decl != NULL, ("invalid decl"));
+    INT64 ofst = ComputeOffsetHind(_builder->Context(), from_decl, to_decl, false);
+    Is_True(ofst >= 0, ("bad offset %d get from ComputeOffsetHind", ofst));
+    if (ofst > 0) {
+      TYPE_ID mtyp = WN_rtype(wn);
+#if defined(BUILD_MASTIFF)
+      // for mastiff, just generate SUB to avoid NPD FP on assignment with 0
+      wn = WN_Sub(mtyp, wn, WN_Intconst(mtyp, ofst));
+#else
+      WN *adjust_wn = WN_Sub(mtyp, WN_COPY_Tree(wn), WN_Intconst(mtyp, ofst));
+      wn = WGEN_CreateCselect(mtyp, Handle_cond_wn(WN_COPY_Tree(wn)),
+                              adjust_wn, WN_Intconst(mtyp, 0));
+#endif
     }
     if (expr->isGLValue())
       to_ty = Make_Pointer_Type(to_ty);
@@ -3887,6 +4139,9 @@ WhirlExprBuilder::EmitArrayInitialization(const clang::InitListExpr *expr, Resul
   unsigned num_set = std::min(num_init, num_element);
   UINT pad = 0;
   UINT i;
+
+  if (num_element == 0 && num_init == 0)
+    return Result::nwNone();
 
   SRCPOS spos = SetSrcPos(getLocation(expr));
 
@@ -4153,8 +4408,12 @@ WhirlExprBuilder::EmitRecordInitialization(const clang::InitListExpr *expr, Resu
          continue;
        }
 
-       WN *st_wn = WN_Istore(TY_mtype(fld_ty), is_bit_field ? 0 : FLD_ofst(fld),
-                             pty, WN_COPY_Tree(targ_wn), ret_wn, field_id);
+       WN *st_wn;
+       if (WN_operator(ret_wn) == OPR_CALL && WN_rtype(ret_wn) == MTYPE_V)
+         st_wn = ret_wn;
+       else
+         st_wn = WN_Istore(TY_mtype(fld_ty), is_bit_field ? 0 : FLD_ofst(fld),
+                           pty, WN_COPY_Tree(targ_wn), ret_wn, field_id);
        WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), st_wn);
        WN_Set_Linenum(st_wn, spos);
    
@@ -4318,14 +4577,14 @@ WhirlExprBuilder::ConvertLambdaExpr(const LambdaExpr *expr, Result dest) {
   if(expr->capture_size() > 0) {
     for (LambdaExpr::const_capture_init_iterator i = expr->capture_init_begin(),
                                                 e = expr->capture_init_end();
-        i != e; ++i, ++cur_fld, ++idx) {
+        i != e; ++i, ++cur_fld) {
       Result dest = Result::nwSym(lambda_st, ty_idx);
       dest.SetDot();
       dest.SetFieldId(idx);
       WN *init_wn = ConvertToNode(*i, dest);
+      TY_IDX fld_ty = _builder->TB().ConvertType(cur_fld->getType());
       if (init_wn && OPERATOR_is_expression(WN_operator(init_wn)) &&
           !(WN_has_sym(init_wn) && ST_st_idx(WN_st(init_wn)) == lambda_st)) {
-        TY_IDX fld_ty = _builder->TB().ConvertType(cur_fld->getType());
         UINT32 cur_field_id = 0;
         UINT64 ofst_value = 0;
         FLD_HANDLE fld = get_fld_and_offset(ty_idx, idx, cur_field_id, ofst_value);
@@ -4335,6 +4594,7 @@ WhirlExprBuilder::ConvertLambdaExpr(const LambdaExpr *expr, Result dest) {
       }
       if (init_wn && !OPERATOR_is_expression(WN_operator(init_wn)))
         WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), init_wn);
+      idx += (TY_kind(fld_ty) == KIND_STRUCT) ? FLD_get_count(fld_ty) : 1;
     }
     Is_True(cur_fld == cxx_decl->field_end(), ("Lambda Fld/Var mismatch"));
   }
@@ -4359,8 +4619,7 @@ WhirlExprBuilder::ConvertMaterializeTemporaryExpr(const MaterializeTemporaryExpr
   BOOL is_ref = FALSE;
   const ValueDecl *decl = expr->getExtendingDecl();
   Is_True(decl == NULL || isa<VarDecl>(decl), ("not var decl"));
-  if (decl && isa<VarDecl>(decl) && decl->getType()->isReferenceType()
-                                 && !decl->getType()->isLValueReferenceType()) {
+  if (decl && isa<VarDecl>(decl) && decl->getType()->isReferenceType()) {
     is_ref = TRUE;
   }
 
@@ -4419,10 +4678,10 @@ WhirlExprBuilder::ConvertMaterializeTemporaryExpr(const MaterializeTemporaryExpr
     if (dest.Sym() != ret.Sym()) {
       if (is_ref) {
         WN *rhs = ret.IsLValue() ? ret.GetLValue() : ret.GetRValue();
-        WN *stid = WN_Istore(WN_rtype(rhs), 0, pty, dest.GetLValue(), rhs);
+        WN *stid = WN_Stid(TY_mtype(ty), 0, ST_ptr(tmp_dest.Sym()), ty, rhs);
         WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), stid);
         WN_Set_Linenum(stid, spos);
-        return dest;
+        return tmp_dest;
       }
       return ret;
     }
@@ -4455,6 +4714,8 @@ WhirlExprBuilder::ConvertMaterializeTemporaryExpr(const MaterializeTemporaryExpr
         WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), stid);
         WN_Set_Linenum(stid, spos);
       }
+      else
+        return ret;
     }
     else {
       Is_True(FALSE, ("not expr or stmt"));
@@ -4586,8 +4847,11 @@ WhirlExprBuilder::ConvertMemberExpr(const MemberExpr *expr, BOOL retv) {
       Is_True(!r.IsDeref() && !r.IsAddrOf(), ("TODO: arrow"));
       if (r.FieldId() == 0) {
         TY_IDX mem_ty = _builder->TB().ConvertType(base->getType());
-        // may be pointer to base/derived
-        Is_True(TY_kind(mem_ty) == TY_kind(r.Ty()), ("ty mismatch?"));
+        // may be pointer to base/derived or array->pointer
+        Is_True(TY_kind(mem_ty) == TY_kind(r.Ty()) ||
+                (TY_kind(r.Ty()) == KIND_ARRAY &&
+                 TY_kind(mem_ty) == KIND_POINTER &&
+                 TY_etype(r.Ty()) == TY_pointed(mem_ty)), ("ty mismatch?"));
         r.SetType(mem_ty);
       }
       r.AddFieldId(fld_id);
@@ -4698,7 +4962,7 @@ WhirlExprBuilder::ConvertParenExpr(const ParenExpr *expr, Result dest, BOOL retv
   return ConvertExpr(expr->getSubExpr(), dest, retv);
 }
 
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
 Result
 WhirlExprBuilder::ConvertConstantExpr(const ConstantExpr *expr, Result dest, BOOL retv) {
   TRACE_FUNC();
@@ -4996,7 +5260,7 @@ WhirlExprBuilder::ConvertUnaryOperator(const UnaryOperator *expr, BOOL retv) {
   else if (expr->getOpcode() == clang::UO_Deref) {
     Result r = ConvertExpr(expr->getSubExpr());
     TY_IDX ty = _builder->TB().ConvertType(expr->getSubExpr()->getType());
-    if (r.IsRValue() && !expr->isRValue())
+    if (r.IsRValue() && !isExprRValue(expr))
       r.ResetRValue();
     if (r.IsAddrOf()) {
       r.ResetAddrOf();
@@ -5148,7 +5412,7 @@ WhirlExprBuilder::ConvertToNode(const clang::Expr *expr, Result dest, BOOL retv)
   else if (expr->isGLValue()) {
     return r.GetLValue();
   }
-  else if (expr->isRValue()) {
+  else if (isExprRValue(expr)) {
     return r.GetRValue();
   }
   else {
@@ -5553,7 +5817,8 @@ WhirlExprBuilder::ConvertVAArgExpr32Bit(const VAArgExpr *expr) {
   TYPE_ID mtype = TY_mtype(ty_idx);
   INT64 rounded_size = ((TY_size(ty_idx) + 3) / 4) * 4;
 
-  WN *ap_wn = ConvertToNode(expr->getSubExpr());
+  Result ap_ret = ConvertExpr(expr->getSubExpr());
+  WN *ap_wn = ap_ret.GetRValue();
   Is_True(WN_operator(ap_wn) == OPR_LDID ||
           WN_operator(ap_wn) == OPR_ILOAD,
           ("unexpected ap_wn operator"));
@@ -5604,7 +5869,7 @@ WhirlExprBuilder::ConvertVAArgExpr32Bit(const VAArgExpr *expr) {
   // load value from ap addr
   wn = WN_CreateIload(OPR_ILOAD, Mtype_comparison(mtype), mtype, -rounded_size,
                       ty_idx, Make_Pointer_Type(ty_idx, FALSE),
-                      ap_wn);
+                      WN_COPY_Tree(ap_wn));
   return Result::nwNode(wn, ty_idx);
 }
 
@@ -5749,13 +6014,35 @@ WhirlExprBuilder::ConvertOffsetOfExpr(const OffsetOfExpr *expr) {
   // Loop over the components of the offsetof to compute the value
   unsigned n = expr->getNumComponents();
   QualType current_type = expr->getTypeSourceInfo()->getType();
+  WN *current_offset = NULL;
+  WN *offset_wn = NULL;
   for (unsigned i = 0; i != n; ++i) {
     OffsetOfNode offset_node = expr->getComponent(i);
     switch (offset_node.getKind()) {
       case OffsetOfNode::Array: {
+        // compute the index
+        const Expr *idx_expr = expr->getIndexExpr(offset_node.getArrayExprIndex());
+        WN *idx_wn = ConvertToNode(idx_expr);
+        // get the element type
+        current_type = _builder->Context()->getAsArrayType(current_type)->getElementType();
+        // compute the element size
+        INT64 size = _builder->Context()->getTypeSizeInChars(current_type).getQuantity();
+        // multiply out to computer the result
+        offset_wn = WN_Mpy(WN_rtype(idx_wn),
+                           WN_Intconst(size >> 32 ? MTYPE_I8 : MTYPE_I4, size),
+                           idx_wn);
         break;
       }
       case OffsetOfNode::Field: {
+        FieldDecl *member_decl = offset_node.getField();
+        RecordDecl *decl = current_type->getAs<RecordType>()->getDecl();
+        const ASTRecordLayout &layout = _builder->Context()->getASTRecordLayout(decl);
+        // compute the offset to the field
+        INT64 offset = layout.getFieldOffset(member_decl->getFieldIndex());
+        offset = offset ? offset / MTYPE_byte_size(Pointer_Mtype) : 0;
+        offset_wn = WN_Intconst(offset >> 32 ? MTYPE_I8 : MTYPE_I4, offset);
+        // get the element type
+        current_type = member_decl->getType();
         break;
       }
       case OffsetOfNode::Identifier:
@@ -5775,17 +6062,17 @@ WhirlExprBuilder::ConvertOffsetOfExpr(const OffsetOfExpr *expr) {
         const RecordType *base_rt = current_type->getAs<RecordType>();
         CXXRecordDecl *base_rd = cast<CXXRecordDecl>(base_rt->getDecl());
         CharUnits offset_int = record_layout.getBaseClassOffset(base_rd);
-        INT64 ofst_value = offset_int.getQuantity();
-        TYPE_ID ofst_mty = (ofst_value >> 32) ? MTYPE_I8 : MTYPE_I4;
-        Result offset = Result::nwIntConst(offset_int.getQuantity(), MTYPE_To_TY(ofst_mty));
+        INT64 offset = offset_int.getQuantity();
+        offset_wn = WN_Intconst(offset >> 32 ? MTYPE_I8 : MTYPE_I4, offset);
         break;
       }
       default:
          Is_True(false, ("unsupported"));
     }
-
+    current_offset = current_offset ? WN_Add(WN_rtype(offset_wn), offset_wn, current_offset)
+                                    : offset_wn;
   }
-  return Result::nwNone();
+  return Result::nwNode(current_offset, ty_idx);
 }
 
 
@@ -5853,7 +6140,7 @@ WhirlExprBuilder::ConvertExpr(const Expr *expr, Result dest, BOOL retv) {
       r = ConvertBinaryConditionalOperator(cast<BinaryConditionalOperator>(expr));
       break;
     case Expr::BinaryOperatorClass:
-      r = ConvertBinaryOperator(cast<BinaryOperator>(expr), retv);
+      r = ConvertBinaryOperator(cast<BinaryOperator>(expr), dest, retv);
       break;
     case Expr::CallExprClass:
       r = ConvertCallExpr(cast<CallExpr>(expr), dest, retv);
@@ -5874,7 +6161,7 @@ WhirlExprBuilder::ConvertExpr(const Expr *expr, Result dest, BOOL retv) {
       r = ConvertCompoundLiteralExpr(cast<CompoundLiteralExpr>(expr), dest);
       break;
     case Expr::ConditionalOperatorClass:
-      r = ConvertConditionalOperator(cast<ConditionalOperator>(expr), retv);
+      r = ConvertConditionalOperator(cast<ConditionalOperator>(expr), dest, retv);
       break;
     case Expr::CStyleCastExprClass:
       r = ConvertCStyleCastExpr(cast<CStyleCastExpr>(expr), dest);
@@ -5941,7 +6228,7 @@ WhirlExprBuilder::ConvertExpr(const Expr *expr, Result dest, BOOL retv) {
       r = ConvertDeclRefExpr(cast<DeclRefExpr>(expr));
       break;
     case Expr::ExprWithCleanupsClass:
-      r = ConvertExprWithCleanups(cast<ExprWithCleanups>(expr), dest);
+      r = ConvertExprWithCleanups(cast<ExprWithCleanups>(expr), dest, retv);
       break;
     case Expr::ExtVectorElementExprClass:
       r = ConvertExtVectorElementExpr(cast<ExtVectorElementExpr>(expr));
@@ -6005,7 +6292,7 @@ WhirlExprBuilder::ConvertExpr(const Expr *expr, Result dest, BOOL retv) {
     case Expr::ParenExprClass:
       r = ConvertParenExpr(cast<ParenExpr>(expr), dest, retv);
       break;
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
     case Expr::ConstantExprClass:
       r = ConvertConstantExpr(cast<ConstantExpr>(expr), dest, retv);
       break;

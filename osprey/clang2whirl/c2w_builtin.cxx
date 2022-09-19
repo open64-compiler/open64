@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -778,6 +778,18 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
     return Result::nwNone();
 
   case Builtin::BI__sync_synchronize:
+    {
+      WN *wn = WN_CreateBarrier(TRUE, 0);
+      WN_Set_Linenum(wn, GetSrcPos());
+      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), wn);
+      Result ret = GenerateIntrinsic(expr, ty, INTRN_SYNCHRONIZE, FALSE, retv);
+      WN_INSERT_BlockLast(WhirlBlockUtil::getCurrentBlock(), ret.Node());
+      wn = WN_CreateBarrier(FALSE, 0);
+      WN_Set_Linenum(wn, GetSrcPos());
+      return Result::nwNode(wn, ty);
+    }
+    break;
+
   case Builtin::BI__sync_fetch_and_min:
   case Builtin::BI__sync_fetch_and_max:
   case Builtin::BI__sync_fetch_and_umin:
@@ -881,7 +893,11 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
     // TODO: NT store & NT load
     return Result::nwNone();
 
+#if LLVM_VERSION_MAJOR == 14
+  case Builtin::BI__builtin_coro_resume ... Builtin::BI__builtin_coro_suspend: // coroutine
+#else
   case Builtin::BI__builtin_coro_resume ... Builtin::BI__builtin_coro_param:  // coroutine
+#endif
     Is_True(false, ("unsupported builtin %d\n", builtin_id));
     return Result::nwNone();
 
@@ -891,18 +907,22 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
 
   case Builtin::BI__builtin_os_log_format_buffer_size:
   case Builtin::BI__builtin_os_log_format:
+#if LLVM_VERSION_MAJOR <= 11
   case Builtin::BIomp_is_initial_device:
+#endif
     Is_True(false, ("unsupported builtin %d\n", builtin_id));
     return Result::nwNone();
 
   // ignore win64 va_start/va_end/va_copy
 
-#if LLVM_VERSION_MAJOR == 11
+#if LLVM_VERSION_MAJOR >= 11
   case Builtin::BIwmemcpy:
   case Builtin::BIwmemmove:
   case Builtin::BImemccpy:
   case Builtin::BImempcpy:
   case Builtin::BIpthread_create:
+  case Builtin::BI__builtin_launder:
+  case Builtin::BI__builtin_is_constant_evaluated:
     return Result::nwNone();
 #endif
 

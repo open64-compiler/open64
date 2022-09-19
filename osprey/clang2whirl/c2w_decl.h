@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -60,6 +60,9 @@ private:
 
   // map between parm st and real parm st
   REAL_PARM_MAP _real_parm_map;
+
+  // map between cxx record and c2w-made destructor
+  CXX_DTOR_MAP _cxx_dtor_map;
 
 public:
   WhirlDeclBuilder(WhirlBuilder *builder);
@@ -163,8 +166,6 @@ private:
 
   void CreateInitoInitvEntry(const clang::VarDecl *decl, ST_IDX st_idx);
 
-  std::string GetMangledName(const clang::Decl *decl, INT variant = 0);
-
   std::string GetMangledName(const clang::GlobalDecl gd, const clang::ThunkInfo &thunk_info);
 
   INITV_IDX ConvertVTableComponent(const clang::VTableLayout &layout, unsigned idx, unsigned &thunk_idx);
@@ -172,6 +173,10 @@ private:
   void HandleAttrs(const clang::NamedDecl *decl, ST_IDX st_idx);
 
 public:
+  std::string GetMangledName(const clang::Decl *decl, INT variant = 0);
+
+  std::string GetMangledName(const clang::QualType qty);
+
   STR_IDX ConvertName(const clang::Decl *decl, const llvm::StringRef &str, INT variant = 0);
 
   STR_IDX ConvertName(const clang::CXXConstructorDecl *decl, clang::CXXCtorType ctor);
@@ -218,6 +223,9 @@ public:
   ST_IDX GetRealParmST(ST_IDX st);
 
   void AddRealParmST(ST_IDX orig_st, ST_IDX real_st);
+
+  const clang::CXXDestructorDecl *GetDestructor(const clang::CXXRecordDecl *decl);
+  const clang::FunctionDecl *GetTemplatedDecl(const clang::FunctionDecl *decl);
 };
 
 } // namespace wgen

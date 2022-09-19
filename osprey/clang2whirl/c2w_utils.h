@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -106,6 +106,7 @@ WN *WGEN_CreateCselect(TYPE_ID rtype, WN *cond, WN *twn, WN *fwn);
 WN *WGEN_CreateParm(TYPE_ID rtype, WN *parm, TY_IDX ty);
 WN *WGEN_CreateReturn(SRCPOS spos);
 
+INTRINSIC FindCXXStdIntrinsic(const char *fname);
 long double convertToLongDouble(const llvm::APFloat val);
 TCON_IDX createTconFromValue(TY_IDX ty_idx, long double value);
 TCON_IDX Convert_float_to_tcon(TY_IDX ty_idx, const llvm::APFloat init);

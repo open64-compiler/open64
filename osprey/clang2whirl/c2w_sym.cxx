@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2019-2020 Xcalibyte Limited, Inc.  All Rights Reserved.
+  Copyright (C) 2019-2022 Xcalibyte (Shenzhen) Limited.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms of version 2 of the GNU General Public License as
@@ -31,6 +31,7 @@
 #include "c2w_sym.h"
 #include "c2w_builder.h"
 #include "c2w_tracer.h"
+#include "c2w_target.h"
 #include <stdio.h>
 
 // clang header files
@@ -56,7 +57,7 @@ static inline StringRef getDeclName(const clang::NamedDecl *decl) {
   if (decl->getIdentifier()) {
     return decl->getIdentifier()->getName();
   }
-  return StringRef("annomous.");
+  return StringRef(".anon.");
 }
 
 // Gen mangled VTT name: return STR_IDX from given decl
@@ -142,6 +143,10 @@ WhirlSymBuilder::ExportClass(const FunctionDecl *decl) {
         return EXPORT_PREEMPTIBLE;
     }
   } else {
+    GVALinkage linkage = _builder->Context()->GetGVALinkageForFunction(decl);
+    if (linkage == GVA_StrongExternal) {
+      return EXPORT_PREEMPTIBLE;
+    }
     return EXPORT_LOCAL;
   }
 }
@@ -192,12 +197,11 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
 
   GVALinkage linkage = _builder->Context()->GetGVALinkageForFunction(decl);
   BOOL hasAliasAttr = decl->hasAttr<AliasAttr>();
-  BOOL hasInlineAttr = decl->hasAttr<AlwaysInlineAttr>();
-  if (decl->isInlineSpecified() || decl->isInlined() || hasInlineAttr ||
+  if (decl->isInlineSpecified() || decl->isInlined() ||
       (decl->getStorageClass() == SC_Static)) {
     Set_PU_is_inline_function(pu);
     Set_PU_is_marked_inline(pu);
-    if (linkage == GVA_AvailableExternally)
+    if (linkage == GVA_AvailableExternally || linkage == GVA_StrongExternal)
       Set_PU_is_extern_inline(pu);
   }
 
@@ -208,6 +212,9 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
 
   if (kind == FUNC_CTOR)
     Set_PU_is_constructor(pu);
+
+  if (decl->isNoReturn())
+    Set_PU_has_attr_noreturn(pu);
 
   ty_idx = (TY_IDX) pu_idx;
   ST *st = New_ST(GLOBAL_SYMTAB);
@@ -220,9 +227,6 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
   if (hasAliasAttr) {
     isDefined = FALSE;
     st_exp = EXPORT_PREEMPTIBLE;
-  }
-  if (hasInlineAttr) {
-    Set_PU_must_inline(pu);
   }
   if (st_exp != EXPORT_LOCAL &&
       (linkage == GVA_DiscardableODR || linkage == GVA_StrongODR)) {
@@ -255,8 +259,12 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
   Is_True(named_decl != NULL, ("decl is not NamedDecl"));
   if (hasAliasAttr ||
       named_decl->hasAttr<WeakAttr>() ||
-      named_decl->isWeakImported())
+      named_decl->isWeakImported()) {
     Set_ST_is_weak_symbol(st);
+    if (_builder->Lang_CPP()) {
+      Set_ST_export(st, EXPORT_INTERNAL);
+    }
+  }
 
   return ST_st_idx(st);
 }
@@ -274,6 +282,8 @@ WhirlSymBuilder::ConvertParmVar(const ParmVarDecl *decl) {
   TY_IDX ty_idx = _builder->TB().ConvertType(decl->getType());
   ST_Init(st, str_idx, CLASS_VAR, SCLASS_FORMAL, EXPORT_LOCAL, ty_idx);
   Set_ST_is_value_parm(st);
+  if (decl->hasAttr<UnusedAttr>())
+    Set_ST_is_not_used(st);
   return ST_st_idx(st);
 }
 
@@ -313,6 +323,22 @@ WhirlSymBuilder::ConvertVar(const VarDecl *decl) {
   if (eclass != EXPORT_LOCAL &&
       (linkage == GVA_DiscardableODR || linkage == GVA_StrongODR)) {
     Set_ST_is_odr(st);
+  }
+  if (decl->hasAttr<UnusedAttr>())
+    Set_ST_is_not_used(st);
+  BOOL hasAsmAttr = decl->hasAttr<AsmLabelAttr>();
+  if (hasAsmAttr) {
+    // set st volatile
+    Set_TY_is_volatile(ty_idx);
+    Set_ST_type(st, ty_idx);
+    // set st assigned to dedicated preg flag
+    Set_ST_assigned_to_dedicated_preg(st);
+    // create st_attr
+    const clang::AsmLabelAttr *attr = decl->getAttr<AsmLabelAttr>();
+    PREG_NUM preg = AsmDecodeRegisterName(attr->getLabel().data());
+    ST_ATTR_IDX st_attr_idx;
+    ST_ATTR& st_attr = New_ST_ATTR(symtab, st_attr_idx);
+    ST_ATTR_Init(st_attr, ST_st_idx (st), ST_ATTR_DEDICATED_REGISTER, preg);
   }
   return ST_st_idx(st);
 }
@@ -398,6 +424,7 @@ WhirlSymBuilder::ConvertSymbol(const NamedDecl *decl) {
       break;
     case Decl::Var:
     case Decl::VarTemplateSpecialization:
+    case Decl::Decomposition:
       st_idx = ConvertVar(cast<VarDecl>(decl));
       break;
     case Decl::CXXConstructor:
