@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -59,6 +63,7 @@
 #include "ir_reader.h"		    /* for IR_reader_init(), etc. */
 #include "ir_bwrite.h"		    /* for WN_open_output(), etc. */
 #include "ir_bread.h"		    /* for WN_open_input(), etc. */
+#include "ir_verify.h"
 #include "dwarf_DST_dump.h"
 #include "erglob.h"
 #include "errors.h"
@@ -68,6 +73,10 @@
 #include "tracing.h"
 #include "profile_com.h"
 #include "fb_info.h"
+
+
+BOOL Run_vsaopt = FALSE; // hack to workaround undefine since
+                         // errors.cxx is compiled twice for different purposes and no -Dxxx
 
 static BOOL simplify_tree = FALSE; /* Should we run the simplifier (for testing purposes) */
 
@@ -141,7 +150,7 @@ Print_Feedback_Info (const Pu_Hdr* pu_hdr)
 
 /* Binary to ASCII conversion */
 static void
-ir_b2a_process_PUs (PU_Info *pu_tree, BOOL stflag, BOOL fbflag)
+ir_b2a_process_PUs (PU_Info *pu_tree, BOOL stflag, BOOL fbflag, BOOL verify)
 {
     PU_Info *pu;
     WN *wn;
@@ -159,8 +168,12 @@ ir_b2a_process_PUs (PU_Info *pu_tree, BOOL stflag, BOOL fbflag)
 	Current_PU_Info = pu;
 	IR_put_func (wn, NULL);
 
+	if(verify) {
+	    WN_verify(wn, NULL);
+	}
+
 	if (PU_Info_child(pu)) {
-	    ir_b2a_process_PUs(PU_Info_child(pu), stflag, fbflag);
+	    ir_b2a_process_PUs(PU_Info_child(pu), stflag, fbflag, verify);
 	}
 
 	if (stflag) {
@@ -190,7 +203,7 @@ ir_b2a_process_PUs (PU_Info *pu_tree, BOOL stflag, BOOL fbflag)
 
 static void
 ir_b2a (char *global_file, char *input_file, char *output_file, BOOL stflag, 
-	BOOL fbflag)
+	BOOL fbflag, BOOL verify)
 {
     PU_Info *pu_tree;
 
@@ -215,12 +228,17 @@ ir_b2a (char *global_file, char *input_file, char *output_file, BOOL stflag,
     IR_reader_init();
     IR_Dwarf_Gen_File_Table(TRUE);
 
-    ir_b2a_process_PUs(pu_tree, stflag, fbflag);
+    ir_b2a_process_PUs(pu_tree, stflag, fbflag, verify);
 
     if (stflag) {
 	/* print the symbol tables */
 	Print_global_symtab (stdout);
 	Dump_DST (stdout);
+    }
+
+
+    if(verify) {
+        WN_verify_varName_line(input_file);
     }
 
     Free_Input_Info ();
@@ -339,7 +357,7 @@ usage (char *progname)
   if (a2b) {
       fprintf (stderr, "New symbol table format not supported by ir_a2b (yet)\n");
   } else if (b2a) {
-    fprintf (stderr, "Usage: %s [-st] [-v] <Binary IR> [<ASCII IR>]\n",
+    fprintf (stderr, "Usage: %s [-st] [-v] [-verify] <Binary IR> [<ASCII IR>]\n",
 	     progname);
     fprintf (stderr, "\t(will write to stdout if ascii file not given)\n");
     fprintf (stderr, "\t-st option will also print out the symbol table\n");
@@ -347,9 +365,9 @@ usage (char *progname)
     fprintf (stderr, "\t-lines option will print out line numbers\n");
     fprintf (stderr, "\t-global_local <.G file> option will use separate global table\n");
     fprintf (stderr, "\t-sym <.G file> is the same as -global_local\n");
+    fprintf (stderr, "\t-verify option will verify wn\n");
   } else if (sel) {
     fprintf (stderr, "Usage: %s <function> <Binary IR input> [<Binary IR output>]\n", progname);
-
   } else if (all) {
     fprintf (stderr, "Usage: %s <Binary IR input> [<Binary IR output>]\n", progname);
   }
@@ -366,6 +384,7 @@ main (INT argc, char *argv[])
     INT binarg = 1;
     BOOL stflag = FALSE;
     BOOL fbflag = FALSE;
+    BOOL verify = FALSE;
 
     
     MEM_Initialize();
@@ -442,6 +461,8 @@ main (INT argc, char *argv[])
 		      strcmp(argv[binarg], "-sym") == 0) {
 		++binarg;
 		Read_Global_Data = argv[binarg];
+	   } else if(strcmp(argv[binarg], "-verify") == 0) {
+             verify = TRUE;
 	   } else {
 	      usage(progname);
 	   }
@@ -455,7 +476,7 @@ main (INT argc, char *argv[])
 
 	infile = argv[binarg];
 	outfile = argv[binarg+1];
-	ir_b2a (Read_Global_Data, infile, outfile, stflag, fbflag);
+	ir_b2a (Read_Global_Data, infile, outfile, stflag, fbflag, verify);
     }
     else if (sel) {
 	if (argc < 3)

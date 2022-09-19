@@ -1,5 +1,9 @@
 #
 #
+#  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+#
+
+#
 #  Copyright (C) 2000, 2001 Silicon Graphics, Inc.  All Rights Reserved.
 #
 #  This program is free software; you can redistribute it and/or modify it
@@ -68,10 +72,14 @@ endif
 ifeq ($(BUILD_TARGET), LOONGSON)
 TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
 endif
+ifeq ($(BUILD_TARGET), UWASM)
+TARGDEFS +=-D__MIPS_AND_IA64_ELF_H
+endif
+
 
 ifeq ($(BUILD_OPTIMIZE), DEBUG)
 # don't use is_true_on because ir_a2b doesn't have config info
-LCDEFS += -DInsist_On -DDEBUG_IR
+LCDEFS += -DInsist_On -DDEBUG_IR -DIs_True_On
 endif
 
 LCDEFS += $(HOSTDEFS) $(TARGDEFS)
@@ -80,23 +88,73 @@ LC++DEFS += $(HOSTDEFS) $(TARGDEFS)
 GLDOPTS = $(STD_LOAD_OPTS)
 
 LIBCOMUTIL = $(BUILD_AREA)/libcomutil/libcomutil.a
-LLDLIBS	= $(LIBCOMUTIL) -lm
+LIBJSON = $(BUILD_AREA)/libjson/libjsoncpp.a
+LLDLIBS	= $(LIBCOMUTIL) $(LIBJSON) -lm
 
-TARGETS = ir_b2a ir_size ir_sel ir_all
+TARGETS = ir_b2a ir_size ir_sel ir_all uwasm_nwrap
+
+# only set MAPLE_OPTS, MAPLE_INCS, MAPLE_LIBS when MAPLE_HOME is set
+ifneq ($(MAPLE_HOME), )
+MAPLE_OPTS = -std=c++14 -Dlinux -DMIR_FEATURE_FULL=1 -DDYNAMICLANG
+
+LC++OPTS += $(MAPLE_OPTS)
+
+MAPLE_INCLUDE_DIRS = \
+	$(MAPLE_HOME)/include/maple_ir/include \
+	$(MAPLE_HOME)/include/maple_util/include \
+	$(MAPLE_HOME)/include/mempool/include \
+	$(MAPLE_HOME)/include/huawei_secure_c/include \
+	$(MAPLE_HOME)/include/third-party/md5/include
+
+MAPLE_INCS = $(addprefix -I, $(MAPLE_INCLUDE_DIRS))
+
+MAPLE_LIBS = \
+	$(MAPLE_HOME)/lib/libmplir.a \
+	$(MAPLE_HOME)/lib/libmempool.a \
+	$(MAPLE_HOME)/lib/libmplutil.a \
+	$(MAPLE_HOME)/lib/libhwsecurec.a \
+	$(MAPLE_HOME)/lib/liboption_parser.a
+
+#TARGETS += irbuild whirl2mpl mpl2whirl whirl2llvm
+TARGETS += irbuild whirl2mpl mpl2whirl
+endif
+
+# -------- WHIRL2LLVM --------
+# check if $LLVM_HOME is set
+ifneq ($(LLVM_HOME), )
+LLVM_CONFIG = $(LLVM_HOME)/bin/llvm-config
+else
+LLVM_CONFIG = llvm-config
+endif
+
+$(info **********LLVM_CONFIG**********)
+$(info $(LLVM_CONFIG))
+
+ifneq (,$(shell which $(LLVM_CONFIG)))
+LDFLAGS += -no-pie
+LLVM_INCS = $(shell $(LLVM_CONFIG) --cppflags)
+LLVM_LIBS = $(shell $(LLVM_CONFIG) --ldflags --libs --system-libs)
+
+TARGETS += w2ll
+$(info **********LLVM HOME***************)
+$(info $(LLVM_HOME))
+endif
+# -------- END OF WHIRL2LLVM --------
 
 COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
 COMMON_COM_DIR= $(BUILD_TOT)/common/com
 COMMON_COM_TARG_DIR= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
 BE_COM_DIR= $(BUILD_TOT)/be/com
+BE_VHO_DIR= $(BUILD_TOT)/be/vho
 BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
 
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
-	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_OPT_DIR) $(XINC)  \
+	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
         -I$(BUILD_TOT)/include
 ifeq ($(BUILD_OS), LINUX)
-LCINCS += -I$(BUILD_AREA)/include/libelf
+LCINCS += -I$(BUILD_AREA)/include/libelf -I$(BUILD_TOT)/libjson/include
 endif
 
 LCXXOPTS = $(LCOPTS:-std%=)
@@ -118,12 +176,14 @@ COMMON_COM_CXX_SRC =	\
 	dwarf_DST.cxx	\
 	dwarf_DST_dump.cxx	\
 	dwarf_DST_mem.cxx	\
+	dwarf_DST_producer.cxx  \
 	glob.cxx	\
 	ir_bcom.cxx	\
 	ir_bread.cxx	\
 	ir_bwrite.cxx	\
 	ir_reader.cxx	\
 	irbdata.cxx	\
+	ir_verify.cxx   \
 	mtypes.cxx	\
 	opcode.cxx	\
 	opcode_core.cxx	\
@@ -141,12 +201,12 @@ COMMON_COM_CXX_SRC =	\
 	intrn_info.cxx
 
 BE_COM_SRCS =           \
-        wssa_defs.cxx   \
-        wssa_sym.cxx    \
-        wssa_mgr.cxx    \
-        wssa_wn.cxx     \
-        wssa_io.cxx     \
-        wssa_utils.cxx 
+	wssa_defs.cxx   \
+	wssa_sym.cxx    \
+	wssa_mgr.cxx    \
+	wssa_wn.cxx     \
+	wssa_io.cxx     \
+	wssa_utils.cxx
  
 
 COMMON_COM_TARG_CXX_SRCS =	\
@@ -169,6 +229,9 @@ default:
 first:
 ifndef SKIP_DEP_BUILD
 	$(call submake,$(BUILD_AREA)/libcomutil)
+	$(call submake,$(BUILD_AREA)/libjson)
+	$(call submake,$(BUILD_AREA)/be)
+	if ! test -e $(BE_SO); then ln -sf ../be/$(BE_SO) .; fi
 endif
 
 last: make_deps
@@ -201,5 +264,31 @@ ir_size: $(OBJECTS) ir_size.o ir_b2a
 
 ir_walker: $(OBJECTS) ir_walker.o
 	$(link.c++f) -o ir_walker ir_walker.o $(OBJECTS) $(LDFLAGS)
+
+uwasm_nwrap: $(OBJECTS) uwasm_nwrap.o
+	$(link.c++f) -o  uwasm_nwrap uwasm_nwrap.o $(OBJECTS) $(LDFLAGS)
+
+irbuild: irbuild.o
+	$(link.c++f) -o irbuild irbuild.o $(MAPLE_LIBS) $(LDFLAGS)
+
+mpl2whirl: $(LIBCOMUTIL) $(OBJECTS) mpl2whirl.o mpl_type_infer.o
+	$(link.c++f) -o mpl2whirl mpl2whirl.o mpl_type_infer.o $(OBJECTS) $(MAPLE_LIBS) $(LDFLAGS) $(LIBCOMUTIL)
+
+whirl2mpl: $(LIBCOMUTIL) $(OBJECTS) whirl2mpl.o
+	$(link.c++f) -o whirl2mpl whirl2mpl.o $(OBJECTS) $(MAPLE_LIBS) $(LDFLAGS) $(LIBCOMUTIL)
+
+w2ll: $(LIBCOMUTIL) whirl2llvm.o
+	$(link.c++f) -o w2ll whirl2llvm.o $(BE_SO) $(MAPLE_LIBS) $(LLVM_LIBS) $(LDFLAGS) $(LIBCOMUTIL)
+
+irbuild.o: LC++INCS += $(MAPLE_INCS)
+
+mpl2whirl.o: LC++INCS += $(MAPLE_INCS)
+
+mpl_type_infer.o: LC++INCS += $(MAPLE_INCS)
+
+whirl2mpl.o: LC++INCS += $(MAPLE_INCS)
+
+whirl2llvm.o: LC++INCS += $(MAPLE_INCS) $(LLVM_INCS)
+
 wn_util.o: HOSTDEFS += -DMONGOOSE_BE
 

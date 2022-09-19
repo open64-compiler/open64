@@ -1,4 +1,8 @@
 /*
+ *  Copyright (C) 2021 Xcalibyte (Shenzhen) Limited.
+ */
+
+/*
  * Copyright 2004 PathScale, Inc.  All Rights Reserved.
  */
 
@@ -55,6 +59,9 @@
 #include "ir_bread.h"		    /* for WN_open_input(), etc. */
 #include "err_host.tab"
 
+
+BOOL Run_vsaopt = FALSE; // hack to workaround undefine since
+                         // errors.cxx is compiled twice for different purposes and no -Dxxx 
 
 static void *handle;   /* file handle */
 
