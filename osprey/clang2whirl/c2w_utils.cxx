@@ -288,11 +288,14 @@ Emit_dtor_call(ST_IDX st_idx) {
   WN_kid1(atexit_call) = WGEN_CreateParm(WN_rtype(parm_2), parm_2, Make_Pointer_Type(MTYPE_To_TY(MTYPE_V)));
 
   // set third parm
-  ST *shared_obj = New_ST(GLOBAL_SYMTAB);
-  ST_Init(shared_obj, Save_Str("__dso_handle"), CLASS_VAR, SCLASS_EXTERN, EXPORT_PREEMPTIBLE, Make_Pointer_Type(MTYPE_To_TY(MTYPE_V)));
+  static ST *shared_obj;
+  if (shared_obj == nullptr) {
+    shared_obj = New_ST(GLOBAL_SYMTAB);
+    ST_Init(shared_obj, Save_Str("__dso_handle"), CLASS_VAR, SCLASS_EXTERN, EXPORT_PREEMPTIBLE, Make_Pointer_Type(MTYPE_To_TY(MTYPE_V)));
+    Set_ST_addr_saved(shared_obj);
+    Set_ST_addr_passed(shared_obj);
+  }
   WN *parm_3 = WN_CreateLda(OPR_LDA, Pointer_Mtype, MTYPE_V, 0, Make_Pointer_Type(ST_type(shared_obj)), shared_obj, 0);
-  Set_ST_addr_saved(shared_obj);
-  Set_ST_addr_passed(shared_obj);
   WN_kid2(atexit_call) = WGEN_CreateParm(WN_rtype(parm_3), parm_3, WN_ty(parm_3));
 
   return atexit_call;
