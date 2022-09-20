@@ -1403,6 +1403,7 @@ private:
   UINT64   Eval__is_obj_meth_override(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__hard_coded_password(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_compression_extraction_safe(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
+  UINT64   Eval__is_null_term_str(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_cst_str_eq(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_str_eq(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_str_sub(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
@@ -1649,6 +1650,7 @@ public:
   UINT64       Get_value(VSA *vsa_ctx, CODEREP *cr);
   char        *Find_const_char(DNA_NODE *dna, CODEREP *cr);
   BOOL         Find_const_char_cross(VSA* vsa_ctx, STMTREP *, CODEREP *cr, STR_SET& str_set, MEM_POOL *pool);
+  UINT64       Get_strlen(VSA *vsa, CODEREP *cr, STMTREP *stmt, MEM_POOL *pool);
   UINT64       Get_initv_strlen(DNA_NODE *dna, CODEREP *cr);
   BOOL         Is_const(DNA_NODE *dna, CODEREP *cr);
   void         Register_rules(IPSA *ipsa, DNA_NODE *func, vector<std::pair<char*, IDTYPE> >*);

@@ -134,6 +134,7 @@ DEF_RBC_OP(RBC_OP_SET_FUNC_MAP_GET_REF, NULL, &RBC_BASE::Eval__set_func_map_get_
 DEF_RBC_OP(RBC_OP_SET_FUNC_THREAD, &RBC_BASE::Init__set_func_thread, NULL, "Set_func_thread")
 DEF_RBC_OP(RBC_OP_SET_CLASS_SENSITIVE, &RBC_BASE::Init__set_class_sensitive, &RBC_BASE::Eval__set_class_sensitive, "Set_class_sensitive")
 DEF_RBC_OP(RBC_OP_HARD_CODED_PASSWORD, NULL, &RBC_BASE::Eval__hard_coded_password, "Hard_coded_password")
+DEF_RBC_OP(RBC_OP_IS_NULL_TERM_STR, NULL, &RBC_BASE::Eval__is_null_term_str, "Is_null_term_str")
 DEF_RBC_OP(RBC_OP_IS_CONST_STR_EQ, NULL, &RBC_BASE::Eval__is_cst_str_eq, "Is_const_str_eq")
 DEF_RBC_OP(RBC_OP_IS_STR_EQ, NULL, &RBC_BASE::Eval__is_str_eq, "Is_str_eq")
 DEF_RBC_OP(RBC_OP_IS_STR_SUB, NULL, &RBC_BASE::Eval__is_str_sub, "Is_str_sub")
