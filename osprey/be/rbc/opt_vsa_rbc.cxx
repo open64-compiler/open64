@@ -2735,28 +2735,66 @@ RBC_BASE::Eval__is_func_exec_successful(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
   if (src_stmt != NULL && (src_stmt->Opr() == OPR_FALSEBR ||
                            src_stmt->Opr() == OPR_TRUEBR)) {
     CODEREP *cmp = src_stmt->Rhs();
+    CODEREP *var_cr = NULL;
+    CODEREP *val_cr = NULL;
+    // indicating codes like: 0 < ret
+    BOOL reverted = FALSE;
     if (cmp->Kind() == CK_OP && OPERATOR_is_compare(cmp->Opr())) {
       CODEREP *rhs = cmp->Opnd(1);
       CODEREP *lhs = cmp->Opnd(0);
-      if (Is_var_retv_of_func(dna, lhs, src_stmt, fname)) {
+      if (lhs->Kind() == CK_CONST) {
+        var_cr = rhs;
+        val_cr = lhs;
+        reverted = TRUE;
+      }
+      else if (rhs->Kind() == CK_CONST) {
+        var_cr = lhs;
+        val_cr = rhs;
+      }
+      else {
+        Rbc_eval_certainty()->push_back(REC_SKIP);
+        Is_Trace(Tracing(),
+                 (TFile,
+                  "RBC::Is_func_exec_successful: none of the compare operand is constant, skip\n"));
+      }
+      if (var_cr->Kind() == CK_OP &&
+          (var_cr->Opr() == OPR_CVT || var_cr->Opr() == OPR_CVTL)) {
+        var_cr = var_cr->Opnd(0);
+      }
+      if (Is_var_retv_of_func(dna, var_cr, src_stmt, fname)) {
         if (cmp->Opr() == cmp_op) {
-          if (rhs != NULL && rhs->Kind() == CK_CONST && (INT)rhs->Const_val() == value) {
+          if (val_cr != NULL &&
+              val_cr->Kind() == CK_CONST &&
+              (INT)val_cr->Const_val() == value) {
             ret = TRUE;
           }
         }
         else if ((cmp->Opr() == OPR_EQ && cmp_op == OPR_NE) ||
                  (cmp->Opr() == OPR_NE && cmp_op == OPR_EQ)) {
-          if (rhs != NULL && rhs->Kind() == CK_CONST && (INT)rhs->Const_val() != value) {
-              ret = TRUE;
+          if (val_cr != NULL &&
+              val_cr->Kind() == CK_CONST &&
+              (INT)val_cr->Const_val() != value) {
+            ret = TRUE;
           }
         }
+        else {
+          Rbc_eval_certainty()->push_back(REC_SKIP);
+          Is_Trace(Tracing(),
+                   (TFile,
+                    "RBC::Is_func_exec_successful: TODO: other comparison not yet implemented\n"));
+        }
       }
-      else if (Is_var_retv_of_func(dna, rhs, src_stmt, fname)) {
+      else {
+        Rbc_eval_certainty()->push_back(REC_SKIP);
+        Is_Trace(Tracing(),
+                 (TFile,
+                  "RBC::Is_func_exec_successful: not return value of the function, skip\n"));
+
       }
     }
   }
-  Is_Trace(Tracing(), (TFile, "RBC: Is_func_exec_successful(fname:%s, opr:%s, value:%d): %lld\n",
-                       fname, opr_str, value, ret));
+  Is_Trace(Tracing(), (TFile, "RBC: Is_func_exec_successful(fname:%s, opr:%s, value:%d): %lld %s\n",
+                       fname, opr_str, value, ret, Rbc_result_ignore() ? "ignored" : ""));
   return ret;
 }
 
@@ -6746,6 +6784,54 @@ RBC_BASE::Find_self_inc_include_cr(OPT_STAB *opt_stab, BB_NODE *bb, CODEREP *cr)
   return NULL;
 }
 
+
+// =============================================================================
+//
+// RBC_BASE::Eval__is_null_term_str
+// bool Is_null_term_str(void *var, uint64 len)
+//
+// =============================================================================
+UINT64
+RBC_BASE::Eval__is_null_term_str(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
+{
+  RBC_EVAL_SKIP();
+  UINT64 ret = FALSE;
+  DNA_NODE *dna = rbc_ctx.Caller();
+  VSA *vsa = rbc_ctx.Caller_vsa();
+  CODEREP *arg0 = stmt->Rhs()->Find_nth_arg(0 + Rbc_parm_ofst_adjust(dna));
+  CODEREP *var = (CODEREP*)Eval__exp(rbc_ctx, arg0);
+  CODEREP *arg1 = stmt->Rhs()->Find_nth_arg(1 + Rbc_parm_ofst_adjust(dna));
+  UINT64 len = Eval__exp(rbc_ctx, arg1);
+  if (var != NULL) {
+    CONTEXT_SWITCH context(dna);
+    TY *ty = Get_cr_ty(vsa, var);
+    TYPE_ID mtype = MTYPE_UNKNOWN;
+    if (ty != NULL) {
+      if (TY_kind(*ty) == KIND_POINTER) {
+        TY_IDX ptr_ty = TY_pointed(*ty);
+        if (TY_kind(ptr_ty) == KIND_ARRAY) {
+          mtype = TY_mtype(TY_etype(ptr_ty));
+        }
+        else if (TY_kind(ptr_ty) == KIND_SCALAR) {
+          mtype = TY_mtype(ptr_ty);
+        }
+      } // end KIND_POINTER
+      else if (TY_kind(*ty) == KIND_ARRAY) {
+        mtype = TY_mtype(TY_etype(*ty));
+      } // end KIND_ARRAY
+      if (mtype == MTYPE_I1) {
+        UINT64 size = Get_strlen(vsa, var, rbc_ctx.Stmt(), rbc_ctx.Mem_pool());
+        if (size + 1 < len)
+          ret = TRUE;
+      }
+    }
+  }
+  Is_Trace(Tracing(), (TFile, "RBC: Is_null_term_str(cr%d, %lld) = %lld\n",
+                       var ? var->Coderep_id() : -1, len, ret));
+  return ret;
+}
+
+
 // =============================================================================
 //
 // RBC_BASE::Eval__is_cst_str_eq
@@ -8296,72 +8382,91 @@ RBC_BASE::Eval__get_strlen(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
   CODEREP *obj = (CODEREP*)Eval__exp(rbc_ctx, arg0);
   if (obj) {
     CONTEXT_SWITCH caller_ctx(dna);
-    STR_SET str_set;
-    BOOL found = Find_const_char_cross(rbc_ctx.Caller_vsa(), rbc_ctx.Callstmt(),
-                                       obj, str_set, rbc_ctx.Mem_pool());
-    if (!found) {
-      len = Get_initv_strlen(dna, obj);
-      if (len == 0) {
-        // try vsym U-D to find str definition for lenth
-        VSA *vsa = dna->Comp_unit()->Vsa();
-        STMTREP *sr = rbc_ctx.Stmt();
-        if (sr != NULL) {
-          VSYM_FLD_REP any_vfr(FLD_K_ANY, 0, 0);
-          VSYM_OBJ_REP *vor = vsa->Find_vor_mu_vor(sr, obj, &any_vfr);
-          if (vor != NULL) {
-            STMTREP *defstmt = NULL;
-            if (vor->Attr() == ROR_DEF_BY_ISTORE ||
-                vor->Attr() == ROR_DEF_BY_COPY ||
-                vor->Attr() == ROR_DEF_BY_CHI)
-              defstmt = vor->Defstmt();
-            while (defstmt != NULL) {
-              RNA_NODE *rna = dna->Get_callsite_rna(defstmt);
-              // check def via implicit assignment
-              if (rna != NULL && rna->Is_flag_set(RBC_SE_IMPLICIT_ASSIGN)) {
-                SRC_VECTOR *srcs = vsa->Ipsa()->Get_assign_src(rna, obj);
-                if (srcs != NULL) {
-                  for (INT i = 0; i < srcs->size(); i++) {
-                    CODEREP *src = rna->Get_arg((*srcs)[i]);
-                    if (src != NULL && src != obj)
-                      len += Get_initv_strlen(dna, src);
-                  }
-                }
-              } // end IMPLICIT ASSIGN
-              // found some string, stop
-              if (len != 0)
-                break;
-              // not found, go vor chi opnd
-              CVOR *opnd = vsa->Find_vor_chi_opnd(defstmt, vor);
-              if (opnd == NULL)
-                break;
-              vor = opnd->first;
-              if (vor != NULL &&
-                  (vor->Attr() == ROR_DEF_BY_ISTORE ||
-                   vor->Attr() == ROR_DEF_BY_COPY ||
-                   vor->Attr() == ROR_DEF_BY_CHI) &&
-                  defstmt != vor->Defstmt())
-                defstmt = vor->Defstmt();
-              else
-                break;
-            } // end while defstmt != NULL
-          }
-        }
-      }
-      if (len == 0)
-        Rbc_eval_certainty()->push_back(REC_SKIP);
-    } else {
-      if (str_set.size() == 1) {
-        char *str = *(str_set.begin());
-        len = str ? strlen(str) : 0;
-      } else {
-        // multiple const string found, not processing it for now
-        // can return a coderep with range
-        Rbc_eval_certainty()->push_back(REC_SKIP);
-      }
-    }
+    len = Get_strlen(rbc_ctx.Caller_vsa(), obj, rbc_ctx.Stmt(), rbc_ctx.Mem_pool());
   }
   Is_Trace(Tracing(), (TFile, "RBC_BASE::Get_strlen(cr%d)=%lld %s\n",
                        obj ? obj->Coderep_id() : 0, len, Rbc_result_ignore() ? "ignored" : ""));
+  return len;
+}
+
+
+UINT64
+RBC_BASE::Get_strlen(VSA *vsa, CODEREP *cr, STMTREP *stmt, MEM_POOL *pool)
+{
+  UINT64 len = 0;
+  if (cr == NULL || stmt == NULL)
+    return len;
+  DNA_NODE *dna = vsa->Dna();
+  STR_SET str_set;
+  BOOL found = Find_const_char_cross(vsa, stmt, cr, str_set, pool);
+  if (!found) {
+    len = Get_initv_strlen(dna, cr);
+    if (len == 0) {
+      // try vsym U-D to find str definition for lenth
+      VSYM_FLD_REP any_vfr(FLD_K_ANY, 0, 0);
+      VSYM_OBJ_REP *vor = vsa->Find_vor_mu_vor(stmt, cr, &any_vfr);
+      if (vor != NULL) {
+        STMTREP *defstmt = NULL;
+        if (vor->Attr() == ROR_DEF_BY_ISTORE ||
+            vor->Attr() == ROR_DEF_BY_COPY ||
+            vor->Attr() == ROR_DEF_BY_CHI)
+          defstmt = vor->Defstmt();
+        while (defstmt != NULL) {
+          RNA_NODE *rna = dna->Get_callsite_rna(defstmt);
+          // check def via implicit assignment
+          if (rna != NULL && rna->Is_flag_set(RBC_SE_IMPLICIT_ASSIGN)) {
+            SRC_VECTOR *srcs = vsa->Ipsa()->Get_assign_src(rna, cr);
+            if (srcs != NULL) {
+              for (INT i = 0; i < srcs->size(); i++) {
+                CODEREP *src = rna->Get_arg((*srcs)[i]);
+                if (src != NULL && src != cr)
+                  len += Get_initv_strlen(dna, src);
+              }
+            }
+          } // end IMPLICIT ASSIGN
+          else if (defstmt->Opr() == OPR_MSTORE) {
+            CODEREP *rhs = defstmt->Rhs();
+            if (rhs != NULL && rhs->Kind() == CK_IVAR) {
+              rhs = rhs->Ilod_base();
+              if (rhs != NULL && rhs->Kind() == CK_LDA) {
+                ST *lda_st = rhs->Lda_base_st();
+                if (ST_class(lda_st) == CLASS_CONST &&
+                    TCON_ty(ST_tcon_val(lda_st)) == MTYPE_STR)
+                  len = strlen(Index_to_char_array(TCON_str_idx(ST_tcon_val(lda_st))));
+              }
+            }
+          } // end OPR_MSTORE
+          // found some string, stop
+          if (len != 0)
+            break;
+          // not found, go vor chi opnd
+          CVOR *opnd = vsa->Find_vor_chi_opnd(defstmt, vor);
+          if (opnd == NULL)
+            break;
+          vor = opnd->first;
+          if (vor != NULL &&
+              (vor->Attr() == ROR_DEF_BY_ISTORE ||
+               vor->Attr() == ROR_DEF_BY_COPY ||
+               vor->Attr() == ROR_DEF_BY_CHI) &&
+              defstmt != vor->Defstmt())
+            defstmt = vor->Defstmt();
+          else
+            break;
+        } // end while defstmt != NULL
+      }
+    }
+    if (len == 0)
+      Rbc_eval_certainty()->push_back(REC_SKIP);
+  } else {
+    if (str_set.size() == 1) {
+      char *str = *(str_set.begin());
+      len = str ? strlen(str) : 0;
+    } else {
+      // multiple const string found, not processing it for now
+      // can return a coderep with range
+      Rbc_eval_certainty()->push_back(REC_SKIP);
+    }
+  }
   return len;
 }
 
@@ -13532,6 +13637,14 @@ RBC_BASE::Match_fsm_key(VSA *vsa, FSM_OBJ_REP *fsm_obj_rep, CODEREP *ori_key,
   if (ori_key == new_key) {
     Is_Trace(Tracing(), (TFile, "RBC: same keys, matched\n"));
     return new_key;
+  }
+  if (ori_key->Kind() == CK_OP && (ori_key->Opr() == OPR_CVT ||
+                                   ori_key->Opr() == OPR_CVTL)) {
+    if (Match_fsm_key(vsa, fsm_obj_rep, ori_key->Opnd(0), new_key, visited) != NULL) {
+      Is_Trace(Tracing(), (TFile, "RBC: CVT/CVTL opnd(cr%d) of ori_key(cr%d) matched\n",
+                           ori_key->Opnd(0)->Coderep_id(), ori_key->Coderep_id()));
+      return new_key;
+    }
   }
   if (new_key->Kind() == CK_CONST) {
     Is_Trace(Tracing(), (TFile, "RBC: new_key(cr%d) is a const, mismatched\n",
