@@ -3418,19 +3418,21 @@ WhirlExprBuilder::ConvertDeclRefExpr(const DeclRefExpr *expr) {
     // TODO: refer clang CodeGen canEmitSpuriousReferenceToVariable to check
     // if reference to decl or constant value should be used
     Is_True(isa<VarDecl>(expr->getDecl()), ("not a VarDecl"));
-    const VarDecl *var = cast<VarDecl>(expr->getDecl()->getCanonicalDecl());
-    Is_True(var->evaluateValue() != NULL, ("not a constant"));
-    Result val = ConvertAPValue(expr->getType(), var->evaluateValue());
-    if (!val.isNone()) {
+    const VarDecl *var = cast<VarDecl>(expr->getDecl())->getInitializingDeclaration();
+    if (var->hasInit()) {
+      Is_True(var->evaluateValue() != NULL, ("not a constant"));
+      Result val = ConvertAPValue(expr->getType(), var->evaluateValue());
+      if (!val.isNone()) {
 #if defined(BUILD_MASTIFF)
-      // mark st not_used so that DDV won't report
-      ST_IDX st = _builder->SB().GetST(var);
-      if (st != ST_IDX_ZERO) {
-        Set_ST_is_not_used(ST_ptr(st));
-      }
+        // mark st not_used so that DDV won't report
+        ST_IDX st = _builder->SB().GetST(var);
+        if (st != ST_IDX_ZERO) {
+          Set_ST_is_not_used(ST_ptr(st));
+        }
 #endif
-      val.SetRValue();
-      return val;
+        val.SetRValue();
+        return val;
+      }
     }
   }
 
