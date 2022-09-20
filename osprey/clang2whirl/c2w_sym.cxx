@@ -324,7 +324,7 @@ WhirlSymBuilder::ConvertVar(const VarDecl *decl) {
       (linkage == GVA_DiscardableODR || linkage == GVA_StrongODR)) {
     Set_ST_is_odr(st);
   }
-  if (decl->hasAttr<UnusedAttr>())
+  if (decl->hasAttr<UnusedAttr>() || decl->isConstexpr())
     Set_ST_is_not_used(st);
   BOOL hasAsmAttr = decl->hasAttr<AsmLabelAttr>();
   if (hasAsmAttr) {
