@@ -71,6 +71,7 @@ LIB2_BUILD_DIR      = osprey/targdir_lib2
 TOP_SRCDIR          = @abs_top_srcdir@
 TOP_BUILDDIR        = @abs_top_builddir@
 BUILD_VENDOR        = @BUILD_VENDOR@
+BUILD_ARCH          = @BUILD_ARCH@
 BUILD_TARGET        = @BUILD_TARGET@
 BUILD_MULTILIB      = @BUILD_MULTILIB@
 BUILD_GNU3          = @BUILD_GNU3@
@@ -373,8 +374,18 @@ cc1plus: $(GNUFE_BUILD_SUBDIR)/gcc/cc1plus
 cc1: $(GNUFE_BUILD_SUBDIR)/gcc/cc1
 cc1plus: cc1
 $(GNUFE_BUILD_SUBDIR)/gcc/cc1plus cc1plus: $(GNUFE_BUILD_SUBDIR)/gcc/cc1
+ifeq ($(BUILD_ARCH), RISCV64)
+# ignore libgcc/libstdc++ build error
+$(GNUFE_BUILD_SUBDIR)/gcc/cc1 cc1: $(NATIVE_BUILD_DIR)/libspin_4_2_0/libgspin42.a
+	-$(MAKE) -C $(GNUFE_BUILD_DIR)
+	if [ ! -f $(GNUFE_BUILD_DIR)/host-unknown/gcc/cc1 -o ! -f $(GNUFE_BUILD_DIR)/host-unknown/gcc/cc1plus ]; then \
+		echo "Build $(GNUFE_BUILD_DIR) failed." \
+		exit 1; \
+	fi
+else
 $(GNUFE_BUILD_SUBDIR)/gcc/cc1 cc1: $(NATIVE_BUILD_DIR)/libspin_4_2_0/libgspin42.a
 	$(MAKE) -C $(GNUFE_BUILD_DIR)
+endif
 
 # ld in binutils
 mapxfa: $(LD_BUILD_SUBDIR)/ld-new
@@ -421,6 +432,16 @@ install_fe:
 	    install-cpp
 	$(MAKE) -C $(GNUFE_BUILD_SUBDIR)/gcc \
 	    install-driver	    
+else ifeq($(BUILD_ARCH), RISCV64)
+install_fe:
+	$(MAKE) -C $(GNUFE_BUILD_SUBDIR)/gcc \
+	    install-common
+	$(MAKE) -C $(GNUFE_BUILD_SUBDIR)/gcc \
+	    install-headers
+	$(MAKE) -C $(GNUFE_BUILD_SUBDIR)/gcc \
+	    install-cpp
+	$(MAKE) -C $(GNUFE_BUILD_SUBDIR)/gcc \
+	    install-driver
 else
 install_fe:
 	$(MAKE) -C $(GNUFE_BUILD_SUBDIR)/gcc \
