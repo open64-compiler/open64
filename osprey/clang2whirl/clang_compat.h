@@ -92,7 +92,7 @@ getSubExpr(const clang::MaterializeTemporaryExpr *expr) {
 //
 static inline bool
 isExprRValue(const clang::Expr *expr) {
-#if LLVM_VERSION_MAJOR == 14
+#if LLVM_VERSION_MAJOR >= 14
   return expr->isPRValue();
 #else
   return expr->isRValue();
@@ -104,7 +104,7 @@ isExprRValue(const clang::Expr *expr) {
 //
 static inline const clang::Expr *
 ignoreParenBaseCasts(const clang::Expr *expr) {
-#if LLVM_VERSION_MAJOR == 14
+#if LLVM_VERSION_MAJOR >= 14
   return expr->IgnoreParenBaseCasts();
 #else
   return expr->ignoreParenBaseCasts();
@@ -184,7 +184,7 @@ createCXXDestructorDecl(clang::ASTContext &C,
                         clang::SourceLocation StartLoc,
                         const clang::DeclarationNameInfo &NameInfo,
                         clang::QualType	T) {
-#if LLVM_VERSION_MAJOR == 14
+#if LLVM_VERSION_MAJOR >= 14
   return clang::CXXDestructorDecl::Create(C, RD, StartLoc, NameInfo, T,
                                           nullptr, false, false, true,
                                           clang::ConstexprSpecKind::Unspecified);
