@@ -34,7 +34,7 @@
 #include "open64decl.h"
 #include "clangdecl.h"
 #include "llvm/Support/CommandLine.h"
-#if LLVM_VERSION_MAJOR == 14
+#if LLVM_VERSION_MAJOR >= 14
 #include "clang/Basic/Thunk.h"
 #endif
 

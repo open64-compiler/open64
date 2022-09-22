@@ -276,7 +276,7 @@ static void FixupDiagPrefixExeName(TextDiagnosticPrinter *DiagClient,
   // If the clang binary happens to be named cl.exe for compatibility reasons,
   // use clang-cl.exe as the prefix to avoid confusion between clang and MSVC.
   StringRef ExeBasename(llvm::sys::path::filename(Path));
-#if LLVM_VERSION_MAJOR == 14
+#if LLVM_VERSION_MAJOR >= 14
   if (ExeBasename.equals_insensitive("cl.exe"))
 #else
   if (ExeBasename.equals_lower("cl.exe"))
@@ -493,6 +493,7 @@ int main(int argc_, const char **argv_) {
     SmallVector<std::pair<int, const Command *>, 4> FailingCommands;
     Res = TheDriver.ExecuteCompilation(*C, FailingCommands);
     
+#if LLVM_VERSION_MAJOR <= 14
     // Force a crash to test the diagnostics.
     if (TheDriver.GenReproducer) {
       Diags.Report(diag::err_drv_force_crash)
@@ -504,7 +505,8 @@ int main(int argc_, const char **argv_) {
         if (const Command *C = dyn_cast<Command>(&J))
           FailingCommands.push_back(std::make_pair(-1, C));
     }
-    
+#endif
+
     for (const auto &P : FailingCommands) {
       int CommandRes = P.first;
       const Command *FailingCommand = P.second;

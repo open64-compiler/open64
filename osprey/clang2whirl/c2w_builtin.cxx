@@ -893,7 +893,7 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
     // TODO: NT store & NT load
     return Result::nwNone();
 
-#if LLVM_VERSION_MAJOR == 14
+#if LLVM_VERSION_MAJOR >= 14
   case Builtin::BI__builtin_coro_resume ... Builtin::BI__builtin_coro_suspend: // coroutine
 #else
   case Builtin::BI__builtin_coro_resume ... Builtin::BI__builtin_coro_param:  // coroutine

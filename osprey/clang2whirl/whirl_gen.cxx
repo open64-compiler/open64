@@ -91,7 +91,7 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI,
                                                      CI.getCodeGenOpts(),
                                                      CI.getTargetOpts(),
                                                      CI.getLangOpts(),
-#if LLVM_VERSION_MAJOR == 14
+#if LLVM_VERSION_MAJOR >= 14
                                                      false,
 #else
                                                      CI.getFrontendOpts().ShowTimers,

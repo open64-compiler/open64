@@ -79,7 +79,7 @@ using namespace llvm::opt;
 // Main driver
 //===----------------------------------------------------------------------===//
 
-#if LLVM_VERSION_MAJOR == 14
+#if LLVM_VERSION_MAJOR >= 14
 static void LLVMErrorHandler(void *UserData, const char *Message,
 #else
 static void LLVMErrorHandler(void *UserData, const std::string &Message,
