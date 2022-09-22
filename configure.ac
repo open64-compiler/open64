@@ -256,6 +256,16 @@ case "$host" in
 		;;
 	powerpc-*-linux*)
 		;;
+	riscv64*-*-linux*)
+		BUILD_ABI=I64BIT
+		BUILD_ARCH=RISCV64
+		BUILD_HOST=X8664
+		CYGNUS_CONFIGURE_HOST=i686-linux-gnu
+		GCC_CONFIGURE_HOST=x86_64-linux-gnu
+		GCC_CONFIGURE_COMPILER="riscv64-linux-gnu-gcc -mabi=lp64d"
+		GCC_CONFIGURE_CFLAGS+=" -DHOST_RISCV"
+		CYGNUS_CONFIGURE_COMPILER="riscv64-linux-gnu-gcc -mabi=lp64d"
+		;;
 	*)
 		AC_MSG_ERROR(["open64 is not supported on $target"])
 		;;

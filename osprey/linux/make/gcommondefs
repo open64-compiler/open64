@@ -185,6 +185,18 @@ ifeq ($(BUILD_COMPILER), OSP)
   AR      = ar
 endif
 
+ifeq ($(BUILD_ARCH), RISCV64)
+  ASNAME = riscv64-linux-gnu-as
+  CCNAME = riscv64-linux-gnu-gcc
+  C++NAME = riscv64-linux-gnu-g++
+  F90 = iscv64-linux-gnu-gfortran
+  F90_RTLIBS = -Wl,-Bstatic -lfortran -Wl,-Bdynamic
+  F77 = $(F90)
+  AR = riscv64-linux-gnu-ar
+  NCFLAGS  += -mabi=lp64d
+  NCXXFLAGS += -mabi=lp64d
+endif
+
 ifeq ($(BUILD_COMPILER), SELF)
   ASNAME = $(COMPILER_TARG_DIR)/driver/opencc
   CCNAME = $(COMPILER_TARG_DIR)/driver/opencc

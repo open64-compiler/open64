@@ -80,6 +80,7 @@ const char *host_detect_local_cpu (int argc, const char **argv)
   if (!arch && strcmp (argv[0], "tune"))
     return NULL;
 
+#ifndef HOST_RISCV
 #ifndef __x86_64__
   /* See if we can use cpuid.  */
   asm volatile ("pushfl; pushfl; popl %0; movl %0,%1; xorl %2,%0;"
@@ -274,6 +275,9 @@ const char *host_detect_local_cpu (int argc, const char **argv)
       abort ();
       break;
     }
+#else
+  cpu = "generic";
+#endif // HOST_RISCV
 
 done:
   return concat ("-m", argv[0], "=", cpu, NULL);
