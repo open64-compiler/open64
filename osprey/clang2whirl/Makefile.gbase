@@ -261,11 +261,7 @@ LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
 LCDEFS = $(HOSTDEFS) $(TARGDEFS)
 LCINCS = -I. $(addprefix -I, $(INC_DIRS))
 
-ifeq ($(BUILD_ARCH), RISCV64)
 CLANG_OPTS = -no-pie -std=c++14 -fno-exceptions -fno-rtti -fvisibility-inlines-hidden -fno-common -fno-strict-aliasing -pthread
-else
-CLANG_OPTS = -fno-pie -Wl,-no-pie -std=c++14 -fno-exceptions -fno-rtti -fvisibility-inlines-hidden -fno-common -fno-strict-aliasing -pthread
-endif
 LC++OPTS = $(STD_COMPILE_OPTS) $(CLANG_OPTS)
 LC++DEFS = $(HOSTDEFS) $(TARGDEFS)
 LC++INCS = $(LCINCS)
