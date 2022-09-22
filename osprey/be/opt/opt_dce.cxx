@@ -1548,6 +1548,7 @@ DCE::Remove_unreached_statements( BB_NODE *bb ) const
       if (stmt->Opr() == OPR_REGION_EXIT) // need to update RID structure
 	Remove_region_exit(bb, FALSE);
       bb->Remove_stmtrep(stmt); // does the actual work
+#if 0
 #if defined(BUILD_MASTIFF)
       const char *fname = ST_name(Get_Current_PU_ST());
       SRCPOS spos = stmt->Linenum();
@@ -1555,6 +1556,7 @@ DCE::Remove_unreached_statements( BB_NODE *bb ) const
       if (VSA_Xsca) {
         Report_xsca_error(fname, "", "MISRA_2_1", FALSE, spos);
       }
+#endif
 #endif
     }
   }
