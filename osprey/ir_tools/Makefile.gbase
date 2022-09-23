@@ -231,8 +231,8 @@ ifndef SKIP_DEP_BUILD
 	$(call submake,$(BUILD_AREA)/libcomutil)
 	$(call submake,$(BUILD_AREA)/libjson)
 	$(call submake,$(BUILD_AREA)/be)
-	if ! test -e $(BE_SO); then ln -sf ../be/$(BE_SO) .; fi
 endif
+	if ! test -e $(BE_SO); then ln -sf ../be/$(BE_SO) .; fi
 
 last: make_deps
 
