@@ -614,26 +614,32 @@ WhirlDeclBuilder::ConvertAPValue(QualType type, const APValue *value, INT repeat
         INITV_Init_Integer(inv, MTYPE_I8, ofst, repeat);
       }
       else {
-        Is_True(isa<CXXMethodDecl>(value->getMemberPointerDecl()),
-                ("not method decl for  pointer"));
         inv = New_INITV();
         INITV_Init_Block(inv, INITV_Next_Idx(), repeat);
         INITV_IDX fptr_inv = New_INITV();
-        const CXXMethodDecl *mtd = cast<CXXMethodDecl>(value->getMemberPointerDecl());
-        GlobalDecl gd = isa<CXXDestructorDecl>(mtd)
-                          ? GlobalDecl(cast<CXXDestructorDecl>(mtd), CXXDtorType::Dtor_Complete)
-                          : GlobalDecl(mtd);
-        if (mtd->isVirtual()) {
-          ItaniumVTableContext *ctx;
-          ctx = cast<ItaniumVTableContext>(_builder->Context()->getVTableContext());
-          UINT64 vofst = ctx->getMethodVTableIndex(gd);
-          vofst *= MTYPE_byte_size(Pointer_Mtype);
-          INITV_Init_Integer(fptr_inv, MTYPE_I8, vofst + 1);
+        if (value->getMemberPointerDecl() != NULL) {
+          Is_True(isa<CXXMethodDecl>(value->getMemberPointerDecl()),
+                  ("not method decl for  pointer"));
+          const CXXMethodDecl *mtd = cast<CXXMethodDecl>(value->getMemberPointerDecl());
+          GlobalDecl gd = isa<CXXDestructorDecl>(mtd)
+                            ? GlobalDecl(cast<CXXDestructorDecl>(mtd), CXXDtorType::Dtor_Complete)
+                            : GlobalDecl(mtd);
+          if (mtd->isVirtual()) {
+            ItaniumVTableContext *ctx;
+            ctx = cast<ItaniumVTableContext>(_builder->Context()->getVTableContext());
+            UINT64 vofst = ctx->getMethodVTableIndex(gd);
+            vofst *= MTYPE_byte_size(Pointer_Mtype);
+            INITV_Init_Integer(fptr_inv, MTYPE_I8, vofst + 1);
+          }
+          else {
+            ST_IDX st = _builder->Get_func_st(gd);
+            Is_True(st != ST_IDX_ZERO, ("bad st"));
+            INITV_Init_Symoff(fptr_inv, ST_ptr(st), 0);
+          }
         }
         else {
-          ST_IDX st = _builder->Get_func_st(gd);
-          Is_True(st != ST_IDX_ZERO, ("bad st"));
-          INITV_Init_Symoff(fptr_inv, ST_ptr(st), 0);
+          // no member method pointer decl, use nullptr
+          INITV_Init_Integer(fptr_inv, MTYPE_I8, 0);
         }
         INITV_IDX adj_inv = New_INITV();
         INITV_Init_Integer(adj_inv, MTYPE_I8, ofst);
