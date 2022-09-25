@@ -3610,6 +3610,71 @@ IPSA::Find_or_create_fun_st(UINT32 file_idx, ST_IDX st_idx, UINT32 ref_file_idx,
   return st;
 }
 
+TY_IDX
+IPSA::Find_icall_ty_from_ivar_mu(DNA_NODE *dna, CODEREP *opnd,
+                                 AUX_ID aux, hash_set<IDTYPE> &visited_bb)
+{
+  Is_True(opnd->Kind() == CK_VAR, ("bad opnd cr"));
+  if (opnd->Is_flag_set(CF_DEF_BY_PHI)) {
+    PHI_NODE *phi = opnd->Defphi();
+    if (visited_bb.find(phi->Bb()->Id()) != visited_bb.end())
+      return TY_IDX_ZERO;
+    visited_bb.insert(phi->Bb()->Id());
+    PHI_OPND_ITER phi_opnd_iter(phi);
+    TY_IDX ret_ty = TY_IDX_ZERO;
+    // search all opnd
+    FOR_ALL_ELEM(opnd, phi_opnd_iter, Init()) {
+      TY_IDX ty = Find_icall_ty_from_ivar_mu(dna, opnd, aux, visited_bb);
+      if (ty == TY_IDX_ZERO || ty == ret_ty)
+        continue;
+      // if mismatch, return TY_IDX_ZERO
+      if (ret_ty != TY_IDX_ZERO)
+        break;
+      ret_ty = ty;
+    }
+    return ret_ty;
+  }
+  else if (opnd->Is_flag_set(CF_DEF_BY_CHI)) {
+    STMTREP *def = opnd->Defstmt();
+    Is_True(def != NULL, ("bad def stmt"));
+    if (OPERATOR_is_call(def->Opr())) {
+      if ((def->Call_flags() & WN_CALL_IS_CONSTRUCTOR)) {
+        Is_True(def->Rhs()->Kid_count() >= 1 &&
+                def->Rhs()->Opnd(0)->Kind() == CK_IVAR &&
+                def->Rhs()->Opnd(0)->Opr() == OPR_PARM, ("bad parm opnd"));
+        if (def->Rhs()->Opnd(0)->Ilod_base()->Kind() == CK_LDA &&
+            def->Rhs()->Opnd(0)->Ilod_base()->Lda_aux_id() == aux) {
+          return def->Rhs()->Opnd(0)->Ilod_ty();
+        }
+      }
+    }
+    if (def->Opr() == OPR_OPT_CHI) {
+      Is_True(FALSE, ("TODO: not find def of vtable"));
+      return TY_IDX_ZERO;
+    }
+    Is_True(opnd->Defchi() != NULL &&
+            opnd->Defchi()->Live() &&
+            opnd->Defchi()->RESULT() == opnd, ("bad def chi"));
+    return Find_icall_ty_from_ivar_mu(dna, opnd->Defchi()->OPND(), aux, visited_bb);
+  }
+  else {
+    STMTREP *def = opnd->Defstmt();
+    if (def->Opr() == OPR_STID) {
+      opnd = def->Rhs();
+      if (opnd->Kind() == CK_LDA) {
+      }
+      else if (opnd->Kind() == CK_VAR) {
+      }
+      Is_True(FALSE, ("TODO: handle other opnd"));
+      return TY_IDX_ZERO;
+    }
+    else {
+      Is_True(FALSE, ("TODO: handle opr %s", OPERATOR_name(def->Opr()) + 4));
+      return TY_IDX_ZERO;
+    }
+  }
+}
+
 // =============================================================================
 //
 // IPSA::Do_devirtualization() 
@@ -3684,10 +3749,10 @@ IPSA::Do_devirtualization(DNA_NODE* dna, STMTREP* stmt)
           Is_True(ST_is_vtable(vst), ("failed to get class entry"));
           call_st = Get_vtab_entry(vst, icall_tg->Offset(), FALSE);
         } else {
-          Is_Trace_cmd(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
-                      (TFile, ("IPSA::Do_devirtualization symbol(v-table) "
-                                "%s has INITO but failed to get its #%d entry,"
-                                " bail out \n", ST_name(st), icall_base->Offset())));
+          Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+                   (TFile, "IPSA::Do_devirtualization symbol(v-table) "
+                           "%s has INITO but failed to get its #%d entry,"
+                           " bail out \n", ST_name(st), icall_base->Offset()));
         }
       }
       else {
@@ -3699,31 +3764,61 @@ IPSA::Do_devirtualization(DNA_NODE* dna, STMTREP* stmt)
       // C++/C Routine.
       CODEREP *this_ptr = rhs->Opnd(0)->Ilod_base();
       if (this_ptr->Kind() == CK_LDA) {
-        // check this
-        TY_IDX ty = rhs->Opnd(0)->Ilod_base()->Lda_ty();
-        Is_True(TY_kind(ty) == KIND_POINTER, ("lda ty is not pointer"));
+        TY_IDX ty = TY_IDX_ZERO;
+        MU_NODE *ivar_mu = icall_tg->Ivar_mu_node();
+        if (ivar_mu != NULL) {
+          // check constructor by follow ivar_mu U-D
+          hash_set<IDTYPE> visited_bb;
+          visited_bb.insert(stmt->Bb()->Id());
+          ty = Find_icall_ty_from_ivar_mu(dna, ivar_mu->OPND(),
+                                          this_ptr->Lda_aux_id(), visited_bb);
+          Is_True(ty == TY_IDX_ZERO || TY_kind(ty) == KIND_POINTER,
+                  ("lda ty is not pointer"));
+        }
+        if (ty == TY_IDX_ZERO) {
+          // check this
+          ty = rhs->Opnd(0)->Ilod_base()->Lda_ty();
+          Is_True(TY_kind(ty) == KIND_POINTER, ("lda ty is not pointer"));
+          if (TY_kind(TY_pointed(ty)) != KIND_STRUCT) {
+            // object is constructed by placement new, try parm ty
+            ty = rhs->Opnd(0)->Ilod_ty();
+            Is_True(TY_kind(ty) == KIND_POINTER, ("lda ty is not pointer"));
+            CLASS_HIERARCHY *cha = Glob_cha();
+            CLASS_INFO *ci = cha->Get_class_info(TY_name(TY_pointed(ty)));
+            if (ci != NULL && ci->Get_children()->size() > 0) {
+              Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+                       (TFile, "IPSA::Do_devirtualization %s not leaf class.\n",
+                               TY_name(TY_pointed(ty))));
+              return;
+            }
+          }
+        }
         TY_IDX pty = TY_pointed(ty);
         Is_True(TY_kind(pty) == KIND_STRUCT, ("pty is not struct"));
         ST_IDX sti = TY_vtable(pty);
-        if (sti == ST_IDX_ZERO)
+        if (sti == ST_IDX_ZERO) {
+          Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+                   (TFile, "IPSA::Do_devirtualization no v-table for %s.\n",
+                           TY_name(pty)));
           return;
+        }
         ST* vst = ST_ptr(sti);
         Is_True(vst != NULL && ST_is_vtable(vst), ("failed to get vtable st"));
 
         if (ST_sclass(vst) == SCLASS_EXTERN) {
           // and output message for bailing
-          Is_Trace_cmd(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
-                 (TFile, ("IPSA::Do_devirtualization symbol(v-table) "
-              "%s is declared EXTERN, bail out \n", ST_name(vst))));
+          Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+                   (TFile, "IPSA::Do_devirtualization symbol(v-table) "
+                           "%s is declared EXTERN, bail out \n", ST_name(vst)));
           return;
         }
         if (Find_INITO_For_Symbol(vst) == 0) {
           // Bail out : Cannot find v-table's INITO.
-          Is_Trace_cmd(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
-                 (TFile, ("IPSA::Do_devirtualization symbol(v-table) "
-              "%s is not EXTERN, \n but sclass = %d, and "
-              "has no INITO, bail out \n",
-              ST_name(vst), ST_sclass(vst))));
+          Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+                   (TFile, "IPSA::Do_devirtualization symbol(v-table) "
+                           "%s is not EXTERN, \n but sclass = %d, and "
+                           "has no INITO, bail out \n",
+                           ST_name(vst), ST_sclass(vst)));
           return;
         }
         // TODO: The following line may trigger ASSERTION when
@@ -3736,7 +3831,8 @@ IPSA::Do_devirtualization(DNA_NODE* dna, STMTREP* stmt)
                 ? (Is_Target_32bit()) ? 8 : 16
                 : Get_base_offset_from_vtable(vst);
         call_st = Get_vtab_entry(vst, ofst, FALSE);
-        Is_True(call_st != NULL, ("IPSA::Do_devirtualization, cannot locate function in V-Table(%0#x<%d>)\n", call_st));
+        Is_True(call_st != NULL,
+                ("IPSA::Do_devirtualization, cannot locate function in V-Table(%0#x<%d>)\n", call_st));
       }
       else if (this_ptr->Kind() == CK_VAR && icall_tg->Offset() >= 0) {
         // unable to get the fun symbol when offset < 0
@@ -3785,8 +3881,8 @@ IPSA::Do_devirtualization(DNA_NODE* dna, STMTREP* stmt)
     Is_True(ST_class(call_st) == CLASS_FUNC, ("st is not func"));
     Convert_icall_to_call(dna, stmt, call_st);
   } else {
-    Is_Trace_cmd(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
-                  (TFile, ("IPSA::Do_devirtualization failed to get vtable for stmt: \n")));
+    Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
+             (TFile, "IPSA::Do_devirtualization failed to get vtable for stmt: \n"));
     
     Is_Trace_cmd(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG), stmt->Print(TFile));
   }
