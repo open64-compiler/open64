@@ -1702,6 +1702,8 @@ private:
   RNA_NODE     *New_rna(DNA_NODE *dna, STMTREP *stmt);
   void          Convert_icall_to_call(DNA_NODE *dna, STMTREP *stmt, ST* call_st);
   ST*           Find_or_create_fun_st(UINT32 file_idx, ST_IDX st_idx, UINT32 ref_file_idx, TY_IDX ty);
+  TY_IDX        Find_icall_ty_from_ivar_mu(DNA_NODE *dna, CODEREP *opnd,
+                                           AUX_ID aux, hash_set<IDTYPE> &visited_bb);
   void          Do_devirtualization(DNA_NODE *dna, STMTREP *stmt);
   void          Do_icall_promotion(DNA_NODE *dna, STMTREP *stmt);
   void          Find_calls_and_side_effects(DNA_NODE *dna, BB_NODE *bb, STMTREP_STACK *oparam);
