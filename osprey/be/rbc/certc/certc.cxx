@@ -246,8 +246,8 @@ int memcmp(const void *s1, const void *s2, size_t n)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Not(rbc.And(rbc.Is_null_term_str(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(3))),
-                                 rbc.Is_null_term_str(rbc.Get_arg(2), rbc.Get_value(rbc.Get_arg(3))))),
+  rbc.Rbc_assert(rbc.Not(rbc.Or(rbc.Is_null_term_str(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(3))),
+                                rbc.Is_null_term_str(rbc.Get_arg(2), rbc.Get_value(rbc.Get_arg(3))))),
                  "MISRA_21_14");
   // TODO: EXP42-C
   return 0;

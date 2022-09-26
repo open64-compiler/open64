@@ -8960,6 +8960,17 @@ RBC_BASE::Get_value(VSA *vsa_ctx, CODEREP *cr)
           }
         }
       }
+      else if (defstmt->Opr() == OPR_INTRINSIC_CALL) {
+        CODEREP *rhs = defstmt->Rhs();
+        if (rhs->Intrinsic() == INTRN_STRLEN) {
+          Rbc_eval_certainty()->pop_back();
+          cr_value = Get_strlen(vsa_ctx, rhs->Opnd(0)->Find_actual_arg(), defstmt, vsa_ctx->Loc_pool());
+          if (cr_value != 0)
+            break;
+          else
+            Rbc_eval_certainty()->pop_back();
+        }
+      }
       Rbc_eval_certainty()->pop_back();
       cr_value = Get_value(vsa_ctx, defstmt->Rhs());
     }
