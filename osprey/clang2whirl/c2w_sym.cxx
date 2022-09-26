@@ -324,8 +324,13 @@ WhirlSymBuilder::ConvertVar(const VarDecl *decl) {
       (linkage == GVA_DiscardableODR || linkage == GVA_StrongODR)) {
     Set_ST_is_odr(st);
   }
-  if (decl->hasAttr<UnusedAttr>() || decl->isConstexpr())
+  if (decl->hasAttr<UnusedAttr>())
     Set_ST_is_not_used(st);
+#ifdef BUILD_MASTIFF
+  if (decl->isReferenced() &&
+      (decl->isConstexpr() || decl->getType().isConstQualified()))
+    Set_ST_is_used(st);
+#endif
   BOOL hasAsmAttr = decl->hasAttr<AsmLabelAttr>();
   if (hasAsmAttr) {
     // set st volatile
