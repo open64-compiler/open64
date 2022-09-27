@@ -132,8 +132,14 @@ $(info $(LLVM_CONFIG))
 
 ifneq (,$(shell which $(LLVM_CONFIG)))
 LDFLAGS += -no-pie
+$(info **********LLVM_INCS**********)
 LLVM_INCS = $(shell $(LLVM_CONFIG) --cppflags)
+$(info $(LLVM_INCS))
+
 LLVM_LIBS = $(shell $(LLVM_CONFIG) --ldflags --libs --system-libs)
+
+LLVM_OPTS = -std=c++14
+LC++OPTS += $(LLVM_OPTS)
 
 TARGETS += w2ll
 $(info **********LLVM HOME***************)
