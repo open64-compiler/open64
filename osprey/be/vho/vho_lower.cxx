@@ -5274,6 +5274,7 @@ vho_lower_call ( WN * wn, WN * block )
   }
 #endif
 
+#if 0
 #if defined(BUILD_MASTIFF)
   if (WN_operator(wn) == OPR_CALL) {
     const char* call = ST_name(WN_st(wn));
@@ -5290,6 +5291,7 @@ vho_lower_call ( WN * wn, WN * block )
                             WN_kid0(WN_kid2(wn)), block);
     }
   }
+#endif
 #endif
 
   for ( i = 0; i < WN_kid_count(wn); i++ )
