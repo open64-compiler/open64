@@ -14,6 +14,8 @@
    limitations under the License.
 
 */
+
+#include <map>
 #include <cstdarg>
 #include <cstdlib>
 #include <iostream>
@@ -31,14 +33,21 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/IRPrintingPasses.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Transforms/Scalar/InstSimplifyPass.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
-#include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/Coroutines.h"
+#include "llvm/IR/PassManager.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Transforms/Scalar/DCE.h"
+#include "llvm/Transforms/Scalar/BDCE.h"
+#include "llvm/Transforms/Utils/Mem2Reg.h"
+ #include "llvm/Transforms/IPO/GlobalDCE.h"
+#include "llvm/Transforms/Scalar/SimplifyCFG.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+
 
 #include <errno.h>            /* for sys_errlist */
 #include <stdio.h>            /* for stderr */
@@ -74,6 +83,7 @@
 #include "targ_sim.h"         /* for Last_Dedicated_Preg_Offset */
 #include "ttype.h"
 #include "data_layout.h"
+
 
 BOOL Run_vsaopt = FALSE;      // hack to workaround undefine since
 
@@ -1120,18 +1130,7 @@ public:
         FmtAssert(pointee_ty != nullptr,
                   ("Wty2llvmty: pointee_type for %s does not exist", TY_name(idx)));
 
-        // FIXME: we should remove this hardcode for __va_list_tag*
-        if (pointee_ty->isStructTy() && 
-            (pointee_ty->getStructName() == "__va_list_tag")) {
-          res = LVTY::getInt8PtrTy(_context);
-          break;
-        }
-        // if pointee_ty is void, then use i8. Because llvm does allow void *
-        if (pointee_ty->isVoidTy()) {
-          res = llvm::PointerType::get(LVTY::getIntNTy(Context(), 8), 0);
-        } else {
-          res = llvm::PointerType::get(pointee_ty, 0);
-        }
+        res = llvm::PointerType::get(Context(), 0);
         break;
       }
       case KIND_STRUCT: {
@@ -1156,7 +1155,8 @@ public:
         auto pointee_ty = Get_wty2lvty(TY_IDX_index(idx), idx);
         FmtAssert(pointee_ty != nullptr,
                   ("Wty2llvmty: pointee_type for %s does not exist", TY_name(idx)));
-        return llvm::PointerType::get(pointee_ty, 0);
+
+        return llvm::PointerType::get(Context(), 0);
       }
 
       switch (tysize) {
@@ -1220,8 +1220,7 @@ public:
       if (pointee_ty->isFunctionTy() && (TY_kind(idx) != KIND_POINTER)) {
         return pointee_ty;
       }
-      auto pointer_ty = llvm::PointerType::get(pointee_ty, 0);
-      return pointer_ty;
+      return llvm::PointerType::get(Context(), 0);
     } else if (MTYPE_is_str(mtype)) {
       FmtAssert(TY_kind(idx) == KIND_ARRAY, ("Wty2llvmty: constant string should be array"));
       auto array_ty = Get_wty2lvty(TY_IDX_index(idx), idx);
@@ -1410,7 +1409,9 @@ public:
         func->removeFromParent();
       }
 
-      func = Create_func(lvfuncty, wn, &sign_info);
+      LVFUNC *new_func = Create_func(lvfuncty, wn, &sign_info);
+      if (func != nullptr) func->replaceAllUsesWith(new_func);
+      func = new_func;
     }
     FmtAssert(func != nullptr, ("GetFunction: can't find function %s by wn", ST_name(func_st)));
     return func;
@@ -2005,12 +2006,11 @@ public:
     }
   }
 
-  LVVAL      *HandleStoreDifferentType(WN *wn, LVVAL *val, LVVAL *addr, bool is_signed = false) {
-    LVTY *val_ty = val->getType();
-    LVTY *pointee_ty = addr->getType()->getPointerElementType();
-    // cast type here
-    return CastToTargetType(wn, val, pointee_ty, is_signed);
-  } 
+  LVVAL      *HandleStoreDifferentType(WN *wn, LVVAL *val, LVTY *dest_ty, bool is_signed = false) {
+    Is_Trace(Tracing_enabled, (TFile, "HandleStoreDifferentType for:\n"));
+    Is_Trace_cmd(Tracing_enabled, fdump_tree(TFile, wn));
+    return CastToTargetType(wn, val, dest_ty, is_signed);
+  }
 
   // eg. I4I2LDID
   LVVAL      *HandleLoadImplicitCast(WN *wn, LVVAL *val, LVTY *desty, bool is_signed) {
@@ -3168,7 +3168,8 @@ struct COLLECT_VALUE {
       if (TY_kind(tyidx) == KIND_ARRAY) {
         tyidx = TY_etype(tyidx);
         if ((TY_kind(tyidx) == KIND_STRUCT) && (TY_name(tyidx) == std::string("__va_list_tag"))) {
-          val = wl->Lvbuilder()->CreateLoad(val);
+          FmtAssert(FALSE, ("COLLECT_VALUE::operator(): NYI for __va_list_tag"));
+          // val = wl->Lvbuilder()->CreateLoad(val);
         }
       }
     }
@@ -3229,7 +3230,8 @@ WHIRL2llvm::Create_mload_formal(LVTYVEC& argstype, TY_IDX idx, PLOC& ploc, char 
       LVTY   *lvty = Wty2llvmty(type, idx, MTYPE_bit_size(type));
 
       // convert this struct type to a pointer type
-      lvty = llvm::PointerType::get(lvty, 0);
+
+      lvty = llvm::PointerType::get(Context(), 0);
       
       argstype.push_back(lvty);
 
@@ -3327,9 +3329,9 @@ WHIRL2llvm::Set_func_attr(TY_IDX putyidx, LVFUNC *func, SIGNVEC *sign_list)
     TYPE_ID tyid = TY_mtype(ret_idx);
     if (MTYPE_is_integral(tyid)) {
       if (MTYPE_is_signed(tyid)) {
-        func->addAttribute(0, LVATTR::SExt);
+        func->addRetAttr(LVATTR::SExt);
       } else if (MTYPE_is_unsigned(tyid)) {
-        func->addAttribute(0, LVATTR::ZExt);
+        func->addRetAttr(LVATTR::ZExt);
       }
     }
     else
@@ -3338,7 +3340,7 @@ WHIRL2llvm::Set_func_attr(TY_IDX putyidx, LVFUNC *func, SIGNVEC *sign_list)
 
   for (auto i = 0; i < sign_list->size(); i++) {
     if ((*sign_list)[i] == EXT_FLG::NONE) continue;
-    func->addAttribute(i + 1,  // entry 0 is reserved for return type
+    func->addParamAttr(i,
                        ((*sign_list)[i] == EXT_FLG::SEXT) ? 
                        LVATTR::SExt :
                        LVATTR::ZExt);
@@ -3360,7 +3362,8 @@ WHIRL2llvm::Create_ret_type(TY_IDX putyidx, LVTYVEC& argstype, SIGNVEC *info_lis
     // This happens, for example, if a complex result is returned for ia32.
     // Create an istore; an mstore with a single complex value seemed
     // to confuse things later on.
-    LVTY *fake_param_ty = llvm::PointerType::get(ret_type, 0);
+
+    LVTY *fake_param_ty = llvm::PointerType::get(Context(), 0);
     if (ploc != NULL) {
       *ploc = Get_Input_Parameter_Location(Get_ptrtype(ret_idx));
       argstype.push_back(fake_param_ty);
@@ -3466,7 +3469,7 @@ WHIRL2llvm::Handle_intrn_call(WN *wn) {
     }
 
     if (!(WN_rtype(wn) == MTYPE_V || lvfuncty->getReturnType()->isVoidTy()) && (pname != nullptr)) {
-      auto ret_val = HandleStoreDifferentType(wn, call, pname);
+      auto ret_val = HandleStoreDifferentType(wn, call, pname->getAllocatedType());
       Lvbuilder()->CreateStore(ret_val, pname);
     }
     return nullptr;
@@ -3905,7 +3908,7 @@ WHIRL2llvm::Is_rhs_inparm_ld(WN *stmt)
 LVVAL*
 WHIRL2llvm::Save_to_inparm(WN *wn, const char *varname, LVVAL *rhs, INT parmidx)
 {
-  LVVAL *arg_addr = nullptr;
+  LVALC *arg_addr = nullptr;
   std::string reg_name = std::string(varname) + ".addr";
 
   arg_addr = Get_locvar(reg_name.c_str()).second;
@@ -3942,14 +3945,14 @@ WHIRL2llvm::Save_to_inparm(WN *wn, const char *varname, LVVAL *rhs, INT parmidx)
   Is_Trace(Tracing_enabled, (TFile, "Save_formal_on_stk gen store to %s for,\n", reg_name.c_str()));
   Is_Trace_cmd(Tracing_enabled, fdump_tree(TFile, wn));
   if (rhs) {
-    rhs = HandleStoreDifferentType(wn, rhs, arg_addr, is_signed);
+    rhs = HandleStoreDifferentType(wn, rhs, arg_addr->getAllocatedType(), is_signed);
     return Lvbuilder()->CreateStore(rhs, arg_addr);
   } else {
     llvm::StringRef parm_name = llvm::StringRef(varname);
     if (parm_name.startswith(PARM_PREG))
       parm_name = parm_name.drop_front(PARM_PREG.size());
     LVVAL *arg = Get_arg_by_name(parm_name.str().c_str());
-    arg = HandleStoreDifferentType(wn, arg, arg_addr, is_signed);
+    arg = HandleStoreDifferentType(wn, arg, arg_addr->getAllocatedType(), is_signed);
     return Lvbuilder()->CreateStore(arg, arg_addr);
   }
 }
@@ -3970,6 +3973,7 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
   char  *varname = ST_name(st);
   auto   offset = WN_offset(wn);
   TY_IDX ty_idx = ST_type(st);
+  OPERATOR opr = WN_operator(wn);
 
   switch (st->sym_class) {
   case CLASS_BLOCK: // shin 07212022 INFO: itmaybe need to be refined
@@ -3984,8 +3988,12 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
       auto gvar = Get_glbvar(varname);
       FmtAssert(gvar != nullptr, ("WN2llvmSymAct: get variable %s failed.", varname));
       switch (act) {
-      case ACT_LD:
-        return Lvbuilder()->CreateLoad(gvar);
+      case ACT_LD: {
+        FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
+        LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+        if (offset != 0) Gen_displacement(wn, &gvar);
+        return Lvbuilder()->CreateLoad(ld_ty, gvar);
+      }
       case ACT_LDA: {
         // FmtAssert(offset == 0, ("WN2llvmSymAct: can't handle LDA with offset now"));
         if (WN_operator(wn) == OPR_LDA) {
@@ -3994,7 +4002,10 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         return gvar;
       }
       case ACT_STR: {
-        rhs = HandleStoreDifferentType(wn, rhs, gvar, MTYPE_is_signed(WN_desc(wn)));
+        if (offset != 0) Gen_displacement(wn, &gvar);
+        TYPE_ID desc = WN_desc(wn);
+        LVTY *dest_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
+        rhs = HandleStoreDifferentType(wn, rhs, dest_ty, MTYPE_is_signed(desc));
         return Lvbuilder()->CreateStore(rhs, gvar);
       }
       default:
@@ -4002,7 +4013,7 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
       } // switch act
     }  // end of GLOBAL_SYMTAB
     case SCLASS_FORMAL: {
-      LVVAL *arg_addr = nullptr;
+      LVALC *arg_addr = nullptr;
       varname = Adjust_parm_name(varname, offset);
       BOOL on_stack = FALSE;
       TY_IDX parmtype = Find_parm_type(varname, &on_stack);
@@ -4045,7 +4056,7 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
 
           LVPRINT(arg_addr, "arg_addr");
           Is_Trace(Tracing_enabled, (TFile, "then store in %s for:\n", reg_name.c_str()));
-          lv_arg = HandleStoreDifferentType(wn, lv_arg, arg_addr, MTYPE_is_signed(WN_desc(wn)));
+          lv_arg = HandleStoreDifferentType(wn, lv_arg, arg_addr->getAllocatedType(), MTYPE_is_signed(WN_desc(wn)));
           Lvbuilder()->CreateStore(lv_arg, arg_addr);
           Lvbuilder()->restoreIP(cur_pos);
         } // create locvar
@@ -4060,7 +4071,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
             Is_Trace(Tracing_enabled,
                      (TFile, "WN2llvmSymAct gen load for Formal %s passed on stack\n", varname));
           }
-          return Lvbuilder()->CreateLoad(arg_addr);
+          FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
+          LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+          return Lvbuilder()->CreateLoad(ld_ty, arg_addr);
         }
       } // ACT_LD && ACT_LDA
       case ACT_STR: {
@@ -4075,11 +4088,11 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         Is_Trace(Tracing_enabled, (TFile, "WN2llvmSymAct gen store to %s for,\n", reg_name.c_str()));
         Is_Trace_cmd(Tracing_enabled, fdump_tree(TFile, wn));
         if (rhs) {
-          rhs = HandleStoreDifferentType(wn, rhs, arg_addr, is_signed);
+          rhs = HandleStoreDifferentType(wn, rhs, arg_addr->getAllocatedType(), is_signed);
           return Lvbuilder()->CreateStore(rhs, arg_addr);
         } else {
           LVVAL *arg = Get_arg_by_name(varname);
-          arg = HandleStoreDifferentType(wn, arg, arg_addr, is_signed);
+          arg = HandleStoreDifferentType(wn, arg, arg_addr->getAllocatedType(), is_signed);
           return Lvbuilder()->CreateStore(arg, arg_addr);
         }
       } // case ACT_STR
@@ -4123,18 +4136,18 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
 
         return addr;
       } else if (act == ACT_LD) {
-        return Lvbuilder()->CreateLoad(var.first, var.second);
+        LVVAL *addr = var.second;
+        if (offset != 0) Gen_displacement(wn, &addr);
+        FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
+        LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+        return Lvbuilder()->CreateLoad(ld_ty, addr);
       } else {
         LVVAL *target_addr = var.second;
-        auto target_ty = target_addr->getType()->getPointerElementType();
-        if (target_ty->isStructTy()) {
-          // generate gep instruction
-          // FmtAssert()
-          LVPRINT(target_addr, "Target Addr");
-          Gen_displacement(wn, &target_addr);
-        }
+        Gen_displacement(wn, &target_addr);
         Is_True(rhs != nullptr, ("WN2llvmSymAct: ACT_STR got NULL rhs while lhs is SCLASS_AUTO"));
-        rhs = HandleStoreDifferentType(wn, rhs, target_addr, MTYPE_is_signed(WN_desc(wn)));
+        TYPE_ID desc = WN_desc(wn);
+        LVTY *dest_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
+        rhs = HandleStoreDifferentType(wn, rhs, dest_ty, MTYPE_is_signed(WN_desc(wn)));
         return Lvbuilder()->CreateStore(rhs, target_addr);
       }
     } // SCLASS_AUTO
@@ -4163,8 +4176,11 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         Is_True(arg_addr != NULL, ("WN2llvmSymAct: generate parm failed"));
         if (act == ACT_LDA)
           return arg_addr;
-        else
-          return Lvbuilder()->CreateLoad(arg_addr);
+        else {
+          FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
+          LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+          return Lvbuilder()->CreateLoad(ld_ty, arg_addr);
+        }
       }
       case ACT_STR: {
         return Save_to_inparm(wn, preg_name.c_str(), rhs, idx);
@@ -4183,15 +4199,16 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
       FmtAssert(offset == 0, ("WN2llvmSymAct: can't handle LDA with offset now"));
       return reg.second;
     } else if (act == ACT_LD) {
-      return Lvbuilder()->CreateLoad(reg.first, reg.second);
+      FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
+      LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+      return Lvbuilder()->CreateLoad(ld_ty, reg.second);
     } else { // ACT_STR
       FmtAssert(rhs != nullptr, ("WN2llvmSymAct: rhs shouldn't be nullptr"));
       bool is_signed = MTYPE_is_signed(WN_desc(wn));
-      LVPRINT(rhs, "rhs");
-      LVPRINT(reg.second->getType()->getPointerElementType(), "target type");
-
+      // LVPRINT(rhs, "rhs");
+      // LVPRINT(reg.second->getAllocatedType(), "target type");
       auto reg_ty = reg.second->getType();
-      rhs = HandleStoreDifferentType(wn, rhs, reg.second, is_signed);
+      rhs = HandleStoreDifferentType(wn, rhs, reg.first, is_signed);
       return Lvbuilder()->CreateStore(rhs, reg.second);
     }
   }
@@ -4283,7 +4300,7 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
       auto *GV = new llvm::GlobalVariable(*(whirl2llvm->Module()), const_val->getType(), true,
                               llvm::GlobalValue::PrivateLinkage, const_val);
       GV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
-      GV->setAlignment(llvm::Align::None());
+      GV->setAlignment(llvm::Align());
       whirl2llvm->ST2const(st, GV);
     }
     return;
@@ -4367,17 +4384,10 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
       if (initv && (INITV_kind(initv) == INITVKIND_LABEL)) {
         LVTY *lvty = whirl2llvm->Wty2llvmty(tyid, tyidx);
         FmtAssert(lvty->isArrayTy(), ("ST2llvm: TY_kind(%d) should be array type", TY_kind(tyidx)));
-        LVTY *elem_ty = lvty->getArrayElementType();
-        
-        // element type of label array should be i8*
-        if (!elem_ty->isPointerTy() || !elem_ty->getPointerElementType()->isIntegerTy(8)) {
-          LVTY *i8ptr = llvm::PointerType::get(whirl2llvm->Lvbuilder()->getInt8Ty(), 0);
-          lvty = llvm::ArrayType::get(i8ptr, llvm::cast<llvm::ArrayType>(lvty)->getNumElements());
-        }
         gvar = whirl2llvm->Create_glbvar(lvty, varname);
       } else {
         gvar = whirl2llvm->Create_glbvar(tyid, tyidx, varname, llvm::GlobalValue::InternalLinkage);
-        LVTY *lvty = gvar->getType()->getPointerElementType();
+        LVTY *lvty = gvar->getValueType();
         SetZeroInitializer(gvar, lvty, st);
       }
 
@@ -4430,8 +4440,8 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
       if (base->storage_class == SCLASS_UNKNOWN) return;
 
       if (whirl2llvm->Module()->getGlobalVariable(name) == nullptr) {
-        LVGLBVAR *alias = whirl2llvm->Create_glbvar(gvar->getType()->getPointerElementType(), name);
-        SetZeroInitializer(alias, alias->getType()->getPointerElementType(), base);
+        LVGLBVAR *alias = whirl2llvm->Create_glbvar(gvar->getValueType(), name);
+        SetZeroInitializer(alias, alias->getValueType(), base);
         whirl2llvm->ST2lvval(base, alias);
       }
     }
@@ -4661,243 +4671,18 @@ FLDINFO GetFieldId(WN *wn, TY_IDX struct_ty_idx, WN_OFFSET offset) {
   return fld_info;
 }
 
-LVVAL *
-WHIRL2llvm::Gen_displacement_by_offset(WN *wn, LVVAL **base, INT offset) {
-  LVVAL *target_addr = nullptr;
-  OPERATOR opr = WN_operator(wn);
-  // 1. convert *base to i8*
-  auto i8_ptr = Lvbuilder()->CreateBitCast(*base, LVTY::getInt8PtrTy(Context()));
-  LVPRINT(i8_ptr, "i8_ptr");
-
-  // 2. tmp = (i8*)(*base) + offset
-  auto tmp = Lvbuilder()->CreateGEP(i8_ptr, Lvbuilder()->getInt64(offset));
-  LVPRINT(tmp, "tmp");
-
-  // struct foo {
-  //   int i;
-  //   int j;
-  // };
-  // ((struct foo *)0x1234)->j;
-  // 
-  //  U4INTCONST 0 (0x0)
-  // I4I4ILOAD 4664 T<63,foo,4> T<64,anon_ptr.,8> <field_id:2>
-  bool addr_folded = false;
-  WN *base_addr = WN_kid0(wn);
-  if (base_addr && (WN_operator(base_addr) == OPR_INTCONST) && (WN_const_val(base_addr) == 0)) {
-    addr_folded = true;
-  }
-
-  // 3. target_addr = (pointer_of_res_ty)(tmp)
-  TY_IDX res_ty = WN_ty(wn);
-  if (opr == OPR_ISTORE) {
-    res_ty = TY_pointed(res_ty);
-  }
-
-  TY_KIND res_kind = TY_kind(res_ty);
-  UINT32 field_id = WN_field_id(wn);
-  while (res_kind == KIND_STRUCT || res_kind == KIND_ARRAY) {
-    if ((res_kind == KIND_STRUCT) && (field_id != 0)) {
-
-      if (addr_folded) {
-        INT field_offset = 0;
-        for (FLD_HANDLE fld = TY_fld(res_ty); !fld.Is_Null(); fld = FLD_next(fld)) {
-          if (fld.Idx() != field_id) {
-            field_offset += TY_size(FLD_type(fld));
-          } else {
-            break;
-          }
-        }
-        offset = field_offset;
-        addr_folded = false;
-      } else {
-        // struct
-        while (offset < 0) {
-          offset += TY_size(res_ty);
-        }
-        for (FLD_HANDLE fld = TY_fld(res_ty); !fld.Is_Null(); fld = FLD_next(fld)) {
-          bool same_field = IsSameField(fld, offset);
-
-          if (same_field) {
-            res_ty = FLD_type(fld);
-            offset = offset - FLD_ofst(fld);
-            break;
-          }
-        }
-      }
-    } else {
-        // array
-        res_ty = TY_etype(res_ty);
-    }
-
-    // update TY_KIND
-    res_kind = TY_kind(res_ty);
-  }
-
-  LVTY *ptr_of_res_ty = nullptr;
-  if ((opr == OPR_ILOAD) && (TY_kind(WN_ty(wn)) == KIND_SCALAR)) {
-    // To avoid the implicit cast, for example:
-    //   U8U8LDID 96 <1,9,.preg_U8> T<9,.predef_U8,8> # <preg>
-    // I4I1ILOAD -1 T<4,.predef_I4,4> T<72,anon_ptr.,8>
-  
-    TY_IDX addr_ty = WN_load_addr_ty(wn);
-    ptr_of_res_ty = Wty2llvmty(TY_mtype(addr_ty), addr_ty);
-  } else {
-    ptr_of_res_ty = llvm::PointerType::get(Wty2llvmty(TY_mtype(res_ty), res_ty), 0);
-  }
-  target_addr = Lvbuilder()->CreateBitCast(tmp, ptr_of_res_ty);
-  
-  LVPRINT(target_addr, "target_addr");
-  return target_addr;
-}
-
-// =============================================================================
-//
-// Gen_displacement: generate displacement instruction for iload's base pointer
-//    offset is always correct in iload/istore
-//    if offset is 0, no additional displacement process
-//    if offset isn't 0 and the pointee type is a struct, use the API:
-//    Value *IRBuilder::CreateInBoundsGEP(Type *PointeeType, Value *Ptr,
-//                                        Value *Idx,
-//                                        const Twine &Name = "");
-//    Arg1: The PointeeType is the type of the object the pointer points to
-//    Arg2: The Ptr is the pointer that points to the first element
-//    Arg3: Idx of the field, numbering starts w/ 0, one less than field_id
-//    Arg4: Name of the field, optional
-//    Note: when PointeeType is a struct, such type should be declared at the
-//          beginning of the module.
-// NOTE: array subscript uses the Idx argument for constant displacement
-//
-// =============================================================================
 BOOL
-WHIRL2llvm::Gen_displacement(WN *wn, LVVAL **base)
-{
-  auto opr = WN_operator(wn);
+WHIRL2llvm::Gen_displacement(WN *wn, LVVAL **base) {
+  FmtAssert((*base)->getType()->isOpaquePointerTy(), 
+    ("Gen_displacement: Type of the base should be OpaquePointerTy"));
+
   INT offset = WN_offset(wn);
-  // Is_True(offset >= 0, ("Gen_displacement does not handle offset <=0"));
-  Is_True((*base)->getType()->isPointerTy(), ("Gen_displacement should be pointer type"));
-  Is_Trace(Tracing_enabled, (TFile, "Gen_displacement for : "));
-  Is_Trace_cmd(Tracing_enabled, fdump_tree(TFile, wn));
+  LVTY *i8_ty = Lvbuilder()->	getInt8Ty();
 
-  auto pointer_ty = (*base)->getType();
-  auto pointee_ty = pointer_ty->getPointerElementType();
-  auto elemty_idx = opr == OPR_ISTORE ? TY_pointed(WN_ty(wn)) : WN_ty(wn);
+  // tmp = (i8*)(*base) + offset
+  auto target_addr = Lvbuilder()->CreateGEP(i8_ty, *base, Lvbuilder()->getInt64(offset));
+  LVPRINT(target_addr, "target_addr");
 
-  if (opr == OPR_STID) {
-    elemty_idx = ST_type(WN_st(wn));
-  }
-
-  // handle implicitly casting between (void *) and (ptr *)
-  // (void *) is (i8 *) in LLVM
-  // TODO: maybe need to handle other type except for (void *)
-  if (pointee_ty->isIntegerTy() && (pointee_ty->getIntegerBitWidth() == 8)) {
-    // TODO: I am not sure if LDID/STID are needed to be handled
-    if (opr == OPR_ILOAD || opr == OPR_ISTORE) {
-      TY_IDX load_addr_ty = (opr == OPR_ISTORE) ? WN_ty(wn) : WN_load_addr_ty(wn);
-      auto ptr_ty = Wty2llvmty(TY_mtype(load_addr_ty), load_addr_ty);
-      if (ptr_ty != pointer_ty) {
-        LVPRINT(ptr_ty, "ptr_ty");
-        *base = Lvbuilder()->CreateBitCast(*base, ptr_ty);
-        pointer_ty = (*base)->getType();
-        pointee_ty = pointer_ty->getPointerElementType();
-      }
-    }
-  }
-
-  LVVAL *target_addr = nullptr;
-  FLDINFO fld_info = GetFieldId(wn, elemty_idx, offset);
-
-  if (pointee_ty->isStructTy() || pointee_ty->isArrayTy()) {
-
-    // Eg. results[0].arr[0].memblk = malloc(int);
-    // FIXME: we should process it recursively
-    NESTED_KIND nested_kind = IsNestedAggregate(wn);
-    if (nested_kind != NESTED_KIND::NESTED_NONE) {
-      std::vector<LVVAL *> idx_list;
-      uint64_t idx = 0;
-      UINT64 struct_size = 0;
-
-      // handle array of struct
-      switch (nested_kind) {
-      case NESTED_KIND::NESTED_ARRAY_OF_STRUCT: {
-        TY_IDX struct_ty = Ty_Table[Get_load_addr_ty(wn)].Etype();
-        struct_size = TY_size(struct_ty);
-
-        idx = offset / struct_size;
-        idx_list.push_back(Lvbuilder()->getInt32(0));
-        idx_list.push_back(Lvbuilder()->getInt32(idx));
-        
-        *base = Lvbuilder()->CreateGEP(*base, idx_list);
-        idx_list.clear();
-
-        fld_info = GetFieldId(wn, struct_ty, offset % struct_size);
-        Is_Trace(Tracing_enabled,
-                 (TFile, "Gen_displacement found field_id is %d\n", fld_info.Field_id()));
-        idx_list.push_back(Lvbuilder()->getInt32(0));
-        idx_list.push_back(Lvbuilder()->getInt32(fld_info.Field_id() - 1));
-        break;
-      }
-      case NESTED_KIND::NESTED_ARRAY_AS_FIELD:
-      case NESTED_KIND::NESTED_STRUCT_AS_FIELD: {
-        // handle struct as field
-
-        // 1. fetch the field which is a struct
-        idx_list.push_back(Lvbuilder()->getInt32(0));
-        fld_info = GetFieldId(wn, Get_load_addr_ty(wn), offset);
-        idx_list.push_back(Lvbuilder()->getInt32(fld_info.Field_id() - 1));
-        *base = Lvbuilder()->CreateGEP(*base, idx_list);
-        idx_list.clear();
-
-        // 2. fetch the nested struct
-        idx_list.push_back(Lvbuilder()->getInt32(0));
-        break;
-      }
-      }
-
-      UINT64 new_offset = fld_info.New_offset();
-      TY_IDX cur_ty = FLD_type(fld_info.Fld_handle());
-      while ((TY_kind(cur_ty) == KIND_STRUCT) || (TY_kind(cur_ty) == KIND_ARRAY)) {
-        if (TY_kind(cur_ty) == KIND_STRUCT) {
-          // handle nested struct
-          struct_size = TY_size(cur_ty);
-          fld_info = GetFieldId(wn, cur_ty, new_offset);
-          idx_list.push_back(Lvbuilder()->getInt32(fld_info.Field_id() - 1));
-
-          // update cur_ty and new_offset
-          cur_ty = FLD_type(fld_info.Fld_handle());
-          new_offset = fld_info.New_offset();
-        } else {
-          // handle nested array
-          TY_IDX elem_ty = Ty_Table[cur_ty].Etype();
-          UINT64 elem_size = TY_size(elem_ty);
-
-          idx = new_offset / elem_size;
-          idx_list.push_back(Lvbuilder()->getInt32(idx));
-
-          // update cur_ty and new_offset
-          cur_ty = elem_ty;
-          new_offset = new_offset % elem_size;
-        }
-      }
-      FmtAssert(new_offset == 0, ("Gen_displacement: new_offset should be 0"));
-      LVPRINT(*base, "GEP *base");
-      target_addr = Lvbuilder()->CreateGEP(*base, idx_list);
-      LVPRINT(target_addr->getType(), "GEP result type");
-    } else if (fld_info.Field_id() != 0) {
-      std::vector<LVVAL *> idx_list;
-
-      idx_list.push_back(Lvbuilder()->getInt32(0));
-      idx_list.push_back(Lvbuilder()->getInt32(fld_info.Field_id() - 1));
-
-      target_addr = Lvbuilder()->CreateGEP(*base, idx_list);
-    } else {
-      target_addr = Gen_displacement_by_offset(wn, base, offset);
-    }
-  } else {
-    target_addr = Gen_displacement_by_offset(wn, base, offset);
-  }
-
-
-  FmtAssert(target_addr != nullptr, ("Gen_displacement: create target_addr field"));
   *base = target_addr;
   return TRUE;
 }
@@ -4973,50 +4758,8 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
     else
       lv_rtype = Wty2llvmty(rtype, 0);
 
-    LVVAL *val = nullptr;
-    bool is_array = TY_kind(ST_type(st)) == KIND_ARRAY;
-    bool is_struct = TY_kind(ST_type(st)) == KIND_STRUCT;
-    bool zero_offset = (WN_offset(wn) == 0) && (WN_field_id(wn) == 0);
-    LVVAL *base = nullptr;
-    LVTY  *base_ty = nullptr;
-    if ((zero_offset && !is_array && !is_struct) || IsPreg(wn)) {
-      val = WN2llvmSymAct(wn, ACT_LD);
-      val = HandleLoadImplicitCast(wn, val, lv_rtype, MTYPE_is_signed(WN_desc(wn)));
-      res = val;
-      break;
-    } else if (st->storage_class == SCLASS_FORMAL) {
-      char *varname = Adjust_parm_name(ST_name(WN_st(wn)), WN_offset(wn));
-      BOOL  on_stack = FALSE;
-      TY_IDX parmtype = Find_parm_type(varname, &on_stack);
-      if (on_stack)
-        base = WN2llvmSymAct(wn, ACT_LD);
-    }
-
-    if (!zero_offset || is_array || is_struct) {
-      // it is a direct access to a struct field or array subscript w/ const index
-      // 1. Perform LDA of the variable
-      if (base == nullptr)  // SCLASS_FORMAL && on_stack has loaded base
-        base = WN2llvmSymAct(wn, ACT_LDA);
-      // LVPRINT(base, "base1");
-
-      base_ty = base->getType();
-      Is_True(!base_ty->isIntegerTy(), ("WHIRL2llvm::EXPR2llvm, Abnormal form or LDID node"));
-
-      // 2. Handle displacement
-      FmtAssert(Gen_displacement(wn, &base), ("EXPR2llvm, calling Gen_displacement failed"));
-      // LVPRINT(base, "base2");
-
-      // 3. Creat the load
-      val = Lvbuilder()->CreateLoad(base);
-      // LVPRINT(val, "load_val3");
-
-    } else {
-      FmtAssert(FALSE, ("WHIRL2llvm::EXPR2llvm, can't handle this situation"));
-    }
-
-    FmtAssert(val != nullptr, ("WHIRL2llvm::EXPR2llvm, val shouldn't be nullptr"));
-    val = HandleLoadImplicitCast(wn, val, lv_rtype, MTYPE_is_signed(WN_desc(wn)));
-    res = val;
+      LVVAL *val = WN2llvmSymAct(wn, ACT_LD);
+      res = HandleLoadImplicitCast(wn, val, lv_rtype, MTYPE_is_signed(WN_desc(wn)));
     break;
   }
   case OPR_LDBITS: {
@@ -5035,31 +4778,24 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
 
     // 2. Handling displacement of struct's field or array's index
     INT offset = WN_offset(wn);            // collect the offset
-    if (base_ty->getPointerElementType()->isStructTy() ||
-        base_ty->getPointerElementType()->isArrayTy() || offset != 0)
+
+    if (offset != 0) {
       FmtAssert(Gen_displacement(wn, &base), ("EXPR2llvm, calling Gen_displacement failed"));
+    }
 
     // 3. Create a load instruction to perform the actual iload
-    LVVAL *val = Lvbuilder()->CreateLoad(lv_rtype, base, ST_name(WN_st(WN_kid0(wn))));
+    LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+    LVVAL *val = Lvbuilder()->CreateLoad(ld_ty, base, ST_name(WN_st(WN_kid0(wn))));
 
     res = HandleLoadImplicitCast(wn, val, lv_rtype, MTYPE_is_signed(WN_desc(wn)));
     break;
   }
   case OPR_ILOAD: {
-    auto rtype = WN_rtype(wn);
+    TYPE_ID desc = WN_desc(wn);
+    TYPE_ID rtype = WN_rtype(wn);
     LVTY *lv_rtype = nullptr;
     INT offset = WN_offset(wn);            // collect the offset
-
-    if (WN_field_id(wn) == 0) {
-      lv_rtype = Wty2llvmty(rtype, WN_ty(wn));
-    } else {
-      FLD_HANDLE fld = TY_fld(WN_ty(wn));
-      for (UINT64 fld_id = 1; !FLD_next(fld).Is_Null(); fld = FLD_next(fld), fld_id++) {
-        if (FLD_ofst(fld) == offset)
-          break;
-      }
-      lv_rtype = Wty2llvmty(rtype, FLD_type(fld));
-    }
+    lv_rtype = Wty2llvmty(rtype, MTYPE_To_TY(rtype));
 
     // 1. Load the base address of the ILOAD and make sure that the type of
     //    the loaded value is a pointer type.
@@ -5073,14 +4809,14 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
       base_ty = base->getType();
     }
 
-    // 2. Handling displacement of struct's field or array's index
-    if (base_ty->getPointerElementType()->isStructTy() ||
-        base_ty->getPointerElementType()->isArrayTy() || offset != 0)
+    if (offset != 0) {
       FmtAssert(Gen_displacement(wn, &base), ("EXPR2llvm, calling Gen_displacement failed"));
+    }
 
     // LVPRINT(base, "iload base");
     // 3. Create a load instruction to perform the actual iload
-    LVVAL *val = Lvbuilder()->CreateLoad(base);
+    LVTY *ld_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
+    LVVAL *val = Lvbuilder()->CreateLoad(ld_ty, base);
 
     res = HandleLoadImplicitCast(wn, val, lv_rtype, MTYPE_is_signed(WN_desc(wn)));
     break;
@@ -5476,8 +5212,10 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
 
     // this is an FSTATIC variable
     ST *jmp_table_st = WN_st(wn);
-    LVVAL *jmp_table = Get_glbvar(ST_name(jmp_table_st));
-    FmtAssert(jmp_table != nullptr, ("WHIRL2llvm::STMT2llvm: jmp_table is nullptr"));
+    LVVAL *table = Get_glbvar(ST_name(jmp_table_st));
+    FmtAssert(table != nullptr, ("WHIRL2llvm::STMT2llvm: jmp_table is nullptr"));
+    LVGLBVAR *jmp_table = llvm::dyn_cast<LVGLBVAR>(table);
+    FmtAssert(jmp_table != nullptr, ("WHIRL2llvm::STMT2llvm: jmp_table is not a GlobalVariable"));
 
     // caculate the target address of XGOTO
     // 1. add offset to base_addr
@@ -5486,10 +5224,12 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
       offset
     };
     LVPRINT(jmp_table, "jmp_table");
-    LVVAL *tmp = Lvbuilder()->CreateGEP(jmp_table, idxs);
+    LVVAL *tmp = Lvbuilder()->CreateGEP(jmp_table->getValueType(), jmp_table, idxs);
 
     // 2. load jmp index
-    auto cond = Lvbuilder()->CreateLoad(tmp);
+    FmtAssert(opr == OPR_ILOAD, ("STMT2llvm: WN node should be ILOAD"));
+    LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+    auto cond = Lvbuilder()->CreateLoad(ld_ty, tmp);
 
     // get target blocks
     auto indirectbr = Lvbuilder()->CreateIndirectBr(cond, num_entries);
@@ -5558,68 +5298,32 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     }
 
     LVVAL *rhs = EXPR2llvm(data);
-    bool is_array = TY_kind(ST_type(st)) == KIND_ARRAY;
-    bool is_struct = TY_kind(ST_type(st)) == KIND_STRUCT;
-    bool zero_offset = (WN_offset(wn) == 0) && (WN_field_id(wn) == 0);
-    if ((zero_offset && !is_array && !is_struct) ||
-        IsPreg(wn) || Is_preg4parm(data) ) {
-      WN2llvmSymAct(wn, ACT_STR, rhs);
-    } else {
-      // it is a direct access to a struct field or array subscript w/ const index
-      // 1. Perform LDA of the variable
-      LVVAL *base = WN2llvmSymAct(wn, ACT_LDA);
-      LVPRINT(base, "base1");
-
-      auto   wn_base_ty = Wty2llvmty(WN_desc(wn), WN_ty(wn));
-      LVTY  *base_ty = base->getType();
-      Is_True(!base_ty->isIntegerTy(), ("WHIRL2llvm::STMT2llvm, Abnormal form or STID node"));
-
-      // 2. Handle displacement
-      FmtAssert(Gen_displacement(wn, &base), ("STMT2llvm, calling Gen_displacement failed"));
-      LVPRINT(base, "base2");
-
-      // 3. Create the store
-      rhs = HandleStoreDifferentType(wn, rhs, base, MTYPE_is_signed(WN_desc(wn)));
-      Lvbuilder()->CreateStore(rhs, base);
-
-      // FmtAssert(FALSE, ("HHHH"));
-    }
+    WN2llvmSymAct(wn, ACT_STR, rhs);
     break;
   }
   case OPR_ISTORE: {
     LVVAL *rhs = EXPR2llvm(WN_kid0(wn));
     LVVAL *istr_base = EXPR2llvm(WN_kid1(wn));
+    INT    offset = WN_offset(wn);
+
     LVTY  *istr_base_ty = istr_base->getType();
-    LVTY  *wn_istr_base_ty = Wty2llvmty(WN_desc(wn), WN_ty(wn));
-    // LVPRINT(istr_base, "store base");
 
     // convert it to pointer type
     if (istr_base_ty->isIntegerTy()) {
-      HandlePointerAndIntegerType(wn, &istr_base, wn_istr_base_ty, true);
+      HandlePointerAndIntegerType(wn, &istr_base, llvm::PointerType::get(Context(), 0), true);
       istr_base_ty = istr_base->getType();
     }
 
-    // handle pointer cast. e.g. char *p; *(int *)p = 1;
-    if (istr_base_ty != wn_istr_base_ty) {
-      FmtAssert(istr_base_ty->isPointerTy(), ("STMT2llvm:base type of istore should be pointer"));
-      
-      // INFO: maybe the struct type is also exception!
-      if (!istr_base_ty->getPointerElementType()->isArrayTy()) {
-        istr_base = Lvbuilder()->CreateBitCast(istr_base, wn_istr_base_ty);
-        istr_base_ty = istr_base->getType();
-      }
-    }
-
-    // 2. Handling displacement of struct's field or array's index
-    INT    offset = WN_offset(wn);            // collect the offset
-    if (istr_base_ty->getPointerElementType()->isStructTy() ||
-        istr_base_ty->getPointerElementType()->isArrayTy() || offset != 0) {
+    if (offset != 0) {
       Gen_displacement(wn, &istr_base);
     }
 
+    TYPE_ID desc = WN_desc(wn);
+    LVTY *dest_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
+    rhs = HandleStoreDifferentType(wn, rhs, dest_ty, MTYPE_is_signed(desc));
+
     // LVPRINT(rhs, "ISTORE DATA");
     // LVPRINT(istr_base, "ISTORE ADDR");
-    rhs = HandleStoreDifferentType(wn, rhs, istr_base, MTYPE_is_signed(WN_desc(wn)));
     Lvbuilder()->CreateStore(rhs, istr_base);
     break;
   }
@@ -5698,7 +5402,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     }
 
     if (!(WN_rtype(wn) == MTYPE_V || lvfuncty->getReturnType()->isVoidTy()) && (pname != nullptr)) {
-      auto ret_val = HandleStoreDifferentType(wn, call, pname);
+      auto ret_val = HandleStoreDifferentType(wn, call, pname->getAllocatedType());
       Lvbuilder()->CreateStore(ret_val, pname);
     }
 
@@ -5709,9 +5413,16 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     // TODO: OPR_ICALL is slightly different from OPR_CALL, seek refactor oppo!!
     WN       *funcptr = WN_kid(wn, WN_kid_count(wn)-1);
     LVVAL    *func = EXPR2llvm(funcptr); // call EXPR2llvm seems not right- shin 06232022
-    Is_True(func->getType()->isPointerTy(),
-            ("EXPR2llvm: ICALL funcptr type non-pointer"));
-    LVFUNCTY *lvfuncty = llvm::dyn_cast<LVFUNCTY>(func->getType()->getPointerElementType());
+
+    Is_True(func->getType()->isIntegerTy(),
+            ("EXPR2llvm: callee address should be integer"));
+    HandlePointerAndIntegerType(wn, &func, llvm::PointerType::get(Context(), 0), true);
+
+    TY_IDX funcptr_ty = WN_ty(funcptr);
+    FmtAssert(TY_kind(funcptr_ty) == KIND_POINTER, ("Type of funcptr should be pointer type"));
+ 
+    TY_IDX func_ty = TY_pointed(funcptr_ty);
+    LVFUNCTY *lvfuncty = llvm::dyn_cast<LVFUNCTY>(Wty2llvmty(TY_mtype(func_ty), func_ty));
     FmtAssert(lvfuncty != nullptr, ("EXPR2llvm: lvfuncty should be llvm::FunctionType"));
 
     // Traverse the whirl call node to generate argument list
@@ -5786,13 +5497,6 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     LVVAL *retval = NULL;
     WN *prev = WN_prev(wn);
     if (WN_operator(prev) == OPR_STID && IsCallResReg(prev)) {
-      
-
-      // if (auto ret_val = RetVal()) {
-      //   // load return value from preg
-      //   auto load = Lvbuilder()->CreateLoad(ret_val);
-      //   Lvbuilder()->CreateRet(load);
-      // }
 
       TY_IDX ret_tyidx = TY_ret_type(ST_type(WN_st(Cur_func())));
       auto tyid = TY_mtype(ret_tyidx);
@@ -5814,7 +5518,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
         LVVALVEC elems;
         while (prev) {
           auto cur_reg = Get_preg(prev);
-          auto cur_elem = Lvbuilder()->CreateLoad(cur_reg.second);
+          auto cur_elem = Lvbuilder()->CreateLoad(cur_reg.first, cur_reg.second);
           elems.push_back(cur_elem);
           if (prev != tail) prev = WN_next(prev);
           else break;
@@ -5832,7 +5536,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
         Lvbuilder()->CreateRetVoid();
       } else {
         auto ret_preg = Get_preg(prev);
-        ret_val = Lvbuilder()->CreateLoad(ret_preg.second);
+        ret_val = Lvbuilder()->CreateLoad(ret_preg.first, ret_preg.second);
 
         bool is_signed = MTYPE_is_signed(WN_desc(prev));
         ret_val = CastToTargetType(prev, ret_val, ret_type, is_signed);
@@ -6385,7 +6089,7 @@ LVCONST *WHIRL2llvm::INITV2llvm(const INITV &initv, TY_IDX ty_idx) {
     case CLASS_CONST:{
       sym = llvm::cast<LVGLBVAR>(ST2const(st));
       if (sym->getType()->isPointerTy()) {
-        FmtAssert(sym->getType()->getPointerElementType()->isArrayTy(), ("INITV_IDX2mpl: SYMOFF symbol should be pointer to array"));
+        FmtAssert(sym->getValueType()->isArrayTy(), ("INITV_IDX2mpl: SYMOFF symbol should be pointer to array"));
         std::vector<LVVAL*> idxs;
         idxs.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context()), 0));
         idxs.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context()), 0));
@@ -6402,11 +6106,12 @@ LVCONST *WHIRL2llvm::INITV2llvm(const INITV &initv, TY_IDX ty_idx) {
     case CLASS_VAR: {
       sym = llvm::cast<LVGLBVAR>(ST2lvval(st));
       if (sym->getType()->isPointerTy()) {
-        if (sym->getType()->getPointerElementType()->isArrayTy()) {
+        LVTY *val_ty = sym->getValueType();
+        if (val_ty->isArrayTy()) {
           std::vector<LVVAL*> idxs;
           idxs.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context()), 0));
           idxs.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(Context()), 0));
-          init = llvm::ConstantExpr::getGetElementPtr(sym->getType()->getPointerElementType(), sym, idxs);
+          init = llvm::ConstantExpr::getGetElementPtr(val_ty, sym, idxs);
         } else {
           init = sym;
         }
@@ -6785,37 +6490,61 @@ ir_b2a (char *global_file,
 
     Free_Input_Info ();
 
-    llvm::legacy::PassManager PM;
+    llvm::Triple ModuleTriple(driver.Module()->getTargetTriple());
+    // Add an appropriate TargetLibraryInfo pass for the module's triple.
+    llvm::TargetLibraryInfoImpl TLII(ModuleTriple);
+
+    llvm::FunctionPassManager FPM;
+    llvm::LoopAnalysisManager LAM;
+	  llvm::FunctionAnalysisManager FAM;
+	  llvm::CGSCCAnalysisManager CGAM;
+	  llvm::ModuleAnalysisManager MAM;
+
+    llvm::PassBuilder PB;
+
+    // Register all the basic analyses with the managers.
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+    // Register our TargetLibraryInfoImpl.
+    FAM.registerPass([&] { return llvm::TargetLibraryAnalysis(TLII); });
+
+    llvm::ModulePassManager MPM;
+    // PB.parsePassPipeline(MPM, "");
+
     if (ENABLE_MEM2REG) {
       // Promote allocas to registers.
-      PM.add(llvm::createPromoteMemoryToRegisterPass());
+      FPM.addPass(llvm::PromotePass());
     }
 
     if (ENABLE_SIMP_INST) {
-      PM.add(llvm::createInstSimplifyLegacyPass());
+      FPM.addPass(llvm::InstSimplifyPass());
     }
 
     if (ENABLE_GVN) {
-      PM.add(llvm::createNewGVNPass());
+      FPM.addPass(llvm::GVNPass());
     }
 
     if (ENABLE_SIMP_CFG) {
-      PM.add(llvm::createCFGSimplificationPass());
+      FPM.addPass(llvm::SimplifyCFGPass());
     }
 
     if (ENABLE_INST_COMBINE) {
-      PM.add(llvm::createBitTrackingDCEPass());
-      PM.add(llvm::createInstructionCombiningPass());
+      // FPM.addPass(llvm::BDCEPass());
+      FPM.addPass(llvm::InstCombinePass());
     }
 
     if (ENABLE_DGE) {
-      PM.add(llvm::createGlobalDCEPass());
+      MPM.addPass(llvm::GlobalDCEPass());
     }
 
-    PM.add(llvm::createDeadCodeEliminationPass());
-    PM.run(*driver.Module());
+    // FPM.addPass(llvm::DCEPass());
 
-
+    MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
+    MPM.run(*driver.Module(), MAM);
 
     driver.Module()->print(llvm::outs(), nullptr);
     std::error_code EC;
