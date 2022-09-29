@@ -1694,34 +1694,50 @@ WhirlExprBuilder::ConvertConditionalOperator(const ConditionalOperator *expr, Re
   }
 
   // check if true_wn return the same type as ty
-  if (TY_mtype(ty) != MTYPE_V && true_wn != NULL) {
-    if (!OPCODE_is_expression(WN_opcode(true_wn))) {
-      WN_INSERT_BlockLast(true_blk, true_wn);
-      WN *ret = Gen_null_const(ty);
-      true_wn = WGEN_CreateComma(WN_rtype(ret), true_blk, ret);
-    } else if (WN_first(true_blk) != NULL) {
-      WN *comma = WGEN_CreateComma(Mtype_comparison(TY_mtype(ty)), true_blk, true_wn);
-      true_wn = comma;
+  if (TY_mtype(ty) != MTYPE_V) {
+    Is_True(true_wn != NULL &&
+            OPCODE_is_expression(WN_opcode(true_wn)),
+            ("invalid true_wn or mtype"));
+    if (true_wn == NULL || !OPCODE_is_expression(WN_opcode(true_wn))) {
+      if (true_wn != NULL)
+        WN_INSERT_BlockLast(true_blk, true_wn);
+      true_wn = Gen_null_const(ty);
     }
+    if (WN_first(true_blk) != NULL) {
+      true_wn = WGEN_CreateComma(Mtype_comparison(TY_mtype(ty)), true_blk, true_wn);
+    }
+  }
+  else {
+    if (true_wn != NULL) {
+      if (OPCODE_is_expression(WN_opcode(true_wn)))
+        true_wn = WN_CreateEval(true_wn);
+      WN_INSERT_BlockLast(true_blk, true_wn);
+    }
+    true_wn = true_blk;
   }
 
   // check if false_wn return the same type as ty
-  if (TY_mtype(ty) != MTYPE_V && false_wn != NULL) {
-    if (!OPCODE_is_expression(WN_opcode(false_wn))) {
-      WN_INSERT_BlockLast(false_blk, false_wn);
-      WN *ret = Gen_null_const(ty);
-      false_wn = WGEN_CreateComma(WN_rtype(ret), false_blk, ret);
-    } else if (WN_first(false_blk) != NULL) {
-      WN *comma = WGEN_CreateComma(Mtype_comparison(TY_mtype(ty)), false_blk, false_wn);
-      false_wn = comma;
+  if (TY_mtype(ty) != MTYPE_V) {
+    Is_True(false_wn != NULL &&
+            OPCODE_is_expression(WN_opcode(false_wn)),
+            ("invalid true_wn or mtype"));
+    if (false_wn == NULL || !OPCODE_is_expression(WN_opcode(false_wn))) {
+      if (false_wn != NULL)
+        WN_INSERT_BlockLast(false_blk, false_wn);
+      false_wn = Gen_null_const(ty);
+    }
+    if (WN_first(false_blk) != NULL) {
+      false_wn = WGEN_CreateComma(Mtype_comparison(TY_mtype(ty)),false_blk, false_wn);
     }
   }
-
-  true_wn = true_wn ? true_wn : true_blk;
-  false_wn = false_wn ? false_wn : false_blk;
-
-  Is_True(true_wn != NULL, ("invalid true wn"));
-  Is_True(false_wn != NULL, ("invalid false wn"));
+  else {
+    if (false_wn != NULL) {
+      if (OPCODE_is_expression(WN_opcode(false_wn)))
+        false_wn = WN_CreateEval(false_wn);
+      WN_INSERT_BlockLast(false_blk, false_wn);
+    }
+    false_wn = false_blk;
+  }
 
   WN *ret = NULL;
   // special handle of INTCONST
