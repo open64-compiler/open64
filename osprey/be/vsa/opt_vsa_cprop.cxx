@@ -1563,14 +1563,14 @@ LOCAL_SPROP::Process_rna(RNA_NODE *rna)
       Is_Trace(Tracing(),
                (TFile, " -- set call sr%d %s arg %d ISTORE flag.\n",
                        sr->Stmtrep_id(),
-                       sr->St() ? ST_name(sr->St()) : "-nil-", i));
+                       sr->Opr() == OPR_CALL ? ST_name(sr->St()) : "-nil-", i));
     } else if (rbc_parm_flags & REF_ISTORE) {
       annot = VANT_UTIL::Set(annot, ANT_VWRITE, ANT_YES);
       rna->Set_arg_flag(i, REF_ISTORE);
       Is_Trace(Tracing(),
                (TFile, " -- set call sr%d %s arg %d ISTORE flag by rbc model.\n",
                        sr->Stmtrep_id(),
-                       sr->St() ? ST_name(sr->St()) : "-nil-", i));
+                       sr->Opr() == OPR_CALL ? ST_name(sr->St()) : "-nil-", i));
     }
 
 
@@ -1723,6 +1723,8 @@ LOCAL_SPROP::Propagate_expr(CODEREP *expr, V_ANNOT v, STMTREP *stmt)
 
   case CK_VAR:
     v = VANT_UTIL::Or(expr->Vsa_annot(), v);
+    if (TY_kind(expr->object_ty()) != KIND_POINTER)
+      v = VANT_UTIL::Remove_ptr_annot(v);
     expr->Set_vsa_annot(v);
     break;
 
@@ -1730,8 +1732,10 @@ LOCAL_SPROP::Propagate_expr(CODEREP *expr, V_ANNOT v, STMTREP *stmt)
     Is_True(expr->Opr() != OPR_PARM, ("no parm here"));
     Is_True(expr->Ilod_base() != NULL, ("no istore here"));
     if ((vor = Vsa()->Cr_2_vor(expr)) != NULL) {
-      v = VANT_UTIL::Or(vor->Vsa_annot(), v);
-      vor->Set_vsa_annot(v);
+      V_ANNOT vor_v = VANT_UTIL::Or(vor->Vsa_annot(), v);
+      if (TY_kind(expr->object_ty()) != KIND_POINTER)
+        vor_v = VANT_UTIL::Remove_ptr_annot(vor_v);
+      vor->Set_vsa_annot(vor_v);
     }
     {
       // propagate VWRITE/FREE flag to base if lhs has VWRITE flag
@@ -1758,12 +1762,15 @@ LOCAL_SPROP::Propagate_expr(CODEREP *expr, V_ANNOT v, STMTREP *stmt)
     case OPR_CVTL:
     case OPR_TRUNC:
     case OPR_FLOOR:
-      return Propagate_expr(expr->Opnd(0), v, stmt);
+      return Propagate_expr(expr->Opnd(0), VANT_UTIL::Remove_ptr_annot(v), stmt);
 
     case OPR_ADD:
-    case OPR_MPY:
       Propagate_expr(expr->Opnd(0), v, stmt);
       Propagate_expr(expr->Opnd(1), v, stmt);
+      break;
+    case OPR_MPY:
+      Propagate_expr(expr->Opnd(0), VANT_UTIL::Remove_ptr_annot(v), stmt);
+      Propagate_expr(expr->Opnd(1), VANT_UTIL::Remove_ptr_annot(v), stmt);
       break;
 
     case OPR_SUB:
@@ -1772,7 +1779,7 @@ LOCAL_SPROP::Propagate_expr(CODEREP *expr, V_ANNOT v, STMTREP *stmt)
     case OPR_REM:
     case OPR_DIVREM:
       // TODO: opnd(1)
-      return Propagate_expr(expr->Opnd(0), v, stmt);
+      return Propagate_expr(expr->Opnd(0), VANT_UTIL::Remove_ptr_annot(v), stmt);
 
     default:
       break;

@@ -169,6 +169,16 @@ private:
                           ANNOT_VAL(ANT_VFREE)      | // rhs pointer is freed
                           ANNOT_VAL(ANT_VREAD)      | // lhs's vread to rhs
                           ANNOT_VAL(ANT_VWRITE),      // lhs's vwrite to rhs
+
+    // flags only for pointer
+    ANNOT_PROP_PTR_MASK = ANNOT_VAL(ANT_MALLOC)     | // ptr is malloced
+                          ANNOT_VAL(ANT_FREE)       | // ptr is freed
+                          ANNOT_VAL(ANT_REALLOC)    | // ptr is realloced
+                          ANNOT_VAL(ANT_VZERO)      | // *(ptr) <- 0
+                          ANNOT_VAL(ANT_VCONST)     | // *(ptr) <- constant
+                          ANNOT_VAL(ANT_VREAD)      | // <- *(ptr)
+                          ANNOT_VAL(ANT_VWRITE)     | // *(ptr) <-
+                          ANNOT_VAL(ANT_VDIV),        // x / *(ptr)
   };
 
 public:
@@ -316,8 +326,19 @@ public:
     return (callee & ~ANNOT_RETV_BWD_MASK) | retv_back;
   }
 
+  // backward propagate annotation
   static V_ANNOT Bwd_prop_annot(V_ANNOT lhs) {
     return (lhs & ANNOT_PROP_BWD_MASK);
+  }
+
+  // keep pointer related annotation
+  static V_ANNOT Keep_ptr_annot(V_ANNOT lhs) {
+    return (lhs & ANNOT_PROP_PTR_MASK);
+  }
+
+  // remove pointer related annotation
+  static V_ANNOT Remove_ptr_annot(V_ANNOT lhs) {
+    return (lhs & ~ANNOT_PROP_PTR_MASK);
   }
 
   // clear annotation
