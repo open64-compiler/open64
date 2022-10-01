@@ -1771,6 +1771,12 @@ HEAP_CHECKER::Check_stmtrep<OPR_RETURN>(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
         }
       }
 
+      if (maybe == FALSE && hor->Escaped()) {
+        Is_Trace(ctx->Tracing(), (TFile, "  [%s]: set maybe TRUE because hor escaped: ", Chkname()));
+        Is_Trace_cmdn(ctx->Tracing(), hor->Print(TFile), TFile);
+        maybe = TRUE;
+      }
+
       // start a new checker as the context(visited bb/frame) should not be shared 
       // with different hor
       CODEREP *cr = chor->second;

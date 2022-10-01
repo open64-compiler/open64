@@ -1546,6 +1546,25 @@ HVA_HO_RENAMING::Process_call<TRUE>(STMTREP* sr, BOOL handle_rhs)
         Vsa()->Enter_cr_heap_obj_map(ret, hor);
     }
   }
+  else if (arg == NULL && handle_rhs) {
+    // Neither malloc nor free memory
+    // Has to mark HOR escaped here so that D MSF can be turned to M MSF for pattern like
+    // return A(new B);
+    // TODO: to be improved later
+    INT kid_count = sr->Opr() == OPR_ICALL ? rhs->Kid_count() - 1 : rhs->Kid_count();
+    for (INT i = 0; i < kid_count; ++i) {
+      Is_True(rhs->Opnd(i)->Kind() == CK_IVAR && rhs->Opnd(i)->Opr() == OPR_PARM,
+              ("bad rhs opnd"));
+      HEAP_OBJ_REP* hor = Vsa()->Cr_2_heap_obj(rhs->Opnd(i)->Ilod_base());
+      if (hor != NULL && !Vsa()->Is_special_hor(hor)) {
+        hor = hor->Heap_obj()->Top_of_stack();
+        Is_Trace(Tracing(), (TFile, "HOR[%d]: mark ho%dv%d escaped by call sr%d line %d.\n",
+                             _hva->Round(),  hor->Heap_obj()->Id(), hor->Version(),
+                             sr->Stmtrep_id(), Srcpos_To_Line(sr->Linenum())));
+        hor->Set_escaped(TRUE);
+      }
+    }
+  }
 
   // process chi but skip chi cr which is free arg
   Process_chi<TRUE>(sr);
