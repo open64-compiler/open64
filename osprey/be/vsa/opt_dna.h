@@ -1350,6 +1350,7 @@ public:
   void      Update_arg_crs(INT32 &arg_idx, CODEREP *cr);
   void      Propagate_from_caller(RNA_NODE *caller);
   BOOL      Update_retv_flags(DNA_NODE *caller, PDV_NODE* pdv);
+  IDTYPE    Get_arg_with_aux(AUX_ID aux, OPT_STAB *stab); // find the arg and then return its flags
   IDTYPE    Get_arg_with_lda(ST_IDX stid); // find the arg and then return its flags
   IDTYPE    Get_arg_with_cr(CODEREP *cr);  // find the arg with the same cr
   pair<IDTYPE, BOOL> Get_arg(CODEREP* cr, const VSA *vsa); // first is arg index, second is vsa

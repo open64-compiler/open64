@@ -3272,6 +3272,28 @@ RNA_NODE::Update_retv_flags(DNA_NODE* caller, PDV_NODE* pdv)
 }
 
 IDTYPE
+RNA_NODE::Get_arg_with_aux(AUX_ID aux, OPT_STAB *stab)
+{
+  AUX_STAB_ENTRY *sym = stab->Aux_stab_entry(aux);
+  INT64 sym_begin = sym->Base_byte_ofst();
+  INT64 sym_end = sym->Base_byte_ofst() + sym->Byte_size();
+  for (INT i = VAR_INIT_ID; i < _arg_list.size(); ++i) {
+    if ((_arg_list[i]->Flags() & ARG_LDA) != ARG_LDA)
+      continue;
+    Is_True(_arg_list[i]->Cr() != NULL &&
+            _arg_list[i]->Cr()->Kind() == CK_LDA &&
+            _arg_list[i]->Cr()->Lda_aux_id() == _arg_list[i]->St_idx(),
+            ("invalid lda param"));
+    AUX_STAB_ENTRY *arg = stab->Aux_stab_entry(_arg_list[i]->Cr()->Lda_aux_id());
+    if (sym->Base() == arg->Base() &&
+        sym_begin >= arg->Base_byte_ofst() &&
+        sym_end <= (arg->Base_byte_ofst() + arg->Byte_size()))
+      return i;
+  }
+  return INVALID_VAR_IDX;
+}
+
+IDTYPE
 RNA_NODE::Get_arg_with_lda(ST_IDX stid)
 {
   INT i;
@@ -3649,7 +3671,7 @@ IPSA::Find_icall_ty_from_ivar_mu(DNA_NODE *dna, CODEREP *opnd,
       }
     }
     if (def->Opr() == OPR_OPT_CHI) {
-      Is_True(FALSE, ("TODO: not find def of vtable"));
+      //Is_True(FALSE, ("TODO: not find def of vtable"));
       return TY_IDX_ZERO;
     }
     Is_True(opnd->Defchi() != NULL &&
