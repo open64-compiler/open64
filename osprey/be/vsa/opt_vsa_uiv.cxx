@@ -546,13 +546,13 @@ template<> CHECKER_STATUS
 UIV_CHECKER::Check_stmtrep<OPR_CALL>(CHECK_OBJ &obj, TRAV_CONTEXT *ctx)
 {
   STMTREP *sr = obj.Stmtrep();
+  Is_True(sr != NULL && sr->Opr() == OPR_CALL, ("invalid sr"));
   IDTYPE aux_id = Get_obj_aux(obj, ctx);
   // handle LDA param
   if (aux_id != ILLEGAL_AUX_ID) {
-    AUX_STAB_ENTRY *sym = ctx->Opt_stab()->Aux_stab_entry(aux_id);
     RNA_NODE *rna = ctx->Vsa()->Sr_2_rna(sr);
     Is_True(rna != NULL, ("RNA node is NULL."));
-    IDTYPE arg_idx = rna->Get_arg_with_lda(aux_id);
+    IDTYPE arg_idx = rna->Get_arg_with_aux(aux_id, ctx->Opt_stab());
     if (arg_idx != INVALID_VAR_IDX) {
       BOOL check_chi_opnd = FALSE;
       if (rna->Callee_cnt() == 0 && VSA_Extern_Uiv) {
