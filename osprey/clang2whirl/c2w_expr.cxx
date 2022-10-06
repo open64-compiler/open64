@@ -3440,10 +3440,10 @@ WhirlExprBuilder::ConvertDeclRefExpr(const DeclRefExpr *expr) {
       Result val = ConvertAPValue(expr->getType(), var->evaluateValue());
       if (!val.isNone()) {
 #if defined(BUILD_MASTIFF)
-        // mark st not_used so that DDV won't report
+        // mark st used so that DDV won't report
         ST_IDX st = _builder->SB().GetST(var);
         if (st != ST_IDX_ZERO) {
-          Set_ST_is_not_used(ST_ptr(st));
+          Set_ST_is_used(ST_ptr(st));
         }
 #endif
         val.SetRValue();
