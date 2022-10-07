@@ -2210,7 +2210,8 @@ WhirlExprBuilder::ConvertCXXConstructExpr(const CXXConstructExpr *expr,
   // create the first parm for *`this'
   if (dest.isNone()) {
     // create tmp local st
-    ST *tmp_st = Create_tmp_sym(ty_idx, ".ctor.tmp", spos);
+    static UINT32 index;
+    ST *tmp_st = Create_tmp_sym(ty_idx, Save_Str2i(".ctor.tmp", ".", index++), spos);
     dest = Result::nwSym(ST_st_idx(tmp_st), ty_idx);
   }
 
