@@ -910,6 +910,14 @@ WhirlFuncBuilder::ConvertFunction(GlobalDecl gd, ST_IDX st_idx) {
         field_id = _builder->TB().GetFieldIDFromDecl(I->getMember());
         Is_True(field_id, ("wrong field id?"));
       }
+      else if (I->isIndirectMemberInitializer()) {
+        const IndirectFieldDecl *ifld = I->getIndirectMember();
+        for (const NamedDecl *fld : ifld->chain()) {
+          UINT32 x = _builder->TB().GetFieldIDFromDecl(cast<FieldDecl>(fld));
+          field_id += x;
+        }
+        Is_True(field_id, ("wrong field id?"));
+      }
 
       // create dest
       Result dest = Result::nwSym(ST_st_idx(this_st), this_ptr_ty);
