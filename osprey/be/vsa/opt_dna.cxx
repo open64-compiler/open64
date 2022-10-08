@@ -3875,7 +3875,10 @@ IPSA::Do_devirtualization(DNA_NODE* dna, STMTREP* stmt)
             call_st = Get_vtab_entry(vst, ofst, FALSE);
             break;
           }
+          if (this_ptr->Is_var_volatile())
+            break;
           STMTREP* sr = this_ptr->Defstmt();
+          Is_True(sr != NULL && sr->Rhs() != NULL, ("bad sr or rhs"));
           CODEREP* rhs = sr->Rhs();
           if (sr->Opr() == OPR_INTRINSIC_CALL &&
               (rhs->Intrinsic() == INTRN_ALLOC_OBJ ||
