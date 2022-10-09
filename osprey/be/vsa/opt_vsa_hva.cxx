@@ -515,19 +515,26 @@ private:
       if (def->Opr() == OPR_OPT_CHI) {
         create_hor = TRUE;
       } else if (OPERATOR_is_call(def->Opr())) {
+        RNA_NODE * rna = NULL;
         if (cr == _hva->Comp_unit()->Find_return_value(def)) {
           create_hor = TRUE;
-        } else {
-          RNA_NODE * rna = _hva->Vsa()->Sr_2_rna(def);
-          Is_True(rna, ("nul rna for call"));
+        } else if ((rna = _hva->Vsa()->Sr_2_rna(def)) != NULL) {
           // if cr is address passed to extern call, create hor chi
           // on the call stmt
-          if (rna && rna->Callee_cnt() == 0) {
+          if (rna->Callee_cnt() == 0) {
             pair<IDTYPE, BOOL> arg = rna->Get_arg(cr, _hva->Vsa());
             if (arg.first != INVALID_VAR_IDX && arg.second == TRUE) {
               create_hor = TRUE;
             }
+          } else if (((def->Call_flags() & WN_CALL_IS_CONSTRUCTOR) ||
+                      (rna->Callee_ty() != TY_IDX_ZERO &&
+                       TY_return_to_param(rna->Callee_ty()))) &&
+                     rna->Get_arg_with_aux(cr->Aux_id(), _hva->Opt_stab()) == 1) {
+            // cr is returned by first param
+            create_hor = TRUE;
           }
+        } else {
+          Is_True(rna, ("nul rna for call"));
         }
       }
       if (create_hor) {
