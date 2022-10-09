@@ -565,6 +565,7 @@ public:
   VSA        *Vsa() const        { return _vsa;              }
   DNA_NODE   *Dna() const        { return _comp_unit->Dna(); }
   CFG        *Cfg() const        { return _comp_unit->Cfg(); }
+  OPT_STAB   *Opt_stab() const   { return _comp_unit->Opt_stab(); }
 
   HO_PTR_SET &Ho_created()       { return *_ho_created;      }
   HO_PTR_SET &Ho_updated()       { return *_ho_updated;      }

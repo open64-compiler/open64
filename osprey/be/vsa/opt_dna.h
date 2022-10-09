@@ -1303,6 +1303,17 @@ public:
   CALLEE_INFO Callee_info(UINT idx) const { return _callee_list[idx]; }
   CALLEE_INFO* Callee_info(UINT idx)      { return &_callee_list[idx]; }
   UINT32    Callee_cnt() const            { return _callee_list.size(); }
+  TY_IDX    Callee_ty() const
+  {
+    switch (_callstmt->Opr()) {
+    case OPR_CALL:  return ST_type(_callstmt->St());
+    case OPR_ICALL: return _callstmt->Ty();
+    case OPR_INTRINSIC_CALL: return TY_IDX_ZERO;
+    default:
+      Is_True(FALSE, ("TODO: other call"));
+      return TY_IDX_ZERO;
+    }
+  }
   ST*       Callee_st(void) const
   {
     return OPERATOR_has_sym(_callstmt->Opr()) ? _callstmt->St() : NULL;

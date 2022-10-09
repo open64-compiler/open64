@@ -1078,6 +1078,11 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
         Is_Trace(ctx->Tracing(), (TFile, " CS_DONE: by no def\n"));
         return CS_DONE;
       }
+      if (Kind() == FOR_DBF && def->Opr() == OPR_MSTORE &&
+          def->Rhs()->Kind() == CK_CONST && def->Rhs()->Const_val() == 0) {
+        Is_Trace(ctx->Tracing(), (TFile, " CS_DONE: def by MSTORE with 0\n"));
+        return CS_DONE;
+      }
       CHECKER_STATUS sts = CS_DONE;
       if (obj.Is_vsym()) {
         sts = CS_VSYM_UD;
