@@ -1689,7 +1689,8 @@ public:
       return TRUE;
     } else if (!VSA_Checker_Vfr_Exact_Match) {
       maybe = TRUE;
-      callee_obj.Update_var(parm ,stmt);
+      // set stmt to NULL because no D-U between parm and stmt
+      callee_obj.Update_var(parm, NULL);
       return TRUE;
     } else {
       return FALSE;
