@@ -3946,14 +3946,18 @@ WHIRL2llvm::Save_to_inparm(WN *wn, const char *varname, LVVAL *rhs, INT parmidx)
   Is_Trace_cmd(Tracing_enabled, fdump_tree(TFile, wn));
   if (rhs) {
     rhs = HandleStoreDifferentType(wn, rhs, arg_addr->getAllocatedType(), is_signed);
-    return Lvbuilder()->CreateStore(rhs, arg_addr);
+    auto store = Lvbuilder()->CreateStore(rhs, arg_addr);
+    store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+    return store;
   } else {
     llvm::StringRef parm_name = llvm::StringRef(varname);
     if (parm_name.startswith(PARM_PREG))
       parm_name = parm_name.drop_front(PARM_PREG.size());
     LVVAL *arg = Get_arg_by_name(parm_name.str().c_str());
     arg = HandleStoreDifferentType(wn, arg, arg_addr->getAllocatedType(), is_signed);
-    return Lvbuilder()->CreateStore(arg, arg_addr);
+    auto store = Lvbuilder()->CreateStore(arg, arg_addr);
+    store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+    return store;
   }
 }
 
@@ -3992,7 +3996,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
         LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
         if (offset != 0) Gen_displacement(wn, &gvar);
-        return Lvbuilder()->CreateLoad(ld_ty, gvar);
+        auto load = Lvbuilder()->CreateLoad(ld_ty, gvar);
+        load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+        return load;
       }
       case ACT_LDA: {
         // FmtAssert(offset == 0, ("WN2llvmSymAct: can't handle LDA with offset now"));
@@ -4006,7 +4012,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         TYPE_ID desc = WN_desc(wn);
         LVTY *dest_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
         rhs = HandleStoreDifferentType(wn, rhs, dest_ty, MTYPE_is_signed(desc));
-        return Lvbuilder()->CreateStore(rhs, gvar);
+        auto store = Lvbuilder()->CreateStore(rhs, gvar);
+        store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+        return store;
       }
       default:
         FmtAssert(FALSE, ("WN2llvmSymAct: shouldn't reach here"));
@@ -4057,7 +4065,8 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
           LVPRINT(arg_addr, "arg_addr");
           Is_Trace(Tracing_enabled, (TFile, "then store in %s for:\n", reg_name.c_str()));
           lv_arg = HandleStoreDifferentType(wn, lv_arg, arg_addr->getAllocatedType(), MTYPE_is_signed(WN_desc(wn)));
-          Lvbuilder()->CreateStore(lv_arg, arg_addr);
+          auto store = Lvbuilder()->CreateStore(lv_arg, arg_addr);
+          store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
           Lvbuilder()->restoreIP(cur_pos);
         } // create locvar
 
@@ -4073,7 +4082,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
           }
           FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
           LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
-          return Lvbuilder()->CreateLoad(ld_ty, arg_addr);
+          auto load = Lvbuilder()->CreateLoad(ld_ty, arg_addr);
+          load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+          return load;
         }
       } // ACT_LD && ACT_LDA
       case ACT_STR: {
@@ -4089,11 +4100,15 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         Is_Trace_cmd(Tracing_enabled, fdump_tree(TFile, wn));
         if (rhs) {
           rhs = HandleStoreDifferentType(wn, rhs, arg_addr->getAllocatedType(), is_signed);
-          return Lvbuilder()->CreateStore(rhs, arg_addr);
+          auto store = Lvbuilder()->CreateStore(rhs, arg_addr);
+          store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+          return store;
         } else {
           LVVAL *arg = Get_arg_by_name(varname);
           arg = HandleStoreDifferentType(wn, arg, arg_addr->getAllocatedType(), is_signed);
-          return Lvbuilder()->CreateStore(arg, arg_addr);
+          auto store = Lvbuilder()->CreateStore(arg, arg_addr);
+          store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+          return store;
         }
       } // case ACT_STR
       } // switch act
@@ -4140,7 +4155,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         if (offset != 0) Gen_displacement(wn, &addr);
         FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
         LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
-        return Lvbuilder()->CreateLoad(ld_ty, addr);
+        auto load = Lvbuilder()->CreateLoad(ld_ty, addr);
+        load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+        return load;
       } else {
         LVVAL *target_addr = var.second;
         Gen_displacement(wn, &target_addr);
@@ -4148,7 +4165,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         TYPE_ID desc = WN_desc(wn);
         LVTY *dest_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
         rhs = HandleStoreDifferentType(wn, rhs, dest_ty, MTYPE_is_signed(WN_desc(wn)));
-        return Lvbuilder()->CreateStore(rhs, target_addr);
+        auto store =  Lvbuilder()->CreateStore(rhs, target_addr);
+        store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+        return store;
       }
     } // SCLASS_AUTO
     case SCLASS_EH_REGION:
@@ -4179,7 +4198,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         else {
           FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
           LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
-          return Lvbuilder()->CreateLoad(ld_ty, arg_addr);
+          auto load = Lvbuilder()->CreateLoad(ld_ty, arg_addr);
+          load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+          return load;
         }
       }
       case ACT_STR: {
@@ -4201,7 +4222,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
     } else if (act == ACT_LD) {
       FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
       LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
-      return Lvbuilder()->CreateLoad(ld_ty, reg.second);
+      auto load = Lvbuilder()->CreateLoad(ld_ty, reg.second);
+      load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+      return load;
     } else { // ACT_STR
       FmtAssert(rhs != nullptr, ("WN2llvmSymAct: rhs shouldn't be nullptr"));
       bool is_signed = MTYPE_is_signed(WN_desc(wn));
@@ -4209,7 +4232,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
       // LVPRINT(reg.second->getAllocatedType(), "target type");
       auto reg_ty = reg.second->getType();
       rhs = HandleStoreDifferentType(wn, rhs, reg.first, is_signed);
-      return Lvbuilder()->CreateStore(rhs, reg.second);
+      auto store = Lvbuilder()->CreateStore(rhs, reg.second);
+      store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+      return store;
     }
   }
   case CLASS_FUNC: {
@@ -4755,8 +4780,9 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
     if (WN_opcode(wn) == OPC_MMLDID) {
       lv_rtype = Wty2llvmty(rtype, WN_ty(wn));
     }
-    else
+    else {
       lv_rtype = Wty2llvmty(rtype, 0);
+    }
 
       LVVAL *val = WN2llvmSymAct(wn, ACT_LD);
       res = HandleLoadImplicitCast(wn, val, lv_rtype, MTYPE_is_signed(WN_desc(wn)));
@@ -4785,7 +4811,8 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
 
     // 3. Create a load instruction to perform the actual iload
     LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
-    LVVAL *val = Lvbuilder()->CreateLoad(ld_ty, base, ST_name(WN_st(WN_kid0(wn))));
+    auto val = Lvbuilder()->CreateLoad(ld_ty, base, ST_name(WN_st(WN_kid0(wn))));
+    val->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
 
     res = HandleLoadImplicitCast(wn, val, lv_rtype, MTYPE_is_signed(WN_desc(wn)));
     break;
@@ -4816,7 +4843,8 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
     // LVPRINT(base, "iload base");
     // 3. Create a load instruction to perform the actual iload
     LVTY *ld_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
-    LVVAL *val = Lvbuilder()->CreateLoad(ld_ty, base);
+    auto val = Lvbuilder()->CreateLoad(ld_ty, base);
+    val->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
 
     res = HandleLoadImplicitCast(wn, val, lv_rtype, MTYPE_is_signed(WN_desc(wn)));
     break;
@@ -5324,7 +5352,8 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
 
     // LVPRINT(rhs, "ISTORE DATA");
     // LVPRINT(istr_base, "ISTORE ADDR");
-    Lvbuilder()->CreateStore(rhs, istr_base);
+    auto store = Lvbuilder()->CreateStore(rhs, istr_base);
+    store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
     break;
   }
   case OPR_MSTORE: {
