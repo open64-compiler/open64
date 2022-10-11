@@ -854,7 +854,7 @@ char *fgets(char *str, int num, FILE *stream)
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", NULL), "ERR33-C");
   rbc.Rbc_assert(rbc.Post_check_var_func(rbc.Get_arg(1), "strchr", "\n"), "FIO37-C");
-  rbc.Rbc_assert(rbc.Get_elem_count(rbc.Get_arg(1)) >= rbc.Get_value(rbc.Get_arg(2)), "STR31-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(2))), "STR31-C");
   // TODO: FIO40-C
   return NULL;
 }
