@@ -1676,19 +1676,39 @@ WhirlExprBuilder::ConvertConditionalOperator(const ConditionalOperator *expr, Re
 
   // convert true expr
   WN *true_blk = WhirlBlockUtil::nwBlock();
-  WN *true_wn = ConvertToNode(true_expr, dest, TRUE);
+  BOOL true_is_rv = FALSE;
+  WN *true_wn = ConvertToNode(true_expr, dest, TRUE, &true_is_rv);
   true_wn = Get_real_wn(true_wn, true_expr, true_ty);
   WhirlBlockUtil::popCurrentBlock();  // pop true_blk
 
   // convert false expr
   WN *false_blk = WhirlBlockUtil::nwBlock();
-  WN *false_wn = ConvertToNode(false_expr, dest, TRUE);
+  BOOL false_is_rv = FALSE;
+  WN *false_wn = ConvertToNode(false_expr, dest, TRUE, &false_is_rv);
   false_wn = Get_real_wn(false_wn, false_expr, false_ty);
   WhirlBlockUtil::popCurrentBlock();  // pop false_blk
 
+  // convert lv to rv if one branche is rv but the other isn't
+  if (true_expr->isGLValue() && true_is_rv && !false_is_rv) {
+    Is_True(false_expr->isGLValue(), ("false branch is not lvalue"));
+    TYPE_ID desc = TY_mtype(false_ty);
+    false_wn = WN_CreateIload(OPR_ILOAD, Mtype_comparison(desc), desc, 0,
+                              false_ty, Make_Pointer_Type(false_ty, FALSE),
+                              false_wn);
+    false_is_rv = TRUE;
+  }
+  else if (false_expr->isGLValue() && false_is_rv && !true_is_rv) {
+    Is_True(true_expr->isGLValue(), ("true branch is not lvalue"));
+    TYPE_ID desc = TY_mtype(true_ty);
+    true_wn = WN_CreateIload(OPR_ILOAD, Mtype_comparison(desc), desc, 0,
+                             true_ty, Make_Pointer_Type(true_ty, FALSE),
+                             true_wn);
+    true_is_rv = TRUE;
+  }
+
   // convert type
   TY_IDX ty = _builder->TB().ConvertType(expr->getType());
-  if (expr->isGLValue()) {
+  if (true_expr->isGLValue() && !true_is_rv) {
     Is_True(TY_mtype(ty) != MTYPE_V, ("void as lvalue"));
     ty = Make_Pointer_Type(ty);
   }
@@ -1783,6 +1803,9 @@ WhirlExprBuilder::ConvertConditionalOperator(const ConditionalOperator *expr, Re
   }
 
   Result r = Result::nwNode(ret, ty);
+  if (true_is_rv) {
+    r.SetLVToRV();
+  }
   return r;
 }
 
@@ -3448,6 +3471,7 @@ WhirlExprBuilder::ConvertDeclRefExpr(const DeclRefExpr *expr) {
         }
 #endif
         val.SetRValue();
+        val.SetLVToRV();
         return val;
       }
     }
@@ -4627,7 +4651,10 @@ WhirlExprBuilder::ConvertLValueToRValue(const clang::Expr* expr) {
   Result r = ConvertExpr(expr);
   Is_True(r.isNode() || r.isSym() || r.isIntConst(),
           ("invalid lvalue to rvalue convert"));
-
+  if (r.IsLVToRV()) {
+    r.ResetLVToRV(); // reset this flag because this is a explicit lv-to-rv conversion
+    return r;
+  }
   TY_IDX rty = _builder->TB().ConvertType(expr->getType());
   return r.ConvertToRValue(rty);
 }
@@ -5390,7 +5417,7 @@ WhirlExprBuilder::ConvertUserDefinedLiteral(const UserDefinedLiteral *expr, Resu
 }
 
 WN*
-WhirlExprBuilder::ConvertToNode(const clang::Expr *expr, Result dest, BOOL retv) {
+WhirlExprBuilder::ConvertToNode(const clang::Expr *expr, Result dest, BOOL retv, BOOL *lvtorv) {
   Result r = ConvertExpr(expr, dest, retv);
   if (r.isNone()) {
     return NULL;
@@ -5429,6 +5456,11 @@ WhirlExprBuilder::ConvertToNode(const clang::Expr *expr, Result dest, BOOL retv)
     return ret;
   }
   else if (expr->isGLValue()) {
+    if (r.IsLVToRV()) {
+      if (lvtorv)
+        *lvtorv = TRUE;
+      return r.GetRValue();
+    }
     return r.GetLValue();
   }
   else if (isExprRValue(expr)) {

@@ -72,7 +72,8 @@ enum RF {
   RF_REF          = 0x040,    // Result is for reference in C++
   RF_LVALUE       = 0x080,    // Result is lvalue
   RF_RVALUE       = 0x100,    // Result is rvalue
-  RF_WN_USED      = 0x200,    // WHIRL node has been used
+  RF_LV_TO_RV     = 0x200,    // Result is lvalue-to-rvalue conversion
+  RF_WN_USED      = 0x400,    // WHIRL node has been used
 };
 
 // convert clang expr into Result
@@ -191,6 +192,8 @@ public:
   BOOL IsLValue() const   { return _flag & RF_LVALUE;   }
   // Check if flag rvalue is set
   BOOL IsRValue() const   { return _flag & RF_RVALUE;   }
+  // Check if flag lv-to-rv is set
+  BOOL IsLVToRV() const   { return _flag & RF_LV_TO_RV; }
   // Check if flag wn_used is set
   BOOL IsWnUsed() const   { return _flag & RF_WN_USED;  }
 
@@ -212,6 +215,8 @@ public:
   void SetLValue()        { _flag |= RF_LVALUE;         }
   // Set flag rvalue
   void SetRValue()        { _flag |= RF_RVALUE;         }
+  // Set flag lv-to-rv conversion
+  void SetLVToRV()        { _flag |= RF_LV_TO_RV;       }
   // Set flag wn_used
   void SetWnUsed()        { _flag |= RF_WN_USED;        }
 
@@ -233,6 +238,8 @@ public:
   void ResetLValue()      { _flag &= ~RF_LVALUE;        }
   // Reset flag rvalue
   void ResetRValue()      { _flag &= ~RF_RVALUE;        }
+  // Reset flag lv-to-rv conversion
+  void ResetLVToRV()      { _flag &= ~RF_LV_TO_RV;      }
   // Reset flag wn_used
   void ResetWnUsed()      { _flag &= ~RF_WN_USED;       }
 
