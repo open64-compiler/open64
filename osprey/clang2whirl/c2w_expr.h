@@ -280,7 +280,7 @@ public:
   WN     *EmitCXXConstructCall(const clang::CXXConstructorDecl *decl, Result dest,
                               clang::CXXCtorType ctor, const WN_VECTOR &args);
 
-  WN    *ConvertToNode(const clang::Expr *expr, Result dest = Result::nwNone(), BOOL retv = TRUE);
+  WN    *ConvertToNode(const clang::Expr *expr, Result dest = Result::nwNone(), BOOL retv = TRUE, BOOL *lvtorv = NULL);
 
   Result ConvertExpr(const clang::Expr *expr, Result dest = Result::nwNone(), BOOL retv = TRUE);
 
