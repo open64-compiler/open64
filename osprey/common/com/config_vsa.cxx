@@ -118,6 +118,7 @@ BOOL VSA_New_Cprop = TRUE;
 BOOL VSA_Prop_Values = FALSE;
 BOOL VSA_New_Cselect_Lower = TRUE;
 BOOL VSA_Value_Graph = TRUE;
+BOOL VSA_Value_Graph_Lazy = TRUE;
 BOOL VSA_Check_Main_Entry = TRUE;
 BOOL VSA_Java_Tmp = TRUE;
 BOOL VSA_Check_Devirt = FALSE;
@@ -362,6 +363,8 @@ static OPTION_DESC Options_VSA[] = {
     FALSE, 0, 0, &VSA_New_Cselect_Lower, NULL },
   { OVK_BOOL,	OV_INTERNAL,	FALSE, "value_graph",             "",
     FALSE, 0, 0, &VSA_Value_Graph, NULL },
+  { OVK_BOOL,	OV_INTERNAL,	FALSE, "vg_lazy",                 "",
+    FALSE, 0, 0, &VSA_Value_Graph_Lazy, NULL },
   { OVK_BOOL,	OV_INTERNAL,	FALSE, "check_main_entry",        "check_main",
     FALSE, 0, 0, &VSA_Check_Main_Entry, NULL },
   { OVK_BOOL,	OV_INTERNAL,	FALSE, "java_tmp_opt_for_test",   "java_tmp",

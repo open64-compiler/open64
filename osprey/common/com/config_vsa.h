@@ -106,6 +106,7 @@ extern BOOL VSA_New_Cprop;             // VSA new constant propagation
 extern BOOL VSA_Prop_Values;           // VSA propagate values
 extern BOOL VSA_New_Cselect_Lower;     // VSA uses new cselect lower
 extern BOOL VSA_Value_Graph;           // VSA uses value graph to check if control dependencies are satisfied
+extern BOOL VSA_Value_Graph_Lazy;      // Lazy evaluate the value graph
 extern BOOL VSA_Warn_On_Global;        // Will 'M' warning be reported on global
 extern BOOL VSA_Warn_On_Param;         // Will 'M' warning be reported on param
 extern BOOL VSA_Warn_On_Retval;        // Will 'M' warning be reported on return value

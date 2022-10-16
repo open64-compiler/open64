@@ -1957,6 +1957,20 @@ SRCPOS_HANDLE::Pop_value_graph(INT level)
 }
 
 BOOL
+SRCPOS_HANDLE::Eval_value_graph()
+{
+  if (!VSA_Value_Graph)
+    return TRUE;
+  Is_True_Ret(_graph != NULL, ("no value graph"), TRUE);
+  BOOL maybe = FALSE;
+  OP_RESULT res = _graph->Eval_graph(maybe);
+  if (maybe) {
+    Set_flag(SRCPOS_FLAG_MAYBE);
+  }
+  return (res != OP_CONFLICT) ? TRUE : FALSE;
+}
+
+BOOL
 SRCPOS_HANDLE::Add_assign(VSA* lvsa, CODEREP *lhs, VSA *rvsa, CODEREP *rhs)
 {
   if (!VSA_Value_Graph)
@@ -2924,6 +2938,11 @@ VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, const char *ana_n
   if (spos == 0) {
     Is_Trace(Tracing(), (TFile, "#### HIT SRCPOS == 0, place a bp at "));
     Is_Trace(Tracing(), (TFile, "%s:%d to debug this issue ####\n", __FILE__, __LINE__));
+    return;
+  }
+
+  if (srcpos_h->Eval_value_graph() == FALSE) {
+    Is_Trace(Tracing(), (TFile, "--ignore this issue: value graph evals to false.\n"));
     return;
   }
 

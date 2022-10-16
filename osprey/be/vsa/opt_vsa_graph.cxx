@@ -714,6 +714,20 @@ VALUE_GRAPH::Add_control_dependency(DNA_NODE *dna, BB_NODE *pred, BB_NODE *succ)
 OP_RESULT
 VALUE_GRAPH::Add_phi_opnd(DNA_NODE *dna, PHI_NODE *phi, INT32 opnd_idx, BOOL &maybe)
 {
+  if (VSA_Value_Graph_Lazy) {
+    _phis.push_back(PHI_OPND(dna, phi, opnd_idx));
+    return OP_CONTINUE;
+  } else {
+    return Eval_phi_opnd(dna, phi, opnd_idx, maybe);
+  }
+}
+
+// ==================================================================
+// Eval_phi_opnd
+// ==================================================================
+OP_RESULT
+VALUE_GRAPH::Eval_phi_opnd(DNA_NODE *dna, PHI_NODE *phi, INT32 opnd_idx, BOOL &maybe)
+{
   BB_NODE *phi_bb = phi->Bb();
   Is_True(opnd_idx < phi_bb->Pred()->Len(), ("phi opnd idx:%d outof range", opnd_idx));
   BB_NODE *bb_opnd = phi_bb->Nth_pred(opnd_idx);
@@ -812,6 +826,9 @@ VALUE_GRAPH::Add_phi_opnd(DNA_NODE *dna, PHI_NODE *phi, INT32 opnd_idx, BOOL &ma
   return res;
 }
 
+// ==================================================================
+// Add_cmp_cda
+// ==================================================================
 OP_RESULT
 VALUE_GRAPH::Add_cmp_cda(DNA_NODE *dna, CDA_VALUE cda)
 {
@@ -871,3 +888,20 @@ VALUE_GRAPH::Add_cmp_cda(DNA_NODE *dna, CDA_VALUE cda)
   }
   return Add_cmp_cr(opr, vsa, lhs, rhs);
 }
+
+// ==================================================================
+// Eval_graph
+// ==================================================================
+OP_RESULT
+VALUE_GRAPH::Eval_graph(BOOL &maybe)
+{
+  OP_RESULT res = OP_CONTINUE;
+  PHI_VEC::iterator it = _phis.begin();
+  for (; it != _phis.end(); ++it) {
+    res = Eval_phi_opnd(it->Dna(), it->Phi(), it->Opnd(), maybe);
+    if (res != OP_CONTINUE)
+      break;
+  }
+  return res;
+}
+
