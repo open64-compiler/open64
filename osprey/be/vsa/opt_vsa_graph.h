@@ -76,6 +76,7 @@ enum OP_RESULT {
 
 typedef mUINT16 NODE_IDX;
 typedef mUINT16 EDGE_IDX;
+typedef mUINT16 PHI_IDX;
 
 #define VG_NULL_IDX (0)
 #define VG_INIT_IDX (1)
@@ -291,6 +292,40 @@ private:
 
   }; // NODE
 
+  // Lazy evaluation for phi opnd
+  class PHI_OPND {
+  private:
+    DNA_NODE *_dna;
+    PHI_NODE *_phi;
+    INT32     _opnd;
+
+  public:
+    PHI_OPND() : _dna(NULL), _phi(NULL), _opnd(0) {}
+    PHI_OPND(DNA_NODE *dna, PHI_NODE *phi, INT32 opnd)
+      : _dna(dna), _phi(phi), _opnd(opnd) {}
+
+    DNA_NODE *Dna()  const { return _dna;  }
+    PHI_NODE *Phi()  const { return _phi;  }
+    INT32     Opnd() const { return _opnd; }
+  }; // PHI_OPND
+
+  // graph state for push/pop operation
+  class STATE {
+  private:
+    NODE_IDX _ncount;  // Node count
+    EDGE_IDX _ecount;
+    PHI_IDX  _pcount;
+
+  public:
+    STATE() : _ncount(0), _ecount(0), _pcount(0) {}
+    STATE(NODE_IDX n, EDGE_IDX e, PHI_IDX p)
+      : _ncount(n), _ecount(e), _pcount(p) {}
+
+    NODE_IDX Ncount() const { return _ncount; }
+    EDGE_IDX Ecount() const { return _ecount; }
+    PHI_IDX  Pcount() const { return _pcount; }
+  };
+
   typedef pair<uintptr_t, NODE_IDX>       NMAP_PAIR;
   typedef mempool_allocator<NMAP_PAIR>    NMAP_ALLOC;
   typedef hash_map<uintptr_t, NODE_IDX,
@@ -301,9 +336,10 @@ private:
   typedef std::vector<NODE*, NODE_ALLOC>  NODE_VEC;
   typedef mempool_allocator<EDGE*>        EDGE_ALLOC;
   typedef std::vector<EDGE*, EDGE_ALLOC>  EDGE_VEC;
-  typedef std::pair<NODE_IDX, EDGE_IDX>   IDX_PAIR;
-  typedef mempool_allocator<IDX_PAIR>     IDX_ALLOC;
-  typedef std::deque<IDX_PAIR, IDX_ALLOC> IDX_STACK;
+  typedef mempool_allocator<PHI_OPND>     PHI_ALLOC;
+  typedef std::vector<PHI_OPND, PHI_ALLOC> PHI_VEC;
+  typedef mempool_allocator<STATE>        STATE_ALLOC;
+  typedef std::deque<STATE, STATE_ALLOC>  STATE_STACK;
 
   MEM_POOL    *_mpool;         // memory pool
   BOOL         _tracing;       // turn on/off tracing -xtchk:0x10000
@@ -314,7 +350,8 @@ private:
 
   NODE_VEC     _nodes;         // all nodes
   EDGE_VEC     _edges;         // all edges
-  IDX_STACK    _stack;         // state stack
+  PHI_VEC      _phis;          // all phi opnds
+  STATE_STACK  _stack;         // state stack
   static NODE  _null_node;     // static default null node
   static EDGE  _null_edge;     // static default null edge
 
@@ -353,8 +390,11 @@ private:
 public:
   // push current state into stack
   INT Push_mark() {
+    Is_True(_nodes.size() < VG_MAX_IDX, ("node index out of range"));
+    Is_True(_edges.size() < VG_MAX_IDX, ("edge index out of range"));
+    Is_True(_phis.size() < VG_MAX_IDX,  ("phi index out of range"));
     // mark node and edge vector
-    _stack.push_front(IDX_PAIR(_nodes.size(), _edges.size()));
+    _stack.push_front(STATE(_nodes.size(), _edges.size(), _phis.size()));
     // mark each node
     NODE_VEC::iterator end = _nodes.end();
     for (NODE_VEC::iterator it = _nodes.begin(); it != end; ++it) {
@@ -367,24 +407,29 @@ public:
   void Pop_mark(INT level) {
     Is_True(!_stack.empty() && _stack.size() == level,
             ("stack empty or level mismatch"));
-    IDX_PAIR top = _stack.front();
+    STATE top = _stack.front();
     _stack.pop_front();
-    Is_True(_nodes.size() >= top.first, ("bad node top"));
-    Is_True(_edges.size() >= top.second, ("bad edge top"));
+    Is_True(_nodes.size() >= top.Ncount(), ("bad node top"));
+    Is_True(_edges.size() >= top.Ecount(), ("bad edge top"));
+    Is_True(_phis.size()  >= top.Pcount(), ("bad phi top"));
 
-    if (_nodes.size() > top.first) {
-      // restore node vector
-      _nodes.resize(top.first, &_null_node);
-      // restore each map
-      Remove_map_entry(_cst_map, top.first);
-      Remove_map_entry(_var_map, top.first);
-      Remove_map_entry(_vor_map, top.first);
-      Remove_map_entry(_op_map, top.first);
+    if (_phis.size() > top.Pcount()) {
+      _phis.resize(top.Pcount());
     }
 
-    if (_edges.size() > top.second) {
+    if (_nodes.size() > top.Ncount()) {
+      // restore node vector
+      _nodes.resize(top.Ncount(), &_null_node);
+      // restore each map
+      Remove_map_entry(_cst_map, top.Ncount());
+      Remove_map_entry(_var_map, top.Ncount());
+      Remove_map_entry(_vor_map, top.Ncount());
+      Remove_map_entry(_op_map, top.Ncount());
+    }
+
+    if (_edges.size() > top.Ecount()) {
       // restore edge vector
-      _edges.resize(top.second, &_null_edge);
+      _edges.resize(top.Ecount(), &_null_edge);
     }
     // restore each node
     NODE_VEC::iterator end = _nodes.end();
@@ -831,6 +876,7 @@ private:
   // or another variable
   OP_RESULT Add_var_ud(VSA *vsa, CODEREP *cr);
   OP_RESULT Add_vor_ud(VSA *vsa, VSYM_OBJ_REP *vor);
+  OP_RESULT Eval_phi_opnd(DNA_NODE *dna, PHI_NODE *phi, INT32 opnd_idx, BOOL &maybe);
 
 public:
   // constructor
@@ -847,9 +893,11 @@ public:
               std::equal_to<uintptr_t>(), NMAP_ALLOC(mpool)),
       _nodes(NODE_ALLOC(mpool)),
       _edges(EDGE_ALLOC(mpool)),
-      _stack(IDX_ALLOC(mpool)) {
+      _phis(PHI_ALLOC(mpool)),
+      _stack(STATE_ALLOC(mpool)) {
     _nodes.reserve(7);
     _edges.reserve(7);
+    _phis.reserve(7);
     // reserve VG_NULL_IDX
     _nodes.push_back(&_null_node);
     // reserve VG_NULL_IDX
@@ -967,6 +1015,7 @@ public:
   OP_RESULT Add_control_dependency(DNA_NODE *dna, BB_NODE *pred, BB_NODE *succ);
   OP_RESULT Add_phi_opnd(DNA_NODE *dna, PHI_NODE *phi, INT32 opnd_idx, BOOL &maybe);
   OP_RESULT Add_cmp_cda(DNA_NODE *dna, CDA_VALUE cda);
+  OP_RESULT Eval_graph(BOOL &maybe);
 
   // set the target to be satisfied
   OP_RESULT Set_target(VSA *vsa, EDGE_OPER opr, CODEREP *lhs, CODEREP *rhs) {

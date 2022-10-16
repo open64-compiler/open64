@@ -893,6 +893,7 @@ public:
 
   INT              Push_value_graph();
   void             Pop_value_graph(INT level);
+  BOOL             Eval_value_graph();
   BOOL             Add_assign(VSA* lvsa, CODEREP *lhs, VSA *rvsa, CODEREP *rhs);
   BOOL             Add_assign(VSA* lvsa, VSYM_OBJ_REP *lhs, VSA *rvsa, VSYM_OBJ_REP *rhs);
   BOOL             Add_control_dependency(DNA_NODE *dna, BB_NODE *pred, BB_NODE *succ);
