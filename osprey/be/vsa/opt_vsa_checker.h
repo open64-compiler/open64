@@ -1361,7 +1361,8 @@ public:
       }
     }
     // for var UD or no vor matched
-    callee_obj.Update_var(parm, sr);
+    // set stmt to NULL because no D-U between parm and stmt
+    callee_obj.Update_var(parm, NULL);
     return TRUE;
   }
 
