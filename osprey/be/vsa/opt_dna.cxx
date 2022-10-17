@@ -4235,8 +4235,8 @@ IPSA::Find_calls_and_side_effects(DNA_NODE *dna, BB_NODE *bb, STMTREP_STACK *opa
                   }
                   else {
                     MU_NODE* mu = stmt->Mu_list()->Search_mu_node(cr->Lda_aux_id());
-                    Is_True(mu != NULL, ("can not find mu for LDA"));
-                    cr = mu->OPND();
+                    if (mu != NULL)  // mu can be NULL if there is no use of the ST in function
+                      cr = mu->OPND();
                   }
                 }
                 (*dna->Vtbl_map())[cr->Coderep_id()] = stv;
