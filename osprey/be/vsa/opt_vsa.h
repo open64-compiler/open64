@@ -1660,6 +1660,8 @@ public:
                                     BB_NODE *def, BB_NODE *use, hash_set<IDTYPE>& visited) const;
   BOOL          Scan_integer_overflow(UINT32 tag, CODEREP *arith, CODEREP *cr, STMTREP *sr);
   BOOL          Scan_pointer_for_misra(CODEREP *cr, STMTREP *sr);
+  void          Scan_abs_for_misra(CODEREP *cr, STMTREP *sr);
+  BOOL          Check_var_value(STMTREP *sr, CODEREP *cr, BB_NODE *bb, INT64 lower_bound);
   void          Scan_rule_based_error(BB_NODE *bb);
   void          Scan_eh_error(BB_NODE *bb);
   void          Classify_eh_error(BB_NODE *bb);
