@@ -14734,6 +14734,116 @@ VSA::Scan_pointer_for_misra(CODEREP *cr, STMTREP *sr)
 }
 
 // =============================================================================
+// Scan_abs_for_misra
+//     MISRA_D_4_8:  The validity of values passed to library functions
+// shall be checked.
+// This function is only checked for abs.
+// =============================================================================
+void
+VSA::Scan_abs_for_misra(CODEREP *cr, STMTREP *sr)
+{
+  if (!VSA_Xsca)
+    return;
+
+  if (sr->Linenum() == 0)
+    return;
+
+  switch (cr->Kind()) {
+  case CK_VAR:
+  case CK_CONST:
+  case CK_RCONST:
+  case CK_LDA:
+    break;
+  case CK_IVAR:
+    if (cr->Opr() == OPR_PARM) {
+      Scan_abs_for_misra(cr->Ilod_base(), sr);
+    }
+    break;
+  case CK_OP:
+    if (cr->Opr() == OPR_ABS) {
+      BOOL is_checked = false;
+      CODEREP *opnd = cr->Opnd(0);
+      BB_NODE *bb = sr->Bb();
+      BB_NODE* cd;
+      BB_NODE_SET_ITER cb_iter;
+      FOR_ALL_ELEM(cd, cb_iter, Init(bb->Rcfg_dom_frontier())) {
+        Is_True(cd->Succ() != NULL,
+                ("cd bb does not have successors"));
+        Is_True(cd->Succ()->Multiple_bbs(),
+                ("succ of cc should be multiple bbs"));
+        STMTREP *last_stmt = cd->Last_stmtrep();
+        Is_True(last_stmt, ("last_stmt is null"));
+        OPERATOR opr = last_stmt->Opr();
+        if (opr == OPR_TRUEBR || opr == OPR_FALSEBR) {
+          if (Check_var_value(last_stmt, opnd, bb, INT_MIN)) {
+            is_checked = true;
+          }
+          break;
+        }
+      }
+      if (!is_checked) {
+        SRCPOS_HANDLE srcpos_h(cr, sr, Dna(), Loc_pool(), this);
+        Report_xsca_error(cr, (char*)NULL, "MISRA_D_4_8", &srcpos_h);
+      }
+    } else if (cr->Opr() == OPR_CALL) {
+      CODEREP *opnd = cr->Opnd(0);
+      if (opnd) {
+        Scan_abs_for_misra(opnd, sr);
+      }
+    } else {
+      for (INT i = 0; i < cr->Kid_count(); ++i) {
+        Scan_abs_for_misra(cr->Opnd(i), sr);
+      }
+    }
+    break;
+  default:
+    Is_True(FALSE, ("VSA::Scan_abs_for_misra: bad cr kind"));
+    break;
+  }
+}
+
+BOOL
+VSA::Check_var_value(STMTREP *sr, CODEREP *cr, BB_NODE *bb, INT64 lower_bound)
+{
+  OPERATOR opr = sr->Opr();
+  Is_True((opr == OPR_TRUEBR || opr == OPR_FALSEBR),
+          ("wrong operator for check_var_value"));
+  CODEREP *cmp = sr->Rhs();
+  if (cmp->Kind() == CK_OP && OPERATOR_is_compare(cmp->Opr())) {
+    CODEREP *rhs = cmp->Opnd(1);
+    CODEREP *lhs = cmp->Opnd(0);
+    CODEREP *var = NULL;
+    CODEREP *value = NULL;
+    if (rhs->Kind() == CK_CONST) {
+      value = rhs;
+      var = lhs;
+    } else if (lhs->Kind() == CK_CONST) {
+      value = lhs;
+      var = rhs;
+    }
+    if (cr->Kind() == CK_OP && (cr->Opr() == OPR_CVT || var->Opr() == OPR_CVTL))
+      cr = cr->Opnd(0);
+    if (var == cr && value->Kind() == CK_CONST) {
+      INT64 val = value->Const_val();
+      if ((opr == OPR_TRUEBR && sr->Label_number() == bb->Labnam()) ||
+          (opr == OPR_FALSEBR && sr->Label_number() != bb->Labnam())) {
+        if (cmp->Opr() == OPR_GT && val >= lower_bound) {
+          return TRUE;
+        } else if ((cmp->Opr() == OPR_GE || cmp->Opr() == OPR_EQ) &&
+                   val > lower_bound) {
+          return TRUE;
+        }
+        if (var->Kind() == CK_VAR && TY_mtype(var->Lod_ty()) == MTYPE_I4 &&
+            cmp->Opr() == OPR_NE && val == lower_bound) {
+          return TRUE;
+        }
+      }
+    }
+  }
+  return FALSE;
+}
+
+// =============================================================================
 //
 //  Scan_rule_based_error - create a plug-in mechanism for rule-based check.
 //       Such plug-in system provides a set of predefined interface to interact
@@ -14779,6 +14889,7 @@ VSA::Scan_rule_based_error(BB_NODE *bb)
 
     if (stmt->Rhs()) {
       Scan_pointer_for_misra(stmt->Rhs(), stmt);
+      Scan_abs_for_misra(stmt->Rhs(), stmt);
     }
 
     OPERATOR opr = stmt->Opr();
