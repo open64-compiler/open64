@@ -14735,7 +14735,7 @@ VSA::Scan_pointer_for_misra(CODEREP *cr, STMTREP *sr)
 
 // =============================================================================
 // Scan_abs_for_misra
-//     MISRA_D_4_8:  The validity of values passed to library functions
+//     MISRA_D_4_11:  The validity of values passed to library functions
 // shall be checked.
 // This function is only checked for abs.
 // =============================================================================
@@ -14772,23 +14772,19 @@ VSA::Scan_abs_for_misra(CODEREP *cr, STMTREP *sr)
         Is_True(cd->Succ()->Multiple_bbs(),
                 ("succ of cc should be multiple bbs"));
         STMTREP *last_stmt = cd->Last_stmtrep();
-        Is_True(last_stmt, ("last_stmt is null"));
-        OPERATOR opr = last_stmt->Opr();
-        if (opr == OPR_TRUEBR || opr == OPR_FALSEBR) {
-          if (Check_var_value(last_stmt, opnd, bb, INT_MIN)) {
-            is_checked = true;
+        if (last_stmt != NULL) {
+          OPERATOR opr = last_stmt->Opr();
+          if (opr == OPR_TRUEBR || opr == OPR_FALSEBR) {
+            if (Check_var_value(last_stmt, opnd, bb, INT_MIN)) {
+              is_checked = true;
+            }
+            break;
           }
-          break;
         }
       }
       if (!is_checked) {
         SRCPOS_HANDLE srcpos_h(cr, sr, Dna(), Loc_pool(), this);
-        Report_xsca_error(cr, (char*)NULL, "MISRA_D_4_8", &srcpos_h);
-      }
-    } else if (cr->Opr() == OPR_CALL) {
-      CODEREP *opnd = cr->Opnd(0);
-      if (opnd) {
-        Scan_abs_for_misra(opnd, sr);
+        Report_xsca_error(cr, (char*)NULL, "MISRA_D_4_11", &srcpos_h);
       }
     } else {
       for (INT i = 0; i < cr->Kid_count(); ++i) {
