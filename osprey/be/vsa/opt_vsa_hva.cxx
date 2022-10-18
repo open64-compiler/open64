@@ -2538,6 +2538,10 @@ VSYM_OBJ_REP *
 HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
 {
   Is_True(sr && cr && cr->Opr() == OPR_PARM, ("invalid ivar cr"));
+  VSYM_OBJ_REP *parm_vor = Vsa()->Cr_2_vor(cr);
+  if (parm_vor)  // parm vor already created
+    return parm_vor;
+
   UINT mod_ref = 0;
   BOOL parm_need_vsym = FALSE;
   CODEREP *base = cr->Ilod_base();
@@ -2707,6 +2711,7 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
         } else {
           _hva->Append_stmt_vor_mu(base, sr, mu_vor);
         }
+        parm_vor = mu_vor;
 
         Is_Trace(Tracing(), (TFile, "VOC[%d]: Create vor ", _hva->Round()));
         Is_Trace_cmd(Tracing(), mu_vor->Print(TFile));
@@ -2730,6 +2735,8 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
         chi_vor->Set_srcpos_node(sr, Dna(), PATHINFO_CHI);
         chi_vor->Set_attr(ROR_DEF_BY_CHI);
         chi_vor->Set_stmt_def(sr, Dna());
+        parm_vor = chi_vor;
+
         Is_Trace(Tracing(), (TFile, "VOC[%d]: Create vor ", _hva->Round()));
         Is_Trace_cmd(Tracing(), chi_vor->Print(TFile));
         Is_Trace(Tracing(), (TFile, " on hor "));
@@ -2737,13 +2744,16 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
         Is_Trace(Tracing(),
                 (TFile, " to call chi for parm cr%d\n", cr->Coderep_id()));
       }
+      // annotate parm_vor to OPR_PARM
+      Is_True(parm_vor != NULL, ("no parm vor created"));
+      Vsa()->Enter_cr_vor_map(cr, parm_vor);
     } // hor && !Vsa()->Is_special_hor(hor)
     else if (base && hor == NULL) {
       _hva->Set_visit_next(sr);
     }
   } // parm_need_vsym
 
-  return base_vor;
+  return parm_vor;
 }
 
 // Process_cr<CK_IVAR>: create VSYM for IVAR
