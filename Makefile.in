@@ -432,7 +432,7 @@ install_fe:
 	    install-cpp
 	$(MAKE) -C $(GNUFE_BUILD_SUBDIR)/gcc \
 	    install-driver	    
-else ifeq($(BUILD_ARCH), RISCV64)
+else ifeq ($(BUILD_ARCH), RISCV64)
 install_fe:
 	$(MAKE) -C $(GNUFE_BUILD_SUBDIR)/gcc \
 	    install-common
