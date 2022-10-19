@@ -16387,7 +16387,7 @@ VSA::Find_vfunc_from_creation(STMTREP* call, CODEREP* obj, INT32 ofst, ICALL_TAR
   if(ty_name) {
     CLASS_HIERARCHY* hierarchy = Ipsa()->Glob_cha();
     Is_True(hierarchy != NULL, ("Class hierarchy not built"));
-    VIRFUNC_INFO* vi = hierarchy->Get_vtable_entry(ty_name, ofst);
+    VIRFUNC_INFO* vi = hierarchy->Get_vtable_entry(ty_name, ofst, 0);
     if (vi != NULL) {
       ST *fun_st = St_ptr(vi->_file_idx, vi->_fun_st);
       Is_True(ST_class(fun_st) == CLASS_FUNC, 

@@ -4934,7 +4934,7 @@ IPSA::Connect_indirect_call(DNA_NODE* caller, RNA_NODE* rna, DNODE_VECTOR& addr_
 // =============================================================================
 BOOL
 IPSA::Get_virtual_call_ty_and_ofst(CODEREP *callcr, TY_IDX *p_ty_idx,
-                                        INT32 *p_offset) {
+                                   INT32 *p_offset, INT32 *vptr_ofst) {
   // This callee_name indicates the possibility of using the new offset.
   Is_True(callcr != NULL &&
           callcr->Kind() == CK_OP && callcr->Opr() == OPR_ICALL &&
@@ -5048,7 +5048,7 @@ IPSA::Get_virtual_call_ty_and_ofst(CODEREP *callcr, TY_IDX *p_ty_idx,
     CODEREP *base_ptr = base->Ilod_base();
     // stid ptr 0
     //       ldid ptr
-    //     iload 0
+    //     iload vptr_ofst
     //   iload offset
     // icall
     if (base_ptr->Kind() == CK_CONST) {
@@ -5067,6 +5067,8 @@ IPSA::Get_virtual_call_ty_and_ofst(CODEREP *callcr, TY_IDX *p_ty_idx,
       Is_True(FALSE, ("Iload base type not handled, type name : %s, type kind : %d", TY_name(ty), TY_kind(ty)));
       return FALSE;
     }
+    if (vptr_ofst)
+      *vptr_ofst = base->Offset();
   }
 
   // Assign to return variables.
@@ -5090,6 +5092,7 @@ IPSA::Connect_virtual_call(DNA_NODE* caller, RNA_NODE* rna)
   CODEREP *callcr = stmt->Rhs();
   TY_IDX ty_idx = TY_IDX_ZERO;
   INT32 offset = 0;
+  INT32 vptr_ofst = 0;
   Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
            (TFile, "-DEVIRT Connecting virtual call, caller = %s\n",
              caller->Fname()));
@@ -5100,7 +5103,7 @@ IPSA::Connect_virtual_call(DNA_NODE* caller, RNA_NODE* rna)
   }
   // Get the ty_name and offset from icall, differ in C/C++ and Java
   // Please refer to the details in the design document.
-  if (!Get_virtual_call_ty_and_ofst(callcr, &ty_idx, &offset)){
+  if (!Get_virtual_call_ty_and_ofst(callcr, &ty_idx, &offset, &vptr_ofst)){
     // This is due to missing V-Table or CK_CONST in base pointer.
     Is_Trace (Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
               (TFile, "-DEVIRT Connect_virtual_call: get ty and offset failed. for func above = %d\n",
@@ -5115,8 +5118,8 @@ IPSA::Connect_virtual_call(DNA_NODE* caller, RNA_NODE* rna)
     return;
   }
   Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
-           (TFile, "-DEVIRT Connecting virtual call, callee ty_name = %s, offset = %d \n",
-            TY_name(ty_idx), offset));
+           (TFile, "-DEVIRT Connecting virtual call, callee ty_name = %s, offset = %d vpre_ofst = %d\n",
+            TY_name(ty_idx), offset, vptr_ofst));
   // if rna uses the same `this' as dna, caller and callee must be on the same
   // vtable. we get the caller_ofst and compare the function name on the same
   // offset on callee's vtable. callee is added only when the function name match
@@ -5130,6 +5133,8 @@ IPSA::Connect_virtual_call(DNA_NODE* caller, RNA_NODE* rna)
   const char *ty_name = TY_name(ty_idx);
   CAND_CALL_ITER iter(hierarchy, ty_name, offset, TRUE);
   for (; !iter.Is_end(); iter.Next()) {
+    if (iter.Curr_cand_vptr_ofst() != vptr_ofst)
+      continue;
     ST_IDX st_idx = iter.Curr_cand_st();
     IDTYPE file_idx = iter.Curr_file_idx();
     ST_SCLASS sclass = ST_sclass(St_ptr(file_idx, st_idx));
@@ -5167,7 +5172,7 @@ IPSA::Connect_virtual_call(DNA_NODE* caller, RNA_NODE* rna)
         TY_IDX callee_class_ty = ST_vtable_ty_idx(*St_ptr(file_idx, vtbl_idx));
         Is_True(callee_class_ty != TY_IDX_ZERO, ("callee ty is invalid"));
         const char *callee_class_name = TY_name(file_idx, callee_class_ty);
-        VIRFUNC_INFO *callee_class_vfuninfo_at_caller_offset = hierarchy->Get_vtable_entry(callee_class_name, caller_ofst);
+        VIRFUNC_INFO *callee_class_vfuninfo_at_caller_offset = hierarchy->Get_vtable_entry(callee_class_name, caller_ofst, vptr_ofst);
         // ignore class hierarchy issue if caller_vfunc is NULL
         if (callee_class_vfuninfo_at_caller_offset == NULL) {
           Is_Trace(Get_Trace(TP_WOPT2, VSA_DUMP_FLAG),
@@ -5214,6 +5219,7 @@ IPSA::Connect_interface_call(DNA_NODE *caller, RNA_NODE *rna)
   CLASS_HIERARCHY* hierarchy = Glob_cha();
   CAND_CALL_ITER iter(hierarchy, TY_name(class_ty), offset, FALSE);
   for (; !iter.Is_end(); iter.Next()) {
+    Is_True(iter.Curr_cand_vptr_ofst() == 0, ("interface should not have vptr offset"));
     ST_IDX stidx = iter.Curr_cand_st();
     IDTYPE file_idx = iter.Curr_file_idx();
     ST_SCLASS sclass = ST_sclass(St_ptr(file_idx, stidx));
@@ -5238,6 +5244,7 @@ IPSA::Verify_found_virtual(RNA_NODE* call_site, DNA_NODE* callee) {
   CODEREP* cr = stmt->Rhs()->Opnd(n-1);
   TY_IDX clazz_type = TY_IDX_ZERO;
   INT32 offset = 0;
+  INT32 vptr_ofst = 0;
   CLASS_HIERARCHY* hierarchy = Glob_cha();
   // verify java de-virtualization
   if ((PU_src_lang(Get_Current_PU()) & PU_JAVA_LANG) && call_site->Is_virtual_call()) {
@@ -5250,7 +5257,7 @@ IPSA::Verify_found_virtual(RNA_NODE* call_site, DNA_NODE* callee) {
     // ..... To be added .....
     if (Is_valid_lookup_virt_op(cr)) {
       // New Java way
-      if (!Get_virtual_call_ty_and_ofst(stmt->Rhs(), &clazz_type, &offset)) {
+      if (!Get_virtual_call_ty_and_ofst(stmt->Rhs(), &clazz_type, &offset, &vptr_ofst)) {
         // This is due to missing V-Table or CK_CONST in base pointer.
           Is_True(FALSE, ("Verify_found_virtual cannot get clazz name "
                           "from callcr = %s\n", cr->Print_str(TRUE)));
@@ -5264,7 +5271,8 @@ IPSA::Verify_found_virtual(RNA_NODE* call_site, DNA_NODE* callee) {
                  (TFile, "-DEVIRT resolved failed, call site arg num: %ld, callee %s parm size : %ld\n", call_site->Arg_list()->size(), callee->Fname(), callee->Parm_list()->size()));
         return FALSE;
       }
-      int offset = cr->Offset();
+      offset = cr->Offset();
+      vptr_ofst = cr->Ilod_base()->Offset();
       CODEREP *cr_ldid = cr->Ilod_base()->Ilod_base();
       TY_IDX ty = cr_ldid->object_ty();
       clazz_type = TY_pointed(ty);
@@ -5278,7 +5286,7 @@ IPSA::Verify_found_virtual(RNA_NODE* call_site, DNA_NODE* callee) {
     }
     CLASS_INFO *clazz_info = hierarchy->Get_class_info(TY_name(clazz_type));
     if (clazz_info != NULL) {
-      VIRFUNC_INFO *func_info = clazz_info->Get_vtable_entry(offset);
+      VIRFUNC_INFO *func_info = clazz_info->Get_vtable_entry(offset, vptr_ofst);
       STRING right_st_name = callee->Fname();
       if (func_info != NULL) {
         STRING left_st_name = ST_name(func_info->_file_idx, func_info->_fun_st);

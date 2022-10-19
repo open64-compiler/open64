@@ -1720,7 +1720,7 @@ private:
   void          Do_icall_promotion(DNA_NODE *dna, STMTREP *stmt);
   void          Find_calls_and_side_effects(DNA_NODE *dna, BB_NODE *bb, STMTREP_STACK *oparam);
   BOOL          Get_virtual_call_ty_and_ofst(CODEREP *callcr, TY_IDX *ty_idx,
-                                                  INT32 *offset);
+                                             INT32 *offset, INT32 *vptr_ofst);
   // SA_N_REPORT Phase operations
   void          Connect_indirect_call(DNA_NODE*, RNA_NODE*, DNODE_VECTOR& addr_taken_funs);
   void          Connect_virtual_call(DNA_NODE*, RNA_NODE*);

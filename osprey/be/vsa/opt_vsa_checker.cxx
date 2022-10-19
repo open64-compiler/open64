@@ -84,8 +84,7 @@ VPTR_TRACKER::Can_function_taken(CODEREP *cr, const char *cr_cls, const char *cl
              (TFile, "    : not find ofst for %s in %s. YES.\n", func, cls));
     return TRUE;
   }
-  VIRFUNC_INFO *vfunc_info = _ch->Get_vtable_entry(top_cls, ofst);
-  if (vfunc_info != NULL && strcmp(func, vfunc_info->Fun_name()) == 0) {
+  if (ofst == cls_info->Get_vtable_ofst(func)) {
     Is_Trace(Tracing(),
              (TFile, "    : find same method in %s ofst %d. YES\n", top_cls, ofst));
     return TRUE;

@@ -67,6 +67,7 @@ private:
   STMTREP               *_stmt;               // original ICALL stmt
   char                  *_base_ty_name;       // interface name
   INT32                  _ofst;               // offset to vtable or interface method table
+  INT32                  _vptr_ofst;          // offset of vptr to this for C++ multi-inheritance
   ICALL_KIND             _kind;               // for indirect call or virtual call
   NAME_SET              *_type_cache;         // cache the de-virtualized type
 
@@ -131,7 +132,7 @@ private:
     }
     VIRFUNC_INFO *virtf = NULL;
     if(_kind == IK_VIRTUAL)
-      virtf = cha->Get_vtable_entry(ty_name, _ofst);
+      virtf = cha->Get_vtable_entry(ty_name, _ofst, _vptr_ofst);
     else if(_kind == IK_INTERFACE) {
       virtf = cha->Get_interface_entry(ty_name, _base_ty_name, _ofst);
     } else
@@ -248,7 +249,7 @@ public:
   // ICALL_TARGET_FINDER
   // Constructor
   ICALL_TARGET_FINDER(TRAV_CONTEXT& ctx, STMTREP *stmt, ICALL_TARGET_VECTOR& targets, MEM_POOL *pool)
-   : _targets(targets), _stmt(stmt), _base_ty_name(NULL), _ofst(0), _kind(IK_NONE), _loc_pool(pool) {
+   : _targets(targets), _stmt(stmt), _base_ty_name(NULL), _ofst(0), _vptr_ofst(0), _kind(IK_NONE), _loc_pool(pool) {
     _type_cache = CXX_NEW(
       NAME_SET(DEFAULT_HASH_TABLE_SIZE, __gnu_cxx::hash<NAME>(), 
       equal_str(), NAME_ALLOCATOR(_loc_pool)), _loc_pool
@@ -425,6 +426,9 @@ ICALL_TARGET_FINDER::Check_coderep<CK_OP>(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
 
       Is_True_Ret(this_cr->Opr() == OPR_PARM, ("###ICL this cr is not param"), CS_DONE);
       cr = this_cr->Ilod_base();
+
+      if (cr->Kind() == CK_IVAR)
+        _vptr_ofst = cr->Offset();
     }
     else if(flags & WN_CALL_IS_INTERFACE) {
       Is_Trace(ctx->Tracing(), (TFile, "##ICL: Find interface call candidate at line %d:\n", SRCPOS_linenum(cur_line)));

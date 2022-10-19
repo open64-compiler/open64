@@ -46,6 +46,7 @@ BOOL VIRFUNC_INFO::Is_equal(VIRFUNC_INFO *f1, VIRFUNC_INFO *f2)
     return FALSE;
   }
   if(f1->_offset == f2->_offset &&
+     f1->_vptr_ofst == f2->_vptr_ofst &&
      !strcmp(ST_name(f1->_file_idx, f1->_fun_st),
              ST_name(f2->_file_idx, f2->_fun_st))) {
     return TRUE;
@@ -60,10 +61,10 @@ BOOL VIRFUNC_INFO::Is_equal(VIRFUNC_INFO *f1, VIRFUNC_INFO *f2)
 // =============================================================================
 void
 VIRFUNC_INFO::Print(FILE *fp) {
-  fprintf(fp, "     %s: [%s+%d]\n",
+  fprintf(fp, "     %s: [%s+%d] at this+%d\n",
           cplus_demangle(ST_name(_file_idx, _fun_st), DEMANGLE_OPTION),
           _vtable_sym ? cplus_demangle(ST_name(_file_idx, _vtable_sym), DEMANGLE_OPTION) : "null",
-          _offset);
+          _offset, _vptr_ofst);
 }
 
 // =============================================================================
@@ -141,9 +142,11 @@ CLASS_INFO::operator==(const CLASS_INFO &other) const
 //
 // =============================================================================
 void
-CLASS_INFO::Add_method(INT32 offset, CALL_OFF call_offset, ST_IDX method_sym, ST_IDX vtable_st)
+CLASS_INFO::Add_method(INT32 offset, CALL_OFF call_offset, ST_IDX method_sym,
+                       ST_IDX vtable_st, INT32 vptr_ofst)
 {
-  VIRFUNC_INFO *new_func = CXX_NEW(VIRFUNC_INFO(offset, method_sym, vtable_st, File_Index), _pool);
+  VIRFUNC_INFO *new_func = CXX_NEW(VIRFUNC_INFO(offset, method_sym, vtable_st,
+                                                vptr_ofst, File_Index), _pool);
   VIRFUNC_INFO_VEC *func_list = NULL;
   if(_vtable.find(call_offset) == _vtable.end()) {
     func_list = CXX_NEW(VIRFUNC_INFO_VEC(VIRFUNC_INFO_ALLOCATOR(_pool)), _pool);
@@ -270,17 +273,20 @@ CLASS_INFO::Get_cand_calls(int offset)
 //
 // =============================================================================
 VIRFUNC_INFO *
-CLASS_INFO::Get_vtable_entry(int offset)
+CLASS_INFO::Get_vtable_entry(int offset, int vptr_ofst)
 {
   CALL_VEC_MAP_ITER iter = _vtable.find(offset);
   if(iter != _vtable.end()) {
     VIRFUNC_INFO_VEC *vec = iter->second;
     if(vec == NULL) {
       return NULL;
-    } else if(vec->size() == 1) {
-      return (*vec)[0];
     }
-    // TODO: handle vec->size > 1, c++ multiple inheritance
+    VIRFUNC_INFO_VEC_ITER v;
+    for (v = vec->begin(); v != vec->end(); ++v) {
+      if ((*v)->Vptr_ofst() == vptr_ofst) {
+        return *v;
+      }
+    }
   }
   return NULL;
 }
@@ -325,13 +331,12 @@ CLASS_INFO::Get_vtable_ofst(const char *fname)
     if(vec == NULL) {
       return INVALID_VTABLE_OFFSET;
     } else {
-      Is_True_Ret(vec->size() <= 1, ("vtable entry size should <=1\n"), 0);
-      VIRFUNC_INFO *vinfo = (*vec)[0];
-      const char *vfname = ST_name(vinfo->File_idx(), vinfo->Fun_st());
-      // We must remove the prepending class names before comparing for identical function name
-
-      if(!strcmp(vfname, fname)) {
-        return iter->first;
+      for (int i = 0; i < vec->size(); i++) {
+        VIRFUNC_INFO *vinfo = (*vec)[i];
+        const char *vfname = ST_name(vinfo->File_idx(), vinfo->Fun_st());
+        if(!strcmp(vfname, fname)) {
+          return iter->first;
+        }
       }
     }
   }
@@ -735,10 +740,10 @@ CLASS_HIERARCHY::Get_interface_entry(C_STR def_class_name, C_STR if_name, INT32 
   VIRFUNC_INFO *virf_info = NULL;
   if(off == INVALID_VTABLE_OFFSET) {
     // try to get fun info from interface's default method implementation
-    virf_info = info->Get_vtable_entry(if_off);
+    virf_info = info->Get_vtable_entry(if_off, 0);
     Is_True_Ret(virf_info, ("CLASS HIERARCHY ERROR: unable to find interface method in class %s", if_name), NULL);
   } else {
-    virf_info = def_info->Get_vtable_entry(off * Pointer_Size);
+    virf_info = def_info->Get_vtable_entry(off * Pointer_Size, 0);
   }
   return virf_info;
 }
@@ -926,12 +931,12 @@ CLASS_HIERARCHY::Find_function_offset(const char *signature, MEM_POOL *temp_pool
 //
 // =============================================================================
 VIRFUNC_INFO*
-CLASS_HIERARCHY::Get_vtable_entry(C_STR name, INT32 offset) {
+CLASS_HIERARCHY::Get_vtable_entry(C_STR name, INT32 offset, INT32 vptr_ofst) {
   CLASS_INFO *info = Get_class_info(name);
   if(info == NULL || info->Is_link_class()) {
     return NULL;
   } else {
-    return info->Get_vtable_entry(offset);
+    return info->Get_vtable_entry(offset, vptr_ofst);
   }
 }
 
@@ -985,7 +990,7 @@ CLASS_HIERARCHY::Get_meth_by_sig(C_STR name, const char *sig)
     if(off != INVALID_VTABLE_OFFSET) {
       // for off < 0 (interface), no need to * -1
       off = off > 0 ? off * Pointer_Size : off;
-      return info->Get_vtable_entry(off);
+      return info->Get_vtable_entry(off, 0);
     }
   }
   return NULL;
@@ -1012,7 +1017,7 @@ CLASS_HIERARCHY::Find_candidate_functions_in_subclasses(C_STR class_name, const 
   if (off != INVALID_VTABLE_OFFSET) {
     // for off < 0 (interface), no need to * -1
     off = off > 0 ? off * Pointer_Size : off;
-    VIRFUNC_INFO *virinfo = info->Get_vtable_entry(off);
+    VIRFUNC_INFO *virinfo = info->Get_vtable_entry(off, 0);
     if(virinfo) {
       meth_vec.push_back(virinfo);
     }
@@ -1028,7 +1033,7 @@ CLASS_HIERARCHY::Find_candidate_functions_in_subclasses(C_STR class_name, const 
         if (off != INVALID_VTABLE_OFFSET) {
           // for off < 0 (interface), no need to * -1
           off = off > 0 ? off * Pointer_Size : off;
-          VIRFUNC_INFO *virinfo = info->Get_vtable_entry(off);
+          VIRFUNC_INFO *virinfo = info->Get_vtable_entry(off, 0);
           if(virinfo) {
             meth_vec.push_back(virinfo);
           }
@@ -1291,9 +1296,11 @@ CLASS_HIERARCHY::Extract_class_name(const char *mangle_name, STRING_BUFFER *buf)
   }
   src = demangled_name;
   char *src_end = src;
-  while((src = strstr(src, ".")) != 0) {
-    src_end = src;
-    src++;
+  char *pos;
+  while((pos = strstr(src, ".")) != 0 ||
+        (pos = strstr(src, "::")) != 0) {
+    src_end = pos;
+    src = (*pos == '.') ? pos + 1 : pos + 2;
   }
 
   if(src_end > demangled_name) {
@@ -1751,15 +1758,18 @@ CLASS_HIERARCHY::Copy_ty_name(C_STR ty)
 //
 // =============================================================================
 void
-CLASS_HIERARCHY::Add_method(TY_IDX ty, INT32 offset, INT32 call_offset, ST_IDX method_sym )
+CLASS_HIERARCHY::Add_method(TY_IDX ty, INT32 offset, INT32 call_offset,
+                            ST_IDX method_sym, INT32 vptr_ofst)
 {
   C_STR ty_name = TY_name(ty);
   if(_class_info_map.find(ty_name) != _class_info_map.end()) {
-    _class_info_map[ty_name]->Add_method(offset, call_offset, method_sym, TY_vtable(ty));
+    _class_info_map[ty_name]->Add_method(offset, call_offset, method_sym,
+                                         TY_vtable(ty), vptr_ofst);
   } else {
     C_STR cp_name = Copy_ty_name(ty_name);
     CLASS_INFO *new_info = New_class_info(cp_name);
-    new_info->Add_method(offset, call_offset, method_sym, TY_vtable(ty));
+    new_info->Add_method(offset, call_offset, method_sym,
+                         TY_vtable(ty), vptr_ofst);
     new_info->Set_class_ty(ty);
     _class_info_map[cp_name] = new_info;
   }

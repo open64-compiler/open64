@@ -7381,7 +7381,7 @@ RBC_BASE::Eval__is_obj_meth_override(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
             if(parents != NULL) {
               for(int i = 0; i < parents->size() && !ret; i++) {
                 C_STR parent = (*parents)[i];
-                VIRFUNC_INFO *pvfunc = cha->Get_vtable_entry(parent, off);
+                VIRFUNC_INFO *pvfunc = cha->Get_vtable_entry(parent, off, 0);
                 if(pvfunc) {
                   Is_Trace(Tracing(),
                            (TFile, "**Parent %s define method %s, Mark override: Y\n",

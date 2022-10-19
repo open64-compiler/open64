@@ -141,6 +141,7 @@ void CXX_CLASS_HIERARCHY_BUILDER::Add_vtable_method(INITO *entry, TY_IDX idx)
 
   int top_offset = 0;
   int call_offset = 0;
+  int vptr_offset = 0;
   C_STR class_name = TY_name(idx);
   for(int i = 0 ; i < vtable_entries.Size(); i++) {
     UINT32 entry_kind = vtable_entries.Get_kind(i);
@@ -148,11 +149,14 @@ void CXX_CLASS_HIERARCHY_BUILDER::Add_vtable_method(INITO *entry, TY_IDX idx)
     if(vtable_entries.Get_kind(i) == INITVKIND_SYMOFF && value != ST_IDX_ZERO &&
        ST_class(value) == CLASS_FUNC ) {
       if(!ST_is_pure_vfunc(&St_Table[value])) {
-        Add_method(idx, i * Pointer_Size, call_offset, value);
+        Is_True(vptr_offset >= 0 && vptr_offset < TY_size(ST_vtable_ty_idx(entry->st_idx)),
+                ("bad vptr offset"));
+        Add_method(idx, i * Pointer_Size, call_offset, value, vptr_offset);
       }
       call_offset = call_offset + Pointer_Size;
     } else if(Is_initv_val(entry_kind)) {
       call_offset = 0;
+      vptr_offset = - vtable_entries.Get_initv_i32(i);  // offset in vtable is negative
     }
   }
   Add_vtable_to_candidate(class_name);
