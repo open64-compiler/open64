@@ -96,13 +96,15 @@ struct VIRFUNC_INFO {
   INT32     _offset;     // offset in vtable
   ST_IDX    _fun_st;     // virtual function symbol idx
   ST_IDX    _vtable_sym; // virtual table symbol idx
+  INT32     _vptr_ofst;  // _vptr offset in object for C++ multi-inheritance
   UINT32    _file_idx;   // the file index of the function
 
-  VIRFUNC_INFO(INT32 off, ST_IDX st, ST_IDX vtbl, UINT32 file_idx = INVALID_FILE_IDX)
+  VIRFUNC_INFO(INT32 off, ST_IDX st, ST_IDX vtbl, INT32 vptr_ofst, UINT32 file_idx)
   {
     _offset     = off;
     _fun_st     = st;
     _vtable_sym = vtbl;
+    _vptr_ofst  = vptr_ofst;
     _file_idx   = file_idx;
   }
   ~VIRFUNC_INFO() {}
@@ -113,6 +115,7 @@ struct VIRFUNC_INFO {
   {
     if(_offset == other._offset &&
        _fun_st == other._fun_st &&
+       _vptr_ofst == other._vptr_ofst &&
        _file_idx == other._file_idx) {
       return TRUE;
     }
@@ -122,6 +125,7 @@ struct VIRFUNC_INFO {
   UINT32 File_idx()                  { return _file_idx; }
   ST_IDX Fun_st()                    { return _fun_st;   }
   INT32  Ofst()                      { return _offset; }
+  INT32  Vptr_ofst() const           { return _vptr_ofst; }
   NAME   Fun_name() const            { return ST_name(_file_idx, _fun_st); }
 
   void   Print(FILE *fp = TFile);
@@ -194,7 +198,7 @@ class CLASS_INFO {
     // void           Add_virtual_base(C_STR idx) { _virtual_bases.push_back(idx);}
     void              Add_aux_info(JAVA_AUX_INFO *info) { _aux_info = info; }
     void              Add_method(INT32 offset, INT32 call_offset, 
-                                 ST_IDX method_sym, ST_IDX vtable_st);
+                                 ST_IDX method_sym, ST_IDX vtable_st, INT32 vptr_ofst);
     void              Add_parents(C_STR_VEC *parents);
     void              Add_children(CLASS_SET *children);
     void              Add_vtable_to_candidate(CLASS_INFO *info, 
@@ -217,7 +221,7 @@ class CLASS_INFO {
     C_STR_VEC*        Get_interfaces() { return _aux_info ? _aux_info->Get_interfaces() : NULL; }
     UINT16            Get_class_acc_flag();
     VIRFUNC_INFO_VEC* Get_cand_calls(int offset);
-    VIRFUNC_INFO*     Get_vtable_entry(int offset);
+    VIRFUNC_INFO*     Get_vtable_entry(int offset, int vptr_ofst);
     VIRFUNC_INFO*     Get_vtable_entry(const char *vtbl_name, int vtbl_ofst);
     INT32             Get_vtable_ofst(const char *fname);
     BOOL              Get_meth_annots(const char *fname, vector<STRING> &annot_names);
@@ -289,7 +293,7 @@ public:
   // Accessing VIRFUNC_INFO data
   VIRFUNC_INFO*       Get_interface_entry(C_STR def_class_name,
                                           C_STR if_name, INT32 if_off);
-  VIRFUNC_INFO*       Get_vtable_entry(C_STR class_name, INT32 offset);
+  VIRFUNC_INFO*       Get_vtable_entry(C_STR class_name, INT32 offset, INT32 vptr_ofst);
   VIRFUNC_INFO*       Get_vtable_entry(C_STR class_name, const char *vtbl_name, INT32 vtbl_ofst);
   VIRFUNC_INFO*       Get_meth_by_sig(C_STR name, const char *sig); // this searches the method table for result
   CLASS_INFO*         Get_class_info(C_STR idx);
@@ -316,7 +320,7 @@ protected:
   void                Add_parent(C_STR ty, C_STR parent);
   // void             Add_virtual_base(C_STR ty, C_STR parent);
   void                Add_method(TY_IDX ty, INT32 offset, 
-                                 CALL_OFF call_offset, ST_IDX method_sym);
+                                 CALL_OFF call_offset, ST_IDX method_sym, INT32 vptr_ofst);
   void                Add_child(C_STR ty, C_STR child);
   void                Add_interface(C_STR ty, C_STR interf);
   void                Add_vtable_to_candidate(C_STR ty);
@@ -380,6 +384,7 @@ class CAND_CALL_ITER {
     ST_IDX    Curr_cand_st()        { return (*_curr_fun_iter)->_fun_st; }
     INT32     Curr_cand_offset()    { return (*_curr_fun_iter)->_offset; }
     ST_IDX    Curr_cand_vtable()    { return (*_curr_fun_iter)->_vtable_sym; }
+    UINT32    Curr_cand_vptr_ofst() { return (*_curr_fun_iter)->_vptr_ofst; }
     UINT32    Curr_file_idx()       { return (*_curr_fun_iter)->_file_idx; }
 };
 
