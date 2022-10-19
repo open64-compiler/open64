@@ -5285,12 +5285,7 @@ WhirlExprBuilder::ConvertUnaryOperator(const UnaryOperator *expr, BOOL retv) {
     }
     if (r.IsRef()) {
       Is_True(TY_kind(r.Ty()) == KIND_POINTER, ("not ptr type"));
-      WN *ret = NULL;
-      if (r.isNode())
-        ret = WN_Iload(Pointer_Mtype, 0, r.Ty(), r.Node());
-      else
-        ret = r.GetLValue();
-      return Result::nwNode(ret, r.Ty());
+      return Result::nwNode(r.GetLValue(), r.Ty());
     }
     if (r.FieldId()) {
       Is_True(TY_kind(r.Ty()) == KIND_STRUCT ||
