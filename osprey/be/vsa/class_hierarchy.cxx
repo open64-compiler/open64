@@ -740,6 +740,7 @@ CLASS_HIERARCHY::Get_interface_entry(C_STR def_class_name, C_STR if_name, INT32 
   VIRFUNC_INFO *virf_info = NULL;
   if(off == INVALID_VTABLE_OFFSET) {
     // try to get fun info from interface's default method implementation
+    // java doens't have multiple vptrs, set vptr_ofst to 0
     virf_info = info->Get_vtable_entry(if_off, 0);
     Is_True_Ret(virf_info, ("CLASS HIERARCHY ERROR: unable to find interface method in class %s", if_name), NULL);
   } else {
@@ -990,6 +991,7 @@ CLASS_HIERARCHY::Get_meth_by_sig(C_STR name, const char *sig)
     if(off != INVALID_VTABLE_OFFSET) {
       // for off < 0 (interface), no need to * -1
       off = off > 0 ? off * Pointer_Size : off;
+      // java doens't have multiple vptrs, set vptr_ofst to 0
       return info->Get_vtable_entry(off, 0);
     }
   }
@@ -1017,6 +1019,7 @@ CLASS_HIERARCHY::Find_candidate_functions_in_subclasses(C_STR class_name, const 
   if (off != INVALID_VTABLE_OFFSET) {
     // for off < 0 (interface), no need to * -1
     off = off > 0 ? off * Pointer_Size : off;
+    // java doens't have multiple vptrs, set vptr_ofst to 0
     VIRFUNC_INFO *virinfo = info->Get_vtable_entry(off, 0);
     if(virinfo) {
       meth_vec.push_back(virinfo);
@@ -1033,6 +1036,7 @@ CLASS_HIERARCHY::Find_candidate_functions_in_subclasses(C_STR class_name, const 
         if (off != INVALID_VTABLE_OFFSET) {
           // for off < 0 (interface), no need to * -1
           off = off > 0 ? off * Pointer_Size : off;
+          // java doens't have multiple vptrs, set vptr_ofst to 0
           VIRFUNC_INFO *virinfo = info->Get_vtable_entry(off, 0);
           if(virinfo) {
             meth_vec.push_back(virinfo);
