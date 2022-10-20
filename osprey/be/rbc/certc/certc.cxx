@@ -73,6 +73,7 @@ FILE *popen(const char *command, const char *type)
 void *memchr(const void *ptr, int value, size_t num)
 {
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   return NULL;
 }
 
@@ -84,6 +85,7 @@ void *memcpy(void *dest, const void *src, size_t n)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   rbc.Rbc_assert(rbc.Not(rbc.Is_memory_overlap(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(3)), rbc.Get_arg(2))), "MISRA_19_1");
   return NULL;
 }
@@ -237,6 +239,7 @@ void *memmove(void *dest, const void *src, size_t n)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   return NULL;
 }
 
@@ -246,6 +249,7 @@ int memcmp(const void *s1, const void *s2, size_t n)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   rbc.Rbc_assert(rbc.Not(rbc.Or(rbc.Is_null_term_str(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(3))),
                                 rbc.Is_null_term_str(rbc.Get_arg(2), rbc.Get_value(rbc.Get_arg(3))))),
                  "MISRA_21_14");
@@ -260,6 +264,7 @@ void *memset(void *ptr, int value, size_t num)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   return NULL;
 }
 
@@ -618,6 +623,7 @@ char *strncat(char *dest, const char *src, size_t n)
   rbc.Model_decl(rbc.Merge_tag(rbc.Get_arg(1), rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   return NULL;
 }
 
@@ -629,6 +635,7 @@ char *strncpy(char *destination, const char *source, size_t num)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   rbc.Rbc_assert(rbc.Is_compatible_parm_type(1), "STR38-C");
   rbc.Rbc_assert(rbc.Is_compatible_parm_type(2), "STR38-C");
   return NULL;
@@ -637,6 +644,7 @@ char *strncpy(char *destination, const char *source, size_t num)
 size_t strxfrm(char *destination, const char *source, size_t num)
 {
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   return 0;
 }
 
@@ -707,6 +715,7 @@ int strncmp(const char *s1, const char *s2, size_t n)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
   return 0;
 }
 
