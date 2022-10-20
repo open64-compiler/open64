@@ -634,6 +634,7 @@ JAVA_CLASS_HIERARCHY_BUILDER::Read_vtable(INITO *entry, BOOL filt)
     if(vtable_entries.Get_kind(i) == INITVKIND_SYMOFF) {
       ST_IDX meth_st = vtable_entries.Get_initv_st(i);
       CALL_OFF call_offset = (i - CLASS_SYM) * Pointer_Size;
+      // java doens't have multiple vptrs, set vptr_ofst to 0
       Add_method(class_ty, i * Pointer_Size, call_offset, meth_st, 0);
     }
   }
@@ -709,6 +710,7 @@ JAVA_CLASS_HIERARCHY_BUILDER::Read_meth_table(C_STR class_ty, ST_IDX meth_st_idx
       if(info && info->Get_aux_info()) {
         info->Get_aux_info()->Add_meth_table(mangle_name, mt_info);
         // interfaces method default implementation, add to vtable
+        // java doens't have multiple vptrs, set vptr_ofst to 0
         if(info->Get_aux_info()->Class_is_interface()) {
           info->Add_method(0, off, meth_sym_idx, 0, 0);
         }
