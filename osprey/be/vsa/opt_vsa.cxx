@@ -14817,7 +14817,7 @@ VSA::Check_var_value(STMTREP *sr, CODEREP *cr, BB_NODE *bb, INT64 lower_bound)
       value = lhs;
       var = rhs;
     }
-    if (cr->Kind() == CK_OP && (cr->Opr() == OPR_CVT || var->Opr() == OPR_CVTL))
+    if (cr->Kind() == CK_OP && (cr->Opr() == OPR_CVT || cr->Opr() == OPR_CVTL))
       cr = cr->Opnd(0);
     if (var == cr && value->Kind() == CK_CONST) {
       INT64 val = value->Const_val();
