@@ -4052,6 +4052,14 @@ WhirlExprBuilder::ConvertCastExpr(const CastExpr *expr, Result dest) {
       field_id += _builder->TB().GetFieldIDFromDecl((const Decl*)*path_begin);
     }
 
+    if (sub->getType()->isPointerType()) {
+      Is_True(TY_kind(from_ty) == KIND_POINTER &&
+              TY_kind(TY_pointed(from_ty)) == KIND_STRUCT, ("bad from type"));
+      // make sure derived type isn't incomplete
+      if (TY_is_incomplete(TY_pointed(from_ty)))
+        _builder->TB().ConvertType(sub->getType()->getPointeeType());
+    }
+
     Result r = ConvertExpr(sub);
     r.AddFieldId(field_id);  
 
