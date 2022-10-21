@@ -344,6 +344,12 @@ FLD_get_from_offset (TY_IDX struct_ty_idx, UINT offset, UINT &cur_field_id)
 	    return fld;
         else if (cur_ofst > offset)
             break;
+
+        // array is treated as 1 field
+        if (TY_kind(FLD_type(fld)) == KIND_ARRAY &&
+            cur_ofst + TY_size(FLD_type(fld)) > offset)
+            return fld;
+
 	if (TY_kind(FLD_type(fld)) == KIND_STRUCT &&
             TY_fld(FLD_type(fld)) != FLD_HANDLE()) {
             INT64 new_ofst = offset - cur_ofst;
