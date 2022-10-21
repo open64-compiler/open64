@@ -12956,7 +12956,19 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
       }
     }
     else {
+      // Changes as customer's require to report function name
+      // for ERR33-C instead of variable name
+      const char *old_name = sh->Orig_stname();
+      if (strncmp(errcode, "ERR33-C", 7) == 0) {
+        if (strncmp(fsm_name, "pos35c", 6) == 0) {
+          sh->Set_orig_stname("open");
+        }
+        else if (strncmp(fsm_name, "fio45c", 6) == 0) {
+          sh->Set_orig_stname("fopen");
+        }
+      }
       Report_rbc_error(vsa_ctx, stmt, errcode, FALSE, sh);
+      sh->Set_orig_stname(old_name);
     }
   }
   // if (message)

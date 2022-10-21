@@ -1584,16 +1584,16 @@ int fio45_c_fsm(void)
                                         1, "open_rv", "ERR33-C WRF MISRA_22_4", 68));
   // #4.1 "open_r" => "open_rv" : fprintf(*, _, ...)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MISRA_22_4", 68));
   // #4.2 "open_r" => "open_rv" : fputc(_, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fputc", rbc.Get_arg(2),
-                                        1, "open_rv", "MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MISRA_22_4", 68));
   // #4.3 "open_r" => "open_rv" : fputs(_, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fputs", rbc.Get_arg(2),
-                                        1, "open_rv", "MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MISRA_22_4", 68));
   // #4.4 "open_r" => "open_rv" : vfprintf(*, _, ...)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "vfprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MISRA_22_4", 68));
   // #5 "open_r" => "finish" : fclose(*)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fclose", rbc.Get_arg(1),
                                         1, "finish", "ERR33-C", 69));
