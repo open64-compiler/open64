@@ -555,7 +555,12 @@ UIV_CHECKER::Check_stmtrep<OPR_CALL>(CHECK_OBJ &obj, TRAV_CONTEXT *ctx)
     IDTYPE arg_idx = rna->Get_arg_with_aux(aux_id, ctx->Opt_stab());
     if (arg_idx != INVALID_VAR_IDX) {
       BOOL check_chi_opnd = FALSE;
-      if (rna->Callee_cnt() == 0 && VSA_Extern_Uiv) {
+      if (rna->Callee_cnt() == 0 &&
+          arg_idx == 1 && (sr->Call_flags() & WN_CALL_IS_CONSTRUCTOR)) {
+        // external constructor, assume no UIV
+        Is_Trace(ctx->Tracing(), (TFile, "External constructor, assume no UIV.\n"));
+        return CS_DONE;
+      } else if (rna->Callee_cnt() == 0 && VSA_Extern_Uiv) {
         Sp_h()->Set_flag(SRCPOS_FLAG_MAYBE);
         check_chi_opnd = TRUE;
         Is_Trace(ctx->Tracing(), (TFile, "No callee, check chi_opnd, arg idx:%d.\n", arg_idx));

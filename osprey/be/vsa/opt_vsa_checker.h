@@ -2578,7 +2578,7 @@ private:
     UINT32 ofst = _ctx.Vsa()->Cr_ofst(check_cr);
     UINT32 fld_id = check_cr->Field_id();
     AUX_STAB_ENTRY* sym = _ctx.Opt_stab()->Aux_stab_entry(check_cr->Aux_id());
-    if (sym->St()) {
+    if (sym->St() && fld_id == 0 && ofst != 0) {
       TY_IDX st_type = ST_type(sym->St());
       if (TY_kind(st_type) == KIND_STRUCT) {
         UINT cur_field_id = 0;
