@@ -147,6 +147,11 @@ CANON_CR::Convert2cr(MTYPE typ, OPERATOR opr, OPCODE opc, CODEMAP *htable, BOOL 
 void
 CANON_CR::Trim_to_16bits(WN *wn, CODEMAP *htable)
 {
+#ifdef BUILD_MASTIFF
+  // fail to find field id from offset if trim to 16-bits
+  if (Run_vsaopt)
+    return;
+#endif
   const OPCODE op = WN_opcode(wn);
   MTYPE typ;
   INT64 multiple32K;
