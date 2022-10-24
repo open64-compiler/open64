@@ -244,6 +244,7 @@ RBC_BASE::Builtin_func_map_init(void)
 
   _builtin_func_map_new[RBC_ENGINE::EXEC_KIND_PRE_SANITIZED] = &RBC_BASE::Eval__pre_sanitized;
   _builtin_func_map_new[RBC_ENGINE::EXEC_KIND_PRE_CALL] = &RBC_BASE::Eval__pre_call;
+  _builtin_func_map_new[RBC_ENGINE::EXEC_KIND_PRE_CHECK_VAR_VALUE] = &RBC_BASE::Eval__pre_check_var_value;
   _builtin_func_map_new[RBC_ENGINE::EXEC_KIND_POST_CHECK_VAR_VALUE] = &RBC_BASE::Eval__post_check_var_value;
   _builtin_func_map_new[RBC_ENGINE::EXEC_KIND_POST_CALL] = &RBC_BASE::Eval__post_call;
   _builtin_func_map_new[RBC_ENGINE::EXEC_KIND_PARM_IS_DEF_BY_FUNC] = &RBC_BASE::Eval__parm_is_def_by_func;
@@ -1623,7 +1624,8 @@ RBC_BASE::Check_cr_eq(VSA *vsa, CODEREP *stmt_v, CODEREP *comp_v)
   Is_True_Rbc(stmt_v != NULL, ("RBC ERROR: null stmt_v passed to Check_cr_eq.\n"));
 
   if (comp_v == NULL) {
-    if (stmt_v->Kind() == CK_CONST && stmt_v->Const_val() == 0)
+    if ((stmt_v->Kind() == CK_CONST && stmt_v->Const_val() == 0) ||
+        (stmt_v->Kind() == CK_RCONST && stmt_v->Const_fval() == 0))
       ret = TRUE;
   } // end comp_v NULL
   else if ((INT32)(INTPTR)comp_v == -1) {
@@ -2113,6 +2115,72 @@ RBC_BASE::Is_var_used_in_stmt(CODEREP *v, STMTREP *stmt, VSA *vsa)
   return FALSE;
 }
 
+// =============================================================================
+//
+// RBC_BASE::Eval__pre_check_var_value
+//   check if variable v is checked before it is used
+//   BOOL Pre_check_var_value(void *v, char *opr, void *value);
+//
+// =============================================================================
+UINT64
+RBC_BASE::Eval__pre_check_var_value(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
+{
+  RBC_EVAL_SKIP();
+  UINT64 ret = 1;
+  DNA_NODE *dna = rbc_ctx.Caller();
+  DNA_NODE *callee = rbc_ctx.Callee();
+  Is_True_Rbc(callee != NULL, ("RBC ERROR: null callee in Pre_check_var_value.\n"));
+  STMTREP *call_stmt = rbc_ctx.Callstmt();
+  VSA *vsa = rbc_ctx.Caller_vsa();
+  CODEREP *arg0 = stmt->Rhs()->Find_nth_arg(0 + Rbc_parm_ofst_adjust(dna));
+  CODEREP *v = (CODEREP *)Eval__exp(rbc_ctx, arg0);
+  // process compare value
+  CODEREP *arg2 = stmt->Rhs()->Find_nth_arg(2 + Rbc_parm_ofst_adjust(dna));
+  CODEREP *value = (CODEREP *)Eval__exp(rbc_ctx, arg2);
+  // process compare opr
+  CODEREP *arg1 = stmt->Rhs()->Find_nth_arg(1 + Rbc_parm_ofst_adjust(dna));
+  ret = Eval__exp(rbc_ctx, arg1);
+  OPERATOR cmp_op = Get_opr_from_char((const char*)ret);
+  CONTEXT_SWITCH context(dna);
+  BB_NODE *bb = call_stmt->Bb();
+  ret = Pre_check_var(vsa, bb, v, cmp_op, value);
+  Is_Trace(Tracing(), (TFile, "RBC: Pre_check_var_value(v:cr%d, opr:%d, value:cr%d): %lld\n",
+                       v->Coderep_id(), cmp_op,
+                       value == NULL || (INT32)(INTPTR)value == -1 ? -1 : value->Coderep_id(), ret));
+  return ret;
+}
+
+// =============================================================================
+//
+// RBC_BASE::Pre_check_var
+//    go through the post dominance frontiers of bb, and check if 'v opr value' is
+//    validated in the last statement of cd bbs.
+//
+// =============================================================================
+BOOL
+RBC_BASE::Pre_check_var(VSA *vsa, BB_NODE *bb, CODEREP *v, OPERATOR opr, CODEREP *value)
+{
+  BB_NODE *cd;
+  BB_NODE_SET_ITER cd_iter;
+  FOR_ALL_ELEM(cd, cd_iter, Init(bb->Rcfg_dom_frontier())) {
+    Is_True(cd->Succ() != NULL,
+            ("cd bb does not have successors"));
+    Is_True(cd->Succ()->Multiple_bbs(),
+            ("succ of cc should be multiple bbs"));
+    STMTREP *last_stmt = cd->Last_stmtrep();
+    if (last_stmt != NULL) {
+      if (Is_var_used_in_stmt(v, last_stmt, vsa)) {
+        if (Is_in_if_stmt(vsa, v, value, opr, last_stmt, FALSE)) {
+          return TRUE;
+        }
+      }
+    }
+    if (Pre_check_var(vsa, cd, v, opr, value)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
 
 // =============================================================================
 //

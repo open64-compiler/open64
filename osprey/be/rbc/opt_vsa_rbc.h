@@ -1316,6 +1316,7 @@ private:
   UINT64   Eval__pre_sanitized(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__pre_call(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_errno_cleared_before(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
+  UINT64   Eval__pre_check_var_value(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__post_check_var_value(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__post_check_var_func(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__post_call(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
@@ -1468,6 +1469,7 @@ private:
   BOOL         Is_memory_overlap(CODEREP *tgt, UINT64 size, CODEREP *src, STMTREP *stmt, DNA_NODE *dna);
   BOOL         Is_memory_big_enough(CODEREP *tgt, UINT64 elem_sz, UINT64 elem_cnt, STMTREP *stmt, DNA_NODE *dna);
 
+  BOOL         Pre_check_var(VSA *vsa, BB_NODE *bb, CODEREP *cr, OPERATOR cmp_op, CODEREP *value);
   BOOL         Post_check_var(STMTREP *stmt, BB_NODE* bb, CODEREP *v, CODEREP *value, OPERATOR opr, INT direction,
                               BOOL vonly, vector<IDTYPE> *path, DNA_NODE *dna, SRCPOS_HANDLE *srcpos_h);
   BOOL         Post_check_func(STMTREP *stmt, CODEREP *v, char *fname, char *value, DNA_NODE *dna,
