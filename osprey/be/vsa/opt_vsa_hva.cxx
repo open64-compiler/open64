@@ -2542,9 +2542,16 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
   if (parm_vor)  // parm vor already created
     return parm_vor;
 
+  CODEREP *base = cr->Ilod_base();
+  VSYM_OBJ_REP *base_vor = Process_coderep<VSYM_OBJ_REP*>(sr, base, flag);
+  if (_hva->Visit_next(sr)) {
+    // still have pending IVAR to create VOR, early return
+    // only process mu/chi of param after all IVAR are handled
+    return NULL;
+  }
+
   UINT mod_ref = 0;
   BOOL parm_need_vsym = FALSE;
-  CODEREP *base = cr->Ilod_base();
   IDTYPE   param = INVALID_VAR_IDX;
   RNA_NODE *rna = NULL;
   if (OPERATOR_is_call(sr->Opr())) {
@@ -2590,7 +2597,6 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
       }
     }
   }
-  VSYM_OBJ_REP *base_vor = Process_coderep<VSYM_OBJ_REP*>(sr, base, flag);
   if (parm_need_vsym) {
     base = Find_ilod_base(base);
     HEAP_OBJ_REP *hor = base ? _hva->Find_cr_hor(sr, base) : NULL;

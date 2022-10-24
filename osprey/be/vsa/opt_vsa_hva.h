@@ -1434,6 +1434,15 @@ public:
     return _sr_counter[sr->Stmtrep_id()] >= _round;
   }
 
+  // check if stmt should be visited in next iteration
+  BOOL Visit_next(STMTREP* sr) const {
+    Is_True(sr->Stmtrep_id() > 0 && sr->Stmtrep_id() < _sr_counter.size(),
+            ("invalid sr id"));
+    Is_True(_sr_counter[sr->Stmtrep_id()] <= _round + 1,
+            ("invalid sr counter"));
+    return _sr_counter[sr->Stmtrep_id()] > _round;
+  }
+
   // set stmt should be visited in this iteration so newly created ho/vo
   // can be renamed correctly
   void Set_visit_later(STMTREP* sr) {
