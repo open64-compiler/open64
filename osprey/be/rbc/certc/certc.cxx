@@ -593,6 +593,24 @@ void qsort(void *base, size_t nmemb, size_t size,
   return;
 }
 
+double sqrt(double __x)
+{
+  rbc.Rbc_assert(rbc.Pre_check_var_value(rbc.Get_arg(1), "gt", 0), "MSR_D_4_11");
+  return 0;
+}
+
+double log(double __x)
+{
+  rbc.Rbc_assert(rbc.Pre_check_var_value(rbc.Get_arg(1), "gt", 0), "MSR_D_4_11");
+  return 0;
+}
+
+double fmod(double __x, double __y)
+{
+  rbc.Rbc_assert(rbc.Pre_check_var_value(rbc.Get_arg(2), "ne", 0), "MSR_D_4_11");
+  return 0;
+}
+
 char *gets(char *s)
 {
   rbc.Model_decl(rbc.Set_parm_mod(rbc.Get_arg(1)));
