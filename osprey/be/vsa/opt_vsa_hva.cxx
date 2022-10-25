@@ -2269,8 +2269,14 @@ private:
   template<BOOL _FWD>
   void Process_istore(STMTREP *sr);
 
+  // create vor for cr
+  VSYM_OBJ_REP *Create_vor_for_cr(STMTREP *sr, CODEREP *cr, CODEREP *base);
+
   // process param
   VSYM_OBJ_REP *Process_param(STMTREP *sr, CODEREP *cr, UINT flag);
+
+  // process intrinsic op
+  VSYM_OBJ_REP *Process_intrinsic_op(STMTREP *sr, CODEREP *cr, UINT flag);
 
   // process return
   void Process_rets();
@@ -2535,6 +2541,89 @@ HVA_VO_CREATION::Process_istore<TRUE>(STMTREP *sr)
 }
 
 VSYM_OBJ_REP *
+HVA_VO_CREATION::Create_vor_for_cr(STMTREP *sr, CODEREP *cr, CODEREP *base)
+{
+  Is_True(cr == base ||   // param with ILOAD or ISTORE
+          cr->Ilod_base() == base || cr->Istr_base() == base,  // regulat IVAR
+          ("invalid cr or base"));
+  CODEREP *ilod_base = Find_ilod_base(base);
+  HEAP_OBJ_REP *hor;
+  if (ilod_base != NULL) {
+    hor = _hva->Find_cr_hor(sr, ilod_base);
+    if (hor == NULL) {
+      _hva->Set_visit_next(sr);
+      return NULL;
+    }
+  }
+  else {
+   hor = Vsa()->Null_hor();
+  }
+  Is_True(hor != NULL, ("invalid hor"));
+
+  VSYM_OBJ_REP *vor = NULL;
+  if (!Vsa()->Is_special_hor(hor) &&
+      (hor->Attr() == ROR_DEF_BY_LDA || !hor->Is_entry_chi())) {
+    Is_True(hor->Attr() != ROR_DEF_BY_ISTORE && hor->Attr() != ROR_DEF_BY_COPY &&
+            hor->Attr() != ROR_DEF_BY_DANGLE,
+            ("TODO: phi, varphi, vorphi, istore, copy, dangle"));
+
+    VSYM_FLD_REP vfr = Vsa()->Cr_vfr(cr);
+    vor = _hva->Create_vsym_obj_use(hor, &vfr);
+
+    if (vfr.Is_any() && !hor->Field_any())
+      hor->Set_field_any(TRUE);
+
+    if (_hva->Vo_created(vor) && vor->Vsym_obj()->Ref_cr() == NULL)
+      vor->Vsym_obj()->Set_ref_cr(cr);
+  }
+  else {
+    vor = Vsa()->Null_vor();
+  }
+
+  Is_True(vor && hor, ("invalid vor"));
+  Vsa()->Enter_cr_vor_map(cr, vor);
+  Is_Trace(Tracing(), (TFile, "VOC[%d]: Create vor ", _hva->Round()));
+  Is_Trace_cmd(Tracing(), vor->Print(TFile));
+  Is_Trace(Tracing(), (TFile, " on hor "));
+  Is_Trace_cmd(Tracing(), hor->Print(TFile));
+  Is_Trace(Tracing(),
+           (TFile, " to cr%d with base cr%d:\n",
+                   cr->Coderep_id(), base->Coderep_id()));
+  Is_Trace_cmd(Tracing(), cr->Print(2, TFile));
+  return vor;
+}
+
+
+VSYM_OBJ_REP *
+HVA_VO_CREATION::Process_intrinsic_op(STMTREP* sr, CODEREP* cr, UINT flag)
+{
+  Is_True(sr && cr && cr->Opr() == OPR_INTRINSIC_OP, ("invalid intrn op cr"));
+  VSYM_OBJ_REP *vor = Vsa()->Cr_2_vor(cr);
+  if (vor)  // vor already created
+    return vor;
+
+  for (INT32 i = 0; i < cr->Kid_count(); ++i) {
+    CODEREP *opnd = cr->Opnd(i);
+    Is_True(opnd && opnd->Kind() == CK_IVAR && opnd->Opr() == OPR_PARM,
+            ("invalid parm cr"));
+    Process_coderep<VSYM_OBJ_REP*>(sr, opnd->Ilod_base(), i);
+  }
+
+  INTRINSIC iopc = cr->Intrinsic();
+  CODEREP *base = NULL;
+  if (iopc == INTRN_ATOM_LOAD || iopc == INTRN_ATOM_LOAD_N) {
+    base = cr->Opnd(0)->Ilod_base();
+  }
+
+  if (base != NULL) {
+    vor = Create_vor_for_cr(sr, base, base);
+  }
+
+  return vor;
+}
+
+
+VSYM_OBJ_REP *
 HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
 {
   Is_True(sr && cr && cr->Opr() == OPR_PARM, ("invalid ivar cr"));
@@ -2788,53 +2877,9 @@ HVA_VO_CREATION::Process_cr<CK_IVAR>(STMTREP* sr, CODEREP* cr, UINT flag)
 
   // check if vor already created
   VSYM_OBJ_REP *vor = Vsa()->Cr_2_vor(cr);
-  if (vor != NULL)
-    return vor;
+  if (vor == NULL)
+    vor = Create_vor_for_cr(sr, cr, base);
 
-  HEAP_OBJ_REP *hor;
-  base = Find_ilod_base(base);
-  if (base == NULL) {
-    hor = Vsa()->Null_hor();
-  }
-  else {
-    hor = _hva->Find_cr_hor(sr, base);
-    if (hor == NULL) {
-      _hva->Set_visit_next(sr);
-      return NULL;
-    }
-  }
-  Is_True(hor != NULL, ("invalid hor"));
-
-  if (!Vsa()->Is_special_hor(hor) &&
-      (hor->Attr() == ROR_DEF_BY_LDA || !hor->Is_entry_chi())) {
-    Is_True(hor->Attr() != ROR_DEF_BY_ISTORE && hor->Attr() != ROR_DEF_BY_COPY &&
-            hor->Attr() != ROR_DEF_BY_DANGLE,
-            ("TODO: phi, varphi, vorphi, istore, copy, dangle"));
-
-    VSYM_FLD_REP vfr = Vsa()->Cr_vfr(cr);
-    vor = _hva->Create_vsym_obj_use(hor, &vfr);
-
-    if (vfr.Is_any() && !hor->Field_any())
-      hor->Set_field_any(TRUE);
-
-    // create vor entry chi def on stmt which defs cur_hor
-    if (_hva->Vo_created(vor)) {
-      if (vor->Vsym_obj()->Ref_cr() == NULL)
-        vor->Vsym_obj()->Set_ref_cr(cr);
-    }
-  }
-  else {
-    vor = Vsa()->Null_vor();
-  }
-  Is_True(vor && hor, ("invalid vor"));
-  Is_Trace(Tracing(), (TFile, "VOC[%d]: Create vor ", _hva->Round()));
-  Is_Trace_cmd(Tracing(), vor->Print(TFile));
-  Is_Trace(Tracing(), (TFile, " on hor "));
-  Is_Trace_cmd(Tracing(), hor->Print(TFile));
-  Is_Trace(Tracing(),
-          (TFile, " to IVAR cr%d:\n", cr->Coderep_id()));
-  Vsa()->Enter_cr_vor_map(cr, vor);
-  Is_Trace_cmd(Tracing(), cr->Print(2, TFile));
   return vor;
 }
 
@@ -2843,6 +2888,9 @@ template<> VSYM_OBJ_REP*
 HVA_VO_CREATION::Process_cr<CK_OP>(STMTREP* sr, CODEREP* cr, UINT flag)
 {
   Is_True(sr && cr && cr->Kind() == CK_OP, ("invalid op cr"));
+
+  if (cr->Opr() == OPR_INTRINSIC_OP)
+    return Process_intrinsic_op(sr, cr, flag);
 
   for (INT32 i = 0; i < cr->Kid_count(); ++i) {
     Process_coderep<VSYM_OBJ_REP*>(sr, cr->Opnd(i), flag);
@@ -3382,6 +3430,9 @@ private:
   template<BOOL _FWD>
   void Process_istore(STMTREP *sr, BOOL handle_rhs);
 
+  // rename vor on cr
+  void Process_vor_on_cr(STMTREP *sr, CODEREP *cr, VSYM_OBJ_REP *vor);
+
 public:
   // Enter_bb: before enter the bb, rename the vor phi result
   void Enter_bb(BB_NODE *bb) {
@@ -3621,6 +3672,66 @@ HVA_VO_RENAMING::Process_istore<FALSE>(STMTREP* sr, BOOL handle_rhs)
   }
 }
 
+
+// Process_vor_on_cr: process vor on cr
+void
+HVA_VO_RENAMING::Process_vor_on_cr(STMTREP *sr, CODEREP *cr, VSYM_OBJ_REP *vor)
+{
+  Is_True(vor != NULL && vor == Vsa()->Cr_2_vor(cr), ("invalid vor or cr"));
+  VSYM_OBJ_REP *cur_vor = vor->Vsym_obj()->Top_of_stack();
+  if (vor != cur_vor) {
+    Vsa()->Enter_cr_vor_map(cr, cur_vor);
+    if (cur_vor->Hor()) {
+      // replace existing heap_obj on cr
+      Vsa()->Enter_cr_heap_obj_map(cr, cur_vor->Hor(), TRUE);
+    }
+
+    Is_Trace(Tracing(), (TFile, "VOR[%d]: rename vor ", _hva->Round()));
+    Is_Trace_cmd(Tracing(), vor->Print(TFile));
+    Is_Trace(Tracing(), (TFile, " to "));
+    Is_Trace_cmd(Tracing(), cur_vor->Print(TFile));
+    Is_Trace(Tracing(),
+             (TFile, " on intrin op cr%d on sr%d.\n",
+                     cr->Coderep_id(), sr->Stmtrep_id()));
+  }
+
+  // Add alias vor mu if version mismatch
+  //   ho3 = phi(ho1, ho2)
+  //   vo1v3(ho1) = phi(vo1v1, vo1v2)
+  //   vo3v2(ho3) = phi(vo1v3, vo2v1)
+  //   chi(vo3v3, vo1v4)
+  // before:
+  //   call(vo3v3)
+  // after: add mu for vo1v4
+  //   mu(vo1v4)
+  //   call(vo3v3)
+  if (cur_vor->Attr() == ROR_DEF_BY_HORPHI) {
+    HEAP_OBJ_REP *base_hor = cur_vor->Vsym_obj()->Base_hor();
+    HOR_LIST *ulist = base_hor->Ulist();
+    if (ulist) {
+      HEAP_OBJ_REP *cur_hor;
+      HOR_LIST_ITER hor_list_iter;
+      BB_NODE *bb  = cur_vor->Phi_def()->Bb();
+      FOR_ALL_NODE(cur_hor, hor_list_iter, Init(ulist)) {
+        Is_True(!Vsa()->Is_special_hor(cur_hor), ("special hor"));
+        VSYM_OBJ *alias_vo = Vsa()->Find(cur_hor, cur_vor->Vsym_obj()->Fld_rep_ptr());
+        if (alias_vo && _hva->Visit_vsym_obj(alias_vo->Top_of_stack())) {
+          PHI_NODE *phi_node = _hva->Search_phi_node(_hva->Vo_phi_cache(),
+                                                     Vsa()->Bb_vo_philist(bb),
+                                                     bb, alias_vo);
+          if (phi_node) {
+            VSYM_OBJ_REP *alias_vor = (VSYM_OBJ_REP*) phi_node->RESULT();
+            VSYM_OBJ_REP *alias_cur_vor = alias_vo->Top_of_stack();
+            if (alias_vor != alias_cur_vor) {
+              _hva->Append_stmt_vor_mu(cr, sr, alias_cur_vor);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // Process_stmt_fwd: forward process the stmtrep
 void
 HVA_VO_RENAMING::Process_stmt_fwd(STMTREP* sr)
@@ -3786,56 +3897,13 @@ HVA_VO_RENAMING::Process_cr<CK_IVAR>(STMTREP* sr, CODEREP* cr, UINT flag)
     // not found vor, so base shouldn't have a hor, or the
     // hor is created just now
     VSYM_OBJ_REP *vor;
-    Is_True(hor == NULL || _hva->Visit_heap_obj(hor) ||
+    FmtAssert(hor == NULL || _hva->Visit_heap_obj(hor) ||
             (base_cr->Kind() == CK_IVAR &&
              ((vor = Vsa()->Cr_2_vor(base_cr)) == NULL ||
               _hva->Visit_vsym_obj(vor))), ("no vor found"));
   }
   else if (_hva->Visit_vsym_obj(vor)) {
-    VSYM_OBJ_REP *cur_vor = vor->Vsym_obj()->Top_of_stack();
-    if (vor != cur_vor) {
-      Vsa()->Enter_cr_vor_map(cr, cur_vor);
-      if (cur_vor->Hor()) {
-        // replace existing heap_obj on cr
-        Vsa()->Enter_cr_heap_obj_map(cr, cur_vor->Hor(), TRUE);
-      }
-    }
-
-    // Add alias vor mu if version mismatch
-    //   ho3 = phi(ho1, ho2)
-    //   vo1v3(ho1) = phi(vo1v1, vo1v2)
-    //   vo3v2(ho3) = phi(vo1v3, vo2v1)
-    //   chi(vo3v3, vo1v4)
-    // before:
-    //   call(vo3v3)
-    // after: add mu for vo1v4
-    //   mu(vo1v4)
-    //   call(vo3v3)
-    if (cur_vor->Attr() == ROR_DEF_BY_HORPHI) {
-      HEAP_OBJ_REP *base_hor = cur_vor->Vsym_obj()->Base_hor();
-      HOR_LIST *ulist = base_hor->Ulist();
-      if (ulist) {
-        HEAP_OBJ_REP *cur_hor;
-        HOR_LIST_ITER hor_list_iter;
-        BB_NODE *bb  = cur_vor->Phi_def()->Bb();
-        FOR_ALL_NODE(cur_hor, hor_list_iter, Init(ulist)) {
-          Is_True(!Vsa()->Is_special_hor(cur_hor), ("special hor"));
-          VSYM_OBJ *alias_vo = Vsa()->Find(cur_hor, cur_vor->Vsym_obj()->Fld_rep_ptr());
-          if (alias_vo && _hva->Visit_vsym_obj(alias_vo->Top_of_stack())) {
-            PHI_NODE *phi_node = _hva->Search_phi_node(_hva->Vo_phi_cache(),
-                                                       Vsa()->Bb_vo_philist(bb),
-                                                       bb, alias_vo);
-            if (phi_node) {
-              VSYM_OBJ_REP *alias_vor = (VSYM_OBJ_REP*) phi_node->RESULT();
-              VSYM_OBJ_REP *alias_cur_vor = alias_vo->Top_of_stack();
-              if (alias_vor != alias_cur_vor) {
-                _hva->Append_stmt_vor_mu(cr, sr, alias_cur_vor);
-              }
-            }
-          }
-        }
-      }
-    }
+    Process_vor_on_cr(sr, cr, vor);
   }
 }
 
@@ -3847,6 +3915,13 @@ HVA_VO_RENAMING::Process_cr<CK_OP>(STMTREP* sr, CODEREP* cr, UINT flag)
 
   for (INT32 i = 0; i < cr->Kid_count(); ++i) {
     Process_coderep<void>(sr, cr->Opnd(i), flag);
+  }
+
+  if (cr->Opr() == OPR_INTRINSIC_OP) {
+    VSYM_OBJ_REP* vor;
+    if ((vor = Vsa()->Cr_2_vor(cr)) != NULL && _hva->Visit_vsym_obj(vor)) {
+      Process_vor_on_cr(sr, cr, vor);
+    }
   }
 }
 
