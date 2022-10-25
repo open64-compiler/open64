@@ -8295,6 +8295,55 @@ Ifconv_Overhead (WN* wn) {
 }
 #endif
 
+// remove stmt from wn till hit a label which means there are goto stmt
+// reaches the label
+static WN *
+vho_remove_stmt_till_label( WN * wn )
+{
+  Is_True(wn != NULL, ("invalid wn"));
+  if (WN_operator(wn) == OPR_BLOCK) {
+    WN *stmt = WN_first(wn);
+    while (stmt != NULL) {
+      OPERATOR opr = WN_operator(stmt);
+      if (opr == OPR_LABEL) {
+        break;
+      }
+      if (opr == OPR_PRAGMA || opr == OPR_XPRAGMA) {
+        stmt = WN_next(stmt);
+        continue;
+      }
+      if (vho_remove_stmt_till_label(stmt)) {
+        break;
+      }
+#ifdef BUILD_MASTIFF
+#if 0
+      // TODO: check if DDC/MISRA_2_1 should be reported
+      if (Run_vsaopt && VSA_Ddc && Is_ddc_candidate(stmt)) {
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "DDC",
+                         FALSE, WN_Get_Linenum(stmt));
+        if (VSA_Xsca) {
+          Report_xsca_error(VHO_Get_VSA_PU_Name(), "", "MISRA_2_1",
+                            FALSE, WN_Get_Linenum(stmt));
+        }
+      }
+#endif
+#endif
+      WN *prev = stmt;
+      stmt = WN_next(stmt);
+      WN_DELETE_FromBlock(wn, prev);
+    }
+    return stmt;
+  }
+  else {
+    for (INT i = 0; i < WN_kid_count(wn); ++i) {
+      if (vho_remove_stmt_till_label(WN_kid(wn, i))) {
+        return wn;
+      }
+    }
+  }
+  return NULL;
+}
+
 static WN *
 vho_lower_if ( WN * wn, WN *block )
 {
@@ -8317,6 +8366,19 @@ vho_lower_if ( WN * wn, WN *block )
    */
 
   WN* test = WN_if_test(wn);  
+
+  if (WN_operator(test) == OPR_INTCONST) {
+    // remove stmt from then or else block if test is intconst
+    // ideally this should be done in front end but there is no
+    // VSA report in front end
+    if (WN_const_val(test)) {
+      vho_remove_stmt_till_label(WN_else(wn));
+    }
+    else {
+      vho_remove_stmt_till_label(WN_then(wn));
+    }
+  }
+
 #if defined(TARG_X8664) 
   if ( WN_operator(test) == OPR_GT &&
        WN_rtype(test) == MTYPE_I4 &&
