@@ -2143,7 +2143,8 @@ RBC_BASE::Eval__pre_check_var_value(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
   OPERATOR cmp_op = Get_opr_from_char((const char*)ret);
   CONTEXT_SWITCH context(dna);
   BB_NODE *bb = call_stmt->Bb();
-  ret = Pre_check_var(vsa, bb, v, cmp_op, value);
+  hash_set<IDTYPE> visited;
+  ret = Pre_check_var(vsa, bb, v, cmp_op, value, visited);
   Is_Trace(Tracing(), (TFile, "RBC: Pre_check_var_value(v:cr%d, opr:%d, value:cr%d): %lld\n",
                        v->Coderep_id(), cmp_op,
                        value == NULL || (INT32)(INTPTR)value == -1 ? -1 : value->Coderep_id(), ret));
@@ -2158,11 +2159,16 @@ RBC_BASE::Eval__pre_check_var_value(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
 //
 // =============================================================================
 BOOL
-RBC_BASE::Pre_check_var(VSA *vsa, BB_NODE *bb, CODEREP *v, OPERATOR opr, CODEREP *value)
+RBC_BASE::Pre_check_var(VSA *vsa, BB_NODE *bb, CODEREP *v, OPERATOR opr, CODEREP *value,
+                        hash_set<IDTYPE>& visited)
 {
   BB_NODE *cd;
   BB_NODE_SET_ITER cd_iter;
   FOR_ALL_ELEM(cd, cd_iter, Init(bb->Rcfg_dom_frontier())) {
+    if (visited.find(cd->Id()) != visited.end())
+      return FALSE;
+    visited.insert(cd->Id());
+
     Is_True(cd->Succ() != NULL,
             ("cd bb does not have successors"));
     Is_True(cd->Succ()->Multiple_bbs(),
@@ -2175,7 +2181,7 @@ RBC_BASE::Pre_check_var(VSA *vsa, BB_NODE *bb, CODEREP *v, OPERATOR opr, CODEREP
         }
       }
     }
-    if (Pre_check_var(vsa, cd, v, opr, value)) {
+    if (Pre_check_var(vsa, cd, v, opr, value, visited)) {
       return TRUE;
     }
   }
