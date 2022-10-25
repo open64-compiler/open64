@@ -504,8 +504,6 @@ EH_TABLE::Add_eh_type(uint32_t file_idx, STR_IDX ti)
   EH_TYPE_VECTOR::const_iterator it;
   for (it = _typeinfo.begin(); it != _typeinfo.end(); ++it) {
     FS_PAIR t = *it;
-    if (t.first == 0)
-      continue;
     if (file_idx == t.first && ti == t.second)
       return FALSE;
   }
