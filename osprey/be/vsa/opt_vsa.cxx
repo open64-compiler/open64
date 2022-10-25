@@ -4441,10 +4441,15 @@ VSA::Cr_aux_id(CODEREP *cr) const
 VSYM_FLD_REP
 VSA::Cr_vfr(CODEREP *cr) const
 {
-  Is_True(cr->Kind() == CK_VAR || cr->Kind() == CK_IVAR,
+  if (cr->Kind() == CK_OP) {
+    // TODO: improve for OP like ptr +/- const
+    return VSYM_FLD_REP(FLD_K_ANY, 0, 0);
+  }
+
+  Is_True(cr->Kind() == CK_LDA || cr->Kind() == CK_VAR || cr->Kind() == CK_IVAR,
           ("not VAR or IVAR"));
-  if (cr->Kind() == CK_VAR)
-    return VSYM_FLD_REP(FLD_K_ID, cr->Field_id(), Cr_ofst(cr));
+  if (cr->Kind() == CK_LDA || cr->Kind() == CK_VAR)
+    return VSYM_FLD_REP(FLD_K_ID, Cr_fldid(cr), Cr_ofst(cr));
   UINT fld_id = 0;
   mINT32 ofst = 0;
   if (cr->Opr() != OPR_PARM) {
