@@ -2543,8 +2543,9 @@ HVA_VO_CREATION::Process_istore<TRUE>(STMTREP *sr)
 VSYM_OBJ_REP *
 HVA_VO_CREATION::Create_vor_for_cr(STMTREP *sr, CODEREP *cr, CODEREP *base)
 {
-  Is_True(cr == base ||   // param with ILOAD or ISTORE
-          cr->Ilod_base() == base || cr->Istr_base() == base,  // regulat IVAR
+  Is_True((cr->Kind() == CK_OP && cr->Opr() == OPR_INTRINSIC_OP) || // ATOM_LOAD, etc
+          (cr->Kind() == CK_IVAR &&
+           (cr->Ilod_base() == base || cr->Istr_base() == base)),   // regulat IVAR
           ("invalid cr or base"));
   CODEREP *ilod_base = Find_ilod_base(base);
   HEAP_OBJ_REP *hor;
@@ -2567,7 +2568,8 @@ HVA_VO_CREATION::Create_vor_for_cr(STMTREP *sr, CODEREP *cr, CODEREP *base)
             hor->Attr() != ROR_DEF_BY_DANGLE,
             ("TODO: phi, varphi, vorphi, istore, copy, dangle"));
 
-    VSYM_FLD_REP vfr = Vsa()->Cr_vfr(cr);
+    CODEREP* vfr_cr = (cr->Kind() == CK_IVAR) ? cr : base;
+    VSYM_FLD_REP vfr = Vsa()->Cr_vfr(vfr_cr);
     vor = _hva->Create_vsym_obj_use(hor, &vfr);
 
     if (vfr.Is_any() && !hor->Field_any())
@@ -2616,7 +2618,7 @@ HVA_VO_CREATION::Process_intrinsic_op(STMTREP* sr, CODEREP* cr, UINT flag)
   }
 
   if (base != NULL) {
-    vor = Create_vor_for_cr(sr, base, base);
+    vor = Create_vor_for_cr(sr, cr, base);
   }
 
   return vor;
