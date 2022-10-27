@@ -9144,7 +9144,8 @@ WN * VHO_Lower_Driver (PU_Info* pu_info,
             !ST_addr_saved(st) &&
             !ST_addr_passed(st) &&
             !ST_is_used(st) &&
-            !ST_is_not_used(st)) {
+            !ST_is_not_used(st) &&
+            !ST_is_this_ptr(st)) {
           const char *name = ST_name(st);
           SRCPOS spos = ST_Srcpos(*st);
           if (name && name[0] != '.' && spos > 0) {
@@ -9152,6 +9153,8 @@ WN * VHO_Lower_Driver (PU_Info* pu_info,
             if (ST_is_inlined(st) && ST_orig_pu_st(st)) {
               fname = ST_name(ST_orig_pu_st(st));
             }
+            if (ST_sclass(st) == SCLASS_FORMAL && strcmp(fname, "main") == 0)
+              continue;
             Report_vsa_error(fname, name, "DDV", FALSE, spos);
           }
         }
