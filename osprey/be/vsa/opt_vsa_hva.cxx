@@ -3899,7 +3899,7 @@ HVA_VO_RENAMING::Process_cr<CK_IVAR>(STMTREP* sr, CODEREP* cr, UINT flag)
     // not found vor, so base shouldn't have a hor, or the
     // hor is created just now
     VSYM_OBJ_REP *vor;
-    FmtAssert(hor == NULL || _hva->Visit_heap_obj(hor) ||
+    Is_True(hor == NULL || _hva->Visit_heap_obj(hor) ||
             (base_cr->Kind() == CK_IVAR &&
              ((vor = Vsa()->Cr_2_vor(base_cr)) == NULL ||
               _hva->Visit_vsym_obj(vor))), ("no vor found"));
