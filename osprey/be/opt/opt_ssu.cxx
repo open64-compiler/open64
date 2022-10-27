@@ -417,7 +417,7 @@ void SSU::Make_diff_ssu_version_at_phi(EXP_WORKLST *wk,
 	EXP_WORKLST *wk2 = iphi->Result()->Spre_wk();
 	if (wk2 == wk) 
 	  iphi->Set_null_ssu_version(pos2);
-	else {
+	else if (wk2->Exp()->Kind() == CK_VAR /* shin 090822 */) {
 	  POINTS_TO *iphi_points_to = Opt_stab()->Points_to(wk2->Exp()->Aux_id());
 	  if (Opt_stab()->Rule()->Aliased_Memop_By_Analysis(points_to,
 							    iphi_points_to))
