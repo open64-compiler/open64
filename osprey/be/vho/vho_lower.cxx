@@ -8298,7 +8298,7 @@ Ifconv_Overhead (WN* wn) {
 // remove stmt from wn till hit a label which means there are goto stmt
 // reaches the label
 static WN *
-vho_remove_stmt_till_label( WN * wn )
+vho_remove_stmt_till_label( WN * wn, BOOL top )
 {
   Is_True(wn != NULL, ("invalid wn"));
   if (WN_operator(wn) == OPR_BLOCK) {
@@ -8312,13 +8312,13 @@ vho_remove_stmt_till_label( WN * wn )
         stmt = WN_next(stmt);
         continue;
       }
-      if (vho_remove_stmt_till_label(stmt)) {
+      if (vho_remove_stmt_till_label(stmt, FALSE)) {
         break;
       }
 #ifdef BUILD_MASTIFF
 #if 0
       // TODO: check if DDC/MISRA_2_1 should be reported
-      if (Run_vsaopt && VSA_Ddc && Is_ddc_candidate(stmt)) {
+      if (top && Run_vsaopt && VSA_Ddc && Is_ddc_candidate(stmt)) {
         Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "DDC",
                          FALSE, WN_Get_Linenum(stmt));
         if (VSA_Xsca) {
@@ -8330,13 +8330,17 @@ vho_remove_stmt_till_label( WN * wn )
 #endif
       WN *prev = stmt;
       stmt = WN_next(stmt);
-      WN_DELETE_FromBlock(wn, prev);
+      if (top) {
+        // only remove stmt in top block otherwise the inner SCF maybe broken
+        // due to COMMA/RCOMMA in sub trees.
+        WN_DELETE_FromBlock(wn, prev);
+      }
     }
     return stmt;
   }
   else {
     for (INT i = 0; i < WN_kid_count(wn); ++i) {
-      if (vho_remove_stmt_till_label(WN_kid(wn, i))) {
+      if (vho_remove_stmt_till_label(WN_kid(wn, i), FALSE)) {
         return wn;
       }
     }
@@ -8372,10 +8376,10 @@ vho_lower_if ( WN * wn, WN *block )
     // ideally this should be done in front end but there is no
     // VSA report in front end
     if (WN_const_val(test)) {
-      vho_remove_stmt_till_label(WN_else(wn));
+      vho_remove_stmt_till_label(WN_else(wn), TRUE);
     }
     else {
-      vho_remove_stmt_till_label(WN_then(wn));
+      vho_remove_stmt_till_label(WN_then(wn), TRUE);
     }
   }
 
