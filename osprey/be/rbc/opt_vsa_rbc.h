@@ -1321,6 +1321,7 @@ private:
   UINT64   Eval__post_check_var_func(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__post_call(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_func_exec_successful(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
+  UINT64   Eval__is_return_checked_properly(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_var_used_after(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_var_defined_after(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_var_invalid_and_used_after(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);

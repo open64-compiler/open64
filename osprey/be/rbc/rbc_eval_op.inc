@@ -42,6 +42,7 @@ DEF_RBC_OP(RBC_OP_POST_CHECK_VAR_VALUE, NULL, &RBC_BASE::Eval__post_check_var_va
 DEF_RBC_OP(RBC_OP_POST_CHECK_VAR_FUNC, NULL, &RBC_BASE::Eval__post_check_var_func, "Post_check_var_func")
 DEF_RBC_OP(RBC_OP_POST_CALL, NULL, &RBC_BASE::Eval__post_call, "Post_call")
 DEF_RBC_OP(RBC_OP_IS_FUNC_EXEC_SUCCESSFUL, NULL, &RBC_BASE::Eval__is_func_exec_successful, "Is_func_exec_successful")
+DEF_RBC_OP(RBC_OP_IS_RETURN_CHECKED_PROPERLY, NULL, &RBC_BASE::Eval__is_return_checked_properly, "Is_return_checked_properly")
 DEF_RBC_OP(RBC_OP_IS_VAR_USED_AFTER, NULL, &RBC_BASE::Eval__is_var_used_after, "Is_var_used_after")
 DEF_RBC_OP(RBC_OP_IS_VAR_DEFINED_AFTER, NULL, &RBC_BASE::Eval__is_var_defined_after, "Is_var_defined_after")
 DEF_RBC_OP(RBC_OP_IS_VAR_INVALID_AND_USED_AFTER, NULL, &RBC_BASE::Eval__is_var_invalid_and_used_after, "Is_var_invalid_and_used_after")

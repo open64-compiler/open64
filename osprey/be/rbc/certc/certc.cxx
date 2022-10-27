@@ -1424,151 +1424,342 @@ ssize_t read(int fd, void *buf, size_t count)
 int pos35_c_fsm(void)
 {
   rbc.Model_decl(rbc.Fsm_build_begin("pos35c"));
-  rbc.Model_decl(rbc.Fsm_new_start_state("start_up"));
+  rbc.Model_decl(rbc.Fsm_new_start_state("start"));
   rbc.Model_decl(rbc.Fsm_new_final_state("finish"));
 
-  // read transitions
-  // #1 "start_up" => "open_r" : open(*, O_RDONLY)
-  rbc.Model_decl(rbc.Fsm_add_transition("start_up", "open", rbc.Get_arg(1),
-                                        rbc.Get_value(rbc.Get_arg(2)) == O_RDONLY,
-                                        "open_r", NULL, 73));
-  // #2 "open_r" => "open_rv" : if (fd != -1)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "if", NULL,
-                                        rbc.Is_func_exec_successful("open", "ne", -1),
-                                        "open_rv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "if", NULL,
-                                        !rbc.Is_func_exec_successful("open", "ne", -1),
-                                        "finish", NULL, 149));
-  // #3 "open_r" => "open_rv" : fstat(*, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fstat", rbc.Get_arg(1),
-                                        1, "open_rf", NULL, 150));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rf", "if", NULL,
-                                        rbc.Is_func_exec_successful("fstat", "ne", -1),
-                                        "open_rv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rf", "if", NULL,
-                                        !rbc.Is_func_exec_successful("fstat", "ne", -1),
-                                        "finish", NULL, 149));
-  // #4 "open_r" => "open_rv" : read(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "read", rbc.Get_arg(1),
-                                        1, "open_rv", "ERR33-C", 67));
-  // #5 "open_r" => "open_rv" : write(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "write", rbc.Get_arg(1),
-                                        1, "open_rv", "ERR33-C WRF MISRA_22_4", 68));
-  // #6 "open_r" => "finish" : close(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "close", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C", 69));
-  // #7 "open_rv" => "open_rv" : read(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "read", rbc.Get_arg(1),
-                                        1, "open_rv", NULL, 67));
-  // #8 "open_rv" => "open_rv" : write(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "write", rbc.Get_arg(1),
-                                        1, "open_rv", "WRF MISRA_22_4", 68));
-  // #8-1 "open_rv" => "open_rv" : if
-  // rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "if", NULL, 1, "open_rv", NULL, 66));
-  // #9 "open_rv" => "finish" : close(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "close", rbc.Get_arg(1),
-                                        1, "finish", NULL, 69));
-  // #10 "open_r" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_r", "FIO42-C MISRA_22_1", 70));
-  // #11 "open_rv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_rv", "FIO42-C MISRA_22_1", 70));
-
   // write transitions
-  // #1 "start_up" => "open_w" : open(*, O_WRONLY)
-  rbc.Model_decl(rbc.Fsm_add_transition("start_up", "open", rbc.Get_arg(1),
-                                        (rbc.Get_value(rbc.Get_arg(2)) != 0) &
+  // #1-1 "start" => "openw" : open(*, O_WRONLY)
+  rbc.Model_decl(rbc.Fsm_add_transition("start", "open", rbc.Get_arg(1),
+                                        (rbc.Get_value(rbc.Get_arg(2)) != O_RDONLY) &
                                         ((rbc.Get_value(rbc.Get_arg(2)) & O_EXCL) == 0),
-                                        "open_w", NULL, 74));
-  // #2 "open_w" => "open_wv" : if (fd != -1)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "if", NULL,
+                                        "openw", NULL, 74));
+  // #3-1 "openw" => "openw_s" : read(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "read", rbc.Get_arg(1), 1,
+                                        "openw_s", "ERR33-C POS35-C", 67));
+  // #3-2 "openw" => "openw_s" : write(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "write", rbc.Get_arg(1), 1,
+                                        "openw_s", "ERR33-C POS35-C", 68));
+  // #3-3 "openw" => "finish" : close(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "close", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C", 69));
+  // #3-4 "openw" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openw", "FIO42-C MISRA_22_1", 70));
+  // #3-5 "openw" => "openw_c" : check if (fd != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("open", "ne", -1),
+                                        "openw_c", NULL, 66));
+  // #3-6 "openw" => "openw" : not check if (fd != -1), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openw", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("open", "ne", -1),
+  //                                       "openw", NULL, 149));
+  // #3-7 "openw" => "openw_f" : fstat(*, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "fstat", rbc.Get_arg(1), 1,
+                                        "openw_f", NULL, 150));
+  // #4-1 "openw_c" => "openw_s" : if (fd != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_c", "if", NULL,
                                         rbc.Is_func_exec_successful("open", "ne", -1),
-                                        "open_wv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "if", NULL,
+                                        "openw_s", NULL, 66));
+  // #4-2 "openw_c" => "open_f" : if (fd != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_c", "if", NULL,
                                         !rbc.Is_func_exec_successful("open", "ne", -1),
-                                        "finish", NULL, 149));
-  // #3 "open_w" => "open_xv" : fstat(*, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fstat", rbc.Get_arg(1),
-                                        1, "open_wf", NULL, 150));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wf", "if", NULL,
+                                        "open_f", NULL, 149));
+  // #5-1 "openw_s" => "openw_s" : read(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "read", rbc.Get_arg(1), 1,
+                                        "openw_s", "POS35-C", 67));
+  // #5-2 "openw_s" => "openw_s" : write(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "write", rbc.Get_arg(1), 1,
+                                        "openw_s", "POS35-C", 68));
+  // #5-3 "openw_s" => "finish" : close(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "close", rbc.Get_arg(1), 1,
+                                        "finish", NULL, 69));
+  // #5-4 "openw_s" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openw_s", "FIO42-C MISRA_22_1", 70));
+  // #5-5 "openw_s" => "openw_sc" : check if (fd != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("open", "ne", -1),
+                                        "openw_sc", NULL, 66));
+  // #5-6 "openw_s" => "openw_s" : not check if (fd != -1), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("open", "ne", -1),
+  //                                       "openw_s", NULL, 149));
+  // #5-7 "openw_s" => "openw_sf" : fstat(*, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "fstat", rbc.Get_arg(1), 1,
+                                        "openw_sf", NULL, 150));
+  // #6-1 "open_f" => "finish" : read(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "read", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C", 67));
+  // #6-2 "open_f" => "finish" : write(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "write", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C", 68));
+  // #6-3 "open_f" => "finish" : close(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "close", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C", 69));
+  // #6-4 "open_f" => "open_fc" : check if (fd != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("open", "ne", -1),
+                                        "open_fc", NULL, 66));
+  // #6-5 "open_f" => "open_f" : not check if (fd != -1), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("open_f", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("open", "ne", -1),
+  //                                       "open_f", NULL, 149));
+  // #6-6 "open_f" => "finish" : default, ignored as good finish
+  // rbc.Model_decl(rbc.Fsm_set_default_action("open_f", NULL, 70));
+  // #6-7 "open_f" => "open_ff" : fstat(*, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "fstat", rbc.Get_arg(1), 1,
+                                        "open_ff", NULL, 150));
+  // #7-1 "openw_sc" => "openw_s" : if (fd != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_sc", "if", NULL,
+                                        rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "openw_s", NULL, 66));
+  // #7-2 "openw_sc" => "finish" : if (fd != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_sc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "finish", "DDC", 149));
+  // #8-1 "open_fc" => "finish" : if (fd != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("open_fc", "if", NULL,
+                                        rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "finish", "DDC", 66));
+  // #8-2 "open_fc" => "open_f" : if (fd != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("open_fc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "open_f", NULL, 149));
+  // #9-1 "openw_f" => "openw_fc" : check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_f", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openw_fc", NULL, 66));
+  // #9-2 "openw_f" => "openw" : not check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_f", "if:test", NULL,
+                                        !rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openw", NULL, 149));
+  // #10-1 "openw_sf" => "openw_sfc" : check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_sf", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openw_sfc", NULL, 66));
+  // #10-2 "openw_sf" => "openw_s" : not check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_sf", "if:test", NULL,
+                                        !rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openw_s", NULL, 149));
+  // #11-1 "open_ff" => "open_ffc" : check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_ff", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "open_ffc", NULL, 66));
+  // #11-2 "open_ff" => "open_f" : not check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_ff", "if:test", NULL,
+                                        !rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "open_f", NULL, 149));
+  // #12-1 "openw_fc" => "openx_s" : if (fstat() != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_fc", "if", NULL,
                                         rbc.Is_func_exec_successful("fstat", "ne", -1),
-                                        "open_xv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wf", "if", NULL,
+                                        "openx_s", NULL, 66));
+  // #12-2 "openw_fc" => "open_f" : if (fstat() != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_fc", "if", NULL,
                                         !rbc.Is_func_exec_successful("fstat", "ne", -1),
-                                        "finish", NULL, 149));
-  // #4 "open_w" => "open_wv" : read(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "read", rbc.Get_arg(1),
-                                        1, "open_wv", "ERR33-C POS35-C", 67));
-  // #5 "open_w" => "open_wv" : write(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "write", rbc.Get_arg(1),
-                                        1, "open_wv", "ERR33-C POS35-C", 68));
-  // #6 "open_w" => "finish" : close(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "close", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C", 69));
-  // #7 "open_wv" => "open_xv" : fstat(*, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "fstat", rbc.Get_arg(1),
-                                        1, "open_wf", NULL, 75));
-  // #8 "open_wv" => "open_wv" : read(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "read", rbc.Get_arg(1),
-                                        1, "open_wv", "POS35-C", 67));
-  // #9 "open_wv" => "open_wv" : write(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "write", rbc.Get_arg(1),
-                                        1, "open_wv", "POS35-C", 68));
-  // #9-1 "open_wv" => "open_wv" : if
-  // rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "if", NULL, 1, "open_wv", NULL, 66));
-  // #10 "open_wv" => "finish" : close(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "close", rbc.Get_arg(1),
-                                        1, "finish", NULL, 69));
-  // #11 "open_w" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_w", "FIO42-C MISRA_22_1", 70));
-  // #12 "open_wv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_wv", "FIO42-C MISRA_22_1", 70));
+                                        "open_f", NULL, 149));
+  // #13-1 "openw_sfc" => "openx_s" : if (fstat() != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_sfc", "if", NULL,
+                                        rbc.Is_func_exec_successful("fstat", "ne", -1),
+                                        "openx_s", NULL, 66));
+  // #13-2 "openw_sfc" => "open_f" : if (fstat() != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_sfc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fstat", "ne", -1),
+                                        "open_f", NULL, 149));
+  // #14-1 "open_ffc" => "finish" : if (fstat() != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("open_ffc", "if", NULL,
+                                        rbc.Is_func_exec_successful("fstat", "ne", -1),
+                                        "finish", "DDC", 66));
+  // #14-1 "open_ffc" => "open_f" : if (fstat() != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("open_ffc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fstat", "ne", -1),
+                                        "open_f", NULL, 149));
 
   // exclusive write transitions
-  // #1 "start_up" => "open_x" : open(*, O_WRONLY | O_EXCL)
-  rbc.Model_decl(rbc.Fsm_add_transition("start_up", "open", rbc.Get_arg(1),
+  // #1-2 "start" => "openx" : open(*, O_WRONLY | O_EXCL)
+  rbc.Model_decl(rbc.Fsm_add_transition("start", "open", rbc.Get_arg(1),
                                         (rbc.Get_value(rbc.Get_arg(2)) != 0) &
                                         ((rbc.Get_value(rbc.Get_arg(2)) & O_EXCL) != 0),
-                                        "open_x", NULL, 76));
-  // #2 "open_x" => "open_xv" : if (fd != -1)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "if", NULL,
+                                        "openx", NULL, 76));
+  // #16-1 "openx" => "openx_s" : read(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "read", rbc.Get_arg(1), 1,
+                                        "openx_s", "ERR33-C", 67));
+  // #16-2 "openx" => "openx_s" : write(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "write", rbc.Get_arg(1), 1,
+                                        "openx_s", "ERR33-C", 68));
+  // #16-3 "openx" => "finish" : close(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "close", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C", 69));
+  // #16-4 "openx" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openx", "FIO42-C MISRA_22_1", 70));
+  // #16-5 "openx" => "openx_c" : check if (fd != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("open", "ne", -1),
+                                        "openx_c", NULL, 66));
+  // #16-6 "openx" => "openx" : not check if (fd != -1), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openx", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("open", "ne", -1),
+  //                                       "openx", NULL, 149));
+  // #16-7 "openx" => "openx_f" : fstat(*, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "fstat", rbc.Get_arg(1), 1,
+                                        "openx_f", NULL, 150));
+  // #17-1 "openx_c" => "openx_s" : if (fd != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_c", "if", NULL,
                                         rbc.Is_func_exec_successful("open", "ne", -1),
-                                        "open_xv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "if", NULL,
+                                        "openx_s", NULL, 66));
+  // #17-2 "openx_c" => "open_f" : if (fd != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_c", "if", NULL,
                                         !rbc.Is_func_exec_successful("open", "ne", -1),
-                                        "finish", NULL, 149));
-  // #3 "open_x" => "open_xv" : fstat(*, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fstat", rbc.Get_arg(1),
-                                        1, "open_xf", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_xf", "if", NULL,
+                                        "open_f", NULL, 149));
+  // #15-1 "openx_s" => "openx_s" : read(*, _, _), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "read", rbc.Get_arg(1), 1,
+  //                                       "openx_s", NULL, 67));
+  // #15-2 "openx_s" => "openx_s" : write(*, _, _), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "write", rbc.Get_arg(1), 1,
+  //                                       "openx_s", NULL, 68));
+  // #15-3 "openx_s" => "finish" : close(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "close", rbc.Get_arg(1), 1,
+                                        "finish", NULL, 69));
+  // #15-4 "openx_s" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openx_s", "FIO42-C MISRA_22_1", 70));
+  // #15-5 "openx_s" => "openx_sc" : check if (fd != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("open", "ne", -1),
+                                        "openx_sc", NULL, 66));
+  // #15-6 "openx_s" => "openx_s" : not check if (fd != -1), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("open", "ne", -1),
+  //                                       "openx_s", NULL, 149));
+  // #15-7 "openx_s" => "openx_sf" : fstat(*, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "fstat", rbc.Get_arg(1), 1,
+                                        "openx_sf", NULL, 150));
+  // #18-1 "openx_sc" => "openx_s" : if (fd != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_sc", "if", NULL,
+                                        rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "openx_s", NULL, 66));
+  // #18-2 "openx_sc" => "finish" : if (fd != 1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_sc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "finish", "DDC", 149));
+  // #19-1 "openx_f" => "openw_fc" : check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_f", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openw_fc", NULL, 66));
+  // #19-2 "openx_f" => "openx" : not check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_f", "if:test", NULL,
+                                        !rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openx", NULL, 149));
+  // #20-1 "openx_sf" => "openx_sfc" : check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_sf", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openx_sfc", NULL, 66));
+  // #20-2 "openx_sf" => "openx_s" : not check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_sf", "if:test", NULL,
+                                        !rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openx_s", NULL, 149));
+  // #21-1 "openx_sfc" => "openx_s" : if (fstat() != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_sfc", "if", NULL,
                                         rbc.Is_func_exec_successful("fstat", "ne", -1),
-                                        "open_xv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_xf", "if", NULL,
+                                        "openx_s", NULL, 66));
+  // #21-2 "openx_sfc" => "finish" : if (fstat() != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_sfc", "if", NULL,
                                         !rbc.Is_func_exec_successful("fstat", "ne", -1),
-                                        "finish", NULL, 149));
-  // #4 "open_x" => "open_xv" : read(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "read", rbc.Get_arg(1),
-                                        1, "open_xv", "ERR33-C", 67));
-  // #5 "open_x" => "open_xv" : write(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "write", rbc.Get_arg(1),
-                                        1, "open_xv", "ERR33-C", 68));
-  // #6 "open_x" => "finish" : close(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "close", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C", 69));
-  // #7 "open_xv" => "open_xv" : read(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "read", rbc.Get_arg(1),
-                                        1, "open_xv", NULL, 67));
-  // #8 "open_xv" => "open_xv" : write(*, _, _)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "write", rbc.Get_arg(1),
-                                        1, "open_xv", NULL, 68));
-  // #8-1 "open_xv" => "open_xv" : if
-  // rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "if", NULL, 1, "open_xv", NULL, 66));
-  // #9 "open_xv" => "finish" : close(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "close", rbc.Get_arg(1),
-                                        1, "finish", NULL, 69));
-  // #10 "open_x" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_x", "FIO42-C MISRA_22_1", 70));
-  // #11 "open_xv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_xv", "FIO42-C MISRA_22_1", 70));
+                                        "finish", "DDC", 149));
+
+  // read transitions
+  // #1-3 "start" => "openr" : open(*, O_RDONLY)
+  rbc.Model_decl(rbc.Fsm_add_transition("start", "open", rbc.Get_arg(1),
+                                        rbc.Get_value(rbc.Get_arg(2)) == O_RDONLY,
+                                        "openr", NULL, 73));
+  // #22-1 "openr" => "openr_s" : read(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "read", rbc.Get_arg(1), 1,
+                                        "openr_s", "ERR33-C", 67));
+  // #22-2 "openr" => "openr_s" : write(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "write", rbc.Get_arg(1), 1,
+                                        "openr_s", "ERR33-C WRF MISRA_22_4", 68));
+  // #22-3 "openr" => "finish" : close(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "close", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C", 69));
+  // #22-4 "openr" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openr", "FIO42-C MISRA_22_1", 70));
+  // #22-5 "openr" => "openr_c" : check if (fd != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("open", "ne", -1),
+                                        "openr_c", NULL, 66));
+  // #22-6 "openr" => "openr" : not check if (fd != -1), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openr", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("open", "ne", -1),
+  //                                       "openr", NULL, 149));
+  // #22-7 "openr" => "openr_f" : fstat(*, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "fstat", rbc.Get_arg(1), 1,
+                                        "openr_f", NULL, 150));
+  // #23-1 "openr_c" => "openr_s" : if (fd != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_c", "if", NULL,
+                                        rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "openr_s", NULL, 66));
+  // #23-2 "openr_c" => "open_f" : if (fd != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_c", "if", NULL,
+                                        !rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "open_f", NULL, 149));
+  // #24-1 "openr_s" => "openr_s" : read(*, _, _), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "read", rbc.Get_arg(1), 1,
+  //                                       "openr_s", NULL, 67));
+  // #24-2 "openr_s" => "openr_s" : write(*, _, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "write", rbc.Get_arg(1), 1,
+                                        "openr_s", "WRF MISRA_22_4", 68));
+  // #24-3 "openr_s" => "finish" : close(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "close", rbc.Get_arg(1), 1,
+                                        "finish", NULL, 69));
+  // #24-4 "openr_s" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openr_s", "FIO42-C MISRA_22_1", 70));
+  // #24-5 "openr_s" => "openr_sc" : check if (fd != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("open", "ne", -1),
+                                        "openr_sc", NULL, 66));
+  // #24-6 "openr_s" => "openr_s" : not check if (fd != -1), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("open", "ne", -1),
+  //                                       "openr_s", NULL, 149));
+  // #24-7 "openr_s" => "openr_sf" : fstat(*, _)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "fstat", rbc.Get_arg(1), 1,
+                                        "openr_sf", NULL, 150));
+  // #25-1 "openr_sc" => "openr_s" : if (fd != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_sc", "if", NULL,
+                                        rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "openr_s", NULL, 66));
+  // #25-2 "openr_sc" => "finish" : if (fd != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_sc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("open", "ne", -1),
+                                        "finish", "DDC", 149));
+  // #26-1 "openr_f" => "openr_fc" : check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_f", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openr_fc", NULL, 66));
+  // #26-2 "openr_f" => "openr" : not check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_f", "if:test", NULL,
+                                        !rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openr", NULL, 149));
+  // #27-1 "openr_sf" => "openr_sfc" : check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_sf", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openr_sfc", NULL, 66));
+  // #27-2 "openr_sf" => "openr_s" : not check if (fstat() != -1)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_sf", "if:test", NULL,
+                                        !rbc.Is_return_checked_properly("fstat", "ne", -1),
+                                        "openr_s", NULL, 149));
+  // #28-1 "openr_sfc" => "openr_s" : if (fstat() != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_sfc", "if", NULL,
+                                        rbc.Is_func_exec_successful("fstat", "ne", -1),
+                                        "openr_s", NULL, 66));
+  // #28-2 "openr_sfc" => "finish" : if (fstat() != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_sfc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fstat", "ne", -1),
+                                        "finish", "DDC", 149));
+  // #29-1 "openr_fc" => "openr_s" : if (fstat() != -1) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_fc", "if", NULL,
+                                        rbc.Is_func_exec_successful("fstat", "ne", -1),
+                                        "openr_s", NULL, 66));
+  // #29-2 "openr_fc" => "open_f" : if (fstat() != -1) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_fc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fstat", "ne", -1),
+                                        "open_f", NULL, 149));
 
   rbc.Model_decl(rbc.Fsm_build_end("pos35c"));
 }
