@@ -2942,55 +2942,56 @@ RBC_BASE::Eval__is_return_checked_properly(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
         var_cr = lhs;
         val_cr = rhs;
       }
-      if (val_cr != NULL &&
-          val_cr->Kind() == CK_CONST) {
-        chk_val = (INT)val_cr->Const_val();
-      }
-      if (var_cr->Kind() == CK_OP &&
-          (var_cr->Opr() == OPR_CVT ||
-           var_cr->Opr() == OPR_CVTL)) {
-        var_cr = var_cr->Opnd(0);
-      }
-      if (Is_var_retv_of_func(dna, var_cr, src_stmt, fname) &&
-          chk_val == value) {
-        if (cmp->Opr() == cmp_op) {
-          ret = TRUE;
+      if (var_cr != NULL && val_cr != NULL) {
+        if (val_cr->Kind() == CK_CONST) {
+          chk_val = (INT)val_cr->Const_val();
         }
-        else if (cmp_op == OPR_NE) {
-          if (cmp->Opr() == OPR_EQ) {
+        if (var_cr->Kind() == CK_OP &&
+            (var_cr->Opr() == OPR_CVT ||
+             var_cr->Opr() == OPR_CVTL)) {
+          var_cr = var_cr->Opnd(0);
+        }
+        if (Is_var_retv_of_func(dna, var_cr, src_stmt, fname) &&
+            chk_val == value) {
+          if (cmp->Opr() == cmp_op) {
             ret = TRUE;
           }
-        }
-        else if (cmp_op == OPR_EQ) {
-          if (cmp->Opr() == OPR_NE) {
-            ret = TRUE;
+          else if (cmp_op == OPR_NE) {
+            if (cmp->Opr() == OPR_EQ) {
+              ret = TRUE;
+            }
           }
-        }
-        else if (cmp_op == OPR_GE) {
-          if (cmp->Opr() == OPR_LT) {
-            ret = TRUE;
+          else if (cmp_op == OPR_EQ) {
+            if (cmp->Opr() == OPR_NE) {
+              ret = TRUE;
+            }
           }
-        }
-        else if (cmp_op == OPR_GT) {
-          if (cmp->Opr() == OPR_LE) {
-            ret = TRUE;
+          else if (cmp_op == OPR_GE) {
+            if (cmp->Opr() == OPR_LT) {
+              ret = TRUE;
+            }
           }
-        }
-        else if (cmp_op == OPR_LE) {
-          if (cmp->Opr() == OPR_GT) {
-            ret = TRUE;
+          else if (cmp_op == OPR_GT) {
+            if (cmp->Opr() == OPR_LE) {
+              ret = TRUE;
+            }
           }
-        }
-        else if (cmp_op == OPR_LT) {
-          if (cmp->Opr() == OPR_GE) {
-            ret = TRUE;
+          else if (cmp_op == OPR_LE) {
+            if (cmp->Opr() == OPR_GT) {
+              ret = TRUE;
+            }
           }
-        }
-        else {
-          Rbc_eval_certainty()->push_back(REC_SKIP);
-          Is_Trace(Tracing(),
-                   (TFile,
-                    "RBC::Is_return_checked_properly: TODO: other comparison not yet implemented\n"));
+          else if (cmp_op == OPR_LT) {
+            if (cmp->Opr() == OPR_GE) {
+              ret = TRUE;
+            }
+          }
+          else {
+            Rbc_eval_certainty()->push_back(REC_SKIP);
+            Is_Trace(Tracing(),
+                     (TFile,
+                      "RBC::Is_return_checked_properly: TODO: other comparison not yet implemented\n"));
+          }
         }
       }
     }
