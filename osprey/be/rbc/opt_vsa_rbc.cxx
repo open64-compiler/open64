@@ -407,7 +407,7 @@ RBC_BASE::Init__fsm_add_transition(IPSA *ipsa, DNA_NODE *enclosing_dna, RNA_NODE
 
   Is_True(Current_fsm_base() != NULL, ("Not in the context of a FSM builder"));
   Current_fsm_base()->Fsm()->Add_transition(statenum, action, key, cond, nstatenum, errcode_vec, msg_id);
-  if (strcmp(action, "if") == 0) {
+  if (strcmp(action, "if") == 0 || strcmp(action, "if:test") == 0) {
     Current_fsm_base()->Fsm()->Set_flag(FSM_ATTR_IF_TRANSIT);
   }
   else if (strcmp(action, "return") == 0) {
@@ -2896,6 +2896,107 @@ RBC_BASE::Is_var_retv_of_func(DNA_NODE *dna, CODEREP *cr, STMTREP *stmt, STRING 
       }
     }
   }
+  return ret;
+}
+
+
+// =============================================================================
+//
+// RBC_BASE::Eval__is_return_checked_properly
+//
+// =============================================================================
+UINT64
+RBC_BASE::Eval__is_return_checked_properly(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
+{
+  // BOOL Is_return_checked_properly(char *fname, char *opr, int value)
+  RBC_EVAL_SKIP();
+  UINT64 ret = FALSE;
+  DNA_NODE *dna = rbc_ctx.Caller();
+  CODEREP *arg0 = stmt->Rhs()->Find_nth_arg(0 + Rbc_parm_ofst_adjust(dna));
+  STRING fname = (STRING)Eval__exp(rbc_ctx, arg0);
+  CODEREP *arg1 = stmt->Rhs()->Find_nth_arg(1 + Rbc_parm_ofst_adjust(dna));
+  STRING opr_str = (STRING)Eval__exp(rbc_ctx, arg1);
+  OPERATOR cmp_op = Get_opr_from_char(opr_str);
+  CODEREP *arg2 = stmt->Rhs()->Find_nth_arg(2 + Rbc_parm_ofst_adjust(dna));
+  INT value = (INT)Eval__exp(rbc_ctx, arg2);
+  STMTREP *src_stmt = rbc_ctx.Stmt();
+  if (src_stmt != NULL &&
+      (src_stmt->Opr() == OPR_FALSEBR ||
+       src_stmt->Opr() == OPR_TRUEBR)) {
+    CODEREP *cmp = src_stmt->Rhs();
+    CODEREP *var_cr = NULL;
+    CODEREP *val_cr = NULL;
+    // indicating codes like: 0 < ret
+    BOOL reverted = FALSE;
+    if (cmp->Kind() == CK_OP &&
+        OPERATOR_is_compare(cmp->Opr())) {
+      CODEREP *rhs = cmp->Opnd(1);
+      CODEREP *lhs = cmp->Opnd(0);
+      INT chk_val = 0;
+      if (lhs->Kind() == CK_CONST) {
+        var_cr = rhs;
+        val_cr = lhs;
+        reverted = TRUE;
+      }
+      else if (rhs->Kind() == CK_CONST) {
+        var_cr = lhs;
+        val_cr = rhs;
+      }
+      if (val_cr != NULL &&
+          val_cr->Kind() == CK_CONST) {
+        chk_val = (INT)val_cr->Const_val();
+      }
+      if (var_cr->Kind() == CK_OP &&
+          (var_cr->Opr() == OPR_CVT ||
+           var_cr->Opr() == OPR_CVTL)) {
+        var_cr = var_cr->Opnd(0);
+      }
+      if (Is_var_retv_of_func(dna, var_cr, src_stmt, fname) &&
+          chk_val == value) {
+        if (cmp->Opr() == cmp_op) {
+          ret = TRUE;
+        }
+        else if (cmp_op == OPR_NE) {
+          if (cmp->Opr() == OPR_EQ) {
+            ret = TRUE;
+          }
+        }
+        else if (cmp_op == OPR_EQ) {
+          if (cmp->Opr() == OPR_NE) {
+            ret = TRUE;
+          }
+        }
+        else if (cmp_op == OPR_GE) {
+          if (cmp->Opr() == OPR_LT) {
+            ret = TRUE;
+          }
+        }
+        else if (cmp_op == OPR_GT) {
+          if (cmp->Opr() == OPR_LE) {
+            ret = TRUE;
+          }
+        }
+        else if (cmp_op == OPR_LE) {
+          if (cmp->Opr() == OPR_GT) {
+            ret = TRUE;
+          }
+        }
+        else if (cmp_op == OPR_LT) {
+          if (cmp->Opr() == OPR_GE) {
+            ret = TRUE;
+          }
+        }
+        else {
+          Rbc_eval_certainty()->push_back(REC_SKIP);
+          Is_Trace(Tracing(),
+                   (TFile,
+                    "RBC::Is_return_checked_properly: TODO: other comparison not yet implemented\n"));
+        }
+      }
+    }
+  }
+  Is_Trace(Tracing(), (TFile, "RBC: Is_return_checked_properly(fname:%s, opr:%s, value:%d): %lld %s\n",
+                       fname, opr_str, value, ret, Rbc_result_ignore() ? "ignored" : ""));
   return ret;
 }
 
@@ -14219,12 +14320,8 @@ RBC_BASE::Perform_fsm_check_stmt(FSM_OBJ_REP *fsm_obj_rep, STMTREP *stmt, BB_NOD
       continue;
     }
     // valid transit on found 'ret', need to evaluate condition and match keys here after.
-    // for 'if', try to match key here and do the condition evaluation later
+    // for 'if', try to match key with one of its operand
     if (opr == OPR_FALSEBR || opr == OPR_TRUEBR) {
-      if (ori_key == NULL) {
-        found = TRUE;
-        break;
-      }
       CODEREP *cmp = stmt->Rhs();
       if (cmp != NULL && cmp->Kind() == CK_OP && OPERATOR_is_compare(cmp->Opr())) {
         CODEREP *lhs = cmp->Opnd(0);
@@ -14234,51 +14331,109 @@ RBC_BASE::Perform_fsm_check_stmt(FSM_OBJ_REP *fsm_obj_rep, STMTREP *stmt, BB_NOD
         hash_set<IDTYPE> visited;
         visited.clear();
         new_key = Match_fsm_key(vsa, fsm_obj_rep, ori_key, lhs, visited);
-        if (new_key != NULL) {
-          found = TRUE;
-          break;
-        }
-        Is_Trace(Tracing(), (TFile, "RBC: try rhs(cr%d) of compare operand\n",
-                             rhs == NULL ? -1 : rhs->Coderep_id()));
-        visited.clear();
-        new_key = Match_fsm_key(vsa, fsm_obj_rep, ori_key, rhs, visited);
-        if (new_key != NULL) {
-          found = TRUE;
-          break;
+        if (new_key == NULL) {
+          Is_Trace(Tracing(), (TFile, "RBC: try rhs(cr%d) of compare operand\n",
+                               rhs == NULL ? -1 : rhs->Coderep_id()));
+          visited.clear();
+          new_key = Match_fsm_key(vsa, fsm_obj_rep, ori_key, rhs, visited);
         }
       }
-      Is_Trace(Tracing(), (TFile, "RBC: no key matches, skipped\n"));
-      continue;
-    }
-    // try to match key for ret & fsm_obj_rep
-    new_key = ret->Key();
-    Is_Trace(Tracing(), (TFile, "RBC: trying to match key fsm_obj_rep("));
-    if (ori_key == NULL) {
-      Is_Trace(Tracing(), (TFile, "null)"));
-    }
-    else {
-      Is_Trace(Tracing(), (TFile, "cr%d)", ori_key->Coderep_id()));
-    }
-    Is_Trace(Tracing(), (TFile, " with ret("));
-    if (new_key == NULL) {
-      Is_Trace(Tracing(), (TFile, "null)"));
-    }
-    else {
-      Is_Trace(Tracing(), (TFile, "cr%d)", new_key->Coderep_id()));
-    }
-    Is_Trace(Tracing(), (TFile, "\n"));
-    if (ori_key != NULL && new_key != NULL) {
-      hash_set<IDTYPE> visited;
-      visited.clear();
-      new_key = Match_fsm_key(vsa, fsm_obj_rep, ori_key, new_key, visited);
-      if (new_key == NULL) {
-        Is_Trace(Tracing(), (TFile, "RBC: key mismatches, skipped\n"));
+      if (ori_key != NULL && new_key == NULL) {
+        Is_Trace(Tracing(), (TFile, "RBC: no key matches, skipped\n"));
         continue;
+      }
+    }
+    else {
+      // try to match key for ret & fsm_obj_rep
+      new_key = ret->Key();
+      Is_Trace(Tracing(), (TFile, "RBC: trying to match key fsm_obj_rep("));
+      if (ori_key == NULL) {
+        Is_Trace(Tracing(), (TFile, "null)"));
+      }
+      else {
+        Is_Trace(Tracing(), (TFile, "cr%d)", ori_key->Coderep_id()));
+      }
+      Is_Trace(Tracing(), (TFile, " with ret("));
+      if (new_key == NULL) {
+        Is_Trace(Tracing(), (TFile, "null)"));
+      }
+      else {
+        Is_Trace(Tracing(), (TFile, "cr%d)", new_key->Coderep_id()));
+      }
+      Is_Trace(Tracing(), (TFile, "\n"));
+      if (ori_key != NULL && new_key != NULL) {
+        hash_set<IDTYPE> visited;
+        visited.clear();
+        new_key = Match_fsm_key(vsa, fsm_obj_rep, ori_key, new_key, visited);
+        if (new_key == NULL) {
+          Is_Trace(Tracing(), (TFile, "RBC: key mismatches, skipped\n"));
+          continue;
+        }
       }
     }
     // key matches.
     // for 'return', there's no condition evaluation
     if (opr == OPR_RETURN || opr == OPR_RETURN_VAL) {
+      found = TRUE;
+      break;
+    }
+    else if (opr == OPR_TRUEBR || opr == OPR_FALSEBR) {
+      // If there're two transits on a same 'if' statement,
+      // like #1 function return value is tested properly &
+      // #2 return value indicates function completes successfuly,
+      // e.g. for fd = open(*), fd > 0 is not a proper test but fd != -1 is.
+      // Transit like #1 is noted as action "if_test" and done here,
+      // Transit like #2 is left later to match branch targets.
+      // Note that transits change no states should not be done here to avoid infinite loop.
+      if (vsa->Is_action_match(stmt, action, "if:test") != TS_NOT_MATCH) {
+        DNA_NODE *fsm_dna = fsm->Dna();
+        RBC_CONTEXT rbc_ctx(vsa->Dna(), fsm_dna, stmt, vsa->Loc_pool());
+        CONTEXT_SWITCH context(fsm_dna);
+        Rbc_init();
+        UINT64 retv = Eval__exp(rbc_ctx, ts->Cond());
+        if (retv == 0 || Rbc_result_ignore()) {
+          Is_Trace(Tracing(), (TFile, "RBC: Action(%s) cond mismatches.\n", action));
+          continue;
+        }
+        // Do the transit and find next transit on 'if' statement
+        if (new_key != NULL) {
+          fsm_ctx.Set_cur_key(new_key);
+          const char *new_key_str = Generate_fsm_key_str(new_key, stmt, action, vsa->Dna(), srcpos_h);
+          Is_Trace(Tracing(), (TFile, "RBC: set new key for transit: (cr%d:%s) => (cr%d:%s)\n",
+                               ori_key == NULL ? -1 : ori_key->Coderep_id(), srcpos_h->Orig_stname(),
+                               new_key == NULL ? -1 : new_key->Coderep_id(), new_key_str));
+          srcpos_h->Set_orig_stname(new_key_str);
+        }
+        ret->Set_visited();
+        Is_Trace(Tracing(), (TFile, "RBC: Set visited on: "));
+        Is_Trace_cmd(Tracing(), ret->Print(TFile));
+        Is_Trace(Tracing(), (TFile, "\n"));
+        ret->Set_state(ts->Nstate());
+        srcpos_h->Append_data(stmt, vsa->Dna(), ts->Msg_id());
+        Is_Trace(Tracing(), (TFile, "\nRBC: FSM(\"%s\"): state(%d) => state(%d) by Action(\"%s\")\n",
+                             fsm_name, cur_state, ret->State(), action));
+        if (ts->Errcode()->size() != 0) {
+          // report error for transition with error code
+          Report_fsm_error(vsa, &fsm_ctx, stmt, ret, ts, srcpos_h, FSM_ERR_KIND_TRANSIT);
+        }
+        // Done transit like #1, look for transit like #2,
+        cur_state = ret->State();
+        for (INT nfa_idx = 0; nfa_idx < for_array->size(); nfa_idx++) {
+          FSM_OBJ_REP *next_for = (*for_array)[nfa_idx];
+          if (next_for == NULL || next_for->Fsm() != fsm)
+            continue;
+          TRANSIT *next_ts = next_for->Transit();
+          if (next_ts == NULL || next_ts->Is_default() || next_ts->State() != cur_state)
+            continue;
+          STRING next_act = next_ts->Action();
+          if (next_act == NULL)
+            continue;
+          Is_Trace(Tracing(), (TFile, "RBC: found cur_state(%d), ret(%d => %d), next(%d => %d) on \"if\"\n",
+                               cur_state, ts->State(), ts->Nstate(), next_ts->State(), next_ts->Nstate()));
+          ret = next_for;
+          break;
+        } // end for_array
+      }
       found = TRUE;
       break;
     }

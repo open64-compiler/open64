@@ -320,6 +320,7 @@ PUBLIC
   PUB_MOD STATIC RBC_BOOL   Post_check_var_func(OBJECT v, RBC_CONST RBC_STRING fname, RBC_CONST RBC_STRING value) BOOL_BODY;
   PUB_MOD STATIC RBC_BOOL   Post_call(RBC_CONST RBC_STRING fname) BOOL_BODY;
   PUB_MOD STATIC RBC_BOOL   Is_func_exec_successful(RBC_CONST RBC_STRING fname, RBC_CONST RBC_STRING opr, int value) BOOL_BODY;
+  PUB_MOD STATIC RBC_BOOL   Is_return_checked_properly(RBC_CONST RBC_STRING fname, RBC_CONST RBC_STRING opr, int value) BOOL_BODY;
   PUB_MOD STATIC RBC_BOOL   Is_var_used_after(OBJECT v) BOOL_BODY;
   PUB_MOD STATIC RBC_BOOL   Is_var_defined_after(OBJECT v) BOOL_BODY;
   PUB_MOD STATIC RBC_BOOL   Is_var_invalid_and_used_after(OBJECT v) BOOL_BODY;

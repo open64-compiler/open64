@@ -499,6 +499,9 @@ VSA::Is_action_match(STMTREP *sr, const char* ft_def, const char* ft_value)
   if (strcmp(ft_def, ft_value) == 0) {
     return TS_EXACT_MATCH;
   }
+  if (strcmp(ft_def, "if:test") == 0 && strcmp(ft_value, "if") == 0) {
+    return TS_EXACT_MATCH;
+  }
   if (OPERATOR_is_call(sr->Opr())) {
     if (Is_candidate_action(sr, ft_def, ft_value)) {
       return TS_CAND_MATCH;
