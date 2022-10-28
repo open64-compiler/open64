@@ -290,7 +290,10 @@ TAG_PROP::Propagate_tag_rbc_create(RNA_NODE *rna, DNA_NODE *callee)
     CODEREP *cr = rna->Get_arg(arg);
     if (cr->Kind() == CK_OP)
       cr = Find_ilod_base(cr);
-    if (cr) {
+    // There's no vsym created on const parm with hva, and also same const value
+    // share same cr in PU, bind tag on cr will mislead tag propagation, so just
+    // ignore const tag creation
+    if (!cr->Is_const()) {
       std::vector<IDTYPE> tag_id_vec;
       TAG_NODE *tn = callee->Parm_list()->at(arg)->Get_tag_node();
       tn->Collect_all_tags(tag_id_vec);
