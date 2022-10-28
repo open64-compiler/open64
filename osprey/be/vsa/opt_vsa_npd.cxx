@@ -203,6 +203,7 @@ NPD_CHECKER::Check_coderep<CK_CONST>(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
               ("unexpected stmt operator"));
       CODEREP *cmp = last->Rhs();
       if (cmp->Kind() == CK_OP &&
+          OPERATOR_is_compare(cmp->Opr()) &&
           cmp->Opnd(1)->Kind() == CK_CONST &&
           cmp->Opnd(1)->Const_val() == 0 &&
           ((cmp->Opr() == OPR_EQ && cda.Kind() == CDA_RHS_TRUE) ||
