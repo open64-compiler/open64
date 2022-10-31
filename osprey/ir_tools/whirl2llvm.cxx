@@ -461,6 +461,7 @@ typedef llvm::Attribute      LVATTR;
 typedef llvm::Constant       LVCONST;
 typedef llvm::BlockAddress   LVBLKADDR;
 typedef llvm::GlobalAlias    LVGLBALIAS;
+typedef llvm::PointerType    LVPTRTY;
 
 // =============================================================================
 //
@@ -1053,6 +1054,10 @@ private:
   }
 
 public:
+  LVPTRTY    *GetLVPtrTy() {
+    return LVPTRTY::get(Context(), 0);
+  }
+
   INT         Get_preg4parm_idx(INT reg) {
     INT parm_reg = _builder->Get_preg4parm_regno(reg);
     if (parm_reg != 0 && !Parm_name().empty()) {
@@ -1130,7 +1135,7 @@ public:
         FmtAssert(pointee_ty != nullptr,
                   ("Wty2llvmty: pointee_type for %s does not exist", TY_name(idx)));
 
-        res = llvm::PointerType::get(Context(), 0);
+        res = GetLVPtrTy();
         break;
       }
       case KIND_STRUCT: {
@@ -1156,7 +1161,7 @@ public:
         FmtAssert(pointee_ty != nullptr,
                   ("Wty2llvmty: pointee_type for %s does not exist", TY_name(idx)));
 
-        return llvm::PointerType::get(Context(), 0);
+        return GetLVPtrTy();
       }
 
       switch (tysize) {
@@ -1220,7 +1225,7 @@ public:
       if (pointee_ty->isFunctionTy() && (TY_kind(idx) != KIND_POINTER)) {
         return pointee_ty;
       }
-      return llvm::PointerType::get(Context(), 0);
+      return GetLVPtrTy();
     } else if (MTYPE_is_str(mtype)) {
       FmtAssert(TY_kind(idx) == KIND_ARRAY, ("Wty2llvmty: constant string should be array"));
       auto array_ty = Get_wty2lvty(TY_IDX_index(idx), idx);
@@ -1417,6 +1422,19 @@ public:
     return func;
   }
 
+  llvm::GlobalValue::LinkageTypes GetFuncLinkageType(ST *st) {
+    auto link = llvm::GlobalValue::ExternalLinkage;
+    if (ST_export(st) == EXPORT_LOCAL) {
+      link = llvm::GlobalValue::LinkageTypes::InternalLinkage;
+    }
+
+    // check if it is extern inline function
+    if (PU_is_extern_inline(Pu_Table[ST_pu(st)])) {
+      link = llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage;
+    }
+    return link;
+  }
+
   LVFUNC     *Create_func(LVFUNCTY *lvfuncty, WN *wn, SIGNVEC *sign_info) {
     if (lvfuncty == NULL)
       return NULL;
@@ -1435,13 +1453,8 @@ public:
     
     std::string funcname(ST_name(func_st));
  
-    auto link = llvm::GlobalValue::LinkageTypes::ExternalLinkage;
+    auto link = GetFuncLinkageType(func_st);
 
-    // check if it is extern inline function
-    ST *st = WN_st(wn);
-    if (PU_is_extern_inline(Pu_Table[ST_pu(st)])) {
-      link = llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage;
-    }
     llvm::Function *func = llvm::Function::Create(lvfuncty, link, funcname, _module);
 
     if (func != NULL) {
@@ -1485,6 +1498,9 @@ public:
   void        Mutate_locvar(const char *nm, LVALC *p, LVTY *ty) { _builder->Mutate_locvar(nm, p, ty); }
   void        Put_glbvar(const char *nm, LVVAL *p){
     FmtAssert(nm, ("ACCESS VIOLATION"));
+    if (_glbvars.find(nm) != _glbvars.end()) {
+      FmtAssert(_glbvars.find(nm) == _glbvars.end(), ("Put_glbvar: %s already exists", nm));
+    }
     FmtAssert(_glbvars.find(nm) == _glbvars.end(), ("Put_glbvar: %s already exists", nm));
     _glbvars[nm] = p;
   }
@@ -1530,19 +1546,15 @@ public:
   TYALC       Get_preg(WN *wn, BOOL is_load = FALSE, TYPE_ID mtype = 0, TY_IDX ty_idx = 0);
 
   LVGLBVAR   *Create_glbvar(TYPE_ID tyid, TY_IDX idx, const char *name, llvm::GlobalValue::LinkageTypes linkTy) {
-    LVGLBVAR *gvar = Create_glbvar(tyid, idx, name);
-    gvar->setLinkage(linkTy);
+    LVGLBVAR *gvar = Create_glbvar(Wty2llvmty(tyid, idx), name, linkTy);
     return gvar;
   }
 
-  LVGLBVAR   *Create_glbvar(TYPE_ID tyid, TY_IDX idx, const char *name) {
-    return Create_glbvar(Wty2llvmty(tyid, idx), name);
-  }
-
-  LVGLBVAR   *Create_glbvar(LVTY *lvty, const char *name) {
+  LVGLBVAR   *Create_glbvar(LVTY *lvty, const char *name, llvm::GlobalValue::LinkageTypes linkTy) {
     std::string Name = std::string(name);
     _module->getOrInsertGlobal(Name, lvty);
     LVGLBVAR *gvar = _module->getNamedGlobal(Name);
+    gvar->setLinkage(linkTy);
     Put_glbvar(name, gvar);
     return gvar;
   }
@@ -3157,7 +3169,7 @@ struct COLLECT_VALUE {
   COLLECT_VALUE(LVVALVEC *lvvec) : lvvalvec(lvvec) {}
 
   void operator() (WN *wn, WHIRL2llvm *wl) const {
-    auto val = wl->EXPR2llvm(wn);
+    LVVAL *val = wl->EXPR2llvm(wn);
 
     // FIXME: we should remove this hardcode for va_arg on RISCV
     if (WN_operator(wn) == OPR_PARM) {
@@ -3168,8 +3180,8 @@ struct COLLECT_VALUE {
       if (TY_kind(tyidx) == KIND_ARRAY) {
         tyidx = TY_etype(tyidx);
         if ((TY_kind(tyidx) == KIND_STRUCT) && (TY_name(tyidx) == std::string("__va_list_tag"))) {
-          FmtAssert(FALSE, ("COLLECT_VALUE::operator(): NYI for __va_list_tag"));
-          // val = wl->Lvbuilder()->CreateLoad(val);
+          // FmtAssert(FALSE, ("COLLECT_VALUE::operator(): NYI for __va_list_tag"));
+          val = wl->Lvbuilder()->CreateLoad(wl->GetLVPtrTy(), val);
         }
       }
     }
@@ -3230,10 +3242,7 @@ WHIRL2llvm::Create_mload_formal(LVTYVEC& argstype, TY_IDX idx, PLOC& ploc, char 
       LVTY   *lvty = Wty2llvmty(type, idx, MTYPE_bit_size(type));
 
       // convert this struct type to a pointer type
-
-      lvty = llvm::PointerType::get(Context(), 0);
-      
-      argstype.push_back(lvty);
+      argstype.push_back(GetLVPtrTy());
 
       if (name != NULL) {
         Parm_name().push_back(AGGMAP(name, ONSTACK, idx));
@@ -3363,7 +3372,7 @@ WHIRL2llvm::Create_ret_type(TY_IDX putyidx, LVTYVEC& argstype, SIGNVEC *info_lis
     // Create an istore; an mstore with a single complex value seemed
     // to confuse things later on.
 
-    LVTY *fake_param_ty = llvm::PointerType::get(Context(), 0);
+    LVTY *fake_param_ty = GetLVPtrTy();
     if (ploc != NULL) {
       *ploc = Get_Input_Parameter_Location(Get_ptrtype(ret_idx));
       argstype.push_back(fake_param_ty);
@@ -4114,8 +4123,10 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
       } // switch act
     } // end of FORMAL 
     case SCLASS_PSTATIC: {
+
       std::string name_idx(varname);
-      name_idx += "_" + std::to_string(ST_index(st));
+      std::string pu_idx = std::to_string(ST_pu(WN_st(Cur_func())));
+      name_idx += "_" + pu_idx + "_" + std::to_string(ST_index(st));
       auto gvar = Get_glbvar(name_idx.c_str());
       if (act == ACT_LDA) {
         // non-zero offset shall be handled by the caller
@@ -4127,6 +4138,12 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         }
 
         return addr;
+      } else if (act == ACT_LD) {
+        LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+        if (offset != 0) Gen_displacement(wn, &gvar);
+        auto load = Lvbuilder()->CreateLoad(ld_ty, gvar);
+        load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+        return load;
       } else {
         FmtAssert(FALSE, ("WN2llvmSymAct: unsupported action(%d) for SCLASS_PSTATIC", act));
       }
@@ -4341,7 +4358,8 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
     switch (st->storage_class) {
     case SCLASS_PSTATIC: {
       // static variable in function
-      std::string name = std::string(varname) + "_" + std::to_string(ST_index(st));
+      std::string pu_idx = std::to_string(ST_pu(WN_st(whirl2llvm->Cur_func())));
+      std::string name = std::string(varname) + "_" + pu_idx + "_" + std::to_string(ST_index(st));
       gvar = whirl2llvm->Create_glbvar(tyid, tyidx, name.c_str(), llvm::GlobalValue::InternalLinkage);
       if (INITV_IDX val = ST_has_initv(st)) {
         gvar->setInitializer(whirl2llvm->INITV2llvm(Initv_Table[val], ST_type(st)));
@@ -4406,10 +4424,18 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
       if (tyid == MTYPE_UNKNOWN)
         tyid = MTYPE_V;        // hack to side step WN_Lower bug, FIX WN_Lower
       INITV_IDX initv = ST_has_initv(st);
-      if (initv && (INITV_kind(initv) == INITVKIND_LABEL)) {
-        LVTY *lvty = whirl2llvm->Wty2llvmty(tyid, tyidx);
-        FmtAssert(lvty->isArrayTy(), ("ST2llvm: TY_kind(%d) should be array type", TY_kind(tyidx)));
-        gvar = whirl2llvm->Create_glbvar(lvty, varname);
+      if (initv) {
+        if (INITV_kind(initv) == INITVKIND_LABEL) {
+          LVTY *lvty = whirl2llvm->Wty2llvmty(tyid, tyidx);
+          FmtAssert(lvty->isArrayTy(), ("ST2llvm: TY_kind(%d) should be array type", TY_kind(tyidx)));
+
+          // convert the int array to ptr array
+          lvty = llvm::ArrayType::get(whirl2llvm->GetLVPtrTy(), lvty->getArrayNumElements());
+
+          gvar = whirl2llvm->Create_glbvar(lvty, varname, llvm::GlobalValue::InternalLinkage);
+        } else {
+          gvar = whirl2llvm->Create_glbvar(tyid, tyidx, varname, llvm::GlobalValue::InternalLinkage);
+        }
       } else {
         gvar = whirl2llvm->Create_glbvar(tyid, tyidx, varname, llvm::GlobalValue::InternalLinkage);
         LVTY *lvty = gvar->getValueType();
@@ -4427,7 +4453,7 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
       break;
     }
     case SCLASS_UGLOBAL: {
-      gvar = whirl2llvm->Create_glbvar(tyid, tyidx, varname);
+      gvar = whirl2llvm->Create_glbvar(tyid, tyidx, varname, llvm::GlobalValue::ExternalLinkage);
       whirl2llvm->ST2lvval(st, gvar);
       // set alignment
       gvar->setAlignment(llvm::MaybeAlign(TY_align(tyidx)));
@@ -4439,7 +4465,7 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
     case SCLASS_DGLOBAL: {
       /* Global variable with initialization */
       // TODO: set init value `g_var->setInitializer(llvm::Constant *)
-      gvar = whirl2llvm->Create_glbvar(tyid, tyidx, varname);
+      gvar = whirl2llvm->Create_glbvar(tyid, tyidx, varname, llvm::GlobalValue::ExternalLinkage);
       gvar->setDSOLocal(true);
       if (ST_is_const_var(st)) {
         gvar->setConstant(true);
@@ -4465,7 +4491,7 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
       if (base->storage_class == SCLASS_UNKNOWN) return;
 
       if (whirl2llvm->Module()->getGlobalVariable(name) == nullptr) {
-        LVGLBVAR *alias = whirl2llvm->Create_glbvar(gvar->getValueType(), name);
+        LVGLBVAR *alias = whirl2llvm->Create_glbvar(gvar->getValueType(), name, gvar->getLinkage());
         SetZeroInitializer(alias, alias->getValueType(), base);
         whirl2llvm->ST2lvval(base, alias);
       }
@@ -4523,12 +4549,7 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
     }
 
     auto func_ty = llvm::FunctionType::get(ret_type, args_ty, TY_is_varargs(tyidx));
-    auto link = llvm::GlobalValue::LinkageTypes::ExternalLinkage;
-
-    // check if it is extern inline function
-    if (PU_is_extern_inline(Pu_Table[ST_pu(st)])) {
-      link = llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage;
-    }
+    auto link = whirl2llvm->GetFuncLinkageType(st);
 
     auto func = llvm::Function::Create(func_ty, link, funcname, whirl2llvm->Module());
 
@@ -5255,9 +5276,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     LVVAL *tmp = Lvbuilder()->CreateGEP(jmp_table->getValueType(), jmp_table, idxs);
 
     // 2. load jmp index
-    FmtAssert(opr == OPR_ILOAD, ("STMT2llvm: WN node should be ILOAD"));
-    LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
-    auto cond = Lvbuilder()->CreateLoad(ld_ty, tmp);
+    auto cond = Lvbuilder()->CreateLoad(GetLVPtrTy(), tmp);
 
     // get target blocks
     auto indirectbr = Lvbuilder()->CreateIndirectBr(cond, num_entries);
@@ -5338,7 +5357,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
 
     // convert it to pointer type
     if (istr_base_ty->isIntegerTy()) {
-      HandlePointerAndIntegerType(wn, &istr_base, llvm::PointerType::get(Context(), 0), true);
+      HandlePointerAndIntegerType(wn, &istr_base, GetLVPtrTy(), true);
       istr_base_ty = istr_base->getType();
     }
 
@@ -5445,7 +5464,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
 
     Is_True(func->getType()->isIntegerTy(),
             ("EXPR2llvm: callee address should be integer"));
-    HandlePointerAndIntegerType(wn, &func, llvm::PointerType::get(Context(), 0), true);
+    HandlePointerAndIntegerType(wn, &func, GetLVPtrTy(), true);
 
     TY_IDX funcptr_ty = WN_ty(funcptr);
     FmtAssert(TY_kind(funcptr_ty) == KIND_POINTER, ("Type of funcptr should be pointer type"));
@@ -5484,16 +5503,13 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
       case INTRN_VA_START: {
         // convert to @llvm.va_start()
 
-        // %1 = alloca i8*
+        // %1 = alloca ptr
         LVVAL *args = EXPR2llvm(WN_kid0(wn));
 
-        // %2 = bitcast i8** %1 to i8*
-        LVVAL *ptr_i8 = Lvbuilder()->CreateBitCast(args, LVTY::getInt8PtrTy(Context()));
-
-        // call void @llvm.va_start(%3)
+        // call void @llvm.va_start(%2)
         LVFUNC *TheFn =
             llvm::Intrinsic::getDeclaration(Module(), llvm::Intrinsic::vastart);
-        Lvbuilder()->CreateCall(TheFn, {ptr_i8});
+        Lvbuilder()->CreateCall(TheFn, {args});
         break;
       }
       case INTRN_MEMCPY:
