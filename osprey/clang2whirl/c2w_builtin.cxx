@@ -926,6 +926,14 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
     return Result::nwNone();
 #endif
 
+#if LLVM_VERSION_MAJOR >= 15
+  case Builtin::BIas_const:
+  case Builtin::BIforward:
+  case Builtin::BImove:
+  case Builtin::BImove_if_noexcept:
+    return Result::nwNone();
+#endif
+
   default:
     Is_True(false, ("unsupported builtin %d\n", builtin_id));
     return Result::nwNone();
