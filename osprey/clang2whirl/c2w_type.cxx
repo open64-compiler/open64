@@ -755,8 +755,6 @@ WhirlTypeBuilder::ConvertRecordType(const RecordType *type, BOOL incomplete, TY_
       const LangOptions &opts = _builder->Context()->getLangOpts();
       // get same class name as GCC "class_name<template_arg>"
       decl->getNameForDiagnostic(os, PrintingPolicy(opts), true);
-      // append ty_index to avoid duplicated type name
-      os << "." << TY_IDX_index(ty_idx);
       name_idx = _builder->DeclBuilder().ConvertName(decl, os.str());
     }
     else if (!decl->getName().empty()) {

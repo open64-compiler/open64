@@ -29,6 +29,7 @@
 */
 
 #include <clang/AST/VTableBuilder.h>
+#include <llvm/Demangle/Demangle.h>
 #include "c2w_decl.h"
 #include "c2w_builder.h"
 #include "c2w_func.h"
@@ -955,6 +956,9 @@ WhirlDeclBuilder::ConvertVTableComponent(const VTableLayout &layout, unsigned id
   return inv;
 }
 
+// vtable demandled name always starts with "vtable for "
+#define VTABLE_NAME_PREFIX "vtable for "
+
 ST_IDX
 WhirlDeclBuilder::GetVTableST(const clang::CXXRecordDecl *decl) {
   TY_IDX record_type_idx = _builder->TB().ConvertType(decl->getTypeForDecl());
@@ -963,6 +967,17 @@ WhirlDeclBuilder::GetVTableST(const clang::CXXRecordDecl *decl) {
     sym_idx = _builder->SB().VSC().Get(decl);
     Is_True(!ST_is_initialized(&St_Table[sym_idx]),
             ("vtable st initialized"));
+    // try to update type name with demangled vtable name
+    std::string vtbl_str = llvm::demangle(ST_name(sym_idx));
+    const char *name = vtbl_str.c_str();
+    if (strncmp(name, VTABLE_NAME_PREFIX, sizeof(VTABLE_NAME_PREFIX)-1) == 0) {
+      // remove "vtable for "
+      name += sizeof(VTABLE_NAME_PREFIX) - 1;
+      if (strcmp(name, TY_name(record_type_idx)) != 0) {
+        // reset type name according to vtable name
+        Set_TY_name_idx(record_type_idx, Save_Str(name));
+      }
+    }
     Set_TY_vtable(record_type_idx, sym_idx);
     Set_ST_vtable_ty_idx(&St_Table[sym_idx], record_type_idx);
     _builder->AddDeferredVTable(decl);
