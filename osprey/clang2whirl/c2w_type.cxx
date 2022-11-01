@@ -1690,7 +1690,7 @@ Build_vtable_pointer(const Type *type) {
 
   // vtable
   ST *rtti_vt = New_ST(GLOBAL_SYMTAB);
-  ST_Init(rtti_vt, Save_Str(vtable_name), CLASS_VAR, SCLASS_EXTERN, EXPORT_PREEMPTIBLE, pu_idx);
+  ST_Init(rtti_vt, Save_Str(vtable_name), CLASS_VAR, SCLASS_EXTERN, EXPORT_PREEMPTIBLE, arr_ty_idx);
   Set_ST_is_vtable(rtti_vt);
   Set_ST_vtable_ty_idx(rtti_vt, class_ty_info);
   return ST_st_idx(rtti_vt);
