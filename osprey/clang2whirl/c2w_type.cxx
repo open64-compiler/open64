@@ -28,6 +28,7 @@
 
 */
 
+#include <unordered_map>
 #include <clang/AST/VTableBuilder.h>
 #include "c2w_type.h"
 #include "c2w_builder.h"
@@ -1537,13 +1538,19 @@ static const char * const si_class_type_info_ty =
     "__si_class_type_info";
 static const char * const vmi_class_type_info_ty =
     "__vmi_class_type_info";
+// record the existing ST entry of vtables
+static std::unordered_map<Type::TypeClass, ST_IDX> vtable_st_map;
 
 ST_IDX
 Build_vtable_pointer(const Type *type) {
   const char *vtable_name = nullptr;
   const char *type_info_name = "__class_type_info";
+  Type::TypeClass type_class = type->getTypeClass();
+  auto it = vtable_st_map.find(type_class);
+  if (it != vtable_st_map.end())
+    return it->second;
 
-  switch (type->getTypeClass()) {
+  switch (type_class) {
 #define TYPE(Class, Base)
 #define ABSTRACT_TYPE(Class, Base)
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
@@ -1691,7 +1698,9 @@ Build_vtable_pointer(const Type *type) {
   ST_Init(rtti_vt, Save_Str(vtable_name), CLASS_VAR, SCLASS_EXTERN, EXPORT_PREEMPTIBLE, arr_ty_idx);
   Set_ST_is_vtable(rtti_vt);
   Set_ST_vtable_ty_idx(rtti_vt, class_ty_info);
-  return ST_st_idx(rtti_vt);
+  ST_IDX st = ST_st_idx(rtti_vt);
+  vtable_st_map.emplace(type_class, st);
+  return st;
 }
 
 ST_IDX
