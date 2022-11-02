@@ -4009,11 +4009,14 @@ WhirlExprBuilder::ConvertCastExpr(const CastExpr *expr, Result dest) {
     // TODO
     Is_True(FALSE, ("unsupported CK_Dynamic"));
 
+  case CK_LValueBitCast:
+    from_wn = ConvertToNode(sub);
+    return Result::nwNode(from_wn, to_ty);
+
   case CK_ConstructorConversion:
   case CK_UserDefinedConversion:
   case CK_CPointerToObjCPointerCast:
   case CK_BlockPointerToObjCPointerCast:
-  case CK_LValueBitCast:
   case CK_NoOp:
     return ConvertExpr(sub, dest);
 
