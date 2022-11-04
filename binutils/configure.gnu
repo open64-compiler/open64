@@ -15,7 +15,12 @@ do
         shift 1
 done
 
-export CC="$GCC_CONFIGURE_COMPILER"
+if [ "$BUILD_PRODUCT" = "XCALCC" ]
+then
+        export CC="riscv64-linux-gnu-gcc -mabi=lp64d"
+else
+        export CC="$GCC_CONFIGURE_COMPILER"
+fi
 export CFLAGS="$GCC_CONFIGURE_CFLAGS"
 
 if [ "`uname -m | sed -e s/i.86/i386/`" = "i386" ]

@@ -456,7 +456,7 @@ coff_dump (struct coff_ofile *ptr)
     dump_coff_section (ptr->sections + i);
 }
 
-char * program_name;
+extern char * program_name;
 
 static void
 show_usage (FILE *file, int status)

@@ -633,7 +633,7 @@ module (void)
     }
 }
 
-char *program_name;
+extern char *program_name;
 
 ATTRIBUTE_NORETURN static void
 show_usage (FILE *ffile, int status)
