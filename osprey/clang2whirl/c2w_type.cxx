@@ -1541,16 +1541,29 @@ static const char * const vmi_class_type_info_ty =
 // record the existing ST entry of vtables
 static std::unordered_map<Type::TypeClass, ST_IDX> vtable_st_map;
 
+enum vtable_type_kind {
+  NONE_TYPE              = 0,
+  FUNDAMENTAL_TYPE       = 1,
+  ARRAY_TYPE             = 2,
+  FUNCTION_TYPE          = 3,
+  ENUM_TYPE              = 4,
+  CLASS_TYPE             = 5,
+  SI_CLASS_TYPE          = 6,
+  VMI_CLASS_TYPE         = 7,
+  POINTER_TYPE           = 8,
+  POINTER_TO_MEMBER_TYPE = 9,
+  LAST_TYPE
+};
+
+static ST_IDX vtable_st_list[LAST_TYPE] = {0};
+
 ST_IDX
 Build_vtable_pointer(const Type *type) {
   const char *vtable_name = nullptr;
   const char *type_info_name = "__class_type_info";
-  Type::TypeClass type_class = type->getTypeClass();
-  auto it = vtable_st_map.find(type_class);
-  if (it != vtable_st_map.end())
-    return it->second;
+  enum vtable_type_kind vtable_kind = NONE_TYPE;
 
-  switch (type_class) {
+  switch (type->getTypeClass()) {
 #define TYPE(Class, Base)
 #define ABSTRACT_TYPE(Class, Base)
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
@@ -1584,6 +1597,7 @@ Build_vtable_pointer(const Type *type) {
   case Type::BlockPointer:
     // abi::__fundamental_type_info.
     vtable_name = "_ZTVN10__cxxabiv123__fundamental_type_infoE";
+    vtable_kind = FUNDAMENTAL_TYPE;
     break;
 
   case Type::ConstantArray:
@@ -1591,17 +1605,20 @@ Build_vtable_pointer(const Type *type) {
   case Type::VariableArray:
     // abi::__array_type_info.
     vtable_name = "_ZTVN10__cxxabiv117__array_type_infoE";
+    vtable_kind = ARRAY_TYPE;
     break;
 
   case Type::FunctionNoProto:
   case Type::FunctionProto:
     // abi::__function_type_info.
     vtable_name = "_ZTVN10__cxxabiv120__function_type_infoE";
+    vtable_kind = FUNCTION_TYPE;
     break;
 
   case Type::Enum:
     // abi::__enum_type_info.
     vtable_name = "_ZTVN10__cxxabiv116__enum_type_infoE";
+    vtable_kind = ENUM_TYPE;
     break;
 
   case Type::Record: {
@@ -1610,12 +1627,15 @@ Build_vtable_pointer(const Type *type) {
 
     if (!rd->hasDefinition() || !rd->getNumBases()) {
       vtable_name = class_type_info;
+      vtable_kind = CLASS_TYPE;
     } else if (Can_use_single_inheritance(rd)) {
       vtable_name = si_class_type_info;
       type_info_name = si_class_type_info_ty;
+      vtable_kind = SI_CLASS_TYPE;
     } else {
       vtable_name = vmi_class_type_info;
       type_info_name = vmi_class_type_info_ty;
+      vtable_kind = VMI_CLASS_TYPE;
     }
 
     break;
@@ -1628,6 +1648,7 @@ Build_vtable_pointer(const Type *type) {
     // Handle id and Class.
     if (isa<BuiltinType>(type)) {
       vtable_name = class_type_info;
+      vtable_kind = CLASS_TYPE;
       break;
     }
 
@@ -1638,8 +1659,10 @@ Build_vtable_pointer(const Type *type) {
     if (cast<ObjCInterfaceType>(type)->getDecl()->getSuperClass()) {
       vtable_name = si_class_type_info;
       type_info_name = si_class_type_info_ty;
+      vtable_kind = SI_CLASS_TYPE;
     } else {
       vtable_name = class_type_info;
+      vtable_kind = CLASS_TYPE;
     }
     break;
 
@@ -1647,15 +1670,22 @@ Build_vtable_pointer(const Type *type) {
   case Type::Pointer:
     // abi::__pointer_type_info.
     vtable_name = "_ZTVN10__cxxabiv119__pointer_type_infoE";
+    vtable_kind = POINTER_TYPE;
     break;
 
   case Type::MemberPointer:
     // abi::__pointer_to_member_type_info.
     vtable_name = "_ZTVN10__cxxabiv129__pointer_to_member_type_infoE";
+    vtable_kind = POINTER_TO_MEMBER_TYPE;
     break;
   default:
     Is_True(false,
             ("Unsupported type class: %s", type->getTypeClassName()));
+  }
+
+  Is_True(vtable_kind != NONE_TYPE, ("vtable_kind shouldn't be NONE_TYPE"));
+  if (vtable_st_list[vtable_kind] != 0) {
+    return vtable_st_list[vtable_kind];
   }
 
   // TY for __class_type_info
@@ -1699,7 +1729,7 @@ Build_vtable_pointer(const Type *type) {
   Set_ST_is_vtable(rtti_vt);
   Set_ST_vtable_ty_idx(rtti_vt, class_ty_info);
   ST_IDX st = ST_st_idx(rtti_vt);
-  vtable_st_map.emplace(type_class, st);
+  vtable_st_list[vtable_kind] = st;
   return st;
 }
 
