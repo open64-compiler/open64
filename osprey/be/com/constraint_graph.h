@@ -507,13 +507,13 @@ public:
   void repParent(ConstraintGraphNode *p) { _repParent = p; }
 
   CGNodeId collapsedParent() const { return _collapsedParent; }
-  CGNodeId collapsedParent(CGNodeId p)
+  void collapsedParent(CGNodeId p)
   {
     _collapsedParent = p;
   }
 
   CGNodeId nextCollapsedSt() const { return _nextCollapsedSt; }
-  CGNodeId nextCollapsedSt(CGNodeId c)
+  void nextCollapsedSt(CGNodeId c)
   {
     _nextCollapsedSt = c;
   }
@@ -1124,7 +1124,7 @@ public:
   // inter-procedural skew cycles that we are not removing from the
   // constraint graph
   UINT16 maxOffsets(void) const { return _maxOffsets; }
-  UINT16 maxOffsets(UINT16 offset) { _maxOffsets = offset; }
+  void   maxOffsets(UINT16 offset) { _maxOffsets = offset; }
   UINT16 numOffsets(void) const { return _numOffsets; }
   void incrNumOffsets(void)     { _numOffsets += 1; }
 
@@ -1896,7 +1896,7 @@ public:
   void setActualParmModeled(UINT8 parmIdx)   { _setActualModeledFlag(parmIdx+1); }
   bool actualParmModeled(UINT8 parmIdx) const { return _actualModeledFlag(parmIdx+1); }
   void setActualReturnModeled(void)    { _setActualModeledFlag(0); }
-  bool actualReturnModeled(void) const { _actualModeledFlag(0); }
+  bool actualReturnModeled(void) const { return _actualModeledFlag(0); }
 
   // For use by summary
   UINT32 actualModeled(void) const { return _actualModeled; }

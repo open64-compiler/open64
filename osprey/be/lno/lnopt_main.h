@@ -934,7 +934,7 @@ public:
   BOOL Is_Generally_Unimportant() const {return Get_Flag(UNIMPORTANT);}
   void Set_Generally_Unimportant(BOOL b = TRUE) {Set_Flag(UNIMPORTANT, b);}
   IDTYPE Get_Id() { return _id; }
-  IDTYPE Set_Id(IDTYPE i ) { _id = i; }
+  void Set_Id(IDTYPE i ) { _id = i; }
 
   DO_LOOP_INFO(MEM_POOL *pool, ACCESS_ARRAY *lb, ACCESS_ARRAY *ub,
 	ACCESS_VECTOR *step, BOOL has_calls, BOOL has_nested_calls, BOOL has_unsummarized_calls,
