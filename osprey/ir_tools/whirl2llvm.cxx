@@ -5892,7 +5892,7 @@ W2LBUILDER::Find_rna(WN *wn)
       return it;
     }
   }
-  _rnavec.end()
+  return _rnavec.end();
 }
 
 
