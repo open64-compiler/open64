@@ -608,7 +608,8 @@ def read_sheet_from_file(input_file_path):
     xl_file = None
     try:
         xl_file = xlrd.open_workbook(filename=input_file_path)
-    except:
+    except Exception as err:
+        logging.error(err)
         logging.error("Failed to open %s.", input_file_path)
         sys.exit(-1)
 
@@ -616,7 +617,8 @@ def read_sheet_from_file(input_file_path):
     intent_sheet = None
     try:
         intent_sheet = xl_file.sheet_by_name('intent-table')
-    except:
+    except Exception as err:
+        print(err)
         logging.error("Failed to load intent-table sheet.")
         sys.exit(-1)
     return intent_sheet
