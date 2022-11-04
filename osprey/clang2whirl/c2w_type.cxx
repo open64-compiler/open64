@@ -1538,8 +1538,6 @@ static const char * const si_class_type_info_ty =
     "__si_class_type_info";
 static const char * const vmi_class_type_info_ty =
     "__vmi_class_type_info";
-// record the existing ST entry of vtables
-static std::unordered_map<Type::TypeClass, ST_IDX> vtable_st_map;
 
 enum vtable_type_kind {
   NONE_TYPE              = 0,
