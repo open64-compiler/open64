@@ -107,6 +107,10 @@ WhirlTypeBuilder::WhirlTypeBuilder(WhirlBuilder *builder)
 }
 
 WhirlTypeBuilder::~WhirlTypeBuilder() {
+  for (auto &it : _mem_func_ty_map) {
+    delete it.second;
+  }
+  _mem_func_ty_map.clear();
 }
 
 void
@@ -2218,18 +2222,47 @@ TY_IDX WhirlTypeBuilder::ConvertVTTType(const CXXRecordDecl *decl) {
 
 TY_IDX
 WhirlTypeBuilder::ConvertType(const Type *type, BOOL incomplete, const Type *record_type) {
-  TY_IDX_MAP::iterator it = _type_map.find(type);
-  if (it != _type_map.end()) {
-    TY_IDX ty = it->second;
-    // update incomplete record type if incomplete type isn't allowed
-    if (!incomplete &&
-        type->isRecordType() &&
-        !type->isIncompleteType() &&
-        TY_is_incomplete(ty))
-      ConvertRecordType(cast<RecordType>(type), FALSE, ty);
-    return ty;
-  }
   TY_IDX ty_idx = (TY_IDX) 0;
+  switch (type->getTypeClass()) {
+    case Type::FunctionNoProto:
+    case Type::FunctionProto: {
+      FUNC_TY_MAP *func_ty_map = nullptr;
+      auto it = _mem_func_ty_map.find(record_type);
+
+      // get func_ty_map
+      if (it != _mem_func_ty_map.end()) {
+        func_ty_map = it->second;
+      } else {
+        func_ty_map = new FUNC_TY_MAP();
+        _mem_func_ty_map.emplace(record_type, func_ty_map);
+      }
+
+      // try to get TY_IDX in the map of member functions
+      auto res = func_ty_map->find(type);
+      if (res != func_ty_map->end()) {
+        ty_idx = res->second;
+      } else {
+        ty_idx = ConvertFunctionType(cast<FunctionType>(type), record_type);
+        func_ty_map->emplace(type, ty_idx);
+      }
+      return ty_idx;
+    }
+    default: {
+      TY_IDX_MAP::iterator it = _type_map.find(type);
+      if (it != _type_map.end()) {
+        TY_IDX ty = it->second;
+        // update incomplete record type if incomplete type isn't allowed
+        if (!incomplete &&
+            type->isRecordType() &&
+            !type->isIncompleteType() &&
+            TY_is_incomplete(ty))
+          ConvertRecordType(cast<RecordType>(type), FALSE, ty);
+        return ty;
+      }
+      break;
+    }
+  }
+
   switch (type->getTypeClass()) {
     case Type::Atomic:
       ty_idx = ConvertAtomicType(cast<AtomicType>(type));
@@ -2255,10 +2288,6 @@ WhirlTypeBuilder::ConvertType(const Type *type, BOOL incomplete, const Type *rec
     case Type::ExtVector:
     case Type::Vector:
       ty_idx = ConvertVectorType(cast<VectorType>(type));
-      break;
-    case Type::FunctionNoProto:
-    case Type::FunctionProto:
-      ty_idx = ConvertFunctionType(cast<FunctionType>(type), record_type);
       break;
     case Type::IncompleteArray:
       ty_idx = ConvertIncompleteArrayType(cast<IncompleteArrayType>(type));

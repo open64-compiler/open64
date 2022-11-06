@@ -41,6 +41,7 @@
 
 #include <ext/hash_map>
 #include <ext/hash_set>
+#include <unordered_map>
 
 #undef _GLIBCXX_PERMIT_BACKWARD_HASH
 
@@ -137,6 +138,8 @@ typedef hash_map<ST_IDX, clang::ThunkInfo> ST_THUNK_MAP;
 typedef hash_map<uint64_t, ST_IDX> THUNK_STR_ST_MAP;
 typedef hash_map<uint64_t, TY_IDX> RTTI_TY_MAP;
 typedef hash_map<const clang::Expr *, ST_IDX, wgen_ptr_hash> VLA_SIZE_MAP;
+typedef std::unordered_map<const clang::Type *, TY_IDX> FUNC_TY_MAP;
+typedef std::unordered_map<const clang::Type *, FUNC_TY_MAP *> MEM_FUNC_TY_MAP;
 
 typedef hash_map<const clang::CXXCatchStmt *, LABEL_IDX, wgen_ptr_hash> HANDLER_LABEL_MAP;
 typedef hash_map<const clang::OpaqueValueExpr *, ST_IDX, wgen_ptr_hash> OPAQUE_VALUE_MAP;

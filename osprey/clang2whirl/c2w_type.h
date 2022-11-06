@@ -69,6 +69,7 @@ private:
   TYPE_FLD_MAP  _fld_used;
   TYPE_ID       _m_uintptr_ty;
   RTTI_TY_MAP   _rtti_ty_map;
+  MEM_FUNC_TY_MAP _mem_func_ty_map;
 
 public:
   WhirlTypeBuilder(WhirlBuilder *builder);
