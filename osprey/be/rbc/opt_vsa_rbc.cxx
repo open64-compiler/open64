@@ -13876,9 +13876,20 @@ RBC_BASE::Match_fsm_key(VSA *vsa, FSM_OBJ_REP *fsm_obj_rep, CODEREP *ori_key,
       FOR_ALL_ELEM(opnd, phi_opnd_iter, Init()) {
         if (Match_fsm_key(vsa, fsm_obj_rep, ori_key, opnd, visited) != NULL) {
           Is_Trace(Tracing(), (TFile, "RBC: PHI opnd(cr%d) of new_key(cr%d) matched\n",
-                               opnd->Coderep_id(), new_key->Coderep_id()));
+                               opnd == NULL ? -1 : opnd->Coderep_id(), new_key->Coderep_id()));
           return new_key;
         }
+      }
+    }
+    else if (new_key->Is_flag_set((CR_FLAG)CF_DEF_BY_CHI)) {
+      CHI_NODE *chi = new_key->Defchi();
+      CODEREP *opnd = chi != NULL ? chi->OPND() : NULL;
+      Is_Trace(Tracing(), (TFile, "RBC: try CHI opnd of new_key(cr%d)\n",
+                           new_key->Coderep_id()));
+      if (Match_fsm_key(vsa, fsm_obj_rep, ori_key, opnd, visited) != NULL) {
+        Is_Trace(Tracing(), (TFile, "RBC: CHI opnd(cr%d) of new_key(cr%d) matched\n",
+                             opnd == NULL ? -1 : opnd->Coderep_id(), new_key->Coderep_id()));
+        return new_key;
       }
     }
     else {
