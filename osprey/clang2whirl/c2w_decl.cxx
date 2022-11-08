@@ -1121,8 +1121,12 @@ WhirlDeclBuilder::HandleAttrs(const NamedDecl *decl, ST_IDX st_idx) {
               cast<FunctionDecl>(decl);
             GVALinkage linkage =
               _builder->Context()->GetGVALinkageForFunction(func_decl);
-            if (linkage == GVA_AvailableExternally || linkage == GVA_StrongExternal)
+            if (linkage == GVA_StrongExternal)
               Set_PU_is_extern_inline(pu);
+          
+            // mark Available External function as External
+            if (linkage == GVA_AvailableExternally)
+              Set_ST_export(st, EXPORT_PREEMPTIBLE);
           }
         }
         break;
