@@ -4464,7 +4464,12 @@ IPSA::Init_dna(COMP_UNIT* cu)
     BB_NODE *entry_bb;
     BB_LIST_ITER bb_iter;
     FOR_ALL_ELEM (entry_bb, bb_iter, Init(cu->Cfg()->Fake_entry_bb()->Succ())) {
-      dna->Find_referenced_vars_at_entry(cu, entry_bb);
+      Is_True(entry_bb->Kind() == BB_ENTRY, ("not entry"));
+      if (entry_bb->Labnam() == 0) {
+        // only handle real entry but ignore all EH entry
+        dna->Find_referenced_vars_at_entry(cu, entry_bb);
+        break;
+      }
     }
   }
 
