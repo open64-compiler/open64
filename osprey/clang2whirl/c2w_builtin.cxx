@@ -922,13 +922,21 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
   case Builtin::BImempcpy:
   case Builtin::BIpthread_create:
   case Builtin::BI__builtin_launder:
-  case Builtin::BI__builtin_is_constant_evaluated:
     return Result::nwNone();
+  case Builtin::BI__builtin_is_constant_evaluated: {
+    TY_IDX ty_idx = _builder->TB().ConvertType(expr->getType());
+    return Result::nwNode(WN_Intconst(Mtype_comparison(TY_mtype(ty_idx)), 0), ty_idx);
+  }
 #endif
 
 #if LLVM_VERSION_MAJOR >= 15
+  case Builtin::BIforward: {
+    Is_True(expr->getNumArgs() == 1, ("std::forward should have only one function"));
+    WN *node = ConvertToNode(expr->getArg(0));
+    return Result::nwNode(node, WN_ty(node));
+  }
+  case Builtin::BI__addressof:
   case Builtin::BIas_const:
-  case Builtin::BIforward:
   case Builtin::BImove:
   case Builtin::BImove_if_noexcept:
     return Result::nwNone();
