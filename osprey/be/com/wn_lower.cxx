@@ -13168,7 +13168,7 @@ WN *lower_block(WN *tree, LOWER_ACTIONS actions)
               Report_vsa_error(ST_name(Get_Current_PU_ST()), "", "DDC",
                                FALSE, spos.Data(), spos.Size());
               if (VSA_Xsca) {
-                Report_xsca_error(ST_name(Get_Current_PU_ST()), "", "MISRA_2_1",
+                Report_xsca_error(ST_name(Get_Current_PU_ST()), "", "MSR_2_1",
                                   FALSE, spos.Data(), spos.Size());
               }
               spos.Pop();

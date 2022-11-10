@@ -4292,7 +4292,7 @@ CFG::Process_not_reached( BOOL is_whirl/* can_disconnect */ )
           }
           Report_vsa_error(fname, "", "DDC", FALSE, spos, spos_level);
           if (VSA_Xsca) {
-            Report_xsca_error(fname, "", "MISRA_2_1", FALSE, spos, spos_level);
+            Report_xsca_error(fname, "", "MSR_2_1", FALSE, spos, spos_level);
           }
         }
       }

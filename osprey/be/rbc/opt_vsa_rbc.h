@@ -1246,7 +1246,7 @@ private:
     if (strncmp(rule_code, "CD-", 3) == 0) {
       return "CMR";
     }
-    if (strncmp(rule_code, "MISRA", 5) == 0) {
+    if (strncmp(rule_code, "MSR", 3) == 0) {
       return "SML";
     }
     return "BUILTIN";

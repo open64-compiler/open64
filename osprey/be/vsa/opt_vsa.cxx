@@ -10853,7 +10853,7 @@ VSA::Handle_call(STMTREP *call_stmt, BB_NODE *bb, MEM_POOL *pool)
       srcpos_h.Set_msgid("MSF.1");
       Report_vsa_error(NULL, name, MSF, IC_DEFINITELY, &srcpos_h);
       if (VSA_Xsca) {
-        Report_xsca_error(NULL, name, "MISRA_22_1", &srcpos_h);
+        Report_xsca_error(NULL, name, "MSR_22_1", &srcpos_h);
       }
     }
   }
@@ -14659,9 +14659,9 @@ VSA::Scan_integer_overflow(UINT32 tag, CODEREP *arith, CODEREP *cr, STMTREP *sr)
 
 // =============================================================================
 // Scan_pointer_for_misra
-//     MISRA_18_2: Subtraction between pointers shall only be applied to pointers
+//     MSR_18_2: Subtraction between pointers shall only be applied to pointers
 // that address elements of the same array.
-//     MISRA_18_3: The relational operators >, >=, < and <= shall not be applied
+//     MSR_18_3: The relational operators >, >=, < and <= shall not be applied
 // to objects of pointer type except where they point into the same project.
 // =============================================================================
 BOOL
@@ -14717,9 +14717,9 @@ VSA::Scan_pointer_for_misra(CODEREP *cr, STMTREP *sr)
              Cr_2_heap_obj(info0.Base()) != Cr_2_heap_obj(info1.Base()))) {
           SRCPOS_HANDLE srcpos_h(cr, sr, Dna(), Loc_pool(), this);
           if (cr->Opr() == OPR_SUB) {
-            Report_xsca_error(cr, (char*)NULL, "MISRA_18_2", &srcpos_h);
+            Report_xsca_error(cr, (char*)NULL, "MSR_18_2", &srcpos_h);
           } else {
-            Report_xsca_error(cr, (char*)NULL, "MISRA_18_3", &srcpos_h);
+            Report_xsca_error(cr, (char*)NULL, "MSR_18_3", &srcpos_h);
           }
         }
       }
@@ -14740,7 +14740,7 @@ VSA::Scan_pointer_for_misra(CODEREP *cr, STMTREP *sr)
 
 // =============================================================================
 // Scan_abs_for_misra
-//     MISRA_D_4_11:  The validity of values passed to library functions
+//     MSR_D_4_11:  The validity of values passed to library functions
 // shall be checked.
 // This function is only checked for abs.
 // =============================================================================
@@ -14789,7 +14789,7 @@ VSA::Scan_abs_for_misra(CODEREP *cr, STMTREP *sr)
       }
       if (!is_checked) {
         SRCPOS_HANDLE srcpos_h(cr, sr, Dna(), Loc_pool(), this);
-        Report_xsca_error(cr, (char*)NULL, "MISRA_D_4_11", &srcpos_h);
+        Report_xsca_error(cr, (char*)NULL, "MSR_D_4_11", &srcpos_h);
       }
     } else {
       for (INT i = 0; i < cr->Kid_count(); ++i) {
@@ -14909,14 +14909,14 @@ VSA::Scan_rule_based_error(BB_NODE *bb)
           UINT64 size = num_bytes->Const_val();
           if (Rbc()->Is_memory_overlap(tgt, size, src, stmt, Dna())) {
             SRCPOS_HANDLE sp_h(tgt, stmt, Dna(), Loc_pool(), this);
-            Rbc()->Report_xsca_error(this, stmt->Linenum(), "MISRA_19_1", &sp_h);
+            Rbc()->Report_xsca_error(this, stmt->Linenum(), "MSR_19_1", &sp_h);
           }
           if (!Rbc()->Is_memory_big_enough(tgt, sizeof(char), size, stmt, Dna())) {
             // some of the calls like memmove, memcpy are translated to
-            // MSTORE here, we'd better report "AOB" instead of "MISRA_21_18"
+            // MSTORE here, we'd better report "AOB" instead of "MSR_21_18"
             // because we are not sure if it was a call.
             SRCPOS_HANDLE sp_h(tgt, stmt, Dna(), Loc_pool(), this);
-            // Rbc()->Report_xsca_error(this, stmt->Linenum(), "MISRA_21_18", &sp_h);
+            // Rbc()->Report_xsca_error(this, stmt->Linenum(), "MSR_21_18", &sp_h);
             Report_vsa_error(tgt, (char*)NULL, AOB, IC_DEFINITELY, &sp_h);
           }
         }
@@ -14989,7 +14989,7 @@ VSA::Scan_rule_based_error(BB_NODE *bb)
         if (tgt_st == src_st) {
           if (tgt_fld_ofst == src_fld_ofst && tgt_fld_ty != src_fld_ty) {
             SRCPOS_HANDLE sp_h(stmt->Lhs(), stmt, Dna(), Loc_pool(), this);
-            Rbc()->Report_xsca_error(this, stmt->Linenum(), "MISRA_19_1", &sp_h);
+            Rbc()->Report_xsca_error(this, stmt->Linenum(), "MSR_19_1", &sp_h);
           }
         }
       }
@@ -15266,7 +15266,7 @@ VSA::Scan_rule_based_error(BB_NODE *bb)
             if (VSA_Xsca) {
               const char* var_name = srcpos_h.Orig_stname() ?
                                      srcpos_h.Orig_stname() : auxid ? Sym_name(auxid) : "";
-              Report_xsca_error(retv, var_name, "MISRA_18_6", &srcpos_h);
+              Report_xsca_error(retv, var_name, "MSR_18_6", &srcpos_h);
             }
           }
         }

@@ -13126,7 +13126,7 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
   }
   for (INT i = 0; i < ts->Errcode()->size(); i++) {
     const char *errcode = (*ts->Errcode())[i];
-    if (strncmp(errcode, "MISRA", 5) == 0) {
+    if (strncmp(errcode, "MSR", 3) == 0) {
       if (VSA_Xsca) {
         Report_xsca_error(vsa_ctx, stmt->Linenum(), errcode, sh);
       }
@@ -15097,7 +15097,7 @@ RBC_BASE::Print_out_recursion(DNA_NODE *caller, DNA_NODE *dna, STMTREP *stmt,
       Report_rbc_error(caller->Comp_unit()->Vsa(), stmt, "CRF", FALSE, srcpos_h);
       if (VSA_Xsca) {
         Report_xsca_error(caller->Comp_unit()->Vsa(), stmt->Linenum(),
-                          "MISRA_17_2", srcpos_h);
+                          "MSR_17_2", srcpos_h);
       }
       return TRUE;
     }
@@ -15184,7 +15184,7 @@ RBC_BASE::Builtin_certc_msc37(DNA_NODE *dna)
     srcpos_h.Append_data(spos, NULL, dna, PATHINFO_VUL_SPOT_SO);
     Report_rbc_error(cu->Vsa(), spos, "MSC37-C", FALSE, &srcpos_h);
     if (VSA_Xsca) {
-      Report_xsca_error(cu->Vsa(), spos, "MISRA_17_4", &srcpos_h);
+      Report_xsca_error(cu->Vsa(), spos, "MSR_17_4", &srcpos_h);
     }
   }
 }

@@ -789,7 +789,7 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
                 ISSUE_CERTAINTY ic = VSA_Issue_Certainty_Maybe ? IC_MAYBE : IC_DEFINITELY;
                 vsa->Report_vsa_error(cr, (char *)NULL, MSF, ic, Sp_h());
                 if (VSA_Xsca) {
-                  vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MISRA_22_1", Sp_h());
+                  vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MSR_22_1", Sp_h());
                 }
                 Sp_h()->Remove_last_key_srcpos();
               }
@@ -904,7 +904,7 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
                             Kind() == FOR_UAF ? UAF : DBF, ic, Sp_h());
       if (VSA_Xsca) {
         if (Kind() != FOR_UAF) {
-          vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MISRA_22_2", Sp_h());
+          vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MSR_22_2", Sp_h());
         }
       }
       Sp_h()->Remove_last_key_srcpos();
@@ -1145,7 +1145,7 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
         ISSUE_CERTAINTY ic = VSA_Issue_Certainty_Maybe ? IC_MAYBE : IC_DEFINITELY;
         vsa->Report_vsa_error(cr, (char*)NULL, UDR, ic, Sp_h());
         if (VSA_Xsca) {
-          vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MISRA_22_2", Sp_h());
+          vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MSR_22_2", Sp_h());
         }
       }
       return CS_DONE;
@@ -1168,7 +1168,7 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
       ISSUE_CERTAINTY ic = VSA_Issue_Certainty_Maybe ? IC_MAYBE: IC_DEFINITELY;
       vsa->Report_vsa_error(cr, (char *)NULL, MSF, ic, Sp_h());
       if (VSA_Xsca) {
-        vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MISRA_22_1", Sp_h());
+        vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MSR_22_1", Sp_h());
       }
       Sp_h()->Remove_last_key_srcpos();
     }

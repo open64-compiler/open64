@@ -1554,7 +1554,7 @@ DCE::Remove_unreached_statements( BB_NODE *bb ) const
       SRCPOS spos = stmt->Linenum();
       Report_vsa_error(fname, "", "DDC", FALSE, spos);
       if (VSA_Xsca) {
-        Report_xsca_error(fname, "", "MISRA_2_1", FALSE, spos);
+        Report_xsca_error(fname, "", "MSR_2_1", FALSE, spos);
       }
 #endif
 #endif

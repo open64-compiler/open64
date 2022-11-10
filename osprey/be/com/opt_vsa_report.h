@@ -142,7 +142,7 @@ public:
   UINT Complexity() const;
   const char *Get_rule_set() const {
     if (strcmp(_rule_set, "SML") == 0) {
-      if (strncmp(_rule_code, "MISRA", 5) == 0)
+      if (strncmp(_rule_code, "MSR", 3) == 0)
         return "MSR";
       if (strncmp(_rule_code, "GJB", 3) == 0)
         return "GJB";

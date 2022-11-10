@@ -5731,7 +5731,7 @@ vho_lower_eval ( WN * wn, WN * block )
 
   if (VSA_Xsca) {
     if (!WN_kid0(wn) || WN_operator(WN_kid0(wn)) == OPR_CVT) {
-      Report_xsca_error(ST_name(Get_Current_PU_ST()), "", "MISRA_2_2",
+      Report_xsca_error(ST_name(Get_Current_PU_ST()), "", "MSR_2_2",
                         FALSE, WN_Get_Linenum(wn));
     }
   }
@@ -5751,7 +5751,7 @@ vho_lower_pragma ( WN * wn, WN * block )
     if (VSA_Xsca) {
       WN *next = WN_next(wn);
       if (next && WN_pragma(next) == WN_PRAGMA_INLINE_BODY_END) {
-        Report_xsca_error(ST_name(Get_Current_PU_ST()), "", "MISRA_2_2",
+        Report_xsca_error(ST_name(Get_Current_PU_ST()), "", "MSR_2_2",
                           FALSE, WN_Get_Linenum(wn));
       }
     }
@@ -8317,12 +8317,12 @@ vho_remove_stmt_till_label( WN * wn, BOOL top )
       }
 #ifdef BUILD_MASTIFF
 #if 0
-      // TODO: check if DDC/MISRA_2_1 should be reported
+      // TODO: check if DDC/MSR_2_1 should be reported
       if (top && Run_vsaopt && VSA_Ddc && Is_ddc_candidate(stmt)) {
         Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "DDC",
                          FALSE, WN_Get_Linenum(stmt));
         if (VSA_Xsca) {
-          Report_xsca_error(VHO_Get_VSA_PU_Name(), "", "MISRA_2_1",
+          Report_xsca_error(VHO_Get_VSA_PU_Name(), "", "MSR_2_1",
                             FALSE, WN_Get_Linenum(stmt));
         }
       }

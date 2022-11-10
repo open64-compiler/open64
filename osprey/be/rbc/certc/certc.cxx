@@ -43,7 +43,7 @@ size_t strlen(const char *s)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
   rbc.Rbc_assert(rbc.Is_compatible_parm_type(1), "STR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
   return 0;
 }
 
@@ -73,7 +73,7 @@ FILE *popen(const char *command, const char *type)
 void *memchr(const void *ptr, int value, size_t num)
 {
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
   return NULL;
 }
 
@@ -85,8 +85,8 @@ void *memcpy(void *dest, const void *src, size_t n)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
-  rbc.Rbc_assert(rbc.Not(rbc.Is_memory_overlap(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(3)), rbc.Get_arg(2))), "MISRA_19_1");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_memory_overlap(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(3)), rbc.Get_arg(2))), "MSR_19_1");
   return NULL;
 }
 
@@ -127,8 +127,8 @@ intmax_t wcstoimax(const wchar_t *nptr, wchar_t **endptr, int base)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -136,8 +136,8 @@ uintmax_t wcstoumax(const wchar_t *nptr, wchar_t **endptr, int base)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -145,8 +145,8 @@ long wcstol(const wchar_t *str, wchar_t **endptr, int base)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -154,8 +154,8 @@ long long wcstoll(const wchar_t *str, wchar_t **str_end, int base)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -163,8 +163,8 @@ unsigned long wcstoul(const wchar_t *str, wchar_t **str_end, int base)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -172,8 +172,8 @@ unsigned long long wcstoull(const wchar_t *str, wchar_t **str_end, int base)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -181,8 +181,8 @@ float wcstof(const wchar_t *str, wchar_t **str_end)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -190,8 +190,8 @@ double wcstod(const wchar_t *str, wchar_t **str_end)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -199,8 +199,8 @@ long double wcstold(const wchar_t *str, wchar_t **str_end)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -208,8 +208,8 @@ size_t wcrtomb(char *s, wchar_t wc, mbstate_t *ps)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -217,8 +217,8 @@ size_t wcstombs(char *dst, const wchar_t *src, size_t len)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -226,8 +226,8 @@ size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -239,7 +239,7 @@ void *memmove(void *dest, const void *src, size_t n)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
   return NULL;
 }
 
@@ -249,10 +249,10 @@ int memcmp(const void *s1, const void *s2, size_t n)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
   rbc.Rbc_assert(rbc.Not(rbc.Or(rbc.Is_null_term_str(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(3))),
                                 rbc.Is_null_term_str(rbc.Get_arg(2), rbc.Get_value(rbc.Get_arg(3))))),
-                 "MISRA_21_14");
+                 "MSR_21_14");
   // TODO: EXP42-C
   return 0;
 }
@@ -264,7 +264,7 @@ void *memset(void *ptr, int value, size_t num)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
   return NULL;
 }
 
@@ -293,7 +293,7 @@ FILE *_wfopen(const wchar_t *filename, const wchar_t *mode)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MSR_D_4_7");
   return NULL;
 }
 
@@ -304,7 +304,7 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
   rbc.Model_decl(rbc.Fsm_use("fio45c"));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", rbc.Get_arg(3)), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", rbc.Get_arg(3)), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", rbc.Get_arg(3)), "MSR_D_4_7");
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(2)), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
   return 0;
 }
@@ -313,7 +313,7 @@ struct tm *gmtime(const time_t *timep)
 {
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MISRA_21_20");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MSR_21_20");
   return NULL;
 }
 
@@ -356,7 +356,7 @@ size_t fwrite(const void *ptr, size_t size, size_t count, FILE *stream)
   rbc.Model_decl(rbc.Fsm_use("fio45c"));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", rbc.Get_arg(3)), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", rbc.Get_arg(3)), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", rbc.Get_arg(3)), "MSR_D_4_7");
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), rbc.Get_value(rbc.Get_arg(2)), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
   return 0;
 }
@@ -366,7 +366,7 @@ int fseek(FILE *stream, long offset, int whence)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -375,8 +375,8 @@ long ftell(FILE *stream)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -391,7 +391,7 @@ int fclose(FILE *stream)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
   rbc.Model_decl(rbc.Fsm_use("fio45c"));
 
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_used_after(rbc.Get_arg(1))), "MISRA_22_6");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_used_after(rbc.Get_arg(1))), "MSR_22_6");
   return 0;
 }
 
@@ -434,9 +434,9 @@ long int random(void)
 char *setlocale(int category, const char *locale)
 {
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MISRA_D_4_7");
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_defined_after(rbc.Get_ret())), "MISRA_21_19");
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MISRA_21_20");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MSR_D_4_7");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_defined_after(rbc.Get_ret())), "MSR_21_19");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MSR_21_20");
   return 0;
 }
 
@@ -487,7 +487,7 @@ void *malloc(size_t size)
 
   rbc.Rbc_assert(rbc.Get_value(rbc.Get_arg(1)) >= rbc.Get_mem_size(rbc.Get_ret()), "MEM35-C");
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MSR_D_4_7");
   return NULL;
 }
 
@@ -497,7 +497,7 @@ void *realloc(void *ptr, size_t size)
   rbc.Model_decl(rbc.Set_tag(rbc.Get_ret(), (char *)"malloc"));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MSR_D_4_7");
   // TODO: STR32-C
   return NULL;
 }
@@ -507,7 +507,7 @@ void *calloc(size_t nmemb, size_t size)
   rbc.Model_decl(rbc.Set_tag(rbc.Get_ret(), (char *)"malloc"));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", NULL), "MSR_D_4_7");
   return NULL;
 }
 
@@ -539,7 +539,7 @@ char *asctime(const struct tm *timeptr)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
   rbc.Rbc_assert(rbc.Pre_sanitized(rbc.Get_arg(1)), "MSC33-C");
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MISRA_21_20");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MSR_21_20");
   return NULL;
 }
 
@@ -548,14 +548,14 @@ struct tm *localtime(const time_t *timep)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
   rbc.Model_decl(rbc.Func_performs_sanitize());
 
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MISRA_21_20");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MSR_21_20");
   return NULL;
 }
 
 struct lconv *localeconv (void)
 {
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_defined_after(rbc.Get_ret())), "MISRA_21_19");
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MISRA_21_20");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_defined_after(rbc.Get_ret())), "MSR_21_19");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MSR_21_20");
   return NULL;
 }
 
@@ -580,15 +580,15 @@ char *getenv(const char *name)
   rbc.Model_decl(rbc.Set_tag(rbc.Get_ret(), (char *)"tainted"));
 
   rbc.Rbc_assert(rbc.Is_dynamically_allocated_if_copied(rbc.Get_ret()), "STR31-C");
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_defined_after(rbc.Get_ret())), "MISRA_21_19");
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MISRA_21_20");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_defined_after(rbc.Get_ret())), "MSR_21_19");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MSR_21_20");
   return NULL;
 }
 
 char *strerror(int errnum)
 {
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_defined_after(rbc.Get_ret())), "MISRA_21_19");
-  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MISRA_21_20");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_defined_after(rbc.Get_ret())), "MSR_21_19");
+  rbc.Rbc_assert(rbc.Not(rbc.Is_var_invalid_and_used_after(rbc.Get_ret())), "MSR_21_20");
   return NULL;
 }
 
@@ -637,7 +637,7 @@ char *strcat(char *dest, const char *src)
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char),
                                           rbc.Get_strlen(rbc.Get_arg(1)) + rbc.Get_strlen(rbc.Get_arg(2)) + 1),
-                 "MISRA_21_17");
+                 "MSR_21_17");
   return NULL;
 }
 
@@ -649,7 +649,7 @@ char *strncat(char *dest, const char *src, size_t n)
   rbc.Model_decl(rbc.Merge_tag(rbc.Get_arg(1), rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
   return NULL;
 }
 
@@ -661,7 +661,7 @@ char *strncpy(char *destination, const char *source, size_t num)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
   rbc.Rbc_assert(rbc.Is_compatible_parm_type(1), "STR38-C");
   rbc.Rbc_assert(rbc.Is_compatible_parm_type(2), "STR38-C");
   return NULL;
@@ -670,7 +670,7 @@ char *strncpy(char *destination, const char *source, size_t num)
 size_t strxfrm(char *destination, const char *source, size_t num)
 {
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
   return 0;
 }
 
@@ -683,7 +683,7 @@ char *strcpy(char *destination, const char *source)
 
   rbc.Rbc_assert(rbc.Get_mem_size(rbc.Get_arg(1)) >= rbc.Get_mem_size(rbc.Get_arg(2)), "STR31-C");
   rbc.Rbc_assert(!rbc.Hard_coded_password(rbc.Get_arg(1), rbc.Get_arg(2)), "MSC41-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MSR_21_17");
   return NULL;
 }
 
@@ -730,8 +730,8 @@ int strcmp(const char *s1, const char *s2)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MSR_21_17");
   return 0;
 }
 
@@ -741,14 +741,14 @@ int strncmp(const char *s1, const char *s2, size_t n)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "ARR38-C");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MISRA_21_18");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(3))), "MSR_21_18");
   return 0;
 }
 
 int strcoll(const char *str1, const char *str2)
 {
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MSR_21_17");
   return 0;
 }
 
@@ -756,7 +756,7 @@ char *strchr(const char *s, int c)
 {
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
   return NULL;
 }
 
@@ -765,8 +765,8 @@ size_t strcspn(const char *s, const char *reject)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MSR_21_17");
   return 0; 
 }
 
@@ -780,14 +780,14 @@ char *strrchr(const char *s, int c)
 {
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
   return NULL;
 }
 
 char *strpbrk(const char *s, const char *accept)
 {
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MSR_21_17");
   return NULL;
 }
 
@@ -796,8 +796,8 @@ char *strstr(const char *haystack, const char *needle)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MSR_21_17");
   return NULL;
 }
 
@@ -805,8 +805,8 @@ intmax_t strtoimax(const char *nptr, char **endptr, int base)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -814,15 +814,15 @@ uintmax_t strtoumax(const char *nptr, char **endptr, int base)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
 char *strtok(char *str, const char *delimiters)
 {
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MISRA_21_17");
-  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MISRA_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_strlen(rbc.Get_arg(1)) + 1), "MSR_21_17");
+  rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(2), sizeof(char), rbc.Get_strlen(rbc.Get_arg(2)) + 1), "MSR_21_17");
   return NULL;
 }
 
@@ -843,7 +843,7 @@ int fgetc(FILE *stream)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   return 0;
 }
 
@@ -877,8 +877,8 @@ wint_t fgetwc(FILE *stream)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -889,7 +889,7 @@ char *fgets(char *str, int num, FILE *stream)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(3)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", NULL), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", NULL), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", NULL), "MSR_D_4_7");
   rbc.Rbc_assert(rbc.Post_check_var_func(rbc.Get_arg(1), "strchr", "\n"), "FIO37-C");
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(2))), "STR31-C");
   // TODO: FIO40-C
@@ -903,7 +903,7 @@ wchar_t *fgetws(wchar_t *ws, int n, FILE *stream)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(3)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", NULL), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", NULL), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", NULL), "MSR_D_4_7");
   rbc.Rbc_assert(rbc.Post_check_var_func(rbc.Get_arg(1), "strchr", "\n"), "FIO37-C");
   rbc.Rbc_assert(rbc.Get_elem_count(rbc.Get_arg(1)) >= rbc.Get_value(rbc.Get_arg(2)), "STR31-C");
   return NULL;
@@ -915,7 +915,7 @@ int fputc(int c, FILE *stream)
   rbc.Model_decl(rbc.Fsm_use("fio45c"));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   // rbc.Rbc_rule_exception("ERR33-C", rbc.Is_std_output(rbc.Get_arg(2)));
   return 0;
 }
@@ -927,7 +927,7 @@ int fputs(const char *s, FILE *stream)
   rbc.Model_decl(rbc.Fsm_use("fio45c"));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   // rbc.Rbc_rule_exception("ERR33-C", rbc.Is_std_output(rbc.Get_arg(2)));
   return 0;
 }
@@ -936,8 +936,8 @@ wint_t fputwc(wchar_t wc, FILE *stream)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -946,7 +946,7 @@ int putc(int c, FILE *stream)
   rbc.Model_decl(rbc.Set_parm_mod(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   rbc.Rbc_rule_exception("ERR33-C", rbc.Is_called_by("putchar"));
   // rbc.Rbc_rule_exception("ERR33-C", rbc.Is_std_output(rbc.Get_arg(2)));
   return 0;
@@ -955,7 +955,7 @@ int putc(int c, FILE *stream)
 int putchar(int c)
 {
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   rbc.Rbc_rule_exception("ERR33-C", 1);
   return 0;
 }
@@ -965,7 +965,7 @@ int puts(const char *s)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   rbc.Rbc_rule_exception("ERR33-C", 1);
   return 0;
 }
@@ -974,8 +974,8 @@ int fgetpos(FILE *stream, fpos_t *pos)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -983,8 +983,8 @@ int fsetpos(FILE *stream, const fpos_t *pos)
 {
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -993,7 +993,7 @@ int remove(const char *pathname)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -1003,7 +1003,7 @@ int rename(const char *oldname, const char *newname)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -1022,7 +1022,7 @@ int dprintf(int fd, const char *format, ...)
 
   rbc.Rbc_assert(rbc.Not(rbc.Is_tag_set(rbc.Get_arg(2), "tainted")), "FIO30-C");
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -1044,7 +1044,7 @@ int snprintf(char *s, size_t n, const char *format, ...)
   rbc.Model_decl(rbc.Copy_tag(rbc.Get_arg(1), rbc.Get_arg(4)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MSR_D_4_7");
   rbc.Rbc_assert(rbc.Not(rbc.Is_tag_set(rbc.Get_arg(3), "tainted")), "FIO30-C");
   rbc.Rbc_assert(rbc.Is_memory_big_enough(rbc.Get_arg(1), sizeof(char), rbc.Get_value(rbc.Get_arg(2))), "ARR38-C");
   return 0;
@@ -1057,7 +1057,7 @@ int fprintf(FILE *stream, const char *format, ...)
 
   rbc.Rbc_assert(rbc.Not(rbc.Is_tag_set(rbc.Get_arg(2), "tainted")), "FIO30-C");
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MSR_D_4_7");
   // rbc.Rbc_rule_exception("ERR33-C", rbc.Is_std_output(rbc.Get_arg(1)));
   return 0;
 }
@@ -1086,7 +1086,7 @@ int vdprintf(int fd, const char *format, va_list ap)
 
   rbc.Rbc_assert(rbc.Not(rbc.Is_tag_set(rbc.Get_arg(2), "tainted")), "FIO30-C");
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -1122,7 +1122,7 @@ int fwprintf(FILE *stream, const wchar_t *format, ...)
 
   rbc.Rbc_assert(rbc.Not(rbc.Is_tag_set(rbc.Get_arg(2), "tainted")), "FIO30-C");
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -1149,7 +1149,7 @@ int vfwprintf(FILE *stream, const wchar_t *format, va_list args)
 
   rbc.Rbc_assert(rbc.Not(rbc.Is_tag_set(rbc.Get_arg(2), "tainted")), "FIO30-C");
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "lt", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -1167,7 +1167,7 @@ int scanf(const char *format, ...)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   return 0;
 }
 
@@ -1182,7 +1182,7 @@ int fscanf(FILE *stream, const char *format, ...)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   rbc.Model_decl(rbc.Set_tag(rbc.Get_arg(3), (char *)"tainted"));
   // TODO: STR31-C
   return 0;
@@ -1200,7 +1200,7 @@ int sscanf(const char *str, const char *format, ...)
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
   return 0;
 }
 
@@ -1462,15 +1462,15 @@ int pos35_c_fsm(void)
                                         "openw", NULL, 74));
   // #3-1 "openw" => "openw_s" : read(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("openw", "read", rbc.Get_arg(1), 1,
-                                        "openw_s", "ERR33-C MISRA_D_4_7 POS35-C", 67));
+                                        "openw_s", "ERR33-C MSR_D_4_7 POS35-C", 67));
   // #3-2 "openw" => "openw_s" : write(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("openw", "write", rbc.Get_arg(1), 1,
-                                        "openw_s", "ERR33-C MISRA_D_4_7 POS35-C", 68));
+                                        "openw_s", "ERR33-C MSR_D_4_7 POS35-C", 68));
   // #3-3 "openw" => "finish" : close(*)
   rbc.Model_decl(rbc.Fsm_add_transition("openw", "close", rbc.Get_arg(1), 1,
-                                        "finish", "ERR33-C MISRA_D_4_7", 69));
+                                        "finish", "ERR33-C MSR_D_4_7", 69));
   // #3-4 "openw" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("openw", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("openw", "FIO42-C MSR_22_1", 70));
   // #3-5 "openw" => "openw_c" : check if (fd != -1)
   rbc.Model_decl(rbc.Fsm_add_transition("openw", "if:test", NULL,
                                         rbc.Is_return_checked_properly("open", "ne", -1),
@@ -1500,7 +1500,7 @@ int pos35_c_fsm(void)
   rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "close", rbc.Get_arg(1), 1,
                                         "finish", NULL, 69));
   // #5-4 "openw_s" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("openw_s", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("openw_s", "FIO42-C MSR_22_1", 70));
   // #5-5 "openw_s" => "openw_sc" : check if (fd != -1)
   rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "if:test", NULL,
                                         rbc.Is_return_checked_properly("open", "ne", -1),
@@ -1514,13 +1514,13 @@ int pos35_c_fsm(void)
                                         "openw_sf", NULL, 150));
   // #6-1 "open_f" => "finish" : read(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("open_f", "read", rbc.Get_arg(1), 1,
-                                        "finish", "ERR33-C MISRA_D_4_7", 67));
+                                        "finish", "ERR33-C MSR_D_4_7", 67));
   // #6-2 "open_f" => "finish" : write(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("open_f", "write", rbc.Get_arg(1), 1,
-                                        "finish", "ERR33-C MISRA_D_4_7", 68));
+                                        "finish", "ERR33-C MSR_D_4_7", 68));
   // #6-3 "open_f" => "finish" : close(*)
   rbc.Model_decl(rbc.Fsm_add_transition("open_f", "close", rbc.Get_arg(1), 1,
-                                        "finish", "ERR33-C MISRA_D_4_7", 69));
+                                        "finish", "ERR33-C MSR_D_4_7", 69));
   // #6-4 "open_f" => "open_fc" : check if (fd != -1)
   rbc.Model_decl(rbc.Fsm_add_transition("open_f", "if:test", NULL,
                                         rbc.Is_return_checked_properly("open", "ne", -1),
@@ -1607,15 +1607,15 @@ int pos35_c_fsm(void)
                                         "openx", NULL, 76));
   // #16-1 "openx" => "openx_s" : read(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("openx", "read", rbc.Get_arg(1), 1,
-                                        "openx_s", "ERR33-C MISRA_D_4_7", 67));
+                                        "openx_s", "ERR33-C MSR_D_4_7", 67));
   // #16-2 "openx" => "openx_s" : write(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("openx", "write", rbc.Get_arg(1), 1,
-                                        "openx_s", "ERR33-C MISRA_D_4_7", 68));
+                                        "openx_s", "ERR33-C MSR_D_4_7", 68));
   // #16-3 "openx" => "finish" : close(*)
   rbc.Model_decl(rbc.Fsm_add_transition("openx", "close", rbc.Get_arg(1), 1,
-                                        "finish", "ERR33-C MISRA_D_4_7", 69));
+                                        "finish", "ERR33-C MSR_D_4_7", 69));
   // #16-4 "openx" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("openx", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("openx", "FIO42-C MSR_22_1", 70));
   // #16-5 "openx" => "openx_c" : check if (fd != -1)
   rbc.Model_decl(rbc.Fsm_add_transition("openx", "if:test", NULL,
                                         rbc.Is_return_checked_properly("open", "ne", -1),
@@ -1645,7 +1645,7 @@ int pos35_c_fsm(void)
   rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "close", rbc.Get_arg(1), 1,
                                         "finish", NULL, 69));
   // #15-4 "openx_s" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("openx_s", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("openx_s", "FIO42-C MSR_22_1", 70));
   // #15-5 "openx_s" => "openx_sc" : check if (fd != -1)
   rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "if:test", NULL,
                                         rbc.Is_return_checked_properly("open", "ne", -1),
@@ -1697,15 +1697,15 @@ int pos35_c_fsm(void)
                                         "openr", NULL, 73));
   // #22-1 "openr" => "openr_s" : read(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("openr", "read", rbc.Get_arg(1), 1,
-                                        "openr_s", "ERR33-C MISRA_D_4_7", 67));
+                                        "openr_s", "ERR33-C MSR_D_4_7", 67));
   // #22-2 "openr" => "openr_s" : write(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("openr", "write", rbc.Get_arg(1), 1,
-                                        "openr_s", "ERR33-C MISRA_D_4_7 WRF MISRA_22_4", 68));
+                                        "openr_s", "ERR33-C MSR_D_4_7 WRF MSR_22_4", 68));
   // #22-3 "openr" => "finish" : close(*)
   rbc.Model_decl(rbc.Fsm_add_transition("openr", "close", rbc.Get_arg(1), 1,
-                                        "finish", "ERR33-C MISRA_D_4_7", 69));
+                                        "finish", "ERR33-C MSR_D_4_7", 69));
   // #22-4 "openr" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("openr", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("openr", "FIO42-C MSR_22_1", 70));
   // #22-5 "openr" => "openr_c" : check if (fd != -1)
   rbc.Model_decl(rbc.Fsm_add_transition("openr", "if:test", NULL,
                                         rbc.Is_return_checked_properly("open", "ne", -1),
@@ -1730,12 +1730,12 @@ int pos35_c_fsm(void)
   //                                       "openr_s", NULL, 67));
   // #24-2 "openr_s" => "openr_s" : write(*, _, _)
   rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "write", rbc.Get_arg(1), 1,
-                                        "openr_s", "WRF MISRA_22_4", 68));
+                                        "openr_s", "WRF MSR_22_4", 68));
   // #24-3 "openr_s" => "finish" : close(*)
   rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "close", rbc.Get_arg(1), 1,
                                         "finish", NULL, 69));
   // #24-4 "openr_s" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("openr_s", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("openr_s", "FIO42-C MSR_22_1", 70));
   // #24-5 "openr_s" => "openr_sc" : check if (fd != -1)
   rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "if:test", NULL,
                                         rbc.Is_return_checked_properly("open", "ne", -1),
@@ -1804,7 +1804,7 @@ int fio45_c_fsm(void)
                                         "open_r", NULL, 65));
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fopen", rbc.Get_arg(1),
                                         !(rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb")),
-                                        "open_r", "MISRA_22_3", 71));
+                                        "open_r", "MSR_22_3", 71));
   // #2 "open_r" => "open_rv" : if (f != NULL)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "if", NULL,
                                         rbc.Is_func_exec_successful("fopen", "ne", NULL),
@@ -1814,50 +1814,50 @@ int fio45_c_fsm(void)
                                         "finish", NULL, 149));
   // #3 "open_r" => "open_rv" : fread(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fread", rbc.Get_arg(4),
-                                        1, "open_rv", "ERR33-C MISRA_D_4_7", 67));
+                                        1, "open_rv", "ERR33-C MSR_D_4_7", 67));
   // #4 "open_r" => "open_rv" : fwrite(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fwrite", rbc.Get_arg(4),
-                                        1, "open_rv", "ERR33-C MISRA_D_4_7 WRF MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MSR_D_4_7 WRF MSR_22_4", 68));
   // #4.1 "open_r" => "open_rv" : fprintf(*, _, ...)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "ERR33-C MISRA_D_4_7 MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MSR_D_4_7 MSR_22_4", 68));
   // #4.2 "open_r" => "open_rv" : fputc(_, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fputc", rbc.Get_arg(2),
-                                        1, "open_rv", "ERR33-C MISRA_D_4_7 MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MSR_D_4_7 MSR_22_4", 68));
   // #4.3 "open_r" => "open_rv" : fputs(_, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fputs", rbc.Get_arg(2),
-                                        1, "open_rv", "ERR33-C MISRA_D_4_7 MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MSR_D_4_7 MSR_22_4", 68));
   // #4.4 "open_r" => "open_rv" : vfprintf(*, _, ...)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "vfprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "ERR33-C MISRA_D_4_7 MISRA_22_4", 68));
+                                        1, "open_rv", "ERR33-C MSR_D_4_7 MSR_22_4", 68));
   // #5 "open_r" => "finish" : fclose(*)
   rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fclose", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C MISRA_D_4_7", 69));
+                                        1, "finish", "ERR33-C MSR_D_4_7", 69));
   // #6 "open_rv" => "open_rv" : fread(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fread", rbc.Get_arg(4),
                                         1, "open_rv", NULL, 67));
   // #7 "open_rv" => "open_rv" : fwrite(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fwrite", rbc.Get_arg(4),
-                                        1, "open_rv", "WRF MISRA_22_4", 68));
+                                        1, "open_rv", "WRF MSR_22_4", 68));
   // #7.1 "open_rv" => "open_rv" : fprintf(*, _, ...)
   rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "MISRA_22_4", 68));
+                                        1, "open_rv", "MSR_22_4", 68));
   // #7.2 "open_rv" => "open_rv" : fputc(_, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fputc", rbc.Get_arg(2),
-                                        1, "open_rv", "MISRA_22_4", 68));
+                                        1, "open_rv", "MSR_22_4", 68));
   // #7.3 "open_rv" => "open_rv" : fputs(_, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fputs", rbc.Get_arg(2),
-                                        1, "open_rv", "MISRA_22_4", 68));
+                                        1, "open_rv", "MSR_22_4", 68));
   // #7.4 "open_rv" => "open_rv" : vfprintf(*, _, ...)
   rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "vfprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "MISRA_22_4", 68));
+                                        1, "open_rv", "MSR_22_4", 68));
   // #8 "open_rv" => "finish" : fclose(*)
   rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fclose", rbc.Get_arg(1),
                                         1, "finish", NULL, 69));
   // #9 "open_r" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_r", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("open_r", "FIO42-C MSR_22_1", 70));
   // #10 "open_rv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_rv", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("open_rv", "FIO42-C MSR_22_1", 70));
 
   // write transitions
   // #1 "start_up" => "open_w" : fopen(*, "w")
@@ -1867,7 +1867,7 @@ int fio45_c_fsm(void)
                                         "open_w", NULL, 71));
   rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fopen", rbc.Get_arg(1),
                                         rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb"),
-                                        "open_w", "MISRA_22_3", 65));
+                                        "open_w", "MSR_22_3", 65));
   // #2 "open_w" => "open_wv" : if (f != NULL)
   rbc.Model_decl(rbc.Fsm_add_transition("open_w", "if", NULL,
                                         rbc.Is_func_exec_successful("fopen", "ne", NULL),
@@ -1877,13 +1877,13 @@ int fio45_c_fsm(void)
                                         "finish", NULL, 149));
   // #3 "open_w" => "open_wv" : fread(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fread", rbc.Get_arg(4),
-                                        1, "open_wv", "ERR33-C MISRA_D_4_7 FIO45-C", 67));
+                                        1, "open_wv", "ERR33-C MSR_D_4_7 FIO45-C", 67));
   // #4 "open_w" => "open_wv" : fwrite(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fwrite", rbc.Get_arg(4),
-                                        1, "open_wv", "ERR33-C MISRA_D_4_7 FIO45-C", 68));
+                                        1, "open_wv", "ERR33-C MSR_D_4_7 FIO45-C", 68));
   // #5 "open_w" => "finish" : fclose(*)
   rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fclose", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C MISRA_D_4_7", 69));
+                                        1, "finish", "ERR33-C MSR_D_4_7", 69));
   // #6 "open_wv" => "open_wv" : fread(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "fread", rbc.Get_arg(4),
                                         1, "open_wv", "FIO45-C", 67));
@@ -1894,9 +1894,9 @@ int fio45_c_fsm(void)
   rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "fclose", rbc.Get_arg(1),
                                         1, "finish", NULL, 69));
   // #9 "open_w" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_w", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("open_w", "FIO42-C MSR_22_1", 70));
   // #10 "open_wv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_wv", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("open_wv", "FIO42-C MSR_22_1", 70));
 
   // exclusive write transitions
   // #1 "start_up" => "open_x" : fopen(*, "wx")
@@ -1906,7 +1906,7 @@ int fio45_c_fsm(void)
                                         "open_x", NULL, 72));
   rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fopen", rbc.Get_arg(1),
                                         rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb"),
-                                        "open_x", "MISRA_22_3", 65));
+                                        "open_x", "MSR_22_3", 65));
   // #2 "open_x" => "open_xv" : if (f != NULL)
   rbc.Model_decl(rbc.Fsm_add_transition("open_x", "if", NULL,
                                         rbc.Is_func_exec_successful("fopen", "ne", NULL),
@@ -1916,13 +1916,13 @@ int fio45_c_fsm(void)
                                         "finish", NULL, 149));
   // #3 "open_x" => "open_xv" : fread(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fread", rbc.Get_arg(4),
-                                        1, "open_xv", "ERR33-C MISRA_D_4_7", 67));
+                                        1, "open_xv", "ERR33-C MSR_D_4_7", 67));
   // #4 "open_x" => "open_xv" : fwrite(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fwrite", rbc.Get_arg(4),
-                                        1, "open_xv", "ERR33-C MISRA_D_4_7", 68));
+                                        1, "open_xv", "ERR33-C MSR_D_4_7", 68));
   // #5 "open_x" => "finish" : fclose(*)
   rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fclose", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C MISRA_D_4_7", 69));
+                                        1, "finish", "ERR33-C MSR_D_4_7", 69));
   // #6 "open_xv" => "open_xv" : fread(_, _, _, *)
   rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "fread", rbc.Get_arg(4),
                                         1, "open_xv", NULL, 67));
@@ -1933,9 +1933,9 @@ int fio45_c_fsm(void)
   rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "fclose", rbc.Get_arg(1),
                                         1, "finish", NULL, 69));
   // #9 "open_x" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_x", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("open_x", "FIO42-C MSR_22_1", 70));
   // #10 "open_xv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_xv", "FIO42-C MISRA_22_1", 70));
+  rbc.Model_decl(rbc.Fsm_set_default_action("open_xv", "FIO42-C MSR_22_1", 70));
 
   rbc.Model_decl(rbc.Fsm_build_end("fio45c"));
 }
@@ -2004,8 +2004,8 @@ long strtol(const char *str, char **endptr, int base)
   rbc.Rbc_same_as_func("atoi");
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -2014,8 +2014,8 @@ long long int strtoll(const char *nptr, char **endptr, int base)
   rbc.Rbc_same_as_func("atoi");
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -2024,8 +2024,8 @@ unsigned long int strtoul(const char *nptr, char **endptr, int base)
   rbc.Rbc_same_as_func("atoi");
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -2034,8 +2034,8 @@ unsigned long long int strtoull(const char *nptr, char **endptr, int base)
   rbc.Rbc_same_as_func("atoi");
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -2044,8 +2044,8 @@ double strtod(const char *nptr, char **endptr)
   rbc.Rbc_same_as_func("atoi");
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0.0;
 }
 
@@ -2054,8 +2054,8 @@ float strtof(const char *nptr, char **endptr)
   rbc.Rbc_same_as_func("atoi");
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0.0;
 }
 
@@ -2064,8 +2064,8 @@ long double strtold(const char *nptr, char **endptr)
   rbc.Rbc_same_as_func("atoi");
   rbc.Model_decl(rbc.Set_func_errno_setting());
 
-  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MISRA_22_8");
-  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MISRA_22_9");
+  rbc.Rbc_assert(rbc.Is_errno_cleared_before(), "MSR_22_8");
+  rbc.Rbc_assert(rbc.Is_errno_checked_after(), "MSR_22_9");
   return 0;
 }
 
@@ -2075,7 +2075,7 @@ int kstrtol(const char *s, unsigned int base, long *res)
   rbc.Model_decl(rbc.Set_parm_mod(rbc.Get_arg(3)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -2127,7 +2127,7 @@ int kstrtobool(const char *s, bool *res)
   rbc.Model_decl(rbc.Set_parm_mod(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -2161,7 +2161,7 @@ int kstrtol_from_user(const char *s, size_t count, unsigned int base, long *res)
   rbc.Model_decl(rbc.Set_parm_mod(rbc.Get_arg(4)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MSR_D_4_7");
   return 0;
 }
 
@@ -2225,7 +2225,7 @@ int kstrtobool_from_user(const char *s, size_t count, bool *res)
   rbc.Model_decl(rbc.Set_parm_mod(rbc.Get_arg(3)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "ERR33-C");
-  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MISRA_D_4_7");
+  rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "ne", 0), "MSR_D_4_7");
   return 0;
 }
 
