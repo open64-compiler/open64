@@ -54,6 +54,14 @@ INT trace_verbose = FALSE;
 BOOL TARGET_64BIT;
 static Output_File *Irb_Output_File = NULL;
 
+static llvm::cl::opt<bool>
+    ExternInlineEnabled(
+      "emit-extern-inline", 
+      llvm::cl::Hidden,
+      llvm::cl::desc("Emit the extern inline function"),
+      llvm::cl::init(false)
+    );
+
 void
 Cleanup_Files(BOOL report, BOOL delete_dotofile) {
   Set_Error_Line(ERROR_LINE_UNKNOWN);
@@ -642,8 +650,10 @@ WhirlBuilder::AddDeferredFunc(const GlobalDecl gd, BOOL force_global) {
   if (const CXXDestructorDecl *dtor = dyn_cast<CXXDestructorDecl>(decl)) {
     Is_True(!dtor->getParent()->hasTrivialDestructor(), ("trivial dtor"));
   }
-  if (Context()->GetGVALinkageForFunction(decl) == GVA_AvailableExternally)
-    return;
+  if (!ExternInlineEnabled) {
+    if (Context()->GetGVALinkageForFunction(decl) == GVA_AvailableExternally)
+      return;
+  }
   DeferredFuncList &list = (_decl_type == GLOBAL_DECL || force_global)
                               ? _global_deferred_funcs
                               : _deferred_funcs;
