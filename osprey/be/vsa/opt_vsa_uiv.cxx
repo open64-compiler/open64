@@ -326,13 +326,22 @@ UIV_CHECKER::Is_bitfield_assign(STMTREP *sr, CODEREP *cr, TRAV_CONTEXT *ctx)
   if (rhs->Opr() != OPR_BIOR)
     return FALSE;
 
-  rhs = rhs->Opnd(0);
-  if (rhs->Kind() != CK_OP ||
-      rhs->Opr() != OPR_BAND ||
-      rhs->Opnd(0) != cr ||
-      rhs->Opnd(1)->Kind() != CK_CONST)
-    return FALSE;
-  return TRUE;
+  // BIOR is commutative, check both opnd(0) and opnd(1)
+  CODEREP *opnd = rhs->Opnd(0);
+  if (opnd->Kind() == CK_OP &&
+      opnd->Opr() == OPR_BAND &&
+      opnd->Opnd(0) == cr &&
+      opnd->Opnd(1)->Kind() == CK_CONST)
+    return TRUE;
+
+  opnd = rhs->Opnd(1);
+  if (opnd->Kind() == CK_OP &&
+      opnd->Opr() == OPR_BAND &&
+      opnd->Opnd(0) == cr &&
+      opnd->Opnd(1)->Kind() == CK_CONST)
+    return TRUE;
+
+  return FALSE;
 }
 
 template<> CHECKER_STATUS inline
