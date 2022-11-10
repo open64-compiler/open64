@@ -201,7 +201,7 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
       (decl->getStorageClass() == SC_Static)) {
     Set_PU_is_inline_function(pu);
     Set_PU_is_marked_inline(pu);
-    if (linkage == GVA_StrongExternal)
+    if (linkage == GVA_AvailableExternally || linkage == GVA_StrongExternal)
       Set_PU_is_extern_inline(pu);
   }
 
@@ -266,13 +266,6 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
     }
   }
 
-  // mark Available External function as External
-  if (decl->isInlineSpecified() || decl->isInlined() ||
-      (decl->getStorageClass() == SC_Static)) {
-    if (linkage == GVA_AvailableExternally) {
-      Set_ST_export(st, EXPORT_PREEMPTIBLE);
-    }
-  }
 
   return ST_st_idx(st);
 }
