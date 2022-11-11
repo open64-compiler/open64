@@ -13419,6 +13419,10 @@ RBC_BASE::Perform_fsm_check_caller(FSM_OBJ_REP *fsm_obj_rep, FSM_TRAV_CONTEXT &f
           caller_frame = fsm_ctx.Top_frame(TD_DOWN);
           if (caller_frame == NULL)
             caller_frame = fsm_ctx.Top_frame(TD_UP);
+          // 'a' may be the function that holds the starting transit of an FSM,
+          // its frame has no direction in that case
+          if (caller_frame == NULL)
+            caller_frame = fsm_ctx.Top_frame(TD_NONE);
           prev_rna = frame->Rna();
         }
       }
