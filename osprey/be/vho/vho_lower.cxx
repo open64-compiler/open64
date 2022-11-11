@@ -4755,7 +4755,8 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
 #if defined(BUILD_MASTIFF)
       if (Run_vsaopt && VSA_Scb &&
           WN_Simp_Compare_Trees(WN_kid1(wn), WN_kid2(wn)) == 0)
-        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB", FALSE, VHO_Srcpos);
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB",
+                         WN_block_empty(WN_kid1(wn)), VHO_Srcpos);
 #endif
 
       WN_kid0(wn) = vho_lower_expr (WN_kid0(wn), block, NULL);
@@ -4767,7 +4768,8 @@ vho_lower_expr ( WN * wn, WN * block, BOOL_INFO * bool_info, BOOL is_return )
 #if defined(BUILD_MASTIFF)
       if (Run_vsaopt && VSA_Scb &&
           WN_Simp_Compare_Trees(WN_kid1(wn), WN_kid2(wn)) == 0)
-        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB", FALSE, VHO_Srcpos);
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB",
+                         WN_block_empty(WN_kid1(wn)), VHO_Srcpos);
 #endif
 
       wn = vho_lower_cselect ( wn, block, bool_info);
@@ -8870,7 +8872,8 @@ vho_lower_scf ( WN * wn, WN * block )
       if (Run_vsaopt && VSA_Scb &&
           WN_operator(WN_kid0(wn)) != OPR_INTCONST &&
           WN_Simp_Compare_Trees(WN_kid1(wn), WN_kid2(wn)) == 0)
-        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB", FALSE, VHO_Srcpos);
+        Report_vsa_error(VHO_Get_VSA_PU_Name(), "", "SCB",
+                         WN_block_empty(WN_kid1(wn)), VHO_Srcpos);
 #endif
 
       wn = vho_lower_if ( wn, block );
