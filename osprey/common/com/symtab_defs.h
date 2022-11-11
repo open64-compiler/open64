@@ -231,6 +231,7 @@ enum ST_FLAGS_EXT
     ST_IS_NATIVE = 0x1000000,      // st is native function
     ST_IS_USED = 0x2000000,        // st is used by code
     ST_IS_INLINED = 0x4000000,     // st is inlined from callee
+    ST_IS_GLB_INIT_FUNC = 0x8000000, // st is __GLOBAL_SUB_I_XXX function which invokes ctors of global variables
 }; // ST_FLAGS_EXT
 #endif
 

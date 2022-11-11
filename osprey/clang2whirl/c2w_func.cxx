@@ -292,6 +292,9 @@ WhirlFuncBuilder::EmitCXXGlobalInitialization(ST_IDX st_idx, int priority_size) 
           SCLASS_TEXT, EXPORT_LOCAL, ty_idx);
   ST_IDX global_st_idx = ST_st_idx(global_st);
 
+  // set ST_IS_GLB_INIT_FUNC attr
+  Set_ST_is_glb_init_func(global_st);
+  
   // create INITV
   ST *ctor_st = New_ST(GLOBAL_SYMTAB);
   STR_IDX initv_name = Save_Str2i("__ctors", "_", _ctor_name_suffix++);

@@ -787,6 +787,13 @@ inline void
 Set_ST_is_native (ST* s)    { s->flags_ext |= ST_IS_NATIVE; }
 inline void
 Reset_ST_is_native (ST* s)  { s->flags_ext &= ~ST_IS_NATIVE; }
+
+inline BOOL
+ST_is_glb_init_func (const ST* s) { return s->flags_ext & ST_IS_GLB_INIT_FUNC; }
+inline void
+Set_ST_is_glb_init_func (ST* s) { s->flags_ext |= ST_IS_GLB_INIT_FUNC; }
+inline void
+Reset_ST_is_glb_init_func(ST* s) { s->flags_ext &= ~ST_IS_GLB_INIT_FUNC; }
 #endif /* KEY */
 
 inline BOOL
