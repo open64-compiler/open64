@@ -14409,7 +14409,7 @@ VSA::Check_redundant_condition(BB_NODE *bb, CODEREP *cond,
       continue;
     Is_True(cd_cond.second && cd_cond.second->Bb(), ("invalid cd cond"));
     BB_NODE* cd_bb = cd_cond.second->Bb();
-    if (visited.find(cd_bb->Id()) != visited.end())
+    if (!cd_bb->Dominates(bb) || visited.find(cd_bb->Id()) != visited.end())
       continue;
     visited.insert(cd_bb->Id());
     VRA_RESULT res1 = Comp_unit()->Vra()->Compare_cr(cond, cd_cond.first,
