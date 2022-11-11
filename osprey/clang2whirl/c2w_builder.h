@@ -266,6 +266,8 @@ public:
   // get LABEL_IDX from LabelDecl
   LABEL_IDX Get_label_idx(const clang::LabelDecl *decl);
 
+  void Clear_label_map();
+
   ST_IDX Get_thunk_st(const clang::GlobalDecl gd, clang::ThunkInfo ti);
 
   ST_IDX Get_func_st(const clang::GlobalDecl gd);

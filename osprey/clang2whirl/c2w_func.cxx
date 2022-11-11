@@ -106,6 +106,8 @@ WhirlFuncBuilder::CreateLocalSymtab(ST_IDX st_idx) {
           ("invalid symtab"));
   New_Scope(_builder->Scope().CurrentSymtab(), Malloc_Mem_Pool, TRUE);
   Scope_tab[CURRENT_SYMTAB].st = ST_ptr(st_idx);
+  // clear label map in _builder
+  _builder->Clear_label_map();
 }
 
 void

@@ -715,6 +715,11 @@ WhirlBuilder::Get_label_idx(const LabelDecl *decl) {
   return label_idx;
 }
 
+void
+WhirlBuilder::Clear_label_map() {
+  _label_map.clear();
+}
+
 ST_IDX
 WhirlBuilder::Get_vla_bound_st(const Expr *expr) {
   VLA_SIZE_MAP::iterator it = _vla_size_map.find(expr);
