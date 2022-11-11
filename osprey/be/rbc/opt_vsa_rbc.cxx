@@ -2830,6 +2830,7 @@ RBC_BASE::Eval__is_func_exec_successful(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
         Is_Trace(Tracing(),
                  (TFile,
                   "RBC::Is_func_exec_successful: none of the compare operand is constant, skip\n"));
+        return ret;
       }
       if (var_cr->Kind() == CK_OP &&
           (var_cr->Opr() == OPR_CVT || var_cr->Opr() == OPR_CVTL)) {
@@ -11457,6 +11458,12 @@ RBC_BASE::Eval__mvsa_model(DNA_NODE *caller, RNA_NODE *caller_rna, MEM_POOL *poo
               continue;
 
             CODEREP *vcall = (*rna_list)[i]->Callstmt()->Rhs();
+            INT actual_count = vcall->Opr() == OPR_ICALL ? vcall->Kid_count() - 1
+                                                         : vcall->Kid_count();
+            // ignore callsite if parameter count mismatch
+            if (Rbc_parm_offset(caller) >= actual_count)
+              continue;
+
             CODEREP *stmt = vcall->Opnd(0 + Rbc_parm_offset(caller))->Ilod_base();
 
             Rbc_init();
