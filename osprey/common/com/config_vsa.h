@@ -116,6 +116,8 @@ extern BOOL VSA_Demo;                  // For demo only
 extern BOOL VSA_Cd_Filter;             // Control dependency filter
 extern BOOL VSA_Experimental;          // VSA experimental features
 extern BOOL VSA_Check_Main_Entry;      // VSA check main entry feature
+extern UINT VSA_Call_Stack_Size_Max;   // VSA check call stack size limit
+extern UINT VSA_Call_Stack_Level_Max;  // VSA check call stack level limit
 extern BOOL VSA_Java_Tmp;
 extern BOOL VSA_Check_Devirt;
 extern BOOL VSA_Compiletime_Triage;    // Vsa time triaging

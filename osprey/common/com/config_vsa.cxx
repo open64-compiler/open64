@@ -186,6 +186,8 @@ INT  VSA_Checker_Max_Frame  = 128;
 INT  VSA_Checker_Max_Srcpos_Child = 2048;
 INT  VSA_Checker_Max_Srcpos_Data = 100;
 INT  VSA_Checker_Max_Path = 32;
+UINT VSA_Call_Stack_Size_Max = 0;
+UINT VSA_Call_Stack_Level_Max = 0;
 INT  VSA_Issue_Certainty_Maybe = FALSE;
 
 STRING VSA_VCG_Cg_Fname = NULL;
@@ -477,6 +479,10 @@ static OPTION_DESC Options_VSA[] = {
     128, -1024, 1024, &VSA_Checker_Max_Srcpos_Data, NULL },
   { OVK_INT32,	OV_INTERNAL,	FALSE, "chk_max_path",          "",
     32, -1024, 1024, &VSA_Checker_Max_Path, NULL },
+  { OVK_INT32,	OV_INTERNAL,	FALSE, "css_max",               "",
+    0, 0, 0xFFFF, &VSA_Call_Stack_Size_Max, NULL },
+  { OVK_INT32,	OV_INTERNAL,	FALSE, "csl_max",               "",
+    0, 0, 0xFFFF, &VSA_Call_Stack_Level_Max, NULL },
 
   { OVK_INT32,	OV_INTERNAL,	FALSE, "icm",                   "",
     1, 0, 2, &VSA_Issue_Certainty_Maybe, NULL },

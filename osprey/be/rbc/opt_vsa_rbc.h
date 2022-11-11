@@ -1759,9 +1759,9 @@ public:
   void         Report_rbc_error(DNA_NODE *dna, const char *stname, const char *rule, const char *msg_id, BOOL maybe);
   void         Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stmt, FSM_OBJ_REP *fo,
                                 TRANSIT *ts, SRCPOS_HANDLE *srcpos_h, FSM_ERR_KIND kind);
-  
-  void          Report_xsca_error(VSA *vsa_ctx, SRCPOS spos, const char* rule,
-                                  SRCPOS_HANDLE *srcpos_h);
+
+  void         Report_xsca_error(VSA *vsa_ctx, SRCPOS spos, const char* rule,
+                                 SRCPOS_HANDLE *srcpos_h);
 
   // Finite State Machine Management
   STRING       Clone_string(STRING name, MEM_POOL *pool) {
@@ -1878,6 +1878,7 @@ public:
   void         Builtin_certj_msc03_bb(DNA_NODE *dna, BB_NODE *bb, regex_t **reg_exp_arr, INT len);
   void         Builtin_certj_obj07(IPSA *ipsa, DNA_NODE *dna);
   void         Builtin_certj_dcl00(IPSA *ipsa, DNA_NODE *dna);
+  void         Call_stack_checks(IPSA *ipsa, UINT sz_max, UINT l_max, DNA_NODE *dna, MEM_POOL *pool);
   // helper functions
   BOOL         Check_class_canbe_copied(IPSA *ipsa, const char *class_name,
                                         const char *rule, const char *msg_prefix);

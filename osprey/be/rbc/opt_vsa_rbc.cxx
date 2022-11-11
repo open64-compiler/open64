@@ -16345,3 +16345,156 @@ RBC_BASE::Dump_FSMs(FILE *fp)
     fsm_base->Fsm()->Print(fp);
   }
 }
+
+
+// =============================================================================
+//
+// Call_stack_checks: check call stack size & level
+//
+// =============================================================================
+void
+RBC_BASE::Call_stack_checks(IPSA *ipsa, UINT sz_max, UINT l_max, DNA_NODE *dna, MEM_POOL *pool)
+{
+  if (sz_max == 0 && l_max == 0)
+    return;
+  if (ipsa == NULL)
+    return;
+
+  // bottom up traversal evaluating max value,
+  // dna index starting from 1, we add one more to avoid OOB access
+  UINT64 dna_count = ipsa->_post_order_dnode.size() + 1;
+  // css records max call stack size of all callee,
+  // csl records max call stack level of all callee,
+  // indexes record rna/dna index of max value
+  UINT64 *css = (UINT64*)CXX_NEW_ARRAY(UINT64, dna_count, pool);
+  UINT64 *css_indexes = (UINT64*)CXX_NEW_ARRAY(UINT64, dna_count, pool);
+  UINT64 *csl = (UINT64*)CXX_NEW_ARRAY(UINT64, dna_count, pool);
+  UINT64 *csl_indexes = (UINT64*)CXX_NEW_ARRAY(UINT64, dna_count, pool);
+  for (int i = 0; i < dna_count; i++) {
+    css[i] = 0;
+    css_indexes[i] = 0;
+    csl[i] = 0;
+    csl_indexes[i] = 0;
+  }
+  for (DNODE_ITER<DNA_TRAV_POST_ORDER> dna_iter(ipsa); !dna_iter.Is_end(); dna_iter.Next()) {
+    DNA_NODE *func = dna_iter.Current();
+    if (func == NULL || func->Non_functional())
+      continue;
+    IDTYPE func_idx = func->Dna_idx();
+    if (func_idx >= dna_count) {
+      Is_Trace(Tracing(), (TFile, "RBC_BASE::Call_stack_checks: FUNC INDEX(%d) out of BOUND(%lld)\n",
+                           func_idx, dna_count));
+      return;
+    }
+    UINT64 max_css = 0;
+    UINT64 max_css_index = 0;
+    UINT64 max_csl = 0;
+    UINT64 max_csl_index = 0;
+    // find max value of "func"'s functional callee
+    for (CALLEE_ITER callee_iter(ipsa, func); !callee_iter.Is_end(); callee_iter.Next()) {
+      RNA_NODE *callee_rna = callee_iter.Current_callsite();
+      DNA_NODE *callee = callee_iter.Current();
+      if (callee != NULL && !callee->Non_functional()) {
+        // all callees must have been processed in bottom up traversal
+        // so their index must be fine and won't have OOB access,
+        // and we don't need to check here
+        IDTYPE callee_idx = callee->Dna_idx();
+        UINT64 callee_css = css[callee_idx];
+        if (callee_css > max_css) {
+          max_css = callee_css;
+          // rna & dna index, used to print out error message later
+          max_css_index = (UINT64)callee_rna->Rna_idx() << 32 | (UINT64)callee_idx;
+        }
+        UINT64 callee_csl = csl[callee_idx];
+        if (callee_csl > max_csl) {
+          max_csl = callee_csl;
+          max_csl_index = (UINT64)callee_rna->Rna_idx() << 32 | (UINT64)callee_idx;
+        }
+      }
+    }
+    // update max value & rna/dna index of current function
+    css[func_idx] = max_css + func->Stack_size();
+    css_indexes[func_idx] = max_css_index;
+    csl[func_idx] = max_csl + 1;
+    csl_indexes[func_idx] = max_csl_index;
+  }
+
+  // evaluate the condition and print out errors
+  for (DNODE_ITER<DNA_TRAV_POST_ORDER> iter(ipsa); !iter.Is_end(); iter.Next()) {
+    DNA_NODE *func = iter.Current();
+    if (func == NULL || func->Non_functional())
+      continue;
+    // check root entry if no specific dna is given
+    if (dna == NULL) {
+      if (!func->Is_root_entry())
+        continue;
+    }
+    else {
+      if (dna != func)
+        continue;
+    }
+    IDTYPE func_idx = func->Dna_idx();
+    // exceed limit, generate path info from root to leaf & report error
+    // "root -> foo() -> bar() -> ... -> leaf()"
+    VSA *vsa = func->Comp_unit()->Vsa();
+    CONTEXT_SWITCH context(func);
+    char *var_name = (char*)CXX_NEW_ARRAY(BOOL, SIZE_MAX_STR, pool);
+    UINT64 func_css = css[func_idx];
+    UINT64 func_csl = csl[func_idx];
+    if (sz_max > 0 && func_css > sz_max) {
+      snprintf(var_name, SIZE_MAX_STR, "STACK SIZE:%lld", func_css);
+      Is_Trace(Tracing(), (TFile, "STACK SIZE(%lld): \"%s\"", func_css, func->Fname()));
+      SRCPOS_HANDLE srcpos_h(func, pool);
+      // st_pos for root info
+      SRCPOS st_pos = ST_Srcpos(*func->St());
+      if (st_pos == 0)
+        st_pos = func->Comp_unit()->Cfg()->Entry_spos();
+      srcpos_h.Append_data(func->St(), NULL, func, PATHINFO_ST_DECLARE);
+      srcpos_h.Set_orig_stname(var_name);
+      DNA_NODE *callee = func;
+      // path info for all max value callees
+      while (callee != NULL && css_indexes[callee->Dna_idx()] != 0) {
+        IDTYPE rna_idx = (IDTYPE)(css_indexes[callee->Dna_idx()] >> 32 & 0xffffffff);
+        RNA_NODE *callee_rna = ipsa->Get_rna(rna_idx);
+        if (callee_rna == NULL)
+          break;
+        srcpos_h.Append_data(callee_rna->Callstmt(), callee, PATHINFO_DNA_CALLSITE);
+        IDTYPE dna_idx = (IDTYPE)(css_indexes[callee->Dna_idx()] & 0xffffffff);
+        callee = ipsa->Get_dna(dna_idx);
+        if (callee == NULL)
+          break;
+        Is_Trace(Tracing(), (TFile, " -> \"%s\"", callee->Fname()));
+      }
+      Is_Trace(Tracing(), (TFile, "\n"));
+      Report_rbc_error(vsa, st_pos, "CSS", FALSE, &srcpos_h);
+    }
+    if (l_max > 0 && func_csl > l_max) {
+      snprintf(var_name, SIZE_MAX_STR, "CALL DEPTH:%lld", func_csl);
+      Is_Trace(Tracing(), (TFile, "CALL DEPTH(%lld): \"%s\"", func_csl, func->Fname()));
+      SRCPOS_HANDLE srcpos_h(func, pool);
+      // st_pos for root info
+      SRCPOS st_pos = ST_Srcpos(*func->St());
+      if (st_pos == 0)
+        st_pos = func->Comp_unit()->Cfg()->Entry_spos();
+      srcpos_h.Append_data(func->St(), NULL, func, PATHINFO_ST_DECLARE);
+      srcpos_h.Set_orig_stname(var_name);
+      DNA_NODE *callee = func;
+      // path info for all max value callees
+      while (callee != NULL && csl_indexes[callee->Dna_idx()] != 0) {
+        IDTYPE rna_idx = (IDTYPE)(csl_indexes[callee->Dna_idx()] >> 32 & 0xffffffff);
+        RNA_NODE *callee_rna = ipsa->Get_rna(rna_idx);
+        if (callee_rna == NULL)
+          break;
+        srcpos_h.Append_data(callee_rna->Callstmt(), callee, PATHINFO_DNA_CALLSITE);
+        IDTYPE dna_idx = (IDTYPE)(csl_indexes[callee->Dna_idx()] & 0xffffffff);
+        callee = ipsa->Get_dna(dna_idx);
+        if (callee == NULL)
+          break;
+        Is_Trace(Tracing(), (TFile, " -> \"%s\"", callee->Fname()));
+      }
+      Is_Trace(Tracing(), (TFile, "\n"));
+      Report_rbc_error(vsa, st_pos, "CSL", FALSE, &srcpos_h);
+    }
+  }
+  Is_Trace(Tracing(), (TFile, "RBC_BASE::Call_stack_checks: DNA COUNT(%lld)\n", dna_count));
+}

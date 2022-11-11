@@ -27,9 +27,9 @@ void __RBC_GLOBAL__()
 {
   rbc.Rbc_enable_builtin("CRF");
   // limit stack size 32k for aw
-  rbc.For_all_exec_path(rbc.Get_max_stack_size() < 32*1024, "CSS");
+  // rbc.For_all_exec_path(rbc.Get_max_stack_size() < 32*1024, "CSS");
   // limit call depth 50 for aw
-  rbc.For_all_exec_path(rbc.Get_max_call_depth() < 50, "CSL");
+  // rbc.For_all_exec_path(rbc.Get_max_call_depth() < 50, "CSL");
 }
 
 

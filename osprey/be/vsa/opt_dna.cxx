@@ -6965,6 +6965,8 @@ IPSA::Analyze(void)
       Rbc()->Builtin_recursion_check(this, &msg_out_pool);
     }
 
+    Rbc()->Call_stack_checks(this, VSA_Call_Stack_Size_Max, VSA_Call_Stack_Level_Max, NULL, &msg_out_pool);
+
     for (DNODE_ITER<DNA_TRAV_PRE_ORDER> iter(this); !iter.Is_end(); iter.Next()) {
       DNA_NODE *func = iter.Current();
       if (!func->Is_set_rbc_flag(DNA_RBC_RULE_CFG))
