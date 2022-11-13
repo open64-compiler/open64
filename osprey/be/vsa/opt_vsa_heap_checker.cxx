@@ -924,6 +924,7 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
       PHI_NODE *phi = hor->Phi_def();
       Is_True(phi != NULL, ("not find PHI hor phi node"));
       BB_NODE  *phi_bb = phi->Bb();
+      CODEREP  *phi_iv = phi_bb->Loop() ? phi_bb->Loop()->Iv() : NULL;
       if (ctx->Visited(phi_bb)) {
         Is_Trace(ctx->Tracing(), (TFile, "%signored. phi already visited.\n", TRACE_INDENT));
         return CS_DONE;
@@ -965,6 +966,7 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
         }
       }
       BOOL def_in_phi = var_phi ||
+                        (is_vor && phi_iv && cr->Contains(phi_iv)) ||
                         (var_def && phi_bb->Dominates(var_def->Bb()));
 
       Append_data(phi_bb, ctx->Dna(), PATHINFO_PHI);
