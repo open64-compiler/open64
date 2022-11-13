@@ -152,6 +152,13 @@ typedef hash_map<HEAP_OBJ_REP*, HOR_PTR_SET*,
                  HO_ID_EQ,
                  mempool_allocator<ULIST_PAIR> >    ULIST_CACHE;
 
+struct  STMT_HOR_SET;
+typedef std::pair<STMTREP*, STMT_HOR_SET*>          HOR_SET_PAIR;
+typedef hash_map<STMTREP*, STMT_HOR_SET*,
+                 HASHER<STMTREP>,
+                 std::equal_to<STMTREP*>,
+                 mempool_allocator<HOR_SET_PAIR> >  HOR_SET_CACHE;
+
 typedef deque<PHI_NODE*, mempool_allocator<PHI_NODE*> > PHI_STACK;
 
 // dump HO_PTR_SET/VO_PTR_SET
@@ -545,6 +552,7 @@ private:
   MU_CACHE          _vor_mu_cache;  // cache stmt vor mu,  entry of <vo_id, MU_NODE*>
   CHI_CACHE         _vor_chi_cache; // cache stmt vor chi, entry of <vo_id, CHI_NODE*>
   ULIST_CACHE      *_ulist_cache;   // cache ulist, map<HEAP_OBJ_REP*, hash_set<HEAP_OBJ_REP*> >
+  HOR_SET_CACHE    *_hor_set_cache; // cache stmt hor set, entry of <stmt, STMT_HOR_SET*>
   PHI_CACHE         _vo_phi_cache;  // cache vo phi, vector of <bb_id, hash_set<vo_id>* >
   PHI_CACHE         _ho_phi_cache;  // cache ho phi, vector of <bb_id, hash_set<ho_id>* >
   HOR_CACHE         _hor_cache;     // hor cache for each round
@@ -622,6 +630,10 @@ public:
                                        HO_ID_EQ(),
                                        mempool_allocator<ULIST_PAIR>(Hva_pool())),
                            Hva_pool());
+    _hor_set_cache = CXX_NEW(HOR_SET_CACHE(3, HASHER<STMTREP>(),
+                                           std::equal_to<STMTREP*>(),
+                                           mempool_allocator<HOR_SET_PAIR>(Hva_pool())),
+                             Hva_pool());
     _first_ho_id = Vsa()->Last_heapobj_id();
     _first_vo_id = Vsa()->Last_vsymobj_id();
     _next_vo_id = _first_vo_id;
@@ -633,6 +645,23 @@ public:
     OPT_POOL_Delete(&_local_pool, VSA_NHV_TRACE_FLAG);
     OPT_POOL_Delete(&_temp_pool, VSA_NHV_TRACE_FLAG);
     OPT_POOL_Delete(&_hva_pool, VSA_NHV_TRACE_FLAG);
+  }
+
+  // add <stmt, hor_set> to _hor_set_cache
+  void Set_stmt_hor_set(STMTREP *sr, STMT_HOR_SET *set) {
+    HOR_SET_CACHE::iterator it = _hor_set_cache->find(sr);
+    if (it == _hor_set_cache->end()) {
+      _hor_set_cache->insert(HOR_SET_PAIR(sr, set));
+    }
+    else {
+      Is_True(it->second == set, ("stmt cache inconsistent"));
+    }
+  }
+
+  // get hor_set from _hor_set_cache
+  STMT_HOR_SET *Get_stmt_hor_set(STMTREP *sr) const {
+    HOR_SET_CACHE::const_iterator it = _hor_set_cache->find(sr);
+    return it != _hor_set_cache->end() ? it->second : NULL;
   }
 
   // find cr where the ho/vo is associated
@@ -1383,6 +1412,8 @@ public:
     Is_True(vo->Id() < _next_vo_id &&
             _vo_created->find(vo) ==  _vo_created->end(),
             ("vo is created just now"));
+    Is_Trace(Tracing(),
+             (TFile, "HVA[%d]: set vo%d updated.\n", Round(), vo->Id()));
     _vo_updated->insert(vo);
   }
 
@@ -1450,6 +1481,9 @@ public:
             ("invalid sr id"));
     if (_sr_counter[sr->Stmtrep_id()] < _round) {
       _sr_counter[sr->Stmtrep_id()] = _round;
+      Is_Trace(Tracing(),
+               (TFile, "HVA[%d]: set sr%d %s visit later.\n", Round(),
+                       sr->Stmtrep_id(), OPERATOR_name(sr->Opr()) + 4));
     }
   }
 
@@ -1723,7 +1757,7 @@ public:
 
     case OPR_INTRINSIC_CALL:
       // only visit INTRINSIC_CALL if V_INTRINSIC_CALL is set
-      if ((_VISITOR::SR_VFLAG & V_INTRINSIC_CALL) && _visitor->Visit_stmt(sr))
+      if ((_VISITOR::SR_VFLAG & V_INTRINSIC_CALL))
         _visitor->template Process_sr<OPR_INTRINSIC_CALL, _FWD>(sr);
       break;
 

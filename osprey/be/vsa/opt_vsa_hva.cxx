@@ -701,20 +701,20 @@ private:
             Is_True(def_cr != NULL,
                     ("not find def_cr for vor"));
             VSYM_OBJ_REP *opnd_vor = _hva->Find_stmt_cur_vor(def, vor->Vsym_obj());
-            if (opnd_vor && opnd_vor->Hor() && !_hva->Vsa()->Is_special_hor(opnd_vor->Hor())) {
-              hor = _hva->Create_heap_obj(opnd_vor->Hor()->Heap_obj());
+            if (opnd_vor && opnd_vor->Hor() && _hva->Vsa()->Is_special_hor(opnd_vor->Hor())) {
+              hor = opnd_vor->Hor();
             } else {
               hor = _hva->Create_heap_obj(cr, def->Bb(), _hva->Defbb_pool());
+              hor->Set_attr(ROR_DEF_BY_CHI);
+              hor->Set_stmt_def(def, _hva->Dna());
+              _hva->Vsa()->Append_stmt_hor_chi(def, hor, hor->Heap_obj()->Entry_chi(), def_cr);
+              Is_Trace(_trace,
+                       (TFile, "HOR_FINDER: create ho%d on %s sr%d LINE %d.\n",
+                               hor->Heap_obj()->Id(),
+                               OPERATOR_name(def->Opr()) + 4,
+                               def->Stmtrep_id(),
+                               Srcpos_To_Line(def->Linenum())));
             }
-            hor->Set_attr(ROR_DEF_BY_CHI);
-            hor->Set_stmt_def(def, _hva->Dna());
-            _hva->Vsa()->Append_stmt_hor_chi(def, hor, hor->Heap_obj()->Entry_chi(), def_cr);
-            Is_Trace(_trace,
-                     (TFile, "HOR_FINDER: create ho%d on %s sr%d LINE %d.\n",
-                             hor->Heap_obj()->Id(),
-                             OPERATOR_name(def->Opr()) + 4,
-                             def->Stmtrep_id(),
-                             Srcpos_To_Line(def->Linenum())));
           }
           else if (def->Opr() == OPR_ISTORE) {
             Is_True(vor->Stmt_def(), ("bad defstmt"));
@@ -2222,18 +2222,31 @@ private:
   public:
     // constructor
     STMT_HOR_SET_HELPER(PENDING_STMT_VEC *vec, MEM_POOL *mpool, HEAP_VSYM_ANALYSIS *hva, STMTREP *stmt)
-      : _hva(hva), _vec(vec), _mpool(mpool), _stmt(stmt), _set(NULL) { }
+      : _hva(hva), _vec(vec), _mpool(mpool), _stmt(stmt), _set(NULL) {
+      // load _set from _vec or _hva if cache already exists
+      if (!_vec->empty() && _vec->back()->Stmtrep() == _stmt) {
+        _set = _vec->back();
+      }
+      else {
+        _set = _hva->Get_stmt_hor_set(_stmt);
+        if (_set != NULL) {
+          _vec->push_back(_set);
+        }
+      }
+    }
 
     // add hor and its field hor to _ho_set of the stmt
     void Add(HEAP_OBJ_REP *hor, CODEREP *cr, UINT mr) {
       if (_set == NULL) {
-        if (_vec->empty() || _vec->back()->Stmtrep() != _stmt) {
-          _set = CXX_NEW(STMT_HOR_SET(_hva, _stmt, _mpool), _mpool);
-          _vec->push_back(_set);
-        }
-        else {
-          _set = _vec->back();
-        }
+        // no cache in _vec or _hva
+        Is_True(_vec->empty() || _vec->back()->Stmtrep() != _stmt,
+                ("invalid vec or stmt"));
+        Is_True(_hva->Get_stmt_hor_set(_stmt) == NULL,
+                ("invalid hva hor cache"));
+        _set = CXX_NEW(STMT_HOR_SET(_hva, _stmt, _hva->Hva_pool()),
+                       _hva->Hva_pool());
+        _hva->Set_stmt_hor_set(_stmt, _set);
+        _vec->push_back(_set);
       }
       Is_True(!_hva->Vsa()->Is_special_hor(hor), ("special hor added"));
       _set->Add(hor, cr, mr);
@@ -2629,17 +2642,7 @@ VSYM_OBJ_REP *
 HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
 {
   Is_True(sr && cr && cr->Opr() == OPR_PARM, ("invalid ivar cr"));
-  VSYM_OBJ_REP *parm_vor = Vsa()->Cr_2_vor(cr);
-  if (parm_vor)  // parm vor already created
-    return parm_vor;
-
   CODEREP *base = cr->Ilod_base();
-  VSYM_OBJ_REP *base_vor = Process_coderep<VSYM_OBJ_REP*>(sr, base, flag);
-  if (_hva->Visit_next(sr)) {
-    // still have pending IVAR to create VOR, early return
-    // only process mu/chi of param after all IVAR are handled
-    return NULL;
-  }
 
   UINT mod_ref = 0;
   BOOL parm_need_vsym = FALSE;
@@ -2688,7 +2691,9 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
       }
     }
   }
+
   if (parm_need_vsym) {
+    VSYM_OBJ_REP *base_vor = Vsa()->Cr_2_vor(base);
     base = Find_ilod_base(base);
     HEAP_OBJ_REP *hor = base ? _hva->Find_cr_hor(sr, base) : NULL;
     if (hor && !Vsa()->Is_special_hor(hor)) {
@@ -2715,9 +2720,6 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
         // to represent chi for any field
         if (base_vo) {
           _hva->Append_stmt_vor_chi(base, sr, base_vo->Entry_chi(), Defbb_pool());
-          if (!_hva->Vo_created(base_vor)) {
-            _hva->Set_vo_updated(base_vor->Vsym_obj());
-          }
         }
       }
       // if base is LDA, add base's mu's hor. for example:
@@ -2808,7 +2810,6 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
         } else {
           _hva->Append_stmt_vor_mu(base, sr, mu_vor);
         }
-        parm_vor = mu_vor;
 
         Is_Trace(Tracing(), (TFile, "VOC[%d]: Create vor ", _hva->Round()));
         Is_Trace_cmd(Tracing(), mu_vor->Print(TFile));
@@ -2827,12 +2828,10 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
           // it won't be processed in Finalize phase
           // add vor chi here and set vo_updated flag for renaming
           _hva->Append_stmt_vor_chi(base, sr, chi_vor->Vsym_obj()->Entry_chi(), Defbb_pool());
-          _hva->Set_vo_updated(chi_vor->Vsym_obj());
         }
         chi_vor->Set_srcpos_node(sr, Dna(), PATHINFO_CHI);
         chi_vor->Set_attr(ROR_DEF_BY_CHI);
         chi_vor->Set_stmt_def(sr, Dna());
-        parm_vor = chi_vor;
 
         Is_Trace(Tracing(), (TFile, "VOC[%d]: Create vor ", _hva->Round()));
         Is_Trace_cmd(Tracing(), chi_vor->Print(TFile));
@@ -2841,16 +2840,13 @@ HVA_VO_CREATION::Process_param(STMTREP *sr, CODEREP *cr, UINT flag)
         Is_Trace(Tracing(),
                 (TFile, " to call chi for parm cr%d\n", cr->Coderep_id()));
       }
-      // annotate parm_vor to OPR_PARM
-      Is_True(parm_vor != NULL, ("no parm vor created"));
-      Vsa()->Enter_cr_vor_map(cr, parm_vor);
     } // hor && !Vsa()->Is_special_hor(hor)
     else if (base && hor == NULL) {
       _hva->Set_visit_next(sr);
     }
   } // parm_need_vsym
 
-  return parm_vor;
+  return NULL;
 }
 
 // Process_cr<CK_IVAR>: create VSYM for IVAR
@@ -2858,6 +2854,7 @@ template<> VSYM_OBJ_REP*
 HVA_VO_CREATION::Process_cr<CK_IVAR>(STMTREP* sr, CODEREP* cr, UINT flag)
 {
   Is_True(sr && cr && cr->Kind() == CK_IVAR, ("invalid ivar cr"));
+  Is_True(cr->Opr() != OPR_PARM, ("unexpected PARM"));
 
   if (cr->Opr() == OPR_PARM) {
     return Process_param(sr, cr, flag);
@@ -3033,11 +3030,11 @@ template<> void
 HVA_VO_CREATION::Process_sr<OPR_CALL, TRUE>(STMTREP* sr)
 {
   Is_True(sr->Opr() == OPR_CALL || sr->Opr() == OPR_ICALL, ("not a call"));
-  TY_IDX proto_ty = sr->Opr() == OPR_CALL ? ST_type(sr->St())
-                                          : sr->Ty();
-  Is_True(proto_ty != TY_IDX_ZERO && TY_kind(proto_ty) == KIND_FUNCTION,
-          ("not function type"));
-  TYLIST_IDX tylist = TY_parms(proto_ty);
+  if (!_hva->Visit_stmt(sr)) {
+    // have a chance to process newly created vo
+    STMT_HOR_SET_HELPER ho_set(_pending_stmts, _hva->Local_pool(), _hva, sr);
+    return;
+  }
 
   // process rhs
   CODEREP *rhs = sr->Rhs();
@@ -3045,6 +3042,27 @@ HVA_VO_CREATION::Process_sr<OPR_CALL, TRUE>(STMTREP* sr)
           ("bad rhs"));
   INT32 parm_cnt = sr->Opr() == OPR_CALL ? rhs->Kid_count()
                                          : rhs->Kid_count() - 1;
+  for (INT32 i = 0; i < parm_cnt; ++i) {
+    CODEREP *parm = rhs->Opnd(i);
+    Is_True(parm->Kind() == CK_IVAR && parm->Opr() == OPR_PARM,
+            ("bad parm"));
+    Process_coderep<VSYM_OBJ_REP *>(sr, parm->Ilod_base(), 0);
+  }
+  if (sr->Opr() == OPR_ICALL) {
+    // process icall target
+    Process_coderep<VSYM_OBJ_REP *>(sr, rhs->Opnd(parm_cnt), 0);
+  }
+
+  // still have pending IVAR in param or ICALL target, early return
+  if (_hva->Visit_next(sr))
+    return;
+
+  // process ho/vo on param
+  TY_IDX proto_ty = sr->Opr() == OPR_CALL ? ST_type(sr->St())
+                                          : sr->Ty();
+  Is_True(proto_ty != TY_IDX_ZERO && TY_kind(proto_ty) == KIND_FUNCTION,
+          ("not function type"));
+  TYLIST_IDX tylist = TY_parms(proto_ty);
   for (INT32 i = 0; i < parm_cnt; ++i) {
     TY_IDX parm_ty = TYLIST_ty(tylist);
     if (parm_ty != TY_IDX_ZERO) {
@@ -3055,10 +3073,7 @@ HVA_VO_CREATION::Process_sr<OPR_CALL, TRUE>(STMTREP* sr)
             ("bad parm"));
     Process_param(sr, parm, parm_ty);
   }
-  if (sr->Opr() == OPR_ICALL) {
-    // process icall target
-    Process_coderep<VSYM_OBJ_REP *>(sr, rhs->Opnd(parm_cnt), 0);
-  }
+
   // process call
   Process_call<TRUE>(sr);
 }
@@ -3068,9 +3083,33 @@ template<> void
 HVA_VO_CREATION::Process_sr<OPR_INTRINSIC_CALL, TRUE>(STMTREP* sr)
 {
   Is_True(sr->Opr() == OPR_INTRINSIC_CALL, ("not a call"));
+  if (!_hva->Visit_stmt(sr)) {
+    // have a chance to process newly created vo
+    STMT_HOR_SET_HELPER ho_set(_pending_stmts, _hva->Local_pool(), _hva, sr);
+    return;
+  }
+
   // process rhs
   CODEREP *rhs = sr->Rhs();
-  Process_coderep<VSYM_OBJ_REP *>(sr, rhs, 0);
+  for (INT32 i = 0; i < rhs->Kid_count(); ++i) {
+    CODEREP *parm = rhs->Opnd(i);
+    Is_True(parm->Kind() == CK_IVAR && parm->Opr() == OPR_PARM,
+            ("bad parm"));
+    Process_coderep<VSYM_OBJ_REP *>(sr, parm->Ilod_base(), 0);
+  }
+
+  // still have pending IVAR in param or ICALL target, early return
+  if (_hva->Visit_next(sr))
+    return;
+
+  // process ho/vo on param
+  for (INT32 i = 0; i < rhs->Kid_count(); ++i) {
+    CODEREP *parm = rhs->Opnd(i);
+    Is_True(parm->Kind() == CK_IVAR && parm->Opr() == OPR_PARM,
+            ("bad parm"));
+    Process_param(sr, parm, parm->Ilod_ty());
+  }
+
   // process call
   Process_call<TRUE>(sr);
 }
@@ -3481,17 +3520,6 @@ public:
                 opnd->Vsym_obj() == ((VSYM_OBJ_REP*)phi->RESULT())->Vsym_obj(),
                 ("vo mismatch"));
 
-        // Set rhs hor for phi results
-        if (!Phi_opnd_mismatch(phi)) {
-          VSYM_OBJ_REP *real_opnd = (VSYM_OBJ_REP *) phi->OPND(pos);
-          if (real_opnd && !Vsa()->Is_special_vor(real_opnd))
-          {
-            VSYM_OBJ_REP *res = (VSYM_OBJ_REP*)phi->RESULT();
-            if (!res->Hor() && real_opnd->Hor() && !Vsa()->Is_special_hor(real_opnd->Hor())) {
-              res->Set_hor(real_opnd->Hor());
-            }
-          }
-        }
         if (!_hva->Visit_vsym_obj(opnd))
           continue;
 
