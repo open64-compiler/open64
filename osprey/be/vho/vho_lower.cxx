@@ -6417,6 +6417,7 @@ vho_lower_do_while ( WN * wn, WN *block )
 #endif
   while_body = vho_lower_block (WN_while_body(wn));
 
+  VHO_Srcpos = WN_Get_Linenum(wn); // set VHO_Srcpos to do..while cond's linenum
   test_block = WN_CreateBlock ();
   WN_Set_Linenum ( test_block, VHO_Srcpos );
 
@@ -7879,6 +7880,7 @@ vho_lower_while_do ( WN * wn, WN *block )
 #endif
   while_body = vho_lower_block (WN_while_body(wn));
 
+  VHO_Srcpos = WN_Get_Linenum(wn); // set VHO_Srcpos to while cond's linenum
   test_block = WN_CreateBlock ();
   WN_Set_Linenum ( test_block, VHO_Srcpos );
 
