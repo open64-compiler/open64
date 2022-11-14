@@ -1794,148 +1794,253 @@ int pos35_c_fsm(void)
 int fio45_c_fsm(void)
 {
   rbc.Model_decl(rbc.Fsm_build_begin("fio45c"));
-  rbc.Model_decl(rbc.Fsm_new_start_state("start_up"));
+  rbc.Model_decl(rbc.Fsm_new_start_state("start"));
   rbc.Model_decl(rbc.Fsm_new_final_state("finish"));
 
-  // read transitions
-  // #1 "start_up" => "open_r" : fopen(*, "r")
-  rbc.Model_decl(rbc.Fsm_add_transition("start_up", "fopen", rbc.Get_arg(1),
-                                        rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb"),
-                                        "open_r", NULL, 65));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fopen", rbc.Get_arg(1),
-                                        !(rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb")),
-                                        "open_r", "MSR_22_3", 71));
-  // #2 "open_r" => "open_rv" : if (f != NULL)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "if", NULL,
-                                        rbc.Is_func_exec_successful("fopen", "ne", NULL),
-                                        "open_rv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "if", NULL,
-                                        !rbc.Is_func_exec_successful("fopen", "ne", NULL),
-                                        "finish", NULL, 149));
-  // #3 "open_r" => "open_rv" : fread(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fread", rbc.Get_arg(4),
-                                        1, "open_rv", "ERR33-C MSR_D_4_7", 67));
-  // #4 "open_r" => "open_rv" : fwrite(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fwrite", rbc.Get_arg(4),
-                                        1, "open_rv", "ERR33-C MSR_D_4_7 WRF MSR_22_4", 68));
-  // #4.1 "open_r" => "open_rv" : fprintf(*, _, ...)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "ERR33-C MSR_D_4_7 MSR_22_4", 68));
-  // #4.2 "open_r" => "open_rv" : fputc(_, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fputc", rbc.Get_arg(2),
-                                        1, "open_rv", "ERR33-C MSR_D_4_7 MSR_22_4", 68));
-  // #4.3 "open_r" => "open_rv" : fputs(_, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fputs", rbc.Get_arg(2),
-                                        1, "open_rv", "ERR33-C MSR_D_4_7 MSR_22_4", 68));
-  // #4.4 "open_r" => "open_rv" : vfprintf(*, _, ...)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "vfprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "ERR33-C MSR_D_4_7 MSR_22_4", 68));
-  // #5 "open_r" => "finish" : fclose(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_r", "fclose", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C MSR_D_4_7", 69));
-  // #6 "open_rv" => "open_rv" : fread(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fread", rbc.Get_arg(4),
-                                        1, "open_rv", NULL, 67));
-  // #7 "open_rv" => "open_rv" : fwrite(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fwrite", rbc.Get_arg(4),
-                                        1, "open_rv", "WRF MSR_22_4", 68));
-  // #7.1 "open_rv" => "open_rv" : fprintf(*, _, ...)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "MSR_22_4", 68));
-  // #7.2 "open_rv" => "open_rv" : fputc(_, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fputc", rbc.Get_arg(2),
-                                        1, "open_rv", "MSR_22_4", 68));
-  // #7.3 "open_rv" => "open_rv" : fputs(_, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fputs", rbc.Get_arg(2),
-                                        1, "open_rv", "MSR_22_4", 68));
-  // #7.4 "open_rv" => "open_rv" : vfprintf(*, _, ...)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "vfprintf", rbc.Get_arg(1),
-                                        1, "open_rv", "MSR_22_4", 68));
-  // #8 "open_rv" => "finish" : fclose(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_rv", "fclose", rbc.Get_arg(1),
-                                        1, "finish", NULL, 69));
-  // #9 "open_r" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_r", "FIO42-C MSR_22_1", 70));
-  // #10 "open_rv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_rv", "FIO42-C MSR_22_1", 70));
-
   // write transitions
-  // #1 "start_up" => "open_w" : fopen(*, "w")
-  rbc.Model_decl(rbc.Fsm_add_transition("start_up", "fopen", rbc.Get_arg(1),
+  // #1-1 "start" => "openw" : fopen(*, "w")
+  rbc.Model_decl(rbc.Fsm_add_transition("start", "fopen", rbc.Get_arg(1),
                                         !(rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb")) &
                                         !rbc.Is_str_sub(rbc.Get_arg(2), "x"),
-                                        "open_w", NULL, 71));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fopen", rbc.Get_arg(1),
+                                        "openw", NULL, 71));
+  // #3-1 "openw" => "openw" : fopen(*, "r")
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "fopen", rbc.Get_arg(1),
                                         rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb"),
-                                        "open_w", "MSR_22_3", 65));
-  // #2 "open_w" => "open_wv" : if (f != NULL)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "if", NULL,
+                                        "openw", "MSR_22_3", 65));
+  // #3-2 "openw" => "openw_s" : fread(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "fread", rbc.Get_arg(4), 1,
+                                        "openw_s", "ERR33-C MSR_D_4_7 FIO45-C", 67));
+  // #3-3 "openw" => "openw_s" : fwrite(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "fwrite", rbc.Get_arg(4), 1,
+                                        "openw_s", "ERR33-C MSR_D_4_7 FIO45-C", 68));
+  // #3-4 "openw" => "finish" : fclose(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "fclose", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C MSR_D_4_7", 69));
+  // #3-5 "openw" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openw", "FIO42-C MSR_22_1", 70));
+  // #3-6 "openw" => "openw_c" : check if (f != NULL)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fopen", "ne", NULL),
+                                        "openw_c", NULL, 66));
+  // #3-7 "openw" => "openw" : not check if (f != NULL), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openw", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("fopen", "ne", NULL),
+  //                                       "openw", NULL, 149));
+  // #4-1 "openw_c" => "openw_s" : if (f != NULL) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_c", "if", NULL,
                                         rbc.Is_func_exec_successful("fopen", "ne", NULL),
-                                        "open_wv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "if", NULL,
+                                        "openw_s", NULL, 66));
+  // #4-2 "openw_c" => "open_f" : if (f != NULL) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_c", "if", NULL,
                                         !rbc.Is_func_exec_successful("fopen", "ne", NULL),
-                                        "finish", NULL, 149));
-  // #3 "open_w" => "open_wv" : fread(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fread", rbc.Get_arg(4),
-                                        1, "open_wv", "ERR33-C MSR_D_4_7 FIO45-C", 67));
-  // #4 "open_w" => "open_wv" : fwrite(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fwrite", rbc.Get_arg(4),
-                                        1, "open_wv", "ERR33-C MSR_D_4_7 FIO45-C", 68));
-  // #5 "open_w" => "finish" : fclose(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_w", "fclose", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C MSR_D_4_7", 69));
-  // #6 "open_wv" => "open_wv" : fread(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "fread", rbc.Get_arg(4),
-                                        1, "open_wv", "FIO45-C", 67));
-  // #7 "open_wv" => "open_wv" : fwrite(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "fwrite", rbc.Get_arg(4),
-                                        1, "open_wv", "FIO45-C", 68));
-  // #8 "open_wv" => "finish" : fclose(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_wv", "fclose", rbc.Get_arg(1),
-                                        1, "finish", NULL, 69));
-  // #9 "open_w" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_w", "FIO42-C MSR_22_1", 70));
-  // #10 "open_wv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_wv", "FIO42-C MSR_22_1", 70));
+                                        "open_f", NULL, 149));
+  // #5-1 "openw_s" => "openw_s" : fread(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "fread", rbc.Get_arg(4), 1,
+                                        "openw_s", "FIO45-C", 67));
+  // #5-2 "openw_s" => "openw_s" : fwrite(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "fwrite", rbc.Get_arg(4), 1,
+                                        "openw_s", "FIO45-C", 68));
+  // #5-3 "openw_s" => "finish" : fclose(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "fclose", rbc.Get_arg(1), 1,
+                                        "finish", NULL, 69));
+  // #5-4 "openw_s" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openw_s", "FIO42-C MSR_22_1", 70));
+  // #5-5 "openw_s" => "openw_sc" : check if (f != NULL)
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fopen", "ne", NULL),
+                                        "openw_sc", NULL, 66));
+  // #5-6 "openw_s" => "openw_s" : not check if (f != NULL), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openw_s", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("fopen", "ne", NULL),
+  //                                       "openw_s", NULL, 149));
+  // #6-1 "open_f" => "finish" : fread(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "fread", rbc.Get_arg(4), 1,
+                                        "finish", "ERR33-C MSR_D_4_7", 67));
+  // #6-2 "open_f" => "finish" : fwrite(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "fwrite", rbc.Get_arg(4), 1,
+                                        "finish", "ERR33-C MSR_D_4_7", 68));
+  // #6-3 "open_f" => "finish" : fclose(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "fclose", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C MSR_D_4_7", 69));
+  // #6-4 "open_f" => "finish" : default, ignored as good finish
+  // rbc.Model_decl(rbc.Fsm_set_default_action("open_f", NULL, 70));
+  // #6-5 "open_f" => "open_fc" : check if (f != NULL)
+  rbc.Model_decl(rbc.Fsm_add_transition("open_f", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fopen", "ne", NULL),
+                                        "open_fc", NULL, 66));
+  // #6-6 "open_f" => "open_f" : not check if (f != NULL), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("open_f", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("fopen", "ne", NULL),
+  //                                       "open_f", NULL, 149));
+  // #7-1 "openw_sc" => "openw_s" : if (f != NULL) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_sc", "if", NULL,
+                                        rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "openw_s", NULL, 66));
+  // #7-2 "openw_sc" => "finish" : if (f != NULL) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openw_sc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "finish", "DDC", 149));
+  // #8-1 "open_fc" => "finish" : if (f != NULL) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("open_fc", "if", NULL,
+                                        rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "finish", "DDC", 66));
+  // #8-2 "open_fc" => "open_f" : if (f != NULL) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("open_fc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "open_f", NULL, 149));
 
   // exclusive write transitions
-  // #1 "start_up" => "open_x" : fopen(*, "wx")
-  rbc.Model_decl(rbc.Fsm_add_transition("start_up", "fopen", rbc.Get_arg(1),
+  // #1-2 "start" => "openx" : fopen(*, "wx")
+  rbc.Model_decl(rbc.Fsm_add_transition("start", "fopen", rbc.Get_arg(1),
                                         !(rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb")) &
                                         rbc.Is_str_sub(rbc.Get_arg(2), "x"),
-                                        "open_x", NULL, 72));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fopen", rbc.Get_arg(1),
+                                        "openx", NULL, 72));
+  // #9-1 "openx" => "openx" : fopen(*, "r")
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "fopen", rbc.Get_arg(1),
                                         rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb"),
-                                        "open_x", "MSR_22_3", 65));
-  // #2 "open_x" => "open_xv" : if (f != NULL)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "if", NULL,
+                                        "openx", "MSR_22_3", 65));
+  // #9-2 "openx" => "openx_s" : fread(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "fread", rbc.Get_arg(4), 1,
+                                        "openx_s", "ERR33-C MSR_D_4_7", 67));
+  // #9-3 "openx" => "openx_s" : fwrite(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "fwrite", rbc.Get_arg(4), 1,
+                                        "openx_s", "ERR33-C MSR_D_4_7", 68));
+  // #9-4 "openx" => "finish" : fclose(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "fclose", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C MSR_D_4_7", 69));
+  // #9-5 "openx" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openx", "FIO42-C MSR_22_1", 70));
+  // #9-6 "openx" => "openx_c" : check if (f != NULL)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fopen", "ne", NULL),
+                                        "openx_c", NULL, 66));
+  // #9-7 "openx" => "openx" : not check if (f != NULL), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openx", "if", NULL,
+  //                                       !rbc.Is_return_checked_properly("fopen", "ne", NULL),
+  //                                       "openx", NULL, 149));
+  // #10-1 "openx_c" => "openx_s" : if (f != NULL) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_c", "if", NULL,
                                         rbc.Is_func_exec_successful("fopen", "ne", NULL),
-                                        "open_xv", NULL, 66));
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "if", NULL,
+                                        "openx_s", NULL, 66));
+  // #10-2 "openx_c" => "open_f" : if (f != NULL) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_c", "if", NULL,
                                         !rbc.Is_func_exec_successful("fopen", "ne", NULL),
-                                        "finish", NULL, 149));
-  // #3 "open_x" => "open_xv" : fread(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fread", rbc.Get_arg(4),
-                                        1, "open_xv", "ERR33-C MSR_D_4_7", 67));
-  // #4 "open_x" => "open_xv" : fwrite(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fwrite", rbc.Get_arg(4),
-                                        1, "open_xv", "ERR33-C MSR_D_4_7", 68));
-  // #5 "open_x" => "finish" : fclose(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_x", "fclose", rbc.Get_arg(1),
-                                        1, "finish", "ERR33-C MSR_D_4_7", 69));
-  // #6 "open_xv" => "open_xv" : fread(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "fread", rbc.Get_arg(4),
-                                        1, "open_xv", NULL, 67));
-  // #7 "open_xv" => "open_xv" : fwrite(_, _, _, *)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "fwrite", rbc.Get_arg(4),
-                                        1, "open_xv", NULL, 68));
-  // #8 "open_xv" => "finish" : fclose(*)
-  rbc.Model_decl(rbc.Fsm_add_transition("open_xv", "fclose", rbc.Get_arg(1),
-                                        1, "finish", NULL, 69));
-  // #9 "open_x" => "finish" : default
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_x", "FIO42-C MSR_22_1", 70));
-  // #10 "open_xv" => "finish" : default turn off before if_opnd API is ready
-  rbc.Model_decl(rbc.Fsm_set_default_action("open_xv", "FIO42-C MSR_22_1", 70));
+                                        "open_f", NULL, 149));
+  // #11-1 "openx_s" => "openx_s" : fread(_, _, _, *), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "fread", rbc.Get_arg(4), 1,
+  //                                       "openx_s", NULL, 67));
+  // #11-2 "openx_s" => "openx_s" : fwrite(_, _, _, *), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "fwrite", rbc.Get_arg(4), 1,
+  //                                       "openx_s", NULL, 68));
+  // #11-3 "openx_s" => "finish" : fclose(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "fclose", rbc.Get_arg(1), 1,
+                                        "finish", NULL, 69));
+  // #11-4 "openx_s" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openx_s", "FIO42-C MSR_22_1", 70));
+  // #11-5 "openx_s" => "openx_sc" : check if (f != NULL)
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fopen", "ne", NULL),
+                                        "openx_sc", NULL, 66));
+  // #11-6 "openx_s" => "openx_s" : not check if (f != NULL), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openx_s", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("fopen", "ne", NULL),
+  //                                       "openx_s", NULL, 149));
+  // #12-1 "openx_sc" => "openx_s" : if (f != NULL) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_sc", "if", NULL,
+                                        rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "openx_s", NULL, 66));
+  // #12-2 "openx_sc" => "finish" : if (f != NULL) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openx_sc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "finish", "DDC", 149));
+
+  // read transitions
+  // #1-3 "start" => "openr" : fopen(*, "r")
+  rbc.Model_decl(rbc.Fsm_add_transition("start", "fopen", rbc.Get_arg(1),
+                                        rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb"),
+                                        "openr", NULL, 65));
+  // #13-1 "openr" => "openr" : fopen(*, "w")
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "fopen", rbc.Get_arg(1),
+                                        !(rbc.Is_str_eq(rbc.Get_arg(2), "r") | rbc.Is_str_eq(rbc.Get_arg(2), "rb")),
+                                        "openr", "MSR_22_3", 71));
+  // #13-2 "openr" => "openr_s" : fread(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "fread", rbc.Get_arg(4), 1,
+                                        "openr_s", "ERR33-C MSR_D_4_7", 67));
+  // #13-3 "openr" => "openr_s" : fwrite(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "fwrite", rbc.Get_arg(4), 1,
+                                        "openr_s", "ERR33-C MSR_D_4_7 WRF MSR_22_4", 68));
+  // #13-4 "openr" => "openr_s" : fprintf(*, _, ...)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "fprintf", rbc.Get_arg(1), 1,
+                                        "openr_s", "ERR33-C MSR_D_4_7 WRF MSR_22_4", 68));
+  // #13-5 "openr" => "openr_s" : fputc(_, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "fputc", rbc.Get_arg(2), 1,
+                                        "openr_s", "ERR33-C MSR_D_4_7 WRF MSR_22_4", 68));
+  // #13-6 "openr" => "openr_s" : fputs(_, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "fputs", rbc.Get_arg(2), 1,
+                                        "openr_s", "ERR33-C MSR_D_4_7 WRF MSR_22_4", 68));
+  // #13-7 "openr" => "openr_s" : vfprintf(*, _, ...)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "vfprintf", rbc.Get_arg(1), 1,
+                                        "openr_s", "ERR33-C MSR_D_4_7 WRF MSR_22_4", 68));
+  // #13-8 "openr" => "finish" : fclose(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "fclose", rbc.Get_arg(1), 1,
+                                        "finish", "ERR33-C MSR_D_4_7", 69));
+  // #13-9 "openr" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openr", "FIO42-C MSR_22_1", 70));
+  // #13-10 "openr" => "openr_c" : check if (f != NULL)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fopen", "ne", NULL),
+                                        "openr_c", NULL, 66));
+  // #13-11 "openr" => "openr" : not check if (f != NULL), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openr", "if:test", NULL,
+  //                                       !rbc.Is_func_exec_successful("fopen", "ne", NULL),
+  //                                       "openr", NULL, 149));
+  // #14-1 "openr_c" => "openr_s" : if (f != NULL) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_c", "if", NULL,
+                                        rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "openr_s", NULL, 66));
+  // #14-2 "openr_c" => "open_f" : if (f != NULL) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_c", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "open_f", NULL, 149));
+  // #15-1 "openr_s" => "openr_s" : fread(_, _, _, *), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "fread", rbc.Get_arg(4), 1,
+  //                                       "openr_s", NULL, 67));
+  // #15-2 "openr_s" => "openr_s" : fwrite(_, _, _, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "fwrite", rbc.Get_arg(4), 1,
+                                        "openr_s", "WRF MSR_22_4", 68));
+  // #15-3 "openr_s" => "openr_s" : fprintf(*, _, ...)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "fprintf", rbc.Get_arg(1), 1,
+                                        "openr_s", "WRF MSR_22_4", 68));
+  // #15-4 "openr_s" => "openr_s" : fputc(_, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "fputc", rbc.Get_arg(2), 1,
+                                        "openr_s", "WRF MSR_22_4", 68));
+  // #15-5 "openr_s" => "openr_s" : fputs(_, *)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "fputs", rbc.Get_arg(2), 1,
+                                        "openr_s", "WRF MSR_22_4", 68));
+  // #15-6 "openr_s" => "openr_s" : vfprintf(*, _, ...)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "vfprintf", rbc.Get_arg(1), 1,
+                                        "openr_s", "WRF MSR_22_4", 68));
+  // #15-7 "openr_s" => "finish" : fclose(*)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "fclose", rbc.Get_arg(1), 1,
+                                        "finish", NULL, 69));
+  // #15-8 "openr_s" => "finish" : default
+  rbc.Model_decl(rbc.Fsm_set_default_action("openr_s", "FIO42-C MSR_22_1", 70));
+  // #15-9 "openr_s" => "openr_sc" : check if (f != NULL)
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "if:test", NULL,
+                                        rbc.Is_return_checked_properly("fopen", "ne", NULL),
+                                        "openr_sc", NULL, 66));
+  // #15-10 "openr_s" => "openr_s" : not check if (f != NULL), ignored due to no state changes
+  // rbc.Model_decl(rbc.Fsm_add_transition("openr_s", "if:test", NULL,
+  //                                       !rbc.Is_return_checked_properly("fopen", "ne", NULL),
+  //                                       "openr_s", NULL, 149));
+  // #16-1 "openr_sc" => "openr_s" : if (f != NULL) True path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_sc", "if", NULL,
+                                        rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "openr_s", NULL, 66));
+  // #16-2 "openr_sc" => "finish" : if (f != NULL) False path
+  rbc.Model_decl(rbc.Fsm_add_transition("openr_sc", "if", NULL,
+                                        !rbc.Is_func_exec_successful("fopen", "ne", NULL),
+                                        "finish", "DDC", 149));
 
   rbc.Model_decl(rbc.Fsm_build_end("fio45c"));
 }
