@@ -358,6 +358,7 @@ public:
   VSA       *Vsa() const       { return _cu->Vsa(); }
   VSA       *Root_vsa() const  { return _root_cu->Vsa(); }
   DNA_NODE  *Dna() const       { return _cu->Dna(); }
+  DNA_NODE  *Root_dna() const  { return _root_cu->Dna(); }
   IPSA      *Ipsa() const      { return Vsa()->Ipsa(); }
   BOOL       Tracing() const   { return _tracing; }
   VSYM_TRACKER *Tracker()      { return &_tracker; }
@@ -4349,7 +4350,7 @@ private:
 
 public:
   SPOS_BASE(TRAV_CONTEXT& ctx) : _copied(FALSE) {
-    _sp_h = CXX_NEW(SRCPOS_HANDLE(ctx.Root_cr(), ctx.Root_sr(), ctx.Dna(), ctx.Spos_pool()),
+    _sp_h = CXX_NEW(SRCPOS_HANDLE(ctx.Root_cr(), ctx.Root_sr(), ctx.Root_dna(), ctx.Spos_pool()),
                     ctx.Spos_pool());
   }
 
