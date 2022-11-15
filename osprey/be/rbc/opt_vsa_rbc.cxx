@@ -4371,6 +4371,9 @@ RBC_BASE::Get_mem_size(VSA *vsa, CODEREP *cr, UINT64 &size)
     {
       HEAP_OBJ_REP *hor = vsa->Cr_2_heap_obj(cr);
       if (hor != NULL) {
+        if (hor->Attr() == ROR_DEF_BY_VARPHI ||
+            hor->Attr() == ROR_DEF_BY_VORPHI)
+          break;
         CODEREP *bs = hor->Heap_obj()->Byte_size();
         if (bs != NULL && bs->Kind() == CK_CONST) {
           size = (UINT64)bs->Const_val();
@@ -4423,8 +4426,21 @@ RBC_BASE::Get_mem_size(VSA *vsa, CODEREP *cr, UINT64 &size)
     break;
   case CK_IVAR:
     {
-      CODEREP *base_cr = cr->Ilod_base() != NULL ? cr->Ilod_base() : cr->Istr_base();
-      ret = Get_mem_size(vsa, base_cr, size);
+      HEAP_OBJ_REP *hor = vsa->Cr_2_heap_obj(cr);
+      if (hor != NULL) {
+        if (hor->Attr() == ROR_DEF_BY_VARPHI ||
+            hor->Attr() == ROR_DEF_BY_VORPHI)
+          break;
+        CODEREP *bs = hor->Heap_obj()->Byte_size();
+        if (bs != NULL && bs->Kind() == CK_CONST) {
+          size = (UINT64)bs->Const_val();
+          ret = TRUE;
+        }
+      }
+      if (!ret) {
+        CODEREP *base_cr = cr->Ilod_base() != NULL ? cr->Ilod_base() : cr->Istr_base();
+        ret = Get_mem_size(vsa, base_cr, size);
+      }
     }
     break;
   case CK_OP:
