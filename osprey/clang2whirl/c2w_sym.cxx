@@ -195,15 +195,10 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
   else
     Is_True(false, ("unknown language"));
 
-  GVALinkage linkage = _builder->Context()->GetGVALinkageForFunction(decl);
-  BOOL hasAliasAttr = decl->hasAttr<AliasAttr>();
-  if (decl->isInlineSpecified() || decl->isInlined() ||
-      (decl->getStorageClass() == SC_Static)) {
-    Set_PU_is_inline_function(pu);
-    Set_PU_is_marked_inline(pu);
-    if (linkage == GVA_AvailableExternally || linkage == GVA_StrongExternal)
-      Set_PU_is_extern_inline(pu);
-  }
+  ty_idx = (TY_IDX) pu_idx;
+  ST *st = New_ST(GLOBAL_SYMTAB);
+  ST_EXPORT st_exp = ExportClass(decl);
+
 
   if (decl->isMain()) {
     Set_PU_is_mainpu(pu);
@@ -216,23 +211,15 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
   if (decl->isNoReturn())
     Set_PU_has_attr_noreturn(pu);
 
-  ty_idx = (TY_IDX) pu_idx;
-  ST *st = New_ST(GLOBAL_SYMTAB);
-  ST_EXPORT st_exp = ExportClass(decl);
 
   BOOL isDefined = decl->isDefined();
   if (decl->getTemplateSpecializationInfo() != NULL) {
     isDefined = TRUE;
   }
+  BOOL hasAliasAttr = decl->hasAttr<AliasAttr>();
   if (hasAliasAttr) {
     isDefined = FALSE;
     st_exp = EXPORT_PREEMPTIBLE;
-  }
-  if (st_exp != EXPORT_LOCAL &&
-      (linkage == GVA_DiscardableODR || linkage == GVA_StrongODR)) {
-    // set export class to LOCAL so it can be deleted in inliner after inlining
-    st_exp = EXPORT_LOCAL;
-    Set_ST_is_odr(st);
   }
 
   // set no inline flag for specific functions
@@ -266,6 +253,23 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
     }
   }
 
+  if (auto definition = decl->getDefinition()) {
+    GVALinkage linkage = _builder->Context()->GetGVALinkageForFunction(definition);
+    if (decl->isInlineSpecified() || decl->isInlined() ||
+        (decl->getStorageClass() == SC_Static)) {
+      Set_PU_is_inline_function(pu);
+      Set_PU_is_marked_inline(pu);
+      if (linkage == GVA_AvailableExternally || linkage == GVA_StrongExternal)
+        Set_PU_is_extern_inline(pu);
+    }
+
+    if (st_exp != EXPORT_LOCAL &&
+        (linkage == GVA_DiscardableODR || linkage == GVA_StrongODR)) {
+      // set export class to LOCAL so it can be deleted in inliner after inlining
+      st_exp = EXPORT_LOCAL;
+      Set_ST_is_odr(st);
+    }
+  }
 
   return ST_st_idx(st);
 }
