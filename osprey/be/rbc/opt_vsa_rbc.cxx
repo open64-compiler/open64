@@ -10220,6 +10220,10 @@ RBC_BASE::Link_dna_for_rbc(IPSA *ipsa)
       if (dna == func) {
         continue;
       }
+      // both are user dna, skip
+      if (!dna->Non_functional() && !func->Non_functional()) {
+        continue;
+      }
       // one use fuzzy name, and another is not, can't link, just continue
       if ((dna_fuzzy_name == NULL && func_fuzzy_name != NULL) ||
             (dna_fuzzy_name != NULL && func_fuzzy_name == NULL)) {
