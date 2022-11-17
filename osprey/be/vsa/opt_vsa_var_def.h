@@ -400,7 +400,8 @@ public:
   BOOL           Srcpos_on()                 { return _srcpos_on;   }
   void           Set_srcpos_on(BOOL on)      { _srcpos_on = on;     }
   BOOL           Def_srcpos_cand_on()        { return _def_srcpos_cand_on; }
-  void           Set_def_srcpos_cand_on(BOOL on) { _def_srcpos_cand_on = on; }
+  void           Set_def_srcpos_cand_on(BOOL on) { _def_srcpos_cand_on = on;
+                                                   if (on) Set_srcpos_on(on); }
   TRAV_CONTEXT  &Ctx()                       { return *_ctx;        }
   MEM_POOL      *Mem_pool()                  { return _pool();      }
   CODEREP       *Local_def()                 { return _local_def;   }
@@ -414,14 +415,15 @@ public:
     _local_def  = (_local_def ? _local_def : def);
   }
 
-  void           Add_def_info(DNA_NODE *dna, CODEREP *cr, STMTREP *sr, SRCPOS_TREENODE *spos_node, IDTYPE spos_idx)
+  void           Add_def_info(DNA_NODE *dna, CODEREP *cr, STMTREP *sr)
   {
     DEF_INFO *info = CXX_NEW(DEF_INFO(dna, cr, sr), Mem_pool());
-    //info->Set_def_cr(dna, cr);
-    if (Def_srcpos_cand_on()) {
-      info->Set_spos(spos_node, spos_idx);
-    }
     _def_info_vec->push_back(info);
+
+    if (Def_srcpos_cand_on()) {
+      Is_True_Ret(Srcpos(), ("null srcpos"));
+      info->Set_spos(Srcpos()->Cur_node(), Srcpos()->Cur_idx());
+    }
   }
 };  // end of class VAR_DEF_HELPER
 

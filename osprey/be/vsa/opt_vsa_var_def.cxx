@@ -127,14 +127,13 @@ Traverse_implicit_ud(VAR_DEF_HELPER *helper, RNA_NODE *rna, CHECK_OBJ &obj, TRAV
   return FALSE;
 }
 
-class VAR_DEF_TRAV : public SPOS_BASE {
+class VAR_DEF_TRAV {
 private:
   VAR_DEF_HELPER *_helper;
 
   void        Set_local_def(CODEREP *cr)          { _helper->Set_local_def(cr);  }
   VAR_DEF_HELPER *Helper()                        { return _helper; }
   UINT32      Kind()                              { return _helper->Kind();      }
-  BOOL        Srcpos_on()                         { return _helper->Srcpos_on(); }
   BOOL        Tracing()                           { return _helper->Ctx().Tracing(); }
   BOOL        Set_check_kind(CHECKER_SUSPECT sus) { return FALSE;                }
 
@@ -147,12 +146,7 @@ public:
 
 public:
   // Constructor
-  VAR_DEF_TRAV(VAR_DEF_HELPER *helper)
-    :SPOS_BASE(helper->Ctx()), _helper(helper) {}
-
-  VAR_DEF_TRAV(VAR_DEF_HELPER *helper, SRCPOS_HANDLE *sp_h)
-    :SPOS_BASE(sp_h), _helper(helper) {}
-
+  VAR_DEF_TRAV(VAR_DEF_HELPER *helper): _helper(helper) {}
 
   const char* Checker_name() const  { return "VAR_DEF"; }
 
@@ -175,7 +169,7 @@ public:
     }
     if(param_id != INVALID_VAR_IDX)
       formal_cr = dna->Get_param_cr(param_id);
-    Helper()->Add_def_info(dna, formal_cr, obj.Stmtrep(), Sp_h()->Cur_node(), Sp_h()->Cur_idx());
+    Helper()->Add_def_info(dna, formal_cr, obj.Stmtrep());
     Is_Trace(Tracing(),
              (TFile, "*Add def cr %d in Dna %s\n",
               formal_cr->Coderep_id(), dna->Fname()));
@@ -523,14 +517,60 @@ VAR_DEF_TRAV::Check_stmtrep<OPR_OPT_CHI>(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
 // ====================================================================
 // VAR_DEF_TRAV_WITH_SPOS: var def with srcpos
 // ====================================================================
-class VAR_DEF_TRAV_WITH_SPOS : public VAR_DEF_TRAV {
+class VAR_DEF_TRAV_WITH_SPOS : public SPOS_BASE {
+private:
+  VAR_DEF_TRAV   _var_trav;     // var-def traversal
+
 public:
   enum { SUSPECT = CS_VAR_DEF};
   enum { USE_SRCPOS  = TRUE };
+  enum { FOLLOW_EH = FALSE };
 
   // Constructor
   VAR_DEF_TRAV_WITH_SPOS(VAR_DEF_HELPER *helper)
-    : VAR_DEF_TRAV(helper, helper->Srcpos()) {}
+    : SPOS_BASE(helper->Srcpos()),
+      _var_trav(VAR_DEF_TRAV(helper)) {}
+
+  const char* Checker_name() const  { return "VAR_DEF_WITH_SPOS"; }
+
+public:
+  // Forward functions for VAR_DEF_TRAV
+
+  // Check_coderep
+  // call back to check coderep
+  template<CODEKIND  _KIND> CHECKER_STATUS
+  Check_coderep(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
+  {
+    return _var_trav.Check_coderep<_KIND>(obj, ctx);
+  }
+
+  // Check_stmtrep
+  // call back to check stmtrep
+  template<OPERATOR _OPR> CHECKER_STATUS
+  Check_stmtrep(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
+  {
+    return _var_trav.Check_stmtrep<_OPR>(obj, ctx);
+  }
+
+  // Check_vsym_obj
+  CHECKER_STATUS
+  Check_vsym_obj(CHECK_OBJ &obj, TRAV_CONTEXT *ctx)
+  {
+    return _var_trav.Check_vsym_obj(obj, ctx);
+  }
+
+  // Check_heap_obj
+  CHECKER_STATUS
+  Check_heap_obj(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
+  {
+    return _var_trav.Check_heap_obj(obj, ctx);
+  }
+
+  void
+  Add_target(UINT32 file_idx, ST_IDX idx)
+  {
+    _var_trav.Add_target(file_idx, idx);
+  }
 };
 
 void
