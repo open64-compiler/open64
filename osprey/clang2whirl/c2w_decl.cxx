@@ -1173,6 +1173,7 @@ WhirlDeclBuilder::ConvertFunction(GlobalDecl gd) {
     ScopeHelper<GlobalDecl> shlp(_builder->Scope(), gd);
     WhirlFuncBuilder func_bldr(_builder);
     func_bldr.ConvertFunction(gd, st_idx);
+    _emitted_func_defs.emplace(st_idx);
     _opaque_value_map.clear();
     _real_parm_map.clear();
     return TRUE;
@@ -2118,6 +2119,10 @@ WhirlDeclBuilder::GetTemplatedDecl(const FunctionDecl *decl) {
     }
   }
   return nullptr;
+}
+
+bool WhirlDeclBuilder::BodyEmitted(ST_IDX func_st) const {
+  return _emitted_func_defs.count(func_st) != 0;
 }
 
 } // namespace wgen

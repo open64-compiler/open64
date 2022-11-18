@@ -1347,6 +1347,15 @@ WhirlExprBuilder::ConvertCallExpr(const CallExpr *expr, Result dest, BOOL retv) 
       WN_st_idx(call_wn) = ce_st;
       if (!_builder->DeclBuilder().Call_nothrow(callee))
         Mark_call_region(call_wn);
+
+      // handle extern inline functions
+      if (WhirlBuilder::ExternInlineEnabled()) {
+        bool is_extern_inline = PU_is_extern_inline(Pu_Table[ST_pu(ST_ptr(ce_st))]);
+        // add this function to deferred list
+        if (is_extern_inline && !_builder->DeclBuilder().BodyEmitted(ce_st)) {
+          _builder->AddDeferredFunc(gd);
+        }
+      }
     }
     else {
       if (add_fake_parm) {

@@ -99,6 +99,9 @@ private:
   static llvm::cl::opt<bool>        _gen_cpp_intrn;   // generate files to describe c++ function with intrinsic
   static llvm::cl::opt<std::string> _cpp_intrn_prefix;// prefix for c++ library been analyzed to generate code
   static llvm::cl::opt<std::string> _cpp_intrn_filter;// filter for c++ library been analyzed to generate code
+  
+  // flag of emitting extern function
+  static llvm::cl::opt<bool>        _extern_inline_enabled;
 
   FILE *_com_intrn_entry_file;  // common/com/cxx_<prefix>_intrn_entry.def
   FILE *_c2w_intrn_use_file;    // clang2whirl/c2w_cxx_<prefix>_intrn.cxx
@@ -215,6 +218,7 @@ public:
   static bool UseCppIntrn() { return _use_cpp_intrn.getValue(); }
   static bool GenCppIntrn() { return _gen_cpp_intrn.getValue(); }
   static std::string CppIntrnPrefix() { return _cpp_intrn_prefix.getValue(); }
+  static bool ExternInlineEnabled() { return _extern_inline_enabled.getValue(); }
 
 public:
   STR_IDX EnterString(const llvm::StringRef &str);

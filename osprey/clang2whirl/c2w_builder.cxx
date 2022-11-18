@@ -54,14 +54,6 @@ INT trace_verbose = FALSE;
 BOOL TARGET_64BIT;
 static Output_File *Irb_Output_File = NULL;
 
-static llvm::cl::opt<bool>
-    ExternInlineEnabled(
-      "emit-extern-inline", 
-      llvm::cl::Hidden,
-      llvm::cl::desc("Emit the extern inline function"),
-      llvm::cl::init(false)
-    );
-
 void
 Cleanup_Files(BOOL report, BOOL delete_dotofile) {
   Set_Error_Line(ERROR_LINE_UNKNOWN);
@@ -251,6 +243,12 @@ llvm::cl::opt<std::string> WhirlBuilder::_cpp_intrn_filter(
     "processed to generate intrinsic descriptions. For example, "
     "`vector.push_back,map.*' to generate intrinsic for vector and map. @filename "
     "can be used to specify a file contains these filters."));
+llvm::cl::opt<bool> WhirlBuilder::_extern_inline_enabled(
+  "emit-extern-inline",
+  llvm::cl::Hidden,
+  llvm::cl::desc("Emit the extern inline function"),
+  llvm::cl::init(false)
+);
 
 WhirlBuilder::WhirlBuilder(const INPUT_LANG lang, DiagnosticsEngine &diag)
   : _decl_builder(this),
@@ -650,7 +648,7 @@ WhirlBuilder::AddDeferredFunc(const GlobalDecl gd, BOOL force_global) {
   if (const CXXDestructorDecl *dtor = dyn_cast<CXXDestructorDecl>(decl)) {
     Is_True(!dtor->getParent()->hasTrivialDestructor(), ("trivial dtor"));
   }
-  if (!ExternInlineEnabled) {
+  if (!WhirlBuilder::ExternInlineEnabled()) {
     if (Context()->GetGVALinkageForFunction(decl) == GVA_AvailableExternally)
       return;
   }

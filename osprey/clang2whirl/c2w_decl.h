@@ -64,6 +64,9 @@ private:
   // map between cxx record and c2w-made destructor
   CXX_DTOR_MAP _cxx_dtor_map;
 
+  // emitted function definitions
+  std::unordered_set<ST_IDX> _emitted_func_defs;
+
 public:
   WhirlDeclBuilder(WhirlBuilder *builder);
 
@@ -226,6 +229,8 @@ public:
 
   const clang::CXXDestructorDecl *GetDestructor(const clang::CXXRecordDecl *decl);
   const clang::FunctionDecl *GetTemplatedDecl(const clang::FunctionDecl *decl);
+
+  bool BodyEmitted(ST_IDX func_st) const;
 };
 
 } // namespace wgen
