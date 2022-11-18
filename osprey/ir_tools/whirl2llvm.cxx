@@ -437,31 +437,33 @@ static inline uint64_t RoundDown(uint64_t offset, uint8_t align) {
   return RoundDownConst(offset, align);
 }
 
-typedef llvm::Type           LVTY;
-typedef std::vector<LVTY*>   LVTYVEC;
-typedef std::vector<TY_IDX>  TYIDXVEC;
-typedef llvm::FunctionType   LVFUNCTY;
-typedef llvm::Function       LVFUNC;
-typedef llvm::Module         LVMODULE;
-typedef llvm::DIBuilder      LVDIBUILDER;
-typedef llvm::DICompileUnit  LVDICU;
-typedef llvm::DILocation     LVDILOC;
-typedef llvm::DIScope        LVDISCOPE;
-typedef llvm::DIFile         LVDIFILE;
-typedef llvm::LLVMContext    LVCONTEXT;
-typedef llvm::IRBuilder<>    LVBUILDER;
-typedef llvm::BasicBlock     LVBB;
-typedef llvm::Value          LVVAL;
-typedef llvm::Instruction    LVINST;
-typedef std::vector<LVVAL*>  LVVALVEC;
-typedef llvm::AllocaInst     LVALC;
-typedef llvm::GlobalVariable LVGLBVAR;
-typedef llvm::CallInst       LVCALL;
-typedef llvm::Attribute      LVATTR;
-typedef llvm::Constant       LVCONST;
-typedef llvm::BlockAddress   LVBLKADDR;
-typedef llvm::GlobalAlias    LVGLBALIAS;
-typedef llvm::PointerType    LVPTRTY;
+typedef llvm::Type            LVTY;
+typedef std::vector<LVTY*>    LVTYVEC;
+typedef std::vector<TY_IDX>   TYIDXVEC;
+typedef llvm::FunctionType    LVFUNCTY;
+typedef llvm::Function        LVFUNC;
+typedef llvm::Module          LVMODULE;
+typedef llvm::DIBuilder       LVDIBUILDER;
+typedef llvm::DICompileUnit   LVDICU;
+typedef llvm::DILocation      LVDILOC;
+typedef llvm::DIScope         LVDISCOPE;
+typedef llvm::DIFile          LVDIFILE;
+typedef llvm::LLVMContext     LVCONTEXT;
+typedef llvm::IRBuilder<>     LVBUILDER;
+typedef llvm::BasicBlock      LVBB;
+typedef llvm::Value           LVVAL;
+typedef llvm::Instruction     LVINST;
+typedef std::vector<LVVAL*>   LVVALVEC;
+typedef llvm::AllocaInst      LVALC;
+typedef llvm::GlobalVariable  LVGLBVAR;
+typedef llvm::CallInst        LVCALL;
+typedef llvm::Attribute       LVATTR;
+typedef llvm::Constant        LVCONST;
+typedef std::vector<LVCONST*> LVCONSTVEC;
+typedef llvm::BlockAddress    LVBLKADDR;
+typedef llvm::GlobalAlias     LVGLBALIAS;
+typedef llvm::PointerType     LVPTRTY;
+typedef llvm::StructType      LVSTRUCTTY;
 
 // =============================================================================
 //
@@ -889,8 +891,16 @@ private:
   ST2LVVAL     _variables;  // map variables's ST to its ptr
   W2LFILEVEC   _w2l_files;  // vector of debug info files
   STRVEC       _inc_dirs;   // vector of INCLUDE_DIRECTORIES
+  LVGLBVAR    *_glb_ctors;  // llvm.global_ctors builtin array
+  LVCONSTVEC   _glb_init_registry;  // the vector of global ctors' registry
 
-  std::string PARM_PREG = "_w2ll_parm_preg_"; // prefix for formal parameter
+  // constant strings
+  const std::string PARM_PREG = "_w2ll_parm_preg_";          // prefix for formal parameter
+  const std::string GLOBAL_CTORS_NAME = "llvm.global_ctors"; // llvm global ctors array
+  const std::string CTOR_SECTION = ".ctor";                  // .ctor section name
+  const std::string GLB_I_PREFIX = "_GLOBAL__I_";            // prefix of global init function
+  const std::string GLB_SUB_I_PREFIX = "_GLOBAL__sub_I_";    // prefix of global sub init function
+
 private:
   WHIRL2llvm(void);                          // REQUIRED UNDEFINED UNWANTED methods
   WHIRL2llvm(const WHIRL2llvm &);            // REQUIRED UNDEFINED UNWANTED methods
@@ -2174,6 +2184,53 @@ public:
 
   WN         *Lower_puwn(PU_Info *pu_info, WN *wn);
 
+  LVSTRUCTTY *Get_glb_ctors_elem_ty() {
+    // create element type -- { i32, ptr, ptr }
+    LVTY *ptr = GetLVPtrTy();
+    std::vector<LVTY*> elems { LVTY::getInt32Ty(Context()), ptr, ptr };
+    return LVSTRUCTTY::get(Context(), elems);
+  }
+
+  LVGLBVAR   *Get_lv_glb_ctors(UINT64 size) {
+    if (_glb_ctors != nullptr) return _glb_ctors;
+
+    // create this array
+    LVTY *elements = Get_glb_ctors_elem_ty();
+
+    // array type
+    LVTY *array_ty = llvm::ArrayType::get(elements, size);
+    _module->getOrInsertGlobal(GLOBAL_CTORS_NAME, array_ty);
+    _glb_ctors = _module->getNamedGlobal(GLOBAL_CTORS_NAME);
+    _glb_ctors->setLinkage(llvm::GlobalValue::LinkageTypes::AppendingLinkage);
+    _glb_ctors->setSection(CTOR_SECTION);
+    return _glb_ctors;
+  }
+
+  LVCONST *Get_glb_init_priority(const std::string &func_name) {
+    llvm::StringRef name(func_name);
+    LVTY *ty = LVTY::getInt32Ty(Context());
+    if (name.startswith(GLB_I_PREFIX)) {
+      llvm::StringRef num_str = name.drop_while([](char ch) { return !std::isdigit(ch) || ch == '0'; });
+      return llvm::ConstantInt::get(ty, std::stoul(num_str.str()));
+    } else {
+      FmtAssert(name.startswith(GLB_SUB_I_PREFIX),
+        ("The global init function(%s) should start with _GLOBAL__sub_I_", func_name.c_str()));
+      return llvm::ConstantInt::get(ty, 65535);
+    }
+  }
+
+  void Add_glb_init_info(LVCONST *info) {
+    _glb_init_registry.push_back(info);
+  }
+
+  void Register_llvm_glb_ctors() {
+    UINT64 size = _glb_init_registry.size();
+    Get_lv_glb_ctors(size);
+    auto array_ty = llvm::ArrayType::get(Get_glb_ctors_elem_ty(), size);
+    auto init = llvm::ConstantArray::get(array_ty, _glb_init_registry);
+    _glb_ctors->setInitializer(init);
+  }
+
 public:
   WHIRL2llvm(char *input_file, INT skip_before, INT skip_after, INT testing_mode) :
     _skip_b(skip_before), _skip_a(skip_after), _testing_m(testing_mode) {
@@ -2186,17 +2243,18 @@ public:
     _cur_lvfunc = NULL;
     _lventry = NULL;
     _last_label = 0;
+    _glb_ctors = nullptr;
     Set_whirl_level(input_file);
   }
 
-  ~WHIRL2llvm() { 
+  ~WHIRL2llvm() {
     // _di_builder->finalize();
     // delete _di_builder;
-    delete _module; 
+    delete _module;
     _di_builder = NULL;
     _di_cu = NULL;
-    _module = NULL; 
-    _cur_func = NULL; 
+    _module = NULL;
+    _cur_func = NULL;
   }
 
   W2LBUILDER   *Builder(void)         { return _builder; }
@@ -2367,7 +2425,7 @@ LVTY *WHIRL2llvm::Insert_ty_entry(UINT idx, TY *ty) {
       LVTY * lv_ty = nullptr;
       if (DoesMapHasThisType(fty_idx)) {
         const auto &wn_ty = Ty_Table[fty_idx];
-        
+
         // handle bit-field
         if (FLD_is_bit_field(fld) !=0) {
           // get MTYPE of field
@@ -2520,7 +2578,7 @@ void FixForwardTypeRef::operator() (UINT idx, TY *ty) const {
         whirl2llvm->Set_wty2lvty(idx, pointee_ty);
       } else {
 
-        Is_Trace(Tracing_enabled, (TFile, " set true, Pointer [%d] pointee ty index %x\n", idx, pointee_ty_idx));  
+        Is_Trace(Tracing_enabled, (TFile, " set true, Pointer [%d] pointee ty index %x\n", idx, pointee_ty_idx));
         whirl2llvm->Has_fwd_tyref(TRUE, idx);
       }
       return;
@@ -2528,7 +2586,7 @@ void FixForwardTypeRef::operator() (UINT idx, TY *ty) const {
     case KIND_ARRAY: {
       TY_IDX e_ty_idx = ty->Etype();
       if (!whirl2llvm->DoesMapHasThisType(e_ty_idx)) {
-        Is_Trace(Tracing_enabled, (TFile, " set true, Array\n"));  
+        Is_Trace(Tracing_enabled, (TFile, " set true, Array\n"));
         whirl2llvm->Has_fwd_tyref(TRUE, idx);
         return;
       }
@@ -2573,7 +2631,7 @@ void FixForwardTypeRef::operator() (UINT idx, TY *ty) const {
             LVTY *lv_arg_ty = whirl2llvm->Wty2llvmty(TY_mtype(arg_ty_idx), arg_ty_idx);
             param_type_list.push_back(lv_arg_ty);
           } else {
-            Is_Trace(Tracing_enabled, (TFile, " set true Parmlist [%x]\n", idx));  
+            Is_Trace(Tracing_enabled, (TFile, " set true Parmlist [%x]\n", idx));
             whirl2llvm->Has_fwd_tyref(TRUE);
             return;
           }
@@ -2598,7 +2656,7 @@ void FixForwardTypeRef::operator() (UINT idx, TY *ty) const {
           lv_ty = whirl2llvm->Wty2llvmty(TY_mtype(wn_ty), fty_idx);
         } else {
           // fix later
-          Is_Trace(Tracing_enabled, (TFile, " set true Struct [%d]\n", idx));  
+          Is_Trace(Tracing_enabled, (TFile, " set true Struct [%d]\n", idx));
           whirl2llvm->Has_fwd_tyref(TRUE);
           return;
         }
@@ -4172,6 +4230,13 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         if (offset != 0) Gen_displacement(wn, &addr);
         FmtAssert(opr == OPR_LDID, ("WN2llvmSymAct: WN node should be LDID"));
         LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+#if 0
+        if (MTYPE_is_m(WN_desc(wn))) {
+          ld_ty = Wty2llvmty(WN_desc(wn), WN_ty(wn));
+        } else {
+          ld_ty = Wty2llvmty(WN_desc(wn), 0);
+        }
+#endif
         auto load = Lvbuilder()->CreateLoad(ld_ty, addr);
         load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
         return load;
@@ -4181,6 +4246,13 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         Is_True(rhs != nullptr, ("WN2llvmSymAct: ACT_STR got NULL rhs while lhs is SCLASS_AUTO"));
         TYPE_ID desc = WN_desc(wn);
         LVTY *dest_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
+#if 0
+        if (MTYPE_is_m(desc)) {
+          dest_ty = Wty2llvmty(desc, WN_ty(wn));
+        } else {
+          dest_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
+        }
+#endif
         rhs = HandleStoreDifferentType(wn, rhs, dest_ty, MTYPE_is_signed(WN_desc(wn)));
         auto store =  Lvbuilder()->CreateStore(rhs, target_addr);
         store->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
@@ -4501,12 +4573,15 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
       // TODO, what todo?
     }
   } else if (st->sym_class == CLASS_FUNC) {
+    if (ST_is_not_used(st))
+      return;
+
     // TODO: nested function/procedure, forward declaration
     // create extern function
     const char *funcname = ST_name(st);
     TY_IDX tyidx = ST_type(st);
 
-    if (!TY_has_prototype(ST_pu_type(st))) return; // cannot continue -Shin 13May2022
+    // if (!TY_has_prototype(ST_pu_type(st))) return; // cannot continue -Shin 13May2022
 
     // create return type
     auto ret_idx = TY_ret_type(tyidx);
@@ -4563,6 +4638,22 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
                tyidx, funcname));
     whirl2llvm->Set_func_attr(tyidx, func, &is_signed_attrs);
 
+    // handle global ctors
+    if (ST_is_glb_init_func(st)) {
+      LVCONST *priority = whirl2llvm->Get_glb_init_priority(std::string(funcname));
+      auto elem_ty = whirl2llvm->Get_glb_ctors_elem_ty();
+
+      // { priority, init funciton, target object }
+      LVCONSTVEC vals = {
+        priority,
+        func,
+        llvm::ConstantPointerNull::get(whirl2llvm->GetLVPtrTy())
+      };
+
+      // we put all these entries into llvm.global_ctors later
+      auto val = llvm::ConstantStruct::get(elem_ty, vals);
+      whirl2llvm->Add_glb_init_info(val);
+    }
   }
   else {
     // FmtAssert(FALSE, ("ST2llvm::operator(), NYI"));
@@ -6233,7 +6324,7 @@ void INITO2llvm::operator() (UINT idx, INITO *inito) const {
 }
 
 struct ST_ATTR2llvm {
- WHIRL2llvm *whirl2llvm;
+  WHIRL2llvm *whirl2llvm;
   ST_ATTR2llvm(WHIRL2llvm *w) : whirl2llvm(w) {}
 
   void operator() (UINT idx, ST_ATTR *st_attr) const;
@@ -6247,6 +6338,7 @@ void ST_ATTR2llvm::operator() (UINT idx, ST_ATTR *st_attr) const {
       gvar->setSection(section_name);
     } else if (auto func = llvm::dyn_cast<LVFUNC>(val)) {
       func->setSection(section_name);
+
     } else {
       FmtAssert(FALSE, ("ST_ATTR2llvm: only handle GLOBAL and FUNC for now"));
     }
@@ -6532,6 +6624,9 @@ ir_b2a (char *global_file,
 
     // process the global ST_ATTR_TAB
     For_all (St_Attr_Table, GLOBAL_SYMTAB, ST_ATTR2llvm(&driver));
+
+    // initialize the llvm.global_ctors array
+    driver.Register_llvm_glb_ctors();
 
     Free_Input_Info ();
 
