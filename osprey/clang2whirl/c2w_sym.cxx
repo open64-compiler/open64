@@ -234,6 +234,25 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
     }
   }
 
+  auto definition = decl->getDefinition();
+  GVALinkage linkage = _builder->Context()->GetGVALinkageForFunction(definition ? definition: decl);
+  if (decl->isInlineSpecified() || decl->isInlined() ||
+      (decl->getStorageClass() == SC_Static)) {
+    Set_PU_is_inline_function(pu);
+    Set_PU_is_marked_inline(pu);
+    if (linkage == GVA_AvailableExternally || linkage == GVA_StrongExternal)
+      Set_PU_is_extern_inline(pu);
+  }
+
+  if (st_exp != EXPORT_LOCAL &&
+      (linkage == GVA_DiscardableODR || linkage == GVA_StrongODR)) {
+    // set export class to LOCAL so it can be deleted in inliner after inlining
+    st_exp = EXPORT_LOCAL;
+
+    // FIXME: the function won't be inlined if this flag is set
+    // Set_ST_is_odr(st);
+  }
+
   ST_Init(st, str_idx, CLASS_FUNC,
           isDefined ? SCLASS_TEXT : SCLASS_EXTERN,
           st_exp, ty_idx);
@@ -253,23 +272,6 @@ WhirlSymBuilder::ConvertFunction(const FunctionDecl *decl,
     }
   }
 
-  if (auto definition = decl->getDefinition()) {
-    GVALinkage linkage = _builder->Context()->GetGVALinkageForFunction(definition);
-    if (decl->isInlineSpecified() || decl->isInlined() ||
-        (decl->getStorageClass() == SC_Static)) {
-      Set_PU_is_inline_function(pu);
-      Set_PU_is_marked_inline(pu);
-      if (linkage == GVA_AvailableExternally || linkage == GVA_StrongExternal)
-        Set_PU_is_extern_inline(pu);
-    }
-
-    if (st_exp != EXPORT_LOCAL &&
-        (linkage == GVA_DiscardableODR || linkage == GVA_StrongODR)) {
-      // set export class to LOCAL so it can be deleted in inliner after inlining
-      st_exp = EXPORT_LOCAL;
-      Set_ST_is_odr(st);
-    }
-  }
 
   return ST_st_idx(st);
 }
