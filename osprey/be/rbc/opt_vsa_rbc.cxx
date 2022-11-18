@@ -2877,7 +2877,6 @@ RBC_BASE::Eval__is_func_exec_successful(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
 BOOL
 RBC_BASE::Is_var_retv_of_func(DNA_NODE *dna, CODEREP *cr, STMTREP *stmt, STRING fname)
 {
-  BOOL ret = FALSE;
   CONTEXT_SWITCH context(dna);
   VAR_DEF_HELPER helper(cr, stmt, dna->Comp_unit());
   CHECK_OBJ check_obj(cr, stmt);
@@ -2891,13 +2890,23 @@ RBC_BASE::Is_var_retv_of_func(DNA_NODE *dna, CODEREP *cr, STMTREP *stmt, STRING 
       def_stmt = def_cr->Defstmt();
     if (def_stmt != NULL && OPERATOR_is_call(def_stmt->Opr())) {
       CONTEXT_SWITCH def_ctx(def_dna);
-      if (strcmp(ST_name(def_stmt->St()), fname) == 0) {
-        ret = TRUE;
-        break;
+      RNA_NODE *def_rna = def_dna->Get_callsite_rna(def_stmt);
+      if (def_rna != NULL) {
+        for (CALLEE_VECTOR::const_iterator iter = def_rna->Callee_list().begin();
+             iter != def_rna->Callee_list().end(); iter++) {
+          DNA_NODE *callee = def_dna->Comp_unit()->Vsa()->Ipsa()->Get_dna(iter->Callee());
+          if (callee == NULL)
+            continue;
+
+          const char *callee_name = callee->Fname();
+          if (callee_name != NULL && strcmp(callee_name, fname) == 0) {
+            return TRUE;
+          }
+        }
       }
     }
   }
-  return ret;
+  return FALSE;
 }
 
 
