@@ -42,6 +42,7 @@
 #include <ext/hash_map>
 #include <ext/hash_set>
 #include <unordered_map>
+#include <unordered_set>
 
 #undef _GLIBCXX_PERMIT_BACKWARD_HASH
 
