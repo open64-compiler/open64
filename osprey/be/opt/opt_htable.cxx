@@ -772,6 +772,23 @@ CODEREP::Contains( const CODEREP *cr ) const
 }
 
 BOOL
+CODEREP::Contains(AUX_ID aux) const
+{
+  switch (kind) {
+  case CK_VAR:
+    return Aux_id() == aux;
+  case CK_OP:
+    for (INT i = 0; i < Kid_count(); ++i) {
+      if (Opnd(i)->Contains(aux))
+        return TRUE;
+    }
+    return FALSE;
+  default:
+    return FALSE;
+  }
+}
+
+BOOL
 CODEREP::Contains_image( const CODEREP *cr ) const
 {
   // returns TRUE if this tree contains the same image(bitpos) as node 'cr'

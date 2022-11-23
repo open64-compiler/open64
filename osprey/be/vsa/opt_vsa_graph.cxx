@@ -38,6 +38,18 @@
 #include "opt_cda.h"
 #include "opt_cr_util.h"
 
+const char *
+OP_RESULT_name(OP_RESULT res)
+{
+  switch (res) {
+  case OP_CONTINUE:  return "continue";
+  case OP_PROVEN:    return "proven";
+  case OP_VIOLATION: return "violation";
+  case OP_CONFLICT:  return "conflict";
+  default:           return "error";
+  }
+}
+
 VALUE_GRAPH::NODE VALUE_GRAPH::_null_node(Malloc_Mem_Pool, VG_NULL_IDX);
 VALUE_GRAPH::EDGE VALUE_GRAPH::_null_edge(VG_NULL_IDX);
 
@@ -746,7 +758,8 @@ VALUE_GRAPH::Eval_phi_opnd(DNA_NODE *dna, PHI_NODE *phi, INT32 opnd_idx, BOOL &m
         CDA_PHI_NODE *cda_phi = val.Get_phi();
         CDA_VALUE cda_opnd = cda_phi->Opnd(opnd_idx);
         if (!cda_opnd.Is_null() &&
-            (cda_opnd.Kind() == CDA_RHS_TRUE ||
+            (cda_opnd.Kind() == CDA_CR ||
+             cda_opnd.Kind() == CDA_RHS_TRUE ||
              cda_opnd.Kind() == CDA_RHS_FALSE)) {
           res = Add_cmp_cda(dna, cda_opnd);
         }
@@ -832,26 +845,33 @@ VALUE_GRAPH::Eval_phi_opnd(DNA_NODE *dna, PHI_NODE *phi, INT32 opnd_idx, BOOL &m
 OP_RESULT
 VALUE_GRAPH::Add_cmp_cda(DNA_NODE *dna, CDA_VALUE cda)
 {
-  Is_True_Ret(cda.Kind() == CDA_RHS_TRUE ||
+  Is_True_Ret(cda.Kind() == CDA_CR ||
+              cda.Kind() == CDA_RHS_TRUE ||
               cda.Kind() == CDA_RHS_FALSE, ("CDA kind not true/false"), OP_CONTINUE);
 
-  STMTREP *sr = cda.Get_as<STMTREP>();
-  Is_True(sr &&
-          (sr->Opr() == OPR_TRUEBR || sr->Opr() == OPR_FALSEBR),
-          ("invalid sr or rhs"));
+  CODEREP *expr = NULL;
+  if (cda.Kind() == CDA_CR) {
+    expr = cda.Get_as<CODEREP>();
+  } else {
+    STMTREP *sr = cda.Get_as<STMTREP>();
+    Is_True(sr &&
+            (sr->Opr() == OPR_TRUEBR || sr->Opr() == OPR_FALSEBR),
+            ("invalid sr or rhs"));
+    expr = sr->Rhs();
+  }
 
   OPERATOR opr;
   CODEREP *lhs;
   CODEREP *rhs;
-  if (sr->Rhs()->Kind() != CK_OP ||
-      !OPERATOR_is_compare(sr->Rhs()->Opr())) {
+  if (expr->Kind() != CK_OP ||
+      !OPERATOR_is_compare(expr->Opr())) {
     opr = (cda.Kind() == CDA_RHS_FALSE) ? OPR_EQ : OPR_NE;
-    lhs = sr->Rhs();
+    lhs = expr;
     rhs = CR_UTIL(dna->Comp_unit()).New_const_cr(lhs->Dtyp(), 0);
   } else {
-    opr = sr->Rhs()->Opr();
-    lhs = sr->Rhs()->Opnd(0);
-    rhs = sr->Rhs()->Opnd(1);
+    opr = expr->Opr();
+    lhs = expr->Opnd(0);
+    rhs = expr->Opnd(1);
     // swap lhs & rhs if needed
     BOOL need_swap = FALSE;
     if (lhs->Kind() != CK_VAR && lhs->Kind() != CK_IVAR &&

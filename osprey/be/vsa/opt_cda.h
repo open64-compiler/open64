@@ -344,7 +344,11 @@ public:
     Is_True(_cda_map->find(bb->Id()) == _cda_map->end(),
             ("cda already added"));
     Is_True(bb->Pred() && !bb->Pred()->Multiple_bbs() &&
-            bb->Pred()->Node()->Kind() == BB_VARGOTO,
+            (bb->Pred()->Node()->Kind() == BB_DOEND ||
+             bb->Pred()->Node()->Kind() == BB_LOGIF ||
+             bb->Pred()->Node()->Kind() == BB_REPEATEND ||
+             bb->Pred()->Node()->Kind() == BB_WHILEEND ||
+             bb->Pred()->Node()->Kind() == BB_VARGOTO),
             ("bad pred"));
     _cda_map->insert(CDA_PAIR(bb->Id(), CDA_VALUE(cr)));
   }

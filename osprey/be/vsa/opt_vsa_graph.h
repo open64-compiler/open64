@@ -74,6 +74,8 @@ enum OP_RESULT {
   OP_ERROR     = 5,    // internal error
 };
 
+const char *OP_RESULT_name(OP_RESULT res);
+
 typedef mUINT16 NODE_IDX;
 typedef mUINT16 EDGE_IDX;
 typedef mUINT16 PHI_IDX;
@@ -786,7 +788,12 @@ private:
       lhs->Set_const_val(rhs->Const_val());
     }
     // connect to same chain
-    return Connect_nodes(idx, rhs_idx);
+    Connect_nodes(idx, rhs_idx);
+    // eval the node to check if there are conflicts
+    EVAL_MAP eval;
+    eval[idx] = E_EQ;
+    OP_RESULT vg_ret = Eval_node(idx, eval);
+    return vg_ret;
   }
 
   // append op cr to existing node
@@ -839,11 +846,9 @@ private:
       return OP_ERROR;
 
     OP_RESULT vg_ret = Handle_compare<_CMP_OPR>(lhs_id, rhs_id);
-    if (vg_ret == OP_CONTINUE) {
-      Is_Trace(_tracing, (TFile, "@@VG: Add N%d(cr%d) %s N%d(cr%d)\n",
-                                  lhs_id, lhs->Coderep_id(), OPERATOR_name(_CMP_OPR),
-                                  rhs_id, rhs->Coderep_id()));
-    }
+    Is_Trace(_tracing, (TFile, "@@VG: Add N%d(cr%d) %s N%d(cr%d) --> %s\n",
+                               lhs_id, lhs->Coderep_id(), OPERATOR_name(_CMP_OPR),
+                               rhs_id, rhs->Coderep_id(), OP_RESULT_name(vg_ret)));
     return vg_ret;
   }
 

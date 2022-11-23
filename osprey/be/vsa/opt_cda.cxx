@@ -410,7 +410,63 @@ CDA_BUILDER::Process_condbr(BB_NODE *bb, STMTREP *sr, BOOL truebr)
       // unique pred, set CDA directly
       Is_True(!_generated[succ->Id()], ("cda already generated"));
       _generated[succ->Id()] = true;
-      _cda->Add_cda(succ, sr, cond);
+      BOOL generated = FALSE;
+
+      // check if exit bb of loop
+      BB_LOOP *loop_info = NULL;
+      CODEREP *iv = NULL;
+      if ((loop_info = bb->Loop()) != NULL &&
+          (iv = bb->Loop()->Iv()) != NULL &&
+          sr->Rhs()->Contains(iv->Aux_id())) {
+        Is_True(iv->Is_flag_set(CF_DEF_BY_PHI), ("iv not def by phi"));
+        Is_True(sr->Rhs()->Kind() == CK_OP, ("TODO: br rhs is not op"));
+        CODEREP* step_op = CR_UTIL::Find_assign(loop_info->Step(), iv->Aux_id());
+        if (step_op &&
+            step_op->Kind() == CK_OP &&
+            (step_op->Opr() == OPR_ADD || step_op->Opr() == OPR_SUB)) {
+          CODEREP *step_cr = step_op->Opnd(1);
+          if (step_cr->Kind() == CK_VAR && step_cr->Aux_id() == iv->Aux_id())
+            step_cr = step_op->Opnd(0);
+          BOOL inc = (step_op->Opr() == OPR_ADD) &&
+                     (step_cr->Kind() != CK_CONST || step_cr->Const_val() > 0);
+          CODEREP *var = NULL;
+          CODEREP *ub = NULL;
+          if (sr->Rhs()->Kind() != CK_OP) {
+            var = sr->Rhs();
+            ub = Util().New_const_cr(iv->Dtyp(), 0);
+          }
+          else {
+            Is_True(OPERATOR_is_compare(sr->Rhs()->Opr()), ("not compare op"));
+            var = sr->Rhs()->Opnd(0);
+            ub = sr->Rhs()->Opnd(1);
+            if (ub->Kind() == CK_VAR && ub->Aux_id() == iv->Aux_id()) {
+              var = ub;
+              ub = sr->Rhs()->Opnd(0);
+            }
+            OPERATOR opr = cond ? sr->Rhs()->Opr()
+                                : CR_UTIL::Complement_opr(sr->Rhs()->Opr());
+            if (inc && opr == OPR_GT) {
+              OPCODE opc = OPCODE_make_op(OPR_ADD, ub->Dtyp(), MTYPE_V);
+              ub = Util().New_binary_cr(OPCODE_make_op(OPR_ADD, ub->Dtyp(), MTYPE_V),
+                                        ub, step_cr, TRUE);
+            }
+            else if (!inc && opr == OPR_LT) {
+              ub = Util().New_binary_cr(OPCODE_make_op(OPR_SUB, ub->Dtyp(), MTYPE_V),
+                                        ub, step_cr, TRUE);
+            }
+          }
+          CODEREP *cmp = Util().New_cmp_cr(OPR_EQ, var, ub);
+          _cda->Add_cda(succ, cmp);
+          generated = TRUE;
+          Is_Trace(_trace,
+                   (TFile, " BB%d: generate cr%d for loop exit as CDA:\n",
+                           succ->Id(), cmp->Coderep_id()));
+          Is_Trace_cmd(_trace, cmp->Print(TFile));
+        }
+      }
+      if (!generated) {
+        _cda->Add_cda(succ, sr, cond);
+      }
       Is_Trace(_trace,
                (TFile, " BB%d: single pred after cond-br: ", succ->Id()));
       Is_Trace_cmd(_trace, _cda->Get_cda(succ).Dump(TFile));
