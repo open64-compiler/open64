@@ -1752,15 +1752,15 @@ public:
   EVAL_RET     Eval__mvsa_container_op(DNA_NODE *caller, RNA_NODE *caller_rna,
                                        MEM_POOL *pool, void *objs, BOOL is_forward);
 
-  void         Report_rbc_error(VSA *vsa_ctx, SRCPOS spos, const char* rule, BOOL maybe, SRCPOS_HANDLE *srcpos_h,
+  BOOL         Report_rbc_error(VSA *vsa_ctx, SRCPOS spos, const char* rule, BOOL maybe, SRCPOS_HANDLE *srcpos_h,
                                 const char* cname = NULL);
-  void         Report_rbc_error(VSA *vsa_ctx, STMTREP *stmt, const char* rule, BOOL maybe, SRCPOS_HANDLE *srcpos_h,
+  BOOL         Report_rbc_error(VSA *vsa_ctx, STMTREP *stmt, const char* rule, BOOL maybe, SRCPOS_HANDLE *srcpos_h,
                                 const char* cname = NULL);
-  void         Report_rbc_error(DNA_NODE *dna, const char *stname, const char *rule, const char *msg_id, BOOL maybe);
-  void         Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stmt, FSM_OBJ_REP *fo,
+  BOOL         Report_rbc_error(DNA_NODE *dna, const char *stname, const char *rule, const char *msg_id, BOOL maybe);
+  BOOL         Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stmt, FSM_OBJ_REP *fo,
                                 TRANSIT *ts, SRCPOS_HANDLE *srcpos_h, FSM_ERR_KIND kind);
 
-  void         Report_xsca_error(VSA *vsa_ctx, SRCPOS spos, const char* rule,
+  BOOL         Report_xsca_error(VSA *vsa_ctx, SRCPOS spos, const char* rule,
                                  SRCPOS_HANDLE *srcpos_h);
 
   // Finite State Machine Management

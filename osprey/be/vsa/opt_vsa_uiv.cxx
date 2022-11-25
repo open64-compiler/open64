@@ -56,7 +56,7 @@ private:
   UINT32              _kind;
 
 private:
-  void                Report_vul_error(TRAV_CONTEXT* ctx, STMTREP *sr, CODEREP *cr,
+  BOOL                Report_vul_error(TRAV_CONTEXT* ctx, STMTREP *sr, CODEREP *cr,
                                        ISSUE_CERTAINTY ic = IC_DEFINITELY);
   BOOL                Is_skip_obj(CHECK_OBJ &obj, TRAV_CONTEXT *ctx);
   BOOL                Is_vor_parm(VSA *vsa, VSYM_OBJ_REP *vor);
@@ -679,8 +679,8 @@ UIV_CHECKER::Check_stmtrep<OPR_OPT_CHI>(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
                   cr->Coderep_id()));
         Sp_h()->Append_data(st, obj.Stmtrep()->Bb(), ctx->Dna(), PATHINFO_ST_DECLARE);
         Sp_h()->Set_key_srcpos(ctx->Dna(), NULL, st_pos, ST_name(st));
-        Report_vul_error(ctx, obj.Stmtrep(), cr);
-        if (VSA_Xsca) {
+        BOOL ret = Report_vul_error(ctx, obj.Stmtrep(), cr);
+        if (ret && VSA_Xsca) {
           ctx->Vsa()->Report_xsca_error(cr, ST_name(st), "MSR_9_1", Sp_h());
         }
         Sp_h()->Remove_last_key_srcpos();
@@ -791,16 +791,16 @@ UIV_CHECKER::Check_vsym_obj(CHECK_OBJ &obj, TRAV_CONTEXT *ctx)
   return CS_CONT;
 }
 
-void
+BOOL
 UIV_CHECKER::Report_vul_error(TRAV_CONTEXT* ctx, STMTREP *sr, CODEREP *cr, ISSUE_CERTAINTY ic)
 {
   if (sr && cr && _checker->Issue_reported(sr, cr, Kind())) {
     Is_Trace(ctx->Tracing(),
              (TFile, "--UIV: CS_DONE, issue already reported for sr%d cr%d\n",
               sr->Stmtrep_id(), cr->Coderep_id()));
-    return;
+    return FALSE;
   }
-  ctx->Vsa()->Report_vul_error(cr, Sp_h(), (ILODSTORBASE)_kind, ic);
+  return ctx->Vsa()->Report_vul_error(cr, Sp_h(), (ILODSTORBASE)_kind, ic);
 }
 
 void

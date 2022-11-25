@@ -13020,7 +13020,7 @@ RBC_BASE::Eval__container_get(VSA *vsa_ctx, RNA_NODE *caller_rna, MEM_POOL *pool
 // RBC_BASE::Report_rbc_error spotted on given spos
 //
 // =============================================================================
-void
+BOOL
 RBC_BASE::Report_rbc_error(VSA *vsa_ctx, SRCPOS spos, const char* rule, BOOL maybe,
                            SRCPOS_HANDLE *srcpos_h, const char* cname)
 {
@@ -13028,10 +13028,10 @@ RBC_BASE::Report_rbc_error(VSA *vsa_ctx, SRCPOS spos, const char* rule, BOOL may
   Is_True(spos != 0, ("RBC ERROR: SRCPOS 0 passed to Report_rbc_error.\n"));
   Is_True(srcpos_h != NULL, ("RBC ERROR: null srcpos_h passed to Report_rbc_error.\n"));
   if (rule == NULL || spos == 0 || srcpos_h == NULL)
-    return;
+    return FALSE;
 
   if (!VSA_Customized_Rule && strncmp(rule, "CUS-", 4) == 0)
-    return;
+    return FALSE;
 
   const char *output_pu_name = srcpos_h->Orig_puname();
   if (output_pu_name == NULL)
@@ -13052,6 +13052,7 @@ RBC_BASE::Report_rbc_error(VSA *vsa_ctx, SRCPOS spos, const char* rule, BOOL may
                   maybe ? IC_MAYBE : IC_DEFINITELY, srcpos_h);
   issue.Set_fix_cost(Rule_fix_cost(rule));
   Vsa_error_print(&issue);
+  return TRUE;
 }
 
 
@@ -13060,7 +13061,7 @@ RBC_BASE::Report_rbc_error(VSA *vsa_ctx, SRCPOS spos, const char* rule, BOOL may
 // RBC_BASE::Report_rbc_error spotted on given stmt
 //
 // =============================================================================
-void
+BOOL
 RBC_BASE::Report_rbc_error(VSA *vsa_ctx, STMTREP *stmt, const char* rule, BOOL maybe,
                            SRCPOS_HANDLE *srcpos_h, const char* cname)
 {
@@ -13068,9 +13069,9 @@ RBC_BASE::Report_rbc_error(VSA *vsa_ctx, STMTREP *stmt, const char* rule, BOOL m
   Is_True(rule != NULL, ("RBC ERROR: null rule passed to Report_rbc_error.\n"));
   Is_True(srcpos_h != NULL, ("RBC ERROR: null srcpos_h passed to Report_rbc_error.\n"));
   if (stmt == NULL || rule == NULL || srcpos_h == NULL)
-    return;
+    return FALSE;
 
-  Report_rbc_error(vsa_ctx, stmt->Linenum(), rule, maybe, srcpos_h, cname);
+  return Report_rbc_error(vsa_ctx, stmt->Linenum(), rule, maybe, srcpos_h, cname);
 }
 
 // =============================================================================
@@ -13078,12 +13079,12 @@ RBC_BASE::Report_rbc_error(VSA *vsa_ctx, STMTREP *stmt, const char* rule, BOOL m
 // RBC_BASE::Report_rbc_error: report rbc error at function entry
 //
 // =============================================================================
-void
+BOOL
 RBC_BASE::Report_rbc_error(DNA_NODE *dna, const char *stname, const char *rule,
                            const char *msg_id, BOOL maybe)
 {
   if(dna == NULL) {
-    return;
+    return FALSE;
   }
 
   CONTEXT_SWITCH ctx(dna);
@@ -13098,8 +13099,9 @@ RBC_BASE::Report_rbc_error(DNA_NODE *dna, const char *stname, const char *rule,
     if(msg_id != NULL) {
       sp_h.Set_msgid(msg_id);
     }
-    Report_rbc_error(vsa, stmt, rule, maybe ? IC_MAYBE : IC_DEFINITELY, &sp_h);
+    return Report_rbc_error(vsa, stmt, rule, maybe ? IC_MAYBE : IC_DEFINITELY, &sp_h);
   }
+  return FALSE;
 }
 
 
@@ -13108,12 +13110,12 @@ RBC_BASE::Report_rbc_error(DNA_NODE *dna, const char *stname, const char *rule,
 // RBC_BASE::Report_fsm_error
 //
 // =============================================================================
-void
+BOOL
 RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stmt, FSM_OBJ_REP *fsm_obj_rep,
                            TRANSIT *ts, SRCPOS_HANDLE *srcpos_h, FSM_ERR_KIND kind)
 {
   if (fsm_obj_rep == NULL)
-    return;
+    return FALSE;
 
   FSM *fsm = fsm_obj_rep->Fsm();
   STRING fsm_name = fsm_obj_rep->Fsm_obj()->Fsm_name();
@@ -13122,25 +13124,25 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
   if (kind == FSM_ERR_KIND_TRANSIT) {
     Is_True(fsm_obj_rep->Transit() == ts, ("RBC ERROR: inconsistent transit\n"));
     if (fsm_obj_rep->Transit() != ts)
-      return;
+      return FALSE;
     Is_Trace(Tracing(), (TFile, "RBC: FSM(\"%s\"): report error for state(%d) => state(%d) by action(\"%s\")\n",
                          fsm_name, state, nstate, ts->Action()));
   }
   else if (kind == FSM_ERR_KIND_DEFAULT) {
     Is_True(ts->Is_default(), ("RBC ERROR: not default transit\n"));
     if (!ts->Is_default())
-      return;
+      return FALSE;
   }
   else if (kind == FSM_ERR_KIND_DANGLING) {
     Is_True(ts->Is_default(), ("RBC ERROR: not default transit\n"));
     if (!ts->Is_default())
-      return;
+      return FALSE;
     Is_Trace(Tracing(), (TFile, "RBC: FSM(\"%s\"): report dangling error for state(%d)\n",
                          fsm_name, state));
   }
   else {
     Is_Trace(Tracing(), (TFile, "RBC ERROR: invalid FSM_ERR_KIND(%d)\n", kind));
-    return;
+    return FALSE;
   }
 
   // clone srcpos to reverse the path for fsm forward check
@@ -13185,6 +13187,7 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
   }
   // if (message)
   //   free(message);
+  return TRUE;
 }
 
 // =============================================================================
@@ -13192,11 +13195,11 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
 // RBC_BASE::Report_xvsa_error
 //
 // =============================================================================
-void
+BOOL
 RBC_BASE::Report_xsca_error(VSA *vsa_ctx, SRCPOS spos, const char* rule,
                             SRCPOS_HANDLE *srcpos_h)
 {
-  Report_rbc_error(vsa_ctx, spos, rule, FALSE, srcpos_h, "SML");
+  return Report_rbc_error(vsa_ctx, spos, rule, FALSE, srcpos_h, "SML");
 }
 
 // =============================================================================
@@ -15134,8 +15137,8 @@ RBC_BASE::Print_out_recursion(DNA_NODE *caller, DNA_NODE *dna, STMTREP *stmt,
   for (vector<IDTYPE>::iterator iter = in_stack.begin(); iter != in_stack.end(); iter++) {
     if (*iter == dna_idx) {
       visited.insert(dna_idx);
-      Report_rbc_error(caller->Comp_unit()->Vsa(), stmt, "CRF", FALSE, srcpos_h);
-      if (VSA_Xsca) {
+      BOOL ret = Report_rbc_error(caller->Comp_unit()->Vsa(), stmt, "CRF", FALSE, srcpos_h);
+      if (ret && VSA_Xsca) {
         Report_xsca_error(caller->Comp_unit()->Vsa(), stmt->Linenum(),
                           "MSR_17_2", srcpos_h);
       }
@@ -15222,8 +15225,8 @@ RBC_BASE::Builtin_certc_msc37(DNA_NODE *dna)
     SRCPOS_HANDLE srcpos_h(dna, cu->Loc_pool());
     SRCPOS spos = cu->Get_end_srcpos();
     srcpos_h.Append_data(spos, NULL, dna, PATHINFO_VUL_SPOT_SO);
-    Report_rbc_error(cu->Vsa(), spos, "MSC37-C", FALSE, &srcpos_h);
-    if (VSA_Xsca) {
+    BOOL ret = Report_rbc_error(cu->Vsa(), spos, "MSC37-C", FALSE, &srcpos_h);
+    if (ret && VSA_Xsca) {
       Report_xsca_error(cu->Vsa(), spos, "MSR_17_4", &srcpos_h);
     }
   }

@@ -2847,7 +2847,7 @@ VSA::Print_sr_2_rna_map(FILE *fp)
   }
 }
 
-void
+BOOL
 VSA::Report_vsa_error(CODEREP *x, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic, SRCPOS_HANDLE *srcpos_h) const
 {
   const char *output_var_name = NULL;
@@ -2858,10 +2858,10 @@ VSA::Report_vsa_error(CODEREP *x, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic,
     output_var_name = Sym_name(auxid);
   else if (x == NULL)
     output_var_name = "";
-  Report_vsa_error(x, output_var_name, anat, ic, srcpos_h);
+  return Report_vsa_error(x, output_var_name, anat, ic, srcpos_h);
 }
 
-void
+BOOL
 VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, UINT32 anat, ISSUE_CERTAINTY ic, SRCPOS_HANDLE *srcpos_h) const
 {
   char  ilod_name_buf[ISKEY_MAX_KEY_LEN];
@@ -2899,7 +2899,7 @@ VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, UINT32 anat, ISSU
   if (output_var_name != NULL &&
       output_var_name[0] == '_' &&
       output_var_name[1] == '_')
-    return;
+    return FALSE;
   
   if (VSA_Warn_On_This == FALSE &&
       output_var_name != NULL &&
@@ -2907,7 +2907,7 @@ VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, UINT32 anat, ISSU
        strncmp(output_var_name, ".material", 9) == 0 ||
        strcmp(output_var_name, (".cxx.bind.")) == 0 ||
        strncmp(output_var_name, ".init", 5) == 0))
-    return;
+    return FALSE;
 
   if(!output_var_name || 
      (output_var_name &&  output_var_name[0] == '.')) {
@@ -2917,19 +2917,19 @@ VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, UINT32 anat, ISSU
   }
 
   if (anat != DBF && anat != MSF && Vsa_check_sym_ignore(output_var_name))
-    return;
+    return FALSE;
 
   // ignore UIV/NPD without variable name
   if ((anat == UIV || anat == NPD) &&
       (output_var_name == NULL || output_var_name[0] == '$'))
-    return;
+    return FALSE;
 
   const char * ana_name = Get_builtin_rule_code(anat);
   UINT32 fix_cost = Get_builtin_rule_fix_cost(anat);
-  Report_vsa_error(x, output_var_name, ana_name, fix_cost, ic, srcpos_h);
+  return Report_vsa_error(x, output_var_name, ana_name, fix_cost, ic, srcpos_h);
 }
 
-void
+BOOL
 VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, const char *ana_name, INT32 fix_cost,
                       ISSUE_CERTAINTY ic, SRCPOS_HANDLE *srcpos_h) const
 {
@@ -2938,12 +2938,12 @@ VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, const char *ana_n
   if (spos == 0) {
     Is_Trace(Tracing(), (TFile, "#### HIT SRCPOS == 0, place a bp at "));
     Is_Trace(Tracing(), (TFile, "%s:%d to debug this issue ####\n", __FILE__, __LINE__));
-    return;
+    return FALSE;
   }
 
   if (srcpos_h->Eval_value_graph() == FALSE) {
     Is_Trace(Tracing(), (TFile, "--ignore this issue: value graph evals to false.\n"));
-    return;
+    return FALSE;
   }
 
   SRCPOS entry_pos = WN_Get_Linenum(Comp_unit()->Input_tree());
@@ -2961,9 +2961,10 @@ VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, const char *ana_n
                   spos, ic, srcpos_h);
   issue.Set_fix_cost(fix_cost);
   Vsa_error_print(&issue);
+  return TRUE;
 }
 
-void
+BOOL
 VSA::Report_xsca_error(CODEREP *x, const char *output_var_name, const char *ana_name,
                       SRCPOS_HANDLE *srcpos_h) const
 {
@@ -2971,7 +2972,7 @@ VSA::Report_xsca_error(CODEREP *x, const char *output_var_name, const char *ana_
   if (spos == 0) {
     Is_Trace(Tracing(), (TFile, "#### HIT SRCPOS == 0, place a bp at "));
     Is_Trace(Tracing(), (TFile, "%s:%d to debug this issue ####\n", __FILE__, __LINE__));
-    return;
+    return FALSE;
   }
   SRCPOS entry_pos = WN_Get_Linenum(Comp_unit()->Input_tree());
   char key_buf[ISKEY_MAX_KEY_LEN];
@@ -2981,11 +2982,14 @@ VSA::Report_xsca_error(CODEREP *x, const char *output_var_name, const char *ana_
   const char *output_pu_name = srcpos_h->Orig_puname();
   if (output_pu_name == NULL)
     output_pu_name = Cur_pu_name();
+  ISSUE_CERTAINTY ic = srcpos_h->Is_flag_set(SRCPOS_FLAG_MAYBE)
+                         ? IC_MAYBE : IC_DEFINITELY;
   VSA_ISSUE issue("SML", ana_name, key, keyid,
                   output_var_name, output_pu_name,
-                  spos, IC_DEFINITELY, srcpos_h);
+                  spos, ic, srcpos_h);
   issue.Set_fix_cost(1);
   Vsa_error_print(&issue);
+  return TRUE;
 }
 
 /*
@@ -7664,13 +7668,13 @@ VSA::Classify_vul_error(CODEREP* cr, BB_NODE* cur_bb, STMTREP* stmt, VSYM_OBJ_RE
 // VSA::Report_vul_error: report error according to ILODSTORBASE kind and VAL_RANGE_RESULT
 //
 // =============================================================================
-void
+BOOL
 VSA::Report_vul_error(CODEREP* x, SRCPOS_HANDLE* sp_h, ILODSTORBASE kind, ISSUE_CERTAINTY ic)
 {
   // not report M NPD/DBZ if x is param and VSA_Warn_Param is off
   if (!VSA_Warn_On_Param && ic != IC_DEFINITELY &&
       x && x->Kind() == CK_VAR && Dna()->Is_param(x))
-    return;
+    return FALSE;
 
   AUX_ID aux = 0;
   if (x != NULL && x->Kind() == CK_VAR)
@@ -7686,30 +7690,26 @@ VSA::Report_vul_error(CODEREP* x, SRCPOS_HANDLE* sp_h, ILODSTORBASE kind, ISSUE_
     }
   }
 
+  if (VSA_Issue_Certainty_Maybe)
+    ic = IC_MAYBE;
+
   if ((kind & FOR_DIVISOR) != 0) {
     sp_h->Set_msgid("DBZ.1");
-    Report_vsa_error(x, aux, DBZ, ic, sp_h);
-    return;
+    return Report_vsa_error(x, aux, DBZ, ic, sp_h);
   }
   else if ((kind & FOR_ILOD_BASE) != 0 || (kind & FOR_ISTOR_BASE) != 0) {
     sp_h->Set_msgid("NPD.1");
-    if (VSA_Issue_Certainty_Maybe) ic = IC_MAYBE;
-    Report_vsa_error(x, aux, NPD, ic, sp_h);
-    return;
+    return Report_vsa_error(x, aux, NPD, ic, sp_h);
   } else if ((kind & FOR_UIV) != 0) {
     sp_h->Set_msgid("UIV.1");
-    if (VSA_Issue_Certainty_Maybe) ic = IC_MAYBE;
-    Report_vsa_error(x, aux, UIV, ic, sp_h);
-    return;
+    return Report_vsa_error(x, aux, UIV, ic, sp_h);
   } else if ((kind & FOR_AOB) != 0) {
     sp_h->Set_msgid("AOB.1");
-    if (VSA_Issue_Certainty_Maybe) ic = IC_MAYBE;
-    Report_vsa_error(x, aux, AOB, ic, sp_h);
-    return;
+    return Report_vsa_error(x, aux, AOB, ic, sp_h);
   }
   else {
     Is_True(FALSE, ("unknown kind: %x", kind));
-    return;
+    return FALSE;
   }
 }
 
@@ -9002,7 +9002,7 @@ VSA::Classify_uiv_error(CODEREP *x, BB_NODE *curbb,
   return;
 }
 
-void
+BOOL
 VSA::Report_rvsa_info(CODEREP* x, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic, SRCPOS_HANDLE *srcpos_h) const
 {
   SRCPOS_TREENODE *cur_node = srcpos_h->Cur_node();
@@ -9014,6 +9014,7 @@ VSA::Report_rvsa_info(CODEREP* x, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic,
   }
   else
     Report_vsa_error(x, auxid, anat, ic, srcpos_h);
+  return TRUE;
 }
 
 // =============================================================================
@@ -10851,8 +10852,8 @@ VSA::Handle_call(STMTREP *call_stmt, BB_NODE *bb, MEM_POOL *pool)
       // treat the call stmt as the "key" srcpos for this issue
       srcpos_h.Set_key_srcpos(Dna(), call_stmt, NULL);
       srcpos_h.Set_msgid("MSF.1");
-      Report_vsa_error(NULL, name, MSF, IC_DEFINITELY, &srcpos_h);
-      if (VSA_Xsca) {
+      BOOL ret = Report_vsa_error(NULL, name, MSF, IC_DEFINITELY, &srcpos_h);
+      if (ret && VSA_Xsca) {
         Report_xsca_error(NULL, name, "MSR_22_1", &srcpos_h);
       }
     }
@@ -15262,8 +15263,8 @@ VSA::Scan_rule_based_error(BB_NODE *bb)
             auxid = retv->Lda_aux_id();
             SRCPOS_HANDLE srcpos_h(retv, stmt, Dna(), Loc_pool());
             srcpos_h.Set_msgid("RAL.1");
-            Report_vsa_error(retv, auxid, RAL, IC_DEFINITELY, &srcpos_h);
-            if (VSA_Xsca) {
+            BOOL ret = Report_vsa_error(retv, auxid, RAL, IC_DEFINITELY, &srcpos_h);
+            if (ret && VSA_Xsca) {
               const char* var_name = srcpos_h.Orig_stname() ?
                                      srcpos_h.Orig_stname() : auxid ? Sym_name(auxid) : "";
               Report_xsca_error(retv, var_name, "MSR_18_6", &srcpos_h);

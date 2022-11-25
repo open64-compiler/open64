@@ -1693,7 +1693,7 @@ public:
   void          Classify_vul_error(CODEREP* x, BB_NODE* cur_bb, STMTREP* stmt, VSYM_OBJ_REP* vor,
                                    CALL_STACK& cs, SRCPOS_HANDLE* sp_h, ILODSTORBASE kind,
                                    hash_set<IDTYPE>& visited, BOOL back_edge);
-  void          Report_vul_error(CODEREP* x, SRCPOS_HANDLE* sp_h, ILODSTORBASE kind,
+  BOOL          Report_vul_error(CODEREP* x, SRCPOS_HANDLE* sp_h, ILODSTORBASE kind,
                                  ISSUE_CERTAINTY ic);
 
   // Report uiv error when Classify_uiv_error for var detects error
@@ -1701,16 +1701,16 @@ public:
   HEAP_OBJ_REP *Find_or_create_hor(CODEREP *x, BB_NODE *bb, MEM_POOL *def_bbs_pool);
 
   // Only interfaces for VSA to report an error
-  void          Report_vsa_error(CODEREP *var, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic,
+  BOOL          Report_vsa_error(CODEREP *var, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic,
                                  SRCPOS_HANDLE *srcpos_h) const;
-  void          Report_vsa_error(CODEREP *var, const char*, UINT32 anat, ISSUE_CERTAINTY ic,
+  BOOL          Report_vsa_error(CODEREP *var, const char*, UINT32 anat, ISSUE_CERTAINTY ic,
                                  SRCPOS_HANDLE *srcpos_h) const;
-  void          Report_vsa_error(CODEREP *var, const char*, const char *anat, INT32 fix_cost,
+  BOOL          Report_vsa_error(CODEREP *var, const char*, const char *anat, INT32 fix_cost,
                                  ISSUE_CERTAINTY ic, SRCPOS_HANDLE *srcpos_h) const;
-  void          Report_rvsa_info(CODEREP* x, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic,
+  BOOL          Report_rvsa_info(CODEREP* x, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic,
                                  SRCPOS_HANDLE *srcpos_h) const;
 
-  void          Report_xsca_error(CODEREP *var, const char*, const char *anat,
+  BOOL          Report_xsca_error(CODEREP *var, const char*, const char *anat,
                                   SRCPOS_HANDLE *srcpos_h) const;
   // out-of-bound
   void          Perform_aofb_analysis();

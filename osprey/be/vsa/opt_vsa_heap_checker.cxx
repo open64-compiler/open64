@@ -787,8 +787,8 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
                 Sp_h()->Set_key_srcpos(ctx->Dna(), def_stmt, NULL);
                 Append_data(def_stmt, ctx->Dna(), PATHINFO_ALLOC);
                 ISSUE_CERTAINTY ic = VSA_Issue_Certainty_Maybe ? IC_MAYBE : IC_DEFINITELY;
-                vsa->Report_vsa_error(cr, (char *)NULL, MSF, ic, Sp_h());
-                if (VSA_Xsca) {
+                BOOL ret = vsa->Report_vsa_error(cr, (char *)NULL, MSF, ic, Sp_h());
+                if (ret && VSA_Xsca) {
                   vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MSR_22_1", Sp_h());
                 }
                 Sp_h()->Remove_last_key_srcpos();
@@ -900,9 +900,9 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
       // cr->Is_flag_set(CF_DEF_BY_PHI) is TRUE, Need to filter out free from back edge
       Sp_h()->Set_msgid(Kind() == FOR_UAF ? "UAF.1" : "DBF.1");
       ISSUE_CERTAINTY ic = VSA_Issue_Certainty_Maybe ? IC_MAYBE : IC_DEFINITELY;
-      vsa->Report_vsa_error(cr, (const char*)NULL,
+      BOOL ret = vsa->Report_vsa_error(cr, (const char*)NULL,
                             Kind() == FOR_UAF ? UAF : DBF, ic, Sp_h());
-      if (VSA_Xsca) {
+      if (ret && VSA_Xsca) {
         if (Kind() != FOR_UAF) {
           vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MSR_22_2", Sp_h());
         }
@@ -1145,8 +1145,8 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
         Sp_h()->Set_msgid("UDR.1");
         Append_data(def, ctx->Dna(), PATHINFO_ALLOC);
         ISSUE_CERTAINTY ic = VSA_Issue_Certainty_Maybe ? IC_MAYBE : IC_DEFINITELY;
-        vsa->Report_vsa_error(cr, (char*)NULL, UDR, ic, Sp_h());
-        if (VSA_Xsca) {
+        BOOL ret = vsa->Report_vsa_error(cr, (char*)NULL, UDR, ic, Sp_h());
+        if (ret && VSA_Xsca) {
           vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MSR_22_2", Sp_h());
         }
       }
@@ -1168,8 +1168,8 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
       Sp_h()->Set_key_srcpos(ctx->Dna(), def, NULL);
       Append_data(def, ctx->Dna(), PATHINFO_ALLOC);
       ISSUE_CERTAINTY ic = VSA_Issue_Certainty_Maybe ? IC_MAYBE: IC_DEFINITELY;
-      vsa->Report_vsa_error(cr, (char *)NULL, MSF, ic, Sp_h());
-      if (VSA_Xsca) {
+      BOOL ret = vsa->Report_vsa_error(cr, (char *)NULL, MSF, ic, Sp_h());
+      if (ret && VSA_Xsca) {
         vsa->Report_xsca_error(cr, Sp_h()->Orig_stname(), "MSR_22_1", Sp_h());
       }
       Sp_h()->Remove_last_key_srcpos();

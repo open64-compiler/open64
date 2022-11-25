@@ -2248,8 +2248,8 @@ VSA::Classify_msf_error(AUX_ID sym, BB_NODE *bb, SRCPOS_HANDLE *srcpos_h, ISSUE_
 {
   const char *output_var_name = (sym > 0) ? Sym_name(sym) : NULL;
   srcpos_h->Set_msgid("MSF.1");
-  Report_vsa_error(NULL, output_var_name, MSF, ic, srcpos_h);
-  if (VSA_Xsca) {
+  BOOL ret = Report_vsa_error(NULL, output_var_name, MSF, ic, srcpos_h);
+  if (ret && VSA_Xsca) {
     Report_xsca_error(NULL, output_var_name, "MSR_22_1", srcpos_h);
   }
 }

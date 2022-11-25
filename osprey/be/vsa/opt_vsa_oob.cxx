@@ -1484,8 +1484,8 @@ VSA::Classify_aob_error(CODEREP *x, ISSUE_CERTAINTY ic, SRCPOS_HANDLE* sp_h)
   AUX_ID aux = x->Kind() == CK_VAR ? x->Aux_id() :
                    x->Kind() == CK_LDA ? x->Lda_aux_id() : 0;
   if (VSA_Issue_Certainty_Maybe) ic = IC_MAYBE;
-  Report_vsa_error(x, aux, AOB, ic, sp_h);
-  if (VSA_Xsca) {
+  BOOL ret = Report_vsa_error(x, aux, AOB, ic, sp_h);
+  if (ret && VSA_Xsca) {
     Report_xsca_error(x,
                       sp_h->Orig_stname() ? sp_h->Orig_stname() : aux ? Sym_name(aux) : "",
                       "MSR_18_1", sp_h);
