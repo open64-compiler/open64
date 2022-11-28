@@ -3753,6 +3753,8 @@ WHIRL2llvm::Collect_retval_pregname(WN *wn)  {
     retv_wn = Ref_func_retreg(retv_wn);
     Is_Trace(Tracing_enabled, (TFile, "Collect_retval_pregname but also Get_preg for : "));
     Is_Trace_cmd(Tracing_enabled, fdump_wn(TFile, retv_wn));
+    if (retv_wn == nullptr)
+      return nullptr;
     ret_reg = Get_preg(retv_wn, TRUE);// WN_desc(WN_kid0(retv_wn)), WN_ty(WN_kid0(retv_wn)));
   }
   else {
@@ -5908,6 +5910,7 @@ WHIRL2llvm::Lower_puwn(PU_Info *pu_info, WN *wn)
       LOWER_MSTORE   |
       LOWER_INLINE_INTRINSIC |
       LOWER_QUAD     |
+      LOWER_MLDID_MSTID |
       LOWER_MADD;
     
     wn = WN_Lower(wn, actions, NULL, "WHIRL2llvm lowering Middle Level Whirl");
