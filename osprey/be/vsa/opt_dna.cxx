@@ -7786,6 +7786,63 @@ DNA_NODE::Update_stpath(WN* wn, STMTREP* sr, CODEREP* cr)
 // DNA_NODE::Get_stpath, Get the ST annotated on the node
 //
 // =============================================================================
+static BOOL
+Find_cr_path(const CODEREP* par, const CODEREP* cr, vector<const CODEREP*>& path) {
+  Is_True(par != NULL && cr != NULL, ("bad par or child cr"));
+  // check if cr matches
+  if (par == cr) {
+    return TRUE;
+  }
+
+  BOOL ret;
+  // check children
+  switch (par->Kind()) {
+  case CK_IVAR:
+    ret = Find_cr_path(par->Ilod_base() ? par->Ilod_base() : par->Istr_base(),
+                       cr, path);
+    if (ret) {
+      path.push_back(par);
+    }
+    return ret;
+  case CK_OP:
+    for (INT i = 0; i < par->Kid_count(); ++i) {
+      ret = Find_cr_path(par->Opnd(i), cr, path);
+      if (ret) {
+        path.push_back(par);
+        return TRUE;
+      }
+    }
+    return FALSE;
+  default:
+    return FALSE;
+  }
+}
+
+STPATH*
+DNA_NODE::Search_stpath(const STMTREP* sr, const CODEREP* cr) const
+{
+  vector<const CODEREP*> path;
+  BOOL found = FALSE;
+  // search rhs
+  if (sr->Rhs()) {
+    found = Find_cr_path(sr->Rhs(), cr, path);
+  }
+  // search lhs
+  if (!found && sr->Lhs()) {
+    found = Find_cr_path(sr->Lhs(), cr, path);
+  }
+  if (found) {
+    vector<const CODEREP*>::const_iterator it;
+    for (it = path.begin(); it != path.end(); ++it) {
+      STPATH* stp = Get_stpath(sr, *it);
+      if (stp != NULL) {
+        return stp;
+      }
+    }
+  }
+  return NULL;
+}
+
 STPATH*
 DNA_NODE::Get_stpath(const STMTREP* sr, const CODEREP* cr) const
 {

@@ -1519,6 +1519,11 @@ SRCPOS_HANDLE::Append_stpath(STMTREP *stmt, CODEREP *cr, DNA_NODE* dna, BOOL for
   if(IPSA_insession() && dna != NULL) {
     CODEREP* var = cr;
     STPATH *stpath = dna->Get_stpath(stmt, var);
+    if (stpath == NULL) {
+      stpath = dna->Search_stpath(stmt, var);
+      // set to FALSE because stpath is not for var, but var's parents
+      force_set_orig_st = FALSE;
+    }
     #if 0
     if (stpath == NULL && var && var->Kind() == CK_IVAR) {
       var = cr->Ilod_base();

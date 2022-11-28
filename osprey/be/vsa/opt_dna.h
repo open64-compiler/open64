@@ -1013,6 +1013,7 @@ public:
   void          Map_stpath(OPT_STAB *opt_stab, CODEREP *cr_old, STMTREP *sr, CODEREP *cr_new);
   BOOL          Update_stpath(STMTREP* sr, CODEREP* cr, WN* wn);
   BOOL          Update_stpath(WN* wn, STMTREP* sr, CODEREP* cr);
+  STPATH       *Search_stpath(const STMTREP* sr, const CODEREP* cr) const;
   STPATH       *Get_stpath(const STMTREP* sr, const CODEREP* cr) const;
   STPATH       *Get_stpath(const WN*) const;
   STPATH       *Get_stpath(IDTYPE srid, IDTYPE crid) const;
