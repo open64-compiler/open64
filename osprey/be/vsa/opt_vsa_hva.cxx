@@ -3053,10 +3053,6 @@ HVA_VO_CREATION::Process_sr<OPR_CALL, TRUE>(STMTREP* sr)
     Process_coderep<VSYM_OBJ_REP *>(sr, rhs->Opnd(parm_cnt), 0);
   }
 
-  // still have pending IVAR in param or ICALL target, early return
-  if (_hva->Visit_next(sr))
-    return;
-
   // process ho/vo on param
   TY_IDX proto_ty = sr->Opr() == OPR_CALL ? ST_type(sr->St())
                                           : sr->Ty();
@@ -3097,10 +3093,6 @@ HVA_VO_CREATION::Process_sr<OPR_INTRINSIC_CALL, TRUE>(STMTREP* sr)
             ("bad parm"));
     Process_coderep<VSYM_OBJ_REP *>(sr, parm->Ilod_base(), 0);
   }
-
-  // still have pending IVAR in param or ICALL target, early return
-  if (_hva->Visit_next(sr))
-    return;
 
   // process ho/vo on param
   for (INT32 i = 0; i < rhs->Kid_count(); ++i) {
