@@ -5596,7 +5596,9 @@ finish_struct (tree t, tree fieldlist, tree attributes)
 	  && flexible_array_type_p (TREE_TYPE (x)))
 	pedwarn ("%Jinvalid use of structure with flexible array member", x);
 
-      if (DECL_NAME (x))
+      if (DECL_NAME (x)
+          || TREE_CODE (TREE_TYPE (x)) == RECORD_TYPE
+          || TREE_CODE (TREE_TYPE (x)) == UNION_TYPE)
 	saw_named_field = 1;
     }
 
