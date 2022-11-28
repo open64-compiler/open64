@@ -681,7 +681,9 @@ UIV_CHECKER::Check_stmtrep<OPR_OPT_CHI>(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
         Sp_h()->Set_key_srcpos(ctx->Dna(), NULL, st_pos, ST_name(st));
         BOOL ret = Report_vul_error(ctx, obj.Stmtrep(), cr);
         if (ret && VSA_Xsca) {
-          ctx->Vsa()->Report_xsca_error(cr, ST_name(st), "MSR_9_1", Sp_h());
+          ctx->Vsa()->Report_xsca_error(cr,
+                                        Sp_h()->Orig_stname() ? Sp_h()->Orig_stname() : ST_name(st),
+                                        "MSR_9_1", Sp_h());
         }
         Sp_h()->Remove_last_key_srcpos();
         return CS_DONE;
