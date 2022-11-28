@@ -11748,6 +11748,8 @@ RBC_BASE::Eval__base_assert(DNA_NODE *caller, RNA_NODE *caller_rna, DNA_NODE *ca
   if (caller_rna == NULL && !callee->Is_set_rbc_flag(DNA_RBC_ASSERT_DNA)) {
     return;
   }
+  if (!VSA_Xsca && strncmp(rule_name, "MSR", 3) == 0)
+    return;
 
   Is_True(Rbc_parm_offset(caller) == Rbc_parm_offset(rbc_callee),
           ("RBC ERROR: imcompatible language type of RBC APIs and sources.\n"));
