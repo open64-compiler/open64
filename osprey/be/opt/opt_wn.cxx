@@ -2345,6 +2345,18 @@ Get_field_id_from_offset_r(TY_IDX to_search, UINT64 ofst, TY_IDX to_match, UINT*
       cur_fld = 0;
       if (Get_field_id_from_offset_r(cur_fld_ty, new_ofst, to_match, fld_id))
         return TRUE;
+    } else if (TY_kind(cur_fld_ty) == KIND_ARRAY) {
+      mUINT64 arr_size = TY_size(cur_fld_ty);
+      INT64 new_ofst = ofst - cur_ofst;
+      // check if match with any array element
+      if (arr_size == 0 || arr_size > new_ofst) {
+        TY_IDX elem_ty = TY_etype(cur_fld_ty);
+        mUINT64 elem_size = TY_size(elem_ty);
+        if (elem_size != 0 && new_ofst % elem_size == 0) {
+          *fld_id += cur_fld;
+          return TRUE;
+        }
+      }
     }
   } while (!FLD_last_field(fld_iter++));
 
