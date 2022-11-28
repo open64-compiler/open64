@@ -14446,7 +14446,7 @@ VSA::Check_redundant_condition(BB_NODE *bb, CODEREP *cond,
          Can_swap_condition(cd_bb, root_bb))) {
       // set a mark to keep previous data in srcpos handler
       UINT32 mark = sp_h->Water_mark();
-      sp_h->Append_data(cd_cond.second, Dna(), PATHINFO_CD_BB);
+      sp_h->Append_data(cd_cond.second, Dna(), PATHINFO_CD_BB, FALSE);
       Report_vsa_error(cond, NULL, "RCD", 2, IC_DEFINITELY, sp_h);
       // remove all entries added just now
       sp_h->Set_water_mark(mark);
