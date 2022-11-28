@@ -5730,13 +5730,14 @@ static WN *
 vho_lower_eval ( WN * wn, WN * block )
 {
   WN_kid0(wn) = vho_lower_expr ( WN_kid0(wn), block, NULL );
-
+#if defined(BUILD_MASTIFF)
   if (VSA_Xsca) {
     if (!WN_kid0(wn) || WN_operator(WN_kid0(wn)) == OPR_CVT) {
       Report_xsca_error(ST_name(Get_Current_PU_ST()), "", "MSR_2_2",
                         FALSE, WN_Get_Linenum(wn));
     }
   }
+#endif
   if ( WN_kid0(wn) )
     return wn;
 
@@ -5750,6 +5751,7 @@ vho_lower_pragma ( WN * wn, WN * block )
 {
   if (WN_pragma(wn) == WN_PRAGMA_INLINE_BODY_START) {
     VHO_Inline_Stack.push(WN_st(wn));
+#if defined(BUILD_MASTIFF)
     if (VSA_Xsca) {
       WN *next = WN_next(wn);
       if (next && WN_pragma(next) == WN_PRAGMA_INLINE_BODY_END) {
@@ -5757,6 +5759,7 @@ vho_lower_pragma ( WN * wn, WN * block )
                           FALSE, WN_Get_Linenum(wn));
       }
     }
+#endif
   }
   else if (WN_pragma(wn) == WN_PRAGMA_INLINE_BODY_END) {
     Is_True(!VHO_Inline_Stack.empty() &&
