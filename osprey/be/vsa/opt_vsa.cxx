@@ -1075,29 +1075,116 @@ SRCPOS_HANDLE::Find_cr_stname(STRING_BUFFER *buf, CODEREP *cr, STMTREP *stmt, DN
     return buf->To_string();
   }
   else if(cr->Kind() == CK_IVAR) {
+    if (cr->Opr() == OPR_PARM) {
+      return Find_cr_stname(buf, cr->Ilod_base(), stmt, dna, follow_ud, gen_cr, hex);
+    }
     CODEREP *base = cr->Ilod_base() ? cr->Ilod_base() : cr->Istr_base();
     Is_True(base, ("base is null for Ivar"));
-    UINT fld_id = cr->I_field_id();
-    TY_IDX ilod_ty = cr->Ilod_ty();
-    if (fld_id == 0) {
+    VSA_ADDRESS_INFO info;
+    dna->Comp_unit()->Analyze_address_info(stmt, cr, &info,
+                                           cr->Ilod_base() == NULL, FALSE);
+    CODEREP *base_cr = info.Base();
+    if (base_cr == NULL) {
+      // no base?
       if (PU_src_lang(Get_Current_PU()) & (PU_C_LANG | PU_CXX_LANG))
         buf->Append('*');
-    }
-    else if (!Is_Structure_Type(ilod_ty))
       buf->Append('(');
-    const char *base_name = Find_cr_stname(buf, base, stmt, dna, TRUE, gen_cr, hex);
-    if(base_name == NULL)
-      return NULL;
-    if(Is_Structure_Type(ilod_ty) && fld_id > 0) {
-      const char* fld_name = Gen_fld_stname(buf, NULL, cr->Ilod_base_ty(), fld_id);
-      return buf->To_string();
-    } else {
-      if (fld_id > 0)
-        buf->Format("+%d)", fld_id);
-      else if (cr->Offset() > 0)
+      Find_cr_stname(buf, base, stmt, dna, TRUE, gen_cr, hex);
+      if (cr->Offset() > 0)
         buf->Format("+%d", cr->Offset());
+      buf->Append(')');
       return buf->To_string();
     }
+    TY_IDX object_ty = cr->object_ty();
+    TY_IDX ilod_addr_ty = cr->Opr() != OPR_MLOAD ? cr->Ilod_base_ty()
+                                                 : Make_Pointer_Type(cr->Ilod_ty());
+    TY_IDX base_addr_ty = base_cr->Kind() == CK_LDA ? base_cr->Lda_ty()
+                                                    : base_cr->object_ty();
+    if (base_cr->Kind() == CK_VAR &&
+        opt_stab->Aux_stab_entry(base_cr->Aux_id())->Is_preg())
+      base_addr_ty = ilod_addr_ty;
+    Is_True(TY_kind(base_addr_ty) == KIND_POINTER, ("base addr is not pointer type"));
+    Is_True(TY_kind(ilod_addr_ty) == KIND_POINTER, ("ilod addr is not pointer type"));
+    UINT fld_id = cr->I_field_id();
+    INT64 offset = cr->Offset();
+    BOOL var_ofst = (info.Pos_index().size() > 0 || info.Neg_index().size() > 0 ||
+                     info.Pos_offset().size() > 0 || info.Neg_offset().size() > 0);
+    if (fld_id == 0 && offset == 0 && !var_ofst)
+      buf->Append('*');
+    // handle base
+    Find_cr_stname(buf, base_cr, stmt, dna, TRUE, gen_cr, hex);
+    // check if load from struct pointer
+    TY_IDX ilod_ty = ilod_addr_ty;
+    if (TY_kind(ilod_addr_ty) == KIND_POINTER)
+      ilod_ty = TY_pointed(ilod_addr_ty);
+    if (Is_Structure_Type(ilod_ty) &&
+        (fld_id > 0 || offset > 0)) {
+      if (fld_id == 0)
+        fld_id = Get_field_id_from_offset(ilod_ty, offset, object_ty);
+      if (fld_id > 0) {
+        Gen_fld_stname(buf, NULL, ilod_addr_ty, fld_id);
+        offset = 0;
+      }
+    }
+    else {
+      TY_IDX base_ty = base_addr_ty;
+      if (TY_kind(base_addr_ty) == KIND_POINTER)
+        base_ty = TY_pointed(base_addr_ty);
+      if (Is_Structure_Type(base_ty) &&
+          (fld_id > 0 || cr->Offset() > 0)) {
+        if (fld_id == 0)
+          fld_id = Get_field_id_from_offset(base_ty, offset, object_ty);
+        if (fld_id > 0) {
+          Gen_fld_stname(buf, NULL, base_addr_ty, fld_id);
+          offset = 0;
+        }
+      }
+    }
+
+    INT size = TY_size(object_ty);
+    if (size == 0)
+      size = 1;  // adjust size to avoid DBZ
+    if (var_ofst || offset != 0) {
+      buf->Append('[');
+      BOOL add_prefix = FALSE;
+      STPATH *stpath;
+      if (dna && (stpath = dna->Get_stpath(stmt, base)) != NULL) {
+        Find_cr_stname(buf, base, stmt, dna, TRUE, gen_cr, hex);
+      }
+      else {
+        INT i;
+        for (i = 0; i < info.Pos_index().size(); ++i) {
+          Is_True(info.Pos_index()[i].second &&
+                  info.Pos_index()[i].second->Kind() == CK_CONST,
+                  ("invalid scale cr"));
+          if (add_prefix)
+            buf->Append('+');
+          else
+            add_prefix = TRUE;
+          Find_cr_stname(buf, info.Pos_index()[i].first, stmt, dna, TRUE, gen_cr, hex);
+          INT scale = 1;
+          if (info.Pos_index()[i].second &&
+              info.Pos_index()[i].second->Kind() == CK_CONST)
+            scale = info.Pos_index()[i].second->Const_val() / size;
+          if (scale > 1)
+            buf->Format("*%d", scale);
+        }
+        for (i = 0; i < info.Pos_offset().size(); ++i) {
+          if (add_prefix)
+            buf->Append('+');
+          else
+            add_prefix = TRUE;
+          Find_cr_stname(buf, info.Pos_offset()[i], stmt, dna, TRUE, gen_cr, hex);
+        }
+      }
+      if (fld_id == 0 && offset != 0) {
+        if (add_prefix && offset > 0)
+          buf->Append('+');
+        buf->Format("%d", offset/size);
+      }
+      buf->Append(']');
+    }
+    return buf->To_string();
   } else if(cr->Kind() == CK_OP && stmt != NULL) {
     OPERATOR opr = stmt->Opr();
     if((opr == OPR_INTRINSIC_CALL) &&
@@ -1203,7 +1290,8 @@ SRCPOS_HANDLE::Gen_cr_stname(STRING_BUFFER *buf, CODEREP *cr, STMTREP *stmt,
   case OPR_ICALL:
   {
     // generate name for obj.func()
-    const char *obj_name = Find_cr_stname(buf, cr->Opnd(0), stmt, dna, follow_ud, FALSE, hex);
+    const char *obj_name = Find_cr_stname(buf, cr->Opnd(0)->Ilod_base(),
+                                          stmt, dna, follow_ud, FALSE, hex);
     if(obj_name != NULL) {
       if(PU_java_lang(Get_Current_PU())) {
         buf->Append(".");
