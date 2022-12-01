@@ -864,8 +864,17 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
 
   // clang builtin (not available in GCC)
   case Builtin::BI__builtin_addressof:
+#if LLVM_VERSION_MAJOR >= 15
+  // C++ standard library builtins in namespace 'std'
+  case Builtin::BI__addressof:
+#endif
     Is_True(expr->getNumArgs() == 1, ("invalid arg num"));
     {
+      if (auto unary = clang::dyn_cast<clang::UnaryOperator>(expr->getArg(0))) {
+        if (unary->getOpcode() == clang::UnaryOperatorKind::UO_Deref) {
+          return ConvertExpr(unary->getSubExpr());
+        }
+      }
       Result ret = ConvertExpr(expr->getArg(0));
       Is_True(ret.isSym(), ("not symbol"));
       return Result::nwNode(ret.GetLValue(), ret.Ty());
@@ -935,7 +944,6 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
     WN *node = ConvertToNode(expr->getArg(0));
     return Result::nwNode(node, WN_ty(node));
   }
-  case Builtin::BI__addressof:
   case Builtin::BIas_const:
   case Builtin::BImove:
   case Builtin::BImove_if_noexcept:
