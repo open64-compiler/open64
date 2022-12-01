@@ -4105,6 +4105,9 @@ WhirlExprBuilder::ConvertCastExpr(const CastExpr *expr, Result dest) {
     if (!is_virtual) {
       r.SetArrow();
       node = r.GetLValue();
+      if (WN_operator(node) == OPR_ILDA) {
+        return Result::nwNode(node, TY_kind(to_ty) == KIND_POINTER ? to_ty : Make_Pointer_Type(to_ty));
+      }
       return Result::nwNode(node, derived_ty);
     }
 
