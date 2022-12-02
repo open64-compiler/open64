@@ -2443,6 +2443,9 @@ HVA_VO_CREATION::Process_istore<TRUE>(STMTREP *sr)
       HOR_LIST_ITER hor_list_iter;
       FOR_ALL_NODE(cur_hor, hor_list_iter, Init(ulist)) {
         VSYM_OBJ_REP *cur_vor;
+        // not create chi for same vor def by lhs
+        if (cur_hor == hor)
+          continue;
         if (cur_hor->Attr() != ROR_DEF_BY_LDA &&
             cur_hor->Is_entry_chi())
           continue;
@@ -3396,6 +3399,12 @@ HVA_VO_CREATION::Finalize() {
     for (PENDING_STMT_VEC::iterator cit = _pending_stmts->begin();
          cit != cend; ++cit) {
       STMTREP *stmt = (*cit)->Stmtrep();
+      if (stmt->Lhs()) {
+        // not create mu/chi for vor def by stmt
+        VSYM_OBJ_REP* lhs_vor = Vsa()->Cr_2_vor(stmt->Lhs());
+        if (lhs_vor && lhs_vor->Vsym_obj() == vobj)
+          continue;
+      }
       HO_MOD_REF_MAP *set = (*cit)->Hor_set();
       Is_True(stmt && set, ("stmt or set is null"));
       HO_MOD_REF_MAP::iterator hit = set->find(base_hor);
