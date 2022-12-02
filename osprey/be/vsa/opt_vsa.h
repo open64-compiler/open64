@@ -1710,7 +1710,7 @@ public:
   BOOL          Report_rvsa_info(CODEREP* x, AUX_ID auxid, UINT32 anat, ISSUE_CERTAINTY ic,
                                  SRCPOS_HANDLE *srcpos_h) const;
 
-  BOOL          Report_xsca_error(CODEREP *var, const char*, const char *anat,
+  BOOL          Report_xsca_error(CODEREP *var, const char*, const char *anat, ISSUE_CERTAINTY ic,
                                   SRCPOS_HANDLE *srcpos_h) const;
   // out-of-bound
   void          Perform_aofb_analysis();

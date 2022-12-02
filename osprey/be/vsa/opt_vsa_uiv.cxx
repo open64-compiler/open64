@@ -683,7 +683,7 @@ UIV_CHECKER::Check_stmtrep<OPR_OPT_CHI>(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
         if (ret && VSA_Xsca) {
           ctx->Vsa()->Report_xsca_error(cr,
                                         Sp_h()->Orig_stname() ? Sp_h()->Orig_stname() : ST_name(st),
-                                        "MSR_9_1", Sp_h());
+                                        "MSR_9_1", IC_DEFINITELY, Sp_h());
         }
         Sp_h()->Remove_last_key_srcpos();
         return CS_DONE;

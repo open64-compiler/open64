@@ -3059,7 +3059,7 @@ VSA::Report_vsa_error(CODEREP *x, const char *output_var_name, const char *ana_n
 
 BOOL
 VSA::Report_xsca_error(CODEREP *x, const char *output_var_name, const char *ana_name,
-                      SRCPOS_HANDLE *srcpos_h) const
+                      ISSUE_CERTAINTY ic, SRCPOS_HANDLE *srcpos_h) const
 {
   SRCPOS spos = srcpos_h->Root_linenum();
   if (spos == 0) {
@@ -3075,8 +3075,8 @@ VSA::Report_xsca_error(CODEREP *x, const char *output_var_name, const char *ana_
   const char *output_pu_name = srcpos_h->Orig_puname();
   if (output_pu_name == NULL)
     output_pu_name = Cur_pu_name();
-  ISSUE_CERTAINTY ic = srcpos_h->Is_flag_set(SRCPOS_FLAG_MAYBE)
-                         ? IC_MAYBE : IC_DEFINITELY;
+  if (ic == IC_DEFINITELY && srcpos_h->Is_flag_set(SRCPOS_FLAG_MAYBE))
+    ic = IC_MAYBE;
   VSA_ISSUE issue("SML", ana_name, key, keyid,
                   output_var_name, output_pu_name,
                   spos, ic, srcpos_h);
@@ -10947,7 +10947,7 @@ VSA::Handle_call(STMTREP *call_stmt, BB_NODE *bb, MEM_POOL *pool)
       srcpos_h.Set_msgid("MSF.1");
       BOOL ret = Report_vsa_error(NULL, name, MSF, IC_DEFINITELY, &srcpos_h);
       if (ret && VSA_Xsca) {
-        Report_xsca_error(NULL, name, "MSR_22_1", &srcpos_h);
+        Report_xsca_error(NULL, name, "MSR_22_1", IC_DEFINITELY, &srcpos_h);
       }
     }
   }
@@ -14811,9 +14811,9 @@ VSA::Scan_pointer_for_misra(CODEREP *cr, STMTREP *sr)
              Cr_2_heap_obj(info0.Base()) != Cr_2_heap_obj(info1.Base()))) {
           SRCPOS_HANDLE srcpos_h(cr, sr, Dna(), Loc_pool(), this);
           if (cr->Opr() == OPR_SUB) {
-            Report_xsca_error(cr, (char*)NULL, "MSR_18_2", &srcpos_h);
+            Report_xsca_error(cr, (char*)NULL, "MSR_18_2", IC_DEFINITELY, &srcpos_h);
           } else {
-            Report_xsca_error(cr, (char*)NULL, "MSR_18_3", &srcpos_h);
+            Report_xsca_error(cr, (char*)NULL, "MSR_18_3", IC_DEFINITELY, &srcpos_h);
           }
         }
       }
@@ -14883,7 +14883,7 @@ VSA::Scan_abs_for_misra(CODEREP *cr, STMTREP *sr)
       }
       if (!is_checked) {
         SRCPOS_HANDLE srcpos_h(cr, sr, Dna(), Loc_pool(), this);
-        Report_xsca_error(cr, (char*)NULL, "MSR_D_4_11", &srcpos_h);
+        Report_xsca_error(cr, (char*)NULL, "MSR_D_4_11", IC_DEFINITELY, &srcpos_h);
       }
     } else {
       for (INT i = 0; i < cr->Kid_count(); ++i) {
@@ -15003,7 +15003,7 @@ VSA::Scan_rule_based_error(BB_NODE *bb)
           UINT64 size = num_bytes->Const_val();
           if (Rbc()->Is_memory_overlap(tgt, size, src, stmt, Dna())) {
             SRCPOS_HANDLE sp_h(tgt, stmt, Dna(), Loc_pool(), this);
-            Rbc()->Report_xsca_error(this, stmt->Linenum(), "MSR_19_1", &sp_h);
+            Rbc()->Report_xsca_error(this, stmt->Linenum(), "MSR_19_1", IC_DEFINITELY, &sp_h);
           }
           if (!Rbc()->Is_memory_big_enough(tgt, sizeof(char), size, stmt, Dna())) {
             // some of the calls like memmove, memcpy are translated to
@@ -15083,7 +15083,7 @@ VSA::Scan_rule_based_error(BB_NODE *bb)
         if (tgt_st == src_st) {
           if (tgt_fld_ofst == src_fld_ofst && tgt_fld_ty != src_fld_ty) {
             SRCPOS_HANDLE sp_h(stmt->Lhs(), stmt, Dna(), Loc_pool(), this);
-            Rbc()->Report_xsca_error(this, stmt->Linenum(), "MSR_19_1", &sp_h);
+            Rbc()->Report_xsca_error(this, stmt->Linenum(), "MSR_19_1", IC_DEFINITELY, &sp_h);
           }
         }
       }
@@ -15360,7 +15360,7 @@ VSA::Scan_rule_based_error(BB_NODE *bb)
             if (ret && VSA_Xsca) {
               const char* var_name = srcpos_h.Orig_stname() ?
                                      srcpos_h.Orig_stname() : auxid ? Sym_name(auxid) : "";
-              Report_xsca_error(retv, var_name, "MSR_18_6", &srcpos_h);
+              Report_xsca_error(retv, var_name, "MSR_18_6", IC_DEFINITELY, &srcpos_h);
             }
           }
         }

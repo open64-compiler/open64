@@ -2250,7 +2250,7 @@ VSA::Classify_msf_error(AUX_ID sym, BB_NODE *bb, SRCPOS_HANDLE *srcpos_h, ISSUE_
   srcpos_h->Set_msgid("MSF.1");
   BOOL ret = Report_vsa_error(NULL, output_var_name, MSF, ic, srcpos_h);
   if (ret && VSA_Xsca) {
-    Report_xsca_error(NULL, output_var_name, "MSR_22_1", srcpos_h);
+    Report_xsca_error(NULL, output_var_name, "MSR_22_1", ic, srcpos_h);
   }
 }
 

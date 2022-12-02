@@ -1760,7 +1760,7 @@ public:
   BOOL         Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stmt, FSM_OBJ_REP *fo,
                                 TRANSIT *ts, SRCPOS_HANDLE *srcpos_h, FSM_ERR_KIND kind);
 
-  BOOL         Report_xsca_error(VSA *vsa_ctx, SRCPOS spos, const char* rule,
+  BOOL         Report_xsca_error(VSA *vsa_ctx, SRCPOS spos, const char* rule, BOOL maybe,
                                  SRCPOS_HANDLE *srcpos_h);
 
   // Finite State Machine Management
