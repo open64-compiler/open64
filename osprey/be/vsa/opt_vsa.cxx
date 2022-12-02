@@ -1290,7 +1290,7 @@ SRCPOS_HANDLE::Gen_cr_stname(STRING_BUFFER *buf, CODEREP *cr, STMTREP *stmt,
   case OPR_ICALL:
   {
     // generate name for obj.func()
-    const char *obj_name = Find_cr_stname(buf, cr->Opnd(0)->Ilod_base(),
+    const char *obj_name = Find_cr_stname(buf, cr->Opnd(0),
                                           stmt, dna, follow_ud, FALSE, hex);
     if(obj_name != NULL) {
       if(PU_java_lang(Get_Current_PU())) {
