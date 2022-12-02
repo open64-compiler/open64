@@ -400,9 +400,10 @@ VSA_ISSUE_WRITTER::Print_text_issue(const VSA_ISSUE* issue, FILE* fp)
     strcat(rbc_msg, Vname());
 
   INT ecode = issue->Is_sml()
-                ? EC_VSA_Sml_violation
-                : issue->Certainty() == IC_MAYBE ? EC_VSA_Rbc_may_violation
-                                                 : EC_VSA_Rbc_violation;
+                ? (issue->Certainty() == IC_MAYBE ? EC_VSA_Sml_may_violation
+                                                  : EC_VSA_Sml_violation)
+                : (issue->Certainty() == IC_MAYBE ? EC_VSA_Rbc_may_violation
+                                                  : EC_VSA_Rbc_violation);
   SRCPOS_HANDLE* sp_h = issue->Sp_h();
   char *path = sp_h != NULL ? sp_h->Compose_path_string() : NULL;
 

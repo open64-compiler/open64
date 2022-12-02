@@ -381,6 +381,10 @@ ERROR_DESC EDESC_BE[] = {
     VSA_FMT,
     4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
 
+  { EC_VSA_Sml_may_violation, EM_VSA_User | ES_CONFORMANCE_M, RAG_EN_NONE,
+    VSA_FMT,
+    4, ET_STRING, ET_STRING, ET_STRING, ET_STRING,0,0 },
+
   { EC_DRA_rii_file_io, EM_User | ES_ERRABORT, RAG_EN_NONE,
     "Cannot read/write prelinker file (%s): %s",
     2, ET_STRING, ET_SYSERR, 0,0,0,0 },

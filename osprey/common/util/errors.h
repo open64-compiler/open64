@@ -591,12 +591,13 @@ extern void Display_Progress(UINT progress, BOOL force);
 #define ES_SAADV3       5       /* Static analysis advisory cat 3 */
 #define ES_SAADV4       6       /* Static analysis advisory cat 4 - Perf */
 #define ES_SAADVERNG    (5+1)   /* end   range of test for analysis adv */
-#define ES_CONFORMANCE	7	/* May not conform to standard */
-#define ES_ERROR	8	/* Minimum error level */
-#define ES_ERRBENIGN	8	/* Error: finish processing */
-#define ES_ERRPHASE	9	/* Error: finish phase, other files */
-#define ES_ERRABORT	10	/* Error: terminate immediately */
-#define ES_MAX	        10	/* Maximum severity */
+#define ES_CONFORMANCE	7	/* Not conform to standard */
+#define ES_CONFORMANCE_M 8	/* May not conform to standard */
+#define ES_ERROR	9	/* Minimum error level */
+#define ES_ERRBENIGN	9	/* Error: finish processing */
+#define ES_ERRPHASE	10	/* Error: finish phase, other files */
+#define ES_ERRABORT	11	/* Error: terminate immediately */
+#define ES_MAX	        11	/* Maximum severity */
 
 /* Predefined phase numbers.  These are more coarse than the phases
  * named by calls to Set_Error_Phase, and represent the collections

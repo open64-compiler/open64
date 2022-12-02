@@ -228,6 +228,7 @@ static char *erbe_rcs_id = "$Source: /home/bos/bk/kpro64-pending/be/com/SCCS/s.e
 #define EC_VSA_Rbc_violation       EC_BASE_BE+181  /* str, str, str */
 #define EC_VSA_Rbc_may_violation   EC_BASE_BE+182  /* str, str, str */
 #define EC_VSA_Sml_violation       EC_BASE_BE+183  /* str, str, str */
+#define EC_VSA_Sml_may_violation   EC_BASE_BE+184  /* str, str, str */
   
 #define EC_RVSA_def_var            EC_BASE_BE+200  /* str, str, str */
 #define VSA_FMT                    "%s,[%s],[%s],%s"

@@ -202,6 +202,7 @@ static SEVERITY_DESCRIPTOR Severities[] = {
     {ES_SAADV3,  	"!!! ", "[Vul],[R]"},
     {ES_SAADV4,  	"!!! ", "[Pfm],[D]"},
     {ES_CONFORMANCE,	"!!! ", "[SML],[D]"},
+    {ES_CONFORMANCE_M,	"!!! ", "[SML],[M]"},
     {ES_ERRBENIGN,	"### ", "Error"},
     {ES_ERRPHASE,	"### ", "Error"},
     {ES_ERRABORT,	"### ", "Error"},    
@@ -223,6 +224,7 @@ Get_VsaRpt_Severity(INT ecode, const char **category, const char **severity)
   case ES_SAADV3: *category = "Vul"; *severity = "R" ; break;
   case ES_SAADV4: *category = "Pfm"; *severity = "D"; break;
   case ES_CONFORMANCE: *category = "SML"; *severity = "D"; break;
+  case ES_CONFORMANCE_M: *category = "SML"; *severity = "M"; break;
   default:
     FmtAssert(FALSE, ("Wrong level %d", dlevel)); break;
   }
