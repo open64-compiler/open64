@@ -2523,4 +2523,30 @@ Get_first_real_field(TY_IDX ty) {
   } while (!FLD_last_field(fld_iter++));
   return fld_ty;
 }
-      
+
+// ============================================================================
+// Is_mmap_retval
+// Check if cr is mmap() return value
+// ============================================================================
+BOOL
+Is_mmap_retval(CODEREP *cr) {
+  if (cr->Kind() != CK_VAR || cr->Is_flag_set(CF_DEF_BY_PHI))
+    return FALSE;
+  if (cr->Is_flag_set(CF_DEF_BY_CHI)) {
+    STMTREP *sr = cr->Defstmt();
+    Is_True(sr != NULL, ("invalid sr"));
+    if (sr->Opr() == OPR_CALL &&
+        strcmp(ST_name(sr->St()), "mmap") == 0)
+      return TRUE;
+    else
+      return FALSE;
+  }
+  else {
+    STMTREP *sr = cr->Defstmt();
+    Is_True(sr && sr->Lhs() == cr && sr->Rhs() != NULL, ("invalid sr"));
+    if (sr->Rhs())
+      return Is_mmap_retval(sr->Rhs());
+    else
+      return FALSE;
+  }
+}

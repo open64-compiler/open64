@@ -2011,7 +2011,9 @@ VSA::Find_ignore_ho_ids(BB_NODE *bb)
       continue;
 
     PATH_SELECTED paths;
-    VRA_RESULT va = vra->Var_cmp_val<OPR_NE>(cr, bb_id, (INT64)0, paths);
+    // mmap() returns -1/malloc() returns 0 when failed
+    INT64 inv_val = Is_mmap_retval(cr) ? -1 : 0;
+    VRA_RESULT va = vra->Var_cmp_val<OPR_NE>(cr, bb_id, inv_val, paths);
     // check if cr is compared with NULL
     if (va == VA_YES || va == VA_POSSIBLE) {
       STMTREP *sr = it->second;
@@ -2024,10 +2026,11 @@ VSA::Find_ignore_ho_ids(BB_NODE *bb)
       if (cr->Kind() != CK_OP ||
           !OPERATOR_is_compare(cr->Opr()) ||
           (cr->Opnd(0)->Kind() == CK_CONST &&
-           cr->Opnd(0)->Const_val() == 0) ||
+           cr->Opnd(0)->Const_val() == inv_val) ||
           (cr->Opnd(1)->Kind() == CK_CONST &&
-           cr->Opnd(1)->Const_val() == 0))
+           cr->Opnd(1)->Const_val() == inv_val)) {
         continue;
+      }
     }
 
     // cr of this hor is probably NULL, not report or report M MSF on this hor

@@ -286,6 +286,8 @@ extern BOOL     Is_lib_func(char *fname);
 
 extern TY_IDX   Get_first_real_field(TY_IDX ty);
 
+extern BOOL     Is_mmap_retval(CODEREP *cr);
+
 #define         BUILTIN_XVSA_RANGE     "__builtin_xvsa_range"
 #define         BUILTIN_XVSA_NE        "__builtin_xvsa_ne"
 #define         BUILTIN_XVSA_COMPARE   "__builtin_xvsa_compare"
