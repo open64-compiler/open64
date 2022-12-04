@@ -523,7 +523,12 @@ private:
           // on the call stmt
           if (rna->Callee_cnt() == 0) {
             pair<IDTYPE, BOOL> arg = rna->Get_arg(cr, _hva->Vsa());
-            if (arg.first != INVALID_VAR_IDX && arg.second == TRUE) {
+            TY_IDX parm_ty = Get_param_ty(rna->Callee_ty(), arg.first);
+            if (arg.first != INVALID_VAR_IDX &&
+                arg.second == TRUE &&
+                (parm_ty == TY_IDX_ZERO ||
+                 TY_kind(parm_ty) != KIND_POINTER ||
+                 !TY_is_const(TY_pointed(parm_ty)))) {
               create_hor = TRUE;
             }
           } else if (((def->Call_flags() & WN_CALL_IS_CONSTRUCTOR) ||

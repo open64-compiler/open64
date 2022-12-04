@@ -699,6 +699,8 @@ HEAP_CHECKER::Check_alias(HEAP_OBJ_REP *alias_hor, HEAP_OBJ_REP *phi_hor,
     if (hor_opnd->Heap_obj() != alias_hor->Heap_obj()) {
       Is_Trace(ctx->Tracing(), (TFile, "  Phi BB%d: select BB%d hor:", phi_bb->Id(), pred_bb->Id()));
       Is_Trace_cmd(ctx->Tracing(), hor_opnd->Print_detail(TFile));
+      Set_cur_node(cur_node, i);
+      Sp_h()->Append_data(pred_bb, ctx->Dna(), PATHINFO_BRANCH);
       HEAP_OBJ_MAP* ho_ids = ctx->Vsa()->Find_ignore_ho_ids(pred_bb);
       HEAP_OBJ_MAP::iterator ho_iter;
       if (ho_ids != NULL &&
@@ -714,8 +716,13 @@ HEAP_CHECKER::Check_alias(HEAP_OBJ_REP *alias_hor, HEAP_OBJ_REP *phi_hor,
           Sp_h()->Set_flag(SRCPOS_FLAG_MAYBE);
         }
       }
-      Set_cur_node(cur_node, i);
-      Sp_h()->Append_data(pred_bb, ctx->Dna(), PATHINFO_BRANCH);
+      if (!hor_opnd->Is_entry_chi() && hor_opnd->Attr() == ROR_DEF_BY_CHI) {
+        STMTREP *def_stmt = hor_opnd->Stmt_def();
+        Is_True(def_stmt != NULL, ("invalid def_stmt"));
+        // call may modify the cr and cause the MSF
+        if (OPERATOR_is_call(def_stmt->Opr()))
+          Sp_h()->Set_flag(SRCPOS_FLAG_MAYBE);
+      }
       HEAP_OBJ_REP *check_hor = alias_hor;
       if (alias_hor->Attr() == ROR_DEF_BY_PHI && alias_hor->Phi_def()->Bb() == phi_bb) {
         Is_Trace(ctx->Tracing(), (TFile, "  Adjust alias_hor for same phi bb: "));

@@ -2550,3 +2550,14 @@ Is_mmap_retval(CODEREP *cr) {
       return FALSE;
   }
 }
+
+// ============================================================================
+// Get_param_ty
+// Get function parameter type, 0 is return type, parameter starts from 1
+// ============================================================================
+TY_IDX
+Get_param_ty(TY_IDX ty, INT index) {
+  if (ty == TY_IDX_ZERO || TY_kind(ty) != KIND_FUNCTION)
+    return TY_IDX_ZERO;
+  return TYLIST_ty(TY_tylist(ty) + index);
+}

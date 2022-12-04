@@ -285,6 +285,7 @@ extern char    *Get_utf_string_from_inito(UINT32_MAP *st_inito_cache, ST_IDX st_
 extern BOOL     Is_lib_func(char *fname);
 
 extern TY_IDX   Get_first_real_field(TY_IDX ty);
+extern TY_IDX   Get_param_ty(TY_IDX ty, INT index);
 
 extern BOOL     Is_mmap_retval(CODEREP *cr);
 
