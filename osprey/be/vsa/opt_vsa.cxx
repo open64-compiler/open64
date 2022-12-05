@@ -1095,7 +1095,9 @@ SRCPOS_HANDLE::Find_cr_stname(STRING_BUFFER *buf, CODEREP *cr, STMTREP *stmt, DN
       buf->Append(')');
       return buf->To_string();
     }
-    TY_IDX object_ty = cr->object_ty();
+    // workaround for invalid non-struct ilod_ty with field_id != 0
+    TY_IDX object_ty = TY_kind(cr->Ilod_ty()) == KIND_STRUCT ? cr->object_ty()
+                                                             : cr->Ilod_ty();
     TY_IDX ilod_addr_ty = cr->Opr() != OPR_MLOAD ? cr->Ilod_base_ty()
                                                  : Make_Pointer_Type(cr->Ilod_ty());
     TY_IDX base_addr_ty = base_cr->Kind() == CK_LDA ? base_cr->Lda_ty()
