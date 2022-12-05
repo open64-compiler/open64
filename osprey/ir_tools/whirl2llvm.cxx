@@ -6551,6 +6551,7 @@ static BOOL ENABLE_SIMP_CFG = false;
 static BOOL ENABLE_SIMP_INST = false;
 static BOOL ENABLE_INST_COMBINE = false;
 static BOOL ENABLE_DGE = false;
+static BOOL ENABLE_BDCE = false;
 
 // =============================================================================
 /* Binary to ASCII conversion */
@@ -6676,7 +6677,7 @@ ir_b2a (char *global_file,
     }
 
     if (ENABLE_INST_COMBINE) {
-      // FPM.addPass(llvm::BDCEPass());
+      FPM.addPass(llvm::BDCEPass());
       FPM.addPass(llvm::InstCombinePass());
     }
 
@@ -6684,7 +6685,7 @@ ir_b2a (char *global_file,
       MPM.addPass(llvm::GlobalDCEPass());
     }
 
-    // FPM.addPass(llvm::DCEPass());
+    FPM.addPass(llvm::DCEPass());
 
     MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
     MPM.run(*driver.Module(), MAM);
@@ -6802,9 +6803,11 @@ int main (INT argc, char *argv[])
         ENABLE_INST_COMBINE = true;
       } else if (strncmp(argv[binarg], "-dge", 4) == 0) {
         ENABLE_DGE = true;
+      } else if (strncmp(argv[binarg], "-bdce", 5) == 0) {
+        ENABLE_BDCE = true;
       } else if (strncmp(argv[binarg], "-all", 4) == 0) {
         ENABLE_MEM2REG = ENABLE_SIMP_CFG = ENABLE_SIMP_CFG = 
-        ENABLE_GVN = ENABLE_INST_COMBINE = ENABLE_DGE = true;
+        ENABLE_GVN = ENABLE_INST_COMBINE = ENABLE_DGE = ENABLE_BDCE = true;
       } else if (strncmp(argv[binarg], "-skip_before", 12) == 0) {
         skip_before = atoi(argv[++binarg]);
       } else if (strncmp(argv[binarg], "-skip_after", 11) == 0) {
