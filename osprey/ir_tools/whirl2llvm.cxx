@@ -4996,7 +4996,7 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
         } else {
           opnd = Lvbuilder()->CreateFPToUI(opnd, resty);
         }
-      } else if (resty->isFloatTy()) {
+      } else if (resty->isFloatingPointTy()) {
         if (MTYPE_bit_size(mtype) > MTYPE_bit_size(dtype))
           opnd = Lvbuilder()->CreateFPExt(opnd, resty);
         else
