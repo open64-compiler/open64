@@ -3506,6 +3506,7 @@ WHIRL2llvm::Handle_intrn_call(WN *wn) {
     case INTRN_STRCPY: func_name = "strcpy"; break;
     case INTRN_STRCMP: func_name = "strcmp"; break;
     case INTRN_MEMCPY: func_name = "memcpy"; break;
+    case INTRN_MEMSET: func_name = "memset"; break;
     default:
       FmtAssert(FALSE, ("WHIRL2llvm::Handle_intrn_call: unexpected intrinsic"));
   }
@@ -5606,6 +5607,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
         break;
       }
       case INTRN_MEMCPY:
+      case INTRN_MEMSET:
       case INTRN_STRCPY:
       case INTRN_STRCMP:
       case INTRN_STRLEN: {
