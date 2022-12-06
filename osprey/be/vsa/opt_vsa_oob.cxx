@@ -1489,6 +1489,9 @@ VSA::Classify_aob_error(CODEREP *x, ISSUE_CERTAINTY ic, SRCPOS_HANDLE* sp_h)
     Report_xsca_error(x,
                       sp_h->Orig_stname() ? sp_h->Orig_stname() : aux ? Sym_name(aux) : "",
                       "MSR_18_1", ic, sp_h);
+    Report_xsca_error(x,
+                      sp_h->Orig_stname() ? sp_h->Orig_stname() : aux ? Sym_name(aux) : "",
+                      "MSR_D_4_1", ic, sp_h);
   }
 }
 
