@@ -2119,10 +2119,12 @@ Create_ST_For_Tree (gs_t decl_node)
           ST_ATTR&    st_attr = New_ST_ATTR (level, st_attr_idx);
           ST_ATTR_Init (st_attr, ST_st_idx (st), ST_ATTR_ABSOLUTE_LOCATION, val);
         }
+#ifdef BUILD_MASTIFF
         if (attr_list != NULL &&
             (loc_attr = lookup_attribute("unused", attr_list)) != NULL) {
           Set_ST_is_not_used(st);
         }
+#endif
       }
       break; 
     default:
