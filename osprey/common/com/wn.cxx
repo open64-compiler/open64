@@ -1204,11 +1204,11 @@ WN_CreateIstore (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
           ("Bad opcode in WN_CreateIstore"));
   Is_True(ty != TY_IDX_ZERO && TY_kind(ty) == KIND_POINTER,
           ("Bad type in WN_CreateIstore"));
+#ifdef FRONT_END
   Is_True(field_id == 0 ||
           (TY_kind(TY_pointed(ty)) == KIND_STRUCT &&
            field_id < FLD_get_count(TY_pointed(ty))),
-          ("Bad field in WN_CreateIstore"));
-#ifdef FRONT_END
+          ("Bad field id in WN_CreateIstore"));
  if (desc == MTYPE_M) { 
    Set_PU_has_very_high_whirl (Get_Current_PU ());
  }
@@ -1374,10 +1374,12 @@ WN_CreateStid (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
 	    ("Bad value in WN_CreateStid"));
     Is_True(ty != TY_IDX_ZERO,
             ("Bad type in WN_CreateStid"));
+#ifdef FRONT_END
     Is_True(field_id == 0 ||
             (TY_kind(ty) == KIND_STRUCT &&
              field_id < FLD_get_count(ty)),
             ("Bad field id in WN_CreateStid"));
+#endif
 #ifndef KEY	// g++ can create cases where the actual parameter to a
 		// function is a ptr, but the formal parameter is a struct.
     Is_True(Types_Are_Compatible(OPCODE_desc(opc),value),
@@ -1772,11 +1774,12 @@ WN_CreateIload (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
           ("Bad opcode in WN_CreateIload"));
   Is_True(ty != TY_IDX_ZERO,
           ("Bad type in WN_CreateIload"));
+#ifdef FRONT_END
   Is_True(field_id == 0 ||
           (TY_kind(ty) == KIND_STRUCT &&
            field_id < FLD_get_count(ty)),
           ("Bad field id in WN_CreateIload. Type kind = %d, field_id = %d, ty_fld_count = %d", TY_kind(ty), field_id, FLD_get_count(ty)));
-
+#endif
 #if (defined(FRONT_END_C) || defined(FRONT_END_CPLUSPLUS)) && !defined(FRONT_END_MFEF77) 
 
   addr = fe_combine_address_offset ( &offset, addr );
@@ -1879,11 +1882,11 @@ WN_CreateLdid (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
 	    ("Bad opcode in WN_CreateLdid"));
     Is_True (ty != TY_IDX_ZERO,
 	    ("Bad ty in WN_CreateLdid"));
+#ifdef FRONT_END
     Is_True(field_id == 0 ||
             (TY_kind(ty) == KIND_STRUCT &&
              field_id < FLD_get_count(ty)),
             ("Bad field id in WN_CreateLdid"));
-#ifdef FRONT_END
     Is_True (!((offset == 0) && (&St_Table [st] == Int32_Preg ||
 				 &St_Table [st] == Int64_Preg ||
 				 &St_Table [st] == Float32_Preg ||

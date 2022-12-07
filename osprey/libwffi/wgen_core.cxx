@@ -1454,11 +1454,11 @@ Wgen_CreateIstore(OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
           ("Bad opcode in Wgen_CreateIstore"));
   Is_True(ty != TY_IDX_ZERO && TY_kind(ty) == KIND_POINTER,
           ("Bad type in Wgen_CreateIstore"));
+#ifdef FRONT_END
   Is_True(field_id == 0 ||
           (TY_kind(TY_pointed(ty)) == KIND_STRUCT &&
            field_id < FLD_get_count(TY_pointed(ty))),
-          ("Bad field in Wgen_CreateIstore"));
-#ifdef FRONT_END
+          ("Bad field id in Wgen_CreateIstore"));
  if (desc == MTYPE_M) {
   _pu_has_very_high_whirl = true;
  }
@@ -1550,10 +1550,12 @@ Wgen_CreateStid(OPERATOR opr, TYPE_ID rtype, TYPE_ID desc,
             ("Bad value in Wgen_CreateStid"));
     Is_True(ty != TY_IDX_ZERO,
             ("Bad type in Wgen_CreateStid"));
+#ifdef FRONT_END
     Is_True(field_id == 0 ||
             (TY_kind(ty) == KIND_STRUCT &&
              field_id < FLD_get_count(ty)),
             ("Bad field id in Wgen_CreateStid"));
+#endif
 #ifndef KEY     // g++ can create cases where the actual parameter to a
                 // function is a ptr, but the formal parameter is a struct.
     Is_True(Types_Are_Compatible(OPCODE_desc(opc),value),
