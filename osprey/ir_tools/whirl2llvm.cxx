@@ -3499,14 +3499,17 @@ WHIRL2llvm::Handle_intrn_call(WN *wn) {
 
   std::string func_name;
   switch(WN_intrinsic(wn)) {
-    case INTRN_F8EXP:  func_name = "exp";    break;
-    case INTRN_F8SIN:  func_name = "sin";    break;
-    case INTRN_F8COS:  func_name = "cos";    break;
-    case INTRN_STRLEN: func_name = "strlen"; break;
-    case INTRN_STRCPY: func_name = "strcpy"; break;
-    case INTRN_STRCMP: func_name = "strcmp"; break;
-    case INTRN_MEMCPY: func_name = "memcpy"; break;
-    case INTRN_MEMSET: func_name = "memset"; break;
+    case INTRN_F8EXP:   func_name = "exp";     break;
+    case INTRN_F8SIN:   func_name = "sin";     break;
+    case INTRN_F8COS:   func_name = "cos";     break;
+    case INTRN_STRLEN:  func_name = "strlen";  break;
+    case INTRN_STRCPY:  func_name = "strcpy";  break;
+    case INTRN_STRCMP:  func_name = "strcmp";  break;
+    case INTRN_MEMCPY:  func_name = "memcpy";  break;
+    case INTRN_MEMSET:  func_name = "memset";  break;
+    case INTRN_MEMCMP:  func_name = "memcmp";  break;
+    case INTRN_MEMCCPY: func_name = "memccpy"; break;
+    case INTRN_MEMMOVE: func_name = "memmove"; break;
     default:
       FmtAssert(FALSE, ("WHIRL2llvm::Handle_intrn_call: unexpected intrinsic"));
   }
@@ -5560,10 +5563,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
             ("EXPR2llvm: callee address should be integer"));
     HandlePointerAndIntegerType(wn, &func, GetLVPtrTy(), true);
 
-    TY_IDX funcptr_ty = WN_ty(funcptr);
-    FmtAssert(TY_kind(funcptr_ty) == KIND_POINTER, ("Type of funcptr should be pointer type"));
- 
-    TY_IDX func_ty = TY_pointed(funcptr_ty);
+    TY_IDX func_ty = WN_ty(wn);
     LVFUNCTY *lvfuncty = llvm::dyn_cast<LVFUNCTY>(Wty2llvmty(TY_mtype(func_ty), func_ty));
     FmtAssert(lvfuncty != nullptr, ("EXPR2llvm: lvfuncty should be llvm::FunctionType"));
 
@@ -5606,11 +5606,14 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
         Lvbuilder()->CreateCall(TheFn, {args});
         break;
       }
+      case INTRN_MEMCMP:
       case INTRN_MEMCPY:
       case INTRN_MEMSET:
       case INTRN_STRCPY:
       case INTRN_STRCMP:
-      case INTRN_STRLEN: {
+      case INTRN_STRLEN:
+      case INTRN_MEMCCPY:
+      case INTRN_MEMMOVE: {
         LVVAL *res = Handle_intrn_call(wn);
         FmtAssert(res == nullptr, ("STMT2llvm: INTRINSIC_CALL should return nullptr"));
         break;
