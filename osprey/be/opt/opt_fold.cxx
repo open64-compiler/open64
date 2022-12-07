@@ -993,6 +993,10 @@ CODEREP::object_ty()
       if (I_field_id() != 0) {
           UINT cur_field_id = 0;
           TY_IDX ty_idx = Ilod_ty();
+          if (Opr() == OPR_MLOAD) {
+            Is_True(TY_kind(ty_idx) == KIND_POINTER, ("not ptr type"));
+            ty_idx = TY_pointed(ty_idx);
+          }
           UINT field_id = I_field_id();
           FLD_HANDLE fld = FLD_get_to_field (ty_idx, field_id, cur_field_id);
           Is_True (!fld.Is_Null(), ("Invalid field id %d for type 0x%x",
