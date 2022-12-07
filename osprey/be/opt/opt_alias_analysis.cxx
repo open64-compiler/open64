@@ -2520,15 +2520,22 @@ OPT_STAB::Generate_call_mu_chi_by_ref(WN *wn, ST *call_st,
        idx != (AUX_ID) BS_CHOOSE_FAILURE;
        idx = BS_Choose_Next ( alias_set, idx ))  {
     
+    AUX_STAB_ENTRY *aux_sym = Aux_stab_entry(idx);
     // Volatile do not appear in any mu and chi
-    if (Aux_stab_entry(idx)->Is_volatile() &&
-	!Aux_stab_entry(idx)->Is_virtual() )
+    if (aux_sym->Is_volatile() &&
+        !aux_sym->Is_virtual() )
       continue;
     
-    POINTS_TO* pt = aux_stab[idx].Points_to();
+    POINTS_TO* pt = aux_sym->Points_to();
     // only write to dedicated register for intent call without side effect
     if (!pt->Dedicated()) {
-      if (extern_call && pt->Global() && pt->Not_addr_passed())
+      // not address passed & saved static variable has no side-effect on extern call
+      if (extern_call && pt->Global() &&
+          pt->Not_addr_passed() &&
+          pt->Not_addr_saved() &&
+          aux_sym->St() &&
+          (ST_sclass(aux_sym->St())== SCLASS_FSTATIC ||
+           ST_sclass(aux_sym->St()) == SCLASS_PSTATIC))
         continue;
       if (intent_alias == NO_ALIAS)
         continue;
@@ -2734,7 +2741,6 @@ OPT_STAB::Generate_call_mu_chi_by_value(WN *wn, ST *call_st,
 {
   AUX_ID idx;
   const BS *alias_set;
-
   // no mu/chi if vsa intent says the function is malloc
   const char* fname = call_st ? ST_name(call_st) : NULL;
   if (WN_operator(wn) == OPR_INTRINSIC_CALL) {
@@ -2774,17 +2780,22 @@ OPT_STAB::Generate_call_mu_chi_by_value(WN *wn, ST *call_st,
   for (idx = BS_Choose( alias_set );
        idx != (AUX_ID) BS_CHOOSE_FAILURE;
        idx = BS_Choose_Next ( alias_set, idx )) {
-
+    AUX_STAB_ENTRY *aux_sym = Aux_stab_entry(idx);
     // Volatile do not appear in any mu and chi
-    if (Aux_stab_entry(idx)->Is_volatile() &&
-	!Aux_stab_entry(idx)->Is_virtual() )
+    if (aux_sym->Is_volatile() && !aux_sym->Is_virtual())
       continue;
 
-    POINTS_TO *pt = aux_stab[idx].Points_to();
+    POINTS_TO *pt = aux_sym->Points_to();
     // only write to dedicated register for intent call without side effect
     READ_WRITE how = NO_READ_NO_WRITE;
     if (!pt->Dedicated()) {
-      if (extern_call && pt->Global() && pt->Not_addr_passed())
+      // not address passed & saved static variable has no side-effect on extern call
+      if (extern_call && pt->Global() &&
+          pt->Not_addr_passed() &&
+          pt->Not_addr_saved() &&
+          aux_sym->St() &&
+          (ST_sclass(aux_sym->St())== SCLASS_FSTATIC ||
+           ST_sclass(aux_sym->St()) == SCLASS_PSTATIC))
         continue;
       if (intent_alias == NO_ALIAS)
         continue;
