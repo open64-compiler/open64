@@ -1055,7 +1055,7 @@ private:
       return MTYPE_UNKNOWN;
     for (AGMVEC::iterator it = Parm_name().begin();
          it != Parm_name().end(); ++it) {
-      if (strncmp((*it).Name(), name, strlen(name)) == 0) {
+      if (strcmp((*it).Name(), name) == 0) {
         *on_stack = ((*it).Regno() == ONSTACK)? TRUE : FALSE;
         return (*it).Type();
       }
