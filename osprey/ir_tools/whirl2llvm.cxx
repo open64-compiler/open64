@@ -4188,29 +4188,36 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
       } // switch act
     } // end of FORMAL 
     case SCLASS_PSTATIC: {
-
       std::string name_idx(varname);
       std::string pu_idx = std::to_string(ST_pu(WN_st(Cur_func())));
       name_idx += "_" + pu_idx + "_" + std::to_string(ST_index(st));
       auto gvar = Get_glbvar(name_idx.c_str());
-      if (act == ACT_LDA) {
-        // non-zero offset shall be handled by the caller
-        LVVAL *addr = gvar;
+      switch (act) {
+        case ACT_LDA: {
+          // non-zero offset shall be handled by the caller
+          LVVAL *addr = gvar;
 
-        // TODO: Is it necessary to check if the offset is zero?
-        if (WN_operator(wn) == OPR_LDA && WN_offset(wn) != 0) {
-          Gen_displacement(wn, &addr);
+          // TODO: Is it necessary to check if the offset is zero?
+          if (WN_operator(wn) == OPR_LDA && WN_offset(wn) != 0) {
+            Gen_displacement(wn, &addr);
+          }
+          return addr;
         }
-
-        return addr;
-      } else if (act == ACT_LD) {
-        LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
-        if (offset != 0) Gen_displacement(wn, &gvar);
-        auto load = Lvbuilder()->CreateLoad(ld_ty, gvar);
-        load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
-        return load;
-      } else {
-        FmtAssert(FALSE, ("WN2llvmSymAct: unsupported action(%d) for SCLASS_PSTATIC", act));
+        case ACT_LD: {
+          LVTY *ld_ty = Wty2llvmty(WN_desc(wn), 0);
+          if (offset != 0) Gen_displacement(wn, &gvar);
+          auto load = Lvbuilder()->CreateLoad(ld_ty, gvar);
+          load->setAlignment(llvm::Align(TY_align(WN_ty(wn))));
+          return load;
+        }
+        case ACT_STR: {
+          TYPE_ID desc = WN_desc(wn);
+          LVTY *dest_ty = Wty2llvmty(desc, MTYPE_To_TY(desc));
+          if (offset != 0) Gen_displacement(wn, &gvar);
+          rhs = HandleStoreDifferentType(wn, rhs, dest_ty, MTYPE_is_signed(WN_desc(wn)));
+          auto store = Lvbuilder()->CreateStore(rhs, gvar);
+          return store;
+        }
       }
       break;
     }
