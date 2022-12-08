@@ -2002,7 +2002,7 @@ public:
     Is_Trace(Tracing_enabled, (TFile, "Handle_arg_diff_ty: adjust actual args type in keeping with formal type:\n"));
     FmtAssert(arglist.size() == lvfuncty->getNumParams(),
       ("Handle_arg_diff_ty: Function %s, parameter number is wrong, expected %d got %d.",
-        lvfunc->getName(), lvfuncty->getNumParams(), arglist.size()));
+        lvfunc->getName().str().c_str(), lvfuncty->getNumParams(), arglist.size()));
 
     for (int i = 0; i < arglist.size(); i++) {
       auto formal_ty = lvfuncty->getParamType(i);
