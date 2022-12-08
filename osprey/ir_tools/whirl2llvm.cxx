@@ -93,7 +93,7 @@ BOOL Run_vsaopt = FALSE;      // hack to workaround undefine since
 //      Backtrace is turned off since GDB and IDE can do that anyway
 
 #ifndef ES_ERRABORT           // another hack for FmtAssert
-#define ES_ERRABORT 6
+#define ES_ERRABORT 11
 #endif
 /* ====================================================================
  *
@@ -149,17 +149,18 @@ typedef struct {
 } SEVERITY_DESCRIPTOR;
 
 static SEVERITY_DESCRIPTOR Severities[] = {
-    {ES_IGNORE,       "??? ", "Ignore"},
-    {ES_ADVISORY,     "--- ", "Advisory"},
-    {ES_WARNING,      "!!! ", "Warning"},
-    {ES_SAADV1,       "!!! ", "[Vul],[D]"},
-    {ES_SAADV2,       "!!! ", "[Vul],[M]"},
-    {ES_SAADV3,       "!!! ", "[Vul],[R]"},
-    {ES_SAADV4,       "!!! ", "[Pfm],[D]"},
-    {ES_CONFORMANCE,  "!!! ", "Conformance warning"},
-    {ES_ERRBENIGN,    "### ", "Error"},
-    {ES_ERRPHASE,     "### ", "Error"},
-    {ES_ERRABORT,     "### ", "Error"},    
+    {ES_IGNORE,		"??? ",	"Ignore"},
+    {ES_ADVISORY,	"--- ", "Advisory"},
+    {ES_WARNING,	"!!! ", "Warning"},
+    {ES_SAADV1,  	"!!! ", "[Vul],[D]"},
+    {ES_SAADV2,  	"!!! ", "[Vul],[M]"},
+    {ES_SAADV3,  	"!!! ", "[Vul],[R]"},
+    {ES_SAADV4,  	"!!! ", "[Pfm],[D]"},
+    {ES_CONFORMANCE,	"!!! ", "[SML],[D]"},
+    {ES_CONFORMANCE_M,	"!!! ", "[SML],[M]"},
+    {ES_ERRBENIGN,	"### ", "Error"},
+    {ES_ERRPHASE,	"### ", "Error"},
+    {ES_ERRABORT,	"### ", "Error"},    
 };
 
 /* Access functions: */
