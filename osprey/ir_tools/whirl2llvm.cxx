@@ -2898,7 +2898,15 @@ WHIRL2llvm::CreateUnary(WN *wn)
     unr = Lvbuilder()->CreateAlloca(array_ty, size);
     break;
   }
-  case OPR_LNOT:
+  case OPR_LNOT: {
+    FmtAssert(opnd->getType()->isIntegerTy(), 
+      ("CreateUnary: the type of operand should be boolean type"));
+    if (!opnd->getType()->isIntegerTy(1)) {
+      opnd = Lvbuilder()->CreateTrunc(opnd, Lvbuilder()->getInt1Ty());
+    }
+    unr = Lvbuilder()->CreateXor(opnd, Lvbuilder()->getTrue());
+    break;
+  }
   case OPR_RECIP:
   default:
     FmtAssert(FALSE, ("CreateUnary: operator %s work in progress", OPERATOR2name(opr)));
@@ -4977,14 +4985,11 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
   }
   case OPR_NEG:
   case OPR_ABS:
-  case OPR_SQRT: 
-  case OPR_BNOT: 
+  case OPR_SQRT:
+  case OPR_BNOT:
+  case OPR_LNOT:
   case OPR_ALLOCA: {
     res = CreateUnary(wn);
-    break;
-  }
-  case OPR_LNOT: {
-    FmtAssert(FALSE, ("WHIRL2llvm::EXPR2llvm, operator %s not handled", OPERATOR2name(opr)));
     break;
   }
   case OPR_RECIP: {
