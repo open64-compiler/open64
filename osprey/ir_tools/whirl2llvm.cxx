@@ -5631,6 +5631,11 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
         FmtAssert(res == nullptr, ("STMT2llvm: INTRINSIC_CALL should return nullptr"));
         break;
       }
+      case INTRN_VEXIT: {
+        // __builtin_unreachable()
+        // do nothing for now
+        break;
+      }
       default: {
         FmtAssert(FALSE, ("WHIRL2llvm::STMT2llvm, intrinsic(%d) not handled", intrinsicID));
       }
