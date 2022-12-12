@@ -4888,6 +4888,9 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
     } else if (lvtype->isDoubleTy()) {
       LVVAL *db_const = llvm::ConstantFP::get(lvtype, tcon.vals.dval);
       res = db_const;
+    } else if (lvtype->isFP128Ty()) {
+      LVVAL *q_const = llvm::ConstantFP::get(lvtype, tcon.vals.qval);
+      res = q_const;
     } else {
       // TODO: handle string const
       // ConststrNode *conststrNode = fn->codeMemPool->New<ConststrNode>(PTY_ptr, static_cast<MIRStrConst *>(mirconst)->value);
