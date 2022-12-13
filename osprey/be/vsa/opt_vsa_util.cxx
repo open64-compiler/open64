@@ -648,7 +648,7 @@ ITENT_DESC ITENT_INTERNAL_DESC[] = {
   { PROC_EFF,   PTR_VAR, NO_ALIAS,   CAT_NONE, "_ZN4java4lang6System2inE" },
   { PROC_EFF,   PTR_VAR, NO_ALIAS,   CAT_NONE, "_ZN4java4lang6System3outE" },
   { PROC_EFF,   PROC,    NO_ALIAS,   CAT_NONE, "printk" },
-  { PROC_EFF,   PROC,    NO_ALIAS,   CAT_NONE, "printf" },
+  // { PROC_EFF,   PROC,    NO_ALIAS,   CAT_NONE, "printf" },
   { PROC_EFF,   PROC,    MOD_PARM_0, CAT_NONE, "sprintf" },
   { PROC_EFF,   PROC,    MOD_PARM_0, CAT_NONE, "snprintf" },
   { PROC_EFF,   PROC,    NO_ALIAS,   CAT_NONE, "fprintf" },

@@ -67,6 +67,7 @@ typedef __sighandler_t sighandler_t;
 typedef struct __dirstream DIR;
 typedef struct _G_fpos_t fpos_t;
 struct mbstate_t;
+struct mutex_t;
 
 /*
  * constant macro definition

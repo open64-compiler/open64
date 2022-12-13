@@ -1010,9 +1010,11 @@ int rename(const char *oldname, const char *newname)
 int printf(const char *format, ...)
 {
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
+  rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Not(rbc.Is_tag_set(rbc.Get_arg(1), "tainted")), "FIO30-C");
   // STR32-C check is done in VSA
+  rbc.Rbc_assert(rbc.Is_null_term_set(rbc.Get_arg(2)), "MSR_D_4_14");
   return 0;
 }
 
@@ -1165,6 +1167,7 @@ int vswprintf(wchar_t *wcs, size_t maxlen, const wchar_t *format, va_list args)
 int scanf(const char *format, ...)
 {
   rbc.Model_decl(rbc.Set_parm_deref(rbc.Get_arg(1)));
+  rbc.Model_decl(rbc.Set_parm_mod(rbc.Get_arg(2)));
 
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "ERR33-C");
   rbc.Rbc_assert(rbc.Post_check_var_value(rbc.Get_ret(), "eq", (void*)EOF), "MSR_D_4_7");
@@ -2394,6 +2397,31 @@ int cwe134_c_fsm(void)
                                          rbc.Get_value(rbc.Get_arg(3)) == SO_REUSEADDR, "opened", "MBSP", 135));
 
   rbc.Model_decl(rbc.Fsm_build_end("CWE134"));
+}
+
+void mutex_lock(mutex_t *m)
+{
+  rbc.Model_decl(rbc.Fsm_use("MUTEX"));
+}
+
+void mutex_unlock(mutex_t *m)
+{
+  rbc.Model_decl(rbc.Fsm_use("MUTEX"));
+}
+
+int mt_c_fsm(void)
+{
+  rbc.Model_decl(rbc.Fsm_build_begin("MUTEX"));
+  rbc.Model_decl(rbc.Fsm_new_start_state("start"));
+  rbc.Model_decl(rbc.Fsm_new_final_state("finish"));
+
+  rbc.Model_decl(rbc.Fsm_add_transition("start", "mutex_lock", rbc.Get_arg(1), 1,
+                                        "locked", NULL, 1000));
+  rbc.Model_decl(rbc.Fsm_add_transition("locked", "mutex_unlock", rbc.Get_arg(1), 1,
+                                        "finish", NULL, 1001));
+  rbc.Model_decl(rbc.Fsm_set_default_action("locked", "MLU MSR_D_4_13", 1002));
+  rbc.Model_decl(rbc.Fsm_build_end("MUTEX"));
+  return 0;
 }
 
 #ifdef __cplusplus

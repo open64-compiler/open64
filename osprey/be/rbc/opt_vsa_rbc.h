@@ -1406,6 +1406,7 @@ private:
   UINT64   Eval__hard_coded_password(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_compression_extraction_safe(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_null_term_str(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
+  UINT64   Eval__is_null_term_set(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_cst_str_eq(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_str_eq(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
   UINT64   Eval__is_str_sub(RBC_CONTEXT &rbc_ctx, STMTREP *stmt);
