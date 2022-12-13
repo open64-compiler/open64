@@ -1,0 +1,492 @@
+#! /usr/bin/env python3
+
+import os
+import sys
+import logging
+import platform
+import subprocess
+from shutil import which
+
+XCALCC        = "xcalcc"
+W2LL          = "w2ll"
+LLC           = "llc"
+GCC           = "g++"
+
+MAPCLANG      = "mapclang"
+MAPFEX        = "mapfex"
+MAPIRG        = "mapirg"
+MAPINL        = "mapinl"
+MAPCBE        = "mapcbe"
+PP_OPTS       = "-D__GNUC_MINOR__=0 -D__GNUC__=10 -D_GLIBCXX_USE_MAKE_INTEGER_SEQ"
+MAPFEX_OPTS   = "-Wall -fcxx-openmp -fmastiff -finline-functions-called-once -finline-functions -msse2 -dx -quiet -fpreprocessed -fbuiltin -dumpbase"
+MAPINL_OPTS   = "-PHASE:v=off:x=off -PHASE:l:w:c -sw -O3 -TARG:abi=n64 -LANG:cxx_openmp=on -INLINE:all"
+MAPCBE_OPTS   = "-PHASE:v=off:x=off -PHASE:l:w:c -G8 -sw -TARG:abi=n64 -LANG:cxx_openmp=on -LANG:=ansi_c -TARG:processor=wolfdale"
+W2LL_OPTS     = "-disable_trace"
+LLC_OPTS      = "--march=riscv64 -target-abi lp64d --asm-verbose --debugger-tune=gdb" 
+MAPCLANG_OPTS = "-cc1 -emit-llvm -mllvm --emit-extern-inline=true -triple x86_64-unknown-linux-gnu -D__clang__ -internal-isystem /usr/local/mastiff/include/clang/c++ -D__GNUC__=4 -D__GNUC_MINOR__=2 -internal-isystem /usr/local/mastiff/include -internal-isystem /usr/local/mastiff/include/clang -internal-isystem /usr/local/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -O3 -D__OPTIMIZE__ -xc++"
+
+XCALCC_HOME = ""
+LD_LIBRARY_PATH = ""
+
+DEFAULT_OPTS = ["-PHASE:c=off", "-WOPT:divrem=0", "-LNO:simd=0", "-WOPT:cfo_main=0, -fno-exceptions"]
+
+OPT_LEVEL = 2
+ASM_MODE  = False
+NEED_LINK = True 
+STATIC    = False
+PIC       = True
+DEBUG     = False
+LOG       = False 
+
+class Formatter(logging.Formatter):
+
+    grey = "\x1b[38;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+
+    FORMATS = {
+        logging.DEBUG: grey + format + reset,
+        logging.INFO: grey + format + reset,
+        logging.WARNING: yellow + format + reset,
+        logging.ERROR: red + format + reset,
+        logging.CRITICAL: bold_red + format + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
+def report_err(logger, cond, msg):
+    if cond == False:
+        logger.error(msg)
+        sys.exit(1)
+    return cond
+
+
+def set_env():
+    global GCC 
+    global W2LL
+    global LLC
+    global MAPCLANG
+    global MAPIRG
+    global MAPINL
+    global MAPCBE
+    global XCALCC_HOME 
+    global LD_LIBRARY_PATH 
+
+    check_exec()
+
+    machine = platform.machine()
+    if machine == "x86_64":
+        GCC = "riscv64-linux-gnu-g++" 
+
+    xvsa_path = os.path.abspath(which("xcalcc").rstrip("xcalcc"))
+    LD_LIBRARY_PATH = os.path.join(xvsa_path, os.pardir, "lib/1.0")
+    os.environ["LD_LIBRARY_PATH"] = LD_LIBRARY_PATH
+
+    W2LL     = os.path.join(LD_LIBRARY_PATH, W2LL)
+    LLC      = os.path.join(LD_LIBRARY_PATH, LLC)
+    MAPCLANG = os.path.join(LD_LIBRARY_PATH, MAPCLANG)
+    MAPIRG   = os.path.join(LD_LIBRARY_PATH, MAPIRG)
+    MAPINL   = os.path.join(LD_LIBRARY_PATH, MAPINL)
+    MAPCBE   = os.path.join(LD_LIBRARY_PATH, MAPCBE)
+
+def has_cmd(cmd):
+    return which(cmd) is not None
+
+
+def check_exec():
+    try:
+        if not has_cmd(XCALCC):
+            raise AssertionError("xcalcc is missing")
+    except AssertionError as e:
+        print(e)
+
+
+def collect_options(argv):
+    global OPT_LEVEL
+    global ASM_MODE
+    global NEED_LINK
+    global STATIC
+    global DEBUG
+    global LOG
+    opts = []
+    output = ""
+    files = []
+
+    i = 1
+    while i < len(argv):
+        try:
+            if argv[i] == "-o":
+                if i+1 >= len(argv):
+                    raise AssertionError("Output file is required!")
+                output = argv[i + 1]
+                i = i + 1   # eat the next argument
+            elif argv[i].startswith("-"):
+                if argv[i].startswith("-O"):
+                    OPT_LEVEL = int(argv[i].lstrip("-O"))
+                elif argv[i] == "-S":
+                    ASM_MODE = True
+                    NEED_LINK = False
+                elif argv[i] == "-c":
+                    NEED_LINK = False
+                elif argv[i] == "-static":
+                    STATIC = True
+                    PIC = False
+                elif argv[i] == "-g":
+                    DEBUG = True
+                elif argv[i] == "-v":
+                    LOG = True 
+                else:
+                    opts.append(argv[i])
+            else:
+                files.append(argv[i])
+        except AssertionError as e:
+            print(e)
+        
+        i = i + 1
+    return opts, files, output
+
+
+def gen_opts(opts):
+    res = " "
+    for i in opts:
+        res = res + i + " "
+    return res
+
+
+def rm_suffix(f):
+    if '.' in f:
+        while f[-1] != '.':
+            f = f[: len(f) - 1]
+        f = f[:-1]
+    return f
+
+
+def is_obj(f):
+    return f.endswith(".o")
+
+
+def is_src(f):
+    src = [".c", ".cxx", ".cpp", ".c++", 
+           ".cc", ".C", ".h", ".hpp", 
+           ".hh", ".hxx", ".H", ".h++",
+           ".ii", ".i", ".ixx", ".ipp",
+           ".inl", ".txx", ".tpp", ".tpl"]
+    for i in src:
+        if f.endswith(i):
+             return True
+    return False
+
+def preprocess(logger, opts, f):
+    dot_ii = rm_suffix(f.split('/')[-1]) + ".ii" 
+    cmd = opts + PP_OPTS.split() + ["-fno-exceptions", "-E", f, "-o", dot_ii]
+
+    if LOG:
+        info = "preprocessing: " + GCC + " " + " ".join(i for i in cmd)
+        logger.info(info)
+
+    process = subprocess.Popen([GCC] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+
+    if process.returncode != 0:
+        logger.error(err.decode().strip())
+        return False
+    else:
+        return True 
+    
+
+def mapfex(logger, f):
+    dot_ii = rm_suffix(f.split('/')[-1]) + ".ii" 
+    spin = rm_suffix(f.split('/')[-1]) + ".spin" 
+
+    opts = MAPFEX_OPTS.split()
+    if DEBUG == True:
+        opts = ["-g2"] + opts
+    cmd = opts + [f, dot_ii, "-spinfile", spin]
+
+    if LOG:
+        info = MAPFEX + " " + " ".join(i for i in cmd)
+        logger.info(info)
+
+    process = subprocess.Popen([MAPFEX] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+
+    if process.returncode != 0:
+        logger.error(err.decode().strip())
+        return False
+    else:
+        return True 
+
+
+def mapirg(logger, f):
+    spin = rm_suffix(f.split('/')[-1]) + ".spin" 
+    dot_B = rm_suffix(f.split('/')[-1]) + ".B" 
+    cmd = ["-fS," + spin, "-fB," + dot_B]
+
+    if LOG:
+        info = MAPIRG + " " + " ".join(i for i in cmd)
+        logger.info(info)
+
+    process = subprocess.Popen([MAPIRG] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+
+    # the return code 16 means inlining is required
+    if (process.returncode != 0) and (process.returncode != 16):
+        logger.error(err.decode().strip())
+        return False
+    else:
+        return True 
+
+
+def mapclang(logger, opts, f):
+    dot_B  = rm_suffix(f.split('/')[-1]) + ".B" 
+    dot_ii = rm_suffix(f.split('/')[-1]) + ".ii" 
+    opts = list(filter(lambda x: not x.startswith("-l"), opts))
+    cmd = MAPCLANG_OPTS.split() + opts + [dot_ii, "-o", dot_B]
+
+    if LOG:
+        info = MAPCLANG + " " + " ".join(i for i in cmd)
+        logger.info(info)
+
+    process = subprocess.Popen([MAPCLANG] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+
+    # the return code 16 means inlining is required
+    if (process.returncode != 0) and (process.returncode != 16):
+        logger.error(err.decode().strip())
+        return False
+    else:
+        return True
+
+
+def mapinl(logger, f):
+    dot_B = rm_suffix(f.split('/')[-1]) + ".B" 
+    dot_I = rm_suffix(f.split('/')[-1]) + ".I" 
+    cmd = MAPINL_OPTS.split()
+    if DEBUG == True:
+        cmd.append("-g2")
+    cmd = cmd + DEFAULT_OPTS + ["-fB," + dot_B, "-fI," + dot_I, f] 
+
+    if LOG:
+        info = MAPINL + " " + " ".join(i for i in cmd)
+        logger.info(info)
+
+    process = subprocess.Popen([MAPINL] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+
+    if process.returncode != 0:
+        logger.error(err.decode().strip())
+        return False
+    else:
+        return True 
+
+
+def mapcbe(logger, f):
+   #  -fB,a.I -s -fs,a.s /media/psf/Home/code/xc5/mastiff_build/a.c
+    dot_I = rm_suffix(f.split('/')[-1]) + ".I" 
+    dot_s = rm_suffix(f.split('/')[-1]) + ".s" 
+    cmd = MAPCBE_OPTS.split()
+    if DEBUG == True:
+        cmd.append("-g2")
+    cmd = cmd + DEFAULT_OPTS + ["-fB," + dot_I, "-s", "-fs," + dot_s, f]
+
+    if LOG:
+        info = MAPCBE + " " + " ".join(i for i in cmd)
+        logger.info(info)
+
+    process = subprocess.Popen([MAPCBE] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+
+    if process.returncode != 0:
+        logger.error(err.decode().strip())
+        return False
+    else:
+        return True 
+
+
+def front_end(logger, opts, files):
+    res = []
+    for f in files:
+        name = rm_suffix(f.split('/')[-1]) 
+        cmd = opts + [f]
+        msg = "xcalc++: faild to compile " + f
+
+        # run g++ to perform preprocessing
+        ret = preprocess(logger, opts, f)
+        if report_err(logger, ret, msg) == False:
+            continue
+
+        # run the front end of open64
+        #  ret = mapfex(logger, f)
+        #  if report_err(logger, ret, msg) == False:
+            #  continue
+
+        ret = mapclang(logger, opts, f)
+        if report_err(logger, ret, msg) == False:
+            continue
+
+        # generate the *.B file
+        #ret = mapirg(logger, f)
+        #if report_err(logger, ret, msg) == False:
+        #    continue
+
+        ret = mapinl(logger, f)
+        if report_err(logger, ret, msg) == False:
+            continue
+        
+        ret = mapcbe(logger, f)
+        if report_err(logger, ret, msg) == False:
+            continue
+        
+        res.append(name)
+
+    return res
+
+
+def whirl2llvm(logger, opts, files):
+    res = []
+    opts = []
+    suffix = ""
+
+    if OPT_LEVEL >= 2:
+        suffix = ".O"
+        opts = opts + W2LL_OPTS.split() + ["-all"]
+    elif OPT_LEVEL == 1:
+        suffix = ".I"
+        opts = opts + W2LL_OPTS.split() + ["-all"]
+    else:
+        suffix = ".B"
+        opts = opts + W2LL_OPTS.split()
+
+    for f in files:
+        cmd = [f + suffix] + opts
+
+        if LOG:
+            info = W2LL + " " + " ".join(i for i in cmd)
+            logger.info(info)
+
+        process = subprocess.Popen([W2LL] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = process.communicate()
+
+        if process.returncode != 0:
+            logger.error(err.decode().strip())
+            sys.exit(process.returncode)
+        else:
+            res.append(f + suffix + ".ll")
+
+    return res
+
+
+def llc(logger, opts, files, outfile):
+    res = []
+    opts = ["-O" + str(OPT_LEVEL)] + LLC_OPTS.split()
+    suffix = ""
+
+    if ASM_MODE:
+        suffix = ".s"
+        opts.append("--filetype=asm")
+    else:
+        suffix = ".o"
+        opts.append("--filetype=obj")
+
+    if STATIC == True:
+        opts.append("--relocation-model=static")
+    elif PIC == True:
+        opts.append("--relocation-model=pic")
+
+    if NEED_LINK == False: 
+        if len(files) > 1:
+            logger.error("cannot specify ‘-o’ with ‘-c’, ‘-S’ or ‘-E’ with multiple files: " + str(files))
+
+    for f in files:
+        if (NEED_LINK == True) or (outfile == ""):
+            outfile = f.rstrip(".ll").rstrip(".B").rstrip(".I").rstrip(".O") + suffix
+
+        cmd = opts + [f, "-o", outfile] 
+
+        if LOG:
+            info = LLC + " " + " ".join(i for i in cmd)
+            logger.info(info)
+
+        process = subprocess.Popen([LLC] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = process.communicate()
+
+        if process.returncode != 0:
+            logger.error(err.decode().strip())
+            sys.exit(process.returncode)
+        else:
+            res.append(outfile)
+
+    return res
+
+
+def link(logger, opts, files, outfile):
+    cmd = []
+    if STATIC == True:
+        cmd.append("-static")
+    if DEBUG == True:
+        cmd.append("-g")
+
+    if outfile == "":
+        outfile = "a.out"
+    
+    cmd = cmd + ["-o", outfile] + files
+
+    for i in opts:
+        if i.startswith("-l") or i.startswith("-L"):
+            cmd.append(i)
+
+    if LOG:
+        info = GCC + " " + " ".join(i for i in cmd)
+        logger.info(info)
+
+    process = subprocess.Popen([GCC] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = process.communicate()
+
+    if process.returncode != 0:
+        logger.error(err.decode().strip())
+        sys.exit(process.returncode)
+
+
+def compile(opts, files, output):
+    logger = logging.getLogger("xcalc++")
+    logger.setLevel(logging.DEBUG)
+
+    # create console handler with a higher log level
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+
+    ch.setFormatter(Formatter())
+    logger.addHandler(ch)
+    
+    src = list(filter(is_src, files))
+    obj = list(filter(is_obj, files))
+    unk = list(filter(lambda x : not (is_src(x) or is_obj(x)), files))
+
+    if len(unk) != 0:
+        logger.error("file format not recognized:" + str(unk))
+        sys.exit(1)
+
+    res = front_end(logger, opts, src)
+    res = whirl2llvm(logger, opts, res)
+    res = llc(logger, opts, res, output)
+    if NEED_LINK:
+        link(logger, opts, res + obj, output)
+
+
+def main():
+    set_env()
+    opts, files, output = collect_options(sys.argv)
+
+    compile(opts, files, output)
+
+
+if __name__ == "__main__":
+    main()
+    sys.exit(0)
