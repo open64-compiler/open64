@@ -2046,6 +2046,15 @@ public:
 
   inline bool IsWNCmp(WN *wn) { return OPERATOR_is_compare(WN_operator(wn));  }
 
+  LVVAL      *LvPtr2Int(LVVAL *ptr) {
+    if (ptr->getType()->isPointerTy()) 
+      return Lvbuilder()->CreatePtrToInt(ptr, Lvbuilder()->getInt64Ty());
+    else if (ptr->getType()->isIntegerTy())
+      return ptr;
+    else
+      FmtAssert(FALSE, ("LvPtr2Int: unexpected type"));
+  }
+
   void        HandleBinaryDifferentType(WN *wn, LVVAL **lhs, LVVAL **rhs) {
     Is_Trace(Tracing_enabled, (TFile, "HandleBinaryDifferentType for:\n"));
     Is_Trace_cmd(Tracing_enabled, fdump_tree(TFile, wn));
@@ -5253,6 +5262,16 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
     LVVAL *cond = EXPR2llvm(WN_kid0(wn));
     LVVAL *true_val = EXPR2llvm(WN_kid1(wn));
     LVVAL *false_val = EXPR2llvm(WN_kid2(wn));
+
+    // convert int to bool
+    LVTY *cond_ty = cond->getType();
+    FmtAssert(cond_ty->isIntegerTy(), ("EXPR2llvm: cond should be integer type"));
+    if (!cond_ty->isIntegerTy(1)) {
+      cond = Lvbuilder()->CreateICmpNE(cond,
+        Lvbuilder()->getIntN(cond_ty->getIntegerBitWidth(), 0));
+    }
+
+    HandleBinaryDifferentType(wn, &true_val, &false_val);
     res = Lvbuilder()->CreateSelect(cond, true_val, false_val);
     break;
   }
@@ -5660,7 +5679,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
   case OPR_RETURN: {
     LVVAL *retval = NULL;
     WN *prev = WN_prev(wn);
-    if (WN_operator(prev) == OPR_STID && IsCallResReg(prev)) {
+    if (prev && (WN_operator(prev) == OPR_STID && IsCallResReg(prev))) {
 
       TY_IDX ret_tyidx = TY_ret_type(ST_type(WN_st(Cur_func())));
       auto tyid = TY_mtype(ret_tyidx);
