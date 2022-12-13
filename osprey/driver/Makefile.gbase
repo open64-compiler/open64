@@ -243,10 +243,12 @@ ifndef SKIP_DEP_BUILD
 endif
 
 last: make_deps
-	rm -f  opencc openCC openf90
+	rm -f  opencc openCC openf90 xcalcc xcalc++
 	ln -s  driver opencc
 	ln -sf driver openCC
 	ln -s  driver openf90
+	cp $(BUILD_SRC)/osprey/driver/xcalcc ./
+	cp $(BUILD_SRC)/osprey/driver/xcalc++ ./
 
 ifeq ($(BUILD_VARIANT), NO_LICENSE)
 

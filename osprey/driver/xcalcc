@@ -13,18 +13,20 @@ LLC           = "llc"
 GCC           = "gcc"
 
 MAPCLANG      = "mapclang"
-MAPFEC        = "mapfec"
-MAPIRG        = "mapirg"
-MAPINL        = "mapinl"
-MAPCBE        = "mapcbe"
+CC1           = "cc142"
+WGEN          = "wgen42"
+INLINE        = "inline"
+BE            = "be"
 PP_OPTS       = "-D__GNUC_MINOR__=0 -D__GNUC__=10"
-MAPFEC_OPTS   = "-Wall -fcxx-openmp -fmastiff -finline-functions-called-once -finline-functions -msse2 -dx -quiet -fpreprocessed -fbuiltin -dumpbase"
-MAPINL_OPTS   = "-PHASE:v=off:x=off -PHASE:l:w:c -sw -O3 -TARG:abi=n64 -LANG:cxx_openmp=on" 
-MAPCBE_OPTS   = "-PHASE:v=off:x=off -PHASE:l:w:c -G8 -sw -TARG:abi=n64 -LANG:cxx_openmp=on -LANG:=ansi_c -TARG:processor=wolfdale"
+CC1_OPTS      = "-Wall -fcxx-openmp -fmastiff -finline-functions-called-once -finline-functions -msse2 -dx -quiet -fpreprocessed -fbuiltin -dumpbase"
+INLINE_OPTS   = "-PHASE:v=off:x=off -PHASE:l:w:c -sw -O3 -TARG:abi=n64 -LANG:cxx_openmp=on" 
+BE_OPTS       = "-PHASE:v=off:x=off -PHASE:l:w:c -G8 -sw -TARG:abi=n64 -LANG:cxx_openmp=on -LANG:=ansi_c -TARG:processor=wolfdale"
 W2LL_OPTS     = "-disable_trace"
 LLC_OPTS      = "--march=riscv64 -target-abi lp64d --asm-verbose --debugger-tune=gdb" 
 MAPCLANG_OPTS = "-cc1 -emit-llvm -mllvm --emit-extern-inline=true -triple x86_64-unknown-linux-gnu -D__clang__ -internal-isystem /usr/local/mastiff/include/clang/c++ -D__GNUC__=4 -D__GNUC_MINOR__=2 -internal-isystem /usr/local/mastiff/include -internal-isystem /usr/local/mastiff/include/clang -internal-isystem /usr/local/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -O3 -D__OPTIMIZE__ -xc" 
 USE_GCC       = "-gcc"
+
+PHASEPATH     = "lib/gcc-lib/{TARG_HOST}-open64-linux/5.0"
 
 MACHINE     = ""
 XCALCC_HOME = ""
@@ -77,10 +79,10 @@ def set_env():
     global W2LL
     global LLC
     global MAPCLANG
-    global MAPFEC
-    global MAPIRG
-    global MAPINL
-    global MAPCBE
+    global CC1
+    global WGEN
+    global INLINE
+    global BE
     global MACHINE
     global XCALCC_HOME 
     global LD_LIBRARY_PATH 
@@ -91,17 +93,17 @@ def set_env():
     if MACHINE == "x86_64":
         GCC = "riscv64-linux-gnu-gcc" 
 
-    xcalcc_path = os.path.abspath(which("xcalcc").rstrip("xcalcc"))
-    LD_LIBRARY_PATH = os.path.join(xcalcc_path, os.pardir, "lib/1.0")
+    bin_path = os.path.abspath(which("xcalcc").rstrip("xcalcc"))
+    LD_LIBRARY_PATH = os.path.join(bin_path, os.pardir, PHASEPATH)
     os.environ["LD_LIBRARY_PATH"] = LD_LIBRARY_PATH
 
     W2LL   = os.path.join(LD_LIBRARY_PATH, W2LL)
     LLC    = os.path.join(LD_LIBRARY_PATH, LLC)
     MAPCLANG = os.path.join(LD_LIBRARY_PATH, MAPCLANG)
-    MAPFEC = os.path.join(LD_LIBRARY_PATH, MAPFEC)
-    MAPIRG = os.path.join(LD_LIBRARY_PATH, MAPIRG)
-    MAPINL = os.path.join(LD_LIBRARY_PATH, MAPINL)
-    MAPCBE = os.path.join(LD_LIBRARY_PATH, MAPCBE)
+    CC1 = os.path.join(LD_LIBRARY_PATH, CC1)
+    WGEN = os.path.join(LD_LIBRARY_PATH, WGEN)
+    INLINE = os.path.join(LD_LIBRARY_PATH, INLINE)
+    BE = os.path.join(LD_LIBRARY_PATH, BE)
 
 def has_cmd(cmd):
     return which(cmd) is not None
@@ -211,11 +213,11 @@ def preprocess(logger, opts, f):
         return True 
     
 
-def mapfec(logger, f):
+def cc1(logger, f):
     dot_i = rm_suffix(f.split('/')[-1]) + ".i" 
     spin = rm_suffix(f.split('/')[-1]) + ".spin" 
 
-    opts = MAPFEC_OPTS.split()
+    opts = CC1_OPTS.split()
     if STD != "":
         opts = [STD] + opts
 
@@ -224,10 +226,10 @@ def mapfec(logger, f):
     cmd = opts + [f, dot_i, "-spinfile", spin]
 
     if LOG:
-        info = MAPFEC + " " + " ".join(i for i in cmd)
+        info = CC1 + " " + " ".join(i for i in cmd)
         logger.info(info)
 
-    process = subprocess.Popen([MAPFEC] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([CC1] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
 
     if process.returncode != 0:
@@ -237,16 +239,16 @@ def mapfec(logger, f):
         return True 
 
 
-def mapirg(logger, f):
+def wgen(logger, f):
     spin = rm_suffix(f.split('/')[-1]) + ".spin" 
     dot_B = rm_suffix(f.split('/')[-1]) + ".B" 
     cmd = ["-fS," + spin, "-fB," + dot_B]
 
     if LOG:
-        info = MAPIRG + " " + " ".join(i for i in cmd)
+        info = WGEN + " " + " ".join(i for i in cmd)
         logger.info(info)
 
-    process = subprocess.Popen([MAPIRG] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([WGEN] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
 
     # the return code 16 means inlining is required
@@ -278,19 +280,19 @@ def mapclang(logger, opts, f):
         return True
 
 
-def mapinl(logger, f):
+def inline(logger, f):
     dot_B = rm_suffix(f.split('/')[-1]) + ".B" 
     dot_I = rm_suffix(f.split('/')[-1]) + ".I" 
-    cmd = MAPINL_OPTS.split()
+    cmd = INLINE_OPTS.split()
     if DEBUG == True:
         cmd.append("-g2")
     cmd = cmd + DEFAULT_OPTS + ["-fB," + dot_B, "-fI," + dot_I, f] 
 
     if LOG:
-        info = MAPINL + " " + " ".join(i for i in cmd)
+        info = INLINE + " " + " ".join(i for i in cmd)
         logger.info(info)
 
-    process = subprocess.Popen([MAPINL] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([INLINE] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
 
     if process.returncode != 0:
@@ -300,20 +302,20 @@ def mapinl(logger, f):
         return True 
 
 
-def mapcbe(logger, f):
+def be(logger, f):
    #  -fB,a.I -s -fs,a.s /media/psf/Home/code/xc5/mastiff_build/a.c
     dot_I = rm_suffix(f.split('/')[-1]) + ".I" 
     dot_s = rm_suffix(f.split('/')[-1]) + ".s" 
-    cmd = MAPCBE_OPTS.split()
+    cmd = BE_OPTS.split()
     if DEBUG == True:
         cmd.append("-g2")
     cmd = cmd + DEFAULT_OPTS + ["-fB," + dot_I, "-s", "-fs," + dot_s, f]
 
     if LOG:
-        info = MAPCBE + " " + " ".join(i for i in cmd)
+        info = BE + " " + " ".join(i for i in cmd)
         logger.info(info)
 
-    process = subprocess.Popen([MAPCBE] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([BE] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
 
     if process.returncode != 0:
@@ -344,12 +346,12 @@ def front_end(logger, opts, files):
 
         if use_gcc:
             #  run the front end of open64
-            ret = mapfec(logger, f)
+            ret = cc1(logger, f)
             if report_err(logger, ret, msg) == False:
                 continue
 
             # generate the *.B file
-            ret = mapirg(logger, f)
+            ret = wgen(logger, f)
             if report_err(logger, ret, msg) == False:
                 continue
         else:
@@ -357,11 +359,11 @@ def front_end(logger, opts, files):
             if report_err(logger, ret, msg) == False:
                 continue
 
-        ret = mapinl(logger, f)
+        ret = inline(logger, f)
         if report_err(logger, ret, msg) == False:
             continue
         
-        ret = mapcbe(logger, f)
+        ret = be(logger, f)
         if report_err(logger, ret, msg) == False:
             continue
         
@@ -423,7 +425,7 @@ def llc(logger, opts, files, outfile):
 
     if NEED_LINK == False: 
         if len(files) > 1:
-            logger.error("cannot specify ‘-o’ with ‘-c’, ‘-S’ or ‘-E’ with multiple files: " + str(files))
+            logger.error("cannot specify '-o' with '-c', '-S' or '-E' with multiple files: " + str(files))
 
     for f in files:
         if (NEED_LINK == True) or (outfile == ""):

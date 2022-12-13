@@ -191,6 +191,21 @@ INSTALL_DATA_SUB () {
     return 0
 }
 
+INSTALL_XCALCC () {
+    echo "TARG_HOST: $TARG_HOST"
+    if [ "$TARG_HOST" = "x8664" ]; then
+        sed -i -e 's/{TARG_HOST}/x86_64/g' ${AREA}/driver/xcalcc
+        sed -i -e 's/{TARG_HOST}/x86_64/g' ${AREA}/driver/xcalc++
+    elif [ "$TARG_HOST" = "riscv64" ]; then
+        sed -i -e 's/{TARG_HOST}/riscv64/g' ${AREA}/driver/xcalcc
+        sed -i -e 's/{TARG_HOST}/riscv64/g' ${AREA}/driver/xcalc++
+    fi
+
+    INSTALL_EXEC_SUB ${AREA}/driver/xcalcc  ${BIN_DIR}/xcalcc
+    INSTALL_EXEC_SUB ${AREA}/driver/xcalc++ ${BIN_DIR}/xcalc++
+    INSTALL_EXEC_SUB ${AREA}/ir_tools/w2ll ${PHASEPATH}/w2ll
+}
+
 # install the driver
 INSTALL_DRIVER () {
     INSTALL_EXEC_SUB ${AREA}/driver/driver  ${PHASEPATH}/driver
@@ -674,6 +689,7 @@ if [ "$TARG_HOST" = "x8664" -a ! -d "${NATIVE_LIB_DIR}/32" ]; then
 fi
 
 INSTALL_DRIVER 
+INSTALL_XCALCC
 if [ "$TARG_HOST" != "ppc32"  ]; then
 INSTALL_GCC
 fi
