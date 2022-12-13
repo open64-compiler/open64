@@ -131,6 +131,12 @@ typedef hash_set<PHI_NODE*, HASHER<PHI_NODE>,
                  std::equal_to<PHI_NODE*>,
                  mempool_allocator<PHI_NODE*> >     PHI_PTR_SET;
 
+typedef std::pair<uint64_t, VSYM_OBJ_REP*>          UID_VOR_PAIR;
+typedef hash_map<uint64_t, VSYM_OBJ_REP*,
+                 __gnu_cxx::hash<uint64_t>,
+                 std::equal_to<uint64_t>,
+                 mempool_allocator<UID_VOR_PAIR> >  UID_VOR_MAP;
+
 typedef std::pair<IDTYPE, MU_NODE*>                 ID_MU_PAIR;
 typedef hash_map<IDTYPE, MU_NODE*,
                  __gnu_cxx::hash<IDTYPE>,
@@ -553,6 +559,7 @@ private:
   CHI_CACHE         _vor_chi_cache; // cache stmt vor chi, entry of <vo_id, CHI_NODE*>
   ULIST_CACHE      *_ulist_cache;   // cache ulist, map<HEAP_OBJ_REP*, hash_set<HEAP_OBJ_REP*> >
   HOR_SET_CACHE    *_hor_set_cache; // cache stmt hor set, entry of <stmt, STMT_HOR_SET*>
+  UID_VOR_MAP      *_ret_vor_cache; // cache vor on return stmt, entry of <sr_id<<32|vo_id, VSYM_OBJ_REP*>
   PHI_CACHE         _vo_phi_cache;  // cache vo phi, vector of <bb_id, hash_set<vo_id>* >
   PHI_CACHE         _ho_phi_cache;  // cache ho phi, vector of <bb_id, hash_set<ho_id>* >
   HOR_CACHE         _hor_cache;     // hor cache for each round
@@ -634,6 +641,10 @@ public:
                                            std::equal_to<STMTREP*>(),
                                            mempool_allocator<HOR_SET_PAIR>(Hva_pool())),
                              Hva_pool());
+    _ret_vor_cache = CXX_NEW(UID_VOR_MAP(3, __gnu_cxx::hash<uint64_t>(),
+                                         std::equal_to<uint64_t>(),
+                                         mempool_allocator<UID_VOR_PAIR>(Hva_pool())),
+                             Hva_pool());
     _first_ho_id = Vsa()->Last_heapobj_id();
     _first_vo_id = Vsa()->Last_vsymobj_id();
     _next_vo_id = _first_vo_id;
@@ -662,6 +673,23 @@ public:
   STMT_HOR_SET *Get_stmt_hor_set(STMTREP *sr) const {
     HOR_SET_CACHE::const_iterator it = _hor_set_cache->find(sr);
     return it != _hor_set_cache->end() ? it->second : NULL;
+  }
+
+  // set vor on return stmt
+  void Set_ret_stmt_vor(STMTREP *sr, VSYM_OBJ_REP *vor) {
+    Is_True(sr && sr->Opr() == OPR_RETURN, ("not return stmt"));
+    Is_True(vor && !Vsa()->Is_special_vor(vor), ("invalid vor"));
+    uint64_t uid = ((uint64_t)sr->Stmtrep_id() << 32) | vor->Vsym_obj()->Id();
+    (*_ret_vor_cache)[uid] = vor;
+  }
+
+  // get vor from return stmt for given vo
+  VSYM_OBJ_REP* Get_ret_stmt_vor(STMTREP *sr, VSYM_OBJ *vo) const {
+    Is_True(sr && sr->Opr() == OPR_RETURN, ("not return stmt"));
+    Is_True(vo && !Vsa()->Is_special_vor(vo->Entry_chi()), ("invalid vo"));
+    uint64_t uid = ((uint64_t)sr->Stmtrep_id() << 32) | vo->Id();
+    UID_VOR_MAP::const_iterator it = _ret_vor_cache->find(uid);
+    return it != _ret_vor_cache->end() ? it->second : NULL;
   }
 
   // find cr where the ho/vo is associated

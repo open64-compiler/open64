@@ -3480,6 +3480,10 @@ private:
   // rename vor on cr
   void Process_vor_on_cr(STMTREP *sr, CODEREP *cr, VSYM_OBJ_REP *vor);
 
+  // append vor mu on return stmt
+  void Process_ret_stmt_mu(STMTREP *sr, CODEREP *cr, HEAP_OBJ_REP *hor,
+                           HOR_PTR_SET &hor_set, VO_PTR_SET &vo_set);
+
 public:
   // Enter_bb: before enter the bb, rename the vor phi result
   void Enter_bb(BB_NODE *bb) {
@@ -4107,48 +4111,107 @@ HVA_VO_RENAMING::Process_sr<OPR_INTRINSIC_CALL, FALSE>(STMTREP* sr)
   Process_call<FALSE>(sr);
 }
 
+// Check hor and append vor mu on return stmt which is based on the hor
+void
+HVA_VO_RENAMING::Process_ret_stmt_mu(STMTREP *sr, CODEREP *cr, HEAP_OBJ_REP *hor,
+                                     HOR_PTR_SET &hor_set, VO_PTR_SET &vo_set)
+{
+  Is_True(hor && !_hva->Vsa()->Is_special_hor(hor),
+          ("invalid hor"));
+
+  if (hor_set.find(hor) != hor_set.end())
+    return;
+  hor_set.insert(hor);
+
+  HOR_VO_LIST_ITER iter(hor);
+  VSYM_OBJ *fld_vo;
+  FOR_ALL_NODE(fld_vo, iter, Init()) {
+    Is_True(fld_vo && !_hva->Vsa()->Is_special_vor(fld_vo->Entry_chi()),
+            ("invalid field vo"));
+
+    if (vo_set.find(fld_vo) != vo_set.end())
+      continue;
+    vo_set.insert(fld_vo);
+
+    // get current version from ret stmt vor cache
+    VSYM_OBJ_REP *fld_vor = _hva->Get_ret_stmt_vor(sr, fld_vo);
+    if (fld_vor) {
+      _hva->Append_stmt_vor_mu(cr, sr, fld_vor);
+    }
+    HEAP_OBJ_REP *fld_hor = fld_vor->Hor();
+    if (fld_hor && !_hva->Vsa()->Is_special_hor(fld_hor)) {
+      // add vor mu based on the fld_hor
+      Process_ret_stmt_mu(sr, cr, fld_hor, hor_set, vo_set);
+    }
+  }
+  HOR_LIST *ulist = hor->Ulist();
+  if (ulist) {
+    HEAP_OBJ_REP *cur_hor;
+    HOR_LIST_ITER hor_list_iter;
+    FOR_ALL_NODE(cur_hor, hor_list_iter, Init(ulist)) {
+      if (!_hva->Vsa()->Is_special_hor(cur_hor) &&
+          hor_set.find(cur_hor) == hor_set.end()) {
+        hor_set.insert(cur_hor);
+
+        HOR_VO_LIST_ITER iter(cur_hor);
+        VSYM_OBJ *fld_vo;
+        FOR_ALL_NODE(fld_vo, iter, Init()) {
+          Is_True(fld_vo &&
+                  !_hva->Vsa()->Is_special_vor(fld_vo->Entry_chi()),
+                  ("invalid field vo"));
+
+          if (vo_set.find(fld_vo) != vo_set.end())
+            continue;
+          vo_set.insert(fld_vo);
+
+          // get current version from ret stmt vor cache
+          VSYM_OBJ_REP *fld_vor = _hva->Get_ret_stmt_vor(sr, fld_vo);
+          if (fld_vor) {
+            _hva->Append_stmt_vor_mu(cr, sr, fld_vor);
+          }
+          HEAP_OBJ_REP *fld_hor = fld_vor->Hor();
+          if (fld_hor && !_hva->Vsa()->Is_special_hor(fld_hor)) {
+            // add vor mu based on the fld_hor
+            Process_ret_stmt_mu(sr, cr, fld_hor, hor_set, vo_set);
+          }
+        }
+      }
+    }
+  }
+}
+
 // Process_sr<OPR_RETURN, TRUE>: forward pass to rename vsym for RETURN
 template<> void
 HVA_VO_RENAMING::Process_sr<OPR_RETURN, TRUE>(STMTREP* sr)
 {
   Is_True(sr && sr->Opr() == OPR_RETURN, ("invalid return sr"));
+  // cache VSYM_OBJ_REP which reaches to return stmt
+  VSYM_OBJ *vobj;
+  HASH_SET_ITER<VO_PTR_SET, VSYM_OBJ*> vo_iter;
+  FOR_ALL_NODE(vobj, vo_iter, Init(&_hva->Vo_created())) {
+    Is_True(vobj && !_hva->Vsa()->Is_special_vor(vobj->Entry_chi()),
+            ("invalid vobj"));
+    _hva->Set_ret_stmt_vor(sr, vobj->Top_of_stack());
+  }
+  FOR_ALL_NODE(vobj, vo_iter, Init(&_hva->Vo_updated())) {
+    Is_True(vobj && !_hva->Vsa()->Is_special_vor(vobj->Entry_chi()),
+            ("invalid vobj"));
+    _hva->Set_ret_stmt_vor(sr, vobj->Top_of_stack());
+  }
+
   // add vor mu for vor based on rhs hor and rhs ulist
   MU_LIST *mu_list = Vsa()->Stmt_vor_mu(sr);
   if (mu_list) {
     MU_NODE     *mnode;
     MU_LIST_ITER mu_iter;
+    HOR_PTR_SET hor_set;
+    VO_PTR_SET vo_set;
     FOR_ALL_NODE (mnode, mu_iter, Init(Vsa()->Stmt_vor_mu(sr))) {
       CVOR *cvor = (CVOR*)mnode->OPND();
       VSYM_OBJ_REP *vor = cvor->first;
       HEAP_OBJ_REP *rhs_hor = vor->Hor();
       if (rhs_hor && !_hva->Vsa()->Is_special_hor(rhs_hor)) {
-        HOR_VO_LIST_ITER iter(rhs_hor);
-        VSYM_OBJ *fld_vo;
-        FOR_ALL_NODE(fld_vo, iter, Init()) {
-          // find current version
-          VSYM_OBJ_REP *fld_vor = fld_vo->Top_of_stack();
-          if (_hva->Visit_vsym_obj(fld_vor)) {
-            _hva->Append_stmt_vor_mu(cvor->second, sr, fld_vor);
-          }
-        }
-        HOR_LIST *ulist = rhs_hor->Ulist();
-        if (ulist) {
-          HEAP_OBJ_REP *cur_hor;
-          HOR_LIST_ITER hor_list_iter;
-          FOR_ALL_NODE(cur_hor, hor_list_iter, Init(ulist)) {
-            if (!_hva->Vsa()->Is_special_hor(cur_hor)) {
-              HOR_VO_LIST_ITER iter(cur_hor);
-              VSYM_OBJ *fld_vo;
-              FOR_ALL_NODE(fld_vo, iter, Init()) {
-                // find current version
-                VSYM_OBJ_REP *fld_vor = fld_vo->Top_of_stack();
-                if (_hva->Visit_vsym_obj(fld_vor)) {
-                  _hva->Append_stmt_vor_mu(cvor->second, sr, fld_vor);
-                }
-              }
-            }
-          }
-        }
+        Process_ret_stmt_mu(sr, cvor->second, rhs_hor, hor_set, vo_set);
       }
     }
   }
