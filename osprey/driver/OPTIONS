@@ -150,6 +150,7 @@
 -help:%s	save_name(&help_pattern,optargs); 	ALL	NONE	""
 	"print list of possible options that contain given string"
 %
+#if BUILD_MASTIFF
 % MASTIFF-OPT: "-show" --> "-sw"
 -sw	{show_flag = TRUE; }    ALL     GRP     self
 	"sw"
@@ -159,14 +160,16 @@
 	"swt"
 -sp     {show_progress = TRUE; }	ALL	be	self
 	"show progress in percent"
-%-show	{show_flag = TRUE; }	ALL	GRP	self
-%	"show phases as they are being invoked"
-%-show1	{show_flag = TRUE; }	ALL	NONE	""
-%	""
-%-show0	{show_flag = TRUE; execute_flag = FALSE;} ALL	NONE	""
-%	"show what phases would be called, but do not invoke anything"
-%-showt	{time_flag = TRUE; }	ALL	NONE	""
-%	"show time taken by each phase"
+#else
+-show	{show_flag = TRUE; }	ALL	GRP	self
+	"show phases as they are being invoked"
+-show1	{show_flag = TRUE; }	ALL	NONE	""
+	""
+-show0	{show_flag = TRUE; execute_flag = FALSE;} ALL	NONE	""
+	"show what phases would be called, but do not invoke anything"
+-showt	{time_flag = TRUE; }	ALL	NONE	""
+	"show time taken by each phase"
+#endif
 -Q 	{quiet_flag = FALSE; }	ALL	NONE	""
 	"suppress timing information (g++) "
 -version {show_version++; show_copyright = TRUE; execute_flag = FALSE;} ALL	NONE	""
@@ -300,13 +303,16 @@ I-include=%D  ;		FTN     ffe,PFA     "-include=%D"
 	""
 #endif
 % encourage people to replace -K with -keep
+#ifdef BUILD_MASTIFF
 % MASTIFF-OPT: "-keep" --> "-kp"
 -kp	keep_flag=TRUE;         ALL     ipap    self
 	"kp"
-%-keep	keep_flag=TRUE;		ALL	ipap	self
-%	"keep intermediate files"
-%-save-temps	keep_flag=TRUE;	ALL	NONE	""
-%	""
+#else
+-keep	keep_flag=TRUE;		ALL	ipap	self
+	"keep intermediate files"
+-save-temps	keep_flag=TRUE;	ALL	NONE	""
+	""
+#endif
 -pass-exit-codes	pass_exit_codes=TRUE;	ALL	NONE	""
 	"Return the highest error code encountered by any phase"
 % there are three shared modes:  non, dso, call; call-shared is the default.

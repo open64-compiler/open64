@@ -2144,8 +2144,11 @@ Process_Trace_Option ( char *option )
   INT32 phase;
 
   Tracing_Enabled = TRUE;
-
+#ifdef BUILD_MASTIFF
   while ( cp && *cp == 'x' ) {  // MASTIFF-OPT: "-tt:0xffff" --> "-xt:0xffff"
+#else
+  while ( cp && *cp == 't' ) {  // "-tt:0x????"
+#endif
     cp += 2;
 
     switch ( *(cp-1) ) {

@@ -290,7 +290,11 @@ add_special_options (void)
 		prepend_option_seen (flag);
 		prepend_option_seen (O_cpp_nonansi);
 		if (keep_flag) {
+#ifdef BUILD_MASTIFF
 			add_phase_for_option (O_kp, P_cppf90_fe); // MASTIFF-OPT: "-keep" --> "-kp"
+#else
+			add_phase_for_option (O_keep, P_cppf90_fe);
+#endif
 		}
 	}
 

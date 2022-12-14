@@ -4358,8 +4358,15 @@ save_ipl_commands (void)
     }
     
     FOREACH_OPTION_SEEN(i) {
-	if ( i == O_Unrecognized || i == O_sw ) // MASTIFF-OPT: "-show" --> "-sw"
+	if ( i == O_Unrecognized )
 	    continue;
+#ifdef BUILD_MASTIFF
+  if (i == O_sw) // MASTIFF-OPT: "-show" --> "-sw"
+	    continue; 
+#else
+  if (i == O_show)
+	    continue;
+#endif
 	if (option_matches_language (i, invoked_lang)) {
 	    FOREACH_IMPLIED_OPTION(iflag, i) {
 	   	 add_ipl_cmd_string (iflag);
