@@ -7051,59 +7051,67 @@ RBC_BASE::Eval__is_null_term_set(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
   MEM_POOL *spos_pool = rbc_ctx.Spos_pool();
   CODEREP *arg0 = stmt->Rhs()->Find_nth_arg(0 + Rbc_parm_ofst_adjust(dna));
   CODEREP *var = (CODEREP*)Eval__exp(rbc_ctx, arg0);
+  if (var == NULL) {
+    Rbc_eval_certainty()->push_back(REC_SKIP);
+    Is_Trace(Tracing(), (TFile, "RBC: Is_null_term_set(NULL) = %lld : skipped\n", ret));
+    return ret;
+  }
   UINT64 len = 0;
   CONTEXT_SWITCH context(dna);
   SRCPOS_HANDLE *srcpos_h = CXX_NEW(SRCPOS_HANDLE(var, call_stmt, dna, spos_pool, vsa), spos_pool);
-  if (var != NULL && Get_mem_size(vsa, var, len)) {
-    if (var->Kind() == CK_LDA) {
-      // const string is null terminated
-      ST *st = var->Lda_base_st();
-      if (st != NULL &&
-          ST_class(st) == CLASS_CONST &&
-          TCON_ty(ST_tcon_val(st)) == MTYPE_STR)
-        ret = TRUE;
+  if (var->Kind() == CK_LDA) {
+    // const string is null terminated
+    ST *st = var->Lda_base_st();
+    if (st != NULL &&
+        ST_class(st) == CLASS_CONST &&
+        TCON_ty(ST_tcon_val(st)) == MTYPE_STR)
+      ret = TRUE;
+  }
+  if (!ret) {
+    if (!Get_mem_size(vsa, var, len)) {
+      Rbc_eval_certainty()->push_back(REC_SKIP);
+      Is_Trace(Tracing(), (TFile, "RBC: Is_null_term_set(cr%d) = %lld : skipped\n", var->Coderep_id(), ret));
+      return ret;
     }
-    if (!ret) {
-      TY *ty = Get_cr_ty(vsa, var);
-      TYPE_ID mtype = MTYPE_UNKNOWN;
-      if (ty != NULL) {
-        if (TY_kind(*ty) == KIND_POINTER) {
-          TY_IDX ptr_ty = TY_pointed(*ty);
-          if (TY_kind(ptr_ty) == KIND_ARRAY) {
-            mtype = TY_mtype(TY_etype(ptr_ty));
-          }
-          else if (TY_kind(ptr_ty) == KIND_SCALAR) {
-            mtype = TY_mtype(ptr_ty);
-          }
-        } // end KIND_POINTER
-        else if (TY_kind(*ty) == KIND_ARRAY) {
-          mtype = TY_mtype(TY_etype(*ty));
-        } // end KIND_ARRAY
-        if (mtype == MTYPE_I1) {
-          // a[len-1] = '\0';
-          VSYM_FLD_REP last_vfr(FLD_K_ID, 0, len-1);
-          VSYM_OBJ_REP *vor = vsa->Find_vor_mu_vor(rbc_ctx.Stmt(), var, &last_vfr);
-          if (vor == NULL) {
-            // memset(a, 0, len)
-            VSYM_FLD_REP any_vfr(FLD_K_ANY, 0, 0);
-            vor = vsa->Find_vor_mu_vor(rbc_ctx.Stmt(), var, &any_vfr);
-          }
-          if (vor != NULL) {
-            STMTREP *defstmt = NULL;
-            if (vor->Attr() == ROR_DEF_BY_ISTORE ||
-                vor->Attr() == ROR_DEF_BY_COPY ||
-                vor->Attr() == ROR_DEF_BY_CHI)
-              defstmt = vor->Defstmt();
-            if (defstmt != NULL) {
-              srcpos_h->Append_data(defstmt, dna, PATHINFO_COPY);
-              if (defstmt->Opr() == OPR_STID ||
-                  defstmt->Opr() == OPR_MSTORE) {
-                CODEREP *rhs = defstmt->Rhs();
-                if (rhs != NULL &&
-                    rhs->Kind() == CK_CONST &&
-                    rhs->Const_val() == 0) {
-                  ret = TRUE;
-                }
+    TY *ty = Get_cr_ty(vsa, var);
+    TYPE_ID mtype = MTYPE_UNKNOWN;
+    if (ty != NULL) {
+      if (TY_kind(*ty) == KIND_POINTER) {
+        TY_IDX ptr_ty = TY_pointed(*ty);
+        if (TY_kind(ptr_ty) == KIND_ARRAY) {
+          mtype = TY_mtype(TY_etype(ptr_ty));
+        }
+        else if (TY_kind(ptr_ty) == KIND_SCALAR) {
+          mtype = TY_mtype(ptr_ty);
+        }
+      } // end KIND_POINTER
+      else if (TY_kind(*ty) == KIND_ARRAY) {
+        mtype = TY_mtype(TY_etype(*ty));
+      } // end KIND_ARRAY
+      if (mtype == MTYPE_I1) {
+        // a[len-1] = '\0';
+        VSYM_FLD_REP last_vfr(FLD_K_ID, 0, len-1);
+        VSYM_OBJ_REP *vor = vsa->Find_vor_mu_vor(rbc_ctx.Stmt(), var, &last_vfr);
+        if (vor == NULL) {
+          // memset(a, 0, len)
+          VSYM_FLD_REP any_vfr(FLD_K_ANY, 0, 0);
+          vor = vsa->Find_vor_mu_vor(rbc_ctx.Stmt(), var, &any_vfr);
+        }
+        if (vor != NULL) {
+          STMTREP *defstmt = NULL;
+          if (vor->Attr() == ROR_DEF_BY_ISTORE ||
+              vor->Attr() == ROR_DEF_BY_COPY ||
+              vor->Attr() == ROR_DEF_BY_CHI)
+            defstmt = vor->Defstmt();
+          if (defstmt != NULL) {
+            srcpos_h->Append_data(defstmt, dna, PATHINFO_COPY);
+            if (defstmt->Opr() == OPR_STID ||
+                defstmt->Opr() == OPR_MSTORE) {
+              CODEREP *rhs = defstmt->Rhs();
+              if (rhs != NULL &&
+                  rhs->Kind() == CK_CONST &&
+                  rhs->Const_val() == 0) {
+                ret = TRUE;
               }
             }
           }
@@ -7111,13 +7119,9 @@ RBC_BASE::Eval__is_null_term_set(RBC_CONTEXT &rbc_ctx, STMTREP *stmt)
       }
     }
   }
-  else {
-    Rbc_eval_certainty()->push_back(REC_SKIP);
-  }
   if (!ret)
     Plist_false()->push_back(srcpos_h);
-  Is_Trace(Tracing(), (TFile, "RBC: Is_null_term_set(cr%d) = %lld\n",
-                       var ? var->Coderep_id() : -1, ret));
+  Is_Trace(Tracing(), (TFile, "RBC: Is_null_term_set(cr%d) = %lld\n", var->Coderep_id(), ret));
   return ret;
 }
 
