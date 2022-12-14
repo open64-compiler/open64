@@ -100,16 +100,18 @@ typedef enum alias_intent {
   MOD_PARM_2   = 0x0004,  // modify third parameter
   MOD_PARM_3   = 0x0008,  // modify forth parameter
   MOD_PARM_4   = 0x0010,  // modify fifth parameter
-  MOD_PARM     = 0x001f,  // modify parameter
-  REF_PARM_0   = 0x0020,  // reference first prameter
-  REF_PARM_1   = 0x0040,  // reference second parameter
-  REF_PARM_2   = 0x0080,  // reference third parameter
-  REF_PARM_3   = 0x0100,  // reference forth parameter
-  REF_PARM_4   = 0x0200,  // reference fifth parameter
-  REF_PARM     = 0x03e0,  // reference parameter
-  ALIAS_PARM   = 0x03ff,  // alias with parameter
-  ALIAS_VSYM   = 0x0400,  // alias with default/return vsym
-  ALIAS_WOPT   = 0x0800,  // using wopt alias setting
+  MOD_VARARG   = 0x0020,  // modify vararg parameter
+  MOD_PARM     = 0x003f,  // modify parameter
+  REF_PARM_0   = 0x0040,  // reference first prameter
+  REF_PARM_1   = 0x0080,  // reference second parameter
+  REF_PARM_2   = 0x0100,  // reference third parameter
+  REF_PARM_3   = 0x0200,  // reference forth parameter
+  REF_PARM_4   = 0x0400,  // reference fifth parameter
+  REF_VARARG   = 0x0800,  // reference vararg parameter
+  REF_PARM     = 0x0fc0,  // reference parameter
+  ALIAS_PARM   = 0x0fff,  // alias with parameter
+  ALIAS_VSYM   = 0x1000,  // alias with default/return vsym
+  ALIAS_WOPT   = 0x2000,  // using wopt alias setting
 } ALIAS_INTENT;
 
 #define ALIAS_INTENT_PARM_MAX 5
@@ -117,19 +119,20 @@ typedef enum alias_intent {
 inline
 ALIAS_INTENT Get_parm_alias_intent(ALIAS_INTENT intent, INT32 idx)
 {
+  ALIAS_INTENT vararg_intent = (ALIAS_INTENT) (MOD_VARARG | REF_VARARG);
   switch (idx) {
     case 0:
-      return (ALIAS_INTENT) (intent & (MOD_PARM_0 | REF_PARM_0));
+      return (ALIAS_INTENT) (intent & (MOD_PARM_0 | REF_PARM_0 | vararg_intent));
     case 1:
-      return (ALIAS_INTENT) (intent & (MOD_PARM_1 | REF_PARM_1));
+      return (ALIAS_INTENT) (intent & (MOD_PARM_1 | REF_PARM_1 | vararg_intent));
     case 2:
-      return (ALIAS_INTENT) (intent & (MOD_PARM_2 | REF_PARM_2));
+      return (ALIAS_INTENT) (intent & (MOD_PARM_2 | REF_PARM_2 | vararg_intent));
     case 3:
-      return (ALIAS_INTENT) (intent & (MOD_PARM_3 | REF_PARM_3));
+      return (ALIAS_INTENT) (intent & (MOD_PARM_3 | REF_PARM_3 | vararg_intent));
     case 4:
-      return (ALIAS_INTENT) (intent & (MOD_PARM_4 | REF_PARM_4));
+      return (ALIAS_INTENT) (intent & (MOD_PARM_4 | REF_PARM_4 | vararg_intent));
     default:
-      return NO_ALIAS;
+      return (ALIAS_INTENT) (intent & vararg_intent);
   }
 }
 

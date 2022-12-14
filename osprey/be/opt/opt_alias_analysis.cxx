@@ -2757,8 +2757,7 @@ OPT_STAB::Generate_call_mu_chi_by_value(WN *wn, ST *call_st,
   READ_WRITE aliased_how[ALIAS_INTENT_PARM_MAX] = { NO_READ_NO_WRITE };
   INT aliased_pt_num = 0;
   if (intent_alias & ALIAS_PARM) {
-    INT max_parm = num_parms > ALIAS_INTENT_PARM_MAX ? ALIAS_INTENT_PARM_MAX : num_parms;
-    for (INT i = 0; i < max_parm; ++i) {
+    for (INT i = 0; i < num_parms; ++i) {
       ALIAS_INTENT parm_intent = Get_parm_alias_intent(intent_alias, i);
       if (parm_intent != NO_ALIAS) {
         WN *parm = WN_kid0(WN_actual(wn, i));
