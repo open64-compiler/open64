@@ -114,8 +114,6 @@ typedef enum alias_intent {
   ALIAS_WOPT   = 0x2000,  // using wopt alias setting
 } ALIAS_INTENT;
 
-#define ALIAS_INTENT_PARM_MAX 5
-
 inline
 ALIAS_INTENT Get_parm_alias_intent(ALIAS_INTENT intent, INT32 idx)
 {

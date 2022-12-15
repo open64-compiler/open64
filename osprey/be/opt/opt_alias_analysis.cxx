@@ -2753,8 +2753,10 @@ OPT_STAB::Generate_call_mu_chi_by_value(WN *wn, ST *call_st,
   }
 #endif
 
-  POINTS_TO *aliased_pt[ALIAS_INTENT_PARM_MAX] = { NULL };
-  READ_WRITE aliased_how[ALIAS_INTENT_PARM_MAX] = { NO_READ_NO_WRITE };
+  POINTS_TO *aliased_pt[num_parms];
+  memset(aliased_pt, 0, sizeof(POINTS_TO *) * num_parms);
+  READ_WRITE aliased_how[num_parms];
+  memset(aliased_how, 0, sizeof(READ_WRITE) * num_parms);
   INT aliased_pt_num = 0;
   if (intent_alias & ALIAS_PARM) {
     for (INT i = 0; i < num_parms; ++i) {
