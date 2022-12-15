@@ -438,6 +438,7 @@ static inline uint64_t RoundDown(uint64_t offset, uint8_t align) {
   return RoundDownConst(offset, align);
 }
 
+typedef const std::string     CONSTSTR;
 typedef llvm::Type            LVTY;
 typedef std::vector<LVTY*>    LVTYVEC;
 typedef std::vector<TY_IDX>   TYIDXVEC;
@@ -521,9 +522,9 @@ W2LBB::Print(FILE *fp)
 // =============================================================================
 class AGGMAP {
 private:
-  char   *_name;   // new param name, %s%s%d, orig_name, SEPARATOR, fld_offset
-  INT32   _regno;  // the input parameter preg number
-  TY_IDX  _type;   // the type of the new parameter
+  std::string _name;   // new param name, %s%s%d, orig_name, SEPARATOR, fld_offset
+  INT32       _regno;  // the input parameter preg number
+  TY_IDX      _type;   // the type of the new parameter
 
   AGGMAP(void);                      // REQUIRED UNDEFINED UNWANTED methods
   //AGGMAP(const AGGMAP &);          // Needed by std::vector::push_back
@@ -531,7 +532,7 @@ private:
 
   void    Print(FILE *fp) {
     fprintf(fp, "Aggmap:{name = %s, regno = %d, type = %d}",
-            _name, _regno, _type);
+            _name.c_str(), _regno, _type);
   }
 
 public:
@@ -540,10 +541,10 @@ public:
   }
   ~AGGMAP(void) { }
 
-  char   *Name(void)      { return _name; }
-  INT32   Regno(void)     { return _regno;}
-  TY_IDX  Type(void)      { return _type; }
-  void    Type(TY_IDX t)  { _type = t;    }
+  INT32     Regno(void)     { return _regno;}
+  TY_IDX    Type(void)      { return _type; }
+  void      Type(TY_IDX t)  { _type = t;    }
+  CONSTSTR &Name(void)      { return _name; }
 };
 
 class W2LFILE {
@@ -896,11 +897,11 @@ private:
   LVCONSTVEC   _glb_init_registry;  // the vector of global ctors' registry
 
   // constant strings
-  const std::string PARM_PREG = "_w2ll_parm_preg_";          // prefix for formal parameter
-  const std::string GLOBAL_CTORS_NAME = "llvm.global_ctors"; // llvm global ctors array
-  const std::string CTOR_SECTION = ".ctor";                  // .ctor section name
-  const std::string GLB_I_PREFIX = "_GLOBAL__I_";            // prefix of global init function
-  const std::string GLB_SUB_I_PREFIX = "_GLOBAL__sub_I_";    // prefix of global sub init function
+  CONSTSTR PARM_PREG = "_w2ll_parm_preg_";          // prefix for formal parameter
+  CONSTSTR GLOBAL_CTORS_NAME = "llvm.global_ctors"; // llvm global ctors array
+  CONSTSTR CTOR_SECTION = ".ctor";                  // .ctor section name
+  CONSTSTR GLB_I_PREFIX = "_GLOBAL__I_";            // prefix of global init function
+  CONSTSTR GLB_SUB_I_PREFIX = "_GLOBAL__sub_I_";    // prefix of global sub init function
 
 private:
   WHIRL2llvm(void);                          // REQUIRED UNDEFINED UNWANTED methods
@@ -910,7 +911,7 @@ private:
   void        Whirl_level(WHIRLEVEL l) { _whirl_level = l;   }
   void        Set_whirl_level(const char *in);
   AGMVEC     &Parm_name(void)       { return _parm_name;     }
-  char       *Parm_name(INT idx)    { Is_True(idx < _parm_name.size(),
+  CONSTSTR   &Parm_name(INT idx)    { Is_True(idx < _parm_name.size(),
                                               ("Parm_name access out of bound"));
                                       return _parm_name[idx].Name(); }
   BOOL        Mload_ty(TY_IDX ty)   { return MTYPE_is_m(TY_mtype(Ty_Table[ty])); }
@@ -1017,45 +1018,32 @@ private:
     return name_w_modifier;
   }
 
-  BOOL        Is_name_w_modifier(char *str1, char *str2, INT32 cmp_len) {
+  BOOL        Is_name_w_modifier(CONSTSTR &str1, CONSTSTR &str2, INT32 cmp_len) {
     if (str1[cmp_len] != FIELD_SEPARATOR &&
         str2[cmp_len] != FIELD_SEPARATOR)
       return FALSE;
-    return strncmp(str1, str2, cmp_len) == 0;
+    return str1 == str2;
   }
 
-  char       *Adjust_parm_name(char *name, INT32 modifier) {
+  CONSTSTR    Adjust_parm_name(char *name, INT32 modifier) {
     char *altname = Syn_name_w_modifier(name, modifier);
     for (AGMVEC::iterator it = Parm_name().begin();
          it != Parm_name().end(); ++it) {
-      if (strcmp((*it).Name(), altname) == 0) {
+      if ((*it).Name() == altname) {
         free(altname);
         return (*it).Name();
       }
     }
     free(altname);
-    return name;
+    return std::string(name);
   }
 
-  char       *Find_parm_name(const char *name, INT32 reg) {
-    if (Parm_name().empty())
-      return (char*)name;
-    for (AGMVEC::iterator it = Parm_name().begin();
-         it != Parm_name().end(); ++it) {
-      if (strncmp((*it).Name(), name, strlen(name)) == 0 &&
-          (*it).Regno() == reg) {
-        return (*it).Name();
-      }
-    }
-    Is_True(FALSE, ("Find_parm_name cannot find %s with PREG%d", name, reg));
-  }
-
-  TYPE_ID     Find_parm_type(const char *name, BOOL *on_stack) {
+  TYPE_ID     Find_parm_type(CONSTSTR &name, BOOL *on_stack) {
     if (Parm_name().empty())
       return MTYPE_UNKNOWN;
     for (AGMVEC::iterator it = Parm_name().begin();
          it != Parm_name().end(); ++it) {
-      if (strcmp((*it).Name(), name) == 0) {
+      if ((*it).Name() == name) {
         *on_stack = ((*it).Regno() == ONSTACK)? TRUE : FALSE;
         return (*it).Type();
       }
@@ -1327,14 +1315,14 @@ public:
     INT parm_name_idx = 0;       // for Parm_name()
     WN *idname_wn = WN_kid(Cur_func(), argcount);
     while (WN_opcode(idname_wn) == OPC_IDNAME) {
-      char  *idname = ST_name(WN_st(idname_wn));
-      char  *pname = (use_parm_name)?Parm_name(parm_name_idx):idname;
+      std::string idname(ST_name(WN_st(idname_wn)));
+      CONSTSTR &pname = (use_parm_name)?Parm_name(parm_name_idx):idname;
       Is_True(curargs != lvfunc->arg_end(), ("Set_parm_name access lvfunc's arg_end"));
       LVFUNC::arg_iterator x = curargs++;
       x->setName(pname);
       Is_Trace(Tracing_enabled,
                (TFile, "Set_parm_name(%d): %s with lvtypeID:%d\n",
-                parm_name_idx, pname, x->getType()->getTypeID()));
+                parm_name_idx, pname.c_str(), x->getType()->getTypeID()));
       parm_name_idx++;
 
       TY_IDX formal_ty = WN_type(idname_wn);
@@ -1342,12 +1330,12 @@ public:
         // may need to set additional parm name pattern matches
         // how it is saved in create_mload_formal()
         while (parm_name_idx < Parm_name().size() &&
-               Is_name_w_modifier(idname, Parm_name(parm_name_idx), strlen(idname))) {
+               Is_name_w_modifier(idname, Parm_name(parm_name_idx), idname.length())) {
           Is_True(curargs != lvfunc->arg_end(), ("Set_parm_name access lvfunc's arg_end"));
           curargs->setName(Parm_name(parm_name_idx));
           Is_Trace(Tracing_enabled,
                    (TFile, "Set_parm_name(%d): %s with type:%d\n",
-                    parm_name_idx, Parm_name(parm_name_idx), curargs->getType()->getTypeID()));
+                    parm_name_idx, Parm_name(parm_name_idx).c_str(), curargs->getType()->getTypeID()));
           curargs++;
           parm_name_idx++;
         }
@@ -2216,7 +2204,7 @@ public:
     return _glb_ctors;
   }
 
-  LVCONST *Get_glb_init_priority(const std::string &func_name) {
+  LVCONST *Get_glb_init_priority(CONSTSTR &func_name) {
     llvm::StringRef name(func_name);
     LVTY *ty = LVTY::getInt32Ty(Context());
     if (name.startswith(GLB_I_PREFIX)) {
@@ -4015,9 +4003,9 @@ WHIRL2llvm::Save_to_inparm(WN *wn, const char *varname, LVVAL *rhs, INT parmidx)
     }
     arg_addr = Create_locvar(WN_desc(wn), tyidx, nullptr, reg_name.c_str()).second;
 #else
-    const std::string parmname = Cur_lvfunc()->getArg(parmidx)->getName().str();
+    CONSTSTR parmname = Cur_lvfunc()->getArg(parmidx)->getName().str();
     BOOL  on_stack = FALSE;
-    TY_IDX parmtype = Find_parm_type(parmname.c_str(), &on_stack);
+    TY_IDX parmtype = Find_parm_type(parmname, &on_stack);
     if (parmtype == MTYPE_UNKNOWN) {
       TY_IDX tyidx  = WN_ty(wn);
       // check if this PREG is used to store a field of struct
@@ -4113,9 +4101,9 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
     }  // end of GLOBAL_SYMTAB
     case SCLASS_FORMAL: {
       LVALC *arg_addr = nullptr;
-      varname = Adjust_parm_name(varname, offset);
+      CONSTSTR var = Adjust_parm_name(varname, offset);
       BOOL on_stack = FALSE;
-      TY_IDX parmtype = Find_parm_type(varname, &on_stack);
+      TY_IDX parmtype = Find_parm_type(var, &on_stack);
 
       std::string reg_name = std::string(varname) + ".addr";
       switch (act) {
@@ -5267,7 +5255,7 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
     LVTY *cond_ty = cond->getType();
     FmtAssert(cond_ty->isIntegerTy(), ("EXPR2llvm: cond should be integer type"));
     if (!cond_ty->isIntegerTy(1)) {
-      cond = Lvbuilder()->CreateICmpNE(cond,
+      cond = Lvbuilder()->CreateICmpNE(cond, 
         Lvbuilder()->getIntN(cond_ty->getIntegerBitWidth(), 0));
     }
 
