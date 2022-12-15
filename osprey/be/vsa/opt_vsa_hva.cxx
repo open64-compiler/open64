@@ -3480,9 +3480,16 @@ private:
   // rename vor on cr
   void Process_vor_on_cr(STMTREP *sr, CODEREP *cr, VSYM_OBJ_REP *vor);
 
+  // append vor mu on return stmt where vor is based on hor
+  void Process_ret_mu_hor(STMTREP *sr, CODEREP *cr, HEAP_OBJ_REP *hor,
+                          HOR_PTR_SET &hor_set, VOR_PTR_SET &vor_set);
+
   // append vor mu on return stmt
-  void Process_ret_stmt_mu(STMTREP *sr, CODEREP *cr, HEAP_OBJ_REP *hor,
-                           HOR_PTR_SET &hor_set, VO_PTR_SET &vo_set);
+  void Process_ret_mu_vor(STMTREP *sr, CODEREP *cr, VSYM_OBJ_REP *vor,
+                          HOR_PTR_SET &hor_set, VOR_PTR_SET &vor_set);
+
+  // post-process return stmt
+  void Process_rets();
 
 public:
   // Enter_bb: before enter the bb, rename the vor phi result
@@ -4113,14 +4120,13 @@ HVA_VO_RENAMING::Process_sr<OPR_INTRINSIC_CALL, FALSE>(STMTREP* sr)
 
 // Check hor and append vor mu on return stmt which is based on the hor
 void
-HVA_VO_RENAMING::Process_ret_stmt_mu(STMTREP *sr, CODEREP *cr, HEAP_OBJ_REP *hor,
-                                     HOR_PTR_SET &hor_set, VO_PTR_SET &vo_set)
+HVA_VO_RENAMING::Process_ret_mu_hor(STMTREP *sr, CODEREP *cr, HEAP_OBJ_REP *hor,
+                                    HOR_PTR_SET &hor_set, VOR_PTR_SET &vor_set)
 {
   Is_True(hor && !_hva->Vsa()->Is_special_hor(hor),
           ("invalid hor"));
-
-  if (hor_set.find(hor) != hor_set.end())
-    return;
+  Is_True(hor_set.find(hor) == hor_set.end(),
+          ("hor already visited"));
   hor_set.insert(hor);
 
   HOR_VO_LIST_ITER iter(hor);
@@ -4129,21 +4135,18 @@ HVA_VO_RENAMING::Process_ret_stmt_mu(STMTREP *sr, CODEREP *cr, HEAP_OBJ_REP *hor
     Is_True(fld_vo && !_hva->Vsa()->Is_special_vor(fld_vo->Entry_chi()),
             ("invalid field vo"));
 
-    if (vo_set.find(fld_vo) != vo_set.end())
-      continue;
-    vo_set.insert(fld_vo);
-
     // get current version from ret stmt vor cache
     VSYM_OBJ_REP *fld_vor = _hva->Get_ret_stmt_vor(sr, fld_vo);
-    if (fld_vor) {
-      _hva->Append_stmt_vor_mu(cr, sr, fld_vor);
-    }
-    HEAP_OBJ_REP *fld_hor = fld_vor->Hor();
-    if (fld_hor && !_hva->Vsa()->Is_special_hor(fld_hor)) {
-      // add vor mu based on the fld_hor
-      Process_ret_stmt_mu(sr, cr, fld_hor, hor_set, vo_set);
-    }
+
+    if (!fld_vor)
+      continue;
+    if (vor_set.find(fld_vor) != vor_set.end())
+      continue;
+
+    _hva->Append_stmt_vor_mu(cr, sr, fld_vor);
+    Process_ret_mu_vor(sr, cr, fld_vor, hor_set, vor_set);
   }
+
   HOR_LIST *ulist = hor->Ulist();
   if (ulist) {
     HEAP_OBJ_REP *cur_hor;
@@ -4160,22 +4163,58 @@ HVA_VO_RENAMING::Process_ret_stmt_mu(STMTREP *sr, CODEREP *cr, HEAP_OBJ_REP *hor
                   !_hva->Vsa()->Is_special_vor(fld_vo->Entry_chi()),
                   ("invalid field vo"));
 
-          if (vo_set.find(fld_vo) != vo_set.end())
-            continue;
-          vo_set.insert(fld_vo);
-
           // get current version from ret stmt vor cache
           VSYM_OBJ_REP *fld_vor = _hva->Get_ret_stmt_vor(sr, fld_vo);
-          if (fld_vor) {
-            _hva->Append_stmt_vor_mu(cr, sr, fld_vor);
-          }
-          HEAP_OBJ_REP *fld_hor = fld_vor->Hor();
-          if (fld_hor && !_hva->Vsa()->Is_special_hor(fld_hor)) {
-            // add vor mu based on the fld_hor
-            Process_ret_stmt_mu(sr, cr, fld_hor, hor_set, vo_set);
-          }
+
+          if (!fld_vor)
+            continue;
+          if (vor_set.find(fld_vor) != vor_set.end())
+            continue;
+
+          _hva->Append_stmt_vor_mu(cr, sr, fld_vor);
+          Process_ret_mu_vor(sr, cr, fld_vor, hor_set, vor_set);
         }
       }
+    }
+  }
+}
+
+// Check vor and append vor mu on return stmt
+void
+HVA_VO_RENAMING::Process_ret_mu_vor(STMTREP *sr, CODEREP *cr, VSYM_OBJ_REP *vor,
+                                    HOR_PTR_SET &hor_set, VOR_PTR_SET &vor_set)
+{
+  Is_True(vor && !_hva->Vsa()->Is_special_vor(vor),
+          ("invalid vor"));
+  Is_True(vor_set.find(vor) == vor_set.end(),
+          ("vor already visited"));
+  vor_set.insert(vor);
+
+  if (vor->Attr() == ROR_DEF_BY_PHI) {
+    // rhs hor/ulist may be missing for VOR def by phi like:
+    // if (...)
+    //   p->a = malloc(); // vo2v1 base(ho2v0) rhs(ho3v1)
+    // else
+    //   p->a = &blah;    // vo2v2 base(ho2v0) rhs(ho4v1)
+    // vo2v3 = phi(vo2v1, vo2v2)
+    // return p;
+    PHI_NODE *phi = vor->Phi_def();
+    Is_True(phi != NULL, ("wrong def by phi"));
+    for (INT i = 0; i < phi->Size(); ++i) {
+      VSYM_OBJ_REP *opnd = (VSYM_OBJ_REP*)phi->OPND(i);
+      Is_True(opnd && opnd->Vsym_obj() == vor->Vsym_obj(),
+              ("invalid vor opnd"));
+
+      if (vor_set.find(opnd) == vor_set.end()) {
+        Process_ret_mu_vor(sr, cr, opnd, hor_set, vor_set);
+      }
+    }
+  }
+
+  HEAP_OBJ_REP *rhs_hor = vor->Hor();
+  if (rhs_hor && !_hva->Vsa()->Is_special_hor(rhs_hor)) {
+    if (hor_set.find(rhs_hor) == hor_set.end()) {
+      Process_ret_mu_hor(sr, cr, rhs_hor, hor_set, vor_set);
     }
   }
 }
@@ -4198,20 +4237,31 @@ HVA_VO_RENAMING::Process_sr<OPR_RETURN, TRUE>(STMTREP* sr)
             ("invalid vobj"));
     _hva->Set_ret_stmt_vor(sr, vobj->Top_of_stack());
   }
+}
 
-  // add vor mu for vor based on rhs hor and rhs ulist
-  MU_LIST *mu_list = Vsa()->Stmt_vor_mu(sr);
-  if (mu_list) {
-    MU_NODE     *mnode;
-    MU_LIST_ITER mu_iter;
-    HOR_PTR_SET hor_set;
-    VO_PTR_SET vo_set;
-    FOR_ALL_NODE (mnode, mu_iter, Init(Vsa()->Stmt_vor_mu(sr))) {
-      CVOR *cvor = (CVOR*)mnode->OPND();
-      VSYM_OBJ_REP *vor = cvor->first;
-      HEAP_OBJ_REP *rhs_hor = vor->Hor();
-      if (rhs_hor && !_hva->Vsa()->Is_special_hor(rhs_hor)) {
-        Process_ret_stmt_mu(sr, cvor->second, rhs_hor, hor_set, vo_set);
+// post-process return stmt to append all vor used by return
+void
+HVA_VO_RENAMING::Process_rets()
+{
+  STMTR_VECTOR::const_iterator it;
+  for (it = Dna()->Rets_list()->begin(); it != Dna()->Rets_list()->end(); it++) {
+    STMTREP *sr = *it;
+    Is_True(sr && sr->Opr() == OPR_RETURN, ("not return stmt"));
+    // add vor mu for vor based on rhs hor and rhs ulist
+    MU_LIST *mu_list = Vsa()->Stmt_vor_mu(sr);
+    if (mu_list) {
+      MU_NODE     *mnode;
+      MU_LIST_ITER mu_iter;
+      HOR_PTR_SET hor_set;
+      VOR_PTR_SET vor_set;
+      FOR_ALL_NODE (mnode, mu_iter, Init(Vsa()->Stmt_vor_mu(sr))) {
+        CVOR *cvor = (CVOR*)mnode->OPND();
+        VSYM_OBJ_REP *vor = cvor->first;
+        Is_True(vor && !_hva->Vsa()->Is_special_vor(vor),
+                ("invalid vor"));
+        if (vor_set.find(vor) == vor_set.end()) {
+          Process_ret_mu_vor(sr, cvor->second, vor, hor_set, vor_set);
+        }
       }
     }
   }
@@ -4239,6 +4289,9 @@ HVA_VO_RENAMING::Initialize() {
 
 void
 HVA_VO_RENAMING::Finalize() {
+  // postpone return processing, waiting for all vors have been renamed in current iteration
+  Process_rets();
+
   // verify renaming stack
 #ifdef Is_True_On
   Vsa()->Verify_heap_obj_stack();
