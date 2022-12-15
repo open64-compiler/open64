@@ -565,6 +565,25 @@ HEAP_CHECKER::Add_vor_escaped_hos(VSYM_OBJ_REP *vor, hash_map<IDTYPE, BOOL> &esc
     {
       STMTREP *def_sr = vor->Stmt_def();
       if (def_sr) {
+        // check lhs vor and it's hor
+        VSYM_OBJ_REP *lhs_vor = def_sr->Lhs() ? ctx->Vsa()->Cr_2_vor(def_sr->Lhs())
+                                              : NULL;
+        HOR_LIST *lhs_base_ulist;
+        if (lhs_vor && lhs_vor->Hor() &&
+            def_sr->Bb()->Dominates(ctx->Root_sr()->Bb()) &&
+            (lhs_base_ulist = lhs_vor->Vsym_obj()->Base_hor()->Ulist()) != NULL &&
+            lhs_base_ulist->Find(lhs_vor->Hor()) != NULL) {
+          // rhs hor is in vor base hor's ulist and vor def dominates return stmt
+          Is_Trace(ctx->Tracing(),
+                   (TFile, "  [%s]: add escape by return vo%dv%d istore ulist lhs hor:",
+                     Chkname(), lhs_vor->Vsym_obj()->Id(), lhs_vor->Version()));
+          Is_Trace_cmdn(ctx->Tracing(), lhs_vor->Hor()->Print_detail(TFile), TFile);
+          escaped_hos[lhs_vor->Hor()->Heap_obj()->Id()] = FALSE;
+        }
+
+        // check aliased vor
+        Is_True(lhs_vor == NULL || lhs_vor->Vsym_obj() != vor->Vsym_obj(),
+                ("lhs vor and chi vor should be different"));
         VSYM_OBJ_REP *vor_opnd = ctx->Vsa()->Find_stmt_cur_vor(def_sr, vor->Vsym_obj());
         if (vor_opnd) {
           if (vor_opnd->Hor()) {
