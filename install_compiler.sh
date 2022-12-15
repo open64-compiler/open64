@@ -203,7 +203,8 @@ INSTALL_XCALCC () {
 
     INSTALL_EXEC_SUB ${AREA}/driver/xcalcc  ${BIN_DIR}/xcalcc
     INSTALL_EXEC_SUB ${AREA}/driver/xcalc++ ${BIN_DIR}/xcalc++
-    INSTALL_EXEC_SUB ${AREA}/ir_tools/w2ll ${PHASEPATH}/w2ll
+    INSTALL_EXEC_SUB ${AREA}/ir_tools/w2ll  ${PHASEPATH}/w2ll
+    INSTALL_EXEC_SUB ${CLANG_HOME}/bin/llc  ${PHASEPATH}/llc
 }
 
 # install the driver
