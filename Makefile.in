@@ -356,7 +356,7 @@ $(NATIVE_BUILD_DIR)/orc_intel/orc_intel.so orc_intel.so: cg.so
 $(NATIVE_BUILD_DIR)/targ_info/itanium.so itanium.so: targ_info
 endif
 
-$(NATIVE_BUILD_DIR)/ir_tools/ir_b2a ir_b2a: libcomutil libjson
+$(NATIVE_BUILD_DIR)/ir_tools/ir_b2a ir_b2a: be libcomutil libjson
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/ir_tools
 
 $(NATIVE_BUILD_DIR)/crayf90/sgi/mfef95 mfef95: libcomutil libcif arith

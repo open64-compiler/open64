@@ -18,6 +18,9 @@ include $(COMMONDEFS)
 
 
 RBC_CC = $(COMPILER_TARG_DIR)/driver/driver
+# make sure rules been re-complied if IR layout changes
+RBC_IR_DEP = $(BUILD_TOT)/include/sys/elf_whirl.h $(COMPILER_TARG_DIR)/ir_tools/ir_b2a
+
 JFE = $(COMPILER_TARG_DIR)/jfe/mapfej
 RBC_OPTS = -run-build=$(TOP_BUILDDIR) -INLINE:=off $(MKDEPOPT) -I. -Ww,-RBC
 RBC_JAVA_OPTS = "-run-build=$(TOP_BUILDDIR)"
@@ -130,13 +133,13 @@ VPATH = $(CERTC_DIR) $(CXX_INTRN_DIR) $(JNI_DIR) $(XCBR_DIR) $(MTR_DIR) $(INTENT
 
 CURRENT_DIR=$(BUILD_AREA)/../targdir_lib/librbc
 
-%32.o : %.cxx $(BUILD_AREA)/include/rbc_base.h
+%32.o : %.cxx $(BUILD_AREA)/include/rbc_base.h $(RBC_IR_DEP)
 	$(RBC_CC) -I$(BUILD_BASE) $(RBC_OPTS) -m32 -xfa -c -o $@ $<
 
-%64.o : %.cxx $(BUILD_AREA)/include/rbc_base.h
+%64.o : %.cxx $(BUILD_AREA)/include/rbc_base.h $(RBC_IR_DEP)
 	$(RBC_CC) -I$(BUILD_BASE) $(RBC_OPTS) -m64 -xfa -c -o $@ $<
 
-%.o : %.cxx $(BUILD_AREA)/include/rbc_base.h
+%.o : %.cxx $(BUILD_AREA)/include/rbc_base.h $(RBC_IR_DEP)
 	$(RBC_CC) -I$(BUILD_BASE) $(RBC_OPTS) -m64 -xfa -c -o $@ $<
 
 include $(COMMONRULES)
@@ -170,7 +173,7 @@ $(CERTJ_JAR): $(RBC_ENGINE_CLS) build_every_time
 	$(BUILD_TOT)/be/rbc/certj/gradlew -p $(BUILD_TOT)/be/rbc/certj -PbuildDir=$(CURRENT_DIR)/libcertj -PjavaBuildType=-g -PRBC_CC=$(RBC_CC) -PRBC_JAVA_OPTS=$(RBC_JAVA_OPTS) jar --project-cache-dir $(CURRENT_DIR)/libcertj/.gradle
 
 # rules for certj
-$(CERTJ_OBJS): $(CERTJ_JAR)
+$(CERTJ_OBJS): $(CERTJ_JAR) $(RBC_IR_DEP)
 	$(RBC_CC) $(RBC_OPTS) -m64 -xfa -c -INLINE:none -Wf,-RBC=true -Wf,-noSootOutput=true -Wf,-cp=$(CURRENT_DIR)/libcertj -o $@ $<
 
 $(RULE_EX_JAR): $(RBC_ENGINE_CLS) build_every_time
@@ -179,7 +182,7 @@ $(RULE_EX_JAR): $(RBC_ENGINE_CLS) build_every_time
 	cd librulex; ln -s -f ../io .
 	$(BUILD_TOT)/be/rbc/rule_example/certj/gradlew -p $(BUILD_TOT)/be/rbc/rule_example/certj -PbuildDir=$(CURRENT_DIR)/librulex -PjavaBuildType=-g -PRBC_CC=$(RBC_CC) -PRBC_JAVA_OPTS=$(RBC_JAVA_OPTS) jar --project-cache-dir $(CURRENT_DIR)/librulex/.gradle
 
-$(RULE_EX_OBJS): $(RULE_EX_JAR)
+$(RULE_EX_OBJS): $(RULE_EX_JAR) $(RBC_IR_DEP)
 	$(RBC_CC) $(RBC_OPTS) -m64 -xfa -c -INLINE:none -Wf,-RBC=true -Wf,-noSootOutput=true -Wf,-cp=$(CURRENT_DIR)/librulex -o $@ $<
 
 # rules for intent-table

@@ -228,7 +228,7 @@ libwffi.so: $(WFFI_LIB_OBJS)
 whirl_ffi_gen: $(OBJECTS) whirl_ffi_gen.o
 	$(link.c++f) -o whirl_ffi_gen whirl_ffi_gen.o $(OBJECTS) $(LDFLAGS)
 
-whirl_ffi_dummy.o: whirl_ffi_dummy.cxx
+whirl_ffi_dummy.o: whirl_ffi_dummy.cxx  $(COMPILER_TARG_DIR)/ir_tools/ir_b2a
 	$(WRAPPER_CC) $(WRAPPER_OPTS) -sw -kp -c $(BUILD_BASE)/whirl_ffi_dummy.cxx
 	$(COMPILER_TARG_DIR)/ir_tools/ir_b2a -st whirl_ffi_dummy.o >whirl_ffi_dummy.o.dump
 

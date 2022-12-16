@@ -973,7 +973,7 @@ endif
 libbe.a : $(BE_C_OBJS) $(BE_CXX_OBJS)
 	$(ar) cru $@ $^
 
-$(LD_PLUGIN_TARGET) : $(LD_PLUGIN_OBJS)
+$(LD_PLUGIN_TARGET) : $(LD_PLUGIN_OBJS) $(LD_PLUGIN_DSO_LIBS)
 	$(call submake,$(BUILD_AREA)/libelf)
 	$(link.c++f) $(LD_PLUGIN_DSO_OPTS) $(LD_PLUGIN_OBJS) \
 		-o $@ $(LD_PLUGIN_DSO_LIBS)
