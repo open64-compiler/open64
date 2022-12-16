@@ -574,11 +574,11 @@ fi
 
 if test "${BUILD_TARGET}" = "X8664" || test "${BUILD_TARGET}" = "IA32"; then
   #LIBLIST="libopen64rt libacml_mv $LIBLIST libinstr2"
-  LIBLIST="libopen64rt libacml_mv $LIBLIST" 
+  # remove libacml_mv as not compilable any more
+  LIBLIST="libopen64rt $LIBLIST"
   AC_CONFIG_FILES([
     osprey/targdir_lib/libopen64rt/Makefile
     osprey/targdir_lib/libinstr2/Makefile
-    osprey/targdir_lib/libacml_mv/Makefile
   ])
 fi
 if test "${BUILD_TARGET}" = "IA64" ; then

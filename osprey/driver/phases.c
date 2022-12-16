@@ -2329,9 +2329,13 @@ add_final_ld_args (string_list_t *args, phases_t ld_phase)
 		add_string(args, "-lmv");
 	//	add_string(args, "-lm" PSC_NAME_PREFIX);
 		add_string(args, "-lm");
+#if 0
+// libacml_mv is not compilable as matherr is no longer
+// supported after glibc 2.27
 #ifdef TARG_X8664
 		if (abi != ABI_N32)
                     add_library(args, "acml_mv");
+#endif
 #endif
 		add_library(args, "mv");
 	//	add_library(args, "m" PSC_NAME_PREFIX);
@@ -2411,7 +2415,11 @@ add_final_ld_args (string_list_t *args, phases_t ld_phase)
 		 * however adding two instances of -lm only removes one.
 		 */
                 if (invoked_lang == L_CC)
+#if 0
+		// libacml_mv is not compilable as matherr is no longer
+		// supported after glibc 2.27
 		add_library(args, "acml_mv");
+#endif
 		  add_library(args, "m");
               }
 #endif

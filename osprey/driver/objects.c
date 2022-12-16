@@ -402,17 +402,26 @@ add_object (int flag, char *arg)
 #ifndef BUILD_MASTIFF // do not add -lmv for MASTIFF
 			/* add -lmv -lmblah */		
 			if (xpg_flag && invoked_lang == L_f77) {
+#if 0
+// libacml_mv is not compilable as matherr is no longer
+// supported after glibc 2.27
 #ifdef TARG_X8664
 				if (abi != ABI_N32)
 					add_library(objects, "acml_mv");
+#endif
 #endif
 				add_library(lib_objects, "mv");
 				add_library(lib_objects, "m");
 			} else {
+#if 0
+// libacml_mv is not compilable as matherr is no longer
+// supported after glibc 2.27
 #ifdef TARG_X8664
 				if (abi != ABI_N32)
 					add_library(objects, "acml_mv");
 #endif
+#endif
+
 #if !defined(TARG_SL) && !defined(TARG_PPC32)   
 				add_library(objects, "mv");
 #endif
@@ -420,9 +429,13 @@ add_object (int flag, char *arg)
 			}
 #if !defined(TARG_SL) && !defined(TARG_PPC32)
 			if (invoked_lang == L_CC) {
+#if 0
+// libacml_mv is not compilable as matherr is no longer
+// supported after glibc 2.27
 #ifdef TARG_X8664
 			    if (abi != ABI_N32)
 				add_library(objects, "acml_mv");
+#endif
 #endif
 			    add_library(cxx_prelinker_objects, "mv");
 			    add_library(cxx_prelinker_objects, "m");
