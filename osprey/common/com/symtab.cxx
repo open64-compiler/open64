@@ -2613,6 +2613,7 @@ TY::Print (FILE *f) const
         }
       } 
     }
+    fprintf(f, ", Flags_ext:0x%x", flags_ext);
     fprintf (f, ")");
 
     fprintf (f, " size %lld %s: ",

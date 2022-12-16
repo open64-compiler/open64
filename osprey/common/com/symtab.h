@@ -354,6 +354,7 @@ TY_Init (TY& ty, UINT64 s, TY_KIND k, TYPE_ID t, STR_IDX n)
     ty.kind = k;
     ty.mtype = t;
     ty.flags = 0;
+    ty.flags_ext = 0;
     ty.u1.fld = 0;
     ty.name_idx = n;
     ty.u2.etype = 0;

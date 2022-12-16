@@ -656,14 +656,14 @@ enum TY_PU_FLAGS
 class TY
 {
 public:
+    // Note: Do not change below member's layout as ipc type merge
+    // will refer the memory directly, new member should put to the end
     mUINT64 size;			// size of the type in bytes
 
     TY_KIND kind : 8;			// kind of type
     mTYPE_ID mtype : 8;			// WHIRL data type
     mUINT16 flags;			// misc. attributes
-    mUINT32 flags_ext;                  // extension for TY flags, for C++11
-
-    union {                             // u1 will have 32 bit padding
+    union {
 	FLD_IDX fld;
 	TYLIST_IDX tylist;
 	ARB_IDX arb;
@@ -679,8 +679,9 @@ public:
 	ST_IDX copy_constructor;	// copy constructor X(X&) (record only)
 #endif
     } u2;
-	
+
     ST_IDX vtable;
+    mUINT32 flags_ext;      // extension for TY flags, for C++11
 
     // access function for unions
 
