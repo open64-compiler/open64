@@ -15,6 +15,32 @@
  */
 
 // =============================================================================
+// Utilities
+// =============================================================================
+static inline BOOL
+Is_cr_opnd0_abs(CODEREP *cr) {
+  return (cr->Kind() == CK_OP &&
+          ((cr->Opr() == OPR_ABS &&
+            cr->Opnd(0)->Kind() == CK_VAR) ||
+           ((cr->Opr() == OPR_CVT || cr->Opr() == OPR_CVTL) &&
+            cr->Opnd(0)->Kind() == CK_OP &&
+            cr->Opnd(0)->Opr() == OPR_ABS &&
+            (cr->Opnd(0)->Opnd(0)->Kind() == CK_VAR ||
+             (cr->Opnd(0)->Opnd(0)->Kind() == CK_OP &&
+              (cr->Opnd(0)->Opnd(0)->Opr() == OPR_CVT ||
+               cr->Opnd(0)->Opnd(0)->Opr() == OPR_CVTL) &&
+              cr->Opnd(0)->Opnd(0)->Opnd(0)->Kind() == CK_VAR)))));
+}
+
+static inline BOOL
+Is_cr_const_0(CODEREP *cr) {
+  return (cr->Kind() == CK_CONST &&
+          cr->Const_val() == 0) ||
+         (cr->Has_const_fval() &&
+          cr->Const_fval() == 0.0);
+}
+
+// =============================================================================
 //
 // Handle EQ/NE/GT/GE/LT/LE
 // 
@@ -617,11 +643,7 @@ VRA::Compare_abs_expr<OPR_NE, OPR_GT>(CODEREP* lhs, UINT32 bb_id, CODEREP* rhs, 
 template<> VRA_RESULT
 VRA::Compare_abs_expr<OPR_GT, OPR_GT>(CODEREP* lhs, UINT32 bb_id, CODEREP* rhs, const PATH_SELECTED& paths, COUNT_ARRAY& visited) const
 {
-  if (lhs == rhs) return VA_YES;
-  VRA_RESULT res = Compare_cr<OPR_GE>(lhs, bb_id, rhs, FALSE, paths, visited);
-  // unk -> unk, poss -> poss, yes -> yes, no -> poss
-  return res == VA_UNKNOWN ? VA_UNKNOWN :
-           res == VA_YES ? VA_YES : VA_POSSIBLE;
+  return VA_UNKNOWN;  // TODO: POSSIBLE or UNKNOWN?
 }
 
 // know abs(x) >= lhs, check if x > rhs
@@ -821,11 +843,7 @@ VRA::Compare_abs_expr<OPR_NE, OPR_LE>(CODEREP* lhs, UINT32 bb_id, CODEREP* rhs, 
 template<> VRA_RESULT
 VRA::Compare_abs_expr<OPR_GT, OPR_LE>(CODEREP* lhs, UINT32 bb_id, CODEREP* rhs, const PATH_SELECTED& paths, COUNT_ARRAY& visited) const
 {
-  if (lhs == rhs) return VA_NO;
-  VRA_RESULT res = Compare_cr<OPR_GE>(lhs, bb_id, rhs, FALSE, paths, visited);
-  // unk -> unk, poss -> poss, yes -> no, no -> poss
-  return res == VA_UNKNOWN ? VA_UNKNOWN :
-           res == VA_YES ? VA_NO : VA_POSSIBLE;
+  return VA_UNKNOWN;  // TODO: POSSIBLE or UNKNOWN?
 }
 
 // know abs(x) >= lhs, check if x <= rhs
@@ -1504,22 +1522,8 @@ VRA::Compare_op_cr(CODEREP* cr, UINT32 bb_id, CODEREP* val, BOOL zext, const PAT
   CODEREP* opnd0 = cr->Opnd(0);
   BOOL is_opnd0_var = (opnd0->Kind() == CK_VAR ||
                        opnd0->Kind() == CK_IVAR);
-  BOOL is_opnd0_abs = (opnd0->Kind() == CK_OP &&
-                       ((opnd0->Opr() == OPR_ABS &&
-                         opnd0->Opnd(0)->Kind() == CK_VAR) ||
-                        ((opnd0->Opr() == OPR_CVT || opnd0->Opr() == OPR_CVTL) &&
-                         opnd0->Opnd(0)->Kind() == CK_OP &&
-                         opnd0->Opnd(0)->Opr() == OPR_ABS &&
-                         (opnd0->Opnd(0)->Opnd(0)->Kind() == CK_VAR ||
-                          (opnd0->Opnd(0)->Opnd(0)->Kind() == CK_OP &&
-                           (opnd0->Opnd(0)->Opnd(0)->Opr() == OPR_CVT ||
-                            opnd0->Opnd(0)->Opnd(0)->Opr() == OPR_CVTL) &&
-                           opnd0->Opnd(0)->Opnd(0)->Opnd(0)->Kind() == CK_VAR)))));
-  BOOL is_abs_cmp_0 = (is_opnd0_abs &&
-                       ((val->Kind() == CK_CONST &&
-                         val->Const_val() == 0) ||
-                        (val->Has_const_fval() &&
-                         val->Const_fval() == 0.0)));
+  BOOL is_opnd0_abs = Is_cr_opnd0_abs(opnd0);
+  BOOL is_abs_cmp_0 = (is_opnd0_abs && Is_cr_const_0(val));
 
   OPERATOR opr = cr->Opr();
   VRA_RESULT res = VA_UNKNOWN;
