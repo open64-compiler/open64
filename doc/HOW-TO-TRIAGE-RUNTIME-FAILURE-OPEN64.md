@@ -60,6 +60,33 @@ When a specific component has been identified as the culprit of a runtime failur
 | LNO       |                         |                            |
 | IPA       |                         |                            |
 
+# Identify WOPT Optimization Error
+
+The following table states the order of optimizations and option to turn off during **PREOPT** phase:
+
+| Optimization  Name             | Option  to turn off / on    | Brief  Description of the optimization                       |
+| ------------------------------ | --------------------------  | :----------------------------------------------------------- |
+| Goto conversion                | -WOPT:goto=TRUE/FALSE       | Perform GOTO-conversion which tries to change unstructured control flow into structured High-WHIRL. |
+| Loop normalization             | -WOPT:iv_recog=TRUE/FALSE   | Normalize do loop tree                                       |
+| Tail recursion                 | -WOPT:tail=TRUE/FALSE       | Peform tail recursion optimizations                          |
+| Aggressive DSE                 | -WOPT:dse=TRUE/FALSE        | Aggressive dead store elimination                            |
+| Induction Variable Recognition | -WOPT:iv_recog=TRUE/FALSE   | Recognize loop induction variables                           |
+| Copy propagation               | -WOPT:copy=TRUE/FALSE       | Perform copy propagation                                     |
+| Boolean simplification         | -WOPT:bool_simp=TRUE/FALSE  | Perform boolean Simplification using predicates              |
+| Dead Code Elimination          | -WOPT:dead=TRUE/FALSE       | Perform dead code elimination                                |
+
+The following table states the order of optimizations and option to turn off during **MAINOPT** phase:
+
+| Optimization  Name | Option  to turn off / on | Brief  Description of the optimization |
+| ------------------ | ------------------------ | -------------------------------------- |
+|                    |                          |                                        |
+|                    |                          |                                        |
+|                    |                          |                                        |
+|                    |                          |                                        |
+|                    |                          |                                        |
+|                    |                          |                                        |
+|                    |                          |                                        |
+
 # Identify specific instance of optimization
 
 Using SSAPRE as an example, the PRE driver can skip after a number of expressions have been processed. This option is not visible at command line today. However, it can be easily added back.
