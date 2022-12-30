@@ -5255,7 +5255,7 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
     LVTY *cond_ty = cond->getType();
     FmtAssert(cond_ty->isIntegerTy(), ("EXPR2llvm: cond should be integer type"));
     if (!cond_ty->isIntegerTy(1)) {
-      cond = Lvbuilder()->CreateICmpNE(cond, 
+      cond = Lvbuilder()->CreateICmpNE(cond,
         Lvbuilder()->getIntN(cond_ty->getIntegerBitWidth(), 0));
     }
 
@@ -5541,7 +5541,9 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
       }
       break;
     }
-    case CK_VARARG: {      
+    case CK_VARARG: {
+      if (arglist.empty()) break;
+
       auto arg_ty = arglist[0]->getType();
       auto param = WN_kid(wn, 0);
 
