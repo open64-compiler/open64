@@ -1048,7 +1048,7 @@ private:
         return (*it).Type();
       }
     }
-    FmtAssert(FALSE, ("Find_parm_type cannot find %s", name));
+    FmtAssert(FALSE, ("Find_parm_type cannot find %s", name.c_str()));
     return MTYPE_UNKNOWN;
   }
 
@@ -1150,6 +1150,10 @@ public:
       }
 
       return res;
+    } else if (MTYPE_is_complex(mtype)) {
+      auto complex_ty = Get_wty2lvty(TY_IDX_index(idx), idx);
+      FmtAssert(complex_ty != nullptr, ("Wty2llvmty: complex_ty %s is not exist", TY_name(idx)));
+      return complex_ty;
     } else if (MTYPE_is_float(mtype)) {
       if (TY_kind(idx) == KIND_POINTER) {
         Is_Trace(Tracing_enabled,
@@ -1229,8 +1233,7 @@ public:
       FmtAssert(TY_kind(idx) == KIND_ARRAY, ("Wty2llvmty: constant string should be array"));
       auto array_ty = Get_wty2lvty(TY_IDX_index(idx), idx);
       return array_ty;
-    }
-    else {
+    } else {
       // assert, not handled yet
       if (Ign_fwd_tyref() == FALSE) {
         switch (TY_kind(idx)) {
@@ -1479,7 +1482,7 @@ public:
     return func;
   }
 
-  LVVAL *Get_arg_by_name(const char *name) {
+  LVVAL      *Get_arg_by_name(const char *name) {
     for (auto it = _cur_lvfunc->arg_begin(); it != _cur_lvfunc->arg_end(); it++) {
       if (it->getName() == std::string(name)) return it;
     }
@@ -2296,6 +2299,23 @@ LVTY *BuiltinTy2llvm(TYPE_ID mtype, LVCONTEXT &ctx) {
     case MTYPE_F16: return LVTY::getFP128Ty(ctx);
     case MTYPE_V: return LVTY::getVoidTy(ctx);
     case MTYPE_UNKNOWN: return LVTY::getVoidTy(ctx);
+    case MTYPE_C4: {
+      auto float_ty = LVTY::getFloatTy(ctx);
+      return llvm::StructType::create(ctx, {float_ty, float_ty}, "C4");
+    }
+    case MTYPE_C8: {
+      auto double_ty = LVTY::getDoubleTy(ctx);
+      return llvm::StructType::create(ctx, {double_ty, double_ty}, "C8");
+    }
+    case MTYPE_C10: {
+      auto double_ty = LVTY::getX86_FP80Ty(ctx);
+      return llvm::StructType::create(ctx, {double_ty, double_ty}, "C10");
+    }
+    case MTYPE_CQ:
+    case MTYPE_C16: {
+      auto fp128_ty = LVTY::getFP128Ty(ctx);
+      return llvm::StructType::create(ctx, {fp128_ty, fp128_ty}, "C16");
+    }
     default: {
       Is_Trace(Tracing_enabled, (TFile, "BuiltinTy2llvm: mtype %s not supported\n", MTYPE_name(mtype)));
     }
@@ -6817,8 +6837,10 @@ int main (INT argc, char *argv[])
     }
     if (binarg == argc)
         usage(progname);
-    if (!file_exists(argv[binarg]))
-        usage(progname);
+    if (!file_exists(argv[binarg])) {
+      fprintf (stderr, "File \"%s\" doesn't exist", argv[binarg]);
+      exit (1);
+    }
     infile = argv[binarg];
     Set_current_file(infile);
 
