@@ -2388,7 +2388,7 @@ LVTY *WHIRL2llvm::Insert_ty_entry(UINT idx, TY *ty) {
       Create_formal_parm_type(make_TY_IDX(idx), param_type_list, tyidxvec, NULL);
     }
 
-    func_ty = llvm::FunctionType::get(lv_ret_ty, param_type_list, false);
+    func_ty = llvm::FunctionType::get(lv_ret_ty, param_type_list, (TY_is_varargs(*ty) || !TY_has_prototype(*ty)));
     Put_wty2lvty(idx, func_ty);
 
     return func_ty;
@@ -2657,7 +2657,7 @@ void FixForwardTypeRef::operator() (UINT idx, TY *ty) const {
         }
       }
 
-      LVTY *func_ty = llvm::FunctionType::get(lv_ret_ty, param_type_list, false);
+      LVTY *func_ty = llvm::FunctionType::get(lv_ret_ty, param_type_list, (TY_is_varargs(*ty) || !TY_has_prototype(*ty)));
       whirl2llvm->Set_wty2lvty(idx, func_ty);
       return;
     }
@@ -4662,7 +4662,8 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
       }
     }
 
-    auto func_ty = llvm::FunctionType::get(ret_type, args_ty, TY_is_varargs(tyidx));
+    // llvm use variadics convention for unprototyped functions/calls
+    auto func_ty = llvm::FunctionType::get(ret_type, args_ty, (TY_is_varargs(tyidx) || !TY_has_prototype(tyidx)));
     auto link = whirl2llvm->GetFuncLinkageType(st);
 
     auto func = llvm::Function::Create(func_ty, link, funcname, whirl2llvm->Module());
@@ -5547,33 +5548,43 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
 
     CALLEE_KIND callee_kind = Callee_kind(wn, func);
 
-    switch (callee_kind) {
-    case CK_NORMAL: {
-      Handle_arg_diff_ty(wn, arglist, func);
-      break;
-    }
-    case CK_BUILTIN: {
-      if (func->getName() == "__builtin_unreachable") {
-        Lvbuilder()->CreateUnreachable();
-        return wn;
-      } else {
-        FmtAssert(FALSE, ("WHIRL2llvm::STMT2llvm, builtin function %s not handled", func->getName()));
+    if (TY_has_prototype(ST_type(WN_st(wn)))) {
+      switch (callee_kind) {
+      case CK_NORMAL: {
+        Handle_arg_diff_ty(wn, arglist, func);
+        break;
       }
-      break;
-    }
-    case CK_VARARG: {
-      if (arglist.empty()) break;
-
-      auto arg_ty = arglist[0]->getType();
-      auto param = WN_kid(wn, 0);
-
-      for (int i = 0; i < lvfuncty->getNumParams(); i++) {
-        LVTY *formal_ty = lvfuncty->getParamType(i);
-        bool is_signed = func->getArg(i)->hasSExtAttr();
-        arglist[i] = CastToTargetType(wn, arglist[i], formal_ty, is_signed);
+      case CK_BUILTIN: {
+        if (func->getName() == "__builtin_unreachable") {
+          Lvbuilder()->CreateUnreachable();
+          return wn;
+        } else {
+          FmtAssert(FALSE, ("WHIRL2llvm::STMT2llvm, builtin function %s not handled", func->getName()));
+        }
+        break;
       }
-      break;
-    }
+      case CK_VARARG: {
+       if (arglist.empty()) break;
+
+        auto arg_ty = arglist[0]->getType();
+       auto param = WN_kid(wn, 0);
+
+        for (int i = 0; i < lvfuncty->getNumParams(); i++) {
+          LVTY *formal_ty = lvfuncty->getParamType(i);
+          bool is_signed = func->getArg(i)->hasSExtAttr();
+          arglist[i] = CastToTargetType(wn, arglist[i], formal_ty, is_signed);
+        }
+        break;
+      }
+      }
+    } else {
+      // unprototyped call
+      // collect types of actual arguments
+      std::vector<LVTY *> args_ty;
+      for (const auto &i : arglist)
+        args_ty.push_back(i->getType());
+
+      lvfuncty = llvm::FunctionType::get(lvfuncty->getReturnType(), args_ty, true);
     }
 
     // Generate call instruction with the CreateCall function
