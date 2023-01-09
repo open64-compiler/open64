@@ -73,6 +73,7 @@
 #include "w2op.h"
 #include "wn_core.h"
 #include "config.h"
+#include "glob.h"    // for Cur_PU_Name
 
 #include "opt_base.h"
 #include "opt_bb.h"
@@ -363,6 +364,7 @@ ETABLE::Perform_LPRE_optimization(void)
 
   FOR_ALL_NODE(cur_worklst, worklst_iter, Init()) {
 
+    Inc_pre_idx(PK_LPRE);
     cur_worklst_idx++;
     if (WOPT_Enable_Load_PRE_Limit != -1 &&
 	cur_worklst_idx/*cur_worklst->E_num()*/ > WOPT_Enable_Load_PRE_Limit) {
@@ -370,11 +372,19 @@ ETABLE::Perform_LPRE_optimization(void)
 	      WOPT_Enable_Load_PRE_Limit);
       break;
     }
+
+    // skip_equal, skip_before, skip_after count specified
+    if ( Query_Skiplist ( WOPT_LPRE_Skip_List, Get_pre_idx(PK_LPRE) ) ) {
+      DevWarn("LPRE: skip LPRE for [%d/%lld]th expression cr%d",
+              cur_worklst_idx, Get_pre_idx(PK_LPRE), cur_worklst->Exp()->Coderep_id());
+      continue;
+    }
     
     OPT_POOL_Push(Per_expr_pool(), -1);
 
     Is_Trace(Tracing(),
-	     (TFile, "processing %dth expression\n", cur_worklst_idx));
+             (TFile, "processing [%d/%lld]th expression\n",
+              cur_worklst_idx, Get_pre_idx(PK_LPRE)));
     Is_Trace_cmd(Tracing(),cur_worklst->Exp()->Print(0,TFile));
     Is_Trace_cmd(Tracing(),cur_worklst->Print(TFile));
 
@@ -548,7 +558,9 @@ ETABLE::Perform_LPRE_optimization(void)
 #endif
 
   if (Tracing()) {
-    fprintf(TFile, "%sAfter LPRE\n%s", DBar, DBar);
+    fprintf(TFile, "%sAfter LPRE: %s\n%s", DBar, Cur_PU_Name, DBar);
+    fprintf(TFile, "PU LPRE candidates global index range: [%lld-%lld]\n",
+            Get_pre_idx(PK_LPRE) - (INT64)cur_worklst_idx + 1, Get_pre_idx(PK_LPRE));
     fprintf(TFile, "Statistics (all expressions): Insert Count %d, "
 	    "Save Count %d, Reload Count %d, Temp Phi Count %d, Hoisted Count %d\n",
 	    _num_inserted_saves, _num_cse_saves, _num_cse_reloads, 

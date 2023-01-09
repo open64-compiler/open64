@@ -262,6 +262,12 @@ extern BOOL WOPT_Enable_If_Conv_For_Iload;  /* if-conversion is applied if rhs i
 extern char *WOPT_Enable_Skip;
 extern struct option_list *WOPT_Skip;	/* Skip option list */
 extern struct skiplist *WOPT_Skip_List;	/* Preprocessed skip list */
+extern struct option_list *WOPT_EPRE_Skip; /* Skip epre option list */
+extern struct skiplist *WOPT_EPRE_Skip_List; /* Preprocessed epre skip list */
+extern struct option_list *WOPT_LPRE_Skip; /* Skip lpre option list */
+extern struct skiplist *WOPT_LPRE_Skip_List; /* Preprocessed lpre skip list */
+extern struct option_list *WOPT_SPRE_Skip; /* Skip spre option list */
+extern struct skiplist *WOPT_SPRE_Skip_List; /* Preprocessed spre skip list */
 extern BOOL WOPT_Enable_SLT;
 extern BOOL WOPT_Enable_Small_Br_Target; /* Disable propagation into br BBs */
 extern BOOL WOPT_Enable_Source_Order;   /* trace BB's in source order */

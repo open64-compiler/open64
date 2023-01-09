@@ -78,6 +78,7 @@
 
 #include "opt_defs.h"
 #include "opt_config.h"
+#include "opt_etable.h"
 #include "region_util.h"
 #include "region_main.h"	/* for RBI and RAIL prototypes	*/
 #include "be_version.h"         /* for Get_BE_Version */
@@ -123,6 +124,9 @@ wopt_main (INT wopt_argc, char **wopt_argv, INT be_argc, char **be_argv)
 		&Get_BE_Version != NULL ? Get_BE_Version() : "undef", BE_VERSION));
   /* Construct a skip list from the -WOPT:skip_* options: */
   WOPT_Skip_List = Build_Skiplist ( WOPT_Skip );
+  WOPT_EPRE_Skip_List = Build_Skiplist ( WOPT_EPRE_Skip );
+  WOPT_LPRE_Skip_List = Build_Skiplist ( WOPT_LPRE_Skip );
+  WOPT_SPRE_Skip_List = Build_Skiplist ( WOPT_SPRE_Skip );
   WOPT_Unroll_Skip_List = Build_Skiplist ( WOPT_Unroll_Skip );
   WOPT_ZDL_Skip_List = Build_Skiplist ( WOPT_ZDL_Skip);
 } /* wopt_main */

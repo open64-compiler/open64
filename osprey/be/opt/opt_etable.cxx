@@ -106,6 +106,10 @@
 #include "opt_vsa.h"            // for VSA
 #endif
 
+INT64 ETABLE::_epre_idx = 0;
+INT64 ETABLE::_lpre_idx = 0;
+INT64 ETABLE::_spre_idx = 0;
+
 const char *pre_kind_name(PRE_KIND kind)
 {
   switch (kind) {
@@ -2676,6 +2680,39 @@ ETABLE::Lookup_exp_phi(const BB_NODE *bb, const CODEREP *cr) const
   return exp_phi;
 }
 
+INT64
+ETABLE::Get_pre_idx(PRE_KIND kind)
+{
+  switch(kind) {
+    case PK_EPRE:
+    return _epre_idx;
+    case PK_LPRE:
+    return _lpre_idx;
+    case PK_SPRE:
+    return _spre_idx;
+    default:
+    return 0;
+  }
+}
+
+void
+ETABLE::Inc_pre_idx(PRE_KIND kind)
+{
+  switch(kind) {
+    case PK_EPRE:
+      _epre_idx++;
+    break;
+    case PK_LPRE:
+      _lpre_idx++;
+    break;
+    case PK_SPRE:
+      _spre_idx++;
+    break;
+    default:
+    break;
+  }
+}
+
 // return a value for hashing purpose
 IDX_32
 ETABLE::Exp_hashvalue(const CODEREP *cr)
@@ -4549,8 +4586,8 @@ void
 ETABLE::Perform_PRE_optimization(void)
 {
   if (Tracing()) {
-    fprintf( TFile, "%sProgram before Expr PRE:\n%s",
-             DBar, DBar );
+    fprintf( TFile, "%sProgram before Expr PRE: %s\n%s",
+             DBar, Cur_PU_Name, DBar );
     Cfg()->Print(TFile);
   }
 
@@ -4618,6 +4655,7 @@ ETABLE::Perform_PRE_optimization(void)
     if (cur_worklst->Real_occurs().Head() == NULL)
       continue;
 
+    Inc_pre_idx(PK_EPRE);
     ++cur_worklst_idx;
     if (WOPT_Enable_Exp_PRE_Limit != -1 &&
 	/*cur_worklst->E_num()*/cur_worklst_idx > WOPT_Enable_Exp_PRE_Limit) {
@@ -4625,12 +4663,18 @@ ETABLE::Perform_PRE_optimization(void)
 	      WOPT_Enable_Exp_PRE_Limit);
       break;
     }
+    // skip_equal, skip_before, skip_after count specified
+    if ( Query_Skiplist ( WOPT_EPRE_Skip_List, Get_pre_idx(PK_EPRE) ) ) {
+      DevWarn("NEWPRE: skip PRE for [%d/%lld]th expression cr%d",
+              cur_worklst_idx, Get_pre_idx(PK_EPRE), cur_worklst->Exp()->Coderep_id());
+      continue;
+    }
 
     OPT_POOL_Push(Per_expr_pool(), -1);
 
     Is_Trace(Tracing(),
-	     (TFile, "\nprocessing %dth expression b=%s\n", cur_worklst_idx,
-	      cur_worklst->Exp()->Print_bit()));
+	     (TFile, "\nprocessing [%d/%lld]th expression b=%s\n", cur_worklst_idx,
+	      Get_pre_idx(PK_EPRE), cur_worklst->Exp()->Print_bit()));
     Is_Trace_cmd(Tracing(),cur_worklst->Exp()->Print(0,TFile));
     Is_Trace_cmd(Tracing(),cur_worklst->Print(TFile, Lftr()->Exp_hash(cur_worklst)));
 
@@ -4813,7 +4857,9 @@ ETABLE::Perform_PRE_optimization(void)
 #endif
 
   if (Tracing()) {
-    fprintf(TFile, "%sAfter SSA PRE\n%s", DBar, DBar);
+    fprintf(TFile, "%sAfter SSA PRE: %s\n%s", DBar, Cur_PU_Name, DBar);
+    fprintf(TFile, "PU PRE candidates global index range: [%lld-%lld]\n",
+            Get_pre_idx(PK_EPRE) - (INT64)cur_worklst_idx + 1, Get_pre_idx(PK_EPRE));
     fprintf(TFile, "Statistics (all expressions): Insert Count %d, "
 	    "Save Count %d, Reload Count %d, Temp Phi Count %d, Hoisted Count %d\n",
 	    _num_inserted_saves, _num_cse_saves, _num_cse_reloads, 

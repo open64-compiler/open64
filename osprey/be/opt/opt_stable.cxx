@@ -61,6 +61,7 @@
 
 #include "defs.h"
 #include "cxx_memory.h"
+#include "glob.h"    // for Cur_PU_Name
 #include "opt_bb.h"
 #include "opt_main.h"
 #include "opt_etable.h"
@@ -640,8 +641,8 @@ ETABLE::Perform_SPRE_optimization(void)
     if (Get_Trace(TKIND_ALLOC, TP_WOPT1)) {
       MEM_Tracing_Enable();
     }
-    fprintf( TFile, "%sProgram before SPRE:\n%s",
-	     DBar, DBar );
+    fprintf( TFile, "%sProgram before SPRE: %s\n%s",
+	     DBar, Cur_PU_Name, DBar );
     Cfg()->Print(TFile);
   }
   Is_Trace(Tracing(), (TFile, "%sPerform SPRE:\n%s", DBar, DBar));
@@ -673,7 +674,7 @@ ETABLE::Perform_SPRE_optimization(void)
   EXP_WORKLST     *cur_worklst;
   EXP_WORKLST_ITER worklst_iter(Exp_worklst());
   FOR_ALL_NODE(cur_worklst, worklst_iter, Init()) {
-
+    Inc_pre_idx(PK_SPRE);
     cur_worklst_idx++;
     if (WOPT_Enable_Store_PRE_Limit != -1 &&
 	/*cur_worklst->E_num()*/cur_worklst_idx > WOPT_Enable_Store_PRE_Limit) {
@@ -682,9 +683,17 @@ ETABLE::Perform_SPRE_optimization(void)
       break;
     }
 
+    // skip_equal, skip_before, skip_after count specified
+    if ( Query_Skiplist ( WOPT_SPRE_Skip_List, Get_pre_idx(PK_SPRE) ) ) {
+      DevWarn("SPRE: skip SPRE for [%d/%lld]th expression cr%d",
+              cur_worklst_idx, Get_pre_idx(PK_SPRE), cur_worklst->Exp()->Coderep_id());
+      continue;
+    }
+
     OPT_POOL_Push(Per_expr_pool(), SPRE_DUMP_FLAG);
     Is_Trace(Tracing(),
-	     (TFile, "\n||||||||||||| processing %dth store\n", cur_worklst_idx));
+             (TFile, "\n||||||||||||| processing [%d/%lld]th store\n",
+              cur_worklst_idx, Get_pre_idx(PK_SPRE)));
     Is_Trace_cmd(Tracing(),cur_worklst->Print(TFile, NULL));
 
     Is_Trace_cmd(Tracing(),cur_worklst->Exp()->Print(0,TFile));
@@ -747,7 +756,9 @@ ETABLE::Perform_SPRE_optimization(void)
   SPRE_update_ssa();
 
   if (Tracing()) {
-    fprintf(TFile, "%sAfter SPRE\n%s", DBar, DBar);
+    fprintf(TFile, "%sAfter SPRE: %s\n%s", DBar, Cur_PU_Name, DBar);
+    fprintf(TFile, "PU SPRE candidates global index range: [%lld-%lld]\n",
+            Get_pre_idx(PK_SPRE) - (INT64)cur_worklst_idx + 1, Get_pre_idx(PK_SPRE));
     fprintf(TFile, "Statistics (all expressions): Insert Count %d, "
 	    "Delete Count %d\n", _num_inserted_saves, _num_cse_reloads);
     Cfg()->Print(TFile);

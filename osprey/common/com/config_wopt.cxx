@@ -260,6 +260,12 @@ OPTION_LIST *WOPT_Skip = NULL;		/* Skip option list */
 SKIPLIST *WOPT_Skip_List = NULL;	/* Processed skiplist */
 OPTION_LIST *WOPT_Unroll_Skip = NULL;	/* Skip unroll option list */
 SKIPLIST *WOPT_Unroll_Skip_List = NULL;	/* Processed unroll skiplist */
+OPTION_LIST *WOPT_EPRE_Skip = NULL;	/* Skip ssapre option list */
+SKIPLIST *WOPT_EPRE_Skip_List = NULL;	/* Preprocessed ssapre skip list */
+OPTION_LIST *WOPT_LPRE_Skip = NULL;	/* Skip lpre option list */
+SKIPLIST *WOPT_LPRE_Skip_List = NULL;	/* Preprocessed lpre skip list */
+OPTION_LIST *WOPT_SPRE_Skip = NULL;	/* Skip spre option list */
+SKIPLIST *WOPT_SPRE_Skip_List = NULL;	/* Preprocessed spre skip list */
 BOOL  WOPT_Enable_SLT = TRUE;
 BOOL  WOPT_Enable_Small_Br_Target = FALSE; /* propagation into branch BBs */
 INT32  WOPT_Enable_Simple_If_Conv = 1;   /* simple if-conversion at CFG build time: 0 - off, 1 - conservative, 2 - aggressive */
@@ -723,6 +729,24 @@ static OPTION_DESC Options_WOPT[] = {
     0, 0, 0,	&WOPT_Enable_Store_PRE, NULL },
   { OVK_INT32,	OV_VISIBLE,	TRUE, "spre_limit",		"",
     INT32_MAX, 0, INT32_MAX,	&WOPT_Enable_Store_PRE_Limit, NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "epre_skip_after",		"epre_skip_a",
+    0, 0, 0,	&WOPT_EPRE_Skip,	NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "epre_skip_before",		"epre_skip_b",
+    0, 0, 0,	&WOPT_EPRE_Skip,	NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "epre_skip_equal",		"epre_skip_e",
+    0, 0, 0,	&WOPT_EPRE_Skip,	 NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "lpre_skip_after",		"lpre_skip_a",
+    0, 0, 0,	&WOPT_LPRE_Skip,	NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "lpre_skip_before",		"lpre_skip_b",
+    0, 0, 0,	&WOPT_LPRE_Skip,	NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "lpre_skip_equal",		"lpre_skip_e",
+    0, 0, 0,	&WOPT_LPRE_Skip,	 NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "spre_skip_after",		"spre_skip_a",
+    0, 0, 0,	&WOPT_SPRE_Skip,	NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "spre_skip_before",		"spre_skip_b",
+    0, 0, 0,	&WOPT_SPRE_Skip,	NULL },
+  { OVK_LIST,	OV_VISIBLE,	TRUE, "spre_skip_equal",		"spre_skip_e",
+    0, 0, 0,	&WOPT_SPRE_Skip,	 NULL },
   { OVK_INT32,	OV_VISIBLE,	TRUE, "trip_count",		"trip",
     2, 0, 2,	&WOPT_Enable_Generate_Trip_Count, NULL },
   { OVK_BOOL,	OV_VISIBLE,	TRUE, "update_vsym",		"update_vsym",

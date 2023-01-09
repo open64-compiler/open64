@@ -2034,6 +2034,9 @@ private:
   INT32			  _num_temp_phis;	// statistics
   INT32                   _num_hoisted;         // statistics
   INT32                   _num_temp_owners;     // statistics
+  static INT64            _epre_idx;            // for EPRE triage
+  static INT64            _lpre_idx;            // for LPRE triage
+  static INT64            _spre_idx;            // for SPRE triage
   COMP_UNIT		 *_comp_unit;
   EXP_HOISTING           *_exp_hoisting;        // data structure for code hoisting
 
@@ -2149,7 +2152,9 @@ public:
   EXP_HOISTING   *Exp_hoisting(void) const { return _exp_hoisting; }
   EXP_WORKLST_CONTAINER  *Exp_worklst(void)    { return &_exp_worklst; }
   std::map<IDTYPE, BOOL> *Complex_loop_map(void)   { return &_complex_loop_map; }
-   
+  // for triaging epre/spre/lpre, worked with option -WOPT:skip_e/skip_a/skip_b
+  INT64           Get_pre_idx(PRE_KIND kind);
+  void            Inc_pre_idx(PRE_KIND kind);
 
   void		  Count_lex_ident_exprs(INT32); // for statistics only
 
