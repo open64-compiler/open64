@@ -1089,9 +1089,14 @@ SRCPOS_HANDLE::Find_cr_stname(STRING_BUFFER *buf, CODEREP *cr, STMTREP *stmt, DN
       if (PU_src_lang(Get_Current_PU()) & (PU_C_LANG | PU_CXX_LANG))
         buf->Append('*');
       buf->Append('(');
-      Find_cr_stname(buf, base, stmt, dna, TRUE, gen_cr, hex);
-      if (cr->Offset() > 0)
-        buf->Format("+%d", cr->Offset());
+      if (base->Kind() == CK_CONST) {
+          buf->Format("0x%lx", cr->Offset() + base->Const_val());
+      }
+      else {
+        Find_cr_stname(buf, base, stmt, dna, TRUE, gen_cr, hex);
+        if (cr->Offset() > 0)
+          buf->Format("+%d", cr->Offset());
+      }
       buf->Append(')');
       return buf->To_string();
     }

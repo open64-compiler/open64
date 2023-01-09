@@ -1267,6 +1267,10 @@ Is_const_addr_safe(UINT64 addr) {
           break;
       }
     }
+    if (VSA_Reg_Map == NULL) {
+      // push default register map 0x100000000-0x1FFFFFFF for allwinner
+      reg_map.push_back(std::make_pair(0x10000000, 0x1FFFFFFF));
+    }
     initialized = TRUE;
   }
 

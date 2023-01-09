@@ -469,6 +469,20 @@ NPD_CHECKER::Check_coderep<CK_IVAR>(CHECK_OBJ &obj, TRAV_CONTEXT* ctx)
   }
 
   Is_True(base != NULL, ("ivar base is NULL"));
+  if (base->Kind() == CK_CONST) {
+    INT64 ofst = cr->Offset() + base->Const_val();
+    if (Is_const_addr_safe(ofst)) {
+      Is_Trace(ctx->Tracing(), (TFile, "--NPD: Done with const safe addr=0x%llx\n",
+                                ofst));
+      return CS_DONE;
+    }
+    if (_checker->Issue_reported(sr, cr, Kind())) {
+      Is_Trace(ctx->Tracing(),
+               (TFile, "--NPD: Done with const addr already reported.\n"));
+      return CS_DONE;
+    }
+  }
+
   CODEREP *base_sav = base;
   base = Find_ilod_base(base);
   if (base) {
