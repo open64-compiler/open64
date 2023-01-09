@@ -474,8 +474,14 @@ FORMAT_PARSER_CONTEXT::Get_lda_mtype(CODEREP *cr, BOOL array) const
     ty_idx = FLD_type(fld);
   }
 
-  if (TY_kind(ty_idx) == KIND_ARRAY)
-    return TY_mtype(TY_etype(ty_idx));
+  if (TY_kind(ty_idx) == KIND_ARRAY) {
+    // LDA can also be applied to multi-dimension array, like
+    // char a[M][N]; printf("%s", a[0]);
+    do {
+      ty_idx = TY_etype(ty_idx);
+    } while(TY_kind(ty_idx) == KIND_ARRAY);
+    return TY_mtype(ty_idx);
+  }
   else
     return array ? MTYPE_UNKNOWN : TY_mtype(ty_idx);
 }
