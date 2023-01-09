@@ -137,6 +137,9 @@ private:
   BOOL      Tracing(void)  const { return _tracing; }
 
   CAND_KIND SPRE_ivar_filter(STMTREP *sr);
+
+  BOOL      Use_aliased_with_def(CODEREP *def, CODEREP *use,
+                                 TY_IDX def_ty, TY_IDX use_ty);
   BOOL      Use_defined_by(STMTREP *sr,
                            CODEREP *defcr,
                            CODEREP *usecr,

@@ -418,6 +418,8 @@ BOOL WOPT_Enable_Aggressive_Iload_CSE = TRUE; // ignore potential iload vsym ali
 BOOL WOPT_Bottom_Test_Loop_Check=FALSE;
 INT32 WOPT_Bottom_Test_Loop_Cond_Limit=3;
 INT32 WOPT_Bottom_Test_Loop_Body_Limit=5;
+
+BOOL WOPT_Enable_Aggressive_IVAR_UD = TRUE; // aggressive ivar use-def
 /* ====================================================================
  *
  * Descriptor for the -WOPT option group.
@@ -931,5 +933,7 @@ static OPTION_DESC Options_WOPT[] = {
     INT32_MAX, 0, INT32_MAX,    &WOPT_Bottom_Test_Loop_Cond_Limit, NULL },
   { OVK_INT32,  OV_VISIBLE,    FALSE, "bottom_test_loop_body",              "",
     INT32_MAX, 0, INT32_MAX,    &WOPT_Bottom_Test_Loop_Body_Limit, NULL },
+  { OVK_BOOL,   OV_VISIBLE,    TRUE,  "aggr_ivar_ud",        "",
+    0, 0, 0,    &WOPT_Enable_Aggressive_IVAR_UD, NULL },
   { OVK_COUNT }		/* List terminator -- must be last */
 };

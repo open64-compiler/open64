@@ -486,12 +486,47 @@ void SSU::Make_null_ssu_version_in_iphi_for_e_num_set(BB_NODE *iphibb,
     pos++;
   }
 }
+// =====================================================================
+// Check if use and use's base aliased with def
+// =====================================================================
+BOOL SSU::Use_aliased_with_def(CODEREP *def, CODEREP *use,
+                               TY_IDX def_ty, TY_IDX use_ty)
+{
+  const POINTS_TO *def_pt = def->Points_to(Opt_stab());
+  const POINTS_TO *use_pt = use->Points_to(Opt_stab());
+  if (use->Kind() == CK_VAR) {
+    // use maybe promoted to register in LPRE, recover points to from
+    // preg home symbol
+    AUX_STAB_ENTRY *aux_entry = Opt_stab()->Aux_stab_entry(use->Aux_id());
+    if (aux_entry && aux_entry->Is_preg() && aux_entry->Home_sym()) {
+      use_pt = Opt_stab()->Points_to(aux_entry->Home_sym());
+    }
+  }
+  if (def_pt && use_pt) {
+    ALIAS_KIND ak;
+    ak = Rule()->Aliased_Memop(def_pt, use_pt, def_ty, use_ty, TRUE);
+    if (ak.Alias_kind() == AR_NOT_ALIAS) {
+      // continue check if use's base alias with def
+      if (use->Kind() == CK_IVAR && use->Ilod_base()) {
+        if (!Use_aliased_with_def(def, use->Ilod_base(), def_ty, use->Ilod_base_ty())) {
+          return FALSE;
+        }
+      } else {
+        return FALSE;
+      }
+    }
+  }
+  return TRUE; // maybe
+}
 
 BOOL SSU::Use_defined_by(STMTREP *sr,
                          CODEREP *defcr,
                          CODEREP *usecr,
                          BB_NODE *usebb)
 {
+  if (!WOPT_Enable_Aggressive_IVAR_UD)
+    return TRUE;
+
   if (usecr == NULL)
     return TRUE; // maybe
 
@@ -501,17 +536,12 @@ BOOL SSU::Use_defined_by(STMTREP *sr,
   if (defcr->Aux_id() != Opt_stab()->Default_vsym())
     return TRUE; // maybe
 
-  const POINTS_TO *def_pt = sr->Lhs()->Points_to(Opt_stab());
-  const POINTS_TO *use_pt = usecr->Points_to(Opt_stab());
-  ALIAS_KIND ak;
-  ak = Rule()->Aliased_Memop(def_pt, use_pt,
-                             sr->Lhs()->Kind() == CK_VAR ? sr->Lhs()->Lod_ty() :
-                             sr->Lhs()->Ilod_ty(),
-                             usecr->Ilod_ty(), TRUE);
-
-  if (ak.Alias_kind() == AR_NOT_ALIAS)
+  if (!Use_aliased_with_def(sr->Lhs(), defcr,
+                            sr->Lhs()->Kind() == CK_VAR ? sr->Lhs()->Lod_ty() :
+                            sr->Lhs()->Ilod_ty(),
+                            usecr->Ilod_ty())) {
     return FALSE;
-
+  }
 #if 1
   // if usebb dominates defbb, sr->Bb(), def reaches use by back edge
   if ( usebb->Dominates(sr->Bb()) && usebb != sr->Bb())

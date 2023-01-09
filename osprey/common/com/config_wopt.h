@@ -382,6 +382,6 @@ extern BOOL WOPT_Enable_STR_Short;  // whether to assume 16bit IV can cross 16
 extern BOOL WOPT_Bottom_Test_Loop_Check;
 extern INT32 WOPT_Bottom_Test_Loop_Cond_Limit;
 extern INT32 WOPT_Bottom_Test_Loop_Body_Limit;
-
+extern BOOL WOPT_Enable_Aggressive_IVAR_UD; // enable aggressive ivar use-def
 #endif /* config_wopt_INCLUDED */
 
