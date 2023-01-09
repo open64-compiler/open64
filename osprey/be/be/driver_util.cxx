@@ -422,7 +422,11 @@ Process_Command_Line (INT argc, char **argv)
 		break;
 
 	    case 's':
+#ifdef BUILD_MASTIFF
 		if (strcmp (cp, "w") == 0) {  // MASTIFF-OPT: "-show" --> "-sw"
+#else
+		if (strcmp(cp, "how") == 0) {
+#endif
 		    Show_Progress = TRUE;
 		    break;
 		}
@@ -448,6 +452,8 @@ Process_Command_Line (INT argc, char **argv)
 		/* handle the -tfprev10 option to fix tfp hardware bugs. */
                 if ( strncmp ( cp-1, "tfprev10", 8 ) == 0 ) {
 		  add_phase_args (PHASE_CG, argv[i]);
+		} else {
+		  Process_Trace_Option ( cp-2 );
 		}
 		break;
 
@@ -472,11 +478,11 @@ Process_Command_Line (INT argc, char **argv)
 		} else 
 		  ErrMsg (EC_Unknown_Flag, *(cp-1), argv[i]); 
                 break;
-              
+#ifdef BUILD_MASTIFF
 	    case 'x':  // MASTIFF-OPT: "-tt:0xffff" --> "-xt:0xffff"
 	        Process_Trace_Option ( cp-2 );
 		break;
-
+#endif
 	    default:		    /* What's this? */
 		ErrMsg ( EC_Unknown_Flag, *(cp-1), argv[i] );
 		break;

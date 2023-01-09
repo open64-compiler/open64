@@ -203,13 +203,20 @@ INLINER::Process_Command_Line (INT argc, char **argv)
 		break;
 
 	    case 's':
+#ifdef BUILD_MASTIFF
 		if (strcmp (argv[i]+1, "sw") == 0) // MASTIFF-OPT: "-show" --> "-sw"
+#else
+		if (strcmp (argv[i]+1, "show") == 0)
+#endif
 		    Verbose = TRUE;
 		else
 		    ErrMsg ( EC_Unknown_Flag, argv[i][0], argv[i] );
 		break;
-
+#ifdef BUILD_MASTIFF
 	    case 'x':  // MASTIFF-OPT: "-tt:0xffff" --> "-xt:0xffff"
+#else
+	    case 't':
+#endif
 		Process_Trace_Option ( argv[i] );
 		break;
 
