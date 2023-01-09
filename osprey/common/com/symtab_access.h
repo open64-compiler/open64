@@ -2018,6 +2018,12 @@ inline void
 Clear_TY_is_varargs (TY_IDX tyi)        { Clear_TY_is_varargs(Ty_Table[tyi]); }
 
 inline BOOL
+TY_has_prototype (const TY& ty)		{ return ty.Pu_flags () & TY_HAS_PROTOTYPE; }
+inline void
+Set_TY_has_prototype (TY& ty)		{ ty.Set_pu_flag (TY_HAS_PROTOTYPE); }
+inline void
+Clear_TY_has_prototype (TY& ty)		{ ty.Clear_pu_flag (TY_HAS_PROTOTYPE); }
+inline BOOL
 TY_has_prototype (const TY_IDX tyi)     { return Ty_Table[tyi].Pu_flags() & TY_HAS_PROTOTYPE; }
 inline void
 Set_TY_has_prototype (TY_IDX tyi)       { Ty_Table[tyi].Set_pu_flag (TY_HAS_PROTOTYPE); }
