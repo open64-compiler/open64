@@ -850,8 +850,8 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
       //    free(p[i]);
       // }
       if (back_edge && cr == tbf && obj.Bb() != NULL) {
-        BB_LOOP *loop_info = obj.Bb()->Loop();
-        if (loop_info && loop_info->Iv() && cr->Contains(loop_info->Iv())) {
+        CODEREP *iv = Find_bb_iv(obj.Bb());
+        if (iv && cr->Contains(iv)) {
           Is_Trace(ctx->Tracing(), (TFile, "  [%s]: Done: free with iv is in a loop\n", Chkname()));
           return CS_DONE;
         }
@@ -950,7 +950,7 @@ HEAP_CHECKER::Check_heap_obj(HEAP_OBJ_REP* hor, CHECK_OBJ &obj,
       PHI_NODE *phi = hor->Phi_def();
       Is_True(phi != NULL, ("not find PHI hor phi node"));
       BB_NODE  *phi_bb = phi->Bb();
-      CODEREP  *phi_iv = phi_bb->Loop() ? phi_bb->Loop()->Iv() : NULL;
+      CODEREP  *phi_iv = Find_bb_iv(phi_bb);
       if (ctx->Visited(phi_bb)) {
         Is_Trace(ctx->Tracing(), (TFile, "%signored. phi already visited.\n", TRACE_INDENT));
         return CS_DONE;

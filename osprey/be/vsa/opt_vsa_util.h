@@ -256,6 +256,7 @@ extern IDTYPE   Vsa_free_ptr_index(const char *name);
 extern CODEREP* Vsa_free_ptr_opnd(STMTREP* call);
 extern CODEREP* Find_base_pointer_load(CODEREP *x);
 extern CODEREP* Find_ilod_base(CODEREP *x);
+extern CODEREP* Find_bb_iv(BB_NODE *bb);
 extern STMTREP* Find_ptr_defstmt(CODEREP *x);
 extern ST* Get_vtab_st_from_class(ST* cls_st);
 extern ST* Get_vtab_entry(ST * vst, int offset, BOOL kind);

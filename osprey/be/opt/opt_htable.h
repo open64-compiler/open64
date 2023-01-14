@@ -627,9 +627,9 @@ public:
   // rvalues, not CK_IVAR lvalues.
   BOOL      Contains(const CODEREP *cr) const;
 
-  // return TRUE if this tree contains the var node with given aux id
+  // return CR if this tree contains the var node with given aux id
   // check only opnds, not CK_IVAR base
-  BOOL      Contains(AUX_ID aux) const;
+  CODEREP  *Contains(AUX_ID aux) const;
 
   // returns TRUE if this tree contains the same image(bitpos) as node 'cr'
   BOOL      Contains_image(const CODEREP *cr) const;

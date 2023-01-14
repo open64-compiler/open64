@@ -771,20 +771,21 @@ CODEREP::Contains( const CODEREP *cr ) const
   return FALSE;
 }
 
-BOOL
+CODEREP*
 CODEREP::Contains(AUX_ID aux) const
 {
   switch (kind) {
   case CK_VAR:
-    return Aux_id() == aux;
+    return Aux_id() == aux ? (CODEREP*)this : NULL;
   case CK_OP:
     for (INT i = 0; i < Kid_count(); ++i) {
-      if (Opnd(i)->Contains(aux))
-        return TRUE;
+      CODEREP *opnd = Opnd(i)->Contains(aux);
+      if (opnd)
+        return opnd;
     }
-    return FALSE;
+    return NULL;
   default:
-    return FALSE;
+    return NULL;
   }
 }
 

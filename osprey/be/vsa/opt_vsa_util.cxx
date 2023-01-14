@@ -1707,6 +1707,43 @@ Find_ilod_base(CODEREP* x) {
 }
 
 // =============================================================================
+// Find_bb_iv, to find the IV or possible IV for BB
+//  if BB_LOOP has IV, return the IV.
+//  if no IV in BB_LOOP, find possible IV from step BB
+// =============================================================================
+CODEREP*
+Find_bb_iv(BB_NODE *bb)
+{
+  Is_True(bb != NULL, ("invalid bb"));
+  BB_LOOP *loop = bb->Loop();
+  // no BB_LOOP
+  if (loop == NULL)
+    return NULL;
+  CODEREP *iv = loop->Iv();
+  // has IV
+  if (iv != NULL)
+    return iv;
+  // no IV, check step BB
+  BB_NODE *step_bb = loop->Step();
+  if (step_bb == NULL)
+    return NULL;
+  STMTREP_ITER stmt_iter(step_bb->Stmtlist());
+  STMTREP *stmt;
+  FOR_ALL_NODE(stmt, stmt_iter, Init()) {
+    if (OPERATOR_is_scalar_store(stmt->Opr())) {
+      CODEREP *lhs = stmt->Lhs();
+      Is_True(lhs && lhs->Kind() == CK_VAR, ("invalid kind"));
+      CODEREP *rhs;
+      if (stmt->Rhs()->Kind() == CK_OP &&
+          (rhs = stmt->Rhs()->Contains(lhs->Aux_id())) != NULL)
+        return rhs;
+    }
+  }
+  return NULL;
+
+}
+
+// =============================================================================
 // Find_ptr_defstmt, to find define statement for a pointer coderep, which
 //  can be call or istore
 //  if found, return the statement. otherwise NULL returned
