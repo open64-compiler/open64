@@ -521,8 +521,8 @@ private:
         } else if ((rna = _hva->Vsa()->Sr_2_rna(def)) != NULL) {
           // if cr is address passed to extern call, create hor chi
           // on the call stmt
+          pair<IDTYPE, BOOL> arg = rna->Get_arg(cr, _hva->Vsa());
           if (rna->Callee_cnt() == 0) {
-            pair<IDTYPE, BOOL> arg = rna->Get_arg(cr, _hva->Vsa());
             TY_IDX parm_ty = Get_param_ty(rna->Callee_ty(), arg.first);
             if (arg.first != INVALID_VAR_IDX &&
                 arg.second == TRUE &&
@@ -536,6 +536,11 @@ private:
                        TY_return_to_param(rna->Callee_ty()))) &&
                      rna->Get_arg_with_aux(cr->Aux_id(), _hva->Opt_stab()) == 1) {
             // cr is returned by first param
+            create_hor = TRUE;
+          } else if (arg.first != INVALID_VAR_IDX &&
+                     arg.second == TRUE &&
+                     rna->Is_set_arg_flag(arg.first, REF_ISTORE)) {
+            // parm is LDA and with istore flag in callee
             create_hor = TRUE;
           }
         } else {
