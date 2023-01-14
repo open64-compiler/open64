@@ -4592,7 +4592,22 @@ VSA::Cr_vfr(CODEREP *cr) const
       ofst += base->Offset();
     }
   }
-  return VSYM_FLD_REP(FLD_K_ANY, fld_id, 0);
+  if (base != NULL) {
+    TY_IDX ty = base->Kind() == CK_LDA ? base->Lda_ty()
+                                       : base->object_ty();
+    Is_True(ty != TY_IDX_ZERO && TY_kind(ty) == KIND_POINTER,
+            ("not pointer type"));
+    // reset ofst to 0 if base is array, which means IR is p[i+ofst];
+    if (ty != TY_IDX_ZERO &&
+        TY_kind(ty) == KIND_POINTER &&
+        TY_kind(TY_pointed(ty)) == KIND_ARRAY) {
+      ofst = 0;
+    }
+    else if (ofst < 0) { // ignore negative ofst
+      ofst = 0;
+    }
+  }
+  return VSYM_FLD_REP(FLD_K_ANY, fld_id, ofst);
 }
 
 // =============================================================================
