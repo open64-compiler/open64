@@ -379,29 +379,30 @@ VSA::Identify_fsm_insts_stmt(STMTREP *stmt, BB_NODE *bb, MEM_POOL *def_bbs_pool)
         Enter_cr_for_array_map(lhs, (*for_array)[fa_idx]);
     }
   }
-  // else if (opr == OPR_ISTORE) {
-  //   CODEREP *rhs = stmt->Rhs();
-  //   CODEREP *lhs = stmt->Lhs();
-  //   FOR_ARRAY *for_array = Cr_2_for_array(rhs);
-  //   if (for_array != NULL) {
-  //     Is_Trace(Tracing(),
-  //              (TFile,
-  //               "VSA::Identify_fsm_insts_stmt: Add left hand side to map for assignment.\n"));
-  //     for (INT fa_idx = 0; fa_idx < for_array->size(); fa_idx++)
-  //       Enter_cr_for_array_map(lhs, (*for_array)[fa_idx]);
-  //   }
-  //   VSYM_OBJ_REP *vor = Cr_2_vor(rhs);
-  //   if (vor != NULL) {
-  //     for_array = Vor_2_for_array(vor);
-  //     if (for_array != NULL) {
-  //       Is_Trace(Tracing(),
-  //                (TFile,
-  //                 "VSA::Identify_fsm_insts_stmt: Add left hand side to map for assignment.\n"));
-  //       for (INT fa_idx = 0; fa_idx < for_array->size(); fa_idx++)
-  //         Enter_cr_for_array_map(lhs, (*for_array)[fa_idx]);
-  //     }
-  //   }
-  // }
+  else if (opr == OPR_ISTORE) {
+    CODEREP *rhs = stmt->Rhs();
+    CODEREP *lhs = stmt->Lhs();
+    VSYM_OBJ_REP *lhs_vor = Cr_2_vor(lhs);
+    VSYM_OBJ_REP *rhs_vor = Cr_2_vor(rhs);
+    FOR_ARRAY *for_array = NULL;
+    if (rhs_vor != NULL) {
+      for_array = Vor_2_for_array(rhs_vor);
+    }
+    if (for_array == NULL) {
+      for_array = Cr_2_for_array(rhs);
+    }
+    if (for_array != NULL) {
+      Is_Trace(Tracing(),
+               (TFile,
+                "VSA::Identify_fsm_insts_stmt: Add left hand side to map for assignment.\n"));
+      for (INT fa_idx = 0; fa_idx < for_array->size(); fa_idx++) {
+        if (lhs_vor != NULL)
+          Enter_vor_for_array_map(lhs_vor, (*for_array)[fa_idx]);
+        else
+          Enter_cr_for_array_map(lhs, (*for_array)[fa_idx]);
+      }
+    }
+  }
 
   // deal with calls only here after
   if (!OPERATOR_is_call(opr))

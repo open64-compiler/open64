@@ -13244,23 +13244,32 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
   // STRING message = Generate_fsm_error_var(fsm, ts, state, nstate);
   // sh->Add_message(message);
   const char *var_name = NULL;
+  CODEREP *key = NULL;
+  if (fsm_ctx != NULL)
+    key = fsm_ctx->Cur_key();
+  else
+    key = fsm_obj_rep->Key();
   if (sh->Orig_stname() == NULL) {
-    CODEREP *key = NULL;
-    if (fsm_ctx != NULL)
-      key = fsm_ctx->Cur_key();
-    else
-      key = fsm_obj_rep->Key();
     if (key != NULL)
       var_name = sh->Find_orig_stname(key, stmt, vsa_ctx->Dna());
     if (var_name == NULL || Vsa_check_sym_ignore(var_name))
       var_name = fsm_obj_rep->Transit()->Action();
     sh->Set_orig_stname(var_name);
   }
+  BOOL maybe = FALSE;
+  if (key != NULL && stmt->Opr() == OPR_RETURN) {
+    VSYM_OBJ_REP *vor = vsa_ctx->Cr_2_vor(key);
+    if (vor != NULL) {
+      VSYM_OBJ_REP *cur_vor = vsa_ctx->Find_stmt_cur_vor(stmt, vor->Vsym_obj());
+      if (cur_vor != NULL)
+        maybe = TRUE;
+    }
+  }
   for (INT i = 0; i < ts->Errcode()->size(); i++) {
     const char *errcode = (*ts->Errcode())[i];
     if (strncmp(errcode, "MSR", 3) == 0) {
       if (VSA_Xsca) {
-        Report_xsca_error(vsa_ctx, stmt->Linenum(), errcode, FALSE, sh);
+        Report_xsca_error(vsa_ctx, stmt->Linenum(), errcode, maybe, sh);
       }
     }
     else {
@@ -13275,7 +13284,7 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
           sh->Set_orig_stname("fopen");
         }
       }
-      Report_rbc_error(vsa_ctx, stmt, errcode, FALSE, sh);
+      Report_rbc_error(vsa_ctx, stmt, errcode, maybe, sh);
       sh->Set_orig_stname(old_name);
     }
   }
@@ -13994,6 +14003,22 @@ RBC_BASE::Match_fsm_key(VSA *vsa, FSM_OBJ_REP *fsm_obj_rep, CODEREP *ori_key,
         Is_Trace(Tracing(), (TFile, "RBC: ori_key(cr%d) new_key(cr%d) same rep, matched\n",
                              ori_key->Coderep_id(), new_key->Coderep_id()));
         return new_key;
+      }
+    }
+  }
+  VSYM_OBJ_REP *vor = vsa->Cr_2_vor(new_key);
+  if (vor != NULL) {
+    for_array = vsa->Vor_2_for_array(vor);
+    if (for_array != NULL) {
+      for (INT fa_idx = 0; fa_idx < for_array->size(); fa_idx++) {
+        FSM_OBJ_REP *new_key_rep = (*for_array)[fa_idx];
+        if (new_key_rep == fsm_obj_rep) {
+          Is_Trace(Tracing(), (TFile, "RBC: ori_key(cr%d) new_key(cr%d)",
+                               ori_key->Coderep_id(), new_key->Coderep_id()));
+          Is_Trace_cmd(Tracing(), (TFile, vor->Print(TFile)));
+          Is_Trace(Tracing(), (TFile, " same rep, matched\n"));
+          return new_key;
+        }
       }
     }
   }
