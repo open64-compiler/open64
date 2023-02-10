@@ -13258,6 +13258,15 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
   }
   BOOL maybe = FALSE;
   if (key != NULL && stmt->Opr() == OPR_RETURN) {
+    if (key->Kind() == CK_VAR) {
+      STMTREP *defstmt = key->Defstmt();
+      if (defstmt != NULL) {
+        defstmt = defstmt->Next();
+        if (defstmt != NULL && (defstmt->Opr() == OPR_STID ||
+                                defstmt->Opr() == OPR_ISTORE))
+          key = defstmt->Lhs();
+      }
+    }
     VSYM_OBJ_REP *vor = vsa_ctx->Cr_2_vor(key);
     if (vor != NULL) {
       VSYM_OBJ_REP *cur_vor = vsa_ctx->Find_stmt_cur_vor(stmt, vor->Vsym_obj());
