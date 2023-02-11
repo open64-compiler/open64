@@ -514,6 +514,16 @@ private:
       BOOL create_hor = FALSE;
       if (def->Opr() == OPR_OPT_CHI) {
         create_hor = TRUE;
+      } else if (def->Opr() == OPR_MSTORE ||
+                 def->Opr() == OPR_ISTORE) {
+        CODEREP *base = def->Lhs()->Istr_base();
+        Is_True(base, ("bad mstore/istore base"));
+        if (base->Kind() == CK_LDA &&
+            cr->Aux_id() == base->Lda_aux_id()) {
+          hor = Is_cr_fixable(def->Rhs());
+          Annot_hor(cr, hor);
+          return hor;
+        }
       } else if (OPERATOR_is_call(def->Opr())) {
         RNA_NODE * rna = NULL;
         if (cr == _hva->Comp_unit()->Find_return_value(def)) {
