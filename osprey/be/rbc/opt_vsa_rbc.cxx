@@ -13260,10 +13260,12 @@ RBC_BASE::Report_fsm_error(VSA *vsa_ctx, FSM_TRAV_CONTEXT *fsm_ctx, STMTREP *stm
   if (key != NULL && stmt->Opr() == OPR_RETURN) {
     if (key->Kind() == CK_VAR) {
       STMTREP *defstmt = key->Defstmt();
-      if (defstmt != NULL) {
+      if (defstmt != NULL && defstmt->Opr() == OPR_STID) {
         defstmt = defstmt->Next();
-        if (defstmt != NULL && (defstmt->Opr() == OPR_STID ||
-                                defstmt->Opr() == OPR_ISTORE))
+        if (defstmt != NULL &&
+            defstmt->Rhs() == key &&
+            (defstmt->Opr() == OPR_STID ||
+             defstmt->Opr() == OPR_ISTORE))
           key = defstmt->Lhs();
       }
     }
