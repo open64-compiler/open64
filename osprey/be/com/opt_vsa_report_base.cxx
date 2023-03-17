@@ -131,6 +131,15 @@ static void Flush_filelist(void) {
   }
 }  
 
+static void Win32_Fix_Path(const char *path) {
+  char *p = path;
+  while (*p) {
+    if (*p == '\\')
+      *p = '/';
+    p++;
+  }
+}
+
 // ============================================================================
 // Write_vsarpt_source
 //   helper functions to print source file list
@@ -165,6 +174,10 @@ Write_vsarpt_source(WRITTER& writter, const char *finfo, const char *fid,
   // append files
   for (i = 1; i < file_count; ++i) {
     const char* name = Get_Global_File_Full_Path(i, fname, sizeof(fname));
+
+    // fix windows path
+    Win32_Fix_Path(name);
+
     INT name_len = strlen(name);
     if (name_len >= 3 && name[name_len - 1] == 'i' &&
         (name[name_len - 2] == '.' ||
