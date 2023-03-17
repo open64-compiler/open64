@@ -132,7 +132,7 @@ static void Flush_filelist(void) {
 }  
 
 static void Win32_Fix_Path(const char *path) {
-  char *p = path;
+  char *p = (char *)path;
   while (*p) {
     if (*p == '\\')
       *p = '/';
