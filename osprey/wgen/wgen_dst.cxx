@@ -2989,7 +2989,7 @@ WGEN_Set_Line_And_File (UINT line, const char* f, bool check)
 char *
 Win32_Fix_Path(char *path)
 {
-  char *new_path = (char *) alloca(strlen(path) + 1);
+  char *new_path = (char *) malloc(strlen(path) + 1);
   int k = 0;
   for (int i = 0; path[i] != '\0'; i++) {
     if (path[i] == '/') {
@@ -3011,7 +3011,15 @@ UINT WGEN_Get_Filenum(const char* f)
         // We aren't really modifying f, this is just so we can
         // call legacy code.
         char* file = const_cast<char*>(f);
-        file = Win32_Fix_Path(file);
+
+        // check if filepath is windows path
+        if (((file[0] >= 'a') && (file[0] <= 'z')) || 
+            ((file[0] >= 'A') && (file[0] <= 'Z'))) {
+          if ((file[1] == ':') && ((file[2] == '\\') || file[2] == '/')) {
+            file = Win32_Fix_Path(file);
+          }
+        }
+
         BOOL is_windows = file[1] == ':' && file[2] == '\\';
         char sep = is_windows ? '\\' : '/';
         const char* cur_dir = is_windows ? ".\\" : "./";

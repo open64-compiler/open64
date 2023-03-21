@@ -388,7 +388,7 @@ Get_Srcpos_Filename(SRCPOS spos, const char **fname, const char **dirname)
     const char* ptr = mgr->Get_file_name(filenum);
     *dirname = ptr;
     while (*ptr != '\0') {
-      if (*ptr == '/')
+      if ((*ptr == '/') || (*ptr == '\\'))
         *fname = ptr + 1;
       ++ptr;
     }
