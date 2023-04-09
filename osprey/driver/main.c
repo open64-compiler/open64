@@ -792,8 +792,10 @@ static void
 check_old_CC_options (char *name)
 {
 	if (strcmp(name, "+I") == 0) {
+#ifndef BUILD_MASTIFF
 		// MASTIFF-OPT: "-keep" --> "-kp", not expose
-		//warn_no_longer_supported2(name, "-keep");
+		warn_no_longer_supported2(name, "-keep");
+#endif
 	} else if (strcmp(name, "+L") == 0) {
 		warn_no_longer_supported(name);
 	} else if (strcmp(name, "+d") == 0) {
@@ -1017,11 +1019,19 @@ prescan_options (int argc, char *argv[])
       xfa_flag = FALSE;
     } else if(!strcmp(argv[i], "-noxa")) {
       noxa = TRUE;
-    } else if (!strcmp(argv[i], "-kp")) {	// bug 2181, MASTIFF-OPT: "-keep" --> "-kp"
+    }
+#ifdef BUILD_MASTIFF
+    else if (!strcmp(argv[i], "-kp")) {	// bug 2181, MASTIFF-OPT: "-keep" --> "-kp"
       keep_flag = TRUE;
-    //} else if (!strcmp(argv[i], "-save_temps")) {  // MASTIFF-OPT: no -save_temps
-    //  keep_flag = TRUE;
-    } else if (!strcmp(argv[i], "-S")) {
+    }
+#else
+		else if (!strcmp(argv[i], "-keep")) {	// bug 2181
+      keep_flag = TRUE;
+    } else if (!strcmp(argv[i], "-save_temps")) {
+      keep_flag = TRUE;
+    }
+#endif
+    else if (!strcmp(argv[i], "-S")) {
       ipa_conflict_option = argv[i];
     } else if (!strcmp(argv[i], "-fbgen")) {
       ipa_conflict_option = argv[i];
