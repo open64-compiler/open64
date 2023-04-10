@@ -4298,8 +4298,14 @@ WHIRL2llvm::WN2llvmSymAct(WN *wn, ACTION act, LVVAL *rhs)
         return store;
       }
     } // SCLASS_AUTO
-    case SCLASS_EH_REGION:
-    case SCLASS_EH_REGION_SUPP:
+
+    // TODO: implement exceptions
+    case SCLASS_EH_REGION: {
+      DevWarn("WN2llvmSymAct: SCLASS_EH_REGION not handled");
+    }
+    case SCLASS_EH_REGION_SUPP: {
+      DevWarn("WN2llvmSymAct: SCLASS_EH_REGION_SUPP not handled");
+    }
     default:
       FmtAssert(FALSE, ("WN2llvmSymAct: this SCLASS %d %s not handled", st->storage_class, varname));
     } // st->storage_class
@@ -4505,9 +4511,14 @@ void ST2llvm::operator() (UINT idx, ST *st) const {
 
       break;
     }
-    case SCLASS_EH_REGION:
+
+    // TODO: implement exceptions
+    case SCLASS_EH_REGION: {
+      DevWarn("ST2llvm:operator(): SCLASS_EH_REGION is not handled");
+      break;
+    }
     case SCLASS_EH_REGION_SUPP:
-      FmtAssert(FALSE, ("ST2llvm::operator(): this SCLASS not handled"));
+      DevWarn("ST2llvm:operator(): SCLASS_EH_REGION_SUPP is not handled");
       break;
     case SCLASS_COMMON: {
       /* Global variable without initialization */
@@ -5775,7 +5786,23 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     break;
   } 
   case OPR_REGION: {
-    FmtAssert(FALSE, ("WHIRL2llvm::STMT2llvm, operator %s not handled", OPERATOR2name(opr)));
+    if (WN_region_kind(wn) == REGION_KIND_TRY) {
+      
+#if 0 // skip region now
+      WN *try_body = WN_region_body(wn);
+      char *try_labname = LABEL_NUMBER2name(WN_label_number(try_body));
+      W2LLBB *try_w2llbb = Getw2llbb(try_labname);
+
+      // handle 
+      BLOCK2llvm(try_body, try_w2llbb);
+
+      WN *pragma = WN_region_pragmas(wn);
+      WN *wn2 = WN_first(pragma);
+#endif
+
+    } else {
+      FmtAssert(FALSE, ("WHIRL2llvm::STMT2llvm, operator %s not handled", OPERATOR2name(opr)));
+    }
     break;
   }
   case OPR_PREFETCH: {
@@ -6378,6 +6405,13 @@ struct INITO2llvm {
 void INITO2llvm::operator() (UINT idx, INITO *inito) const {
   const ST *st = &St_Table[inito->st_idx];
   const INITV &initv = Initv_Table[inito->val];
+
+  // DIRTY HACK: skip exception regions
+  // TODO: implement exceptions
+  if (st->storage_class == SCLASS_EH_REGION || st->storage_class == SCLASS_EH_REGION_SUPP) {
+    DevWarn("INITO2llvm::operator(): skipping exception region %s", ST_name(st));
+    return;
+  } 
 
   llvm::Constant *init = whirl2llvm->INITV2llvm(initv, ST_type(st));
   
