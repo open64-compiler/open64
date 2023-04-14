@@ -2987,6 +2987,27 @@ WHIRL2llvm::CreateBinary(WN *wn)
     }
     break;
   }
+  case OPR_COMPOSE_BITS: {
+    UINT bit_offset = WN_bit_offset(wn);
+    UINT bit_size = WN_bit_size(wn);
+    UINT64 mask = (1ULL << bit_size) - 1;
+    mask <<= bit_offset;
+
+    // clear corresponding bits of lhs
+    lhs = Lvbuilder()->CreateAnd(lhs, llvm::ConstantInt::get(lhs->getType(), ~mask));
+
+    // clear high bits of rhs
+    mask = (1UL << bit_size) - 1;
+    rhs = Lvbuilder()->CreateAnd(rhs, llvm::ConstantInt::get(lhs->getType(), mask));
+
+    // shift rhs to the corresponding position
+    if (bit_offset > 0)
+      rhs = Lvbuilder()->CreateShl(rhs, llvm::ConstantInt::get(Lvbuilder()->getInt64Ty(), bit_offset));
+
+    // insert rhs into lhs
+    bin = Lvbuilder()->CreateOr(lhs, rhs);
+    break;
+  }
   default:
     FmtAssert(FALSE, ("WHIRL2llvm::CreateBinary, operator %s not handled", OPERATOR2name(opr)));
     break;
@@ -5245,12 +5266,9 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
   case OPR_SHL:
   case OPR_ASHR:
   case OPR_LSHR:
-  case OPR_ADD: {
-    res = CreateBinary(wn);
-    break;
-  }
+  case OPR_ADD: 
   case OPR_COMPOSE_BITS: {
-    FmtAssert(FALSE, ("WHIRL2llvm::EXPR2llvm, operator %s not handled", OPERATOR2name(opr)));
+    res = CreateBinary(wn);
     break;
   }
   case OPR_EQ:
@@ -5788,10 +5806,10 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
   case OPR_REGION: {
     if (WN_region_kind(wn) == REGION_KIND_TRY) {
       
-#if 0 // skip region now
+#if 1 // skip region now
       WN *try_body = WN_region_body(wn);
       char *try_labname = LABEL_NUMBER2name(WN_label_number(try_body));
-      W2LLBB *try_w2llbb = Getw2llbb(try_labname);
+      W2LBB *try_w2llbb = Get_w2lbb(try_labname);
 
       // handle 
       BLOCK2llvm(try_body, try_w2llbb);
