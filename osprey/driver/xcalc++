@@ -43,6 +43,7 @@ PIC       = True
 DEBUG     = False
 LOG       = False
 EMIT_LLVM = False
+AST_DUMP  = False
 STD       = ""
 
 class Formatter(logging.Formatter):
@@ -71,7 +72,6 @@ class Formatter(logging.Formatter):
 def report_err(logger: logging.Logger, cond: bool, msg: str):
     if cond == False:
         logger.error(msg)
-        sys.exit(1)
     return cond
 
 
@@ -125,6 +125,7 @@ def collect_options(argv: List[str]) -> Tuple[List[str], List[str], str]:
     global LOG
     global STD
     global EMIT_LLVM
+    global AST_DUMP
     opts = []
     output = ""
     files = []
@@ -159,6 +160,8 @@ def collect_options(argv: List[str]) -> Tuple[List[str], List[str], str]:
                     STATIC = False
                 elif argv[i] == '-emit-llvm':
                     EMIT_LLVM = True
+                elif argv[i] == '-ast-dump':
+                    AST_DUMP = True
                 else:
                     opts.append(argv[i])
             else:
@@ -282,12 +285,18 @@ def mapclang(logger: logging.Logger, opts: List[str], f: str) -> bool:
     opts = list(filter(lambda x: not x.startswith("-l"), opts))
     cmd = MAPCLANG_OPTS.split() + opts + [dot_ii, "-o", dot_B]
 
+    if AST_DUMP == True:
+        cmd.append("-ast-dump")
+
     if LOG:
         info = MAPCLANG + " " + " ".join(i for i in cmd)
         logger.info(info)
 
     process = subprocess.Popen([MAPCLANG] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = process.communicate()
+
+    if AST_DUMP == True:
+        print(out.decode().strip())
 
     # the return code 16 means inlining is required
     if (process.returncode != 0) and (process.returncode != 16):
@@ -375,6 +384,9 @@ def front_end(logger: logging.Logger, opts: List[str], files: List[str]) -> List
             ret = mapclang(logger, opts, f)
             if report_err(logger, ret, msg) == False:
                 continue
+            # exit if ast dump is enabled
+            if AST_DUMP == True:
+                sys.exit(0)
 
         ret = inline(logger, f)
         if report_err(logger, ret, msg) == False:
