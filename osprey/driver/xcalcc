@@ -46,6 +46,7 @@ LOG       = False
 EMIT_LLVM = False
 AST_DUMP  = False
 STD       = ""
+VERIFY    = ""
 
 
 class Formatter(logging.Formatter):
@@ -131,6 +132,7 @@ def collect_options(argv: List[str]) -> Tuple[List[str], List[str], str]:
     global STD
     global EMIT_LLVM
     global AST_DUMP
+    global VERIFY
     opts = []
     output = ""
     files = []
@@ -167,6 +169,8 @@ def collect_options(argv: List[str]) -> Tuple[List[str], List[str], str]:
                     EMIT_LLVM = True
                 elif argv[i] == '-ast-dump':
                     AST_DUMP = True
+                elif argv[i].startswith('-verify'):
+                    VERIFY = argv[i]
                 else:
                     opts.append(argv[i])
             else:
@@ -281,6 +285,9 @@ def mapclang(logger: logging.Logger, opts: List[str], f: str) -> bool:
 
     if AST_DUMP == True:
         cmd.append("-ast-dump")
+    
+    if VERIFY != "":
+        cmd.append(VERIFY)
 
     if LOG:
         info = MAPCLANG + " " + " ".join(i for i in cmd)
