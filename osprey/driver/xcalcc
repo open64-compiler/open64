@@ -6,6 +6,7 @@ import logging
 import platform
 import subprocess
 from shutil import which
+from typing import List, Tuple
 
 XCALCC        = "xcalcc"
 W2LL          = "w2ll"
@@ -34,13 +35,15 @@ LD_LIBRARY_PATH = ""
 
 DEFAULT_OPTS = ["-PHASE:c=off", "-WOPT:divrem=0", "-LNO:simd=0", "-WOPT:cfo_main=0"]
 
+# options
 OPT_LEVEL = 2
 ASM_MODE  = False
-NEED_LINK = True 
+NEED_LINK = True
 STATIC    = False
 PIC       = True
 DEBUG     = False
 LOG       = False 
+EMIT_LLVM = False
 STD       = ""
 
 
@@ -67,7 +70,7 @@ class Formatter(logging.Formatter):
         return formatter.format(record)
 
 
-def report_err(logger, cond, msg):
+def report_err(logger: logging.Logger, cond: bool, msg: str):
     if cond == False:
         logger.error(msg)
         sys.exit(1)
@@ -75,7 +78,7 @@ def report_err(logger, cond, msg):
 
 
 def set_env():
-    global GCC 
+    global GCC
     global W2LL
     global LLC
     global MAPCLANG
@@ -84,8 +87,8 @@ def set_env():
     global INLINE
     global BE
     global MACHINE
-    global XCALCC_HOME 
-    global LD_LIBRARY_PATH 
+    global XCALCC_HOME
+    global LD_LIBRARY_PATH
 
     check_exec()
 
@@ -105,7 +108,7 @@ def set_env():
     INLINE = os.path.join(LD_LIBRARY_PATH, INLINE)
     BE = os.path.join(LD_LIBRARY_PATH, BE)
 
-def has_cmd(cmd):
+def has_cmd(cmd: str):
     return which(cmd) is not None
 
 
@@ -115,9 +118,10 @@ def check_exec():
             raise AssertionError("xcalcc is missing")
     except AssertionError as e:
         print(e)
+        sys.exit(1)
 
 
-def collect_options(argv):
+def collect_options(argv: List[str]) -> Tuple[List[str], List[str], str]:
     global OPT_LEVEL
     global ASM_MODE
     global NEED_LINK
@@ -125,6 +129,7 @@ def collect_options(argv):
     global DEBUG
     global LOG
     global STD
+    global EMIT_LLVM
     opts = []
     output = ""
     files = []
@@ -133,7 +138,7 @@ def collect_options(argv):
     while i < len(argv):
         try:
             if argv[i] == "-o":
-                if i+1 >= len(argv):
+                if i + 1 >= len(argv):
                     raise AssertionError("Output file is required!")
                 output = argv[i + 1]
                 i = i + 1   # eat the next argument
@@ -154,25 +159,31 @@ def collect_options(argv):
                     LOG = True
                 elif argv[i].startswith("-std="):
                     STD = argv[i]
+                elif argv[i] == '-fPIC':
+                    PIC = True
+                    STATIC = False
+                elif argv[i] == '-emit-llvm':
+                    EMIT_LLVM = True
                 else:
                     opts.append(argv[i])
             else:
                 files.append(argv[i])
         except AssertionError as e:
             print(e)
+            sys.exit(1)
         
         i = i + 1
     return opts, files, output
 
 
-def gen_opts(opts):
+def gen_opts(opts: List[str]) -> str:
     res = " "
     for i in opts:
         res = res + i + " "
     return res
 
 
-def rm_suffix(f):
+def rm_suffix(f: str) -> str:
     if '.' in f:
         while f[-1] != '.':
             f = f[: len(f) - 1]
@@ -180,11 +191,11 @@ def rm_suffix(f):
     return f
 
 
-def is_obj(f):
+def is_obj(f: str) -> bool:
     return f.endswith(".o")
 
 
-def is_src(f):
+def is_src(f: str) -> bool:
     src = [".c", ".cxx", ".cpp", ".c++", 
            ".cc", ".C", ".h", ".hpp", 
            ".hh", ".hxx", ".H", ".h++",
@@ -195,7 +206,7 @@ def is_src(f):
              return True
     return False
 
-def preprocess(logger, opts, f):
+def preprocess(logger: logging.Logger, opts: List[str], f: str) -> bool:
     dot_i = rm_suffix(f.split('/')[-1]) + ".i" 
     cmd = opts + PP_OPTS.split() + ["-E", f, "-o", dot_i]
 
@@ -213,7 +224,7 @@ def preprocess(logger, opts, f):
         return True 
     
 
-def cc1(logger, f):
+def cc1(logger: logging.Logger, f: str) -> bool:
     dot_i = rm_suffix(f.split('/')[-1]) + ".i" 
     spin = rm_suffix(f.split('/')[-1]) + ".spin" 
 
@@ -239,7 +250,7 @@ def cc1(logger, f):
         return True 
 
 
-def wgen(logger, f):
+def wgen(logger: logging.Logger, f: str) -> bool:
     spin = rm_suffix(f.split('/')[-1]) + ".spin" 
     dot_B = rm_suffix(f.split('/')[-1]) + ".B" 
     cmd = ["-fS," + spin, "-fB," + dot_B]
@@ -259,7 +270,7 @@ def wgen(logger, f):
         return True 
 
 
-def mapclang(logger, opts, f):
+def mapclang(logger: logging.Logger, opts: List[str], f: str) -> bool:
     dot_B  = rm_suffix(f.split('/')[-1]) + ".B"
     dot_i = rm_suffix(f.split('/')[-1]) + ".i"
     opts = list(filter(lambda x: not x.startswith("-l"), opts))
@@ -280,7 +291,7 @@ def mapclang(logger, opts, f):
         return True
 
 
-def inline(logger, f):
+def inline(logger: logging.Logger, f: str) -> bool:
     dot_B = rm_suffix(f.split('/')[-1]) + ".B" 
     dot_I = rm_suffix(f.split('/')[-1]) + ".I" 
     cmd = INLINE_OPTS.split()
@@ -302,7 +313,7 @@ def inline(logger, f):
         return True 
 
 
-def be(logger, f):
+def be(logger: logging.Logger, f: str) -> bool:
    #  -fB,a.I -s -fs,a.s /media/psf/Home/code/xc5/mastiff_build/a.c
     dot_I = rm_suffix(f.split('/')[-1]) + ".I" 
     dot_s = rm_suffix(f.split('/')[-1]) + ".s" 
@@ -325,7 +336,7 @@ def be(logger, f):
         return True 
 
 
-def front_end(logger, opts, files):
+def front_end(logger: logging.Logger, opts: List[str], files: List[str]) -> List[str]:
     res = []
 
     # option for using GCC front end
@@ -372,7 +383,7 @@ def front_end(logger, opts, files):
     return res
 
 
-def whirl2llvm(logger, opts, files):
+def whirl2llvm(logger: logging.Logger, opts: List[str], files: List[str], out_file: str) -> List[str]:
     res = []
     opts = []
     suffix = ""
@@ -387,6 +398,10 @@ def whirl2llvm(logger, opts, files):
         suffix = ".B"
         opts = opts + W2LL_OPTS.split()
 
+    if out_file != "":
+        opts.append("-o")
+        opts.append(out_file)
+
     for f in files:
         cmd = [f + suffix] + opts
 
@@ -397,6 +412,9 @@ def whirl2llvm(logger, opts, files):
         process = subprocess.Popen([W2LL] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = process.communicate()
 
+        if EMIT_LLVM and out_file == '-':
+            print(out.decode().strip())
+
         if process.returncode != 0:
             logger.error(err.decode().strip())
             sys.exit(process.returncode)
@@ -406,7 +424,7 @@ def whirl2llvm(logger, opts, files):
     return res
 
 
-def llc(logger, opts, files, outfile):
+def llc(logger: logging.Logger, opts: List[str], files: List[str], outfile: str) -> List[str]:
     res = []
     opts = ["-O" + str(OPT_LEVEL)] + LLC_OPTS.split()
     suffix = ""
@@ -440,6 +458,9 @@ def llc(logger, opts, files, outfile):
         process = subprocess.Popen([LLC] + cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = process.communicate()
 
+        if ASM_MODE and outfile == "-":
+            print(out.decode().strip())
+
         if process.returncode != 0:
             logger.error(err.decode().strip())
             sys.exit(process.returncode)
@@ -449,7 +470,7 @@ def llc(logger, opts, files, outfile):
     return res
 
 
-def link(logger, opts, files, outfile):
+def link(logger: logging.Logger, opts: List[str], files: List[str], outfile: str):
     cmd = []
     if STATIC == True:
         cmd.append("-static")
@@ -477,7 +498,7 @@ def link(logger, opts, files, outfile):
         sys.exit(process.returncode)
 
 
-def compile(opts, files, output):
+def compile(opts: List[str], files: List[str], output: str):
     logger = logging.getLogger("xcalcc")
     logger.setLevel(logging.DEBUG)
 
@@ -497,10 +518,12 @@ def compile(opts, files, output):
         sys.exit(1)
 
     res = front_end(logger, opts, src)
-    res = whirl2llvm(logger, opts, res)
-    res = llc(logger, opts, res, output)
-    if NEED_LINK:
-        link(logger, opts, res + obj, output)
+    res = whirl2llvm(logger, opts, res, output)
+
+    if EMIT_LLVM == False:
+        res = llc(logger, opts, res, output)
+        if NEED_LINK:
+            link(logger, opts, res + obj, output)
 
 
 def main():
