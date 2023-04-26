@@ -417,7 +417,7 @@ def whirl2llvm(logger: logging.Logger, opts: List[str], files: List[str], out_fi
         suffix = ".B"
         opts = opts + W2LL_OPTS.split()
 
-    if out_file != "":
+    if EMIT_LLVM and out_file != "":
         opts.append("-o")
         opts.append(out_file)
 
