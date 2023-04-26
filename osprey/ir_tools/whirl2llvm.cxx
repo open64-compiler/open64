@@ -231,21 +231,20 @@ w2ll_DevWarn( const char *fmt, ...)
     fflush ( stderr );
     va_end(args);
 
-  /* write to trace file: */
-  if ( TFile != NULL ) {
-    va_start ( args, fmt );
-    fprintf ( TFile, "!!! DevWarn: %s :", Current_function);
-    vfprintf ( TFile, fmt, args );
-    fprintf ( TFile, "\n" );
-    fflush ( TFile );
-    va_end(args);
-  }
-
+    /* write to trace file: */
+    if ( TFile != NULL ) {
+      va_start ( args, fmt );
+      fprintf ( TFile, "!!! DevWarn: %s :", Current_function);
+      vfprintf ( TFile, fmt, args );
+      fprintf ( TFile, "\n" );
+      fflush ( TFile );
+      va_end(args);
+    }
   }
 }
 
 static void  /* SC 2022 - so that we do not mix up with rest of BE's name */
-w2ll_Fail_FmtAssertion ( const char *fmt, ... )
+w2ll_Fail_FmtAssertion (const char *fmt, ... )
 {
   va_list vp;
   
@@ -303,7 +302,19 @@ w2ll_Fail_FmtAssertion ( const char *fmt, ... )
 #endif // SC - 2022  
 } // w2ll_Fail_FmtAssertion
 
+static void
+w2ll_Log(const char *fmt, ...)
+{
+  va_list args;
 
+  /* write to trace file: */
+    va_start ( args, fmt );
+    fprintf ( stderr, "!!! Log: %s :", Current_function);
+    vfprintf ( stderr, fmt, args );
+    fprintf ( stderr, "\n" );
+    fflush ( stderr );
+    va_end(args);
+}
 
 // SML 2022 - to show current function name in message
 
@@ -400,6 +411,21 @@ extern void dump_ty(TY_IDX ty_idx);
 // End of Tracing Facility
 //
 // =============================================================================
+
+
+// =============================================================================
+//
+// command options
+//
+// =============================================================================
+static BOOL ENABLE_GVN = false;
+static BOOL ENABLE_MEM2REG = false;
+static BOOL ENABLE_SIMP_CFG = false;
+static BOOL ENABLE_SIMP_INST = false;
+static BOOL ENABLE_INST_COMBINE = false;
+static BOOL ENABLE_DGE = false;
+static BOOL ENABLE_BDCE = false;
+static char *OUT_FILE = nullptr;
 
 
 extern std::vector<std::string> srcFileTable;
@@ -6533,8 +6559,7 @@ ir_b2a_process_PUs (PU_Info *pu_tree, WHIRL2llvm *whirl2llvm)
     whirl2llvm->Inc_cur_pu_num();
     if (whirl2llvm->Skip_cur_pu()) continue;
 
-    if (Tracing_enabled)
-      printf("Translating %s(%d)\n", ST_name(WN_st(wn)), whirl2llvm->Cur_pu_num());
+    w2ll_Log("Translating %s(%d)\n", ST_name(WN_st(wn)), whirl2llvm->Cur_pu_num());
     Is_Trace(Tracing_enabled, (TFile, "%sStart processing function %s\n%s", DBar,
                                ST_name(WN_st(wn)), DBar));
     Is_Trace_cmd(Tracing_enabled, fdump_tree(TFile, wn));
@@ -6654,22 +6679,19 @@ LVDILOC *WHIRL2llvm::SRC_POS2diloc(INT64 linenum) {
   USRCPOS_srcpos(srcpos) = linenum;
 
   mUINT16 filenum = USRCPOS_filenum(srcpos);
-  // LVDILOC *diloc = LVDILOC::get(
-  //   USRCPOS_linenum(srcpos),            // line number
-  //   USRCPOS_column(srcpos),             // column number
-  //   W2L_files()[filenum].Lvdi_file(),   // DIFile
-  //   NULL                                // Scope
-  // );
-  // return diloc;
-}
 
-static BOOL ENABLE_GVN = false;
-static BOOL ENABLE_MEM2REG = false;
-static BOOL ENABLE_SIMP_CFG = false;
-static BOOL ENABLE_SIMP_INST = false;
-static BOOL ENABLE_INST_COMBINE = false;
-static BOOL ENABLE_DGE = false;
-static BOOL ENABLE_BDCE = false;
+#if 0
+  LVDILOC *diloc = LVDILOC::get(
+    USRCPOS_linenum(srcpos),            // line number
+    USRCPOS_column(srcpos),             // column number
+    W2L_files()[filenum].Lvdi_file(),   // DIFile
+    NULL                                // Scope
+  );
+  return diloc;
+#endif
+
+  return nullptr;
+}
 
 // =============================================================================
 /* Binary to ASCII conversion */
@@ -6808,9 +6830,20 @@ ir_b2a (char *global_file,
     MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
     MPM.run(*driver.Module(), MAM);
 
-    driver.Module()->print(llvm::outs(), nullptr);
+    std::string out_file;
+    if (OUT_FILE == NULL) {
+      out_file = std::string(input_file) + ".ll";
+    } else {
+      if (strcmp(OUT_FILE, "-") == 0) {
+        driver.Module()->print(llvm::outs(), nullptr);
+        return;
+      } else {
+        out_file = std::string(OUT_FILE);
+      }
+    }
+
     std::error_code EC;
-    auto out = new llvm::raw_fd_ostream(std::string(input_file) + ".ll", EC);
+    auto out = new llvm::raw_fd_ostream(out_file, EC);
     driver.Module()->print(*out, nullptr);
 } // ir_b2a
 
@@ -6940,6 +6973,10 @@ int main (INT argc, char *argv[])
         testing_mode ^= atoi(argv[++binarg]);
       } else if (strncmp(argv[binarg], "-enable", 7) == 0) {
         testing_mode |= atoi(argv[++binarg]);
+      } else if (strncmp(argv[binarg], "-o", 2) == 0) {
+        char *filename = argv[++binarg];
+        OUT_FILE = new char[strlen(filename)];
+        strcpy(OUT_FILE, filename);
       } else {
         // can't match
       }
