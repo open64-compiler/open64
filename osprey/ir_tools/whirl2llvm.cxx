@@ -741,6 +741,8 @@ private:
   INTVEC     _parm_order;   // record the order of parameters
   LVALC     *_last_alloc;   // last alloca instruction
   LVVAL     *_ret_val;
+  BOOL       _has_call_processed; // the flag that indicates if OPR_CALL/OPR_ICALL has been processed
+
 
   W2LBUILDER(const W2LBUILDER &);             // REQUIRED UNDEFINED UNWANTED methods
   W2LBUILDER& operator = (const W2LBUILDER&); // REQUIRED UNDEFINED UNWANTED methods
@@ -749,6 +751,7 @@ public:
   W2LBUILDER(LVBUILDER *builder):_builder(builder) {
     _ret_val = nullptr;
     _last_alloc = nullptr;
+    _has_call_processed = FALSE;
   }
   ~W2LBUILDER() { }
 
@@ -842,10 +845,12 @@ public:
     FmtAssert(_locvars.find(nm) != _locvars.end(), ("Mutate_locvar: %s does not exist", nm));
     _locvars[nm] = std::make_pair(ty, p);
   }
-  LVVAL      *RetVal()                     { return _ret_val;          }
-  void        RetVal(LVVAL *ret_val)       { _ret_val = ret_val;       }
-  LVALC      *LastAlloc()                  { return _last_alloc;       }
-  void        LastAlloc(LVALC *last_alloc) { _last_alloc = last_alloc; }
+  LVVAL      *RetVal()                     { return _ret_val;            }
+  void        RetVal(LVVAL *ret_val)       { _ret_val = ret_val;         }
+  LVALC      *LastAlloc()                  { return _last_alloc;         }
+  void        LastAlloc(LVALC *last_alloc) { _last_alloc = last_alloc;   }
+  BOOL        Has_call_processed() const   { return _has_call_processed; }
+  void        Has_call_processed(BOOL val) { _has_call_processed = val;  }
 }; // W2LBUILDER
 
 #define FIELD_SEPARATOR '%'
@@ -1125,7 +1130,8 @@ public:
     INT regnum = WN_offset(wn);
     return (regnum == First_Int_Preg_Return_Offset ||
             regnum == Last_Int_Preg_Return_Offset  ||
-            regnum == First_Float_Preg_Return_Offset);
+            regnum == First_Float_Preg_Return_Offset ||
+            regnum == Last_Float_Preg_Return_Offset);
   }
 
   void        Flush_cur_func(void)  {
@@ -1331,7 +1337,15 @@ public:
       fld_idx++;
     } while (1);
     return TRUE;
-  } 
+  }
+
+  BOOL Has_call_processed() const {
+    return _builder->Has_call_processed();
+  }
+
+  void Has_call_processed(BOOL val) {
+    _builder->Has_call_processed(val);
+  }
 
   void        Set_parm_name(LVFUNC *lvfunc) {
     if (lvfunc == NULL)
@@ -3494,6 +3508,8 @@ LVTY*
 WHIRL2llvm::Create_ret_type(TY_IDX putyidx, LVTYVEC& argstype, SIGNVEC *info_list, PLOC *ploc)
 {
   TY_IDX ret_idx = TY_ret_type(putyidx);
+  
+  // return via rax/rdx or xmm0/xmm1 by default
   LVTY  *ret_type = Wty2llvmty(TY_mtype(ret_idx), ret_idx);
 
   RETURN_INFO return_info = Get_Return_Info(ret_idx, Use_Simulated, FALSE);
@@ -3514,14 +3530,6 @@ WHIRL2llvm::Create_ret_type(TY_IDX putyidx, LVTYVEC& argstype, SIGNVEC *info_lis
                           Get_ext_flag(fake_param_ty, TY_mtype(ret_idx)));
     }
     ret_type = llvm::Type::getVoidTy(Context());
-  }
-  else {
-    // return via 1 or more return registers
-    // we change the original struct return type to the type of PREG
-    // use just one register to see how llvm respond
-    TYPE_ID mtype = RETURN_INFO_mtype(return_info, 0);
-    ST     *preg_st = MTYPE_is_float(mtype) ? Float_Preg : Int_Preg;
-    ret_type = Wty2llvmty(mtype, ST_type(preg_st));
   }
 
   return ret_type;
@@ -3825,7 +3833,7 @@ WHIRL2llvm::Collect_retval_pregname(WN *wn)  {
   TYALC ret_reg;
 
   // Handles output from Low WHIRL first, High WHIRL later
-  if ((WN_operator(retv_wn) == OPR_STID) && IsPreg(retv_wn)) {
+  if (WN_operator(retv_wn) == OPR_STID) {
     // create slot for return value
     retv_wn = Ref_func_retreg(retv_wn);
     Is_Trace(Tracing_enabled, (TFile, "Collect_retval_pregname but also Get_preg for : "));
@@ -4019,6 +4027,10 @@ WHIRL2llvm::Is_rhs_inparm_ld(WN *stmt)
 
   // return FALSE if the rhs of current statement is not inparm 
   if (!Is_int_parm_reg(data) && !Is_float_parm_reg(data))
+    return FALSE;
+
+  // the XMM0/XMM1 register may be used to return float/double value
+  if (Is_float_parm_reg(data) && Has_call_processed())
     return FALSE;
 
   // continue checking for possible saving return value
@@ -5527,6 +5539,10 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     auto st = WN_st(wn);
     auto data = WN_kid0(wn);
     auto offset = WN_offset(wn);
+
+    // if the store is for a parameter, we need to save the value to the
+    // however, the floating point parameter shares the same register with
+    // the return register, so we need to check if there is any call has been processedS
     if (Is_rhs_inparm_ld(wn)) {
       // make a notation in WHIRL2llvm::Builder() for later use
       if (st->sym_class == CLASS_PREG) {
@@ -5594,6 +5610,10 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     // Since WHIRL does not maintain the declaration info fully, the type of 
     // arguments are collected from the actual argument list in this call node.
     // TODO: WHIRL2llvm to cache function delcarations
+    
+    // set flag
+    Has_call_processed(TRUE);
+    
     LVFUNC   *func = GetFunction(wn);
     LVFUNCTY *lvfuncty = func->getFunctionType();
 
@@ -5654,19 +5674,75 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     // Create the name of PREG that store value from return register
     LVALC *pname = nullptr;
     if (!(WN_rtype(wn) == MTYPE_V || lvfuncty->getReturnType()->isVoidTy())) {
-      pname = Collect_retval_pregname(wn);
-    }
+      if (lvfuncty->getReturnType()->isStructTy()) {
+        // handle structtype return value
 
-    if (!(WN_rtype(wn) == MTYPE_V || lvfuncty->getReturnType()->isVoidTy()) && (pname != nullptr)) {
-      auto ret_val = HandleStoreDifferentType(wn, call, pname->getAllocatedType());
-      Lvbuilder()->CreateStore(ret_val, pname);
-    }
+        // store the return value to a temp alloca
+        LVALC *ret_val = Lvbuilder()->CreateAlloca(lvfuncty->getReturnType());
+        Lvbuilder()->CreateStore(call, ret_val);
+        /*
+         * struct A { int f1; float f2; float f3; };
+         * struct A f(int a, float b, float c);
+         * struct A b(int a, float b, float c) {
+         *   return f(a, b, c);
+         * }
+         *
+         * the WHIRL that calling "f(int, float, foat)":
+         * 
+         *    I4I4LDID 49 <1,4,.preg_I4> T<4,.predef_I4,4> # a
+         *  I4PARM 2 T<4,.predef_I4,4> #  by_value 
+         *   F4F4LDID 50 <1,10,.preg_F4> T<10,.predef_F4,4> # b
+         *  F4PARM 2 T<10,.predef_F4,4> #  by_value 
+         *   F4F4LDID 51 <1,10,.preg_F4> T<10,.predef_F4,4> # c
+         *  F4PARM 2 T<10,.predef_F4,4> #  by_value 
+         * MCALL 126 <1,52,_Z1fiff> # flags 0x7e {line: 1/39}
+         * 
+         * # save (int)f1 and (float)f2
+         *  I8I8LDID 1 <1,5,.preg_I8> T<5,.predef_I8,8> # $1
+         * I8STID 0 <2,5,_temp_.call0> T<5,.predef_I8,8> {line: 1/39}
+         * 
+         * # save (float)f3
+         *  F4F4LDID 17 <1,11,.preg_F8> T<10,.predef_F4,4> # $f0
+         * F4STID 52 <1,10,.preg_F4> T<10,.predef_F4,4> # _temp_.call0 {line: 1/39}
+         */
 
+        // get RETURN_INFO
+        TY_IDX ret_idx = TY_ret_type(ST_type(WN_st(wn)));
+        RETURN_INFO ret_info = Get_Return_Info(ret_idx, Use_Simulated, FALSE);
+        WN *ret_wn_it = wn;
+
+        // store each field of struct to corresponding PREG
+        UINT64 fld_ofst = 0;
+        for (UINT64 i = 0; i < RETURN_INFO_count(ret_info); i++) {
+          pname = Collect_retval_pregname(ret_wn_it);
+          if (pname != nullptr) {
+            // load the field from return value
+            auto ptr = Lvbuilder()->CreateGEP(Lvbuilder()->getInt8Ty(), ret_val, Lvbuilder()->getInt64(fld_ofst));
+            // INFO: the type size of PREG maybe larger than the type size of field!!!
+            auto field = Lvbuilder()->CreateLoad(pname->getAllocatedType(), ptr);
+            Lvbuilder()->CreateStore(field, pname);
+            fld_ofst += MTYPE_byte_size(RETURN_INFO_mtype(ret_info, i));
+          }
+
+          ret_wn_it = WN_next(ret_wn_it);
+        }
+      } else {
+        pname = Collect_retval_pregname(wn);
+        if (pname != nullptr) {
+          auto ret_val = HandleStoreDifferentType(wn, call, pname->getAllocatedType());
+          Lvbuilder()->CreateStore(ret_val, pname);
+        }
+      }
+    }
     break;
   }
   // ===========================================================================
   case OPR_ICALL: {
     // TODO: OPR_ICALL is slightly different from OPR_CALL, seek refactor oppo!!
+    
+    // set flag
+    Has_call_processed(TRUE);
+
     WN       *funcptr = WN_kid(wn, WN_kid_count(wn)-1);
     LVVAL    *func = EXPR2llvm(funcptr); // call EXPR2llvm seems not right- shin 06232022
 
@@ -5753,7 +5829,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
     break;
   }
   case OPR_RETURN: {
-    LVVAL *retval = NULL;
+    LVVAL *retval = nullptr;
     WN *prev = WN_prev(wn);
     if (prev && (WN_operator(prev) == OPR_STID && IsCallResReg(prev))) {
 
@@ -5765,16 +5841,16 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
       // pack struct/array return value
       if (ret_type->isStructTy()) {
         WN *tail = prev;
-        // preg_I8_1 and preg_I8_7
-        while (WN_offset(prev) != First_Int_Preg_Return_Offset) {
-          FmtAssert(WN_operator(prev) == OPR_STID, ("STMT2llvm: return value stmt should be STID"));
-          FmtAssert(WN_offset(prev) > First_Int_Preg_Return_Offset,
-            ("STMT2llvm: STID offset(%d) should be greater than %d", 
-              WN_offset(prev), First_Int_Preg_Return_Offset));
+        LVVALVEC elems;
+
+        // reset prev
+        prev = wn;
+        // preg_I8_1/preg_I8_7 or XMM0/XMM7
+        RETURN_INFO ret_info = Get_Return_Info(ret_tyidx, Use_Simulated, FALSE);
+        for (int i = 0; i < RETURN_INFO_count(ret_info); i++) {
           prev = WN_prev(prev);
         }
 
-        LVVALVEC elems;
         while (prev) {
           auto cur_reg = Get_preg(prev);
           auto cur_elem = Lvbuilder()->CreateLoad(cur_reg.first, cur_reg.second);
@@ -5782,14 +5858,24 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
           if (prev != tail) prev = WN_next(prev);
           else break;
         }
-
+        FmtAssert(RETURN_INFO_count(ret_info) == elems.size(),
+          ("STMT2llvm: elems size(%d) is different with return type%(%d)", 
+            elems.size(), RETURN_INFO_count(ret_info)));
 
         auto struct_ty = llvm::cast<llvm::StructType>(ret_type);
-        FmtAssert(struct_ty->getNumElements() == elems.size(), 
-          ("STMT2llvm: elems size(%d) is different with return type%(%d)", 
-            elems.size(), struct_ty->getNumElements()));
 
-        Lvbuilder()->CreateAggregateRet(&elems[0], struct_ty->getNumElements());
+        // create a struct value
+        LVALC *tmp_struct = Lvbuilder()->CreateAlloca(struct_ty);
+        UINT64 ofst = 0;
+        LVTY *i8_ty = Lvbuilder()->getInt8Ty();
+        for (int i = 0; i < elems.size(); i++) {
+          LVVAL *ptr = Lvbuilder()->CreateGEP(i8_ty, tmp_struct, Lvbuilder()->getInt64(ofst));
+          Lvbuilder()->CreateStore(elems[i], ptr);
+          ofst += MTYPE_byte_size(RETURN_INFO_mtype(ret_info, i));
+        }
+
+        LVVAL *ret_struct = Lvbuilder()->CreateLoad(tmp_struct->getAllocatedType(), tmp_struct);
+        Lvbuilder()->CreateRet(ret_struct);
         
       } else if (ret_type->isVoidTy()) {
         Lvbuilder()->CreateRetVoid();
