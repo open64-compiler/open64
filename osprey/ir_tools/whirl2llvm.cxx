@@ -5542,7 +5542,7 @@ WHIRL2llvm::STMT2llvm(WN *wn, W2LBB *lvbb)
 
     // if the store is for a parameter, we need to save the value to the
     // however, the floating point parameter shares the same register with
-    // the return register, so we need to check if there is any call has been processedS
+    // the return register, so we need to check if there is any call has been processed
     if (Is_rhs_inparm_ld(wn)) {
       // make a notation in WHIRL2llvm::Builder() for later use
       if (st->sym_class == CLASS_PREG) {
