@@ -1645,6 +1645,7 @@ add_file_args (string_list_t *args, phases_t index)
 		sprintf(buf, "-fI,%s", temp);
 		add_string (args, buf);
 
+#ifdef BUILD_MASTIFF
 		// add inline skip file for rules
 		for (int i = 0; i < sizeof(vsa_opts) / sizeof(vsa_opts[0]); ++i) {
 			if (*(vsa_opts[i].flag) == TRUE) {
@@ -1661,6 +1662,7 @@ add_file_args (string_list_t *args, phases_t index)
 				}
 			}
 		}
+#endif
 		if (dashdash_flag)
 		  add_string(args,"--");
 		add_string(args, the_file);
