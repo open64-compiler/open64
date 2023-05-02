@@ -44,6 +44,11 @@ VER_MINOR="0"
 #PATCH_LEVEL=""
 VERSION="${OPEN64_FULL_VERSION:-${VER_MAJOR}.${VER_MINOR}}"
 
+XCALCC_VER_MAJOR="0"
+XCALCC_VER_MINOR="0"
+XCALCC_VER_PATCH="1"
+XCALCC_VERSION="${XCALCC_VER_MAJOR}.${XCALCC_VER_MINOR}.${XCALCC_VER_PATCH}"
+
 PREBUILT_LIB="./lib"
 PREBUILT_BIN="./bin"
 
@@ -200,6 +205,10 @@ INSTALL_XCALCC () {
         sed -i -e 's/{TARG_HOST}/riscv64/g' ${AREA}/driver/xcalcc
         sed -i -e 's/{TARG_HOST}/riscv64/g' ${AREA}/driver/xcalc++
     fi
+
+    # set version
+    sed -i -e "s/{XCALCC_VERSION}/${XCALCC_VERSION}/g" ${AREA}/driver/xcalcc
+    sed -i -e "s/{XCALCC_VERSION}/${XCALCC_VERSION}/g" ${AREA}/driver/xcalc++
 
     INSTALL_EXEC_SUB ${AREA}/driver/xcalcc  ${BIN_DIR}/xcalcc
     INSTALL_EXEC_SUB ${AREA}/driver/xcalc++ ${BIN_DIR}/xcalc++
