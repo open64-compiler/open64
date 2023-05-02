@@ -3,6 +3,7 @@
 import os
 import sys
 import logging
+import argparse
 import platform
 import subprocess
 from shutil import which
@@ -27,6 +28,8 @@ LLC_OPTS      = "--march=riscv64 -target-abi lp64d --asm-verbose --debugger-tune
 MAPCLANG_OPTS = "-cc1 -emit-llvm -mllvm --emit-extern-inline=true -triple x86_64-unknown-linux-gnu -D__clang__ -internal-isystem /usr/local/mastiff/include/clang/c++ -D__GNUC__=4 -D__GNUC_MINOR__=2 -internal-isystem /usr/local/mastiff/include -internal-isystem /usr/local/mastiff/include/clang -internal-isystem /usr/local/include -internal-externc-isystem /usr/include/x86_64-linux-gnu -internal-externc-isystem /include -internal-externc-isystem /usr/include -O3 -D__OPTIMIZE__ -xc" 
 USE_GCC       = "-gcc"
 
+# would be fixed by the installer
+VERSION       = "{XCALCC_VERSION}"
 PHASEPATH     = "lib/gcc-lib/{TARG_HOST}-open64-linux/5.0"
 
 MACHINE     = ""
@@ -122,7 +125,7 @@ def check_exec():
         sys.exit(1)
 
 
-def collect_options(argv: List[str]) -> Tuple[List[str], List[str], str]:
+def collect_options(logger: logging.Logger, argv: List[str]) -> Tuple[List[str], List[str], str]:
     global OPT_LEVEL
     global ASM_MODE
     global NEED_LINK
@@ -137,49 +140,167 @@ def collect_options(argv: List[str]) -> Tuple[List[str], List[str], str]:
     output = ""
     files = []
 
-    i = 1
-    while i < len(argv):
-        try:
-            if argv[i] == "-o":
-                if i + 1 >= len(argv):
-                    raise AssertionError("Output file is required!")
-                output = argv[i + 1]
-                i = i + 1   # eat the next argument
-            elif argv[i].startswith("-"):
-                if argv[i].startswith("-O"):
-                    OPT_LEVEL = int(argv[i].lstrip("-O"))
-                elif argv[i] == "-S":
-                    ASM_MODE = True
-                    NEED_LINK = False
-                elif argv[i] == "-c":
-                    NEED_LINK = False
-                elif argv[i] == "-static":
-                    STATIC = True
-                    PIC = False
-                elif argv[i] == "-g":
-                    DEBUG = True
-                elif argv[i] == "-v":
-                    LOG = True
-                elif argv[i].startswith("-std="):
-                    STD = argv[i]
-                elif argv[i] == '-fPIC':
-                    PIC = True
-                    STATIC = False
-                elif argv[i] == '-emit-llvm':
-                    EMIT_LLVM = True
-                elif argv[i] == '-ast-dump':
-                    AST_DUMP = True
-                elif argv[i].startswith('-verify'):
-                    VERIFY = argv[i]
-                else:
-                    opts.append(argv[i])
-            else:
-                files.append(argv[i])
-        except AssertionError as e:
-            print(e)
-            sys.exit(1)
-        
-        i = i + 1
+    # handle special cases in advance
+    need_remove = []
+    special_opt = ['-I', '-L', '-D', '-W']
+    for arg in argv:
+        if arg.startswith('-std='):
+            STD = arg
+        elif arg.startswith("-verify"):
+            VERIFY = arg
+        elif arg in special_opt:
+            opts.append(arg)
+        else:
+            continue
+        need_remove.append(arg)
+
+    for arg in need_remove:
+        argv.remove(arg)
+
+    parser = argparse.ArgumentParser(description='xcalcc Compiler Suite: ' + VERSION)
+    parser.add_argument(
+        '-o',
+        nargs=1,
+        dest='output',
+        help='Put output in following file name rather than a.out'
+    )
+    parser.add_argument(
+        '-O',
+        dest='opt_level',
+        action='store_const',
+        const=3,
+        help='Full optimization'
+    )
+    parser.add_argument(
+        '-O0',
+        dest='opt_level',
+        action='store_const',
+        const=0,
+        help='No optimization'
+    )
+    parser.add_argument(
+        '-O1',
+        dest='opt_level',
+        action='store_const',
+        const=1,
+        help='Minimal optimization'
+    )
+    parser.add_argument(
+        '-O2',
+        dest='opt_level',
+        action='store_const',
+        const=2,
+        help='Global optimization'
+    )
+    parser.add_argument(
+        '-O3',
+        dest='opt_level',
+        action='store_const',
+        const=3,
+        help='Full optimization'
+    )
+    parser.add_argument(
+        '-S',
+        dest='asm_mode',
+        action='store_true',
+        help='Produce a .s and stop'
+    )
+    parser.add_argument(
+        '-c',
+        dest='need_link',
+        action='store_false',
+        help='Produce a .o and stop'
+    )
+    parser.add_argument(
+        '-static',
+        dest='static',
+        action="store_true",
+        help='Link object files staticly'
+    )
+    parser.add_argument(
+        '-g',
+        dest='debug',
+        action='store_true',
+        help='Full debug info'
+    )
+    parser.add_argument(
+        '-v',
+        dest='log',
+        action='store_true',
+        help='Show phases and version as they are being invoked'
+    )
+    parser.add_argument(
+        '-fPIC',
+        dest='pic',
+        action='store_true',
+        help='Generate position-independent code'
+    )
+    parser.add_argument(
+        '-emit-llvm',
+        dest='emit_llvm',
+        action='store_true',
+        help='Emit LLVM IR'
+    )
+    parser.add_argument(
+        '-ast-dump',
+        dest='ast_dump',
+        action='store_true',
+        help='Dump Clang AST'
+    )
+
+# Special case: argsparse cannot handle such options
+    parser.add_argument(
+        '-verify',
+        dest='verify',
+        action='store_true',
+        help='Verify LLVM IR'
+    )
+    parser.add_argument(
+        '-std=<value>',
+        action='store_true',
+        help='Language standard to compile for'
+    )
+    parser.add_argument(
+        '-D<value>',
+        action='store_true',
+        help='Add following macro define'
+    )
+# end of special case
+
+    parser.add_argument(
+        'files',
+        nargs='*'
+    )
+
+    args = parser.parse_intermixed_args(argv)
+
+    ASM_MODE = args.asm_mode
+    NEED_LINK = args.need_link
+    STATIC = args.static
+    DEBUG = args.debug
+    LOG = args.log
+    PIC = args.pic
+    EMIT_LLVM = args.emit_llvm
+    AST_DUMP = args.ast_dump
+    files = args.files[1:]
+
+    if len(files) == 0:
+        if LOG == False:
+            logger.error('''xcalcc: no input files\nFor general help: xcalcc -h|--help''')
+            exit(-1)
+        else:
+            logger.warning('xcalcc Compiler Suite: ' + VERSION)
+            exit(0)
+
+    if args.output != None:
+        output = args.output[0]
+
+    if ASM_MODE == True:
+        NEED_LINK = False
+    
+    if PIC == True:
+        STATIC = False
+
     return opts, files, output
 
 
@@ -447,6 +568,7 @@ def llc(logger: logging.Logger, opts: List[str], files: List[str], outfile: str)
     res = []
     opts = ["-O" + str(OPT_LEVEL)] + LLC_OPTS.split()
     suffix = ""
+    no_outfile = True if outfile == "" else False
 
     if ASM_MODE:
         suffix = ".s"
@@ -460,12 +582,12 @@ def llc(logger: logging.Logger, opts: List[str], files: List[str], outfile: str)
     elif PIC == True:
         opts.append("--relocation-model=pic")
 
-    if NEED_LINK == False: 
+    if (NEED_LINK == False) and (no_outfile == False): 
         if len(files) > 1:
-            logger.error("cannot specify '-o' with '-c', '-S' or '-E' with multiple files: " + str(files))
+            logger.error("cannot specify '-o' with multiple files: " + str(files))
 
     for f in files:
-        if (NEED_LINK == True) or (outfile == ""):
+        if (NEED_LINK == True) or (no_outfile == True):
             outfile = f.rstrip(".ll").rstrip(".B").rstrip(".I").rstrip(".O") + suffix
 
         cmd = opts + [f, "-o", outfile] 
@@ -517,10 +639,7 @@ def link(logger: logging.Logger, opts: List[str], files: List[str], outfile: str
         sys.exit(process.returncode)
 
 
-def compile(opts: List[str], files: List[str], output: str):
-    logger = logging.getLogger("xcalcc")
-    logger.setLevel(logging.DEBUG)
-
+def compile(logger: logging.Logger, opts: List[str], files: List[str], output: str):
     # create console handler with a higher log level
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
@@ -547,9 +666,12 @@ def compile(opts: List[str], files: List[str], output: str):
 
 def main():
     set_env()
-    opts, files, output = collect_options(sys.argv)
+    logger = logging.getLogger("xcalcc")
+    logger.setLevel(logging.DEBUG)
 
-    compile(opts, files, output)
+    opts, files, output = collect_options(logger, sys.argv)
+
+    compile(logger, opts, files, output)
 
 
 if __name__ == "__main__":
