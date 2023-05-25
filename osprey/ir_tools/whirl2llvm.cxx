@@ -1471,8 +1471,9 @@ public:
     }
 
     // check if it is extern inline function
+    // ignore all "extern inline" function
     if (PU_is_extern_inline(Pu_Table[ST_pu(st)])) {
-      link = llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage;
+      link = llvm::GlobalValue::LinkageTypes::ExternalLinkage;
     }
     return link;
   }
