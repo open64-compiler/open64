@@ -138,14 +138,19 @@ def collect_options(logger: logging.Logger, argv: List[str]) -> Tuple[List[str],
 
     # handle special cases in advance
     need_remove = []
-    special_opt = ['-I', '-L', '-D', '-W']
+    special_opt = ['-I', '-L', '-D', '-W', '-l']
     for arg in argv:
-        if arg.startswith('-std='):
+        special_opt_match = False
+        for opt in special_opt:
+            if arg.startswith(opt):
+                special_opt_match = True
+                break
+        if special_opt_match:
+            opts.append(arg)
+        elif arg.startswith('-std='):
             STD = arg
         elif arg.startswith("-verify"):
             VERIFY = arg
-        elif arg in special_opt:
-            opts.append(arg)
         else:
             continue
         need_remove.append(arg)
