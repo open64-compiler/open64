@@ -121,6 +121,16 @@ def check_exec():
         sys.exit(1)
 
 
+# check if the option is start with special prefix
+# argparse cannot handle such options
+def is_options_for_python_blues(opt: str):
+    special_opt = ['-I', '-L', '-D', '-W', '-l']
+    for i in special_opt:
+        if opt.startswith(i):
+            return True
+    return False
+
+
 def collect_options(logger: logging.Logger, argv: List[str]) -> Tuple[List[str], List[str], str]:
     global OPT_LEVEL
     global ASM_MODE
@@ -138,13 +148,12 @@ def collect_options(logger: logging.Logger, argv: List[str]) -> Tuple[List[str],
 
     # handle special cases in advance
     need_remove = []
-    special_opt = ['-I', '-L', '-D', '-W']
     for arg in argv:
         if arg.startswith('-std='):
             STD = arg
         elif arg.startswith("-verify"):
             VERIFY = arg
-        elif arg in special_opt:
+        elif is_options_for_python_blues(arg):
             opts.append(arg)
         else:
             continue
