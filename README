@@ -55,8 +55,8 @@ Installation Information
 
   The Open64 compiler is available in both binary and source-code form
 on IA32/x86_64/IA-64. For more details about how to install compiler from
-binary package or source, please refer HOWTO-INSTALL-OPEN64 and the
-RELEASE.
+binary package or source, please refer the wiki page at: 
+https://github.com/open64-compiler/open64/wiki/How-to-build-Open64
 
 
 Your Open64 Team
