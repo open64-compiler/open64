@@ -2983,9 +2983,11 @@ WHIRL2llvm::CreateBinary(WN *wn)
 
   switch (opr) {
   case OPR_BAND:
+  case OPR_LAND:
     bin = Lvbuilder()->CreateAnd(lhs, rhs);
     break;
   case OPR_BIOR:
+  case OPR_LIOR:
     bin = Lvbuilder()->CreateOr(lhs, rhs);
     break;
   case OPR_BXOR:
@@ -5295,8 +5297,6 @@ LVVAL *WHIRL2llvm::EXPR2llvm(WN *wn, WN *parent) {
   }
   case OPR_LAND:
   case OPR_LIOR:
-    FmtAssert(FALSE, ("WHIRL2llvm::EXPR2llvm, operator %s not handled", OPERATOR2name(opr)));
-    break;
   case OPR_MIN:
   case OPR_MAX:  
   case OPR_BAND:
