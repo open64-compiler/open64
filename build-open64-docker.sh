@@ -327,7 +327,6 @@ apt-get update -qq
 apt-get install -y -qq \
     build-essential \
     gcc g++ \
-    gcc-multilib g++-multilib \
     make \
     cmake \
     flex bison \
@@ -359,14 +358,13 @@ export CLANG_HOME=/usr/lib/llvm-11
 
 mkdir -p /build && cd /build
 
-# Force 64-bit build: without --host/--target, configure.ac downgrades
-# x86_64 to i686 (32-bit), but LLVM 11+ only provides 64-bit libraries.
+# --disable-multilib is passed explicitly so AC_CONFIG_SUBDIRS forwards it
+# to the bundled GCC (osprey-gcc-4.2.0), which has its own multilib setting.
 /open64/configure \
     --prefix=/opt/open64 \
     --disable-jfe \
+    --disable-multilib \
     --with-build-optimize=DEBUG \
-    --host=x86_64-linux-gnu \
-    --target=x86_64-linux-gnu \
     2>&1 | tail -20
 
 echo ""
@@ -413,11 +411,8 @@ cd /build
 
 # Libraries need LIB_BUILD_COMPILER=GNU to avoid opencc crashes under Rosetta.
 # This overrides the default BUILD_COMPILER=SELF in LIB_ARGS/LIB2_ARGS.
+# Only 64-bit libs (lib); 32-bit libs (lib2) are skipped via --disable-multilib.
 make lib -j1 \
-    PREGENERATED_TARG_INFO=/build/pregenerated_targ_info \
-    LIB_BUILD_COMPILER=GNU
-
-make lib2 -j1 \
     PREGENERATED_TARG_INFO=/build/pregenerated_targ_info \
     LIB_BUILD_COMPILER=GNU
 
