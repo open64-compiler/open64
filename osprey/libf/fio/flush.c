@@ -196,14 +196,12 @@ flush_(
 		case FS_TEXT:
 #ifdef KEY
 			{
-# if defined(BUILD_OS_DARWIN)
-			int writeable = cup->ufp.std->_flags & (__SWR | __SRW);
-# else /* defined(BUILD_OS_DARWIN) */
-			int writeable = !(cup->ufp.std->_flags & _IO_NO_WRITES);
-# endif /* defined(BUILD_OS_DARWIN) */
-			if (writeable)
-				if (fflush(cup->ufp.std) == EOF)
-					FLUSH_ERROR(errno);
+			/* Always call fflush — checking _IO_NO_WRITES was
+			   an optimization using glibc internals removed in
+			   glibc 2.28+.  fflush on a read-only stream is
+			   safe (returns 0 per POSIX). */
+			if (fflush(cup->ufp.std) == EOF)
+				FLUSH_ERROR(errno);
 			}
 			break;
 #endif
