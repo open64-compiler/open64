@@ -252,7 +252,7 @@ arith:
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/arith
 
 libjson:
-	$(MAKE) -C $(NATIVE_BUILD_DIR)/libjson
+	+$(MAKE) -j1 -C $(NATIVE_BUILD_DIR)/libjson
 
 $(NATIVE_BUILD_DIR)/driver/driver driver: include
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/driver
