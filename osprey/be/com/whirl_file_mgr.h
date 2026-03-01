@@ -36,6 +36,7 @@
 #include "phase.h"
 #include "whirl_file_ctx.h"
 #include <ext/hash_map>
+#include "hash_compat.h"
 
 using __gnu_cxx::hash_map;
 

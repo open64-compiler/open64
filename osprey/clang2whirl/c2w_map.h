@@ -46,6 +46,8 @@
 
 #undef _GLIBCXX_PERMIT_BACKWARD_HASH
 
+#include "hash_compat.h"
+
 namespace wgen {
 
 using __gnu_cxx::hash_map;

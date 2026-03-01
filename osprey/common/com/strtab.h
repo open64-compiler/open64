@@ -69,14 +69,16 @@
 
 // New hash function to accommodate unsigned long long, STL hash does
 // not have one.
+#ifdef __cplusplus
 namespace __new_hash
 {
 template <class _Key> struct hash { };
 
   template<> struct hash<unsigned long long> {
     size_t operator()(unsigned long long __x) const { return __x; }
-  }; 
+  };
 }
+#endif
 
 // From a user point of view, the string table is a collection of unique
 // strings, each of which can be indentified by STR_IDX.  The actual
