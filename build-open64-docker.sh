@@ -90,10 +90,12 @@ WORK=/tmp/targ_info_build
 mkdir -p $WORK && cd $WORK
 
 # Common include paths
-INCS="-I$SRC/common/targ_info/generate \
+INCS="-DTARG_X8664 \
+      -I$SRC/common/targ_info/generate \
       -I$SRC/common/com \
       -I$SRC/common/com/x8664 \
-      -I$SRC/common/util"
+      -I$SRC/common/util \
+      -I$SRC/linux/include"
 
 echo "    Building generators..."
 
@@ -105,59 +107,82 @@ g++ $INCS -o isa_gen \
 ./isa_gen
 echo "      topcode.h generated"
 
+# Compile topcode.c immediately — downstream generators link TOP_Name from it
+gcc -I. -c topcode.c -o topcode.o
+GENERATED_OBJS="topcode.o"
+
 # 2. isa_subset_gen
 g++ $INCS -I. -o isa_subset_gen \
     $SRC/common/targ_info/isa/x8664/isa_subset.cxx \
     $SRC/common/targ_info/generate/isa_subset_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_subset_gen
 echo "      targ_isa_subset.h generated"
+gcc -I. -c targ_isa_subset.c -o targ_isa_subset.o
+GENERATED_OBJS="$GENERATED_OBJS targ_isa_subset.o"
 
 # 3. isa_properties_gen
 g++ $INCS -I. -o isa_properties_gen \
     $SRC/common/targ_info/isa/x8664/isa_properties.cxx \
     $SRC/common/targ_info/generate/isa_properties_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_properties_gen
 echo "      targ_isa_properties.h generated"
+gcc -I. -c targ_isa_properties.c -o targ_isa_properties.o
+GENERATED_OBJS="$GENERATED_OBJS targ_isa_properties.o"
 
 # 4. isa_enums_gen
 g++ $INCS -I. -o isa_enums_gen \
     $SRC/common/targ_info/isa/x8664/isa_enums.cxx \
     $SRC/common/targ_info/generate/isa_enums_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_enums_gen
 echo "      targ_isa_enums.h generated"
+gcc -I. -c targ_isa_enums.c -o targ_isa_enums.o
+GENERATED_OBJS="$GENERATED_OBJS targ_isa_enums.o"
 
 # 5. isa_lits_gen
 g++ $INCS -I. -o isa_lits_gen \
     $SRC/common/targ_info/isa/x8664/isa_lits.cxx \
     $SRC/common/targ_info/generate/isa_lits_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_lits_gen
 echo "      targ_isa_lits.h generated"
+gcc -I. -c targ_isa_lits.c -o targ_isa_lits.o
+GENERATED_OBJS="$GENERATED_OBJS targ_isa_lits.o"
 
 # 6. isa_registers_gen
 g++ $INCS -I. -o isa_registers_gen \
     $SRC/common/targ_info/isa/x8664/isa_registers.cxx \
     $SRC/common/targ_info/generate/isa_registers_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_registers_gen
 echo "      targ_isa_registers.h generated"
+gcc -I. -c targ_isa_registers.c -o targ_isa_registers.o
+GENERATED_OBJS="$GENERATED_OBJS targ_isa_registers.o"
 
-# 7. isa_operands_gen
+# 7. isa_operands_gen (needs register + enum tables from accumulated objects)
 g++ $INCS -I. -o isa_operands_gen \
     $SRC/common/targ_info/isa/x8664/isa_operands.cxx \
     $SRC/common/targ_info/generate/isa_operands_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_operands_gen
 echo "      targ_isa_operands.h generated"
+gcc -I. -c targ_isa_operands.c -o targ_isa_operands.o
+GENERATED_OBJS="$GENERATED_OBJS targ_isa_operands.o"
 
 # 8. isa_hazards_gen
 g++ $INCS -I. -o isa_hazards_gen \
     $SRC/common/targ_info/isa/x8664/isa_hazards.cxx \
     $SRC/common/targ_info/generate/isa_hazards_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_hazards_gen
 echo "      targ_isa_hazards.h generated"
 
@@ -165,7 +190,8 @@ echo "      targ_isa_hazards.h generated"
 g++ $INCS -I. -o isa_pack_gen \
     $SRC/common/targ_info/isa/x8664/isa_pack.cxx \
     $SRC/common/targ_info/generate/isa_pack_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_pack_gen
 echo "      targ_isa_pack.h generated"
 
@@ -173,15 +199,26 @@ echo "      targ_isa_pack.h generated"
 g++ $INCS -I. -o isa_print_gen \
     $SRC/common/targ_info/isa/x8664/isa_print.cxx \
     $SRC/common/targ_info/generate/isa_print_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_print_gen
 echo "      targ_isa_print.h generated"
+
+# 10b. isa_bundle_gen (needed by isa_decode_gen)
+g++ $INCS -I. -o isa_bundle_gen \
+    $SRC/common/targ_info/isa/x8664/isa_bundle.cxx \
+    $SRC/common/targ_info/generate/isa_bundle_gen.cxx \
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
+./isa_bundle_gen
+echo "      targ_isa_bundle.h generated"
 
 # 11. isa_decode_gen
 g++ $INCS -I. -o isa_decode_gen \
     $SRC/common/targ_info/isa/x8664/isa_decode.cxx \
     $SRC/common/targ_info/generate/isa_decode_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_decode_gen
 echo "      targ_isa_decode.h generated"
 
@@ -189,7 +226,8 @@ echo "      targ_isa_decode.h generated"
 g++ $INCS -I. -o isa_pseudo_gen \
     $SRC/common/targ_info/isa/x8664/isa_pseudo.cxx \
     $SRC/common/targ_info/generate/isa_pseudo_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./isa_pseudo_gen
 echo "      targ_isa_pseudo.h generated"
 
@@ -197,15 +235,19 @@ echo "      targ_isa_pseudo.h generated"
 g++ $INCS -I. -o proc_gen \
     $SRC/common/targ_info/proc/x8664/proc.cxx \
     $SRC/common/targ_info/generate/proc_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./proc_gen
 echo "      targ_proc.h generated"
+gcc -I. -c targ_proc.c -o targ_proc.o
+GENERATED_OBJS="$GENERATED_OBJS targ_proc.o"
 
 # 14. proc_properties_gen
 g++ $INCS -I. -o proc_properties_gen \
     $SRC/common/targ_info/proc/x8664/proc_properties.cxx \
     $SRC/common/targ_info/generate/proc_properties_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./proc_properties_gen
 echo "      targ_proc_properties.h generated"
 
@@ -213,60 +255,29 @@ echo "      targ_proc_properties.h generated"
 g++ $INCS -I. -o abi_properties_gen \
     $SRC/common/targ_info/abi/x8664/abi_properties.cxx \
     $SRC/common/targ_info/generate/abi_properties_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx
+    $SRC/common/targ_info/generate/gen_util.cxx \
+    $GENERATED_OBJS
 ./abi_properties_gen
 echo "      targ_abi_properties.h generated"
 
-# 16. targ_si_gen (scheduling info — links compiled generated .c files)
+# 16. targ_si_gen (scheduling info — .c files already compiled by steps above)
 echo "    Building scheduling info generators..."
-gcc -c -I. targ_isa_subset.c -o targ_isa_subset.o
-gcc -c -I. targ_isa_properties.c -o targ_isa_properties.o
-gcc -c -I. targ_isa_enums.c -o targ_isa_enums.o
-gcc -c -I. targ_isa_lits.c -o targ_isa_lits.o
-gcc -c -I. targ_isa_registers.c -o targ_isa_registers.o
-gcc -c -I. targ_isa_operands.c -o targ_isa_operands.o
-gcc -c -I. targ_proc.c -o targ_proc.o
-gcc -c -I. topcode.c -o topcode.o
 
-g++ $INCS -I. -o si_gen \
-    $SRC/common/targ_info/generate/si_gen.cxx \
-    $SRC/common/targ_info/generate/gen_util.cxx \
-    topcode.o targ_proc.o targ_isa_subset.o \
-    targ_isa_properties.o targ_isa_enums.o targ_isa_lits.o \
-    targ_isa_registers.o targ_isa_operands.o
+# si_gen.cxx uses #ifdef Is_True_On to conditionally emit a "name" field
+# in the SI struct initializer. Must match the main build DEBUG setting.
+g++ $INCS -I. -DIs_True_On -c $SRC/common/targ_info/generate/si_gen.cxx -o si_gen.o
 
-g++ $INCS -I. -o targ_si_gen \
+g++ $INCS -I. -DIs_True_On -o targ_si_gen \
     $SRC/common/targ_info/proc/x8664/proc_si.cxx \
-    $SRC/common/targ_info/proc/x8664/opteron.cxx \
-    $SRC/common/targ_info/proc/x8664/barcelona.cxx \
-    $SRC/common/targ_info/proc/x8664/core.cxx \
-    $SRC/common/targ_info/proc/x8664/em64t.cxx \
-    $SRC/common/targ_info/proc/x8664/orochi.cxx \
-    $SRC/common/targ_info/proc/x8664/wolfdale.cxx \
+    $SRC/common/targ_info/proc/x8664/opteron_si.cxx \
+    $SRC/common/targ_info/proc/x8664/barcelona_si.cxx \
+    $SRC/common/targ_info/proc/x8664/core_si.cxx \
+    $SRC/common/targ_info/proc/x8664/em64t_si.cxx \
+    $SRC/common/targ_info/proc/x8664/orochi_si.cxx \
+    $SRC/common/targ_info/proc/x8664/wolfdale_si.cxx \
     si_gen.o \
     $SRC/common/targ_info/generate/gen_util.cxx \
-    topcode.o targ_proc.o targ_isa_subset.o \
-    targ_isa_properties.o targ_isa_enums.o targ_isa_lits.o \
-    targ_isa_registers.o targ_isa_operands.o
-
-# Note: si_gen.o was compiled as part of the si_gen executable above,
-# but we need it as a separate .o. Recompile:
-g++ $INCS -I. -c $SRC/common/targ_info/generate/si_gen.cxx -o si_gen.o
-
-# Re-link targ_si_gen with the .o
-g++ $INCS -I. -o targ_si_gen \
-    $SRC/common/targ_info/proc/x8664/proc_si.cxx \
-    $SRC/common/targ_info/proc/x8664/opteron.cxx \
-    $SRC/common/targ_info/proc/x8664/barcelona.cxx \
-    $SRC/common/targ_info/proc/x8664/core.cxx \
-    $SRC/common/targ_info/proc/x8664/em64t.cxx \
-    $SRC/common/targ_info/proc/x8664/orochi.cxx \
-    $SRC/common/targ_info/proc/x8664/wolfdale.cxx \
-    si_gen.o \
-    $SRC/common/targ_info/generate/gen_util.cxx \
-    topcode.o targ_proc.o targ_isa_subset.o \
-    targ_isa_properties.o targ_isa_enums.o targ_isa_lits.o \
-    targ_isa_registers.o targ_isa_operands.o
+    $GENERATED_OBJS
 
 ./targ_si_gen
 echo "      targ_si.h generated"
@@ -318,6 +329,7 @@ apt-get install -y -qq \
     gcc g++ \
     gcc-multilib g++-multilib \
     make \
+    cmake \
     flex bison \
     perl \
     gawk \
@@ -342,14 +354,19 @@ echo ">>> Step 4: Configuring Open64"
 
 docker exec "$CONTAINER_NAME" bash -c '
 set -e
+set -o pipefail
 export CLANG_HOME=/usr/lib/llvm-11
 
 mkdir -p /build && cd /build
 
+# Force 64-bit build: without --host/--target, configure.ac downgrades
+# x86_64 to i686 (32-bit), but LLVM 11+ only provides 64-bit libraries.
 /open64/configure \
     --prefix=/opt/open64 \
     --disable-jfe \
     --with-build-optimize=DEBUG \
+    --host=x86_64-linux-gnu \
+    --target=x86_64-linux-gnu \
     2>&1 | tail -20
 
 echo ""
@@ -364,6 +381,7 @@ echo ">>> Step 5: Building Open64 (this will take a while under Rosetta...)"
 
 docker exec "$CONTAINER_NAME" bash -c "
 set -e
+set -o pipefail
 export CLANG_HOME=/usr/lib/llvm-11
 cd /build
 
@@ -372,47 +390,36 @@ mkdir -p /build/pregenerated_targ_info
 cp /pregenerated_targ_info/* /build/pregenerated_targ_info/
 
 # Main build with pregenerated targ_info to avoid Rosetta segfaults
-# BUILD_COMPILER=GNU for runtime libs to avoid opencc crashes under emulation
-echo '    Starting make -j${BUILD_CORES:-8}...'
-make -j${BUILD_CORES:-8} \
-    PREGENERATED_TARG_INFO=/build/pregenerated_targ_info \
-    BUILD_COMPILER=GNU \
-    2>&1 | tail -30
+# Note: BUILD_COMPILER=GNU is NOT set here — only for runtime libs in step 7
+echo '    Starting make build -j${BUILD_CORES:-8}...'
+make build -j${BUILD_CORES:-8} \
+    PREGENERATED_TARG_INFO=/build/pregenerated_targ_info
 
 echo ''
 echo '    Checking for opencc binary...'
 ls -la /build/osprey/targdir/driver/opencc && echo '    BUILD SUCCESS!' || echo '    BUILD FAILED'
 "
 
-# ─── Step 6: Handle potential maccom.so race condition ───────────────────────
+# ─── Step 6: Build runtime libraries ─────────────────────────────────────────
 
 echo ""
-echo ">>> Step 6: Fixing maccom.so symlink (race condition workaround)"
-
-docker exec "$CONTAINER_NAME" bash -c '
-cd /build/osprey/targdir/be
-if [[ -f be.so ]] && [[ ! -f maccom.so ]]; then
-    ln -sf be.so maccom.so
-    echo "    Created maccom.so -> be.so symlink"
-else
-    echo "    maccom.so already exists or be.so not built yet, skipping"
-fi
-'
-
-# ─── Step 7: Build runtime libraries ────────────────────────────────────────
-
-echo ""
-echo ">>> Step 7: Building runtime libraries"
+echo ">>> Step 6: Building runtime libraries"
 
 docker exec "$CONTAINER_NAME" bash -c '
 set -e
+set -o pipefail
 export CLANG_HOME=/usr/lib/llvm-11
 cd /build
 
-# Libraries need BUILD_COMPILER=GNU to avoid self-hosted opencc crashes
+# Libraries need LIB_BUILD_COMPILER=GNU to avoid opencc crashes under Rosetta.
+# This overrides the default BUILD_COMPILER=SELF in LIB_ARGS/LIB2_ARGS.
 make lib -j1 \
     PREGENERATED_TARG_INFO=/build/pregenerated_targ_info \
-    2>&1 | tail -20
+    LIB_BUILD_COMPILER=GNU
+
+make lib2 -j1 \
+    PREGENERATED_TARG_INFO=/build/pregenerated_targ_info \
+    LIB_BUILD_COMPILER=GNU
 
 echo ""
 echo "    Runtime libraries built."
