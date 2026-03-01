@@ -73,13 +73,17 @@ endif
 ifeq ($(BUILD_VARIANT), LIBMV)
 LCDEFS += -D_SW_PIPELINE
  ifeq ($(BUILD_ABI), I64BIT)
+  ifneq ($(BUILD_COMPILER), GNU)
 CFLAGS += -OPT:alias=restrict:alias=unnamed -TENV:X=2
 CFLAGS += -WOPT:cse_fcmp=off
-CCFVSQRT = $(CCF)
 CCFVLOG = $(CCN) $(CFLAGS) -WOPT:cse_fcmp=on
+  else
+CCFVLOG = $(CCN) $(CFLAGS)
+  endif
+CCFVSQRT = $(CCF)
  else
 CCFVSQRT = $(CCF)
-CCFVLOG = $(CCF) 
+CCFVLOG = $(CCF)
  endif
 endif
 
