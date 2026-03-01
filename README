@@ -55,8 +55,18 @@ Installation Information
 
   The Open64 compiler is available in both binary and source-code form
 on IA32/x86_64/IA-64. For more details about how to install compiler from
-binary package or source, please refer the wiki page at: 
+binary package or source, please refer the wiki page at:
 https://github.com/open64-compiler/open64/wiki/How-to-build-Open64
+
+Building on macOS (Apple Silicon)
+
+  Open64 targets x86_64 Linux and must be cross-compiled on macOS using
+Docker with Rosetta emulation. A fully automated build script that handles
+all the necessary workarounds (targ_info pre-generation, library build
+flags, etc.) is available at:
+https://github.com/noafroboy/open64/blob/macos-build-script/build-open64-docker.sh
+
+  Requirements: Docker Desktop for Mac with Rosetta emulation enabled.
 
 
 Your Open64 Team
