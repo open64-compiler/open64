@@ -76,6 +76,7 @@ BUILD_TARGET        = @BUILD_TARGET@
 BUILD_MULTILIB      = @BUILD_MULTILIB@
 BUILD_GNU3          = @BUILD_GNU3@
 BUILD_FORTRAN       = @BUILD_FORTRAN@
+BUILD_JFE           = @BUILD_JFE@
 BUILD_TYPE          = @BUILD_TYPE@
 BUILD_SKIP_IPA      = @BUILD_SKIP_IPA@
 BUILD_PRODUCT       = @BUILD_PRODUCT@
@@ -138,11 +139,15 @@ endif
 
 GNU4_FE_COMPONENTS = \
                 $(NATIVE_BUILD_DIR)/wgen/wgen42 \
-                $(NATIVE_BUILD_DIR)/jfe/jfe \
                 $(NATIVE_BUILD_DIR)/clang2whirl/clangfe \
-                $(NATIVE_BUILD_DIR)/js2mplref/js2mpl \
                 $(GNUFE_BUILD_SUBDIR)/gcc/cc1 \
                 $(GNUFE_BUILD_SUBDIR)/gcc/cc1plus
+
+ifeq ($(BUILD_JFE), YES)
+GNU4_FE_COMPONENTS += \
+                $(NATIVE_BUILD_DIR)/jfe/jfe \
+                $(NATIVE_BUILD_DIR)/js2mplref/js2mpl
+endif
 
 GNU3_FE_COMPONENTS = \
                 $(NATIVE_BUILD_DIR)/gccfe/gfec \
@@ -528,9 +533,11 @@ clobber: clean
 clean: $(CLEAN_LIB)
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/driver clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/wgen clobber
-	$(MAKE) -C $(NATIVE_BUILD_DIR)/jfe clobber
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/clang2whirl clobber
+ifeq ($(BUILD_JFE), YES)
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/jfe clobber
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/js2mplref clobber
+endif
 ifeq ($(BUILD_GNU3), YES)
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/gccfe clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/g++fe clobber
