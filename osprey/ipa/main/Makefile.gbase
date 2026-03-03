@@ -150,6 +150,7 @@ IPA_LD_COMMON_SRCS = \
 
 IPA_COMMON_CXX_SRCS = \
 	ip_graph.cxx		\
+	ipa_context.cxx		\
         ipc_dst_merge.cxx       \
         ipc_dst_utils.cxx       \
 	ipc_link.cxx		\
