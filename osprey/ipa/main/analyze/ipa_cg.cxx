@@ -121,8 +121,7 @@
 
 IPA_CALL_GRAPH* IPA_Call_Graph;     // "The" call graph of IPA
 #ifdef KEY
-// Temporary graph built for pu-reordering based on edge frequencies.
-IPA_CALL_GRAPH* IPA_Graph_Undirected;
+// IPA_Graph_Undirected migrated to g_ipa_ctx->graph_undirected (ipa_context.h).
 // IPA_Call_Graph is a global variable used widely, even in member functions
 // of IPA_CALL_GRAPH (where it is appropriate to either use 'this' or 
 // nothing). Building another call graph (IPA_Graph_Undirected) becomes
@@ -141,28 +140,8 @@ BOOL IPA_Call_Graph_Built = FALSE;
 typedef hash_map<NODE_INDEX, NODE_INDEX> ALT_ENTRY_MAP;
 ALT_ENTRY_MAP *alt_entry_map;		// map from alt entry to base entry
 
-UINT32 Total_Dead_Function_Weight = 0;
-UINT32 Orig_Prog_Weight = 0;
-
-//INLINING_TUNING^
-UINT32 Orig_Prog_WN_Count = 0;
-UINT32 Total_Dead_Function_WN_Count = 0;
-#ifdef KEY
-FB_FREQ Total_cycle_count_2(0.0);
-#else
-FB_FREQ Total_cycle_count_2(0);
-#endif
-//INLINING_TUNING$
-
-INT Total_Must_Inlined = 0;
-INT Total_Must_Not_Inlined = 0;
-#ifdef KEY
-FB_FREQ Total_call_freq(0.0);
-FB_FREQ Total_cycle_count(0.0);
-#else
-FB_FREQ Total_call_freq(0);
-FB_FREQ Total_cycle_count(0);
-#endif
+// Inline stats globals migrated to g_ipa_ctx->inline_stats (ipa_context.h).
+// Zero-init via IPA_Context_Init provides equivalent defaults.
 
 //-----------------------------------------------------------------------
 // NAME: Main_Entry

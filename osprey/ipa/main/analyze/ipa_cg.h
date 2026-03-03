@@ -1270,16 +1270,18 @@ extern BOOL IPA_Call_Graph_Built;
 extern void IPA_Process_File (IP_FILE_HDR& hdr);
 extern void Build_Call_Graph ();
 #ifdef KEY
-extern IPA_CALL_GRAPH *IPA_Graph_Undirected;
+#define IPA_Graph_Undirected (g_ipa_ctx->graph_undirected)
 extern void IPA_Convert_Icalls( IPA_CALL_GRAPH* );
 #endif
 
-//INLINING_TUNING^
-extern UINT32 Orig_Prog_WN_Count;
-extern UINT32 Prog_WN_Count;
-extern UINT32 Total_Dead_Function_WN_Count;
-extern FB_FREQ Total_cycle_count_2;
-//INLINING_TUNING$
+//INLINING_TUNING — these globals now live in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define Orig_Prog_WN_Count          (g_ipa_ctx->inline_stats.orig_prog_wn_count)
+#define Prog_WN_Count               (g_ipa_ctx->inline_stats.prog_wn_count)
+#define Total_Dead_Function_WN_Count (g_ipa_ctx->inline_stats.total_dead_function_wn_count)
+#define Total_cycle_count_2         (g_ipa_ctx->inline_stats.total_cycle_count_2)
 
 // ====================================================================
 //
@@ -1418,14 +1420,14 @@ public:
 //
 // ====================================================================
 
-extern UINT32 Total_Dead_Function_Weight;
-extern UINT32 Orig_Prog_Weight;
+#define Total_Dead_Function_Weight (g_ipa_ctx->inline_stats.total_dead_function_weight)
+#define Orig_Prog_Weight           (g_ipa_ctx->inline_stats.orig_prog_weight)
 
-extern FB_FREQ Total_call_freq;
-extern FB_FREQ Total_cycle_count;
+#define Total_call_freq            (g_ipa_ctx->inline_stats.total_call_freq)
+#define Total_cycle_count          (g_ipa_ctx->inline_stats.total_cycle_count)
 
-extern INT Total_Must_Inlined;
-extern INT Total_Must_Not_Inlined;
+#define Total_Must_Inlined         (g_ipa_ctx->inline_stats.total_must_inlined)
+#define Total_Must_Not_Inlined     (g_ipa_ctx->inline_stats.total_must_not_inlined)
 
 
 // Given a pu, get its corresponding call graph node.

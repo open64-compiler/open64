@@ -1,24 +1,33 @@
 /*
+ * IPA Context — transitional global definitions and lifecycle functions.
  *
- * IPA Context — initialization and cleanup.
- *
- * These functions exist but are NOT called by any existing code — zero behavior
- * change.  They populate the new structs FROM the existing globals so that
- * later steps can incrementally switch readers to use the context.
+ * This file is compiled by all IPA-family targets (ipa, inline, lw_inline).
+ * The IPA_Options_Init function uses config_ipa.h globals which are only
+ * available in the main IPA target, so it's guarded by IPA_CONTEXT_FULL_INIT.
  */
 
 #include "ipa_context.h"
-#include "ipa_options.h"
-#include "config_ipa.h"		/* all the IPA_Enable_* / INLINE_* globals */
 
 #include <cstring>		/* memset */
 #include <cstdlib>		/* malloc, free */
 
 /* ====================================================================
- * Transitional globals
+ * Transitional globals — needed by all IPA-family targets.
  * ====================================================================
  */
 IPA_Context       *g_ipa_ctx     = NULL;
+
+
+/*
+ * The full init/fini functions are only available in the main IPA target
+ * where config_ipa.h globals are linked in.  The inline and lw_inline
+ * targets just need the g_ipa_ctx symbol for the macro-based accessors.
+ */
+#ifdef IPA_CONTEXT_FULL_INIT
+
+#include "ipa_options.h"
+#include "config_ipa.h"		/* all the IPA_Enable_* / INLINE_* globals */
+
 const IPA_Options *g_ipa_options = NULL;
 
 /* Internal mutable copy that g_ipa_options points to */
@@ -275,3 +284,5 @@ IPA_Context_Fini(void)
 	g_ipa_ctx = NULL;
     }
 }
+
+#endif /* IPA_CONTEXT_FULL_INIT */

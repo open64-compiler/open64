@@ -113,14 +113,7 @@ struct IPA_Inline_Stats {
 
     FB_FREQ total_call_freq;
     FB_FREQ total_cycle_count;
-#ifdef KEY
     FB_FREQ total_cycle_count_2;
-#endif
-
-    FILE *n_inlining;		/* trace: not-inlined decisions */
-    FILE *y_inlining;		/* trace: inlined decisions */
-    FILE *e_weight;		/* trace: edge weights */
-    FILE *verbose_inlining;	/* trace: verbose output */
 };
 
 /* --- Constant propagation state (ipa_cprop.h) --- */
