@@ -130,9 +130,13 @@ struct IPA_Alias_Analysis_State {
     /* Placeholder — will be populated when we migrate IPAA globals */
 };
 
-/* --- Type/symbol merge state --- */
+/* --- Type/symbol merge state (ipc_symtab_merge.h) --- */
 struct IPA_Merge_State {
-    /* Placeholder — will be populated when we migrate merge globals */
+    void *aux_st_tab;			/* AUX_ST_TAB* */
+    void *aux_st_table;			/* AUX_ST_TABLE* */
+    void *aux_pu_table;			/* AUX_PU_TAB* */
+    void *st_to_inito_map;		/* ST_TO_INITO_MAP* */
+    void *common_block_elements_map;	/* COMMON_BLOCK_ELEMENTS_MAP* */
 };
 
 /* --- Compile state (ipc_compile.cxx) --- */
