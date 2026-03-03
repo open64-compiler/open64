@@ -29,7 +29,7 @@ class IPA_CLASS_HIERARCHY;
 class IPA_PCG;
 class IP_ALIAS_CLASSIFICATION;
 class daVinci;
-class COMMON_SNODE_TBL;
+/* COMMON_SNODE_TBL is a typedef (HASH_TABLE<...>); forward-declare as void* */
 struct Field_pos_;
 typedef struct Field_pos_ Field_pos;
 struct REORDER_CAND;
@@ -75,14 +75,14 @@ struct IPA_Visualization_State {
 /* --- Array section analysis (ipa_section_prop.h) --- */
 struct IPA_Array_Section_State {
     MEM_POOL array_prop_pool;
-    BOOL trace_sections;
+    BOOL trace_ipa_sections;
 };
 
 /* --- Structure field reordering (ipa_reorder.h) --- */
 struct IPA_Reorder_State {
     MERGED_ACCESS_VECTOR *merged_access;
     MEM_POOL local_pool;
-    REORDER_CAND *candidate;
+    REORDER_CAND *candidate_ptr;
 };
 
 /* --- Class hierarchy graph (ipa_chg.h, ipa_pcg.h) --- */
@@ -93,7 +93,7 @@ struct IPA_CHG_State {
 
 /* --- Common block state (ipa_pad.h) --- */
 struct IPA_Common_State {
-    COMMON_SNODE_TBL *common_table;
+    void *common_table;		/* COMMON_SNODE_TBL* — cast when migrated */
     INT pad_count;
 };
 

@@ -77,7 +77,10 @@ struct PTR_AND_TY
 typedef vector<struct PTR_AND_TY> PTR_AND_TY_VECTOR;
 extern TY_TO_CAND_MAP Ty_to_cand_map; //used by WN's modification
 
-REORDER_CAND reorder_candidate; //identical in size with can_be_reorder_types
+// reorder_candidate, merged_access, reorder_local_pool migrated to
+// g_ipa_ctx->reorder (ipa_context.h).
+static REORDER_CAND _reorder_candidate_storage;
+
 TYPE_LIST can_be_reordered_types;
 TYPE_LIST invalid_reorder_types; //what cannot be reordered
 //sometimes, above list maybe large, eg 200, Perhaps we need a hash-map
@@ -85,9 +88,6 @@ TY_TO_CAND_MAP Ty_to_cand_map;
 PTR_AND_TY_VECTOR *Ptr_and_ty_vector;
 //for each struct_ty, there maybe more than one pointer-types
 //Some having names, one of them  is anonymous.
-
-MERGED_ACCESS_VECTOR *merged_access;
-MEM_POOL  reorder_local_pool;
 typedef hash_map<mUINT32,MERGED_ACCESS*> TY_TO_ACCESS_MAP;
 TY_TO_ACCESS_MAP *ty_to_access_map; //for Record_struct_access in template.h
 BOOL* visited;
@@ -111,6 +111,7 @@ TY_POINT_TO_NON_UNIONSTRUCT(TY &ty)
 /*-----------------------------------------------*/
 void Init_merge_access()
 {
+  g_ipa_ctx->reorder.candidate_ptr = &_reorder_candidate_storage;
   MEM_POOL_Initialize(&reorder_local_pool,"reorder_pool",TRUE);
   MEM_POOL_Push (&reorder_local_pool);
   merged_access=CXX_NEW(vector< MERGED_ACCESS*>,&reorder_local_pool);
