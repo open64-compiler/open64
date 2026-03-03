@@ -38,15 +38,8 @@
 #include "tracing.h"
 #include "ipa_option.h" // Trace_IPA
 
-Field_pos *Struct_field_layout = NULL;
-INT Struct_split_count = 0;
-
-TYPE_ID complete_struct_relayout_type_id = 0;
-TYPE_ID struct_with_field_pointing_to_complete_struct_relayout_type_id
-  [MAX_NUM_STRUCTS_WITH_FIELD_POINTING_TO_COMPLETE_STRUCT_RELAYOUT];
-int struct_with_field_pointing_to_complete_struct_relayout_field_num
-  [MAX_NUM_STRUCTS_WITH_FIELD_POINTING_TO_COMPLETE_STRUCT_RELAYOUT];
-int num_structs_with_field_pointing_to_complete_struct_relayout = 0;
+// Struct-opt globals migrated to g_ipa_ctx->struct_opt (ipa_context.h).
+// Macros in ipa_struct_opt.h provide backward-compatible names.
 
 // Invalidate struct types that are either parameters or returned from
 // functions, or if a pointer to such types is a parameter or returned

@@ -30,7 +30,8 @@ class IPA_PCG;
 class IP_ALIAS_CLASSIFICATION;
 class daVinci;
 class COMMON_SNODE_TBL;
-struct Field_pos;
+struct Field_pos_;
+typedef struct Field_pos_ Field_pos;
 struct REORDER_CAND;
 struct MERGED_ACCESS;
 
@@ -54,10 +55,16 @@ struct IPA_Feedback_State {
 };
 
 /* --- Struct optimization (ipa_struct_opt.h) --- */
+#ifndef mtypes_INCLUDED
+#include "mtypes.h"		/* TYPE_ID (UINT8) */
+#endif
 struct IPA_Struct_Opt_State {
     Field_pos *field_layout;
     INT split_count;
-    UINT32 complete_struct_relayout_type_id;
+    TYPE_ID complete_struct_relayout_type_id;
+    TYPE_ID struct_with_field_pointing_to_complete_struct_relayout_type_id[32];
+    int struct_with_field_pointing_to_complete_struct_relayout_field_num[32];
+    int num_structs_with_field_pointing_to_complete_struct_relayout;
 };
 
 /* --- Call-graph visualization (ipc_daVinci.h) --- */
