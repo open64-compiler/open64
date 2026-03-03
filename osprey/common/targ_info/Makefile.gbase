@@ -203,6 +203,12 @@ LLDLIBS =
 #  This is useful when cross-compiling the compiler.
 #----------------------------------------------------------------------
 
+# If PREGENERATED_TARG_INFO is set, use pre-generated files instead of running generators.
+# This is needed when cross-compiling (e.g., building x86_64 on ARM64 via Rosetta/QEMU)
+# where the host-tool generators may segfault under emulation.
+ifdef PREGENERATED_TARG_INFO
+COPYSOURCEDIR = $(PREGENERATED_TARG_INFO)
+else
 ifeq ($(BUILD_ARCH), MIPS64)
 ifeq ($(BUILD_HOST), IA32)
 ifeq ($(BUILD_TARGET), SL)
@@ -215,6 +221,7 @@ COPYSOURCEDIR = FALSE
 endif
 else
 COPYSOURCEDIR = FALSE
+endif
 endif
 
 .PHONY: default first last install
