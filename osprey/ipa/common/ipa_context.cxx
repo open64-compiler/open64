@@ -18,10 +18,36 @@
 IPA_Context       *g_ipa_ctx     = NULL;
 
 
+/* ====================================================================
+ * IPA_Context_Alloc / IPA_Context_Free:  lightweight context lifecycle.
+ * Available in ALL IPA-family targets (ipa, inline, lw_inline).
+ * Allocates and zero-fills the context struct without snapshotting options.
+ * ====================================================================
+ */
+void
+IPA_Context_Alloc(void)
+{
+    if (g_ipa_ctx != NULL)
+	return;
+
+    g_ipa_ctx = (IPA_Context *) malloc(sizeof(IPA_Context));
+    memset(g_ipa_ctx, 0, sizeof(IPA_Context));
+}
+
+void
+IPA_Context_Free(void)
+{
+    if (g_ipa_ctx != NULL) {
+	free(g_ipa_ctx);
+	g_ipa_ctx = NULL;
+    }
+}
+
+
 /*
  * The full init/fini functions are only available in the main IPA target
  * where config_ipa.h globals are linked in.  The inline and lw_inline
- * targets just need the g_ipa_ctx symbol for the macro-based accessors.
+ * targets just need IPA_Context_Alloc/Free.
  */
 #ifdef IPA_CONTEXT_FULL_INIT
 
@@ -249,19 +275,13 @@ IPA_Options_Init(void)
 
 
 /* ====================================================================
- * IPA_Context_Init:  allocate and zero-fill the master context.
- * Calls IPA_Options_Init to snapshot the option globals.
+ * IPA_Context_Init:  allocate context and snapshot option globals.
  * ====================================================================
  */
 void
 IPA_Context_Init(void)
 {
-    if (g_ipa_ctx != NULL)
-	return;
-
-    g_ipa_ctx = (IPA_Context *) malloc(sizeof(IPA_Context));
-    memset(g_ipa_ctx, 0, sizeof(IPA_Context));
-
+    IPA_Context_Alloc();
     IPA_Options_Init();
 }
 
@@ -279,10 +299,7 @@ IPA_Context_Fini(void)
 	g_ipa_options = NULL;
     }
 
-    if (g_ipa_ctx != NULL) {
-	free(g_ipa_ctx);
-	g_ipa_ctx = NULL;
-    }
+    IPA_Context_Free();
 }
 
 #endif /* IPA_CONTEXT_FULL_INIT */

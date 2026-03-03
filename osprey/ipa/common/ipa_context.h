@@ -179,7 +179,9 @@ struct IPA_Context {
 extern IPA_Context *g_ipa_ctx;
 
 /* Lifecycle functions (defined in ipa_context.cxx) */
-extern void IPA_Context_Init(void);
-extern void IPA_Context_Fini(void);
+extern void IPA_Context_Alloc(void);  /* lightweight: alloc+zero, all targets */
+extern void IPA_Context_Free(void);   /* free context, all targets */
+extern void IPA_Context_Init(void);   /* full: alloc + options snapshot (IPA main) */
+extern void IPA_Context_Fini(void);   /* full: free context + options (IPA main) */
 
 #endif /* cxx_ipa_context_INCLUDED */
