@@ -163,6 +163,14 @@ AS_IF([test "x$enable_fortran" != "xno"], [
   BUILD_FORTRAN=YES
 ])
 
+# Set whether to build the Java Frontend (JFE) and js2mpl
+AC_ARG_ENABLE([jfe],
+  AS_HELP_STRING([--disable-jfe], [Disable Java Frontend (JFE) and js2mpl (requires gradle, openjdk-8, cmake)]))
+
+AS_IF([test "x$enable_jfe" != "xno"], [
+  BUILD_JFE=YES
+])
+
 # Set whether WHIRL a node contains a debugging ID
 AC_ARG_ENABLE([whirl_id],
   AS_HELP_STRING([--enable-whirl-id], [Enable debugging ID in WHIRL node]))
@@ -463,6 +471,7 @@ AC_SUBST([COMPILER_TARG_DIR])
 AC_SUBST([TARG_INFO_NAME])
 AC_SUBST([BUILD_GNU3])
 AC_SUBST([BUILD_FORTRAN])
+AC_SUBST([BUILD_JFE])
 AC_SUBST([WHIRL_HAS_ID_FIELD])
 AC_SUBST([BUILD_SKIP_IPA])
 AC_SUBST([BUILD_TYPE])
@@ -632,8 +641,10 @@ AC_CONFIG_SUBDIRS(binutils)
 AC_OUTPUT
 
 #
-# Starting JFE Checks
+# Starting JFE Checks (only when --enable-jfe or default)
 #
+
+if @<:@ "x$enable_jfe" != "xno" @:>@; then
 
 ISRUNNABLE_JFE=1
 printf "checking whether gradle works "
@@ -706,6 +717,10 @@ echo "            JAVA_HOME = $JAVA_HOME"
 if @<:@ $ISRUNNABLE_JFE = 0 @:>@
 then
 	exit 1
+fi
+
+else
+echo "JFE build disabled (use --enable-jfe to enable)"
 fi
 
 printf "checking CLANG_HOME is set ..."

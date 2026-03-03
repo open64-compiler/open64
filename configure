@@ -594,6 +594,7 @@ BUILD_TYPE
 BUILD_SKIP_IPA
 WHIRL_HAS_ID_FIELD
 BUILD_FORTRAN
+BUILD_JFE
 BUILD_GNU3
 TARG_INFO_NAME
 COMPILER_TARG_DIR
@@ -681,6 +682,7 @@ with_build_ffe_optimize
 with_build_lib_optimize
 enable_gnu3
 enable_fortran
+enable_jfe
 enable_whirl_id
 enable_ipa
 enable_multilib
@@ -1318,6 +1320,8 @@ Optional Features:
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
   --enable-gnu3           Enable GNU3-based C/C++ frontend
   --disable-fortran       Disable Fortran language support
+  --disable-jfe           Disable Java Frontend (JFE) and js2mpl
+                          (requires gradle, openjdk-8, cmake)
   --enable-whirl-id       Enable debugging ID in WHIRL node
   --disable-ipa           Disable IPA compilation support (EXPERIMENTAL)
   --disable-multilib      Disable multilib support for IA32/x86-64
@@ -2049,6 +2053,19 @@ fi
 if test "x$enable_fortran" != "xno"; then :
 
   BUILD_FORTRAN=YES
+
+fi
+
+# Set whether to build the Java Frontend (JFE) and js2mpl
+# Check whether --enable-jfe was given.
+if test "${enable_jfe+set}" = set; then :
+  enableval=$enable_jfe;
+fi
+
+
+if test "x$enable_jfe" != "xno"; then :
+
+  BUILD_JFE=YES
 
 fi
 
@@ -3846,8 +3863,10 @@ fi
 
 
 #
-# Starting JFE Checks
+# Starting JFE Checks (only when --enable-jfe or default)
 #
+
+if [ "x$enable_jfe" != "xno" ]; then
 
 ISRUNNABLE_JFE=1
 printf "checking whether gradle works "
@@ -3920,6 +3939,10 @@ echo "            JAVA_HOME = $JAVA_HOME"
 if [ $ISRUNNABLE_JFE = 0 ]
 then
 	exit 1
+fi
+
+else
+echo "JFE build disabled (use --enable-jfe to enable)"
 fi
 
 printf "checking CLANG_HOME is set ..."
