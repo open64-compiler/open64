@@ -822,7 +822,9 @@ WhirlExprBuilder::ConvertBuiltinExpr(const CallExpr *expr, const FunctionDecl *d
   case Builtin::BIindex ... Builtin::BIstrncasecmp: // POSIX strings.h
   case Builtin::BI_exit ...  Builtin::BIvfork:      // POSIX unistd.h
   case Builtin::BI_setjmp ... Builtin::BIsiglongjmp:// POSIX setjmp.h
+#if LLVM_VERSION_MAJOR >= 14
   case Builtin::BIstrlcpy ... Builtin::BIstrlcat:   // non-std
+#endif
     return Result::nwNone();
 
   // ignore ObjC builtins

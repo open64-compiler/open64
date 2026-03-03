@@ -293,7 +293,10 @@ COMUTIL_OBJS = $(TARG_COMUTIL_DIR)/libcomutil.a
 #----------------------------------------------------------------------
 CLANG_LIBS = -lclangFrontendTool -lclangEdit -lclangSerialization -lclangRewrite -lclangRewriteFrontend \
              -lclangFrontend -lclangDriver -lclangSerialization -lclangParse -lclangSema \
-             -lclangAnalysis -lclangTooling -lclangAST -lclangLex -lclangBasic
+             -lclangAnalysis -lclangTooling -lclangAST -lclangLex -lclangBasic \
+             -lclangARCMigrate -lclangStaticAnalyzerFrontend -lclangStaticAnalyzerCheckers \
+             -lclangStaticAnalyzerCore -lclangCrossTU -lclangIndex -lclangASTMatchers \
+             -lclangToolingCore
 
 LLVM_LIBS = -lLLVMProfileData -lLLVMBitReader -lLLVMMC -lLLVMMCParser \
             -lLLVMBinaryFormat -lLLVMCore -lLLVMOption -lLLVMSupport
@@ -327,7 +330,7 @@ ifneq ($(BUILD_OS),DARWIN)
 LLDOPTS = -Wl,--export-dynamic
 endif
 LLDLIBS = -Wl,--start-group $(CLANG_LIBS) $(LLVM_LIBS) -Wl,--end-group $(COMUTIL_OBJS) $(LIBIBERTY_OBJS)
-LLDLIBS += -lm $(CMPLRS_OBJS) -ldl
+LLDLIBS += -lm $(CMPLRS_OBJS) -ldl -lz -ltinfo
 LDIRT += $(TARGETS) build_version.h
 
 # .PHONY: default first last install build_version.h
