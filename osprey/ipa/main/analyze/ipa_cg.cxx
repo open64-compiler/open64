@@ -119,7 +119,7 @@
 #include "ipa_nystrom_alias_analyzer.h"
 #endif
 
-IPA_CALL_GRAPH* IPA_Call_Graph;     // "The" call graph of IPA
+// IPA_Call_Graph migrated to g_ipa_ctx->call_graph (ipa_context.h).
 #ifdef KEY
 // IPA_Graph_Undirected migrated to g_ipa_ctx->graph_undirected (ipa_context.h).
 // IPA_Call_Graph is a global variable used widely, even in member functions
@@ -135,7 +135,7 @@ static IPA_CALL_GRAPH* IPA_Call_Graph_Tmp = NULL;
 static hash_map<IPA_NODE*, IPA_NODE*, hashfn, eqnode> node_map;
 static vector<Nodes_To_Edge *> q_order;
 #endif
-BOOL IPA_Call_Graph_Built = FALSE;
+// IPA_Call_Graph_Built migrated to g_ipa_ctx->call_graph_built (ipa_context.h).
 
 typedef hash_map<NODE_INDEX, NODE_INDEX> ALT_ENTRY_MAP;
 ALT_ENTRY_MAP *alt_entry_map;		// map from alt entry to base entry
@@ -480,7 +480,7 @@ Mark_PUs_With_File_Id (PU_Info * pu, UINT id)
 
 std::vector<char *> options;
 
-BOOL Opt_Options_Inconsistent = FALSE;
+// Opt_Options_Inconsistent migrated to g_ipa_ctx->opt_options_inconsistent.
 mINT32 IPA_NODE::next_file_id = -1;
 
 // This is a simple scheme to check if there is mismatch in options passed

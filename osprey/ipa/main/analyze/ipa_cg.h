@@ -1264,8 +1264,12 @@ public:
 }; // IPA_CALL_GRAPH
 
 
-extern IPA_CALL_GRAPH *IPA_Call_Graph;
-extern BOOL IPA_Call_Graph_Built;
+// IPA_Call_Graph and IPA_Call_Graph_Built now live in IPA_Context.
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define IPA_Call_Graph      (g_ipa_ctx->call_graph)
+#define IPA_Call_Graph_Built (g_ipa_ctx->call_graph_built)
 
 extern void IPA_Process_File (IP_FILE_HDR& hdr);
 extern void Build_Call_Graph ();
@@ -1275,9 +1279,6 @@ extern void IPA_Convert_Icalls( IPA_CALL_GRAPH* );
 #endif
 
 //INLINING_TUNING — these globals now live in IPA_Context (ipa_context.h).
-#ifndef cxx_ipa_context_INCLUDED
-#include "ipa_context.h"
-#endif
 #define Orig_Prog_WN_Count          (g_ipa_ctx->inline_stats.orig_prog_wn_count)
 #define Prog_WN_Count               (g_ipa_ctx->inline_stats.prog_wn_count)
 #define Total_Dead_Function_WN_Count (g_ipa_ctx->inline_stats.total_dead_function_wn_count)
@@ -1597,7 +1598,7 @@ extern char* IPA_Node_Name(IPA_NODE* node);
 
 #if defined(KEY) && !defined(_STANDALONE_INLINER) && !defined(_LIGHTWEIGHT_INLINER)
 extern void Mark_PUs_With_File_Id (PU_Info *, UINT);
-extern BOOL Opt_Options_Inconsistent;
+#define Opt_Options_Inconsistent (g_ipa_ctx->opt_options_inconsistent)
 #endif // KEY && !_STANDALONE_INLINER && !_LIGHTWEIGHT_INLINER
 
 #ifdef _LIGHTWEIGHT_INLINER
