@@ -206,9 +206,9 @@ WHIRL2F_C_OBJS = $(WHIRL2F_C_SRCS:.cxx=.o)
 WHIRL2F_DRIVER_OBJS = $(WHIRL2F_DRIVER_SRCS:.cxx=.o)
 WHIRL2F_MAIN_OBJS = $(WHIRL2F_MAIN_SRCS:.cxx=.o)
 ifeq ($(BUILD_OS), LINUX)
-WHIRL2F_DSOS = maccom.so
+WHIRL2F_DSOS = $(BE_SO)
 else
-WHIRL2F_DSOS = $(TARGDIR)/be/maccom.so
+WHIRL2F_DSOS = $(TARGDIR)/be/$(BE_SO)
 endif
 
 VPATH    =  $(SRC_DIRS)
@@ -264,7 +264,7 @@ TARGETS = libwhirl2f.a whirl2f
 endif
 
 # extra files to be removed with make clobber
-LDIRT += be maccom.so $(TARGETS)
+LDIRT += be $(BE_SO) $(TARGETS)
 
 
 #----------------------------------------------------------------------
@@ -334,8 +334,8 @@ ifeq ($(BUILD_TYPE), SHARED)
 whirl2f: whirl2f.so whirl2f_be $(WHIRL2F_MAIN_OBJS)
 	$(link.c++f) -o whirl2f $(WHIRL2F_MAIN_OBJS) $(LDFLAGS)
 
-maccom.so:
-	if ! test -e maccom.so; then ln -sf $(TARGDIR)/be/maccom.so .; fi
+$(BE_SO):
+	if ! test -e $(BE_SO); then ln -sf $(TARGDIR)/be/$(BE_SO) .; fi
 
 be:
 	if ! test -e be; then ln -sf $(TARGDIR)/be/be .; fi
