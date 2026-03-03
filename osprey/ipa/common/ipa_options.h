@@ -1,8 +1,6 @@
 /*
- *
  * IPA Options context struct — encapsulates the ~140 config_ipa.h globals
  * into a single struct for eventual threading through IPA passes.
- *
  */
 
 #ifndef cxx_ipa_options_INCLUDED
@@ -40,201 +38,201 @@ typedef enum {
 struct IPA_Options {
 
     /* --- Filenames --- */
-    char *Feedback_Filename;
-    char *Annotation_Filename;
+    char *feedback_Filename;
+    char *annotation_Filename;
 
     /* --- Feature enable flags --- */
-    BOOL Enable_DFE;
-    BOOL Enable_DFE_Set;
-    BOOL Enable_Inline;
-    BOOL Enable_Picopt;
-    BOOL Enable_AutoGnum;
-    BOOL Enable_BarrierFarg;
-    BOOL Enable_Opt_Alias;
-    BOOL Enable_Simple_Alias;
-    BOOL Enable_Addressing;
-    BOOL Enable_Readonly_Ref;
-    BOOL Enable_Cprop;
-    BOOL Enable_Cprop2;
-    BOOL Enable_Assert;
-    BOOL Enable_daVinci;
-    BOOL Enable_ipacom;
-    BOOL Enable_final_link;
-    BOOL Enable_Memtrace;
-    BOOL Enable_DST;
-    BOOL Enable_DCE;
-    BOOL Enable_Exc;
-    BOOL Enable_Recycle;
-    BOOL Enable_DVE;
-    BOOL Enable_CGI;
-    BOOL Enable_Copy_Prop;
-    BOOL Enable_Padding;
-    UINT32 Common_Pad_Size;
-    BOOL Enable_Split_Common;
-    BOOL Enable_Cloning;
-    BOOL Enable_Partial_Inline;
-    BOOL Echo_Commands;
-    BOOL Enable_Lang;
-    BOOL Enable_Preempt;
-    BOOL Enable_Flow_Analysis;
-    BOOL Enable_Array_Sections;
-    BOOL Enable_Array_Summary;
-    BOOL Enable_Scalar_Euse;
-    BOOL Enable_Scalar_Kill;
-    BOOL Enable_Common_Const;
-    BOOL Enable_Relocatable_Opt;
-    BOOL Enable_Feedback;
-    BOOL Enable_Alias_Class;
-    BOOL Debug_AC_Temp_Files;
-    BOOL Enable_Reshape;
-    BOOL Enable_Preopt;
-    BOOL Enable_Preopt_Set;
-    BOOL Enable_Siloed_Ref;
-    BOOL Enable_Siloed_Ref_Set;
+    BOOL enable_DFE;
+    BOOL enable_DFE_Set;
+    BOOL enable_Inline;
+    BOOL enable_Picopt;
+    BOOL enable_AutoGnum;
+    BOOL enable_BarrierFarg;
+    BOOL enable_Opt_Alias;
+    BOOL enable_Simple_Alias;
+    BOOL enable_Addressing;
+    BOOL enable_Readonly_Ref;
+    BOOL enable_Cprop;
+    BOOL enable_Cprop2;
+    BOOL enable_Assert;
+    BOOL enable_daVinci;
+    BOOL enable_ipacom;
+    BOOL enable_final_link;
+    BOOL enable_Memtrace;
+    BOOL enable_DST;
+    BOOL enable_DCE;
+    BOOL enable_Exc;
+    BOOL enable_Recycle;
+    BOOL enable_DVE;
+    BOOL enable_CGI;
+    BOOL enable_Copy_Prop;
+    BOOL enable_Padding;
+    UINT32 common_Pad_Size;
+    BOOL enable_Split_Common;
+    BOOL enable_Cloning;
+    BOOL enable_Partial_Inline;
+    BOOL echo_Commands;
+    BOOL enable_Lang;
+    BOOL enable_Preempt;
+    BOOL enable_Flow_Analysis;
+    BOOL enable_Array_Sections;
+    BOOL enable_Array_Summary;
+    BOOL enable_Scalar_Euse;
+    BOOL enable_Scalar_Kill;
+    BOOL enable_Common_Const;
+    BOOL enable_Relocatable_Opt;
+    BOOL enable_Feedback;
+    BOOL enable_Alias_Class;
+    BOOL debug_AC_Temp_Files;
+    BOOL enable_Reshape;
+    BOOL enable_Preopt;
+    BOOL enable_Preopt_Set;
+    BOOL enable_Siloed_Ref;
+    BOOL enable_Siloed_Ref_Set;
 
 #ifdef KEY
-    BOOL Enable_Icall_Opt;
-    BOOL Enable_EH_Region_Removal;
-    BOOL Enable_Branch_Heuristic;
-    float Min_Branch_Prob;
-    BOOL Check_Options;
-    BOOL Clone_List_Actions;
-    BOOL Enable_Pure_Call_Opt;
-    INT32 Pure_Call_skip_before;
-    BOOL Consult_Inliner_For_Icall_Opt;
-    UINT32 Icall_Min_Freq;
-    BOOL Enable_Source_PU_Order;
-    UINT32 Enable_Struct_Opt;
-    UINT32 Enable_Global_As_Local;
-    UINT32 Update_Struct;
+    BOOL enable_Icall_Opt;
+    BOOL enable_EH_Region_Removal;
+    BOOL enable_Branch_Heuristic;
+    float min_Branch_Prob;
+    BOOL check_Options;
+    BOOL clone_List_Actions;
+    BOOL enable_Pure_Call_Opt;
+    INT32 pure_Call_skip_before;
+    BOOL consult_Inliner_For_Icall_Opt;
+    UINT32 icall_Min_Freq;
+    BOOL enable_Source_PU_Order;
+    UINT32 enable_Struct_Opt;
+    UINT32 enable_Global_As_Local;
+    UINT32 update_Struct;
 #endif /* KEY */
 
-    UINT32 Icall_Target_Min_Rate;
+    UINT32 icall_Target_Min_Rate;
 
     /* --- Inlining heuristics --- */
-    UINT32 Bloat_Factor;
-    BOOL   Bloat_Factor_Set;
-    UINT32 PU_Limit;
-    BOOL   PU_Limit_Set;
-    UINT32 PU_Hard_Limit;
-    BOOL   PU_Hard_Limit_Set;
-    UINT32 PU_Minimum_Size;
-    UINT32 Small_Callee_Limit;
-    UINT32 Max_Depth;
-    UINT32 Force_Depth;
-    BOOL   Force_Depth_Set;
-    UINT32 Min_Freq;
-    UINT32 Rela_Freq;
-    UINT32 Min_Hotness;
-    BOOL   Use_Effective_Size;
+    UINT32 bloat_Factor;
+    BOOL   bloat_Factor_Set;
+    UINT32 pU_Limit;
+    BOOL   pU_Limit_Set;
+    UINT32 pU_Hard_Limit;
+    BOOL   pU_Hard_Limit_Set;
+    UINT32 pU_Minimum_Size;
+    UINT32 small_Callee_Limit;
+    UINT32 max_Depth;
+    UINT32 force_Depth;
+    BOOL   force_Depth_Set;
+    UINT32 min_Freq;
+    UINT32 rela_Freq;
+    UINT32 min_Hotness;
+    BOOL   use_Effective_Size;
 
     /* --- Miscellaneous --- */
-    BOOL   Enable_Merge_ty;
-    UINT32 Max_Jobs;
-    BOOL   Max_Jobs_Set;
-    UINT32 Gspace;
+    BOOL   enable_Merge_ty;
+    UINT32 max_Jobs;
+    BOOL   max_Jobs_Set;
+    UINT32 gspace;
     UINT32 user_gnum;
-    UINT32 Extgot_Factor;
-    UINT32 Num_Fortran_Intrinsics;
-    BOOL   Has_Fortran;
-    UINT32 Map_Limit;
-    BOOL   Enable_SP_Partition;
-    BOOL   Enable_GP_Partition;
-    BOOL   Space_Access_Mode;
+    UINT32 extgot_Factor;
+    UINT32 num_Fortran_Intrinsics;
+    BOOL   has_Fortran;
+    UINT32 map_Limit;
+    BOOL   enable_SP_Partition;
+    BOOL   enable_GP_Partition;
+    BOOL   space_Access_Mode;
 
-    struct option_list *Group_Names;
-    struct option_list *Spec_Files;
-    struct option_list *Skip;
-    BOOL   Skip_Report;
+    struct option_list *group_Names;
+    struct option_list *spec_Files;
+    struct option_list *skip;
+    BOOL   skip_Report;
 
-    BOOL   Enable_Keeplight;
-    BOOL   Enable_Cord;
-    BOOL   Enable_Linearization;
-    BOOL   Use_Intrinsic;
-    BOOL   Enable_Inline_Nested_PU;
-    BOOL   Enable_Inline_Struct;
-    BOOL   Enable_Inline_Char_Array;
-    BOOL   Enable_Inline_Optional_Arg;
-    BOOL   Enable_Inline_Struct_Array_Actual;
-    BOOL   Enable_Inline_Var_Dim_Array;
-    BOOL   Enable_Reorder;
-    BOOL   Enable_AOT;
+    BOOL   enable_Keeplight;
+    BOOL   enable_Cord;
+    BOOL   enable_Linearization;
+    BOOL   use_Intrinsic;
+    BOOL   enable_Inline_Nested_PU;
+    BOOL   enable_Inline_Struct;
+    BOOL   enable_Inline_Char_Array;
+    BOOL   enable_Inline_Optional_Arg;
+    BOOL   enable_Inline_Struct_Array_Actual;
+    BOOL   enable_Inline_Var_Dim_Array;
+    BOOL   enable_Reorder;
+    BOOL   enable_AOT;
 
 #ifdef KEY
-    IPA_OPT_PU_REORDER_SCHEME Enable_PU_Reorder;
-    BOOL   Enable_PU_Reorder_Set;
-    BOOL   Enable_Ctype;
-    IPA_OPT_CHECK_PARAM_COMPATIBILITY Inline_Check_Compatibility;
+    IPA_OPT_PU_REORDER_SCHEME enable_PU_Reorder;
+    BOOL   enable_PU_Reorder_Set;
+    BOOL   enable_Ctype;
+    IPA_OPT_CHECK_PARAM_COMPATIBILITY inline_Check_Compatibility;
 #endif /* KEY */
 
-    UINT32 Max_Node_Clones;
-    BOOL   Max_Node_Clones_Set;
-    UINT32 Max_Clone_Bloat;
-    UINT32 Max_Output_File_Size;
-    INT32  Output_File_Size;
-    UINT32 Max_Density;
+    UINT32 max_Node_Clones;
+    BOOL   max_Node_Clones_Set;
+    UINT32 max_Clone_Bloat;
+    UINT32 max_Output_File_Size;
+    INT32  output_File_Size;
+    UINT32 max_Density;
 
-    BOOL   Enable_Old_Type_Merge;
+    BOOL   enable_Old_Type_Merge;
 
     /* --- Devirtualization --- */
-    BOOL Enable_Devirtualization;
-    BOOL Enable_Fast_Static_Analysis_VF;
-    BOOL Enable_Original_VF;
-    BOOL Enable_New_VF;
-    BOOL Inline_Original_VF;
-    BOOL Inline_New_VF;
-    const char *Devirtualization_Input_File;
-    BOOL During_Original_VF;
-    BOOL During_New_VF;
+    BOOL enable_Devirtualization;
+    BOOL enable_Fast_Static_Analysis_VF;
+    BOOL enable_Original_VF;
+    BOOL enable_New_VF;
+    BOOL inline_Original_VF;
+    BOOL inline_New_VF;
+    const char *devirtualization_Input_File;
+    BOOL during_Original_VF;
+    BOOL during_New_VF;
 
     /* --- Whole program / scale --- */
-    BOOL Enable_Whole_Program_Mode;
-    BOOL Enable_Whole_Program_Mode_Set;
-    BOOL Enable_Scale;
+    BOOL enable_Whole_Program_Mode;
+    BOOL enable_Whole_Program_Mode_Set;
+    BOOL enable_Scale;
 
     /* --- INLINE group options --- */
-    BOOL   Inline_Enable;
-    BOOL   Inline_All;
-    BOOL   Inline_Optimize_Alloca;
-    BOOL   Inline_Enable_Copy_Prop;
-    BOOL   Inline_Enable_Subst_Copy_Prop;
-    BOOL   Inline_F90;
-    BOOL   Inline_None;
-    BOOL   Inline_Exceptions;
-    BOOL   Inline_Keep_PU_Order;
-    BOOL   Inline_List_Actions;
-    UINT32 Inline_Max_Pu_Size;
-    BOOL   Inline_Preemptible;
-    BOOL   Inline_Static;
-    BOOL   Inline_Static_Set;
-    BOOL   Inline_Aggressive;
-    BOOL   Inline_First_Inline_Calls_In_Loops;
-    BOOL   Inline_Enable_DFE;
-    BOOL   Inline_Enable_Split_Common;
-    BOOL   Inline_Enable_Auto_Inlining;
-    BOOL   Inline_Enable_Restrict_Pointers;
+    BOOL   inline_Enable;
+    BOOL   inline_All;
+    BOOL   inline_Optimize_Alloca;
+    BOOL   inline_Enable_Copy_Prop;
+    BOOL   inline_Enable_Subst_Copy_Prop;
+    BOOL   inline_F90;
+    BOOL   inline_None;
+    BOOL   inline_Exceptions;
+    BOOL   inline_Keep_PU_Order;
+    BOOL   inline_List_Actions;
+    UINT32 inline_Max_Pu_Size;
+    BOOL   inline_Preemptible;
+    BOOL   inline_Static;
+    BOOL   inline_Static_Set;
+    BOOL   inline_Aggressive;
+    BOOL   inline_First_Inline_Calls_In_Loops;
+    BOOL   inline_Enable_DFE;
+    BOOL   inline_Enable_Split_Common;
+    BOOL   inline_Enable_Auto_Inlining;
+    BOOL   inline_Enable_Restrict_Pointers;
 
 #ifdef KEY
-    BOOL   Inline_Recursive;
-    BOOL   Inline_Param_Mismatch;
-    BOOL   Inline_Type_Mismatch;
-    BOOL   Inline_Ignore_Bloat;
-    UINT32 Inline_Callee_Limit;
+    BOOL   inline_Recursive;
+    BOOL   inline_Param_Mismatch;
+    BOOL   inline_Type_Mismatch;
+    BOOL   inline_Ignore_Bloat;
+    UINT32 inline_Callee_Limit;
 #endif /* KEY */
 
-    struct option_list *Inline_List_Names;
-    struct option_list *Inline_Spec_Files;
-    UINT32 Inline_Skip_After;
-    UINT32 Inline_Skip_Before;
-    BOOL   Inline_Array_Bounds;
-    BOOL   Inline_Use_Malloc_Mempool;
-    BOOL   Inline_Free_Malloc_Mempool;
-    BOOL   Inline_Inlined_Pu_Call_Graph;
-    BOOL   Inline_Inlined_Pu_Call_Graph2;
-    BOOL   Inline_Get_Time_Info;
-    char  *Inline_Script_Name;
-    BOOL   Inline_Enable_Script;
-    BOOL   Inline_Enable_Devirtualize;
+    struct option_list *inline_List_Names;
+    struct option_list *inline_Spec_Files;
+    UINT32 inline_Skip_After;
+    UINT32 inline_Skip_Before;
+    BOOL   inline_Array_Bounds;
+    BOOL   inline_Use_Malloc_Mempool;
+    BOOL   inline_Free_Malloc_Mempool;
+    BOOL   inline_Inlined_Pu_Call_Graph;
+    BOOL   inline_Inlined_Pu_Call_Graph2;
+    BOOL   inline_Get_Time_Info;
+    char  *inline_Script_Name;
+    BOOL   inline_Enable_Script;
+    BOOL   inline_Enable_Devirtualize;
 };
 
 /* Transitional global — will be removed once all call-sites are threaded */

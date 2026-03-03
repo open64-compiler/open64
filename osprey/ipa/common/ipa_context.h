@@ -1,5 +1,4 @@
 /*
- *
  * IPA Context — master struct that will eventually replace all IPA
  * module-level globals.  Sub-structs group related state by subsystem.
  *
