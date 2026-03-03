@@ -44,20 +44,6 @@ AC_CANONICAL_TARGET
 #AC_PROG_CXX
 #AC_PROG_RANLIB
 
-# There are known bugs when building the compiler in 64 bit mode on x86 so,
-# unless the user specifies otherwise, we default to 32 bit mode as the
-# default on x86 64 bit platforms.
-
-if test "$build_alias" = "" && test "$host_alias" = "" && test "$host_cpu" = "x86_64"; then
-  host_cpu=i686
-  host=$host_cpu-$host_vendor-$host_os
-fi
-
-if test "$build_alias" = "" && test "$target_alias" = "" && test "$target_cpu" = "x86_64"; then
-  target_cpu=i686
-  target=$target_cpu-$target_vendor-$target_os
-fi
-
 AC_ARG_WITH(build-compiler,
 [  --with-build-compiler=GNU|OSP	Use GNU or OSP compilers in build],
 BUILD_COMPILER="$with_build_compiler",
