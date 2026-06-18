@@ -17,6 +17,10 @@
 #   ./build-open64-docker.sh [path-to-open64-source]
 #
 # If no path is given, defaults to the directory containing this script.
+# The final compiler image is linux/amd64 so Open64 continues to generate
+# x86_64 binaries. Set OPEN64_DOCKER_IMAGE to override the output image tag.
+# The build and install trees are bind-mounted under ~/work/open64 by default.
+# Set OPEN64_HOST_WORK_ROOT to override that host location.
 #
 
 set -euo pipefail
@@ -35,15 +39,25 @@ BUILD_RAM_GB=$(( TOTAL_RAM_GB * 3 / 4 ))
 [[ $BUILD_CORES -lt 2 ]] && BUILD_CORES=2
 [[ $BUILD_RAM_GB -lt 4 ]] && BUILD_RAM_GB=4
 
-OPEN64_SRC="${1:-$(cd "$(dirname "$0")" && pwd)/open64}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+OPEN64_SRC="${1:-$SCRIPT_DIR}"
 CONTAINER_NAME="open64-build"
 ARM_CONTAINER_NAME="open64-arm-gen"
 PREGENERATED_HOST_DIR="/tmp/open64-generated"
+IMAGE_NAME="${OPEN64_DOCKER_IMAGE:-open64:x86_64-apple-silicon}"
+HOST_WORK_ROOT="${OPEN64_HOST_WORK_ROOT:-$HOME/work/open64}"
+HOST_BUILD_DIR="$HOST_WORK_ROOT/build"
+HOST_INSTALL_DIR="$HOST_WORK_ROOT/opt/open64"
+HOST_BIN_DIR="$HOST_WORK_ROOT/bin"
 
 echo "============================================="
 echo "  Open64 Docker Build Script"
 echo "============================================="
 echo "  Source:     $OPEN64_SRC"
+echo "  Image:      $IMAGE_NAME"
+echo "  Build dir:  $HOST_BUILD_DIR"
+echo "  Install:    $HOST_INSTALL_DIR"
+echo "  Wrappers:   $HOST_BIN_DIR"
 echo "  Cores:      $BUILD_CORES / $TOTAL_CORES"
 echo "  RAM:        ${BUILD_RAM_GB}GB / ${TOTAL_RAM_GB}GB"
 echo "  Container:  $CONTAINER_NAME"
@@ -55,6 +69,8 @@ if [[ ! -d "$OPEN64_SRC/osprey" ]]; then
     echo "Usage: $0 [path-to-open64-source]"
     exit 1
 fi
+
+mkdir -p "$HOST_BUILD_DIR" "$HOST_INSTALL_DIR" "$HOST_BIN_DIR"
 
 # ─── Step 1: Pre-generate targ_info files natively on ARM64 ─────────────────
 #
@@ -307,6 +323,8 @@ docker run -d \
     --cpus="$BUILD_CORES" \
     --memory="${BUILD_RAM_GB}g" \
     -v "$OPEN64_SRC:/open64" \
+    -v "$HOST_BUILD_DIR:/build" \
+    -v "$HOST_INSTALL_DIR:/opt/open64" \
     -v "$PREGENERATED_HOST_DIR:/pregenerated_targ_info:ro" \
     ubuntu:20.04 \
     sleep infinity
@@ -420,6 +438,61 @@ echo ""
 echo "    Runtime libraries built."
 '
 
+# ─── Step 7: Install and package a reusable Docker runner image ──────────────
+
+echo ""
+echo ">>> Step 7: Installing Open64 and creating Docker runner image"
+
+docker exec "$CONTAINER_NAME" bash -c '
+set -e
+set -o pipefail
+export CLANG_HOME=/usr/lib/llvm-11
+cd /build
+
+make install
+rm -rf /var/lib/apt/lists/* /tmp/*
+
+echo ""
+echo "    Open64 installed to /opt/open64."
+'
+
+docker commit \
+    --change 'ENV PATH=/opt/open64/bin:$PATH' \
+    --change 'WORKDIR /work' \
+    --change 'CMD ["opencc", "-v"]' \
+    "$CONTAINER_NAME" \
+    "$IMAGE_NAME" >/dev/null
+
+echo "    Docker runner image created: $IMAGE_NAME (linux/amd64)"
+
+cat > "$HOST_BIN_DIR/open64-docker" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE_NAME="$IMAGE_NAME"
+OPEN64_INSTALL="$HOST_INSTALL_DIR"
+
+cmd="\$(basename "\$0")"
+if [[ "\$cmd" == "open64-docker" ]]; then
+    cmd="\${1:-opencc}"
+    if [[ \$# -gt 0 ]]; then
+        shift
+    fi
+fi
+
+docker run --rm --platform linux/amd64 \\
+    -v "\$OPEN64_INSTALL:/opt/open64:ro" \\
+    -v "\$PWD:/work" \\
+    "\$IMAGE_NAME" "\$cmd" "\$@"
+EOF
+
+chmod +x "$HOST_BIN_DIR/open64-docker"
+ln -sf open64-docker "$HOST_BIN_DIR/opencc"
+ln -sf open64-docker "$HOST_BIN_DIR/openCC"
+ln -sf open64-docker "$HOST_BIN_DIR/openf90"
+
+echo "    Host wrapper commands created in $HOST_BIN_DIR"
+
 # ─── Done ────────────────────────────────────────────────────────────────────
 
 echo ""
@@ -427,12 +500,27 @@ echo "============================================="
 echo "  BUILD COMPLETE"
 echo "============================================="
 echo ""
-echo "  The compiler is inside the Docker container:"
+echo "  Docker image:"
+echo "    $IMAGE_NAME"
+echo ""
+echo "  Host build directory:"
+echo "    $HOST_BUILD_DIR"
+echo ""
+echo "  Host install directory:"
+echo "    $HOST_INSTALL_DIR"
+echo ""
+echo "  Host wrapper commands:"
+echo "    $HOST_BIN_DIR/opencc"
+echo "    $HOST_BIN_DIR/openCC"
+echo "    $HOST_BIN_DIR/openf90"
+echo ""
+echo "  Run the x86_64 compiler from macOS through Docker/Rosetta:"
+echo "    docker run --rm --platform linux/amd64 -v \"$HOST_INSTALL_DIR:/opt/open64:ro\" -v \"\$PWD:/work\" $IMAGE_NAME opencc -v"
+echo "    $HOST_BIN_DIR/opencc -v"
+echo ""
+echo "  The build container is still available:"
 echo "    docker exec -it $CONTAINER_NAME bash"
 echo "    ls /build/osprey/targdir/driver/opencc"
-echo ""
-echo "  To install to /opt/open64:"
-echo "    docker exec $CONTAINER_NAME make -C /build install"
 echo ""
 echo "  To stop the container:"
 echo "    docker stop $CONTAINER_NAME"
