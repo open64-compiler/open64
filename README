@@ -67,7 +67,39 @@ in the repository:
     ./build-open64-docker.sh
 
   The script handles all necessary workarounds (targ_info pre-generation
-on ARM64, runtime library build flags, dependency installation, etc.).
+  on ARM64, runtime library build flags, dependency installation, etc.) and
+  produces a reusable linux/amd64 Docker image tagged as
+  open64:x86_64-apple-silicon by default. The compiler itself is built as
+  x86_64 and continues to generate x86_64 binaries.
+  The Docker build directory and Open64 installation are bind-mounted on
+  the macOS host under:
+
+    ~/work/open64/build
+    ~/work/open64/opt/open64
+    ~/work/open64/bin
+
+  To use a different host location:
+
+    OPEN64_HOST_WORK_ROOT=~/my-open64-work ./build-open64-docker.sh
+
+  To use a different image tag:
+
+    OPEN64_DOCKER_IMAGE=my-open64:latest ./build-open64-docker.sh
+
+  After the build completes, run the x86_64 Linux compiler through
+  Docker/Rosetta with the host installation mounted back into /opt/open64:
+
+    docker run --rm --platform linux/amd64 \
+      -v "$HOME/work/open64/opt/open64:/opt/open64:ro" \
+      -v "$PWD:/work" \
+      open64:x86_64-apple-silicon opencc -v
+
+  The script also creates wrapper commands that run the same Docker/Rosetta
+  command from the current macOS directory:
+
+    ~/work/open64/bin/opencc -v
+    ~/work/open64/bin/openCC -v
+    ~/work/open64/bin/openf90 -v
 
   Requirements: Docker Desktop for Mac with Rosetta emulation enabled.
 
