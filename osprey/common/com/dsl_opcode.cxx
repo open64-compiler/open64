@@ -38,9 +38,9 @@ struct DSL_OPCODE_RECORD {
     flags(0) {}
 };
 
-static std::vector<DSL_OPCODE_RECORD> Dsl_opcode_registry;
+static std::vector<DSL_OPCODE_RECORD> DSL_opcode_registry;
 
-static const char *Dsl_opcode_category_name[] = {
+static const char *DSL_opcode_category_name[] = {
   "executable",
   "declaration",
   "contract",
@@ -48,7 +48,7 @@ static const char *Dsl_opcode_category_name[] = {
   "lowering_policy"
 };
 
-static const char *Dsl_opcode_level_name[] = {
+static const char *DSL_opcode_level_name[] = {
   "level0_core",
   "level1_tensor",
   "level2_numeric",
@@ -56,7 +56,7 @@ static const char *Dsl_opcode_level_name[] = {
   "level4_runtime"
 };
 
-static const char *Dsl_shape_rule_name[] = {
+static const char *DSL_shape_rule_name[] = {
   "opaque",
   "identity",
   "broadcast",
@@ -67,7 +67,7 @@ static const char *Dsl_shape_rule_name[] = {
   "runtime_guarded"
 };
 
-static const char *Dsl_effect_model_name[] = {
+static const char *DSL_effect_model_name[] = {
   "pure",
   "verifier_only",
   "declaration_only",
@@ -75,7 +75,7 @@ static const char *Dsl_effect_model_name[] = {
   "runtime_effect"
 };
 
-static const char *Dsl_lowering_model_name[] = {
+static const char *DSL_lowering_model_name[] = {
   "marker_only",
   "canonical_whirl",
   "runtime_call",
@@ -97,7 +97,7 @@ DSL_Opcode_Save_String (const char *str)
 static BOOL
 DSL_Opcode_Valid_Id (DSL_OPCODE_ID id)
 {
-  return id != DSL_OPCODE_INVALID_ID && id <= Dsl_opcode_registry.size();
+  return id != DSL_OPCODE_INVALID_ID && id <= DSL_opcode_registry.size();
 }
 
 static BOOL
@@ -145,10 +145,10 @@ DSL_Opcode_Free_Record (DSL_OPCODE_RECORD &record)
 void
 DSL_Opcode_Registry_Reset (void)
 {
-  for (UINT32 i = 0; i < Dsl_opcode_registry.size(); ++i)
-    DSL_Opcode_Free_Record(Dsl_opcode_registry[i]);
+  for (UINT32 i = 0; i < DSL_opcode_registry.size(); ++i)
+    DSL_Opcode_Free_Record(DSL_opcode_registry[i]);
 
-  Dsl_opcode_registry.clear();
+  DSL_opcode_registry.clear();
 }
 
 DSL_OPCODE_ID
@@ -183,7 +183,7 @@ DSL_Opcode_Register (DSL_DOMAIN_ID owner_domain_id,
     return DSL_OPCODE_INVALID_ID;
 
   DSL_OPCODE_RECORD record;
-  record.id = Dsl_opcode_registry.size() + 1;
+  record.id = DSL_opcode_registry.size() + 1;
   record.owner_domain_id = owner_domain_id;
   record.name = DSL_Opcode_Save_String(safe_name);
   record.version = version;
@@ -196,7 +196,7 @@ DSL_Opcode_Register (DSL_DOMAIN_ID owner_domain_id,
   record.diagnostic_prefix = DSL_Opcode_Save_String(diagnostic_prefix);
   record.flags = flags;
 
-  Dsl_opcode_registry.push_back(record);
+  DSL_opcode_registry.push_back(record);
   return record.id;
 }
 
@@ -207,8 +207,8 @@ DSL_Opcode_Find (DSL_DOMAIN_ID owner_domain_id,
 {
   const char *safe_name = name ? name : "";
 
-  for (UINT32 i = 0; i < Dsl_opcode_registry.size(); ++i) {
-    const DSL_OPCODE_RECORD &record = Dsl_opcode_registry[i];
+  for (UINT32 i = 0; i < DSL_opcode_registry.size(); ++i) {
+    const DSL_OPCODE_RECORD &record = DSL_opcode_registry[i];
     if (record.owner_domain_id == owner_domain_id &&
 	record.version == version &&
 	strcmp(record.name, safe_name) == 0)
@@ -225,7 +225,7 @@ DSL_Opcode_Get_Info (DSL_OPCODE_ID id, DSL_OPCODE_INFO *info)
     return FALSE;
 
   if (info != NULL) {
-    const DSL_OPCODE_RECORD &record = Dsl_opcode_registry[id - 1];
+    const DSL_OPCODE_RECORD &record = DSL_opcode_registry[id - 1];
     info->id = record.id;
     info->owner_domain_id = record.owner_domain_id;
     info->name = record.name;
@@ -246,16 +246,16 @@ DSL_Opcode_Get_Info (DSL_OPCODE_ID id, DSL_OPCODE_INFO *info)
 UINT32
 DSL_Opcode_Count (void)
 {
-  return Dsl_opcode_registry.size();
+  return DSL_opcode_registry.size();
 }
 
 BOOL
 DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info)
 {
-  if (ordinal >= Dsl_opcode_registry.size())
+  if (ordinal >= DSL_opcode_registry.size())
     return FALSE;
 
-  return DSL_Opcode_Get_Info(Dsl_opcode_registry[ordinal].id, info);
+  return DSL_Opcode_Get_Info(DSL_opcode_registry[ordinal].id, info);
 }
 
 const char *
@@ -263,8 +263,8 @@ DSL_Opcode_Category_Name (DSL_OPCODE_CATEGORY category)
 {
   UINT32 index = (UINT32) category;
 
-  return index < DSL_ARRAY_COUNT(Dsl_opcode_category_name) ?
-	 Dsl_opcode_category_name[index] : "unknown";
+  return index < DSL_ARRAY_COUNT(DSL_opcode_category_name) ?
+	 DSL_opcode_category_name[index] : "unknown";
 }
 
 const char *
@@ -272,8 +272,8 @@ DSL_Opcode_Level_Name (DSL_OPCODE_LEVEL level)
 {
   UINT32 index = (UINT32) level;
 
-  return index < DSL_ARRAY_COUNT(Dsl_opcode_level_name) ?
-	 Dsl_opcode_level_name[index] : "unknown";
+  return index < DSL_ARRAY_COUNT(DSL_opcode_level_name) ?
+	 DSL_opcode_level_name[index] : "unknown";
 }
 
 const char *
@@ -281,8 +281,8 @@ DSL_Shape_Rule_Name (DSL_SHAPE_RULE shape_rule)
 {
   UINT32 index = (UINT32) shape_rule;
 
-  return index < DSL_ARRAY_COUNT(Dsl_shape_rule_name) ?
-	 Dsl_shape_rule_name[index] : "unknown";
+  return index < DSL_ARRAY_COUNT(DSL_shape_rule_name) ?
+	 DSL_shape_rule_name[index] : "unknown";
 }
 
 const char *
@@ -290,8 +290,8 @@ DSL_Effect_Model_Name (DSL_EFFECT_MODEL effect_model)
 {
   UINT32 index = (UINT32) effect_model;
 
-  return index < DSL_ARRAY_COUNT(Dsl_effect_model_name) ?
-	 Dsl_effect_model_name[index] : "unknown";
+  return index < DSL_ARRAY_COUNT(DSL_effect_model_name) ?
+	 DSL_effect_model_name[index] : "unknown";
 }
 
 const char *
@@ -299,8 +299,8 @@ DSL_Lowering_Model_Name (DSL_LOWERING_MODEL lowering_model)
 {
   UINT32 index = (UINT32) lowering_model;
 
-  return index < DSL_ARRAY_COUNT(Dsl_lowering_model_name) ?
-	 Dsl_lowering_model_name[index] : "unknown";
+  return index < DSL_ARRAY_COUNT(DSL_lowering_model_name) ?
+	 DSL_lowering_model_name[index] : "unknown";
 }
 
 void
@@ -310,8 +310,8 @@ DSL_Opcode_fprint_registry (FILE *f)
     return;
 
   fprintf(f, "DSL Opcode Registry: entries=%u\n", DSL_Opcode_Count());
-  for (UINT32 i = 0; i < Dsl_opcode_registry.size(); ++i) {
-    const DSL_OPCODE_RECORD &record = Dsl_opcode_registry[i];
+  for (UINT32 i = 0; i < DSL_opcode_registry.size(); ++i) {
+    const DSL_OPCODE_RECORD &record = DSL_opcode_registry[i];
     fprintf(f,
 	    "  [%u] id=%u name=%s owner=%u version=%u category=%s level=%s "
 	    "nkids=%d shape=%s effect=%s lowering=%s diagnostic_prefix=%s "
