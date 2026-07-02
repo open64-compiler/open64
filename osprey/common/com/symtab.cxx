@@ -276,6 +276,17 @@ Tensor_KV_Is_Bound (UINT32 head, const char *key)
     return entry != NULL && entry->state == TY_DSL_BIND_BOUND;
 }
 
+static TY_DSL_BIND_STATE
+Tensor_KV_Bind_State (UINT32 head, const char *key, BOOL *declared)
+{
+    const TY_DSL_KV *entry = Find_Tensor_KV_Const (head, key);
+
+    if (declared != NULL)
+	*declared = entry != NULL;
+    return entry == NULL ? TY_DSL_BIND_PENDING :
+	(TY_DSL_BIND_STATE) entry->state;
+}
+
 static const char *
 Tensor_KV_Value (UINT32 head, const char *key)
 {
@@ -447,6 +458,65 @@ TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal, const char **key,
     TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
     return ext == NULL ? FALSE :
 	Tensor_KV_At (ext->attribute_head, ordinal, key, value, state);
+}
+
+UINT32
+TY_tensor_unbound_required_attribute_count
+	(TY_IDX ty, const TY_TENSOR_SCHEMA_KEY *required, UINT32 required_count)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+    UINT32 missing = 0;
+
+    for (UINT32 i = 0; i < required_count; ++i) {
+	const char *key = TY_tensor_schema_key_name (required[i]);
+	BOOL declared = FALSE;
+	TY_DSL_BIND_STATE state = TY_DSL_BIND_PENDING;
+
+	if (ext != NULL)
+	    state = Tensor_KV_Bind_State (ext->attribute_head, key, &declared);
+
+	if (ext == NULL || !declared || state != TY_DSL_BIND_BOUND)
+	    ++missing;
+    }
+
+    return missing;
+}
+
+BOOL
+TY_tensor_has_required_attributes
+	(TY_IDX ty, const TY_TENSOR_SCHEMA_KEY *required, UINT32 required_count)
+{
+    return TY_tensor_unbound_required_attribute_count (ty, required,
+						      required_count) == 0;
+}
+
+void
+TY_tensor_fprint_unbound_required_attributes
+	(FILE *f, TY_IDX ty, const TY_TENSOR_SCHEMA_KEY *required,
+	 UINT32 required_count)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+
+    if (f == NULL)
+	return;
+
+    for (UINT32 i = 0; i < required_count; ++i) {
+	const char *key = TY_tensor_schema_key_name (required[i]);
+	BOOL declared = FALSE;
+	TY_DSL_BIND_STATE state = TY_DSL_BIND_PENDING;
+
+	if (ext != NULL)
+	    state = Tensor_KV_Bind_State (ext->attribute_head, key, &declared);
+
+	if (ext != NULL && declared && state == TY_DSL_BIND_BOUND)
+	    continue;
+
+	fprintf (f,
+		 "TensorDescriptorIR diagnostic: ty=%u required_attribute=%s status=%s\n",
+		 TY_IDX_index(ty),
+		 key,
+		 ext == NULL || !declared ? "missing" : "pending");
+    }
 }
 
 void

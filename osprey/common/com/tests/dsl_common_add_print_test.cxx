@@ -35,6 +35,7 @@ static char *Read_File(FILE *fp);
 static const char *Trace_File_Path(void);
 static int Write_Common_Add_Trace(const char *tree_text,
 				  const char *annotation_text);
+static int Check_Tensor_Required_Attribute_Diagnostics(void);
 static int Check_VHO_Unconsumed_DSL_Scanner(WN *tree);
 
 static void
@@ -444,6 +445,78 @@ Check_Tensor_Dsl_Symtab_Print(void)
 }
 
 static int
+Check_Tensor_Required_Attribute_Diagnostics(void)
+{
+  static const TY_TENSOR_SCHEMA_KEY required[] = {
+    TY_TENSOR_SCHEMA_DTYPE,
+    TY_TENSOR_SCHEMA_SHAPE,
+    TY_TENSOR_SCHEMA_LAYOUT,
+    TY_TENSOR_SCHEMA_LINEAGE,
+    TY_TENSOR_SCHEMA_SHARDING
+  };
+  TY_IDX tensor_ty =
+    TY_Create_Tensor_Extension_Type("tensor_i32_diag",
+				    MTYPE_To_TY(MTYPE_I4),
+				    2);
+  FILE *dump = tmpfile();
+  char *text;
+  int failed = 0;
+
+  TY_tensor_bind_attribute(tensor_ty, TY_TENSOR_SCHEMA_DTYPE, "int32");
+  TY_tensor_bind_attribute(tensor_ty, TY_TENSOR_SCHEMA_SHAPE, "[2,2]");
+  TY_tensor_bind_attribute(tensor_ty, TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+  TY_tensor_declare_attribute(tensor_ty, TY_TENSOR_SCHEMA_LINEAGE);
+
+  if (TY_tensor_unbound_required_attribute_count
+	(tensor_ty, required, sizeof(required) / sizeof(required[0])) != 2) {
+    fprintf(stderr, "required tensor attribute diagnostic count changed\n");
+    failed = 1;
+  }
+
+  if (TY_tensor_has_required_attributes
+	(tensor_ty, required, sizeof(required) / sizeof(required[0]))) {
+    fprintf(stderr, "required tensor attribute diagnostic missed failures\n");
+    failed = 1;
+  }
+
+  if (dump == NULL) {
+    perror("tmpfile");
+    return 1;
+  }
+
+  TY_tensor_fprint_unbound_required_attributes
+	(dump, tensor_ty, required, sizeof(required) / sizeof(required[0]));
+  text = Read_File(dump);
+  fclose(dump);
+
+  if (text == NULL) {
+    fprintf(stderr, "failed to read required tensor attribute diagnostics\n");
+    return 1;
+  }
+
+  if (strstr(text, "required_attribute=lineage status=pending") == NULL ||
+      strstr(text, "required_attribute=sharding status=missing") == NULL) {
+    fprintf(stderr, "required tensor attribute diagnostics changed\n");
+    failed = 1;
+  }
+
+  free(text);
+
+  TY_tensor_bind_attribute(tensor_ty, TY_TENSOR_SCHEMA_LINEAGE, "created");
+  TY_tensor_bind_attribute(tensor_ty, TY_TENSOR_SCHEMA_SHARDING, "replicated");
+
+  if (TY_tensor_unbound_required_attribute_count
+	(tensor_ty, required, sizeof(required) / sizeof(required[0])) != 0 ||
+      !TY_tensor_has_required_attributes
+	(tensor_ty, required, sizeof(required) / sizeof(required[0]))) {
+    fprintf(stderr, "required tensor attribute diagnostics stayed active\n");
+    failed = 1;
+  }
+
+  return failed;
+}
+
+static int
 Check_VHO_Unconsumed_DSL_Scanner(WN *tree)
 {
   VHO_UNCONSUMED_DSL_SCAN scan;
@@ -586,6 +659,7 @@ main(void)
   failed |= Check_Common_Add_On_Tensor_Constants();
   failed |= Check_Zero_Initializer_Operators();
   failed |= Check_Tensor_Dsl_Symtab_Print();
+  failed |= Check_Tensor_Required_Attribute_Diagnostics();
   failed |= Check_VHO_Unconsumed_DSL_Scanner(tree);
 
   fdump_tree(dump, tree);
