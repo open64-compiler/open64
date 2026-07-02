@@ -12,6 +12,7 @@
 struct DSL_OPCODE_RECORD {
   DSL_OPCODE_ID id;
   DSL_DOMAIN_ID owner_domain_id;
+  DSL_OPCODE_ID wrapper_target_id;
   const char *name;
   UINT16 version;
   DSL_OPCODE_CATEGORY category;
@@ -26,6 +27,7 @@ struct DSL_OPCODE_RECORD {
   DSL_OPCODE_RECORD() :
     id(DSL_OPCODE_INVALID_ID),
     owner_domain_id(DSL_DOMAIN_INVALID_ID),
+    wrapper_target_id(DSL_OPCODE_INVALID_ID),
     name(NULL),
     version(0),
     category(DSL_OPCODE_CATEGORY_EXECUTABLE),
@@ -91,6 +93,13 @@ struct DSL_COMMON_OPCODE_SEED {
   DSL_SHAPE_RULE shape_rule;
   DSL_EFFECT_MODEL effect_model;
   DSL_LOWERING_MODEL lowering_model;
+  const char *diagnostic_prefix;
+};
+
+struct DSL_DOMAIN_WRAPPER_SEED {
+  const char *domain_name;
+  const char *name;
+  const char *target_name;
   const char *diagnostic_prefix;
 };
 
@@ -345,6 +354,16 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_KERNEL_VARIANT" }
 };
 
+static const DSL_DOMAIN_WRAPPER_SEED DSL_domain_wrapper_seed[] = {
+  { "cnn", "cnn.linear", "common.linear", "DOPC_CNN_LINEAR_WRAPPER" },
+  { "transformer", "transformer.q_projection", "common.linear",
+    "DOPC_TRANSFORMER_Q_PROJECTION_WRAPPER" },
+  { "cnn", "cnn.residual_add", "common.residual_add",
+    "DOPC_CNN_RESIDUAL_ADD_WRAPPER" },
+  { "transformer", "transformer.residual_add", "common.residual_add",
+    "DOPC_TRANSFORMER_RESIDUAL_ADD_WRAPPER" }
+};
+
 static const char *
 DSL_Opcode_Save_String (const char *str)
 {
@@ -490,6 +509,7 @@ DSL_Opcode_Get_Info (DSL_OPCODE_ID id, DSL_OPCODE_INFO *info)
     const DSL_OPCODE_RECORD &record = DSL_opcode_registry[id - 1];
     info->id = record.id;
     info->owner_domain_id = record.owner_domain_id;
+    info->wrapper_target_id = record.wrapper_target_id;
     info->name = record.name;
     info->version = record.version;
     info->category = record.category;
@@ -503,6 +523,44 @@ DSL_Opcode_Get_Info (DSL_OPCODE_ID id, DSL_OPCODE_INFO *info)
   }
 
   return TRUE;
+}
+
+DSL_OPCODE_ID
+DSL_Opcode_Register_Domain_Wrapper (DSL_DOMAIN_ID owner_domain_id,
+				    const char *name,
+				    UINT16 version,
+				    DSL_OPCODE_ID wrapper_target_id,
+				    const char *diagnostic_prefix,
+				    UINT32 flags)
+{
+  DSL_OPCODE_INFO target_info;
+  DSL_OPCODE_ID id;
+
+  if (!DSL_Opcode_Get_Info(wrapper_target_id, &target_info))
+    return DSL_OPCODE_INVALID_ID;
+
+  id = DSL_Opcode_Register(owner_domain_id,
+			   name,
+			   version,
+			   target_info.category,
+			   target_info.level,
+			   target_info.nkids,
+			   target_info.shape_rule,
+			   target_info.effect_model,
+			   target_info.lowering_model,
+			   diagnostic_prefix,
+			   flags);
+
+  if (!DSL_Opcode_Valid_Id(id))
+    return DSL_OPCODE_INVALID_ID;
+
+  if (DSL_opcode_registry[id - 1].wrapper_target_id !=
+	DSL_OPCODE_INVALID_ID &&
+      DSL_opcode_registry[id - 1].wrapper_target_id != wrapper_target_id)
+    return DSL_OPCODE_INVALID_ID;
+
+  DSL_opcode_registry[id - 1].wrapper_target_id = wrapper_target_id;
+  return id;
 }
 
 UINT32
@@ -552,6 +610,54 @@ DSL_Opcode_Register_Common_Substrate (void)
   }
 
   return registered;
+}
+
+UINT32
+DSL_Opcode_Register_Domain_Wrapper_Examples (void)
+{
+  DSL_DOMAIN_ID common_id;
+  UINT32 registered = 0;
+
+  DSL_Opcode_Register_Common_Substrate();
+  common_id = DSL_Domain_Find("common");
+
+  if (common_id == DSL_DOMAIN_INVALID_ID)
+    return 0;
+
+  for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_domain_wrapper_seed); ++i) {
+    const DSL_DOMAIN_WRAPPER_SEED &seed = DSL_domain_wrapper_seed[i];
+    DSL_DOMAIN_ID domain_id = DSL_Domain_Find(seed.domain_name);
+    DSL_OPCODE_ID target_id;
+    DSL_OPCODE_ID id;
+
+    if (domain_id == DSL_DOMAIN_INVALID_ID)
+      domain_id = DSL_Domain_Register(seed.domain_name, common_id, 1, 0);
+
+    if (domain_id == DSL_DOMAIN_INVALID_ID)
+      continue;
+
+    target_id = DSL_Opcode_Find(common_id, seed.target_name, 1);
+    id = DSL_Opcode_Register_Domain_Wrapper(domain_id,
+					    seed.name,
+					    1,
+					    target_id,
+					    seed.diagnostic_prefix,
+					    0);
+
+    if (id != DSL_OPCODE_INVALID_ID)
+      ++registered;
+  }
+
+  return registered;
+}
+
+DSL_OPCODE_ID
+DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id)
+{
+  if (!DSL_Opcode_Valid_Id(id))
+    return DSL_OPCODE_INVALID_ID;
+
+  return DSL_opcode_registry[id - 1].wrapper_target_id;
 }
 
 const char *
@@ -610,8 +716,8 @@ DSL_Opcode_fprint_registry (FILE *f)
     const DSL_OPCODE_RECORD &record = DSL_opcode_registry[i];
     fprintf(f,
 	    "  [%u] id=%u name=%s owner=%u version=%u category=%s level=%s "
-	    "nkids=%d shape=%s effect=%s lowering=%s diagnostic_prefix=%s "
-	    "flags=0x%x\n",
+	    "wrapper_target=%u nkids=%d shape=%s effect=%s lowering=%s "
+	    "diagnostic_prefix=%s flags=0x%x\n",
 	    i,
 	    record.id,
 	    record.name,
@@ -619,6 +725,7 @@ DSL_Opcode_fprint_registry (FILE *f)
 	    record.version,
 	    DSL_Opcode_Category_Name(record.category),
 	    DSL_Opcode_Level_Name(record.level),
+	    record.wrapper_target_id,
 	    record.nkids,
 	    DSL_Shape_Rule_Name(record.shape_rule),
 	    DSL_Effect_Model_Name(record.effect_model),

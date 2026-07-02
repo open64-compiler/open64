@@ -62,6 +62,7 @@ typedef enum {
 typedef struct {
   DSL_OPCODE_ID id;
   DSL_DOMAIN_ID owner_domain_id;
+  DSL_OPCODE_ID wrapper_target_id;
   const char *name;
   UINT16 version;
   DSL_OPCODE_CATEGORY category;
@@ -87,6 +88,13 @@ extern DSL_OPCODE_ID DSL_Opcode_Register
 				 DSL_LOWERING_MODEL lowering_model,
 				 const char *diagnostic_prefix,
 				 UINT32 flags);
+extern DSL_OPCODE_ID DSL_Opcode_Register_Domain_Wrapper
+				(DSL_DOMAIN_ID owner_domain_id,
+				 const char *name,
+				 UINT16 version,
+				 DSL_OPCODE_ID wrapper_target_id,
+				 const char *diagnostic_prefix,
+				 UINT32 flags);
 extern DSL_OPCODE_ID DSL_Opcode_Find (DSL_DOMAIN_ID owner_domain_id,
 				      const char *name,
 				      UINT16 version);
@@ -95,6 +103,8 @@ extern BOOL DSL_Opcode_Get_Info (DSL_OPCODE_ID id,
 extern UINT32 DSL_Opcode_Count (void);
 extern BOOL DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info);
 extern UINT32 DSL_Opcode_Register_Common_Substrate (void);
+extern UINT32 DSL_Opcode_Register_Domain_Wrapper_Examples (void);
+extern DSL_OPCODE_ID DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id);
 extern const char *DSL_Opcode_Category_Name (DSL_OPCODE_CATEGORY category);
 extern const char *DSL_Opcode_Level_Name (DSL_OPCODE_LEVEL level);
 extern const char *DSL_Shape_Rule_Name (DSL_SHAPE_RULE shape_rule);
