@@ -1055,6 +1055,11 @@ typedef struct {
   const char *payload;
 } DSL_OPCODE_ANNOTATION;
 
+typedef struct {
+  UINT32 dsl_marker_count;
+  UINT32 dsl_opcode_count;
+} VHO_UNCONSUMED_DSL_SCAN;
+
 extern const char *WN_DSL_Comment_Prefix (void);
 extern WN *WN_Create_DSL_Comment (const char *domain,
 				  const char *feature,
@@ -1096,6 +1101,10 @@ extern BOOL DSL_WN_Has_Opcode (const WN *wn);
 extern BOOL DSL_WN_Get_Opcode_Annotation (const WN *wn,
 					  DSL_OPCODE_ANNOTATION *annotation);
 extern void DSL_fprint_opcode_annotation (FILE *f, const WN *wn);
+extern void VHO_Scan_Unconsumed_DSL_Markers (WN *wn,
+					     VHO_UNCONSUMED_DSL_SCAN *scan);
+extern BOOL VHO_Has_Unconsumed_DSL_Markers (WN *wn);
+extern void VHO_fprint_unconsumed_DSL_markers (FILE *f, WN *wn);
 
 extern WN *WN_CreateAsm_Stmt (INT16 kid_count, char *asm_string);
 
