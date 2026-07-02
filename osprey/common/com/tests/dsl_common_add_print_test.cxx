@@ -289,17 +289,46 @@ Check_Tensor_Dsl_Symtab_Print(void)
   int saw_source_layer = 0;
   int saw_lowering_hint_pending = 0;
 
-  TY_tensor_bind_attribute(tensor_ty, "dtype", "int32");
-  TY_tensor_bind_attribute(tensor_ty, "shape", "[2,2]");
-  TY_tensor_bind_attribute(tensor_ty, "layout", "row_major");
-  TY_tensor_declare_attribute(tensor_ty, "lineage");
+  if (strcmp(TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_DTYPE),
+	     "dtype") != 0 ||
+      strcmp(TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_SHAPE),
+	     "shape") != 0 ||
+      strcmp(TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_LAYOUT),
+	     "layout") != 0 ||
+      strcmp(TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME),
+	     "source_layer_name") != 0) {
+    fprintf(stderr, "tensor schema key names changed\n");
+    failed = 1;
+  }
+
+  TY_tensor_bind_attribute(tensor_ty, TY_TENSOR_SCHEMA_DTYPE, "int32");
+  TY_tensor_bind_attribute(tensor_ty, TY_TENSOR_SCHEMA_SHAPE, "[2,2]");
+  TY_tensor_bind_attribute(tensor_ty, TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+  TY_tensor_declare_attribute(tensor_ty, TY_TENSOR_SCHEMA_LINEAGE);
+
+  if (!TY_tensor_attribute_is_bound(tensor_ty, TY_TENSOR_SCHEMA_DTYPE) ||
+      strcmp(TY_tensor_attribute(tensor_ty, TY_TENSOR_SCHEMA_DTYPE),
+	     "int32") != 0) {
+    fprintf(stderr, "tensor schema enum attribute lookup failed\n");
+    failed = 1;
+  }
 
   ST_Init(tensor_st, Save_Str("tensor_tmp"), CLASS_VAR, SCLASS_UGLOBAL,
 	  EXPORT_LOCAL, tensor_ty);
   ST_tensor_bind_metadata(ST_st_idx(*tensor_st),
-			  "source_layer_name",
+			  TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME,
 			  "dsl_common_add_print_test");
-  ST_tensor_declare_metadata(ST_st_idx(*tensor_st), "lowering_hint");
+  ST_tensor_declare_metadata(ST_st_idx(*tensor_st),
+			     TY_TENSOR_SCHEMA_LOWERING_HINT);
+
+  if (!ST_tensor_metadata_is_bound(ST_st_idx(*tensor_st),
+				   TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME) ||
+      strcmp(ST_tensor_metadata(ST_st_idx(*tensor_st),
+				TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME),
+	     "dsl_common_add_print_test") != 0) {
+    fprintf(stderr, "tensor schema enum metadata lookup failed\n");
+    failed = 1;
+  }
 
   if (TY_tensor_attribute_count(tensor_ty) != 4) {
     fprintf(stderr, "tensor attribute iterator count changed\n");

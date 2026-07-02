@@ -164,6 +164,44 @@ Ensure_Tensor_Metadata (ST_IDX st)
     return metadata;
 }
 
+const char *
+TY_tensor_schema_key_name (TY_TENSOR_SCHEMA_KEY key)
+{
+    switch (key) {
+    case TY_TENSOR_SCHEMA_KIND:
+	return "kind";
+    case TY_TENSOR_SCHEMA_DTYPE:
+	return "dtype";
+    case TY_TENSOR_SCHEMA_RANK:
+	return "rank";
+    case TY_TENSOR_SCHEMA_SHAPE:
+	return "shape";
+    case TY_TENSOR_SCHEMA_TRAITS:
+	return "traits";
+    case TY_TENSOR_SCHEMA_LAYOUT:
+	return "layout";
+    case TY_TENSOR_SCHEMA_SHARDING:
+	return "sharding";
+    case TY_TENSOR_SCHEMA_PLACEMENT:
+	return "placement";
+    case TY_TENSOR_SCHEMA_MEMORY:
+	return "memory";
+    case TY_TENSOR_SCHEMA_QUANTIZATION:
+	return "quantization";
+    case TY_TENSOR_SCHEMA_RUNTIME_STATE:
+	return "runtime_state";
+    case TY_TENSOR_SCHEMA_LINEAGE:
+	return "lineage";
+    case TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME:
+	return "source_layer_name";
+    case TY_TENSOR_SCHEMA_LOWERING_HINT:
+	return "lowering_hint";
+    case TY_TENSOR_SCHEMA_UNKNOWN:
+    default:
+	return "";
+    }
+}
+
 static TY_DSL_KV *
 Find_Tensor_KV (UINT32 head, const char *key)
 {
@@ -370,6 +408,31 @@ TY_tensor_attribute (TY_IDX ty, const char *key)
     return ext == NULL ? NULL : Tensor_KV_Value (ext->attribute_head, key);
 }
 
+void
+TY_tensor_declare_attribute (TY_IDX ty, TY_TENSOR_SCHEMA_KEY key)
+{
+    TY_tensor_declare_attribute (ty, TY_tensor_schema_key_name (key));
+}
+
+void
+TY_tensor_bind_attribute (TY_IDX ty, TY_TENSOR_SCHEMA_KEY key,
+			  const char *value)
+{
+    TY_tensor_bind_attribute (ty, TY_tensor_schema_key_name (key), value);
+}
+
+BOOL
+TY_tensor_attribute_is_bound (TY_IDX ty, TY_TENSOR_SCHEMA_KEY key)
+{
+    return TY_tensor_attribute_is_bound (ty, TY_tensor_schema_key_name (key));
+}
+
+const char *
+TY_tensor_attribute (TY_IDX ty, TY_TENSOR_SCHEMA_KEY key)
+{
+    return TY_tensor_attribute (ty, TY_tensor_schema_key_name (key));
+}
+
 UINT32
 TY_tensor_attribute_count (TY_IDX ty)
 {
@@ -415,6 +478,31 @@ ST_tensor_metadata (ST_IDX st, const char *key)
     ST_TENSOR_METADATA_STORE *metadata = Find_Tensor_Metadata (st);
     return metadata == NULL ? NULL : Tensor_KV_Value (metadata->metadata_head,
 						      key);
+}
+
+void
+ST_tensor_declare_metadata (ST_IDX st, TY_TENSOR_SCHEMA_KEY key)
+{
+    ST_tensor_declare_metadata (st, TY_tensor_schema_key_name (key));
+}
+
+void
+ST_tensor_bind_metadata (ST_IDX st, TY_TENSOR_SCHEMA_KEY key,
+			 const char *value)
+{
+    ST_tensor_bind_metadata (st, TY_tensor_schema_key_name (key), value);
+}
+
+BOOL
+ST_tensor_metadata_is_bound (ST_IDX st, TY_TENSOR_SCHEMA_KEY key)
+{
+    return ST_tensor_metadata_is_bound (st, TY_tensor_schema_key_name (key));
+}
+
+const char *
+ST_tensor_metadata (ST_IDX st, TY_TENSOR_SCHEMA_KEY key)
+{
+    return ST_tensor_metadata (st, TY_tensor_schema_key_name (key));
 }
 
 UINT32
