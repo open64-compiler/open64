@@ -40,7 +40,29 @@ struct DSL_OPCODE_RECORD {
     flags(0) {}
 };
 
+struct DSL_OPCODE_PROMOTION_RECORD {
+  DSL_OPCODE_PROMOTION_ID id;
+  DSL_OPCODE_ID source_opcode_id;
+  DSL_OPCODE_ID promoted_opcode_id;
+  DSL_OPCODE_PROMOTION_STATE state;
+  UINT16 version;
+  std::vector<const char *> required_common_semantics;
+  std::vector<const char *> retained_wrappers;
+  std::vector<const char *> required_verifier_checks;
+  std::vector<const char *> diagnostics;
+  UINT32 flags;
+
+  DSL_OPCODE_PROMOTION_RECORD() :
+    id(DSL_OPCODE_PROMOTION_INVALID_ID),
+    source_opcode_id(DSL_OPCODE_INVALID_ID),
+    promoted_opcode_id(DSL_OPCODE_INVALID_ID),
+    state(DSL_OPCODE_PROMOTION_DOMAIN_ONLY),
+    version(0),
+    flags(0) {}
+};
+
 static std::vector<DSL_OPCODE_RECORD> DSL_opcode_registry;
+static std::vector<DSL_OPCODE_PROMOTION_RECORD> DSL_opcode_promotion_registry;
 
 static const char *DSL_opcode_category_name[] = {
   "executable",
@@ -85,6 +107,26 @@ static const char *DSL_lowering_model_name[] = {
   "target_specific"
 };
 
+static const char *DSL_opcode_promotion_state_name[] = {
+  "domain_only",
+  "wrapper_to_common",
+  "partial_promotion",
+  "common_native"
+};
+
+static const char *DSL_cprom_diagnostic_code[] = {
+  "CPROM-001",
+  "CPROM-002",
+  "CPROM-003",
+  "CPROM-004",
+  "CPROM-005",
+  "CPROM-006",
+  "CPROM-007",
+  "CPROM-008",
+  "CPROM-009",
+  "CPROM-010"
+};
+
 struct DSL_COMMON_OPCODE_SEED {
   const char *name;
   DSL_OPCODE_CATEGORY category;
@@ -101,6 +143,17 @@ struct DSL_DOMAIN_WRAPPER_SEED {
   const char *name;
   const char *target_name;
   const char *diagnostic_prefix;
+};
+
+struct DSL_OPCODE_PROMOTION_SEED {
+  const char *source_domain;
+  const char *source_name;
+  const char *promoted_name;
+  DSL_OPCODE_PROMOTION_STATE state;
+  const char *common_semantic;
+  const char *retained_wrapper;
+  const char *verifier_check;
+  const char *diagnostic;
 };
 
 static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
@@ -364,6 +417,33 @@ static const DSL_DOMAIN_WRAPPER_SEED DSL_domain_wrapper_seed[] = {
     "DOPC_TRANSFORMER_RESIDUAL_ADD_WRAPPER" }
 };
 
+static const DSL_OPCODE_PROMOTION_SEED DSL_opcode_promotion_seed[] = {
+  { "cnn", "cnn.linear", "common.linear",
+    DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+    "affine_projection", "cnn.linear", "classifier_head_contract",
+    "CPROM-005" },
+  { "transformer", "transformer.q_projection", "common.linear",
+    DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+    "affine_projection", "transformer.q_projection",
+    "head_layout_contract", "CPROM-005" },
+  { "cnn", "cnn.residual_add", "common.residual_add",
+    DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+    "residual_addition", "cnn.residual_add",
+    "residual_shape_check", "CPROM-006" },
+  { "transformer", "transformer.residual_add", "common.residual_add",
+    DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+    "residual_addition", "transformer.residual_add",
+    "residual_lineage_check", "CPROM-006" },
+  { "cnn", "cnn.conv2d", "common.window_reduce",
+    DSL_OPCODE_PROMOTION_PARTIAL,
+    "windowed_contraction_base", "cnn.conv2d",
+    "padding_stride_dilation_groups", "CPROM-006" },
+  { "transformer", "transformer.attention", "common.matmul",
+    DSL_OPCODE_PROMOTION_PARTIAL,
+    "attention_matmul_softmax_sequence", "transformer.attention",
+    "mask_position_head_layout_kv_cache", "CPROM-006" }
+};
+
 static const char *
 DSL_Opcode_Save_String (const char *str)
 {
@@ -379,6 +459,13 @@ static BOOL
 DSL_Opcode_Valid_Id (DSL_OPCODE_ID id)
 {
   return id != DSL_OPCODE_INVALID_ID && id <= DSL_opcode_registry.size();
+}
+
+static BOOL
+DSL_Opcode_Promotion_Valid_Id (DSL_OPCODE_PROMOTION_ID id)
+{
+  return id != DSL_OPCODE_PROMOTION_INVALID_ID &&
+	 id <= DSL_opcode_promotion_registry.size();
 }
 
 static BOOL
@@ -416,6 +503,13 @@ DSL_Opcode_Valid_Lowering_Model (DSL_LOWERING_MODEL lowering_model)
 	 lowering_model <= DSL_LOWERING_MODEL_TARGET_SPECIFIC;
 }
 
+static BOOL
+DSL_Opcode_Valid_Promotion_State (DSL_OPCODE_PROMOTION_STATE state)
+{
+  return state >= DSL_OPCODE_PROMOTION_DOMAIN_ONLY &&
+	 state <= DSL_OPCODE_PROMOTION_COMMON_NATIVE;
+}
+
 static void
 DSL_Opcode_Free_Record (DSL_OPCODE_RECORD &record)
 {
@@ -423,9 +517,40 @@ DSL_Opcode_Free_Record (DSL_OPCODE_RECORD &record)
   delete [] record.diagnostic_prefix;
 }
 
+static void
+DSL_Opcode_Promotion_Free_Record (DSL_OPCODE_PROMOTION_RECORD &record)
+{
+  for (UINT32 i = 0; i < record.required_common_semantics.size(); ++i)
+    delete [] record.required_common_semantics[i];
+  record.required_common_semantics.clear();
+
+  for (UINT32 i = 0; i < record.retained_wrappers.size(); ++i)
+    delete [] record.retained_wrappers[i];
+  record.retained_wrappers.clear();
+
+  for (UINT32 i = 0; i < record.required_verifier_checks.size(); ++i)
+    delete [] record.required_verifier_checks[i];
+  record.required_verifier_checks.clear();
+
+  for (UINT32 i = 0; i < record.diagnostics.size(); ++i)
+    delete [] record.diagnostics[i];
+  record.diagnostics.clear();
+}
+
+void
+DSL_Opcode_Promotion_Registry_Reset (void)
+{
+  for (UINT32 i = 0; i < DSL_opcode_promotion_registry.size(); ++i)
+    DSL_Opcode_Promotion_Free_Record(DSL_opcode_promotion_registry[i]);
+
+  DSL_opcode_promotion_registry.clear();
+}
+
 void
 DSL_Opcode_Registry_Reset (void)
 {
+  DSL_Opcode_Promotion_Registry_Reset();
+
   for (UINT32 i = 0; i < DSL_opcode_registry.size(); ++i)
     DSL_Opcode_Free_Record(DSL_opcode_registry[i]);
 
@@ -660,6 +785,279 @@ DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id)
   return DSL_opcode_registry[id - 1].wrapper_target_id;
 }
 
+DSL_OPCODE_PROMOTION_ID
+DSL_Opcode_Promotion_Register
+		(DSL_OPCODE_ID source_opcode_id,
+		 DSL_OPCODE_ID promoted_opcode_id,
+		 DSL_OPCODE_PROMOTION_STATE state,
+		 UINT16 version,
+		 const char *const *required_common_semantics,
+		 UINT32 required_common_semantics_count,
+		 const char *const *retained_wrappers,
+		 UINT32 retained_wrapper_count,
+		 const char *const *required_verifier_checks,
+		 UINT32 required_verifier_check_count,
+		 const char *const *diagnostics,
+		 UINT32 diagnostic_count,
+		 UINT32 flags)
+{
+  DSL_OPCODE_PROMOTION_ID existing =
+    DSL_Opcode_Promotion_Find(source_opcode_id, promoted_opcode_id);
+
+  if (!DSL_Opcode_Valid_Id(source_opcode_id) ||
+      !DSL_Opcode_Valid_Id(promoted_opcode_id) ||
+      !DSL_Opcode_Valid_Promotion_State(state) ||
+      version == 0)
+    return DSL_OPCODE_PROMOTION_INVALID_ID;
+
+  if (existing != DSL_OPCODE_PROMOTION_INVALID_ID)
+    return existing;
+
+  DSL_OPCODE_PROMOTION_RECORD record;
+  record.id = DSL_opcode_promotion_registry.size() + 1;
+  record.source_opcode_id = source_opcode_id;
+  record.promoted_opcode_id = promoted_opcode_id;
+  record.state = state;
+  record.version = version;
+  record.flags = flags;
+
+  for (UINT32 i = 0; i < required_common_semantics_count; ++i)
+    record.required_common_semantics.push_back
+      (DSL_Opcode_Save_String(required_common_semantics == NULL ? NULL :
+			      required_common_semantics[i]));
+
+  for (UINT32 i = 0; i < retained_wrapper_count; ++i)
+    record.retained_wrappers.push_back
+      (DSL_Opcode_Save_String(retained_wrappers == NULL ? NULL :
+			      retained_wrappers[i]));
+
+  for (UINT32 i = 0; i < required_verifier_check_count; ++i)
+    record.required_verifier_checks.push_back
+      (DSL_Opcode_Save_String(required_verifier_checks == NULL ? NULL :
+			      required_verifier_checks[i]));
+
+  for (UINT32 i = 0; i < diagnostic_count; ++i)
+    record.diagnostics.push_back
+      (DSL_Opcode_Save_String(diagnostics == NULL ? NULL :
+			      diagnostics[i]));
+
+  DSL_opcode_promotion_registry.push_back(record);
+  return record.id;
+}
+
+DSL_OPCODE_PROMOTION_ID
+DSL_Opcode_Promotion_Find (DSL_OPCODE_ID source_opcode_id,
+			   DSL_OPCODE_ID promoted_opcode_id)
+{
+  for (UINT32 i = 0; i < DSL_opcode_promotion_registry.size(); ++i) {
+    const DSL_OPCODE_PROMOTION_RECORD &record =
+      DSL_opcode_promotion_registry[i];
+    if (record.source_opcode_id == source_opcode_id &&
+	record.promoted_opcode_id == promoted_opcode_id)
+      return record.id;
+  }
+
+  return DSL_OPCODE_PROMOTION_INVALID_ID;
+}
+
+BOOL
+DSL_Opcode_Promotion_Get_Info (DSL_OPCODE_PROMOTION_ID id,
+			       DSL_OPCODE_PROMOTION_INFO *info)
+{
+  if (!DSL_Opcode_Promotion_Valid_Id(id))
+    return FALSE;
+
+  if (info != NULL) {
+    const DSL_OPCODE_PROMOTION_RECORD &record =
+      DSL_opcode_promotion_registry[id - 1];
+    info->id = record.id;
+    info->source_opcode_id = record.source_opcode_id;
+    info->promoted_opcode_id = record.promoted_opcode_id;
+    info->state = record.state;
+    info->version = record.version;
+    info->required_common_semantics_count =
+      record.required_common_semantics.size();
+    info->retained_wrapper_count = record.retained_wrappers.size();
+    info->required_verifier_check_count =
+      record.required_verifier_checks.size();
+    info->diagnostic_count = record.diagnostics.size();
+    info->flags = record.flags;
+  }
+
+  return TRUE;
+}
+
+UINT32
+DSL_Opcode_Promotion_Count (void)
+{
+  return DSL_opcode_promotion_registry.size();
+}
+
+BOOL
+DSL_Opcode_Promotion_At (UINT32 ordinal, DSL_OPCODE_PROMOTION_INFO *info)
+{
+  if (ordinal >= DSL_opcode_promotion_registry.size())
+    return FALSE;
+
+  return DSL_Opcode_Promotion_Get_Info
+    (DSL_opcode_promotion_registry[ordinal].id, info);
+}
+
+const char *
+DSL_Opcode_Promotion_Required_Common_Semantic_At
+		(DSL_OPCODE_PROMOTION_ID id, UINT32 ordinal)
+{
+  if (!DSL_Opcode_Promotion_Valid_Id(id))
+    return NULL;
+
+  const DSL_OPCODE_PROMOTION_RECORD &record =
+    DSL_opcode_promotion_registry[id - 1];
+  if (ordinal >= record.required_common_semantics.size())
+    return NULL;
+
+  return record.required_common_semantics[ordinal];
+}
+
+const char *
+DSL_Opcode_Promotion_Retained_Wrapper_At
+		(DSL_OPCODE_PROMOTION_ID id, UINT32 ordinal)
+{
+  if (!DSL_Opcode_Promotion_Valid_Id(id))
+    return NULL;
+
+  const DSL_OPCODE_PROMOTION_RECORD &record =
+    DSL_opcode_promotion_registry[id - 1];
+  if (ordinal >= record.retained_wrappers.size())
+    return NULL;
+
+  return record.retained_wrappers[ordinal];
+}
+
+const char *
+DSL_Opcode_Promotion_Required_Verifier_Check_At
+		(DSL_OPCODE_PROMOTION_ID id, UINT32 ordinal)
+{
+  if (!DSL_Opcode_Promotion_Valid_Id(id))
+    return NULL;
+
+  const DSL_OPCODE_PROMOTION_RECORD &record =
+    DSL_opcode_promotion_registry[id - 1];
+  if (ordinal >= record.required_verifier_checks.size())
+    return NULL;
+
+  return record.required_verifier_checks[ordinal];
+}
+
+const char *
+DSL_Opcode_Promotion_Diagnostic_At
+		(DSL_OPCODE_PROMOTION_ID id, UINT32 ordinal)
+{
+  if (!DSL_Opcode_Promotion_Valid_Id(id))
+    return NULL;
+
+  const DSL_OPCODE_PROMOTION_RECORD &record =
+    DSL_opcode_promotion_registry[id - 1];
+  if (ordinal >= record.diagnostics.size())
+    return NULL;
+
+  return record.diagnostics[ordinal];
+}
+
+UINT32
+DSL_Opcode_Promotion_Register_Examples (void)
+{
+  DSL_DOMAIN_ID common_id;
+  UINT32 registered = 0;
+
+  DSL_Opcode_Register_Domain_Wrapper_Examples();
+  common_id = DSL_Domain_Find("common");
+  if (common_id == DSL_DOMAIN_INVALID_ID)
+    return 0;
+
+  for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_opcode_promotion_seed); ++i) {
+    const DSL_OPCODE_PROMOTION_SEED &seed = DSL_opcode_promotion_seed[i];
+    DSL_DOMAIN_ID domain_id = DSL_Domain_Find(seed.source_domain);
+    DSL_OPCODE_ID source_id;
+    DSL_OPCODE_ID promoted_id;
+    DSL_OPCODE_PROMOTION_ID id;
+    const char *semantics[] = { seed.common_semantic };
+    const char *wrappers[] = { seed.retained_wrapper };
+    const char *checks[] = { seed.verifier_check };
+    const char *diagnostics[] = { seed.diagnostic };
+
+    if (domain_id == DSL_DOMAIN_INVALID_ID)
+      domain_id = DSL_Domain_Register(seed.source_domain, common_id, 1, 0);
+
+    if (domain_id == DSL_DOMAIN_INVALID_ID)
+      continue;
+
+    source_id = DSL_Opcode_Find(domain_id, seed.source_name, 1);
+    promoted_id = DSL_Opcode_Find(common_id, seed.promoted_name, 1);
+
+    if (source_id == DSL_OPCODE_INVALID_ID &&
+	promoted_id != DSL_OPCODE_INVALID_ID)
+      source_id = DSL_Opcode_Register(domain_id,
+				      seed.source_name,
+				      1,
+				      DSL_OPCODE_CATEGORY_EXECUTABLE,
+				      DSL_OPCODE_LEVEL_3_NN_COMMON,
+				      DSL_OPCODE_NKIDS_PAYLOAD_DEFINED,
+				      DSL_SHAPE_RULE_RUNTIME_GUARDED,
+				      DSL_EFFECT_MODEL_PURE,
+				      DSL_LOWERING_MODEL_MARKER_ONLY,
+				      seed.diagnostic,
+				      0);
+
+    id = DSL_Opcode_Promotion_Register
+	    (source_id,
+	     promoted_id,
+	     seed.state,
+	     1,
+	     semantics,
+	     1,
+	     wrappers,
+	     1,
+	     checks,
+	     1,
+	     diagnostics,
+	     1,
+	     0);
+
+    if (id != DSL_OPCODE_PROMOTION_INVALID_ID)
+      ++registered;
+  }
+
+  return registered;
+}
+
+const char *
+DSL_Opcode_Check_Promotion (DSL_OPCODE_ID source_opcode_id,
+			    DSL_OPCODE_ID promoted_opcode_id,
+			    UINT16 common_version,
+			    BOOL require_wrapper)
+{
+  DSL_OPCODE_INFO promoted_info;
+
+  if (!DSL_Opcode_Valid_Id(source_opcode_id) ||
+      !DSL_Opcode_Valid_Id(promoted_opcode_id) ||
+      DSL_Opcode_Promotion_Find(source_opcode_id, promoted_opcode_id) ==
+	DSL_OPCODE_PROMOTION_INVALID_ID)
+    return DSL_CPROM_Diagnostic_Code
+      (DSL_CPROM_PROMOTION_CANDIDATE_MISSING_CROSS_DOMAIN_EVIDENCE);
+
+  if (!DSL_Opcode_Get_Info(promoted_opcode_id, &promoted_info) ||
+      promoted_info.version != common_version)
+    return DSL_CPROM_Diagnostic_Code
+      (DSL_CPROM_COMMON_OP_VERSION_MISMATCH);
+
+  if (require_wrapper &&
+      DSL_Opcode_Wrapper_Target(source_opcode_id) == DSL_OPCODE_INVALID_ID)
+    return DSL_CPROM_Diagnostic_Code
+      (DSL_CPROM_DOMAIN_WRAPPER_MISSING_AFTER_PROMOTION);
+
+  return NULL;
+}
+
 const char *
 DSL_Opcode_Category_Name (DSL_OPCODE_CATEGORY category)
 {
@@ -705,6 +1103,24 @@ DSL_Lowering_Model_Name (DSL_LOWERING_MODEL lowering_model)
 	 DSL_lowering_model_name[index] : "unknown";
 }
 
+const char *
+DSL_Opcode_Promotion_State_Name (DSL_OPCODE_PROMOTION_STATE state)
+{
+  UINT32 index = (UINT32) state;
+
+  return index < DSL_ARRAY_COUNT(DSL_opcode_promotion_state_name) ?
+	 DSL_opcode_promotion_state_name[index] : "unknown";
+}
+
+const char *
+DSL_CPROM_Diagnostic_Code (DSL_CPROM_DIAGNOSTIC diagnostic)
+{
+  UINT32 index = (UINT32) diagnostic;
+
+  return index < DSL_ARRAY_COUNT(DSL_cprom_diagnostic_code) ?
+	 DSL_cprom_diagnostic_code[index] : "unknown";
+}
+
 void
 DSL_Opcode_fprint_registry (FILE *f)
 {
@@ -732,5 +1148,44 @@ DSL_Opcode_fprint_registry (FILE *f)
 	    DSL_Lowering_Model_Name(record.lowering_model),
 	    record.diagnostic_prefix,
 	    record.flags);
+  }
+}
+
+void
+DSL_Opcode_Promotion_fprint_registry (FILE *f)
+{
+  if (f == NULL)
+    return;
+
+  fprintf(f, "DSL Opcode Promotion Registry: entries=%u\n",
+	  DSL_Opcode_Promotion_Count());
+  for (UINT32 i = 0; i < DSL_opcode_promotion_registry.size(); ++i) {
+    const DSL_OPCODE_PROMOTION_RECORD &record =
+      DSL_opcode_promotion_registry[i];
+    fprintf(f,
+	    "  [%u] id=%u source=%u promoted=%u state=%s version=%u "
+	    "flags=0x%x\n",
+	    i,
+	    record.id,
+	    record.source_opcode_id,
+	    record.promoted_opcode_id,
+	    DSL_Opcode_Promotion_State_Name(record.state),
+	    record.version,
+	    record.flags);
+
+    for (UINT32 j = 0; j < record.required_common_semantics.size(); ++j)
+      fprintf(f, "      common_semantic[%u]=%s\n", j,
+	      record.required_common_semantics[j]);
+
+    for (UINT32 j = 0; j < record.retained_wrappers.size(); ++j)
+      fprintf(f, "      retained_wrapper[%u]=%s\n", j,
+	      record.retained_wrappers[j]);
+
+    for (UINT32 j = 0; j < record.required_verifier_checks.size(); ++j)
+      fprintf(f, "      verifier_check[%u]=%s\n", j,
+	      record.required_verifier_checks[j]);
+
+    for (UINT32 j = 0; j < record.diagnostics.size(); ++j)
+      fprintf(f, "      diagnostic[%u]=%s\n", j, record.diagnostics[j]);
   }
 }
