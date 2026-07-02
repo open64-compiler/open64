@@ -94,6 +94,7 @@ extern BOOL DSL_Opcode_Get_Info (DSL_OPCODE_ID id,
 				 DSL_OPCODE_INFO *info);
 extern UINT32 DSL_Opcode_Count (void);
 extern BOOL DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info);
+extern UINT32 DSL_Opcode_Register_Common_Substrate (void);
 extern const char *DSL_Opcode_Category_Name (DSL_OPCODE_CATEGORY category);
 extern const char *DSL_Opcode_Level_Name (DSL_OPCODE_LEVEL level);
 extern const char *DSL_Shape_Rule_Name (DSL_SHAPE_RULE shape_rule);
