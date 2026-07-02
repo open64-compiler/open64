@@ -11,6 +11,7 @@
 #include "mempool.h"
 #include "wn.h"
 #include "wn_util.h"
+#include "dsl_domain.h"
 #include "stab.h"
 #include "symtab.h"
 #include "symtab_utils.h"
@@ -35,6 +36,7 @@ static char *Read_File(FILE *fp);
 static const char *Trace_File_Path(void);
 static int Write_Common_Add_Trace(const char *tree_text,
 				  const char *annotation_text);
+static int Check_DSL_Domain_Registry(void);
 static int Check_Tensor_Required_Attribute_Diagnostics(void);
 static int Check_VHO_Unconsumed_DSL_Scanner(WN *tree);
 
@@ -445,6 +447,97 @@ Check_Tensor_Dsl_Symtab_Print(void)
 }
 
 static int
+Check_DSL_Domain_Registry(void)
+{
+  DSL_DOMAIN_ID common_id;
+  DSL_DOMAIN_ID cnn_id;
+  DSL_DOMAIN_ID transformer_id;
+  DSL_DOMAIN_INFO info;
+  FILE *dump = tmpfile();
+  char *text;
+  int failed = 0;
+
+  DSL_Domain_Registry_Reset();
+
+  common_id = DSL_Domain_Register("common", DSL_DOMAIN_INVALID_ID, 1, 0);
+  cnn_id = DSL_Domain_Register("cnn", common_id, 1, 0);
+  transformer_id = DSL_Domain_Register("transformer", common_id, 1, 0);
+
+  if (common_id == DSL_DOMAIN_INVALID_ID ||
+      cnn_id == DSL_DOMAIN_INVALID_ID ||
+      transformer_id == DSL_DOMAIN_INVALID_ID) {
+    fprintf(stderr, "DSL domain registration failed\n");
+    failed = 1;
+  }
+
+  if (DSL_Domain_Register("common", DSL_DOMAIN_INVALID_ID, 99, 0) !=
+      common_id) {
+    fprintf(stderr, "DSL domain duplicate registration changed id\n");
+    failed = 1;
+  }
+
+  if (DSL_Domain_Count() != 3 ||
+      !DSL_Domain_Is_Registered("cnn") ||
+      DSL_Domain_Find("transformer") != transformer_id ||
+      strcmp(DSL_Domain_Name(cnn_id), "cnn") != 0) {
+    fprintf(stderr, "DSL domain registry lookup failed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Domain_Get_Info(transformer_id, &info) ||
+      info.parent_id != common_id ||
+      strcmp(info.name, "transformer") != 0 ||
+      info.version != 1) {
+    fprintf(stderr, "DSL domain registry info changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Domain_At(1, &info) ||
+      info.id != cnn_id ||
+      DSL_Domain_At(DSL_Domain_Count(), &info)) {
+    fprintf(stderr, "DSL domain registry iteration failed\n");
+    failed = 1;
+  }
+
+  if (DSL_Domain_Register("bad.child", 9999, 1, 0) !=
+      DSL_DOMAIN_INVALID_ID) {
+    fprintf(stderr, "DSL domain registry accepted invalid parent\n");
+    failed = 1;
+  }
+
+  if (DSL_Domain_Register("", DSL_DOMAIN_INVALID_ID, 1, 0) !=
+      DSL_DOMAIN_INVALID_ID) {
+    fprintf(stderr, "DSL domain registry accepted empty name\n");
+    failed = 1;
+  }
+
+  if (dump == NULL) {
+    perror("tmpfile");
+    return 1;
+  }
+
+  DSL_Domain_fprint_registry(dump);
+  text = Read_File(dump);
+  fclose(dump);
+
+  if (text == NULL) {
+    fprintf(stderr, "failed to read DSL domain registry dump\n");
+    return 1;
+  }
+
+  if (strstr(text, "DSL Domain Registry: entries=3") == NULL ||
+      strstr(text, "name=common") == NULL ||
+      strstr(text, "name=cnn") == NULL ||
+      strstr(text, "name=transformer") == NULL) {
+    fprintf(stderr, "DSL domain registry dump changed\n");
+    failed = 1;
+  }
+
+  free(text);
+  return failed;
+}
+
+static int
 Check_Tensor_Required_Attribute_Diagnostics(void)
 {
   static const TY_TENSOR_SCHEMA_KEY required[] = {
@@ -658,6 +751,7 @@ main(void)
   failed |= Check_Common_Add_Annotation(dsl_marker);
   failed |= Check_Common_Add_On_Tensor_Constants();
   failed |= Check_Zero_Initializer_Operators();
+  failed |= Check_DSL_Domain_Registry();
   failed |= Check_Tensor_Dsl_Symtab_Print();
   failed |= Check_Tensor_Required_Attribute_Diagnostics();
   failed |= Check_VHO_Unconsumed_DSL_Scanner(tree);

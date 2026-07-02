@@ -179,6 +179,7 @@ COMMON_COM_CXX_SRC =	\
 	config.cxx	\
 	config_elf_targ.cxx \
 	const.cxx	\
+	dsl_domain.cxx	\
 	dwarf_DST.cxx	\
 	dwarf_DST_dump.cxx	\
 	dwarf_DST_mem.cxx	\
@@ -297,4 +298,3 @@ whirl2mpl.o: LC++INCS += $(MAPLE_INCS)
 whirl2llvm.o: LC++INCS += $(MAPLE_INCS) $(LLVM_INCS)
 
 wn_util.o: HOSTDEFS += -DMONGOOSE_BE
-
