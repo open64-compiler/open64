@@ -26,7 +26,7 @@ struct DSL_CONTRACT_RECORD {
     flags(0) {}
 };
 
-static std::vector<DSL_CONTRACT_RECORD> Dsl_contract_registry;
+static std::vector<DSL_CONTRACT_RECORD> DSL_contract_registry;
 
 static const char *
 DSL_Contract_Save_String (const char *str)
@@ -42,7 +42,7 @@ DSL_Contract_Save_String (const char *str)
 static BOOL
 DSL_Contract_Valid_Id (DSL_CONTRACT_ID id)
 {
-  return id != DSL_CONTRACT_INVALID_ID && id <= Dsl_contract_registry.size();
+  return id != DSL_CONTRACT_INVALID_ID && id <= DSL_contract_registry.size();
 }
 
 static void
@@ -62,10 +62,10 @@ DSL_Contract_Free_Record (DSL_CONTRACT_RECORD &record)
 void
 DSL_Contract_Registry_Reset (void)
 {
-  for (UINT32 i = 0; i < Dsl_contract_registry.size(); ++i)
-    DSL_Contract_Free_Record(Dsl_contract_registry[i]);
+  for (UINT32 i = 0; i < DSL_contract_registry.size(); ++i)
+    DSL_Contract_Free_Record(DSL_contract_registry[i]);
 
-  Dsl_contract_registry.clear();
+  DSL_contract_registry.clear();
 }
 
 DSL_CONTRACT_ID
@@ -94,7 +94,7 @@ DSL_Contract_Register (const char *name,
     return DSL_CONTRACT_INVALID_ID;
 
   DSL_CONTRACT_RECORD record;
-  record.id = Dsl_contract_registry.size() + 1;
+  record.id = DSL_contract_registry.size() + 1;
   record.source_domain_id = source_domain_id;
   record.target_domain_id = target_domain_id;
   record.name = DSL_Contract_Save_String(safe_name);
@@ -111,7 +111,7 @@ DSL_Contract_Register (const char *name,
       (DSL_Contract_Save_String(diagnostic_codes == NULL ? NULL :
 				diagnostic_codes[i]));
 
-  Dsl_contract_registry.push_back(record);
+  DSL_contract_registry.push_back(record);
   return record.id;
 }
 
@@ -122,8 +122,8 @@ DSL_Contract_Find (const char *name,
 {
   const char *safe_name = name ? name : "";
 
-  for (UINT32 i = 0; i < Dsl_contract_registry.size(); ++i) {
-    const DSL_CONTRACT_RECORD &record = Dsl_contract_registry[i];
+  for (UINT32 i = 0; i < DSL_contract_registry.size(); ++i) {
+    const DSL_CONTRACT_RECORD &record = DSL_contract_registry[i];
     if (record.source_domain_id == source_domain_id &&
 	record.target_domain_id == target_domain_id &&
 	strcmp(record.name, safe_name) == 0)
@@ -140,7 +140,7 @@ DSL_Contract_Get_Info (DSL_CONTRACT_ID id, DSL_CONTRACT_INFO *info)
     return FALSE;
 
   if (info != NULL) {
-    const DSL_CONTRACT_RECORD &record = Dsl_contract_registry[id - 1];
+    const DSL_CONTRACT_RECORD &record = DSL_contract_registry[id - 1];
     info->id = record.id;
     info->source_domain_id = record.source_domain_id;
     info->target_domain_id = record.target_domain_id;
@@ -157,16 +157,16 @@ DSL_Contract_Get_Info (DSL_CONTRACT_ID id, DSL_CONTRACT_INFO *info)
 UINT32
 DSL_Contract_Count (void)
 {
-  return Dsl_contract_registry.size();
+  return DSL_contract_registry.size();
 }
 
 BOOL
 DSL_Contract_At (UINT32 ordinal, DSL_CONTRACT_INFO *info)
 {
-  if (ordinal >= Dsl_contract_registry.size())
+  if (ordinal >= DSL_contract_registry.size())
     return FALSE;
 
-  return DSL_Contract_Get_Info(Dsl_contract_registry[ordinal].id, info);
+  return DSL_Contract_Get_Info(DSL_contract_registry[ordinal].id, info);
 }
 
 const char *
@@ -175,7 +175,7 @@ DSL_Contract_Required_Check_At (DSL_CONTRACT_ID id, UINT32 ordinal)
   if (!DSL_Contract_Valid_Id(id))
     return NULL;
 
-  const DSL_CONTRACT_RECORD &record = Dsl_contract_registry[id - 1];
+  const DSL_CONTRACT_RECORD &record = DSL_contract_registry[id - 1];
   if (ordinal >= record.required_checks.size())
     return NULL;
 
@@ -188,7 +188,7 @@ DSL_Contract_Diagnostic_Code_At (DSL_CONTRACT_ID id, UINT32 ordinal)
   if (!DSL_Contract_Valid_Id(id))
     return NULL;
 
-  const DSL_CONTRACT_RECORD &record = Dsl_contract_registry[id - 1];
+  const DSL_CONTRACT_RECORD &record = DSL_contract_registry[id - 1];
   if (ordinal >= record.diagnostic_codes.size())
     return NULL;
 
@@ -202,8 +202,8 @@ DSL_Contract_fprint_registry (FILE *f)
     return;
 
   fprintf(f, "DSL Contract Registry: entries=%u\n", DSL_Contract_Count());
-  for (UINT32 i = 0; i < Dsl_contract_registry.size(); ++i) {
-    const DSL_CONTRACT_RECORD &record = Dsl_contract_registry[i];
+  for (UINT32 i = 0; i < DSL_contract_registry.size(); ++i) {
+    const DSL_CONTRACT_RECORD &record = DSL_contract_registry[i];
     fprintf(f,
 	    "  [%u] id=%u name=%s source=%u target=%u version=%u flags=0x%x\n",
 	    i,
