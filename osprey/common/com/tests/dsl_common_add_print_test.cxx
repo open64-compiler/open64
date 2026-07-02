@@ -13,6 +13,7 @@
 #include "wn_util.h"
 #include "dsl_contract.h"
 #include "dsl_domain.h"
+#include "dsl_opcode.h"
 #include "stab.h"
 #include "symtab.h"
 #include "symtab_utils.h"
@@ -39,6 +40,7 @@ static int Write_Common_Add_Trace(const char *tree_text,
 				  const char *annotation_text);
 static int Check_DSL_Domain_Registry(void);
 static int Check_DSL_Contract_Registry(void);
+static int Check_DSL_Opcode_Registry(void);
 static int Check_Tensor_Required_Attribute_Diagnostics(void);
 static int Check_VHO_Unconsumed_DSL_Scanner(WN *tree);
 
@@ -672,6 +674,164 @@ Check_DSL_Contract_Registry(void)
 }
 
 static int
+Check_DSL_Opcode_Registry(void)
+{
+  DSL_DOMAIN_ID common_id;
+  DSL_OPCODE_ID add_id;
+  DSL_OPCODE_INFO info;
+  FILE *dump = tmpfile();
+  char *text;
+  int failed = 0;
+
+  DSL_Opcode_Registry_Reset();
+  DSL_Domain_Registry_Reset();
+
+  common_id = DSL_Domain_Register("common", DSL_DOMAIN_INVALID_ID, 1, 0);
+  add_id =
+    DSL_Opcode_Register(common_id,
+			DSL_OPCODE_COMMON_ADD,
+			1,
+			DSL_OPCODE_CATEGORY_EXECUTABLE,
+			DSL_OPCODE_LEVEL_2_NUMERIC,
+			2,
+			DSL_SHAPE_RULE_BROADCAST,
+			DSL_EFFECT_MODEL_PURE,
+			DSL_LOWERING_MODEL_MARKER_ONLY,
+			"DOPC_COMMON_ADD",
+			0);
+
+  if (add_id == DSL_OPCODE_INVALID_ID) {
+    fprintf(stderr, "DSL opcode registration failed\n");
+    failed = 1;
+  }
+
+  if (DSL_Opcode_Register(common_id,
+			  DSL_OPCODE_COMMON_ADD,
+			  1,
+			  DSL_OPCODE_CATEGORY_VERIFIER,
+			  DSL_OPCODE_LEVEL_1_TENSOR,
+			  0,
+			  DSL_SHAPE_RULE_OPAQUE,
+			  DSL_EFFECT_MODEL_VERIFIER_ONLY,
+			  DSL_LOWERING_MODEL_MARKER_ONLY,
+			  "DOPC_DUPLICATE",
+			  0) != add_id) {
+    fprintf(stderr, "DSL opcode duplicate registration changed id\n");
+    failed = 1;
+  }
+
+  if (DSL_Opcode_Count() != 1 ||
+      DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1) != add_id ||
+      DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 2) !=
+	DSL_OPCODE_INVALID_ID) {
+    fprintf(stderr, "DSL opcode lookup failed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Opcode_Get_Info(add_id, &info) ||
+      info.owner_domain_id != common_id ||
+      strcmp(info.name, DSL_OPCODE_COMMON_ADD) != 0 ||
+      info.version != 1 ||
+      info.category != DSL_OPCODE_CATEGORY_EXECUTABLE ||
+      info.level != DSL_OPCODE_LEVEL_2_NUMERIC ||
+      info.nkids != 2 ||
+      info.shape_rule != DSL_SHAPE_RULE_BROADCAST ||
+      info.effect_model != DSL_EFFECT_MODEL_PURE ||
+      info.lowering_model != DSL_LOWERING_MODEL_MARKER_ONLY ||
+      strcmp(info.diagnostic_prefix, "DOPC_COMMON_ADD") != 0) {
+    fprintf(stderr, "DSL opcode info changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Opcode_At(0, &info) ||
+      info.id != add_id ||
+      DSL_Opcode_At(DSL_Opcode_Count(), &info)) {
+    fprintf(stderr, "DSL opcode iteration failed\n");
+    failed = 1;
+  }
+
+  if (strcmp(DSL_Opcode_Category_Name(DSL_OPCODE_CATEGORY_EXECUTABLE),
+	     "executable") != 0 ||
+      strcmp(DSL_Opcode_Level_Name(DSL_OPCODE_LEVEL_2_NUMERIC),
+	     "level2_numeric") != 0 ||
+      strcmp(DSL_Shape_Rule_Name(DSL_SHAPE_RULE_BROADCAST),
+	     "broadcast") != 0 ||
+      strcmp(DSL_Effect_Model_Name(DSL_EFFECT_MODEL_PURE),
+	     "pure") != 0 ||
+      strcmp(DSL_Lowering_Model_Name(DSL_LOWERING_MODEL_MARKER_ONLY),
+	     "marker_only") != 0) {
+    fprintf(stderr, "DSL opcode enum names changed\n");
+    failed = 1;
+  }
+
+  if (DSL_Opcode_Register(9999,
+			  "bad.owner",
+			  1,
+			  DSL_OPCODE_CATEGORY_EXECUTABLE,
+			  DSL_OPCODE_LEVEL_2_NUMERIC,
+			  2,
+			  DSL_SHAPE_RULE_BROADCAST,
+			  DSL_EFFECT_MODEL_PURE,
+			  DSL_LOWERING_MODEL_MARKER_ONLY,
+			  "DOPC_BAD",
+			  0) != DSL_OPCODE_INVALID_ID ||
+      DSL_Opcode_Register(common_id,
+			  "",
+			  1,
+			  DSL_OPCODE_CATEGORY_EXECUTABLE,
+			  DSL_OPCODE_LEVEL_2_NUMERIC,
+			  2,
+			  DSL_SHAPE_RULE_BROADCAST,
+			  DSL_EFFECT_MODEL_PURE,
+			  DSL_LOWERING_MODEL_MARKER_ONLY,
+			  "DOPC_EMPTY",
+			  0) != DSL_OPCODE_INVALID_ID ||
+      DSL_Opcode_Register(common_id,
+			  "bad.version",
+			  0,
+			  DSL_OPCODE_CATEGORY_EXECUTABLE,
+			  DSL_OPCODE_LEVEL_2_NUMERIC,
+			  2,
+			  DSL_SHAPE_RULE_BROADCAST,
+			  DSL_EFFECT_MODEL_PURE,
+			  DSL_LOWERING_MODEL_MARKER_ONLY,
+			  "DOPC_VERSION",
+			  0) != DSL_OPCODE_INVALID_ID) {
+    fprintf(stderr, "DSL opcode registry accepted invalid input\n");
+    failed = 1;
+  }
+
+  if (dump == NULL) {
+    perror("tmpfile");
+    return 1;
+  }
+
+  DSL_Opcode_fprint_registry(dump);
+  text = Read_File(dump);
+  fclose(dump);
+
+  if (text == NULL) {
+    fprintf(stderr, "failed to read DSL opcode registry dump\n");
+    return 1;
+  }
+
+  if (strstr(text, "DSL Opcode Registry: entries=1") == NULL ||
+      strstr(text, "name=common.add") == NULL ||
+      strstr(text, "category=executable") == NULL ||
+      strstr(text, "level=level2_numeric") == NULL ||
+      strstr(text, "shape=broadcast") == NULL ||
+      strstr(text, "effect=pure") == NULL ||
+      strstr(text, "lowering=marker_only") == NULL ||
+      strstr(text, "diagnostic_prefix=DOPC_COMMON_ADD") == NULL) {
+    fprintf(stderr, "DSL opcode registry dump changed\n");
+    failed = 1;
+  }
+
+  free(text);
+  return failed;
+}
+
+static int
 Check_Tensor_Required_Attribute_Diagnostics(void)
 {
   static const TY_TENSOR_SCHEMA_KEY required[] = {
@@ -887,6 +1047,7 @@ main(void)
   failed |= Check_Zero_Initializer_Operators();
   failed |= Check_DSL_Domain_Registry();
   failed |= Check_DSL_Contract_Registry();
+  failed |= Check_DSL_Opcode_Registry();
   failed |= Check_Tensor_Dsl_Symtab_Print();
   failed |= Check_Tensor_Required_Attribute_Diagnostics();
   failed |= Check_VHO_Unconsumed_DSL_Scanner(tree);
