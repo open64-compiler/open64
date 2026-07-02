@@ -41,6 +41,7 @@ static int Write_Common_Add_Trace(const char *tree_text,
 static int Check_DSL_Domain_Registry(void);
 static int Check_DSL_Contract_Registry(void);
 static int Check_DSL_Opcode_Registry(void);
+static int Check_DSL_Opcode_Promotion_Registry(void);
 static int Check_Tensor_Required_Attribute_Diagnostics(void);
 static int Check_VHO_Unconsumed_DSL_Scanner(WN *tree);
 
@@ -947,6 +948,211 @@ Check_DSL_Opcode_Registry(void)
 }
 
 static int
+Check_DSL_Opcode_Promotion_Registry(void)
+{
+  const UINT32 promotion_seed_count = 6;
+  DSL_DOMAIN_ID common_id;
+  DSL_DOMAIN_ID cnn_id;
+  DSL_DOMAIN_ID transformer_id;
+  DSL_OPCODE_ID common_linear_id;
+  DSL_OPCODE_ID common_residual_add_id;
+  DSL_OPCODE_ID common_window_reduce_id;
+  DSL_OPCODE_ID common_matmul_id;
+  DSL_OPCODE_ID cnn_linear_id;
+  DSL_OPCODE_ID cnn_residual_add_id;
+  DSL_OPCODE_ID cnn_conv2d_id;
+  DSL_OPCODE_ID transformer_attention_id;
+  DSL_OPCODE_PROMOTION_ID promotion_id;
+  DSL_OPCODE_PROMOTION_INFO info;
+  FILE *dump = tmpfile();
+  char *text;
+  const char *diagnostic;
+  int failed = 0;
+
+  DSL_Opcode_Registry_Reset();
+  DSL_Domain_Registry_Reset();
+
+  if (DSL_Opcode_Promotion_Register_Examples() != promotion_seed_count ||
+      DSL_Opcode_Promotion_Register_Examples() != promotion_seed_count) {
+    fprintf(stderr, "DSL opcode promotion example seeding failed\n");
+    failed = 1;
+  }
+
+  common_id = DSL_Domain_Find("common");
+  cnn_id = DSL_Domain_Find("cnn");
+  transformer_id = DSL_Domain_Find("transformer");
+  common_linear_id = DSL_Opcode_Find(common_id, "common.linear", 1);
+  common_residual_add_id =
+    DSL_Opcode_Find(common_id, "common.residual_add", 1);
+  common_window_reduce_id =
+    DSL_Opcode_Find(common_id, "common.window_reduce", 1);
+  common_matmul_id = DSL_Opcode_Find(common_id, "common.matmul", 1);
+  cnn_linear_id = DSL_Opcode_Find(cnn_id, "cnn.linear", 1);
+  cnn_residual_add_id = DSL_Opcode_Find(cnn_id, "cnn.residual_add", 1);
+  cnn_conv2d_id = DSL_Opcode_Find(cnn_id, "cnn.conv2d", 1);
+  transformer_attention_id =
+    DSL_Opcode_Find(transformer_id, "transformer.attention", 1);
+
+  if (DSL_Opcode_Promotion_Count() != promotion_seed_count ||
+      cnn_linear_id == DSL_OPCODE_INVALID_ID ||
+      cnn_conv2d_id == DSL_OPCODE_INVALID_ID ||
+      transformer_attention_id == DSL_OPCODE_INVALID_ID) {
+    fprintf(stderr, "DSL opcode promotion lookup setup failed\n");
+    failed = 1;
+  }
+
+  promotion_id =
+    DSL_Opcode_Promotion_Find(cnn_linear_id, common_linear_id);
+  if (!DSL_Opcode_Promotion_Get_Info(promotion_id, &info) ||
+      info.source_opcode_id != cnn_linear_id ||
+      info.promoted_opcode_id != common_linear_id ||
+      info.state != DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON ||
+      info.required_common_semantics_count != 1 ||
+      info.retained_wrapper_count != 1 ||
+      info.required_verifier_check_count != 1 ||
+      info.diagnostic_count != 1) {
+    fprintf(stderr, "DSL cnn.linear promotion descriptor changed\n");
+    failed = 1;
+  }
+
+  if (strcmp(DSL_Opcode_Promotion_Required_Common_Semantic_At
+		(promotion_id, 0), "affine_projection") != 0 ||
+      strcmp(DSL_Opcode_Promotion_Retained_Wrapper_At(promotion_id, 0),
+	     "cnn.linear") != 0 ||
+      strcmp(DSL_Opcode_Promotion_Required_Verifier_Check_At
+		(promotion_id, 0), "classifier_head_contract") != 0 ||
+      strcmp(DSL_Opcode_Promotion_Diagnostic_At(promotion_id, 0),
+	     "CPROM-005") != 0 ||
+      DSL_Opcode_Promotion_Diagnostic_At(promotion_id, 1) != NULL) {
+    fprintf(stderr, "DSL cnn.linear promotion payload changed\n");
+    failed = 1;
+  }
+
+  promotion_id =
+    DSL_Opcode_Promotion_Find(cnn_conv2d_id, common_window_reduce_id);
+  if (!DSL_Opcode_Promotion_Get_Info(promotion_id, &info) ||
+      info.state != DSL_OPCODE_PROMOTION_PARTIAL ||
+      strcmp(DSL_Opcode_Promotion_Required_Verifier_Check_At
+		(promotion_id, 0),
+	     "padding_stride_dilation_groups") != 0) {
+    fprintf(stderr, "DSL cnn.conv2d partial promotion changed\n");
+    failed = 1;
+  }
+
+  promotion_id =
+    DSL_Opcode_Promotion_Find(transformer_attention_id, common_matmul_id);
+  if (!DSL_Opcode_Promotion_Get_Info(promotion_id, &info) ||
+      info.state != DSL_OPCODE_PROMOTION_PARTIAL ||
+      strcmp(DSL_Opcode_Promotion_Retained_Wrapper_At(promotion_id, 0),
+	     "transformer.attention") != 0) {
+    fprintf(stderr, "DSL transformer.attention partial promotion changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Opcode_Promotion_At(0, &info) ||
+      DSL_Opcode_Promotion_At(DSL_Opcode_Promotion_Count(), &info)) {
+    fprintf(stderr, "DSL opcode promotion iteration failed\n");
+    failed = 1;
+  }
+
+  if (strcmp(DSL_Opcode_Promotion_State_Name
+		(DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON),
+	     "wrapper_to_common") != 0 ||
+      strcmp(DSL_Opcode_Promotion_State_Name(DSL_OPCODE_PROMOTION_PARTIAL),
+	     "partial_promotion") != 0 ||
+      strcmp(DSL_CPROM_Diagnostic_Code
+		(DSL_CPROM_COMMON_OP_VERSION_MISMATCH),
+	     "CPROM-009") != 0 ||
+      strcmp(DSL_CPROM_Diagnostic_Code
+		(DSL_CPROM_DOMAIN_WRAPPER_MISSING_AFTER_PROMOTION),
+	     "CPROM-010") != 0) {
+    fprintf(stderr, "DSL promotion enum/diagnostic names changed\n");
+    failed = 1;
+  }
+
+  diagnostic = DSL_Opcode_Check_Promotion(cnn_linear_id,
+					  common_linear_id,
+					  1,
+					  TRUE);
+  if (diagnostic != NULL) {
+    fprintf(stderr, "DSL promotion check rejected valid wrapper promotion\n");
+    failed = 1;
+  }
+
+  diagnostic = DSL_Opcode_Check_Promotion(cnn_linear_id,
+					  common_linear_id,
+					  2,
+					  TRUE);
+  if (diagnostic == NULL || strcmp(diagnostic, "CPROM-009") != 0) {
+    fprintf(stderr, "DSL promotion check missed version mismatch\n");
+    failed = 1;
+  }
+
+  diagnostic = DSL_Opcode_Check_Promotion(cnn_conv2d_id,
+					  common_window_reduce_id,
+					  1,
+					  TRUE);
+  if (diagnostic == NULL || strcmp(diagnostic, "CPROM-010") != 0) {
+    fprintf(stderr, "DSL promotion check missed missing wrapper\n");
+    failed = 1;
+  }
+
+  diagnostic = DSL_Opcode_Check_Promotion(cnn_residual_add_id,
+					  common_linear_id,
+					  1,
+					  TRUE);
+  if (diagnostic == NULL || strcmp(diagnostic, "CPROM-001") != 0) {
+    fprintf(stderr, "DSL promotion check missed unknown candidate\n");
+    failed = 1;
+  }
+
+  if (DSL_Opcode_Promotion_Register(9999,
+				    common_residual_add_id,
+				    DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+				    1,
+				    NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+				    0) != DSL_OPCODE_PROMOTION_INVALID_ID ||
+      DSL_Opcode_Promotion_Register(cnn_residual_add_id,
+				    common_residual_add_id,
+				    DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+				    0,
+				    NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+				    0) != DSL_OPCODE_PROMOTION_INVALID_ID) {
+    fprintf(stderr, "DSL promotion registry accepted invalid input\n");
+    failed = 1;
+  }
+
+  if (dump == NULL) {
+    perror("tmpfile");
+    return 1;
+  }
+
+  DSL_Opcode_Promotion_fprint_registry(dump);
+  text = Read_File(dump);
+  fclose(dump);
+
+  if (text == NULL) {
+    fprintf(stderr, "failed to read DSL opcode promotion registry dump\n");
+    return 1;
+  }
+
+  if (strstr(text, "DSL Opcode Promotion Registry: entries=6") == NULL ||
+      strstr(text, "state=wrapper_to_common") == NULL ||
+      strstr(text, "state=partial_promotion") == NULL ||
+      strstr(text, "common_semantic[0]=affine_projection") == NULL ||
+      strstr(text, "retained_wrapper[0]=transformer.attention") == NULL ||
+      strstr(text, "verifier_check[0]=padding_stride_dilation_groups") ==
+	NULL ||
+      strstr(text, "diagnostic[0]=CPROM-006") == NULL) {
+    fprintf(stderr, "DSL opcode promotion registry dump changed\n");
+    failed = 1;
+  }
+
+  free(text);
+  return failed;
+}
+
+static int
 Check_Tensor_Required_Attribute_Diagnostics(void)
 {
   static const TY_TENSOR_SCHEMA_KEY required[] = {
@@ -1163,6 +1369,7 @@ main(void)
   failed |= Check_DSL_Domain_Registry();
   failed |= Check_DSL_Contract_Registry();
   failed |= Check_DSL_Opcode_Registry();
+  failed |= Check_DSL_Opcode_Promotion_Registry();
   failed |= Check_Tensor_Dsl_Symtab_Print();
   failed |= Check_Tensor_Required_Attribute_Diagnostics();
   failed |= Check_VHO_Unconsumed_DSL_Scanner(tree);
