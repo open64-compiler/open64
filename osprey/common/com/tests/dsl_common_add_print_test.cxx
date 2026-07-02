@@ -676,8 +676,12 @@ Check_DSL_Contract_Registry(void)
 static int
 Check_DSL_Opcode_Registry(void)
 {
+  const UINT32 common_seed_count = 61;
   DSL_DOMAIN_ID common_id;
   DSL_OPCODE_ID add_id;
+  DSL_OPCODE_ID layout_cast_id;
+  DSL_OPCODE_ID residual_shape_check_id;
+  DSL_OPCODE_ID dispatch_id;
   DSL_OPCODE_INFO info;
   FILE *dump = tmpfile();
   char *text;
@@ -686,22 +690,17 @@ Check_DSL_Opcode_Registry(void)
   DSL_Opcode_Registry_Reset();
   DSL_Domain_Registry_Reset();
 
-  common_id = DSL_Domain_Register("common", DSL_DOMAIN_INVALID_ID, 1, 0);
-  add_id =
-    DSL_Opcode_Register(common_id,
-			DSL_OPCODE_COMMON_ADD,
-			1,
-			DSL_OPCODE_CATEGORY_EXECUTABLE,
-			DSL_OPCODE_LEVEL_2_NUMERIC,
-			2,
-			DSL_SHAPE_RULE_BROADCAST,
-			DSL_EFFECT_MODEL_PURE,
-			DSL_LOWERING_MODEL_MARKER_ONLY,
-			"DOPC_COMMON_ADD",
-			0);
+  if (DSL_Opcode_Register_Common_Substrate() != common_seed_count ||
+      DSL_Opcode_Register_Common_Substrate() != common_seed_count) {
+    fprintf(stderr, "DSL common opcode substrate seeding failed\n");
+    failed = 1;
+  }
+
+  common_id = DSL_Domain_Find("common");
+  add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
 
   if (add_id == DSL_OPCODE_INVALID_ID) {
-    fprintf(stderr, "DSL opcode registration failed\n");
+    fprintf(stderr, "DSL common.add seed lookup failed\n");
     failed = 1;
   }
 
@@ -720,7 +719,7 @@ Check_DSL_Opcode_Registry(void)
     failed = 1;
   }
 
-  if (DSL_Opcode_Count() != 1 ||
+  if (DSL_Opcode_Count() != common_seed_count ||
       DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1) != add_id ||
       DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 2) !=
 	DSL_OPCODE_INVALID_ID) {
@@ -743,8 +742,40 @@ Check_DSL_Opcode_Registry(void)
     failed = 1;
   }
 
+  layout_cast_id = DSL_Opcode_Find(common_id, "common.layout_cast", 1);
+  residual_shape_check_id =
+    DSL_Opcode_Find(common_id, "common.residual_shape_check", 1);
+  dispatch_id = DSL_Opcode_Find(common_id, "common.dispatch", 1);
+
+  if (!DSL_Opcode_Get_Info(layout_cast_id, &info) ||
+      info.category != DSL_OPCODE_CATEGORY_EXECUTABLE ||
+      info.level != DSL_OPCODE_LEVEL_1_TENSOR ||
+      info.shape_rule != DSL_SHAPE_RULE_LAYOUT ||
+      info.effect_model != DSL_EFFECT_MODEL_PURE) {
+    fprintf(stderr, "DSL common.layout_cast seed descriptor changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Opcode_Get_Info(residual_shape_check_id, &info) ||
+      info.category != DSL_OPCODE_CATEGORY_VERIFIER ||
+      info.level != DSL_OPCODE_LEVEL_3_NN_COMMON ||
+      info.nkids != 2 ||
+      info.effect_model != DSL_EFFECT_MODEL_VERIFIER_ONLY) {
+    fprintf(stderr, "DSL common.residual_shape_check seed descriptor changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Opcode_Get_Info(dispatch_id, &info) ||
+      info.category != DSL_OPCODE_CATEGORY_LOWERING_POLICY ||
+      info.level != DSL_OPCODE_LEVEL_4_RUNTIME ||
+      info.effect_model != DSL_EFFECT_MODEL_LOWERING_POLICY ||
+      info.lowering_model != DSL_LOWERING_MODEL_MARKER_ONLY) {
+    fprintf(stderr, "DSL common.dispatch seed descriptor changed\n");
+    failed = 1;
+  }
+
   if (!DSL_Opcode_At(0, &info) ||
-      info.id != add_id ||
+      strcmp(info.name, "common.module") != 0 ||
       DSL_Opcode_At(DSL_Opcode_Count(), &info)) {
     fprintf(stderr, "DSL opcode iteration failed\n");
     failed = 1;
@@ -815,14 +846,16 @@ Check_DSL_Opcode_Registry(void)
     return 1;
   }
 
-  if (strstr(text, "DSL Opcode Registry: entries=1") == NULL ||
+  if (strstr(text, "DSL Opcode Registry: entries=61") == NULL ||
       strstr(text, "name=common.add") == NULL ||
       strstr(text, "category=executable") == NULL ||
       strstr(text, "level=level2_numeric") == NULL ||
       strstr(text, "shape=broadcast") == NULL ||
       strstr(text, "effect=pure") == NULL ||
       strstr(text, "lowering=marker_only") == NULL ||
-      strstr(text, "diagnostic_prefix=DOPC_COMMON_ADD") == NULL) {
+      strstr(text, "diagnostic_prefix=DOPC_COMMON_ADD") == NULL ||
+      strstr(text, "name=common.kernel_variant") == NULL ||
+      strstr(text, "level=level4_runtime") == NULL) {
     fprintf(stderr, "DSL opcode registry dump changed\n");
     failed = 1;
   }
