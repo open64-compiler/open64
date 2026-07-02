@@ -55,11 +55,13 @@
 #endif /* USE_PCH */
 #pragma hdrstop
 #include <stdio.h>
+#include <string.h>
 #include <alloca.h>
 
 #include <ext/hash_map>			// stl hash table
 #include <ext/algorithm>
 #include <ostream>
+#include <vector>
 
 #include "defs.h"
 #include "config.h"
@@ -102,6 +104,326 @@ ST_ATTR_TABLE	St_Attr_Table;
 
 SYMTAB_IDX Current_scope;		// index to current scope
 PU *Current_pu;				// ptr to current PU
+
+TY_TENSOR_EXTENSION_TABLE Ty_tensor_extensions;
+ST_TENSOR_METADATA_TABLE St_tensor_metadata;
+TY_DSL_KV_TABLE Tensor_dsl_kv_table;
+
+static TY_TENSOR_EXTENSION_STORE *
+Find_Tensor_Extension (TY_IDX ty)
+{
+    for (UINT32 i = 0; i < Ty_tensor_extensions.Size(); ++i) {
+	TY_TENSOR_EXTENSION_STORE &ext = Ty_tensor_extensions[i];
+	if (ext.ty == ty)
+	    return &ext;
+    }
+    return NULL;
+}
+
+static TY_TENSOR_EXTENSION_STORE &
+Ensure_Tensor_Extension (TY_IDX ty, TY_IDX element_ty, INT32 rank)
+{
+    TY_TENSOR_EXTENSION_STORE *existing = Find_Tensor_Extension (ty);
+    if (existing != NULL) {
+	existing->element_ty = element_ty;
+	existing->rank = rank;
+	return *existing;
+    }
+
+    TY_TENSOR_EXTENSION_STORE ext_record;
+    UINT32 ext_index = Ty_tensor_extensions.Insert(ext_record);
+    TY_TENSOR_EXTENSION_STORE &ext = Ty_tensor_extensions[ext_index];
+    ext.ty = ty;
+    ext.element_ty = element_ty;
+    ext.rank = rank;
+    return ext;
+}
+
+static ST_TENSOR_METADATA_STORE *
+Find_Tensor_Metadata (ST_IDX st)
+{
+    for (UINT32 i = 0; i < St_tensor_metadata.Size(); ++i) {
+	ST_TENSOR_METADATA_STORE &metadata = St_tensor_metadata[i];
+	if (metadata.st == st)
+	    return &metadata;
+    }
+    return NULL;
+}
+
+static ST_TENSOR_METADATA_STORE &
+Ensure_Tensor_Metadata (ST_IDX st)
+{
+    ST_TENSOR_METADATA_STORE *existing = Find_Tensor_Metadata (st);
+    if (existing != NULL)
+	return *existing;
+
+    ST_TENSOR_METADATA_STORE metadata_record;
+    UINT32 metadata_index = St_tensor_metadata.Insert(metadata_record);
+    ST_TENSOR_METADATA_STORE &metadata = St_tensor_metadata[metadata_index];
+    metadata.st = st;
+    return metadata;
+}
+
+static TY_DSL_KV *
+Find_Tensor_KV (UINT32 head, const char *key)
+{
+    for (UINT32 handle = head; handle != 0;
+	 handle = Tensor_dsl_kv_table[handle - 1].next) {
+	TY_DSL_KV &entry = Tensor_dsl_kv_table[handle - 1];
+	if (strcmp(&Str_Table[entry.key], key ? key : "") == 0)
+	    return &entry;
+    }
+    return NULL;
+}
+
+static const TY_DSL_KV *
+Find_Tensor_KV_Const (UINT32 head, const char *key)
+{
+    for (UINT32 handle = head; handle != 0;
+	 handle = Tensor_dsl_kv_table[handle - 1].next) {
+	const TY_DSL_KV &entry = Tensor_dsl_kv_table[handle - 1];
+	if (strcmp(&Str_Table[entry.key], key ? key : "") == 0)
+	    return &entry;
+    }
+    return NULL;
+}
+
+static STR_IDX
+Tensor_Ext_Key (const char *key)
+{
+    return Str_To_Index(Save_Str(key ? key : ""), Current_Strtab);
+}
+
+static STR_IDX
+Tensor_Ext_Value (const char *value)
+{
+    return Str_To_Index(Save_Str(value ? value : ""), Current_Strtab);
+}
+
+static void
+Declare_Tensor_KV (UINT32 &head, UINT32 &count, const char *key)
+{
+    STR_IDX key_idx = Tensor_Ext_Key (key);
+    TY_DSL_KV *entry = Find_Tensor_KV (head, key);
+    if (entry != NULL)
+	return;
+
+    TY_DSL_KV new_entry;
+    new_entry.key = key_idx;
+    new_entry.value = 0;
+    new_entry.state = TY_DSL_BIND_PENDING;
+    new_entry.next = head;
+    head = Tensor_dsl_kv_table.Insert(new_entry) + 1;
+    ++count;
+}
+
+static void
+Bind_Tensor_KV (UINT32 &head, UINT32 &count, const char *key,
+		const char *value)
+{
+    TY_DSL_KV *entry = Find_Tensor_KV (head, key);
+    if (entry == NULL) {
+	Declare_Tensor_KV (head, count, key);
+	entry = Find_Tensor_KV (head, key);
+    }
+    Is_True(entry != NULL, ("failed to create tensor extension binding"));
+    entry->value = Tensor_Ext_Value (value);
+    entry->state = TY_DSL_BIND_BOUND;
+}
+
+static BOOL
+Tensor_KV_Is_Bound (UINT32 head, const char *key)
+{
+    const TY_DSL_KV *entry = Find_Tensor_KV_Const (head, key);
+    return entry != NULL && entry->state == TY_DSL_BIND_BOUND;
+}
+
+static const char *
+Tensor_KV_Value (UINT32 head, const char *key)
+{
+    const TY_DSL_KV *entry = Find_Tensor_KV_Const (head, key);
+    if (entry == NULL || entry->state != TY_DSL_BIND_BOUND)
+	return NULL;
+    return &Str_Table[entry->value];
+}
+
+static void
+Check_Tensor_Extension (TY_IDX ty)
+{
+    Is_True(TY_is_tensor_extension (ty),
+	    ("TY_IDX %u is not a tensor extension type", TY_IDX_index(ty)));
+}
+
+static void
+Check_Tensor_Metadata_Symbol (ST_IDX st)
+{
+    Is_True(ST_IDX_index(st) != 0,
+	    ("cannot attach tensor metadata to null ST_IDX"));
+}
+
+TY_IDX
+TY_Create_Tensor_Extension_Type (const char *name, TY_IDX element_ty,
+				 INT32 rank)
+{
+    TY_IDX ty_idx;
+    TY& ty = New_TY(ty_idx);
+    TY_Init(ty, 0, KIND_STRUCT, MTYPE_M,
+	    Save_Str(name ? name : "__dsl_tensor"));
+    TY_Mark_Tensor_Extension (ty_idx, element_ty, rank);
+    return ty_idx;
+}
+
+void
+TY_Mark_Tensor_Extension (TY_IDX ty, TY_IDX element_ty, INT32 rank)
+{
+    Is_True(TY_IDX_index(ty) != 0, ("cannot mark null TY as tensor"));
+    Ensure_Tensor_Extension (ty, element_ty, rank);
+}
+
+BOOL
+TY_is_tensor_extension (TY_IDX ty)
+{
+    return TY_IDX_index(ty) != 0 && Find_Tensor_Extension (ty) != NULL;
+}
+
+BOOL
+TY_Get_Tensor_Extension_Info (TY_IDX ty, TY_TENSOR_EXTENSION_INFO *info)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+    if (ext == NULL)
+	return FALSE;
+
+    if (info != NULL) {
+	info->ty = ext->ty;
+	info->element_ty = ext->element_ty;
+	info->rank = ext->rank;
+	info->attribute_count = ext->attribute_count;
+    }
+    return TRUE;
+}
+
+TY_IDX
+TY_tensor_element_ty (TY_IDX ty)
+{
+    Check_Tensor_Extension (ty);
+    return Find_Tensor_Extension (ty)->element_ty;
+}
+
+INT32
+TY_tensor_rank (TY_IDX ty)
+{
+    Check_Tensor_Extension (ty);
+    return Find_Tensor_Extension (ty)->rank;
+}
+
+void
+TY_tensor_declare_attribute (TY_IDX ty, const char *key)
+{
+    Check_Tensor_Extension (ty);
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+    Declare_Tensor_KV (ext->attribute_head, ext->attribute_count, key);
+}
+
+void
+TY_tensor_bind_attribute (TY_IDX ty, const char *key, const char *value)
+{
+    Check_Tensor_Extension (ty);
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+    Bind_Tensor_KV (ext->attribute_head, ext->attribute_count, key, value);
+}
+
+BOOL
+TY_tensor_attribute_is_bound (TY_IDX ty, const char *key)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+    return ext != NULL && Tensor_KV_Is_Bound (ext->attribute_head, key);
+}
+
+const char *
+TY_tensor_attribute (TY_IDX ty, const char *key)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+    return ext == NULL ? NULL : Tensor_KV_Value (ext->attribute_head, key);
+}
+
+void
+ST_tensor_declare_metadata (ST_IDX st, const char *key)
+{
+    Check_Tensor_Metadata_Symbol (st);
+    ST_TENSOR_METADATA_STORE &metadata = Ensure_Tensor_Metadata (st);
+    Declare_Tensor_KV (metadata.metadata_head, metadata.metadata_count, key);
+}
+
+void
+ST_tensor_bind_metadata (ST_IDX st, const char *key, const char *value)
+{
+    Check_Tensor_Metadata_Symbol (st);
+    ST_TENSOR_METADATA_STORE &metadata = Ensure_Tensor_Metadata (st);
+    Bind_Tensor_KV (metadata.metadata_head, metadata.metadata_count, key, value);
+}
+
+BOOL
+ST_tensor_metadata_is_bound (ST_IDX st, const char *key)
+{
+    ST_TENSOR_METADATA_STORE *metadata = Find_Tensor_Metadata (st);
+    return metadata != NULL && Tensor_KV_Is_Bound (metadata->metadata_head, key);
+}
+
+const char *
+ST_tensor_metadata (ST_IDX st, const char *key)
+{
+    ST_TENSOR_METADATA_STORE *metadata = Find_Tensor_Metadata (st);
+    return metadata == NULL ? NULL : Tensor_KV_Value (metadata->metadata_head,
+						      key);
+}
+
+void
+TY_tensor_declare_metadata (TY_IDX ty, const char *key)
+{
+    TY_tensor_declare_attribute (ty, key);
+}
+
+void
+TY_tensor_bind_metadata (TY_IDX ty, const char *key, const char *value)
+{
+    TY_tensor_bind_attribute (ty, key, value);
+}
+
+BOOL
+TY_tensor_metadata_is_bound (TY_IDX ty, const char *key)
+{
+    return TY_tensor_attribute_is_bound (ty, key);
+}
+
+const char *
+TY_tensor_metadata (TY_IDX ty, const char *key)
+{
+    return TY_tensor_attribute (ty, key);
+}
+
+void
+ST_tensor_declare_attribute (ST_IDX st, const char *key)
+{
+    ST_tensor_declare_metadata (st, key);
+}
+
+void
+ST_tensor_bind_attribute (ST_IDX st, const char *key, const char *value)
+{
+    ST_tensor_bind_metadata (st, key, value);
+}
+
+BOOL
+ST_tensor_attribute_is_bound (ST_IDX st, const char *key)
+{
+    return ST_tensor_metadata_is_bound (st, key);
+}
+
+const char *
+ST_tensor_attribute (ST_IDX st, const char *key)
+{
+    return ST_tensor_metadata (st, key);
+}
 
 //----------------------------------------------------------------------
 // ST-related utilities
@@ -1411,6 +1733,14 @@ Reset_misc_symtab()
 
   // reset intrinsic table
   intrinsic_list.clear();
+
+  // reset DSL type extension side tables
+  while (Ty_tensor_extensions.Size() > 0)
+    Ty_tensor_extensions.Delete_last();
+  while (St_tensor_metadata.Size() > 0)
+    St_tensor_metadata.Delete_last();
+  while (Tensor_dsl_kv_table.Size() > 0)
+    Tensor_dsl_kv_table.Delete_last();
 }
 
 /* ty either is union or has union in one of its fields (called recursively) */
@@ -2527,9 +2857,10 @@ std::ostream& operator<<(std::ostream &os, const ST &st )
 	    break;
 	}
 
-        os << std::endl << "\t\tSclass: "
-           << Sclass_Name(st.storage_class) << std::endl;
-    }
+	    os << std::endl << "\t\tSclass: "
+	       << Sclass_Name(st.storage_class) << std::endl;
+	}
+	return os;
 } // ST::Print
 
 void
@@ -2896,9 +3227,53 @@ Print_global_symtab (FILE *f)
     fprintf (f, "%sST_ATTRs:\n", DBar);
     For_all (St_Attr_Table, GLOBAL_SYMTAB, print_op<ST_ATTR> (f));
 
+    Print_tensor_dsl_symtab (f);
+
     fprintf (f, "%sString table size = %lld\n", DBar, STR_Table_Size());
     fprintf (f, "%s\n", DBar);
 } // Print_global_symtab
+
+static void
+Print_tensor_kv_chain (FILE *f, UINT32 head)
+{
+    for (UINT32 handle = head; handle != 0;
+	 handle = Tensor_dsl_kv_table[handle - 1].next) {
+	const TY_DSL_KV &entry = Tensor_dsl_kv_table[handle - 1];
+	const char *key = entry.key == 0 ? "<null>" : &Str_Table[entry.key];
+	const char *value = entry.value == 0 ? "<unbound>" : &Str_Table[entry.value];
+	fprintf (f, "      [%u] %s = %s%s\n", handle - 1, key, value,
+		entry.state == TY_DSL_BIND_BOUND ? "" : " (pending)");
+    }
+}
+
+void
+Print_tensor_dsl_symtab (FILE *f)
+{
+    if (Ty_tensor_extensions.Size() == 0 &&
+	St_tensor_metadata.Size() == 0 &&
+	Tensor_dsl_kv_table.Size() == 0)
+	return;
+
+    fprintf (f, "%sDSL Tensor Type Extensions:\n", DBar);
+    for (UINT32 i = 0; i < Ty_tensor_extensions.Size(); ++i) {
+	const TY_TENSOR_EXTENSION_STORE &ext = Ty_tensor_extensions[i];
+	fprintf (f, "  [%u] ty=%u element_ty=%u rank=%d attributes=%u\n",
+		i, TY_IDX_index(ext.ty), TY_IDX_index(ext.element_ty),
+		ext.rank, ext.attribute_count);
+	Print_tensor_kv_chain (f, ext.attribute_head);
+    }
+
+    fprintf (f, "%sDSL Tensor Symbol Metadata:\n", DBar);
+    for (UINT32 i = 0; i < St_tensor_metadata.Size(); ++i) {
+	const ST_TENSOR_METADATA_STORE &metadata = St_tensor_metadata[i];
+	fprintf (f, "  [%u] st=%u metadata=%u\n", i,
+		ST_IDX_index(metadata.st), metadata.metadata_count);
+	Print_tensor_kv_chain (f, metadata.metadata_head);
+    }
+
+    fprintf (f, "%sDSL Tensor KV Table: entries=%u\n", DBar,
+	    Tensor_dsl_kv_table.Size());
+}
 
 // for ease of debugging, because I don't know how to call Print
 // routines from dbx, add simple dump routines.

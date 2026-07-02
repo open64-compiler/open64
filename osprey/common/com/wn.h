@@ -1034,6 +1034,69 @@ WN_CreateRcomma (OPCODE opc, WN *value, WN *block) {
 extern WN *WN_CreateComment (const char *s);	/* create comment node */
 extern STR_IDX WN_GetComment (const WN *wn);  /* get string idx from comment node */
 
+/*
+ * Very-high-level WHIRL extension marker.
+ *
+ * DSL and AI-compiler front ends can use this comment format to attach
+ * structured intent to otherwise standard WHIRL.  Older phases continue to
+ * treat the node as OPR_COMMENT, while DSL-aware phases can recognize the
+ * marker and lower it deliberately before canonical optimization.
+ */
+#define WN_DSL_COMMENT_PREFIX "__WHIRL_DSL__:"
+#define DSL_OPCODE_COMMON_ADD "common.add"
+#define DSL_OPCODE_COMMON_MATMUL "common.matmul"
+#define DSL_OPCODE_COMMON_TENSOR_CONST "common.tensor_const"
+#define DSL_OPCODE_COMMON_ZERO_INIT "common.zero_init"
+#define DSL_OPCODE_COMMON_ZERO_LIKE "common.zero_like"
+typedef struct {
+  const char *name;
+  UINT32 name_len;
+  UINT32 version;
+  const char *payload;
+} DSL_OPCODE_ANNOTATION;
+
+extern const char *WN_DSL_Comment_Prefix (void);
+extern WN *WN_Create_DSL_Comment (const char *domain,
+				  const char *feature,
+				  const char *payload);
+extern WN *WN_Create_DSL_Assert (const char *domain,
+				 const char *condition,
+				 const char *message);
+extern BOOL WN_Is_DSL_Comment (const WN *wn);
+extern BOOL WN_Is_DSL_Assert (const WN *wn);
+extern const char *WN_Get_DSL_Comment_Payload (const WN *wn);
+extern WN *DSL_WN_Create_Opcode (const char *name,
+				 UINT32 version,
+				 const char *payload);
+/*
+ * Create a fully specified tensor constant.  Use this when dtype, rank, shape,
+ * and value are known at IR construction time.
+ */
+extern WN *DSL_WN_Create_Tensor_Const (const char *value_name,
+				     const char *dtype,
+				     UINT32 rank,
+				     const char *shape,
+				     const char *value_kind,
+				     const char *value);
+/*
+ * Create a zero initializer whose tensor descriptor may be completed later from
+ * assignment target or use-site context.  Do not use this when rank and shape
+ * are already known; prefer DSL_WN_Create_Tensor_Const for that case.
+ */
+extern WN *DSL_WN_Create_Zero_Init (const char *value_name,
+				  const char *dtype_hint);
+/*
+ * Create a zero tensor with dtype/rank/shape copied from another tensor value.
+ * Use this when the initializer is explicitly "zero with the same descriptor as
+ * source_name".
+ */
+extern WN *DSL_WN_Create_Zero_Like (const char *value_name,
+				  const char *source_name);
+extern BOOL DSL_WN_Has_Opcode (const WN *wn);
+extern BOOL DSL_WN_Get_Opcode_Annotation (const WN *wn,
+					  DSL_OPCODE_ANNOTATION *annotation);
+extern void DSL_fprint_opcode_annotation (FILE *f, const WN *wn);
+
 extern WN *WN_CreateAsm_Stmt (INT16 kid_count, char *asm_string);
 
 extern WN *WN_CreateAsm_Input (char *constraint, UINT32 opnd_num, WN *opnd_expr);
@@ -1564,6 +1627,3 @@ extern WN* WN_CreateFork(INT32 label_number, BOOL major);
 extern BOOL WN_Intrinsic_OP_Slave(WN * wn);
 #endif // TARG_SL
 #endif /* wn_INCLUDED */
-
-
-

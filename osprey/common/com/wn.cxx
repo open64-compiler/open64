@@ -68,6 +68,9 @@
 #endif /* USE_PCH */
 #pragma hdrstop
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "defs.h"
 #include "stab.h"
@@ -2131,6 +2134,269 @@ STR_IDX WN_GetComment (const WN *wn)
 {
 	Is_True(WN_opcode(wn) == OPC_COMMENT, ("Bad opcode in WN_GetComment"));
 	return ST_name_idx(WN_st(wn));
+}
+
+const char *
+WN_DSL_Comment_Prefix (void)
+{
+  return WN_DSL_COMMENT_PREFIX;
+}
+
+WN *
+WN_Create_DSL_Comment (const char *domain, const char *feature,
+		     const char *payload)
+{
+  const char *safe_domain = domain ? domain : "";
+  const char *safe_feature = feature ? feature : "";
+  const char *safe_payload = payload ? payload : "";
+  const size_t len = strlen (WN_DSL_COMMENT_PREFIX) +
+		     strlen (safe_domain) + 1 +
+		     strlen (safe_feature) + 1 +
+		     strlen (safe_payload) + 1;
+  char *comment = new char[len];
+
+  snprintf (comment, len, "%s%s:%s:%s", WN_DSL_COMMENT_PREFIX,
+	   safe_domain, safe_feature, safe_payload);
+  WN *wn = WN_CreateComment (comment);
+  delete [] comment;
+
+  return wn;
+}
+
+WN *
+WN_Create_DSL_Assert (const char *domain, const char *condition,
+		    const char *message)
+{
+  const char *safe_condition = condition ? condition : "";
+  const char *safe_message = message ? message : "";
+  const size_t len = strlen (safe_condition) + 1 +
+		     strlen (safe_message) + 1;
+  char *payload = new char[len];
+
+  snprintf (payload, len, "%s:%s", safe_condition, safe_message);
+  WN *wn = WN_Create_DSL_Comment (domain, "assert", payload);
+  delete [] payload;
+
+  return wn;
+}
+
+BOOL
+WN_Is_DSL_Comment (const WN *wn)
+{
+  if (wn == NULL || WN_opcode(wn) != OPC_COMMENT)
+    return FALSE;
+
+  const char *comment = Index_To_Str (WN_GetComment (wn));
+  return strncmp (comment, WN_DSL_COMMENT_PREFIX,
+		  strlen (WN_DSL_COMMENT_PREFIX)) == 0;
+}
+
+BOOL
+WN_Is_DSL_Assert (const WN *wn)
+{
+  if (!WN_Is_DSL_Comment (wn))
+    return FALSE;
+
+  const char *comment = Index_To_Str (WN_GetComment (wn)) +
+			strlen (WN_DSL_COMMENT_PREFIX);
+  const char *domain_end = strchr (comment, ':');
+  if (domain_end == NULL)
+    return FALSE;
+
+  const char *feature = domain_end + 1;
+  const char *feature_end = strchr (feature, ':');
+  if (feature_end == NULL)
+    return FALSE;
+
+  const char *assert_feature = "assert";
+  const size_t assert_feature_len = strlen (assert_feature);
+  return (size_t)(feature_end - feature) == assert_feature_len &&
+	 strncmp (feature, assert_feature, assert_feature_len) == 0;
+}
+
+const char *
+WN_Get_DSL_Comment_Payload (const WN *wn)
+{
+  if (!WN_Is_DSL_Comment (wn))
+    return NULL;
+
+  const char *payload = Index_To_Str (WN_GetComment (wn)) +
+			strlen (WN_DSL_COMMENT_PREFIX);
+  payload = strchr (payload, ':');
+  if (payload == NULL)
+    return "";
+  payload = strchr (payload + 1, ':');
+  if (payload == NULL)
+    return "";
+
+  return payload + 1;
+}
+
+WN *
+DSL_WN_Create_Opcode (const char *name, UINT32 version, const char *payload)
+{
+  const char *safe_name = name ? name : "";
+  const char *safe_payload = payload ? payload : "";
+  char version_buf[32];
+
+  snprintf (version_buf, sizeof(version_buf), "v%u", version);
+
+  const size_t len = strlen (version_buf) + 1 + strlen (safe_payload) + 1;
+  char *dsl_payload = new char[len];
+  snprintf (dsl_payload, len, "%s:%s", version_buf, safe_payload);
+
+  WN *wn = WN_Create_DSL_Comment ("opcode", safe_name, dsl_payload);
+  delete [] dsl_payload;
+  return wn;
+}
+
+WN *
+DSL_WN_Create_Tensor_Const (const char *value_name,
+			  const char *dtype,
+			  UINT32 rank,
+			  const char *shape,
+			  const char *value_kind,
+			  const char *value)
+{
+  const char *safe_name = value_name ? value_name : "";
+  const char *safe_dtype = dtype ? dtype : "";
+  const char *safe_shape = shape ? shape : "";
+  const char *safe_value_kind = value_kind ? value_kind : "";
+  const char *safe_value = value ? value : "";
+  const size_t len = strlen ("name=;dtype=;rank=;shape=;value_kind=;value=") +
+		     strlen (safe_name) +
+		     strlen (safe_dtype) +
+		     10 +
+		     strlen (safe_shape) +
+		     strlen (safe_value_kind) +
+		     strlen (safe_value) +
+		     1;
+  char *payload = new char[len];
+
+  snprintf (payload, len,
+	   "name=%s;dtype=%s;rank=%u;shape=%s;value_kind=%s;value=%s",
+	   safe_name,
+	   safe_dtype,
+	   rank,
+	   safe_shape,
+	   safe_value_kind,
+	   safe_value);
+  WN *wn = DSL_WN_Create_Opcode (DSL_OPCODE_COMMON_TENSOR_CONST, 1, payload);
+  delete [] payload;
+  return wn;
+}
+
+WN *
+DSL_WN_Create_Zero_Init (const char *value_name, const char *dtype_hint)
+{
+  const char *safe_name = value_name ? value_name : "";
+  const char *safe_dtype = dtype_hint ? dtype_hint : "";
+  const size_t len = strlen ("name=;dtype_hint=;descriptor_state=infer") +
+		     strlen (safe_name) +
+		     strlen (safe_dtype) +
+		     1;
+  char *payload = new char[len];
+
+  snprintf (payload, len,
+	   "name=%s;dtype_hint=%s;descriptor_state=infer",
+	   safe_name,
+	   safe_dtype);
+  WN *wn = DSL_WN_Create_Opcode (DSL_OPCODE_COMMON_ZERO_INIT, 1, payload);
+  delete [] payload;
+  return wn;
+}
+
+WN *
+DSL_WN_Create_Zero_Like (const char *value_name, const char *source_name)
+{
+  const char *safe_name = value_name ? value_name : "";
+  const char *safe_source = source_name ? source_name : "";
+  const size_t len = strlen ("name=;source=;descriptor_state=copy_source") +
+		     strlen (safe_name) +
+		     strlen (safe_source) +
+		     1;
+  char *payload = new char[len];
+
+  snprintf (payload, len,
+	   "name=%s;source=%s;descriptor_state=copy_source",
+	   safe_name,
+	   safe_source);
+  WN *wn = DSL_WN_Create_Opcode (DSL_OPCODE_COMMON_ZERO_LIKE, 1, payload);
+  delete [] payload;
+  return wn;
+}
+
+BOOL
+DSL_WN_Has_Opcode (const WN *wn)
+{
+  if (!WN_Is_DSL_Comment (wn))
+    return FALSE;
+
+  const char *comment = Index_To_Str (WN_GetComment (wn)) +
+			strlen (WN_DSL_COMMENT_PREFIX);
+  const char *domain_end = strchr (comment, ':');
+  if (domain_end == NULL)
+    return FALSE;
+
+  const char *opcode_domain = "opcode";
+  const size_t opcode_domain_len = strlen (opcode_domain);
+  return (size_t)(domain_end - comment) == opcode_domain_len &&
+	 strncmp (comment, opcode_domain, opcode_domain_len) == 0;
+}
+
+BOOL
+DSL_WN_Get_Opcode_Annotation (const WN *wn,
+			      DSL_OPCODE_ANNOTATION *annotation)
+{
+  if (!DSL_WN_Has_Opcode (wn))
+    return FALSE;
+
+  const char *comment = Index_To_Str (WN_GetComment (wn)) +
+			strlen (WN_DSL_COMMENT_PREFIX);
+  const char *name = strchr (comment, ':');
+  if (name == NULL)
+    return FALSE;
+  name++;
+
+  const char *version = strchr (name, ':');
+  if (version == NULL)
+    return FALSE;
+
+  version++;
+  if (version[0] != 'v')
+    return FALSE;
+
+  char *version_end;
+  unsigned long version_value = strtoul (version + 1, &version_end, 10);
+  if (version_end == version + 1)
+    return FALSE;
+  if (*version_end != ':' && *version_end != '\0')
+    return FALSE;
+
+  if (annotation != NULL) {
+    annotation->name = name;
+    annotation->name_len = (UINT32)((version - 1) - name);
+    annotation->version = (UINT32)version_value;
+    annotation->payload = *version_end == ':' ? version_end + 1 : "";
+  }
+
+  return TRUE;
+}
+
+void
+DSL_fprint_opcode_annotation (FILE *f, const WN *wn)
+{
+  DSL_OPCODE_ANNOTATION annotation;
+
+  if (f == NULL || !DSL_WN_Get_Opcode_Annotation (wn, &annotation))
+    return;
+
+  fprintf (f, " # dsl_opcode=%.*s.v%u",
+	  (int)annotation.name_len,
+	  annotation.name,
+	  annotation.version);
+  if (annotation.payload[0] != '\0')
+    fprintf (f, " dsl_payload=%s", annotation.payload);
 }
 
 WN *WN_CopyNode (const WN* src_wn)

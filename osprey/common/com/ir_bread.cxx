@@ -240,16 +240,18 @@ WN_get_global_symtab (void *handle)
 
     UINT64 size = shdr.size;
 
-    if (gsymtab->size < sizeof(gsymtab) ||
-	gsymtab->entries < GLOBAL_SYMTAB_TABLES || gsymtab->size > size)
+    if (gsymtab->entries < GLOBAL_SYMTAB_TABLES_LEGACY ||
+	gsymtab->entries > GLOBAL_SYMTAB_TABLES ||
+	gsymtab->size < SYMTAB_HEADER_TABLE_SIZE(gsymtab->entries) ||
+	gsymtab->size > size)
 	return ERROR_RETURN;
 
     UINT i;
-    for (i = 0; i < GLOBAL_SYMTAB_TABLES; ++i)
+    for (i = 0; i < gsymtab->entries; ++i)
 	if (gsymtab->header[i].offset + gsymtab->header[i].size > size)
 	    return ERROR_RETURN;
 
-    for (i = 0; i < GLOBAL_SYMTAB_TABLES; ++i) {
+    for (i = 0; i < gsymtab->entries; ++i) {
 	const SYMTAB_HEADER& hdr = gsymtab->header[i];
 	const char *addr = base + hdr.offset;
 
@@ -309,6 +311,21 @@ WN_get_global_symtab (void *handle)
 	    Scope_tab[GLOBAL_SYMTAB].st_attr_tab->
 		Transfer ((ST_ATTR *) addr, hdr.size / hdr.entsize);
 	   break;
+
+	case SHDR_TY_TENSOR_EXT:
+	    Ty_tensor_extensions.Transfer ((TY_TENSOR_EXTENSION_STORE *) addr,
+					   hdr.size / hdr.entsize);
+	    break;
+
+	case SHDR_ST_TENSOR_METADATA:
+	    St_tensor_metadata.Transfer ((ST_TENSOR_METADATA_STORE *) addr,
+					 hdr.size / hdr.entsize);
+	    break;
+
+	case SHDR_TENSOR_DSL_KV:
+	    Tensor_dsl_kv_table.Transfer ((TY_DSL_KV *) addr,
+					  hdr.size / hdr.entsize);
+	    break;
 	}
     }
 
@@ -1746,4 +1763,3 @@ Set_Local_Info(char* file, void* handle) {
 }
 
 #endif	/* OWN_ERROR_PACKAGE */
-
