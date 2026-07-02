@@ -7,6 +7,8 @@
 
 #include "dsl_opcode.h"
 
+#define DSL_ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
+
 struct DSL_OPCODE_RECORD {
   DSL_OPCODE_ID id;
   DSL_DOMAIN_ID owner_domain_id;
@@ -37,6 +39,49 @@ struct DSL_OPCODE_RECORD {
 };
 
 static std::vector<DSL_OPCODE_RECORD> Dsl_opcode_registry;
+
+static const char *Dsl_opcode_category_name[] = {
+  "executable",
+  "declaration",
+  "contract",
+  "verifier",
+  "lowering_policy"
+};
+
+static const char *Dsl_opcode_level_name[] = {
+  "level0_core",
+  "level1_tensor",
+  "level2_numeric",
+  "level3_nn_common",
+  "level4_runtime"
+};
+
+static const char *Dsl_shape_rule_name[] = {
+  "opaque",
+  "identity",
+  "broadcast",
+  "contraction",
+  "reduction",
+  "view",
+  "layout",
+  "runtime_guarded"
+};
+
+static const char *Dsl_effect_model_name[] = {
+  "pure",
+  "verifier_only",
+  "declaration_only",
+  "lowering_policy",
+  "runtime_effect"
+};
+
+static const char *Dsl_lowering_model_name[] = {
+  "marker_only",
+  "canonical_whirl",
+  "runtime_call",
+  "intrinsic_sequence",
+  "target_specific"
+};
 
 static const char *
 DSL_Opcode_Save_String (const char *str)
@@ -216,102 +261,46 @@ DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info)
 const char *
 DSL_Opcode_Category_Name (DSL_OPCODE_CATEGORY category)
 {
-  switch (category) {
-  case DSL_OPCODE_CATEGORY_EXECUTABLE:
-    return "executable";
-  case DSL_OPCODE_CATEGORY_DECLARATION:
-    return "declaration";
-  case DSL_OPCODE_CATEGORY_CONTRACT:
-    return "contract";
-  case DSL_OPCODE_CATEGORY_VERIFIER:
-    return "verifier";
-  case DSL_OPCODE_CATEGORY_LOWERING_POLICY:
-    return "lowering_policy";
-  }
+  UINT32 index = (UINT32) category;
 
-  return "unknown";
+  return index < DSL_ARRAY_COUNT(Dsl_opcode_category_name) ?
+	 Dsl_opcode_category_name[index] : "unknown";
 }
 
 const char *
 DSL_Opcode_Level_Name (DSL_OPCODE_LEVEL level)
 {
-  switch (level) {
-  case DSL_OPCODE_LEVEL_0_CORE:
-    return "level0_core";
-  case DSL_OPCODE_LEVEL_1_TENSOR:
-    return "level1_tensor";
-  case DSL_OPCODE_LEVEL_2_NUMERIC:
-    return "level2_numeric";
-  case DSL_OPCODE_LEVEL_3_NN_COMMON:
-    return "level3_nn_common";
-  case DSL_OPCODE_LEVEL_4_RUNTIME:
-    return "level4_runtime";
-  }
+  UINT32 index = (UINT32) level;
 
-  return "unknown";
+  return index < DSL_ARRAY_COUNT(Dsl_opcode_level_name) ?
+	 Dsl_opcode_level_name[index] : "unknown";
 }
 
 const char *
 DSL_Shape_Rule_Name (DSL_SHAPE_RULE shape_rule)
 {
-  switch (shape_rule) {
-  case DSL_SHAPE_RULE_OPAQUE:
-    return "opaque";
-  case DSL_SHAPE_RULE_IDENTITY:
-    return "identity";
-  case DSL_SHAPE_RULE_BROADCAST:
-    return "broadcast";
-  case DSL_SHAPE_RULE_CONTRACTION:
-    return "contraction";
-  case DSL_SHAPE_RULE_REDUCTION:
-    return "reduction";
-  case DSL_SHAPE_RULE_VIEW:
-    return "view";
-  case DSL_SHAPE_RULE_LAYOUT:
-    return "layout";
-  case DSL_SHAPE_RULE_RUNTIME_GUARDED:
-    return "runtime_guarded";
-  }
+  UINT32 index = (UINT32) shape_rule;
 
-  return "unknown";
+  return index < DSL_ARRAY_COUNT(Dsl_shape_rule_name) ?
+	 Dsl_shape_rule_name[index] : "unknown";
 }
 
 const char *
 DSL_Effect_Model_Name (DSL_EFFECT_MODEL effect_model)
 {
-  switch (effect_model) {
-  case DSL_EFFECT_MODEL_PURE:
-    return "pure";
-  case DSL_EFFECT_MODEL_VERIFIER_ONLY:
-    return "verifier_only";
-  case DSL_EFFECT_MODEL_DECLARATION_ONLY:
-    return "declaration_only";
-  case DSL_EFFECT_MODEL_LOWERING_POLICY:
-    return "lowering_policy";
-  case DSL_EFFECT_MODEL_RUNTIME_EFFECT:
-    return "runtime_effect";
-  }
+  UINT32 index = (UINT32) effect_model;
 
-  return "unknown";
+  return index < DSL_ARRAY_COUNT(Dsl_effect_model_name) ?
+	 Dsl_effect_model_name[index] : "unknown";
 }
 
 const char *
 DSL_Lowering_Model_Name (DSL_LOWERING_MODEL lowering_model)
 {
-  switch (lowering_model) {
-  case DSL_LOWERING_MODEL_MARKER_ONLY:
-    return "marker_only";
-  case DSL_LOWERING_MODEL_CANONICAL_WHIRL:
-    return "canonical_whirl";
-  case DSL_LOWERING_MODEL_RUNTIME_CALL:
-    return "runtime_call";
-  case DSL_LOWERING_MODEL_INTRINSIC_SEQUENCE:
-    return "intrinsic_sequence";
-  case DSL_LOWERING_MODEL_TARGET_SPECIFIC:
-    return "target_specific";
-  }
+  UINT32 index = (UINT32) lowering_model;
 
-  return "unknown";
+  return index < DSL_ARRAY_COUNT(Dsl_lowering_model_name) ?
+	 Dsl_lowering_model_name[index] : "unknown";
 }
 
 void
