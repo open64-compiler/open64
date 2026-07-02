@@ -2399,6 +2399,91 @@ DSL_fprint_opcode_annotation (FILE *f, const WN *wn)
     fprintf (f, " dsl_payload=%s", annotation.payload);
 }
 
+static void
+VHO_Record_Unconsumed_DSL_Marker (FILE *f, const WN *wn,
+				VHO_UNCONSUMED_DSL_SCAN *scan)
+{
+  DSL_OPCODE_ANNOTATION annotation;
+
+  if (scan != NULL)
+    ++scan->dsl_marker_count;
+
+  if (DSL_WN_Get_Opcode_Annotation (wn, &annotation)) {
+    if (scan != NULL)
+      ++scan->dsl_opcode_count;
+
+    if (f != NULL) {
+      fprintf (f, "VHO unconsumed DSL marker: opcode=%.*s version=%u",
+	      (int)annotation.name_len,
+	      annotation.name,
+	      annotation.version);
+      if (annotation.payload[0] != '\0')
+	fprintf (f, " payload=%s", annotation.payload);
+      fprintf (f, "\n");
+    }
+  } else if (f != NULL) {
+    const char *payload = WN_Get_DSL_Comment_Payload (wn);
+    fprintf (f, "VHO unconsumed DSL marker: comment payload=%s\n",
+	    payload == NULL ? "" : payload);
+  }
+}
+
+static void
+VHO_Scan_Unconsumed_DSL_Markers_R (WN *wn, FILE *f,
+				   VHO_UNCONSUMED_DSL_SCAN *scan)
+{
+  if (wn == NULL)
+    return;
+
+  if (WN_Is_DSL_Comment (wn))
+    VHO_Record_Unconsumed_DSL_Marker (f, wn, scan);
+
+  if (WN_operator(wn) == OPR_BLOCK) {
+    for (WN *stmt = WN_first(wn); stmt != NULL; stmt = WN_next(stmt))
+      VHO_Scan_Unconsumed_DSL_Markers_R (stmt, f, scan);
+    return;
+  }
+
+  for (INT i = 0; i < WN_kid_count(wn); ++i)
+    VHO_Scan_Unconsumed_DSL_Markers_R (WN_kid(wn, i), f, scan);
+}
+
+void
+VHO_Scan_Unconsumed_DSL_Markers (WN *wn, VHO_UNCONSUMED_DSL_SCAN *scan)
+{
+  if (scan != NULL) {
+    scan->dsl_marker_count = 0;
+    scan->dsl_opcode_count = 0;
+  }
+
+  VHO_Scan_Unconsumed_DSL_Markers_R (wn, NULL, scan);
+}
+
+BOOL
+VHO_Has_Unconsumed_DSL_Markers (WN *wn)
+{
+  VHO_UNCONSUMED_DSL_SCAN scan;
+
+  VHO_Scan_Unconsumed_DSL_Markers (wn, &scan);
+  return scan.dsl_marker_count != 0;
+}
+
+void
+VHO_fprint_unconsumed_DSL_markers (FILE *f, WN *wn)
+{
+  VHO_UNCONSUMED_DSL_SCAN scan;
+
+  if (f == NULL)
+    return;
+
+  scan.dsl_marker_count = 0;
+  scan.dsl_opcode_count = 0;
+  VHO_Scan_Unconsumed_DSL_Markers_R (wn, f, &scan);
+  fprintf (f, "VHO unconsumed DSL marker summary: markers=%u opcodes=%u\n",
+	  scan.dsl_marker_count,
+	  scan.dsl_opcode_count);
+}
+
 WN *WN_CopyNode (const WN* src_wn)
 {
     WN* wn;

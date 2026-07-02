@@ -35,6 +35,7 @@ static char *Read_File(FILE *fp);
 static const char *Trace_File_Path(void);
 static int Write_Common_Add_Trace(const char *tree_text,
 				  const char *annotation_text);
+static int Check_VHO_Unconsumed_DSL_Scanner(WN *tree);
 
 static void
 Initialize_Test_Context(void)
@@ -442,6 +443,51 @@ Check_Tensor_Dsl_Symtab_Print(void)
   return failed;
 }
 
+static int
+Check_VHO_Unconsumed_DSL_Scanner(WN *tree)
+{
+  VHO_UNCONSUMED_DSL_SCAN scan;
+  FILE *dump = tmpfile();
+  char *text;
+  int failed = 0;
+
+  VHO_Scan_Unconsumed_DSL_Markers(tree, &scan);
+
+  if (scan.dsl_marker_count != 3 || scan.dsl_opcode_count != 3) {
+    fprintf(stderr, "VHO scanner marker counts changed\n");
+    failed = 1;
+  }
+
+  if (!VHO_Has_Unconsumed_DSL_Markers(tree)) {
+    fprintf(stderr, "VHO scanner missed unconsumed DSL markers\n");
+    failed = 1;
+  }
+
+  if (dump == NULL) {
+    perror("tmpfile");
+    return 1;
+  }
+
+  VHO_fprint_unconsumed_DSL_markers(dump, tree);
+  text = Read_File(dump);
+  fclose(dump);
+
+  if (text == NULL) {
+    fprintf(stderr, "failed to read VHO scanner report\n");
+    return 1;
+  }
+
+  if (strstr(text, "VHO unconsumed DSL marker: opcode=common.tensor_const") == NULL ||
+      strstr(text, "VHO unconsumed DSL marker: opcode=common.add") == NULL ||
+      strstr(text, "markers=3 opcodes=3") == NULL) {
+    fprintf(stderr, "VHO scanner report missed expected DSL markers\n");
+    failed = 1;
+  }
+
+  free(text);
+  return failed;
+}
+
 static char *
 Read_File(FILE *fp)
 {
@@ -540,6 +586,7 @@ main(void)
   failed |= Check_Common_Add_On_Tensor_Constants();
   failed |= Check_Zero_Initializer_Operators();
   failed |= Check_Tensor_Dsl_Symtab_Print();
+  failed |= Check_VHO_Unconsumed_DSL_Scanner(tree);
 
   fdump_tree(dump, tree);
   text = Read_File(dump);
