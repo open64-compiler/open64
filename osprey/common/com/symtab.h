@@ -445,6 +445,24 @@ enum TY_DSL_BIND_STATE {
     TY_DSL_BIND_BOUND = 1
 };
 
+enum TY_TENSOR_SCHEMA_KEY {
+    TY_TENSOR_SCHEMA_UNKNOWN = 0,
+    TY_TENSOR_SCHEMA_KIND,
+    TY_TENSOR_SCHEMA_DTYPE,
+    TY_TENSOR_SCHEMA_RANK,
+    TY_TENSOR_SCHEMA_SHAPE,
+    TY_TENSOR_SCHEMA_TRAITS,
+    TY_TENSOR_SCHEMA_LAYOUT,
+    TY_TENSOR_SCHEMA_SHARDING,
+    TY_TENSOR_SCHEMA_PLACEMENT,
+    TY_TENSOR_SCHEMA_MEMORY,
+    TY_TENSOR_SCHEMA_QUANTIZATION,
+    TY_TENSOR_SCHEMA_RUNTIME_STATE,
+    TY_TENSOR_SCHEMA_LINEAGE,
+    TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME,
+    TY_TENSOR_SCHEMA_LOWERING_HINT
+};
+
 struct TY_DSL_KV {
     STR_IDX key;
     STR_IDX value;
@@ -481,6 +499,8 @@ extern TY_TENSOR_EXTENSION_TABLE Ty_tensor_extensions;
 extern ST_TENSOR_METADATA_TABLE St_tensor_metadata;
 extern TY_DSL_KV_TABLE Tensor_dsl_kv_table;
 
+extern const char *TY_tensor_schema_key_name (TY_TENSOR_SCHEMA_KEY key);
+
 struct TY_TENSOR_EXTENSION_INFO {
     TY_IDX ty;
     TY_IDX element_ty;
@@ -509,6 +529,15 @@ extern void TY_tensor_bind_attribute (TY_IDX ty, const char *key,
 				     const char *value);
 extern BOOL TY_tensor_attribute_is_bound (TY_IDX ty, const char *key);
 extern const char *TY_tensor_attribute (TY_IDX ty, const char *key);
+extern void TY_tensor_declare_attribute (TY_IDX ty,
+					TY_TENSOR_SCHEMA_KEY key);
+extern void TY_tensor_bind_attribute (TY_IDX ty,
+				     TY_TENSOR_SCHEMA_KEY key,
+				     const char *value);
+extern BOOL TY_tensor_attribute_is_bound (TY_IDX ty,
+					 TY_TENSOR_SCHEMA_KEY key);
+extern const char *TY_tensor_attribute (TY_IDX ty,
+				       TY_TENSOR_SCHEMA_KEY key);
 extern UINT32 TY_tensor_attribute_count (TY_IDX ty);
 extern BOOL TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal,
 				   const char **key,
@@ -525,6 +554,15 @@ extern void ST_tensor_bind_metadata (ST_IDX st, const char *key,
 				    const char *value);
 extern BOOL ST_tensor_metadata_is_bound (ST_IDX st, const char *key);
 extern const char *ST_tensor_metadata (ST_IDX st, const char *key);
+extern void ST_tensor_declare_metadata (ST_IDX st,
+				       TY_TENSOR_SCHEMA_KEY key);
+extern void ST_tensor_bind_metadata (ST_IDX st,
+				    TY_TENSOR_SCHEMA_KEY key,
+				    const char *value);
+extern BOOL ST_tensor_metadata_is_bound (ST_IDX st,
+					TY_TENSOR_SCHEMA_KEY key);
+extern const char *ST_tensor_metadata (ST_IDX st,
+				      TY_TENSOR_SCHEMA_KEY key);
 extern UINT32 ST_tensor_metadata_count (ST_IDX st);
 extern BOOL ST_tensor_metadata_at (ST_IDX st, UINT32 ordinal,
 				  const char **key,
