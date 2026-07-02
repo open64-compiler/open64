@@ -11,6 +11,7 @@
 #include "mempool.h"
 #include "wn.h"
 #include "wn_util.h"
+#include "dsl_contract.h"
 #include "dsl_domain.h"
 #include "stab.h"
 #include "symtab.h"
@@ -37,6 +38,7 @@ static const char *Trace_File_Path(void);
 static int Write_Common_Add_Trace(const char *tree_text,
 				  const char *annotation_text);
 static int Check_DSL_Domain_Registry(void);
+static int Check_DSL_Contract_Registry(void);
 static int Check_Tensor_Required_Attribute_Diagnostics(void);
 static int Check_VHO_Unconsumed_DSL_Scanner(WN *tree);
 
@@ -538,6 +540,138 @@ Check_DSL_Domain_Registry(void)
 }
 
 static int
+Check_DSL_Contract_Registry(void)
+{
+  static const char *required_checks[] = {
+    "tensor_descriptor_complete",
+    "layout_compatible",
+    "domain_wrapper_visible"
+  };
+  static const char *diagnostic_codes[] = {
+    "DCONTRACT001",
+    "DCONTRACT002"
+  };
+  DSL_DOMAIN_ID common_id;
+  DSL_DOMAIN_ID cnn_id;
+  DSL_CONTRACT_ID contract_id;
+  DSL_CONTRACT_INFO info;
+  FILE *dump = tmpfile();
+  char *text;
+  int failed = 0;
+
+  DSL_Contract_Registry_Reset();
+  DSL_Domain_Registry_Reset();
+
+  common_id = DSL_Domain_Register("common", DSL_DOMAIN_INVALID_ID, 1, 0);
+  cnn_id = DSL_Domain_Register("cnn", common_id, 1, 0);
+
+  contract_id =
+    DSL_Contract_Register("residual_add_common_contract",
+			  cnn_id,
+			  common_id,
+			  1,
+			  0,
+			  required_checks,
+			  sizeof(required_checks) / sizeof(required_checks[0]),
+			  diagnostic_codes,
+			  sizeof(diagnostic_codes) /
+			    sizeof(diagnostic_codes[0]));
+
+  if (contract_id == DSL_CONTRACT_INVALID_ID) {
+    fprintf(stderr, "DSL contract registration failed\n");
+    failed = 1;
+  }
+
+  if (DSL_Contract_Register("residual_add_common_contract",
+			    cnn_id,
+			    common_id,
+			    99,
+			    0,
+			    NULL,
+			    0,
+			    NULL,
+			    0) != contract_id) {
+    fprintf(stderr, "DSL contract duplicate registration changed id\n");
+    failed = 1;
+  }
+
+  if (DSL_Contract_Count() != 1 ||
+      DSL_Contract_Find("residual_add_common_contract", cnn_id, common_id) !=
+	contract_id) {
+    fprintf(stderr, "DSL contract lookup failed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Contract_Get_Info(contract_id, &info) ||
+      info.source_domain_id != cnn_id ||
+      info.target_domain_id != common_id ||
+      strcmp(info.name, "residual_add_common_contract") != 0 ||
+      info.version != 1 ||
+      info.required_check_count != 3 ||
+      info.diagnostic_code_count != 2) {
+    fprintf(stderr, "DSL contract info changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Contract_At(0, &info) ||
+      info.id != contract_id ||
+      DSL_Contract_At(DSL_Contract_Count(), &info)) {
+    fprintf(stderr, "DSL contract iteration failed\n");
+    failed = 1;
+  }
+
+  if (strcmp(DSL_Contract_Required_Check_At(contract_id, 1),
+	     "layout_compatible") != 0 ||
+      DSL_Contract_Required_Check_At(contract_id, 3) != NULL ||
+      strcmp(DSL_Contract_Diagnostic_Code_At(contract_id, 0),
+	     "DCONTRACT001") != 0 ||
+      DSL_Contract_Diagnostic_Code_At(contract_id, 2) != NULL) {
+    fprintf(stderr, "DSL contract check/diagnostic lookup failed\n");
+    failed = 1;
+  }
+
+  if (DSL_Contract_Register("bad_contract",
+			    9999,
+			    common_id,
+			    1,
+			    0,
+			    NULL,
+			    0,
+			    NULL,
+			    0) != DSL_CONTRACT_INVALID_ID ||
+      DSL_Contract_Register("", cnn_id, common_id, 1, 0,
+			    NULL, 0, NULL, 0) != DSL_CONTRACT_INVALID_ID) {
+    fprintf(stderr, "DSL contract registry accepted invalid input\n");
+    failed = 1;
+  }
+
+  if (dump == NULL) {
+    perror("tmpfile");
+    return 1;
+  }
+
+  DSL_Contract_fprint_registry(dump);
+  text = Read_File(dump);
+  fclose(dump);
+
+  if (text == NULL) {
+    fprintf(stderr, "failed to read DSL contract registry dump\n");
+    return 1;
+  }
+
+  if (strstr(text, "DSL Contract Registry: entries=1") == NULL ||
+      strstr(text, "name=residual_add_common_contract") == NULL ||
+      strstr(text, "check[1]=layout_compatible") == NULL ||
+      strstr(text, "diagnostic[0]=DCONTRACT001") == NULL) {
+    fprintf(stderr, "DSL contract registry dump changed\n");
+    failed = 1;
+  }
+
+  free(text);
+  return failed;
+}
+
+static int
 Check_Tensor_Required_Attribute_Diagnostics(void)
 {
   static const TY_TENSOR_SCHEMA_KEY required[] = {
@@ -752,6 +886,7 @@ main(void)
   failed |= Check_Common_Add_On_Tensor_Constants();
   failed |= Check_Zero_Initializer_Operators();
   failed |= Check_DSL_Domain_Registry();
+  failed |= Check_DSL_Contract_Registry();
   failed |= Check_Tensor_Dsl_Symtab_Print();
   failed |= Check_Tensor_Required_Attribute_Diagnostics();
   failed |= Check_VHO_Unconsumed_DSL_Scanner(tree);
