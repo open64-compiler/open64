@@ -282,16 +282,103 @@ Check_Tensor_Dsl_Symtab_Print(void)
   FILE *dump = tmpfile();
   char *text;
   int failed = 0;
+  int saw_dtype = 0;
+  int saw_shape = 0;
+  int saw_layout = 0;
+  int saw_lineage_pending = 0;
+  int saw_source_layer = 0;
+  int saw_lowering_hint_pending = 0;
 
   TY_tensor_bind_attribute(tensor_ty, "dtype", "int32");
   TY_tensor_bind_attribute(tensor_ty, "shape", "[2,2]");
   TY_tensor_bind_attribute(tensor_ty, "layout", "row_major");
+  TY_tensor_declare_attribute(tensor_ty, "lineage");
 
   ST_Init(tensor_st, Save_Str("tensor_tmp"), CLASS_VAR, SCLASS_UGLOBAL,
 	  EXPORT_LOCAL, tensor_ty);
   ST_tensor_bind_metadata(ST_st_idx(*tensor_st),
 			  "source_layer_name",
 			  "dsl_common_add_print_test");
+  ST_tensor_declare_metadata(ST_st_idx(*tensor_st), "lowering_hint");
+
+  if (TY_tensor_attribute_count(tensor_ty) != 4) {
+    fprintf(stderr, "tensor attribute iterator count changed\n");
+    failed = 1;
+  }
+
+  for (UINT32 i = 0; i < TY_tensor_attribute_count(tensor_ty); ++i) {
+    const char *key = NULL;
+    const char *value = NULL;
+    TY_DSL_BIND_STATE state = TY_DSL_BIND_PENDING;
+
+    if (!TY_tensor_attribute_at(tensor_ty, i, &key, &value, &state)) {
+      fprintf(stderr, "tensor attribute iterator stopped early\n");
+      failed = 1;
+      continue;
+    }
+
+    if (strcmp(key, "dtype") == 0 && strcmp(value, "int32") == 0 &&
+	state == TY_DSL_BIND_BOUND)
+      saw_dtype = 1;
+    if (strcmp(key, "shape") == 0 && strcmp(value, "[2,2]") == 0 &&
+	state == TY_DSL_BIND_BOUND)
+      saw_shape = 1;
+    if (strcmp(key, "layout") == 0 && strcmp(value, "row_major") == 0 &&
+	state == TY_DSL_BIND_BOUND)
+      saw_layout = 1;
+    if (strcmp(key, "lineage") == 0 && value == NULL &&
+	state == TY_DSL_BIND_PENDING)
+      saw_lineage_pending = 1;
+  }
+
+  if (!saw_dtype || !saw_shape || !saw_layout || !saw_lineage_pending) {
+    fprintf(stderr, "tensor attribute iterator missed an expected entry\n");
+    failed = 1;
+  }
+
+  if (TY_tensor_attribute_at(tensor_ty, TY_tensor_attribute_count(tensor_ty),
+			     NULL, NULL, NULL)) {
+    fprintf(stderr, "tensor attribute iterator accepted out-of-range ordinal\n");
+    failed = 1;
+  }
+
+  if (ST_tensor_metadata_count(ST_st_idx(*tensor_st)) != 2) {
+    fprintf(stderr, "tensor metadata iterator count changed\n");
+    failed = 1;
+  }
+
+  for (UINT32 i = 0; i < ST_tensor_metadata_count(ST_st_idx(*tensor_st)); ++i) {
+    const char *key = NULL;
+    const char *value = NULL;
+    TY_DSL_BIND_STATE state = TY_DSL_BIND_PENDING;
+
+    if (!ST_tensor_metadata_at(ST_st_idx(*tensor_st), i, &key, &value,
+			       &state)) {
+      fprintf(stderr, "tensor metadata iterator stopped early\n");
+      failed = 1;
+      continue;
+    }
+
+    if (strcmp(key, "source_layer_name") == 0 &&
+	strcmp(value, "dsl_common_add_print_test") == 0 &&
+	state == TY_DSL_BIND_BOUND)
+      saw_source_layer = 1;
+    if (strcmp(key, "lowering_hint") == 0 && value == NULL &&
+	state == TY_DSL_BIND_PENDING)
+      saw_lowering_hint_pending = 1;
+  }
+
+  if (!saw_source_layer || !saw_lowering_hint_pending) {
+    fprintf(stderr, "tensor metadata iterator missed an expected entry\n");
+    failed = 1;
+  }
+
+  if (ST_tensor_metadata_at(ST_st_idx(*tensor_st),
+			    ST_tensor_metadata_count(ST_st_idx(*tensor_st)),
+			    NULL, NULL, NULL)) {
+    fprintf(stderr, "tensor metadata iterator accepted out-of-range ordinal\n");
+    failed = 1;
+  }
 
   if (dump == NULL) {
     perror("tmpfile");

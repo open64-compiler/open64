@@ -247,6 +247,30 @@ Tensor_KV_Value (UINT32 head, const char *key)
     return &Str_Table[entry->value];
 }
 
+static BOOL
+Tensor_KV_At (UINT32 head, UINT32 ordinal, const char **key,
+	      const char **value, TY_DSL_BIND_STATE *state)
+{
+    UINT32 current = 0;
+
+    for (UINT32 handle = head; handle != 0;
+	 handle = Tensor_dsl_kv_table[handle - 1].next, ++current) {
+	const TY_DSL_KV &entry = Tensor_dsl_kv_table[handle - 1];
+	if (current != ordinal)
+	    continue;
+
+	if (key != NULL)
+	    *key = entry.key == 0 ? NULL : &Str_Table[entry.key];
+	if (value != NULL)
+	    *value = entry.value == 0 ? NULL : &Str_Table[entry.value];
+	if (state != NULL)
+	    *state = (TY_DSL_BIND_STATE) entry.state;
+	return TRUE;
+    }
+
+    return FALSE;
+}
+
 static void
 Check_Tensor_Extension (TY_IDX ty)
 {
@@ -346,6 +370,22 @@ TY_tensor_attribute (TY_IDX ty, const char *key)
     return ext == NULL ? NULL : Tensor_KV_Value (ext->attribute_head, key);
 }
 
+UINT32
+TY_tensor_attribute_count (TY_IDX ty)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+    return ext == NULL ? 0 : ext->attribute_count;
+}
+
+BOOL
+TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal, const char **key,
+			const char **value, TY_DSL_BIND_STATE *state)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
+    return ext == NULL ? FALSE :
+	Tensor_KV_At (ext->attribute_head, ordinal, key, value, state);
+}
+
 void
 ST_tensor_declare_metadata (ST_IDX st, const char *key)
 {
@@ -375,6 +415,22 @@ ST_tensor_metadata (ST_IDX st, const char *key)
     ST_TENSOR_METADATA_STORE *metadata = Find_Tensor_Metadata (st);
     return metadata == NULL ? NULL : Tensor_KV_Value (metadata->metadata_head,
 						      key);
+}
+
+UINT32
+ST_tensor_metadata_count (ST_IDX st)
+{
+    ST_TENSOR_METADATA_STORE *metadata = Find_Tensor_Metadata (st);
+    return metadata == NULL ? 0 : metadata->metadata_count;
+}
+
+BOOL
+ST_tensor_metadata_at (ST_IDX st, UINT32 ordinal, const char **key,
+		       const char **value, TY_DSL_BIND_STATE *state)
+{
+    ST_TENSOR_METADATA_STORE *metadata = Find_Tensor_Metadata (st);
+    return metadata == NULL ? FALSE :
+	Tensor_KV_At (metadata->metadata_head, ordinal, key, value, state);
 }
 
 void

@@ -509,6 +509,11 @@ extern void TY_tensor_bind_attribute (TY_IDX ty, const char *key,
 				     const char *value);
 extern BOOL TY_tensor_attribute_is_bound (TY_IDX ty, const char *key);
 extern const char *TY_tensor_attribute (TY_IDX ty, const char *key);
+extern UINT32 TY_tensor_attribute_count (TY_IDX ty);
+extern BOOL TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal,
+				   const char **key,
+				   const char **value,
+				   TY_DSL_BIND_STATE *state);
 
 /*
  * Tensor metadata carries compiler context: source locations, diagnostics,
@@ -520,6 +525,11 @@ extern void ST_tensor_bind_metadata (ST_IDX st, const char *key,
 				    const char *value);
 extern BOOL ST_tensor_metadata_is_bound (ST_IDX st, const char *key);
 extern const char *ST_tensor_metadata (ST_IDX st, const char *key);
+extern UINT32 ST_tensor_metadata_count (ST_IDX st);
+extern BOOL ST_tensor_metadata_at (ST_IDX st, UINT32 ordinal,
+				  const char **key,
+				  const char **value,
+				  TY_DSL_BIND_STATE *state);
 
 /* Compatibility wrappers for the pre-TensorDescriptorIR naming. */
 extern void TY_tensor_declare_metadata (TY_IDX ty, const char *key);
