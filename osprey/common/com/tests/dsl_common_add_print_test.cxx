@@ -677,11 +677,20 @@ static int
 Check_DSL_Opcode_Registry(void)
 {
   const UINT32 common_seed_count = 61;
+  const UINT32 wrapper_seed_count = 4;
   DSL_DOMAIN_ID common_id;
+  DSL_DOMAIN_ID cnn_id;
+  DSL_DOMAIN_ID transformer_id;
   DSL_OPCODE_ID add_id;
+  DSL_OPCODE_ID common_linear_id;
+  DSL_OPCODE_ID common_residual_add_id;
   DSL_OPCODE_ID layout_cast_id;
   DSL_OPCODE_ID residual_shape_check_id;
   DSL_OPCODE_ID dispatch_id;
+  DSL_OPCODE_ID cnn_linear_id;
+  DSL_OPCODE_ID transformer_q_projection_id;
+  DSL_OPCODE_ID cnn_residual_add_id;
+  DSL_OPCODE_ID transformer_residual_add_id;
   DSL_OPCODE_INFO info;
   FILE *dump = tmpfile();
   char *text;
@@ -698,6 +707,9 @@ Check_DSL_Opcode_Registry(void)
 
   common_id = DSL_Domain_Find("common");
   add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+  common_linear_id = DSL_Opcode_Find(common_id, "common.linear", 1);
+  common_residual_add_id =
+    DSL_Opcode_Find(common_id, "common.residual_add", 1);
 
   if (add_id == DSL_OPCODE_INVALID_ID) {
     fprintf(stderr, "DSL common.add seed lookup failed\n");
@@ -832,6 +844,71 @@ Check_DSL_Opcode_Registry(void)
     failed = 1;
   }
 
+  if (DSL_Opcode_Register_Domain_Wrapper(common_id,
+					 "bad.wrapper",
+					 1,
+					 9999,
+					 "DOPC_BAD_WRAPPER",
+					 0) != DSL_OPCODE_INVALID_ID) {
+    fprintf(stderr, "DSL opcode wrapper registry accepted invalid target\n");
+    failed = 1;
+  }
+
+  if (DSL_Opcode_Register_Domain_Wrapper_Examples() != wrapper_seed_count ||
+      DSL_Opcode_Register_Domain_Wrapper_Examples() != wrapper_seed_count ||
+      DSL_Opcode_Count() != common_seed_count + wrapper_seed_count) {
+    fprintf(stderr, "DSL domain wrapper seeding failed\n");
+    failed = 1;
+  }
+
+  cnn_id = DSL_Domain_Find("cnn");
+  transformer_id = DSL_Domain_Find("transformer");
+  cnn_linear_id = DSL_Opcode_Find(cnn_id, "cnn.linear", 1);
+  transformer_q_projection_id =
+    DSL_Opcode_Find(transformer_id, "transformer.q_projection", 1);
+  cnn_residual_add_id = DSL_Opcode_Find(cnn_id, "cnn.residual_add", 1);
+  transformer_residual_add_id =
+    DSL_Opcode_Find(transformer_id, "transformer.residual_add", 1);
+
+  if (!DSL_Opcode_Get_Info(cnn_linear_id, &info) ||
+      info.owner_domain_id != cnn_id ||
+      info.wrapper_target_id != common_linear_id ||
+      DSL_Opcode_Wrapper_Target(cnn_linear_id) != common_linear_id ||
+      strcmp(info.name, "cnn.linear") != 0 ||
+      info.level != DSL_OPCODE_LEVEL_2_NUMERIC ||
+      info.shape_rule != DSL_SHAPE_RULE_CONTRACTION ||
+      strcmp(info.diagnostic_prefix, "DOPC_CNN_LINEAR_WRAPPER") != 0) {
+    fprintf(stderr, "DSL cnn.linear wrapper descriptor changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Opcode_Get_Info(transformer_q_projection_id, &info) ||
+      info.owner_domain_id != transformer_id ||
+      info.wrapper_target_id != common_linear_id ||
+      info.category != DSL_OPCODE_CATEGORY_EXECUTABLE ||
+      info.effect_model != DSL_EFFECT_MODEL_PURE) {
+    fprintf(stderr, "DSL transformer.q_projection wrapper descriptor changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Opcode_Get_Info(cnn_residual_add_id, &info) ||
+      info.owner_domain_id != cnn_id ||
+      info.wrapper_target_id != common_residual_add_id ||
+      info.nkids != 2 ||
+      info.shape_rule != DSL_SHAPE_RULE_BROADCAST) {
+    fprintf(stderr, "DSL cnn.residual_add wrapper descriptor changed\n");
+    failed = 1;
+  }
+
+  if (!DSL_Opcode_Get_Info(transformer_residual_add_id, &info) ||
+      info.owner_domain_id != transformer_id ||
+      info.wrapper_target_id != common_residual_add_id ||
+      strcmp(info.diagnostic_prefix,
+	     "DOPC_TRANSFORMER_RESIDUAL_ADD_WRAPPER") != 0) {
+    fprintf(stderr, "DSL transformer.residual_add wrapper descriptor changed\n");
+    failed = 1;
+  }
+
   if (dump == NULL) {
     perror("tmpfile");
     return 1;
@@ -846,7 +923,7 @@ Check_DSL_Opcode_Registry(void)
     return 1;
   }
 
-  if (strstr(text, "DSL Opcode Registry: entries=61") == NULL ||
+  if (strstr(text, "DSL Opcode Registry: entries=65") == NULL ||
       strstr(text, "name=common.add") == NULL ||
       strstr(text, "category=executable") == NULL ||
       strstr(text, "level=level2_numeric") == NULL ||
@@ -855,7 +932,12 @@ Check_DSL_Opcode_Registry(void)
       strstr(text, "lowering=marker_only") == NULL ||
       strstr(text, "diagnostic_prefix=DOPC_COMMON_ADD") == NULL ||
       strstr(text, "name=common.kernel_variant") == NULL ||
-      strstr(text, "level=level4_runtime") == NULL) {
+      strstr(text, "level=level4_runtime") == NULL ||
+      strstr(text, "name=cnn.linear") == NULL ||
+      strstr(text, "name=transformer.q_projection") == NULL ||
+      strstr(text, "name=cnn.residual_add") == NULL ||
+      strstr(text, "name=transformer.residual_add") == NULL ||
+      strstr(text, "wrapper_target=") == NULL) {
     fprintf(stderr, "DSL opcode registry dump changed\n");
     failed = 1;
   }
