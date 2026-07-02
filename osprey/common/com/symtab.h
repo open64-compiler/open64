@@ -543,6 +543,19 @@ extern BOOL TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal,
 				   const char **key,
 				   const char **value,
 				   TY_DSL_BIND_STATE *state);
+extern UINT32 TY_tensor_unbound_required_attribute_count
+				    (TY_IDX ty,
+				     const TY_TENSOR_SCHEMA_KEY *required,
+				     UINT32 required_count);
+extern BOOL TY_tensor_has_required_attributes
+				    (TY_IDX ty,
+				     const TY_TENSOR_SCHEMA_KEY *required,
+				     UINT32 required_count);
+extern void TY_tensor_fprint_unbound_required_attributes
+				    (FILE *f,
+				     TY_IDX ty,
+				     const TY_TENSOR_SCHEMA_KEY *required,
+				     UINT32 required_count);
 
 /*
  * Tensor metadata carries compiler context: source locations, diagnostics,
