@@ -179,6 +179,7 @@ COMMON_COM_CXX_SRC =	\
 	config.cxx	\
 	config_elf_targ.cxx \
 	const.cxx	\
+	dsl_contract.cxx \
 	dsl_domain.cxx	\
 	dwarf_DST.cxx	\
 	dwarf_DST_dump.cxx	\
