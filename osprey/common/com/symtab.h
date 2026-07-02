@@ -431,6 +431,110 @@ Is_Composite_Type (const TY& ty)
 inline BOOL
 Is_Composite_Type (TY_IDX ty)	{ return Is_Composite_Type (Ty_Table[ty]); }
 
+//----------------------------------------------------------------------
+// DSL type extensions
+//----------------------------------------------------------------------
+
+enum TY_DSL_EXTENSION_KIND {
+    TY_DSL_EXTENSION_NONE = 0,
+    TY_DSL_EXTENSION_TENSOR = 1
+};
+
+enum TY_DSL_BIND_STATE {
+    TY_DSL_BIND_PENDING = 0,
+    TY_DSL_BIND_BOUND = 1
+};
+
+struct TY_DSL_KV {
+    STR_IDX key;
+    STR_IDX value;
+    mUINT32 state;
+    UINT32 next;
+};
+
+struct TY_TENSOR_EXTENSION_STORE {
+    TY_IDX ty;
+    TY_IDX element_ty;
+    INT32 rank;
+    UINT32 attribute_head;
+    UINT32 attribute_count;
+
+    TY_TENSOR_EXTENSION_STORE() :
+	ty(TY_IDX_ZERO), element_ty(TY_IDX_ZERO), rank(-1),
+	attribute_head(0), attribute_count(0) {}
+};
+
+struct ST_TENSOR_METADATA_STORE {
+    ST_IDX st;
+    UINT32 metadata_head;
+    UINT32 metadata_count;
+
+    ST_TENSOR_METADATA_STORE() :
+	st(ST_IDX_ZERO), metadata_head(0), metadata_count(0) {}
+};
+
+typedef SEGMENTED_ARRAY<TY_TENSOR_EXTENSION_STORE> TY_TENSOR_EXTENSION_TABLE;
+typedef SEGMENTED_ARRAY<ST_TENSOR_METADATA_STORE> ST_TENSOR_METADATA_TABLE;
+typedef SEGMENTED_ARRAY<TY_DSL_KV> TY_DSL_KV_TABLE;
+
+extern TY_TENSOR_EXTENSION_TABLE Ty_tensor_extensions;
+extern ST_TENSOR_METADATA_TABLE St_tensor_metadata;
+extern TY_DSL_KV_TABLE Tensor_dsl_kv_table;
+
+struct TY_TENSOR_EXTENSION_INFO {
+    TY_IDX ty;
+    TY_IDX element_ty;
+    INT32 rank;
+    UINT32 attribute_count;
+};
+
+extern TY_IDX TY_Create_Tensor_Extension_Type (const char *name,
+					      TY_IDX element_ty,
+					      INT32 rank);
+extern void TY_Mark_Tensor_Extension (TY_IDX ty, TY_IDX element_ty,
+				      INT32 rank);
+extern BOOL TY_is_tensor_extension (TY_IDX ty);
+extern BOOL TY_Get_Tensor_Extension_Info (TY_IDX ty,
+					 TY_TENSOR_EXTENSION_INFO *info);
+extern TY_IDX TY_tensor_element_ty (TY_IDX ty);
+extern INT32 TY_tensor_rank (TY_IDX ty);
+
+/*
+ * Tensor attributes complete TensorDescriptorIR semantic state: TensorTypeCore,
+ * TensorTraitSet, TensorRepresentationDescriptor, and TensorLineageMetadata.
+ * Use these for facts required before tensor computation or lowering.
+ */
+extern void TY_tensor_declare_attribute (TY_IDX ty, const char *key);
+extern void TY_tensor_bind_attribute (TY_IDX ty, const char *key,
+				     const char *value);
+extern BOOL TY_tensor_attribute_is_bound (TY_IDX ty, const char *key);
+extern const char *TY_tensor_attribute (TY_IDX ty, const char *key);
+
+/*
+ * Tensor metadata carries compiler context: source locations, diagnostics,
+ * pass ownership, lowering hints, and profiling.  It must not be required to
+ * complete TensorDescriptorIR semantics.
+ */
+extern void ST_tensor_declare_metadata (ST_IDX st, const char *key);
+extern void ST_tensor_bind_metadata (ST_IDX st, const char *key,
+				    const char *value);
+extern BOOL ST_tensor_metadata_is_bound (ST_IDX st, const char *key);
+extern const char *ST_tensor_metadata (ST_IDX st, const char *key);
+
+/* Compatibility wrappers for the pre-TensorDescriptorIR naming. */
+extern void TY_tensor_declare_metadata (TY_IDX ty, const char *key);
+extern void TY_tensor_bind_metadata (TY_IDX ty, const char *key,
+				    const char *value);
+extern BOOL TY_tensor_metadata_is_bound (TY_IDX ty, const char *key);
+extern const char *TY_tensor_metadata (TY_IDX ty, const char *key);
+extern void ST_tensor_declare_attribute (ST_IDX st, const char *key);
+extern void ST_tensor_bind_attribute (ST_IDX st, const char *key,
+				     const char *value);
+extern BOOL ST_tensor_attribute_is_bound (ST_IDX st, const char *key);
+extern const char *ST_tensor_attribute (ST_IDX st, const char *key);
+
+extern void Print_tensor_dsl_symtab (FILE *f);
+
 void
 Reset_misc_symtab();
 
@@ -761,5 +865,3 @@ Reset_STB_flags (ST* s, UINT16 flags)	{
 #define Reset_STB_compiler_layout(s)	(Reset_STB_flags (s, BLK_COMPILER_LAYOUT))
 
 #endif /* symtab_INCLUDED */
-
-

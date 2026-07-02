@@ -2052,6 +2052,7 @@ TY_register_parm (const TY& ty) {
 		return 1;
 	if (ty.Pu_flags() & TY_HAS_2_REG_PARM)
 		return 2;
+	return 0;
 }
 
 inline void

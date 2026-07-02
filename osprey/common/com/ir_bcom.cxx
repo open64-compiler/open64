@@ -696,6 +696,28 @@ ir_b_write_global_symtab (off_t base_offset, Output_File *fl)
 			      Scope_tab[idx].st_attr_tab->Size () * sizeof(ST_ATTR),
 			      sizeof(ST_ATTR), __ALIGNOF(ST_ATTR), SHDR_ST_ATTR);
 
+    cur_offset = write_table (Ty_tensor_extensions, symtab_offset, fl);
+    gsymtab.header[i++].Init (cur_offset,
+			      Ty_tensor_extensions.Size () *
+				sizeof(TY_TENSOR_EXTENSION_STORE),
+			      sizeof(TY_TENSOR_EXTENSION_STORE),
+			      __ALIGNOF(TY_TENSOR_EXTENSION_STORE),
+			      SHDR_TY_TENSOR_EXT);
+
+    cur_offset = write_table (St_tensor_metadata, symtab_offset, fl);
+    gsymtab.header[i++].Init (cur_offset,
+			      St_tensor_metadata.Size () *
+				sizeof(ST_TENSOR_METADATA_STORE),
+			      sizeof(ST_TENSOR_METADATA_STORE),
+			      __ALIGNOF(ST_TENSOR_METADATA_STORE),
+			      SHDR_ST_TENSOR_METADATA);
+
+    cur_offset = write_table (Tensor_dsl_kv_table, symtab_offset, fl);
+    gsymtab.header[i++].Init (cur_offset,
+			      Tensor_dsl_kv_table.Size () * sizeof(TY_DSL_KV),
+			      sizeof(TY_DSL_KV), __ALIGNOF(TY_DSL_KV),
+			      SHDR_TENSOR_DSL_KV);
+
     save_buf_at_offset (&gsymtab, sizeof(gsymtab), symtab_offset, fl);
 
     return symtab_offset - base_offset;
@@ -866,4 +888,3 @@ IPA_irb_write_mod_ref_info(Output_File *fl)
     header_addr->entsize = sizeof(pu_mod_ref_info);
 }
 #endif
-

@@ -1137,7 +1137,10 @@ enum SHDR_TYPE
     SHDR_INITO	= 12,
     SHDR_INITV	= 13,
     SHDR_BLK 	= 14,
-    SHDR_ST_ATTR= 15
+    SHDR_ST_ATTR= 15,
+    SHDR_TY_TENSOR_EXT = 16,
+    SHDR_ST_TENSOR_METADATA = 17,
+    SHDR_TENSOR_DSL_KV = 18
 }; // SHDR_TYPE
 
 
@@ -1162,12 +1165,20 @@ struct SYMTAB_HEADER
 }; // SYMTAB_HEADER
 
 
-#define GLOBAL_SYMTAB_TABLES	(13)	// # of tables in global symtab:
+// Readers accept both the legacy 13-table global symtab and the DSL-extended
+// 16-table form so older WHIRL files remain loadable.
+#define GLOBAL_SYMTAB_TABLES_LEGACY (13) // # of pre-DSL global symtab tables
+#define GLOBAL_SYMTAB_TABLES	(16)	// # of tables in global symtab:
 					// FILE_INFO, ST, TY, PU, FLD, ARB,
 					// TYLIST, TCON, STR, INITO, INITV,
-					// BLK, and ST_ATTR
+					// BLK, ST_ATTR, TY_TENSOR_EXT,
+					// ST_TENSOR_METADATA, and
+					// TENSOR_DSL_KV
 #define LOCAL_SYMTAB_TABLES	(5)	// # of tables in local symtab:
 					// ST, LABEL, PREG, INITO, and ST_ATTR
+
+#define SYMTAB_HEADER_TABLE_SIZE(entries) \
+    (sizeof(mUINT32) + sizeof(mUINT32) + (entries) * sizeof(SYMTAB_HEADER))
 
 template <UINT table_size>
 struct SYMTAB_HEADER_TABLE
@@ -1195,4 +1206,3 @@ typedef SYMTAB_HEADER_TABLE<GLOBAL_SYMTAB_TABLES> GLOBAL_SYMTAB_HEADER_TABLE;
 typedef SYMTAB_HEADER_TABLE<LOCAL_SYMTAB_TABLES> LOCAL_SYMTAB_HEADER_TABLE;
 
 #endif /* symtab_defs_INCLUDED */
-

@@ -1,0 +1,10 @@
+dsl_common_add_print_test trace
+created_operator=common.add
+
+[fdump_tree]
+__WHIRL_DSL__:opcode:common.tensor_const:v1:name=const_i32_2x2_zero;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=0
+__WHIRL_DSL__:opcode:common.tensor_const:v1:name=const_i32_2x2_one;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1
+__WHIRL_DSL__:opcode:common.add:v1:kid0=const_i32_2x2_zero;kid1=const_i32_2x2_one;attr.broadcast_rule=none
+
+[dsl_annotation]
+dsl_opcode=common.add.v1 payload="kid0=const_i32_2x2_zero;kid1=const_i32_2x2_one;attr.broadcast_rule=none"

@@ -1,0 +1,10 @@
+dsl_common_matmul_print_test trace
+created_operator=common.matmul
+
+[fdump_tree]
+__WHIRL_DSL__:opcode:common.tensor_const:v1:name=tensor_one_kid0;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1
+__WHIRL_DSL__:opcode:common.tensor_const:v1:name=tensor_one_kid1;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1
+__WHIRL_DSL__:opcode:common.matmul:v1:kid0=tensor_one_kid0;kid1=tensor_one_kid1;attr.transpose_kid0=false;attr.transpose_kid1=false
+
+[dsl_annotation]
+dsl_opcode=common.matmul.v1 dsl_payload=kid0=tensor_one_kid0;kid1=tensor_one_kid1;attr.transpose_kid0=false;attr.transpose_kid1=false
