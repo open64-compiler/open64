@@ -357,6 +357,19 @@ Equivalent_Types (TY_IDX t1, TY_IDX t2, QUAL_CHECK consider_qualifiers)
 #endif
 	return TY_fld (ty1) == TY_fld (ty2) && match_q;
 
+    case KIND_TENSOR:
+	{
+	    TY_TENSOR_EXTENSION_INFO info1;
+	    TY_TENSOR_EXTENSION_INFO info2;
+	    return match_q &&
+		TY_Get_Tensor_Extension_Info (t1, &info1) &&
+		TY_Get_Tensor_Extension_Info (t2, &info2) &&
+		info1.rank == info2.rank &&
+		info1.attribute_count == info2.attribute_count &&
+		Equivalent_Types (info1.element_ty, info2.element_ty,
+				  consider_qualifiers);
+	}
+
     default:
 	ErrMsg ( EC_Invalid_Case, "Equivalent_Types", __LINE__ );
 	return FALSE;  /* not needed but silences return w/o value warnings */

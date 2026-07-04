@@ -423,6 +423,7 @@ Is_Composite_Type (const TY& ty)
     switch (TY_kind (ty)) {
     case KIND_STRUCT:
     case KIND_ARRAY:
+    case KIND_TENSOR:
 	return TRUE;
     default:
 	return FALSE;
@@ -508,9 +509,59 @@ struct TY_TENSOR_EXTENSION_INFO {
     UINT32 attribute_count;
 };
 
+/*
+ * Source-level TensorDescriptorIR probe.
+ *
+ * These IDs and records describe the future fixed descriptor shape, but they do
+ * not allocate a binary IR section yet.  The current implementation derives the
+ * record from the staged TY_IDX tensor extension and its key-value attributes.
+ */
+typedef UINT32 TENSOR_DESCRIPTOR_ID;
+typedef UINT32 TENSOR_TYPE_CORE_ID;
+typedef UINT32 TENSOR_TRAIT_SET_ID;
+typedef UINT32 TENSOR_REPRESENTATION_ID;
+typedef UINT32 TENSOR_LINEAGE_ID;
+
+#define TENSOR_DESCRIPTOR_INVALID_ID       0
+#define TENSOR_TYPE_CORE_INVALID_ID        0
+#define TENSOR_TRAIT_SET_INVALID_ID        0
+#define TENSOR_REPRESENTATION_INVALID_ID   0
+#define TENSOR_LINEAGE_INVALID_ID          0
+
+struct TENSOR_DESCRIPTOR_RECORD {
+    TENSOR_DESCRIPTOR_ID descriptor_id;
+    TENSOR_TYPE_CORE_ID type_core_id;
+    TENSOR_TRAIT_SET_ID trait_set_id;
+    TENSOR_REPRESENTATION_ID representation_id;
+    TENSOR_LINEAGE_ID lineage_id;
+    TY_IDX ty;
+    TY_IDX element_ty;
+    INT32 rank;
+    STR_IDX kind;
+    STR_IDX dtype;
+    STR_IDX logical_shape;
+    STR_IDX traits;
+    STR_IDX layout;
+    STR_IDX sharding;
+    STR_IDX placement;
+    STR_IDX memory;
+    STR_IDX quantization;
+    STR_IDX runtime_state;
+    STR_IDX lineage;
+    UINT32 attribute_count;
+    UINT32 flags;
+};
+
+extern void TENSOR_DESCRIPTOR_RECORD_Init (TENSOR_DESCRIPTOR_RECORD *record);
+extern BOOL TY_get_tensor_descriptor_record (TY_IDX ty,
+					     TENSOR_DESCRIPTOR_RECORD *record);
+
 extern TY_IDX TY_Create_Tensor_Extension_Type (const char *name,
 					      TY_IDX element_ty,
 					      INT32 rank);
+extern TY_IDX TY_Create_Tensor_Type (const char *name,
+				    TY_IDX element_ty,
+				    INT32 rank);
 extern void TY_Mark_Tensor_Extension (TY_IDX ty, TY_IDX element_ty,
 				      INT32 rank);
 extern BOOL TY_is_tensor_extension (TY_IDX ty);

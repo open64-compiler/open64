@@ -15,14 +15,14 @@
 typedef UINT32 DSL_CONTRACT_ID;
 
 typedef struct {
-  DSL_CONTRACT_ID id;
-  DSL_DOMAIN_ID source_domain_id;
-  DSL_DOMAIN_ID target_domain_id;
-  const char *name;
-  UINT32 version;
-  UINT32 flags;
-  UINT32 required_check_count;
-  UINT32 diagnostic_code_count;
+    DSL_CONTRACT_ID id;
+    DSL_DOMAIN_ID source_domain_id;
+    DSL_DOMAIN_ID target_domain_id;
+    const char *name;
+    UINT32 version;
+    UINT32 flags;
+    UINT32 required_check_count;
+    UINT32 diagnostic_code_count;
 } DSL_CONTRACT_INFO;
 
 extern void DSL_Contract_Registry_Reset (void);
