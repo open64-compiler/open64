@@ -67,6 +67,17 @@
 #endif
 
 /*
+ * Reserved DSL image extension point.
+ *
+ * WT_DSL_TENSOR_DESCRIPTOR is reserved for a future combined tensor descriptor
+ * image section.  The current staged DSL implementation does not write or read
+ * this section; tensor descriptor state remains stored through the existing
+ * symbol/type extension tables so old WHIRL files and tools keep their current
+ * behavior.
+ */
+#define WT_DSL_TENSOR_DESCRIPTOR 0x20
+
+/*
  * Special WHIRL section names.
  */
 #define MIPS_WHIRL_PU_SECTION	".WHIRL.pu_section"
@@ -77,6 +88,7 @@
 #define MIPS_WHIRL_SUMMARY	".WHIRL.summary"
 #define MIPS_WHIRL_DST		".WHIRL.dst"
 #define MIPS_WHIRL_LOCALMAP	".WHIRL.localmap"
+#define MIPS_WHIRL_DSL_TENSOR_DESCRIPTOR ".WHIRL.dsl_tensor_descriptor"
 #if defined(TARG_SL)
 #define MIPS_WHIRL_CALLGRAPH    ".WHIRL.callgraph"
 #endif
