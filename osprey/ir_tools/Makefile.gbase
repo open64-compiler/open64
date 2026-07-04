@@ -179,6 +179,7 @@ COMMON_COM_CXX_SRC =	\
 	config.cxx	\
 	config_elf_targ.cxx \
 	const.cxx	\
+	dsl_builder.cxx \
 	dsl_contract.cxx \
 	dsl_domain.cxx	\
 	dsl_opcode.cxx	\

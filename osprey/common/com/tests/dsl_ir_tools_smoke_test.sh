@@ -64,6 +64,16 @@ if ! grep -q "FUNC_ENTRY" smoke.ir ||
   exit 1
 fi
 
+"$ir_b2a" -st smoke.B smoke.st.ir
+
+if ! grep -q "FUNC_ENTRY" smoke.st.ir ||
+   ! grep -q "Symbols:" smoke.st.ir ||
+   ! grep -q "Types:" smoke.st.ir; then
+  echo "ir_b2a -st smoke output did not contain WHIRL plus symtab text" >&2
+  cat smoke.st.ir >&2
+  exit 1
+fi
+
 set +e
 "$ir_a2b" smoke.ir smoke.roundtrip.B > ir_a2b.stdout 2> ir_a2b.stderr
 ir_a2b_status=$?

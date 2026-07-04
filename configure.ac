@@ -157,6 +157,15 @@ AS_IF([test "x$enable_jfe" != "xno"], [
   BUILD_JFE=YES
 ])
 
+AC_ARG_ENABLE([torch2whirl-only],
+  AS_HELP_STRING([--enable-torch2whirl-only], [Configure only the portable torch2whirl frontend]))
+
+AS_IF([test "x$enable_torch2whirl_only" = "xyes"], [
+  AC_CONFIG_FILES([osprey/targdir/torch2whirl/Makefile])
+  AC_OUTPUT
+  exit 0
+])
+
 # Set whether WHIRL a node contains a debugging ID
 AC_ARG_ENABLE([whirl_id],
   AS_HELP_STRING([--enable-whirl-id], [Enable debugging ID in WHIRL node]))
@@ -494,6 +503,7 @@ AC_CONFIG_FILES([
   osprey/targdir/ir_tools/Makefile
   osprey/targdir/libcmplrs/Makefile
   osprey/targdir/clang2whirl/Makefile
+  osprey/targdir/torch2whirl/Makefile
   osprey/targdir/wgen/Makefile
   osprey/targdir/jfe/Makefile
   osprey/targdir/js2mplref/Makefile
@@ -630,6 +640,8 @@ AC_OUTPUT
 # Starting JFE Checks (only when --enable-jfe or default)
 #
 
+if test "x$enable_torch2whirl_only" != "xyes"; then
+
 if @<:@ "x$enable_jfe" != "xno" @:>@; then
 
 ISRUNNABLE_JFE=1
@@ -748,3 +760,4 @@ else
 	echo "            MOZJS_HOME = $MOZJS_HOME"
 fi
 
+fi

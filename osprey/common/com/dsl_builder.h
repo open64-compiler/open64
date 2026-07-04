@@ -13,20 +13,21 @@
 #include "dsl_opcode.h"
 
 /*
- * Minimal C++ builder-facing DSL API sketch.
+ * Minimal C++ builder-facing DSL API.
  *
  * The future Python ingestion layer should capture model operations and hand
  * them to this native boundary.  This API intentionally creates first-class DSL
  * operators at ingestion time; intrinsic or target-specific lowering remains a
  * later compiler phase.
  *
- * Future C++ facade names may wrap these declarations, for example
- * TensorBuilder, OperatorBuilder, MetadataBuilder, and ImageBuilder.  The first
- * public contract keeps Open64-style C interfaces so it can sit beside the
- * existing common/com construction APIs.
+ * Keep this boundary narrow.  Bindings may pass names, attributes, metadata,
+ * and opaque Open64 handles such as TY_IDX, ST_IDX, and WN*, but Python must
+ * not construct WHIRL nodes, mutate symbol/type tables, or depend on table
+ * layout.  C++ owns those compiler objects.
  *
- * This header defines the intended construction boundary only.  It does not
- * change current compiler behavior, binary IR layout, or WHIRL opcode storage.
+ * This header stages construction only.  Binary image finalization still uses
+ * existing mapped-image / ELF WHIRL mechanisms and must not introduce a new
+ * source-language file format.
  */
 
 typedef WN *DSL_BUILDER_VALUE;
@@ -79,33 +80,33 @@ typedef struct {
 } DSL_BUILDER_MAPPED_IMAGE_REQUEST;
 
 extern TY_IDX DSL_Builder_Create_Tensor_Type_Core
-				(const char *name,
-				 TY_IDX element_ty,
-				 const DSL_BUILDER_TENSOR_TYPE_CORE *type_core);
+                                (const char *name,
+                                 TY_IDX element_ty,
+                                 const DSL_BUILDER_TENSOR_TYPE_CORE *type_core);
 extern BOOL DSL_Builder_Attach_Tensor_Descriptor
-				(TY_IDX ty,
-				 const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor);
+                                (TY_IDX ty,
+                                 const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor);
 extern ST_IDX DSL_Builder_Create_Symbol
-				(const char *name,
-				 TY_IDX ty,
-				 ST_CLASS sym_class,
-				 ST_SCLASS storage_class,
-				 ST_EXPORT export_class);
+                                (const char *name,
+                                 TY_IDX ty,
+                                 ST_CLASS sym_class,
+                                 ST_SCLASS storage_class,
+                                 ST_EXPORT export_class);
 extern DSL_BUILDER_OPERATOR DSL_Builder_Create_Operator
-				(DSL_OPCODE_ID opcode_id,
-				 UINT16 version,
-				 DSL_BUILDER_VALUE *kids,
-				 UINT32 kid_count,
-				 const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
-				 UINT32 attr_count);
+                                (DSL_OPCODE_ID opcode_id,
+                                 UINT16 version,
+                                 DSL_BUILDER_VALUE *kids,
+                                 UINT32 kid_count,
+                                 const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+                                 UINT32 attr_count);
 extern BOOL DSL_Builder_Attach_Contract
-				(DSL_BUILDER_OPERATOR wn,
-				 DSL_CONTRACT_ID contract_id);
+                                (DSL_BUILDER_OPERATOR wn,
+                                 DSL_CONTRACT_ID contract_id);
 extern BOOL DSL_Builder_Attach_Metadata
-				(ST_IDX st,
-				 const DSL_BUILDER_COMPILER_METADATA *metadata,
-				 UINT32 metadata_count);
+                                (ST_IDX st,
+                                 const DSL_BUILDER_COMPILER_METADATA *metadata,
+                                 UINT32 metadata_count);
 extern BOOL DSL_Builder_Finalize_Mapped_Image
-				(const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
+                                (const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
 
 #endif /* dsl_builder_INCLUDED */
