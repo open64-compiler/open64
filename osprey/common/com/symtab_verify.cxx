@@ -920,6 +920,10 @@ TY_Verify_Kind_Mtype (TY_KIND kind, mTYPE_ID mtype)
       Is_True ( mtype == MTYPE_M, 
 		(msg, "For KIND_STRUCT, mtype must be M"));
       break;
+  case KIND_TENSOR:
+      Is_True ( mtype == MTYPE_M,
+		(msg, "For KIND_TENSOR, mtype must be M"));
+      break;
   case KIND_POINTER:
       {
 	  TYPE_ID a_type = (Pointer_Size == MTYPE_byte_size (MTYPE_A4)) ?
@@ -1262,4 +1266,3 @@ void  Verify_GLOBAL_SYMTAB()
 
 #endif  // Is_True_On
 }
-

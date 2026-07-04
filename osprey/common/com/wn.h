@@ -1049,15 +1049,15 @@ extern STR_IDX WN_GetComment (const WN *wn);  /* get string idx from comment nod
 #define DSL_OPCODE_COMMON_ZERO_INIT "common.zero_init"
 #define DSL_OPCODE_COMMON_ZERO_LIKE "common.zero_like"
 typedef struct {
-  const char *name;
-  UINT32 name_len;
-  UINT32 version;
-  const char *payload;
+    const char *name;
+    UINT32 name_len;
+    UINT32 version;
+    const char *payload;
 } DSL_OPCODE_ANNOTATION;
 
 typedef struct {
-  UINT32 dsl_marker_count;
-  UINT32 dsl_opcode_count;
+    UINT32 dsl_marker_count;
+    UINT32 dsl_opcode_count;
 } VHO_UNCONSUMED_DSL_SCAN;
 
 extern const char *WN_DSL_Comment_Prefix (void);

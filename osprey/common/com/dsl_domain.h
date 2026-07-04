@@ -14,11 +14,11 @@
 typedef UINT32 DSL_DOMAIN_ID;
 
 typedef struct {
-  DSL_DOMAIN_ID id;
-  DSL_DOMAIN_ID parent_id;
-  const char *name;
-  UINT32 version;
-  UINT32 flags;
+    DSL_DOMAIN_ID id;
+    DSL_DOMAIN_ID parent_id;
+    const char *name;
+    UINT32 version;
+    UINT32 flags;
 } DSL_DOMAIN_INFO;
 
 extern void DSL_Domain_Registry_Reset (void);

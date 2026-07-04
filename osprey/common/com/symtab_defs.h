@@ -571,6 +571,7 @@ enum TY_KIND
     KIND_POINTER	= 4,		// pointer
     KIND_FUNCTION	= 5,		// function/procedure
     KIND_VOID		= 6,		// C void type
+    KIND_TENSOR		= 7,		// DSL tensor value type
     KIND_LAST		= 8
 };
 
