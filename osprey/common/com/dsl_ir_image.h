@@ -11,9 +11,13 @@
  * Source-level DSL binary image probe.
  *
  * These constants describe the future fixed-row records that may be carried in
- * the reserved WT_DSL_TENSOR_DESCRIPTOR section.  They are intentionally not
- * connected to ir_bread.cxx or ir_bwrite.cxx yet, so the current compiler does
- * not emit, read, or require a new binary WHIRL section.
+ * reserved WHIRL sections such as WT_DSL_TENSOR_DESCRIPTOR.  They are
+ * intentionally not connected to ir_bread.cxx or ir_bwrite.cxx yet, so the
+ * current compiler does not emit, read, or require a new binary WHIRL section.
+ *
+ * Binary artifact work should extend the existing mapped-image / ELF WHIRL
+ * path.  Do not introduce a Python-owned or torch2whirl-specific side format
+ * for compiler IR.
  */
 
 #define DSL_IR_IMAGE_VERSION 1

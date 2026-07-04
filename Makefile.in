@@ -140,6 +140,7 @@ endif
 GNU4_FE_COMPONENTS = \
                 $(NATIVE_BUILD_DIR)/wgen/wgen42 \
                 $(NATIVE_BUILD_DIR)/clang2whirl/clangfe \
+                $(NATIVE_BUILD_DIR)/torch2whirl/torch2whirl \
                 $(GNUFE_BUILD_SUBDIR)/gcc/cc1 \
                 $(GNUFE_BUILD_SUBDIR)/gcc/cc1plus
 
@@ -276,6 +277,9 @@ $(NATIVE_BUILD_DIR)/jfe/jfe jfe:
 
 $(NATIVE_BUILD_DIR)/clang2whirl/clangfe clangfe: include libiberty libcomutil libcmplrs
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/clang2whirl
+
+$(NATIVE_BUILD_DIR)/torch2whirl/torch2whirl torch2whirl: include
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/torch2whirl
 
 $(NATIVE_BUILD_DIR)/js2mplref/js2mpl js2mpl: include libiberty libcomutil libcmplrs
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/js2mplref
@@ -538,6 +542,7 @@ clean: $(CLEAN_LIB)
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/driver clobber 
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/wgen clobber
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/clang2whirl clobber
+	$(MAKE) -C $(NATIVE_BUILD_DIR)/torch2whirl clobber
 ifeq ($(BUILD_JFE), YES)
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/jfe clobber
 	$(MAKE) -C $(NATIVE_BUILD_DIR)/js2mplref clobber

@@ -1,0 +1,62 @@
+# -*- Makefile -*-
+#
+# Copyright (C) 2026 Open64 Project
+#
+
+# Makefile.base for torch2whirl.
+#
+# torch2whirl is organized beside clang2whirl as a standalone source frontend.
+# It is the first Python/PyTorch ingestion driver, but the native DSL builder
+# boundary remains independent so another Python ingestion strategy can be
+# adopted later without changing downstream WHIRL consumers.
+#
+# This makefile is intentionally portable.  Generated Open64 build directories
+# include it after configure sets BUILD_BASE, but developers can also invoke it
+# directly from this source directory on macOS or Linux.
+
+CXX ?= c++
+RM ?= rm -f
+INSTALL ?= install
+MKDIR_P ?= mkdir -p
+
+BUILD_BASE ?= $(CURDIR)
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+
+TORCH2WHIRL_CXX_STD ?= -std=c++17
+TORCH2WHIRL_WARNINGS ?= -Wall -Wextra
+TORCH2WHIRL_CPPFLAGS ?= -I$(BUILD_BASE)
+TORCH2WHIRL_CXXFLAGS ?= $(TORCH2WHIRL_CXX_STD) $(TORCH2WHIRL_WARNINGS)
+TORCH2WHIRL_LDFLAGS ?=
+
+TARGETS = torch2whirl
+LDIRT = $(TARGETS) *.o
+
+TORCH2WHIRL_CXX_SRCS = \
+  torch2whirl.cxx	\
+  torch2whirl_driver.cxx
+
+OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
+
+.PHONY: default all clean clobber install make_deps
+
+default: all
+
+all: $(TARGETS)
+
+make_deps: $(TARGETS)
+
+install: $(TARGETS)
+	$(MKDIR_P) $(DESTDIR)$(BINDIR)
+	$(INSTALL) -m 755 torch2whirl $(DESTDIR)$(BINDIR)/torch2whirl
+
+clean clobber:
+	$(RM) $(LDIRT)
+
+torch2whirl: $(OBJECTS)
+	$(CXX) $(CXXFLAGS) $(TORCH2WHIRL_CXXFLAGS) -o $@ $(OBJECTS) \
+	    $(LDFLAGS) $(TORCH2WHIRL_LDFLAGS)
+
+%.o: $(BUILD_BASE)/%.cxx $(BUILD_BASE)/torch2whirl_driver.h
+	$(CXX) $(CPPFLAGS) $(TORCH2WHIRL_CPPFLAGS) $(CXXFLAGS) \
+	    $(TORCH2WHIRL_CXXFLAGS) -c -o $@ $<

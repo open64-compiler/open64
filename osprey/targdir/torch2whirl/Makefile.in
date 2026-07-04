@@ -1,0 +1,5 @@
+BUILD_BASE = @abs_top_srcdir@/osprey/torch2whirl
+BUILD_AREA = @abs_top_builddir@/osprey/targdir/torch2whirl
+PREFIX = @prefix@
+
+include $(BUILD_BASE)/Makefile.gbase
