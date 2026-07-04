@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "defs.h"
 #include "mempool.h"
@@ -217,19 +218,47 @@ Check_Operator_Creation(void)
 }
 
 static int
-Check_Mapped_Image_Stub(void)
+Check_Mapped_Image_Finalizer(void)
 {
     DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    int failed = 0;
 
     request.path = "builder_contract_test.B";
     request.flags = 0;
 
-    if (DSL_Builder_Finalize_Mapped_Image(&request)) {
-        fprintf(stderr, "mapped image finalizer unexpectedly succeeded\n");
-        return 1;
+    (void) unlink(request.path);
+
+    if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+        fprintf(stderr, "mapped image finalizer failed valid request\n");
+        failed = 1;
     }
 
-    return 0;
+    if (access(request.path, F_OK) != 0) {
+        fprintf(stderr, "mapped image finalizer did not create output file\n");
+        failed = 1;
+    }
+
+    if (DSL_Builder_Finalize_Mapped_Image(NULL)) {
+        fprintf(stderr, "mapped image finalizer accepted null request\n");
+        failed = 1;
+    }
+
+    request.path = NULL;
+    if (DSL_Builder_Finalize_Mapped_Image(&request)) {
+        fprintf(stderr, "mapped image finalizer accepted null path\n");
+        failed = 1;
+    }
+
+    request.path = "builder_contract_test.B";
+    request.flags = 1;
+    if (DSL_Builder_Finalize_Mapped_Image(&request)) {
+        fprintf(stderr, "mapped image finalizer accepted unknown flags\n");
+        failed = 1;
+    }
+
+    (void) unlink("builder_contract_test.B");
+
+    return failed;
 }
 
 int
@@ -242,7 +271,7 @@ main(void)
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
     failed |= Check_Operator_Creation();
-    failed |= Check_Mapped_Image_Stub();
+    failed |= Check_Mapped_Image_Finalizer();
 
     return failed;
 }

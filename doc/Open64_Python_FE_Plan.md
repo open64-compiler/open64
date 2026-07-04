@@ -268,6 +268,17 @@ Work items:
 The first implementation can be conservative. The important requirement is that
 the artifact is owned by Open64 infrastructure and survives outside Python.
 
+Current Phase 4 status:
+
+1. `DSL_Builder_Finalize_Mapped_Image` now rejects invalid requests and uses the
+   existing `Open_Output_Info` / `Write_Global_Info` / `Close_Output_Info`
+   writer path for the current global tables.
+2. The first artifact slice writes global WHIRL sections with no PU tree. This
+   proves the builder exits through the mapped-image/ELF WHIRL machinery while
+   keeping function-body construction as the next API step.
+3. `dsl_builder_contract_test.cxx` checks invalid finalizer requests and the
+   minimal valid output-file creation path.
+
 ## Phase 5: Python Package Skeleton
 
 Create a small Python package after the native API is concrete.

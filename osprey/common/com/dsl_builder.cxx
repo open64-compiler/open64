@@ -8,8 +8,16 @@
 #pragma hdrstop
 #include <stdio.h>
 #include <string.h>
+#if ! defined(BUILD_OS_DARWIN)
+#include <elf.h>
+#endif /* ! defined(BUILD_OS_DARWIN) */
 
 #include "dsl_builder.h"
+#include "dwarf_DST_mem.h"
+#include "glob.h"
+#include "ir_reader.h"
+#include "pu_info.h"
+#include "ir_bwrite.h"
 #include "stab.h"
 #include "strtab.h"
 
@@ -274,6 +282,30 @@ BOOL
 DSL_Builder_Finalize_Mapped_Image
         (const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request)
 {
-    (void) request;
-    return FALSE;
+    if (request == NULL ||
+        request->path == NULL ||
+        request->path[0] == '\0' ||
+        request->flags != 0)
+        return FALSE;
+
+    Irb_File_Name = (char *)request->path;
+
+    /*
+     * Keep the first artifact slice intentionally conservative: write the
+     * current global tables through the normal WHIRL ELF/mapped-image writer.
+     * A later builder context will provide a PU tree once Python ingestion can
+     * create function bodies.
+     */
+    IR_reader_init();
+    if (Current_DST == NULL)
+        DST_Init(NULL, 0);
+    if (Open_Output_Info(Irb_File_Name) == NULL) {
+        IR_reader_finish();
+        return FALSE;
+    }
+
+    Write_Global_Info(NULL);
+    Close_Output_Info();
+    IR_reader_finish();
+    return TRUE;
 }
