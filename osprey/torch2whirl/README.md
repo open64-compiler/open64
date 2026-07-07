@@ -34,6 +34,10 @@ This directory currently contains the buildable executable scaffold.  The next
 implementation slice should replace the placeholder conversion path with calls
 into the native DSL builder and mapped image finalization API.
 
+The Python package skeleton lives under `python/open64_dsc`.  It provides the
+initial public API and a mock `_whirl`-shaped backend so graph capture and CLI
+integration can grow without requiring the native extension to be built first.
+
 ## Standalone build
 
 From an out-of-tree build directory on macOS or Linux:
@@ -48,6 +52,7 @@ For quick local iteration from this source directory:
 
 ```sh
 make -f Makefile.gbase
+make -f Makefile.gbase python_test
 ```
 
 The generated build remains under `osprey/targdir/torch2whirl`, matching the

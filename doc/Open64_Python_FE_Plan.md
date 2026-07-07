@@ -283,19 +283,25 @@ Current Phase 4 status:
 
 Create a small Python package after the native API is concrete.
 
-Candidate layout:
+Current layout:
 
 ```text
-open64_dsc/
-  __init__.py
-  export.py
-  interpreter.py
-  options.py
-  mapping/
+osprey/torch2whirl/python/
+  pyproject.toml
+  open64_dsc/
     __init__.py
-    common.py
-    cnn.py
-  _whirl.so
+    backend.py
+    export.py
+    interpreter.py
+    module.py
+    options.py
+    _mock_whirl.py
+    mapping/
+      __init__.py
+      common.py
+      cnn.py
+  tests/
+    test_open64_dsc_skeleton.py
 ```
 
 Initial public API:
@@ -316,6 +322,18 @@ def save_as_whirl(module, path):
 
 Use a mock native backend first if needed, but keep the mock API identical to the
 planned `_whirl.so` API.
+
+Current Phase 5 status:
+
+1. The package is colocated with the standalone frontend under
+   `osprey/torch2whirl/python` so another ingestion implementation can be
+   adopted later without changing common WHIRL infrastructure.
+2. `export_to_whirl` returns a `WhirlModule` with stable metadata and preserves
+   the public API shape while real `torch.export` / FX traversal is deferred.
+3. `save_as_whirl` routes through a backend loader. The default mock backend
+   implements the future `_whirl` finalization shape and writes a deterministic
+   mock artifact for tests.
+4. `make -f Makefile.gbase python_test` runs the Python skeleton tests.
 
 ## Phase 6: Native Binding Layer
 

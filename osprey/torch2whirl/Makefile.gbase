@@ -15,6 +15,7 @@
 # directly from this source directory on macOS or Linux.
 
 CXX ?= c++
+PYTHON ?= python3
 RM ?= rm -f
 INSTALL ?= install
 MKDIR_P ?= mkdir -p
@@ -38,7 +39,7 @@ TORCH2WHIRL_CXX_SRCS = \
 
 OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
-.PHONY: default all clean clobber install make_deps
+.PHONY: default all clean clobber install make_deps python_test
 
 default: all
 
@@ -49,6 +50,11 @@ make_deps: $(TARGETS)
 install: $(TARGETS)
 	$(MKDIR_P) $(DESTDIR)$(BINDIR)
 	$(INSTALL) -m 755 torch2whirl $(DESTDIR)$(BINDIR)/torch2whirl
+
+python_test:
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \
+	    $(PYTHON) -m unittest discover \
+	    -s $(BUILD_BASE)/python/tests
 
 clean clobber:
 	$(RM) $(LDIRT)
