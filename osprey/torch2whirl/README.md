@@ -37,9 +37,10 @@ into the native DSL builder and mapped image finalization API.
 The Python package skeleton lives under `python/open64_dsc`.  It provides the
 initial public API and a mock `_whirl`-shaped backend so graph capture and CLI
 integration can grow without requiring the native extension to be built first.
-The first native binding seam is staged under `python/native`; it is
-syntax-checked through the Linux native fixture, but importing
-`open64_dsc._whirl` remains optional until an extension link target is added.
+The first native binding seam is staged under `python/native`.  It can be
+syntax-checked through the Linux native fixture, and the configured Linux build
+can now build and import `open64_dsc._whirl` when Python development headers are
+available.
 `make -f Makefile.gbase python_native_extension` builds that extension when
 Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`
@@ -48,6 +49,9 @@ common object set and check those inputs through
 Use `make python_native_deps` from the configured `torch2whirl` build
 directory to populate the Open64 common object inputs without building
 backend/cg.
+Use `make python_native_test` from that directory to run the optional native
+Python finalization test after installing the matching Python development
+headers in the test environment.
 The `--enable-torch2whirl-only` configure path emits the small helper build
 files needed for that dependency target.
 
@@ -67,6 +71,16 @@ For quick local iteration from this source directory:
 make -f Makefile.gbase
 make -f Makefile.gbase python_test
 make -f Makefile.gbase python_native_check
+```
+
+For Linux Docker native extension validation from a configured build tree:
+
+```sh
+docker run --rm -v /path/to/open64:/src \
+  -v /private/tmp/open64-torch2whirl-linux:/build \
+  -w /build/osprey/targdir/torch2whirl \
+  open64:x86_64-apple-silicon \
+  sh -c 'apt-get update && apt-get install -y python3.8-dev && make python_native_test'
 ```
 
 The generated build remains under `osprey/targdir/torch2whirl`, matching the

@@ -77,11 +77,8 @@ OPEN64_DSC_NATIVE_IR_TOOL_OBJS = \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dwarf_DST_producer.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/glob.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_bcom.o) \
-  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_bread.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_bwrite.o) \
-  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_reader.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/irbdata.o) \
-  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_verify.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/mtypes.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/opcode.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/opcode_core.o) \
@@ -108,7 +105,8 @@ OPEN64_DSC_NATIVE_LDLIBS ?=
 PYTHON_NATIVE_TARGET = $(PYTHON_NATIVE_PACKAGE_DIR)/_whirl$(PYTHON_EXT_SUFFIX)
 PYTHON_NATIVE_OBJECTS = \
   _whirl_module.native.o \
-  open64_dsc_native_bridge.native.o
+  open64_dsc_native_bridge.native.o \
+  open64_dsc_native_support.native.o
 
 TARGETS = torch2whirl
 LDIRT = $(TARGETS) *.o $(PYTHON_NATIVE_OBJECTS) $(PYTHON_NATIVE_TARGET)
@@ -121,7 +119,7 @@ OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
   python_native_check python_native_deps python_native_extension \
-  python_native_requirements python_native_test
+  python_native_requirements python_native_stage python_native_test
 
 default: all
 
@@ -194,7 +192,14 @@ python_native_requirements:
 	    fi; \
 	done
 
-python_native_extension: python_native_deps python_native_requirements
+python_native_stage:
+	$(MKDIR_P) $(PYTHON_BUILD_ROOT)
+	@if test "$(PYTHON_BUILD_ROOT)" != "$(BUILD_BASE)/python"; then \
+	    cp -R "$(BUILD_BASE)/python/open64_dsc" "$(PYTHON_BUILD_ROOT)/"; \
+	fi
+
+python_native_extension: python_native_deps python_native_requirements \
+  python_native_stage
 	$(MKDIR_P) $(PYTHON_NATIVE_PACKAGE_DIR)
 	$(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) $(CXXFLAGS) \
 	    $(TORCH2WHIRL_CXXFLAGS) -fPIC -c -o _whirl_module.native.o \
@@ -202,12 +207,16 @@ python_native_extension: python_native_deps python_native_requirements
 	$(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) $(CXXFLAGS) \
 	    $(PYTHON_NATIVE_CXXFLAGS) -c -o open64_dsc_native_bridge.native.o \
 	    $(BUILD_BASE)/python/native/open64_dsc_native_bridge.cxx
+	$(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) $(CXXFLAGS) \
+	    $(PYTHON_NATIVE_CXXFLAGS) -c -o open64_dsc_native_support.native.o \
+	    $(BUILD_BASE)/python/native/open64_dsc_native_support.cxx
 	$(CXX) $(PYTHON_NATIVE_LDFLAGS) -o $(PYTHON_NATIVE_TARGET) \
 	    $(PYTHON_NATIVE_OBJECTS) $(OPEN64_DSC_NATIVE_OBJS) \
 	    $(OPEN64_DSC_NATIVE_LDLIBS)
 
 python_native_test: python_native_extension
-	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \
+	PYTHONDONTWRITEBYTECODE=1 \
+	    PYTHONPATH=$(PYTHON_BUILD_ROOT):$(BUILD_BASE)/python \
 	    $(PYTHON) -m unittest discover \
 	    -s $(BUILD_BASE)/python/tests
 

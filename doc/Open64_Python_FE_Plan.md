@@ -278,6 +278,9 @@ Current Phase 4 status:
    keeping function-body construction as the next API step.
 3. `dsl_builder_contract_test.cxx` checks invalid finalizer requests and the
    minimal valid output-file creation path.
+4. The finalizer no longer initializes `ir_reader`, so the Python frontend
+   bridge can write its current global-table artifact without pulling in
+   reader-side WSSA or JSON verifier dependencies.
 
 ## Phase 5: Python Package Skeleton
 
@@ -380,6 +383,20 @@ Current Phase 6 status:
    object paths without building backend/cg; Docker validation confirms those
    Open64 native dependencies are now populated by the torch2whirl-only build
    tree.
+10. `python_native_extension` stages the source package into the configured
+    build-tree package root before linking `_whirl`, so tests import the newly
+    built extension before the source-tree fallback package.
+11. The native extension object list has been narrowed to writer-side common
+    objects. It intentionally excludes `ir_bread.o`, `ir_reader.o`, and
+    `ir_verify.o` to avoid reader/WSSA/JSON dependencies in the language
+    frontend bridge.
+12. `open64_dsc_native_support.cxx` provides the small inert host/runtime hooks
+    needed by the common writer slice, such as `Run_vsaopt`, `Debug_Level`, and
+    diagnostic dump stubs, without borrowing an IR-tool driver or backend
+    implementation object.
+13. In Linux Docker, installing `python3.8-dev` enables
+    `make python_native_test` to build `_whirl`, import the native backend, and
+    execute the optional finalization test successfully.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -522,12 +539,13 @@ Relevant test patterns to adapt:
 2. Keep the Python package API stable while Phase 6 starts:
    `WhirlExportOptions`, `WhirlModule`, `export_to_whirl`, and
    `save_as_whirl` should remain the public surface.
-3. Install or supply Python development headers in the Docker/native test
-   environment so `python_native_extension` can compile `_whirl_module.cxx`.
-4. Promote the optional native Python test from skipped to executable in the
-   configured build-tree validation loop when `_whirl` is built.
-5. Add tensor/type/operator native entry points only after native finalization
-   can be built and imported.
+3. Keep the Docker native test in the validation loop when Python development
+   headers are available:
+   `apt-get install -y python3.8-dev && make python_native_test`.
+4. Add the first tensor/type/operator native entry points now that native
+   finalization builds, imports, and runs through the Python package API.
+5. Mirror each new native entry point with a mock backend method and Python
+   skeleton test so the portable package API remains usable without `_whirl`.
 6. Extend the builder API only as needed to create an inspectable minimal PU
    tree; do not broaden it into a generic Python-owned WHIRL construction API.
 7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
@@ -569,6 +587,17 @@ Use the native builder syntax loop while Phase 2/3 code is moving:
 ```sh
 docker run --rm -v /path/to/open64:/src -w /src open64:x86_64-apple-silicon \
   bash osprey/common/com/tests/dsl_native_syntax_test.sh
+```
+
+Use the configured Linux native extension loop when Python development headers
+are available in the Docker image:
+
+```sh
+docker run --rm -v /path/to/open64:/src \
+  -v /private/tmp/open64-torch2whirl-linux:/build \
+  -w /build/osprey/targdir/torch2whirl \
+  open64:x86_64-apple-silicon \
+  sh -c 'apt-get update && apt-get install -y python3.8-dev && make python_native_test'
 ```
 
 The native syntax script intentionally skips direct macOS execution unless

@@ -15,7 +15,6 @@
 #include "dsl_builder.h"
 #include "dwarf_DST_mem.h"
 #include "glob.h"
-#include "ir_reader.h"
 #include "pu_info.h"
 #include "ir_bwrite.h"
 #include "stab.h"
@@ -296,16 +295,12 @@ DSL_Builder_Finalize_Mapped_Image
      * A later builder context will provide a PU tree once Python ingestion can
      * create function bodies.
      */
-    IR_reader_init();
     if (Current_DST == NULL)
         DST_Init(NULL, 0);
-    if (Open_Output_Info(Irb_File_Name) == NULL) {
-        IR_reader_finish();
+    if (Open_Output_Info(Irb_File_Name) == NULL)
         return FALSE;
-    }
 
     Write_Global_Info(NULL);
     Close_Output_Info();
-    IR_reader_finish();
     return TRUE;
 }
