@@ -352,6 +352,22 @@ The binding mechanism can be selected later. A C API plus a thin Python binding
 is the safest compatibility shape; pybind11 is convenient if the build system
 cost is acceptable.
 
+Current Phase 6 status:
+
+1. `open64_dsc.backend.WhirlBackend` defines the backend protocol shared by the
+   mock backend and the future native extension.
+2. `osprey/torch2whirl/python/native/_whirl_module.cxx` stages the Python C API
+   module for `open64_dsc._whirl`.
+3. `open64_dsc._whirl.finalize_mapped_image(path, manifest)` is the first
+   native-backed entry point and matches the mock backend shape.
+4. `open64_dsc_native_bridge.cxx` keeps Python on a C ABI seam and forwards
+   only the output path to `DSL_Builder_Finalize_Mapped_Image`.
+5. Optional native Python tests skip unless `open64_dsc._whirl` is built, so the
+   mock backend remains the default portable developer path.
+6. The Docker native syntax fixture checks the Open64-facing native bridge and
+   conditionally checks `_whirl_module.cxx` when Python development headers are
+   available.
+
 ## Phase 7: WhirlExportInterpreter
 
 Implement the interpreter as a graph traversal layer over `torch.export` or FX.
@@ -493,18 +509,19 @@ Relevant test patterns to adapt:
 2. Keep the Python package API stable while Phase 6 starts:
    `WhirlExportOptions`, `WhirlModule`, `export_to_whirl`, and
    `save_as_whirl` should remain the public surface.
-3. Define the Phase 6 native binding seam for `open64_dsc._whirl` without
-   exposing Python to WHIRL node layout, symbol/type table internals, or backend
-   code generation headers.
-4. Add the first native-backed `_whirl` entry point for mapped-image
-   finalization, matching the mock backend shape before adding tensor/operator
-   construction calls.
-5. Add optional Python tests that exercise the native backend when `_whirl` is
-   built, while keeping the mock backend tests runnable on every developer
-   machine.
-6. Extend the builder API only as needed to create an inspectable minimal PU
+3. Add a real `open64_dsc._whirl` extension build target once Python
+   development headers and the required Open64 common objects are available in
+   the configured build tree.
+4. Link the native extension through `open64_dsc_native_bridge.cxx`, preserving
+   the C ABI seam and avoiding direct Python access to WHIRL node layout,
+   symbol/type table internals, or backend code generation headers.
+5. Promote the optional native Python test from skipped to executable in the
+   configured build-tree validation loop when `_whirl` is built.
+6. Add tensor/type/operator native entry points only after native finalization
+   can be built and imported.
+7. Extend the builder API only as needed to create an inspectable minimal PU
    tree; do not broaden it into a generic Python-owned WHIRL construction API.
-7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
+8. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
    available, then run `dsl_ir_tools_smoke_test.sh` against the first native
    Python-produced artifact.
 

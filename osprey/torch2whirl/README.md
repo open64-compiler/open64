@@ -37,6 +37,9 @@ into the native DSL builder and mapped image finalization API.
 The Python package skeleton lives under `python/open64_dsc`.  It provides the
 initial public API and a mock `_whirl`-shaped backend so graph capture and CLI
 integration can grow without requiring the native extension to be built first.
+The first native binding seam is staged under `python/native`; it is
+syntax-checked through the Linux native fixture, but importing
+`open64_dsc._whirl` remains optional until an extension link target is added.
 
 ## Standalone build
 

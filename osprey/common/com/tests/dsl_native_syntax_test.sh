@@ -18,18 +18,22 @@ if [[ "$(uname -s)" == "Darwin" &&
 fi
 
 cxx="${CXX:-g++}"
+python="${PYTHON:-python3}"
 cxxstd="${OPEN64_DSL_TEST_CXXSTD:--std=gnu++98}"
+python_include="$("$python" -c 'import sysconfig; print(sysconfig.get_paths()["include"])')"
 
 cxxflags=(
   "$cxxstd"
   -DKEY
   -fsyntax-only
+  -I"$python_include"
   -I"$repo_root/osprey/linux/include"
   -I"$repo_root/osprey/ir_tools"
   -I"$repo_root/osprey/common/com"
   -I"$repo_root/osprey/common/com/x8664"
   -I"$repo_root/osprey/common/util"
   -I"$repo_root/osprey/include"
+  -I"$repo_root/osprey/torch2whirl/python/native"
 )
 
 sources=(
@@ -37,7 +41,14 @@ sources=(
   "osprey/common/com/tests/dsl_builder_contract_test.cxx"
   "osprey/common/com/tests/dsl_common_add_print_test.cxx"
   "osprey/common/com/tests/dsl_common_matmul_print_test.cxx"
+  "osprey/torch2whirl/python/native/open64_dsc_native_bridge.cxx"
 )
+
+if [[ -f "$python_include/Python.h" ]]; then
+  sources+=("osprey/torch2whirl/python/native/_whirl_module.cxx")
+else
+  echo "skip: Python.h not found under $python_include"
+fi
 
 for source in "${sources[@]}"; do
   "$cxx" "${cxxflags[@]}" "$repo_root/$source"

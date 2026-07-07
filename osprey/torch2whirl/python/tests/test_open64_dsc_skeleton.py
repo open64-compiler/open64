@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 
+from open64_dsc.backend import load_backend
 from open64_dsc import WhirlExportOptions, WhirlModule
 from open64_dsc import export_to_whirl, save_as_whirl
 
@@ -24,6 +26,13 @@ class Open64DscSkeletonTest(unittest.TestCase):
     def test_options_validate_backend(self) -> None:
         with self.assertRaises(ValueError):
             WhirlExportOptions(backend="unknown")
+
+    def test_native_backend_reports_missing_extension(self) -> None:
+        if importlib.util.find_spec("open64_dsc._whirl") is None:
+            with self.assertRaisesRegex(RuntimeError, "native backend is not built"):
+                load_backend("native")
+        else:
+            self.assertEqual(load_backend("native").backend_name(), "native")
 
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(
