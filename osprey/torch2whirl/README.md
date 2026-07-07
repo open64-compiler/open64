@@ -40,6 +40,8 @@ integration can grow without requiring the native extension to be built first.
 The first native binding seam is staged under `python/native`; it is
 syntax-checked through the Linux native fixture, but importing
 `open64_dsc._whirl` remains optional until an extension link target is added.
+`make -f Makefile.gbase python_native_extension` builds that extension when
+Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 
 ## Standalone build
 
@@ -56,6 +58,7 @@ For quick local iteration from this source directory:
 ```sh
 make -f Makefile.gbase
 make -f Makefile.gbase python_test
+make -f Makefile.gbase python_native_check
 ```
 
 The generated build remains under `osprey/targdir/torch2whirl`, matching the

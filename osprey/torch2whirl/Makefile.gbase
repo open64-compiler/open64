@@ -30,8 +30,30 @@ TORCH2WHIRL_CPPFLAGS ?= -I$(BUILD_BASE)
 TORCH2WHIRL_CXXFLAGS ?= $(TORCH2WHIRL_CXX_STD) $(TORCH2WHIRL_WARNINGS)
 TORCH2WHIRL_LDFLAGS ?=
 
+OPEN64_SRC_ROOT ?= $(abspath $(BUILD_BASE)/../..)
+PYTHON_INCLUDE ?= $(shell $(PYTHON) -c 'import sysconfig; print(sysconfig.get_paths()["include"])')
+PYTHON_EXT_SUFFIX ?= $(shell $(PYTHON) -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX") or ".so")')
+PYTHON_NATIVE_CPPFLAGS ?= \
+  -DKEY \
+  -I$(PYTHON_INCLUDE) \
+  -I$(BUILD_BASE)/python/native \
+  -I$(OPEN64_SRC_ROOT)/osprey/linux/include \
+  -I$(OPEN64_SRC_ROOT)/osprey/ir_tools \
+  -I$(OPEN64_SRC_ROOT)/osprey/common/com \
+  -I$(OPEN64_SRC_ROOT)/osprey/common/com/x8664 \
+  -I$(OPEN64_SRC_ROOT)/osprey/common/util \
+  -I$(OPEN64_SRC_ROOT)/osprey/include
+PYTHON_NATIVE_CXXFLAGS ?= -std=gnu++98 -fPIC
+PYTHON_NATIVE_LDFLAGS ?= -shared
+OPEN64_DSC_NATIVE_OBJS ?=
+OPEN64_DSC_NATIVE_LDLIBS ?=
+PYTHON_NATIVE_TARGET = $(BUILD_BASE)/python/open64_dsc/_whirl$(PYTHON_EXT_SUFFIX)
+PYTHON_NATIVE_OBJECTS = \
+  _whirl_module.native.o \
+  open64_dsc_native_bridge.native.o
+
 TARGETS = torch2whirl
-LDIRT = $(TARGETS) *.o
+LDIRT = $(TARGETS) *.o $(PYTHON_NATIVE_OBJECTS) $(PYTHON_NATIVE_TARGET)
 
 TORCH2WHIRL_CXX_SRCS = \
   torch2whirl.cxx	\
@@ -39,7 +61,8 @@ TORCH2WHIRL_CXX_SRCS = \
 
 OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
-.PHONY: default all clean clobber install make_deps python_test
+.PHONY: default all clean clobber install make_deps python_test \
+  python_native_check python_native_extension python_native_test
 
 default: all
 
@@ -52,6 +75,50 @@ install: $(TARGETS)
 	$(INSTALL) -m 755 torch2whirl $(DESTDIR)$(BINDIR)/torch2whirl
 
 python_test:
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \
+	    $(PYTHON) -m unittest discover \
+	    -s $(BUILD_BASE)/python/tests
+
+python_native_check:
+	@if test "`uname -s`" = "Darwin" && \
+	    test -z "$(OPEN64_DSC_NATIVE_ALLOW_DARWIN)"; then \
+	    echo "skip: native bridge syntax check targets Linux/Open64 headers"; \
+	    echo "Set OPEN64_DSC_NATIVE_ALLOW_DARWIN=1 to force a macOS attempt."; \
+	else \
+	    $(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) \
+	        $(PYTHON_NATIVE_CXXFLAGS) -fsyntax-only \
+	        $(BUILD_BASE)/python/native/open64_dsc_native_bridge.cxx && \
+	    echo "syntax ok: python/native/open64_dsc_native_bridge.cxx"; \
+	fi
+	@if test -f "$(PYTHON_INCLUDE)/Python.h"; then \
+	    $(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) \
+	        $(TORCH2WHIRL_CXXFLAGS) -fsyntax-only \
+	        $(BUILD_BASE)/python/native/_whirl_module.cxx && \
+	    echo "syntax ok: python/native/_whirl_module.cxx"; \
+	else \
+	    echo "skip: Python.h not found under $(PYTHON_INCLUDE)"; \
+	fi
+
+python_native_extension:
+	@if test ! -f "$(PYTHON_INCLUDE)/Python.h"; then \
+	    echo "error: Python.h not found under $(PYTHON_INCLUDE)" >&2; \
+	    exit 1; \
+	fi
+	@if test -z "$(OPEN64_DSC_NATIVE_OBJS)"; then \
+	    echo "error: set OPEN64_DSC_NATIVE_OBJS to the Open64 common objects" >&2; \
+	    exit 1; \
+	fi
+	$(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) $(CXXFLAGS) \
+	    $(TORCH2WHIRL_CXXFLAGS) -fPIC -c -o _whirl_module.native.o \
+	    $(BUILD_BASE)/python/native/_whirl_module.cxx
+	$(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) $(CXXFLAGS) \
+	    $(PYTHON_NATIVE_CXXFLAGS) -c -o open64_dsc_native_bridge.native.o \
+	    $(BUILD_BASE)/python/native/open64_dsc_native_bridge.cxx
+	$(CXX) $(PYTHON_NATIVE_LDFLAGS) -o $(PYTHON_NATIVE_TARGET) \
+	    $(PYTHON_NATIVE_OBJECTS) $(OPEN64_DSC_NATIVE_OBJS) \
+	    $(OPEN64_DSC_NATIVE_LDLIBS)
+
+python_native_test: python_native_extension
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \
 	    $(PYTHON) -m unittest discover \
 	    -s $(BUILD_BASE)/python/tests

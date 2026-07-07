@@ -367,6 +367,10 @@ Current Phase 6 status:
 6. The Docker native syntax fixture checks the Open64-facing native bridge and
    conditionally checks `_whirl_module.cxx` when Python development headers are
    available.
+7. `Makefile.gbase` now has `python_native_check`,
+   `python_native_extension`, and `python_native_test` targets. The extension
+   target requires `Python.h` and `OPEN64_DSC_NATIVE_OBJS` so linking against
+   Open64 common code is explicit rather than accidental.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -509,19 +513,15 @@ Relevant test patterns to adapt:
 2. Keep the Python package API stable while Phase 6 starts:
    `WhirlExportOptions`, `WhirlModule`, `export_to_whirl`, and
    `save_as_whirl` should remain the public surface.
-3. Add a real `open64_dsc._whirl` extension build target once Python
-   development headers and the required Open64 common objects are available in
-   the configured build tree.
-4. Link the native extension through `open64_dsc_native_bridge.cxx`, preserving
-   the C ABI seam and avoiding direct Python access to WHIRL node layout,
-   symbol/type table internals, or backend code generation headers.
-5. Promote the optional native Python test from skipped to executable in the
+3. Provide Python development headers and the required Open64 common object list
+   to `python_native_extension` in the configured build tree.
+4. Promote the optional native Python test from skipped to executable in the
    configured build-tree validation loop when `_whirl` is built.
-6. Add tensor/type/operator native entry points only after native finalization
+5. Add tensor/type/operator native entry points only after native finalization
    can be built and imported.
-7. Extend the builder API only as needed to create an inspectable minimal PU
+6. Extend the builder API only as needed to create an inspectable minimal PU
    tree; do not broaden it into a generic Python-owned WHIRL construction API.
-8. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
+7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
    available, then run `dsl_ir_tools_smoke_test.sh` against the first native
    Python-produced artifact.
 
