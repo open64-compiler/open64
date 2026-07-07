@@ -44,6 +44,8 @@ available.
 The first native API slice returns opaque integer handles for
 `create_tensor_type`, `create_tensor_constant`, and `create_operator`; Python
 does not own WHIRL table layout or node allocation.
+`open64_dsc.builder.WhirlBuilder` wraps those raw backend calls so the
+interpreter can construct tensors and operators through a stable facade.
 `make -f Makefile.gbase python_native_extension` builds that extension when
 Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`

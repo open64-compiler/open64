@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from open64_dsc.backend import load_backend
-from open64_dsc import WhirlExportOptions, export_to_whirl, save_as_whirl
+from open64_dsc import WhirlExportOptions, export_to_whirl
+from open64_dsc import load_builder, save_as_whirl
 
 
 NATIVE_BACKEND_AVAILABLE = (
@@ -21,15 +21,15 @@ class DummyModel:
 @unittest.skipUnless(NATIVE_BACKEND_AVAILABLE, "open64_dsc._whirl is not built")
 class Open64DscNativeOptionalTest(unittest.TestCase):
     def test_native_backend_creates_opaque_tensor_and_operator_handles(self) -> None:
-        backend = load_backend("native")
+        builder = load_builder("native")
 
-        tensor_ty = backend.create_tensor_type(
+        tensor_ty = builder.tensor_type(
             "native_activation_type",
             "float32",
             2,
             "[1,4]",
         )
-        lhs = backend.create_tensor_constant(
+        lhs = builder.tensor_constant(
             "native_lhs",
             "float32",
             2,
@@ -37,7 +37,7 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             "splat",
             "1.0",
         )
-        rhs = backend.create_tensor_constant(
+        rhs = builder.tensor_constant(
             "native_rhs",
             "float32",
             2,
@@ -45,17 +45,12 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             "splat",
             "2.0",
         )
-        add = backend.create_operator(
-            "common.add",
-            1,
-            [lhs, rhs],
-            {"attr.broadcast_rule": "none"},
-        )
+        add = builder.common_add(lhs, rhs)
 
-        self.assertGreater(tensor_ty, 0)
-        self.assertGreater(lhs, 0)
-        self.assertGreater(rhs, 0)
-        self.assertGreater(add, 0)
+        self.assertGreater(tensor_ty.value, 0)
+        self.assertGreater(lhs.value, 0)
+        self.assertGreater(rhs.value, 0)
+        self.assertGreater(add.value, 0)
 
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(

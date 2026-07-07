@@ -406,6 +406,12 @@ Current Phase 6 status:
 16. Docker `python_native_test` now covers native tensor type creation, tensor
     constant creation, `common.add` operator creation, and mapped-image
     finalization in one configured build-tree loop.
+17. `open64_dsc.builder.WhirlBuilder` is the Python-side facade over the raw
+    backend protocol. It returns typed opaque handle wrappers and exposes
+    `tensor_type`, `tensor_constant`, `operator`, and `common_add` helpers.
+18. `WhirlExportInterpreter.builder()` now exposes that facade lazily, so graph
+    traversal can construct tensors and operators without calling raw backend
+    methods directly.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -551,11 +557,10 @@ Relevant test patterns to adapt:
 3. Keep the Docker native test in the validation loop when Python development
    headers are available:
    `apt-get install -y python3.8-dev && make python_native_test`.
-4. Add a small Python-side builder facade over the backend protocol so the
-   interpreter can create tensors and operators without calling raw backend
-   methods directly.
+4. Use the builder facade for a tiny interpreter-owned graph skeleton, still
+   keeping `export_to_whirl` and `save_as_whirl` stable.
 5. Extend the native bridge with descriptor attachment and symbol metadata only
-   when the facade has a concrete need for them.
+   when that interpreter skeleton has a concrete need for them.
 6. Extend the builder API only as needed to create an inspectable minimal PU
    tree; do not broaden it into a generic Python-owned WHIRL construction API.
 7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when

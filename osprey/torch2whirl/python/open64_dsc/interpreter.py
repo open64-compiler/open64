@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable, List
+from typing import Any, Iterable, List, Optional
 
+from .builder import WhirlBuilder, load_builder
 from .module import WhirlModule
 from .options import WhirlExportOptions
 
@@ -11,6 +12,12 @@ from .options import WhirlExportOptions
 class WhirlExportInterpreter:
     def __init__(self, options: WhirlExportOptions):
         self._options = options
+        self._builder: Optional[WhirlBuilder] = None
+
+    def builder(self) -> WhirlBuilder:
+        if self._builder is None:
+            self._builder = load_builder(self._options.backend)
+        return self._builder
 
     def export(self, model: Any, example_inputs: Iterable[Any]) -> WhirlModule:
         inputs = list(example_inputs)

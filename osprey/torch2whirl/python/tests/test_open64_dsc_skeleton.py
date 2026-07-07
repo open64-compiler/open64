@@ -6,8 +6,9 @@ import unittest
 from pathlib import Path
 
 from open64_dsc.backend import load_backend
+from open64_dsc.interpreter import WhirlExportInterpreter
 from open64_dsc import WhirlExportOptions, WhirlModule
-from open64_dsc import export_to_whirl, save_as_whirl
+from open64_dsc import export_to_whirl, load_builder, save_as_whirl
 
 
 class DummyModel:
@@ -35,15 +36,15 @@ class Open64DscSkeletonTest(unittest.TestCase):
             self.assertEqual(load_backend("native").backend_name(), "native")
 
     def test_mock_backend_creates_opaque_tensor_and_operator_handles(self) -> None:
-        backend = load_backend("mock")
+        builder = load_builder("mock")
 
-        tensor_ty = backend.create_tensor_type(
+        tensor_ty = builder.tensor_type(
             "activation_type",
             "float32",
             2,
             "[1,4]",
         )
-        lhs = backend.create_tensor_constant(
+        lhs = builder.tensor_constant(
             "lhs",
             "float32",
             2,
@@ -51,7 +52,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "splat",
             "1.0",
         )
-        rhs = backend.create_tensor_constant(
+        rhs = builder.tensor_constant(
             "rhs",
             "float32",
             2,
@@ -59,17 +60,36 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "splat",
             "2.0",
         )
-        add = backend.create_operator(
-            "common.add",
-            1,
-            [lhs, rhs],
-            {"attr.broadcast_rule": "none"},
-        )
+        add = builder.common_add(lhs, rhs)
 
-        self.assertGreater(tensor_ty, 0)
-        self.assertGreater(lhs, 0)
-        self.assertGreater(rhs, 0)
-        self.assertGreater(add, 0)
+        self.assertGreater(tensor_ty.value, 0)
+        self.assertGreater(lhs.value, 0)
+        self.assertGreater(rhs.value, 0)
+        self.assertGreater(add.value, 0)
+
+    def test_interpreter_exposes_builder_facade(self) -> None:
+        interpreter = WhirlExportInterpreter(WhirlExportOptions())
+        builder = interpreter.builder()
+
+        lhs = builder.tensor_constant(
+            "interpreter_lhs",
+            "float32",
+            2,
+            "[1,4]",
+            "splat",
+            "1.0",
+        )
+        rhs = builder.tensor_constant(
+            "interpreter_rhs",
+            "float32",
+            2,
+            "[1,4]",
+            "splat",
+            "2.0",
+        )
+        add = builder.common_add(lhs, rhs)
+
+        self.assertGreater(add.value, 0)
 
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(
