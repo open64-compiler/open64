@@ -487,21 +487,26 @@ Relevant test patterns to adapt:
 
 ## Immediate Active Queue
 
-1. Keep `torch2whirl` buildable through both direct source make and configured
-   build-tree make.
-2. Preserve and document the macOS plus Linux Docker smoke-test loop.
-3. Keep the native builder API narrow: Python-facing code passes values,
-   attributes, metadata, and opaque Open64 handles while C++ owns WHIRL/table
-   mutation.
-4. Keep the Phase 3 native syntax harness passing for builder, `common.add`,
-   and `common.matmul` changes.
-5. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
-   available, then run `dsl_ir_tools_smoke_test.sh` to validate the inspection
-   path.
-6. Start Phase 4 by replacing the mapped-image finalizer stub with the smallest
-   Open64-owned binary WHIRL artifact path.
-7. Add the Python package skeleton only after the Phase 4 artifact boundary can
-   produce an inspectable binary file.
+1. Keep the dual OS baseline green: direct `torch2whirl` source build,
+   configured `--enable-torch2whirl-only` build, Python `python_test`, and
+   Linux Docker native syntax checks.
+2. Keep the Python package API stable while Phase 6 starts:
+   `WhirlExportOptions`, `WhirlModule`, `export_to_whirl`, and
+   `save_as_whirl` should remain the public surface.
+3. Define the Phase 6 native binding seam for `open64_dsc._whirl` without
+   exposing Python to WHIRL node layout, symbol/type table internals, or backend
+   code generation headers.
+4. Add the first native-backed `_whirl` entry point for mapped-image
+   finalization, matching the mock backend shape before adding tensor/operator
+   construction calls.
+5. Add optional Python tests that exercise the native backend when `_whirl` is
+   built, while keeping the mock backend tests runnable on every developer
+   machine.
+6. Extend the builder API only as needed to create an inspectable minimal PU
+   tree; do not broaden it into a generic Python-owned WHIRL construction API.
+7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
+   available, then run `dsl_ir_tools_smoke_test.sh` against the first native
+   Python-produced artifact.
 
 ## Practical Developer Loop
 
