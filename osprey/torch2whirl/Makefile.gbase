@@ -57,6 +57,12 @@ PYTHON_NATIVE_CPPFLAGS ?= \
 PYTHON_NATIVE_CXXFLAGS ?= -std=gnu++98 -fPIC
 PYTHON_NATIVE_LDFLAGS ?= -shared
 OPEN64_DSC_NATIVE_OBJDIR ?=
+OPEN64_DSC_NATIVE_LIBCOMUTIL ?=
+OPEN64_DSC_NATIVE_DEP_INCS ?= \
+  -I$(OPEN64_SRC_ROOT)/osprey/include \
+  -I$(OPEN64_SRC_ROOT)/osprey/linux/include \
+  -I$(OPEN64_SRC_ROOT)/osprey/ipa/common \
+  -I$(OPEN64_SRC_ROOT)/osprey/libdwarf/libdwarf
 OPEN64_DSC_NATIVE_IR_TOOL_OBJS = \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config_elf_targ.o) \
@@ -114,8 +120,8 @@ TORCH2WHIRL_CXX_SRCS = \
 OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
-  python_native_check python_native_extension python_native_requirements \
-  python_native_test
+  python_native_check python_native_deps python_native_extension \
+  python_native_requirements python_native_test
 
 default: all
 
@@ -152,6 +158,25 @@ python_native_check:
 	    echo "skip: Python.h not found under $(PYTHON_INCLUDE)"; \
 	fi
 
+python_native_deps:
+	@if test "`uname -s`" = "Darwin" && \
+	    test -z "$(OPEN64_DSC_NATIVE_ALLOW_DARWIN)"; then \
+	    echo "skip: native dependency build targets Linux/Open64 objects"; \
+	    echo "Set OPEN64_DSC_NATIVE_ALLOW_DARWIN=1 to force a macOS attempt."; \
+	elif test -z "$(OPEN64_DSC_NATIVE_OBJDIR)" || \
+	    test -z "$(OPEN64_DSC_NATIVE_LIBCOMUTIL)"; then \
+	    echo "skip: configured native dependency paths are not set"; \
+	else \
+	    $(MAKE) -C `dirname "$(OPEN64_DSC_NATIVE_LIBCOMUTIL)"` \
+	        SKIP_DEP_BUILD=1 \
+	        GCINCS="$(OPEN64_DSC_NATIVE_DEP_INCS)" \
+	        GC++INCS="$(OPEN64_DSC_NATIVE_DEP_INCS)" && \
+	    $(MAKE) -C "$(OPEN64_DSC_NATIVE_OBJDIR)" SKIP_DEP_BUILD=1 \
+	        GCINCS="$(OPEN64_DSC_NATIVE_DEP_INCS)" \
+	        GC++INCS="$(OPEN64_DSC_NATIVE_DEP_INCS)" \
+	        $(notdir $(OPEN64_DSC_NATIVE_OBJS)); \
+	fi
+
 python_native_requirements:
 	@if test ! -f "$(PYTHON_INCLUDE)/Python.h"; then \
 	    echo "error: Python.h not found under $(PYTHON_INCLUDE)" >&2; \
@@ -169,7 +194,7 @@ python_native_requirements:
 	    fi; \
 	done
 
-python_native_extension: python_native_requirements
+python_native_extension: python_native_deps python_native_requirements
 	$(MKDIR_P) $(PYTHON_NATIVE_PACKAGE_DIR)
 	$(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) $(CXXFLAGS) \
 	    $(TORCH2WHIRL_CXXFLAGS) -fPIC -c -o _whirl_module.native.o \

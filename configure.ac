@@ -160,10 +160,9 @@ AS_IF([test "x$enable_jfe" != "xno"], [
 AC_ARG_ENABLE([torch2whirl-only],
   AS_HELP_STRING([--enable-torch2whirl-only], [Configure only the portable torch2whirl frontend]))
 
+TORCH2WHIRL_ONLY=NO
 AS_IF([test "x$enable_torch2whirl_only" = "xyes"], [
-  AC_CONFIG_FILES([osprey/targdir/torch2whirl/Makefile])
-  AC_OUTPUT
-  exit 0
+  TORCH2WHIRL_ONLY=YES
 ])
 
 # Set whether WHIRL a node contains a debugging ID
@@ -269,6 +268,11 @@ case "$host" in
 		GCC_CONFIGURE_CFLAGS+=" -DHOST_RISCV"
 		CYGNUS_CONFIGURE_COMPILER="riscv64-linux-gnu-gcc -mabi=lp64d"
 		;;
+        *-apple-darwin*)
+                BUILD_ABI=I64BIT
+                BUILD_ARCH=X8664
+                BUILD_HOST=X8664
+                ;;
 	*)
 		AC_MSG_ERROR(["open64 is not supported on $target"])
 		;;
@@ -373,6 +377,18 @@ case "$target" in
 		CYGNUS_CONFIGURE_CFLAGS=" -m32"
 		BUILD_MULTILIB=NO
 		;;
+        *-apple-darwin*)
+                MACHINE_TYPE=x86_64
+                BUILD_TARGET=X8664
+                LIB_MACHINE_TYPE=X86_64
+                LIB_BUILD_TARGET=X8664
+                LIB_BUILD_ABI=I64BIT
+                LIB_BUILD_ARCH=X8664
+                LIB2_MACHINE_TYPE=IA32
+                LIB2_BUILD_TARGET=IA32
+                LIB2_BUILD_ABI=I32BIT
+                LIB2_BUILD_ARCH=IA32
+                ;;
 	*)
 		AC_MSG_ERROR(["open64 is not supported on $target"])
 		;;
@@ -476,6 +492,14 @@ AC_SUBST([GCC_DIR])
 AC_SUBST([BINUTILS_DIR])
 
 # List of configurable files to create in object directory.
+AS_IF([test "x$TORCH2WHIRL_ONLY" = "xYES"], [
+AC_CONFIG_FILES([
+  osprey/Makefile.gsetup
+  osprey/targdir/libcomutil/Makefile
+  osprey/targdir/ir_tools/Makefile
+  osprey/targdir/torch2whirl/Makefile
+])
+], [
 AC_CONFIG_FILES([
   Makefile
   osprey/Makefile.gsetup
@@ -623,16 +647,19 @@ if test $BUILD_PRODUCT = "MASTIFF"; then
     osprey/targdir_lib/libwffi/Makefile:osprey/targdir_lib/libwffi/Makefile.in
   ])
 fi
+])
 
 AC_SUBST([LIBLIST])
 
 # Configure cygnus and GCC subdirectories.
+AS_IF([test "x$TORCH2WHIRL_ONLY" != "xYES"], [
 AC_CONFIG_SUBDIRS(osprey/cygnus)
 # We do not use $GCC_DIR because using AC_CONFIG_SUBDIRS with variables
 # breaks "configure --help=recursive".  See autoconf documentation.
 AC_CONFIG_SUBDIRS(osprey-gcc-4.2.0)
 # Configure binutils directory
 AC_CONFIG_SUBDIRS(binutils)
+])
 
 AC_OUTPUT
 

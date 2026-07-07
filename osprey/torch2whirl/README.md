@@ -45,6 +45,11 @@ Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`
 common object set and check those inputs through
 `make -f Makefile.gbase python_native_requirements`.
+Use `make python_native_deps` from the configured `torch2whirl` build
+directory to populate the Open64 common object inputs without building
+backend/cg.
+The `--enable-torch2whirl-only` configure path emits the small helper build
+files needed for that dependency target.
 
 ## Standalone build
 
