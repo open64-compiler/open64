@@ -20,6 +20,27 @@
 
 static BOOL Open64_DSC_Context_Initialized = FALSE;
 
+static TY_IDX
+Open64_DSC_Dtype_To_TY(const char *dtype)
+{
+    if (dtype == NULL)
+        return TY_IDX_ZERO;
+
+    if (strcmp(dtype, "int32") == 0 || strcmp(dtype, "i32") == 0)
+        return MTYPE_To_TY(MTYPE_I4);
+    if (strcmp(dtype, "int64") == 0 || strcmp(dtype, "i64") == 0)
+        return MTYPE_To_TY(MTYPE_I8);
+    if (strcmp(dtype, "float32") == 0 || strcmp(dtype, "f32") == 0)
+        return MTYPE_To_TY(MTYPE_F4);
+    if (strcmp(dtype, "float64") == 0 || strcmp(dtype, "f64") == 0)
+        return MTYPE_To_TY(MTYPE_F8);
+    if (strcmp(dtype, "bool") == 0 || strcmp(dtype, "uint8") == 0 ||
+        strcmp(dtype, "u8") == 0)
+        return MTYPE_To_TY(MTYPE_U1);
+
+    return TY_IDX_ZERO;
+}
+
 static void
 Open64_DSC_Initialize_Context(void)
 {
@@ -32,8 +53,126 @@ Open64_DSC_Initialize_Context(void)
     Set_Error_File(NULL);
     Set_Error_Line(ERROR_LINE_UNKNOWN);
     Initialize_Symbol_Tables(TRUE);
+    DSL_Opcode_Register_Common_Substrate();
 
     Open64_DSC_Context_Initialized = TRUE;
+}
+
+Open64_DSC_Handle
+Open64_DSC_Create_Tensor_Type(const char *name,
+                              const char *dtype,
+                              int rank,
+                              const char *logical_shape)
+{
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+    TY_IDX element_ty;
+    TY_IDX tensor_ty;
+
+    if (name == NULL || name[0] == '\0' ||
+        dtype == NULL || dtype[0] == '\0' ||
+        rank < 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    element_ty = Open64_DSC_Dtype_To_TY(dtype);
+    if (element_ty == TY_IDX_ZERO)
+        return 0;
+
+    type_core.kind = "tensor";
+    type_core.dtype = dtype;
+    type_core.rank = rank;
+    type_core.logical_shape = logical_shape;
+
+    tensor_ty = DSL_Builder_Create_Tensor_Type_Core(name, element_ty,
+                                                    &type_core);
+    return (Open64_DSC_Handle) tensor_ty;
+}
+
+Open64_DSC_Handle
+Open64_DSC_Create_Tensor_Constant(const char *name,
+                                  const char *dtype,
+                                  unsigned int rank,
+                                  const char *logical_shape,
+                                  const char *value_kind,
+                                  const char *value)
+{
+    WN *wn;
+
+    if (name == NULL || name[0] == '\0' ||
+        dtype == NULL || dtype[0] == '\0' ||
+        logical_shape == NULL || value_kind == NULL || value == NULL)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    if (Open64_DSC_Dtype_To_TY(dtype) == TY_IDX_ZERO)
+        return 0;
+
+    wn = DSL_WN_Create_Tensor_Const(name, dtype, rank, logical_shape,
+                                    value_kind, value);
+    return (Open64_DSC_Handle) wn;
+}
+
+Open64_DSC_Handle
+Open64_DSC_Create_Operator(const char *opcode_name,
+                           unsigned int version,
+                           const Open64_DSC_Handle *kids,
+                           unsigned int kid_count,
+                           const Open64_DSC_Attribute *attrs,
+                           unsigned int attr_count)
+{
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID opcode_id;
+    DSL_BUILDER_VALUE *builder_kids = NULL;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE *builder_attrs = NULL;
+    DSL_BUILDER_OPERATOR op;
+    unsigned int i;
+
+    if (opcode_name == NULL || opcode_name[0] == '\0' || version == 0 ||
+        (kid_count != 0 && kids == NULL) ||
+        (attr_count != 0 && attrs == NULL))
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    common_id = DSL_Domain_Find("common");
+    opcode_id = DSL_Opcode_Find(common_id, opcode_name, (UINT16) version);
+    if (opcode_id == DSL_OPCODE_INVALID_ID)
+        return 0;
+
+    if (kid_count != 0) {
+        builder_kids = new DSL_BUILDER_VALUE[kid_count];
+        for (i = 0; i < kid_count; ++i) {
+            if (kids[i] == 0) {
+                delete [] builder_kids;
+                return 0;
+            }
+            builder_kids[i] = (DSL_BUILDER_VALUE) kids[i];
+        }
+    }
+
+    if (attr_count != 0) {
+        builder_attrs = new DSL_BUILDER_OPERATOR_ATTRIBUTE[attr_count];
+        for (i = 0; i < attr_count; ++i) {
+            if (attrs[i].name == NULL || attrs[i].name[0] == '\0') {
+                delete [] builder_kids;
+                delete [] builder_attrs;
+                return 0;
+            }
+            builder_attrs[i].name = attrs[i].name;
+            builder_attrs[i].value = attrs[i].value;
+        }
+    }
+
+    op = DSL_Builder_Create_Operator(opcode_id, (UINT16) version,
+                                     builder_kids, kid_count,
+                                     builder_attrs, attr_count);
+
+    delete [] builder_kids;
+    delete [] builder_attrs;
+
+    return (Open64_DSC_Handle) op;
 }
 
 int

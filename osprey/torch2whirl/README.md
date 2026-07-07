@@ -41,6 +41,9 @@ The first native binding seam is staged under `python/native`.  It can be
 syntax-checked through the Linux native fixture, and the configured Linux build
 can now build and import `open64_dsc._whirl` when Python development headers are
 available.
+The first native API slice returns opaque integer handles for
+`create_tensor_type`, `create_tensor_constant`, and `create_operator`; Python
+does not own WHIRL table layout or node allocation.
 `make -f Makefile.gbase python_native_extension` builds that extension when
 Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`

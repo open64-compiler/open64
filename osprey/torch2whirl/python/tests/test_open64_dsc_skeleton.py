@@ -34,6 +34,43 @@ class Open64DscSkeletonTest(unittest.TestCase):
         else:
             self.assertEqual(load_backend("native").backend_name(), "native")
 
+    def test_mock_backend_creates_opaque_tensor_and_operator_handles(self) -> None:
+        backend = load_backend("mock")
+
+        tensor_ty = backend.create_tensor_type(
+            "activation_type",
+            "float32",
+            2,
+            "[1,4]",
+        )
+        lhs = backend.create_tensor_constant(
+            "lhs",
+            "float32",
+            2,
+            "[1,4]",
+            "splat",
+            "1.0",
+        )
+        rhs = backend.create_tensor_constant(
+            "rhs",
+            "float32",
+            2,
+            "[1,4]",
+            "splat",
+            "2.0",
+        )
+        add = backend.create_operator(
+            "common.add",
+            1,
+            [lhs, rhs],
+            {"attr.broadcast_rule": "none"},
+        )
+
+        self.assertGreater(tensor_ty, 0)
+        self.assertGreater(lhs, 0)
+        self.assertGreater(rhs, 0)
+        self.assertGreater(add, 0)
+
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(
             DummyModel(),

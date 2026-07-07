@@ -397,6 +397,15 @@ Current Phase 6 status:
 13. In Linux Docker, installing `python3.8-dev` enables
     `make python_native_test` to build `_whirl`, import the native backend, and
     execute the optional finalization test successfully.
+14. `_whirl` now exposes the first opaque-handle construction entry points:
+    `create_tensor_type`, `create_tensor_constant`, and `create_operator`.
+    Python receives integer handles only; C++ still owns WHIRL table and node
+    construction through the builder.
+15. The mock backend mirrors those entry points so portable Python tests can
+    exercise the same API shape without building the native extension.
+16. Docker `python_native_test` now covers native tensor type creation, tensor
+    constant creation, `common.add` operator creation, and mapped-image
+    finalization in one configured build-tree loop.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -542,10 +551,11 @@ Relevant test patterns to adapt:
 3. Keep the Docker native test in the validation loop when Python development
    headers are available:
    `apt-get install -y python3.8-dev && make python_native_test`.
-4. Add the first tensor/type/operator native entry points now that native
-   finalization builds, imports, and runs through the Python package API.
-5. Mirror each new native entry point with a mock backend method and Python
-   skeleton test so the portable package API remains usable without `_whirl`.
+4. Add a small Python-side builder facade over the backend protocol so the
+   interpreter can create tensors and operators without calling raw backend
+   methods directly.
+5. Extend the native bridge with descriptor attachment and symbol metadata only
+   when the facade has a concrete need for them.
 6. Extend the builder API only as needed to create an inspectable minimal PU
    tree; do not broaden it into a generic Python-owned WHIRL construction API.
 7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when

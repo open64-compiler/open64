@@ -2,13 +2,42 @@
 
 from __future__ import annotations
 
-from typing import Mapping, Protocol, cast
+from typing import Mapping, Sequence, Protocol, cast
 
 from . import _mock_whirl
 
 
 class WhirlBackend(Protocol):
     def backend_name(self) -> str:
+        ...
+
+    def create_tensor_type(
+        self,
+        name: str,
+        dtype: str,
+        rank: int,
+        logical_shape: str,
+    ) -> int:
+        ...
+
+    def create_tensor_constant(
+        self,
+        name: str,
+        dtype: str,
+        rank: int,
+        logical_shape: str,
+        value_kind: str,
+        value: str,
+    ) -> int:
+        ...
+
+    def create_operator(
+        self,
+        opcode_name: str,
+        version: int,
+        kids: Sequence[int],
+        attrs: Mapping[str, str],
+    ) -> int:
         ...
 
     def finalize_mapped_image(
