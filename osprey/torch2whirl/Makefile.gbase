@@ -31,10 +31,19 @@ TORCH2WHIRL_CXXFLAGS ?= $(TORCH2WHIRL_CXX_STD) $(TORCH2WHIRL_WARNINGS)
 TORCH2WHIRL_LDFLAGS ?=
 
 OPEN64_SRC_ROOT ?= $(abspath $(BUILD_BASE)/../..)
+PYTHON_BUILD_ROOT ?= $(if $(BUILD_AREA),$(BUILD_AREA)/python,$(BUILD_BASE)/python)
+PYTHON_NATIVE_PACKAGE_DIR ?= $(PYTHON_BUILD_ROOT)/open64_dsc
 PYTHON_INCLUDE ?= $(shell $(PYTHON) -c 'import sysconfig; print(sysconfig.get_paths()["include"])')
 PYTHON_EXT_SUFFIX ?= $(shell $(PYTHON) -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX") or ".so")')
 PYTHON_NATIVE_CPPFLAGS ?= \
   -DKEY \
+  -DOSP_OPT \
+  -DPATHSCALE_MERGE \
+  -DPSC_TO_OPEN64 \
+  -D__STDC_LIMIT_MACROS \
+  -D_NEW_SYMTAB \
+  -DTARG_X8664 \
+  -D__MIPS_AND_IA64_ELF_H \
   -I$(PYTHON_INCLUDE) \
   -I$(BUILD_BASE)/python/native \
   -I$(OPEN64_SRC_ROOT)/osprey/linux/include \
@@ -42,12 +51,55 @@ PYTHON_NATIVE_CPPFLAGS ?= \
   -I$(OPEN64_SRC_ROOT)/osprey/common/com \
   -I$(OPEN64_SRC_ROOT)/osprey/common/com/x8664 \
   -I$(OPEN64_SRC_ROOT)/osprey/common/util \
+  -I$(OPEN64_SRC_ROOT)/osprey/ipa/common \
+  -I$(OPEN64_SRC_ROOT)/osprey/libdwarf/libdwarf \
   -I$(OPEN64_SRC_ROOT)/osprey/include
 PYTHON_NATIVE_CXXFLAGS ?= -std=gnu++98 -fPIC
 PYTHON_NATIVE_LDFLAGS ?= -shared
-OPEN64_DSC_NATIVE_OBJS ?=
+OPEN64_DSC_NATIVE_OBJDIR ?=
+OPEN64_DSC_NATIVE_IR_TOOL_OBJS = \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config_elf_targ.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/const.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_builder.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_contract.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_domain.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_opcode.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dwarf_DST.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dwarf_DST_dump.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dwarf_DST_mem.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dwarf_DST_producer.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/glob.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_bcom.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_bread.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_bwrite.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_reader.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/irbdata.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_verify.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/mtypes.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/opcode.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/opcode_core.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/pu_info.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/strtab.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/symtab.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/symtab_verify.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/wn.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/wn_map.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/wn_pragmas.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/wn_simp.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/wn_util.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/wutil.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/xstats.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/intrn_info.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config_targ.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/targ_const.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/targ_sim.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config_host.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config_platform.o)
+OPEN64_DSC_NATIVE_OBJS ?= $(strip $(OPEN64_DSC_NATIVE_IR_TOOL_OBJS))
+OPEN64_DSC_NATIVE_REQUIRED_FILES ?= $(strip $(OPEN64_DSC_NATIVE_OBJS))
 OPEN64_DSC_NATIVE_LDLIBS ?=
-PYTHON_NATIVE_TARGET = $(BUILD_BASE)/python/open64_dsc/_whirl$(PYTHON_EXT_SUFFIX)
+PYTHON_NATIVE_TARGET = $(PYTHON_NATIVE_PACKAGE_DIR)/_whirl$(PYTHON_EXT_SUFFIX)
 PYTHON_NATIVE_OBJECTS = \
   _whirl_module.native.o \
   open64_dsc_native_bridge.native.o
@@ -62,7 +114,8 @@ TORCH2WHIRL_CXX_SRCS = \
 OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
-  python_native_check python_native_extension python_native_test
+  python_native_check python_native_extension python_native_requirements \
+  python_native_test
 
 default: all
 
@@ -99,7 +152,7 @@ python_native_check:
 	    echo "skip: Python.h not found under $(PYTHON_INCLUDE)"; \
 	fi
 
-python_native_extension:
+python_native_requirements:
 	@if test ! -f "$(PYTHON_INCLUDE)/Python.h"; then \
 	    echo "error: Python.h not found under $(PYTHON_INCLUDE)" >&2; \
 	    exit 1; \
@@ -108,6 +161,16 @@ python_native_extension:
 	    echo "error: set OPEN64_DSC_NATIVE_OBJS to the Open64 common objects" >&2; \
 	    exit 1; \
 	fi
+	@for file in $(OPEN64_DSC_NATIVE_REQUIRED_FILES); do \
+	    if test ! -f "$$file"; then \
+	        echo "error: missing native dependency $$file" >&2; \
+	        echo "hint: build the Open64 common/ir_tools objects or override OPEN64_DSC_NATIVE_OBJS" >&2; \
+	        exit 1; \
+	    fi; \
+	done
+
+python_native_extension: python_native_requirements
+	$(MKDIR_P) $(PYTHON_NATIVE_PACKAGE_DIR)
 	$(CXX) $(CPPFLAGS) $(PYTHON_NATIVE_CPPFLAGS) $(CXXFLAGS) \
 	    $(TORCH2WHIRL_CXXFLAGS) -fPIC -c -o _whirl_module.native.o \
 	    $(BUILD_BASE)/python/native/_whirl_module.cxx

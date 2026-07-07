@@ -1,5 +1,10 @@
 BUILD_BASE = @abs_top_srcdir@/osprey/torch2whirl
 BUILD_AREA = @abs_top_builddir@/osprey/targdir/torch2whirl
+PYTHON_BUILD_ROOT = $(BUILD_AREA)/python
+OPEN64_DSC_NATIVE_OBJDIR = @abs_top_builddir@/osprey/targdir/ir_tools
+OPEN64_DSC_NATIVE_LIBCOMUTIL = @abs_top_builddir@/osprey/targdir/libcomutil/libcomutil.a
+OPEN64_DSC_NATIVE_REQUIRED_FILES = $(OPEN64_DSC_NATIVE_OBJS) $(OPEN64_DSC_NATIVE_LIBCOMUTIL)
+OPEN64_DSC_NATIVE_LDLIBS = $(OPEN64_DSC_NATIVE_LIBCOMUTIL) -lm
 PREFIX = @prefix@
 
 include $(BUILD_BASE)/Makefile.gbase

@@ -42,6 +42,9 @@ syntax-checked through the Linux native fixture, but importing
 `open64_dsc._whirl` remains optional until an extension link target is added.
 `make -f Makefile.gbase python_native_extension` builds that extension when
 Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
+Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`
+common object set and check those inputs through
+`make -f Makefile.gbase python_native_requirements`.
 
 ## Standalone build
 

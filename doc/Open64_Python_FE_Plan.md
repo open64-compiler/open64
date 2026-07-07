@@ -371,6 +371,10 @@ Current Phase 6 status:
    `python_native_extension`, and `python_native_test` targets. The extension
    target requires `Python.h` and `OPEN64_DSC_NATIVE_OBJS` so linking against
    Open64 common code is explicit rather than accidental.
+8. The configured `osprey/targdir/torch2whirl/Makefile` now points
+   `python_native_extension` at the sibling `ir_tools` common object set and
+   `libcomutil.a`, with `python_native_requirements` reporting missing Python
+   headers or Open64 common objects before the extension link is attempted.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -513,8 +517,9 @@ Relevant test patterns to adapt:
 2. Keep the Python package API stable while Phase 6 starts:
    `WhirlExportOptions`, `WhirlModule`, `export_to_whirl`, and
    `save_as_whirl` should remain the public surface.
-3. Provide Python development headers and the required Open64 common object list
-   to `python_native_extension` in the configured build tree.
+3. Populate the configured native dependency paths by building or supplying
+   Python development headers, `osprey/targdir/ir_tools` common objects, and
+   `osprey/targdir/libcomutil/libcomutil.a`.
 4. Promote the optional native Python test from skipped to executable in the
    configured build-tree validation loop when `_whirl` is built.
 5. Add tensor/type/operator native entry points only after native finalization
