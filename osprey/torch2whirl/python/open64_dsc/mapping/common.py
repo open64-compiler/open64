@@ -14,9 +14,14 @@ UNARY_OPERATORS = {
     RELU,
 }
 
+TERNARY_OPERATORS = {
+    LINEAR,
+}
+
 FX_OPERATOR_MAP = {
     "add": ADD,
     "flatten": FLATTEN,
+    "linear": LINEAR,
     "matmul": MATMUL,
     "residual_add": RESIDUAL_ADD,
     "relu": RELU,

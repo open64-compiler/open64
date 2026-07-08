@@ -338,6 +338,46 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertIn("attr.epsilon=1e-05", str(markers[-1]["payload"]))
         self.assertIn("attr.training=false", str(markers[-1]["payload"]))
 
+    def test_native_backend_appends_phase7_common_linear_marker(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_common_linear_model")
+        value = builder.tensor_constant(
+            "native_linear_input",
+            "float32",
+            2,
+            "[1,2048]",
+            "splat",
+            "1.0",
+        )
+        weight = builder.tensor_constant(
+            "native_linear_weight",
+            "float32",
+            2,
+            "[1000,2048]",
+            "splat",
+            "0.5",
+        )
+        bias = builder.tensor_constant(
+            "native_linear_bias",
+            "float32",
+            1,
+            "[1000]",
+            "splat",
+            "0.0",
+        )
+        linear = builder.common_linear(value, weight, bias)
+
+        builder.append_program_unit_marker(pu, linear)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(markers[-1]["opcode"], "common.linear")
+        self.assertIn("kid0=native_linear_input", str(markers[-1]["payload"]))
+        self.assertIn("kid1=native_linear_weight", str(markers[-1]["payload"]))
+        self.assertIn("kid2=native_linear_bias", str(markers[-1]["payload"]))
+        self.assertIn("attr.has_bias=true", str(markers[-1]["payload"]))
+        self.assertIn("attr.weight_layout=OI", str(markers[-1]["payload"]))
+
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(
             DummyModel(),

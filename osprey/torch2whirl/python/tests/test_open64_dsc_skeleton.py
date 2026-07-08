@@ -281,6 +281,46 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("attr.epsilon=1e-05", str(markers[-1]["payload"]))
         self.assertIn("attr.training=false", str(markers[-1]["payload"]))
 
+    def test_mock_backend_creates_common_linear_marker(self) -> None:
+        builder = load_builder("mock")
+
+        value = builder.tensor_constant(
+            "linear_input",
+            "float32",
+            2,
+            "[1,2048]",
+            "splat",
+            "1.0",
+        )
+        weight = builder.tensor_constant(
+            "linear_weight",
+            "float32",
+            2,
+            "[1000,2048]",
+            "splat",
+            "0.5",
+        )
+        bias = builder.tensor_constant(
+            "linear_bias",
+            "float32",
+            1,
+            "[1000]",
+            "splat",
+            "0.0",
+        )
+        linear = builder.common_linear(value, weight, bias)
+        pu = builder.minimal_program_unit("linear_forward")
+        builder.append_program_unit_marker(pu, linear)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertGreater(linear.value, 0)
+        self.assertEqual(markers[-1]["opcode"], "common.linear")
+        self.assertIn("kid0=linear_input", str(markers[-1]["payload"]))
+        self.assertIn("kid1=linear_weight", str(markers[-1]["payload"]))
+        self.assertIn("kid2=linear_bias", str(markers[-1]["payload"]))
+        self.assertIn("attr.has_bias=true", str(markers[-1]["payload"]))
+        self.assertIn("attr.weight_layout=OI", str(markers[-1]["payload"]))
+
     def test_interpreter_exposes_builder_facade(self) -> None:
         interpreter = WhirlExportInterpreter(WhirlExportOptions())
         builder = interpreter.builder()
@@ -310,6 +350,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
         global_avg_pool2d = builder.cnn_global_avg_pool2d(lhs)
         conv2d = builder.cnn_conv2d(lhs, rhs, rhs)
         batch_norm = builder.cnn_batch_norm_infer(lhs, rhs, rhs, rhs, rhs)
+        linear = builder.common_linear(lhs, rhs, rhs)
 
         self.assertGreater(add.value, 0)
         self.assertGreater(residual_add.value, 0)
@@ -320,6 +361,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertGreater(global_avg_pool2d.value, 0)
         self.assertGreater(conv2d.value, 0)
         self.assertGreater(batch_norm.value, 0)
+        self.assertGreater(linear.value, 0)
 
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(

@@ -86,6 +86,38 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             "exact",
         )
 
+    def test_fx_linear_maps_to_common_linear(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class LinearModule(torch.nn.Module):
+            def forward(self, value, weight, bias):
+                return F.linear(value, weight, bias)
+
+        value = torch.ones((1, 2048), dtype=torch.float32)
+        weight = torch.ones((1000, 2048), dtype=torch.float32)
+        bias = torch.ones((1000,), dtype=torch.float32)
+        module = export_to_whirl(LinearModule(), [value, weight, bias])
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["common.linear"])
+        self.assertEqual(
+            module.entry_function.body_markers[-1],
+            "common.linear",
+        )
+        self.assertEqual(
+            module.graph_operators[0].kids,
+            ["input0", "input1", "input2"],
+        )
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.has_bias"],
+            "true",
+        )
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.weight_layout"],
+            "OI",
+        )
+
     def test_fx_relu_maps_to_common_relu(self) -> None:
         import torch
 

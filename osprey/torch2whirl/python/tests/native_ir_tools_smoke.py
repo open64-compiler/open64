@@ -29,6 +29,15 @@ def _append_operator_probes(module) -> None:
     rhs = ValueHandle(module.values[1].handle)
     matmul = builder.common_matmul(lhs, rhs)
     residual_add = builder.common_residual_add(lhs, rhs)
+    linear_bias = builder.tensor_constant(
+        "linear_bias",
+        "float32",
+        1,
+        "[1]",
+        "splat",
+        "0.0",
+    )
+    linear = builder.common_linear(lhs, rhs, linear_bias)
     relu = builder.common_relu(lhs)
     flatten = builder.common_flatten(lhs)
     output_logits = builder.common_output_logits(lhs)
@@ -103,6 +112,10 @@ def _append_operator_probes(module) -> None:
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         residual_add,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        linear,
     )
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
@@ -191,6 +204,7 @@ def main() -> int:
             "common.add",
             "common.matmul",
             "common.residual_add",
+            "common.linear",
             "common.relu",
             "common.flatten",
             "common.output_logits",
@@ -201,6 +215,8 @@ def main() -> int:
             "attr.start_dim=1",
             "attr.transpose_kid0=false",
             "attr.shape_check=exact",
+            "attr.has_bias=true",
+            "attr.weight_layout=OI",
             "attr.kernel_shape=3,3",
             "attr.output_size=1,1",
             "attr.groups=1",

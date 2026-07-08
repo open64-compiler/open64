@@ -203,6 +203,25 @@ class WhirlBuilder:
             },
         )
 
+    def common_linear(
+        self,
+        value: ValueHandle,
+        weight: ValueHandle,
+        bias: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "common.linear",
+            1,
+            [value, weight, bias],
+            attrs or {
+                "attr.has_bias": "true",
+                "attr.transpose_input": "false",
+                "attr.transpose_weight": "true",
+                "attr.weight_layout": "OI",
+            },
+        )
+
     def common_relu(
         self,
         value: ValueHandle,

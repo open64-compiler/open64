@@ -564,6 +564,11 @@ Current Phase 7 status:
     attributes. Plain FX `lhs + rhs` remains mapped to `common.add`; semantic
     residual merges can be captured through an explicit `residual_add` FX hook
     so the frontend does not quietly reclassify every tensor addition.
+14. The classifier linear batch adds a `common.linear` builder facade and
+    native/artifact inspection coverage for activation/weight/bias operands,
+    bias presence, transpose flags, and OI weight layout. Optional FX coverage
+    maps `torch.nn.functional.linear` with explicit value, weight, and bias
+    inputs.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -818,9 +823,9 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Continue the Phase 7 neural-network vertical slice by adding
-    `common.linear`, then tighten classifier-tail `common.output_logits`
-    coverage.
+10. Continue the Phase 7 neural-network vertical slice by tightening
+    classifier-tail `common.output_logits` coverage, then start composing a
+    small ResNet-like ordered marker sequence test.
 
 ## Practical Developer Loop
 

@@ -99,7 +99,10 @@ class WhirlExportInterpreter:
             return 1
         if operator_name in {common.ADD, common.MATMUL, common.RESIDUAL_ADD}:
             return 2
-        if operator_name in cnn.TERNARY_OPERATORS:
+        if (
+            operator_name in common.TERNARY_OPERATORS or
+            operator_name in cnn.TERNARY_OPERATORS
+        ):
             return 3
         if operator_name in cnn.FIVE_INPUT_OPERATORS:
             return 5
@@ -140,6 +143,20 @@ class WhirlExportInterpreter:
             return self.builder().common_residual_add(
                 operands[0],
                 operands[1],
+                attrs,
+            ), attrs
+        if operator_name == common.LINEAR:
+            attrs = {
+                "attr.has_bias": "true",
+                "attr.transpose_input": "false",
+                "attr.transpose_weight": "true",
+                "attr.weight_layout": "OI",
+                **mapped_attrs,
+            }
+            return self.builder().common_linear(
+                operands[0],
+                operands[1],
+                operands[2],
                 attrs,
             ), attrs
         if operator_name == common.RELU:
@@ -307,6 +324,13 @@ class WhirlExportInterpreter:
                 ),
                 "attr.input_layout": "NCHW",
                 "attr.channel_axis": "1",
+            }
+        if operator_name == common.LINEAR:
+            return {
+                "attr.has_bias": "true",
+                "attr.transpose_input": "false",
+                "attr.transpose_weight": "true",
+                "attr.weight_layout": "OI",
             }
 
         return {}
