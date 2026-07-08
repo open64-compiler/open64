@@ -257,6 +257,20 @@ Open64_DSC_Attach_Symbol_Metadata(Open64_DSC_Handle symbol,
     return ok ? 1 : 0;
 }
 
+Open64_DSC_Handle
+Open64_DSC_Create_Minimal_Program_Unit(const char *name)
+{
+    DSL_BUILDER_PROGRAM_UNIT pu;
+
+    if (name == NULL || name[0] == '\0')
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    pu = DSL_Builder_Create_Minimal_PU(name);
+    return (Open64_DSC_Handle) pu;
+}
+
 int
 Open64_DSC_Finalize_Mapped_Image(const char *path)
 {

@@ -149,16 +149,33 @@ def attach_symbol_metadata(
     return True
 
 
+def create_minimal_program_unit(name: str) -> int:
+    if not name:
+        raise RuntimeError("failed to create minimal program unit")
+
+    return _new_handle(
+        {
+            "kind": "program_unit",
+            "name": name,
+        }
+    )
+
+
 def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> bool:
     output_path = Path(path)
     if not str(output_path):
         return False
+
+    entry_function = module_manifest.get("entry_function", {})
+    if not isinstance(entry_function, Mapping):
+        entry_function = {}
 
     lines = [
         "# open64_dsc mock WHIRL artifact",
         "format=mock",
         f"model_name={module_manifest.get('model_name', '')}",
         f"entry={module_manifest.get('entry', '')}",
+        f"entry_function={entry_function.get('name', '')}",
         f"input_count={module_manifest.get('input_count', 0)}",
     ]
 

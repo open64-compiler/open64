@@ -205,6 +205,9 @@ BOOL DSL_Builder_Attach_Metadata(
     const DSL_BUILDER_COMPILER_METADATA *metadata,
     UINT32 metadata_count);
 
+DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU(
+    const char *name);
+
 BOOL DSL_Builder_Finalize_Mapped_Image(
     const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
 ```
@@ -273,14 +276,20 @@ Current Phase 4 status:
 1. `DSL_Builder_Finalize_Mapped_Image` now rejects invalid requests and uses the
    existing `Open_Output_Info` / `Write_Global_Info` / `Close_Output_Info`
    writer path for the current global tables.
-2. The first artifact slice writes global WHIRL sections with no PU tree. This
-   proves the builder exits through the mapped-image/ELF WHIRL machinery while
-   keeping function-body construction as the next API step.
+2. The first artifact slice wrote global WHIRL sections with no PU tree. The
+   next slice now stages a deliberately minimal PU tree when Python asks for an
+   entry function.
 3. `dsl_builder_contract_test.cxx` checks invalid finalizer requests and the
    minimal valid output-file creation path.
 4. The finalizer no longer initializes `ir_reader`, so the Python frontend
    bridge can write its current global-table artifact without pulling in
    reader-side WSSA or JSON verifier dependencies.
+5. `DSL_Builder_Create_Minimal_PU` creates one narrow entry function skeleton:
+   function type, function symbol, retained local scope, empty `FUNC_ENTRY`, and
+   `PU_Info` state suitable for the existing PU subsection writer.
+6. `DSL_Builder_Finalize_Mapped_Image` writes staged in-memory PU subsections
+   before `Write_Global_Info`, matching the Open64 writer ordering used by
+   native IR tools while keeping Python away from WHIRL node construction.
 
 ## Phase 5: Python Package Skeleton
 
@@ -424,6 +433,13 @@ Current Phase 6 status:
     logical shape, lineage, layout, placement, memory, and runtime state, then
     attaches `source_layer_name` and `lowering_hint` metadata to each
     placeholder symbol.
+23. `_whirl` now exposes `create_minimal_program_unit`, mirrored by the mock
+    backend and wrapped by `WhirlBuilder.minimal_program_unit`.
+24. `WhirlModule` carries an `entry_function` record in its manifest, and the
+    interpreter creates the staged native entry PU before placeholder tensors.
+25. Docker `python_native_test` now covers the native path that creates a
+    minimal entry PU and finalizes a non-empty mapped WHIRL artifact through the
+    writer-side common object set.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -569,12 +585,14 @@ Relevant test patterns to adapt:
 3. Keep the Docker native test in the validation loop when Python development
    headers are available:
    `apt-get install -y python3.8-dev && make python_native_test`.
-4. Extend the builder API only as needed to create an inspectable minimal PU
-   tree; do not broaden it into a generic Python-owned WHIRL construction API.
-5. Keep descriptor-aware Python tests around dtype, rank, logical shape, source
+4. Keep descriptor-aware Python tests around dtype, rank, logical shape, source
    name, and lowering hint persistence in both mock and native validation.
-6. Start connecting the placeholder graph records to the eventual PU tree
-   finalization path.
+5. Keep the minimal PU API single-purpose until the next inspectable artifact
+   checkpoint proves the output through `ir_b2a -st`; do not broaden it into a
+   generic Python-owned WHIRL construction API.
+6. Connect placeholder graph records to statements inside the staged entry PU,
+   starting with a visible marker for the current example-input placeholders and
+   `common.add` record.
 7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
    available, then run `dsl_ir_tools_smoke_test.sh` against the first native
    Python-produced artifact.

@@ -17,8 +17,13 @@
 #include "glob.h"
 #include "pu_info.h"
 #include "ir_bwrite.h"
+#include "mempool.h"
 #include "stab.h"
 #include "strtab.h"
+#include "symtab_utils.h"
+
+static PU_Info *DSL_Builder_PU_Root = NULL;
+static PU_Info *DSL_Builder_PU_Last = NULL;
 
 static const char *
 DSL_Builder_Safe_String (const char *value)
@@ -277,6 +282,71 @@ DSL_Builder_Attach_Metadata
     return TRUE;
 }
 
+DSL_BUILDER_PROGRAM_UNIT
+DSL_Builder_Create_Minimal_PU (const char *name)
+{
+    TY_IDX function_ty;
+    PU_IDX pu_idx;
+    PU *pu;
+    ST *func_st;
+    WN *func_body;
+    WN *entry_wn;
+    PU_Info *pu_info;
+
+    if (name == NULL || name[0] == '\0')
+        return NULL;
+    /*
+     * Keep the first PU bridge to one entry function.  Multiple top-level PUs
+     * need explicit local-scope ownership before Python should expose them.
+     */
+    if (DSL_Builder_PU_Root != NULL)
+        return DSL_Builder_PU_Root;
+
+    function_ty = Make_Function_Type(MTYPE_To_TY(MTYPE_V));
+    pu = &New_PU(pu_idx);
+    PU_Init(*pu, function_ty, GLOBAL_SYMTAB + 1);
+
+    func_st = New_ST();
+    ST_Init(func_st, Save_Str(name), CLASS_FUNC, SCLASS_TEXT,
+            EXPORT_LOCAL, function_ty);
+    Set_ST_pu(func_st, pu_idx);
+
+    func_body = WN_CreateBlock();
+    entry_wn = WN_CreateEntry(0, func_st, func_body, NULL, NULL);
+
+    Current_pu = pu;
+    Current_scope = pu->lexical_level;
+    New_Scope(Current_scope, Malloc_Mem_Pool, TRUE);
+    Scope_tab[Current_scope].st = func_st;
+
+    pu_info = TYPE_MEM_POOL_ALLOC(PU_Info, Malloc_Mem_Pool);
+    PU_Info_init(pu_info);
+
+    Set_PU_Info_tree_ptr(pu_info, entry_wn);
+    PU_Info_maptab(pu_info) = Current_Map_Tab;
+    PU_Info_proc_sym(pu_info) = ST_st_idx(func_st);
+    Set_PU_Info_state(pu_info, WT_SYMTAB, Subsect_InMem);
+    Set_PU_Info_state(pu_info, WT_TREE, Subsect_InMem);
+    Set_PU_Info_state(pu_info, WT_PROC_SYM, Subsect_InMem);
+    Set_PU_Info_state(pu_info, WT_DEPGRAPH, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_PREFETCH, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_REGIONS, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_FEEDBACK, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_FREQ, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_AC_INTERNAL, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_ALIAS_CLASS, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_SSA, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_ALIAS_CGNODE, Subsect_Missing);
+
+    if (DSL_Builder_PU_Root != NULL)
+        PU_Info_next(DSL_Builder_PU_Last) = pu_info;
+    else
+        DSL_Builder_PU_Root = pu_info;
+    DSL_Builder_PU_Last = pu_info;
+
+    return pu_info;
+}
+
 BOOL
 DSL_Builder_Finalize_Mapped_Image
         (const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request)
@@ -289,18 +359,19 @@ DSL_Builder_Finalize_Mapped_Image
 
     Irb_File_Name = (char *)request->path;
 
-    /*
-     * Keep the first artifact slice intentionally conservative: write the
-     * current global tables through the normal WHIRL ELF/mapped-image writer.
-     * A later builder context will provide a PU tree once Python ingestion can
-     * create function bodies.
-     */
     if (Current_DST == NULL)
         DST_Init(NULL, 0);
     if (Open_Output_Info(Irb_File_Name) == NULL)
         return FALSE;
 
-    Write_Global_Info(NULL);
+    for (PU_Info *pu = DSL_Builder_PU_Root; pu != NULL;
+         pu = PU_Info_next(pu)) {
+        if (PU_Info_state(pu, WT_SYMTAB) == Subsect_InMem ||
+            PU_Info_state(pu, WT_TREE) == Subsect_InMem)
+            Write_PU_Info(pu);
+    }
+
+    Write_Global_Info(DSL_Builder_PU_Root);
     Close_Output_Info();
     return TRUE;
 }

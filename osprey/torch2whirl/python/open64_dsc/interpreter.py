@@ -8,6 +8,7 @@ from .builder import ValueHandle, WhirlBuilder, load_builder
 from .module import (
     WhirlModule,
     WhirlOperatorRecord,
+    WhirlProgramUnitRecord,
     WhirlTensorTypeRecord,
     WhirlValueRecord,
 )
@@ -27,6 +28,7 @@ class WhirlExportInterpreter:
     def export(self, model: Any, example_inputs: Iterable[Any]) -> WhirlModule:
         inputs = list(example_inputs)
         model_name = self._model_name(model)
+        entry_pu = self.builder().minimal_program_unit(self._options.entry)
         tensor_types, values, handles = self._build_input_placeholders(inputs)
         graph_operators: List[WhirlOperatorRecord] = []
         operators: List[str] = []
@@ -48,6 +50,10 @@ class WhirlExportInterpreter:
             options=self._options,
             model_name=model_name,
             input_count=len(inputs),
+            entry_function=WhirlProgramUnitRecord(
+                name=self._options.entry,
+                handle=entry_pu.value,
+            ),
             operators=operators,
             tensor_types=tensor_types,
             values=values,

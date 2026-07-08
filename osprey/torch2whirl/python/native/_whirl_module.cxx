@@ -299,6 +299,21 @@ Open64_DSC_Attach_Symbol_Metadata(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Create_Minimal_Program_Unit(PyObject *self, PyObject *args)
+{
+    const char *name;
+    Open64_DSC_Handle handle;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "s:create_minimal_program_unit", &name))
+        return NULL;
+
+    handle = Open64_DSC_Create_Minimal_Program_Unit(name);
+    return Open64_DSC_Handle_Result(handle, "create minimal program unit");
+}
+
+static PyObject *
 Open64_DSC_Finalize(PyObject *self, PyObject *args)
 {
     const char *path;
@@ -312,8 +327,8 @@ Open64_DSC_Finalize(PyObject *self, PyObject *args)
 
     /*
      * The manifest argument intentionally matches the mock backend shape.
-     * Native finalization only needs the output path for the current minimal
-     * artifact slice; later entry points will consume structured graph data.
+     * Native finalization currently consumes staged builder state rather than
+     * reconstructing WHIRL objects from the Python manifest.
      */
     (void) manifest;
 
@@ -365,6 +380,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Attach_Symbol_Metadata,
         METH_VARARGS,
         "Attach compiler metadata to a native symbol."
+    },
+    {
+        "create_minimal_program_unit",
+        Open64_DSC_Create_Minimal_Program_Unit,
+        METH_VARARGS,
+        "Create a minimal native PU tree entry and return an opaque handle."
     },
     {
         "finalize_mapped_image",

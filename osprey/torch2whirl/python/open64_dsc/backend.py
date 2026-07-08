@@ -61,6 +61,12 @@ class WhirlBackend(Protocol):
     ) -> bool:
         ...
 
+    def create_minimal_program_unit(
+        self,
+        name: str,
+    ) -> int:
+        ...
+
     def finalize_mapped_image(
         self,
         path: str,

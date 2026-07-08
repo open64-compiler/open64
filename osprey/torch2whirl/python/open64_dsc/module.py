@@ -9,6 +9,18 @@ from .options import WhirlExportOptions
 
 
 @dataclass(frozen=True)
+class WhirlProgramUnitRecord:
+    name: str
+    handle: int
+
+    def to_manifest(self) -> Mapping[str, object]:
+        return {
+            "name": self.name,
+            "handle": self.handle,
+        }
+
+
+@dataclass(frozen=True)
 class WhirlTensorTypeRecord:
     name: str
     handle: int
@@ -69,6 +81,7 @@ class WhirlModule:
     options: WhirlExportOptions
     model_name: str
     input_count: int
+    entry_function: WhirlProgramUnitRecord
     operators: Sequence[str] = field(default_factory=list)
     tensor_types: Sequence[WhirlTensorTypeRecord] = field(default_factory=list)
     values: Sequence[WhirlValueRecord] = field(default_factory=list)
@@ -80,6 +93,7 @@ class WhirlModule:
             "entry": self.options.entry,
             "model_name": self.model_name,
             "input_count": self.input_count,
+            "entry_function": self.entry_function.to_manifest(),
             "operators": list(self.operators),
             "tensor_types": [
                 tensor_type.to_manifest()

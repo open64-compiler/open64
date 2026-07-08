@@ -60,6 +60,8 @@ extern int Open64_DSC_Attach_Symbol_Metadata
                                 (Open64_DSC_Handle symbol,
                                  const Open64_DSC_Attribute *metadata,
                                  unsigned int metadata_count);
+extern Open64_DSC_Handle Open64_DSC_Create_Minimal_Program_Unit
+                                (const char *name);
 extern int Open64_DSC_Finalize_Mapped_Image(const char *path);
 
 #ifdef __cplusplus

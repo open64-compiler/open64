@@ -23,6 +23,8 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertEqual(module.model_name, "DummyModel")
         self.assertEqual(module.input_count, 2)
         self.assertEqual(module.options.backend, "mock")
+        self.assertEqual(module.entry_function.name, "forward")
+        self.assertGreater(module.entry_function.handle, 0)
         self.assertEqual(module.operators, ["common.add"])
         self.assertEqual(len(module.tensor_types), 2)
         self.assertEqual(len(module.values), 2)
@@ -81,6 +83,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 "lowering_hint": "unit_test",
             },
         )
+        pu = builder.minimal_program_unit("unit_forward")
         lhs = builder.tensor_constant(
             "lhs",
             "float32",
@@ -101,6 +104,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
         self.assertGreater(tensor_ty.value, 0)
         self.assertGreater(symbol.value, 0)
+        self.assertGreater(pu.value, 0)
         self.assertGreater(lhs.value, 0)
         self.assertGreater(rhs.value, 0)
         self.assertGreater(add.value, 0)
@@ -144,6 +148,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
         self.assertIn("format=mock", text)
         self.assertIn("model_name=unit_model", text)
+        self.assertIn("entry_function=forward", text)
         self.assertIn("input_count=2", text)
         self.assertIn("operator.0=common.add", text)
         self.assertIn("tensor_type.0=input0_type:float32:[]", text)

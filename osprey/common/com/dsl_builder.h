@@ -6,6 +6,7 @@
 #define dsl_builder_INCLUDED
 
 #include "defs.h"
+#include "pu_info.h"
 #include "symtab.h"
 #include "wn.h"
 #include "dsl_contract.h"
@@ -32,6 +33,7 @@
 
 typedef WN *DSL_BUILDER_VALUE;
 typedef WN *DSL_BUILDER_OPERATOR;
+typedef PU_Info *DSL_BUILDER_PROGRAM_UNIT;
 
 typedef struct {
     const char *kind;
@@ -106,6 +108,8 @@ extern BOOL DSL_Builder_Attach_Metadata
                                 (ST_IDX st,
                                  const DSL_BUILDER_COMPILER_METADATA *metadata,
                                  UINT32 metadata_count);
+extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
+                                (const char *name);
 extern BOOL DSL_Builder_Finalize_Mapped_Image
                                 (const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
 

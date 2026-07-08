@@ -37,6 +37,11 @@ class OperatorHandle(ValueHandle):
     pass
 
 
+@dataclass(frozen=True)
+class ProgramUnitHandle(OpaqueHandle):
+    pass
+
+
 class WhirlBuilder:
     def __init__(self, backend: WhirlBackend):
         self._backend = backend
@@ -93,6 +98,11 @@ class WhirlBuilder:
             metadata,
         ):
             raise RuntimeError("failed to attach symbol metadata")
+
+    def minimal_program_unit(self, name: str) -> ProgramUnitHandle:
+        return ProgramUnitHandle(
+            self._backend.create_minimal_program_unit(name)
+        )
 
     def tensor_constant(
         self,
