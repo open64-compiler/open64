@@ -97,7 +97,7 @@ class WhirlExportInterpreter:
             operator_name in cnn.UNARY_OPERATORS
         ):
             return 1
-        if operator_name in {common.ADD, common.MATMUL}:
+        if operator_name in {common.ADD, common.MATMUL, common.RESIDUAL_ADD}:
             return 2
         if operator_name in cnn.TERNARY_OPERATORS:
             return 3
@@ -126,6 +126,18 @@ class WhirlExportInterpreter:
                 **mapped_attrs,
             }
             return self.builder().common_matmul(
+                operands[0],
+                operands[1],
+                attrs,
+            ), attrs
+        if operator_name == common.RESIDUAL_ADD:
+            attrs = {
+                "attr.broadcast_rule": "none",
+                "attr.shape_check": "exact",
+                "attr.residual_path": "true",
+                **mapped_attrs,
+            }
+            return self.builder().common_residual_add(
                 operands[0],
                 operands[1],
                 attrs,

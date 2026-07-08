@@ -186,6 +186,23 @@ class WhirlBuilder:
             },
         )
 
+    def common_residual_add(
+        self,
+        lhs: ValueHandle,
+        rhs: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "common.residual_add",
+            1,
+            [lhs, rhs],
+            attrs or {
+                "attr.broadcast_rule": "none",
+                "attr.shape_check": "exact",
+                "attr.residual_path": "true",
+            },
+        )
+
     def common_relu(
         self,
         value: ValueHandle,

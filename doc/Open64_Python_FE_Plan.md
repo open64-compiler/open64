@@ -559,6 +559,11 @@ Current Phase 7 status:
     epsilon, momentum, inference-mode, layout, and channel-axis attributes.
     Optional FX coverage maps `torch.nn.functional.batch_norm` in inference
     mode while native and artifact smoke tests inspect the same marker.
+13. The residual merge batch adds a `common.residual_add` builder facade and
+    native/artifact inspection coverage with exact-shape residual-path
+    attributes. Plain FX `lhs + rhs` remains mapped to `common.add`; semantic
+    residual merges can be captured through an explicit `residual_add` FX hook
+    so the frontend does not quietly reclassify every tensor addition.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -813,9 +818,9 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Continue the Phase 7 neural-network vertical slice with
-    `common.residual_add`, then finish the classifier tail with `common.linear`
-    and tighter `common.output_logits` coverage.
+10. Continue the Phase 7 neural-network vertical slice by adding
+    `common.linear`, then tighten classifier-tail `common.output_logits`
+    coverage.
 
 ## Practical Developer Loop
 

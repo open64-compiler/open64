@@ -113,6 +113,45 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             str(markers[-1]["payload"]),
         )
 
+    def test_native_backend_appends_residual_add_marker(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_residual_add_model")
+        lhs = builder.tensor_constant(
+            "native_residual_lhs",
+            "float32",
+            4,
+            "[1,64,56,56]",
+            "splat",
+            "1.0",
+        )
+        rhs = builder.tensor_constant(
+            "native_residual_rhs",
+            "float32",
+            4,
+            "[1,64,56,56]",
+            "splat",
+            "2.0",
+        )
+        residual_add = builder.common_residual_add(lhs, rhs)
+
+        builder.append_program_unit_marker(pu, lhs)
+        builder.append_program_unit_marker(pu, rhs)
+        builder.append_program_unit_marker(pu, residual_add)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(
+            [marker["opcode"] for marker in markers[-3:]],
+            [
+                "common.tensor_const",
+                "common.tensor_const",
+                "common.residual_add",
+            ],
+        )
+        self.assertIn("kid0=native_residual_lhs", str(markers[-1]["payload"]))
+        self.assertIn("kid1=native_residual_rhs", str(markers[-1]["payload"]))
+        self.assertIn("attr.shape_check=exact", str(markers[-1]["payload"]))
+
     def test_native_backend_appends_phase7_common_unary_markers(self) -> None:
         builder = load_builder("native")
 

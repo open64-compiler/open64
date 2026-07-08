@@ -18,5 +18,6 @@ FX_OPERATOR_MAP = {
     "add": ADD,
     "flatten": FLATTEN,
     "matmul": MATMUL,
+    "residual_add": RESIDUAL_ADD,
     "relu": RELU,
 }

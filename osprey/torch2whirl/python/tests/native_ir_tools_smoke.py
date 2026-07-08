@@ -28,6 +28,7 @@ def _append_operator_probes(module) -> None:
     lhs = ValueHandle(module.values[0].handle)
     rhs = ValueHandle(module.values[1].handle)
     matmul = builder.common_matmul(lhs, rhs)
+    residual_add = builder.common_residual_add(lhs, rhs)
     relu = builder.common_relu(lhs)
     flatten = builder.common_flatten(lhs)
     output_logits = builder.common_output_logits(lhs)
@@ -98,6 +99,10 @@ def _append_operator_probes(module) -> None:
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         matmul,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        residual_add,
     )
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
@@ -185,6 +190,7 @@ def main() -> int:
             "common.tensor_const",
             "common.add",
             "common.matmul",
+            "common.residual_add",
             "common.relu",
             "common.flatten",
             "common.output_logits",
@@ -194,6 +200,7 @@ def main() -> int:
             "cnn.batch_norm_infer",
             "attr.start_dim=1",
             "attr.transpose_kid0=false",
+            "attr.shape_check=exact",
             "attr.kernel_shape=3,3",
             "attr.output_size=1,1",
             "attr.groups=1",

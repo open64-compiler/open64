@@ -9,6 +9,16 @@ from open64_dsc import export_to_whirl
 TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
 
 
+def residual_add(lhs, rhs):
+    return lhs + rhs
+
+
+if TORCH_AVAILABLE:
+    import torch.fx
+
+    torch.fx.wrap("residual_add")
+
+
 @unittest.skipUnless(TORCH_AVAILABLE, "torch is not installed")
 class Open64DscFxCaptureOptionalTest(unittest.TestCase):
     def test_fx_add_maps_to_common_add(self) -> None:
@@ -51,6 +61,29 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(
             module.graph_operators[0].attrs["attr.transpose_kid0"],
             "false",
+        )
+
+    def test_fx_residual_add_maps_to_common_residual_add(self) -> None:
+        import torch
+
+        class ResidualAddModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return residual_add(lhs, rhs)
+
+        lhs = torch.ones((1, 64, 56, 56), dtype=torch.float32)
+        rhs = torch.ones((1, 64, 56, 56), dtype=torch.float32)
+        module = export_to_whirl(ResidualAddModule(), [lhs, rhs])
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["common.residual_add"])
+        self.assertEqual(
+            module.entry_function.body_markers[-1],
+            "common.residual_add",
+        )
+        self.assertEqual(module.graph_operators[0].kids, ["input0", "input1"])
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.shape_check"],
+            "exact",
         )
 
     def test_fx_relu_maps_to_common_relu(self) -> None:
