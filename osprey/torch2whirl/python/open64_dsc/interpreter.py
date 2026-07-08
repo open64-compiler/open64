@@ -101,6 +101,8 @@ class WhirlExportInterpreter:
             return 2
         if operator_name in cnn.TERNARY_OPERATORS:
             return 3
+        if operator_name in cnn.FIVE_INPUT_OPERATORS:
+            return 5
 
         raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
 
@@ -174,6 +176,23 @@ class WhirlExportInterpreter:
                 operands[0],
                 operands[1],
                 operands[2],
+                attrs,
+            ), attrs
+        if operator_name == cnn.BATCH_NORM_INFER:
+            attrs = {
+                "attr.epsilon": "1e-05",
+                "attr.momentum": "0.1",
+                "attr.training": "false",
+                "attr.input_layout": "NCHW",
+                "attr.channel_axis": "1",
+                **mapped_attrs,
+            }
+            return self.builder().cnn_batch_norm_infer(
+                operands[0],
+                operands[1],
+                operands[2],
+                operands[3],
+                operands[4],
                 attrs,
             ), attrs
 
@@ -255,6 +274,28 @@ class WhirlExportInterpreter:
                 "attr.weight_layout": "OIHW",
                 "attr.output_layout": "NCHW",
             }
+        if operator_name == cnn.BATCH_NORM_INFER:
+            args = list(getattr(node, "args", ()))
+            kwargs = getattr(node, "kwargs", {})
+            return {
+                "attr.epsilon": self._fx_text_attr(args, kwargs, "eps", 7, "1e-05"),
+                "attr.momentum": self._fx_text_attr(
+                    args,
+                    kwargs,
+                    "momentum",
+                    6,
+                    "0.1",
+                ),
+                "attr.training": self._fx_bool_attr(
+                    args,
+                    kwargs,
+                    "training",
+                    5,
+                    False,
+                ),
+                "attr.input_layout": "NCHW",
+                "attr.channel_axis": "1",
+            }
 
         return {}
 
@@ -294,6 +335,36 @@ class WhirlExportInterpreter:
         if isinstance(value, int):
             return value
         return default
+
+    def _fx_text_attr(
+        self,
+        args: Sequence[Any],
+        kwargs: Mapping[str, Any],
+        name: str,
+        index: int,
+        default: str,
+    ) -> str:
+        value = kwargs.get(name)
+        if value is None and len(args) > index:
+            value = args[index]
+        if value is None:
+            return default
+        return str(value)
+
+    def _fx_bool_attr(
+        self,
+        args: Sequence[Any],
+        kwargs: Mapping[str, Any],
+        name: str,
+        index: int,
+        default: bool,
+    ) -> str:
+        value = kwargs.get(name)
+        if value is None and len(args) > index:
+            value = args[index]
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return "true" if default else "false"
 
     def _build_input_placeholders(
         self,

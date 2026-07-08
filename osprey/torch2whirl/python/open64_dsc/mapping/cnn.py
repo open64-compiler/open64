@@ -14,8 +14,13 @@ TERNARY_OPERATORS = {
     CONV2D,
 }
 
+FIVE_INPUT_OPERATORS = {
+    BATCH_NORM_INFER,
+}
+
 FX_OPERATOR_MAP = {
     "adaptive_avg_pool2d": GLOBAL_AVG_POOL2D,
+    "batch_norm": BATCH_NORM_INFER,
     "conv2d": CONV2D,
     "max_pool2d": MAX_POOL2D,
 }

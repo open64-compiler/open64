@@ -553,6 +553,12 @@ Current Phase 7 status:
     groups, and NCHW/OIHW layout attributes. Optional FX coverage maps
     `torch.nn.functional.conv2d` with explicit activation, weight, and bias
     inputs while native and artifact smoke tests inspect the same marker.
+12. The first normalization marker batch adds `cnn.batch_norm_infer` as a
+    domain wrapper over `common.normalization_base`. The Python facade emits a
+    5-input activation/scale/bias/running-mean/running-variance marker with
+    epsilon, momentum, inference-mode, layout, and channel-axis attributes.
+    Optional FX coverage maps `torch.nn.functional.batch_norm` in inference
+    mode while native and artifact smoke tests inspect the same marker.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -808,9 +814,8 @@ Exit criteria:
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
 10. Continue the Phase 7 neural-network vertical slice with
-    `cnn.batch_norm_infer` once parameter/constant handling can model scale,
-    bias, running mean, running variance, epsilon, and training/inference mode
-    metadata cleanly.
+    `common.residual_add`, then finish the classifier tail with `common.linear`
+    and tighter `common.output_logits` coverage.
 
 ## Practical Developer Loop
 

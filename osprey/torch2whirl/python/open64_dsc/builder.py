@@ -281,6 +281,28 @@ class WhirlBuilder:
             },
         )
 
+    def cnn_batch_norm_infer(
+        self,
+        value: ValueHandle,
+        scale: ValueHandle,
+        bias: ValueHandle,
+        running_mean: ValueHandle,
+        running_var: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "cnn.batch_norm_infer",
+            1,
+            [value, scale, bias, running_mean, running_var],
+            attrs or {
+                "attr.epsilon": "1e-05",
+                "attr.momentum": "0.1",
+                "attr.training": "false",
+                "attr.input_layout": "NCHW",
+                "attr.channel_axis": "1",
+            },
+        )
+
 
 def load_builder(name: str) -> WhirlBuilder:
     return WhirlBuilder(load_backend(name))

@@ -175,6 +175,52 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             "OIHW",
         )
 
+    def test_fx_batch_norm_maps_to_cnn_batch_norm_infer(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class BatchNormModule(torch.nn.Module):
+            def forward(self, value, scale, bias, running_mean, running_var):
+                return F.batch_norm(
+                    value,
+                    running_mean,
+                    running_var,
+                    scale,
+                    bias,
+                    training=False,
+                    momentum=0.1,
+                    eps=1e-5,
+                )
+
+        value = torch.ones((1, 64, 8, 8), dtype=torch.float32)
+        scale = torch.ones((64,), dtype=torch.float32)
+        bias = torch.ones((64,), dtype=torch.float32)
+        running_mean = torch.ones((64,), dtype=torch.float32)
+        running_var = torch.ones((64,), dtype=torch.float32)
+        module = export_to_whirl(
+            BatchNormModule(),
+            [value, scale, bias, running_mean, running_var],
+        )
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["cnn.batch_norm_infer"])
+        self.assertEqual(
+            module.entry_function.body_markers[-1],
+            "cnn.batch_norm_infer",
+        )
+        self.assertEqual(
+            module.graph_operators[0].kids,
+            ["input0", "input1", "input2", "input3", "input4"],
+        )
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.epsilon"],
+            "1e-05",
+        )
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.training"],
+            "false",
+        )
+
     def test_fx_unsupported_operator_fails_loudly(self) -> None:
         import torch
 

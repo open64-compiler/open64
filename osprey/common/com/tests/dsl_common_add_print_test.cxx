@@ -790,7 +790,7 @@ static int
 Check_DSL_Opcode_Registry(void)
 {
     const UINT32 common_seed_count = 61;
-    const UINT32 wrapper_seed_count = 7;
+    const UINT32 wrapper_seed_count = 8;
     DSL_DOMAIN_ID common_id;
     DSL_DOMAIN_ID cnn_id;
     DSL_DOMAIN_ID transformer_id;
@@ -799,6 +799,7 @@ Check_DSL_Opcode_Registry(void)
     DSL_OPCODE_ID common_residual_add_id;
     DSL_OPCODE_ID common_window_reduce_id;
     DSL_OPCODE_ID common_reduce_mean_id;
+    DSL_OPCODE_ID common_normalization_base_id;
     DSL_OPCODE_ID layout_cast_id;
     DSL_OPCODE_ID residual_shape_check_id;
     DSL_OPCODE_ID dispatch_id;
@@ -806,6 +807,7 @@ Check_DSL_Opcode_Registry(void)
     DSL_OPCODE_ID cnn_max_pool2d_id;
     DSL_OPCODE_ID cnn_global_avg_pool2d_id;
     DSL_OPCODE_ID cnn_conv2d_id;
+    DSL_OPCODE_ID cnn_batch_norm_infer_id;
     DSL_OPCODE_ID transformer_q_projection_id;
     DSL_OPCODE_ID cnn_residual_add_id;
     DSL_OPCODE_ID transformer_residual_add_id;
@@ -832,6 +834,8 @@ Check_DSL_Opcode_Registry(void)
         DSL_Opcode_Find(common_id, "common.window_reduce", 1);
     common_reduce_mean_id =
         DSL_Opcode_Find(common_id, "common.reduce_mean", 1);
+    common_normalization_base_id =
+        DSL_Opcode_Find(common_id, "common.normalization_base", 1);
 
     if (add_id == DSL_OPCODE_INVALID_ID) {
         fprintf(stderr, "DSL common.add seed lookup failed\n");
@@ -990,6 +994,8 @@ Check_DSL_Opcode_Registry(void)
     cnn_global_avg_pool2d_id =
         DSL_Opcode_Find(cnn_id, "cnn.global_avg_pool2d", 1);
     cnn_conv2d_id = DSL_Opcode_Find(cnn_id, "cnn.conv2d", 1);
+    cnn_batch_norm_infer_id =
+        DSL_Opcode_Find(cnn_id, "cnn.batch_norm_infer", 1);
     transformer_q_projection_id =
         DSL_Opcode_Find(transformer_id, "transformer.q_projection", 1);
     cnn_residual_add_id = DSL_Opcode_Find(cnn_id, "cnn.residual_add", 1);
@@ -1040,6 +1046,17 @@ Check_DSL_Opcode_Registry(void)
         failed = 1;
     }
 
+    if (!DSL_Opcode_Get_Info(cnn_batch_norm_infer_id, &info) ||
+            info.owner_domain_id != cnn_id ||
+            info.wrapper_target_id != common_normalization_base_id ||
+            info.nkids != 1 ||
+            info.shape_rule != DSL_SHAPE_RULE_REDUCTION ||
+            strcmp(info.diagnostic_prefix,
+             "DOPC_CNN_BATCH_NORM_INFER_WRAPPER") != 0) {
+        fprintf(stderr, "DSL cnn.batch_norm_infer wrapper descriptor changed\n");
+        failed = 1;
+    }
+
     if (!DSL_Opcode_Get_Info(transformer_q_projection_id, &info) ||
             info.owner_domain_id != transformer_id ||
             info.wrapper_target_id != common_linear_id ||
@@ -1081,7 +1098,7 @@ Check_DSL_Opcode_Registry(void)
         return 1;
     }
 
-    if (strstr(text, "DSL Opcode Registry: entries=68") == NULL ||
+    if (strstr(text, "DSL Opcode Registry: entries=69") == NULL ||
             strstr(text, "name=common.add") == NULL ||
             strstr(text, "category=executable") == NULL ||
             strstr(text, "level=level2_numeric") == NULL ||
@@ -1095,6 +1112,7 @@ Check_DSL_Opcode_Registry(void)
             strstr(text, "name=cnn.max_pool2d") == NULL ||
             strstr(text, "name=cnn.global_avg_pool2d") == NULL ||
             strstr(text, "name=cnn.conv2d") == NULL ||
+            strstr(text, "name=cnn.batch_norm_infer") == NULL ||
             strstr(text, "name=transformer.q_projection") == NULL ||
             strstr(text, "name=cnn.residual_add") == NULL ||
             strstr(text, "name=transformer.residual_add") == NULL ||
@@ -1110,7 +1128,7 @@ Check_DSL_Opcode_Registry(void)
 static int
 Check_DSL_Opcode_Promotion_Registry(void)
 {
-    const UINT32 promotion_seed_count = 8;
+    const UINT32 promotion_seed_count = 9;
     DSL_DOMAIN_ID common_id;
     DSL_DOMAIN_ID cnn_id;
     DSL_DOMAIN_ID transformer_id;
@@ -1118,10 +1136,12 @@ Check_DSL_Opcode_Promotion_Registry(void)
     DSL_OPCODE_ID common_residual_add_id;
     DSL_OPCODE_ID common_window_reduce_id;
     DSL_OPCODE_ID common_reduce_mean_id;
+    DSL_OPCODE_ID common_normalization_base_id;
     DSL_OPCODE_ID common_matmul_id;
     DSL_OPCODE_ID cnn_linear_id;
     DSL_OPCODE_ID cnn_max_pool2d_id;
     DSL_OPCODE_ID cnn_global_avg_pool2d_id;
+    DSL_OPCODE_ID cnn_batch_norm_infer_id;
     DSL_OPCODE_ID cnn_residual_add_id;
     DSL_OPCODE_ID cnn_conv2d_id;
     DSL_OPCODE_ID transformer_attention_id;
@@ -1151,11 +1171,15 @@ Check_DSL_Opcode_Promotion_Registry(void)
         DSL_Opcode_Find(common_id, "common.window_reduce", 1);
     common_reduce_mean_id =
         DSL_Opcode_Find(common_id, "common.reduce_mean", 1);
+    common_normalization_base_id =
+        DSL_Opcode_Find(common_id, "common.normalization_base", 1);
     common_matmul_id = DSL_Opcode_Find(common_id, "common.matmul", 1);
     cnn_linear_id = DSL_Opcode_Find(cnn_id, "cnn.linear", 1);
     cnn_max_pool2d_id = DSL_Opcode_Find(cnn_id, "cnn.max_pool2d", 1);
     cnn_global_avg_pool2d_id =
         DSL_Opcode_Find(cnn_id, "cnn.global_avg_pool2d", 1);
+    cnn_batch_norm_infer_id =
+        DSL_Opcode_Find(cnn_id, "cnn.batch_norm_infer", 1);
     cnn_residual_add_id = DSL_Opcode_Find(cnn_id, "cnn.residual_add", 1);
     cnn_conv2d_id = DSL_Opcode_Find(cnn_id, "cnn.conv2d", 1);
     transformer_attention_id =
@@ -1165,6 +1189,7 @@ Check_DSL_Opcode_Promotion_Registry(void)
             cnn_linear_id == DSL_OPCODE_INVALID_ID ||
             cnn_max_pool2d_id == DSL_OPCODE_INVALID_ID ||
             cnn_global_avg_pool2d_id == DSL_OPCODE_INVALID_ID ||
+            cnn_batch_norm_infer_id == DSL_OPCODE_INVALID_ID ||
             cnn_conv2d_id == DSL_OPCODE_INVALID_ID ||
             transformer_attention_id == DSL_OPCODE_INVALID_ID) {
         fprintf(stderr, "DSL opcode promotion lookup setup failed\n");
@@ -1222,6 +1247,20 @@ Check_DSL_Opcode_Promotion_Registry(void)
                 (promotion_id, 0),
              "spatial_mean_reduction") != 0) {
         fprintf(stderr, "DSL cnn.global_avg_pool2d promotion descriptor changed\n");
+        failed = 1;
+    }
+
+    promotion_id =
+        DSL_Opcode_Promotion_Find(cnn_batch_norm_infer_id,
+                                  common_normalization_base_id);
+    if (!DSL_Opcode_Promotion_Get_Info(promotion_id, &info) ||
+            info.source_opcode_id != cnn_batch_norm_infer_id ||
+            info.promoted_opcode_id != common_normalization_base_id ||
+            info.state != DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON ||
+            strcmp(DSL_Opcode_Promotion_Required_Verifier_Check_At
+                (promotion_id, 0),
+             "scale_bias_running_stats_epsilon") != 0) {
+        fprintf(stderr, "DSL cnn.batch_norm_infer promotion descriptor changed\n");
         failed = 1;
     }
 
@@ -1333,14 +1372,16 @@ Check_DSL_Opcode_Promotion_Registry(void)
         return 1;
     }
 
-    if (strstr(text, "DSL Opcode Promotion Registry: entries=8") == NULL ||
+    if (strstr(text, "DSL Opcode Promotion Registry: entries=9") == NULL ||
             strstr(text, "state=wrapper_to_common") == NULL ||
             strstr(text, "state=partial_promotion") == NULL ||
             strstr(text, "common_semantic[0]=affine_projection") == NULL ||
+            strstr(text, "common_semantic[0]=inference_normalization") == NULL ||
             strstr(text, "common_semantic[0]=spatial_mean_reduction") ==
         NULL ||
             strstr(text, "retained_wrapper[0]=transformer.attention") == NULL ||
             strstr(text, "retained_wrapper[0]=cnn.max_pool2d") == NULL ||
+            strstr(text, "retained_wrapper[0]=cnn.batch_norm_infer") == NULL ||
             strstr(text, "verifier_check[0]=padding_stride_dilation_groups") ==
 	NULL ||
             strstr(text, "diagnostic[0]=CPROM-006") == NULL) {

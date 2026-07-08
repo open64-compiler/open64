@@ -235,6 +235,70 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertIn("attr.kernel_shape=7,7", str(markers[-1]["payload"]))
         self.assertIn("attr.stride=2,2", str(markers[-1]["payload"]))
 
+    def test_native_backend_appends_phase7_cnn_batch_norm_marker(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_cnn_batch_norm_model")
+        value = builder.tensor_constant(
+            "native_bn_input",
+            "float32",
+            4,
+            "[1,64,112,112]",
+            "splat",
+            "1.0",
+        )
+        scale = builder.tensor_constant(
+            "native_bn_scale",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "1.0",
+        )
+        bias = builder.tensor_constant(
+            "native_bn_bias",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "0.0",
+        )
+        running_mean = builder.tensor_constant(
+            "native_bn_running_mean",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "0.0",
+        )
+        running_var = builder.tensor_constant(
+            "native_bn_running_var",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "1.0",
+        )
+        batch_norm = builder.cnn_batch_norm_infer(
+            value,
+            scale,
+            bias,
+            running_mean,
+            running_var,
+        )
+
+        builder.append_program_unit_marker(pu, batch_norm)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(markers[-1]["opcode"], "cnn.batch_norm_infer")
+        self.assertIn("kid0=native_bn_input", str(markers[-1]["payload"]))
+        self.assertIn("kid1=native_bn_scale", str(markers[-1]["payload"]))
+        self.assertIn("kid2=native_bn_bias", str(markers[-1]["payload"]))
+        self.assertIn("kid3=native_bn_running_mean", str(markers[-1]["payload"]))
+        self.assertIn("kid4=native_bn_running_var", str(markers[-1]["payload"]))
+        self.assertIn("attr.epsilon=1e-05", str(markers[-1]["payload"]))
+        self.assertIn("attr.training=false", str(markers[-1]["payload"]))
+
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(
             DummyModel(),

@@ -56,6 +56,45 @@ def _append_operator_probes(module) -> None:
             "attr.output_layout": "NCHW",
         },
     )
+    bn_scale = builder.tensor_constant(
+        "bn_scale",
+        "float32",
+        1,
+        "[1]",
+        "splat",
+        "1.0",
+    )
+    bn_bias = builder.tensor_constant(
+        "bn_bias",
+        "float32",
+        1,
+        "[1]",
+        "splat",
+        "0.0",
+    )
+    bn_running_mean = builder.tensor_constant(
+        "bn_running_mean",
+        "float32",
+        1,
+        "[1]",
+        "splat",
+        "0.0",
+    )
+    bn_running_var = builder.tensor_constant(
+        "bn_running_var",
+        "float32",
+        1,
+        "[1]",
+        "splat",
+        "1.0",
+    )
+    batch_norm = builder.cnn_batch_norm_infer(
+        lhs,
+        bn_scale,
+        bn_bias,
+        bn_running_mean,
+        bn_running_var,
+    )
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         matmul,
@@ -83,6 +122,10 @@ def _append_operator_probes(module) -> None:
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         conv2d,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        batch_norm,
     )
 
 
@@ -148,12 +191,15 @@ def main() -> int:
             "cnn.max_pool2d",
             "cnn.global_avg_pool2d",
             "cnn.conv2d",
+            "cnn.batch_norm_infer",
             "attr.start_dim=1",
             "attr.transpose_kid0=false",
             "attr.kernel_shape=3,3",
             "attr.output_size=1,1",
             "attr.groups=1",
             "attr.weight_layout=OIHW",
+            "attr.epsilon=1e-05",
+            "attr.training=false",
             "Symbols:",
             "Types:",
         ]

@@ -205,6 +205,77 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("attr.kernel_shape=7,7", str(markers[-1]["payload"]))
         self.assertIn("attr.stride=2,2", str(markers[-1]["payload"]))
 
+    def test_mock_backend_creates_cnn_batch_norm_infer_marker(self) -> None:
+        builder = load_builder("mock")
+
+        value = builder.tensor_constant(
+            "bn_input",
+            "float32",
+            4,
+            "[1,64,112,112]",
+            "splat",
+            "1.0",
+        )
+        scale = builder.tensor_constant(
+            "bn_scale",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "1.0",
+        )
+        bias = builder.tensor_constant(
+            "bn_bias",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "0.0",
+        )
+        running_mean = builder.tensor_constant(
+            "bn_running_mean",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "0.0",
+        )
+        running_var = builder.tensor_constant(
+            "bn_running_var",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "1.0",
+        )
+        batch_norm = builder.cnn_batch_norm_infer(
+            value,
+            scale,
+            bias,
+            running_mean,
+            running_var,
+            {
+                "attr.epsilon": "1e-05",
+                "attr.momentum": "0.1",
+                "attr.training": "false",
+                "attr.input_layout": "NCHW",
+                "attr.channel_axis": "1",
+            },
+        )
+        pu = builder.minimal_program_unit("bn_forward")
+        builder.append_program_unit_marker(pu, batch_norm)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertGreater(batch_norm.value, 0)
+        self.assertEqual(markers[-1]["opcode"], "cnn.batch_norm_infer")
+        self.assertIn("kid0=bn_input", str(markers[-1]["payload"]))
+        self.assertIn("kid1=bn_scale", str(markers[-1]["payload"]))
+        self.assertIn("kid2=bn_bias", str(markers[-1]["payload"]))
+        self.assertIn("kid3=bn_running_mean", str(markers[-1]["payload"]))
+        self.assertIn("kid4=bn_running_var", str(markers[-1]["payload"]))
+        self.assertIn("attr.epsilon=1e-05", str(markers[-1]["payload"]))
+        self.assertIn("attr.training=false", str(markers[-1]["payload"]))
+
     def test_interpreter_exposes_builder_facade(self) -> None:
         interpreter = WhirlExportInterpreter(WhirlExportOptions())
         builder = interpreter.builder()
@@ -232,6 +303,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
         max_pool2d = builder.cnn_max_pool2d(lhs)
         global_avg_pool2d = builder.cnn_global_avg_pool2d(lhs)
         conv2d = builder.cnn_conv2d(lhs, rhs, rhs)
+        batch_norm = builder.cnn_batch_norm_infer(lhs, rhs, rhs, rhs, rhs)
 
         self.assertGreater(add.value, 0)
         self.assertGreater(relu.value, 0)
@@ -240,6 +312,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertGreater(max_pool2d.value, 0)
         self.assertGreater(global_avg_pool2d.value, 0)
         self.assertGreater(conv2d.value, 0)
+        self.assertGreater(batch_norm.value, 0)
 
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(
