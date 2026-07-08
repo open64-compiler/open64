@@ -469,6 +469,11 @@ Current Phase 6 status:
     Docker `python_native_test` verifies the native entry PU body contains two
     `common.tensor_const` markers and one `common.add` marker with payloads for
     `input0`, `input1`, and `kid0=input0`.
+29. `python_native_ir_tools_smoke` now generates a native Python WHIRL artifact
+    and runs `ir_b2a -st` when `OPEN64_IR_B2A` points at an executable tool.
+    In the current lightweight Docker tree, direct `ir_b2a` construction
+    reaches the reader/WSSA object set but stops because `libcomutil.a` and
+    `libjsoncpp.a` are not part of the torch2whirl-only dependency envelope.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -619,11 +624,13 @@ Relevant test patterns to adapt:
 5. Keep the minimal PU API single-purpose until the next inspectable artifact
    checkpoint proves the output through `ir_b2a -st`; do not broaden it into a
    generic Python-owned WHIRL construction API.
-6. Keep the native PU body inspection checkpoint in the validation loop until
-   `ir_b2a -st` can inspect the Python-produced artifact directly.
-7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
-   available, then run `dsl_ir_tools_smoke_test.sh` against the first native
-   Python-produced artifact.
+6. Keep `python_native_ir_tools_smoke` in the validation loop. It should skip
+   cleanly without `ir_b2a` and become an artifact inspection test when
+   `OPEN64_IR_B2A` is supplied by a full Open64 build.
+7. Build or surface the missing full ir-tools dependencies, especially
+   `libjsoncpp.a`, then run `python_native_ir_tools_smoke` and
+   `dsl_ir_tools_smoke_test.sh` against the first native Python-produced
+   artifact.
 
 ## Practical Developer Loop
 

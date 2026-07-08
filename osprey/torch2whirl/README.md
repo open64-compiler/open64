@@ -63,6 +63,11 @@ backend/cg.
 Use `make python_native_test` from that directory to run the optional native
 Python finalization test after installing the matching Python development
 headers in the test environment.
+Use `make python_native_ir_tools_smoke` from the same directory to generate a
+native Python WHIRL artifact and inspect it with `ir_b2a -st` when an
+executable `ir_b2a` is available.  The target skips clearly when the tool is
+not built yet; set `OPEN64_IR_B2A=/path/to/ir_b2a` to point at a full Open64
+build.
 The `--enable-torch2whirl-only` configure path emits the small helper build
 files needed for that dependency target.
 
@@ -92,6 +97,12 @@ docker run --rm -v /path/to/open64:/src \
   -w /build/osprey/targdir/torch2whirl \
   open64:x86_64-apple-silicon \
   sh -c 'apt-get update && apt-get install -y python3.8-dev && make python_native_test'
+```
+
+For optional `ir_b2a -st` inspection of the native Python artifact:
+
+```sh
+make python_native_ir_tools_smoke
 ```
 
 The generated build remains under `osprey/targdir/torch2whirl`, matching the

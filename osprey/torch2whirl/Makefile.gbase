@@ -102,6 +102,7 @@ OPEN64_DSC_NATIVE_IR_TOOL_OBJS = \
 OPEN64_DSC_NATIVE_OBJS ?= $(strip $(OPEN64_DSC_NATIVE_IR_TOOL_OBJS))
 OPEN64_DSC_NATIVE_REQUIRED_FILES ?= $(strip $(OPEN64_DSC_NATIVE_OBJS))
 OPEN64_DSC_NATIVE_LDLIBS ?=
+OPEN64_IR_B2A ?= $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_b2a)
 PYTHON_NATIVE_TARGET = $(PYTHON_NATIVE_PACKAGE_DIR)/_whirl$(PYTHON_EXT_SUFFIX)
 PYTHON_NATIVE_OBJECTS = \
   _whirl_module.native.o \
@@ -119,7 +120,8 @@ OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
   python_native_check python_native_deps python_native_extension \
-  python_native_requirements python_native_stage python_native_test
+  python_native_ir_tools_smoke python_native_requirements \
+  python_native_stage python_native_test
 
 default: all
 
@@ -219,6 +221,12 @@ python_native_test: python_native_extension
 	    PYTHONPATH=$(PYTHON_BUILD_ROOT):$(BUILD_BASE)/python \
 	    $(PYTHON) -m unittest discover \
 	    -s $(BUILD_BASE)/python/tests
+
+python_native_ir_tools_smoke: python_native_extension
+	PYTHONDONTWRITEBYTECODE=1 \
+	    OPEN64_IR_B2A="$(OPEN64_IR_B2A)" \
+	    PYTHONPATH=$(PYTHON_BUILD_ROOT):$(BUILD_BASE)/python \
+	    $(PYTHON) $(BUILD_BASE)/python/tests/native_ir_tools_smoke.py
 
 clean clobber:
 	$(RM) $(LDIRT)
