@@ -181,6 +181,60 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertIn("kid0=native_cnn_input", str(markers[-1]["payload"]))
         self.assertIn("attr.output_size=1,1", str(markers[-1]["payload"]))
 
+    def test_native_backend_appends_phase7_cnn_conv2d_marker(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_cnn_conv2d_model")
+        value = builder.tensor_constant(
+            "native_conv_input",
+            "float32",
+            4,
+            "[1,3,224,224]",
+            "splat",
+            "1.0",
+        )
+        weight = builder.tensor_constant(
+            "native_conv_weight",
+            "float32",
+            4,
+            "[64,3,7,7]",
+            "splat",
+            "0.5",
+        )
+        bias = builder.tensor_constant(
+            "native_conv_bias",
+            "float32",
+            1,
+            "[64]",
+            "splat",
+            "0.0",
+        )
+        conv2d = builder.cnn_conv2d(
+            value,
+            weight,
+            bias,
+            {
+                "attr.kernel_shape": "7,7",
+                "attr.stride": "2,2",
+                "attr.padding": "3,3",
+                "attr.dilation": "1,1",
+                "attr.groups": "1",
+                "attr.input_layout": "NCHW",
+                "attr.weight_layout": "OIHW",
+                "attr.output_layout": "NCHW",
+            },
+        )
+
+        builder.append_program_unit_marker(pu, conv2d)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(markers[-1]["opcode"], "cnn.conv2d")
+        self.assertIn("kid0=native_conv_input", str(markers[-1]["payload"]))
+        self.assertIn("kid1=native_conv_weight", str(markers[-1]["payload"]))
+        self.assertIn("kid2=native_conv_bias", str(markers[-1]["payload"]))
+        self.assertIn("attr.kernel_shape=7,7", str(markers[-1]["payload"]))
+        self.assertIn("attr.stride=2,2", str(markers[-1]["payload"]))
+
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(
             DummyModel(),

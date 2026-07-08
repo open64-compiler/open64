@@ -547,6 +547,12 @@ Current Phase 7 status:
     `common.reduce_mean`. Mock builder tests, optional native tests, optional
     FX capture tests, and `python_native_ir_tools_smoke` all inspect the new
     markers and their static attributes.
+11. The first multi-input CNN marker batch adds `cnn.conv2d` as a domain
+    wrapper over `common.window_reduce`. The Python facade emits a 3-input
+    activation/weight/bias marker with kernel, stride, padding, dilation,
+    groups, and NCHW/OIHW layout attributes. Optional FX coverage maps
+    `torch.nn.functional.conv2d` with explicit activation, weight, and bias
+    inputs while native and artifact smoke tests inspect the same marker.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -801,10 +807,10 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Continue the Phase 7 neural-network vertical slice by adding the first
-    multi-input CNN operators, starting with `cnn.conv2d` and its static
-    kernel, stride, padding, dilation, group, and layout attributes, then follow
-    with `cnn.batch_norm_infer` once parameter/constant handling is ready.
+10. Continue the Phase 7 neural-network vertical slice with
+    `cnn.batch_norm_infer` once parameter/constant handling can model scale,
+    bias, running mean, running variance, epsilon, and training/inference mode
+    metadata cleanly.
 
 ## Practical Developer Loop
 

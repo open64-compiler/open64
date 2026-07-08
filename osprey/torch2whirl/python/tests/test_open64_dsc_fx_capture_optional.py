@@ -134,6 +134,47 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             "1,1",
         )
 
+    def test_fx_conv2d_maps_to_cnn_conv2d_with_static_attrs(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class Conv2dModule(torch.nn.Module):
+            def forward(self, value, weight, bias):
+                return F.conv2d(
+                    value,
+                    weight,
+                    bias,
+                    stride=2,
+                    padding=3,
+                    dilation=1,
+                    groups=1,
+                )
+
+        value = torch.ones((1, 3, 224, 224), dtype=torch.float32)
+        weight = torch.ones((64, 3, 7, 7), dtype=torch.float32)
+        bias = torch.ones((64,), dtype=torch.float32)
+        module = export_to_whirl(Conv2dModule(), [value, weight, bias])
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["cnn.conv2d"])
+        self.assertEqual(module.entry_function.body_markers[-1], "cnn.conv2d")
+        self.assertEqual(
+            module.graph_operators[0].kids,
+            ["input0", "input1", "input2"],
+        )
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.stride"],
+            "2,2",
+        )
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.padding"],
+            "3,3",
+        )
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.weight_layout"],
+            "OIHW",
+        )
+
     def test_fx_unsupported_operator_fails_loudly(self) -> None:
         import torch
 

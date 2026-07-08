@@ -413,6 +413,8 @@ static const DSL_DOMAIN_WRAPPER_SEED DSL_domain_wrapper_seed[] = {
         "DOPC_CNN_MAX_POOL2D_WRAPPER" },
     { "cnn", "cnn.global_avg_pool2d", "common.reduce_mean",
         "DOPC_CNN_GLOBAL_AVG_POOL2D_WRAPPER" },
+    { "cnn", "cnn.conv2d", "common.window_reduce",
+        "DOPC_CNN_CONV2D_WRAPPER" },
     { "transformer", "transformer.q_projection", "common.linear",
         "DOPC_TRANSFORMER_Q_PROJECTION_WRAPPER" },
     { "cnn", "cnn.residual_add", "common.residual_add",

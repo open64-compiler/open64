@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import operator
-from typing import Any, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .builder import ValueHandle, WhirlBuilder, load_builder
 from .mapping import cnn, common
@@ -15,6 +16,12 @@ from .module import (
     WhirlValueRecord,
 )
 from .options import WhirlExportOptions
+
+
+@dataclass(frozen=True)
+class _MappedOperatorPlan:
+    name: str
+    attrs: Mapping[str, str]
 
 
 class WhirlExportInterpreter:
@@ -44,15 +51,17 @@ class WhirlExportInterpreter:
 
         graph_plan = captured_operators
         if not graph_plan and len(handles) >= 2:
-            graph_plan = [common.ADD]
+            graph_plan = [_MappedOperatorPlan(common.ADD, {})]
 
-        for operator_name in graph_plan:
+        for operator_plan in graph_plan:
+            operator_name = operator_plan.name
             arity = self._operator_arity(operator_name)
             if len(handles) < arity:
                 raise ValueError(f"{operator_name} requires at least {arity} inputs")
             handle, attrs = self._emit_operator(
                 operator_name,
                 handles[:arity],
+                operator_plan.attrs,
             )
             self.builder().append_program_unit_marker(entry_pu, handle)
             operators.append(operator_name)
@@ -90,6 +99,8 @@ class WhirlExportInterpreter:
             return 1
         if operator_name in {common.ADD, common.MATMUL}:
             return 2
+        if operator_name in cnn.TERNARY_OPERATORS:
+            return 3
 
         raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
 
@@ -97,9 +108,10 @@ class WhirlExportInterpreter:
         self,
         operator_name: str,
         operands: Sequence[ValueHandle],
+        mapped_attrs: Mapping[str, str],
     ) -> Tuple[ValueHandle, dict]:
         if operator_name == common.ADD:
-            attrs = {"attr.broadcast_rule": "none"}
+            attrs = {"attr.broadcast_rule": "none", **mapped_attrs}
             return self.builder().common_add(
                 operands[0],
                 operands[1],
@@ -109,6 +121,7 @@ class WhirlExportInterpreter:
             attrs = {
                 "attr.transpose_kid0": "false",
                 "attr.transpose_kid1": "false",
+                **mapped_attrs,
             }
             return self.builder().common_matmul(
                 operands[0],
@@ -116,16 +129,17 @@ class WhirlExportInterpreter:
                 attrs,
             ), attrs
         if operator_name == common.RELU:
-            attrs = {}
+            attrs = dict(mapped_attrs)
             return self.builder().common_relu(operands[0], attrs), attrs
         if operator_name == common.FLATTEN:
             attrs = {
                 "attr.start_dim": "1",
                 "attr.end_dim": "-1",
+                **mapped_attrs,
             }
             return self.builder().common_flatten(operands[0], attrs), attrs
         if operator_name == common.OUTPUT_LOGITS:
-            attrs = {}
+            attrs = dict(mapped_attrs)
             return self.builder().common_output_logits(operands[0], attrs), attrs
         if operator_name == cnn.MAX_POOL2D:
             attrs = {
@@ -134,23 +148,43 @@ class WhirlExportInterpreter:
                 "attr.padding": "1,1",
                 "attr.dilation": "1,1",
                 "attr.ceil_mode": "false",
+                **mapped_attrs,
             }
             return self.builder().cnn_max_pool2d(operands[0], attrs), attrs
         if operator_name == cnn.GLOBAL_AVG_POOL2D:
             attrs = {
                 "attr.output_size": "1,1",
                 "attr.reduction_axes": "spatial",
+                **mapped_attrs,
             }
             return self.builder().cnn_global_avg_pool2d(operands[0], attrs), attrs
+        if operator_name == cnn.CONV2D:
+            attrs = {
+                "attr.kernel_shape": "3,3",
+                "attr.stride": "1,1",
+                "attr.padding": "0,0",
+                "attr.dilation": "1,1",
+                "attr.groups": "1",
+                "attr.input_layout": "NCHW",
+                "attr.weight_layout": "OIHW",
+                "attr.output_layout": "NCHW",
+                **mapped_attrs,
+            }
+            return self.builder().cnn_conv2d(
+                operands[0],
+                operands[1],
+                operands[2],
+                attrs,
+            ), attrs
 
         raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
 
-    def _captured_graph_operators(self, model: Any) -> List[str]:
+    def _captured_graph_operators(self, model: Any) -> List[_MappedOperatorPlan]:
         graph = self._capture_fx_graph(model)
         if graph is None:
             return []
 
-        operators: List[str] = []
+        operators: List[_MappedOperatorPlan] = []
         for node in getattr(graph, "nodes", ()):
             node_op = str(getattr(node, "op", ""))
             if node_op in {"placeholder", "output", "get_attr"}:
@@ -177,23 +211,89 @@ class WhirlExportInterpreter:
             return None
         return getattr(traced, "graph", None)
 
-    def _map_fx_node(self, node: Any) -> Optional[str]:
+    def _map_fx_node(self, node: Any) -> Optional[_MappedOperatorPlan]:
         node_op = str(getattr(node, "op", ""))
         target = getattr(node, "target", None)
 
         if node_op == "call_function" and target is operator.add:
-            return common.ADD
+            return _MappedOperatorPlan(common.ADD, {})
         if node_op == "call_function" and target is operator.matmul:
-            return common.MATMUL
+            return _MappedOperatorPlan(common.MATMUL, {})
 
         target_name = getattr(target, "__name__", str(target))
         if node_op in {"call_function", "call_method"}:
-            return (
+            operator_name = (
                 common.FX_OPERATOR_MAP.get(target_name) or
                 cnn.FX_OPERATOR_MAP.get(target_name)
             )
+            if operator_name is None:
+                return None
+            return _MappedOperatorPlan(
+                operator_name,
+                self._fx_static_attrs(operator_name, node),
+            )
 
         return None
+
+    def _fx_static_attrs(self, operator_name: str, node: Any) -> Mapping[str, str]:
+        if operator_name == cnn.CONV2D:
+            args = list(getattr(node, "args", ()))
+            kwargs = getattr(node, "kwargs", {})
+            return {
+                "attr.kernel_shape": "3,3",
+                "attr.stride": self._fx_pair_attr(args, kwargs, "stride", 3, "1,1"),
+                "attr.padding": self._fx_pair_attr(args, kwargs, "padding", 4, "0,0"),
+                "attr.dilation": self._fx_pair_attr(
+                    args,
+                    kwargs,
+                    "dilation",
+                    5,
+                    "1,1",
+                ),
+                "attr.groups": str(self._fx_scalar_attr(args, kwargs, "groups", 6, 1)),
+                "attr.input_layout": "NCHW",
+                "attr.weight_layout": "OIHW",
+                "attr.output_layout": "NCHW",
+            }
+
+        return {}
+
+    def _fx_pair_attr(
+        self,
+        args: Sequence[Any],
+        kwargs: Mapping[str, Any],
+        name: str,
+        index: int,
+        default: str,
+    ) -> str:
+        value = kwargs.get(name)
+        if value is None and len(args) > index:
+            value = args[index]
+        if value is None:
+            return default
+        if isinstance(value, int):
+            return f"{value},{value}"
+        if isinstance(value, Sequence) and not isinstance(value, str):
+            if len(value) == 1:
+                return f"{value[0]},{value[0]}"
+            if len(value) >= 2:
+                return f"{value[0]},{value[1]}"
+        return default
+
+    def _fx_scalar_attr(
+        self,
+        args: Sequence[Any],
+        kwargs: Mapping[str, Any],
+        name: str,
+        index: int,
+        default: int,
+    ) -> int:
+        value = kwargs.get(name)
+        if value is None and len(args) > index:
+            value = args[index]
+        if isinstance(value, int):
+            return value
+        return default
 
     def _build_input_placeholders(
         self,

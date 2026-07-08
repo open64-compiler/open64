@@ -10,7 +10,12 @@ UNARY_OPERATORS = {
     MAX_POOL2D,
 }
 
+TERNARY_OPERATORS = {
+    CONV2D,
+}
+
 FX_OPERATOR_MAP = {
     "adaptive_avg_pool2d": GLOBAL_AVG_POOL2D,
+    "conv2d": CONV2D,
     "max_pool2d": MAX_POOL2D,
 }

@@ -258,6 +258,29 @@ class WhirlBuilder:
             },
         )
 
+    def cnn_conv2d(
+        self,
+        value: ValueHandle,
+        weight: ValueHandle,
+        bias: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "cnn.conv2d",
+            1,
+            [value, weight, bias],
+            attrs or {
+                "attr.kernel_shape": "3,3",
+                "attr.stride": "1,1",
+                "attr.padding": "0,0",
+                "attr.dilation": "1,1",
+                "attr.groups": "1",
+                "attr.input_layout": "NCHW",
+                "attr.weight_layout": "OIHW",
+                "attr.output_layout": "NCHW",
+            },
+        )
+
 
 def load_builder(name: str) -> WhirlBuilder:
     return WhirlBuilder(load_backend(name))

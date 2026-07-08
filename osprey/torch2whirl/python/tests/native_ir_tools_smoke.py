@@ -33,6 +33,29 @@ def _append_operator_probes(module) -> None:
     output_logits = builder.common_output_logits(lhs)
     max_pool2d = builder.cnn_max_pool2d(lhs)
     global_avg_pool2d = builder.cnn_global_avg_pool2d(lhs)
+    conv_bias = builder.tensor_constant(
+        "conv_bias",
+        "float32",
+        1,
+        "[1]",
+        "splat",
+        "0.0",
+    )
+    conv2d = builder.cnn_conv2d(
+        lhs,
+        rhs,
+        conv_bias,
+        {
+            "attr.kernel_shape": "3,3",
+            "attr.stride": "1,1",
+            "attr.padding": "1,1",
+            "attr.dilation": "1,1",
+            "attr.groups": "1",
+            "attr.input_layout": "NCHW",
+            "attr.weight_layout": "OIHW",
+            "attr.output_layout": "NCHW",
+        },
+    )
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         matmul,
@@ -56,6 +79,10 @@ def _append_operator_probes(module) -> None:
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         global_avg_pool2d,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        conv2d,
     )
 
 
@@ -120,10 +147,13 @@ def main() -> int:
             "common.output_logits",
             "cnn.max_pool2d",
             "cnn.global_avg_pool2d",
+            "cnn.conv2d",
             "attr.start_dim=1",
             "attr.transpose_kid0=false",
             "attr.kernel_shape=3,3",
             "attr.output_size=1,1",
+            "attr.groups=1",
+            "attr.weight_layout=OIHW",
             "Symbols:",
             "Types:",
         ]
