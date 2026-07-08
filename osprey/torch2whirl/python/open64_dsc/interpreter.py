@@ -92,10 +92,6 @@ class WhirlExportInterpreter:
             attrs = {"attr.broadcast_rule": "none"}
             return self.builder().common_add(lhs, rhs, attrs), attrs
         if operator_name == common.MATMUL:
-            if self.builder().backend_name() == "native":
-                raise NotImplementedError(
-                    "native common.matmul marker append is not ready"
-                )
             attrs = {
                 "attr.transpose_kid0": "false",
                 "attr.transpose_kid1": "false",

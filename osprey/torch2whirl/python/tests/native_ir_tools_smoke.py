@@ -10,11 +10,28 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from open64_dsc import WhirlExportOptions, export_to_whirl, save_as_whirl
+from open64_dsc import (
+    WhirlExportOptions,
+    export_to_whirl,
+    load_builder,
+    save_as_whirl,
+)
+from open64_dsc.builder import ProgramUnitHandle, ValueHandle
 
 
 class DummyModel:
     pass
+
+
+def _append_matmul_probe(module) -> None:
+    builder = load_builder("native")
+    lhs = ValueHandle(module.values[0].handle)
+    rhs = ValueHandle(module.values[1].handle)
+    matmul = builder.common_matmul(lhs, rhs)
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        matmul,
+    )
 
 
 def _find_ir_b2a() -> Optional[Path]:
@@ -49,6 +66,7 @@ def main() -> int:
             [object(), object()],
             WhirlExportOptions(backend="native", model_name="python_native"),
         )
+        _append_matmul_probe(module)
         save_as_whirl(module, str(artifact))
         if not artifact.exists() or artifact.stat().st_size == 0:
             print("native Python WHIRL artifact was not created", file=sys.stderr)
@@ -71,6 +89,8 @@ def main() -> int:
             "FUNC_ENTRY",
             "common.tensor_const",
             "common.add",
+            "common.matmul",
+            "attr.transpose_kid0=false",
             "Symbols:",
             "Types:",
         ]

@@ -72,6 +72,47 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertGreater(rhs.value, 0)
         self.assertGreater(add.value, 0)
 
+    def test_native_backend_appends_matmul_marker(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_matmul_model")
+        lhs = builder.tensor_constant(
+            "native_matmul_lhs",
+            "float32",
+            2,
+            "[2,3]",
+            "splat",
+            "1.0",
+        )
+        rhs = builder.tensor_constant(
+            "native_matmul_rhs",
+            "float32",
+            2,
+            "[3,4]",
+            "splat",
+            "2.0",
+        )
+        matmul = builder.common_matmul(lhs, rhs)
+
+        builder.append_program_unit_marker(pu, lhs)
+        builder.append_program_unit_marker(pu, rhs)
+        builder.append_program_unit_marker(pu, matmul)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(
+            [marker["opcode"] for marker in markers[-3:]],
+            [
+                "common.tensor_const",
+                "common.tensor_const",
+                "common.matmul",
+            ],
+        )
+        self.assertIn("kid0=native_matmul_lhs", str(markers[-1]["payload"]))
+        self.assertIn(
+            "attr.transpose_kid0=false",
+            str(markers[-1]["payload"]),
+        )
+
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(
             DummyModel(),
@@ -84,11 +125,11 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            [marker["opcode"] for marker in markers],
+            [marker["opcode"] for marker in markers[-3:]],
             ["common.tensor_const", "common.tensor_const", "common.add"],
         )
-        self.assertIn("name=input0", str(markers[0]["payload"]))
-        self.assertIn("kid0=input0", str(markers[2]["payload"]))
+        self.assertIn("name=input0", str(markers[-3]["payload"]))
+        self.assertIn("kid0=input0", str(markers[-1]["payload"]))
 
         with tempfile.TemporaryDirectory() as work_dir:
             output = Path(work_dir) / "native_model.B"
