@@ -75,6 +75,21 @@ class WhirlExportInterpreter:
                 len(shape),
                 logical_shape,
             )
+            descriptor = {
+                "kind": "tensor",
+                "dtype": dtype,
+                "rank": len(shape),
+                "logical_shape": logical_shape,
+                "traits": "example_input",
+                "layout": "contiguous",
+                "sharding": "replicated",
+                "placement": "host",
+                "memory": "dense",
+                "quantization": "none",
+                "runtime_state": "static",
+                "lineage": name,
+            }
+            self.builder().attach_tensor_descriptor(tensor_type, descriptor)
             value = self.builder().tensor_constant(
                 name,
                 dtype,
@@ -83,6 +98,12 @@ class WhirlExportInterpreter:
                 "example_input",
                 name,
             )
+            symbol = self.builder().symbol(name, tensor_type)
+            metadata = {
+                "source_layer_name": name,
+                "lowering_hint": "example_input",
+            }
+            self.builder().attach_symbol_metadata(symbol, metadata)
 
             tensor_types.append(
                 WhirlTensorTypeRecord(
@@ -91,6 +112,7 @@ class WhirlExportInterpreter:
                     dtype=dtype,
                     rank=len(shape),
                     logical_shape=logical_shape,
+                    descriptor=descriptor,
                 )
             )
             values.append(
@@ -99,6 +121,8 @@ class WhirlExportInterpreter:
                     handle=value.value,
                     type_name=type_name,
                     value_kind="example_input",
+                    symbol_handle=symbol.value,
+                    metadata=metadata,
                 )
             )
             handles.append(value)

@@ -23,6 +23,11 @@ class TensorTypeHandle(OpaqueHandle):
 
 
 @dataclass(frozen=True)
+class SymbolHandle(OpaqueHandle):
+    pass
+
+
+@dataclass(frozen=True)
 class ValueHandle(OpaqueHandle):
     pass
 
@@ -54,6 +59,40 @@ class WhirlBuilder:
                 logical_shape,
             )
         )
+
+    def attach_tensor_descriptor(
+        self,
+        tensor_type: TensorTypeHandle,
+        descriptor: Mapping[str, object],
+    ) -> None:
+        if not self._backend.attach_tensor_descriptor(
+            tensor_type.value,
+            descriptor,
+        ):
+            raise RuntimeError("failed to attach tensor descriptor")
+
+    def symbol(
+        self,
+        name: str,
+        tensor_type: TensorTypeHandle,
+    ) -> SymbolHandle:
+        return SymbolHandle(
+            self._backend.create_symbol(
+                name,
+                tensor_type.value,
+            )
+        )
+
+    def attach_symbol_metadata(
+        self,
+        symbol: SymbolHandle,
+        metadata: Mapping[str, str],
+    ) -> None:
+        if not self._backend.attach_symbol_metadata(
+            symbol.value,
+            metadata,
+        ):
+            raise RuntimeError("failed to attach symbol metadata")
 
     def tensor_constant(
         self,

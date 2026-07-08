@@ -418,6 +418,12 @@ Current Phase 6 status:
     input and a first `common.add` operator when at least two example inputs are
     present. This is deliberately a placeholder for future `torch.export` / FX
     traversal, but it exercises the builder facade and manifest path today.
+21. The native and mock backends now support tensor descriptor attachment,
+    symbol creation, and symbol metadata attachment behind the builder facade.
+22. The interpreter attaches descriptor fields for placeholder dtype, rank,
+    logical shape, lineage, layout, placement, memory, and runtime state, then
+    attaches `source_layer_name` and `lowering_hint` metadata to each
+    placeholder symbol.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -563,13 +569,12 @@ Relevant test patterns to adapt:
 3. Keep the Docker native test in the validation loop when Python development
    headers are available:
    `apt-get install -y python3.8-dev && make python_native_test`.
-4. Extend the native bridge with descriptor attachment and symbol metadata for
-   the interpreter-owned placeholder values, keeping those calls behind the
-   builder facade.
-5. Add the first descriptor-aware Python tests around dtype, rank, logical
-   shape, source name, and lowering hint persistence.
-6. Extend the builder API only as needed to create an inspectable minimal PU
+4. Extend the builder API only as needed to create an inspectable minimal PU
    tree; do not broaden it into a generic Python-owned WHIRL construction API.
+5. Keep descriptor-aware Python tests around dtype, rank, logical shape, source
+   name, and lowering hint persistence in both mock and native validation.
+6. Start connecting the placeholder graph records to the eventual PU tree
+   finalization path.
 7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
    available, then run `dsl_ir_tools_smoke_test.sh` against the first native
    Python-produced artifact.

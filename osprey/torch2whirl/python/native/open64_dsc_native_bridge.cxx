@@ -89,6 +89,40 @@ Open64_DSC_Create_Tensor_Type(const char *name,
     return (Open64_DSC_Handle) tensor_ty;
 }
 
+int
+Open64_DSC_Attach_Tensor_Descriptor
+        (Open64_DSC_Handle tensor_type,
+         const Open64_DSC_Tensor_Descriptor *descriptor)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR builder_descriptor;
+
+    if (tensor_type == 0 || descriptor == NULL ||
+        descriptor->dtype == NULL || descriptor->dtype[0] == '\0' ||
+        descriptor->rank < 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    memset(&builder_descriptor, 0, sizeof(builder_descriptor));
+    builder_descriptor.type_core.kind =
+        descriptor->kind == NULL ? "tensor" : descriptor->kind;
+    builder_descriptor.type_core.dtype = descriptor->dtype;
+    builder_descriptor.type_core.rank = descriptor->rank;
+    builder_descriptor.type_core.logical_shape = descriptor->logical_shape;
+    builder_descriptor.traits.traits = descriptor->traits;
+    builder_descriptor.representation.layout = descriptor->layout;
+    builder_descriptor.representation.sharding = descriptor->sharding;
+    builder_descriptor.representation.placement = descriptor->placement;
+    builder_descriptor.representation.memory = descriptor->memory;
+    builder_descriptor.representation.quantization = descriptor->quantization;
+    builder_descriptor.representation.runtime_state =
+        descriptor->runtime_state;
+    builder_descriptor.lineage.lineage = descriptor->lineage;
+
+    return DSL_Builder_Attach_Tensor_Descriptor
+               ((TY_IDX) tensor_type, &builder_descriptor) ? 1 : 0;
+}
+
 Open64_DSC_Handle
 Open64_DSC_Create_Tensor_Constant(const char *name,
                                   const char *dtype,
@@ -173,6 +207,54 @@ Open64_DSC_Create_Operator(const char *opcode_name,
     delete [] builder_attrs;
 
     return (Open64_DSC_Handle) op;
+}
+
+Open64_DSC_Handle
+Open64_DSC_Create_Symbol(const char *name, Open64_DSC_Handle tensor_type)
+{
+    ST_IDX st;
+
+    if (name == NULL || name[0] == '\0' || tensor_type == 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    st = DSL_Builder_Create_Symbol(name, (TY_IDX) tensor_type, CLASS_VAR,
+                                   SCLASS_UGLOBAL, EXPORT_LOCAL);
+    return (Open64_DSC_Handle) st;
+}
+
+int
+Open64_DSC_Attach_Symbol_Metadata(Open64_DSC_Handle symbol,
+                                  const Open64_DSC_Attribute *metadata,
+                                  unsigned int metadata_count)
+{
+    DSL_BUILDER_COMPILER_METADATA *builder_metadata = NULL;
+    unsigned int i;
+    BOOL ok;
+
+    if (symbol == 0 || (metadata_count != 0 && metadata == NULL))
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    if (metadata_count != 0) {
+        builder_metadata =
+            new DSL_BUILDER_COMPILER_METADATA[metadata_count];
+        for (i = 0; i < metadata_count; ++i) {
+            if (metadata[i].name == NULL || metadata[i].name[0] == '\0') {
+                delete [] builder_metadata;
+                return 0;
+            }
+            builder_metadata[i].name = metadata[i].name;
+            builder_metadata[i].value = metadata[i].value;
+        }
+    }
+
+    ok = DSL_Builder_Attach_Metadata((ST_IDX) symbol, builder_metadata,
+                                     metadata_count);
+    delete [] builder_metadata;
+    return ok ? 1 : 0;
 }
 
 int

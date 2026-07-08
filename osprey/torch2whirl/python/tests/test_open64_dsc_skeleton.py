@@ -28,6 +28,20 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertEqual(len(module.values), 2)
         self.assertEqual(len(module.graph_operators), 1)
         self.assertEqual(module.graph_operators[0].kids, ["input0", "input1"])
+        self.assertEqual(module.tensor_types[0].descriptor["dtype"], "float32")
+        self.assertEqual(module.tensor_types[0].descriptor["rank"], 0)
+        self.assertEqual(
+            module.tensor_types[0].descriptor["logical_shape"],
+            "[]",
+        )
+        self.assertEqual(
+            module.values[0].metadata["source_layer_name"],
+            "input0",
+        )
+        self.assertEqual(
+            module.values[0].metadata["lowering_hint"],
+            "example_input",
+        )
 
     def test_options_validate_backend(self) -> None:
         with self.assertRaises(ValueError):
@@ -49,6 +63,24 @@ class Open64DscSkeletonTest(unittest.TestCase):
             2,
             "[1,4]",
         )
+        builder.attach_tensor_descriptor(
+            tensor_ty,
+            {
+                "kind": "tensor",
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[1,4]",
+                "lineage": "unit_test",
+            },
+        )
+        symbol = builder.symbol("activation", tensor_ty)
+        builder.attach_symbol_metadata(
+            symbol,
+            {
+                "source_layer_name": "activation",
+                "lowering_hint": "unit_test",
+            },
+        )
         lhs = builder.tensor_constant(
             "lhs",
             "float32",
@@ -68,6 +100,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
         add = builder.common_add(lhs, rhs)
 
         self.assertGreater(tensor_ty.value, 0)
+        self.assertGreater(symbol.value, 0)
         self.assertGreater(lhs.value, 0)
         self.assertGreater(rhs.value, 0)
         self.assertGreater(add.value, 0)
@@ -114,7 +147,9 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("input_count=2", text)
         self.assertIn("operator.0=common.add", text)
         self.assertIn("tensor_type.0=input0_type:float32:[]", text)
+        self.assertIn("tensor_descriptor.0=float32:0:[]:input0", text)
         self.assertIn("value.0=input0:input0_type:example_input", text)
+        self.assertIn("value_metadata.0=input0:example_input", text)
         self.assertIn("graph_operator.0=common.add:input0,input1", text)
 
 

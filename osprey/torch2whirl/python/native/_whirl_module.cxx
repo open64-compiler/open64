@@ -20,6 +20,73 @@ Open64_DSC_Handle_Result(Open64_DSC_Handle handle, const char *action)
 }
 
 static PyObject *
+Open64_DSC_Bool_Result(int ok, const char *action)
+{
+    if (ok)
+        Py_RETURN_TRUE;
+
+    PyErr_Format(PyExc_RuntimeError, "failed to %s", action);
+    return NULL;
+}
+
+static const char *
+Open64_DSC_Dict_String(PyObject *dict, const char *key,
+                       const char *fallback)
+{
+    PyObject *item = PyDict_GetItemString(dict, key);
+
+    if (item == NULL)
+        return fallback;
+    if (!PyUnicode_Check(item)) {
+        PyErr_Format(PyExc_TypeError, "descriptor field %s must be str", key);
+        return NULL;
+    }
+    return PyUnicode_AsUTF8(item);
+}
+
+static int
+Open64_DSC_Read_Tensor_Descriptor
+        (PyObject *dict, Open64_DSC_Tensor_Descriptor *descriptor)
+{
+    PyObject *rank_obj;
+    long rank;
+
+    if (descriptor == NULL)
+        return 0;
+    if (!PyDict_Check(dict)) {
+        PyErr_SetString(PyExc_TypeError, "descriptor must be a dict");
+        return 0;
+    }
+
+    rank_obj = PyDict_GetItemString(dict, "rank");
+    if (rank_obj == NULL) {
+        PyErr_SetString(PyExc_KeyError, "descriptor rank is required");
+        return 0;
+    }
+    rank = PyLong_AsLong(rank_obj);
+    if (PyErr_Occurred())
+        return 0;
+
+    descriptor->kind = Open64_DSC_Dict_String(dict, "kind", "tensor");
+    descriptor->dtype = Open64_DSC_Dict_String(dict, "dtype", NULL);
+    descriptor->logical_shape =
+        Open64_DSC_Dict_String(dict, "logical_shape", "");
+    descriptor->traits = Open64_DSC_Dict_String(dict, "traits", NULL);
+    descriptor->layout = Open64_DSC_Dict_String(dict, "layout", NULL);
+    descriptor->sharding = Open64_DSC_Dict_String(dict, "sharding", NULL);
+    descriptor->placement = Open64_DSC_Dict_String(dict, "placement", NULL);
+    descriptor->memory = Open64_DSC_Dict_String(dict, "memory", NULL);
+    descriptor->quantization =
+        Open64_DSC_Dict_String(dict, "quantization", NULL);
+    descriptor->runtime_state =
+        Open64_DSC_Dict_String(dict, "runtime_state", NULL);
+    descriptor->lineage = Open64_DSC_Dict_String(dict, "lineage", NULL);
+    descriptor->rank = (int) rank;
+
+    return !PyErr_Occurred();
+}
+
+static PyObject *
 Open64_DSC_Backend_Name(PyObject *self, PyObject *args)
 {
     (void) self;
@@ -45,6 +112,28 @@ Open64_DSC_Create_Tensor_Type(PyObject *self, PyObject *args)
 
     handle = Open64_DSC_Create_Tensor_Type(name, dtype, rank, logical_shape);
     return Open64_DSC_Handle_Result(handle, "create tensor type");
+}
+
+static PyObject *
+Open64_DSC_Attach_Tensor_Descriptor(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle tensor_type;
+    PyObject *descriptor_obj;
+    Open64_DSC_Tensor_Descriptor descriptor;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "KO!:attach_tensor_descriptor",
+                          &tensor_type, &PyDict_Type, &descriptor_obj))
+        return NULL;
+
+    if (!Open64_DSC_Read_Tensor_Descriptor(descriptor_obj, &descriptor))
+        return NULL;
+
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Attach_Tensor_Descriptor(tensor_type,
+                                                     &descriptor),
+                "attach tensor descriptor");
 }
 
 static PyObject *
@@ -170,6 +259,46 @@ Open64_DSC_Create_Operator(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Create_Symbol(PyObject *self, PyObject *args)
+{
+    const char *name;
+    Open64_DSC_Handle tensor_type;
+    Open64_DSC_Handle handle;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "sK:create_symbol", &name, &tensor_type))
+        return NULL;
+
+    handle = Open64_DSC_Create_Symbol(name, tensor_type);
+    return Open64_DSC_Handle_Result(handle, "create symbol");
+}
+
+static PyObject *
+Open64_DSC_Attach_Symbol_Metadata(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle symbol;
+    PyObject *metadata_obj;
+    std::vector<Open64_DSC_Attribute> metadata;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "KO!:attach_symbol_metadata",
+                          &symbol, &PyDict_Type, &metadata_obj))
+        return NULL;
+
+    if (!Open64_DSC_Read_Attributes(metadata_obj, &metadata))
+        return NULL;
+
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Attach_Symbol_Metadata
+                    (symbol,
+                     metadata.empty() ? NULL : &metadata[0],
+                     (unsigned int) metadata.size()),
+                "attach symbol metadata");
+}
+
+static PyObject *
 Open64_DSC_Finalize(PyObject *self, PyObject *args)
 {
     const char *path;
@@ -208,6 +337,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         "Create a native tensor type and return an opaque handle."
     },
     {
+        "attach_tensor_descriptor",
+        Open64_DSC_Attach_Tensor_Descriptor,
+        METH_VARARGS,
+        "Attach a tensor descriptor to a native tensor type."
+    },
+    {
         "create_tensor_constant",
         Open64_DSC_Create_Tensor_Constant,
         METH_VARARGS,
@@ -218,6 +353,18 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Create_Operator,
         METH_VARARGS,
         "Create a native DSL operator and return an opaque handle."
+    },
+    {
+        "create_symbol",
+        Open64_DSC_Create_Symbol,
+        METH_VARARGS,
+        "Create a native symbol for a tensor type."
+    },
+    {
+        "attach_symbol_metadata",
+        Open64_DSC_Attach_Symbol_Metadata,
+        METH_VARARGS,
+        "Attach compiler metadata to a native symbol."
     },
     {
         "finalize_mapped_image",

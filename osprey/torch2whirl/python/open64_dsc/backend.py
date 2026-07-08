@@ -20,6 +20,13 @@ class WhirlBackend(Protocol):
     ) -> int:
         ...
 
+    def attach_tensor_descriptor(
+        self,
+        tensor_type: int,
+        descriptor: Mapping[str, object],
+    ) -> bool:
+        ...
+
     def create_tensor_constant(
         self,
         name: str,
@@ -38,6 +45,20 @@ class WhirlBackend(Protocol):
         kids: Sequence[int],
         attrs: Mapping[str, str],
     ) -> int:
+        ...
+
+    def create_symbol(
+        self,
+        name: str,
+        tensor_type: int,
+    ) -> int:
+        ...
+
+    def attach_symbol_metadata(
+        self,
+        symbol: int,
+        metadata: Mapping[str, str],
+    ) -> bool:
         ...
 
     def finalize_mapped_image(

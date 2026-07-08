@@ -49,6 +49,9 @@ interpreter can construct tensors and operators through a stable facade.
 The current interpreter skeleton records tensor type, value, and operator
 manifest entries for example inputs, including a first placeholder `common.add`
 when two inputs are present.
+It also attaches tensor descriptors and placeholder symbol metadata through the
+builder facade, including dtype, rank, logical shape, source name, and lowering
+hint fields.
 `make -f Makefile.gbase python_native_extension` builds that extension when
 Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`

@@ -29,6 +29,24 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             2,
             "[1,4]",
         )
+        builder.attach_tensor_descriptor(
+            tensor_ty,
+            {
+                "kind": "tensor",
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[1,4]",
+                "lineage": "native_unit_test",
+            },
+        )
+        symbol = builder.symbol("native_activation", tensor_ty)
+        builder.attach_symbol_metadata(
+            symbol,
+            {
+                "source_layer_name": "native_activation",
+                "lowering_hint": "native_unit_test",
+            },
+        )
         lhs = builder.tensor_constant(
             "native_lhs",
             "float32",
@@ -48,6 +66,7 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         add = builder.common_add(lhs, rhs)
 
         self.assertGreater(tensor_ty.value, 0)
+        self.assertGreater(symbol.value, 0)
         self.assertGreater(lhs.value, 0)
         self.assertGreater(rhs.value, 0)
         self.assertGreater(add.value, 0)

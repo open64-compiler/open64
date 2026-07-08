@@ -15,6 +15,7 @@ class WhirlTensorTypeRecord:
     dtype: str
     rank: int
     logical_shape: str
+    descriptor: Mapping[str, object] = field(default_factory=dict)
 
     def to_manifest(self) -> Mapping[str, object]:
         return {
@@ -23,6 +24,7 @@ class WhirlTensorTypeRecord:
             "dtype": self.dtype,
             "rank": self.rank,
             "logical_shape": self.logical_shape,
+            "descriptor": dict(self.descriptor),
         }
 
 
@@ -32,6 +34,8 @@ class WhirlValueRecord:
     handle: int
     type_name: str
     value_kind: str
+    symbol_handle: int = 0
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
     def to_manifest(self) -> Mapping[str, object]:
         return {
@@ -39,6 +43,8 @@ class WhirlValueRecord:
             "handle": self.handle,
             "type_name": self.type_name,
             "value_kind": self.value_kind,
+            "symbol_handle": self.symbol_handle,
+            "metadata": dict(self.metadata),
         }
 
 
