@@ -412,6 +412,12 @@ Current Phase 6 status:
 18. `WhirlExportInterpreter.builder()` now exposes that facade lazily, so graph
     traversal can construct tensors and operators without calling raw backend
     methods directly.
+19. `WhirlModule` now carries a tiny graph skeleton in addition to the stable
+    public metadata: tensor type records, value records, and operator records.
+20. The current interpreter skeleton creates one tensor placeholder per example
+    input and a first `common.add` operator when at least two example inputs are
+    present. This is deliberately a placeholder for future `torch.export` / FX
+    traversal, but it exercises the builder facade and manifest path today.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -557,10 +563,11 @@ Relevant test patterns to adapt:
 3. Keep the Docker native test in the validation loop when Python development
    headers are available:
    `apt-get install -y python3.8-dev && make python_native_test`.
-4. Use the builder facade for a tiny interpreter-owned graph skeleton, still
-   keeping `export_to_whirl` and `save_as_whirl` stable.
-5. Extend the native bridge with descriptor attachment and symbol metadata only
-   when that interpreter skeleton has a concrete need for them.
+4. Extend the native bridge with descriptor attachment and symbol metadata for
+   the interpreter-owned placeholder values, keeping those calls behind the
+   builder facade.
+5. Add the first descriptor-aware Python tests around dtype, rank, logical
+   shape, source name, and lowering hint persistence.
 6. Extend the builder API only as needed to create an inspectable minimal PU
    tree; do not broaden it into a generic Python-owned WHIRL construction API.
 7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when

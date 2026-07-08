@@ -46,6 +46,9 @@ The first native API slice returns opaque integer handles for
 does not own WHIRL table layout or node allocation.
 `open64_dsc.builder.WhirlBuilder` wraps those raw backend calls so the
 interpreter can construct tensors and operators through a stable facade.
+The current interpreter skeleton records tensor type, value, and operator
+manifest entries for example inputs, including a first placeholder `common.add`
+when two inputs are present.
 `make -f Makefile.gbase python_native_extension` builds that extension when
 Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`

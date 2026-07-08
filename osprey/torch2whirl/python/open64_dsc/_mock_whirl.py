@@ -116,5 +116,41 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
         for index, operator in enumerate(operators):
             lines.append(f"operator.{index}={operator}")
 
+    tensor_types = module_manifest.get("tensor_types", ())
+    if isinstance(tensor_types, Sequence) and not isinstance(tensor_types, str):
+        for index, tensor_type in enumerate(tensor_types):
+            if isinstance(tensor_type, Mapping):
+                lines.append(
+                    f"tensor_type.{index}="
+                    f"{tensor_type.get('name', '')}:"
+                    f"{tensor_type.get('dtype', '')}:"
+                    f"{tensor_type.get('logical_shape', '')}"
+                )
+
+    values = module_manifest.get("values", ())
+    if isinstance(values, Sequence) and not isinstance(values, str):
+        for index, value in enumerate(values):
+            if isinstance(value, Mapping):
+                lines.append(
+                    f"value.{index}="
+                    f"{value.get('name', '')}:"
+                    f"{value.get('type_name', '')}:"
+                    f"{value.get('value_kind', '')}"
+                )
+
+    graph_operators = module_manifest.get("graph_operators", ())
+    if (isinstance(graph_operators, Sequence) and
+            not isinstance(graph_operators, str)):
+        for index, operator in enumerate(graph_operators):
+            if isinstance(operator, Mapping):
+                kids = operator.get("kids", ())
+                if not isinstance(kids, Sequence) or isinstance(kids, str):
+                    kids = ()
+                lines.append(
+                    f"graph_operator.{index}="
+                    f"{operator.get('name', '')}:"
+                    f"{','.join(str(kid) for kid in kids)}"
+                )
+
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return True

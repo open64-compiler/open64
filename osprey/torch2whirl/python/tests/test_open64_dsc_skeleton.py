@@ -23,6 +23,11 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertEqual(module.model_name, "DummyModel")
         self.assertEqual(module.input_count, 2)
         self.assertEqual(module.options.backend, "mock")
+        self.assertEqual(module.operators, ["common.add"])
+        self.assertEqual(len(module.tensor_types), 2)
+        self.assertEqual(len(module.values), 2)
+        self.assertEqual(len(module.graph_operators), 1)
+        self.assertEqual(module.graph_operators[0].kids, ["input0", "input1"])
 
     def test_options_validate_backend(self) -> None:
         with self.assertRaises(ValueError):
@@ -94,7 +99,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(
             DummyModel(),
-            [object()],
+            [object(), object()],
             WhirlExportOptions(model_name="unit_model"),
         )
 
@@ -106,7 +111,11 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
         self.assertIn("format=mock", text)
         self.assertIn("model_name=unit_model", text)
-        self.assertIn("input_count=1", text)
+        self.assertIn("input_count=2", text)
+        self.assertIn("operator.0=common.add", text)
+        self.assertIn("tensor_type.0=input0_type:float32:[]", text)
+        self.assertIn("value.0=input0:input0_type:example_input", text)
+        self.assertIn("graph_operator.0=common.add:input0,input1", text)
 
 
 if __name__ == "__main__":
