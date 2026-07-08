@@ -81,6 +81,13 @@ typedef struct {
     UINT32 flags;
 } DSL_BUILDER_MAPPED_IMAGE_REQUEST;
 
+typedef struct {
+    const char *opcode_name;
+    UINT32 opcode_name_len;
+    UINT32 version;
+    const char *payload;
+} DSL_BUILDER_MARKER_INFO;
+
 extern TY_IDX DSL_Builder_Create_Tensor_Type_Core
                                 (const char *name,
                                  TY_IDX element_ty,
@@ -113,6 +120,12 @@ extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
 extern BOOL DSL_Builder_Append_PU_Marker
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  DSL_BUILDER_VALUE marker);
+extern UINT32 DSL_Builder_Count_PU_Markers
+                                (DSL_BUILDER_PROGRAM_UNIT pu);
+extern BOOL DSL_Builder_Get_PU_Marker
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 UINT32 index,
+                                 DSL_BUILDER_MARKER_INFO *info);
 extern BOOL DSL_Builder_Finalize_Mapped_Image
                                 (const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
 

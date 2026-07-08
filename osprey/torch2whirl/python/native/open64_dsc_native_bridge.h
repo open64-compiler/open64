@@ -31,6 +31,13 @@ typedef struct {
     const char *lineage;
 } Open64_DSC_Tensor_Descriptor;
 
+typedef struct {
+    const char *opcode_name;
+    unsigned int opcode_name_len;
+    unsigned int version;
+    const char *payload;
+} Open64_DSC_Marker_Info;
+
 extern Open64_DSC_Handle Open64_DSC_Create_Tensor_Type
                                 (const char *name,
                                  const char *dtype,
@@ -65,6 +72,12 @@ extern Open64_DSC_Handle Open64_DSC_Create_Minimal_Program_Unit
 extern int Open64_DSC_Append_Program_Unit_Marker
                                 (Open64_DSC_Handle program_unit,
                                  Open64_DSC_Handle marker);
+extern unsigned int Open64_DSC_Count_Program_Unit_Markers
+                                (Open64_DSC_Handle program_unit);
+extern int Open64_DSC_Get_Program_Unit_Marker
+                                (Open64_DSC_Handle program_unit,
+                                 unsigned int index,
+                                 Open64_DSC_Marker_Info *info);
 extern int Open64_DSC_Finalize_Mapped_Image(const char *path);
 
 #ifdef __cplusplus

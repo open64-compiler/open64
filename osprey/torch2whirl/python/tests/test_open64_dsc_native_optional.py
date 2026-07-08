@@ -7,6 +7,7 @@ from pathlib import Path
 
 from open64_dsc import WhirlExportOptions, export_to_whirl
 from open64_dsc import load_builder, save_as_whirl
+from open64_dsc.builder import ProgramUnitHandle
 
 
 NATIVE_BACKEND_AVAILABLE = (
@@ -74,9 +75,20 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(
             DummyModel(),
-            [object()],
+            [object(), object()],
             WhirlExportOptions(backend="native", model_name="native_model"),
         )
+        builder = load_builder("native")
+        markers = builder.inspect_program_unit_markers(
+            ProgramUnitHandle(module.entry_function.handle),
+        )
+
+        self.assertEqual(
+            [marker["opcode"] for marker in markers],
+            ["common.tensor_const", "common.tensor_const", "common.add"],
+        )
+        self.assertIn("name=input0", str(markers[0]["payload"]))
+        self.assertIn("kid0=input0", str(markers[2]["payload"]))
 
         with tempfile.TemporaryDirectory() as work_dir:
             output = Path(work_dir) / "native_model.B"

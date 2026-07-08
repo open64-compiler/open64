@@ -212,6 +212,14 @@ BOOL DSL_Builder_Append_PU_Marker(
     DSL_BUILDER_PROGRAM_UNIT pu,
     DSL_BUILDER_VALUE marker);
 
+UINT32 DSL_Builder_Count_PU_Markers(
+    DSL_BUILDER_PROGRAM_UNIT pu);
+
+BOOL DSL_Builder_Get_PU_Marker(
+    DSL_BUILDER_PROGRAM_UNIT pu,
+    UINT32 index,
+    DSL_BUILDER_MARKER_INFO *info);
+
 BOOL DSL_Builder_Finalize_Mapped_Image(
     const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
 ```
@@ -298,6 +306,9 @@ Current Phase 4 status:
    the entry PU body. Python can connect placeholders and graph operators to the
    PU body by opaque handle, but it still cannot allocate or mutate WHIRL nodes
    directly.
+8. `DSL_Builder_Count_PU_Markers` and `DSL_Builder_Get_PU_Marker` provide a
+   read-only native inspection checkpoint for staged PU body markers before the
+   full `ir_b2a -st` artifact inspection path is available.
 
 ## Phase 5: Python Package Skeleton
 
@@ -453,6 +464,11 @@ Current Phase 6 status:
 27. The interpreter appends example-input tensor constants and the first
     `common.add` graph operator into the staged entry PU body, and the mock
     artifact prints deterministic `entry_body_marker.N` lines for review.
+28. `_whirl` now exposes `inspect_program_unit_markers`, mirrored by the mock
+    backend and wrapped by `WhirlBuilder.inspect_program_unit_markers`.
+    Docker `python_native_test` verifies the native entry PU body contains two
+    `common.tensor_const` markers and one `common.add` marker with payloads for
+    `input0`, `input1`, and `kid0=input0`.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -603,9 +619,8 @@ Relevant test patterns to adapt:
 5. Keep the minimal PU API single-purpose until the next inspectable artifact
    checkpoint proves the output through `ir_b2a -st`; do not broaden it into a
    generic Python-owned WHIRL construction API.
-6. Add a native-side inspection checkpoint for the staged entry PU body so the
-   current placeholder and `common.add` markers can be verified without relying
-   only on successful binary finalization.
+6. Keep the native PU body inspection checkpoint in the validation loop until
+   `ir_b2a -st` can inspect the Python-produced artifact directly.
 7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
    available, then run `dsl_ir_tools_smoke_test.sh` against the first native
    Python-produced artifact.

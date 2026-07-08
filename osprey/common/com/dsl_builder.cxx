@@ -26,6 +26,26 @@
 static PU_Info *DSL_Builder_PU_Root = NULL;
 static PU_Info *DSL_Builder_PU_Last = NULL;
 
+static WN *
+DSL_Builder_PU_Body (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    WN *entry;
+    WN *body;
+
+    if (pu == NULL || PU_Info_state(pu, WT_TREE) != Subsect_InMem)
+        return NULL;
+
+    entry = PU_Info_tree_ptr(pu);
+    if (entry == NULL || WN_operator(entry) != OPR_FUNC_ENTRY)
+        return NULL;
+
+    body = WN_func_body(entry);
+    if (body == NULL || WN_operator(body) != OPR_BLOCK)
+        return NULL;
+
+    return body;
+}
+
 static const char *
 DSL_Builder_Safe_String (const char *value)
 {
@@ -353,26 +373,64 @@ DSL_Builder_Append_PU_Marker
         (DSL_BUILDER_PROGRAM_UNIT pu,
          DSL_BUILDER_VALUE marker)
 {
-    WN *entry;
     WN *body;
 
-    if (pu == NULL || marker == NULL)
-        return FALSE;
-    if (PU_Info_state(pu, WT_TREE) != Subsect_InMem)
+    body = DSL_Builder_PU_Body(pu);
+    if (body == NULL || marker == NULL)
         return FALSE;
     if (!DSL_WN_Has_Opcode(marker))
         return FALSE;
 
-    entry = PU_Info_tree_ptr(pu);
-    if (entry == NULL || WN_operator(entry) != OPR_FUNC_ENTRY)
-        return FALSE;
-
-    body = WN_func_body(entry);
-    if (body == NULL || WN_operator(body) != OPR_BLOCK)
-        return FALSE;
-
     WN_INSERT_BlockLast(body, marker);
     return TRUE;
+}
+
+UINT32
+DSL_Builder_Count_PU_Markers (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    WN *body = DSL_Builder_PU_Body(pu);
+    UINT32 count = 0;
+
+    if (body == NULL)
+        return 0;
+
+    for (WN *marker = WN_first(body); marker != NULL;
+         marker = WN_next(marker)) {
+        if (DSL_WN_Has_Opcode(marker))
+            ++count;
+    }
+
+    return count;
+}
+
+BOOL
+DSL_Builder_Get_PU_Marker
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         UINT32 index,
+         DSL_BUILDER_MARKER_INFO *info)
+{
+    WN *body = DSL_Builder_PU_Body(pu);
+    UINT32 current = 0;
+    DSL_OPCODE_ANNOTATION annotation;
+
+    if (body == NULL || info == NULL)
+        return FALSE;
+
+    for (WN *marker = WN_first(body); marker != NULL;
+         marker = WN_next(marker)) {
+        if (!DSL_WN_Get_Opcode_Annotation(marker, &annotation))
+            continue;
+        if (current == index) {
+            info->opcode_name = annotation.name;
+            info->opcode_name_len = annotation.name_len;
+            info->version = annotation.version;
+            info->payload = annotation.payload;
+            return TRUE;
+        }
+        ++current;
+    }
+
+    return FALSE;
 }
 
 BOOL

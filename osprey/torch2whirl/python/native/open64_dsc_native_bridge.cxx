@@ -285,6 +285,41 @@ Open64_DSC_Append_Program_Unit_Marker(Open64_DSC_Handle program_unit,
                 (DSL_BUILDER_VALUE) marker) ? 1 : 0;
 }
 
+unsigned int
+Open64_DSC_Count_Program_Unit_Markers(Open64_DSC_Handle program_unit)
+{
+    if (program_unit == 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    return (unsigned int) DSL_Builder_Count_PU_Markers
+                              ((DSL_BUILDER_PROGRAM_UNIT) program_unit);
+}
+
+int
+Open64_DSC_Get_Program_Unit_Marker(Open64_DSC_Handle program_unit,
+                                   unsigned int index,
+                                   Open64_DSC_Marker_Info *info)
+{
+    DSL_BUILDER_MARKER_INFO builder_info;
+
+    if (program_unit == 0 || info == NULL)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    if (!DSL_Builder_Get_PU_Marker((DSL_BUILDER_PROGRAM_UNIT) program_unit,
+                                   (UINT32) index, &builder_info))
+        return 0;
+
+    info->opcode_name = builder_info.opcode_name;
+    info->opcode_name_len = builder_info.opcode_name_len;
+    info->version = builder_info.version;
+    info->payload = builder_info.payload;
+    return 1;
+}
+
 int
 Open64_DSC_Finalize_Mapped_Image(const char *path)
 {

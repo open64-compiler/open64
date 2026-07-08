@@ -74,6 +74,12 @@ class WhirlBackend(Protocol):
     ) -> bool:
         ...
 
+    def inspect_program_unit_markers(
+        self,
+        program_unit: int,
+    ) -> Sequence[Mapping[str, object]]:
+        ...
+
     def finalize_mapped_image(
         self,
         path: str,

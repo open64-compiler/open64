@@ -115,6 +115,12 @@ class WhirlBuilder:
         ):
             raise RuntimeError("failed to append program unit marker")
 
+    def inspect_program_unit_markers(
+        self,
+        program_unit: ProgramUnitHandle,
+    ) -> Sequence[Mapping[str, object]]:
+        return self._backend.inspect_program_unit_markers(program_unit.value)
+
     def tensor_constant(
         self,
         name: str,

@@ -169,6 +169,45 @@ def _marker_name(marker: int) -> str:
     return str(record.get("name", ""))
 
 
+def _marker_annotation(marker: int) -> Mapping[str, object]:
+    record = _objects[marker]
+    if record.get("kind") == "operator":
+        kid_names = []
+        kids = record.get("kids", ())
+        if isinstance(kids, Sequence) and not isinstance(kids, str):
+            for kid in kids:
+                kid_names.append(_marker_name(int(kid)))
+        attrs = record.get("attrs", {})
+        if not isinstance(attrs, Mapping):
+            attrs = {}
+        payload_fields = [
+            f"kid{index}={kid_name}"
+            for index, kid_name in enumerate(kid_names)
+        ]
+        payload_fields.extend(
+            f"{name}={value}"
+            for name, value in attrs.items()
+        )
+        return {
+            "opcode": str(record.get("opcode_name", "")),
+            "version": int(record.get("version", 0)),
+            "payload": ";".join(payload_fields),
+        }
+
+    return {
+        "opcode": "common.tensor_const",
+        "version": 1,
+        "payload": (
+            f"name={record.get('name', '')};"
+            f"dtype={record.get('dtype', '')};"
+            f"rank={record.get('rank', '')};"
+            f"shape={record.get('logical_shape', '')};"
+            f"value_kind={record.get('value_kind', '')};"
+            f"value={record.get('value', '')}"
+        ),
+    }
+
+
 def append_program_unit_marker(program_unit: int, marker: int) -> bool:
     if program_unit not in _objects:
         raise RuntimeError("failed to append program unit marker")
@@ -181,10 +220,31 @@ def append_program_unit_marker(program_unit: int, marker: int) -> bool:
 
     record = dict(_objects[program_unit])
     body_markers = list(record.get("body_markers", ()))
+    body_marker_annotations = list(record.get("body_marker_annotations", ()))
     body_markers.append(_marker_name(marker))
+    body_marker_annotations.append(dict(_marker_annotation(marker)))
     record["body_markers"] = body_markers
+    record["body_marker_annotations"] = body_marker_annotations
     _objects[program_unit] = record
     return True
+
+
+def inspect_program_unit_markers(
+    program_unit: int,
+) -> Sequence[Mapping[str, object]]:
+    if program_unit not in _objects:
+        raise RuntimeError("failed to inspect program unit markers")
+    if _objects[program_unit].get("kind") != "program_unit":
+        raise RuntimeError("failed to inspect program unit markers")
+
+    annotations = _objects[program_unit].get("body_marker_annotations", ())
+    if not isinstance(annotations, Sequence) or isinstance(annotations, str):
+        return []
+    return [
+        dict(annotation)
+        for annotation in annotations
+        if isinstance(annotation, Mapping)
+    ]
 
 
 def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> bool:

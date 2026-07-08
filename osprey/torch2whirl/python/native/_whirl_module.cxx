@@ -331,6 +331,74 @@ Open64_DSC_Append_Program_Unit_Marker(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Inspect_Program_Unit_Markers(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    unsigned int marker_count;
+    PyObject *markers;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "K:inspect_program_unit_markers",
+                          &program_unit))
+        return NULL;
+
+    marker_count = Open64_DSC_Count_Program_Unit_Markers(program_unit);
+    markers = PyList_New((Py_ssize_t) marker_count);
+    if (markers == NULL)
+        return NULL;
+
+    for (unsigned int i = 0; i < marker_count; ++i) {
+        Open64_DSC_Marker_Info info;
+        PyObject *record;
+        PyObject *opcode;
+        PyObject *version;
+        PyObject *payload;
+
+        if (!Open64_DSC_Get_Program_Unit_Marker(program_unit, i, &info)) {
+            Py_DECREF(markers);
+            PyErr_SetString(PyExc_RuntimeError,
+                            "failed to inspect program unit marker");
+            return NULL;
+        }
+
+        record = PyDict_New();
+        opcode = PyUnicode_FromStringAndSize(info.opcode_name,
+                                             info.opcode_name_len);
+        version = PyLong_FromUnsignedLong(info.version);
+        payload = PyUnicode_FromString(info.payload == NULL ?
+                                       "" : info.payload);
+        if (record == NULL || opcode == NULL ||
+            version == NULL || payload == NULL) {
+            Py_XDECREF(record);
+            Py_XDECREF(opcode);
+            Py_XDECREF(version);
+            Py_XDECREF(payload);
+            Py_DECREF(markers);
+            return NULL;
+        }
+
+        if (PyDict_SetItemString(record, "opcode", opcode) != 0 ||
+            PyDict_SetItemString(record, "version", version) != 0 ||
+            PyDict_SetItemString(record, "payload", payload) != 0) {
+            Py_DECREF(record);
+            Py_DECREF(opcode);
+            Py_DECREF(version);
+            Py_DECREF(payload);
+            Py_DECREF(markers);
+            return NULL;
+        }
+
+        Py_DECREF(opcode);
+        Py_DECREF(version);
+        Py_DECREF(payload);
+        PyList_SET_ITEM(markers, (Py_ssize_t) i, record);
+    }
+
+    return markers;
+}
+
+static PyObject *
 Open64_DSC_Finalize(PyObject *self, PyObject *args)
 {
     const char *path;
@@ -409,6 +477,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Append_Program_Unit_Marker,
         METH_VARARGS,
         "Append a staged DSL marker to a native PU body."
+    },
+    {
+        "inspect_program_unit_markers",
+        Open64_DSC_Inspect_Program_Unit_Markers,
+        METH_VARARGS,
+        "Inspect staged DSL markers attached to a native PU body."
     },
     {
         "finalize_mapped_image",
