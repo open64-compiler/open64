@@ -471,9 +471,18 @@ Current Phase 6 status:
     `input0`, `input1`, and `kid0=input0`.
 29. `python_native_ir_tools_smoke` now generates a native Python WHIRL artifact
     and runs `ir_b2a -st` when `OPEN64_IR_B2A` points at an executable tool.
-    In the current lightweight Docker tree, direct `ir_b2a` construction
-    reaches the reader/WSSA object set but stops because `libcomutil.a` and
-    `libjsoncpp.a` are not part of the torch2whirl-only dependency envelope.
+    Earlier validation showed direct `ir_b2a` construction reaches reader/WSSA
+    objects, so the inspection tool remains an optional validation dependency
+    rather than part of the frontend extension link.
+30. `--enable-torch2whirl-only` now also emits the configured
+    `libjson/Makefile`, allowing the optional inspection path to build
+    `libjsoncpp.a` without configuring the full Open64 tree.
+31. `python_native_ir_tools_deps` builds the tool-side `libjsoncpp.a` and
+    `ir_b2a`/`ir_a2b` dependencies with explicit Linux and libdwarf include
+    paths. These reader/WSSA objects remain outside the `_whirl` extension link.
+32. Fresh Linux Docker validation confirms `make python_native_ir_tools_smoke`
+    can build the native extension, build `ir_b2a`, emit a Python-produced
+    native WHIRL artifact, and inspect it through `ir_b2a -st`.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -552,7 +561,23 @@ Initial checks:
 ## Phase 10: OpenXLA Cross-Check Track
 
 The Chapter 7 design uses PyTorch / OpenXLA as a reference shape. The local
-coding plan should borrow the engineering pattern, not the StableHLO op set.
+coding plan should borrow the engineering pattern, not the StableHLO op set or
+the XLA runtime stack.
+
+Primary reference points:
+
+1. OpenXLA XLA architecture:
+   https://openxla.org/xla/architecture
+2. OpenXLA StableHLO overview:
+   https://openxla.org/stablehlo
+3. OpenXLA StableHLO compatibility and portable artifact model:
+   https://openxla.org/stablehlo/compatibility
+4. PyTorch/XLA documentation:
+   https://docs.pytorch.org/xla/master/
+5. PyTorch/XLA Torch Export to StableHLO flow:
+   https://docs.pytorch.org/xla/master/features/stablehlo.html
+6. PyTorch/XLA source and tests:
+   https://github.com/pytorch/xla
 
 Expected lessons to import:
 
@@ -566,6 +591,47 @@ Expected lessons to import:
 7. Keep platform smoke tests cheap enough that frontend changes can be tested
    without a full compiler build.
 
+Reference architecture mapping:
+
+```text
+PyTorch/XLA pattern:
+  PyTorch module
+    -> torch.export / FX graph
+    -> PyTorch/XLA or torchax conversion layer
+    -> StableHLO / HLO program
+    -> XLA compiler boundary
+    -> backend-specific executable
+
+Open64 torch2whirl pattern:
+  PyTorch module
+    -> torch.export / FX graph
+    -> open64_dsc.WhirlExportInterpreter
+    -> open64_dsc._whirl native builder extension
+    -> binary very-high-level WHIRL artifact
+    -> ir_b2a / opencc -x whirl
+    -> Open64 lowering and backend pipeline
+```
+
+The useful analogy is the layering:
+
+1. Python owns model capture, graph traversal, and user-facing diagnostics.
+2. The compiled extension owns compiler IR construction.
+3. The serialized artifact is the reviewable boundary between ingestion and
+   compiler consumption.
+4. Backend lowering remains downstream from the artifact boundary.
+
+The deliberate difference is the IR contract:
+
+1. StableHLO is a framework/compiler portability opset. Open64 should not import
+   it as the torch2whirl operator namespace.
+2. `torch2whirl` should emit Open64 DSL/common operators such as `common.add`,
+   `common.matmul`, and CNN-domain operators.
+3. Tensor semantic state belongs in TensorDescriptorIR, not in generic metadata.
+4. Source context, diagnostics, lowering hints, and profiling data belong in
+   compiler metadata, not in opcode attributes.
+5. Binary WHIRL remains the local artifact format unless the existing Open64
+   mapped-image path proves insufficient.
+
 Relevant test patterns to adapt:
 
 1. Small graph fragments before full models.
@@ -576,6 +642,67 @@ Relevant test patterns to adapt:
    re-running Python.
 6. CLI tests that verify help/version/error behavior on every supported
    development platform.
+
+Specific PyTorch/XLA-style test adaptations:
+
+1. Add graph-fragment tests for one operator family at a time:
+   `add`, `matmul`, `relu`, `conv2d`, `batch_norm_infer`, `max_pool2d`,
+   `flatten`, and `linear`.
+2. For every supported operator, test both the Python manifest and the native
+   marker payload. The test should prove that dtype, rank, shape, layout,
+   placement, memory, and lineage are preserved.
+3. Keep CPU/Python-only mock tests as the fastest developer loop, mirroring the
+   native backend API exactly.
+4. Keep native optional tests that skip cleanly when Python headers or Open64
+   common writer objects are missing.
+5. Add negative tests for unsupported FX nodes, unsupported dtypes, missing
+   sample inputs, rank mismatches, and ambiguous dynamic shape cases.
+6. Add artifact tests that generate a binary WHIRL file once, then inspect it
+   with `ir_b2a -st` without importing Python again.
+7. Add CLI tests that exercise the same conversion path from the standalone
+   `torch2whirl` executable after Phase 8 wires the driver to ingestion.
+
+Cross-check questions for each new operator:
+
+1. Does graph capture produce a stable FX or `torch.export` node for this
+   operation?
+2. Are static parameters represented as opcode attributes?
+3. Are tensor value semantics represented in TensorDescriptorIR?
+4. Are source names, debug spans, and lowering hints represented as compiler
+   metadata?
+5. Does the native extension pass only opaque handles back to Python?
+6. Can the staged PU body be inspected before finalization?
+7. Can the finalized artifact be inspected without running Python?
+8. Does the failure mode identify the unsupported node or malformed tensor
+   contract clearly enough for a frontend user to fix the model?
+
+Phase 10 deliverables:
+
+1. A small reference matrix in the plan or tests that maps PyTorch/FX operators
+   to Open64 DSL/common operators and records where attributes, tensor
+   descriptors, and metadata are stored.
+2. A first `torch.export` or FX capture test that produces the same manifest
+   shape as the current hand-authored interpreter skeleton.
+3. Golden mock-backend artifacts for at least `common.add` and `common.matmul`.
+4. Native marker-inspection tests for the same fragments.
+5. An `ir_b2a -st` artifact inspection test once the full ir-tools dependency
+   path is available.
+6. A negative-test suite for unsupported graph nodes and malformed tensor
+   contracts.
+7. A short update to this plan after each OpenXLA/PyTorch-XLA pattern is either
+   adopted, deferred, or rejected.
+
+Exit criteria:
+
+1. The plan clearly distinguishes imported engineering patterns from rejected
+   XLA-specific implementation details.
+2. The first operator mapping tests are driven from captured PyTorch graphs, not
+   only hand-authored placeholder calls.
+3. Mock, native, and artifact-inspection tests cover the same tiny graph
+   fragment.
+4. `torch2whirl` still has no dependency on backend/cg internals.
+5. The next implementation phase can proceed with a concrete graph-capture
+   checklist rather than a broad "follow OpenXLA" instruction.
 
 ## Milestones
 
@@ -627,10 +754,13 @@ Relevant test patterns to adapt:
 6. Keep `python_native_ir_tools_smoke` in the validation loop. It should skip
    cleanly without `ir_b2a` and become an artifact inspection test when
    `OPEN64_IR_B2A` is supplied by a full Open64 build.
-7. Build or surface the missing full ir-tools dependencies, especially
-   `libjsoncpp.a`, then run `python_native_ir_tools_smoke` and
-   `dsl_ir_tools_smoke_test.sh` against the first native Python-produced
-   artifact.
+7. Keep the artifact-inspection loop green:
+   `python_native_ir_tools_smoke` now builds `libjsoncpp.a`, `ir_b2a`, and
+   `ir_a2b` inside the torch2whirl-only Linux Docker tree and inspects the first
+   native Python-produced artifact with `ir_b2a -st`.
+8. Run `dsl_ir_tools_smoke_test.sh` when a full Open64 `opencc` is available.
+   The fixture still requires `opencc` to create its C-derived `smoke.B`; the
+   torch2whirl-only tree intentionally does not build that compiler driver.
 
 ## Practical Developer Loop
 

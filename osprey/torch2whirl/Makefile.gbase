@@ -58,11 +58,16 @@ PYTHON_NATIVE_CXXFLAGS ?= -std=gnu++98 -fPIC
 PYTHON_NATIVE_LDFLAGS ?= -shared
 OPEN64_DSC_NATIVE_OBJDIR ?=
 OPEN64_DSC_NATIVE_LIBCOMUTIL ?=
+OPEN64_DSC_NATIVE_LIBJSON ?=
 OPEN64_DSC_NATIVE_DEP_INCS ?= \
   -I$(OPEN64_SRC_ROOT)/osprey/include \
   -I$(OPEN64_SRC_ROOT)/osprey/linux/include \
   -I$(OPEN64_SRC_ROOT)/osprey/ipa/common \
   -I$(OPEN64_SRC_ROOT)/osprey/libdwarf/libdwarf
+OPEN64_DSC_IR_TOOLS_GCINCS ?= \
+  $(OPEN64_DSC_NATIVE_DEP_INCS)
+OPEN64_DSC_IR_TOOLS_GCXXINCS ?= \
+  $(OPEN64_DSC_IR_TOOLS_GCINCS)
 OPEN64_DSC_NATIVE_IR_TOOL_OBJS = \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config_elf_targ.o) \
@@ -120,8 +125,8 @@ OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
   python_native_check python_native_deps python_native_extension \
-  python_native_ir_tools_smoke python_native_requirements \
-  python_native_stage python_native_test
+  python_native_ir_tools_deps python_native_ir_tools_smoke \
+  python_native_requirements python_native_stage python_native_test
 
 default: all
 
@@ -177,6 +182,26 @@ python_native_deps:
 	        $(notdir $(OPEN64_DSC_NATIVE_OBJS)); \
 	fi
 
+python_native_ir_tools_deps:
+	@if test "`uname -s`" = "Darwin" && \
+	    test -z "$(OPEN64_DSC_NATIVE_ALLOW_DARWIN)"; then \
+	    echo "skip: ir_tools dependency build targets Linux/Open64 objects"; \
+	    echo "Set OPEN64_DSC_NATIVE_ALLOW_DARWIN=1 to force a macOS attempt."; \
+	elif test -z "$(OPEN64_DSC_NATIVE_OBJDIR)" || \
+	    test -z "$(OPEN64_DSC_NATIVE_LIBJSON)"; then \
+	    echo "skip: configured ir_tools dependency paths are not set"; \
+	elif test ! -d `dirname "$(OPEN64_DSC_NATIVE_LIBJSON)"`; then \
+	    echo "skip: configured libjson build directory is missing"; \
+	else \
+	    if test ! -f "$(OPEN64_DSC_NATIVE_LIBJSON)"; then \
+	        $(MAKE) -C `dirname "$(OPEN64_DSC_NATIVE_LIBJSON)"`; \
+	    fi && \
+	    $(MAKE) -C "$(OPEN64_DSC_NATIVE_OBJDIR)" SKIP_DEP_BUILD=1 \
+	        GCINCS="$(OPEN64_DSC_IR_TOOLS_GCINCS)" \
+	        GC++INCS="$(OPEN64_DSC_IR_TOOLS_GCXXINCS)" \
+	        ir_b2a ir_a2b; \
+	fi
+
 python_native_requirements:
 	@if test ! -f "$(PYTHON_INCLUDE)/Python.h"; then \
 	    echo "error: Python.h not found under $(PYTHON_INCLUDE)" >&2; \
@@ -222,7 +247,7 @@ python_native_test: python_native_extension
 	    $(PYTHON) -m unittest discover \
 	    -s $(BUILD_BASE)/python/tests
 
-python_native_ir_tools_smoke: python_native_extension
+python_native_ir_tools_smoke: python_native_extension python_native_ir_tools_deps
 	PYTHONDONTWRITEBYTECODE=1 \
 	    OPEN64_IR_B2A="$(OPEN64_IR_B2A)" \
 	    PYTHONPATH=$(PYTHON_BUILD_ROOT):$(BUILD_BASE)/python \

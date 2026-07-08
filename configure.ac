@@ -496,6 +496,7 @@ AS_IF([test "x$TORCH2WHIRL_ONLY" = "xYES"], [
 AC_CONFIG_FILES([
   osprey/Makefile.gsetup
   osprey/targdir/libcomutil/Makefile
+  osprey/targdir/libjson/Makefile
   osprey/targdir/ir_tools/Makefile
   osprey/targdir/torch2whirl/Makefile
 ])

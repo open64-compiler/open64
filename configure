@@ -2420,7 +2420,7 @@ export BUILD_PRODUCT
 
 # List of configurable files to create in object directory.
 if test "x$TORCH2WHIRL_ONLY" = "xYES"; then
-ac_config_files="$ac_config_files osprey/Makefile.gsetup osprey/targdir/libcomutil/Makefile osprey/targdir/ir_tools/Makefile osprey/targdir/torch2whirl/Makefile"
+ac_config_files="$ac_config_files osprey/Makefile.gsetup osprey/targdir/libcomutil/Makefile osprey/targdir/libjson/Makefile osprey/targdir/ir_tools/Makefile osprey/targdir/torch2whirl/Makefile"
 
 else
 ac_config_files="$ac_config_files Makefile osprey/Makefile.gsetup osprey/targdir/libspin/Makefile osprey/targdir/libspin_4_2_0/Makefile osprey/targdir/include/Makefile osprey/targdir/driver/Makefile osprey/targdir/libiberty/Makefile osprey/targdir/libjson/Makefile osprey/targdir/targ_info/Makefile osprey/targdir/be/Makefile osprey/targdir/libelf/Makefile osprey/targdir/libelfutil/Makefile osprey/targdir/libdwarf/Makefile osprey/targdir/libunwindP/Makefile osprey/targdir/cg/Makefile osprey/targdir/vsa/Makefile osprey/targdir/wopt/Makefile osprey/targdir/ipl/Makefile osprey/targdir/lno/Makefile osprey/targdir/lw_inline/Makefile osprey/targdir/ipa/Makefile osprey/targdir/whirl2c/Makefile osprey/targdir/libcomutil/Makefile osprey/targdir/ir_tools/Makefile osprey/targdir/libcmplrs/Makefile osprey/targdir/clang2whirl/Makefile osprey/targdir/torch2whirl/Makefile osprey/targdir/wgen/Makefile osprey/targdir/jfe/Makefile osprey/targdir/js2mplref/Makefile osprey/targdir/libcif/Makefile osprey/targdir/arith/Makefile osprey/targdir/orc_ict/Makefile osprey/targdir/orc_intel/Makefile osprey/targdir/libkapi/Makefile"

@@ -64,10 +64,12 @@ Use `make python_native_test` from that directory to run the optional native
 Python finalization test after installing the matching Python development
 headers in the test environment.
 Use `make python_native_ir_tools_smoke` from the same directory to generate a
-native Python WHIRL artifact and inspect it with `ir_b2a -st` when an
-executable `ir_b2a` is available.  The target skips clearly when the tool is
-not built yet; set `OPEN64_IR_B2A=/path/to/ir_b2a` to point at a full Open64
-build.
+native Python WHIRL artifact and inspect it with `ir_b2a -st`.  In a configured
+`--enable-torch2whirl-only` build, this target first builds the additional
+tool-side `libjsoncpp.a` and `ir_b2a`/`ir_a2b` pieces needed for inspection.
+Those reader/WSSA objects are not linked into the `_whirl` frontend extension.
+For a full Open64 build, set `OPEN64_IR_B2A=/path/to/ir_b2a` to point at an
+existing tool.
 The `--enable-torch2whirl-only` configure path emits the small helper build
 files needed for that dependency target.
 
@@ -104,6 +106,11 @@ For optional `ir_b2a -st` inspection of the native Python artifact:
 ```sh
 make python_native_ir_tools_smoke
 ```
+
+The broader `osprey/common/com/tests/dsl_ir_tools_smoke_test.sh` fixture still
+requires `opencc` to create its C-derived `smoke.B`.  Run it when a full Open64
+toolchain is available through `OPEN64_OPENCC`, `OPEN64_IR_B2A`, and
+`OPEN64_IR_A2B`.
 
 The generated build remains under `osprey/targdir/torch2whirl`, matching the
 Open64 build tree layout, but does not require the full Open64 compiler or
