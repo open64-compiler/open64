@@ -225,6 +225,39 @@ class WhirlBuilder:
             attrs or {},
         )
 
+    def cnn_max_pool2d(
+        self,
+        value: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "cnn.max_pool2d",
+            1,
+            [value],
+            attrs or {
+                "attr.kernel_shape": "3,3",
+                "attr.stride": "2,2",
+                "attr.padding": "1,1",
+                "attr.dilation": "1,1",
+                "attr.ceil_mode": "false",
+            },
+        )
+
+    def cnn_global_avg_pool2d(
+        self,
+        value: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "cnn.global_avg_pool2d",
+            1,
+            [value],
+            attrs or {
+                "attr.output_size": "1,1",
+                "attr.reduction_axes": "spatial",
+            },
+        )
+
 
 def load_builder(name: str) -> WhirlBuilder:
     return WhirlBuilder(load_backend(name))

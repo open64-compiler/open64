@@ -148,6 +148,39 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertIn("attr.start_dim=1", str(markers[-2]["payload"]))
         self.assertIn("kid0=native_unary_input", str(markers[-1]["payload"]))
 
+    def test_native_backend_appends_phase7_cnn_unary_markers(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_cnn_unary_model")
+        value = builder.tensor_constant(
+            "native_cnn_input",
+            "float32",
+            4,
+            "[1,3,224,224]",
+            "splat",
+            "1.0",
+        )
+        max_pool2d = builder.cnn_max_pool2d(value)
+        global_avg_pool2d = builder.cnn_global_avg_pool2d(value)
+
+        builder.append_program_unit_marker(pu, value)
+        builder.append_program_unit_marker(pu, max_pool2d)
+        builder.append_program_unit_marker(pu, global_avg_pool2d)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(
+            [marker["opcode"] for marker in markers[-3:]],
+            [
+                "common.tensor_const",
+                "cnn.max_pool2d",
+                "cnn.global_avg_pool2d",
+            ],
+        )
+        self.assertIn("kid0=native_cnn_input", str(markers[-2]["payload"]))
+        self.assertIn("attr.kernel_shape=3,3", str(markers[-2]["payload"]))
+        self.assertIn("kid0=native_cnn_input", str(markers[-1]["payload"]))
+        self.assertIn("attr.output_size=1,1", str(markers[-1]["payload"]))
+
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(
             DummyModel(),

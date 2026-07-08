@@ -41,6 +41,29 @@ Open64_DSC_Dtype_To_TY(const char *dtype)
     return TY_IDX_ZERO;
 }
 
+static DSL_DOMAIN_ID
+Open64_DSC_Domain_For_Opcode(const char *opcode_name)
+{
+    const char *dot;
+    size_t domain_len;
+    char domain_name[64];
+
+    if (opcode_name == NULL || opcode_name[0] == '\0')
+        return DSL_DOMAIN_INVALID_ID;
+
+    dot = strchr(opcode_name, '.');
+    if (dot == NULL || dot == opcode_name)
+        return DSL_Domain_Find("common");
+
+    domain_len = (size_t) (dot - opcode_name);
+    if (domain_len >= sizeof(domain_name))
+        return DSL_DOMAIN_INVALID_ID;
+
+    memcpy(domain_name, opcode_name, domain_len);
+    domain_name[domain_len] = '\0';
+    return DSL_Domain_Find(domain_name);
+}
+
 static void
 Open64_DSC_Initialize_Context(void)
 {
@@ -54,6 +77,7 @@ Open64_DSC_Initialize_Context(void)
     Set_Error_Line(ERROR_LINE_UNKNOWN);
     Initialize_Symbol_Tables(TRUE);
     DSL_Opcode_Register_Common_Substrate();
+    DSL_Opcode_Register_Domain_Wrapper_Examples();
 
     Open64_DSC_Context_Initialized = TRUE;
 }
@@ -156,7 +180,7 @@ Open64_DSC_Create_Operator(const char *opcode_name,
                            const Open64_DSC_Attribute *attrs,
                            unsigned int attr_count)
 {
-    DSL_DOMAIN_ID common_id;
+    DSL_DOMAIN_ID domain_id;
     DSL_OPCODE_ID opcode_id;
     DSL_BUILDER_VALUE *builder_kids = NULL;
     DSL_BUILDER_OPERATOR_ATTRIBUTE *builder_attrs = NULL;
@@ -170,8 +194,11 @@ Open64_DSC_Create_Operator(const char *opcode_name,
 
     Open64_DSC_Initialize_Context();
 
-    common_id = DSL_Domain_Find("common");
-    opcode_id = DSL_Opcode_Find(common_id, opcode_name, (UINT16) version);
+    domain_id = Open64_DSC_Domain_For_Opcode(opcode_name);
+    if (domain_id == DSL_DOMAIN_INVALID_ID)
+        return 0;
+
+    opcode_id = DSL_Opcode_Find(domain_id, opcode_name, (UINT16) version);
     if (opcode_id == DSL_OPCODE_INVALID_ID)
         return 0;
 

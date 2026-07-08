@@ -31,6 +31,8 @@ def _append_operator_probes(module) -> None:
     relu = builder.common_relu(lhs)
     flatten = builder.common_flatten(lhs)
     output_logits = builder.common_output_logits(lhs)
+    max_pool2d = builder.cnn_max_pool2d(lhs)
+    global_avg_pool2d = builder.cnn_global_avg_pool2d(lhs)
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         matmul,
@@ -46,6 +48,14 @@ def _append_operator_probes(module) -> None:
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         output_logits,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        max_pool2d,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        global_avg_pool2d,
     )
 
 
@@ -108,8 +118,12 @@ def main() -> int:
             "common.relu",
             "common.flatten",
             "common.output_logits",
+            "cnn.max_pool2d",
+            "cnn.global_avg_pool2d",
             "attr.start_dim=1",
             "attr.transpose_kid0=false",
+            "attr.kernel_shape=3,3",
+            "attr.output_size=1,1",
             "Symbols:",
             "Types:",
         ]

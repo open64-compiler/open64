@@ -88,6 +88,52 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             "1",
         )
 
+    def test_fx_max_pool2d_maps_to_cnn_max_pool2d(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class MaxPoolModule(torch.nn.Module):
+            def forward(self, value):
+                return F.max_pool2d(value, kernel_size=3, stride=2, padding=1)
+
+        value = torch.ones((1, 3, 8, 8), dtype=torch.float32)
+        module = export_to_whirl(MaxPoolModule(), [value])
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["cnn.max_pool2d"])
+        self.assertEqual(
+            module.entry_function.body_markers[-1],
+            "cnn.max_pool2d",
+        )
+        self.assertEqual(module.graph_operators[0].kids, ["input0"])
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.kernel_shape"],
+            "3,3",
+        )
+
+    def test_fx_adaptive_avg_pool2d_maps_to_cnn_global_avg_pool2d(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class GlobalAvgPoolModule(torch.nn.Module):
+            def forward(self, value):
+                return F.adaptive_avg_pool2d(value, (1, 1))
+
+        value = torch.ones((1, 3, 8, 8), dtype=torch.float32)
+        module = export_to_whirl(GlobalAvgPoolModule(), [value])
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["cnn.global_avg_pool2d"])
+        self.assertEqual(
+            module.entry_function.body_markers[-1],
+            "cnn.global_avg_pool2d",
+        )
+        self.assertEqual(module.graph_operators[0].kids, ["input0"])
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.output_size"],
+            "1,1",
+        )
+
     def test_fx_unsupported_operator_fails_loudly(self) -> None:
         import torch
 

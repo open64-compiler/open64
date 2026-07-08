@@ -109,12 +109,16 @@ class Open64DscSkeletonTest(unittest.TestCase):
         relu = builder.common_relu(lhs)
         flatten = builder.common_flatten(lhs)
         output_logits = builder.common_output_logits(lhs)
+        max_pool2d = builder.cnn_max_pool2d(lhs)
+        global_avg_pool2d = builder.cnn_global_avg_pool2d(lhs)
         builder.append_program_unit_marker(pu, lhs)
         builder.append_program_unit_marker(pu, add)
         builder.append_program_unit_marker(pu, matmul)
         builder.append_program_unit_marker(pu, relu)
         builder.append_program_unit_marker(pu, flatten)
         builder.append_program_unit_marker(pu, output_logits)
+        builder.append_program_unit_marker(pu, max_pool2d)
+        builder.append_program_unit_marker(pu, global_avg_pool2d)
         markers = builder.inspect_program_unit_markers(pu)
 
         self.assertGreater(tensor_ty.value, 0)
@@ -127,7 +131,9 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertGreater(relu.value, 0)
         self.assertGreater(flatten.value, 0)
         self.assertGreater(output_logits.value, 0)
-        self.assertEqual(len(markers), 6)
+        self.assertGreater(max_pool2d.value, 0)
+        self.assertGreater(global_avg_pool2d.value, 0)
+        self.assertEqual(len(markers), 8)
         self.assertEqual(markers[0]["opcode"], "common.tensor_const")
         self.assertIn("name=lhs", str(markers[0]["payload"]))
         self.assertEqual(markers[1]["opcode"], "common.add")
@@ -140,6 +146,10 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("attr.start_dim=1", str(markers[4]["payload"]))
         self.assertEqual(markers[5]["opcode"], "common.output_logits")
         self.assertIn("kid0=lhs", str(markers[5]["payload"]))
+        self.assertEqual(markers[6]["opcode"], "cnn.max_pool2d")
+        self.assertIn("attr.kernel_shape=3,3", str(markers[6]["payload"]))
+        self.assertEqual(markers[7]["opcode"], "cnn.global_avg_pool2d")
+        self.assertIn("attr.output_size=1,1", str(markers[7]["payload"]))
 
     def test_interpreter_exposes_builder_facade(self) -> None:
         interpreter = WhirlExportInterpreter(WhirlExportOptions())
@@ -165,11 +175,15 @@ class Open64DscSkeletonTest(unittest.TestCase):
         relu = builder.common_relu(lhs)
         flatten = builder.common_flatten(lhs)
         output_logits = builder.common_output_logits(lhs)
+        max_pool2d = builder.cnn_max_pool2d(lhs)
+        global_avg_pool2d = builder.cnn_global_avg_pool2d(lhs)
 
         self.assertGreater(add.value, 0)
         self.assertGreater(relu.value, 0)
         self.assertGreater(flatten.value, 0)
         self.assertGreater(output_logits.value, 0)
+        self.assertGreater(max_pool2d.value, 0)
+        self.assertGreater(global_avg_pool2d.value, 0)
 
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(

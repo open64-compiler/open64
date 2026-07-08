@@ -6,7 +6,7 @@ import operator
 from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 from .builder import ValueHandle, WhirlBuilder, load_builder
-from .mapping import common
+from .mapping import cnn, common
 from .module import (
     WhirlModule,
     WhirlOperatorRecord,
@@ -83,7 +83,10 @@ class WhirlExportInterpreter:
         )
 
     def _operator_arity(self, operator_name: str) -> int:
-        if operator_name in common.UNARY_OPERATORS:
+        if (
+            operator_name in common.UNARY_OPERATORS or
+            operator_name in cnn.UNARY_OPERATORS
+        ):
             return 1
         if operator_name in {common.ADD, common.MATMUL}:
             return 2
@@ -124,6 +127,21 @@ class WhirlExportInterpreter:
         if operator_name == common.OUTPUT_LOGITS:
             attrs = {}
             return self.builder().common_output_logits(operands[0], attrs), attrs
+        if operator_name == cnn.MAX_POOL2D:
+            attrs = {
+                "attr.kernel_shape": "3,3",
+                "attr.stride": "2,2",
+                "attr.padding": "1,1",
+                "attr.dilation": "1,1",
+                "attr.ceil_mode": "false",
+            }
+            return self.builder().cnn_max_pool2d(operands[0], attrs), attrs
+        if operator_name == cnn.GLOBAL_AVG_POOL2D:
+            attrs = {
+                "attr.output_size": "1,1",
+                "attr.reduction_axes": "spatial",
+            }
+            return self.builder().cnn_global_avg_pool2d(operands[0], attrs), attrs
 
         raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
 
@@ -170,7 +188,10 @@ class WhirlExportInterpreter:
 
         target_name = getattr(target, "__name__", str(target))
         if node_op in {"call_function", "call_method"}:
-            return common.FX_OPERATOR_MAP.get(target_name)
+            return (
+                common.FX_OPERATOR_MAP.get(target_name) or
+                cnn.FX_OPERATOR_MAP.get(target_name)
+            )
 
         return None
 

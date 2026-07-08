@@ -539,10 +539,14 @@ Current Phase 7 status:
    the artifact smoke now checks that `common.relu`, `common.flatten`, and
    `common.output_logits` survive `ir_b2a -st` inspection beside `common.add`
    and `common.matmul`.
-9. Phase 7 CNN operators that appear to have one data operand, such as
-   `cnn.max_pool2d` and `cnn.global_avg_pool2d`, are deferred until the native
-   bridge can resolve non-`common` domains instead of assuming
-   `DSL_Domain_Find("common")` for every operator.
+9. The native bridge now resolves domain-prefixed opcode names before looking
+   up the DSL opcode, so `cnn.*` wrappers no longer have to be forced through
+   `DSL_Domain_Find("common")`.
+10. The first CNN one-input marker batch adds `cnn.max_pool2d` and
+    `cnn.global_avg_pool2d` as domain wrappers over `common.window_reduce` and
+    `common.reduce_mean`. Mock builder tests, optional native tests, optional
+    FX capture tests, and `python_native_ir_tools_smoke` all inspect the new
+    markers and their static attributes.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -797,10 +801,10 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Continue the Phase 7 neural-network vertical slice by adding domain-aware
-    operator creation in the native bridge, then add the CNN one-input wrappers
-    such as `cnn.max_pool2d` and `cnn.global_avg_pool2d` with mock, native, and
-    artifact inspection aligned.
+10. Continue the Phase 7 neural-network vertical slice by adding the first
+    multi-input CNN operators, starting with `cnn.conv2d` and its static
+    kernel, stride, padding, dilation, group, and layout attributes, then follow
+    with `cnn.batch_norm_infer` once parameter/constant handling is ready.
 
 ## Practical Developer Loop
 
