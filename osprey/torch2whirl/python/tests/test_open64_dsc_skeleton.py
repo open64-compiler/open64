@@ -105,8 +105,10 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "2.0",
         )
         add = builder.common_add(lhs, rhs)
+        matmul = builder.common_matmul(lhs, rhs)
         builder.append_program_unit_marker(pu, lhs)
         builder.append_program_unit_marker(pu, add)
+        builder.append_program_unit_marker(pu, matmul)
         markers = builder.inspect_program_unit_markers(pu)
 
         self.assertGreater(tensor_ty.value, 0)
@@ -115,11 +117,14 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertGreater(lhs.value, 0)
         self.assertGreater(rhs.value, 0)
         self.assertGreater(add.value, 0)
-        self.assertEqual(len(markers), 2)
+        self.assertGreater(matmul.value, 0)
+        self.assertEqual(len(markers), 3)
         self.assertEqual(markers[0]["opcode"], "common.tensor_const")
         self.assertIn("name=lhs", str(markers[0]["payload"]))
         self.assertEqual(markers[1]["opcode"], "common.add")
         self.assertIn("kid0=lhs", str(markers[1]["payload"]))
+        self.assertEqual(markers[2]["opcode"], "common.matmul")
+        self.assertIn("attr.transpose_kid0=false", str(markers[2]["payload"]))
 
     def test_interpreter_exposes_builder_facade(self) -> None:
         interpreter = WhirlExportInterpreter(WhirlExportOptions())

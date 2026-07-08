@@ -524,6 +524,14 @@ Current Phase 7 status:
    node. The tests skip cleanly when torch is not installed.
 5. The current local and Docker developer loops do not install torch yet, so
    the new FX tests are conformance hooks for environments that provide PyTorch.
+6. The first mapping table extension adds `torch.matmul` / FX `matmul` to
+   `common.matmul` for the mock/captured path, using the existing native
+   fixture attribute names `attr.transpose_kid0` and `attr.transpose_kid1`.
+7. Native `common.matmul` marker append is guarded as not ready from the Python
+   interpreter. Docker validation showed native matmul marker construction can
+   invalidate the later writer state, so native/artifact matmul inspection is a
+   follow-up native substrate task rather than part of the Python ingestion
+   batch.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -778,8 +786,8 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Extend the Phase 7 mapping table from `add` to `matmul`, then add matching
-    mock/native/artifact inspection tests.
+10. Finish the native `common.matmul` marker append path, then add matching
+    native and `ir_b2a -st` artifact inspection tests for matmul.
 
 ## Practical Developer Loop
 

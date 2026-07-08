@@ -170,6 +170,22 @@ class WhirlBuilder:
             attrs or {"attr.broadcast_rule": "none"},
         )
 
+    def common_matmul(
+        self,
+        lhs: ValueHandle,
+        rhs: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "common.matmul",
+            1,
+            [lhs, rhs],
+            attrs or {
+                "attr.transpose_kid0": "false",
+                "attr.transpose_kid1": "false",
+            },
+        )
+
 
 def load_builder(name: str) -> WhirlBuilder:
     return WhirlBuilder(load_backend(name))

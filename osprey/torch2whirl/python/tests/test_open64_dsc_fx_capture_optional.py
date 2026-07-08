@@ -30,6 +30,29 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(module.tensor_types[0].rank, 2)
         self.assertEqual(module.tensor_types[0].logical_shape, "[2,3]")
 
+    def test_fx_matmul_maps_to_common_matmul(self) -> None:
+        import torch
+
+        class MatmulModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return torch.matmul(lhs, rhs)
+
+        lhs = torch.ones((2, 3), dtype=torch.float32)
+        rhs = torch.ones((3, 4), dtype=torch.float32)
+        module = export_to_whirl(MatmulModule(), [lhs, rhs])
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["common.matmul"])
+        self.assertEqual(
+            module.entry_function.body_markers[-1],
+            "common.matmul",
+        )
+        self.assertEqual(module.graph_operators[0].kids, ["input0", "input1"])
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.transpose_kid0"],
+            "false",
+        )
+
     def test_fx_unsupported_operator_fails_loudly(self) -> None:
         import torch
 

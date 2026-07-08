@@ -42,22 +42,25 @@ class WhirlExportInterpreter:
             self.builder().append_program_unit_marker(entry_pu, handle)
             body_markers.append(value.name)
 
-        should_emit_add = (
-            common.ADD in captured_operators or
-            (not captured_operators and len(handles) >= 2)
-        )
-        if should_emit_add:
+        graph_plan = captured_operators
+        if not graph_plan and len(handles) >= 2:
+            graph_plan = [common.ADD]
+
+        for operator_name in graph_plan:
             if len(handles) < 2:
-                raise ValueError("common.add requires at least two inputs")
-            attrs = {"attr.broadcast_rule": "none"}
-            add = self.builder().common_add(handles[0], handles[1], attrs)
-            self.builder().append_program_unit_marker(entry_pu, add)
-            operators.append(common.ADD)
-            body_markers.append(common.ADD)
+                raise ValueError(f"{operator_name} requires at least two inputs")
+            handle, attrs = self._emit_binary_operator(
+                operator_name,
+                handles[0],
+                handles[1],
+            )
+            self.builder().append_program_unit_marker(entry_pu, handle)
+            operators.append(operator_name)
+            body_markers.append(operator_name)
             graph_operators.append(
                 WhirlOperatorRecord(
-                    name=common.ADD,
-                    handle=add.value,
+                    name=operator_name,
+                    handle=handle.value,
                     kids=[values[0].name, values[1].name],
                     attrs=attrs,
                 )
@@ -78,6 +81,28 @@ class WhirlExportInterpreter:
             values=values,
             graph_operators=graph_operators,
         )
+
+    def _emit_binary_operator(
+        self,
+        operator_name: str,
+        lhs: ValueHandle,
+        rhs: ValueHandle,
+    ) -> Tuple[ValueHandle, dict]:
+        if operator_name == common.ADD:
+            attrs = {"attr.broadcast_rule": "none"}
+            return self.builder().common_add(lhs, rhs, attrs), attrs
+        if operator_name == common.MATMUL:
+            if self.builder().backend_name() == "native":
+                raise NotImplementedError(
+                    "native common.matmul marker append is not ready"
+                )
+            attrs = {
+                "attr.transpose_kid0": "false",
+                "attr.transpose_kid1": "false",
+            }
+            return self.builder().common_matmul(lhs, rhs, attrs), attrs
+
+        raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
 
     def _captured_graph_operators(self, model: Any) -> List[str]:
         graph = self._capture_fx_graph(model)
@@ -117,6 +142,8 @@ class WhirlExportInterpreter:
 
         if node_op == "call_function" and target is operator.add:
             return common.ADD
+        if node_op == "call_function" and target is operator.matmul:
+            return common.MATMUL
 
         target_name = getattr(target, "__name__", str(target))
         if node_op in {"call_function", "call_method"}:
