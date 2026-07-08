@@ -104,6 +104,17 @@ class WhirlBuilder:
             self._backend.create_minimal_program_unit(name)
         )
 
+    def append_program_unit_marker(
+        self,
+        program_unit: ProgramUnitHandle,
+        marker: ValueHandle,
+    ) -> None:
+        if not self._backend.append_program_unit_marker(
+            program_unit.value,
+            marker.value,
+        ):
+            raise RuntimeError("failed to append program unit marker")
+
     def tensor_constant(
         self,
         name: str,

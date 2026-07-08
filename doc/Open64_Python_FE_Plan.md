@@ -208,6 +208,10 @@ BOOL DSL_Builder_Attach_Metadata(
 DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU(
     const char *name);
 
+BOOL DSL_Builder_Append_PU_Marker(
+    DSL_BUILDER_PROGRAM_UNIT pu,
+    DSL_BUILDER_VALUE marker);
+
 BOOL DSL_Builder_Finalize_Mapped_Image(
     const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
 ```
@@ -290,6 +294,10 @@ Current Phase 4 status:
 6. `DSL_Builder_Finalize_Mapped_Image` writes staged in-memory PU subsections
    before `Write_Global_Info`, matching the Open64 writer ordering used by
    native IR tools while keeping Python away from WHIRL node construction.
+7. `DSL_Builder_Append_PU_Marker` appends existing staged DSL opcode markers to
+   the entry PU body. Python can connect placeholders and graph operators to the
+   PU body by opaque handle, but it still cannot allocate or mutate WHIRL nodes
+   directly.
 
 ## Phase 5: Python Package Skeleton
 
@@ -440,6 +448,11 @@ Current Phase 6 status:
 25. Docker `python_native_test` now covers the native path that creates a
     minimal entry PU and finalizes a non-empty mapped WHIRL artifact through the
     writer-side common object set.
+26. `_whirl` now exposes `append_program_unit_marker`, mirrored by the mock
+    backend and wrapped by `WhirlBuilder.append_program_unit_marker`.
+27. The interpreter appends example-input tensor constants and the first
+    `common.add` graph operator into the staged entry PU body, and the mock
+    artifact prints deterministic `entry_body_marker.N` lines for review.
 
 ## Phase 7: WhirlExportInterpreter
 
@@ -590,9 +603,9 @@ Relevant test patterns to adapt:
 5. Keep the minimal PU API single-purpose until the next inspectable artifact
    checkpoint proves the output through `ir_b2a -st`; do not broaden it into a
    generic Python-owned WHIRL construction API.
-6. Connect placeholder graph records to statements inside the staged entry PU,
-   starting with a visible marker for the current example-input placeholders and
-   `common.add` record.
+6. Add a native-side inspection checkpoint for the staged entry PU body so the
+   current placeholder and `common.add` markers can be verified without relying
+   only on successful binary finalization.
 7. Build `opencc`, `ir_b2a`, and `ir_a2b` in a full Open64 build tree when
    available, then run `dsl_ir_tools_smoke_test.sh` against the first native
    Python-produced artifact.

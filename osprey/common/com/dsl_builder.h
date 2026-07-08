@@ -110,6 +110,9 @@ extern BOOL DSL_Builder_Attach_Metadata
                                  UINT32 metadata_count);
 extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
                                 (const char *name);
+extern BOOL DSL_Builder_Append_PU_Marker
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_VALUE marker);
 extern BOOL DSL_Builder_Finalize_Mapped_Image
                                 (const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
 

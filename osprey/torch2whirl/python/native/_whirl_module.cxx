@@ -314,6 +314,23 @@ Open64_DSC_Create_Minimal_Program_Unit(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Append_Program_Unit_Marker(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    Open64_DSC_Handle marker;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "KK:append_program_unit_marker",
+                          &program_unit, &marker))
+        return NULL;
+
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Append_Program_Unit_Marker(program_unit, marker),
+                "append program unit marker");
+}
+
+static PyObject *
 Open64_DSC_Finalize(PyObject *self, PyObject *args)
 {
     const char *path;
@@ -386,6 +403,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Create_Minimal_Program_Unit,
         METH_VARARGS,
         "Create a minimal native PU tree entry and return an opaque handle."
+    },
+    {
+        "append_program_unit_marker",
+        Open64_DSC_Append_Program_Unit_Marker,
+        METH_VARARGS,
+        "Append a staged DSL marker to a native PU body."
     },
     {
         "finalize_mapped_image",

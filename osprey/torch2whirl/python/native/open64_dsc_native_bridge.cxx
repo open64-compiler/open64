@@ -272,6 +272,20 @@ Open64_DSC_Create_Minimal_Program_Unit(const char *name)
 }
 
 int
+Open64_DSC_Append_Program_Unit_Marker(Open64_DSC_Handle program_unit,
+                                      Open64_DSC_Handle marker)
+{
+    if (program_unit == 0 || marker == 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    return DSL_Builder_Append_PU_Marker
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit,
+                (DSL_BUILDER_VALUE) marker) ? 1 : 0;
+}
+
+int
 Open64_DSC_Finalize_Mapped_Image(const char *path)
 {
     DSL_BUILDER_MAPPED_IMAGE_REQUEST request;

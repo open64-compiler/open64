@@ -12,11 +12,13 @@ from .options import WhirlExportOptions
 class WhirlProgramUnitRecord:
     name: str
     handle: int
+    body_markers: Sequence[str] = field(default_factory=list)
 
     def to_manifest(self) -> Mapping[str, object]:
         return {
             "name": self.name,
             "handle": self.handle,
+            "body_markers": list(self.body_markers),
         }
 
 

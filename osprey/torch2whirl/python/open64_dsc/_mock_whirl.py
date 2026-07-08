@@ -157,8 +157,34 @@ def create_minimal_program_unit(name: str) -> int:
         {
             "kind": "program_unit",
             "name": name,
+            "body_markers": [],
         }
     )
+
+
+def _marker_name(marker: int) -> str:
+    record = _objects[marker]
+    if record.get("kind") == "operator":
+        return str(record.get("opcode_name", ""))
+    return str(record.get("name", ""))
+
+
+def append_program_unit_marker(program_unit: int, marker: int) -> bool:
+    if program_unit not in _objects:
+        raise RuntimeError("failed to append program unit marker")
+    if marker not in _objects:
+        raise RuntimeError("failed to append program unit marker")
+    if _objects[program_unit].get("kind") != "program_unit":
+        raise RuntimeError("failed to append program unit marker")
+    if _objects[marker].get("kind") not in {"operator", "tensor_constant"}:
+        raise RuntimeError("failed to append program unit marker")
+
+    record = dict(_objects[program_unit])
+    body_markers = list(record.get("body_markers", ()))
+    body_markers.append(_marker_name(marker))
+    record["body_markers"] = body_markers
+    _objects[program_unit] = record
+    return True
 
 
 def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> bool:
@@ -178,6 +204,11 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
         f"entry_function={entry_function.get('name', '')}",
         f"input_count={module_manifest.get('input_count', 0)}",
     ]
+
+    body_markers = entry_function.get("body_markers", ())
+    if isinstance(body_markers, Sequence) and not isinstance(body_markers, str):
+        for index, marker in enumerate(body_markers):
+            lines.append(f"entry_body_marker.{index}={marker}")
 
     operators = module_manifest.get("operators", ())
     if isinstance(operators, Sequence) and not isinstance(operators, str):

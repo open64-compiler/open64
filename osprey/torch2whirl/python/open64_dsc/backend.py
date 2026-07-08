@@ -67,6 +67,13 @@ class WhirlBackend(Protocol):
     ) -> int:
         ...
 
+    def append_program_unit_marker(
+        self,
+        program_unit: int,
+        marker: int,
+    ) -> bool:
+        ...
+
     def finalize_mapped_image(
         self,
         path: str,

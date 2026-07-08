@@ -21,6 +21,7 @@
 #include "stab.h"
 #include "strtab.h"
 #include "symtab_utils.h"
+#include "wn_util.h"
 
 static PU_Info *DSL_Builder_PU_Root = NULL;
 static PU_Info *DSL_Builder_PU_Last = NULL;
@@ -345,6 +346,33 @@ DSL_Builder_Create_Minimal_PU (const char *name)
     DSL_Builder_PU_Last = pu_info;
 
     return pu_info;
+}
+
+BOOL
+DSL_Builder_Append_PU_Marker
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_VALUE marker)
+{
+    WN *entry;
+    WN *body;
+
+    if (pu == NULL || marker == NULL)
+        return FALSE;
+    if (PU_Info_state(pu, WT_TREE) != Subsect_InMem)
+        return FALSE;
+    if (!DSL_WN_Has_Opcode(marker))
+        return FALSE;
+
+    entry = PU_Info_tree_ptr(pu);
+    if (entry == NULL || WN_operator(entry) != OPR_FUNC_ENTRY)
+        return FALSE;
+
+    body = WN_func_body(entry);
+    if (body == NULL || WN_operator(body) != OPR_BLOCK)
+        return FALSE;
+
+    WN_INSERT_BlockLast(body, marker);
+    return TRUE;
 }
 
 BOOL

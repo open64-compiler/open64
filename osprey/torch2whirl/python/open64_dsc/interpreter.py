@@ -32,11 +32,18 @@ class WhirlExportInterpreter:
         tensor_types, values, handles = self._build_input_placeholders(inputs)
         graph_operators: List[WhirlOperatorRecord] = []
         operators: List[str] = []
+        body_markers: List[str] = []
+
+        for value, handle in zip(values, handles):
+            self.builder().append_program_unit_marker(entry_pu, handle)
+            body_markers.append(value.name)
 
         if len(handles) >= 2:
             attrs = {"attr.broadcast_rule": "none"}
             add = self.builder().common_add(handles[0], handles[1], attrs)
+            self.builder().append_program_unit_marker(entry_pu, add)
             operators.append("common.add")
+            body_markers.append("common.add")
             graph_operators.append(
                 WhirlOperatorRecord(
                     name="common.add",
@@ -53,6 +60,7 @@ class WhirlExportInterpreter:
             entry_function=WhirlProgramUnitRecord(
                 name=self._options.entry,
                 handle=entry_pu.value,
+                body_markers=body_markers,
             ),
             operators=operators,
             tensor_types=tensor_types,
