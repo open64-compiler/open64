@@ -113,12 +113,12 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             str(markers[-1]["payload"]),
         )
 
-    def test_native_backend_appends_relu_marker(self) -> None:
+    def test_native_backend_appends_phase7_common_unary_markers(self) -> None:
         builder = load_builder("native")
 
-        pu = builder.minimal_program_unit("native_relu_model")
+        pu = builder.minimal_program_unit("native_common_unary_model")
         value = builder.tensor_constant(
-            "native_relu_input",
+            "native_unary_input",
             "float32",
             2,
             "[1,4]",
@@ -126,16 +126,27 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             "1.0",
         )
         relu = builder.common_relu(value)
+        flatten = builder.common_flatten(value)
+        output_logits = builder.common_output_logits(value)
 
         builder.append_program_unit_marker(pu, value)
         builder.append_program_unit_marker(pu, relu)
+        builder.append_program_unit_marker(pu, flatten)
+        builder.append_program_unit_marker(pu, output_logits)
         markers = builder.inspect_program_unit_markers(pu)
 
         self.assertEqual(
-            [marker["opcode"] for marker in markers[-2:]],
-            ["common.tensor_const", "common.relu"],
+            [marker["opcode"] for marker in markers[-4:]],
+            [
+                "common.tensor_const",
+                "common.relu",
+                "common.flatten",
+                "common.output_logits",
+            ],
         )
-        self.assertIn("kid0=native_relu_input", str(markers[-1]["payload"]))
+        self.assertIn("kid0=native_unary_input", str(markers[-3]["payload"]))
+        self.assertIn("attr.start_dim=1", str(markers[-2]["payload"]))
+        self.assertIn("kid0=native_unary_input", str(markers[-1]["payload"]))
 
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(

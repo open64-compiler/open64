@@ -198,6 +198,33 @@ class WhirlBuilder:
             attrs or {},
         )
 
+    def common_flatten(
+        self,
+        value: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "common.flatten",
+            1,
+            [value],
+            attrs or {
+                "attr.start_dim": "1",
+                "attr.end_dim": "-1",
+            },
+        )
+
+    def common_output_logits(
+        self,
+        value: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "common.output_logits",
+            1,
+            [value],
+            attrs or {},
+        )
+
 
 def load_builder(name: str) -> WhirlBuilder:
     return WhirlBuilder(load_backend(name))

@@ -56,10 +56,11 @@ The first optional graph-capture hook uses `torch.fx` when PyTorch is installed:
 a traced `lhs + rhs` graph maps to the first-class `common.add` operator.
 Environments without PyTorch keep using the synthetic placeholder graph and skip
 the FX-specific tests.
-The mapping table also recognizes FX `matmul` as `common.matmul` and FX `relu`
-as `common.relu`; native validation covers direct marker inspection, and the
-artifact smoke checks that `ir_b2a -st` can print a Python-produced file
-containing `common.add`, `common.matmul`, and `common.relu`.
+The mapping table also recognizes FX `matmul` as `common.matmul`, FX `relu` as
+`common.relu`, and FX `flatten` as `common.flatten`; native validation covers
+direct marker inspection, and the artifact smoke checks that `ir_b2a -st` can
+print a Python-produced file containing `common.add`, `common.matmul`,
+`common.relu`, `common.flatten`, and `common.output_logits`.
 `make -f Makefile.gbase python_native_extension` builds that extension when
 Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`

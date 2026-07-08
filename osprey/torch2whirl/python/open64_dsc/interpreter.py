@@ -83,7 +83,7 @@ class WhirlExportInterpreter:
         )
 
     def _operator_arity(self, operator_name: str) -> int:
-        if operator_name == common.RELU:
+        if operator_name in common.UNARY_OPERATORS:
             return 1
         if operator_name in {common.ADD, common.MATMUL}:
             return 2
@@ -115,6 +115,15 @@ class WhirlExportInterpreter:
         if operator_name == common.RELU:
             attrs = {}
             return self.builder().common_relu(operands[0], attrs), attrs
+        if operator_name == common.FLATTEN:
+            attrs = {
+                "attr.start_dim": "1",
+                "attr.end_dim": "-1",
+            }
+            return self.builder().common_flatten(operands[0], attrs), attrs
+        if operator_name == common.OUTPUT_LOGITS:
+            attrs = {}
+            return self.builder().common_output_logits(operands[0], attrs), attrs
 
         raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
 

@@ -8,8 +8,15 @@ OUTPUT_LOGITS = "common.output_logits"
 RELU = "common.relu"
 RESIDUAL_ADD = "common.residual_add"
 
+UNARY_OPERATORS = {
+    FLATTEN,
+    OUTPUT_LOGITS,
+    RELU,
+}
+
 FX_OPERATOR_MAP = {
     "add": ADD,
+    "flatten": FLATTEN,
     "matmul": MATMUL,
     "relu": RELU,
 }

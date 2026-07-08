@@ -532,10 +532,17 @@ Current Phase 7 status:
    tests, and the artifact inspection smoke now proves a Python-produced WHIRL
    file containing `common.add` and `common.matmul` can be printed through
    `ir_b2a -st`.
-8. The first unary mapping adds FX `relu` / `torch.relu` to `common.relu`.
-   Mock tests cover the builder facade, optional native tests inspect the
-   marker payload, and the artifact smoke now checks that `common.relu` survives
-   `ir_b2a -st` inspection beside `common.add` and `common.matmul`.
+8. The first common-domain unary mapping batch adds FX `relu` / `torch.relu` to
+   `common.relu`, FX `flatten` / `torch.flatten(..., 1)` to `common.flatten`,
+   and builder/native/artifact coverage for `common.output_logits`. Mock tests
+   cover the builder facade, optional native tests inspect marker payloads, and
+   the artifact smoke now checks that `common.relu`, `common.flatten`, and
+   `common.output_logits` survive `ir_b2a -st` inspection beside `common.add`
+   and `common.matmul`.
+9. Phase 7 CNN operators that appear to have one data operand, such as
+   `cnn.max_pool2d` and `cnn.global_avg_pool2d`, are deferred until the native
+   bridge can resolve non-`common` domains instead of assuming
+   `DSL_Domain_Find("common")` for every operator.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -790,9 +797,10 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Continue the Phase 7 neural-network vertical slice by adding the next
-    shape-preserving unary/common mapping, starting with `common.flatten`, and
-    keep mock, native, and artifact inspection aligned.
+10. Continue the Phase 7 neural-network vertical slice by adding domain-aware
+    operator creation in the native bridge, then add the CNN one-input wrappers
+    such as `cnn.max_pool2d` and `cnn.global_avg_pool2d` with mock, native, and
+    artifact inspection aligned.
 
 ## Practical Developer Loop
 

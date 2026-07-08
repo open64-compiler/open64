@@ -107,10 +107,14 @@ class Open64DscSkeletonTest(unittest.TestCase):
         add = builder.common_add(lhs, rhs)
         matmul = builder.common_matmul(lhs, rhs)
         relu = builder.common_relu(lhs)
+        flatten = builder.common_flatten(lhs)
+        output_logits = builder.common_output_logits(lhs)
         builder.append_program_unit_marker(pu, lhs)
         builder.append_program_unit_marker(pu, add)
         builder.append_program_unit_marker(pu, matmul)
         builder.append_program_unit_marker(pu, relu)
+        builder.append_program_unit_marker(pu, flatten)
+        builder.append_program_unit_marker(pu, output_logits)
         markers = builder.inspect_program_unit_markers(pu)
 
         self.assertGreater(tensor_ty.value, 0)
@@ -121,7 +125,9 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertGreater(add.value, 0)
         self.assertGreater(matmul.value, 0)
         self.assertGreater(relu.value, 0)
-        self.assertEqual(len(markers), 4)
+        self.assertGreater(flatten.value, 0)
+        self.assertGreater(output_logits.value, 0)
+        self.assertEqual(len(markers), 6)
         self.assertEqual(markers[0]["opcode"], "common.tensor_const")
         self.assertIn("name=lhs", str(markers[0]["payload"]))
         self.assertEqual(markers[1]["opcode"], "common.add")
@@ -130,6 +136,10 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("attr.transpose_kid0=false", str(markers[2]["payload"]))
         self.assertEqual(markers[3]["opcode"], "common.relu")
         self.assertIn("kid0=lhs", str(markers[3]["payload"]))
+        self.assertEqual(markers[4]["opcode"], "common.flatten")
+        self.assertIn("attr.start_dim=1", str(markers[4]["payload"]))
+        self.assertEqual(markers[5]["opcode"], "common.output_logits")
+        self.assertIn("kid0=lhs", str(markers[5]["payload"]))
 
     def test_interpreter_exposes_builder_facade(self) -> None:
         interpreter = WhirlExportInterpreter(WhirlExportOptions())
@@ -153,9 +163,13 @@ class Open64DscSkeletonTest(unittest.TestCase):
         )
         add = builder.common_add(lhs, rhs)
         relu = builder.common_relu(lhs)
+        flatten = builder.common_flatten(lhs)
+        output_logits = builder.common_output_logits(lhs)
 
         self.assertGreater(add.value, 0)
         self.assertGreater(relu.value, 0)
+        self.assertGreater(flatten.value, 0)
+        self.assertGreater(output_logits.value, 0)
 
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(

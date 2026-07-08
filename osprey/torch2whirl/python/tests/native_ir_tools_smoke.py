@@ -29,6 +29,8 @@ def _append_operator_probes(module) -> None:
     rhs = ValueHandle(module.values[1].handle)
     matmul = builder.common_matmul(lhs, rhs)
     relu = builder.common_relu(lhs)
+    flatten = builder.common_flatten(lhs)
+    output_logits = builder.common_output_logits(lhs)
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         matmul,
@@ -36,6 +38,14 @@ def _append_operator_probes(module) -> None:
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         relu,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        flatten,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        output_logits,
     )
 
 
@@ -96,6 +106,9 @@ def main() -> int:
             "common.add",
             "common.matmul",
             "common.relu",
+            "common.flatten",
+            "common.output_logits",
+            "attr.start_dim=1",
             "attr.transpose_kid0=false",
             "Symbols:",
             "Types:",

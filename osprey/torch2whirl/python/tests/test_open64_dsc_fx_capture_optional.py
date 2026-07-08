@@ -69,6 +69,25 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(module.graph_operators[0].kids, ["input0"])
         self.assertEqual(module.graph_operators[0].attrs, {})
 
+    def test_fx_flatten_maps_to_common_flatten(self) -> None:
+        import torch
+
+        class FlattenModule(torch.nn.Module):
+            def forward(self, value):
+                return torch.flatten(value, 1)
+
+        value = torch.ones((2, 3, 4), dtype=torch.float32)
+        module = export_to_whirl(FlattenModule(), [value])
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["common.flatten"])
+        self.assertEqual(module.entry_function.body_markers[-1], "common.flatten")
+        self.assertEqual(module.graph_operators[0].kids, ["input0"])
+        self.assertEqual(
+            module.graph_operators[0].attrs["attr.start_dim"],
+            "1",
+        )
+
     def test_fx_unsupported_operator_fails_loudly(self) -> None:
         import torch
 
