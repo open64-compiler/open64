@@ -47,12 +47,12 @@ class WhirlExportInterpreter:
             graph_plan = [common.ADD]
 
         for operator_name in graph_plan:
-            if len(handles) < 2:
-                raise ValueError(f"{operator_name} requires at least two inputs")
-            handle, attrs = self._emit_binary_operator(
+            arity = self._operator_arity(operator_name)
+            if len(handles) < arity:
+                raise ValueError(f"{operator_name} requires at least {arity} inputs")
+            handle, attrs = self._emit_operator(
                 operator_name,
-                handles[0],
-                handles[1],
+                handles[:arity],
             )
             self.builder().append_program_unit_marker(entry_pu, handle)
             operators.append(operator_name)
@@ -61,7 +61,7 @@ class WhirlExportInterpreter:
                 WhirlOperatorRecord(
                     name=operator_name,
                     handle=handle.value,
-                    kids=[values[0].name, values[1].name],
+                    kids=[value.name for value in values[:arity]],
                     attrs=attrs,
                 )
             )
@@ -82,21 +82,39 @@ class WhirlExportInterpreter:
             graph_operators=graph_operators,
         )
 
-    def _emit_binary_operator(
+    def _operator_arity(self, operator_name: str) -> int:
+        if operator_name == common.RELU:
+            return 1
+        if operator_name in {common.ADD, common.MATMUL}:
+            return 2
+
+        raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
+
+    def _emit_operator(
         self,
         operator_name: str,
-        lhs: ValueHandle,
-        rhs: ValueHandle,
+        operands: Sequence[ValueHandle],
     ) -> Tuple[ValueHandle, dict]:
         if operator_name == common.ADD:
             attrs = {"attr.broadcast_rule": "none"}
-            return self.builder().common_add(lhs, rhs, attrs), attrs
+            return self.builder().common_add(
+                operands[0],
+                operands[1],
+                attrs,
+            ), attrs
         if operator_name == common.MATMUL:
             attrs = {
                 "attr.transpose_kid0": "false",
                 "attr.transpose_kid1": "false",
             }
-            return self.builder().common_matmul(lhs, rhs, attrs), attrs
+            return self.builder().common_matmul(
+                operands[0],
+                operands[1],
+                attrs,
+            ), attrs
+        if operator_name == common.RELU:
+            attrs = {}
+            return self.builder().common_relu(operands[0], attrs), attrs
 
         raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
 

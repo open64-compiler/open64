@@ -53,6 +53,22 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             "false",
         )
 
+    def test_fx_relu_maps_to_common_relu(self) -> None:
+        import torch
+
+        class ReluModule(torch.nn.Module):
+            def forward(self, value):
+                return torch.relu(value)
+
+        value = torch.ones((2, 3), dtype=torch.float32)
+        module = export_to_whirl(ReluModule(), [value])
+
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, ["common.relu"])
+        self.assertEqual(module.entry_function.body_markers[-1], "common.relu")
+        self.assertEqual(module.graph_operators[0].kids, ["input0"])
+        self.assertEqual(module.graph_operators[0].attrs, {})
+
     def test_fx_unsupported_operator_fails_loudly(self) -> None:
         import torch
 

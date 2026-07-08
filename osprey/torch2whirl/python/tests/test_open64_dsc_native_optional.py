@@ -113,6 +113,30 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             str(markers[-1]["payload"]),
         )
 
+    def test_native_backend_appends_relu_marker(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_relu_model")
+        value = builder.tensor_constant(
+            "native_relu_input",
+            "float32",
+            2,
+            "[1,4]",
+            "splat",
+            "1.0",
+        )
+        relu = builder.common_relu(value)
+
+        builder.append_program_unit_marker(pu, value)
+        builder.append_program_unit_marker(pu, relu)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(
+            [marker["opcode"] for marker in markers[-2:]],
+            ["common.tensor_const", "common.relu"],
+        )
+        self.assertIn("kid0=native_relu_input", str(markers[-1]["payload"]))
+
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(
             DummyModel(),

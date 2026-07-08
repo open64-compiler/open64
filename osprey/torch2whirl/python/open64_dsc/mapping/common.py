@@ -11,4 +11,5 @@ RESIDUAL_ADD = "common.residual_add"
 FX_OPERATOR_MAP = {
     "add": ADD,
     "matmul": MATMUL,
+    "relu": RELU,
 }

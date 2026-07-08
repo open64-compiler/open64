@@ -532,6 +532,10 @@ Current Phase 7 status:
    tests, and the artifact inspection smoke now proves a Python-produced WHIRL
    file containing `common.add` and `common.matmul` can be printed through
    `ir_b2a -st`.
+8. The first unary mapping adds FX `relu` / `torch.relu` to `common.relu`.
+   Mock tests cover the builder facade, optional native tests inspect the
+   marker payload, and the artifact smoke now checks that `common.relu` survives
+   `ir_b2a -st` inspection beside `common.add` and `common.matmul`.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -786,9 +790,9 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Move from scalar binary coverage toward the first Phase 7 neural-network
-    vertical slice: add the next unary/common marker mapping, starting with
-    `common.relu`, and keep mock, native, and artifact inspection aligned.
+10. Continue the Phase 7 neural-network vertical slice by adding the next
+    shape-preserving unary/common mapping, starting with `common.flatten`, and
+    keep mock, native, and artifact inspection aligned.
 
 ## Practical Developer Loop
 

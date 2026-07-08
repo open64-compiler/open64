@@ -186,6 +186,18 @@ class WhirlBuilder:
             },
         )
 
+    def common_relu(
+        self,
+        value: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            "common.relu",
+            1,
+            [value],
+            attrs or {},
+        )
+
 
 def load_builder(name: str) -> WhirlBuilder:
     return WhirlBuilder(load_backend(name))
