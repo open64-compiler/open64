@@ -510,6 +510,21 @@ Mapping rules:
    data become compiler metadata.
 4. Unsupported Python graph nodes must fail loudly with source context.
 
+Current Phase 7 status:
+
+1. `WhirlExportInterpreter` now attempts an optional `torch.fx.symbolic_trace`
+   capture before falling back to the earlier synthetic placeholder graph.
+2. The first FX mapping recognizes Python/Torch add nodes and emits the same
+   first-class `common.add` operator already used by the native builder path.
+3. `WhirlModule.graph_source` records whether the module came from `torch.fx`
+   capture or the synthetic fallback, so tests can prove the captured path was
+   used.
+4. `test_open64_dsc_fx_capture_optional.py` adds optional torch-dependent tests
+   for `lhs + rhs -> common.add` and for loud failure on an unsupported `mul`
+   node. The tests skip cleanly when torch is not installed.
+5. The current local and Docker developer loops do not install torch yet, so
+   the new FX tests are conformance hooks for environments that provide PyTorch.
+
 ## Phase 8: torch2whirl Driver Integration
 
 Grow the scaffold into the real frontend driver before integrating with
@@ -761,6 +776,10 @@ Exit criteria:
 8. Run `dsl_ir_tools_smoke_test.sh` when a full Open64 `opencc` is available.
    The fixture still requires `opencc` to create its C-derived `smoke.B`; the
    torch2whirl-only tree intentionally does not build that compiler driver.
+9. Add a torch-enabled validation environment or image layer so the optional
+   FX capture tests run in CI instead of only skipping in the base Docker image.
+10. Extend the Phase 7 mapping table from `add` to `matmul`, then add matching
+    mock/native/artifact inspection tests.
 
 ## Practical Developer Loop
 

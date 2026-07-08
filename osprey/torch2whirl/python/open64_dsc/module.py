@@ -84,6 +84,7 @@ class WhirlModule:
     model_name: str
     input_count: int
     entry_function: WhirlProgramUnitRecord
+    graph_source: str = "synthetic"
     operators: Sequence[str] = field(default_factory=list)
     tensor_types: Sequence[WhirlTensorTypeRecord] = field(default_factory=list)
     values: Sequence[WhirlValueRecord] = field(default_factory=list)
@@ -96,6 +97,7 @@ class WhirlModule:
             "model_name": self.model_name,
             "input_count": self.input_count,
             "entry_function": self.entry_function.to_manifest(),
+            "graph_source": self.graph_source,
             "operators": list(self.operators),
             "tensor_types": [
                 tensor_type.to_manifest()

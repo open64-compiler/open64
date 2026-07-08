@@ -7,3 +7,7 @@ MATMUL = "common.matmul"
 OUTPUT_LOGITS = "common.output_logits"
 RELU = "common.relu"
 RESIDUAL_ADD = "common.residual_add"
+
+FX_OPERATOR_MAP = {
+    "add": ADD,
+}

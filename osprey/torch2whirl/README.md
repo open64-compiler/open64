@@ -52,6 +52,10 @@ when two inputs are present.
 It also attaches tensor descriptors and placeholder symbol metadata through the
 builder facade, including dtype, rank, logical shape, source name, and lowering
 hint fields.
+The first optional graph-capture hook uses `torch.fx` when PyTorch is installed:
+a traced `lhs + rhs` graph maps to the first-class `common.add` operator.
+Environments without PyTorch keep using the synthetic placeholder graph and skip
+the FX-specific tests.
 `make -f Makefile.gbase python_native_extension` builds that extension when
 Python development headers and `OPEN64_DSC_NATIVE_OBJS` are supplied.
 Configured builds set `OPEN64_DSC_NATIVE_OBJS` to the sibling `ir_tools`

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import operator
 from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 from .builder import ValueHandle, WhirlBuilder, load_builder
+from .mapping import common
 from .module import (
     WhirlModule,
     WhirlOperatorRecord,
@@ -30,23 +32,31 @@ class WhirlExportInterpreter:
         model_name = self._model_name(model)
         entry_pu = self.builder().minimal_program_unit(self._options.entry)
         tensor_types, values, handles = self._build_input_placeholders(inputs)
+        captured_operators = self._captured_graph_operators(model)
         graph_operators: List[WhirlOperatorRecord] = []
         operators: List[str] = []
         body_markers: List[str] = []
+        graph_source = "torch.fx" if captured_operators else "synthetic"
 
         for value, handle in zip(values, handles):
             self.builder().append_program_unit_marker(entry_pu, handle)
             body_markers.append(value.name)
 
-        if len(handles) >= 2:
+        should_emit_add = (
+            common.ADD in captured_operators or
+            (not captured_operators and len(handles) >= 2)
+        )
+        if should_emit_add:
+            if len(handles) < 2:
+                raise ValueError("common.add requires at least two inputs")
             attrs = {"attr.broadcast_rule": "none"}
             add = self.builder().common_add(handles[0], handles[1], attrs)
             self.builder().append_program_unit_marker(entry_pu, add)
-            operators.append("common.add")
-            body_markers.append("common.add")
+            operators.append(common.ADD)
+            body_markers.append(common.ADD)
             graph_operators.append(
                 WhirlOperatorRecord(
-                    name="common.add",
+                    name=common.ADD,
                     handle=add.value,
                     kids=[values[0].name, values[1].name],
                     attrs=attrs,
@@ -62,11 +72,57 @@ class WhirlExportInterpreter:
                 handle=entry_pu.value,
                 body_markers=body_markers,
             ),
+            graph_source=graph_source,
             operators=operators,
             tensor_types=tensor_types,
             values=values,
             graph_operators=graph_operators,
         )
+
+    def _captured_graph_operators(self, model: Any) -> List[str]:
+        graph = self._capture_fx_graph(model)
+        if graph is None:
+            return []
+
+        operators: List[str] = []
+        for node in getattr(graph, "nodes", ()):
+            node_op = str(getattr(node, "op", ""))
+            if node_op in {"placeholder", "output", "get_attr"}:
+                continue
+
+            operator_name = self._map_fx_node(node)
+            if operator_name is None:
+                raise NotImplementedError(
+                    "unsupported FX graph node: "
+                    f"{node_op}:{getattr(node, 'target', '')}"
+                )
+            operators.append(operator_name)
+        return operators
+
+    def _capture_fx_graph(self, model: Any) -> Optional[Any]:
+        try:
+            from torch.fx import symbolic_trace
+        except ImportError:
+            return None
+
+        try:
+            traced = symbolic_trace(model)
+        except Exception:
+            return None
+        return getattr(traced, "graph", None)
+
+    def _map_fx_node(self, node: Any) -> Optional[str]:
+        node_op = str(getattr(node, "op", ""))
+        target = getattr(node, "target", None)
+
+        if node_op == "call_function" and target is operator.add:
+            return common.ADD
+
+        target_name = getattr(target, "__name__", str(target))
+        if node_op in {"call_function", "call_method"}:
+            return common.FX_OPERATOR_MAP.get(target_name)
+
+        return None
 
     def _build_input_placeholders(
         self,
