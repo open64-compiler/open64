@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import operator
-from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .builder import ValueHandle, WhirlBuilder, load_builder
 from .mapping import cnn, common
@@ -233,9 +233,14 @@ class WhirlExportInterpreter:
             return []
 
         operators: List[_MappedOperatorPlan] = []
+        mapped_nodes: Dict[int, str] = {}
+        output_source_node = None
         for node in getattr(graph, "nodes", ()):
             node_op = str(getattr(node, "op", ""))
-            if node_op in {"placeholder", "output", "get_attr"}:
+            if node_op in {"placeholder", "get_attr"}:
+                continue
+            if node_op == "output":
+                output_source_node = self._fx_output_source_node(node)
                 continue
 
             operator_name = self._map_fx_node(node)
@@ -245,7 +250,40 @@ class WhirlExportInterpreter:
                     f"{node_op}:{getattr(node, 'target', '')}"
                 )
             operators.append(operator_name)
+            mapped_nodes[id(node)] = operator_name.name
+
+        if (
+            output_source_node is not None and
+            mapped_nodes.get(id(output_source_node)) == common.LINEAR
+        ):
+            operators.append(
+                _MappedOperatorPlan(
+                    common.OUTPUT_LOGITS,
+                    {"attr.semantic": "classifier_logits"},
+                )
+            )
         return operators
+
+    def _fx_output_source_node(self, node: Any) -> Optional[Any]:
+        args = list(getattr(node, "args", ()))
+        if not args:
+            return None
+        return self._fx_first_node(args[0])
+
+    def _fx_first_node(self, value: Any) -> Optional[Any]:
+        if hasattr(value, "op") and hasattr(value, "target"):
+            return value
+        if isinstance(value, Mapping):
+            for item in value.values():
+                node = self._fx_first_node(item)
+                if node is not None:
+                    return node
+        if isinstance(value, Sequence) and not isinstance(value, str):
+            for item in value:
+                node = self._fx_first_node(item)
+                if node is not None:
+                    return node
+        return None
 
     def _capture_fx_graph(self, model: Any) -> Optional[Any]:
         try:

@@ -569,6 +569,13 @@ Current Phase 7 status:
     bias presence, transpose flags, and OI weight layout. Optional FX coverage
     maps `torch.nn.functional.linear` with explicit value, weight, and bias
     inputs.
+15. The classifier-tail batch now treats an FX graph whose returned value comes
+    from `common.linear` as a logits-producing model and appends
+    `common.output_logits` with classifier-logits semantics. Optional FX
+    coverage now composes a small ResNet-like ordered marker sequence:
+    `cnn.conv2d`, `cnn.batch_norm_infer`, `common.relu`, `cnn.max_pool2d`,
+    `common.residual_add`, `cnn.global_avg_pool2d`, `common.flatten`,
+    `common.linear`, and `common.output_logits`.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -823,9 +830,10 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Continue the Phase 7 neural-network vertical slice by tightening
-    classifier-tail `common.output_logits` coverage, then start composing a
-    small ResNet-like ordered marker sequence test.
+10. Continue the Phase 7 neural-network vertical slice by replacing the
+    placeholder operand slicing with real FX value flow, then add the first
+    parameter/data ingestion records for weights, bias, batchnorm scale,
+    running mean, and running variance.
 
 ## Practical Developer Loop
 

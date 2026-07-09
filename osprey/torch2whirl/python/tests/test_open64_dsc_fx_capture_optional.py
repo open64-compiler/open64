@@ -100,10 +100,13 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         module = export_to_whirl(LinearModule(), [value, weight, bias])
 
         self.assertEqual(module.graph_source, "torch.fx")
-        self.assertEqual(module.operators, ["common.linear"])
+        self.assertEqual(
+            module.operators,
+            ["common.linear", "common.output_logits"],
+        )
         self.assertEqual(
             module.entry_function.body_markers[-1],
-            "common.linear",
+            "common.output_logits",
         )
         self.assertEqual(
             module.graph_operators[0].kids,
@@ -116,6 +119,100 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(
             module.graph_operators[0].attrs["attr.weight_layout"],
             "OI",
+        )
+        self.assertEqual(
+            module.graph_operators[1].attrs["attr.semantic"],
+            "classifier_logits",
+        )
+
+    def test_fx_resnet_like_sequence_gets_ordered_markers(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class ResnetLikeModule(torch.nn.Module):
+            def forward(
+                self,
+                value,
+                conv_weight,
+                conv_bias,
+                bn_weight,
+                bn_bias,
+                running_mean,
+                running_var,
+                linear_weight,
+                linear_bias,
+            ):
+                conv = F.conv2d(
+                    value,
+                    conv_weight,
+                    conv_bias,
+                    stride=1,
+                    padding=1,
+                )
+                norm = F.batch_norm(
+                    conv,
+                    running_mean,
+                    running_var,
+                    bn_weight,
+                    bn_bias,
+                    training=False,
+                )
+                relu = torch.relu(norm)
+                pool = F.max_pool2d(
+                    relu,
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                )
+                residual = residual_add(pool, pool)
+                pooled = F.adaptive_avg_pool2d(residual, (1, 1))
+                flattened = torch.flatten(pooled, 1)
+                return F.linear(flattened, linear_weight, linear_bias)
+
+        value = torch.ones((1, 3, 32, 32), dtype=torch.float32)
+        conv_weight = torch.ones((64, 3, 3, 3), dtype=torch.float32)
+        conv_bias = torch.ones((64,), dtype=torch.float32)
+        bn_weight = torch.ones((64,), dtype=torch.float32)
+        bn_bias = torch.ones((64,), dtype=torch.float32)
+        running_mean = torch.ones((64,), dtype=torch.float32)
+        running_var = torch.ones((64,), dtype=torch.float32)
+        linear_weight = torch.ones((1000, 64), dtype=torch.float32)
+        linear_bias = torch.ones((1000,), dtype=torch.float32)
+        module = export_to_whirl(
+            ResnetLikeModule(),
+            [
+                value,
+                conv_weight,
+                conv_bias,
+                bn_weight,
+                bn_bias,
+                running_mean,
+                running_var,
+                linear_weight,
+                linear_bias,
+            ],
+        )
+
+        expected_operators = [
+            "cnn.conv2d",
+            "cnn.batch_norm_infer",
+            "common.relu",
+            "cnn.max_pool2d",
+            "common.residual_add",
+            "cnn.global_avg_pool2d",
+            "common.flatten",
+            "common.linear",
+            "common.output_logits",
+        ]
+        self.assertEqual(module.graph_source, "torch.fx")
+        self.assertEqual(module.operators, expected_operators)
+        self.assertEqual(
+            module.entry_function.body_markers[-len(expected_operators):],
+            expected_operators,
+        )
+        self.assertEqual(
+            module.graph_operators[-1].attrs["attr.semantic"],
+            "classifier_logits",
         )
 
     def test_fx_relu_maps_to_common_relu(self) -> None:
