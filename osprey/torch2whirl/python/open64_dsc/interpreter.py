@@ -55,7 +55,7 @@ class WhirlExportInterpreter:
         graph_source = "torch.fx" if captured_graph is not None else "synthetic"
 
         for value, handle in zip(values, handles):
-            self.builder().append_program_unit_marker(entry_pu, handle)
+            self.builder().append_program_unit_value(entry_pu, handle)
             body_markers.append(value.name)
 
         if captured_graph is not None:
@@ -77,7 +77,7 @@ class WhirlExportInterpreter:
                 handles[:2],
                 {},
             )
-            self.builder().append_program_unit_marker(entry_pu, handle)
+            self.builder().append_program_unit_value(entry_pu, handle)
             operators.append(common.ADD)
             body_markers.append(common.ADD)
             graph_operators.append(
@@ -148,7 +148,7 @@ class WhirlExportInterpreter:
                     attr_env,
                 )
                 env[id(node)] = graph_value
-                self.builder().append_program_unit_marker(entry_pu, graph_value.handle)
+                self.builder().append_program_unit_value(entry_pu, graph_value.handle)
                 body_markers.append(graph_value.name)
                 continue
 
@@ -193,7 +193,7 @@ class WhirlExportInterpreter:
                 operator_plan.attrs,
             )
             env[id(node)] = _GraphValue(handle, operator_plan.name)
-            self.builder().append_program_unit_marker(entry_pu, handle)
+            self.builder().append_program_unit_value(entry_pu, handle)
             operators.append(operator_plan.name)
             body_markers.append(operator_plan.name)
             graph_operators.append(
@@ -218,7 +218,7 @@ class WhirlExportInterpreter:
             [output_value.handle],
             {"attr.semantic": "classifier_logits"},
         )
-        self.builder().append_program_unit_marker(entry_pu, handle)
+        self.builder().append_program_unit_value(entry_pu, handle)
         operators.append(common.OUTPUT_LOGITS)
         body_markers.append(common.OUTPUT_LOGITS)
         graph_operators.append(
@@ -627,7 +627,7 @@ class WhirlExportInterpreter:
                 role,
             )
         if graph_value.name not in body_markers:
-            self.builder().append_program_unit_marker(entry_pu, graph_value.handle)
+            self.builder().append_program_unit_value(entry_pu, graph_value.handle)
             body_markers.append(graph_value.name)
         return graph_value
 

@@ -103,10 +103,10 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         )
         add = builder.common_add(lhs, rhs)
 
-        builder.append_program_unit_marker(pu, lhs)
-        builder.append_program_unit_marker(pu, rhs)
-        builder.append_program_unit_marker(pu, add)
-        markers = builder.inspect_program_unit_markers(pu)
+        builder.append_program_unit_value(pu, lhs)
+        builder.append_program_unit_value(pu, rhs)
+        builder.append_program_unit_value(pu, add)
+        markers = builder.inspect_program_unit_values(pu)
 
         self.assertEqual(
             [marker["opcode"] for marker in markers[-3:]],

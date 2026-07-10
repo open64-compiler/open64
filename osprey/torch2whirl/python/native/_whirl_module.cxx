@@ -314,6 +314,23 @@ Open64_DSC_Create_Minimal_Program_Unit(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Append_Program_Unit_Value(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    Open64_DSC_Handle value;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "KK:append_program_unit_value",
+                          &program_unit, &value))
+        return NULL;
+
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Append_Program_Unit_Value(program_unit, value),
+                "append program unit value");
+}
+
+static PyObject *
 Open64_DSC_Append_Program_Unit_Marker(PyObject *self, PyObject *args)
 {
     Open64_DSC_Handle program_unit;
@@ -328,6 +345,74 @@ Open64_DSC_Append_Program_Unit_Marker(PyObject *self, PyObject *args)
     return Open64_DSC_Bool_Result
                (Open64_DSC_Append_Program_Unit_Marker(program_unit, marker),
                 "append program unit marker");
+}
+
+static PyObject *
+Open64_DSC_Inspect_Program_Unit_Values(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    unsigned int value_count;
+    PyObject *values;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "K:inspect_program_unit_values",
+                          &program_unit))
+        return NULL;
+
+    value_count = Open64_DSC_Count_Program_Unit_Values(program_unit);
+    values = PyList_New((Py_ssize_t) value_count);
+    if (values == NULL)
+        return NULL;
+
+    for (unsigned int i = 0; i < value_count; ++i) {
+        Open64_DSC_Value_Info info;
+        PyObject *record;
+        PyObject *opcode;
+        PyObject *version;
+        PyObject *payload;
+
+        if (!Open64_DSC_Get_Program_Unit_Value(program_unit, i, &info)) {
+            Py_DECREF(values);
+            PyErr_SetString(PyExc_RuntimeError,
+                            "failed to inspect program unit value");
+            return NULL;
+        }
+
+        record = PyDict_New();
+        opcode = PyUnicode_FromStringAndSize(info.opcode_name,
+                                             info.opcode_name_len);
+        version = PyLong_FromUnsignedLong(info.version);
+        payload = PyUnicode_FromString(info.payload == NULL ?
+                                       "" : info.payload);
+        if (record == NULL || opcode == NULL ||
+            version == NULL || payload == NULL) {
+            Py_XDECREF(record);
+            Py_XDECREF(opcode);
+            Py_XDECREF(version);
+            Py_XDECREF(payload);
+            Py_DECREF(values);
+            return NULL;
+        }
+
+        if (PyDict_SetItemString(record, "opcode", opcode) != 0 ||
+            PyDict_SetItemString(record, "version", version) != 0 ||
+            PyDict_SetItemString(record, "payload", payload) != 0) {
+            Py_DECREF(record);
+            Py_DECREF(opcode);
+            Py_DECREF(version);
+            Py_DECREF(payload);
+            Py_DECREF(values);
+            return NULL;
+        }
+
+        Py_DECREF(opcode);
+        Py_DECREF(version);
+        Py_DECREF(payload);
+        PyList_SET_ITEM(values, (Py_ssize_t) i, record);
+    }
+
+    return values;
 }
 
 static PyObject *
@@ -473,10 +558,22 @@ static PyMethodDef Open64_DSC_Methods[] = {
         "Create a minimal native PU tree entry and return an opaque handle."
     },
     {
+        "append_program_unit_value",
+        Open64_DSC_Append_Program_Unit_Value,
+        METH_VARARGS,
+        "Append a DSL value/operator node to a native PU body."
+    },
+    {
         "append_program_unit_marker",
         Open64_DSC_Append_Program_Unit_Marker,
         METH_VARARGS,
         "Append a staged DSL marker to a native PU body."
+    },
+    {
+        "inspect_program_unit_values",
+        Open64_DSC_Inspect_Program_Unit_Values,
+        METH_VARARGS,
+        "Inspect DSL values/operators attached to a native PU body."
     },
     {
         "inspect_program_unit_markers",

@@ -1093,6 +1093,26 @@ Acceptance criteria:
 3. No torch2whirl source or Makefile gains backend/cg implementation coupling.
 4. Tests clearly distinguish real-node coverage from legacy marker fallback.
 
+Phase 13 progress status:
+
+1. The first API promotion slice is complete. common/com now exposes
+   `DSL_Builder_Append_PU_Value`, `DSL_Builder_Count_PU_Values`, and
+   `DSL_Builder_Get_PU_Value` as value-oriented PU body APIs, with the older
+   marker names retained as compatibility wrappers.
+2. The torch2whirl native bridge and Python builder facade now expose
+   `append_program_unit_value` and `inspect_program_unit_values`. The Python
+   interpreter uses the new value API when appending captured inputs, external
+   tensor constants, graph operators, and output logits.
+3. `common.add` is covered through the new PU value path in mock and native
+   optional tests. Existing artifact-inspection lanes continue to work through
+   the compatibility marker vocabulary until the binary text tools expose a
+   distinct non-comment DSL node spelling.
+4. Full Phase 13 is not complete until common/com replaces the current
+   annotated `OPR_COMMENT` encoding with a distinct high-level DSL WHIRL node
+   representation, or formally declares the annotated value encoding as the
+   stable binary contract. That decision remains the next common/com design
+   checkpoint before promoting all CNN operators.
+
 ### Phase 14: Full Toolchain Consumption
 
 Goal: prove that a `torch2whirl` artifact can be consumed by the full Open64
@@ -1178,12 +1198,12 @@ Current batch status:
    `save_as_whirl` writes deterministic side files next to the WHIRL artifact,
    and verifier strict mode checks file/key, dtype, shape, offset, length, and
    checksum consistency whenever payload records are present.
-3. Real `common.add` promotion is not ready yet. The native bridge can create
-   DSL operators, but the current program-unit body hookup still goes through
-   `Open64_DSC_Append_Program_Unit_Marker` and
-   `DSL_Builder_Append_PU_Marker`. The next common/com task is to expose the
-   real high-level DSL node attachment path for PU bodies before replacing
-   marker-backed artifact evidence.
+3. Real `common.add` promotion has its first API slice: torch2whirl now uses
+   `append_program_unit_value`, and common/com keeps marker names as
+   compatibility wrappers. The remaining common/com decision is whether the
+   annotated `OPR_COMMENT` value encoding is the stable high-level DSL binary
+   contract or whether a distinct non-comment WHIRL node spelling must be
+   introduced before promoting all CNN operators.
 4. The existing guarded full-toolchain path remains `make driver_opencc_smoke`.
    It is still the correct validation lane for `opencc -x whirl -c` once a full
    Open64 build with `opencc` is available.

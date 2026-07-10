@@ -218,6 +218,57 @@ Check_Operator_Creation(void)
 }
 
 static int
+Check_Program_Unit_Value_Attach(void)
+{
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID add_id;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attrs[1];
+    DSL_BUILDER_OPERATOR op;
+    DSL_BUILDER_VALUE_INFO info;
+    int failed = 0;
+
+    DSL_Opcode_Register_Common_Substrate();
+    common_id = DSL_Domain_Find("common");
+    add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+
+    kids[0] = DSL_WN_Create_Tensor_Const("pu_lhs", "int32", 2, "[2,2]",
+                                         "splat", "0");
+    kids[1] = DSL_WN_Create_Tensor_Const("pu_rhs", "int32", 2, "[2,2]",
+                                         "splat", "1");
+    attrs[0].name = "attr.broadcast_rule";
+    attrs[0].value = "none";
+
+    op = DSL_Builder_Create_Operator(add_id, 1, kids, 2, attrs, 1);
+    pu = DSL_Builder_Create_Minimal_PU("builder_value_contract");
+
+    if (!DSL_Builder_Append_PU_Value(pu, kids[0]) ||
+        !DSL_Builder_Append_PU_Value(pu, op)) {
+        fprintf(stderr, "builder failed to append DSL PU values\n");
+        return 1;
+    }
+
+    if (DSL_Builder_Count_PU_Values(pu) != 2 ||
+        DSL_Builder_Count_PU_Markers(pu) != 2) {
+        fprintf(stderr, "builder PU value count changed\n");
+        failed = 1;
+    }
+
+    if (!DSL_Builder_Get_PU_Value(pu, 1, &info) ||
+        info.opcode_name_len != strlen(DSL_OPCODE_COMMON_ADD) ||
+        strncmp(info.opcode_name, DSL_OPCODE_COMMON_ADD,
+                info.opcode_name_len) != 0 ||
+        strcmp(info.payload,
+               "kid0=pu_lhs;kid1=pu_rhs;attr.broadcast_rule=none") != 0) {
+        fprintf(stderr, "builder PU value inspection changed\n");
+        failed = 1;
+    }
+
+    return failed;
+}
+
+static int
 Check_Mapped_Image_Finalizer(void)
 {
     DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
@@ -271,6 +322,7 @@ main(void)
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
     failed |= Check_Operator_Creation();
+    failed |= Check_Program_Unit_Value_Attach();
     failed |= Check_Mapped_Image_Finalizer();
 
     return failed;

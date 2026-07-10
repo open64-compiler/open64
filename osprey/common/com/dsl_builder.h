@@ -88,6 +88,8 @@ typedef struct {
     const char *payload;
 } DSL_BUILDER_MARKER_INFO;
 
+typedef DSL_BUILDER_MARKER_INFO DSL_BUILDER_VALUE_INFO;
+
 extern TY_IDX DSL_Builder_Create_Tensor_Type_Core
                                 (const char *name,
                                  TY_IDX element_ty,
@@ -117,6 +119,15 @@ extern BOOL DSL_Builder_Attach_Metadata
                                  UINT32 metadata_count);
 extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
                                 (const char *name);
+extern BOOL DSL_Builder_Append_PU_Value
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_VALUE value);
+extern UINT32 DSL_Builder_Count_PU_Values
+                                (DSL_BUILDER_PROGRAM_UNIT pu);
+extern BOOL DSL_Builder_Get_PU_Value
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 UINT32 index,
+                                 DSL_BUILDER_VALUE_INFO *info);
 extern BOOL DSL_Builder_Append_PU_Marker
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  DSL_BUILDER_VALUE marker);

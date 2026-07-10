@@ -117,17 +117,40 @@ class WhirlBuilder:
         program_unit: ProgramUnitHandle,
         marker: ValueHandle,
     ) -> None:
-        if not self._backend.append_program_unit_marker(
+        self.append_program_unit_value(program_unit, marker)
+
+    def append_program_unit_value(
+        self,
+        program_unit: ProgramUnitHandle,
+        value: ValueHandle,
+    ) -> None:
+        append = getattr(
+            self._backend,
+            "append_program_unit_value",
+            self._backend.append_program_unit_marker,
+        )
+        if not append(
             program_unit.value,
-            marker.value,
+            value.value,
         ):
-            raise RuntimeError("failed to append program unit marker")
+            raise RuntimeError("failed to append program unit value")
 
     def inspect_program_unit_markers(
         self,
         program_unit: ProgramUnitHandle,
     ) -> Sequence[Mapping[str, object]]:
-        return self._backend.inspect_program_unit_markers(program_unit.value)
+        return self.inspect_program_unit_values(program_unit)
+
+    def inspect_program_unit_values(
+        self,
+        program_unit: ProgramUnitHandle,
+    ) -> Sequence[Mapping[str, object]]:
+        inspect = getattr(
+            self._backend,
+            "inspect_program_unit_values",
+            self._backend.inspect_program_unit_markers,
+        )
+        return inspect(program_unit.value)
 
     def tensor_constant(
         self,

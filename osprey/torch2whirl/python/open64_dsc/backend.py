@@ -74,7 +74,20 @@ class WhirlBackend(Protocol):
     ) -> bool:
         ...
 
+    def append_program_unit_value(
+        self,
+        program_unit: int,
+        value: int,
+    ) -> bool:
+        ...
+
     def inspect_program_unit_markers(
+        self,
+        program_unit: int,
+    ) -> Sequence[Mapping[str, object]]:
+        ...
+
+    def inspect_program_unit_values(
         self,
         program_unit: int,
     ) -> Sequence[Mapping[str, object]]:

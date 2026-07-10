@@ -369,24 +369,24 @@ DSL_Builder_Create_Minimal_PU (const char *name)
 }
 
 BOOL
-DSL_Builder_Append_PU_Marker
+DSL_Builder_Append_PU_Value
         (DSL_BUILDER_PROGRAM_UNIT pu,
-         DSL_BUILDER_VALUE marker)
+         DSL_BUILDER_VALUE value)
 {
     WN *body;
 
     body = DSL_Builder_PU_Body(pu);
-    if (body == NULL || marker == NULL)
+    if (body == NULL || value == NULL)
         return FALSE;
-    if (!DSL_WN_Has_Opcode(marker))
+    if (!DSL_WN_Has_Opcode(value))
         return FALSE;
 
-    WN_INSERT_BlockLast(body, marker);
+    WN_INSERT_BlockLast(body, value);
     return TRUE;
 }
 
 UINT32
-DSL_Builder_Count_PU_Markers (DSL_BUILDER_PROGRAM_UNIT pu)
+DSL_Builder_Count_PU_Values (DSL_BUILDER_PROGRAM_UNIT pu)
 {
     WN *body = DSL_Builder_PU_Body(pu);
     UINT32 count = 0;
@@ -404,10 +404,10 @@ DSL_Builder_Count_PU_Markers (DSL_BUILDER_PROGRAM_UNIT pu)
 }
 
 BOOL
-DSL_Builder_Get_PU_Marker
+DSL_Builder_Get_PU_Value
         (DSL_BUILDER_PROGRAM_UNIT pu,
          UINT32 index,
-         DSL_BUILDER_MARKER_INFO *info)
+         DSL_BUILDER_VALUE_INFO *info)
 {
     WN *body = DSL_Builder_PU_Body(pu);
     UINT32 current = 0;
@@ -431,6 +431,29 @@ DSL_Builder_Get_PU_Marker
     }
 
     return FALSE;
+}
+
+BOOL
+DSL_Builder_Append_PU_Marker
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_VALUE marker)
+{
+    return DSL_Builder_Append_PU_Value(pu, marker);
+}
+
+UINT32
+DSL_Builder_Count_PU_Markers (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    return DSL_Builder_Count_PU_Values(pu);
+}
+
+BOOL
+DSL_Builder_Get_PU_Marker
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         UINT32 index,
+         DSL_BUILDER_MARKER_INFO *info)
+{
+    return DSL_Builder_Get_PU_Value(pu, index, info);
 }
 
 BOOL

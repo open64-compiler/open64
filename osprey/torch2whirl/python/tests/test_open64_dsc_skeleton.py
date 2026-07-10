@@ -1610,6 +1610,45 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("attr.has_bias=true", str(markers[-1]["payload"]))
         self.assertIn("attr.weight_layout=OI", str(markers[-1]["payload"]))
 
+    def test_mock_backend_appends_common_add_as_program_unit_value(self) -> None:
+        builder = load_builder("mock")
+        pu = builder.minimal_program_unit("value_forward")
+        lhs = builder.tensor_constant(
+            "value_lhs",
+            "float32",
+            2,
+            "[1,4]",
+            "splat",
+            "1.0",
+        )
+        rhs = builder.tensor_constant(
+            "value_rhs",
+            "float32",
+            2,
+            "[1,4]",
+            "splat",
+            "2.0",
+        )
+        add = builder.common_add(lhs, rhs)
+
+        builder.append_program_unit_value(pu, lhs)
+        builder.append_program_unit_value(pu, rhs)
+        builder.append_program_unit_value(pu, add)
+        values = builder.inspect_program_unit_values(pu)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(
+            [value["opcode"] for value in values[-3:]],
+            [
+                "common.tensor_const",
+                "common.tensor_const",
+                "common.add",
+            ],
+        )
+        self.assertEqual(values, markers)
+        self.assertIn("kid0=value_lhs", str(values[-1]["payload"]))
+        self.assertIn("kid1=value_rhs", str(values[-1]["payload"]))
+
     def test_mock_backend_creates_external_tensor_operands(self) -> None:
         builder = load_builder("mock")
 

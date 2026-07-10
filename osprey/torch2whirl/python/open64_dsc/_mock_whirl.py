@@ -208,34 +208,38 @@ def _marker_annotation(marker: int) -> Mapping[str, object]:
     }
 
 
-def append_program_unit_marker(program_unit: int, marker: int) -> bool:
+def append_program_unit_value(program_unit: int, value: int) -> bool:
     if program_unit not in _objects:
-        raise RuntimeError("failed to append program unit marker")
-    if marker not in _objects:
-        raise RuntimeError("failed to append program unit marker")
+        raise RuntimeError("failed to append program unit value")
+    if value not in _objects:
+        raise RuntimeError("failed to append program unit value")
     if _objects[program_unit].get("kind") != "program_unit":
-        raise RuntimeError("failed to append program unit marker")
-    if _objects[marker].get("kind") not in {"operator", "tensor_constant"}:
-        raise RuntimeError("failed to append program unit marker")
+        raise RuntimeError("failed to append program unit value")
+    if _objects[value].get("kind") not in {"operator", "tensor_constant"}:
+        raise RuntimeError("failed to append program unit value")
 
     record = dict(_objects[program_unit])
     body_markers = list(record.get("body_markers", ()))
     body_marker_annotations = list(record.get("body_marker_annotations", ()))
-    body_markers.append(_marker_name(marker))
-    body_marker_annotations.append(dict(_marker_annotation(marker)))
+    body_markers.append(_marker_name(value))
+    body_marker_annotations.append(dict(_marker_annotation(value)))
     record["body_markers"] = body_markers
     record["body_marker_annotations"] = body_marker_annotations
     _objects[program_unit] = record
     return True
 
 
-def inspect_program_unit_markers(
+def append_program_unit_marker(program_unit: int, marker: int) -> bool:
+    return append_program_unit_value(program_unit, marker)
+
+
+def inspect_program_unit_values(
     program_unit: int,
 ) -> Sequence[Mapping[str, object]]:
     if program_unit not in _objects:
-        raise RuntimeError("failed to inspect program unit markers")
+        raise RuntimeError("failed to inspect program unit values")
     if _objects[program_unit].get("kind") != "program_unit":
-        raise RuntimeError("failed to inspect program unit markers")
+        raise RuntimeError("failed to inspect program unit values")
 
     annotations = _objects[program_unit].get("body_marker_annotations", ())
     if not isinstance(annotations, Sequence) or isinstance(annotations, str):
@@ -245,6 +249,12 @@ def inspect_program_unit_markers(
         for annotation in annotations
         if isinstance(annotation, Mapping)
     ]
+
+
+def inspect_program_unit_markers(
+    program_unit: int,
+) -> Sequence[Mapping[str, object]]:
+    return inspect_program_unit_values(program_unit)
 
 
 def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> bool:

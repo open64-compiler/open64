@@ -38,6 +38,8 @@ typedef struct {
     const char *payload;
 } Open64_DSC_Marker_Info;
 
+typedef Open64_DSC_Marker_Info Open64_DSC_Value_Info;
+
 extern Open64_DSC_Handle Open64_DSC_Create_Tensor_Type
                                 (const char *name,
                                  const char *dtype,
@@ -69,6 +71,15 @@ extern int Open64_DSC_Attach_Symbol_Metadata
                                  unsigned int metadata_count);
 extern Open64_DSC_Handle Open64_DSC_Create_Minimal_Program_Unit
                                 (const char *name);
+extern int Open64_DSC_Append_Program_Unit_Value
+                                (Open64_DSC_Handle program_unit,
+                                 Open64_DSC_Handle value);
+extern unsigned int Open64_DSC_Count_Program_Unit_Values
+                                (Open64_DSC_Handle program_unit);
+extern int Open64_DSC_Get_Program_Unit_Value
+                                (Open64_DSC_Handle program_unit,
+                                 unsigned int index,
+                                 Open64_DSC_Value_Info *info);
 extern int Open64_DSC_Append_Program_Unit_Marker
                                 (Open64_DSC_Handle program_unit,
                                  Open64_DSC_Handle marker);

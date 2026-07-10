@@ -299,45 +299,45 @@ Open64_DSC_Create_Minimal_Program_Unit(const char *name)
 }
 
 int
-Open64_DSC_Append_Program_Unit_Marker(Open64_DSC_Handle program_unit,
-                                      Open64_DSC_Handle marker)
+Open64_DSC_Append_Program_Unit_Value(Open64_DSC_Handle program_unit,
+                                     Open64_DSC_Handle value)
 {
-    if (program_unit == 0 || marker == 0)
+    if (program_unit == 0 || value == 0)
         return 0;
 
     Open64_DSC_Initialize_Context();
 
-    return DSL_Builder_Append_PU_Marker
+    return DSL_Builder_Append_PU_Value
                ((DSL_BUILDER_PROGRAM_UNIT) program_unit,
-                (DSL_BUILDER_VALUE) marker) ? 1 : 0;
+                (DSL_BUILDER_VALUE) value) ? 1 : 0;
 }
 
 unsigned int
-Open64_DSC_Count_Program_Unit_Markers(Open64_DSC_Handle program_unit)
+Open64_DSC_Count_Program_Unit_Values(Open64_DSC_Handle program_unit)
 {
     if (program_unit == 0)
         return 0;
 
     Open64_DSC_Initialize_Context();
 
-    return (unsigned int) DSL_Builder_Count_PU_Markers
+    return (unsigned int) DSL_Builder_Count_PU_Values
                               ((DSL_BUILDER_PROGRAM_UNIT) program_unit);
 }
 
 int
-Open64_DSC_Get_Program_Unit_Marker(Open64_DSC_Handle program_unit,
-                                   unsigned int index,
-                                   Open64_DSC_Marker_Info *info)
+Open64_DSC_Get_Program_Unit_Value(Open64_DSC_Handle program_unit,
+                                  unsigned int index,
+                                  Open64_DSC_Value_Info *info)
 {
-    DSL_BUILDER_MARKER_INFO builder_info;
+    DSL_BUILDER_VALUE_INFO builder_info;
 
     if (program_unit == 0 || info == NULL)
         return 0;
 
     Open64_DSC_Initialize_Context();
 
-    if (!DSL_Builder_Get_PU_Marker((DSL_BUILDER_PROGRAM_UNIT) program_unit,
-                                   (UINT32) index, &builder_info))
+    if (!DSL_Builder_Get_PU_Value((DSL_BUILDER_PROGRAM_UNIT) program_unit,
+                                  (UINT32) index, &builder_info))
         return 0;
 
     info->opcode_name = builder_info.opcode_name;
@@ -345,6 +345,27 @@ Open64_DSC_Get_Program_Unit_Marker(Open64_DSC_Handle program_unit,
     info->version = builder_info.version;
     info->payload = builder_info.payload;
     return 1;
+}
+
+int
+Open64_DSC_Append_Program_Unit_Marker(Open64_DSC_Handle program_unit,
+                                      Open64_DSC_Handle marker)
+{
+    return Open64_DSC_Append_Program_Unit_Value(program_unit, marker);
+}
+
+unsigned int
+Open64_DSC_Count_Program_Unit_Markers(Open64_DSC_Handle program_unit)
+{
+    return Open64_DSC_Count_Program_Unit_Values(program_unit);
+}
+
+int
+Open64_DSC_Get_Program_Unit_Marker(Open64_DSC_Handle program_unit,
+                                   unsigned int index,
+                                   Open64_DSC_Marker_Info *info)
+{
+    return Open64_DSC_Get_Program_Unit_Value(program_unit, index, info);
 }
 
 int
