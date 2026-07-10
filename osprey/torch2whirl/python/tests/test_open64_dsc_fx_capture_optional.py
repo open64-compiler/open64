@@ -45,6 +45,40 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             save_as_whirl(module, str(output))
             return output.read_text(encoding="utf-8")
 
+    def _manifest_shape(self, value):
+        if isinstance(value, dict):
+            return {
+                key: self._manifest_shape(item)
+                for key, item in sorted(value.items())
+            }
+        if isinstance(value, list):
+            return [self._manifest_shape(item) for item in value]
+        return type(value).__name__
+
+    def test_fx_add_manifest_shape_matches_synthetic_add(self) -> None:
+        import torch
+
+        class AddModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return lhs + rhs
+
+        class SyntheticAddModel:
+            pass
+
+        lhs = torch.ones((2, 3), dtype=torch.float32)
+        rhs = torch.ones((2, 3), dtype=torch.float32)
+        captured = export_to_whirl(AddModule(), [lhs, rhs])
+        synthetic = export_to_whirl(SyntheticAddModel(), [object(), object()])
+
+        self.assertEqual(captured.graph_source, "torch.fx")
+        self.assertEqual(synthetic.graph_source, "synthetic")
+        self.assertEqual(captured.operators, synthetic.operators)
+        self.assertEqual(captured.graph_operators[0].name, "common.add")
+        self.assertEqual(
+            self._manifest_shape(captured.to_manifest()),
+            self._manifest_shape(synthetic.to_manifest()),
+        )
+
     def test_fx_add_maps_to_common_add(self) -> None:
         import torch
 

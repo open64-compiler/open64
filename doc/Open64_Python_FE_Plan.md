@@ -912,6 +912,10 @@ Phase 10 progress checkpoints:
    operators, matmul rank and dimension mismatches, batchnorm inference-only
    constraints, residual exact-shape mismatches, missing `--sample-input`, and
    rejection of dynamic-style sample dimensions in the current static-shape CLI.
+6. Captured FX `common.add` now has an explicit manifest-shape conformance test
+   against the synthetic add skeleton, proving both paths serialize the same
+   top-level sections, entry PU shape, tensor descriptors, values, and graph
+   operator records.
 
 Exit criteria:
 
