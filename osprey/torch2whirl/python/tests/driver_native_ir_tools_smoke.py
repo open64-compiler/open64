@@ -60,13 +60,15 @@ def _write_model(path: Path) -> None:
             import torch
 
 
-            class AddModel(torch.nn.Module):
-                def forward(self, lhs, rhs):
-                    return lhs + rhs
+            class AddMatmulModel(torch.nn.Module):
+                def forward(self, add_lhs, add_rhs, matmul_lhs, matmul_rhs):
+                    add_result = add_lhs + add_rhs
+                    matmul_result = torch.matmul(matmul_lhs, matmul_rhs)
+                    return add_result, matmul_result
 
 
             def create_model():
-                return AddModel()
+                return AddMatmulModel()
             """
         ).lstrip(),
         encoding="utf-8",
@@ -125,7 +127,7 @@ def _run_valid_driver(driver: Path, model_path: Path, artifact: Path) -> int:
         driver,
         model_path,
         artifact,
-        ("shape:1,3", "shape:1,3"),
+        ("shape:1,3", "shape:1,3", "shape:2,3", "shape:3,4"),
     )
     if completed.returncode != 0:
         print(completed.stdout, file=sys.stderr)
@@ -178,7 +180,10 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
     required = [
         "FUNC_ENTRY",
         "common.add",
+        "common.matmul",
         "attr.broadcast_rule=none",
+        "attr.transpose_kid0=false",
+        "attr.transpose_kid1=false",
         "Symbols:",
         "Types:",
     ]

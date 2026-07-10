@@ -904,6 +904,10 @@ Phase 10 progress checkpoints:
    tests, including `graph_source` and graph-operator attributes.
 3. The same `common.add` and `common.matmul` fragments now have native marker
    inspection coverage for operand names and default attributes.
+4. Python-native and driver-native `ir_b2a -st` smokes now inspect the same
+   `common.add` and `common.matmul` fragments after finalization, including
+   `attr.broadcast_rule=none`, `attr.transpose_kid0=false`, and
+   `attr.transpose_kid1=false`.
 
 Exit criteria:
 
