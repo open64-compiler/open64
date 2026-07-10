@@ -254,6 +254,85 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             ["common.linear"],
         )
 
+    def test_fx_call_module_projection_residual_block(self) -> None:
+        import torch
+
+        class ProjectionBlock(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.main_conv = torch.nn.Conv2d(
+                    64,
+                    128,
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                    bias=False,
+                )
+                self.main_bn = torch.nn.BatchNorm2d(128)
+                self.downsample = torch.nn.Sequential(
+                    torch.nn.Conv2d(
+                        64,
+                        128,
+                        kernel_size=1,
+                        stride=2,
+                        bias=False,
+                    ),
+                    torch.nn.BatchNorm2d(128),
+                )
+
+            def forward(self, value):
+                main = self.main_bn(self.main_conv(value))
+                shortcut = self.downsample(value)
+                return residual_add(main, shortcut)
+
+        value = torch.ones((1, 64, 56, 56), dtype=torch.float32)
+        module = export_to_whirl(ProjectionBlock(), [value])
+
+        self.assertEqual(
+            module.operators,
+            [
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "common.residual_add",
+            ],
+        )
+        self.assertEqual(
+            module.graph_operators[-1].kids,
+            ["cnn.batch_norm_infer", "cnn.batch_norm_infer"],
+        )
+        self.assertEqual(
+            module.graph_operators[0].kids,
+            ["input0", "main_conv_weight", "main_conv_bias"],
+        )
+        self.assertEqual(
+            module.graph_operators[2].kids,
+            ["input0", "downsample_0_weight", "downsample_0_bias"],
+        )
+        self.assertEqual(
+            module.values[1].metadata["storage_tensor_key"],
+            "main_conv.weight",
+        )
+        self.assertEqual(
+            module.values[1].metadata["storage_byte_length"],
+            "294912",
+        )
+        self.assertEqual(module.values[2].value_kind, "absent_parameter")
+        self.assertEqual(
+            module.values[7].metadata["storage_tensor_key"],
+            "downsample.0.weight",
+        )
+        self.assertEqual(module.values[8].value_kind, "absent_parameter")
+        self.assertEqual(
+            module.values[9].metadata["tensor_role"],
+            "batchnorm_scale",
+        )
+        self.assertEqual(
+            module.values[11].metadata["tensor_role"],
+            "batchnorm_running_mean",
+        )
+
     def test_fx_resnet_like_sequence_gets_ordered_markers(self) -> None:
         import torch
         import torch.nn.functional as F

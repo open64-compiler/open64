@@ -442,6 +442,7 @@ class WhirlExportInterpreter:
                     values,
                     body_markers,
                     attr_env,
+                    "weight",
                 )
             )
             operands.append(
@@ -454,14 +455,15 @@ class WhirlExportInterpreter:
                     values,
                     body_markers,
                     attr_env,
+                    "bias",
                 )
             )
         elif operator_name == cnn.BATCH_NORM_INFER:
-            for suffix in (
-                "weight",
-                "bias",
-                "running_mean",
-                "running_var",
+            for suffix, role in (
+                ("weight", "batchnorm_scale"),
+                ("bias", "batchnorm_bias"),
+                ("running_mean", "batchnorm_running_mean"),
+                ("running_var", "batchnorm_running_var"),
             ):
                 operands.append(
                     self._module_parameter_operand(
@@ -473,6 +475,7 @@ class WhirlExportInterpreter:
                         values,
                         body_markers,
                         attr_env,
+                        role,
                     )
                 )
 
@@ -498,10 +501,11 @@ class WhirlExportInterpreter:
         values: List[WhirlValueRecord],
         body_markers: List[str],
         attr_env: Dict[str, _GraphValue],
+        role: Optional[str] = None,
     ) -> _GraphValue:
         tensor = self._resolve_attr(traced_module, target)
         if tensor is None:
-            graph_value = self._absent_parameter_for_target(target, values)
+            graph_value = self._absent_parameter_for_target(target, values, role)
         else:
             graph_value = self._external_tensor_for_target(
                 traced_module,
@@ -510,6 +514,7 @@ class WhirlExportInterpreter:
                 tensor_types,
                 values,
                 attr_env,
+                role,
             )
         if graph_value.name not in body_markers:
             self.builder().append_program_unit_marker(entry_pu, graph_value.handle)
@@ -520,6 +525,7 @@ class WhirlExportInterpreter:
         self,
         target: str,
         values: List[WhirlValueRecord],
+        role: Optional[str] = None,
     ) -> _GraphValue:
         name = self._external_value_name(target)
         if name in {value.name for value in values}:
@@ -544,7 +550,7 @@ class WhirlExportInterpreter:
                 metadata={
                     "source_layer_name": name,
                     "lowering_hint": "module_parameter_absent",
-                    "tensor_role": self._parameter_role(target),
+                    "tensor_role": role or self._parameter_role(target),
                 },
             )
         )
@@ -558,6 +564,7 @@ class WhirlExportInterpreter:
         tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
         attr_env: Dict[str, _GraphValue],
+        role: Optional[str] = None,
     ) -> _GraphValue:
         if target in attr_env:
             return attr_env[target]
@@ -566,7 +573,7 @@ class WhirlExportInterpreter:
         dtype = self._input_dtype(tensor)
         shape = self._input_shape(tensor)
         logical_shape = self._format_shape(shape)
-        role = self._parameter_role(target)
+        tensor_role = role or self._parameter_role(target)
         byte_length = self._tensor_byte_length(tensor, dtype, shape)
         byte_offset = self._next_external_offset(values)
         name = self._external_value_name(target)
@@ -576,14 +583,14 @@ class WhirlExportInterpreter:
             dtype,
             len(shape),
             logical_shape,
-            role,
+            tensor_role,
             "safetensors",
             side_file,
             target,
             byte_offset,
             byte_length,
             "",
-            self._parameter_layout(role, len(shape)),
+            self._parameter_layout(tensor_role, len(shape)),
         )
         tensor_types.append(
             WhirlTensorTypeRecord(

@@ -100,6 +100,14 @@ make -f Makefile.gbase python_test
 make -f Makefile.gbase python_native_check
 ```
 
+When PyTorch is installed, run the hard FX ingestion lane:
+
+```sh
+make -f Makefile.gbase python_torch_test
+```
+
+Unlike `python_test`, this target intentionally fails if `torch` is missing.
+
 For Linux Docker native extension validation from a configured build tree:
 
 ```sh

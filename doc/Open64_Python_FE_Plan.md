@@ -601,6 +601,12 @@ Current Phase 7 status:
     bias-free convolutions become explicit `absent_parameter` tensor markers.
     Optional torch coverage now checks a ResNet-like module stem/tail with
     module-owned conv, batchnorm, pooling, flatten, and classifier operands.
+19. The torch-required validation batch adds `make python_torch_test`, which
+    intentionally fails when PyTorch is absent and runs the FX capture suite
+    when a torch-enabled environment is available. The optional torch suite now
+    includes a projection/downsample residual block with module-owned main-path
+    and shortcut-path conv/batchnorm parameters, explicit absent bias markers,
+    and a semantic `common.residual_add` merge.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -855,10 +861,9 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Add a torch-enabled validation image or CI lane so FX `call_module` and
-    external parameter-ingestion tests run instead of skipping in the base
-    Docker image, then expand module coverage to downsample/projection
-    residual blocks.
+10. Provision a torch-enabled validation image or CI lane that runs
+    `make python_torch_test`, then use it as the gate for full ResNet ingestion
+    checkpoints.
 
 ## Practical Developer Loop
 

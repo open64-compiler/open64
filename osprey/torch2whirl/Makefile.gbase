@@ -124,6 +124,7 @@ TORCH2WHIRL_CXX_SRCS = \
 OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
+  python_torch_test \
   python_native_check python_native_deps python_native_extension \
   python_native_ir_tools_deps python_native_ir_tools_smoke \
   python_native_requirements python_native_stage python_native_test
@@ -142,6 +143,14 @@ python_test:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \
 	    $(PYTHON) -m unittest discover \
 	    -s $(BUILD_BASE)/python/tests
+
+python_torch_test:
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \
+	    $(PYTHON) -c 'import torch'
+	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \
+	    $(PYTHON) -m unittest discover \
+	    -s $(BUILD_BASE)/python/tests \
+	    -p 'test_open64_dsc_fx_capture_optional.py'
 
 python_native_check:
 	@if test "`uname -s`" = "Darwin" && \
