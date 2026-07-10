@@ -124,6 +124,52 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             module.graph_operators[1].attrs["attr.semantic"],
             "classifier_logits",
         )
+        self.assertEqual(module.graph_operators[1].kids, ["common.linear"])
+
+    def test_fx_get_attr_parameters_become_external_tensor_operands(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class LinearParameterModule(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.weight = torch.nn.Parameter(
+                    torch.ones((4, 8), dtype=torch.float32)
+                )
+                self.bias = torch.nn.Parameter(
+                    torch.ones((4,), dtype=torch.float32)
+                )
+
+            def forward(self, value):
+                return F.linear(value, self.weight, self.bias)
+
+        value = torch.ones((1, 8), dtype=torch.float32)
+        module = export_to_whirl(
+            LinearParameterModule(),
+            [value],
+        )
+
+        self.assertEqual(
+            module.operators,
+            ["common.linear", "common.output_logits"],
+        )
+        self.assertEqual(
+            module.graph_operators[0].kids,
+            ["input0", "weight", "bias"],
+        )
+        self.assertEqual(module.values[1].value_kind, "external_data")
+        self.assertEqual(module.values[1].metadata["tensor_role"], "weight")
+        self.assertEqual(module.values[1].metadata["storage_format"], "safetensors")
+        self.assertEqual(
+            module.values[1].metadata["storage_file"],
+            "LinearParameterModule.safetensors",
+        )
+        self.assertEqual(module.values[1].metadata["storage_tensor_key"], "weight")
+        self.assertEqual(module.values[1].metadata["storage_byte_offset"], "0")
+        self.assertEqual(module.values[1].metadata["storage_byte_length"], "128")
+        self.assertEqual(module.values[2].metadata["tensor_role"], "bias")
+        self.assertEqual(module.values[2].metadata["storage_byte_offset"], "128")
+        self.assertEqual(module.values[2].metadata["storage_byte_length"], "16")
 
     def test_fx_resnet_like_sequence_gets_ordered_markers(self) -> None:
         import torch
@@ -213,6 +259,18 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(
             module.graph_operators[-1].attrs["attr.semantic"],
             "classifier_logits",
+        )
+        self.assertEqual(
+            module.graph_operators[1].kids,
+            ["cnn.conv2d", "input3", "input4", "input5", "input6"],
+        )
+        self.assertEqual(
+            module.graph_operators[4].kids,
+            ["cnn.max_pool2d", "cnn.max_pool2d"],
+        )
+        self.assertEqual(
+            module.graph_operators[7].kids,
+            ["common.flatten", "input7", "input8"],
         )
 
     def test_fx_relu_maps_to_common_relu(self) -> None:
@@ -372,7 +430,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(
             module.graph_operators[0].kids,
-            ["input0", "input1", "input2", "input3", "input4"],
+            ["input0", "input3", "input4", "input1", "input2"],
         )
         self.assertEqual(
             module.graph_operators[0].attrs["attr.epsilon"],

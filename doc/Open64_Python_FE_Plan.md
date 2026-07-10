@@ -584,6 +584,15 @@ Current Phase 7 status:
     Operators can consume the returned value handle as a normal operand while
     the symbol metadata preserves the SafeTensors-style side-file payload
     reference.
+17. The first real FX value-flow batch replaces placeholder operand slicing
+    with an FX-node environment from graph nodes to Open64 value handles.
+    Operator records now use producer values, so batchnorm consumes the
+    convolution output and reordered scale/bias/running-stat operands,
+    residual add consumes the max-pool output twice, linear consumes the
+    flatten output, and `common.output_logits` consumes the linear output.
+    FX `get_attr` parameters and buffers now become external tensor constants
+    backed by SafeTensors-style side-file metadata, including storage file,
+    tensor key, offset, byte length, tensor role, and descriptor layout.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -838,10 +847,10 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Continue the Phase 7 neural-network vertical slice by replacing the
-    placeholder operand slicing with real FX value flow, then extract
-    `state_dict` parameters and buffers into external tensor constants for
-    weights, bias, batchnorm scale, running mean, and running variance.
+10. Continue the Phase 7 neural-network vertical slice by adding `call_module`
+    ingestion for `nn.Conv2d`, `nn.BatchNorm2d`, `nn.ReLU`, `nn.MaxPool2d`,
+    `nn.AdaptiveAvgPool2d`, and `nn.Linear`, then connect those module-owned
+    parameters and buffers to the external tensor constant path.
 
 ## Practical Developer Loop
 

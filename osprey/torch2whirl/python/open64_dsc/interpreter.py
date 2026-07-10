@@ -24,6 +24,12 @@ class _MappedOperatorPlan:
     attrs: Mapping[str, str]
 
 
+@dataclass(frozen=True)
+class _GraphValue:
+    handle: ValueHandle
+    name: str
+
+
 class WhirlExportInterpreter:
     def __init__(self, options: WhirlExportOptions):
         self._options = options
@@ -39,38 +45,42 @@ class WhirlExportInterpreter:
         model_name = self._model_name(model)
         entry_pu = self.builder().minimal_program_unit(self._options.entry)
         tensor_types, values, handles = self._build_input_placeholders(inputs)
-        captured_operators = self._captured_graph_operators(model)
         graph_operators: List[WhirlOperatorRecord] = []
         operators: List[str] = []
         body_markers: List[str] = []
-        graph_source = "torch.fx" if captured_operators else "synthetic"
+        captured_graph = self._capture_fx_graph(model)
+        graph_source = "torch.fx" if captured_graph is not None else "synthetic"
 
         for value, handle in zip(values, handles):
             self.builder().append_program_unit_marker(entry_pu, handle)
             body_markers.append(value.name)
 
-        graph_plan = captured_operators
-        if not graph_plan and len(handles) >= 2:
-            graph_plan = [_MappedOperatorPlan(common.ADD, {})]
-
-        for operator_plan in graph_plan:
-            operator_name = operator_plan.name
-            arity = self._operator_arity(operator_name)
-            if len(handles) < arity:
-                raise ValueError(f"{operator_name} requires at least {arity} inputs")
+        if captured_graph is not None:
+            self._emit_captured_graph(
+                captured_graph,
+                model_name,
+                entry_pu,
+                handles,
+                tensor_types,
+                values,
+                operators,
+                body_markers,
+                graph_operators,
+            )
+        elif len(handles) >= 2:
             handle, attrs = self._emit_operator(
-                operator_name,
-                handles[:arity],
-                operator_plan.attrs,
+                common.ADD,
+                handles[:2],
+                {},
             )
             self.builder().append_program_unit_marker(entry_pu, handle)
-            operators.append(operator_name)
-            body_markers.append(operator_name)
+            operators.append(common.ADD)
+            body_markers.append(common.ADD)
             graph_operators.append(
                 WhirlOperatorRecord(
-                    name=operator_name,
+                    name=common.ADD,
                     handle=handle.value,
-                    kids=[value.name for value in values[:arity]],
+                    kids=[value.name for value in values[:2]],
                     attrs=attrs,
                 )
             )
@@ -89,6 +99,104 @@ class WhirlExportInterpreter:
             tensor_types=tensor_types,
             values=values,
             graph_operators=graph_operators,
+        )
+
+    def _emit_captured_graph(
+        self,
+        captured_graph: Tuple[Any, Any],
+        model_name: str,
+        entry_pu: Any,
+        input_handles: Sequence[ValueHandle],
+        tensor_types: List[WhirlTensorTypeRecord],
+        values: List[WhirlValueRecord],
+        operators: List[str],
+        body_markers: List[str],
+        graph_operators: List[WhirlOperatorRecord],
+    ) -> None:
+        graph, traced_module = captured_graph
+        env: Dict[int, _GraphValue] = {}
+        input_index = 0
+        output_source_node = None
+
+        for node in getattr(graph, "nodes", ()):
+            node_op = str(getattr(node, "op", ""))
+            if node_op == "placeholder":
+                if input_index >= len(input_handles):
+                    raise ValueError("FX graph has more placeholders than inputs")
+                env[id(node)] = _GraphValue(
+                    input_handles[input_index],
+                    f"input{input_index}",
+                )
+                input_index += 1
+                continue
+
+            if node_op == "get_attr":
+                graph_value = self._external_tensor_for_attr(
+                    traced_module,
+                    str(getattr(node, "target", "")),
+                    model_name,
+                    tensor_types,
+                    values,
+                )
+                env[id(node)] = graph_value
+                self.builder().append_program_unit_marker(entry_pu, graph_value.handle)
+                body_markers.append(graph_value.name)
+                continue
+
+            if node_op == "output":
+                output_source_node = self._fx_output_source_node(node)
+                continue
+
+            operator_plan = self._map_fx_node(node)
+            if operator_plan is None:
+                raise NotImplementedError(
+                    "unsupported FX graph node: "
+                    f"{node_op}:{getattr(node, 'target', '')}"
+                )
+            operands = self._fx_operator_operands(operator_plan.name, node, env)
+            if len(operands) < self._operator_arity(operator_plan.name):
+                raise ValueError(f"{operator_plan.name} has too few FX operands")
+            handle, attrs = self._emit_operator(
+                operator_plan.name,
+                [operand.handle for operand in operands],
+                operator_plan.attrs,
+            )
+            env[id(node)] = _GraphValue(handle, operator_plan.name)
+            self.builder().append_program_unit_marker(entry_pu, handle)
+            operators.append(operator_plan.name)
+            body_markers.append(operator_plan.name)
+            graph_operators.append(
+                WhirlOperatorRecord(
+                    name=operator_plan.name,
+                    handle=handle.value,
+                    kids=[operand.name for operand in operands],
+                    attrs=attrs,
+                )
+            )
+
+        if output_source_node is None:
+            return
+        output_value = env.get(id(output_source_node))
+        if output_value is None:
+            return
+        if output_value.name != common.LINEAR:
+            return
+
+        handle, attrs = self._emit_operator(
+            common.OUTPUT_LOGITS,
+            [output_value.handle],
+            {"attr.semantic": "classifier_logits"},
+        )
+        self.builder().append_program_unit_marker(entry_pu, handle)
+        operators.append(common.OUTPUT_LOGITS)
+        body_markers.append(common.OUTPUT_LOGITS)
+        graph_operators.append(
+            WhirlOperatorRecord(
+                name=common.OUTPUT_LOGITS,
+                handle=handle.value,
+                kids=[output_value.name],
+                attrs=attrs,
+            )
         )
 
     def _operator_arity(self, operator_name: str) -> int:
@@ -227,43 +335,6 @@ class WhirlExportInterpreter:
 
         raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
 
-    def _captured_graph_operators(self, model: Any) -> List[_MappedOperatorPlan]:
-        graph = self._capture_fx_graph(model)
-        if graph is None:
-            return []
-
-        operators: List[_MappedOperatorPlan] = []
-        mapped_nodes: Dict[int, str] = {}
-        output_source_node = None
-        for node in getattr(graph, "nodes", ()):
-            node_op = str(getattr(node, "op", ""))
-            if node_op in {"placeholder", "get_attr"}:
-                continue
-            if node_op == "output":
-                output_source_node = self._fx_output_source_node(node)
-                continue
-
-            operator_name = self._map_fx_node(node)
-            if operator_name is None:
-                raise NotImplementedError(
-                    "unsupported FX graph node: "
-                    f"{node_op}:{getattr(node, 'target', '')}"
-                )
-            operators.append(operator_name)
-            mapped_nodes[id(node)] = operator_name.name
-
-        if (
-            output_source_node is not None and
-            mapped_nodes.get(id(output_source_node)) == common.LINEAR
-        ):
-            operators.append(
-                _MappedOperatorPlan(
-                    common.OUTPUT_LOGITS,
-                    {"attr.semantic": "classifier_logits"},
-                )
-            )
-        return operators
-
     def _fx_output_source_node(self, node: Any) -> Optional[Any]:
         args = list(getattr(node, "args", ()))
         if not args:
@@ -285,7 +356,165 @@ class WhirlExportInterpreter:
                     return node
         return None
 
-    def _capture_fx_graph(self, model: Any) -> Optional[Any]:
+    def _fx_operator_operands(
+        self,
+        operator_name: str,
+        node: Any,
+        env: Mapping[int, _GraphValue],
+    ) -> List[_GraphValue]:
+        args = list(getattr(node, "args", ()))
+
+        if operator_name == cnn.BATCH_NORM_INFER and len(args) >= 5:
+            values = [args[0], args[3], args[4], args[1], args[2]]
+        else:
+            values = args
+
+        operands: List[_GraphValue] = []
+        for value in values:
+            operand = self._fx_graph_value(value, env)
+            if operand is not None:
+                operands.append(operand)
+        return operands
+
+    def _fx_graph_value(
+        self,
+        value: Any,
+        env: Mapping[int, _GraphValue],
+    ) -> Optional[_GraphValue]:
+        node = self._fx_first_node(value)
+        if node is None:
+            return None
+        return env.get(id(node))
+
+    def _external_tensor_for_attr(
+        self,
+        traced_module: Any,
+        target: str,
+        model_name: str,
+        tensor_types: List[WhirlTensorTypeRecord],
+        values: List[WhirlValueRecord],
+    ) -> _GraphValue:
+        tensor = self._resolve_attr(traced_module, target)
+        dtype = self._input_dtype(tensor)
+        shape = self._input_shape(tensor)
+        logical_shape = self._format_shape(shape)
+        role = self._parameter_role(target)
+        byte_length = self._tensor_byte_length(tensor, dtype, shape)
+        byte_offset = self._next_external_offset(values)
+        name = self._external_value_name(target)
+        side_file = f"{model_name}.safetensors"
+        handle = self.builder().external_tensor_constant(
+            name,
+            dtype,
+            len(shape),
+            logical_shape,
+            role,
+            "safetensors",
+            side_file,
+            target,
+            byte_offset,
+            byte_length,
+            "",
+            self._parameter_layout(role, len(shape)),
+        )
+        tensor_types.append(
+            WhirlTensorTypeRecord(
+                name=f"{name}_type",
+                handle=handle.tensor_type,
+                dtype=dtype,
+                rank=len(shape),
+                logical_shape=logical_shape,
+                descriptor=handle.descriptor,
+            )
+        )
+        values.append(
+            WhirlValueRecord(
+                name=name,
+                handle=handle.value,
+                type_name=f"{name}_type",
+                value_kind="external_data",
+                symbol_handle=handle.symbol,
+                metadata=handle.metadata,
+            )
+        )
+        return _GraphValue(handle, name)
+
+    def _resolve_attr(self, owner: Any, target: str) -> Any:
+        value = owner
+        for part in target.split("."):
+            value = getattr(value, part)
+        return value
+
+    def _external_value_name(self, target: str) -> str:
+        return target.replace(".", "_")
+
+    def _parameter_role(self, target: str) -> str:
+        name = target.lower()
+        if "running_mean" in name:
+            return "batchnorm_running_mean"
+        if "running_var" in name or "running_variance" in name:
+            return "batchnorm_running_var"
+        if name.endswith("weight"):
+            if "bn" in name or "batchnorm" in name:
+                return "batchnorm_scale"
+            return "weight"
+        if name.endswith("bias"):
+            if "bn" in name or "batchnorm" in name:
+                return "batchnorm_bias"
+            return "bias"
+        return "parameter"
+
+    def _parameter_layout(self, role: str, rank: int) -> str:
+        if role == "weight" and rank == 4:
+            return "OIHW"
+        if role == "weight" and rank == 2:
+            return "OI"
+        if role.startswith("batchnorm") or role == "bias":
+            return "C"
+        return "contiguous"
+
+    def _next_external_offset(self, values: Sequence[WhirlValueRecord]) -> int:
+        offset = 0
+        for value in values:
+            if value.value_kind != "external_data":
+                continue
+            length = value.metadata.get("storage_byte_length", "0")
+            try:
+                offset += int(length)
+            except ValueError:
+                pass
+        return offset
+
+    def _tensor_byte_length(
+        self,
+        tensor: Any,
+        dtype: str,
+        shape: Sequence[int],
+    ) -> int:
+        numel = getattr(tensor, "numel", None)
+        if callable(numel):
+            try:
+                return int(numel()) * self._dtype_byte_size(dtype)
+            except (TypeError, ValueError):
+                pass
+
+        element_count = 1
+        for dim in shape:
+            element_count *= dim
+        return max(1, element_count * self._dtype_byte_size(dtype))
+
+    def _dtype_byte_size(self, dtype: str) -> int:
+        if dtype in {"float64", "int64"}:
+            return 8
+        if dtype in {"float32", "int32"}:
+            return 4
+        if dtype in {"float16", "bfloat16", "int16"}:
+            return 2
+        if dtype in {"bool", "int8", "uint8"}:
+            return 1
+        return 4
+
+    def _capture_fx_graph(self, model: Any) -> Optional[Tuple[Any, Any]]:
         try:
             from torch.fx import symbolic_trace
         except ImportError:
@@ -295,7 +524,10 @@ class WhirlExportInterpreter:
             traced = symbolic_trace(model)
         except Exception:
             return None
-        return getattr(traced, "graph", None)
+        graph = getattr(traced, "graph", None)
+        if graph is None:
+            return None
+        return graph, traced
 
     def _map_fx_node(self, node: Any) -> Optional[_MappedOperatorPlan]:
         node_op = str(getattr(node, "op", ""))

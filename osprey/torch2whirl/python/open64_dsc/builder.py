@@ -37,6 +37,7 @@ class TensorConstantHandle(ValueHandle):
     tensor_type: int = 0
     symbol: int = 0
     metadata: Mapping[str, str] = field(default_factory=dict)
+    descriptor: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -227,6 +228,7 @@ class WhirlBuilder:
             tensor_type.value,
             symbol.value,
             metadata,
+            descriptor,
         )
 
     def _external_tensor_uri(
