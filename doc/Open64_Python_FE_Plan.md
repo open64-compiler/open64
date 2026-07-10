@@ -680,8 +680,10 @@ Phase 8 execution stages:
    `ir_b2a -st` whenever the configured build provides `ir_b2a`. The first
    executable-level gate is `make driver_torch_test`, which builds the C++
    binary, runs it against a tiny PyTorch model file, and checks the emitted
-   mock artifact markers. The later native variant should reuse the same
-   target shape but switch `--backend native` and inspect with `ir_b2a -st`.
+   mock artifact markers. The native artifact gate is
+   `make driver_native_ir_tools_smoke`; it builds the native Python extension,
+   runs the same executable with `--backend native`, and inspects the resulting
+   driver-produced WHIRL file with `ir_b2a -st`.
 
 ## Phase 9: Gatekeeper Verifier
 
@@ -901,6 +903,9 @@ Exit criteria:
    `python_native_ir_tools_smoke` now builds `libjsoncpp.a`, `ir_b2a`, and
    `ir_a2b` inside the torch2whirl-only Linux Docker tree and inspects the first
    native Python-produced artifact with `ir_b2a -st`.
+   `driver_native_ir_tools_smoke` extends the same loop across the C++
+   executable boundary so Phase 8 does not regress into a Python-only artifact
+   check.
 8. Run `dsl_ir_tools_smoke_test.sh` when a full Open64 `opencc` is available.
    The fixture still requires `opencc` to create its C-derived `smoke.B`; the
    torch2whirl-only tree intentionally does not build that compiler driver.

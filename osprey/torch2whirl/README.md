@@ -83,6 +83,9 @@ native Python WHIRL artifact and inspect it with `ir_b2a -st`.  In a configured
 `--enable-torch2whirl-only` build, this target first builds the additional
 tool-side `libjsoncpp.a` and `ir_b2a`/`ir_a2b` pieces needed for inspection.
 Those reader/WSSA objects are not linked into the `_whirl` frontend extension.
+Use `make driver_native_ir_tools_smoke` from a torch-enabled configured build
+to run the same native artifact inspection through the C++ `torch2whirl`
+executable.
 For a full Open64 build, set `OPEN64_IR_B2A=/path/to/ir_b2a` to point at an
 existing tool.
 The `--enable-torch2whirl-only` configure path emits the small helper build
@@ -166,6 +169,13 @@ For optional `ir_b2a -st` inspection of the native Python artifact:
 
 ```sh
 make python_native_ir_tools_smoke
+```
+
+For optional `ir_b2a -st` inspection of a native artifact produced through the
+C++ driver:
+
+```sh
+make driver_native_ir_tools_smoke
 ```
 
 The broader `osprey/common/com/tests/dsl_ir_tools_smoke_test.sh` fixture still

@@ -83,6 +83,11 @@ docker run --rm -v /path/to/open64:/src \
   -w /build/osprey/targdir/torch2whirl \
   open64:x86_64-apple-silicon \
   sh -c 'apt-get update && apt-get install -y python3.8-dev && make python_native_ir_tools_smoke'
+docker run --rm -v /path/to/open64:/src \
+  -v /private/tmp/open64-torch2whirl-linux:/build \
+  -w /build/osprey/targdir/torch2whirl \
+  open64:torch2whirl-torch-test \
+  sh -c 'apt-get update && apt-get install -y python3.8-dev && make driver_native_ir_tools_smoke'
 ```
 
 For common DSL native syntax compatibility that affects torch2whirl:

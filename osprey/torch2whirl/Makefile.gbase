@@ -130,7 +130,7 @@ TORCH2WHIRL_CXX_SRCS = \
 OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
-  driver_torch_test \
+  driver_native_ir_tools_smoke driver_torch_test \
   python_torch_test \
   python_native_check python_native_deps python_native_extension \
   python_native_ir_tools_deps python_native_ir_tools_smoke \
@@ -164,6 +164,14 @@ driver_torch_test: $(TARGETS)
 	    PYTHONPATH=$(TORCH2WHIRL_PYTHONPATH) \
 	    TORCH2WHIRL_DRIVER=$(TORCH2WHIRL_DRIVER) \
 	    $(PYTHON) $(BUILD_BASE)/python/tests/driver_torch_smoke.py
+
+driver_native_ir_tools_smoke: $(TARGETS) python_native_extension \
+  python_native_ir_tools_deps
+	PYTHONDONTWRITEBYTECODE=1 \
+	    OPEN64_IR_B2A="$(OPEN64_IR_B2A)" \
+	    PYTHONPATH=$(TORCH2WHIRL_PYTHONPATH) \
+	    TORCH2WHIRL_DRIVER=$(TORCH2WHIRL_DRIVER) \
+	    $(PYTHON) $(BUILD_BASE)/python/tests/driver_native_ir_tools_smoke.py
 
 python_native_check:
 	@if test "`uname -s`" = "Darwin" && \
