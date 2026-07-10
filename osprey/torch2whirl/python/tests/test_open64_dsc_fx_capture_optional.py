@@ -21,6 +21,18 @@ if TORCH_AVAILABLE:
 
 @unittest.skipUnless(TORCH_AVAILABLE, "torch is not installed")
 class Open64DscFxCaptureOptionalTest(unittest.TestCase):
+    def _value_by_tensor_key(self, module, tensor_key):
+        for value in module.values:
+            if value.metadata.get("storage_tensor_key") == tensor_key:
+                return value
+        self.fail(f"missing external tensor value for {tensor_key}")
+
+    def _value_by_name(self, module, name):
+        for value in module.values:
+            if value.name == name:
+                return value
+        self.fail(f"missing value {name}")
+
     def test_fx_add_maps_to_common_add(self) -> None:
         import torch
 
@@ -206,7 +218,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 return self.fc(value)
 
         value = torch.ones((1, 3, 224, 224), dtype=torch.float32)
-        module = export_to_whirl(ModuleResnetStemTail(), [value])
+        module = export_to_whirl(ModuleResnetStemTail().eval(), [value])
 
         self.assertEqual(
             module.operators,
@@ -286,7 +298,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 return residual_add(main, shortcut)
 
         value = torch.ones((1, 64, 56, 56), dtype=torch.float32)
-        module = export_to_whirl(ProjectionBlock(), [value])
+        module = export_to_whirl(ProjectionBlock().eval(), [value])
 
         self.assertEqual(
             module.operators,
@@ -331,6 +343,218 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(
             module.values[11].metadata["tensor_role"],
             "batchnorm_running_mean",
+        )
+
+    def test_fx_call_module_basic_block_maps_resnet_residual_pattern(self) -> None:
+        import torch
+
+        class BasicBlock(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv1 = torch.nn.Conv2d(
+                    64,
+                    64,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=False,
+                )
+                self.bn1 = torch.nn.BatchNorm2d(64)
+                self.relu = torch.nn.ReLU()
+                self.conv2 = torch.nn.Conv2d(
+                    64,
+                    64,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=False,
+                )
+                self.bn2 = torch.nn.BatchNorm2d(64)
+
+            def forward(self, value):
+                residual = value
+                out = self.conv1(value)
+                out = self.bn1(out)
+                out = self.relu(out)
+                out = self.conv2(out)
+                out = self.bn2(out)
+                out = residual_add(out, residual)
+                return self.relu(out)
+
+        value = torch.ones((1, 64, 56, 56), dtype=torch.float32)
+        module = export_to_whirl(BasicBlock().eval(), [value])
+
+        self.assertEqual(
+            module.operators,
+            [
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "common.relu",
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "common.residual_add",
+                "common.relu",
+            ],
+        )
+        self.assertEqual(
+            module.graph_operators[5].kids,
+            ["cnn.batch_norm_infer", "input0"],
+        )
+        self.assertEqual(
+            module.graph_operators[6].kids,
+            ["common.residual_add"],
+        )
+        self.assertEqual(
+            self._value_by_tensor_key(module, "conv1.weight")
+                .metadata["storage_byte_length"],
+            "147456",
+        )
+        self.assertEqual(
+            self._value_by_name(module, "conv1_bias").value_kind,
+            "absent_parameter",
+        )
+        self.assertEqual(
+            self._value_by_tensor_key(module, "bn2.running_mean")
+                .metadata["tensor_role"],
+            "batchnorm_running_mean",
+        )
+        self.assertEqual(
+            self._value_by_tensor_key(module, "bn2.running_var")
+                .metadata["tensor_role"],
+            "batchnorm_running_var",
+        )
+
+    def test_fx_call_module_stem_projection_tail_maps_vertical_slice(self) -> None:
+        import torch
+
+        class ProjectionBlock(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv1 = torch.nn.Conv2d(
+                    64,
+                    128,
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                    bias=False,
+                )
+                self.bn1 = torch.nn.BatchNorm2d(128)
+                self.relu = torch.nn.ReLU()
+                self.conv2 = torch.nn.Conv2d(
+                    128,
+                    128,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=False,
+                )
+                self.bn2 = torch.nn.BatchNorm2d(128)
+                self.downsample = torch.nn.Sequential(
+                    torch.nn.Conv2d(
+                        64,
+                        128,
+                        kernel_size=1,
+                        stride=2,
+                        bias=False,
+                    ),
+                    torch.nn.BatchNorm2d(128),
+                )
+
+            def forward(self, value):
+                residual = self.downsample(value)
+                out = self.conv1(value)
+                out = self.bn1(out)
+                out = self.relu(out)
+                out = self.conv2(out)
+                out = self.bn2(out)
+                out = residual_add(out, residual)
+                return self.relu(out)
+
+        class StemProjectionTail(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.stem_conv = torch.nn.Conv2d(
+                    3,
+                    64,
+                    kernel_size=7,
+                    stride=2,
+                    padding=3,
+                    bias=False,
+                )
+                self.stem_bn = torch.nn.BatchNorm2d(64)
+                self.relu = torch.nn.ReLU()
+                self.pool = torch.nn.MaxPool2d(
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                )
+                self.block = ProjectionBlock()
+                self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
+                self.flatten = torch.nn.Flatten(1)
+                self.fc = torch.nn.Linear(128, 1000)
+
+            def forward(self, value):
+                out = self.stem_conv(value)
+                out = self.stem_bn(out)
+                out = self.relu(out)
+                out = self.pool(out)
+                out = self.block(out)
+                out = self.avgpool(out)
+                out = self.flatten(out)
+                return self.fc(out)
+
+        value = torch.ones((1, 3, 224, 224), dtype=torch.float32)
+        module = export_to_whirl(StemProjectionTail().eval(), [value])
+
+        self.assertEqual(
+            module.operators,
+            [
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "common.relu",
+                "cnn.max_pool2d",
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "common.relu",
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "common.residual_add",
+                "common.relu",
+                "cnn.global_avg_pool2d",
+                "common.flatten",
+                "common.linear",
+                "common.output_logits",
+            ],
+        )
+        self.assertEqual(
+            module.graph_operators[11].kids,
+            ["cnn.batch_norm_infer", "cnn.batch_norm_infer"],
+        )
+        self.assertEqual(
+            module.graph_operators[-1].kids,
+            ["common.linear"],
+        )
+        self.assertEqual(
+            self._value_by_tensor_key(module, "stem_conv.weight")
+                .metadata["storage_byte_length"],
+            "37632",
+        )
+        self.assertEqual(
+            self._value_by_tensor_key(module, "block.downsample.0.weight")
+                .metadata["storage_byte_length"],
+            "32768",
+        )
+        self.assertEqual(
+            self._value_by_tensor_key(module, "block.downsample.1.running_mean")
+                .metadata["tensor_role"],
+            "batchnorm_running_mean",
+        )
+        self.assertEqual(
+            self._value_by_tensor_key(module, "fc.weight")
+                .metadata["storage_byte_length"],
+            "512000",
         )
 
     def test_fx_resnet_like_sequence_gets_ordered_markers(self) -> None:
@@ -615,6 +839,68 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
 
         with self.assertRaisesRegex(NotImplementedError, "unsupported FX"):
             export_to_whirl(MulModule(), [lhs, rhs])
+
+    def test_fx_training_batch_norm_fails_loudly(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class TrainingBatchNormModule(torch.nn.Module):
+            def forward(self, value, scale, bias, running_mean, running_var):
+                return F.batch_norm(
+                    value,
+                    running_mean,
+                    running_var,
+                    scale,
+                    bias,
+                    training=True,
+                )
+
+        value = torch.ones((1, 64, 8, 8), dtype=torch.float32)
+        scale = torch.ones((64,), dtype=torch.float32)
+        bias = torch.ones((64,), dtype=torch.float32)
+        running_mean = torch.ones((64,), dtype=torch.float32)
+        running_var = torch.ones((64,), dtype=torch.float32)
+
+        with self.assertRaisesRegex(NotImplementedError, "inference batchnorm"):
+            export_to_whirl(
+                TrainingBatchNormModule(),
+                [value, scale, bias, running_mean, running_var],
+            )
+
+    def test_fx_batch_norm_missing_running_stats_fails_loudly(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class MissingStatsBatchNormModule(torch.nn.Module):
+            def forward(self, value, scale, bias):
+                return F.batch_norm(
+                    value,
+                    None,
+                    None,
+                    scale,
+                    bias,
+                    training=False,
+                )
+
+        value = torch.ones((1, 64, 8, 8), dtype=torch.float32)
+        scale = torch.ones((64,), dtype=torch.float32)
+        bias = torch.ones((64,), dtype=torch.float32)
+
+        with self.assertRaisesRegex(ValueError, "cnn.batch_norm_infer"):
+            export_to_whirl(MissingStatsBatchNormModule(), [value, scale, bias])
+
+    def test_fx_residual_add_shape_mismatch_fails_loudly(self) -> None:
+        import torch
+
+        class MismatchedResidualModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return residual_add(lhs, rhs)
+
+        lhs = torch.ones((1, 64, 56, 56), dtype=torch.float32)
+        rhs = torch.ones((1, 128, 28, 28), dtype=torch.float32)
+
+        with self.assertRaisesRegex(ValueError, "exact shape match"):
+            export_to_whirl(MismatchedResidualModule(), [lhs, rhs])
 
 
 if __name__ == "__main__":

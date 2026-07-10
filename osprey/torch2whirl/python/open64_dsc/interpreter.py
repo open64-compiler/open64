@@ -168,7 +168,17 @@ class WhirlExportInterpreter:
                 attr_env,
             )
             if len(operands) < self._operator_arity(operator_plan.name):
-                raise ValueError(f"{operator_plan.name} has too few FX operands")
+                raise ValueError(
+                    f"{operator_plan.name} has too few FX operands: "
+                    f"expected {self._operator_arity(operator_plan.name)} "
+                    f"got {len(operands)}"
+                )
+            self._validate_operator_plan(
+                operator_plan.name,
+                operands,
+                operator_plan.attrs,
+                values,
+            )
             handle, attrs = self._emit_operator(
                 operator_plan.name,
                 [operand.handle for operand in operands],
@@ -347,6 +357,72 @@ class WhirlExportInterpreter:
             ), attrs
 
         raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
+
+    def _validate_operator_plan(
+        self,
+        operator_name: str,
+        operands: Sequence[_GraphValue],
+        attrs: Mapping[str, str],
+        values: Sequence[WhirlValueRecord],
+    ) -> None:
+        if operator_name == cnn.BATCH_NORM_INFER:
+            if attrs.get("attr.training", "false") == "true":
+                raise NotImplementedError(
+                    "cnn.batch_norm_infer only supports inference batchnorm"
+                )
+        if operator_name == common.RESIDUAL_ADD:
+            self._validate_residual_add_shapes(operands, values)
+
+    def _validate_residual_add_shapes(
+        self,
+        operands: Sequence[_GraphValue],
+        values: Sequence[WhirlValueRecord],
+    ) -> None:
+        if len(operands) < 2:
+            return
+
+        shapes = {
+            value.name: self._logical_shape_tuple_for_type(
+                value.type_name,
+                values,
+            )
+            for value in values
+        }
+        lhs_shape = shapes.get(operands[0].name)
+        rhs_shape = shapes.get(operands[1].name)
+        if lhs_shape is None or rhs_shape is None:
+            return
+        if lhs_shape != rhs_shape:
+            raise ValueError(
+                "common.residual_add operands require exact shape match: "
+                f"{operands[0].name}{lhs_shape} vs {operands[1].name}{rhs_shape}"
+            )
+
+    def _logical_shape_tuple_for_type(
+        self,
+        type_name: str,
+        values: Sequence[WhirlValueRecord],
+    ) -> Optional[Tuple[int, ...]]:
+        if not type_name:
+            return None
+        for value in values:
+            if value.type_name != type_name:
+                continue
+            shape = value.metadata.get("logical_shape")
+            if shape is not None:
+                return self._parse_logical_shape(shape)
+        return None
+
+    def _parse_logical_shape(self, logical_shape: str) -> Optional[Tuple[int, ...]]:
+        if not logical_shape.startswith("[") or not logical_shape.endswith("]"):
+            return None
+        body = logical_shape[1:-1]
+        if not body:
+            return ()
+        try:
+            return tuple(int(part) for part in body.split(","))
+        except ValueError:
+            return None
 
     def _fx_output_source_node(self, node: Any) -> Optional[Any]:
         args = list(getattr(node, "args", ()))
@@ -812,7 +888,9 @@ class WhirlExportInterpreter:
             return {
                 "attr.epsilon": str(getattr(module, "eps", 1e-5)),
                 "attr.momentum": str(getattr(module, "momentum", 0.1)),
-                "attr.training": "false",
+                "attr.training": self._format_bool(
+                    getattr(module, "training", False)
+                ),
                 "attr.input_layout": "NCHW",
                 "attr.channel_axis": "1",
             }
@@ -1044,6 +1122,7 @@ class WhirlExportInterpreter:
             metadata = {
                 "source_layer_name": name,
                 "lowering_hint": "example_input",
+                "logical_shape": logical_shape,
             }
             self.builder().attach_symbol_metadata(symbol, metadata)
 

@@ -615,6 +615,18 @@ Current Phase 7 status:
     reuses the local torch image by default; set
     `OPEN64_TORCH2WHIRL_REBUILD_IMAGE=1` when the Dockerfile layer needs to be
     refreshed.
+21. Phase 7 closeout adds torch-enabled ResNet hardening for a BasicBlock-style
+    `conv/bn/relu/conv/bn/residual_add/relu` sequence and for a
+    stem/projection-block/classifier-tail vertical slice. The same validation
+    now asserts SafeTensors-style side-file metadata for weights, absent conv
+    biases, batchnorm scale, running mean, running variance, and classifier
+    weights. Negative torch coverage rejects training-mode batchnorm, missing
+    batchnorm running statistics, and statically known residual shape
+    mismatches.
+
+Phase 7 is complete for the planned first ResNet-oriented vertical slice. New
+operator work should be driven by Phase 8 executable integration or by a
+specific model gap found while ingesting a full ResNet checkpoint.
 
 ## Phase 8: torch2whirl Driver Integration
 
