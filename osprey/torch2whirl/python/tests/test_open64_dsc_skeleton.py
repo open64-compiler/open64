@@ -321,6 +321,68 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("attr.has_bias=true", str(markers[-1]["payload"]))
         self.assertIn("attr.weight_layout=OI", str(markers[-1]["payload"]))
 
+    def test_mock_backend_creates_external_tensor_operands(self) -> None:
+        builder = load_builder("mock")
+
+        value = builder.tensor_constant(
+            "external_conv_input",
+            "float32",
+            4,
+            "[1,3,224,224]",
+            "example_input",
+            "external_conv_input",
+        )
+        weight = builder.external_tensor_constant(
+            "external_conv_weight",
+            "float32",
+            4,
+            "[64,3,7,7]",
+            "weight",
+            "safetensors",
+            "resnet.safetensors",
+            "conv1.weight",
+            128,
+            37632,
+            "sha256:conv-weight",
+            "OIHW",
+        )
+        bias = builder.external_tensor_constant(
+            "external_conv_bias",
+            "float32",
+            1,
+            "[64]",
+            "bias",
+            "safetensors",
+            "resnet.safetensors",
+            "conv1.bias",
+            37760,
+            256,
+            "sha256:conv-bias",
+            "C",
+        )
+        conv2d = builder.cnn_conv2d(value, weight, bias)
+        pu = builder.minimal_program_unit("external_conv_forward")
+        builder.append_program_unit_marker(pu, weight)
+        builder.append_program_unit_marker(pu, conv2d)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertGreater(weight.value, 0)
+        self.assertGreater(weight.tensor_type, 0)
+        self.assertGreater(weight.symbol, 0)
+        self.assertEqual(weight.metadata["tensor_role"], "weight")
+        self.assertEqual(weight.metadata["storage_format"], "safetensors")
+        self.assertEqual(weight.metadata["storage_file"], "resnet.safetensors")
+        self.assertEqual(weight.metadata["storage_tensor_key"], "conv1.weight")
+        self.assertEqual(weight.metadata["storage_byte_offset"], "128")
+        self.assertEqual(weight.metadata["storage_byte_length"], "37632")
+        self.assertEqual(markers[-2]["opcode"], "common.tensor_const")
+        self.assertIn("name=external_conv_weight", str(markers[-2]["payload"]))
+        self.assertIn("value_kind=external_data", str(markers[-2]["payload"]))
+        self.assertIn("safetensors://resnet.safetensors", str(markers[-2]["payload"]))
+        self.assertEqual(markers[-1]["opcode"], "cnn.conv2d")
+        self.assertIn("kid1=external_conv_weight", str(markers[-1]["payload"]))
+        self.assertIn("kid2=external_conv_bias", str(markers[-1]["payload"]))
+
     def test_interpreter_exposes_builder_facade(self) -> None:
         interpreter = WhirlExportInterpreter(WhirlExportOptions())
         builder = interpreter.builder()
@@ -351,6 +413,18 @@ class Open64DscSkeletonTest(unittest.TestCase):
         conv2d = builder.cnn_conv2d(lhs, rhs, rhs)
         batch_norm = builder.cnn_batch_norm_infer(lhs, rhs, rhs, rhs, rhs)
         linear = builder.common_linear(lhs, rhs, rhs)
+        external = builder.external_tensor_constant(
+            "interpreter_external_weight",
+            "float32",
+            2,
+            "[4,4]",
+            "weight",
+            "safetensors",
+            "unit.safetensors",
+            "linear.weight",
+            0,
+            64,
+        )
 
         self.assertGreater(add.value, 0)
         self.assertGreater(residual_add.value, 0)
@@ -362,6 +436,9 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertGreater(conv2d.value, 0)
         self.assertGreater(batch_norm.value, 0)
         self.assertGreater(linear.value, 0)
+        self.assertGreater(external.value, 0)
+        self.assertGreater(external.symbol, 0)
+        self.assertEqual(external.metadata["storage_tensor_key"], "linear.weight")
 
     def test_save_as_whirl_uses_mock_backend(self) -> None:
         module = export_to_whirl(

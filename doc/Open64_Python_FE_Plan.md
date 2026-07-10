@@ -576,6 +576,14 @@ Current Phase 7 status:
     `cnn.conv2d`, `cnn.batch_norm_infer`, `common.relu`, `cnn.max_pool2d`,
     `common.residual_add`, `cnn.global_avg_pool2d`, `common.flatten`,
     `common.linear`, and `common.output_logits`.
+16. The first side-file tensor-data batch adds a builder method for external
+    tensor constants. It creates a TensorDescriptorIR record, creates a symbol
+    table entry, attaches symbol metadata naming the storage format, side file,
+    tensor key, byte offset, byte length, checksum, and tensor role, then emits
+    a `common.tensor_const` operand marker with `value_kind=external_data`.
+    Operators can consume the returned value handle as a normal operand while
+    the symbol metadata preserves the SafeTensors-style side-file payload
+    reference.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -831,9 +839,9 @@ Exit criteria:
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
 10. Continue the Phase 7 neural-network vertical slice by replacing the
-    placeholder operand slicing with real FX value flow, then add the first
-    parameter/data ingestion records for weights, bias, batchnorm scale,
-    running mean, and running variance.
+    placeholder operand slicing with real FX value flow, then extract
+    `state_dict` parameters and buffers into external tensor constants for
+    weights, bias, batchnorm scale, running mean, and running variance.
 
 ## Practical Developer Loop
 

@@ -378,6 +378,64 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertIn("attr.has_bias=true", str(markers[-1]["payload"]))
         self.assertIn("attr.weight_layout=OI", str(markers[-1]["payload"]))
 
+    def test_native_backend_appends_external_tensor_operands(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_external_tensor_model")
+        value = builder.tensor_constant(
+            "native_external_input",
+            "float32",
+            4,
+            "[1,3,224,224]",
+            "example_input",
+            "native_external_input",
+        )
+        weight = builder.external_tensor_constant(
+            "native_external_weight",
+            "float32",
+            4,
+            "[64,3,7,7]",
+            "weight",
+            "safetensors",
+            "resnet.safetensors",
+            "conv1.weight",
+            128,
+            37632,
+            "sha256:native-conv-weight",
+            "OIHW",
+        )
+        bias = builder.external_tensor_constant(
+            "native_external_bias",
+            "float32",
+            1,
+            "[64]",
+            "bias",
+            "safetensors",
+            "resnet.safetensors",
+            "conv1.bias",
+            37760,
+            256,
+            "sha256:native-conv-bias",
+            "C",
+        )
+        conv2d = builder.cnn_conv2d(value, weight, bias)
+
+        builder.append_program_unit_marker(pu, weight)
+        builder.append_program_unit_marker(pu, conv2d)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertGreater(weight.symbol, 0)
+        self.assertEqual(weight.metadata["tensor_role"], "weight")
+        self.assertEqual(weight.metadata["storage_file"], "resnet.safetensors")
+        self.assertEqual(weight.metadata["storage_tensor_key"], "conv1.weight")
+        self.assertEqual(weight.metadata["storage_byte_length"], "37632")
+        self.assertEqual(markers[-2]["opcode"], "common.tensor_const")
+        self.assertIn("value_kind=external_data", str(markers[-2]["payload"]))
+        self.assertIn("safetensors://resnet.safetensors", str(markers[-2]["payload"]))
+        self.assertEqual(markers[-1]["opcode"], "cnn.conv2d")
+        self.assertIn("kid1=native_external_weight", str(markers[-1]["payload"]))
+        self.assertIn("kid2=native_external_bias", str(markers[-1]["payload"]))
+
     def test_native_backend_finalizes_artifact(self) -> None:
         module = export_to_whirl(
             DummyModel(),

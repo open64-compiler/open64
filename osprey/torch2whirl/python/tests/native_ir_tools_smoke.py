@@ -29,31 +29,71 @@ def _append_operator_probes(module) -> None:
     rhs = ValueHandle(module.values[1].handle)
     matmul = builder.common_matmul(lhs, rhs)
     residual_add = builder.common_residual_add(lhs, rhs)
-    linear_bias = builder.tensor_constant(
+    linear_weight = builder.external_tensor_constant(
+        "linear_weight",
+        "float32",
+        2,
+        "[1,1]",
+        "weight",
+        "safetensors",
+        "resnet.safetensors",
+        "fc.weight",
+        0,
+        4,
+        "sha256:linear-weight",
+        "OI",
+    )
+    linear_bias = builder.external_tensor_constant(
         "linear_bias",
         "float32",
         1,
         "[1]",
-        "splat",
-        "0.0",
+        "bias",
+        "safetensors",
+        "resnet.safetensors",
+        "fc.bias",
+        4,
+        4,
+        "sha256:linear-bias",
+        "C",
     )
-    linear = builder.common_linear(lhs, rhs, linear_bias)
+    linear = builder.common_linear(lhs, linear_weight, linear_bias)
     relu = builder.common_relu(lhs)
     flatten = builder.common_flatten(lhs)
     output_logits = builder.common_output_logits(lhs)
     max_pool2d = builder.cnn_max_pool2d(lhs)
     global_avg_pool2d = builder.cnn_global_avg_pool2d(lhs)
-    conv_bias = builder.tensor_constant(
+    conv_weight = builder.external_tensor_constant(
+        "conv_weight",
+        "float32",
+        4,
+        "[1,1,1,1]",
+        "weight",
+        "safetensors",
+        "resnet.safetensors",
+        "conv.weight",
+        8,
+        4,
+        "sha256:conv-weight",
+        "OIHW",
+    )
+    conv_bias = builder.external_tensor_constant(
         "conv_bias",
         "float32",
         1,
         "[1]",
-        "splat",
-        "0.0",
+        "bias",
+        "safetensors",
+        "resnet.safetensors",
+        "conv.bias",
+        12,
+        4,
+        "sha256:conv-bias",
+        "C",
     )
     conv2d = builder.cnn_conv2d(
         lhs,
-        rhs,
+        conv_weight,
         conv_bias,
         {
             "attr.kernel_shape": "3,3",
@@ -66,37 +106,61 @@ def _append_operator_probes(module) -> None:
             "attr.output_layout": "NCHW",
         },
     )
-    bn_scale = builder.tensor_constant(
+    bn_scale = builder.external_tensor_constant(
         "bn_scale",
         "float32",
         1,
         "[1]",
-        "splat",
-        "1.0",
+        "batchnorm_scale",
+        "safetensors",
+        "resnet.safetensors",
+        "bn.weight",
+        16,
+        4,
+        "sha256:bn-scale",
+        "C",
     )
-    bn_bias = builder.tensor_constant(
+    bn_bias = builder.external_tensor_constant(
         "bn_bias",
         "float32",
         1,
         "[1]",
-        "splat",
-        "0.0",
+        "batchnorm_bias",
+        "safetensors",
+        "resnet.safetensors",
+        "bn.bias",
+        20,
+        4,
+        "sha256:bn-bias",
+        "C",
     )
-    bn_running_mean = builder.tensor_constant(
+    bn_running_mean = builder.external_tensor_constant(
         "bn_running_mean",
         "float32",
         1,
         "[1]",
-        "splat",
-        "0.0",
+        "batchnorm_running_mean",
+        "safetensors",
+        "resnet.safetensors",
+        "bn.running_mean",
+        24,
+        4,
+        "sha256:bn-running-mean",
+        "C",
     )
-    bn_running_var = builder.tensor_constant(
+    bn_running_var = builder.external_tensor_constant(
         "bn_running_var",
         "float32",
         1,
         "[1]",
-        "splat",
-        "1.0",
+        "batchnorm_running_var",
+        "safetensors",
+        "resnet.safetensors",
+        "bn.running_var",
+        28,
+        4,
+        "sha256:bn-running-var",
+        "C",
     )
     batch_norm = builder.cnn_batch_norm_infer(
         lhs,
@@ -113,6 +177,20 @@ def _append_operator_probes(module) -> None:
         ProgramUnitHandle(module.entry_function.handle),
         residual_add,
     )
+    for parameter in (
+        linear_weight,
+        linear_bias,
+        conv_weight,
+        conv_bias,
+        bn_scale,
+        bn_bias,
+        bn_running_mean,
+        bn_running_var,
+    ):
+        builder.append_program_unit_marker(
+            ProgramUnitHandle(module.entry_function.handle),
+            parameter,
+        )
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         linear,
@@ -217,6 +295,8 @@ def main() -> int:
             "attr.shape_check=exact",
             "attr.has_bias=true",
             "attr.weight_layout=OI",
+            "value_kind=external_data",
+            "safetensors://resnet.safetensors",
             "attr.kernel_shape=3,3",
             "attr.output_size=1,1",
             "attr.groups=1",

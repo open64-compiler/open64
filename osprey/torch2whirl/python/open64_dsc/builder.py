@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Optional, Sequence
 
 from .backend import WhirlBackend, load_backend
@@ -30,6 +30,13 @@ class SymbolHandle(OpaqueHandle):
 @dataclass(frozen=True)
 class ValueHandle(OpaqueHandle):
     pass
+
+
+@dataclass(frozen=True)
+class TensorConstantHandle(ValueHandle):
+    tensor_type: int = 0
+    symbol: int = 0
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -140,6 +147,104 @@ class WhirlBuilder:
                 value,
             )
         )
+
+    def external_tensor_constant(
+        self,
+        name: str,
+        dtype: str,
+        rank: int,
+        logical_shape: str,
+        role: str,
+        storage_format: str,
+        side_file: str,
+        tensor_key: str,
+        byte_offset: int,
+        byte_length: int,
+        checksum: str = "",
+        layout: str = "contiguous",
+    ) -> TensorConstantHandle:
+        if byte_offset < 0:
+            raise ValueError("external tensor byte offset must be non-negative")
+        if byte_length <= 0:
+            raise ValueError("external tensor byte length must be positive")
+        if not side_file:
+            raise ValueError("external tensor side file is required")
+        if not tensor_key:
+            raise ValueError("external tensor key is required")
+
+        tensor_type = self.tensor_type(
+            f"{name}_type",
+            dtype,
+            rank,
+            logical_shape,
+        )
+        descriptor = {
+            "kind": "tensor",
+            "dtype": dtype,
+            "rank": rank,
+            "logical_shape": logical_shape,
+            "traits": role,
+            "layout": layout,
+            "sharding": "replicated",
+            "placement": "side_file",
+            "memory": "external_data",
+            "quantization": "none",
+            "runtime_state": "static",
+            "lineage": name,
+        }
+        self.attach_tensor_descriptor(tensor_type, descriptor)
+        symbol = self.symbol(name, tensor_type)
+        metadata = {
+            "source_layer_name": name,
+            "lowering_hint": "external_tensor_constant",
+            "tensor_role": role,
+            "storage_format": storage_format,
+            "storage_file": side_file,
+            "storage_tensor_key": tensor_key,
+            "storage_byte_offset": str(byte_offset),
+            "storage_byte_length": str(byte_length),
+            "storage_checksum": checksum,
+        }
+        self.attach_symbol_metadata(symbol, metadata)
+
+        value = self.tensor_constant(
+            name,
+            dtype,
+            rank,
+            logical_shape,
+            "external_data",
+            self._external_tensor_uri(
+                storage_format,
+                side_file,
+                tensor_key,
+                byte_offset,
+                byte_length,
+                checksum,
+            ),
+        )
+        return TensorConstantHandle(
+            value.value,
+            tensor_type.value,
+            symbol.value,
+            metadata,
+        )
+
+    def _external_tensor_uri(
+        self,
+        storage_format: str,
+        side_file: str,
+        tensor_key: str,
+        byte_offset: int,
+        byte_length: int,
+        checksum: str,
+    ) -> str:
+        uri = (
+            f"{storage_format}://{side_file}#{tensor_key}"
+            f"?offset={byte_offset}&length={byte_length}"
+        )
+        if checksum:
+            uri += f"&checksum={checksum}"
+        return uri
 
     def operator(
         self,
