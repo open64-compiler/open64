@@ -194,8 +194,19 @@ Check_Operator_Creation(void)
     op = DSL_Builder_Create_Operator(add_id, 1, kids, 2, attrs, 1);
 
     if (op == NULL || !DSL_WN_Get_Opcode_Annotation(op, &annotation)) {
-        fprintf(stderr, "builder failed to create DSL operator marker\n");
+        fprintf(stderr, "builder failed to create annotated DSL value\n");
         return 1;
+    }
+
+    if (WN_operator(op) != OPR_COMMENT) {
+        fprintf(stderr, "formal DSL value carrier is no longer OPR_COMMENT\n");
+        failed = 1;
+    }
+
+    if (WN_operator(kids[0]) != OPR_COMMENT ||
+        WN_operator(kids[1]) != OPR_COMMENT) {
+        fprintf(stderr, "formal DSL tensor value carrier changed\n");
+        failed = 1;
     }
 
     if (annotation.name_len != strlen(DSL_OPCODE_COMMON_ADD) ||

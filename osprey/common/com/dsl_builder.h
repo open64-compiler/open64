@@ -119,6 +119,19 @@ extern BOOL DSL_Builder_Attach_Metadata
                                  UINT32 metadata_count);
 extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
                                 (const char *name);
+/*
+ * Formal VHO DSL value representation.
+ *
+ * The stable Phase 13 carrier is a WHIRL WN with an annotated DSL opcode
+ * payload.  Today that carrier is an OPR_COMMENT node using the
+ * WN_DSL_COMMENT_PREFIX format, so existing WHIRL readers and writers keep
+ * binary compatibility while DSL-aware phases inspect, verify, and lower the
+ * value deliberately.  Python and other frontends must treat the handle as an
+ * opaque DSL_BUILDER_VALUE and must not depend on the physical carrier.
+ *
+ * The marker-named entry points below remain compatibility wrappers for
+ * earlier tests and callers.
+ */
 extern BOOL DSL_Builder_Append_PU_Value
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  DSL_BUILDER_VALUE value);

@@ -208,6 +208,18 @@ BOOL DSL_Builder_Attach_Metadata(
 DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU(
     const char *name);
 
+BOOL DSL_Builder_Append_PU_Value(
+    DSL_BUILDER_PROGRAM_UNIT pu,
+    DSL_BUILDER_VALUE value);
+
+UINT32 DSL_Builder_Count_PU_Values(
+    DSL_BUILDER_PROGRAM_UNIT pu);
+
+BOOL DSL_Builder_Get_PU_Value(
+    DSL_BUILDER_PROGRAM_UNIT pu,
+    UINT32 index,
+    DSL_BUILDER_VALUE_INFO *info);
+
 BOOL DSL_Builder_Append_PU_Marker(
     DSL_BUILDER_PROGRAM_UNIT pu,
     DSL_BUILDER_VALUE marker);
@@ -302,13 +314,21 @@ Current Phase 4 status:
 6. `DSL_Builder_Finalize_Mapped_Image` writes staged in-memory PU subsections
    before `Write_Global_Info`, matching the Open64 writer ordering used by
    native IR tools while keeping Python away from WHIRL node construction.
-7. `DSL_Builder_Append_PU_Marker` appends existing staged DSL opcode markers to
+7. `DSL_Builder_Append_PU_Value` appends existing staged DSL opcode values to
    the entry PU body. Python can connect placeholders and graph operators to the
    PU body by opaque handle, but it still cannot allocate or mutate WHIRL nodes
    directly.
-8. `DSL_Builder_Count_PU_Markers` and `DSL_Builder_Get_PU_Marker` provide a
-   read-only native inspection checkpoint for staged PU body markers before the
+8. The formal low-risk VHO representation is an annotated DSL value: an opaque
+   `WN *` currently carried by an `OPR_COMMENT` node with the
+   `__WHIRL_DSL__:` opcode payload. This preserves mapped-image compatibility
+   while giving DSL-aware phases a stable decode point for verification and
+   lowering.
+9. `DSL_Builder_Count_PU_Values` and `DSL_Builder_Get_PU_Value` provide a
+   read-only native inspection checkpoint for staged PU body values before the
    full `ir_b2a -st` artifact inspection path is available.
+10. `DSL_Builder_Append_PU_Marker`, `DSL_Builder_Count_PU_Markers`, and
+    `DSL_Builder_Get_PU_Marker` remain compatibility wrappers for older tests
+    and callers; new frontend code should use the value-oriented names.
 
 ## Phase 5: Python Package Skeleton
 
@@ -1064,34 +1084,44 @@ Phase 12 completion status:
    compiler-ingestion source of truth is the WHIRL artifact plus the
    SafeTensors-style side file and symbol metadata.
 
-### Phase 13: Real WHIRL DSL Operator Lowering
+### Phase 13: Formal WHIRL DSL Value Representation
 
-Goal: replace marker-only or comment-oriented representation with real
-high-level DSL WHIRL nodes as the common/com infrastructure becomes ready.
+Goal: make the high-level DSL value representation explicit in common/com while
+preserving binary WHIRL compatibility. The low-risk contract is now an annotated
+DSL value: an opaque `WN *` carried by `OPR_COMMENT` with a
+`__WHIRL_DSL__:opcode:<name>:v<version>:<payload>` record. Frontends and Python
+bindings use value-oriented APIs and must not depend on the physical carrier.
+A distinct non-comment WHIRL spelling remains a future option, but it should be
+introduced only after ResNet ingestion proves the annotated value carrier is
+insufficient.
 
 Execution steps:
 
-1. Identify the minimal common/com API needed to create a real high-level DSL
-   operator node, bind operands, bind result tensors, and preserve attributes.
-2. Promote `common.add` first because it has the strongest manifest,
-   native-marker, artifact-inspection, and negative-test coverage.
-3. Promote `common.matmul`, then CNN operators in dependency order:
-   convolution, batchnorm inference, relu, pooling, flatten/view, linear, and
-   residual add.
-4. Update `ir_b2a -st` inspection expectations from marker payload strings to
-   real DSL node and symbol-table evidence as soon as the binary format exposes
-   it.
-5. Keep a compatibility note for any operator that remains marker-backed while
-   common/com support is incomplete.
+1. Declare the annotated DSL value carrier in the builder contract and plan.
+2. Promote public APIs from marker terminology to value terminology:
+   `append_program_unit_value`, `inspect_program_unit_values`, and the matching
+   common/com builder calls.
+3. Keep marker-named APIs as compatibility wrappers only.
+4. Add tests proving `common.add`, tensor constants, PU append, artifact
+   inspection, and verifier paths all operate through the value API while the
+   binary carrier remains `OPR_COMMENT`.
+5. Update `ir_b2a -st` inspection expectations to treat DSL opcode payload
+   strings as the formal high-level DSL value evidence for this phase.
+6. Defer a distinct non-comment WHIRL node spelling until there is a concrete
+   blocker in verifier, lowering, roundtrip, or full-toolchain consumption.
 
 Acceptance criteria:
 
 1. At least `common.add`, `common.matmul`, and the ResNet stem operators survive
-   binary artifact emission and `ir_b2a -st` inspection as real DSL constructs.
+   binary artifact emission and `ir_b2a -st` inspection as annotated DSL values.
 2. Python never constructs raw WHIRL internals directly; it continues to call
    the native frontend builder through opaque handles.
 3. No torch2whirl source or Makefile gains backend/cg implementation coupling.
-4. Tests clearly distinguish real-node coverage from legacy marker fallback.
+4. Tests clearly distinguish value-oriented coverage from marker-named
+   compatibility wrappers.
+5. Any proposal to replace the annotated `OPR_COMMENT` carrier identifies the
+   exact compatibility, verifier, lowering, or roundtrip requirement that the
+   value contract cannot satisfy.
 
 Phase 13 progress status:
 
@@ -1107,11 +1137,15 @@ Phase 13 progress status:
    optional tests. Existing artifact-inspection lanes continue to work through
    the compatibility marker vocabulary until the binary text tools expose a
    distinct non-comment DSL node spelling.
-4. Full Phase 13 is not complete until common/com replaces the current
-   annotated `OPR_COMMENT` encoding with a distinct high-level DSL WHIRL node
-   representation, or formally declares the annotated value encoding as the
-   stable binary contract. That decision remains the next common/com design
-   checkpoint before promoting all CNN operators.
+4. The low-risk formalization decision is complete for the current VHO
+   contract: common/com formally declares annotated `OPR_COMMENT` DSL values as
+   the stable binary carrier for Phase 13. The builder contract test now asserts
+   that `common.add` and tensor constants use this carrier while callers go
+   through value-oriented APIs.
+5. A distinct non-comment WHIRL node representation is intentionally deferred.
+   It should become a separate common/com design batch only if annotated DSL
+   values fail a concrete ResNet ingestion, verifier, lowering, roundtrip, or
+   full-toolchain consumption requirement.
 
 ### Phase 14: Full Toolchain Consumption
 
@@ -1176,9 +1210,11 @@ Acceptance criteria:
    unsupported operators or descriptors that block full export.
 2. Implement the SafeTensors-style payload writer contract in mock form first,
    then connect native symbol records once the record shape is stable.
-3. Promote `common.add` from marker-backed artifact evidence to real DSL node
-   evidence if common/com exposes the required API; otherwise document the
-   missing common/com API as the blocker.
+3. Extend annotated-value artifact evidence from `common.add` and
+   `common.matmul` through the remaining ResNet stem operators. Treat
+   `OPR_COMMENT` DSL opcode payloads as the formal Phase 13 evidence unless a
+   concrete verifier, lowering, roundtrip, or full-toolchain blocker requires a
+   distinct non-comment WHIRL spelling.
 4. Extend the C++ driver path to prove full ResNet capture uses the same
    Python-side API and native builder contract as direct Python tests.
 5. Run the full-toolchain `opencc -x whirl -c` lane in an environment that has a
@@ -1198,12 +1234,11 @@ Current batch status:
    `save_as_whirl` writes deterministic side files next to the WHIRL artifact,
    and verifier strict mode checks file/key, dtype, shape, offset, length, and
    checksum consistency whenever payload records are present.
-3. Real `common.add` promotion has its first API slice: torch2whirl now uses
-   `append_program_unit_value`, and common/com keeps marker names as
-   compatibility wrappers. The remaining common/com decision is whether the
-   annotated `OPR_COMMENT` value encoding is the stable high-level DSL binary
-   contract or whether a distinct non-comment WHIRL node spelling must be
-   introduced before promoting all CNN operators.
+3. Phase 13 low-risk formalization is complete for the current VHO contract:
+   torch2whirl now uses `append_program_unit_value`, common/com keeps marker
+   names as compatibility wrappers, and annotated `OPR_COMMENT` DSL opcode
+   values are the stable high-level DSL binary carrier until concrete evidence
+   requires a distinct non-comment WHIRL spelling.
 4. The existing guarded full-toolchain path remains `make driver_opencc_smoke`.
    It is still the correct validation lane for `opencc -x whirl -c` once a full
    Open64 build with `opencc` is available.
