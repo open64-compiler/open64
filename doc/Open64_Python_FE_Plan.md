@@ -713,6 +713,28 @@ Initial checks:
 7. Metadata keys are not used to smuggle tensor semantic state.
 8. Attribute keys are not used for source-only compiler context.
 
+Phase 9 execution stages:
+
+1. Add the Python-side gatekeeper module, `open64_dsc.verifier`, with
+   `verify_module()` and `WhirlVerificationError`.
+2. Run the verifier by default from `export_to_whirl()` and `save_as_whirl()`,
+   with `WhirlExportOptions(verify=False)` reserved for isolated negative
+   fixture construction.
+3. Validate tensor descriptor completeness, supported dtype, rank, and
+   logical-shape consistency before artifact finalization.
+4. Validate known operator names, expected arity, and operand resolution
+   against input values and prior graph operators.
+5. Add first common-substrate contracts for `common.add` and
+   `common.residual_add`, including exact dtype/rank/shape checks when
+   `attr.broadcast_rule=none`.
+6. Add the second common-substrate batch for `common.matmul` and
+   `common.linear` shape rules.
+7. Add the CNN batch for `cnn.conv2d`, `cnn.batch_norm_infer`,
+   `cnn.max_pool2d`, and `cnn.global_avg_pool2d` required attributes and
+   channel/layout compatibility checks.
+8. Move verifier coverage through mock, native optional, driver-native
+   `ir_b2a -st`, and guarded `opencc -x whirl -c` smoke paths.
+
 ## Phase 10: OpenXLA Cross-Check Track
 
 The Chapter 7 design uses PyTorch / OpenXLA as a reference shape. The local

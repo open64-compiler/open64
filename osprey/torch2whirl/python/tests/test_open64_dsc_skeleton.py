@@ -8,8 +8,15 @@ from pathlib import Path
 from open64_dsc.backend import load_backend
 from open64_dsc.cli import _load_model, _parse_shape_spec
 from open64_dsc.interpreter import WhirlExportInterpreter
+from open64_dsc.module import (
+    WhirlOperatorRecord,
+    WhirlProgramUnitRecord,
+    WhirlTensorTypeRecord,
+    WhirlValueRecord,
+)
 from open64_dsc import WhirlExportOptions, WhirlModule
-from open64_dsc import export_to_whirl, load_builder, save_as_whirl
+from open64_dsc import WhirlVerificationError, export_to_whirl
+from open64_dsc import load_builder, save_as_whirl, verify_module
 
 
 class DummyModel:
@@ -17,6 +24,83 @@ class DummyModel:
 
 
 class Open64DscSkeletonTest(unittest.TestCase):
+    def _gatekeeper_module(
+        self,
+        *,
+        options: WhirlExportOptions = WhirlExportOptions(),
+        tensor_types=None,
+        graph_operators=None,
+    ) -> WhirlModule:
+        default_tensor_types = [
+            WhirlTensorTypeRecord(
+                "input0_type",
+                1,
+                "float32",
+                2,
+                "[1,3]",
+                {
+                    "dtype": "float32",
+                    "rank": 2,
+                    "logical_shape": "[1,3]",
+                    "lineage": "input0",
+                },
+            ),
+            WhirlTensorTypeRecord(
+                "input1_type",
+                2,
+                "float32",
+                2,
+                "[1,3]",
+                {
+                    "dtype": "float32",
+                    "rank": 2,
+                    "logical_shape": "[1,3]",
+                    "lineage": "input1",
+                },
+            ),
+        ]
+        default_graph_operators = [
+            WhirlOperatorRecord(
+                "common.add",
+                5,
+                ["input0", "input1"],
+                {"attr.broadcast_rule": "none"},
+            )
+        ]
+        return WhirlModule(
+            options=options,
+            model_name="GatekeeperModel",
+            input_count=2,
+            entry_function=WhirlProgramUnitRecord(
+                "forward",
+                4,
+                ["input0", "input1", "common.add"],
+            ),
+            graph_source="unit",
+            operators=[
+                operator.name
+                for operator in (graph_operators or default_graph_operators)
+            ],
+            tensor_types=tensor_types or default_tensor_types,
+            values=[
+                WhirlValueRecord(
+                    "input0",
+                    10,
+                    "input0_type",
+                    "example_input",
+                    metadata={"logical_shape": "[1,3]"},
+                ),
+                WhirlValueRecord(
+                    "input1",
+                    11,
+                    "input1_type",
+                    "example_input",
+                    metadata={"logical_shape": "[1,3]"},
+                ),
+            ],
+            graph_operators=graph_operators or default_graph_operators,
+        )
+
     def test_public_export_returns_module(self) -> None:
         module = export_to_whirl(DummyModel(), [object(), object()])
 
@@ -53,6 +137,181 @@ class Open64DscSkeletonTest(unittest.TestCase):
     def test_options_validate_backend(self) -> None:
         with self.assertRaises(ValueError):
             WhirlExportOptions(backend="unknown")
+
+    def test_options_default_to_verification_enabled(self) -> None:
+        self.assertTrue(WhirlExportOptions().verify)
+
+    def test_gatekeeper_accepts_valid_module(self) -> None:
+        verify_module(self._gatekeeper_module())
+
+    def test_gatekeeper_rejects_missing_descriptor_field(self) -> None:
+        tensor_types = [
+            WhirlTensorTypeRecord(
+                "input0_type",
+                1,
+                "float32",
+                2,
+                "[1,3]",
+                {"dtype": "float32", "logical_shape": "[1,3]"},
+            ),
+            WhirlTensorTypeRecord(
+                "input1_type",
+                2,
+                "float32",
+                2,
+                "[1,3]",
+                {
+                    "dtype": "float32",
+                    "rank": 2,
+                    "logical_shape": "[1,3]",
+                },
+            ),
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "descriptor"):
+            verify_module(self._gatekeeper_module(tensor_types=tensor_types))
+
+    def test_gatekeeper_rejects_rank_shape_mismatch(self) -> None:
+        tensor_types = [
+            WhirlTensorTypeRecord(
+                "input0_type",
+                1,
+                "float32",
+                3,
+                "[1,3]",
+                {
+                    "dtype": "float32",
+                    "rank": 3,
+                    "logical_shape": "[1,3]",
+                },
+            ),
+            WhirlTensorTypeRecord(
+                "input1_type",
+                2,
+                "float32",
+                2,
+                "[1,3]",
+                {
+                    "dtype": "float32",
+                    "rank": 2,
+                    "logical_shape": "[1,3]",
+                },
+            ),
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "rank"):
+            verify_module(self._gatekeeper_module(tensor_types=tensor_types))
+
+    def test_gatekeeper_rejects_unknown_operator(self) -> None:
+        graph_operators = [
+            WhirlOperatorRecord(
+                "mystery.add",
+                5,
+                ["input0", "input1"],
+                {},
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "unknown operator"):
+            verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_gatekeeper_rejects_unresolved_operand(self) -> None:
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.add",
+                5,
+                ["input0", "missing"],
+                {"attr.broadcast_rule": "none"},
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "operand"):
+            verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_gatekeeper_rejects_common_add_shape_mismatch(self) -> None:
+        tensor_types = [
+            WhirlTensorTypeRecord(
+                "input0_type",
+                1,
+                "float32",
+                2,
+                "[1,3]",
+                {
+                    "dtype": "float32",
+                    "rank": 2,
+                    "logical_shape": "[1,3]",
+                },
+            ),
+            WhirlTensorTypeRecord(
+                "input1_type",
+                2,
+                "float32",
+                2,
+                "[2,3]",
+                {
+                    "dtype": "float32",
+                    "rank": 2,
+                    "logical_shape": "[2,3]",
+                },
+            ),
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "shape"):
+            verify_module(self._gatekeeper_module(tensor_types=tensor_types))
+
+    def test_gatekeeper_rejects_residual_add_broadcast(self) -> None:
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.residual_add",
+                5,
+                ["input0", "input1"],
+                {
+                    "attr.broadcast_rule": "numpy",
+                    "attr.shape_check": "exact",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "broadcast"):
+            verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_save_as_whirl_runs_gatekeeper_by_default(self) -> None:
+        module = self._gatekeeper_module(
+            graph_operators=[
+                WhirlOperatorRecord(
+                    "common.add",
+                    5,
+                    ["input0", "missing"],
+                    {"attr.broadcast_rule": "none"},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as work_dir:
+            output = Path(work_dir) / "bad_model.B"
+            with self.assertRaisesRegex(WhirlVerificationError, "operand"):
+                save_as_whirl(module, str(output))
+
+    def test_save_as_whirl_allows_verification_escape_hatch(self) -> None:
+        module = self._gatekeeper_module(
+            options=WhirlExportOptions(verify=False),
+            graph_operators=[
+                WhirlOperatorRecord(
+                    "common.add",
+                    5,
+                    ["input0", "missing"],
+                    {"attr.broadcast_rule": "none"},
+                )
+            ],
+        )
+
+        with tempfile.TemporaryDirectory() as work_dir:
+            output = Path(work_dir) / "unchecked_model.B"
+            save_as_whirl(module, str(output))
+
+            text = output.read_text(encoding="utf-8")
+
+        self.assertIn("format=mock", text)
 
     def test_cli_parse_shape_spec(self) -> None:
         self.assertEqual(_parse_shape_spec("shape:1,3,224,224"), (1, 3, 224, 224))

@@ -11,6 +11,7 @@ class WhirlExportOptions:
     entry: str = "forward"
     backend: str = "mock"
     model_name: Optional[str] = None
+    verify: bool = True
 
     def __post_init__(self) -> None:
         if not self.entry:
