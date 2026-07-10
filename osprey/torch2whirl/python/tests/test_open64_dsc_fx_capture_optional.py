@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from textwrap import dedent
 
+from open64_dsc import WhirlVerificationError
 from open64_dsc import export_to_whirl, save_as_whirl
 
 
@@ -932,6 +933,45 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
 
         with self.assertRaisesRegex(NotImplementedError, "unsupported FX"):
             export_to_whirl(MulModule(), [lhs, rhs])
+
+    def test_fx_unsupported_dtype_fails_loudly(self) -> None:
+        import torch
+
+        class AddModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return lhs + rhs
+
+        lhs = torch.ones((2, 3), dtype=torch.float16)
+        rhs = torch.ones((2, 3), dtype=torch.float16)
+
+        with self.assertRaisesRegex(WhirlVerificationError, "unsupported dtype"):
+            export_to_whirl(AddModule(), [lhs, rhs])
+
+    def test_fx_matmul_rank_mismatch_fails_loudly(self) -> None:
+        import torch
+
+        class MatmulModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return torch.matmul(lhs, rhs)
+
+        lhs = torch.ones((2, 3, 4), dtype=torch.float32)
+        rhs = torch.ones((4, 5), dtype=torch.float32)
+
+        with self.assertRaisesRegex(WhirlVerificationError, "batched matmul"):
+            export_to_whirl(MatmulModule(), [lhs, rhs])
+
+    def test_fx_matmul_dimension_mismatch_fails_loudly(self) -> None:
+        import torch
+
+        class MatmulModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return torch.matmul(lhs, rhs)
+
+        lhs = torch.ones((2, 3), dtype=torch.float32)
+        rhs = torch.ones((5, 4), dtype=torch.float32)
+
+        with self.assertRaisesRegex(WhirlVerificationError, "matrix"):
+            export_to_whirl(MatmulModule(), [lhs, rhs])
 
     def test_fx_training_batch_norm_fails_loudly(self) -> None:
         import torch

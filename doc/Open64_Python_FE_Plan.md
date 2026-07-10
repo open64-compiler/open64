@@ -908,6 +908,10 @@ Phase 10 progress checkpoints:
    `common.add` and `common.matmul` fragments after finalization, including
    `attr.broadcast_rule=none`, `attr.transpose_kid0=false`, and
    `attr.transpose_kid1=false`.
+5. The negative FX/CLI suite now covers unsupported captured dtypes, unsupported
+   operators, matmul rank and dimension mismatches, batchnorm inference-only
+   constraints, residual exact-shape mismatches, missing `--sample-input`, and
+   rejection of dynamic-style sample dimensions in the current static-shape CLI.
 
 Exit criteria:
 

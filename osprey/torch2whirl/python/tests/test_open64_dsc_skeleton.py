@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 
 from open64_dsc.backend import load_backend
-from open64_dsc.cli import _load_model, _parse_shape_spec
+from open64_dsc.cli import _load_model, _parse_shape_spec, run as cli_run
 from open64_dsc.interpreter import WhirlExportInterpreter
 from open64_dsc.module import (
     WhirlOperatorRecord,
@@ -1102,8 +1104,33 @@ class Open64DscSkeletonTest(unittest.TestCase):
             _parse_shape_spec("tensor:1,3")
         with self.assertRaisesRegex(ValueError, "positive"):
             _parse_shape_spec("shape:1,0,3")
+        with self.assertRaisesRegex(ValueError, "positive"):
+            _parse_shape_spec("shape:1,-1,3")
         with self.assertRaisesRegex(ValueError, "integer"):
             _parse_shape_spec("shape:1,bad,3")
+
+    def test_cli_requires_sample_input(self) -> None:
+        with tempfile.TemporaryDirectory() as work_dir:
+            model_path = Path(work_dir) / "model.py"
+            output_path = Path(work_dir) / "model.B"
+            model_path.write_text(
+                "\n".join(
+                    [
+                        "class UnitModel:",
+                        "    pass",
+                        "def create_model():",
+                        "    return UnitModel()",
+                    ]
+                ) + "\n",
+                encoding="utf-8",
+            )
+
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as context:
+                    cli_run([str(model_path), "-o", str(output_path)])
+
+            self.assertEqual(context.exception.code, 2)
+            self.assertFalse(output_path.exists())
 
     def test_cli_load_model_from_factory(self) -> None:
         with tempfile.TemporaryDirectory() as work_dir:
