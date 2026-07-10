@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import operator
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -12,6 +13,7 @@ from .module import (
     WhirlModule,
     WhirlOperatorRecord,
     WhirlProgramUnitRecord,
+    WhirlTensorPayloadRecord,
     WhirlTensorTypeRecord,
     WhirlValueRecord,
 )
@@ -45,6 +47,7 @@ class WhirlExportInterpreter:
         model_name = self._model_name(model)
         entry_pu = self.builder().minimal_program_unit(self._options.entry)
         tensor_types, values, handles = self._build_input_placeholders(inputs)
+        tensor_payloads: List[WhirlTensorPayloadRecord] = []
         graph_operators: List[WhirlOperatorRecord] = []
         operators: List[str] = []
         body_markers: List[str] = []
@@ -63,6 +66,7 @@ class WhirlExportInterpreter:
                 handles,
                 tensor_types,
                 values,
+                tensor_payloads,
                 operators,
                 body_markers,
                 graph_operators,
@@ -98,6 +102,7 @@ class WhirlExportInterpreter:
             operators=operators,
             tensor_types=tensor_types,
             values=values,
+            tensor_payloads=tensor_payloads,
             graph_operators=graph_operators,
         )
 
@@ -109,6 +114,7 @@ class WhirlExportInterpreter:
         input_handles: Sequence[ValueHandle],
         tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
+        tensor_payloads: List[WhirlTensorPayloadRecord],
         operators: List[str],
         body_markers: List[str],
         graph_operators: List[WhirlOperatorRecord],
@@ -138,6 +144,7 @@ class WhirlExportInterpreter:
                     model_name,
                     tensor_types,
                     values,
+                    tensor_payloads,
                     attr_env,
                 )
                 env[id(node)] = graph_value
@@ -164,6 +171,7 @@ class WhirlExportInterpreter:
                 entry_pu,
                 tensor_types,
                 values,
+                tensor_payloads,
                 body_markers,
                 attr_env,
             )
@@ -455,6 +463,7 @@ class WhirlExportInterpreter:
         entry_pu: Any,
         tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
+        tensor_payloads: List[WhirlTensorPayloadRecord],
         body_markers: List[str],
         attr_env: Dict[str, _GraphValue],
     ) -> List[_GraphValue]:
@@ -473,6 +482,7 @@ class WhirlExportInterpreter:
                 entry_pu,
                 tensor_types,
                 values,
+                tensor_payloads,
                 body_markers,
                 attr_env,
             )
@@ -517,6 +527,7 @@ class WhirlExportInterpreter:
         entry_pu: Any,
         tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
+        tensor_payloads: List[WhirlTensorPayloadRecord],
         body_markers: List[str],
         attr_env: Dict[str, _GraphValue],
     ) -> List[_GraphValue]:
@@ -534,6 +545,7 @@ class WhirlExportInterpreter:
                     entry_pu,
                     tensor_types,
                     values,
+                    tensor_payloads,
                     body_markers,
                     attr_env,
                     "weight",
@@ -547,6 +559,7 @@ class WhirlExportInterpreter:
                     entry_pu,
                     tensor_types,
                     values,
+                    tensor_payloads,
                     body_markers,
                     attr_env,
                     "bias",
@@ -567,6 +580,7 @@ class WhirlExportInterpreter:
                         entry_pu,
                         tensor_types,
                         values,
+                        tensor_payloads,
                         body_markers,
                         attr_env,
                         role,
@@ -593,6 +607,7 @@ class WhirlExportInterpreter:
         entry_pu: Any,
         tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
+        tensor_payloads: List[WhirlTensorPayloadRecord],
         body_markers: List[str],
         attr_env: Dict[str, _GraphValue],
         role: Optional[str] = None,
@@ -607,6 +622,7 @@ class WhirlExportInterpreter:
                 model_name,
                 tensor_types,
                 values,
+                tensor_payloads,
                 attr_env,
                 role,
             )
@@ -657,6 +673,7 @@ class WhirlExportInterpreter:
         model_name: str,
         tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
+        tensor_payloads: List[WhirlTensorPayloadRecord],
         attr_env: Dict[str, _GraphValue],
         role: Optional[str] = None,
     ) -> _GraphValue:
@@ -668,8 +685,10 @@ class WhirlExportInterpreter:
         shape = self._input_shape(tensor)
         logical_shape = self._format_shape(shape)
         tensor_role = role or self._parameter_role(target)
-        byte_length = self._tensor_byte_length(tensor, dtype, shape)
+        payload_bytes = self._tensor_payload_bytes(tensor)
+        byte_length = len(payload_bytes)
         byte_offset = self._next_external_offset(values)
+        checksum = hashlib.sha256(payload_bytes).hexdigest()
         name = self._external_value_name(target)
         side_file = f"{model_name}.safetensors"
         handle = self.builder().external_tensor_constant(
@@ -683,7 +702,7 @@ class WhirlExportInterpreter:
             target,
             byte_offset,
             byte_length,
-            "",
+            checksum,
             self._parameter_layout(tensor_role, len(shape)),
         )
         tensor_types.append(
@@ -704,6 +723,18 @@ class WhirlExportInterpreter:
                 value_kind="external_data",
                 symbol_handle=handle.symbol,
                 metadata=handle.metadata,
+            )
+        )
+        tensor_payloads.append(
+            WhirlTensorPayloadRecord(
+                storage_file=side_file,
+                tensor_key=target,
+                dtype=dtype,
+                logical_shape=logical_shape,
+                byte_offset=byte_offset,
+                byte_length=byte_length,
+                checksum=checksum,
+                data=payload_bytes,
             )
         )
         graph_value = _GraphValue(handle, name)
@@ -773,6 +804,25 @@ class WhirlExportInterpreter:
         for dim in shape:
             element_count *= dim
         return max(1, element_count * self._dtype_byte_size(dtype))
+
+    def _tensor_payload_bytes(self, tensor: Any) -> bytes:
+        if tensor is None:
+            return b""
+        value = tensor
+        for method_name in ("detach", "cpu", "contiguous"):
+            method = getattr(value, method_name, None)
+            if callable(method):
+                value = method()
+        numpy_method = getattr(value, "numpy", None)
+        if callable(numpy_method):
+            value = numpy_method()
+        tobytes = getattr(value, "tobytes", None)
+        if callable(tobytes):
+            return bytes(tobytes())
+        buffer = getattr(value, "data", None)
+        if isinstance(buffer, (bytes, bytearray)):
+            return bytes(buffer)
+        raise TypeError("external tensor payload does not expose raw bytes")
 
     def _dtype_byte_size(self, dtype: str) -> int:
         if dtype in {"float64", "int64"}:

@@ -63,6 +63,29 @@ class WhirlValueRecord:
 
 
 @dataclass(frozen=True)
+class WhirlTensorPayloadRecord:
+    storage_file: str
+    tensor_key: str
+    dtype: str
+    logical_shape: str
+    byte_offset: int
+    byte_length: int
+    checksum: str
+    data: bytes = field(default=b"", repr=False)
+
+    def to_manifest(self) -> Mapping[str, object]:
+        return {
+            "storage_file": self.storage_file,
+            "tensor_key": self.tensor_key,
+            "dtype": self.dtype,
+            "logical_shape": self.logical_shape,
+            "byte_offset": self.byte_offset,
+            "byte_length": self.byte_length,
+            "checksum": self.checksum,
+        }
+
+
+@dataclass(frozen=True)
 class WhirlOperatorRecord:
     name: str
     handle: int
@@ -88,6 +111,9 @@ class WhirlModule:
     operators: Sequence[str] = field(default_factory=list)
     tensor_types: Sequence[WhirlTensorTypeRecord] = field(default_factory=list)
     values: Sequence[WhirlValueRecord] = field(default_factory=list)
+    tensor_payloads: Sequence[WhirlTensorPayloadRecord] = field(
+        default_factory=list
+    )
     graph_operators: Sequence[WhirlOperatorRecord] = field(default_factory=list)
 
     def to_manifest(self) -> Mapping[str, object]:
@@ -104,6 +130,10 @@ class WhirlModule:
                 for tensor_type in self.tensor_types
             ],
             "values": [value.to_manifest() for value in self.values],
+            "tensor_payloads": [
+                payload.to_manifest()
+                for payload in self.tensor_payloads
+            ],
             "graph_operators": [
                 operator.to_manifest()
                 for operator in self.graph_operators

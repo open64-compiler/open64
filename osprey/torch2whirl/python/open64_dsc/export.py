@@ -9,6 +9,7 @@ from .backend import load_backend
 from .interpreter import WhirlExportInterpreter
 from .module import WhirlModule
 from .options import WhirlExportOptions
+from .payload import write_external_payloads
 from .verifier import verify_module
 
 
@@ -31,3 +32,4 @@ def save_as_whirl(module: WhirlModule, path: str) -> None:
     backend = load_backend(module.options.backend)
     if not backend.finalize_mapped_image(path, module.to_manifest()):
         raise RuntimeError(f"failed to write WHIRL artifact: {Path(path)}")
+    write_external_payloads(module, path)

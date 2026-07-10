@@ -5,7 +5,13 @@ from __future__ import annotations
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 
 from .mapping import cnn, common
-from .module import WhirlModule, WhirlOperatorRecord, WhirlTensorTypeRecord
+from .module import (
+    WhirlModule,
+    WhirlOperatorRecord,
+    WhirlTensorPayloadRecord,
+    WhirlTensorTypeRecord,
+    WhirlValueRecord,
+)
 
 
 class WhirlVerificationError(ValueError):
@@ -55,6 +61,7 @@ def verify_module(module: WhirlModule) -> None:
     tensor_types = _tensor_types_by_name(module.tensor_types)
     value_types = _value_types_by_name(module, tensor_types)
     _verify_tensor_descriptors(module.tensor_types)
+    _verify_external_payload_records(module, tensor_types)
     _verify_graph_operators(module.graph_operators, value_types)
 
 
@@ -139,6 +146,116 @@ def _verify_tensor_descriptors(
             raise WhirlVerificationError(
                 f"tensor type {tensor_type.name} descriptor shape mismatch"
             )
+
+
+def _verify_external_payload_records(
+    module: WhirlModule,
+    tensor_types: Mapping[str, WhirlTensorTypeRecord],
+) -> None:
+    payloads = {
+        (payload.storage_file, payload.tensor_key): payload
+        for payload in module.tensor_payloads
+    }
+    strict_payloads = bool(payloads)
+    for value in module.values:
+        if value.value_kind != "external_data":
+            continue
+        tensor_type = tensor_types.get(value.type_name)
+        if tensor_type is None:
+            raise WhirlVerificationError(
+                f"external value {value.name} has no tensor type"
+            )
+        metadata = value.metadata
+        for field in (
+            "storage_format",
+            "storage_file",
+            "storage_tensor_key",
+            "storage_byte_offset",
+            "storage_byte_length",
+            "storage_checksum",
+            "storage_dtype",
+            "storage_shape",
+            "storage_layout",
+        ):
+            if field not in metadata:
+                raise WhirlVerificationError(
+                    f"external value {value.name} missing payload metadata: "
+                    f"{field}"
+                )
+        if metadata["storage_format"] != "safetensors":
+            raise WhirlVerificationError(
+                f"external value {value.name} uses unsupported payload "
+                f"format: {metadata['storage_format']}"
+            )
+        if metadata["storage_dtype"] != tensor_type.dtype:
+            raise WhirlVerificationError(
+                f"external value {value.name} payload dtype mismatch"
+            )
+        if metadata["storage_shape"] != tensor_type.logical_shape:
+            raise WhirlVerificationError(
+                f"external value {value.name} payload shape mismatch"
+            )
+        byte_offset = _metadata_int(value, "storage_byte_offset")
+        byte_length = _metadata_int(value, "storage_byte_length")
+        if byte_offset < 0:
+            raise WhirlVerificationError(
+                f"external value {value.name} has negative payload offset"
+            )
+        if byte_length <= 0:
+            raise WhirlVerificationError(
+                f"external value {value.name} has non-positive payload length"
+            )
+        if not strict_payloads:
+            continue
+        payload = payloads.get(
+            (metadata["storage_file"], metadata["storage_tensor_key"])
+        )
+        if payload is None:
+            raise WhirlVerificationError(
+                f"external value {value.name} has no matching tensor payload"
+            )
+        _verify_external_payload_match(value, tensor_type, payload)
+
+
+def _metadata_int(value: WhirlValueRecord, field: str) -> int:
+    try:
+        return int(value.metadata[field])
+    except ValueError as exc:
+        raise WhirlVerificationError(
+            f"external value {value.name} has invalid payload integer: {field}"
+        ) from exc
+
+
+def _verify_external_payload_match(
+    value: WhirlValueRecord,
+    tensor_type: WhirlTensorTypeRecord,
+    payload: WhirlTensorPayloadRecord,
+) -> None:
+    metadata = value.metadata
+    if payload.dtype != tensor_type.dtype:
+        raise WhirlVerificationError(
+            f"external value {value.name} payload dtype mismatch"
+        )
+    if payload.logical_shape != tensor_type.logical_shape:
+        raise WhirlVerificationError(
+            f"external value {value.name} payload shape mismatch"
+        )
+    if payload.byte_offset != _metadata_int(value, "storage_byte_offset"):
+        raise WhirlVerificationError(
+            f"external value {value.name} payload offset mismatch"
+        )
+    if payload.byte_length != _metadata_int(value, "storage_byte_length"):
+        raise WhirlVerificationError(
+            f"external value {value.name} payload length mismatch"
+        )
+    if payload.checksum != metadata["storage_checksum"]:
+        raise WhirlVerificationError(
+            f"external value {value.name} payload checksum mismatch"
+        )
+    if payload.byte_length != len(payload.data):
+        raise WhirlVerificationError(
+            f"external value {value.name} payload data length mismatch"
+        )
 
 
 def _verify_graph_operators(

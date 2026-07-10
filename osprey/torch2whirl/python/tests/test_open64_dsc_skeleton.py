@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import importlib.util
+import json
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +16,7 @@ from open64_dsc.interpreter import WhirlExportInterpreter
 from open64_dsc.module import (
     WhirlOperatorRecord,
     WhirlProgramUnitRecord,
+    WhirlTensorPayloadRecord,
     WhirlTensorTypeRecord,
     WhirlValueRecord,
 )
@@ -144,6 +148,69 @@ class Open64DscSkeletonTest(unittest.TestCase):
             metadata={"logical_shape": ""},
         )
 
+    def _external_payload_module(
+        self,
+        payload_data: bytes = b"\x00\x00\x80?\x00\x00\x00@",
+    ) -> WhirlModule:
+        checksum = hashlib.sha256(payload_data).hexdigest()
+        tensor_type = WhirlTensorTypeRecord(
+            "weight_type",
+            1,
+            "float32",
+            1,
+            "[2]",
+            {
+                "dtype": "float32",
+                "rank": 1,
+                "logical_shape": "[2]",
+                "lineage": "weight",
+            },
+        )
+        value = WhirlValueRecord(
+            "weight",
+            2,
+            "weight_type",
+            "external_data",
+            symbol_handle=3,
+            metadata={
+                "source_layer_name": "weight",
+                "lowering_hint": "external_tensor_constant",
+                "tensor_role": "weight",
+                "storage_dtype": "float32",
+                "storage_shape": "[2]",
+                "storage_layout": "contiguous",
+                "storage_format": "safetensors",
+                "storage_file": "UnitPayload.safetensors",
+                "storage_tensor_key": "weight",
+                "storage_byte_offset": "0",
+                "storage_byte_length": str(len(payload_data)),
+                "storage_checksum": checksum,
+            },
+        )
+        return WhirlModule(
+            options=WhirlExportOptions(),
+            model_name="UnitPayload",
+            input_count=0,
+            entry_function=WhirlProgramUnitRecord("forward", 4, ["weight"]),
+            graph_source="unit",
+            operators=[],
+            tensor_types=[tensor_type],
+            values=[value],
+            tensor_payloads=[
+                WhirlTensorPayloadRecord(
+                    "UnitPayload.safetensors",
+                    "weight",
+                    "float32",
+                    "[2]",
+                    0,
+                    len(payload_data),
+                    checksum,
+                    payload_data,
+                )
+            ],
+            graph_operators=[],
+        )
+
     def test_public_export_returns_module(self) -> None:
         module = export_to_whirl(DummyModel(), [object(), object()])
 
@@ -186,6 +253,84 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
     def test_gatekeeper_accepts_valid_module(self) -> None:
         verify_module(self._gatekeeper_module())
+
+    def test_save_as_whirl_writes_safetensors_side_file(self) -> None:
+        module = self._external_payload_module()
+
+        with tempfile.TemporaryDirectory() as work_dir:
+            artifact = Path(work_dir) / "model.B"
+            save_as_whirl(module, str(artifact))
+            side_file = Path(work_dir) / "UnitPayload.safetensors"
+            payload = side_file.read_bytes()
+
+        header_length = struct.unpack("<Q", payload[:8])[0]
+        header = json.loads(payload[8:8 + header_length].decode("utf-8"))
+        data = payload[8 + header_length:]
+
+        self.assertEqual(header["weight"]["dtype"], "F32")
+        self.assertEqual(header["weight"]["shape"], [2])
+        self.assertEqual(header["weight"]["data_offsets"], [0, 8])
+        self.assertEqual(
+            header["weight"]["open64_sha256"],
+            module.tensor_payloads[0].checksum,
+        )
+        self.assertEqual(data, module.tensor_payloads[0].data)
+
+    def test_gatekeeper_rejects_missing_external_payload_when_strict(self) -> None:
+        module = self._external_payload_module()
+        stale_payload = WhirlTensorPayloadRecord(
+            "UnitPayload.safetensors",
+            "other_weight",
+            "float32",
+            "[2]",
+            0,
+            len(module.tensor_payloads[0].data),
+            module.tensor_payloads[0].checksum,
+            module.tensor_payloads[0].data,
+        )
+        stale_module = WhirlModule(
+            options=module.options,
+            model_name=module.model_name,
+            input_count=module.input_count,
+            entry_function=module.entry_function,
+            graph_source=module.graph_source,
+            operators=module.operators,
+            tensor_types=module.tensor_types,
+            values=module.values,
+            tensor_payloads=[stale_payload],
+            graph_operators=module.graph_operators,
+        )
+
+        with self.assertRaisesRegex(WhirlVerificationError, "payload"):
+            verify_module(stale_module)
+
+    def test_gatekeeper_rejects_external_payload_checksum_mismatch(self) -> None:
+        module = self._external_payload_module()
+        stale_payload = WhirlTensorPayloadRecord(
+            module.tensor_payloads[0].storage_file,
+            module.tensor_payloads[0].tensor_key,
+            module.tensor_payloads[0].dtype,
+            module.tensor_payloads[0].logical_shape,
+            module.tensor_payloads[0].byte_offset,
+            module.tensor_payloads[0].byte_length,
+            "bad-checksum",
+            module.tensor_payloads[0].data,
+        )
+        stale_module = WhirlModule(
+            options=module.options,
+            model_name=module.model_name,
+            input_count=module.input_count,
+            entry_function=module.entry_function,
+            graph_source=module.graph_source,
+            operators=module.operators,
+            tensor_types=module.tensor_types,
+            values=module.values,
+            tensor_payloads=[stale_payload],
+            graph_operators=module.graph_operators,
+        )
+
+        with self.assertRaisesRegex(WhirlVerificationError, "checksum"):
+            verify_module(stale_module)
 
     def test_gatekeeper_rejects_missing_descriptor_field(self) -> None:
         tensor_types = [

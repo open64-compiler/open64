@@ -160,7 +160,7 @@ python_torch_test:
 	    -s $(BUILD_BASE)/python/tests \
 	    -p 'test_open64_dsc_fx_capture_optional.py'
 
-driver_torch_test: $(TARGETS)
+driver_torch_test: $(TARGETS) python_native_stage
 	PYTHONDONTWRITEBYTECODE=1 \
 	    PYTHONPATH=$(TORCH2WHIRL_PYTHONPATH) \
 	    TORCH2WHIRL_DRIVER=$(TORCH2WHIRL_DRIVER) \
@@ -266,6 +266,7 @@ python_native_requirements:
 python_native_stage:
 	$(MKDIR_P) $(PYTHON_BUILD_ROOT)
 	@if test "$(PYTHON_BUILD_ROOT)" != "$(BUILD_BASE)/python"; then \
+	    $(RM) -r "$(PYTHON_BUILD_ROOT)/open64_dsc"; \
 	    cp -R "$(BUILD_BASE)/python/open64_dsc" "$(PYTHON_BUILD_ROOT)/"; \
 	fi
 

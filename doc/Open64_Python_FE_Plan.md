@@ -1143,6 +1143,29 @@ Acceptance criteria:
    complete Open64 build, and convert any failure into a focused artifact or
    symbol-table task.
 
+Current batch status:
+
+1. The complete ResNet audit now has a self-contained local ResNet fixture in
+   the torch-required FX suite. It intentionally avoids `torchvision` so the
+   existing torch Docker image can run it without adding another dependency.
+   The C++ driver torch smoke also exports a ResNet-shaped model through the
+   standalone executable and checks for both the mock WHIRL artifact and the
+   payload side file.
+2. The SafeTensors-style payload writer contract now exists in the Python
+   frontend. `WhirlModule` carries explicit tensor payload records,
+   `save_as_whirl` writes deterministic side files next to the WHIRL artifact,
+   and verifier strict mode checks file/key, dtype, shape, offset, length, and
+   checksum consistency whenever payload records are present.
+3. Real `common.add` promotion is not ready yet. The native bridge can create
+   DSL operators, but the current program-unit body hookup still goes through
+   `Open64_DSC_Append_Program_Unit_Marker` and
+   `DSL_Builder_Append_PU_Marker`. The next common/com task is to expose the
+   real high-level DSL node attachment path for PU bodies before replacing
+   marker-backed artifact evidence.
+4. The existing guarded full-toolchain path remains `make driver_opencc_smoke`.
+   It is still the correct validation lane for `opencc -x whirl -c` once a full
+   Open64 build with `opencc` is available.
+
 ### Remaining Risk Register
 
 1. Real DSL node emission may require common/com changes outside torch2whirl.
