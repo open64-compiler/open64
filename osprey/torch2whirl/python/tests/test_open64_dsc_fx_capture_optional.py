@@ -6,8 +6,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from textwrap import dedent
 
-from open64_dsc import export_to_whirl
+from open64_dsc import export_to_whirl, save_as_whirl
 
 
 TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
@@ -37,6 +38,12 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 return value
         self.fail(f"missing value {name}")
 
+    def _mock_artifact_text(self, module) -> str:
+        with tempfile.TemporaryDirectory() as work_dir:
+            output = Path(work_dir) / "model.B"
+            save_as_whirl(module, str(output))
+            return output.read_text(encoding="utf-8")
+
     def test_fx_add_maps_to_common_add(self) -> None:
         import torch
 
@@ -55,6 +62,47 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(module.tensor_types[0].dtype, "float32")
         self.assertEqual(module.tensor_types[0].rank, 2)
         self.assertEqual(module.tensor_types[0].logical_shape, "[2,3]")
+
+    def test_fx_add_mock_artifact_matches_golden(self) -> None:
+        import torch
+
+        class AddModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return lhs + rhs
+
+        lhs = torch.ones((2, 3), dtype=torch.float32)
+        rhs = torch.ones((2, 3), dtype=torch.float32)
+        module = export_to_whirl(AddModule(), [lhs, rhs])
+        text = self._mock_artifact_text(module)
+
+        self.assertEqual(
+            text,
+            dedent(
+                """
+                # open64_dsc mock WHIRL artifact
+                format=mock
+                model_name=AddModule
+                entry=forward
+                entry_function=forward
+                graph_source=torch.fx
+                input_count=2
+                entry_body_marker.0=input0
+                entry_body_marker.1=input1
+                entry_body_marker.2=common.add
+                operator.0=common.add
+                tensor_type.0=input0_type:float32:[2,3]
+                tensor_descriptor.0=float32:2:[2,3]:input0
+                tensor_type.1=input1_type:float32:[2,3]
+                tensor_descriptor.1=float32:2:[2,3]:input1
+                value.0=input0:input0_type:example_input
+                value_metadata.0=input0:example_input
+                value.1=input1:input1_type:example_input
+                value_metadata.1=input1:example_input
+                graph_operator.0=common.add:input0,input1
+                graph_operator_attrs.0=attr.broadcast_rule=none
+                """
+            ).lstrip(),
+        )
 
     def test_fx_matmul_maps_to_common_matmul(self) -> None:
         import torch
@@ -77,6 +125,47 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(
             module.graph_operators[0].attrs["attr.transpose_kid0"],
             "false",
+        )
+
+    def test_fx_matmul_mock_artifact_matches_golden(self) -> None:
+        import torch
+
+        class MatmulModule(torch.nn.Module):
+            def forward(self, lhs, rhs):
+                return torch.matmul(lhs, rhs)
+
+        lhs = torch.ones((2, 3), dtype=torch.float32)
+        rhs = torch.ones((3, 4), dtype=torch.float32)
+        module = export_to_whirl(MatmulModule(), [lhs, rhs])
+        text = self._mock_artifact_text(module)
+
+        self.assertEqual(
+            text,
+            dedent(
+                """
+                # open64_dsc mock WHIRL artifact
+                format=mock
+                model_name=MatmulModule
+                entry=forward
+                entry_function=forward
+                graph_source=torch.fx
+                input_count=2
+                entry_body_marker.0=input0
+                entry_body_marker.1=input1
+                entry_body_marker.2=common.matmul
+                operator.0=common.matmul
+                tensor_type.0=input0_type:float32:[2,3]
+                tensor_descriptor.0=float32:2:[2,3]:input0
+                tensor_type.1=input1_type:float32:[3,4]
+                tensor_descriptor.1=float32:2:[3,4]:input1
+                value.0=input0:input0_type:example_input
+                value_metadata.0=input0:example_input
+                value.1=input1:input1_type:example_input
+                value_metadata.1=input1:example_input
+                graph_operator.0=common.matmul:input0,input1
+                graph_operator_attrs.0=attr.transpose_kid0=false,attr.transpose_kid1=false
+                """
+            ).lstrip(),
         )
 
     def test_fx_residual_add_maps_to_common_residual_add(self) -> None:

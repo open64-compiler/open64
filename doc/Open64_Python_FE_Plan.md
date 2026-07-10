@@ -850,6 +850,21 @@ Specific PyTorch/XLA-style test adaptations:
 7. Add CLI tests that exercise the same conversion path from the standalone
    `torch2whirl` executable after Phase 8 wires the driver to ingestion.
 
+Initial PyTorch/FX to Open64 DSL mapping matrix:
+
+| PyTorch / FX fragment | Open64 DSL operator | Opcode attributes | TensorDescriptorIR fields | Metadata / side data | Required test lanes |
+| --- | --- | --- | --- | --- | --- |
+| `lhs + rhs` / `operator.add` | `common.add` | `attr.broadcast_rule=none` for the current exact-shape path | input dtype, rank, logical shape, layout, placement, memory, lineage | source layer name and lowering hint on input symbols | FX manifest, golden mock artifact, verifier negative shape test, driver smoke |
+| `torch.matmul(lhs, rhs)` | `common.matmul` | `attr.transpose_kid0=false`, `attr.transpose_kid1=false` | lhs/rhs dtype, rank-2 logical shapes | source layer name and lowering hint on input symbols | FX manifest, golden mock artifact, native marker, `ir_b2a -st` smoke |
+| `torch.relu` / `nn.ReLU` | `common.relu` | none initially | input tensor descriptor propagated through result-shape inference | source node lineage when available | FX manifest, native marker, artifact inspection |
+| `torch.flatten(value, 1)` / `nn.Flatten(1)` | `common.flatten` | `attr.start_dim=1`, `attr.end_dim=-1` | input descriptor plus inferred rank/logical shape | source node lineage when available | FX manifest, verifier shape inference, artifact inspection |
+| `F.linear` / `nn.Linear` | `common.linear` plus optional `common.output_logits` | `attr.has_bias`, `attr.transpose_input=false`, `attr.transpose_weight=true`, `attr.weight_layout=OI` | activation rank-2 shape, weight OI shape, optional bias shape | external weight/bias storage metadata, tensor role, safetensors key/offset/length | FX manifest, parameter metadata, native marker, verifier contracts |
+| explicit residual hook | `common.residual_add` | `attr.broadcast_rule=none`, `attr.shape_check=exact`, `attr.residual_path=true` | exact lhs/rhs shape descriptors | residual-path lowering hint when available | FX manifest, verifier negative shape test, native marker |
+| `F.conv2d` / `nn.Conv2d` | `cnn.conv2d` | kernel, stride, padding, dilation, groups, NCHW/OIHW/NCHW layouts | activation rank-4 NCHW, weight rank-4 OIHW, optional bias rank-1 | external weight/bias storage metadata and tensor roles | FX manifest, CNN verifier, native marker, artifact inspection |
+| `F.batch_norm` / `nn.BatchNorm2d.eval()` | `cnn.batch_norm_infer` | epsilon, momentum, `attr.training=false`, NCHW, channel axis | activation rank-4, scale/bias/mean/variance rank-1 channel tensors | external parameter/buffer storage metadata and tensor roles | FX manifest, CNN verifier, native marker, artifact inspection |
+| `F.max_pool2d` / `nn.MaxPool2d` | `cnn.max_pool2d` | kernel, stride, padding, dilation, ceil mode | activation rank-4 and inferred output shape | source node lineage when available | FX manifest, CNN verifier, artifact inspection |
+| `F.adaptive_avg_pool2d(..., (1, 1))` / `nn.AdaptiveAvgPool2d` | `cnn.global_avg_pool2d` | `attr.output_size=1,1`, `attr.reduction_axes=spatial` | activation rank-4 and inferred output shape | source node lineage when available | FX manifest, CNN verifier, artifact inspection |
+
 Cross-check questions for each new operator:
 
 1. Does graph capture produce a stable FX or `torch.export` node for this

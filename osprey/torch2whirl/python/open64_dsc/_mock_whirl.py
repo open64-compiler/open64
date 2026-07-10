@@ -262,6 +262,7 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
         f"model_name={module_manifest.get('model_name', '')}",
         f"entry={module_manifest.get('entry', '')}",
         f"entry_function={entry_function.get('name', '')}",
+        f"graph_source={module_manifest.get('graph_source', '')}",
         f"input_count={module_manifest.get('input_count', 0)}",
     ]
 
@@ -328,6 +329,14 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
                     f"{operator.get('name', '')}:"
                     f"{','.join(str(kid) for kid in kids)}"
                 )
+                attrs = operator.get("attrs", {})
+                if not isinstance(attrs, Mapping):
+                    attrs = {}
+                attr_text = ",".join(
+                    f"{name}={value}"
+                    for name, value in sorted(attrs.items())
+                )
+                lines.append(f"graph_operator_attrs.{index}={attr_text}")
 
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return True
