@@ -37,6 +37,26 @@ def _write_model(path: Path) -> None:
     )
 
 
+def _write_invalid_add_model(path: Path) -> None:
+    path.write_text(
+        dedent(
+            """
+            import torch
+
+
+            class BadAddModel(torch.nn.Module):
+                def forward(self, lhs, rhs):
+                    return lhs + rhs
+
+
+            def create_model():
+                return BadAddModel()
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+
 def _check_artifact(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     expected_fragments = (
@@ -52,6 +72,54 @@ def _check_artifact(path: Path) -> None:
             )
 
 
+def _run_driver(
+    driver: Path,
+    model_path: Path,
+    output_path: Path,
+    sample_inputs: tuple[str, ...],
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        str(driver),
+        str(model_path),
+        "--entry",
+        "forward",
+    ]
+    for sample_input in sample_inputs:
+        command.extend(["--sample-input", sample_input])
+    command.extend(["--output", str(output_path)])
+    return subprocess.run(
+        command,
+        check=False,
+        env=os.environ.copy(),
+        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _check_invalid_graph_rejected(driver: Path, tmpdir: Path) -> None:
+    model_path = tmpdir / "invalid_model.py"
+    output_path = tmpdir / "invalid_model.B"
+    _write_invalid_add_model(model_path)
+
+    completed = _run_driver(
+        driver,
+        model_path,
+        output_path,
+        ("shape:1,3", "shape:1,4"),
+    )
+    if completed.returncode == 0:
+        raise AssertionError("driver accepted verifier-invalid add graph")
+    error_text = completed.stdout + completed.stderr
+    if "shape" not in error_text:
+        raise AssertionError(
+            "driver rejection did not report verifier shape context:\n" +
+            error_text
+        )
+    if output_path.exists():
+        raise AssertionError("verifier-invalid driver run wrote an artifact")
+
+
 def main() -> int:
     _require_torch()
 
@@ -65,23 +133,11 @@ def main() -> int:
         output_path = tmpdir / "model.B"
         _write_model(model_path)
 
-        command = [
-            str(driver),
-            str(model_path),
-            "--entry",
-            "forward",
-            "--sample-input",
-            "shape:1,3",
-            "--output",
-            str(output_path),
-        ]
-        completed = subprocess.run(
-            command,
-            check=False,
-            env=os.environ.copy(),
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=True,
+        completed = _run_driver(
+            driver,
+            model_path,
+            output_path,
+            ("shape:1,3",),
         )
         if completed.returncode != 0:
             sys.stderr.write(completed.stdout)
@@ -89,6 +145,7 @@ def main() -> int:
             return completed.returncode
 
         _check_artifact(output_path)
+        _check_invalid_graph_rejected(driver, tmpdir)
 
     return 0
 

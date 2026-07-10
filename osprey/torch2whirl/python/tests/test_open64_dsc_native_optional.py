@@ -5,9 +5,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from open64_dsc import WhirlExportOptions, export_to_whirl
+from open64_dsc import WhirlExportOptions, WhirlVerificationError
+from open64_dsc import export_to_whirl
 from open64_dsc import load_builder, save_as_whirl
 from open64_dsc.builder import ProgramUnitHandle
+from open64_dsc.mapping import common
+from open64_dsc.module import (
+    WhirlModule,
+    WhirlOperatorRecord,
+    WhirlProgramUnitRecord,
+    WhirlTensorTypeRecord,
+    WhirlValueRecord,
+)
 
 
 NATIVE_BACKEND_AVAILABLE = (
@@ -460,6 +469,64 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
 
             self.assertTrue(output.exists())
             self.assertGreater(output.stat().st_size, 0)
+
+    def test_native_finalize_runs_gatekeeper_before_writing_artifact(self) -> None:
+        options = WhirlExportOptions(backend="native", model_name="native_bad")
+        tensor_types = [
+            WhirlTensorTypeRecord(
+                "input0_type",
+                1,
+                "float32",
+                2,
+                "[1,3]",
+                {
+                    "dtype": "float32",
+                    "rank": 2,
+                    "logical_shape": "[1,3]",
+                },
+            ),
+            WhirlTensorTypeRecord(
+                "input1_type",
+                2,
+                "float32",
+                2,
+                "[1,4]",
+                {
+                    "dtype": "float32",
+                    "rank": 2,
+                    "logical_shape": "[1,4]",
+                },
+            ),
+        ]
+        values = [
+            WhirlValueRecord("input0", 10, "input0_type", "example_input"),
+            WhirlValueRecord("input1", 11, "input1_type", "example_input"),
+        ]
+        invalid_module = WhirlModule(
+            options=options,
+            model_name="native_bad",
+            input_count=2,
+            entry_function=WhirlProgramUnitRecord("forward", 20),
+            graph_source="synthetic",
+            operators=[common.ADD],
+            tensor_types=tensor_types,
+            values=values,
+            graph_operators=[
+                WhirlOperatorRecord(
+                    common.ADD,
+                    30,
+                    ["input0", "input1"],
+                    {"attr.broadcast_rule": "none"},
+                )
+            ],
+        )
+
+        with tempfile.TemporaryDirectory() as work_dir:
+            output = Path(work_dir) / "invalid_native_model.B"
+            with self.assertRaisesRegex(WhirlVerificationError, "shape"):
+                save_as_whirl(invalid_module, str(output))
+
+            self.assertFalse(output.exists())
 
 
 if __name__ == "__main__":

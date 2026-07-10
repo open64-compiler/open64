@@ -71,7 +71,32 @@ def _write_model(path: Path) -> None:
     )
 
 
-def _run_driver(driver: Path, model_path: Path, artifact: Path) -> int:
+def _write_invalid_add_model(path: Path) -> None:
+    path.write_text(
+        dedent(
+            """
+            import torch
+
+
+            class BadAddModel(torch.nn.Module):
+                def forward(self, lhs, rhs):
+                    return lhs + rhs
+
+
+            def create_model():
+                return BadAddModel()
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+
+def _run_driver(
+    driver: Path,
+    model_path: Path,
+    artifact: Path,
+    sample_inputs: tuple[str, ...],
+) -> subprocess.CompletedProcess[str]:
     command = [
         str(driver),
         str(model_path),
@@ -79,14 +104,11 @@ def _run_driver(driver: Path, model_path: Path, artifact: Path) -> int:
         "forward",
         "--backend",
         "native",
-        "--sample-input",
-        "shape:1,3",
-        "--sample-input",
-        "shape:1,3",
-        "--output",
-        str(artifact),
     ]
-    completed = subprocess.run(
+    for sample_input in sample_inputs:
+        command.extend(["--sample-input", sample_input])
+    command.extend(["--output", str(artifact)])
+    return subprocess.run(
         command,
         check=False,
         env=os.environ.copy(),
@@ -94,10 +116,47 @@ def _run_driver(driver: Path, model_path: Path, artifact: Path) -> int:
         stdout=subprocess.PIPE,
         text=True,
     )
+
+
+def _run_valid_driver(driver: Path, model_path: Path, artifact: Path) -> int:
+    completed = _run_driver(
+        driver,
+        model_path,
+        artifact,
+        ("shape:1,3", "shape:1,3"),
+    )
     if completed.returncode != 0:
         print(completed.stdout, file=sys.stderr)
         print(completed.stderr, file=sys.stderr)
     return completed.returncode
+
+
+def _check_invalid_graph_rejected(driver: Path, tmpdir: Path) -> int:
+    model_path = tmpdir / "invalid_model.py"
+    artifact = tmpdir / "invalid_model.B"
+    _write_invalid_add_model(model_path)
+
+    completed = _run_driver(
+        driver,
+        model_path,
+        artifact,
+        ("shape:1,3", "shape:1,4"),
+    )
+    if completed.returncode == 0:
+        print("driver accepted verifier-invalid add graph", file=sys.stderr)
+        return 1
+    error_text = completed.stdout + completed.stderr
+    if "shape" not in error_text:
+        print(
+            "driver rejection did not report verifier shape context:",
+            file=sys.stderr,
+        )
+        print(error_text, file=sys.stderr)
+        return 1
+    if artifact.exists():
+        print("verifier-invalid driver run wrote an artifact", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _run_opencc(opencc: Path, artifact: Path, object_path: Path) -> int:
@@ -141,7 +200,11 @@ def main() -> int:
         object_path = tmpdir / "driver_native_model.o"
         _write_model(model_path)
 
-        driver_status = _run_driver(driver, model_path, artifact)
+        invalid_status = _check_invalid_graph_rejected(driver, tmpdir)
+        if invalid_status != 0:
+            return invalid_status
+
+        driver_status = _run_valid_driver(driver, model_path, artifact)
         if driver_status != 0:
             return driver_status
         if not artifact.exists() or artifact.stat().st_size == 0:

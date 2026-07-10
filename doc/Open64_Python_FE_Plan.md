@@ -740,7 +740,11 @@ Phase 9 execution stages:
    conservative CNN result-shape inference for downstream residual and linear
    checks.
 8. Move verifier coverage through mock, native optional, driver-native
-   `ir_b2a -st`, and guarded `opencc -x whirl -c` smoke paths.
+   `ir_b2a -st`, and guarded `opencc -x whirl -c` smoke paths. The full-path
+   coverage should include both successful artifact generation/inspection and
+   verifier-negative graphs that prove invalid high-level WHIRL is rejected
+   before the driver or native finalizer writes an artifact. The `opencc` lane
+   remains guarded by `OPEN64_OPENCC` or an installed `opencc`.
 
 ## Phase 10: OpenXLA Cross-Check Track
 
