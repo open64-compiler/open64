@@ -114,6 +114,7 @@ OPEN64_DSC_NATIVE_OBJS ?= $(strip $(OPEN64_DSC_NATIVE_IR_TOOL_OBJS))
 OPEN64_DSC_NATIVE_REQUIRED_FILES ?= $(strip $(OPEN64_DSC_NATIVE_OBJS))
 OPEN64_DSC_NATIVE_LDLIBS ?=
 OPEN64_IR_B2A ?= $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_b2a)
+OPEN64_OPENCC ?=
 PYTHON_NATIVE_TARGET = $(PYTHON_NATIVE_PACKAGE_DIR)/_whirl$(PYTHON_EXT_SUFFIX)
 PYTHON_NATIVE_OBJECTS = \
   _whirl_module.native.o \
@@ -130,7 +131,7 @@ TORCH2WHIRL_CXX_SRCS = \
 OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
-  driver_native_ir_tools_smoke driver_torch_test \
+  driver_native_ir_tools_smoke driver_opencc_smoke driver_torch_test \
   python_torch_test \
   python_native_check python_native_deps python_native_extension \
   python_native_ir_tools_deps python_native_ir_tools_smoke \
@@ -172,6 +173,19 @@ driver_native_ir_tools_smoke: $(TARGETS) python_native_extension \
 	    PYTHONPATH=$(TORCH2WHIRL_PYTHONPATH) \
 	    TORCH2WHIRL_DRIVER=$(TORCH2WHIRL_DRIVER) \
 	    $(PYTHON) $(BUILD_BASE)/python/tests/driver_native_ir_tools_smoke.py
+
+driver_opencc_smoke: $(TARGETS)
+	@if test -z "$(OPEN64_OPENCC)" && \
+	    ! command -v opencc >/dev/null 2>&1; then \
+	    echo "skip: opencc not found; set OPEN64_OPENCC to enable smoke test"; \
+	else \
+	    $(MAKE) python_native_extension && \
+	    PYTHONDONTWRITEBYTECODE=1 \
+	        OPEN64_OPENCC="$(OPEN64_OPENCC)" \
+	        PYTHONPATH=$(TORCH2WHIRL_PYTHONPATH) \
+	        TORCH2WHIRL_DRIVER=$(TORCH2WHIRL_DRIVER) \
+	        $(PYTHON) $(BUILD_BASE)/python/tests/driver_opencc_smoke.py; \
+	fi
 
 python_native_check:
 	@if test "`uname -s`" = "Darwin" && \

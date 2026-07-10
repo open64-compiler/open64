@@ -86,8 +86,13 @@ Those reader/WSSA objects are not linked into the `_whirl` frontend extension.
 Use `make driver_native_ir_tools_smoke` from a torch-enabled configured build
 to run the same native artifact inspection through the C++ `torch2whirl`
 executable.
+Use `make driver_opencc_smoke` from a full-toolchain environment to run the
+C++ driver with `--backend native` and verify that `opencc -x whirl -c`
+consumes the generated artifact. This target skips cleanly when `opencc` is not
+available.
 For a full Open64 build, set `OPEN64_IR_B2A=/path/to/ir_b2a` to point at an
-existing tool.
+existing tool and `OPEN64_OPENCC=/path/to/opencc` to point at the compiler
+driver.
 The `--enable-torch2whirl-only` configure path emits the small helper build
 files needed for that dependency target.
 
@@ -176,6 +181,13 @@ C++ driver:
 
 ```sh
 make driver_native_ir_tools_smoke
+```
+
+For optional full-toolchain consumption of a native artifact produced through
+the C++ driver:
+
+```sh
+make driver_opencc_smoke
 ```
 
 The broader `osprey/common/com/tests/dsl_ir_tools_smoke_test.sh` fixture still

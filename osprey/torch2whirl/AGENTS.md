@@ -90,6 +90,13 @@ docker run --rm -v /path/to/open64:/src \
   sh -c 'apt-get update && apt-get install -y python3.8-dev && make driver_native_ir_tools_smoke'
 ```
 
+For full-toolchain `opencc -x whirl` consumption, use a build where `opencc`
+already exists and run:
+
+```sh
+make driver_opencc_smoke
+```
+
 For common DSL native syntax compatibility that affects torch2whirl:
 
 ```sh
@@ -110,5 +117,7 @@ docker run --rm -v /path/to/open64:/src \
   execute rather than skip.
 - Native bridge or mapped-image changes should include Docker native tests and
   `python_native_ir_tools_smoke` when available.
+- Driver artifact handoff changes should include `driver_opencc_smoke` when a
+  full Open64 `opencc` is available.
 - Any change intended to move beyond marker-only DSL representation must add or
   update an artifact-inspection test before broadening operator coverage.

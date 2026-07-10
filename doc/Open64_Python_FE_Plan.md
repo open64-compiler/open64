@@ -643,7 +643,7 @@ Validation commands:
 
 ```sh
 ir_b2a -st model.B
-opencc -x whirl model.B
+opencc -x whirl -c model.B
 ```
 
 The combined driver path can come later, after the standalone artifact path is
@@ -684,6 +684,16 @@ Phase 8 execution stages:
    `make driver_native_ir_tools_smoke`; it builds the native Python extension,
    runs the same executable with `--backend native`, and inspects the resulting
    driver-produced WHIRL file with `ir_b2a -st`.
+6. Add the full-toolchain consumption gate as `make driver_opencc_smoke`.
+   It skips cleanly when `opencc` is unavailable, and when `OPEN64_OPENCC` or
+   an installed `opencc` is present it emits a native artifact through the C++
+   driver and runs `opencc -x whirl -c` on that artifact.
+
+Phase 8 is complete when the first five stages pass in the
+`--enable-torch2whirl-only` Linux Docker lane and `driver_opencc_smoke` is
+available as the guarded full-toolchain check. The combined
+`opencc -frontend=torch2whirl` mode remains explicitly deferred until after the
+standalone artifact path is stable under real model ingestion.
 
 ## Phase 9: Gatekeeper Verifier
 
@@ -909,6 +919,8 @@ Exit criteria:
 8. Run `dsl_ir_tools_smoke_test.sh` when a full Open64 `opencc` is available.
    The fixture still requires `opencc` to create its C-derived `smoke.B`; the
    torch2whirl-only tree intentionally does not build that compiler driver.
+   Run `make driver_opencc_smoke` in the same full-toolchain environment to
+   prove that `opencc -x whirl -c` consumes a driver-produced artifact.
 9. Keep the torch-enabled Docker image layer available so the optional FX
    capture tests run in validation instead of only skipping in the base Docker
    image.
