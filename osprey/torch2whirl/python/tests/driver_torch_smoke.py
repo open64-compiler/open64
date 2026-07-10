@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import struct
 import tempfile
 from textwrap import dedent
 
@@ -202,6 +204,27 @@ def _check_resnet_artifact(path: Path) -> None:
             )
 
 
+def _check_resnet_side_file(path: Path) -> None:
+    payload = path.read_bytes()
+    header_length = struct.unpack("<Q", payload[:8])[0]
+    header = json.loads(payload[8:8 + header_length].decode("utf-8"))
+    data = payload[8 + header_length:]
+
+    for tensor_key in ("conv1.weight", "bn1.running_mean", "fc.weight"):
+        if tensor_key not in header:
+            raise AssertionError(
+                f"missing {tensor_key!r} in driver ResNet side file header"
+            )
+    if header["conv1.weight"]["dtype"] != "F32":
+        raise AssertionError("driver ResNet conv1.weight dtype is not F32")
+    if header["conv1.weight"]["shape"] != [8, 3, 7, 7]:
+        raise AssertionError("driver ResNet conv1.weight shape mismatch")
+    if header["fc.weight"]["shape"] != [10, 16]:
+        raise AssertionError("driver ResNet fc.weight shape mismatch")
+    if not data:
+        raise AssertionError("driver ResNet side file has no tensor data")
+
+
 def _run_driver(
     driver: Path,
     model_path: Path,
@@ -295,6 +318,7 @@ def main() -> int:
         side_file = tmpdir / "LocalResNet.safetensors"
         if not side_file.exists() or side_file.stat().st_size == 0:
             raise AssertionError("driver ResNet export did not write side file")
+        _check_resnet_side_file(side_file)
 
     return 0
 

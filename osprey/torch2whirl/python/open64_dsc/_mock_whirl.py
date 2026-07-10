@@ -316,6 +316,22 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
                     f"{metadata.get('lowering_hint', '')}"
                 )
 
+    tensor_payloads = module_manifest.get("tensor_payloads", ())
+    if (isinstance(tensor_payloads, Sequence) and
+            not isinstance(tensor_payloads, str)):
+        for index, payload in enumerate(tensor_payloads):
+            if isinstance(payload, Mapping):
+                lines.append(
+                    f"tensor_payload.{index}="
+                    f"{payload.get('storage_file', '')}:"
+                    f"{payload.get('tensor_key', '')}:"
+                    f"{payload.get('dtype', '')}:"
+                    f"{payload.get('logical_shape', '')}:"
+                    f"{payload.get('byte_offset', '')}:"
+                    f"{payload.get('byte_length', '')}:"
+                    f"{payload.get('checksum', '')}"
+                )
+
     graph_operators = module_manifest.get("graph_operators", ())
     if (isinstance(graph_operators, Sequence) and
             not isinstance(graph_operators, str)):

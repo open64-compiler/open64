@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +56,12 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         if isinstance(value, list):
             return [self._manifest_shape(item) for item in value]
         return type(value).__name__
+
+    def _safetensors_header(self, path: Path):
+        payload = path.read_bytes()
+        header_length = struct.unpack("<Q", payload[:8])[0]
+        header = json.loads(payload[8:8 + header_length].decode("utf-8"))
+        return header, payload[8 + header_length:]
 
     def test_fx_add_manifest_shape_matches_synthetic_add(self) -> None:
         import torch
@@ -310,6 +318,72 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(module.values[2].metadata["tensor_role"], "bias")
         self.assertEqual(module.values[2].metadata["storage_byte_offset"], "128")
         self.assertEqual(module.values[2].metadata["storage_byte_length"], "16")
+
+    def test_fx_parameter_payload_round_trips_manifest_and_side_file(self) -> None:
+        import torch
+        import torch.nn.functional as F
+
+        class LinearParameterModule(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.weight = torch.nn.Parameter(
+                    torch.arange(32, dtype=torch.float32).reshape(4, 8)
+                )
+                self.bias = torch.nn.Parameter(
+                    torch.arange(4, dtype=torch.float32)
+                )
+
+            def forward(self, value):
+                return F.linear(value, self.weight, self.bias)
+
+        value = torch.ones((1, 8), dtype=torch.float32)
+        module = export_to_whirl(LinearParameterModule(), [value])
+        manifest = module.to_manifest()
+        payload_manifest = manifest["tensor_payloads"]
+        weight_value = self._value_by_tensor_key(module, "weight")
+        bias_value = self._value_by_tensor_key(module, "bias")
+
+        self.assertEqual(len(payload_manifest), 2)
+        self.assertEqual(payload_manifest[0]["tensor_key"], "weight")
+        self.assertEqual(payload_manifest[0]["byte_offset"], 0)
+        self.assertEqual(payload_manifest[0]["byte_length"], 128)
+        self.assertEqual(
+            payload_manifest[0]["checksum"],
+            weight_value.metadata["storage_checksum"],
+        )
+        self.assertEqual(
+            weight_value.metadata["storage_shape"],
+            payload_manifest[0]["logical_shape"],
+        )
+        self.assertEqual(
+            bias_value.metadata["storage_byte_offset"],
+            str(payload_manifest[1]["byte_offset"]),
+        )
+
+        with tempfile.TemporaryDirectory() as work_dir:
+            artifact = Path(work_dir) / "linear.B"
+            save_as_whirl(module, str(artifact))
+            side_file = Path(work_dir) / "LinearParameterModule.safetensors"
+            header, data = self._safetensors_header(side_file)
+            text = artifact.read_text(encoding="utf-8")
+
+        self.assertEqual(header["weight"]["dtype"], "F32")
+        self.assertEqual(header["weight"]["shape"], [4, 8])
+        self.assertEqual(header["weight"]["data_offsets"], [0, 128])
+        self.assertEqual(
+            header["weight"]["open64_sha256"],
+            weight_value.metadata["storage_checksum"],
+        )
+        self.assertEqual(header["bias"]["data_offsets"], [128, 144])
+        self.assertEqual(len(data), 144)
+        self.assertIn(
+            "tensor_payload.0=LinearParameterModule.safetensors:weight",
+            text,
+        )
+        self.assertIn(
+            "tensor_payload.1=LinearParameterModule.safetensors:bias",
+            text,
+        )
 
     def test_fx_call_module_resnet_stem_tail_maps_with_parameters(self) -> None:
         import torch

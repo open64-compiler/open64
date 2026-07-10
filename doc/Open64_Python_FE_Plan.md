@@ -1042,6 +1042,28 @@ Acceptance criteria:
 4. Derived GGUF or ONNX external-data export remains documented as post-export
    deployment work, not the canonical compiler-ingestion source.
 
+Phase 12 completion status:
+
+1. Complete for the current frontend contract. `WhirlModule` carries
+   `tensor_payloads`, symbol metadata records storage file, tensor key, dtype,
+   shape, layout, byte offset, byte length, checksum, and semantic role, and
+   `save_as_whirl` writes a deterministic SafeTensors-style side file beside
+   the WHIRL artifact.
+2. PyTorch parameters and buffers are extracted from FX `get_attr` and
+   `call_module` paths, including convolution weight/bias, linear weight/bias,
+   batchnorm scale/bias, running mean, and running variance. Absent optional
+   parameters remain explicit `absent_parameter` operands.
+3. Round-trip tests compare module manifest payload entries, emitted mock
+   artifact `tensor_payload.N` records, symbol metadata, and SafeTensors header
+   records. The standalone C++ driver torch smoke now reads the ResNet side
+   file header and checks representative conv, batchnorm, and linear tensors.
+4. Verifier strict mode rejects missing payload records, checksum mismatches,
+   shape mismatches, invalid offsets, invalid lengths, unsupported payload
+   formats, and storage dtype/shape mismatches before artifact finalization.
+5. GGUF and ONNX external-data outputs remain derived deployment artifacts. The
+   compiler-ingestion source of truth is the WHIRL artifact plus the
+   SafeTensors-style side file and symbol metadata.
+
 ### Phase 13: Real WHIRL DSL Operator Lowering
 
 Goal: replace marker-only or comment-oriented representation with real
