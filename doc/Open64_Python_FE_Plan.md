@@ -734,7 +734,11 @@ Phase 9 execution stages:
    bias/output-feature compatibility.
 7. Add the CNN batch for `cnn.conv2d`, `cnn.batch_norm_infer`,
    `cnn.max_pool2d`, and `cnn.global_avg_pool2d` required attributes and
-   channel/layout compatibility checks.
+   channel/layout compatibility checks. This batch covers NCHW/OIHW conv2d
+   contracts, grouped input-channel checks, optional/absent bias handling,
+   batchnorm inference parameters, max/global pooling attributes, and
+   conservative CNN result-shape inference for downstream residual and linear
+   checks.
 8. Move verifier coverage through mock, native optional, driver-native
    `ir_b2a -st`, and guarded `opencc -x whirl -c` smoke paths.
 

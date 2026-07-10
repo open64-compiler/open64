@@ -473,10 +473,10 @@ class Open64DscSkeletonTest(unittest.TestCase):
             )
         )
 
-    def test_gatekeeper_accepts_linear_after_unknown_cnn_shape(self) -> None:
+    def test_gatekeeper_accepts_linear_after_pool_shape_inference(self) -> None:
         tensor_types = [
             self._gatekeeper_tensor_type("input0_type", 1, "[1,3,8,8]"),
-            self._gatekeeper_tensor_type("input1_type", 2, "[16,8]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[16,48]"),
             self._gatekeeper_tensor_type("input2_type", 3, "[16]"),
         ]
         values = [
@@ -611,6 +611,451 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
         with self.assertRaisesRegex(WhirlVerificationError, "transpose_input"):
             verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_gatekeeper_accepts_valid_conv2d(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,3,8,8]"),
+            self._gatekeeper_tensor_type("weight_type", 2, "[16,3,3,3]"),
+            self._gatekeeper_tensor_type("bias_type", 3, "[16]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("weight", 11, "weight_type"),
+            self._gatekeeper_value("bias", 12, "bias_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.conv2d",
+                5,
+                ["input0", "weight", "bias"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "2,2",
+                    "attr.padding": "1,1",
+                    "attr.dilation": "1,1",
+                    "attr.groups": "1",
+                    "attr.input_layout": "NCHW",
+                    "attr.weight_layout": "OIHW",
+                    "attr.output_layout": "NCHW",
+                },
+            )
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_rejects_conv2d_channel_mismatch(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,3,8,8]"),
+            self._gatekeeper_tensor_type("weight_type", 2, "[16,4,3,3]"),
+            self._gatekeeper_tensor_type("bias_type", 3, "[16]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("weight", 11, "weight_type"),
+            self._gatekeeper_value("bias", 12, "bias_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.conv2d",
+                5,
+                ["input0", "weight", "bias"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "1,1",
+                    "attr.padding": "0,0",
+                    "attr.dilation": "1,1",
+                    "attr.groups": "1",
+                    "attr.input_layout": "NCHW",
+                    "attr.weight_layout": "OIHW",
+                    "attr.output_layout": "NCHW",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "channels"):
+            verify_module(
+                self._gatekeeper_module(
+                    tensor_types=tensor_types,
+                    values=values,
+                    graph_operators=graph_operators,
+                )
+            )
+
+    def test_gatekeeper_accepts_grouped_conv2d(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,4,8,8]"),
+            self._gatekeeper_tensor_type("weight_type", 2, "[8,2,3,3]"),
+            self._gatekeeper_tensor_type("bias_type", 3, "[8]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("weight", 11, "weight_type"),
+            self._gatekeeper_value("bias", 12, "bias_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.conv2d",
+                5,
+                ["input0", "weight", "bias"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "1,1",
+                    "attr.padding": "1,1",
+                    "attr.dilation": "1,1",
+                    "attr.groups": "2",
+                    "attr.input_layout": "NCHW",
+                    "attr.weight_layout": "OIHW",
+                    "attr.output_layout": "NCHW",
+                },
+            )
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_rejects_conv2d_layout_mismatch(self) -> None:
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.conv2d",
+                5,
+                ["input0", "input1", "input1"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "1,1",
+                    "attr.padding": "0,0",
+                    "attr.dilation": "1,1",
+                    "attr.groups": "1",
+                    "attr.input_layout": "NHWC",
+                    "attr.weight_layout": "OIHW",
+                    "attr.output_layout": "NCHW",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "input_layout"):
+            verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_gatekeeper_rejects_conv2d_bias_mismatch(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,3,8,8]"),
+            self._gatekeeper_tensor_type("weight_type", 2, "[16,3,3,3]"),
+            self._gatekeeper_tensor_type("bias_type", 3, "[15]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("weight", 11, "weight_type"),
+            self._gatekeeper_value("bias", 12, "bias_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.conv2d",
+                5,
+                ["input0", "weight", "bias"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "1,1",
+                    "attr.padding": "0,0",
+                    "attr.dilation": "1,1",
+                    "attr.groups": "1",
+                    "attr.input_layout": "NCHW",
+                    "attr.weight_layout": "OIHW",
+                    "attr.output_layout": "NCHW",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "bias"):
+            verify_module(
+                self._gatekeeper_module(
+                    tensor_types=tensor_types,
+                    values=values,
+                    graph_operators=graph_operators,
+                )
+            )
+
+    def test_gatekeeper_accepts_conv2d_absent_bias(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,3,8,8]"),
+            self._gatekeeper_tensor_type("weight_type", 2, "[16,3,3,3]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("weight", 11, "weight_type"),
+            WhirlValueRecord("bias", 12, "", "absent_parameter"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.conv2d",
+                5,
+                ["input0", "weight", "bias"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "1,1",
+                    "attr.padding": "0,0",
+                    "attr.dilation": "1,1",
+                    "attr.groups": "1",
+                    "attr.input_layout": "NCHW",
+                    "attr.weight_layout": "OIHW",
+                    "attr.output_layout": "NCHW",
+                },
+            )
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_accepts_batch_norm_infer(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,16,8,8]"),
+            self._gatekeeper_tensor_type("scale_type", 2, "[16]"),
+            self._gatekeeper_tensor_type("bias_type", 3, "[16]"),
+            self._gatekeeper_tensor_type("mean_type", 4, "[16]"),
+            self._gatekeeper_tensor_type("var_type", 5, "[16]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("scale", 11, "scale_type"),
+            self._gatekeeper_value("bias", 12, "bias_type"),
+            self._gatekeeper_value("mean", 13, "mean_type"),
+            self._gatekeeper_value("var", 14, "var_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.batch_norm_infer",
+                5,
+                ["input0", "scale", "bias", "mean", "var"],
+                {
+                    "attr.epsilon": "1e-05",
+                    "attr.momentum": "0.1",
+                    "attr.training": "false",
+                    "attr.input_layout": "NCHW",
+                    "attr.channel_axis": "1",
+                },
+            )
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_rejects_batch_norm_channel_mismatch(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,16,8,8]"),
+            self._gatekeeper_tensor_type("scale_type", 2, "[15]"),
+            self._gatekeeper_tensor_type("bias_type", 3, "[16]"),
+            self._gatekeeper_tensor_type("mean_type", 4, "[16]"),
+            self._gatekeeper_tensor_type("var_type", 5, "[16]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("scale", 11, "scale_type"),
+            self._gatekeeper_value("bias", 12, "bias_type"),
+            self._gatekeeper_value("mean", 13, "mean_type"),
+            self._gatekeeper_value("var", 14, "var_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.batch_norm_infer",
+                5,
+                ["input0", "scale", "bias", "mean", "var"],
+                {
+                    "attr.epsilon": "1e-05",
+                    "attr.momentum": "0.1",
+                    "attr.training": "false",
+                    "attr.input_layout": "NCHW",
+                    "attr.channel_axis": "1",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "channels"):
+            verify_module(
+                self._gatekeeper_module(
+                    tensor_types=tensor_types,
+                    values=values,
+                    graph_operators=graph_operators,
+                )
+            )
+
+    def test_gatekeeper_rejects_batch_norm_training_mode(self) -> None:
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.batch_norm_infer",
+                5,
+                ["input0", "input1", "input1", "input1", "input1"],
+                {
+                    "attr.epsilon": "1e-05",
+                    "attr.momentum": "0.1",
+                    "attr.training": "true",
+                    "attr.input_layout": "NCHW",
+                    "attr.channel_axis": "1",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "training=false"):
+            verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_gatekeeper_accepts_pooling_contracts(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,16,8,8]"),
+        ]
+        values = [self._gatekeeper_value("input0", 10, "input0_type")]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.max_pool2d",
+                5,
+                ["input0"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "2,2",
+                    "attr.padding": "1,1",
+                    "attr.dilation": "1,1",
+                    "attr.ceil_mode": "false",
+                },
+            ),
+            WhirlOperatorRecord(
+                "cnn.global_avg_pool2d",
+                6,
+                ["cnn.max_pool2d"],
+                {
+                    "attr.output_size": "1,1",
+                    "attr.reduction_axes": "spatial",
+                },
+            ),
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_rejects_pooling_missing_attr(self) -> None:
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.max_pool2d",
+                5,
+                ["input0"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "2,2",
+                    "attr.padding": "1,1",
+                    "attr.ceil_mode": "false",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "dilation"):
+            verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_gatekeeper_infers_cnn_shapes_for_residual_and_linear(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,3,8,8]"),
+            self._gatekeeper_tensor_type("weight_type", 2, "[16,3,3,3]"),
+            self._gatekeeper_tensor_type("bn_type", 3, "[16]"),
+            self._gatekeeper_tensor_type("fc_weight_type", 4, "[10,16]"),
+            self._gatekeeper_tensor_type("fc_bias_type", 5, "[10]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("weight", 11, "weight_type"),
+            WhirlValueRecord("conv_bias", 12, "", "absent_parameter"),
+            self._gatekeeper_value("scale", 13, "bn_type"),
+            self._gatekeeper_value("bn_bias", 14, "bn_type"),
+            self._gatekeeper_value("mean", 15, "bn_type"),
+            self._gatekeeper_value("var", 16, "bn_type"),
+            self._gatekeeper_value("fc_weight", 17, "fc_weight_type"),
+            self._gatekeeper_value("fc_bias", 18, "fc_bias_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.conv2d",
+                5,
+                ["input0", "weight", "conv_bias"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "1,1",
+                    "attr.padding": "1,1",
+                    "attr.dilation": "1,1",
+                    "attr.groups": "1",
+                    "attr.input_layout": "NCHW",
+                    "attr.weight_layout": "OIHW",
+                    "attr.output_layout": "NCHW",
+                },
+            ),
+            WhirlOperatorRecord(
+                "cnn.batch_norm_infer",
+                6,
+                ["cnn.conv2d", "scale", "bn_bias", "mean", "var"],
+                {
+                    "attr.epsilon": "1e-05",
+                    "attr.momentum": "0.1",
+                    "attr.training": "false",
+                    "attr.input_layout": "NCHW",
+                    "attr.channel_axis": "1",
+                },
+            ),
+            WhirlOperatorRecord(
+                "cnn.global_avg_pool2d",
+                7,
+                ["cnn.batch_norm_infer"],
+                {
+                    "attr.output_size": "1,1",
+                    "attr.reduction_axes": "spatial",
+                },
+            ),
+            WhirlOperatorRecord(
+                "common.flatten",
+                8,
+                ["cnn.global_avg_pool2d"],
+                {
+                    "attr.start_dim": "1",
+                    "attr.end_dim": "-1",
+                },
+            ),
+            WhirlOperatorRecord(
+                "common.linear",
+                9,
+                ["common.flatten", "fc_weight", "fc_bias"],
+                {
+                    "attr.has_bias": "true",
+                    "attr.transpose_input": "false",
+                    "attr.transpose_weight": "true",
+                    "attr.weight_layout": "OI",
+                },
+            ),
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
 
     def test_save_as_whirl_runs_gatekeeper_by_default(self) -> None:
         module = self._gatekeeper_module(

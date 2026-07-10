@@ -207,6 +207,22 @@ def _verify_operator_contract(
 
     if operator.name == common.LINEAR:
         _verify_linear_contract(operator, operand_types)
+        return
+
+    if operator.name == cnn.CONV2D:
+        _verify_conv2d_contract(operator, operand_types)
+        return
+
+    if operator.name == cnn.BATCH_NORM_INFER:
+        _verify_batch_norm_infer_contract(operator, operand_types)
+        return
+
+    if operator.name == cnn.MAX_POOL2D:
+        _verify_max_pool2d_contract(operator, operand_types)
+        return
+
+    if operator.name == cnn.GLOBAL_AVG_POOL2D:
+        _verify_global_avg_pool2d_contract(operator, operand_types)
 
 
 def _require_attr(operator: WhirlOperatorRecord, name: str) -> None:
@@ -280,6 +296,134 @@ def _verify_linear_contract(
         )
 
 
+def _verify_conv2d_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    for attr_name in (
+        "attr.kernel_shape",
+        "attr.stride",
+        "attr.padding",
+        "attr.dilation",
+        "attr.groups",
+        "attr.input_layout",
+        "attr.weight_layout",
+        "attr.output_layout",
+    ):
+        _require_attr(operator, attr_name)
+    if operator.attrs["attr.input_layout"] != "NCHW":
+        raise WhirlVerificationError("cnn.conv2d requires input_layout=NCHW")
+    if operator.attrs["attr.weight_layout"] != "OIHW":
+        raise WhirlVerificationError("cnn.conv2d requires weight_layout=OIHW")
+    if operator.attrs["attr.output_layout"] != "NCHW":
+        raise WhirlVerificationError("cnn.conv2d requires output_layout=NCHW")
+
+    value = _require_typed_operand(operator, operand_types, 0)
+    weight = _require_typed_operand(operator, operand_types, 1)
+    bias = operand_types[2]
+    _require_same_dtype(operator, (value, weight))
+    value_shape = _require_rank(operator, value, 4)
+    weight_shape = _require_rank(operator, weight, 4)
+    _pair_attr(operator, "attr.kernel_shape")
+    _pair_attr(operator, "attr.stride")
+    _pair_attr(operator, "attr.padding", allow_zero=True)
+    _pair_attr(operator, "attr.dilation")
+    groups = _positive_int_attr(operator, "attr.groups")
+    if groups <= 0:
+        raise WhirlVerificationError("cnn.conv2d groups must be positive")
+    if value_shape[1] != weight_shape[1] * groups:
+        raise WhirlVerificationError(
+            "cnn.conv2d input channels do not match weight channels/groups: "
+            f"{value_shape[1]} vs {weight_shape[1]}*{groups}"
+        )
+    if bias is not None:
+        _require_same_dtype(operator, (value, bias))
+        bias_shape = _require_rank(operator, bias, 1)
+        if bias_shape[0] != weight_shape[0]:
+            raise WhirlVerificationError(
+                "cnn.conv2d bias shape does not match output channels: "
+                f"{bias.logical_shape} vs {weight_shape[0]}"
+            )
+
+
+def _verify_batch_norm_infer_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    for attr_name in (
+        "attr.epsilon",
+        "attr.momentum",
+        "attr.training",
+        "attr.input_layout",
+        "attr.channel_axis",
+    ):
+        _require_attr(operator, attr_name)
+    if operator.attrs["attr.training"] != "false":
+        raise WhirlVerificationError(
+            "cnn.batch_norm_infer requires attr.training=false"
+        )
+    if operator.attrs["attr.input_layout"] != "NCHW":
+        raise WhirlVerificationError(
+            "cnn.batch_norm_infer requires input_layout=NCHW"
+        )
+    if operator.attrs["attr.channel_axis"] != "1":
+        raise WhirlVerificationError(
+            "cnn.batch_norm_infer requires channel_axis=1"
+        )
+
+    value = _require_typed_operand(operator, operand_types, 0)
+    params = [
+        _require_typed_operand(operator, operand_types, index)
+        for index in range(1, 5)
+    ]
+    value_shape = _require_rank(operator, value, 4)
+    channel_count = value_shape[1]
+    for parameter in params:
+        _require_same_dtype(operator, (value, parameter))
+        parameter_shape = _require_rank(operator, parameter, 1)
+        if parameter_shape[0] != channel_count:
+            raise WhirlVerificationError(
+                "cnn.batch_norm_infer parameter shape does not match "
+                f"input channels: {parameter.logical_shape} vs {channel_count}"
+            )
+
+
+def _verify_max_pool2d_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    for attr_name in (
+        "attr.kernel_shape",
+        "attr.stride",
+        "attr.padding",
+        "attr.dilation",
+        "attr.ceil_mode",
+    ):
+        _require_attr(operator, attr_name)
+    value = _require_typed_operand(operator, operand_types, 0)
+    _require_rank(operator, value, 4)
+    _pair_attr(operator, "attr.kernel_shape")
+    _pair_attr(operator, "attr.stride")
+    _pair_attr(operator, "attr.padding", allow_zero=True)
+    _pair_attr(operator, "attr.dilation")
+    _bool_attr(operator, "attr.ceil_mode")
+
+
+def _verify_global_avg_pool2d_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    _require_attr(operator, "attr.output_size")
+    _require_attr(operator, "attr.reduction_axes")
+    if operator.attrs["attr.reduction_axes"] != "spatial":
+        raise WhirlVerificationError(
+            "cnn.global_avg_pool2d requires reduction_axes=spatial"
+        )
+    value = _require_typed_operand(operator, operand_types, 0)
+    _require_rank(operator, value, 4)
+    _pair_attr(operator, "attr.output_size")
+
+
 def _bool_attr(operator: WhirlOperatorRecord, name: str) -> bool:
     _require_attr(operator, name)
     value = operator.attrs.get(name)
@@ -323,6 +467,44 @@ def _require_rank(
         tensor_type.logical_shape,
         f"tensor type {tensor_type.name}",
     )
+
+
+def _pair_attr(
+    operator: WhirlOperatorRecord,
+    name: str,
+    allow_zero: bool = False,
+) -> Tuple[int, int]:
+    _require_attr(operator, name)
+    parts = operator.attrs[name].split(",")
+    if len(parts) != 2:
+        raise WhirlVerificationError(
+            f"{operator.name} attribute {name} must be a pair"
+        )
+    try:
+        first, second = (int(parts[0]), int(parts[1]))
+    except ValueError as exc:
+        raise WhirlVerificationError(
+            f"{operator.name} attribute {name} must contain integers"
+        ) from exc
+    if allow_zero:
+        valid = first >= 0 and second >= 0
+    else:
+        valid = first > 0 and second > 0
+    if not valid:
+        raise WhirlVerificationError(
+            f"{operator.name} attribute {name} has invalid pair: "
+            f"{operator.attrs[name]}"
+        )
+    return (first, second)
+
+
+def _positive_int_attr(operator: WhirlOperatorRecord, name: str) -> int:
+    value = _int_attr(operator, name)
+    if value <= 0:
+        raise WhirlVerificationError(
+            f"{operator.name} attribute {name} must be positive"
+        )
+    return value
 
 
 def _require_same_dtype(
@@ -384,6 +566,14 @@ def _result_type(
         return _flatten_result_type(operator, operand_types)
     if operator.name == common.LINEAR:
         return _linear_result_type(operator, operand_types)
+    if operator.name == cnn.CONV2D:
+        return _conv2d_result_type(operator, operand_types)
+    if operator.name == cnn.BATCH_NORM_INFER:
+        return operand_types[0]
+    if operator.name == cnn.MAX_POOL2D:
+        return _max_pool2d_result_type(operator, operand_types)
+    if operator.name == cnn.GLOBAL_AVG_POOL2D:
+        return _global_avg_pool2d_result_type(operator, operand_types)
     if operator.name in {
         common.ADD,
         common.OUTPUT_LOGITS,
@@ -433,6 +623,119 @@ def _flatten_result_type(
         {
             "dtype": value.dtype,
             "rank": len(result_shape),
+            "logical_shape": logical_shape,
+            "lineage": operator.name,
+        },
+    )
+
+
+def _conv2d_result_type(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> Optional[WhirlTensorTypeRecord]:
+    value = operand_types[0]
+    weight = operand_types[1]
+    if value is None or weight is None:
+        return None
+    value_shape = _parse_logical_shape(
+        value.logical_shape,
+        f"tensor type {value.name}",
+    )
+    weight_shape = _parse_logical_shape(
+        weight.logical_shape,
+        f"tensor type {weight.name}",
+    )
+    stride = _pair_attr(operator, "attr.stride")
+    padding = _pair_attr(operator, "attr.padding", allow_zero=True)
+    dilation = _pair_attr(operator, "attr.dilation")
+    kernel = (weight_shape[2], weight_shape[3])
+    output_h = _conv_output_dim(value_shape[2], kernel[0], stride[0],
+                                padding[0], dilation[0])
+    output_w = _conv_output_dim(value_shape[3], kernel[1], stride[1],
+                                padding[1], dilation[1])
+    return _synthetic_tensor_type(
+        operator,
+        value,
+        (value_shape[0], weight_shape[0], output_h, output_w),
+    )
+
+
+def _max_pool2d_result_type(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> Optional[WhirlTensorTypeRecord]:
+    value = operand_types[0]
+    if value is None:
+        return None
+    value_shape = _parse_logical_shape(
+        value.logical_shape,
+        f"tensor type {value.name}",
+    )
+    kernel = _pair_attr(operator, "attr.kernel_shape")
+    stride = _pair_attr(operator, "attr.stride")
+    padding = _pair_attr(operator, "attr.padding", allow_zero=True)
+    dilation = _pair_attr(operator, "attr.dilation")
+    output_h = _conv_output_dim(value_shape[2], kernel[0], stride[0],
+                                padding[0], dilation[0])
+    output_w = _conv_output_dim(value_shape[3], kernel[1], stride[1],
+                                padding[1], dilation[1])
+    return _synthetic_tensor_type(
+        operator,
+        value,
+        (value_shape[0], value_shape[1], output_h, output_w),
+    )
+
+
+def _global_avg_pool2d_result_type(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> Optional[WhirlTensorTypeRecord]:
+    value = operand_types[0]
+    if value is None:
+        return None
+    value_shape = _parse_logical_shape(
+        value.logical_shape,
+        f"tensor type {value.name}",
+    )
+    output_size = _pair_attr(operator, "attr.output_size")
+    return _synthetic_tensor_type(
+        operator,
+        value,
+        (value_shape[0], value_shape[1], output_size[0], output_size[1]),
+    )
+
+
+def _conv_output_dim(
+    input_dim: int,
+    kernel: int,
+    stride: int,
+    padding: int,
+    dilation: int,
+) -> int:
+    output = ((input_dim + 2 * padding - dilation * (kernel - 1) - 1)
+              // stride + 1)
+    if output <= 0:
+        raise WhirlVerificationError(
+            "CNN operator produced non-positive output dimension"
+        )
+    return output
+
+
+def _synthetic_tensor_type(
+    operator: WhirlOperatorRecord,
+    value: WhirlTensorTypeRecord,
+    shape: Sequence[int],
+) -> WhirlTensorTypeRecord:
+    logical_shape = _format_logical_shape(shape)
+    return WhirlTensorTypeRecord(
+        f"{operator.name}_result_type",
+        value.handle,
+        value.dtype,
+        len(shape),
+        logical_shape,
+        {
+            "dtype": value.dtype,
+            "rank": len(shape),
             "logical_shape": logical_shape,
             "lineage": operator.name,
         },
