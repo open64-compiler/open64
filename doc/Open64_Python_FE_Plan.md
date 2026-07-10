@@ -607,6 +607,14 @@ Current Phase 7 status:
     includes a projection/downsample residual block with module-owned main-path
     and shortcut-path conv/batchnorm parameters, explicit absent bias markers,
     and a semantic `common.residual_add` merge.
+20. The torch-enabled validation lane is now reproducible through
+    `osprey/torch2whirl/scripts/run_torch_docker_test.sh`. The script layers
+    CPU PyTorch onto the existing Open64 Docker image, configures a
+    `--enable-torch2whirl-only` build tree, and runs `make python_torch_test`
+    so FX capture tests execute instead of skipping in the base image. It
+    reuses the local torch image by default; set
+    `OPEN64_TORCH2WHIRL_REBUILD_IMAGE=1` when the Dockerfile layer needs to be
+    refreshed.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -859,11 +867,11 @@ Exit criteria:
 8. Run `dsl_ir_tools_smoke_test.sh` when a full Open64 `opencc` is available.
    The fixture still requires `opencc` to create its C-derived `smoke.B`; the
    torch2whirl-only tree intentionally does not build that compiler driver.
-9. Add a torch-enabled validation environment or image layer so the optional
-   FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Provision a torch-enabled validation image or CI lane that runs
-    `make python_torch_test`, then use it as the gate for full ResNet ingestion
-    checkpoints.
+9. Keep the torch-enabled Docker image layer available so the optional FX
+   capture tests run in validation instead of only skipping in the base Docker
+   image.
+10. Keep `osprey/torch2whirl/scripts/run_torch_docker_test.sh` green as the
+    PyTorch gate before treating full ResNet ingestion checkpoints as complete.
 
 ## Practical Developer Loop
 

@@ -383,6 +383,7 @@ class WhirlExportInterpreter:
         attr_env: Dict[str, _GraphValue],
     ) -> List[_GraphValue]:
         args = list(getattr(node, "args", ()))
+        kwargs = dict(getattr(node, "kwargs", {}))
         node_op = str(getattr(node, "op", ""))
 
         if node_op == "call_module":
@@ -400,17 +401,34 @@ class WhirlExportInterpreter:
                 attr_env,
             )
 
-        if operator_name == cnn.BATCH_NORM_INFER and len(args) >= 5:
-            values = [args[0], args[3], args[4], args[1], args[2]]
+        if operator_name == cnn.BATCH_NORM_INFER:
+            fx_values = [
+                self._fx_argument(args, kwargs, 0, "input"),
+                self._fx_argument(args, kwargs, 3, "weight"),
+                self._fx_argument(args, kwargs, 4, "bias"),
+                self._fx_argument(args, kwargs, 1, "running_mean"),
+                self._fx_argument(args, kwargs, 2, "running_var"),
+            ]
         else:
-            values = args
+            fx_values = args
 
         operands: List[_GraphValue] = []
-        for value in values:
+        for value in fx_values:
             operand = self._fx_graph_value(value, env)
             if operand is not None:
                 operands.append(operand)
         return operands
+
+    def _fx_argument(
+        self,
+        args: Sequence[Any],
+        kwargs: Mapping[str, Any],
+        index: int,
+        name: str,
+    ) -> Any:
+        if len(args) > index:
+            return args[index]
+        return kwargs.get(name)
 
     def _fx_module_operands(
         self,

@@ -592,7 +592,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(
             module.graph_operators[0].kids,
-            ["input0", "input3", "input4", "input1", "input2"],
+            ["input0", "input1", "input2", "input3", "input4"],
         )
         self.assertEqual(
             module.graph_operators[0].attrs["attr.epsilon"],

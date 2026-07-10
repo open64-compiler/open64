@@ -108,6 +108,24 @@ make -f Makefile.gbase python_torch_test
 
 Unlike `python_test`, this target intentionally fails if `torch` is missing.
 
+For a reproducible Linux Docker version of that lane:
+
+```sh
+osprey/torch2whirl/scripts/run_torch_docker_test.sh
+```
+
+The script builds `open64:torch2whirl-torch-test` from the existing Open64
+Docker image, installs CPU PyTorch, configures a `--enable-torch2whirl-only`
+tree under `/private/tmp/open64-torch2whirl-torch-test`, and runs
+`make python_torch_test` from the configured `torch2whirl` directory. Override
+`OPEN64_TORCH2WHIRL_TORCH_VERSION`, `OPEN64_TORCH2WHIRL_BASE_IMAGE`,
+`OPEN64_TORCH2WHIRL_TORCH_IMAGE`, `OPEN64_TORCH2WHIRL_BUILD_DIR`, or
+`OPEN64_TORCH2WHIRL_DOCKER_BUILDKIT` when a different local image, torch
+version, build directory, or Docker builder mode is needed. Set
+`OPEN64_TORCH2WHIRL_REBUILD_IMAGE=1` to refresh an existing torch image. The
+script defaults `OPEN64_TORCH2WHIRL_DOCKER_BUILDKIT=0` so local-only Open64
+base images are not resolved through a remote registry.
+
 For Linux Docker native extension validation from a configured build tree:
 
 ```sh
