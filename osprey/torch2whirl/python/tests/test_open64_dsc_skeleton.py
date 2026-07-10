@@ -29,6 +29,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
         *,
         options: WhirlExportOptions = WhirlExportOptions(),
         tensor_types=None,
+        values=None,
         graph_operators=None,
     ) -> WhirlModule:
         default_tensor_types = [
@@ -67,10 +68,27 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 {"attr.broadcast_rule": "none"},
             )
         ]
+        default_values = [
+            WhirlValueRecord(
+                "input0",
+                10,
+                "input0_type",
+                "example_input",
+                metadata={"logical_shape": "[1,3]"},
+            ),
+            WhirlValueRecord(
+                "input1",
+                11,
+                "input1_type",
+                "example_input",
+                metadata={"logical_shape": "[1,3]"},
+            ),
+        ]
+        resolved_values = values or default_values
         return WhirlModule(
             options=options,
             model_name="GatekeeperModel",
-            input_count=2,
+            input_count=len(resolved_values),
             entry_function=WhirlProgramUnitRecord(
                 "forward",
                 4,
@@ -82,23 +100,46 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 for operator in (graph_operators or default_graph_operators)
             ],
             tensor_types=tensor_types or default_tensor_types,
-            values=[
-                WhirlValueRecord(
-                    "input0",
-                    10,
-                    "input0_type",
-                    "example_input",
-                    metadata={"logical_shape": "[1,3]"},
-                ),
-                WhirlValueRecord(
-                    "input1",
-                    11,
-                    "input1_type",
-                    "example_input",
-                    metadata={"logical_shape": "[1,3]"},
-                ),
-            ],
+            values=resolved_values,
             graph_operators=graph_operators or default_graph_operators,
+        )
+
+    def _gatekeeper_tensor_type(
+        self,
+        name: str,
+        handle: int,
+        logical_shape: str,
+        dtype: str = "float32",
+    ) -> WhirlTensorTypeRecord:
+        body = logical_shape[1:-1]
+        rank = 0 if not body else len(body.split(","))
+        return WhirlTensorTypeRecord(
+            name,
+            handle,
+            dtype,
+            rank,
+            logical_shape,
+            {
+                "dtype": dtype,
+                "rank": rank,
+                "logical_shape": logical_shape,
+                "lineage": name,
+            },
+        )
+
+    def _gatekeeper_value(
+        self,
+        name: str,
+        handle: int,
+        type_name: str,
+        value_kind: str = "example_input",
+    ) -> WhirlValueRecord:
+        return WhirlValueRecord(
+            name,
+            handle,
+            type_name,
+            value_kind,
+            metadata={"logical_shape": ""},
         )
 
     def test_public_export_returns_module(self) -> None:
@@ -273,6 +314,302 @@ class Open64DscSkeletonTest(unittest.TestCase):
         ]
 
         with self.assertRaisesRegex(WhirlVerificationError, "broadcast"):
+            verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_gatekeeper_accepts_valid_matmul(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[2,3]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[3,4]"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.matmul",
+                5,
+                ["input0", "input1"],
+                {
+                    "attr.transpose_kid0": "false",
+                    "attr.transpose_kid1": "false",
+                },
+            )
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_rejects_matmul_dimension_mismatch(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[2,3]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[2,4]"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.matmul",
+                5,
+                ["input0", "input1"],
+                {
+                    "attr.transpose_kid0": "false",
+                    "attr.transpose_kid1": "false",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "matrix"):
+            verify_module(
+                self._gatekeeper_module(
+                    tensor_types=tensor_types,
+                    graph_operators=graph_operators,
+                )
+            )
+
+    def test_gatekeeper_rejects_batched_matmul_for_now(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,2,3]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[1,3,4]"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.matmul",
+                5,
+                ["input0", "input1"],
+                {
+                    "attr.transpose_kid0": "false",
+                    "attr.transpose_kid1": "false",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "batched matmul"):
+            verify_module(
+                self._gatekeeper_module(
+                    tensor_types=tensor_types,
+                    graph_operators=graph_operators,
+                )
+            )
+
+    def test_gatekeeper_rejects_matmul_missing_transpose_attr(self) -> None:
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.matmul",
+                5,
+                ["input0", "input1"],
+                {"attr.transpose_kid0": "false"},
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "transpose_kid1"):
+            verify_module(self._gatekeeper_module(graph_operators=graph_operators))
+
+    def test_gatekeeper_accepts_valid_linear(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[4,8]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[16,8]"),
+            self._gatekeeper_tensor_type("input2_type", 3, "[16]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("input1", 11, "input1_type"),
+            self._gatekeeper_value("input2", 12, "input2_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.linear",
+                5,
+                ["input0", "input1", "input2"],
+                {
+                    "attr.has_bias": "true",
+                    "attr.transpose_input": "false",
+                    "attr.transpose_weight": "true",
+                    "attr.weight_layout": "OI",
+                },
+            )
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_accepts_linear_without_bias_sentinel(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[4,8]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[16,8]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("input1", 11, "input1_type"),
+            WhirlValueRecord(
+                "input2",
+                12,
+                "",
+                "absent_parameter",
+            ),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.linear",
+                5,
+                ["input0", "input1", "input2"],
+                {
+                    "attr.has_bias": "false",
+                    "attr.transpose_input": "false",
+                    "attr.transpose_weight": "true",
+                    "attr.weight_layout": "OI",
+                },
+            )
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_accepts_linear_after_unknown_cnn_shape(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[1,3,8,8]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[16,8]"),
+            self._gatekeeper_tensor_type("input2_type", 3, "[16]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("input1", 11, "input1_type"),
+            self._gatekeeper_value("input2", 12, "input2_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "cnn.max_pool2d",
+                5,
+                ["input0"],
+                {
+                    "attr.kernel_shape": "3,3",
+                    "attr.stride": "2,2",
+                    "attr.padding": "1,1",
+                    "attr.dilation": "1,1",
+                    "attr.ceil_mode": "false",
+                },
+            ),
+            WhirlOperatorRecord(
+                "common.flatten",
+                6,
+                ["cnn.max_pool2d"],
+                {
+                    "attr.start_dim": "1",
+                    "attr.end_dim": "-1",
+                },
+            ),
+            WhirlOperatorRecord(
+                "common.linear",
+                7,
+                ["common.flatten", "input1", "input2"],
+                {
+                    "attr.has_bias": "true",
+                    "attr.transpose_input": "false",
+                    "attr.transpose_weight": "true",
+                    "attr.weight_layout": "OI",
+                },
+            ),
+        ]
+
+        verify_module(
+            self._gatekeeper_module(
+                tensor_types=tensor_types,
+                values=values,
+                graph_operators=graph_operators,
+            )
+        )
+
+    def test_gatekeeper_rejects_linear_input_weight_mismatch(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[4,8]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[16,7]"),
+            self._gatekeeper_tensor_type("input2_type", 3, "[16]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("input1", 11, "input1_type"),
+            self._gatekeeper_value("input2", 12, "input2_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.linear",
+                5,
+                ["input0", "input1", "input2"],
+                {
+                    "attr.has_bias": "true",
+                    "attr.transpose_input": "false",
+                    "attr.transpose_weight": "true",
+                    "attr.weight_layout": "OI",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "dimensions"):
+            verify_module(
+                self._gatekeeper_module(
+                    tensor_types=tensor_types,
+                    values=values,
+                    graph_operators=graph_operators,
+                )
+            )
+
+    def test_gatekeeper_rejects_linear_bias_mismatch(self) -> None:
+        tensor_types = [
+            self._gatekeeper_tensor_type("input0_type", 1, "[4,8]"),
+            self._gatekeeper_tensor_type("input1_type", 2, "[16,8]"),
+            self._gatekeeper_tensor_type("input2_type", 3, "[15]"),
+        ]
+        values = [
+            self._gatekeeper_value("input0", 10, "input0_type"),
+            self._gatekeeper_value("input1", 11, "input1_type"),
+            self._gatekeeper_value("input2", 12, "input2_type"),
+        ]
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.linear",
+                5,
+                ["input0", "input1", "input2"],
+                {
+                    "attr.has_bias": "true",
+                    "attr.transpose_input": "false",
+                    "attr.transpose_weight": "true",
+                    "attr.weight_layout": "OI",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "bias"):
+            verify_module(
+                self._gatekeeper_module(
+                    tensor_types=tensor_types,
+                    values=values,
+                    graph_operators=graph_operators,
+                )
+            )
+
+    def test_gatekeeper_rejects_linear_missing_transpose_attr(self) -> None:
+        graph_operators = [
+            WhirlOperatorRecord(
+                "common.linear",
+                5,
+                ["input0", "input1", "input1"],
+                {
+                    "attr.has_bias": "true",
+                    "attr.transpose_weight": "true",
+                    "attr.weight_layout": "OI",
+                },
+            )
+        ]
+
+        with self.assertRaisesRegex(WhirlVerificationError, "transpose_input"):
             verify_module(self._gatekeeper_module(graph_operators=graph_operators))
 
     def test_save_as_whirl_runs_gatekeeper_by_default(self) -> None:

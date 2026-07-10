@@ -199,6 +199,14 @@ def _verify_operator_contract(
                 "common.residual_add requires attr.shape_check=exact"
             )
         _require_same_tensor_type(operator, operand_types)
+        return
+
+    if operator.name == common.MATMUL:
+        _verify_matmul_contract(operator, operand_types)
+        return
+
+    if operator.name == common.LINEAR:
+        _verify_linear_contract(operator, operand_types)
 
 
 def _require_attr(operator: WhirlOperatorRecord, name: str) -> None:
@@ -206,6 +214,137 @@ def _require_attr(operator: WhirlOperatorRecord, name: str) -> None:
         raise WhirlVerificationError(
             f"{operator.name} missing required attribute: {name}"
         )
+
+
+def _verify_matmul_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    transpose_lhs = _bool_attr(operator, "attr.transpose_kid0")
+    transpose_rhs = _bool_attr(operator, "attr.transpose_kid1")
+    lhs = _require_typed_operand(operator, operand_types, 0)
+    rhs = _require_typed_operand(operator, operand_types, 1)
+    _require_same_dtype(operator, (lhs, rhs))
+    lhs_shape = _require_rank(operator, lhs, 2)
+    rhs_shape = _require_rank(operator, rhs, 2)
+    lhs_matrix = _effective_matrix_shape(lhs_shape, transpose_lhs)
+    rhs_matrix = _effective_matrix_shape(rhs_shape, transpose_rhs)
+    if lhs_matrix[1] != rhs_matrix[0]:
+        raise WhirlVerificationError(
+            "common.matmul operands have incompatible matrix dimensions: "
+            f"{lhs.logical_shape} x {rhs.logical_shape}"
+        )
+
+
+def _verify_linear_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    has_bias = _bool_attr(operator, "attr.has_bias")
+    transpose_input = _bool_attr(operator, "attr.transpose_input")
+    transpose_weight = _bool_attr(operator, "attr.transpose_weight")
+    _require_attr(operator, "attr.weight_layout")
+    value = operand_types[0]
+    weight = _require_typed_operand(operator, operand_types, 1)
+    bias = operand_types[2]
+    if value is not None:
+        _require_same_dtype(operator, (value, weight))
+        value_shape = _require_rank(operator, value, 2)
+        value_matrix = _effective_matrix_shape(value_shape, transpose_input)
+    else:
+        value_matrix = None
+    weight_shape = _require_rank(operator, weight, 2)
+    weight_matrix = _effective_matrix_shape(weight_shape, transpose_weight)
+    if value_matrix is not None and value_matrix[1] != weight_matrix[0]:
+        raise WhirlVerificationError(
+            "common.linear input and weight dimensions are incompatible: "
+            f"{value.logical_shape} x {weight.logical_shape}"
+        )
+
+    output_features = weight_matrix[1]
+    if has_bias:
+        if bias is None:
+            raise WhirlVerificationError(
+                "common.linear attr.has_bias=true requires a bias operand"
+            )
+        _require_same_dtype(operator, (value or weight, bias))
+        bias_shape = _require_rank(operator, bias, 1)
+        if bias_shape[0] != output_features:
+            raise WhirlVerificationError(
+                "common.linear bias shape does not match output features: "
+                f"{bias.logical_shape} vs {output_features}"
+            )
+    elif bias is not None:
+        raise WhirlVerificationError(
+            "common.linear attr.has_bias=false requires an absent bias operand"
+        )
+
+
+def _bool_attr(operator: WhirlOperatorRecord, name: str) -> bool:
+    _require_attr(operator, name)
+    value = operator.attrs.get(name)
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise WhirlVerificationError(
+        f"{operator.name} attribute {name} must be true or false"
+    )
+
+
+def _require_typed_operand(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+    index: int,
+) -> WhirlTensorTypeRecord:
+    operand_type = operand_types[index]
+    if operand_type is None:
+        raise WhirlVerificationError(
+            f"{operator.name} operand {index} must be a tensor"
+        )
+    return operand_type
+
+
+def _require_rank(
+    operator: WhirlOperatorRecord,
+    tensor_type: WhirlTensorTypeRecord,
+    rank: int,
+) -> Tuple[int, ...]:
+    if tensor_type.rank != rank:
+        if operator.name == common.MATMUL and tensor_type.rank > 2:
+            raise WhirlVerificationError(
+                "common.matmul batched matmul is not supported yet"
+            )
+        raise WhirlVerificationError(
+            f"{operator.name} operand {tensor_type.name} requires rank {rank}, "
+            f"got {tensor_type.rank}"
+        )
+    return _parse_logical_shape(
+        tensor_type.logical_shape,
+        f"tensor type {tensor_type.name}",
+    )
+
+
+def _require_same_dtype(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[WhirlTensorTypeRecord],
+) -> None:
+    first = operand_types[0]
+    for operand_type in operand_types[1:]:
+        if operand_type.dtype != first.dtype:
+            raise WhirlVerificationError(
+                f"{operator.name} operands have incompatible dtype: "
+                f"{first.dtype} vs {operand_type.dtype}"
+            )
+
+
+def _effective_matrix_shape(
+    shape: Tuple[int, ...],
+    transpose: bool,
+) -> Tuple[int, int]:
+    if transpose:
+        return (shape[1], shape[0])
+    return (shape[0], shape[1])
 
 
 def _require_same_tensor_type(
@@ -241,21 +380,112 @@ def _result_type(
 ) -> Optional[WhirlTensorTypeRecord]:
     if not operand_types:
         return None
+    if operator.name == common.FLATTEN:
+        return _flatten_result_type(operator, operand_types)
+    if operator.name == common.LINEAR:
+        return _linear_result_type(operator, operand_types)
     if operator.name in {
         common.ADD,
-        common.FLATTEN,
-        common.LINEAR,
-        common.MATMUL,
         common.OUTPUT_LOGITS,
         common.RELU,
         common.RESIDUAL_ADD,
-        cnn.BATCH_NORM_INFER,
-        cnn.CONV2D,
-        cnn.GLOBAL_AVG_POOL2D,
-        cnn.MAX_POOL2D,
     }:
         return operand_types[0]
     return None
+
+
+def _flatten_result_type(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> Optional[WhirlTensorTypeRecord]:
+    value = operand_types[0]
+    if value is None:
+        return None
+    shape = _parse_logical_shape(
+        value.logical_shape,
+        f"tensor type {value.name}",
+    )
+    start_dim = _int_attr(operator, "attr.start_dim")
+    end_dim = _int_attr(operator, "attr.end_dim")
+    rank = len(shape)
+    if start_dim < 0:
+        start_dim += rank
+    if end_dim < 0:
+        end_dim += rank
+    if start_dim < 0 or end_dim < start_dim or end_dim >= rank:
+        raise WhirlVerificationError(
+            "common.flatten has invalid start/end dimensions: "
+            f"{operator.attrs.get('attr.start_dim')}.."
+            f"{operator.attrs.get('attr.end_dim')}"
+        )
+
+    flattened = 1
+    for dim in shape[start_dim:end_dim + 1]:
+        flattened *= dim
+    result_shape = shape[:start_dim] + (flattened,) + shape[end_dim + 1:]
+    logical_shape = _format_logical_shape(result_shape)
+    return WhirlTensorTypeRecord(
+        f"{operator.name}_result_type",
+        value.handle,
+        value.dtype,
+        len(result_shape),
+        logical_shape,
+        {
+            "dtype": value.dtype,
+            "rank": len(result_shape),
+            "logical_shape": logical_shape,
+            "lineage": operator.name,
+        },
+    )
+
+
+def _linear_result_type(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> Optional[WhirlTensorTypeRecord]:
+    value = operand_types[0]
+    weight = operand_types[1]
+    if value is None or weight is None:
+        return None
+    transpose_weight = _bool_attr(operator, "attr.transpose_weight")
+    value_shape = _parse_logical_shape(
+        value.logical_shape,
+        f"tensor type {value.name}",
+    )
+    weight_shape = _parse_logical_shape(
+        weight.logical_shape,
+        f"tensor type {weight.name}",
+    )
+    weight_matrix = _effective_matrix_shape(weight_shape, transpose_weight)
+    result_shape = (value_shape[0], weight_matrix[1])
+    logical_shape = _format_logical_shape(result_shape)
+    return WhirlTensorTypeRecord(
+        f"{operator.name}_result_type",
+        value.handle,
+        value.dtype,
+        len(result_shape),
+        logical_shape,
+        {
+            "dtype": value.dtype,
+            "rank": len(result_shape),
+            "logical_shape": logical_shape,
+            "lineage": operator.name,
+        },
+    )
+
+
+def _int_attr(operator: WhirlOperatorRecord, name: str) -> int:
+    _require_attr(operator, name)
+    try:
+        return int(operator.attrs[name])
+    except ValueError as exc:
+        raise WhirlVerificationError(
+            f"{operator.name} attribute {name} must be an integer"
+        ) from exc
+
+
+def _format_logical_shape(shape: Sequence[int]) -> str:
+    return "[" + ",".join(str(dim) for dim in shape) + "]"
 
 
 def _parse_logical_shape(

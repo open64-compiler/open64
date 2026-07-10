@@ -728,7 +728,10 @@ Phase 9 execution stages:
    `common.residual_add`, including exact dtype/rank/shape checks when
    `attr.broadcast_rule=none`.
 6. Add the second common-substrate batch for `common.matmul` and
-   `common.linear` shape rules.
+   `common.linear` shape rules. This batch covers rank-2 matmul, transpose
+   attributes, inner-dimension compatibility, rank-2 linear input/weight
+   checks, current `attr.transpose_weight=true`/`OI` weight convention, and
+   bias/output-feature compatibility.
 7. Add the CNN batch for `cnn.conv2d`, `cnn.batch_norm_infer`,
    `cnn.max_pool2d`, and `cnn.global_avg_pool2d` required attributes and
    channel/layout compatibility checks.
