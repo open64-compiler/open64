@@ -971,6 +971,204 @@ Exit criteria:
 5. The next implementation phase can proceed with a concrete graph-capture
    checklist rather than a broad "follow OpenXLA" instruction.
 
+## Remaining Execution Plan
+
+The remaining work should move `torch2whirl` from a validated standalone
+frontend slice to a complete ResNet ingestion path. The important boundary
+remains unchanged: Python and PyTorch own capture and checkpoint discovery,
+`torch2whirl` owns high-level WHIRL construction, and Open64 downstream passes
+own lowering. The frontend bridge must continue to avoid backend/cg
+implementation dependencies.
+
+### Phase 11: ResNet Ingestion Closure
+
+Goal: produce a complete captured ResNet graph through the existing Python API
+and C++ driver path, with every emitted operator represented in the manifest,
+verifier, and artifact-inspection loop.
+
+Execution steps:
+
+1. Freeze the first target variants: a deterministic `torchvision` ResNet-18
+   eval-mode fixture and the existing local ResNet-like fragments.
+2. Add a full-model capture test that records the unsupported operator,
+   descriptor, and parameter gaps without broadening the lowering surface first.
+3. Close gaps one by one, promoting each operator only after it has FX manifest
+   coverage, verifier coverage, native marker coverage, and artifact inspection
+   or an explicit deferred-artifact note.
+4. Keep the operator set in the Open64 DSL namespace, such as `common.*` and
+   `cnn.*`; do not import StableHLO names as the frontend contract.
+5. Require the C++ driver torch lane to exercise the same model fixture as the
+   Python API before the phase is complete.
+
+Acceptance criteria:
+
+1. A deterministic ResNet-18 eval fixture exports through `export_to_whirl`,
+   `save_as_whirl`, and the standalone `torch2whirl` executable.
+2. All graph operators used by that fixture appear in structured manifest
+   records with stable attributes and tensor descriptors.
+3. Unsupported dynamic-shape, training-mode, or mutation behavior fails with
+   clear verifier diagnostics rather than partially emitted artifacts.
+4. `osprey/torch2whirl/scripts/run_torch_docker_test.sh` remains green.
+
+### Phase 12: Parameter Payload Ingestion
+
+Goal: introduce the real tensor-constant data path for weights, bias,
+batchnorm scale, running mean, running variance, and other checkpoint tensors.
+The canonical checkpoint should be SafeTensors-style side-file storage; GGUF
+and ONNX external-data exports can be generated later as deployment artifacts.
+
+Execution steps:
+
+1. Define the frontend payload contract: symbol table entries identify a
+   tensor payload by storage file, tensor key, dtype, shape, layout, byte
+   offset, byte length, checksum, and semantic role.
+2. Add Python extraction for model parameters and buffers, preserving names,
+   ordering, dtype, shape, and module path metadata.
+3. Emit a deterministic side-file payload for the canonical checkpoint path and
+   attach each consumed payload to the corresponding symbol record.
+4. Extend verifier checks so operators that require parameter operands reject
+   missing, shape-incompatible, dtype-incompatible, or stale payload records.
+5. Add round-trip inspection tests that compare manifest metadata, side-file
+   metadata, and emitted symbol references without loading backend/cg code.
+
+Acceptance criteria:
+
+1. ResNet convolution, linear, and batchnorm parameters are emitted into a
+   side-file payload and referenced by WHIRL symbol records.
+2. The manifest records enough information to validate the payload independently
+   of ELF `.data` initialization.
+3. Corrupt, missing, or mismatched payload metadata produces deterministic
+   verifier failures.
+4. Derived GGUF or ONNX external-data export remains documented as post-export
+   deployment work, not the canonical compiler-ingestion source.
+
+### Phase 13: Real WHIRL DSL Operator Lowering
+
+Goal: replace marker-only or comment-oriented representation with real
+high-level DSL WHIRL nodes as the common/com infrastructure becomes ready.
+
+Execution steps:
+
+1. Identify the minimal common/com API needed to create a real high-level DSL
+   operator node, bind operands, bind result tensors, and preserve attributes.
+2. Promote `common.add` first because it has the strongest manifest,
+   native-marker, artifact-inspection, and negative-test coverage.
+3. Promote `common.matmul`, then CNN operators in dependency order:
+   convolution, batchnorm inference, relu, pooling, flatten/view, linear, and
+   residual add.
+4. Update `ir_b2a -st` inspection expectations from marker payload strings to
+   real DSL node and symbol-table evidence as soon as the binary format exposes
+   it.
+5. Keep a compatibility note for any operator that remains marker-backed while
+   common/com support is incomplete.
+
+Acceptance criteria:
+
+1. At least `common.add`, `common.matmul`, and the ResNet stem operators survive
+   binary artifact emission and `ir_b2a -st` inspection as real DSL constructs.
+2. Python never constructs raw WHIRL internals directly; it continues to call
+   the native frontend builder through opaque handles.
+3. No torch2whirl source or Makefile gains backend/cg implementation coupling.
+4. Tests clearly distinguish real-node coverage from legacy marker fallback.
+
+### Phase 14: Full Toolchain Consumption
+
+Goal: prove that a `torch2whirl` artifact can be consumed by the full Open64
+toolchain without Python remaining in the compiler pipeline.
+
+Execution steps:
+
+1. Maintain the guarded `driver_opencc_smoke` path while full Open64 builds are
+   not always present in local or Docker validation.
+2. In a full-toolchain environment, run the standalone driver to emit the
+   binary artifact, then run `opencc -x whirl -c` on that artifact.
+3. Capture the minimum environment variables and configure steps required for
+   repeatable macOS and Linux validation.
+4. Promote the smoke from optional to required only in the full-toolchain lane,
+   not in `--enable-torch2whirl-only`.
+5. Keep combined `opencc -frontend=torch2whirl` deferred until standalone
+   artifact production and consumption are stable.
+
+Acceptance criteria:
+
+1. `opencc -x whirl -c` consumes a driver-produced artifact in a full Open64
+   build and produces the expected object output.
+2. The torch2whirl-only build remains small, standalone, and usable on macOS
+   and Linux Docker.
+3. Documentation names the exact validation lane where `opencc` is required.
+
+### Phase 15: Developer And Release Hardening
+
+Goal: make the frontend predictable for collaborators who only track `develop`
+after the PRs land.
+
+Execution steps:
+
+1. Keep the validation matrix current: source build, configured
+   `--enable-torch2whirl-only`, Python mock tests, Python native tests, torch
+   tests, driver torch tests, artifact inspection, Docker checks, and guarded
+   full-toolchain checks.
+2. Stabilize CLI diagnostics for missing PyTorch, unsupported operators,
+   incompatible sample inputs, unsupported dtype, unsupported rank, and payload
+   mismatch.
+3. Keep `AGENTS.md`, the torch2whirl subagent guidance, and the local
+   `open64-torch2whirl` skill aligned with the actual developer loop.
+4. Review PR boundaries so standalone frontend work can merge independently of
+   backend lowering work.
+5. Add a short release note or contributor note once ResNet ingestion,
+   side-file payloads, and full-toolchain consumption are all green.
+
+Acceptance criteria:
+
+1. A new collaborator can build and test torch2whirl from documented steps on
+   macOS or Linux Docker.
+2. The full ResNet fixture, parameter payload contract, real DSL operator path,
+   and full-toolchain consumption lane are all covered by tests or guarded
+   smokes.
+3. The branch remains reviewable as frontend work, with downstream lowering
+   explicitly separated.
+
+### Immediate Remaining Batches
+
+1. Add the complete ResNet fixture and gap-audit test, then record the exact
+   unsupported operators or descriptors that block full export.
+2. Implement the SafeTensors-style payload writer contract in mock form first,
+   then connect native symbol records once the record shape is stable.
+3. Promote `common.add` from marker-backed artifact evidence to real DSL node
+   evidence if common/com exposes the required API; otherwise document the
+   missing common/com API as the blocker.
+4. Extend the C++ driver path to prove full ResNet capture uses the same
+   Python-side API and native builder contract as direct Python tests.
+5. Run the full-toolchain `opencc -x whirl -c` lane in an environment that has a
+   complete Open64 build, and convert any failure into a focused artifact or
+   symbol-table task.
+
+### Remaining Risk Register
+
+1. Real DSL node emission may require common/com changes outside torch2whirl.
+2. Full `opencc` consumption may expose binary WHIRL format expectations that
+   the standalone frontend cannot satisfy until Phase 13 lands.
+3. SafeTensors-style payload metadata is not enough by itself; the symbol table
+   must carry stable references that downstream Open64 code can inspect.
+4. Dynamic shapes and training-mode capture remain out of scope until static
+   eval-mode ResNet is complete.
+5. The combined `opencc` frontend mode should remain deferred so it does not
+   hide artifact-boundary bugs.
+
+### Remaining Definition Of Done
+
+1. `torch2whirl` exports a deterministic ResNet eval model from PyTorch capture
+   through the standalone executable.
+2. The export emits binary high-level WHIRL plus canonical side-file tensor
+   payloads for weights, bias, batchnorm scale, running mean, and running
+   variance.
+3. `ir_b2a -st` inspection shows real DSL operators and symbol payload
+   references for the covered graph.
+4. `opencc -x whirl -c` consumes the driver-produced artifact in a full Open64
+   environment.
+5. macOS source validation and Linux Docker validation stay green.
+6. No torch2whirl source depends on backend/cg implementation details.
+
 ## Milestones
 
 1. M0: Standalone `torch2whirl` scaffold builds and runs on macOS and Linux
