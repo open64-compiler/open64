@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from open64_dsc import export_to_whirl
 
@@ -901,6 +905,52 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "exact shape match"):
             export_to_whirl(MismatchedResidualModule(), [lhs, rhs])
+
+    def test_cli_exports_torch_model_file_with_shape_input(self) -> None:
+        with tempfile.TemporaryDirectory() as work_dir:
+            model_path = Path(work_dir) / "model.py"
+            output_path = Path(work_dir) / "model.B"
+            model_path.write_text(
+                "\n".join(
+                    [
+                        "import torch",
+                        "class AddModel(torch.nn.Module):",
+                        "    def forward(self, value):",
+                        "        return value + value",
+                        "def create_model():",
+                        "    return AddModel()",
+                    ]
+                ) + "\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "open64_dsc.cli",
+                    str(model_path),
+                    "--entry",
+                    "forward",
+                    "--sample-input",
+                    "shape:1,3",
+                    "-o",
+                    str(output_path),
+                ],
+                check=False,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = output_path.read_text(encoding="utf-8")
+
+        self.assertIn("format=mock", text)
+        self.assertIn("model_name=AddModel", text)
+        self.assertIn("entry_function=forward", text)
+        self.assertIn("operator.0=common.add", text)
+        self.assertIn("graph_operator.0=common.add:input0,input0", text)
 
 
 if __name__ == "__main__":

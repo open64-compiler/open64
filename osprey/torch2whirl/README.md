@@ -37,6 +37,12 @@ into the native DSL builder and mapped image finalization API.
 The Python package skeleton lives under `python/open64_dsc`.  It provides the
 initial public API and a mock `_whirl`-shaped backend so graph capture and CLI
 integration can grow without requiring the native extension to be built first.
+The first Phase 8 Python CLI slice is available as `python -m open64_dsc.cli`.
+It loads a Python model file through a `create_model()` factory by default,
+builds sample inputs from `--sample-input shape:d0,d1,...`, calls
+`export_to_whirl`, and writes an artifact with `save_as_whirl`.  The C++
+`torch2whirl` executable still needs to be wired to this CLI in the next Phase
+8 batch.
 The first native binding seam is staged under `python/native`.  It can be
 syntax-checked through the Linux native fixture, and the configured Linux build
 can now build and import `open64_dsc._whirl` when Python development headers are
@@ -107,6 +113,15 @@ make -f Makefile.gbase python_torch_test
 ```
 
 Unlike `python_test`, this target intentionally fails if `torch` is missing.
+
+To exercise the Phase 8 Python CLI directly:
+
+```sh
+PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
+  python3 -m open64_dsc.cli model.py \
+  --sample-input shape:1,3,224,224 \
+  -o model.B
+```
 
 For a reproducible Linux Docker version of that lane:
 

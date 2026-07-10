@@ -658,6 +658,24 @@ boundary. It should not become an in-memory bypass around binary WHIRL
 finalization, `ir_b2a` visibility, TensorDescriptorIR persistence, or gatekeeper
 validation.
 
+Phase 8 execution stages:
+
+1. Add `open64_dsc.cli` so `python -m open64_dsc.cli model.py
+   --sample-input shape:... -o model.B` loads a model factory, builds sample
+   inputs, calls `export_to_whirl`, and writes the artifact with
+   `save_as_whirl`.
+2. Keep the first model contract deliberately small: `model.py` exposes a
+   callable `create_model()` by default, with `--model-factory` available for
+   alternate factory names. The default sample input grammar is
+   `shape:d0,d1,...` and creates a float32 torch tensor.
+3. Add direct Python CLI tests before wiring the C++ driver, including parser
+   failures, factory loading, and a torch-enabled model-file export smoke.
+4. Wire the C++ `torch2whirl` executable to invoke the same Python CLI with the
+   in-tree or configured Python package on `PYTHONPATH`, preserving the
+   standalone binary artifact boundary.
+5. Promote the CLI smoke into a driver/artifact inspection target that checks
+   `ir_b2a -st` whenever the configured build provides `ir_b2a`.
+
 ## Phase 9: Gatekeeper Verifier
 
 The gatekeeper validates very-high-level WHIRL before lowering.

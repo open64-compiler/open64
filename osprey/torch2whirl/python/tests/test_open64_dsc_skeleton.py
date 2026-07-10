@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from open64_dsc.backend import load_backend
+from open64_dsc.cli import _load_model, _parse_shape_spec
 from open64_dsc.interpreter import WhirlExportInterpreter
 from open64_dsc import WhirlExportOptions, WhirlModule
 from open64_dsc import export_to_whirl, load_builder, save_as_whirl
@@ -52,6 +53,48 @@ class Open64DscSkeletonTest(unittest.TestCase):
     def test_options_validate_backend(self) -> None:
         with self.assertRaises(ValueError):
             WhirlExportOptions(backend="unknown")
+
+    def test_cli_parse_shape_spec(self) -> None:
+        self.assertEqual(_parse_shape_spec("shape:1,3,224,224"), (1, 3, 224, 224))
+
+        with self.assertRaisesRegex(ValueError, "shape"):
+            _parse_shape_spec("tensor:1,3")
+        with self.assertRaisesRegex(ValueError, "positive"):
+            _parse_shape_spec("shape:1,0,3")
+        with self.assertRaisesRegex(ValueError, "integer"):
+            _parse_shape_spec("shape:1,bad,3")
+
+    def test_cli_load_model_from_factory(self) -> None:
+        with tempfile.TemporaryDirectory() as work_dir:
+            model_path = Path(work_dir) / "model.py"
+            model_path.write_text(
+                "\n".join(
+                    [
+                        "class UnitModel:",
+                        "    def __init__(self):",
+                        "        self.eval_called = False",
+                        "    def eval(self):",
+                        "        self.eval_called = True",
+                        "        return self",
+                        "def create_model():",
+                        "    return UnitModel()",
+                    ]
+                ) + "\n",
+                encoding="utf-8",
+            )
+
+            model = _load_model(model_path, "create_model")
+
+        self.assertEqual(model.__class__.__name__, "UnitModel")
+        self.assertTrue(model.eval_called)
+
+    def test_cli_load_model_reports_missing_factory(self) -> None:
+        with tempfile.TemporaryDirectory() as work_dir:
+            model_path = Path(work_dir) / "model.py"
+            model_path.write_text("VALUE = 1\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(AttributeError, "model factory"):
+                _load_model(model_path, "create_model")
 
     def test_native_backend_reports_missing_extension(self) -> None:
         if importlib.util.find_spec("open64_dsc._whirl") is None:
