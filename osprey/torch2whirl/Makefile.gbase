@@ -26,7 +26,13 @@ BINDIR ?= $(PREFIX)/bin
 
 TORCH2WHIRL_CXX_STD ?= -std=c++17
 TORCH2WHIRL_WARNINGS ?= -Wall -Wextra
-TORCH2WHIRL_CPPFLAGS ?= -I$(BUILD_BASE)
+TORCH2WHIRL_PYTHON ?= $(PYTHON)
+TORCH2WHIRL_PYTHONPATH ?= $(if $(BUILD_AREA),$(PYTHON_BUILD_ROOT):)$(BUILD_BASE)/python
+TORCH2WHIRL_DRIVER ?= $(CURDIR)/torch2whirl
+TORCH2WHIRL_CPPFLAGS ?= \
+  -I$(BUILD_BASE) \
+  -DTORCH2WHIRL_PYTHON=\"$(TORCH2WHIRL_PYTHON)\" \
+  -DTORCH2WHIRL_PYTHONPATH=\"$(TORCH2WHIRL_PYTHONPATH)\"
 TORCH2WHIRL_CXXFLAGS ?= $(TORCH2WHIRL_CXX_STD) $(TORCH2WHIRL_WARNINGS)
 TORCH2WHIRL_LDFLAGS ?=
 
@@ -124,6 +130,7 @@ TORCH2WHIRL_CXX_SRCS = \
 OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
+  driver_torch_test \
   python_torch_test \
   python_native_check python_native_deps python_native_extension \
   python_native_ir_tools_deps python_native_ir_tools_smoke \
@@ -151,6 +158,12 @@ python_torch_test:
 	    $(PYTHON) -m unittest discover \
 	    -s $(BUILD_BASE)/python/tests \
 	    -p 'test_open64_dsc_fx_capture_optional.py'
+
+driver_torch_test: $(TARGETS)
+	PYTHONDONTWRITEBYTECODE=1 \
+	    PYTHONPATH=$(TORCH2WHIRL_PYTHONPATH) \
+	    TORCH2WHIRL_DRIVER=$(TORCH2WHIRL_DRIVER) \
+	    $(PYTHON) $(BUILD_BASE)/python/tests/driver_torch_smoke.py
 
 python_native_check:
 	@if test "`uname -s`" = "Darwin" && \

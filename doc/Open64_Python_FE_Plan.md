@@ -672,9 +672,16 @@ Phase 8 execution stages:
    failures, factory loading, and a torch-enabled model-file export smoke.
 4. Wire the C++ `torch2whirl` executable to invoke the same Python CLI with the
    in-tree or configured Python package on `PYTHONPATH`, preserving the
-   standalone binary artifact boundary.
+   standalone binary artifact boundary. This is now implemented as a thin
+   C++17 driver launch path around `python -m open64_dsc.cli`, with
+   `--entry`, `--model-factory`, `--backend`, repeated `--sample-input`, and
+   `-o`/`--output` forwarded to the Python frontend.
 5. Promote the CLI smoke into a driver/artifact inspection target that checks
-   `ir_b2a -st` whenever the configured build provides `ir_b2a`.
+   `ir_b2a -st` whenever the configured build provides `ir_b2a`. The first
+   executable-level gate is `make driver_torch_test`, which builds the C++
+   binary, runs it against a tiny PyTorch model file, and checks the emitted
+   mock artifact markers. The later native variant should reuse the same
+   target shape but switch `--backend native` and inspect with `ir_b2a -st`.
 
 ## Phase 9: Gatekeeper Verifier
 
@@ -902,6 +909,9 @@ Exit criteria:
    image.
 10. Keep `osprey/torch2whirl/scripts/run_torch_docker_test.sh` green as the
     PyTorch gate before treating full ResNet ingestion checkpoints as complete.
+    This script now runs both `make python_torch_test` and
+    `make driver_torch_test`, so C++ driver integration is part of the
+    torch-enabled Linux checkpoint.
 
 ## Practical Developer Loop
 

@@ -41,8 +41,8 @@ The first Phase 8 Python CLI slice is available as `python -m open64_dsc.cli`.
 It loads a Python model file through a `create_model()` factory by default,
 builds sample inputs from `--sample-input shape:d0,d1,...`, calls
 `export_to_whirl`, and writes an artifact with `save_as_whirl`.  The C++
-`torch2whirl` executable still needs to be wired to this CLI in the next Phase
-8 batch.
+`torch2whirl` executable is wired to the same CLI, preserving the standalone
+binary artifact boundary while the native WHIRL writer continues to mature.
 The first native binding seam is staged under `python/native`.  It can be
 syntax-checked through the Linux native fixture, and the configured Linux build
 can now build and import `open64_dsc._whirl` when Python development headers are
@@ -110,15 +110,25 @@ When PyTorch is installed, run the hard FX ingestion lane:
 
 ```sh
 make -f Makefile.gbase python_torch_test
+make -f Makefile.gbase driver_torch_test
 ```
 
-Unlike `python_test`, this target intentionally fails if `torch` is missing.
+Unlike `python_test`, these targets intentionally fail if `torch` is missing.
 
 To exercise the Phase 8 Python CLI directly:
 
 ```sh
 PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
   python3 -m open64_dsc.cli model.py \
+  --sample-input shape:1,3,224,224 \
+  -o model.B
+```
+
+To exercise the same path through the C++ executable:
+
+```sh
+PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
+  ./torch2whirl model.py \
   --sample-input shape:1,3,224,224 \
   -o model.B
 ```
@@ -132,7 +142,8 @@ osprey/torch2whirl/scripts/run_torch_docker_test.sh
 The script builds `open64:torch2whirl-torch-test` from the existing Open64
 Docker image, installs CPU PyTorch, configures a `--enable-torch2whirl-only`
 tree under `/private/tmp/open64-torch2whirl-torch-test`, and runs
-`make python_torch_test` from the configured `torch2whirl` directory. Override
+`make python_torch_test` plus `make driver_torch_test` from the configured
+`torch2whirl` directory. Override
 `OPEN64_TORCH2WHIRL_TORCH_VERSION`, `OPEN64_TORCH2WHIRL_BASE_IMAGE`,
 `OPEN64_TORCH2WHIRL_TORCH_IMAGE`, `OPEN64_TORCH2WHIRL_BUILD_DIR`, or
 `OPEN64_TORCH2WHIRL_DOCKER_BUILDKIT` when a different local image, torch

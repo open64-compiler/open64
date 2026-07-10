@@ -41,3 +41,10 @@ docker run --rm \
     -w /build/osprey/targdir/torch2whirl \
     "$torch_image" \
     make python_torch_test
+
+docker run --rm \
+    -v "$src_root:/src" \
+    -v "$build_dir:/build" \
+    -w /build/osprey/targdir/torch2whirl \
+    "$torch_image" \
+    make driver_torch_test
