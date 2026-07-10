@@ -171,6 +171,89 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(module.values[2].metadata["storage_byte_offset"], "128")
         self.assertEqual(module.values[2].metadata["storage_byte_length"], "16")
 
+    def test_fx_call_module_resnet_stem_tail_maps_with_parameters(self) -> None:
+        import torch
+
+        class ModuleResnetStemTail(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv = torch.nn.Conv2d(
+                    3,
+                    64,
+                    kernel_size=7,
+                    stride=2,
+                    padding=3,
+                    bias=False,
+                )
+                self.bn = torch.nn.BatchNorm2d(64)
+                self.relu = torch.nn.ReLU()
+                self.pool = torch.nn.MaxPool2d(
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                )
+                self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
+                self.flatten = torch.nn.Flatten(1)
+                self.fc = torch.nn.Linear(64, 1000)
+
+            def forward(self, value):
+                value = self.conv(value)
+                value = self.bn(value)
+                value = self.relu(value)
+                value = self.pool(value)
+                value = self.avgpool(value)
+                value = self.flatten(value)
+                return self.fc(value)
+
+        value = torch.ones((1, 3, 224, 224), dtype=torch.float32)
+        module = export_to_whirl(ModuleResnetStemTail(), [value])
+
+        self.assertEqual(
+            module.operators,
+            [
+                "cnn.conv2d",
+                "cnn.batch_norm_infer",
+                "common.relu",
+                "cnn.max_pool2d",
+                "cnn.global_avg_pool2d",
+                "common.flatten",
+                "common.linear",
+                "common.output_logits",
+            ],
+        )
+        self.assertEqual(
+            module.graph_operators[0].kids,
+            ["input0", "conv_weight", "conv_bias"],
+        )
+        self.assertEqual(
+            module.graph_operators[1].kids,
+            [
+                "cnn.conv2d",
+                "bn_weight",
+                "bn_bias",
+                "bn_running_mean",
+                "bn_running_var",
+            ],
+        )
+        self.assertEqual(
+            module.graph_operators[6].kids,
+            ["common.flatten", "fc_weight", "fc_bias"],
+        )
+        self.assertEqual(module.values[1].metadata["storage_tensor_key"], "conv.weight")
+        self.assertEqual(module.values[1].metadata["storage_byte_length"], "37632")
+        self.assertEqual(module.values[2].value_kind, "absent_parameter")
+        self.assertEqual(module.values[3].metadata["tensor_role"], "batchnorm_scale")
+        self.assertEqual(
+            module.values[5].metadata["tensor_role"],
+            "batchnorm_running_mean",
+        )
+        self.assertEqual(module.values[-2].metadata["storage_tensor_key"], "fc.weight")
+        self.assertEqual(module.values[-1].metadata["storage_tensor_key"], "fc.bias")
+        self.assertEqual(
+            module.graph_operators[-1].kids,
+            ["common.linear"],
+        )
+
     def test_fx_resnet_like_sequence_gets_ordered_markers(self) -> None:
         import torch
         import torch.nn.functional as F

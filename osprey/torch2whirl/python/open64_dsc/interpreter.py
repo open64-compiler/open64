@@ -115,6 +115,7 @@ class WhirlExportInterpreter:
     ) -> None:
         graph, traced_module = captured_graph
         env: Dict[int, _GraphValue] = {}
+        attr_env: Dict[str, _GraphValue] = {}
         input_index = 0
         output_source_node = None
 
@@ -131,12 +132,13 @@ class WhirlExportInterpreter:
                 continue
 
             if node_op == "get_attr":
-                graph_value = self._external_tensor_for_attr(
+                graph_value = self._external_tensor_for_target(
                     traced_module,
                     str(getattr(node, "target", "")),
                     model_name,
                     tensor_types,
                     values,
+                    attr_env,
                 )
                 env[id(node)] = graph_value
                 self.builder().append_program_unit_marker(entry_pu, graph_value.handle)
@@ -147,13 +149,24 @@ class WhirlExportInterpreter:
                 output_source_node = self._fx_output_source_node(node)
                 continue
 
-            operator_plan = self._map_fx_node(node)
+            operator_plan = self._map_fx_node(node, traced_module)
             if operator_plan is None:
                 raise NotImplementedError(
                     "unsupported FX graph node: "
                     f"{node_op}:{getattr(node, 'target', '')}"
                 )
-            operands = self._fx_operator_operands(operator_plan.name, node, env)
+            operands = self._fx_operator_operands(
+                operator_plan.name,
+                node,
+                env,
+                traced_module,
+                model_name,
+                entry_pu,
+                tensor_types,
+                values,
+                body_markers,
+                attr_env,
+            )
             if len(operands) < self._operator_arity(operator_plan.name):
                 raise ValueError(f"{operator_plan.name} has too few FX operands")
             handle, attrs = self._emit_operator(
@@ -361,8 +374,31 @@ class WhirlExportInterpreter:
         operator_name: str,
         node: Any,
         env: Mapping[int, _GraphValue],
+        traced_module: Any,
+        model_name: str,
+        entry_pu: Any,
+        tensor_types: List[WhirlTensorTypeRecord],
+        values: List[WhirlValueRecord],
+        body_markers: List[str],
+        attr_env: Dict[str, _GraphValue],
     ) -> List[_GraphValue]:
         args = list(getattr(node, "args", ()))
+        node_op = str(getattr(node, "op", ""))
+
+        if node_op == "call_module":
+            return self._fx_module_operands(
+                operator_name,
+                str(getattr(node, "target", "")),
+                args,
+                env,
+                traced_module,
+                model_name,
+                entry_pu,
+                tensor_types,
+                values,
+                body_markers,
+                attr_env,
+            )
 
         if operator_name == cnn.BATCH_NORM_INFER and len(args) >= 5:
             values = [args[0], args[3], args[4], args[1], args[2]]
@@ -376,6 +412,72 @@ class WhirlExportInterpreter:
                 operands.append(operand)
         return operands
 
+    def _fx_module_operands(
+        self,
+        operator_name: str,
+        target: str,
+        args: Sequence[Any],
+        env: Mapping[int, _GraphValue],
+        traced_module: Any,
+        model_name: str,
+        entry_pu: Any,
+        tensor_types: List[WhirlTensorTypeRecord],
+        values: List[WhirlValueRecord],
+        body_markers: List[str],
+        attr_env: Dict[str, _GraphValue],
+    ) -> List[_GraphValue]:
+        operands: List[_GraphValue] = []
+        value = self._fx_graph_value(args[0], env) if args else None
+        if value is not None:
+            operands.append(value)
+
+        if operator_name in {cnn.CONV2D, common.LINEAR}:
+            operands.append(
+                self._module_parameter_operand(
+                    traced_module,
+                    f"{target}.weight",
+                    model_name,
+                    entry_pu,
+                    tensor_types,
+                    values,
+                    body_markers,
+                    attr_env,
+                )
+            )
+            operands.append(
+                self._module_parameter_operand(
+                    traced_module,
+                    f"{target}.bias",
+                    model_name,
+                    entry_pu,
+                    tensor_types,
+                    values,
+                    body_markers,
+                    attr_env,
+                )
+            )
+        elif operator_name == cnn.BATCH_NORM_INFER:
+            for suffix in (
+                "weight",
+                "bias",
+                "running_mean",
+                "running_var",
+            ):
+                operands.append(
+                    self._module_parameter_operand(
+                        traced_module,
+                        f"{target}.{suffix}",
+                        model_name,
+                        entry_pu,
+                        tensor_types,
+                        values,
+                        body_markers,
+                        attr_env,
+                    )
+                )
+
+        return operands
+
     def _fx_graph_value(
         self,
         value: Any,
@@ -386,14 +488,80 @@ class WhirlExportInterpreter:
             return None
         return env.get(id(node))
 
-    def _external_tensor_for_attr(
+    def _module_parameter_operand(
+        self,
+        traced_module: Any,
+        target: str,
+        model_name: str,
+        entry_pu: Any,
+        tensor_types: List[WhirlTensorTypeRecord],
+        values: List[WhirlValueRecord],
+        body_markers: List[str],
+        attr_env: Dict[str, _GraphValue],
+    ) -> _GraphValue:
+        tensor = self._resolve_attr(traced_module, target)
+        if tensor is None:
+            graph_value = self._absent_parameter_for_target(target, values)
+        else:
+            graph_value = self._external_tensor_for_target(
+                traced_module,
+                target,
+                model_name,
+                tensor_types,
+                values,
+                attr_env,
+            )
+        if graph_value.name not in body_markers:
+            self.builder().append_program_unit_marker(entry_pu, graph_value.handle)
+            body_markers.append(graph_value.name)
+        return graph_value
+
+    def _absent_parameter_for_target(
+        self,
+        target: str,
+        values: List[WhirlValueRecord],
+    ) -> _GraphValue:
+        name = self._external_value_name(target)
+        if name in {value.name for value in values}:
+            for value in values:
+                if value.name == name:
+                    return _GraphValue(ValueHandle(value.handle), value.name)
+
+        handle = self.builder().tensor_constant(
+            name,
+            "float32",
+            0,
+            "[]",
+            "absent_parameter",
+            "none",
+        )
+        values.append(
+            WhirlValueRecord(
+                name=name,
+                handle=handle.value,
+                type_name="",
+                value_kind="absent_parameter",
+                metadata={
+                    "source_layer_name": name,
+                    "lowering_hint": "module_parameter_absent",
+                    "tensor_role": self._parameter_role(target),
+                },
+            )
+        )
+        return _GraphValue(handle, name)
+
+    def _external_tensor_for_target(
         self,
         traced_module: Any,
         target: str,
         model_name: str,
         tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
+        attr_env: Dict[str, _GraphValue],
     ) -> _GraphValue:
+        if target in attr_env:
+            return attr_env[target]
+
         tensor = self._resolve_attr(traced_module, target)
         dtype = self._input_dtype(tensor)
         shape = self._input_shape(tensor)
@@ -437,7 +605,9 @@ class WhirlExportInterpreter:
                 metadata=handle.metadata,
             )
         )
-        return _GraphValue(handle, name)
+        graph_value = _GraphValue(handle, name)
+        attr_env[target] = graph_value
+        return graph_value
 
     def _resolve_attr(self, owner: Any, target: str) -> Any:
         value = owner
@@ -529,7 +699,11 @@ class WhirlExportInterpreter:
             return None
         return graph, traced
 
-    def _map_fx_node(self, node: Any) -> Optional[_MappedOperatorPlan]:
+    def _map_fx_node(
+        self,
+        node: Any,
+        traced_module: Optional[Any] = None,
+    ) -> Optional[_MappedOperatorPlan]:
         node_op = str(getattr(node, "op", ""))
         target = getattr(node, "target", None)
 
@@ -551,7 +725,117 @@ class WhirlExportInterpreter:
                 self._fx_static_attrs(operator_name, node),
             )
 
+        if node_op == "call_module" and traced_module is not None:
+            module = self._resolve_attr(traced_module, str(target))
+            operator_name = self._map_fx_module(module)
+            if operator_name is None:
+                return None
+            return _MappedOperatorPlan(
+                operator_name,
+                self._fx_module_static_attrs(operator_name, module),
+            )
+
         return None
+
+    def _map_fx_module(self, module: Any) -> Optional[str]:
+        module_name = module.__class__.__name__
+        if module_name == "Conv2d":
+            return cnn.CONV2D
+        if module_name == "BatchNorm2d":
+            return cnn.BATCH_NORM_INFER
+        if module_name == "ReLU":
+            return common.RELU
+        if module_name == "MaxPool2d":
+            return cnn.MAX_POOL2D
+        if module_name == "AdaptiveAvgPool2d":
+            return cnn.GLOBAL_AVG_POOL2D
+        if module_name == "Flatten":
+            return common.FLATTEN
+        if module_name == "Linear":
+            return common.LINEAR
+        return None
+
+    def _fx_module_static_attrs(
+        self,
+        operator_name: str,
+        module: Any,
+    ) -> Mapping[str, str]:
+        if operator_name == cnn.CONV2D:
+            return {
+                "attr.kernel_shape": self._format_pair_value(
+                    getattr(module, "kernel_size", (3, 3)),
+                    "3,3",
+                ),
+                "attr.stride": self._format_pair_value(
+                    getattr(module, "stride", (1, 1)),
+                    "1,1",
+                ),
+                "attr.padding": self._format_pair_value(
+                    getattr(module, "padding", (0, 0)),
+                    "0,0",
+                ),
+                "attr.dilation": self._format_pair_value(
+                    getattr(module, "dilation", (1, 1)),
+                    "1,1",
+                ),
+                "attr.groups": str(getattr(module, "groups", 1)),
+                "attr.input_layout": "NCHW",
+                "attr.weight_layout": "OIHW",
+                "attr.output_layout": "NCHW",
+            }
+        if operator_name == cnn.BATCH_NORM_INFER:
+            return {
+                "attr.epsilon": str(getattr(module, "eps", 1e-5)),
+                "attr.momentum": str(getattr(module, "momentum", 0.1)),
+                "attr.training": "false",
+                "attr.input_layout": "NCHW",
+                "attr.channel_axis": "1",
+            }
+        if operator_name == cnn.MAX_POOL2D:
+            return {
+                "attr.kernel_shape": self._format_pair_value(
+                    getattr(module, "kernel_size", (3, 3)),
+                    "3,3",
+                ),
+                "attr.stride": self._format_pair_value(
+                    getattr(module, "stride", (2, 2)),
+                    "2,2",
+                ),
+                "attr.padding": self._format_pair_value(
+                    getattr(module, "padding", (1, 1)),
+                    "1,1",
+                ),
+                "attr.dilation": self._format_pair_value(
+                    getattr(module, "dilation", (1, 1)),
+                    "1,1",
+                ),
+                "attr.ceil_mode": self._format_bool(
+                    getattr(module, "ceil_mode", False)
+                ),
+            }
+        if operator_name == cnn.GLOBAL_AVG_POOL2D:
+            return {
+                "attr.output_size": self._format_pair_value(
+                    getattr(module, "output_size", (1, 1)),
+                    "1,1",
+                ),
+                "attr.reduction_axes": "spatial",
+            }
+        if operator_name == common.FLATTEN:
+            return {
+                "attr.start_dim": str(getattr(module, "start_dim", 1)),
+                "attr.end_dim": str(getattr(module, "end_dim", -1)),
+            }
+        if operator_name == common.LINEAR:
+            return {
+                "attr.has_bias": self._format_bool(
+                    getattr(module, "bias", None) is not None
+                ),
+                "attr.transpose_input": "false",
+                "attr.transpose_weight": "true",
+                "attr.weight_layout": "OI",
+            }
+        return {}
 
     def _fx_static_attrs(self, operator_name: str, node: Any) -> Mapping[str, str]:
         if operator_name == cnn.CONV2D:
@@ -604,6 +888,21 @@ class WhirlExportInterpreter:
             }
 
         return {}
+
+    def _format_pair_value(self, value: Any, default: str) -> str:
+        if value is None:
+            return default
+        if isinstance(value, int):
+            return f"{value},{value}"
+        if isinstance(value, Sequence) and not isinstance(value, str):
+            if len(value) == 1:
+                return f"{value[0]},{value[0]}"
+            if len(value) >= 2:
+                return f"{value[0]},{value[1]}"
+        return default
+
+    def _format_bool(self, value: Any) -> str:
+        return "true" if bool(value) else "false"
 
     def _fx_pair_attr(
         self,

@@ -593,6 +593,14 @@ Current Phase 7 status:
     FX `get_attr` parameters and buffers now become external tensor constants
     backed by SafeTensors-style side-file metadata, including storage file,
     tensor key, offset, byte length, tensor role, and descriptor layout.
+18. The first `call_module` ingestion batch maps common module-owned ResNet
+    layers directly: `nn.Conv2d`, `nn.BatchNorm2d`, `nn.ReLU`,
+    `nn.MaxPool2d`, `nn.AdaptiveAvgPool2d`, `nn.Flatten`, and `nn.Linear`.
+    Module parameters and buffers are routed through the same external tensor
+    constant path as FX `get_attr`, while absent optional parameters such as
+    bias-free convolutions become explicit `absent_parameter` tensor markers.
+    Optional torch coverage now checks a ResNet-like module stem/tail with
+    module-owned conv, batchnorm, pooling, flatten, and classifier operands.
 
 ## Phase 8: torch2whirl Driver Integration
 
@@ -847,10 +855,10 @@ Exit criteria:
    torch2whirl-only tree intentionally does not build that compiler driver.
 9. Add a torch-enabled validation environment or image layer so the optional
    FX capture tests run in CI instead of only skipping in the base Docker image.
-10. Continue the Phase 7 neural-network vertical slice by adding `call_module`
-    ingestion for `nn.Conv2d`, `nn.BatchNorm2d`, `nn.ReLU`, `nn.MaxPool2d`,
-    `nn.AdaptiveAvgPool2d`, and `nn.Linear`, then connect those module-owned
-    parameters and buffers to the external tensor constant path.
+10. Add a torch-enabled validation image or CI lane so FX `call_module` and
+    external parameter-ingestion tests run instead of skipping in the base
+    Docker image, then expand module coverage to downsample/projection
+    residual blocks.
 
 ## Practical Developer Loop
 
