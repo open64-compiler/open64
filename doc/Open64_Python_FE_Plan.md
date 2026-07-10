@@ -895,6 +895,16 @@ Phase 10 deliverables:
 7. A short update to this plan after each OpenXLA/PyTorch-XLA pattern is either
    adopted, deferred, or rejected.
 
+Phase 10 progress checkpoints:
+
+1. The initial mapping matrix records the Open64 storage contract for current
+   FX fragments, including opcode attributes, TensorDescriptorIR fields,
+   metadata, and expected test lanes.
+2. Captured FX `common.add` and `common.matmul` now have golden mock artifact
+   tests, including `graph_source` and graph-operator attributes.
+3. The same `common.add` and `common.matmul` fragments now have native marker
+   inspection coverage for operand names and default attributes.
+
 Exit criteria:
 
 1. The plan clearly distinguishes imported engineering patterns from rejected

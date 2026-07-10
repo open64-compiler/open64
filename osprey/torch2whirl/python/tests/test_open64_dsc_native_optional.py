@@ -81,6 +81,48 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertGreater(rhs.value, 0)
         self.assertGreater(add.value, 0)
 
+    def test_native_backend_appends_add_marker(self) -> None:
+        builder = load_builder("native")
+
+        pu = builder.minimal_program_unit("native_add_model")
+        lhs = builder.tensor_constant(
+            "native_add_lhs",
+            "float32",
+            2,
+            "[2,3]",
+            "splat",
+            "1.0",
+        )
+        rhs = builder.tensor_constant(
+            "native_add_rhs",
+            "float32",
+            2,
+            "[2,3]",
+            "splat",
+            "2.0",
+        )
+        add = builder.common_add(lhs, rhs)
+
+        builder.append_program_unit_marker(pu, lhs)
+        builder.append_program_unit_marker(pu, rhs)
+        builder.append_program_unit_marker(pu, add)
+        markers = builder.inspect_program_unit_markers(pu)
+
+        self.assertEqual(
+            [marker["opcode"] for marker in markers[-3:]],
+            [
+                "common.tensor_const",
+                "common.tensor_const",
+                "common.add",
+            ],
+        )
+        self.assertIn("kid0=native_add_lhs", str(markers[-1]["payload"]))
+        self.assertIn("kid1=native_add_rhs", str(markers[-1]["payload"]))
+        self.assertIn(
+            "attr.broadcast_rule=none",
+            str(markers[-1]["payload"]),
+        )
+
     def test_native_backend_appends_matmul_marker(self) -> None:
         builder = load_builder("native")
 
@@ -117,8 +159,13 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             ],
         )
         self.assertIn("kid0=native_matmul_lhs", str(markers[-1]["payload"]))
+        self.assertIn("kid1=native_matmul_rhs", str(markers[-1]["payload"]))
         self.assertIn(
             "attr.transpose_kid0=false",
+            str(markers[-1]["payload"]),
+        )
+        self.assertIn(
+            "attr.transpose_kid1=false",
             str(markers[-1]["payload"]),
         )
 
