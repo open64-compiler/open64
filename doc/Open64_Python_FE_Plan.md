@@ -917,6 +917,48 @@ Phase 10 progress checkpoints:
    top-level sections, entry PU shape, tensor descriptors, values, and graph
    operator records.
 
+Phase 10 pattern decisions:
+
+| Reference pattern | Decision | Open64 torch2whirl application |
+| --- | --- | --- |
+| Python-owned model capture and graph traversal | Adopt | Keep `WhirlExportInterpreter` as the Python coordinator over FX now and `torch.export` later. |
+| Compiled compiler-owned IR construction | Adopt | Keep object creation behind `open64_dsc._whirl`; Python passes opaque handles and manifests. |
+| Serialized compiler artifact boundary | Adopt | Keep binary very-high-level WHIRL as the handoff to `ir_b2a` and `opencc -x whirl`. |
+| Small graph-fragment conformance tests | Adopt | Keep add/matmul/CNN fragments as the required path before broader ResNet ingestion. |
+| Golden or structured artifact inspection | Adopt | Keep mock golden artifacts plus native `ir_b2a -st` inspection for each promoted fragment. |
+| StableHLO operator namespace | Reject | Do not import StableHLO as the Open64 DSL operator set. Emit Open64 `common.*` and `cnn.*` operators. |
+| XLA runtime/backend execution model | Reject | Do not pull XLA runtime concepts into the torch2whirl frontend bridge. Lowering remains Open64-owned downstream work. |
+| Direct combined `opencc` frontend mode | Defer | Keep standalone `torch2whirl -> artifact -> opencc -x whirl` until ResNet ingestion and artifact inspection are stable. |
+| `torch.export` as the primary capture frontend | Defer | Continue using FX for the current vertical slice; add `torch.export` only after the FX contract is stable enough to compare against. |
+
+Phase 10 completion status:
+
+1. Reference matrix: complete.
+2. Captured-graph manifest conformance: complete for `common.add`.
+3. Golden mock artifacts: complete for captured `common.add` and
+   `common.matmul`.
+4. Native marker inspection: complete for `common.add` and `common.matmul`.
+5. Finalized artifact inspection: complete for Python-native and driver-native
+   `ir_b2a -st` add/matmul paths.
+6. Negative FX/CLI suite: complete for the current supported surface.
+7. Pattern adoption/defer/reject record: complete.
+
+Next implementation checklist:
+
+1. Keep FX as the active capture source and add `torch.export` only as a
+   side-by-side comparison lane.
+2. Promote a new operator only after it has FX manifest coverage, mock artifact
+   coverage when text-stable, native marker inspection, verifier coverage, and
+   artifact inspection or an explicit deferred-artifact note.
+3. Start the next ResNet ingestion pass from the existing stem/projection/tail
+   FX tests and make each new gap visible as either an operator mapping,
+   descriptor, external tensor, verifier, or artifact-inspection task.
+4. Keep SafeTensors metadata as the canonical checkpoint reference for weights,
+   bias, batchnorm scale, running mean, and running variance until real payload
+   emission is implemented.
+5. Keep backend/cg isolation checks in every batch; Phase 10 does not change
+   the standalone frontend boundary.
+
 Exit criteria:
 
 1. The plan clearly distinguishes imported engineering patterns from rejected
