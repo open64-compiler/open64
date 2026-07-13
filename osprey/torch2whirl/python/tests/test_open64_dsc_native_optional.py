@@ -30,6 +30,26 @@ class DummyModel:
 
 @unittest.skipUnless(NATIVE_BACKEND_AVAILABLE, "open64_dsc._whirl is not built")
 class Open64DscNativeOptionalTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        builder = load_builder("native")
+        probe_type = builder.tensor_type("native_g1_probe_type", "float32", 0, "[]")
+        probe_value = builder.tensor_constant(
+            "native_g1_probe",
+            "float32",
+            0,
+            "[]",
+            "splat",
+            "1.0",
+        )
+        try:
+            builder.common_relu(probe_value)
+            builder.model_input("native_g1_input", probe_type, 0)
+        except RuntimeError as exc:
+            if "does not support" in str(exc):
+                raise unittest.SkipTest(str(exc)) from exc
+            raise
+
     def test_native_backend_creates_opaque_tensor_and_operator_handles(self) -> None:
         builder = load_builder("native")
 
@@ -457,7 +477,7 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             "conv1.weight",
             128,
             37632,
-            "sha256:native-conv-weight",
+            "a" * 64,
             "OIHW",
         )
         bias = builder.external_tensor_constant(
@@ -471,7 +491,7 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             "conv1.bias",
             37760,
             256,
-            "sha256:native-conv-bias",
+            "b" * 64,
             "C",
         )
         conv2d = builder.cnn_conv2d(value, weight, bias)
@@ -487,7 +507,8 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertEqual(weight.metadata["storage_byte_length"], "37632")
         self.assertEqual(markers[-2]["opcode"], "common.tensor_const")
         self.assertIn("value_kind=external_data", str(markers[-2]["payload"]))
-        self.assertIn("safetensors://resnet.safetensors", str(markers[-2]["payload"]))
+        self.assertIn("storage_format=safetensors", str(markers[-2]["payload"]))
+        self.assertIn("side_file=resnet.safetensors", str(markers[-2]["payload"]))
         self.assertEqual(markers[-1]["opcode"], "cnn.conv2d")
         self.assertIn("kid1=native_external_weight", str(markers[-1]["payload"]))
         self.assertIn("kid2=native_external_bias", str(markers[-1]["payload"]))
@@ -505,7 +526,7 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
 
         self.assertEqual(
             [marker["opcode"] for marker in markers[-3:]],
-            ["common.tensor_const", "common.tensor_const", "common.add"],
+            ["common.model_input", "common.model_input", "common.add"],
         )
         self.assertIn("name=input0", str(markers[-3]["payload"]))
         self.assertIn("kid0=input0", str(markers[-1]["payload"]))

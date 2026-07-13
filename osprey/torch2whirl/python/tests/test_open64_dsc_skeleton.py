@@ -251,8 +251,10 @@ class Open64DscSkeletonTest(unittest.TestCase):
         )
         self.assertEqual(
             module.values[0].metadata["lowering_hint"],
-            "example_input",
+            "model_input",
         )
+        self.assertEqual(module.values[0].value_kind, "model_input")
+        self.assertEqual(module.values[0].metadata["input_ordinal"], "0")
 
     def test_options_validate_backend(self) -> None:
         with self.assertRaises(ValueError):
@@ -397,6 +399,28 @@ class Open64DscSkeletonTest(unittest.TestCase):
         ):
             builder.common_relu(ValueHandle(1))
 
+    def test_native_capability_failure_names_g1_value_source(self) -> None:
+        builder = WhirlBuilder(FailingNativeBackend())
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"native backend does not support common\.model_input\.v2",
+        ):
+            builder.model_input("input0", ValueHandle(1), 0)  # type: ignore[arg-type]
+
+    def test_mock_backend_creates_model_input_value(self) -> None:
+        builder = load_builder("mock")
+        tensor_type = builder.tensor_type("model_input_type", "float32", 4, "[1,3,8,8]")
+        value = builder.model_input("input0", tensor_type, 0)
+        pu = builder.minimal_program_unit("model_input_forward")
+
+        builder.append_program_unit_value(pu, value)
+        annotations = builder.inspect_program_unit_values(pu)
+
+        self.assertEqual(annotations[-1]["opcode"], "common.model_input")
+        self.assertEqual(annotations[-1]["version"], 2)
+        self.assertIn("attr.input_ordinal=0", str(annotations[-1]["payload"]))
+
     def test_gatekeeper_accepts_valid_module(self) -> None:
         verify_module(self._gatekeeper_module())
 
@@ -482,6 +506,60 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
         with self.assertRaisesRegex(WhirlVerificationError, "checksum"):
             verify_module(stale_module)
+
+    def test_gatekeeper_rejects_duplicate_external_payload_key(self) -> None:
+        module = self._external_payload_module()
+        duplicate_module = WhirlModule(
+            options=module.options,
+            model_name=module.model_name,
+            input_count=module.input_count,
+            entry_function=module.entry_function,
+            graph_source=module.graph_source,
+            operators=module.operators,
+            tensor_types=module.tensor_types,
+            values=module.values,
+            tensor_payloads=[
+                module.tensor_payloads[0],
+                module.tensor_payloads[0],
+            ],
+            graph_operators=module.graph_operators,
+        )
+
+        with self.assertRaisesRegex(WhirlVerificationError, "duplicate"):
+            verify_module(duplicate_module)
+
+    def test_gatekeeper_rejects_overlapping_external_payload_ranges(self) -> None:
+        module = self._external_payload_module()
+        other_data = b"\x00\x00@@"
+        other_checksum = hashlib.sha256(other_data).hexdigest()
+        overlapping_payload = WhirlTensorPayloadRecord(
+            module.tensor_payloads[0].storage_file,
+            "other_weight",
+            "float32",
+            "[1]",
+            4,
+            len(other_data),
+            other_checksum,
+            other_data,
+        )
+        overlap_module = WhirlModule(
+            options=module.options,
+            model_name=module.model_name,
+            input_count=module.input_count,
+            entry_function=module.entry_function,
+            graph_source=module.graph_source,
+            operators=module.operators,
+            tensor_types=module.tensor_types,
+            values=module.values,
+            tensor_payloads=[
+                module.tensor_payloads[0],
+                overlapping_payload,
+            ],
+            graph_operators=module.graph_operators,
+        )
+
+        with self.assertRaisesRegex(WhirlVerificationError, "overlapping"):
+            verify_module(overlap_module)
 
     def test_gatekeeper_rejects_external_payload_shape_mismatch(self) -> None:
         module = self._external_payload_module()
@@ -1799,7 +1877,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "float32",
             4,
             "[1,3,224,224]",
-            "example_input",
+            "model_input",
             "external_conv_input",
         )
         weight = builder.external_tensor_constant(
@@ -1813,7 +1891,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "conv1.weight",
             128,
             37632,
-            "sha256:conv-weight",
+            "a" * 64,
             "OIHW",
         )
         bias = builder.external_tensor_constant(
@@ -1827,7 +1905,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "conv1.bias",
             37760,
             256,
-            "sha256:conv-bias",
+            "b" * 64,
             "C",
         )
         conv2d = builder.cnn_conv2d(value, weight, bias)
@@ -1848,7 +1926,8 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertEqual(markers[-2]["opcode"], "common.tensor_const")
         self.assertIn("name=external_conv_weight", str(markers[-2]["payload"]))
         self.assertIn("value_kind=external_data", str(markers[-2]["payload"]))
-        self.assertIn("safetensors://resnet.safetensors", str(markers[-2]["payload"]))
+        self.assertIn("storage_format=safetensors", str(markers[-2]["payload"]))
+        self.assertIn("side_file=resnet.safetensors", str(markers[-2]["payload"]))
         self.assertEqual(markers[-1]["opcode"], "cnn.conv2d")
         self.assertIn("kid1=external_conv_weight", str(markers[-1]["payload"]))
         self.assertIn("kid2=external_conv_bias", str(markers[-1]["payload"]))
@@ -1933,8 +2012,8 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("operator.0=common.add", text)
         self.assertIn("tensor_type.0=input0_type:float32:[]", text)
         self.assertIn("tensor_descriptor.0=float32:0:[]:input0", text)
-        self.assertIn("value.0=input0:input0_type:example_input", text)
-        self.assertIn("value_metadata.0=input0:example_input", text)
+        self.assertIn("value.0=input0:input0_type:model_input", text)
+        self.assertIn("value_metadata.0=input0:model_input", text)
         self.assertIn("graph_operator.0=common.add:input0,input1", text)
 
 

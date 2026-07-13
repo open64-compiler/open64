@@ -1137,19 +1137,17 @@ class WhirlExportInterpreter:
                 "lineage": name,
             }
             self.builder().attach_tensor_descriptor(tensor_type, descriptor)
-            value = self.builder().tensor_constant(
+            value = self.builder().model_input(
                 name,
-                dtype,
-                len(shape),
-                logical_shape,
-                "example_input",
-                name,
+                tensor_type,
+                ordinal,
             )
             symbol = self.builder().symbol(name, tensor_type)
             metadata = {
                 "source_layer_name": name,
-                "lowering_hint": "example_input",
+                "lowering_hint": "model_input",
                 "logical_shape": logical_shape,
+                "input_ordinal": str(ordinal),
             }
             self.builder().attach_symbol_metadata(symbol, metadata)
 
@@ -1168,7 +1166,7 @@ class WhirlExportInterpreter:
                     name=name,
                     handle=value.value,
                     type_name=type_name,
-                    value_kind="example_input",
+                    value_kind="model_input",
                     symbol_handle=symbol.value,
                     metadata=metadata,
                 )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 
 from .mapping import cnn, common
@@ -131,6 +132,7 @@ def _verify_external_payload_records(
     module: WhirlModule,
     tensor_types: Mapping[str, WhirlTensorTypeRecord],
 ) -> None:
+    _verify_payload_record_set(module.tensor_payloads)
     payloads = {
         (payload.storage_file, payload.tensor_key): payload
         for payload in module.tensor_payloads
@@ -194,6 +196,64 @@ def _verify_external_payload_records(
                 f"external value {value.name} has no matching tensor payload"
             )
         _verify_external_payload_match(value, tensor_type, payload)
+
+
+def _verify_payload_record_set(
+    payloads: Sequence[WhirlTensorPayloadRecord],
+) -> None:
+    seen_keys = set()
+    ranges_by_file: Dict[str, list[Tuple[int, int, str]]] = {}
+
+    for payload in payloads:
+        key = (payload.storage_file, payload.tensor_key)
+        if key in seen_keys:
+            raise WhirlVerificationError(
+                f"duplicate tensor payload key: {payload.tensor_key}"
+            )
+        seen_keys.add(key)
+
+        if payload.dtype not in _SUPPORTED_DTYPES:
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} has unsupported dtype: "
+                f"{payload.dtype}"
+            )
+        if payload.byte_offset < 0:
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} has negative offset"
+            )
+        if payload.byte_length <= 0:
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} has non-positive length"
+            )
+        if payload.byte_length != len(payload.data):
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} data length mismatch"
+            )
+        checksum = hashlib.sha256(payload.data).hexdigest()
+        if payload.checksum != checksum:
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} checksum mismatch"
+            )
+
+        ranges_by_file.setdefault(payload.storage_file, []).append(
+            (
+                payload.byte_offset,
+                payload.byte_offset + payload.byte_length,
+                payload.tensor_key,
+            )
+        )
+
+    for ranges in ranges_by_file.values():
+        previous_end = -1
+        previous_key = ""
+        for start, end, tensor_key in sorted(ranges):
+            if start < previous_end:
+                raise WhirlVerificationError(
+                    "overlapping tensor payload ranges: "
+                    f"{previous_key} and {tensor_key}"
+                )
+            previous_end = end
+            previous_key = tensor_key
 
 
 def _metadata_int(value: WhirlValueRecord, field: str) -> int:

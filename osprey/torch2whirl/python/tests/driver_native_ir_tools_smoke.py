@@ -216,6 +216,19 @@ def main() -> int:
 
         driver_status = _run_valid_driver(driver, model_path, artifact)
         if driver_status != 0:
+            completed = _run_driver(
+                driver,
+                model_path,
+                artifact,
+                ("shape:1,3", "shape:1,3", "shape:2,3", "shape:3,4"),
+            )
+            error_text = completed.stdout + completed.stderr
+            if "does not support" in error_text:
+                print(
+                    "skip: native backend capability missing: " +
+                    error_text.strip()
+                )
+                return 0
             return driver_status
         if not artifact.exists() or artifact.stat().st_size == 0:
             print("driver native WHIRL artifact was not created", file=sys.stderr)

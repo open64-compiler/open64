@@ -137,10 +137,10 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 tensor_descriptor.0=float32:2:[2,3]:input0
                 tensor_type.1=input1_type:float32:[2,3]
                 tensor_descriptor.1=float32:2:[2,3]:input1
-                value.0=input0:input0_type:example_input
-                value_metadata.0=input0:example_input
-                value.1=input1:input1_type:example_input
-                value_metadata.1=input1:example_input
+                value.0=input0:input0_type:model_input
+                value_metadata.0=input0:model_input
+                value.1=input1:input1_type:model_input
+                value_metadata.1=input1:model_input
                 graph_operator.0=common.add:input0,input1
                 graph_operator_attrs.0=attr.broadcast_rule=none
                 """
@@ -201,10 +201,10 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 tensor_descriptor.0=float32:2:[2,3]:input0
                 tensor_type.1=input1_type:float32:[3,4]
                 tensor_descriptor.1=float32:2:[3,4]:input1
-                value.0=input0:input0_type:example_input
-                value_metadata.0=input0:example_input
-                value.1=input1:input1_type:example_input
-                value_metadata.1=input1:example_input
+                value.0=input0:input0_type:model_input
+                value_metadata.0=input0:model_input
+                value.1=input1:input1_type:model_input
+                value_metadata.1=input1:model_input
                 graph_operator.0=common.matmul:input0,input1
                 graph_operator_attrs.0=attr.transpose_kid0=false,attr.transpose_kid1=false
                 """

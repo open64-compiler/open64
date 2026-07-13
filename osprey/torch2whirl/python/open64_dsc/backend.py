@@ -38,6 +38,22 @@ class WhirlBackend(Protocol):
     ) -> int:
         ...
 
+    def create_model_input(
+        self,
+        name: str,
+        tensor_type: int,
+        input_ordinal: int,
+    ) -> int:
+        ...
+
+    def create_external_tensor_constant(
+        self,
+        name: str,
+        tensor_type: int,
+        reference: Mapping[str, object],
+    ) -> int:
+        ...
+
     def create_operator(
         self,
         opcode_name: str,
