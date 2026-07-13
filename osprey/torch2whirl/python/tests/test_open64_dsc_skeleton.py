@@ -239,6 +239,10 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertEqual(len(module.values), 2)
         self.assertEqual(len(module.graph_operators), 1)
         self.assertEqual(module.graph_operators[0].kids, ["input0", "input1"])
+        self.assertEqual(
+            module.graph_operators[0].metadata["lowering_hint"],
+            "synthetic_add",
+        )
         self.assertEqual(module.tensor_types[0].descriptor["dtype"], "float32")
         self.assertEqual(module.tensor_types[0].descriptor["rank"], 0)
         self.assertEqual(
@@ -255,6 +259,26 @@ class Open64DscSkeletonTest(unittest.TestCase):
         )
         self.assertEqual(module.values[0].value_kind, "model_input")
         self.assertEqual(module.values[0].metadata["input_ordinal"], "0")
+
+    def test_operator_record_manifest_includes_metadata(self) -> None:
+        operator = WhirlOperatorRecord(
+            "common.relu",
+            42,
+            ["input0"],
+            {},
+            metadata={
+                "fx_node_name": "relu",
+                "lowering_hint": "fx:common.relu",
+            },
+        )
+
+        self.assertEqual(
+            operator.to_manifest()["metadata"],
+            {
+                "fx_node_name": "relu",
+                "lowering_hint": "fx:common.relu",
+            },
+        )
 
     def test_options_validate_backend(self) -> None:
         with self.assertRaises(ValueError):

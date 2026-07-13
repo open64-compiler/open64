@@ -25,6 +25,7 @@ from .options import WhirlExportOptions
 class _MappedOperatorPlan:
     name: str
     attrs: Mapping[str, str]
+    metadata: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ class WhirlExportInterpreter:
                     handle=handle.value,
                     kids=[value.name for value in values[:2]],
                     attrs=attrs,
+                    metadata={"lowering_hint": "synthetic_add"},
                 )
             )
 
@@ -203,6 +205,7 @@ class WhirlExportInterpreter:
                     handle=handle.value,
                     kids=[operand.name for operand in operands],
                     attrs=attrs,
+                    metadata=operator_plan.metadata,
                 )
             )
 
@@ -228,6 +231,10 @@ class WhirlExportInterpreter:
                 handle=handle.value,
                 kids=[output_value.name],
                 attrs=attrs,
+                metadata={
+                    "lowering_hint": "classifier_output",
+                    "source_operator": output_value.name,
+                },
             )
         )
 
@@ -844,9 +851,17 @@ class WhirlExportInterpreter:
         target = getattr(node, "target", None)
 
         if node_op == "call_function" and target is operator.add:
-            return _MappedOperatorPlan(common.ADD, {})
+            return _MappedOperatorPlan(
+                common.ADD,
+                {},
+                self._fx_node_metadata(node, common.ADD),
+            )
         if node_op == "call_function" and target is operator.matmul:
-            return _MappedOperatorPlan(common.MATMUL, {})
+            return _MappedOperatorPlan(
+                common.MATMUL,
+                {},
+                self._fx_node_metadata(node, common.MATMUL),
+            )
 
         target_name = getattr(target, "__name__", str(target))
         if node_op in {"call_function", "call_method"}:
@@ -859,6 +874,7 @@ class WhirlExportInterpreter:
             return _MappedOperatorPlan(
                 operator_name,
                 self._fx_static_attrs(operator_name, node),
+                self._fx_node_metadata(node, operator_name),
             )
 
         if node_op == "call_module" and traced_module is not None:
@@ -869,9 +885,47 @@ class WhirlExportInterpreter:
             return _MappedOperatorPlan(
                 operator_name,
                 self._fx_module_static_attrs(operator_name, module),
+                self._fx_node_metadata(
+                    node,
+                    operator_name,
+                    source_module=module,
+                    source_module_path=str(target),
+                ),
             )
 
         return None
+
+    def _fx_node_metadata(
+        self,
+        node: Any,
+        operator_name: str,
+        source_module: Any = None,
+        source_module_path: str = "",
+    ) -> Mapping[str, str]:
+        target = getattr(node, "target", "")
+        metadata = {
+            "fx_node_op": str(getattr(node, "op", "")),
+            "fx_node_name": str(getattr(node, "name", "")),
+            "fx_target": self._fx_target_text(target),
+            "lowering_hint": f"fx:{operator_name}",
+        }
+        if source_module_path:
+            metadata["source_module_path"] = source_module_path
+        if source_module is not None:
+            metadata["source_module_type"] = source_module.__class__.__name__
+        return {
+            name: value
+            for name, value in metadata.items()
+            if value
+        }
+
+    def _fx_target_text(self, target: Any) -> str:
+        if isinstance(target, str):
+            return target
+        name = getattr(target, "__name__", "")
+        if name:
+            return name
+        return str(target)
 
     def _map_fx_module(self, module: Any) -> Optional[str]:
         module_name = module.__class__.__name__

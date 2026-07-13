@@ -459,6 +459,17 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
                     for name, value in sorted(attrs.items())
                 )
                 lines.append(f"graph_operator_attrs.{index}={attr_text}")
+                metadata = operator.get("metadata", {})
+                if not isinstance(metadata, Mapping):
+                    metadata = {}
+                if metadata:
+                    metadata_text = ",".join(
+                        f"{name}={value}"
+                        for name, value in sorted(metadata.items())
+                    )
+                    lines.append(
+                        f"graph_operator_metadata.{index}={metadata_text}"
+                    )
 
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return True
