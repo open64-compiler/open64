@@ -23,10 +23,20 @@ from open64_dsc.module import (
 from open64_dsc import WhirlExportOptions, WhirlModule
 from open64_dsc import WhirlVerificationError, export_to_whirl
 from open64_dsc import load_builder, save_as_whirl, verify_module
+from open64_dsc.builder import ValueHandle, WhirlBuilder
+from open64_dsc.mapping.contract import all_operator_contracts
 
 
 class DummyModel:
     pass
+
+
+class FailingNativeBackend:
+    def backend_name(self) -> str:
+        return "native"
+
+    def create_operator(self, opcode_name, version, kids, attrs):
+        raise RuntimeError("native operator unavailable")
 
 
 class Open64DscSkeletonTest(unittest.TestCase):
@@ -250,6 +260,142 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
     def test_options_default_to_verification_enabled(self) -> None:
         self.assertTrue(WhirlExportOptions().verify)
+
+    def test_published_resnet_operator_contracts_do_not_drift(self) -> None:
+        contracts = all_operator_contracts()
+        expected = {
+            "common.model_input": (2, 0, ("attr.input_ordinal",)),
+            "common.tensor_const": (1, 0, ("value_kind", "value")),
+            "common.add": (1, 2, ("attr.broadcast_rule",)),
+            "common.matmul": (
+                1,
+                2,
+                ("attr.transpose_kid0", "attr.transpose_kid1"),
+            ),
+            "common.relu": (2, 1, ()),
+            "common.flatten": (
+                2,
+                1,
+                ("attr.start_dim", "attr.end_dim"),
+            ),
+            "common.residual_add": (
+                2,
+                2,
+                (
+                    "attr.broadcast_rule",
+                    "attr.shape_check",
+                    "attr.residual_path",
+                ),
+            ),
+            "common.linear": (
+                2,
+                3,
+                (
+                    "attr.has_bias",
+                    "attr.transpose_input",
+                    "attr.transpose_weight",
+                    "attr.weight_layout",
+                ),
+            ),
+            "common.output_logits": (2, 1, ("attr.semantic",)),
+            "cnn.conv2d": (
+                2,
+                3,
+                (
+                    "attr.kernel_shape",
+                    "attr.stride",
+                    "attr.padding",
+                    "attr.dilation",
+                    "attr.groups",
+                    "attr.input_layout",
+                    "attr.weight_layout",
+                    "attr.output_layout",
+                ),
+            ),
+            "cnn.batch_norm_infer": (
+                2,
+                5,
+                (
+                    "attr.epsilon",
+                    "attr.training",
+                    "attr.input_layout",
+                    "attr.channel_axis",
+                ),
+            ),
+            "cnn.max_pool2d": (
+                2,
+                1,
+                (
+                    "attr.kernel_shape",
+                    "attr.stride",
+                    "attr.padding",
+                    "attr.dilation",
+                    "attr.ceil_mode",
+                ),
+            ),
+            "cnn.global_avg_pool2d": (
+                2,
+                1,
+                ("attr.output_size", "attr.reduction_axes"),
+            ),
+        }
+
+        self.assertEqual(set(contracts), set(expected))
+        for name, (version, arity, attrs) in expected.items():
+            self.assertEqual(contracts[name].version, version)
+            self.assertEqual(contracts[name].arity, arity)
+            self.assertEqual(tuple(contracts[name].required_attrs), attrs)
+
+    def test_builder_uses_published_operator_versions(self) -> None:
+        builder = load_builder("mock")
+        lhs = builder.tensor_constant(
+            "version_lhs",
+            "float32",
+            4,
+            "[1,3,8,8]",
+            "splat",
+            "1.0",
+        )
+        rhs = builder.tensor_constant(
+            "version_rhs",
+            "float32",
+            4,
+            "[1,3,8,8]",
+            "splat",
+            "2.0",
+        )
+        add = builder.common_add(lhs, rhs)
+        relu = builder.common_relu(lhs)
+        residual = builder.common_residual_add(lhs, rhs)
+        logits = builder.common_output_logits(lhs)
+        pu = builder.minimal_program_unit("version_forward")
+        for value in (add, relu, residual, logits):
+            builder.append_program_unit_value(pu, value)
+
+        annotations = builder.inspect_program_unit_values(pu)
+
+        self.assertEqual(
+            [(item["opcode"], item["version"]) for item in annotations],
+            [
+                ("common.add", 1),
+                ("common.relu", 2),
+                ("common.residual_add", 2),
+                ("common.output_logits", 2),
+            ],
+        )
+        self.assertIn(
+            "attr.semantic=classifier_logits",
+            str(annotations[-1]["payload"]),
+        )
+
+    def test_native_capability_failure_names_operator_version(self) -> None:
+        builder = WhirlBuilder(FailingNativeBackend())
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"native backend does not support common\.relu\.v2",
+        ):
+            builder.common_relu(ValueHandle(1))
 
     def test_gatekeeper_accepts_valid_module(self) -> None:
         verify_module(self._gatekeeper_module())
@@ -489,6 +635,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 {
                     "attr.broadcast_rule": "numpy",
                     "attr.shape_check": "exact",
+                    "attr.residual_path": "true",
                 },
             )
         ]
@@ -1022,7 +1169,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ["input0", "scale", "bias", "mean", "var"],
                 {
                     "attr.epsilon": "1e-05",
-                    "attr.momentum": "0.1",
                     "attr.training": "false",
                     "attr.input_layout": "NCHW",
                     "attr.channel_axis": "1",
@@ -1060,7 +1206,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ["input0", "scale", "bias", "mean", "var"],
                 {
                     "attr.epsilon": "1e-05",
-                    "attr.momentum": "0.1",
                     "attr.training": "false",
                     "attr.input_layout": "NCHW",
                     "attr.channel_axis": "1",
@@ -1085,7 +1230,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ["input0", "input1", "input1", "input1", "input1"],
                 {
                     "attr.epsilon": "1e-05",
-                    "attr.momentum": "0.1",
                     "attr.training": "true",
                     "attr.input_layout": "NCHW",
                     "attr.channel_axis": "1",
@@ -1192,7 +1336,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ["cnn.conv2d", "scale", "bn_bias", "mean", "var"],
                 {
                     "attr.epsilon": "1e-05",
-                    "attr.momentum": "0.1",
                     "attr.training": "false",
                     "attr.input_layout": "NCHW",
                     "attr.channel_axis": "1",
@@ -1550,7 +1693,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
             running_var,
             {
                 "attr.epsilon": "1e-05",
-                "attr.momentum": "0.1",
                 "attr.training": "false",
                 "attr.input_layout": "NCHW",
                 "attr.channel_axis": "1",

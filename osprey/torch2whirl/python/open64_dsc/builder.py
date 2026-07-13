@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from typing import Mapping, Optional, Sequence
 
 from .backend import WhirlBackend, load_backend
+from .mapping import cnn, common
+from .mapping.contract import operator_version
 
 
 @dataclass(frozen=True)
@@ -281,13 +283,27 @@ class WhirlBuilder:
         kids: Sequence[ValueHandle],
         attrs: Mapping[str, str],
     ) -> OperatorHandle:
-        return OperatorHandle(
-            self._backend.create_operator(
+        try:
+            handle = self._backend.create_operator(
                 opcode_name,
                 version,
                 [kid.value for kid in kids],
                 attrs,
             )
+        except RuntimeError as exc:
+            raise self._operator_capability_error(opcode_name, version) from exc
+        if handle <= 0:
+            raise self._operator_capability_error(opcode_name, version)
+        return OperatorHandle(handle)
+
+    def _operator_capability_error(
+        self,
+        opcode_name: str,
+        version: int,
+    ) -> RuntimeError:
+        return RuntimeError(
+            f"{self.backend_name()} backend does not support "
+            f"{opcode_name}.v{version}"
         )
 
     def common_add(
@@ -297,8 +313,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "common.add",
-            1,
+            common.ADD,
+            operator_version(common.ADD),
             [lhs, rhs],
             attrs or {"attr.broadcast_rule": "none"},
         )
@@ -310,8 +326,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "common.matmul",
-            1,
+            common.MATMUL,
+            operator_version(common.MATMUL),
             [lhs, rhs],
             attrs or {
                 "attr.transpose_kid0": "false",
@@ -326,8 +342,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "common.residual_add",
-            1,
+            common.RESIDUAL_ADD,
+            operator_version(common.RESIDUAL_ADD),
             [lhs, rhs],
             attrs or {
                 "attr.broadcast_rule": "none",
@@ -344,8 +360,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "common.linear",
-            1,
+            common.LINEAR,
+            operator_version(common.LINEAR),
             [value, weight, bias],
             attrs or {
                 "attr.has_bias": "true",
@@ -361,8 +377,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "common.relu",
-            1,
+            common.RELU,
+            operator_version(common.RELU),
             [value],
             attrs or {},
         )
@@ -373,8 +389,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "common.flatten",
-            1,
+            common.FLATTEN,
+            operator_version(common.FLATTEN),
             [value],
             attrs or {
                 "attr.start_dim": "1",
@@ -388,10 +404,10 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "common.output_logits",
-            1,
+            common.OUTPUT_LOGITS,
+            operator_version(common.OUTPUT_LOGITS),
             [value],
-            attrs or {},
+            attrs or {"attr.semantic": "classifier_logits"},
         )
 
     def cnn_max_pool2d(
@@ -400,8 +416,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "cnn.max_pool2d",
-            1,
+            cnn.MAX_POOL2D,
+            operator_version(cnn.MAX_POOL2D),
             [value],
             attrs or {
                 "attr.kernel_shape": "3,3",
@@ -418,8 +434,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "cnn.global_avg_pool2d",
-            1,
+            cnn.GLOBAL_AVG_POOL2D,
+            operator_version(cnn.GLOBAL_AVG_POOL2D),
             [value],
             attrs or {
                 "attr.output_size": "1,1",
@@ -435,8 +451,8 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "cnn.conv2d",
-            1,
+            cnn.CONV2D,
+            operator_version(cnn.CONV2D),
             [value, weight, bias],
             attrs or {
                 "attr.kernel_shape": "3,3",
@@ -460,12 +476,11 @@ class WhirlBuilder:
         attrs: Optional[Mapping[str, str]] = None,
     ) -> OperatorHandle:
         return self.operator(
-            "cnn.batch_norm_infer",
-            1,
+            cnn.BATCH_NORM_INFER,
+            operator_version(cnn.BATCH_NORM_INFER),
             [value, scale, bias, running_mean, running_var],
             attrs or {
                 "attr.epsilon": "1e-05",
-                "attr.momentum": "0.1",
                 "attr.training": "false",
                 "attr.input_layout": "NCHW",
                 "attr.channel_axis": "1",

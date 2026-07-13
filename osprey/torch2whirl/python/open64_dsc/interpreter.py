@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .builder import ValueHandle, WhirlBuilder, load_builder
 from .mapping import cnn, common
+from .mapping.contract import operator_arity
 from .module import (
     WhirlModule,
     WhirlOperatorRecord,
@@ -231,22 +232,7 @@ class WhirlExportInterpreter:
         )
 
     def _operator_arity(self, operator_name: str) -> int:
-        if (
-            operator_name in common.UNARY_OPERATORS or
-            operator_name in cnn.UNARY_OPERATORS
-        ):
-            return 1
-        if operator_name in {common.ADD, common.MATMUL, common.RESIDUAL_ADD}:
-            return 2
-        if (
-            operator_name in common.TERNARY_OPERATORS or
-            operator_name in cnn.TERNARY_OPERATORS
-        ):
-            return 3
-        if operator_name in cnn.FIVE_INPUT_OPERATORS:
-            return 5
-
-        raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
+        return operator_arity(operator_name)
 
     def _emit_operator(
         self,
@@ -349,7 +335,6 @@ class WhirlExportInterpreter:
         if operator_name == cnn.BATCH_NORM_INFER:
             attrs = {
                 "attr.epsilon": "1e-05",
-                "attr.momentum": "0.1",
                 "attr.training": "false",
                 "attr.input_layout": "NCHW",
                 "attr.channel_axis": "1",
@@ -937,7 +922,6 @@ class WhirlExportInterpreter:
         if operator_name == cnn.BATCH_NORM_INFER:
             return {
                 "attr.epsilon": str(getattr(module, "eps", 1e-5)),
-                "attr.momentum": str(getattr(module, "momentum", 0.1)),
                 "attr.training": self._format_bool(
                     getattr(module, "training", False)
                 ),
@@ -1015,13 +999,6 @@ class WhirlExportInterpreter:
             kwargs = getattr(node, "kwargs", {})
             return {
                 "attr.epsilon": self._fx_text_attr(args, kwargs, "eps", 7, "1e-05"),
-                "attr.momentum": self._fx_text_attr(
-                    args,
-                    kwargs,
-                    "momentum",
-                    6,
-                    "0.1",
-                ),
                 "attr.training": self._fx_bool_attr(
                     args,
                     kwargs,
