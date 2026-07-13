@@ -11,7 +11,7 @@ formalization. Keep this file updated as each batch lands.
 - T1: complete in commit `0ef5d18a` for Python/mock paths; native certification
   remains capability-gated until the common/com G1/G2 APIs land in this
   worktree.
-- T2: active. The subagent-owned slice is dependency order, operator attrs,
+- T2: complete. The subagent-owned slice is dependency order, operator attrs,
   source metadata, mock artifacts, and tests that do not require new native DSL
   nodes.
 - T2 progress in this branch now includes operator-level source metadata in the
@@ -58,7 +58,7 @@ Status: complete for frontend/mock paths.
 
 ### T2: ResNet Operator Mapping Evidence
 
-Status: active.
+Status: complete.
 
 - Confirmed exact FX dependency order for ResNet stem, projection block, basic
   block, and classifier tail.
@@ -83,25 +83,47 @@ Status: blocked on G1/G2 landing in this worktree.
 
 ### T4: Real ResNet Fixture
 
-Status: pending.
+Status: complete.
 
-- Add a minimal ResNet-like fixture that avoids external network downloads.
-- Confirm exported graph operators, external payload metadata, and classifier
+- Added a minimal ResNet-like fixture that avoids external network downloads.
+- Confirmed exported graph operators, external payload metadata, and classifier
   logits operator.
+- Covered the fixture through both FX optional tests and standalone driver
+  smoke tests.
 
 ### T5: Driver Integration
 
-Status: pending.
+Status: complete.
 
-- Route the standalone `torch2whirl` driver through the same Python ingestion
+- Routed the standalone `torch2whirl` driver through the same Python ingestion
   path for local model scripts.
-- Keep Linux Docker and macOS build-tree validation in the standard smoke loop.
+- Validated the driver path with mock WHIRL output, ResNet operator metadata,
+  SafeTensors side-file records, and invalid-graph rejection.
+- Kept Linux Docker and macOS build-tree validation in the standard smoke loop.
 
 ### T6: Pull Request Exit Evidence
 
-Status: pending.
+Status: complete.
 
-- Record exact commands for Python tests, Docker PyTorch tests, native optional
+- Recorded exact commands for Python tests, Docker PyTorch tests, native optional
   tests, diff hygiene, no-tab scan, and backend-isolation scan.
-- Summarize remaining native dependencies clearly if common/com work is still
+- Summarized remaining native dependencies clearly because common/com work is still
   outside this branch.
+
+Exit evidence commands:
+
+- `PYTHONPYCACHEPREFIX=/private/tmp/open64-pycache python3 -m compileall -q
+  osprey/torch2whirl/python/open64_dsc`
+- `make -C osprey/torch2whirl -f Makefile.gbase python_test`
+- `sh osprey/torch2whirl/scripts/run_torch_docker_test.sh`
+- `make -C osprey/torch2whirl -f Makefile.gbase python_native_check`
+- Docker configured build-tree native lane:
+  `make -C /build/osprey/targdir/torch2whirl python_native_test`
+- Docker configured build-tree ir-tools lane:
+  `make -C /build/osprey/targdir/torch2whirl
+  python_native_ir_tools_smoke driver_native_ir_tools_smoke`
+- `git diff --check`
+- no-tab scan on touched non-Makefile files
+- backend-isolation scan:
+  `rg -n "be/cg|BE_CG|ercg|erauxdesc|#include .*be/"
+  osprey/torch2whirl osprey/targdir/torch2whirl`

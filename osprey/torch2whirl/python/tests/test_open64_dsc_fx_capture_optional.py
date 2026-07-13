@@ -908,6 +908,34 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         ])
         self.assertEqual(module.operators.count("common.residual_add"), 4)
         self.assertGreaterEqual(module.operators.count("cnn.conv2d"), 10)
+        self.assertEqual(
+            module.graph_operators[0].metadata["source_module_path"],
+            "conv1",
+        )
+        self.assertEqual(
+            module.graph_operators[0].metadata["source_module_type"],
+            "Conv2d",
+        )
+        residual_operators = [
+            operator
+            for operator in module.graph_operators
+            if operator.name == "common.residual_add"
+        ]
+        self.assertEqual(len(residual_operators), 4)
+        self.assertTrue(
+            all(
+                operator.metadata["fx_target"] == "residual_add"
+                for operator in residual_operators
+            )
+        )
+        self.assertEqual(
+            module.graph_operators[-2].metadata["source_module_path"],
+            "fc",
+        )
+        self.assertEqual(
+            module.graph_operators[-1].metadata["lowering_hint"],
+            "classifier_output",
+        )
         external_values = [
             value
             for value in module.values
