@@ -127,6 +127,7 @@ extern ST *WN_get_proc_sym (PU_Info *pu);
 
 extern INT WN_get_global_symtab (void *handle);
 extern INT WN_get_strtab (void *handle);
+extern INT WN_get_dsl_ir_image (void *handle);
 
 
 extern INT WN_get_dst (void *handle);

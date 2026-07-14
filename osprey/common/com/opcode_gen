@@ -53,6 +53,11 @@
 ### changes to this file probably need to be reflected in the comments
 ### in opcode.h.]
 ###
+### This historical generator predates the target-specific operators in the
+### checked-in opcode_gen_core files.  Do not replace those files with its
+### output until the modern operator model has been reconciled here.  Run
+### tests/dsl_operator_layout_test.sh when changing physical operator slots.
+###
 ###########################################################################
 
 

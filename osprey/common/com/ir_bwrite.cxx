@@ -99,6 +99,7 @@
 #include "ir_elf.h"
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
+#include "dsl_ir_image.h"
 #include "ir_bread.h"
 #include "tracing.h"                /* TEMPORARY FOR ROBERT'S DEBUGGING */
 
@@ -794,6 +795,60 @@ WN_write_strtab (const void* strtab, UINT64 size, Output_File *fl)
     
 } // WN_write_strtab
 
+void
+WN_write_dsl_ir_image (Output_File *fl)
+{
+    if (!DSL_IR_Image_Has_Records())
+        return;
+
+    FmtAssert(DSL_IR_Image_Validate(stderr),
+              ("invalid DSL image tables"));
+
+    Section *cur_section = get_section
+                               (WT_DSL_IR_IMAGE,
+                                MIPS_WHIRL_DSL_IR_IMAGE, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+
+    DSL_IR_IMAGE_HEADER header;
+    DSL_IR_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+
+    for (UINT32 i = 1; i <= header.opcode_descriptor_count; ++i) {
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD record;
+        FmtAssert(DSL_IR_Image_Get_Opcode_Descriptor(i, &record),
+                  ("missing DSL opcode descriptor %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.node_count; ++i) {
+        DSL_IR_NODE_RECORD record;
+        FmtAssert(DSL_IR_Image_Get_Node(i, &record),
+                  ("missing DSL node %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.attribute_count; ++i) {
+        DSL_IR_ATTRIBUTE_RECORD record;
+        FmtAssert(DSL_IR_Image_Get_Attribute(i, &record),
+                  ("missing DSL attribute %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.value_count; ++i) {
+        DSL_IR_VALUE_RECORD record;
+        FmtAssert(DSL_IR_Image_Get_Value(i, &record),
+                  ("missing DSL value %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.value_reference_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD record;
+        FmtAssert(DSL_IR_Image_Get_Value_Reference(i, &record),
+                  ("missing DSL value reference %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
 
 /*
  * Write out the debug symbol table (dst).  The DST gets its own Elf
@@ -1416,13 +1471,15 @@ void
 WN_write_revision (Output_File *fl)
 {
     Section *cur_section;
-    int length = strlen (Whirl_Revision);
+    const char *revision = DSL_IR_Image_Node_Count() == 0 ?
+                           Whirl_Revision : WHIRL_DSL_REVISION;
+    int length = strlen (revision);
 
     cur_section = get_section (0, ELF_COMMENT, fl);
 
     cur_section->shdr.sh_offset = fl->file_size;
 
-    ir_b_save_buf (Whirl_Revision, length+1, 0, 0, fl);
+    ir_b_save_buf (revision, length+1, 0, 0, fl);
     
     cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
     cur_section->shdr.sh_addralign = 1;
@@ -1581,6 +1638,8 @@ Write_Global_Info (PU_Info *pu_tree)
 
     WN_write_dst(Current_DST, ir_output);
 
+    WN_write_dsl_ir_image(ir_output);
+
     WN_write_strtab(Index_To_Str (0), STR_Table_Size (), ir_output);
 
 #if defined(KEY) && defined(BACK_END)
@@ -1656,5 +1715,3 @@ Write_Inlskip(const char *skip_fname)
 }
 
 #endif // OWN_ERROR_PACKAGE
-
-

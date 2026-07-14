@@ -223,6 +223,9 @@ COMMON_COM_CXX_SRCS =	\
   config.cxx		\
   const.cxx		\
   controls.cxx		\
+  dsl_domain.cxx        \
+  dsl_ir_image.cxx      \
+  dsl_opcode.cxx        \
   dwarf_DST.cxx		\
   dwarf_DST_dump.cxx	\
   dwarf_DST_mem.cxx	\

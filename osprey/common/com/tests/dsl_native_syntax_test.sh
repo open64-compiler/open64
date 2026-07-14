@@ -25,19 +25,30 @@ python_include="$("$python" -c 'import sysconfig; print(sysconfig.get_paths()["i
 cxxflags=(
   "$cxxstd"
   -DKEY
+  -D__MIPS_AND_IA64_ELF_H
   -fsyntax-only
   -I"$python_include"
   -I"$repo_root/osprey/linux/include"
   -I"$repo_root/osprey/ir_tools"
+  -I"$repo_root/osprey/be/vho"
   -I"$repo_root/osprey/common/com"
   -I"$repo_root/osprey/common/com/x8664"
   -I"$repo_root/osprey/common/util"
   -I"$repo_root/osprey/include"
+  -I"$repo_root/osprey/libdwarf/libdwarf"
   -I"$repo_root/osprey/torch2whirl/python/native"
 )
 
 sources=(
+  "osprey/be/vho/dsl_lower.cxx"
+  "osprey/be/vho/dsl_opt.cxx"
+  "osprey/be/vho/tests/dsl_lower_contract_test.cxx"
+  "osprey/be/vho/tests/dsl_opt_contract_test.cxx"
+  "osprey/be/vho/tests/dsl_runtime_abi_contract_test.cxx"
   "osprey/common/com/dsl_builder.cxx"
+  "osprey/common/com/dsl_gatekeeper.cxx"
+  "osprey/common/com/dsl_ir_image.cxx"
+  "osprey/common/com/dsl_ir_print.cxx"
   "osprey/common/com/tests/dsl_builder_contract_test.cxx"
   "osprey/common/com/tests/dsl_common_add_print_test.cxx"
   "osprey/common/com/tests/dsl_common_matmul_print_test.cxx"
@@ -54,5 +65,7 @@ for source in "${sources[@]}"; do
   "$cxx" "${cxxflags[@]}" "$repo_root/$source"
   echo "syntax ok: $source"
 done
+
+"$script_dir/dsl_operator_layout_test.sh"
 
 echo "DSL native syntax fixture passed"

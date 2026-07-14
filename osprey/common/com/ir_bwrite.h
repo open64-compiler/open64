@@ -111,6 +111,7 @@ get_section (Elf64_Word sh_info, const char *name, Output_File *fl);
 extern void WN_write_globals (Output_File *fl);
 extern void WN_write_dst (void *dst, Output_File *fl);
 extern void WN_write_strtab (const void *strtab, UINT64 size, Output_File *fl);
+extern void WN_write_dsl_ir_image (Output_File *fl);
 extern void WN_write_localmap (void *localmap, Output_File *fl);
 extern void IPA_write_summary (void (*IPA_irb_write_summary) (Output_File*),
 			      Output_File *fl);

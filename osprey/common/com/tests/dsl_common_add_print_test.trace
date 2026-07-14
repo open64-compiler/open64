@@ -2,9 +2,20 @@ dsl_common_add_print_test trace
 created_operator=common.add
 
 [fdump_tree]
-__WHIRL_DSL__:opcode:common.tensor_const:v1:name=const_i32_2x2_zero;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=0
-__WHIRL_DSL__:opcode:common.tensor_const:v1:name=const_i32_2x2_one;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1
-__WHIRL_DSL__:opcode:common.add:v1:kid0=const_i32_2x2_zero;kid1=const_i32_2x2_one;attr.broadcast_rule=none
+BLOCK {line: 0/0}
+ OPR_DSLTENSORCONST # OPR_DSLTENSORCONST version=1 operand_count=0 payload=name=const_i32_2x2_zero;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=0 dsl_comment_projection=OPR_COMMENT("__WHIRL_DSL__:opcode:common.tensor_const:v1:name=const_i32_2x2_zero;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=0")
+MSTID 0 <1,51,const_i32_2x2_zero> T<52,tensor_i32_2x2_zero,1> {line: 0/0}
+ OPR_DSLTENSORCONST # OPR_DSLTENSORCONST version=1 operand_count=0 payload=name=const_i32_2x2_one;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1 dsl_comment_projection=OPR_COMMENT("__WHIRL_DSL__:opcode:common.tensor_const:v1:name=const_i32_2x2_one;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1")
+MSTID 0 <1,53,const_i32_2x2_one> T<53,tensor_i32_2x2_one,1> {line: 0/0}
+  MMLDID 0 <1,51,const_i32_2x2_zero> T<52,tensor_i32_2x2_zero,1>
+  MMLDID 0 <1,53,const_i32_2x2_one> T<53,tensor_i32_2x2_one,1>
+ OPR_DSLADD # OPR_DSLADD version=1 operand_count=2 payload=kid0=const_i32_2x2_zero;kid1=const_i32_2x2_one;attr.broadcast_rule=none dsl_comment_projection=OPR_COMMENT("__WHIRL_DSL__:opcode:common.add:v1:kid0=const_i32_2x2_zero;kid1=const_i32_2x2_one;attr.broadcast_rule=none")
+MSTID 0 <1,54,dsl_result_1> T<52,tensor_i32_2x2_zero,1> {line: 0/0}
+  I4INTCONST 1 (0x1)
+  I4INTCONST 2 (0x2)
+ I4ADD
+EVAL {line: 0/0}
+END_BLOCK
 
 [dsl_annotation]
-dsl_opcode=common.add.v1 payload="kid0=const_i32_2x2_zero;kid1=const_i32_2x2_one;attr.broadcast_rule=none"
+ # OPR_DSLADD version=1 operand_count=2 payload=kid0=const_i32_2x2_zero;kid1=const_i32_2x2_one;attr.broadcast_rule=none dsl_comment_projection=OPR_COMMENT("__WHIRL_DSL__:opcode:common.add:v1:kid0=const_i32_2x2_zero;kid1=const_i32_2x2_one;attr.broadcast_rule=none")

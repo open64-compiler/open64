@@ -180,8 +180,11 @@ COMMON_COM_CXX_SRC =	\
 	config_elf_targ.cxx \
 	const.cxx	\
 	dsl_builder.cxx \
+        dsl_gatekeeper.cxx \
 	dsl_contract.cxx \
 	dsl_domain.cxx	\
+        dsl_ir_image.cxx \
+        dsl_ir_print.cxx \
 	dsl_opcode.cxx	\
 	dwarf_DST.cxx	\
 	dwarf_DST_dump.cxx	\

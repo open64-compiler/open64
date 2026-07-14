@@ -82,6 +82,15 @@ typedef struct {
 } DSL_BUILDER_MAPPED_IMAGE_REQUEST;
 
 typedef struct {
+    const char *storage_format;
+    const char *side_file;
+    const char *tensor_key;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+    const char *checksum;
+} DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE;
+
+typedef struct {
     const char *opcode_name;
     UINT32 opcode_name_len;
     UINT32 version;
@@ -103,6 +112,30 @@ extern ST_IDX DSL_Builder_Create_Symbol
                                  ST_CLASS sym_class,
                                  ST_SCLASS storage_class,
                                  ST_EXPORT export_class);
+extern ST_IDX DSL_Builder_Create_Tensor_Result_Symbol
+                                (const char *name,
+                                 TY_IDX ty,
+                                 ST_SCLASS storage_class,
+                                 ST_EXPORT export_class);
+extern BOOL DSL_Builder_Set_Tensor_Unique_Ownership (ST_IDX st);
+extern BOOL DSL_Builder_Tensor_Has_Unique_Ownership (ST_IDX st);
+extern DSL_BUILDER_VALUE DSL_Builder_Create_Tensor_Constant
+                                (const char *name,
+                                 TY_IDX tensor_ty,
+                                 const char *dtype,
+                                 UINT32 rank,
+                                 const char *logical_shape,
+                                 const char *value_kind,
+                                 const char *value);
+extern DSL_BUILDER_VALUE DSL_Builder_Create_Model_Input
+                                (const char *name,
+                                 TY_IDX tensor_ty,
+                                 UINT32 input_ordinal);
+extern DSL_BUILDER_VALUE DSL_Builder_Create_External_Tensor_Constant
+                                (const char *name,
+                                 TY_IDX tensor_ty,
+                                 const DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE
+                                     *reference);
 extern DSL_BUILDER_OPERATOR DSL_Builder_Create_Operator
                                 (DSL_OPCODE_ID opcode_id,
                                  UINT16 version,
@@ -122,12 +155,12 @@ extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
 /*
  * Formal VHO DSL value representation.
  *
- * The stable Phase 13 carrier is a WHIRL WN with an annotated DSL opcode
- * payload.  Today that carrier is an OPR_COMMENT node using the
- * WN_DSL_COMMENT_PREFIX format, so existing WHIRL readers and writers keep
- * binary compatibility while DSL-aware phases inspect, verify, and lower the
- * value deliberately.  Python and other frontends must treat the handle as an
- * opaque DSL_BUILDER_VALUE and must not depend on the physical carrier.
+ * The stable API is an opaque WHIRL WN handle.  Native common operators return
+ * the defining STID for a no-alias tensor result temporary; its expression kid
+ * is the logical DSL operator and its operand kids are LDID references to prior
+ * result temporaries.  Compatibility operators may retain annotated COMMENT,
+ * EVAL, or XPRAGMA carriers.  Python and other frontends must not depend on
+ * either physical representation.
  *
  * The marker-named entry points below remain compatibility wrappers for
  * earlier tests and callers.
@@ -140,6 +173,15 @@ extern UINT32 DSL_Builder_Count_PU_Values
 extern BOOL DSL_Builder_Get_PU_Value
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  UINT32 index,
+                                 DSL_BUILDER_VALUE_INFO *info);
+extern UINT32 DSL_Builder_Count_Value_Operands
+                                (DSL_BUILDER_VALUE value);
+extern BOOL DSL_Builder_Get_Value_Info
+                                (DSL_BUILDER_VALUE value,
+                                 DSL_BUILDER_VALUE_INFO *info);
+extern BOOL DSL_Builder_Get_Value_Operand
+                                (DSL_BUILDER_VALUE value,
+                                 UINT32 operand_index,
                                  DSL_BUILDER_VALUE_INFO *info);
 extern BOOL DSL_Builder_Append_PU_Marker
                                 (DSL_BUILDER_PROGRAM_UNIT pu,

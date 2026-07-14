@@ -2233,7 +2233,10 @@ WN_Get_DSL_Comment_Payload (const WN *wn)
 }
 
 WN *
-DSL_WN_Create_Opcode (const char *name, UINT32 version, const char *payload)
+DSL_WN_Create_Opcode_Marker
+        (const char *name,
+         UINT32 version,
+         const char *payload)
 {
     const char *safe_name = name ? name : "";
     const char *safe_payload = payload ? payload : "";
@@ -2248,6 +2251,240 @@ DSL_WN_Create_Opcode (const char *name, UINT32 version, const char *payload)
     WN *wn = WN_Create_DSL_Comment ("opcode", safe_name, dsl_payload);
     delete [] dsl_payload;
     return wn;
+}
+
+static char *
+DSL_WN_Format_Opcode_Record
+        (const char *name,
+         UINT32 version,
+         const char *payload)
+{
+    const char *safe_name = name ? name : "";
+    const char *safe_payload = payload ? payload : "";
+    char version_buf[32];
+
+    snprintf (version_buf, sizeof(version_buf), "v%u", version);
+
+    const size_t len = strlen (WN_DSL_COMMENT_PREFIX) +
+                       strlen ("opcode") + 1 +
+                       strlen (safe_name) + 1 +
+                       strlen (version_buf) + 1 +
+                       strlen (safe_payload) + 1;
+    char *record = new char[len];
+
+    snprintf (record, len, "%sopcode:%s:%s:%s",
+              WN_DSL_COMMENT_PREFIX, safe_name, version_buf, safe_payload);
+    return record;
+}
+
+static char *
+DSL_WN_Format_Operand_Record
+        (UINT32 ordinal,
+         const WN *operand)
+{
+    DSL_OPCODE_ANNOTATION annotation;
+    const char *payload = "";
+    UINT32 version = 0;
+    char name_buf[256];
+
+    if (operand != NULL &&
+        DSL_WN_Get_Opcode_Annotation (operand, &annotation)) {
+        snprintf (name_buf, sizeof(name_buf), "%.*s",
+                  (int)annotation.name_len, annotation.name);
+        version = annotation.version;
+        payload = annotation.payload == NULL ? "" : annotation.payload;
+    } else {
+        snprintf (name_buf, sizeof(name_buf), "opaque");
+    }
+
+    const size_t len = strlen (WN_DSL_OPERAND_PREFIX) + strlen ("kid") + 10 +
+                       strlen (":opcode=") + strlen (name_buf) +
+                       strlen (":version=") + 10 +
+                       strlen (":payload=") + strlen (payload) + 1;
+    char *record = new char[len];
+
+    snprintf (record, len, "%skid%u:opcode=%s:version=%u:payload=%s",
+              WN_DSL_OPERAND_PREFIX, ordinal, name_buf, version, payload);
+    return record;
+}
+
+static WN *
+DSL_WN_Create_Record_Lda (const char *record)
+{
+    const char *safe_record = record == NULL ? "" : record;
+    return WN_LdaString (safe_record, 0, strlen(safe_record) + 1);
+}
+
+static WN *
+DSL_WN_Create_Operand_Record_Statement
+        (const char *record,
+         OPERATOR carrier_operator)
+{
+    WN *record_lda = DSL_WN_Create_Record_Lda (record);
+
+    if (carrier_operator == OPR_XPRAGMA) {
+        WN *stmt = WN_CreateXpragma
+                       (WN_PRAGMA_UNDEFINED, ST_IDX_ZERO, 1);
+        WN_kid0(stmt) = record_lda;
+        return stmt;
+    }
+
+    return WN_CreateEval (record_lda);
+}
+
+static WN *
+DSL_WN_Create_Opcode_Record_Expression
+        (const char *record,
+         WN **operands,
+         UINT32 operand_count,
+         OPERATOR operand_carrier_operator)
+{
+    WN *record_lda = DSL_WN_Create_Record_Lda (record);
+
+    if (operand_count == 0)
+        return record_lda;
+
+    WN *operand_block = WN_CreateBlock ();
+    for (UINT32 i = 0; i < operand_count; ++i) {
+        char *operand_record = DSL_WN_Format_Operand_Record
+                                   (i, operands == NULL ? NULL : operands[i]);
+        WN_INSERT_BlockLast
+            (operand_block,
+             DSL_WN_Create_Operand_Record_Statement
+                 (operand_record, operand_carrier_operator));
+        delete [] operand_record;
+    }
+
+    return WN_CreateComma (OPR_COMMA, WN_rtype(record_lda), MTYPE_V,
+                           operand_block, record_lda);
+}
+
+WN *
+DSL_WN_Create_Opcode (const char *name, UINT32 version, const char *payload)
+{
+    char *record = DSL_WN_Format_Opcode_Record (name, version, payload);
+    WN *record_expr = DSL_WN_Create_Opcode_Record_Expression
+                          (record, NULL, 0, OPR_EVAL);
+    WN *wn = WN_Create (OPC_EVAL, 1);
+
+    WN_kid0(wn) = record_expr;
+    delete [] record;
+    return wn;
+}
+
+WN *
+DSL_WN_Create_Opcode_With_Operands
+        (const char *name,
+         UINT32 version,
+         const char *payload,
+         WN **operands,
+         UINT32 operand_count)
+{
+    if (operand_count == 0)
+        return DSL_WN_Create_Opcode (name, version, payload);
+
+    char *record = DSL_WN_Format_Opcode_Record (name, version, payload);
+    WN *carrier_expr = DSL_WN_Create_Opcode_Record_Expression
+                           (record, operands, operand_count, OPR_EVAL);
+    WN *wn = WN_Create (OPC_EVAL, 1);
+
+    WN_kid0(wn) = carrier_expr;
+    delete [] record;
+    return wn;
+}
+
+WN *
+DSL_WN_Create_Opcode_Xpragma
+        (const char *name,
+         UINT32 version,
+         const char *payload,
+         WN **operands,
+         UINT32 operand_count)
+{
+    char *record = DSL_WN_Format_Opcode_Record (name, version, payload);
+    WN *carrier_expr = DSL_WN_Create_Opcode_Record_Expression
+                           (record, operands, operand_count, OPR_XPRAGMA);
+    WN *wn = WN_CreateXpragma (WN_PRAGMA_UNDEFINED, ST_IDX_ZERO, 1);
+
+    WN_kid0(wn) = carrier_expr;
+    delete [] record;
+    return wn;
+}
+
+WN *
+DSL_WN_Create_Native
+        (DSL_OPERATOR dsl_operator,
+         UINT32 version,
+         const char *payload,
+         WN **operands,
+         UINT32 operand_count)
+{
+    const size_t fixed_size = sizeof(WN);
+    const size_t extra_kids = operand_count > 2 ? operand_count - 2 : 0;
+    DSL_OPERATOR_INFO info;
+
+    if (!DSL_Operator_Get_Info(dsl_operator, &info) ||
+        info.version != version ||
+        (info.nkids >= 0 && (UINT32)info.nkids != operand_count) ||
+        extra_kids > (INT16_MAX - fixed_size) / sizeof(WN *) ||
+        (operand_count != 0 && operands == NULL))
+        return NULL;
+
+    char *record = DSL_WN_Format_Opcode_Record
+                       (info.stable_name, version, payload);
+    STR_IDX record_idx = Save_Str(record);
+    delete [] record;
+
+    WN *wn = WN_Create (OPC_MDSL, (mINT16)operand_count);
+
+    WN_offset(wn) = (WN_OFFSET)record_idx;
+    for (UINT32 i = 0; i < operand_count; ++i)
+        WN_kid(wn, i) = operands[i];
+
+    return wn;
+}
+
+WN *
+DSL_WN_Create_Logical_Opcode
+        (DSL_OPERATOR dsl_operator,
+         UINT32 version,
+         const char *payload,
+         WN **operands,
+         UINT32 operand_count,
+         DSL_OPCODE_OUTPUT_MODE output_mode)
+{
+    DSL_OPERATOR_INFO info;
+
+    if (!DSL_Operator_Get_Info(dsl_operator, &info) ||
+        info.version != version ||
+        (info.nkids >= 0 && (UINT32)info.nkids != operand_count) ||
+        (operand_count != 0 && operands == NULL))
+        return NULL;
+
+    switch (output_mode) {
+    case DSL_OPCODE_OUTPUT_NATIVE:
+        return DSL_WN_Create_Native(dsl_operator, version, payload,
+                                    operands, operand_count);
+    case DSL_OPCODE_OUTPUT_LEGACY_EVAL:
+        return DSL_WN_Create_Opcode_With_Operands
+                   (info.stable_name, version, payload,
+                    operands, operand_count);
+    case DSL_OPCODE_OUTPUT_LEGACY_XPRAGMA:
+        return DSL_WN_Create_Opcode_Xpragma
+                   (info.stable_name, version, payload,
+                    operands, operand_count);
+    case DSL_OPCODE_OUTPUT_COMMENT_PROJECTION:
+        return DSL_WN_Create_Opcode_Marker
+                   (info.stable_name, version, payload);
+    default:
+        return NULL;
+    }
+}
+
+BOOL
+DSL_WN_Is_Native (const WN *wn)
+{
+    return wn != NULL && WN_operator(wn) == OPR_DSL;
 }
 
 WN *
@@ -2281,7 +2518,8 @@ DSL_WN_Create_Tensor_Const (const char *value_name,
 	   safe_shape,
 	   safe_value_kind,
 	   safe_value);
-    WN *wn = DSL_WN_Create_Opcode (DSL_OPCODE_COMMON_TENSOR_CONST, 1, payload);
+    WN *wn = DSL_WN_Create_Opcode_Xpragma
+                 (DSL_OPCODE_COMMON_TENSOR_CONST, 1, payload, NULL, 0);
     delete [] payload;
     return wn;
 }
@@ -2327,7 +2565,7 @@ DSL_WN_Create_Zero_Like (const char *value_name, const char *source_name)
 }
 
 BOOL
-DSL_WN_Has_Opcode (const WN *wn)
+DSL_WN_Is_Opcode_Marker (const WN *wn)
 {
     if (!WN_Is_DSL_Comment (wn))
         return FALSE;
@@ -2344,15 +2582,408 @@ DSL_WN_Has_Opcode (const WN *wn)
 	 strncmp (comment, opcode_domain, opcode_domain_len) == 0;
 }
 
-BOOL
-DSL_WN_Get_Opcode_Annotation (const WN *wn,
-			      DSL_OPCODE_ANNOTATION *annotation)
+static WN *
+DSL_WN_Opcode_Record_Expression (const WN *wn)
 {
-    if (!DSL_WN_Has_Opcode (wn))
+    if (wn == NULL || WN_kid_count(wn) < 1 || WN_kid0(wn) == NULL)
+        return NULL;
+
+    if (WN_operator(wn) == WN_DSL_NODE_CARRIER_OPERATOR ||
+        WN_operator(wn) == OPR_XPRAGMA)
+        return WN_kid0(wn);
+
+    return NULL;
+}
+
+static const char *
+DSL_WN_Opcode_Node_Record (const WN *wn)
+{
+    WN *record_lda = DSL_WN_Opcode_Record_Expression (wn);
+    if (record_lda == NULL)
+        return NULL;
+
+    if (WN_operator(record_lda) == OPR_COMMA) {
+        if (WN_kid_count(record_lda) != 2 || WN_kid1(record_lda) == NULL)
+            return NULL;
+        record_lda = WN_kid1(record_lda);
+    }
+
+    if (WN_operator(record_lda) != OPR_LDA ||
+        WN_st_idx(record_lda) == (ST_IDX) 0 ||
+        ST_class(WN_st(record_lda)) != CLASS_CONST)
+        return NULL;
+
+    TCON record = STC_val(WN_st(record_lda));
+    if (TCON_ty(record) != MTYPE_STRING)
+        return NULL;
+
+    return Targ_String_Address(record);
+}
+
+static WN *
+DSL_WN_Opcode_Operand_Block (const WN *wn)
+{
+    WN *record_expr = DSL_WN_Opcode_Record_Expression (wn);
+
+    if (record_expr == NULL ||
+        WN_operator(record_expr) != OPR_COMMA ||
+        WN_kid_count(record_expr) != 2 ||
+        WN_kid0(record_expr) == NULL ||
+        WN_operator(WN_kid0(record_expr)) != OPR_BLOCK)
+        return NULL;
+
+    return WN_kid0(record_expr);
+}
+
+static const char *
+DSL_WN_Lda_String_Record (const WN *record_lda)
+{
+    if (record_lda == NULL ||
+        WN_operator(record_lda) != OPR_LDA ||
+        WN_st_idx(record_lda) == (ST_IDX) 0 ||
+        ST_class(WN_st(record_lda)) != CLASS_CONST)
+        return NULL;
+
+    TCON record = STC_val(WN_st(record_lda));
+    if (TCON_ty(record) != MTYPE_STRING)
+        return NULL;
+
+    return Targ_String_Address(record);
+}
+
+static const char *
+DSL_WN_Operand_Record_String (const WN *wn, UINT32 operand_index)
+{
+    WN *operand_block = DSL_WN_Opcode_Operand_Block (wn);
+    UINT32 current = 0;
+
+    if (operand_block == NULL)
+        return NULL;
+
+    for (WN *stmt = WN_first(operand_block); stmt != NULL;
+         stmt = WN_next(stmt)) {
+        if (current == operand_index) {
+            if ((WN_operator(stmt) != OPR_EVAL &&
+                 WN_operator(stmt) != OPR_XPRAGMA) ||
+                WN_kid_count(stmt) < 1 ||
+                WN_kid0(stmt) == NULL)
+                return NULL;
+            return DSL_WN_Lda_String_Record (WN_kid0(stmt));
+        }
+        ++current;
+    }
+
+    return NULL;
+}
+
+static BOOL
+DSL_Record_Is_Opcode (const char *record)
+{
+    if (record == NULL)
         return FALSE;
 
-    const char *comment = Index_To_Str (WN_GetComment (wn)) +
-			strlen (WN_DSL_COMMENT_PREFIX);
+    if (strncmp(record, WN_DSL_COMMENT_PREFIX,
+                strlen(WN_DSL_COMMENT_PREFIX)) != 0)
+        return FALSE;
+
+    const char *payload = record + strlen(WN_DSL_COMMENT_PREFIX);
+    const char *domain_end = strchr(payload, ':');
+    if (domain_end == NULL)
+        return FALSE;
+
+    const char *opcode_domain = "opcode";
+    const size_t opcode_domain_len = strlen(opcode_domain);
+    return (size_t)(domain_end - payload) == opcode_domain_len &&
+           strncmp(payload, opcode_domain, opcode_domain_len) == 0;
+}
+
+static BOOL
+DSL_Record_Is_Operand (const char *record)
+{
+    if (record == NULL)
+        return FALSE;
+
+    return strncmp(record, WN_DSL_OPERAND_PREFIX,
+                   strlen(WN_DSL_OPERAND_PREFIX)) == 0;
+}
+
+static const char *
+DSL_WN_Native_Record (const WN *wn)
+{
+    if (!DSL_WN_Is_Native(wn) || WN_offset(wn) == 0)
+        return NULL;
+
+    return Index_To_Str((STR_IDX)WN_offset(wn));
+}
+
+BOOL
+DSL_WN_Is_Opcode_Node (const WN *wn)
+{
+    if (DSL_WN_Is_Native(wn))
+        return DSL_Record_Is_Opcode(DSL_WN_Native_Record(wn));
+
+    return DSL_Record_Is_Opcode (DSL_WN_Opcode_Node_Record (wn));
+}
+
+BOOL
+DSL_WN_Has_Opcode (const WN *wn)
+{
+    return DSL_WN_Opcode_Carrier_Kind (wn) != DSL_OPCODE_CARRIER_NONE;
+}
+
+DSL_OPCODE_CARRIER_KIND
+DSL_WN_Opcode_Carrier_Kind (const WN *wn)
+{
+    if (DSL_WN_Is_Native(wn) && DSL_WN_Is_Opcode_Node(wn))
+        return DSL_OPCODE_CARRIER_NATIVE;
+    if (DSL_WN_Is_Opcode_Node (wn) &&
+        WN_operator(wn) == WN_DSL_NODE_CARRIER_OPERATOR)
+        return DSL_OPCODE_CARRIER_NODE;
+    if (DSL_WN_Is_Opcode_Node (wn) && WN_operator(wn) == OPR_XPRAGMA)
+        return DSL_OPCODE_CARRIER_XPRAGMA;
+    if (DSL_WN_Is_Opcode_Marker (wn))
+        return DSL_OPCODE_CARRIER_MARKER;
+    return DSL_OPCODE_CARRIER_NONE;
+}
+
+const char *
+DSL_WN_Opcode_Carrier_Name (DSL_OPCODE_CARRIER_KIND carrier)
+{
+    switch (carrier) {
+    case DSL_OPCODE_CARRIER_NODE:
+        return "eval_lda_string";
+    case DSL_OPCODE_CARRIER_XPRAGMA:
+        return "xpragma_lda_string";
+    case DSL_OPCODE_CARRIER_MARKER:
+        return "comment_marker";
+    case DSL_OPCODE_CARRIER_NATIVE:
+        return "native";
+    case DSL_OPCODE_CARRIER_NONE:
+    default:
+        return "none";
+    }
+}
+
+const char *
+DSL_Opcode_Version_Disposition_Name
+        (DSL_OPCODE_VERSION_DISPOSITION disposition)
+{
+    static const char *name[] = {
+        "invalid",
+        "exact",
+        "migrated",
+        "rejected_unknown_operator",
+        "rejected_older",
+        "rejected_newer"
+    };
+
+    return disposition >= DSL_OPCODE_VERSION_INVALID &&
+           (UINT32)disposition < sizeof(name) / sizeof(name[0]) ?
+           name[disposition] : name[DSL_OPCODE_VERSION_INVALID];
+}
+
+const char *
+DSL_Opcode_Output_Mode_Name (DSL_OPCODE_OUTPUT_MODE output_mode)
+{
+    static const char *name[] = {
+        "native",
+        "legacy_eval",
+        "legacy_xpragma",
+        "comment_projection"
+    };
+
+    return output_mode >= DSL_OPCODE_OUTPUT_NATIVE &&
+           (UINT32)output_mode < sizeof(name) / sizeof(name[0]) ?
+           name[output_mode] : "unknown";
+}
+
+UINT32
+DSL_WN_Opcode_Operand_Count (const WN *wn)
+{
+    if (DSL_WN_Is_Native(wn))
+        return WN_kid_count(wn);
+
+    WN *operand_block = DSL_WN_Opcode_Operand_Block (wn);
+    UINT32 count = 0;
+
+    if (operand_block == NULL)
+        return 0;
+
+    for (WN *stmt = WN_first(operand_block); stmt != NULL;
+         stmt = WN_next(stmt))
+        ++count;
+
+    return count;
+}
+
+BOOL
+DSL_WN_Decode_Opcode_Operand_Record
+        (const WN *wn,
+         UINT32 operand_index,
+         DSL_WHIRL_OPERAND_RECORD *record)
+{
+    if (DSL_WN_Is_Native(wn)) {
+        DSL_WHIRL_NODE_RECORD kid_record;
+
+        if (operand_index >= (UINT32)WN_kid_count(wn) ||
+            WN_kid(wn, operand_index) == NULL)
+            return FALSE;
+
+        if (record == NULL)
+            return TRUE;
+
+        record->ordinal = operand_index;
+        if (DSL_WN_Decode_Opcode_Record
+                (WN_kid(wn, operand_index), &kid_record)) {
+            record->opcode_name = kid_record.opcode_name;
+            record->opcode_name_len = kid_record.opcode_name_len;
+            record->version = kid_record.version;
+            record->payload = kid_record.payload;
+        } else {
+            record->opcode_name = OPERATOR_name
+                                      (WN_operator(WN_kid(wn, operand_index)));
+            record->opcode_name_len = strlen(record->opcode_name);
+            record->version = 0;
+            record->payload = "";
+        }
+        return TRUE;
+    }
+
+    const char *operand_record = DSL_WN_Operand_Record_String
+                                     (wn, operand_index);
+    const char *cursor;
+    char *ordinal_end;
+    unsigned long ordinal;
+    const char *opcode_key = "opcode=";
+    const char *version_key = ":version=";
+    const char *payload_key = ":payload=";
+    const char *opcode;
+    const char *version;
+    const char *payload;
+    const char *opcode_end;
+    char *version_end;
+    unsigned long version_value;
+
+    if (!DSL_Record_Is_Operand (operand_record))
+        return FALSE;
+
+    cursor = operand_record + strlen(WN_DSL_OPERAND_PREFIX);
+    if (strncmp(cursor, "kid", strlen("kid")) != 0)
+        return FALSE;
+
+    ordinal = strtoul(cursor + strlen("kid"), &ordinal_end, 10);
+    if (ordinal_end == cursor + strlen("kid") || *ordinal_end != ':')
+        return FALSE;
+    if ((UINT32)ordinal != operand_index)
+        return FALSE;
+
+    cursor = ordinal_end + 1;
+    if (strncmp(cursor, opcode_key, strlen(opcode_key)) != 0)
+        return FALSE;
+    opcode = cursor + strlen(opcode_key);
+    opcode_end = strstr(opcode, version_key);
+    if (opcode_end == NULL || opcode_end == opcode)
+        return FALSE;
+
+    version = opcode_end + strlen(version_key);
+    version_value = strtoul(version, &version_end, 10);
+    if (version_end == version ||
+        strncmp(version_end, payload_key, strlen(payload_key)) != 0)
+        return FALSE;
+
+    payload = version_end + strlen(payload_key);
+
+    if (record != NULL) {
+        record->ordinal = (UINT32)ordinal;
+        record->opcode_name = opcode;
+        record->opcode_name_len = (UINT32)(opcode_end - opcode);
+        record->version = (UINT32)version_value;
+        record->payload = payload;
+    }
+
+    return TRUE;
+}
+
+BOOL
+DSL_WN_Verify_Opcode_Carrier (const WN *wn, FILE *diagnostic)
+{
+    DSL_WHIRL_NODE_RECORD node_record;
+    DSL_OPCODE_CARRIER_KIND carrier = DSL_WN_Opcode_Carrier_Kind (wn);
+
+    if (carrier == DSL_OPCODE_CARRIER_NONE) {
+        if (diagnostic != NULL)
+            fprintf (diagnostic, "DSL opcode carrier is missing\n");
+        return FALSE;
+    }
+
+    if (!DSL_WN_Decode_Opcode_Record (wn, &node_record)) {
+        if (diagnostic != NULL)
+            fprintf (diagnostic, "DSL opcode carrier record is malformed\n");
+        return FALSE;
+    }
+
+    if (node_record.opcode_name == NULL || node_record.opcode_name_len == 0) {
+        if (diagnostic != NULL)
+            fprintf (diagnostic, "DSL opcode carrier has empty opcode name\n");
+        return FALSE;
+    }
+
+    if (carrier == DSL_OPCODE_CARRIER_MARKER)
+        return TRUE;
+
+    const UINT32 operand_count = DSL_WN_Opcode_Operand_Count (wn);
+    for (UINT32 i = 0; i < operand_count; ++i) {
+        DSL_WHIRL_OPERAND_RECORD operand_record;
+
+        if (!DSL_WN_Decode_Opcode_Operand_Record
+                (wn, i, &operand_record)) {
+            if (diagnostic != NULL)
+                fprintf (diagnostic,
+                         "DSL opcode operand %u record is malformed\n", i);
+            return FALSE;
+        }
+
+        if (operand_record.ordinal != i ||
+            operand_record.opcode_name == NULL ||
+            operand_record.opcode_name_len == 0) {
+            if (diagnostic != NULL)
+                fprintf (diagnostic,
+                         "DSL opcode operand %u identity is malformed\n", i);
+            return FALSE;
+        }
+    }
+
+    if (DSL_WN_Decode_Opcode_Operand_Record(wn, operand_count, NULL)) {
+        if (diagnostic != NULL)
+            fprintf (diagnostic,
+                     "DSL opcode carrier has unexpected extra operand\n");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+BOOL
+DSL_WN_Decode_Opcode_Record (const WN *wn, DSL_WHIRL_NODE_RECORD *record)
+{
+    const char *comment;
+    DSL_OPCODE_CARRIER_KIND carrier;
+
+    carrier = DSL_WN_Opcode_Carrier_Kind (wn);
+    if (carrier == DSL_OPCODE_CARRIER_NATIVE)
+        comment = DSL_WN_Native_Record (wn);
+    else if (carrier == DSL_OPCODE_CARRIER_NODE ||
+        carrier == DSL_OPCODE_CARRIER_XPRAGMA)
+        comment = DSL_WN_Opcode_Node_Record (wn);
+    else if (carrier == DSL_OPCODE_CARRIER_MARKER)
+        comment = Index_To_Str (WN_GetComment (wn));
+    else
+        return FALSE;
+
+    if (!DSL_Record_Is_Opcode (comment))
+        return FALSE;
+
+    comment += strlen (WN_DSL_COMMENT_PREFIX);
     const char *name = strchr (comment, ':');
     if (name == NULL)
         return FALSE;
@@ -2373,11 +3004,180 @@ DSL_WN_Get_Opcode_Annotation (const WN *wn,
     if (*version_end != ':' && *version_end != '\0')
         return FALSE;
 
+    if (record != NULL) {
+        record->opcode_name = name;
+        record->opcode_name_len = (UINT32)((version - 1) - name);
+        record->version = (UINT32)version_value;
+        record->payload = *version_end == ':' ? version_end + 1 : "";
+        record->carrier = carrier;
+    }
+
+    return TRUE;
+}
+
+BOOL
+DSL_WN_Get_Logical_Opcode
+        (const WN *wn,
+         DSL_LOGICAL_OPCODE *logical_opcode,
+         FILE *diagnostic)
+{
+    DSL_WHIRL_NODE_RECORD record;
+    DSL_OPERATOR dsl_operator;
+    DSL_OPERATOR_INFO info;
+    BOOL operator_known;
+    DSL_OPCODE_VERSION_DISPOSITION disposition =
+        DSL_OPCODE_VERSION_INVALID;
+
+    if (logical_opcode != NULL) {
+        logical_opcode->dsl_operator = OPR_DSLUNKNOWN;
+        logical_opcode->source_version = 0;
+        logical_opcode->effective_version = 0;
+        logical_opcode->payload = "";
+        logical_opcode->carrier = DSL_OPCODE_CARRIER_NONE;
+        logical_opcode->version_disposition = disposition;
+    }
+
+    if (!DSL_WN_Decode_Opcode_Record(wn, &record)) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic, "DSL logical opcode record is malformed\n");
+        return FALSE;
+    }
+
+    dsl_operator = DSL_Operator_Find_Current(record.opcode_name,
+                                              record.opcode_name_len);
+    operator_known = dsl_operator != OPR_DSLUNKNOWN &&
+                     DSL_Operator_Get_Info(dsl_operator, &info);
+    if (!operator_known) {
+        dsl_operator = OPR_DSLUNKNOWN;
+        disposition = DSL_OPCODE_VERSION_REJECTED_UNKNOWN_OPERATOR;
+    } else if (record.version < info.version) {
+        disposition = DSL_OPCODE_VERSION_REJECTED_OLDER;
+    } else if (record.version > info.version) {
+        disposition = DSL_OPCODE_VERSION_REJECTED_NEWER;
+    } else {
+        disposition = DSL_OPCODE_VERSION_EXACT;
+    }
+
+    if (logical_opcode != NULL) {
+        logical_opcode->dsl_operator = dsl_operator;
+        logical_opcode->source_version = record.version;
+        logical_opcode->effective_version =
+            operator_known ? info.version : 0;
+        logical_opcode->payload = record.payload == NULL ? "" : record.payload;
+        logical_opcode->carrier = record.carrier;
+        logical_opcode->version_disposition = disposition;
+    }
+
+    if (disposition != DSL_OPCODE_VERSION_EXACT) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "DSL logical opcode version policy rejected %.*s.v%u: %s\n",
+                    (int)record.opcode_name_len, record.opcode_name,
+                    record.version,
+                    DSL_Opcode_Version_Disposition_Name(disposition));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+DSL_OPERATOR
+DSL_WN_operator (const WN *wn)
+{
+    DSL_LOGICAL_OPCODE logical_opcode;
+
+    return DSL_WN_Get_Logical_Opcode(wn, &logical_opcode, NULL) ?
+           logical_opcode.dsl_operator : OPR_DSLUNKNOWN;
+}
+
+WN *
+DSL_WN_Create_Opcode_From_Record (const DSL_WHIRL_NODE_RECORD *record)
+{
+    if (record == NULL ||
+        record->opcode_name == NULL ||
+        record->opcode_name_len == 0)
+        return NULL;
+
+    char *name = new char[record->opcode_name_len + 1];
+    memcpy (name, record->opcode_name, record->opcode_name_len);
+    name[record->opcode_name_len] = '\0';
+
+    WN *wn = DSL_WN_Create_Opcode (name, record->version,
+                                   record->payload == NULL ? "" :
+                                   record->payload);
+    delete [] name;
+    return wn;
+}
+
+WN *
+DSL_WN_Create_Opcode_Marker_From_Record
+        (const DSL_WHIRL_NODE_RECORD *record)
+{
+    if (record == NULL ||
+        record->opcode_name == NULL ||
+        record->opcode_name_len == 0)
+        return NULL;
+
+    char *name = new char[record->opcode_name_len + 1];
+    memcpy (name, record->opcode_name, record->opcode_name_len);
+    name[record->opcode_name_len] = '\0';
+
+    WN *marker = DSL_WN_Create_Opcode_Marker (name, record->version,
+                                              record->payload == NULL ? "" :
+                                              record->payload);
+    delete [] name;
+    return marker;
+}
+
+WN *
+DSL_WN_Create_Opcode_Comment_Projection (const WN *wn)
+{
+    DSL_WHIRL_NODE_RECORD record;
+
+    if (!DSL_WN_Decode_Opcode_Record (wn, &record))
+        return NULL;
+
+    return DSL_WN_Create_Opcode_Marker_From_Record (&record);
+}
+
+BOOL
+DSL_WN_Opcode_Records_Equivalent
+        (const DSL_WHIRL_NODE_RECORD *record0,
+         const DSL_WHIRL_NODE_RECORD *record1)
+{
+    if (record0 == NULL || record1 == NULL)
+        return FALSE;
+
+    if (record0->opcode_name == NULL || record1->opcode_name == NULL)
+        return FALSE;
+
+    if (record0->opcode_name_len != record1->opcode_name_len ||
+        strncmp (record0->opcode_name, record1->opcode_name,
+                 record0->opcode_name_len) != 0)
+        return FALSE;
+
+    if (record0->version != record1->version)
+        return FALSE;
+
+    const char *payload0 = record0->payload == NULL ? "" : record0->payload;
+    const char *payload1 = record1->payload == NULL ? "" : record1->payload;
+    return strcmp (payload0, payload1) == 0;
+}
+
+BOOL
+DSL_WN_Get_Opcode_Annotation (const WN *wn,
+                              DSL_OPCODE_ANNOTATION *annotation)
+{
+    DSL_WHIRL_NODE_RECORD record;
+
+    if (!DSL_WN_Decode_Opcode_Record (wn, &record))
+        return FALSE;
+
     if (annotation != NULL) {
-        annotation->name = name;
-        annotation->name_len = (UINT32)((version - 1) - name);
-        annotation->version = (UINT32)version_value;
-        annotation->payload = *version_end == ':' ? version_end + 1 : "";
+        annotation->name = record.opcode_name;
+        annotation->name_len = record.opcode_name_len;
+        annotation->version = record.version;
+        annotation->payload = record.payload == NULL ? "" : record.payload;
     }
 
     return TRUE;
@@ -2387,16 +3187,61 @@ void
 DSL_fprint_opcode_annotation (FILE *f, const WN *wn)
 {
     DSL_OPCODE_ANNOTATION annotation;
+    DSL_OPCODE_CARRIER_KIND carrier;
 
     if (f == NULL || !DSL_WN_Get_Opcode_Annotation (wn, &annotation))
         return;
 
-    fprintf (f, " # dsl_opcode=%.*s.v%u",
-	  (int)annotation.name_len,
-	  annotation.name,
-	  annotation.version);
+    carrier = DSL_WN_Opcode_Carrier_Kind (wn);
+    if (carrier == DSL_OPCODE_CARRIER_NATIVE) {
+        fprintf (f, " # %s version=%u operand_count=%u",
+                 DSL_OPERATOR_name(DSL_WN_operator(wn)),
+                 annotation.version,
+                 DSL_WN_Opcode_Operand_Count(wn));
+        if (annotation.payload[0] != '\0')
+            fprintf (f, " payload=%s", annotation.payload);
+        DSL_fprint_opcode_comment_projection (f, wn);
+        return;
+    }
+
+    fprintf (f, " # dsl_%s=%.*s.v%u",
+             carrier == DSL_OPCODE_CARRIER_NODE ||
+             carrier == DSL_OPCODE_CARRIER_XPRAGMA ? "node" : "opcode",
+             (int)annotation.name_len,
+             annotation.name,
+             annotation.version);
+    fprintf (f, " dsl_carrier=%s", DSL_WN_Opcode_Carrier_Name (carrier));
+    if (carrier == DSL_OPCODE_CARRIER_NODE ||
+        carrier == DSL_OPCODE_CARRIER_XPRAGMA)
+        fprintf (f, " dsl_operand_count=%u",
+                 DSL_WN_Opcode_Operand_Count (wn));
     if (annotation.payload[0] != '\0')
         fprintf (f, " dsl_payload=%s", annotation.payload);
+    DSL_fprint_opcode_comment_projection (f, wn);
+}
+
+void
+DSL_fprint_opcode_comment_projection (FILE *f, const WN *wn)
+{
+    DSL_WHIRL_NODE_RECORD record;
+
+    if (f == NULL ||
+        (DSL_WN_Opcode_Carrier_Kind (wn) != DSL_OPCODE_CARRIER_NODE &&
+         DSL_WN_Opcode_Carrier_Kind (wn) != DSL_OPCODE_CARRIER_XPRAGMA &&
+         DSL_WN_Opcode_Carrier_Kind (wn) != DSL_OPCODE_CARRIER_NATIVE) ||
+        !DSL_WN_Decode_Opcode_Record (wn, &record))
+        return;
+
+    char *name = new char[record.opcode_name_len + 1];
+    memcpy (name, record.opcode_name, record.opcode_name_len);
+    name[record.opcode_name_len] = '\0';
+
+    char *projection = DSL_WN_Format_Opcode_Record
+                           (name, record.version,
+                            record.payload == NULL ? "" : record.payload);
+    fprintf (f, " dsl_comment_projection=OPR_COMMENT(\"%s\")", projection);
+    delete [] projection;
+    delete [] name;
 }
 
 static void
@@ -2404,6 +3249,7 @@ VHO_Record_Unconsumed_DSL_Marker (FILE *f, const WN *wn,
 				VHO_UNCONSUMED_DSL_SCAN *scan)
 {
     DSL_OPCODE_ANNOTATION annotation;
+    BOOL carrier_ok = TRUE;
 
     if (scan != NULL)
         ++scan->dsl_marker_count;
@@ -2412,6 +3258,10 @@ VHO_Record_Unconsumed_DSL_Marker (FILE *f, const WN *wn,
         if (scan != NULL)
             ++scan->dsl_opcode_count;
 
+        carrier_ok = DSL_WN_Verify_Opcode_Carrier (wn, NULL);
+        if (!carrier_ok && scan != NULL)
+            ++scan->dsl_malformed_count;
+
 	    if (f != NULL) {
 	        fprintf (f, "VHO unconsumed DSL marker: opcode=%.*s version=%u",
 			 (int)annotation.name_len,
@@ -2419,6 +3269,11 @@ VHO_Record_Unconsumed_DSL_Marker (FILE *f, const WN *wn,
 			 annotation.version);
 	        if (annotation.payload[0] != '\0')
 		    fprintf (f, " payload=%s", annotation.payload);
+            if (!carrier_ok) {
+                fprintf (f, " malformed_carrier=yes diagnostic=\"");
+                DSL_WN_Verify_Opcode_Carrier (wn, f);
+                fprintf (f, "\"");
+            }
 	        fprintf (f, "\n");
 	    }
 	} else if (f != NULL) {
@@ -2435,7 +3290,7 @@ VHO_Scan_Unconsumed_DSL_Markers_R (WN *wn, FILE *f,
     if (wn == NULL)
         return;
 
-    if (WN_Is_DSL_Comment (wn))
+    if (DSL_WN_Has_Opcode (wn) || WN_Is_DSL_Comment (wn))
         VHO_Record_Unconsumed_DSL_Marker (f, wn, scan);
 
     if (WN_operator(wn) == OPR_BLOCK) {
@@ -2454,6 +3309,7 @@ VHO_Scan_Unconsumed_DSL_Markers (WN *wn, VHO_UNCONSUMED_DSL_SCAN *scan)
     if (scan != NULL) {
         scan->dsl_marker_count = 0;
         scan->dsl_opcode_count = 0;
+        scan->dsl_malformed_count = 0;
     }
 
     VHO_Scan_Unconsumed_DSL_Markers_R (wn, NULL, scan);
@@ -2478,10 +3334,12 @@ VHO_fprint_unconsumed_DSL_markers (FILE *f, WN *wn)
 
     scan.dsl_marker_count = 0;
     scan.dsl_opcode_count = 0;
-	    VHO_Scan_Unconsumed_DSL_Markers_R (wn, f, &scan);
-	    fprintf (f, "VHO unconsumed DSL marker summary: markers=%u opcodes=%u\n",
-		     scan.dsl_marker_count,
-		     scan.dsl_opcode_count);
+    scan.dsl_malformed_count = 0;
+    VHO_Scan_Unconsumed_DSL_Markers_R (wn, f, &scan);
+    fprintf (f, "VHO unconsumed DSL marker summary: markers=%u opcodes=%u malformed=%u\n",
+             scan.dsl_marker_count,
+             scan.dsl_opcode_count,
+             scan.dsl_malformed_count);
 }
 
 WN *WN_CopyNode (const WN* src_wn)

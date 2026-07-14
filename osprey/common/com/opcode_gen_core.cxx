@@ -1092,6 +1092,40 @@ struct OPERATOR_info_struct OPERATOR_info[OPERATOR_LAST+1] = {
    OPERATOR_PROPERTY_next_prev            |
    OPERATOR_PROPERTY_label
   },
+#ifndef TARG_X8664
+#if (defined(TARG_MIPS) && defined(TARG_SL)) || \
+    (defined(KEY) && defined(TARG_LOONGSON))
+  {"OPR_RESERVED_143"},
+  {"OPR_RESERVED_144"},
+  {"OPR_RESERVED_145"},
+  {"OPR_RESERVED_146"},
+  {"OPR_RESERVED_147"},
+#elif defined(TARG_MIPS) || defined(KEY)
+  {"OPR_RESERVED_141"},
+  {"OPR_RESERVED_142"},
+  {"OPR_RESERVED_143"},
+  {"OPR_RESERVED_144"},
+  {"OPR_RESERVED_145"},
+  {"OPR_RESERVED_146"},
+  {"OPR_RESERVED_147"},
+#else
+  {"OPR_RESERVED_140"},
+  {"OPR_RESERVED_141"},
+  {"OPR_RESERVED_142"},
+  {"OPR_RESERVED_143"},
+  {"OPR_RESERVED_144"},
+  {"OPR_RESERVED_145"},
+  {"OPR_RESERVED_146"},
+  {"OPR_RESERVED_147"},
+#endif
+#endif
+  {"OPR_DSL",
+   -1 /* nkids */,
+   OPERATOR_MAPCAT_OEXP /* mapcat */,
+   OPERATOR_PROPERTY_expression           |
+   OPERATOR_PROPERTY_offset               |
+   OPERATOR_PROPERTY_not_executable
+  },
 };
 
 static BOOL
@@ -2947,6 +2981,11 @@ Is_Valid_Opcode_Parts (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc)
         valid = rtype == MTYPE_V && desc == MTYPE_V;
         break;
 
+      case OPR_DSL:
+        // [RTYPE] : M [DESC] : V
+        valid = rtype == MTYPE_M && desc == MTYPE_V;
+        break;
+
       case OPR_ARRAY:
       case OPR_ARRSECTION:
       case OPR_LDA:
@@ -3447,6 +3486,12 @@ OPCODE_name (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc)
       sprintf (buffer, "OPC_%s", &OPERATOR_info [opr]._name [4]);
       break;
 
+    case OPR_DSL:
+      // [RTYPE] : M [DESC] : V
+      sprintf (buffer, "OPC_%s%s", MTYPE_name(rtype),
+               &OPERATOR_info [opr]._name [4]);
+      break;
+
     case OPR_ARRAY:
     case OPR_ARRSECTION:
     case OPR_LDA:
@@ -3715,8 +3760,4 @@ OPCODE_name (OPCODE opc)
 
   return OPCODE_name (opr, rtype, desc);
 }
-
-
-
-
 

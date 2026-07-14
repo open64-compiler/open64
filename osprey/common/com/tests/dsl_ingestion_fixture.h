@@ -1,10 +1,8 @@
 /*
  * Native C++ fixtures that simulate the future Python ingestion builder calls.
  *
- * These helpers intentionally use today's staged DSL marker and tensor
- * descriptor storage.  They create native KIND_TENSOR TY records through the
- * existing descriptor side table, but do not introduce Python bindings, native
- * WHIRL opcodes, or binary image sections.
+ * These helpers create native tensor types and value-producing DSL operators
+ * through the same opaque builder API used by the frontend bridge.
  */
 
 #ifndef dsl_ingestion_fixture_INCLUDED
@@ -25,6 +23,31 @@ typedef struct {
     WN *value;
     const char *name;
 } DSL_FIXTURE_VALUE;
+
+static WN *
+DSL_Fixture_Value_Expression (WN *value)
+{
+    return value != NULL && WN_operator(value) == OPR_STID ?
+           WN_kid0(value) : value;
+}
+
+static BOOL
+DSL_Fixture_Get_Opcode_Annotation
+        (WN *value,
+         DSL_OPCODE_ANNOTATION *annotation)
+{
+    DSL_BUILDER_VALUE_INFO info;
+
+    if (!DSL_Builder_Get_Value_Info(value, &info))
+        return FALSE;
+    if (annotation != NULL) {
+        annotation->name = info.opcode_name;
+        annotation->name_len = info.opcode_name_len;
+        annotation->version = info.version;
+        annotation->payload = info.payload;
+    }
+    return TRUE;
+}
 
 static TY_IDX
 DSL_Fixture_Create_Tensor_Type (const char *type_name,
@@ -95,8 +118,9 @@ DSL_Fixture_Create_Tensor_Const (const char *value_name,
                                                    fixture.ty,
                                                    "dsl_ingestion_fixture",
                                                    "native_fixture");
-    fixture.value = DSL_WN_Create_Tensor_Const (value_name, dtype, rank,
-                                                shape, "splat", value);
+    fixture.value = DSL_Builder_Create_Tensor_Constant
+                        (value_name, fixture.ty, dtype, rank, shape,
+                         "splat", value);
     return fixture;
 }
 
