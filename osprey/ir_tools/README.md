@@ -127,6 +127,16 @@ We can also dump the `symbol table` of the WHIRL IR:
 ir_b2a -st2 a.O
 ```
 
+Use `-src` with `-st` to interleave available original source lines with the
+WHIRL statements and dump the symbol tables for review:
+
+```shell
+ir_b2a -st -src a.O a.T
+```
+
+The source files must remain accessible at the pathnames recorded in the
+binary WHIRL DST.
+
 ## TODO
 ---
 The document of the following tools is coming.
@@ -134,5 +144,4 @@ The document of the following tools is coming.
 - whirl2mpl
 - ir_size
 - ...
-
 
