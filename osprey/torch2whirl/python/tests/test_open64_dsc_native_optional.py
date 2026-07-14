@@ -50,6 +50,9 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
                 raise unittest.SkipTest(str(exc)) from exc
             raise
 
+    def setUp(self) -> None:
+        load_builder("native").begin_program()
+
     def test_native_backend_creates_opaque_tensor_and_operator_handles(self) -> None:
         builder = load_builder("native")
 
@@ -100,6 +103,30 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertGreater(lhs.value, 0)
         self.assertGreater(rhs.value, 0)
         self.assertGreater(add.value, 0)
+
+    def test_native_tensor_identity_excludes_runtime_state_and_lineage(self) -> None:
+        builder = load_builder("native")
+        descriptor = {
+            "kind": "tensor",
+            "dtype": "float32",
+            "rank": 2,
+            "logical_shape": "[1,4]",
+            "layout": "contiguous",
+            "runtime_state": "resident",
+            "lineage": "producer_a",
+        }
+        first = builder.tensor_type(
+            "canonical_a", "float32", 2, "[1,4]", descriptor
+        )
+        second = builder.tensor_type(
+            "canonical_b",
+            "float32",
+            2,
+            "[1,4]",
+            {**descriptor, "runtime_state": "evicted", "lineage": "producer_b"},
+        )
+
+        self.assertEqual(first.value, second.value)
 
     def test_native_backend_appends_add_marker(self) -> None:
         builder = load_builder("native")
@@ -547,6 +574,7 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             ["common.model_input", "common.model_input", "common.add"],
         )
         self.assertIn("name=input0", str(markers[-3]["payload"]))
+        self.assertIn("attr.input_ordinal=0", str(markers[-3]["payload"]))
         self.assertIn("kid0=input0", str(markers[-1]["payload"]))
 
         with tempfile.TemporaryDirectory() as work_dir:

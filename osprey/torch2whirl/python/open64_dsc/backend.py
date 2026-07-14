@@ -20,6 +20,13 @@ class WhirlBackend(Protocol):
     ) -> int:
         ...
 
+    def intern_tensor_type(
+        self,
+        name: str,
+        descriptor: Mapping[str, object],
+    ) -> int:
+        ...
+
     def attach_tensor_descriptor(
         self,
         tensor_type: int,
@@ -63,6 +70,17 @@ class WhirlBackend(Protocol):
     ) -> int:
         ...
 
+    def create_operator_with_result(
+        self,
+        opcode_name: str,
+        version: int,
+        kids: Sequence[int],
+        attrs: Mapping[str, str],
+        result_name: str,
+        result_type: int,
+    ) -> int:
+        ...
+
     def create_symbol(
         self,
         name: str,
@@ -77,10 +95,49 @@ class WhirlBackend(Protocol):
     ) -> bool:
         ...
 
+    def attach_value_metadata(
+        self,
+        value: int,
+        metadata: Mapping[str, str],
+    ) -> bool:
+        ...
+
+    def attach_value_lineage(self, value: int, lineage: str) -> bool:
+        ...
+
+    def get_value_type(self, value: int) -> int:
+        ...
+
+    def get_value_result_symbol(self, value: int) -> int:
+        ...
+
+    def begin_program(self) -> bool:
+        ...
+
+    def abort_program(self) -> None:
+        ...
+
     def create_minimal_program_unit(
         self,
         name: str,
     ) -> int:
+        ...
+
+    def register_source_file(self, program_unit: int, path: str) -> int:
+        ...
+
+    def set_value_source_position(
+        self,
+        value: int,
+        file_id: int,
+        line: int,
+        column: int,
+        statement_begin: bool,
+        basic_block_begin: bool,
+    ) -> bool:
+        ...
+
+    def verify_program(self) -> Mapping[str, object]:
         ...
 
     def append_program_unit_marker(
