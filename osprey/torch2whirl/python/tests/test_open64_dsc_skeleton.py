@@ -8,10 +8,17 @@ import json
 import struct
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
+import open64_dsc.export as export_module
 from open64_dsc.backend import load_backend
-from open64_dsc.cli import _load_model, _parse_shape_spec, run as cli_run
+from open64_dsc.cli import (
+    _external_data_file_for_output,
+    _load_model,
+    _parse_shape_spec,
+    run as cli_run,
+)
 from open64_dsc.interpreter import WhirlExportInterpreter
 from open64_dsc.module import (
     WhirlOperatorRecord,
@@ -37,6 +44,15 @@ class FailingNativeBackend:
 
     def create_operator(self, opcode_name, version, kids, attrs):
         raise RuntimeError("native operator unavailable")
+
+
+class FailingFinalizeBackend:
+    def backend_name(self) -> str:
+        return "mock"
+
+    def finalize_mapped_image(self, path, module_manifest):
+        Path(path).write_text("partial artifact\n", encoding="utf-8")
+        return False
 
 
 class Open64DscSkeletonTest(unittest.TestCase):
@@ -474,6 +490,23 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "tensor_payload.0=UnitPayload.safetensors:weight:float32:[2]:0:8:",
             text,
         )
+
+    def test_save_as_whirl_removes_partial_artifact_on_failure(self) -> None:
+        module = self._external_payload_module()
+
+        with tempfile.TemporaryDirectory() as work_dir:
+            artifact = Path(work_dir) / "model.B"
+            with mock.patch.object(
+                export_module,
+                "load_backend",
+                return_value=FailingFinalizeBackend(),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "WHIRL artifact"):
+                    save_as_whirl(module, str(artifact))
+
+            self.assertFalse(artifact.exists())
+            self.assertFalse((Path(work_dir) / "UnitPayload.safetensors").exists())
+            self.assertEqual(list(Path(work_dir).iterdir()), [])
 
     def test_gatekeeper_rejects_missing_external_payload_when_strict(self) -> None:
         module = self._external_payload_module()
@@ -1531,6 +1564,26 @@ class Open64DscSkeletonTest(unittest.TestCase):
             _parse_shape_spec("shape:1,-1,3")
         with self.assertRaisesRegex(ValueError, "integer"):
             _parse_shape_spec("shape:1,bad,3")
+
+    def test_cli_derives_external_data_file_from_output(self) -> None:
+        self.assertEqual(
+            _external_data_file_for_output(Path("model.B")),
+            "model.safetensors",
+        )
+        self.assertEqual(
+            _external_data_file_for_output(Path("/tmp/resnet")),
+            "resnet.safetensors",
+        )
+
+    def test_options_validate_external_data_file(self) -> None:
+        self.assertEqual(
+            WhirlExportOptions(
+                external_data_file="model.safetensors",
+            ).external_data_file,
+            "model.safetensors",
+        )
+        with self.assertRaisesRegex(ValueError, "file name"):
+            WhirlExportOptions(external_data_file="dir/model.safetensors")
 
     def test_cli_requires_sample_input(self) -> None:
         with tempfile.TemporaryDirectory() as work_dir:

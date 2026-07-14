@@ -195,6 +195,7 @@ def _check_resnet_artifact(path: Path) -> None:
         "common.residual_add",
         "common.output_logits",
         "value_metadata.1=conv1_weight:external_tensor_constant",
+        "tensor_payload.0=resnet.safetensors:conv1.weight",
         "graph_operator_attrs.0=attr.dilation=1,1",
         "graph_operator_metadata.0=fx_node_name=conv1",
         "source_module_path=conv1",
@@ -334,7 +335,7 @@ def main() -> int:
             return completed.returncode
 
         _check_resnet_artifact(resnet_output)
-        side_file = tmpdir / "LocalResNet.safetensors"
+        side_file = tmpdir / "resnet.safetensors"
         if not side_file.exists() or side_file.stat().st_size == 0:
             raise AssertionError("driver ResNet export did not write side file")
         _check_resnet_side_file(side_file)

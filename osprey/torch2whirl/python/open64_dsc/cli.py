@@ -11,6 +11,11 @@ from typing import Any, Optional, Sequence, TextIO, Tuple
 
 from .export import export_to_whirl, save_as_whirl
 from .options import WhirlExportOptions
+from .verifier import WhirlVerificationError
+
+
+class Torch2WhirlCliError(RuntimeError):
+    pass
 
 
 def _parse_shape_spec(spec: str) -> Tuple[int, ...]:
@@ -114,16 +119,46 @@ def _build_parser() -> argparse.ArgumentParser:
 def run(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    output_path = Path(args.output)
 
-    model = _load_model(Path(args.model), args.model_factory)
-    sample_inputs = [
-        _sample_input_from_spec(sample_spec)
-        for sample_spec in args.sample_input
-    ]
-    options = WhirlExportOptions(entry=args.entry, backend=args.backend)
-    module = export_to_whirl(model, sample_inputs, options)
-    save_as_whirl(module, args.output)
+    try:
+        model = _load_model(Path(args.model), args.model_factory)
+    except Exception as exc:
+        raise Torch2WhirlCliError(f"Python import/model load failed: {exc}") from exc
+
+    try:
+        sample_inputs = [
+            _sample_input_from_spec(sample_spec)
+            for sample_spec in args.sample_input
+        ]
+    except Exception as exc:
+        raise Torch2WhirlCliError(f"sample input parsing failed: {exc}") from exc
+
+    options = WhirlExportOptions(
+        entry=args.entry,
+        backend=args.backend,
+        external_data_file=_external_data_file_for_output(output_path),
+    )
+    try:
+        module = export_to_whirl(model, sample_inputs, options)
+    except NotImplementedError as exc:
+        raise Torch2WhirlCliError(f"unsupported operator: {exc}") from exc
+    except WhirlVerificationError as exc:
+        raise Torch2WhirlCliError(f"gatekeeper verification failed: {exc}") from exc
+    except RuntimeError as exc:
+        raise Torch2WhirlCliError(f"native builder or graph capture failed: {exc}") from exc
+
+    try:
+        save_as_whirl(module, str(output_path))
+    except WhirlVerificationError as exc:
+        raise Torch2WhirlCliError(f"gatekeeper verification failed: {exc}") from exc
+    except RuntimeError as exc:
+        raise Torch2WhirlCliError(f"binary finalization failed: {exc}") from exc
     return 0
+
+
+def _external_data_file_for_output(output_path: Path) -> str:
+    return output_path.with_suffix(".safetensors").name
 
 
 def main(

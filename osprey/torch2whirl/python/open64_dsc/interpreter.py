@@ -682,7 +682,7 @@ class WhirlExportInterpreter:
         byte_offset = self._next_external_offset(values)
         checksum = hashlib.sha256(payload_bytes).hexdigest()
         name = self._external_value_name(target)
-        side_file = f"{model_name}.safetensors"
+        side_file = self._external_data_file(model_name)
         handle = self.builder().external_tensor_constant(
             name,
             dtype,
@@ -1235,6 +1235,11 @@ class WhirlExportInterpreter:
         if hasattr(model, "__class__"):
             return model.__class__.__name__
         return type(model).__name__
+
+    def _external_data_file(self, model_name: str) -> str:
+        if self._options.external_data_file:
+            return self._options.external_data_file
+        return f"{model_name}.safetensors"
 
     def _input_dtype(self, example: Any) -> str:
         dtype = getattr(example, "dtype", None)

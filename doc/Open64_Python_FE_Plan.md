@@ -659,6 +659,22 @@ Target command:
 torch2whirl model.py --entry forward --sample-input shape:1,3,224,224 -o model.B
 ```
 
+Current standalone driver contract for the final Open64 driver integration:
+
+```sh
+torch2whirl model.py \
+  --entry forward \
+  --sample-input shape:1,3,224,224 \
+  --backend native \
+  --output model.B
+```
+
+The explicit output path owns the artifact family. `--output model.B` writes the
+binary WHIRL artifact as `model.B` and writes external tensor payloads beside it
+using the output stem, for example `model.safetensors`. The frontend uses
+temporary files plus atomic replacement, so failures do not leave an apparently
+valid partial `model.B`.
+
 Validation commands:
 
 ```sh
@@ -670,13 +686,15 @@ The combined driver path can come later, after the standalone artifact path is
 stable:
 
 ```sh
-opencc -frontend=torch2whirl model.py ...
+openpy -keep model.py
 ```
 
-The combined mode must remain a convenience wrapper around the same artifact
-boundary. It should not become an in-memory bypass around binary WHIRL
-finalization, `ir_b2a` visibility, TensorDescriptorIR persistence, or gatekeeper
-validation.
+`openpy` is a symbolic link to the standard Open64 driver, analogous to
+`opencc`, but executable basename dispatch must select the Python DSL frontend
+pipeline and must never silently select the C frontend. The combined mode must
+remain a convenience wrapper around the same artifact boundary. It should not
+become an in-memory bypass around binary WHIRL finalization, `ir_b2a`
+visibility, TensorDescriptorIR persistence, or gatekeeper validation.
 
 Phase 8 execution stages:
 
@@ -708,11 +726,15 @@ Phase 8 execution stages:
    It skips cleanly when `opencc` is unavailable, and when `OPEN64_OPENCC` or
    an installed `opencc` is present it emits a native artifact through the C++
    driver and runs `opencc -x whirl -c` on that artifact.
+7. The main Open64 driver owns the final `openpy -keep model.py` orchestration,
+   retained `model.B` lifecycle, and `model.t` trace hook immediately after
+   `VHO_DSL_Lower_Driver()` and before `VHO_Lower_Driver()`. The torch2whirl
+   side owns only the standalone frontend command and artifact contract above.
 
 Phase 8 is complete when the first five stages pass in the
 `--enable-torch2whirl-only` Linux Docker lane and `driver_opencc_smoke` is
 available as the guarded full-toolchain check. The combined
-`opencc -frontend=torch2whirl` mode remains explicitly deferred until after the
+`openpy -keep model.py` mode remains explicitly deferred until after the
 standalone artifact path is stable under real model ingestion.
 
 ## Phase 9: Gatekeeper Verifier
@@ -1083,6 +1105,10 @@ Phase 12 completion status:
 5. GGUF and ONNX external-data outputs remain derived deployment artifacts. The
    compiler-ingestion source of truth is the WHIRL artifact plus the
    SafeTensors-style side file and symbol metadata.
+6. The CLI-driven path now derives payload side-file names from the explicit
+   output artifact. `--output model.B` produces `model.safetensors`, which is
+   suitable for `openpy -keep model.py` retaining the artifact family by source
+   stem.
 
 ### Phase 13: Formal WHIRL DSL Value Representation
 
@@ -1162,8 +1188,12 @@ Execution steps:
    repeatable macOS and Linux validation.
 4. Promote the smoke from optional to required only in the full-toolchain lane,
    not in `--enable-torch2whirl-only`.
-5. Keep combined `opencc -frontend=torch2whirl` deferred until standalone
-   artifact production and consumption are stable.
+5. Keep combined `openpy -keep model.py` deferred until standalone artifact
+   production and consumption are stable.
+6. The combined production command is `openpy -keep model.py`. `openpy`
+   basename selection, Python frontend phase orchestration, `-keep` retention,
+   and `model.t` generation after `VHO_DSL_Lower_Driver()` are owned by the
+   main Open64 driver work, not by torch2whirl.
 
 Acceptance criteria:
 
@@ -1172,6 +1202,8 @@ Acceptance criteria:
 2. The torch2whirl-only build remains small, standalone, and usable on macOS
    and Linux Docker.
 3. Documentation names the exact validation lane where `opencc` is required.
+4. `openpy -keep model.py` retains `model.B` and produces `model.t` without
+   embedding Python in the Open64 middle end.
 
 ### Phase 15: Developer And Release Hardening
 
@@ -1242,18 +1274,29 @@ Current batch status:
 4. The existing guarded full-toolchain path remains `make driver_opencc_smoke`.
    It is still the correct validation lane for `opencc -x whirl -c` once a full
    Open64 build with `opencc` is available.
+5. Native certification is blocked in this branch until the main native DSL
+   infrastructure work is available as a clean committed base. The dirty main
+   checkout currently contains the required API shape:
+   `DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE`,
+   `DSL_Builder_Create_Model_Input`,
+   `DSL_Builder_Create_External_Tensor_Constant`,
+   DSL IR image persistence/printing, and native gatekeeper validation.
+   torch2whirl must not copy that uncontrolled dirty-tree snapshot.
 
 ### Remaining Risk Register
 
-1. Real DSL node emission may require common/com changes outside torch2whirl.
+1. Real DSL node emission requires common/com changes outside torch2whirl.
 2. Full `opencc` consumption may expose binary WHIRL format expectations that
    the standalone frontend cannot satisfy until Phase 13 lands.
 3. SafeTensors-style payload metadata is not enough by itself; the symbol table
    must carry stable references that downstream Open64 code can inspect.
 4. Dynamic shapes and training-mode capture remain out of scope until static
    eval-mode ResNet is complete.
-5. The combined `opencc` frontend mode should remain deferred so it does not
+5. The combined `openpy` frontend mode should remain deferred so it does not
    hide artifact-boundary bugs.
+6. Two coordinated PRs are expected after full native certification:
+   the native DSL infrastructure PR lands first, then
+   `codex/torch2whirl-python-fe` lands with a dependency note and cross-link.
 
 ### Remaining Definition Of Done
 

@@ -8,9 +8,9 @@ formalization. Keep this file updated as each batch lands.
 
 - Branch: `codex/torch2whirl-python-fe`
 - T0: complete in commit `4c9b056e`
-- T1: complete in commit `0ef5d18a` for Python/mock paths; native certification
-  remains capability-gated until the common/com G1/G2 APIs land in this
-  worktree.
+- T1: complete in commit `0ef5d18a` for Python/mock paths. Native
+  certification remains capability-gated until the common/com G1/G2 APIs land
+  in this worktree as committed changes.
 - T2: complete. The subagent-owned slice is dependency order, operator attrs,
   source metadata, mock artifacts, and tests that do not require new native DSL
   nodes.
@@ -24,9 +24,32 @@ formalization. Keep this file updated as each batch lands.
 - G1: symbol-table representation for model inputs and external tensor data.
 - G2: native API/IR tools support for ResNet operator emission and inspection.
 
-The main checkout reports G0 through G2 complete, but this worktree still lacks
-those native capabilities. Native tests must therefore skip by explicit
-capability checks rather than silently passing with mock-only behavior.
+The main checkout has uncommitted G0 through G2 work, but this worktree still
+lacks those native capabilities as a clean committed base. Native tests must
+therefore skip by explicit capability checks rather than silently passing with
+mock-only behavior.
+
+Required clean main-side API/files before T3 can close:
+
+- `osprey/common/com/dsl_builder.h` must expose
+  `DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE`,
+  `DSL_Builder_Create_Model_Input`, and
+  `DSL_Builder_Create_External_Tensor_Constant`.
+- `osprey/common/com/dsl_builder.cxx` must implement typed
+  `common.model_input.v2` and external-data `common.tensor_const` values that
+  feed the native DSL value/result path.
+- `osprey/common/com/dsl_ir_image.{h,cxx}` and
+  `osprey/common/com/dsl_ir_print.cxx` must persist and print the DSL opcode,
+  node, attribute, value, and value-reference records.
+- `osprey/common/com/dsl_gatekeeper.{h,cxx}` must verify native ResNet nodes,
+  tensor descriptors, result values, and external tensor references.
+- `osprey/common/com/ir_bread.cxx`, `ir_bwrite.cxx`, and `ir_reader.cxx`,
+  plus `osprey/include/sys/elf_whirl.h`, must carry the DSL IR image section
+  through mapped-image read/write and `ir_b2a -st`.
+- `osprey/torch2whirl/Makefile.gbase` must link the native extension against
+  `dsl_gatekeeper.o` and `dsl_ir_image.o`.
+- `osprey/torch2whirl/python/native/open64_dsc_native_bridge.cxx` must bind
+  the new common/com APIs to Python without exposing WHIRL node layout.
 
 ## Subagent Queue
 
@@ -73,13 +96,15 @@ Status: complete.
 
 ### T3: Native Capability Certification
 
-Status: blocked on G1/G2 landing in this worktree.
+Status: blocked on G1/G2 landing in this worktree as a clean commit.
 
-- Turn capability-skipped native tests into passing tests once native APIs are
-  available.
-- Validate `common.model_input.v2`, external tensor source symbols, and all
-  ResNet operator v2 nodes through `python_native_test` and ir-tools smoke
-  checks.
+- Turn capability-skipped native tests into passing tests once the required
+  native APIs are available from a committed common/com base.
+- Validate `common.model_input.v2`, external tensor source symbols, DSL IR
+  image records, and all ResNet operator v2 nodes through `python_native_test`
+  and ir-tools smoke checks.
+- Confirm `opencc -x whirl -O0 -c model.B` succeeds after Python exits and
+  without importing Python or torch2whirl libraries.
 
 ### T4: Real ResNet Fixture
 
@@ -97,6 +122,13 @@ Status: complete.
 
 - Routed the standalone `torch2whirl` driver through the same Python ingestion
   path for local model scripts.
+- Hardened the standalone argv contract needed by `openpy -keep model.py`:
+  `torch2whirl model.py --entry forward --sample-input shape:1,3,224,224
+  --backend native --output model.B`.
+- Output side files are named deterministically from the explicit output path:
+  `model.B` writes `model.safetensors` in the same directory.
+- Artifact and side-file writes use temporary files and atomic replacement so
+  failed frontend runs do not create an apparently valid partial `model.B`.
 - Validated the driver path with mock WHIRL output, ResNet operator metadata,
   SafeTensors side-file records, and invalid-graph rejection.
 - Kept Linux Docker and macOS build-tree validation in the standard smoke loop.
@@ -127,3 +159,43 @@ Exit evidence commands:
 - backend-isolation scan:
   `rg -n "be/cg|BE_CG|ercg|erauxdesc|#include .*be/"
   osprey/torch2whirl osprey/targdir/torch2whirl`
+
+## Combined Driver Contract
+
+The final user-facing command is owned by the main Open64 driver:
+
+```sh
+openpy -keep model.py
+```
+
+`openpy` will be a symbolic link to the standard Open64 driver, analogous to
+`opencc`, but basename dispatch must select the Python DSL frontend pipeline and
+must never silently select the C frontend. The main agent owns `openpy`
+language selection, phase orchestration, `-keep` behavior, and the `model.t`
+trace hook after `VHO_DSL_Lower_Driver()` and before `VHO_Lower_Driver()`.
+
+The standalone frontend contract provided by this branch for that driver is:
+
+```sh
+torch2whirl model.py \
+  --entry forward \
+  --sample-input shape:1,3,224,224 \
+  --backend native \
+  --output model.B
+```
+
+On success, the frontend writes `model.B` and side files named from the explicit
+output path, for example `model.safetensors`. On failure, it exits nonzero,
+reports whether the failure came from Python import/model load, sample-input
+parsing, unsupported operator capture, gatekeeper verification, native builder,
+or binary finalization, and avoids leaving a plausible partial `model.B`.
+
+Two coordinated PRs are expected after full native certification and the
+combined `openpy` gate pass:
+
+- Native DSL infrastructure PR: must land first and provide the common/com,
+  mapped-image, gatekeeper, VHO DSL lowering, `openpy`, `-keep`, and `model.t`
+  driver support.
+- `codex/torch2whirl-python-fe` PR: depends on the native infrastructure PR and
+  supplies the standalone Python/PyTorch frontend, CLI, driver executable,
+  tests, and plans.
