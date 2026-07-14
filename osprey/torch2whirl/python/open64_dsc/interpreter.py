@@ -220,7 +220,7 @@ class WhirlExportInterpreter:
         handle, attrs = self._emit_operator(
             common.OUTPUT_LOGITS,
             [output_value.handle],
-            {"attr.semantic": "classifier_logits"},
+            {"attr.semantic": "logits"},
         )
         self.builder().append_program_unit_value(entry_pu, handle)
         operators.append(common.OUTPUT_LOGITS)
@@ -606,7 +606,13 @@ class WhirlExportInterpreter:
     ) -> _GraphValue:
         tensor = self._resolve_attr(traced_module, target)
         if tensor is None:
-            graph_value = self._absent_parameter_for_target(target, values, role)
+            graph_value = self._absent_parameter_for_target(
+                traced_module,
+                target,
+                tensor_types,
+                values,
+                role,
+            )
         else:
             graph_value = self._external_tensor_for_target(
                 traced_module,
@@ -625,7 +631,9 @@ class WhirlExportInterpreter:
 
     def _absent_parameter_for_target(
         self,
+        traced_module: Any,
         target: str,
+        tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
         role: Optional[str] = None,
     ) -> _GraphValue:
@@ -634,6 +642,63 @@ class WhirlExportInterpreter:
             for value in values:
                 if value.name == name:
                     return _GraphValue(ValueHandle(value.handle), value.name)
+
+        if target.endswith(".bias") and (role or self._parameter_role(target)) == "bias":
+            weight_target = target[:-4] + "weight"
+            weight = self._resolve_attr(traced_module, weight_target)
+            if weight is not None:
+                shape = self._input_shape(weight)
+                if shape:
+                    dtype = self._input_dtype(weight)
+                    logical_shape = self._format_shape((shape[0],))
+                    tensor_type_name = f"{name}_type"
+                    descriptor = {
+                        "kind": "tensor",
+                        "dtype": dtype,
+                        "rank": 1,
+                        "logical_shape": logical_shape,
+                        "traits": role or self._parameter_role(target),
+                        "layout": "C",
+                        "sharding": "replicated",
+                        "placement": "inline_constant",
+                        "memory": "static",
+                        "quantization": "none",
+                        "runtime_state": "static",
+                        "lineage": name,
+                    }
+                    handle = self.builder().tensor_constant(
+                        name,
+                        dtype,
+                        1,
+                        logical_shape,
+                        "implicit_zero",
+                        "0",
+                    )
+                    tensor_types.append(
+                        WhirlTensorTypeRecord(
+                            name=tensor_type_name,
+                            handle=handle.value,
+                            dtype=dtype,
+                            rank=1,
+                            logical_shape=logical_shape,
+                            descriptor=descriptor,
+                        )
+                    )
+                    values.append(
+                        WhirlValueRecord(
+                            name=name,
+                            handle=handle.value,
+                            type_name=tensor_type_name,
+                            value_kind="implicit_zero",
+                            metadata={
+                                "source_layer_name": name,
+                                "lowering_hint": "module_parameter_absent",
+                                "tensor_role": role or self._parameter_role(target),
+                                "storage_shape": logical_shape,
+                            },
+                        )
+                    )
+                    return _GraphValue(handle, name)
 
         handle = self.builder().tensor_constant(
             name,
@@ -694,9 +759,11 @@ class WhirlExportInterpreter:
             target,
             byte_offset,
             byte_length,
-            checksum,
+            "",
             self._parameter_layout(tensor_role, len(shape)),
         )
+        metadata = dict(handle.metadata)
+        metadata["storage_checksum"] = checksum
         tensor_types.append(
             WhirlTensorTypeRecord(
                 name=f"{name}_type",
@@ -714,7 +781,7 @@ class WhirlExportInterpreter:
                 type_name=f"{name}_type",
                 value_kind="external_data",
                 symbol_handle=handle.symbol,
-                metadata=handle.metadata,
+                metadata=metadata,
             )
         )
         tensor_payloads.append(

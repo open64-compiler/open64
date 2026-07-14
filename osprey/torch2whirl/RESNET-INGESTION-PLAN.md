@@ -8,15 +8,17 @@ formalization. Keep this file updated as each batch lands.
 
 - Branch: `codex/torch2whirl-python-fe`
 - T0: complete in commit `4c9b056e`
-- T1: complete in commit `0ef5d18a` for Python/mock paths. Native
-  certification remains capability-gated until the common/com G1/G2 APIs land
-  in this worktree as committed changes.
+- T1: complete in commit `0ef5d18a` for Python/mock paths and now certified
+  through the native bridge after merging the committed common/com base.
 - T2: complete. The subagent-owned slice is dependency order, operator attrs,
   source metadata, mock artifacts, and tests that do not require new native DSL
   nodes.
 - T2 progress in this branch now includes operator-level source metadata in the
   Python manifest and mock WHIRL artifact: FX node op/name/target, lowering
   hint, source module path, and source module type.
+- T3 native standalone certification is complete for the torch2whirl-owned
+  LocalResNet path through `ir_b2a -st`. The remaining `opencc/openpy` combined
+  driver gate requires the updated main-side driver build.
 
 ## Main-Agent Gates
 
@@ -24,12 +26,14 @@ formalization. Keep this file updated as each batch lands.
 - G1: symbol-table representation for model inputs and external tensor data.
 - G2: native API/IR tools support for ResNet operator emission and inspection.
 
-The main checkout has uncommitted G0 through G2 work, but this worktree still
-lacks those native capabilities as a clean committed base. Native tests must
-therefore skip by explicit capability checks rather than silently passing with
-mock-only behavior.
+G0 through G2 landed as clean native infrastructure commits on
+`codex/non-comment-dsl-node`, starting with `a6e5da86`. This branch now builds
+against those APIs. A follow-up common/com readback ownership fix was needed in
+`osprey/common/com/dsl_ir_image.cxx`: mapped DSL image records must be copied
+into owned segmented-array storage when `ir_b2a` reopens a `.B`, rather than
+adopting mapped-file section pointers with `Transfer`.
 
-Required clean main-side API/files before T3 can close:
+Native API/files now consumed by T3:
 
 - `osprey/common/com/dsl_builder.h` must expose
   `DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE`,
@@ -96,15 +100,30 @@ Status: complete.
 
 ### T3: Native Capability Certification
 
-Status: blocked on G1/G2 landing in this worktree as a clean commit.
+Status: complete for standalone torch2whirl native artifact certification.
 
-- Turn capability-skipped native tests into passing tests once the required
-  native APIs are available from a committed common/com base.
-- Validate `common.model_input.v2`, external tensor source symbols, DSL IR
-  image records, and all ResNet operator v2 nodes through `python_native_test`
-  and ir-tools smoke checks.
-- Confirm `opencc -x whirl -O0 -c model.B` succeeds after Python exits and
-  without importing Python or torch2whirl libraries.
+- Capability-skipped native tests now pass against the committed native APIs.
+- Validates `common.model_input.v2`, external tensor source symbols, implicit
+  zero conv bias operands, DSL IR image records, and all LocalResNet operator
+  v2 nodes through `python_native_test` and the driver-native `ir_b2a -st`
+  smoke.
+- The certified standalone command shape is:
+  `torch2whirl model.py --entry forward --sample-input shape:1,3,64,64
+  --backend native --output model.B` for the local fixture. The final driver
+  contract remains `shape:1,3,224,224`.
+- The certified output family is `model.B` plus deterministic
+  `model.safetensors` next to the explicit output path.
+- `ir_b2a -st model.B model.st.ir` exposes `common.model_input`,
+  `cnn.conv2d`, `cnn.batch_norm_infer`, `common.relu`, `cnn.max_pool2d`,
+  `common.residual_add`, `cnn.global_avg_pool2d`, `common.flatten`,
+  `common.linear`, `common.output_logits`, tensor descriptors, external
+  payload references, implicit-zero bias values, result values, symbols, and
+  types.
+- Separate-process `opencc -x whirl -O0 -c model.B` could not be completed in
+  this torch2whirl-only build tree because it intentionally does not build
+  `opencc`; the installed host `opencc` binaries reject `-x whirl` as an
+  unknown language. Main-side `147ef0b4` owns the updated `openpy/opencc`
+  driver gate.
 
 ### T4: Real ResNet Fixture
 

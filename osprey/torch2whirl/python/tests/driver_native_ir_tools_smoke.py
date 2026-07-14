@@ -11,6 +11,8 @@ import tempfile
 from textwrap import dedent
 from typing import Optional
 
+from driver_torch_smoke import _write_resnet_model
+
 
 def _require_torch() -> None:
     try:
@@ -127,7 +129,7 @@ def _run_valid_driver(driver: Path, model_path: Path, artifact: Path) -> int:
         driver,
         model_path,
         artifact,
-        ("shape:1,3", "shape:1,3", "shape:2,3", "shape:3,4"),
+        ("shape:1,3,64,64",),
     )
     if completed.returncode != 0:
         print(completed.stdout, file=sys.stderr)
@@ -179,11 +181,23 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
     text = text_dump.read_text(encoding="utf-8", errors="replace")
     required = [
         "FUNC_ENTRY",
-        "common.add",
-        "common.matmul",
-        "attr.broadcast_rule=none",
-        "attr.transpose_kid0=false",
-        "attr.transpose_kid1=false",
+        "common.model_input",
+        "common.tensor_const",
+        "cnn.conv2d",
+        "cnn.batch_norm_infer",
+        "common.relu",
+        "cnn.max_pool2d",
+        "common.residual_add",
+        "cnn.global_avg_pool2d",
+        "common.flatten",
+        "common.linear",
+        "common.output_logits",
+        "attr.kernel_shape=7,7",
+        "attr.stride=2,2",
+        "attr.padding=3,3",
+        "attr.semantic=logits",
+        "value=safetensors://driver_native_model.safetensors#conv1.weight",
+        "value_kind=implicit_zero",
         "Symbols:",
         "Types:",
     ]
@@ -212,7 +226,7 @@ def main() -> int:
         model_path = tmpdir / "model.py"
         artifact = tmpdir / "driver_native_model.B"
         text_dump = tmpdir / "driver_native_model.st.ir"
-        _write_model(model_path)
+        _write_resnet_model(model_path)
 
         driver_status = _run_valid_driver(driver, model_path, artifact)
         if driver_status != 0:
@@ -220,7 +234,7 @@ def main() -> int:
                 driver,
                 model_path,
                 artifact,
-                ("shape:1,3", "shape:1,3", "shape:2,3", "shape:3,4"),
+                ("shape:1,3,64,64",),
             )
             error_text = completed.stdout + completed.stderr
             if "does not support" in error_text:

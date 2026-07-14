@@ -502,7 +502,7 @@ class WhirlBuilder:
             common.OUTPUT_LOGITS,
             operator_version(common.OUTPUT_LOGITS),
             [value],
-            attrs or {"attr.semantic": "classifier_logits"},
+            attrs or {"attr.semantic": "logits"},
         )
 
     def cnn_max_pool2d(

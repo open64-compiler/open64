@@ -426,7 +426,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
             ],
         )
         self.assertIn(
-            "attr.semantic=classifier_logits",
+            "attr.semantic=logits",
             str(annotations[-1]["payload"]),
         )
 

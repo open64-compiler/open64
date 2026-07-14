@@ -10,6 +10,8 @@
 #include <string.h>
 
 #include "defs.h"
+#include "config.h"
+#include "config_targ_opt.h"
 #include "mempool.h"
 #include "erglob.h"
 #include "errors.h"
@@ -75,6 +77,9 @@ Open64_DSC_Initialize_Context(void)
     Init_Error_Handler(10);
     Set_Error_File(NULL);
     Set_Error_Line(ERROR_LINE_UNKNOWN);
+    Preconfigure();
+    ABI_Name = "n64";
+    Configure();
     Initialize_Symbol_Tables(TRUE);
     DSL_Opcode_Register_Common_Substrate();
     DSL_Opcode_Register_Domain_Wrapper_Examples();
@@ -155,7 +160,10 @@ Open64_DSC_Create_Tensor_Constant(const char *name,
                                   const char *value_kind,
                                   const char *value)
 {
-    WN *wn;
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+    TY_IDX element_ty;
+    TY_IDX tensor_ty;
+    DSL_BUILDER_VALUE value_wn;
 
     if (name == NULL || name[0] == '\0' ||
         dtype == NULL || dtype[0] == '\0' ||
@@ -164,12 +172,72 @@ Open64_DSC_Create_Tensor_Constant(const char *name,
 
     Open64_DSC_Initialize_Context();
 
-    if (Open64_DSC_Dtype_To_TY(dtype) == TY_IDX_ZERO)
+    element_ty = Open64_DSC_Dtype_To_TY(dtype);
+    if (element_ty == TY_IDX_ZERO)
         return 0;
 
-    wn = DSL_WN_Create_Tensor_Const(name, dtype, rank, logical_shape,
-                                    value_kind, value);
-    return (Open64_DSC_Handle) wn;
+    type_core.kind = "tensor";
+    type_core.dtype = dtype;
+    type_core.rank = (INT32) rank;
+    type_core.logical_shape = logical_shape;
+    tensor_ty = DSL_Builder_Create_Tensor_Type_Core(name, element_ty,
+                                                    &type_core);
+    if (tensor_ty == TY_IDX_ZERO)
+        return 0;
+
+    value_wn = DSL_Builder_Create_Tensor_Constant(name, tensor_ty, dtype,
+                                                  rank, logical_shape,
+                                                  value_kind, value);
+    return (Open64_DSC_Handle) value_wn;
+}
+
+Open64_DSC_Handle
+Open64_DSC_Create_Model_Input(const char *name,
+                              Open64_DSC_Handle tensor_type,
+                              unsigned int input_ordinal)
+{
+    DSL_BUILDER_VALUE value;
+
+    if (name == NULL || name[0] == '\0' || tensor_type == 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    value = DSL_Builder_Create_Model_Input(name, (TY_IDX) tensor_type,
+                                           (UINT32) input_ordinal);
+    return (Open64_DSC_Handle) value;
+}
+
+Open64_DSC_Handle
+Open64_DSC_Create_External_Tensor_Constant
+        (const char *name,
+         Open64_DSC_Handle tensor_type,
+         const Open64_DSC_External_Tensor_Reference *reference)
+{
+    DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE builder_reference;
+    DSL_BUILDER_VALUE value;
+
+    if (name == NULL || name[0] == '\0' || tensor_type == 0 ||
+        reference == NULL ||
+        reference->storage_format == NULL ||
+        reference->storage_format[0] == '\0' ||
+        reference->side_file == NULL || reference->side_file[0] == '\0' ||
+        reference->tensor_key == NULL || reference->tensor_key[0] == '\0' ||
+        reference->byte_length == 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+
+    builder_reference.storage_format = reference->storage_format;
+    builder_reference.side_file = reference->side_file;
+    builder_reference.tensor_key = reference->tensor_key;
+    builder_reference.byte_offset = (UINT64) reference->byte_offset;
+    builder_reference.byte_length = (UINT64) reference->byte_length;
+    builder_reference.checksum = reference->checksum;
+
+    value = DSL_Builder_Create_External_Tensor_Constant
+                (name, (TY_IDX) tensor_type, &builder_reference);
+    return (Open64_DSC_Handle) value;
 }
 
 Open64_DSC_Handle

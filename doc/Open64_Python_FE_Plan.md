@@ -722,20 +722,23 @@ Phase 8 execution stages:
    `make driver_native_ir_tools_smoke`; it builds the native Python extension,
    runs the same executable with `--backend native`, and inspects the resulting
    driver-produced WHIRL file with `ir_b2a -st`.
-6. Add the full-toolchain consumption gate as `make driver_opencc_smoke`.
-   It skips cleanly when `opencc` is unavailable, and when `OPEN64_OPENCC` or
-   an installed `opencc` is present it emits a native artifact through the C++
-   driver and runs `opencc -x whirl -c` on that artifact.
+6. Keep the full-toolchain consumption gate as `make driver_opencc_smoke`, but
+   treat it as a full-driver validation lane. The torch2whirl-only build
+   intentionally skips this target because it does not build `opencc`, and
+   older installed `opencc` binaries do not understand `-x whirl`. A build with
+   the main-side `openpy/opencc` driver support from `147ef0b4` must own the
+   required `opencc -x whirl -c` proof.
 7. The main Open64 driver owns the final `openpy -keep model.py` orchestration,
    retained `model.B` lifecycle, and `model.t` trace hook immediately after
    `VHO_DSL_Lower_Driver()` and before `VHO_Lower_Driver()`. The torch2whirl
    side owns only the standalone frontend command and artifact contract above.
 
 Phase 8 is complete when the first five stages pass in the
-`--enable-torch2whirl-only` Linux Docker lane and `driver_opencc_smoke` is
-available as the guarded full-toolchain check. The combined
-`openpy -keep model.py` mode remains explicitly deferred until after the
-standalone artifact path is stable under real model ingestion.
+`--enable-torch2whirl-only` Linux Docker lane, `driver_native_ir_tools_smoke`
+certifies the standalone native LocalResNet artifact with `ir_b2a -st`, and
+`driver_opencc_smoke` remains available as the guarded full-toolchain check.
+The combined `openpy -keep model.py` mode remains main-owned and follows the
+standalone artifact certification.
 
 ## Phase 9: Gatekeeper Verifier
 
@@ -1182,14 +1185,15 @@ Execution steps:
 
 1. Maintain the guarded `driver_opencc_smoke` path while full Open64 builds are
    not always present in local or Docker validation.
-2. In a full-toolchain environment, run the standalone driver to emit the
-   binary artifact, then run `opencc -x whirl -c` on that artifact.
+2. In a full-toolchain environment that includes the updated main-side driver,
+   run the standalone driver to emit the binary artifact, then run
+   `opencc -x whirl -c` on that artifact.
 3. Capture the minimum environment variables and configure steps required for
    repeatable macOS and Linux validation.
 4. Promote the smoke from optional to required only in the full-toolchain lane,
    not in `--enable-torch2whirl-only`.
-5. Keep combined `openpy -keep model.py` deferred until standalone artifact
-   production and consumption are stable.
+5. Keep combined `openpy -keep model.py` owned by the main driver queue after
+   standalone artifact production and `ir_b2a -st` inspection are stable.
 6. The combined production command is `openpy -keep model.py`. `openpy`
    basename selection, Python frontend phase orchestration, `-keep` retention,
    and `model.t` generation after `VHO_DSL_Lower_Driver()` are owned by the
@@ -1198,12 +1202,13 @@ Execution steps:
 Acceptance criteria:
 
 1. `opencc -x whirl -c` consumes a driver-produced artifact in a full Open64
-   build and produces the expected object output.
+   build with the updated Python DSL frontend driver support and produces the
+   expected object output.
 2. The torch2whirl-only build remains small, standalone, and usable on macOS
    and Linux Docker.
 3. Documentation names the exact validation lane where `opencc` is required.
-4. `openpy -keep model.py` retains `model.B` and produces `model.t` without
-   embedding Python in the Open64 middle end.
+4. Main-owned `openpy -keep model.py` retains `model.B` and produces `model.t`
+   without embedding Python in the Open64 middle end.
 
 ### Phase 15: Developer And Release Hardening
 
@@ -1247,11 +1252,12 @@ Acceptance criteria:
    `OPR_COMMENT` DSL opcode payloads as the formal Phase 13 evidence unless a
    concrete verifier, lowering, roundtrip, or full-toolchain blocker requires a
    distinct non-comment WHIRL spelling.
-4. Extend the C++ driver path to prove full ResNet capture uses the same
-   Python-side API and native builder contract as direct Python tests.
-5. Run the full-toolchain `opencc -x whirl -c` lane in an environment that has a
-   complete Open64 build, and convert any failure into a focused artifact or
-   symbol-table task.
+4. Keep the C++ driver path proving full ResNet capture uses the same
+   Python-side API and native builder contract as direct Python tests; this is
+   now covered by `driver_native_ir_tools_smoke`.
+5. Hand the standalone-certified artifact contract to the main queue for the
+   full-toolchain `opencc -x whirl -c` and `openpy -keep model.py` gates in an
+   environment that has the updated driver build.
 
 Current batch status:
 
@@ -1274,20 +1280,27 @@ Current batch status:
 4. The existing guarded full-toolchain path remains `make driver_opencc_smoke`.
    It is still the correct validation lane for `opencc -x whirl -c` once a full
    Open64 build with `opencc` is available.
-5. Native certification is blocked in this branch until the main native DSL
-   infrastructure work is available as a clean committed base. The dirty main
-   checkout currently contains the required API shape:
+5. Native standalone certification is complete for the torch2whirl-owned
+   LocalResNet path against the committed native base. The native bridge binds
    `DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE`,
-   `DSL_Builder_Create_Model_Input`,
-   `DSL_Builder_Create_External_Tensor_Constant`,
-   DSL IR image persistence/printing, and native gatekeeper validation.
-   torch2whirl must not copy that uncontrolled dirty-tree snapshot.
+   `DSL_Builder_Create_Model_Input`, and
+   `DSL_Builder_Create_External_Tensor_Constant`. The
+   `driver_native_ir_tools_smoke` target emits a LocalResNet `model.B`, writes
+   `model.safetensors`, and validates the artifact with `ir_b2a -st`.
+6. A small common/com readback ownership fix was required:
+   `DSL_IR_Image_Load_Mapped` must copy mapped DSL image records with
+   `SEGMENTED_ARRAY::Insert` instead of adopting mapped-file section pointers
+   with `Transfer`, otherwise `ir_b2a` frees mapped `.B` memory during reset.
+7. The remaining combined-driver gate is main-owned: a build containing
+   `147ef0b4` must run `openpy -keep model.py` and the updated
+   `opencc -x whirl -O0 -c model.B` path. The installed host `opencc`
+   binaries tested from this subagent reject `-x whirl` as an unknown language.
 
 ### Remaining Risk Register
 
 1. Real DSL node emission requires common/com changes outside torch2whirl.
-2. Full `opencc` consumption may expose binary WHIRL format expectations that
-   the standalone frontend cannot satisfy until Phase 13 lands.
+2. Full `opencc` consumption must be run with the updated main-side driver
+   build; older installed `opencc` binaries do not recognize `-x whirl`.
 3. SafeTensors-style payload metadata is not enough by itself; the symbol table
    must carry stable references that downstream Open64 code can inspect.
 4. Dynamic shapes and training-mode capture remain out of scope until static
@@ -1308,7 +1321,7 @@ Current batch status:
 3. `ir_b2a -st` inspection shows real DSL operators and symbol payload
    references for the covered graph.
 4. `opencc -x whirl -c` consumes the driver-produced artifact in a full Open64
-   environment.
+   environment with the updated driver contract from `147ef0b4`.
 5. macOS source validation and Linux Docker validation stay green.
 6. No torch2whirl source depends on backend/cg implementation details.
 
@@ -1335,7 +1348,8 @@ Current batch status:
    operators.
 3. Do not add speculative frontend hooks to unrelated ingestion paths.
 4. Do not require the combined `opencc` driver path before the standalone
-   `torch2whirl` path works.
+   `torch2whirl` path works; standalone native LocalResNet certification is
+   now the handoff point to the main-owned `openpy` gate.
 5. Do not create a new binary IR format before exhausting the existing Open64
    mapped-image and ELF WHIRL mechanisms.
 6. Do not make metadata or free-form key/value tables the fast path for tensor
@@ -1359,21 +1373,21 @@ Current batch status:
 5. Keep the minimal PU API single-purpose until the next inspectable artifact
    checkpoint proves the output through `ir_b2a -st`; do not broaden it into a
    generic Python-owned WHIRL construction API.
-6. Keep `python_native_ir_tools_smoke` in the validation loop. It should skip
-   cleanly without `ir_b2a` and become an artifact inspection test when
-   `OPEN64_IR_B2A` is supplied by a full Open64 build.
+6. Keep `python_native_ir_tools_smoke` in the validation loop. It still carries
+   the older low-level matmul capability probe and should skip that probe
+   cleanly when the native backend does not expose `common.matmul.v1`; the
+   LocalResNet certification path is covered by `driver_native_ir_tools_smoke`.
 7. Keep the artifact-inspection loop green:
-   `python_native_ir_tools_smoke` now builds `libjsoncpp.a`, `ir_b2a`, and
-   `ir_a2b` inside the torch2whirl-only Linux Docker tree and inspects the first
-   native Python-produced artifact with `ir_b2a -st`.
-   `driver_native_ir_tools_smoke` extends the same loop across the C++
-   executable boundary so Phase 8 does not regress into a Python-only artifact
-   check.
-8. Run `dsl_ir_tools_smoke_test.sh` when a full Open64 `opencc` is available.
-   The fixture still requires `opencc` to create its C-derived `smoke.B`; the
-   torch2whirl-only tree intentionally does not build that compiler driver.
-   Run `make driver_opencc_smoke` in the same full-toolchain environment to
-   prove that `opencc -x whirl -c` consumes a driver-produced artifact.
+   `python_native_ir_tools_smoke` builds `libjsoncpp.a`, `ir_b2a`, and
+   `ir_a2b` inside the torch2whirl-only Linux Docker tree for native image
+   inspection. `driver_native_ir_tools_smoke` is the standalone LocalResNet
+   certification gate: it runs the C++ executable with `--backend native`,
+   writes deterministic `model.B` and `model.safetensors`, and inspects logical
+   ResNet evidence with `ir_b2a -st`.
+8. Run `dsl_ir_tools_smoke_test.sh` and `make driver_opencc_smoke` only in a
+   full Open64 build that has the updated main-side driver support. The
+   torch2whirl-only tree intentionally does not build `opencc`, and older
+   installed drivers reject `-x whirl`.
 9. Keep the torch-enabled Docker image layer available so the optional FX
    capture tests run in validation instead of only skipping in the base Docker
    image.

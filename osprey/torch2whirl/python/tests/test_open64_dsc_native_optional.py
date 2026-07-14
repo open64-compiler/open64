@@ -494,7 +494,21 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
             "b" * 64,
             "C",
         )
-        conv2d = builder.cnn_conv2d(value, weight, bias)
+        conv2d = builder.cnn_conv2d(
+            value,
+            weight,
+            bias,
+            {
+                "attr.kernel_shape": "7,7",
+                "attr.stride": "2,2",
+                "attr.padding": "3,3",
+                "attr.dilation": "1,1",
+                "attr.groups": "1",
+                "attr.input_layout": "NCHW",
+                "attr.weight_layout": "OIHW",
+                "attr.output_layout": "NCHW",
+            },
+        )
 
         builder.append_program_unit_marker(pu, weight)
         builder.append_program_unit_marker(pu, conv2d)
@@ -507,8 +521,12 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         self.assertEqual(weight.metadata["storage_byte_length"], "37632")
         self.assertEqual(markers[-2]["opcode"], "common.tensor_const")
         self.assertIn("value_kind=external_data", str(markers[-2]["payload"]))
-        self.assertIn("storage_format=safetensors", str(markers[-2]["payload"]))
-        self.assertIn("side_file=resnet.safetensors", str(markers[-2]["payload"]))
+        self.assertIn(
+            "value=safetensors://resnet.safetensors#conv1.weight",
+            str(markers[-2]["payload"]),
+        )
+        self.assertIn("offset=128", str(markers[-2]["payload"]))
+        self.assertIn("length=37632", str(markers[-2]["payload"]))
         self.assertEqual(markers[-1]["opcode"], "cnn.conv2d")
         self.assertIn("kid1=native_external_weight", str(markers[-1]["payload"]))
         self.assertIn("kid2=native_external_bias", str(markers[-1]["payload"]))

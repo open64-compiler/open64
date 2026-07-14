@@ -292,7 +292,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(
             module.graph_operators[1].attrs["attr.semantic"],
-            "classifier_logits",
+            "logits",
         )
         self.assertEqual(module.graph_operators[1].kids, ["common.linear"])
 
@@ -493,7 +493,8 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(module.values[1].metadata["storage_tensor_key"], "conv.weight")
         self.assertEqual(module.values[1].metadata["storage_byte_length"], "37632")
-        self.assertEqual(module.values[2].value_kind, "absent_parameter")
+        self.assertEqual(module.values[2].value_kind, "implicit_zero")
+        self.assertEqual(module.values[2].metadata["storage_shape"], "[64]")
         self.assertEqual(module.values[3].metadata["tensor_role"], "batchnorm_scale")
         self.assertEqual(
             module.values[5].metadata["tensor_role"],
@@ -570,12 +571,14 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             module.values[1].metadata["storage_byte_length"],
             "294912",
         )
-        self.assertEqual(module.values[2].value_kind, "absent_parameter")
+        self.assertEqual(module.values[2].value_kind, "implicit_zero")
+        self.assertEqual(module.values[2].metadata["storage_shape"], "[128]")
         self.assertEqual(
             module.values[7].metadata["storage_tensor_key"],
             "downsample.0.weight",
         )
-        self.assertEqual(module.values[8].value_kind, "absent_parameter")
+        self.assertEqual(module.values[8].value_kind, "implicit_zero")
+        self.assertEqual(module.values[8].metadata["storage_shape"], "[128]")
         self.assertEqual(
             module.values[9].metadata["tensor_role"],
             "batchnorm_scale",
@@ -651,7 +654,11 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(
             self._value_by_name(module, "conv1_bias").value_kind,
-            "absent_parameter",
+            "implicit_zero",
+        )
+        self.assertEqual(
+            self._value_by_name(module, "conv1_bias").metadata["storage_shape"],
+            "[64]",
         )
         self.assertEqual(
             self._value_by_tensor_key(module, "bn2.running_mean")
@@ -1045,7 +1052,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(
             module.graph_operators[-1].attrs["attr.semantic"],
-            "classifier_logits",
+            "logits",
         )
         self.assertEqual(
             module.graph_operators[1].kids,

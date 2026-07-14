@@ -86,6 +86,46 @@ Open64_DSC_Read_Tensor_Descriptor
     return !PyErr_Occurred();
 }
 
+static int
+Open64_DSC_Read_External_Tensor_Reference
+        (PyObject *dict, Open64_DSC_External_Tensor_Reference *reference)
+{
+    PyObject *byte_offset_obj;
+    PyObject *byte_length_obj;
+
+    if (reference == NULL)
+        return 0;
+    if (!PyDict_Check(dict)) {
+        PyErr_SetString(PyExc_TypeError, "reference must be a dict");
+        return 0;
+    }
+
+    reference->storage_format =
+        Open64_DSC_Dict_String(dict, "storage_format", NULL);
+    reference->side_file = Open64_DSC_Dict_String(dict, "side_file", NULL);
+    reference->tensor_key = Open64_DSC_Dict_String(dict, "tensor_key", NULL);
+    reference->checksum = Open64_DSC_Dict_String(dict, "checksum", "");
+    if (PyErr_Occurred())
+        return 0;
+
+    byte_offset_obj = PyDict_GetItemString(dict, "byte_offset");
+    byte_length_obj = PyDict_GetItemString(dict, "byte_length");
+    if (byte_offset_obj == NULL || byte_length_obj == NULL) {
+        PyErr_SetString(PyExc_KeyError,
+                        "reference byte_offset and byte_length are required");
+        return 0;
+    }
+
+    reference->byte_offset = PyLong_AsUnsignedLongLong(byte_offset_obj);
+    if (PyErr_Occurred())
+        return 0;
+    reference->byte_length = PyLong_AsUnsignedLongLong(byte_length_obj);
+    if (PyErr_Occurred())
+        return 0;
+
+    return 1;
+}
+
 static PyObject *
 Open64_DSC_Backend_Name(PyObject *self, PyObject *args)
 {
@@ -158,6 +198,49 @@ Open64_DSC_Create_Tensor_Constant(PyObject *self, PyObject *args)
                                                logical_shape, value_kind,
                                                value);
     return Open64_DSC_Handle_Result(handle, "create tensor constant");
+}
+
+static PyObject *
+Open64_DSC_Create_Model_Input(PyObject *self, PyObject *args)
+{
+    const char *name;
+    Open64_DSC_Handle tensor_type;
+    unsigned int input_ordinal;
+    Open64_DSC_Handle handle;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "sKI:create_model_input",
+                          &name, &tensor_type, &input_ordinal))
+        return NULL;
+
+    handle = Open64_DSC_Create_Model_Input(name, tensor_type, input_ordinal);
+    return Open64_DSC_Handle_Result(handle, "create model input");
+}
+
+static PyObject *
+Open64_DSC_Create_External_Tensor_Constant(PyObject *self, PyObject *args)
+{
+    const char *name;
+    Open64_DSC_Handle tensor_type;
+    PyObject *reference_obj;
+    Open64_DSC_External_Tensor_Reference reference;
+    Open64_DSC_Handle handle;
+
+    (void) self;
+
+    if (!PyArg_ParseTuple(args, "sKO!:create_external_tensor_constant",
+                          &name, &tensor_type, &PyDict_Type,
+                          &reference_obj))
+        return NULL;
+
+    if (!Open64_DSC_Read_External_Tensor_Reference(reference_obj, &reference))
+        return NULL;
+
+    handle = Open64_DSC_Create_External_Tensor_Constant(name, tensor_type,
+                                                       &reference);
+    return Open64_DSC_Handle_Result(handle,
+                                    "create external tensor constant");
 }
 
 static int
@@ -532,6 +615,18 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Create_Tensor_Constant,
         METH_VARARGS,
         "Create a native tensor constant and return an opaque handle."
+    },
+    {
+        "create_model_input",
+        Open64_DSC_Create_Model_Input,
+        METH_VARARGS,
+        "Create a native model input and return an opaque handle."
+    },
+    {
+        "create_external_tensor_constant",
+        Open64_DSC_Create_External_Tensor_Constant,
+        METH_VARARGS,
+        "Create a native external tensor constant and return an opaque handle."
     },
     {
         "create_operator",
