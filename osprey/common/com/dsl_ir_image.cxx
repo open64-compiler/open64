@@ -360,22 +360,20 @@ DSL_IR_Image_Load_Mapped
 
     DSL_IR_Image_Reset();
     if (header->opcode_descriptor_count != 0)
-        DSL_ir_opcode_descriptor_table.Transfer
-            ((DSL_IR_OPCODE_DESCRIPTOR_RECORD *)view.opcode_descriptors,
+        DSL_ir_opcode_descriptor_table.Insert
+            (view.opcode_descriptors,
              header->opcode_descriptor_count);
     if (header->node_count != 0)
-        DSL_ir_node_table.Transfer
-            ((DSL_IR_NODE_RECORD *)view.nodes, header->node_count);
+        DSL_ir_node_table.Insert(view.nodes, header->node_count);
     if (header->attribute_count != 0)
-        DSL_ir_attribute_table.Transfer
-            ((DSL_IR_ATTRIBUTE_RECORD *)view.attributes,
+        DSL_ir_attribute_table.Insert
+            (view.attributes,
              header->attribute_count);
     if (header->value_count != 0)
-        DSL_ir_value_table.Transfer
-            ((DSL_IR_VALUE_RECORD *)view.values, header->value_count);
+        DSL_ir_value_table.Insert(view.values, header->value_count);
     if (header->value_reference_count != 0)
-        DSL_ir_value_reference_table.Transfer
-            ((DSL_IR_VALUE_REFERENCE_RECORD *)view.value_references,
+        DSL_ir_value_reference_table.Insert
+            (view.value_references,
              header->value_reference_count);
     return TRUE;
 }

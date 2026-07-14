@@ -173,7 +173,7 @@ static phase_info_t phase_info[] = {
    {'f',  0x0000000010000000LL, "js2mpl", PHASEPATH,  TRUE,  FALSE},   /* javascript front-end, javascript to maple */
    {'z',  0x0000000800000000LL, "mpl2whirl",PHASEPATH, TRUE, FALSE},   /* maple to WHIRL */
    {'f',  0x0000000000300060LL, "mapclang",PHASEPATH,   TRUE , FALSE}, /* clangfe */
-   {'f',  0x0000000020000000LL, "torch2whirl",BINPATH, TRUE, FALSE}, /* Python DSL frontend */
+   {'f',  0x0000000020000000LL, "torch2whirl",BINPATH, FALSE, FALSE}, /* Python DSL frontend */
    /* place-holder for generic fe, whose mask unites all fe's; */
    /* this is so -Wf will apply to whatever fe is being invoked. */
    {'f',  0x000000003fff0000LL, "", "", FALSE, FALSE}, /* any_fe */

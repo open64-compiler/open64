@@ -131,6 +131,8 @@ boolean vsa_mtr_flag = TRUE;
 char *global_toolroot = NULL;
 char *ld_library_path = NULL;
 char *ld_libraryn32_path = NULL;
+char *original_ld_library_path = NULL;
+char *original_ld_libraryn32_path = NULL;
 char *orig_program_name = NULL;
 char *old_ld_library_path = NULL;
 boolean dump_outfile_to_stdout;
@@ -3208,6 +3210,8 @@ init_phase_info (void)
 	   xpg_flag = TRUE;
 	ld_library_path = getenv("LD_LIBRARY_PATH");
 	ld_libraryn32_path = getenv("LD_LIBRARYN32_PATH");
+        original_ld_library_path = string_copy(ld_library_path);
+        original_ld_libraryn32_path = string_copy(ld_libraryn32_path);
 	old_ld_library_path = string_copy(ld_library_path);
 	// Replace ":" with ";" because ":" has special meaning to -INTERNAL.
 	if (old_ld_library_path) {

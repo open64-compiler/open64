@@ -427,6 +427,19 @@ run_phase (phases_t phase, char *name, string_list_t *args)
 
 		my_putenv("LD_LIBRARY_PATH", "%s", l_path);
 		my_putenv("LD_LIBRARYN32_PATH", "%s", l32_path);
+
+                if (phase == P_torch2whirl) {
+                    if (original_ld_library_path != NULL)
+                        my_putenv("LD_LIBRARY_PATH", "%s",
+                                  original_ld_library_path);
+                    else
+                        unsetenv("LD_LIBRARY_PATH");
+                    if (original_ld_libraryn32_path != NULL)
+                        my_putenv("LD_LIBRARYN32_PATH", "%s",
+                                  original_ld_libraryn32_path);
+                    else
+                        unsetenv("LD_LIBRARYN32_PATH");
+                }
 		
 		// Set up NLSPATH, for the Fortran front end.
 

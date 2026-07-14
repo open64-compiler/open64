@@ -732,7 +732,7 @@ Check_Complete_ResNet_Vertical_Slice (BOOL artifact_only)
          "dsl_complete_resnet_lowering");
     TY_IDX input_ty = Create_Shaped_Tensor_Type
         ("resnet_input_type", "float32", MTYPE_To_TY(MTYPE_F4), 4,
-         "[1,3,8,8]", "host", "host");
+         "[1,3,8,8]", "host", "dense");
     TY_IDX conv_weight_ty = Create_Shaped_Tensor_Type
         ("resnet_conv_weight_type", "float32", MTYPE_To_TY(MTYPE_F4), 4,
          "[4,3,3,3]", "side_file", "external_data");
@@ -751,6 +751,13 @@ Check_Complete_ResNet_Vertical_Slice (BOOL artifact_only)
         fprintf(stderr, "complete ResNet tensor type construction failed\n");
         return FALSE;
     }
+    TY_tensor_bind_attribute
+        (conv_weight_ty, TY_TENSOR_SCHEMA_LAYOUT, "OIHW");
+    TY_tensor_bind_attribute(channel_ty, TY_TENSOR_SCHEMA_LAYOUT, "C");
+    TY_tensor_bind_attribute
+        (linear_weight_ty, TY_TENSOR_SCHEMA_LAYOUT, "OI");
+    TY_tensor_bind_attribute
+        (linear_bias_ty, TY_TENSOR_SCHEMA_LAYOUT, "C");
 
     DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
                                   ("model_input0", input_ty, 0);

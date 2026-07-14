@@ -205,7 +205,9 @@ VHO_DSL_Runtime_Layout (const char *name, UINT32 *value)
 {
     if (name == NULL || name[0] == '\0')
         *value = OPEN64_DSL_LAYOUT_UNSPECIFIED;
-    else if (strcmp(name, "contiguous") == 0)
+    else if (strcmp(name, "contiguous") == 0 ||
+             strcmp(name, "NCHW") == 0 || strcmp(name, "OIHW") == 0 ||
+             strcmp(name, "OI") == 0 || strcmp(name, "C") == 0)
         *value = OPEN64_DSL_LAYOUT_CONTIGUOUS;
     else if (strcmp(name, "strided") == 0)
         *value = OPEN64_DSL_LAYOUT_STRIDED;
@@ -218,6 +220,8 @@ static BOOL
 VHO_DSL_Runtime_Memory (const char *name, UINT32 *value)
 {
     if (name == NULL || name[0] == '\0')
+        *value = OPEN64_DSL_MEMORY_UNSPECIFIED;
+    else if (strcmp(name, "dense") == 0)
         *value = OPEN64_DSL_MEMORY_UNSPECIFIED;
     else if (strcmp(name, "host") == 0)
         *value = OPEN64_DSL_MEMORY_HOST;
