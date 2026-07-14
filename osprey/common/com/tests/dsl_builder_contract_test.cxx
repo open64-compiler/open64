@@ -29,6 +29,7 @@
 #include "controls.h"
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
+#include "srcpos.h"
 #include "dsl_builder.h"
 #include "dsl_gatekeeper.h"
 
@@ -131,6 +132,189 @@ Check_Tensor_Type_And_Descriptor(void)
         fprintf(stderr, "builder accepted descriptor for non-tensor type\n");
         failed = 1;
     }
+
+    return failed;
+}
+
+static int
+Check_Upgraded_Ingestion_APIs(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR different_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR observed;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_COMPILER_METADATA metadata;
+    DSL_BUILDER_SOURCE_POSITION source_position;
+    DSL_BUILDER_VERIFY_RESULT verify_result;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID add_id;
+    TY_IDX tensor_ty;
+    TY_IDX duplicate_ty;
+    TY_IDX contextual_duplicate_ty;
+    TY_IDX different_ty;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE add;
+    ST_IDX add_st;
+    UINT32 file_id;
+    char diagnostic[1024];
+    USRCPOS observed_position;
+    int failed = 0;
+
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "int32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "row_major";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+    descriptor.representation.runtime_state = "static";
+    descriptor.lineage.lineage = "canonical_contract";
+
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("canonical_tensor_a", MTYPE_To_TY(MTYPE_I4),
+                     &descriptor);
+    duplicate_ty = DSL_Builder_Intern_Tensor_Type
+                       ("canonical_tensor_b", MTYPE_To_TY(MTYPE_I4),
+                        &descriptor);
+    different_descriptor = descriptor;
+    different_descriptor.representation.runtime_state = "dynamic";
+    different_descriptor.lineage.lineage = "different_value_lineage";
+    contextual_duplicate_ty = DSL_Builder_Intern_Tensor_Type
+                                  ("canonical_tensor_contextual",
+                                   MTYPE_To_TY(MTYPE_I4),
+                                   &different_descriptor);
+    different_descriptor = descriptor;
+    different_descriptor.type_core.logical_shape = "[4,2]";
+    different_ty = DSL_Builder_Intern_Tensor_Type
+                       ("canonical_tensor_c", MTYPE_To_TY(MTYPE_I4),
+                        &different_descriptor);
+
+    if (tensor_ty == TY_IDX_ZERO || duplicate_ty != tensor_ty ||
+        contextual_duplicate_ty != tensor_ty ||
+        different_ty == TY_IDX_ZERO || different_ty == tensor_ty ||
+        !DSL_Builder_Tensor_Type_Is_Canonical(tensor_ty) ||
+        !TY_tensor_attributes_are_equivalent(tensor_ty, duplicate_ty) ||
+        TY_tensor_attributes_are_equivalent(tensor_ty, different_ty)) {
+        fprintf(stderr, "canonical tensor interning contract changed\n");
+        failed = 1;
+    }
+
+    memset(&observed, 0, sizeof(observed));
+    if (!DSL_Builder_Get_Tensor_Descriptor(tensor_ty, &observed) ||
+        observed.type_core.rank != 2 ||
+        observed.type_core.logical_shape == NULL ||
+        strcmp(observed.type_core.logical_shape, "[2,2]") != 0 ||
+        observed.representation.runtime_state != NULL ||
+        observed.lineage.lineage != NULL ||
+        DSL_Builder_Attach_Tensor_Descriptor(tensor_ty, &descriptor)) {
+        fprintf(stderr, "canonical tensor descriptor query changed\n");
+        failed = 1;
+    }
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    common_id = DSL_Domain_Find("common");
+    add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+    pu = DSL_Builder_Create_Minimal_PU("upgraded_ingestion_contract");
+    file_id = DSL_Builder_Register_Source_File(pu, "model.py");
+
+    kids[0] = DSL_Builder_Create_Model_Input("input0", tensor_ty, 0);
+    kids[1] = DSL_Builder_Create_Model_Input("input1", tensor_ty, 1);
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    add = DSL_Builder_Create_Operator_With_Result
+              (add_id, 1, kids, 2, &attribute, 1, "explicit_add", tensor_ty);
+    add_st = DSL_Builder_Get_Value_Result_Symbol(add);
+
+    metadata.name = "source_layer_name";
+    metadata.value = "residual_add";
+    memset(&source_position, 0, sizeof(source_position));
+    source_position.file_id = file_id;
+    source_position.line = 27;
+    source_position.column = 9;
+    source_position.statement_begin = 1;
+
+    if (pu == NULL || file_id == 0 || kids[0] == NULL || kids[1] == NULL ||
+        add == NULL || DSL_Builder_Get_Value_Type(add) != tensor_ty ||
+        ST_IDX_index(add_st) == 0 ||
+        !DSL_Builder_Attach_Value_Metadata(add, &metadata, 1) ||
+        !DSL_Builder_Attach_Value_Lineage(add, "residual_path") ||
+        !DSL_Builder_Set_Value_Source_Position(add, &source_position)) {
+        fprintf(stderr, "upgraded value-oriented builder API failed\n");
+        failed = 1;
+    }
+
+    observed_position.srcpos = WN_Get_Linenum(add);
+    if (USRCPOS_filenum(observed_position) != file_id ||
+        USRCPOS_linenum(observed_position) != 27 ||
+        USRCPOS_column(observed_position) != 9 ||
+        !USRCPOS_stmt_begin(observed_position) ||
+        !ST_tensor_metadata_is_bound(add_st, "source_layer_name") ||
+        strcmp(ST_tensor_metadata(add_st, "source_layer_name"),
+               "residual_add") != 0 ||
+        !ST_tensor_attribute_is_bound
+             (add_st,
+              TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_LINEAGE)) ||
+        strcmp(ST_tensor_attribute
+                   (add_st,
+                    TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_LINEAGE)),
+               "residual_path") != 0) {
+        fprintf(stderr, "value source position or metadata changed\n");
+        failed = 1;
+    }
+
+    if (!DSL_Builder_Append_PU_Value(pu, kids[0]) ||
+        !DSL_Builder_Append_PU_Value(pu, kids[1]) ||
+        !DSL_Builder_Append_PU_Value(pu, add)) {
+        fprintf(stderr, "upgraded program construction failed\n");
+        failed = 1;
+    }
+
+    memset(&verify_result, 0, sizeof(verify_result));
+    verify_result.diagnostic = diagnostic;
+    verify_result.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify_result) ||
+        verify_result.native_node_count != 3 ||
+        verify_result.result_symbol_count != 3 ||
+        verify_result.error_count != 0 || diagnostic[0] != '\0') {
+        fprintf(stderr, "structured builder verification failed: %s\n",
+                diagnostic);
+        failed = 1;
+    }
+
+    DSL_Builder_Abort_Program();
+    memset(&verify_result, 0, sizeof(verify_result));
+    verify_result.diagnostic = diagnostic;
+    verify_result.diagnostic_capacity = sizeof(diagnostic);
+    if (DSL_Builder_Get_Value_Type(add) != TY_IDX_ZERO ||
+        DSL_Builder_Verify_Program(&verify_result) ||
+        verify_result.error_count != 1 ||
+        strstr(diagnostic, "no program unit") == NULL) {
+        fprintf(stderr, "builder abort did not isolate program state\n");
+        failed = 1;
+    }
+
+    DSL_Builder_Begin_Program();
+    pu = DSL_Builder_Create_Minimal_PU("second_ingestion_contract");
+    kids[0] = DSL_Builder_Create_Model_Input("second_input", tensor_ty, 0);
+    memset(&verify_result, 0, sizeof(verify_result));
+    verify_result.diagnostic = diagnostic;
+    verify_result.diagnostic_capacity = sizeof(diagnostic);
+    if (pu == NULL || kids[0] == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, kids[0]) ||
+        !DSL_Builder_Verify_Program(&verify_result) ||
+        verify_result.native_node_count != 1 ||
+        verify_result.result_symbol_count != 1 ||
+        verify_result.error_count != 0) {
+        fprintf(stderr, "second builder program inherited stale state\n");
+        failed = 1;
+    }
+    DSL_Builder_Abort_Program();
 
     return failed;
 }
@@ -1012,11 +1196,11 @@ Check_Production_Native_Builder(void)
         DSL_Builder_Create_Minimal_PU("gatekeeper_missing_attribute");
     DSL_BUILDER_VALUE bad_kids[2];
     bad_kids[0] = DSL_Builder_Create_Tensor_Constant
-                      ("bad_attr_kid0", tensor_ty, "int32", 2, "[2,2]",
-                       "splat", "1");
+                  ("bad_attr_kid0", tensor_ty, "int32", 2, "[2,2]",
+                   "splat", "1");
     bad_kids[1] = DSL_Builder_Create_Tensor_Constant
-                      ("bad_attr_kid1", tensor_ty, "int32", 2, "[2,2]",
-                       "splat", "1");
+                  ("bad_attr_kid1", tensor_ty, "int32", 2, "[2,2]",
+                   "splat", "1");
     DSL_BUILDER_VALUE bad_matmul = DSL_Builder_Create_Operator
                                        (matmul_id, 1, bad_kids, 2, NULL, 0);
     DSL_Builder_Append_PU_Value(bad_pu, bad_kids[0]);
@@ -1425,6 +1609,8 @@ main(void)
     int failed = 0;
 
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_INGESTION_API_ONLY") != NULL)
+        return Check_Upgraded_Ingestion_APIs();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();

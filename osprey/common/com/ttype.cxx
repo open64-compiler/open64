@@ -365,7 +365,7 @@ Equivalent_Types (TY_IDX t1, TY_IDX t2, QUAL_CHECK consider_qualifiers)
 		TY_Get_Tensor_Extension_Info (t1, &info1) &&
 		TY_Get_Tensor_Extension_Info (t2, &info2) &&
 		info1.rank == info2.rank &&
-		info1.attribute_count == info2.attribute_count &&
+                TY_tensor_attributes_are_equivalent (t1, t2) &&
 		Equivalent_Types (info1.element_ty, info2.element_ty,
 				  consider_qualifiers);
 	}
