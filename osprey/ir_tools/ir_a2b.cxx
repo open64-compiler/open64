@@ -74,6 +74,7 @@
 #include "profile_com.h"
 #include "fb_info.h"
 #include "dsl_ir_image.h"
+#include "dsl_region.h"
 
 
 BOOL Run_vsaopt = FALSE; // hack to workaround undefine since
@@ -168,6 +169,8 @@ ir_b2a_process_PUs (PU_Info *pu_tree, BOOL stflag, BOOL fbflag, BOOL verify)
 
 	Current_PU_Info = pu;
 	IR_put_func (wn, NULL);
+        if (stflag)
+            DSL_Region_Print_PU(stdout, pu);
 
 	if(verify) {
 	    WN_verify(wn, NULL);

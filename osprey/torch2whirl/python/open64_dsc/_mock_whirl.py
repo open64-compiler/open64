@@ -335,6 +335,75 @@ def set_value_source_position(
     return True
 
 
+def create_region(
+    program_unit: int,
+    parent_region: int,
+    contract_name: str,
+    contract_version: int,
+) -> int:
+    if program_unit not in _objects or not contract_name or contract_version <= 0:
+        raise RuntimeError("failed to create region")
+    if parent_region and parent_region not in _objects:
+        raise RuntimeError("failed to create region")
+    return _new_handle({
+        "kind": "region",
+        "program_unit": program_unit,
+        "parent_region": parent_region,
+        "contract_name": contract_name,
+        "contract_version": contract_version,
+        "values": [],
+        "interfaces": [],
+    })
+
+
+def append_region_value(region: int, value: int) -> bool:
+    if region not in _objects or value not in _objects:
+        raise RuntimeError("failed to append region value")
+    record = dict(_objects[region])
+    values = list(record.get("values", ()))
+    values.append(value)
+    record["values"] = values
+    _objects[region] = record
+    return True
+
+
+def append_program_unit_region(program_unit: int, region: int) -> bool:
+    if program_unit not in _objects or region not in _objects:
+        raise RuntimeError("failed to append program unit region")
+    record = dict(_objects[program_unit])
+    regions = list(record.get("regions", ()))
+    regions.append(region)
+    record["regions"] = regions
+    _objects[program_unit] = record
+    return True
+
+
+def declare_region_value(
+    region: int, value: int, roles: int, ordinal: int, flags: int
+) -> bool:
+    if region not in _objects or value not in _objects or roles == 0:
+        raise RuntimeError("failed to declare region value")
+    record = dict(_objects[region])
+    interfaces = list(record.get("interfaces", ()))
+    interfaces.append((value, roles, ordinal, flags))
+    record["interfaces"] = interfaces
+    _objects[region] = record
+    return True
+
+
+def set_region_source_position(
+    region: int,
+    file_id: int,
+    line: int,
+    column: int,
+    statement_begin: bool,
+    basic_block_begin: bool,
+) -> bool:
+    return set_value_source_position(
+        region, file_id, line, column, statement_begin, basic_block_begin
+    )
+
+
 def verify_program() -> Mapping[str, object]:
     program_units = [
         record for record in _objects.values()

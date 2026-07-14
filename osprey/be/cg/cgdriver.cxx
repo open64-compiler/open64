@@ -2567,7 +2567,7 @@ CG_Process_Command_Line (INT cg_argc, char **cg_argv, INT be_argc, char **be_arg
 {
     extern char *Whirl_Revision;
 
-    if (strcmp (Whirl_Revision, WHIRL_REVISION) != 0)
+    if (!WHIRL_REVISION_IS_SUPPORTED(Whirl_Revision))
 	FmtAssert (!DEBUG_Ir_Version_Check,
 		   ("WHIRL revision mismatch between be.so (%s) and cg.so (%s)",
 		    Whirl_Revision, WHIRL_REVISION));
@@ -2704,4 +2704,3 @@ CG_Fini (void)
     }
 #endif
 } /* CG_Fini */
-

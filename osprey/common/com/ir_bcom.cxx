@@ -360,6 +360,9 @@ ir_b_write_tree (WN *node, off_t base_offset, Output_File *fl, WN_MAP off_map)
 
     opcode = (OPCODE) WN_opcode (node);
 
+    if (off_map != WN_MAP_UNDEFINED && WN_operator(node) == OPR_REGION)
+        WN_MAP32_Set(off_map, node, node_offset - base_offset);
+
 #ifdef BACK_END
     if (off_map != WN_MAP_UNDEFINED &&
 	(Write_BE_Maps ||

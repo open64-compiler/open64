@@ -137,6 +137,44 @@ class WhirlBackend(Protocol):
     ) -> bool:
         ...
 
+    def create_region(
+        self,
+        program_unit: int,
+        parent_region: int,
+        contract_name: str,
+        contract_version: int,
+    ) -> int:
+        ...
+
+    def append_region_value(self, region: int, value: int) -> bool:
+        ...
+
+    def append_program_unit_region(
+        self, program_unit: int, region: int
+    ) -> bool:
+        ...
+
+    def declare_region_value(
+        self,
+        region: int,
+        value: int,
+        roles: int,
+        ordinal: int,
+        flags: int,
+    ) -> bool:
+        ...
+
+    def set_region_source_position(
+        self,
+        region: int,
+        file_id: int,
+        line: int,
+        column: int,
+        statement_begin: bool,
+        basic_block_begin: bool,
+    ) -> bool:
+        ...
+
     def verify_program(self) -> Mapping[str, object]:
         ...
 

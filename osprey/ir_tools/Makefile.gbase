@@ -185,6 +185,7 @@ COMMON_COM_CXX_SRC =	\
 	dsl_domain.cxx	\
         dsl_ir_image.cxx \
         dsl_ir_print.cxx \
+        dsl_region.cxx \
 	dsl_opcode.cxx	\
 	dwarf_DST.cxx	\
 	dwarf_DST_dump.cxx	\

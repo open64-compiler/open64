@@ -98,6 +98,7 @@
 #include "ir_bcom.h"
 #include "ir_bread.h"
 #include "dsl_ir_image.h"
+#include "dsl_region.h"
 #include "config_opt.h"
 
 #if defined(BACK_END)
@@ -1655,8 +1656,28 @@ Read_Local_Info (MEM_POOL *pool, PU_Info *pu)
     }
 #endif
 
+    UINT64 tree_offset = PU_Info_subsect_offset(pu, WT_TREE);
+    UINT64 tree_size = PU_Info_subsect_size(pu, WT_TREE);
     if (WN_get_tree (local_fhandle, pu) == (WN*) -1) {
 	ErrMsg ( EC_IR_Scn_Read, "tree", local_ir_file);
+    }
+
+    if (PU_Info_state(pu, WT_REGIONS) == Subsect_Exists) {
+        OFFSET_AND_SIZE pu_section = get_section
+            (local_fhandle, SHT_MIPS_WHIRL, WT_PU_SECTION);
+        UINT64 region_offset = PU_Info_subsect_offset(pu, WT_REGIONS);
+        UINT64 region_size = PU_Info_subsect_size(pu, WT_REGIONS);
+        if (pu_section.offset == 0 || region_offset > pu_section.size ||
+            region_size > pu_section.size - region_offset ||
+            tree_offset > pu_section.size ||
+            tree_size > pu_section.size - tree_offset ||
+            DSL_Region_Load_Mapped_PU
+                (pu,
+                 (char *)local_fhandle + pu_section.offset + tree_offset,
+                 tree_size,
+                 (char *)local_fhandle + pu_section.offset + region_offset,
+                 region_size) == -1)
+            ErrMsg (EC_IR_Scn_Read, "regions", local_ir_file);
     }
 
 #if defined(BACK_END) || defined(IR_TOOLS)

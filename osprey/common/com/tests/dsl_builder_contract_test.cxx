@@ -1603,6 +1603,114 @@ Check_Native_DSL_Node_Layout(void)
     return failed;
 }
 
+static int
+Check_Structured_Region_Builder(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_REGION region;
+    DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE add;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_DOMAIN_ID common_id;
+    TY_IDX tensor_ty;
+    int failed = 0;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    common_id = DSL_Domain_Find("common");
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("region_tensor", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("region_contract_test");
+    input = DSL_Builder_Create_Model_Input("region_input", tensor_ty, 0);
+    kids[0] = input;
+    kids[1] = input;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    add = DSL_Builder_Create_Operator_With_Result
+              (DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1), 1,
+               kids, 2, &attribute, 1, "region_result", tensor_ty);
+    region = DSL_Builder_Create_Region(pu, NULL, "cnn.basic_block", 1);
+
+    if (tensor_ty == TY_IDX_ZERO || pu == NULL || input == NULL ||
+        add == NULL || region == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, input) ||
+        !DSL_Builder_Append_Region_Value(region, add) ||
+        !DSL_Builder_Declare_Region_Value
+             (region, input, DSL_REGION_VALUE_INPUT, 0, 0) ||
+        !DSL_Builder_Declare_Region_Value
+             (region, add,
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT, 1, 0) ||
+        !DSL_Builder_Append_PU_Region(pu, region)) {
+        fprintf(stderr, "structured region construction failed\n");
+        return 1;
+    }
+
+    UINT32 file_id = DSL_Builder_Register_Source_File
+                         (pu, "/tmp/region_contract_test.py");
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = 17;
+    position.statement_begin = 1;
+    position.basic_block_begin = 1;
+    if (file_id == 0 ||
+        !DSL_Builder_Set_Region_Source_Position(region, &position)) {
+        fprintf(stderr, "structured region source position failed\n");
+        failed = 1;
+    }
+
+    WN *region_wn = DSL_Region_WN(region);
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    if (region_wn == NULL || WN_operator(region_wn) != OPR_REGION ||
+        WN_region_kind(region_wn) != REGION_KIND_PRAGMA ||
+        WN_first(WN_region_body(region_wn)) != add ||
+        WN_first(WN_region_pragmas(region_wn)) == NULL ||
+        WN_operator(WN_first(WN_region_pragmas(region_wn))) != OPR_PRAGMA ||
+        WN_pragma(WN_first(WN_region_pragmas(region_wn))) !=
+            WN_PRAGMA_OPAQUE ||
+        WN_first(body) != input || WN_last(body) != region_wn ||
+        WN_Get_Linenum(region_wn) == 0) {
+        fprintf(stderr, "structured region WN layout changed\n");
+        failed = 1;
+    }
+
+    char diagnostic[1024];
+    memset(&verify, 0, sizeof(verify));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify)) {
+        fprintf(stderr, "structured region verification failed: %s\n",
+                diagnostic);
+        failed = 1;
+    }
+
+    FILE *dump = tmpfile();
+    if (dump == NULL) {
+        failed = 1;
+    } else {
+        char text[2048];
+        DSL_Region_Print_PU(dump, pu);
+        rewind(dump);
+        size_t count = fread(text, 1, sizeof(text) - 1, dump);
+        text[count] = '\0';
+        fclose(dump);
+        if (strstr(text, "contract=cnn.basic_block.v1") == NULL ||
+            strstr(text, "roles=0xa") == NULL) {
+            fprintf(stderr, "structured region inspection changed\n");
+            failed = 1;
+        }
+    }
+    return failed;
+}
+
 int
 main(void)
 {
@@ -1618,6 +1726,7 @@ main(void)
     failed |= Check_Mapped_Image_Finalizer();
     failed |= Check_Program_Unit_Value_Attach();
     failed |= Check_Production_Native_Builder();
+    failed |= Check_Structured_Region_Builder();
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
 

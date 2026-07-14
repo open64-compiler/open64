@@ -12,6 +12,10 @@ and compiler-library codesign are planned separately in
 representation, mapped binary image, inspection, gatekeeper, compatibility,
 and final VHO lowering boundary.
 
+CNN domain meaning, including the proposed `cnn.bottleneck.v1` contract and
+its relationship to PyTorch source structure, is documented separately in
+`doc/DSL-WHIRL-CNN-REGION-CONTRACTS.md`.
+
 ## Design goals
 
 1. Keep existing WHIRL binary compatibility unless a feature explicitly needs a
@@ -963,6 +967,35 @@ each model, including the model following successful finalization, and calls
 5. Add `DSL_Builder_Set_Region_Source_Position` as a wrapper over the common
    statement source-position service.
 
+The first common implementation now uses the existing `OPR_REGION` and
+`WT_REGIONS` slots without changing their numeric encodings.  A pointer-free,
+versioned `WT_REGIONS` image records stable region IDs, parent IDs, contract
+name/version, the region WN offset, and ordered symbol-interface role bits.
+The mapped reader reconstructs the common runtime view and validates each WN
+offset and region/interface record.  Older files with no `WT_REGIONS`
+subsection continue through the existing missing-subsection path.
+
+The common mapped store is not installed in `PU_Info_regions_ptr`.  That
+pointer remains exclusively reserved for the backend's in-memory `RID*`
+contract.  On mapped input, common code copies and verifies the pointer-free
+rows, clears the overlapping subsection pointer field, and leaves historical
+RID reconstruction to `REGION_Initialize` when canonical REGION nodes remain.
+
+The Python boundary exposes only opaque region and value handles.  It reports
+an enclosing source-language module path and kind; C++ creates the REGION WN,
+classifier pragma, body/pragmas/exits blocks, RID identity, symbol interfaces,
+source position, and mapped image.  `ir_b2a -st -src` prints both the standard
+REGION tree and a stable logical `DSL REGION TABLE` without exposing runtime
+pointers.  Backend RID analysis remains backend-owned and is not copied into
+the common mapped record.
+
+Managed CNN regions remain in binary VHO WHIRL through gatekeeping and optional
+DSL VHO optimization.  `VHO_DSL_Lower_Driver` lowers their contained operators
+and splices only their bodies into the enclosing block before the canonical
+backend.  MP, EH, and non-DSL pragma regions retain their existing lifecycle.
+This prevents a semantic CNN scope from being mistaken for an independently
+compiled CG region while preserving its inspectable VHO evidence.
+
 #### Tensor access
 
 1. Add scalar/index value construction before exposing tensor access.
@@ -1033,7 +1066,7 @@ each model, including the model following successful finalization, and calls
    isolate builder-owned state, and verification returns counts plus a bounded
    diagnostic buffer suitable for translation to a Python exception.
 
-15. [ ] Complete the common region substrate.
+15. [x] Complete the common region substrate.
 
    Implement the M8A RID, `WT_REGIONS`, declared value-interface, construction,
    verification, logical printing, body-splicing, and LNO compatibility work
@@ -1045,14 +1078,22 @@ each model, including the model following successful finalization, and calls
    `be/region` also contains backend-only points-to, live-range, CG, and lowering
    pointers, so it must not be moved wholesale.  M8A will first introduce a
    pointer-free common region descriptor table plus a centrally managed
-   region-WN mapping.  A staged `be/region` adapter will materialize or consume
-   the historical RID tree so LNO, WOPT, EH, and CG behavior remains unchanged.
+   region-WN mapping.  The common table now owns frontend contracts and value
+   interfaces while the historical backend RID tree remains independently
+   materialized by the existing region analysis, preserving LNO, WOPT, EH, and
+   CG ownership boundaries.
 
 16. [ ] Ingest and certify ResNet structured regions.
 
    Implement M8B BasicBlock, Bottleneck, identity shortcut, and projection
    shortcut contracts; preserve source positions and outer-owned no-alias
    results; add mapped-image and malformed-contract tests.
+
+   The first vertical slice recognizes FX `BasicBlock` scope, emits
+   `cnn.basic_block.v1` regions, declares external values as inputs and the
+   final value as `OUTPUT|RESULT`, and certifies the resulting LocalResNet
+   image through `ir_b2a -st -src`.  Bottleneck and explicit shortcut contract
+   classification remain in this item.
 
 17. [ ] Define tensor access from the High WHIRL array model.
 

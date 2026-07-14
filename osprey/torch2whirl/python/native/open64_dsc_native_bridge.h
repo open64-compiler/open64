@@ -136,6 +136,26 @@ extern unsigned int Open64_DSC_Register_Source_File
 extern int Open64_DSC_Set_Value_Source_Position
                                 (Open64_DSC_Handle value,
                                  const Open64_DSC_Source_Position *position);
+extern Open64_DSC_Handle Open64_DSC_Create_Region
+                                (Open64_DSC_Handle program_unit,
+                                 Open64_DSC_Handle parent_region,
+                                 const char *contract_name,
+                                 unsigned int contract_version);
+extern int Open64_DSC_Append_Region_Value
+                                (Open64_DSC_Handle region,
+                                 Open64_DSC_Handle value);
+extern int Open64_DSC_Append_Program_Unit_Region
+                                (Open64_DSC_Handle program_unit,
+                                 Open64_DSC_Handle region);
+extern int Open64_DSC_Declare_Region_Value
+                                (Open64_DSC_Handle region,
+                                 Open64_DSC_Handle value,
+                                 unsigned int roles,
+                                 unsigned int ordinal,
+                                 unsigned int flags);
+extern int Open64_DSC_Set_Region_Source_Position
+                                (Open64_DSC_Handle region,
+                                 const Open64_DSC_Source_Position *position);
 extern int Open64_DSC_Verify_Program(Open64_DSC_Verify_Result *result);
 extern int Open64_DSC_Append_Program_Unit_Value
                                 (Open64_DSC_Handle program_unit,

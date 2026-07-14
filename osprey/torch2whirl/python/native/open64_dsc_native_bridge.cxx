@@ -528,6 +528,66 @@ Open64_DSC_Set_Value_Source_Position
                ((DSL_BUILDER_VALUE) value, &builder_position) ? 1 : 0;
 }
 
+Open64_DSC_Handle
+Open64_DSC_Create_Region(Open64_DSC_Handle program_unit,
+                         Open64_DSC_Handle parent_region,
+                         const char *contract_name,
+                         unsigned int contract_version)
+{
+    Open64_DSC_Initialize_Context();
+    return (Open64_DSC_Handle) DSL_Builder_Create_Region
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit,
+                (DSL_BUILDER_REGION) parent_region, contract_name,
+                (UINT32) contract_version);
+}
+
+int
+Open64_DSC_Append_Region_Value(Open64_DSC_Handle region,
+                               Open64_DSC_Handle value)
+{
+    return DSL_Builder_Append_Region_Value
+               ((DSL_BUILDER_REGION) region,
+                (DSL_BUILDER_VALUE) value) ? 1 : 0;
+}
+
+int
+Open64_DSC_Append_Program_Unit_Region(Open64_DSC_Handle program_unit,
+                                      Open64_DSC_Handle region)
+{
+    return DSL_Builder_Append_PU_Region
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit,
+                (DSL_BUILDER_REGION) region) ? 1 : 0;
+}
+
+int
+Open64_DSC_Declare_Region_Value(Open64_DSC_Handle region,
+                                Open64_DSC_Handle value,
+                                unsigned int roles,
+                                unsigned int ordinal,
+                                unsigned int flags)
+{
+    return DSL_Builder_Declare_Region_Value
+               ((DSL_BUILDER_REGION) region, (DSL_BUILDER_VALUE) value,
+                (UINT32) roles, (UINT32) ordinal, (UINT32) flags) ? 1 : 0;
+}
+
+int
+Open64_DSC_Set_Region_Source_Position
+        (Open64_DSC_Handle region,
+         const Open64_DSC_Source_Position *position)
+{
+    DSL_BUILDER_SOURCE_POSITION builder_position;
+    if (position == NULL)
+        return 0;
+    builder_position.file_id = position->file_id;
+    builder_position.line = position->line;
+    builder_position.column = position->column;
+    builder_position.statement_begin = position->statement_begin;
+    builder_position.basic_block_begin = position->basic_block_begin;
+    return DSL_Builder_Set_Region_Source_Position
+               ((DSL_BUILDER_REGION) region, &builder_position) ? 1 : 0;
+}
+
 int
 Open64_DSC_Verify_Program(Open64_DSC_Verify_Result *result)
 {

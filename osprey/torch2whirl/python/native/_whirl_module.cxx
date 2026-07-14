@@ -571,6 +571,97 @@ Open64_DSC_Set_Value_Source_Position(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Create_Region(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    Open64_DSC_Handle parent_region;
+    const char *contract_name;
+    unsigned int contract_version;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KKsI:create_region", &program_unit,
+                          &parent_region, &contract_name, &contract_version))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Create_Region(program_unit, parent_region,
+                                         contract_name, contract_version),
+                "create region");
+}
+
+static PyObject *
+Open64_DSC_Append_Region_Value(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle region;
+    Open64_DSC_Handle value;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KK:append_region_value", &region, &value))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Append_Region_Value(region, value),
+                "append region value");
+}
+
+static PyObject *
+Open64_DSC_Append_Program_Unit_Region(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    Open64_DSC_Handle region;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KK:append_program_unit_region",
+                          &program_unit, &region))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Append_Program_Unit_Region(program_unit, region),
+                "append program unit region");
+}
+
+static PyObject *
+Open64_DSC_Declare_Region_Value(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle region;
+    Open64_DSC_Handle value;
+    unsigned int roles;
+    unsigned int ordinal;
+    unsigned int flags;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KKIII:declare_region_value", &region,
+                          &value, &roles, &ordinal, &flags))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Declare_Region_Value
+                    (region, value, roles, ordinal, flags),
+                "declare region value");
+}
+
+static PyObject *
+Open64_DSC_Set_Region_Source_Position(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle region;
+    unsigned int file_id;
+    int line;
+    unsigned int column;
+    int statement_begin;
+    int basic_block_begin;
+    Open64_DSC_Source_Position position;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KIiIpp:set_region_source_position", &region,
+                          &file_id, &line, &column, &statement_begin,
+                          &basic_block_begin))
+        return NULL;
+    if (column > 65535) {
+        PyErr_SetString(PyExc_ValueError, "source column is out of range");
+        return NULL;
+    }
+    position.file_id = file_id;
+    position.line = line;
+    position.column = (unsigned short) column;
+    position.statement_begin = statement_begin != 0;
+    position.basic_block_begin = basic_block_begin != 0;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Set_Region_Source_Position(region, &position),
+                "set region source position");
+}
+
+static PyObject *
 Open64_DSC_Verify(PyObject *self, PyObject *args)
 {
     char diagnostic[4096];
@@ -911,6 +1002,36 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Set_Value_Source_Position,
         METH_VARARGS,
         "Attach a source position to a native value definition."
+    },
+    {
+        "create_region",
+        Open64_DSC_Create_Region,
+        METH_VARARGS,
+        "Create an opaque structured WHIRL region."
+    },
+    {
+        "append_region_value",
+        Open64_DSC_Append_Region_Value,
+        METH_VARARGS,
+        "Append a DSL value definition to a structured region."
+    },
+    {
+        "append_program_unit_region",
+        Open64_DSC_Append_Program_Unit_Region,
+        METH_VARARGS,
+        "Append a structured region to a native PU body."
+    },
+    {
+        "declare_region_value",
+        Open64_DSC_Declare_Region_Value,
+        METH_VARARGS,
+        "Declare a structured region value interface."
+    },
+    {
+        "set_region_source_position",
+        Open64_DSC_Set_Region_Source_Position,
+        METH_VARARGS,
+        "Attach a source position to a structured region."
     },
     {
         "verify_program",

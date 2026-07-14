@@ -261,11 +261,21 @@ Exit gate: the complete model survives write/read in a separate process and
   and backend lowering in `be/region`; use them to check or refine the declared
   common symbol interface rather than making them mapped-image contracts.
 
+Current validation proves the additive boundary without migrating LNO: the
+candidate and baseline `-O3 -apo` fixtures have identical MP RID summaries,
+parallel pragmas, shared/reduction contracts, assembly apart from build-path
+provenance, and one-thread/four-thread runtime output. The remaining unchecked
+items are staged backend adoption work, not blockers for CNN VHO regions.
+
 Exit gate: frontend and backend clients share one common region and RID service,
 the mapped image preserves stable region and declared symbol-interface rows,
 LNO output is unchanged, and backend-derived boundary analysis remains intact.
 
 ### M8B: Preserve CNN Block Structure With WHIRL Regions
+
+The domain meaning, compiler value, source-model relationship, and proposed
+verification contract for Bottleneck regions are maintained in
+`doc/DSL-WHIRL-CNN-REGION-CONTRACTS.md`.
 
 - [ ] Define an append-only logical pragma contract for CNN BasicBlock,
   Bottleneck, input, result, shortcut kind, stage, and block ordinal.
@@ -290,9 +300,9 @@ LNO output is unchanged, and backend-derived boundary analysis remains intact.
   Bottleneck, identity-shortcut, and projection-shortcut contracts.
 - [ ] Have the C++ CNN gatekeeper certify each proposed contract from region
   topology, operand identity, operator attributes, and tensor descriptors.
-- [ ] Print the logical CNN region and its contract in `ir_b2a` while hiding
+- [x] Print the logical CNN region and its contract in `ir_b2a` while hiding
   private pragma and DSL image indices.
-- [ ] Dissolve the region only after CNN gatekeeping and any whole-block VHO
+- [x] Dissolve the region only after CNN gatekeeping and any whole-block VHO
   optimization; reconnect its body using the established MP-region splicing
   pattern, then promote eligible leaf operations to the common substrate.
 - [ ] Add mapped-image and lowering tests for identity BasicBlock, projection

@@ -321,6 +321,7 @@ COMMON_COM_CXX_SRCS = \
   dsl_domain.cxx       \
   dsl_gatekeeper.cxx   \
   dsl_ir_image.cxx     \
+  dsl_region.cxx       \
   dsl_opcode.cxx       \
   dra_demangle.cxx	\
   dwarf_DST.cxx		\
