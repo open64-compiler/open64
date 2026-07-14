@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import tempfile
 from typing import Any, Iterable, Optional
 
 from .backend import load_backend
@@ -29,7 +31,26 @@ def export_to_whirl(
 def save_as_whirl(module: WhirlModule, path: str) -> None:
     if module.options.verify:
         verify_module(module)
+    output_path = Path(path)
+    output_dir = output_path.parent
+    temp_path: Optional[Path] = None
     backend = load_backend(module.options.backend)
-    if not backend.finalize_mapped_image(path, module.to_manifest()):
-        raise RuntimeError(f"failed to write WHIRL artifact: {Path(path)}")
-    write_external_payloads(module, path)
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{output_path.name}.",
+            suffix=".tmp",
+            dir=str(output_dir),
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+        if not backend.finalize_mapped_image(str(temp_path), module.to_manifest()):
+            raise RuntimeError(f"failed to write WHIRL artifact: {output_path}")
+        write_external_payloads(module, path)
+        os.replace(temp_path, output_path)
+        temp_path = None
+    except Exception:
+        raise
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)

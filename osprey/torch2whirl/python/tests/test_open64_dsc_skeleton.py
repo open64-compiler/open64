@@ -8,10 +8,17 @@ import json
 import struct
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
+import open64_dsc.export as export_module
 from open64_dsc.backend import load_backend
-from open64_dsc.cli import _load_model, _parse_shape_spec, run as cli_run
+from open64_dsc.cli import (
+    _external_data_file_for_output,
+    _load_model,
+    _parse_shape_spec,
+    run as cli_run,
+)
 from open64_dsc.interpreter import WhirlExportInterpreter
 from open64_dsc.module import (
     WhirlOperatorRecord,
@@ -23,10 +30,29 @@ from open64_dsc.module import (
 from open64_dsc import WhirlExportOptions, WhirlModule
 from open64_dsc import WhirlVerificationError, export_to_whirl
 from open64_dsc import load_builder, save_as_whirl, verify_module
+from open64_dsc.builder import ValueHandle, WhirlBuilder
+from open64_dsc.mapping.contract import all_operator_contracts
 
 
 class DummyModel:
     pass
+
+
+class FailingNativeBackend:
+    def backend_name(self) -> str:
+        return "native"
+
+    def create_operator(self, opcode_name, version, kids, attrs):
+        raise RuntimeError("native operator unavailable")
+
+
+class FailingFinalizeBackend:
+    def backend_name(self) -> str:
+        return "mock"
+
+    def finalize_mapped_image(self, path, module_manifest):
+        Path(path).write_text("partial artifact\n", encoding="utf-8")
+        return False
 
 
 class Open64DscSkeletonTest(unittest.TestCase):
@@ -229,6 +255,10 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertEqual(len(module.values), 2)
         self.assertEqual(len(module.graph_operators), 1)
         self.assertEqual(module.graph_operators[0].kids, ["input0", "input1"])
+        self.assertEqual(
+            module.graph_operators[0].metadata["lowering_hint"],
+            "synthetic_add",
+        )
         self.assertEqual(module.tensor_types[0].descriptor["dtype"], "float32")
         self.assertEqual(module.tensor_types[0].descriptor["rank"], 0)
         self.assertEqual(
@@ -241,7 +271,29 @@ class Open64DscSkeletonTest(unittest.TestCase):
         )
         self.assertEqual(
             module.values[0].metadata["lowering_hint"],
-            "example_input",
+            "model_input",
+        )
+        self.assertEqual(module.values[0].value_kind, "model_input")
+        self.assertEqual(module.values[0].metadata["input_ordinal"], "0")
+
+    def test_operator_record_manifest_includes_metadata(self) -> None:
+        operator = WhirlOperatorRecord(
+            "common.relu",
+            42,
+            ["input0"],
+            {},
+            metadata={
+                "fx_node_name": "relu",
+                "lowering_hint": "fx:common.relu",
+            },
+        )
+
+        self.assertEqual(
+            operator.to_manifest()["metadata"],
+            {
+                "fx_node_name": "relu",
+                "lowering_hint": "fx:common.relu",
+            },
         )
 
     def test_options_validate_backend(self) -> None:
@@ -250,6 +302,164 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
     def test_options_default_to_verification_enabled(self) -> None:
         self.assertTrue(WhirlExportOptions().verify)
+
+    def test_published_resnet_operator_contracts_do_not_drift(self) -> None:
+        contracts = all_operator_contracts()
+        expected = {
+            "common.model_input": (2, 0, ("attr.input_ordinal",)),
+            "common.tensor_const": (1, 0, ("value_kind", "value")),
+            "common.add": (1, 2, ("attr.broadcast_rule",)),
+            "common.matmul": (
+                1,
+                2,
+                ("attr.transpose_kid0", "attr.transpose_kid1"),
+            ),
+            "common.relu": (2, 1, ()),
+            "common.flatten": (
+                2,
+                1,
+                ("attr.start_dim", "attr.end_dim"),
+            ),
+            "common.residual_add": (
+                2,
+                2,
+                (
+                    "attr.broadcast_rule",
+                    "attr.shape_check",
+                    "attr.residual_path",
+                ),
+            ),
+            "common.linear": (
+                2,
+                3,
+                (
+                    "attr.has_bias",
+                    "attr.transpose_input",
+                    "attr.transpose_weight",
+                    "attr.weight_layout",
+                ),
+            ),
+            "common.output_logits": (2, 1, ("attr.semantic",)),
+            "cnn.conv2d": (
+                2,
+                3,
+                (
+                    "attr.kernel_shape",
+                    "attr.stride",
+                    "attr.padding",
+                    "attr.dilation",
+                    "attr.groups",
+                    "attr.input_layout",
+                    "attr.weight_layout",
+                    "attr.output_layout",
+                ),
+            ),
+            "cnn.batch_norm_infer": (
+                2,
+                5,
+                (
+                    "attr.epsilon",
+                    "attr.training",
+                    "attr.input_layout",
+                    "attr.channel_axis",
+                ),
+            ),
+            "cnn.max_pool2d": (
+                2,
+                1,
+                (
+                    "attr.kernel_shape",
+                    "attr.stride",
+                    "attr.padding",
+                    "attr.dilation",
+                    "attr.ceil_mode",
+                ),
+            ),
+            "cnn.global_avg_pool2d": (
+                2,
+                1,
+                ("attr.output_size", "attr.reduction_axes"),
+            ),
+        }
+
+        self.assertEqual(set(contracts), set(expected))
+        for name, (version, arity, attrs) in expected.items():
+            self.assertEqual(contracts[name].version, version)
+            self.assertEqual(contracts[name].arity, arity)
+            self.assertEqual(tuple(contracts[name].required_attrs), attrs)
+
+    def test_builder_uses_published_operator_versions(self) -> None:
+        builder = load_builder("mock")
+        lhs = builder.tensor_constant(
+            "version_lhs",
+            "float32",
+            4,
+            "[1,3,8,8]",
+            "splat",
+            "1.0",
+        )
+        rhs = builder.tensor_constant(
+            "version_rhs",
+            "float32",
+            4,
+            "[1,3,8,8]",
+            "splat",
+            "2.0",
+        )
+        add = builder.common_add(lhs, rhs)
+        relu = builder.common_relu(lhs)
+        residual = builder.common_residual_add(lhs, rhs)
+        logits = builder.common_output_logits(lhs)
+        pu = builder.minimal_program_unit("version_forward")
+        for value in (add, relu, residual, logits):
+            builder.append_program_unit_value(pu, value)
+
+        annotations = builder.inspect_program_unit_values(pu)
+
+        self.assertEqual(
+            [(item["opcode"], item["version"]) for item in annotations],
+            [
+                ("common.add", 1),
+                ("common.relu", 2),
+                ("common.residual_add", 2),
+                ("common.output_logits", 2),
+            ],
+        )
+        self.assertIn(
+            "attr.semantic=logits",
+            str(annotations[-1]["payload"]),
+        )
+
+    def test_native_capability_failure_names_operator_version(self) -> None:
+        builder = WhirlBuilder(FailingNativeBackend())
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"native backend does not support common\.relu\.v2",
+        ):
+            builder.common_relu(ValueHandle(1))
+
+    def test_native_capability_failure_names_g1_value_source(self) -> None:
+        builder = WhirlBuilder(FailingNativeBackend())
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"native backend does not support common\.model_input\.v2",
+        ):
+            builder.model_input("input0", ValueHandle(1), 0)  # type: ignore[arg-type]
+
+    def test_mock_backend_creates_model_input_value(self) -> None:
+        builder = load_builder("mock")
+        tensor_type = builder.tensor_type("model_input_type", "float32", 4, "[1,3,8,8]")
+        value = builder.model_input("input0", tensor_type, 0)
+        pu = builder.minimal_program_unit("model_input_forward")
+
+        builder.append_program_unit_value(pu, value)
+        annotations = builder.inspect_program_unit_values(pu)
+
+        self.assertEqual(annotations[-1]["opcode"], "common.model_input")
+        self.assertEqual(annotations[-1]["version"], 2)
+        self.assertIn("attr.input_ordinal=0", str(annotations[-1]["payload"]))
 
     def test_gatekeeper_accepts_valid_module(self) -> None:
         verify_module(self._gatekeeper_module())
@@ -280,6 +490,23 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "tensor_payload.0=UnitPayload.safetensors:weight:float32:[2]:0:8:",
             text,
         )
+
+    def test_save_as_whirl_removes_partial_artifact_on_failure(self) -> None:
+        module = self._external_payload_module()
+
+        with tempfile.TemporaryDirectory() as work_dir:
+            artifact = Path(work_dir) / "model.B"
+            with mock.patch.object(
+                export_module,
+                "load_backend",
+                return_value=FailingFinalizeBackend(),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "WHIRL artifact"):
+                    save_as_whirl(module, str(artifact))
+
+            self.assertFalse(artifact.exists())
+            self.assertFalse((Path(work_dir) / "UnitPayload.safetensors").exists())
+            self.assertEqual(list(Path(work_dir).iterdir()), [])
 
     def test_gatekeeper_rejects_missing_external_payload_when_strict(self) -> None:
         module = self._external_payload_module()
@@ -336,6 +563,60 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
         with self.assertRaisesRegex(WhirlVerificationError, "checksum"):
             verify_module(stale_module)
+
+    def test_gatekeeper_rejects_duplicate_external_payload_key(self) -> None:
+        module = self._external_payload_module()
+        duplicate_module = WhirlModule(
+            options=module.options,
+            model_name=module.model_name,
+            input_count=module.input_count,
+            entry_function=module.entry_function,
+            graph_source=module.graph_source,
+            operators=module.operators,
+            tensor_types=module.tensor_types,
+            values=module.values,
+            tensor_payloads=[
+                module.tensor_payloads[0],
+                module.tensor_payloads[0],
+            ],
+            graph_operators=module.graph_operators,
+        )
+
+        with self.assertRaisesRegex(WhirlVerificationError, "duplicate"):
+            verify_module(duplicate_module)
+
+    def test_gatekeeper_rejects_overlapping_external_payload_ranges(self) -> None:
+        module = self._external_payload_module()
+        other_data = b"\x00\x00@@"
+        other_checksum = hashlib.sha256(other_data).hexdigest()
+        overlapping_payload = WhirlTensorPayloadRecord(
+            module.tensor_payloads[0].storage_file,
+            "other_weight",
+            "float32",
+            "[1]",
+            4,
+            len(other_data),
+            other_checksum,
+            other_data,
+        )
+        overlap_module = WhirlModule(
+            options=module.options,
+            model_name=module.model_name,
+            input_count=module.input_count,
+            entry_function=module.entry_function,
+            graph_source=module.graph_source,
+            operators=module.operators,
+            tensor_types=module.tensor_types,
+            values=module.values,
+            tensor_payloads=[
+                module.tensor_payloads[0],
+                overlapping_payload,
+            ],
+            graph_operators=module.graph_operators,
+        )
+
+        with self.assertRaisesRegex(WhirlVerificationError, "overlapping"):
+            verify_module(overlap_module)
 
     def test_gatekeeper_rejects_external_payload_shape_mismatch(self) -> None:
         module = self._external_payload_module()
@@ -489,6 +770,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 {
                     "attr.broadcast_rule": "numpy",
                     "attr.shape_check": "exact",
+                    "attr.residual_path": "true",
                 },
             )
         ]
@@ -1022,7 +1304,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ["input0", "scale", "bias", "mean", "var"],
                 {
                     "attr.epsilon": "1e-05",
-                    "attr.momentum": "0.1",
                     "attr.training": "false",
                     "attr.input_layout": "NCHW",
                     "attr.channel_axis": "1",
@@ -1060,7 +1341,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ["input0", "scale", "bias", "mean", "var"],
                 {
                     "attr.epsilon": "1e-05",
-                    "attr.momentum": "0.1",
                     "attr.training": "false",
                     "attr.input_layout": "NCHW",
                     "attr.channel_axis": "1",
@@ -1085,7 +1365,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ["input0", "input1", "input1", "input1", "input1"],
                 {
                     "attr.epsilon": "1e-05",
-                    "attr.momentum": "0.1",
                     "attr.training": "true",
                     "attr.input_layout": "NCHW",
                     "attr.channel_axis": "1",
@@ -1192,7 +1471,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ["cnn.conv2d", "scale", "bn_bias", "mean", "var"],
                 {
                     "attr.epsilon": "1e-05",
-                    "attr.momentum": "0.1",
                     "attr.training": "false",
                     "attr.input_layout": "NCHW",
                     "attr.channel_axis": "1",
@@ -1286,6 +1564,26 @@ class Open64DscSkeletonTest(unittest.TestCase):
             _parse_shape_spec("shape:1,-1,3")
         with self.assertRaisesRegex(ValueError, "integer"):
             _parse_shape_spec("shape:1,bad,3")
+
+    def test_cli_derives_external_data_file_from_output(self) -> None:
+        self.assertEqual(
+            _external_data_file_for_output(Path("model.B")),
+            "model.safetensors",
+        )
+        self.assertEqual(
+            _external_data_file_for_output(Path("/tmp/resnet")),
+            "resnet.safetensors",
+        )
+
+    def test_options_validate_external_data_file(self) -> None:
+        self.assertEqual(
+            WhirlExportOptions(
+                external_data_file="model.safetensors",
+            ).external_data_file,
+            "model.safetensors",
+        )
+        with self.assertRaisesRegex(ValueError, "file name"):
+            WhirlExportOptions(external_data_file="dir/model.safetensors")
 
     def test_cli_requires_sample_input(self) -> None:
         with tempfile.TemporaryDirectory() as work_dir:
@@ -1550,7 +1848,6 @@ class Open64DscSkeletonTest(unittest.TestCase):
             running_var,
             {
                 "attr.epsilon": "1e-05",
-                "attr.momentum": "0.1",
                 "attr.training": "false",
                 "attr.input_layout": "NCHW",
                 "attr.channel_axis": "1",
@@ -1657,7 +1954,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "float32",
             4,
             "[1,3,224,224]",
-            "example_input",
+            "model_input",
             "external_conv_input",
         )
         weight = builder.external_tensor_constant(
@@ -1671,7 +1968,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "conv1.weight",
             128,
             37632,
-            "sha256:conv-weight",
+            "a" * 64,
             "OIHW",
         )
         bias = builder.external_tensor_constant(
@@ -1685,7 +1982,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "conv1.bias",
             37760,
             256,
-            "sha256:conv-bias",
+            "b" * 64,
             "C",
         )
         conv2d = builder.cnn_conv2d(value, weight, bias)
@@ -1706,7 +2003,8 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertEqual(markers[-2]["opcode"], "common.tensor_const")
         self.assertIn("name=external_conv_weight", str(markers[-2]["payload"]))
         self.assertIn("value_kind=external_data", str(markers[-2]["payload"]))
-        self.assertIn("safetensors://resnet.safetensors", str(markers[-2]["payload"]))
+        self.assertIn("storage_format=safetensors", str(markers[-2]["payload"]))
+        self.assertIn("side_file=resnet.safetensors", str(markers[-2]["payload"]))
         self.assertEqual(markers[-1]["opcode"], "cnn.conv2d")
         self.assertIn("kid1=external_conv_weight", str(markers[-1]["payload"]))
         self.assertIn("kid2=external_conv_bias", str(markers[-1]["payload"]))
@@ -1791,8 +2089,8 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("operator.0=common.add", text)
         self.assertIn("tensor_type.0=input0_type:float32:[]", text)
         self.assertIn("tensor_descriptor.0=float32:0:[]:input0", text)
-        self.assertIn("value.0=input0:input0_type:example_input", text)
-        self.assertIn("value_metadata.0=input0:example_input", text)
+        self.assertIn("value.0=input0:input0_type:model_input", text)
+        self.assertIn("value_metadata.0=input0:model_input", text)
         self.assertIn("graph_operator.0=common.add:input0,input1", text)
 
 

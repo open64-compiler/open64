@@ -4,9 +4,11 @@ ADD = "common.add"
 FLATTEN = "common.flatten"
 LINEAR = "common.linear"
 MATMUL = "common.matmul"
+MODEL_INPUT = "common.model_input"
 OUTPUT_LOGITS = "common.output_logits"
 RELU = "common.relu"
 RESIDUAL_ADD = "common.residual_add"
+TENSOR_CONST = "common.tensor_const"
 
 UNARY_OPERATORS = {
     FLATTEN,

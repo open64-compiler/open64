@@ -91,6 +91,7 @@ class WhirlOperatorRecord:
     handle: int
     kids: Sequence[str]
     attrs: Mapping[str, str]
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
     def to_manifest(self) -> Mapping[str, object]:
         return {
@@ -98,6 +99,7 @@ class WhirlOperatorRecord:
             "handle": self.handle,
             "kids": list(self.kids),
             "attrs": dict(self.attrs),
+            "metadata": dict(self.metadata),
         }
 
 

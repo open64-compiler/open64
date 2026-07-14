@@ -11,6 +11,7 @@ class WhirlExportOptions:
     entry: str = "forward"
     backend: str = "mock"
     model_name: Optional[str] = None
+    external_data_file: Optional[str] = None
     verify: bool = True
 
     def __post_init__(self) -> None:
@@ -18,3 +19,8 @@ class WhirlExportOptions:
             raise ValueError("entry must not be empty")
         if self.backend not in {"mock", "native"}:
             raise ValueError("backend must be 'mock' or 'native'")
+        if self.external_data_file is not None:
+            if not self.external_data_file:
+                raise ValueError("external_data_file must not be empty")
+            if "/" in self.external_data_file or "\\" in self.external_data_file:
+                raise ValueError("external_data_file must be a file name")

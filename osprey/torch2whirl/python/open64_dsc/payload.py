@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import struct
+import tempfile
 from typing import Dict, Iterable, List, Mapping, Sequence
 
 from .module import WhirlModule, WhirlTensorPayloadRecord
@@ -91,11 +93,26 @@ def _write_safetensors_file(
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
-    path.write_bytes(
+    payload_bytes = (
         struct.pack("<Q", len(header_bytes)) +
         header_bytes +
         b"".join(data_segments)
     )
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=str(path.parent),
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.write(payload_bytes)
+        os.replace(temp_path, path)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
 def _safetensors_dtype(dtype: str) -> str:

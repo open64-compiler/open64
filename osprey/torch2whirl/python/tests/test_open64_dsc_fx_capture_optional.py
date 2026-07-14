@@ -50,7 +50,10 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
     def _manifest_shape(self, value):
         if isinstance(value, dict):
             return {
-                key: self._manifest_shape(item)
+                key: (
+                    "dict" if key == "metadata"
+                    else self._manifest_shape(item)
+                )
                 for key, item in sorted(value.items())
             }
         if isinstance(value, list):
@@ -102,6 +105,15 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(module.operators, ["common.add"])
         self.assertEqual(module.entry_function.body_markers[-1], "common.add")
         self.assertEqual(module.graph_operators[0].kids, ["input0", "input1"])
+        self.assertEqual(
+            module.graph_operators[0].metadata["fx_node_op"],
+            "call_function",
+        )
+        self.assertEqual(module.graph_operators[0].metadata["fx_target"], "add")
+        self.assertEqual(
+            module.graph_operators[0].metadata["lowering_hint"],
+            "fx:common.add",
+        )
         self.assertEqual(module.tensor_types[0].dtype, "float32")
         self.assertEqual(module.tensor_types[0].rank, 2)
         self.assertEqual(module.tensor_types[0].logical_shape, "[2,3]")
@@ -137,12 +149,13 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 tensor_descriptor.0=float32:2:[2,3]:input0
                 tensor_type.1=input1_type:float32:[2,3]
                 tensor_descriptor.1=float32:2:[2,3]:input1
-                value.0=input0:input0_type:example_input
-                value_metadata.0=input0:example_input
-                value.1=input1:input1_type:example_input
-                value_metadata.1=input1:example_input
+                value.0=input0:input0_type:model_input
+                value_metadata.0=input0:model_input
+                value.1=input1:input1_type:model_input
+                value_metadata.1=input1:model_input
                 graph_operator.0=common.add:input0,input1
                 graph_operator_attrs.0=attr.broadcast_rule=none
+                graph_operator_metadata.0=fx_node_name=add,fx_node_op=call_function,fx_target=add,lowering_hint=fx:common.add
                 """
             ).lstrip(),
         )
@@ -201,12 +214,13 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 tensor_descriptor.0=float32:2:[2,3]:input0
                 tensor_type.1=input1_type:float32:[3,4]
                 tensor_descriptor.1=float32:2:[3,4]:input1
-                value.0=input0:input0_type:example_input
-                value_metadata.0=input0:example_input
-                value.1=input1:input1_type:example_input
-                value_metadata.1=input1:example_input
+                value.0=input0:input0_type:model_input
+                value_metadata.0=input0:model_input
+                value.1=input1:input1_type:model_input
+                value_metadata.1=input1:model_input
                 graph_operator.0=common.matmul:input0,input1
                 graph_operator_attrs.0=attr.transpose_kid0=false,attr.transpose_kid1=false
+                graph_operator_metadata.0=fx_node_name=matmul,fx_node_op=call_function,fx_target=matmul,lowering_hint=fx:common.matmul
                 """
             ).lstrip(),
         )
@@ -232,6 +246,14 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         self.assertEqual(
             module.graph_operators[0].attrs["attr.shape_check"],
             "exact",
+        )
+        self.assertEqual(
+            module.graph_operators[0].metadata["fx_target"],
+            "residual_add",
+        )
+        self.assertEqual(
+            module.graph_operators[0].metadata["lowering_hint"],
+            "fx:common.residual_add",
         )
 
     def test_fx_linear_maps_to_common_linear(self) -> None:
@@ -270,7 +292,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(
             module.graph_operators[1].attrs["attr.semantic"],
-            "classifier_logits",
+            "logits",
         )
         self.assertEqual(module.graph_operators[1].kids, ["common.linear"])
 
@@ -440,6 +462,14 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             ["input0", "conv_weight", "conv_bias"],
         )
         self.assertEqual(
+            module.graph_operators[0].metadata["source_module_path"],
+            "conv",
+        )
+        self.assertEqual(
+            module.graph_operators[0].metadata["source_module_type"],
+            "Conv2d",
+        )
+        self.assertEqual(
             module.graph_operators[1].kids,
             [
                 "cnn.conv2d",
@@ -453,9 +483,18 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             module.graph_operators[6].kids,
             ["common.flatten", "fc_weight", "fc_bias"],
         )
+        self.assertEqual(
+            module.graph_operators[6].metadata["source_module_path"],
+            "fc",
+        )
+        self.assertEqual(
+            module.graph_operators[-1].metadata["lowering_hint"],
+            "classifier_output",
+        )
         self.assertEqual(module.values[1].metadata["storage_tensor_key"], "conv.weight")
         self.assertEqual(module.values[1].metadata["storage_byte_length"], "37632")
-        self.assertEqual(module.values[2].value_kind, "absent_parameter")
+        self.assertEqual(module.values[2].value_kind, "implicit_zero")
+        self.assertEqual(module.values[2].metadata["storage_shape"], "[64]")
         self.assertEqual(module.values[3].metadata["tensor_role"], "batchnorm_scale")
         self.assertEqual(
             module.values[5].metadata["tensor_role"],
@@ -532,12 +571,14 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
             module.values[1].metadata["storage_byte_length"],
             "294912",
         )
-        self.assertEqual(module.values[2].value_kind, "absent_parameter")
+        self.assertEqual(module.values[2].value_kind, "implicit_zero")
+        self.assertEqual(module.values[2].metadata["storage_shape"], "[128]")
         self.assertEqual(
             module.values[7].metadata["storage_tensor_key"],
             "downsample.0.weight",
         )
-        self.assertEqual(module.values[8].value_kind, "absent_parameter")
+        self.assertEqual(module.values[8].value_kind, "implicit_zero")
+        self.assertEqual(module.values[8].metadata["storage_shape"], "[128]")
         self.assertEqual(
             module.values[9].metadata["tensor_role"],
             "batchnorm_scale",
@@ -613,7 +654,11 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(
             self._value_by_name(module, "conv1_bias").value_kind,
-            "absent_parameter",
+            "implicit_zero",
+        )
+        self.assertEqual(
+            self._value_by_name(module, "conv1_bias").metadata["storage_shape"],
+            "[64]",
         )
         self.assertEqual(
             self._value_by_tensor_key(module, "bn2.running_mean")
@@ -870,6 +915,34 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         ])
         self.assertEqual(module.operators.count("common.residual_add"), 4)
         self.assertGreaterEqual(module.operators.count("cnn.conv2d"), 10)
+        self.assertEqual(
+            module.graph_operators[0].metadata["source_module_path"],
+            "conv1",
+        )
+        self.assertEqual(
+            module.graph_operators[0].metadata["source_module_type"],
+            "Conv2d",
+        )
+        residual_operators = [
+            operator
+            for operator in module.graph_operators
+            if operator.name == "common.residual_add"
+        ]
+        self.assertEqual(len(residual_operators), 4)
+        self.assertTrue(
+            all(
+                operator.metadata["fx_target"] == "residual_add"
+                for operator in residual_operators
+            )
+        )
+        self.assertEqual(
+            module.graph_operators[-2].metadata["source_module_path"],
+            "fc",
+        )
+        self.assertEqual(
+            module.graph_operators[-1].metadata["lowering_hint"],
+            "classifier_output",
+        )
         external_values = [
             value
             for value in module.values
@@ -979,7 +1052,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
         )
         self.assertEqual(
             module.graph_operators[-1].attrs["attr.semantic"],
-            "classifier_logits",
+            "logits",
         )
         self.assertEqual(
             module.graph_operators[1].kids,

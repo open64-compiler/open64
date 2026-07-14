@@ -195,13 +195,36 @@ def _check_resnet_artifact(path: Path) -> None:
         "common.residual_add",
         "common.output_logits",
         "value_metadata.1=conv1_weight:external_tensor_constant",
+        "tensor_payload.0=resnet.safetensors:conv1.weight",
         "graph_operator_attrs.0=attr.dilation=1,1",
+        "graph_operator_metadata.0=fx_node_name=conv1",
+        "source_module_path=conv1",
+        "source_module_type=Conv2d",
+        "fx_target=residual_add",
+        "lowering_hint=classifier_output",
     )
     for fragment in expected_fragments:
         if fragment not in text:
             raise AssertionError(
                 f"missing {fragment!r} in driver ResNet output:\n{text}"
             )
+
+
+def _check_tensor_record(header, tensor_key, shape):
+    record = header[tensor_key]
+    if record["dtype"] != "F32":
+        raise AssertionError(f"{tensor_key} dtype is not F32")
+    if record["shape"] != shape:
+        raise AssertionError(f"{tensor_key} shape mismatch")
+    offsets = record["data_offsets"]
+    byte_length = 4
+    for dim in shape:
+        byte_length *= dim
+    if offsets[1] - offsets[0] != byte_length:
+        raise AssertionError(f"{tensor_key} byte length mismatch")
+    checksum = record.get("open64_sha256", "")
+    if len(checksum) != 64:
+        raise AssertionError(f"{tensor_key} checksum missing")
 
 
 def _check_resnet_side_file(path: Path) -> None:
@@ -215,12 +238,9 @@ def _check_resnet_side_file(path: Path) -> None:
             raise AssertionError(
                 f"missing {tensor_key!r} in driver ResNet side file header"
             )
-    if header["conv1.weight"]["dtype"] != "F32":
-        raise AssertionError("driver ResNet conv1.weight dtype is not F32")
-    if header["conv1.weight"]["shape"] != [8, 3, 7, 7]:
-        raise AssertionError("driver ResNet conv1.weight shape mismatch")
-    if header["fc.weight"]["shape"] != [10, 16]:
-        raise AssertionError("driver ResNet fc.weight shape mismatch")
+    _check_tensor_record(header, "conv1.weight", [8, 3, 7, 7])
+    _check_tensor_record(header, "bn1.running_mean", [8])
+    _check_tensor_record(header, "fc.weight", [10, 16])
     if not data:
         raise AssertionError("driver ResNet side file has no tensor data")
 
@@ -315,7 +335,7 @@ def main() -> int:
             return completed.returncode
 
         _check_resnet_artifact(resnet_output)
-        side_file = tmpdir / "LocalResNet.safetensors"
+        side_file = tmpdir / "resnet.safetensors"
         if not side_file.exists() or side_file.stat().st_size == 0:
             raise AssertionError("driver ResNet export did not write side file")
         _check_resnet_side_file(side_file)

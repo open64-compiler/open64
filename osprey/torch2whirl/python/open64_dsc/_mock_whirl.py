@@ -92,6 +92,65 @@ def create_tensor_constant(
     )
 
 
+def create_model_input(name: str, tensor_type: int, input_ordinal: int) -> int:
+    if not name:
+        raise RuntimeError("failed to create model input")
+    if tensor_type not in _objects:
+        raise RuntimeError("failed to create model input")
+    if _objects[tensor_type].get("kind") != "tensor_type":
+        raise RuntimeError("failed to create model input")
+    if input_ordinal < 0:
+        raise RuntimeError("failed to create model input")
+
+    return _new_handle(
+        {
+            "kind": "model_input",
+            "name": name,
+            "tensor_type": tensor_type,
+            "input_ordinal": input_ordinal,
+        }
+    )
+
+
+def create_external_tensor_constant(
+    name: str,
+    tensor_type: int,
+    reference: Mapping[str, object],
+) -> int:
+    if not name:
+        raise RuntimeError("failed to create external tensor constant")
+    if tensor_type not in _objects:
+        raise RuntimeError("failed to create external tensor constant")
+    if _objects[tensor_type].get("kind") != "tensor_type":
+        raise RuntimeError("failed to create external tensor constant")
+    for field in (
+        "storage_format",
+        "side_file",
+        "tensor_key",
+        "byte_offset",
+        "byte_length",
+    ):
+        if field not in reference:
+            raise RuntimeError("failed to create external tensor constant")
+    if int(reference.get("byte_offset", -1)) < 0:
+        raise RuntimeError("failed to create external tensor constant")
+    if int(reference.get("byte_length", 0)) <= 0:
+        raise RuntimeError("failed to create external tensor constant")
+
+    tensor_type_record = _objects[tensor_type]
+    return _new_handle(
+        {
+            "kind": "external_tensor_constant",
+            "name": name,
+            "tensor_type": tensor_type,
+            "dtype": tensor_type_record.get("dtype", ""),
+            "rank": tensor_type_record.get("rank", 0),
+            "logical_shape": tensor_type_record.get("logical_shape", ""),
+            "reference": dict(reference),
+        }
+    )
+
+
 def create_operator(
     opcode_name: str,
     version: int,
@@ -194,6 +253,38 @@ def _marker_annotation(marker: int) -> Mapping[str, object]:
             "payload": ";".join(payload_fields),
         }
 
+    if record.get("kind") == "model_input":
+        return {
+            "opcode": "common.model_input",
+            "version": 2,
+            "payload": (
+                f"name={record.get('name', '')};"
+                f"attr.input_ordinal={record.get('input_ordinal', '')}"
+            ),
+        }
+
+    if record.get("kind") == "external_tensor_constant":
+        reference = record.get("reference", {})
+        if not isinstance(reference, Mapping):
+            reference = {}
+        return {
+            "opcode": "common.tensor_const",
+            "version": 1,
+            "payload": (
+                f"name={record.get('name', '')};"
+                f"dtype={record.get('dtype', '')};"
+                f"rank={record.get('rank', '')};"
+                f"shape={record.get('logical_shape', '')};"
+                "value_kind=external_data;"
+                f"storage_format={reference.get('storage_format', '')};"
+                f"side_file={reference.get('side_file', '')};"
+                f"tensor_key={reference.get('tensor_key', '')};"
+                f"byte_offset={reference.get('byte_offset', '')};"
+                f"byte_length={reference.get('byte_length', '')};"
+                f"checksum={reference.get('checksum', '')}"
+            ),
+        }
+
     return {
         "opcode": "common.tensor_const",
         "version": 1,
@@ -215,7 +306,12 @@ def append_program_unit_value(program_unit: int, value: int) -> bool:
         raise RuntimeError("failed to append program unit value")
     if _objects[program_unit].get("kind") != "program_unit":
         raise RuntimeError("failed to append program unit value")
-    if _objects[value].get("kind") not in {"operator", "tensor_constant"}:
+    if _objects[value].get("kind") not in {
+        "operator",
+        "tensor_constant",
+        "model_input",
+        "external_tensor_constant",
+    }:
         raise RuntimeError("failed to append program unit value")
 
     record = dict(_objects[program_unit])
@@ -363,6 +459,17 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
                     for name, value in sorted(attrs.items())
                 )
                 lines.append(f"graph_operator_attrs.{index}={attr_text}")
+                metadata = operator.get("metadata", {})
+                if not isinstance(metadata, Mapping):
+                    metadata = {}
+                if metadata:
+                    metadata_text = ",".join(
+                        f"{name}={value}"
+                        for name, value in sorted(metadata.items())
+                    )
+                    lines.append(
+                        f"graph_operator_metadata.{index}={metadata_text}"
+                    )
 
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return True

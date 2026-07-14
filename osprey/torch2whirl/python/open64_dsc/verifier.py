@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 
 from .mapping import cnn, common
+from .mapping.contract import (
+    all_operator_contracts,
+    operator_arity,
+    required_attrs,
+)
 from .module import (
     WhirlModule,
     WhirlOperatorRecord,
@@ -26,33 +32,7 @@ _SUPPORTED_DTYPES = {
     "int64",
 }
 
-_KNOWN_OPERATORS = {
-    common.ADD,
-    common.FLATTEN,
-    common.LINEAR,
-    common.MATMUL,
-    common.OUTPUT_LOGITS,
-    common.RELU,
-    common.RESIDUAL_ADD,
-    cnn.BATCH_NORM_INFER,
-    cnn.CONV2D,
-    cnn.GLOBAL_AVG_POOL2D,
-    cnn.MAX_POOL2D,
-}
-
-_OPERATOR_ARITY = {
-    common.ADD: 2,
-    common.FLATTEN: 1,
-    common.LINEAR: 3,
-    common.MATMUL: 2,
-    common.OUTPUT_LOGITS: 1,
-    common.RELU: 1,
-    common.RESIDUAL_ADD: 2,
-    cnn.BATCH_NORM_INFER: 5,
-    cnn.CONV2D: 3,
-    cnn.GLOBAL_AVG_POOL2D: 1,
-    cnn.MAX_POOL2D: 1,
-}
+_KNOWN_OPERATORS = set(all_operator_contracts())
 
 
 def verify_module(module: WhirlModule) -> None:
@@ -152,6 +132,7 @@ def _verify_external_payload_records(
     module: WhirlModule,
     tensor_types: Mapping[str, WhirlTensorTypeRecord],
 ) -> None:
+    _verify_payload_record_set(module.tensor_payloads)
     payloads = {
         (payload.storage_file, payload.tensor_key): payload
         for payload in module.tensor_payloads
@@ -217,6 +198,64 @@ def _verify_external_payload_records(
         _verify_external_payload_match(value, tensor_type, payload)
 
 
+def _verify_payload_record_set(
+    payloads: Sequence[WhirlTensorPayloadRecord],
+) -> None:
+    seen_keys = set()
+    ranges_by_file: Dict[str, list[Tuple[int, int, str]]] = {}
+
+    for payload in payloads:
+        key = (payload.storage_file, payload.tensor_key)
+        if key in seen_keys:
+            raise WhirlVerificationError(
+                f"duplicate tensor payload key: {payload.tensor_key}"
+            )
+        seen_keys.add(key)
+
+        if payload.dtype not in _SUPPORTED_DTYPES:
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} has unsupported dtype: "
+                f"{payload.dtype}"
+            )
+        if payload.byte_offset < 0:
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} has negative offset"
+            )
+        if payload.byte_length <= 0:
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} has non-positive length"
+            )
+        if payload.byte_length != len(payload.data):
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} data length mismatch"
+            )
+        checksum = hashlib.sha256(payload.data).hexdigest()
+        if payload.checksum != checksum:
+            raise WhirlVerificationError(
+                f"tensor payload {payload.tensor_key} checksum mismatch"
+            )
+
+        ranges_by_file.setdefault(payload.storage_file, []).append(
+            (
+                payload.byte_offset,
+                payload.byte_offset + payload.byte_length,
+                payload.tensor_key,
+            )
+        )
+
+    for ranges in ranges_by_file.values():
+        previous_end = -1
+        previous_key = ""
+        for start, end, tensor_key in sorted(ranges):
+            if start < previous_end:
+                raise WhirlVerificationError(
+                    "overlapping tensor payload ranges: "
+                    f"{previous_key} and {tensor_key}"
+                )
+            previous_end = end
+            previous_key = tensor_key
+
+
 def _metadata_int(value: WhirlValueRecord, field: str) -> int:
     try:
         return int(value.metadata[field])
@@ -266,7 +305,7 @@ def _verify_graph_operators(
     for operator in graph_operators:
         if operator.name not in _KNOWN_OPERATORS:
             raise WhirlVerificationError(f"unknown operator: {operator.name}")
-        expected_arity = _OPERATOR_ARITY[operator.name]
+        expected_arity = operator_arity(operator.name)
         if len(operator.kids) != expected_arity:
             raise WhirlVerificationError(
                 f"{operator.name} expects {expected_arity} operands, "
@@ -297,16 +336,15 @@ def _verify_operator_contract(
     operator: WhirlOperatorRecord,
     operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
 ) -> None:
+    _require_contract_attrs(operator)
+
     if operator.name == common.ADD:
-        _require_attr(operator, "attr.broadcast_rule")
         if operator.attrs.get("attr.broadcast_rule") != "none":
             return
         _require_same_tensor_type(operator, operand_types)
         return
 
     if operator.name == common.RESIDUAL_ADD:
-        _require_attr(operator, "attr.broadcast_rule")
-        _require_attr(operator, "attr.shape_check")
         if operator.attrs.get("attr.broadcast_rule") != "none":
             raise WhirlVerificationError(
                 "common.residual_add does not allow broadcast operands"
@@ -347,6 +385,11 @@ def _require_attr(operator: WhirlOperatorRecord, name: str) -> None:
         raise WhirlVerificationError(
             f"{operator.name} missing required attribute: {name}"
         )
+
+
+def _require_contract_attrs(operator: WhirlOperatorRecord) -> None:
+    for attr_name in required_attrs(operator.name):
+        _require_attr(operator, attr_name)
 
 
 def _verify_matmul_contract(
@@ -467,14 +510,6 @@ def _verify_batch_norm_infer_contract(
     operator: WhirlOperatorRecord,
     operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
 ) -> None:
-    for attr_name in (
-        "attr.epsilon",
-        "attr.momentum",
-        "attr.training",
-        "attr.input_layout",
-        "attr.channel_axis",
-    ):
-        _require_attr(operator, attr_name)
     if operator.attrs["attr.training"] != "false":
         raise WhirlVerificationError(
             "cnn.batch_norm_infer requires attr.training=false"

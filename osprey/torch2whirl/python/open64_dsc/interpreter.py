@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .builder import ValueHandle, WhirlBuilder, load_builder
 from .mapping import cnn, common
+from .mapping.contract import operator_arity
 from .module import (
     WhirlModule,
     WhirlOperatorRecord,
@@ -24,6 +25,7 @@ from .options import WhirlExportOptions
 class _MappedOperatorPlan:
     name: str
     attrs: Mapping[str, str]
+    metadata: Mapping[str, str]
 
 
 @dataclass(frozen=True)
@@ -86,6 +88,7 @@ class WhirlExportInterpreter:
                     handle=handle.value,
                     kids=[value.name for value in values[:2]],
                     attrs=attrs,
+                    metadata={"lowering_hint": "synthetic_add"},
                 )
             )
 
@@ -202,6 +205,7 @@ class WhirlExportInterpreter:
                     handle=handle.value,
                     kids=[operand.name for operand in operands],
                     attrs=attrs,
+                    metadata=operator_plan.metadata,
                 )
             )
 
@@ -216,7 +220,7 @@ class WhirlExportInterpreter:
         handle, attrs = self._emit_operator(
             common.OUTPUT_LOGITS,
             [output_value.handle],
-            {"attr.semantic": "classifier_logits"},
+            {"attr.semantic": "logits"},
         )
         self.builder().append_program_unit_value(entry_pu, handle)
         operators.append(common.OUTPUT_LOGITS)
@@ -227,26 +231,15 @@ class WhirlExportInterpreter:
                 handle=handle.value,
                 kids=[output_value.name],
                 attrs=attrs,
+                metadata={
+                    "lowering_hint": "classifier_output",
+                    "source_operator": output_value.name,
+                },
             )
         )
 
     def _operator_arity(self, operator_name: str) -> int:
-        if (
-            operator_name in common.UNARY_OPERATORS or
-            operator_name in cnn.UNARY_OPERATORS
-        ):
-            return 1
-        if operator_name in {common.ADD, common.MATMUL, common.RESIDUAL_ADD}:
-            return 2
-        if (
-            operator_name in common.TERNARY_OPERATORS or
-            operator_name in cnn.TERNARY_OPERATORS
-        ):
-            return 3
-        if operator_name in cnn.FIVE_INPUT_OPERATORS:
-            return 5
-
-        raise NotImplementedError(f"unsupported mapped operator: {operator_name}")
+        return operator_arity(operator_name)
 
     def _emit_operator(
         self,
@@ -349,7 +342,6 @@ class WhirlExportInterpreter:
         if operator_name == cnn.BATCH_NORM_INFER:
             attrs = {
                 "attr.epsilon": "1e-05",
-                "attr.momentum": "0.1",
                 "attr.training": "false",
                 "attr.input_layout": "NCHW",
                 "attr.channel_axis": "1",
@@ -614,7 +606,13 @@ class WhirlExportInterpreter:
     ) -> _GraphValue:
         tensor = self._resolve_attr(traced_module, target)
         if tensor is None:
-            graph_value = self._absent_parameter_for_target(target, values, role)
+            graph_value = self._absent_parameter_for_target(
+                traced_module,
+                target,
+                tensor_types,
+                values,
+                role,
+            )
         else:
             graph_value = self._external_tensor_for_target(
                 traced_module,
@@ -633,7 +631,9 @@ class WhirlExportInterpreter:
 
     def _absent_parameter_for_target(
         self,
+        traced_module: Any,
         target: str,
+        tensor_types: List[WhirlTensorTypeRecord],
         values: List[WhirlValueRecord],
         role: Optional[str] = None,
     ) -> _GraphValue:
@@ -642,6 +642,63 @@ class WhirlExportInterpreter:
             for value in values:
                 if value.name == name:
                     return _GraphValue(ValueHandle(value.handle), value.name)
+
+        if target.endswith(".bias") and (role or self._parameter_role(target)) == "bias":
+            weight_target = target[:-4] + "weight"
+            weight = self._resolve_attr(traced_module, weight_target)
+            if weight is not None:
+                shape = self._input_shape(weight)
+                if shape:
+                    dtype = self._input_dtype(weight)
+                    logical_shape = self._format_shape((shape[0],))
+                    tensor_type_name = f"{name}_type"
+                    descriptor = {
+                        "kind": "tensor",
+                        "dtype": dtype,
+                        "rank": 1,
+                        "logical_shape": logical_shape,
+                        "traits": role or self._parameter_role(target),
+                        "layout": "C",
+                        "sharding": "replicated",
+                        "placement": "inline_constant",
+                        "memory": "static",
+                        "quantization": "none",
+                        "runtime_state": "static",
+                        "lineage": name,
+                    }
+                    handle = self.builder().tensor_constant(
+                        name,
+                        dtype,
+                        1,
+                        logical_shape,
+                        "implicit_zero",
+                        "0",
+                    )
+                    tensor_types.append(
+                        WhirlTensorTypeRecord(
+                            name=tensor_type_name,
+                            handle=handle.value,
+                            dtype=dtype,
+                            rank=1,
+                            logical_shape=logical_shape,
+                            descriptor=descriptor,
+                        )
+                    )
+                    values.append(
+                        WhirlValueRecord(
+                            name=name,
+                            handle=handle.value,
+                            type_name=tensor_type_name,
+                            value_kind="implicit_zero",
+                            metadata={
+                                "source_layer_name": name,
+                                "lowering_hint": "module_parameter_absent",
+                                "tensor_role": role or self._parameter_role(target),
+                                "storage_shape": logical_shape,
+                            },
+                        )
+                    )
+                    return _GraphValue(handle, name)
 
         handle = self.builder().tensor_constant(
             name,
@@ -690,7 +747,7 @@ class WhirlExportInterpreter:
         byte_offset = self._next_external_offset(values)
         checksum = hashlib.sha256(payload_bytes).hexdigest()
         name = self._external_value_name(target)
-        side_file = f"{model_name}.safetensors"
+        side_file = self._external_data_file(model_name)
         handle = self.builder().external_tensor_constant(
             name,
             dtype,
@@ -702,9 +759,11 @@ class WhirlExportInterpreter:
             target,
             byte_offset,
             byte_length,
-            checksum,
+            "",
             self._parameter_layout(tensor_role, len(shape)),
         )
+        metadata = dict(handle.metadata)
+        metadata["storage_checksum"] = checksum
         tensor_types.append(
             WhirlTensorTypeRecord(
                 name=f"{name}_type",
@@ -722,7 +781,7 @@ class WhirlExportInterpreter:
                 type_name=f"{name}_type",
                 value_kind="external_data",
                 symbol_handle=handle.symbol,
-                metadata=handle.metadata,
+                metadata=metadata,
             )
         )
         tensor_payloads.append(
@@ -859,9 +918,17 @@ class WhirlExportInterpreter:
         target = getattr(node, "target", None)
 
         if node_op == "call_function" and target is operator.add:
-            return _MappedOperatorPlan(common.ADD, {})
+            return _MappedOperatorPlan(
+                common.ADD,
+                {},
+                self._fx_node_metadata(node, common.ADD),
+            )
         if node_op == "call_function" and target is operator.matmul:
-            return _MappedOperatorPlan(common.MATMUL, {})
+            return _MappedOperatorPlan(
+                common.MATMUL,
+                {},
+                self._fx_node_metadata(node, common.MATMUL),
+            )
 
         target_name = getattr(target, "__name__", str(target))
         if node_op in {"call_function", "call_method"}:
@@ -874,6 +941,7 @@ class WhirlExportInterpreter:
             return _MappedOperatorPlan(
                 operator_name,
                 self._fx_static_attrs(operator_name, node),
+                self._fx_node_metadata(node, operator_name),
             )
 
         if node_op == "call_module" and traced_module is not None:
@@ -884,9 +952,47 @@ class WhirlExportInterpreter:
             return _MappedOperatorPlan(
                 operator_name,
                 self._fx_module_static_attrs(operator_name, module),
+                self._fx_node_metadata(
+                    node,
+                    operator_name,
+                    source_module=module,
+                    source_module_path=str(target),
+                ),
             )
 
         return None
+
+    def _fx_node_metadata(
+        self,
+        node: Any,
+        operator_name: str,
+        source_module: Any = None,
+        source_module_path: str = "",
+    ) -> Mapping[str, str]:
+        target = getattr(node, "target", "")
+        metadata = {
+            "fx_node_op": str(getattr(node, "op", "")),
+            "fx_node_name": str(getattr(node, "name", "")),
+            "fx_target": self._fx_target_text(target),
+            "lowering_hint": f"fx:{operator_name}",
+        }
+        if source_module_path:
+            metadata["source_module_path"] = source_module_path
+        if source_module is not None:
+            metadata["source_module_type"] = source_module.__class__.__name__
+        return {
+            name: value
+            for name, value in metadata.items()
+            if value
+        }
+
+    def _fx_target_text(self, target: Any) -> str:
+        if isinstance(target, str):
+            return target
+        name = getattr(target, "__name__", "")
+        if name:
+            return name
+        return str(target)
 
     def _map_fx_module(self, module: Any) -> Optional[str]:
         module_name = module.__class__.__name__
@@ -937,7 +1043,6 @@ class WhirlExportInterpreter:
         if operator_name == cnn.BATCH_NORM_INFER:
             return {
                 "attr.epsilon": str(getattr(module, "eps", 1e-5)),
-                "attr.momentum": str(getattr(module, "momentum", 0.1)),
                 "attr.training": self._format_bool(
                     getattr(module, "training", False)
                 ),
@@ -1015,13 +1120,6 @@ class WhirlExportInterpreter:
             kwargs = getattr(node, "kwargs", {})
             return {
                 "attr.epsilon": self._fx_text_attr(args, kwargs, "eps", 7, "1e-05"),
-                "attr.momentum": self._fx_text_attr(
-                    args,
-                    kwargs,
-                    "momentum",
-                    6,
-                    "0.1",
-                ),
                 "attr.training": self._fx_bool_attr(
                     args,
                     kwargs,
@@ -1160,19 +1258,17 @@ class WhirlExportInterpreter:
                 "lineage": name,
             }
             self.builder().attach_tensor_descriptor(tensor_type, descriptor)
-            value = self.builder().tensor_constant(
+            value = self.builder().model_input(
                 name,
-                dtype,
-                len(shape),
-                logical_shape,
-                "example_input",
-                name,
+                tensor_type,
+                ordinal,
             )
             symbol = self.builder().symbol(name, tensor_type)
             metadata = {
                 "source_layer_name": name,
-                "lowering_hint": "example_input",
+                "lowering_hint": "model_input",
                 "logical_shape": logical_shape,
+                "input_ordinal": str(ordinal),
             }
             self.builder().attach_symbol_metadata(symbol, metadata)
 
@@ -1191,7 +1287,7 @@ class WhirlExportInterpreter:
                     name=name,
                     handle=value.value,
                     type_name=type_name,
-                    value_kind="example_input",
+                    value_kind="model_input",
                     symbol_handle=symbol.value,
                     metadata=metadata,
                 )
@@ -1206,6 +1302,11 @@ class WhirlExportInterpreter:
         if hasattr(model, "__class__"):
             return model.__class__.__name__
         return type(model).__name__
+
+    def _external_data_file(self, model_name: str) -> str:
+        if self._options.external_data_file:
+            return self._options.external_data_file
+        return f"{model_name}.safetensors"
 
     def _input_dtype(self, example: Any) -> str:
         dtype = getattr(example, "dtype", None)
