@@ -758,6 +758,7 @@ class WhirlExportInterpreter:
                         else "module_parameter_absent"
                     ),
                     "tensor_role": parameter_role,
+                    "storage_shape": logical_shape,
                 },
             )
         )

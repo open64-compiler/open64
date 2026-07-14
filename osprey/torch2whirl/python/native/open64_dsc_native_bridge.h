@@ -65,15 +65,6 @@ typedef struct {
 
 typedef Open64_DSC_Marker_Info Open64_DSC_Value_Info;
 
-typedef struct {
-    const char *storage_format;
-    const char *side_file;
-    const char *tensor_key;
-    unsigned long long byte_offset;
-    unsigned long long byte_length;
-    const char *checksum;
-} Open64_DSC_External_Tensor_Reference;
-
 extern Open64_DSC_Handle Open64_DSC_Create_Tensor_Type
                                 (const char *name,
                                  const char *dtype,

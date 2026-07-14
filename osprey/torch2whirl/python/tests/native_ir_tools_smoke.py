@@ -73,9 +73,6 @@ def _append_operator_probes(module) -> None:
     )
     matmul = builder.common_matmul(matmul_lhs, matmul_rhs)
     residual_add = builder.common_residual_add(lhs, rhs)
-    linear_input = builder.tensor_constant(
-        "linear_input", "float32", 2, "[1,1]", "splat", "1.0"
-    )
     linear_weight = builder.external_tensor_constant(
         "linear_weight",
         "float32",
@@ -143,7 +140,7 @@ def _append_operator_probes(module) -> None:
         conv_weight,
         conv_bias,
         {
-            "attr.kernel_shape": "1,1",
+            "attr.kernel_shape": "3,3",
             "attr.stride": "1,1",
             "attr.padding": "0,0",
             "attr.dilation": "1,1",
