@@ -27,7 +27,47 @@ def _append_operator_probes(module) -> None:
     builder = load_builder("native")
     lhs = ValueHandle(module.values[0].handle)
     rhs = ValueHandle(module.values[1].handle)
-    matmul = builder.common_matmul(lhs, rhs)
+    matmul_lhs = builder.tensor_constant(
+        "matmul_lhs",
+        "float32",
+        2,
+        "[2,3]",
+        "splat",
+        "1.0",
+    )
+    matmul_rhs = builder.tensor_constant(
+        "matmul_rhs",
+        "float32",
+        2,
+        "[3,4]",
+        "splat",
+        "1.0",
+    )
+    common_input = builder.tensor_constant(
+        "common_input",
+        "float32",
+        2,
+        "[1,4]",
+        "splat",
+        "1.0",
+    )
+    linear_input = builder.tensor_constant(
+        "linear_input",
+        "float32",
+        2,
+        "[1,1]",
+        "splat",
+        "1.0",
+    )
+    cnn_input = builder.tensor_constant(
+        "cnn_input",
+        "float32",
+        4,
+        "[1,1,4,4]",
+        "splat",
+        "1.0",
+    )
+    matmul = builder.common_matmul(matmul_lhs, matmul_rhs)
     residual_add = builder.common_residual_add(lhs, rhs)
     linear_weight = builder.external_tensor_constant(
         "linear_weight",
@@ -57,23 +97,23 @@ def _append_operator_probes(module) -> None:
         "b" * 64,
         "C",
     )
-    linear = builder.common_linear(lhs, linear_weight, linear_bias)
-    relu = builder.common_relu(lhs)
-    flatten = builder.common_flatten(lhs)
-    output_logits = builder.common_output_logits(lhs)
-    max_pool2d = builder.cnn_max_pool2d(lhs)
-    global_avg_pool2d = builder.cnn_global_avg_pool2d(lhs)
+    linear = builder.common_linear(linear_input, linear_weight, linear_bias)
+    relu = builder.common_relu(common_input)
+    flatten = builder.common_flatten(common_input)
+    output_logits = builder.common_output_logits(common_input)
+    max_pool2d = builder.cnn_max_pool2d(cnn_input)
+    global_avg_pool2d = builder.cnn_global_avg_pool2d(cnn_input)
     conv_weight = builder.external_tensor_constant(
         "conv_weight",
         "float32",
         4,
-        "[1,1,1,1]",
+        "[1,1,3,3]",
         "weight",
         "safetensors",
         "resnet.safetensors",
         "conv.weight",
         8,
-        4,
+        36,
         "c" * 64,
         "OIHW",
     )
@@ -86,13 +126,13 @@ def _append_operator_probes(module) -> None:
         "safetensors",
         "resnet.safetensors",
         "conv.bias",
-        12,
+        44,
         4,
         "d" * 64,
         "C",
     )
     conv2d = builder.cnn_conv2d(
-        lhs,
+        cnn_input,
         conv_weight,
         conv_bias,
         {
@@ -115,7 +155,7 @@ def _append_operator_probes(module) -> None:
         "safetensors",
         "resnet.safetensors",
         "bn.weight",
-        16,
+        48,
         4,
         "e" * 64,
         "C",
@@ -129,7 +169,7 @@ def _append_operator_probes(module) -> None:
         "safetensors",
         "resnet.safetensors",
         "bn.bias",
-        20,
+        52,
         4,
         "f" * 64,
         "C",
@@ -143,7 +183,7 @@ def _append_operator_probes(module) -> None:
         "safetensors",
         "resnet.safetensors",
         "bn.running_mean",
-        24,
+        56,
         4,
         "1" * 64,
         "C",
@@ -157,27 +197,24 @@ def _append_operator_probes(module) -> None:
         "safetensors",
         "resnet.safetensors",
         "bn.running_var",
-        28,
+        60,
         4,
         "2" * 64,
         "C",
     )
     batch_norm = builder.cnn_batch_norm_infer(
-        lhs,
+        cnn_input,
         bn_scale,
         bn_bias,
         bn_running_mean,
         bn_running_var,
     )
-    builder.append_program_unit_marker(
-        ProgramUnitHandle(module.entry_function.handle),
-        matmul,
-    )
-    builder.append_program_unit_marker(
-        ProgramUnitHandle(module.entry_function.handle),
-        residual_add,
-    )
     for parameter in (
+        matmul_lhs,
+        matmul_rhs,
+        common_input,
+        linear_input,
+        cnn_input,
         linear_weight,
         linear_bias,
         conv_weight,
@@ -191,6 +228,14 @@ def _append_operator_probes(module) -> None:
             ProgramUnitHandle(module.entry_function.handle),
             parameter,
         )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        matmul,
+    )
+    builder.append_program_unit_marker(
+        ProgramUnitHandle(module.entry_function.handle),
+        residual_add,
+    )
     builder.append_program_unit_marker(
         ProgramUnitHandle(module.entry_function.handle),
         linear,
@@ -252,18 +297,12 @@ def main() -> int:
         artifact = work_dir / "python_native_model.B"
         text_dump = work_dir / "python_native_model.st.ir"
 
-        try:
-            module = export_to_whirl(
-                DummyModel(),
-                [object(), object()],
-                WhirlExportOptions(backend="native", model_name="python_native"),
-            )
-            _append_operator_probes(module)
-        except RuntimeError as exc:
-            if "does not support" in str(exc):
-                print(f"skip: native backend capability missing: {exc}")
-                return 0
-            raise
+        module = export_to_whirl(
+            DummyModel(),
+            [object(), object()],
+            WhirlExportOptions(backend="native", model_name="python_native"),
+        )
+        _append_operator_probes(module)
         save_as_whirl(module, str(artifact))
         if not artifact.exists() or artifact.stat().st_size == 0:
             print("native Python WHIRL artifact was not created", file=sys.stderr)
