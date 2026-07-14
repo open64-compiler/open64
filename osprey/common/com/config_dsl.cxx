@@ -29,6 +29,8 @@ BOOL VHO_DSL_Enable_Parallelization = FALSE;
 BOOL VHO_DSL_Enable_Parallelization_Set = FALSE;
 BOOL VHO_DSL_Enable_Implementation_Selection = FALSE;
 BOOL VHO_DSL_Enable_Implementation_Selection_Set = FALSE;
+BOOL VHO_DSL_Dump_After_Lowering = FALSE;
+BOOL VHO_DSL_Dump_After_Lowering_Set = FALSE;
 
 static OPTION_DESC Options_DSL[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "canon", "canon",
@@ -64,5 +66,8 @@ static OPTION_DESC Options_DSL[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "impl_select", "impl_select",
     FALSE, 0, 0, &VHO_DSL_Enable_Implementation_Selection,
     &VHO_DSL_Enable_Implementation_Selection_Set },
+  { OVK_BOOL, OV_VISIBLE, TRUE, "dump_after_lower", "dump_after_lower",
+    FALSE, 0, 0, &VHO_DSL_Dump_After_Lowering,
+    &VHO_DSL_Dump_After_Lowering_Set },
   { OVK_COUNT }
 };

@@ -1627,6 +1627,18 @@ add_file_args (string_list_t *args, phases_t index)
 		add_string (args, "-o");
 		add_string (args, construct_name(the_file, "B"));
 		break;
+        case P_torch2whirl:
+                add_string (args, the_file);
+                add_string (args, "--entry");
+                add_string (args, "forward");
+                add_string (args, "--backend");
+                add_string (args, "native");
+                add_string (args, "--sample-input");
+                add_string (args, "shape:1,3,224,224");
+                add_string (args, "--output");
+                input_source = construct_name(the_file, "B");
+                add_string (args, input_source);
+                break;
 	case P_inline:
 		if (source_kind == S_B)
 		    sprintf (buf, "-fB,%s", the_file);
@@ -1729,8 +1741,13 @@ add_file_args (string_list_t *args, phases_t index)
 #ifdef TARG_LOONGSON
 		add_string(args,"-TENV:pic2");
 #endif
-		add_language_option ( args );
-		add_targ_options ( args );
+                add_language_option ( args );
+                add_targ_options ( args );
+                if (invoked_lang == L_python && keep_flag) {
+                    add_string(args, "-DSL:dump_after_lower=ON");
+                    sprintf(buf, "-ft,%s", construct_name(the_file, "t"));
+                    add_string(args, buf);
+                }
 
 		if (invoked_lang == L_f77) {
 		  if (use_craylibs == TRUE) {
@@ -2834,6 +2851,9 @@ determine_phase_order (void)
 	case S_javascript:
 		next_phase = P_js2mpl;
 		break;
+        case S_python:
+                next_phase = P_torch2whirl;
+                break;
 	case S_i:
 	case S_ii:
 		if (source_lang == L_f77)
@@ -2947,6 +2967,10 @@ determine_phase_order (void)
 			add_phase(next_phase);
 			next_phase = post_fe_phase ();
 			break;
+                case P_torch2whirl:
+                        add_phase(next_phase);
+                        next_phase = post_fe_phase ();
+                        break;
 		case P_f90_fe:
                 case P_cppf90_fe:
 			if (keep_listing) {
@@ -3806,7 +3830,8 @@ run_compiler (int argc, char *argv[])
 			    option_was_seen(O_finline_functions))) {
 				prepend_option_seen (add_string_option(O_INLINE_, "none"));
 			}
-			copy_phase_options (args, phase_order[i]);
+                        if (phase_order[i] != P_torch2whirl)
+                            copy_phase_options (args, phase_order[i]);
                         
 			if (!cmd_line_updated &&
 			    phase_order[i] > P_any_optfe &&
@@ -3816,6 +3841,7 @@ run_compiler (int argc, char *argv[])
 			    phase_order[i] != P_spin_cc1plus &&
 				phase_order[i] != P_jfe &&
 			    phase_order[i] != P_wgen &&
+                            phase_order[i] != P_torch2whirl &&
 			    phase_order[i] != P_clangfe &&
 			    phase_order[i] < P_any_fe)
 			{

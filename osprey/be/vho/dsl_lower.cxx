@@ -12,17 +12,21 @@
 #include <vector>
 
 #include "dsl_lower.h"
+#include "config_dsl.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_opt.h"
 #include "dsl_opcode.h"
 #include "errors.h"
+#include "wn.h"
+#include "wn_map.h"
+#include "ir_reader.h"
 #include "irbdata.h"
 #include "open64_dsl_runtime_abi.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
 #include "symtab_utils.h"
-#include "wn.h"
+#include "tracing.h"
 #include "wn_util.h"
 
 typedef struct {
@@ -1528,5 +1532,12 @@ VHO_DSL_Lower_Driver
                            (pu_info, tree, stderr, &lower_result);
     FmtAssert(lower_valid,
               ("DSL lowering did not produce canonical WHIRL"));
+    if (VHO_DSL_Dump_After_Lowering) {
+        fprintf(TFile,
+                "\n\n========== WHIRL after VHO DSL Lowering =========="
+                "\n");
+        fdump_tree(TFile, tree);
+        fflush(TFile);
+    }
     return tree;
 }

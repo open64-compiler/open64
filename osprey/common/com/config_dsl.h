@@ -27,5 +27,7 @@ extern BOOL VHO_DSL_Enable_Parallelization;
 extern BOOL VHO_DSL_Enable_Parallelization_Set;
 extern BOOL VHO_DSL_Enable_Implementation_Selection;
 extern BOOL VHO_DSL_Enable_Implementation_Selection_Set;
+extern BOOL VHO_DSL_Dump_After_Lowering;
+extern BOOL VHO_DSL_Dump_After_Lowering_Set;
 
 #endif /* config_dsl_INCLUDED */
