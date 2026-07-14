@@ -93,6 +93,7 @@ static lang_info_t language_info[] = {
 // java
 	{'j',	0x00000080, {"java", OPEN64_NAME_PREFIX "java"}},	/* java */
 	{'J',	0x00000080, {"javascript", OPEN64_NAME_PREFIX "js"}},	/* javascript */
+        {'y',   0x00000100, {"openpy", "python", "py"}}, /* Python DSL */
 	#endif
 	{'I',	0x80000000,	{"int"}},		/* Internal option */
 };
@@ -172,9 +173,10 @@ static phase_info_t phase_info[] = {
    {'f',  0x0000000010000000LL, "js2mpl", PHASEPATH,  TRUE,  FALSE},   /* javascript front-end, javascript to maple */
    {'z',  0x0000000800000000LL, "mpl2whirl",PHASEPATH, TRUE, FALSE},   /* maple to WHIRL */
    {'f',  0x0000000000300060LL, "mapclang",PHASEPATH,   TRUE , FALSE}, /* clangfe */
+   {'f',  0x0000000020000000LL, "torch2whirl",BINPATH, FALSE, FALSE}, /* Python DSL frontend */
    /* place-holder for generic fe, whose mask unites all fe's; */
    /* this is so -Wf will apply to whatever fe is being invoked. */
-   {'f',  0x000000000fff0000LL,	"",	"",		FALSE, FALSE},	/* any_fe */
+   {'f',  0x000000003fff0000LL, "", "", FALSE, FALSE}, /* any_fe */
    {'F',  0x00000000000f0000LL,	"",	"",		FALSE, FALSE},	/* pseudo_f_fe */
    {'C',  0x0000000000f00000LL,	"",	"",		FALSE, FALSE},	/* pseudo_c_fe */
 
@@ -298,7 +300,8 @@ static source_info_t source_info[] = {
 	{"o"},				/* o */
 // java
 	{"java","class","jar", "apk", "war"}, 			/* java */
-	{"js"}
+        {"js"},
+        {"py"}
 };
 
 languages_t invoked_lang;
@@ -634,6 +637,9 @@ get_named_language (char *name)
 			/* as does not invoke ld */
 			if (i == L_as)
 			    last_phase = P_any_as;
+                        /* openpy currently ends after the backend phase. */
+                        if (i == L_python)
+                            last_phase = P_be;
 			lang = i;
 			goto done;
 		}
@@ -683,6 +689,7 @@ get_source_kind (char *src)
 // java
 			case L_java:  return S_java;
 			case L_javascript:  return S_javascript;
+                        case L_python: return S_python;
 			}
 		}
 	}
@@ -751,6 +758,8 @@ get_source_lang (source_kind_t sk)
 		return L_java;
 	case S_javascript:
 		return L_javascript;
+        case S_python:
+                return L_python;
 	}
 	return L_NONE;
 }

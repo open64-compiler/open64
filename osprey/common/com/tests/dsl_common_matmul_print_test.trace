@@ -2,9 +2,16 @@ dsl_common_matmul_print_test trace
 created_operator=common.matmul
 
 [fdump_tree]
-__WHIRL_DSL__:opcode:common.tensor_const:v1:name=tensor_one_kid0;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1
-__WHIRL_DSL__:opcode:common.tensor_const:v1:name=tensor_one_kid1;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1
-__WHIRL_DSL__:opcode:common.matmul:v1:kid0=tensor_one_kid0;kid1=tensor_one_kid1;attr.transpose_kid0=false;attr.transpose_kid1=false
+BLOCK {line: 0/0}
+ OPR_DSLTENSORCONST # OPR_DSLTENSORCONST version=1 operand_count=0 payload=name=tensor_one_kid0;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1 dsl_comment_projection=OPR_COMMENT("__WHIRL_DSL__:opcode:common.tensor_const:v1:name=tensor_one_kid0;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1")
+MSTID 0 <1,51,tensor_one_kid0> T<52,tensor_one_kid0_type,1> {line: 0/0}
+ OPR_DSLTENSORCONST # OPR_DSLTENSORCONST version=1 operand_count=0 payload=name=tensor_one_kid1;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1 dsl_comment_projection=OPR_COMMENT("__WHIRL_DSL__:opcode:common.tensor_const:v1:name=tensor_one_kid1;dtype=int32;rank=2;shape=[2,2];value_kind=splat;value=1")
+MSTID 0 <1,53,tensor_one_kid1> T<53,tensor_one_kid1_type,1> {line: 0/0}
+  MMLDID 0 <1,51,tensor_one_kid0> T<52,tensor_one_kid0_type,1>
+  MMLDID 0 <1,53,tensor_one_kid1> T<53,tensor_one_kid1_type,1>
+ OPR_DSLMATMUL # OPR_DSLMATMUL version=1 operand_count=2 payload=kid0=tensor_one_kid0;kid1=tensor_one_kid1;attr.transpose_kid0=false;attr.transpose_kid1=false dsl_comment_projection=OPR_COMMENT("__WHIRL_DSL__:opcode:common.matmul:v1:kid0=tensor_one_kid0;kid1=tensor_one_kid1;attr.transpose_kid0=false;attr.transpose_kid1=false")
+MSTID 0 <1,54,dsl_result_1> T<52,tensor_one_kid0_type,1> {line: 0/0}
+END_BLOCK
 
 [dsl_annotation]
-dsl_opcode=common.matmul.v1 dsl_payload=kid0=tensor_one_kid0;kid1=tensor_one_kid1;attr.transpose_kid0=false;attr.transpose_kid1=false
+ # OPR_DSLMATMUL version=1 operand_count=2 payload=kid0=tensor_one_kid0;kid1=tensor_one_kid1;attr.transpose_kid0=false;attr.transpose_kid1=false dsl_comment_projection=OPR_COMMENT("__WHIRL_DSL__:opcode:common.matmul:v1:kid0=tensor_one_kid0;kid1=tensor_one_kid1;attr.transpose_kid0=false;attr.transpose_kid1=false")

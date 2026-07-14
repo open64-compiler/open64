@@ -6,6 +6,7 @@
 #define dsl_builder_INCLUDED
 
 #include "defs.h"
+#include "pu_info.h"
 #include "symtab.h"
 #include "wn.h"
 #include "dsl_contract.h"
@@ -13,24 +14,26 @@
 #include "dsl_opcode.h"
 
 /*
- * Minimal C++ builder-facing DSL API sketch.
+ * Minimal C++ builder-facing DSL API.
  *
  * The future Python ingestion layer should capture model operations and hand
  * them to this native boundary.  This API intentionally creates first-class DSL
  * operators at ingestion time; intrinsic or target-specific lowering remains a
  * later compiler phase.
  *
- * Future C++ facade names may wrap these declarations, for example
- * TensorBuilder, OperatorBuilder, MetadataBuilder, and ImageBuilder.  The first
- * public contract keeps Open64-style C interfaces so it can sit beside the
- * existing common/com construction APIs.
+ * Keep this boundary narrow.  Bindings may pass names, attributes, metadata,
+ * and opaque Open64 handles such as TY_IDX, ST_IDX, and WN*, but Python must
+ * not construct WHIRL nodes, mutate symbol/type tables, or depend on table
+ * layout.  C++ owns those compiler objects.
  *
- * This header defines the intended construction boundary only.  It does not
- * change current compiler behavior, binary IR layout, or WHIRL opcode storage.
+ * This header stages construction only.  Binary image finalization still uses
+ * existing mapped-image / ELF WHIRL mechanisms and must not introduce a new
+ * source-language file format.
  */
 
 typedef WN *DSL_BUILDER_VALUE;
 typedef WN *DSL_BUILDER_OPERATOR;
+typedef PU_Info *DSL_BUILDER_PROGRAM_UNIT;
 
 typedef struct {
     const char *kind;
@@ -78,34 +81,118 @@ typedef struct {
     UINT32 flags;
 } DSL_BUILDER_MAPPED_IMAGE_REQUEST;
 
+typedef struct {
+    const char *storage_format;
+    const char *side_file;
+    const char *tensor_key;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+    const char *checksum;
+} DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE;
+
+typedef struct {
+    const char *opcode_name;
+    UINT32 opcode_name_len;
+    UINT32 version;
+    const char *payload;
+} DSL_BUILDER_MARKER_INFO;
+
+typedef DSL_BUILDER_MARKER_INFO DSL_BUILDER_VALUE_INFO;
+
 extern TY_IDX DSL_Builder_Create_Tensor_Type_Core
-				(const char *name,
-				 TY_IDX element_ty,
-				 const DSL_BUILDER_TENSOR_TYPE_CORE *type_core);
+                                (const char *name,
+                                 TY_IDX element_ty,
+                                 const DSL_BUILDER_TENSOR_TYPE_CORE *type_core);
 extern BOOL DSL_Builder_Attach_Tensor_Descriptor
-				(TY_IDX ty,
-				 const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor);
+                                (TY_IDX ty,
+                                 const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor);
 extern ST_IDX DSL_Builder_Create_Symbol
-				(const char *name,
-				 TY_IDX ty,
-				 ST_CLASS sym_class,
-				 ST_SCLASS storage_class,
-				 ST_EXPORT export_class);
+                                (const char *name,
+                                 TY_IDX ty,
+                                 ST_CLASS sym_class,
+                                 ST_SCLASS storage_class,
+                                 ST_EXPORT export_class);
+extern ST_IDX DSL_Builder_Create_Tensor_Result_Symbol
+                                (const char *name,
+                                 TY_IDX ty,
+                                 ST_SCLASS storage_class,
+                                 ST_EXPORT export_class);
+extern BOOL DSL_Builder_Set_Tensor_Unique_Ownership (ST_IDX st);
+extern BOOL DSL_Builder_Tensor_Has_Unique_Ownership (ST_IDX st);
+extern DSL_BUILDER_VALUE DSL_Builder_Create_Tensor_Constant
+                                (const char *name,
+                                 TY_IDX tensor_ty,
+                                 const char *dtype,
+                                 UINT32 rank,
+                                 const char *logical_shape,
+                                 const char *value_kind,
+                                 const char *value);
+extern DSL_BUILDER_VALUE DSL_Builder_Create_Model_Input
+                                (const char *name,
+                                 TY_IDX tensor_ty,
+                                 UINT32 input_ordinal);
+extern DSL_BUILDER_VALUE DSL_Builder_Create_External_Tensor_Constant
+                                (const char *name,
+                                 TY_IDX tensor_ty,
+                                 const DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE
+                                     *reference);
 extern DSL_BUILDER_OPERATOR DSL_Builder_Create_Operator
-				(DSL_OPCODE_ID opcode_id,
-				 UINT16 version,
-				 DSL_BUILDER_VALUE *kids,
-				 UINT32 kid_count,
-				 const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
-				 UINT32 attr_count);
+                                (DSL_OPCODE_ID opcode_id,
+                                 UINT16 version,
+                                 DSL_BUILDER_VALUE *kids,
+                                 UINT32 kid_count,
+                                 const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+                                 UINT32 attr_count);
 extern BOOL DSL_Builder_Attach_Contract
-				(DSL_BUILDER_OPERATOR wn,
-				 DSL_CONTRACT_ID contract_id);
+                                (DSL_BUILDER_OPERATOR wn,
+                                 DSL_CONTRACT_ID contract_id);
 extern BOOL DSL_Builder_Attach_Metadata
-				(ST_IDX st,
-				 const DSL_BUILDER_COMPILER_METADATA *metadata,
-				 UINT32 metadata_count);
+                                (ST_IDX st,
+                                 const DSL_BUILDER_COMPILER_METADATA *metadata,
+                                 UINT32 metadata_count);
+extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
+                                (const char *name);
+/*
+ * Formal VHO DSL value representation.
+ *
+ * The stable API is an opaque WHIRL WN handle.  Native common operators return
+ * the defining STID for a no-alias tensor result temporary; its expression kid
+ * is the logical DSL operator and its operand kids are LDID references to prior
+ * result temporaries.  Compatibility operators may retain annotated COMMENT,
+ * EVAL, or XPRAGMA carriers.  Python and other frontends must not depend on
+ * either physical representation.
+ *
+ * The marker-named entry points below remain compatibility wrappers for
+ * earlier tests and callers.
+ */
+extern BOOL DSL_Builder_Append_PU_Value
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_VALUE value);
+extern UINT32 DSL_Builder_Count_PU_Values
+                                (DSL_BUILDER_PROGRAM_UNIT pu);
+extern BOOL DSL_Builder_Get_PU_Value
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 UINT32 index,
+                                 DSL_BUILDER_VALUE_INFO *info);
+extern UINT32 DSL_Builder_Count_Value_Operands
+                                (DSL_BUILDER_VALUE value);
+extern BOOL DSL_Builder_Get_Value_Info
+                                (DSL_BUILDER_VALUE value,
+                                 DSL_BUILDER_VALUE_INFO *info);
+extern BOOL DSL_Builder_Get_Value_Operand
+                                (DSL_BUILDER_VALUE value,
+                                 UINT32 operand_index,
+                                 DSL_BUILDER_VALUE_INFO *info);
+extern BOOL DSL_Builder_Append_PU_Marker
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_VALUE marker);
+extern UINT32 DSL_Builder_Count_PU_Markers
+                                (DSL_BUILDER_PROGRAM_UNIT pu);
+extern BOOL DSL_Builder_Get_PU_Marker
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 UINT32 index,
+                                 DSL_BUILDER_MARKER_INFO *info);
 extern BOOL DSL_Builder_Finalize_Mapped_Image
-				(const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
+                                (const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request);
 
 #endif /* dsl_builder_INCLUDED */

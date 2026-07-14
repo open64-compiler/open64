@@ -63,6 +63,7 @@
 #include "wn_map.h"
 #include "wio.h"
 #include "wn_pragmas.h"
+#include "dsl_opcode.h"
 
 #include "stab.h"
 #include "wn_util.h"
@@ -1035,14 +1036,22 @@ extern WN *WN_CreateComment (const char *s);	/* create comment node */
 extern STR_IDX WN_GetComment (const WN *wn);  /* get string idx from comment node */
 
 /*
- * Very-high-level WHIRL extension marker.
+ * Very-high-level WHIRL extension marker and node carrier.
  *
  * DSL and AI-compiler front ends can use this comment format to attach
  * structured intent to otherwise standard WHIRL.  Older phases continue to
  * treat the node as OPR_COMMENT, while DSL-aware phases can recognize the
  * marker and lower it deliberately before canonical optimization.
+ *
+ * The preferred value carrier is now a non-comment WHIRL node whose child
+ * either directly names the annotated DSL record or wraps that record in a
+ * COMMA operand-evidence envelope.  The current migration accepts both the
+ * OPR_EVAL staging carrier and an OPR_XPRAGMA non-eval staging carrier, plus
+ * the legacy annotated OPR_COMMENT marker.
  */
 #define WN_DSL_COMMENT_PREFIX "__WHIRL_DSL__:"
+#define WN_DSL_OPERAND_PREFIX "__WHIRL_DSL_OPERAND__:"
+#define WN_DSL_NODE_CARRIER_OPERATOR OPR_EVAL
 #define DSL_OPCODE_COMMON_ADD "common.add"
 #define DSL_OPCODE_COMMON_MATMUL "common.matmul"
 #define DSL_OPCODE_COMMON_TENSOR_CONST "common.tensor_const"
@@ -1055,9 +1064,59 @@ typedef struct {
     const char *payload;
 } DSL_OPCODE_ANNOTATION;
 
+typedef enum {
+    DSL_OPCODE_CARRIER_NONE = 0,
+    DSL_OPCODE_CARRIER_NODE = 1,
+    DSL_OPCODE_CARRIER_MARKER = 2,
+    DSL_OPCODE_CARRIER_XPRAGMA = 3,
+    DSL_OPCODE_CARRIER_NATIVE = 4
+} DSL_OPCODE_CARRIER_KIND;
+
+typedef enum {
+    DSL_OPCODE_VERSION_INVALID = 0,
+    DSL_OPCODE_VERSION_EXACT = 1,
+    DSL_OPCODE_VERSION_MIGRATED = 2,
+    DSL_OPCODE_VERSION_REJECTED_UNKNOWN_OPERATOR = 3,
+    DSL_OPCODE_VERSION_REJECTED_OLDER = 4,
+    DSL_OPCODE_VERSION_REJECTED_NEWER = 5
+} DSL_OPCODE_VERSION_DISPOSITION;
+
+typedef enum {
+    DSL_OPCODE_OUTPUT_NATIVE = 0,
+    DSL_OPCODE_OUTPUT_LEGACY_EVAL = 1,
+    DSL_OPCODE_OUTPUT_LEGACY_XPRAGMA = 2,
+    DSL_OPCODE_OUTPUT_COMMENT_PROJECTION = 3
+} DSL_OPCODE_OUTPUT_MODE;
+
+typedef struct {
+    const char *opcode_name;
+    UINT32 opcode_name_len;
+    UINT32 version;
+    const char *payload;
+    DSL_OPCODE_CARRIER_KIND carrier;
+} DSL_WHIRL_NODE_RECORD;
+
+typedef struct {
+    DSL_OPERATOR dsl_operator;
+    UINT32 source_version;
+    UINT16 effective_version;
+    const char *payload;
+    DSL_OPCODE_CARRIER_KIND carrier;
+    DSL_OPCODE_VERSION_DISPOSITION version_disposition;
+} DSL_LOGICAL_OPCODE;
+
+typedef struct {
+    UINT32 ordinal;
+    const char *opcode_name;
+    UINT32 opcode_name_len;
+    UINT32 version;
+    const char *payload;
+} DSL_WHIRL_OPERAND_RECORD;
+
 typedef struct {
     UINT32 dsl_marker_count;
     UINT32 dsl_opcode_count;
+    UINT32 dsl_malformed_count;
 } VHO_UNCONSUMED_DSL_SCAN;
 
 extern const char *WN_DSL_Comment_Prefix (void);
@@ -1071,8 +1130,51 @@ extern BOOL WN_Is_DSL_Comment (const WN *wn);
 extern BOOL WN_Is_DSL_Assert (const WN *wn);
 extern const char *WN_Get_DSL_Comment_Payload (const WN *wn);
 extern WN *DSL_WN_Create_Opcode (const char *name,
-				 UINT32 version,
-				 const char *payload);
+                                 UINT32 version,
+                                 const char *payload);
+extern WN *DSL_WN_Create_Opcode_With_Operands (const char *name,
+                                               UINT32 version,
+                                               const char *payload,
+                                               WN **operands,
+                                               UINT32 operand_count);
+extern WN *DSL_WN_Create_Opcode_Xpragma (const char *name,
+                                         UINT32 version,
+                                         const char *payload,
+                                         WN **operands,
+                                         UINT32 operand_count);
+/*
+ * Create a native, variable-arity DSL expression through its logical operator
+ * interface.  Physical escape-tag and record-index details remain private.
+ */
+extern WN *DSL_WN_Create_Native (DSL_OPERATOR dsl_operator,
+                                 UINT32 version,
+                                 const char *payload,
+                                 WN **operands,
+                                 UINT32 operand_count);
+/*
+ * Construct a logical operator in an explicitly selected physical output
+ * form.  COMMENT is an inspection projection; it does not retain operand
+ * records.  EVAL and XPRAGMA retain legacy operand evidence.
+ */
+extern WN *DSL_WN_Create_Logical_Opcode
+                                (DSL_OPERATOR dsl_operator,
+                                 UINT32 version,
+                                 const char *payload,
+                                 WN **operands,
+                                 UINT32 operand_count,
+                                 DSL_OPCODE_OUTPUT_MODE output_mode);
+extern BOOL DSL_WN_Is_Native (const WN *wn);
+extern DSL_OPERATOR DSL_WN_operator (const WN *wn);
+extern BOOL DSL_WN_Get_Logical_Opcode (const WN *wn,
+                                       DSL_LOGICAL_OPCODE *logical_opcode,
+                                       FILE *diagnostic);
+extern const char *DSL_Opcode_Version_Disposition_Name
+                                (DSL_OPCODE_VERSION_DISPOSITION disposition);
+extern const char *DSL_Opcode_Output_Mode_Name
+                                (DSL_OPCODE_OUTPUT_MODE output_mode);
+extern WN *DSL_WN_Create_Opcode_Marker (const char *name,
+                                        UINT32 version,
+                                        const char *payload);
 /*
  * Create a fully specified tensor constant.  Use this when dtype, rank, shape,
  * and value are known at IR construction time.
@@ -1098,9 +1200,31 @@ extern WN *DSL_WN_Create_Zero_Init (const char *value_name,
 extern WN *DSL_WN_Create_Zero_Like (const char *value_name,
 				  const char *source_name);
 extern BOOL DSL_WN_Has_Opcode (const WN *wn);
+extern BOOL DSL_WN_Is_Opcode_Node (const WN *wn);
+extern BOOL DSL_WN_Is_Opcode_Marker (const WN *wn);
+extern DSL_OPCODE_CARRIER_KIND DSL_WN_Opcode_Carrier_Kind (const WN *wn);
+extern const char *DSL_WN_Opcode_Carrier_Name
+                                      (DSL_OPCODE_CARRIER_KIND carrier);
+extern UINT32 DSL_WN_Opcode_Operand_Count (const WN *wn);
+extern BOOL DSL_WN_Decode_Opcode_Operand_Record
+                                      (const WN *wn,
+                                       UINT32 operand_index,
+                                       DSL_WHIRL_OPERAND_RECORD *record);
+extern BOOL DSL_WN_Verify_Opcode_Carrier (const WN *wn, FILE *diagnostic);
+extern BOOL DSL_WN_Decode_Opcode_Record (const WN *wn,
+                                         DSL_WHIRL_NODE_RECORD *record);
+extern WN *DSL_WN_Create_Opcode_From_Record
+                                      (const DSL_WHIRL_NODE_RECORD *record);
+extern WN *DSL_WN_Create_Opcode_Marker_From_Record
+                                      (const DSL_WHIRL_NODE_RECORD *record);
+extern WN *DSL_WN_Create_Opcode_Comment_Projection (const WN *wn);
+extern BOOL DSL_WN_Opcode_Records_Equivalent
+                                      (const DSL_WHIRL_NODE_RECORD *record0,
+                                       const DSL_WHIRL_NODE_RECORD *record1);
 extern BOOL DSL_WN_Get_Opcode_Annotation (const WN *wn,
-					  DSL_OPCODE_ANNOTATION *annotation);
+                                          DSL_OPCODE_ANNOTATION *annotation);
 extern void DSL_fprint_opcode_annotation (FILE *f, const WN *wn);
+extern void DSL_fprint_opcode_comment_projection (FILE *f, const WN *wn);
 extern void VHO_Scan_Unconsumed_DSL_Markers (WN *wn,
 					     VHO_UNCONSUMED_DSL_SCAN *scan);
 extern BOOL VHO_Has_Unconsumed_DSL_Markers (WN *wn);

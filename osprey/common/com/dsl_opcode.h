@@ -18,6 +18,24 @@
 typedef UINT32 DSL_OPCODE_ID;
 typedef UINT32 DSL_OPCODE_PROMOTION_ID;
 
+/* Append-only logical operators exposed to DSL-aware compiler code. */
+typedef enum {
+    OPR_DSLUNKNOWN = 0,
+    OPR_DSLTENSORCONST = 1,
+    OPR_DSLADD = 2,
+    OPR_DSLMATMUL = 3,
+    OPR_DSLMODELINPUT = 4,
+    OPR_DSLRELU = 5,
+    OPR_DSLFLATTEN = 6,
+    OPR_DSLRESIDUALADD = 7,
+    OPR_DSLLINEAR = 8,
+    OPR_DSLOUTPUTLOGITS = 9,
+    OPR_DSLCONV2D = 10,
+    OPR_DSLBATCHNORMINFER = 11,
+    OPR_DSLMAXPOOL2D = 12,
+    OPR_DSLGLOBALAVGPOOL2D = 13
+} DSL_OPERATOR;
+
 typedef enum {
     DSL_OPCODE_CATEGORY_EXECUTABLE = 0,
     DSL_OPCODE_CATEGORY_DECLARATION = 1,
@@ -98,6 +116,22 @@ typedef struct {
 } DSL_OPCODE_INFO;
 
 typedef struct {
+    DSL_OPERATOR dsl_operator;
+    const char *logical_name;
+    const char *stable_name;
+    UINT16 version;
+    DSL_OPCODE_CATEGORY category;
+    DSL_OPCODE_LEVEL level;
+    mINT16 nkids;
+    DSL_SHAPE_RULE shape_rule;
+    DSL_EFFECT_MODEL effect_model;
+    DSL_LOWERING_MODEL lowering_model;
+    const char *diagnostic_prefix;
+    const char *attribute_schema;
+    UINT32 flags;
+} DSL_OPERATOR_INFO;
+
+typedef struct {
     DSL_OPCODE_PROMOTION_ID id;
     DSL_OPCODE_ID source_opcode_id;
     DSL_OPCODE_ID promoted_opcode_id;
@@ -137,6 +171,14 @@ extern BOOL DSL_Opcode_Get_Info (DSL_OPCODE_ID id,
 				 DSL_OPCODE_INFO *info);
 extern UINT32 DSL_Opcode_Count (void);
 extern BOOL DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info);
+extern BOOL DSL_Operator_Get_Info (DSL_OPERATOR dsl_operator,
+                                   DSL_OPERATOR_INFO *info);
+extern DSL_OPERATOR DSL_Operator_Find (const char *stable_name,
+                                       UINT32 stable_name_len,
+                                       UINT16 version);
+extern DSL_OPERATOR DSL_Operator_Find_Current (const char *stable_name,
+                                               UINT32 stable_name_len);
+extern const char *DSL_OPERATOR_name (DSL_OPERATOR dsl_operator);
 extern UINT32 DSL_Opcode_Register_Common_Substrate (void);
 extern UINT32 DSL_Opcode_Register_Domain_Wrapper_Examples (void);
 extern DSL_OPCODE_ID DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id);

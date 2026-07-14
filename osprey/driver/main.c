@@ -176,6 +176,8 @@ main (int argc, char *argv[])
 	init_objects();
 
 	invoked_lang = get_named_language(program_name);
+        if (invoked_lang == L_python)
+            default_olevel = 0;
 
 	/* Add the contents of OPEN64_CFLAGS, OPEN64_CXXFLAGS, OPEN64_FFLAGS to the
 	   command line.  Bug 7646. */
@@ -961,6 +963,8 @@ static struct explicit_lang {
 	{ "c++-header", S_C, L_CC, },
 	{ "c-header", S_c, L_cc, },
 	{ "cpp-output", S_i, L_cc, },
+        { "whirl", S_B, L_cc, },
+        { "python", S_python, L_python, },
 	{ "f77", S_f90, L_f77, },
 	{ "f77-cpp-input", S_i, L_f77, },
 	{ "f90", S_f90, L_f90, },

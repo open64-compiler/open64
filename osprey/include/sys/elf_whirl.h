@@ -45,8 +45,10 @@
    object file spec. for format */
 #if defined(TARG_IA64) && !defined(__ia64)
 #define WHIRL_REVISION	"WHIRL::0.33:IA64X"
+#define WHIRL_DSL_REVISION "WHIRL::0.34:IA64X"
 #else
 #define WHIRL_REVISION	"WHIRL::0.33:"
+#define WHIRL_DSL_REVISION "WHIRL::0.34:"
 #endif
 
 /*
@@ -69,13 +71,12 @@
 /*
  * Reserved DSL image extension point.
  *
- * WT_DSL_TENSOR_DESCRIPTOR is reserved for a future combined tensor descriptor
- * image section.  The current staged DSL implementation does not write or read
- * this section; tensor descriptor state remains stored through the existing
- * symbol/type extension tables so old WHIRL files and tools keep their current
- * behavior.
+ * The optional DSL image section owns the fixed-row logical opcode, node,
+ * attribute, value, and value-reference tables.  Readers that do not know this
+ * section continue to ignore it as an unrecognized SHT_MIPS_WHIRL extension.
  */
-#define WT_DSL_TENSOR_DESCRIPTOR 0x20
+#define WT_DSL_IR_IMAGE 0x20
+#define WT_DSL_TENSOR_DESCRIPTOR WT_DSL_IR_IMAGE
 
 /*
  * Special WHIRL section names.
@@ -88,7 +89,8 @@
 #define MIPS_WHIRL_SUMMARY	".WHIRL.summary"
 #define MIPS_WHIRL_DST		".WHIRL.dst"
 #define MIPS_WHIRL_LOCALMAP	".WHIRL.localmap"
-#define MIPS_WHIRL_DSL_TENSOR_DESCRIPTOR ".WHIRL.dsl_tensor_descriptor"
+#define MIPS_WHIRL_DSL_IR_IMAGE ".WHIRL.dsl"
+#define MIPS_WHIRL_DSL_TENSOR_DESCRIPTOR MIPS_WHIRL_DSL_IR_IMAGE
 #if defined(TARG_SL)
 #define MIPS_WHIRL_CALLGRAPH    ".WHIRL.callgraph"
 #endif

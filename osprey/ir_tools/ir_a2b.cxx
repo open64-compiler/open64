@@ -73,6 +73,7 @@
 #include "tracing.h"
 #include "profile_com.h"
 #include "fb_info.h"
+#include "dsl_ir_image.h"
 
 
 BOOL Run_vsaopt = FALSE; // hack to workaround undefine since
@@ -233,6 +234,7 @@ ir_b2a (char *global_file, char *input_file, char *output_file, BOOL stflag,
     if (stflag) {
 	/* print the symbol tables */
 	Print_global_symtab (stdout);
+        DSL_IR_Image_Print (stdout);
 	Dump_DST (stdout);
     }
 
@@ -375,6 +377,7 @@ usage (char *progname)
   exit (1);
 }
 
+INT
 main (INT argc, char *argv[])
 {
     register char *progname;

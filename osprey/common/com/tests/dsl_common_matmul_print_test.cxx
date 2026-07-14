@@ -16,6 +16,10 @@
 #include "erglob.h"
 #include "errors.h"
 #include "err_host.tab"
+#include "config.h"
+#include "controls.h"
+#include "config_targ_opt.h"
+#include "dwarf_DST_mem.h"
 #include "dsl_ingestion_fixture.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -44,8 +48,13 @@ Initialize_Test_Context(void)
     Set_Error_File(NULL);
     Set_Error_Line(ERROR_LINE_UNKNOWN);
 
-    Initialize_Symbol_Tables(FALSE);
-    New_Scope(GLOBAL_SYMTAB, Malloc_Mem_Pool, FALSE);
+    Preconfigure();
+    Init_Controls_Tbl();
+    ABI_Name = "n64";
+    Configure();
+    IR_reader_init();
+    Initialize_Symbol_Tables(TRUE);
+    DST_Init(NULL, 0);
 }
 
 static WN *
@@ -87,7 +96,7 @@ Check_Tensor_One_Annotation(WN *tensor_const, const char *name)
     DSL_OPCODE_ANNOTATION annotation;
     int failed = 0;
 
-    if (!DSL_WN_Get_Opcode_Annotation (tensor_const, &annotation)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (tensor_const, &annotation)) {
         fprintf(stderr, "tensor-one marker did not decode\n");
         return 1;
     }
@@ -123,7 +132,7 @@ Check_Common_Matmul_Annotation(WN *dsl_marker)
     DSL_OPCODE_ANNOTATION annotation;
     int failed = 0;
 
-    if (!DSL_WN_Get_Opcode_Annotation (dsl_marker, &annotation)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (dsl_marker, &annotation)) {
         fprintf(stderr, "common.matmul marker was not decoded as a DSL opcode\n");
         return 1;
     }
@@ -239,7 +248,7 @@ main(void)
         return 1;
     }
 
-    if (!DSL_WN_Has_Opcode (dsl_marker)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (dsl_marker, NULL)) {
         fprintf(stderr, "common.matmul marker was not recognized as a DSL opcode\n");
         failed = 1;
     }
@@ -254,7 +263,8 @@ main(void)
     text = Read_File(dump);
     fclose(dump);
 
-    DSL_fprint_opcode_annotation (annotation, dsl_marker);
+    DSL_fprint_opcode_annotation
+        (annotation, DSL_Fixture_Value_Expression(dsl_marker));
     annotation_text = Read_File(annotation);
     fclose(annotation);
 
@@ -267,21 +277,30 @@ main(void)
     fputs(annotation_text, stdout);
     failed |= Write_Common_Matmul_Trace(text, annotation_text);
 
-    if (strstr(text, "__WHIRL_DSL__:opcode:common.matmul:") == NULL) {
-        fprintf(stderr, "missing common.matmul DSL marker in fdump_tree output\n");
+    if (strstr(text, "OPR_DSLMATMUL") == NULL ||
+        strstr(text, "EVAL") != NULL ||
+        strstr(text, "operand_count=2") == NULL ||
+        strstr(text, "MMLDID") == NULL ||
+        strstr(text, "dsl_comment_projection=OPR_COMMENT") == NULL ||
+        strstr(text, "__WHIRL_DSL__:opcode:common.matmul:v1") == NULL ||
+        strstr(text, "OPR_DSL ") != NULL ||
+        strstr(text, "MDSL ") != NULL) {
+        fprintf(stderr, "missing common.matmul DSL node in fdump_tree output\n");
         failed = 1;
     }
 
-    if (strstr(text, "__WHIRL_DSL__:opcode:common.tensor_const:v1:") == NULL ||
+    if (strstr(text, "OPR_DSLTENSORCONST") == NULL ||
             strstr(text, "name=tensor_one_kid0") == NULL ||
             strstr(text, "name=tensor_one_kid1") == NULL ||
             strstr(text, "value=1") == NULL) {
-        fprintf(stderr, "missing tensor-one DSL markers in fdump_tree output\n");
+        fprintf(stderr, "missing tensor-one DSL nodes in fdump_tree output\n");
         failed = 1;
     }
 
-    if (strstr(annotation_text, "dsl_opcode=common.matmul.v1") == NULL) {
-        fprintf(stderr, "missing formatted common.matmul DSL opcode annotation\n");
+    if (strstr(annotation_text, "OPR_DSLMATMUL") == NULL ||
+        strstr(annotation_text, "operand_count=2") == NULL ||
+        strstr(annotation_text, "dsl_comment_projection=OPR_COMMENT") == NULL) {
+        fprintf(stderr, "missing formatted common.matmul DSL node annotation\n");
         failed = 1;
     }
 
@@ -293,8 +312,12 @@ main(void)
             fclose(trace);
 
         if (trace_text == NULL ||
-	strstr(trace_text, "created_operator=common.matmul") == NULL ||
-	strstr(trace_text, "__WHIRL_DSL__:opcode:common.matmul:") == NULL) {
+            strstr(trace_text, "created_operator=common.matmul") == NULL ||
+            strstr(trace_text, "OPR_DSLMATMUL") == NULL ||
+            strstr(trace_text, "EVAL") != NULL ||
+            strstr(trace_text, "operand_count=2") == NULL ||
+            strstr(trace_text, "MMLDID") == NULL ||
+            strstr(trace_text, "dsl_comment_projection=OPR_COMMENT") == NULL) {
             fprintf(stderr, "missing common.matmul creation trace file content\n");
             failed = 1;
         }

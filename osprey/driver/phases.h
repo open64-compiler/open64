@@ -97,6 +97,8 @@ extern boolean vsa_mtr_flag;
 
 extern char *ld_library_path;	/* env. variable LD_LIBRARY_PATH */
 extern char *ld_libraryn32_path;   /* env. variable LD_LIBRARYN32_PATH */
+extern char *original_ld_library_path;
+extern char *original_ld_libraryn32_path;
 
 extern char *orig_program_name; /* actual name passed in to argv[0] */
 
@@ -146,6 +148,5 @@ extern void parse_vsa_options(const char* opt);
 
 #define PASS1 0
 #define PASS2 1
-
 
 

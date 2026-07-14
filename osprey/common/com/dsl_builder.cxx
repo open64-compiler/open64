@@ -1,0 +1,1812 @@
+/*
+ * Copyright (C) 2026 Open64 Project
+ */
+
+#ifdef USE_PCH
+#include "common_com_pch.h"
+#endif /* USE_PCH */
+#pragma hdrstop
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <vector>
+#if ! defined(BUILD_OS_DARWIN)
+#include <elf.h>
+#endif /* ! defined(BUILD_OS_DARWIN) */
+
+#include "dsl_builder.h"
+#include "dsl_gatekeeper.h"
+#include "dwarf_DST.h"
+#include "dwarf_DST_mem.h"
+#include "dwarf_DST_producer.h"
+#include "glob.h"
+#include "pu_info.h"
+#include "ir_bwrite.h"
+#include "mempool.h"
+#include "stab.h"
+#include "strtab.h"
+#include "symtab_utils.h"
+#include "wn_util.h"
+
+static PU_Info *DSL_Builder_PU_Root = NULL;
+static PU_Info *DSL_Builder_PU_Last = NULL;
+static UINT32 DSL_Builder_Result_Number = 0;
+static DST_INFO_IDX DSL_Builder_CU_DST = DST_INVALID_INIT;
+
+typedef struct {
+    WN *assignment;
+    WN *expression;
+    ST_IDX result_st;
+    TY_IDX result_ty;
+    DSL_IR_VALUE_ID image_value_id;
+} DSL_BUILDER_VALUE_RECORD;
+
+static std::vector<DSL_BUILDER_VALUE_RECORD> DSL_builder_value_registry;
+
+static void
+DSL_Builder_Reset_Program (void)
+{
+    DSL_Builder_PU_Root = NULL;
+    DSL_Builder_PU_Last = NULL;
+    DSL_Builder_Result_Number = 0;
+    DSL_builder_value_registry.clear();
+    DSL_IR_Image_Reset();
+}
+
+static DSL_BUILDER_VALUE_RECORD *
+DSL_Builder_Find_Value_Record (DSL_BUILDER_VALUE value)
+{
+    for (UINT32 i = 0; i < DSL_builder_value_registry.size(); ++i) {
+        if (DSL_builder_value_registry[i].assignment == value)
+            return &DSL_builder_value_registry[i];
+    }
+
+    return NULL;
+}
+
+static DSL_BUILDER_VALUE_RECORD *
+DSL_Builder_Find_Value_Record_By_ST (ST_IDX st)
+{
+    for (UINT32 i = 0; i < DSL_builder_value_registry.size(); ++i) {
+        if (DSL_builder_value_registry[i].result_st == st)
+            return &DSL_builder_value_registry[i];
+    }
+
+    return NULL;
+}
+
+static WN *
+DSL_Builder_Value_Expression (DSL_BUILDER_VALUE value)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+
+    if (record != NULL)
+        return record->expression;
+    return value;
+}
+
+static BOOL
+DSL_Builder_Get_Value_Annotation
+        (DSL_BUILDER_VALUE value,
+         DSL_OPCODE_ANNOTATION *annotation)
+{
+    return DSL_WN_Get_Opcode_Annotation
+               (DSL_Builder_Value_Expression(value), annotation);
+}
+
+static WN *
+DSL_Builder_PU_Body (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    WN *entry;
+    WN *body;
+
+    if (pu == NULL || PU_Info_state(pu, WT_TREE) != Subsect_InMem)
+        return NULL;
+
+    entry = PU_Info_tree_ptr(pu);
+    if (entry == NULL || WN_operator(entry) != OPR_FUNC_ENTRY)
+        return NULL;
+
+    body = WN_func_body(entry);
+    if (body == NULL || WN_operator(body) != OPR_BLOCK)
+        return NULL;
+
+    return body;
+}
+
+static const char *
+DSL_Builder_Safe_String (const char *value)
+{
+    return value == NULL ? "" : value;
+}
+
+static BOOL
+DSL_Builder_Uses_Xpragma_Carrier (const DSL_OPCODE_INFO *info)
+{
+    if (info == NULL || info->name == NULL)
+        return FALSE;
+
+    return strcmp (info->name, DSL_OPCODE_COMMON_ADD) == 0 ||
+           strcmp (info->name, DSL_OPCODE_COMMON_MATMUL) == 0 ||
+           strcmp (info->name, DSL_OPCODE_COMMON_TENSOR_CONST) == 0;
+}
+
+static void
+DSL_Builder_Bind_Attribute_If_Present (TY_IDX ty,
+                                       TY_TENSOR_SCHEMA_KEY key,
+                                       const char *value)
+{
+    if (value != NULL)
+        TY_tensor_bind_attribute (ty, key, value);
+}
+
+static const char *
+DSL_Builder_Find_Payload_Value (const char *payload, const char *key,
+                                char *buffer, size_t buffer_size)
+{
+    const char *match;
+    const char *value;
+    const char *end;
+    size_t key_len;
+    size_t value_len;
+
+    if (payload == NULL || key == NULL || buffer == NULL || buffer_size == 0)
+        return NULL;
+
+    key_len = strlen (key);
+    match = strstr (payload, key);
+    while (match != NULL) {
+        if ((match == payload || match[-1] == ';') &&
+            match[key_len] == '=') {
+            value = match + key_len + 1;
+            end = strchr (value, ';');
+            value_len = end == NULL ? strlen (value) :
+                                      (size_t)(end - value);
+            if (value_len >= buffer_size)
+                value_len = buffer_size - 1;
+            memcpy (buffer, value, value_len);
+            buffer[value_len] = '\0';
+            return buffer;
+        }
+        match = strstr (match + 1, key);
+    }
+
+    return NULL;
+}
+
+static const char *
+DSL_Builder_Kid_Name (DSL_BUILDER_VALUE kid, UINT32 ordinal,
+                      char *buffer, size_t buffer_size)
+{
+    DSL_OPCODE_ANNOTATION annotation;
+    DSL_BUILDER_VALUE_RECORD *record;
+    const char *name;
+
+    if (buffer == NULL || buffer_size == 0)
+        return "";
+
+    record = DSL_Builder_Find_Value_Record(kid);
+    if (record != NULL && ST_IDX_index(record->result_st) != 0) {
+        snprintf(buffer, buffer_size, "%s",
+                 ST_name(St_Table[record->result_st]));
+        return buffer;
+    }
+
+    if (kid != NULL &&
+        DSL_Builder_Get_Value_Annotation (kid, &annotation) &&
+        annotation.payload != NULL) {
+        name = DSL_Builder_Find_Payload_Value (annotation.payload, "name",
+                                               buffer, buffer_size);
+        if (name != NULL)
+            return name;
+    }
+
+    snprintf (buffer, buffer_size, "kid%u", ordinal);
+    return buffer;
+}
+
+static char *
+DSL_Builder_Format_Operator_Payload
+        (DSL_BUILDER_VALUE *kids,
+         UINT32 kid_count,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count)
+{
+    size_t payload_size = 1;
+    BOOL first = TRUE;
+    char *payload;
+    size_t offset;
+
+    for (UINT32 i = 0; i < kid_count; ++i) {
+        char kid_name[256];
+        const char *name = DSL_Builder_Kid_Name
+                               (kids == NULL ? NULL : kids[i],
+                                i, kid_name, sizeof(kid_name));
+        payload_size += (i == 0 ? 0 : 1) + strlen("kid") + 10 + 1 +
+                        strlen(name);
+    }
+
+    for (UINT32 i = 0; attrs != NULL && i < attr_count; ++i) {
+        const char *name = DSL_Builder_Safe_String (attrs[i].name);
+        const char *value = DSL_Builder_Safe_String (attrs[i].value);
+        payload_size += (payload_size == 1 ? 0 : 1) + strlen(name) + 1 +
+                        strlen(value);
+    }
+
+    payload = new char[payload_size];
+    payload[0] = '\0';
+    offset = 0;
+
+    for (UINT32 i = 0; i < kid_count; ++i) {
+        char kid_name[256];
+        const char *name = DSL_Builder_Kid_Name
+                               (kids == NULL ? NULL : kids[i],
+                                i, kid_name, sizeof(kid_name));
+        offset += snprintf (payload + offset, payload_size - offset,
+                            "%skid%u=%s", first ? "" : ";", i, name);
+        first = FALSE;
+    }
+
+    for (UINT32 i = 0; attrs != NULL && i < attr_count; ++i) {
+        const char *name = DSL_Builder_Safe_String (attrs[i].name);
+        const char *value = DSL_Builder_Safe_String (attrs[i].value);
+        offset += snprintf (payload + offset, payload_size - offset,
+                            "%s%s=%s", first ? "" : ";", name, value);
+        first = FALSE;
+    }
+
+    return payload;
+}
+
+static char *
+DSL_Builder_Format_Tensor_Constant_Payload
+        (const char *name,
+         const char *dtype,
+         UINT32 rank,
+         const char *logical_shape,
+         const char *value_kind,
+         const char *value)
+{
+    const char *safe_name = DSL_Builder_Safe_String(name);
+    const char *safe_dtype = DSL_Builder_Safe_String(dtype);
+    const char *safe_shape = DSL_Builder_Safe_String(logical_shape);
+    const char *safe_value_kind = DSL_Builder_Safe_String(value_kind);
+    const char *safe_value = DSL_Builder_Safe_String(value);
+    size_t size = strlen("name=;dtype=;rank=;shape=;value_kind=;value=") +
+                  strlen(safe_name) + strlen(safe_dtype) + 10 +
+                  strlen(safe_shape) + strlen(safe_value_kind) +
+                  strlen(safe_value) + 1;
+    char *payload = new char[size];
+
+    snprintf (payload, size,
+              "name=%s;dtype=%s;rank=%u;shape=%s;value_kind=%s;value=%s",
+              safe_name, safe_dtype, rank, safe_shape, safe_value_kind,
+              safe_value);
+    return payload;
+}
+
+static BOOL
+DSL_Builder_Parse_Matrix_Shape
+        (const char *shape,
+         char *dim0,
+         size_t dim0_size,
+         char *dim1,
+         size_t dim1_size)
+{
+    if (shape == NULL || dim0 == NULL || dim1 == NULL ||
+        dim0_size == 0 || dim1_size == 0)
+        return FALSE;
+
+    const char *begin = shape;
+    while (isspace((unsigned char)*begin))
+        ++begin;
+    if (*begin++ != '[')
+        return FALSE;
+    const char *comma = strchr(begin, ',');
+    const char *close = strrchr(begin, ']');
+    if (comma == NULL || close == NULL || comma >= close ||
+        strchr(comma + 1, ',') != NULL)
+        return FALSE;
+
+    const char *dim0_end = comma;
+    while (dim0_end > begin && isspace((unsigned char)dim0_end[-1]))
+        --dim0_end;
+    while (begin < dim0_end && isspace((unsigned char)*begin))
+        ++begin;
+    const char *dim1_begin = comma + 1;
+    while (dim1_begin < close && isspace((unsigned char)*dim1_begin))
+        ++dim1_begin;
+    const char *dim1_end = close;
+    while (dim1_end > dim1_begin && isspace((unsigned char)dim1_end[-1]))
+        --dim1_end;
+
+    size_t length0 = dim0_end - begin;
+    size_t length1 = dim1_end - dim1_begin;
+    if (length0 == 0 || length1 == 0 || length0 >= dim0_size ||
+        length1 >= dim1_size)
+        return FALSE;
+    memcpy (dim0, begin, length0);
+    dim0[length0] = '\0';
+    memcpy (dim1, dim1_begin, length1);
+    dim1[length1] = '\0';
+    return TRUE;
+}
+
+static TY_IDX
+DSL_Builder_Create_Matmul_Result_Type
+        (TY_IDX kid0_ty,
+         TY_IDX kid1_ty,
+         const char *name)
+{
+    char kid0_dim0[128];
+    char kid0_dim1[128];
+    char kid1_dim0[128];
+    char kid1_dim1[128];
+    char result_shape[260];
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+
+    const char *kid0_shape = TY_tensor_attribute
+                                 (kid0_ty, TY_TENSOR_SCHEMA_SHAPE);
+    const char *kid1_shape = TY_tensor_attribute
+                                 (kid1_ty, TY_TENSOR_SCHEMA_SHAPE);
+    if (!DSL_Builder_Parse_Matrix_Shape
+             (kid0_shape, kid0_dim0, sizeof(kid0_dim0), kid0_dim1,
+              sizeof(kid0_dim1)) ||
+        !DSL_Builder_Parse_Matrix_Shape
+             (kid1_shape, kid1_dim0, sizeof(kid1_dim0), kid1_dim1,
+              sizeof(kid1_dim1)) ||
+        strcmp(kid0_dim1, kid1_dim0) != 0)
+        return TY_IDX_ZERO;
+
+    snprintf (result_shape, sizeof(result_shape), "[%s,%s]",
+              kid0_dim0, kid1_dim1);
+    memset (&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_KIND);
+    descriptor.type_core.dtype =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_DTYPE);
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = result_shape;
+    descriptor.traits.traits =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_TRAITS);
+    descriptor.representation.layout =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_LAYOUT);
+    descriptor.representation.sharding =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_SHARDING);
+    descriptor.representation.placement =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_PLACEMENT);
+    descriptor.representation.memory =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_MEMORY);
+    descriptor.representation.quantization =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_QUANTIZATION);
+    descriptor.representation.runtime_state =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_RUNTIME_STATE);
+    descriptor.lineage.lineage = "common.matmul";
+
+    TY_IDX result_ty = DSL_Builder_Create_Tensor_Type_Core
+                           (name, TY_tensor_element_ty(kid0_ty),
+                            &descriptor.type_core);
+    if (!DSL_Builder_Attach_Tensor_Descriptor(result_ty, &descriptor))
+        return TY_IDX_ZERO;
+    return result_ty;
+}
+
+static const char *
+DSL_Builder_Find_Operator_Attribute
+        (const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    for (UINT32 i = 0; attrs != NULL && i < attr_count; ++i) {
+        if (attrs[i].name != NULL && strcmp(attrs[i].name, name) == 0)
+            return attrs[i].value;
+    }
+    return NULL;
+}
+
+static BOOL
+DSL_Builder_Parse_Signed_Attribute
+        (const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name,
+         INT32 *value)
+{
+    const char *text = DSL_Builder_Find_Operator_Attribute
+                           (attrs, attr_count, name);
+    if (text == NULL || text[0] == '\0')
+        return FALSE;
+    char *end = NULL;
+    long parsed = strtol(text, &end, 10);
+    if (end == text || *end != '\0' || parsed < INT32_MIN ||
+        parsed > INT32_MAX)
+        return FALSE;
+    *value = (INT32)parsed;
+    return TRUE;
+}
+
+static BOOL
+DSL_Builder_Parse_Static_Shape
+        (const char *shape,
+         std::vector<UINT64> *dimensions)
+{
+    if (shape == NULL || dimensions == NULL)
+        return FALSE;
+    dimensions->clear();
+    const char *cursor = shape;
+    while (isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor++ != '[')
+        return FALSE;
+    while (TRUE) {
+        while (isspace((unsigned char)*cursor))
+            ++cursor;
+        if (*cursor == ']') {
+            ++cursor;
+            break;
+        }
+        if (!isdigit((unsigned char)*cursor))
+            return FALSE;
+        UINT64 dimension = 0;
+        while (isdigit((unsigned char)*cursor)) {
+            UINT64 digit = (UINT64)(*cursor - '0');
+            if (dimension > (~(UINT64)0 - digit) / 10)
+                return FALSE;
+            dimension = dimension * 10 + digit;
+            ++cursor;
+        }
+        if (dimension == 0)
+            return FALSE;
+        dimensions->push_back(dimension);
+        while (isspace((unsigned char)*cursor))
+            ++cursor;
+        if (*cursor == ',') {
+            ++cursor;
+            continue;
+        }
+        if (*cursor != ']')
+            return FALSE;
+    }
+    while (isspace((unsigned char)*cursor))
+        ++cursor;
+    return *cursor == '\0';
+}
+
+static TY_IDX
+DSL_Builder_Create_Derived_Result_Type
+        (TY_IDX input_ty,
+         const std::vector<UINT64> &dimensions,
+         const char *name,
+         const char *lineage)
+{
+    std::string shape = "[";
+    for (UINT32 i = 0; i < dimensions.size(); ++i) {
+        char dimension[32];
+        snprintf(dimension, sizeof(dimension), "%llu",
+                 (unsigned long long)dimensions[i]);
+        if (i != 0)
+            shape += ",";
+        shape += dimension;
+    }
+    shape += "]";
+
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_KIND);
+    descriptor.type_core.dtype =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_DTYPE);
+    descriptor.type_core.rank = dimensions.size();
+    descriptor.type_core.logical_shape = shape.c_str();
+    descriptor.traits.traits =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_TRAITS);
+    descriptor.representation.layout =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_LAYOUT);
+    descriptor.representation.sharding =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHARDING);
+    descriptor.representation.placement =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_PLACEMENT);
+    descriptor.representation.memory =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_MEMORY);
+    descriptor.representation.quantization =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_QUANTIZATION);
+    descriptor.representation.runtime_state =
+        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_RUNTIME_STATE);
+    descriptor.lineage.lineage = lineage;
+
+    TY_IDX result_ty = DSL_Builder_Create_Tensor_Type_Core
+                           (name, TY_tensor_element_ty(input_ty),
+                            &descriptor.type_core);
+    if (!DSL_Builder_Attach_Tensor_Descriptor(result_ty, &descriptor))
+        return TY_IDX_ZERO;
+    return result_ty;
+}
+
+static BOOL
+DSL_Builder_Parse_Pair_Attribute
+        (const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name,
+         BOOL allow_zero,
+         UINT64 values[2])
+{
+    const char *text = DSL_Builder_Find_Operator_Attribute
+                           (attrs, attr_count, name);
+    if (text == NULL || !isdigit((unsigned char)text[0]))
+        return FALSE;
+    char *end = NULL;
+    unsigned long long first = strtoull(text, &end, 10);
+    if (end == text || *end != ',')
+        return FALSE;
+    const char *second_text = end + 1;
+    if (!isdigit((unsigned char)second_text[0]))
+        return FALSE;
+    unsigned long long second = strtoull(second_text, &end, 10);
+    if (end == second_text || *end != '\0' ||
+        (!allow_zero && (first == 0 || second == 0)))
+        return FALSE;
+    values[0] = first;
+    values[1] = second;
+    return TRUE;
+}
+
+static BOOL
+DSL_Builder_Attribute_Equals
+        (const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name,
+         const char *expected)
+{
+    const char *value = DSL_Builder_Find_Operator_Attribute
+                            (attrs, attr_count, name);
+    return value != NULL && strcmp(value, expected) == 0;
+}
+
+static TY_IDX
+DSL_Builder_Create_Linear_Result_Type
+        (TY_IDX input_ty,
+         TY_IDX weight_ty,
+         TY_IDX bias_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    std::vector<UINT64> input;
+    std::vector<UINT64> weight;
+    std::vector<UINT64> bias;
+    if (!DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.has_bias", "true") ||
+        !DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.transpose_input", "false") ||
+        !DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.transpose_weight", "true") ||
+        !DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.weight_layout", "OI") ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE), &input) ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(weight_ty, TY_TENSOR_SCHEMA_SHAPE),
+              &weight) ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(bias_ty, TY_TENSOR_SCHEMA_SHAPE), &bias) ||
+        input.empty() || weight.size() != 2 || bias.size() != 1 ||
+        input[input.size() - 1] != weight[1] || bias[0] != weight[0])
+        return TY_IDX_ZERO;
+    input[input.size() - 1] = weight[0];
+    return DSL_Builder_Create_Derived_Result_Type
+               (input_ty, input, name, "common.linear");
+}
+
+static TY_IDX
+DSL_Builder_Create_Conv2D_Result_Type
+        (TY_IDX input_ty,
+         TY_IDX weight_ty,
+         TY_IDX bias_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    std::vector<UINT64> input;
+    std::vector<UINT64> weight;
+    std::vector<UINT64> bias;
+    UINT64 kernel[2];
+    UINT64 stride[2];
+    UINT64 padding[2];
+    UINT64 dilation[2];
+    INT32 groups;
+    if (!DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.input_layout", "NCHW") ||
+        !DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.weight_layout", "OIHW") ||
+        !DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.output_layout", "NCHW") ||
+        !DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.kernel_shape", FALSE, kernel) ||
+        !DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.stride", FALSE, stride) ||
+        !DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.padding", TRUE, padding) ||
+        !DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.dilation", FALSE, dilation) ||
+        !DSL_Builder_Parse_Signed_Attribute
+             (attrs, attr_count, "attr.groups", &groups) || groups <= 0 ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE), &input) ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(weight_ty, TY_TENSOR_SCHEMA_SHAPE),
+              &weight) ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(bias_ty, TY_TENSOR_SCHEMA_SHAPE), &bias) ||
+        input.size() != 4 || weight.size() != 4 || bias.size() != 1 ||
+        kernel[0] != weight[2] || kernel[1] != weight[3] ||
+        input[1] % groups != 0 || weight[0] % groups != 0 ||
+        weight[1] * groups != input[1] || bias[0] != weight[0])
+        return TY_IDX_ZERO;
+
+    std::vector<UINT64> result(4);
+    result[0] = input[0];
+    result[1] = weight[0];
+    for (UINT32 i = 0; i < 2; ++i) {
+        if (kernel[i] - 1 > ~(UINT64)0 / dilation[i] ||
+            padding[i] > (~(UINT64)0 - input[i + 2]) / 2)
+            return TY_IDX_ZERO;
+        UINT64 effective_kernel = dilation[i] * (kernel[i] - 1) + 1;
+        UINT64 padded = input[i + 2] + 2 * padding[i];
+        if (padded < effective_kernel)
+            return TY_IDX_ZERO;
+        result[i + 2] = (padded - effective_kernel) / stride[i] + 1;
+    }
+    return DSL_Builder_Create_Derived_Result_Type
+               (input_ty, result, name, "cnn.conv2d");
+}
+
+static TY_IDX
+DSL_Builder_Create_Max_Pool_Result_Type
+        (TY_IDX input_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    std::vector<UINT64> input;
+    UINT64 kernel[2];
+    UINT64 stride[2];
+    UINT64 padding[2];
+    UINT64 dilation[2];
+    const char *ceil_mode = DSL_Builder_Find_Operator_Attribute
+                                (attrs, attr_count, "attr.ceil_mode");
+    if (!DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.kernel_shape", FALSE, kernel) ||
+        !DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.stride", FALSE, stride) ||
+        !DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.padding", TRUE, padding) ||
+        !DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.dilation", FALSE, dilation) ||
+        (ceil_mode == NULL ||
+         (strcmp(ceil_mode, "false") != 0 && strcmp(ceil_mode, "true") != 0)) ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE), &input) ||
+        input.size() != 4)
+        return TY_IDX_ZERO;
+
+    std::vector<UINT64> result = input;
+    BOOL use_ceil = strcmp(ceil_mode, "true") == 0;
+    for (UINT32 i = 0; i < 2; ++i) {
+        if (kernel[i] - 1 > ~(UINT64)0 / dilation[i] ||
+            padding[i] > (~(UINT64)0 - input[i + 2]) / 2)
+            return TY_IDX_ZERO;
+        UINT64 effective_kernel = dilation[i] * (kernel[i] - 1) + 1;
+        UINT64 padded = input[i + 2] + 2 * padding[i];
+        if (padded < effective_kernel)
+            return TY_IDX_ZERO;
+        UINT64 numerator = padded - effective_kernel;
+        result[i + 2] = numerator / stride[i] + 1;
+        if (use_ceil && numerator % stride[i] != 0)
+            ++result[i + 2];
+    }
+    return DSL_Builder_Create_Derived_Result_Type
+               (input_ty, result, name, "cnn.max_pool2d");
+}
+
+static TY_IDX
+DSL_Builder_Create_Global_Avg_Pool_Result_Type
+        (TY_IDX input_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    std::vector<UINT64> input;
+    UINT64 output_size[2];
+    if (!DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.reduction_axes", "spatial") ||
+        !DSL_Builder_Parse_Pair_Attribute
+             (attrs, attr_count, "attr.output_size", FALSE, output_size) ||
+        output_size[0] != 1 || output_size[1] != 1 ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE), &input) ||
+        input.size() != 4)
+        return TY_IDX_ZERO;
+    input[2] = output_size[0];
+    input[3] = output_size[1];
+    return DSL_Builder_Create_Derived_Result_Type
+               (input_ty, input, name, "cnn.global_avg_pool2d");
+}
+
+static TY_IDX
+DSL_Builder_Create_Flatten_Result_Type
+        (TY_IDX input_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    INT32 rank = TY_tensor_rank(input_ty);
+    INT32 start_dim;
+    INT32 end_dim;
+    if (rank <= 0 ||
+        !DSL_Builder_Parse_Signed_Attribute
+             (attrs, attr_count, "attr.start_dim", &start_dim) ||
+        !DSL_Builder_Parse_Signed_Attribute
+             (attrs, attr_count, "attr.end_dim", &end_dim))
+        return TY_IDX_ZERO;
+    if (start_dim < 0)
+        start_dim += rank;
+    if (end_dim < 0)
+        end_dim += rank;
+    if (start_dim < 0 || end_dim < start_dim || end_dim >= rank)
+        return TY_IDX_ZERO;
+
+    std::vector<UINT64> dimensions;
+    if (!DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE),
+              &dimensions) || (INT32)dimensions.size() != rank)
+        return TY_IDX_ZERO;
+
+    UINT64 flattened = 1;
+    for (INT32 i = start_dim; i <= end_dim; ++i) {
+        if (flattened > ~(UINT64)0 / dimensions[i])
+            return TY_IDX_ZERO;
+        flattened *= dimensions[i];
+    }
+    std::string shape = "[";
+    for (INT32 i = 0; i < start_dim; ++i) {
+        char dimension[32];
+        snprintf(dimension, sizeof(dimension), "%llu",
+                 (unsigned long long)dimensions[i]);
+        if (shape.size() != 1)
+            shape += ",";
+        shape += dimension;
+    }
+    char flattened_text[32];
+    snprintf(flattened_text, sizeof(flattened_text), "%llu",
+             (unsigned long long)flattened);
+    if (shape.size() != 1)
+        shape += ",";
+    shape += flattened_text;
+    for (INT32 i = end_dim + 1; i < rank; ++i) {
+        char dimension[32];
+        snprintf(dimension, sizeof(dimension), "%llu",
+                 (unsigned long long)dimensions[i]);
+        shape += ",";
+        shape += dimension;
+    }
+    shape += "]";
+
+    std::vector<UINT64> result_dimensions;
+    if (!DSL_Builder_Parse_Static_Shape(shape.c_str(), &result_dimensions))
+        return TY_IDX_ZERO;
+    return DSL_Builder_Create_Derived_Result_Type
+               (input_ty, result_dimensions, name, "common.flatten");
+}
+
+static DSL_IR_OPCODE_DESCRIPTOR_ID
+DSL_Builder_Get_Image_Opcode_Descriptor (DSL_OPERATOR dsl_operator)
+{
+    DSL_OPERATOR_INFO info;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD record;
+    DSL_IR_OPCODE_DESCRIPTOR_ID id;
+
+    if (!DSL_Operator_Get_Info(dsl_operator, &info))
+        return DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID;
+
+    id = DSL_IR_Image_Find_Opcode_Descriptor(dsl_operator, info.version);
+    if (id != DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
+        return id;
+
+    DSL_IR_Opcode_Descriptor_Record_Init(&record);
+    record.logical_operator = dsl_operator;
+    record.version = info.version;
+    record.operand_count = info.nkids;
+    record.category = info.category;
+    record.level = info.level;
+    record.shape_rule = info.shape_rule;
+    record.effect_model = info.effect_model;
+    record.lowering_model = info.lowering_model;
+    record.flags = info.flags;
+    record.logical_name = Save_Str(info.logical_name);
+    record.stable_name = Save_Str(info.stable_name);
+    record.attribute_schema = Save_Str(DSL_Builder_Safe_String
+                                            (info.attribute_schema));
+    record.diagnostic_prefix = Save_Str(DSL_Builder_Safe_String
+                                             (info.diagnostic_prefix));
+    return DSL_IR_Image_Add_Opcode_Descriptor(&record);
+}
+
+static BOOL
+DSL_Builder_Add_Image_Node
+        (DSL_OPERATOR dsl_operator,
+         const char *payload,
+         DSL_BUILDER_VALUE_RECORD **operand_records,
+         UINT32 operand_count,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         ST_IDX result_st,
+         TY_IDX result_ty,
+         UINT32 value_kind,
+         DSL_IR_VALUE_ID *result_value_id)
+{
+    DSL_IR_NODE_RECORD node_record;
+    DSL_IR_VALUE_RECORD value_record;
+    DSL_IR_OPCODE_DESCRIPTOR_ID descriptor_id;
+    DSL_IR_NODE_ID node_id;
+    DSL_IR_VALUE_REFERENCE_ID first_operand_id =
+        DSL_IR_VALUE_REFERENCE_INVALID_ID;
+    DSL_IR_ATTRIBUTE_ID first_attribute_id = DSL_IR_ATTRIBUTE_INVALID_ID;
+
+    descriptor_id = DSL_Builder_Get_Image_Opcode_Descriptor(dsl_operator);
+    if (descriptor_id == DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
+        return FALSE;
+
+    DSL_IR_Node_Record_Init(&node_record);
+    node_record.opcode_descriptor_id = descriptor_id;
+    node_record.payload = Save_Str(DSL_Builder_Safe_String(payload));
+    node_id = DSL_IR_Image_Add_Node(&node_record);
+    if (node_id == DSL_IR_NODE_INVALID_ID)
+        return FALSE;
+
+    for (UINT32 i = 0; i < operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        DSL_IR_Value_Reference_Record_Init(&reference);
+        reference.owner_node_id = node_id;
+        reference.ordinal = i;
+        reference.value_id = operand_records[i]->image_value_id;
+        DSL_IR_VALUE_REFERENCE_ID id =
+            DSL_IR_Image_Add_Value_Reference(&reference);
+        if (id == DSL_IR_VALUE_REFERENCE_INVALID_ID)
+            return FALSE;
+        if (i == 0)
+            first_operand_id = id;
+    }
+
+    for (UINT32 i = 0; i < attr_count; ++i) {
+        DSL_IR_ATTRIBUTE_RECORD attribute;
+        DSL_IR_Attribute_Record_Init(&attribute);
+        attribute.owner_node_id = node_id;
+        attribute.value_kind = DSL_IR_ATTRIBUTE_VALUE_STRING;
+        attribute.name = Save_Str(attrs[i].name);
+        attribute.value = Save_Str(DSL_Builder_Safe_String(attrs[i].value));
+        DSL_IR_ATTRIBUTE_ID id = DSL_IR_Image_Add_Attribute(&attribute);
+        if (id == DSL_IR_ATTRIBUTE_INVALID_ID)
+            return FALSE;
+        if (i == 0)
+            first_attribute_id = id;
+    }
+
+    DSL_IR_Value_Record_Init(&value_record);
+    value_record.value_kind = value_kind;
+    value_record.producer_node_id = node_id;
+    value_record.ty = result_ty;
+    value_record.st = result_st;
+    value_record.name = Save_Str(ST_name(St_Table[result_st]));
+    *result_value_id = DSL_IR_Image_Add_Value(&value_record);
+    if (*result_value_id == DSL_IR_VALUE_INVALID_ID)
+        return FALSE;
+
+    return DSL_IR_Image_Set_Node_Links
+               (node_id, first_operand_id, operand_count,
+                first_attribute_id, attr_count, *result_value_id);
+}
+
+static DSL_BUILDER_VALUE
+DSL_Builder_Create_Native_Value
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         const char *payload,
+         DSL_BUILDER_VALUE *kids,
+         UINT32 kid_count,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *result_name,
+         TY_IDX result_ty,
+         UINT32 value_kind)
+{
+    DSL_BUILDER_VALUE_RECORD **operand_records = NULL;
+    WN **operands = NULL;
+    WN *expression;
+    WN *assignment;
+    ST_IDX result_st;
+    DSL_IR_VALUE_ID image_value_id;
+
+    if (!TY_is_tensor_extension(result_ty) ||
+        (kid_count != 0 && kids == NULL) ||
+        (attr_count != 0 && attrs == NULL))
+        return NULL;
+
+    if (kid_count != 0) {
+        operand_records = new DSL_BUILDER_VALUE_RECORD *[kid_count];
+        operands = new WN *[kid_count];
+        for (UINT32 i = 0; i < kid_count; ++i) {
+            operand_records[i] = DSL_Builder_Find_Value_Record(kids[i]);
+            if (operand_records[i] == NULL) {
+                delete [] operands;
+                delete [] operand_records;
+                return NULL;
+            }
+            operands[i] = WN_CreateLdid
+                              (OPR_LDID, MTYPE_M, MTYPE_M, 0,
+                               operand_records[i]->result_st,
+                               operand_records[i]->result_ty);
+        }
+    }
+
+    expression = DSL_WN_Create_Native
+                     (dsl_operator, version, payload, operands, kid_count);
+    delete [] operands;
+    if (expression == NULL) {
+        delete [] operand_records;
+        return NULL;
+    }
+
+    result_st = DSL_Builder_Create_Tensor_Result_Symbol
+                    (result_name, result_ty, SCLASS_AUTO, EXPORT_LOCAL);
+    if (ST_IDX_index(result_st) == 0) {
+        delete [] operand_records;
+        return NULL;
+    }
+    assignment = WN_CreateStid(OPR_STID, MTYPE_V, MTYPE_M, 0, result_st,
+                               result_ty, expression);
+
+    if (!DSL_Builder_Add_Image_Node
+             (dsl_operator, payload, operand_records, kid_count, attrs,
+              attr_count, result_st, result_ty, value_kind,
+              &image_value_id)) {
+        delete [] operand_records;
+        return NULL;
+    }
+    delete [] operand_records;
+
+    DSL_BUILDER_VALUE_RECORD record;
+    record.assignment = assignment;
+    record.expression = expression;
+    record.result_st = result_st;
+    record.result_ty = result_ty;
+    record.image_value_id = image_value_id;
+    DSL_builder_value_registry.push_back(record);
+    return assignment;
+}
+
+TY_IDX
+DSL_Builder_Create_Tensor_Type_Core
+        (const char *name,
+         TY_IDX element_ty,
+         const DSL_BUILDER_TENSOR_TYPE_CORE *type_core)
+{
+    char rank_buf[32];
+    INT32 rank = type_core == NULL ? -1 : type_core->rank;
+    TY_IDX tensor_ty = TY_Create_Tensor_Type (name, element_ty, rank);
+
+    if (type_core != NULL) {
+        snprintf (rank_buf, sizeof(rank_buf), "%d", type_core->rank);
+        DSL_Builder_Bind_Attribute_If_Present
+            (tensor_ty, TY_TENSOR_SCHEMA_KIND, type_core->kind);
+        DSL_Builder_Bind_Attribute_If_Present
+            (tensor_ty, TY_TENSOR_SCHEMA_DTYPE, type_core->dtype);
+        TY_tensor_bind_attribute (tensor_ty, TY_TENSOR_SCHEMA_RANK, rank_buf);
+        DSL_Builder_Bind_Attribute_If_Present
+            (tensor_ty, TY_TENSOR_SCHEMA_SHAPE, type_core->logical_shape);
+    }
+
+    return tensor_ty;
+}
+
+BOOL
+DSL_Builder_Attach_Tensor_Descriptor
+        (TY_IDX ty,
+         const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor)
+{
+    if (descriptor == NULL || !TY_is_tensor_extension (ty))
+        return FALSE;
+
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_KIND, descriptor->type_core.kind);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_DTYPE, descriptor->type_core.dtype);
+    if (descriptor->type_core.rank >= 0) {
+        char rank_buf[32];
+        snprintf (rank_buf, sizeof(rank_buf), "%d",
+                  descriptor->type_core.rank);
+        TY_tensor_bind_attribute (ty, TY_TENSOR_SCHEMA_RANK, rank_buf);
+    }
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_SHAPE, descriptor->type_core.logical_shape);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_TRAITS, descriptor->traits.traits);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_LAYOUT, descriptor->representation.layout);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_SHARDING, descriptor->representation.sharding);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_PLACEMENT, descriptor->representation.placement);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_MEMORY, descriptor->representation.memory);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_QUANTIZATION,
+         descriptor->representation.quantization);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_RUNTIME_STATE,
+         descriptor->representation.runtime_state);
+    DSL_Builder_Bind_Attribute_If_Present
+        (ty, TY_TENSOR_SCHEMA_LINEAGE, descriptor->lineage.lineage);
+
+    return TRUE;
+}
+
+ST_IDX
+DSL_Builder_Create_Symbol
+        (const char *name,
+         TY_IDX ty,
+         ST_CLASS sym_class,
+         ST_SCLASS storage_class,
+         ST_EXPORT export_class)
+{
+    ST *st = New_ST();
+    ST_Init (st, Save_Str(DSL_Builder_Safe_String(name)), sym_class,
+             storage_class, export_class, ty);
+    return ST_st_idx(*st);
+}
+
+BOOL
+DSL_Builder_Set_Tensor_Unique_Ownership (ST_IDX st)
+{
+    if (ST_IDX_index(st) == 0 ||
+        !TY_is_tensor_extension(ST_type(St_Table[st])))
+        return FALSE;
+
+    ST_tensor_bind_attribute
+        (st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS), "true");
+    return TRUE;
+}
+
+ST_IDX
+DSL_Builder_Create_Tensor_Result_Symbol
+        (const char *name,
+         TY_IDX ty,
+         ST_SCLASS storage_class,
+         ST_EXPORT export_class)
+{
+    if (!TY_is_tensor_extension(ty))
+        return ST_IDX_ZERO;
+
+    ST_IDX st = DSL_Builder_Create_Symbol
+                    (name, ty, CLASS_VAR, storage_class, export_class);
+    Set_ST_is_temp_var(St_Table[st]);
+    if (!DSL_Builder_Set_Tensor_Unique_Ownership(st))
+        return ST_IDX_ZERO;
+
+    return st;
+}
+
+BOOL
+DSL_Builder_Tensor_Has_Unique_Ownership (ST_IDX st)
+{
+    const char *value;
+
+    if (ST_IDX_index(st) == 0 ||
+        !TY_is_tensor_extension(ST_type(St_Table[st])))
+        return FALSE;
+
+    value = ST_tensor_attribute
+                (st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS));
+    return value != NULL && strcmp(value, "true") == 0;
+}
+
+DSL_BUILDER_VALUE
+DSL_Builder_Create_Tensor_Constant
+        (const char *name,
+         TY_IDX tensor_ty,
+         const char *dtype,
+         UINT32 rank,
+         const char *logical_shape,
+         const char *value_kind,
+         const char *value)
+{
+    char *payload;
+    DSL_BUILDER_VALUE result;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attrs[2];
+
+    if (name == NULL || name[0] == '\0' ||
+        dtype == NULL || dtype[0] == '\0' ||
+        logical_shape == NULL || value_kind == NULL || value == NULL)
+        return NULL;
+
+    payload = DSL_Builder_Format_Tensor_Constant_Payload
+                  (name, dtype, rank, logical_shape, value_kind, value);
+    attrs[0].name = "value_kind";
+    attrs[0].value = value_kind;
+    attrs[1].name = "value";
+    attrs[1].value = value;
+    result = DSL_Builder_Create_Native_Value
+                 (OPR_DSLTENSORCONST, 1, payload, NULL, 0, attrs, 2,
+                  name, tensor_ty, DSL_IR_VALUE_CONSTANT);
+    delete [] payload;
+    return result;
+}
+
+DSL_BUILDER_VALUE
+DSL_Builder_Create_Model_Input
+        (const char *name,
+         TY_IDX tensor_ty,
+         UINT32 input_ordinal)
+{
+    char payload[320];
+    char ordinal[32];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+
+    if (name == NULL || name[0] == '\0' ||
+        !TY_is_tensor_extension(tensor_ty))
+        return NULL;
+
+    snprintf(ordinal, sizeof(ordinal), "%u", input_ordinal);
+    snprintf(payload, sizeof(payload), "name=%s;attr.input_ordinal=%s",
+             name, ordinal);
+    attribute.name = "attr.input_ordinal";
+    attribute.value = ordinal;
+    return DSL_Builder_Create_Native_Value
+               (OPR_DSLMODELINPUT, 2, payload, NULL, 0, &attribute, 1,
+                name, tensor_ty, DSL_IR_VALUE_SYMBOL);
+}
+
+static UINT64
+DSL_Builder_Tensor_Element_Size (const char *dtype)
+{
+    if (dtype == NULL)
+        return 0;
+    if (strcmp(dtype, "bool") == 0 || strcmp(dtype, "int8") == 0 ||
+        strcmp(dtype, "uint8") == 0)
+        return 1;
+    if (strcmp(dtype, "float16") == 0 || strcmp(dtype, "bfloat16") == 0 ||
+        strcmp(dtype, "int16") == 0 || strcmp(dtype, "uint16") == 0)
+        return 2;
+    if (strcmp(dtype, "float32") == 0 || strcmp(dtype, "int32") == 0 ||
+        strcmp(dtype, "uint32") == 0)
+        return 4;
+    if (strcmp(dtype, "float64") == 0 || strcmp(dtype, "int64") == 0 ||
+        strcmp(dtype, "uint64") == 0)
+        return 8;
+    return 0;
+}
+
+static BOOL
+DSL_Builder_Static_Tensor_Byte_Size
+        (const char *dtype,
+         INT32 rank,
+         const char *shape,
+         UINT64 *element_size,
+         UINT64 *byte_size)
+{
+    UINT64 item_size = DSL_Builder_Tensor_Element_Size(dtype);
+    if (item_size == 0 || rank < 0 || shape == NULL || shape[0] != '[')
+        return FALSE;
+
+    const char *cursor = shape + 1;
+    UINT64 elements = 1;
+    INT32 dimension_count = 0;
+    while (TRUE) {
+        while (isspace((unsigned char)*cursor))
+            ++cursor;
+        if (*cursor == ']') {
+            ++cursor;
+            break;
+        }
+        if (!isdigit((unsigned char)*cursor))
+            return FALSE;
+        UINT64 dimension = 0;
+        while (isdigit((unsigned char)*cursor)) {
+            UINT64 digit = (UINT64)(*cursor - '0');
+            if (dimension > (~(UINT64)0 - digit) / 10)
+                return FALSE;
+            dimension = dimension * 10 + digit;
+            ++cursor;
+        }
+        if (dimension == 0 || elements > ~(UINT64)0 / dimension)
+            return FALSE;
+        elements *= dimension;
+        ++dimension_count;
+        while (isspace((unsigned char)*cursor))
+            ++cursor;
+        if (*cursor == ',') {
+            ++cursor;
+            continue;
+        }
+        if (*cursor != ']')
+            return FALSE;
+    }
+    while (isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor != '\0' || dimension_count != rank ||
+        elements > ~(UINT64)0 / item_size)
+        return FALSE;
+    if (element_size != NULL)
+        *element_size = item_size;
+    if (byte_size != NULL)
+        *byte_size = elements * item_size;
+    return TRUE;
+}
+
+DSL_BUILDER_VALUE
+DSL_Builder_Create_External_Tensor_Constant
+        (const char *name,
+         TY_IDX tensor_ty,
+         const DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE *reference)
+{
+    TENSOR_DESCRIPTOR_RECORD descriptor;
+    const char *dtype;
+    const char *shape;
+    const char *checksum;
+    DSL_BUILDER_VALUE result;
+
+    if (name == NULL || name[0] == '\0' ||
+        reference == NULL || reference->storage_format == NULL ||
+        reference->storage_format[0] == '\0' ||
+        reference->side_file == NULL || reference->side_file[0] == '\0' ||
+        reference->tensor_key == NULL || reference->tensor_key[0] == '\0' ||
+        reference->byte_length == 0 ||
+        reference->byte_offset + reference->byte_length <
+            reference->byte_offset ||
+        !TY_get_tensor_descriptor_record(tensor_ty, &descriptor))
+        return NULL;
+
+    checksum = reference->checksum == NULL ? "" : reference->checksum;
+    if (checksum[0] != '\0') {
+        if (strlen(checksum) != 64)
+            return NULL;
+        for (UINT32 i = 0; i < 64; ++i) {
+            if (!isxdigit((unsigned char)checksum[i]))
+                return NULL;
+        }
+    }
+
+    dtype = descriptor.dtype == 0 ? NULL : Index_To_Str(descriptor.dtype);
+    shape = descriptor.logical_shape == 0 ? NULL :
+            Index_To_Str(descriptor.logical_shape);
+    UINT64 element_size = 0;
+    UINT64 tensor_byte_size = 0;
+    if (dtype == NULL || shape == NULL || descriptor.rank < 0 ||
+        !DSL_Builder_Static_Tensor_Byte_Size
+             (dtype, descriptor.rank, shape, &element_size,
+              &tensor_byte_size) ||
+        reference->byte_offset % element_size != 0 ||
+        reference->byte_length != tensor_byte_size)
+        return NULL;
+
+    size_t uri_size = strlen(reference->storage_format) +
+                      strlen(reference->side_file) +
+                      strlen(reference->tensor_key) + strlen(checksum) + 96;
+    char *storage_uri = new char[uri_size];
+    snprintf(storage_uri, uri_size,
+             "%s://%s#%s?offset=%llu&length=%llu&checksum=%s",
+             reference->storage_format, reference->side_file,
+             reference->tensor_key,
+             (unsigned long long)reference->byte_offset,
+             (unsigned long long)reference->byte_length, checksum);
+    result = DSL_Builder_Create_Tensor_Constant
+                 (name, tensor_ty, dtype, descriptor.rank, shape,
+                  "external_data", storage_uri);
+    delete [] storage_uri;
+    if (result == NULL)
+        return NULL;
+
+    char byte_offset[32];
+    char byte_length[32];
+    snprintf(byte_offset, sizeof(byte_offset), "%llu",
+             (unsigned long long)reference->byte_offset);
+    snprintf(byte_length, sizeof(byte_length), "%llu",
+             (unsigned long long)reference->byte_length);
+    ST_IDX result_st = WN_st_idx(result);
+    ST_tensor_bind_metadata(result_st, "storage_format",
+                            reference->storage_format);
+    ST_tensor_bind_metadata(result_st, "storage_file", reference->side_file);
+    ST_tensor_bind_metadata(result_st, "storage_tensor_key",
+                            reference->tensor_key);
+    ST_tensor_bind_metadata(result_st, "storage_byte_offset", byte_offset);
+    ST_tensor_bind_metadata(result_st, "storage_byte_length", byte_length);
+    ST_tensor_bind_metadata(result_st, "storage_checksum", checksum);
+    return result;
+}
+
+DSL_BUILDER_OPERATOR
+DSL_Builder_Create_Operator
+        (DSL_OPCODE_ID opcode_id,
+         UINT16 version,
+         DSL_BUILDER_VALUE *kids,
+         UINT32 kid_count,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count)
+{
+    DSL_OPCODE_INFO info;
+    DSL_OPERATOR dsl_operator;
+    char *payload;
+    WN *wn;
+
+    if (!DSL_Opcode_Get_Info (opcode_id, &info))
+        return NULL;
+
+    payload = DSL_Builder_Format_Operator_Payload (kids, kid_count, attrs,
+                                                   attr_count);
+    dsl_operator = DSL_Operator_Find(info.name, strlen(info.name), version);
+    if ((dsl_operator == OPR_DSLADD || dsl_operator == OPR_DSLMATMUL ||
+         dsl_operator == OPR_DSLLINEAR ||
+         dsl_operator == OPR_DSLRELU || dsl_operator == OPR_DSLFLATTEN ||
+         dsl_operator == OPR_DSLRESIDUALADD ||
+         dsl_operator == OPR_DSLCONV2D ||
+         dsl_operator == OPR_DSLBATCHNORMINFER ||
+         dsl_operator == OPR_DSLMAXPOOL2D ||
+         dsl_operator == OPR_DSLGLOBALAVGPOOL2D ||
+         dsl_operator == OPR_DSLOUTPUTLOGITS) && kid_count != 0) {
+        if ((info.nkids >= 0 && (UINT32)info.nkids != kid_count) ||
+            (attr_count != 0 && attrs == NULL)) {
+            delete [] payload;
+            return NULL;
+        }
+        DSL_BUILDER_VALUE_RECORD *first =
+            DSL_Builder_Find_Value_Record(kids[0]);
+        char result_name[64];
+        char result_type_name[80];
+
+        for (UINT32 i = 0; i < attr_count; ++i) {
+            if (attrs[i].name == NULL || attrs[i].name[0] == '\0') {
+                delete [] payload;
+                return NULL;
+            }
+        }
+        if (first != NULL) {
+            snprintf (result_name, sizeof(result_name), "dsl_result_%u",
+                      ++DSL_Builder_Result_Number);
+            TY_IDX result_ty = first->result_ty;
+            if (dsl_operator == OPR_DSLMATMUL) {
+                DSL_BUILDER_VALUE_RECORD *second = kid_count < 2 ? NULL :
+                    DSL_Builder_Find_Value_Record(kids[1]);
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = second == NULL ? TY_IDX_ZERO :
+                    DSL_Builder_Create_Matmul_Result_Type
+                        (first->result_ty, second->result_ty,
+                         result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            } else if (dsl_operator == OPR_DSLLINEAR) {
+                DSL_BUILDER_VALUE_RECORD *weight = kid_count < 2 ? NULL :
+                    DSL_Builder_Find_Value_Record(kids[1]);
+                DSL_BUILDER_VALUE_RECORD *bias = kid_count < 3 ? NULL :
+                    DSL_Builder_Find_Value_Record(kids[2]);
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = weight == NULL || bias == NULL ? TY_IDX_ZERO :
+                    DSL_Builder_Create_Linear_Result_Type
+                        (first->result_ty, weight->result_ty, bias->result_ty,
+                         attrs, attr_count, result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            } else if (dsl_operator == OPR_DSLFLATTEN) {
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = DSL_Builder_Create_Flatten_Result_Type
+                                (first->result_ty, attrs, attr_count,
+                                 result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            } else if (dsl_operator == OPR_DSLCONV2D) {
+                DSL_BUILDER_VALUE_RECORD *weight = kid_count < 2 ? NULL :
+                    DSL_Builder_Find_Value_Record(kids[1]);
+                DSL_BUILDER_VALUE_RECORD *bias = kid_count < 3 ? NULL :
+                    DSL_Builder_Find_Value_Record(kids[2]);
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = weight == NULL || bias == NULL ? TY_IDX_ZERO :
+                    DSL_Builder_Create_Conv2D_Result_Type
+                        (first->result_ty, weight->result_ty, bias->result_ty,
+                         attrs, attr_count, result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            } else if (dsl_operator == OPR_DSLMAXPOOL2D) {
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = DSL_Builder_Create_Max_Pool_Result_Type
+                                (first->result_ty, attrs, attr_count,
+                                 result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            } else if (dsl_operator == OPR_DSLGLOBALAVGPOOL2D) {
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = DSL_Builder_Create_Global_Avg_Pool_Result_Type
+                                (first->result_ty, attrs, attr_count,
+                                 result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            }
+            wn = DSL_Builder_Create_Native_Value
+                     (dsl_operator, version, payload, kids, kid_count, attrs,
+                      attr_count, result_name, result_ty,
+                      DSL_IR_VALUE_OPERATOR_RESULT);
+            delete [] payload;
+            return wn;
+        }
+    }
+
+    WN **compatibility_kids = kids;
+    if (kid_count != 0) {
+        compatibility_kids = new WN *[kid_count];
+        for (UINT32 i = 0; i < kid_count; ++i) {
+            DSL_BUILDER_VALUE_RECORD *kid_record =
+                DSL_Builder_Find_Value_Record(kids[i]);
+            compatibility_kids[i] = kid_record == NULL ? kids[i] :
+                DSL_WN_Create_Opcode_Comment_Projection
+                    (kid_record->expression);
+            if (compatibility_kids[i] == NULL) {
+                delete [] compatibility_kids;
+                delete [] payload;
+                return NULL;
+            }
+        }
+    }
+
+    if (dsl_operator != OPR_DSLUNKNOWN) {
+        DSL_OPCODE_OUTPUT_MODE output_mode =
+            DSL_Builder_Uses_Xpragma_Carrier(&info) ?
+            DSL_OPCODE_OUTPUT_LEGACY_XPRAGMA :
+            DSL_OPCODE_OUTPUT_LEGACY_EVAL;
+        wn = DSL_WN_Create_Logical_Opcode
+                 (dsl_operator, version, payload, compatibility_kids,
+                  kid_count, output_mode);
+    } else if (DSL_Builder_Uses_Xpragma_Carrier(&info)) {
+        wn = DSL_WN_Create_Opcode_Xpragma(info.name, version, payload,
+                                          compatibility_kids, kid_count);
+    } else {
+        wn = DSL_WN_Create_Opcode_With_Operands
+                 (info.name, version, payload, compatibility_kids, kid_count);
+    }
+    if (compatibility_kids != kids)
+        delete [] compatibility_kids;
+    delete [] payload;
+    return wn;
+}
+
+BOOL
+DSL_Builder_Attach_Contract (DSL_BUILDER_OPERATOR wn,
+                             DSL_CONTRACT_ID contract_id)
+{
+    DSL_CONTRACT_INFO info;
+
+    return wn != NULL && DSL_Contract_Get_Info (contract_id, &info);
+}
+
+BOOL
+DSL_Builder_Attach_Metadata
+        (ST_IDX st,
+         const DSL_BUILDER_COMPILER_METADATA *metadata,
+         UINT32 metadata_count)
+{
+    if (ST_IDX_index(st) == 0)
+        return FALSE;
+    if (metadata_count != 0 && metadata == NULL)
+        return FALSE;
+
+    for (UINT32 i = 0; i < metadata_count; ++i) {
+        if (metadata[i].name == NULL || metadata[i].name[0] == '\0')
+            return FALSE;
+        ST_tensor_bind_metadata (st, metadata[i].name, metadata[i].value);
+    }
+
+    return TRUE;
+}
+
+DSL_BUILDER_PROGRAM_UNIT
+DSL_Builder_Create_Minimal_PU (const char *name)
+{
+    TY_IDX function_ty;
+    PU_IDX pu_idx;
+    PU *pu;
+    ST *func_st;
+    WN *func_body;
+    WN *entry_wn;
+    PU_Info *pu_info;
+    DST_INFO_IDX func_dst;
+    USRCPOS source_position;
+    char source_name[256];
+
+    if (name == NULL || name[0] == '\0')
+        return NULL;
+    /*
+     * Keep the first PU bridge to one entry function.  Multiple top-level PUs
+     * need explicit local-scope ownership before Python should expose them.
+     */
+    if (DSL_Builder_PU_Root != NULL) {
+        ST_IDX current_st = PU_Info_proc_sym(DSL_Builder_PU_Root);
+        if (strcmp(ST_name(St_Table[current_st]), name) == 0)
+            return DSL_Builder_PU_Root;
+        DSL_Builder_Reset_Program();
+    } else if (!DSL_builder_value_registry.empty() ||
+               DSL_IR_Image_Has_Records()) {
+        DSL_Builder_Reset_Program();
+    }
+
+    function_ty = Make_Function_Type(MTYPE_To_TY(MTYPE_V));
+    pu = &New_PU(pu_idx);
+    PU_Init(*pu, function_ty, GLOBAL_SYMTAB + 1);
+
+    func_st = New_ST(GLOBAL_SYMTAB);
+    ST_Init(func_st, Save_Str(name), CLASS_FUNC, SCLASS_TEXT,
+            EXPORT_LOCAL, function_ty);
+    Set_ST_pu(func_st, pu_idx);
+
+    func_body = WN_CreateBlock();
+    entry_wn = WN_CreateEntry(0, func_st, func_body, NULL, NULL);
+
+    if (Current_DST == NULL)
+        DST_Init(NULL, 0);
+    if (DST_IS_NULL(DSL_Builder_CU_DST)) {
+        snprintf(source_name, sizeof(source_name), "%s.dsl", name);
+        DSL_Builder_CU_DST = DST_mk_compile_unit
+            (source_name, (char *)".", (char *)"open64-dsl-builder",
+             DW_LANG_C89, DW_ID_case_sensitive);
+    }
+    USRCPOS_clear(source_position);
+    func_dst = DST_mk_subprogram
+                   (source_position, (char *)ST_name(func_st),
+                    DST_INVALID_IDX, DST_INVALID_IDX, ST_st_idx(func_st),
+                    DW_INL_not_inlined, DW_VIRTUALITY_none, 0, false, true,
+                    true, true);
+
+    Current_pu = pu;
+    Current_scope = pu->lexical_level;
+    New_Scope(Current_scope, Malloc_Mem_Pool, TRUE);
+    Scope_tab[Current_scope].st = func_st;
+
+    pu_info = TYPE_MEM_POOL_ALLOC(PU_Info, Malloc_Mem_Pool);
+    PU_Info_init(pu_info);
+
+    Set_PU_Info_tree_ptr(pu_info, entry_wn);
+    PU_Info_maptab(pu_info) = Current_Map_Tab;
+    PU_Info_proc_sym(pu_info) = ST_st_idx(func_st);
+    Set_PU_Info_pu_dst(pu_info, func_dst);
+    Set_PU_Info_cu_dst(pu_info, DSL_Builder_CU_DST);
+    Set_PU_Info_state(pu_info, WT_SYMTAB, Subsect_InMem);
+    Set_PU_Info_state(pu_info, WT_TREE, Subsect_InMem);
+    Set_PU_Info_state(pu_info, WT_PROC_SYM, Subsect_InMem);
+    Set_PU_Info_state(pu_info, WT_DEPGRAPH, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_PREFETCH, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_REGIONS, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_FEEDBACK, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_FREQ, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_AC_INTERNAL, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_ALIAS_CLASS, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_SSA, Subsect_Missing);
+    Set_PU_Info_state(pu_info, WT_ALIAS_CGNODE, Subsect_Missing);
+
+    if (DSL_Builder_PU_Root != NULL)
+        PU_Info_next(DSL_Builder_PU_Last) = pu_info;
+    else
+        DSL_Builder_PU_Root = pu_info;
+    DSL_Builder_PU_Last = pu_info;
+
+    return pu_info;
+}
+
+BOOL
+DSL_Builder_Append_PU_Value
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_VALUE value)
+{
+    WN *body;
+
+    body = DSL_Builder_PU_Body(pu);
+    if (body == NULL || value == NULL)
+        return FALSE;
+    if (!DSL_Builder_Get_Value_Annotation(value, NULL))
+        return FALSE;
+
+    WN_INSERT_BlockLast(body, value);
+    return TRUE;
+}
+
+UINT32
+DSL_Builder_Count_PU_Values (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    WN *body = DSL_Builder_PU_Body(pu);
+    UINT32 count = 0;
+
+    if (body == NULL)
+        return 0;
+
+    for (WN *marker = WN_first(body); marker != NULL;
+         marker = WN_next(marker)) {
+        if (DSL_Builder_Get_Value_Annotation(marker, NULL))
+            ++count;
+    }
+
+    return count;
+}
+
+BOOL
+DSL_Builder_Get_PU_Value
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         UINT32 index,
+         DSL_BUILDER_VALUE_INFO *info)
+{
+    WN *body = DSL_Builder_PU_Body(pu);
+    UINT32 current = 0;
+    DSL_OPCODE_ANNOTATION annotation;
+
+    if (body == NULL || info == NULL)
+        return FALSE;
+
+    for (WN *marker = WN_first(body); marker != NULL;
+         marker = WN_next(marker)) {
+        if (!DSL_Builder_Get_Value_Annotation(marker, &annotation))
+            continue;
+        if (current == index) {
+            info->opcode_name = annotation.name;
+            info->opcode_name_len = annotation.name_len;
+            info->version = annotation.version;
+            info->payload = annotation.payload;
+            return TRUE;
+        }
+        ++current;
+    }
+
+    return FALSE;
+}
+
+UINT32
+DSL_Builder_Count_Value_Operands (DSL_BUILDER_VALUE value)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+
+    if (record != NULL)
+        return WN_kid_count(record->expression);
+    if (value == NULL || !DSL_WN_Verify_Opcode_Carrier(value, NULL))
+        return 0;
+
+    return DSL_WN_Opcode_Operand_Count(value);
+}
+
+BOOL
+DSL_Builder_Get_Value_Info
+        (DSL_BUILDER_VALUE value,
+         DSL_BUILDER_VALUE_INFO *info)
+{
+    DSL_OPCODE_ANNOTATION annotation;
+
+    if (info == NULL ||
+        !DSL_Builder_Get_Value_Annotation(value, &annotation))
+        return FALSE;
+
+    info->opcode_name = annotation.name;
+    info->opcode_name_len = annotation.name_len;
+    info->version = annotation.version;
+    info->payload = annotation.payload;
+    return TRUE;
+}
+
+BOOL
+DSL_Builder_Get_Value_Operand
+        (DSL_BUILDER_VALUE value,
+         UINT32 operand_index,
+         DSL_BUILDER_VALUE_INFO *info)
+{
+    DSL_BUILDER_VALUE_RECORD *value_record =
+        DSL_Builder_Find_Value_Record(value);
+    DSL_WHIRL_OPERAND_RECORD record;
+
+    if (value_record != NULL) {
+        DSL_OPCODE_ANNOTATION annotation;
+        WN *expression = value_record->expression;
+        DSL_BUILDER_VALUE_RECORD *operand_record;
+
+        if (info == NULL || operand_index >= WN_kid_count(expression) ||
+            WN_operator(WN_kid(expression, operand_index)) != OPR_LDID)
+            return FALSE;
+        operand_record = DSL_Builder_Find_Value_Record_By_ST
+                             (WN_st_idx(WN_kid(expression, operand_index)));
+        if (operand_record == NULL ||
+            !DSL_WN_Get_Opcode_Annotation
+                 (operand_record->expression, &annotation))
+            return FALSE;
+        info->opcode_name = annotation.name;
+        info->opcode_name_len = annotation.name_len;
+        info->version = annotation.version;
+        info->payload = annotation.payload;
+        return TRUE;
+    }
+
+    if (value == NULL ||
+        info == NULL ||
+        !DSL_WN_Verify_Opcode_Carrier(value, NULL) ||
+        !DSL_WN_Decode_Opcode_Operand_Record(value, operand_index, &record))
+        return FALSE;
+
+    info->opcode_name = record.opcode_name;
+    info->opcode_name_len = record.opcode_name_len;
+    info->version = record.version;
+    info->payload = record.payload;
+    return TRUE;
+}
+
+BOOL
+DSL_Builder_Append_PU_Marker
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_VALUE marker)
+{
+    return DSL_Builder_Append_PU_Value(pu, marker);
+}
+
+UINT32
+DSL_Builder_Count_PU_Markers (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    return DSL_Builder_Count_PU_Values(pu);
+}
+
+BOOL
+DSL_Builder_Get_PU_Marker
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         UINT32 index,
+         DSL_BUILDER_MARKER_INFO *info)
+{
+    return DSL_Builder_Get_PU_Value(pu, index, info);
+}
+
+BOOL
+DSL_Builder_Finalize_Mapped_Image
+        (const DSL_BUILDER_MAPPED_IMAGE_REQUEST *request)
+{
+    if (request == NULL ||
+        request->path == NULL ||
+        request->path[0] == '\0' ||
+        request->flags != 0)
+        return FALSE;
+
+    if (!DSL_Gatekeeper_Verify_Program
+             (DSL_Builder_PU_Root, stderr, NULL))
+        return FALSE;
+
+    Irb_File_Name = (char *)request->path;
+
+    if (Current_DST == NULL)
+        DST_Init(NULL, 0);
+    if (Open_Output_Info(Irb_File_Name) == NULL)
+        return FALSE;
+
+    for (PU_Info *pu = DSL_Builder_PU_Root; pu != NULL;
+         pu = PU_Info_next(pu)) {
+        if (PU_Info_state(pu, WT_SYMTAB) == Subsect_InMem ||
+            PU_Info_state(pu, WT_TREE) == Subsect_InMem)
+            Write_PU_Info(pu);
+    }
+
+    Write_Global_Info(DSL_Builder_PU_Root);
+    Close_Output_Info();
+    return TRUE;
+}

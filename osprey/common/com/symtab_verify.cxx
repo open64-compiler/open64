@@ -970,6 +970,15 @@ void TY::Verify(UINT) const
 	Fail_FmtAssertion (msg, "Invalid kind");
 	break;
 
+    case KIND_TENSOR:
+        Is_True (size == 0,
+                 (msg, "non-zero size for KIND_TENSOR"));
+        Is_True (u1.fld == 0,
+                 (msg, "non-zero TY::fld for KIND_TENSOR"));
+        Is_True (u2.etype == 0,
+                 (msg, "non-zero TY::etype for KIND_TENSOR"));
+        break;
+
     case KIND_STRUCT:
 	Fld_index = Fld ();
 

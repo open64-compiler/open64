@@ -540,8 +540,10 @@ inline INT64 SIMP_Int_Str_ConstVal(simpnode x)
         return SIMP_Int_ConstVal(x);
     else if (SIMP_Is_Str_Constant (x))
         return Targ_To_Host(SIMP_Str_ConstVal(x));
-    else    
+    else {
         Fail_FmtAssertion("Not a int/str constant");
+        return 0;
+    }
 } 
 
 #define IS_POWER_OF_2(x) (((x)!=0) && ((x) & ((x)-1))==0)
@@ -6788,4 +6790,3 @@ simpnode SIMPNODE_SimplifyIstore(OPCODE opc, WN_OFFSET offset,
    return (r);
 }
 #endif
-

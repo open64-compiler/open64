@@ -683,6 +683,7 @@ with_build_lib_optimize
 enable_gnu3
 enable_fortran
 enable_jfe
+enable_torch2whirl_only
 enable_whirl_id
 enable_ipa
 enable_multilib
@@ -1322,6 +1323,8 @@ Optional Features:
   --disable-fortran       Disable Fortran language support
   --disable-jfe           Disable Java Frontend (JFE) and js2mpl
                           (requires gradle, openjdk-8, cmake)
+  --enable-torch2whirl-only
+                          Configure only the portable torch2whirl frontend
   --enable-whirl-id       Enable debugging ID in WHIRL node
   --disable-ipa           Disable IPA compilation support (EXPERIMENTAL)
   --disable-multilib      Disable multilib support for IA32/x86-64
@@ -2055,6 +2058,19 @@ if test "x$enable_jfe" != "xno"; then :
 
 fi
 
+# Check whether --enable-torch2whirl_only was given.
+if test "${enable_torch2whirl_only+set}" = set; then :
+  enableval=$enable_torch2whirl_only;
+fi
+
+
+TORCH2WHIRL_ONLY=NO
+if test "x$enable_torch2whirl_only" = "xyes"; then :
+
+  TORCH2WHIRL_ONLY=YES
+
+fi
+
 # Set whether WHIRL a node contains a debugging ID
 # Check whether --enable-whirl_id was given.
 if test "${enable_whirl_id+set}" = set; then :
@@ -2180,6 +2196,11 @@ case "$host" in
 		GCC_CONFIGURE_CFLAGS+=" -DHOST_RISCV"
 		CYGNUS_CONFIGURE_COMPILER="riscv64-linux-gnu-gcc -mabi=lp64d"
 		;;
+        *-apple-darwin*)
+                BUILD_ABI=I64BIT
+                BUILD_ARCH=X8664
+                BUILD_HOST=X8664
+                ;;
 	*)
 		as_fn_error $? "\"open64 is not supported on $target\"" "$LINENO" 5
 		;;
@@ -2284,6 +2305,18 @@ case "$target" in
 		CYGNUS_CONFIGURE_CFLAGS=" -m32"
 		BUILD_MULTILIB=NO
 		;;
+        *-apple-darwin*)
+                MACHINE_TYPE=x86_64
+                BUILD_TARGET=X8664
+                LIB_MACHINE_TYPE=X86_64
+                LIB_BUILD_TARGET=X8664
+                LIB_BUILD_ABI=I64BIT
+                LIB_BUILD_ARCH=X8664
+                LIB2_MACHINE_TYPE=IA32
+                LIB2_BUILD_TARGET=IA32
+                LIB2_BUILD_ABI=I32BIT
+                LIB2_BUILD_ARCH=IA32
+                ;;
 	*)
 		as_fn_error $? "\"open64 is not supported on $target\"" "$LINENO" 5
 		;;
@@ -2386,7 +2419,11 @@ export BUILD_PRODUCT
 
 
 # List of configurable files to create in object directory.
-ac_config_files="$ac_config_files Makefile osprey/Makefile.gsetup osprey/targdir/libspin/Makefile osprey/targdir/libspin_4_2_0/Makefile osprey/targdir/include/Makefile osprey/targdir/driver/Makefile osprey/targdir/libiberty/Makefile osprey/targdir/libjson/Makefile osprey/targdir/targ_info/Makefile osprey/targdir/be/Makefile osprey/targdir/libelf/Makefile osprey/targdir/libelfutil/Makefile osprey/targdir/libdwarf/Makefile osprey/targdir/libunwindP/Makefile osprey/targdir/cg/Makefile osprey/targdir/vsa/Makefile osprey/targdir/wopt/Makefile osprey/targdir/ipl/Makefile osprey/targdir/lno/Makefile osprey/targdir/lw_inline/Makefile osprey/targdir/ipa/Makefile osprey/targdir/whirl2c/Makefile osprey/targdir/libcomutil/Makefile osprey/targdir/ir_tools/Makefile osprey/targdir/libcmplrs/Makefile osprey/targdir/clang2whirl/Makefile osprey/targdir/wgen/Makefile osprey/targdir/jfe/Makefile osprey/targdir/js2mplref/Makefile osprey/targdir/libcif/Makefile osprey/targdir/arith/Makefile osprey/targdir/orc_ict/Makefile osprey/targdir/orc_intel/Makefile osprey/targdir/libkapi/Makefile"
+if test "x$TORCH2WHIRL_ONLY" = "xYES"; then
+ac_config_files="$ac_config_files osprey/Makefile.gsetup osprey/targdir/libcomutil/Makefile osprey/targdir/libjson/Makefile osprey/targdir/ir_tools/Makefile osprey/targdir/torch2whirl/Makefile"
+
+else
+ac_config_files="$ac_config_files Makefile osprey/Makefile.gsetup osprey/targdir/libspin/Makefile osprey/targdir/libspin_4_2_0/Makefile osprey/targdir/include/Makefile osprey/targdir/driver/Makefile osprey/targdir/libiberty/Makefile osprey/targdir/libjson/Makefile osprey/targdir/targ_info/Makefile osprey/targdir/be/Makefile osprey/targdir/libelf/Makefile osprey/targdir/libelfutil/Makefile osprey/targdir/libdwarf/Makefile osprey/targdir/libunwindP/Makefile osprey/targdir/cg/Makefile osprey/targdir/vsa/Makefile osprey/targdir/wopt/Makefile osprey/targdir/ipl/Makefile osprey/targdir/lno/Makefile osprey/targdir/lw_inline/Makefile osprey/targdir/ipa/Makefile osprey/targdir/whirl2c/Makefile osprey/targdir/libcomutil/Makefile osprey/targdir/ir_tools/Makefile osprey/targdir/libcmplrs/Makefile osprey/targdir/clang2whirl/Makefile osprey/targdir/torch2whirl/Makefile osprey/targdir/wgen/Makefile osprey/targdir/jfe/Makefile osprey/targdir/js2mplref/Makefile osprey/targdir/libcif/Makefile osprey/targdir/arith/Makefile osprey/targdir/orc_ict/Makefile osprey/targdir/orc_intel/Makefile osprey/targdir/libkapi/Makefile"
 
 
 if test "${BUILD_FORTRAN}" = "YES"; then
@@ -2467,10 +2504,13 @@ if test $BUILD_PRODUCT = "MASTIFF"; then
 
 fi
 
+fi
+
 
 
 # Configure cygnus and GCC subdirectories.
 
+if test "x$TORCH2WHIRL_ONLY" != "xYES"; then
 
 subdirs="$subdirs osprey/cygnus"
 
@@ -2480,6 +2520,7 @@ subdirs="$subdirs osprey-gcc-4.2.0"
 
 # Configure binutils directory
 subdirs="$subdirs binutils"
+fi
 
 
 cat >confcache <<\_ACEOF
@@ -3213,6 +3254,7 @@ do
     "osprey/targdir/ir_tools/Makefile") CONFIG_FILES="$CONFIG_FILES osprey/targdir/ir_tools/Makefile" ;;
     "osprey/targdir/libcmplrs/Makefile") CONFIG_FILES="$CONFIG_FILES osprey/targdir/libcmplrs/Makefile" ;;
     "osprey/targdir/clang2whirl/Makefile") CONFIG_FILES="$CONFIG_FILES osprey/targdir/clang2whirl/Makefile" ;;
+    "osprey/targdir/torch2whirl/Makefile") CONFIG_FILES="$CONFIG_FILES osprey/targdir/torch2whirl/Makefile" ;;
     "osprey/targdir/wgen/Makefile") CONFIG_FILES="$CONFIG_FILES osprey/targdir/wgen/Makefile" ;;
     "osprey/targdir/jfe/Makefile") CONFIG_FILES="$CONFIG_FILES osprey/targdir/jfe/Makefile" ;;
     "osprey/targdir/js2mplref/Makefile") CONFIG_FILES="$CONFIG_FILES osprey/targdir/js2mplref/Makefile" ;;
@@ -3852,6 +3894,8 @@ fi
 # Starting JFE Checks (only when --enable-jfe or default)
 #
 
+if test "x$TORCH2WHIRL_ONLY" != "xYES"; then
+
 if [ "x$enable_jfe" != "xno" ]; then
 
 ISRUNNABLE_JFE=1
@@ -3970,3 +4014,4 @@ else
 	echo "            MOZJS_HOME = $MOZJS_HOME"
 fi
 
+fi

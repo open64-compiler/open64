@@ -21,6 +21,10 @@
 #include "erglob.h"
 #include "errors.h"
 #include "err_host.tab"
+#include "config.h"
+#include "controls.h"
+#include "config_targ_opt.h"
+#include "dwarf_DST_mem.h"
 #include "dsl_ingestion_fixture.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -45,6 +49,7 @@ static int Check_DSL_Opcode_Registry(void);
 static int Check_DSL_Opcode_Promotion_Registry(void);
 static int Check_Tensor_Required_Attribute_Diagnostics(void);
 static int Check_VHO_Unconsumed_DSL_Scanner(WN *tree);
+static WN *Create_Malformed_DSL_Carrier(void);
 
 static void
 Initialize_Test_Context(void)
@@ -55,8 +60,13 @@ Initialize_Test_Context(void)
     Set_Error_File(NULL);
     Set_Error_Line(ERROR_LINE_UNKNOWN);
 
-    Initialize_Symbol_Tables(FALSE);
-    New_Scope(GLOBAL_SYMTAB, Malloc_Mem_Pool, FALSE);
+    Preconfigure();
+    Init_Controls_Tbl();
+    ABI_Name = "n64";
+    Configure();
+    IR_reader_init();
+    Initialize_Symbol_Tables(TRUE);
+    DST_Init(NULL, 0);
 }
 
 static WN *
@@ -91,7 +101,9 @@ Create_Common_Add_Test_Tree(WN **dsl_marker_out)
 
     WN *kid0 = WN_CreateIntconst(OPR_INTCONST, MTYPE_I4, MTYPE_V, 1);
     WN *kid1 = WN_CreateIntconst(OPR_INTCONST, MTYPE_I4, MTYPE_V, 2);
-    WN *add = WN_Add(MTYPE_I4, kid0, kid1);
+    WN *add = WN_Create(OPR_ADD, MTYPE_I4, MTYPE_V, 2);
+    WN_kid0(add) = kid0;
+    WN_kid1(add) = kid1;
     WN_INSERT_BlockLast(block, WN_CreateEval(add));
 
     return block;
@@ -103,7 +115,7 @@ Check_Common_Add_Annotation(WN *dsl_marker)
     DSL_OPCODE_ANNOTATION annotation;
     int failed = 0;
 
-    if (!DSL_WN_Get_Opcode_Annotation (dsl_marker, &annotation)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (dsl_marker, &annotation)) {
         fprintf(stderr, "common.add marker was not decoded as a DSL opcode\n");
         return 1;
     }
@@ -135,7 +147,7 @@ Check_Tensor_Const_Annotation(WN *tensor_const, const char *name,
     DSL_OPCODE_ANNOTATION annotation;
     int failed = 0;
 
-    if (!DSL_WN_Get_Opcode_Annotation (tensor_const, &annotation)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (tensor_const, &annotation)) {
         fprintf(stderr, "tensor_const marker did not decode\n");
         return 1;
     }
@@ -249,7 +261,7 @@ Check_Common_Add_On_Tensor_Constants(void)
 					   "name=const_i32_2x2_one",
 					  "value=1");
 
-    if (!DSL_WN_Get_Opcode_Annotation (common_add, &annotation)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (common_add, &annotation)) {
         fprintf(stderr, "common.add tensor-constant marker did not decode\n");
         return 1;
     }
@@ -287,8 +299,14 @@ Check_Common_Add_On_Tensor_Constants(void)
 
     fputs(text, stdout);
 
-    if (strstr(text, "__WHIRL_DSL__:opcode:common.add:v1:") == NULL) {
-        fprintf(stderr, "common.add tensor-constant marker was not printed\n");
+    if (strstr(text, "OPR_DSLADD") == NULL ||
+        strstr(text, "operand_count=2") == NULL ||
+        strstr(text, "MMLDID") == NULL ||
+        strstr(text, "dsl_comment_projection=OPR_COMMENT") == NULL ||
+        strstr(text, "__WHIRL_DSL__:opcode:common.add:v1") == NULL ||
+        strstr(text, "OPR_DSL ") != NULL ||
+        strstr(text, "MDSL ") != NULL) {
+        fprintf(stderr, "common.add tensor-constant DSL node was not printed\n");
         failed = 1;
     }
 
@@ -305,7 +323,7 @@ Check_Zero_Initializer_Operators(void)
     DSL_OPCODE_ANNOTATION annotation;
     int failed = 0;
 
-    if (!DSL_WN_Get_Opcode_Annotation (zero_init, &annotation)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (zero_init, &annotation)) {
         fprintf(stderr, "zero_init marker did not decode\n");
         failed = 1;
     } else {
@@ -323,7 +341,7 @@ Check_Zero_Initializer_Operators(void)
         }
     }
 
-    if (!DSL_WN_Get_Opcode_Annotation (zero_like, &annotation)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (zero_like, &annotation)) {
         fprintf(stderr, "zero_like marker did not decode\n");
         failed = 1;
     } else {
@@ -787,20 +805,110 @@ Check_DSL_Contract_Registry(void)
 }
 
 static int
+Check_DSL_Logical_ResNet_Contracts(void)
+{
+    struct EXPECTED_LOGICAL_OPERATOR {
+        DSL_OPERATOR dsl_operator;
+        const char *logical_name;
+        const char *stable_name;
+        UINT16 version;
+        mINT16 nkids;
+        DSL_SHAPE_RULE shape_rule;
+        const char *attribute_schema;
+    };
+    static const EXPECTED_LOGICAL_OPERATOR expected[] = {
+        { OPR_DSLTENSORCONST, "OPR_DSLTENSORCONST", "common.tensor_const",
+          1, 0, DSL_SHAPE_RULE_OPAQUE, "value_kind;value" },
+        { OPR_DSLADD, "OPR_DSLADD", "common.add",
+          1, 2, DSL_SHAPE_RULE_BROADCAST, "attr.broadcast_rule" },
+        { OPR_DSLMATMUL, "OPR_DSLMATMUL", "common.matmul",
+          1, 2, DSL_SHAPE_RULE_CONTRACTION,
+          "attr.transpose_kid0;attr.transpose_kid1" },
+        { OPR_DSLMODELINPUT, "OPR_DSLMODELINPUT", "common.model_input",
+          2, 0, DSL_SHAPE_RULE_OPAQUE, "attr.input_ordinal" },
+        { OPR_DSLRELU, "OPR_DSLRELU", "common.relu",
+          2, 1, DSL_SHAPE_RULE_IDENTITY, "" },
+        { OPR_DSLFLATTEN, "OPR_DSLFLATTEN", "common.flatten",
+          2, 1, DSL_SHAPE_RULE_VIEW, "attr.start_dim;attr.end_dim" },
+        { OPR_DSLRESIDUALADD, "OPR_DSLRESIDUALADD", "common.residual_add",
+          2, 2, DSL_SHAPE_RULE_BROADCAST,
+          "attr.broadcast_rule;attr.shape_check;attr.residual_path" },
+        { OPR_DSLLINEAR, "OPR_DSLLINEAR", "common.linear",
+          2, 3, DSL_SHAPE_RULE_CONTRACTION,
+          "attr.has_bias;attr.transpose_input;attr.transpose_weight;"
+          "attr.weight_layout" },
+        { OPR_DSLOUTPUTLOGITS, "OPR_DSLOUTPUTLOGITS",
+          "common.output_logits", 2, 1, DSL_SHAPE_RULE_IDENTITY,
+          "attr.semantic" },
+        { OPR_DSLCONV2D, "OPR_DSLCONV2D", "cnn.conv2d",
+          2, 3, DSL_SHAPE_RULE_CONTRACTION,
+          "attr.kernel_shape;attr.stride;attr.padding;attr.dilation;attr.groups;"
+          "attr.input_layout;attr.weight_layout;attr.output_layout" },
+        { OPR_DSLBATCHNORMINFER, "OPR_DSLBATCHNORMINFER",
+          "cnn.batch_norm_infer", 2, 5, DSL_SHAPE_RULE_IDENTITY,
+          "attr.epsilon;attr.training;attr.input_layout;attr.channel_axis" },
+        { OPR_DSLMAXPOOL2D, "OPR_DSLMAXPOOL2D", "cnn.max_pool2d",
+          2, 1, DSL_SHAPE_RULE_REDUCTION,
+          "attr.kernel_shape;attr.stride;attr.padding;attr.dilation;"
+          "attr.ceil_mode" },
+        { OPR_DSLGLOBALAVGPOOL2D, "OPR_DSLGLOBALAVGPOOL2D",
+          "cnn.global_avg_pool2d", 2, 1, DSL_SHAPE_RULE_REDUCTION,
+          "attr.output_size;attr.reduction_axes" }
+    };
+
+    for (UINT32 i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
+        DSL_OPERATOR_INFO info;
+        const EXPECTED_LOGICAL_OPERATOR &contract = expected[i];
+        if ((UINT32)contract.dsl_operator != i + 1 ||
+            strcmp(DSL_OPERATOR_name(contract.dsl_operator),
+                   contract.logical_name) != 0 ||
+            DSL_Operator_Find(contract.stable_name,
+                              strlen(contract.stable_name),
+                              contract.version) != contract.dsl_operator ||
+            DSL_Operator_Find_Current(contract.stable_name,
+                                      strlen(contract.stable_name)) !=
+                contract.dsl_operator ||
+            !DSL_Operator_Get_Info(contract.dsl_operator, &info) ||
+            strcmp(info.logical_name, contract.logical_name) != 0 ||
+            strcmp(info.stable_name, contract.stable_name) != 0 ||
+            info.version != contract.version ||
+            info.category != DSL_OPCODE_CATEGORY_EXECUTABLE ||
+            info.nkids != contract.nkids ||
+            info.shape_rule != contract.shape_rule ||
+            info.effect_model != DSL_EFFECT_MODEL_PURE ||
+            info.lowering_model != DSL_LOWERING_MODEL_RUNTIME_CALL ||
+            strcmp(info.attribute_schema, contract.attribute_schema) != 0) {
+            fprintf(stderr, "logical ResNet operator contract changed: %s\n",
+                    contract.stable_name);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int
 Check_DSL_Opcode_Registry(void)
 {
-    const UINT32 common_seed_count = 61;
-    const UINT32 wrapper_seed_count = 4;
+    const UINT32 common_seed_count = 68;
+    const UINT32 wrapper_seed_count = 12;
     DSL_DOMAIN_ID common_id;
     DSL_DOMAIN_ID cnn_id;
     DSL_DOMAIN_ID transformer_id;
     DSL_OPCODE_ID add_id;
     DSL_OPCODE_ID common_linear_id;
     DSL_OPCODE_ID common_residual_add_id;
+    DSL_OPCODE_ID common_window_reduce_id;
+    DSL_OPCODE_ID common_reduce_mean_id;
+    DSL_OPCODE_ID common_normalization_base_id;
     DSL_OPCODE_ID layout_cast_id;
     DSL_OPCODE_ID residual_shape_check_id;
     DSL_OPCODE_ID dispatch_id;
     DSL_OPCODE_ID cnn_linear_id;
+    DSL_OPCODE_ID cnn_max_pool2d_id;
+    DSL_OPCODE_ID cnn_global_avg_pool2d_id;
+    DSL_OPCODE_ID cnn_conv2d_id;
+    DSL_OPCODE_ID cnn_batch_norm_infer_id;
     DSL_OPCODE_ID transformer_q_projection_id;
     DSL_OPCODE_ID cnn_residual_add_id;
     DSL_OPCODE_ID transformer_residual_add_id;
@@ -823,6 +931,12 @@ Check_DSL_Opcode_Registry(void)
     common_linear_id = DSL_Opcode_Find(common_id, "common.linear", 1);
     common_residual_add_id =
         DSL_Opcode_Find(common_id, "common.residual_add", 1);
+    common_window_reduce_id =
+        DSL_Opcode_Find(common_id, "common.window_reduce", 1);
+    common_reduce_mean_id =
+        DSL_Opcode_Find(common_id, "common.reduce_mean", 1);
+    common_normalization_base_id =
+        DSL_Opcode_Find(common_id, "common.normalization_base", 1);
 
     if (add_id == DSL_OPCODE_INVALID_ID) {
         fprintf(stderr, "DSL common.add seed lookup failed\n");
@@ -861,7 +975,7 @@ Check_DSL_Opcode_Registry(void)
             info.nkids != 2 ||
             info.shape_rule != DSL_SHAPE_RULE_BROADCAST ||
             info.effect_model != DSL_EFFECT_MODEL_PURE ||
-            info.lowering_model != DSL_LOWERING_MODEL_MARKER_ONLY ||
+            info.lowering_model != DSL_LOWERING_MODEL_RUNTIME_CALL ||
             strcmp(info.diagnostic_prefix, "DOPC_COMMON_ADD") != 0) {
         fprintf(stderr, "DSL opcode info changed\n");
         failed = 1;
@@ -977,11 +1091,50 @@ Check_DSL_Opcode_Registry(void)
     cnn_id = DSL_Domain_Find("cnn");
     transformer_id = DSL_Domain_Find("transformer");
     cnn_linear_id = DSL_Opcode_Find(cnn_id, "cnn.linear", 1);
+    cnn_max_pool2d_id = DSL_Opcode_Find(cnn_id, "cnn.max_pool2d", 1);
+    cnn_global_avg_pool2d_id =
+        DSL_Opcode_Find(cnn_id, "cnn.global_avg_pool2d", 1);
+    cnn_conv2d_id = DSL_Opcode_Find(cnn_id, "cnn.conv2d", 1);
+    cnn_batch_norm_infer_id =
+        DSL_Opcode_Find(cnn_id, "cnn.batch_norm_infer", 1);
     transformer_q_projection_id =
         DSL_Opcode_Find(transformer_id, "transformer.q_projection", 1);
     cnn_residual_add_id = DSL_Opcode_Find(cnn_id, "cnn.residual_add", 1);
     transformer_residual_add_id =
         DSL_Opcode_Find(transformer_id, "transformer.residual_add", 1);
+
+    struct EXPECTED_NATIVE_REGISTRY_ENTRY {
+        DSL_DOMAIN_ID domain_id;
+        const char *name;
+        mINT16 nkids;
+    };
+    const EXPECTED_NATIVE_REGISTRY_ENTRY native_entries[] = {
+        { common_id, "common.model_input", 0 },
+        { common_id, "common.relu", 1 },
+        { common_id, "common.flatten", 1 },
+        { common_id, "common.residual_add", 2 },
+        { common_id, "common.linear", 3 },
+        { common_id, "common.output_logits", 1 },
+        { cnn_id, "cnn.conv2d", 3 },
+        { cnn_id, "cnn.batch_norm_infer", 5 },
+        { cnn_id, "cnn.max_pool2d", 1 },
+        { cnn_id, "cnn.global_avg_pool2d", 1 }
+    };
+    for (UINT32 i = 0;
+         i < sizeof(native_entries) / sizeof(native_entries[0]); ++i) {
+        DSL_OPCODE_ID native_id = DSL_Opcode_Find
+            (native_entries[i].domain_id, native_entries[i].name, 2);
+        if (!DSL_Opcode_Get_Info(native_id, &info) ||
+            info.version != 2 || info.nkids != native_entries[i].nkids ||
+            info.category != DSL_OPCODE_CATEGORY_EXECUTABLE ||
+            info.effect_model != DSL_EFFECT_MODEL_PURE ||
+            info.lowering_model != DSL_LOWERING_MODEL_RUNTIME_CALL ||
+            info.wrapper_target_id != DSL_OPCODE_INVALID_ID) {
+            fprintf(stderr, "native v2 registry contract changed: %s\n",
+                    native_entries[i].name);
+            failed = 1;
+        }
+    }
 
     if (!DSL_Opcode_Get_Info(cnn_linear_id, &info) ||
             info.owner_domain_id != cnn_id ||
@@ -992,6 +1145,49 @@ Check_DSL_Opcode_Registry(void)
             info.shape_rule != DSL_SHAPE_RULE_CONTRACTION ||
             strcmp(info.diagnostic_prefix, "DOPC_CNN_LINEAR_WRAPPER") != 0) {
         fprintf(stderr, "DSL cnn.linear wrapper descriptor changed\n");
+        failed = 1;
+    }
+
+    if (!DSL_Opcode_Get_Info(cnn_max_pool2d_id, &info) ||
+            info.owner_domain_id != cnn_id ||
+            info.wrapper_target_id != common_window_reduce_id ||
+            info.nkids != 1 ||
+            info.shape_rule != DSL_SHAPE_RULE_REDUCTION ||
+            strcmp(info.diagnostic_prefix,
+             "DOPC_CNN_MAX_POOL2D_WRAPPER") != 0) {
+        fprintf(stderr, "DSL cnn.max_pool2d wrapper descriptor changed\n");
+        failed = 1;
+    }
+
+    if (!DSL_Opcode_Get_Info(cnn_global_avg_pool2d_id, &info) ||
+            info.owner_domain_id != cnn_id ||
+            info.wrapper_target_id != common_reduce_mean_id ||
+            info.nkids != 1 ||
+            info.shape_rule != DSL_SHAPE_RULE_REDUCTION ||
+            strcmp(info.diagnostic_prefix,
+             "DOPC_CNN_GLOBAL_AVG_POOL2D_WRAPPER") != 0) {
+        fprintf(stderr, "DSL cnn.global_avg_pool2d wrapper descriptor changed\n");
+        failed = 1;
+    }
+
+    if (!DSL_Opcode_Get_Info(cnn_conv2d_id, &info) ||
+            info.owner_domain_id != cnn_id ||
+            info.wrapper_target_id != common_window_reduce_id ||
+            info.nkids != 1 ||
+            info.shape_rule != DSL_SHAPE_RULE_REDUCTION ||
+            strcmp(info.diagnostic_prefix, "DOPC_CNN_CONV2D_WRAPPER") != 0) {
+        fprintf(stderr, "DSL cnn.conv2d wrapper descriptor changed\n");
+        failed = 1;
+    }
+
+    if (!DSL_Opcode_Get_Info(cnn_batch_norm_infer_id, &info) ||
+            info.owner_domain_id != cnn_id ||
+            info.wrapper_target_id != common_normalization_base_id ||
+            info.nkids != 1 ||
+            info.shape_rule != DSL_SHAPE_RULE_REDUCTION ||
+            strcmp(info.diagnostic_prefix,
+             "DOPC_CNN_BATCH_NORM_INFER_WRAPPER") != 0) {
+        fprintf(stderr, "DSL cnn.batch_norm_infer wrapper descriptor changed\n");
         failed = 1;
     }
 
@@ -1036,17 +1232,22 @@ Check_DSL_Opcode_Registry(void)
         return 1;
     }
 
-    if (strstr(text, "DSL Opcode Registry: entries=65") == NULL ||
+    if (strstr(text, "DSL Opcode Registry: entries=80") == NULL ||
             strstr(text, "name=common.add") == NULL ||
             strstr(text, "category=executable") == NULL ||
             strstr(text, "level=level2_numeric") == NULL ||
             strstr(text, "shape=broadcast") == NULL ||
             strstr(text, "effect=pure") == NULL ||
+            strstr(text, "lowering=runtime_call") == NULL ||
             strstr(text, "lowering=marker_only") == NULL ||
             strstr(text, "diagnostic_prefix=DOPC_COMMON_ADD") == NULL ||
             strstr(text, "name=common.kernel_variant") == NULL ||
             strstr(text, "level=level4_runtime") == NULL ||
             strstr(text, "name=cnn.linear") == NULL ||
+            strstr(text, "name=cnn.max_pool2d") == NULL ||
+            strstr(text, "name=cnn.global_avg_pool2d") == NULL ||
+            strstr(text, "name=cnn.conv2d") == NULL ||
+            strstr(text, "name=cnn.batch_norm_infer") == NULL ||
             strstr(text, "name=transformer.q_projection") == NULL ||
             strstr(text, "name=cnn.residual_add") == NULL ||
             strstr(text, "name=transformer.residual_add") == NULL ||
@@ -1062,15 +1263,20 @@ Check_DSL_Opcode_Registry(void)
 static int
 Check_DSL_Opcode_Promotion_Registry(void)
 {
-    const UINT32 promotion_seed_count = 6;
+    const UINT32 promotion_seed_count = 9;
     DSL_DOMAIN_ID common_id;
     DSL_DOMAIN_ID cnn_id;
     DSL_DOMAIN_ID transformer_id;
     DSL_OPCODE_ID common_linear_id;
     DSL_OPCODE_ID common_residual_add_id;
     DSL_OPCODE_ID common_window_reduce_id;
+    DSL_OPCODE_ID common_reduce_mean_id;
+    DSL_OPCODE_ID common_normalization_base_id;
     DSL_OPCODE_ID common_matmul_id;
     DSL_OPCODE_ID cnn_linear_id;
+    DSL_OPCODE_ID cnn_max_pool2d_id;
+    DSL_OPCODE_ID cnn_global_avg_pool2d_id;
+    DSL_OPCODE_ID cnn_batch_norm_infer_id;
     DSL_OPCODE_ID cnn_residual_add_id;
     DSL_OPCODE_ID cnn_conv2d_id;
     DSL_OPCODE_ID transformer_attention_id;
@@ -1098,8 +1304,17 @@ Check_DSL_Opcode_Promotion_Registry(void)
         DSL_Opcode_Find(common_id, "common.residual_add", 1);
     common_window_reduce_id =
         DSL_Opcode_Find(common_id, "common.window_reduce", 1);
+    common_reduce_mean_id =
+        DSL_Opcode_Find(common_id, "common.reduce_mean", 1);
+    common_normalization_base_id =
+        DSL_Opcode_Find(common_id, "common.normalization_base", 1);
     common_matmul_id = DSL_Opcode_Find(common_id, "common.matmul", 1);
     cnn_linear_id = DSL_Opcode_Find(cnn_id, "cnn.linear", 1);
+    cnn_max_pool2d_id = DSL_Opcode_Find(cnn_id, "cnn.max_pool2d", 1);
+    cnn_global_avg_pool2d_id =
+        DSL_Opcode_Find(cnn_id, "cnn.global_avg_pool2d", 1);
+    cnn_batch_norm_infer_id =
+        DSL_Opcode_Find(cnn_id, "cnn.batch_norm_infer", 1);
     cnn_residual_add_id = DSL_Opcode_Find(cnn_id, "cnn.residual_add", 1);
     cnn_conv2d_id = DSL_Opcode_Find(cnn_id, "cnn.conv2d", 1);
     transformer_attention_id =
@@ -1107,6 +1322,9 @@ Check_DSL_Opcode_Promotion_Registry(void)
 
     if (DSL_Opcode_Promotion_Count() != promotion_seed_count ||
             cnn_linear_id == DSL_OPCODE_INVALID_ID ||
+            cnn_max_pool2d_id == DSL_OPCODE_INVALID_ID ||
+            cnn_global_avg_pool2d_id == DSL_OPCODE_INVALID_ID ||
+            cnn_batch_norm_infer_id == DSL_OPCODE_INVALID_ID ||
             cnn_conv2d_id == DSL_OPCODE_INVALID_ID ||
             transformer_attention_id == DSL_OPCODE_INVALID_ID) {
         fprintf(stderr, "DSL opcode promotion lookup setup failed\n");
@@ -1137,6 +1355,47 @@ Check_DSL_Opcode_Promotion_Registry(void)
 	     "CPROM-005") != 0 ||
             DSL_Opcode_Promotion_Diagnostic_At(promotion_id, 1) != NULL) {
         fprintf(stderr, "DSL cnn.linear promotion payload changed\n");
+        failed = 1;
+    }
+
+    promotion_id =
+        DSL_Opcode_Promotion_Find(cnn_max_pool2d_id, common_window_reduce_id);
+    if (!DSL_Opcode_Promotion_Get_Info(promotion_id, &info) ||
+            info.source_opcode_id != cnn_max_pool2d_id ||
+            info.promoted_opcode_id != common_window_reduce_id ||
+            info.state != DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON ||
+            strcmp(DSL_Opcode_Promotion_Required_Verifier_Check_At
+                (promotion_id, 0),
+             "kernel_stride_padding_dilation") != 0) {
+        fprintf(stderr, "DSL cnn.max_pool2d promotion descriptor changed\n");
+        failed = 1;
+    }
+
+    promotion_id =
+        DSL_Opcode_Promotion_Find(cnn_global_avg_pool2d_id,
+                                  common_reduce_mean_id);
+    if (!DSL_Opcode_Promotion_Get_Info(promotion_id, &info) ||
+            info.source_opcode_id != cnn_global_avg_pool2d_id ||
+            info.promoted_opcode_id != common_reduce_mean_id ||
+            info.state != DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON ||
+            strcmp(DSL_Opcode_Promotion_Required_Common_Semantic_At
+                (promotion_id, 0),
+             "spatial_mean_reduction") != 0) {
+        fprintf(stderr, "DSL cnn.global_avg_pool2d promotion descriptor changed\n");
+        failed = 1;
+    }
+
+    promotion_id =
+        DSL_Opcode_Promotion_Find(cnn_batch_norm_infer_id,
+                                  common_normalization_base_id);
+    if (!DSL_Opcode_Promotion_Get_Info(promotion_id, &info) ||
+            info.source_opcode_id != cnn_batch_norm_infer_id ||
+            info.promoted_opcode_id != common_normalization_base_id ||
+            info.state != DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON ||
+            strcmp(DSL_Opcode_Promotion_Required_Verifier_Check_At
+                (promotion_id, 0),
+             "scale_bias_running_stats_epsilon") != 0) {
+        fprintf(stderr, "DSL cnn.batch_norm_infer promotion descriptor changed\n");
         failed = 1;
     }
 
@@ -1204,8 +1463,8 @@ Check_DSL_Opcode_Promotion_Registry(void)
 					  common_window_reduce_id,
 					  1,
 					  TRUE);
-    if (diagnostic == NULL || strcmp(diagnostic, "CPROM-010") != 0) {
-        fprintf(stderr, "DSL promotion check missed missing wrapper\n");
+    if (diagnostic != NULL) {
+        fprintf(stderr, "DSL promotion check rejected valid conv2d wrapper\n");
         failed = 1;
     }
 
@@ -1248,11 +1507,16 @@ Check_DSL_Opcode_Promotion_Registry(void)
         return 1;
     }
 
-    if (strstr(text, "DSL Opcode Promotion Registry: entries=6") == NULL ||
+    if (strstr(text, "DSL Opcode Promotion Registry: entries=9") == NULL ||
             strstr(text, "state=wrapper_to_common") == NULL ||
             strstr(text, "state=partial_promotion") == NULL ||
             strstr(text, "common_semantic[0]=affine_projection") == NULL ||
+            strstr(text, "common_semantic[0]=inference_normalization") == NULL ||
+            strstr(text, "common_semantic[0]=spatial_mean_reduction") ==
+        NULL ||
             strstr(text, "retained_wrapper[0]=transformer.attention") == NULL ||
+            strstr(text, "retained_wrapper[0]=cnn.max_pool2d") == NULL ||
+            strstr(text, "retained_wrapper[0]=cnn.batch_norm_infer") == NULL ||
             strstr(text, "verifier_check[0]=padding_stride_dilation_groups") ==
 	NULL ||
             strstr(text, "diagnostic[0]=CPROM-006") == NULL) {
@@ -1346,7 +1610,9 @@ Check_VHO_Unconsumed_DSL_Scanner(WN *tree)
 
     VHO_Scan_Unconsumed_DSL_Markers(tree, &scan);
 
-    if (scan.dsl_marker_count != 3 || scan.dsl_opcode_count != 3) {
+    if (scan.dsl_marker_count != 3 ||
+        scan.dsl_opcode_count != 3 ||
+        scan.dsl_malformed_count != 0) {
         fprintf(stderr, "VHO scanner marker counts changed\n");
         failed = 1;
     }
@@ -1372,13 +1638,71 @@ Check_VHO_Unconsumed_DSL_Scanner(WN *tree)
 
     if (strstr(text, "VHO unconsumed DSL marker: opcode=common.tensor_const") == NULL ||
             strstr(text, "VHO unconsumed DSL marker: opcode=common.add") == NULL ||
-            strstr(text, "markers=3 opcodes=3") == NULL) {
+            strstr(text, "markers=3 opcodes=3 malformed=0") == NULL) {
         fprintf(stderr, "VHO scanner report missed expected DSL markers\n");
         failed = 1;
     }
 
     free(text);
+
+    WN *malformed_block = WN_CreateBlock();
+    WN_INSERT_BlockLast(malformed_block, Create_Malformed_DSL_Carrier());
+    VHO_Scan_Unconsumed_DSL_Markers(malformed_block, &scan);
+
+    if (scan.dsl_marker_count != 1 ||
+        scan.dsl_opcode_count != 1 ||
+        scan.dsl_malformed_count != 1) {
+        fprintf(stderr, "VHO scanner malformed carrier counts changed\n");
+        failed = 1;
+    }
+
+    dump = tmpfile();
+    if (dump == NULL) {
+        perror("tmpfile");
+        return 1;
+    }
+
+    VHO_fprint_unconsumed_DSL_markers(dump, malformed_block);
+    text = Read_File(dump);
+    fclose(dump);
+
+    if (text == NULL) {
+        fprintf(stderr, "failed to read malformed VHO scanner report\n");
+        return 1;
+    }
+
+    if (strstr(text, "malformed_carrier=yes") == NULL ||
+        strstr(text, "DSL opcode operand 0 record is malformed") == NULL ||
+        strstr(text, "markers=1 opcodes=1 malformed=1") == NULL) {
+        fprintf(stderr, "VHO scanner report missed malformed DSL carrier\n");
+        failed = 1;
+    }
+
+    free(text);
     return failed;
+}
+
+static WN *
+Create_Malformed_DSL_Carrier(void)
+{
+    const char *operand_record =
+        "__WHIRL_DSL_OPERAND__:kid0:malformed";
+    const char *opcode_record =
+        "__WHIRL_DSL__:opcode:common.add:v1:kid0=bad;kid1=missing";
+    WN *operand_block = WN_CreateBlock();
+    WN *opcode_lda = WN_LdaString(opcode_record, 0,
+                                  strlen(opcode_record) + 1);
+    WN *carrier;
+
+    WN_INSERT_BlockLast
+        (operand_block,
+         WN_CreateEval(WN_LdaString(operand_record, 0,
+                                    strlen(operand_record) + 1)));
+
+    carrier = WN_Create(OPC_EVAL, 1);
+    WN_kid0(carrier) = WN_CreateComma(OPR_COMMA, WN_rtype(opcode_lda),
+                                      MTYPE_V, operand_block, opcode_lda);
+    return carrier;
 }
 
 static char *
@@ -1471,7 +1795,7 @@ main(void)
         return 1;
     }
 
-    if (!DSL_WN_Has_Opcode (dsl_marker)) {
+    if (!DSL_Fixture_Get_Opcode_Annotation (dsl_marker, NULL)) {
         fprintf(stderr, "common.add marker was not recognized as a DSL opcode\n");
         failed = 1;
     }
@@ -1480,6 +1804,7 @@ main(void)
     failed |= Check_Zero_Initializer_Operators();
     failed |= Check_DSL_Domain_Registry();
     failed |= Check_DSL_Contract_Registry();
+    failed |= Check_DSL_Logical_ResNet_Contracts();
     failed |= Check_DSL_Opcode_Registry();
     failed |= Check_DSL_Opcode_Promotion_Registry();
     failed |= Check_Tensor_Dsl_Symtab_Print();
@@ -1490,7 +1815,8 @@ main(void)
     text = Read_File(dump);
     fclose(dump);
 
-    DSL_fprint_opcode_annotation (annotation, dsl_marker);
+    DSL_fprint_opcode_annotation
+        (annotation, DSL_Fixture_Value_Expression(dsl_marker));
     annotation_text = Read_File(annotation);
     fclose(annotation);
 
@@ -1503,15 +1829,20 @@ main(void)
     fputs(annotation_text, stdout);
     failed |= Write_Common_Add_Trace(text, annotation_text);
 
-    if (strstr(text, "__WHIRL_DSL__:opcode:common.add:") == NULL) {
-        fprintf(stderr, "missing common.add DSL marker in fdump_tree output\n");
+    if (strstr(text, "OPR_DSLADD") == NULL ||
+        strstr(text, "operand_count=2") == NULL ||
+        strstr(text, "MMLDID") == NULL ||
+        strstr(text, "OPR_DSL ") != NULL ||
+        strstr(text, "MDSL ") != NULL ||
+        strstr(text, "dsl_comment_projection=OPR_COMMENT") == NULL) {
+        fprintf(stderr, "missing common.add DSL node in fdump_tree output\n");
         failed = 1;
     }
 
-    if (strstr(text, "__WHIRL_DSL__:opcode:common.tensor_const:v1:") == NULL ||
+    if (strstr(text, "OPR_DSLTENSORCONST") == NULL ||
             strstr(text, "name=const_i32_2x2_zero") == NULL ||
             strstr(text, "name=const_i32_2x2_one") == NULL) {
-        fprintf(stderr, "missing tensor_const DSL markers in fdump_tree output\n");
+        fprintf(stderr, "missing tensor_const DSL nodes in fdump_tree output\n");
         failed = 1;
     }
 
@@ -1520,8 +1851,10 @@ main(void)
         failed = 1;
     }
 
-    if (strstr(annotation_text, "dsl_opcode=common.add.v1") == NULL) {
-        fprintf(stderr, "missing formatted common.add DSL opcode annotation\n");
+    if (strstr(annotation_text, "OPR_DSLADD") == NULL ||
+        strstr(annotation_text, "operand_count=2") == NULL ||
+        strstr(annotation_text, "dsl_comment_projection=OPR_COMMENT") == NULL) {
+        fprintf(stderr, "missing formatted common.add DSL node annotation\n");
         failed = 1;
     }
 
@@ -1533,8 +1866,11 @@ main(void)
             fclose(trace);
 
         if (trace_text == NULL ||
-	strstr(trace_text, "created_operator=common.add") == NULL ||
-	strstr(trace_text, "__WHIRL_DSL__:opcode:common.add:") == NULL) {
+            strstr(trace_text, "created_operator=common.add") == NULL ||
+            strstr(trace_text, "OPR_DSLADD") == NULL ||
+            strstr(trace_text, "operand_count=2") == NULL ||
+            strstr(trace_text, "MMLDID") == NULL ||
+            strstr(trace_text, "dsl_comment_projection=OPR_COMMENT") == NULL) {
             fprintf(stderr, "missing common.add creation trace file content\n");
             failed = 1;
         }

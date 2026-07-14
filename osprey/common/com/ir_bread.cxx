@@ -97,6 +97,7 @@
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
 #include "ir_bread.h"
+#include "dsl_ir_image.h"
 #include "config_opt.h"
 
 #if defined(BACK_END)
@@ -432,6 +433,25 @@ WN_get_strtab (void *handle)
     return 0;
 } // WN_get_strtab
 
+INT
+WN_get_dsl_ir_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL, WT_DSL_IR_IMAGE);
+    if (shdr.offset == 0) {
+        DSL_IR_Image_Reset();
+        return strcmp(file_revision, WHIRL_DSL_REVISION) == 0 ? -1 : 0;
+    }
+
+    const void *section_base = (const char *)handle + shdr.offset;
+    if (!DSL_IR_Image_Load_Mapped(section_base, shdr.size, stderr))
+        return -1;
+    if (strcmp(file_revision, WHIRL_DSL_REVISION) == 0 &&
+        DSL_IR_Image_Node_Count() == 0)
+        return -1;
+    return 0;
+}
+
 /*
  *  Note: get SSA info from file into memory 
  */
@@ -481,6 +501,7 @@ WN_get_SSA (void *handle, PU_Info *pu, MEM_POOL* pool)
   wssa_io.Read_SSA_From_File(base);
   
   Set_PU_Info_state(pu, WT_SSA, Subsect_InMem);
+  return 0;
 }
 
 /*
@@ -710,7 +731,8 @@ check_section_headers (char *baseaddr, Elf64_Word size, char* file_revision,
 	    while (p <= eob) {
 		if (strncmp ("WHIRL:", p, 6) == 0) {
 		    strcpy (file_revision, p);
-		    if (strcmp (WHIRL_REVISION, p) == 0) {
+            if (strcmp (WHIRL_REVISION, p) == 0 ||
+                strcmp (WHIRL_DSL_REVISION, p) == 0) {
 			match = 1;
 			break;
 		    }
@@ -1574,6 +1596,10 @@ Read_Global_Info (INT32 *p_num_PUs)
 	ErrMsg ( EC_IR_Scn_Read, "global symtab", global_ir_file);
     }
 
+    if (WN_get_dsl_ir_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL image", global_ir_file);
+    }
+
 #if defined(KEY) && defined(BACK_END)
     WN_get_mod_ref_table (global_fhandle);
 #endif
@@ -1718,6 +1744,7 @@ Free_Local_Input(void)
 void
 Free_Input_Info (void)
 {
+    DSL_IR_Image_Reset();
 	WN_free_input(global_fhandle, &global_mapHandle, global_mapped_size);
     if (global_fhandle != local_fhandle) {
       Free_Local_Input();
@@ -1742,6 +1769,7 @@ Free_Local_Input(void)
 void
 Free_Input_Info (void)
 {
+    DSL_IR_Image_Reset();
     WN_free_input(global_fhandle, global_mapped_size);
     if (global_fhandle != local_fhandle) {
       Free_Local_Input();

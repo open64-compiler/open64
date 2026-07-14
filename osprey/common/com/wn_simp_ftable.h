@@ -200,4 +200,33 @@ NULL,   /* OPR_ATOMIC_RSQRT */
 #elif defined(TARG_MIPS)
 NULL,   /* OPR_PURE_CALL_OP */
 #endif
+NULL,   /* OPR_ZDLBR */
+#ifndef TARG_X8664
+#if (defined(TARG_MIPS) && defined(TARG_SL)) || \
+    (defined(KEY) && defined(TARG_LOONGSON))
+NULL,   /* reserved operator 143 */
+NULL,   /* reserved operator 144 */
+NULL,   /* reserved operator 145 */
+NULL,   /* reserved operator 146 */
+NULL,   /* reserved operator 147 */
+#elif defined(TARG_MIPS) || defined(KEY)
+NULL,   /* reserved operator 141 */
+NULL,   /* reserved operator 142 */
+NULL,   /* reserved operator 143 */
+NULL,   /* reserved operator 144 */
+NULL,   /* reserved operator 145 */
+NULL,   /* reserved operator 146 */
+NULL,   /* reserved operator 147 */
+#else
+NULL,   /* reserved operator 140 */
+NULL,   /* reserved operator 141 */
+NULL,   /* reserved operator 142 */
+NULL,   /* reserved operator 143 */
+NULL,   /* reserved operator 144 */
+NULL,   /* reserved operator 145 */
+NULL,   /* reserved operator 146 */
+NULL,   /* reserved operator 147 */
+#endif
+#endif
+NULL,   /* OPR_DSL */
 };

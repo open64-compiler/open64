@@ -1200,6 +1200,10 @@ run_from_build (char *builddir)
 	strcat(new_ld_path, "/libb2w/libb2w");
 	override_phase(P_jfe, "P_jfe", new_path, "mapfej");
 	new_path[builddir_len] = '\0';
+        strcat(new_path, "/osprey/targdir/torch2whirl");
+        override_phase(P_torch2whirl, "P_torch2whirl", new_path,
+                       "torch2whirl");
+        new_path[builddir_len] = '\0';
 	strcat(new_path, "/osprey/targdir/lw_inline");
 	strcat(new_ld_path, ":");
 	strcat(new_ld_path, new_path);

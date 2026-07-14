@@ -1,0 +1,25 @@
+ARG BASE_IMAGE=open64:x86_64-apple-silicon
+FROM ${BASE_IMAGE}
+
+ARG TORCH_VERSION=2.4.1
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        python3.8-dev \
+        python3-pip && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN printf '%s\n' \
+        'numpy<2' \
+        'typing-extensions<4.14' \
+        > /tmp/torch2whirl-py38-constraints.txt && \
+    python3 -m pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple \
+        --constraint /tmp/torch2whirl-py38-constraints.txt \
+        'numpy<2' \
+        "torch==${TORCH_VERSION}"

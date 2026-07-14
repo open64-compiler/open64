@@ -222,7 +222,7 @@ GEN_C_OBJECTS = $(GEN_CFILES:.c=.o)
 
 LDIRT = OPTIONS.P table generated $(GEN_HFILES) $(GEN_CFILES) driver version_hg.c
 
-LANGS = as cc c89 CC f77 fort77 f90
+LANGS = as cc c89 CC f77 fort77 f90 openpy
 
 .PHONY: default first last install
 
@@ -243,10 +243,11 @@ ifndef SKIP_DEP_BUILD
 endif
 
 last: make_deps
-	rm -f  opencc openCC openf90 xcalcc xcalc++
+	rm -f  opencc openCC openf90 openpy xcalcc xcalc++
 	ln -s  driver opencc
 	ln -sf driver openCC
 	ln -s  driver openf90
+	ln -s  driver openpy
 	cp $(BUILD_SRC)/osprey/driver/xcalcc ./
 	cp $(BUILD_SRC)/osprey/driver/xcalc++ ./
 
@@ -341,4 +342,3 @@ version_hg.c:
 # need to make generated headers before compiling src files
 $(GEN_C_OBJECTS) : $(GEN_CFILES) OPTIONS
 $(SRC_OBJECTS) : $(GEN_HFILES) OPTIONS
-

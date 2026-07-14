@@ -65,6 +65,7 @@ typedef enum {
 // java
 	L_java,
 	L_javascript,
+        L_python,
 	L_internal,	/* pseudo-language to mark internal options */
 	L_LAST
 } languages_t;
@@ -92,6 +93,7 @@ typedef enum {
 // java
 	S_java,
 	S_javascript,
+        S_python,
 	S_LAST
 } source_kind_t;
 
@@ -133,6 +135,7 @@ typedef enum {
 	P_js2mpl,       /* javascript to maple */
 	P_mpl2whirl,    /* maple to whirl */
 	P_clangfe,      /* clangfe */
+        P_torch2whirl,  /* Python DSL to binary WHIRL */
 	P_any_fe,	/* generic union of all fe's */
 	P_pseudo_f_fe,	/* not a real phase, just a placeholder 
 			 * for options for f_fe but not c_fe */

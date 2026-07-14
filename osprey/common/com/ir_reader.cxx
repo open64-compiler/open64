@@ -1018,8 +1018,11 @@ static void ir_put_wn(WN * wn, INT indent)
     else
 	fprintf(ir_ofile, "%*s", indent, "");
 
-    fprintf(ir_ofile, "%s", OPCODE_name(opcode) + strlen("OPC_"));
-    if (OPCODE_has_offset(opcode)) {
+    if (DSL_WN_Is_Native(wn))
+        fprintf(ir_ofile, "%s", DSL_OPERATOR_name(DSL_WN_operator(wn)));
+    else
+        fprintf(ir_ofile, "%s", OPCODE_name(opcode) + strlen("OPC_"));
+    if (OPCODE_has_offset(opcode) && !DSL_WN_Is_Native(wn)) {
 	if (OPCODE_operator(opcode) == OPR_PRAGMA || 
 	    OPCODE_operator(opcode) == OPR_XPRAGMA)
 	    fprintf(ir_ofile, " %d %d", WN_pragma_flags(wn), WN_pragma(wn));
@@ -1173,6 +1176,9 @@ static void ir_put_wn(WN * wn, INT indent)
     if (opcode == OPC_COMMENT) {
 	fprintf(ir_ofile, " # %s", Index_To_Str(WN_offset(wn)));
     }
+    if (DSL_WN_Has_Opcode(wn)) {
+        DSL_fprint_opcode_annotation(ir_ofile, wn);
+    }
 
     if (follow_st && OPCODE_has_sym(opcode) && OPCODE_has_offset(opcode)
 	&& WN_st_idx(wn) != (ST_IDX) 0 && (ST_class(WN_st(wn)) == CLASS_PREG)
@@ -1208,7 +1214,7 @@ static void ir_put_wn(WN * wn, INT indent)
 	    }
 	}
 
-    if (opcode == OPC_XPRAGMA) {
+    if (opcode == OPC_XPRAGMA && WN_pragmas[WN_pragma(wn)].name != NULL) {
 	fprintf(ir_ofile, " # %s", WN_pragmas[WN_pragma(wn)].name);
     }
 
@@ -2607,9 +2613,12 @@ help_image_wn(stringstream &ss, WN *wn, INT indent)
         image_marker(ss,"",indent);
 
 
-    ss << OPCODE_name(opcode) + strlen("OPC_");
+    if (DSL_WN_Is_Native(wn))
+        ss << DSL_OPERATOR_name(DSL_WN_operator(wn));
+    else
+        ss << OPCODE_name(opcode) + strlen("OPC_");
 
-    if (OPCODE_has_offset(opcode)) {
+    if (OPCODE_has_offset(opcode) && !DSL_WN_Is_Native(wn)) {
 	if (OPCODE_operator(opcode) == OPR_PRAGMA || 
 	    OPCODE_operator(opcode) == OPR_XPRAGMA)
 	{
@@ -3488,7 +3497,3 @@ help_WN_TREE_image_expr(stringstream &ss, WN * wn, INT indent) {
     help_WN_TREE_image_expr(ss,wn,indent);
   } 
 }
-
-
-
-

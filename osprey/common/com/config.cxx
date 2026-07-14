@@ -120,6 +120,7 @@ static INT32 Ignore_Int;
 #include "config_list.cxx"
 #include "config_opt.cxx"
 #include "config_wopt.cxx"
+#include "config_dsl.cxx"
 #include "config_vho.cxx"
 #include "config_vsa.cxx"
 #include "config_flist.cxx"
@@ -876,6 +877,8 @@ OPTION_GROUP Common_Option_Groups[] = {
     "Options to set or assert target environment characteristics" },
   { "WOPT",	':', '=', Options_WOPT, NULL,
     "Options to control internal WHIRL optimization" },
+  { "DSL", ':', '=', Options_DSL, NULL,
+    "Options to control Very High Level WHIRL DSL optimization" },
   { "VHO",	':', '=', Options_VHO, NULL,
     "Options to control internal VH WHIRL optimization" },
   { "VSA",	':', '=', Options_VSA, NULL,
@@ -2330,4 +2333,3 @@ List_Compile_Options (
 			  internal ? full : List_All_Options , update );
   }
 }
-

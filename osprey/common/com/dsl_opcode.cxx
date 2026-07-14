@@ -114,6 +114,23 @@ static const char *DSL_opcode_promotion_state_name[] = {
     "common_native"
 };
 
+static const char *DSL_operator_name[] = {
+    "OPR_DSLUNKNOWN",
+    "OPR_DSLTENSORCONST",
+    "OPR_DSLADD",
+    "OPR_DSLMATMUL",
+    "OPR_DSLMODELINPUT",
+    "OPR_DSLRELU",
+    "OPR_DSLFLATTEN",
+    "OPR_DSLRESIDUALADD",
+    "OPR_DSLLINEAR",
+    "OPR_DSLOUTPUTLOGITS",
+    "OPR_DSLCONV2D",
+    "OPR_DSLBATCHNORMINFER",
+    "OPR_DSLMAXPOOL2D",
+    "OPR_DSLGLOBALAVGPOOL2D"
+};
+
 static const char *DSL_cprom_diagnostic_code[] = {
     "CPROM-001",
     "CPROM-002",
@@ -136,6 +153,20 @@ struct DSL_COMMON_OPCODE_SEED {
     DSL_EFFECT_MODEL effect_model;
     DSL_LOWERING_MODEL lowering_model;
     const char *diagnostic_prefix;
+};
+
+struct DSL_LOGICAL_OPERATOR_SEED {
+    DSL_OPERATOR dsl_operator;
+    const char *name;
+    UINT16 version;
+    DSL_OPCODE_CATEGORY category;
+    DSL_OPCODE_LEVEL level;
+    mINT16 nkids;
+    DSL_SHAPE_RULE shape_rule;
+    DSL_EFFECT_MODEL effect_model;
+    DSL_LOWERING_MODEL lowering_model;
+    const char *diagnostic_prefix;
+    const char *attribute_schema;
 };
 
 struct DSL_DOMAIN_WRAPPER_SEED {
@@ -242,7 +273,7 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     { "common.add", DSL_OPCODE_CATEGORY_EXECUTABLE,
         DSL_OPCODE_LEVEL_2_NUMERIC, 2,
         DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
-        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_ADD" },
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_ADD" },
     { "common.mul", DSL_OPCODE_CATEGORY_EXECUTABLE,
         DSL_OPCODE_LEVEL_2_NUMERIC, 2,
         DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
@@ -254,7 +285,7 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     { "common.matmul", DSL_OPCODE_CATEGORY_EXECUTABLE,
         DSL_OPCODE_LEVEL_2_NUMERIC, 2,
         DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
-        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MATMUL" },
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_MATMUL" },
     { "common.gemm", DSL_OPCODE_CATEGORY_EXECUTABLE,
         DSL_OPCODE_LEVEL_2_NUMERIC, DSL_OPCODE_NKIDS_VARIADIC,
         DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
@@ -404,11 +435,188 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     { "common.kernel_variant", DSL_OPCODE_CATEGORY_LOWERING_POLICY,
         DSL_OPCODE_LEVEL_4_RUNTIME, DSL_OPCODE_NKIDS_PAYLOAD_DEFINED,
         DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_LOWERING_POLICY,
-        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_KERNEL_VARIANT" }
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_KERNEL_VARIANT" },
+
+    /* Appended to preserve runtime registry IDs of existing common seeds. */
+    { "common.tensor_const", DSL_OPCODE_CATEGORY_EXECUTABLE,
+        DSL_OPCODE_LEVEL_1_TENSOR, 0,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_TENSOR_CONST" }
 };
+
+static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
+    { OPR_DSLTENSORCONST, "common.tensor_const", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_1_TENSOR, 0,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_TENSOR_CONST",
+        "value_kind;value" },
+    { OPR_DSLADD, "common.add", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_ADD",
+        "attr.broadcast_rule" },
+    { OPR_DSLMATMUL, "common.matmul", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_MATMUL",
+        "attr.transpose_kid0;attr.transpose_kid1" },
+    { OPR_DSLMODELINPUT, "common.model_input", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 0,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_MODEL_INPUT_V2",
+        "attr.input_ordinal" },
+    { OPR_DSLRELU, "common.relu", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_RELU_V2", "" },
+    { OPR_DSLFLATTEN, "common.flatten", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_1_TENSOR, 1,
+        DSL_SHAPE_RULE_VIEW, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_FLATTEN_V2",
+        "attr.start_dim;attr.end_dim" },
+    { OPR_DSLRESIDUALADD, "common.residual_add", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 2,
+        DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_RESIDUAL_ADD_V2",
+        "attr.broadcast_rule;attr.shape_check;attr.residual_path" },
+    { OPR_DSLLINEAR, "common.linear", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 3,
+        DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_LINEAR_V2",
+        "attr.has_bias;attr.transpose_input;attr.transpose_weight;"
+        "attr.weight_layout" },
+    { OPR_DSLOUTPUTLOGITS, "common.output_logits", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 1,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_OUTPUT_LOGITS_V2",
+        "attr.semantic" },
+    { OPR_DSLCONV2D, "cnn.conv2d", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 3,
+        DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CNN_CONV2D_V2",
+        "attr.kernel_shape;attr.stride;attr.padding;attr.dilation;attr.groups;"
+        "attr.input_layout;attr.weight_layout;attr.output_layout" },
+    { OPR_DSLBATCHNORMINFER, "cnn.batch_norm_infer", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 5,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CNN_BATCH_NORM_INFER_V2",
+        "attr.epsilon;attr.training;attr.input_layout;attr.channel_axis" },
+    { OPR_DSLMAXPOOL2D, "cnn.max_pool2d", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 1,
+        DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CNN_MAX_POOL2D_V2",
+        "attr.kernel_shape;attr.stride;attr.padding;attr.dilation;"
+        "attr.ceil_mode" },
+    { OPR_DSLGLOBALAVGPOOL2D, "cnn.global_avg_pool2d", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 1,
+        DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CNN_GLOBAL_AVG_POOL2D_V2",
+        "attr.output_size;attr.reduction_axes" }
+};
+
+static const DSL_LOGICAL_OPERATOR_SEED *
+DSL_Operator_Seed (DSL_OPERATOR dsl_operator)
+{
+    for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_logical_operator_seed); ++i) {
+        if (DSL_logical_operator_seed[i].dsl_operator == dsl_operator)
+            return &DSL_logical_operator_seed[i];
+    }
+
+    return NULL;
+}
+
+BOOL
+DSL_Operator_Get_Info
+        (DSL_OPERATOR dsl_operator,
+         DSL_OPERATOR_INFO *info)
+{
+    const DSL_LOGICAL_OPERATOR_SEED *seed = DSL_Operator_Seed(dsl_operator);
+
+    if (seed == NULL || dsl_operator == OPR_DSLUNKNOWN)
+        return FALSE;
+
+    if (info != NULL) {
+        info->dsl_operator = seed->dsl_operator;
+        info->logical_name = DSL_OPERATOR_name(seed->dsl_operator);
+        info->stable_name = seed->name;
+        info->version = seed->version;
+        info->category = seed->category;
+        info->level = seed->level;
+        info->nkids = seed->nkids;
+        info->shape_rule = seed->shape_rule;
+        info->effect_model = seed->effect_model;
+        info->lowering_model = seed->lowering_model;
+        info->diagnostic_prefix = seed->diagnostic_prefix;
+        info->attribute_schema = seed->attribute_schema;
+        info->flags = 0;
+    }
+
+    return TRUE;
+}
+
+DSL_OPERATOR
+DSL_Operator_Find
+        (const char *stable_name,
+         UINT32 stable_name_len,
+         UINT16 version)
+{
+    if (stable_name == NULL || stable_name_len == 0 || version == 0)
+        return OPR_DSLUNKNOWN;
+
+    for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_logical_operator_seed); ++i) {
+        const DSL_LOGICAL_OPERATOR_SEED &seed = DSL_logical_operator_seed[i];
+
+        if (seed.dsl_operator == OPR_DSLUNKNOWN ||
+            seed.version != version ||
+            strlen(seed.name) != stable_name_len)
+            continue;
+        if (strncmp(seed.name, stable_name, stable_name_len) == 0)
+            return seed.dsl_operator;
+    }
+
+    return OPR_DSLUNKNOWN;
+}
+
+DSL_OPERATOR
+DSL_Operator_Find_Current
+        (const char *stable_name,
+         UINT32 stable_name_len)
+{
+    if (stable_name == NULL || stable_name_len == 0)
+        return OPR_DSLUNKNOWN;
+
+    for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_logical_operator_seed); ++i) {
+        const DSL_LOGICAL_OPERATOR_SEED &seed = DSL_logical_operator_seed[i];
+
+        if (seed.dsl_operator == OPR_DSLUNKNOWN ||
+            strlen(seed.name) != stable_name_len)
+            continue;
+        if (strncmp(seed.name, stable_name, stable_name_len) == 0)
+            return seed.dsl_operator;
+    }
+
+    return OPR_DSLUNKNOWN;
+}
+
+const char *
+DSL_OPERATOR_name (DSL_OPERATOR dsl_operator)
+{
+    return dsl_operator >= OPR_DSLUNKNOWN &&
+           (UINT32)dsl_operator < DSL_ARRAY_COUNT(DSL_operator_name) ?
+           DSL_operator_name[dsl_operator] :
+           DSL_operator_name[OPR_DSLUNKNOWN];
+}
 
 static const DSL_DOMAIN_WRAPPER_SEED DSL_domain_wrapper_seed[] = {
     { "cnn", "cnn.linear", "common.linear", "DOPC_CNN_LINEAR_WRAPPER" },
+    { "cnn", "cnn.max_pool2d", "common.window_reduce",
+        "DOPC_CNN_MAX_POOL2D_WRAPPER" },
+    { "cnn", "cnn.global_avg_pool2d", "common.reduce_mean",
+        "DOPC_CNN_GLOBAL_AVG_POOL2D_WRAPPER" },
+    { "cnn", "cnn.conv2d", "common.window_reduce",
+        "DOPC_CNN_CONV2D_WRAPPER" },
+    { "cnn", "cnn.batch_norm_infer", "common.normalization_base",
+        "DOPC_CNN_BATCH_NORM_INFER_WRAPPER" },
     { "transformer", "transformer.q_projection", "common.linear",
         "DOPC_TRANSFORMER_Q_PROJECTION_WRAPPER" },
     { "cnn", "cnn.residual_add", "common.residual_add",
@@ -422,6 +630,18 @@ static const DSL_OPCODE_PROMOTION_SEED DSL_opcode_promotion_seed[] = {
         DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
         "affine_projection", "cnn.linear", "classifier_head_contract",
         "CPROM-005" },
+    { "cnn", "cnn.max_pool2d", "common.window_reduce",
+        DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+        "windowed_max_reduction", "cnn.max_pool2d",
+        "kernel_stride_padding_dilation", "CPROM-006" },
+    { "cnn", "cnn.global_avg_pool2d", "common.reduce_mean",
+        DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+        "spatial_mean_reduction", "cnn.global_avg_pool2d",
+        "global_spatial_axes", "CPROM-006" },
+    { "cnn", "cnn.batch_norm_infer", "common.normalization_base",
+        DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
+        "inference_normalization", "cnn.batch_norm_infer",
+        "scale_bias_running_stats_epsilon", "CPROM-006" },
     { "transformer", "transformer.q_projection", "common.linear",
         DSL_OPCODE_PROMOTION_WRAPPER_TO_COMMON,
         "affine_projection", "transformer.q_projection",
@@ -703,6 +923,31 @@ DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info)
     return DSL_Opcode_Get_Info(DSL_opcode_registry[ordinal].id, info);
 }
 
+static UINT32
+DSL_Opcode_Register_Logical_Domain
+        (const char *domain_name,
+         DSL_DOMAIN_ID domain_id)
+{
+    size_t domain_length = strlen(domain_name);
+    UINT32 registered = 0;
+
+    for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_logical_operator_seed); ++i) {
+        const DSL_LOGICAL_OPERATOR_SEED &seed = DSL_logical_operator_seed[i];
+        if (seed.version < 2 ||
+            strncmp(seed.name, domain_name, domain_length) != 0 ||
+            seed.name[domain_length] != '.')
+            continue;
+
+        DSL_OPCODE_ID id = DSL_Opcode_Register
+            (domain_id, seed.name, seed.version, seed.category, seed.level,
+             seed.nkids, seed.shape_rule, seed.effect_model,
+             seed.lowering_model, seed.diagnostic_prefix, 0);
+        if (id != DSL_OPCODE_INVALID_ID)
+            ++registered;
+    }
+    return registered;
+}
+
 UINT32
 DSL_Opcode_Register_Common_Substrate (void)
 {
@@ -719,20 +964,22 @@ DSL_Opcode_Register_Common_Substrate (void)
         const DSL_COMMON_OPCODE_SEED &seed = DSL_common_opcode_seed[i];
         DSL_OPCODE_ID id =
             DSL_Opcode_Register(common_id,
-			  seed.name,
-			  1,
-			  seed.category,
-			  seed.level,
-			  seed.nkids,
-			  seed.shape_rule,
-			  seed.effect_model,
-			  seed.lowering_model,
-			  seed.diagnostic_prefix,
-			  0);
+                                seed.name,
+                                1,
+                                seed.category,
+                                seed.level,
+                                seed.nkids,
+                                seed.shape_rule,
+                                seed.effect_model,
+                                seed.lowering_model,
+                                seed.diagnostic_prefix,
+                                0);
 
         if (id != DSL_OPCODE_INVALID_ID)
             ++registered;
     }
+
+    registered += DSL_Opcode_Register_Logical_Domain("common", common_id);
 
     return registered;
 }
@@ -772,6 +1019,10 @@ DSL_Opcode_Register_Domain_Wrapper_Examples (void)
         if (id != DSL_OPCODE_INVALID_ID)
             ++registered;
     }
+
+    DSL_DOMAIN_ID cnn_id = DSL_Domain_Find("cnn");
+    if (cnn_id != DSL_DOMAIN_INVALID_ID)
+        registered += DSL_Opcode_Register_Logical_Domain("cnn", cnn_id);
 
     return registered;
 }

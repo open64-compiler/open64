@@ -207,6 +207,8 @@ TY_tensor_schema_key_name (TY_TENSOR_SCHEMA_KEY key)
         return "source_layer_name";
     case TY_TENSOR_SCHEMA_LOWERING_HINT:
         return "lowering_hint";
+    case TY_TENSOR_SCHEMA_NO_ALIAS:
+        return "no_alias";
     case TY_TENSOR_SCHEMA_UNKNOWN:
     default:
         return "";

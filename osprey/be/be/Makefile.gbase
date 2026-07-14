@@ -307,6 +307,8 @@ BE_REGION_CXX_SRCS = \
   region_util.cxx
 
 BE_VHO_CXX_SRCS = \
+  dsl_lower.cxx          \
+  dsl_opt.cxx            \
   f90_lower.cxx           \
   f90_lower_dep.cxx     \
   vho_lower.cxx		\
@@ -316,6 +318,10 @@ COMMON_COM_CXX_SRCS = \
   com_whirlview.cxx     \
   config.cxx		\
   config_cache.cxx	\
+  dsl_domain.cxx       \
+  dsl_gatekeeper.cxx   \
+  dsl_ir_image.cxx     \
+  dsl_opcode.cxx       \
   dra_demangle.cxx	\
   dwarf_DST.cxx		\
   dwarf_DST_dump.cxx	\

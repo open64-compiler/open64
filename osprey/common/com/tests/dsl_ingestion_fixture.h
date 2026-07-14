@@ -1,10 +1,8 @@
 /*
  * Native C++ fixtures that simulate the future Python ingestion builder calls.
  *
- * These helpers intentionally use today's staged DSL marker and tensor
- * descriptor storage.  They create native KIND_TENSOR TY records through the
- * existing descriptor side table, but do not introduce Python bindings, native
- * WHIRL opcodes, or binary image sections.
+ * These helpers create native tensor types and value-producing DSL operators
+ * through the same opaque builder API used by the frontend bridge.
  */
 
 #ifndef dsl_ingestion_fixture_INCLUDED
@@ -26,23 +24,55 @@ typedef struct {
     const char *name;
 } DSL_FIXTURE_VALUE;
 
+static WN *
+DSL_Fixture_Value_Expression (WN *value)
+{
+    return value != NULL && WN_operator(value) == OPR_STID ?
+           WN_kid0(value) : value;
+}
+
+static BOOL
+DSL_Fixture_Get_Opcode_Annotation
+        (WN *value,
+         DSL_OPCODE_ANNOTATION *annotation)
+{
+    DSL_BUILDER_VALUE_INFO info;
+
+    if (!DSL_Builder_Get_Value_Info(value, &info))
+        return FALSE;
+    if (annotation != NULL) {
+        annotation->name = info.opcode_name;
+        annotation->name_len = info.opcode_name_len;
+        annotation->version = info.version;
+        annotation->payload = info.payload;
+    }
+    return TRUE;
+}
+
 static TY_IDX
 DSL_Fixture_Create_Tensor_Type (const char *type_name,
-				const char *dtype,
-				INT32 rank,
-				const char *shape,
-				const char *layout)
+                                const char *dtype,
+                                INT32 rank,
+                                const char *shape,
+                                const char *layout)
 {
-    TY_IDX tensor_ty = TY_Create_Tensor_Type
-			  (type_name, MTYPE_To_TY(MTYPE_I4), rank);
-    char rank_buf[32];
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    TY_IDX tensor_ty;
 
-    snprintf (rank_buf, sizeof(rank_buf), "%d", rank);
-    TY_tensor_bind_attribute (tensor_ty, TY_TENSOR_SCHEMA_KIND, "tensor");
-    TY_tensor_bind_attribute (tensor_ty, TY_TENSOR_SCHEMA_DTYPE, dtype);
-    TY_tensor_bind_attribute (tensor_ty, TY_TENSOR_SCHEMA_RANK, rank_buf);
-    TY_tensor_bind_attribute (tensor_ty, TY_TENSOR_SCHEMA_SHAPE, shape);
-    TY_tensor_bind_attribute (tensor_ty, TY_TENSOR_SCHEMA_LAYOUT, layout);
+    memset (&type_core, 0, sizeof(type_core));
+    memset (&descriptor, 0, sizeof(descriptor));
+
+    type_core.kind = "tensor";
+    type_core.dtype = dtype;
+    type_core.rank = rank;
+    type_core.logical_shape = shape;
+    tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+                    (type_name, MTYPE_To_TY(MTYPE_I4), &type_core);
+
+    descriptor.type_core = type_core;
+    descriptor.representation.layout = layout;
+    DSL_Builder_Attach_Tensor_Descriptor (tensor_ty, &descriptor);
     TY_tensor_declare_attribute (tensor_ty, TY_TENSOR_SCHEMA_TRAITS);
     TY_tensor_declare_attribute (tensor_ty, TY_TENSOR_SCHEMA_SHARDING);
     TY_tensor_declare_attribute (tensor_ty, TY_TENSOR_SCHEMA_LINEAGE);
@@ -52,75 +82,115 @@ DSL_Fixture_Create_Tensor_Type (const char *type_name,
 
 static ST_IDX
 DSL_Fixture_Create_Tensor_Symbol (const char *symbol_name,
-				  TY_IDX tensor_ty,
-				  const char *source_layer_name,
-				  const char *lowering_hint)
+                                  TY_IDX tensor_ty,
+                                  const char *source_layer_name,
+                                  const char *lowering_hint)
 {
-    ST *st = New_ST();
-    ST_Init (st, Save_Str(symbol_name), CLASS_VAR, SCLASS_UGLOBAL,
-	     EXPORT_LOCAL, tensor_ty);
-    ST_tensor_bind_metadata (ST_st_idx(*st),
-			     TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME,
-			     source_layer_name);
-    ST_tensor_bind_metadata (ST_st_idx(*st),
-			     TY_TENSOR_SCHEMA_LOWERING_HINT,
-			     lowering_hint);
-    return ST_st_idx(*st);
+    DSL_BUILDER_COMPILER_METADATA metadata[2];
+    ST_IDX st = DSL_Builder_Create_Symbol (symbol_name, tensor_ty, CLASS_VAR,
+                                           SCLASS_UGLOBAL, EXPORT_LOCAL);
+
+    metadata[0].name = TY_tensor_schema_key_name
+                           (TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME);
+    metadata[0].value = source_layer_name;
+    metadata[1].name = TY_tensor_schema_key_name
+                           (TY_TENSOR_SCHEMA_LOWERING_HINT);
+    metadata[1].value = lowering_hint;
+    DSL_Builder_Attach_Metadata (st, metadata, 2);
+    return st;
 }
 
 static DSL_FIXTURE_VALUE
 DSL_Fixture_Create_Tensor_Const (const char *value_name,
-				 const char *type_name,
-				 const char *dtype,
-				 INT32 rank,
-				 const char *shape,
-				 const char *layout,
-				 const char *value)
+                                 const char *type_name,
+                                 const char *dtype,
+                                 INT32 rank,
+                                 const char *shape,
+                                 const char *layout,
+                                 const char *value)
 {
     DSL_FIXTURE_VALUE fixture;
 
     fixture.name = value_name;
     fixture.ty = DSL_Fixture_Create_Tensor_Type (type_name, dtype, rank,
-						 shape, layout);
+                                                 shape, layout);
     fixture.st = DSL_Fixture_Create_Tensor_Symbol (value_name,
-						   fixture.ty,
-						   "dsl_ingestion_fixture",
-						   "native_fixture");
-    fixture.value = DSL_WN_Create_Tensor_Const (value_name, dtype, rank,
-						shape, "splat", value);
+                                                   fixture.ty,
+                                                   "dsl_ingestion_fixture",
+                                                   "native_fixture");
+    fixture.value = DSL_Builder_Create_Tensor_Constant
+                        (value_name, fixture.ty, dtype, rank, shape,
+                         "splat", value);
     return fixture;
 }
 
 static WN *
 DSL_Fixture_Create_Binary_Operator (const char *opcode,
-				    const DSL_FIXTURE_VALUE *kid0,
-				    const DSL_FIXTURE_VALUE *kid1,
-				    const char *attributes)
+                                    const DSL_FIXTURE_VALUE *kid0,
+                                    const DSL_FIXTURE_VALUE *kid1,
+                                    const char *attributes)
 {
-    char payload[1024];
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID opcode_id;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attrs[4];
+    UINT32 attr_count = 0;
+    char attr_buf[1024];
 
-    snprintf (payload, sizeof(payload), "kid0=%s;kid1=%s;%s",
-	      kid0 == NULL ? "" : kid0->name,
-	      kid1 == NULL ? "" : kid1->name,
-	      attributes == NULL ? "" : attributes);
-    return DSL_WN_Create_Opcode (opcode, 1, payload);
+    DSL_Opcode_Register_Common_Substrate ();
+    common_id = DSL_Domain_Find ("common");
+    opcode_id = DSL_Opcode_Find (common_id, opcode, 1);
+
+    if (attributes != NULL) {
+        char *cursor;
+        size_t attr_len = strlen (attributes);
+        if (attr_len >= sizeof(attr_buf))
+            attr_len = sizeof(attr_buf) - 1;
+        memcpy (attr_buf, attributes, attr_len);
+        attr_buf[attr_len] = '\0';
+
+        cursor = attr_buf;
+        while (*cursor != '\0' && attr_count < 4) {
+            char *next = strchr (cursor, ';');
+            char *equals = strchr (cursor, '=');
+            if (next != NULL)
+                *next = '\0';
+            if (equals != NULL) {
+                *equals = '\0';
+                attrs[attr_count].name = cursor;
+                attrs[attr_count].value = equals + 1;
+            } else {
+                attrs[attr_count].name = cursor;
+                attrs[attr_count].value = "";
+            }
+            ++attr_count;
+            if (next == NULL)
+                break;
+            cursor = next + 1;
+        }
+    }
+
+    kids[0] = kid0 == NULL ? NULL : kid0->value;
+    kids[1] = kid1 == NULL ? NULL : kid1->value;
+    return DSL_Builder_Create_Operator (opcode_id, 1, kids, 2, attrs,
+                                        attr_count);
 }
 
 static WN *
 DSL_Fixture_Create_Common_Add (const DSL_FIXTURE_VALUE *kid0,
-			       const DSL_FIXTURE_VALUE *kid1)
+                               const DSL_FIXTURE_VALUE *kid1)
 {
     return DSL_Fixture_Create_Binary_Operator
-	     (DSL_OPCODE_COMMON_ADD, kid0, kid1, "attr.broadcast_rule=none");
+               (DSL_OPCODE_COMMON_ADD, kid0, kid1, "attr.broadcast_rule=none");
 }
 
 static WN *
 DSL_Fixture_Create_Common_Matmul (const DSL_FIXTURE_VALUE *kid0,
-				  const DSL_FIXTURE_VALUE *kid1)
+                                  const DSL_FIXTURE_VALUE *kid1)
 {
     return DSL_Fixture_Create_Binary_Operator
-	     (DSL_OPCODE_COMMON_MATMUL, kid0, kid1,
-	      "attr.transpose_kid0=false;attr.transpose_kid1=false");
+               (DSL_OPCODE_COMMON_MATMUL, kid0, kid1,
+                "attr.transpose_kid0=false;attr.transpose_kid1=false");
 }
 
 #endif /* dsl_ingestion_fixture_INCLUDED */

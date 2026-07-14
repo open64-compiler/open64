@@ -130,6 +130,7 @@
 #include "fb_whirl.h"		    /* for FEEDBACK */
 #include "eh_region.h"		    /* for EH_Generate_Range_List, etc. */
 #include "vho_lower.h"
+#include "dsl_lower.h"
 #include "iter.h"		    /* PU iterator for loops */
 #include "dra_export.h"             /* for DRA routines */
 #include "ti_init.h"		    /* for targ_info */
@@ -1811,7 +1812,10 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
-  Set_Error_Phase ( "VHO Processing" );
+  Set_Error_Phase ( "DSL VHO Processing" );
+  pu = VHO_DSL_Lower_Driver (current_pu, pu);
+
+  Set_Error_Phase ( "Language VHO Processing" );
   pu = VHO_Lower_Driver (current_pu, pu);
 
   if ( Cur_PU_Feedback ) {
@@ -2438,4 +2442,3 @@ main (INT argc, char **argv)
 } /* main */
 
 #endif /* LD_PLUGIN_REMOVE_MAIN */
-

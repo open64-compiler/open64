@@ -76,10 +76,10 @@ gen_makefile:
 	echo "cmake -DCMAKE_C_COMPILER="$(CC)" -DCMAKE_C_FLAGS="$(NCFLAGS)" -DCMAKE_CXX_COMPILER="$(C++)" -DCMAKE_CXX_FLAGS="$(NXXCFLAGS)" -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DARCHIVE_INSTALL_DIR=$(TARGDIR) $(BUILD_TOT)/libjson"
 	cd libjson && cmake -DCMAKE_C_COMPILER="$(CC)" -DCMAKE_CXX_COMPILER="$(C++)" -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DARCHIVE_INSTALL_DIR=$(TARGDIR) $(BUILD_TOT)/libjson
 
-
+# CMake invokes a recursive make; preserve jobserver descriptors for -j.
 libjson: gen_makefile 
 	echo "make libjson"
-	cd libjson && cmake --build src/lib_json
+	+cd libjson && cmake --build src/lib_json
 	cp libjson/src/lib_json/libjsoncpp.a libjsoncpp.a
 
 clobber: clean
@@ -89,4 +89,3 @@ clean:
 	if  test -e libjson; then cd libjson && make clean; fi
 	rm -rf libjsoncpp.a
 last: make_deps
-

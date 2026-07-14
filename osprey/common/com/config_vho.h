@@ -125,4 +125,3 @@ extern OPTION_LIST* VHO_Skip;          // enable -VHO:skip_* for debugging
 extern SKIPLIST* VHO_Skip_List;    
 
 #endif /* config_vho_INCLUDED */
-
