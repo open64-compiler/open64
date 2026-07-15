@@ -1147,7 +1147,7 @@ full-sequence causal prompt evaluation with no KV cache.
    separate value in version 1.  Existing common schemas are not widened:
    bias-free linear, batched matmul, and sequence logits use additive versions.
 
-23. [ ] Implement the published common tensor substrate schemas.
+23. [x] Implement the published common tensor substrate schemas.
 
    Add native `common.reshape.v1`, `common.transpose.v1`, bias-free
    rank-generic `common.linear.v3`, exact-prefix batched `common.matmul.v2`, and
@@ -1155,7 +1155,21 @@ full-sequence causal prompt evaluation with no KV cache.
    version-1/version-2 behavior.  Add exact-version lookup, result inference,
    gatekeeper, mapped-image, logical printer, and malformed-schema tests.
 
-24. [ ] Implement transformer-domain prefill expressions.
+   Completed on `codex/llama2-common-substrate`.  Logical operator values 14
+   and 15 append reshape and transpose without changing released values.
+   Linear, matmul, and output-logits reuse their established logical operator
+   identities with exact additive schemas; old versions continue to use their
+   original operand, attribute, verification, and lowering contracts.  The
+   builder infers static result descriptors for reshape, transpose,
+   rank-generic bias-free linear, and exact-prefix batched matmul.  Focused
+   tests reject element-changing reshape, invalid permutations, version/schema
+   mismatch, missing attributes, and corrupted inferred result descriptors.
+   The mapped-image review artifacts are retained as
+   `artifacts/item23/llama2_common_substrate.B` and the corresponding
+   `ir_b2a -st -src` output
+   `artifacts/item23/llama2_common_substrate.T`.
+
+24. [x] Implement transformer-domain prefill expressions.
 
    Add native `transformer.token_embedding.v1`, `transformer.rms_norm.v1`,
    single-result `transformer.rotary_embedding.v1`, pure no-cache
@@ -1163,7 +1177,20 @@ full-sequence causal prompt evaluation with no KV cache.
    `transformer.swiglu.v1`.  Apply every dtype, shape, layout, mask, head,
    scale, and profile check published by item 22 before partial promotion.
 
-25. [ ] Implement transformer structured-region contracts.
+   Completed on `codex/llama2-common-substrate`.  Append-only logical values
+   16 through 20 implement the five published transformer expressions without
+   changing the physical WN escape representation.  The transformer domain
+   has an explicit native registration API.  Builder inference and the
+   authoritative gatekeeper enforce the static float32/int64 profile,
+   embedding bounds guard, RMS axis and positive epsilon, exact half-split
+   RoPE tables, BHSD causal full-sequence attention with equal query/KV heads
+   and no cache, and exact-shape SiLU gating.  Focused malformed-profile tests
+   cover every expression family.  Review artifacts are retained as
+   `artifacts/item24/llama2_transformer_expressions.B` and its corresponding
+   `ir_b2a -st -src` output
+   `artifacts/item24/llama2_transformer_expressions.T`.
+
+25. [x] Implement transformer structured-region contracts.
 
    Use the common RID/WT_REGIONS substrate for
    `transformer.decoder_layer.v1` and `transformer.prefill.v1`.  Declare
@@ -1171,7 +1198,19 @@ full-sequence causal prompt evaluation with no KV cache.
    context, verify topology and outer-owned no-alias results, and print stable
    logical region evidence after mapped-image reopen.
 
-26. [ ] Complete transformer artifact inspection and compatibility coverage.
+   Completed on `codex/llama2-common-substrate`.  The opaque builder now
+   appends managed child regions and records compiler-only region metadata in
+   reserved pragma-block comments, leaving the version-1 `WT_REGIONS` image
+   layout unchanged.  The common verifier enforces the published decoder
+   operator sequence, prefill nesting and tail, deterministic first-use input
+   interfaces, independent input/output ordinal spaces, nested source
+   positions, module path and layer ordinal context, and an outer-owned
+   no-alias final result.  `ir_b2a -st -src` prints stable logical contracts,
+   interfaces, and metadata after mapped-image reopen.  Review artifacts are
+   retained as `artifacts/item25/llama2_transformer_regions.B` and
+   `artifacts/item25/llama2_transformer_regions.T`.
+
+26. [x] Complete transformer artifact inspection and compatibility coverage.
 
    Carry every new logical opcode, node, attribute, descriptor, value
    reference, region contract, RID mapping, source position, and external
@@ -1179,12 +1218,51 @@ full-sequence causal prompt evaluation with no KV cache.
    `ir_b2a -st -src` without exposing the private physical DSL escape tag.
    Preserve old-image readability and existing ResNet behavior.
 
-27. [ ] Add verified Llama 2 prefill VHO DSL lowering.
+   Completed on `codex/llama2-common-substrate`.  The retained compatibility
+   fixture generates the item-23 common schemas, item-24 transformer
+   expressions, and item-25 structured prefill as independent binary WHIRL
+   images, reopens each through `ir_b2a -st -src`, and checks all logical
+   opcode, node, typed-attribute, tensor descriptor, value, value-reference,
+   RID mapping, source-position, and compiler-metadata evidence.  The
+   structured image now carries nine deterministic SafeTensors references;
+   computed embedding results preserve dtype, layout, and quantization without
+   inheriting side-file placement or external-data memory from their weights.
+   The same current reader reopens the retained pre-transformer item-23 image
+   with no synthetic REGION table and the retained simple ResNet contract
+   image with its model-input and residual-add semantics unchanged.  No trace
+   exposes the private physical `OPR_DSL` escape tag or `MDSL` encoding.
+   Review artifacts are retained under `artifacts/item26/`.
+
+27. [x] Add verified Llama 2 prefill VHO DSL lowering.
 
    Lower only after transformer gatekeeper success.  Preserve domain semantics
    until verification, then lower approved expressions to common substrate or
    the selected runtime ABI.  Consume every executable DSL value and splice
    managed regions before standard VHO, WOPT, LNO, or CG.
+
+   Completed on `codex/llama2-common-substrate`.  Exact gatekeeper-approved
+   schemas for `common.matmul.v2`, `common.linear.v3`,
+   `common.output_logits.v3`, `common.reshape.v1`, `common.transpose.v1`, and
+   the five transformer prefill expressions now select explicit version-1
+   runtime entry points.  Fixed policy encoded by the verified schema remains
+   implicit in that ABI; dynamic operands, tensor descriptors, permutations,
+   RMS epsilon/axis, attention head geometry, optional-bias absence, and the
+   token-logits semantic are passed explicitly where required.  Older ResNet
+   routes retain their established entry points and ABI values.
+
+   `VHO_DSL_Lower_Verified_Program_Unit()` now obtains operator policy by exact
+   logical version, consumes each native value into a unique pointer PREG,
+   retains the high-level `OPR_COMMENT` projection, and removes managed REGION
+   records before splicing their lowered bodies.  When the last managed region
+   is consumed, `WT_REGIONS` returns to `Subsect_Missing`; no stale WN mapping
+   remains for a removed `OPR_REGION`.
+
+   The executable lowering fixture proves gatekeeper-first handling for 21
+   prefill values, exact runtime call names and arities, the v3 linear null-bias
+   slot, token-logits semantic value, complete removal of executable DSL
+   carriers, and managed REGION cleanup.  The backend and native syntax matrix
+   pass.  The post-lowering review trace is retained as
+   `artifacts/item27/llama2_prefill_lowered.T`.
 
 28. [ ] Certify the tiny prefill artifact across the process boundary.
 
@@ -1193,6 +1271,18 @@ full-sequence causal prompt evaluation with no KV cache.
    region interfaces, stable rejection, and `openpy -keep` plus `-O0`
    lowering.  Preserve `llama2.B`, `llama2.safetensors`, and `llama2.T` in a
    host-mounted review directory.
+
+   Native infrastructure preflight is complete on
+   `codex/llama2-common-substrate`.  The reproducible
+   `dsl_builder_contract_test` target and
+   `dsl_llama2_prefill_process_test.sh` native mode prove builder
+   construction, positive and stable negative gatekeeper cases, mapped-image
+   write/reopen, `ir_b2a -st -src`, source positions, external tensor
+   references, nested region interfaces, and private escape-tag hiding.
+   Review artifacts are retained under `artifacts/item28/`.  The item remains
+   open until the torch2whirl L2-L7 handoff supplies the real Python model and
+   SafeTensors payload, after which full mode must pass `openpy -keep -O0` and
+   preserve both the source-correlated and post-lowering traces.
 
 29. [ ] Design stateful decode and KV cache as a later versioned extension.
 

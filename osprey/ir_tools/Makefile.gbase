@@ -155,6 +155,7 @@ BE_VHO_DIR= $(BUILD_TOT)/be/vho
 BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
+LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
 
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
 	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
@@ -278,6 +279,14 @@ ir_size: $(OBJECTS) ir_size.o ir_b2a
 
 ir_walker: $(OBJECTS) ir_walker.o
 	$(link.c++f) -o ir_walker ir_walker.o $(OBJECTS) $(LDFLAGS)
+
+dsl_builder_contract_test: $(OBJECTS) controls.o dsl_builder_contract_test.o
+	$(link.c++f) -o $@ dsl_builder_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_builder_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 uwasm_nwrap: $(OBJECTS) uwasm_nwrap.o
 	$(link.c++f) -o  uwasm_nwrap uwasm_nwrap.o $(OBJECTS) $(LDFLAGS)

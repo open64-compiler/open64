@@ -12,6 +12,8 @@ typedef char DSL_runtime_abi_version_must_be_1
     [OPEN64_DSL_RUNTIME_ABI_VERSION == 1 ? 1 : -1];
 typedef char DSL_runtime_logits_semantic_must_be_1
     [OPEN64_DSL_OUTPUT_SEMANTIC_LOGITS == 1 ? 1 : -1];
+typedef char DSL_runtime_token_logits_semantic_must_be_2
+    [OPEN64_DSL_OUTPUT_SEMANTIC_TOKEN_LOGITS == 2 ? 1 : -1];
 typedef char DSL_runtime_operator_layout_nchw_must_be_1
     [OPEN64_DSL_OPERATOR_LAYOUT_NCHW == 1 ? 1 : -1];
 typedef char DSL_runtime_operator_layout_oihw_must_be_2

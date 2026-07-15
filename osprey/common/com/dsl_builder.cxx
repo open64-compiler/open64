@@ -7,6 +7,7 @@
 #endif /* USE_PCH */
 #pragma hdrstop
 #include <ctype.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -338,7 +339,7 @@ DSL_Builder_Parse_Matrix_Shape
 }
 
 static TY_IDX
-DSL_Builder_Create_Matmul_Result_Type
+DSL_Builder_Create_Matmul_V1_Result_Type
         (TY_IDX kid0_ty,
          TY_IDX kid1_ty,
          const char *name)
@@ -410,6 +411,58 @@ DSL_Builder_Find_Operator_Attribute
 }
 
 static BOOL
+DSL_Builder_Attributes_Match_Schema
+        (const DSL_OPERATOR_INFO *info,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count)
+{
+    if (info == NULL || (attr_count != 0 && attrs == NULL))
+        return FALSE;
+
+    const char *schema = DSL_Builder_Safe_String(info->attribute_schema);
+    const char *cursor = schema;
+    UINT32 required_count = 0;
+    while (*cursor != '\0') {
+        const char *end = strchr(cursor, ';');
+        size_t length = end == NULL ? strlen(cursor) :
+                                     (size_t)(end - cursor);
+        if (length != 0) {
+            ++required_count;
+            UINT32 matches = 0;
+            for (UINT32 i = 0; i < attr_count; ++i) {
+                if (attrs[i].name != NULL &&
+                    strlen(attrs[i].name) == length &&
+                    strncmp(attrs[i].name, cursor, length) == 0)
+                    ++matches;
+            }
+            if (matches != 1)
+                return FALSE;
+        }
+        if (end == NULL)
+            break;
+        cursor = end + 1;
+    }
+    return required_count == attr_count;
+}
+
+static BOOL
+DSL_Builder_Requires_Exact_Attribute_Schema
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version)
+{
+    return dsl_operator == OPR_DSLRESHAPE ||
+           dsl_operator == OPR_DSLTRANSPOSE ||
+           dsl_operator == OPR_DSLTOKENEMBEDDING ||
+           dsl_operator == OPR_DSLRMSNORM ||
+           dsl_operator == OPR_DSLROTARYEMBEDDING ||
+           dsl_operator == OPR_DSLATTENTION ||
+           dsl_operator == OPR_DSLSWIGLU ||
+           (dsl_operator == OPR_DSLMATMUL && version == 2) ||
+           (dsl_operator == OPR_DSLLINEAR && version == 3) ||
+           (dsl_operator == OPR_DSLOUTPUTLOGITS && version == 3);
+}
+
+static BOOL
 DSL_Builder_Parse_Signed_Attribute
         (const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
          UINT32 attr_count,
@@ -426,6 +479,33 @@ DSL_Builder_Parse_Signed_Attribute
         parsed > INT32_MAX)
         return FALSE;
     *value = (INT32)parsed;
+    return TRUE;
+}
+
+static BOOL
+DSL_Builder_Parse_Unsigned_Attribute
+        (const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name,
+         UINT64 *value)
+{
+    const char *text = DSL_Builder_Find_Operator_Attribute
+                           (attrs, attr_count, name);
+    if (text == NULL || !isdigit((unsigned char)text[0]))
+        return FALSE;
+    UINT64 parsed = 0;
+    const char *cursor = text;
+    while (isdigit((unsigned char)*cursor)) {
+        UINT64 digit = (UINT64)(*cursor - '0');
+        if (parsed > (~(UINT64)0 - digit) / 10)
+            return FALSE;
+        parsed = parsed * 10 + digit;
+        ++cursor;
+    }
+    if (*cursor != '\0')
+        return FALSE;
+    if (value != NULL)
+        *value = parsed;
     return TRUE;
 }
 
@@ -476,12 +556,62 @@ DSL_Builder_Parse_Static_Shape
     return *cursor == '\0';
 }
 
+static BOOL
+DSL_Builder_Parse_Unsigned_List
+        (const char *text,
+         BOOL allow_zero,
+         std::vector<UINT64> *values)
+{
+    if (text == NULL || values == NULL || text[0] == '\0')
+        return FALSE;
+
+    values->clear();
+    const char *cursor = text;
+    while (*cursor != '\0') {
+        if (!isdigit((unsigned char)*cursor))
+            return FALSE;
+        UINT64 value = 0;
+        while (isdigit((unsigned char)*cursor)) {
+            UINT64 digit = (UINT64)(*cursor - '0');
+            if (value > (~(UINT64)0 - digit) / 10)
+                return FALSE;
+            value = value * 10 + digit;
+            ++cursor;
+        }
+        if (!allow_zero && value == 0)
+            return FALSE;
+        values->push_back(value);
+        if (*cursor == '\0')
+            break;
+        if (*cursor++ != ',' || *cursor == '\0')
+            return FALSE;
+    }
+    return !values->empty();
+}
+
+static BOOL
+DSL_Builder_Tensor_Element_Type_Compatible
+        (TY_IDX left,
+         TY_IDX right)
+{
+    const char *left_dtype =
+        TY_tensor_attribute(left, TY_TENSOR_SCHEMA_DTYPE);
+    const char *right_dtype =
+        TY_tensor_attribute(right, TY_TENSOR_SCHEMA_DTYPE);
+
+    return TY_is_tensor_extension(left) && TY_is_tensor_extension(right) &&
+           TY_tensor_element_ty(left) == TY_tensor_element_ty(right) &&
+           left_dtype != NULL && right_dtype != NULL &&
+           strcmp(left_dtype, right_dtype) == 0;
+}
+
 static TY_IDX
-DSL_Builder_Create_Derived_Result_Type
+DSL_Builder_Create_Result_Type
         (TY_IDX input_ty,
          const std::vector<UINT64> &dimensions,
          const char *name,
-         const char *lineage)
+         const char *lineage,
+         BOOL preserve_representation)
 {
     std::string shape = "[";
     for (UINT32 i = 0; i < dimensions.size(); ++i) {
@@ -504,18 +634,25 @@ DSL_Builder_Create_Derived_Result_Type
     descriptor.type_core.logical_shape = shape.c_str();
     descriptor.traits.traits =
         TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_TRAITS);
-    descriptor.representation.layout =
-        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_LAYOUT);
-    descriptor.representation.sharding =
-        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHARDING);
-    descriptor.representation.placement =
-        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_PLACEMENT);
-    descriptor.representation.memory =
-        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_MEMORY);
-    descriptor.representation.quantization =
-        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_QUANTIZATION);
-    descriptor.representation.runtime_state =
-        TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_RUNTIME_STATE);
+    if (preserve_representation) {
+        descriptor.representation.layout =
+            TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_LAYOUT);
+        descriptor.representation.sharding =
+            TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHARDING);
+        descriptor.representation.placement =
+            TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_PLACEMENT);
+        descriptor.representation.memory =
+            TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_MEMORY);
+        descriptor.representation.quantization =
+            TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_QUANTIZATION);
+        descriptor.representation.runtime_state =
+            TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_RUNTIME_STATE);
+    } else {
+        descriptor.representation.layout =
+            TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_LAYOUT);
+        descriptor.representation.quantization =
+            TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_QUANTIZATION);
+    }
     descriptor.lineage.lineage = lineage;
 
     TY_IDX result_ty = DSL_Builder_Create_Tensor_Type_Core
@@ -524,6 +661,17 @@ DSL_Builder_Create_Derived_Result_Type
     if (!DSL_Builder_Attach_Tensor_Descriptor(result_ty, &descriptor))
         return TY_IDX_ZERO;
     return result_ty;
+}
+
+static TY_IDX
+DSL_Builder_Create_Derived_Result_Type
+        (TY_IDX input_ty,
+         const std::vector<UINT64> &dimensions,
+         const char *name,
+         const char *lineage)
+{
+    return DSL_Builder_Create_Result_Type
+               (input_ty, dimensions, name, lineage, TRUE);
 }
 
 static BOOL
@@ -567,8 +715,309 @@ DSL_Builder_Attribute_Equals
 }
 
 static TY_IDX
-DSL_Builder_Create_Linear_Result_Type
+DSL_Builder_Create_Reshape_Result_Type
         (TY_IDX input_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    std::vector<UINT64> input;
+    std::vector<UINT64> result;
+    const char *target_shape = DSL_Builder_Find_Operator_Attribute
+                                   (attrs, attr_count, "attr.target_shape");
+    if (!DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE), &input) ||
+        !DSL_Builder_Parse_Unsigned_List
+             (target_shape, FALSE, &result))
+        return TY_IDX_ZERO;
+
+    UINT64 input_elements = 1;
+    UINT64 result_elements = 1;
+    for (UINT32 i = 0; i < input.size(); ++i) {
+        if (input_elements > ~(UINT64)0 / input[i])
+            return TY_IDX_ZERO;
+        input_elements *= input[i];
+    }
+    for (UINT32 i = 0; i < result.size(); ++i) {
+        if (result_elements > ~(UINT64)0 / result[i])
+            return TY_IDX_ZERO;
+        result_elements *= result[i];
+    }
+    if (input_elements != result_elements)
+        return TY_IDX_ZERO;
+
+    return DSL_Builder_Create_Derived_Result_Type
+               (input_ty, result, name, "common.reshape");
+}
+
+static TY_IDX
+DSL_Builder_Create_Transpose_Result_Type
+        (TY_IDX input_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    std::vector<UINT64> input;
+    std::vector<UINT64> permutation;
+    const char *permutation_text = DSL_Builder_Find_Operator_Attribute
+                                       (attrs, attr_count, "attr.permutation");
+    if (!DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE), &input) ||
+        !DSL_Builder_Parse_Unsigned_List
+             (permutation_text, TRUE, &permutation) ||
+        permutation.size() != input.size())
+        return TY_IDX_ZERO;
+
+    std::vector<BOOL> seen(input.size(), FALSE);
+    std::vector<UINT64> result(input.size());
+    for (UINT32 i = 0; i < permutation.size(); ++i) {
+        if (permutation[i] >= input.size() || seen[permutation[i]])
+            return TY_IDX_ZERO;
+        seen[permutation[i]] = TRUE;
+        result[i] = input[permutation[i]];
+    }
+    return DSL_Builder_Create_Derived_Result_Type
+               (input_ty, result, name, "common.transpose");
+}
+
+static BOOL
+DSL_Builder_Dimensions_Equal
+        (const std::vector<UINT64> &left,
+         const std::vector<UINT64> &right)
+{
+    if (left.size() != right.size())
+        return FALSE;
+    for (UINT32 i = 0; i < left.size(); ++i) {
+        if (left[i] != right[i])
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Builder_Positive_Float_Attribute
+        (const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    const char *text = DSL_Builder_Find_Operator_Attribute
+                           (attrs, attr_count, name);
+    if (text == NULL || text[0] == '\0')
+        return FALSE;
+    char *end = NULL;
+    double value = strtod(text, &end);
+    return end != text && *end == '\0' && value > 0.0 && value <= DBL_MAX;
+}
+
+static TY_IDX
+DSL_Builder_Create_Transformer_Result_Type
+        (DSL_OPERATOR dsl_operator,
+         TY_IDX kid0_ty,
+         TY_IDX kid1_ty,
+         TY_IDX kid2_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    std::vector<UINT64> kid0;
+    std::vector<UINT64> kid1;
+    std::vector<UINT64> kid2;
+    const char *lineage = NULL;
+
+    if (!DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_SHAPE), &kid0) ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(kid1_ty, TY_TENSOR_SCHEMA_SHAPE), &kid1))
+        return TY_IDX_ZERO;
+
+    if (dsl_operator == OPR_DSLTOKENEMBEDDING) {
+        const char *token_dtype =
+            TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_DTYPE);
+        const char *weight_dtype =
+            TY_tensor_attribute(kid1_ty, TY_TENSOR_SCHEMA_DTYPE);
+        if (kid0.size() != 2 || kid1.size() != 2 ||
+            token_dtype == NULL || strcmp(token_dtype, "int64") != 0 ||
+            weight_dtype == NULL || strcmp(weight_dtype, "float32") != 0 ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.padding_idx", "none") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.bounds_policy", "runtime_check"))
+            return TY_IDX_ZERO;
+        std::vector<UINT64> result;
+        result.push_back(kid0[0]);
+        result.push_back(kid0[1]);
+        result.push_back(kid1[1]);
+        return DSL_Builder_Create_Result_Type
+                   (kid1_ty, result, name, "transformer.token_embedding",
+                    FALSE);
+    }
+
+    const char *activation_dtype =
+        TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_DTYPE);
+    if (activation_dtype == NULL || strcmp(activation_dtype, "float32") != 0)
+        return TY_IDX_ZERO;
+
+    if (dsl_operator == OPR_DSLRMSNORM) {
+        if (kid0.size() < 2 || kid1.size() != 1 ||
+            kid1[0] != kid0[kid0.size() - 1] ||
+            !DSL_Builder_Tensor_Element_Type_Compatible(kid0_ty, kid1_ty) ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.axis", "-1") ||
+            !DSL_Builder_Positive_Float_Attribute
+                 (attrs, attr_count, "attr.epsilon") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.accum_dtype", "float32"))
+            return TY_IDX_ZERO;
+        lineage = "transformer.rms_norm";
+    } else if (dsl_operator == OPR_DSLROTARYEMBEDDING) {
+        if (!DSL_Builder_Parse_Static_Shape
+                 (TY_tensor_attribute(kid2_ty, TY_TENSOR_SCHEMA_SHAPE),
+                  &kid2) ||
+            kid0.size() != 4 || kid1.size() != 4 ||
+            !DSL_Builder_Dimensions_Equal(kid1, kid2) ||
+            kid1[0] != 1 || kid1[1] != 1 || kid1[2] != kid0[2] ||
+            kid1[3] != kid0[3] || kid0[3] % 2 != 0 ||
+            !DSL_Builder_Tensor_Element_Type_Compatible(kid0_ty, kid1_ty) ||
+            !DSL_Builder_Tensor_Element_Type_Compatible(kid0_ty, kid2_ty) ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.head_layout", "BHSD") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.sequence_axis", "2") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.feature_axis", "3") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.pairing", "half_split") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.position_mode",
+                  "zero_based_static") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.position_offset", "0"))
+            return TY_IDX_ZERO;
+        lineage = "transformer.rotary_embedding";
+    } else if (dsl_operator == OPR_DSLATTENTION) {
+        UINT64 query_heads;
+        UINT64 kv_heads;
+        UINT64 head_dim;
+        if (!DSL_Builder_Parse_Static_Shape
+                 (TY_tensor_attribute(kid2_ty, TY_TENSOR_SCHEMA_SHAPE),
+                  &kid2) ||
+            kid0.size() != 4 ||
+            !DSL_Builder_Dimensions_Equal(kid0, kid1) ||
+            !DSL_Builder_Dimensions_Equal(kid0, kid2) ||
+            !DSL_Builder_Tensor_Element_Type_Compatible(kid0_ty, kid1_ty) ||
+            !DSL_Builder_Tensor_Element_Type_Compatible(kid0_ty, kid2_ty) ||
+            !DSL_Builder_Parse_Unsigned_Attribute
+                 (attrs, attr_count, "attr.query_heads", &query_heads) ||
+            !DSL_Builder_Parse_Unsigned_Attribute
+                 (attrs, attr_count, "attr.kv_heads", &kv_heads) ||
+            !DSL_Builder_Parse_Unsigned_Attribute
+                 (attrs, attr_count, "attr.head_dim", &head_dim) ||
+            query_heads <= 0 || kv_heads != query_heads || head_dim <= 0 ||
+            query_heads != kid0[1] || head_dim != kid0[3] ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.execution_mode", "full_sequence") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.mask_mode", "causal") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.head_layout", "BHSD") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.scale_mode",
+                  "inverse_sqrt_head_dim") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.softmax_axis", "-1") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.softmax_accum_dtype", "float32") ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.cache_mode", "none"))
+            return TY_IDX_ZERO;
+        lineage = "transformer.attention";
+    } else if (dsl_operator == OPR_DSLSWIGLU) {
+        if (!DSL_Builder_Dimensions_Equal(kid0, kid1) ||
+            kid0.size() != 3 ||
+            !DSL_Builder_Tensor_Element_Type_Compatible(kid0_ty, kid1_ty) ||
+            !DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.activation", "silu"))
+            return TY_IDX_ZERO;
+        lineage = "transformer.swiglu";
+    } else {
+        return TY_IDX_ZERO;
+    }
+
+    return DSL_Builder_Create_Derived_Result_Type
+               (kid0_ty, kid0, name, lineage);
+}
+
+static TY_IDX
+DSL_Builder_Create_Matmul_Result_Type
+        (UINT16 version,
+         TY_IDX kid0_ty,
+         TY_IDX kid1_ty,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *name)
+{
+    if (version == 1)
+        return DSL_Builder_Create_Matmul_V1_Result_Type
+                   (kid0_ty, kid1_ty, name);
+    if (version != 2 ||
+        !DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.batch_rule", "exact") ||
+        !DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.accum_dtype", "float32") ||
+        !DSL_Builder_Tensor_Element_Type_Compatible(kid0_ty, kid1_ty))
+        return TY_IDX_ZERO;
+
+    BOOL transpose_kid0;
+    BOOL transpose_kid1;
+    if (DSL_Builder_Attribute_Equals
+            (attrs, attr_count, "attr.transpose_kid0", "true"))
+        transpose_kid0 = TRUE;
+    else if (DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.transpose_kid0", "false"))
+        transpose_kid0 = FALSE;
+    else
+        return TY_IDX_ZERO;
+    if (DSL_Builder_Attribute_Equals
+            (attrs, attr_count, "attr.transpose_kid1", "true"))
+        transpose_kid1 = TRUE;
+    else if (DSL_Builder_Attribute_Equals
+                 (attrs, attr_count, "attr.transpose_kid1", "false"))
+        transpose_kid1 = FALSE;
+    else
+        return TY_IDX_ZERO;
+
+    std::vector<UINT64> kid0;
+    std::vector<UINT64> kid1;
+    if (!DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(kid0_ty, TY_TENSOR_SCHEMA_SHAPE), &kid0) ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(kid1_ty, TY_TENSOR_SCHEMA_SHAPE), &kid1) ||
+        kid0.size() < 2 || kid0.size() != kid1.size())
+        return TY_IDX_ZERO;
+    for (UINT32 i = 0; i + 2 < kid0.size(); ++i) {
+        if (kid0[i] != kid1[i])
+            return TY_IDX_ZERO;
+    }
+
+    UINT32 rank = kid0.size();
+    UINT64 left_m = kid0[rank - (transpose_kid0 ? 1 : 2)];
+    UINT64 left_k = kid0[rank - (transpose_kid0 ? 2 : 1)];
+    UINT64 right_k = kid1[rank - (transpose_kid1 ? 1 : 2)];
+    UINT64 right_n = kid1[rank - (transpose_kid1 ? 2 : 1)];
+    if (left_k != right_k)
+        return TY_IDX_ZERO;
+
+    std::vector<UINT64> result = kid0;
+    result[rank - 2] = left_m;
+    result[rank - 1] = right_n;
+    return DSL_Builder_Create_Derived_Result_Type
+               (kid0_ty, result, name, "common.matmul");
+}
+
+static TY_IDX
+DSL_Builder_Create_Linear_Result_Type
+        (UINT16 version,
+         TY_IDX input_ty,
          TY_IDX weight_ty,
          TY_IDX bias_ty,
          const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
@@ -578,8 +1027,10 @@ DSL_Builder_Create_Linear_Result_Type
     std::vector<UINT64> input;
     std::vector<UINT64> weight;
     std::vector<UINT64> bias;
-    if (!DSL_Builder_Attribute_Equals
-             (attrs, attr_count, "attr.has_bias", "true") ||
+    const char *required_bias = version == 2 ? "true" : "false";
+    if ((version != 2 && version != 3) ||
+        !DSL_Builder_Attribute_Equals
+             (attrs, attr_count, "attr.has_bias", required_bias) ||
         !DSL_Builder_Attribute_Equals
              (attrs, attr_count, "attr.transpose_input", "false") ||
         !DSL_Builder_Attribute_Equals
@@ -591,10 +1042,15 @@ DSL_Builder_Create_Linear_Result_Type
         !DSL_Builder_Parse_Static_Shape
              (TY_tensor_attribute(weight_ty, TY_TENSOR_SCHEMA_SHAPE),
               &weight) ||
-        !DSL_Builder_Parse_Static_Shape
+        input.size() < 2 || weight.size() != 2 ||
+        input[input.size() - 1] != weight[1] ||
+        !DSL_Builder_Tensor_Element_Type_Compatible(input_ty, weight_ty))
+        return TY_IDX_ZERO;
+    if (version == 2 &&
+        (!DSL_Builder_Parse_Static_Shape
              (TY_tensor_attribute(bias_ty, TY_TENSOR_SCHEMA_SHAPE), &bias) ||
-        input.empty() || weight.size() != 2 || bias.size() != 1 ||
-        input[input.size() - 1] != weight[1] || bias[0] != weight[0])
+         bias.size() != 1 || bias[0] != weight[0] ||
+         !DSL_Builder_Tensor_Element_Type_Compatible(input_ty, bias_ty)))
         return TY_IDX_ZERO;
     input[input.size() - 1] = weight[0];
     return DSL_Builder_Create_Derived_Result_Type
@@ -803,13 +1259,15 @@ DSL_Builder_Create_Flatten_Result_Type
 }
 
 static DSL_IR_OPCODE_DESCRIPTOR_ID
-DSL_Builder_Get_Image_Opcode_Descriptor (DSL_OPERATOR dsl_operator)
+DSL_Builder_Get_Image_Opcode_Descriptor
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version)
 {
     DSL_OPERATOR_INFO info;
     DSL_IR_OPCODE_DESCRIPTOR_RECORD record;
     DSL_IR_OPCODE_DESCRIPTOR_ID id;
 
-    if (!DSL_Operator_Get_Info(dsl_operator, &info))
+    if (!DSL_Operator_Get_Info_Version(dsl_operator, version, &info))
         return DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID;
 
     id = DSL_IR_Image_Find_Opcode_Descriptor(dsl_operator, info.version);
@@ -838,6 +1296,7 @@ DSL_Builder_Get_Image_Opcode_Descriptor (DSL_OPERATOR dsl_operator)
 static BOOL
 DSL_Builder_Add_Image_Node
         (DSL_OPERATOR dsl_operator,
+         UINT16 version,
          const char *payload,
          DSL_BUILDER_VALUE_RECORD **operand_records,
          UINT32 operand_count,
@@ -856,7 +1315,8 @@ DSL_Builder_Add_Image_Node
         DSL_IR_VALUE_REFERENCE_INVALID_ID;
     DSL_IR_ATTRIBUTE_ID first_attribute_id = DSL_IR_ATTRIBUTE_INVALID_ID;
 
-    descriptor_id = DSL_Builder_Get_Image_Opcode_Descriptor(dsl_operator);
+    descriptor_id = DSL_Builder_Get_Image_Opcode_Descriptor
+                        (dsl_operator, version);
     if (descriptor_id == DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
         return FALSE;
 
@@ -970,7 +1430,7 @@ DSL_Builder_Create_Native_Value
                                result_ty, expression);
 
     if (!DSL_Builder_Add_Image_Node
-             (dsl_operator, payload, operand_records, kid_count, attrs,
+             (dsl_operator, version, payload, operand_records, kid_count, attrs,
               attr_count, result_st, result_ty, value_kind,
               &image_value_id)) {
         delete [] operand_records;
@@ -1419,15 +1879,25 @@ DSL_Builder_Create_Operator
 {
     DSL_OPCODE_INFO info;
     DSL_OPERATOR dsl_operator;
+    DSL_OPERATOR_INFO logical_info;
     char *payload;
     WN *wn;
 
-    if (!DSL_Opcode_Get_Info (opcode_id, &info))
+    if (!DSL_Opcode_Get_Info (opcode_id, &info) || info.version != version)
+        return NULL;
+
+    dsl_operator = DSL_Operator_Find(info.name, strlen(info.name), version);
+    if (dsl_operator != OPR_DSLUNKNOWN &&
+        (!DSL_Operator_Get_Info_Version
+              (dsl_operator, version, &logical_info) ||
+         (DSL_Builder_Requires_Exact_Attribute_Schema
+              (dsl_operator, version) &&
+          !DSL_Builder_Attributes_Match_Schema
+               (&logical_info, attrs, attr_count))))
         return NULL;
 
     payload = DSL_Builder_Format_Operator_Payload (kids, kid_count, attrs,
                                                    attr_count);
-    dsl_operator = DSL_Operator_Find(info.name, strlen(info.name), version);
     if ((dsl_operator == OPR_DSLADD || dsl_operator == OPR_DSLMATMUL ||
          dsl_operator == OPR_DSLLINEAR ||
          dsl_operator == OPR_DSLRELU || dsl_operator == OPR_DSLFLATTEN ||
@@ -1436,7 +1906,14 @@ DSL_Builder_Create_Operator
          dsl_operator == OPR_DSLBATCHNORMINFER ||
          dsl_operator == OPR_DSLMAXPOOL2D ||
          dsl_operator == OPR_DSLGLOBALAVGPOOL2D ||
-         dsl_operator == OPR_DSLOUTPUTLOGITS) && kid_count != 0) {
+         dsl_operator == OPR_DSLOUTPUTLOGITS ||
+         dsl_operator == OPR_DSLRESHAPE ||
+         dsl_operator == OPR_DSLTRANSPOSE ||
+         dsl_operator == OPR_DSLTOKENEMBEDDING ||
+         dsl_operator == OPR_DSLRMSNORM ||
+         dsl_operator == OPR_DSLROTARYEMBEDDING ||
+         dsl_operator == OPR_DSLATTENTION ||
+         dsl_operator == OPR_DSLSWIGLU) && kid_count != 0) {
         if ((info.nkids >= 0 && (UINT32)info.nkids != kid_count) ||
             (attr_count != 0 && attrs == NULL)) {
             delete [] payload;
@@ -1464,7 +1941,8 @@ DSL_Builder_Create_Operator
                           "%s_type", result_name);
                 result_ty = second == NULL ? TY_IDX_ZERO :
                     DSL_Builder_Create_Matmul_Result_Type
-                        (first->result_ty, second->result_ty,
+                        (version, first->result_ty, second->result_ty,
+                         attrs, attr_count,
                          result_type_name);
                 if (result_ty == TY_IDX_ZERO) {
                     delete [] payload;
@@ -1477,9 +1955,11 @@ DSL_Builder_Create_Operator
                     DSL_Builder_Find_Value_Record(kids[2]);
                 snprintf (result_type_name, sizeof(result_type_name),
                           "%s_type", result_name);
-                result_ty = weight == NULL || bias == NULL ? TY_IDX_ZERO :
+                result_ty = weight == NULL ||
+                            (version == 2 && bias == NULL) ? TY_IDX_ZERO :
                     DSL_Builder_Create_Linear_Result_Type
-                        (first->result_ty, weight->result_ty, bias->result_ty,
+                        (version, first->result_ty, weight->result_ty,
+                         bias == NULL ? TY_IDX_ZERO : bias->result_ty,
                          attrs, attr_count, result_type_name);
                 if (result_ty == TY_IDX_ZERO) {
                     delete [] payload;
@@ -1526,6 +2006,46 @@ DSL_Builder_Create_Operator
                 result_ty = DSL_Builder_Create_Global_Avg_Pool_Result_Type
                                 (first->result_ty, attrs, attr_count,
                                  result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            } else if (dsl_operator == OPR_DSLRESHAPE) {
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = DSL_Builder_Create_Reshape_Result_Type
+                                (first->result_ty, attrs, attr_count,
+                                 result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            } else if (dsl_operator == OPR_DSLTRANSPOSE) {
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = DSL_Builder_Create_Transpose_Result_Type
+                                (first->result_ty, attrs, attr_count,
+                                 result_type_name);
+                if (result_ty == TY_IDX_ZERO) {
+                    delete [] payload;
+                    return NULL;
+                }
+            } else if (dsl_operator == OPR_DSLTOKENEMBEDDING ||
+                       dsl_operator == OPR_DSLRMSNORM ||
+                       dsl_operator == OPR_DSLROTARYEMBEDDING ||
+                       dsl_operator == OPR_DSLATTENTION ||
+                       dsl_operator == OPR_DSLSWIGLU) {
+                DSL_BUILDER_VALUE_RECORD *second = kid_count < 2 ? NULL :
+                    DSL_Builder_Find_Value_Record(kids[1]);
+                DSL_BUILDER_VALUE_RECORD *third = kid_count < 3 ? NULL :
+                    DSL_Builder_Find_Value_Record(kids[2]);
+                snprintf (result_type_name, sizeof(result_type_name),
+                          "%s_type", result_name);
+                result_ty = second == NULL ? TY_IDX_ZERO :
+                    DSL_Builder_Create_Transformer_Result_Type
+                        (dsl_operator, first->result_ty, second->result_ty,
+                         third == NULL ? TY_IDX_ZERO : third->result_ty,
+                         attrs, attr_count, result_type_name);
                 if (result_ty == TY_IDX_ZERO) {
                     delete [] payload;
                     return NULL;
@@ -1591,10 +2111,11 @@ DSL_Builder_Create_Operator_With_Result
 {
     DSL_OPCODE_INFO info;
     DSL_OPERATOR dsl_operator;
+    DSL_OPERATOR_INFO logical_info;
     char *payload;
     DSL_BUILDER_OPERATOR result;
 
-    if (!DSL_Opcode_Get_Info(opcode_id, &info) ||
+    if (!DSL_Opcode_Get_Info(opcode_id, &info) || info.version != version ||
         result_name == NULL || result_name[0] == '\0' ||
         !DSL_Builder_Tensor_Type_Is_Canonical(result_ty) ||
         (kid_count != 0 && kids == NULL) ||
@@ -1608,7 +2129,13 @@ DSL_Builder_Create_Operator_With_Result
     }
 
     dsl_operator = DSL_Operator_Find(info.name, strlen(info.name), version);
-    if (dsl_operator == OPR_DSLUNKNOWN)
+    if (dsl_operator == OPR_DSLUNKNOWN ||
+        !DSL_Operator_Get_Info_Version
+             (dsl_operator, version, &logical_info) ||
+        (DSL_Builder_Requires_Exact_Attribute_Schema
+             (dsl_operator, version) &&
+         !DSL_Builder_Attributes_Match_Schema
+              (&logical_info, attrs, attr_count)))
         return NULL;
 
     payload = DSL_Builder_Format_Operator_Payload
@@ -1950,6 +2477,14 @@ DSL_Builder_Append_Region_Value
 }
 
 BOOL
+DSL_Builder_Append_Child_Region
+        (DSL_BUILDER_REGION parent,
+         DSL_BUILDER_REGION child)
+{
+    return DSL_Region_Append_Child(parent, child);
+}
+
+BOOL
 DSL_Builder_Append_PU_Region
         (DSL_BUILDER_PROGRAM_UNIT pu,
          DSL_BUILDER_REGION region)
@@ -1970,6 +2505,15 @@ DSL_Builder_Declare_Region_Value
     return record != NULL &&
            DSL_Region_Declare_Symbol
                (region, record->result_st, roles, ordinal, flags);
+}
+
+BOOL
+DSL_Builder_Set_Region_Metadata
+        (DSL_BUILDER_REGION region,
+         const char *key,
+         const char *value)
+{
+    return DSL_Region_Set_Metadata(region, key, value);
 }
 
 BOOL

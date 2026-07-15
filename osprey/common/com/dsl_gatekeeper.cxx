@@ -4,6 +4,7 @@
 
 #include <stdarg.h>
 #include <ctype.h>
+#include <float.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -391,6 +392,39 @@ DSL_Gatekeeper_Parse_Static_Shape
     return *cursor == '\0';
 }
 
+static BOOL
+DSL_Gatekeeper_Parse_Unsigned_List
+        (const char *text,
+         BOOL allow_zero,
+         std::vector<UINT64> *values)
+{
+    if (text == NULL || values == NULL || text[0] == '\0')
+        return FALSE;
+
+    values->clear();
+    const char *cursor = text;
+    while (*cursor != '\0') {
+        if (!isdigit((unsigned char)*cursor))
+            return FALSE;
+        UINT64 value = 0;
+        while (isdigit((unsigned char)*cursor)) {
+            UINT64 digit = (UINT64)(*cursor - '0');
+            if (value > (~(UINT64)0 - digit) / 10)
+                return FALSE;
+            value = value * 10 + digit;
+            ++cursor;
+        }
+        if (!allow_zero && value == 0)
+            return FALSE;
+        values->push_back(value);
+        if (*cursor == '\0')
+            break;
+        if (*cursor++ != ',' || *cursor == '\0')
+            return FALSE;
+    }
+    return !values->empty();
+}
+
 static BOOL DSL_Gatekeeper_Parse_Unsigned(const char *, UINT64 *);
 
 static BOOL
@@ -457,14 +491,41 @@ DSL_Gatekeeper_Result_Dimensions
 }
 
 static BOOL
+DSL_Gatekeeper_Computed_Result_Dimensions
+        (TY_IDX input_ty,
+         TY_IDX result_ty,
+         const std::vector<UINT64> &expected)
+{
+    std::vector<UINT64> result;
+    const char *placement =
+        TY_tensor_attribute(result_ty, TY_TENSOR_SCHEMA_PLACEMENT);
+    const char *memory =
+        TY_tensor_attribute(result_ty, TY_TENSOR_SCHEMA_MEMORY);
+    return DSL_Gatekeeper_Static_Dimensions(result_ty, &result) &&
+           DSL_Gatekeeper_Dimensions_Equal(result, expected) &&
+           DSL_Gatekeeper_Tensor_Element_Type_Compatible
+               (input_ty, result_ty) &&
+           DSL_Gatekeeper_Tensor_Key_Equal
+               (input_ty, result_ty, TY_TENSOR_SCHEMA_LAYOUT) &&
+           DSL_Gatekeeper_Tensor_Key_Equal
+               (input_ty, result_ty, TY_TENSOR_SCHEMA_QUANTIZATION) &&
+           (placement == NULL || strcmp(placement, "side_file") != 0) &&
+           (memory == NULL || strcmp(memory, "external_data") != 0);
+}
+
+static BOOL
 DSL_Gatekeeper_Linear_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
          const std::vector<TY_IDX> &operands,
-         TY_IDX result_ty)
+         TY_IDX result_ty,
+         UINT16 version)
 {
-    if (operands.size() != 3 ||
+    UINT32 expected_operands = version == 2 ? 3 : 2;
+    const char *expected_bias = version == 2 ? "true" : "false";
+    if ((version != 2 && version != 3) ||
+        operands.size() != expected_operands ||
         !DSL_Gatekeeper_Attribute_Equals
-             (node, "attr.has_bias", "true") ||
+             (node, "attr.has_bias", expected_bias) ||
         !DSL_Gatekeeper_Attribute_Equals
              (node, "attr.transpose_input", "false") ||
         !DSL_Gatekeeper_Attribute_Equals
@@ -478,17 +539,324 @@ DSL_Gatekeeper_Linear_Result_Valid
     std::vector<UINT64> bias;
     if (!DSL_Gatekeeper_Static_Dimensions(operands[0], &input) ||
         !DSL_Gatekeeper_Static_Dimensions(operands[1], &weight) ||
-        !DSL_Gatekeeper_Static_Dimensions(operands[2], &bias) ||
-        input.empty() || weight.size() != 2 || bias.size() != 1 ||
-        input[input.size() - 1] != weight[1] || bias[0] != weight[0] ||
+        input.size() < 2 || weight.size() != 2 ||
+        input[input.size() - 1] != weight[1] ||
         !DSL_Gatekeeper_Tensor_Element_Type_Compatible
-             (operands[0], operands[1]) ||
-        !DSL_Gatekeeper_Tensor_Element_Type_Compatible
-             (operands[0], operands[2]))
+             (operands[0], operands[1]))
+        return FALSE;
+    if (version == 2 &&
+        (!DSL_Gatekeeper_Static_Dimensions(operands[2], &bias) ||
+         bias.size() != 1 || bias[0] != weight[0] ||
+         !DSL_Gatekeeper_Tensor_Element_Type_Compatible
+             (operands[0], operands[2])))
         return FALSE;
     input[input.size() - 1] = weight[0];
     return DSL_Gatekeeper_Result_Dimensions
                (operands[0], result_ty, input);
+}
+
+static BOOL
+DSL_Gatekeeper_Reshape_Result_Valid
+        (const DSL_IR_NODE_RECORD *node,
+         TY_IDX input_ty,
+         TY_IDX result_ty)
+{
+    const char *target_shape = NULL;
+    std::vector<UINT64> input;
+    std::vector<UINT64> target;
+    std::vector<UINT64> result;
+    if (!DSL_Gatekeeper_Node_Attribute
+             (node, "attr.target_shape", &target_shape) ||
+        !DSL_Gatekeeper_Static_Dimensions(input_ty, &input) ||
+        !DSL_Gatekeeper_Parse_Unsigned_List
+             (target_shape, FALSE, &target) ||
+        !DSL_Gatekeeper_Static_Dimensions(result_ty, &result) ||
+        !DSL_Gatekeeper_Dimensions_Equal(target, result))
+        return FALSE;
+
+    UINT64 input_elements = 1;
+    UINT64 target_elements = 1;
+    for (UINT32 i = 0; i < input.size(); ++i) {
+        if (input_elements > ~(UINT64)0 / input[i])
+            return FALSE;
+        input_elements *= input[i];
+    }
+    for (UINT32 i = 0; i < target.size(); ++i) {
+        if (target_elements > ~(UINT64)0 / target[i])
+            return FALSE;
+        target_elements *= target[i];
+    }
+    return input_elements == target_elements &&
+           DSL_Gatekeeper_Tensor_Element_Representation_Compatible
+               (input_ty, result_ty);
+}
+
+static BOOL
+DSL_Gatekeeper_Transpose_Result_Valid
+        (const DSL_IR_NODE_RECORD *node,
+         TY_IDX input_ty,
+         TY_IDX result_ty)
+{
+    const char *permutation_text = NULL;
+    std::vector<UINT64> input;
+    std::vector<UINT64> permutation;
+    std::vector<UINT64> expected;
+    if (!DSL_Gatekeeper_Node_Attribute
+             (node, "attr.permutation", &permutation_text) ||
+        !DSL_Gatekeeper_Static_Dimensions(input_ty, &input) ||
+        !DSL_Gatekeeper_Parse_Unsigned_List
+             (permutation_text, TRUE, &permutation) ||
+        permutation.size() != input.size())
+        return FALSE;
+
+    std::vector<BOOL> seen(input.size(), FALSE);
+    expected.resize(input.size());
+    for (UINT32 i = 0; i < permutation.size(); ++i) {
+        if (permutation[i] >= input.size() || seen[permutation[i]])
+            return FALSE;
+        seen[permutation[i]] = TRUE;
+        expected[i] = input[permutation[i]];
+    }
+    return DSL_Gatekeeper_Result_Dimensions(input_ty, result_ty, expected);
+}
+
+static BOOL
+DSL_Gatekeeper_Matmul_V2_Result_Valid
+        (const DSL_IR_NODE_RECORD *node,
+         TY_IDX kid0_ty,
+         TY_IDX kid1_ty,
+         TY_IDX result_ty)
+{
+    BOOL transpose_kid0;
+    BOOL transpose_kid1;
+    if (DSL_Gatekeeper_Attribute_Equals
+            (node, "attr.transpose_kid0", "true"))
+        transpose_kid0 = TRUE;
+    else if (DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.transpose_kid0", "false"))
+        transpose_kid0 = FALSE;
+    else
+        return FALSE;
+    if (DSL_Gatekeeper_Attribute_Equals
+            (node, "attr.transpose_kid1", "true"))
+        transpose_kid1 = TRUE;
+    else if (DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.transpose_kid1", "false"))
+        transpose_kid1 = FALSE;
+    else
+        return FALSE;
+    if (!DSL_Gatekeeper_Attribute_Equals
+             (node, "attr.batch_rule", "exact") ||
+        !DSL_Gatekeeper_Attribute_Equals
+             (node, "attr.accum_dtype", "float32"))
+        return FALSE;
+
+    std::vector<UINT64> kid0;
+    std::vector<UINT64> kid1;
+    if (!DSL_Gatekeeper_Static_Dimensions(kid0_ty, &kid0) ||
+        !DSL_Gatekeeper_Static_Dimensions(kid1_ty, &kid1) ||
+        kid0.size() < 2 || kid0.size() != kid1.size() ||
+        !DSL_Gatekeeper_Tensor_Element_Representation_Compatible
+             (kid0_ty, kid1_ty))
+        return FALSE;
+    for (UINT32 i = 0; i + 2 < kid0.size(); ++i) {
+        if (kid0[i] != kid1[i])
+            return FALSE;
+    }
+
+    UINT32 rank = kid0.size();
+    UINT64 left_m = kid0[rank - (transpose_kid0 ? 1 : 2)];
+    UINT64 left_k = kid0[rank - (transpose_kid0 ? 2 : 1)];
+    UINT64 right_k = kid1[rank - (transpose_kid1 ? 1 : 2)];
+    UINT64 right_n = kid1[rank - (transpose_kid1 ? 2 : 1)];
+    if (left_k != right_k)
+        return FALSE;
+
+    std::vector<UINT64> expected = kid0;
+    expected[rank - 2] = left_m;
+    expected[rank - 1] = right_n;
+    return DSL_Gatekeeper_Result_Dimensions(kid0_ty, result_ty, expected);
+}
+
+static BOOL
+DSL_Gatekeeper_Output_Logits_Result_Valid
+        (const DSL_IR_NODE_RECORD *node,
+         TY_IDX input_ty,
+         TY_IDX result_ty,
+         UINT16 version)
+{
+    if (!DSL_Gatekeeper_Tensor_Compatible(input_ty, result_ty, TRUE))
+        return FALSE;
+    if (version == 2)
+        return DSL_Gatekeeper_Attribute_Equals
+                   (node, "attr.semantic", "logits");
+    if (version != 3 ||
+        !DSL_Gatekeeper_Attribute_Equals
+             (node, "attr.semantic", "token_logits") ||
+        !DSL_Gatekeeper_Attribute_Equals
+             (node, "attr.sequence_axis", "-2") ||
+        !DSL_Gatekeeper_Attribute_Equals
+             (node, "attr.vocabulary_axis", "-1"))
+        return FALSE;
+
+    std::vector<UINT64> dimensions;
+    return DSL_Gatekeeper_Static_Dimensions(input_ty, &dimensions) &&
+           dimensions.size() == 3;
+}
+
+static BOOL
+DSL_Gatekeeper_Positive_Float_Attribute
+        (const DSL_IR_NODE_RECORD *node,
+         const char *name)
+{
+    const char *text = NULL;
+    if (!DSL_Gatekeeper_Node_Attribute(node, name, &text) ||
+        text == NULL || text[0] == '\0')
+        return FALSE;
+    char *end = NULL;
+    double value = strtod(text, &end);
+    return end != text && *end == '\0' && value > 0.0 && value <= DBL_MAX;
+}
+
+static BOOL
+DSL_Gatekeeper_Transformer_Result_Valid
+        (DSL_OPERATOR dsl_operator,
+         const DSL_IR_NODE_RECORD *node,
+         const std::vector<TY_IDX> &operands,
+         TY_IDX result_ty)
+{
+    const UINT32 expected_operands =
+        dsl_operator == OPR_DSLROTARYEMBEDDING ||
+        dsl_operator == OPR_DSLATTENTION ? 3 : 2;
+    if (operands.size() != expected_operands)
+        return FALSE;
+
+    std::vector<UINT64> kid0;
+    std::vector<UINT64> kid1;
+    std::vector<UINT64> kid2;
+    if (!DSL_Gatekeeper_Static_Dimensions(operands[0], &kid0) ||
+        !DSL_Gatekeeper_Static_Dimensions(operands[1], &kid1))
+        return FALSE;
+
+    if (dsl_operator == OPR_DSLTOKENEMBEDDING) {
+        const char *token_dtype =
+            TY_tensor_attribute(operands[0], TY_TENSOR_SCHEMA_DTYPE);
+        const char *weight_dtype =
+            TY_tensor_attribute(operands[1], TY_TENSOR_SCHEMA_DTYPE);
+        if (kid0.size() != 2 || kid1.size() != 2 ||
+            token_dtype == NULL || strcmp(token_dtype, "int64") != 0 ||
+            weight_dtype == NULL || strcmp(weight_dtype, "float32") != 0 ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.padding_idx", "none") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.bounds_policy", "runtime_check"))
+            return FALSE;
+        std::vector<UINT64> expected;
+        expected.push_back(kid0[0]);
+        expected.push_back(kid0[1]);
+        expected.push_back(kid1[1]);
+        return DSL_Gatekeeper_Computed_Result_Dimensions
+                   (operands[1], result_ty, expected);
+    }
+
+    const char *activation_dtype =
+        TY_tensor_attribute(operands[0], TY_TENSOR_SCHEMA_DTYPE);
+    if (activation_dtype == NULL || strcmp(activation_dtype, "float32") != 0)
+        return FALSE;
+
+    if (dsl_operator == OPR_DSLRMSNORM) {
+        return kid0.size() >= 2 && kid1.size() == 1 &&
+               kid1[0] == kid0[kid0.size() - 1] &&
+               DSL_Gatekeeper_Tensor_Element_Type_Compatible
+                   (operands[0], operands[1]) &&
+               DSL_Gatekeeper_Attribute_Equals(node, "attr.axis", "-1") &&
+               DSL_Gatekeeper_Positive_Float_Attribute
+                   (node, "attr.epsilon") &&
+               DSL_Gatekeeper_Attribute_Equals
+                   (node, "attr.accum_dtype", "float32") &&
+               DSL_Gatekeeper_Result_Dimensions
+                   (operands[0], result_ty, kid0);
+    }
+
+    if (dsl_operator == OPR_DSLROTARYEMBEDDING) {
+        if (!DSL_Gatekeeper_Static_Dimensions(operands[2], &kid2) ||
+            kid0.size() != 4 || kid1.size() != 4 ||
+            !DSL_Gatekeeper_Dimensions_Equal(kid1, kid2) ||
+            kid1[0] != 1 || kid1[1] != 1 || kid1[2] != kid0[2] ||
+            kid1[3] != kid0[3] || kid0[3] % 2 != 0 ||
+            !DSL_Gatekeeper_Tensor_Element_Type_Compatible
+                 (operands[0], operands[1]) ||
+            !DSL_Gatekeeper_Tensor_Element_Type_Compatible
+                 (operands[0], operands[2]) ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.head_layout", "BHSD") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.sequence_axis", "2") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.feature_axis", "3") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.pairing", "half_split") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.position_mode", "zero_based_static") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.position_offset", "0"))
+            return FALSE;
+        return DSL_Gatekeeper_Result_Dimensions
+                   (operands[0], result_ty, kid0);
+    }
+
+    if (dsl_operator == OPR_DSLATTENTION) {
+        const char *query_heads_text = NULL;
+        const char *kv_heads_text = NULL;
+        const char *head_dim_text = NULL;
+        UINT64 query_heads;
+        UINT64 kv_heads;
+        UINT64 head_dim;
+        if (!DSL_Gatekeeper_Static_Dimensions(operands[2], &kid2) ||
+            kid0.size() != 4 ||
+            !DSL_Gatekeeper_Dimensions_Equal(kid0, kid1) ||
+            !DSL_Gatekeeper_Dimensions_Equal(kid0, kid2) ||
+            !DSL_Gatekeeper_Tensor_Element_Representation_Compatible
+                 (operands[0], operands[1]) ||
+            !DSL_Gatekeeper_Tensor_Element_Representation_Compatible
+                 (operands[0], operands[2]) ||
+            !DSL_Gatekeeper_Node_Attribute
+                 (node, "attr.query_heads", &query_heads_text) ||
+            !DSL_Gatekeeper_Node_Attribute
+                 (node, "attr.kv_heads", &kv_heads_text) ||
+            !DSL_Gatekeeper_Node_Attribute
+                 (node, "attr.head_dim", &head_dim_text) ||
+            !DSL_Gatekeeper_Parse_Unsigned(query_heads_text, &query_heads) ||
+            !DSL_Gatekeeper_Parse_Unsigned(kv_heads_text, &kv_heads) ||
+            !DSL_Gatekeeper_Parse_Unsigned(head_dim_text, &head_dim) ||
+            query_heads == 0 || query_heads != kv_heads || head_dim == 0 ||
+            query_heads != kid0[1] || head_dim != kid0[3] ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.execution_mode", "full_sequence") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.mask_mode", "causal") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.head_layout", "BHSD") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.scale_mode", "inverse_sqrt_head_dim") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.softmax_axis", "-1") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.softmax_accum_dtype", "float32") ||
+            !DSL_Gatekeeper_Attribute_Equals
+                 (node, "attr.cache_mode", "none"))
+            return FALSE;
+        return DSL_Gatekeeper_Result_Dimensions
+                   (operands[0], result_ty, kid0);
+    }
+
+    return dsl_operator == OPR_DSLSWIGLU && kid0.size() == 3 &&
+           DSL_Gatekeeper_Dimensions_Equal(kid0, kid1) &&
+           DSL_Gatekeeper_Tensor_Element_Representation_Compatible
+               (operands[0], operands[1]) &&
+           DSL_Gatekeeper_Attribute_Equals
+               (node, "attr.activation", "silu") &&
+           DSL_Gatekeeper_Result_Dimensions(operands[0], result_ty, kid0);
 }
 
 static BOOL
@@ -938,6 +1306,7 @@ DSL_Gatekeeper_Required_Attributes
                          Index_To_Str(descriptor->attribute_schema);
     const char *cursor = schema;
     BOOL valid = TRUE;
+    UINT32 required_count = 0;
 
     while (*cursor != '\0') {
         const char *end = strchr(cursor, ';');
@@ -946,16 +1315,40 @@ DSL_Gatekeeper_Required_Attributes
         char *name = new char[length + 1];
         memcpy (name, cursor, length);
         name[length] = '\0';
-        if (length != 0 && !DSL_Gatekeeper_Node_Has_Attribute(node, name))
-            valid = DSL_Gatekeeper_Report
-                        (context, "%s.v%u is missing typed attribute %s",
-                         Index_To_Str(descriptor->stable_name),
-                         descriptor->version, name);
+        if (length != 0) {
+            ++required_count;
+            if (!DSL_Gatekeeper_Node_Has_Attribute(node, name))
+                valid = DSL_Gatekeeper_Report
+                            (context, "%s.v%u is missing typed attribute %s",
+                             Index_To_Str(descriptor->stable_name),
+                             descriptor->version, name);
+        }
         delete [] name;
         if (end == NULL)
             break;
         cursor = end + 1;
     }
+    DSL_OPERATOR dsl_operator =
+        (DSL_OPERATOR)descriptor->logical_operator;
+    BOOL exact_schema = dsl_operator == OPR_DSLRESHAPE ||
+                        dsl_operator == OPR_DSLTRANSPOSE ||
+                        dsl_operator == OPR_DSLTOKENEMBEDDING ||
+                        dsl_operator == OPR_DSLRMSNORM ||
+                        dsl_operator == OPR_DSLROTARYEMBEDDING ||
+                        dsl_operator == OPR_DSLATTENTION ||
+                        dsl_operator == OPR_DSLSWIGLU ||
+                        (dsl_operator == OPR_DSLMATMUL &&
+                         descriptor->version == 2) ||
+                        (dsl_operator == OPR_DSLLINEAR &&
+                         descriptor->version == 3) ||
+                        (dsl_operator == OPR_DSLOUTPUTLOGITS &&
+                         descriptor->version == 3);
+    if (exact_schema && node->attribute_count != required_count)
+        valid = DSL_Gatekeeper_Report
+                    (context, "%s.v%u requires exactly %u typed attributes, "
+                     "found %u", Index_To_Str(descriptor->stable_name),
+                     descriptor->version, required_count,
+                     node->attribute_count);
     return valid;
 }
 
@@ -979,8 +1372,8 @@ DSL_Gatekeeper_Verify_Native_Node
     if (!DSL_WN_Get_Logical_Opcode(expression, &logical_opcode,
                                    context->diagnostic) ||
         (dsl_operator = logical_opcode.dsl_operator) == OPR_DSLUNKNOWN ||
-        !DSL_Operator_Get_Info(dsl_operator, &info) ||
-        info.version != logical_opcode.effective_version ||
+        !DSL_Operator_Get_Info_Version
+             (dsl_operator, logical_opcode.effective_version, &info) ||
         (info.nkids >= 0 && (UINT32)info.nkids != WN_kid_count(expression)))
         valid = DSL_Gatekeeper_Report
                     (context, "unsupported logical operator or version");
@@ -1063,15 +1456,25 @@ DSL_Gatekeeper_Verify_Native_Node
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLADD result tensor is incompatible "
                      "with its operands");
-    if (dsl_operator == OPR_DSLMATMUL && first_operand_ty != TY_IDX_ZERO &&
-        (second_operand_ty == TY_IDX_ZERO ||
-         !DSL_Gatekeeper_Tensor_Compatible
-              (first_operand_ty, result_ty, FALSE) ||
-         !DSL_Gatekeeper_Matmul_Shapes_Compatible
-              (first_operand_ty, second_operand_ty, result_ty)))
-        valid = DSL_Gatekeeper_Report
-                    (context, "OPR_DSLMATMUL result dtype or representation "
-                     "is incompatible with kid0");
+    if (dsl_operator == OPR_DSLMATMUL && first_operand_ty != TY_IDX_ZERO) {
+        BOOL matmul_valid = second_operand_ty != TY_IDX_ZERO && image_valid;
+        if (matmul_valid && logical_opcode.effective_version == 1)
+            matmul_valid = DSL_Gatekeeper_Tensor_Compatible
+                               (first_operand_ty, result_ty, FALSE) &&
+                           DSL_Gatekeeper_Matmul_Shapes_Compatible
+                               (first_operand_ty, second_operand_ty, result_ty);
+        else if (matmul_valid && logical_opcode.effective_version == 2)
+            matmul_valid = DSL_Gatekeeper_Matmul_V2_Result_Valid
+                               (&image_node, first_operand_ty,
+                                second_operand_ty, result_ty);
+        else
+            matmul_valid = FALSE;
+        if (!matmul_valid)
+            valid = DSL_Gatekeeper_Report
+                        (context, "OPR_DSLMATMUL.v%u tensor or attribute "
+                         "contract is invalid",
+                         logical_opcode.effective_version);
+    }
     if ((dsl_operator == OPR_DSLRELU ||
          dsl_operator == OPR_DSLRESIDUALADD ||
          dsl_operator == OPR_DSLOUTPUTLOGITS) &&
@@ -1089,7 +1492,8 @@ DSL_Gatekeeper_Verify_Native_Node
                     (context, "OPR_DSLFLATTEN result shape is invalid");
     if (image_valid && dsl_operator == OPR_DSLLINEAR &&
         !DSL_Gatekeeper_Linear_Result_Valid
-             (&image_node, operand_types, result_ty))
+             (&image_node, operand_types, result_ty,
+              logical_opcode.effective_version))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLLINEAR tensor or attribute contract "
                      "is invalid");
@@ -1119,6 +1523,32 @@ DSL_Gatekeeper_Verify_Native_Node
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLGLOBALAVGPOOL2D result shape or "
                      "attribute contract is invalid");
+    if (image_valid && dsl_operator == OPR_DSLRESHAPE &&
+        (first_operand_ty == TY_IDX_ZERO ||
+         !DSL_Gatekeeper_Reshape_Result_Valid
+              (&image_node, first_operand_ty, result_ty)))
+        valid = DSL_Gatekeeper_Report
+                    (context, "OPR_DSLRESHAPE result shape or attribute "
+                     "contract is invalid");
+    if (image_valid && dsl_operator == OPR_DSLTRANSPOSE &&
+        (first_operand_ty == TY_IDX_ZERO ||
+         !DSL_Gatekeeper_Transpose_Result_Valid
+              (&image_node, first_operand_ty, result_ty)))
+        valid = DSL_Gatekeeper_Report
+                    (context, "OPR_DSLTRANSPOSE result shape or permutation "
+                     "contract is invalid");
+    if (image_valid &&
+        (dsl_operator == OPR_DSLTOKENEMBEDDING ||
+         dsl_operator == OPR_DSLRMSNORM ||
+         dsl_operator == OPR_DSLROTARYEMBEDDING ||
+         dsl_operator == OPR_DSLATTENTION ||
+         dsl_operator == OPR_DSLSWIGLU) &&
+        !DSL_Gatekeeper_Transformer_Result_Valid
+             (dsl_operator, &image_node, operand_types, result_ty))
+        valid = DSL_Gatekeeper_Report
+                    (context, "%s.v%u transformer expression contract is "
+                     "invalid", info.stable_name,
+                     logical_opcode.effective_version);
     if (image_valid && dsl_operator == OPR_DSLRESIDUALADD &&
         (!DSL_Gatekeeper_Attribute_Equals
              (&image_node, "attr.broadcast_rule", "none") ||
@@ -1130,10 +1560,13 @@ DSL_Gatekeeper_Verify_Native_Node
                     (context, "OPR_DSLRESIDUALADD requires exact no-broadcast "
                      "residual semantics");
     if (image_valid && dsl_operator == OPR_DSLOUTPUTLOGITS &&
-        !DSL_Gatekeeper_Attribute_Equals
-             (&image_node, "attr.semantic", "logits"))
+        (first_operand_ty == TY_IDX_ZERO ||
+         !DSL_Gatekeeper_Output_Logits_Result_Valid
+              (&image_node, first_operand_ty, result_ty,
+               logical_opcode.effective_version)))
         valid = DSL_Gatekeeper_Report
-                    (context, "OPR_DSLOUTPUTLOGITS requires semantic=logits");
+                    (context, "OPR_DSLOUTPUTLOGITS.v%u tensor or attribute "
+                     "contract is invalid", logical_opcode.effective_version);
     return valid;
 }
 

@@ -3,6 +3,7 @@
  */
 
 #include <errno.h>
+#include <ctype.h>
 #include <string.h>
 #include <vector>
 
@@ -10,6 +11,7 @@
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
 #include "strtab.h"
+#include "symtab.h"
 
 typedef char DSL_Region_Header_Size_Check
     [sizeof(DSL_REGION_IMAGE_HEADER) == 24 ? 1 : -1];
@@ -54,6 +56,46 @@ DSL_Region_Get_Store (PU_Info *pu, BOOL create)
     Set_PU_Info_regions_ptr(pu, NULL);
     Set_PU_Info_state(pu, WT_REGIONS, Subsect_InMem);
     return store;
+}
+
+static DSL_REGION_STORE *
+DSL_Region_Find_Owning_Store (DSL_REGION region)
+{
+    if (region == NULL)
+        return NULL;
+    for (UINT32 i = 0; i < DSL_region_stores.size(); ++i) {
+        for (UINT32 j = 0; j < DSL_region_stores[i]->regions.size(); ++j) {
+            if (DSL_region_stores[i]->regions[j] == region)
+                return DSL_region_stores[i];
+        }
+    }
+    return NULL;
+}
+
+static const char *
+DSL_Region_Metadata_Value (const dsl_region_runtime &region,
+                           const char *key)
+{
+    const char *prefix = WN_DSL_Comment_Prefix();
+    const char *domain = "region_metadata:";
+    const size_t prefix_length = strlen(prefix);
+    const size_t domain_length = strlen(domain);
+    const size_t key_length = key == NULL ? 0 : strlen(key);
+
+    for (WN *wn = WN_first(WN_region_pragmas(region.wn)); wn != NULL;
+         wn = WN_next(wn)) {
+        if (!WN_Is_DSL_Comment(wn))
+            continue;
+        const char *comment = Index_To_Str(WN_GetComment(wn));
+        const char *cursor = comment + prefix_length;
+        if (strncmp(cursor, domain, domain_length) != 0)
+            continue;
+        cursor += domain_length;
+        if (strncmp(cursor, key, key_length) == 0 &&
+            cursor[key_length] == ':')
+            return cursor + key_length + 1;
+    }
+    return NULL;
 }
 
 void
@@ -112,23 +154,52 @@ DSL_Region_Append_Statement (DSL_REGION region, WN *statement)
 }
 
 BOOL
+DSL_Region_Append_Child (DSL_REGION parent, DSL_REGION child)
+{
+    DSL_REGION_STORE *parent_store = DSL_Region_Find_Owning_Store(parent);
+    DSL_REGION_STORE *child_store = DSL_Region_Find_Owning_Store(child);
+    if (parent_store == NULL || parent_store != child_store ||
+        child->image.parent_region_id != parent->image.region_id)
+        return FALSE;
+
+    for (WN *wn = WN_first(WN_region_body(parent->wn)); wn != NULL;
+         wn = WN_next(wn)) {
+        if (wn == child->wn)
+            return FALSE;
+    }
+    WN_INSERT_BlockLast(WN_region_body(parent->wn), child->wn);
+    return TRUE;
+}
+
+BOOL
 DSL_Region_Append_To_PU (DSL_REGION region)
 {
     if (region == NULL)
         return FALSE;
-    DSL_REGION_STORE *store = NULL;
-    for (UINT32 i = 0; i < DSL_region_stores.size(); ++i) {
-        for (UINT32 j = 0; j < DSL_region_stores[i]->regions.size(); ++j) {
-            if (DSL_region_stores[i]->regions[j] == region) {
-                store = DSL_region_stores[i];
-                break;
-            }
-        }
-    }
+    DSL_REGION_STORE *store = DSL_Region_Find_Owning_Store(region);
     if (store == NULL)
         return FALSE;
     WN *entry = PU_Info_tree_ptr(store->pu);
     WN_INSERT_BlockLast(WN_func_body(entry), region->wn);
+    return TRUE;
+}
+
+BOOL
+DSL_Region_Set_Metadata (DSL_REGION region, const char *key,
+                         const char *value)
+{
+    if (region == NULL || key == NULL || key[0] == '\0' || value == NULL ||
+        DSL_Region_Metadata_Value(*region, key) != NULL)
+        return FALSE;
+    for (const char *cursor = key; *cursor != '\0'; ++cursor) {
+        if (!isalnum((unsigned char)*cursor) && *cursor != '_' &&
+            *cursor != '.' && *cursor != '-')
+            return FALSE;
+    }
+
+    WN *metadata = WN_Create_DSL_Comment("region_metadata", key, value);
+    WN_Set_Linenum(metadata, WN_Get_Linenum(region->wn));
+    WN_INSERT_BlockLast(WN_region_pragmas(region->wn), metadata);
     return TRUE;
 }
 
@@ -141,13 +212,7 @@ DSL_Region_Declare_Symbol (DSL_REGION region, ST_IDX st, UINT32 roles,
                    DSL_REGION_VALUE_INOUT | DSL_REGION_VALUE_RESULT)) != 0)
         return FALSE;
 
-    DSL_REGION_STORE *store = NULL;
-    for (UINT32 i = 0; i < DSL_region_stores.size(); ++i) {
-        for (UINT32 j = 0; j < DSL_region_stores[i]->regions.size(); ++j) {
-            if (DSL_region_stores[i]->regions[j] == region)
-                store = DSL_region_stores[i];
-        }
-    }
+    DSL_REGION_STORE *store = DSL_Region_Find_Owning_Store(region);
     if (store == NULL)
         return FALSE;
 
@@ -171,6 +236,9 @@ DSL_Region_Set_Source_Position (DSL_REGION region, SRCPOS spos)
     WN_Set_Linenum(WN_region_body(region->wn), spos);
     WN_Set_Linenum(WN_region_pragmas(region->wn), spos);
     WN_Set_Linenum(WN_region_exits(region->wn), spos);
+    for (WN *wn = WN_first(WN_region_pragmas(region->wn)); wn != NULL;
+         wn = WN_next(wn))
+        WN_Set_Linenum(wn, spos);
     return TRUE;
 }
 
@@ -193,12 +261,297 @@ DSL_Region_Is_Managed_WN (PU_Info *pu, const WN *wn)
     return FALSE;
 }
 
+BOOL
+DSL_Region_Consume_WN (PU_Info *pu, const WN *wn)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (store == NULL || wn == NULL)
+        return FALSE;
+
+    UINT32 region_index = store->regions.size();
+    UINT32 region_id = 0;
+    for (UINT32 i = 0; i < store->regions.size(); ++i) {
+        if (store->regions[i]->wn == wn) {
+            region_index = i;
+            region_id = store->regions[i]->image.region_id;
+            break;
+        }
+    }
+    if (region_index == store->regions.size())
+        return FALSE;
+
+    delete store->regions[region_index];
+    store->regions.erase(store->regions.begin() + region_index);
+    for (UINT32 i = 0; i < store->interfaces.size(); ) {
+        if (store->interfaces[i].region_id == region_id)
+            store->interfaces.erase(store->interfaces.begin() + i);
+        else
+            ++i;
+    }
+    if (!store->regions.empty())
+        return TRUE;
+
+    for (UINT32 i = 0; i < DSL_region_stores.size(); ++i) {
+        if (DSL_region_stores[i] == store) {
+            DSL_region_stores.erase(DSL_region_stores.begin() + i);
+            break;
+        }
+    }
+    delete store;
+    Set_PU_Info_regions_ptr(pu, NULL);
+    Set_PU_Info_state(pu, WT_REGIONS, Subsect_Missing);
+    return TRUE;
+}
+
 static BOOL
 DSL_Region_Report (FILE *diagnostic, const char *message, UINT32 id)
 {
     if (diagnostic != NULL)
         fprintf (diagnostic, "DSL region error: %s id=%u\n", message, id);
     return FALSE;
+}
+
+static BOOL
+DSL_Region_Vector_Has_ST (const std::vector<ST_IDX> &values, ST_IDX st)
+{
+    for (UINT32 i = 0; i < values.size(); ++i) {
+        if (values[i] == st)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static void
+DSL_Region_Collect_Definitions (WN *block, std::vector<ST_IDX> *definitions)
+{
+    for (WN *stmt = WN_first(block); stmt != NULL; stmt = WN_next(stmt)) {
+        if (WN_operator(stmt) == OPR_STID)
+            definitions->push_back(WN_st_idx(stmt));
+        else if (WN_operator(stmt) == OPR_REGION)
+            DSL_Region_Collect_Definitions(WN_region_body(stmt), definitions);
+    }
+}
+
+static void
+DSL_Region_Collect_External_First_Use
+        (WN *block,
+         const std::vector<ST_IDX> &definitions,
+         std::vector<ST_IDX> *external)
+{
+    for (WN *stmt = WN_first(block); stmt != NULL; stmt = WN_next(stmt)) {
+        if (WN_operator(stmt) == OPR_REGION) {
+            DSL_Region_Collect_External_First_Use
+                (WN_region_body(stmt), definitions, external);
+            continue;
+        }
+        if (WN_operator(stmt) != OPR_STID || WN_kid_count(stmt) != 1 ||
+            !DSL_WN_Is_Native(WN_kid0(stmt)))
+            continue;
+        WN *expression = WN_kid0(stmt);
+        for (UINT32 kid = 0; kid < WN_kid_count(expression); ++kid) {
+            WN *operand = WN_kid(expression, kid);
+            if (operand == NULL || WN_operator(operand) != OPR_LDID)
+                continue;
+            ST_IDX st = WN_st_idx(operand);
+            if (!DSL_Region_Vector_Has_ST(definitions, st) &&
+                !DSL_Region_Vector_Has_ST(*external, st))
+                external->push_back(st);
+        }
+    }
+}
+
+static ST_IDX
+DSL_Region_Last_Result (WN *block)
+{
+    ST_IDX result = ST_IDX_ZERO;
+    for (WN *stmt = WN_first(block); stmt != NULL; stmt = WN_next(stmt)) {
+        if (WN_operator(stmt) == OPR_STID && WN_kid_count(stmt) == 1 &&
+            DSL_WN_Is_Native(WN_kid0(stmt)))
+            result = WN_st_idx(stmt);
+        else if (WN_operator(stmt) == OPR_REGION) {
+            ST_IDX nested = DSL_Region_Last_Result(WN_region_body(stmt));
+            if (ST_IDX_index(nested) != 0)
+                result = nested;
+        }
+    }
+    return result;
+}
+
+static BOOL
+DSL_Region_Source_Positions_Valid (WN *block)
+{
+    for (WN *stmt = WN_first(block); stmt != NULL; stmt = WN_next(stmt)) {
+        if (WN_Get_Linenum(stmt) == 0)
+            return FALSE;
+        if (WN_operator(stmt) == OPR_REGION &&
+            !DSL_Region_Source_Positions_Valid(WN_region_body(stmt)))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Region_Verify_Value_Interface
+        (const DSL_REGION_STORE &store,
+         const dsl_region_runtime &region,
+         FILE *diagnostic)
+{
+    std::vector<ST_IDX> definitions;
+    std::vector<ST_IDX> external;
+    std::vector<const DSL_REGION_INTERFACE_RECORD *> inputs;
+    const DSL_REGION_INTERFACE_RECORD *output = NULL;
+    DSL_Region_Collect_Definitions
+        (WN_region_body(region.wn), &definitions);
+    DSL_Region_Collect_External_First_Use
+        (WN_region_body(region.wn), definitions, &external);
+
+    for (UINT32 i = 0; i < store.interfaces.size(); ++i) {
+        const DSL_REGION_INTERFACE_RECORD &binding = store.interfaces[i];
+        if (binding.region_id != region.image.region_id)
+            continue;
+        if (binding.roles == DSL_REGION_VALUE_INPUT)
+            inputs.push_back(&binding);
+        else if (binding.roles ==
+                 (DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT)) {
+            if (output != NULL)
+                return DSL_Region_Report
+                           (diagnostic, "DOPC_LLAMA_TOPOLOGY duplicate "
+                            "result interface", region.image.region_id);
+            output = &binding;
+        } else {
+            return DSL_Region_Report
+                       (diagnostic, "DOPC_LLAMA_TOPOLOGY unsupported "
+                        "transformer interface role",
+                        region.image.region_id);
+        }
+    }
+    if (inputs.size() != external.size())
+        return DSL_Region_Report
+                   (diagnostic, "DOPC_LLAMA_TOPOLOGY external input count "
+                    "does not match first-use interface",
+                    region.image.region_id);
+    for (UINT32 ordinal = 0; ordinal < external.size(); ++ordinal) {
+        const DSL_REGION_INTERFACE_RECORD *binding = NULL;
+        for (UINT32 i = 0; i < inputs.size(); ++i) {
+            if (inputs[i]->ordinal == ordinal)
+                binding = inputs[i];
+        }
+        if (binding == NULL || binding->st != external[ordinal])
+            return DSL_Region_Report
+                       (diagnostic, "DOPC_LLAMA_TOPOLOGY input interface "
+                        "is not in deterministic first-use order",
+                        region.image.region_id);
+    }
+
+    ST_IDX last = DSL_Region_Last_Result(WN_region_body(region.wn));
+    if (output == NULL || output->ordinal != 0 || output->st != last ||
+        ST_IDX_index(last) == 0 ||
+        ST_tensor_attribute
+            (last, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS)) ==
+            NULL ||
+        strcmp(ST_tensor_attribute
+                   (last,
+                    TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS)),
+               "true") != 0)
+        return DSL_Region_Report
+                   (diagnostic, "DOPC_LLAMA_TOPOLOGY result must be the "
+                    "outer-owned no-alias final value",
+                    region.image.region_id);
+    return TRUE;
+}
+
+static BOOL
+DSL_Region_Verify_Decoder_Topology
+        (const dsl_region_runtime &region, FILE *diagnostic)
+{
+    static const DSL_OPERATOR expected[] = {
+        OPR_DSLRMSNORM,
+        OPR_DSLLINEAR, OPR_DSLLINEAR, OPR_DSLLINEAR,
+        OPR_DSLRESHAPE, OPR_DSLTRANSPOSE,
+        OPR_DSLROTARYEMBEDDING, OPR_DSLROTARYEMBEDDING,
+        OPR_DSLATTENTION,
+        OPR_DSLTRANSPOSE, OPR_DSLRESHAPE,
+        OPR_DSLLINEAR, OPR_DSLRESIDUALADD,
+        OPR_DSLRMSNORM,
+        OPR_DSLLINEAR, OPR_DSLLINEAR, OPR_DSLSWIGLU,
+        OPR_DSLLINEAR, OPR_DSLRESIDUALADD
+    };
+    UINT32 ordinal = 0;
+    for (WN *stmt = WN_first(WN_region_body(region.wn)); stmt != NULL;
+         stmt = WN_next(stmt)) {
+        if (WN_operator(stmt) != OPR_STID || WN_kid_count(stmt) != 1 ||
+            !DSL_WN_Is_Native(WN_kid0(stmt)) ||
+            ordinal >= sizeof(expected) / sizeof(expected[0]) ||
+            DSL_WN_operator(WN_kid0(stmt)) != expected[ordinal])
+            return DSL_Region_Report
+                       (diagnostic, "DOPC_LLAMA_TOPOLOGY decoder operator "
+                        "sequence mismatch", region.image.region_id);
+        ++ordinal;
+    }
+    if (ordinal != sizeof(expected) / sizeof(expected[0]))
+        return DSL_Region_Report
+                   (diagnostic, "DOPC_LLAMA_TOPOLOGY incomplete decoder "
+                    "operator sequence", region.image.region_id);
+    return TRUE;
+}
+
+static BOOL
+DSL_Region_Verify_Prefill_Topology
+        (const DSL_REGION_STORE &store,
+         const dsl_region_runtime &region,
+         FILE *diagnostic)
+{
+    static const DSL_OPERATOR tail[] = {
+        OPR_DSLRMSNORM, OPR_DSLLINEAR, OPR_DSLOUTPUTLOGITS
+    };
+    WN *stmt = WN_first(WN_region_body(region.wn));
+    if (stmt == NULL || WN_operator(stmt) != OPR_STID ||
+        !DSL_WN_Is_Native(WN_kid0(stmt)) ||
+        DSL_WN_operator(WN_kid0(stmt)) != OPR_DSLTOKENEMBEDDING)
+        return DSL_Region_Report
+                   (diagnostic, "DOPC_LLAMA_TOPOLOGY prefill must begin "
+                    "with token embedding", region.image.region_id);
+
+    UINT32 decoder_count = 0;
+    stmt = WN_next(stmt);
+    while (stmt != NULL && WN_operator(stmt) == OPR_REGION) {
+        BOOL matched = FALSE;
+        for (UINT32 i = 0; i < store.regions.size(); ++i) {
+            const dsl_region_runtime &child = *store.regions[i];
+            if (child.wn == stmt &&
+                child.image.parent_region_id == region.image.region_id &&
+                child.image.contract_name != STR_IDX_ZERO &&
+                child.image.contract_name < STR_Table_Size() &&
+                strcmp(Index_To_Str(child.image.contract_name),
+                       "transformer.decoder_layer") == 0 &&
+                child.image.contract_version == 1)
+                matched = TRUE;
+        }
+        if (!matched)
+            return DSL_Region_Report
+                       (diagnostic, "DOPC_LLAMA_TOPOLOGY invalid prefill "
+                        "child region", region.image.region_id);
+        ++decoder_count;
+        stmt = WN_next(stmt);
+    }
+    if (decoder_count == 0)
+        return DSL_Region_Report
+                   (diagnostic, "DOPC_LLAMA_TOPOLOGY prefill has no decoder "
+                    "region", region.image.region_id);
+    for (UINT32 i = 0; i < sizeof(tail) / sizeof(tail[0]); ++i) {
+        if (stmt == NULL || WN_operator(stmt) != OPR_STID ||
+            !DSL_WN_Is_Native(WN_kid0(stmt)) ||
+            DSL_WN_operator(WN_kid0(stmt)) != tail[i])
+            return DSL_Region_Report
+                       (diagnostic, "DOPC_LLAMA_TOPOLOGY invalid prefill "
+                        "final operator sequence", region.image.region_id);
+        stmt = WN_next(stmt);
+    }
+    if (stmt != NULL)
+        return DSL_Region_Report
+                   (diagnostic, "DOPC_LLAMA_TOPOLOGY trailing prefill "
+                    "statement", region.image.region_id);
+    return TRUE;
 }
 
 BOOL
@@ -243,6 +596,42 @@ DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
                            (diagnostic, "invalid parent",
                             region.image.region_id);
         }
+
+        const char *contract = Index_To_Str(region.image.contract_name);
+        BOOL decoder = strcmp(contract, "transformer.decoder_layer") == 0;
+        BOOL prefill = strcmp(contract, "transformer.prefill") == 0;
+        if ((decoder || prefill) &&
+            (region.image.contract_version != 1 ||
+             WN_Get_Linenum(region.wn) == 0 ||
+             !DSL_Region_Source_Positions_Valid
+                  (WN_region_body(region.wn)) ||
+             DSL_Region_Metadata_Value(region, "module_path") == NULL))
+            return DSL_Region_Report
+                       (diagnostic, "DOPC_LLAMA_TOPOLOGY incomplete source "
+                        "or module context", region.image.region_id);
+        if (decoder) {
+            const char *ordinal =
+                DSL_Region_Metadata_Value(region, "layer_ordinal");
+            if (ordinal == NULL || ordinal[0] == '\0')
+                return DSL_Region_Report
+                           (diagnostic, "DOPC_LLAMA_TOPOLOGY missing decoder "
+                            "layer ordinal", region.image.region_id);
+            for (const char *cursor = ordinal; *cursor != '\0'; ++cursor) {
+                if (!isdigit((unsigned char)*cursor))
+                    return DSL_Region_Report
+                               (diagnostic, "DOPC_LLAMA_TOPOLOGY invalid "
+                                "decoder layer ordinal",
+                                region.image.region_id);
+            }
+            if (!DSL_Region_Verify_Decoder_Topology(region, diagnostic))
+                return FALSE;
+        }
+        if (prefill &&
+            !DSL_Region_Verify_Prefill_Topology(*store, region, diagnostic))
+            return FALSE;
+        if ((decoder || prefill) &&
+            !DSL_Region_Verify_Value_Interface(*store, region, diagnostic))
+            return FALSE;
     }
     for (UINT32 i = 0; i < store->interfaces.size(); ++i) {
         const DSL_REGION_INTERFACE_RECORD &binding = store->interfaces[i];
@@ -263,8 +652,17 @@ DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
         for (UINT32 j = 0; j < i; ++j) {
             const DSL_REGION_INTERFACE_RECORD &previous =
                 store->interfaces[j];
+            const UINT32 input_roles = DSL_REGION_VALUE_INPUT |
+                                       DSL_REGION_VALUE_INOUT;
+            const UINT32 output_roles = DSL_REGION_VALUE_OUTPUT |
+                                        DSL_REGION_VALUE_INOUT |
+                                        DSL_REGION_VALUE_RESULT;
             if (previous.region_id == binding.region_id &&
-                previous.ordinal == binding.ordinal)
+                previous.ordinal == binding.ordinal &&
+                (((previous.roles & input_roles) != 0 &&
+                  (binding.roles & input_roles) != 0) ||
+                 ((previous.roles & output_roles) != 0 &&
+                  (binding.roles & output_roles) != 0)))
                 return DSL_Region_Report
                            (diagnostic, "duplicate interface ordinal",
                             binding.region_id);
@@ -287,6 +685,16 @@ DSL_Region_Print_PU (FILE *file, PU_Info *pu)
                  region.image.parent_region_id, region.image.depth,
                  region.image.kind, Index_To_Str(region.image.contract_name),
                  region.image.contract_version);
+        for (WN *wn = WN_first(WN_region_pragmas(region.wn)); wn != NULL;
+             wn = WN_next(wn)) {
+            if (!WN_Is_DSL_Comment(wn))
+                continue;
+            const char *comment = Index_To_Str(WN_GetComment(wn));
+            const char *prefix = WN_DSL_Comment_Prefix();
+            const char *metadata = comment + strlen(prefix);
+            if (strncmp(metadata, "region_metadata:", 16) == 0)
+                fprintf (file, "  METADATA %s\n", metadata + 16);
+        }
         for (UINT32 j = 0; j < store->interfaces.size(); ++j) {
             const DSL_REGION_INTERFACE_RECORD &binding = store->interfaces[j];
             if (binding.region_id == region.image.region_id)

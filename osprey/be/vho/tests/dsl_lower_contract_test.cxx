@@ -24,6 +24,8 @@
 #include "dsl_builder.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_lower.h"
+#include "dsl_region.h"
+#include "open64_dsl_runtime_abi.h"
 
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
@@ -1052,6 +1054,335 @@ Check_Complete_ResNet_Vertical_Slice (BOOL artifact_only)
     return call_count == 18 && capture_count == 18 && comment_count == 18;
 }
 
+static BOOL
+Check_Llama2_Prefill_Expression_Lowering(void)
+{
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("dsl_llama2_prefill_lowering");
+    TY_IDX token_ty = Create_Shaped_Tensor_Type
+        ("llama_token_type", "int64", MTYPE_To_TY(MTYPE_I8), 2,
+         "[1,8]", "host", "dense");
+    TY_IDX embedding_weight_ty = Create_Shaped_Tensor_Type
+        ("llama_embedding_weight_type", "float32",
+         MTYPE_To_TY(MTYPE_F4), 2, "[128,32]", "host", "dense");
+    TY_IDX scale_ty = Create_Shaped_Tensor_Type
+        ("llama_scale_type", "float32", MTYPE_To_TY(MTYPE_F4), 1,
+         "[32]", "host", "dense");
+    TY_IDX qkv_ty = Create_Shaped_Tensor_Type
+        ("llama_qkv_type", "float32", MTYPE_To_TY(MTYPE_F4), 4,
+         "[1,4,8,8]", "host", "dense");
+    TY_IDX rope_ty = Create_Shaped_Tensor_Type
+        ("llama_rope_type", "float32", MTYPE_To_TY(MTYPE_F4), 4,
+         "[1,1,8,8]", "host", "dense");
+    TY_IDX swiglu_ty = Create_Shaped_Tensor_Type
+        ("llama_swiglu_type", "float32", MTYPE_To_TY(MTYPE_F4), 3,
+         "[1,8,88]", "host", "dense");
+    if (pu == NULL || token_ty == TY_IDX_ZERO ||
+        embedding_weight_ty == TY_IDX_ZERO || scale_ty == TY_IDX_ZERO ||
+        qkv_ty == TY_IDX_ZERO || rope_ty == TY_IDX_ZERO ||
+        swiglu_ty == TY_IDX_ZERO)
+        return FALSE;
+
+    DSL_Opcode_Register_Transformer_Domain();
+    DSL_DOMAIN_ID common = DSL_Domain_Find("common");
+    DSL_DOMAIN_ID transformer = DSL_Domain_Find("transformer");
+    DSL_OPCODE_ID embedding_id = DSL_Opcode_Find
+        (transformer, "transformer.token_embedding", 1);
+    DSL_OPCODE_ID rms_id = DSL_Opcode_Find
+        (transformer, "transformer.rms_norm", 1);
+    DSL_OPCODE_ID rotary_id = DSL_Opcode_Find
+        (transformer, "transformer.rotary_embedding", 1);
+    DSL_OPCODE_ID attention_id = DSL_Opcode_Find
+        (transformer, "transformer.attention", 1);
+    DSL_OPCODE_ID swiglu_id = DSL_Opcode_Find
+        (transformer, "transformer.swiglu", 1);
+    DSL_OPCODE_ID reshape_id = DSL_Opcode_Find
+        (common, "common.reshape", 1);
+    DSL_OPCODE_ID transpose_id = DSL_Opcode_Find
+        (common, "common.transpose", 1);
+    DSL_OPCODE_ID matmul_id = DSL_Opcode_Find
+        (common, "common.matmul", 2);
+    DSL_OPCODE_ID linear_id = DSL_Opcode_Find
+        (common, "common.linear", 3);
+    DSL_OPCODE_ID output_id = DSL_Opcode_Find
+        (common, "common.output_logits", 3);
+    if (embedding_id == DSL_OPCODE_INVALID_ID ||
+        rms_id == DSL_OPCODE_INVALID_ID ||
+        rotary_id == DSL_OPCODE_INVALID_ID ||
+        attention_id == DSL_OPCODE_INVALID_ID ||
+        swiglu_id == DSL_OPCODE_INVALID_ID ||
+        reshape_id == DSL_OPCODE_INVALID_ID ||
+        transpose_id == DSL_OPCODE_INVALID_ID ||
+        matmul_id == DSL_OPCODE_INVALID_ID ||
+        linear_id == DSL_OPCODE_INVALID_ID ||
+        output_id == DSL_OPCODE_INVALID_ID)
+        return FALSE;
+
+    DSL_BUILDER_VALUE values[21];
+    values[0] = DSL_Builder_Create_Model_Input("token_ids", token_ty, 0);
+    values[1] = DSL_Builder_Create_Tensor_Constant
+        ("embedding_weight", embedding_weight_ty, "float32", 2,
+         "[128,32]", "splat", "1");
+    DSL_BUILDER_OPERATOR_ATTRIBUTE embedding_attrs[2] = {
+        { "attr.padding_idx", "none" },
+        { "attr.bounds_policy", "runtime_check" }
+    };
+    DSL_BUILDER_VALUE kids[3] = { values[0], values[1], NULL };
+    values[2] = DSL_Builder_Create_Operator
+        (embedding_id, 1, kids, 2, embedding_attrs, 2);
+
+    values[3] = DSL_Builder_Create_Tensor_Constant
+        ("rms_scale", scale_ty, "float32", 1, "[32]", "splat", "1");
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rms_attrs[3] = {
+        { "attr.axis", "-1" },
+        { "attr.epsilon", "0.00001" },
+        { "attr.accum_dtype", "float32" }
+    };
+    kids[0] = values[2];
+    kids[1] = values[3];
+    values[4] = DSL_Builder_Create_Operator
+        (rms_id, 1, kids, 2, rms_attrs, 3);
+
+    values[5] = DSL_Builder_Create_Model_Input("query", qkv_ty, 1);
+    values[6] = DSL_Builder_Create_Model_Input("key", qkv_ty, 2);
+    values[7] = DSL_Builder_Create_Model_Input("value", qkv_ty, 3);
+    values[8] = DSL_Builder_Create_Tensor_Constant
+        ("rope_cos", rope_ty, "float32", 4, "[1,1,8,8]", "splat", "1");
+    values[9] = DSL_Builder_Create_Tensor_Constant
+        ("rope_sin", rope_ty, "float32", 4, "[1,1,8,8]", "splat", "0");
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rotary_attrs[6] = {
+        { "attr.head_layout", "BHSD" },
+        { "attr.sequence_axis", "2" },
+        { "attr.feature_axis", "3" },
+        { "attr.pairing", "half_split" },
+        { "attr.position_mode", "zero_based_static" },
+        { "attr.position_offset", "0" }
+    };
+    kids[0] = values[5];
+    kids[1] = values[8];
+    kids[2] = values[9];
+    values[10] = DSL_Builder_Create_Operator
+        (rotary_id, 1, kids, 3, rotary_attrs, 6);
+    kids[0] = values[6];
+    values[11] = DSL_Builder_Create_Operator
+        (rotary_id, 1, kids, 3, rotary_attrs, 6);
+
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attention_attrs[10] = {
+        { "attr.execution_mode", "full_sequence" },
+        { "attr.mask_mode", "causal" },
+        { "attr.head_layout", "BHSD" },
+        { "attr.query_heads", "4" },
+        { "attr.kv_heads", "4" },
+        { "attr.head_dim", "8" },
+        { "attr.scale_mode", "inverse_sqrt_head_dim" },
+        { "attr.softmax_axis", "-1" },
+        { "attr.softmax_accum_dtype", "float32" },
+        { "attr.cache_mode", "none" }
+    };
+    kids[0] = values[10];
+    kids[1] = values[11];
+    kids[2] = values[7];
+    values[12] = DSL_Builder_Create_Operator
+        (attention_id, 1, kids, 3, attention_attrs, 10);
+
+    values[13] = DSL_Builder_Create_Model_Input
+        ("gate_projection", swiglu_ty, 4);
+    values[14] = DSL_Builder_Create_Model_Input
+        ("up_projection", swiglu_ty, 5);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE swiglu_attr = {
+        "attr.activation", "silu"
+    };
+    kids[0] = values[13];
+    kids[1] = values[14];
+    values[15] = DSL_Builder_Create_Operator
+        (swiglu_id, 1, kids, 2, &swiglu_attr, 1);
+
+    DSL_BUILDER_OPERATOR_ATTRIBUTE reshape_attr = {
+        "attr.target_shape", "1,8,32"
+    };
+    kids[0] = values[5];
+    values[16] = DSL_Builder_Create_Operator
+        (reshape_id, 1, kids, 1, &reshape_attr, 1);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE transpose_attr = {
+        "attr.permutation", "0,2,1,3"
+    };
+    kids[0] = values[5];
+    values[17] = DSL_Builder_Create_Operator
+        (transpose_id, 1, kids, 1, &transpose_attr, 1);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE matmul_attrs[4] = {
+        { "attr.transpose_kid0", "false" },
+        { "attr.transpose_kid1", "true" },
+        { "attr.batch_rule", "exact" },
+        { "attr.accum_dtype", "float32" }
+    };
+    kids[0] = values[5];
+    kids[1] = values[6];
+    values[18] = DSL_Builder_Create_Operator
+        (matmul_id, 2, kids, 2, matmul_attrs, 4);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE linear_attrs[4] = {
+        { "attr.has_bias", "false" },
+        { "attr.transpose_input", "false" },
+        { "attr.transpose_weight", "true" },
+        { "attr.weight_layout", "OI" }
+    };
+    kids[0] = values[2];
+    kids[1] = values[1];
+    values[19] = DSL_Builder_Create_Operator
+        (linear_id, 3, kids, 2, linear_attrs, 4);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE output_attrs[3] = {
+        { "attr.semantic", "token_logits" },
+        { "attr.sequence_axis", "-2" },
+        { "attr.vocabulary_axis", "-1" }
+    };
+    kids[0] = values[19];
+    values[20] = DSL_Builder_Create_Operator
+        (output_id, 3, kids, 1, output_attrs, 3);
+
+    for (UINT32 i = 0; i < 21; ++i) {
+        if (values[i] == NULL || !DSL_Builder_Append_PU_Value(pu, values[i]))
+            return FALSE;
+    }
+    DSL_GATEKEEPER_RESULT gatekeeper_result;
+    if (!DSL_Gatekeeper_Verify_Program(pu, stderr, &gatekeeper_result) ||
+        gatekeeper_result.native_node_count != 21 ||
+        gatekeeper_result.error_count != 0)
+        return FALSE;
+
+    VHO_DSL_LOWER_RESULT lower_result;
+    if (!VHO_DSL_Lower_Verified_Program_Unit
+             (pu, PU_Info_tree_ptr(pu), stderr, &lower_result) ||
+        lower_result.native_node_count != 21 ||
+        lower_result.lowered_node_count != 21 ||
+        lower_result.remaining_executable_carrier_count != 0)
+        return FALSE;
+
+    const char *expected_calls[21] = {
+        "__open64_dsl_model_input_v1",
+        "__open64_dsl_tensor_const_v1",
+        "__open64_dsl_token_embedding_v1",
+        "__open64_dsl_tensor_const_v1",
+        "__open64_dsl_rms_norm_v1",
+        "__open64_dsl_model_input_v1",
+        "__open64_dsl_model_input_v1",
+        "__open64_dsl_model_input_v1",
+        "__open64_dsl_tensor_const_v1",
+        "__open64_dsl_tensor_const_v1",
+        "__open64_dsl_rotary_embedding_v1",
+        "__open64_dsl_rotary_embedding_v1",
+        "__open64_dsl_attention_v1",
+        "__open64_dsl_model_input_v1",
+        "__open64_dsl_model_input_v1",
+        "__open64_dsl_swiglu_v1",
+        "__open64_dsl_reshape_v1",
+        "__open64_dsl_transpose_v1",
+        "__open64_dsl_matmul_v1",
+        "__open64_dsl_linear_v1",
+        "__open64_dsl_output_logits_v1"
+    };
+    const UINT32 expected_parameters[21] = {
+        2, 2, 3, 2, 5, 2, 2, 2, 2, 2, 4, 4, 7, 2, 2, 3, 2, 3,
+        4, 6, 3
+    };
+    UINT32 call_count = 0;
+    UINT32 capture_count = 0;
+    UINT32 comment_count = 0;
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    for (WN *statement = WN_first(body); statement != NULL;
+         statement = WN_next(statement)) {
+        if (WN_operator(statement) == OPR_COMMENT) {
+            ++comment_count;
+        } else if (WN_operator(statement) == OPR_CALL) {
+            if (call_count >= 21 ||
+                strcmp(ST_name(WN_st(statement)),
+                       expected_calls[call_count]) != 0 ||
+                WN_kid_count(statement) != expected_parameters[call_count])
+                return FALSE;
+            if (call_count == 19 &&
+                (WN_operator(WN_kid0(WN_kid(statement, 2))) != OPR_INTCONST ||
+                 WN_const_val(WN_kid0(WN_kid(statement, 2))) != 0 ||
+                 WN_operator(WN_kid0(WN_kid(statement, 3))) != OPR_LDA))
+                return FALSE;
+            if (call_count == 20 &&
+                (WN_operator(WN_kid0(WN_kid(statement, 2))) != OPR_INTCONST ||
+                 WN_const_val(WN_kid0(WN_kid(statement, 2))) !=
+                     OPEN64_DSL_OUTPUT_SEMANTIC_TOKEN_LOGITS))
+                return FALSE;
+            ++call_count;
+        } else if (WN_operator(statement) == OPR_STID &&
+                   ST_class(WN_st(statement)) == CLASS_PREG) {
+            ++capture_count;
+        } else {
+            return FALSE;
+        }
+    }
+    if (call_count != 21 || capture_count != 21 || comment_count != 21 ||
+        Tree_Has_Native_DSL(body))
+        return FALSE;
+
+    const char *trace_path = getenv("OPEN64_DSL_LLAMA2_LOWER_TRACE");
+    if (trace_path != NULL && trace_path[0] != '\0') {
+        FILE *trace = fopen(trace_path, "w");
+        if (trace == NULL)
+            return FALSE;
+        fprintf(trace, "WHIRL after verified Llama 2 prefill VHO DSL lowering\n");
+        fdump_tree(trace, PU_Info_tree_ptr(pu));
+        fclose(trace);
+    }
+    return TRUE;
+}
+
+static BOOL
+Check_Managed_Region_Lowering(void)
+{
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("dsl_managed_region_lowering");
+    TY_IDX tensor_ty = Create_Tensor_Type_With_Representation
+                           ("dsl_region_lowering_type", "host", "host");
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("region_input", tensor_ty, 0);
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_DOMAIN_ID common = DSL_Domain_Find("common");
+    DSL_OPCODE_ID relu_id = DSL_Opcode_Find(common, "common.relu", 2);
+    DSL_BUILDER_VALUE kid[1] = { input };
+    DSL_BUILDER_VALUE relu = DSL_Builder_Create_Operator
+                                 (relu_id, 2, kid, 1, NULL, 0);
+    DSL_BUILDER_REGION region = DSL_Builder_Create_Region
+        (pu, NULL, "test.lowering", 1);
+    if (pu == NULL || tensor_ty == TY_IDX_ZERO || input == NULL ||
+        relu_id == DSL_OPCODE_INVALID_ID || relu == NULL || region == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, input) ||
+        !DSL_Builder_Append_Region_Value(region, relu) ||
+        !DSL_Builder_Append_PU_Region(pu, region) ||
+        !DSL_Region_Verify_PU(pu, stderr))
+        return FALSE;
+
+    DSL_GATEKEEPER_RESULT gatekeeper_result;
+    if (!DSL_Gatekeeper_Verify_Program(pu, stderr, &gatekeeper_result) ||
+        gatekeeper_result.native_node_count != 2)
+        return FALSE;
+
+    VHO_DSL_LOWER_RESULT lower_result;
+    WN *tree = PU_Info_tree_ptr(pu);
+    if (!VHO_DSL_Lower_Verified_Program_Unit
+             (pu, tree, stderr, &lower_result) ||
+        lower_result.native_node_count != 2 ||
+        lower_result.lowered_node_count != 2 ||
+        PU_Info_state(pu, WT_REGIONS) != Subsect_Missing ||
+        PU_Info_regions_ptr(pu) != NULL)
+        return FALSE;
+
+    UINT32 call_count = 0;
+    WN *body = WN_func_body(tree);
+    for (WN *statement = WN_first(body); statement != NULL;
+         statement = WN_next(statement)) {
+        if (WN_operator(statement) == OPR_REGION)
+            return FALSE;
+        if (WN_operator(statement) == OPR_CALL)
+            ++call_count;
+    }
+    return call_count == 2 && !Tree_Has_Native_DSL(body);
+}
+
 int
 main(void)
 {
@@ -1216,6 +1547,16 @@ main(void)
 
     if (!Check_Complete_ResNet_Vertical_Slice(FALSE)) {
         fprintf(stderr, "complete ResNet lowering contract changed\n");
+        return 1;
+    }
+
+    if (!Check_Llama2_Prefill_Expression_Lowering()) {
+        fprintf(stderr, "Llama 2 prefill expression lowering changed\n");
+        return 1;
+    }
+
+    if (!Check_Managed_Region_Lowering()) {
+        fprintf(stderr, "managed REGION lowering contract changed\n");
         return 1;
     }
 

@@ -868,7 +868,8 @@ Check_DSL_Logical_ResNet_Contracts(void)
             DSL_Operator_Find_Current(contract.stable_name,
                                       strlen(contract.stable_name)) !=
                 contract.dsl_operator ||
-            !DSL_Operator_Get_Info(contract.dsl_operator, &info) ||
+            !DSL_Operator_Get_Info_Version
+                 (contract.dsl_operator, contract.version, &info) ||
             strcmp(info.logical_name, contract.logical_name) != 0 ||
             strcmp(info.stable_name, contract.stable_name) != 0 ||
             info.version != contract.version ||
@@ -890,7 +891,7 @@ Check_DSL_Logical_ResNet_Contracts(void)
 static int
 Check_DSL_Opcode_Registry(void)
 {
-    const UINT32 common_seed_count = 68;
+    const UINT32 common_seed_count = 71;
     const UINT32 wrapper_seed_count = 12;
     DSL_DOMAIN_ID common_id;
     DSL_DOMAIN_ID cnn_id;

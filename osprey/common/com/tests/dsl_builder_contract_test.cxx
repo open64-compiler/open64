@@ -1102,7 +1102,6 @@ Check_Production_Native_Builder(void)
         fprintf(stderr, "production builder DSL image rows changed\n");
         failed = 1;
     }
-
     FILE *gatekeeper_dump = tmpfile();
     if (!DSL_Gatekeeper_Verify_Program
              (pu, gatekeeper_dump, &gatekeeper_result) ||
@@ -1112,7 +1111,6 @@ Check_Production_Native_Builder(void)
         fprintf(stderr, "gatekeeper rejected a valid native program\n");
         failed = 1;
     }
-
     ST_tensor_bind_attribute
         (WN_st_idx(add),
          TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS), "false");
@@ -1162,6 +1160,17 @@ Check_Production_Native_Builder(void)
     }
     WN_offset(add_expression) = saved_record;
 
+    saved_record = WN_offset(matmul_expression);
+    WN_offset(matmul_expression) = Save_Str
+        ("__WHIRL_DSL__:opcode:common.matmul:v1:");
+    if (DSL_Gatekeeper_Verify_Program
+            (pu, gatekeeper_dump, &gatekeeper_result) ||
+        gatekeeper_result.error_count == 0) {
+        fprintf(stderr, "gatekeeper accepted missing typed attributes\n");
+        failed = 1;
+    }
+    WN_offset(matmul_expression) = saved_record;
+
     WN *body = WN_func_body(PU_Info_tree_ptr(pu));
     WN *escape = WN_CreateEval
                      (WN_Lda(Pointer_Mtype, 0,
@@ -1191,30 +1200,6 @@ Check_Production_Native_Builder(void)
     }
     if (retained_artifact == NULL || retained_artifact[0] == '\0')
         (void) unlink(request.path);
-
-    DSL_BUILDER_PROGRAM_UNIT bad_pu =
-        DSL_Builder_Create_Minimal_PU("gatekeeper_missing_attribute");
-    DSL_BUILDER_VALUE bad_kids[2];
-    bad_kids[0] = DSL_Builder_Create_Tensor_Constant
-                  ("bad_attr_kid0", tensor_ty, "int32", 2, "[2,2]",
-                   "splat", "1");
-    bad_kids[1] = DSL_Builder_Create_Tensor_Constant
-                  ("bad_attr_kid1", tensor_ty, "int32", 2, "[2,2]",
-                   "splat", "1");
-    DSL_BUILDER_VALUE bad_matmul = DSL_Builder_Create_Operator
-                                       (matmul_id, 1, bad_kids, 2, NULL, 0);
-    DSL_Builder_Append_PU_Value(bad_pu, bad_kids[0]);
-    DSL_Builder_Append_PU_Value(bad_pu, bad_kids[1]);
-    DSL_Builder_Append_PU_Value(bad_pu, bad_matmul);
-    gatekeeper_dump = tmpfile();
-    if (DSL_Gatekeeper_Verify_Program
-            (bad_pu, gatekeeper_dump, &gatekeeper_result) ||
-        gatekeeper_result.error_count == 0) {
-        fprintf(stderr, "gatekeeper accepted missing typed attributes\n");
-        failed = 1;
-    }
-    if (gatekeeper_dump != NULL)
-        fclose(gatekeeper_dump);
 
     return failed;
 }
@@ -1604,6 +1589,1130 @@ Check_Native_DSL_Node_Layout(void)
 }
 
 static int
+Check_Llama2_Common_Substrate(void)
+{
+    DSL_OPERATOR_INFO current_info;
+    DSL_OPERATOR_INFO exact_info;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID reshape_id;
+    DSL_OPCODE_ID transpose_id;
+    DSL_OPCODE_ID linear_v2_id;
+    DSL_OPCODE_ID linear_v3_id;
+    DSL_OPCODE_ID matmul_v2_id;
+    DSL_OPCODE_ID output_v3_id;
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+    DSL_BUILDER_VALUE values[10];
+    UINT32 source_lines[10];
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE linear_attrs[4];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE reshape_attr;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE transpose_attr;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE matmul_attrs[4];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE output_attrs[3];
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    TY_IDX activation_ty;
+    TY_IDX weight_ty;
+    TY_IDX attention_ty;
+    TY_IDX logits_ty;
+    UINT32 file_id;
+    char diagnostic[2048];
+    int failed = 0;
+
+    if (!DSL_Builder_Begin_Program())
+        return 1;
+    DSL_Opcode_Register_Common_Substrate();
+    common_id = DSL_Domain_Find("common");
+    reshape_id = DSL_Opcode_Find(common_id, "common.reshape", 1);
+    transpose_id = DSL_Opcode_Find(common_id, "common.transpose", 1);
+    linear_v2_id = DSL_Opcode_Find(common_id, "common.linear", 2);
+    linear_v3_id = DSL_Opcode_Find(common_id, "common.linear", 3);
+    matmul_v2_id = DSL_Opcode_Find(common_id, "common.matmul", 2);
+    output_v3_id = DSL_Opcode_Find(common_id, "common.output_logits", 3);
+    if (reshape_id == DSL_OPCODE_INVALID_ID ||
+        transpose_id == DSL_OPCODE_INVALID_ID ||
+        linear_v2_id == DSL_OPCODE_INVALID_ID ||
+        linear_v3_id == DSL_OPCODE_INVALID_ID ||
+        matmul_v2_id == DSL_OPCODE_INVALID_ID ||
+        output_v3_id == DSL_OPCODE_INVALID_ID ||
+        (UINT32)OPR_DSLRESHAPE != 14 ||
+        (UINT32)OPR_DSLTRANSPOSE != 15 ||
+        !DSL_Operator_Get_Info(OPR_DSLLINEAR, &current_info) ||
+        current_info.version != 3 || current_info.nkids != 2 ||
+        !DSL_Operator_Get_Info_Version(OPR_DSLLINEAR, 2, &exact_info) ||
+        exact_info.version != 2 || exact_info.nkids != 3 ||
+        !DSL_Operator_Get_Info_Version(OPR_DSLMATMUL, 1, &exact_info) ||
+        exact_info.version != 1 ||
+        !DSL_Operator_Get_Info_Version(OPR_DSLMATMUL, 2, &exact_info) ||
+        exact_info.version != 2 ||
+        !DSL_Operator_Get_Info_Version
+             (OPR_DSLOUTPUTLOGITS, 2, &exact_info) ||
+        !DSL_Operator_Get_Info_Version
+             (OPR_DSLOUTPUTLOGITS, 3, &current_info) ||
+        DSL_Operator_Get_Info_Version(OPR_DSLLINEAR, 1, NULL)) {
+        fprintf(stderr, "item-23 exact operator schema lookup changed\n");
+        return 1;
+    }
+
+    memset(&type_core, 0, sizeof(type_core));
+    type_core.kind = "tensor";
+    type_core.dtype = "float32";
+    type_core.rank = 3;
+    type_core.logical_shape = "[1,8,32]";
+    activation_ty = DSL_Builder_Create_Tensor_Type_Core
+                        ("llama_activation", MTYPE_To_TY(MTYPE_F4),
+                         &type_core);
+    type_core.rank = 2;
+    type_core.logical_shape = "[64,32]";
+    weight_ty = DSL_Builder_Create_Tensor_Type_Core
+                    ("llama_weight", MTYPE_To_TY(MTYPE_F4), &type_core);
+    type_core.rank = 4;
+    type_core.logical_shape = "[1,4,8,8]";
+    attention_ty = DSL_Builder_Create_Tensor_Type_Core
+                       ("llama_attention", MTYPE_To_TY(MTYPE_F4),
+                        &type_core);
+    type_core.rank = 3;
+    type_core.logical_shape = "[1,8,128]";
+    logits_ty = DSL_Builder_Create_Tensor_Type_Core
+                    ("llama_logits", MTYPE_To_TY(MTYPE_F4), &type_core);
+
+    pu = DSL_Builder_Create_Minimal_PU("llama2_common_substrate");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    source_lines[0] = __LINE__ + 1;
+    values[0] = DSL_Builder_Create_Model_Input
+                    ("llama_activation_input", activation_ty, 0);
+    source_lines[1] = __LINE__ + 1;
+    values[1] = DSL_Builder_Create_Tensor_Constant
+                    ("llama_projection_weight", weight_ty, "float32", 2,
+                     "[64,32]", "splat", "1");
+    source_lines[2] = __LINE__ + 1;
+    values[2] = DSL_Builder_Create_Model_Input
+                    ("llama_query", attention_ty, 1);
+    source_lines[3] = __LINE__ + 1;
+    values[3] = DSL_Builder_Create_Model_Input
+                    ("llama_key", attention_ty, 2);
+    source_lines[4] = __LINE__ + 1;
+    values[4] = DSL_Builder_Create_Model_Input
+                    ("llama_logits_input", logits_ty, 3);
+
+    linear_attrs[0].name = "attr.has_bias";
+    linear_attrs[0].value = "false";
+    linear_attrs[1].name = "attr.transpose_input";
+    linear_attrs[1].value = "false";
+    linear_attrs[2].name = "attr.transpose_weight";
+    linear_attrs[2].value = "true";
+    linear_attrs[3].name = "attr.weight_layout";
+    linear_attrs[3].value = "OI";
+    kids[0] = values[0];
+    kids[1] = values[1];
+    source_lines[5] = __LINE__ + 1;
+    values[5] = DSL_Builder_Create_Operator
+                    (linear_v3_id, 3, kids, 2, linear_attrs, 4);
+
+    reshape_attr.name = "attr.target_shape";
+    reshape_attr.value = "1,8,4,16";
+    kids[0] = values[5];
+    source_lines[6] = __LINE__ + 1;
+    values[6] = DSL_Builder_Create_Operator
+                    (reshape_id, 1, kids, 1, &reshape_attr, 1);
+
+    transpose_attr.name = "attr.permutation";
+    transpose_attr.value = "0,2,1,3";
+    kids[0] = values[6];
+    source_lines[7] = __LINE__ + 1;
+    values[7] = DSL_Builder_Create_Operator
+                    (transpose_id, 1, kids, 1, &transpose_attr, 1);
+
+    matmul_attrs[0].name = "attr.transpose_kid0";
+    matmul_attrs[0].value = "false";
+    matmul_attrs[1].name = "attr.transpose_kid1";
+    matmul_attrs[1].value = "true";
+    matmul_attrs[2].name = "attr.batch_rule";
+    matmul_attrs[2].value = "exact";
+    matmul_attrs[3].name = "attr.accum_dtype";
+    matmul_attrs[3].value = "float32";
+    kids[0] = values[2];
+    kids[1] = values[3];
+    source_lines[8] = __LINE__ + 1;
+    values[8] = DSL_Builder_Create_Operator
+                    (matmul_v2_id, 2, kids, 2, matmul_attrs, 4);
+
+    output_attrs[0].name = "attr.semantic";
+    output_attrs[0].value = "token_logits";
+    output_attrs[1].name = "attr.sequence_axis";
+    output_attrs[1].value = "-2";
+    output_attrs[2].name = "attr.vocabulary_axis";
+    output_attrs[2].value = "-1";
+    kids[0] = values[4];
+    source_lines[9] = __LINE__ + 1;
+    values[9] = DSL_Builder_Create_Operator
+                    (output_v3_id, 3, kids, 1, output_attrs, 3);
+
+    for (UINT32 i = 0; i < sizeof(values) / sizeof(values[0]); ++i) {
+        if (values[i] == NULL || !DSL_Builder_Append_PU_Value(pu, values[i])) {
+            fprintf(stderr, "item-23 builder rejected value %u\n", i);
+            return 1;
+        }
+        DSL_BUILDER_SOURCE_POSITION position;
+        memset(&position, 0, sizeof(position));
+        position.file_id = file_id;
+        position.line = source_lines[i];
+        position.column = 1;
+        position.statement_begin = 1;
+        if (!DSL_Builder_Set_Value_Source_Position(values[i], &position)) {
+            fprintf(stderr, "item-23 source position failed for value %u\n",
+                    i);
+            failed = 1;
+        }
+    }
+
+    if (strcmp(TY_tensor_attribute
+                   (DSL_Builder_Get_Value_Type(values[5]),
+                    TY_TENSOR_SCHEMA_SHAPE), "[1,8,64]") != 0 ||
+        strcmp(TY_tensor_attribute
+                   (DSL_Builder_Get_Value_Type(values[6]),
+                    TY_TENSOR_SCHEMA_SHAPE), "[1,8,4,16]") != 0 ||
+        strcmp(TY_tensor_attribute
+                   (DSL_Builder_Get_Value_Type(values[7]),
+                    TY_TENSOR_SCHEMA_SHAPE), "[1,4,8,16]") != 0 ||
+        strcmp(TY_tensor_attribute
+                   (DSL_Builder_Get_Value_Type(values[8]),
+                    TY_TENSOR_SCHEMA_SHAPE), "[1,4,8,8]") != 0 ||
+        DSL_Builder_Get_Value_Type(values[9]) != logits_ty) {
+        fprintf(stderr, "item-23 result descriptor inference changed\n");
+        failed = 1;
+    }
+
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify) || verify.error_count != 0) {
+        fprintf(stderr, "item-23 gatekeeper rejected valid graph: %s\n",
+                diagnostic);
+        failed = 1;
+    }
+
+    TY_IDX transpose_result_ty = DSL_Builder_Get_Value_Type(values[7]);
+    TY_tensor_bind_attribute
+        (transpose_result_ty, TY_TENSOR_SCHEMA_SHAPE, "[1,8,4,16]");
+    memset(&verify, 0, sizeof(verify));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (DSL_Builder_Verify_Program(&verify) || verify.error_count == 0) {
+        fprintf(stderr, "item-23 gatekeeper accepted bad transpose result\n");
+        failed = 1;
+    }
+    TY_tensor_bind_attribute
+        (transpose_result_ty, TY_TENSOR_SCHEMA_SHAPE, "[1,4,8,16]");
+
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bad_reshape = reshape_attr;
+    bad_reshape.value = "1,8,4,15";
+    kids[0] = values[5];
+    if (DSL_Builder_Create_Operator
+            (reshape_id, 1, kids, 1, &bad_reshape, 1) != NULL) {
+        fprintf(stderr, "item-23 builder accepted element-changing reshape\n");
+        failed = 1;
+    }
+
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bad_transpose = transpose_attr;
+    bad_transpose.value = "0,2,2,3";
+    kids[0] = values[6];
+    if (DSL_Builder_Create_Operator
+            (transpose_id, 1, kids, 1, &bad_transpose, 1) != NULL ||
+        DSL_Builder_Create_Operator
+            (linear_v2_id, 3, kids, 1, linear_attrs, 4) != NULL ||
+        DSL_Builder_Create_Operator
+            (output_v3_id, 3, kids, 1, output_attrs, 2) != NULL) {
+        fprintf(stderr, "item-23 builder accepted a malformed schema\n");
+        failed = 1;
+    }
+
+    FILE *image_dump = tmpfile();
+    if (image_dump == NULL) {
+        fprintf(stderr, "item-23 failed to create logical image dump\n");
+        failed = 1;
+    } else {
+        char text[32768];
+        size_t count;
+
+        DSL_IR_Image_Print(image_dump);
+        rewind(image_dump);
+        count = fread(text, 1, sizeof(text) - 1, image_dump);
+        text[count] = '\0';
+        fclose(image_dump);
+        if (strstr(text, "operator=OPR_DSLRESHAPE version=1") == NULL ||
+            strstr(text, "operator=OPR_DSLTRANSPOSE version=1") == NULL ||
+            strstr(text, "operator=OPR_DSLLINEAR version=3") == NULL ||
+            strstr(text, "operator=OPR_DSLMATMUL version=2") == NULL ||
+            strstr(text, "operator=OPR_DSLOUTPUTLOGITS version=3") == NULL ||
+            strstr(text, "stable_name=common.reshape") == NULL ||
+            strstr(text, "stable_name=common.transpose") == NULL ||
+            strstr(text, "OPR_DSL ") != NULL ||
+            strstr(text, "MDSL ") != NULL) {
+            fprintf(stderr, "item-23 logical image dump changed\n");
+            failed = 1;
+        }
+    }
+
+    const char *artifact = getenv("OPEN64_DSL_LLAMA2_COMMON_ARTIFACT");
+    request.path = artifact == NULL || artifact[0] == '\0' ?
+                   "llama2_common_substrate.B" : artifact;
+    request.flags = 0;
+    (void) unlink(request.path);
+    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+        access(request.path, F_OK) != 0) {
+        fprintf(stderr, "item-23 mapped-image finalization failed\n");
+        failed = 1;
+    }
+    if (artifact == NULL || artifact[0] == '\0')
+        (void) unlink(request.path);
+
+    return failed;
+}
+
+static int
+Check_Llama2_Transformer_Expressions(void)
+{
+    DSL_BUILDER_TENSOR_TYPE_CORE core;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_DOMAIN_ID transformer_id;
+    DSL_OPCODE_ID embedding_id;
+    DSL_OPCODE_ID rms_id;
+    DSL_OPCODE_ID rotary_id;
+    DSL_OPCODE_ID attention_id;
+    DSL_OPCODE_ID swiglu_id;
+    DSL_BUILDER_VALUE values[16];
+    UINT32 source_lines[16];
+    DSL_BUILDER_VALUE kids[3];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE embedding_attrs[2];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rms_attrs[3];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rotary_attrs[6];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attention_attrs[10];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE swiglu_attr;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    TY_IDX token_ty;
+    TY_IDX embedding_weight_ty;
+    TY_IDX scale_ty;
+    TY_IDX qkv_ty;
+    TY_IDX rope_ty;
+    TY_IDX swiglu_ty;
+    UINT32 file_id;
+    char diagnostic[4096];
+    int failed = 0;
+
+    if (!DSL_Builder_Begin_Program() ||
+        DSL_Opcode_Register_Transformer_Domain() != 5)
+        return 1;
+    transformer_id = DSL_Domain_Find("transformer");
+    embedding_id = DSL_Opcode_Find
+                       (transformer_id, "transformer.token_embedding", 1);
+    rms_id = DSL_Opcode_Find
+                 (transformer_id, "transformer.rms_norm", 1);
+    rotary_id = DSL_Opcode_Find
+                    (transformer_id, "transformer.rotary_embedding", 1);
+    attention_id = DSL_Opcode_Find
+                       (transformer_id, "transformer.attention", 1);
+    swiglu_id = DSL_Opcode_Find
+                    (transformer_id, "transformer.swiglu", 1);
+    if (transformer_id == DSL_DOMAIN_INVALID_ID ||
+        embedding_id == DSL_OPCODE_INVALID_ID ||
+        rms_id == DSL_OPCODE_INVALID_ID ||
+        rotary_id == DSL_OPCODE_INVALID_ID ||
+        attention_id == DSL_OPCODE_INVALID_ID ||
+        swiglu_id == DSL_OPCODE_INVALID_ID ||
+        (UINT32)OPR_DSLTOKENEMBEDDING != 16 ||
+        (UINT32)OPR_DSLRMSNORM != 17 ||
+        (UINT32)OPR_DSLROTARYEMBEDDING != 18 ||
+        (UINT32)OPR_DSLATTENTION != 19 ||
+        (UINT32)OPR_DSLSWIGLU != 20) {
+        fprintf(stderr, "item-24 transformer registry changed\n");
+        return 1;
+    }
+
+    memset(&core, 0, sizeof(core));
+    core.kind = "tensor";
+    core.dtype = "int64";
+    core.rank = 2;
+    core.logical_shape = "[1,8]";
+    token_ty = DSL_Builder_Create_Tensor_Type_Core
+                   ("llama_token_ids", MTYPE_To_TY(MTYPE_I8), &core);
+    core.dtype = "float32";
+    core.rank = 2;
+    core.logical_shape = "[128,32]";
+    embedding_weight_ty = DSL_Builder_Create_Tensor_Type_Core
+                              ("llama_embedding_weight",
+                               MTYPE_To_TY(MTYPE_F4), &core);
+    core.rank = 1;
+    core.logical_shape = "[32]";
+    scale_ty = DSL_Builder_Create_Tensor_Type_Core
+                   ("llama_rms_scale", MTYPE_To_TY(MTYPE_F4), &core);
+    core.rank = 4;
+    core.logical_shape = "[1,4,8,8]";
+    qkv_ty = DSL_Builder_Create_Tensor_Type_Core
+                 ("llama_qkv", MTYPE_To_TY(MTYPE_F4), &core);
+    core.logical_shape = "[1,1,8,8]";
+    rope_ty = DSL_Builder_Create_Tensor_Type_Core
+                  ("llama_rope_table", MTYPE_To_TY(MTYPE_F4), &core);
+    core.rank = 3;
+    core.logical_shape = "[1,8,88]";
+    swiglu_ty = DSL_Builder_Create_Tensor_Type_Core
+                    ("llama_swiglu", MTYPE_To_TY(MTYPE_F4), &core);
+
+    pu = DSL_Builder_Create_Minimal_PU("llama2_transformer_expressions");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    source_lines[0] = __LINE__ + 1;
+    values[0] = DSL_Builder_Create_Model_Input("token_ids", token_ty, 0);
+    source_lines[1] = __LINE__ + 1;
+    values[1] = DSL_Builder_Create_Tensor_Constant
+                    ("embedding_weight", embedding_weight_ty, "float32", 2,
+                     "[128,32]", "splat", "1");
+    embedding_attrs[0].name = "attr.padding_idx";
+    embedding_attrs[0].value = "none";
+    embedding_attrs[1].name = "attr.bounds_policy";
+    embedding_attrs[1].value = "runtime_check";
+    kids[0] = values[0];
+    kids[1] = values[1];
+    source_lines[2] = __LINE__ + 1;
+    values[2] = DSL_Builder_Create_Operator
+                    (embedding_id, 1, kids, 2, embedding_attrs, 2);
+
+    source_lines[3] = __LINE__ + 1;
+    values[3] = DSL_Builder_Create_Tensor_Constant
+                    ("rms_scale", scale_ty, "float32", 1, "[32]", "splat",
+                     "1");
+    rms_attrs[0].name = "attr.axis";
+    rms_attrs[0].value = "-1";
+    rms_attrs[1].name = "attr.epsilon";
+    rms_attrs[1].value = "0.00001";
+    rms_attrs[2].name = "attr.accum_dtype";
+    rms_attrs[2].value = "float32";
+    kids[0] = values[2];
+    kids[1] = values[3];
+    source_lines[4] = __LINE__ + 1;
+    values[4] = DSL_Builder_Create_Operator
+                    (rms_id, 1, kids, 2, rms_attrs, 3);
+
+    source_lines[5] = __LINE__ + 1;
+    values[5] = DSL_Builder_Create_Model_Input("query", qkv_ty, 1);
+    source_lines[6] = __LINE__ + 1;
+    values[6] = DSL_Builder_Create_Model_Input("key", qkv_ty, 2);
+    source_lines[7] = __LINE__ + 1;
+    values[7] = DSL_Builder_Create_Model_Input("value", qkv_ty, 3);
+    source_lines[8] = __LINE__ + 1;
+    values[8] = DSL_Builder_Create_Tensor_Constant
+                    ("rope_cos", rope_ty, "float32", 4, "[1,1,8,8]",
+                     "splat", "1");
+    source_lines[9] = __LINE__ + 1;
+    values[9] = DSL_Builder_Create_Tensor_Constant
+                    ("rope_sin", rope_ty, "float32", 4, "[1,1,8,8]",
+                     "splat", "0");
+    rotary_attrs[0].name = "attr.head_layout";
+    rotary_attrs[0].value = "BHSD";
+    rotary_attrs[1].name = "attr.sequence_axis";
+    rotary_attrs[1].value = "2";
+    rotary_attrs[2].name = "attr.feature_axis";
+    rotary_attrs[2].value = "3";
+    rotary_attrs[3].name = "attr.pairing";
+    rotary_attrs[3].value = "half_split";
+    rotary_attrs[4].name = "attr.position_mode";
+    rotary_attrs[4].value = "zero_based_static";
+    rotary_attrs[5].name = "attr.position_offset";
+    rotary_attrs[5].value = "0";
+    kids[0] = values[5];
+    kids[1] = values[8];
+    kids[2] = values[9];
+    source_lines[10] = __LINE__ + 1;
+    values[10] = DSL_Builder_Create_Operator
+                     (rotary_id, 1, kids, 3, rotary_attrs, 6);
+    kids[0] = values[6];
+    source_lines[11] = __LINE__ + 1;
+    values[11] = DSL_Builder_Create_Operator
+                     (rotary_id, 1, kids, 3, rotary_attrs, 6);
+
+    attention_attrs[0].name = "attr.execution_mode";
+    attention_attrs[0].value = "full_sequence";
+    attention_attrs[1].name = "attr.mask_mode";
+    attention_attrs[1].value = "causal";
+    attention_attrs[2].name = "attr.head_layout";
+    attention_attrs[2].value = "BHSD";
+    attention_attrs[3].name = "attr.query_heads";
+    attention_attrs[3].value = "4";
+    attention_attrs[4].name = "attr.kv_heads";
+    attention_attrs[4].value = "4";
+    attention_attrs[5].name = "attr.head_dim";
+    attention_attrs[5].value = "8";
+    attention_attrs[6].name = "attr.scale_mode";
+    attention_attrs[6].value = "inverse_sqrt_head_dim";
+    attention_attrs[7].name = "attr.softmax_axis";
+    attention_attrs[7].value = "-1";
+    attention_attrs[8].name = "attr.softmax_accum_dtype";
+    attention_attrs[8].value = "float32";
+    attention_attrs[9].name = "attr.cache_mode";
+    attention_attrs[9].value = "none";
+    kids[0] = values[10];
+    kids[1] = values[11];
+    kids[2] = values[7];
+    source_lines[12] = __LINE__ + 1;
+    values[12] = DSL_Builder_Create_Operator
+                     (attention_id, 1, kids, 3, attention_attrs, 10);
+
+    source_lines[13] = __LINE__ + 1;
+    values[13] = DSL_Builder_Create_Model_Input("gate_projection", swiglu_ty,
+                                                4);
+    source_lines[14] = __LINE__ + 1;
+    values[14] = DSL_Builder_Create_Model_Input("up_projection", swiglu_ty,
+                                                5);
+    swiglu_attr.name = "attr.activation";
+    swiglu_attr.value = "silu";
+    kids[0] = values[13];
+    kids[1] = values[14];
+    source_lines[15] = __LINE__ + 1;
+    values[15] = DSL_Builder_Create_Operator
+                     (swiglu_id, 1, kids, 2, &swiglu_attr, 1);
+
+    for (UINT32 i = 0; i < sizeof(values) / sizeof(values[0]); ++i) {
+        if (values[i] == NULL || !DSL_Builder_Append_PU_Value(pu, values[i])) {
+            fprintf(stderr, "item-24 builder rejected value %u\n", i);
+            return 1;
+        }
+        DSL_BUILDER_SOURCE_POSITION position;
+        memset(&position, 0, sizeof(position));
+        position.file_id = file_id;
+        position.line = source_lines[i];
+        position.column = 1;
+        position.statement_begin = 1;
+        if (!DSL_Builder_Set_Value_Source_Position(values[i], &position))
+            failed = 1;
+    }
+
+    if (strcmp(TY_tensor_attribute
+                   (DSL_Builder_Get_Value_Type(values[2]),
+                    TY_TENSOR_SCHEMA_SHAPE), "[1,8,32]") != 0 ||
+        DSL_Builder_Get_Value_Type(values[4]) == TY_IDX_ZERO ||
+        strcmp(TY_tensor_attribute
+                   (DSL_Builder_Get_Value_Type(values[12]),
+                    TY_TENSOR_SCHEMA_SHAPE), "[1,4,8,8]") != 0 ||
+        strcmp(TY_tensor_attribute
+                   (DSL_Builder_Get_Value_Type(values[15]),
+                    TY_TENSOR_SCHEMA_SHAPE), "[1,8,88]") != 0) {
+        fprintf(stderr, "item-24 transformer result inference changed\n");
+        failed = 1;
+    }
+
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify) || verify.error_count != 0) {
+        fprintf(stderr, "item-24 gatekeeper rejected valid graph: %s\n",
+                diagnostic);
+        failed = 1;
+    }
+
+    TY_IDX attention_result_ty = DSL_Builder_Get_Value_Type(values[12]);
+    TY_tensor_bind_attribute
+        (attention_result_ty, TY_TENSOR_SCHEMA_SHAPE, "[1,4,8,7]");
+    memset(&verify, 0, sizeof(verify));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (DSL_Builder_Verify_Program(&verify) || verify.error_count == 0) {
+        fprintf(stderr, "item-24 gatekeeper accepted bad attention result\n");
+        failed = 1;
+    }
+    TY_tensor_bind_attribute
+        (attention_result_ty, TY_TENSOR_SCHEMA_SHAPE, "[1,4,8,8]");
+
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bad_attention[10];
+    memcpy(bad_attention, attention_attrs, sizeof(bad_attention));
+    bad_attention[4].value = "2";
+    kids[0] = values[10];
+    kids[1] = values[11];
+    kids[2] = values[7];
+    if (DSL_Builder_Create_Operator
+            (attention_id, 1, kids, 3, bad_attention, 10) != NULL) {
+        fprintf(stderr, "item-24 builder accepted grouped-query attention\n");
+        failed = 1;
+    }
+    bad_attention[4].value = "4";
+    bad_attention[9].value = "static";
+    if (DSL_Builder_Create_Operator
+            (attention_id, 1, kids, 3, bad_attention, 10) != NULL) {
+        fprintf(stderr, "item-24 builder accepted cache state\n");
+        failed = 1;
+    }
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bad_rms[3];
+    memcpy(bad_rms, rms_attrs, sizeof(bad_rms));
+    bad_rms[1].value = "0";
+    kids[0] = values[2];
+    kids[1] = values[3];
+    if (DSL_Builder_Create_Operator
+            (rms_id, 1, kids, 2, bad_rms, 3) != NULL) {
+        fprintf(stderr, "item-24 builder accepted zero RMS epsilon\n");
+        failed = 1;
+    }
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bad_embedding[2];
+    memcpy(bad_embedding, embedding_attrs, sizeof(bad_embedding));
+    bad_embedding[1].value = "none";
+    kids[0] = values[0];
+    kids[1] = values[1];
+    if (DSL_Builder_Create_Operator
+            (embedding_id, 1, kids, 2, bad_embedding, 2) != NULL) {
+        fprintf(stderr, "item-24 builder accepted missing bounds guard\n");
+        failed = 1;
+    }
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bad_rotary[6];
+    memcpy(bad_rotary, rotary_attrs, sizeof(bad_rotary));
+    bad_rotary[3].value = "interleaved";
+    kids[0] = values[5];
+    kids[1] = values[8];
+    kids[2] = values[9];
+    if (DSL_Builder_Create_Operator
+            (rotary_id, 1, kids, 3, bad_rotary, 6) != NULL) {
+        fprintf(stderr, "item-24 builder accepted unsupported RoPE pairing\n");
+        failed = 1;
+    }
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bad_swiglu = swiglu_attr;
+    bad_swiglu.value = "relu";
+    kids[0] = values[13];
+    kids[1] = values[14];
+    if (DSL_Builder_Create_Operator
+            (swiglu_id, 1, kids, 2, &bad_swiglu, 1) != NULL) {
+        fprintf(stderr, "item-24 builder accepted non-SiLU activation\n");
+        failed = 1;
+    }
+
+    FILE *image_dump = tmpfile();
+    if (image_dump == NULL) {
+        failed = 1;
+    } else {
+        char text[65536];
+        DSL_IR_Image_Print(image_dump);
+        rewind(image_dump);
+        size_t count = fread(text, 1, sizeof(text) - 1, image_dump);
+        text[count] = '\0';
+        fclose(image_dump);
+        if (strstr(text, "operator=OPR_DSLTOKENEMBEDDING version=1") == NULL ||
+            strstr(text, "operator=OPR_DSLRMSNORM version=1") == NULL ||
+            strstr(text, "operator=OPR_DSLROTARYEMBEDDING version=1") == NULL ||
+            strstr(text, "operator=OPR_DSLATTENTION version=1") == NULL ||
+            strstr(text, "operator=OPR_DSLSWIGLU version=1") == NULL ||
+            strstr(text, "OPR_DSL ") != NULL || strstr(text, "MDSL ") != NULL) {
+            fprintf(stderr, "item-24 logical image dump changed\n");
+            failed = 1;
+        }
+    }
+
+    const char *artifact =
+        getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ARTIFACT");
+    request.path = artifact == NULL || artifact[0] == '\0' ?
+                   "llama2_transformer_expressions.B" : artifact;
+    request.flags = 0;
+    (void) unlink(request.path);
+    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+        access(request.path, F_OK) != 0) {
+        fprintf(stderr, "item-24 mapped-image finalization failed\n");
+        failed = 1;
+    }
+    if (artifact == NULL || artifact[0] == '\0')
+        (void) unlink(request.path);
+    return failed;
+}
+
+static int
+Check_Llama2_Transformer_Regions(void)
+{
+    DSL_BUILDER_TENSOR_TYPE_CORE core;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_REGION prefill;
+    DSL_BUILDER_REGION decoder;
+    DSL_BUILDER_VALUE external[10];
+    DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE references[9];
+    DSL_BUILDER_VALUE decoder_values[19];
+    DSL_BUILDER_VALUE prefill_values[4];
+    DSL_BUILDER_VALUE kids[3];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE linear_attrs[4] = {
+        { "attr.has_bias", "false" },
+        { "attr.transpose_input", "false" },
+        { "attr.transpose_weight", "true" },
+        { "attr.weight_layout", "OI" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rms_attrs[3] = {
+        { "attr.axis", "-1" },
+        { "attr.epsilon", "0.00001" },
+        { "attr.accum_dtype", "float32" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE reshape_head =
+        { "attr.target_shape", "1,8,4,8" };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE reshape_hidden =
+        { "attr.target_shape", "1,8,32" };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE transpose_head =
+        { "attr.permutation", "0,2,1,3" };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rotary_attrs[6] = {
+        { "attr.head_layout", "BHSD" },
+        { "attr.sequence_axis", "2" },
+        { "attr.feature_axis", "3" },
+        { "attr.pairing", "half_split" },
+        { "attr.position_mode", "zero_based_static" },
+        { "attr.position_offset", "0" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attention_attrs[10] = {
+        { "attr.execution_mode", "full_sequence" },
+        { "attr.mask_mode", "causal" },
+        { "attr.head_layout", "BHSD" },
+        { "attr.query_heads", "4" },
+        { "attr.kv_heads", "4" },
+        { "attr.head_dim", "8" },
+        { "attr.scale_mode", "inverse_sqrt_head_dim" },
+        { "attr.softmax_axis", "-1" },
+        { "attr.softmax_accum_dtype", "float32" },
+        { "attr.cache_mode", "none" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE residual_attrs[3] = {
+        { "attr.broadcast_rule", "none" },
+        { "attr.shape_check", "exact" },
+        { "attr.residual_path", "true" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE swiglu_attr =
+        { "attr.activation", "silu" };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE embedding_attrs[2] = {
+        { "attr.padding_idx", "none" },
+        { "attr.bounds_policy", "runtime_check" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE output_attrs[3] = {
+        { "attr.semantic", "token_logits" },
+        { "attr.sequence_axis", "-2" },
+        { "attr.vocabulary_axis", "-1" }
+    };
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_DOMAIN_ID common_id;
+    DSL_DOMAIN_ID transformer_id;
+    DSL_OPCODE_ID linear;
+    DSL_OPCODE_ID reshape;
+    DSL_OPCODE_ID transpose;
+    DSL_OPCODE_ID residual;
+    DSL_OPCODE_ID output;
+    DSL_OPCODE_ID embedding;
+    DSL_OPCODE_ID rms;
+    DSL_OPCODE_ID rotary;
+    DSL_OPCODE_ID attention;
+    DSL_OPCODE_ID swiglu;
+    TY_IDX token_ty;
+    TY_IDX hidden_ty;
+    TY_IDX embedding_weight_ty;
+    TY_IDX hidden_weight_ty;
+    TY_IDX scale_ty;
+    TY_IDX rope_ty;
+    TY_IDX gate_weight_ty;
+    TY_IDX down_weight_ty;
+    TY_IDX logits_weight_ty;
+    UINT32 file_id;
+    char diagnostic[8192];
+    int failed = 0;
+
+    if (!DSL_Builder_Begin_Program())
+        return 1;
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_Opcode_Register_Transformer_Domain();
+    common_id = DSL_Domain_Find("common");
+    transformer_id = DSL_Domain_Find("transformer");
+    linear = DSL_Opcode_Find(common_id, "common.linear", 3);
+    reshape = DSL_Opcode_Find(common_id, "common.reshape", 1);
+    transpose = DSL_Opcode_Find(common_id, "common.transpose", 1);
+    residual = DSL_Opcode_Find(common_id, "common.residual_add", 2);
+    output = DSL_Opcode_Find(common_id, "common.output_logits", 3);
+    embedding = DSL_Opcode_Find
+                    (transformer_id, "transformer.token_embedding", 1);
+    rms = DSL_Opcode_Find(transformer_id, "transformer.rms_norm", 1);
+    rotary = DSL_Opcode_Find
+                 (transformer_id, "transformer.rotary_embedding", 1);
+    attention = DSL_Opcode_Find
+                   (transformer_id, "transformer.attention", 1);
+    swiglu = DSL_Opcode_Find(transformer_id, "transformer.swiglu", 1);
+    if (linear == DSL_OPCODE_INVALID_ID ||
+        reshape == DSL_OPCODE_INVALID_ID ||
+        transpose == DSL_OPCODE_INVALID_ID ||
+        residual == DSL_OPCODE_INVALID_ID ||
+        output == DSL_OPCODE_INVALID_ID ||
+        embedding == DSL_OPCODE_INVALID_ID ||
+        rms == DSL_OPCODE_INVALID_ID || rotary == DSL_OPCODE_INVALID_ID ||
+        attention == DSL_OPCODE_INVALID_ID ||
+        swiglu == DSL_OPCODE_INVALID_ID)
+        return 1;
+
+    memset(&core, 0, sizeof(core));
+    core.kind = "tensor";
+    core.dtype = "int64";
+    core.rank = 2;
+    core.logical_shape = "[1,8]";
+    token_ty = DSL_Builder_Create_Tensor_Type_Core
+                   ("region_token", MTYPE_To_TY(MTYPE_I8), &core);
+    core.dtype = "float32";
+    core.rank = 3;
+    core.logical_shape = "[1,8,32]";
+    hidden_ty = DSL_Builder_Create_Tensor_Type_Core
+                    ("region_hidden", MTYPE_To_TY(MTYPE_F4), &core);
+    core.rank = 2;
+    core.logical_shape = "[128,32]";
+    embedding_weight_ty = DSL_Builder_Create_Tensor_Type_Core
+                              ("region_embedding_weight",
+                               MTYPE_To_TY(MTYPE_F4), &core);
+    core.logical_shape = "[32,32]";
+    hidden_weight_ty = DSL_Builder_Create_Tensor_Type_Core
+                           ("region_hidden_weight",
+                            MTYPE_To_TY(MTYPE_F4), &core);
+    core.rank = 1;
+    core.logical_shape = "[32]";
+    scale_ty = DSL_Builder_Create_Tensor_Type_Core
+                   ("region_scale", MTYPE_To_TY(MTYPE_F4), &core);
+    core.rank = 4;
+    core.logical_shape = "[1,1,8,8]";
+    rope_ty = DSL_Builder_Create_Tensor_Type_Core
+                  ("region_rope", MTYPE_To_TY(MTYPE_F4), &core);
+    core.rank = 2;
+    core.logical_shape = "[88,32]";
+    gate_weight_ty = DSL_Builder_Create_Tensor_Type_Core
+                         ("region_gate_weight", MTYPE_To_TY(MTYPE_F4),
+                          &core);
+    core.logical_shape = "[32,88]";
+    down_weight_ty = DSL_Builder_Create_Tensor_Type_Core
+                         ("region_down_weight", MTYPE_To_TY(MTYPE_F4),
+                          &core);
+    core.logical_shape = "[128,32]";
+    logits_weight_ty = DSL_Builder_Create_Tensor_Type_Core
+                           ("region_logits_weight", MTYPE_To_TY(MTYPE_F4),
+                            &core);
+    if (token_ty == TY_IDX_ZERO || hidden_ty == TY_IDX_ZERO ||
+        embedding_weight_ty == TY_IDX_ZERO ||
+        hidden_weight_ty == TY_IDX_ZERO || scale_ty == TY_IDX_ZERO ||
+        rope_ty == TY_IDX_ZERO || gate_weight_ty == TY_IDX_ZERO ||
+        down_weight_ty == TY_IDX_ZERO || logits_weight_ty == TY_IDX_ZERO)
+        return 1;
+
+    pu = DSL_Builder_Create_Minimal_PU("llama2_transformer_regions");
+    file_id = DSL_Builder_Register_Source_File
+                  (pu, "/tmp/llama2_transformer_regions.py");
+    external[0] = DSL_Builder_Create_Model_Input("tokens", token_ty, 0);
+    const char *tensor_keys[9] = {
+        "tok_embeddings.weight", "layers.0.attention_norm.weight",
+        "layers.0.attention.wq.weight", "rope.cos", "rope.sin",
+        "layers.0.feed_forward.w1.weight",
+        "layers.0.feed_forward.w3.weight",
+        "layers.0.feed_forward.w2.weight", "output.weight"
+    };
+    const UINT64 byte_offsets[9] = {
+        0, 16384, 16512, 20608, 20864, 21120, 32384, 43648, 54912
+    };
+    const UINT64 byte_lengths[9] = {
+        16384, 128, 4096, 256, 256, 11264, 11264, 11264, 16384
+    };
+    const char *external_names[9] = {
+        "embedding_weight", "rms_scale", "hidden_weight", "rope_cos",
+        "rope_sin", "gate_weight", "up_weight", "down_weight",
+        "logits_weight"
+    };
+    TY_IDX external_types[9] = {
+        embedding_weight_ty, scale_ty, hidden_weight_ty, rope_ty, rope_ty,
+        gate_weight_ty, gate_weight_ty, down_weight_ty, logits_weight_ty
+    };
+    for (UINT32 i = 0; i < 9; ++i) {
+        TY_tensor_bind_attribute
+            (external_types[i], TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+        TY_tensor_bind_attribute
+            (external_types[i], TY_TENSOR_SCHEMA_PLACEMENT, "side_file");
+        TY_tensor_bind_attribute
+            (external_types[i], TY_TENSOR_SCHEMA_MEMORY, "external_data");
+        references[i].storage_format = "safetensors";
+        references[i].side_file = "llama2.safetensors";
+        references[i].tensor_key = tensor_keys[i];
+        references[i].byte_offset = byte_offsets[i];
+        references[i].byte_length = byte_lengths[i];
+        references[i].checksum = "";
+        external[i + 1] = DSL_Builder_Create_External_Tensor_Constant
+                              (external_names[i], external_types[i],
+                               &references[i]);
+    }
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.column = 1;
+    position.statement_begin = 1;
+    for (UINT32 i = 0; i < 10; ++i) {
+        position.line = 10 + i;
+        if (external[i] == NULL ||
+            !DSL_Builder_Set_Value_Source_Position(external[i], &position) ||
+            !DSL_Builder_Append_PU_Value(pu, external[i]))
+            return 1;
+    }
+
+    prefill = DSL_Builder_Create_Region
+                  (pu, NULL, "transformer.prefill", 1);
+    decoder = DSL_Builder_Create_Region
+                  (pu, prefill, "transformer.decoder_layer", 1);
+    position.line = 30;
+    position.basic_block_begin = 1;
+    if (prefill == NULL || decoder == NULL ||
+        !DSL_Builder_Set_Region_Source_Position(prefill, &position) ||
+        !DSL_Builder_Set_Region_Metadata
+             (prefill, "module_path", "TinyLlama.forward"))
+        return 1;
+    position.line = 40;
+    if (!DSL_Builder_Set_Region_Source_Position(decoder, &position) ||
+        !DSL_Builder_Set_Region_Metadata
+             (decoder, "module_path", "layers.0") ||
+        !DSL_Builder_Set_Region_Metadata(decoder, "layer_ordinal", "0"))
+        return 1;
+
+    kids[0] = external[0];
+    kids[1] = external[1];
+    prefill_values[0] = DSL_Builder_Create_Operator
+                            (embedding, 1, kids, 2, embedding_attrs, 2);
+    if (prefill_values[0] == NULL)
+        return 1;
+    TY_IDX embedding_result_ty =
+        DSL_Builder_Get_Value_Type(prefill_values[0]);
+    const char *embedding_placement = TY_tensor_attribute
+        (embedding_result_ty, TY_TENSOR_SCHEMA_PLACEMENT);
+    const char *embedding_memory = TY_tensor_attribute
+        (embedding_result_ty, TY_TENSOR_SCHEMA_MEMORY);
+    if ((embedding_placement != NULL &&
+         strcmp(embedding_placement, "side_file") == 0) ||
+        (embedding_memory != NULL &&
+         strcmp(embedding_memory, "external_data") == 0)) {
+        fprintf(stderr, "item-26 external storage escaped into activation\n");
+        return 1;
+    }
+    kids[0] = prefill_values[0];
+    kids[1] = external[2];
+    decoder_values[0] = DSL_Builder_Create_Operator
+                            (rms, 1, kids, 2, rms_attrs, 3);
+    for (UINT32 i = 1; i <= 3; ++i) {
+        kids[0] = decoder_values[0];
+        kids[1] = external[3];
+        decoder_values[i] = DSL_Builder_Create_Operator
+                                (linear, 3, kids, 2, linear_attrs, 4);
+    }
+    kids[0] = decoder_values[1];
+    decoder_values[4] = DSL_Builder_Create_Operator
+                            (reshape, 1, kids, 1, &reshape_head, 1);
+    kids[0] = decoder_values[4];
+    decoder_values[5] = DSL_Builder_Create_Operator
+                            (transpose, 1, kids, 1, &transpose_head, 1);
+    kids[0] = decoder_values[5];
+    kids[1] = external[4];
+    kids[2] = external[5];
+    decoder_values[6] = DSL_Builder_Create_Operator
+                            (rotary, 1, kids, 3, rotary_attrs, 6);
+    decoder_values[7] = DSL_Builder_Create_Operator
+                            (rotary, 1, kids, 3, rotary_attrs, 6);
+    kids[0] = decoder_values[6];
+    kids[1] = decoder_values[7];
+    kids[2] = decoder_values[5];
+    decoder_values[8] = DSL_Builder_Create_Operator
+                            (attention, 1, kids, 3, attention_attrs, 10);
+    kids[0] = decoder_values[8];
+    decoder_values[9] = DSL_Builder_Create_Operator
+                            (transpose, 1, kids, 1, &transpose_head, 1);
+    kids[0] = decoder_values[9];
+    decoder_values[10] = DSL_Builder_Create_Operator
+                             (reshape, 1, kids, 1, &reshape_hidden, 1);
+    kids[0] = decoder_values[10];
+    kids[1] = external[3];
+    decoder_values[11] = DSL_Builder_Create_Operator
+                             (linear, 3, kids, 2, linear_attrs, 4);
+    kids[0] = prefill_values[0];
+    kids[1] = decoder_values[11];
+    decoder_values[12] = DSL_Builder_Create_Operator
+                             (residual, 2, kids, 2, residual_attrs, 3);
+    kids[0] = decoder_values[12];
+    kids[1] = external[2];
+    decoder_values[13] = DSL_Builder_Create_Operator
+                             (rms, 1, kids, 2, rms_attrs, 3);
+    kids[0] = decoder_values[13];
+    kids[1] = external[6];
+    decoder_values[14] = DSL_Builder_Create_Operator
+                             (linear, 3, kids, 2, linear_attrs, 4);
+    kids[1] = external[7];
+    decoder_values[15] = DSL_Builder_Create_Operator
+                             (linear, 3, kids, 2, linear_attrs, 4);
+    kids[0] = decoder_values[14];
+    kids[1] = decoder_values[15];
+    decoder_values[16] = DSL_Builder_Create_Operator
+                             (swiglu, 1, kids, 2, &swiglu_attr, 1);
+    kids[0] = decoder_values[16];
+    kids[1] = external[8];
+    decoder_values[17] = DSL_Builder_Create_Operator
+                             (linear, 3, kids, 2, linear_attrs, 4);
+    kids[0] = decoder_values[12];
+    kids[1] = decoder_values[17];
+    decoder_values[18] = DSL_Builder_Create_Operator
+                             (residual, 2, kids, 2, residual_attrs, 3);
+    kids[0] = decoder_values[18];
+    kids[1] = external[2];
+    prefill_values[1] = DSL_Builder_Create_Operator
+                            (rms, 1, kids, 2, rms_attrs, 3);
+    kids[0] = prefill_values[1];
+    kids[1] = external[9];
+    prefill_values[2] = DSL_Builder_Create_Operator
+                            (linear, 3, kids, 2, linear_attrs, 4);
+    kids[0] = prefill_values[2];
+    prefill_values[3] = DSL_Builder_Create_Operator
+                            (output, 3, kids, 1, output_attrs, 3);
+
+    position.basic_block_begin = 0;
+    position.line = 31;
+    if (prefill_values[0] == NULL ||
+        !DSL_Builder_Set_Value_Source_Position(prefill_values[0], &position) ||
+        !DSL_Builder_Append_Region_Value(prefill, prefill_values[0]))
+        return 1;
+    for (UINT32 i = 0; i < 19; ++i) {
+        position.line = 41 + i;
+        if (decoder_values[i] == NULL ||
+            !DSL_Builder_Set_Value_Source_Position
+                 (decoder_values[i], &position) ||
+            !DSL_Builder_Append_Region_Value(decoder, decoder_values[i]))
+            return 1;
+    }
+    if (!DSL_Builder_Append_Child_Region(prefill, decoder))
+        return 1;
+    for (UINT32 i = 1; i < 4; ++i) {
+        position.line = 61 + i;
+        if (prefill_values[i] == NULL ||
+            !DSL_Builder_Set_Value_Source_Position
+                 (prefill_values[i], &position) ||
+            !DSL_Builder_Append_Region_Value(prefill, prefill_values[i]))
+            return 1;
+    }
+
+    DSL_BUILDER_VALUE decoder_inputs[8] = {
+        prefill_values[0], external[2], external[3], external[4],
+        external[5], external[6], external[7], external[8]
+    };
+    for (UINT32 i = 0; i < 8; ++i) {
+        if (!DSL_Builder_Declare_Region_Value
+                 (decoder, decoder_inputs[i], DSL_REGION_VALUE_INPUT,
+                  i, 0))
+            return 1;
+    }
+    if (!DSL_Builder_Declare_Region_Value
+             (decoder, decoder_values[18],
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT, 0, 0))
+        return 1;
+    for (UINT32 i = 0; i < 10; ++i) {
+        if (!DSL_Builder_Declare_Region_Value
+                 (prefill, external[i], DSL_REGION_VALUE_INPUT, i, 0))
+            return 1;
+    }
+    if (!DSL_Builder_Declare_Region_Value
+             (prefill, prefill_values[3],
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT, 0, 0) ||
+        !DSL_Builder_Append_PU_Region(pu, prefill))
+        return 1;
+
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify) || verify.error_count != 0) {
+        fprintf(stderr, "item-25 verifier rejected valid prefill: %s\n",
+                diagnostic);
+        failed = 1;
+    }
+
+    ST_IDX result_st =
+        DSL_Builder_Get_Value_Result_Symbol(prefill_values[3]);
+    ST_tensor_bind_attribute
+        (result_st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS),
+         "false");
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (DSL_Builder_Verify_Program(&verify) || verify.error_count == 0 ||
+        strstr(diagnostic, "DOPC_LLAMA_TOPOLOGY") == NULL) {
+        fprintf(stderr, "item-25 verifier accepted aliased region result\n");
+        failed = 1;
+    }
+    ST_tensor_bind_attribute
+        (result_st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS),
+         "true");
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify) || verify.error_count != 0) {
+        fprintf(stderr, "item-25 verifier did not accept restored result: "
+                "%s\n", diagnostic);
+        failed = 1;
+    }
+
+    WN *decoder_body = WN_region_body(DSL_Region_WN(decoder));
+    WN *first_decoder_value = WN_first(decoder_body);
+    WN *second_decoder_value = WN_next(first_decoder_value);
+    WN_EXTRACT_FromBlock(decoder_body, first_decoder_value);
+    WN_INSERT_BlockAfter
+        (decoder_body, second_decoder_value, first_decoder_value);
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (DSL_Builder_Verify_Program(&verify) || verify.error_count == 0 ||
+        strstr(diagnostic, "DOPC_LLAMA_TOPOLOGY") == NULL) {
+        fprintf(stderr, "item-25 verifier accepted reordered decoder body\n");
+        failed = 1;
+    }
+    WN_EXTRACT_FromBlock(decoder_body, first_decoder_value);
+    WN_INSERT_BlockFirst(decoder_body, first_decoder_value);
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify) || verify.error_count != 0) {
+        fprintf(stderr, "item-25 verifier did not accept restored topology: "
+                "%s\n", diagnostic);
+        failed = 1;
+    }
+
+    FILE *dump = tmpfile();
+    if (dump == NULL) {
+        failed = 1;
+    } else {
+        char text[16384];
+        DSL_Region_Print_PU(dump, pu);
+        rewind(dump);
+        size_t count = fread(text, 1, sizeof(text) - 1, dump);
+        text[count] = '\0';
+        fclose(dump);
+        if (strstr(text, "contract=transformer.prefill.v1") == NULL ||
+            strstr(text, "contract=transformer.decoder_layer.v1") == NULL ||
+            strstr(text, "METADATA module_path:TinyLlama.forward") == NULL ||
+            strstr(text, "METADATA module_path:layers.0") == NULL ||
+            strstr(text, "METADATA layer_ordinal:0") == NULL ||
+            strstr(text, "roles=0xa") == NULL) {
+            fprintf(stderr, "item-25 logical region inspection changed\n");
+            failed = 1;
+        }
+    }
+
+    const char *artifact = getenv("OPEN64_DSL_LLAMA2_REGION_ARTIFACT");
+    request.path = artifact == NULL || artifact[0] == '\0' ?
+                   "llama2_transformer_regions.B" : artifact;
+    request.flags = 0;
+    (void) unlink(request.path);
+    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+        access(request.path, F_OK) != 0) {
+        fprintf(stderr, "item-25 mapped-image finalization failed\n");
+        failed = 1;
+    }
+    if (artifact == NULL || artifact[0] == '\0')
+        (void) unlink(request.path);
+    return failed;
+}
+
+static int
 Check_Structured_Region_Builder(void)
 {
     DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
@@ -1719,6 +2828,14 @@ main(void)
     Initialize_Test_Context();
     if (getenv("OPEN64_DSL_INGESTION_API_ONLY") != NULL)
         return Check_Upgraded_Ingestion_APIs();
+    if (getenv("OPEN64_DSL_LLAMA2_COMMON_ONLY") != NULL)
+        return Check_Llama2_Common_Substrate();
+    if (getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ONLY") != NULL)
+        return Check_Llama2_Transformer_Expressions();
+    if (getenv("OPEN64_DSL_LLAMA2_REGIONS_ONLY") != NULL)
+        return Check_Llama2_Transformer_Regions();
+    if (getenv("OPEN64_DSL_STRUCTURED_REGION_ONLY") != NULL)
+        return Check_Structured_Region_Builder();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -1726,6 +2843,9 @@ main(void)
     failed |= Check_Mapped_Image_Finalizer();
     failed |= Check_Program_Unit_Value_Attach();
     failed |= Check_Production_Native_Builder();
+    failed |= Check_Llama2_Common_Substrate();
+    failed |= Check_Llama2_Transformer_Expressions();
+    failed |= Check_Llama2_Transformer_Regions();
     failed |= Check_Structured_Region_Builder();
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
