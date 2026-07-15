@@ -31,6 +31,7 @@
 #include "dwarf_DST_mem.h"
 #include "srcpos.h"
 #include "dsl_builder.h"
+#include "dsl_contract.h"
 #include "dsl_gatekeeper.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -2713,6 +2714,232 @@ Check_Llama2_Transformer_Regions(void)
 }
 
 static int
+Check_Llama2_Decode_Contract_Registry(void)
+{
+    DSL_DOMAIN_ID common_id;
+    DSL_DOMAIN_ID transformer_id;
+    DSL_CONTRACT_ID rotary_v1;
+    DSL_CONTRACT_ID rotary_v2;
+    DSL_CONTRACT_ID attention_v2;
+    DSL_CONTRACT_ID decoder_v2;
+    DSL_CONTRACT_ID decode_v1;
+    DSL_CONTRACT_ID cache_v1;
+    DSL_CONTRACT_ID legacy_id;
+    DSL_CONTRACT_INFO info;
+    int failed = 0;
+
+    DSL_Contract_Registry_Reset();
+    common_id = DSL_Domain_Find("common");
+    if (common_id == DSL_DOMAIN_INVALID_ID)
+        common_id = DSL_Domain_Register
+                        ("common", DSL_DOMAIN_INVALID_ID, 1, 0);
+    transformer_id = DSL_Domain_Find("transformer");
+    if (transformer_id == DSL_DOMAIN_INVALID_ID)
+        transformer_id = DSL_Domain_Register
+                             ("transformer", common_id, 1, 0);
+
+    legacy_id = DSL_Contract_Register
+                    ("legacy.name_only", transformer_id, transformer_id,
+                     1, 0, NULL, 0, NULL, 0);
+    if (legacy_id == DSL_CONTRACT_INVALID_ID ||
+        DSL_Contract_Register
+            ("legacy.name_only", transformer_id, transformer_id,
+             99, 0, NULL, 0, NULL, 0) != legacy_id ||
+        DSL_Contract_Count() != 1 ||
+        DSL_Contract_Find
+            ("legacy.name_only", transformer_id, transformer_id) !=
+            legacy_id) {
+        fprintf(stderr, "legacy contract registry compatibility changed\n");
+        failed = 1;
+    }
+
+    DSL_Contract_Registry_Reset();
+
+    if (common_id == DSL_DOMAIN_INVALID_ID ||
+        transformer_id == DSL_DOMAIN_INVALID_ID ||
+        DSL_Contract_Register_Transformer_Decode() != 8 ||
+        DSL_Contract_Register_Transformer_Decode() != 8 ||
+        DSL_Contract_Count() != 8) {
+        fprintf(stderr, "decode contract seeding failed\n");
+        return 1;
+    }
+
+    rotary_v1 = DSL_Contract_Find_Version
+                    (DSL_CONTRACT_TRANSFORMER_ROTARY_EMBEDDING,
+                     transformer_id, transformer_id, 1);
+    rotary_v2 = DSL_Contract_Find_Version
+                    (DSL_CONTRACT_TRANSFORMER_ROTARY_EMBEDDING,
+                     transformer_id, transformer_id, 2);
+    attention_v2 = DSL_Contract_Find_Version
+                       (DSL_CONTRACT_TRANSFORMER_ATTENTION,
+                        transformer_id, transformer_id, 2);
+    decoder_v2 = DSL_Contract_Find_Version
+                     (DSL_CONTRACT_TRANSFORMER_DECODER_LAYER,
+                      transformer_id, transformer_id, 2);
+    decode_v1 = DSL_Contract_Find_Version
+                    (DSL_CONTRACT_TRANSFORMER_DECODE,
+                     transformer_id, transformer_id, 1);
+    cache_v1 = DSL_Contract_Find_Version
+                   (DSL_CONTRACT_TRANSFORMER_KV_CACHE_STATE,
+                    transformer_id, transformer_id, 1);
+
+    if (rotary_v1 == DSL_CONTRACT_INVALID_ID ||
+        rotary_v2 == DSL_CONTRACT_INVALID_ID ||
+        rotary_v1 == rotary_v2 ||
+        attention_v2 == DSL_CONTRACT_INVALID_ID ||
+        decoder_v2 == DSL_CONTRACT_INVALID_ID ||
+        decode_v1 == DSL_CONTRACT_INVALID_ID ||
+        cache_v1 == DSL_CONTRACT_INVALID_ID ||
+        DSL_Contract_Find
+            (DSL_CONTRACT_TRANSFORMER_ROTARY_EMBEDDING,
+             transformer_id, transformer_id) != rotary_v1 ||
+        DSL_Contract_Find_Current
+            (DSL_CONTRACT_TRANSFORMER_ROTARY_EMBEDDING,
+             transformer_id, transformer_id) != rotary_v2) {
+        fprintf(stderr, "decode contract version lookup failed\n");
+        failed = 1;
+    }
+
+    if (!DSL_Contract_Get_Info(attention_v2, &info) || info.version != 2 ||
+        info.flags !=
+            (DSL_CONTRACT_FLAG_EXPRESSION | DSL_CONTRACT_FLAG_STATE) ||
+        info.required_check_count != 5 || info.diagnostic_code_count != 4 ||
+        strcmp(DSL_Contract_Required_Check_At(attention_v2, 1),
+               "cached_attention_shape_valid") != 0 ||
+        strcmp(DSL_Contract_Diagnostic_Code_At(attention_v2, 0),
+               "DATTENTION201") != 0) {
+        fprintf(stderr, "cached attention contract changed\n");
+        failed = 1;
+    }
+    if (!DSL_Contract_Get_Info(decoder_v2, &info) || info.version != 2 ||
+        info.flags != (DSL_CONTRACT_FLAG_REGION | DSL_CONTRACT_FLAG_STATE) ||
+        strcmp(DSL_Contract_Required_Check_At(decoder_v2, 3),
+               "layer_state_ownership_valid") != 0 ||
+        !DSL_Contract_Get_Info(decode_v1, &info) || info.version != 1 ||
+        strcmp(DSL_Contract_Diagnostic_Code_At(decode_v1, 2),
+               "DDECODE003") != 0 ||
+        !DSL_Contract_Get_Info(cache_v1, &info) ||
+        info.flags != DSL_CONTRACT_FLAG_STATE ||
+        strcmp(DSL_Contract_Required_Check_At(cache_v1, 4),
+               "state_identity_declared") != 0) {
+        fprintf(stderr, "decode region or cache-state contract changed\n");
+        failed = 1;
+    }
+
+    if (DSL_Contract_Register_Versioned
+            ("bad.version", transformer_id, transformer_id, 0, 0,
+             NULL, 0, NULL, 0) != DSL_CONTRACT_INVALID_ID ||
+        DSL_Contract_Find_Version
+            (DSL_CONTRACT_TRANSFORMER_ATTENTION,
+             transformer_id, transformer_id, 99) !=
+            DSL_CONTRACT_INVALID_ID) {
+        fprintf(stderr, "versioned contract registry accepted invalid input\n");
+        failed = 1;
+    }
+
+    FILE *dump = tmpfile();
+    if (dump == NULL) {
+        perror("tmpfile");
+        return 1;
+    }
+    char text[16384];
+    DSL_Contract_fprint_registry(dump);
+    rewind(dump);
+    size_t count = fread(text, 1, sizeof(text) - 1, dump);
+    text[count] = '\0';
+    fclose(dump);
+    if (strstr(text, "DSL Contract Registry: entries=8") == NULL ||
+        strstr(text, "name=transformer.decode") == NULL ||
+        strstr(text, "name=transformer.kv_cache_state") == NULL ||
+        strstr(text, "name=transformer.rotary_embedding") == NULL ||
+        strstr(text, "name=transformer.attention") == NULL ||
+        strstr(text, "name=transformer.decoder_layer") == NULL ||
+        strstr(text, "check[1]=cached_attention_shape_valid") == NULL ||
+        strstr(text, "diagnostic[0]=DDECODE001") == NULL) {
+        fprintf(stderr, "decode contract registry inspection changed\n");
+        failed = 1;
+    }
+
+    return failed;
+}
+
+static int
+Expect_Decode_Profile_Error
+        (const DSL_TRANSFORMER_DECODE_PROFILE *profile,
+         const char *expected_code)
+{
+    FILE *diagnostic = tmpfile();
+    char text[512];
+
+    if (diagnostic == NULL) {
+        perror("tmpfile");
+        return 1;
+    }
+    BOOL accepted = DSL_Gatekeeper_Verify_Transformer_Decode_Profile
+                        (profile, diagnostic);
+    rewind(diagnostic);
+    size_t count = fread(text, 1, sizeof(text) - 1, diagnostic);
+    text[count] = '\0';
+    fclose(diagnostic);
+    if (accepted || strstr(text, expected_code) == NULL) {
+        fprintf(stderr, "decode profile expected %s, found: %s\n",
+                expected_code, text);
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_Llama2_Decode_Gatekeeper_Profile(void)
+{
+    DSL_TRANSFORMER_DECODE_PROFILE profile;
+    DSL_TRANSFORMER_DECODE_PROFILE malformed;
+    int failed = 0;
+
+    memset(&profile, 0, sizeof(profile));
+    profile.version = 1;
+    profile.batch_size = 1;
+    profile.decode_sequence_length = 1;
+    profile.query_head_count = 4;
+    profile.kv_head_count = 4;
+    profile.head_dimension = 8;
+    profile.input_cache_length = 3;
+    profile.output_cache_length = 4;
+    profile.cache_position = 3;
+    profile.rope_capacity = 8;
+    profile.cache_rank = 4;
+    profile.cache_sequence_axis = 2;
+    profile.cache_update = DSL_KV_CACHE_UPDATE_FUNCTIONAL_APPEND;
+
+    if (!DSL_Gatekeeper_Verify_Transformer_Decode_Profile(&profile, NULL)) {
+        fprintf(stderr, "valid tiny decode profile was rejected\n");
+        failed = 1;
+    }
+    failed |= Expect_Decode_Profile_Error(NULL, "DDECODE001");
+
+    malformed = profile;
+    malformed.version = 2;
+    failed |= Expect_Decode_Profile_Error(&malformed, "DDECODE001");
+    malformed = profile;
+    malformed.kv_head_count = 2;
+    failed |= Expect_Decode_Profile_Error(&malformed, "DATTENTION201");
+    malformed = profile;
+    malformed.cache_sequence_axis = 1;
+    failed |= Expect_Decode_Profile_Error(&malformed, "DKVCACHE002");
+    malformed = profile;
+    malformed.cache_position = 2;
+    failed |= Expect_Decode_Profile_Error(&malformed, "DDECODE002");
+    malformed = profile;
+    malformed.output_cache_length = 5;
+    failed |= Expect_Decode_Profile_Error(&malformed, "DATTENTION202");
+    malformed = profile;
+    malformed.rope_capacity = 3;
+    failed |= Expect_Decode_Profile_Error(&malformed, "DROTARY202");
+
+    return failed;
+}
+
+static int
 Check_Structured_Region_Builder(void)
 {
     DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
@@ -2834,6 +3061,9 @@ main(void)
         return Check_Llama2_Transformer_Expressions();
     if (getenv("OPEN64_DSL_LLAMA2_REGIONS_ONLY") != NULL)
         return Check_Llama2_Transformer_Regions();
+    if (getenv("OPEN64_DSL_LLAMA2_DECODE_CONTRACT_ONLY") != NULL)
+        return Check_Llama2_Decode_Contract_Registry() |
+               Check_Llama2_Decode_Gatekeeper_Profile();
     if (getenv("OPEN64_DSL_STRUCTURED_REGION_ONLY") != NULL)
         return Check_Structured_Region_Builder();
 
@@ -2846,6 +3076,8 @@ main(void)
     failed |= Check_Llama2_Common_Substrate();
     failed |= Check_Llama2_Transformer_Expressions();
     failed |= Check_Llama2_Transformer_Regions();
+    failed |= Check_Llama2_Decode_Contract_Registry();
+    failed |= Check_Llama2_Decode_Gatekeeper_Profile();
     failed |= Check_Structured_Region_Builder();
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();

@@ -1693,3 +1693,59 @@ DSL_Gatekeeper_Verify_Program
         *result = context.result;
     return valid && context.result.error_count == 0;
 }
+static BOOL
+DSL_Gatekeeper_Decode_Profile_Error
+        (FILE *diagnostic,
+         const char *code,
+         const char *message)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "%s: %s\n", code, message);
+    return FALSE;
+}
+
+BOOL
+DSL_Gatekeeper_Verify_Transformer_Decode_Profile
+        (const DSL_TRANSFORMER_DECODE_PROFILE *profile,
+         FILE *diagnostic)
+{
+    if (profile == NULL)
+        return DSL_Gatekeeper_Decode_Profile_Error
+                   (diagnostic, "DDECODE001", "decode profile is missing");
+    if (profile->version != 1)
+        return DSL_Gatekeeper_Decode_Profile_Error
+                   (diagnostic, "DDECODE001",
+                    "decode contract version is unsupported");
+    if (profile->batch_size == 0 || profile->query_head_count == 0 ||
+        profile->kv_head_count == 0 || profile->head_dimension == 0)
+        return DSL_Gatekeeper_Decode_Profile_Error
+                   (diagnostic, "DKVCACHE001",
+                    "cache tensor dimensions must be nonzero");
+    if (profile->decode_sequence_length != 1 ||
+        profile->query_head_count != profile->kv_head_count)
+        return DSL_Gatekeeper_Decode_Profile_Error
+                   (diagnostic, "DATTENTION201",
+                    "version 1 requires one token and equal query/KV heads");
+    if (profile->cache_rank != 4 || profile->cache_sequence_axis != 2 ||
+        profile->cache_update != DSL_KV_CACHE_UPDATE_FUNCTIONAL_APPEND)
+        return DSL_Gatekeeper_Decode_Profile_Error
+                   (diagnostic, "DKVCACHE002",
+                    "version 1 requires BHSD functional append");
+    if (profile->cache_position != profile->input_cache_length)
+        return DSL_Gatekeeper_Decode_Profile_Error
+                   (diagnostic, "DDECODE002",
+                    "cache position must equal the input valid length");
+    if (profile->output_cache_length < profile->input_cache_length ||
+        profile->output_cache_length - profile->input_cache_length !=
+            profile->decode_sequence_length)
+        return DSL_Gatekeeper_Decode_Profile_Error
+                   (diagnostic, "DATTENTION202",
+                    "output cache length must append the decode length");
+    if (profile->cache_position >= profile->rope_capacity ||
+        profile->output_cache_length > profile->rope_capacity)
+        return DSL_Gatekeeper_Decode_Profile_Error
+                   (diagnostic, "DROTARY202",
+                    "cache position or result exceeds RoPE capacity");
+
+    return TRUE;
+}

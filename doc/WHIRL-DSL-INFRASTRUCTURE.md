@@ -1297,6 +1297,45 @@ full-sequence causal prompt evaluation with no KV cache.
    attention, alias, ownership, and runtime ABI contracts without changing
    certified prefill semantics.
 
+   The first contract-publication slice is complete on
+   `codex/llama2-decode-infrastructure`, based on the frontend-only observable
+   discovery in PR #75.  It adds no logical opcode, WN encoding, mapped-image
+   row, builder emission, or lowering path.  The historical name-only contract
+   registration and lookup APIs retain their behavior; additive version-aware
+   registration, exact-version lookup, and current-version lookup allow old
+   and new contracts to coexist.
+
+   The compile-time seed set now publishes:
+
+   - `transformer.rotary_embedding.v1` for full-sequence prefill and `.v2` for
+     an explicit semantic cache-position operand;
+   - pure no-cache `transformer.attention.v1` and state-bearing cached
+     `transformer.attention.v2`;
+   - prefill `transformer.decoder_layer.v1` and state-interface
+     `transformer.decoder_layer.v2`;
+   - `transformer.decode.v1` as the outer decode-region contract; and
+   - `transformer.kv_cache_state.v1` for typed K/V cache state.
+
+   A narrow gatekeeper profile freezes only the observed first decode shape:
+   one token, equal query/KV head counts, rank-4 BHSD cache layout, sequence
+   axis 2, functional append from length `L` to `L+1`, cache position `L`, and
+   RoPE capacity bounds.  Stable diagnostics cover unsupported versions, head
+   geometry, layout/update mode, append length, position, and capacity.
+   Grouped-query attention, in-place/indexed storage, dynamic shapes, state
+   identity, state ordering, and alias verification remain unsupported until
+   the corresponding reviewed stages land.
+
+   Remaining item-29 stages, in order:
+
+   1. Complete item 18's fixed mapped-image abstract-state and effect rows.
+   2. Bind K/V state identity, layer ownership, read/modify ordering, and
+      no-alias checks to region interfaces and gatekeeper verification.
+   3. Allocate reviewed logical operator versions without changing version-1
+      prefill semantics.
+   4. Add opaque builder and torch2whirl bindings after native publication.
+   5. Prove mapped-image reopen and `ir_b2a -st -src` state evidence.
+   6. Add gatekeeper-first VHO decode lowering and process-boundary tests.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up
