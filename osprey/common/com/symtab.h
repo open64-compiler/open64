@@ -462,7 +462,8 @@ enum TY_TENSOR_SCHEMA_KEY {
     TY_TENSOR_SCHEMA_LINEAGE,
     TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME,
     TY_TENSOR_SCHEMA_LOWERING_HINT,
-    TY_TENSOR_SCHEMA_NO_ALIAS
+    TY_TENSOR_SCHEMA_NO_ALIAS,
+    TY_TENSOR_SCHEMA_CANONICAL
 };
 
 struct TY_DSL_KV {
@@ -595,6 +596,9 @@ extern BOOL TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal,
 				   const char **key,
 				   const char **value,
 				   TY_DSL_BIND_STATE *state);
+extern BOOL TY_tensor_attributes_are_equivalent (TY_IDX ty1, TY_IDX ty2);
+extern BOOL TY_tensor_is_canonical (TY_IDX ty);
+extern BOOL TY_tensor_seal (TY_IDX ty);
 extern UINT32 TY_tensor_unbound_required_attribute_count
 				    (TY_IDX ty,
 				     const TY_TENSOR_SCHEMA_KEY *required,
