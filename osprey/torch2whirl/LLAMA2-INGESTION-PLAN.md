@@ -287,6 +287,8 @@ Second frontend batch status, L2-L7:
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
+| L0 | complete | Dependency-light deterministic tiny Llama 2 fixture and eager no-cache tests |
+| L1 | complete | Normalized FX golden graph, classified operator census, and drift detection |
 | L2 | complete | Native `input_ids` model input, `transformer.token_embedding.v1`, deterministic `llama2.safetensors` payloads |
 | L3 | complete | `transformer.rms_norm.v1` and `transformer.rotary_embedding.v1` visible in `ir_b2a -st -src` |
 | L4 | complete | Certified `transformer.attention.v1` full-sequence causal no-cache expression |
@@ -380,25 +382,25 @@ item 22 and open the reviewed native implementation gates.
 
 ### L0: Freeze The Fixture And Reference Contract
 
-- [ ] Add the tiny dependency-light Llama 2 model under `python/tests/models`.
-- [ ] Record the exact model configuration and deterministic initialization.
-- [ ] Add eager PyTorch tests for shape, dtype, repeatability, and inference
+- [x] Add the tiny dependency-light Llama 2 model under `python/tests/models`.
+- [x] Record the exact model configuration and deterministic initialization.
+- [x] Add eager PyTorch tests for shape, dtype, repeatability, and inference
   mode.
-- [ ] Document intentional differences from Meta's runtime implementation.
-- [ ] Keep real checkpoints and tokenizers outside the repository.
+- [x] Document intentional differences from Meta's runtime implementation.
+- [x] Keep real checkpoints and tokenizers outside the repository.
 
 Exit gate: peers can review one stable model without downloading dependencies
 or licensed data.
 
 ### L1: Capture And Operator Census
 
-- [ ] Capture the tiny model with the selected PyTorch graph mechanism.
-- [ ] Produce a stable, reviewable census of call-module, call-function,
+- [x] Capture the tiny model with the selected PyTorch graph mechanism.
+- [x] Produce a stable, reviewable census of call-module, call-function,
   call-method, view, indexing, and scalar operations.
-- [ ] Associate every captured node with a proposed common operator,
+- [x] Associate every captured node with a proposed common operator,
   transformer operator, static constant, or explicit unsupported diagnostic.
-- [ ] Separate compiler-required semantics from PyTorch implementation noise.
-- [ ] Add a census drift test so PyTorch version changes cannot silently alter
+- [x] Separate compiler-required semantics from PyTorch implementation noise.
+- [x] Add a census drift test so PyTorch version changes cannot silently alter
   ingestion.
 
 Exit gate: every node is classified before adding broad mappings.
