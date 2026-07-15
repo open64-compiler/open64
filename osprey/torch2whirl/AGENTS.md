@@ -19,6 +19,29 @@ Keep work scoped to `torch2whirl` source, its configured build entry under
 - Do not use tab characters in files touched under this directory, except
   Makefiles where tabs are required by standard make syntax.
 
+## Domain Bring-Up Workflow
+
+For each substantial domain or model family, maintain a focused ingestion plan
+under this directory and follow the repository workflow in
+`doc/WHIRL-DSL-INFRASTRUCTURE.md`:
+
+1. Start with a small, deterministic, dependency-light source fixture.
+2. Capture the real PyTorch graph and publish an operator census before asking
+   common/com to allocate or broaden native contracts.
+3. Classify nodes as common substrate, domain expression, region contract,
+   state/effect, compiler metadata, constant, or explicitly unsupported.
+4. Preserve source module and semantic boundaries even when PyTorch decomposes
+   their implementation into lower-level tensor operations.
+5. Consume names, versions, operands, attributes, descriptor rules, and
+   gatekeeper behavior only after the native infrastructure publishes them.
+6. Migrate to opaque native value and region handles, then certify `.B`, side
+   payloads, `ir_b2a -st -src`, and `openpy -O0` across a process boundary.
+
+Torch2whirl discovers and reports frontend requirements; it does not make
+logical opcode allocation, WN representation, mapped-image, or lowering
+decisions authoritative.  Keep census/mock tests as drift detectors after
+native emission becomes available.
+
 ## Verification Matrix
 
 Run the smallest relevant set first, then broaden when the change affects a
