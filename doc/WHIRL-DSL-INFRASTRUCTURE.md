@@ -1127,6 +1127,81 @@ compiled CG region while preserving its inspectable VHO evidence.
    Existing APIs remain compatibility wrappers until torch2whirl and retained
    binary fixtures have migrated.
 
+### Llama 2 transformer infrastructure queue
+
+The frontend discovery evidence is the tiny Llama 2 fixture, normalized FX
+graph, and operator census on `codex/torch2whirl-python-fe` through commit
+`53bbfddf`.  This section owns the native WHIRL contracts and implementation
+required by that frontend plan.  The first target is static, inference-only,
+full-sequence causal prompt evaluation with no KV cache.
+
+22. [x] Publish the Llama 2 prefill operator contract.
+
+   `doc/DSL-WHIRL-LLAMA2-PREFILL-CONTRACTS.md` freezes the append-only logical
+   IDs, exact versions, ordered kids, typed attributes, result descriptor
+   rules, effects, promotion states, region interfaces, diagnostics, and
+   exclusions for the initial profile.  Prefill and decoder layers are REGION
+   contracts.  Embedding, RMSNorm, RoPE, attention, and SwiGLU remain
+   transformer-domain expressions through verification.  Token IDs reuse
+   `common.model_input.v2`; causal masking is an attention policy rather than a
+   separate value in version 1.  Existing common schemas are not widened:
+   bias-free linear, batched matmul, and sequence logits use additive versions.
+
+23. [ ] Implement the published common tensor substrate schemas.
+
+   Add native `common.reshape.v1`, `common.transpose.v1`, bias-free
+   rank-generic `common.linear.v3`, exact-prefix batched `common.matmul.v2`, and
+   sequence `common.output_logits.v3`.  Preserve all released enum values and
+   version-1/version-2 behavior.  Add exact-version lookup, result inference,
+   gatekeeper, mapped-image, logical printer, and malformed-schema tests.
+
+24. [ ] Implement transformer-domain prefill expressions.
+
+   Add native `transformer.token_embedding.v1`, `transformer.rms_norm.v1`,
+   single-result `transformer.rotary_embedding.v1`, pure no-cache
+   `transformer.attention.v1`, and projection-visible
+   `transformer.swiglu.v1`.  Apply every dtype, shape, layout, mask, head,
+   scale, and profile check published by item 22 before partial promotion.
+
+25. [ ] Implement transformer structured-region contracts.
+
+   Use the common RID/WT_REGIONS substrate for
+   `transformer.decoder_layer.v1` and `transformer.prefill.v1`.  Declare
+   deterministic value interfaces, preserve nested source positions and module
+   context, verify topology and outer-owned no-alias results, and print stable
+   logical region evidence after mapped-image reopen.
+
+26. [ ] Complete transformer artifact inspection and compatibility coverage.
+
+   Carry every new logical opcode, node, attribute, descriptor, value
+   reference, region contract, RID mapping, source position, and external
+   tensor reference through the existing ELF mapped-image path.  Extend
+   `ir_b2a -st -src` without exposing the private physical DSL escape tag.
+   Preserve old-image readability and existing ResNet behavior.
+
+27. [ ] Add verified Llama 2 prefill VHO DSL lowering.
+
+   Lower only after transformer gatekeeper success.  Preserve domain semantics
+   until verification, then lower approved expressions to common substrate or
+   the selected runtime ABI.  Consume every executable DSL value and splice
+   managed regions before standard VHO, WOPT, LNO, or CG.
+
+28. [ ] Certify the tiny prefill artifact across the process boundary.
+
+   Prove builder construction, gatekeeper verification, mapped-image
+   write/reopen, `ir_b2a -st -src`, source correlation, external tensors,
+   region interfaces, stable rejection, and `openpy -keep` plus `-O0`
+   lowering.  Preserve `llama2.B`, `llama2.safetensors`, and `llama2.T` in a
+   host-mounted review directory.
+
+29. [ ] Design stateful decode and KV cache as a later versioned extension.
+
+   Begin only after item 18 establishes common abstract-state effects.  Model
+   cache storage as declared mutable state with read/modify edges and ordering,
+   not tensor metadata.  Add cache position, append/update, grouped-query
+   attention, alias, ownership, and runtime ABI contracts without changing
+   certified prefill semantics.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up
