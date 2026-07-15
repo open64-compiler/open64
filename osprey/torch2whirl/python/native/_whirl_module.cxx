@@ -155,6 +155,24 @@ Open64_DSC_Create_Tensor_Type(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Intern_Tensor_Type(PyObject *self, PyObject *args)
+{
+    const char *name;
+    PyObject *descriptor_obj;
+    Open64_DSC_Tensor_Descriptor descriptor;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "sO!:intern_tensor_type", &name,
+                          &PyDict_Type, &descriptor_obj))
+        return NULL;
+    if (!Open64_DSC_Read_Tensor_Descriptor(descriptor_obj, &descriptor))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Intern_Tensor_Type(name, &descriptor),
+                "intern tensor type");
+}
+
+static PyObject *
 Open64_DSC_Attach_Tensor_Descriptor(PyObject *self, PyObject *args)
 {
     Open64_DSC_Handle tensor_type;
@@ -342,6 +360,36 @@ Open64_DSC_Create_Operator(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Create_Operator_With_Result(PyObject *self, PyObject *args)
+{
+    const char *opcode_name;
+    unsigned int version;
+    PyObject *kids_obj;
+    PyObject *attrs_obj;
+    const char *result_name;
+    Open64_DSC_Handle result_type;
+    std::vector<Open64_DSC_Handle> kids;
+    std::vector<Open64_DSC_Attribute> attrs;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "sIOOsK:create_operator_with_result",
+                          &opcode_name, &version, &kids_obj, &attrs_obj,
+                          &result_name, &result_type))
+        return NULL;
+    if (!Open64_DSC_Read_Handle_Sequence(kids_obj, &kids) ||
+        !Open64_DSC_Read_Attributes(attrs_obj, &attrs))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Create_Operator_With_Result
+                    (opcode_name, version,
+                     kids.empty() ? NULL : &kids[0],
+                     (unsigned int) kids.size(),
+                     attrs.empty() ? NULL : &attrs[0],
+                     (unsigned int) attrs.size(), result_name, result_type),
+                "create operator with result");
+}
+
+static PyObject *
 Open64_DSC_Create_Symbol(PyObject *self, PyObject *args)
 {
     const char *name;
@@ -382,6 +430,83 @@ Open64_DSC_Attach_Symbol_Metadata(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Attach_Value_Metadata(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle value;
+    PyObject *metadata_obj;
+    std::vector<Open64_DSC_Attribute> metadata;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KO!:attach_value_metadata", &value,
+                          &PyDict_Type, &metadata_obj))
+        return NULL;
+    if (!Open64_DSC_Read_Attributes(metadata_obj, &metadata))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Attach_Value_Metadata
+                    (value, metadata.empty() ? NULL : &metadata[0],
+                     (unsigned int) metadata.size()),
+                "attach value metadata");
+}
+
+static PyObject *
+Open64_DSC_Attach_Value_Lineage(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle value;
+    const char *lineage;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "Ks:attach_value_lineage", &value, &lineage))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Attach_Value_Lineage(value, lineage),
+                "attach value lineage");
+}
+
+static PyObject *
+Open64_DSC_Get_Value_Type(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle value;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "K:get_value_type", &value))
+        return NULL;
+    return Open64_DSC_Handle_Result(Open64_DSC_Get_Value_Type(value),
+                                    "get value type");
+}
+
+static PyObject *
+Open64_DSC_Get_Value_Result_Symbol(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle value;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "K:get_value_result_symbol", &value))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Get_Value_Result_Symbol(value),
+                "get value result symbol");
+}
+
+static PyObject *
+Open64_DSC_Begin(PyObject *self, PyObject *args)
+{
+    (void) self;
+    (void) args;
+    return Open64_DSC_Bool_Result(Open64_DSC_Begin_Program(),
+                                  "begin program");
+}
+
+static PyObject *
+Open64_DSC_Abort(PyObject *self, PyObject *args)
+{
+    (void) self;
+    (void) args;
+    Open64_DSC_Abort_Program();
+    Py_RETURN_NONE;
+}
+
+static PyObject *
 Open64_DSC_Create_Minimal_Program_Unit(PyObject *self, PyObject *args)
 {
     const char *name;
@@ -394,6 +519,81 @@ Open64_DSC_Create_Minimal_Program_Unit(PyObject *self, PyObject *args)
 
     handle = Open64_DSC_Create_Minimal_Program_Unit(name);
     return Open64_DSC_Handle_Result(handle, "create minimal program unit");
+}
+
+static PyObject *
+Open64_DSC_Register_Source_File(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    const char *path;
+    unsigned int file_id;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "Ks:register_source_file", &program_unit,
+                          &path))
+        return NULL;
+    file_id = Open64_DSC_Register_Source_File(program_unit, path);
+    if (file_id == 0) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to register source file");
+        return NULL;
+    }
+    return PyLong_FromUnsignedLong(file_id);
+}
+
+static PyObject *
+Open64_DSC_Set_Value_Source_Position(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle value;
+    unsigned int file_id;
+    int line;
+    unsigned int column;
+    int statement_begin;
+    int basic_block_begin;
+    Open64_DSC_Source_Position position;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KIiIpp:set_value_source_position", &value,
+                          &file_id, &line, &column, &statement_begin,
+                          &basic_block_begin))
+        return NULL;
+    if (column > 65535) {
+        PyErr_SetString(PyExc_ValueError, "source column is out of range");
+        return NULL;
+    }
+    position.file_id = file_id;
+    position.line = line;
+    position.column = (unsigned short) column;
+    position.statement_begin = statement_begin != 0;
+    position.basic_block_begin = basic_block_begin != 0;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Set_Value_Source_Position(value, &position),
+                "set value source position");
+}
+
+static PyObject *
+Open64_DSC_Verify(PyObject *self, PyObject *args)
+{
+    char diagnostic[4096];
+    Open64_DSC_Verify_Result result;
+    int valid;
+    PyObject *record;
+
+    (void) self;
+    (void) args;
+    result.native_node_count = 0;
+    result.result_symbol_count = 0;
+    result.error_count = 0;
+    result.diagnostic = diagnostic;
+    result.diagnostic_capacity = sizeof(diagnostic);
+    valid = Open64_DSC_Verify_Program(&result);
+    record = Py_BuildValue
+                 ("{s:O,s:I,s:I,s:I,s:s}",
+                  "valid", valid ? Py_True : Py_False,
+                  "native_node_count", result.native_node_count,
+                  "result_symbol_count", result.result_symbol_count,
+                  "error_count", result.error_count,
+                  "diagnostic", diagnostic);
+    return record;
 }
 
 static PyObject *
@@ -605,6 +805,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         "Create a native tensor type and return an opaque handle."
     },
     {
+        "intern_tensor_type",
+        Open64_DSC_Intern_Tensor_Type,
+        METH_VARARGS,
+        "Intern a canonical native tensor descriptor and return its handle."
+    },
+    {
         "attach_tensor_descriptor",
         Open64_DSC_Attach_Tensor_Descriptor,
         METH_VARARGS,
@@ -635,6 +841,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         "Create a native DSL operator and return an opaque handle."
     },
     {
+        "create_operator_with_result",
+        Open64_DSC_Create_Operator_With_Result,
+        METH_VARARGS,
+        "Create a native DSL operator with an explicit result type."
+    },
+    {
         "create_symbol",
         Open64_DSC_Create_Symbol,
         METH_VARARGS,
@@ -647,10 +859,64 @@ static PyMethodDef Open64_DSC_Methods[] = {
         "Attach compiler metadata to a native symbol."
     },
     {
+        "attach_value_metadata",
+        Open64_DSC_Attach_Value_Metadata,
+        METH_VARARGS,
+        "Attach compiler metadata to a native value result."
+    },
+    {
+        "attach_value_lineage",
+        Open64_DSC_Attach_Value_Lineage,
+        METH_VARARGS,
+        "Attach semantic lineage to a native value result."
+    },
+    {
+        "get_value_type",
+        Open64_DSC_Get_Value_Type,
+        METH_VARARGS,
+        "Get the opaque canonical tensor type for a value."
+    },
+    {
+        "get_value_result_symbol",
+        Open64_DSC_Get_Value_Result_Symbol,
+        METH_VARARGS,
+        "Get the opaque result symbol for a value."
+    },
+    {
+        "begin_program",
+        Open64_DSC_Begin,
+        METH_NOARGS,
+        "Begin an isolated native builder program."
+    },
+    {
+        "abort_program",
+        Open64_DSC_Abort,
+        METH_NOARGS,
+        "Discard the current native builder program."
+    },
+    {
         "create_minimal_program_unit",
         Open64_DSC_Create_Minimal_Program_Unit,
         METH_VARARGS,
         "Create a minimal native PU tree entry and return an opaque handle."
+    },
+    {
+        "register_source_file",
+        Open64_DSC_Register_Source_File,
+        METH_VARARGS,
+        "Register a source file for a native program unit."
+    },
+    {
+        "set_value_source_position",
+        Open64_DSC_Set_Value_Source_Position,
+        METH_VARARGS,
+        "Attach a source position to a native value definition."
+    },
+    {
+        "verify_program",
+        Open64_DSC_Verify,
+        METH_NOARGS,
+        "Run structured native DSL gatekeeper verification."
     },
     {
         "append_program_unit_value",

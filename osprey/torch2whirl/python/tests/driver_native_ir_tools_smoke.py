@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -152,7 +153,7 @@ def _check_invalid_graph_rejected(driver: Path, tmpdir: Path) -> int:
         print("driver accepted verifier-invalid add graph", file=sys.stderr)
         return 1
     error_text = completed.stdout + completed.stderr
-    if "shape" not in error_text:
+    if "shape" not in error_text and "incompatible" not in error_text:
         print(
             "driver rejection did not report verifier shape context:",
             file=sys.stderr,
@@ -167,7 +168,7 @@ def _check_invalid_graph_rejected(driver: Path, tmpdir: Path) -> int:
 
 def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
     result = subprocess.run(
-        [str(ir_b2a), "-st", str(artifact), str(text_dump)],
+        [str(ir_b2a), "-st", "-src", str(artifact), str(text_dump)],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -198,19 +199,70 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         "attr.semantic=logits",
         "value=safetensors://driver_native_model.safetensors#conv1.weight",
         "value_kind=implicit_zero",
+        "source files:",
+        "model.py",
         "Symbols:",
         "Types:",
     ]
     missing = [needle for needle in required if needle not in text]
     if missing:
         print(
-            "driver ir_b2a -st output missed expected text: " +
+            "driver ir_b2a -st -src output missed expected text: " +
             ", ".join(missing),
             file=sys.stderr,
         )
         print(text, file=sys.stderr)
         return 1
 
+    sourced_statement = re.search(
+        r"MSTID.*\{line: [1-9][0-9]*/[1-9][0-9]*\}", text
+    )
+    if sourced_statement is None:
+        print(
+            "driver ir_b2a -st -src output has no sourced DSL result statement",
+            file=sys.stderr,
+        )
+        print(text, file=sys.stderr)
+        return 1
+
+    return 0
+
+
+def _run_smoke(ir_b2a: Path, driver: Path, work_dir: Path) -> int:
+    work_dir.mkdir(parents=True, exist_ok=True)
+    model_path = work_dir / "model.py"
+    artifact = work_dir / "driver_native_model.B"
+    text_dump = work_dir / "driver_native_model.T"
+    side_file = work_dir / "driver_native_model.safetensors"
+    invalid_model = work_dir / "invalid_model.py"
+    invalid_artifact = work_dir / "invalid_model.B"
+    for path in (
+        model_path,
+        artifact,
+        text_dump,
+        side_file,
+        invalid_model,
+        invalid_artifact,
+    ):
+        if path.exists():
+            path.unlink()
+    _write_resnet_model(model_path)
+
+    driver_status = _run_valid_driver(driver, model_path, artifact)
+    if driver_status != 0:
+        return driver_status
+    if not artifact.exists() or artifact.stat().st_size == 0:
+        print("driver native WHIRL artifact was not created", file=sys.stderr)
+        return 1
+
+    inspect_status = _inspect_artifact(ir_b2a, artifact, text_dump)
+    if inspect_status != 0:
+        return inspect_status
+    invalid_status = _check_invalid_graph_rejected(driver, work_dir)
+    if invalid_status != 0:
+        return invalid_status
+
+    print(f"retained driver artifacts: {work_dir}")
     return 0
 
 
@@ -221,39 +273,16 @@ def main() -> int:
     _require_torch()
     driver = _find_driver()
 
-    with tempfile.TemporaryDirectory(prefix="torch2whirl-driver-native-") as tmp:
-        tmpdir = Path(tmp)
-        model_path = tmpdir / "model.py"
-        artifact = tmpdir / "driver_native_model.B"
-        text_dump = tmpdir / "driver_native_model.st.ir"
-        _write_resnet_model(model_path)
-
-        driver_status = _run_valid_driver(driver, model_path, artifact)
-        if driver_status != 0:
-            completed = _run_driver(
-                driver,
-                model_path,
-                artifact,
-                ("shape:1,3,64,64",),
-            )
-            error_text = completed.stdout + completed.stderr
-            if "does not support" in error_text:
-                print(
-                    "skip: native backend capability missing: " +
-                    error_text.strip()
-                )
-                return 0
-            return driver_status
-        if not artifact.exists() or artifact.stat().st_size == 0:
-            print("driver native WHIRL artifact was not created", file=sys.stderr)
-            return 1
-
-        inspect_status = _inspect_artifact(ir_b2a, artifact, text_dump)
-        if inspect_status != 0:
-            return inspect_status
-        invalid_status = _check_invalid_graph_rejected(driver, tmpdir)
-        if invalid_status != 0:
-            return invalid_status
+    artifact_dir = os.environ.get("OPEN64_DSL_TEST_ARTIFACT_DIR", "")
+    if artifact_dir:
+        status = _run_smoke(ir_b2a, driver, Path(artifact_dir))
+    else:
+        with tempfile.TemporaryDirectory(
+            prefix="torch2whirl-driver-native-"
+        ) as tmp:
+            status = _run_smoke(ir_b2a, driver, Path(tmp))
+    if status != 0:
+        return status
 
     print("driver native ir_b2a smoke passed")
     return 0

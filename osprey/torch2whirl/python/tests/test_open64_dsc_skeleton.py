@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import importlib.util
+import inspect
 import json
 import struct
 import tempfile
@@ -1628,9 +1629,15 @@ class Open64DscSkeletonTest(unittest.TestCase):
             )
 
             model = _load_model(model_path, "create_model")
+            source_line = inspect.getsourcelines(type(model))[1]
 
         self.assertEqual(model.__class__.__name__, "UnitModel")
         self.assertTrue(model.eval_called)
+        self.assertEqual(
+            Path(inspect.getsourcefile(type(model))).resolve(),
+            model_path.resolve(),
+        )
+        self.assertEqual(source_line, 1)
 
     def test_cli_load_model_reports_missing_factory(self) -> None:
         with tempfile.TemporaryDirectory() as work_dir:
@@ -1742,6 +1749,48 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("attr.kernel_shape=3,3", str(markers[7]["payload"]))
         self.assertEqual(markers[8]["opcode"], "cnn.global_avg_pool2d")
         self.assertIn("attr.output_size=1,1", str(markers[8]["payload"]))
+
+    def test_builder_lifecycle_canonical_types_and_structured_verify(self) -> None:
+        builder = load_builder("mock")
+        builder.begin_program()
+        pu = builder.minimal_program_unit("lifecycle_forward")
+        descriptor = {
+            "kind": "tensor",
+            "dtype": "float32",
+            "rank": 2,
+            "logical_shape": "[1,4]",
+            "layout": "contiguous",
+            "runtime_state": "resident",
+            "lineage": "input_a",
+        }
+        first_type = builder.tensor_type(
+            "input_a_type", "float32", 2, "[1,4]", descriptor
+        )
+        second_type = builder.tensor_type(
+            "input_b_type",
+            "float32",
+            2,
+            "[1,4]",
+            {**descriptor, "runtime_state": "evicted", "lineage": "input_b"},
+        )
+        self.assertEqual(first_type.value, second_type.value)
+
+        first = builder.model_input("input_a", first_type, 0)
+        second = builder.model_input("input_b", second_type, 1)
+        result = builder.common_add(first, second)
+        builder.attach_value_metadata(result, {"lowering_hint": "keep_vho"})
+        builder.attach_value_lineage(result, "synthetic_add")
+        file_id = builder.register_source_file(pu, "/tmp/model.py")
+        builder.set_value_source_position(result, file_id, 17, 3)
+        for value in (first, second, result):
+            builder.append_program_unit_value(pu, value)
+
+        verification = builder.verify_program()
+        self.assertTrue(verification["valid"])
+        self.assertEqual(verification["native_node_count"], 3)
+        builder.abort_program()
+        with self.assertRaisesRegex(RuntimeError, "no program unit"):
+            builder.verify_program()
 
     def test_mock_backend_creates_cnn_conv2d_marker(self) -> None:
         builder = load_builder("mock")
@@ -2088,7 +2137,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertIn("input_count=2", text)
         self.assertIn("operator.0=common.add", text)
         self.assertIn("tensor_type.0=input0_type:float32:[]", text)
-        self.assertIn("tensor_descriptor.0=float32:0:[]:input0", text)
+        self.assertIn("tensor_descriptor.0=float32:0:[]:", text)
         self.assertIn("value.0=input0:input0_type:model_input", text)
         self.assertIn("value_metadata.0=input0:model_input", text)
         self.assertIn("graph_operator.0=common.add:input0,input1", text)

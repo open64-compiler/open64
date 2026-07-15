@@ -61,7 +61,12 @@ def _load_python_module(path: Path) -> ModuleType:
         raise ImportError(f"failed to load model file: {path}")
 
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
     return module
 
 

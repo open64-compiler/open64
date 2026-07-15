@@ -79,9 +79,9 @@ OPEN64_DSC_NATIVE_IR_TOOL_OBJS = \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/config_elf_targ.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/const.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_builder.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_gatekeeper.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_contract.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_domain.o) \
-  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_gatekeeper.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_ir_image.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_opcode.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dwarf_DST.o) \
@@ -117,6 +117,7 @@ OPEN64_DSC_NATIVE_REQUIRED_FILES ?= $(strip $(OPEN64_DSC_NATIVE_OBJS))
 OPEN64_DSC_NATIVE_LDLIBS ?=
 OPEN64_IR_B2A ?= $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/ir_b2a)
 OPEN64_OPENCC ?=
+OPEN64_DSL_TEST_ARTIFACT_DIR ?= $(CURDIR)/test-artifacts
 PYTHON_NATIVE_TARGET = $(PYTHON_NATIVE_PACKAGE_DIR)/_whirl$(PYTHON_EXT_SUFFIX)
 PYTHON_NATIVE_OBJECTS = \
   _whirl_module.native.o \
@@ -172,6 +173,7 @@ driver_native_ir_tools_smoke: $(TARGETS) python_native_extension \
   python_native_ir_tools_deps
 	PYTHONDONTWRITEBYTECODE=1 \
 	    OPEN64_IR_B2A="$(OPEN64_IR_B2A)" \
+	    OPEN64_DSL_TEST_ARTIFACT_DIR="$(OPEN64_DSL_TEST_ARTIFACT_DIR)/driver-native" \
 	    PYTHONPATH=$(TORCH2WHIRL_PYTHONPATH) \
 	    TORCH2WHIRL_DRIVER=$(TORCH2WHIRL_DRIVER) \
 	    $(PYTHON) $(BUILD_BASE)/python/tests/driver_native_ir_tools_smoke.py
@@ -297,6 +299,7 @@ python_native_test: python_native_extension
 python_native_ir_tools_smoke: python_native_extension python_native_ir_tools_deps
 	PYTHONDONTWRITEBYTECODE=1 \
 	    OPEN64_IR_B2A="$(OPEN64_IR_B2A)" \
+	    OPEN64_DSL_TEST_ARTIFACT_DIR="$(OPEN64_DSL_TEST_ARTIFACT_DIR)/python-native" \
 	    PYTHONPATH=$(PYTHON_BUILD_ROOT):$(BUILD_BASE)/python \
 	    $(PYTHON) $(BUILD_BASE)/python/tests/native_ir_tools_smoke.py
 

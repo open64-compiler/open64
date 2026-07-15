@@ -23,6 +23,10 @@ class DummyModel:
     pass
 
 
+class InputTensor:
+    shape = (1, 1, 4, 4)
+
+
 def _append_operator_probes(module) -> None:
     builder = load_builder("native")
     lhs = ValueHandle(module.values[0].handle)
@@ -138,7 +142,7 @@ def _append_operator_probes(module) -> None:
         {
             "attr.kernel_shape": "3,3",
             "attr.stride": "1,1",
-            "attr.padding": "1,1",
+            "attr.padding": "0,0",
             "attr.dilation": "1,1",
             "attr.groups": "1",
             "attr.input_layout": "NCHW",
@@ -287,80 +291,123 @@ def _find_ir_b2a() -> Optional[Path]:
     return None
 
 
+def _run_smoke(ir_b2a: Path, work_dir: Path) -> int:
+    work_dir.mkdir(parents=True, exist_ok=True)
+    artifact = work_dir / "python_native_model.B"
+    text_dump = work_dir / "python_native_model.T"
+    side_file = work_dir / "python_native_model.safetensors"
+    for path in (artifact, text_dump, side_file):
+        if path.exists():
+            path.unlink()
+
+    module = export_to_whirl(
+        DummyModel(),
+        [InputTensor(), InputTensor()],
+        WhirlExportOptions(backend="native", model_name="python_native"),
+    )
+    _append_operator_probes(module)
+    save_as_whirl(module, str(artifact))
+    if not artifact.exists() or artifact.stat().st_size == 0:
+        print("native Python WHIRL artifact was not created", file=sys.stderr)
+        return 1
+
+    result = subprocess.run(
+        [str(ir_b2a), "-st", "-src", str(artifact), str(text_dump)],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        print(result.stdout, file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        return result.returncode
+
+    text = text_dump.read_text(encoding="utf-8", errors="replace")
+    required = [
+        "FUNC_ENTRY",
+        "common.tensor_const",
+        "common.add",
+        "common.matmul",
+        "common.residual_add",
+        "common.linear",
+        "common.relu",
+        "common.flatten",
+        "common.output_logits",
+        "cnn.max_pool2d",
+        "cnn.global_avg_pool2d",
+        "cnn.conv2d",
+        "cnn.batch_norm_infer",
+        "attr.broadcast_rule=none",
+        "attr.start_dim=1",
+        "attr.transpose_kid0=false",
+        "attr.transpose_kid1=false",
+        "attr.shape_check=exact",
+        "attr.has_bias=true",
+        "attr.weight_layout=OI",
+        "value_kind=external_data",
+        "safetensors://resnet.safetensors",
+        "attr.kernel_shape=3,3",
+        "attr.output_size=1,1",
+        "attr.groups=1",
+        "attr.weight_layout=OIHW",
+        "attr.epsilon=1e-05",
+        "attr.training=false",
+        "Symbols:",
+        "Types:",
+        "DSL IR Image: version=1",
+        "DSL Opcode Descriptor Table:",
+        "DSL Node Table:",
+        "DSL Attribute Table:",
+        "DSL Value Table:",
+        "DSL Value Reference Table:",
+        "operator=OPR_DSLADD stable_name=common.add version=1",
+        "name=attr.broadcast_rule kind=string value=none",
+        "ordinal=kid0",
+        "kind=constant",
+        "tensor_descriptor={kind=tensor",
+        "no_alias=true",
+        "source files:",
+        "native_ir_tools_smoke.py",
+    ]
+    missing = [needle for needle in required if needle not in text]
+    if missing:
+        print(
+            "ir_b2a -st -src output missed expected text: " +
+            ", ".join(missing),
+            file=sys.stderr,
+        )
+        print(text, file=sys.stderr)
+        return 1
+
+    forbidden = ["OPR_DSL ", "MDSL ", "OPC_MDSL"]
+    exposed = [needle for needle in forbidden if needle in text]
+    if exposed:
+        print(
+            "ir_b2a exposed physical DSL storage text: " +
+            ", ".join(exposed),
+            file=sys.stderr,
+        )
+        print(text, file=sys.stderr)
+        return 1
+
+    print(f"retained native artifacts: {work_dir}")
+    return 0
+
+
 def main() -> int:
     ir_b2a = _find_ir_b2a()
     if ir_b2a is None:
         return 0
 
-    with tempfile.TemporaryDirectory() as work_dir_text:
-        work_dir = Path(work_dir_text)
-        artifact = work_dir / "python_native_model.B"
-        text_dump = work_dir / "python_native_model.st.ir"
-
-        module = export_to_whirl(
-            DummyModel(),
-            [object(), object()],
-            WhirlExportOptions(backend="native", model_name="python_native"),
-        )
-        _append_operator_probes(module)
-        save_as_whirl(module, str(artifact))
-        if not artifact.exists() or artifact.stat().st_size == 0:
-            print("native Python WHIRL artifact was not created", file=sys.stderr)
-            return 1
-
-        result = subprocess.run(
-            [str(ir_b2a), "-st", str(artifact), str(text_dump)],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        if result.returncode != 0:
-            print(result.stdout, file=sys.stderr)
-            print(result.stderr, file=sys.stderr)
-            return result.returncode
-
-        text = text_dump.read_text(encoding="utf-8", errors="replace")
-        required = [
-            "FUNC_ENTRY",
-            "common.tensor_const",
-            "common.add",
-            "common.matmul",
-            "common.residual_add",
-            "common.linear",
-            "common.relu",
-            "common.flatten",
-            "common.output_logits",
-            "cnn.max_pool2d",
-            "cnn.global_avg_pool2d",
-            "cnn.conv2d",
-            "cnn.batch_norm_infer",
-            "attr.broadcast_rule=none",
-            "attr.start_dim=1",
-            "attr.transpose_kid0=false",
-            "attr.transpose_kid1=false",
-            "attr.shape_check=exact",
-            "attr.has_bias=true",
-            "attr.weight_layout=OI",
-            "value_kind=external_data",
-            "attr.kernel_shape=3,3",
-            "attr.output_size=1,1",
-            "attr.groups=1",
-            "attr.weight_layout=OIHW",
-            "attr.epsilon=1e-05",
-            "attr.training=false",
-            "Symbols:",
-            "Types:",
-        ]
-        missing = [needle for needle in required if needle not in text]
-        if missing:
-            print(
-                "ir_b2a -st output missed expected text: " +
-                ", ".join(missing),
-                file=sys.stderr,
-            )
-            print(text, file=sys.stderr)
-            return 1
+    artifact_dir = os.environ.get("OPEN64_DSL_TEST_ARTIFACT_DIR", "")
+    if artifact_dir:
+        status = _run_smoke(ir_b2a, Path(artifact_dir))
+    else:
+        with tempfile.TemporaryDirectory() as work_dir_text:
+            status = _run_smoke(ir_b2a, Path(work_dir_text))
+    if status != 0:
+        return status
 
     print("native Python ir_b2a smoke passed")
     return 0
