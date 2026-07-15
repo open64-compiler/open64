@@ -1264,25 +1264,30 @@ full-sequence causal prompt evaluation with no KV cache.
    pass.  The post-lowering review trace is retained as
    `artifacts/item27/llama2_prefill_lowered.T`.
 
-28. [ ] Certify the tiny prefill artifact across the process boundary.
+28. [x] Certify the tiny prefill artifact across the process boundary.
 
    Prove builder construction, gatekeeper verification, mapped-image
    write/reopen, `ir_b2a -st -src`, source correlation, external tensors,
    region interfaces, stable rejection, and `openpy -keep` plus `-O0`
-   lowering.  Preserve `llama2.B`, `llama2.safetensors`, and `llama2.T` in a
-   host-mounted review directory.
+   lowering.  Preserve `llama2.B`, `llama2.safetensors`, the binary inspection
+   trace, and the post-lowering trace in a host-mounted review directory.
 
-   Native infrastructure preflight is complete on
+   Native infrastructure and full driver certification are complete on
    `codex/llama2-common-substrate`.  The reproducible
    `dsl_builder_contract_test` target and
    `dsl_llama2_prefill_process_test.sh` native mode prove builder
    construction, positive and stable negative gatekeeper cases, mapped-image
    write/reopen, `ir_b2a -st -src`, source positions, external tensor
    references, nested region interfaces, and private escape-tag hiding.
-   Review artifacts are retained under `artifacts/item28/`.  The item remains
-   open until the torch2whirl L2-L7 handoff supplies the real Python model and
-   SafeTensors payload, after which full mode must pass `openpy -keep -O0` and
-   preserve both the source-correlated and post-lowering traces.
+   Full mode consumes the real Python model through `openpy -keep -O0`,
+   preserves `llama2.B` and `llama2.safetensors`, and proves that
+   `VHO_DSL_Lower_Driver()` replaces all executable DSL carriers with the
+   published runtime ABI calls before canonical processing.  External tensor
+   constants precede the prefill REGION in PU order so first-use lowering is
+   deterministic.  Review artifacts are retained under `artifacts/item28/`;
+   `binary/llama2.T` is the `ir_b2a -st -src` view and
+   `lowered/llama2.t` is the post-VHO trace.  Separate subdirectories avoid
+   `.T`/`.t` collisions on case-insensitive filesystems.
 
 29. [ ] Design stateful decode and KV cache as a later versioned extension.
 
