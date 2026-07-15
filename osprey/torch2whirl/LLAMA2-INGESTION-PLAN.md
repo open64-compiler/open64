@@ -278,7 +278,7 @@ partial checkpoint as complete.
 | D3: Capture and normalize the real PyTorch graph | 20% | complete | `python/tests/golden/llama2_prefill_fx.txt` |
 | D4: Complete semantic operator census | 25% | complete | `LLAMA2-OPERATOR-CENSUS.md` has one row per FX node |
 | D5: Add and pass graph/census drift tests | 10% | complete | Focused Llama test ran 6 tests OK; Docker torch lane ran 35 tests OK |
-| D6: Publish main-infrastructure handoff | 5% | pending | Contract requests, unsupported cases, and blockers |
+| D6: Publish main-infrastructure handoff | 5% | complete | Structured handoff in `LLAMA2-OPERATOR-CENSUS.md` |
 
 The batch is 100% complete only after D0-D6 pass.  The percentage is the sum of
 completed checkpoint weights, not an estimate of effort spent.

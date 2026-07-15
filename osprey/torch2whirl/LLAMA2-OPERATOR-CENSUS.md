@@ -16,9 +16,9 @@ Progress is earned only when the checkpoint exit test passes.
 | D3: Capture and normalize the real PyTorch graph | 20% | complete | `python/tests/golden/llama2_prefill_fx.txt` |
 | D4: Complete semantic operator census | 25% | complete | One row per captured FX node below |
 | D5: Add and pass graph/census drift tests | 10% | complete | Focused Llama test ran 6 tests OK; Docker torch lane ran 35 tests OK |
-| D6: Publish main-infrastructure handoff | 5% | pending | Contract requests and blockers |
+| D6: Publish main-infrastructure handoff | 5% | complete | Structured handoff below |
 
-Current earned progress: 95%.
+Current earned progress: 100%.
 
 ## D0 Baseline
 
@@ -342,5 +342,112 @@ not match, and verify that every normalized node name has a census row.
 
 ## Infrastructure Contracts Needed
 
-D0 requests no new native infrastructure. L0-L1 discovery remains independent
-of common/com implementation.
+D0-D5 request no native implementation in this subagent. The following D6
+handoff groups the contracts that need main common/com review before L2+ can
+claim native emission or `.B` certification.
+
+## D6 Main-Agent Contract Handoff
+
+### 1. Existing Native Contracts That May Be Reused
+
+1. `common.model_input` can represent the model boundary if integer tensor
+   descriptors are accepted for token IDs.
+2. External tensor constants and the existing SafeTensors-style side-file
+   publication contract can carry embedding, projection, RMSNorm scale, and
+   output weights.
+3. `common.linear` can represent Q/K/V/output/feed-forward projections if its
+   contract explicitly accepts rank-3 `[B,S,H]` activation inputs and preserves
+   source projection roles.
+4. `common.residual_add` can represent exact-shape residual paths after
+   attention and feed-forward subgraphs.
+5. `common.output_logits` can represent the final per-token logits boundary if
+   rank-3 logits `[B,S,V]` are valid.
+
+### 2. Existing Contracts That Appear Insufficient
+
+1. `common.matmul` needs an explicit batched contraction contract for attention
+   scores and value contraction: `[B,H,S,D] x [B,H,D,S] -> [B,H,S,S]` and
+   `[B,H,S,S] x [B,H,S,D] -> [B,H,S,D]`.
+2. Existing reshape/transpose handling is not enough as metadata alone. The
+   attention contract needs reviewed layout semantics for `[B,S,H]` and
+   `[B,H,S,D]` transitions.
+3. `common.add` and `common.mul` are too generic to preserve RMSNorm, RoPE,
+   attention masking, and SwiGLU semantics without higher-level domain
+   contracts.
+4. `common.output_logits` from the ResNet path used classifier logits; Llama
+   needs sequence logits and token-axis semantics.
+
+### 3. Proposed Common-Substrate Contracts
+
+1. A reviewed embedding/gather primitive for token IDs and embedding weights,
+   or an explicit decision that embedding remains transformer-domain.
+2. Rank-preserving `reshape`, `transpose`, `slice`, and `concat` contracts for
+   tensor layout transformations that remain meaningful to verifier checks.
+3. Elementwise `mul` and `silu` contracts sufficient for the lowered pieces of
+   verified SwiGLU.
+4. `softmax` with explicit axis and accumulation dtype.
+5. Batched `matmul` with rank, contraction-axis, and broadcast legality rules.
+
+### 4. Proposed Transformer Expression Contracts
+
+1. `transformer.input_tokens`: integer token IDs with vocabulary bounds and
+   static `[B,S]` descriptor.
+2. `transformer.token_embedding`: token IDs plus embedding weight producing
+   `[B,S,H]`.
+3. `transformer.rms_norm`: epsilon, reduction axis, scale tensor,
+   accumulation dtype, and result descriptor.
+4. `transformer.rotary_embedding`: input head layout, paired-dimension rule,
+   cos/sin reference, sequence position policy, and result descriptor.
+5. `transformer.causal_mask`: full-sequence no-cache causal masking contract.
+6. `transformer.attention`: rotated Q, rotated K, V, causal mask, scale,
+   softmax axis, cache mode, head layout, query heads, KV heads, and result
+   descriptor.
+7. `transformer.swiglu`: gate projection, SiLU, up projection, multiply, and
+   down projection as one semantic feed-forward expression.
+
+### 5. Proposed Prefill And Decoder-Layer Region Contracts
+
+1. `transformer.prefill.v1` should be a stateless full-sequence region with
+   token ID input `[B,S]`, logits result `[B,S,V]`, `mask_mode=causal`,
+   `sequence_mode=static`, and `cache_mode=none`.
+2. `transformer.decoder_layer.v1` should preserve the order
+   attention-norm -> attention -> residual -> feed-forward-norm -> SwiGLU ->
+   residual, with declared region inputs and result values.
+3. Region source metadata should preserve layer ordinal and source module path
+   such as `layers.0` and `layers.1`.
+
+### 6. Required Descriptor, Source, External-Data, And Region APIs
+
+1. Tensor descriptors must support integer token tensors as well as float
+   activations and weights.
+2. Source/module metadata must preserve FX node name, FX target, source module
+   path, source module type, semantic role, layer ordinal, and projection role.
+3. External tensor publication must name token embedding, Q/K/V/O projections,
+   gate/up/down projections, RMSNorm scales, and output projection weights
+   deterministically.
+4. Opaque Python-facing region handles are needed before the frontend can emit
+   `transformer.prefill` or `transformer.decoder_layer` regions.
+
+### 7. Deferred State/Effect Requirements
+
+1. Mutable KV cache is excluded from this profile. Decode support needs
+   abstract state, read/modify effects, ordering, and cache-position contracts.
+2. Grouped-query attention is deferred even though `num_kv_heads` is present in
+   the config; the first profile uses `num_kv_heads == num_attention_heads`.
+3. Dynamic sequence length, paged attention, cache append/update, and tokenizer
+   behavior are deferred.
+
+### 8. Unsupported Graph Forms And Stable Diagnostics
+
+The first Llama profile should reject, with stable frontend diagnostics:
+
+1. Tokenizer work inside the model graph.
+2. FairScale, distributed checkpoint, CUDA-only, or network-required modules.
+3. Training-mode modules, dropout, or state mutation during export.
+4. KV-cache allocation or mutation.
+5. Dynamic sequence shapes.
+6. Unsupported token dtypes, unsupported activation dtypes, or embedding
+   vocabulary mismatch.
+7. Grouped-query attention until a reviewed compatibility contract exists.
+8. Any captured graph drift that changes the checked normalized golden without
+   updating this census.
