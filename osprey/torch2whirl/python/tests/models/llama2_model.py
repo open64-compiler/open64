@@ -47,6 +47,7 @@ class TinyRMSNorm(torch.nn.Module):
 class TinyRotaryEmbedding(torch.nn.Module):
     def __init__(self, config: TinyLlama2Config) -> None:
         super().__init__()
+        self.half_dim = config.head_dim // 2
         position = torch.arange(config.sequence_length, dtype=torch.float32)
         dims = torch.arange(0, config.head_dim, 2, dtype=torch.float32)
         inv_freq = 1.0 / (config.rope_theta ** (dims / config.head_dim))
@@ -62,9 +63,8 @@ class TinyRotaryEmbedding(torch.nn.Module):
         )
 
     def _rotate_half(self, value: torch.Tensor) -> torch.Tensor:
-        half = value.shape[-1] // 2
-        left = value[..., :half]
-        right = value[..., half:]
+        left = value[..., :self.half_dim]
+        right = value[..., self.half_dim:]
         return torch.cat((-right, left), dim=-1)
 
     def forward(self, value: torch.Tensor) -> torch.Tensor:

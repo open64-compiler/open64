@@ -275,9 +275,9 @@ partial checkpoint as complete.
 | D0: Record baseline and exact tiny configuration | 5% | complete | Baseline tests and configuration in `LLAMA2-OPERATOR-CENSUS.md` |
 | D1: Implement deterministic tiny Llama 2 fixture | 20% | complete | `python/tests/models/llama2_model.py` |
 | D2: Pass eager shape/dtype/repeatability tests | 15% | complete | Docker `python_torch_test` ran 32 tests OK |
-| D3: Capture and normalize the real PyTorch graph | 20% | pending | Preserved normalized graph artifact |
-| D4: Complete semantic operator census | 25% | pending | Human-readable census with every node classified |
-| D5: Add and pass graph/census drift tests | 10% | pending | Golden comparison and negative/drift test |
+| D3: Capture and normalize the real PyTorch graph | 20% | complete | `python/tests/golden/llama2_prefill_fx.txt` |
+| D4: Complete semantic operator census | 25% | complete | `LLAMA2-OPERATOR-CENSUS.md` has one row per FX node |
+| D5: Add and pass graph/census drift tests | 10% | complete | Focused Llama test ran 6 tests OK; Docker torch lane ran 35 tests OK |
 | D6: Publish main-infrastructure handoff | 5% | pending | Contract requests, unsupported cases, and blockers |
 
 The batch is 100% complete only after D0-D6 pass.  The percentage is the sum of
