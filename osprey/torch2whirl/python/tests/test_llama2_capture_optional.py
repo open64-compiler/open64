@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import re
+import tempfile
 import unittest
 
 
@@ -15,7 +16,12 @@ if TORCH_AVAILABLE:
 
     from models.llama2_model import TinyLlama2Config
     from models.llama2_model import create_tiny_llama2
+    from models.llama2_model import open64_sample_inputs
     from models.llama2_model import sample_input_ids
+
+    from open64_dsc.cli import _sample_input_from_spec
+    from open64_dsc.export import export_to_whirl, save_as_whirl
+    from open64_dsc.options import WhirlExportOptions
 
 
 GOLDEN_GRAPH = Path(__file__).with_name("golden") / "llama2_prefill_fx.txt"
@@ -179,6 +185,104 @@ class TinyLlama2FxDiscoveryOptionalTest(unittest.TestCase):
         self.assertGreater(len(node_names), 20)
         for name in node_names:
             self.assertIn(f"| `{name}` |", census)
+
+
+@unittest.skipUnless(TORCH_AVAILABLE, "torch is not installed")
+class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
+    def test_mock_export_emits_semantic_prefill_operators(self) -> None:
+        config = TinyLlama2Config()
+        model = create_tiny_llama2(config)
+        module = export_to_whirl(
+            model,
+            [sample_input_ids(config)],
+            WhirlExportOptions(
+                backend="mock",
+                model_name="llama2",
+                external_data_file="llama2.safetensors",
+            ),
+        )
+
+        self.assertEqual(module.graph_source, "torch.fx+llama2_semantic")
+        self.assertEqual(module.input_count, 1)
+        self.assertIn("transformer.token_embedding", module.operators)
+        self.assertIn("transformer.rms_norm", module.operators)
+        self.assertIn("transformer.rotary_embedding", module.operators)
+        self.assertIn("transformer.attention", module.operators)
+        self.assertIn("transformer.swiglu", module.operators)
+        self.assertIn("common.reshape", module.operators)
+        self.assertIn("common.transpose", module.operators)
+        self.assertEqual(module.operators[-1], "common.output_logits")
+
+        payload_keys = {payload.tensor_key for payload in module.tensor_payloads}
+        self.assertIn("token_embedding.weight", payload_keys)
+        self.assertIn("layers.0.attention.wq.weight", payload_keys)
+        self.assertIn("layers.0.attention.rotary.cos", payload_keys)
+        self.assertIn("layers.1.feed_forward.down_proj.weight", payload_keys)
+        self.assertIn("output.weight", payload_keys)
+        self.assertEqual(
+            {payload.storage_file for payload in module.tensor_payloads},
+            {"llama2.safetensors"},
+        )
+
+        attention = [
+            operator for operator in module.graph_operators
+            if operator.name == "transformer.attention"
+        ][0]
+        self.assertEqual(attention.attrs["attr.mask_mode"], "causal")
+        self.assertEqual(attention.attrs["attr.query_heads"], "4")
+        self.assertEqual(attention.metadata["semantic_name"], "attention")
+
+    def test_mock_export_writes_deterministic_artifacts(self) -> None:
+        config = TinyLlama2Config()
+        model = create_tiny_llama2(config)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "llama2.B"
+            module = export_to_whirl(
+                model,
+                [sample_input_ids(config)],
+                WhirlExportOptions(
+                    backend="mock",
+                    model_name="llama2",
+                    external_data_file="llama2.safetensors",
+                ),
+            )
+            save_as_whirl(module, str(output_path))
+
+            artifact = output_path.read_text(encoding="utf-8")
+            self.assertIn("graph_source=torch.fx+llama2_semantic", artifact)
+            self.assertIn("operator.0=transformer.token_embedding", artifact)
+            self.assertIn("tensor_payload.0=llama2.safetensors", artifact)
+            self.assertTrue((Path(temp_dir) / "llama2.safetensors").is_file())
+
+    def test_int_shape_sample_input_and_source_provider(self) -> None:
+        parsed = _sample_input_from_spec("int-shape:1,8")
+        self.assertEqual(parsed.dtype, torch.int64)
+        self.assertEqual(tuple(parsed.shape), (1, 8))
+
+        provided = open64_sample_inputs()
+        self.assertEqual(len(provided), 1)
+        self.assertEqual(provided[0].dtype, torch.int64)
+        self.assertEqual(tuple(provided[0].shape), (1, 8))
+
+    def test_rejects_float_token_input(self) -> None:
+        config = TinyLlama2Config()
+        model = create_tiny_llama2(config)
+        with self.assertRaisesRegex(NotImplementedError, "input_ids must be int64"):
+            export_to_whirl(
+                model,
+                [torch.ones((1, 8), dtype=torch.float32)],
+                WhirlExportOptions(backend="mock"),
+            )
+
+    def test_rejects_grouped_query_profile_until_contract_expands(self) -> None:
+        config = TinyLlama2Config(num_kv_heads=2)
+        model = create_tiny_llama2(config)
+        with self.assertRaisesRegex(NotImplementedError, "grouped-query"):
+            export_to_whirl(
+                model,
+                [sample_input_ids(config)],
+                WhirlExportOptions(backend="mock"),
+            )
 
 
 if __name__ == "__main__":

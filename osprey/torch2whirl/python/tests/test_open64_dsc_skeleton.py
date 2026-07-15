@@ -15,6 +15,7 @@ from pathlib import Path
 import open64_dsc.export as export_module
 from open64_dsc.backend import load_backend
 from open64_dsc.cli import (
+    Torch2WhirlCliError,
     _external_data_file_for_output,
     _load_model,
     _parse_shape_spec,
@@ -321,6 +322,8 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 2,
                 ("attr.transpose_kid0", "attr.transpose_kid1"),
             ),
+            "common.reshape": (1, 1, ("attr.target_shape",)),
+            "common.transpose": (1, 1, ("attr.permutation",)),
             "common.relu": (2, 1, ()),
             "common.flatten": (
                 2,
@@ -347,6 +350,45 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 ),
             ),
             "common.output_logits": (2, 1, ("attr.semantic",)),
+            "transformer.token_embedding": (
+                1,
+                2,
+                ("attr.padding_idx", "attr.bounds_policy"),
+            ),
+            "transformer.rms_norm": (
+                1,
+                2,
+                ("attr.axis", "attr.epsilon", "attr.accum_dtype"),
+            ),
+            "transformer.rotary_embedding": (
+                1,
+                3,
+                (
+                    "attr.head_layout",
+                    "attr.sequence_axis",
+                    "attr.feature_axis",
+                    "attr.pairing",
+                    "attr.position_mode",
+                    "attr.position_offset",
+                ),
+            ),
+            "transformer.attention": (
+                1,
+                3,
+                (
+                    "attr.execution_mode",
+                    "attr.mask_mode",
+                    "attr.head_layout",
+                    "attr.query_heads",
+                    "attr.kv_heads",
+                    "attr.head_dim",
+                    "attr.scale_mode",
+                    "attr.softmax_axis",
+                    "attr.softmax_accum_dtype",
+                    "attr.cache_mode",
+                ),
+            ),
+            "transformer.swiglu": (1, 2, ("attr.activation",)),
             "cnn.conv2d": (
                 2,
                 3,
@@ -1634,11 +1676,11 @@ class Open64DscSkeletonTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with contextlib.redirect_stderr(io.StringIO()):
-                with self.assertRaises(SystemExit) as context:
-                    cli_run([str(model_path), "-o", str(output_path)])
-
-            self.assertEqual(context.exception.code, 2)
+            with self.assertRaisesRegex(
+                Torch2WhirlCliError,
+                "sample input is required",
+            ):
+                cli_run([str(model_path), "-o", str(output_path)])
             self.assertFalse(output_path.exists())
 
     def test_cli_load_model_from_factory(self) -> None:

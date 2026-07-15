@@ -208,5 +208,9 @@ def sample_input_ids(config: TinyLlama2Config | None = None) -> torch.Tensor:
     return values.view(config.batch_size, config.sequence_length)
 
 
+def open64_sample_inputs() -> tuple[torch.Tensor]:
+    return (sample_input_ids(),)
+
+
 def create_model() -> TinyLlama2ForCausalLM:
     return create_tiny_llama2()

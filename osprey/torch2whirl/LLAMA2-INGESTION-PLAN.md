@@ -283,6 +283,25 @@ partial checkpoint as complete.
 The batch is 100% complete only after D0-D6 pass.  The percentage is the sum of
 completed checkpoint weights, not an estimate of effort spent.
 
+Second frontend batch status, L2-L7:
+
+| Gate | Status | Evidence |
+| --- | --- | --- |
+| L2 | complete | Native `input_ids` model input, `transformer.token_embedding.v1`, deterministic `llama2.safetensors` payloads |
+| L3 | complete | `transformer.rms_norm.v1` and `transformer.rotary_embedding.v1` visible in `ir_b2a -st -src` |
+| L4 | complete | Certified `transformer.attention.v1` full-sequence causal no-cache expression |
+| L5 | complete | Nested `transformer.decoder_layer.v1` regions, exact residual/SwiGLU topology, source/module metadata |
+| L6 | complete | Standalone native `torch2whirl` produced `llama2.B`, `llama2.safetensors`, and `llama2.T` across a process boundary |
+| L7 | frontend complete / main-driver pending | Source-model sample-input protocol implemented for `openpy -keep llama2_model.py`; main owns final `openpy -O0` run and post-VHO trace |
+
+Retained standalone evidence from this batch:
+
+```text
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-frontend/llama2.B
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-frontend/llama2.safetensors
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-frontend/llama2.T
+```
+
 ### Required Status Updates
 
 At kickoff and after every checkpoint, update this dashboard on the subagent
@@ -386,12 +405,12 @@ Exit gate: every node is classified before adding broad mappings.
 
 ### L2: Tokens, Embedding, And External Weights
 
-- [ ] Emit `input_ids` through a typed model-input boundary.
-- [ ] Publish embedding and projection weights through deterministic external
+- [x] Emit `input_ids` through a typed model-input boundary.
+- [x] Publish embedding and projection weights through deterministic external
   tensor references and the existing safetensors side-file contract.
-- [ ] Emit token embedding through the published transformer/common contract.
-- [ ] Preserve integer index type and embedding result tensor descriptors.
-- [ ] Reject unsupported index dtypes, out-of-contract ranks, and inconsistent
+- [x] Emit token embedding through the published transformer/common contract.
+- [x] Preserve integer index type and embedding result tensor descriptors.
+- [x] Reject unsupported index dtypes, out-of-contract ranks, and inconsistent
   vocabulary dimensions before finalization.
 
 Exit gate: token IDs produce a native embedded activation without Python-owned
@@ -399,26 +418,26 @@ WHIRL structure.
 
 ### L3: RMSNorm And Rotary Position Encoding
 
-- [ ] Map both RMSNorm instances in each decoder layer and the final RMSNorm.
-- [ ] Preserve epsilon, axes, scale, accumulation type, and source-layer
+- [x] Map both RMSNorm instances in each decoder layer and the final RMSNorm.
+- [x] Preserve epsilon, axes, scale, accumulation type, and source-layer
   identity under the published contract.
-- [ ] Map rotary position encoding without erasing paired-dimension and
+- [x] Map rotary position encoding without erasing paired-dimension and
   position semantics through premature view lowering.
-- [ ] Verify rank, head dimension, position range, and descriptor propagation.
+- [x] Verify rank, head dimension, position range, and descriptor propagation.
 
 Exit gate: normalized Q/K inputs retain valid rotary semantics in native DSL
 WHIRL.
 
 ### L4: Prefill Attention
 
-- [ ] Emit Q, K, V, and output projections with ordered operand dependencies.
-- [ ] Preserve batch, sequence, head, KV-head, and head-dimension meaning.
-- [ ] Emit the pure `transformer.attention.v1` expression with a causal,
+- [x] Emit Q, K, V, and output projections with ordered operand dependencies.
+- [x] Preserve batch, sequence, head, KV-head, and head-dimension meaning.
+- [x] Emit the pure `transformer.attention.v1` expression with a causal,
   full-sequence, no-cache contract.
-- [ ] Map attention score contraction, mask application, softmax, value
+- [x] Map attention score contraction, mask application, softmax, value
   contraction, and output projection through the approved domain/common
   boundary.
-- [ ] Reject KV-cache mutation, unsupported grouped-query attention, dynamic
+- [x] Reject KV-cache mutation, unsupported grouped-query attention, dynamic
   sequence shape, and unsupported masks in the first profile.
 
 Exit gate: one complete native prefill-attention block passes the transformer
@@ -426,12 +445,12 @@ gatekeeper and is visible logically in `ir_b2a -st -src`.
 
 ### L5: SwiGLU, Residuals, And Decoder Layer
 
-- [ ] Emit the gate and up projections, SiLU, elementwise multiply, and down
+- [x] Emit the gate and up projections, SiLU, elementwise multiply, and down
   projection while retaining the SwiGLU semantic contract.
-- [ ] Preserve both residual additions and their exact-shape requirements.
-- [ ] Create one decoder-layer region with declared inputs, results, source
+- [x] Preserve both residual additions and their exact-shape requirements.
+- [x] Create one decoder-layer region with declared inputs, results, source
   position, and a versioned transformer contract.
-- [ ] Verify all values used outside the region are declared through its
+- [x] Verify all values used outside the region are declared through its
   interface and use outer-owned no-alias result temporaries.
 
 Exit gate: one decoder layer is a certified structured region rather than an
@@ -439,14 +458,14 @@ unstructured list of implementation-level operations.
 
 ### L6: Complete Tiny Llama 2 Artifact
 
-- [ ] Emit embedding, both decoder layers, final RMSNorm, output projection,
+- [x] Emit embedding, both decoder layers, final RMSNorm, output projection,
   and output-logits boundary.
-- [ ] Enclose the model in `transformer.prefill.v1`, preserve decoder-layer
+- [x] Enclose the model in `transformer.prefill.v1`, preserve decoder-layer
   order, and retain nested decoder-layer regions.
-- [ ] Run native verification before mapped-image finalization.
-- [ ] Publish `llama2.B` and `llama2.safetensors` atomically.
-- [ ] Reopen the artifact in a separate process.
-- [ ] Preserve `llama2.T` from `ir_b2a -st -src llama2.B llama2.T` for human
+- [x] Run native verification before mapped-image finalization.
+- [x] Publish `llama2.B` and `llama2.safetensors` atomically.
+- [x] Reopen the artifact in a separate process.
+- [x] Preserve `llama2.T` from `ir_b2a -st -src llama2.B llama2.T` for human
   review.
 
 Exit gate: the complete tiny prefill model is a stable, inspectable binary
@@ -455,12 +474,12 @@ WHIRL artifact after the Python producer exits.
 ### L7: Driver And O0 Certification
 
 - [ ] Run the tiny fixture through `openpy -keep llama2_model.py`.
-- [ ] Confirm the retained `.B` artifact is the same frontend boundary used by
+- [x] Confirm the retained `.B` artifact is the same frontend boundary used by
   the standalone tool.
 - [ ] Confirm `VHO_DSL_Lower_Driver()` consumes every executable transformer
   and common DSL value before canonical optimization.
 - [ ] Preserve the logical post-lowering trace required by the driver contract.
-- [ ] Prove no Python, PyTorch, frontend bridge, or backend CG dependency is
+- [x] Prove no Python, PyTorch, frontend bridge, or backend CG dependency is
   required to consume the completed `.B` file.
 
 Exit gate: static Llama 2 prefill completes the same `-O0` pipeline contract as
@@ -524,8 +543,14 @@ torch2whirl llama2_model.py \
 ir_b2a -st -src llama2.B llama2.T
 ```
 
-The final sample-input spelling is owned by the CLI implementation and must be
-documented before L2 closes.  The output stem owns the artifact family:
+For standalone use, `int-shape:<dims>` creates an `int64` token tensor.  For
+driver use, the source model may define `open64_sample_inputs()` or
+`create_open64_sample_inputs()`.  When present, torch2whirl uses that provider
+instead of any generic `--sample-input` descriptor passed by `openpy`; this
+lets `openpy -keep llama2_model.py` work without filename heuristics and
+without breaking ResNet's `shape:1,3,224,224` fallback.
+
+The output stem owns the artifact family:
 
 ```text
 llama2.B
