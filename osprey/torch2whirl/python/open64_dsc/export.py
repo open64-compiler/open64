@@ -36,6 +36,14 @@ def save_as_whirl(module: WhirlModule, path: str) -> None:
     temp_path: Optional[Path] = None
     backend = load_backend(module.options.backend)
     try:
+        verify_program = getattr(backend, "verify_program", None)
+        if verify_program is not None:
+            native_result = verify_program()
+            if not bool(native_result.get("valid", False)):
+                diagnostic = str(native_result.get("diagnostic", ""))
+                raise RuntimeError(
+                    diagnostic or "native DSL program verification failed"
+                )
         output_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             prefix=f".{output_path.name}.",
@@ -50,6 +58,9 @@ def save_as_whirl(module: WhirlModule, path: str) -> None:
         os.replace(temp_path, output_path)
         temp_path = None
     except Exception:
+        abort_program = getattr(backend, "abort_program", None)
+        if abort_program is not None:
+            abort_program()
         raise
     finally:
         if temp_path is not None:

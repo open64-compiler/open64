@@ -13,8 +13,12 @@ torch_image=${OPEN64_TORCH2WHIRL_TORCH_IMAGE:-open64:torch2whirl-torch-test}
 torch_version=${OPEN64_TORCH2WHIRL_TORCH_VERSION:-2.4.1}
 docker_buildkit=${OPEN64_TORCH2WHIRL_DOCKER_BUILDKIT:-0}
 rebuild_image=${OPEN64_TORCH2WHIRL_REBUILD_IMAGE:-0}
+run_ir_tools=${OPEN64_TORCH2WHIRL_RUN_IR_TOOLS:-1}
+artifact_dir=${OPEN64_TORCH2WHIRL_ARTIFACT_DIR:-$build_dir/test-artifacts}
 
 mkdir -p "$build_dir"
+mkdir -p "$artifact_dir"
+find "$artifact_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
 if [ "$rebuild_image" = 1 ] ||
         ! docker image inspect "$torch_image" >/dev/null 2>&1; then
@@ -31,6 +35,7 @@ fi
 docker run --rm \
     -v "$src_root:/src" \
     -v "$build_dir:/build" \
+    -v "$artifact_dir:/artifacts" \
     -w /build \
     "$torch_image" \
     /src/configure --enable-torch2whirl-only
@@ -38,6 +43,7 @@ docker run --rm \
 docker run --rm \
     -v "$src_root:/src" \
     -v "$build_dir:/build" \
+    -v "$artifact_dir:/artifacts" \
     -w /build/osprey/targdir/torch2whirl \
     "$torch_image" \
     make python_torch_test
@@ -45,6 +51,20 @@ docker run --rm \
 docker run --rm \
     -v "$src_root:/src" \
     -v "$build_dir:/build" \
+    -v "$artifact_dir:/artifacts" \
     -w /build/osprey/targdir/torch2whirl \
     "$torch_image" \
     make driver_torch_test
+
+if [ "$run_ir_tools" = 1 ]; then
+    docker run --rm \
+        -v "$src_root:/src" \
+        -v "$build_dir:/build" \
+        -v "$artifact_dir:/artifacts" \
+        -w /build/osprey/targdir/torch2whirl \
+        "$torch_image" \
+        make OPEN64_DSL_TEST_ARTIFACT_DIR=/artifacts \
+            python_native_ir_tools_smoke driver_native_ir_tools_smoke
+fi
+
+echo "retained test artifacts: $artifact_dir"

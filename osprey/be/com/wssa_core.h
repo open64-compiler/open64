@@ -282,6 +282,7 @@ public:
     _Tnode* cur_node = _mgr->template Get_node<_Tnode::NODE_KIND>(_cur_idx);
     Is_True(cur_node != NULL, ("cur node is NULL"));
     _cur_idx = cur_node->Next();
+    return *this;
   }
   bool operator==(const WSSA_NODE_ITERATOR<_Tmgr, _Tnode>& rit) {
     return (_mgr == rit._mgr) && (_cur_idx == rit._cur_idx);

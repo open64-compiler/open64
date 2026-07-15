@@ -12,6 +12,7 @@
 #include "dsl_contract.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
+#include "dsl_region.h"
 
 /*
  * Minimal C++ builder-facing DSL API.
@@ -34,6 +35,7 @@
 typedef WN *DSL_BUILDER_VALUE;
 typedef WN *DSL_BUILDER_OPERATOR;
 typedef PU_Info *DSL_BUILDER_PROGRAM_UNIT;
+typedef DSL_REGION DSL_BUILDER_REGION;
 
 typedef struct {
     const char *kind;
@@ -82,6 +84,22 @@ typedef struct {
 } DSL_BUILDER_MAPPED_IMAGE_REQUEST;
 
 typedef struct {
+    UINT32 file_id;
+    INT32 line;
+    UINT16 column;
+    UINT8 statement_begin;
+    UINT8 basic_block_begin;
+} DSL_BUILDER_SOURCE_POSITION;
+
+typedef struct {
+    UINT32 native_node_count;
+    UINT32 result_symbol_count;
+    UINT32 error_count;
+    char *diagnostic;
+    UINT32 diagnostic_capacity;
+} DSL_BUILDER_VERIFY_RESULT;
+
+typedef struct {
     const char *storage_format;
     const char *side_file;
     const char *tensor_key;
@@ -106,6 +124,14 @@ extern TY_IDX DSL_Builder_Create_Tensor_Type_Core
 extern BOOL DSL_Builder_Attach_Tensor_Descriptor
                                 (TY_IDX ty,
                                  const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor);
+extern TY_IDX DSL_Builder_Intern_Tensor_Type
+                                (const char *name,
+                                 TY_IDX element_ty,
+                                 const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor);
+extern BOOL DSL_Builder_Get_Tensor_Descriptor
+                                (TY_IDX ty,
+                                 DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor);
+extern BOOL DSL_Builder_Tensor_Type_Is_Canonical (TY_IDX ty);
 extern ST_IDX DSL_Builder_Create_Symbol
                                 (const char *name,
                                  TY_IDX ty,
@@ -143,6 +169,15 @@ extern DSL_BUILDER_OPERATOR DSL_Builder_Create_Operator
                                  UINT32 kid_count,
                                  const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
                                  UINT32 attr_count);
+extern DSL_BUILDER_OPERATOR DSL_Builder_Create_Operator_With_Result
+                                (DSL_OPCODE_ID opcode_id,
+                                 UINT16 version,
+                                 DSL_BUILDER_VALUE *kids,
+                                 UINT32 kid_count,
+                                 const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+                                 UINT32 attr_count,
+                                 const char *result_name,
+                                 TY_IDX result_ty);
 extern BOOL DSL_Builder_Attach_Contract
                                 (DSL_BUILDER_OPERATOR wn,
                                  DSL_CONTRACT_ID contract_id);
@@ -150,8 +185,49 @@ extern BOOL DSL_Builder_Attach_Metadata
                                 (ST_IDX st,
                                  const DSL_BUILDER_COMPILER_METADATA *metadata,
                                  UINT32 metadata_count);
+extern BOOL DSL_Builder_Attach_Value_Metadata
+                                (DSL_BUILDER_VALUE value,
+                                 const DSL_BUILDER_COMPILER_METADATA *metadata,
+                                 UINT32 metadata_count);
+extern BOOL DSL_Builder_Attach_Value_Lineage
+                                (DSL_BUILDER_VALUE value,
+                                 const char *lineage);
+extern TY_IDX DSL_Builder_Get_Value_Type (DSL_BUILDER_VALUE value);
+extern ST_IDX DSL_Builder_Get_Value_Result_Symbol (DSL_BUILDER_VALUE value);
+extern BOOL DSL_Builder_Begin_Program (void);
+extern void DSL_Builder_Abort_Program (void);
 extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
                                 (const char *name);
+extern UINT32 DSL_Builder_Register_Source_File
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 const char *path);
+extern BOOL DSL_Builder_Set_Value_Source_Position
+                                (DSL_BUILDER_VALUE value,
+                                 const DSL_BUILDER_SOURCE_POSITION
+                                     *source_position);
+extern DSL_BUILDER_REGION DSL_Builder_Create_Region
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_REGION parent,
+                                 const char *contract_name,
+                                 UINT32 contract_version);
+extern BOOL DSL_Builder_Append_Region_Value
+                                (DSL_BUILDER_REGION region,
+                                 DSL_BUILDER_VALUE value);
+extern BOOL DSL_Builder_Append_PU_Region
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_REGION region);
+extern BOOL DSL_Builder_Declare_Region_Value
+                                (DSL_BUILDER_REGION region,
+                                 DSL_BUILDER_VALUE value,
+                                 UINT32 roles,
+                                 UINT32 ordinal,
+                                 UINT32 flags);
+extern BOOL DSL_Builder_Set_Region_Source_Position
+                                (DSL_BUILDER_REGION region,
+                                 const DSL_BUILDER_SOURCE_POSITION
+                                     *source_position);
+extern BOOL DSL_Builder_Verify_Program
+                                (DSL_BUILDER_VERIFY_RESULT *result);
 /*
  * Formal VHO DSL value representation.
  *

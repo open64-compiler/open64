@@ -209,6 +209,8 @@ TY_tensor_schema_key_name (TY_TENSOR_SCHEMA_KEY key)
         return "lowering_hint";
     case TY_TENSOR_SCHEMA_NO_ALIAS:
         return "no_alias";
+    case TY_TENSOR_SCHEMA_CANONICAL:
+        return "__canonical_tensor_descriptor";
     case TY_TENSOR_SCHEMA_UNKNOWN:
     default:
         return "";
@@ -346,6 +348,56 @@ Tensor_KV_At (UINT32 head, UINT32 ordinal, const char **key,
     }
 
     return FALSE;
+}
+
+static BOOL
+Tensor_KV_Is_Type_Identity_Key (const char *key)
+{
+    return strcmp(key,
+                  TY_tensor_schema_key_name
+                      (TY_TENSOR_SCHEMA_RUNTIME_STATE)) != 0 &&
+           strcmp(key,
+                  TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_LINEAGE)) != 0;
+}
+
+static UINT32
+Tensor_KV_Type_Identity_Count (UINT32 head)
+{
+    UINT32 count = 0;
+
+    for (UINT32 handle = head; handle != 0;
+         handle = Tensor_dsl_kv_table[handle - 1].next) {
+        const TY_DSL_KV &entry = Tensor_dsl_kv_table[handle - 1];
+        if (Tensor_KV_Is_Type_Identity_Key(&Str_Table[entry.key]))
+            ++count;
+    }
+    return count;
+}
+
+static BOOL
+Tensor_KV_Are_Equivalent (UINT32 head1, UINT32 head2)
+{
+    if (Tensor_KV_Type_Identity_Count(head1) !=
+        Tensor_KV_Type_Identity_Count(head2))
+        return FALSE;
+
+    for (UINT32 handle = head1; handle != 0;
+         handle = Tensor_dsl_kv_table[handle - 1].next) {
+        const TY_DSL_KV &entry1 = Tensor_dsl_kv_table[handle - 1];
+        const char *key = &Str_Table[entry1.key];
+        if (!Tensor_KV_Is_Type_Identity_Key(key))
+            continue;
+        const TY_DSL_KV *entry2 = Find_Tensor_KV_Const(head2, key);
+
+        if (entry2 == NULL || entry1.state != entry2->state)
+            return FALSE;
+        if (entry1.state == TY_DSL_BIND_BOUND &&
+            strcmp(&Str_Table[entry1.value],
+                   &Str_Table[entry2->value]) != 0)
+            return FALSE;
+    }
+
+    return TRUE;
 }
 
 static void
@@ -517,6 +569,8 @@ void
 TY_tensor_declare_attribute (TY_IDX ty, const char *key)
 {
     Check_Tensor_Extension (ty);
+    Is_True(!TY_tensor_is_canonical(ty),
+            ("cannot mutate canonical tensor descriptor"));
     TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
     Declare_Tensor_KV (ext->attribute_head, ext->attribute_count, key);
 }
@@ -525,6 +579,8 @@ void
 TY_tensor_bind_attribute (TY_IDX ty, const char *key, const char *value)
 {
     Check_Tensor_Extension (ty);
+    Is_True(!TY_tensor_is_canonical(ty),
+            ("cannot mutate canonical tensor descriptor"));
     TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
     Bind_Tensor_KV (ext->attribute_head, ext->attribute_count, key, value);
 }
@@ -582,6 +638,45 @@ TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal, const char **key,
     TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
     return ext == NULL ? FALSE :
         Tensor_KV_At (ext->attribute_head, ordinal, key, value, state);
+}
+
+BOOL
+TY_tensor_attributes_are_equivalent (TY_IDX ty1, TY_IDX ty2)
+{
+    TY_TENSOR_EXTENSION_STORE *ext1 = Find_Tensor_Extension(ty1);
+    TY_TENSOR_EXTENSION_STORE *ext2 = Find_Tensor_Extension(ty2);
+
+    return ext1 != NULL && ext2 != NULL &&
+           Tensor_KV_Are_Equivalent(ext1->attribute_head,
+                                    ext2->attribute_head);
+}
+
+BOOL
+TY_tensor_is_canonical (TY_IDX ty)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension(ty);
+    const char *value;
+
+    if (ext == NULL)
+        return FALSE;
+    value = Tensor_KV_Value
+                (ext->attribute_head,
+                 TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_CANONICAL));
+    return value != NULL && strcmp(value, "true") == 0;
+}
+
+BOOL
+TY_tensor_seal (TY_IDX ty)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension(ty);
+
+    if (ext == NULL)
+        return FALSE;
+    if (!TY_tensor_is_canonical(ty))
+        Bind_Tensor_KV
+            (ext->attribute_head, ext->attribute_count,
+             TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_CANONICAL), "true");
+    return TRUE;
 }
 
 UINT32
@@ -1997,7 +2092,7 @@ TY_are_equivalent (TY_IDX ty_id1, TY_IDX ty_id2, UINT32 flags)
             TY_Get_Tensor_Extension_Info (ty_id1, &info1) &&
             TY_Get_Tensor_Extension_Info (ty_id2, &info2) &&
             info1.rank == info2.rank &&
-            info1.attribute_count == info2.attribute_count &&
+            TY_tensor_attributes_are_equivalent(ty_id1, ty_id2) &&
             TY_are_equivalent (info1.element_ty, info2.element_ty, flags);
         }
         break;

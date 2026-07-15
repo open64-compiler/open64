@@ -271,6 +271,7 @@ BOOL IR_dump_map_info = FALSE;
 BOOL IR_dump_region = FALSE;
 BOOL IR_DUMPDEP_info = FALSE;
 BOOL IR_dump_line_numbers = TRUE;
+BOOL IR_dump_source = FALSE;
 
 WN_MAP IR_alias_map = WN_MAP_UNDEFINED;
 const struct ALIAS_MANAGER *IR_alias_mgr = NULL;
@@ -709,12 +710,17 @@ print_source (SRCPOS srcpos)
   else if (cur_file->max_line_printed != USRCPOS_linenum(usrcpos)
 	&& USRCPOS_linenum(usrcpos) != 0) 
   {
-    /* 
-     * could be a line before the last LOC;
-     * too hard to print text, but at least print LOC
-     */
-    fprintf (ir_ofile, " LOC %d %d\n", cur_file_index, 
-	USRCPOS_linenum(usrcpos));
+    rewind(cur_file->fileptr);
+    for (i = 0; i < USRCPOS_linenum(usrcpos); i++) {
+      if (fgets(text, sizeof(text), cur_file->fileptr) == NULL)
+        break;
+    }
+    if (i == USRCPOS_linenum(usrcpos))
+      fprintf(ir_ofile, " LOC %d %d %s", cur_file_index, i, text);
+    else
+      fprintf(ir_ofile, " LOC %d %d\n", cur_file_index,
+              USRCPOS_linenum(usrcpos));
+    cur_file->max_line_printed = i;
   }
 }
 
@@ -1444,7 +1450,8 @@ static void ir_put_stmt(WN * wn, INT indent)
       fprintf(ir_ofile, "%*sLOC %d %d\n", indent, "",
 		USRCPOS_filenum(srcpos), USRCPOS_linenum(srcpos));
 #else
-      //print_source(USRCPOS_srcpos(srcpos));
+      if (IR_dump_source)
+        print_source(USRCPOS_srcpos(srcpos));
 #endif
     }
 

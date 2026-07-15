@@ -9,6 +9,7 @@ from typing import Dict, Mapping, Sequence
 
 _handle_counter = count(1)
 _objects: Dict[int, Mapping[str, object]] = {}
+_canonical_types: Dict[tuple[tuple[str, str], ...], int] = {}
 
 
 def backend_name() -> str:
@@ -43,6 +44,28 @@ def create_tensor_type(
             "logical_shape": logical_shape,
         }
     )
+
+
+def intern_tensor_type(name: str, descriptor: Mapping[str, object]) -> int:
+    canonical = {
+        str(key): str(value)
+        for key, value in descriptor.items()
+        if key not in {"runtime_state", "lineage"} and value is not None
+    }
+    if not canonical.get("dtype") or int(canonical.get("rank", -1)) < 0:
+        raise RuntimeError("failed to intern tensor type")
+    key = tuple(sorted(canonical.items()))
+    existing = _canonical_types.get(key)
+    if existing is not None:
+        return existing
+    handle = _new_handle({
+        "name": name,
+        "descriptor": canonical,
+        **canonical,
+        "kind": "tensor_type",
+    })
+    _canonical_types[key] = handle
+    return handle
 
 
 def attach_tensor_descriptor(
@@ -176,6 +199,22 @@ def create_operator(
     )
 
 
+def create_operator_with_result(
+    opcode_name: str,
+    version: int,
+    kids: Sequence[int],
+    attrs: Mapping[str, str],
+    result_name: str,
+    result_type: int,
+) -> int:
+    handle = create_operator(opcode_name, version, kids, attrs)
+    record = dict(_objects[handle])
+    record["name"] = result_name
+    record["result_type"] = result_type
+    _objects[handle] = record
+    return handle
+
+
 def create_symbol(name: str, tensor_type: int) -> int:
     if not name:
         raise RuntimeError("failed to create symbol")
@@ -208,6 +247,51 @@ def attach_symbol_metadata(
     return True
 
 
+def attach_value_metadata(value: int, metadata: Mapping[str, str]) -> bool:
+    if value not in _objects:
+        raise RuntimeError("failed to attach value metadata")
+    record = dict(_objects[value])
+    record["metadata"] = dict(metadata)
+    _objects[value] = record
+    return True
+
+
+def attach_value_lineage(value: int, lineage: str) -> bool:
+    if value not in _objects or not lineage:
+        raise RuntimeError("failed to attach value lineage")
+    record = dict(_objects[value])
+    record["lineage"] = lineage
+    _objects[value] = record
+    return True
+
+
+def get_value_type(value: int) -> int:
+    return int(_objects[value].get("result_type", _objects[value].get("tensor_type", 0)))
+
+
+def get_value_result_symbol(value: int) -> int:
+    if value not in _objects:
+        raise RuntimeError("failed to get value result symbol")
+    record = dict(_objects[value])
+    symbol = int(record.get("result_symbol", 0))
+    if symbol == 0:
+        symbol = _new_handle({"kind": "symbol", "name": record.get("name", "")})
+        record["result_symbol"] = symbol
+        _objects[value] = record
+    return symbol
+
+
+def begin_program() -> bool:
+    _objects.clear()
+    _canonical_types.clear()
+    return True
+
+
+def abort_program() -> None:
+    _objects.clear()
+    _canonical_types.clear()
+
+
 def create_minimal_program_unit(name: str) -> int:
     if not name:
         raise RuntimeError("failed to create minimal program unit")
@@ -219,6 +303,129 @@ def create_minimal_program_unit(name: str) -> int:
             "body_markers": [],
         }
     )
+
+
+def register_source_file(program_unit: int, path: str) -> int:
+    if program_unit not in _objects or not path:
+        raise RuntimeError("failed to register source file")
+    record = dict(_objects[program_unit])
+    files = list(record.get("source_files", ()))
+    if path not in files:
+        files.append(path)
+    record["source_files"] = files
+    _objects[program_unit] = record
+    return files.index(path) + 1
+
+
+def set_value_source_position(
+    value: int,
+    file_id: int,
+    line: int,
+    column: int,
+    statement_begin: bool,
+    basic_block_begin: bool,
+) -> bool:
+    if value not in _objects or file_id <= 0 or line < 0:
+        raise RuntimeError("failed to set value source position")
+    record = dict(_objects[value])
+    record["source_position"] = (
+        file_id, line, column, statement_begin, basic_block_begin
+    )
+    _objects[value] = record
+    return True
+
+
+def create_region(
+    program_unit: int,
+    parent_region: int,
+    contract_name: str,
+    contract_version: int,
+) -> int:
+    if program_unit not in _objects or not contract_name or contract_version <= 0:
+        raise RuntimeError("failed to create region")
+    if parent_region and parent_region not in _objects:
+        raise RuntimeError("failed to create region")
+    return _new_handle({
+        "kind": "region",
+        "program_unit": program_unit,
+        "parent_region": parent_region,
+        "contract_name": contract_name,
+        "contract_version": contract_version,
+        "values": [],
+        "interfaces": [],
+    })
+
+
+def append_region_value(region: int, value: int) -> bool:
+    if region not in _objects or value not in _objects:
+        raise RuntimeError("failed to append region value")
+    record = dict(_objects[region])
+    values = list(record.get("values", ()))
+    values.append(value)
+    record["values"] = values
+    _objects[region] = record
+    return True
+
+
+def append_program_unit_region(program_unit: int, region: int) -> bool:
+    if program_unit not in _objects or region not in _objects:
+        raise RuntimeError("failed to append program unit region")
+    record = dict(_objects[program_unit])
+    regions = list(record.get("regions", ()))
+    regions.append(region)
+    record["regions"] = regions
+    _objects[program_unit] = record
+    return True
+
+
+def declare_region_value(
+    region: int, value: int, roles: int, ordinal: int, flags: int
+) -> bool:
+    if region not in _objects or value not in _objects or roles == 0:
+        raise RuntimeError("failed to declare region value")
+    record = dict(_objects[region])
+    interfaces = list(record.get("interfaces", ()))
+    interfaces.append((value, roles, ordinal, flags))
+    record["interfaces"] = interfaces
+    _objects[region] = record
+    return True
+
+
+def set_region_source_position(
+    region: int,
+    file_id: int,
+    line: int,
+    column: int,
+    statement_begin: bool,
+    basic_block_begin: bool,
+) -> bool:
+    return set_value_source_position(
+        region, file_id, line, column, statement_begin, basic_block_begin
+    )
+
+
+def verify_program() -> Mapping[str, object]:
+    program_units = [
+        record for record in _objects.values()
+        if record.get("kind") == "program_unit"
+    ]
+    valid = bool(program_units)
+    values = [
+        record for record in _objects.values()
+        if record.get("kind") in {
+            "operator",
+            "tensor_constant",
+            "model_input",
+            "external_tensor_constant",
+        }
+    ]
+    return {
+        "valid": valid,
+        "native_node_count": len(values),
+        "result_symbol_count": len(values),
+        "error_count": 0 if valid else 1,
+        "diagnostic": "" if valid else "no program unit",
+    }
 
 
 def _marker_name(marker: int) -> str:

@@ -10,6 +10,11 @@ from .mapping import cnn, common
 from .mapping.contract import operator_version
 
 
+_TYPE_DESCRIPTORS: dict[str, dict[int, dict[str, object]]] = {}
+_VALUE_TYPES: dict[str, dict[int, "TensorTypeHandle"]] = {}
+_RESULT_ORDINALS: dict[str, int] = {}
+
+
 @dataclass(frozen=True)
 class OpaqueHandle:
     value: int
@@ -52,9 +57,24 @@ class ProgramUnitHandle(OpaqueHandle):
     pass
 
 
+@dataclass(frozen=True)
+class RegionHandle(OpaqueHandle):
+    pass
+
+
+REGION_INPUT = 0x1
+REGION_OUTPUT = 0x2
+REGION_INOUT = 0x4
+REGION_RESULT = 0x8
+
+
 class WhirlBuilder:
     def __init__(self, backend: WhirlBackend):
         self._backend = backend
+        backend_name = backend.backend_name()
+        self._backend_key = backend_name
+        self._type_descriptors = _TYPE_DESCRIPTORS.setdefault(backend_name, {})
+        self._value_types = _VALUE_TYPES.setdefault(backend_name, {})
 
     def backend_name(self) -> str:
         return self._backend.backend_name()
@@ -65,26 +85,55 @@ class WhirlBuilder:
         dtype: str,
         rank: int,
         logical_shape: str,
+        descriptor: Optional[Mapping[str, object]] = None,
     ) -> TensorTypeHandle:
-        return TensorTypeHandle(
-            self._backend.create_tensor_type(
-                name,
-                dtype,
-                rank,
-                logical_shape,
-            )
+        canonical = dict(descriptor or {})
+        canonical.update({
+            "kind": str(canonical.get("kind", "tensor")),
+            "dtype": dtype,
+            "rank": rank,
+            "logical_shape": logical_shape,
+        })
+        canonical.pop("runtime_state", None)
+        canonical.pop("lineage", None)
+        tensor_type = TensorTypeHandle(
+            self._backend.intern_tensor_type(name, canonical)
         )
+        self._type_descriptors[tensor_type.value] = canonical
+        return tensor_type
 
     def attach_tensor_descriptor(
         self,
         tensor_type: TensorTypeHandle,
         descriptor: Mapping[str, object],
     ) -> None:
-        if not self._backend.attach_tensor_descriptor(
-            tensor_type.value,
-            descriptor,
+        canonical = dict(descriptor)
+        canonical.pop("runtime_state", None)
+        canonical.pop("lineage", None)
+        current = self._type_descriptors.get(tensor_type.value)
+        if current is None or any(
+            current.get(key) != value for key, value in canonical.items()
         ):
-            raise RuntimeError("failed to attach tensor descriptor")
+            raise RuntimeError("canonical tensor descriptor cannot be mutated")
+
+    def begin_program(self) -> None:
+        if not self._backend.begin_program():
+            raise RuntimeError("failed to begin native builder program")
+        self._value_types.clear()
+        _RESULT_ORDINALS[self._backend_key] = 0
+
+    def abort_program(self) -> None:
+        self._backend.abort_program()
+        self._value_types.clear()
+
+    def verify_program(self) -> Mapping[str, object]:
+        result = self._backend.verify_program()
+        if not bool(result.get("valid", False)):
+            diagnostic = str(result.get("diagnostic", ""))
+            raise RuntimeError(
+                diagnostic or "native DSL program verification failed"
+            )
+        return result
 
     def symbol(
         self,
@@ -113,6 +162,116 @@ class WhirlBuilder:
         return ProgramUnitHandle(
             self._backend.create_minimal_program_unit(name)
         )
+
+    def register_source_file(
+        self,
+        program_unit: ProgramUnitHandle,
+        path: str,
+    ) -> int:
+        return self._backend.register_source_file(program_unit.value, path)
+
+    def set_value_source_position(
+        self,
+        value: ValueHandle,
+        file_id: int,
+        line: int,
+        column: int = 0,
+        statement_begin: bool = True,
+        basic_block_begin: bool = False,
+    ) -> None:
+        if not self._backend.set_value_source_position(
+            value.value,
+            file_id,
+            line,
+            column,
+            statement_begin,
+            basic_block_begin,
+        ):
+            raise RuntimeError("failed to set value source position")
+
+    def region(
+        self,
+        program_unit: ProgramUnitHandle,
+        contract_name: str,
+        contract_version: int = 1,
+        parent: Optional[RegionHandle] = None,
+    ) -> RegionHandle:
+        return RegionHandle(
+            self._backend.create_region(
+                program_unit.value,
+                0 if parent is None else parent.value,
+                contract_name,
+                contract_version,
+            )
+        )
+
+    def append_region_value(
+        self, region: RegionHandle, value: ValueHandle
+    ) -> None:
+        if not self._backend.append_region_value(region.value, value.value):
+            raise RuntimeError("failed to append region value")
+
+    def append_program_unit_region(
+        self, program_unit: ProgramUnitHandle, region: RegionHandle
+    ) -> None:
+        if not self._backend.append_program_unit_region(
+            program_unit.value, region.value
+        ):
+            raise RuntimeError("failed to append program unit region")
+
+    def declare_region_value(
+        self,
+        region: RegionHandle,
+        value: ValueHandle,
+        roles: int,
+        ordinal: int,
+        flags: int = 0,
+    ) -> None:
+        if not self._backend.declare_region_value(
+            region.value, value.value, roles, ordinal, flags
+        ):
+            raise RuntimeError("failed to declare region value")
+
+    def set_region_source_position(
+        self,
+        region: RegionHandle,
+        file_id: int,
+        line: int,
+        column: int = 0,
+        statement_begin: bool = True,
+        basic_block_begin: bool = True,
+    ) -> None:
+        if not self._backend.set_region_source_position(
+            region.value,
+            file_id,
+            line,
+            column,
+            statement_begin,
+            basic_block_begin,
+        ):
+            raise RuntimeError("failed to set region source position")
+
+    def attach_value_metadata(
+        self,
+        value: ValueHandle,
+        metadata: Mapping[str, str],
+    ) -> None:
+        if not self._backend.attach_value_metadata(value.value, metadata):
+            raise RuntimeError("failed to attach value metadata")
+
+    def attach_value_lineage(self, value: ValueHandle, lineage: str) -> None:
+        if not self._backend.attach_value_lineage(value.value, lineage):
+            raise RuntimeError("failed to attach value lineage")
+
+    def value_result_symbol(self, value: ValueHandle) -> SymbolHandle:
+        return SymbolHandle(self._backend.get_value_result_symbol(value.value))
+
+    def value_type(self, value: ValueHandle) -> TensorTypeHandle:
+        tensor_type = self._value_types.get(value.value)
+        if tensor_type is None:
+            tensor_type = TensorTypeHandle(self._backend.get_value_type(value.value))
+            self._value_types[value.value] = tensor_type
+        return tensor_type
 
     def append_program_unit_marker(
         self,
@@ -163,7 +322,10 @@ class WhirlBuilder:
         value_kind: str,
         value: str,
     ) -> ValueHandle:
-        return ValueHandle(
+        tensor_type = self.tensor_type(
+            f"{name}_type", dtype, rank, logical_shape
+        )
+        value_handle = ValueHandle(
             self._backend.create_tensor_constant(
                 name,
                 dtype,
@@ -173,6 +335,8 @@ class WhirlBuilder:
                 value,
             )
         )
+        self._value_types[value_handle.value] = tensor_type
+        return value_handle
 
     def model_input(
         self,
@@ -204,7 +368,9 @@ class WhirlBuilder:
                 common.MODEL_INPUT,
                 operator_version(common.MODEL_INPUT),
             )
-        return ValueHandle(handle)
+        value = ValueHandle(handle)
+        self._value_types[value.value] = tensor_type
+        return value
 
     def external_tensor_constant(
         self,
@@ -246,12 +412,6 @@ class WhirlBuilder:
         ):
             raise ValueError("external tensor checksum must be 64 hex characters")
 
-        tensor_type = self.tensor_type(
-            f"{name}_type",
-            dtype,
-            rank,
-            logical_shape,
-        )
         descriptor = {
             "kind": "tensor",
             "dtype": dtype,
@@ -263,11 +423,14 @@ class WhirlBuilder:
             "placement": "side_file",
             "memory": "external_data",
             "quantization": "none",
-            "runtime_state": "static",
-            "lineage": name,
         }
-        self.attach_tensor_descriptor(tensor_type, descriptor)
-        symbol = self.symbol(name, tensor_type)
+        tensor_type = self.tensor_type(
+            f"{name}_type",
+            dtype,
+            rank,
+            logical_shape,
+            descriptor,
+        )
         metadata = {
             "source_layer_name": name,
             "lowering_hint": "external_tensor_constant",
@@ -282,8 +445,6 @@ class WhirlBuilder:
             "storage_byte_length": str(byte_length),
             "storage_checksum": checksum,
         }
-        self.attach_symbol_metadata(symbol, metadata)
-
         create_external = getattr(
             self._backend,
             "create_external_tensor_constant",
@@ -319,10 +480,14 @@ class WhirlBuilder:
                 "external_data",
             )
         value = ValueHandle(value_handle)
+        self._value_types[value.value] = tensor_type
+        self.attach_value_metadata(value, metadata)
+        self.attach_value_lineage(value, name)
+        symbol = int(self._backend.get_value_result_symbol(value.value))
         return TensorConstantHandle(
             value.value,
             tensor_type.value,
-            symbol.value,
+            symbol,
             metadata,
             descriptor,
         )
@@ -377,19 +542,39 @@ class WhirlBuilder:
         version: int,
         kids: Sequence[ValueHandle],
         attrs: Mapping[str, str],
+        result_name: Optional[str] = None,
+        result_type: Optional[TensorTypeHandle] = None,
     ) -> OperatorHandle:
+        if not kids:
+            raise ValueError("DSL operator requires at least one operand")
+        create_with_result = getattr(
+            self._backend, "create_operator_with_result", None
+        )
+        if create_with_result is None:
+            raise self._operator_capability_error(opcode_name, version)
+        if result_name is None:
+            result_name = self._next_result_name(opcode_name)
+        if result_type is None:
+            result_type = self._infer_result_type(
+                result_name, opcode_name, kids, attrs
+            )
         try:
-            handle = self._backend.create_operator(
+            handle = create_with_result(
                 opcode_name,
                 version,
                 [kid.value for kid in kids],
                 attrs,
+                result_name,
+                result_type.value,
             )
         except RuntimeError as exc:
             raise self._operator_capability_error(opcode_name, version) from exc
         if handle <= 0:
             raise self._operator_capability_error(opcode_name, version)
-        return OperatorHandle(handle)
+        result = OperatorHandle(handle)
+        self._value_types[result.value] = result_type
+        self.attach_value_lineage(result, opcode_name)
+        return result
 
     def _operator_capability_error(
         self,
@@ -400,6 +585,109 @@ class WhirlBuilder:
             f"{self.backend_name()} backend does not support "
             f"{opcode_name}.v{version}"
         )
+
+    def _next_result_name(self, opcode_name: str) -> str:
+        ordinal = _RESULT_ORDINALS.get(self._backend_key, 0) + 1
+        _RESULT_ORDINALS[self._backend_key] = ordinal
+        return f"{opcode_name.replace('.', '_')}_{ordinal}"
+
+    def _infer_result_type(
+        self,
+        result_name: str,
+        opcode_name: str,
+        kids: Sequence[ValueHandle],
+        attrs: Mapping[str, str],
+    ) -> TensorTypeHandle:
+        input_type = self._value_types.get(kids[0].value)
+        if input_type is None:
+            raise RuntimeError("operator operand has no registered tensor type")
+        descriptor = dict(self._type_descriptors[input_type.value])
+        shape = self._parse_shape(str(descriptor["logical_shape"]))
+
+        if opcode_name == "common.matmul" and len(kids) > 1:
+            rhs_type = self._value_types[kids[1].value]
+            rhs_shape = self._parse_shape(
+                str(self._type_descriptors[rhs_type.value]["logical_shape"])
+            )
+            shape = (shape[0], rhs_shape[1])
+        elif opcode_name == "common.flatten":
+            start = int(attrs.get("attr.start_dim", "1"))
+            end = int(attrs.get("attr.end_dim", "-1"))
+            if end < 0:
+                end += len(shape)
+            flattened = 1
+            for dimension in shape[start:end + 1]:
+                flattened *= dimension
+            shape = shape[:start] + (flattened,) + shape[end + 1:]
+        elif opcode_name in {"cnn.conv2d", "cnn.max_pool2d"}:
+            if len(shape) != 4:
+                return input_type
+            kernel = self._parse_pair(attrs["attr.kernel_shape"])
+            stride = self._parse_pair(attrs["attr.stride"])
+            padding = self._parse_pair(attrs["attr.padding"])
+            dilation = self._parse_pair(attrs["attr.dilation"])
+            channels = shape[1]
+            if opcode_name == "cnn.conv2d":
+                weight_type = self._value_types[kids[1].value]
+                weight_shape = self._parse_shape(
+                    str(self._type_descriptors[weight_type.value]["logical_shape"])
+                )
+                channels = weight_shape[0]
+                kernel = (weight_shape[2], weight_shape[3])
+            shape = (
+                shape[0],
+                channels,
+                self._conv_dim(shape[2], kernel[0], stride[0],
+                               padding[0], dilation[0]),
+                self._conv_dim(shape[3], kernel[1], stride[1],
+                               padding[1], dilation[1]),
+            )
+        elif opcode_name == "cnn.global_avg_pool2d":
+            if len(shape) != 4:
+                return input_type
+            output = self._parse_pair(attrs.get("attr.output_size", "1,1"))
+            shape = (shape[0], shape[1], output[0], output[1])
+        elif opcode_name == "common.linear" and len(kids) > 1:
+            weight_type = self._value_types[kids[1].value]
+            weight_shape = self._parse_shape(
+                str(self._type_descriptors[weight_type.value]["logical_shape"])
+            )
+            shape = (shape[0], weight_shape[0])
+
+        descriptor["rank"] = len(shape)
+        descriptor["logical_shape"] = self._format_shape(shape)
+        return self.tensor_type(
+            f"{result_name}_type",
+            str(descriptor["dtype"]),
+            len(shape),
+            str(descriptor["logical_shape"]),
+            descriptor,
+        )
+
+    @staticmethod
+    def _parse_shape(shape: str) -> tuple[int, ...]:
+        body = shape.strip()[1:-1]
+        return tuple(int(value) for value in body.split(",")) if body else ()
+
+    @staticmethod
+    def _format_shape(shape: Sequence[int]) -> str:
+        return "[" + ",".join(str(value) for value in shape) + "]"
+
+    @staticmethod
+    def _parse_pair(value: str) -> tuple[int, int]:
+        parts = tuple(int(item) for item in value.split(","))
+        return (parts[0], parts[0]) if len(parts) == 1 else (parts[0], parts[1])
+
+    @staticmethod
+    def _conv_dim(
+        value: int,
+        kernel: int,
+        stride: int,
+        padding: int,
+        dilation: int,
+    ) -> int:
+        return ((value + 2 * padding - dilation * (kernel - 1) - 1)
+                // stride + 1)
 
     def common_add(
         self,

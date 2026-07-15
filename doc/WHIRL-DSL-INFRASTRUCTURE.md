@@ -12,6 +12,10 @@ and compiler-library codesign are planned separately in
 representation, mapped binary image, inspection, gatekeeper, compatibility,
 and final VHO lowering boundary.
 
+CNN domain meaning, including the proposed `cnn.bottleneck.v1` contract and
+its relationship to PyTorch source structure, is documented separately in
+`doc/DSL-WHIRL-CNN-REGION-CONTRACTS.md`.
+
 ## Design goals
 
 1. Keep existing WHIRL binary compatibility unless a feature explicitly needs a
@@ -22,86 +26,6 @@ and final VHO lowering boundary.
    it.
 4. Lower all DSL markers before WOPT, LNO, CG, and other phases that expect
    canonical WHIRL.
-
-## Domain ingestion staging workflow
-
-New `openpy` domains use frontend-led discovery followed by
-infrastructure-certified bring-up.  This ordering prevents common/com from
-designing operators for an imagined graph and prevents the frontend from
-inventing binary WHIRL contracts around incidental framework operations.
-
-### Stage 1: Representative source fixture
-
-Add a small, deterministic, dependency-light model that preserves the domain
-semantics under review.  Avoid licensed weights, network access, distributed
-runtimes, hardware-only state, and large resource requirements in the first
-fixture.  Document intentional differences from the production reference.
-
-### Stage 2: Frontend capture and census
-
-Capture the real graph before allocating new opcodes.  Produce a stable census
-with, at minimum:
-
-1. Framework node kind and target.
-2. Source module, function, and position context.
-3. Ordered operands and users.
-4. Observed input and result dtype, rank, and shape.
-5. Static parameters and referenced external tensors.
-6. Proposed common operation, domain expression, region contract,
-   state/effect, compiler metadata, constant, or unsupported disposition.
-7. The reason that the proposed semantic boundary is preserved rather than
-   decomposed or promoted.
-
-Add a census drift test so framework-version changes cannot silently change
-the compiler contract.
-
-### Stage 3: Semantic contract review
-
-Review the census in common/com terms.  Separate source semantics from
-framework implementation noise and decide:
-
-1. Which operations satisfy the common-substrate promotion criteria.
-2. Which operations remain domain-visible through gatekeeper verification.
-3. Which source structures require `OPR_REGION` and declared interfaces.
-4. Which values require canonical tensor types or value lineage.
-5. Which behaviors require abstract state, effects, or barriers.
-6. Which information is compiler metadata rather than executable semantics.
-7. Which cases must remain unsupported in the current version.
-
-Only after this review should the infrastructure publish append-only logical
-IDs, names, versions, arities, typed attributes, descriptor rules, effects,
-diagnostics, promotion state, and lowering ownership.
-
-### Stage 4: Native infrastructure
-
-Implement the published contracts through the common builder and standard
-WHIRL services.  Complete native construction, symbol/type ownership,
-mapped-image tables, ELF reader/writer handling, logical `ir_b2a -st -src`
-inspection, gatekeeper checks, compatibility behavior, and mandatory VHO DSL
-lowering together.  Keep binary WHIRL compatibility and old-image readability
-as release gates.
-
-### Stage 5: Frontend native migration
-
-Migrate the frontend mapping from census/mock evidence to opaque native value
-and region handles.  Python supplies reviewed semantic requests and source
-context; it does not allocate logical IDs, construct WN records, inspect WN
-layout, decode the private physical DSL escape tag, or own mapped-image rows.
-Unsupported operations continue to fail explicitly rather than falling back to
-generic markers.
-
-### Stage 6: Cross-process certification
-
-Finalize the artifact through the existing mapped-image path, exit the Python
-producer, reopen the `.B` file in a separate process, and preserve its external
-payloads and `ir_b2a -st -src` trace for review.  Complete gatekeeper and
-`openpy -O0` validation before claiming the domain profile is supported.
-
-Frontend discovery and independent infrastructure preparation may proceed in
-parallel after the census is stable.  Native frontend certification waits for
-the corresponding published infrastructure gate.  Each substantial domain or
-model family maintains a focused frontend plan that links back to this
-authoritative infrastructure plan.
 
 ## Extension marker
 
@@ -1043,6 +967,35 @@ each model, including the model following successful finalization, and calls
 5. Add `DSL_Builder_Set_Region_Source_Position` as a wrapper over the common
    statement source-position service.
 
+The first common implementation now uses the existing `OPR_REGION` and
+`WT_REGIONS` slots without changing their numeric encodings.  A pointer-free,
+versioned `WT_REGIONS` image records stable region IDs, parent IDs, contract
+name/version, the region WN offset, and ordered symbol-interface role bits.
+The mapped reader reconstructs the common runtime view and validates each WN
+offset and region/interface record.  Older files with no `WT_REGIONS`
+subsection continue through the existing missing-subsection path.
+
+The common mapped store is not installed in `PU_Info_regions_ptr`.  That
+pointer remains exclusively reserved for the backend's in-memory `RID*`
+contract.  On mapped input, common code copies and verifies the pointer-free
+rows, clears the overlapping subsection pointer field, and leaves historical
+RID reconstruction to `REGION_Initialize` when canonical REGION nodes remain.
+
+The Python boundary exposes only opaque region and value handles.  It reports
+an enclosing source-language module path and kind; C++ creates the REGION WN,
+classifier pragma, body/pragmas/exits blocks, RID identity, symbol interfaces,
+source position, and mapped image.  `ir_b2a -st -src` prints both the standard
+REGION tree and a stable logical `DSL REGION TABLE` without exposing runtime
+pointers.  Backend RID analysis remains backend-owned and is not copied into
+the common mapped record.
+
+Managed CNN regions remain in binary VHO WHIRL through gatekeeping and optional
+DSL VHO optimization.  `VHO_DSL_Lower_Driver` lowers their contained operators
+and splices only their bodies into the enclosing block before the canonical
+backend.  MP, EH, and non-DSL pragma regions retain their existing lifecycle.
+This prevents a semantic CNN scope from being mistaken for an independently
+compiled CG region while preserving its inspectable VHO evidence.
+
 #### Tensor access
 
 1. Add scalar/index value construction before exposing tensor access.
@@ -1113,7 +1066,7 @@ each model, including the model following successful finalization, and calls
    isolate builder-owned state, and verification returns counts plus a bounded
    diagnostic buffer suitable for translation to a Python exception.
 
-15. [ ] Complete the common region substrate.
+15. [x] Complete the common region substrate.
 
    Implement the M8A RID, `WT_REGIONS`, declared value-interface, construction,
    verification, logical printing, body-splicing, and LNO compatibility work
@@ -1125,14 +1078,22 @@ each model, including the model following successful finalization, and calls
    `be/region` also contains backend-only points-to, live-range, CG, and lowering
    pointers, so it must not be moved wholesale.  M8A will first introduce a
    pointer-free common region descriptor table plus a centrally managed
-   region-WN mapping.  A staged `be/region` adapter will materialize or consume
-   the historical RID tree so LNO, WOPT, EH, and CG behavior remains unchanged.
+   region-WN mapping.  The common table now owns frontend contracts and value
+   interfaces while the historical backend RID tree remains independently
+   materialized by the existing region analysis, preserving LNO, WOPT, EH, and
+   CG ownership boundaries.
 
 16. [ ] Ingest and certify ResNet structured regions.
 
    Implement M8B BasicBlock, Bottleneck, identity shortcut, and projection
    shortcut contracts; preserve source positions and outer-owned no-alias
    results; add mapped-image and malformed-contract tests.
+
+   The first vertical slice recognizes FX `BasicBlock` scope, emits
+   `cnn.basic_block.v1` regions, declares external values as inputs and the
+   final value as `OUTPUT|RESULT`, and certifies the resulting LocalResNet
+   image through `ir_b2a -st -src`.  Bottleneck and explicit shortcut contract
+   classification remain in this item.
 
 17. [ ] Define tensor access from the High WHIRL array model.
 
@@ -1168,98 +1129,78 @@ each model, including the model following successful finalization, and calls
 
 ### Llama 2 transformer infrastructure queue
 
-The frontend-owned capture and ingestion work is tracked separately in
-`osprey/torch2whirl/LLAMA2-INGESTION-PLAN.md`.  This section owns only the
-native WHIRL infrastructure required by that plan.  The first target is a
-small, static-shape, inference-only Llama 2 prefill.  Tokenization, licensed
-weights, dynamic shapes, grouped-query attention, mutable KV cache, and decode
-are not prerequisites for the first artifact.
+The frontend discovery evidence is the tiny Llama 2 fixture, normalized FX
+graph, and operator census on `codex/torch2whirl-python-fe` through commit
+`53bbfddf`.  This section owns the native WHIRL contracts and implementation
+required by that frontend plan.  The first target is static, inference-only,
+full-sequence causal prompt evaluation with no KV cache.
 
-22. [ ] Publish the Llama 2 prefill operator contract.
+22. [x] Publish the Llama 2 prefill operator contract.
 
-   Audit the stable tiny-model capture and assign each semantic operation to a
-   common substrate operator, a transformer-domain operator, a region
-   contract, a constant, or a stable rejection.  Freeze append-only logical
-   IDs, names, versions, arities, typed attributes, shape rules, effect models,
-   lowering models, and diagnostics before native frontend emission.  Keep
-   attention, RMSNorm, rotary position encoding, and tokenizer/cache semantics
-   domain-visible until their own gatekeeper checks complete.  Treat prefill as
-   an `OPR_REGION` contract rather than an expression operator: the region
-   preserves its token input, logits result, nested decoder layers, causal
-   full-sequence execution, and cache policy while its body retains the
-   high-level value-producing expressions.
+   `doc/DSL-WHIRL-LLAMA2-PREFILL-CONTRACTS.md` freezes the append-only logical
+   IDs, exact versions, ordered kids, typed attributes, result descriptor
+   rules, effects, promotion states, region interfaces, diagnostics, and
+   exclusions for the initial profile.  Prefill and decoder layers are REGION
+   contracts.  Embedding, RMSNorm, RoPE, attention, and SwiGLU remain
+   transformer-domain expressions through verification.  Token IDs reuse
+   `common.model_input.v2`; causal masking is an attention policy rather than a
+   separate value in version 1.  Existing common schemas are not widened:
+   bias-free linear, batched matmul, and sequence logits use additive versions.
 
-23. [ ] Complete the common tensor substrate needed by transformer prefill.
+23. [ ] Implement the published common tensor substrate schemas.
 
-   Add or finish native forms for integer model inputs, embedding/gather,
-   reshape, transpose, slice/concat where the audited graph requires them,
-   broadcast add/multiply, batched matmul, linear, SiLU, and softmax.  Define
-   rank-generic descriptor propagation, batch contraction dimensions,
-   broadcast legality, axis attributes, accumulation type, and result
-   ownership.  Extend an existing common contract only through a reviewed
-   semantic version; do not silently broaden released version behavior.
+   Add native `common.reshape.v1`, `common.transpose.v1`, bias-free
+   rank-generic `common.linear.v3`, exact-prefix batched `common.matmul.v2`, and
+   sequence `common.output_logits.v3`.  Preserve all released enum values and
+   version-1/version-2 behavior.  Add exact-version lookup, result inference,
+   gatekeeper, mapped-image, logical printer, and malformed-schema tests.
 
-24. [ ] Add transformer-domain prefill operators and gatekeepers.
+24. [ ] Implement transformer-domain prefill expressions.
 
-   Define native, versioned contracts for token embedding, RMSNorm, rotary
-   position encoding, causal masking, attention, and SwiGLU where the operator
-   census shows that a common operation cannot preserve all required meaning.
-   Define `transformer.attention.v1` as a pure single-result expression over
-   rotated Q, rotated K, and V.  Keep Q/K/V and output projections visible and
-   apply RoPE to Q and K with separate single-result expressions.  The first
-   attention version is full-sequence, causal, and explicitly no-cache.
-   Attention verification owns mask policy, head and KV-head layout, scale,
-   position semantics, prefill/cache mode, and tensor compatibility before
-   partial promotion.  RMSNorm verification owns epsilon, axes, scale,
-   accumulation type, and result descriptor.  RoPE verification owns position
-   range and paired-dimension semantics.
+   Add native `transformer.token_embedding.v1`, `transformer.rms_norm.v1`,
+   single-result `transformer.rotary_embedding.v1`, pure no-cache
+   `transformer.attention.v1`, and projection-visible
+   `transformer.swiglu.v1`.  Apply every dtype, shape, layout, mask, head,
+   scale, and profile check published by item 22 before partial promotion.
 
-25. [ ] Add transformer structured-region contracts.
+25. [ ] Implement transformer structured-region contracts.
 
-   Build on the common region substrate rather than adding a transformer-only
-   region representation.  Add versioned `transformer.prefill` and
-   decoder-layer classifiers,
-   declared input/result interfaces, source positions, outer-owned no-alias
-   results, RID/WT_REGIONS mapped-image coverage, topology verification, and
-   logical printing.  Version 1 is a stateless full-sequence prompt evaluation
-   with `cache_mode=none`; cached prefill is a later additive contract with
-   declared state and effects.  Keep region contracts reusable for later
-   transformer families rather than encoding one Python class name as the ABI.
+   Use the common RID/WT_REGIONS substrate for
+   `transformer.decoder_layer.v1` and `transformer.prefill.v1`.  Declare
+   deterministic value interfaces, preserve nested source positions and module
+   context, verify topology and outer-owned no-alias results, and print stable
+   logical region evidence after mapped-image reopen.
 
-26. [ ] Complete transformer mapped-image and inspection coverage.
+26. [ ] Complete transformer artifact inspection and compatibility coverage.
 
-   Carry every new logical opcode, node, typed attribute, tensor descriptor,
-   value reference, region contract, RID mapping, source position, and external
+   Carry every new logical opcode, node, attribute, descriptor, value
+   reference, region contract, RID mapping, source position, and external
    tensor reference through the existing ELF mapped-image path.  Extend
-   `ir_b2a -st -src` so a reopened artifact exposes stable logical transformer
-   evidence without the private physical DSL escape tag.  Preserve old-image
-   readability and the existing ResNet artifact behavior.
+   `ir_b2a -st -src` without exposing the private physical DSL escape tag.
+   Preserve old-image readability and existing ResNet behavior.
 
 27. [ ] Add verified Llama 2 prefill VHO DSL lowering.
 
    Lower only after transformer gatekeeper success.  Preserve domain semantics
-   until the responsible verifier runs, then lower approved operations to
-   common contractions, reductions, views, runtime calls, or dispatch
-   contracts.  Consume every executable DSL value before standard VHO, WOPT,
-   LNO, or CG.  Keep architecture-independent fusion, quantization, and
-   parallelization available at very-high-level WHIRL before this mandatory
-   `-O0` lowering boundary.
+   until verification, then lower approved expressions to common substrate or
+   the selected runtime ABI.  Consume every executable DSL value and splice
+   managed regions before standard VHO, WOPT, LNO, or CG.
 
 28. [ ] Certify the tiny prefill artifact across the process boundary.
 
-   Prove construction, gatekeeper verification, mapped-image write/reopen,
-   `ir_b2a -st -src`, source correlation, external tensor references, region
-   interfaces, compatibility rejection, and `openpy -keep` plus `-O0`
+   Prove builder construction, gatekeeper verification, mapped-image
+   write/reopen, `ir_b2a -st -src`, source correlation, external tensors,
+   region interfaces, stable rejection, and `openpy -keep` plus `-O0`
    lowering.  Preserve `llama2.B`, `llama2.safetensors`, and `llama2.T` in a
-   host-mounted review directory and report their paths after validation.
+   host-mounted review directory.
 
 29. [ ] Design stateful decode and KV cache as a later versioned extension.
 
    Begin only after item 18 establishes common abstract-state effects.  Model
    cache storage as declared mutable state with read/modify edges and ordering,
-   not as tensor metadata or an untyped side channel.  Define cache position,
-   append/update, grouped-query attention, alias, ownership, region-interface,
-   and runtime ABI contracts without changing certified prefill semantics.
+   not tensor metadata.  Add cache position, append/update, grouped-query
+   attention, alias, ownership, and runtime ABI contracts without changing
+   certified prefill semantics.
 
 ### Deferred work TODO
 

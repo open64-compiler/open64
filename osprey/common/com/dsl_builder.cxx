@@ -34,6 +34,8 @@ static PU_Info *DSL_Builder_PU_Root = NULL;
 static PU_Info *DSL_Builder_PU_Last = NULL;
 static UINT32 DSL_Builder_Result_Number = 0;
 static DST_INFO_IDX DSL_Builder_CU_DST = DST_INVALID_INIT;
+static std::vector<std::string> DSL_builder_source_files;
+static std::vector<std::string> DSL_builder_source_directories;
 
 typedef struct {
     WN *assignment;
@@ -53,6 +55,7 @@ DSL_Builder_Reset_Program (void)
     DSL_Builder_Result_Number = 0;
     DSL_builder_value_registry.clear();
     DSL_IR_Image_Reset();
+    DSL_Region_Reset();
 }
 
 static DSL_BUILDER_VALUE_RECORD *
@@ -1014,7 +1017,8 @@ DSL_Builder_Attach_Tensor_Descriptor
         (TY_IDX ty,
          const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor)
 {
-    if (descriptor == NULL || !TY_is_tensor_extension (ty))
+    if (descriptor == NULL || !TY_is_tensor_extension (ty) ||
+        TY_tensor_is_canonical(ty))
         return FALSE;
 
     DSL_Builder_Bind_Attribute_If_Present
@@ -1049,6 +1053,86 @@ DSL_Builder_Attach_Tensor_Descriptor
         (ty, TY_TENSOR_SCHEMA_LINEAGE, descriptor->lineage.lineage);
 
     return TRUE;
+}
+
+TY_IDX
+DSL_Builder_Intern_Tensor_Type
+        (const char *name,
+         TY_IDX element_ty,
+         const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR type_descriptor;
+    TY_IDX tensor_ty;
+
+    if (descriptor == NULL || TY_IDX_index(element_ty) == 0 ||
+        descriptor->type_core.kind == NULL ||
+        descriptor->type_core.kind[0] == '\0' ||
+        descriptor->type_core.dtype == NULL ||
+        descriptor->type_core.dtype[0] == '\0' ||
+        descriptor->type_core.rank < 0 ||
+        descriptor->type_core.logical_shape == NULL ||
+        descriptor->type_core.logical_shape[0] == '\0')
+        return TY_IDX_ZERO;
+
+    type_descriptor = *descriptor;
+    type_descriptor.representation.runtime_state = NULL;
+    type_descriptor.lineage.lineage = NULL;
+    tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+                    (name, element_ty, &type_descriptor.type_core);
+    if (!DSL_Builder_Attach_Tensor_Descriptor(tensor_ty, &type_descriptor) ||
+        !TY_tensor_seal(tensor_ty))
+        return TY_IDX_ZERO;
+
+    for (UINT32 index = 1; index < Ty_tab.Size(); ++index) {
+        TY_IDX candidate = TY_IDX_ZERO;
+        Set_TY_IDX_index(candidate, index);
+        if (candidate != tensor_ty && TY_is_tensor_extension(candidate) &&
+            TY_tensor_is_canonical(candidate) &&
+            TY_are_equivalent(candidate, tensor_ty, TY_EQUIV_IGNORE_NAMES))
+            return candidate;
+    }
+    return tensor_ty;
+}
+
+BOOL
+DSL_Builder_Get_Tensor_Descriptor
+        (TY_IDX ty,
+         DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor)
+{
+    if (descriptor == NULL || !TY_is_tensor_extension(ty))
+        return FALSE;
+
+    memset(descriptor, 0, sizeof(*descriptor));
+    descriptor->type_core.kind =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_KIND);
+    descriptor->type_core.dtype =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_DTYPE);
+    descriptor->type_core.rank = TY_tensor_rank(ty);
+    descriptor->type_core.logical_shape =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_SHAPE);
+    descriptor->traits.traits =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_TRAITS);
+    descriptor->representation.layout =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_LAYOUT);
+    descriptor->representation.sharding =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_SHARDING);
+    descriptor->representation.placement =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_PLACEMENT);
+    descriptor->representation.memory =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_MEMORY);
+    descriptor->representation.quantization =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_QUANTIZATION);
+    descriptor->representation.runtime_state =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_RUNTIME_STATE);
+    descriptor->lineage.lineage =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_LINEAGE);
+    return TRUE;
+}
+
+BOOL
+DSL_Builder_Tensor_Type_Is_Canonical (TY_IDX ty)
+{
+    return TY_tensor_is_canonical(ty);
 }
 
 ST_IDX
@@ -1494,6 +1578,49 @@ DSL_Builder_Create_Operator
     return wn;
 }
 
+DSL_BUILDER_OPERATOR
+DSL_Builder_Create_Operator_With_Result
+        (DSL_OPCODE_ID opcode_id,
+         UINT16 version,
+         DSL_BUILDER_VALUE *kids,
+         UINT32 kid_count,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *result_name,
+         TY_IDX result_ty)
+{
+    DSL_OPCODE_INFO info;
+    DSL_OPERATOR dsl_operator;
+    char *payload;
+    DSL_BUILDER_OPERATOR result;
+
+    if (!DSL_Opcode_Get_Info(opcode_id, &info) ||
+        result_name == NULL || result_name[0] == '\0' ||
+        !DSL_Builder_Tensor_Type_Is_Canonical(result_ty) ||
+        (kid_count != 0 && kids == NULL) ||
+        (attr_count != 0 && attrs == NULL) ||
+        (info.nkids >= 0 && (UINT32)info.nkids != kid_count))
+        return NULL;
+
+    for (UINT32 i = 0; i < attr_count; ++i) {
+        if (attrs[i].name == NULL || attrs[i].name[0] == '\0')
+            return NULL;
+    }
+
+    dsl_operator = DSL_Operator_Find(info.name, strlen(info.name), version);
+    if (dsl_operator == OPR_DSLUNKNOWN)
+        return NULL;
+
+    payload = DSL_Builder_Format_Operator_Payload
+                  (kids, kid_count, attrs, attr_count);
+    result = DSL_Builder_Create_Native_Value
+                 (dsl_operator, version, payload, kids, kid_count, attrs,
+                  attr_count, result_name, result_ty,
+                  DSL_IR_VALUE_OPERATOR_RESULT);
+    delete [] payload;
+    return result;
+}
+
 BOOL
 DSL_Builder_Attach_Contract (DSL_BUILDER_OPERATOR wn,
                              DSL_CONTRACT_ID contract_id)
@@ -1521,6 +1648,61 @@ DSL_Builder_Attach_Metadata
     }
 
     return TRUE;
+}
+
+BOOL
+DSL_Builder_Attach_Value_Metadata
+        (DSL_BUILDER_VALUE value,
+         const DSL_BUILDER_COMPILER_METADATA *metadata,
+         UINT32 metadata_count)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+
+    return record != NULL &&
+           DSL_Builder_Attach_Metadata
+               (record->result_st, metadata, metadata_count);
+}
+
+BOOL
+DSL_Builder_Attach_Value_Lineage
+        (DSL_BUILDER_VALUE value,
+         const char *lineage)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+
+    if (record == NULL || lineage == NULL || lineage[0] == '\0')
+        return FALSE;
+    ST_tensor_bind_attribute
+        (record->result_st,
+         TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_LINEAGE), lineage);
+    return TRUE;
+}
+
+TY_IDX
+DSL_Builder_Get_Value_Type (DSL_BUILDER_VALUE value)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    return record == NULL ? TY_IDX_ZERO : record->result_ty;
+}
+
+ST_IDX
+DSL_Builder_Get_Value_Result_Symbol (DSL_BUILDER_VALUE value)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    return record == NULL ? ST_IDX_ZERO : record->result_st;
+}
+
+BOOL
+DSL_Builder_Begin_Program (void)
+{
+    DSL_Builder_Reset_Program();
+    return TRUE;
+}
+
+void
+DSL_Builder_Abort_Program (void)
+{
+    DSL_Builder_Reset_Program();
 }
 
 DSL_BUILDER_PROGRAM_UNIT
@@ -1556,6 +1738,7 @@ DSL_Builder_Create_Minimal_PU (const char *name)
     function_ty = Make_Function_Type(MTYPE_To_TY(MTYPE_V));
     pu = &New_PU(pu_idx);
     PU_Init(*pu, function_ty, GLOBAL_SYMTAB + 1);
+    Set_PU_c_lang(*pu);
 
     func_st = New_ST(GLOBAL_SYMTAB);
     ST_Init(func_st, Save_Str(name), CLASS_FUNC, SCLASS_TEXT,
@@ -1589,6 +1772,8 @@ DSL_Builder_Create_Minimal_PU (const char *name)
     PU_Info_init(pu_info);
 
     Set_PU_Info_tree_ptr(pu_info, entry_wn);
+    if (Current_Map_Tab == NULL)
+        Current_Map_Tab = WN_MAP_TAB_Create(Malloc_Mem_Pool);
     PU_Info_maptab(pu_info) = Current_Map_Tab;
     PU_Info_proc_sym(pu_info) = ST_st_idx(func_st);
     Set_PU_Info_pu_dst(pu_info, func_dst);
@@ -1613,6 +1798,200 @@ DSL_Builder_Create_Minimal_PU (const char *name)
     DSL_Builder_PU_Last = pu_info;
 
     return pu_info;
+}
+
+UINT32
+DSL_Builder_Register_Source_File
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         const char *path)
+{
+    std::string full_path;
+    std::string directory;
+    std::string file_name;
+    std::string::size_type separator;
+    UINT32 directory_id = 0;
+
+    if (DSL_Builder_PU_Body(pu) == NULL || path == NULL || path[0] == '\0')
+        return 0;
+
+    full_path = path;
+    for (UINT32 i = 0; i < DSL_builder_source_files.size(); ++i) {
+        if (DSL_builder_source_files[i] == full_path)
+            return i + 1;
+    }
+    if (DSL_builder_source_files.size() >= 65535)
+        return 0;
+
+    separator = full_path.rfind('/');
+    if (separator == std::string::npos) {
+        directory = ".";
+        file_name = full_path;
+    } else {
+        directory = separator == 0 ? "/" : full_path.substr(0, separator);
+        file_name = full_path.substr(separator + 1);
+    }
+    if (file_name.empty())
+        return 0;
+
+    for (UINT32 i = 0; i < DSL_builder_source_directories.size(); ++i) {
+        if (DSL_builder_source_directories[i] == directory) {
+            directory_id = i + 1;
+            break;
+        }
+    }
+    if (directory_id == 0) {
+        if (DSL_builder_source_directories.size() >= 65535)
+            return 0;
+        DST_mk_include_dir((char *)directory.c_str());
+        DSL_builder_source_directories.push_back(directory);
+        directory_id = DSL_builder_source_directories.size();
+    }
+
+    DST_mk_file_name((char *)file_name.c_str(), directory_id, 0, 0);
+    DSL_builder_source_files.push_back(full_path);
+    return DSL_builder_source_files.size();
+}
+
+BOOL
+DSL_Builder_Set_Value_Source_Position
+        (DSL_BUILDER_VALUE value,
+         const DSL_BUILDER_SOURCE_POSITION *source_position)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    USRCPOS position;
+
+    if (record == NULL || source_position == NULL ||
+        source_position->file_id == 0 ||
+        source_position->file_id > DSL_builder_source_files.size() ||
+        source_position->line < 0 || source_position->column > 4095)
+        return FALSE;
+
+    USRCPOS_clear(position);
+    USRCPOS_filenum(position) = source_position->file_id;
+    USRCPOS_linenum(position) = source_position->line;
+    USRCPOS_column(position) = source_position->column;
+    USRCPOS_stmt_begin(position) = source_position->statement_begin != 0;
+    USRCPOS_bb_begin(position) = source_position->basic_block_begin != 0;
+    WN_Set_Linenum(record->assignment, USRCPOS_srcpos(position));
+    return TRUE;
+}
+
+BOOL
+DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
+{
+    DSL_GATEKEEPER_RESULT gatekeeper_result;
+    FILE *diagnostic = NULL;
+    char *buffer = result == NULL ? NULL : result->diagnostic;
+    UINT32 capacity = result == NULL ? 0 : result->diagnostic_capacity;
+
+    if (buffer != NULL && capacity != 0) {
+        buffer[0] = '\0';
+        diagnostic = tmpfile();
+    }
+
+    if (DSL_Builder_PU_Root == NULL) {
+        if (buffer != NULL && capacity != 0)
+            snprintf(buffer, capacity,
+                     "DSL builder verification error: no program unit");
+        if (result != NULL) {
+            result->native_node_count = 0;
+            result->result_symbol_count = 0;
+            result->error_count = 1;
+        }
+        if (diagnostic != NULL)
+            fclose(diagnostic);
+        return FALSE;
+    }
+
+    BOOL valid = DSL_Gatekeeper_Verify_Program
+                     (DSL_Builder_PU_Root, diagnostic, &gatekeeper_result);
+    for (PU_Info *pu = DSL_Builder_PU_Root; pu != NULL;
+         pu = PU_Info_next(pu)) {
+        if (!DSL_Region_Verify_PU(pu, diagnostic)) {
+            valid = FALSE;
+            ++gatekeeper_result.error_count;
+        }
+    }
+    if (diagnostic != NULL) {
+        rewind(diagnostic);
+        size_t count = fread(buffer, 1, capacity - 1, diagnostic);
+        buffer[count] = '\0';
+        fclose(diagnostic);
+    }
+
+    if (result != NULL) {
+        result->native_node_count = gatekeeper_result.native_node_count;
+        result->result_symbol_count = gatekeeper_result.result_symbol_count;
+        result->error_count = gatekeeper_result.error_count;
+    }
+    return valid;
+}
+
+DSL_BUILDER_REGION
+DSL_Builder_Create_Region
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_REGION parent,
+         const char *contract_name,
+         UINT32 contract_version)
+{
+    if (DSL_Builder_PU_Body(pu) == NULL)
+        return NULL;
+    return DSL_Region_Create(pu, parent, contract_name, contract_version);
+}
+
+BOOL
+DSL_Builder_Append_Region_Value
+        (DSL_BUILDER_REGION region,
+         DSL_BUILDER_VALUE value)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    return record != NULL &&
+           DSL_Region_Append_Statement(region, record->assignment);
+}
+
+BOOL
+DSL_Builder_Append_PU_Region
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_REGION region)
+{
+    return DSL_Builder_PU_Body(pu) != NULL &&
+           DSL_Region_Append_To_PU(region);
+}
+
+BOOL
+DSL_Builder_Declare_Region_Value
+        (DSL_BUILDER_REGION region,
+         DSL_BUILDER_VALUE value,
+         UINT32 roles,
+         UINT32 ordinal,
+         UINT32 flags)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    return record != NULL &&
+           DSL_Region_Declare_Symbol
+               (region, record->result_st, roles, ordinal, flags);
+}
+
+BOOL
+DSL_Builder_Set_Region_Source_Position
+        (DSL_BUILDER_REGION region,
+         const DSL_BUILDER_SOURCE_POSITION *source_position)
+{
+    USRCPOS position;
+    if (region == NULL || source_position == NULL ||
+        source_position->file_id == 0 ||
+        source_position->file_id > DSL_builder_source_files.size() ||
+        source_position->line < 0 || source_position->column > 4095)
+        return FALSE;
+
+    USRCPOS_clear(position);
+    USRCPOS_filenum(position) = source_position->file_id;
+    USRCPOS_linenum(position) = source_position->line;
+    USRCPOS_column(position) = source_position->column;
+    USRCPOS_stmt_begin(position) = source_position->statement_begin != 0;
+    USRCPOS_bb_begin(position) = source_position->basic_block_begin != 0;
+    return DSL_Region_Set_Source_Position
+               (region, USRCPOS_srcpos(position));
 }
 
 BOOL
@@ -1802,8 +2181,9 @@ DSL_Builder_Finalize_Mapped_Image
     for (PU_Info *pu = DSL_Builder_PU_Root; pu != NULL;
          pu = PU_Info_next(pu)) {
         if (PU_Info_state(pu, WT_SYMTAB) == Subsect_InMem ||
-            PU_Info_state(pu, WT_TREE) == Subsect_InMem)
+            PU_Info_state(pu, WT_TREE) == Subsect_InMem) {
             Write_PU_Info(pu);
+        }
     }
 
     Write_Global_Info(DSL_Builder_PU_Root);

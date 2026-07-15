@@ -15,7 +15,7 @@ Keep work scoped to `torch2whirl` source, its configured build entry under
   `save_as_whirl`.
 - Keep the native builder API narrow. Do not turn it into a generic
   Python-owned WHIRL construction API before the artifact path is inspectable
-  through `ir_b2a -st`.
+  through `ir_b2a -st -src`.
 - Do not use tab characters in files touched under this directory, except
   Makefiles where tabs are required by standard make syntax.
 

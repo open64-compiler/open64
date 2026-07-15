@@ -127,7 +127,7 @@ builder should own all WHIRL-specific construction.
    tests in the same staged change.
 2. The binary WHIRL artifact is the frontend boundary. Avoid special in-memory
    bypasses from Python into the compiler pipeline; artifacts should be
-   inspectable with `ir_b2a -st` before combined driver integration.
+   inspectable with `ir_b2a -st -src` before combined driver integration.
 3. Run gatekeeper verification before canonical lowering. Missing tensor
    attributes, invalid operand compatibility, unknown contracts, unsupported
    opcodes, and domain legality failures should be diagnosed before WOPT, LNO,
@@ -141,7 +141,7 @@ builder should own all WHIRL-specific construction.
    equivalence.
 6. Do not add `KIND_TENSOR` or new binary tensor descriptor sections casually.
    First-class tensor type or tensor descriptor binary-section changes must land
-   with printer, `ir_b2a -st`, binary reader, binary writer, ASCII
+   with printer, `ir_b2a -st -src`, binary reader, binary writer, ASCII
    reader/printer plan, verifier, and fallback behavior.
 7. `torch2whirl`, Python bindings, and the native frontend bridge must not
    depend on backend code generation. Backend, runtime, and kernel lowering
@@ -221,7 +221,8 @@ native representation, compatibility, verification, inspection, and lowering.
 1. Stabilize native DSL/common infrastructure before adding Python package
    code.
 2. Add or maintain native tests under `osprey/common/com/tests` for tensor
-   types, tensor constants, `common.add`, `common.matmul`, and `ir_b2a -st`
+   types, tensor constants, `common.add`, `common.matmul`, and
+   `ir_b2a -st -src`
    visibility.
 3. Keep the first builder API narrow. Python-facing bindings should pass opaque
    handles and values; C++ should create real WHIRL objects.

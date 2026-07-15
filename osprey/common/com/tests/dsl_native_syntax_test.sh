@@ -48,6 +48,7 @@ sources=(
   "osprey/common/com/dsl_builder.cxx"
   "osprey/common/com/dsl_gatekeeper.cxx"
   "osprey/common/com/dsl_ir_image.cxx"
+  "osprey/common/com/dsl_region.cxx"
   "osprey/common/com/dsl_ir_print.cxx"
   "osprey/common/com/tests/dsl_builder_contract_test.cxx"
   "osprey/common/com/tests/dsl_common_add_print_test.cxx"

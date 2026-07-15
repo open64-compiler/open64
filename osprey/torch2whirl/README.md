@@ -79,13 +79,17 @@ Use `make python_native_test` from that directory to run the optional native
 Python finalization test after installing the matching Python development
 headers in the test environment.
 Use `make python_native_ir_tools_smoke` from the same directory to generate a
-native Python WHIRL artifact and inspect it with `ir_b2a -st`.  In a configured
+native Python WHIRL artifact and inspect it with `ir_b2a -st -src`.  In a configured
 `--enable-torch2whirl-only` build, this target first builds the additional
 tool-side `libjsoncpp.a` and `ir_b2a`/`ir_a2b` pieces needed for inspection.
 Those reader/WSSA objects are not linked into the `_whirl` frontend extension.
+The `.B`, `.safetensors`, and `.T` files are retained under
+`$(OPEN64_DSL_TEST_ARTIFACT_DIR)/python-native`.  The target removes the prior
+files in that artifact family before each run.
 Use `make driver_native_ir_tools_smoke` from a torch-enabled configured build
 to run the same native artifact inspection through the C++ `torch2whirl`
-executable.
+executable.  Its files are retained under
+`$(OPEN64_DSL_TEST_ARTIFACT_DIR)/driver-native` and refreshed before each run.
 Use `make driver_opencc_smoke` from a full-toolchain environment to run the
 C++ driver with `--backend native` and verify that `opencc -x whirl -c`
 consumes the generated artifact. This target skips cleanly when `opencc` is not
@@ -159,6 +163,12 @@ version, build directory, or Docker builder mode is needed. Set
 `OPEN64_TORCH2WHIRL_REBUILD_IMAGE=1` to refresh an existing torch image. The
 script defaults `OPEN64_TORCH2WHIRL_DOCKER_BUILDKIT=0` so local-only Open64
 base images are not resolved through a remote registry.
+The script mounts the host directory
+`$OPEN64_TORCH2WHIRL_ARTIFACT_DIR` at `/artifacts`, cleans it at startup, runs
+both native `ir_b2a -st -src` smoke lanes, and leaves the resulting artifacts after
+Docker exits.  It defaults to
+`$OPEN64_TORCH2WHIRL_BUILD_DIR/test-artifacts`.  Set
+`OPEN64_TORCH2WHIRL_RUN_IR_TOOLS=0` only when running the shorter PyTorch lane.
 
 For Linux Docker native extension validation from a configured build tree:
 
@@ -170,13 +180,13 @@ docker run --rm -v /path/to/open64:/src \
   sh -c 'apt-get update && apt-get install -y python3.8-dev && make python_native_test'
 ```
 
-For optional `ir_b2a -st` inspection of the native Python artifact:
+For optional `ir_b2a -st -src` inspection of the native Python artifact:
 
 ```sh
 make python_native_ir_tools_smoke
 ```
 
-For optional `ir_b2a -st` inspection of a native artifact produced through the
+For optional `ir_b2a -st -src` inspection of a native artifact produced through the
 C++ driver:
 
 ```sh

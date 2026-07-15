@@ -100,6 +100,7 @@
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
 #include "dsl_ir_image.h"
+#include "dsl_region.h"
 #include "ir_bread.h"
 #include "tracing.h"                /* TEMPORARY FOR ROBERT'S DEBUGGING */
 
@@ -1462,6 +1463,23 @@ IPA_copy_PU (PU_Info *pu, char *section_base, Output_File *outfile)
 	    base - outfile->cur_section->shdr.sh_offset;
     }
 
+    /* Copy the stable common REGION image without interpreting runtime RID. */
+    state = PU_Info_state(pu, WT_REGIONS);
+    if (state != Subsect_Missing) {
+        if (state == Subsect_Exists)
+            Set_PU_Info_state(pu, WT_REGIONS, Subsect_Written);
+        else if (state != Subsect_Written)
+            ErrMsg (EC_IR_Scn_Write, "regions", outfile->file_name);
+        subsect = section_base + PU_Info_subsect_offset(pu, WT_REGIONS);
+        outfile->file_size = ir_b_align
+                                (outfile->file_size, sizeof(mINT32), 0);
+        base = outfile->file_size;
+        ir_b_save_buf(subsect, PU_Info_subsect_size(pu, WT_REGIONS),
+                      sizeof(mINT32), 0, outfile);
+        PU_Info_subsect_offset(pu, WT_REGIONS) =
+            base - outfile->cur_section->shdr.sh_offset;
+    }
+
 }
 
 #endif /* BACK_END */
@@ -1564,6 +1582,8 @@ Write_PU_Info (PU_Info *pu)
     Temporary_Error_Phase ephase("Writing WHIRL file");
 
     WN_MAP off_map = WN_MAP_UNDEFINED;
+    BOOL region_map = PU_Info_state(pu, WT_REGIONS) == Subsect_InMem;
+    BOOL need_off_map = region_map;
 
     WN_write_symtab (pu, ir_output);
 
@@ -1572,14 +1592,19 @@ Write_PU_Info (PU_Info *pu)
     if (PU_Info_state (pu, WT_FEEDBACK) == Subsect_InMem)
 	WN_write_feedback (pu, ir_output);
 
-    if (Write_BE_Maps || Write_ALIAS_CLASS_Map || Write_ALIAS_CGNODE_Map) {
+    need_off_map = need_off_map || Write_BE_Maps || Write_ALIAS_CLASS_Map ||
+                   Write_ALIAS_CGNODE_Map;
+#endif
+    if (need_off_map) {
 	Current_Map_Tab = PU_Info_maptab(pu);
 	MEM_POOL_Push(MEM_local_nz_pool_ptr);
 	off_map = WN_MAP32_Create(MEM_local_nz_pool_ptr);
     }
-#endif
 
     WN_write_tree (pu, off_map, ir_output);
+
+    if (region_map && !DSL_Region_Write_PU(pu, off_map, ir_output))
+        ErrMsg (EC_IR_Scn_Write, "regions", ir_output->file_name);
 
 #ifdef BACK_END
     /*write out the whirl ssa info*/
@@ -1604,11 +1629,13 @@ Write_PU_Info (PU_Info *pu)
 			     WN_MAP_ALIAS_CGNODE, "alias cgnode map");
 	}
 
-	WN_MAP_Delete(off_map);
-	MEM_POOL_Pop(MEM_local_nz_pool_ptr);
     }
 
 #endif // BACK_END
+    if (need_off_map) {
+        WN_MAP_Delete(off_map);
+        MEM_POOL_Pop(MEM_local_nz_pool_ptr);
+    }
 }
 
 

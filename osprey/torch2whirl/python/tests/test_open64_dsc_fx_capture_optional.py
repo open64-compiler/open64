@@ -146,9 +146,9 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 entry_body_marker.2=common.add
                 operator.0=common.add
                 tensor_type.0=input0_type:float32:[2,3]
-                tensor_descriptor.0=float32:2:[2,3]:input0
+                tensor_descriptor.0=float32:2:[2,3]:
                 tensor_type.1=input1_type:float32:[2,3]
-                tensor_descriptor.1=float32:2:[2,3]:input1
+                tensor_descriptor.1=float32:2:[2,3]:
                 value.0=input0:input0_type:model_input
                 value_metadata.0=input0:model_input
                 value.1=input1:input1_type:model_input
@@ -211,9 +211,9 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 entry_body_marker.2=common.matmul
                 operator.0=common.matmul
                 tensor_type.0=input0_type:float32:[2,3]
-                tensor_descriptor.0=float32:2:[2,3]:input0
+                tensor_descriptor.0=float32:2:[2,3]:
                 tensor_type.1=input1_type:float32:[3,4]
-                tensor_descriptor.1=float32:2:[3,4]:input1
+                tensor_descriptor.1=float32:2:[3,4]:
                 value.0=input0:input0_type:model_input
                 value_metadata.0=input0:model_input
                 value.1=input1:input1_type:model_input

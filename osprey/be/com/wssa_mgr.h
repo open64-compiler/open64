@@ -570,6 +570,7 @@ public:
     _cur_ver = rit._cur_ver;
     _def_wn = rit._def_wn;
     _def_type = rit._def_type;
+    return *this;
   }
 };
 
