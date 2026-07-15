@@ -1118,6 +1118,16 @@ compiled CG region while preserving its inspectable VHO evidence.
    gatekeeper rules, logical dumps, and lowering to WOPT `MU`/`CHI` semantics.
    Test runtime status, random state, and a mutable-buffer case.
 
+   The normative operand ownership, alias, and memory-behavior vocabulary is
+   defined in `doc/WHIRL-DSL-OPERAND-MEMORY-BEHAVIOR.md`.  Item 18 promotes
+   portable declarations such as `READ`, `MODIFY`, `UNIQUE_OWNERSHIP`,
+   `FRESH_RESULT`, `VIEW_OF_KID(n)`, and `INPLACE_UPDATE_KID(n)` into
+   `common/com`; it does not move backend `POINTS_TO`, restricted maps,
+   `ALIAS_MANAGER`, or WOPT `MU`/`CHI` classes out of `be/com` and `be/opt`.
+   The planned implementation owner is
+   `osprey/common/com/dsl_memory_behavior.{h,cxx}` with builder, gatekeeper,
+   mapped-image, printer, and VHO-lowering integration.
+
    The first infrastructure slice publishes opaque state handles and fixed
    pointer-free state/effect row contracts.  State objects use stable PU and
    symbol identities; effect rows identify a logical DSL node, state object,
