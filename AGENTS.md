@@ -147,6 +147,75 @@ builder should own all WHIRL-specific construction.
    depend on backend code generation. Backend, runtime, and kernel lowering
    happen after gatekeeper verification.
 
+## Domain Ingestion Staging
+
+Use this workflow when adding a model family or a new domain to `openpy`:
+
+1. Add a small, deterministic, dependency-light source model fixture.
+2. Capture the real frontend graph and produce a reviewable operator census.
+3. Classify every captured operation as a common substrate operation, domain
+   expression, region contract, state/effect, compiler metadata, constant, or
+   explicit unsupported case.
+4. Review and publish stable native names, versions, operands, attributes,
+   descriptor rules, effects, gatekeeper checks, and lowering ownership in the
+   WHIRL infrastructure plan.
+5. Implement the native builder, mapped-image, reader/writer, logical printer,
+   gatekeeper, and lowering support required by the published contract.
+6. Migrate the frontend from census/mock handling to opaque native APIs. The
+   frontend must not learn WN layout or private physical DSL encodings.
+7. Certify the binary artifact, external data, `ir_b2a -st -src` trace, and
+   `openpy -O0` path across a process boundary.
+
+Do not allocate DSL opcodes or broaden native WHIRL contracts solely from an
+expected model architecture. First capture a representative source model and
+review its semantic operator census. Conversely, do not force a captured model
+into existing operators when doing so would erase domain semantics. Frontend
+capture discovers the requirements; common/com review remains authoritative
+for native contracts and binary WHIRL behavior.
+
+Maintain a separate frontend ingestion plan for each substantial domain or
+model family and link it to `doc/WHIRL-DSL-INFRASTRUCTURE.md`. The frontend plan
+owns capture, mapping, artifacts, and diagnostics; the infrastructure plan owns
+native representation, compatibility, verification, inspection, and lowering.
+
+## Reviewable Test Artifacts
+
+1. Human review of compiler artifacts is part of the development and
+   validation process. Tests that produce meaningful WHIRL evidence should
+   retain the binary `.B` file, `ir_b2a -st -src` output, requested phase `.t`
+   traces, side payloads, and relevant diagnostics after the test exits.
+2. Clean the designated artifact directory at the start of the next run, not
+   at the end of the current run. A completed run must leave its evidence
+   available until it is replaced by a later run.
+3. Docker tests must write reviewable artifacts through an explicit host bind
+   mount. Do not leave the only copy in a container filesystem or a container
+   temporary directory that disappears when Docker exits.
+4. Keep artifact families in clearly named per-test or per-stage directories
+   so one smoke test does not erase another test's evidence.
+5. Failed runs must not leave partial output with the name of a valid `.B`
+   artifact. Preserve failure logs and diagnostics when useful, while keeping
+   artifact publication atomic.
+6. At the end of validation, report the absolute host paths of retained
+   artifacts so reviewers can inspect them directly.
+7. Generated review artifacts are normally local build evidence. Do not add
+   them to Git unless the task explicitly requests checked-in golden files or
+   review fixtures.
+8. When completing a task that produces or validates a compiler trace, include
+   a directly viewable link to the retained trace in the final report. Show a
+   short representative excerpt or summarize the concrete evidence it contains;
+   do not report trace-based validation as complete using only a pass/fail
+   statement.
+9. Use both `-st` and `-src` whenever running `ir_b2a` for validation or human
+   review. Preserve or mount the original source file at the pathname recorded
+   in the binary WHIRL DST so `-src` can interleave source statements with the
+   IR. If the active `ir_b2a` build does not yet support `-src`, treat that as a
+   tooling gap to fix; do not silently omit source cross-reference evidence.
+10. The `ir_b2a` output must use the input `.B` file's stem, for example
+   `ir_b2a -st -src resnet.B resnet.T`. On case-insensitive filesystems where
+   `resnet.T` collides with a driver-produced `resnet.t`, preserve the phase
+   trace under a descriptive non-colliding name such as `resnet.vho.t` before
+   producing `resnet.T`.
+
 ## Near-Term Coding Priorities
 
 1. Stabilize native DSL/common infrastructure before adding Python package
