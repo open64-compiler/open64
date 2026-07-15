@@ -94,7 +94,8 @@ typedef enum {
 
 typedef enum {
     OPEN64_DSL_OUTPUT_SEMANTIC_UNSPECIFIED = 0,
-    OPEN64_DSL_OUTPUT_SEMANTIC_LOGITS = 1
+    OPEN64_DSL_OUTPUT_SEMANTIC_LOGITS = 1,
+    OPEN64_DSL_OUTPUT_SEMANTIC_TOKEN_LOGITS = 2
 } OPEN64_DSL_RUNTIME_OUTPUT_SEMANTIC;
 
 typedef enum {
@@ -248,6 +249,40 @@ OPEN64_DSL_TENSOR_HANDLE __open64_dsl_global_avg_pool2d_v1
                                  uint32_t output_h,
                                  uint32_t output_w,
                                  uint32_t reduction_axes);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_reshape_v1
+                                (OPEN64_DSL_TENSOR_HANDLE kid0,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_transpose_v1
+                                (OPEN64_DSL_TENSOR_HANDLE kid0,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
+                                 const char *permutation);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_token_embedding_v1
+                                (OPEN64_DSL_TENSOR_HANDLE token_ids,
+                                 OPEN64_DSL_TENSOR_HANDLE weight,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_rms_norm_v1
+                                (OPEN64_DSL_TENSOR_HANDLE kid0,
+                                 OPEN64_DSL_TENSOR_HANDLE scale,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
+                                 uint64_t epsilon_bits,
+                                 int32_t axis);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_rotary_embedding_v1
+                                (OPEN64_DSL_TENSOR_HANDLE kid0,
+                                 OPEN64_DSL_TENSOR_HANDLE cosine,
+                                 OPEN64_DSL_TENSOR_HANDLE sine,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_attention_v1
+                                (OPEN64_DSL_TENSOR_HANDLE query,
+                                 OPEN64_DSL_TENSOR_HANDLE key,
+                                 OPEN64_DSL_TENSOR_HANDLE value,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
+                                 uint32_t query_heads,
+                                 uint32_t kv_heads,
+                                 uint32_t head_dim);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_swiglu_v1
+                                (OPEN64_DSL_TENSOR_HANDLE gate,
+                                 OPEN64_DSL_TENSOR_HANDLE up,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);
 
 #ifdef __cplusplus
 }

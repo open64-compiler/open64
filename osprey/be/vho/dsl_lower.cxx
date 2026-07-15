@@ -61,6 +61,13 @@ typedef struct {
     ST *runtime_batch_norm_infer;
     ST *runtime_max_pool2d;
     ST *runtime_global_avg_pool2d;
+    ST *runtime_reshape;
+    ST *runtime_transpose;
+    ST *runtime_token_embedding;
+    ST *runtime_rms_norm;
+    ST *runtime_rotary_embedding;
+    ST *runtime_attention;
+    ST *runtime_swiglu;
 } VHO_DSL_LOWER_CONTEXT;
 
 typedef struct {
@@ -208,6 +215,7 @@ VHO_DSL_Runtime_Layout (const char *name, UINT32 *value)
     if (name == NULL || name[0] == '\0')
         *value = OPEN64_DSL_LAYOUT_UNSPECIFIED;
     else if (strcmp(name, "contiguous") == 0 ||
+             strcmp(name, "row_major") == 0 ||
              strcmp(name, "NCHW") == 0 || strcmp(name, "OIHW") == 0 ||
              strcmp(name, "OI") == 0 || strcmp(name, "C") == 0)
         *value = OPEN64_DSL_LAYOUT_CONTIGUOUS;
@@ -722,6 +730,34 @@ VHO_DSL_Runtime_Function
         slot = &context->runtime_global_avg_pool2d;
         name = "__open64_dsl_global_avg_pool2d_v1";
         break;
+    case OPR_DSLRESHAPE:
+        slot = &context->runtime_reshape;
+        name = "__open64_dsl_reshape_v1";
+        break;
+    case OPR_DSLTRANSPOSE:
+        slot = &context->runtime_transpose;
+        name = "__open64_dsl_transpose_v1";
+        break;
+    case OPR_DSLTOKENEMBEDDING:
+        slot = &context->runtime_token_embedding;
+        name = "__open64_dsl_token_embedding_v1";
+        break;
+    case OPR_DSLRMSNORM:
+        slot = &context->runtime_rms_norm;
+        name = "__open64_dsl_rms_norm_v1";
+        break;
+    case OPR_DSLROTARYEMBEDDING:
+        slot = &context->runtime_rotary_embedding;
+        name = "__open64_dsl_rotary_embedding_v1";
+        break;
+    case OPR_DSLATTENTION:
+        slot = &context->runtime_attention;
+        name = "__open64_dsl_attention_v1";
+        break;
+    case OPR_DSLSWIGLU:
+        slot = &context->runtime_swiglu;
+        name = "__open64_dsl_swiglu_v1";
+        break;
     default:
         return NULL;
     }
@@ -943,6 +979,20 @@ VHO_DSL_Build_Runtime_Call
         parameter_count = 11;
     else if (dsl_operator == OPR_DSLGLOBALAVGPOOL2D)
         parameter_count = 5;
+    else if (dsl_operator == OPR_DSLRESHAPE)
+        parameter_count = 2;
+    else if (dsl_operator == OPR_DSLTRANSPOSE)
+        parameter_count = 3;
+    else if (dsl_operator == OPR_DSLTOKENEMBEDDING)
+        parameter_count = 3;
+    else if (dsl_operator == OPR_DSLRMSNORM)
+        parameter_count = 5;
+    else if (dsl_operator == OPR_DSLROTARYEMBEDDING)
+        parameter_count = 4;
+    else if (dsl_operator == OPR_DSLATTENTION)
+        parameter_count = 7;
+    else if (dsl_operator == OPR_DSLSWIGLU)
+        parameter_count = 3;
     else
         return FALSE;
 
@@ -970,6 +1020,10 @@ VHO_DSL_Build_Runtime_Call
                                             (WN_LdidPreg(Pointer_Mtype, preg));
         }
     }
+
+    if (dsl_operator == OPR_DSLLINEAR && annotation.version == 3)
+        WN_kid(call, parameter++) = VHO_DSL_Pointer_Parm
+                                        (WN_Intconst(Pointer_Mtype, 0));
 
     WN_kid(call, parameter++) = VHO_DSL_Pointer_Parm
                                     (WN_Lda(Pointer_Mtype, 0, descriptor));
@@ -1050,11 +1104,17 @@ VHO_DSL_Build_Runtime_Call
     } else if (dsl_operator == OPR_DSLOUTPUTLOGITS) {
         char semantic[32];
         if (!VHO_DSL_Payload_Value(annotation.payload, "attr.semantic",
-                                   semantic, sizeof(semantic)) ||
-            strcmp(semantic, "logits") != 0)
+                                   semantic, sizeof(semantic)))
             return FALSE;
-        WN_kid(call, parameter++) = VHO_DSL_U4_Parm
-                                        (OPEN64_DSL_OUTPUT_SEMANTIC_LOGITS);
+        UINT32 output_semantic;
+        if (strcmp(semantic, "logits") == 0)
+            output_semantic = OPEN64_DSL_OUTPUT_SEMANTIC_LOGITS;
+        else if (annotation.version == 3 &&
+                 strcmp(semantic, "token_logits") == 0)
+            output_semantic = OPEN64_DSL_OUTPUT_SEMANTIC_TOKEN_LOGITS;
+        else
+            return FALSE;
+        WN_kid(call, parameter++) = VHO_DSL_U4_Parm(output_semantic);
     } else if (dsl_operator == OPR_DSLLINEAR) {
         BOOL has_bias;
         BOOL transpose_input;
@@ -1176,6 +1236,39 @@ VHO_DSL_Build_Runtime_Call
         WN_kid(call, parameter++) = VHO_DSL_U4_Parm(output_size[1]);
         WN_kid(call, parameter++) = VHO_DSL_U4_Parm
                                         (OPEN64_DSL_REDUCTION_AXES_SPATIAL);
+    } else if (dsl_operator == OPR_DSLTRANSPOSE) {
+        char permutation[256];
+        if (!VHO_DSL_Payload_Value
+                 (annotation.payload, "attr.permutation", permutation,
+                  sizeof(permutation)))
+            return FALSE;
+        WN_kid(call, parameter++) = VHO_DSL_Pointer_Parm
+                                        (WN_LdaString
+                                             (permutation, 0,
+                                              strlen(permutation) + 1));
+    } else if (dsl_operator == OPR_DSLRMSNORM) {
+        UINT64 epsilon_bits;
+        INT32 axis;
+        if (!VHO_DSL_Payload_Double_Bits
+                 (annotation.payload, "attr.epsilon", &epsilon_bits) ||
+            !VHO_DSL_Payload_I4(annotation.payload, "attr.axis", &axis))
+            return FALSE;
+        WN_kid(call, parameter++) = VHO_DSL_U8_Parm(epsilon_bits);
+        WN_kid(call, parameter++) = VHO_DSL_I4_Parm(axis);
+    } else if (dsl_operator == OPR_DSLATTENTION) {
+        UINT32 query_heads;
+        UINT32 kv_heads;
+        UINT32 head_dim;
+        if (!VHO_DSL_Payload_U4
+                 (annotation.payload, "attr.query_heads", &query_heads) ||
+            !VHO_DSL_Payload_U4
+                 (annotation.payload, "attr.kv_heads", &kv_heads) ||
+            !VHO_DSL_Payload_U4
+                 (annotation.payload, "attr.head_dim", &head_dim))
+            return FALSE;
+        WN_kid(call, parameter++) = VHO_DSL_U4_Parm(query_heads);
+        WN_kid(call, parameter++) = VHO_DSL_U4_Parm(kv_heads);
+        WN_kid(call, parameter++) = VHO_DSL_U4_Parm(head_dim);
     }
 
     if (parameter != parameter_count)
@@ -1323,13 +1416,14 @@ VHO_DSL_Lower_Definition
 
     if (!DSL_WN_Get_Logical_Opcode
              (native, &logical_opcode, context->diagnostic) ||
-        !DSL_Operator_Get_Info(logical_opcode.dsl_operator, &info)) {
+        !DSL_Operator_Get_Info_Version
+             (logical_opcode.dsl_operator,
+              logical_opcode.effective_version, &info)) {
         ++context->result.malformed_node_count;
         return VHO_DSL_Lower_Report
                    (context, "native node has no supported logical operator");
     }
-    if (logical_opcode.effective_version != info.version ||
-        info.lowering_model != DSL_LOWERING_MODEL_RUNTIME_CALL) {
+    if (info.lowering_model != DSL_LOWERING_MODEL_RUNTIME_CALL) {
         ++context->result.unsupported_node_count;
         return VHO_DSL_Lower_Report
                    (context, "%s.v%u has no executable VHO lowering route "
@@ -1410,6 +1504,13 @@ VHO_DSL_Lower_Tree
                            (context->pu_info, statement)) {
                 if (!VHO_DSL_Lower_Tree(statement, context)) {
                     valid = FALSE;
+                } else if (!DSL_Region_Consume_WN
+                                (context->pu_info, statement)) {
+                    valid = FALSE;
+                    ++context->result.malformed_node_count;
+                    VHO_DSL_Lower_Report
+                        (context,
+                         "could not consume lowered managed REGION record");
                 } else {
                     WN *body = WN_region_body(statement);
                     for (WN *child = WN_first(body); child != NULL; ) {
@@ -1508,6 +1609,13 @@ VHO_DSL_Lower_Verified_Program_Unit
     context.runtime_batch_norm_infer = NULL;
     context.runtime_max_pool2d = NULL;
     context.runtime_global_avg_pool2d = NULL;
+    context.runtime_reshape = NULL;
+    context.runtime_transpose = NULL;
+    context.runtime_token_embedding = NULL;
+    context.runtime_rms_norm = NULL;
+    context.runtime_rotary_embedding = NULL;
+    context.runtime_attention = NULL;
+    context.runtime_swiglu = NULL;
 
     BOOL valid = pu_info != NULL && tree != NULL;
     if (valid)

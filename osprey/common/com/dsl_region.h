@@ -59,13 +59,17 @@ extern DSL_REGION DSL_Region_Create (PU_Info *pu, DSL_REGION parent,
                                      const char *contract_name,
                                      UINT32 contract_version);
 extern BOOL DSL_Region_Append_Statement (DSL_REGION region, WN *statement);
+extern BOOL DSL_Region_Append_Child (DSL_REGION parent, DSL_REGION child);
 extern BOOL DSL_Region_Append_To_PU (DSL_REGION region);
+extern BOOL DSL_Region_Set_Metadata (DSL_REGION region, const char *key,
+                                     const char *value);
 extern BOOL DSL_Region_Declare_Symbol (DSL_REGION region, ST_IDX st,
                                       UINT32 roles, UINT32 ordinal,
                                       UINT32 flags);
 extern BOOL DSL_Region_Set_Source_Position (DSL_REGION region, SRCPOS spos);
 extern WN *DSL_Region_WN (DSL_REGION region);
 extern BOOL DSL_Region_Is_Managed_WN (PU_Info *pu, const WN *wn);
+extern BOOL DSL_Region_Consume_WN (PU_Info *pu, const WN *wn);
 extern BOOL DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic);
 extern void DSL_Region_Print_PU (FILE *file, PU_Info *pu);
 

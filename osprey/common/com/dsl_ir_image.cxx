@@ -152,9 +152,9 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
             !DSL_IR_Image_String_Id_Valid(record.stable_name, TRUE) ||
             !DSL_IR_Image_String_Id_Valid(record.attribute_schema, FALSE) ||
             !DSL_IR_Image_String_Id_Valid(record.diagnostic_prefix, FALSE) ||
-            !DSL_Operator_Get_Info
-                 ((DSL_OPERATOR)record.logical_operator, &info) ||
-            info.version != record.version ||
+            !DSL_Operator_Get_Info_Version
+                 ((DSL_OPERATOR)record.logical_operator, record.version,
+                  &info) ||
             strcmp(Index_To_Str(record.logical_name), info.logical_name) != 0 ||
             strcmp(Index_To_Str(record.stable_name), info.stable_name) != 0)
             return DSL_IR_Image_Report
