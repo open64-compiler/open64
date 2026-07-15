@@ -91,7 +91,7 @@ esac
 require_executable "$producer"
 require_executable "$ir_b2a"
 mkdir -p "$artifact_dir"
-find "$artifact_dir" -mindepth 1 -maxdepth 1 -type f -delete
+find "$artifact_dir" -mindepth 1 -delete
 
 OPEN64_DSL_LLAMA2_REGIONS_ONLY=1 \
 OPEN64_DSL_LLAMA2_REGION_ARTIFACT="$artifact_dir/llama2.B" \
