@@ -48,13 +48,24 @@ typedef struct {
 
 static std::vector<DSL_BUILDER_VALUE_RECORD> DSL_builder_value_registry;
 
+struct dsl_builder_state {
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_STATE_OBJECT_ID image_state_id;
+    ST_IDX st;
+};
+
+static std::vector<dsl_builder_state *> DSL_builder_state_registry;
+
 static void
 DSL_Builder_Reset_Program (void)
 {
+    for (UINT32 i = 0; i < DSL_builder_state_registry.size(); ++i)
+        delete DSL_builder_state_registry[i];
     DSL_Builder_PU_Root = NULL;
     DSL_Builder_PU_Last = NULL;
     DSL_Builder_Result_Number = 0;
     DSL_builder_value_registry.clear();
+    DSL_builder_state_registry.clear();
     DSL_IR_Image_Reset();
     DSL_Region_Reset();
 }
@@ -2514,6 +2525,90 @@ DSL_Builder_Set_Region_Metadata
          const char *value)
 {
     return DSL_Region_Set_Metadata(region, key, value);
+}
+
+DSL_BUILDER_STATE
+DSL_Builder_Declare_State_Object
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         const char *name,
+         DSL_STATE_KIND kind)
+{
+    if (DSL_Builder_PU_Body(pu) == NULL || name == NULL || name[0] == '\0' ||
+        kind < DSL_STATE_KIND_RUNTIME_STATUS ||
+        kind > DSL_STATE_KIND_OPAQUE)
+        return NULL;
+    for (UINT32 i = 0; i < DSL_builder_state_registry.size(); ++i) {
+        dsl_builder_state *state = DSL_builder_state_registry[i];
+        if (state->pu == pu &&
+            strcmp(ST_name(St_Table[state->st]), name) == 0)
+            return NULL;
+    }
+
+    ST_IDX st = DSL_Builder_Create_Symbol
+                    (name, MTYPE_To_TY(MTYPE_U8), CLASS_VAR,
+                     SCLASS_AUTO, EXPORT_LOCAL);
+    if (ST_IDX_index(st) == 0)
+        return NULL;
+    Set_ST_is_temp_var(St_Table[st]);
+    Set_ST_addr_passed(St_Table[st]);
+
+    DSL_STATE_OBJECT_RECORD record;
+    DSL_State_Object_Record_Init(&record);
+    record.kind = kind;
+    record.owner_pu_st = PU_Info_proc_sym(pu);
+    record.st = st;
+    record.name = Save_Str(name);
+    DSL_STATE_OBJECT_ID id = DSL_Effect_Image_Add_State_Object(&record);
+    if (id == DSL_STATE_OBJECT_INVALID_ID)
+        return NULL;
+
+    dsl_builder_state *state = new dsl_builder_state;
+    state->pu = pu;
+    state->image_state_id = id;
+    state->st = st;
+    DSL_builder_state_registry.push_back(state);
+    return state;
+}
+
+BOOL
+DSL_Builder_Add_State_Effect
+        (DSL_BUILDER_VALUE value,
+         DSL_BUILDER_STATE state,
+         DSL_STATE_EFFECT_KIND effect_kind)
+{
+    DSL_BUILDER_VALUE_RECORD *value_record =
+        DSL_Builder_Find_Value_Record(value);
+    DSL_IR_VALUE_RECORD image_value;
+    if (value_record == NULL || state == NULL ||
+        (effect_kind != DSL_STATE_EFFECT_READ &&
+         effect_kind != DSL_STATE_EFFECT_MODIFY) ||
+        !DSL_IR_Image_Get_Value(value_record->image_value_id, &image_value) ||
+        image_value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+        return FALSE;
+
+    UINT32 ordinal = 0;
+    for (UINT32 i = 1; i <= DSL_Effect_Image_State_Effect_Count(); ++i) {
+        DSL_STATE_EFFECT_RECORD previous;
+        if (!DSL_Effect_Image_Get_State_Effect(i, &previous))
+            return FALSE;
+        if (previous.owner_node_id == image_value.producer_node_id)
+            ++ordinal;
+    }
+
+    DSL_STATE_EFFECT_RECORD record;
+    DSL_State_Effect_Record_Init(&record);
+    record.owner_node_id = image_value.producer_node_id;
+    record.state_object_id = state->image_state_id;
+    record.effect_kind = effect_kind;
+    record.ordinal = ordinal;
+    return DSL_Effect_Image_Add_State_Effect(&record) !=
+           DSL_STATE_EFFECT_INVALID_ID;
+}
+
+ST_IDX
+DSL_Builder_Get_State_Symbol (DSL_BUILDER_STATE state)
+{
+    return state == NULL ? ST_IDX_ZERO : state->st;
 }
 
 BOOL

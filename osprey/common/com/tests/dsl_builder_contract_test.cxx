@@ -3047,6 +3047,118 @@ Check_Structured_Region_Builder(void)
     return failed;
 }
 
+static int
+Check_Abstract_State_Effects(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_VALUE values[3];
+    DSL_BUILDER_VALUE add_kids[2];
+    DSL_BUILDER_VALUE add;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_STATE runtime_status;
+    DSL_BUILDER_STATE random_state;
+    DSL_BUILDER_STATE mutable_buffer;
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID add_id;
+    TY_IDX tensor_ty;
+    int failed = 0;
+
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "int32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[1]";
+    descriptor.representation.layout = "contiguous";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    common_id = DSL_Domain_Find("common");
+    add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("abstract_state_i32", MTYPE_To_TY(MTYPE_I4),
+                     &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("abstract_state_effect_contract");
+    values[0] = DSL_Builder_Create_Model_Input
+                    ("status_query", tensor_ty, 0);
+    values[1] = DSL_Builder_Create_Model_Input
+                    ("random_step", tensor_ty, 1);
+    values[2] = DSL_Builder_Create_Model_Input
+                    ("buffer_update", tensor_ty, 2);
+    runtime_status = DSL_Builder_Declare_State_Object
+                         (pu, "runtime_status", DSL_STATE_KIND_RUNTIME_STATUS);
+    random_state = DSL_Builder_Declare_State_Object
+                       (pu, "random_state", DSL_STATE_KIND_RANDOM);
+    mutable_buffer = DSL_Builder_Declare_State_Object
+                         (pu, "mutable_buffer",
+                          DSL_STATE_KIND_MUTABLE_BUFFER);
+
+    if (pu == NULL || tensor_ty == TY_IDX_ZERO || add_id == DSL_OPCODE_INVALID_ID ||
+        values[0] == NULL || values[1] == NULL || values[2] == NULL ||
+        runtime_status == NULL || random_state == NULL ||
+        mutable_buffer == NULL) {
+        fprintf(stderr, "abstract-state builder construction failed: "
+                "pu=%d ty=%u add=%u values=%d/%d/%d states=%d/%d/%d "
+                "state_rows=%u effect_rows=%u\n", pu != NULL,
+                (UINT32)tensor_ty, add_id, values[0] != NULL,
+                values[1] != NULL, values[2] != NULL,
+                runtime_status != NULL, random_state != NULL,
+                mutable_buffer != NULL,
+                DSL_Effect_Image_State_Object_Count(),
+                DSL_Effect_Image_State_Effect_Count());
+        return 1;
+    }
+
+    for (UINT32 i = 0; i < 3; ++i) {
+        if (!DSL_Builder_Append_PU_Value(pu, values[i]))
+            failed = 1;
+    }
+    add_kids[0] = values[0];
+    add_kids[1] = values[1];
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    add = DSL_Builder_Create_Operator_With_Result
+              (add_id, 1, add_kids, 2, &attribute, 1,
+               "pure_add", tensor_ty);
+    if (add == NULL || !DSL_Builder_Append_PU_Value(pu, add) ||
+        DSL_Builder_Add_State_Effect
+            (values[0], runtime_status, DSL_STATE_EFFECT_READ) ||
+        DSL_Builder_Add_State_Effect
+            (values[1], random_state, DSL_STATE_EFFECT_MODIFY) ||
+        DSL_Builder_Add_State_Effect
+            (values[2], mutable_buffer, DSL_STATE_EFFECT_MODIFY) ||
+        DSL_Builder_Add_State_Effect
+            (add, runtime_status, DSL_STATE_EFFECT_READ)) {
+        fprintf(stderr, "pure-operator state-effect rejection changed\n");
+        failed = 1;
+    }
+
+    DSL_GATEKEEPER_RESULT gatekeeper;
+    if (!DSL_Effect_Image_Validate(stderr) ||
+        DSL_Effect_Image_State_Object_Count() != 3 ||
+        DSL_Effect_Image_State_Effect_Count() != 0 ||
+        !DSL_Gatekeeper_Verify_Program(pu, stderr, &gatekeeper)) {
+        fprintf(stderr, "abstract-state verification failed\n");
+        failed = 1;
+    }
+
+    const char *artifact = getenv("OPEN64_DSL_STATE_EFFECT_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+        request.path = artifact;
+        request.flags = 0;
+        if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+            fprintf(stderr, "abstract-state mapped image failed\n");
+            failed = 1;
+        }
+    }
+    return failed;
+}
+
 int
 main(void)
 {
@@ -3066,6 +3178,8 @@ main(void)
                Check_Llama2_Decode_Gatekeeper_Profile();
     if (getenv("OPEN64_DSL_STRUCTURED_REGION_ONLY") != NULL)
         return Check_Structured_Region_Builder();
+    if (getenv("OPEN64_DSL_STATE_EFFECT_ONLY") != NULL)
+        return Check_Abstract_State_Effects();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -3079,6 +3193,7 @@ main(void)
     failed |= Check_Llama2_Decode_Contract_Registry();
     failed |= Check_Llama2_Decode_Gatekeeper_Profile();
     failed |= Check_Structured_Region_Builder();
+    failed |= Check_Abstract_State_Effects();
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
 

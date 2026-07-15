@@ -16,12 +16,16 @@ typedef SEGMENTED_ARRAY<DSL_IR_ATTRIBUTE_RECORD> DSL_IR_ATTRIBUTE_TABLE;
 typedef SEGMENTED_ARRAY<DSL_IR_VALUE_RECORD> DSL_IR_VALUE_TABLE;
 typedef SEGMENTED_ARRAY<DSL_IR_VALUE_REFERENCE_RECORD>
     DSL_IR_VALUE_REFERENCE_TABLE;
+typedef SEGMENTED_ARRAY<DSL_STATE_OBJECT_RECORD> DSL_STATE_OBJECT_TABLE;
+typedef SEGMENTED_ARRAY<DSL_STATE_EFFECT_RECORD> DSL_STATE_EFFECT_TABLE;
 
 static DSL_IR_OPCODE_DESCRIPTOR_TABLE DSL_ir_opcode_descriptor_table;
 static DSL_IR_NODE_TABLE DSL_ir_node_table;
 static DSL_IR_ATTRIBUTE_TABLE DSL_ir_attribute_table;
 static DSL_IR_VALUE_TABLE DSL_ir_value_table;
 static DSL_IR_VALUE_REFERENCE_TABLE DSL_ir_value_reference_table;
+static DSL_STATE_OBJECT_TABLE DSL_state_object_table;
+static DSL_STATE_EFFECT_TABLE DSL_state_effect_table;
 
 typedef struct {
     const DSL_IR_IMAGE_HEADER *header;
@@ -46,6 +50,12 @@ typedef char DSL_IR_Value_Size_Check
 typedef char DSL_IR_Value_Reference_Size_Check
     [sizeof(DSL_IR_VALUE_REFERENCE_RECORD) ==
         DSL_IR_VALUE_REFERENCE_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Effect_Image_Header_Size_Check
+    [sizeof(DSL_EFFECT_IMAGE_HEADER) == DSL_EFFECT_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_State_Object_Size_Check
+    [sizeof(DSL_STATE_OBJECT_RECORD) == DSL_STATE_OBJECT_RECORD_SIZE ? 1 : -1];
+typedef char DSL_State_Effect_Size_Check
+    [sizeof(DSL_STATE_EFFECT_RECORD) == DSL_STATE_EFFECT_RECORD_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -75,6 +85,8 @@ DSL_IR_Image_Reset (void)
     DSL_ir_attribute_table.Delete_down_to(0);
     DSL_ir_value_table.Delete_down_to(0);
     DSL_ir_value_reference_table.Delete_down_to(0);
+    DSL_state_object_table.Delete_down_to(0);
+    DSL_state_effect_table.Delete_down_to(0);
 }
 
 void
@@ -633,4 +645,259 @@ DSL_IR_Image_Get_Value_Reference
          DSL_IR_VALUE_REFERENCE_RECORD *record)
 {
     return DSL_IR_Table_Get (DSL_ir_value_reference_table, id, record);
+}
+
+void
+DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset (header, 0, sizeof(*header));
+    header->magic = DSL_EFFECT_IMAGE_MAGIC;
+    header->version = DSL_EFFECT_IMAGE_VERSION;
+    header->state_object_count = DSL_state_object_table.Size();
+    header->state_effect_count = DSL_state_effect_table.Size();
+}
+
+void
+DSL_Effect_Image_Reset (void)
+{
+    DSL_state_object_table.Delete_down_to(0);
+    DSL_state_effect_table.Delete_down_to(0);
+}
+
+BOOL
+DSL_Effect_Image_Has_Records (void)
+{
+    return DSL_state_object_table.Size() != 0 ||
+           DSL_state_effect_table.Size() != 0;
+}
+
+static BOOL
+DSL_Effect_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf (diagnostic, "DSL effect image error: %s id=%u\n",
+                 message, id);
+    return FALSE;
+}
+
+static BOOL
+DSL_Effect_Image_Valid_State_Kind (UINT32 kind)
+{
+    return kind >= DSL_STATE_KIND_RUNTIME_STATUS &&
+           kind <= DSL_STATE_KIND_OPAQUE;
+}
+
+static BOOL
+DSL_Effect_Image_Valid_Effect_Kind (UINT32 kind)
+{
+    return kind == DSL_STATE_EFFECT_READ ||
+           kind == DSL_STATE_EFFECT_MODIFY;
+}
+
+BOOL
+DSL_Effect_Image_Validate (FILE *diagnostic)
+{
+    for (UINT32 i = 0; i < DSL_state_object_table.Size(); ++i) {
+        const DSL_STATE_OBJECT_RECORD &record = DSL_state_object_table[i];
+        if (record.id != i + 1 ||
+            !DSL_Effect_Image_Valid_State_Kind(record.kind) ||
+            ST_IDX_index(record.owner_pu_st) == 0 ||
+            ST_IDX_index(record.st) == 0 ||
+            !DSL_IR_Image_String_Id_Valid(record.name, TRUE) ||
+            record.reserved0 != 0 || record.reserved1 != 0)
+            return DSL_Effect_Image_Report
+                       (diagnostic, "invalid state object", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            const DSL_STATE_OBJECT_RECORD &previous =
+                DSL_state_object_table[j];
+            if (previous.owner_pu_st == record.owner_pu_st &&
+                (previous.st == record.st || previous.name == record.name))
+                return DSL_Effect_Image_Report
+                           (diagnostic, "duplicate state object", i + 1);
+        }
+    }
+
+    for (UINT32 i = 0; i < DSL_state_effect_table.Size(); ++i) {
+        const DSL_STATE_EFFECT_RECORD &record = DSL_state_effect_table[i];
+        UINT32 expected_ordinal = 0;
+        if (record.id != i + 1 || record.owner_node_id == 0 ||
+            record.owner_node_id > DSL_ir_node_table.Size() ||
+            record.state_object_id == 0 ||
+            record.state_object_id > DSL_state_object_table.Size() ||
+            !DSL_Effect_Image_Valid_Effect_Kind(record.effect_kind))
+            return DSL_Effect_Image_Report
+                       (diagnostic, "invalid state effect", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            const DSL_STATE_EFFECT_RECORD &previous =
+                DSL_state_effect_table[j];
+            if (previous.owner_node_id == record.owner_node_id) {
+                ++expected_ordinal;
+                if (previous.state_object_id == record.state_object_id)
+                    return DSL_Effect_Image_Report
+                               (diagnostic, "duplicate node-state effect",
+                                i + 1);
+            }
+        }
+        if (record.ordinal != expected_ordinal)
+            return DSL_Effect_Image_Report
+                       (diagnostic, "invalid state-effect ordinal", i + 1);
+        const DSL_IR_NODE_RECORD &node =
+            DSL_ir_node_table[record.owner_node_id - 1];
+        const DSL_IR_OPCODE_DESCRIPTOR_RECORD &descriptor =
+            DSL_ir_opcode_descriptor_table[node.opcode_descriptor_id - 1];
+        if (descriptor.effect_model == DSL_EFFECT_MODEL_PURE)
+            return DSL_Effect_Image_Report
+                       (diagnostic, "pure node has state effect", i + 1);
+    }
+    return TRUE;
+}
+
+BOOL
+DSL_Effect_Image_Load_Mapped
+        (const void *section_base,
+         UINT64 section_size,
+         FILE *diagnostic)
+{
+    if (section_base == NULL || section_size < DSL_EFFECT_IMAGE_HEADER_SIZE)
+        return DSL_Effect_Image_Report
+                   (diagnostic, "section is truncated", 0);
+
+    const char *cursor = (const char *)section_base;
+    const DSL_EFFECT_IMAGE_HEADER *header =
+        (const DSL_EFFECT_IMAGE_HEADER *)cursor;
+    UINT64 expected_size = DSL_EFFECT_IMAGE_HEADER_SIZE;
+    if (header->magic != DSL_EFFECT_IMAGE_MAGIC ||
+        header->version != DSL_EFFECT_IMAGE_VERSION || header->flags != 0 ||
+        header->reserved != 0 ||
+        !DSL_IR_Image_Add_Section_Size
+             (&expected_size, header->state_object_count,
+              DSL_STATE_OBJECT_RECORD_SIZE) ||
+        !DSL_IR_Image_Add_Section_Size
+             (&expected_size, header->state_effect_count,
+              DSL_STATE_EFFECT_RECORD_SIZE) ||
+        expected_size != section_size)
+        return DSL_Effect_Image_Report(diagnostic, "invalid header", 0);
+
+    cursor += DSL_EFFECT_IMAGE_HEADER_SIZE;
+    const DSL_STATE_OBJECT_RECORD *states =
+        (const DSL_STATE_OBJECT_RECORD *)cursor;
+    cursor += (UINT64)header->state_object_count *
+              DSL_STATE_OBJECT_RECORD_SIZE;
+    const DSL_STATE_EFFECT_RECORD *effects =
+        (const DSL_STATE_EFFECT_RECORD *)cursor;
+
+    DSL_state_object_table.Delete_down_to(0);
+    DSL_state_effect_table.Delete_down_to(0);
+    if (header->state_object_count != 0)
+        DSL_state_object_table.Insert(states, header->state_object_count);
+    if (header->state_effect_count != 0)
+        DSL_state_effect_table.Insert(effects, header->state_effect_count);
+    if (!DSL_Effect_Image_Validate(diagnostic)) {
+        DSL_state_object_table.Delete_down_to(0);
+        DSL_state_effect_table.Delete_down_to(0);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+void
+DSL_State_Object_Record_Init (DSL_STATE_OBJECT_RECORD *record)
+{
+    DSL_IR_Record_Init(record);
+}
+
+void
+DSL_State_Effect_Record_Init (DSL_STATE_EFFECT_RECORD *record)
+{
+    DSL_IR_Record_Init(record);
+}
+
+DSL_STATE_OBJECT_ID
+DSL_Effect_Image_Add_State_Object
+        (const DSL_STATE_OBJECT_RECORD *record)
+{
+    if (record == NULL || record->name == STR_IDX_ZERO ||
+        !DSL_Effect_Image_Valid_State_Kind(record->kind) ||
+        ST_IDX_index(record->owner_pu_st) == 0 ||
+        ST_IDX_index(record->st) == 0)
+        return DSL_STATE_OBJECT_INVALID_ID;
+    DSL_STATE_OBJECT_RECORD copy = *record;
+    UINT32 index = DSL_state_object_table.Insert(copy);
+    DSL_state_object_table[index].id = index + 1;
+    if (!DSL_Effect_Image_Validate(NULL)) {
+        DSL_state_object_table.Delete_down_to(index);
+        return DSL_STATE_OBJECT_INVALID_ID;
+    }
+    return index + 1;
+}
+
+DSL_STATE_EFFECT_ID
+DSL_Effect_Image_Add_State_Effect
+        (const DSL_STATE_EFFECT_RECORD *record)
+{
+    if (record == NULL || record->owner_node_id == 0 ||
+        record->owner_node_id > DSL_ir_node_table.Size() ||
+        record->state_object_id == 0 ||
+        record->state_object_id > DSL_state_object_table.Size() ||
+        !DSL_Effect_Image_Valid_Effect_Kind(record->effect_kind))
+        return DSL_STATE_EFFECT_INVALID_ID;
+    DSL_STATE_EFFECT_RECORD copy = *record;
+    UINT32 index = DSL_state_effect_table.Insert(copy);
+    DSL_state_effect_table[index].id = index + 1;
+    if (!DSL_Effect_Image_Validate(NULL)) {
+        DSL_state_effect_table.Delete_down_to(index);
+        return DSL_STATE_EFFECT_INVALID_ID;
+    }
+    return index + 1;
+}
+
+UINT32
+DSL_Effect_Image_State_Object_Count (void)
+{
+    return DSL_state_object_table.Size();
+}
+
+UINT32
+DSL_Effect_Image_State_Effect_Count (void)
+{
+    return DSL_state_effect_table.Size();
+}
+
+BOOL
+DSL_Effect_Image_Get_State_Object
+        (DSL_STATE_OBJECT_ID id,
+         DSL_STATE_OBJECT_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_state_object_table, id, record);
+}
+
+BOOL
+DSL_Effect_Image_Get_State_Effect
+        (DSL_STATE_EFFECT_ID id,
+         DSL_STATE_EFFECT_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_state_effect_table, id, record);
+}
+
+const char *
+DSL_State_Kind_Name (DSL_STATE_KIND kind)
+{
+    static const char *names[] = {
+        "unknown", "runtime_status", "random", "mutable_buffer",
+        "communication", "opaque"
+    };
+    UINT32 index = (UINT32)kind;
+    return index < sizeof(names) / sizeof(names[0]) ?
+           names[index] : names[0];
+}
+
+const char *
+DSL_State_Effect_Kind_Name (DSL_STATE_EFFECT_KIND effect_kind)
+{
+    static const char *names[] = { "unknown", "read", "modify" };
+    UINT32 index = (UINT32)effect_kind;
+    return index < sizeof(names) / sizeof(names[0]) ?
+           names[index] : names[0];
 }

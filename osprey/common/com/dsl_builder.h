@@ -36,6 +36,7 @@ typedef WN *DSL_BUILDER_VALUE;
 typedef WN *DSL_BUILDER_OPERATOR;
 typedef PU_Info *DSL_BUILDER_PROGRAM_UNIT;
 typedef DSL_REGION DSL_BUILDER_REGION;
+typedef struct dsl_builder_state *DSL_BUILDER_STATE;
 
 typedef struct {
     const char *kind;
@@ -233,6 +234,15 @@ extern BOOL DSL_Builder_Set_Region_Metadata
                                 (DSL_BUILDER_REGION region,
                                  const char *key,
                                  const char *value);
+extern DSL_BUILDER_STATE DSL_Builder_Declare_State_Object
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 const char *name,
+                                 DSL_STATE_KIND kind);
+extern BOOL DSL_Builder_Add_State_Effect
+                                (DSL_BUILDER_VALUE value,
+                                 DSL_BUILDER_STATE state,
+                                 DSL_STATE_EFFECT_KIND effect_kind);
+extern ST_IDX DSL_Builder_Get_State_Symbol (DSL_BUILDER_STATE state);
 extern BOOL DSL_Builder_Verify_Program
                                 (DSL_BUILDER_VERIFY_RESULT *result);
 /*

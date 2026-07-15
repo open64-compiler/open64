@@ -31,6 +31,12 @@
 #define DSL_IR_VALUE_RECORD_SIZE             48
 #define DSL_IR_VALUE_REFERENCE_RECORD_SIZE   24
 
+#define DSL_EFFECT_IMAGE_MAGIC              0x44534c45
+#define DSL_EFFECT_IMAGE_VERSION            1
+#define DSL_EFFECT_IMAGE_HEADER_SIZE        24
+#define DSL_STATE_OBJECT_RECORD_SIZE        40
+#define DSL_STATE_EFFECT_RECORD_SIZE        24
+
 #define DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID 0
 #define DSL_IR_NODE_INVALID_ID              0
 #define DSL_IR_ATTRIBUTE_INVALID_ID         0
@@ -42,6 +48,11 @@ typedef UINT32 DSL_IR_NODE_ID;
 typedef UINT32 DSL_IR_ATTRIBUTE_ID;
 typedef UINT32 DSL_IR_VALUE_ID;
 typedef UINT32 DSL_IR_VALUE_REFERENCE_ID;
+typedef UINT32 DSL_STATE_OBJECT_ID;
+typedef UINT32 DSL_STATE_EFFECT_ID;
+
+#define DSL_STATE_OBJECT_INVALID_ID 0
+#define DSL_STATE_EFFECT_INVALID_ID 0
 
 typedef enum {
     DSL_IR_IMAGE_RECORD_UNKNOWN = 0,
@@ -162,6 +173,50 @@ typedef struct {
     UINT32 reserved;
 } DSL_IR_VALUE_REFERENCE_RECORD;
 
+typedef enum {
+    DSL_STATE_KIND_UNKNOWN = 0,
+    DSL_STATE_KIND_RUNTIME_STATUS = 1,
+    DSL_STATE_KIND_RANDOM = 2,
+    DSL_STATE_KIND_MUTABLE_BUFFER = 3,
+    DSL_STATE_KIND_COMMUNICATION = 4,
+    DSL_STATE_KIND_OPAQUE = 5
+} DSL_STATE_KIND;
+
+typedef enum {
+    DSL_STATE_EFFECT_UNKNOWN = 0,
+    DSL_STATE_EFFECT_READ = 1,
+    DSL_STATE_EFFECT_MODIFY = 2
+} DSL_STATE_EFFECT_KIND;
+
+typedef struct {
+    UINT32 magic;
+    UINT32 version;
+    UINT32 state_object_count;
+    UINT32 state_effect_count;
+    UINT32 flags;
+    UINT32 reserved;
+} DSL_EFFECT_IMAGE_HEADER;
+
+typedef struct {
+    DSL_STATE_OBJECT_ID id;
+    UINT32 kind;
+    ST_IDX owner_pu_st;
+    ST_IDX st;
+    STR_IDX name;
+    UINT32 flags;
+    UINT32 reserved0;
+    UINT32 reserved1;
+} DSL_STATE_OBJECT_RECORD;
+
+typedef struct {
+    DSL_STATE_EFFECT_ID id;
+    DSL_IR_NODE_ID owner_node_id;
+    DSL_STATE_OBJECT_ID state_object_id;
+    UINT32 effect_kind;
+    UINT32 ordinal;
+    UINT32 flags;
+} DSL_STATE_EFFECT_RECORD;
+
 extern void DSL_IR_Image_Reset (void);
 extern void DSL_IR_Image_Get_Header (DSL_IR_IMAGE_HEADER *header);
 extern BOOL DSL_IR_Image_Has_Records (void);
@@ -170,6 +225,31 @@ extern void DSL_IR_Image_Print (FILE *file);
 extern BOOL DSL_IR_Image_Load_Mapped (const void *section_base,
                                       UINT64 section_size,
                                       FILE *diagnostic);
+
+extern void DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header);
+extern void DSL_Effect_Image_Reset (void);
+extern BOOL DSL_Effect_Image_Has_Records (void);
+extern BOOL DSL_Effect_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_Effect_Image_Load_Mapped (const void *section_base,
+                                          UINT64 section_size,
+                                          FILE *diagnostic);
+extern void DSL_State_Object_Record_Init (DSL_STATE_OBJECT_RECORD *record);
+extern void DSL_State_Effect_Record_Init (DSL_STATE_EFFECT_RECORD *record);
+extern DSL_STATE_OBJECT_ID DSL_Effect_Image_Add_State_Object
+                                (const DSL_STATE_OBJECT_RECORD *record);
+extern DSL_STATE_EFFECT_ID DSL_Effect_Image_Add_State_Effect
+                                (const DSL_STATE_EFFECT_RECORD *record);
+extern UINT32 DSL_Effect_Image_State_Object_Count (void);
+extern UINT32 DSL_Effect_Image_State_Effect_Count (void);
+extern BOOL DSL_Effect_Image_Get_State_Object
+                                (DSL_STATE_OBJECT_ID id,
+                                 DSL_STATE_OBJECT_RECORD *record);
+extern BOOL DSL_Effect_Image_Get_State_Effect
+                                (DSL_STATE_EFFECT_ID id,
+                                 DSL_STATE_EFFECT_RECORD *record);
+extern const char *DSL_State_Kind_Name (DSL_STATE_KIND kind);
+extern const char *DSL_State_Effect_Kind_Name
+                                (DSL_STATE_EFFECT_KIND effect_kind);
 
 extern void DSL_IR_Opcode_Descriptor_Record_Init
                                 (DSL_IR_OPCODE_DESCRIPTOR_RECORD *record);

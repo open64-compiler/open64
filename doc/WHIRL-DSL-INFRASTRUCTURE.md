@@ -1118,6 +1118,22 @@ compiled CG region while preserving its inspectable VHO evidence.
    gatekeeper rules, logical dumps, and lowering to WOPT `MU`/`CHI` semantics.
    Test runtime status, random state, and a mutable-buffer case.
 
+   The first infrastructure slice publishes opaque state handles and fixed
+   pointer-free state/effect row contracts.  State objects use stable PU and
+   symbol identities; effect rows identify a logical DSL node, state object,
+   ordinal, and `READ` or `MODIFY` kind.  The optional additive
+   `.WHIRL.dsl_effects` ELF section leaves the version-1 `.WHIRL.dsl` layout
+   unchanged, and its absence maps to an empty table for older binary images.
+   The gatekeeper rejects malformed rows, duplicate node/state edges, invalid
+   ordinals, and effects attached to statically pure operators.
+
+   `osprey/common/com/tests/dsl_abstract_state_image_test.sh` certifies runtime
+   status, random state, and mutable-buffer declarations, pure-node rejection,
+   mapped-image reopen, and `ir_b2a -st -src` evidence.  Positive effect edges
+   and their VHO-to-WOPT `MU`/`CHI` handoff remain pending; they must use a
+   reviewed stateful logical operator rather than weakening an existing pure
+   operator contract or prematurely allocating a decode opcode.
+
 19. [ ] Add barrier ingestion and optimization checks.
 
    Wrap existing forward/backward WHIRL barriers, preserve affected-value and

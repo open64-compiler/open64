@@ -1631,6 +1631,10 @@ DSL_Gatekeeper_Verify_PU
     BOOL valid = DSL_IR_Image_Validate(diagnostic);
     if (!valid)
         ++context.result.error_count;
+    if (!DSL_Effect_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
     if (pu == NULL || PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
         PU_Info_tree_ptr(pu) == NULL)
         valid = DSL_Gatekeeper_Report
@@ -1662,6 +1666,10 @@ DSL_Gatekeeper_Verify_Program
     BOOL valid = DSL_IR_Image_Validate(diagnostic);
     if (!valid)
         ++context.result.error_count;
+    if (!DSL_Effect_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
 
     for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
         if (PU_Info_state(pu, WT_TREE) != Subsect_InMem ||

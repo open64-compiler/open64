@@ -186,4 +186,34 @@ DSL_IR_Image_Print (FILE *file)
                  record.id, record.owner_node_id, record.ordinal,
                  record.value_id, record.flags);
     }
+
+    DSL_EFFECT_IMAGE_HEADER effect_header;
+    DSL_Effect_Image_Get_Header(&effect_header);
+    fprintf (file, "DSL Abstract State Table: version=%u states=%u "
+             "effects=%u\n", effect_header.version,
+             effect_header.state_object_count,
+             effect_header.state_effect_count);
+    for (UINT32 i = 1; i <= effect_header.state_object_count; ++i) {
+        DSL_STATE_OBJECT_RECORD record;
+        DSL_Effect_Image_Get_State_Object(i, &record);
+        fprintf (file, "  STATE [%u] name=%s kind=%s owner_pu=<%u,%u> "
+                 "st=<%u,%u> flags=0x%x\n", record.id,
+                 DSL_IR_String(record.name),
+                 DSL_State_Kind_Name((DSL_STATE_KIND)record.kind),
+                 ST_IDX_level(record.owner_pu_st),
+                 ST_IDX_index(record.owner_pu_st),
+                 ST_IDX_level(record.st), ST_IDX_index(record.st),
+                 record.flags);
+    }
+    for (UINT32 i = 1; i <= effect_header.state_effect_count; ++i) {
+        DSL_STATE_EFFECT_RECORD record;
+        DSL_Effect_Image_Get_State_Effect(i, &record);
+        fprintf (file, "  EFFECT [%u] node=%u state=%u ordinal=%u "
+                 "kind=%s flags=0x%x\n", record.id,
+                 record.owner_node_id, record.state_object_id,
+                 record.ordinal,
+                 DSL_State_Effect_Kind_Name
+                     ((DSL_STATE_EFFECT_KIND)record.effect_kind),
+                 record.flags);
+    }
 }
