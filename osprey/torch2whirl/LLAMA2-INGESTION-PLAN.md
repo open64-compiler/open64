@@ -292,7 +292,7 @@ Second frontend batch status, L2-L7:
 | L4 | complete | Certified `transformer.attention.v1` full-sequence causal no-cache expression |
 | L5 | complete | Nested `transformer.decoder_layer.v1` regions, exact residual/SwiGLU topology, source/module metadata |
 | L6 | complete | Standalone native `torch2whirl` produced `llama2.B`, `llama2.safetensors`, and `llama2.T` across a process boundary |
-| L7 | frontend complete / main-driver pending | Source-model sample-input protocol implemented for `openpy -keep llama2_model.py`; main owns final `openpy -O0` run and post-VHO trace |
+| L7 | complete | `openpy -keep -O0` passed with external constants emitted before the prefill REGION; binary and post-VHO traces are retained separately on case-insensitive hosts |
 
 Retained standalone evidence from this batch:
 
@@ -473,12 +473,12 @@ WHIRL artifact after the Python producer exits.
 
 ### L7: Driver And O0 Certification
 
-- [ ] Run the tiny fixture through `openpy -keep llama2_model.py`.
+- [x] Run the tiny fixture through `openpy -keep llama2_model.py`.
 - [x] Confirm the retained `.B` artifact is the same frontend boundary used by
   the standalone tool.
-- [ ] Confirm `VHO_DSL_Lower_Driver()` consumes every executable transformer
+- [x] Confirm `VHO_DSL_Lower_Driver()` consumes every executable transformer
   and common DSL value before canonical optimization.
-- [ ] Preserve the logical post-lowering trace required by the driver contract.
+- [x] Preserve the logical post-lowering trace required by the driver contract.
 - [x] Prove no Python, PyTorch, frontend bridge, or backend CG dependency is
   required to consume the completed `.B` file.
 

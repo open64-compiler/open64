@@ -212,7 +212,6 @@ class WhirlExportInterpreter:
         attr_env: Dict[str, _GraphValue] = {}
         token_input = _GraphValue(input_handles[0], "input0")
         prefill = self.builder().region(entry_pu, transformer.PREFILL_REGION, 1)
-        self.builder().append_program_unit_region(entry_pu, prefill)
         self._set_llama_region_context(
             prefill,
             entry_pu,
@@ -377,6 +376,8 @@ class WhirlExportInterpreter:
             REGION_OUTPUT | REGION_RESULT,
             0,
         )
+        # External PU definitions must precede the region that first uses them.
+        self.builder().append_program_unit_region(entry_pu, prefill)
 
     def _emit_llama_decoder_layer(
         self,
