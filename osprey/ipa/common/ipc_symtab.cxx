@@ -269,9 +269,6 @@ static void
 check_revision (const char *base, UINT64 sh_size, const char* file_name)
 {
     const char* eob;
-    static const char *revision = WHIRL_REVISION;
-    int len = strlen (revision);
-    
     const char* p = base;
     eob = p + sh_size - 1;
 
@@ -280,9 +277,9 @@ check_revision (const char *base, UINT64 sh_size, const char* file_name)
 	ErrMsg (EC_IR_Scn_Read, ".comment", file_name);
 
     while (p <= eob) {
-	if (strncmp (p, revision, len) == 0)
-	    return;
-	p += strlen (p) + 1;
+        if (WHIRL_REVISION_IS_SUPPORTED(p))
+            return;
+        p += strlen (p) + 1;
     }
 
     ErrMsg (EC_IR_Revision, base, file_name);

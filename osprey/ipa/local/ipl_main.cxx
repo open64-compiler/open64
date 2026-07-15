@@ -227,8 +227,8 @@ ipl_main (INT ipl_argc, char **ipl_argv)
 {
     extern char *Whirl_Revision;
 
-    if (strcmp (Whirl_Revision, WHIRL_REVISION) != 0)
-	FmtAssert (!DEBUG_Ir_Version_Check,
+    if (!WHIRL_REVISION_IS_SUPPORTED(Whirl_Revision))
+      FmtAssert (!DEBUG_Ir_Version_Check,
 		   ("WHIRL revision mismatch between be.so (%s) and ipl.so (%s)", 
 		    Whirl_Revision, WHIRL_REVISION));
     

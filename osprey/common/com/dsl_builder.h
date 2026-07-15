@@ -12,6 +12,7 @@
 #include "dsl_contract.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
+#include "dsl_region.h"
 
 /*
  * Minimal C++ builder-facing DSL API.
@@ -34,6 +35,7 @@
 typedef WN *DSL_BUILDER_VALUE;
 typedef WN *DSL_BUILDER_OPERATOR;
 typedef PU_Info *DSL_BUILDER_PROGRAM_UNIT;
+typedef DSL_REGION DSL_BUILDER_REGION;
 
 typedef struct {
     const char *kind;
@@ -201,6 +203,27 @@ extern UINT32 DSL_Builder_Register_Source_File
                                  const char *path);
 extern BOOL DSL_Builder_Set_Value_Source_Position
                                 (DSL_BUILDER_VALUE value,
+                                 const DSL_BUILDER_SOURCE_POSITION
+                                     *source_position);
+extern DSL_BUILDER_REGION DSL_Builder_Create_Region
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_REGION parent,
+                                 const char *contract_name,
+                                 UINT32 contract_version);
+extern BOOL DSL_Builder_Append_Region_Value
+                                (DSL_BUILDER_REGION region,
+                                 DSL_BUILDER_VALUE value);
+extern BOOL DSL_Builder_Append_PU_Region
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_REGION region);
+extern BOOL DSL_Builder_Declare_Region_Value
+                                (DSL_BUILDER_REGION region,
+                                 DSL_BUILDER_VALUE value,
+                                 UINT32 roles,
+                                 UINT32 ordinal,
+                                 UINT32 flags);
+extern BOOL DSL_Builder_Set_Region_Source_Position
+                                (DSL_BUILDER_REGION region,
                                  const DSL_BUILDER_SOURCE_POSITION
                                      *source_position);
 extern BOOL DSL_Builder_Verify_Program

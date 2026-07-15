@@ -8,9 +8,18 @@ import inspect
 import os
 import operator
 import traceback
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
-from .builder import ProgramUnitHandle, ValueHandle, WhirlBuilder, load_builder
+from .builder import (
+    REGION_INPUT,
+    REGION_OUTPUT,
+    REGION_RESULT,
+    ProgramUnitHandle,
+    RegionHandle,
+    ValueHandle,
+    WhirlBuilder,
+    load_builder,
+)
 from .mapping import cnn, common
 from .mapping.contract import operator_arity
 from .module import (
@@ -182,6 +191,24 @@ class WhirlExportInterpreter:
         attr_env: Dict[str, _GraphValue] = {}
         input_index = 0
         output_source_node = None
+        active_region_path: Optional[str] = None
+        active_region: Optional[RegionHandle] = None
+        active_region_values: Set[int] = set()
+        active_region_inputs: Set[int] = set()
+        active_region_last_value: Optional[ValueHandle] = None
+
+        def finish_region() -> None:
+            nonlocal active_region
+            nonlocal active_region_last_value
+            if active_region is not None and active_region_last_value is not None:
+                self.builder().declare_region_value(
+                    active_region,
+                    active_region_last_value,
+                    REGION_OUTPUT | REGION_RESULT,
+                    len(active_region_inputs),
+                )
+            active_region = None
+            active_region_last_value = None
 
         for node in getattr(graph, "nodes", ()):
             node_op = str(getattr(node, "op", ""))
@@ -220,6 +247,34 @@ class WhirlExportInterpreter:
                     "unsupported FX graph node: "
                     f"{node_op}:{getattr(node, 'target', '')}"
                 )
+            metadata = getattr(node, "meta", {})
+            region_path = metadata.get("open64_region_path")
+            region_kind = metadata.get("open64_region_kind")
+            if not isinstance(region_path, str):
+                region_path = None
+            if region_path != active_region_path:
+                finish_region()
+                active_region_path = region_path
+                active_region_values.clear()
+                active_region_inputs.clear()
+                if region_path is not None:
+                    contract = (
+                        "cnn.bottleneck"
+                        if region_kind == "Bottleneck"
+                        else "cnn.basic_block"
+                    )
+                    active_region = self.builder().region(entry_pu, contract, 1)
+                    self.builder().append_program_unit_region(
+                        entry_pu, active_region
+                    )
+                    path = metadata.get("open64_source_path")
+                    line = metadata.get("open64_source_line")
+                    if isinstance(path, str) and isinstance(line, int):
+                        file_id = self.builder().register_source_file(entry_pu, path)
+                        self.builder().set_region_source_position(
+                            active_region, file_id, line
+                        )
+
             operands = self._fx_operator_operands(
                 operator_plan.name,
                 node,
@@ -232,6 +287,8 @@ class WhirlExportInterpreter:
                 tensor_payloads,
                 body_markers,
                 attr_env,
+                active_region,
+                active_region_values,
             )
             if len(operands) < self._operator_arity(operator_plan.name):
                 raise ValueError(
@@ -251,7 +308,24 @@ class WhirlExportInterpreter:
                 operator_plan.attrs,
             )
             env[id(node)] = _GraphValue(handle, operator_plan.name)
-            self.builder().append_program_unit_value(entry_pu, handle)
+            if active_region is None:
+                self.builder().append_program_unit_value(entry_pu, handle)
+            else:
+                for operand in operands:
+                    if (
+                        operand.handle.value not in active_region_values
+                        and operand.handle.value not in active_region_inputs
+                    ):
+                        self.builder().declare_region_value(
+                            active_region,
+                            operand.handle,
+                            REGION_INPUT,
+                            len(active_region_inputs),
+                        )
+                        active_region_inputs.add(operand.handle.value)
+                self.builder().append_region_value(active_region, handle)
+                active_region_values.add(handle.value)
+                active_region_last_value = handle
             self._bind_fx_source_position(entry_pu, node, handle)
             operators.append(operator_plan.name)
             body_markers.append(operator_plan.name)
@@ -265,6 +339,7 @@ class WhirlExportInterpreter:
                 )
             )
 
+        finish_region()
         if output_source_node is None:
             return
         output_value = env.get(id(output_source_node))
@@ -515,6 +590,8 @@ class WhirlExportInterpreter:
         tensor_payloads: List[WhirlTensorPayloadRecord],
         body_markers: List[str],
         attr_env: Dict[str, _GraphValue],
+        active_region: Optional[RegionHandle],
+        active_region_values: Set[int],
     ) -> List[_GraphValue]:
         args = list(getattr(node, "args", ()))
         kwargs = dict(getattr(node, "kwargs", {}))
@@ -534,6 +611,8 @@ class WhirlExportInterpreter:
                 tensor_payloads,
                 body_markers,
                 attr_env,
+                active_region,
+                active_region_values,
             )
 
         if operator_name == cnn.BATCH_NORM_INFER:
@@ -579,6 +658,8 @@ class WhirlExportInterpreter:
         tensor_payloads: List[WhirlTensorPayloadRecord],
         body_markers: List[str],
         attr_env: Dict[str, _GraphValue],
+        active_region: Optional[RegionHandle],
+        active_region_values: Set[int],
     ) -> List[_GraphValue]:
         operands: List[_GraphValue] = []
         value = self._fx_graph_value(args[0], env) if args else None
@@ -598,6 +679,8 @@ class WhirlExportInterpreter:
                     body_markers,
                     attr_env,
                     "weight",
+                    active_region,
+                    active_region_values,
                 )
             )
             operands.append(
@@ -612,6 +695,8 @@ class WhirlExportInterpreter:
                     body_markers,
                     attr_env,
                     "bias",
+                    active_region,
+                    active_region_values,
                 )
             )
         elif operator_name == cnn.BATCH_NORM_INFER:
@@ -633,6 +718,8 @@ class WhirlExportInterpreter:
                         body_markers,
                         attr_env,
                         role,
+                        active_region,
+                        active_region_values,
                     )
                 )
 
@@ -660,6 +747,8 @@ class WhirlExportInterpreter:
         body_markers: List[str],
         attr_env: Dict[str, _GraphValue],
         role: Optional[str] = None,
+        active_region: Optional[RegionHandle] = None,
+        active_region_values: Optional[Set[int]] = None,
     ) -> _GraphValue:
         tensor = self._resolve_attr(traced_module, target)
         if tensor is None:
@@ -682,7 +771,16 @@ class WhirlExportInterpreter:
                 role,
             )
         if graph_value.name not in body_markers:
-            self.builder().append_program_unit_value(entry_pu, graph_value.handle)
+            if active_region is None:
+                self.builder().append_program_unit_value(
+                    entry_pu, graph_value.handle
+                )
+            else:
+                self.builder().append_region_value(
+                    active_region, graph_value.handle
+                )
+                if active_region_values is not None:
+                    active_region_values.add(graph_value.handle.value)
             body_markers.append(graph_value.name)
         return graph_value
 
@@ -948,9 +1046,36 @@ class WhirlExportInterpreter:
         source_path = os.path.realpath(source_path) if source_path else None
 
         class _SourcePositionTracer(Tracer):
+            def __init__(self) -> None:
+                super().__init__()
+                self._open64_region_stack: List[Tuple[str, str]] = []
+
+            def call_module(
+                self,
+                module: Any,
+                forward: Any,
+                args: Tuple[Any, ...],
+                kwargs: Dict[str, Any],
+            ) -> Any:
+                module_kind = type(module).__name__
+                is_region = module_kind in {"BasicBlock", "Bottleneck"}
+                if is_region:
+                    self._open64_region_stack.append(
+                        (self.path_of_module(module), module_kind)
+                    )
+                try:
+                    return super().call_module(module, forward, args, kwargs)
+                finally:
+                    if is_region:
+                        self._open64_region_stack.pop()
+
             def create_proxy(self, *args: Any, **kwargs: Any) -> Any:
                 frames = traceback.extract_stack()
                 proxy = super().create_proxy(*args, **kwargs)
+                if self._open64_region_stack:
+                    region_path, region_kind = self._open64_region_stack[-1]
+                    proxy.node.meta["open64_region_path"] = region_path
+                    proxy.node.meta["open64_region_kind"] = region_kind
                 if source_path is None:
                     return proxy
                 for frame in reversed(frames):

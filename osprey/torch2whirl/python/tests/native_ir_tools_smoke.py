@@ -16,7 +16,13 @@ from open64_dsc import (
     load_builder,
     save_as_whirl,
 )
-from open64_dsc.builder import ProgramUnitHandle, ValueHandle
+from open64_dsc.builder import (
+    REGION_INPUT,
+    REGION_OUTPUT,
+    REGION_RESULT,
+    ProgramUnitHandle,
+    ValueHandle,
+)
 
 
 class DummyModel:
@@ -264,14 +270,29 @@ def _append_operator_probes(module) -> None:
         ProgramUnitHandle(module.entry_function.handle),
         global_avg_pool2d,
     )
-    builder.append_program_unit_marker(
-        ProgramUnitHandle(module.entry_function.handle),
-        conv2d,
-    )
-    builder.append_program_unit_marker(
-        ProgramUnitHandle(module.entry_function.handle),
+    program_unit = ProgramUnitHandle(module.entry_function.handle)
+    region = builder.region(program_unit, "cnn.basic_block", 1)
+    builder.append_region_value(region, conv2d)
+    builder.append_region_value(region, batch_norm)
+    for ordinal, value in enumerate((
+        cnn_input,
+        conv_weight,
+        conv_bias,
+        bn_scale,
+        bn_bias,
+        bn_running_mean,
+        bn_running_var,
+    )):
+        builder.declare_region_value(region, value, REGION_INPUT, ordinal)
+    builder.declare_region_value(
+        region,
         batch_norm,
+        REGION_OUTPUT | REGION_RESULT,
+        7,
     )
+    builder.append_program_unit_region(program_unit, region)
+    file_id = builder.register_source_file(program_unit, __file__)
+    builder.set_region_source_position(region, file_id, 267)
 
 
 def _find_ir_b2a() -> Optional[Path]:
@@ -361,6 +382,9 @@ def _run_smoke(ir_b2a: Path, work_dir: Path) -> int:
         "DSL Attribute Table:",
         "DSL Value Table:",
         "DSL Value Reference Table:",
+        "DSL REGION TABLE:",
+        "contract=cnn.basic_block.v1",
+        "roles=0xa",
         "operator=OPR_DSLADD stable_name=common.add version=1",
         "name=attr.broadcast_rule kind=string value=none",
         "ordinal=kid0",

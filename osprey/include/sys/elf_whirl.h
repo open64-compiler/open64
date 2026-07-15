@@ -51,6 +51,10 @@
 #define WHIRL_DSL_REVISION "WHIRL::0.34:"
 #endif
 
+#define WHIRL_REVISION_IS_SUPPORTED(revision) \
+        (strcmp((revision), WHIRL_REVISION) == 0 || \
+         strcmp((revision), WHIRL_DSL_REVISION) == 0)
+
 /*
  * sh_info field for section of type SHT_MIPS_WHIRL 
  */

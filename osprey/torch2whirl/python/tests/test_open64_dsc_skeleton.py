@@ -31,7 +31,13 @@ from open64_dsc.module import (
 from open64_dsc import WhirlExportOptions, WhirlModule
 from open64_dsc import WhirlVerificationError, export_to_whirl
 from open64_dsc import load_builder, save_as_whirl, verify_module
-from open64_dsc.builder import ValueHandle, WhirlBuilder
+from open64_dsc.builder import (
+    REGION_INPUT,
+    REGION_OUTPUT,
+    REGION_RESULT,
+    ValueHandle,
+    WhirlBuilder,
+)
 from open64_dsc.mapping.contract import all_operator_contracts
 
 
@@ -431,6 +437,32 @@ class Open64DscSkeletonTest(unittest.TestCase):
             str(annotations[-1]["payload"]),
         )
 
+    def test_builder_structured_region_uses_opaque_handles(self) -> None:
+        builder = load_builder("mock")
+        builder.begin_program()
+        pu = builder.minimal_program_unit("region_forward")
+        file_id = builder.register_source_file(pu, "region_model.py")
+        lhs = builder.tensor_constant(
+            "region_lhs", "float32", 2, "[2,2]", "splat", "1.0"
+        )
+        rhs = builder.tensor_constant(
+            "region_rhs", "float32", 2, "[2,2]", "splat", "1.0"
+        )
+        add = builder.common_add(lhs, rhs)
+        builder.append_program_unit_value(pu, lhs)
+        builder.append_program_unit_value(pu, rhs)
+        region = builder.region(pu, "cnn.basic_block", 1)
+        builder.append_region_value(region, add)
+        builder.declare_region_value(region, lhs, REGION_INPUT, 0)
+        builder.declare_region_value(region, rhs, REGION_INPUT, 1)
+        builder.declare_region_value(
+            region, add, REGION_OUTPUT | REGION_RESULT, 2
+        )
+        builder.append_program_unit_region(pu, region)
+        builder.set_region_source_position(region, file_id, 17)
+
+        self.assertGreater(region.value, 0)
+        self.assertTrue(builder.verify_program()["valid"])
     def test_native_capability_failure_names_operator_version(self) -> None:
         builder = WhirlBuilder(FailingNativeBackend())
 

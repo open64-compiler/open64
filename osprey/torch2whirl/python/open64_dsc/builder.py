@@ -57,6 +57,17 @@ class ProgramUnitHandle(OpaqueHandle):
     pass
 
 
+@dataclass(frozen=True)
+class RegionHandle(OpaqueHandle):
+    pass
+
+
+REGION_INPUT = 0x1
+REGION_OUTPUT = 0x2
+REGION_INOUT = 0x4
+REGION_RESULT = 0x8
+
+
 class WhirlBuilder:
     def __init__(self, backend: WhirlBackend):
         self._backend = backend
@@ -177,6 +188,68 @@ class WhirlBuilder:
             basic_block_begin,
         ):
             raise RuntimeError("failed to set value source position")
+
+    def region(
+        self,
+        program_unit: ProgramUnitHandle,
+        contract_name: str,
+        contract_version: int = 1,
+        parent: Optional[RegionHandle] = None,
+    ) -> RegionHandle:
+        return RegionHandle(
+            self._backend.create_region(
+                program_unit.value,
+                0 if parent is None else parent.value,
+                contract_name,
+                contract_version,
+            )
+        )
+
+    def append_region_value(
+        self, region: RegionHandle, value: ValueHandle
+    ) -> None:
+        if not self._backend.append_region_value(region.value, value.value):
+            raise RuntimeError("failed to append region value")
+
+    def append_program_unit_region(
+        self, program_unit: ProgramUnitHandle, region: RegionHandle
+    ) -> None:
+        if not self._backend.append_program_unit_region(
+            program_unit.value, region.value
+        ):
+            raise RuntimeError("failed to append program unit region")
+
+    def declare_region_value(
+        self,
+        region: RegionHandle,
+        value: ValueHandle,
+        roles: int,
+        ordinal: int,
+        flags: int = 0,
+    ) -> None:
+        if not self._backend.declare_region_value(
+            region.value, value.value, roles, ordinal, flags
+        ):
+            raise RuntimeError("failed to declare region value")
+
+    def set_region_source_position(
+        self,
+        region: RegionHandle,
+        file_id: int,
+        line: int,
+        column: int = 0,
+        statement_begin: bool = True,
+        basic_block_begin: bool = True,
+    ) -> None:
+        if not self._backend.set_region_source_position(
+            region.value,
+            file_id,
+            line,
+            column,
+            statement_begin,
+            basic_block_begin,
+        ):
+            raise RuntimeError("failed to set region source position")
 
     def attach_value_metadata(
         self,

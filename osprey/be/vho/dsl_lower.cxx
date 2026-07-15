@@ -16,6 +16,7 @@
 #include "dsl_gatekeeper.h"
 #include "dsl_opt.h"
 #include "dsl_opcode.h"
+#include "dsl_region.h"
 #include "errors.h"
 #include "wn.h"
 #include "wn_map.h"
@@ -41,6 +42,7 @@ typedef struct {
 } VHO_DSL_COMPATIBILITY_VALUE;
 
 typedef struct {
+    PU_Info *pu_info;
     FILE *diagnostic;
     VHO_DSL_LOWER_RESULT result;
     std::vector<VHO_DSL_LOWERED_VALUE> lowered_values;
@@ -1403,6 +1405,22 @@ VHO_DSL_Lower_Tree
                 if (!VHO_DSL_Normalize_Compatibility
                          (wn, statement, context))
                     valid = FALSE;
+            } else if (WN_operator(statement) == OPR_REGION &&
+                       DSL_Region_Is_Managed_WN
+                           (context->pu_info, statement)) {
+                if (!VHO_DSL_Lower_Tree(statement, context)) {
+                    valid = FALSE;
+                } else {
+                    WN *body = WN_region_body(statement);
+                    for (WN *child = WN_first(body); child != NULL; ) {
+                        WN *next_child = WN_next(child);
+                        WN_EXTRACT_FromBlock(body, child);
+                        WN_INSERT_BlockBefore(wn, statement, child);
+                        child = next_child;
+                    }
+                    WN *removed = WN_EXTRACT_FromBlock(wn, statement);
+                    WN_DELETE_Tree(removed);
+                }
             } else if (!VHO_DSL_Lower_Tree(statement, context)) {
                 valid = FALSE;
             }
@@ -1474,6 +1492,7 @@ VHO_DSL_Lower_Verified_Program_Unit
 {
     VHO_DSL_LOWER_CONTEXT context;
     memset(&context.result, 0, sizeof(context.result));
+    context.pu_info = pu_info;
     context.diagnostic = diagnostic;
     context.runtime_tensor_const = NULL;
     context.runtime_external_tensor = NULL;
