@@ -272,9 +272,9 @@ partial checkpoint as complete.
 
 | Checkpoint | Weight | Initial status | Review evidence |
 | --- | ---: | --- | --- |
-| D0: Record baseline and exact tiny configuration | 5% | pending | Baseline tests and configuration in census |
-| D1: Implement deterministic tiny Llama 2 fixture | 20% | pending | Reviewable model source |
-| D2: Pass eager shape/dtype/repeatability tests | 15% | pending | Exact test command and output summary |
+| D0: Record baseline and exact tiny configuration | 5% | complete | Baseline tests and configuration in `LLAMA2-OPERATOR-CENSUS.md` |
+| D1: Implement deterministic tiny Llama 2 fixture | 20% | complete | `python/tests/models/llama2_model.py` |
+| D2: Pass eager shape/dtype/repeatability tests | 15% | complete | Docker `python_torch_test` ran 32 tests OK |
 | D3: Capture and normalize the real PyTorch graph | 20% | pending | Preserved normalized graph artifact |
 | D4: Complete semantic operator census | 25% | pending | Human-readable census with every node classified |
 | D5: Add and pass graph/census drift tests | 10% | pending | Golden comparison and negative/drift test |
