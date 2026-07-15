@@ -1348,10 +1348,21 @@ Check_Managed_Region_Lowering(void)
                                  (relu_id, 2, kid, 1, NULL, 0);
     DSL_BUILDER_REGION region = DSL_Builder_Create_Region
         (pu, NULL, "test.lowering", 1);
+    WN *canonical_pragmas = WN_CreateBlock();
+    WN_INSERT_BlockLast
+        (canonical_pragmas,
+         WN_CreatePragma(WN_PRAGMA_OPAQUE, ST_IDX_ZERO, 0, 0));
+    WN *canonical_region = WN_CreateRegion
+        (REGION_KIND_PRAGMA, WN_CreateBlock(), canonical_pragmas,
+         WN_CreateBlock(), -1, INITO_IDX_ZERO);
     if (pu == NULL || tensor_ty == TY_IDX_ZERO || input == NULL ||
         relu_id == DSL_OPCODE_INVALID_ID || relu == NULL || region == NULL ||
-        !DSL_Builder_Append_PU_Value(pu, input) ||
-        !DSL_Builder_Append_Region_Value(region, relu) ||
+        canonical_region == NULL || !DSL_Builder_Append_PU_Value(pu, input))
+        return FALSE;
+
+    WN_INSERT_BlockLast
+        (WN_func_body(PU_Info_tree_ptr(pu)), canonical_region);
+    if (!DSL_Builder_Append_Region_Value(region, relu) ||
         !DSL_Builder_Append_PU_Region(pu, region) ||
         !DSL_Region_Verify_PU(pu, stderr))
         return FALSE;
@@ -1372,15 +1383,34 @@ Check_Managed_Region_Lowering(void)
         return FALSE;
 
     UINT32 call_count = 0;
+    UINT32 canonical_region_count = 0;
     WN *body = WN_func_body(tree);
     for (WN *statement = WN_first(body); statement != NULL;
          statement = WN_next(statement)) {
-        if (WN_operator(statement) == OPR_REGION)
-            return FALSE;
+        if (WN_operator(statement) == OPR_REGION) {
+            if (statement != canonical_region ||
+                DSL_Region_Is_Managed_WN(pu, statement))
+                return FALSE;
+            ++canonical_region_count;
+        }
         if (WN_operator(statement) == OPR_CALL)
             ++call_count;
     }
-    return call_count == 2 && !Tree_Has_Native_DSL(body);
+
+    const char *trace_path = getenv("OPEN64_DSL_REGION_LOWER_TRACE");
+    if (trace_path != NULL && trace_path[0] != '\0') {
+        FILE *trace = fopen(trace_path, "w");
+        if (trace == NULL)
+            return FALSE;
+        fprintf(trace, "WHIRL after managed DSL REGION body splicing\n");
+        fprintf(trace, "managed_regions=0 canonical_regions=%u "
+                       "WT_REGIONS=missing\n", canonical_region_count);
+        fdump_tree(trace, tree);
+        fclose(trace);
+    }
+
+    return call_count == 2 && canonical_region_count == 1 &&
+           !Tree_Has_Native_DSL(body);
 }
 
 int
@@ -1391,6 +1421,9 @@ main(void)
     memset(&empty_pu, 0, sizeof(empty_pu));
 
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_REGION_SUBSTRATE_ONLY") != NULL)
+        return Check_Managed_Region_Lowering() ? 0 : 1;
+
     WN *baseline = WN_CreateBlock();
     if (!VHO_DSL_Lower_Verified_Program_Unit
              (&empty_pu, baseline, NULL, &result) ||

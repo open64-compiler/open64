@@ -1083,6 +1083,17 @@ compiled CG region while preserving its inspectable VHO evidence.
    materialized by the existing region analysis, preserving LNO, WOPT, EH, and
    CG ownership boundaries.
 
+   Completion is certified by
+   `osprey/common/com/tests/dsl_region_substrate_compat_test.sh`.  The fixture
+   writes and reloads a mapped binary WHIRL image, inspects it with
+   `ir_b2a -st -src`, and verifies nested region contracts, declared value
+   roles, metadata, and source positions.  Its lowering case places a managed
+   DSL region beside an unmanaged canonical `OPR_REGION`: the DSL region body
+   is spliced before LNO, its consumed `WT_REGIONS` table is removed, and the
+   canonical region remains unchanged for normal backend RID construction.
+   The fixture retains `region_substrate.B`, `region_substrate.T`, and
+   `region_substrate_lowered.T` for human review.
+
 16. [ ] Ingest and certify ResNet structured regions.
 
    Implement M8B BasicBlock, Bottleneck, identity shortcut, and projection
