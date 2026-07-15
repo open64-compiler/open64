@@ -213,6 +213,9 @@ extern DSL_BUILDER_REGION DSL_Builder_Create_Region
 extern BOOL DSL_Builder_Append_Region_Value
                                 (DSL_BUILDER_REGION region,
                                  DSL_BUILDER_VALUE value);
+extern BOOL DSL_Builder_Append_Child_Region
+                                (DSL_BUILDER_REGION parent,
+                                 DSL_BUILDER_REGION child);
 extern BOOL DSL_Builder_Append_PU_Region
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  DSL_BUILDER_REGION region);
@@ -226,6 +229,10 @@ extern BOOL DSL_Builder_Set_Region_Source_Position
                                 (DSL_BUILDER_REGION region,
                                  const DSL_BUILDER_SOURCE_POSITION
                                      *source_position);
+extern BOOL DSL_Builder_Set_Region_Metadata
+                                (DSL_BUILDER_REGION region,
+                                 const char *key,
+                                 const char *value);
 extern BOOL DSL_Builder_Verify_Program
                                 (DSL_BUILDER_VERIFY_RESULT *result);
 /*

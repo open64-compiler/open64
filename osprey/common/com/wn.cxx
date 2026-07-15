@@ -2423,8 +2423,7 @@ DSL_WN_Create_Native
     const size_t extra_kids = operand_count > 2 ? operand_count - 2 : 0;
     DSL_OPERATOR_INFO info;
 
-    if (!DSL_Operator_Get_Info(dsl_operator, &info) ||
-        info.version != version ||
+    if (!DSL_Operator_Get_Info_Version(dsl_operator, version, &info) ||
         (info.nkids >= 0 && (UINT32)info.nkids != operand_count) ||
         extra_kids > (INT16_MAX - fixed_size) / sizeof(WN *) ||
         (operand_count != 0 && operands == NULL))
@@ -2455,8 +2454,7 @@ DSL_WN_Create_Logical_Opcode
 {
     DSL_OPERATOR_INFO info;
 
-    if (!DSL_Operator_Get_Info(dsl_operator, &info) ||
-        info.version != version ||
+    if (!DSL_Operator_Get_Info_Version(dsl_operator, version, &info) ||
         (info.nkids >= 0 && (UINT32)info.nkids != operand_count) ||
         (operand_count != 0 && operands == NULL))
         return NULL;
@@ -3024,6 +3022,7 @@ DSL_WN_Get_Logical_Opcode
     DSL_WHIRL_NODE_RECORD record;
     DSL_OPERATOR dsl_operator;
     DSL_OPERATOR_INFO info;
+    DSL_OPERATOR_INFO current_info;
     BOOL operator_known;
     DSL_OPCODE_VERSION_DISPOSITION disposition =
         DSL_OPCODE_VERSION_INVALID;
@@ -3046,14 +3045,18 @@ DSL_WN_Get_Logical_Opcode
     dsl_operator = DSL_Operator_Find_Current(record.opcode_name,
                                               record.opcode_name_len);
     operator_known = dsl_operator != OPR_DSLUNKNOWN &&
-                     DSL_Operator_Get_Info(dsl_operator, &info);
+                     DSL_Operator_Get_Info_Version
+                         (dsl_operator, record.version, &info);
     if (!operator_known) {
-        dsl_operator = OPR_DSLUNKNOWN;
-        disposition = DSL_OPCODE_VERSION_REJECTED_UNKNOWN_OPERATOR;
-    } else if (record.version < info.version) {
-        disposition = DSL_OPCODE_VERSION_REJECTED_OLDER;
-    } else if (record.version > info.version) {
-        disposition = DSL_OPCODE_VERSION_REJECTED_NEWER;
+        if (dsl_operator == OPR_DSLUNKNOWN ||
+            !DSL_Operator_Get_Info(dsl_operator, &current_info)) {
+            dsl_operator = OPR_DSLUNKNOWN;
+            disposition = DSL_OPCODE_VERSION_REJECTED_UNKNOWN_OPERATOR;
+        } else if (record.version < current_info.version) {
+            disposition = DSL_OPCODE_VERSION_REJECTED_OLDER;
+        } else {
+            disposition = DSL_OPCODE_VERSION_REJECTED_NEWER;
+        }
     } else {
         disposition = DSL_OPCODE_VERSION_EXACT;
     }
@@ -3062,7 +3065,8 @@ DSL_WN_Get_Logical_Opcode
         logical_opcode->dsl_operator = dsl_operator;
         logical_opcode->source_version = record.version;
         logical_opcode->effective_version =
-            operator_known ? info.version : 0;
+            operator_known ? record.version :
+            (dsl_operator == OPR_DSLUNKNOWN ? 0 : current_info.version);
         logical_opcode->payload = record.payload == NULL ? "" : record.payload;
         logical_opcode->carrier = record.carrier;
         logical_opcode->version_disposition = disposition;

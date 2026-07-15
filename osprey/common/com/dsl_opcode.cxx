@@ -128,7 +128,14 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLCONV2D",
     "OPR_DSLBATCHNORMINFER",
     "OPR_DSLMAXPOOL2D",
-    "OPR_DSLGLOBALAVGPOOL2D"
+    "OPR_DSLGLOBALAVGPOOL2D",
+    "OPR_DSLRESHAPE",
+    "OPR_DSLTRANSPOSE",
+    "OPR_DSLTOKENEMBEDDING",
+    "OPR_DSLRMSNORM",
+    "OPR_DSLROTARYEMBEDDING",
+    "OPR_DSLATTENTION",
+    "OPR_DSLSWIGLU"
 };
 
 static const char *DSL_cprom_diagnostic_code[] = {
@@ -460,6 +467,12 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_MATMUL",
         "attr.transpose_kid0;attr.transpose_kid1" },
+    { OPR_DSLMATMUL, "common.matmul", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_MATMUL_V2",
+        "attr.transpose_kid0;attr.transpose_kid1;attr.batch_rule;"
+        "attr.accum_dtype" },
     { OPR_DSLMODELINPUT, "common.model_input", 2,
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 0,
         DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
@@ -485,11 +498,22 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_LINEAR_V2",
         "attr.has_bias;attr.transpose_input;attr.transpose_weight;"
         "attr.weight_layout" },
+    { OPR_DSLLINEAR, "common.linear", 3,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_LINEAR_V3",
+        "attr.has_bias;attr.transpose_input;attr.transpose_weight;"
+        "attr.weight_layout" },
     { OPR_DSLOUTPUTLOGITS, "common.output_logits", 2,
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 1,
         DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_OUTPUT_LOGITS_V2",
         "attr.semantic" },
+    { OPR_DSLOUTPUTLOGITS, "common.output_logits", 3,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 1,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_OUTPUT_LOGITS_V3",
+        "attr.semantic;attr.sequence_axis;attr.vocabulary_axis" },
     { OPR_DSLCONV2D, "cnn.conv2d", 2,
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 3,
         DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
@@ -511,28 +535,84 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 1,
         DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CNN_GLOBAL_AVG_POOL2D_V2",
-        "attr.output_size;attr.reduction_axes" }
+        "attr.output_size;attr.reduction_axes" },
+    { OPR_DSLRESHAPE, "common.reshape", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_1_TENSOR, 1,
+        DSL_SHAPE_RULE_VIEW, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_RESHAPE_V1",
+        "attr.target_shape" },
+    { OPR_DSLTRANSPOSE, "common.transpose", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_1_TENSOR, 1,
+        DSL_SHAPE_RULE_VIEW, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_TRANSPOSE_V1",
+        "attr.permutation" },
+    { OPR_DSLTOKENEMBEDDING, "transformer.token_embedding", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 2,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL,
+        "DOPC_TRANSFORMER_TOKEN_EMBEDDING_V1",
+        "attr.padding_idx;attr.bounds_policy" },
+    { OPR_DSLRMSNORM, "transformer.rms_norm", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 2,
+        DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_TRANSFORMER_RMS_NORM_V1",
+        "attr.axis;attr.epsilon;attr.accum_dtype" },
+    { OPR_DSLROTARYEMBEDDING, "transformer.rotary_embedding", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 3,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL,
+        "DOPC_TRANSFORMER_ROTARY_EMBEDDING_V1",
+        "attr.head_layout;attr.sequence_axis;attr.feature_axis;attr.pairing;"
+        "attr.position_mode;attr.position_offset" },
+    { OPR_DSLATTENTION, "transformer.attention", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 3,
+        DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_TRANSFORMER_ATTENTION_V1",
+        "attr.execution_mode;attr.mask_mode;attr.head_layout;"
+        "attr.query_heads;attr.kv_heads;attr.head_dim;attr.scale_mode;"
+        "attr.softmax_axis;attr.softmax_accum_dtype;attr.cache_mode" },
+    { OPR_DSLSWIGLU, "transformer.swiglu", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 2,
+        DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_TRANSFORMER_SWIGLU_V1",
+        "attr.activation" }
 };
 
 static const DSL_LOGICAL_OPERATOR_SEED *
 DSL_Operator_Seed (DSL_OPERATOR dsl_operator)
 {
+    const DSL_LOGICAL_OPERATOR_SEED *current = NULL;
+
     for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_logical_operator_seed); ++i) {
-        if (DSL_logical_operator_seed[i].dsl_operator == dsl_operator)
+        if (DSL_logical_operator_seed[i].dsl_operator == dsl_operator &&
+            (current == NULL ||
+             DSL_logical_operator_seed[i].version > current->version))
+            current = &DSL_logical_operator_seed[i];
+    }
+
+    return current;
+}
+
+static const DSL_LOGICAL_OPERATOR_SEED *
+DSL_Operator_Seed_Version
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version)
+{
+    for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_logical_operator_seed); ++i) {
+        if (DSL_logical_operator_seed[i].dsl_operator == dsl_operator &&
+            DSL_logical_operator_seed[i].version == version)
             return &DSL_logical_operator_seed[i];
     }
 
     return NULL;
 }
 
-BOOL
-DSL_Operator_Get_Info
-        (DSL_OPERATOR dsl_operator,
+static BOOL
+DSL_Operator_Copy_Info
+        (const DSL_LOGICAL_OPERATOR_SEED *seed,
          DSL_OPERATOR_INFO *info)
 {
-    const DSL_LOGICAL_OPERATOR_SEED *seed = DSL_Operator_Seed(dsl_operator);
-
-    if (seed == NULL || dsl_operator == OPR_DSLUNKNOWN)
+    if (seed == NULL || seed->dsl_operator == OPR_DSLUNKNOWN)
         return FALSE;
 
     if (info != NULL) {
@@ -552,6 +632,28 @@ DSL_Operator_Get_Info
     }
 
     return TRUE;
+}
+
+BOOL
+DSL_Operator_Get_Info
+        (DSL_OPERATOR dsl_operator,
+         DSL_OPERATOR_INFO *info)
+{
+    const DSL_LOGICAL_OPERATOR_SEED *seed = DSL_Operator_Seed(dsl_operator);
+
+    return DSL_Operator_Copy_Info(seed, info);
+}
+
+BOOL
+DSL_Operator_Get_Info_Version
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         DSL_OPERATOR_INFO *info)
+{
+    const DSL_LOGICAL_OPERATOR_SEED *seed =
+        DSL_Operator_Seed_Version(dsl_operator, version);
+
+    return DSL_Operator_Copy_Info(seed, info);
 }
 
 DSL_OPERATOR
@@ -926,14 +1028,15 @@ DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info)
 static UINT32
 DSL_Opcode_Register_Logical_Domain
         (const char *domain_name,
-         DSL_DOMAIN_ID domain_id)
+         DSL_DOMAIN_ID domain_id,
+         UINT16 minimum_version)
 {
     size_t domain_length = strlen(domain_name);
     UINT32 registered = 0;
 
     for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_logical_operator_seed); ++i) {
         const DSL_LOGICAL_OPERATOR_SEED &seed = DSL_logical_operator_seed[i];
-        if (seed.version < 2 ||
+        if (seed.version < minimum_version ||
             strncmp(seed.name, domain_name, domain_length) != 0 ||
             seed.name[domain_length] != '.')
             continue;
@@ -979,7 +1082,7 @@ DSL_Opcode_Register_Common_Substrate (void)
             ++registered;
     }
 
-    registered += DSL_Opcode_Register_Logical_Domain("common", common_id);
+    registered += DSL_Opcode_Register_Logical_Domain("common", common_id, 2);
 
     return registered;
 }
@@ -1022,9 +1125,27 @@ DSL_Opcode_Register_Domain_Wrapper_Examples (void)
 
     DSL_DOMAIN_ID cnn_id = DSL_Domain_Find("cnn");
     if (cnn_id != DSL_DOMAIN_INVALID_ID)
-        registered += DSL_Opcode_Register_Logical_Domain("cnn", cnn_id);
+        registered += DSL_Opcode_Register_Logical_Domain("cnn", cnn_id, 2);
 
     return registered;
+}
+
+UINT32
+DSL_Opcode_Register_Transformer_Domain (void)
+{
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_DOMAIN_ID common_id = DSL_Domain_Find("common");
+    DSL_DOMAIN_ID transformer_id = DSL_Domain_Find("transformer");
+
+    if (common_id == DSL_DOMAIN_INVALID_ID)
+        return 0;
+    if (transformer_id == DSL_DOMAIN_INVALID_ID)
+        transformer_id = DSL_Domain_Register
+                             ("transformer", common_id, 1, 0);
+    if (transformer_id == DSL_DOMAIN_INVALID_ID)
+        return 0;
+    return DSL_Opcode_Register_Logical_Domain
+               ("transformer", transformer_id, 1);
 }
 
 DSL_OPCODE_ID

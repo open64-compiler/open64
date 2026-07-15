@@ -33,7 +33,14 @@ typedef enum {
     OPR_DSLCONV2D = 10,
     OPR_DSLBATCHNORMINFER = 11,
     OPR_DSLMAXPOOL2D = 12,
-    OPR_DSLGLOBALAVGPOOL2D = 13
+    OPR_DSLGLOBALAVGPOOL2D = 13,
+    OPR_DSLRESHAPE = 14,
+    OPR_DSLTRANSPOSE = 15,
+    OPR_DSLTOKENEMBEDDING = 16,
+    OPR_DSLRMSNORM = 17,
+    OPR_DSLROTARYEMBEDDING = 18,
+    OPR_DSLATTENTION = 19,
+    OPR_DSLSWIGLU = 20
 } DSL_OPERATOR;
 
 typedef enum {
@@ -173,6 +180,9 @@ extern UINT32 DSL_Opcode_Count (void);
 extern BOOL DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info);
 extern BOOL DSL_Operator_Get_Info (DSL_OPERATOR dsl_operator,
                                    DSL_OPERATOR_INFO *info);
+extern BOOL DSL_Operator_Get_Info_Version (DSL_OPERATOR dsl_operator,
+                                           UINT16 version,
+                                           DSL_OPERATOR_INFO *info);
 extern DSL_OPERATOR DSL_Operator_Find (const char *stable_name,
                                        UINT32 stable_name_len,
                                        UINT16 version);
@@ -180,6 +190,7 @@ extern DSL_OPERATOR DSL_Operator_Find_Current (const char *stable_name,
                                                UINT32 stable_name_len);
 extern const char *DSL_OPERATOR_name (DSL_OPERATOR dsl_operator);
 extern UINT32 DSL_Opcode_Register_Common_Substrate (void);
+extern UINT32 DSL_Opcode_Register_Transformer_Domain (void);
 extern UINT32 DSL_Opcode_Register_Domain_Wrapper_Examples (void);
 extern DSL_OPCODE_ID DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id);
 extern void DSL_Opcode_Promotion_Registry_Reset (void);
