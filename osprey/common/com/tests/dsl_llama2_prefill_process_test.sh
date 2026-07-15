@@ -131,17 +131,19 @@ rm -f "$artifact_dir/llama2.B" "$artifact_dir/llama2.T"
 require_file "$artifact_dir/llama2.B"
 require_file "$artifact_dir/llama2.safetensors"
 require_file "$artifact_dir/llama2.t"
-inspect_prefill "$artifact_dir/llama2.B" "$artifact_dir/llama2.T"
+mkdir -p "$artifact_dir/binary" "$artifact_dir/lowered"
+mv "$artifact_dir/llama2.t" "$artifact_dir/lowered/llama2.t"
+inspect_prefill "$artifact_dir/llama2.B" "$artifact_dir/binary/llama2.T"
 
 for runtime in \
-  "__open64_dsl_transformer_token_embedding_v1" \
-  "__open64_dsl_transformer_rms_norm_v1" \
-  "__open64_dsl_transformer_rotary_embedding_v1" \
-  "__open64_dsl_transformer_attention_v1" \
-  "__open64_dsl_transformer_swiglu_v1"; do
-  require_text "$artifact_dir/llama2.t" "$runtime"
+  "__open64_dsl_token_embedding_v1" \
+  "__open64_dsl_rms_norm_v1" \
+  "__open64_dsl_rotary_embedding_v1" \
+  "__open64_dsl_attention_v1" \
+  "__open64_dsl_swiglu_v1"; do
+  require_text "$artifact_dir/lowered/llama2.t" "$runtime"
 done
-reject_text "$artifact_dir/llama2.t" "OPR_DSL[A-Z]"
+reject_text "$artifact_dir/lowered/llama2.t" "OPR_DSL[A-Z]"
 
 cat >> "$artifact_dir/certification.txt" <<EOF
 python_frontend=passed
