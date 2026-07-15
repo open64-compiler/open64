@@ -112,7 +112,7 @@ wopt_main (INT wopt_argc, char **wopt_argv, INT be_argc, char **be_argv)
 {
   extern const char *Whirl_Revision;
 
-  if (strcmp (Whirl_Revision, WHIRL_REVISION) != 0)
+  if (!WHIRL_REVISION_IS_SUPPORTED(Whirl_Revision))
     FmtAssert (!DEBUG_Ir_Version_Check,
 	       ("WHIRL revision mismatch between be.so (%s) and wopt.so (%s)", 
 		Whirl_Revision, WHIRL_REVISION));

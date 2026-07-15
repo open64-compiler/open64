@@ -74,6 +74,7 @@
 #include "profile_com.h"
 #include "fb_info.h"
 #include "dsl_ir_image.h"
+#include "dsl_region.h"
 
 
 BOOL Run_vsaopt = FALSE; // hack to workaround undefine since
@@ -168,6 +169,8 @@ ir_b2a_process_PUs (PU_Info *pu_tree, BOOL stflag, BOOL fbflag, BOOL verify)
 
 	Current_PU_Info = pu;
 	IR_put_func (wn, NULL);
+        if (stflag)
+            DSL_Region_Print_PU(stdout, pu);
 
 	if(verify) {
 	    WN_verify(wn, NULL);
@@ -359,10 +362,11 @@ usage (char *progname)
   if (a2b) {
       fprintf (stderr, "New symbol table format not supported by ir_a2b (yet)\n");
   } else if (b2a) {
-    fprintf (stderr, "Usage: %s [-st] [-v] [-verify] <Binary IR> [<ASCII IR>]\n",
+    fprintf (stderr, "Usage: %s [-st] [-src] [-v] [-verify] <Binary IR> [<ASCII IR>]\n",
 	     progname);
     fprintf (stderr, "\t(will write to stdout if ascii file not given)\n");
     fprintf (stderr, "\t-st option will also print out the symbol table\n");
+    fprintf (stderr, "\t-src option will interleave available source lines\n");
     fprintf (stderr, "\t-opcodes option will print out opcodes as seen\n");
     fprintf (stderr, "\t-lines option will print out line numbers\n");
     fprintf (stderr, "\t-global_local <.G file> option will use separate global table\n");
@@ -428,6 +432,8 @@ main (INT argc, char *argv[])
 	while (*argv[binarg] == '-') {
 	   if (strncmp(argv[binarg], "-st", 3) == 0) {
 	      stflag = TRUE;
+           } else if (strcmp(argv[binarg], "-src") == 0) {
+              IR_dump_source = TRUE;
 	   } else if (strcmp(argv[binarg], "-fb") == 0) {
 	       fbflag = TRUE;
 	   } else if (strcmp(argv[binarg], "-v") == 0) {

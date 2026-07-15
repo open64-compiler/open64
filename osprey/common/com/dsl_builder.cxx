@@ -55,6 +55,7 @@ DSL_Builder_Reset_Program (void)
     DSL_Builder_Result_Number = 0;
     DSL_builder_value_registry.clear();
     DSL_IR_Image_Reset();
+    DSL_Region_Reset();
 }
 
 static DSL_BUILDER_VALUE_RECORD *
@@ -1737,6 +1738,7 @@ DSL_Builder_Create_Minimal_PU (const char *name)
     function_ty = Make_Function_Type(MTYPE_To_TY(MTYPE_V));
     pu = &New_PU(pu_idx);
     PU_Init(*pu, function_ty, GLOBAL_SYMTAB + 1);
+    Set_PU_c_lang(*pu);
 
     func_st = New_ST(GLOBAL_SYMTAB);
     ST_Init(func_st, Save_Str(name), CLASS_FUNC, SCLASS_TEXT,
@@ -1770,6 +1772,8 @@ DSL_Builder_Create_Minimal_PU (const char *name)
     PU_Info_init(pu_info);
 
     Set_PU_Info_tree_ptr(pu_info, entry_wn);
+    if (Current_Map_Tab == NULL)
+        Current_Map_Tab = WN_MAP_TAB_Create(Malloc_Mem_Pool);
     PU_Info_maptab(pu_info) = Current_Map_Tab;
     PU_Info_proc_sym(pu_info) = ST_st_idx(func_st);
     Set_PU_Info_pu_dst(pu_info, func_dst);
@@ -1901,6 +1905,13 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
 
     BOOL valid = DSL_Gatekeeper_Verify_Program
                      (DSL_Builder_PU_Root, diagnostic, &gatekeeper_result);
+    for (PU_Info *pu = DSL_Builder_PU_Root; pu != NULL;
+         pu = PU_Info_next(pu)) {
+        if (!DSL_Region_Verify_PU(pu, diagnostic)) {
+            valid = FALSE;
+            ++gatekeeper_result.error_count;
+        }
+    }
     if (diagnostic != NULL) {
         rewind(diagnostic);
         size_t count = fread(buffer, 1, capacity - 1, diagnostic);
@@ -1914,6 +1925,73 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
         result->error_count = gatekeeper_result.error_count;
     }
     return valid;
+}
+
+DSL_BUILDER_REGION
+DSL_Builder_Create_Region
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_REGION parent,
+         const char *contract_name,
+         UINT32 contract_version)
+{
+    if (DSL_Builder_PU_Body(pu) == NULL)
+        return NULL;
+    return DSL_Region_Create(pu, parent, contract_name, contract_version);
+}
+
+BOOL
+DSL_Builder_Append_Region_Value
+        (DSL_BUILDER_REGION region,
+         DSL_BUILDER_VALUE value)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    return record != NULL &&
+           DSL_Region_Append_Statement(region, record->assignment);
+}
+
+BOOL
+DSL_Builder_Append_PU_Region
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_REGION region)
+{
+    return DSL_Builder_PU_Body(pu) != NULL &&
+           DSL_Region_Append_To_PU(region);
+}
+
+BOOL
+DSL_Builder_Declare_Region_Value
+        (DSL_BUILDER_REGION region,
+         DSL_BUILDER_VALUE value,
+         UINT32 roles,
+         UINT32 ordinal,
+         UINT32 flags)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    return record != NULL &&
+           DSL_Region_Declare_Symbol
+               (region, record->result_st, roles, ordinal, flags);
+}
+
+BOOL
+DSL_Builder_Set_Region_Source_Position
+        (DSL_BUILDER_REGION region,
+         const DSL_BUILDER_SOURCE_POSITION *source_position)
+{
+    USRCPOS position;
+    if (region == NULL || source_position == NULL ||
+        source_position->file_id == 0 ||
+        source_position->file_id > DSL_builder_source_files.size() ||
+        source_position->line < 0 || source_position->column > 4095)
+        return FALSE;
+
+    USRCPOS_clear(position);
+    USRCPOS_filenum(position) = source_position->file_id;
+    USRCPOS_linenum(position) = source_position->line;
+    USRCPOS_column(position) = source_position->column;
+    USRCPOS_stmt_begin(position) = source_position->statement_begin != 0;
+    USRCPOS_bb_begin(position) = source_position->basic_block_begin != 0;
+    return DSL_Region_Set_Source_Position
+               (region, USRCPOS_srcpos(position));
 }
 
 BOOL
@@ -2103,8 +2181,9 @@ DSL_Builder_Finalize_Mapped_Image
     for (PU_Info *pu = DSL_Builder_PU_Root; pu != NULL;
          pu = PU_Info_next(pu)) {
         if (PU_Info_state(pu, WT_SYMTAB) == Subsect_InMem ||
-            PU_Info_state(pu, WT_TREE) == Subsect_InMem)
+            PU_Info_state(pu, WT_TREE) == Subsect_InMem) {
             Write_PU_Info(pu);
+        }
     }
 
     Write_Global_Info(DSL_Builder_PU_Root);
