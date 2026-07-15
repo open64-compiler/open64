@@ -162,7 +162,7 @@ python_torch_test:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \
 	    $(PYTHON) -m unittest discover \
 	    -s $(BUILD_BASE)/python/tests \
-	    -p 'test_open64_dsc_fx_capture_optional.py'
+	    -p 'test_*capture_optional.py'
 
 driver_torch_test: $(TARGETS) python_native_stage
 	PYTHONDONTWRITEBYTECODE=1 \

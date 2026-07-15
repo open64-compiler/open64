@@ -19,10 +19,7 @@ class Torch2WhirlCliError(RuntimeError):
 
 
 def _parse_shape_spec(spec: str) -> Tuple[int, ...]:
-    prefix = "shape:"
-    if not spec.startswith(prefix):
-        raise ValueError("sample input must use shape:<dims>")
-
+    prefix = _sample_input_prefix(spec)
     body = spec[len(prefix):]
     if not body:
         raise ValueError("sample input shape must not be empty")
@@ -42,13 +39,26 @@ def _parse_shape_spec(spec: str) -> Tuple[int, ...]:
     return tuple(dims)
 
 
+def _sample_input_prefix(spec: str) -> str:
+    for prefix in ("shape:", "int-shape:"):
+        if spec.startswith(prefix):
+            return prefix
+    raise ValueError("sample input must use shape:<dims> or int-shape:<dims>")
+
+
 def _sample_input_from_spec(spec: str) -> Any:
     try:
         import torch
     except ImportError as exc:
         raise RuntimeError("torch is required for --sample-input") from exc
 
-    return torch.ones(_parse_shape_spec(spec), dtype=torch.float32)
+    shape = _parse_shape_spec(spec)
+    if _sample_input_prefix(spec) == "int-shape:":
+        element_count = 1
+        for dim in shape:
+            element_count *= dim
+        return torch.arange(element_count, dtype=torch.int64).reshape(shape)
+    return torch.ones(shape, dtype=torch.float32)
 
 
 def _load_python_module(path: Path) -> ModuleType:
@@ -70,8 +80,7 @@ def _load_python_module(path: Path) -> ModuleType:
     return module
 
 
-def _load_model(path: Path, factory_name: str) -> Any:
-    module = _load_python_module(path)
+def _load_model_from_module(module: ModuleType, factory_name: str) -> Any:
     factory = getattr(module, factory_name, None)
     if factory is None:
         raise AttributeError(f"model factory not found: {factory_name}")
@@ -82,6 +91,26 @@ def _load_model(path: Path, factory_name: str) -> Any:
     if hasattr(model, "eval") and callable(model.eval):
         model.eval()
     return model
+
+
+def _load_model(path: Path, factory_name: str) -> Any:
+    return _load_model_from_module(_load_python_module(path), factory_name)
+
+
+def _sample_inputs_from_module(module: ModuleType) -> Optional[Sequence[Any]]:
+    provider = getattr(module, "open64_sample_inputs", None)
+    if provider is None:
+        provider = getattr(module, "create_open64_sample_inputs", None)
+    if provider is None:
+        return None
+    if not callable(provider):
+        raise TypeError("Open64 sample-input provider is not callable")
+    sample_inputs = provider()
+    if isinstance(sample_inputs, tuple):
+        return sample_inputs
+    if isinstance(sample_inputs, list):
+        return tuple(sample_inputs)
+    return (sample_inputs,)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -103,8 +132,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sample-input",
         action="append",
-        required=True,
-        help="sample input descriptor, currently shape:<d0,d1,...>",
+        help=(
+            "sample input descriptor: shape:<d0,d1,...> or "
+            "int-shape:<d0,d1,...>; ignored when model.py provides "
+            "open64_sample_inputs()"
+        ),
     )
     parser.add_argument(
         "--backend",
@@ -127,15 +159,23 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     output_path = Path(args.output)
 
     try:
-        model = _load_model(Path(args.model), args.model_factory)
+        module = _load_python_module(Path(args.model))
+        model = _load_model_from_module(module, args.model_factory)
     except Exception as exc:
         raise Torch2WhirlCliError(f"Python import/model load failed: {exc}") from exc
 
     try:
-        sample_inputs = [
-            _sample_input_from_spec(sample_spec)
-            for sample_spec in args.sample_input
-        ]
+        sample_inputs = _sample_inputs_from_module(module)
+        if sample_inputs is None:
+            if not args.sample_input:
+                raise ValueError(
+                    "sample input is required unless model.py provides "
+                    "open64_sample_inputs()"
+                )
+            sample_inputs = [
+                _sample_input_from_spec(sample_spec)
+                for sample_spec in args.sample_input
+            ]
     except Exception as exc:
         raise Torch2WhirlCliError(f"sample input parsing failed: {exc}") from exc
 

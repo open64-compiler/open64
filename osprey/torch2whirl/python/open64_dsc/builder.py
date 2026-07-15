@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Mapping, Optional, Sequence
 
 from .backend import WhirlBackend, load_backend
-from .mapping import cnn, common
+from .mapping import cnn, common, transformer
 from .mapping.contract import operator_version
 
 
@@ -219,6 +219,14 @@ class WhirlBuilder:
         ):
             raise RuntimeError("failed to append program unit region")
 
+    def append_child_region(
+        self, parent_region: RegionHandle, child_region: RegionHandle
+    ) -> None:
+        if not self._backend.append_child_region(
+            parent_region.value, child_region.value
+        ):
+            raise RuntimeError("failed to append child region")
+
     def declare_region_value(
         self,
         region: RegionHandle,
@@ -250,6 +258,15 @@ class WhirlBuilder:
             basic_block_begin,
         ):
             raise RuntimeError("failed to set region source position")
+
+    def set_region_metadata(
+        self,
+        region: RegionHandle,
+        key: str,
+        value: str,
+    ) -> None:
+        if not self._backend.set_region_metadata(region.value, key, value):
+            raise RuntimeError("failed to set region metadata")
 
     def attach_value_metadata(
         self,
@@ -604,12 +621,25 @@ class WhirlBuilder:
         descriptor = dict(self._type_descriptors[input_type.value])
         shape = self._parse_shape(str(descriptor["logical_shape"]))
 
-        if opcode_name == "common.matmul" and len(kids) > 1:
+        if opcode_name == "common.reshape":
+            shape = self._parse_shape(attrs["attr.target_shape"])
+        elif opcode_name == "common.transpose":
+            permutation = self._parse_index_list(attrs["attr.permutation"])
+            shape = tuple(shape[index] for index in permutation)
+        elif opcode_name == "common.matmul" and len(kids) > 1:
             rhs_type = self._value_types[kids[1].value]
             rhs_shape = self._parse_shape(
                 str(self._type_descriptors[rhs_type.value]["logical_shape"])
             )
-            shape = (shape[0], rhs_shape[1])
+            lhs_shape = self._maybe_transpose_contract_dims(
+                shape,
+                attrs.get("attr.transpose_kid0", "false") == "true",
+            )
+            rhs_shape = self._maybe_transpose_contract_dims(
+                rhs_shape,
+                attrs.get("attr.transpose_kid1", "false") == "true",
+            )
+            shape = lhs_shape[:-1] + (rhs_shape[-1],)
         elif opcode_name == "common.flatten":
             start = int(attrs.get("attr.start_dim", "1"))
             end = int(attrs.get("attr.end_dim", "-1"))
@@ -652,7 +682,20 @@ class WhirlBuilder:
             weight_shape = self._parse_shape(
                 str(self._type_descriptors[weight_type.value]["logical_shape"])
             )
-            shape = (shape[0], weight_shape[0])
+            shape = shape[:-1] + (weight_shape[0],)
+        elif opcode_name == transformer.TOKEN_EMBEDDING and len(kids) > 1:
+            weight_type = self._value_types[kids[1].value]
+            weight_shape = self._parse_shape(
+                str(self._type_descriptors[weight_type.value]["logical_shape"])
+            )
+            descriptor["dtype"] = str(
+                self._type_descriptors[weight_type.value]["dtype"]
+            )
+            shape = shape + (weight_shape[-1],)
+        elif opcode_name == transformer.ATTENTION:
+            pass
+        elif opcode_name == transformer.SWIGLU:
+            pass
 
         descriptor["rank"] = len(shape)
         descriptor["logical_shape"] = self._format_shape(shape)
@@ -666,7 +709,8 @@ class WhirlBuilder:
 
     @staticmethod
     def _parse_shape(shape: str) -> tuple[int, ...]:
-        body = shape.strip()[1:-1]
+        text = shape.strip()
+        body = text[1:-1] if text.startswith("[") and text.endswith("]") else text
         return tuple(int(value) for value in body.split(",")) if body else ()
 
     @staticmethod
@@ -674,9 +718,27 @@ class WhirlBuilder:
         return "[" + ",".join(str(value) for value in shape) + "]"
 
     @staticmethod
+    def _format_attr_shape(shape: Sequence[int]) -> str:
+        return ",".join(str(value) for value in shape)
+
+    @staticmethod
     def _parse_pair(value: str) -> tuple[int, int]:
         parts = tuple(int(item) for item in value.split(","))
         return (parts[0], parts[0]) if len(parts) == 1 else (parts[0], parts[1])
+
+    @staticmethod
+    def _parse_index_list(value: str) -> tuple[int, ...]:
+        return tuple(int(item) for item in value.split(",") if item)
+
+    @staticmethod
+    def _maybe_transpose_contract_dims(
+        shape: Sequence[int],
+        transpose: bool,
+    ) -> tuple[int, ...]:
+        result = tuple(shape)
+        if transpose and len(result) >= 2:
+            result = result[:-2] + (result[-1], result[-2])
+        return result
 
     @staticmethod
     def _conv_dim(
@@ -718,6 +780,48 @@ class WhirlBuilder:
             },
         )
 
+    def common_matmul_v2(
+        self,
+        lhs: ValueHandle,
+        rhs: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            common.MATMUL,
+            2,
+            [lhs, rhs],
+            attrs or {
+                "attr.transpose_kid0": "false",
+                "attr.transpose_kid1": "false",
+                "attr.batch_rule": "prefix",
+                "attr.accum_dtype": "float32",
+            },
+        )
+
+    def common_reshape(
+        self,
+        value: ValueHandle,
+        result_shape: Sequence[int],
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        mapped_attrs = {
+            "attr.target_shape": self._format_attr_shape(result_shape),
+            **(attrs or {}),
+        }
+        return self.operator(common.RESHAPE, 1, [value], mapped_attrs)
+
+    def common_transpose(
+        self,
+        value: ValueHandle,
+        permutation: Sequence[int],
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        mapped_attrs = {
+            "attr.permutation": ",".join(str(index) for index in permutation),
+            **(attrs or {}),
+        }
+        return self.operator(common.TRANSPOSE, 1, [value], mapped_attrs)
+
     def common_residual_add(
         self,
         lhs: ValueHandle,
@@ -748,6 +852,24 @@ class WhirlBuilder:
             [value, weight, bias],
             attrs or {
                 "attr.has_bias": "true",
+                "attr.transpose_input": "false",
+                "attr.transpose_weight": "true",
+                "attr.weight_layout": "OI",
+            },
+        )
+
+    def common_linear_v3(
+        self,
+        value: ValueHandle,
+        weight: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            common.LINEAR,
+            3,
+            [value, weight],
+            attrs or {
+                "attr.has_bias": "false",
                 "attr.transpose_input": "false",
                 "attr.transpose_weight": "true",
                 "attr.weight_layout": "OI",
@@ -791,6 +913,111 @@ class WhirlBuilder:
             operator_version(common.OUTPUT_LOGITS),
             [value],
             attrs or {"attr.semantic": "logits"},
+        )
+
+    def common_output_logits_v3(
+        self,
+        value: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            common.OUTPUT_LOGITS,
+            3,
+            [value],
+            attrs or {
+                "attr.semantic": "token_logits",
+                "attr.sequence_axis": "-2",
+                "attr.vocabulary_axis": "-1",
+            },
+        )
+
+    def transformer_token_embedding(
+        self,
+        tokens: ValueHandle,
+        weight: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            transformer.TOKEN_EMBEDDING,
+            1,
+            [tokens, weight],
+            attrs or {
+                "attr.padding_idx": "none",
+                "attr.bounds_policy": "runtime_check",
+            },
+        )
+
+    def transformer_rms_norm(
+        self,
+        value: ValueHandle,
+        scale: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            transformer.RMS_NORM,
+            1,
+            [value, scale],
+            attrs or {
+                "attr.axis": "-1",
+                "attr.epsilon": "1e-05",
+                "attr.accum_dtype": "float32",
+            },
+        )
+
+    def transformer_rotary_embedding(
+        self,
+        value: ValueHandle,
+        cos: ValueHandle,
+        sin: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            transformer.ROTARY_EMBEDDING,
+            1,
+            [value, cos, sin],
+            attrs or {
+                "attr.head_layout": "BHSD",
+                "attr.sequence_axis": "2",
+                "attr.feature_axis": "3",
+                "attr.pairing": "half_split",
+                "attr.position_mode": "zero_based_static",
+                "attr.position_offset": "0",
+            },
+        )
+
+    def transformer_attention(
+        self,
+        query: ValueHandle,
+        key: ValueHandle,
+        value: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            transformer.ATTENTION,
+            1,
+            [query, key, value],
+            attrs or {
+                "attr.execution_mode": "full_sequence",
+                "attr.mask_mode": "causal",
+                "attr.head_layout": "BHSD",
+                "attr.scale_mode": "inverse_sqrt_head_dim",
+                "attr.softmax_axis": "-1",
+                "attr.softmax_accum_dtype": "float32",
+                "attr.cache_mode": "none",
+            },
+        )
+
+    def transformer_swiglu(
+        self,
+        gate: ValueHandle,
+        up: ValueHandle,
+        attrs: Optional[Mapping[str, str]] = None,
+    ) -> OperatorHandle:
+        return self.operator(
+            transformer.SWIGLU,
+            1,
+            [gate, up],
+            attrs or {"attr.activation": "silu"},
         )
 
     def cnn_max_pool2d(

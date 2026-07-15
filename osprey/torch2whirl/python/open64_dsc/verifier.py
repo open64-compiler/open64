@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 
-from .mapping import cnn, common
+from .mapping import cnn, common, transformer
 from .mapping.contract import (
     all_operator_contracts,
     operator_arity,
@@ -305,7 +305,7 @@ def _verify_graph_operators(
     for operator in graph_operators:
         if operator.name not in _KNOWN_OPERATORS:
             raise WhirlVerificationError(f"unknown operator: {operator.name}")
-        expected_arity = operator_arity(operator.name)
+        expected_arity = _operator_arity(operator)
         if len(operator.kids) != expected_arity:
             raise WhirlVerificationError(
                 f"{operator.name} expects {expected_arity} operands, "
@@ -317,7 +317,11 @@ def _verify_graph_operators(
             for kid in operator.kids
         ]
         _verify_operator_contract(operator, operand_types)
-        produced_types[operator.name] = _result_type(operator, operand_types)
+        result_type = _result_type(operator, operand_types)
+        produced_types[operator.name] = result_type
+        semantic_name = operator.metadata.get("semantic_name")
+        if semantic_name:
+            produced_types[semantic_name] = result_type
 
 
 def _resolve_operand_type(
@@ -364,6 +368,34 @@ def _verify_operator_contract(
         _verify_linear_contract(operator, operand_types)
         return
 
+    if operator.name == common.RESHAPE:
+        _verify_reshape_contract(operator, operand_types)
+        return
+
+    if operator.name == common.TRANSPOSE:
+        _verify_transpose_contract(operator, operand_types)
+        return
+
+    if operator.name == transformer.TOKEN_EMBEDDING:
+        _verify_token_embedding_contract(operator, operand_types)
+        return
+
+    if operator.name == transformer.RMS_NORM:
+        _verify_rms_norm_contract(operator, operand_types)
+        return
+
+    if operator.name == transformer.ROTARY_EMBEDDING:
+        _verify_rotary_embedding_contract(operator, operand_types)
+        return
+
+    if operator.name == transformer.ATTENTION:
+        _verify_attention_contract(operator, operand_types)
+        return
+
+    if operator.name == transformer.SWIGLU:
+        _verify_swiglu_contract(operator, operand_types)
+        return
+
     if operator.name == cnn.CONV2D:
         _verify_conv2d_contract(operator, operand_types)
         return
@@ -390,6 +422,14 @@ def _require_attr(operator: WhirlOperatorRecord, name: str) -> None:
 def _require_contract_attrs(operator: WhirlOperatorRecord) -> None:
     for attr_name in required_attrs(operator.name):
         _require_attr(operator, attr_name)
+
+
+def _operator_arity(operator: WhirlOperatorRecord) -> int:
+    if operator.name == common.LINEAR:
+        if operator.attrs.get("attr.has_bias") == "false":
+            return 3 if len(operator.kids) == 3 else 2
+        return 3
+    return operator_arity(operator.name)
 
 
 def _verify_matmul_contract(
@@ -422,14 +462,14 @@ def _verify_linear_contract(
     _require_attr(operator, "attr.weight_layout")
     value = operand_types[0]
     weight = _require_typed_operand(operator, operand_types, 1)
-    bias = operand_types[2]
+    bias = operand_types[2] if len(operand_types) > 2 else None
     if value is not None:
         _require_same_dtype(operator, (value, weight))
-        value_shape = _require_rank(operator, value, 2)
-        value_matrix = _effective_matrix_shape(value_shape, transpose_input)
+        value_shape = _require_min_rank(operator, value, 2)
+        value_matrix = _effective_matrix_shape(value_shape[-2:], transpose_input)
     else:
         value_matrix = None
-    weight_shape = _require_rank(operator, weight, 2)
+    weight_shape = _require_min_rank(operator, weight, 2)
     weight_matrix = _effective_matrix_shape(weight_shape, transpose_weight)
     if value_matrix is not None and value_matrix[1] != weight_matrix[0]:
         raise WhirlVerificationError(
@@ -454,6 +494,93 @@ def _verify_linear_contract(
         raise WhirlVerificationError(
             "common.linear attr.has_bias=false requires an absent bias operand"
         )
+
+
+def _verify_reshape_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    _require_typed_operand(operator, operand_types, 0)
+    _parse_shape_attr(operator.attrs["attr.target_shape"], "reshape result")
+
+
+def _verify_transpose_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    value = _require_typed_operand(operator, operand_types, 0)
+    permutation = _parse_index_tuple(operator, "attr.permutation")
+    if len(permutation) != value.rank:
+        raise WhirlVerificationError(
+            "common.transpose permutation rank mismatch: "
+            f"{operator.attrs['attr.permutation']} vs rank {value.rank}"
+        )
+    if sorted(permutation) != list(range(value.rank)):
+        raise WhirlVerificationError(
+            f"common.transpose has invalid permutation: {permutation}"
+        )
+
+
+def _verify_token_embedding_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    tokens = _require_typed_operand(operator, operand_types, 0)
+    weight = _require_typed_operand(operator, operand_types, 1)
+    if tokens.dtype not in {"int32", "int64"}:
+        raise WhirlVerificationError("token ids must be an integer tensor")
+    _require_rank(operator, tokens, 2)
+    _require_rank(operator, weight, 2)
+
+
+def _verify_rms_norm_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    value = _require_typed_operand(operator, operand_types, 0)
+    scale = _require_typed_operand(operator, operand_types, 1)
+    _require_same_dtype(operator, (value, scale))
+    _require_min_rank(operator, value, 2)
+    _require_rank(operator, scale, 1)
+
+
+def _verify_rotary_embedding_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    value = _require_typed_operand(operator, operand_types, 0)
+    cos = _require_typed_operand(operator, operand_types, 1)
+    sin = _require_typed_operand(operator, operand_types, 2)
+    _require_same_dtype(operator, (value, cos, sin))
+    _require_rank(operator, value, 4)
+    _require_rank(operator, cos, 4)
+    _require_rank(operator, sin, 4)
+
+
+def _verify_attention_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    query = _require_typed_operand(operator, operand_types, 0)
+    key = _require_typed_operand(operator, operand_types, 1)
+    value = _require_typed_operand(operator, operand_types, 2)
+    _require_same_dtype(operator, (query, key, value))
+    _require_rank(operator, query, 4)
+    _require_rank(operator, key, 4)
+    _require_rank(operator, value, 4)
+    _positive_int_attr(operator, "attr.query_heads")
+    _positive_int_attr(operator, "attr.kv_heads")
+    _positive_int_attr(operator, "attr.head_dim")
+
+
+def _verify_swiglu_contract(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> None:
+    gate = _require_typed_operand(operator, operand_types, 0)
+    up = _require_typed_operand(operator, operand_types, 1)
+    _require_same_dtype(operator, (gate, up))
+    _require_same_tensor_type(operator, operand_types)
 
 
 def _verify_conv2d_contract(
@@ -621,6 +748,22 @@ def _require_rank(
     )
 
 
+def _require_min_rank(
+    operator: WhirlOperatorRecord,
+    tensor_type: WhirlTensorTypeRecord,
+    rank: int,
+) -> Tuple[int, ...]:
+    if tensor_type.rank < rank:
+        raise WhirlVerificationError(
+            f"{operator.name} operand {tensor_type.name} requires rank >= "
+            f"{rank}, got {tensor_type.rank}"
+        )
+    return _parse_logical_shape(
+        tensor_type.logical_shape,
+        f"tensor type {tensor_type.name}",
+    )
+
+
 def _pair_attr(
     operator: WhirlOperatorRecord,
     name: str,
@@ -657,6 +800,19 @@ def _positive_int_attr(operator: WhirlOperatorRecord, name: str) -> int:
             f"{operator.name} attribute {name} must be positive"
         )
     return value
+
+
+def _parse_index_tuple(
+    operator: WhirlOperatorRecord,
+    name: str,
+) -> Tuple[int, ...]:
+    _require_attr(operator, name)
+    try:
+        return tuple(int(part) for part in operator.attrs[name].split(","))
+    except ValueError as exc:
+        raise WhirlVerificationError(
+            f"{operator.name} attribute {name} must contain integers"
+        ) from exc
 
 
 def _require_same_dtype(
@@ -718,6 +874,19 @@ def _result_type(
         return _flatten_result_type(operator, operand_types)
     if operator.name == common.LINEAR:
         return _linear_result_type(operator, operand_types)
+    if operator.name == common.RESHAPE:
+        return _reshape_result_type(operator, operand_types)
+    if operator.name == common.TRANSPOSE:
+        return _transpose_result_type(operator, operand_types)
+    if operator.name == transformer.TOKEN_EMBEDDING:
+        return _token_embedding_result_type(operator, operand_types)
+    if operator.name in {
+        transformer.RMS_NORM,
+        transformer.ROTARY_EMBEDDING,
+        transformer.ATTENTION,
+        transformer.SWIGLU,
+    }:
+        return operand_types[0]
     if operator.name == cnn.CONV2D:
         return _conv2d_result_type(operator, operand_types)
     if operator.name == cnn.BATCH_NORM_INFER:
@@ -912,7 +1081,7 @@ def _linear_result_type(
         f"tensor type {weight.name}",
     )
     weight_matrix = _effective_matrix_shape(weight_shape, transpose_weight)
-    result_shape = (value_shape[0], weight_matrix[1])
+    result_shape = value_shape[:-1] + (weight_matrix[1],)
     logical_shape = _format_logical_shape(result_shape)
     return WhirlTensorTypeRecord(
         f"{operator.name}_result_type",
@@ -929,6 +1098,60 @@ def _linear_result_type(
     )
 
 
+def _reshape_result_type(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> Optional[WhirlTensorTypeRecord]:
+    value = operand_types[0]
+    if value is None:
+        return None
+    shape = _parse_shape_attr(operator.attrs["attr.target_shape"],
+                              "reshape result")
+    return _synthetic_tensor_type(operator, value, shape)
+
+
+def _transpose_result_type(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> Optional[WhirlTensorTypeRecord]:
+    value = operand_types[0]
+    if value is None:
+        return None
+    shape = _parse_logical_shape(
+        value.logical_shape,
+        f"tensor type {value.name}",
+    )
+    permutation = _parse_index_tuple(operator, "attr.permutation")
+    return _synthetic_tensor_type(
+        operator,
+        value,
+        tuple(shape[index] for index in permutation),
+    )
+
+
+def _token_embedding_result_type(
+    operator: WhirlOperatorRecord,
+    operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
+) -> Optional[WhirlTensorTypeRecord]:
+    tokens = operand_types[0]
+    weight = operand_types[1]
+    if tokens is None or weight is None:
+        return None
+    token_shape = _parse_logical_shape(
+        tokens.logical_shape,
+        f"tensor type {tokens.name}",
+    )
+    weight_shape = _parse_logical_shape(
+        weight.logical_shape,
+        f"tensor type {weight.name}",
+    )
+    return _synthetic_tensor_type(
+        operator,
+        weight,
+        token_shape + (weight_shape[-1],),
+    )
+
+
 def _int_attr(operator: WhirlOperatorRecord, name: str) -> int:
     _require_attr(operator, name)
     try:
@@ -941,6 +1164,16 @@ def _int_attr(operator: WhirlOperatorRecord, name: str) -> int:
 
 def _format_logical_shape(shape: Sequence[int]) -> str:
     return "[" + ",".join(str(dim) for dim in shape) + "]"
+
+
+def _parse_shape_attr(
+    logical_shape: str,
+    subject: str,
+) -> Tuple[int, ...]:
+    text = logical_shape.strip()
+    if text.startswith("[") and text.endswith("]"):
+        return _parse_logical_shape(text, subject)
+    return _parse_logical_shape(f"[{text}]", subject)
 
 
 def _parse_logical_shape(

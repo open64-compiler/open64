@@ -154,6 +154,11 @@ class WhirlBackend(Protocol):
     ) -> bool:
         ...
 
+    def append_child_region(
+        self, parent_region: int, child_region: int
+    ) -> bool:
+        ...
+
     def declare_region_value(
         self,
         region: int,
@@ -172,6 +177,14 @@ class WhirlBackend(Protocol):
         column: int,
         statement_begin: bool,
         basic_block_begin: bool,
+    ) -> bool:
+        ...
+
+    def set_region_metadata(
+        self,
+        region: int,
+        key: str,
+        value: str,
     ) -> bool:
         ...
 

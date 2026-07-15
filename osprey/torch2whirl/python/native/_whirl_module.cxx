@@ -615,6 +615,20 @@ Open64_DSC_Append_Program_Unit_Region(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Append_Child_Region(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle parent_region;
+    Open64_DSC_Handle child_region;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KK:append_child_region", &parent_region,
+                          &child_region))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Append_Child_Region(parent_region, child_region),
+                "append child region");
+}
+
+static PyObject *
 Open64_DSC_Declare_Region_Value(PyObject *self, PyObject *args)
 {
     Open64_DSC_Handle region;
@@ -659,6 +673,21 @@ Open64_DSC_Set_Region_Source_Position(PyObject *self, PyObject *args)
     return Open64_DSC_Bool_Result
                (Open64_DSC_Set_Region_Source_Position(region, &position),
                 "set region source position");
+}
+
+static PyObject *
+Open64_DSC_Set_Region_Metadata(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle region;
+    const char *key;
+    const char *value;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "Kss:set_region_metadata", &region,
+                          &key, &value))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Set_Region_Metadata(region, key, value),
+                "set region metadata");
 }
 
 static PyObject *
@@ -1022,6 +1051,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         "Append a structured region to a native PU body."
     },
     {
+        "append_child_region",
+        Open64_DSC_Append_Child_Region,
+        METH_VARARGS,
+        "Append a structured child region to a parent region."
+    },
+    {
         "declare_region_value",
         Open64_DSC_Declare_Region_Value,
         METH_VARARGS,
@@ -1032,6 +1067,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Set_Region_Source_Position,
         METH_VARARGS,
         "Attach a source position to a structured region."
+    },
+    {
+        "set_region_metadata",
+        Open64_DSC_Set_Region_Metadata,
+        METH_VARARGS,
+        "Attach metadata to a structured region."
     },
     {
         "verify_program",

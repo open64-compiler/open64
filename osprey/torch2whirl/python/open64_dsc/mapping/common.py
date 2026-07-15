@@ -8,7 +8,9 @@ MODEL_INPUT = "common.model_input"
 OUTPUT_LOGITS = "common.output_logits"
 RELU = "common.relu"
 RESIDUAL_ADD = "common.residual_add"
+RESHAPE = "common.reshape"
 TENSOR_CONST = "common.tensor_const"
+TRANSPOSE = "common.transpose"
 
 UNARY_OPERATORS = {
     FLATTEN,

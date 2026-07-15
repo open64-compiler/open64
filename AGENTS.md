@@ -147,6 +147,37 @@ builder should own all WHIRL-specific construction.
    depend on backend code generation. Backend, runtime, and kernel lowering
    happen after gatekeeper verification.
 
+## Domain Ingestion Staging
+
+Use this workflow when adding a model family or a new domain to `openpy`:
+
+1. Add a small, deterministic, dependency-light source model fixture.
+2. Capture the real frontend graph and produce a reviewable operator census.
+3. Classify every captured operation as a common substrate operation, domain
+   expression, region contract, state/effect, compiler metadata, constant, or
+   explicit unsupported case.
+4. Review and publish stable native names, versions, operands, attributes,
+   descriptor rules, effects, gatekeeper checks, and lowering ownership in the
+   WHIRL infrastructure plan.
+5. Implement the native builder, mapped-image, reader/writer, logical printer,
+   gatekeeper, and lowering support required by the published contract.
+6. Migrate the frontend from census/mock handling to opaque native APIs. The
+   frontend must not learn WN layout or private physical DSL encodings.
+7. Certify the binary artifact, external data, `ir_b2a -st -src` trace, and
+   `openpy -O0` path across a process boundary.
+
+Do not allocate DSL opcodes or broaden native WHIRL contracts solely from an
+expected model architecture. First capture a representative source model and
+review its semantic operator census. Conversely, do not force a captured model
+into existing operators when doing so would erase domain semantics. Frontend
+capture discovers the requirements; common/com review remains authoritative
+for native contracts and binary WHIRL behavior.
+
+Maintain a separate frontend ingestion plan for each substantial domain or
+model family and link it to `doc/WHIRL-DSL-INFRASTRUCTURE.md`. The frontend plan
+owns capture, mapping, artifacts, and diagnostics; the infrastructure plan owns
+native representation, compatibility, verification, inspection, and lowering.
+
 ## Reviewable Test Artifacts
 
 1. Human review of compiler artifacts is part of the development and
