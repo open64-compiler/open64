@@ -108,6 +108,8 @@ extern BOOL IR_dump_map_info;
 extern BOOL IR_dump_region;
 /* whether to dump the line numbers; defaults to FALSE */
 extern BOOL IR_dump_line_numbers;
+/* whether to interleave original source lines; defaults to FALSE */
+extern BOOL IR_dump_source;
 
 /* whether to dump in prefix order or postfix order */
 extern BOOL IR_set_dump_order( BOOL dump_prefix);
@@ -124,4 +126,3 @@ extern void WN_TREE_dump_tree(WN *wn);
 extern void WN_TREE_fdump_tree(FILE *f, WN *wn);
 
 #endif /* ir_reader_INCLUDED */
-
