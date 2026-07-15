@@ -500,15 +500,47 @@ the stable ResNet path.
 Exit gate: the local fixture and a widely used Llama frontend agree at the
 published ingestion boundary.
 
-### L9: Decode And KV Cache
+### L9A: Decode Observable Discovery
 
-- [ ] Start only after common abstract-state effects, region interfaces, and
-  transformer cache contracts are approved.
-- [ ] Represent cache storage as declared mutable state with read/modify edges,
-  not tensor metadata.
-- [ ] Add grouped-query attention, cache position, append/update behavior, and
-  decode-shape verification incrementally.
-- [ ] Keep prefill-only artifacts readable and behaviorally unchanged.
+The frontend-only decode discovery batch is complete. It deliberately precedes
+native contract allocation so common/com review is based on an observed source
+graph rather than speculative frontend lowering.
+
+| Checkpoint | Status | Evidence |
+| --- | --- | --- |
+| K0: Freeze deterministic single-token decode profile | complete | Configuration in `LLAMA2-DECODE-OPERATOR-CENSUS.md` |
+| K1: Publish explicit source-model sample-input protocol | complete | Six ordered inputs in `python/tests/models/llama2_decode_model.py` |
+| K2: Verify eager cache read/append/update behavior | complete | Focused Docker test passed three eager tests |
+| K3: Capture and normalize decode FX graph | complete | `python/tests/golden/llama2_decode_fx.txt` contains 142 nodes |
+| K4: Add graph and semantic-census drift checks | complete | Focused Docker test passed four FX/census tests |
+| K5: Publish native/common contract handoff | complete | `LLAMA2-DECODE-OPERATOR-CENSUS.md` |
+
+Observed profile:
+
+1. One `int64[1,1]` token and one `int64[1]` cache-position input.
+2. Explicit per-layer K/V cache inputs shaped `[1,4,3,8]`.
+3. RoPE cosine and sine selected at the cache position.
+4. Cached attention scores shaped `[1,4,1,4]`.
+5. Functional K/V append on sequence axis 2, returning updated caches shaped
+   `[1,4,4,8]` without mutating source inputs or model state.
+6. A flat source result containing logits plus four updated caches.
+
+This batch adds no DSL opcode, common/com implementation, WHIRL encoding, or
+frontend lowering workaround. The certified prefill fixture, golden, native
+emission, and process-boundary path remain unchanged.
+
+### L9: Decode And KV Cache Native Ingestion
+
+- [x] Complete frontend observable discovery for cache position, RoPE
+  position, cached attention shape, and functional cache append/update.
+- [ ] Start native emission only after common abstract-state effects, region
+  interfaces, and transformer cache contracts are approved.
+- [ ] Represent cache storage as declared state with read/modify edges, not
+  tensor metadata.
+- [ ] Add grouped-query attention and other cache storage policies only through
+  incremental reviewed profiles.
+- [x] Keep prefill-only source and golden artifacts behaviorally unchanged in
+  the discovery batch.
 
 Exit gate: stateful decode is an additive, versioned extension to the certified
 prefill profile.
