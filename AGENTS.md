@@ -127,7 +127,7 @@ builder should own all WHIRL-specific construction.
    tests in the same staged change.
 2. The binary WHIRL artifact is the frontend boundary. Avoid special in-memory
    bypasses from Python into the compiler pipeline; artifacts should be
-   inspectable with `ir_b2a -st` before combined driver integration.
+   inspectable with `ir_b2a -st -src` before combined driver integration.
 3. Run gatekeeper verification before canonical lowering. Missing tensor
    attributes, invalid operand compatibility, unknown contracts, unsupported
    opcodes, and domain legality failures should be diagnosed before WOPT, LNO,
@@ -141,18 +141,57 @@ builder should own all WHIRL-specific construction.
    equivalence.
 6. Do not add `KIND_TENSOR` or new binary tensor descriptor sections casually.
    First-class tensor type or tensor descriptor binary-section changes must land
-   with printer, `ir_b2a -st`, binary reader, binary writer, ASCII
+   with printer, `ir_b2a -st -src`, binary reader, binary writer, ASCII
    reader/printer plan, verifier, and fallback behavior.
 7. `torch2whirl`, Python bindings, and the native frontend bridge must not
    depend on backend code generation. Backend, runtime, and kernel lowering
    happen after gatekeeper verification.
+
+## Reviewable Test Artifacts
+
+1. Human review of compiler artifacts is part of the development and
+   validation process. Tests that produce meaningful WHIRL evidence should
+   retain the binary `.B` file, `ir_b2a -st -src` output, requested phase `.t`
+   traces, side payloads, and relevant diagnostics after the test exits.
+2. Clean the designated artifact directory at the start of the next run, not
+   at the end of the current run. A completed run must leave its evidence
+   available until it is replaced by a later run.
+3. Docker tests must write reviewable artifacts through an explicit host bind
+   mount. Do not leave the only copy in a container filesystem or a container
+   temporary directory that disappears when Docker exits.
+4. Keep artifact families in clearly named per-test or per-stage directories
+   so one smoke test does not erase another test's evidence.
+5. Failed runs must not leave partial output with the name of a valid `.B`
+   artifact. Preserve failure logs and diagnostics when useful, while keeping
+   artifact publication atomic.
+6. At the end of validation, report the absolute host paths of retained
+   artifacts so reviewers can inspect them directly.
+7. Generated review artifacts are normally local build evidence. Do not add
+   them to Git unless the task explicitly requests checked-in golden files or
+   review fixtures.
+8. When completing a task that produces or validates a compiler trace, include
+   a directly viewable link to the retained trace in the final report. Show a
+   short representative excerpt or summarize the concrete evidence it contains;
+   do not report trace-based validation as complete using only a pass/fail
+   statement.
+9. Use both `-st` and `-src` whenever running `ir_b2a` for validation or human
+   review. Preserve or mount the original source file at the pathname recorded
+   in the binary WHIRL DST so `-src` can interleave source statements with the
+   IR. If the active `ir_b2a` build does not yet support `-src`, treat that as a
+   tooling gap to fix; do not silently omit source cross-reference evidence.
+10. The `ir_b2a` output must use the input `.B` file's stem, for example
+   `ir_b2a -st -src resnet.B resnet.T`. On case-insensitive filesystems where
+   `resnet.T` collides with a driver-produced `resnet.t`, preserve the phase
+   trace under a descriptive non-colliding name such as `resnet.vho.t` before
+   producing `resnet.T`.
 
 ## Near-Term Coding Priorities
 
 1. Stabilize native DSL/common infrastructure before adding Python package
    code.
 2. Add or maintain native tests under `osprey/common/com/tests` for tensor
-   types, tensor constants, `common.add`, `common.matmul`, and `ir_b2a -st`
+   types, tensor constants, `common.add`, `common.matmul`, and
+   `ir_b2a -st -src`
    visibility.
 3. Keep the first builder API narrow. Python-facing bindings should pass opaque
    handles and values; C++ should create real WHIRL objects.
