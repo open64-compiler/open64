@@ -3219,6 +3219,11 @@ Build_And_Verify_Decode_State_Region
     TY_IDX query_ty;
     TY_IDX rope_ty;
     TY_IDX position_ty;
+    const char *source_path = getenv("OPEN64_DSL_DECODE_STATE_SOURCE");
+
+    if (source_path == NULL || source_path[0] == '\0')
+        source_path =
+            "osprey/common/com/tests/llama2_decode_state.py";
 
     memset(&descriptor, 0, sizeof(descriptor));
     descriptor.type_core.kind = "tensor";
@@ -3258,7 +3263,7 @@ Build_And_Verify_Decode_State_Region
                        &descriptor);
     pu = DSL_Builder_Create_Minimal_PU("decode_state_region_contract");
     UINT32 file_id = DSL_Builder_Register_Source_File
-                         (pu, "llama2_decode_state.py");
+                         (pu, source_path);
     decoder = DSL_Builder_Create_Region
                   (pu, NULL, "transformer.decoder_layer", 2);
     key_cache = DSL_Builder_Declare_State_Object_With_Flags
