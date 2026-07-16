@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from . import cnn, common
+from . import cnn, common, transformer
 
 
 @dataclass(frozen=True)
@@ -45,6 +45,18 @@ _CONTRACTS = {
         2,
         ("attr.transpose_kid0", "attr.transpose_kid1"),
     ),
+    common.RESHAPE: OperatorContract(
+        common.RESHAPE,
+        1,
+        1,
+        ("attr.target_shape",),
+    ),
+    common.TRANSPOSE: OperatorContract(
+        common.TRANSPOSE,
+        1,
+        1,
+        ("attr.permutation",),
+    ),
     common.RELU: OperatorContract(common.RELU, 2, 1),
     common.FLATTEN: OperatorContract(
         common.FLATTEN,
@@ -78,6 +90,54 @@ _CONTRACTS = {
         2,
         1,
         ("attr.semantic",),
+    ),
+    transformer.TOKEN_EMBEDDING: OperatorContract(
+        transformer.TOKEN_EMBEDDING,
+        1,
+        2,
+        ("attr.padding_idx", "attr.bounds_policy"),
+    ),
+    transformer.RMS_NORM: OperatorContract(
+        transformer.RMS_NORM,
+        1,
+        2,
+        ("attr.axis", "attr.epsilon", "attr.accum_dtype"),
+    ),
+    transformer.ROTARY_EMBEDDING: OperatorContract(
+        transformer.ROTARY_EMBEDDING,
+        1,
+        3,
+        (
+            "attr.head_layout",
+            "attr.sequence_axis",
+            "attr.feature_axis",
+            "attr.pairing",
+            "attr.position_mode",
+            "attr.position_offset",
+        ),
+    ),
+    transformer.ATTENTION: OperatorContract(
+        transformer.ATTENTION,
+        1,
+        3,
+        (
+            "attr.execution_mode",
+            "attr.mask_mode",
+            "attr.head_layout",
+            "attr.query_heads",
+            "attr.kv_heads",
+            "attr.head_dim",
+            "attr.scale_mode",
+            "attr.softmax_axis",
+            "attr.softmax_accum_dtype",
+            "attr.cache_mode",
+        ),
+    ),
+    transformer.SWIGLU: OperatorContract(
+        transformer.SWIGLU,
+        1,
+        2,
+        ("attr.activation",),
     ),
     cnn.CONV2D: OperatorContract(
         cnn.CONV2D,
@@ -125,12 +185,49 @@ _CONTRACTS = {
     ),
 }
 
+_VERSIONED_CONTRACTS = {
+    (transformer.ROTARY_EMBEDDING, 2): OperatorContract(
+        transformer.ROTARY_EMBEDDING,
+        2,
+        4,
+        (
+            "attr.head_layout",
+            "attr.sequence_axis",
+            "attr.feature_axis",
+            "attr.pairing",
+            "attr.position_mode",
+        ),
+    ),
+    (transformer.ATTENTION, 2): OperatorContract(
+        transformer.ATTENTION,
+        2,
+        3,
+        (
+            "attr.execution_mode",
+            "attr.mask_mode",
+            "attr.head_layout",
+            "attr.query_heads",
+            "attr.kv_heads",
+            "attr.head_dim",
+            "attr.scale_mode",
+            "attr.softmax_axis",
+            "attr.softmax_accum_dtype",
+            "attr.cache_mode",
+            "attr.cache_sequence_axis",
+        ),
+    ),
+}
+
 
 def all_operator_contracts() -> Mapping[str, OperatorContract]:
     return dict(_CONTRACTS)
 
 
-def operator_contract(name: str) -> OperatorContract:
+def operator_contract(name: str, version: int | None = None) -> OperatorContract:
+    if version is not None:
+        versioned = _VERSIONED_CONTRACTS.get((name, version))
+        if versioned is not None:
+            return versioned
     try:
         return _CONTRACTS[name]
     except KeyError as exc:

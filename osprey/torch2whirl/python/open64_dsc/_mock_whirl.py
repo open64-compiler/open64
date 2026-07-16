@@ -378,6 +378,20 @@ def append_program_unit_region(program_unit: int, region: int) -> bool:
     return True
 
 
+def append_child_region(parent_region: int, child_region: int) -> bool:
+    if parent_region not in _objects or child_region not in _objects:
+        raise RuntimeError("failed to append child region")
+    parent = dict(_objects[parent_region])
+    children = list(parent.get("children", ()))
+    children.append(child_region)
+    parent["children"] = children
+    _objects[parent_region] = parent
+    child = dict(_objects[child_region])
+    child["parent_region"] = parent_region
+    _objects[child_region] = child
+    return True
+
+
 def declare_region_value(
     region: int, value: int, roles: int, ordinal: int, flags: int
 ) -> bool:
@@ -463,6 +477,17 @@ def set_region_source_position(
     return set_value_source_position(
         region, file_id, line, column, statement_begin, basic_block_begin
     )
+
+
+def set_region_metadata(region: int, key: str, value: str) -> bool:
+    if region not in _objects or not key:
+        raise RuntimeError("failed to set region metadata")
+    record = dict(_objects[region])
+    metadata = dict(record.get("metadata", {}))
+    metadata[key] = value
+    record["metadata"] = metadata
+    _objects[region] = record
+    return True
 
 
 def verify_program() -> Mapping[str, object]:

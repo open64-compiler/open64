@@ -147,6 +147,9 @@ extern int Open64_DSC_Append_Region_Value
 extern int Open64_DSC_Append_Program_Unit_Region
                                 (Open64_DSC_Handle program_unit,
                                  Open64_DSC_Handle region);
+extern int Open64_DSC_Append_Child_Region
+                                (Open64_DSC_Handle parent_region,
+                                 Open64_DSC_Handle child_region);
 extern int Open64_DSC_Declare_Region_Value
                                 (Open64_DSC_Handle region,
                                  Open64_DSC_Handle value,
@@ -171,6 +174,10 @@ extern int Open64_DSC_Declare_Region_State
 extern int Open64_DSC_Set_Region_Source_Position
                                 (Open64_DSC_Handle region,
                                  const Open64_DSC_Source_Position *position);
+extern int Open64_DSC_Set_Region_Metadata
+                                (Open64_DSC_Handle region,
+                                 const char *key,
+                                 const char *value);
 extern int Open64_DSC_Verify_Program(Open64_DSC_Verify_Result *result);
 extern int Open64_DSC_Append_Program_Unit_Value
                                 (Open64_DSC_Handle program_unit,

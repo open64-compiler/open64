@@ -84,6 +84,7 @@ Open64_DSC_Initialize_Context(void)
     Configure();
     Initialize_Symbol_Tables(TRUE);
     DSL_Opcode_Register_Common_Substrate();
+    DSL_Opcode_Register_Transformer_Domain();
     DSL_Opcode_Register_Domain_Wrapper_Examples();
 
     Open64_DSC_Context_Initialized = TRUE;
@@ -560,6 +561,15 @@ Open64_DSC_Append_Program_Unit_Region(Open64_DSC_Handle program_unit,
 }
 
 int
+Open64_DSC_Append_Child_Region(Open64_DSC_Handle parent_region,
+                               Open64_DSC_Handle child_region)
+{
+    return DSL_Builder_Append_Child_Region
+               ((DSL_BUILDER_REGION) parent_region,
+                (DSL_BUILDER_REGION) child_region) ? 1 : 0;
+}
+
+int
 Open64_DSC_Declare_Region_Value(Open64_DSC_Handle region,
                                 Open64_DSC_Handle value,
                                 unsigned int roles,
@@ -621,6 +631,15 @@ Open64_DSC_Set_Region_Source_Position
     builder_position.basic_block_begin = position->basic_block_begin;
     return DSL_Builder_Set_Region_Source_Position
                ((DSL_BUILDER_REGION) region, &builder_position) ? 1 : 0;
+}
+
+int
+Open64_DSC_Set_Region_Metadata(Open64_DSC_Handle region,
+                               const char *key,
+                               const char *value)
+{
+    return DSL_Builder_Set_Region_Metadata
+               ((DSL_BUILDER_REGION) region, key, value) ? 1 : 0;
 }
 
 int
