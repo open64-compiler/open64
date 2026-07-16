@@ -1336,7 +1336,7 @@ full-sequence causal prompt evaluation with no KV cache.
    `lowered/llama2.t` is the post-VHO trace.  Separate subdirectories avoid
    `.T`/`.t` collisions on case-insensitive filesystems.
 
-29. [ ] Design stateful decode and KV cache as a later versioned extension.
+29. [x] Design stateful decode and KV cache as a later versioned extension.
 
    Begin only after item 18 establishes common abstract-state effects.  Model
    cache storage as declared mutable state with read/modify edges and ordering,
@@ -1380,10 +1380,10 @@ full-sequence causal prompt evaluation with no KV cache.
       no-alias checks to region interfaces and gatekeeper verification.
    3. [x] Allocate reviewed logical operator versions without changing version-1
       prefill semantics.
-   4. [~] Add opaque builder and torch2whirl bindings after native publication.
-   5. [ ] Prove the complete decode artifact through mapped-image reopen and
+   4. [x] Add opaque builder and torch2whirl bindings after native publication.
+   5. [x] Prove the complete decode artifact through mapped-image reopen and
       `ir_b2a -st -src` state evidence.
-   6. [ ] Add gatekeeper-first VHO decode lowering and process-boundary tests.
+   6. [x] Add gatekeeper-first VHO decode lowering and process-boundary tests.
 
    The stage-2 implementation reuses reserved fixed-row flag fields; it does
    not enlarge the state-object or region-interface mapped-image records.
@@ -1410,9 +1410,27 @@ full-sequence causal prompt evaluation with no KV cache.
    Python builder, and mock backend now bind state declaration, state effects,
    and ordered region-state interfaces through an opaque `StateHandle`.
    Common/com validates raw state handles by registry membership before
-   dereferencing them.  Stage 4 remains open only until torch2whirl emits the
-   reviewed decode graph; Python must not inspect state rows, region records,
-   symbols, or physical WN storage.
+   dereferencing them.  Stage 4 is complete now that torch2whirl emits the
+   reviewed decode graph.  Python does not inspect state rows, region records,
+   symbols, or physical WN storage.  Frontend commit `2ed8c700` certifies the
+   complete two-layer artifact in a separate `ir_b2a -st -src` process.  The
+   retained trace proves one decode region, two decoder-layer-v2 regions, four
+   RoPE-v2 values, two attention-v2 values, and four ordered K/V MODIFY edges.
+
+   Stage 6 gives the two decode expression versions distinct target-independent
+   runtime ABI entries.  RoPE v2 passes its explicit cache-position value;
+   attention v2 passes two ordered, by-reference K/V state arguments after its
+   ordinary tensor operands and static head geometry.  Version-1 prefill calls
+   retain their original names and parameter lists.  The gatekeeper runs before
+   lowering, managed decode regions are consumed after their bodies lower, and
+   no executable DSL carrier remains at the canonical boundary.
+
+   `dsl_llama2_decode_state_test.sh` preserves three review artifacts in
+   case-safe subdirectories: `binary/decode_state.B`, the corresponding
+   `ir_b2a -st -src` `binary/decode_state.T`, and the post-VHO
+   `lowered/decode_state.t`.  The test checks the logical v2 operators, mapped
+   state rows, ordered MODIFY effects, versioned runtime calls, and absence of
+   executable DSL nodes after lowering.
 
 ### Deferred work TODO
 

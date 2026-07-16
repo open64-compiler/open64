@@ -28,6 +28,17 @@ typedef char DSL_runtime_spatial_reduction_must_be_1
 int
 main(void)
 {
+    OPEN64_DSL_TENSOR_HANDLE (*rotary_v2)
+        (OPEN64_DSL_TENSOR_HANDLE, OPEN64_DSL_TENSOR_HANDLE,
+         OPEN64_DSL_TENSOR_HANDLE, OPEN64_DSL_TENSOR_HANDLE,
+         const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *) =
+            &__open64_dsl_rotary_embedding_v2;
+    OPEN64_DSL_TENSOR_HANDLE (*attention_v2)
+        (OPEN64_DSL_TENSOR_HANDLE, OPEN64_DSL_TENSOR_HANDLE,
+         OPEN64_DSL_TENSOR_HANDLE,
+         const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *, uint32_t, uint32_t,
+         uint32_t, OPEN64_DSL_STATE_HANDLE *, OPEN64_DSL_STATE_HANDLE *) =
+            &__open64_dsl_attention_v2;
     OPEN64_DSL_TENSOR_DESCRIPTOR_V1 descriptor;
     descriptor.abi_version = OPEN64_DSL_RUNTIME_ABI_VERSION;
     descriptor.header_size = OPEN64_DSL_TENSOR_DESCRIPTOR_V1_SIZE;
@@ -39,5 +50,6 @@ main(void)
     descriptor.memory = OPEN64_DSL_MEMORY_HOST;
     descriptor.quantization = OPEN64_DSL_QUANTIZATION_NONE;
     descriptor.runtime_state = OPEN64_DSL_RUNTIME_STATE_STATIC;
-    return descriptor.header_size == sizeof(descriptor) ? 0 : 1;
+    return descriptor.header_size == sizeof(descriptor) &&
+           rotary_v2 != 0 && attention_v2 != 0 ? 0 : 1;
 }
