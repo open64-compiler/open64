@@ -1348,10 +1348,21 @@ Check_Managed_Region_Lowering(void)
                                  (relu_id, 2, kid, 1, NULL, 0);
     DSL_BUILDER_REGION region = DSL_Builder_Create_Region
         (pu, NULL, "test.lowering", 1);
+    WN *canonical_pragmas = WN_CreateBlock();
+    WN_INSERT_BlockLast
+        (canonical_pragmas,
+         WN_CreatePragma(WN_PRAGMA_OPAQUE, ST_IDX_ZERO, 0, 0));
+    WN *canonical_region = WN_CreateRegion
+        (REGION_KIND_PRAGMA, WN_CreateBlock(), canonical_pragmas,
+         WN_CreateBlock(), -1, INITO_IDX_ZERO);
     if (pu == NULL || tensor_ty == TY_IDX_ZERO || input == NULL ||
         relu_id == DSL_OPCODE_INVALID_ID || relu == NULL || region == NULL ||
-        !DSL_Builder_Append_PU_Value(pu, input) ||
-        !DSL_Builder_Append_Region_Value(region, relu) ||
+        canonical_region == NULL || !DSL_Builder_Append_PU_Value(pu, input))
+        return FALSE;
+
+    WN_INSERT_BlockLast
+        (WN_func_body(PU_Info_tree_ptr(pu)), canonical_region);
+    if (!DSL_Builder_Append_Region_Value(region, relu) ||
         !DSL_Builder_Append_PU_Region(pu, region) ||
         !DSL_Region_Verify_PU(pu, stderr))
         return FALSE;
@@ -1372,15 +1383,162 @@ Check_Managed_Region_Lowering(void)
         return FALSE;
 
     UINT32 call_count = 0;
+    UINT32 canonical_region_count = 0;
     WN *body = WN_func_body(tree);
     for (WN *statement = WN_first(body); statement != NULL;
          statement = WN_next(statement)) {
-        if (WN_operator(statement) == OPR_REGION)
-            return FALSE;
+        if (WN_operator(statement) == OPR_REGION) {
+            if (statement != canonical_region ||
+                DSL_Region_Is_Managed_WN(pu, statement))
+                return FALSE;
+            ++canonical_region_count;
+        }
         if (WN_operator(statement) == OPR_CALL)
             ++call_count;
     }
-    return call_count == 2 && !Tree_Has_Native_DSL(body);
+
+    const char *trace_path = getenv("OPEN64_DSL_REGION_LOWER_TRACE");
+    if (trace_path != NULL && trace_path[0] != '\0') {
+        FILE *trace = fopen(trace_path, "w");
+        if (trace == NULL)
+            return FALSE;
+        fprintf(trace, "WHIRL after managed DSL REGION body splicing\n");
+        fprintf(trace, "managed_regions=0 canonical_regions=%u "
+                       "WT_REGIONS=missing\n", canonical_region_count);
+        fdump_tree(trace, tree);
+        fclose(trace);
+    }
+
+    return call_count == 2 && canonical_region_count == 1 &&
+           !Tree_Has_Native_DSL(body);
+}
+
+static BOOL
+Check_Abstract_State_Lowering(void)
+{
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("dsl_abstract_state_lowering");
+    TY_IDX tensor_ty = Create_Tensor_Type_With_Representation
+                           ("dsl_state_lowering_type", "host", "host");
+    if (tensor_ty != TY_IDX_ZERO && !TY_tensor_seal(tensor_ty))
+        return FALSE;
+    DSL_BUILDER_VALUE values[3];
+    values[0] = DSL_Builder_Create_Model_Input("buffer", tensor_ty, 0);
+    values[1] = DSL_Builder_Create_Model_Input("indices", tensor_ty, 1);
+    values[2] = DSL_Builder_Create_Model_Input("updates", tensor_ty, 2);
+    DSL_DOMAIN_ID common = DSL_Domain_Find("common");
+    DSL_OPCODE_ID scatter_id = DSL_Opcode_Find
+                                   (common, "common.scatter", 1);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute = { "attr.axis", "0" };
+    DSL_BUILDER_VALUE scatter = DSL_Builder_Create_Operator_With_Result
+        (scatter_id, 1, values, 3, &attribute, 1,
+         "stateful_scatter", tensor_ty);
+    DSL_BUILDER_STATE runtime_status = DSL_Builder_Declare_State_Object
+        (pu, "runtime_status", DSL_STATE_KIND_RUNTIME_STATUS);
+    DSL_BUILDER_STATE random_state = DSL_Builder_Declare_State_Object
+        (pu, "random_state", DSL_STATE_KIND_RANDOM);
+    DSL_BUILDER_STATE mutable_buffer = DSL_Builder_Declare_State_Object
+        (pu, "mutable_buffer", DSL_STATE_KIND_MUTABLE_BUFFER);
+    if (pu == NULL || tensor_ty == TY_IDX_ZERO ||
+        scatter_id == DSL_OPCODE_INVALID_ID || scatter == NULL ||
+        runtime_status == NULL || random_state == NULL ||
+        mutable_buffer == NULL) {
+        fprintf(stderr, "state lowering construction failed: "
+                "pu=%d ty=%u scatter_id=%u scatter=%d states=%d/%d/%d\n",
+                pu != NULL, (UINT32)tensor_ty, scatter_id, scatter != NULL,
+                runtime_status != NULL, random_state != NULL,
+                mutable_buffer != NULL);
+        return FALSE;
+    }
+    for (UINT32 i = 0; i < 3; ++i) {
+        if (!DSL_Builder_Append_PU_Value(pu, values[i])) {
+            fprintf(stderr, "state lowering input append %u failed\n", i);
+            return FALSE;
+        }
+    }
+    if (!DSL_Builder_Add_State_Effect
+             (scatter, runtime_status, DSL_STATE_EFFECT_READ) ||
+        !DSL_Builder_Add_State_Effect
+             (scatter, random_state, DSL_STATE_EFFECT_MODIFY) ||
+        !DSL_Builder_Add_State_Effect
+             (scatter, mutable_buffer, DSL_STATE_EFFECT_MODIFY) ||
+        !DSL_Builder_Append_PU_Value(pu, scatter)) {
+        fprintf(stderr, "state lowering effect or scatter append failed: "
+                "effects=%u\n",
+                DSL_Effect_Image_State_Effect_Count());
+        return FALSE;
+    }
+
+    DSL_GATEKEEPER_RESULT gatekeeper;
+    if (!DSL_Gatekeeper_Verify_Program(pu, stderr, &gatekeeper)) {
+        fprintf(stderr, "state lowering gatekeeper failed: errors=%u\n",
+                gatekeeper.error_count);
+        return FALSE;
+    }
+    VHO_DSL_LOWER_RESULT result;
+    WN *tree = PU_Info_tree_ptr(pu);
+    if (!VHO_DSL_Lower_Verified_Program_Unit
+             (pu, tree, stderr, &result) ||
+        result.state_read_count != 1 || result.state_modify_count != 2) {
+        fprintf(stderr, "state lowering failed: native=%u lowered=%u "
+                "malformed=%u unsupported=%u reads=%u modifies=%u\n",
+                result.native_node_count, result.lowered_node_count,
+                result.malformed_node_count, result.unsupported_node_count,
+                result.state_read_count, result.state_modify_count);
+        return FALSE;
+    }
+
+    WN *scatter_call = NULL;
+    for (WN *statement = WN_first(WN_func_body(tree)); statement != NULL;
+         statement = WN_next(statement)) {
+        if (WN_operator(statement) == OPR_CALL &&
+            strcmp(ST_name(WN_st(statement)),
+                   "__open64_dsl_scatter_v1") == 0)
+            scatter_call = statement;
+    }
+    if (scatter_call == NULL || WN_kid_count(scatter_call) != 8) {
+        fprintf(stderr, "scatter lowering call mismatch: call=%p kids=%d\n",
+                scatter_call,
+                scatter_call == NULL ? -1 : WN_kid_count(scatter_call));
+        return FALSE;
+    }
+    const char *state_names[3] = {
+        "runtime_status", "random_state", "mutable_buffer"
+    };
+    for (UINT32 i = 0; i < 3; ++i) {
+        WN *parm = WN_kid(scatter_call, 5 + i);
+        WN *address = WN_kid0(parm);
+        if (WN_operator(parm) != OPR_PARM ||
+            WN_operator(address) != OPR_LDA ||
+            strcmp(ST_name(WN_st(address)), state_names[i]) != 0 ||
+            !WN_Parm_By_Reference(parm) ||
+            !WN_Parm_Passed_Not_Saved(parm) ||
+            (i == 0 && !WN_Parm_Read_Only(parm)) ||
+            (i != 0 && !WN_Parm_Out(parm))) {
+            fprintf(stderr, "state parameter %u contract mismatch: "
+                    "parm=%s address=%s flags=0x%x name=%s\n", i,
+                    OPERATOR_name(WN_operator(parm)),
+                    OPERATOR_name(WN_operator(address)), WN_parm_flag(parm),
+                    WN_operator(address) == OPR_LDA ?
+                        ST_name(WN_st(address)) : "<none>");
+            return FALSE;
+        }
+    }
+
+    const char *trace_path = getenv("OPEN64_DSL_STATE_LOWER_TRACE");
+    if (trace_path != NULL && trace_path[0] != '\0') {
+        FILE *trace = fopen(trace_path, "w");
+        if (trace == NULL)
+            return FALSE;
+        fprintf(trace, "WHIRL after abstract-state VHO DSL lowering\n");
+        fprintf(trace, "state_reads=%u state_modifies=%u\n",
+                result.state_read_count, result.state_modify_count);
+        fdump_tree(trace, tree);
+        fclose(trace);
+    }
+    return TRUE;
 }
 
 int
@@ -1391,6 +1549,11 @@ main(void)
     memset(&empty_pu, 0, sizeof(empty_pu));
 
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_STATE_LOWER_ONLY") != NULL)
+        return Check_Abstract_State_Lowering() ? 0 : 1;
+    if (getenv("OPEN64_DSL_REGION_SUBSTRATE_ONLY") != NULL)
+        return Check_Managed_Region_Lowering() ? 0 : 1;
+
     WN *baseline = WN_CreateBlock();
     if (!VHO_DSL_Lower_Verified_Program_Unit
              (&empty_pu, baseline, NULL, &result) ||
@@ -1478,7 +1641,9 @@ main(void)
               sizeof(compatibility_signature)) ||
         strcmp(native_signature, compatibility_signature) != 0) {
         fprintf(stderr,
-                "native and compatibility lowering signatures differ\n");
+                "native and compatibility lowering signatures differ: "
+                "native='%s' compatibility='%s'\n",
+                native_signature, compatibility_signature);
         return 1;
     }
 

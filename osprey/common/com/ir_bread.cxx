@@ -453,6 +453,21 @@ WN_get_dsl_ir_image (void *handle)
     return 0;
 }
 
+INT
+WN_get_dsl_effect_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_EFFECT_IMAGE);
+    if (shdr.offset == 0) {
+        DSL_Effect_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_Effect_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
 /*
  *  Note: get SSA info from file into memory 
  */
@@ -1599,6 +1614,9 @@ Read_Global_Info (INT32 *p_num_PUs)
 
     if (WN_get_dsl_ir_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL image", global_ir_file);
+    }
+    if (WN_get_dsl_effect_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL effect image", global_ir_file);
     }
 
 #if defined(KEY) && defined(BACK_END)

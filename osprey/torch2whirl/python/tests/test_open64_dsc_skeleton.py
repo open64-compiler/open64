@@ -36,6 +36,12 @@ from open64_dsc.builder import (
     REGION_INPUT,
     REGION_OUTPUT,
     REGION_RESULT,
+    REGION_STATE_LAYER_OWNED,
+    REGION_STATE_UNIQUE_OWNERSHIP,
+    STATE_EFFECT_MODIFY,
+    STATE_MUTABLE_BUFFER,
+    STATE_UNIQUE_OWNERSHIP,
+    StateHandle,
     ValueHandle,
     WhirlBuilder,
 )
@@ -505,6 +511,62 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
         self.assertGreater(region.value, 0)
         self.assertTrue(builder.verify_program()["valid"])
+
+    def test_builder_decode_state_uses_opaque_handles(self) -> None:
+        builder = load_builder("mock")
+        builder.begin_program()
+        pu = builder.minimal_program_unit("decode_forward")
+        cache_type = builder.tensor_type(
+            "decode_cache_type", "float32", 4, "[1,4,3,8]"
+        )
+        cache_value = builder.model_input("key_cache", cache_type, 0)
+        updated_cache = builder.operator(
+            "common.concat",
+            1,
+            [cache_value, cache_value],
+            {"axis": "2"},
+            result_name="updated_key_cache",
+            result_type=cache_type,
+        )
+        region = builder.region(pu, "transformer.decoder_layer", 2)
+        key_state = builder.state_object(
+            pu,
+            "layer0.key_cache",
+            STATE_MUTABLE_BUFFER,
+            STATE_UNIQUE_OWNERSHIP,
+        )
+        builder.append_region_value(region, updated_cache)
+        builder.add_state_effect(
+            updated_cache, key_state, STATE_EFFECT_MODIFY
+        )
+        builder.declare_region_state(
+            region,
+            key_state,
+            STATE_EFFECT_MODIFY,
+            0,
+            REGION_STATE_UNIQUE_OWNERSHIP | REGION_STATE_LAYER_OWNED,
+        )
+
+        self.assertIsInstance(key_state, StateHandle)
+        self.assertGreater(key_state.value, 0)
+
+    def test_mock_decode_state_rejects_value_as_state_handle(self) -> None:
+        builder = load_builder("mock")
+        builder.begin_program()
+        pu = builder.minimal_program_unit("decode_invalid_state")
+        value = builder.tensor_constant(
+            "not_state", "float32", 1, "[1]", "splat", "0.0"
+        )
+        region = builder.region(pu, "transformer.decoder_layer", 2)
+
+        with self.assertRaisesRegex(RuntimeError, "declare region state"):
+            builder.declare_region_state(
+                region,
+                StateHandle(value.value),
+                STATE_EFFECT_MODIFY,
+                0,
+            )
+
     def test_native_capability_failure_names_operator_version(self) -> None:
         builder = WhirlBuilder(FailingNativeBackend())
 

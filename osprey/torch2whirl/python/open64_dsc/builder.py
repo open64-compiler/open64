@@ -62,10 +62,29 @@ class RegionHandle(OpaqueHandle):
     pass
 
 
+@dataclass(frozen=True)
+class StateHandle(OpaqueHandle):
+    pass
+
+
 REGION_INPUT = 0x1
 REGION_OUTPUT = 0x2
 REGION_INOUT = 0x4
 REGION_RESULT = 0x8
+
+STATE_RUNTIME_STATUS = 1
+STATE_RANDOM = 2
+STATE_MUTABLE_BUFFER = 3
+STATE_COMMUNICATION = 4
+STATE_OPAQUE = 5
+
+STATE_UNIQUE_OWNERSHIP = 0x1
+
+STATE_EFFECT_READ = 1
+STATE_EFFECT_MODIFY = 2
+
+REGION_STATE_UNIQUE_OWNERSHIP = 0x2
+REGION_STATE_LAYER_OWNED = 0x10
 
 
 class WhirlBuilder:
@@ -239,6 +258,43 @@ class WhirlBuilder:
             region.value, value.value, roles, ordinal, flags
         ):
             raise RuntimeError("failed to declare region value")
+
+    def state_object(
+        self,
+        program_unit: ProgramUnitHandle,
+        name: str,
+        kind: int,
+        flags: int = 0,
+    ) -> StateHandle:
+        return StateHandle(
+            self._backend.declare_state_object(
+                program_unit.value, name, kind, flags
+            )
+        )
+
+    def add_state_effect(
+        self,
+        value: ValueHandle,
+        state: StateHandle,
+        effect_kind: int,
+    ) -> None:
+        if not self._backend.add_state_effect(
+            value.value, state.value, effect_kind
+        ):
+            raise RuntimeError("failed to add state effect")
+
+    def declare_region_state(
+        self,
+        region: RegionHandle,
+        state: StateHandle,
+        effect_kind: int,
+        ordinal: int,
+        flags: int = 0,
+    ) -> None:
+        if not self._backend.declare_region_state(
+            region.value, state.value, effect_kind, ordinal, flags
+        ):
+            raise RuntimeError("failed to declare region state")
 
     def set_region_source_position(
         self,

@@ -1083,6 +1083,17 @@ compiled CG region while preserving its inspectable VHO evidence.
    materialized by the existing region analysis, preserving LNO, WOPT, EH, and
    CG ownership boundaries.
 
+   Completion is certified by
+   `osprey/common/com/tests/dsl_region_substrate_compat_test.sh`.  The fixture
+   writes and reloads a mapped binary WHIRL image, inspects it with
+   `ir_b2a -st -src`, and verifies nested region contracts, declared value
+   roles, metadata, and source positions.  Its lowering case places a managed
+   DSL region beside an unmanaged canonical `OPR_REGION`: the DSL region body
+   is spliced before LNO, its consumed `WT_REGIONS` table is removed, and the
+   canonical region remains unchanged for normal backend RID construction.
+   The fixture retains `region_substrate.B`, `region_substrate.T`, and
+   `region_substrate_lowered.T` for human review.
+
 16. [ ] Ingest and certify ResNet structured regions.
 
    Implement M8B BasicBlock, Bottleneck, identity shortcut, and projection
@@ -1101,11 +1112,47 @@ compiled CG region while preserving its inspectable VHO evidence.
    descriptor propagation, and alias behavior.  Add the builder API only after
    these cases are separated.
 
-18. [ ] Add HSSA-style abstract-state effects.
+18. [x] Add HSSA-style abstract-state effects.
 
    Define virtual-state and effect rows, fixed mapped-image representations,
    gatekeeper rules, logical dumps, and lowering to WOPT `MU`/`CHI` semantics.
    Test runtime status, random state, and a mutable-buffer case.
+
+   The normative operand ownership, alias, and memory-behavior vocabulary is
+   defined in `doc/WHIRL-DSL-OPERAND-MEMORY-BEHAVIOR.md`.  Item 18 promotes
+   portable declarations such as `READ`, `MODIFY`, `UNIQUE_OWNERSHIP`,
+   `FRESH_RESULT`, `VIEW_OF_KID(n)`, and `INPLACE_UPDATE_KID(n)` into
+   `common/com`; it does not move backend `POINTS_TO`, restricted maps,
+   `ALIAS_MANAGER`, or WOPT `MU`/`CHI` classes out of `be/com` and `be/opt`.
+   The implementation owner is
+   `osprey/common/com/dsl_memory_behavior.{h,cxx}` with builder, gatekeeper,
+   mapped-image, printer, and VHO-lowering integration.
+
+   The first infrastructure slice publishes opaque state handles and fixed
+   pointer-free state/effect row contracts.  State objects use stable PU and
+   symbol identities; effect rows identify a logical DSL node, state object,
+   ordinal, and `READ` or `MODIFY` kind.  The optional additive
+   `.WHIRL.dsl_effects` ELF section leaves the version-1 `.WHIRL.dsl` layout
+   unchanged, and its absence maps to an empty table for older binary images.
+   The gatekeeper rejects malformed rows, duplicate node/state edges, invalid
+   ordinals, and effects attached to statically pure operators.
+
+   `common.scatter.v1` is the reviewed positive stateful vertical slice.  Its
+   contract marks `kid0` as modifying uniquely owned storage, `kid1` and
+   `kid2` as reads, and the result as an in-place update of `kid0`.  VHO DSL
+   lowering appends each abstract state as a standard addressable WHIRL
+   parameter: `READ` uses `WN_PARM_READ_ONLY`, while `MODIFY` uses
+   `WN_PARM_OUT`; both use `WN_PARM_BY_REFERENCE` and
+   `WN_PARM_PASSED_NOT_SAVED`.  Existing WOPT call alias processing can derive
+   the corresponding use-only `MU` or modifying `MU`/`CHI` behavior without
+   storing backend analysis objects in the binary image.
+
+   `osprey/common/com/tests/dsl_abstract_state_image_test.sh` certifies runtime
+   status, random state, and mutable-buffer declarations, pure-node rejection,
+   three positive state-effect rows, mapped-image reopen, `ir_b2a -st -src`
+   evidence, canonical VHO lowering, and read/modify parameter flags.  It
+   retains `abstract_state.B`, `abstract_state.T`, and
+   `abstract_state_lowered.T` for review.
 
 19. [ ] Add barrier ingestion and optimization checks.
 
@@ -1296,6 +1343,76 @@ full-sequence causal prompt evaluation with no KV cache.
    not tensor metadata.  Add cache position, append/update, grouped-query
    attention, alias, ownership, and runtime ABI contracts without changing
    certified prefill semantics.
+
+   The first contract-publication slice is complete on
+   `codex/llama2-decode-infrastructure`, based on the frontend-only observable
+   discovery in PR #75.  It adds no logical opcode, WN encoding, mapped-image
+   row, builder emission, or lowering path.  The historical name-only contract
+   registration and lookup APIs retain their behavior; additive version-aware
+   registration, exact-version lookup, and current-version lookup allow old
+   and new contracts to coexist.
+
+   The compile-time seed set now publishes:
+
+   - `transformer.rotary_embedding.v1` for full-sequence prefill and `.v2` for
+     an explicit semantic cache-position operand;
+   - pure no-cache `transformer.attention.v1` and state-bearing cached
+     `transformer.attention.v2`;
+   - prefill `transformer.decoder_layer.v1` and state-interface
+     `transformer.decoder_layer.v2`;
+   - `transformer.decode.v1` as the outer decode-region contract; and
+   - `transformer.kv_cache_state.v1` for typed K/V cache state.
+
+   A narrow gatekeeper profile freezes only the observed first decode shape:
+   one token, equal query/KV head counts, rank-4 BHSD cache layout, sequence
+   axis 2, functional append from length `L` to `L+1`, cache position `L`, and
+   RoPE capacity bounds.  Stable diagnostics cover unsupported versions, head
+   geometry, layout/update mode, append length, position, and capacity.
+   Grouped-query attention, in-place/indexed storage, dynamic shapes, state
+   identity, state ordering, and alias verification remain unsupported until
+   the corresponding reviewed stages land.
+
+   Remaining item-29 stages, in order:
+
+   1. [x] Complete item 18's fixed mapped-image abstract-state and effect
+      rows.
+   2. [x] Bind K/V state identity, layer ownership, read/modify ordering, and
+      no-alias checks to region interfaces and gatekeeper verification.
+   3. [x] Allocate reviewed logical operator versions without changing version-1
+      prefill semantics.
+   4. [~] Add opaque builder and torch2whirl bindings after native publication.
+   5. [ ] Prove the complete decode artifact through mapped-image reopen and
+      `ir_b2a -st -src` state evidence.
+   6. [ ] Add gatekeeper-first VHO decode lowering and process-boundary tests.
+
+   The stage-2 implementation reuses reserved fixed-row flag fields; it does
+   not enlarge the state-object or region-interface mapped-image records.
+   `DSL_Builder_Declare_State_Object_With_Flags` publishes unique ownership,
+   while `DSL_Builder_Declare_Region_State` binds opaque state handles to
+   ordered region interfaces.  The decoder-layer-v2 gatekeeper requires two
+   distinct, uniquely owned mutable states, verifies that their effects remain
+   inside the owning layer, and rejects effect rows whose order disagrees with
+   statement order.  The compatibility state-object API remains a zero-flag
+   wrapper.  `dsl_llama2_decode_state_test.sh` retains `decode_state.B` and the
+   corresponding `ir_b2a -st -src` `decode_state.T` for review.
+
+   Stage 3 adds `transformer.rotary_embedding.v2` with an explicit fourth
+   cache-position operand and `transformer.attention.v2` with query plus
+   functionally appended K/V cache operands.  Attention v2 is state-bearing:
+   its ordinary tensor operands are read-only, its context result is fresh and
+   uniquely owned, and exactly two distinct K/V `MODIFY` edges are required.
+   The version-1 RoPE and no-cache attention records, schemas, and gatekeeper
+   behavior are unchanged.
+
+   The native half of stage 4 is now published through opaque
+   `DSL_BUILDER_STATE` and `DSL_BUILDER_REGION` handles plus the generic
+   version-aware operator builder.  The torch2whirl C bridge, extension shim,
+   Python builder, and mock backend now bind state declaration, state effects,
+   and ordered region-state interfaces through an opaque `StateHandle`.
+   Common/com validates raw state handles by registry membership before
+   dereferencing them.  Stage 4 remains open only until torch2whirl emits the
+   reviewed decode graph; Python must not inspect state rows, region records,
+   symbols, or physical WN storage.
 
 ### Deferred work TODO
 

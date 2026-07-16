@@ -850,6 +850,39 @@ WN_write_dsl_ir_image (Output_File *fl)
     cur_section->shdr.sh_addralign = sizeof(mINT64);
 }
 
+void
+WN_write_dsl_effect_image (Output_File *fl)
+{
+    if (!DSL_Effect_Image_Has_Records())
+        return;
+
+    FmtAssert(DSL_Effect_Image_Validate(stderr),
+              ("invalid DSL abstract-state tables"));
+    Section *cur_section = get_section
+                               (WT_DSL_EFFECT_IMAGE,
+                                MIPS_WHIRL_DSL_EFFECT_IMAGE, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+
+    DSL_EFFECT_IMAGE_HEADER header;
+    DSL_Effect_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+    for (UINT32 i = 1; i <= header.state_object_count; ++i) {
+        DSL_STATE_OBJECT_RECORD record;
+        FmtAssert(DSL_Effect_Image_Get_State_Object(i, &record),
+                  ("missing DSL state object %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.state_effect_count; ++i) {
+        DSL_STATE_EFFECT_RECORD record;
+        FmtAssert(DSL_Effect_Image_Get_State_Effect(i, &record),
+                  ("missing DSL state effect %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
 
 /*
  * Write out the debug symbol table (dst).  The DST gets its own Elf
@@ -1666,6 +1699,7 @@ Write_Global_Info (PU_Info *pu_tree)
     WN_write_dst(Current_DST, ir_output);
 
     WN_write_dsl_ir_image(ir_output);
+    WN_write_dsl_effect_image(ir_output);
 
     WN_write_strtab(Index_To_Str (0), STR_Table_Size (), ir_output);
 

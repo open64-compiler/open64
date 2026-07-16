@@ -647,6 +647,56 @@ Open64_DSC_Declare_Region_Value(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Declare_State_Object(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    const char *name;
+    unsigned int kind;
+    unsigned int flags;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KsII:declare_state_object", &program_unit,
+                          &name, &kind, &flags))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Declare_State_Object
+                    (program_unit, name, kind, flags),
+                "declare state object");
+}
+
+static PyObject *
+Open64_DSC_Add_State_Effect(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle value;
+    Open64_DSC_Handle state;
+    unsigned int effect_kind;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KKI:add_state_effect", &value, &state,
+                          &effect_kind))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Add_State_Effect(value, state, effect_kind),
+                "add state effect");
+}
+
+static PyObject *
+Open64_DSC_Declare_Region_State(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle region;
+    Open64_DSC_Handle state;
+    unsigned int effect_kind;
+    unsigned int ordinal;
+    unsigned int flags;
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KKIII:declare_region_state", &region,
+                          &state, &effect_kind, &ordinal, &flags))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Declare_Region_State
+                    (region, state, effect_kind, ordinal, flags),
+                "declare region state");
+}
+
+static PyObject *
 Open64_DSC_Set_Region_Source_Position(PyObject *self, PyObject *args)
 {
     Open64_DSC_Handle region;
@@ -1061,6 +1111,24 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Declare_Region_Value,
         METH_VARARGS,
         "Declare a structured region value interface."
+    },
+    {
+        "declare_state_object",
+        Open64_DSC_Declare_State_Object,
+        METH_VARARGS,
+        "Declare an opaque program-unit state object."
+    },
+    {
+        "add_state_effect",
+        Open64_DSC_Add_State_Effect,
+        METH_VARARGS,
+        "Attach a semantic state effect to a DSL value."
+    },
+    {
+        "declare_region_state",
+        Open64_DSC_Declare_Region_State,
+        METH_VARARGS,
+        "Declare an opaque structured region state interface."
     },
     {
         "set_region_source_position",

@@ -156,6 +156,7 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
+LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
 	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
@@ -187,6 +188,7 @@ COMMON_COM_CXX_SRC =	\
         dsl_ir_image.cxx \
         dsl_ir_print.cxx \
         dsl_region.cxx \
+	dsl_memory_behavior.cxx \
 	dsl_opcode.cxx	\
 	dwarf_DST.cxx	\
 	dwarf_DST_dump.cxx	\
@@ -260,7 +262,8 @@ install: default
 
 include $(COMMONRULES)
 
-VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_COM_TARG_DIR) $(BE_COM_DIR)
+VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_COM_TARG_DIR) $(BE_COM_DIR) \
+	$(BE_VHO_DIR)
 
 ir_b2a: $(OBJECTS) ir_a2b.o
 	$(link.c++f) -o ir_b2a ir_a2b.o $(OBJECTS) $(LDFLAGS)
@@ -286,6 +289,15 @@ dsl_builder_contract_test: $(OBJECTS) controls.o dsl_builder_contract_test.o
 
 dsl_builder_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
+		dsl_opt.o dsl_lower_contract_test.o
+	$(link.c++f) -o $@ dsl_lower_contract_test.o controls.o \
+		dsl_lower.o dsl_opt.o $(OBJECTS) $(LDFLAGS)
+
+dsl_lower_contract_test.o: \
+	$(BE_VHO_DIR)/tests/dsl_lower_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 uwasm_nwrap: $(OBJECTS) uwasm_nwrap.o
