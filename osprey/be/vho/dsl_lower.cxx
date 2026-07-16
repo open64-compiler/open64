@@ -67,7 +67,9 @@ typedef struct {
     ST *runtime_token_embedding;
     ST *runtime_rms_norm;
     ST *runtime_rotary_embedding;
+    ST *runtime_rotary_embedding_v2;
     ST *runtime_attention;
+    ST *runtime_attention_v2;
     ST *runtime_swiglu;
     ST *runtime_scatter;
 } VHO_DSL_LOWER_CONTEXT;
@@ -672,6 +674,7 @@ VHO_DSL_Create_Compatibility_Result
 static ST *
 VHO_DSL_Runtime_Function
         (DSL_OPERATOR dsl_operator,
+         UINT16 version,
          BOOL external_tensor,
          VHO_DSL_LOWER_CONTEXT *context)
 {
@@ -749,12 +752,22 @@ VHO_DSL_Runtime_Function
         name = "__open64_dsl_rms_norm_v1";
         break;
     case OPR_DSLROTARYEMBEDDING:
-        slot = &context->runtime_rotary_embedding;
-        name = "__open64_dsl_rotary_embedding_v1";
+        if (version == 1) {
+            slot = &context->runtime_rotary_embedding;
+            name = "__open64_dsl_rotary_embedding_v1";
+        } else if (version == 2) {
+            slot = &context->runtime_rotary_embedding_v2;
+            name = "__open64_dsl_rotary_embedding_v2";
+        }
         break;
     case OPR_DSLATTENTION:
-        slot = &context->runtime_attention;
-        name = "__open64_dsl_attention_v1";
+        if (version == 1) {
+            slot = &context->runtime_attention;
+            name = "__open64_dsl_attention_v1";
+        } else if (version == 2) {
+            slot = &context->runtime_attention_v2;
+            name = "__open64_dsl_attention_v2";
+        }
         break;
     case OPR_DSLSWIGLU:
         slot = &context->runtime_swiglu;
@@ -768,6 +781,8 @@ VHO_DSL_Runtime_Function
         return NULL;
     }
 
+    if (slot == NULL)
+        return NULL;
     if (*slot == NULL) {
         TY_IDX function_ty = Make_Function_Type
                                  (MTYPE_To_TY(Pointer_Mtype));
@@ -984,7 +999,8 @@ VHO_DSL_Build_Runtime_Call
                          (result_ty, dsl_operator == OPR_DSLTENSORCONST,
                           context);
     ST *function = VHO_DSL_Runtime_Function
-                       (dsl_operator, external_tensor, context);
+                       (dsl_operator, annotation.version, external_tensor,
+                        context);
     if (descriptor == NULL || function == NULL)
         return FALSE;
 
@@ -1022,7 +1038,7 @@ VHO_DSL_Build_Runtime_Call
     else if (dsl_operator == OPR_DSLRMSNORM)
         parameter_count = 5;
     else if (dsl_operator == OPR_DSLROTARYEMBEDDING)
-        parameter_count = 4;
+        parameter_count = annotation.version == 2 ? 5 : 4;
     else if (dsl_operator == OPR_DSLATTENTION)
         parameter_count = 7;
     else if (dsl_operator == OPR_DSLSWIGLU)
@@ -1686,7 +1702,9 @@ VHO_DSL_Lower_Verified_Program_Unit
     context.runtime_token_embedding = NULL;
     context.runtime_rms_norm = NULL;
     context.runtime_rotary_embedding = NULL;
+    context.runtime_rotary_embedding_v2 = NULL;
     context.runtime_attention = NULL;
+    context.runtime_attention_v2 = NULL;
     context.runtime_swiglu = NULL;
     context.runtime_scatter = NULL;
 
