@@ -130,6 +130,9 @@ def _run_smoke(ir_b2a: Path, driver: Path, work_dir: Path) -> int:
     work_dir.mkdir(parents=True, exist_ok=True)
     source_model = _test_root() / "models" / "llama2_model.py"
     model_path = work_dir / "llama2_model.py"
+    retained_source_model = (
+        work_dir / "source" / "models" / "llama2_model.py"
+    )
     artifact = work_dir / "llama2.B"
     text_dump = work_dir / "llama2.T"
     side_file = work_dir / "llama2.safetensors"
@@ -139,6 +142,8 @@ def _run_smoke(ir_b2a: Path, driver: Path, work_dir: Path) -> int:
             path.unlink()
 
     shutil.copy2(source_model, model_path)
+    retained_source_model.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_model, retained_source_model)
     completed = _run_driver(driver, model_path, artifact)
     driver_log.write_text(
         f"exit_status={completed.returncode}\n" +

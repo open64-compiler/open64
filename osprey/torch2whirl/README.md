@@ -175,6 +175,11 @@ defaults to the persistent host directory
 The completed run writes `MANIFEST.txt` at the artifact root. Model evidence is
 grouped under `resnet`, `llama2-prefill`, and `llama2-decode`; native common
 operator probes are grouped under `python-native`.
+Llama artifact families retain local imported model modules under
+`source/models`, including the `TinyRMSNorm` definition used by decode. The
+model `.B` is the complete compilation artifact and contains each instantiated
+logical operator; imported Python classes are source definitions and do not
+produce separate `.B` files.
 Set
 `OPEN64_TORCH2WHIRL_RUN_IR_TOOLS=0` only when running the shorter PyTorch lane.
 
