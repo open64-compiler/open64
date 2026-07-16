@@ -178,6 +178,30 @@ operator probes are grouped under `python-native`.
 Set
 `OPEN64_TORCH2WHIRL_RUN_IR_TOOLS=0` only when running the shorter PyTorch lane.
 
+To certify the combined driver and retain its review artifacts, use a full
+Open64 build tree:
+
+```sh
+OPEN64_OPENPY_BUILD_DIR=/path/to/open64/build \
+  osprey/torch2whirl/scripts/run_openpy_docker_test.sh
+```
+
+This runs `openpy -keep -O0` on the ResNet fixture and retains:
+
+```text
+artifacts/torch2whirl/openpy/resnet/resnet.py
+artifacts/torch2whirl/openpy/resnet/openpy_driver.log
+artifacts/torch2whirl/openpy/resnet/binary/resnet.B
+artifacts/torch2whirl/openpy/resnet/binary/resnet.T
+artifacts/torch2whirl/openpy/resnet/binary/LocalResNet.safetensors
+artifacts/torch2whirl/openpy/resnet/lowered/resnet.I
+artifacts/torch2whirl/openpy/resnet/lowered/resnet.t
+artifacts/torch2whirl/openpy/resnet/lowered/resnet.s
+```
+
+Binary and lowered traces use separate directories because `.T` and `.t`
+refer to the same filename on the default case-insensitive macOS filesystem.
+
 For Linux Docker native extension validation from a configured build tree:
 
 ```sh

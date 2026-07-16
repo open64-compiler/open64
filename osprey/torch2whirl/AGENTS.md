@@ -55,6 +55,11 @@ native emission becomes available.
 - Do not use a container-only path or a temporary directory for final review
   evidence. Temporary directories remain appropriate for isolated unit tests
   that do not claim process-boundary artifact certification.
+- Apply the same contract to the combined `openpy -keep` pipeline. Keep the
+  source and driver log at the model-family root, the frontend `.B`, `.T`, and
+  side payload under `binary`, and post-VHO `.t`, `.I`, and `.s` under
+  `lowered`. This separation prevents `.T` and `.t` collisions on
+  case-insensitive filesystems.
 
 ## Verification Matrix
 
@@ -97,6 +102,13 @@ metadata changes:
 
 ```sh
 osprey/torch2whirl/scripts/run_torch_docker_test.sh
+```
+
+For the combined `openpy -keep -O0` ResNet pipeline from a full Open64 build:
+
+```sh
+OPEN64_OPENPY_BUILD_DIR=/path/to/open64/build \
+  osprey/torch2whirl/scripts/run_openpy_docker_test.sh
 ```
 
 Use `OPEN64_TORCH2WHIRL_REBUILD_IMAGE=1` when the torch Dockerfile or pinned
