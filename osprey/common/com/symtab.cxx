@@ -75,6 +75,10 @@
 #include "targ_sim.h"
 #include "config_asm.h"
 
+extern void IR_Srcpos_Filename (SRCPOS srcpos,
+                                const char **fname,
+                                const char **dirname);
+
 // global tables
 FILE_INFO	Default_File_info;
 FILE_INFO	*File_info_ptr = &Default_File_info;
@@ -2651,6 +2655,20 @@ static void
 Print_tensor_descriptor_record (FILE *f,
                                 const TENSOR_DESCRIPTOR_RECORD &record);
 
+static void
+Print_tensor_symbol_storage (FILE *f, ST_IDX st, TY_IDX ty)
+{
+    const char *placement = TY_tensor_attribute
+                                (ty, TY_TENSOR_SCHEMA_PLACEMENT);
+    if (placement == NULL || strcmp(placement, "side_file") != 0)
+        return;
+    const char *side_file = ST_tensor_metadata(st, "storage_file");
+    fprintf (f, "\t\tTensor storage: placement = side_file");
+    if (side_file != NULL && side_file[0] != '\0')
+        fprintf (f, " (%s)", side_file);
+    fprintf (f, "\n");
+}
+
 void
 ST::Print (FILE *f, BOOL verbose) const
 {
@@ -2845,9 +2863,16 @@ ST::Print (FILE *f, BOOL verbose) const
 	    fprintf (f, "Alignment: %d bytes", TY_align (ty_idx));
 	}
 	fprintf (f, "\n");
-	extern char *Orig_Src_File_Name, *Src_File_Name;
-	fprintf (f, "\t\tlocation: file %s, line %d\n", 
-	         (Orig_Src_File_Name ? Orig_Src_File_Name : Src_File_Name), SRCPOS_linenum(spos));
+        extern char *Orig_Src_File_Name, *Src_File_Name;
+        const char *fname = Orig_Src_File_Name ? Orig_Src_File_Name :
+                                                Src_File_Name;
+        if (fname == NULL) {
+            const char *dname;
+            IR_Srcpos_Filename(spos, &fname, &dname);
+        }
+        fprintf (f, "\t\tlocation: file %s, line %d\n",
+                 fname == NULL ? "(null)" : fname,
+                 SRCPOS_linenum(spos));
 
 	fprintf (f, "\t\tFlags:\t0x%08x", flags);
 	if (flags) {
@@ -2990,6 +3015,8 @@ ST::Print (FILE *f, BOOL verbose) const
 	}
 
 	fprintf (f, "\n\t\tSclass: %s\n", Sclass_Name (storage_class));
+        if (TY_IDX_index(ty_idx) != 0 && TY_is_tensor_extension(ty_idx))
+            Print_tensor_symbol_storage(f, st_idx, ty_idx);
 	if(vtable_ty_idx)
 	{
 	  if(flags_ext & ST_IS_VTABLE)

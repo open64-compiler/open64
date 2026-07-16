@@ -110,6 +110,8 @@ for evidence in \
   "METADATA layer_ordinal:0" \
   "storage_format = safetensors" \
   "storage_file = llama2.safetensors" \
+  "Tensor storage: placement = side_file (llama2.safetensors)" \
+  "location: file llama2_transformer_regions.py, line 11" \
   "storage_tensor_key = tok_embeddings.weight" \
   "value_kind=external_data" \
   "LOC 0 40"; do

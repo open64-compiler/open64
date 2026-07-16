@@ -252,10 +252,16 @@ Check_Upgraded_Ingestion_APIs(void)
     }
 
     observed_position.srcpos = WN_Get_Linenum(add);
+    USRCPOS observed_symbol_position;
+    observed_symbol_position.srcpos = ST_Srcpos(add_st);
     if (USRCPOS_filenum(observed_position) != file_id ||
         USRCPOS_linenum(observed_position) != 27 ||
         USRCPOS_column(observed_position) != 9 ||
         !USRCPOS_stmt_begin(observed_position) ||
+        USRCPOS_filenum(observed_symbol_position) != file_id ||
+        USRCPOS_linenum(observed_symbol_position) != 27 ||
+        USRCPOS_column(observed_symbol_position) != 9 ||
+        !USRCPOS_stmt_begin(observed_symbol_position) ||
         !ST_tensor_metadata_is_bound(add_st, "source_layer_name") ||
         strcmp(ST_tensor_metadata(add_st, "source_layer_name"),
                "residual_add") != 0 ||

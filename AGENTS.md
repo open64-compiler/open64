@@ -64,6 +64,10 @@ only when the current task needs detail.
    conventions.
 4. When editing existing Open64 C/C++ code, match the surrounding indentation
    style with spaces rather than reformatting unrelated code.
+5. Builder interfaces that create a symbol must make every reasonable attempt
+   to set its declaration source position with `Set_ST_Srcpos()`. When a
+   builder creates both a defining WN and a result ST, propagate the same
+   complete source position, including file, line, and column, to both objects.
 
 ## Driver And Phase Option Convention
 

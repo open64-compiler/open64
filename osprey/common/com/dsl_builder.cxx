@@ -2424,6 +2424,9 @@ DSL_Builder_Set_Value_Source_Position
     USRCPOS_stmt_begin(position) = source_position->statement_begin != 0;
     USRCPOS_bb_begin(position) = source_position->basic_block_begin != 0;
     WN_Set_Linenum(record->assignment, USRCPOS_srcpos(position));
+    if (ST_IDX_index(record->result_st) != 0)
+        Set_ST_Srcpos(St_Table[record->result_st],
+                      USRCPOS_srcpos(position));
     return TRUE;
 }
 
