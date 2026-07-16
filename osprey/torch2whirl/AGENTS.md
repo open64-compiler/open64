@@ -57,8 +57,8 @@ native emission becomes available.
   that do not claim process-boundary artifact certification.
 - Apply the same contract to the combined `openpy -keep` pipeline. Keep the
   source and driver log at the model-family root, the frontend `.B`, `.T`, and
-  side payload under `binary`, and post-VHO `.t`, `.I`, and `.s` under
-  `lowered`. This separation prevents `.T` and `.t` collisions on
+  side payload under `binary`, and post-VHO `.t`, assembly, and any optional
+  driver intermediates under `lowered`. This separation prevents `.T` and `.t` collisions on
   case-insensitive filesystems.
 
 ## Verification Matrix

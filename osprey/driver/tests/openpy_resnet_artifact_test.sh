@@ -46,9 +46,15 @@ if [ "$status" -ne 0 ]; then
 fi
 
 mv "$work_dir/resnet.B" "$binary_dir/resnet.B"
-mv "$work_dir/LocalResNet.safetensors" \
-    "$binary_dir/LocalResNet.safetensors"
-mv "$work_dir/resnet.I" "$lowered_dir/resnet.I"
+side_file=$(find "$work_dir" -maxdepth 1 -type f -name '*.safetensors' -print)
+if [ -z "$side_file" ] || [ "$(printf '%s\n' "$side_file" | wc -l)" -ne 1 ]; then
+    echo "openpy did not produce exactly one SafeTensors side file" >&2
+    exit 1
+fi
+mv "$side_file" "$binary_dir/$(basename "$side_file")"
+if [ -f "$work_dir/resnet.I" ]; then
+    mv "$work_dir/resnet.I" "$lowered_dir/resnet.I"
+fi
 mv "$work_dir/resnet.t" "$lowered_dir/resnet.t"
 mv "$work_dir/resnet.s" "$lowered_dir/resnet.s"
 
@@ -59,8 +65,6 @@ for artifact in \
     "$driver_log" \
     "$binary_dir/resnet.B" \
     "$binary_dir/resnet.T" \
-    "$binary_dir/LocalResNet.safetensors" \
-    "$lowered_dir/resnet.I" \
     "$lowered_dir/resnet.t" \
     "$lowered_dir/resnet.s"; do
     if [ ! -s "$artifact" ]; then
@@ -68,6 +72,11 @@ for artifact in \
         exit 1
     fi
 done
+if ! find "$binary_dir" -maxdepth 1 -type f -name '*.safetensors' \
+    -size +0c | grep -q .; then
+    echo "openpy did not retain a nonempty SafeTensors side file" >&2
+    exit 1
+fi
 
 grep -q 'source files:' "$binary_dir/resnet.T"
 grep -q 'resnet.py' "$binary_dir/resnet.T"

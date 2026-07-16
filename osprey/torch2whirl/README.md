@@ -193,11 +193,13 @@ artifacts/torch2whirl/openpy/resnet/resnet.py
 artifacts/torch2whirl/openpy/resnet/openpy_driver.log
 artifacts/torch2whirl/openpy/resnet/binary/resnet.B
 artifacts/torch2whirl/openpy/resnet/binary/resnet.T
-artifacts/torch2whirl/openpy/resnet/binary/LocalResNet.safetensors
-artifacts/torch2whirl/openpy/resnet/lowered/resnet.I
+artifacts/torch2whirl/openpy/resnet/binary/resnet.safetensors
 artifacts/torch2whirl/openpy/resnet/lowered/resnet.t
 artifacts/torch2whirl/openpy/resnet/lowered/resnet.s
 ```
+
+Driver-specific intermediates such as `resnet.I` are retained under `lowered`
+when produced, but are not required by the cross-version artifact contract.
 
 Binary and lowered traces use separate directories because `.T` and `.t`
 refer to the same filename on the default case-insensitive macOS filesystem.
