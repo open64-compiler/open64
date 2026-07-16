@@ -258,7 +258,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
         self.assertEqual(module.model_name, "DummyModel")
         self.assertEqual(module.input_count, 2)
         self.assertEqual(module.options.backend, "mock")
-        self.assertEqual(module.entry_function.name, "forward")
+        self.assertEqual(module.entry_function.name, "DummyModel")
         self.assertGreater(module.entry_function.handle, 0)
         self.assertEqual(
             module.entry_function.body_markers,
@@ -2266,7 +2266,7 @@ class Open64DscSkeletonTest(unittest.TestCase):
 
         self.assertIn("format=mock", text)
         self.assertIn("model_name=unit_model", text)
-        self.assertIn("entry_function=forward", text)
+        self.assertIn("entry_function=DummyModel", text)
         self.assertIn("entry_body_marker.0=input0", text)
         self.assertIn("entry_body_marker.1=input1", text)
         self.assertIn("entry_body_marker.2=common.add", text)

@@ -203,6 +203,37 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
         )
 
         self.assertEqual(module.graph_source, "torch.fx+llama2_semantic")
+        self.assertEqual(module.entry_function.name, "TinyLlama2ForCausalLM")
+        definitions = {
+            definition.canonical_name: definition
+            for definition in module.python_class_definitions
+        }
+        instances = list(module.python_class_instances)
+        self.assertIn("models.llama2_model.TinyLlama2Attention", definitions)
+        self.assertIn(
+            "models.llama2_model.TinyLlama2FeedForward",
+            definitions,
+        )
+        self.assertIn("models.llama2_model.TinyRMSNorm", definitions)
+        rms_norm_instances = [
+            instance for instance in instances
+            if instance.canonical_class_name ==
+               "models.llama2_model.TinyRMSNorm"
+        ]
+        self.assertEqual(len(rms_norm_instances), 5)
+        self.assertEqual(
+            [instance.instance_path for instance in rms_norm_instances],
+            [
+                "layers.0.attention_norm",
+                "layers.0.ffn_norm",
+                "layers.1.attention_norm",
+                "layers.1.ffn_norm",
+                "norm",
+            ],
+        )
+        for instance in rms_norm_instances:
+            self.assertEqual(tuple(instance.parameters), ("weight",))
+            self.assertEqual(instance.scalar_state["eps"], "1e-05")
         self.assertEqual(module.input_count, 1)
         self.assertIn("transformer.token_embedding", module.operators)
         self.assertIn("transformer.rms_norm", module.operators)

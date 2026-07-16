@@ -195,6 +195,13 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         print(text, file=sys.stderr)
         return 1
 
+    if re.search(
+        r"FUNC_ENTRY <[^>]*TinyLlama2DecodeForCausalLM>",
+        text,
+    ) is None:
+        print("decode trace retained a generic FUNC_ENTRY name", file=sys.stderr)
+        return 1
+
     count_expectations = {
         "contract=transformer.decoder_layer.v2": 2,
         "OPR_DSLRMSNORM # OPR_DSLRMSNORM version=1": 5,
