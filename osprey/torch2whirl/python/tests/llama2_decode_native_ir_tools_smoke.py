@@ -129,6 +129,7 @@ def _check_failed_run_cleans_partial_artifact(
 
     completed = _run_driver(driver, bad_model, bad_artifact)
     bad_log.write_text(
+        f"exit_status={completed.returncode}\n" +
         completed.stdout + completed.stderr,
         encoding="utf-8",
     )
@@ -196,6 +197,7 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
 
     count_expectations = {
         "contract=transformer.decoder_layer.v2": 2,
+        "OPR_DSLRMSNORM # OPR_DSLRMSNORM version=1": 5,
         "OPR_DSLROTARYEMBEDDING # OPR_DSLROTARYEMBEDDING version=2": 4,
         "OPR_DSLATTENTION # OPR_DSLATTENTION version=2": 2,
         "roles=0x4 flags=0x1b": 4,
@@ -276,12 +278,16 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
 
 def _run_smoke(ir_b2a: Path, driver: Path, work_dir: Path) -> int:
     work_dir.mkdir(parents=True, exist_ok=True)
-    model_path = _test_root() / "models" / "llama2_decode_model.py"
+    source_models = _test_root() / "models"
+    model_path = source_models / "llama2_decode_model.py"
+    retained_model = work_dir / "llama2_decode_model.py"
+    retained_source_models = work_dir / "source" / "models"
     artifact = work_dir / "llama2_decode.B"
     text_dump = work_dir / "llama2_decode.T"
     side_file = work_dir / "llama2_decode.safetensors"
     driver_log = work_dir / "llama2_decode_driver.log"
     for path in (
+        retained_model,
         artifact,
         text_dump,
         side_file,
@@ -293,8 +299,19 @@ def _run_smoke(ir_b2a: Path, driver: Path, work_dir: Path) -> int:
         if path.exists():
             path.unlink()
 
-    completed = _run_driver(driver, model_path, artifact)
+    shutil.copy2(model_path, retained_model)
+    if retained_source_models.parent.exists():
+        shutil.rmtree(retained_source_models.parent)
+    retained_source_models.mkdir(parents=True)
+    for source_name in ("llama2_decode_model.py", "llama2_model.py"):
+        shutil.copy2(
+            source_models / source_name,
+            retained_source_models / source_name,
+        )
+
+    completed = _run_driver(driver, retained_model, artifact)
     driver_log.write_text(
+        f"exit_status={completed.returncode}\n" +
         completed.stdout + completed.stderr,
         encoding="utf-8",
     )

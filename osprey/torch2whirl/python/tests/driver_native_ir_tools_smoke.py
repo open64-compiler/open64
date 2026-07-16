@@ -141,6 +141,7 @@ def _run_valid_driver(driver: Path, model_path: Path, artifact: Path) -> int:
 def _check_invalid_graph_rejected(driver: Path, tmpdir: Path) -> int:
     model_path = tmpdir / "invalid_model.py"
     artifact = tmpdir / "invalid_model.B"
+    log_path = tmpdir / "invalid_model.log"
     _write_invalid_add_model(model_path)
 
     completed = _run_driver(
@@ -148,6 +149,11 @@ def _check_invalid_graph_rejected(driver: Path, tmpdir: Path) -> int:
         model_path,
         artifact,
         ("shape:1,3", "shape:1,4"),
+    )
+    log_path.write_text(
+        f"exit_status={completed.returncode}\n" +
+        completed.stdout + completed.stderr,
+        encoding="utf-8",
     )
     if completed.returncode == 0:
         print("driver accepted verifier-invalid add graph", file=sys.stderr)
@@ -200,10 +206,10 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         "attr.stride=2,2",
         "attr.padding=3,3",
         "attr.semantic=logits",
-        "value=safetensors://driver_native_model.safetensors#conv1.weight",
+        "value=safetensors://resnet.safetensors#conv1.weight",
         "value_kind=implicit_zero",
         "source files:",
-        "model.py",
+        "resnet_model.py",
         "Symbols:",
         "Types:",
     ]
@@ -233,12 +239,14 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
 
 def _run_smoke(ir_b2a: Path, driver: Path, work_dir: Path) -> int:
     work_dir.mkdir(parents=True, exist_ok=True)
-    model_path = work_dir / "model.py"
-    artifact = work_dir / "driver_native_model.B"
-    text_dump = work_dir / "driver_native_model.T"
-    side_file = work_dir / "driver_native_model.safetensors"
+    model_path = work_dir / "resnet_model.py"
+    artifact = work_dir / "resnet.B"
+    text_dump = work_dir / "resnet.T"
+    side_file = work_dir / "resnet.safetensors"
     invalid_model = work_dir / "invalid_model.py"
     invalid_artifact = work_dir / "invalid_model.B"
+    driver_log = work_dir / "resnet_driver.log"
+    invalid_log = work_dir / "invalid_model.log"
     for path in (
         model_path,
         artifact,
@@ -246,14 +254,28 @@ def _run_smoke(ir_b2a: Path, driver: Path, work_dir: Path) -> int:
         side_file,
         invalid_model,
         invalid_artifact,
+        driver_log,
+        invalid_log,
     ):
         if path.exists():
             path.unlink()
     _write_resnet_model(model_path)
 
-    driver_status = _run_valid_driver(driver, model_path, artifact)
-    if driver_status != 0:
-        return driver_status
+    completed = _run_driver(
+        driver,
+        model_path,
+        artifact,
+        ("shape:1,3,64,64",),
+    )
+    driver_log.write_text(
+        f"exit_status={completed.returncode}\n" +
+        completed.stdout + completed.stderr,
+        encoding="utf-8",
+    )
+    if completed.returncode != 0:
+        print(completed.stdout, file=sys.stderr)
+        print(completed.stderr, file=sys.stderr)
+        return completed.returncode
     if not artifact.exists() or artifact.stat().st_size == 0:
         print("driver native WHIRL artifact was not created", file=sys.stderr)
         return 1

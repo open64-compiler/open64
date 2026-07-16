@@ -165,10 +165,49 @@ script defaults `OPEN64_TORCH2WHIRL_DOCKER_BUILDKIT=0` so local-only Open64
 base images are not resolved through a remote registry.
 The script mounts the host directory
 `$OPEN64_TORCH2WHIRL_ARTIFACT_DIR` at `/artifacts`, cleans it at startup, runs
-both native `ir_b2a -st -src` smoke lanes, and leaves the resulting artifacts after
-Docker exits.  It defaults to
-`$OPEN64_TORCH2WHIRL_BUILD_DIR/test-artifacts`.  Set
+the native `ir_b2a -st -src` model certification lanes, and leaves source,
+`.B`, `.T`, side payloads, and diagnostic logs after Docker exits. It verifies
+the bind mount before starting validation and
+defaults to the persistent host directory
+`<open64-source-root>/artifacts/torch2whirl`. For example, this checkout uses
+`/Users/shinmingliu/open64/artifacts/torch2whirl`. Set
+`OPEN64_TORCH2WHIRL_ARTIFACT_DIR` to choose another persistent host directory.
+The completed run writes `MANIFEST.txt` at the artifact root. Model evidence is
+grouped under `resnet`, `llama2-prefill`, and `llama2-decode`; native common
+operator probes are grouped under `python-native`.
+Llama artifact families retain local imported model modules under
+`source/models`, including the `TinyRMSNorm` definition used by decode. The
+model `.B` is the complete compilation artifact and contains each instantiated
+logical operator; imported Python classes are source definitions and do not
+produce separate `.B` files.
+Set
 `OPEN64_TORCH2WHIRL_RUN_IR_TOOLS=0` only when running the shorter PyTorch lane.
+
+To certify the combined driver and retain its review artifacts, use a full
+Open64 build tree:
+
+```sh
+OPEN64_OPENPY_BUILD_DIR=/path/to/open64/build \
+  osprey/torch2whirl/scripts/run_openpy_docker_test.sh
+```
+
+This runs `openpy -keep -O0` on the ResNet fixture and retains:
+
+```text
+artifacts/torch2whirl/openpy/resnet/resnet.py
+artifacts/torch2whirl/openpy/resnet/openpy_driver.log
+artifacts/torch2whirl/openpy/resnet/binary/resnet.B
+artifacts/torch2whirl/openpy/resnet/binary/resnet.T
+artifacts/torch2whirl/openpy/resnet/binary/resnet.safetensors
+artifacts/torch2whirl/openpy/resnet/lowered/resnet.t
+artifacts/torch2whirl/openpy/resnet/lowered/resnet.s
+```
+
+Driver-specific intermediates such as `resnet.I` are retained under `lowered`
+when produced, but are not required by the cross-version artifact contract.
+
+Binary and lowered traces use separate directories because `.T` and `.t`
+refer to the same filename on the default case-insensitive macOS filesystem.
 
 For Linux Docker native extension validation from a configured build tree:
 
