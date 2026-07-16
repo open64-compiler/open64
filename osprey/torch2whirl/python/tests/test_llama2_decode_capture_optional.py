@@ -239,6 +239,10 @@ class TinyLlama2DecodeWhirlEmissionOptionalTest(unittest.TestCase):
 
     def test_decode_collects_imported_callable_declarations(self) -> None:
         module = self._export_decode()
+        self.assertEqual(
+            module.entry_function.name,
+            "TinyLlama2DecodeForCausalLM",
+        )
         by_name = {
             imported.canonical_name: imported
             for imported in module.python_imports

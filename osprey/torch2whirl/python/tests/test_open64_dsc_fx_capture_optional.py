@@ -138,7 +138,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 format=mock
                 model_name=AddModule
                 entry=forward
-                entry_function=forward
+                entry_function=AddModule
                 graph_source=torch.fx
                 input_count=2
                 entry_body_marker.0=input0
@@ -203,7 +203,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 format=mock
                 model_name=MatmulModule
                 entry=forward
-                entry_function=forward
+                entry_function=MatmulModule
                 graph_source=torch.fx
                 input_count=2
                 entry_body_marker.0=input0
@@ -1391,7 +1391,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
 
         self.assertIn("format=mock", text)
         self.assertIn("model_name=AddModel", text)
-        self.assertIn("entry_function=forward", text)
+        self.assertIn("entry_function=AddModel", text)
         self.assertIn("operator.0=common.add", text)
         self.assertIn("graph_operator.0=common.add:input0,input0", text)
 

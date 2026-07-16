@@ -203,6 +203,7 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
         )
 
         self.assertEqual(module.graph_source, "torch.fx+llama2_semantic")
+        self.assertEqual(module.entry_function.name, "TinyLlama2ForCausalLM")
         self.assertEqual(module.input_count, 1)
         self.assertIn("transformer.token_embedding", module.operators)
         self.assertIn("transformer.rms_norm", module.operators)

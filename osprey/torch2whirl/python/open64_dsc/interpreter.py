@@ -95,7 +95,8 @@ class WhirlExportInterpreter:
     ) -> WhirlModule:
         inputs = list(example_inputs)
         model_name = self._model_name(model)
-        entry_pu = self.builder().minimal_program_unit(self._options.entry)
+        entry_name = self._model_class_name(model)
+        entry_pu = self.builder().minimal_program_unit(entry_name)
         tensor_types, values, handles = self._build_input_placeholders(inputs)
         tensor_payloads: List[WhirlTensorPayloadRecord] = []
         graph_operators: List[WhirlOperatorRecord] = []
@@ -186,7 +187,7 @@ class WhirlExportInterpreter:
             model_name=model_name,
             input_count=len(inputs),
             entry_function=WhirlProgramUnitRecord(
-                name=self._options.entry,
+                name=entry_name,
                 handle=entry_pu.value,
                 body_markers=body_markers,
             ),
@@ -3178,6 +3179,11 @@ class WhirlExportInterpreter:
     def _model_name(self, model: Any) -> str:
         if self._options.model_name:
             return self._options.model_name
+        if hasattr(model, "__class__"):
+            return model.__class__.__name__
+        return type(model).__name__
+
+    def _model_class_name(self, model: Any) -> str:
         if hasattr(model, "__class__"):
             return model.__class__.__name__
         return type(model).__name__
