@@ -75,6 +75,10 @@
 #include "targ_sim.h"
 #include "config_asm.h"
 
+extern void IR_Srcpos_Filename (SRCPOS srcpos,
+                                const char **fname,
+                                const char **dirname);
+
 // global tables
 FILE_INFO	Default_File_info;
 FILE_INFO	*File_info_ptr = &Default_File_info;
@@ -2859,9 +2863,16 @@ ST::Print (FILE *f, BOOL verbose) const
 	    fprintf (f, "Alignment: %d bytes", TY_align (ty_idx));
 	}
 	fprintf (f, "\n");
-	extern char *Orig_Src_File_Name, *Src_File_Name;
-	fprintf (f, "\t\tlocation: file %s, line %d\n", 
-	         (Orig_Src_File_Name ? Orig_Src_File_Name : Src_File_Name), SRCPOS_linenum(spos));
+        extern char *Orig_Src_File_Name, *Src_File_Name;
+        const char *fname = Orig_Src_File_Name ? Orig_Src_File_Name :
+                                                Src_File_Name;
+        if (fname == NULL) {
+            const char *dname;
+            IR_Srcpos_Filename(spos, &fname, &dname);
+        }
+        fprintf (f, "\t\tlocation: file %s, line %d\n",
+                 fname == NULL ? "(null)" : fname,
+                 SRCPOS_linenum(spos));
 
 	fprintf (f, "\t\tFlags:\t0x%08x", flags);
 	if (flags) {
