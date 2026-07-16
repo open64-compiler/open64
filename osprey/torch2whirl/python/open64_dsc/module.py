@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Mapping, Sequence
 
 from .options import WhirlExportOptions
+from .python_imports import PythonImportedCallable
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,9 @@ class WhirlModule:
         default_factory=list
     )
     graph_operators: Sequence[WhirlOperatorRecord] = field(default_factory=list)
+    python_imports: Sequence[PythonImportedCallable] = field(
+        default_factory=list
+    )
 
     def to_manifest(self) -> Mapping[str, object]:
         return {
@@ -139,6 +143,10 @@ class WhirlModule:
             "graph_operators": [
                 operator.to_manifest()
                 for operator in self.graph_operators
+            ],
+            "python_imports": [
+                imported.to_manifest()
+                for imported in self.python_imports
             ],
         }
 

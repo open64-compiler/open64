@@ -237,6 +237,33 @@ class TinyLlama2DecodeWhirlEmissionOptionalTest(unittest.TestCase):
         interpreter = WhirlExportInterpreter(WhirlExportOptions())
         return interpreter.export(model, sample_decode_inputs(config))
 
+    def test_decode_collects_imported_callable_declarations(self) -> None:
+        module = self._export_decode()
+        by_name = {
+            imported.canonical_name: imported
+            for imported in module.python_imports
+        }
+
+        rms_norm = by_name["models.llama2_model.TinyRMSNorm.forward"]
+        self.assertEqual(
+            tuple(rms_norm.import_names),
+            ("TinyRMSNorm.forward",),
+        )
+        self.assertEqual(rms_norm.kind, "method")
+        self.assertEqual(len(rms_norm.implementation_fingerprint), 64)
+        self.assertIn(
+            "models.llama2_model.TinyLlama2FeedForward.forward",
+            by_name,
+        )
+        self.assertIn(
+            "models.llama2_model.initialize_tiny_llama2",
+            by_name,
+        )
+        self.assertEqual(
+            len(module.to_manifest()["python_imports"]),
+            len(module.python_imports),
+        )
+
     def test_decode_emits_v2_rope_and_attention_contracts(self) -> None:
         module = self._export_decode()
         verify_module(module)
