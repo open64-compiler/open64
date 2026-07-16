@@ -299,9 +299,9 @@ Second frontend batch status, L2-L7:
 Retained standalone evidence from this batch:
 
 ```text
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-frontend/llama2.B
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-frontend/llama2.safetensors
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-frontend/llama2.T
+<open64-source-root>/artifacts/torch2whirl/llama2-frontend/llama2.B
+<open64-source-root>/artifacts/torch2whirl/llama2-frontend/llama2.safetensors
+<open64-source-root>/artifacts/torch2whirl/llama2-frontend/llama2.T
 ```
 
 ### Required Status Updates
@@ -601,11 +601,11 @@ stable diagnostic, preserves the failure log, and checks that no partial
 Retained decode evidence from the Docker lane:
 
 ```text
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode.B
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode.safetensors
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode.T
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode_driver.log
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode_bad_gqa.log
+<open64-source-root>/artifacts/torch2whirl/llama2-decode/llama2_decode.B
+<open64-source-root>/artifacts/torch2whirl/llama2-decode/llama2_decode.safetensors
+<open64-source-root>/artifacts/torch2whirl/llama2-decode/llama2_decode.T
+<open64-source-root>/artifacts/torch2whirl/llama2-decode/llama2_decode_driver.log
+<open64-source-root>/artifacts/torch2whirl/llama2-decode/llama2_decode_bad_gqa.log
 ```
 
 Exit gate: stateful decode is an additive, versioned extension to the certified

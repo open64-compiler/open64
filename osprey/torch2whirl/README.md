@@ -166,8 +166,12 @@ base images are not resolved through a remote registry.
 The script mounts the host directory
 `$OPEN64_TORCH2WHIRL_ARTIFACT_DIR` at `/artifacts`, cleans it at startup, runs
 both native `ir_b2a -st -src` smoke lanes, and leaves the resulting artifacts after
-Docker exits.  It defaults to
-`$OPEN64_TORCH2WHIRL_BUILD_DIR/test-artifacts`.  Set
+Docker exits. It verifies the bind mount before starting validation and
+defaults to the persistent host directory
+`<open64-source-root>/artifacts/torch2whirl`. For example, this checkout uses
+`/Users/shinmingliu/open64/artifacts/torch2whirl`. Set
+`OPEN64_TORCH2WHIRL_ARTIFACT_DIR` to choose another persistent host directory.
+Set
 `OPEN64_TORCH2WHIRL_RUN_IR_TOOLS=0` only when running the shorter PyTorch lane.
 
 For Linux Docker native extension validation from a configured build tree:
