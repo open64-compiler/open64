@@ -30,6 +30,11 @@ grep -q '"-O0"' "$trace"
 grep -q '"-DSL:dump_after_lower=ON"' "$trace"
 grep -q '"-ft,model.t"' "$trace"
 
+if grep -q '/lw_inline/lw_inline' "$trace"; then
+  echo "openpy scheduled canonical inlining before VHO DSL lowering" >&2
+  exit 1
+fi
+
 if grep '/torch2whirl/torch2whirl' "$trace" |
      grep -Eq '"-O[0-9]|"-TARG:|"-PHASE:'; then
   echo "openpy forwarded compiler-only options to torch2whirl" >&2

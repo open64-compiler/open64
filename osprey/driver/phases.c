@@ -2698,6 +2698,10 @@ add_phase (phases_t p)
 static phases_t
 post_fe_phase (void)
 {
+    /* Native DSL WHIRL must reach VHO_DSL_Lower_Driver before canonical
+       WHIRL-only phases inspect its logical operators. */
+    if (invoked_lang == L_python)
+      return be_phase;
     if (ipa == TRUE)
       return P_ipl;
     // run_inline is the final gating variable that controls whether or not to
