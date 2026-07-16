@@ -1906,7 +1906,7 @@ Check_Llama2_Transformer_Expressions(void)
     int failed = 0;
 
     if (!DSL_Builder_Begin_Program() ||
-        DSL_Opcode_Register_Transformer_Domain() != 5)
+        DSL_Opcode_Register_Transformer_Domain() != 7)
         return 1;
     transformer_id = DSL_Domain_Find("transformer");
     embedding_id = DSL_Opcode_Find
@@ -3191,6 +3191,245 @@ Check_Abstract_State_Effects(void)
     return failed;
 }
 
+static BOOL
+Build_And_Verify_Decode_State_Region
+        (BOOL reverse_effect_order,
+         const char *artifact,
+         char *diagnostic,
+         UINT32 diagnostic_capacity)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rotary_attributes[5];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attention_attributes[11];
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_VALUE inputs[6];
+    DSL_BUILDER_VALUE updates[2];
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_REGION decoder;
+    DSL_BUILDER_STATE key_cache;
+    DSL_BUILDER_STATE value_cache;
+    DSL_DOMAIN_ID common_id;
+    DSL_DOMAIN_ID transformer_id;
+    DSL_OPCODE_ID scatter_id;
+    DSL_OPCODE_ID rotary_id;
+    DSL_OPCODE_ID attention_id;
+    TY_IDX cache_ty;
+    TY_IDX query_ty;
+    TY_IDX rope_ty;
+    TY_IDX position_ty;
+
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 4;
+    descriptor.type_core.logical_shape = "[1,4,4,8]";
+    descriptor.representation.layout = "BHSD";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Transformer_Domain();
+    common_id = DSL_Domain_Find("common");
+    transformer_id = DSL_Domain_Find("transformer");
+    scatter_id = DSL_Opcode_Find(common_id, "common.scatter", 1);
+    rotary_id = DSL_Opcode_Find
+                    (transformer_id, "transformer.rotary_embedding", 2);
+    attention_id = DSL_Opcode_Find
+                       (transformer_id, "transformer.attention", 2);
+    cache_ty = DSL_Builder_Intern_Tensor_Type
+                    ("decode_cache_f32", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    descriptor.type_core.logical_shape = "[1,4,1,8]";
+    query_ty = DSL_Builder_Intern_Tensor_Type
+                   ("decode_query_f32", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.logical_shape = "[1,1,8,8]";
+    rope_ty = DSL_Builder_Intern_Tensor_Type
+                  ("decode_rope_f32", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.dtype = "int64";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[1]";
+    descriptor.representation.layout = "contiguous";
+    position_ty = DSL_Builder_Intern_Tensor_Type
+                      ("decode_position_i64", MTYPE_To_TY(MTYPE_I8),
+                       &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("decode_state_region_contract");
+    UINT32 file_id = DSL_Builder_Register_Source_File
+                         (pu, "llama2_decode_state.py");
+    decoder = DSL_Builder_Create_Region
+                  (pu, NULL, "transformer.decoder_layer", 2);
+    key_cache = DSL_Builder_Declare_State_Object_With_Flags
+                    (pu, "layer0.key_cache", DSL_STATE_KIND_MUTABLE_BUFFER,
+                     DSL_STATE_OBJECT_UNIQUE_OWNERSHIP);
+    value_cache = DSL_Builder_Declare_State_Object_With_Flags
+                      (pu, "layer0.value_cache",
+                       DSL_STATE_KIND_MUTABLE_BUFFER,
+                       DSL_STATE_OBJECT_UNIQUE_OWNERSHIP);
+    if (scatter_id == DSL_OPCODE_INVALID_ID ||
+        rotary_id == DSL_OPCODE_INVALID_ID ||
+        attention_id == DSL_OPCODE_INVALID_ID || cache_ty == TY_IDX_ZERO ||
+        query_ty == TY_IDX_ZERO || rope_ty == TY_IDX_ZERO ||
+        position_ty == TY_IDX_ZERO ||
+        pu == NULL || file_id == 0 || decoder == NULL || key_cache == NULL ||
+        value_cache == NULL)
+        return FALSE;
+
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = 20;
+    position.column = 1;
+    position.statement_begin = 1;
+    position.basic_block_begin = 1;
+    if (!DSL_Builder_Set_Region_Source_Position(decoder, &position) ||
+        !DSL_Builder_Set_Region_Metadata
+             (decoder, "module_path", "layers.0") ||
+        !DSL_Builder_Set_Region_Metadata(decoder, "layer_ordinal", "0"))
+        return FALSE;
+
+    for (UINT32 i = 0; i < 6; ++i) {
+        char name[32];
+        snprintf(name, sizeof(name), "decode_input_%u", i);
+        TY_IDX input_ty = cache_ty;
+        if (!reverse_effect_order) {
+            static const UINT32 input_type_index[] = { 0, 1, 1, 2, 2, 3 };
+            TY_IDX input_types[] = { query_ty, cache_ty, rope_ty, position_ty };
+            input_ty = input_types[input_type_index[i]];
+        }
+        inputs[i] = DSL_Builder_Create_Model_Input(name, input_ty, i);
+        position.line = 10 + i;
+        position.basic_block_begin = 0;
+        if (inputs[i] == NULL ||
+            !DSL_Builder_Set_Value_Source_Position(inputs[i], &position) ||
+            !DSL_Builder_Append_PU_Value(pu, inputs[i]))
+            return FALSE;
+    }
+
+    if (reverse_effect_order) {
+        attribute.name = "attr.axis";
+        attribute.value = "2";
+        updates[0] = DSL_Builder_Create_Operator_With_Result
+                         (scatter_id, 1, inputs, 3, &attribute, 1,
+                          "key_cache_update", cache_ty);
+        updates[1] = DSL_Builder_Create_Operator_With_Result
+                         (scatter_id, 1, inputs + 3, 3, &attribute, 1,
+                          "value_cache_update", cache_ty);
+    } else {
+        rotary_attributes[0].name = "attr.head_layout";
+        rotary_attributes[0].value = "BHSD";
+        rotary_attributes[1].name = "attr.sequence_axis";
+        rotary_attributes[1].value = "2";
+        rotary_attributes[2].name = "attr.feature_axis";
+        rotary_attributes[2].value = "3";
+        rotary_attributes[3].name = "attr.pairing";
+        rotary_attributes[3].value = "half_split";
+        rotary_attributes[4].name = "attr.position_mode";
+        rotary_attributes[4].value = "explicit_operand";
+        DSL_BUILDER_VALUE rotary_kids[4] = {
+            inputs[0], inputs[3], inputs[4], inputs[5]
+        };
+        updates[0] = DSL_Builder_Create_Operator_With_Result
+                         (rotary_id, 2, rotary_kids, 4, rotary_attributes, 5,
+                          "positioned_query", query_ty);
+
+        const char *attention_names[11] = {
+            "attr.execution_mode", "attr.mask_mode", "attr.head_layout",
+            "attr.query_heads", "attr.kv_heads", "attr.head_dim",
+            "attr.scale_mode", "attr.softmax_axis",
+            "attr.softmax_accum_dtype", "attr.cache_mode",
+            "attr.cache_sequence_axis"
+        };
+        const char *attention_values[11] = {
+            "single_token_decode", "implicit_prefix_causal", "BHSD",
+            "4", "4", "8", "inverse_sqrt_head_dim", "-1", "float32",
+            "functional_append", "2"
+        };
+        for (UINT32 i = 0; i < 11; ++i) {
+            attention_attributes[i].name = attention_names[i];
+            attention_attributes[i].value = attention_values[i];
+        }
+        DSL_BUILDER_VALUE attention_kids[3] = {
+            updates[0], inputs[1], inputs[2]
+        };
+        updates[1] = DSL_Builder_Create_Operator_With_Result
+                         (attention_id, 2, attention_kids, 3,
+                          attention_attributes, 11, "cached_attention",
+                          query_ty);
+    }
+    for (UINT32 i = 0; i < 2; ++i) {
+        position.line = 21 + i;
+        if (updates[i] == NULL ||
+            !DSL_Builder_Set_Value_Source_Position(updates[i], &position) ||
+            !DSL_Builder_Append_Region_Value(decoder, updates[i]))
+            return FALSE;
+    }
+
+    if (reverse_effect_order) {
+        if (!DSL_Builder_Add_State_Effect
+                 (updates[1], key_cache, DSL_STATE_EFFECT_MODIFY) ||
+            !DSL_Builder_Add_State_Effect
+                 (updates[0], key_cache, DSL_STATE_EFFECT_READ) ||
+            !DSL_Builder_Add_State_Effect
+                 (updates[1], value_cache, DSL_STATE_EFFECT_MODIFY))
+            return FALSE;
+    } else {
+        if (!DSL_Builder_Add_State_Effect
+                 (updates[1], key_cache, DSL_STATE_EFFECT_MODIFY) ||
+            !DSL_Builder_Add_State_Effect
+                 (updates[1], value_cache, DSL_STATE_EFFECT_MODIFY))
+            return FALSE;
+    }
+
+    const UINT32 state_flags = DSL_REGION_INTERFACE_UNIQUE_OWNERSHIP |
+                               DSL_REGION_INTERFACE_LAYER_OWNED;
+    if (!DSL_Builder_Declare_Region_State
+             (decoder, key_cache, DSL_STATE_EFFECT_MODIFY, 0, state_flags) ||
+        !DSL_Builder_Declare_Region_State
+             (decoder, value_cache, DSL_STATE_EFFECT_MODIFY, 1,
+              state_flags) ||
+        !DSL_Builder_Append_PU_Region(pu, decoder))
+        return FALSE;
+
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, diagnostic_capacity);
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = diagnostic_capacity;
+    BOOL valid = DSL_Builder_Verify_Program(&verify);
+
+    if (valid && !reverse_effect_order &&
+        artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+        request.path = artifact;
+        request.flags = 0;
+        if (!DSL_Builder_Finalize_Mapped_Image(&request))
+            return FALSE;
+    }
+    return valid;
+}
+
+static int
+Check_Llama2_Decode_State_Region(void)
+{
+    char diagnostic[2048];
+    const char *artifact = getenv("OPEN64_DSL_DECODE_STATE_ARTIFACT");
+    if (Build_And_Verify_Decode_State_Region
+            (TRUE, NULL, diagnostic, sizeof(diagnostic)) ||
+        strstr(diagnostic, "DDECODE_ORDER") == NULL) {
+        fprintf(stderr, "reversed decode state order was not rejected: %s\n",
+                diagnostic);
+        return 1;
+    }
+    if (!Build_And_Verify_Decode_State_Region
+             (FALSE, artifact, diagnostic, sizeof(diagnostic))) {
+        fprintf(stderr, "valid decode state region was rejected: %s\n",
+                diagnostic);
+        return 1;
+    }
+    return 0;
+}
+
 int
 main(void)
 {
@@ -3212,6 +3451,8 @@ main(void)
         return Check_Structured_Region_Builder();
     if (getenv("OPEN64_DSL_STATE_EFFECT_ONLY") != NULL)
         return Check_Abstract_State_Effects();
+    if (getenv("OPEN64_DSL_DECODE_STATE_ONLY") != NULL)
+        return Check_Llama2_Decode_State_Region();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -3226,6 +3467,7 @@ main(void)
     failed |= Check_Llama2_Decode_Gatekeeper_Profile();
     failed |= Check_Structured_Region_Builder();
     failed |= Check_Abstract_State_Effects();
+    failed |= Check_Llama2_Decode_State_Region();
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
 

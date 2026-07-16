@@ -722,13 +722,16 @@ DSL_Gatekeeper_Positive_Float_Attribute
 static BOOL
 DSL_Gatekeeper_Transformer_Result_Valid
         (DSL_OPERATOR dsl_operator,
+         UINT16 version,
          const DSL_IR_NODE_RECORD *node,
          const std::vector<TY_IDX> &operands,
          TY_IDX result_ty)
 {
-    const UINT32 expected_operands =
-        dsl_operator == OPR_DSLROTARYEMBEDDING ||
-        dsl_operator == OPR_DSLATTENTION ? 3 : 2;
+    UINT32 expected_operands = 2;
+    if (dsl_operator == OPR_DSLATTENTION)
+        expected_operands = 3;
+    else if (dsl_operator == OPR_DSLROTARYEMBEDDING)
+        expected_operands = version == 2 ? 4 : 3;
     if (operands.size() != expected_operands)
         return FALSE;
 
@@ -780,10 +783,13 @@ DSL_Gatekeeper_Transformer_Result_Valid
     }
 
     if (dsl_operator == OPR_DSLROTARYEMBEDDING) {
+        std::vector<UINT64> position;
         if (!DSL_Gatekeeper_Static_Dimensions(operands[2], &kid2) ||
             kid0.size() != 4 || kid1.size() != 4 ||
             !DSL_Gatekeeper_Dimensions_Equal(kid1, kid2) ||
-            kid1[0] != 1 || kid1[1] != 1 || kid1[2] != kid0[2] ||
+            kid1[0] != 1 || kid1[1] != 1 ||
+            (version == 1 && kid1[2] != kid0[2]) ||
+            (version == 2 && kid1[2] < kid0[2]) ||
             kid1[3] != kid0[3] || kid0[3] % 2 != 0 ||
             !DSL_Gatekeeper_Tensor_Element_Type_Compatible
                  (operands[0], operands[1]) ||
@@ -797,10 +803,19 @@ DSL_Gatekeeper_Transformer_Result_Valid
                  (node, "attr.feature_axis", "3") ||
             !DSL_Gatekeeper_Attribute_Equals
                  (node, "attr.pairing", "half_split") ||
-            !DSL_Gatekeeper_Attribute_Equals
-                 (node, "attr.position_mode", "zero_based_static") ||
-            !DSL_Gatekeeper_Attribute_Equals
-                 (node, "attr.position_offset", "0"))
+            (version == 1 &&
+             (!DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.position_mode", "zero_based_static") ||
+              !DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.position_offset", "0"))) ||
+            (version == 2 &&
+             (!DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.position_mode", "explicit_operand") ||
+              !DSL_Gatekeeper_Static_Dimensions(operands[3], &position) ||
+              position.size() != 1 || position[0] != kid0[2] ||
+              strcmp(TY_tensor_attribute
+                         (operands[3], TY_TENSOR_SCHEMA_DTYPE),
+                     "int64") != 0)))
             return FALSE;
         return DSL_Gatekeeper_Result_Dimensions
                    (operands[0], result_ty, kid0);
@@ -814,9 +829,13 @@ DSL_Gatekeeper_Transformer_Result_Valid
         UINT64 kv_heads;
         UINT64 head_dim;
         if (!DSL_Gatekeeper_Static_Dimensions(operands[2], &kid2) ||
-            kid0.size() != 4 ||
-            !DSL_Gatekeeper_Dimensions_Equal(kid0, kid1) ||
-            !DSL_Gatekeeper_Dimensions_Equal(kid0, kid2) ||
+            kid0.size() != 4 || kid1.size() != 4 || kid2.size() != 4 ||
+            (version == 1 &&
+             (!DSL_Gatekeeper_Dimensions_Equal(kid0, kid1) ||
+              !DSL_Gatekeeper_Dimensions_Equal(kid0, kid2))) ||
+            (version == 2 &&
+             (kid0[0] != kid1[0] || kid0[0] != kid2[0] ||
+              kid0[2] != 1 || !DSL_Gatekeeper_Dimensions_Equal(kid1, kid2))) ||
             !DSL_Gatekeeper_Tensor_Element_Representation_Compatible
                  (operands[0], operands[1]) ||
             !DSL_Gatekeeper_Tensor_Element_Representation_Compatible
@@ -832,10 +851,24 @@ DSL_Gatekeeper_Transformer_Result_Valid
             !DSL_Gatekeeper_Parse_Unsigned(head_dim_text, &head_dim) ||
             query_heads == 0 || query_heads != kv_heads || head_dim == 0 ||
             query_heads != kid0[1] || head_dim != kid0[3] ||
-            !DSL_Gatekeeper_Attribute_Equals
-                 (node, "attr.execution_mode", "full_sequence") ||
-            !DSL_Gatekeeper_Attribute_Equals
-                 (node, "attr.mask_mode", "causal") ||
+            (version == 2 &&
+             (kv_heads != kid1[1] || head_dim != kid1[3])) ||
+            (version == 1 &&
+             (!DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.execution_mode", "full_sequence") ||
+              !DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.mask_mode", "causal") ||
+              !DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.cache_mode", "none"))) ||
+            (version == 2 &&
+             (!DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.execution_mode", "single_token_decode") ||
+              !DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.mask_mode", "implicit_prefix_causal") ||
+              !DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.cache_mode", "functional_append") ||
+              !DSL_Gatekeeper_Attribute_Equals
+                  (node, "attr.cache_sequence_axis", "2"))) ||
             !DSL_Gatekeeper_Attribute_Equals
                  (node, "attr.head_layout", "BHSD") ||
             !DSL_Gatekeeper_Attribute_Equals
@@ -843,9 +876,7 @@ DSL_Gatekeeper_Transformer_Result_Valid
             !DSL_Gatekeeper_Attribute_Equals
                  (node, "attr.softmax_axis", "-1") ||
             !DSL_Gatekeeper_Attribute_Equals
-                 (node, "attr.softmax_accum_dtype", "float32") ||
-            !DSL_Gatekeeper_Attribute_Equals
-                 (node, "attr.cache_mode", "none"))
+                 (node, "attr.softmax_accum_dtype", "float32"))
             return FALSE;
         return DSL_Gatekeeper_Result_Dimensions
                    (operands[0], result_ty, kid0);
@@ -1388,6 +1419,11 @@ DSL_Gatekeeper_Verify_Memory_Behavior
         (effect_count == 0 || modify_count == 0))
         return DSL_Gatekeeper_Report
                    (context, "OPR_DSLSCATTER requires a modifying state edge");
+    if (dsl_operator == OPR_DSLATTENTION && version == 2 &&
+        (effect_count != 2 || modify_count != 2))
+        return DSL_Gatekeeper_Report
+                   (context, "OPR_DSLATTENTION.v2 requires distinct key and "
+                    "value cache MODIFY edges");
     return TRUE;
 }
 
@@ -1596,7 +1632,8 @@ DSL_Gatekeeper_Verify_Native_Node
          dsl_operator == OPR_DSLATTENTION ||
          dsl_operator == OPR_DSLSWIGLU) &&
         !DSL_Gatekeeper_Transformer_Result_Valid
-             (dsl_operator, &image_node, operand_types, result_ty))
+             (dsl_operator, logical_opcode.effective_version,
+              &image_node, operand_types, result_ty))
         valid = DSL_Gatekeeper_Report
                     (context, "%s.v%u transformer expression contract is "
                      "invalid", info.stable_name,

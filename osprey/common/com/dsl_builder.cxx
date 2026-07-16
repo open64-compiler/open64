@@ -92,6 +92,17 @@ DSL_Builder_Find_Value_Record_By_ST (ST_IDX st)
     return NULL;
 }
 
+static dsl_builder_state *
+DSL_Builder_Find_State (DSL_BUILDER_STATE state)
+{
+    for (UINT32 i = 0; i < DSL_builder_state_registry.size(); ++i) {
+        if (DSL_builder_state_registry[i] == state)
+            return DSL_builder_state_registry[i];
+    }
+
+    return NULL;
+}
+
 static WN *
 DSL_Builder_Value_Expression (DSL_BUILDER_VALUE value)
 {
@@ -2535,9 +2546,21 @@ DSL_Builder_Declare_State_Object
          const char *name,
          DSL_STATE_KIND kind)
 {
+    return DSL_Builder_Declare_State_Object_With_Flags
+               (pu, name, kind, DSL_STATE_OBJECT_FLAG_NONE);
+}
+
+DSL_BUILDER_STATE
+DSL_Builder_Declare_State_Object_With_Flags
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         const char *name,
+         DSL_STATE_KIND kind,
+         UINT32 flags)
+{
     if (DSL_Builder_PU_Body(pu) == NULL || name == NULL || name[0] == '\0' ||
         kind < DSL_STATE_KIND_RUNTIME_STATUS ||
-        kind > DSL_STATE_KIND_OPAQUE)
+        kind > DSL_STATE_KIND_OPAQUE ||
+        (flags & ~DSL_STATE_OBJECT_UNIQUE_OWNERSHIP) != 0)
         return NULL;
     for (UINT32 i = 0; i < DSL_builder_state_registry.size(); ++i) {
         dsl_builder_state *state = DSL_builder_state_registry[i];
@@ -2560,6 +2583,7 @@ DSL_Builder_Declare_State_Object
     record.owner_pu_st = PU_Info_proc_sym(pu);
     record.st = st;
     record.name = Save_Str(name);
+    record.flags = flags;
     DSL_STATE_OBJECT_ID id = DSL_Effect_Image_Add_State_Object(&record);
     if (id == DSL_STATE_OBJECT_INVALID_ID)
         return NULL;
@@ -2573,6 +2597,33 @@ DSL_Builder_Declare_State_Object
 }
 
 BOOL
+DSL_Builder_Declare_Region_State
+        (DSL_BUILDER_REGION region,
+         DSL_BUILDER_STATE state,
+         DSL_STATE_EFFECT_KIND effect_kind,
+         UINT32 ordinal,
+         UINT32 flags)
+{
+    const UINT32 caller_flags = DSL_REGION_INTERFACE_UNIQUE_OWNERSHIP |
+                                DSL_REGION_INTERFACE_LAYER_OWNED;
+    dsl_builder_state *state_record = DSL_Builder_Find_State(state);
+    if (region == NULL || state_record == NULL ||
+        (effect_kind != DSL_STATE_EFFECT_READ &&
+         effect_kind != DSL_STATE_EFFECT_MODIFY) ||
+        (flags & ~caller_flags) != 0)
+        return FALSE;
+
+    UINT32 roles = effect_kind == DSL_STATE_EFFECT_READ ?
+                   DSL_REGION_VALUE_INPUT : DSL_REGION_VALUE_INOUT;
+    UINT32 interface_flags = flags | DSL_REGION_INTERFACE_ABSTRACT_STATE |
+        (effect_kind == DSL_STATE_EFFECT_READ ?
+         DSL_REGION_INTERFACE_STATE_READ :
+         DSL_REGION_INTERFACE_STATE_MODIFY);
+    return DSL_Region_Declare_Symbol
+               (region, state_record->st, roles, ordinal, interface_flags);
+}
+
+BOOL
 DSL_Builder_Add_State_Effect
         (DSL_BUILDER_VALUE value,
          DSL_BUILDER_STATE state,
@@ -2580,8 +2631,9 @@ DSL_Builder_Add_State_Effect
 {
     DSL_BUILDER_VALUE_RECORD *value_record =
         DSL_Builder_Find_Value_Record(value);
+    dsl_builder_state *state_record = DSL_Builder_Find_State(state);
     DSL_IR_VALUE_RECORD image_value;
-    if (value_record == NULL || state == NULL ||
+    if (value_record == NULL || state_record == NULL ||
         (effect_kind != DSL_STATE_EFFECT_READ &&
          effect_kind != DSL_STATE_EFFECT_MODIFY) ||
         !DSL_IR_Image_Get_Value(value_record->image_value_id, &image_value) ||
@@ -2600,7 +2652,7 @@ DSL_Builder_Add_State_Effect
     DSL_STATE_EFFECT_RECORD record;
     DSL_State_Effect_Record_Init(&record);
     record.owner_node_id = image_value.producer_node_id;
-    record.state_object_id = state->image_state_id;
+    record.state_object_id = state_record->image_state_id;
     record.effect_kind = effect_kind;
     record.ordinal = ordinal;
     return DSL_Effect_Image_Add_State_Effect(&record) !=
@@ -2610,7 +2662,8 @@ DSL_Builder_Add_State_Effect
 ST_IDX
 DSL_Builder_Get_State_Symbol (DSL_BUILDER_STATE state)
 {
-    return state == NULL ? ST_IDX_ZERO : state->st;
+    dsl_builder_state *state_record = DSL_Builder_Find_State(state);
+    return state_record == NULL ? ST_IDX_ZERO : state_record->st;
 }
 
 BOOL

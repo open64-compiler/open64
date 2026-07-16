@@ -164,6 +164,33 @@ class WhirlBackend(Protocol):
     ) -> bool:
         ...
 
+    def declare_state_object(
+        self,
+        program_unit: int,
+        name: str,
+        kind: int,
+        flags: int,
+    ) -> int:
+        ...
+
+    def add_state_effect(
+        self,
+        value: int,
+        state: int,
+        effect_kind: int,
+    ) -> bool:
+        ...
+
+    def declare_region_state(
+        self,
+        region: int,
+        state: int,
+        effect_kind: int,
+        ordinal: int,
+        flags: int,
+    ) -> bool:
+        ...
+
     def set_region_source_position(
         self,
         region: int,

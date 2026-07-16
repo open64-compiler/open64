@@ -25,6 +25,7 @@ meaning.  Derived backend analysis remains in `osprey/be/com` and
 | Symbol points to unique memory | `osprey/common/com/symtab_defs.h`, `ST_PT_TO_UNIQUE_MEM` | Existing |
 | Tensor result `no_alias=true` | `osprey/common/com/symtab.h`, `symtab.cxx`, `dsl_builder.cxx` | Existing DSL staging |
 | Pointer-free state and effect rows | `osprey/common/com/dsl_ir_image.h`, `dsl_ir_image.cxx` | Implemented item-18 slice |
+| Decode K/V state ownership and region binding | `osprey/common/com/dsl_region.{h,cxx}`, `dsl_builder.{h,cxx}` | Implemented item-29 stage 2 |
 | Portable operand/result behavior vocabulary | `osprey/common/com/dsl_memory_behavior.h`, `dsl_memory_behavior.cxx` | Implemented item 18 |
 | Builder and gatekeeper integration | `osprey/common/com/dsl_builder.{h,cxx}`, `dsl_gatekeeper.{h,cxx}` | Implemented item 18 vertical slice |
 | Backend points-to facts | `osprey/be/com/opt_points_to.h`, `opt_points_to_non_template.cxx` | Existing; remains backend-owned |
@@ -138,6 +139,22 @@ new_cache: INPLACE_UPDATE_KID(0) | UNIQUE_OWNERSHIP
 
 The old and new cache names are versions of the same logical state.  The
 verified `MODIFY` edge lowers to an old-state use and new-state definition.
+
+For Llama 2 decode, each decoder-layer-v2 region declares distinct key-cache
+and value-cache state interfaces.  Both are mutable buffers with unique
+ownership and layer ownership.  Their ordered `MODIFY` effects must refer to
+nodes inside that region and follow region statement order.  The initial
+contract assigns key cache to interface ordinal 0 and value cache to ordinal 1.
+It intentionally rejects shared K/V identities and effects that escape the
+owning layer.  Non-layer-owned interfaces may pass the same opaque state
+through an outer region without claiming the child layer's effects.
+
+`transformer.attention.v2` reads its positioned query and functionally
+appended K/V tensor operands, creates a fresh no-alias context result, and
+requires two abstract-state `MODIFY` edges for the logical key and value cache
+state transitions.  This separates functional tensor results from logical
+state evolution without claiming that the source cache tensors are modified
+in place.
 
 ### Common scatter vertical slice
 

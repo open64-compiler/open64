@@ -1374,14 +1374,45 @@ full-sequence causal prompt evaluation with no KV cache.
 
    Remaining item-29 stages, in order:
 
-   1. Complete item 18's fixed mapped-image abstract-state and effect rows.
-   2. Bind K/V state identity, layer ownership, read/modify ordering, and
+   1. [x] Complete item 18's fixed mapped-image abstract-state and effect
+      rows.
+   2. [x] Bind K/V state identity, layer ownership, read/modify ordering, and
       no-alias checks to region interfaces and gatekeeper verification.
-   3. Allocate reviewed logical operator versions without changing version-1
+   3. [x] Allocate reviewed logical operator versions without changing version-1
       prefill semantics.
-   4. Add opaque builder and torch2whirl bindings after native publication.
-   5. Prove mapped-image reopen and `ir_b2a -st -src` state evidence.
-   6. Add gatekeeper-first VHO decode lowering and process-boundary tests.
+   4. [~] Add opaque builder and torch2whirl bindings after native publication.
+   5. [ ] Prove the complete decode artifact through mapped-image reopen and
+      `ir_b2a -st -src` state evidence.
+   6. [ ] Add gatekeeper-first VHO decode lowering and process-boundary tests.
+
+   The stage-2 implementation reuses reserved fixed-row flag fields; it does
+   not enlarge the state-object or region-interface mapped-image records.
+   `DSL_Builder_Declare_State_Object_With_Flags` publishes unique ownership,
+   while `DSL_Builder_Declare_Region_State` binds opaque state handles to
+   ordered region interfaces.  The decoder-layer-v2 gatekeeper requires two
+   distinct, uniquely owned mutable states, verifies that their effects remain
+   inside the owning layer, and rejects effect rows whose order disagrees with
+   statement order.  The compatibility state-object API remains a zero-flag
+   wrapper.  `dsl_llama2_decode_state_test.sh` retains `decode_state.B` and the
+   corresponding `ir_b2a -st -src` `decode_state.T` for review.
+
+   Stage 3 adds `transformer.rotary_embedding.v2` with an explicit fourth
+   cache-position operand and `transformer.attention.v2` with query plus
+   functionally appended K/V cache operands.  Attention v2 is state-bearing:
+   its ordinary tensor operands are read-only, its context result is fresh and
+   uniquely owned, and exactly two distinct K/V `MODIFY` edges are required.
+   The version-1 RoPE and no-cache attention records, schemas, and gatekeeper
+   behavior are unchanged.
+
+   The native half of stage 4 is now published through opaque
+   `DSL_BUILDER_STATE` and `DSL_BUILDER_REGION` handles plus the generic
+   version-aware operator builder.  The torch2whirl C bridge, extension shim,
+   Python builder, and mock backend now bind state declaration, state effects,
+   and ordered region-state interfaces through an opaque `StateHandle`.
+   Common/com validates raw state handles by registry membership before
+   dereferencing them.  Stage 4 remains open only until torch2whirl emits the
+   reviewed decode graph; Python must not inspect state rows, region records,
+   symbols, or physical WN storage.
 
 ### Deferred work TODO
 

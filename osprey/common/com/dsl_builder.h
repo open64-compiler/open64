@@ -238,6 +238,17 @@ extern DSL_BUILDER_STATE DSL_Builder_Declare_State_Object
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  const char *name,
                                  DSL_STATE_KIND kind);
+extern DSL_BUILDER_STATE DSL_Builder_Declare_State_Object_With_Flags
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 const char *name,
+                                 DSL_STATE_KIND kind,
+                                 UINT32 flags);
+extern BOOL DSL_Builder_Declare_Region_State
+                                (DSL_BUILDER_REGION region,
+                                 DSL_BUILDER_STATE state,
+                                 DSL_STATE_EFFECT_KIND effect_kind,
+                                 UINT32 ordinal,
+                                 UINT32 flags);
 extern BOOL DSL_Builder_Add_State_Effect
                                 (DSL_BUILDER_VALUE value,
                                  DSL_BUILDER_STATE state,

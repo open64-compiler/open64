@@ -565,6 +565,13 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         "DOPC_TRANSFORMER_ROTARY_EMBEDDING_V1",
         "attr.head_layout;attr.sequence_axis;attr.feature_axis;attr.pairing;"
         "attr.position_mode;attr.position_offset" },
+    { OPR_DSLROTARYEMBEDDING, "transformer.rotary_embedding", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 4,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL,
+        "DOPC_TRANSFORMER_ROTARY_EMBEDDING_V2",
+        "attr.head_layout;attr.sequence_axis;attr.feature_axis;attr.pairing;"
+        "attr.position_mode" },
     { OPR_DSLATTENTION, "transformer.attention", 1,
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 3,
         DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_PURE,
@@ -572,6 +579,14 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         "attr.execution_mode;attr.mask_mode;attr.head_layout;"
         "attr.query_heads;attr.kv_heads;attr.head_dim;attr.scale_mode;"
         "attr.softmax_axis;attr.softmax_accum_dtype;attr.cache_mode" },
+    { OPR_DSLATTENTION, "transformer.attention", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 3,
+        DSL_SHAPE_RULE_CONTRACTION, DSL_EFFECT_MODEL_RUNTIME_EFFECT,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_TRANSFORMER_ATTENTION_V2",
+        "attr.execution_mode;attr.mask_mode;attr.head_layout;"
+        "attr.query_heads;attr.kv_heads;attr.head_dim;attr.scale_mode;"
+        "attr.softmax_axis;attr.softmax_accum_dtype;attr.cache_mode;"
+        "attr.cache_sequence_axis" },
     { OPR_DSLSWIGLU, "transformer.swiglu", 1,
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_3_NN_COMMON, 2,
         DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,

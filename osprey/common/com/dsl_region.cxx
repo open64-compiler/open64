@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "dsl_region.h"
+#include "dsl_ir_image.h"
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
 #include "strtab.h"
@@ -554,6 +555,172 @@ DSL_Region_Verify_Prefill_Topology
     return TRUE;
 }
 
+static BOOL
+DSL_Region_Find_State_Object
+        (PU_Info *pu,
+         ST_IDX st,
+         DSL_STATE_OBJECT_RECORD *state)
+{
+    for (UINT32 i = 1; i <= DSL_Effect_Image_State_Object_Count(); ++i) {
+        DSL_STATE_OBJECT_RECORD candidate;
+        if (!DSL_Effect_Image_Get_State_Object(i, &candidate))
+            return FALSE;
+        if (candidate.owner_pu_st == PU_Info_proc_sym(pu) &&
+            candidate.st == st) {
+            if (state != NULL)
+                *state = candidate;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static DSL_IR_NODE_ID
+DSL_Region_Node_Id (WN *statement)
+{
+    if (statement == NULL || WN_operator(statement) != OPR_STID ||
+        WN_kid_count(statement) != 1 ||
+        !DSL_WN_Is_Native(WN_kid0(statement)))
+        return DSL_IR_NODE_INVALID_ID;
+
+    DSL_IR_IMAGE_HEADER header;
+    DSL_IR_Image_Get_Header(&header);
+    for (UINT32 i = 1; i <= header.value_count; ++i) {
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(i, &value))
+            return DSL_IR_NODE_INVALID_ID;
+        if (value.st == WN_st_idx(statement))
+            return value.producer_node_id;
+    }
+    return DSL_IR_NODE_INVALID_ID;
+}
+
+static INT32
+DSL_Region_Node_Position
+        (const dsl_region_runtime &region,
+         DSL_IR_NODE_ID node_id)
+{
+    INT32 position = 0;
+    for (WN *statement = WN_first(WN_region_body(region.wn));
+         statement != NULL; statement = WN_next(statement), ++position) {
+        if (DSL_Region_Node_Id(statement) == node_id)
+            return position;
+    }
+    return -1;
+}
+
+static BOOL
+DSL_Region_Verify_State_Interface
+        (const DSL_REGION_STORE &store,
+         const dsl_region_runtime &region,
+         FILE *diagnostic,
+         UINT32 *layer_state_count)
+{
+    UINT32 count = 0;
+    for (UINT32 i = 0; i < store.interfaces.size(); ++i) {
+        const DSL_REGION_INTERFACE_RECORD &binding = store.interfaces[i];
+        if (binding.region_id != region.image.region_id ||
+            (binding.flags & DSL_REGION_INTERFACE_ABSTRACT_STATE) == 0)
+            continue;
+
+        const UINT32 state_flags =
+            DSL_REGION_INTERFACE_ABSTRACT_STATE |
+            DSL_REGION_INTERFACE_UNIQUE_OWNERSHIP |
+            DSL_REGION_INTERFACE_STATE_READ |
+            DSL_REGION_INTERFACE_STATE_MODIFY |
+            DSL_REGION_INTERFACE_LAYER_OWNED;
+        const BOOL reads =
+            (binding.flags & DSL_REGION_INTERFACE_STATE_READ) != 0;
+        const BOOL modifies =
+            (binding.flags & DSL_REGION_INTERFACE_STATE_MODIFY) != 0;
+        const BOOL layer_owned =
+            (binding.flags & DSL_REGION_INTERFACE_LAYER_OWNED) != 0;
+        if ((binding.flags & ~state_flags) != 0 || reads == modifies ||
+            (reads && binding.roles != DSL_REGION_VALUE_INPUT) ||
+            (modifies && binding.roles != DSL_REGION_VALUE_INOUT))
+            return DSL_Region_Report
+                       (diagnostic, "DDECODE_STATE invalid state interface",
+                        region.image.region_id);
+
+        DSL_STATE_OBJECT_RECORD state;
+        if (!DSL_Region_Find_State_Object(store.pu, binding.st, &state) ||
+            state.kind != DSL_STATE_KIND_MUTABLE_BUFFER)
+            return DSL_Region_Report
+                       (diagnostic, "DDECODE_STATE cache state is not a "
+                        "declared mutable buffer", region.image.region_id);
+        if ((binding.flags & DSL_REGION_INTERFACE_UNIQUE_OWNERSHIP) != 0 &&
+            (state.flags & DSL_STATE_OBJECT_UNIQUE_OWNERSHIP) == 0)
+            return DSL_Region_Report
+                       (diagnostic, "DDECODE_ALIAS unique region state lacks "
+                        "unique state ownership", region.image.region_id);
+        if (layer_owned &&
+            (binding.flags & DSL_REGION_INTERFACE_UNIQUE_OWNERSHIP) == 0)
+            return DSL_Region_Report
+                       (diagnostic, "DDECODE_ALIAS layer state is not "
+                        "uniquely owned", region.image.region_id);
+        if (layer_owned && (!modifies || binding.ordinal >= 2))
+            return DSL_Region_Report
+                       (diagnostic, "DDECODE_STATE layer cache state must be "
+                        "key ordinal 0 or value ordinal 1 with MODIFY",
+                        region.image.region_id);
+
+        for (UINT32 j = 0; j < i; ++j) {
+            const DSL_REGION_INTERFACE_RECORD &previous = store.interfaces[j];
+            if (previous.region_id == binding.region_id &&
+                (previous.flags & DSL_REGION_INTERFACE_ABSTRACT_STATE) != 0 &&
+                previous.st == binding.st)
+                return DSL_Region_Report
+                           (diagnostic, "DDECODE_ALIAS duplicate state "
+                            "identity", region.image.region_id);
+        }
+
+        UINT32 effect_count = 0;
+        UINT32 modify_count = 0;
+        INT32 previous_position = -1;
+        for (UINT32 j = 1; j <= DSL_Effect_Image_State_Effect_Count(); ++j) {
+            DSL_STATE_EFFECT_RECORD effect;
+            if (!DSL_Effect_Image_Get_State_Effect(j, &effect))
+                return FALSE;
+            if (effect.state_object_id != state.id)
+                continue;
+            INT32 position = DSL_Region_Node_Position(region,
+                                                       effect.owner_node_id);
+            if (position < 0) {
+                if (layer_owned)
+                    return DSL_Region_Report
+                               (diagnostic, "DDECODE_STATE layer-owned state "
+                                "effect escapes its region",
+                                region.image.region_id);
+                continue;
+            }
+            if (position <= previous_position)
+                return DSL_Region_Report
+                           (diagnostic, "DDECODE_ORDER state effects do not "
+                            "follow region statement order",
+                            region.image.region_id);
+            previous_position = position;
+            ++effect_count;
+            if (effect.effect_kind == DSL_STATE_EFFECT_MODIFY)
+                ++modify_count;
+            if (reads && effect.effect_kind != DSL_STATE_EFFECT_READ)
+                return DSL_Region_Report
+                           (diagnostic, "DDECODE_STATE read-only state is "
+                            "modified", region.image.region_id);
+        }
+        if ((layer_owned && effect_count == 0) ||
+            (effect_count != 0 && modifies && modify_count == 0))
+            return DSL_Region_Report
+                       (diagnostic, "DDECODE_STATE missing declared state "
+                        "effect", region.image.region_id);
+
+        if (layer_owned)
+            ++count;
+    }
+    if (layer_state_count != NULL)
+        *layer_state_count = count;
+    return TRUE;
+}
+
 BOOL
 DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
 {
@@ -599,9 +766,12 @@ DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
 
         const char *contract = Index_To_Str(region.image.contract_name);
         BOOL decoder = strcmp(contract, "transformer.decoder_layer") == 0;
+        BOOL decoder_v1 = decoder && region.image.contract_version == 1;
+        BOOL decoder_v2 = decoder && region.image.contract_version == 2;
         BOOL prefill = strcmp(contract, "transformer.prefill") == 0;
         if ((decoder || prefill) &&
-            (region.image.contract_version != 1 ||
+            ((!decoder_v1 && !decoder_v2 && !prefill) ||
+             (prefill && region.image.contract_version != 1) ||
              WN_Get_Linenum(region.wn) == 0 ||
              !DSL_Region_Source_Positions_Valid
                   (WN_region_body(region.wn)) ||
@@ -623,15 +793,25 @@ DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
                                 "decoder layer ordinal",
                                 region.image.region_id);
             }
-            if (!DSL_Region_Verify_Decoder_Topology(region, diagnostic))
+            if (decoder_v1 &&
+                !DSL_Region_Verify_Decoder_Topology(region, diagnostic))
                 return FALSE;
         }
         if (prefill &&
             !DSL_Region_Verify_Prefill_Topology(*store, region, diagnostic))
             return FALSE;
-        if ((decoder || prefill) &&
+        if ((decoder_v1 || prefill) &&
             !DSL_Region_Verify_Value_Interface(*store, region, diagnostic))
             return FALSE;
+        UINT32 layer_state_count = 0;
+        if (!DSL_Region_Verify_State_Interface
+                 (*store, region, diagnostic, &layer_state_count))
+            return FALSE;
+        if (decoder_v2 && layer_state_count != 2)
+            return DSL_Region_Report
+                       (diagnostic, "DDECODE_STATE decoder layer requires "
+                        "distinct key and value cache states",
+                        region.image.region_id);
     }
     for (UINT32 i = 0; i < store->interfaces.size(); ++i) {
         const DSL_REGION_INTERFACE_RECORD &binding = store->interfaces[i];
@@ -643,8 +823,17 @@ DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
                                    DSL_REGION_VALUE_OUTPUT |
                                    DSL_REGION_VALUE_INOUT |
                                    DSL_REGION_VALUE_RESULT;
+        const UINT32 valid_flags =
+            DSL_REGION_INTERFACE_ABSTRACT_STATE |
+            DSL_REGION_INTERFACE_UNIQUE_OWNERSHIP |
+            DSL_REGION_INTERFACE_STATE_READ |
+            DSL_REGION_INTERFACE_STATE_MODIFY |
+            DSL_REGION_INTERFACE_LAYER_OWNED;
         if (!found || ST_IDX_index(binding.st) == 0 || binding.roles == 0 ||
             (binding.roles & ~valid_roles) != 0 ||
+            (binding.flags & ~valid_flags) != 0 ||
+            ((binding.flags & DSL_REGION_INTERFACE_ABSTRACT_STATE) == 0 &&
+             binding.flags != 0) ||
             ((binding.roles & DSL_REGION_VALUE_RESULT) != 0 &&
              (binding.roles & DSL_REGION_VALUE_OUTPUT) == 0))
             return DSL_Region_Report

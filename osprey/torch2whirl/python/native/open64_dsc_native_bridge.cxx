@@ -571,6 +571,41 @@ Open64_DSC_Declare_Region_Value(Open64_DSC_Handle region,
                 (UINT32) roles, (UINT32) ordinal, (UINT32) flags) ? 1 : 0;
 }
 
+Open64_DSC_Handle
+Open64_DSC_Declare_State_Object(Open64_DSC_Handle program_unit,
+                                const char *name,
+                                unsigned int kind,
+                                unsigned int flags)
+{
+    Open64_DSC_Initialize_Context();
+    return (Open64_DSC_Handle) DSL_Builder_Declare_State_Object_With_Flags
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit, name,
+                (DSL_STATE_KIND) kind, (UINT32) flags);
+}
+
+int
+Open64_DSC_Add_State_Effect(Open64_DSC_Handle value,
+                            Open64_DSC_Handle state,
+                            unsigned int effect_kind)
+{
+    return DSL_Builder_Add_State_Effect
+               ((DSL_BUILDER_VALUE) value, (DSL_BUILDER_STATE) state,
+                (DSL_STATE_EFFECT_KIND) effect_kind) ? 1 : 0;
+}
+
+int
+Open64_DSC_Declare_Region_State(Open64_DSC_Handle region,
+                                Open64_DSC_Handle state,
+                                unsigned int effect_kind,
+                                unsigned int ordinal,
+                                unsigned int flags)
+{
+    return DSL_Builder_Declare_Region_State
+               ((DSL_BUILDER_REGION) region, (DSL_BUILDER_STATE) state,
+                (DSL_STATE_EFFECT_KIND) effect_kind, (UINT32) ordinal,
+                (UINT32) flags) ? 1 : 0;
+}
+
 int
 Open64_DSC_Set_Region_Source_Position
         (Open64_DSC_Handle region,

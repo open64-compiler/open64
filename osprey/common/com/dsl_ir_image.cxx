@@ -706,6 +706,7 @@ DSL_Effect_Image_Validate (FILE *diagnostic)
             ST_IDX_index(record.owner_pu_st) == 0 ||
             ST_IDX_index(record.st) == 0 ||
             !DSL_IR_Image_String_Id_Valid(record.name, TRUE) ||
+            (record.flags & ~DSL_STATE_OBJECT_UNIQUE_OWNERSHIP) != 0 ||
             record.reserved0 != 0 || record.reserved1 != 0)
             return DSL_Effect_Image_Report
                        (diagnostic, "invalid state object", i + 1);
@@ -821,7 +822,8 @@ DSL_Effect_Image_Add_State_Object
     if (record == NULL || record->name == STR_IDX_ZERO ||
         !DSL_Effect_Image_Valid_State_Kind(record->kind) ||
         ST_IDX_index(record->owner_pu_st) == 0 ||
-        ST_IDX_index(record->st) == 0)
+        ST_IDX_index(record->st) == 0 ||
+        (record->flags & ~DSL_STATE_OBJECT_UNIQUE_OWNERSHIP) != 0)
         return DSL_STATE_OBJECT_INVALID_ID;
     DSL_STATE_OBJECT_RECORD copy = *record;
     UINT32 index = DSL_state_object_table.Insert(copy);
