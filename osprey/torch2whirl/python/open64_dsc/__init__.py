@@ -4,6 +4,11 @@ from .builder import WhirlBuilder, load_builder
 from .export import export_to_whirl, save_as_whirl
 from .module import WhirlModule
 from .options import WhirlExportOptions
+from .python_classes import (
+    PythonClassDefinition,
+    PythonClassInstance,
+    collect_python_model_classes,
+)
 from .python_imports import (
     PythonImportedCallable,
     collect_imported_python_callables,
@@ -11,12 +16,15 @@ from .python_imports import (
 from .verifier import WhirlVerificationError, verify_module
 
 __all__ = [
+    "PythonClassDefinition",
+    "PythonClassInstance",
     "PythonImportedCallable",
     "WhirlBuilder",
     "WhirlExportOptions",
     "WhirlVerificationError",
     "WhirlModule",
     "collect_imported_python_callables",
+    "collect_python_model_classes",
     "export_to_whirl",
     "load_builder",
     "save_as_whirl",

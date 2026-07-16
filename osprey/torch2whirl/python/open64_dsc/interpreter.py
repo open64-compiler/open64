@@ -37,6 +37,7 @@ from .module import (
     WhirlValueRecord,
 )
 from .options import WhirlExportOptions
+from .python_classes import collect_python_model_classes
 from .python_imports import collect_imported_python_callables
 
 
@@ -182,6 +183,7 @@ class WhirlExportInterpreter:
             )
 
         model_module = inspect.getmodule(type(model))
+        class_definitions, class_instances = collect_python_model_classes(model)
         return WhirlModule(
             options=self._options,
             model_name=model_name,
@@ -201,6 +203,8 @@ class WhirlExportInterpreter:
                 collect_imported_python_callables(model_module)
                 if model_module is not None else ()
             ),
+            python_class_definitions=class_definitions,
+            python_class_instances=class_instances,
         )
 
     def _is_tiny_llama2_prefill_model(self, model: Any) -> bool:
