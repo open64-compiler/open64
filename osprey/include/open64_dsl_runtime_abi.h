@@ -17,6 +17,7 @@ extern "C" {
 #define OPEN64_DSL_TENSOR_DESCRIPTOR_V1_SIZE 64
 
 typedef void *OPEN64_DSL_TENSOR_HANDLE;
+typedef void *OPEN64_DSL_STATE_HANDLE;
 
 /* Append-only numeric contracts.  Zero always means unspecified. */
 typedef enum {
@@ -271,6 +272,12 @@ OPEN64_DSL_TENSOR_HANDLE __open64_dsl_rotary_embedding_v1
                                  OPEN64_DSL_TENSOR_HANDLE cosine,
                                  OPEN64_DSL_TENSOR_HANDLE sine,
                                  const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_rotary_embedding_v2
+                                (OPEN64_DSL_TENSOR_HANDLE kid0,
+                                 OPEN64_DSL_TENSOR_HANDLE cosine,
+                                 OPEN64_DSL_TENSOR_HANDLE sine,
+                                 OPEN64_DSL_TENSOR_HANDLE cache_position,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);
 OPEN64_DSL_TENSOR_HANDLE __open64_dsl_attention_v1
                                 (OPEN64_DSL_TENSOR_HANDLE query,
                                  OPEN64_DSL_TENSOR_HANDLE key,
@@ -279,6 +286,16 @@ OPEN64_DSL_TENSOR_HANDLE __open64_dsl_attention_v1
                                  uint32_t query_heads,
                                  uint32_t kv_heads,
                                  uint32_t head_dim);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_attention_v2
+                                (OPEN64_DSL_TENSOR_HANDLE query,
+                                 OPEN64_DSL_TENSOR_HANDLE key_cache,
+                                 OPEN64_DSL_TENSOR_HANDLE value_cache,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
+                                 uint32_t query_heads,
+                                 uint32_t kv_heads,
+                                 uint32_t head_dim,
+                                 OPEN64_DSL_STATE_HANDLE *key_cache_state,
+                                 OPEN64_DSL_STATE_HANDLE *value_cache_state);
 OPEN64_DSL_TENSOR_HANDLE __open64_dsl_swiglu_v1
                                 (OPEN64_DSL_TENSOR_HANDLE gate,
                                  OPEN64_DSL_TENSOR_HANDLE up,

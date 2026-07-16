@@ -153,6 +153,21 @@ extern int Open64_DSC_Declare_Region_Value
                                  unsigned int roles,
                                  unsigned int ordinal,
                                  unsigned int flags);
+extern Open64_DSC_Handle Open64_DSC_Declare_State_Object
+                                (Open64_DSC_Handle program_unit,
+                                 const char *name,
+                                 unsigned int kind,
+                                 unsigned int flags);
+extern int Open64_DSC_Add_State_Effect
+                                (Open64_DSC_Handle value,
+                                 Open64_DSC_Handle state,
+                                 unsigned int effect_kind);
+extern int Open64_DSC_Declare_Region_State
+                                (Open64_DSC_Handle region,
+                                 Open64_DSC_Handle state,
+                                 unsigned int effect_kind,
+                                 unsigned int ordinal,
+                                 unsigned int flags);
 extern int Open64_DSC_Set_Region_Source_Position
                                 (Open64_DSC_Handle region,
                                  const Open64_DSC_Source_Position *position);

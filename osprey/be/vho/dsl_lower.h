@@ -19,6 +19,8 @@ typedef struct {
     UINT32 unsupported_node_count;
     UINT32 malformed_node_count;
     UINT32 remaining_executable_carrier_count;
+    UINT32 state_read_count;
+    UINT32 state_modify_count;
 } VHO_DSL_LOWER_RESULT;
 
 /* DSL-specific peer of the existing language-oriented VHO_Lower_Driver. */

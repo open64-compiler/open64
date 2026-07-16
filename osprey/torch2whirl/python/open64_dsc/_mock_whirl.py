@@ -391,6 +391,67 @@ def declare_region_value(
     return True
 
 
+def declare_state_object(
+    program_unit: int, name: str, kind: int, flags: int
+) -> int:
+    if program_unit not in _objects or not name or kind < 1 or kind > 5:
+        raise RuntimeError("failed to declare state object")
+    if flags & ~0x1:
+        raise RuntimeError("failed to declare state object")
+    if any(
+        record.get("kind") == "state_object"
+        and record.get("program_unit") == program_unit
+        and record.get("name") == name
+        for record in _objects.values()
+    ):
+        raise RuntimeError("failed to declare state object")
+    return _new_handle({
+        "kind": "state_object",
+        "program_unit": program_unit,
+        "name": name,
+        "state_kind": kind,
+        "flags": flags,
+    })
+
+
+def add_state_effect(value: int, state: int, effect_kind: int) -> bool:
+    if value not in _objects or state not in _objects:
+        raise RuntimeError("failed to add state effect")
+    if _objects[state].get("kind") != "state_object":
+        raise RuntimeError("failed to add state effect")
+    if effect_kind not in (1, 2):
+        raise RuntimeError("failed to add state effect")
+    record = dict(_objects[value])
+    effects = list(record.get("state_effects", ()))
+    effects.append((state, effect_kind))
+    record["state_effects"] = effects
+    _objects[value] = record
+    return True
+
+
+def declare_region_state(
+    region: int,
+    state: int,
+    effect_kind: int,
+    ordinal: int,
+    flags: int,
+) -> bool:
+    if region not in _objects or state not in _objects:
+        raise RuntimeError("failed to declare region state")
+    if _objects[region].get("kind") != "region":
+        raise RuntimeError("failed to declare region state")
+    if _objects[state].get("kind") != "state_object":
+        raise RuntimeError("failed to declare region state")
+    if effect_kind not in (1, 2) or flags & ~(0x2 | 0x10):
+        raise RuntimeError("failed to declare region state")
+    record = dict(_objects[region])
+    states = list(record.get("states", ()))
+    states.append((state, effect_kind, ordinal, flags))
+    record["states"] = states
+    _objects[region] = record
+    return True
+
+
 def set_region_source_position(
     region: int,
     file_id: int,
