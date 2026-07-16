@@ -33,6 +33,7 @@
 #include "dsl_builder.h"
 #include "dsl_contract.h"
 #include "dsl_gatekeeper.h"
+#include "dsl_memory_behavior.h"
 
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
@@ -3055,12 +3056,14 @@ Check_Abstract_State_Effects(void)
     DSL_BUILDER_VALUE values[3];
     DSL_BUILDER_VALUE add_kids[2];
     DSL_BUILDER_VALUE add;
+    DSL_BUILDER_VALUE scatter;
     DSL_BUILDER_PROGRAM_UNIT pu;
     DSL_BUILDER_STATE runtime_status;
     DSL_BUILDER_STATE random_state;
     DSL_BUILDER_STATE mutable_buffer;
     DSL_DOMAIN_ID common_id;
     DSL_OPCODE_ID add_id;
+    DSL_OPCODE_ID scatter_id;
     TY_IDX tensor_ty;
     int failed = 0;
 
@@ -3079,6 +3082,7 @@ Check_Abstract_State_Effects(void)
     DSL_Opcode_Register_Common_Substrate();
     common_id = DSL_Domain_Find("common");
     add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+    scatter_id = DSL_Opcode_Find(common_id, "common.scatter", 1);
     tensor_ty = DSL_Builder_Intern_Tensor_Type
                     ("abstract_state_i32", MTYPE_To_TY(MTYPE_I4),
                      &descriptor);
@@ -3097,7 +3101,9 @@ Check_Abstract_State_Effects(void)
                          (pu, "mutable_buffer",
                           DSL_STATE_KIND_MUTABLE_BUFFER);
 
-    if (pu == NULL || tensor_ty == TY_IDX_ZERO || add_id == DSL_OPCODE_INVALID_ID ||
+    if (pu == NULL || tensor_ty == TY_IDX_ZERO ||
+        add_id == DSL_OPCODE_INVALID_ID ||
+        scatter_id == DSL_OPCODE_INVALID_ID ||
         values[0] == NULL || values[1] == NULL || values[2] == NULL ||
         runtime_status == NULL || random_state == NULL ||
         mutable_buffer == NULL) {
@@ -3137,10 +3143,36 @@ Check_Abstract_State_Effects(void)
         failed = 1;
     }
 
+    DSL_MEMORY_BEHAVIOR_CONTRACT memory_contract;
+    attribute.name = "attr.axis";
+    attribute.value = "0";
+    scatter = DSL_Builder_Create_Operator_With_Result
+                  (scatter_id, 1, values, 3, &attribute, 1,
+                   "stateful_scatter", tensor_ty);
+    if (scatter == NULL ||
+        !DSL_Memory_Behavior_Get_Contract
+             (OPR_DSLSCATTER, 1, &memory_contract) ||
+        memory_contract.operand_count != 3 ||
+        (memory_contract.operand_flags[0] &
+         DSL_MEMORY_BEHAVIOR_MODIFY) == 0 ||
+        (memory_contract.result_flags &
+         DSL_MEMORY_BEHAVIOR_INPLACE_UPDATE) == 0 ||
+        memory_contract.related_operand != 0 ||
+        !DSL_Builder_Add_State_Effect
+             (scatter, runtime_status, DSL_STATE_EFFECT_READ) ||
+        !DSL_Builder_Add_State_Effect
+             (scatter, random_state, DSL_STATE_EFFECT_MODIFY) ||
+        !DSL_Builder_Add_State_Effect
+             (scatter, mutable_buffer, DSL_STATE_EFFECT_MODIFY) ||
+        !DSL_Builder_Append_PU_Value(pu, scatter)) {
+        fprintf(stderr, "stateful scatter effect construction failed\n");
+        failed = 1;
+    }
+
     DSL_GATEKEEPER_RESULT gatekeeper;
     if (!DSL_Effect_Image_Validate(stderr) ||
         DSL_Effect_Image_State_Object_Count() != 3 ||
-        DSL_Effect_Image_State_Effect_Count() != 0 ||
+        DSL_Effect_Image_State_Effect_Count() != 3 ||
         !DSL_Gatekeeper_Verify_Program(pu, stderr, &gatekeeper)) {
         fprintf(stderr, "abstract-state verification failed\n");
         failed = 1;

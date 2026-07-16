@@ -25,8 +25,8 @@ meaning.  Derived backend analysis remains in `osprey/be/com` and
 | Symbol points to unique memory | `osprey/common/com/symtab_defs.h`, `ST_PT_TO_UNIQUE_MEM` | Existing |
 | Tensor result `no_alias=true` | `osprey/common/com/symtab.h`, `symtab.cxx`, `dsl_builder.cxx` | Existing DSL staging |
 | Pointer-free state and effect rows | `osprey/common/com/dsl_ir_image.h`, `dsl_ir_image.cxx` | Implemented item-18 slice |
-| Portable operand/result behavior vocabulary | `osprey/common/com/dsl_memory_behavior.h`, `dsl_memory_behavior.cxx` | Planned item-18 implementation |
-| Builder and gatekeeper integration | `osprey/common/com/dsl_builder.{h,cxx}`, `dsl_gatekeeper.{h,cxx}` | Partially implemented |
+| Portable operand/result behavior vocabulary | `osprey/common/com/dsl_memory_behavior.h`, `dsl_memory_behavior.cxx` | Implemented item 18 |
+| Builder and gatekeeper integration | `osprey/common/com/dsl_builder.{h,cxx}`, `dsl_gatekeeper.{h,cxx}` | Implemented item 18 vertical slice |
 | Backend points-to facts | `osprey/be/com/opt_points_to.h`, `opt_points_to_non_template.cxx` | Existing; remains backend-owned |
 | Alias manager and restricted map | `osprey/be/com/opt_alias_mgr.{h,cxx}` | Existing; remains backend-owned |
 | WOPT `MU`/`CHI` construction | `osprey/be/opt/opt_alias_analysis.cxx` | Existing; consumes lowered evidence |
@@ -138,6 +138,23 @@ new_cache: INPLACE_UPDATE_KID(0) | UNIQUE_OWNERSHIP
 
 The old and new cache names are versions of the same logical state.  The
 verified `MODIFY` edge lowers to an old-state use and new-state definition.
+
+### Common scatter vertical slice
+
+```text
+result = common.scatter(kid0, kid1, kid2)
+
+kid0:  MODIFY | UNIQUE_OWNERSHIP
+kid1:  READ
+kid2:  READ
+result: INPLACE_UPDATE_KID(0) | UNIQUE_OWNERSHIP
+```
+
+`common.scatter.v1` is the first implemented stateful contract.  Its abstract
+state rows cover runtime-status reads and random-state or mutable-buffer
+modifications.  VHO lowering expresses those rows with standard WHIRL
+by-reference parameters, allowing backend call alias processing to construct
+its normal `MU`/`CHI` representation.
 
 ### Opaque library operation
 

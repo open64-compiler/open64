@@ -1112,7 +1112,7 @@ compiled CG region while preserving its inspectable VHO evidence.
    descriptor propagation, and alias behavior.  Add the builder API only after
    these cases are separated.
 
-18. [ ] Add HSSA-style abstract-state effects.
+18. [x] Add HSSA-style abstract-state effects.
 
    Define virtual-state and effect rows, fixed mapped-image representations,
    gatekeeper rules, logical dumps, and lowering to WOPT `MU`/`CHI` semantics.
@@ -1124,7 +1124,7 @@ compiled CG region while preserving its inspectable VHO evidence.
    `FRESH_RESULT`, `VIEW_OF_KID(n)`, and `INPLACE_UPDATE_KID(n)` into
    `common/com`; it does not move backend `POINTS_TO`, restricted maps,
    `ALIAS_MANAGER`, or WOPT `MU`/`CHI` classes out of `be/com` and `be/opt`.
-   The planned implementation owner is
+   The implementation owner is
    `osprey/common/com/dsl_memory_behavior.{h,cxx}` with builder, gatekeeper,
    mapped-image, printer, and VHO-lowering integration.
 
@@ -1137,12 +1137,22 @@ compiled CG region while preserving its inspectable VHO evidence.
    The gatekeeper rejects malformed rows, duplicate node/state edges, invalid
    ordinals, and effects attached to statically pure operators.
 
+   `common.scatter.v1` is the reviewed positive stateful vertical slice.  Its
+   contract marks `kid0` as modifying uniquely owned storage, `kid1` and
+   `kid2` as reads, and the result as an in-place update of `kid0`.  VHO DSL
+   lowering appends each abstract state as a standard addressable WHIRL
+   parameter: `READ` uses `WN_PARM_READ_ONLY`, while `MODIFY` uses
+   `WN_PARM_OUT`; both use `WN_PARM_BY_REFERENCE` and
+   `WN_PARM_PASSED_NOT_SAVED`.  Existing WOPT call alias processing can derive
+   the corresponding use-only `MU` or modifying `MU`/`CHI` behavior without
+   storing backend analysis objects in the binary image.
+
    `osprey/common/com/tests/dsl_abstract_state_image_test.sh` certifies runtime
    status, random state, and mutable-buffer declarations, pure-node rejection,
-   mapped-image reopen, and `ir_b2a -st -src` evidence.  Positive effect edges
-   and their VHO-to-WOPT `MU`/`CHI` handoff remain pending; they must use a
-   reviewed stateful logical operator rather than weakening an existing pure
-   operator contract or prematurely allocating a decode opcode.
+   three positive state-effect rows, mapped-image reopen, `ir_b2a -st -src`
+   evidence, canonical VHO lowering, and read/modify parameter flags.  It
+   retains `abstract_state.B`, `abstract_state.T`, and
+   `abstract_state_lowered.T` for review.
 
 19. [ ] Add barrier ingestion and optimization checks.
 

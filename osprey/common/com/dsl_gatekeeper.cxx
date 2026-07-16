@@ -12,6 +12,7 @@
 
 #include "dsl_gatekeeper.h"
 #include "dsl_ir_image.h"
+#include "dsl_memory_behavior.h"
 #include "dsl_opcode.h"
 #include "symtab.h"
 #include "wn.h"
@@ -1337,6 +1338,7 @@ DSL_Gatekeeper_Required_Attributes
                         dsl_operator == OPR_DSLROTARYEMBEDDING ||
                         dsl_operator == OPR_DSLATTENTION ||
                         dsl_operator == OPR_DSLSWIGLU ||
+                        dsl_operator == OPR_DSLSCATTER ||
                         (dsl_operator == OPR_DSLMATMUL &&
                          descriptor->version == 2) ||
                         (dsl_operator == OPR_DSLLINEAR &&
@@ -1353,12 +1355,50 @@ DSL_Gatekeeper_Required_Attributes
 }
 
 static BOOL
+DSL_Gatekeeper_Verify_Memory_Behavior
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         const DSL_IR_NODE_RECORD *node,
+         DSL_GATEKEEPER_CONTEXT *context)
+{
+    DSL_MEMORY_BEHAVIOR_CONTRACT contract;
+    if (!DSL_Memory_Behavior_Get_Contract
+             (dsl_operator, version, &contract))
+        return DSL_Gatekeeper_Report
+                   (context, "%s.v%u has no operand memory contract",
+                    DSL_OPERATOR_name(dsl_operator), version);
+    if (contract.operand_count != node->operand_count)
+        return DSL_Gatekeeper_Report
+                   (context, "%s.v%u memory contract has wrong operand count",
+                    DSL_OPERATOR_name(dsl_operator), version);
+
+    UINT32 effect_count = 0;
+    UINT32 modify_count = 0;
+    for (UINT32 i = 1; i <= DSL_Effect_Image_State_Effect_Count(); ++i) {
+        DSL_STATE_EFFECT_RECORD effect;
+        if (!DSL_Effect_Image_Get_State_Effect(i, &effect))
+            return FALSE;
+        if (effect.owner_node_id != node->id)
+            continue;
+        ++effect_count;
+        if (effect.effect_kind == DSL_STATE_EFFECT_MODIFY)
+            ++modify_count;
+    }
+    if (dsl_operator == OPR_DSLSCATTER &&
+        (effect_count == 0 || modify_count == 0))
+        return DSL_Gatekeeper_Report
+                   (context, "OPR_DSLSCATTER requires a modifying state edge");
+    return TRUE;
+}
+
+static BOOL
 DSL_Gatekeeper_Verify_Native_Node
         (WN *assignment,
          WN *expression,
          DSL_GATEKEEPER_CONTEXT *context)
 {
     DSL_LOGICAL_OPCODE logical_opcode;
+    DSL_OPCODE_ANNOTATION annotation;
     DSL_OPERATOR dsl_operator = OPR_DSLUNKNOWN;
     DSL_OPERATOR_INFO info;
     DSL_IR_NODE_RECORD image_node;
@@ -1395,6 +1435,12 @@ DSL_Gatekeeper_Verify_Native_Node
                   image_descriptor.logical_operator == (UINT32)dsl_operator &&
                   image_descriptor.version ==
                       logical_opcode.effective_version;
+    if (image_valid &&
+        (!DSL_WN_Get_Opcode_Annotation(expression, &annotation) ||
+         annotation.payload == NULL ||
+         image_node.payload == STR_IDX_ZERO ||
+         strcmp(annotation.payload, Index_To_Str(image_node.payload)) != 0))
+        image_valid = FALSE;
     if (!image_valid)
         valid = DSL_Gatekeeper_Report
                     (context, "%s result has no matching DSL image node",
@@ -1409,6 +1455,11 @@ DSL_Gatekeeper_Verify_Native_Node
         if (dsl_operator == OPR_DSLTENSORCONST &&
             !DSL_Gatekeeper_Verify_External_Tensor
                  (&image_node, result_st, result_ty, context))
+            valid = FALSE;
+        if (info.effect_model == DSL_EFFECT_MODEL_RUNTIME_EFFECT &&
+            !DSL_Gatekeeper_Verify_Memory_Behavior
+                 (dsl_operator, logical_opcode.effective_version,
+                  &image_node, context))
             valid = FALSE;
     }
 
@@ -1477,7 +1528,8 @@ DSL_Gatekeeper_Verify_Native_Node
     }
     if ((dsl_operator == OPR_DSLRELU ||
          dsl_operator == OPR_DSLRESIDUALADD ||
-         dsl_operator == OPR_DSLOUTPUTLOGITS) &&
+         dsl_operator == OPR_DSLOUTPUTLOGITS ||
+         dsl_operator == OPR_DSLSCATTER) &&
         first_operand_ty != TY_IDX_ZERO &&
         !DSL_Gatekeeper_Tensor_Compatible
              (first_operand_ty, result_ty, TRUE))

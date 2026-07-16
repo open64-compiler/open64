@@ -40,7 +40,8 @@ typedef enum {
     OPR_DSLRMSNORM = 17,
     OPR_DSLROTARYEMBEDDING = 18,
     OPR_DSLATTENTION = 19,
-    OPR_DSLSWIGLU = 20
+    OPR_DSLSWIGLU = 20,
+    OPR_DSLSCATTER = 21
 } DSL_OPERATOR;
 
 typedef enum {
@@ -153,29 +154,29 @@ typedef struct {
 
 extern void DSL_Opcode_Registry_Reset (void);
 extern DSL_OPCODE_ID DSL_Opcode_Register
-				(DSL_DOMAIN_ID owner_domain_id,
-				 const char *name,
-				 UINT16 version,
-				 DSL_OPCODE_CATEGORY category,
-				 DSL_OPCODE_LEVEL level,
-				 mINT16 nkids,
-				 DSL_SHAPE_RULE shape_rule,
-				 DSL_EFFECT_MODEL effect_model,
-				 DSL_LOWERING_MODEL lowering_model,
-				 const char *diagnostic_prefix,
-				 UINT32 flags);
+                                (DSL_DOMAIN_ID owner_domain_id,
+                                 const char *name,
+                                 UINT16 version,
+                                 DSL_OPCODE_CATEGORY category,
+                                 DSL_OPCODE_LEVEL level,
+                                 mINT16 nkids,
+                                 DSL_SHAPE_RULE shape_rule,
+                                 DSL_EFFECT_MODEL effect_model,
+                                 DSL_LOWERING_MODEL lowering_model,
+                                 const char *diagnostic_prefix,
+                                 UINT32 flags);
 extern DSL_OPCODE_ID DSL_Opcode_Register_Domain_Wrapper
-				(DSL_DOMAIN_ID owner_domain_id,
-				 const char *name,
-				 UINT16 version,
-				 DSL_OPCODE_ID wrapper_target_id,
-				 const char *diagnostic_prefix,
-				 UINT32 flags);
+                                (DSL_DOMAIN_ID owner_domain_id,
+                                 const char *name,
+                                 UINT16 version,
+                                 DSL_OPCODE_ID wrapper_target_id,
+                                 const char *diagnostic_prefix,
+                                 UINT32 flags);
 extern DSL_OPCODE_ID DSL_Opcode_Find (DSL_DOMAIN_ID owner_domain_id,
-				      const char *name,
-				      UINT16 version);
+                                      const char *name,
+                                      UINT16 version);
 extern BOOL DSL_Opcode_Get_Info (DSL_OPCODE_ID id,
-				 DSL_OPCODE_INFO *info);
+                                 DSL_OPCODE_INFO *info);
 extern UINT32 DSL_Opcode_Count (void);
 extern BOOL DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info);
 extern BOOL DSL_Operator_Get_Info (DSL_OPERATOR dsl_operator,
@@ -195,56 +196,56 @@ extern UINT32 DSL_Opcode_Register_Domain_Wrapper_Examples (void);
 extern DSL_OPCODE_ID DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id);
 extern void DSL_Opcode_Promotion_Registry_Reset (void);
 extern DSL_OPCODE_PROMOTION_ID DSL_Opcode_Promotion_Register
-				(DSL_OPCODE_ID source_opcode_id,
-				 DSL_OPCODE_ID promoted_opcode_id,
-				 DSL_OPCODE_PROMOTION_STATE state,
-				 UINT16 version,
-				 const char *const *required_common_semantics,
-				 UINT32 required_common_semantics_count,
-				 const char *const *retained_wrappers,
-				 UINT32 retained_wrapper_count,
-				 const char *const *required_verifier_checks,
-				 UINT32 required_verifier_check_count,
-				 const char *const *diagnostics,
-				 UINT32 diagnostic_count,
-				 UINT32 flags);
+                                (DSL_OPCODE_ID source_opcode_id,
+                                 DSL_OPCODE_ID promoted_opcode_id,
+                                 DSL_OPCODE_PROMOTION_STATE state,
+                                 UINT16 version,
+                                 const char *const *required_common_semantics,
+                                 UINT32 required_common_semantics_count,
+                                 const char *const *retained_wrappers,
+                                 UINT32 retained_wrapper_count,
+                                 const char *const *required_verifier_checks,
+                                 UINT32 required_verifier_check_count,
+                                 const char *const *diagnostics,
+                                 UINT32 diagnostic_count,
+                                 UINT32 flags);
 extern DSL_OPCODE_PROMOTION_ID DSL_Opcode_Promotion_Find
-				(DSL_OPCODE_ID source_opcode_id,
-				 DSL_OPCODE_ID promoted_opcode_id);
+                                (DSL_OPCODE_ID source_opcode_id,
+                                 DSL_OPCODE_ID promoted_opcode_id);
 extern BOOL DSL_Opcode_Promotion_Get_Info
-				(DSL_OPCODE_PROMOTION_ID id,
-				 DSL_OPCODE_PROMOTION_INFO *info);
+                                (DSL_OPCODE_PROMOTION_ID id,
+                                 DSL_OPCODE_PROMOTION_INFO *info);
 extern UINT32 DSL_Opcode_Promotion_Count (void);
 extern BOOL DSL_Opcode_Promotion_At (UINT32 ordinal,
-				     DSL_OPCODE_PROMOTION_INFO *info);
+                                     DSL_OPCODE_PROMOTION_INFO *info);
 extern const char *DSL_Opcode_Promotion_Required_Common_Semantic_At
-				(DSL_OPCODE_PROMOTION_ID id,
-				 UINT32 ordinal);
+                                (DSL_OPCODE_PROMOTION_ID id,
+                                 UINT32 ordinal);
 extern const char *DSL_Opcode_Promotion_Retained_Wrapper_At
-				(DSL_OPCODE_PROMOTION_ID id,
-				 UINT32 ordinal);
+                                (DSL_OPCODE_PROMOTION_ID id,
+                                 UINT32 ordinal);
 extern const char *DSL_Opcode_Promotion_Required_Verifier_Check_At
-				(DSL_OPCODE_PROMOTION_ID id,
-				 UINT32 ordinal);
+                                (DSL_OPCODE_PROMOTION_ID id,
+                                 UINT32 ordinal);
 extern const char *DSL_Opcode_Promotion_Diagnostic_At
-				(DSL_OPCODE_PROMOTION_ID id,
-				 UINT32 ordinal);
+                                (DSL_OPCODE_PROMOTION_ID id,
+                                 UINT32 ordinal);
 extern UINT32 DSL_Opcode_Promotion_Register_Examples (void);
 extern const char *DSL_Opcode_Check_Promotion
-				(DSL_OPCODE_ID source_opcode_id,
-				 DSL_OPCODE_ID promoted_opcode_id,
-				 UINT16 common_version,
-				 BOOL require_wrapper);
+                                (DSL_OPCODE_ID source_opcode_id,
+                                 DSL_OPCODE_ID promoted_opcode_id,
+                                 UINT16 common_version,
+                                 BOOL require_wrapper);
 extern const char *DSL_Opcode_Category_Name (DSL_OPCODE_CATEGORY category);
 extern const char *DSL_Opcode_Level_Name (DSL_OPCODE_LEVEL level);
 extern const char *DSL_Shape_Rule_Name (DSL_SHAPE_RULE shape_rule);
 extern const char *DSL_Effect_Model_Name (DSL_EFFECT_MODEL effect_model);
 extern const char *DSL_Lowering_Model_Name
-				(DSL_LOWERING_MODEL lowering_model);
+                                (DSL_LOWERING_MODEL lowering_model);
 extern const char *DSL_Opcode_Promotion_State_Name
-				(DSL_OPCODE_PROMOTION_STATE state);
+                                (DSL_OPCODE_PROMOTION_STATE state);
 extern const char *DSL_CPROM_Diagnostic_Code
-				(DSL_CPROM_DIAGNOSTIC diagnostic);
+                                (DSL_CPROM_DIAGNOSTIC diagnostic);
 extern void DSL_Opcode_fprint_registry (FILE *f);
 extern void DSL_Opcode_Promotion_fprint_registry (FILE *f);
 

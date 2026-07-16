@@ -468,6 +468,7 @@ DSL_Builder_Requires_Exact_Attribute_Schema
            dsl_operator == OPR_DSLROTARYEMBEDDING ||
            dsl_operator == OPR_DSLATTENTION ||
            dsl_operator == OPR_DSLSWIGLU ||
+           dsl_operator == OPR_DSLSCATTER ||
            (dsl_operator == OPR_DSLMATMUL && version == 2) ||
            (dsl_operator == OPR_DSLLINEAR && version == 3) ||
            (dsl_operator == OPR_DSLOUTPUTLOGITS && version == 3);
@@ -1924,7 +1925,8 @@ DSL_Builder_Create_Operator
          dsl_operator == OPR_DSLRMSNORM ||
          dsl_operator == OPR_DSLROTARYEMBEDDING ||
          dsl_operator == OPR_DSLATTENTION ||
-         dsl_operator == OPR_DSLSWIGLU) && kid_count != 0) {
+         dsl_operator == OPR_DSLSWIGLU ||
+         dsl_operator == OPR_DSLSCATTER) && kid_count != 0) {
         if ((info.nkids >= 0 && (UINT32)info.nkids != kid_count) ||
             (attr_count != 0 && attrs == NULL)) {
             delete [] payload;

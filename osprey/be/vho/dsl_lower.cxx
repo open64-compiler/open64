@@ -14,6 +14,7 @@
 #include "dsl_lower.h"
 #include "config_dsl.h"
 #include "dsl_gatekeeper.h"
+#include "dsl_ir_image.h"
 #include "dsl_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_region.h"
@@ -68,6 +69,7 @@ typedef struct {
     ST *runtime_rotary_embedding;
     ST *runtime_attention;
     ST *runtime_swiglu;
+    ST *runtime_scatter;
 } VHO_DSL_LOWER_CONTEXT;
 
 typedef struct {
@@ -758,6 +760,10 @@ VHO_DSL_Runtime_Function
         slot = &context->runtime_swiglu;
         name = "__open64_dsl_swiglu_v1";
         break;
+    case OPR_DSLSCATTER:
+        slot = &context->runtime_scatter;
+        name = "__open64_dsl_scatter_v1";
+        break;
     default:
         return NULL;
     }
@@ -775,6 +781,33 @@ VHO_DSL_Pointer_Parm (WN *value)
 {
     return WN_CreateParm(Pointer_Mtype, value,
                          MTYPE_To_TY(Pointer_Mtype), WN_PARM_BY_VALUE);
+}
+
+static WN *
+VHO_DSL_State_Parm
+        (const DSL_STATE_OBJECT_RECORD *state,
+         DSL_STATE_EFFECT_KIND effect_kind)
+{
+    UINT32 flags = WN_PARM_BY_REFERENCE | WN_PARM_PASSED_NOT_SAVED;
+    if (effect_kind == DSL_STATE_EFFECT_READ)
+        flags |= WN_PARM_READ_ONLY;
+    else
+        flags |= WN_PARM_OUT;
+    return WN_CreateParm
+               (Pointer_Mtype,
+                WN_Lda(Pointer_Mtype, 0, &St_Table[state->st]),
+                MTYPE_To_TY(Pointer_Mtype), flags);
+}
+
+static DSL_IR_NODE_ID
+VHO_DSL_Image_Node_For_Result (ST_IDX result_st)
+{
+    for (UINT32 i = 1; i <= DSL_IR_Image_Value_Count(); ++i) {
+        DSL_IR_VALUE_RECORD value;
+        if (DSL_IR_Image_Get_Value(i, &value) && value.st == result_st)
+            return value.producer_node_id;
+    }
+    return DSL_IR_NODE_INVALID_ID;
 }
 
 static WN *
@@ -934,6 +967,7 @@ VHO_DSL_Build_Runtime_Call
         (WN *native,
          TY_IDX result_ty,
          DSL_OPERATOR dsl_operator,
+         DSL_IR_NODE_ID image_node_id,
          VHO_DSL_LOWER_CONTEXT *context,
          WN **call_result)
 {
@@ -993,8 +1027,20 @@ VHO_DSL_Build_Runtime_Call
         parameter_count = 7;
     else if (dsl_operator == OPR_DSLSWIGLU)
         parameter_count = 3;
+    else if (dsl_operator == OPR_DSLSCATTER)
+        parameter_count = 5;
     else
         return FALSE;
+
+    UINT32 state_effect_count = 0;
+    for (UINT32 i = 1; i <= DSL_Effect_Image_State_Effect_Count(); ++i) {
+        DSL_STATE_EFFECT_RECORD effect;
+        if (!DSL_Effect_Image_Get_State_Effect(i, &effect))
+            return FALSE;
+        if (effect.owner_node_id == image_node_id)
+            ++state_effect_count;
+    }
+    parameter_count += state_effect_count;
 
     WN *call = WN_Call(Pointer_Mtype, MTYPE_V, parameter_count, function);
     WN_Set_Call_Default_Flags(call);
@@ -1269,6 +1315,31 @@ VHO_DSL_Build_Runtime_Call
         WN_kid(call, parameter++) = VHO_DSL_U4_Parm(query_heads);
         WN_kid(call, parameter++) = VHO_DSL_U4_Parm(kv_heads);
         WN_kid(call, parameter++) = VHO_DSL_U4_Parm(head_dim);
+    } else if (dsl_operator == OPR_DSLSCATTER) {
+        INT32 axis;
+        if (!VHO_DSL_Payload_I4(annotation.payload, "attr.axis", &axis))
+            return FALSE;
+        WN_kid(call, parameter++) = VHO_DSL_I4_Parm(axis);
+    }
+
+    for (UINT32 i = 1; i <= DSL_Effect_Image_State_Effect_Count(); ++i) {
+        DSL_STATE_EFFECT_RECORD effect;
+        DSL_STATE_OBJECT_RECORD state;
+        if (!DSL_Effect_Image_Get_State_Effect(i, &effect))
+            return FALSE;
+        if (effect.owner_node_id != image_node_id)
+            continue;
+        if (!DSL_Effect_Image_Get_State_Object
+                 (effect.state_object_id, &state))
+            return FALSE;
+        WN_kid(call, parameter++) = VHO_DSL_State_Parm
+                                        (&state,
+                                         (DSL_STATE_EFFECT_KIND)
+                                             effect.effect_kind);
+        if (effect.effect_kind == DSL_STATE_EFFECT_READ)
+            ++context->result.state_read_count;
+        else
+            ++context->result.state_modify_count;
     }
 
     if (parameter != parameter_count)
@@ -1441,9 +1512,10 @@ VHO_DSL_Lower_Definition
     }
 
     WN *call = NULL;
+    DSL_IR_NODE_ID image_node_id = VHO_DSL_Image_Node_For_Result(result_st);
     if (!VHO_DSL_Build_Runtime_Call
              (native, WN_ty(statement), logical_opcode.dsl_operator,
-              context, &call)) {
+              image_node_id, context, &call)) {
         ++context->result.malformed_node_count;
         return FALSE;
     }
@@ -1616,6 +1688,7 @@ VHO_DSL_Lower_Verified_Program_Unit
     context.runtime_rotary_embedding = NULL;
     context.runtime_attention = NULL;
     context.runtime_swiglu = NULL;
+    context.runtime_scatter = NULL;
 
     BOOL valid = pu_info != NULL && tree != NULL;
     if (valid)
