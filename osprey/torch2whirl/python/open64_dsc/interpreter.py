@@ -14,8 +14,14 @@ from .builder import (
     REGION_INPUT,
     REGION_OUTPUT,
     REGION_RESULT,
+    REGION_STATE_LAYER_OWNED,
+    REGION_STATE_UNIQUE_OWNERSHIP,
+    STATE_EFFECT_MODIFY,
+    STATE_MUTABLE_BUFFER,
+    STATE_UNIQUE_OWNERSHIP,
     ProgramUnitHandle,
     RegionHandle,
+    StateHandle,
     ValueHandle,
     WhirlBuilder,
     load_builder,
@@ -50,6 +56,7 @@ class _GraphValue:
 class _RegionState:
     inputs: Set[int] = None  # type: ignore[assignment]
     values: Set[int] = None  # type: ignore[assignment]
+    declare_inputs: bool = True
 
     def __post_init__(self) -> None:
         if self.inputs is None:
@@ -97,7 +104,24 @@ class WhirlExportInterpreter:
             self.builder().append_program_unit_value(entry_pu, handle)
             body_markers.append(value.name)
 
-        if self._is_tiny_llama2_model(model):
+        is_tiny_llama2_prefill = self._is_tiny_llama2_prefill_model(model)
+        is_tiny_llama2_decode = self._is_tiny_llama2_decode_model(model)
+
+        if is_tiny_llama2_decode:
+            graph_source = "torch.fx+llama2_decode_semantic"
+            self._emit_llama2_decode_model(
+                model,
+                model_name,
+                entry_pu,
+                handles,
+                tensor_types,
+                values,
+                tensor_payloads,
+                operators,
+                body_markers,
+                graph_operators,
+            )
+        elif is_tiny_llama2_prefill:
             graph_source = "torch.fx+llama2_semantic"
             self._emit_llama2_model(
                 model,
@@ -115,7 +139,11 @@ class WhirlExportInterpreter:
             captured_graph = self._capture_fx_graph(model)
             graph_source = "torch.fx" if captured_graph is not None else "synthetic"
 
-        if not self._is_tiny_llama2_model(model) and captured_graph is not None:
+        if (
+            not is_tiny_llama2_prefill and
+            not is_tiny_llama2_decode and
+            captured_graph is not None
+        ):
             self._emit_captured_graph(
                 captured_graph,
                 model_name,
@@ -128,7 +156,11 @@ class WhirlExportInterpreter:
                 body_markers,
                 graph_operators,
             )
-        elif not self._is_tiny_llama2_model(model) and len(handles) >= 2:
+        elif (
+            not is_tiny_llama2_prefill and
+            not is_tiny_llama2_decode and
+            len(handles) >= 2
+        ):
             handle, attrs = self._emit_operator(
                 common.ADD,
                 handles[:2],
@@ -164,9 +196,22 @@ class WhirlExportInterpreter:
             graph_operators=graph_operators,
         )
 
-    def _is_tiny_llama2_model(self, model: Any) -> bool:
+    def _is_tiny_llama2_prefill_model(self, model: Any) -> bool:
         return (
             hasattr(model, "config") and
+            hasattr(model, "token_embedding") and
+            hasattr(model, "layers") and
+            hasattr(model, "norm") and
+            hasattr(model, "output") and
+            not self._is_tiny_llama2_decode_model(model)
+        )
+
+    def _is_tiny_llama2_decode_model(self, model: Any) -> bool:
+        config = getattr(model, "config", None)
+        return (
+            config is not None and
+            hasattr(config, "decode_sequence_length") and
+            hasattr(config, "cache_length") and
             hasattr(model, "token_embedding") and
             hasattr(model, "layers") and
             hasattr(model, "norm") and
@@ -378,6 +423,226 @@ class WhirlExportInterpreter:
         )
         # External PU definitions must precede the region that first uses them.
         self.builder().append_program_unit_region(entry_pu, prefill)
+
+    def _emit_llama2_decode_model(
+        self,
+        model: Any,
+        model_name: str,
+        entry_pu: ProgramUnitHandle,
+        input_handles: Sequence[ValueHandle],
+        tensor_types: List[WhirlTensorTypeRecord],
+        values: List[WhirlValueRecord],
+        tensor_payloads: List[WhirlTensorPayloadRecord],
+        operators: List[str],
+        body_markers: List[str],
+        graph_operators: List[WhirlOperatorRecord],
+    ) -> None:
+        self._validate_llama2_decode_profile(model, tensor_types, values)
+
+        attr_env: Dict[str, _GraphValue] = {}
+        input_values = [
+            _GraphValue(handle, f"input{index}")
+            for index, handle in enumerate(input_handles)
+        ]
+        token_input = input_values[0]
+        cache_position = input_values[1]
+        cache_inputs = input_values[2:]
+        decode = self.builder().region(entry_pu, transformer.DECODE_REGION, 1)
+        self._set_llama_region_context(
+            decode,
+            entry_pu,
+            model,
+            "forward.decode",
+            0,
+        )
+        decode_state = _RegionState()
+        self._llama_prefill_external_inputs = None
+
+        token_weight = self._llama_external(
+            model,
+            "token_embedding.weight",
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            "token_embedding_weight",
+            decode,
+            decode_state,
+        )
+        current = self._emit_llama_operator(
+            transformer.TOKEN_EMBEDDING,
+            [token_input, token_weight],
+            {
+                "attr.padding_idx": "none",
+                "attr.bounds_policy": "runtime_check",
+            },
+            self.builder().transformer_token_embedding,
+            decode,
+            decode_state,
+            operators,
+            body_markers,
+            graph_operators,
+            "token_embedding",
+            "token_embedding",
+        )
+
+        layer_state_flags = (
+            REGION_STATE_UNIQUE_OWNERSHIP | REGION_STATE_LAYER_OWNED
+        )
+        for layer_index, layer in enumerate(getattr(model, "layers")):
+            cache_base = layer_index * 2
+            key_cache = cache_inputs[cache_base]
+            value_cache = cache_inputs[cache_base + 1]
+            decoder = self.builder().region(
+                entry_pu,
+                transformer.DECODER_LAYER_REGION,
+                2,
+                parent=decode,
+            )
+            self.builder().append_child_region(decode, decoder)
+            self._set_llama_region_context(
+                decoder,
+                entry_pu,
+                model,
+                f"layers.{layer_index}",
+                layer_index,
+            )
+            layer_region = _RegionState(declare_inputs=False)
+            self._declare_region_input(decoder, current, layer_region)
+            self._declare_region_input(decoder, cache_position, layer_region)
+            self._declare_region_input(decoder, key_cache, layer_region)
+            self._declare_region_input(decoder, value_cache, layer_region)
+            key_state = self.builder().state_object(
+                entry_pu,
+                f"layer{layer_index}.key_cache",
+                STATE_MUTABLE_BUFFER,
+                STATE_UNIQUE_OWNERSHIP,
+            )
+            value_state = self.builder().state_object(
+                entry_pu,
+                f"layer{layer_index}.value_cache",
+                STATE_MUTABLE_BUFFER,
+                STATE_UNIQUE_OWNERSHIP,
+            )
+            current = self._emit_llama_decode_decoder_layer(
+                model,
+                layer,
+                layer_index,
+                current,
+                cache_position,
+                key_cache,
+                value_cache,
+                key_state,
+                value_state,
+                decoder,
+                layer_region,
+                model_name,
+                entry_pu,
+                tensor_types,
+                values,
+                tensor_payloads,
+                body_markers,
+                attr_env,
+                operators,
+                graph_operators,
+            )
+            self.builder().declare_region_state(
+                decoder,
+                key_state,
+                STATE_EFFECT_MODIFY,
+                0,
+                layer_state_flags,
+            )
+            self.builder().declare_region_state(
+                decoder,
+                value_state,
+                STATE_EFFECT_MODIFY,
+                1,
+                layer_state_flags,
+            )
+            decode_state.values.add(current.handle.value)
+
+        norm_weight = self._llama_external(
+            model,
+            "norm.weight",
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            "rms_norm_scale",
+            decode,
+            decode_state,
+        )
+        current = self._emit_llama_operator(
+            transformer.RMS_NORM,
+            [current, norm_weight],
+            self._rms_norm_attrs(model.norm),
+            self.builder().transformer_rms_norm,
+            decode,
+            decode_state,
+            operators,
+            body_markers,
+            graph_operators,
+            "norm",
+            "final_rms_norm",
+        )
+        output_weight = self._llama_external(
+            model,
+            "output.weight",
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            "output_weight",
+            decode,
+            decode_state,
+        )
+        current = self._emit_llama_operator(
+            common.LINEAR,
+            [current, output_weight],
+            self._linear_attrs(),
+            self.builder().common_linear_v3,
+            decode,
+            decode_state,
+            operators,
+            body_markers,
+            graph_operators,
+            "output",
+            "output_projection",
+        )
+        current = self._emit_llama_operator(
+            common.OUTPUT_LOGITS,
+            [current],
+            {
+                "attr.semantic": "token_logits",
+                "attr.sequence_axis": "-2",
+                "attr.vocabulary_axis": "-1",
+            },
+            self.builder().common_output_logits_v3,
+            decode,
+            decode_state,
+            operators,
+            body_markers,
+            graph_operators,
+            "output",
+            "output_logits",
+        )
+        self.builder().declare_region_value(
+            decode,
+            current.handle,
+            REGION_OUTPUT | REGION_RESULT,
+            0,
+        )
+        self.builder().append_program_unit_region(entry_pu, decode)
 
     def _emit_llama_decoder_layer(
         self,
@@ -758,6 +1023,508 @@ class WhirlExportInterpreter:
             "ffn_residual",
         )
 
+    def _emit_llama_decode_decoder_layer(
+        self,
+        model: Any,
+        layer: Any,
+        layer_index: int,
+        layer_input: _GraphValue,
+        cache_position: _GraphValue,
+        key_cache: _GraphValue,
+        value_cache: _GraphValue,
+        key_state: StateHandle,
+        value_state: StateHandle,
+        region: RegionHandle,
+        region_state: "_RegionState",
+        model_name: str,
+        entry_pu: ProgramUnitHandle,
+        tensor_types: List[WhirlTensorTypeRecord],
+        values: List[WhirlValueRecord],
+        tensor_payloads: List[WhirlTensorPayloadRecord],
+        body_markers: List[str],
+        attr_env: Dict[str, _GraphValue],
+        operators: List[str],
+        graph_operators: List[WhirlOperatorRecord],
+    ) -> _GraphValue:
+        config = getattr(model, "config")
+        batch = self._config_int(config, "batch_size")
+        seq = self._config_int(config, "decode_sequence_length")
+        heads = self._config_int(config, "num_attention_heads")
+        head_dim = self._config_int(config, "head_dim")
+        hidden = self._config_int(config, "hidden_size")
+        prefix = f"layers.{layer_index}"
+
+        attention_norm_weight = self._llama_external(
+            model,
+            f"{prefix}.attention_norm.weight",
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            "rms_norm_scale",
+            region,
+            region_state,
+        )
+        attention_input = self._emit_llama_operator(
+            transformer.RMS_NORM,
+            [layer_input, attention_norm_weight],
+            self._rms_norm_attrs(layer.attention_norm),
+            self.builder().transformer_rms_norm,
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            f"{prefix}.attention_norm",
+            "attention_rms_norm",
+        )
+
+        q = self._linear_projection(
+            model,
+            attention_input,
+            f"{prefix}.attention.wq.weight",
+            "attention_q_weight",
+            prefix,
+            "attention_q_projection",
+            region,
+            region_state,
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            operators,
+            graph_operators,
+        )
+        k = self._linear_projection(
+            model,
+            attention_input,
+            f"{prefix}.attention.wk.weight",
+            "attention_k_weight",
+            prefix,
+            "attention_k_projection",
+            region,
+            region_state,
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            operators,
+            graph_operators,
+        )
+        v = self._linear_projection(
+            model,
+            attention_input,
+            f"{prefix}.attention.wv.weight",
+            "attention_v_weight",
+            prefix,
+            "attention_v_projection",
+            region,
+            region_state,
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            operators,
+            graph_operators,
+        )
+        q = self._reshape_transpose_projection(
+            q,
+            (batch, seq, heads, head_dim),
+            (0, 2, 1, 3),
+            prefix,
+            "attention_q_bhsd",
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+        )
+        k = self._reshape_transpose_projection(
+            k,
+            (batch, seq, heads, head_dim),
+            (0, 2, 1, 3),
+            prefix,
+            "attention_k_bhsd",
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+        )
+        v = self._reshape_transpose_projection(
+            v,
+            (batch, seq, heads, head_dim),
+            (0, 2, 1, 3),
+            prefix,
+            "attention_v_bhsd",
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+        )
+
+        cos = self._llama_external(
+            model,
+            f"{prefix}.attention.rotary.cos",
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            "rotary_cos",
+            region,
+            region_state,
+        )
+        sin = self._llama_external(
+            model,
+            f"{prefix}.attention.rotary.sin",
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            "rotary_sin",
+            region,
+            region_state,
+        )
+        q = self._emit_llama_operator(
+            transformer.ROTARY_EMBEDDING,
+            [q, cos, sin, cache_position],
+            self._rotary_decode_attrs(),
+            lambda value, cos_value, sin_value, position, attrs:
+                self.builder().operator(
+                    transformer.ROTARY_EMBEDDING,
+                    2,
+                    [value, cos_value, sin_value, position],
+                    attrs,
+                ),
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            f"{prefix}.attention.rotary",
+            "attention_q_rope",
+            2,
+        )
+        k = self._emit_llama_operator(
+            transformer.ROTARY_EMBEDDING,
+            [k, cos, sin, cache_position],
+            self._rotary_decode_attrs(),
+            lambda value, cos_value, sin_value, position, attrs:
+                self.builder().operator(
+                    transformer.ROTARY_EMBEDDING,
+                    2,
+                    [value, cos_value, sin_value, position],
+                    attrs,
+                ),
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            f"{prefix}.attention.rotary",
+            "attention_k_rope",
+            2,
+        )
+        context = self._emit_llama_operator(
+            transformer.ATTENTION,
+            [q, key_cache, value_cache],
+            self._attention_decode_attrs(heads, head_dim),
+            lambda query, key, value, attrs: self.builder().operator(
+                transformer.ATTENTION,
+                2,
+                [query, key, value],
+                attrs,
+            ),
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            f"{prefix}.attention",
+            "cached_attention",
+            2,
+        )
+        self.builder().add_state_effect(
+            context.handle, key_state, STATE_EFFECT_MODIFY
+        )
+        self.builder().add_state_effect(
+            context.handle, value_state, STATE_EFFECT_MODIFY
+        )
+        context = self._emit_llama_operator(
+            common.TRANSPOSE,
+            [context],
+            {"attr.permutation": "0,2,1,3"},
+            lambda operand, attrs: self.builder().common_transpose(
+                operand,
+                (0, 2, 1, 3),
+                attrs,
+            ),
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            prefix,
+            "attention_context_bshd",
+        )
+        context = self._emit_llama_operator(
+            common.RESHAPE,
+            [context],
+            {"attr.target_shape": self._format_attr_shape((batch, seq, hidden))},
+            lambda value, attrs: self.builder().common_reshape(
+                value,
+                (batch, seq, hidden),
+                attrs,
+            ),
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            f"{prefix}.attention",
+            "attention_context_hidden",
+        )
+        attention_out = self._linear_projection(
+            model,
+            context,
+            f"{prefix}.attention.wo.weight",
+            "attention_o_weight",
+            prefix,
+            "attention_output_projection",
+            region,
+            region_state,
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            operators,
+            graph_operators,
+        )
+        residual = self._emit_llama_operator(
+            common.RESIDUAL_ADD,
+            [layer_input, attention_out],
+            {
+                "attr.broadcast_rule": "none",
+                "attr.shape_check": "exact",
+                "attr.residual_path": "true",
+            },
+            self.builder().common_residual_add,
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            prefix,
+            "attention_residual",
+        )
+
+        ffn_norm_weight = self._llama_external(
+            model,
+            f"{prefix}.ffn_norm.weight",
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            "rms_norm_scale",
+            region,
+            region_state,
+        )
+        ffn_input = self._emit_llama_operator(
+            transformer.RMS_NORM,
+            [residual, ffn_norm_weight],
+            self._rms_norm_attrs(layer.ffn_norm),
+            self.builder().transformer_rms_norm,
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            f"{prefix}.ffn_norm",
+            "ffn_rms_norm",
+        )
+        gate = self._linear_projection(
+            model,
+            ffn_input,
+            f"{prefix}.feed_forward.gate_proj.weight",
+            "ffn_gate_weight",
+            prefix,
+            "ffn_gate_projection",
+            region,
+            region_state,
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            operators,
+            graph_operators,
+        )
+        up = self._linear_projection(
+            model,
+            ffn_input,
+            f"{prefix}.feed_forward.up_proj.weight",
+            "ffn_up_weight",
+            prefix,
+            "ffn_up_projection",
+            region,
+            region_state,
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            operators,
+            graph_operators,
+        )
+        swiglu = self._emit_llama_operator(
+            transformer.SWIGLU,
+            [gate, up],
+            {"attr.activation": "silu"},
+            self.builder().transformer_swiglu,
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            f"{prefix}.feed_forward",
+            "ffn_swiglu",
+        )
+        down = self._linear_projection(
+            model,
+            swiglu,
+            f"{prefix}.feed_forward.down_proj.weight",
+            "ffn_down_weight",
+            prefix,
+            "ffn_down_projection",
+            region,
+            region_state,
+            model_name,
+            entry_pu,
+            tensor_types,
+            values,
+            tensor_payloads,
+            body_markers,
+            attr_env,
+            operators,
+            graph_operators,
+        )
+        return self._emit_llama_operator(
+            common.RESIDUAL_ADD,
+            [residual, down],
+            {
+                "attr.broadcast_rule": "none",
+                "attr.shape_check": "exact",
+                "attr.residual_path": "true",
+            },
+            self.builder().common_residual_add,
+            region,
+            region_state,
+            operators,
+            body_markers,
+            graph_operators,
+            prefix,
+            "ffn_residual",
+        )
+
+    def _validate_llama2_decode_profile(
+        self,
+        model: Any,
+        tensor_types: Sequence[WhirlTensorTypeRecord],
+        values: Sequence[WhirlValueRecord],
+    ) -> None:
+        config = getattr(model, "config")
+        if len(values) != 6:
+            raise NotImplementedError(
+                "Llama 2 decode export expects input_ids, cache_position, "
+                "and two K/V cache tensors per decoder layer"
+            )
+        if bool(getattr(model, "training", False)):
+            raise NotImplementedError("Llama 2 decode export requires eval mode")
+        heads = self._config_int(config, "num_attention_heads")
+        kv_heads = self._config_int(config, "num_kv_heads")
+        if heads != kv_heads:
+            raise NotImplementedError(
+                "grouped-query attention is not supported by the first "
+                "Llama 2 decode frontend profile"
+            )
+        if self._config_int(config, "decode_sequence_length") != 1:
+            raise NotImplementedError(
+                "Llama 2 decode export supports one-token decode only"
+            )
+        cache_length = self._config_int(config, "cache_length")
+        if cache_length <= 0:
+            raise NotImplementedError(
+                "Llama 2 decode export requires a non-empty prefix cache"
+            )
+        if cache_length >= self._config_int(config, "max_sequence_length"):
+            raise NotImplementedError(
+                "Llama 2 decode cache_position must be within RoPE capacity"
+            )
+
+        expected = [
+            (
+                "int64",
+                self._format_shape((self._config_int(config, "batch_size"), 1)),
+            ),
+            ("int64", self._format_shape((1,))),
+        ]
+        cache_shape = self._format_shape((
+            self._config_int(config, "batch_size"),
+            kv_heads,
+            cache_length,
+            self._config_int(config, "head_dim"),
+        ))
+        expected.extend([("float32", cache_shape)] * 4)
+        types_by_name = {
+            tensor_type.name: tensor_type for tensor_type in tensor_types
+        }
+        for ordinal, (value, (dtype, shape)) in enumerate(zip(values, expected)):
+            tensor_type = types_by_name.get(value.type_name)
+            if tensor_type is None:
+                raise ValueError(
+                    "Llama 2 decode input has no tensor type at ordinal "
+                    f"{ordinal}: {value.type_name}"
+                )
+            if tensor_type.dtype != dtype:
+                raise ValueError(
+                    "Llama 2 decode input dtype mismatch at ordinal "
+                    f"{ordinal}: expected {dtype}"
+                )
+            if value.metadata.get("logical_shape") != shape:
+                raise ValueError(
+                    "Llama 2 decode input shape mismatch at ordinal "
+                    f"{ordinal}: expected {shape}"
+                )
+
     def _llama_input_shape(self, model: Any) -> str:
         config = getattr(model, "config")
         return self._format_shape((
@@ -849,6 +1616,9 @@ class WhirlExportInterpreter:
             return
         if value.handle.value in region_state.values:
             return
+        if not region_state.declare_inputs:
+            region_state.inputs.add(value.handle.value)
+            return
         self.builder().declare_region_value(
             region,
             value.handle,
@@ -870,6 +1640,7 @@ class WhirlExportInterpreter:
         graph_operators: List[WhirlOperatorRecord],
         source_module_path: str,
         semantic_name: str,
+        operator_version: Optional[int] = None,
     ) -> _GraphValue:
         for operand in operands:
             self._declare_region_input(region, operand, region_state)
@@ -881,6 +1652,8 @@ class WhirlExportInterpreter:
             "source_module_path": source_module_path,
             "semantic_name": semantic_name,
         }
+        if operator_version is not None:
+            metadata["operator_version"] = str(operator_version)
         self.builder().attach_value_metadata(handle, metadata)
         operators.append(operator_name)
         body_markers.append(operator_name)
@@ -1016,6 +1789,15 @@ class WhirlExportInterpreter:
             "attr.position_offset": "0",
         }
 
+    def _rotary_decode_attrs(self) -> Mapping[str, str]:
+        return {
+            "attr.head_layout": "BHSD",
+            "attr.sequence_axis": "2",
+            "attr.feature_axis": "3",
+            "attr.pairing": "half_split",
+            "attr.position_mode": "explicit_operand",
+        }
+
     def _attention_attrs(self, heads: int, head_dim: int) -> Mapping[str, str]:
         return {
             "attr.execution_mode": "full_sequence",
@@ -1028,6 +1810,25 @@ class WhirlExportInterpreter:
             "attr.softmax_axis": "-1",
             "attr.softmax_accum_dtype": "float32",
             "attr.cache_mode": "none",
+        }
+
+    def _attention_decode_attrs(
+        self,
+        heads: int,
+        head_dim: int,
+    ) -> Mapping[str, str]:
+        return {
+            "attr.execution_mode": "single_token_decode",
+            "attr.mask_mode": "implicit_prefix_causal",
+            "attr.head_layout": "BHSD",
+            "attr.query_heads": str(heads),
+            "attr.kv_heads": str(heads),
+            "attr.head_dim": str(head_dim),
+            "attr.scale_mode": "inverse_sqrt_head_dim",
+            "attr.softmax_axis": "-1",
+            "attr.softmax_accum_dtype": "float32",
+            "attr.cache_mode": "functional_append",
+            "attr.cache_sequence_axis": "2",
         }
 
     def _bind_model_source_positions(

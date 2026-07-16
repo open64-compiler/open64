@@ -185,12 +185,49 @@ _CONTRACTS = {
     ),
 }
 
+_VERSIONED_CONTRACTS = {
+    (transformer.ROTARY_EMBEDDING, 2): OperatorContract(
+        transformer.ROTARY_EMBEDDING,
+        2,
+        4,
+        (
+            "attr.head_layout",
+            "attr.sequence_axis",
+            "attr.feature_axis",
+            "attr.pairing",
+            "attr.position_mode",
+        ),
+    ),
+    (transformer.ATTENTION, 2): OperatorContract(
+        transformer.ATTENTION,
+        2,
+        3,
+        (
+            "attr.execution_mode",
+            "attr.mask_mode",
+            "attr.head_layout",
+            "attr.query_heads",
+            "attr.kv_heads",
+            "attr.head_dim",
+            "attr.scale_mode",
+            "attr.softmax_axis",
+            "attr.softmax_accum_dtype",
+            "attr.cache_mode",
+            "attr.cache_sequence_axis",
+        ),
+    ),
+}
+
 
 def all_operator_contracts() -> Mapping[str, OperatorContract]:
     return dict(_CONTRACTS)
 
 
-def operator_contract(name: str) -> OperatorContract:
+def operator_contract(name: str, version: int | None = None) -> OperatorContract:
+    if version is not None:
+        versioned = _VERSIONED_CONTRACTS.get((name, version))
+        if versioned is not None:
+            return versioned
     try:
         return _CONTRACTS[name]
     except KeyError as exc:

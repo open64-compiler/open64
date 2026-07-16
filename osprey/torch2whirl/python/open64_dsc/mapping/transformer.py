@@ -7,4 +7,5 @@ SWIGLU = "transformer.swiglu"
 TOKEN_EMBEDDING = "transformer.token_embedding"
 
 DECODER_LAYER_REGION = "transformer.decoder_layer"
+DECODE_REGION = "transformer.decode"
 PREFILL_REGION = "transformer.prefill"

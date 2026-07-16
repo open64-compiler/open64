@@ -14,6 +14,19 @@ if TORCH_AVAILABLE:
     import torch.fx
     from torch.fx.passes.shape_prop import ShapeProp
 
+    from open64_dsc import WhirlExportOptions
+    from open64_dsc import verify_module
+    from open64_dsc import _mock_whirl
+    from open64_dsc.builder import (
+        REGION_STATE_LAYER_OWNED,
+        REGION_STATE_UNIQUE_OWNERSHIP,
+        STATE_EFFECT_MODIFY,
+        STATE_MUTABLE_BUFFER,
+        STATE_UNIQUE_OWNERSHIP,
+    )
+    from open64_dsc.interpreter import WhirlExportInterpreter
+    from models.llama2_model import create_tiny_llama2
+    from models.llama2_model import open64_sample_inputs as prefill_sample_inputs
     from models.llama2_decode_model import OPEN64_SAMPLE_INPUT_PROTOCOL
     from models.llama2_decode_model import TinyLlama2DecodeConfig
     from models.llama2_decode_model import create_tiny_llama2_decode
@@ -214,6 +227,176 @@ class TinyLlama2DecodeFxDiscoveryOptionalTest(unittest.TestCase):
 
         self.assertGreater(len(node_ordinals), 20)
         self.assertEqual(node_ordinals, covered_ordinals)
+
+
+@unittest.skipUnless(TORCH_AVAILABLE, "torch is not installed")
+class TinyLlama2DecodeWhirlEmissionOptionalTest(unittest.TestCase):
+    def _export_decode(self, config: TinyLlama2DecodeConfig | None = None):
+        config = config or TinyLlama2DecodeConfig()
+        model = create_tiny_llama2_decode(config)
+        interpreter = WhirlExportInterpreter(WhirlExportOptions())
+        return interpreter.export(model, sample_decode_inputs(config))
+
+    def test_decode_emits_v2_rope_and_attention_contracts(self) -> None:
+        module = self._export_decode()
+        verify_module(module)
+
+        rope = [
+            operator for operator in module.graph_operators
+            if operator.name == "transformer.rotary_embedding" and
+            operator.metadata.get("operator_version") == "2"
+        ]
+        attention = [
+            operator for operator in module.graph_operators
+            if operator.name == "transformer.attention" and
+            operator.metadata.get("operator_version") == "2"
+        ]
+
+        self.assertEqual(len(rope), 4)
+        self.assertEqual(len(attention), 2)
+        for operator in rope:
+            self.assertEqual(len(operator.kids), 4)
+            self.assertEqual(operator.kids[3], "input1")
+            self.assertEqual(
+                operator.attrs["attr.position_mode"],
+                "explicit_operand",
+            )
+            self.assertNotIn("attr.position_offset", operator.attrs)
+        for layer_index, operator in enumerate(attention):
+            self.assertEqual(len(operator.kids), 3)
+            self.assertEqual(operator.kids[0], "attention_q_rope")
+            self.assertEqual(operator.kids[1], f"input{2 + layer_index * 2}")
+            self.assertEqual(operator.kids[2], f"input{3 + layer_index * 2}")
+            self.assertEqual(
+                operator.attrs["attr.execution_mode"],
+                "single_token_decode",
+            )
+            self.assertEqual(
+                operator.attrs["attr.mask_mode"],
+                "implicit_prefix_causal",
+            )
+            self.assertEqual(
+                operator.attrs["attr.cache_mode"],
+                "functional_append",
+            )
+            self.assertEqual(operator.attrs["attr.cache_sequence_axis"], "2")
+
+    def test_decode_region_declares_two_unique_layer_states(self) -> None:
+        module = self._export_decode()
+        program_unit = module.entry_function.handle
+        regions = [
+            record for record in _mock_whirl._objects.values()
+            if record.get("kind") == "region" and
+            record.get("program_unit") == program_unit and
+            record.get("contract_name") == "transformer.decoder_layer" and
+            record.get("contract_version") == 2
+        ]
+
+        self.assertEqual(len(regions), 2)
+        for layer_index, region in enumerate(regions):
+            states = list(region.get("states", ()))
+            self.assertEqual(len(states), 2)
+            self.assertEqual(states[0][2], 0)
+            self.assertEqual(states[1][2], 1)
+            self.assertEqual(states[0][1], STATE_EFFECT_MODIFY)
+            self.assertEqual(states[1][1], STATE_EFFECT_MODIFY)
+            self.assertEqual(
+                states[0][3],
+                REGION_STATE_UNIQUE_OWNERSHIP | REGION_STATE_LAYER_OWNED,
+            )
+            self.assertEqual(
+                states[1][3],
+                REGION_STATE_UNIQUE_OWNERSHIP | REGION_STATE_LAYER_OWNED,
+            )
+            state_records = [
+                _mock_whirl._objects[states[0][0]],
+                _mock_whirl._objects[states[1][0]],
+            ]
+            self.assertEqual(
+                state_records[0]["name"], f"layer{layer_index}.key_cache"
+            )
+            self.assertEqual(
+                state_records[1]["name"], f"layer{layer_index}.value_cache"
+            )
+            for state_record in state_records:
+                self.assertEqual(
+                    state_record["state_kind"], STATE_MUTABLE_BUFFER
+                )
+                self.assertEqual(state_record["flags"], STATE_UNIQUE_OWNERSHIP)
+
+            modified_values = [
+                _mock_whirl._objects[value]
+                for value in region.get("values", ())
+                if _mock_whirl._objects[value].get("state_effects")
+            ]
+            self.assertEqual(len(modified_values), 1)
+            self.assertEqual(
+                modified_values[0]["opcode_name"],
+                "transformer.attention",
+            )
+            self.assertEqual(modified_values[0]["version"], 2)
+            self.assertEqual(
+                modified_values[0]["state_effects"],
+                [
+                    (states[0][0], STATE_EFFECT_MODIFY),
+                    (states[1][0], STATE_EFFECT_MODIFY),
+                ],
+            )
+
+    def test_decode_rejects_unsupported_profiles(self) -> None:
+        with self.assertRaisesRegex(NotImplementedError, "grouped-query"):
+            self._export_decode(TinyLlama2DecodeConfig(num_kv_heads=2))
+        with self.assertRaisesRegex(NotImplementedError, "one-token decode"):
+            self._export_decode(TinyLlama2DecodeConfig(decode_sequence_length=2))
+        with self.assertRaisesRegex(NotImplementedError, "non-empty prefix"):
+            self._export_decode(TinyLlama2DecodeConfig(cache_length=0))
+        with self.assertRaisesRegex(NotImplementedError, "RoPE capacity"):
+            self._export_decode(
+                TinyLlama2DecodeConfig(cache_length=8, max_sequence_length=8)
+            )
+
+    def test_decode_rejects_bad_position_and_cache_shapes(self) -> None:
+        config = TinyLlama2DecodeConfig()
+        model = create_tiny_llama2_decode(config)
+        inputs = list(sample_decode_inputs(config))
+        inputs[1] = torch.tensor([config.cache_length, config.cache_length + 1])
+        interpreter = WhirlExportInterpreter(WhirlExportOptions())
+        with self.assertRaisesRegex(ValueError, "ordinal 1"):
+            interpreter.export(model, tuple(inputs))
+
+        inputs = list(sample_decode_inputs(config))
+        inputs[2] = torch.zeros((1, 4, 3, 7), dtype=torch.float32)
+        interpreter = WhirlExportInterpreter(WhirlExportOptions())
+        with self.assertRaisesRegex(ValueError, "ordinal 2"):
+            interpreter.export(model, tuple(inputs))
+
+    def test_prefill_emission_remains_version_one(self) -> None:
+        model = create_tiny_llama2()
+        interpreter = WhirlExportInterpreter(WhirlExportOptions())
+        module = interpreter.export(model, prefill_sample_inputs())
+        verify_module(module)
+
+        self.assertEqual(module.graph_source, "torch.fx+llama2_semantic")
+        for operator in module.graph_operators:
+            if operator.name in {
+                "transformer.rotary_embedding",
+                "transformer.attention",
+            }:
+                self.assertNotEqual(
+                    operator.metadata.get("operator_version"),
+                    "2",
+                )
+        attention = [
+            operator for operator in module.graph_operators
+            if operator.name == "transformer.attention"
+        ]
+        self.assertTrue(attention)
+        self.assertTrue(
+            all(
+                operator.attrs["attr.cache_mode"] == "none"
+                for operator in attention
+            )
+        )
 
 
 if __name__ == "__main__":

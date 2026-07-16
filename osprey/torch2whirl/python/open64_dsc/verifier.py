@@ -8,8 +8,8 @@ from typing import Dict, Mapping, Optional, Sequence, Tuple
 from .mapping import cnn, common, transformer
 from .mapping.contract import (
     all_operator_contracts,
+    operator_contract,
     operator_arity,
-    required_attrs,
 )
 from .module import (
     WhirlModule,
@@ -420,16 +420,33 @@ def _require_attr(operator: WhirlOperatorRecord, name: str) -> None:
 
 
 def _require_contract_attrs(operator: WhirlOperatorRecord) -> None:
-    for attr_name in required_attrs(operator.name):
+    for attr_name in operator_contract(
+        operator.name, _operator_version(operator)
+    ).required_attrs:
         _require_attr(operator, attr_name)
 
 
 def _operator_arity(operator: WhirlOperatorRecord) -> int:
+    version = _operator_version(operator)
+    if version is not None:
+        return operator_contract(operator.name, version).arity
     if operator.name == common.LINEAR:
         if operator.attrs.get("attr.has_bias") == "false":
             return 3 if len(operator.kids) == 3 else 2
         return 3
     return operator_arity(operator.name)
+
+
+def _operator_version(operator: WhirlOperatorRecord) -> Optional[int]:
+    text = operator.metadata.get("operator_version")
+    if text is None:
+        return None
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise WhirlVerificationError(
+            f"{operator.name} has invalid operator_version metadata: {text}"
+        ) from exc
 
 
 def _verify_matmul_contract(
@@ -548,6 +565,7 @@ def _verify_rotary_embedding_contract(
     operator: WhirlOperatorRecord,
     operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
 ) -> None:
+    version = _operator_version(operator) or 1
     value = _require_typed_operand(operator, operand_types, 0)
     cos = _require_typed_operand(operator, operand_types, 1)
     sin = _require_typed_operand(operator, operand_types, 2)
@@ -555,12 +573,37 @@ def _verify_rotary_embedding_contract(
     _require_rank(operator, value, 4)
     _require_rank(operator, cos, 4)
     _require_rank(operator, sin, 4)
+    if version == 1:
+        if operator.attrs.get("attr.position_mode") != "zero_based_static":
+            raise WhirlVerificationError(
+                "transformer.rotary_embedding.v1 requires "
+                "attr.position_mode=zero_based_static"
+            )
+        _require_attr(operator, "attr.position_offset")
+        return
+    if version == 2:
+        position = _require_typed_operand(operator, operand_types, 3)
+        if operator.attrs.get("attr.position_mode") != "explicit_operand":
+            raise WhirlVerificationError(
+                "transformer.rotary_embedding.v2 requires "
+                "attr.position_mode=explicit_operand"
+            )
+        if position.dtype != "int64":
+            raise WhirlVerificationError(
+                "transformer.rotary_embedding.v2 position operand must be int64"
+            )
+        _require_rank(operator, position, 1)
+        return
+    raise WhirlVerificationError(
+        f"unsupported transformer.rotary_embedding version: {version}"
+    )
 
 
 def _verify_attention_contract(
     operator: WhirlOperatorRecord,
     operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
 ) -> None:
+    version = _operator_version(operator) or 1
     query = _require_typed_operand(operator, operand_types, 0)
     key = _require_typed_operand(operator, operand_types, 1)
     value = _require_typed_operand(operator, operand_types, 2)
@@ -571,6 +614,42 @@ def _verify_attention_contract(
     _positive_int_attr(operator, "attr.query_heads")
     _positive_int_attr(operator, "attr.kv_heads")
     _positive_int_attr(operator, "attr.head_dim")
+    if version == 1:
+        if operator.attrs.get("attr.execution_mode") != "full_sequence":
+            raise WhirlVerificationError(
+                "transformer.attention.v1 requires "
+                "attr.execution_mode=full_sequence"
+            )
+        if operator.attrs.get("attr.cache_mode") != "none":
+            raise WhirlVerificationError(
+                "transformer.attention.v1 requires attr.cache_mode=none"
+            )
+        return
+    if version == 2:
+        if operator.attrs.get("attr.execution_mode") != "single_token_decode":
+            raise WhirlVerificationError(
+                "transformer.attention.v2 requires "
+                "attr.execution_mode=single_token_decode"
+            )
+        if operator.attrs.get("attr.mask_mode") != "implicit_prefix_causal":
+            raise WhirlVerificationError(
+                "transformer.attention.v2 requires "
+                "attr.mask_mode=implicit_prefix_causal"
+            )
+        if operator.attrs.get("attr.cache_mode") != "functional_append":
+            raise WhirlVerificationError(
+                "transformer.attention.v2 requires "
+                "attr.cache_mode=functional_append"
+            )
+        if operator.attrs.get("attr.cache_sequence_axis") != "2":
+            raise WhirlVerificationError(
+                "transformer.attention.v2 requires "
+                "attr.cache_sequence_axis=2"
+            )
+        return
+    raise WhirlVerificationError(
+        f"unsupported transformer.attention version: {version}"
+    )
 
 
 def _verify_swiglu_contract(

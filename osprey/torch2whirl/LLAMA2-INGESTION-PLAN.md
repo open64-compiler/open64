@@ -533,14 +533,49 @@ emission, and process-boundary path remain unchanged.
 
 - [x] Complete frontend observable discovery for cache position, RoPE
   position, cached attention shape, and functional cache append/update.
-- [ ] Start native emission only after common abstract-state effects, region
+- [x] Start native emission only after common abstract-state effects, region
   interfaces, and transformer cache contracts are approved.
-- [ ] Represent cache storage as declared state with read/modify edges, not
+- [x] Represent cache storage as declared state with read/modify edges, not
   tensor metadata.
 - [ ] Add grouped-query attention and other cache storage policies only through
   incremental reviewed profiles.
-- [x] Keep prefill-only source and golden artifacts behaviorally unchanged in
-  the discovery batch.
+- [x] Keep prefill-only source, golden artifacts, v1 RoPE, v1 attention,
+  decoder-layer-v1, and prefill artifacts behaviorally unchanged.
+
+Item #29 stage 4 frontend status: complete on top of
+`codex/llama2-decode-infrastructure` commit `82925117`.  The torch2whirl
+emitter now recognizes the deterministic single-token decode fixture, emits an
+outer `transformer.decode.v1` region, emits two
+`transformer.decoder_layer.v2` child regions, and keeps cache mutation in
+opaque abstract state:
+
+1. Source inputs are ordered `input_ids`, `cache_position`,
+   `layer0_key_cache`, `layer0_value_cache`, `layer1_key_cache`,
+   `layer1_value_cache`.
+2. Each decoder layer declares `layer<N>.key_cache` and
+   `layer<N>.value_cache` as distinct `STATE_MUTABLE_BUFFER` state objects with
+   `STATE_UNIQUE_OWNERSHIP`.
+3. Decoder-layer-v2 state interfaces declare key cache ordinal 0 and value
+   cache ordinal 1 with `STATE_EFFECT_MODIFY` and
+   `REGION_STATE_UNIQUE_OWNERSHIP | REGION_STATE_LAYER_OWNED`.
+4. `transformer.rotary_embedding.v2` uses four operands: query/key tensor,
+   cosine table, sine table, and explicit `cache_position`.
+5. `transformer.attention.v2` uses three operands: positioned query, key cache,
+   and value cache.  It carries
+   `attr.execution_mode=single_token_decode`,
+   `attr.mask_mode=implicit_prefix_causal`,
+   `attr.cache_mode=functional_append`, and
+   `attr.cache_sequence_axis=2`.
+6. The two MODIFY effects for each layer attach to that layer's cached
+   attention value and remain inside the owning decoder-layer-v2 region.
+
+Retained decode evidence:
+
+```text
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode-frontend/llama2_decode.B
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode-frontend/llama2_decode.safetensors
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode-frontend/llama2_decode.T
+```
 
 Exit gate: stateful decode is an additive, versioned extension to the certified
 prefill profile.
