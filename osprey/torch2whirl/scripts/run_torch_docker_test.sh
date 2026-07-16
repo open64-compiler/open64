@@ -75,8 +75,14 @@ if [ "$run_ir_tools" = 1 ]; then
         -w /build/osprey/targdir/torch2whirl \
         "$torch_image" \
         make OPEN64_DSL_TEST_ARTIFACT_DIR=/artifacts \
-            python_native_ir_tools_smoke driver_native_ir_tools_smoke \
+            python_native_ir_tools_smoke resnet_native_ir_tools_smoke \
+            llama2_prefill_native_ir_tools_smoke \
             llama2_decode_native_ir_tools_smoke
 fi
 
+find "$artifact_dir" -type f \
+    ! -name MANIFEST.txt ! -name .open64-artifact-bind \
+    | sed "s|^$artifact_dir/||" \
+    | LC_ALL=C sort > "$artifact_dir/MANIFEST.txt"
 echo "retained test artifacts: $artifact_dir"
+echo "artifact manifest: $artifact_dir/MANIFEST.txt"

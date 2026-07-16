@@ -165,12 +165,16 @@ script defaults `OPEN64_TORCH2WHIRL_DOCKER_BUILDKIT=0` so local-only Open64
 base images are not resolved through a remote registry.
 The script mounts the host directory
 `$OPEN64_TORCH2WHIRL_ARTIFACT_DIR` at `/artifacts`, cleans it at startup, runs
-both native `ir_b2a -st -src` smoke lanes, and leaves the resulting artifacts after
-Docker exits. It verifies the bind mount before starting validation and
+the native `ir_b2a -st -src` model certification lanes, and leaves source,
+`.B`, `.T`, side payloads, and diagnostic logs after Docker exits. It verifies
+the bind mount before starting validation and
 defaults to the persistent host directory
 `<open64-source-root>/artifacts/torch2whirl`. For example, this checkout uses
 `/Users/shinmingliu/open64/artifacts/torch2whirl`. Set
 `OPEN64_TORCH2WHIRL_ARTIFACT_DIR` to choose another persistent host directory.
+The completed run writes `MANIFEST.txt` at the artifact root. Model evidence is
+grouped under `resnet`, `llama2-prefill`, and `llama2-decode`; native common
+operator probes are grouped under `python-native`.
 Set
 `OPEN64_TORCH2WHIRL_RUN_IR_TOOLS=0` only when running the shorter PyTorch lane.
 

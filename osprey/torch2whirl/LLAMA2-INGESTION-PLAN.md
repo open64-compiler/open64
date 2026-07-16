@@ -299,9 +299,10 @@ Second frontend batch status, L2-L7:
 Retained standalone evidence from this batch:
 
 ```text
-<open64-source-root>/artifacts/torch2whirl/llama2-frontend/llama2.B
-<open64-source-root>/artifacts/torch2whirl/llama2-frontend/llama2.safetensors
-<open64-source-root>/artifacts/torch2whirl/llama2-frontend/llama2.T
+<open64-source-root>/artifacts/torch2whirl/llama2-prefill/llama2_model.py
+<open64-source-root>/artifacts/torch2whirl/llama2-prefill/llama2.B
+<open64-source-root>/artifacts/torch2whirl/llama2-prefill/llama2.safetensors
+<open64-source-root>/artifacts/torch2whirl/llama2-prefill/llama2.T
 ```
 
 ### Required Status Updates

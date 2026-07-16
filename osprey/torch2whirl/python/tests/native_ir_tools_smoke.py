@@ -314,12 +314,15 @@ def _find_ir_b2a() -> Optional[Path]:
 
 def _run_smoke(ir_b2a: Path, work_dir: Path) -> int:
     work_dir.mkdir(parents=True, exist_ok=True)
+    retained_source = work_dir / "native_ir_tools_smoke.py"
     artifact = work_dir / "python_native_model.B"
     text_dump = work_dir / "python_native_model.T"
     side_file = work_dir / "python_native_model.safetensors"
-    for path in (artifact, text_dump, side_file):
+    for path in (retained_source, artifact, text_dump, side_file):
         if path.exists():
             path.unlink()
+
+    shutil.copy2(Path(__file__), retained_source)
 
     module = export_to_whirl(
         DummyModel(),

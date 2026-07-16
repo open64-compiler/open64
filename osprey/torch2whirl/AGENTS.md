@@ -42,6 +42,20 @@ logical opcode allocation, WN representation, mapped-image, or lowering
 decisions authoritative.  Keep census/mock tests as drift detectors after
 native emission becomes available.
 
+## Reviewable Artifacts
+
+- Artifact-producing integration and certification tests must honor
+  `OPEN64_DSL_TEST_ARTIFACT_DIR` and retain their outputs when it is set.
+- Keep each model family in a distinct directory. Preserve the source fixture,
+  `.B`, `ir_b2a -st -src` `.T`, external payloads, driver diagnostics, and
+  lowered files produced by that lane.
+- The Docker validation script defaults to
+  `<open64-source-root>/artifacts/torch2whirl`, verifies the host bind mount,
+  cleans stale evidence before a run, and writes `MANIFEST.txt` after the run.
+- Do not use a container-only path or a temporary directory for final review
+  evidence. Temporary directories remain appropriate for isolated unit tests
+  that do not claim process-boundary artifact certification.
+
 ## Verification Matrix
 
 Run the smallest relevant set first, then broaden when the change affects a
