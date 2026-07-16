@@ -3748,6 +3748,56 @@ Print_tensor_descriptor_slot (FILE *f, const char *name, STR_IDX str)
     fprintf (f, "        %s = %s\n", name, Tensor_descriptor_str (str));
 }
 
+static const char *
+Tensor_side_file_for_type (TY_IDX ty, BOOL *multiple)
+{
+    const char *side_file = NULL;
+    *multiple = FALSE;
+    for (UINT32 i = 0; i < St_tensor_metadata.Size(); ++i) {
+        const ST_TENSOR_METADATA_STORE &metadata = St_tensor_metadata[i];
+        TY_IDX metadata_ty = ST_type(St_Table[metadata.st]);
+        BOOL same_type = metadata_ty == ty;
+        if (!same_type && TY_is_tensor_extension(metadata_ty)) {
+            same_type = TY_tensor_element_ty(metadata_ty) ==
+                            TY_tensor_element_ty(ty) &&
+                        TY_tensor_rank(metadata_ty) == TY_tensor_rank(ty) &&
+                        TY_tensor_attributes_are_equivalent(metadata_ty, ty);
+        }
+        if (!same_type)
+            continue;
+        const char *candidate = ST_tensor_metadata
+                                    (metadata.st, "storage_file");
+        if (candidate == NULL || candidate[0] == '\0')
+            continue;
+        if (side_file == NULL)
+            side_file = candidate;
+        else if (strcmp(side_file, candidate) != 0) {
+            *multiple = TRUE;
+            return NULL;
+        }
+    }
+    return side_file;
+}
+
+static void
+Print_tensor_placement_slot
+        (FILE *f,
+         const TENSOR_DESCRIPTOR_RECORD &record)
+{
+    const char *placement = Tensor_descriptor_str(record.placement);
+    fprintf (f, "        placement = %s", placement);
+    if (strcmp(placement, "side_file") == 0) {
+        BOOL multiple;
+        const char *side_file = Tensor_side_file_for_type
+                                    (record.ty, &multiple);
+        if (side_file != NULL)
+            fprintf (f, " (%s)", side_file);
+        else if (multiple)
+            fprintf (f, " (<multiple files>)");
+    }
+    fprintf (f, "\n");
+}
+
 static void
 Print_tensor_descriptor_record (FILE *f, const TENSOR_DESCRIPTOR_RECORD &record)
 {
@@ -3769,7 +3819,7 @@ Print_tensor_descriptor_record (FILE *f, const TENSOR_DESCRIPTOR_RECORD &record)
     fprintf (f, "      TensorRepresentationDescriptor:\n");
     Print_tensor_descriptor_slot (f, "layout", record.layout);
     Print_tensor_descriptor_slot (f, "sharding", record.sharding);
-    Print_tensor_descriptor_slot (f, "placement", record.placement);
+    Print_tensor_placement_slot (f, record);
     Print_tensor_descriptor_slot (f, "memory", record.memory);
     Print_tensor_descriptor_slot (f, "quantization", record.quantization);
     Print_tensor_descriptor_slot (f, "runtime_state", record.runtime_state);
