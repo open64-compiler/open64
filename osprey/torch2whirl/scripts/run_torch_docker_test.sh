@@ -64,7 +64,8 @@ if [ "$run_ir_tools" = 1 ]; then
         -w /build/osprey/targdir/torch2whirl \
         "$torch_image" \
         make OPEN64_DSL_TEST_ARTIFACT_DIR=/artifacts \
-            python_native_ir_tools_smoke driver_native_ir_tools_smoke
+            python_native_ir_tools_smoke driver_native_ir_tools_smoke \
+            llama2_decode_native_ir_tools_smoke
 fi
 
 echo "retained test artifacts: $artifact_dir"

@@ -537,6 +537,8 @@ emission, and process-boundary path remain unchanged.
   interfaces, and transformer cache contracts are approved.
 - [x] Represent cache storage as declared state with read/modify edges, not
   tensor metadata.
+- [x] Certify the complete deterministic `llama2_decode_model.py` artifact
+  across a process boundary with a separate `ir_b2a -st -src` reopen.
 - [ ] Add grouped-query attention and other cache storage policies only through
   incremental reviewed profiles.
 - [x] Keep prefill-only source, golden artifacts, v1 RoPE, v1 attention,
@@ -569,12 +571,41 @@ opaque abstract state:
 6. The two MODIFY effects for each layer attach to that layer's cached
    attention value and remain inside the owning decoder-layer-v2 region.
 
-Retained decode evidence:
+Item #29 stage 5 frontend status: complete for native artifact certification.
+The `llama2_decode_native_ir_tools_smoke` target now runs the standalone
+`torch2whirl` executable as a separate process, emits `llama2_decode.B` and
+`llama2_decode.safetensors`, exits Python, and reopens the `.B` with a separate
+`ir_b2a -st -src llama2_decode.B llama2_decode.T` process.  The machine checks
+require:
+
+1. One `transformer.decode.v1` outer region and exactly two
+   `transformer.decoder_layer.v2` child regions.
+2. Four `transformer.rotary_embedding.v2` values with explicit
+   `cache_position` as kid3 and `attr.position_mode=explicit_operand`.
+3. Two `transformer.attention.v2` values with
+   `attr.cache_mode=functional_append` and `attr.cache_sequence_axis=2`.
+4. Four distinct mutable state objects in order:
+   `layer0.key_cache`, `layer0.value_cache`, `layer1.key_cache`,
+   `layer1.value_cache`.
+5. Four ordered MODIFY effects, two for each cached-attention value.
+6. Four decoder-layer state interface rows with `roles=0x4 flags=0x1b`,
+   proving MODIFY, unique ownership, and layer-owned state flags.
+7. Source path and line evidence for `llama2_decode_model.py`.
+8. No exposed private physical `OPR_DSL ` escape text, `MDSL ` spelling, or
+   `OPC_MDSL` encoding text.
+
+The smoke also runs an unsupported grouped-query decode fixture, verifies a
+stable diagnostic, preserves the failure log, and checks that no partial
+`llama2_decode_bad_gqa.B` artifact remains.
+
+Retained decode evidence from the Docker lane:
 
 ```text
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode-frontend/llama2_decode.B
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode-frontend/llama2_decode.safetensors
-/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode-frontend/llama2_decode.T
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode.B
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode.safetensors
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode.T
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode_driver.log
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-decode/llama2_decode_bad_gqa.log
 ```
 
 Exit gate: stateful decode is an additive, versioned extension to the certified
