@@ -660,6 +660,7 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
         "format=mock",
         f"model_name={module_manifest.get('model_name', '')}",
         f"entry={module_manifest.get('entry', '')}",
+        f"pu_mode={module_manifest.get('pu_mode', '')}",
         f"entry_function={entry_function.get('name', '')}",
         f"graph_source={module_manifest.get('graph_source', '')}",
         f"input_count={module_manifest.get('input_count', 0)}",

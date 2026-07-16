@@ -74,6 +74,11 @@ T2W_DRIVER::Parse_Options (int argc, char **argv)
             return options;
         }
 
+        if (T2W_Option_Is (arg, "--single-pu")) {
+            options.single_pu = true;
+            continue;
+        }
+
         if (T2W_Option_Is (arg, "-o") || T2W_Option_Is (arg, "--output")) {
             if (!Parse_Value_Option (argc, argv, &i, argv[i],
                                      &options.output_path))
@@ -162,6 +167,8 @@ T2W_DRIVER::Run_Python_Cli (const OPTIONS &options)
     args.push_back (options.model_factory);
     args.push_back ("--backend");
     args.push_back (options.backend);
+    if (options.single_pu)
+        args.push_back ("--single-pu");
     for (const std::string &sample_input : options.sample_inputs) {
         args.push_back ("--sample-input");
         args.push_back (sample_input);
@@ -254,6 +261,7 @@ T2W_DRIVER::Print_Usage (std::ostream &stream) const
 {
     stream << "usage: torch2whirl [--help] [--version] "
            << "[--entry <name>] [--model-factory <name>] "
+           << "[--single-pu] "
            << "[--backend mock|native] --sample-input shape:<dims> "
            << "-o|--output <output.whirl> <input.py>\n";
 }

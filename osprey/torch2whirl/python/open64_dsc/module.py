@@ -133,6 +133,7 @@ class WhirlModule:
         return {
             "backend": self.options.backend,
             "entry": self.options.entry,
+            "pu_mode": self.options.pu_mode,
             "model_name": self.model_name,
             "input_count": self.input_count,
             "entry_function": self.entry_function.to_manifest(),

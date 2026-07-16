@@ -13,12 +13,15 @@ class WhirlExportOptions:
     model_name: Optional[str] = None
     external_data_file: Optional[str] = None
     verify: bool = True
+    pu_mode: str = "single"
 
     def __post_init__(self) -> None:
         if not self.entry:
             raise ValueError("entry must not be empty")
         if self.backend not in {"mock", "native"}:
             raise ValueError("backend must be 'mock' or 'native'")
+        if self.pu_mode != "single":
+            raise ValueError("pu_mode must be 'single' until class-PU emission exists")
         if self.external_data_file is not None:
             if not self.external_data_file:
                 raise ValueError("external_data_file must not be empty")

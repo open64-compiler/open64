@@ -138,6 +138,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 format=mock
                 model_name=AddModule
                 entry=forward
+                pu_mode=single
                 entry_function=AddModule
                 graph_source=torch.fx
                 input_count=2
@@ -203,6 +204,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 format=mock
                 model_name=MatmulModule
                 entry=forward
+                pu_mode=single
                 entry_function=MatmulModule
                 graph_source=torch.fx
                 input_count=2

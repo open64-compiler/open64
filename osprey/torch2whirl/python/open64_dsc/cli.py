@@ -145,6 +145,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="open64_dsc backend to use",
     )
     parser.add_argument(
+        "--single-pu",
+        dest="pu_mode",
+        action="store_const",
+        const="single",
+        default="single",
+        help=(
+            "select legacy single-PU emission; currently the default and "
+            "retained for future performance comparisons"
+        ),
+    )
+    parser.add_argument(
         "-o",
         "--output",
         required=True,
@@ -182,6 +193,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     options = WhirlExportOptions(
         entry=args.entry,
         backend=args.backend,
+        pu_mode=args.pu_mode,
         external_data_file=_external_data_file_for_output(output_path),
     )
     try:

@@ -141,9 +141,17 @@ To exercise the same path through the C++ executable:
 ```sh
 PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
   ./torch2whirl model.py \
+  --single-pu \
   --sample-input shape:1,3,224,224 \
   -o model.B
 ```
+
+`--single-pu` explicitly selects the current flattened program-unit layout.
+Single-PU emission remains the default until class-PU construction is
+available. The option is retained so future class-PU work can change the
+default while preserving this layout for correctness and performance
+comparisons. The selected mode is recorded as `pu_mode=single` in frontend
+artifact metadata.
 
 For a reproducible Linux Docker version of that lane:
 

@@ -314,6 +314,11 @@ class Open64DscSkeletonTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             WhirlExportOptions(backend="unknown")
 
+    def test_options_validate_pu_mode(self) -> None:
+        self.assertEqual(WhirlExportOptions().pu_mode, "single")
+        with self.assertRaisesRegex(ValueError, "pu_mode"):
+            WhirlExportOptions(pu_mode="class")
+
     def test_options_default_to_verification_enabled(self) -> None:
         self.assertTrue(WhirlExportOptions().verify)
 
