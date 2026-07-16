@@ -111,6 +111,7 @@ for evidence in \
   "storage_format = safetensors" \
   "storage_file = llama2.safetensors" \
   "Tensor storage: placement = side_file (llama2.safetensors)" \
+  "location: file (null), line 11" \
   "storage_tensor_key = tok_embeddings.weight" \
   "value_kind=external_data" \
   "LOC 0 40"; do
