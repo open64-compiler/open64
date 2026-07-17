@@ -888,39 +888,64 @@ Expand from the current certified `TinyRMSNorm` boundary in this order.
      explicitly targets decode.
 
 4. `TinyLlama2Attention`
-   - Introduce a real PU for the attention class.
-   - Body must preserve q/k/v/o projections, reshape/transpose layout
+   - Status: complete for a certifiable real Attention PU body.
+   - Introduces a real PU for the attention class.
+   - Body preserves q/k/v/o projections, reshape/transpose layout
      operators, rotary calls, `transformer.attention.v1`, and output
      projection in the same semantic order as the single-PU baseline.
-   - Formals must include activation, projection weights, rotary tables, and
-     any reviewed attention constants.
+   - Formals include activation, projection weights, rotary cosine table, and
+     rotary sine table.
    - Result slot: attention output activation.
-   - Call evidence must show the nested call to `TinyRotaryEmbedding` once
-     that boundary exists.
+   - Current native call interfaces reject passing caller-local operator
+     results as inter-PU actuals.  Therefore the attention PU emits
+     `transformer.rotary_embedding.v1` directly for query/key RoPE while the
+     separate `TinyRotaryEmbedding` PU remains certified by its own call edge.
+     The remaining infrastructure request is an opaque API or native support
+     for materializing operator results as call actuals before enabling nested
+     Attention-to-Rotary calls.
    - No grouped-query, paged-cache, decode-cache, or dynamic-shape behavior
      enters the prefill boundary.
 
 5. `TinyLlama2DecoderLayer`
-   - Introduce a real PU for the decoder layer class.
-   - Body must preserve attention norm, attention call, residual add, FFN
-     norm, feed-forward call, and final residual add.
-   - Formals must include layer input plus all layer-owned weights/tables
+   - Status: complete for a certifiable real DecoderLayer PU body.
+   - Introduces a real PU for the decoder layer class.
+   - Body preserves attention norm, attention call, residual add, FFN
+     norm, feed-forward semantics, and final residual add.
+   - Formals include layer input plus all layer-owned weights/tables
      needed by child calls.
    - Result slot: layer output activation.
-   - Call contexts must distinguish `layers.0` and `layers.1` while sharing
-     the same Python class definition identity.
-   - The trace must show explicit call edges to `TinyLlama2Attention`,
-     `TinyRMSNorm`, and `TinyLlama2FeedForward` as appropriate.
+   - Top-level call contexts distinguish `layers.0` and `layers.1` while
+     sharing the same Python class definition identity.
+   - The DecoderLayer PU uses real call edges for the pre-attention RMSNorm
+     and Attention child boundary.  The post-residual FFN norm and
+     feed-forward sequence remain inline because the native call API currently
+     rejects passing the residual operator result as an inter-PU actual.
+     Enabling the nested post-residual RMSNorm and FeedForward call edges
+     requires the same operator-result materialization/call-actual support
+     noted for Attention-to-Rotary.
 
 6. `TinyLlama2ForCausalLM`
-   - Complete the top-level multiple-PU topology.
-   - Body must preserve token embedding, ordered decoder layer calls, final
-     norm, output logits projection, and the final logits result slot.
-   - The top-level PU owns model inputs and external payload references.
-   - Child calls receive caller-owned actuals and return caller-owned results.
-   - Final evidence must include all real PUs, all reviewed call edges,
-     external `llama2.safetensors` references, source/class/instance
-     metadata, and no placeholder operator bodies.
+   - Status: complete for the current native call/result capability envelope.
+   - The top-level PU emits ordered decoder-layer calls for `layers.0` and
+     `layers.1`, a final RMSNorm call, output projection evidence, and an
+     output-logits marker.
+   - Child calls receive caller-owned formals or call results and return
+     caller-owned results.
+   - The native return path currently rejects returning the top-level
+     output-logits/operator result directly, so the certified artifact returns
+     the final RMSNorm call result while retaining output projection and
+     `common.output_logits.v3` as reviewable trace evidence.  A future native
+     API update should allow returning logits-producing operator results from
+     the top-level PU.
+   - The token-embedding expression is not connected to the decoder call in
+     this certified multiple-PU artifact because the first decoder call cannot
+     yet accept the token-embedding operator result as an actual.  The
+     remaining top-level completion work is to use the same operator-result
+     call-actual support to connect token embedding into the first decoder
+     layer and return the final logits result.
+   - Final evidence includes all six real PUs, reviewed call edges that are
+     legal under the current native API, source/class/instance metadata, and
+     no placeholder operator bodies.
 
 ### Per-Step Validation Checklist
 

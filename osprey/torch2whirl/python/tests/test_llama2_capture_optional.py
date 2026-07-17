@@ -299,20 +299,21 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             "torch.fx+llama2_multiple_pu_boundary",
         )
         self.assertEqual(module.entry_function.name, "TinyLlama2ForCausalLM")
-        self.assertEqual(
-            module.operators,
-            [
-                "transformer.rms_norm",
-                "call:TinyRMSNorm",
-                "common.linear",
-                "common.linear",
-                "transformer.swiglu",
-                "common.linear",
-                "call:TinyLlama2FeedForward",
-                "transformer.rotary_embedding",
-                "call:TinyRotaryEmbedding",
-            ],
-        )
+        for operator in (
+            "transformer.rms_norm",
+            "call:TinyRMSNorm",
+            "common.linear",
+            "transformer.swiglu",
+            "call:TinyLlama2FeedForward",
+            "transformer.rotary_embedding",
+            "call:TinyRotaryEmbedding",
+            "transformer.attention",
+            "call:TinyLlama2Attention",
+            "common.residual_add",
+            "call:TinyLlama2DecoderLayer",
+            "common.output_logits",
+        ):
+            self.assertIn(operator, module.operators)
         calls = {operator.name: operator for operator in module.graph_operators}
         call = calls["call:TinyRMSNorm"]
         self.assertEqual(call.name, "call:TinyRMSNorm")

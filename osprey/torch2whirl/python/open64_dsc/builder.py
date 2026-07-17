@@ -102,6 +102,7 @@ class WhirlBuilder:
         self._backend_key = backend_name
         self._type_descriptors = _TYPE_DESCRIPTORS.setdefault(backend_name, {})
         self._value_types = _VALUE_TYPES.setdefault(backend_name, {})
+        self._program_unit_names: dict[int, str] = {}
 
     def backend_name(self) -> str:
         return self._backend.backend_name()
@@ -186,9 +187,11 @@ class WhirlBuilder:
             raise RuntimeError("failed to attach symbol metadata")
 
     def minimal_program_unit(self, name: str) -> ProgramUnitHandle:
-        return ProgramUnitHandle(
+        program_unit = ProgramUnitHandle(
             self._backend.create_minimal_program_unit(name)
         )
+        self._program_unit_names[program_unit.value] = name
+        return program_unit
 
     def select_program_unit(self, program_unit: ProgramUnitHandle) -> None:
         if not self._backend.select_program_unit(program_unit.value):
@@ -276,11 +279,23 @@ class WhirlBuilder:
         program_unit: ProgramUnitHandle,
         values: Sequence[ValueHandle],
     ) -> None:
-        if not self._backend.return_pu_values(
-            program_unit.value,
-            [value.value for value in values],
-        ):
-            raise RuntimeError("failed to return program unit values")
+        value_ids = [value.value for value in values]
+        try:
+            ok = self._backend.return_pu_values(program_unit.value, value_ids)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "failed to return program unit values "
+                f"pu={self._program_unit_names.get(program_unit.value, '')}"
+                f"<{program_unit.value}> "
+                f"values={','.join(str(value) for value in value_ids)}"
+            ) from exc
+        if not ok:
+            raise RuntimeError(
+                "failed to return program unit values "
+                f"pu={self._program_unit_names.get(program_unit.value, '')}"
+                f"<{program_unit.value}> "
+                f"values={','.join(str(value) for value in value_ids)}"
+            )
 
     def create_pu_call(
         self,
@@ -298,8 +313,8 @@ class WhirlBuilder:
         statement_begin: bool = True,
         basic_block_begin: bool = False,
     ) -> CallHandle:
-        return CallHandle(
-            self._backend.create_pu_call(
+        try:
+            call = self._backend.create_pu_call(
                 caller.value,
                 callee.value,
                 [argument.value for argument in arguments],
@@ -314,7 +329,15 @@ class WhirlBuilder:
                 statement_begin,
                 basic_block_begin,
             )
-        )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "failed to create program unit call "
+                f"callee={canonical_class_name} "
+                f"instance={instance_path} "
+                f"context={context_identity} "
+                f"ordinal={call_ordinal}"
+            ) from exc
+        return CallHandle(call)
 
     def get_pu_call_result(
         self,
