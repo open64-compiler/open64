@@ -663,6 +663,47 @@ Tests clean stale artifacts before a run, preserve the new artifacts in a host
 mounted directory after success or failure, and report their paths for human
 inspection.
 
+## Multiple-PU Callable Boundary
+
+Status: opt-in frontend certification is available for the first tiny Llama
+callable-boundary artifact.  `--single-pu` remains the default flattened
+semantic operator baseline.  `--multiple-pu` selects the alternative
+class-centric layout and currently certifies a real call boundary between
+`TinyLlama2ForCausalLM` and reachable `TinyRMSNorm`.
+
+The certified multiple-PU smoke:
+
+```sh
+torch2whirl llama2_model.py \
+  --entry forward \
+  --backend native \
+  --multiple-pu \
+  --sample-input int-shape:1,8 \
+  --output llama2_multi_pu.B
+
+ir_b2a -st -src llama2_multi_pu.B llama2_multi_pu.T
+```
+
+Machine checks require two real class-named `FUNC_ENTRY` records,
+independent local `IDNAME` symbols, source evidence, a standard
+`VCALL TinyRMSNorm`, read-only input and out result `PARM` nodes, owner-PU
+metadata, and the retained `__WHIRL_DSL_CALL__` logical call comment.  The
+Python frontend keeps all PU, value, call, formal, and result objects opaque.
+It does not pass callee-local `DSL_BUILDER_VALUE` handles across PU boundaries.
+
+Retained evidence from the Docker lane:
+
+```text
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-multi-pu/llama2_multi_pu.B
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-multi-pu/llama2_multi_pu.T
+/private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-multi-pu/llama2_multi_pu_driver.log
+```
+
+Remaining multiple-PU work is to expand from this certified call-boundary
+artifact to one real PU for each reachable Python-defined class callable whose
+body has a reviewed semantic lowering.  Repeated invocation remains context
+sensitivity, not an operator-version mechanism.
+
 ## Real Checkpoint Policy
 
 Licensed Llama 2 weights, tokenizers, and downloaded caches do not enter Git.

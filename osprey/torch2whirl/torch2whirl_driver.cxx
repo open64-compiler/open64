@@ -75,7 +75,22 @@ T2W_DRIVER::Parse_Options (int argc, char **argv)
         }
 
         if (T2W_Option_Is (arg, "--single-pu")) {
+            if (options.multiple_pu) {
+                _err << "torch2whirl: --single-pu conflicts with "
+                     << "--multiple-pu\n";
+                return std::nullopt;
+            }
             options.single_pu = true;
+            continue;
+        }
+
+        if (T2W_Option_Is (arg, "--multiple-pu")) {
+            if (options.single_pu) {
+                _err << "torch2whirl: --multiple-pu conflicts with "
+                     << "--single-pu\n";
+                return std::nullopt;
+            }
+            options.multiple_pu = true;
             continue;
         }
 
@@ -169,6 +184,8 @@ T2W_DRIVER::Run_Python_Cli (const OPTIONS &options)
     args.push_back (options.backend);
     if (options.single_pu)
         args.push_back ("--single-pu");
+    if (options.multiple_pu)
+        args.push_back ("--multiple-pu");
     for (const std::string &sample_input : options.sample_inputs) {
         args.push_back ("--sample-input");
         args.push_back (sample_input);
@@ -261,7 +278,7 @@ T2W_DRIVER::Print_Usage (std::ostream &stream) const
 {
     stream << "usage: torch2whirl [--help] [--version] "
            << "[--entry <name>] [--model-factory <name>] "
-           << "[--single-pu] "
+           << "[--single-pu|--multiple-pu] "
            << "[--backend mock|native] --sample-input shape:<dims> "
            << "-o|--output <output.whirl> <input.py>\n";
 }

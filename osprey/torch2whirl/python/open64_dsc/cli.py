@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 from pathlib import Path
 import sys
@@ -65,7 +66,8 @@ def _load_python_module(path: Path) -> ModuleType:
     if not path.is_file():
         raise FileNotFoundError(f"model file not found: {path}")
 
-    module_name = f"_torch2whirl_model_{abs(hash(path.resolve()))}"
+    digest = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()
+    module_name = f"_torch2whirl_model_{digest[:16]}"
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"failed to load model file: {path}")
@@ -144,7 +146,8 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("mock", "native"),
         help="open64_dsc backend to use",
     )
-    parser.add_argument(
+    pu_group = parser.add_mutually_exclusive_group()
+    pu_group.add_argument(
         "--single-pu",
         dest="pu_mode",
         action="store_const",
@@ -154,6 +157,13 @@ def _build_parser() -> argparse.ArgumentParser:
             "select legacy single-PU emission; currently the default and "
             "retained for future performance comparisons"
         ),
+    )
+    pu_group.add_argument(
+        "--multiple-pu",
+        dest="pu_mode",
+        action="store_const",
+        const="multiple",
+        help="select opt-in class-centric multiple-PU emission",
     )
     parser.add_argument(
         "-o",

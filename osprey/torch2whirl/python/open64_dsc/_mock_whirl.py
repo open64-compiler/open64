@@ -10,6 +10,7 @@ from typing import Dict, Mapping, Sequence
 _handle_counter = count(1)
 _objects: Dict[int, Mapping[str, object]] = {}
 _canonical_types: Dict[tuple[tuple[str, str], ...], int] = {}
+_active_program_unit = 0
 
 
 def backend_name() -> str:
@@ -282,27 +283,184 @@ def get_value_result_symbol(value: int) -> int:
 
 
 def begin_program() -> bool:
+    global _active_program_unit
     _objects.clear()
     _canonical_types.clear()
+    _active_program_unit = 0
     return True
 
 
 def abort_program() -> None:
+    global _active_program_unit
     _objects.clear()
     _canonical_types.clear()
+    _active_program_unit = 0
 
 
 def create_minimal_program_unit(name: str) -> int:
+    global _active_program_unit
     if not name:
         raise RuntimeError("failed to create minimal program unit")
 
-    return _new_handle(
+    for handle, record in _objects.items():
+        if record.get("kind") == "program_unit" and record.get("name") == name:
+            _active_program_unit = handle
+            return handle
+
+    handle = _new_handle(
         {
             "kind": "program_unit",
             "name": name,
             "body_markers": [],
         }
     )
+    _active_program_unit = handle
+    return handle
+
+
+def select_program_unit(program_unit: int) -> bool:
+    global _active_program_unit
+    if program_unit not in _objects:
+        raise RuntimeError("failed to select program unit")
+    if _objects[program_unit].get("kind") != "program_unit":
+        raise RuntimeError("failed to select program unit")
+    _active_program_unit = program_unit
+    return True
+
+
+def _source_position(
+    file_id: int,
+    line: int,
+    column: int,
+    statement_begin: bool,
+    basic_block_begin: bool,
+) -> tuple[int, int, int, bool, bool]:
+    return (file_id, line, column, statement_begin, basic_block_begin)
+
+
+def declare_pu_formal(
+    program_unit: int,
+    name: str,
+    ordinal: int,
+    tensor_type: int,
+    file_id: int,
+    line: int,
+    column: int,
+    statement_begin: bool,
+    basic_block_begin: bool,
+) -> int:
+    select_program_unit(program_unit)
+    if not name or tensor_type not in _objects:
+        raise RuntimeError("failed to declare program unit formal")
+    return _new_handle({
+        "kind": "pu_formal",
+        "program_unit": program_unit,
+        "name": name,
+        "ordinal": ordinal,
+        "tensor_type": tensor_type,
+        "source_position": _source_position(
+            file_id, line, column, statement_begin, basic_block_begin
+        ),
+    })
+
+
+def declare_pu_result(
+    program_unit: int,
+    name: str,
+    ordinal: int,
+    tensor_type: int,
+    role: int,
+    file_id: int,
+    line: int,
+    column: int,
+    statement_begin: bool,
+    basic_block_begin: bool,
+) -> int:
+    select_program_unit(program_unit)
+    if not name or tensor_type not in _objects or role not in (1, 2):
+        raise RuntimeError("failed to declare program unit result")
+    return _new_handle({
+        "kind": "pu_result",
+        "program_unit": program_unit,
+        "name": name,
+        "ordinal": ordinal,
+        "tensor_type": tensor_type,
+        "result_type": tensor_type,
+        "role": role,
+        "source_position": _source_position(
+            file_id, line, column, statement_begin, basic_block_begin
+        ),
+    })
+
+
+def return_pu_values(program_unit: int, values: Sequence[int]) -> bool:
+    select_program_unit(program_unit)
+    for value in values:
+        if value not in _objects:
+            raise RuntimeError("failed to return program unit values")
+    record = dict(_objects[program_unit])
+    record["return_values"] = list(values)
+    _objects[program_unit] = record
+    return True
+
+
+def create_pu_call(
+    caller: int,
+    callee: int,
+    arguments: Sequence[int],
+    result_names: Sequence[str],
+    canonical_class_name: str,
+    instance_path: str,
+    context_identity: str,
+    call_ordinal: int,
+    file_id: int,
+    line: int,
+    column: int,
+    statement_begin: bool,
+    basic_block_begin: bool,
+) -> int:
+    select_program_unit(caller)
+    if callee not in _objects or not result_names:
+        raise RuntimeError("failed to create program unit call")
+    for argument in arguments:
+        if argument not in _objects:
+            raise RuntimeError("failed to create program unit call")
+        if _objects[argument].get("program_unit") not in {caller, None}:
+            raise RuntimeError("failed to create program unit call")
+    result_handles = [
+        _new_handle({
+            "kind": "pu_call_result",
+            "program_unit": caller,
+            "name": result_name,
+            "result_type": _objects[arguments[0]].get("tensor_type", 0)
+            if arguments else 0,
+        })
+        for result_name in result_names
+    ]
+    return _new_handle({
+        "kind": "pu_call",
+        "caller": caller,
+        "callee": callee,
+        "arguments": list(arguments),
+        "result_names": list(result_names),
+        "results": result_handles,
+        "canonical_class_name": canonical_class_name,
+        "instance_path": instance_path,
+        "context_identity": context_identity,
+        "call_ordinal": call_ordinal,
+        "source_position": _source_position(
+            file_id, line, column, statement_begin, basic_block_begin
+        ),
+    })
+
+
+def get_pu_call_result(call: int, ordinal: int) -> int:
+    if call not in _objects or _objects[call].get("kind") != "pu_call":
+        raise RuntimeError("failed to get program unit call result")
+    results = _objects[call].get("results", ())
+    if not isinstance(results, Sequence) or ordinal >= len(results):
+        raise RuntimeError("failed to get program unit call result")
+    return int(results[ordinal])
 
 
 def register_source_file(program_unit: int, path: str) -> int:

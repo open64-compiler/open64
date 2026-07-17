@@ -285,6 +285,37 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             self.assertIn("tensor_payload.0=llama2.safetensors", artifact)
             self.assertTrue((Path(temp_dir) / "llama2.safetensors").is_file())
 
+    def test_multiple_pu_export_keeps_class_call_boundary(self) -> None:
+        config = TinyLlama2Config()
+        model = create_tiny_llama2(config)
+        module = export_to_whirl(
+            model,
+            [sample_input_ids(config)],
+            WhirlExportOptions(backend="mock", pu_mode="multiple"),
+        )
+
+        self.assertEqual(
+            module.graph_source,
+            "torch.fx+llama2_multiple_pu_boundary",
+        )
+        self.assertEqual(module.entry_function.name, "TinyLlama2ForCausalLM")
+        self.assertEqual(module.operators, ["common.add", "call:TinyRMSNorm"])
+        call = module.graph_operators[0]
+        self.assertEqual(call.name, "call:TinyRMSNorm")
+        self.assertEqual(
+            call.attrs["canonical_class_name"],
+            "models.llama2_model.TinyRMSNorm",
+        )
+        self.assertEqual(call.attrs["instance_path"], "norm")
+        self.assertEqual(
+            call.attrs["context_identity"],
+            "TinyLlama2ForCausalLM.norm",
+        )
+        values = {value.name: value.value_kind for value in module.values}
+        self.assertEqual(values["hidden_states"], "formal")
+        self.assertEqual(values["model_hidden"], "formal")
+        self.assertEqual(values["norm_call_result"], "call_result")
+
     def test_int_shape_sample_input_and_source_provider(self) -> None:
         parsed = _sample_input_from_spec("int-shape:1,8")
         self.assertEqual(parsed.dtype, torch.int64)

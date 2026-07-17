@@ -55,6 +55,10 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                     else self._manifest_shape(item)
                 )
                 for key, item in sorted(value.items())
+                if key not in {
+                    "python_class_definitions",
+                    "python_class_instances",
+                }
             }
         if isinstance(value, list):
             return [self._manifest_shape(item) for item in value]

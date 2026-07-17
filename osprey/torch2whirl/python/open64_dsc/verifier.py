@@ -303,6 +303,9 @@ def _verify_graph_operators(
 ) -> None:
     produced_types: Dict[str, Optional[WhirlTensorTypeRecord]] = {}
     for operator in graph_operators:
+        if operator.name.startswith("call:"):
+            _verify_inter_pu_call(operator, value_types)
+            continue
         if operator.name not in _KNOWN_OPERATORS:
             raise WhirlVerificationError(f"unknown operator: {operator.name}")
         expected_arity = _operator_arity(operator)
@@ -322,6 +325,31 @@ def _verify_graph_operators(
         semantic_name = operator.metadata.get("semantic_name")
         if semantic_name:
             produced_types[semantic_name] = result_type
+
+
+def _verify_inter_pu_call(
+    operator: WhirlOperatorRecord,
+    value_types: Mapping[str, Optional[WhirlTensorTypeRecord]],
+) -> None:
+    callee = operator.name[len("call:"):]
+    if not callee:
+        raise WhirlVerificationError("inter-PU call callee must not be empty")
+    if not operator.kids:
+        raise WhirlVerificationError(
+            f"{operator.name} requires at least one call argument"
+        )
+    for kid in operator.kids:
+        if kid not in value_types:
+            raise WhirlVerificationError(f"unknown call operand: {kid}")
+    for key in (
+        "canonical_class_name",
+        "instance_path",
+        "context_identity",
+    ):
+        if not operator.attrs.get(key):
+            raise WhirlVerificationError(
+                f"{operator.name} missing call attribute {key}"
+            )
 
 
 def _resolve_operand_type(

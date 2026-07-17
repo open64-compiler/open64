@@ -501,6 +501,123 @@ Open64_DSC_Create_Minimal_Program_Unit(const char *name)
     return (Open64_DSC_Handle) pu;
 }
 
+int
+Open64_DSC_Select_Program_Unit(Open64_DSC_Handle program_unit)
+{
+    Open64_DSC_Initialize_Context();
+    return DSL_Builder_Select_PU
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit) ? 1 : 0;
+}
+
+static void
+Open64_DSC_Copy_Source_Position
+        (DSL_BUILDER_SOURCE_POSITION *builder_position,
+         const Open64_DSC_Source_Position *position)
+{
+    builder_position->file_id = position->file_id;
+    builder_position->line = position->line;
+    builder_position->column = position->column;
+    builder_position->statement_begin = position->statement_begin;
+    builder_position->basic_block_begin = position->basic_block_begin;
+}
+
+Open64_DSC_Handle
+Open64_DSC_Declare_PU_Formal
+        (Open64_DSC_Handle program_unit,
+         const char *name,
+         unsigned int ordinal,
+         Open64_DSC_Handle tensor_type,
+         const Open64_DSC_Source_Position *position)
+{
+    DSL_BUILDER_SOURCE_POSITION builder_position;
+
+    if (position == NULL)
+        return 0;
+    Open64_DSC_Initialize_Context();
+    Open64_DSC_Copy_Source_Position(&builder_position, position);
+    return (Open64_DSC_Handle) DSL_Builder_Declare_PU_Formal
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit, name,
+                (UINT32) ordinal, (TY_IDX) tensor_type, &builder_position);
+}
+
+Open64_DSC_Handle
+Open64_DSC_Declare_PU_Result
+        (Open64_DSC_Handle program_unit,
+         const char *name,
+         unsigned int ordinal,
+         Open64_DSC_Handle tensor_type,
+         unsigned int role,
+         const Open64_DSC_Source_Position *position)
+{
+    DSL_BUILDER_SOURCE_POSITION builder_position;
+
+    if (position == NULL)
+        return 0;
+    Open64_DSC_Initialize_Context();
+    Open64_DSC_Copy_Source_Position(&builder_position, position);
+    return (Open64_DSC_Handle) DSL_Builder_Declare_PU_Result
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit, name,
+                (UINT32) ordinal, (TY_IDX) tensor_type,
+                (DSL_BUILDER_PU_RESULT_ROLE) role, &builder_position);
+}
+
+int
+Open64_DSC_Return_PU_Values
+        (Open64_DSC_Handle program_unit,
+         const Open64_DSC_Handle *values,
+         unsigned int value_count)
+{
+    return DSL_Builder_Return_PU_Values
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit,
+                (DSL_BUILDER_VALUE *) values,
+                (UINT32) value_count) ? 1 : 0;
+}
+
+Open64_DSC_Handle
+Open64_DSC_Create_PU_Call
+        (Open64_DSC_Handle caller,
+         Open64_DSC_Handle callee,
+         const Open64_DSC_Handle *arguments,
+         unsigned int argument_count,
+         const char *const *result_names,
+         unsigned int result_count,
+         const char *canonical_class_name,
+         const char *instance_path,
+         const char *context_identity,
+         unsigned int call_ordinal,
+         const Open64_DSC_Source_Position *position)
+{
+    DSL_BUILDER_CALLSITE_INFO callsite;
+
+    if (position == NULL)
+        return 0;
+    Open64_DSC_Initialize_Context();
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = canonical_class_name;
+    callsite.instance_path = instance_path;
+    callsite.context_identity = context_identity;
+    callsite.call_ordinal = (UINT32) call_ordinal;
+    Open64_DSC_Copy_Source_Position(&callsite.source_position, position);
+    return (Open64_DSC_Handle) DSL_Builder_Create_PU_Call
+               ((DSL_BUILDER_PROGRAM_UNIT) caller,
+                (DSL_BUILDER_PROGRAM_UNIT) callee,
+                (DSL_BUILDER_VALUE *) arguments,
+                (UINT32) argument_count, result_names,
+                (UINT32) result_count, &callsite);
+}
+
+Open64_DSC_Handle
+Open64_DSC_Get_PU_Call_Result(Open64_DSC_Handle call, unsigned int ordinal)
+{
+    DSL_BUILDER_VALUE value = NULL;
+
+    Open64_DSC_Initialize_Context();
+    if (!DSL_Builder_Get_PU_Call_Result
+             ((DSL_BUILDER_CALL) call, (UINT32) ordinal, &value))
+        return 0;
+    return (Open64_DSC_Handle) value;
+}
+
 unsigned int
 Open64_DSC_Register_Source_File(Open64_DSC_Handle program_unit,
                                 const char *path)
@@ -520,11 +637,7 @@ Open64_DSC_Set_Value_Source_Position
     if (position == NULL)
         return 0;
     Open64_DSC_Initialize_Context();
-    builder_position.file_id = position->file_id;
-    builder_position.line = position->line;
-    builder_position.column = position->column;
-    builder_position.statement_begin = position->statement_begin;
-    builder_position.basic_block_begin = position->basic_block_begin;
+    Open64_DSC_Copy_Source_Position(&builder_position, position);
     return DSL_Builder_Set_Value_Source_Position
                ((DSL_BUILDER_VALUE) value, &builder_position) ? 1 : 0;
 }
@@ -624,11 +737,7 @@ Open64_DSC_Set_Region_Source_Position
     DSL_BUILDER_SOURCE_POSITION builder_position;
     if (position == NULL)
         return 0;
-    builder_position.file_id = position->file_id;
-    builder_position.line = position->line;
-    builder_position.column = position->column;
-    builder_position.statement_begin = position->statement_begin;
-    builder_position.basic_block_begin = position->basic_block_begin;
+    Open64_DSC_Copy_Source_Position(&builder_position, position);
     return DSL_Builder_Set_Region_Source_Position
                ((DSL_BUILDER_REGION) region, &builder_position) ? 1 : 0;
 }

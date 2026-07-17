@@ -20,8 +20,8 @@ class WhirlExportOptions:
             raise ValueError("entry must not be empty")
         if self.backend not in {"mock", "native"}:
             raise ValueError("backend must be 'mock' or 'native'")
-        if self.pu_mode != "single":
-            raise ValueError("pu_mode must be 'single' until class-PU emission exists")
+        if self.pu_mode not in {"single", "multiple"}:
+            raise ValueError("pu_mode must be 'single' or 'multiple'")
         if self.external_data_file is not None:
             if not self.external_data_file:
                 raise ValueError("external_data_file must not be empty")

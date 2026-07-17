@@ -33,6 +33,7 @@ private:
         std::string model_factory = "create_model";
         std::vector<std::string> sample_inputs;
         bool single_pu = false;
+        bool multiple_pu = false;
         bool show_help = false;
         bool show_version = false;
     };
