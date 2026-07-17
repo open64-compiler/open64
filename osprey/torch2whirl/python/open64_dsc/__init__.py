@@ -3,6 +3,7 @@
 from .builder import WhirlBuilder, load_builder
 from .export import export_to_whirl, save_as_whirl
 from .module import WhirlModule
+from . import optimization
 from . import operators
 from .options import WhirlExportOptions
 from .python_classes import (
@@ -28,6 +29,7 @@ __all__ = [
     "collect_python_model_classes",
     "export_to_whirl",
     "load_builder",
+    "optimization",
     "operators",
     "save_as_whirl",
     "verify_module",

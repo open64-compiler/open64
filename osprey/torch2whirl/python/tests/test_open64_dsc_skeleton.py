@@ -33,6 +33,7 @@ from open64_dsc.module import (
 from open64_dsc import WhirlExportOptions, WhirlModule
 from open64_dsc import WhirlVerificationError, export_to_whirl
 from open64_dsc import load_builder, save_as_whirl, verify_module
+from open64_dsc import optimization
 from open64_dsc import operators
 from open64_dsc.builder import (
     REGION_INPUT,
@@ -492,6 +493,58 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "transformer.rotary_embedding",
             "transformer.swiglu",
         }.issubset(visible))
+
+    def test_operator_optimization_traits_are_visible_by_import(self) -> None:
+        from open64_dsc.optimization import (
+            LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS,
+        )
+
+        self.assertIs(
+            optimization.LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS,
+            LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS,
+        )
+        self.assertEqual(
+            set(LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS),
+            set(operators.LLAMA2_MULTIPLE_PU_OPERATORS),
+        )
+
+        attention = LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS[
+            "transformer.attention"
+        ]
+        self.assertEqual(attention.version, 1)
+        self.assertEqual(attention.effect_model, "pure")
+        self.assertEqual(attention.semantic_role, "attention")
+        self.assertIn(
+            "fused_attention_lowering",
+            attention.candidate_passes,
+        )
+
+        reshape = LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS["common.reshape"]
+        transpose = LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS[
+            "common.transpose"
+        ]
+        self.assertEqual(reshape.semantic_role, "layout_view")
+        self.assertEqual(transpose.semantic_role, "layout_permutation")
+        self.assertIn(
+            "layout_propagation",
+            optimization.optimization_candidate_names(
+                LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS,
+            ),
+        )
+
+        policies = {
+            trait.frontend_policy
+            for trait in LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS.values()
+        }
+        self.assertEqual(
+            policies,
+            {optimization.FRONTEND_POLICY_CLASSIFICATION_ONLY},
+        )
+        owners = {
+            trait.native_owner
+            for trait in LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS.values()
+        }
+        self.assertEqual(owners, {optimization.NATIVE_OWNER_VHO_DSL})
 
     def test_builder_uses_published_operator_versions(self) -> None:
         builder = load_builder("mock")

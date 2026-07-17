@@ -947,6 +947,50 @@ Expand from the current certified `TinyRMSNorm` boundary in this order.
      legal under the current native API, source/class/instance metadata, and
      no placeholder operator bodies.
 
+### Frontend Optimization Classification
+
+Status: import-visible classification is available for the current
+multiple-PU Llama operator surface.
+
+The frontend now publishes `open64_dsc.optimization` traits for the imported
+`LLAMA2_MULTIPLE_PU_OPERATORS` set.  These traits are review metadata only:
+they identify pure operators, layout-only shape views, projection,
+normalization, RoPE, attention, SwiGLU, residual, and logits-boundary
+opportunities so native VHO/common work can consume a stable operator census.
+
+Current candidates recorded by importable traits:
+
+1. `common.reshape.v1` and `common.transpose.v1`
+   - Shape/layout metadata optimization candidates:
+     `reshape_transpose_folding`, `transpose_cancel`, and
+     `layout_propagation`.
+2. `common.linear.v3`
+   - Projection optimization candidates:
+     `weight_layout_canonicalization` and `projection_chain_fusion`.
+3. `transformer.rms_norm.v1`
+   - Normalization candidates:
+     `norm_scale_fusion` and `accumulation_policy_lowering`.
+4. `transformer.rotary_embedding.v1`
+   - RoPE candidates:
+     `rope_table_hoist` and `rotary_pair_fusion`.
+5. `transformer.attention.v1`
+   - Attention candidates:
+     `attention_projection_fusion`, `mask_scale_softmax_fusion`, and
+     `fused_attention_lowering`.
+6. `transformer.swiglu.v1`
+   - Feed-forward activation candidates:
+     `gate_up_projection_fusion` and `activation_multiply_fusion`.
+7. `common.residual_add.v2` and `common.output_logits.v3`
+   - Residual scheduling, gatekeeper-proven shape-check elision, and logits
+     boundary recognition candidates.
+
+Every trait is marked `classification_only` on the Python side and
+`native_vho_dsl` as the optimization owner.  Torch2whirl must not lower these
+patterns, introduce runtime calls, or bypass native WHIRL gatekeeper/VHO
+ownership.  The remaining native API requests for operator-result call actuals
+and top-level operator-result returns still gate complete cross-PU optimization
+visibility in the artifact.
+
 ### Per-Step Validation Checklist
 
 Each boundary step must run and report:
