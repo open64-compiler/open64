@@ -669,12 +669,32 @@ Status: opt-in frontend certification is available for the first tiny Llama
 callable-boundary artifact.  `--single-pu` remains the default flattened
 semantic operator baseline.  `--multiple-pu` selects the alternative
 class-centric layout and currently certifies a real call boundary between
-`TinyLlama2ForCausalLM` and reachable `TinyRMSNorm`.  The `TinyRMSNorm`
-callee body now emits the reviewed `transformer.rms_norm.v1` semantics with
-ordered `hidden_states` and `rms_norm_scale` formals; it no longer uses the
-temporary demonstration `common.add` body.
+`TinyLlama2ForCausalLM` and reachable `TinyRMSNorm`.
 
-The certified multiple-PU smoke:
+### Current Certified Boundary
+
+The first certified boundary is intentionally narrow:
+
+```text
+TinyLlama2ForCausalLM
+  formal 0: model_hidden
+  formal 1: model_norm_scale
+  call: TinyRMSNorm(model_hidden, model_norm_scale)
+  result 0: norm_call_result -> model_result
+
+TinyRMSNorm
+  formal 0: hidden_states
+  formal 1: rms_norm_scale
+  body: transformer.rms_norm.v1(hidden_states, rms_norm_scale)
+  result 0: normalized_result
+```
+
+The `TinyRMSNorm` callee body now emits the reviewed
+`transformer.rms_norm.v1` semantics with ordered `hidden_states` and
+`rms_norm_scale` formals.  It no longer uses the temporary demonstration
+`common.add` body.
+
+The certified smoke command is:
 
 ```sh
 torch2whirl llama2_model.py \
@@ -687,13 +707,28 @@ torch2whirl llama2_model.py \
 ir_b2a -st -src llama2_multi_pu.B llama2_multi_pu.T
 ```
 
-Machine checks require two real class-named `FUNC_ENTRY` records,
-independent local `IDNAME` symbols, source evidence, a
-`transformer.rms_norm.v1` callee body, a standard `VCALL TinyRMSNorm`,
-read-only input and scale `PARM` nodes, an out result `PARM`, owner-PU
-metadata, and the retained `__WHIRL_DSL_CALL__` logical call comment.  The
-Python frontend keeps all PU, value, call, formal, and result objects opaque.
-It does not pass callee-local `DSL_BUILDER_VALUE` handles across PU boundaries.
+Machine checks require:
+
+1. Exactly two real class-named `FUNC_ENTRY` records:
+   `TinyRMSNorm` and `TinyLlama2ForCausalLM`.
+2. Independent local `IDNAME` symbols, including repeated local symbol
+   indices disambiguated by `owner_pu` metadata.
+3. `transformer.rms_norm.v1` evidence in the `TinyRMSNorm` callee:
+   operands `hidden_states` and `rms_norm_scale`, attributes
+   `attr.axis=-1`, `attr.epsilon=1e-05`, and
+   `attr.accum_dtype=float32`.
+4. A standard `VCALL TinyRMSNorm` in the caller.
+5. Read-only `PARM` nodes for `model_hidden` and `model_norm_scale`.
+6. An out `PARM` node for `norm_call_result`.
+7. Source evidence for the class body and callsite in `ir_b2a -st -src`.
+8. The retained `__WHIRL_DSL_CALL__` logical call comment with callee,
+   canonical class name, instance path, context identity, and call ordinal.
+9. No frontend-visible physical escape text such as private `OPR_DSL`,
+   `MDSL`, or `OPC_MDSL` encodings.
+
+The Python frontend keeps all PU, value, call, formal, and result objects
+opaque.  It does not pass callee-local `DSL_BUILDER_VALUE` handles across PU
+boundaries.
 
 Retained evidence from the Docker lane:
 
@@ -703,16 +738,153 @@ Retained evidence from the Docker lane:
 /private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-multi-pu/llama2_multi_pu_driver.log
 ```
 
-Remaining multiple-PU work is to expand from this certified call-boundary
-artifact to one real PU for each reachable Python-defined class callable whose
-body has a reviewed semantic lowering.  Repeated invocation remains context
-sensitivity, not an operator-version mechanism.  Expand in this order, keeping
-one reviewed inter-PU boundary and one retained `.B`/`.T` artifact per step:
-`TinyLlama2FeedForward`, `TinyRotaryEmbedding`, `TinyLlama2Attention`,
-`TinyLlama2DecoderLayer`, and finally the full `TinyLlama2ForCausalLM`
-multiple-PU topology.  Each expansion step must rerun and preserve the
-single-PU prefill baseline artifact so regressions in the flattened path are
-visible immediately.
+### Import And Declaration Identity Work
+
+The next refinement is to make the multiple-PU artifact preserve enough
+Python declaration identity for reviewers to connect the WHIRL PUs back to
+the source model, not only to the emitted DSL operator body.
+
+For each emitted Python-defined class callable, preserve:
+
+1. Canonical class definition name, for example
+   `models.llama2_model.TinyRMSNorm`.
+2. Callable identity, currently the class `forward` body captured from the
+   source fixture.
+3. Import/declaration identity from the existing reachable callable census,
+   including imported spelling when available.
+4. Source file, class definition line, method body line, and callsite line.
+5. Instance path in the model object graph, for example `norm`,
+   `layers.0.attention_norm`, or `layers.1.feed_forward`.
+6. Context identity for the specific call edge, for example
+   `TinyLlama2ForCausalLM.norm`.
+7. Class state ownership: parameters, buffers, scalar attributes, and any
+   derived semantic formals introduced at the PU boundary.
+8. The mapping from Python class state to WHIRL formals.  For `TinyRMSNorm`,
+   `self.weight` must be visible as the source of `rms_norm_scale`.
+9. Context-sensitive call records for repeated uses of the same Python
+   definition.  Repeated `TinyRMSNorm` calls are separate call contexts, not
+   operator versions and not duplicate class definitions.
+
+Do not encode missing declaration identity into tensor descriptors or DSL
+operator attributes as a workaround.  If the native call comment or metadata
+surface cannot represent a required field, report the precise missing API to
+the infrastructure task.
+
+### Expansion Invariants
+
+Every incremental multiple-PU step must preserve these rules:
+
+1. `--single-pu` remains the default and must produce the existing flattened
+   prefill artifact.
+2. `--multiple-pu` is opt-in and must add only one reviewed callable boundary
+   per commit unless the change is purely mechanical test plumbing.
+3. Each emitted PU must contain a real reviewed semantic body.  Do not emit
+   empty, decorative, census-only, or placeholder PUs.
+4. PU identity is class-centric, not the generic method name `forward`.
+5. Repeated calls to one Python definition are represented by call-context
+   metadata, not by changing operator versions.
+6. Callee-local values never cross PU boundaries.  Use formals, result slots,
+   `DSL_Builder_Create_PU_Call`, and `DSL_Builder_Get_PU_Call_Result`.
+7. Activation, K cache, V cache, logits, and other multi-result values are
+   ordered named result slots with semantic roles, not a generic tuple type.
+8. Python bindings remain opaque and must not inspect WN layout, ST entries,
+   mapped-image tables, physical `OPR_DSL` records, or backend lowering state.
+9. Unsupported or ambiguous boundaries fail with a stable diagnostic before
+   a usable `.B` is accepted.
+10. Every step retains a `.B`, an `ir_b2a -st -src` `.T`, and enough log
+    evidence to reproduce the exact command.
+
+### Boundary Expansion Queue
+
+Expand from the current certified `TinyRMSNorm` boundary in this order.
+
+1. `TinyRMSNorm` declaration identity
+   - Status: next.
+   - Keep the existing two-PU topology.
+   - Add reviewable metadata connecting `rms_norm_scale` to
+     `TinyRMSNorm.weight`.
+   - Preserve canonical class, import/declaration identity, instance path,
+     call context, source file/line, and scalar `eps`.
+   - Machine-check that the trace still contains exactly two `FUNC_ENTRY`
+     records, one `VCALL TinyRMSNorm`, and `transformer.rms_norm.v1`.
+   - Rerun the single-PU prefill artifact lane unchanged.
+
+2. `TinyLlama2FeedForward`
+   - Introduce a real PU for the feed-forward class.
+   - Body must match the single-PU semantic sequence:
+     `common.linear.v3` gate projection, `common.linear.v3` up projection,
+     `common.silu`, `common.mul`, and `common.linear.v3` down projection.
+   - Formals must include activation plus the ordered gate, up, and down
+     weights or their reviewed semantic equivalents.
+   - Result slot: feed-forward activation.
+   - Call contexts must distinguish `layers.0.feed_forward` and
+     `layers.1.feed_forward`.
+   - Retain `.B`/`.T` under a feed-forward-specific artifact directory.
+
+3. `TinyRotaryEmbedding`
+   - Introduce a real PU for the rotary embedding class.
+   - Body must match prefill `transformer.rotary_embedding.v1` semantics.
+   - Formals must include query/key value plus cosine and sine tables.
+   - Preserve scalar configuration and attrs:
+     `head_layout=BHSD`, `sequence_axis=2`, `feature_axis=3`,
+     `pairing=half_split`, and static position mode for prefill.
+   - Call contexts must distinguish the attention instances that own rotary
+     embedding.
+   - Decode rotary v2 remains a separate later step unless the batch
+     explicitly targets decode.
+
+4. `TinyLlama2Attention`
+   - Introduce a real PU for the attention class.
+   - Body must preserve q/k/v/o projections, reshape/transpose layout
+     operators, rotary calls, `transformer.attention.v1`, and output
+     projection in the same semantic order as the single-PU baseline.
+   - Formals must include activation, projection weights, rotary tables, and
+     any reviewed attention constants.
+   - Result slot: attention output activation.
+   - Call evidence must show the nested call to `TinyRotaryEmbedding` once
+     that boundary exists.
+   - No grouped-query, paged-cache, decode-cache, or dynamic-shape behavior
+     enters the prefill boundary.
+
+5. `TinyLlama2DecoderLayer`
+   - Introduce a real PU for the decoder layer class.
+   - Body must preserve attention norm, attention call, residual add, FFN
+     norm, feed-forward call, and final residual add.
+   - Formals must include layer input plus all layer-owned weights/tables
+     needed by child calls.
+   - Result slot: layer output activation.
+   - Call contexts must distinguish `layers.0` and `layers.1` while sharing
+     the same Python class definition identity.
+   - The trace must show explicit call edges to `TinyLlama2Attention`,
+     `TinyRMSNorm`, and `TinyLlama2FeedForward` as appropriate.
+
+6. `TinyLlama2ForCausalLM`
+   - Complete the top-level multiple-PU topology.
+   - Body must preserve token embedding, ordered decoder layer calls, final
+     norm, output logits projection, and the final logits result slot.
+   - The top-level PU owns model inputs and external payload references.
+   - Child calls receive caller-owned actuals and return caller-owned results.
+   - Final evidence must include all real PUs, all reviewed call edges,
+     external `llama2.safetensors` references, source/class/instance
+     metadata, and no placeholder operator bodies.
+
+### Per-Step Validation Checklist
+
+Each boundary step must run and report:
+
+1. `python3 -m compileall -q osprey/torch2whirl/python/open64_dsc`
+2. Dependency-light `make -C osprey/torch2whirl -f Makefile.gbase python_test`
+3. Focused multiple-PU native artifact lane for the step.
+4. Existing single-PU Llama prefill artifact lane.
+5. Separate-process `ir_b2a -st -src <artifact>.B <artifact>.T`
+6. Machine checks for expected `FUNC_ENTRY`, `VCALL`, `PARM` flags,
+   result slots, source positions, owner-PU metadata, and logical DSL names.
+7. `git diff --check`
+8. No-tab scan for touched non-Makefile files.
+9. Backend-isolation scan for touched frontend files.
+
+Do not mark a boundary complete until both the multiple-PU artifact and the
+single-PU baseline artifact are retained and directly inspectable.
 
 ## Real Checkpoint Policy
 
