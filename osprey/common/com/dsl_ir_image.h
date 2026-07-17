@@ -10,6 +10,9 @@
 #include "defs.h"
 #include "symtab_idx.h"
 
+class WN;
+typedef INT32 WN_MAP;
+
 /*
  * Source-level DSL fixed-row image model.
  *
@@ -37,6 +40,12 @@
 #define DSL_STATE_OBJECT_RECORD_SIZE        40
 #define DSL_STATE_EFFECT_RECORD_SIZE        24
 
+#define DSL_CALL_IMAGE_MAGIC                0x44534c43
+#define DSL_CALL_IMAGE_VERSION              1
+#define DSL_CALL_IMAGE_HEADER_SIZE          24
+#define DSL_PU_SOURCE_IDENTITY_RECORD_SIZE  48
+#define DSL_CALLSITE_METADATA_RECORD_SIZE   48
+
 #define DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID 0
 #define DSL_IR_NODE_INVALID_ID              0
 #define DSL_IR_ATTRIBUTE_INVALID_ID         0
@@ -50,9 +59,45 @@ typedef UINT32 DSL_IR_VALUE_ID;
 typedef UINT32 DSL_IR_VALUE_REFERENCE_ID;
 typedef UINT32 DSL_STATE_OBJECT_ID;
 typedef UINT32 DSL_STATE_EFFECT_ID;
+typedef UINT32 DSL_PU_SOURCE_IDENTITY_ID;
+typedef UINT32 DSL_CALLSITE_METADATA_ID;
 
 #define DSL_STATE_OBJECT_INVALID_ID 0
 #define DSL_STATE_EFFECT_INVALID_ID 0
+#define DSL_PU_SOURCE_IDENTITY_INVALID_ID 0
+#define DSL_CALLSITE_METADATA_INVALID_ID 0
+
+typedef struct {
+    UINT32 magic;
+    UINT32 version;
+    UINT32 pu_identity_count;
+    UINT32 callsite_count;
+    UINT32 flags;
+    UINT32 reserved;
+} DSL_CALL_IMAGE_HEADER;
+
+typedef struct {
+    DSL_PU_SOURCE_IDENTITY_ID id;
+    UINT32 flags;
+    ST_IDX owner_pu_st;
+    STR_IDX canonical_definition_name;
+    STR_IDX defining_module;
+    STR_IDX defining_file;
+    UINT32 defining_line;
+    UINT32 reserved;
+} DSL_PU_SOURCE_IDENTITY_RECORD;
+
+typedef struct {
+    DSL_CALLSITE_METADATA_ID id;
+    UINT32 wn_offset;
+    ST_IDX owner_pu_st;
+    ST_IDX callee_pu_st;
+    STR_IDX canonical_class_name;
+    STR_IDX instance_path;
+    STR_IDX context_identity;
+    UINT32 source_call_ordinal;
+    UINT32 flags;
+} DSL_CALLSITE_METADATA_RECORD;
 
 typedef enum {
     DSL_IR_IMAGE_RECORD_UNKNOWN = 0,
@@ -230,6 +275,38 @@ extern void DSL_IR_Image_Print (FILE *file);
 extern BOOL DSL_IR_Image_Load_Mapped (const void *section_base,
                                       UINT64 section_size,
                                       FILE *diagnostic);
+
+extern void DSL_Call_Image_Get_Header (DSL_CALL_IMAGE_HEADER *header);
+extern void DSL_Call_Image_Reset (void);
+extern BOOL DSL_Call_Image_Has_Records (void);
+extern BOOL DSL_Call_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_Call_Image_Load_Mapped (const void *section_base,
+                                        UINT64 section_size,
+                                        FILE *diagnostic);
+extern DSL_PU_SOURCE_IDENTITY_ID DSL_Call_Image_Add_PU_Identity
+                                (const DSL_PU_SOURCE_IDENTITY_RECORD *record);
+extern DSL_CALLSITE_METADATA_ID DSL_Call_Image_Add_Callsite
+                                (ST_IDX owner_pu_st, WN *call,
+                                 const DSL_CALLSITE_METADATA_RECORD *record);
+extern BOOL DSL_Call_Image_Find_PU_Identity
+                                (ST_IDX owner_pu_st,
+                                 DSL_PU_SOURCE_IDENTITY_RECORD *record);
+extern BOOL DSL_Call_Image_Find_Callsite
+                                (const WN *call,
+                                 DSL_CALLSITE_METADATA_RECORD *record);
+extern UINT32 DSL_Call_Image_PU_Identity_Count (void);
+extern UINT32 DSL_Call_Image_Callsite_Count (void);
+extern BOOL DSL_Call_Image_Get_PU_Identity
+                                (DSL_PU_SOURCE_IDENTITY_ID id,
+                                 DSL_PU_SOURCE_IDENTITY_RECORD *record);
+extern BOOL DSL_Call_Image_Get_Callsite
+                                (DSL_CALLSITE_METADATA_ID id,
+                                 DSL_CALLSITE_METADATA_RECORD *record);
+extern BOOL DSL_Call_Image_PU_Has_Calls (ST_IDX owner_pu_st);
+extern BOOL DSL_Call_Image_Finalize_PU (ST_IDX owner_pu_st, WN_MAP off_map);
+extern BOOL DSL_Call_Image_Load_PU (ST_IDX owner_pu_st,
+                                    const void *tree_base,
+                                    UINT64 tree_size);
 
 extern void DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header);
 extern void DSL_Effect_Image_Reset (void);

@@ -100,6 +100,16 @@ typedef enum {
 } DSL_BUILDER_PU_RESULT_ROLE;
 
 typedef struct {
+    const char *canonical_definition_name;
+    const char *defining_module;
+    const char *defining_file;
+    UINT32 defining_line;
+    UINT32 flags;
+} DSL_BUILDER_PU_SOURCE_IDENTITY;
+
+/* String pointers returned by Get APIs remain valid until program reset. */
+
+typedef struct {
     const char *canonical_class_name;
     const char *instance_path;
     const char *context_identity;
@@ -215,6 +225,13 @@ extern void DSL_Builder_Abort_Program (void);
 extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
                                 (const char *name);
 extern BOOL DSL_Builder_Select_PU (DSL_BUILDER_PROGRAM_UNIT pu);
+extern BOOL DSL_Builder_Set_PU_Source_Identity
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 const DSL_BUILDER_PU_SOURCE_IDENTITY
+                                     *identity);
+extern BOOL DSL_Builder_Get_PU_Source_Identity
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_PU_SOURCE_IDENTITY *identity);
 extern DSL_BUILDER_VALUE DSL_Builder_Declare_PU_Formal
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  const char *name,
@@ -246,6 +263,9 @@ extern BOOL DSL_Builder_Get_PU_Call_Result
                                 (DSL_BUILDER_CALL call,
                                  UINT32 ordinal,
                                  DSL_BUILDER_VALUE *value);
+extern BOOL DSL_Builder_Get_PU_Callsite_Info
+                                (DSL_BUILDER_CALL call,
+                                 DSL_BUILDER_CALLSITE_INFO *callsite);
 extern UINT32 DSL_Builder_Register_Source_File
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  const char *path);

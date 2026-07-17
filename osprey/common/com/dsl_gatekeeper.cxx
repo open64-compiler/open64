@@ -1766,6 +1766,10 @@ DSL_Gatekeeper_Verify_PU
         valid = FALSE;
         ++context.result.error_count;
     }
+    if (!DSL_Call_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
     if (pu == NULL || PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
         PU_Info_tree_ptr(pu) == NULL)
         valid = DSL_Gatekeeper_Report
@@ -1798,6 +1802,10 @@ DSL_Gatekeeper_Verify_Program
     if (!valid)
         ++context.result.error_count;
     if (!DSL_Effect_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
+    if (!DSL_Call_Image_Validate(diagnostic)) {
         valid = FALSE;
         ++context.result.error_count;
     }

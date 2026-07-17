@@ -73,14 +73,30 @@ struct dsl_builder_pu_interface {
     BOOL has_return;
 };
 
+struct dsl_builder_pu_source_identity {
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    std::string canonical_definition_name;
+    std::string defining_module;
+    std::string defining_file;
+    UINT32 defining_line;
+    UINT32 flags;
+};
+
 struct dsl_builder_call_record {
     DSL_BUILDER_CALL call;
     DSL_BUILDER_PROGRAM_UNIT caller;
     DSL_BUILDER_PROGRAM_UNIT callee;
+    std::string canonical_class_name;
+    std::string instance_path;
+    std::string context_identity;
+    UINT32 call_ordinal;
+    DSL_BUILDER_SOURCE_POSITION source_position;
     std::vector<DSL_BUILDER_VALUE> results;
 };
 
 static std::vector<dsl_builder_pu_interface *> DSL_builder_pu_interfaces;
+static std::vector<dsl_builder_pu_source_identity *>
+    DSL_builder_pu_source_identities;
 static std::vector<dsl_builder_call_record *> DSL_builder_call_registry;
 
 static void
@@ -90,6 +106,8 @@ DSL_Builder_Reset_Program (void)
         delete DSL_builder_state_registry[i];
     for (UINT32 i = 0; i < DSL_builder_pu_interfaces.size(); ++i)
         delete DSL_builder_pu_interfaces[i];
+    for (UINT32 i = 0; i < DSL_builder_pu_source_identities.size(); ++i)
+        delete DSL_builder_pu_source_identities[i];
     for (UINT32 i = 0; i < DSL_builder_call_registry.size(); ++i)
         delete DSL_builder_call_registry[i];
     DSL_Builder_PU_Root = NULL;
@@ -102,6 +120,7 @@ DSL_Builder_Reset_Program (void)
     DSL_builder_value_registry.clear();
     DSL_builder_state_registry.clear();
     DSL_builder_pu_interfaces.clear();
+    DSL_builder_pu_source_identities.clear();
     DSL_builder_call_registry.clear();
     DSL_IR_Image_Reset();
     DSL_Region_Reset();
@@ -123,6 +142,16 @@ DSL_Builder_Find_Call_Record (DSL_BUILDER_CALL call)
     for (UINT32 i = 0; i < DSL_builder_call_registry.size(); ++i) {
         if (DSL_builder_call_registry[i]->call == call)
             return DSL_builder_call_registry[i];
+    }
+    return NULL;
+}
+
+static dsl_builder_pu_source_identity *
+DSL_Builder_Find_PU_Source_Identity (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    for (UINT32 i = 0; i < DSL_builder_pu_source_identities.size(); ++i) {
+        if (DSL_builder_pu_source_identities[i]->pu == pu)
+            return DSL_builder_pu_source_identities[i];
     }
     return NULL;
 }
@@ -344,6 +373,78 @@ static const char *
 DSL_Builder_Safe_String (const char *value)
 {
     return value == NULL ? "" : value;
+}
+
+BOOL
+DSL_Builder_Set_PU_Source_Identity
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         const DSL_BUILDER_PU_SOURCE_IDENTITY *identity)
+{
+    if (!DSL_Builder_PU_Is_Registered(pu) || identity == NULL ||
+        identity->canonical_definition_name == NULL ||
+        identity->canonical_definition_name[0] == '\0' ||
+        identity->defining_file == NULL || identity->defining_file[0] == '\0' ||
+        identity->defining_line == 0 ||
+        DSL_Builder_Find_PU_Source_Identity(pu) != NULL)
+        return FALSE;
+
+    DSL_PU_SOURCE_IDENTITY_RECORD image_record;
+    memset(&image_record, 0, sizeof(image_record));
+    image_record.owner_pu_st = PU_Info_proc_sym(pu);
+    image_record.canonical_definition_name =
+        Save_Str(identity->canonical_definition_name);
+    image_record.defining_module =
+        Save_Str(DSL_Builder_Safe_String(identity->defining_module));
+    image_record.defining_file = Save_Str(identity->defining_file);
+    image_record.defining_line = identity->defining_line;
+    image_record.flags = identity->flags;
+    if (DSL_Call_Image_Add_PU_Identity(&image_record) ==
+        DSL_PU_SOURCE_IDENTITY_INVALID_ID)
+        return FALSE;
+
+    dsl_builder_pu_source_identity *record =
+        new dsl_builder_pu_source_identity;
+    record->pu = pu;
+    record->canonical_definition_name = identity->canonical_definition_name;
+    record->defining_module = DSL_Builder_Safe_String
+                                  (identity->defining_module);
+    record->defining_file = identity->defining_file;
+    record->defining_line = identity->defining_line;
+    record->flags = identity->flags;
+    DSL_builder_pu_source_identities.push_back(record);
+    return TRUE;
+}
+
+BOOL
+DSL_Builder_Get_PU_Source_Identity
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_PU_SOURCE_IDENTITY *identity)
+{
+    if (pu == NULL || identity == NULL)
+        return FALSE;
+    DSL_PU_SOURCE_IDENTITY_RECORD image_record;
+    if (DSL_Call_Image_Find_PU_Identity
+            (PU_Info_proc_sym(pu), &image_record)) {
+        identity->canonical_definition_name =
+            Index_To_Str(image_record.canonical_definition_name);
+        identity->defining_module = Index_To_Str(image_record.defining_module);
+        identity->defining_file = Index_To_Str(image_record.defining_file);
+        identity->defining_line = image_record.defining_line;
+        identity->flags = image_record.flags;
+        return TRUE;
+    }
+    dsl_builder_pu_source_identity *record =
+        DSL_Builder_Find_PU_Source_Identity(pu);
+    if (record == NULL)
+        return FALSE;
+
+    identity->canonical_definition_name =
+        record->canonical_definition_name.c_str();
+    identity->defining_module = record->defining_module.c_str();
+    identity->defining_file = record->defining_file.c_str();
+    identity->defining_line = record->defining_line;
+    identity->flags = record->flags;
+    return TRUE;
 }
 
 static BOOL
@@ -2778,6 +2879,14 @@ DSL_Builder_Create_PU_Call
     call_record->call = call;
     call_record->caller = caller;
     call_record->callee = callee;
+    call_record->canonical_class_name = DSL_Builder_Safe_String
+                                            (callsite->canonical_class_name);
+    call_record->instance_path = DSL_Builder_Safe_String
+                                     (callsite->instance_path);
+    call_record->context_identity = DSL_Builder_Safe_String
+                                        (callsite->context_identity);
+    call_record->call_ordinal = callsite->call_ordinal;
+    call_record->source_position = callsite->source_position;
     for (UINT32 i = 0; i < result_count; ++i) {
         TY_IDX result_ty = callee_interface->results[i].ty;
         ST_IDX result_st = DSL_Builder_Create_Tensor_Result_Symbol
@@ -2834,6 +2943,24 @@ DSL_Builder_Create_PU_Call
         call_record->results.push_back(value);
     }
 
+    DSL_CALLSITE_METADATA_RECORD image_callsite;
+    memset(&image_callsite, 0, sizeof(image_callsite));
+    image_callsite.owner_pu_st = PU_Info_proc_sym(caller);
+    image_callsite.callee_pu_st = PU_Info_proc_sym(callee);
+    image_callsite.canonical_class_name = Save_Str
+        (DSL_Builder_Safe_String(callsite->canonical_class_name));
+    image_callsite.instance_path = Save_Str
+        (DSL_Builder_Safe_String(callsite->instance_path));
+    image_callsite.context_identity = Save_Str
+        (DSL_Builder_Safe_String(callsite->context_identity));
+    image_callsite.source_call_ordinal = callsite->call_ordinal;
+    if (DSL_Call_Image_Add_Callsite
+            (PU_Info_proc_sym(caller), call, &image_callsite) ==
+        DSL_CALLSITE_METADATA_INVALID_ID) {
+        delete call_record;
+        return NULL;
+    }
+
     std::string comment_text = "__WHIRL_DSL_CALL__:callee=";
     comment_text += ST_name(St_Table[PU_Info_proc_sym(callee)]);
     comment_text += ";class=";
@@ -2867,6 +2994,88 @@ DSL_Builder_Get_PU_Call_Result
         return FALSE;
     *value = record->results[ordinal];
     return TRUE;
+}
+
+BOOL
+DSL_Builder_Get_PU_Callsite_Info
+        (DSL_BUILDER_CALL call,
+         DSL_BUILDER_CALLSITE_INFO *callsite)
+{
+    if (call == NULL || callsite == NULL || WN_operator(call) != OPR_CALL)
+        return FALSE;
+
+    dsl_builder_call_record *record = DSL_Builder_Find_Call_Record(call);
+    DSL_CALLSITE_METADATA_RECORD image_record;
+    if (DSL_Call_Image_Find_Callsite(call, &image_record)) {
+        callsite->canonical_class_name =
+            Index_To_Str(image_record.canonical_class_name);
+        callsite->instance_path = Index_To_Str(image_record.instance_path);
+        callsite->context_identity = Index_To_Str(image_record.context_identity);
+        callsite->call_ordinal = image_record.source_call_ordinal;
+        SRCPOS source_position = WN_Get_Linenum(call);
+        callsite->source_position.file_id = SRCPOS_filenum(source_position);
+        callsite->source_position.line = SRCPOS_linenum(source_position);
+        callsite->source_position.column = SRCPOS_column(source_position);
+        callsite->source_position.statement_begin =
+            SRCPOS_stmt_begin(source_position);
+        callsite->source_position.basic_block_begin =
+            SRCPOS_bb_begin(source_position);
+        return TRUE;
+    }
+    if (record != NULL) {
+        callsite->canonical_class_name =
+            record->canonical_class_name.c_str();
+        callsite->instance_path = record->instance_path.c_str();
+        callsite->context_identity = record->context_identity.c_str();
+        callsite->call_ordinal = record->call_ordinal;
+        callsite->source_position = record->source_position;
+        return TRUE;
+    }
+
+    for (UINT32 i = 0; i < WN_kid_count(call); ++i) {
+        WN *parm = WN_kid(call, i);
+        if (parm == NULL || WN_operator(parm) != OPR_PARM ||
+            !WN_Parm_Out(parm))
+            continue;
+        WN *address = WN_kid0(parm);
+        if (address == NULL || WN_operator(address) != OPR_LDA)
+            continue;
+        ST_IDX result_st = WN_st_idx(address);
+        if (ST_IDX_index(result_st) == 0)
+            continue;
+        const char *canonical_class =
+            ST_tensor_metadata(result_st, "dsl.call.canonical_class");
+        const char *instance_path =
+            ST_tensor_metadata(result_st, "dsl.call.instance_path");
+        const char *context_identity =
+            ST_tensor_metadata(result_st, "dsl.call.context_identity");
+        const char *ordinal =
+            ST_tensor_metadata(result_st, "dsl.call.ordinal");
+        if (canonical_class == NULL || instance_path == NULL ||
+            context_identity == NULL || ordinal == NULL || ordinal[0] == '\0')
+            continue;
+
+        char *ordinal_end = NULL;
+        unsigned long parsed_ordinal = strtoul(ordinal, &ordinal_end, 10);
+        if (ordinal_end == NULL || ordinal_end[0] != '\0' ||
+            parsed_ordinal > (unsigned long)~(UINT32)0)
+            continue;
+
+        callsite->canonical_class_name = canonical_class;
+        callsite->instance_path = instance_path;
+        callsite->context_identity = context_identity;
+        callsite->call_ordinal = (UINT32)parsed_ordinal;
+        SRCPOS source_position = WN_Get_Linenum(call);
+        callsite->source_position.file_id = SRCPOS_filenum(source_position);
+        callsite->source_position.line = SRCPOS_linenum(source_position);
+        callsite->source_position.column = SRCPOS_column(source_position);
+        callsite->source_position.statement_begin =
+            SRCPOS_stmt_begin(source_position);
+        callsite->source_position.basic_block_begin =
+            SRCPOS_bb_begin(source_position);
+        return TRUE;
+    }
+    return FALSE;
 }
 
 UINT32

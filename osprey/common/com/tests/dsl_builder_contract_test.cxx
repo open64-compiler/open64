@@ -3491,6 +3491,9 @@ Check_Multiple_Program_Units(void)
     DSL_BUILDER_VALUE call_result;
     DSL_BUILDER_CALL call;
     DSL_BUILDER_CALLSITE_INFO callsite;
+    DSL_BUILDER_CALLSITE_INFO observed_callsite;
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    DSL_BUILDER_PU_SOURCE_IDENTITY observed_identity;
     DSL_BUILDER_OPERATOR_ATTRIBUTE add_attr;
     DSL_BUILDER_VALUE add_kids[2];
     const char *call_result_names[1] = { "normalized_hidden" };
@@ -3517,6 +3520,15 @@ Check_Multiple_Program_Units(void)
     first_pu = DSL_Builder_Create_Minimal_PU("TinyRMSNorm");
     UINT32 first_file = DSL_Builder_Register_Source_File
                             (first_pu, "llama2_model.py");
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "TinyRMSNorm.forward";
+    source_identity.defining_module = "llama2_model";
+    source_identity.defining_file = "llama2_model.py";
+    source_identity.defining_line = 12;
+    if (!DSL_Builder_Set_PU_Source_Identity(first_pu, &source_identity)) {
+        fprintf(stderr, "failed to attach PU source identity\n");
+        return 1;
+    }
     memset(&position, 0, sizeof(position));
     position.file_id = first_file;
     position.line = 18;
@@ -3570,15 +3582,58 @@ Check_Multiple_Program_Units(void)
     call = DSL_Builder_Create_PU_Call
                (second_pu, first_pu, &second_formal, 1,
                 call_result_names, 1, &callsite);
+    memset(&observed_identity, 0, sizeof(observed_identity));
+    memset(&observed_callsite, 0, sizeof(observed_callsite));
     second_st = DSL_Builder_Get_Value_Result_Symbol(second_formal);
     if (second_pu == NULL || second_pu == first_pu || second_file == 0 ||
         second_formal == NULL || second_result == NULL || call == NULL ||
+        !DSL_Builder_Get_PU_Source_Identity(first_pu, &observed_identity) ||
+        strcmp(observed_identity.canonical_definition_name,
+               "TinyRMSNorm.forward") != 0 ||
+        strcmp(observed_identity.defining_module, "llama2_model") != 0 ||
+        strcmp(observed_identity.defining_file, "llama2_model.py") != 0 ||
+        observed_identity.defining_line != 12 ||
+        !DSL_Builder_Get_PU_Callsite_Info(call, &observed_callsite) ||
+        strcmp(observed_callsite.canonical_class_name, "TinyRMSNorm") != 0 ||
+        strcmp(observed_callsite.instance_path, "model.norm") != 0 ||
+        strcmp(observed_callsite.context_identity,
+               "TinyLlama2ForCausalLM.norm") != 0 ||
+        observed_callsite.call_ordinal != 0 ||
+        observed_callsite.source_position.line != 74 ||
         !DSL_Builder_Get_PU_Call_Result(call, 0, &call_result) ||
         !DSL_Builder_Return_PU_Values(second_pu, &call_result, 1) ||
         DSL_Builder_Append_PU_Value(second_pu, first_formal) ||
         PU_Info_next(first_pu) != second_pu ||
         PU_Info_maptab(first_pu) == PU_Info_maptab(second_pu)) {
         fprintf(stderr, "failed to construct independent second program unit\n");
+        return 1;
+    }
+
+    ST_IDX compatibility_result_st =
+        DSL_Builder_Get_Value_Result_Symbol(call_result);
+    WN *compatibility_call = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, 1);
+    WN_st_idx(compatibility_call) = PU_Info_proc_sym(first_pu);
+    TY_IDX compatibility_pointer_ty = Make_Pointer_Type(tensor_ty);
+    WN *compatibility_address = WN_CreateLda
+                                    (OPR_LDA, Pointer_Mtype, MTYPE_V, 0,
+                                     compatibility_pointer_ty,
+                                     compatibility_result_st);
+    WN_kid0(compatibility_call) = WN_CreateParm
+                                      (Pointer_Mtype, compatibility_address,
+                                       compatibility_pointer_ty,
+                                       WN_PARM_BY_REFERENCE | WN_PARM_OUT |
+                                       WN_PARM_PASSED_NOT_SAVED);
+    WN_Set_Linenum(compatibility_call, WN_Get_Linenum(call));
+    memset(&observed_callsite, 0, sizeof(observed_callsite));
+    if (!DSL_Builder_Get_PU_Callsite_Info(compatibility_call,
+                                          &observed_callsite) ||
+        strcmp(observed_callsite.canonical_class_name, "TinyRMSNorm") != 0 ||
+        strcmp(observed_callsite.instance_path, "model.norm") != 0 ||
+        strcmp(observed_callsite.context_identity,
+               "TinyLlama2ForCausalLM.norm") != 0 ||
+        observed_callsite.call_ordinal != 0 ||
+        observed_callsite.source_position.line != 74) {
+        fprintf(stderr, "legacy callsite metadata fallback changed\n");
         return 1;
     }
 

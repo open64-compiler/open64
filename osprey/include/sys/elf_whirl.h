@@ -82,6 +82,7 @@
 #define WT_DSL_IR_IMAGE 0x20
 #define WT_DSL_TENSOR_DESCRIPTOR WT_DSL_IR_IMAGE
 #define WT_DSL_EFFECT_IMAGE 0x21
+#define WT_DSL_CALLSITE_IMAGE 0x22
 
 /*
  * Special WHIRL section names.
@@ -97,6 +98,7 @@
 #define MIPS_WHIRL_DSL_IR_IMAGE ".WHIRL.dsl"
 #define MIPS_WHIRL_DSL_TENSOR_DESCRIPTOR MIPS_WHIRL_DSL_IR_IMAGE
 #define MIPS_WHIRL_DSL_EFFECT_IMAGE ".WHIRL.dsl_effects"
+#define MIPS_WHIRL_DSL_CALLSITE_IMAGE ".WHIRL.dsl_calls"
 #if defined(TARG_SL)
 #define MIPS_WHIRL_CALLGRAPH    ".WHIRL.callgraph"
 #endif

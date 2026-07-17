@@ -1009,6 +1009,102 @@ rejects wrong formal/result counts, noncontiguous ordinals, cross-PU value
 reuse, missing returns, and call parameters whose read-only/out flags disagree
 with the published interface.
 
+#### First-class PU identity and callsite metadata
+
+The standard WHIRL call structure remains the semantic authority.  An
+`OPR_CALL` names its callee `ST`, its `PARM` kids carry ordered typed inputs and
+caller-owned result slots, and its statement `SRCPOS` identifies the source
+callsite.  Do not introduce a DSL call operator, tuple operator, or alternate
+call edge to represent Python class invocation.
+
+Python class and invocation context must become first-class *managed compiler
+metadata*, not first-class expression semantics.  In this usage,
+"first-class" means that common/com owns typed, pointer-free records and
+accessors associated directly with the native PU or `OPR_CALL`.  These records
+must survive mapped-image write/reopen, cloning, and inlining without requiring
+clients to parse comments or search result symbols.  They remain
+`CompilerMetadataIR`: they do not affect tensor type equivalence, DSL operator
+versioning, common-substrate promotion, or the target call ABI.
+
+The architectural ownership is:
+
+| Information | Authoritative representation |
+| --- | --- |
+| Callee and call edge | Native `OPR_CALL` plus callee `ST` |
+| Callable signature | PU type, ordered formals, and ordered result slots |
+| Canonical Python definition identity | PU-level source-identity metadata |
+| Python instance path | Callsite metadata attached to the `OPR_CALL` |
+| Context identity | Callsite metadata attached to the `OPR_CALL` |
+| Original source call ordinal | Callsite metadata attached to the `OPR_CALL` |
+| Source file, line, and column | Existing statement `SRCPOS` and DST |
+| Tensor result semantics | Result `TY_IDX` and `TensorDescriptorIR` |
+| `__WHIRL_DSL_CALL__` text | Compatibility and human-review projection |
+
+The fixed-row models are published in `common/com/dsl_ir_image.h`:
+
+```text
+DSL_PU_SOURCE_IDENTITY_RECORD
+  owner_pu_st
+  canonical_definition_name
+  defining_module
+  defining_file
+  defining_line
+  flags
+
+DSL_CALLSITE_METADATA_RECORD
+  owner_pu_st
+  wn_offset
+  callee_pu_st
+  instance_path
+  context_identity
+  source_call_ordinal
+  flags
+```
+
+These pointer-free rows occupy 48 bytes each and use `ST_IDX` and `STR_IDX`
+handles.  They live in the optional `.WHIRL.dsl_calls` section under
+`DSL_CALL_IMAGE_VERSION` 1; the existing `.WHIRL.dsl` version-1 layout is not
+changed.  The call identity is the validated WN image offset within its owner
+PU tree, following the common region mapping design.  Runtime WN pointers are
+held only in the in-memory association registry and never enter the file.
+Absence of `.WHIRL.dsl_calls` means legacy compatibility input, not a malformed
+image.
+
+The current result-symbol keys `dsl.call.canonical_class`,
+`dsl.call.instance_path`, `dsl.call.context_identity`, and `dsl.call.ordinal`
+remain compatibility mirrors only.  They cannot remain authoritative because
+a zero-result call has no result symbol, a multiple-result call duplicates the
+same callsite facts, and symbol replacement or inlining can detach them from
+the call.  The adjacent `__WHIRL_DSL_CALL__` comment also remains a required
+high-level `ir_b2a -st -src` projection until an explicit retirement decision;
+compiler analysis must not parse it as the primary representation.
+
+Compatibility staging is mandatory:
+
+1. **Complete.** Add PU-identity and callsite-metadata accessors plus an in-memory common/com
+   registry without changing the current mapped-image layout.
+2. **Complete.** Make compatibility accessors read the managed registry first, then accept
+   current result-symbol metadata and `__WHIRL_DSL_CALL__` input while old
+   artifacts remain supported.
+3. **Complete.** Specify pointer-free fixed rows, WN association, record ordering, cloning
+   policy, verifier rules, image-version transition, and old-image fallback
+   before changing the binary DSL image.
+4. **Complete.** Add optional-section mapped-image reader coverage.  Existing images with no PU
+   identity or callsite rows must continue to reopen and retain their current
+   semantics.
+5. **Complete.** Make the gatekeeper validate native callee/signature facts independently,
+   then validate any managed source identity and callsite rows against their
+   owning PU and `OPR_CALL`.
+6. **Complete.** Make `ir_b2a -st -src` print stable logical PU identity and callsite tables
+   while retaining the existing comment projection for human review.
+7. Define IPA and inliner behavior: cloned calls copy source provenance and
+   receive a distinct compiler call identity; inlining preserves original
+   provenance on the inlined scope while removing no metadata still referenced
+   by diagnostics or profile data.
+8. Stop duplicating call facts onto result symbols only after compatibility
+   readers, migration tests, gatekeeper checks, printing, and IPA/inliner tests
+   are complete.
+
 #### Structured regions
 
 1. Add opaque `DSL_BUILDER_REGION` and region-classifier handles.
@@ -1488,6 +1584,30 @@ full-sequence causal prompt evaluation with no KV cache.
    `lowered/decode_state.t`.  The test checks the logical v2 operators, mapped
    state rows, ordered MODIFY effects, versioned runtime calls, and absence of
    executable DSL nodes after lowering.
+
+30. [ ] Promote PU identity and callsite context to managed compiler metadata.
+
+   Stages 1 through 6 complete: common/com owns runtime and fixed-row PU
+   source-identity and callsite records; typed accessors read managed rows
+   before legacy result-symbol metadata; `.WHIRL.dsl_calls` version 1 reopens
+   through the standard mapped-image path; gatekeeper validates native WN/ST
+   associations; and `ir_b2a -st -src` prints both logical tables while
+   retaining the compatibility comment.  A pre-section `.B` artifact reopens
+   with zero managed rows and unchanged native call/comment evidence.
+
+   Preserve native `FUNC_ENTRY`, `OPR_CALL`, formals, result slots, `PARM`
+   flags, callee `ST`, and `SRCPOS` as the semantic call contract.  Do not add a
+   DSL call operator or classify Python class context as tensor state or opcode
+   attributes.
+
+   Stage this work through the accessor-first compatibility sequence in
+   "First-class PU identity and callsite metadata": add the runtime registry
+   and accessors; retain current comment and result-symbol input; publish and
+   review fixed pointer-free rows plus a dual-version mapped-image plan; add
+   gatekeeper and `ir_b2a -st -src` support; define clone/inlining behavior;
+   and retire result-symbol duplication only after old-image and transformation
+   coverage passes.  Any mapped-image record or version change is a separate
+   reviewed implementation stage, not an implication of this planning item.
 
 ### Deferred work TODO
 

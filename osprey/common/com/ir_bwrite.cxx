@@ -883,6 +883,37 @@ WN_write_dsl_effect_image (Output_File *fl)
     cur_section->shdr.sh_addralign = sizeof(mINT64);
 }
 
+void
+WN_write_dsl_callsite_image (Output_File *fl)
+{
+    if (!DSL_Call_Image_Has_Records())
+        return;
+    FmtAssert(DSL_Call_Image_Validate(stderr),
+              ("invalid DSL callsite tables"));
+    Section *cur_section = get_section
+                               (WT_DSL_CALLSITE_IMAGE,
+                                MIPS_WHIRL_DSL_CALLSITE_IMAGE, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+    DSL_CALL_IMAGE_HEADER header;
+    DSL_Call_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+    for (UINT32 i = 1; i <= header.pu_identity_count; ++i) {
+        DSL_PU_SOURCE_IDENTITY_RECORD record;
+        FmtAssert(DSL_Call_Image_Get_PU_Identity(i, &record),
+                  ("missing DSL PU identity %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.callsite_count; ++i) {
+        DSL_CALLSITE_METADATA_RECORD record;
+        FmtAssert(DSL_Call_Image_Get_Callsite(i, &record),
+                  ("missing DSL callsite %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
 
 /*
  * Write out the debug symbol table (dst).  The DST gets its own Elf
@@ -1616,7 +1647,9 @@ Write_PU_Info (PU_Info *pu)
 
     WN_MAP off_map = WN_MAP_UNDEFINED;
     BOOL region_map = PU_Info_state(pu, WT_REGIONS) == Subsect_InMem;
-    BOOL need_off_map = region_map;
+    BOOL callsite_map =
+        DSL_Call_Image_PU_Has_Calls(PU_Info_proc_sym(pu));
+    BOOL need_off_map = region_map || callsite_map;
 
     WN_write_symtab (pu, ir_output);
 
@@ -1635,6 +1668,10 @@ Write_PU_Info (PU_Info *pu)
     }
 
     WN_write_tree (pu, off_map, ir_output);
+
+    if (callsite_map &&
+        !DSL_Call_Image_Finalize_PU(PU_Info_proc_sym(pu), off_map))
+        ErrMsg (EC_IR_Scn_Write, "DSL callsites", ir_output->file_name);
 
     if (region_map && !DSL_Region_Write_PU(pu, off_map, ir_output))
         ErrMsg (EC_IR_Scn_Write, "regions", ir_output->file_name);
@@ -1700,6 +1737,7 @@ Write_Global_Info (PU_Info *pu_tree)
 
     WN_write_dsl_ir_image(ir_output);
     WN_write_dsl_effect_image(ir_output);
+    WN_write_dsl_callsite_image(ir_output);
 
     WN_write_strtab(Index_To_Str (0), STR_Table_Size (), ir_output);
 

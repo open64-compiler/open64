@@ -3,11 +3,17 @@
  */
 
 #include <string.h>
+#include <vector>
 
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
 #include "segmented_array.h"
 #include "strtab.h"
+
+typedef struct wn_map_tab WN_MAP_TAB;
+extern WN_MAP_TAB *Current_Map_Tab;
+extern "C" INT32 IPA_WN_MAP32_Get (WN_MAP_TAB *maptab, WN_MAP wn_map,
+                                    const WN *wn);
 
 typedef SEGMENTED_ARRAY<DSL_IR_OPCODE_DESCRIPTOR_RECORD>
     DSL_IR_OPCODE_DESCRIPTOR_TABLE;
@@ -18,6 +24,10 @@ typedef SEGMENTED_ARRAY<DSL_IR_VALUE_REFERENCE_RECORD>
     DSL_IR_VALUE_REFERENCE_TABLE;
 typedef SEGMENTED_ARRAY<DSL_STATE_OBJECT_RECORD> DSL_STATE_OBJECT_TABLE;
 typedef SEGMENTED_ARRAY<DSL_STATE_EFFECT_RECORD> DSL_STATE_EFFECT_TABLE;
+typedef SEGMENTED_ARRAY<DSL_PU_SOURCE_IDENTITY_RECORD>
+    DSL_PU_SOURCE_IDENTITY_TABLE;
+typedef SEGMENTED_ARRAY<DSL_CALLSITE_METADATA_RECORD>
+    DSL_CALLSITE_METADATA_TABLE;
 
 static DSL_IR_OPCODE_DESCRIPTOR_TABLE DSL_ir_opcode_descriptor_table;
 static DSL_IR_NODE_TABLE DSL_ir_node_table;
@@ -26,6 +36,19 @@ static DSL_IR_VALUE_TABLE DSL_ir_value_table;
 static DSL_IR_VALUE_REFERENCE_TABLE DSL_ir_value_reference_table;
 static DSL_STATE_OBJECT_TABLE DSL_state_object_table;
 static DSL_STATE_EFFECT_TABLE DSL_state_effect_table;
+static DSL_PU_SOURCE_IDENTITY_TABLE DSL_pu_source_identity_table;
+static DSL_CALLSITE_METADATA_TABLE DSL_callsite_metadata_table;
+
+typedef struct {
+    ST_IDX owner_pu_st;
+    WN *call;
+    DSL_CALLSITE_METADATA_ID id;
+} DSL_CALLSITE_RUNTIME_ASSOCIATION;
+
+static std::vector<DSL_CALLSITE_RUNTIME_ASSOCIATION>
+    DSL_callsite_runtime_associations;
+
+static BOOL DSL_IR_Image_String_Id_Valid (STR_IDX id, BOOL required);
 
 typedef struct {
     const DSL_IR_IMAGE_HEADER *header;
@@ -56,6 +79,14 @@ typedef char DSL_State_Object_Size_Check
     [sizeof(DSL_STATE_OBJECT_RECORD) == DSL_STATE_OBJECT_RECORD_SIZE ? 1 : -1];
 typedef char DSL_State_Effect_Size_Check
     [sizeof(DSL_STATE_EFFECT_RECORD) == DSL_STATE_EFFECT_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Call_Image_Header_Size_Check
+    [sizeof(DSL_CALL_IMAGE_HEADER) == DSL_CALL_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_PU_Source_Identity_Size_Check
+    [sizeof(DSL_PU_SOURCE_IDENTITY_RECORD) ==
+        DSL_PU_SOURCE_IDENTITY_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Callsite_Metadata_Size_Check
+    [sizeof(DSL_CALLSITE_METADATA_RECORD) ==
+        DSL_CALLSITE_METADATA_RECORD_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -87,6 +118,285 @@ DSL_IR_Image_Reset (void)
     DSL_ir_value_reference_table.Delete_down_to(0);
     DSL_state_object_table.Delete_down_to(0);
     DSL_state_effect_table.Delete_down_to(0);
+    DSL_Call_Image_Reset();
+}
+
+static BOOL
+DSL_Call_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL call image error: %s id=%u\n", message, id);
+    return FALSE;
+}
+
+void
+DSL_Call_Image_Get_Header (DSL_CALL_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset(header, 0, sizeof(*header));
+    header->magic = DSL_CALL_IMAGE_MAGIC;
+    header->version = DSL_CALL_IMAGE_VERSION;
+    header->pu_identity_count = DSL_pu_source_identity_table.Size();
+    header->callsite_count = DSL_callsite_metadata_table.Size();
+}
+
+void
+DSL_Call_Image_Reset (void)
+{
+    DSL_pu_source_identity_table.Delete_down_to(0);
+    DSL_callsite_metadata_table.Delete_down_to(0);
+    DSL_callsite_runtime_associations.clear();
+}
+
+BOOL
+DSL_Call_Image_Has_Records (void)
+{
+    return DSL_pu_source_identity_table.Size() != 0 ||
+           DSL_callsite_metadata_table.Size() != 0;
+}
+
+static BOOL
+DSL_Call_Image_Call_Has_Association (UINT32 id)
+{
+    for (UINT32 i = 0; i < DSL_callsite_runtime_associations.size(); ++i) {
+        if (DSL_callsite_runtime_associations[i].id == id &&
+            DSL_callsite_runtime_associations[i].call != NULL)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_Call_Image_Association_Valid
+        (const DSL_CALLSITE_METADATA_RECORD &record)
+{
+    for (UINT32 i = 0; i < DSL_callsite_runtime_associations.size(); ++i) {
+        const DSL_CALLSITE_RUNTIME_ASSOCIATION &association =
+            DSL_callsite_runtime_associations[i];
+        if (association.id != record.id)
+            continue;
+        return ST_IDX_index(association.owner_pu_st) != 0 &&
+               association.call != NULL &&
+               association.owner_pu_st == record.owner_pu_st;
+    }
+    return record.wn_offset != 0;
+}
+
+BOOL
+DSL_Call_Image_Validate (FILE *diagnostic)
+{
+    for (UINT32 i = 0; i < DSL_pu_source_identity_table.Size(); ++i) {
+        const DSL_PU_SOURCE_IDENTITY_RECORD &record =
+            DSL_pu_source_identity_table[i];
+        if (record.id != i + 1 || ST_IDX_index(record.owner_pu_st) == 0 ||
+            !DSL_IR_Image_String_Id_Valid
+                 (record.canonical_definition_name, TRUE) ||
+            !DSL_IR_Image_String_Id_Valid(record.defining_module, FALSE) ||
+            !DSL_IR_Image_String_Id_Valid(record.defining_file, TRUE) ||
+            record.defining_line == 0 || record.reserved != 0)
+            return DSL_Call_Image_Report
+                       (diagnostic, "invalid PU identity", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            if (DSL_pu_source_identity_table[j].owner_pu_st ==
+                record.owner_pu_st)
+                return DSL_Call_Image_Report
+                           (diagnostic, "duplicate PU identity", i + 1);
+        }
+    }
+    for (UINT32 i = 0; i < DSL_callsite_metadata_table.Size(); ++i) {
+        const DSL_CALLSITE_METADATA_RECORD &record =
+            DSL_callsite_metadata_table[i];
+        if (record.id != i + 1 || ST_IDX_index(record.owner_pu_st) == 0 ||
+            ST_IDX_index(record.callee_pu_st) == 0 ||
+            !DSL_IR_Image_String_Id_Valid
+                 (record.canonical_class_name, TRUE) ||
+            !DSL_IR_Image_String_Id_Valid(record.instance_path, TRUE) ||
+            !DSL_IR_Image_String_Id_Valid(record.context_identity, TRUE) ||
+            (record.wn_offset == 0 &&
+             !DSL_Call_Image_Call_Has_Association(record.id)) ||
+            !DSL_Call_Image_Association_Valid(record))
+            return DSL_Call_Image_Report
+                       (diagnostic, "invalid callsite", i + 1);
+    }
+    return TRUE;
+}
+
+DSL_PU_SOURCE_IDENTITY_ID
+DSL_Call_Image_Add_PU_Identity
+        (const DSL_PU_SOURCE_IDENTITY_RECORD *record)
+{
+    if (record == NULL || ST_IDX_index(record->owner_pu_st) == 0 ||
+        record->canonical_definition_name == STR_IDX_ZERO ||
+        record->defining_file == STR_IDX_ZERO || record->defining_line == 0)
+        return DSL_PU_SOURCE_IDENTITY_INVALID_ID;
+    DSL_PU_SOURCE_IDENTITY_RECORD copy = *record;
+    UINT32 index = DSL_pu_source_identity_table.Insert(copy);
+    DSL_pu_source_identity_table[index].id = index + 1;
+    if (!DSL_Call_Image_Validate(NULL)) {
+        DSL_pu_source_identity_table.Delete_down_to(index);
+        return DSL_PU_SOURCE_IDENTITY_INVALID_ID;
+    }
+    return index + 1;
+}
+
+DSL_CALLSITE_METADATA_ID
+DSL_Call_Image_Add_Callsite
+        (ST_IDX owner_pu_st, WN *call,
+         const DSL_CALLSITE_METADATA_RECORD *record)
+{
+    if (ST_IDX_index(owner_pu_st) == 0 || call == NULL || record == NULL ||
+        record->owner_pu_st != owner_pu_st ||
+        ST_IDX_index(record->callee_pu_st) == 0)
+        return DSL_CALLSITE_METADATA_INVALID_ID;
+    DSL_CALLSITE_METADATA_RECORD copy = *record;
+    UINT32 index = DSL_callsite_metadata_table.Insert(copy);
+    DSL_callsite_metadata_table[index].id = index + 1;
+    DSL_CALLSITE_RUNTIME_ASSOCIATION association;
+    association.owner_pu_st = owner_pu_st;
+    association.call = call;
+    association.id = index + 1;
+    DSL_callsite_runtime_associations.push_back(association);
+    if (!DSL_Call_Image_Validate(NULL)) {
+        DSL_callsite_runtime_associations.pop_back();
+        DSL_callsite_metadata_table.Delete_down_to(index);
+        return DSL_CALLSITE_METADATA_INVALID_ID;
+    }
+    return index + 1;
+}
+
+BOOL
+DSL_Call_Image_Find_PU_Identity
+        (ST_IDX owner_pu_st, DSL_PU_SOURCE_IDENTITY_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_pu_source_identity_table.Size(); ++i) {
+        if (DSL_pu_source_identity_table[i].owner_pu_st == owner_pu_st)
+            return DSL_IR_Table_Get
+                       (DSL_pu_source_identity_table, i + 1, record);
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_Call_Image_Find_Callsite
+        (const WN *call, DSL_CALLSITE_METADATA_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_callsite_runtime_associations.size(); ++i) {
+        const DSL_CALLSITE_RUNTIME_ASSOCIATION &association =
+            DSL_callsite_runtime_associations[i];
+        if (association.call == call)
+            return DSL_IR_Table_Get
+                       (DSL_callsite_metadata_table, association.id, record);
+    }
+    return FALSE;
+}
+
+UINT32 DSL_Call_Image_PU_Identity_Count (void)
+{ return DSL_pu_source_identity_table.Size(); }
+
+UINT32 DSL_Call_Image_Callsite_Count (void)
+{ return DSL_callsite_metadata_table.Size(); }
+
+BOOL DSL_Call_Image_Get_PU_Identity
+        (DSL_PU_SOURCE_IDENTITY_ID id, DSL_PU_SOURCE_IDENTITY_RECORD *record)
+{ return DSL_IR_Table_Get(DSL_pu_source_identity_table, id, record); }
+
+BOOL DSL_Call_Image_Get_Callsite
+        (DSL_CALLSITE_METADATA_ID id, DSL_CALLSITE_METADATA_RECORD *record)
+{ return DSL_IR_Table_Get(DSL_callsite_metadata_table, id, record); }
+
+BOOL
+DSL_Call_Image_PU_Has_Calls (ST_IDX owner_pu_st)
+{
+    if (ST_IDX_index(owner_pu_st) == 0)
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_callsite_metadata_table.Size(); ++i) {
+        if (DSL_callsite_metadata_table[i].owner_pu_st == owner_pu_st)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_Call_Image_Finalize_PU (ST_IDX owner_pu_st, WN_MAP off_map)
+{
+    if (!DSL_Call_Image_PU_Has_Calls(owner_pu_st))
+        return TRUE;
+    if (off_map == (WN_MAP)-1)
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_callsite_runtime_associations.size(); ++i) {
+        DSL_CALLSITE_RUNTIME_ASSOCIATION &association =
+            DSL_callsite_runtime_associations[i];
+        if (association.owner_pu_st != owner_pu_st)
+            continue;
+        UINT32 offset = IPA_WN_MAP32_Get
+                            (Current_Map_Tab, off_map, association.call);
+        if (offset == 0)
+            return FALSE;
+        DSL_callsite_metadata_table[association.id - 1].wn_offset = offset;
+    }
+    return DSL_Call_Image_Validate(NULL);
+}
+
+BOOL
+DSL_Call_Image_Load_PU
+        (ST_IDX owner_pu_st, const void *tree_base, UINT64 tree_size)
+{
+    if (ST_IDX_index(owner_pu_st) == 0 || tree_base == NULL || tree_size == 0)
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_callsite_metadata_table.Size(); ++i) {
+        const DSL_CALLSITE_METADATA_RECORD &record =
+            DSL_callsite_metadata_table[i];
+        if (record.owner_pu_st != owner_pu_st)
+            continue;
+        if (record.wn_offset == 0 || record.wn_offset >= tree_size)
+            return FALSE;
+        WN *call = (WN *)((const char *)tree_base + record.wn_offset);
+        DSL_CALLSITE_RUNTIME_ASSOCIATION association;
+        association.owner_pu_st = owner_pu_st;
+        association.call = call;
+        association.id = record.id;
+        DSL_callsite_runtime_associations.push_back(association);
+    }
+    return TRUE;
+}
+
+BOOL
+DSL_Call_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    if (section_base == NULL || section_size < DSL_CALL_IMAGE_HEADER_SIZE)
+        return DSL_Call_Image_Report(diagnostic, "section is truncated", 0);
+    const DSL_CALL_IMAGE_HEADER *header =
+        (const DSL_CALL_IMAGE_HEADER *)section_base;
+    UINT64 expected = DSL_CALL_IMAGE_HEADER_SIZE +
+        (UINT64)header->pu_identity_count *
+            DSL_PU_SOURCE_IDENTITY_RECORD_SIZE +
+        (UINT64)header->callsite_count * DSL_CALLSITE_METADATA_RECORD_SIZE;
+    if (header->magic != DSL_CALL_IMAGE_MAGIC ||
+        header->version != DSL_CALL_IMAGE_VERSION || header->flags != 0 ||
+        header->reserved != 0 || expected != section_size)
+        return DSL_Call_Image_Report(diagnostic, "invalid header", 0);
+    const char *cursor = (const char *)section_base +
+                         DSL_CALL_IMAGE_HEADER_SIZE;
+    const DSL_PU_SOURCE_IDENTITY_RECORD *identities =
+        (const DSL_PU_SOURCE_IDENTITY_RECORD *)cursor;
+    cursor += (UINT64)header->pu_identity_count *
+              DSL_PU_SOURCE_IDENTITY_RECORD_SIZE;
+    const DSL_CALLSITE_METADATA_RECORD *calls =
+        (const DSL_CALLSITE_METADATA_RECORD *)cursor;
+    DSL_Call_Image_Reset();
+    if (header->pu_identity_count != 0)
+        DSL_pu_source_identity_table.Insert
+            (identities, header->pu_identity_count);
+    if (header->callsite_count != 0)
+        DSL_callsite_metadata_table.Insert(calls, header->callsite_count);
+    if (!DSL_Call_Image_Validate(diagnostic)) {
+        DSL_pu_source_identity_table.Delete_down_to(0);
+        DSL_callsite_metadata_table.Delete_down_to(0);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 void
