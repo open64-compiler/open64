@@ -237,6 +237,18 @@ class WhirlExportInterpreter:
             raise NotImplementedError(
                 "multiple-PU emission requires class source definitions"
             )
+        rms_module = self._module_at_instance_path(model, "norm")
+        rms_instance = self._first_instance_path(
+            class_instances,
+            rms_definition.canonical_name,
+        )
+        rms_context = f"{entry_name}.{rms_instance}"
+        rms_identity = self._callable_identity_metadata(
+            rms_definition,
+            rms_module,
+            rms_instance,
+            rms_context,
+        )
 
         hidden_shape = "[1,1,32]" if self._is_tiny_llama2_decode_model(model) \
             else "[1,8,32]"
@@ -281,6 +293,15 @@ class WhirlExportInterpreter:
             rms_file,
             rms_line,
         )
+        self.builder().attach_value_metadata(
+            hidden,
+            self._multi_pu_value_metadata(
+                rms_identity,
+                "hidden_states",
+                "activation",
+                "",
+            ),
+        )
         scale = self.builder().declare_pu_formal(
             rms_pu,
             "rms_norm_scale",
@@ -289,6 +310,13 @@ class WhirlExportInterpreter:
             rms_file,
             rms_line,
         )
+        scale_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "rms_norm_scale",
+            "rms_norm_scale",
+            "weight",
+        )
+        self.builder().attach_value_metadata(scale, scale_metadata)
         self.builder().declare_pu_result(
             rms_pu,
             "normalized_result",
@@ -297,12 +325,20 @@ class WhirlExportInterpreter:
             file_id=rms_file,
             line=rms_line + 1,
         )
-        rms_module = self._module_at_instance_path(model, "norm")
         normalized = self.builder().transformer_rms_norm(
             hidden,
             scale,
             self._rms_norm_attrs(rms_module),
         )
+        normalized_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "transformer_rms_norm",
+            "operator_result",
+            "",
+        )
+        normalized_metadata["lowering_hint"] = "llama2:transformer.rms_norm"
+        normalized_metadata["semantic_name"] = "rms_norm"
+        self.builder().attach_value_metadata(normalized, normalized_metadata)
         self.builder().set_value_source_position(
             normalized,
             rms_file,
@@ -325,6 +361,15 @@ class WhirlExportInterpreter:
             entry_file,
             entry_line,
         )
+        self.builder().attach_value_metadata(
+            model_hidden,
+            self._multi_pu_value_metadata(
+                rms_identity,
+                "model_hidden",
+                "call_actual",
+                "",
+            ),
+        )
         model_norm_scale = self.builder().declare_pu_formal(
             entry_pu,
             "model_norm_scale",
@@ -332,6 +377,16 @@ class WhirlExportInterpreter:
             scale_type,
             entry_file,
             entry_line,
+        )
+        model_scale_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "model_norm_scale",
+            "rms_norm_scale",
+            "weight",
+        )
+        self.builder().attach_value_metadata(
+            model_norm_scale,
+            model_scale_metadata,
         )
         self.builder().declare_pu_result(
             entry_pu,
@@ -341,10 +396,6 @@ class WhirlExportInterpreter:
             file_id=entry_file,
             line=entry_line + 1,
         )
-        rms_instance = self._first_instance_path(
-            class_instances,
-            rms_definition.canonical_name,
-        )
         call = self.builder().create_pu_call(
             entry_pu,
             rms_pu,
@@ -352,12 +403,20 @@ class WhirlExportInterpreter:
             ["norm_call_result"],
             rms_definition.canonical_name,
             rms_instance,
-            f"{entry_name}.{rms_instance}",
+            rms_context,
             0,
             entry_file,
             entry_line + 2,
         )
         call_result = self.builder().get_pu_call_result(call, 0, tensor_type)
+        call_result_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "norm_call_result",
+            "call_result",
+            "",
+        )
+        call_result_metadata["result_source"] = "TinyRMSNorm.normalized_result"
+        self.builder().attach_value_metadata(call_result, call_result_metadata)
         self.builder().set_value_source_position(
             call_result,
             entry_file,
@@ -413,41 +472,74 @@ class WhirlExportInterpreter:
                     handle=hidden.value,
                     type_name="llama2_multi_pu_hidden_type",
                     value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        rms_identity,
+                        "hidden_states",
+                        "activation",
+                        "",
+                    ),
                 ),
                 WhirlValueRecord(
                     name="rms_norm_scale",
                     handle=scale.value,
                     type_name="llama2_multi_pu_scale_type",
                     value_kind="formal",
+                    metadata=dict(scale_metadata),
                 ),
                 WhirlValueRecord(
                     name="model_hidden",
                     handle=model_hidden.value,
                     type_name="llama2_multi_pu_hidden_type",
                     value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        rms_identity,
+                        "model_hidden",
+                        "call_actual",
+                        "",
+                    ),
                 ),
                 WhirlValueRecord(
                     name="model_norm_scale",
                     handle=model_norm_scale.value,
                     type_name="llama2_multi_pu_scale_type",
                     value_kind="formal",
+                    metadata=dict(model_scale_metadata),
                 ),
                 WhirlValueRecord(
                     name="norm_call_result",
                     handle=call_result.value,
                     type_name="llama2_multi_pu_hidden_type",
                     value_kind="call_result",
+                    metadata=dict(call_result_metadata),
                 ),
             ],
             graph_operators=[
                 WhirlOperatorRecord(
                     name="call:TinyRMSNorm",
                     handle=call.value,
-                    kids=["model_hidden"],
+                    kids=["model_hidden", "model_norm_scale"],
                     attrs={
                         "canonical_class_name": rms_definition.canonical_name,
                         "instance_path": rms_instance,
-                        "context_identity": f"{entry_name}.{rms_instance}",
+                        "context_identity": rms_context,
+                    },
+                    metadata={
+                        "declaration_kind": "python_class_callable",
+                        "callable_identity": rms_identity[
+                            "callable_identity"
+                        ],
+                        "implementation_method": rms_identity[
+                            "implementation_method"
+                        ],
+                        "implementation_fingerprint": rms_identity[
+                            "implementation_fingerprint"
+                        ],
+                        "class_state_parameters": rms_identity[
+                            "class_state_parameters"
+                        ],
+                        "class_state_scalars": rms_identity[
+                            "class_state_scalars"
+                        ],
                     },
                 )
             ],
@@ -464,6 +556,94 @@ class WhirlExportInterpreter:
         for component in instance_path.split("."):
             current = getattr(current, component)
         return current
+
+    def _callable_identity_metadata(
+        self,
+        definition: Any,
+        module: Any,
+        instance_path: str,
+        context_identity: str,
+    ) -> Dict[str, str]:
+        try:
+            class_source_line = str(inspect.getsourcelines(type(module))[1])
+        except (OSError, TypeError):
+            class_source_line = "0"
+        parameters = tuple(str(name) for name in getattr(
+            module,
+            "_parameters",
+            {},
+        ).keys())
+        buffers = tuple(str(name) for name in getattr(
+            module,
+            "_buffers",
+            {},
+        ).keys())
+        scalar_state = {
+            str(name): str(value)
+            for name, value in vars(module).items()
+            if not name.startswith("_") and
+            isinstance(value, (bool, float, int, str))
+        }
+        return {
+            "declaration_kind": "python_class_callable",
+            "canonical_class_name": definition.canonical_name,
+            "callable_identity": (
+                f"{definition.canonical_name}."
+                f"{definition.implementation_method}"
+            ),
+            "implementation_method": definition.implementation_method,
+            "implementation_signature": definition.implementation_signature,
+            "implementation_fingerprint": (
+                definition.implementation_fingerprint
+            ),
+            "source_file": definition.source_file,
+            "source_line": str(definition.source_line),
+            "class_source_line": class_source_line,
+            "instance_path": instance_path,
+            "context_identity": context_identity,
+            "class_state_parameters": ",".join(parameters),
+            "class_state_buffers": ",".join(buffers),
+            "class_state_scalars": ",".join(
+                f"{name}={scalar_state[name]}"
+                for name in sorted(scalar_state)
+            ),
+        }
+
+    def _multi_pu_value_metadata(
+        self,
+        identity: Mapping[str, str],
+        source_layer_name: str,
+        tensor_role: str,
+        source_parameter: str,
+    ) -> Dict[str, str]:
+        metadata = {
+            "declaration_kind": identity["declaration_kind"],
+            "canonical_class_name": identity["canonical_class_name"],
+            "callable_identity": identity["callable_identity"],
+            "implementation_method": identity["implementation_method"],
+            "implementation_fingerprint": (
+                identity["implementation_fingerprint"]
+            ),
+            "source_file": identity["source_file"],
+            "source_line": identity["source_line"],
+            "class_source_line": identity["class_source_line"],
+            "instance_path": identity["instance_path"],
+            "context_identity": identity["context_identity"],
+            "class_state_parameters": identity["class_state_parameters"],
+            "class_state_buffers": identity["class_state_buffers"],
+            "class_state_scalars": identity["class_state_scalars"],
+            "source_layer_name": source_layer_name,
+            "tensor_role": tensor_role,
+        }
+        if source_parameter:
+            metadata["source_parameter"] = source_parameter
+            metadata["source_class_state"] = (
+                f"{identity['canonical_class_name']}.{source_parameter}"
+            )
+            metadata["source_instance_state"] = (
+                f"{identity['instance_path']}.{source_parameter}"
+            )
+        return metadata
 
     def _first_instance_path(
         self,

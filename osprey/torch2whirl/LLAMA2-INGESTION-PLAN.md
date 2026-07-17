@@ -799,15 +799,18 @@ Every incremental multiple-PU step must preserve these rules:
 Expand from the current certified `TinyRMSNorm` boundary in this order.
 
 1. `TinyRMSNorm` declaration identity
-   - Status: next.
+   - Status: complete in the frontend branch.
    - Keep the existing two-PU topology.
-   - Add reviewable metadata connecting `rms_norm_scale` to
-     `TinyRMSNorm.weight`.
-   - Preserve canonical class, import/declaration identity, instance path,
-     call context, source file/line, and scalar `eps`.
-   - Machine-check that the trace still contains exactly two `FUNC_ENTRY`
-     records, one `VCALL TinyRMSNorm`, and `transformer.rms_norm.v1`.
-   - Rerun the single-PU prefill artifact lane unchanged.
+   - Reviewable metadata connects `rms_norm_scale` to
+     `TinyRMSNorm.weight` through `source_parameter`,
+     `source_class_state`, and `source_instance_state`.
+   - The artifact preserves canonical class, callable identity, instance
+     path, call context, source file/line, scalar `eps`, and PyTorch
+     `training` state.
+   - Machine checks require exactly two `FUNC_ENTRY` records, one
+     `VCALL TinyRMSNorm`, `transformer.rms_norm.v1`, declaration metadata,
+     and the `TinyRMSNorm.weight` state mapping.
+   - The single-PU prefill artifact lane passes unchanged.
 
 2. `TinyLlama2FeedForward`
    - Introduce a real PU for the feed-forward class.

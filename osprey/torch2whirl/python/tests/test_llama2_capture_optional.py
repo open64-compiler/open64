@@ -305,6 +305,7 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
         )
         call = module.graph_operators[0]
         self.assertEqual(call.name, "call:TinyRMSNorm")
+        self.assertEqual(tuple(call.kids), ("model_hidden", "model_norm_scale"))
         self.assertEqual(
             call.attrs["canonical_class_name"],
             "models.llama2_model.TinyRMSNorm",
@@ -314,12 +315,39 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             call.attrs["context_identity"],
             "TinyLlama2ForCausalLM.norm",
         )
-        values = {value.name: value.value_kind for value in module.values}
-        self.assertEqual(values["hidden_states"], "formal")
-        self.assertEqual(values["rms_norm_scale"], "formal")
-        self.assertEqual(values["model_hidden"], "formal")
-        self.assertEqual(values["model_norm_scale"], "formal")
-        self.assertEqual(values["norm_call_result"], "call_result")
+        self.assertEqual(
+            call.metadata["callable_identity"],
+            "models.llama2_model.TinyRMSNorm.forward",
+        )
+        self.assertEqual(call.metadata["class_state_parameters"], "weight")
+        self.assertEqual(
+            call.metadata["class_state_scalars"],
+            "eps=1e-05,training=False",
+        )
+
+        values = {value.name: value for value in module.values}
+        self.assertEqual(values["hidden_states"].value_kind, "formal")
+        self.assertEqual(values["rms_norm_scale"].value_kind, "formal")
+        self.assertEqual(values["model_hidden"].value_kind, "formal")
+        self.assertEqual(values["model_norm_scale"].value_kind, "formal")
+        self.assertEqual(values["norm_call_result"].value_kind, "call_result")
+
+        scale = values["rms_norm_scale"]
+        self.assertEqual(scale.metadata["tensor_role"], "rms_norm_scale")
+        self.assertEqual(scale.metadata["source_parameter"], "weight")
+        self.assertEqual(
+            scale.metadata["source_class_state"],
+            "models.llama2_model.TinyRMSNorm.weight",
+        )
+        self.assertEqual(scale.metadata["source_instance_state"], "norm.weight")
+        self.assertEqual(
+            scale.metadata["callable_identity"],
+            "models.llama2_model.TinyRMSNorm.forward",
+        )
+        self.assertEqual(
+            scale.metadata["class_state_scalars"],
+            "eps=1e-05,training=False",
+        )
 
     def test_int_shape_sample_input_and_source_provider(self) -> None:
         parsed = _sample_input_from_spec("int-shape:1,8")
