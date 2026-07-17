@@ -178,6 +178,16 @@ DSL_Builder_Select_PU (DSL_BUILDER_PROGRAM_UNIT pu)
     return TRUE;
 }
 
+static BOOL
+DSL_Builder_Select_Value_PU (DSL_BUILDER_VALUE_RECORD *record)
+{
+    if (record == NULL)
+        return FALSE;
+    if (record->pu != NULL)
+        return DSL_Builder_Select_PU(record->pu);
+    return DSL_Builder_Active_PU == NULL && DSL_Builder_PU_Root == NULL;
+}
+
 static dsl_builder_state *
 DSL_Builder_Find_State (DSL_BUILDER_STATE state)
 {
@@ -1607,7 +1617,7 @@ DSL_Builder_Create_Native_Value
     ST_IDX result_st;
     DSL_IR_VALUE_ID image_value_id;
 
-    if (DSL_Builder_Active_PU == NULL ||
+    if ((DSL_Builder_Active_PU == NULL && DSL_Builder_PU_Root != NULL) ||
         !TY_is_tensor_extension(result_ty) ||
         (kid_count != 0 && kids == NULL) ||
         (attr_count != 0 && attrs == NULL))
@@ -2406,7 +2416,7 @@ DSL_Builder_Attach_Value_Metadata
 {
     DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
 
-    return record != NULL && DSL_Builder_Select_PU(record->pu) &&
+    return DSL_Builder_Select_Value_PU(record) &&
            DSL_Builder_Attach_Metadata
                (record->result_st, metadata, metadata_count);
 }
@@ -2418,7 +2428,7 @@ DSL_Builder_Attach_Value_Lineage
 {
     DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
 
-    if (record == NULL || !DSL_Builder_Select_PU(record->pu) ||
+    if (!DSL_Builder_Select_Value_PU(record) ||
         lineage == NULL || lineage[0] == '\0')
         return FALSE;
     ST_tensor_bind_attribute
@@ -2919,7 +2929,7 @@ DSL_Builder_Set_Value_Source_Position
     DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
     USRCPOS position;
 
-    if (record == NULL || !DSL_Builder_Select_PU(record->pu) ||
+    if (!DSL_Builder_Select_Value_PU(record) ||
         source_position == NULL ||
         source_position->file_id == 0 ||
         source_position->file_id > DSL_builder_source_files.size() ||

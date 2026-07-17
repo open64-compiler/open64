@@ -963,6 +963,33 @@ Check_Mapped_Image_Finalizer(void)
 }
 
 static int
+Check_Pre_PU_Native_Value_Compatibility(void)
+{
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&type_core, 0, sizeof(type_core));
+    type_core.kind = "tensor";
+    type_core.dtype = "float32";
+    type_core.rank = 0;
+    type_core.logical_shape = "[]";
+    TY_IDX tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+                           ("pre_pu_probe_type", MTYPE_To_TY(MTYPE_F4),
+                            &type_core);
+    DSL_BUILDER_VALUE value = DSL_Builder_Create_Tensor_Constant
+                                  ("pre_pu_probe", tensor_ty, "float32", 0,
+                                   "[]", "splat", "1.0");
+    if (value == NULL ||
+        !DSL_Builder_Attach_Value_Lineage(value, "pre_pu_probe")) {
+        fprintf(stderr, "pre-PU native value compatibility changed\n");
+        return 1;
+    }
+    DSL_Builder_Begin_Program();
+    return 0;
+}
+
+static int
 Check_Production_Native_Builder(void)
 {
     DSL_BUILDER_TENSOR_TYPE_CORE type_core;
@@ -3622,6 +3649,7 @@ main(void)
     failed |= Check_Operator_Creation();
     failed |= Check_Mapped_Image_Finalizer();
     failed |= Check_Program_Unit_Value_Attach();
+    failed |= Check_Pre_PU_Native_Value_Compatibility();
     failed |= Check_Production_Native_Builder();
     failed |= Check_Llama2_Common_Substrate();
     failed |= Check_Llama2_Transformer_Expressions();
