@@ -194,6 +194,25 @@ class WhirlBuilder:
         if not self._backend.select_program_unit(program_unit.value):
             raise RuntimeError("failed to select program unit")
 
+    def set_pu_source_identity(
+        self,
+        program_unit: ProgramUnitHandle,
+        canonical_definition_name: str,
+        defining_module: str,
+        defining_file: str,
+        defining_line: int,
+        flags: int = 0,
+    ) -> None:
+        if not self._backend.set_pu_source_identity(
+            program_unit.value,
+            canonical_definition_name,
+            defining_module,
+            defining_file,
+            defining_line,
+            flags,
+        ):
+            raise RuntimeError("failed to set program unit source identity")
+
     def declare_pu_formal(
         self,
         program_unit: ProgramUnitHandle,

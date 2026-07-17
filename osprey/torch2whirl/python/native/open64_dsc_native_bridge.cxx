@@ -509,6 +509,29 @@ Open64_DSC_Select_Program_Unit(Open64_DSC_Handle program_unit)
                ((DSL_BUILDER_PROGRAM_UNIT) program_unit) ? 1 : 0;
 }
 
+int
+Open64_DSC_Set_PU_Source_Identity
+        (Open64_DSC_Handle program_unit,
+         const char *canonical_definition_name,
+         const char *defining_module,
+         const char *defining_file,
+         unsigned int defining_line,
+         unsigned int flags)
+{
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+
+    Open64_DSC_Initialize_Context();
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = canonical_definition_name;
+    identity.defining_module = defining_module;
+    identity.defining_file = defining_file;
+    identity.defining_line = (UINT32) defining_line;
+    identity.flags = (UINT32) flags;
+    return DSL_Builder_Set_PU_Source_Identity
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit,
+                &identity) ? 1 : 0;
+}
+
 static void
 Open64_DSC_Copy_Source_Position
         (DSL_BUILDER_SOURCE_POSITION *builder_position,

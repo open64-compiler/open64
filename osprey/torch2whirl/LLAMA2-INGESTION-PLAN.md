@@ -723,7 +723,12 @@ Machine checks require:
 7. Source evidence for the class body and callsite in `ir_b2a -st -src`.
 8. The retained `__WHIRL_DSL_CALL__` logical call comment with callee,
    canonical class name, instance path, context identity, and call ordinal.
-9. No frontend-visible physical escape text such as private `OPR_DSL`,
+9. Native `DSL PU Source Identity Table` evidence for both emitted PUs:
+   `TinyRMSNorm.forward` and `TinyLlama2ForCausalLM.forward`.
+10. Native `DSL Callsite Metadata Table` evidence for the call edge, including
+    caller PU, callee PU, class, instance path, context identity, and source
+    ordinal.
+11. No frontend-visible physical escape text such as private `OPR_DSL`,
    `MDSL`, or `OPC_MDSL` encodings.
 
 The Python frontend keeps all PU, value, call, formal, and result objects
@@ -809,7 +814,8 @@ Expand from the current certified `TinyRMSNorm` boundary in this order.
      `training` state.
    - Machine checks require exactly two `FUNC_ENTRY` records, one
      `VCALL TinyRMSNorm`, `transformer.rms_norm.v1`, declaration metadata,
-     and the `TinyRMSNorm.weight` state mapping.
+     native PU source identity table entries, native callsite metadata, and
+     the `TinyRMSNorm.weight` state mapping.
    - The single-PU prefill artifact lane passes unchanged.
 
 2. `TinyLlama2FeedForward`

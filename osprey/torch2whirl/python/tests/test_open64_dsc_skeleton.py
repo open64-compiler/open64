@@ -13,6 +13,7 @@ from unittest import mock
 from pathlib import Path
 
 import open64_dsc.export as export_module
+from open64_dsc import _mock_whirl
 from open64_dsc.backend import load_backend
 from open64_dsc.cli import (
     Torch2WhirlCliError,
@@ -493,6 +494,36 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "attr.semantic=logits",
             str(annotations[-1]["payload"]),
         )
+
+    def test_builder_sets_program_unit_source_identity(self) -> None:
+        builder = load_builder("mock")
+        builder.begin_program()
+        pu = builder.minimal_program_unit("identity_forward")
+
+        builder.set_pu_source_identity(
+            pu,
+            "models.llama2_model.TinyRMSNorm.forward",
+            "models.llama2_model",
+            "/tmp/llama2_model.py",
+            41,
+        )
+
+        identity = _mock_whirl._objects[pu.value]["source_identity"]
+        self.assertEqual(
+            identity["canonical_definition_name"],
+            "models.llama2_model.TinyRMSNorm.forward",
+        )
+        self.assertEqual(identity["defining_module"], "models.llama2_model")
+        self.assertEqual(identity["defining_file"], "/tmp/llama2_model.py")
+        self.assertEqual(identity["defining_line"], 41)
+        with self.assertRaisesRegex(RuntimeError, "source identity"):
+            builder.set_pu_source_identity(
+                pu,
+                "models.llama2_model.TinyRMSNorm.forward",
+                "models.llama2_model",
+                "/tmp/llama2_model.py",
+                41,
+            )
 
     def test_builder_structured_region_uses_opaque_handles(self) -> None:
         builder = load_builder("mock")

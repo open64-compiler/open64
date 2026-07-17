@@ -126,6 +126,17 @@ class WhirlBackend(Protocol):
     def select_program_unit(self, program_unit: int) -> bool:
         ...
 
+    def set_pu_source_identity(
+        self,
+        program_unit: int,
+        canonical_definition_name: str,
+        defining_module: str,
+        defining_file: str,
+        defining_line: int,
+        flags: int,
+    ) -> bool:
+        ...
+
     def declare_pu_formal(
         self,
         program_unit: int,

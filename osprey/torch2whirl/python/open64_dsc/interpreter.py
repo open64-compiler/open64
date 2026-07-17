@@ -237,6 +237,12 @@ class WhirlExportInterpreter:
             raise NotImplementedError(
                 "multiple-PU emission requires class source definitions"
             )
+        entry_identity = self._callable_identity_metadata(
+            entry_definition,
+            model,
+            "<model>",
+            entry_name,
+        )
         rms_module = self._module_at_instance_path(model, "norm")
         rms_instance = self._first_instance_path(
             class_instances,
@@ -280,6 +286,7 @@ class WhirlExportInterpreter:
         )
 
         rms_pu = self.builder().minimal_program_unit("TinyRMSNorm")
+        self._set_pu_source_identity(rms_pu, rms_identity)
         rms_file = self.builder().register_source_file(
             rms_pu,
             rms_definition.source_file,
@@ -348,6 +355,7 @@ class WhirlExportInterpreter:
         self.builder().return_pu_values(rms_pu, [normalized])
 
         entry_pu = self.builder().minimal_program_unit(entry_name)
+        self._set_pu_source_identity(entry_pu, entry_identity)
         entry_file = self.builder().register_source_file(
             entry_pu,
             entry_definition.source_file,
@@ -591,6 +599,7 @@ class WhirlExportInterpreter:
                 f"{definition.canonical_name}."
                 f"{definition.implementation_method}"
             ),
+            "defining_module": str(getattr(type(module), "__module__", "")),
             "implementation_method": definition.implementation_method,
             "implementation_signature": definition.implementation_signature,
             "implementation_fingerprint": (
@@ -608,6 +617,19 @@ class WhirlExportInterpreter:
                 for name in sorted(scalar_state)
             ),
         }
+
+    def _set_pu_source_identity(
+        self,
+        program_unit: ProgramUnitHandle,
+        identity: Mapping[str, str],
+    ) -> None:
+        self.builder().set_pu_source_identity(
+            program_unit,
+            identity["callable_identity"],
+            identity["defining_module"],
+            identity["source_file"],
+            int(identity["source_line"]),
+        )
 
     def _multi_pu_value_metadata(
         self,
