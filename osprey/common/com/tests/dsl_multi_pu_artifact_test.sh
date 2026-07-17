@@ -37,6 +37,10 @@ for evidence in \
   "by_reference  read_only passed_not_saved" \
   "by_reference  out passed_not_saved" \
   "__WHIRL_DSL_CALL__:callee=TinyRMSNorm" \
+  "DSL PU Source Identity Table: version=1 entries=1" \
+  "definition=TinyRMSNorm.forward module=llama2_model" \
+  "DSL Callsite Metadata Table: version=1 entries=1" \
+  "class=TinyRMSNorm instance=model.norm" \
   "metadata=owner_pu=TinyRMSNorm" \
   "metadata=owner_pu=TinyLlama2ForCausalLM" \
   "location: file llama2_model.py, line 18" \

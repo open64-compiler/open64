@@ -221,4 +221,38 @@ DSL_IR_Image_Print (FILE *file)
                      ((DSL_STATE_EFFECT_KIND)record.effect_kind),
                  record.flags);
     }
+
+    DSL_CALL_IMAGE_HEADER call_header;
+    DSL_Call_Image_Get_Header(&call_header);
+    fprintf(file, "DSL PU Source Identity Table: version=%u entries=%u\n",
+            call_header.version, call_header.pu_identity_count);
+    for (UINT32 i = 1; i <= call_header.pu_identity_count; ++i) {
+        DSL_PU_SOURCE_IDENTITY_RECORD record;
+        DSL_Call_Image_Get_PU_Identity(i, &record);
+        fprintf(file, "  [%u] owner_pu=<%u,%u> definition=%s module=%s "
+                "file=%s line=%u flags=0x%x\n", record.id,
+                ST_IDX_level(record.owner_pu_st),
+                ST_IDX_index(record.owner_pu_st),
+                DSL_IR_String(record.canonical_definition_name),
+                DSL_IR_String(record.defining_module),
+                DSL_IR_String(record.defining_file), record.defining_line,
+                record.flags);
+    }
+    fprintf(file, "DSL Callsite Metadata Table: version=%u entries=%u\n",
+            call_header.version, call_header.callsite_count);
+    for (UINT32 i = 1; i <= call_header.callsite_count; ++i) {
+        DSL_CALLSITE_METADATA_RECORD record;
+        DSL_Call_Image_Get_Callsite(i, &record);
+        fprintf(file, "  [%u] owner_pu=<%u,%u> callee=<%u,%u> "
+                "class=%s instance=%s context=%s source_ordinal=%u "
+                "flags=0x%x\n", record.id,
+                ST_IDX_level(record.owner_pu_st),
+                ST_IDX_index(record.owner_pu_st),
+                ST_IDX_level(record.callee_pu_st),
+                ST_IDX_index(record.callee_pu_st),
+                DSL_IR_String(record.canonical_class_name),
+                DSL_IR_String(record.instance_path),
+                DSL_IR_String(record.context_identity),
+                record.source_call_ordinal, record.flags);
+    }
 }

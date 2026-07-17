@@ -468,6 +468,21 @@ WN_get_dsl_effect_image (void *handle)
                (section_base, shdr.size, stderr) ? 0 : -1;
 }
 
+INT
+WN_get_dsl_callsite_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_CALLSITE_IMAGE);
+    if (shdr.offset == 0) {
+        DSL_Call_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_Call_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
 /*
  *  Note: get SSA info from file into memory 
  */
@@ -1618,6 +1633,9 @@ Read_Global_Info (INT32 *p_num_PUs)
     if (WN_get_dsl_effect_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL effect image", global_ir_file);
     }
+    if (WN_get_dsl_callsite_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL callsite image", global_ir_file);
+    }
 
 #if defined(KEY) && defined(BACK_END)
     WN_get_mod_ref_table (global_fhandle);
@@ -1678,6 +1696,36 @@ Read_Local_Info (MEM_POOL *pool, PU_Info *pu)
     UINT64 tree_size = PU_Info_subsect_size(pu, WT_TREE);
     if (WN_get_tree (local_fhandle, pu) == (WN*) -1) {
 	ErrMsg ( EC_IR_Scn_Read, "tree", local_ir_file);
+    }
+
+    if (DSL_Call_Image_PU_Has_Calls(PU_Info_proc_sym(pu))) {
+        OFFSET_AND_SIZE pu_section = get_section
+            (local_fhandle, SHT_MIPS_WHIRL, WT_PU_SECTION);
+        BOOL tree_range_valid = pu_section.offset != 0 &&
+            tree_offset <= pu_section.size &&
+            tree_size <= pu_section.size - tree_offset;
+        const char *tree_base = !tree_range_valid ? NULL :
+            (char *)local_fhandle + pu_section.offset + tree_offset;
+        BOOL calls_valid = tree_base != NULL;
+        for (UINT32 i = 1;
+             calls_valid && i <= DSL_Call_Image_Callsite_Count(); ++i) {
+            DSL_CALLSITE_METADATA_RECORD record;
+            if (!DSL_Call_Image_Get_Callsite(i, &record) ||
+                record.owner_pu_st != PU_Info_proc_sym(pu))
+                continue;
+            if (record.wn_offset == 0 || record.wn_offset >= tree_size) {
+                calls_valid = FALSE;
+                break;
+            }
+            WN *call = (WN *)(tree_base + record.wn_offset);
+            calls_valid = WN_operator(call) == OPR_CALL &&
+                          WN_st_idx(call) == record.callee_pu_st;
+        }
+        if (!tree_range_valid || !calls_valid ||
+            !DSL_Call_Image_Load_PU
+                 (PU_Info_proc_sym(pu),
+                  tree_base, tree_size))
+            ErrMsg (EC_IR_Scn_Read, "DSL callsites", local_ir_file);
     }
 
     if (PU_Info_state(pu, WT_REGIONS) == Subsect_Exists) {
