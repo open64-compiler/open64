@@ -34,6 +34,7 @@
 
 typedef WN *DSL_BUILDER_VALUE;
 typedef WN *DSL_BUILDER_OPERATOR;
+typedef WN *DSL_BUILDER_CALL;
 typedef PU_Info *DSL_BUILDER_PROGRAM_UNIT;
 typedef DSL_REGION DSL_BUILDER_REGION;
 typedef struct dsl_builder_state *DSL_BUILDER_STATE;
@@ -91,6 +92,20 @@ typedef struct {
     UINT8 statement_begin;
     UINT8 basic_block_begin;
 } DSL_BUILDER_SOURCE_POSITION;
+
+typedef enum {
+    DSL_PU_RESULT_INVALID = 0,
+    DSL_PU_RESULT_TENSOR = 1,
+    DSL_PU_RESULT_STATE = 2
+} DSL_BUILDER_PU_RESULT_ROLE;
+
+typedef struct {
+    const char *canonical_class_name;
+    const char *instance_path;
+    const char *context_identity;
+    UINT32 call_ordinal;
+    DSL_BUILDER_SOURCE_POSITION source_position;
+} DSL_BUILDER_CALLSITE_INFO;
 
 typedef struct {
     UINT32 native_node_count;
@@ -199,6 +214,38 @@ extern BOOL DSL_Builder_Begin_Program (void);
 extern void DSL_Builder_Abort_Program (void);
 extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
                                 (const char *name);
+extern BOOL DSL_Builder_Select_PU (DSL_BUILDER_PROGRAM_UNIT pu);
+extern DSL_BUILDER_VALUE DSL_Builder_Declare_PU_Formal
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 const char *name,
+                                 UINT32 ordinal,
+                                 TY_IDX ty,
+                                 const DSL_BUILDER_SOURCE_POSITION
+                                     *source_position);
+extern DSL_BUILDER_VALUE DSL_Builder_Declare_PU_Result
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 const char *name,
+                                 UINT32 ordinal,
+                                 TY_IDX ty,
+                                 DSL_BUILDER_PU_RESULT_ROLE role,
+                                 const DSL_BUILDER_SOURCE_POSITION
+                                     *source_position);
+extern BOOL DSL_Builder_Return_PU_Values
+                                (DSL_BUILDER_PROGRAM_UNIT pu,
+                                 DSL_BUILDER_VALUE *values,
+                                 UINT32 value_count);
+extern DSL_BUILDER_CALL DSL_Builder_Create_PU_Call
+                                (DSL_BUILDER_PROGRAM_UNIT caller,
+                                 DSL_BUILDER_PROGRAM_UNIT callee,
+                                 DSL_BUILDER_VALUE *arguments,
+                                 UINT32 argument_count,
+                                 const char *const *result_names,
+                                 UINT32 result_count,
+                                 const DSL_BUILDER_CALLSITE_INFO *callsite);
+extern BOOL DSL_Builder_Get_PU_Call_Result
+                                (DSL_BUILDER_CALL call,
+                                 UINT32 ordinal,
+                                 DSL_BUILDER_VALUE *value);
 extern UINT32 DSL_Builder_Register_Source_File
                                 (DSL_BUILDER_PROGRAM_UNIT pu,
                                  const char *path);

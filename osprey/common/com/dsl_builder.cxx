@@ -33,12 +33,14 @@
 
 static PU_Info *DSL_Builder_PU_Root = NULL;
 static PU_Info *DSL_Builder_PU_Last = NULL;
+static PU_Info *DSL_Builder_Active_PU = NULL;
 static UINT32 DSL_Builder_Result_Number = 0;
 static DST_INFO_IDX DSL_Builder_CU_DST = DST_INVALID_INIT;
 static std::vector<std::string> DSL_builder_source_files;
 static std::vector<std::string> DSL_builder_source_directories;
 
 typedef struct {
+    DSL_BUILDER_PROGRAM_UNIT pu;
     WN *assignment;
     WN *expression;
     ST_IDX result_st;
@@ -56,18 +58,73 @@ struct dsl_builder_state {
 
 static std::vector<dsl_builder_state *> DSL_builder_state_registry;
 
+struct dsl_builder_pu_interface_value {
+    DSL_BUILDER_VALUE value;
+    ST_IDX st;
+    TY_IDX ty;
+    UINT32 ordinal;
+    DSL_BUILDER_PU_RESULT_ROLE role;
+};
+
+struct dsl_builder_pu_interface {
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    std::vector<dsl_builder_pu_interface_value> formals;
+    std::vector<dsl_builder_pu_interface_value> results;
+    BOOL has_return;
+};
+
+struct dsl_builder_call_record {
+    DSL_BUILDER_CALL call;
+    DSL_BUILDER_PROGRAM_UNIT caller;
+    DSL_BUILDER_PROGRAM_UNIT callee;
+    std::vector<DSL_BUILDER_VALUE> results;
+};
+
+static std::vector<dsl_builder_pu_interface *> DSL_builder_pu_interfaces;
+static std::vector<dsl_builder_call_record *> DSL_builder_call_registry;
+
 static void
 DSL_Builder_Reset_Program (void)
 {
     for (UINT32 i = 0; i < DSL_builder_state_registry.size(); ++i)
         delete DSL_builder_state_registry[i];
+    for (UINT32 i = 0; i < DSL_builder_pu_interfaces.size(); ++i)
+        delete DSL_builder_pu_interfaces[i];
+    for (UINT32 i = 0; i < DSL_builder_call_registry.size(); ++i)
+        delete DSL_builder_call_registry[i];
     DSL_Builder_PU_Root = NULL;
     DSL_Builder_PU_Last = NULL;
+    DSL_Builder_Active_PU = NULL;
     DSL_Builder_Result_Number = 0;
+    DSL_Builder_CU_DST = DST_INVALID_IDX;
+    DSL_builder_source_files.clear();
+    DSL_builder_source_directories.clear();
     DSL_builder_value_registry.clear();
     DSL_builder_state_registry.clear();
+    DSL_builder_pu_interfaces.clear();
+    DSL_builder_call_registry.clear();
     DSL_IR_Image_Reset();
     DSL_Region_Reset();
+}
+
+static dsl_builder_pu_interface *
+DSL_Builder_Find_PU_Interface (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    for (UINT32 i = 0; i < DSL_builder_pu_interfaces.size(); ++i) {
+        if (DSL_builder_pu_interfaces[i]->pu == pu)
+            return DSL_builder_pu_interfaces[i];
+    }
+    return NULL;
+}
+
+static dsl_builder_call_record *
+DSL_Builder_Find_Call_Record (DSL_BUILDER_CALL call)
+{
+    for (UINT32 i = 0; i < DSL_builder_call_registry.size(); ++i) {
+        if (DSL_builder_call_registry[i]->call == call)
+            return DSL_builder_call_registry[i];
+    }
+    return NULL;
 }
 
 static DSL_BUILDER_VALUE_RECORD *
@@ -85,11 +142,50 @@ static DSL_BUILDER_VALUE_RECORD *
 DSL_Builder_Find_Value_Record_By_ST (ST_IDX st)
 {
     for (UINT32 i = 0; i < DSL_builder_value_registry.size(); ++i) {
-        if (DSL_builder_value_registry[i].result_st == st)
+        if (DSL_builder_value_registry[i].pu == DSL_Builder_Active_PU &&
+            DSL_builder_value_registry[i].result_st == st)
             return &DSL_builder_value_registry[i];
     }
 
     return NULL;
+}
+
+static BOOL
+DSL_Builder_PU_Is_Registered (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    for (PU_Info *current = DSL_Builder_PU_Root; current != NULL;
+         current = PU_Info_next(current)) {
+        if (current == pu)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_Builder_Select_PU (DSL_BUILDER_PROGRAM_UNIT pu)
+{
+    if (!DSL_Builder_PU_Is_Registered(pu) ||
+        PU_Info_state(pu, WT_SYMTAB) != Subsect_InMem ||
+        PU_Info_symtab_ptr(pu) == NULL)
+        return FALSE;
+
+    ST_IDX proc_st = PU_Info_proc_sym(pu);
+    Current_pu = &Pu_Table[ST_pu(St_Table[proc_st])];
+    Current_scope = Current_pu->lexical_level;
+    Restore_Local_Symtab(pu);
+    Current_Map_Tab = PU_Info_maptab(pu);
+    DSL_Builder_Active_PU = pu;
+    return TRUE;
+}
+
+static BOOL
+DSL_Builder_Select_Value_PU (DSL_BUILDER_VALUE_RECORD *record)
+{
+    if (record == NULL)
+        return FALSE;
+    if (record->pu != NULL)
+        return DSL_Builder_Select_PU(record->pu);
+    return DSL_Builder_Active_PU == NULL && DSL_Builder_PU_Root == NULL;
 }
 
 static dsl_builder_state *
@@ -140,6 +236,108 @@ DSL_Builder_PU_Body (DSL_BUILDER_PROGRAM_UNIT pu)
         return NULL;
 
     return body;
+}
+
+static BOOL
+DSL_Builder_Source_Position_Valid
+        (const DSL_BUILDER_SOURCE_POSITION *source_position)
+{
+    return source_position != NULL && source_position->file_id != 0 &&
+           source_position->file_id <= DSL_builder_source_files.size() &&
+           source_position->line >= 0 && source_position->column <= 4095;
+}
+
+static SRCPOS
+DSL_Builder_Source_Position
+        (const DSL_BUILDER_SOURCE_POSITION *source_position)
+{
+    USRCPOS position;
+    USRCPOS_clear(position);
+    USRCPOS_filenum(position) = source_position->file_id;
+    USRCPOS_linenum(position) = source_position->line;
+    USRCPOS_column(position) = source_position->column;
+    USRCPOS_stmt_begin(position) = source_position->statement_begin != 0;
+    USRCPOS_bb_begin(position) = source_position->basic_block_begin != 0;
+    return USRCPOS_srcpos(position);
+}
+
+static DSL_IR_VALUE_ID
+DSL_Builder_Add_Image_Symbol_Value
+        (ST_IDX st,
+         TY_IDX ty,
+         UINT32 value_kind)
+{
+    DSL_IR_VALUE_RECORD record;
+    DSL_IR_Value_Record_Init(&record);
+    record.value_kind = value_kind;
+    record.ty = ty;
+    record.st = st;
+    record.name = Save_Str(ST_name(St_Table[st]));
+    if (DSL_Builder_Active_PU != NULL) {
+        std::string metadata = "owner_pu=";
+        metadata += ST_name
+                        (St_Table[PU_Info_proc_sym(DSL_Builder_Active_PU)]);
+        record.metadata = Save_Str(metadata.c_str());
+    }
+    return DSL_IR_Image_Add_Value(&record);
+}
+
+static TY_IDX
+DSL_Builder_Create_PU_Function_Type
+        (const dsl_builder_pu_interface *interface_record)
+{
+    TY_IDX function_ty;
+    TY &function = New_TY(function_ty);
+    TY_Init(function, 0, KIND_FUNCTION, MTYPE_UNKNOWN, 0);
+    Set_TY_align(function_ty, 1);
+
+    TYLIST_IDX tylist_idx;
+    Set_TYLIST_type(New_TYLIST(tylist_idx), MTYPE_To_TY(MTYPE_V));
+    Set_TY_tylist(function_ty, tylist_idx);
+    for (UINT32 i = 0; i < interface_record->formals.size(); ++i)
+        Set_TYLIST_type(New_TYLIST(tylist_idx),
+                        interface_record->formals[i].ty);
+    for (UINT32 i = 0; i < interface_record->results.size(); ++i)
+        Set_TYLIST_type(New_TYLIST(tylist_idx),
+                        Make_Pointer_Type(interface_record->results[i].ty));
+    Set_TYLIST_type(New_TYLIST(tylist_idx), TY_IDX_ZERO);
+    return function_ty;
+}
+
+static BOOL
+DSL_Builder_Rebuild_PU_Entry (dsl_builder_pu_interface *interface_record)
+{
+    if (interface_record == NULL ||
+        !DSL_Builder_Select_PU(interface_record->pu))
+        return FALSE;
+
+    WN *old_entry = PU_Info_tree_ptr(interface_record->pu);
+    if (old_entry == NULL || WN_operator(old_entry) != OPR_FUNC_ENTRY)
+        return FALSE;
+    UINT32 formal_count = interface_record->formals.size();
+    UINT32 result_count = interface_record->results.size();
+    if (formal_count + result_count > 32767)
+        return FALSE;
+
+    WN *entry = WN_CreateEntry
+                    ((INT16)(formal_count + result_count),
+                     PU_Info_proc_sym(interface_record->pu),
+                     WN_func_body(old_entry), WN_func_pragmas(old_entry),
+                     WN_func_varrefs(old_entry));
+    for (UINT32 i = 0; i < formal_count; ++i)
+        WN_formal(entry, i) = WN_CreateIdname
+                                  (0, interface_record->formals[i].st);
+    for (UINT32 i = 0; i < result_count; ++i)
+        WN_formal(entry, formal_count + i) = WN_CreateIdname
+                                                 (0,
+                                                  interface_record->results[i].st);
+
+    ST_IDX proc_st = PU_Info_proc_sym(interface_record->pu);
+    TY_IDX function_ty =
+        DSL_Builder_Create_PU_Function_Type(interface_record);
+    Set_PU_prototype(Pu_Table[ST_pu(St_Table[proc_st])], function_ty);
+    Set_PU_Info_tree_ptr(interface_record->pu, entry);
+    return TRUE;
 }
 
 static const char *
@@ -1384,6 +1582,12 @@ DSL_Builder_Add_Image_Node
     value_record.ty = result_ty;
     value_record.st = result_st;
     value_record.name = Save_Str(ST_name(St_Table[result_st]));
+    if (DSL_Builder_Active_PU != NULL) {
+        std::string metadata = "owner_pu=";
+        metadata += ST_name
+                        (St_Table[PU_Info_proc_sym(DSL_Builder_Active_PU)]);
+        value_record.metadata = Save_Str(metadata.c_str());
+    }
     *result_value_id = DSL_IR_Image_Add_Value(&value_record);
     if (*result_value_id == DSL_IR_VALUE_INVALID_ID)
         return FALSE;
@@ -1413,7 +1617,8 @@ DSL_Builder_Create_Native_Value
     ST_IDX result_st;
     DSL_IR_VALUE_ID image_value_id;
 
-    if (!TY_is_tensor_extension(result_ty) ||
+    if ((DSL_Builder_Active_PU == NULL && DSL_Builder_PU_Root != NULL) ||
+        !TY_is_tensor_extension(result_ty) ||
         (kid_count != 0 && kids == NULL) ||
         (attr_count != 0 && attrs == NULL))
         return NULL;
@@ -1423,7 +1628,8 @@ DSL_Builder_Create_Native_Value
         operands = new WN *[kid_count];
         for (UINT32 i = 0; i < kid_count; ++i) {
             operand_records[i] = DSL_Builder_Find_Value_Record(kids[i]);
-            if (operand_records[i] == NULL) {
+            if (operand_records[i] == NULL ||
+                operand_records[i]->pu != DSL_Builder_Active_PU) {
                 delete [] operands;
                 delete [] operand_records;
                 return NULL;
@@ -1462,6 +1668,7 @@ DSL_Builder_Create_Native_Value
     delete [] operand_records;
 
     DSL_BUILDER_VALUE_RECORD record;
+    record.pu = DSL_Builder_Active_PU;
     record.assignment = assignment;
     record.expression = expression;
     record.result_st = result_st;
@@ -2209,7 +2416,7 @@ DSL_Builder_Attach_Value_Metadata
 {
     DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
 
-    return record != NULL &&
+    return DSL_Builder_Select_Value_PU(record) &&
            DSL_Builder_Attach_Metadata
                (record->result_st, metadata, metadata_count);
 }
@@ -2221,7 +2428,8 @@ DSL_Builder_Attach_Value_Lineage
 {
     DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
 
-    if (record == NULL || lineage == NULL || lineage[0] == '\0')
+    if (!DSL_Builder_Select_Value_PU(record) ||
+        lineage == NULL || lineage[0] == '\0')
         return FALSE;
     ST_tensor_bind_attribute
         (record->result_st,
@@ -2247,6 +2455,8 @@ BOOL
 DSL_Builder_Begin_Program (void)
 {
     DSL_Builder_Reset_Program();
+    Current_DST = New_DST();
+    DST_Init(NULL, 0);
     return TRUE;
 }
 
@@ -2272,15 +2482,16 @@ DSL_Builder_Create_Minimal_PU (const char *name)
 
     if (name == NULL || name[0] == '\0')
         return NULL;
-    /*
-     * Keep the first PU bridge to one entry function.  Multiple top-level PUs
-     * need explicit local-scope ownership before Python should expose them.
-     */
     if (DSL_Builder_PU_Root != NULL) {
-        ST_IDX current_st = PU_Info_proc_sym(DSL_Builder_PU_Root);
-        if (strcmp(ST_name(St_Table[current_st]), name) == 0)
-            return DSL_Builder_PU_Root;
-        DSL_Builder_Reset_Program();
+        for (PU_Info *current = DSL_Builder_PU_Root; current != NULL;
+             current = PU_Info_next(current)) {
+            ST_IDX current_st = PU_Info_proc_sym(current);
+            if (strcmp(ST_name(St_Table[current_st]), name) == 0) {
+                if (!DSL_Builder_Select_PU(current))
+                    return NULL;
+                return current;
+            }
+        }
     } else if (!DSL_builder_value_registry.empty() ||
                DSL_IR_Image_Has_Records()) {
         DSL_Builder_Reset_Program();
@@ -2322,9 +2533,9 @@ DSL_Builder_Create_Minimal_PU (const char *name)
     pu_info = TYPE_MEM_POOL_ALLOC(PU_Info, Malloc_Mem_Pool);
     PU_Info_init(pu_info);
 
+    Set_PU_Info_symtab_ptr(pu_info, NULL);
     Set_PU_Info_tree_ptr(pu_info, entry_wn);
-    if (Current_Map_Tab == NULL)
-        Current_Map_Tab = WN_MAP_TAB_Create(Malloc_Mem_Pool);
+    Current_Map_Tab = WN_MAP_TAB_Create(Malloc_Mem_Pool);
     PU_Info_maptab(pu_info) = Current_Map_Tab;
     PU_Info_proc_sym(pu_info) = ST_st_idx(func_st);
     Set_PU_Info_pu_dst(pu_info, func_dst);
@@ -2348,7 +2559,314 @@ DSL_Builder_Create_Minimal_PU (const char *name)
         DSL_Builder_PU_Root = pu_info;
     DSL_Builder_PU_Last = pu_info;
 
+    Save_Local_Symtab(Current_scope, pu_info);
+    DSL_Builder_Active_PU = pu_info;
+
+    dsl_builder_pu_interface *interface_record =
+        new dsl_builder_pu_interface;
+    interface_record->pu = pu_info;
+    interface_record->has_return = FALSE;
+    DSL_builder_pu_interfaces.push_back(interface_record);
+
     return pu_info;
+}
+
+DSL_BUILDER_VALUE
+DSL_Builder_Declare_PU_Formal
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         const char *name,
+         UINT32 ordinal,
+         TY_IDX ty,
+         const DSL_BUILDER_SOURCE_POSITION *source_position)
+{
+    dsl_builder_pu_interface *interface_record =
+        DSL_Builder_Find_PU_Interface(pu);
+    if (interface_record == NULL || !DSL_Builder_Select_PU(pu) ||
+        name == NULL || name[0] == '\0' ||
+        ordinal != interface_record->formals.size() ||
+        !interface_record->results.empty() || !TY_is_tensor_extension(ty) ||
+        !DSL_Builder_Source_Position_Valid(source_position))
+        return NULL;
+
+    ST *st = New_ST();
+    ST_Init(st, Save_Str(name), CLASS_VAR, SCLASS_FORMAL, EXPORT_LOCAL, ty);
+    Set_ST_is_value_parm(st);
+    Set_ST_Srcpos(*st, DSL_Builder_Source_Position(source_position));
+    WN *value = WN_CreateLdid(OPR_LDID, MTYPE_M, MTYPE_M, 0,
+                              ST_st_idx(*st), ty);
+
+    DSL_IR_VALUE_ID image_value_id = DSL_Builder_Add_Image_Symbol_Value
+                                         (ST_st_idx(*st), ty,
+                                          DSL_IR_VALUE_SYMBOL);
+    if (image_value_id == DSL_IR_VALUE_INVALID_ID)
+        return NULL;
+
+    DSL_BUILDER_VALUE_RECORD value_record;
+    value_record.pu = pu;
+    value_record.assignment = value;
+    value_record.expression = value;
+    value_record.result_st = ST_st_idx(*st);
+    value_record.result_ty = ty;
+    value_record.image_value_id = image_value_id;
+    DSL_builder_value_registry.push_back(value_record);
+
+    dsl_builder_pu_interface_value formal;
+    formal.value = value;
+    formal.st = ST_st_idx(*st);
+    formal.ty = ty;
+    formal.ordinal = ordinal;
+    formal.role = DSL_PU_RESULT_INVALID;
+    interface_record->formals.push_back(formal);
+    if (!DSL_Builder_Rebuild_PU_Entry(interface_record))
+        return NULL;
+    return value;
+}
+
+DSL_BUILDER_VALUE
+DSL_Builder_Declare_PU_Result
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         const char *name,
+         UINT32 ordinal,
+         TY_IDX ty,
+         DSL_BUILDER_PU_RESULT_ROLE role,
+         const DSL_BUILDER_SOURCE_POSITION *source_position)
+{
+    dsl_builder_pu_interface *interface_record =
+        DSL_Builder_Find_PU_Interface(pu);
+    if (interface_record == NULL || !DSL_Builder_Select_PU(pu) ||
+        name == NULL || name[0] == '\0' ||
+        ordinal != interface_record->results.size() ||
+        !TY_is_tensor_extension(ty) ||
+        (role != DSL_PU_RESULT_TENSOR && role != DSL_PU_RESULT_STATE) ||
+        !DSL_Builder_Source_Position_Valid(source_position))
+        return NULL;
+
+    ST *st = New_ST();
+    ST_Init(st, Save_Str(name), CLASS_VAR, SCLASS_FORMAL_REF,
+            EXPORT_LOCAL, ty);
+    Set_ST_Srcpos(*st, DSL_Builder_Source_Position(source_position));
+    ST_tensor_bind_metadata(ST_st_idx(*st), "dsl.pu.result_role",
+                            role == DSL_PU_RESULT_STATE ? "state" : "tensor");
+    char ordinal_text[32];
+    snprintf(ordinal_text, sizeof(ordinal_text), "%u", ordinal);
+    ST_tensor_bind_metadata(ST_st_idx(*st), "dsl.pu.result_ordinal",
+                            ordinal_text);
+    WN *value = WN_CreateLdid(OPR_LDID, MTYPE_M, MTYPE_M, 0,
+                              ST_st_idx(*st), ty);
+
+    DSL_IR_VALUE_ID image_value_id = DSL_Builder_Add_Image_Symbol_Value
+                                         (ST_st_idx(*st), ty,
+                                          DSL_IR_VALUE_SYMBOL);
+    if (image_value_id == DSL_IR_VALUE_INVALID_ID)
+        return NULL;
+
+    DSL_BUILDER_VALUE_RECORD value_record;
+    value_record.pu = pu;
+    value_record.assignment = value;
+    value_record.expression = value;
+    value_record.result_st = ST_st_idx(*st);
+    value_record.result_ty = ty;
+    value_record.image_value_id = image_value_id;
+    DSL_builder_value_registry.push_back(value_record);
+
+    dsl_builder_pu_interface_value result;
+    result.value = value;
+    result.st = ST_st_idx(*st);
+    result.ty = ty;
+    result.ordinal = ordinal;
+    result.role = role;
+    interface_record->results.push_back(result);
+    if (!DSL_Builder_Rebuild_PU_Entry(interface_record))
+        return NULL;
+    return value;
+}
+
+BOOL
+DSL_Builder_Return_PU_Values
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_VALUE *values,
+         UINT32 value_count)
+{
+    dsl_builder_pu_interface *interface_record =
+        DSL_Builder_Find_PU_Interface(pu);
+    WN *body = DSL_Builder_PU_Body(pu);
+    if (interface_record == NULL || !DSL_Builder_Select_PU(pu) ||
+        body == NULL || interface_record->has_return ||
+        value_count != interface_record->results.size() ||
+        (value_count != 0 && values == NULL))
+        return FALSE;
+
+    for (UINT32 i = 0; i < value_count; ++i) {
+        DSL_BUILDER_VALUE_RECORD *value_record =
+            DSL_Builder_Find_Value_Record(values[i]);
+        if (value_record == NULL || value_record->pu != pu ||
+            value_record->result_ty != interface_record->results[i].ty)
+            return FALSE;
+    }
+    for (UINT32 i = 0; i < value_count; ++i) {
+        DSL_BUILDER_VALUE_RECORD *value_record =
+            DSL_Builder_Find_Value_Record(values[i]);
+        WN *load = WN_CreateLdid(OPR_LDID, MTYPE_M, MTYPE_M, 0,
+                                 value_record->result_st,
+                                 value_record->result_ty);
+        WN *store = WN_CreateStid
+                        (OPR_STID, MTYPE_V, MTYPE_M, 0,
+                         interface_record->results[i].st,
+                         interface_record->results[i].ty, load);
+        WN_INSERT_BlockLast(body, store);
+    }
+    WN_INSERT_BlockLast(body, WN_CreateReturn());
+    interface_record->has_return = TRUE;
+    return TRUE;
+}
+
+DSL_BUILDER_CALL
+DSL_Builder_Create_PU_Call
+        (DSL_BUILDER_PROGRAM_UNIT caller,
+         DSL_BUILDER_PROGRAM_UNIT callee,
+         DSL_BUILDER_VALUE *arguments,
+         UINT32 argument_count,
+         const char *const *result_names,
+         UINT32 result_count,
+         const DSL_BUILDER_CALLSITE_INFO *callsite)
+{
+    dsl_builder_pu_interface *callee_interface =
+        DSL_Builder_Find_PU_Interface(callee);
+    WN *body = DSL_Builder_PU_Body(caller);
+    if (caller == callee || callee_interface == NULL ||
+        !callee_interface->has_return || !DSL_Builder_Select_PU(caller) ||
+        body == NULL || argument_count != callee_interface->formals.size() ||
+        result_count != callee_interface->results.size() ||
+        (argument_count != 0 && arguments == NULL) ||
+        (result_count != 0 && result_names == NULL) || callsite == NULL ||
+        !DSL_Builder_Source_Position_Valid(&callsite->source_position))
+        return NULL;
+
+    std::vector<DSL_BUILDER_VALUE_RECORD *> argument_records;
+    for (UINT32 i = 0; i < argument_count; ++i) {
+        DSL_BUILDER_VALUE_RECORD *record =
+            DSL_Builder_Find_Value_Record(arguments[i]);
+        if (record == NULL || record->pu != caller ||
+            record->result_ty != callee_interface->formals[i].ty)
+            return NULL;
+        argument_records.push_back(record);
+    }
+    for (UINT32 i = 0; i < result_count; ++i) {
+        if (result_names[i] == NULL || result_names[i][0] == '\0')
+            return NULL;
+    }
+
+    WN *call = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V,
+                         argument_count + result_count);
+    WN_st_idx(call) = PU_Info_proc_sym(callee);
+    WN_Set_Call_Default_Flags(call);
+    WN_Set_Linenum(call,
+                   DSL_Builder_Source_Position(&callsite->source_position));
+
+    for (UINT32 i = 0; i < argument_count; ++i) {
+        TY_IDX pointer_ty = Make_Pointer_Type(argument_records[i]->result_ty);
+        WN *address = WN_CreateLda
+                          (OPR_LDA, Pointer_Mtype, MTYPE_V, 0, pointer_ty,
+                           argument_records[i]->result_st);
+        WN_kid(call, i) = WN_CreateParm
+                              (Pointer_Mtype, address, pointer_ty,
+                               WN_PARM_BY_REFERENCE | WN_PARM_READ_ONLY |
+                               WN_PARM_PASSED_NOT_SAVED);
+    }
+
+    dsl_builder_call_record *call_record = new dsl_builder_call_record;
+    call_record->call = call;
+    call_record->caller = caller;
+    call_record->callee = callee;
+    for (UINT32 i = 0; i < result_count; ++i) {
+        TY_IDX result_ty = callee_interface->results[i].ty;
+        ST_IDX result_st = DSL_Builder_Create_Tensor_Result_Symbol
+                               (result_names[i], result_ty, SCLASS_AUTO,
+                                EXPORT_LOCAL);
+        if (ST_IDX_index(result_st) == 0) {
+            delete call_record;
+            return NULL;
+        }
+        Set_ST_Srcpos(St_Table[result_st],
+                      DSL_Builder_Source_Position
+                          (&callsite->source_position));
+        ST_tensor_bind_metadata(result_st, "dsl.call.canonical_class",
+                                DSL_Builder_Safe_String
+                                    (callsite->canonical_class_name));
+        ST_tensor_bind_metadata(result_st, "dsl.call.instance_path",
+                                DSL_Builder_Safe_String
+                                    (callsite->instance_path));
+        ST_tensor_bind_metadata(result_st, "dsl.call.context_identity",
+                                DSL_Builder_Safe_String
+                                    (callsite->context_identity));
+        char ordinal_text[32];
+        snprintf(ordinal_text, sizeof(ordinal_text), "%u",
+                 callsite->call_ordinal);
+        ST_tensor_bind_metadata(result_st, "dsl.call.ordinal", ordinal_text);
+
+        TY_IDX pointer_ty = Make_Pointer_Type(result_ty);
+        WN *address = WN_CreateLda(OPR_LDA, Pointer_Mtype, MTYPE_V, 0,
+                                   pointer_ty, result_st);
+        WN_kid(call, argument_count + i) = WN_CreateParm
+                                               (Pointer_Mtype, address,
+                                                pointer_ty,
+                                                WN_PARM_BY_REFERENCE |
+                                                WN_PARM_OUT |
+                                                WN_PARM_PASSED_NOT_SAVED);
+
+        WN *value = WN_CreateLdid(OPR_LDID, MTYPE_M, MTYPE_M, 0,
+                                  result_st, result_ty);
+        DSL_IR_VALUE_ID image_value_id =
+            DSL_Builder_Add_Image_Symbol_Value
+                (result_st, result_ty, DSL_IR_VALUE_SYMBOL);
+        if (image_value_id == DSL_IR_VALUE_INVALID_ID) {
+            delete call_record;
+            return NULL;
+        }
+        DSL_BUILDER_VALUE_RECORD value_record;
+        value_record.pu = caller;
+        value_record.assignment = value;
+        value_record.expression = value;
+        value_record.result_st = result_st;
+        value_record.result_ty = result_ty;
+        value_record.image_value_id = image_value_id;
+        DSL_builder_value_registry.push_back(value_record);
+        call_record->results.push_back(value);
+    }
+
+    std::string comment_text = "__WHIRL_DSL_CALL__:callee=";
+    comment_text += ST_name(St_Table[PU_Info_proc_sym(callee)]);
+    comment_text += ";class=";
+    comment_text += DSL_Builder_Safe_String(callsite->canonical_class_name);
+    comment_text += ";instance=";
+    comment_text += DSL_Builder_Safe_String(callsite->instance_path);
+    comment_text += ";context=";
+    comment_text += DSL_Builder_Safe_String(callsite->context_identity);
+    char ordinal_text[32];
+    snprintf(ordinal_text, sizeof(ordinal_text), "%u",
+             callsite->call_ordinal);
+    comment_text += ";ordinal=";
+    comment_text += ordinal_text;
+    WN *comment = WN_CreateComment(comment_text.c_str());
+    WN_Set_Linenum(comment,
+                   DSL_Builder_Source_Position(&callsite->source_position));
+    WN_INSERT_BlockLast(body, comment);
+    WN_INSERT_BlockLast(body, call);
+    DSL_builder_call_registry.push_back(call_record);
+    return call;
+}
+
+BOOL
+DSL_Builder_Get_PU_Call_Result
+        (DSL_BUILDER_CALL call,
+         UINT32 ordinal,
+         DSL_BUILDER_VALUE *value)
+{
+    dsl_builder_call_record *record = DSL_Builder_Find_Call_Record(call);
+    if (record == NULL || value == NULL || ordinal >= record->results.size())
+        return FALSE;
+    *value = record->results[ordinal];
+    return TRUE;
 }
 
 UINT32
@@ -2411,7 +2929,8 @@ DSL_Builder_Set_Value_Source_Position
     DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
     USRCPOS position;
 
-    if (record == NULL || source_position == NULL ||
+    if (!DSL_Builder_Select_Value_PU(record) ||
+        source_position == NULL ||
         source_position->file_id == 0 ||
         source_position->file_id > DSL_builder_source_files.size() ||
         source_position->line < 0 || source_position->column > 4095)
@@ -2427,6 +2946,83 @@ DSL_Builder_Set_Value_Source_Position
     if (ST_IDX_index(record->result_st) != 0)
         Set_ST_Srcpos(St_Table[record->result_st],
                       USRCPOS_srcpos(position));
+    return TRUE;
+}
+
+static BOOL
+DSL_Builder_Verify_PU_Interfaces (FILE *diagnostic, UINT32 *error_count)
+{
+    BOOL valid = TRUE;
+    for (UINT32 i = 0; i < DSL_builder_pu_interfaces.size(); ++i) {
+        dsl_builder_pu_interface *interface_record =
+            DSL_builder_pu_interfaces[i];
+        if (!DSL_Builder_Select_PU(interface_record->pu)) {
+            valid = FALSE;
+        } else {
+            WN *entry = PU_Info_tree_ptr(interface_record->pu);
+            UINT32 expected = interface_record->formals.size() +
+                              interface_record->results.size();
+            if (entry == NULL || WN_operator(entry) != OPR_FUNC_ENTRY ||
+                (UINT32)WN_num_formals(entry) != expected ||
+                (!interface_record->results.empty() &&
+                 !interface_record->has_return))
+                valid = FALSE;
+            for (UINT32 j = 0; valid && j < expected; ++j) {
+                dsl_builder_pu_interface_value &formal =
+                    j < interface_record->formals.size() ?
+                    interface_record->formals[j] :
+                    interface_record->results
+                        [j - interface_record->formals.size()];
+                WN *idname = WN_formal(entry, j);
+                if (idname == NULL || WN_operator(idname) != OPR_IDNAME ||
+                    WN_st_idx(idname) != formal.st)
+                    valid = FALSE;
+            }
+        }
+        if (!valid) {
+            if (diagnostic != NULL)
+                fprintf(diagnostic,
+                        "DSL builder verification error: invalid PU interface\n");
+            if (error_count != NULL)
+                ++*error_count;
+            return FALSE;
+        }
+    }
+
+    for (UINT32 i = 0; i < DSL_builder_call_registry.size(); ++i) {
+        dsl_builder_call_record *record = DSL_builder_call_registry[i];
+        dsl_builder_pu_interface *callee =
+            DSL_Builder_Find_PU_Interface(record->callee);
+        WN *call = record->call;
+        if (callee == NULL || call == NULL || WN_operator(call) != OPR_CALL ||
+            WN_st_idx(call) != PU_Info_proc_sym(record->callee) ||
+            (UINT32)WN_kid_count(call) != callee->formals.size() +
+                                          callee->results.size() ||
+            record->results.size() != callee->results.size())
+            valid = FALSE;
+        for (UINT32 j = 0; valid && j < callee->formals.size(); ++j) {
+            WN *parm = WN_kid(call, j);
+            if (parm == NULL || WN_operator(parm) != OPR_PARM ||
+                !WN_Parm_By_Reference(parm) ||
+                !WN_Parm_Read_Only(parm) || !WN_Parm_Passed_Not_Saved(parm))
+                valid = FALSE;
+        }
+        for (UINT32 j = 0; valid && j < callee->results.size(); ++j) {
+            WN *parm = WN_kid(call, callee->formals.size() + j);
+            if (parm == NULL || WN_operator(parm) != OPR_PARM ||
+                !WN_Parm_By_Reference(parm) || !WN_Parm_Out(parm) ||
+                !WN_Parm_Passed_Not_Saved(parm))
+                valid = FALSE;
+        }
+        if (!valid) {
+            if (diagnostic != NULL)
+                fprintf(diagnostic,
+                        "DSL builder verification error: invalid PU call\n");
+            if (error_count != NULL)
+                ++*error_count;
+            return FALSE;
+        }
+    }
     return TRUE;
 }
 
@@ -2457,14 +3053,42 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
         return FALSE;
     }
 
-    BOOL valid = DSL_Gatekeeper_Verify_Program
-                     (DSL_Builder_PU_Root, diagnostic, &gatekeeper_result);
+    memset(&gatekeeper_result, 0, sizeof(gatekeeper_result));
+    BOOL valid = TRUE;
+    if (!DSL_Builder_Verify_PU_Interfaces
+             (diagnostic, &gatekeeper_result.error_count))
+        valid = FALSE;
     for (PU_Info *pu = DSL_Builder_PU_Root; pu != NULL;
          pu = PU_Info_next(pu)) {
+        DSL_GATEKEEPER_RESULT pu_result;
+        memset(&pu_result, 0, sizeof(pu_result));
+        if (!DSL_Builder_Select_PU(pu)) {
+            if (diagnostic != NULL)
+                fprintf(diagnostic,
+                        "DSL builder verification error: cannot select PU\n");
+            valid = FALSE;
+            ++gatekeeper_result.error_count;
+            continue;
+        }
+        if (!DSL_Gatekeeper_Verify_PU(pu, diagnostic, &pu_result))
+            valid = FALSE;
+        gatekeeper_result.native_node_count += pu_result.native_node_count;
+        gatekeeper_result.result_symbol_count += pu_result.result_symbol_count;
+        gatekeeper_result.error_count += pu_result.error_count;
         if (!DSL_Region_Verify_PU(pu, diagnostic)) {
             valid = FALSE;
             ++gatekeeper_result.error_count;
         }
+    }
+    if (gatekeeper_result.native_node_count != DSL_IR_Image_Node_Count()) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "native tree node count %u does not match "
+                    "DSL image node count %u\n",
+                    gatekeeper_result.native_node_count,
+                    DSL_IR_Image_Node_Count());
+        valid = FALSE;
+        ++gatekeeper_result.error_count;
     }
     if (diagnostic != NULL) {
         rewind(diagnostic);
@@ -2560,7 +3184,8 @@ DSL_Builder_Declare_State_Object_With_Flags
          DSL_STATE_KIND kind,
          UINT32 flags)
 {
-    if (DSL_Builder_PU_Body(pu) == NULL || name == NULL || name[0] == '\0' ||
+    if (DSL_Builder_PU_Body(pu) == NULL || !DSL_Builder_Select_PU(pu) ||
+        name == NULL || name[0] == '\0' ||
         kind < DSL_STATE_KIND_RUNTIME_STATUS ||
         kind > DSL_STATE_KIND_OPAQUE ||
         (flags & ~DSL_STATE_OBJECT_UNIQUE_OWNERSHIP) != 0)
@@ -2699,7 +3324,10 @@ DSL_Builder_Append_PU_Value
     WN *body;
 
     body = DSL_Builder_PU_Body(pu);
-    if (body == NULL || value == NULL)
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    if (body == NULL || value == NULL ||
+        (record != NULL && record->pu != pu) ||
+        !DSL_Builder_Select_PU(pu))
         return FALSE;
     if (!DSL_Builder_Get_Value_Annotation(value, NULL))
         return FALSE;
@@ -2864,8 +3492,9 @@ DSL_Builder_Finalize_Mapped_Image
         request->flags != 0)
         return FALSE;
 
-    if (!DSL_Gatekeeper_Verify_Program
-             (DSL_Builder_PU_Root, stderr, NULL))
+    if (DSL_Builder_PU_Root == NULL ?
+        !DSL_Gatekeeper_Verify_Program(NULL, stderr, NULL) :
+        !DSL_Builder_Verify_Program(NULL))
         return FALSE;
 
     Irb_File_Name = (char *)request->path;
@@ -2877,6 +3506,10 @@ DSL_Builder_Finalize_Mapped_Image
 
     for (PU_Info *pu = DSL_Builder_PU_Root; pu != NULL;
          pu = PU_Info_next(pu)) {
+        if (!DSL_Builder_Select_PU(pu)) {
+            Close_Output_Info();
+            return FALSE;
+        }
         if (PU_Info_state(pu, WT_SYMTAB) == Subsect_InMem ||
             PU_Info_state(pu, WT_TREE) == Subsect_InMem) {
             Write_PU_Info(pu);
