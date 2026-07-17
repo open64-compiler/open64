@@ -33,6 +33,7 @@ from open64_dsc.module import (
 from open64_dsc import WhirlExportOptions, WhirlModule
 from open64_dsc import WhirlVerificationError, export_to_whirl
 from open64_dsc import load_builder, save_as_whirl, verify_module
+from open64_dsc import operators
 from open64_dsc.builder import (
     REGION_INPUT,
     REGION_OUTPUT,
@@ -452,6 +453,45 @@ class Open64DscSkeletonTest(unittest.TestCase):
             self.assertEqual(contracts[name].version, version)
             self.assertEqual(contracts[name].arity, arity)
             self.assertEqual(tuple(contracts[name].required_attrs), attrs)
+
+    def test_operator_definitions_are_visible_by_import(self) -> None:
+        from open64_dsc.operators import LLAMA2_MULTIPLE_PU_OPERATORS
+        from open64_dsc.operators import TRANSFORMER_OPERATORS
+
+        self.assertIs(
+            operators.LLAMA2_MULTIPLE_PU_OPERATORS,
+            LLAMA2_MULTIPLE_PU_OPERATORS,
+        )
+        self.assertIn("transformer.attention", TRANSFORMER_OPERATORS)
+        attention = LLAMA2_MULTIPLE_PU_OPERATORS["transformer.attention"]
+        self.assertEqual(attention.version, 1)
+        self.assertEqual(attention.arity, 3)
+        self.assertIn("attr.execution_mode", attention.required_attrs)
+        self.assertEqual(
+            LLAMA2_MULTIPLE_PU_OPERATORS["common.linear"].version,
+            3,
+        )
+        self.assertEqual(
+            LLAMA2_MULTIPLE_PU_OPERATORS["common.linear"].arity,
+            2,
+        )
+        self.assertEqual(
+            LLAMA2_MULTIPLE_PU_OPERATORS["common.output_logits"].version,
+            3,
+        )
+
+        visible = set(operators.operator_names(LLAMA2_MULTIPLE_PU_OPERATORS))
+        self.assertTrue({
+            "common.linear",
+            "common.output_logits",
+            "common.reshape",
+            "common.residual_add",
+            "common.transpose",
+            "transformer.attention",
+            "transformer.rms_norm",
+            "transformer.rotary_embedding",
+            "transformer.swiglu",
+        }.issubset(visible))
 
     def test_builder_uses_published_operator_versions(self) -> None:
         builder = load_builder("mock")
