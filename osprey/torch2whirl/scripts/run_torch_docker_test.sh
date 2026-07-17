@@ -77,7 +77,8 @@ if [ "$run_ir_tools" = 1 ]; then
         make OPEN64_DSL_TEST_ARTIFACT_DIR=/artifacts \
             python_native_ir_tools_smoke resnet_native_ir_tools_smoke \
             llama2_prefill_native_ir_tools_smoke \
-            llama2_decode_native_ir_tools_smoke
+            llama2_decode_native_ir_tools_smoke \
+            llama2_multi_pu_native_ir_tools_smoke
 fi
 
 find "$artifact_dir" -type f \

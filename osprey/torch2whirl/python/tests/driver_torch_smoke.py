@@ -256,6 +256,7 @@ def _run_driver(
         str(model_path),
         "--entry",
         "forward",
+        "--single-pu",
     ]
     for sample_input in sample_inputs:
         command.extend(["--sample-input", sample_input])

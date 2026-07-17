@@ -141,9 +141,34 @@ To exercise the same path through the C++ executable:
 ```sh
 PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
   ./torch2whirl model.py \
+  --single-pu \
   --sample-input shape:1,3,224,224 \
   -o model.B
 ```
+
+`--single-pu` explicitly selects the current flattened program-unit layout.
+Single-PU emission remains the default until class-PU construction is
+available. The option is retained so future class-PU work can change the
+default while preserving this layout for correctness and performance
+comparisons. The selected mode is recorded as `pu_mode=single` in frontend
+artifact metadata.
+
+To exercise the opt-in class-centric multiple-PU boundary:
+
+```sh
+PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
+  ./torch2whirl python/tests/models/llama2_model.py \
+  --multiple-pu \
+  --sample-input int-shape:1,8 \
+  --backend native \
+  -o llama2_multi_pu.B
+```
+
+The multiple-PU path preserves `--single-pu` as the default baseline.  Its
+first certified fixture emits real class-named `FUNC_ENTRY` PUs for
+`TinyRMSNorm` and `TinyLlama2ForCausalLM`, with independent local symbols and a
+standard call edge.  It is intentionally an opt-in callable-boundary artifact;
+the full flattened semantic Llama operator path remains under `--single-pu`.
 
 For a reproducible Linux Docker version of that lane:
 

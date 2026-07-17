@@ -55,6 +55,10 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                     else self._manifest_shape(item)
                 )
                 for key, item in sorted(value.items())
+                if key not in {
+                    "python_class_definitions",
+                    "python_class_instances",
+                }
             }
         if isinstance(value, list):
             return [self._manifest_shape(item) for item in value]
@@ -138,6 +142,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 format=mock
                 model_name=AddModule
                 entry=forward
+                pu_mode=single
                 entry_function=AddModule
                 graph_source=torch.fx
                 input_count=2
@@ -203,6 +208,7 @@ class Open64DscFxCaptureOptionalTest(unittest.TestCase):
                 format=mock
                 model_name=MatmulModule
                 entry=forward
+                pu_mode=single
                 entry_function=MatmulModule
                 graph_source=torch.fx
                 input_count=2

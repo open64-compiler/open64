@@ -293,6 +293,43 @@ Open64_DSC_Read_Handle_Sequence(PyObject *kids_obj,
 }
 
 static int
+Open64_DSC_Read_String_Sequence(PyObject *names_obj,
+                                std::vector<const char *> *names)
+{
+    PyObject *fast;
+    Py_ssize_t count;
+
+    if (names == NULL)
+        return 0;
+
+    fast = PySequence_Fast(names_obj, "names must be a sequence");
+    if (fast == NULL)
+        return 0;
+
+    count = PySequence_Fast_GET_SIZE(fast);
+    names->reserve((size_t) count);
+
+    for (Py_ssize_t i = 0; i < count; ++i) {
+        PyObject *item = PySequence_Fast_GET_ITEM(fast, i);
+        const char *name;
+        if (!PyUnicode_Check(item)) {
+            Py_DECREF(fast);
+            PyErr_SetString(PyExc_TypeError, "names must be str");
+            return 0;
+        }
+        name = PyUnicode_AsUTF8(item);
+        if (name == NULL) {
+            Py_DECREF(fast);
+            return 0;
+        }
+        names->push_back(name);
+    }
+
+    Py_DECREF(fast);
+    return 1;
+}
+
+static int
 Open64_DSC_Read_Attributes(PyObject *attrs_obj,
                            std::vector<Open64_DSC_Attribute> *attrs)
 {
@@ -519,6 +556,171 @@ Open64_DSC_Create_Minimal_Program_Unit(PyObject *self, PyObject *args)
 
     handle = Open64_DSC_Create_Minimal_Program_Unit(name);
     return Open64_DSC_Handle_Result(handle, "create minimal program unit");
+}
+
+static void
+Open64_DSC_Fill_Source_Position(Open64_DSC_Source_Position *position,
+                                unsigned int file_id,
+                                int line,
+                                unsigned int column,
+                                int statement_begin,
+                                int basic_block_begin)
+{
+    position->file_id = file_id;
+    position->line = line;
+    position->column = (unsigned short) column;
+    position->statement_begin = statement_begin != 0;
+    position->basic_block_begin = basic_block_begin != 0;
+}
+
+static PyObject *
+Open64_DSC_Select_Program_Unit(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "K:select_program_unit", &program_unit))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Select_Program_Unit(program_unit),
+                "select program unit");
+}
+
+static PyObject *
+Open64_DSC_Declare_PU_Formal(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    const char *name;
+    unsigned int ordinal;
+    Open64_DSC_Handle tensor_type;
+    unsigned int file_id;
+    int line;
+    unsigned int column;
+    int statement_begin;
+    int basic_block_begin;
+    Open64_DSC_Source_Position position;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KsIKIiIpp:declare_pu_formal",
+                          &program_unit, &name, &ordinal, &tensor_type,
+                          &file_id, &line, &column, &statement_begin,
+                          &basic_block_begin))
+        return NULL;
+    Open64_DSC_Fill_Source_Position(&position, file_id, line, column,
+                                    statement_begin, basic_block_begin);
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Declare_PU_Formal
+                    (program_unit, name, ordinal, tensor_type, &position),
+                "declare program unit formal");
+}
+
+static PyObject *
+Open64_DSC_Declare_PU_Result(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    const char *name;
+    unsigned int ordinal;
+    Open64_DSC_Handle tensor_type;
+    unsigned int role;
+    unsigned int file_id;
+    int line;
+    unsigned int column;
+    int statement_begin;
+    int basic_block_begin;
+    Open64_DSC_Source_Position position;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KsIKIIiIpp:declare_pu_result",
+                          &program_unit, &name, &ordinal, &tensor_type,
+                          &role, &file_id, &line, &column,
+                          &statement_begin, &basic_block_begin))
+        return NULL;
+    Open64_DSC_Fill_Source_Position(&position, file_id, line, column,
+                                    statement_begin, basic_block_begin);
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Declare_PU_Result
+                    (program_unit, name, ordinal, tensor_type, role,
+                     &position),
+                "declare program unit result");
+}
+
+static PyObject *
+Open64_DSC_Return_PU_Values(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    PyObject *values_obj;
+    std::vector<Open64_DSC_Handle> values;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KO:return_pu_values", &program_unit,
+                          &values_obj))
+        return NULL;
+    if (!Open64_DSC_Read_Handle_Sequence(values_obj, &values))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Return_PU_Values
+                    (program_unit, values.empty() ? NULL : &values[0],
+                     (unsigned int) values.size()),
+                "return program unit values");
+}
+
+static PyObject *
+Open64_DSC_Create_PU_Call(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle caller;
+    Open64_DSC_Handle callee;
+    PyObject *arguments_obj;
+    PyObject *result_names_obj;
+    const char *canonical_class_name;
+    const char *instance_path;
+    const char *context_identity;
+    unsigned int call_ordinal;
+    unsigned int file_id;
+    int line;
+    unsigned int column;
+    int statement_begin;
+    int basic_block_begin;
+    std::vector<Open64_DSC_Handle> arguments;
+    std::vector<const char *> result_names;
+    Open64_DSC_Source_Position position;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KKOOsssIIiIpp:create_pu_call",
+                          &caller, &callee, &arguments_obj,
+                          &result_names_obj, &canonical_class_name,
+                          &instance_path, &context_identity, &call_ordinal,
+                          &file_id, &line, &column, &statement_begin,
+                          &basic_block_begin))
+        return NULL;
+    if (!Open64_DSC_Read_Handle_Sequence(arguments_obj, &arguments) ||
+        !Open64_DSC_Read_String_Sequence(result_names_obj, &result_names))
+        return NULL;
+    Open64_DSC_Fill_Source_Position(&position, file_id, line, column,
+                                    statement_begin, basic_block_begin);
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Create_PU_Call
+                    (caller, callee,
+                     arguments.empty() ? NULL : &arguments[0],
+                     (unsigned int) arguments.size(),
+                     result_names.empty() ? NULL : &result_names[0],
+                     (unsigned int) result_names.size(),
+                     canonical_class_name, instance_path, context_identity,
+                     call_ordinal, &position),
+                "create program unit call");
+}
+
+static PyObject *
+Open64_DSC_Get_PU_Call_Result(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle call;
+    unsigned int ordinal;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KI:get_pu_call_result", &call, &ordinal))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_Get_PU_Call_Result(call, ordinal),
+                "get program unit call result");
 }
 
 static PyObject *
@@ -1069,6 +1271,42 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Create_Minimal_Program_Unit,
         METH_VARARGS,
         "Create a minimal native PU tree entry and return an opaque handle."
+    },
+    {
+        "select_program_unit",
+        Open64_DSC_Select_Program_Unit,
+        METH_VARARGS,
+        "Select the active native program unit."
+    },
+    {
+        "declare_pu_formal",
+        Open64_DSC_Declare_PU_Formal,
+        METH_VARARGS,
+        "Declare an ordered program unit formal."
+    },
+    {
+        "declare_pu_result",
+        Open64_DSC_Declare_PU_Result,
+        METH_VARARGS,
+        "Declare an ordered program unit result slot."
+    },
+    {
+        "return_pu_values",
+        Open64_DSC_Return_PU_Values,
+        METH_VARARGS,
+        "Emit a program unit return for opaque values."
+    },
+    {
+        "create_pu_call",
+        Open64_DSC_Create_PU_Call,
+        METH_VARARGS,
+        "Create an opaque inter-PU call."
+    },
+    {
+        "get_pu_call_result",
+        Open64_DSC_Get_PU_Call_Result,
+        METH_VARARGS,
+        "Get an opaque caller-owned call result value."
     },
     {
         "register_source_file",

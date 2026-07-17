@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "defs.h"
+#include "srcpos.h"
 
 class WN;
 
@@ -43,4 +44,15 @@ fdump_tree(FILE *f, WN *wn)
 
     if (f != NULL)
         fputs("<open64_dsc tree dump unavailable>\n", f);
+}
+
+void
+IR_Srcpos_Filename(SRCPOS srcpos, const char **fname, const char **dirname)
+{
+    (void) srcpos;
+
+    if (fname != NULL)
+        *fname = NULL;
+    if (dirname != NULL)
+        *dirname = NULL;
 }

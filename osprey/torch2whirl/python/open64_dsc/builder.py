@@ -58,6 +58,11 @@ class ProgramUnitHandle(OpaqueHandle):
 
 
 @dataclass(frozen=True)
+class CallHandle(OpaqueHandle):
+    pass
+
+
+@dataclass(frozen=True)
 class RegionHandle(OpaqueHandle):
     pass
 
@@ -85,6 +90,9 @@ STATE_EFFECT_MODIFY = 2
 
 REGION_STATE_UNIQUE_OWNERSHIP = 0x2
 REGION_STATE_LAYER_OWNED = 0x10
+
+PU_RESULT_TENSOR = 1
+PU_RESULT_STATE = 2
 
 
 class WhirlBuilder:
@@ -181,6 +189,125 @@ class WhirlBuilder:
         return ProgramUnitHandle(
             self._backend.create_minimal_program_unit(name)
         )
+
+    def select_program_unit(self, program_unit: ProgramUnitHandle) -> None:
+        if not self._backend.select_program_unit(program_unit.value):
+            raise RuntimeError("failed to select program unit")
+
+    def declare_pu_formal(
+        self,
+        program_unit: ProgramUnitHandle,
+        name: str,
+        ordinal: int,
+        tensor_type: TensorTypeHandle,
+        file_id: int,
+        line: int,
+        column: int = 0,
+        statement_begin: bool = True,
+        basic_block_begin: bool = False,
+    ) -> ValueHandle:
+        value = ValueHandle(
+            self._backend.declare_pu_formal(
+                program_unit.value,
+                name,
+                ordinal,
+                tensor_type.value,
+                file_id,
+                line,
+                column,
+                statement_begin,
+                basic_block_begin,
+            )
+        )
+        self._value_types[value.value] = tensor_type
+        return value
+
+    def declare_pu_result(
+        self,
+        program_unit: ProgramUnitHandle,
+        name: str,
+        ordinal: int,
+        tensor_type: TensorTypeHandle,
+        role: int = PU_RESULT_TENSOR,
+        file_id: int = 0,
+        line: int = 0,
+        column: int = 0,
+        statement_begin: bool = True,
+        basic_block_begin: bool = False,
+    ) -> ValueHandle:
+        value = ValueHandle(
+            self._backend.declare_pu_result(
+                program_unit.value,
+                name,
+                ordinal,
+                tensor_type.value,
+                role,
+                file_id,
+                line,
+                column,
+                statement_begin,
+                basic_block_begin,
+            )
+        )
+        self._value_types[value.value] = tensor_type
+        return value
+
+    def return_pu_values(
+        self,
+        program_unit: ProgramUnitHandle,
+        values: Sequence[ValueHandle],
+    ) -> None:
+        if not self._backend.return_pu_values(
+            program_unit.value,
+            [value.value for value in values],
+        ):
+            raise RuntimeError("failed to return program unit values")
+
+    def create_pu_call(
+        self,
+        caller: ProgramUnitHandle,
+        callee: ProgramUnitHandle,
+        arguments: Sequence[ValueHandle],
+        result_names: Sequence[str],
+        canonical_class_name: str,
+        instance_path: str,
+        context_identity: str,
+        call_ordinal: int,
+        file_id: int,
+        line: int,
+        column: int = 0,
+        statement_begin: bool = True,
+        basic_block_begin: bool = False,
+    ) -> CallHandle:
+        return CallHandle(
+            self._backend.create_pu_call(
+                caller.value,
+                callee.value,
+                [argument.value for argument in arguments],
+                result_names,
+                canonical_class_name,
+                instance_path,
+                context_identity,
+                call_ordinal,
+                file_id,
+                line,
+                column,
+                statement_begin,
+                basic_block_begin,
+            )
+        )
+
+    def get_pu_call_result(
+        self,
+        call: CallHandle,
+        ordinal: int,
+        tensor_type: TensorTypeHandle,
+    ) -> ValueHandle:
+        value = ValueHandle(
+            self._backend.get_pu_call_result(call.value, ordinal)
+        )
+        self._value_types[value.value] = tensor_type
+        return value
 
     def register_source_file(
         self,

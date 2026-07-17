@@ -123,6 +123,66 @@ class WhirlBackend(Protocol):
     ) -> int:
         ...
 
+    def select_program_unit(self, program_unit: int) -> bool:
+        ...
+
+    def declare_pu_formal(
+        self,
+        program_unit: int,
+        name: str,
+        ordinal: int,
+        tensor_type: int,
+        file_id: int,
+        line: int,
+        column: int,
+        statement_begin: bool,
+        basic_block_begin: bool,
+    ) -> int:
+        ...
+
+    def declare_pu_result(
+        self,
+        program_unit: int,
+        name: str,
+        ordinal: int,
+        tensor_type: int,
+        role: int,
+        file_id: int,
+        line: int,
+        column: int,
+        statement_begin: bool,
+        basic_block_begin: bool,
+    ) -> int:
+        ...
+
+    def return_pu_values(
+        self,
+        program_unit: int,
+        values: Sequence[int],
+    ) -> bool:
+        ...
+
+    def create_pu_call(
+        self,
+        caller: int,
+        callee: int,
+        arguments: Sequence[int],
+        result_names: Sequence[str],
+        canonical_class_name: str,
+        instance_path: str,
+        context_identity: str,
+        call_ordinal: int,
+        file_id: int,
+        line: int,
+        column: int,
+        statement_begin: bool,
+        basic_block_begin: bool,
+    ) -> int:
+        ...
+
+    def get_pu_call_result(self, call: int, ordinal: int) -> int:
+        ...
+
     def register_source_file(self, program_unit: int, path: str) -> int:
         ...
 

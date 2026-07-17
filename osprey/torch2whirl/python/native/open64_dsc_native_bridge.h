@@ -130,6 +130,40 @@ extern int Open64_DSC_Begin_Program(void);
 extern void Open64_DSC_Abort_Program(void);
 extern Open64_DSC_Handle Open64_DSC_Create_Minimal_Program_Unit
                                  (const char *name);
+extern int Open64_DSC_Select_Program_Unit
+                                (Open64_DSC_Handle program_unit);
+extern Open64_DSC_Handle Open64_DSC_Declare_PU_Formal
+                                (Open64_DSC_Handle program_unit,
+                                 const char *name,
+                                 unsigned int ordinal,
+                                 Open64_DSC_Handle tensor_type,
+                                 const Open64_DSC_Source_Position *position);
+extern Open64_DSC_Handle Open64_DSC_Declare_PU_Result
+                                (Open64_DSC_Handle program_unit,
+                                 const char *name,
+                                 unsigned int ordinal,
+                                 Open64_DSC_Handle tensor_type,
+                                 unsigned int role,
+                                 const Open64_DSC_Source_Position *position);
+extern int Open64_DSC_Return_PU_Values
+                                (Open64_DSC_Handle program_unit,
+                                 const Open64_DSC_Handle *values,
+                                 unsigned int value_count);
+extern Open64_DSC_Handle Open64_DSC_Create_PU_Call
+                                (Open64_DSC_Handle caller,
+                                 Open64_DSC_Handle callee,
+                                 const Open64_DSC_Handle *arguments,
+                                 unsigned int argument_count,
+                                 const char *const *result_names,
+                                 unsigned int result_count,
+                                 const char *canonical_class_name,
+                                 const char *instance_path,
+                                 const char *context_identity,
+                                 unsigned int call_ordinal,
+                                 const Open64_DSC_Source_Position *position);
+extern Open64_DSC_Handle Open64_DSC_Get_PU_Call_Result
+                                (Open64_DSC_Handle call,
+                                 unsigned int ordinal);
 extern unsigned int Open64_DSC_Register_Source_File
                                 (Open64_DSC_Handle program_unit,
                                  const char *path);

@@ -95,6 +95,9 @@ class WhirlExportInterpreter:
         example_inputs: Iterable[Any],
     ) -> WhirlModule:
         inputs = list(example_inputs)
+        if self._options.pu_mode == "multiple":
+            return self._export_multiple_pu_program(model, inputs)
+
         model_name = self._model_name(model)
         entry_name = self._model_class_name(model)
         entry_pu = self.builder().minimal_program_unit(entry_name)
@@ -206,6 +209,205 @@ class WhirlExportInterpreter:
             python_class_definitions=class_definitions,
             python_class_instances=class_instances,
         )
+
+    def _export_multiple_pu_program(
+        self,
+        model: Any,
+        inputs: Sequence[Any],
+    ) -> WhirlModule:
+        if (
+            not self._is_tiny_llama2_prefill_model(model) and
+            not self._is_tiny_llama2_decode_model(model)
+        ):
+            raise NotImplementedError(
+                "multiple-PU emission currently supports the tiny Llama "
+                "prefill/decode fixtures"
+            )
+
+        model_name = self._model_name(model)
+        entry_name = self._model_class_name(model)
+        class_definitions, class_instances = collect_python_model_classes(model)
+        definitions = {
+            definition.class_name: definition
+            for definition in class_definitions
+        }
+        entry_definition = definitions.get(entry_name)
+        rms_definition = definitions.get("TinyRMSNorm")
+        if entry_definition is None or rms_definition is None:
+            raise NotImplementedError(
+                "multiple-PU emission requires class source definitions"
+            )
+
+        hidden_shape = "[1,1,32]" if self._is_tiny_llama2_decode_model(model) \
+            else "[1,8,32]"
+        tensor_type = self.builder().tensor_type(
+            "llama2_multi_pu_hidden_type",
+            "float32",
+            3,
+            hidden_shape,
+            {
+                "dtype": "float32",
+                "rank": 3,
+                "logical_shape": hidden_shape,
+                "layout": "BSC",
+                "lineage": "python.multi_pu.hidden",
+            },
+        )
+
+        rms_pu = self.builder().minimal_program_unit("TinyRMSNorm")
+        rms_file = self.builder().register_source_file(
+            rms_pu,
+            rms_definition.source_file,
+        )
+        rms_line = rms_definition.source_line
+        hidden = self.builder().declare_pu_formal(
+            rms_pu,
+            "hidden_states",
+            0,
+            tensor_type,
+            rms_file,
+            rms_line,
+        )
+        self.builder().declare_pu_result(
+            rms_pu,
+            "normalized_result",
+            0,
+            tensor_type,
+            file_id=rms_file,
+            line=rms_line + 1,
+        )
+        normalized = self.builder().common_add(
+            hidden,
+            hidden,
+            {"attr.broadcast_rule": "none"},
+        )
+        self.builder().append_program_unit_value(rms_pu, normalized)
+        self.builder().return_pu_values(rms_pu, [normalized])
+
+        entry_pu = self.builder().minimal_program_unit(entry_name)
+        entry_file = self.builder().register_source_file(
+            entry_pu,
+            entry_definition.source_file,
+        )
+        entry_line = entry_definition.source_line
+        model_hidden = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_hidden",
+            0,
+            tensor_type,
+            entry_file,
+            entry_line,
+        )
+        self.builder().declare_pu_result(
+            entry_pu,
+            "model_result",
+            0,
+            tensor_type,
+            file_id=entry_file,
+            line=entry_line + 1,
+        )
+        rms_instance = self._first_instance_path(
+            class_instances,
+            rms_definition.canonical_name,
+        )
+        call = self.builder().create_pu_call(
+            entry_pu,
+            rms_pu,
+            [model_hidden],
+            ["norm_call_result"],
+            rms_definition.canonical_name,
+            rms_instance,
+            f"{entry_name}.{rms_instance}",
+            0,
+            entry_file,
+            entry_line + 2,
+        )
+        call_result = self.builder().get_pu_call_result(call, 0, tensor_type)
+        self.builder().return_pu_values(entry_pu, [call_result])
+
+        model_module = inspect.getmodule(type(model))
+        return WhirlModule(
+            options=self._options,
+            model_name=model_name,
+            input_count=len(inputs),
+            entry_function=WhirlProgramUnitRecord(
+                name=entry_name,
+                handle=entry_pu.value,
+                body_markers=["call:TinyRMSNorm"],
+            ),
+            graph_source="torch.fx+llama2_multiple_pu_boundary",
+            operators=[common.ADD, "call:TinyRMSNorm"],
+            tensor_types=[
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_hidden_type",
+                    handle=tensor_type.value,
+                    dtype="float32",
+                    rank=3,
+                    logical_shape=hidden_shape,
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 3,
+                        "logical_shape": hidden_shape,
+                        "layout": "BSC",
+                        "lineage": "python.multi_pu.hidden",
+                    },
+                )
+            ],
+            values=[
+                WhirlValueRecord(
+                    name="hidden_states",
+                    handle=hidden.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="formal",
+                ),
+                WhirlValueRecord(
+                    name="model_hidden",
+                    handle=model_hidden.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="formal",
+                ),
+                WhirlValueRecord(
+                    name="norm_call_result",
+                    handle=call_result.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="call_result",
+                ),
+            ],
+            graph_operators=[
+                WhirlOperatorRecord(
+                    name="call:TinyRMSNorm",
+                    handle=call.value,
+                    kids=["model_hidden"],
+                    attrs={
+                        "canonical_class_name": rms_definition.canonical_name,
+                        "instance_path": rms_instance,
+                        "context_identity": f"{entry_name}.{rms_instance}",
+                    },
+                )
+            ],
+            python_imports=(
+                collect_imported_python_callables(model_module)
+                if model_module is not None else ()
+            ),
+            python_class_definitions=class_definitions,
+            python_class_instances=class_instances,
+        )
+
+    def _first_instance_path(
+        self,
+        instances: Sequence[Any],
+        canonical_class_name: str,
+    ) -> str:
+        for instance in instances:
+            if (
+                instance.canonical_class_name == canonical_class_name and
+                instance.instance_path == "norm"
+            ):
+                return instance.instance_path
+        for instance in instances:
+            if instance.canonical_class_name == canonical_class_name:
+                return instance.instance_path
+        return "<unknown>"
 
     def _is_tiny_llama2_prefill_model(self, model: Any) -> bool:
         return (
@@ -1847,6 +2049,8 @@ class WhirlExportInterpreter:
         model: Any,
         module: WhirlModule,
     ) -> None:
+        if module.options.pu_mode == "multiple":
+            return
         try:
             path = inspect.getsourcefile(type(model))
             line = inspect.getsourcelines(type(model))[1]
