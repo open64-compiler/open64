@@ -818,6 +818,7 @@ Check_Program_Unit_Value_Attach(void)
     DSL_BUILDER_VALUE_INFO operand_info;
     int failed = 0;
 
+    DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
     common_id = DSL_Domain_Find("common");
     add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
@@ -984,6 +985,11 @@ Check_Production_Native_Builder(void)
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     int failed = 0;
 
+    DSL_Builder_Begin_Program();
+    pu = DSL_Builder_Create_Minimal_PU("builder_value_contract");
+    if (pu == NULL)
+        return 1;
+
     memset(&type_core, 0, sizeof(type_core));
     type_core.kind = "tensor";
     type_core.dtype = "int32";
@@ -1060,15 +1066,14 @@ Check_Production_Native_Builder(void)
         failed = 1;
     }
 
-    pu = DSL_Builder_Create_Minimal_PU("builder_value_contract");
     BOOL append_kid0 = DSL_Builder_Append_PU_Value(pu, kids[0]);
     BOOL append_kid1 = DSL_Builder_Append_PU_Value(pu, kids[1]);
     BOOL append_add = DSL_Builder_Append_PU_Value(pu, add);
     BOOL append_matmul = DSL_Builder_Append_PU_Value(pu, matmul);
     UINT32 pu_value_count = DSL_Builder_Count_PU_Values(pu);
-    BOOL got_add = DSL_Builder_Get_PU_Value(pu, 4, &info);
+    BOOL got_add = DSL_Builder_Get_PU_Value(pu, 2, &info);
     if (!append_kid0 || !append_kid1 || !append_add || !append_matmul ||
-        pu_value_count != 6 || !got_add ||
+        pu_value_count != 4 || !got_add ||
         info.opcode_name_len != strlen(DSL_OPCODE_COMMON_ADD) ||
         strncmp(info.opcode_name, DSL_OPCODE_COMMON_ADD,
                 info.opcode_name_len) != 0) {
@@ -3441,6 +3446,151 @@ Check_Llama2_Decode_State_Region(void)
     return 0;
 }
 
+static int
+Check_Multiple_Program_Units(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_MULTI_PU_ARTIFACT");
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_PROGRAM_UNIT first_pu;
+    DSL_BUILDER_PROGRAM_UNIT second_pu;
+    DSL_BUILDER_VALUE first_formal;
+    DSL_BUILDER_VALUE first_result;
+    DSL_BUILDER_VALUE normalized;
+    DSL_BUILDER_VALUE second_formal;
+    DSL_BUILDER_VALUE second_result;
+    DSL_BUILDER_VALUE call_result;
+    DSL_BUILDER_CALL call;
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE add_attr;
+    DSL_BUILDER_VALUE add_kids[2];
+    const char *call_result_names[1] = { "normalized_hidden" };
+    TY_IDX tensor_ty;
+    ST_IDX first_st;
+    ST_IDX second_st;
+    char diagnostic[1024];
+
+    if (artifact == NULL || artifact[0] == '\0') {
+        fprintf(stderr, "multiple-PU artifact path is required\n");
+        return 1;
+    }
+
+    memset(&type_core, 0, sizeof(type_core));
+    type_core.kind = "tensor";
+    type_core.dtype = "float32";
+    type_core.rank = 2;
+    type_core.logical_shape = "[2,2]";
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+                    ("multi_pu_tensor", MTYPE_To_TY(MTYPE_F4), &type_core);
+    first_pu = DSL_Builder_Create_Minimal_PU("TinyRMSNorm");
+    UINT32 first_file = DSL_Builder_Register_Source_File
+                            (first_pu, "llama2_model.py");
+    memset(&position, 0, sizeof(position));
+    position.file_id = first_file;
+    position.line = 18;
+    position.statement_begin = 1;
+    first_formal = DSL_Builder_Declare_PU_Formal
+                       (first_pu, "hidden_states", 0, tensor_ty, &position);
+    ++position.line;
+    first_result = DSL_Builder_Declare_PU_Result
+                       (first_pu, "normalized_result", 0, tensor_ty,
+                        DSL_PU_RESULT_TENSOR, &position);
+    add_kids[0] = first_formal;
+    add_kids[1] = first_formal;
+    add_attr.name = "attr.broadcast_rule";
+    add_attr.value = "none";
+    normalized = DSL_Builder_Create_Operator
+                     (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                      DSL_OPCODE_COMMON_ADD, 1),
+                      1, add_kids, 2, &add_attr, 1);
+    first_st = DSL_Builder_Get_Value_Result_Symbol(first_formal);
+    BOOL first_position = normalized != NULL &&
+        DSL_Builder_Set_Value_Source_Position(normalized, &position);
+    BOOL first_append = normalized != NULL &&
+        DSL_Builder_Append_PU_Value(first_pu, normalized);
+    BOOL first_return = normalized != NULL &&
+        DSL_Builder_Return_PU_Values(first_pu, &normalized, 1);
+    if (first_pu == NULL || first_file == 0 || first_formal == NULL ||
+        first_result == NULL || normalized == NULL || !first_position ||
+        !first_append || !first_return) {
+        fprintf(stderr, "failed to construct first program unit\n");
+        return 1;
+    }
+
+    second_pu = DSL_Builder_Create_Minimal_PU("TinyLlama2ForCausalLM");
+    UINT32 second_file = DSL_Builder_Register_Source_File
+                             (second_pu, "llama2_model.py");
+    position.file_id = second_file;
+    position.line = 72;
+    second_formal = DSL_Builder_Declare_PU_Formal
+                        (second_pu, "model_hidden", 0, tensor_ty, &position);
+    ++position.line;
+    second_result = DSL_Builder_Declare_PU_Result
+                        (second_pu, "model_result", 0, tensor_ty,
+                         DSL_PU_RESULT_TENSOR, &position);
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "TinyRMSNorm";
+    callsite.instance_path = "model.norm";
+    callsite.context_identity = "TinyLlama2ForCausalLM.norm";
+    callsite.call_ordinal = 0;
+    callsite.source_position = position;
+    ++callsite.source_position.line;
+    call = DSL_Builder_Create_PU_Call
+               (second_pu, first_pu, &second_formal, 1,
+                call_result_names, 1, &callsite);
+    second_st = DSL_Builder_Get_Value_Result_Symbol(second_formal);
+    if (second_pu == NULL || second_pu == first_pu || second_file == 0 ||
+        second_formal == NULL || second_result == NULL || call == NULL ||
+        !DSL_Builder_Get_PU_Call_Result(call, 0, &call_result) ||
+        !DSL_Builder_Return_PU_Values(second_pu, &call_result, 1) ||
+        DSL_Builder_Append_PU_Value(second_pu, first_formal) ||
+        PU_Info_next(first_pu) != second_pu ||
+        PU_Info_maptab(first_pu) == PU_Info_maptab(second_pu)) {
+        fprintf(stderr, "failed to construct independent second program unit\n");
+        return 1;
+    }
+
+    BOOL selected_first = DSL_Builder_Select_PU(first_pu);
+    BOOL first_name_valid = selected_first && ST_IDX_index(first_st) != 0 &&
+        strcmp(ST_name(St_Table[first_st]), "hidden_states") == 0;
+    BOOL selected_second = DSL_Builder_Select_PU(second_pu);
+    BOOL second_name_valid = selected_second && ST_IDX_index(second_st) != 0 &&
+        strcmp(ST_name(St_Table[second_st]), "model_hidden") == 0;
+    BOOL found_first =
+        DSL_Builder_Create_Minimal_PU("TinyRMSNorm") == first_pu;
+    if (!selected_first || !first_name_valid || !selected_second ||
+        !second_name_valid || !found_first ||
+        !DSL_Builder_Select_PU(second_pu)) {
+        fprintf(stderr, "program-unit scope selection changed\n");
+        return 1;
+    }
+
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify) ||
+        verify.native_node_count != 1 ||
+        verify.result_symbol_count != 6 ||
+        verify.error_count != 0 || diagnostic[0] != '\0') {
+        fprintf(stderr, "multiple-PU verification failed: %s\n", diagnostic);
+        return 1;
+    }
+
+    request.path = artifact;
+    request.flags = 0;
+    if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+        fprintf(stderr, "multiple-PU mapped-image finalization failed\n");
+        return 1;
+    }
+    return 0;
+}
+
 int
 main(void)
 {
@@ -3464,6 +3614,8 @@ main(void)
         return Check_Abstract_State_Effects();
     if (getenv("OPEN64_DSL_DECODE_STATE_ONLY") != NULL)
         return Check_Llama2_Decode_State_Region();
+    if (getenv("OPEN64_DSL_MULTI_PU_ONLY") != NULL)
+        return Check_Multiple_Program_Units();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();

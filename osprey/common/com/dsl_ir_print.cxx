@@ -62,17 +62,22 @@ DSL_IR_Print_Tensor_Descriptor (FILE *file, TY_IDX ty)
 }
 
 static void
-DSL_IR_Print_Result_Symbol (FILE *file, ST_IDX st)
+DSL_IR_Print_Result_Symbol (FILE *file, ST_IDX st, STR_IDX name)
 {
     if (ST_IDX_index(st) == 0)
         return;
     fprintf (file, " st=<%u,%u,%s>", ST_IDX_level(st), ST_IDX_index(st),
-             ST_name(St_Table[st]));
-    const char *no_alias = ST_tensor_attribute
-                               (st, TY_tensor_schema_key_name
-                                        (TY_TENSOR_SCHEMA_NO_ALIAS));
-    if (no_alias != NULL)
-        fprintf (file, " no_alias=%s", no_alias);
+             DSL_IR_String(name));
+    if (ST_IDX_level(st) <= CURRENT_SYMTAB &&
+        Scope_tab[ST_IDX_level(st)].st_tab != NULL &&
+        ST_IDX_index(st) < ST_Table_Size(ST_IDX_level(st)) &&
+        strcmp(ST_name(St_Table[st]), DSL_IR_String(name)) == 0) {
+        const char *no_alias = ST_tensor_attribute
+                                   (st, TY_tensor_schema_key_name
+                                            (TY_TENSOR_SCHEMA_NO_ALIAS));
+        if (no_alias != NULL)
+            fprintf (file, " no_alias=%s", no_alias);
+    }
 }
 
 void
@@ -171,7 +176,7 @@ DSL_IR_Image_Print (FILE *file)
         if (TY_IDX_index(record.ty) != 0)
             fprintf (file, " type_name=%s", TY_name(record.ty));
         DSL_IR_Print_Tensor_Descriptor(file, record.ty);
-        DSL_IR_Print_Result_Symbol(file, record.st);
+        DSL_IR_Print_Result_Symbol(file, record.st, record.name);
         if (record.metadata != STR_IDX_ZERO)
             fprintf (file, " metadata=%s", DSL_IR_String(record.metadata));
         fprintf (file, " flags=0x%x\n", record.flags);

@@ -63,6 +63,27 @@ DSL_Gatekeeper_Collect_Results
         return TRUE;
 
     BOOL valid = TRUE;
+    if (WN_operator(wn) == OPR_FUNC_ENTRY) {
+        for (INT i = 0; i < WN_num_formals(wn); ++i) {
+            WN *formal = WN_formal(wn, i);
+            if (formal != NULL && WN_operator(formal) == OPR_IDNAME &&
+                !DSL_Gatekeeper_Is_Result_Symbol
+                     (context, WN_st_idx(formal)))
+                context->result_symbols.push_back(WN_st_idx(formal));
+        }
+    }
+    if (WN_operator(wn) == OPR_CALL) {
+        for (INT i = 0; i < WN_kid_count(wn); ++i) {
+            WN *parm = WN_kid(wn, i);
+            WN *address = parm == NULL || WN_operator(parm) != OPR_PARM ?
+                          NULL : WN_kid0(parm);
+            if (address != NULL && WN_Parm_Out(parm) &&
+                WN_operator(address) == OPR_LDA &&
+                !DSL_Gatekeeper_Is_Result_Symbol
+                     (context, WN_st_idx(address)))
+                context->result_symbols.push_back(WN_st_idx(address));
+        }
+    }
     if (WN_operator(wn) == OPR_STID && WN_kid0(wn) != NULL &&
         DSL_WN_Is_Native(WN_kid0(wn))) {
         ST_IDX st = WN_st_idx(wn);
@@ -273,18 +294,32 @@ DSL_Gatekeeper_Matmul_Shapes_Compatible
 static BOOL
 DSL_Gatekeeper_Find_Image_Node
         (ST_IDX result_st,
+         const char *result_name,
+         DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         const char *payload,
          DSL_IR_NODE_RECORD *node,
          DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptor)
 {
     for (UINT32 i = 1; i <= DSL_IR_Image_Value_Count(); ++i) {
         DSL_IR_VALUE_RECORD value;
         if (!DSL_IR_Image_Get_Value(i, &value) || value.st != result_st ||
-            value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+            value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+            result_name == NULL ||
+            value.name == STR_IDX_ZERO ||
+            strcmp(Index_To_Str(value.name), result_name) != 0)
             continue;
         if (!DSL_IR_Image_Get_Node(value.producer_node_id, node))
             return FALSE;
-        return DSL_IR_Image_Get_Opcode_Descriptor
-                   (node->opcode_descriptor_id, descriptor);
+        if (!DSL_IR_Image_Get_Opcode_Descriptor
+                 (node->opcode_descriptor_id, descriptor))
+            return FALSE;
+        if (descriptor->logical_operator != (UINT32)dsl_operator ||
+            descriptor->version != version ||
+            node->payload == STR_IDX_ZERO || payload == NULL ||
+            strcmp(Index_To_Str(node->payload), payload) != 0)
+            continue;
+        return TRUE;
     }
     return FALSE;
 }
@@ -1443,6 +1478,8 @@ DSL_Gatekeeper_Verify_Native_Node
     TY_IDX result_ty = WN_ty(assignment);
     BOOL valid = TRUE;
     BOOL image_valid;
+    const char *result_name = DSL_Gatekeeper_ST_Valid(result_st) ?
+                              ST_name(St_Table[result_st]) : NULL;
 
     ++context->result.native_node_count;
     if (!DSL_WN_Get_Logical_Opcode(expression, &logical_opcode,
@@ -1466,17 +1503,12 @@ DSL_Gatekeeper_Verify_Native_Node
                     (context, "%s result is not a complete no-alias tensor "
                      "temporary", DSL_OPERATOR_name(dsl_operator));
 
-    image_valid = DSL_Gatekeeper_Find_Image_Node
-                      (result_st, &image_node, &image_descriptor) &&
-                  image_descriptor.logical_operator == (UINT32)dsl_operator &&
-                  image_descriptor.version ==
-                      logical_opcode.effective_version;
-    if (image_valid &&
-        (!DSL_WN_Get_Opcode_Annotation(expression, &annotation) ||
-         annotation.payload == NULL ||
-         image_node.payload == STR_IDX_ZERO ||
-         strcmp(annotation.payload, Index_To_Str(image_node.payload)) != 0))
-        image_valid = FALSE;
+    image_valid = DSL_WN_Get_Opcode_Annotation(expression, &annotation) &&
+                  annotation.payload != NULL &&
+                  DSL_Gatekeeper_Find_Image_Node
+                      (result_st, result_name, dsl_operator,
+                       logical_opcode.effective_version, annotation.payload,
+                       &image_node, &image_descriptor);
     if (!image_valid)
         valid = DSL_Gatekeeper_Report
                     (context, "%s result has no matching DSL image node",
@@ -1684,7 +1716,17 @@ DSL_Gatekeeper_Verify_Tree
         DSL_Gatekeeper_Is_Result_Symbol(context, WN_st_idx(wn))) {
         BOOL direct_operand = WN_operator(wn) == OPR_LDID && parent != NULL &&
                               DSL_WN_Is_Native(parent);
-        if (!direct_operand)
+        BOOL result_copy = WN_operator(wn) == OPR_LDID && parent != NULL &&
+                           WN_operator(parent) == OPR_STID &&
+                           ST_sclass(St_Table[WN_st_idx(parent)]) ==
+                               SCLASS_FORMAL_REF;
+        BOOL call_interface = WN_operator(wn) == OPR_LDA && parent != NULL &&
+                              WN_operator(parent) == OPR_PARM &&
+                              WN_Parm_By_Reference(parent) &&
+                              WN_Parm_Passed_Not_Saved(parent) &&
+                              (WN_Parm_Read_Only(parent) ||
+                               WN_Parm_Out(parent));
+        if (!direct_operand && !result_copy && !call_interface)
             valid = DSL_Gatekeeper_Report
                         (context, "result symbol <%u,%u> escapes through %s",
                          ST_IDX_level(WN_st_idx(wn)),

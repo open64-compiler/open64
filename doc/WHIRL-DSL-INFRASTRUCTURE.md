@@ -952,6 +952,63 @@ producer compatibility.  A frontend calls `DSL_Builder_Begin_Program` before
 each model, including the model following successful finalization, and calls
 `DSL_Builder_Abort_Program` after capture or construction failure.
 
+#### Multiple-PU Python callable contract
+
+Reachable Python-defined class callables are represented by real WHIRL program
+units.  Their public identity is class-centric rather than the generic Python
+method name `forward`.  Repeated calls to one definition are context-sensitive
+calls to the same PU; they do not create operator versions or duplicate the
+definition merely because the arguments or instance paths differ.
+
+The native builder publishes the following opaque interfaces:
+
+- `DSL_Builder_Select_PU(pu)` selects a builder-owned PU and restores its local
+  symbol and map tables.
+- `DSL_Builder_Declare_PU_Formal(pu, name, ordinal, ty, source_position)`
+  creates an ordered typed `SCLASS_FORMAL` and returns an opaque value handle.
+- `DSL_Builder_Declare_PU_Result(pu, name, ordinal, ty, role,
+  source_position)` creates an ordered typed `SCLASS_FORMAL_REF` result slot.
+  The initial roles are tensor result and abstract-state result.
+- `DSL_Builder_Return_PU_Values(pu, values, value_count)` copies each defining
+  value into its corresponding result slot and emits the standard WHIRL
+  `RETURN` statement.
+- `DSL_Builder_Create_PU_Call(caller, callee, arguments, argument_count,
+  result_names, result_count, callsite)` emits a standard WHIRL `CALL`, creates
+  fresh caller-owned result temporaries, and records canonical class, instance
+  path, context identity, call ordinal, and source position.
+- `DSL_Builder_Get_PU_Call_Result(call, ordinal, value)` returns only an opaque
+  caller-local value handle.  A callee-local value handle never crosses the PU
+  boundary.
+
+Tensor inputs are passed through standard `PARM` nodes marked
+`BY_REFERENCE|READ_ONLY|PASSED_NOT_SAVED`.  Result slots are passed through
+`BY_REFERENCE|OUT|PASSED_NOT_SAVED`; the caller owns their unique no-alias
+storage.  This is the VHO callable contract, not a target ABI commitment.  A
+later lowering step may pack or otherwise adapt results for a selected runtime
+ABI.
+
+Python tuple returns, including decode activation plus K/V cache state, are
+modeled as ordered named and typed semantic result slots.  They are not a
+generic tuple type and do not turn one expression operator into an
+unclassified multiple-result operator.  Each slot has a reviewed semantic role
+and can participate independently in tensor, ownership, and abstract-state
+verification.
+
+The builder retains a high-level `__WHIRL_DSL_CALL__` comment projection with
+callee, class, instance, context, and ordinal evidence.  `ir_b2a -st -src`
+therefore exposes the logical relationship alongside standard `FUNC_ENTRY`,
+`IDNAME`, `CALL`, `PARM`, symbol class, and source-position evidence.  Compiler
+clients do not inspect private physical DSL opcode storage to recover calls.
+
+This contract adds no WHIRL operator value, ELF section, mapped-image record,
+or record-size change.  Function entries, formals, calls, parameters, returns,
+symbols, types, and source positions use baseline WHIRL structures.  Existing
+DSL value records use their metadata field to retain a stable `owner_pu` name,
+because local `ST_IDX` values can repeat across PU scopes.  The gatekeeper
+rejects wrong formal/result counts, noncontiguous ordinals, cross-PU value
+reuse, missing returns, and call parameters whose read-only/out flags disagree
+with the published interface.
+
 #### Structured regions
 
 1. Add opaque `DSL_BUILDER_REGION` and region-classifier handles.
