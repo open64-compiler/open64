@@ -299,7 +299,10 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             "torch.fx+llama2_multiple_pu_boundary",
         )
         self.assertEqual(module.entry_function.name, "TinyLlama2ForCausalLM")
-        self.assertEqual(module.operators, ["common.add", "call:TinyRMSNorm"])
+        self.assertEqual(
+            module.operators,
+            ["transformer.rms_norm", "call:TinyRMSNorm"],
+        )
         call = module.graph_operators[0]
         self.assertEqual(call.name, "call:TinyRMSNorm")
         self.assertEqual(
@@ -313,7 +316,9 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
         )
         values = {value.name: value.value_kind for value in module.values}
         self.assertEqual(values["hidden_states"], "formal")
+        self.assertEqual(values["rms_norm_scale"], "formal")
         self.assertEqual(values["model_hidden"], "formal")
+        self.assertEqual(values["model_norm_scale"], "formal")
         self.assertEqual(values["norm_call_result"], "call_result")
 
     def test_int_shape_sample_input_and_source_provider(self) -> None:

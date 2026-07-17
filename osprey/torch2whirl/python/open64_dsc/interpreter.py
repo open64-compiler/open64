@@ -253,6 +253,19 @@ class WhirlExportInterpreter:
                 "lineage": "python.multi_pu.hidden",
             },
         )
+        scale_type = self.builder().tensor_type(
+            "llama2_multi_pu_scale_type",
+            "float32",
+            1,
+            "[32]",
+            {
+                "dtype": "float32",
+                "rank": 1,
+                "logical_shape": "[32]",
+                "layout": "C",
+                "lineage": "python.multi_pu.rms_norm.scale",
+            },
+        )
 
         rms_pu = self.builder().minimal_program_unit("TinyRMSNorm")
         rms_file = self.builder().register_source_file(
@@ -268,6 +281,14 @@ class WhirlExportInterpreter:
             rms_file,
             rms_line,
         )
+        scale = self.builder().declare_pu_formal(
+            rms_pu,
+            "rms_norm_scale",
+            1,
+            scale_type,
+            rms_file,
+            rms_line,
+        )
         self.builder().declare_pu_result(
             rms_pu,
             "normalized_result",
@@ -276,10 +297,16 @@ class WhirlExportInterpreter:
             file_id=rms_file,
             line=rms_line + 1,
         )
-        normalized = self.builder().common_add(
+        rms_module = self._module_at_instance_path(model, "norm")
+        normalized = self.builder().transformer_rms_norm(
             hidden,
-            hidden,
-            {"attr.broadcast_rule": "none"},
+            scale,
+            self._rms_norm_attrs(rms_module),
+        )
+        self.builder().set_value_source_position(
+            normalized,
+            rms_file,
+            rms_line + 1,
         )
         self.builder().append_program_unit_value(rms_pu, normalized)
         self.builder().return_pu_values(rms_pu, [normalized])
@@ -298,6 +325,14 @@ class WhirlExportInterpreter:
             entry_file,
             entry_line,
         )
+        model_norm_scale = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_norm_scale",
+            1,
+            scale_type,
+            entry_file,
+            entry_line,
+        )
         self.builder().declare_pu_result(
             entry_pu,
             "model_result",
@@ -313,7 +348,7 @@ class WhirlExportInterpreter:
         call = self.builder().create_pu_call(
             entry_pu,
             rms_pu,
-            [model_hidden],
+            [model_hidden, model_norm_scale],
             ["norm_call_result"],
             rms_definition.canonical_name,
             rms_instance,
@@ -323,6 +358,11 @@ class WhirlExportInterpreter:
             entry_line + 2,
         )
         call_result = self.builder().get_pu_call_result(call, 0, tensor_type)
+        self.builder().set_value_source_position(
+            call_result,
+            entry_file,
+            entry_line + 2,
+        )
         self.builder().return_pu_values(entry_pu, [call_result])
 
         model_module = inspect.getmodule(type(model))
@@ -336,7 +376,7 @@ class WhirlExportInterpreter:
                 body_markers=["call:TinyRMSNorm"],
             ),
             graph_source="torch.fx+llama2_multiple_pu_boundary",
-            operators=[common.ADD, "call:TinyRMSNorm"],
+            operators=[transformer.RMS_NORM, "call:TinyRMSNorm"],
             tensor_types=[
                 WhirlTensorTypeRecord(
                     name="llama2_multi_pu_hidden_type",
@@ -351,6 +391,20 @@ class WhirlExportInterpreter:
                         "layout": "BSC",
                         "lineage": "python.multi_pu.hidden",
                     },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_scale_type",
+                    handle=scale_type.value,
+                    dtype="float32",
+                    rank=1,
+                    logical_shape="[32]",
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 1,
+                        "logical_shape": "[32]",
+                        "layout": "C",
+                        "lineage": "python.multi_pu.rms_norm.scale",
+                    },
                 )
             ],
             values=[
@@ -361,9 +415,21 @@ class WhirlExportInterpreter:
                     value_kind="formal",
                 ),
                 WhirlValueRecord(
+                    name="rms_norm_scale",
+                    handle=scale.value,
+                    type_name="llama2_multi_pu_scale_type",
+                    value_kind="formal",
+                ),
+                WhirlValueRecord(
                     name="model_hidden",
                     handle=model_hidden.value,
                     type_name="llama2_multi_pu_hidden_type",
+                    value_kind="formal",
+                ),
+                WhirlValueRecord(
+                    name="model_norm_scale",
+                    handle=model_norm_scale.value,
+                    type_name="llama2_multi_pu_scale_type",
                     value_kind="formal",
                 ),
                 WhirlValueRecord(
@@ -392,6 +458,12 @@ class WhirlExportInterpreter:
             python_class_definitions=class_definitions,
             python_class_instances=class_instances,
         )
+
+    def _module_at_instance_path(self, model: Any, instance_path: str) -> Any:
+        current = model
+        for component in instance_path.split("."):
+            current = getattr(current, component)
+        return current
 
     def _first_instance_path(
         self,

@@ -669,7 +669,10 @@ Status: opt-in frontend certification is available for the first tiny Llama
 callable-boundary artifact.  `--single-pu` remains the default flattened
 semantic operator baseline.  `--multiple-pu` selects the alternative
 class-centric layout and currently certifies a real call boundary between
-`TinyLlama2ForCausalLM` and reachable `TinyRMSNorm`.
+`TinyLlama2ForCausalLM` and reachable `TinyRMSNorm`.  The `TinyRMSNorm`
+callee body now emits the reviewed `transformer.rms_norm.v1` semantics with
+ordered `hidden_states` and `rms_norm_scale` formals; it no longer uses the
+temporary demonstration `common.add` body.
 
 The certified multiple-PU smoke:
 
@@ -685,8 +688,9 @@ ir_b2a -st -src llama2_multi_pu.B llama2_multi_pu.T
 ```
 
 Machine checks require two real class-named `FUNC_ENTRY` records,
-independent local `IDNAME` symbols, source evidence, a standard
-`VCALL TinyRMSNorm`, read-only input and out result `PARM` nodes, owner-PU
+independent local `IDNAME` symbols, source evidence, a
+`transformer.rms_norm.v1` callee body, a standard `VCALL TinyRMSNorm`,
+read-only input and scale `PARM` nodes, an out result `PARM`, owner-PU
 metadata, and the retained `__WHIRL_DSL_CALL__` logical call comment.  The
 Python frontend keeps all PU, value, call, formal, and result objects opaque.
 It does not pass callee-local `DSL_BUILDER_VALUE` handles across PU boundaries.
@@ -702,7 +706,13 @@ Retained evidence from the Docker lane:
 Remaining multiple-PU work is to expand from this certified call-boundary
 artifact to one real PU for each reachable Python-defined class callable whose
 body has a reviewed semantic lowering.  Repeated invocation remains context
-sensitivity, not an operator-version mechanism.
+sensitivity, not an operator-version mechanism.  Expand in this order, keeping
+one reviewed inter-PU boundary and one retained `.B`/`.T` artifact per step:
+`TinyLlama2FeedForward`, `TinyRotaryEmbedding`, `TinyLlama2Attention`,
+`TinyLlama2DecoderLayer`, and finally the full `TinyLlama2ForCausalLM`
+multiple-PU topology.  Each expansion step must rerun and preserve the
+single-PU prefill baseline artifact so regressions in the flattened path are
+visible immediately.
 
 ## Real Checkpoint Policy
 
