@@ -113,39 +113,65 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
     required = [
         "llama2_model.py",
         "FUNC_ENTRY",
-        "FUNC_ENTRY <1,50,TinyRMSNorm>",
-        "FUNC_ENTRY <1,51,TinyLlama2ForCausalLM>",
+        "TinyRMSNorm",
+        "TinyLlama2FeedForward",
+        "TinyLlama2ForCausalLM",
         "IDNAME 0 <2,1,hidden_states>",
         "IDNAME 0 <2,2,rms_norm_scale>",
         "IDNAME 0 <2,3,normalized_result>",
+        "ffn_hidden_states",
+        "ffn_gate_weight",
+        "ffn_up_weight",
+        "ffn_down_weight",
+        "ffn_output",
         "IDNAME 0 <2,1,model_hidden>",
         "IDNAME 0 <2,2,model_norm_scale>",
-        "IDNAME 0 <2,3,model_result>",
+        "model_ffn_gate_weight",
+        "model_ffn_up_weight",
+        "model_ffn_down_weight",
+        "model_result",
         "transformer.rms_norm",
+        "common.linear",
+        "transformer.swiglu",
         "VCALL",
         "TinyRMSNorm",
+        "TinyLlama2FeedForward",
         "__WHIRL_DSL_CALL__",
         "instance=norm",
         "context=TinyLlama2ForCausalLM.norm",
+        "source_ordinal=0",
+        "instance=layers.0.feed_forward",
+        "context=TinyLlama2ForCausalLM.layers.0.feed_forward",
+        "source_ordinal=1",
         "declaration_kind = python_class_callable",
         "callable_identity = ",
         "TinyRMSNorm.forward",
+        "TinyLlama2FeedForward.forward",
         "class_state_parameters = weight",
+        "class_state_submodules = gate_proj,up_proj,down_proj",
         "class_state_scalars = eps=1e-05,training=False",
         "source_parameter = weight",
         "source_instance_state = norm.weight",
+        "source_parameter = gate_proj.weight",
+        "source_instance_state = layers.0.feed_forward.gate_proj.weight",
+        "source_parameter = up_proj.weight",
+        "source_instance_state = layers.0.feed_forward.up_proj.weight",
+        "source_parameter = down_proj.weight",
+        "source_instance_state = layers.0.feed_forward.down_proj.weight",
         "source_class_state = ",
         "TinyRMSNorm.weight",
-        "DSL PU Source Identity Table: version=1 entries=2",
+        "TinyLlama2FeedForward.gate_proj.weight",
+        "DSL PU Source Identity Table: version=1 entries=3",
         "definition=",
         "TinyRMSNorm.forward",
+        "TinyLlama2FeedForward.forward",
         "TinyLlama2ForCausalLM.forward",
         "module=_torch2whirl_model_",
-        "DSL Callsite Metadata Table: version=1 entries=1",
-        "source_ordinal=0",
+        "DSL Callsite Metadata Table: version=1 entries=2",
         "read_only passed_not_saved",
         "out passed_not_saved",
         "metadata=owner_pu=TinyRMSNorm",
+        "metadata=owner_pu=TinyLlama2FeedForward",
         "metadata=owner_pu=TinyLlama2ForCausalLM",
     ]
     missing = [needle for needle in required if needle not in text]
@@ -158,12 +184,12 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         print(text, file=sys.stderr)
         return 1
 
-    if len(re.findall(r"FUNC_ENTRY <[^>]*Tiny", text)) != 2:
-        print("multiple-PU trace did not expose exactly two Tiny FUNC_ENTRYs",
+    if len(re.findall(r"FUNC_ENTRY <[^>]*Tiny", text)) != 3:
+        print("multiple-PU trace did not expose exactly three Tiny FUNC_ENTRYs",
               file=sys.stderr)
         return 1
 
-    if text.count("__WHIRL_DSL_CALL__") < 1:
+    if text.count("__WHIRL_DSL_CALL__") < 2:
         print("multiple-PU trace missed logical call comment", file=sys.stderr)
         return 1
 

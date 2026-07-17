@@ -666,27 +666,48 @@ inspection.
 ## Multiple-PU Callable Boundary
 
 Status: opt-in frontend certification is available for the first tiny Llama
-callable-boundary artifact.  `--single-pu` remains the default flattened
+callable-boundary artifacts.  `--single-pu` remains the default flattened
 semantic operator baseline.  `--multiple-pu` selects the alternative
-class-centric layout and currently certifies a real call boundary between
-`TinyLlama2ForCausalLM` and reachable `TinyRMSNorm`.
+class-centric layout and currently certifies real call boundaries from
+`TinyLlama2ForCausalLM` to reachable `TinyRMSNorm` and
+`TinyLlama2FeedForward` PUs.
 
 ### Current Certified Boundary
 
-The first certified boundary is intentionally narrow:
+The certified boundary is intentionally incremental:
 
 ```text
 TinyLlama2ForCausalLM
   formal 0: model_hidden
   formal 1: model_norm_scale
+  formal 2: model_ffn_gate_weight
+  formal 3: model_ffn_up_weight
+  formal 4: model_ffn_down_weight
   call: TinyRMSNorm(model_hidden, model_norm_scale)
-  result 0: norm_call_result -> model_result
+  call: TinyLlama2FeedForward(
+    norm_call_result,
+    model_ffn_gate_weight,
+    model_ffn_up_weight,
+    model_ffn_down_weight)
+  result 0: ffn_call_result -> model_result
 
 TinyRMSNorm
   formal 0: hidden_states
   formal 1: rms_norm_scale
   body: transformer.rms_norm.v1(hidden_states, rms_norm_scale)
   result 0: normalized_result
+
+TinyLlama2FeedForward
+  formal 0: ffn_hidden_states
+  formal 1: ffn_gate_weight
+  formal 2: ffn_up_weight
+  formal 3: ffn_down_weight
+  body:
+    common.linear.v3(ffn_hidden_states, ffn_gate_weight)
+    common.linear.v3(ffn_hidden_states, ffn_up_weight)
+    transformer.swiglu.v1(gate_projection, up_projection)
+    common.linear.v3(swiglu, ffn_down_weight)
+  result 0: ffn_output
 ```
 
 The `TinyRMSNorm` callee body now emits the reviewed
@@ -819,16 +840,30 @@ Expand from the current certified `TinyRMSNorm` boundary in this order.
    - The single-PU prefill artifact lane passes unchanged.
 
 2. `TinyLlama2FeedForward`
-   - Introduce a real PU for the feed-forward class.
+   - Status: complete in the frontend branch pending continued expansion to
+     later callable boundaries.
+   - Introduces a real PU for the feed-forward class.
    - Body must match the single-PU semantic sequence:
      `common.linear.v3` gate projection, `common.linear.v3` up projection,
-     `common.silu`, `common.mul`, and `common.linear.v3` down projection.
-   - Formals must include activation plus the ordered gate, up, and down
-     weights or their reviewed semantic equivalents.
+     fused `transformer.swiglu.v1(attr.activation=silu)`, and
+     `common.linear.v3` down projection.
+   - Formals include activation plus the ordered gate, up, and down weights.
    - Result slot: feed-forward activation.
-   - Call contexts must distinguish `layers.0.feed_forward` and
-     `layers.1.feed_forward`.
-   - Retain `.B`/`.T` under a feed-forward-specific artifact directory.
+   - The current step certifies the first reachable context
+     `layers.0.feed_forward`; later decoder-layer expansion must distinguish
+     `layers.0.feed_forward` and `layers.1.feed_forward` as separate call
+     contexts of the same class definition.
+   - Machine checks require exactly three `FUNC_ENTRY` records, two retained
+     `__WHIRL_DSL_CALL__` comments, `VCALL TinyRMSNorm`,
+     `VCALL TinyLlama2FeedForward`, `common.linear`,
+     `transformer.swiglu`, three ordered feed-forward weight formals,
+     caller-owned call result evidence, source positions, owner-PU metadata,
+     native PU source identity table entries, native callsite metadata, and
+     the `TinyLlama2FeedForward.{gate_proj,up_proj,down_proj}.weight` state
+     mappings.
+   - Retained `.B`/`.T` artifacts remain under the standard
+     `llama2-multi-pu` artifact directory so reviewers can compare the
+     incremental trace against the previous RMSNorm-only evidence.
 
 3. `TinyRotaryEmbedding`
    - Introduce a real PU for the rotary embedding class.

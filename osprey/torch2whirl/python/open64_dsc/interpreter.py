@@ -233,7 +233,12 @@ class WhirlExportInterpreter:
         }
         entry_definition = definitions.get(entry_name)
         rms_definition = definitions.get("TinyRMSNorm")
-        if entry_definition is None or rms_definition is None:
+        ffn_definition = definitions.get("TinyLlama2FeedForward")
+        if (
+            entry_definition is None or
+            rms_definition is None or
+            ffn_definition is None
+        ):
             raise NotImplementedError(
                 "multiple-PU emission requires class source definitions"
             )
@@ -255,9 +260,25 @@ class WhirlExportInterpreter:
             rms_instance,
             rms_context,
         )
+        ffn_instance = self._first_instance_path(
+            class_instances,
+            ffn_definition.canonical_name,
+        )
+        ffn_module = self._module_at_instance_path(model, ffn_instance)
+        ffn_context = f"{entry_name}.{ffn_instance}"
+        ffn_identity = self._callable_identity_metadata(
+            ffn_definition,
+            ffn_module,
+            ffn_instance,
+            ffn_context,
+        )
 
         hidden_shape = "[1,1,32]" if self._is_tiny_llama2_decode_model(model) \
             else "[1,8,32]"
+        intermediate_shape = (
+            "[1,1,88]" if self._is_tiny_llama2_decode_model(model)
+            else "[1,8,88]"
+        )
         tensor_type = self.builder().tensor_type(
             "llama2_multi_pu_hidden_type",
             "float32",
@@ -282,6 +303,45 @@ class WhirlExportInterpreter:
                 "logical_shape": "[32]",
                 "layout": "C",
                 "lineage": "python.multi_pu.rms_norm.scale",
+            },
+        )
+        intermediate_type = self.builder().tensor_type(
+            "llama2_multi_pu_intermediate_type",
+            "float32",
+            3,
+            intermediate_shape,
+            {
+                "dtype": "float32",
+                "rank": 3,
+                "logical_shape": intermediate_shape,
+                "layout": "BSC",
+                "lineage": "python.multi_pu.feed_forward.intermediate",
+            },
+        )
+        ffn_up_weight_type = self.builder().tensor_type(
+            "llama2_multi_pu_ffn_up_weight_type",
+            "float32",
+            2,
+            "[88,32]",
+            {
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[88,32]",
+                "layout": "OI",
+                "lineage": "python.multi_pu.feed_forward.up_weight",
+            },
+        )
+        ffn_down_weight_type = self.builder().tensor_type(
+            "llama2_multi_pu_ffn_down_weight_type",
+            "float32",
+            2,
+            "[32,88]",
+            {
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[32,88]",
+                "layout": "OI",
+                "lineage": "python.multi_pu.feed_forward.down_weight",
             },
         )
 
@@ -354,6 +414,165 @@ class WhirlExportInterpreter:
         self.builder().append_program_unit_value(rms_pu, normalized)
         self.builder().return_pu_values(rms_pu, [normalized])
 
+        ffn_pu = self.builder().minimal_program_unit("TinyLlama2FeedForward")
+        self._set_pu_source_identity(ffn_pu, ffn_identity)
+        ffn_file = self.builder().register_source_file(
+            ffn_pu,
+            ffn_definition.source_file,
+        )
+        ffn_line = ffn_definition.source_line
+        ffn_hidden = self.builder().declare_pu_formal(
+            ffn_pu,
+            "ffn_hidden_states",
+            0,
+            tensor_type,
+            ffn_file,
+            ffn_line,
+        )
+        self.builder().attach_value_metadata(
+            ffn_hidden,
+            self._multi_pu_value_metadata(
+                ffn_identity,
+                "ffn_hidden_states",
+                "activation",
+                "",
+            ),
+        )
+        ffn_gate_weight = self.builder().declare_pu_formal(
+            ffn_pu,
+            "ffn_gate_weight",
+            1,
+            ffn_up_weight_type,
+            ffn_file,
+            ffn_line,
+        )
+        ffn_gate_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "ffn_gate_weight",
+            "ffn_gate_weight",
+            "gate_proj.weight",
+        )
+        self.builder().attach_value_metadata(ffn_gate_weight, ffn_gate_metadata)
+        ffn_up_weight = self.builder().declare_pu_formal(
+            ffn_pu,
+            "ffn_up_weight",
+            2,
+            ffn_up_weight_type,
+            ffn_file,
+            ffn_line,
+        )
+        ffn_up_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "ffn_up_weight",
+            "ffn_up_weight",
+            "up_proj.weight",
+        )
+        self.builder().attach_value_metadata(ffn_up_weight, ffn_up_metadata)
+        ffn_down_weight = self.builder().declare_pu_formal(
+            ffn_pu,
+            "ffn_down_weight",
+            3,
+            ffn_down_weight_type,
+            ffn_file,
+            ffn_line,
+        )
+        ffn_down_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "ffn_down_weight",
+            "ffn_down_weight",
+            "down_proj.weight",
+        )
+        self.builder().attach_value_metadata(ffn_down_weight, ffn_down_metadata)
+        self.builder().declare_pu_result(
+            ffn_pu,
+            "ffn_output",
+            0,
+            tensor_type,
+            file_id=ffn_file,
+            line=ffn_line + 1,
+        )
+        ffn_gate = self.builder().common_linear_v3(
+            ffn_hidden,
+            ffn_gate_weight,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            ffn_gate,
+            self._multi_pu_operator_metadata(
+                ffn_identity,
+                "ffn_gate_projection",
+                "llama2:common.linear",
+                "gate_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            ffn_gate,
+            ffn_file,
+            ffn_line + 1,
+        )
+        self.builder().append_program_unit_value(ffn_pu, ffn_gate)
+        ffn_up = self.builder().common_linear_v3(
+            ffn_hidden,
+            ffn_up_weight,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            ffn_up,
+            self._multi_pu_operator_metadata(
+                ffn_identity,
+                "ffn_up_projection",
+                "llama2:common.linear",
+                "up_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            ffn_up,
+            ffn_file,
+            ffn_line + 1,
+        )
+        self.builder().append_program_unit_value(ffn_pu, ffn_up)
+        ffn_swiglu = self.builder().transformer_swiglu(
+            ffn_gate,
+            ffn_up,
+            {"attr.activation": "silu"},
+        )
+        self.builder().attach_value_metadata(
+            ffn_swiglu,
+            self._multi_pu_operator_metadata(
+                ffn_identity,
+                "ffn_swiglu",
+                "llama2:transformer.swiglu",
+                "swiglu",
+            ),
+        )
+        self.builder().set_value_source_position(
+            ffn_swiglu,
+            ffn_file,
+            ffn_line + 1,
+        )
+        self.builder().append_program_unit_value(ffn_pu, ffn_swiglu)
+        ffn_down = self.builder().common_linear_v3(
+            ffn_swiglu,
+            ffn_down_weight,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            ffn_down,
+            self._multi_pu_operator_metadata(
+                ffn_identity,
+                "ffn_down_projection",
+                "llama2:common.linear",
+                "down_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            ffn_down,
+            ffn_file,
+            ffn_line + 1,
+        )
+        self.builder().append_program_unit_value(ffn_pu, ffn_down)
+        self.builder().return_pu_values(ffn_pu, [ffn_down])
+
         entry_pu = self.builder().minimal_program_unit(entry_name)
         self._set_pu_source_identity(entry_pu, entry_identity)
         entry_file = self.builder().register_source_file(
@@ -396,6 +615,60 @@ class WhirlExportInterpreter:
             model_norm_scale,
             model_scale_metadata,
         )
+        model_ffn_gate_weight = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_ffn_gate_weight",
+            2,
+            ffn_up_weight_type,
+            entry_file,
+            entry_line,
+        )
+        model_ffn_gate_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "model_ffn_gate_weight",
+            "ffn_gate_weight",
+            "gate_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            model_ffn_gate_weight,
+            model_ffn_gate_metadata,
+        )
+        model_ffn_up_weight = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_ffn_up_weight",
+            3,
+            ffn_up_weight_type,
+            entry_file,
+            entry_line,
+        )
+        model_ffn_up_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "model_ffn_up_weight",
+            "ffn_up_weight",
+            "up_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            model_ffn_up_weight,
+            model_ffn_up_metadata,
+        )
+        model_ffn_down_weight = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_ffn_down_weight",
+            4,
+            ffn_down_weight_type,
+            entry_file,
+            entry_line,
+        )
+        model_ffn_down_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "model_ffn_down_weight",
+            "ffn_down_weight",
+            "down_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            model_ffn_down_weight,
+            model_ffn_down_metadata,
+        )
         self.builder().declare_pu_result(
             entry_pu,
             "model_result",
@@ -430,7 +703,47 @@ class WhirlExportInterpreter:
             entry_file,
             entry_line + 2,
         )
-        self.builder().return_pu_values(entry_pu, [call_result])
+        ffn_call = self.builder().create_pu_call(
+            entry_pu,
+            ffn_pu,
+            [
+                call_result,
+                model_ffn_gate_weight,
+                model_ffn_up_weight,
+                model_ffn_down_weight,
+            ],
+            ["ffn_call_result"],
+            ffn_definition.canonical_name,
+            ffn_instance,
+            ffn_context,
+            1,
+            entry_file,
+            entry_line + 3,
+        )
+        ffn_call_result = self.builder().get_pu_call_result(
+            ffn_call,
+            0,
+            tensor_type,
+        )
+        ffn_call_result_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "ffn_call_result",
+            "call_result",
+            "",
+        )
+        ffn_call_result_metadata["result_source"] = (
+            "TinyLlama2FeedForward.ffn_output"
+        )
+        self.builder().attach_value_metadata(
+            ffn_call_result,
+            ffn_call_result_metadata,
+        )
+        self.builder().set_value_source_position(
+            ffn_call_result,
+            entry_file,
+            entry_line + 3,
+        )
+        self.builder().return_pu_values(entry_pu, [ffn_call_result])
 
         model_module = inspect.getmodule(type(model))
         return WhirlModule(
@@ -440,10 +753,21 @@ class WhirlExportInterpreter:
             entry_function=WhirlProgramUnitRecord(
                 name=entry_name,
                 handle=entry_pu.value,
-                body_markers=["call:TinyRMSNorm"],
+                body_markers=[
+                    "call:TinyRMSNorm",
+                    "call:TinyLlama2FeedForward",
+                ],
             ),
             graph_source="torch.fx+llama2_multiple_pu_boundary",
-            operators=[transformer.RMS_NORM, "call:TinyRMSNorm"],
+            operators=[
+                transformer.RMS_NORM,
+                "call:TinyRMSNorm",
+                common.LINEAR,
+                common.LINEAR,
+                transformer.SWIGLU,
+                common.LINEAR,
+                "call:TinyLlama2FeedForward",
+            ],
             tensor_types=[
                 WhirlTensorTypeRecord(
                     name="llama2_multi_pu_hidden_type",
@@ -471,6 +795,54 @@ class WhirlExportInterpreter:
                         "logical_shape": "[32]",
                         "layout": "C",
                         "lineage": "python.multi_pu.rms_norm.scale",
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_intermediate_type",
+                    handle=intermediate_type.value,
+                    dtype="float32",
+                    rank=3,
+                    logical_shape=intermediate_shape,
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 3,
+                        "logical_shape": intermediate_shape,
+                        "layout": "BSC",
+                        "lineage": (
+                            "python.multi_pu.feed_forward.intermediate"
+                        ),
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_ffn_up_weight_type",
+                    handle=ffn_up_weight_type.value,
+                    dtype="float32",
+                    rank=2,
+                    logical_shape="[88,32]",
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 2,
+                        "logical_shape": "[88,32]",
+                        "layout": "OI",
+                        "lineage": (
+                            "python.multi_pu.feed_forward.up_weight"
+                        ),
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_ffn_down_weight_type",
+                    handle=ffn_down_weight_type.value,
+                    dtype="float32",
+                    rank=2,
+                    logical_shape="[32,88]",
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 2,
+                        "logical_shape": "[32,88]",
+                        "layout": "OI",
+                        "lineage": (
+                            "python.multi_pu.feed_forward.down_weight"
+                        ),
                     },
                 )
             ],
@@ -520,6 +892,67 @@ class WhirlExportInterpreter:
                     value_kind="call_result",
                     metadata=dict(call_result_metadata),
                 ),
+                WhirlValueRecord(
+                    name="ffn_hidden_states",
+                    handle=ffn_hidden.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        ffn_identity,
+                        "ffn_hidden_states",
+                        "activation",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="ffn_gate_weight",
+                    handle=ffn_gate_weight.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(ffn_gate_metadata),
+                ),
+                WhirlValueRecord(
+                    name="ffn_up_weight",
+                    handle=ffn_up_weight.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(ffn_up_metadata),
+                ),
+                WhirlValueRecord(
+                    name="ffn_down_weight",
+                    handle=ffn_down_weight.value,
+                    type_name="llama2_multi_pu_ffn_down_weight_type",
+                    value_kind="formal",
+                    metadata=dict(ffn_down_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_ffn_gate_weight",
+                    handle=model_ffn_gate_weight.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(model_ffn_gate_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_ffn_up_weight",
+                    handle=model_ffn_up_weight.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(model_ffn_up_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_ffn_down_weight",
+                    handle=model_ffn_down_weight.value,
+                    type_name="llama2_multi_pu_ffn_down_weight_type",
+                    value_kind="formal",
+                    metadata=dict(model_ffn_down_metadata),
+                ),
+                WhirlValueRecord(
+                    name="ffn_call_result",
+                    handle=ffn_call_result.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="call_result",
+                    metadata=dict(ffn_call_result_metadata),
+                ),
             ],
             graph_operators=[
                 WhirlOperatorRecord(
@@ -545,7 +978,48 @@ class WhirlExportInterpreter:
                         "class_state_parameters": rms_identity[
                             "class_state_parameters"
                         ],
+                        "class_state_submodules": rms_identity[
+                            "class_state_submodules"
+                        ],
                         "class_state_scalars": rms_identity[
+                            "class_state_scalars"
+                        ],
+                    },
+                ),
+                WhirlOperatorRecord(
+                    name="call:TinyLlama2FeedForward",
+                    handle=ffn_call.value,
+                    kids=[
+                        "norm_call_result",
+                        "model_ffn_gate_weight",
+                        "model_ffn_up_weight",
+                        "model_ffn_down_weight",
+                    ],
+                    attrs={
+                        "canonical_class_name": (
+                            ffn_definition.canonical_name
+                        ),
+                        "instance_path": ffn_instance,
+                        "context_identity": ffn_context,
+                    },
+                    metadata={
+                        "declaration_kind": "python_class_callable",
+                        "callable_identity": ffn_identity[
+                            "callable_identity"
+                        ],
+                        "implementation_method": ffn_identity[
+                            "implementation_method"
+                        ],
+                        "implementation_fingerprint": ffn_identity[
+                            "implementation_fingerprint"
+                        ],
+                        "class_state_parameters": ffn_identity[
+                            "class_state_parameters"
+                        ],
+                        "class_state_submodules": ffn_identity[
+                            "class_state_submodules"
+                        ],
+                        "class_state_scalars": ffn_identity[
                             "class_state_scalars"
                         ],
                     },
@@ -562,7 +1036,10 @@ class WhirlExportInterpreter:
     def _module_at_instance_path(self, model: Any, instance_path: str) -> Any:
         current = model
         for component in instance_path.split("."):
-            current = getattr(current, component)
+            if component.isdigit():
+                current = current[int(component)]
+            else:
+                current = getattr(current, component)
         return current
 
     def _callable_identity_metadata(
@@ -586,6 +1063,11 @@ class WhirlExportInterpreter:
             "_buffers",
             {},
         ).keys())
+        submodules = tuple(
+            str(name)
+            for name, submodule in getattr(module, "_modules", {}).items()
+            if submodule is not None
+        )
         scalar_state = {
             str(name): str(value)
             for name, value in vars(module).items()
@@ -612,6 +1094,7 @@ class WhirlExportInterpreter:
             "context_identity": context_identity,
             "class_state_parameters": ",".join(parameters),
             "class_state_buffers": ",".join(buffers),
+            "class_state_submodules": ",".join(submodules),
             "class_state_scalars": ",".join(
                 f"{name}={scalar_state[name]}"
                 for name in sorted(scalar_state)
@@ -653,6 +1136,7 @@ class WhirlExportInterpreter:
             "context_identity": identity["context_identity"],
             "class_state_parameters": identity["class_state_parameters"],
             "class_state_buffers": identity["class_state_buffers"],
+            "class_state_submodules": identity["class_state_submodules"],
             "class_state_scalars": identity["class_state_scalars"],
             "source_layer_name": source_layer_name,
             "tensor_role": tensor_role,
@@ -665,6 +1149,23 @@ class WhirlExportInterpreter:
             metadata["source_instance_state"] = (
                 f"{identity['instance_path']}.{source_parameter}"
             )
+        return metadata
+
+    def _multi_pu_operator_metadata(
+        self,
+        identity: Mapping[str, str],
+        source_layer_name: str,
+        lowering_hint: str,
+        semantic_name: str,
+    ) -> Dict[str, str]:
+        metadata = self._multi_pu_value_metadata(
+            identity,
+            source_layer_name,
+            "operator_result",
+            "",
+        )
+        metadata["lowering_hint"] = lowering_hint
+        metadata["semantic_name"] = semantic_name
         return metadata
 
     def _first_instance_path(
