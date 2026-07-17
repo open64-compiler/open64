@@ -299,9 +299,25 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             "torch.fx+llama2_multiple_pu_boundary",
         )
         self.assertEqual(module.entry_function.name, "TinyLlama2ForCausalLM")
-        self.assertEqual(module.operators, ["common.add", "call:TinyRMSNorm"])
-        call = module.graph_operators[0]
+        for operator in (
+            "transformer.rms_norm",
+            "call:TinyRMSNorm",
+            "common.linear",
+            "transformer.swiglu",
+            "call:TinyLlama2FeedForward",
+            "transformer.rotary_embedding",
+            "call:TinyRotaryEmbedding",
+            "transformer.attention",
+            "call:TinyLlama2Attention",
+            "common.residual_add",
+            "call:TinyLlama2DecoderLayer",
+            "common.output_logits",
+        ):
+            self.assertIn(operator, module.operators)
+        calls = {operator.name: operator for operator in module.graph_operators}
+        call = calls["call:TinyRMSNorm"]
         self.assertEqual(call.name, "call:TinyRMSNorm")
+        self.assertEqual(tuple(call.kids), ("model_hidden", "model_norm_scale"))
         self.assertEqual(
             call.attrs["canonical_class_name"],
             "models.llama2_model.TinyRMSNorm",
@@ -311,10 +327,152 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             call.attrs["context_identity"],
             "TinyLlama2ForCausalLM.norm",
         )
-        values = {value.name: value.value_kind for value in module.values}
-        self.assertEqual(values["hidden_states"], "formal")
-        self.assertEqual(values["model_hidden"], "formal")
-        self.assertEqual(values["norm_call_result"], "call_result")
+        self.assertEqual(
+            call.metadata["callable_identity"],
+            "models.llama2_model.TinyRMSNorm.forward",
+        )
+        self.assertEqual(call.metadata["class_state_parameters"], "weight")
+        self.assertEqual(
+            call.metadata["class_state_scalars"],
+            "eps=1e-05,training=False",
+        )
+        self.assertEqual(call.metadata["class_state_submodules"], "")
+
+        ffn_call = calls["call:TinyLlama2FeedForward"]
+        self.assertEqual(
+            tuple(ffn_call.kids),
+            (
+                "norm_call_result",
+                "model_ffn_gate_weight",
+                "model_ffn_up_weight",
+                "model_ffn_down_weight",
+            ),
+        )
+        self.assertEqual(
+            ffn_call.attrs["canonical_class_name"],
+            "models.llama2_model.TinyLlama2FeedForward",
+        )
+        self.assertEqual(ffn_call.attrs["instance_path"],
+                         "layers.0.feed_forward")
+        self.assertEqual(
+            ffn_call.attrs["context_identity"],
+            "TinyLlama2ForCausalLM.layers.0.feed_forward",
+        )
+        self.assertEqual(
+            ffn_call.metadata["callable_identity"],
+            "models.llama2_model.TinyLlama2FeedForward.forward",
+        )
+        self.assertEqual(
+            ffn_call.metadata["class_state_submodules"],
+            "gate_proj,up_proj,down_proj",
+        )
+        rotary_call = calls["call:TinyRotaryEmbedding"]
+        self.assertEqual(
+            tuple(rotary_call.kids),
+            (
+                "model_rotary_value",
+                "model_rotary_cos",
+                "model_rotary_sin",
+            ),
+        )
+        self.assertEqual(
+            rotary_call.attrs["canonical_class_name"],
+            "models.llama2_model.TinyRotaryEmbedding",
+        )
+        self.assertEqual(rotary_call.attrs["instance_path"],
+                         "layers.0.attention.rotary")
+        self.assertEqual(
+            rotary_call.attrs["context_identity"],
+            "TinyLlama2ForCausalLM.layers.0.attention.rotary",
+        )
+        self.assertEqual(
+            rotary_call.metadata["callable_identity"],
+            "models.llama2_model.TinyRotaryEmbedding.forward",
+        )
+        self.assertEqual(rotary_call.metadata["class_state_buffers"],
+                         "cos,sin")
+        self.assertEqual(
+            rotary_call.metadata["class_state_scalars"],
+            "half_dim=4,training=False",
+        )
+
+        values = {value.name: value for value in module.values}
+        self.assertEqual(values["hidden_states"].value_kind, "formal")
+        self.assertEqual(values["rms_norm_scale"].value_kind, "formal")
+        self.assertEqual(values["model_hidden"].value_kind, "formal")
+        self.assertEqual(values["model_norm_scale"].value_kind, "formal")
+        self.assertEqual(values["norm_call_result"].value_kind, "call_result")
+        self.assertEqual(values["ffn_hidden_states"].value_kind, "formal")
+        self.assertEqual(values["ffn_gate_weight"].value_kind, "formal")
+        self.assertEqual(values["ffn_up_weight"].value_kind, "formal")
+        self.assertEqual(values["ffn_down_weight"].value_kind, "formal")
+        self.assertEqual(values["model_ffn_gate_weight"].value_kind, "formal")
+        self.assertEqual(values["model_ffn_up_weight"].value_kind, "formal")
+        self.assertEqual(values["model_ffn_down_weight"].value_kind, "formal")
+        self.assertEqual(values["ffn_call_result"].value_kind, "call_result")
+        self.assertEqual(values["rotary_value"].value_kind, "formal")
+        self.assertEqual(values["rotary_cos"].value_kind, "formal")
+        self.assertEqual(values["rotary_sin"].value_kind, "formal")
+        self.assertEqual(values["model_rotary_value"].value_kind, "formal")
+        self.assertEqual(values["model_rotary_cos"].value_kind, "formal")
+        self.assertEqual(values["model_rotary_sin"].value_kind, "formal")
+        self.assertEqual(values["rotary_call_result"].value_kind,
+                         "call_result")
+
+        scale = values["rms_norm_scale"]
+        self.assertEqual(scale.metadata["tensor_role"], "rms_norm_scale")
+        self.assertEqual(scale.metadata["source_parameter"], "weight")
+        self.assertEqual(
+            scale.metadata["source_class_state"],
+            "models.llama2_model.TinyRMSNorm.weight",
+        )
+        self.assertEqual(scale.metadata["source_instance_state"], "norm.weight")
+        self.assertEqual(
+            scale.metadata["callable_identity"],
+            "models.llama2_model.TinyRMSNorm.forward",
+        )
+        self.assertEqual(
+            scale.metadata["class_state_scalars"],
+            "eps=1e-05,training=False",
+        )
+
+        gate = values["ffn_gate_weight"]
+        self.assertEqual(gate.metadata["tensor_role"], "ffn_gate_weight")
+        self.assertEqual(gate.metadata["source_parameter"],
+                         "gate_proj.weight")
+        self.assertEqual(
+            gate.metadata["source_class_state"],
+            "models.llama2_model.TinyLlama2FeedForward.gate_proj.weight",
+        )
+        self.assertEqual(
+            gate.metadata["source_instance_state"],
+            "layers.0.feed_forward.gate_proj.weight",
+        )
+        self.assertEqual(
+            gate.metadata["callable_identity"],
+            "models.llama2_model.TinyLlama2FeedForward.forward",
+        )
+        self.assertEqual(
+            gate.metadata["class_state_submodules"],
+            "gate_proj,up_proj,down_proj",
+        )
+
+        cos = values["rotary_cos"]
+        self.assertEqual(cos.metadata["tensor_role"], "rotary_cos")
+        self.assertEqual(cos.metadata["source_buffer"], "cos")
+        self.assertEqual(
+            cos.metadata["source_class_state"],
+            "models.llama2_model.TinyRotaryEmbedding.cos",
+        )
+        self.assertEqual(
+            cos.metadata["source_instance_state"],
+            "layers.0.attention.rotary.cos",
+        )
+        self.assertEqual(
+            cos.metadata["callable_identity"],
+            "models.llama2_model.TinyRotaryEmbedding.forward",
+        )
+        self.assertEqual(cos.metadata["class_state_buffers"], "cos,sin")
 
     def test_int_shape_sample_input_and_source_provider(self) -> None:
         parsed = _sample_input_from_spec("int-shape:1,8")

@@ -587,6 +587,29 @@ Open64_DSC_Select_Program_Unit(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Set_PU_Source_Identity(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    const char *canonical_definition_name;
+    const char *defining_module;
+    const char *defining_file;
+    unsigned int defining_line;
+    unsigned int flags;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KsssII:set_pu_source_identity",
+                          &program_unit, &canonical_definition_name,
+                          &defining_module, &defining_file,
+                          &defining_line, &flags))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Set_PU_Source_Identity
+                    (program_unit, canonical_definition_name,
+                     defining_module, defining_file, defining_line, flags),
+                "set program unit source identity");
+}
+
+static PyObject *
 Open64_DSC_Declare_PU_Formal(PyObject *self, PyObject *args)
 {
     Open64_DSC_Handle program_unit;
@@ -1277,6 +1300,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Select_Program_Unit,
         METH_VARARGS,
         "Select the active native program unit."
+    },
+    {
+        "set_pu_source_identity",
+        Open64_DSC_Set_PU_Source_Identity,
+        METH_VARARGS,
+        "Attach source-language identity to a native program unit."
     },
     {
         "declare_pu_formal",

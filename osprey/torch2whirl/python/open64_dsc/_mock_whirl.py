@@ -328,6 +328,35 @@ def select_program_unit(program_unit: int) -> bool:
     return True
 
 
+def set_pu_source_identity(
+    program_unit: int,
+    canonical_definition_name: str,
+    defining_module: str,
+    defining_file: str,
+    defining_line: int,
+    flags: int,
+) -> bool:
+    select_program_unit(program_unit)
+    if (
+        not canonical_definition_name or
+        not defining_file or
+        defining_line <= 0
+    ):
+        raise RuntimeError("failed to set program unit source identity")
+    record = dict(_objects[program_unit])
+    if "source_identity" in record:
+        raise RuntimeError("failed to set program unit source identity")
+    record["source_identity"] = {
+        "canonical_definition_name": canonical_definition_name,
+        "defining_module": defining_module,
+        "defining_file": defining_file,
+        "defining_line": defining_line,
+        "flags": flags,
+    }
+    _objects[program_unit] = record
+    return True
+
+
 def _source_position(
     file_id: int,
     line: int,

@@ -132,6 +132,13 @@ extern Open64_DSC_Handle Open64_DSC_Create_Minimal_Program_Unit
                                  (const char *name);
 extern int Open64_DSC_Select_Program_Unit
                                 (Open64_DSC_Handle program_unit);
+extern int Open64_DSC_Set_PU_Source_Identity
+                                (Open64_DSC_Handle program_unit,
+                                 const char *canonical_definition_name,
+                                 const char *defining_module,
+                                 const char *defining_file,
+                                 unsigned int defining_line,
+                                 unsigned int flags);
 extern Open64_DSC_Handle Open64_DSC_Declare_PU_Formal
                                 (Open64_DSC_Handle program_unit,
                                  const char *name,

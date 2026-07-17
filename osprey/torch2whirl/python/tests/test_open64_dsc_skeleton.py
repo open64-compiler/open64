@@ -13,6 +13,7 @@ from unittest import mock
 from pathlib import Path
 
 import open64_dsc.export as export_module
+from open64_dsc import _mock_whirl
 from open64_dsc.backend import load_backend
 from open64_dsc.cli import (
     Torch2WhirlCliError,
@@ -32,6 +33,8 @@ from open64_dsc.module import (
 from open64_dsc import WhirlExportOptions, WhirlModule
 from open64_dsc import WhirlVerificationError, export_to_whirl
 from open64_dsc import load_builder, save_as_whirl, verify_module
+from open64_dsc import optimization
+from open64_dsc import operators
 from open64_dsc.builder import (
     REGION_INPUT,
     REGION_OUTPUT,
@@ -452,6 +455,97 @@ class Open64DscSkeletonTest(unittest.TestCase):
             self.assertEqual(contracts[name].arity, arity)
             self.assertEqual(tuple(contracts[name].required_attrs), attrs)
 
+    def test_operator_definitions_are_visible_by_import(self) -> None:
+        from open64_dsc.operators import LLAMA2_MULTIPLE_PU_OPERATORS
+        from open64_dsc.operators import TRANSFORMER_OPERATORS
+
+        self.assertIs(
+            operators.LLAMA2_MULTIPLE_PU_OPERATORS,
+            LLAMA2_MULTIPLE_PU_OPERATORS,
+        )
+        self.assertIn("transformer.attention", TRANSFORMER_OPERATORS)
+        attention = LLAMA2_MULTIPLE_PU_OPERATORS["transformer.attention"]
+        self.assertEqual(attention.version, 1)
+        self.assertEqual(attention.arity, 3)
+        self.assertIn("attr.execution_mode", attention.required_attrs)
+        self.assertEqual(
+            LLAMA2_MULTIPLE_PU_OPERATORS["common.linear"].version,
+            3,
+        )
+        self.assertEqual(
+            LLAMA2_MULTIPLE_PU_OPERATORS["common.linear"].arity,
+            2,
+        )
+        self.assertEqual(
+            LLAMA2_MULTIPLE_PU_OPERATORS["common.output_logits"].version,
+            3,
+        )
+
+        visible = set(operators.operator_names(LLAMA2_MULTIPLE_PU_OPERATORS))
+        self.assertTrue({
+            "common.linear",
+            "common.output_logits",
+            "common.reshape",
+            "common.residual_add",
+            "common.transpose",
+            "transformer.attention",
+            "transformer.rms_norm",
+            "transformer.rotary_embedding",
+            "transformer.swiglu",
+        }.issubset(visible))
+
+    def test_operator_optimization_traits_are_visible_by_import(self) -> None:
+        from open64_dsc.optimization import (
+            LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS,
+        )
+
+        self.assertIs(
+            optimization.LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS,
+            LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS,
+        )
+        self.assertEqual(
+            set(LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS),
+            set(operators.LLAMA2_MULTIPLE_PU_OPERATORS),
+        )
+
+        attention = LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS[
+            "transformer.attention"
+        ]
+        self.assertEqual(attention.version, 1)
+        self.assertEqual(attention.effect_model, "pure")
+        self.assertEqual(attention.semantic_role, "attention")
+        self.assertIn(
+            "fused_attention_lowering",
+            attention.candidate_passes,
+        )
+
+        reshape = LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS["common.reshape"]
+        transpose = LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS[
+            "common.transpose"
+        ]
+        self.assertEqual(reshape.semantic_role, "layout_view")
+        self.assertEqual(transpose.semantic_role, "layout_permutation")
+        self.assertIn(
+            "layout_propagation",
+            optimization.optimization_candidate_names(
+                LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS,
+            ),
+        )
+
+        policies = {
+            trait.frontend_policy
+            for trait in LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS.values()
+        }
+        self.assertEqual(
+            policies,
+            {optimization.FRONTEND_POLICY_CLASSIFICATION_ONLY},
+        )
+        owners = {
+            trait.native_owner
+            for trait in LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS.values()
+        }
+        self.assertEqual(owners, {optimization.NATIVE_OWNER_VHO_DSL})
+
     def test_builder_uses_published_operator_versions(self) -> None:
         builder = load_builder("mock")
         lhs = builder.tensor_constant(
@@ -493,6 +587,36 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "attr.semantic=logits",
             str(annotations[-1]["payload"]),
         )
+
+    def test_builder_sets_program_unit_source_identity(self) -> None:
+        builder = load_builder("mock")
+        builder.begin_program()
+        pu = builder.minimal_program_unit("identity_forward")
+
+        builder.set_pu_source_identity(
+            pu,
+            "models.llama2_model.TinyRMSNorm.forward",
+            "models.llama2_model",
+            "/tmp/llama2_model.py",
+            41,
+        )
+
+        identity = _mock_whirl._objects[pu.value]["source_identity"]
+        self.assertEqual(
+            identity["canonical_definition_name"],
+            "models.llama2_model.TinyRMSNorm.forward",
+        )
+        self.assertEqual(identity["defining_module"], "models.llama2_model")
+        self.assertEqual(identity["defining_file"], "/tmp/llama2_model.py")
+        self.assertEqual(identity["defining_line"], 41)
+        with self.assertRaisesRegex(RuntimeError, "source identity"):
+            builder.set_pu_source_identity(
+                pu,
+                "models.llama2_model.TinyRMSNorm.forward",
+                "models.llama2_model",
+                "/tmp/llama2_model.py",
+                41,
+            )
 
     def test_builder_structured_region_uses_opaque_handles(self) -> None:
         builder = load_builder("mock")

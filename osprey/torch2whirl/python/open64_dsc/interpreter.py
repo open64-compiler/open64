@@ -22,6 +22,7 @@ from .builder import (
     ProgramUnitHandle,
     RegionHandle,
     StateHandle,
+    TensorTypeHandle,
     ValueHandle,
     WhirlBuilder,
     load_builder,
@@ -233,13 +234,110 @@ class WhirlExportInterpreter:
         }
         entry_definition = definitions.get(entry_name)
         rms_definition = definitions.get("TinyRMSNorm")
-        if entry_definition is None or rms_definition is None:
+        ffn_definition = definitions.get("TinyLlama2FeedForward")
+        rotary_definition = definitions.get("TinyRotaryEmbedding")
+        attention_definition = definitions.get("TinyLlama2Attention")
+        decoder_definition = definitions.get("TinyLlama2DecoderLayer")
+        if (
+            entry_definition is None or
+            rms_definition is None or
+            ffn_definition is None or
+            rotary_definition is None or
+            attention_definition is None or
+            decoder_definition is None
+        ):
             raise NotImplementedError(
                 "multiple-PU emission requires class source definitions"
             )
+        entry_identity = self._callable_identity_metadata(
+            entry_definition,
+            model,
+            "<model>",
+            entry_name,
+        )
+        rms_module = self._module_at_instance_path(model, "norm")
+        rms_instance = self._first_instance_path(
+            class_instances,
+            rms_definition.canonical_name,
+        )
+        rms_context = f"{entry_name}.{rms_instance}"
+        rms_identity = self._callable_identity_metadata(
+            rms_definition,
+            rms_module,
+            rms_instance,
+            rms_context,
+        )
+        ffn_instance = self._first_instance_path(
+            class_instances,
+            ffn_definition.canonical_name,
+        )
+        ffn_module = self._module_at_instance_path(model, ffn_instance)
+        ffn_context = f"{entry_name}.{ffn_instance}"
+        ffn_identity = self._callable_identity_metadata(
+            ffn_definition,
+            ffn_module,
+            ffn_instance,
+            ffn_context,
+        )
+        rotary_instance = self._first_instance_path(
+            class_instances,
+            rotary_definition.canonical_name,
+        )
+        rotary_module = self._module_at_instance_path(model, rotary_instance)
+        rotary_context = f"{entry_name}.{rotary_instance}"
+        rotary_identity = self._callable_identity_metadata(
+            rotary_definition,
+            rotary_module,
+            rotary_instance,
+            rotary_context,
+        )
+        attention_instance = self._first_instance_path(
+            class_instances,
+            attention_definition.canonical_name,
+        )
+        attention_module = self._module_at_instance_path(
+            model,
+            attention_instance,
+        )
+        attention_context = f"{entry_name}.{attention_instance}"
+        attention_identity = self._callable_identity_metadata(
+            attention_definition,
+            attention_module,
+            attention_instance,
+            attention_context,
+        )
+        decoder_instance = self._first_instance_path(
+            class_instances,
+            decoder_definition.canonical_name,
+        )
+        decoder_module = self._module_at_instance_path(model, decoder_instance)
+        decoder_context = f"{entry_name}.{decoder_instance}"
+        decoder_identity = self._callable_identity_metadata(
+            decoder_definition,
+            decoder_module,
+            decoder_instance,
+            decoder_context,
+        )
 
+        sequence_length = 1 if self._is_tiny_llama2_decode_model(model) else 8
         hidden_shape = "[1,1,32]" if self._is_tiny_llama2_decode_model(model) \
             else "[1,8,32]"
+        intermediate_shape = (
+            "[1,1,88]" if self._is_tiny_llama2_decode_model(model)
+            else "[1,8,88]"
+        )
+        rotary_shape = (
+            "[1,4,1,8]" if self._is_tiny_llama2_decode_model(model)
+            else "[1,4,8,8]"
+        )
+        rotary_table_shape = (
+            "[1,1,1,8]" if self._is_tiny_llama2_decode_model(model)
+            else "[1,1,8,8]"
+        )
+        logits_shape = (
+            "[1,1,128]" if self._is_tiny_llama2_decode_model(model)
+            else "[1,8,128]"
+        )
         tensor_type = self.builder().tensor_type(
             "llama2_multi_pu_hidden_type",
             "float32",
@@ -253,8 +351,152 @@ class WhirlExportInterpreter:
                 "lineage": "python.multi_pu.hidden",
             },
         )
+        scale_type = self.builder().tensor_type(
+            "llama2_multi_pu_scale_type",
+            "float32",
+            1,
+            "[32]",
+            {
+                "dtype": "float32",
+                "rank": 1,
+                "logical_shape": "[32]",
+                "layout": "C",
+                "lineage": "python.multi_pu.rms_norm.scale",
+            },
+        )
+        intermediate_type = self.builder().tensor_type(
+            "llama2_multi_pu_intermediate_type",
+            "float32",
+            3,
+            intermediate_shape,
+            {
+                "dtype": "float32",
+                "rank": 3,
+                "logical_shape": intermediate_shape,
+                "layout": "BSC",
+                "lineage": "python.multi_pu.feed_forward.intermediate",
+            },
+        )
+        ffn_up_weight_type = self.builder().tensor_type(
+            "llama2_multi_pu_ffn_up_weight_type",
+            "float32",
+            2,
+            "[88,32]",
+            {
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[88,32]",
+                "layout": "OI",
+                "lineage": "python.multi_pu.feed_forward.up_weight",
+            },
+        )
+        ffn_down_weight_type = self.builder().tensor_type(
+            "llama2_multi_pu_ffn_down_weight_type",
+            "float32",
+            2,
+            "[32,88]",
+            {
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[32,88]",
+                "layout": "OI",
+                "lineage": "python.multi_pu.feed_forward.down_weight",
+            },
+        )
+        rotary_type = self.builder().tensor_type(
+            "llama2_multi_pu_rotary_bhsd_type",
+            "float32",
+            4,
+            rotary_shape,
+            {
+                "dtype": "float32",
+                "rank": 4,
+                "logical_shape": rotary_shape,
+                "layout": "BHSD",
+                "lineage": "python.multi_pu.rotary.value",
+            },
+        )
+        rotary_table_type = self.builder().tensor_type(
+            "llama2_multi_pu_rotary_table_type",
+            "float32",
+            4,
+            rotary_table_shape,
+            {
+                "dtype": "float32",
+                "rank": 4,
+                "logical_shape": rotary_table_shape,
+                "layout": "BHSD",
+                "lineage": "python.multi_pu.rotary.table",
+            },
+        )
+        token_ids_type = self.builder().tensor_type(
+            "llama2_multi_pu_token_ids_type",
+            "int64",
+            2,
+            f"[1,{sequence_length}]",
+            {
+                "dtype": "int64",
+                "rank": 2,
+                "logical_shape": f"[1,{sequence_length}]",
+                "layout": "BS",
+                "lineage": "python.multi_pu.input_tokens",
+            },
+        )
+        token_weight_type = self.builder().tensor_type(
+            "llama2_multi_pu_token_weight_type",
+            "float32",
+            2,
+            "[128,32]",
+            {
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[128,32]",
+                "layout": "VC",
+                "lineage": "python.multi_pu.token_embedding.weight",
+            },
+        )
+        hidden_weight_type = self.builder().tensor_type(
+            "llama2_multi_pu_hidden_weight_type",
+            "float32",
+            2,
+            "[32,32]",
+            {
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[32,32]",
+                "layout": "OI",
+                "lineage": "python.multi_pu.hidden_projection.weight",
+            },
+        )
+        output_weight_type = self.builder().tensor_type(
+            "llama2_multi_pu_output_weight_type",
+            "float32",
+            2,
+            "[128,32]",
+            {
+                "dtype": "float32",
+                "rank": 2,
+                "logical_shape": "[128,32]",
+                "layout": "OI",
+                "lineage": "python.multi_pu.output.weight",
+            },
+        )
+        logits_type = self.builder().tensor_type(
+            "llama2_multi_pu_logits_type",
+            "float32",
+            3,
+            logits_shape,
+            {
+                "dtype": "float32",
+                "rank": 3,
+                "logical_shape": logits_shape,
+                "layout": "BSV",
+                "lineage": "python.multi_pu.output.logits",
+            },
+        )
 
         rms_pu = self.builder().minimal_program_unit("TinyRMSNorm")
+        self._set_pu_source_identity(rms_pu, rms_identity)
         rms_file = self.builder().register_source_file(
             rms_pu,
             rms_definition.source_file,
@@ -268,6 +510,30 @@ class WhirlExportInterpreter:
             rms_file,
             rms_line,
         )
+        self.builder().attach_value_metadata(
+            hidden,
+            self._multi_pu_value_metadata(
+                rms_identity,
+                "hidden_states",
+                "activation",
+                "",
+            ),
+        )
+        scale = self.builder().declare_pu_formal(
+            rms_pu,
+            "rms_norm_scale",
+            1,
+            scale_type,
+            rms_file,
+            rms_line,
+        )
+        scale_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "rms_norm_scale",
+            "rms_norm_scale",
+            "weight",
+        )
+        self.builder().attach_value_metadata(scale, scale_metadata)
         self.builder().declare_pu_result(
             rms_pu,
             "normalized_result",
@@ -276,15 +542,1085 @@ class WhirlExportInterpreter:
             file_id=rms_file,
             line=rms_line + 1,
         )
-        normalized = self.builder().common_add(
+        normalized = self.builder().transformer_rms_norm(
             hidden,
-            hidden,
-            {"attr.broadcast_rule": "none"},
+            scale,
+            self._rms_norm_attrs(rms_module),
+        )
+        normalized_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "transformer_rms_norm",
+            "operator_result",
+            "",
+        )
+        normalized_metadata["lowering_hint"] = "llama2:transformer.rms_norm"
+        normalized_metadata["semantic_name"] = "rms_norm"
+        self.builder().attach_value_metadata(normalized, normalized_metadata)
+        self.builder().set_value_source_position(
+            normalized,
+            rms_file,
+            rms_line + 1,
         )
         self.builder().append_program_unit_value(rms_pu, normalized)
         self.builder().return_pu_values(rms_pu, [normalized])
 
+        ffn_pu = self.builder().minimal_program_unit("TinyLlama2FeedForward")
+        self._set_pu_source_identity(ffn_pu, ffn_identity)
+        ffn_file = self.builder().register_source_file(
+            ffn_pu,
+            ffn_definition.source_file,
+        )
+        ffn_line = ffn_definition.source_line
+        ffn_hidden = self.builder().declare_pu_formal(
+            ffn_pu,
+            "ffn_hidden_states",
+            0,
+            tensor_type,
+            ffn_file,
+            ffn_line,
+        )
+        self.builder().attach_value_metadata(
+            ffn_hidden,
+            self._multi_pu_value_metadata(
+                ffn_identity,
+                "ffn_hidden_states",
+                "activation",
+                "",
+            ),
+        )
+        ffn_gate_weight = self.builder().declare_pu_formal(
+            ffn_pu,
+            "ffn_gate_weight",
+            1,
+            ffn_up_weight_type,
+            ffn_file,
+            ffn_line,
+        )
+        ffn_gate_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "ffn_gate_weight",
+            "ffn_gate_weight",
+            "gate_proj.weight",
+        )
+        self.builder().attach_value_metadata(ffn_gate_weight, ffn_gate_metadata)
+        ffn_up_weight = self.builder().declare_pu_formal(
+            ffn_pu,
+            "ffn_up_weight",
+            2,
+            ffn_up_weight_type,
+            ffn_file,
+            ffn_line,
+        )
+        ffn_up_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "ffn_up_weight",
+            "ffn_up_weight",
+            "up_proj.weight",
+        )
+        self.builder().attach_value_metadata(ffn_up_weight, ffn_up_metadata)
+        ffn_down_weight = self.builder().declare_pu_formal(
+            ffn_pu,
+            "ffn_down_weight",
+            3,
+            ffn_down_weight_type,
+            ffn_file,
+            ffn_line,
+        )
+        ffn_down_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "ffn_down_weight",
+            "ffn_down_weight",
+            "down_proj.weight",
+        )
+        self.builder().attach_value_metadata(ffn_down_weight, ffn_down_metadata)
+        self.builder().declare_pu_result(
+            ffn_pu,
+            "ffn_output",
+            0,
+            tensor_type,
+            file_id=ffn_file,
+            line=ffn_line + 1,
+        )
+        ffn_gate = self.builder().common_linear_v3(
+            ffn_hidden,
+            ffn_gate_weight,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            ffn_gate,
+            self._multi_pu_operator_metadata(
+                ffn_identity,
+                "ffn_gate_projection",
+                "llama2:common.linear",
+                "gate_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            ffn_gate,
+            ffn_file,
+            ffn_line + 1,
+        )
+        self.builder().append_program_unit_value(ffn_pu, ffn_gate)
+        ffn_up = self.builder().common_linear_v3(
+            ffn_hidden,
+            ffn_up_weight,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            ffn_up,
+            self._multi_pu_operator_metadata(
+                ffn_identity,
+                "ffn_up_projection",
+                "llama2:common.linear",
+                "up_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            ffn_up,
+            ffn_file,
+            ffn_line + 1,
+        )
+        self.builder().append_program_unit_value(ffn_pu, ffn_up)
+        ffn_swiglu = self.builder().transformer_swiglu(
+            ffn_gate,
+            ffn_up,
+            {"attr.activation": "silu"},
+        )
+        self.builder().attach_value_metadata(
+            ffn_swiglu,
+            self._multi_pu_operator_metadata(
+                ffn_identity,
+                "ffn_swiglu",
+                "llama2:transformer.swiglu",
+                "swiglu",
+            ),
+        )
+        self.builder().set_value_source_position(
+            ffn_swiglu,
+            ffn_file,
+            ffn_line + 1,
+        )
+        self.builder().append_program_unit_value(ffn_pu, ffn_swiglu)
+        ffn_down = self.builder().common_linear_v3(
+            ffn_swiglu,
+            ffn_down_weight,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            ffn_down,
+            self._multi_pu_operator_metadata(
+                ffn_identity,
+                "ffn_down_projection",
+                "llama2:common.linear",
+                "down_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            ffn_down,
+            ffn_file,
+            ffn_line + 1,
+        )
+        self.builder().append_program_unit_value(ffn_pu, ffn_down)
+        self.builder().return_pu_values(ffn_pu, [ffn_down])
+
+        rotary_pu = self.builder().minimal_program_unit("TinyRotaryEmbedding")
+        self._set_pu_source_identity(rotary_pu, rotary_identity)
+        rotary_file = self.builder().register_source_file(
+            rotary_pu,
+            rotary_definition.source_file,
+        )
+        rotary_line = rotary_definition.source_line
+        rotary_value = self.builder().declare_pu_formal(
+            rotary_pu,
+            "rotary_value",
+            0,
+            rotary_type,
+            rotary_file,
+            rotary_line,
+        )
+        self.builder().attach_value_metadata(
+            rotary_value,
+            self._multi_pu_value_metadata(
+                rotary_identity,
+                "rotary_value",
+                "activation",
+                "",
+            ),
+        )
+        rotary_cos = self.builder().declare_pu_formal(
+            rotary_pu,
+            "rotary_cos",
+            1,
+            rotary_table_type,
+            rotary_file,
+            rotary_line,
+        )
+        rotary_cos_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "rotary_cos",
+            "rotary_cos",
+            "cos",
+        )
+        self.builder().attach_value_metadata(rotary_cos, rotary_cos_metadata)
+        rotary_sin = self.builder().declare_pu_formal(
+            rotary_pu,
+            "rotary_sin",
+            2,
+            rotary_table_type,
+            rotary_file,
+            rotary_line,
+        )
+        rotary_sin_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "rotary_sin",
+            "rotary_sin",
+            "sin",
+        )
+        self.builder().attach_value_metadata(rotary_sin, rotary_sin_metadata)
+        self.builder().declare_pu_result(
+            rotary_pu,
+            "rotated_value",
+            0,
+            rotary_type,
+            file_id=rotary_file,
+            line=rotary_line + 1,
+        )
+        rotated_value = self.builder().transformer_rotary_embedding(
+            rotary_value,
+            rotary_cos,
+            rotary_sin,
+            self._rotary_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            rotated_value,
+            self._multi_pu_operator_metadata(
+                rotary_identity,
+                "rotary_embedding",
+                "llama2:transformer.rotary_embedding",
+                "rotary_embedding",
+            ),
+        )
+        self.builder().set_value_source_position(
+            rotated_value,
+            rotary_file,
+            rotary_line + 1,
+        )
+        self.builder().append_program_unit_value(rotary_pu, rotated_value)
+        self.builder().return_pu_values(rotary_pu, [rotated_value])
+
+        attention_pu = self.builder().minimal_program_unit(
+            "TinyLlama2Attention"
+        )
+        self._set_pu_source_identity(attention_pu, attention_identity)
+        attention_file = self.builder().register_source_file(
+            attention_pu,
+            attention_definition.source_file,
+        )
+        attention_line = attention_definition.source_line
+        attention_input = self.builder().declare_pu_formal(
+            attention_pu,
+            "attention_input",
+            0,
+            tensor_type,
+            attention_file,
+            attention_line,
+        )
+        self.builder().attach_value_metadata(
+            attention_input,
+            self._multi_pu_value_metadata(
+                attention_identity,
+                "attention_input",
+                "activation",
+                "",
+            ),
+        )
+        attention_wq = self.builder().declare_pu_formal(
+            attention_pu,
+            "attention_wq_weight",
+            1,
+            hidden_weight_type,
+            attention_file,
+            attention_line,
+        )
+        attention_wq_metadata = self._multi_pu_value_metadata(
+            attention_identity,
+            "attention_wq_weight",
+            "attention_q_weight",
+            "wq.weight",
+        )
+        self.builder().attach_value_metadata(attention_wq,
+                                             attention_wq_metadata)
+        attention_wk = self.builder().declare_pu_formal(
+            attention_pu,
+            "attention_wk_weight",
+            2,
+            hidden_weight_type,
+            attention_file,
+            attention_line,
+        )
+        attention_wk_metadata = self._multi_pu_value_metadata(
+            attention_identity,
+            "attention_wk_weight",
+            "attention_k_weight",
+            "wk.weight",
+        )
+        self.builder().attach_value_metadata(attention_wk,
+                                             attention_wk_metadata)
+        attention_wv = self.builder().declare_pu_formal(
+            attention_pu,
+            "attention_wv_weight",
+            3,
+            hidden_weight_type,
+            attention_file,
+            attention_line,
+        )
+        attention_wv_metadata = self._multi_pu_value_metadata(
+            attention_identity,
+            "attention_wv_weight",
+            "attention_v_weight",
+            "wv.weight",
+        )
+        self.builder().attach_value_metadata(attention_wv,
+                                             attention_wv_metadata)
+        attention_wo = self.builder().declare_pu_formal(
+            attention_pu,
+            "attention_wo_weight",
+            4,
+            hidden_weight_type,
+            attention_file,
+            attention_line,
+        )
+        attention_wo_metadata = self._multi_pu_value_metadata(
+            attention_identity,
+            "attention_wo_weight",
+            "attention_o_weight",
+            "wo.weight",
+        )
+        self.builder().attach_value_metadata(attention_wo,
+                                             attention_wo_metadata)
+        attention_rotary_cos = self.builder().declare_pu_formal(
+            attention_pu,
+            "attention_rotary_cos",
+            5,
+            rotary_table_type,
+            attention_file,
+            attention_line,
+        )
+        attention_rotary_cos_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "attention_rotary_cos",
+            "rotary_cos",
+            "cos",
+        )
+        self.builder().attach_value_metadata(
+            attention_rotary_cos,
+            attention_rotary_cos_metadata,
+        )
+        attention_rotary_sin = self.builder().declare_pu_formal(
+            attention_pu,
+            "attention_rotary_sin",
+            6,
+            rotary_table_type,
+            attention_file,
+            attention_line,
+        )
+        attention_rotary_sin_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "attention_rotary_sin",
+            "rotary_sin",
+            "sin",
+        )
+        self.builder().attach_value_metadata(
+            attention_rotary_sin,
+            attention_rotary_sin_metadata,
+        )
+        self.builder().declare_pu_result(
+            attention_pu,
+            "attention_output",
+            0,
+            tensor_type,
+            file_id=attention_file,
+            line=attention_line + 1,
+        )
+
+        attention_q = self.builder().common_linear_v3(
+            attention_input,
+            attention_wq,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            attention_q,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_q_projection",
+                "llama2:common.linear",
+                "attention_q_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            attention_q,
+            attention_file,
+            attention_line + 1,
+        )
+        self.builder().append_program_unit_value(attention_pu, attention_q)
+        attention_k = self.builder().common_linear_v3(
+            attention_input,
+            attention_wk,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            attention_k,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_k_projection",
+                "llama2:common.linear",
+                "attention_k_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            attention_k,
+            attention_file,
+            attention_line + 1,
+        )
+        self.builder().append_program_unit_value(attention_pu, attention_k)
+        attention_v = self.builder().common_linear_v3(
+            attention_input,
+            attention_wv,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            attention_v,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_v_projection",
+                "llama2:common.linear",
+                "attention_v_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            attention_v,
+            attention_file,
+            attention_line + 1,
+        )
+        self.builder().append_program_unit_value(attention_pu, attention_v)
+
+        bshd_shape = (1, sequence_length, 4, 8)
+        bhsd_shape = (1, 4, sequence_length, 8)
+        attention_q_reshape = self.builder().common_reshape(
+            attention_q,
+            bshd_shape,
+        )
+        self.builder().attach_value_metadata(
+            attention_q_reshape,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_q_reshape",
+                "llama2:common.reshape",
+                "attention_q_reshape",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_q_reshape)
+        attention_q_bhsd = self.builder().common_transpose(
+            attention_q_reshape,
+            (0, 2, 1, 3),
+        )
+        self.builder().attach_value_metadata(
+            attention_q_bhsd,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_q_bhsd",
+                "llama2:common.transpose",
+                "attention_q_bhsd",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_q_bhsd)
+        attention_k_reshape = self.builder().common_reshape(
+            attention_k,
+            bshd_shape,
+        )
+        self.builder().attach_value_metadata(
+            attention_k_reshape,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_k_reshape",
+                "llama2:common.reshape",
+                "attention_k_reshape",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_k_reshape)
+        attention_k_bhsd = self.builder().common_transpose(
+            attention_k_reshape,
+            (0, 2, 1, 3),
+        )
+        self.builder().attach_value_metadata(
+            attention_k_bhsd,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_k_bhsd",
+                "llama2:common.transpose",
+                "attention_k_bhsd",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_k_bhsd)
+        attention_v_reshape = self.builder().common_reshape(
+            attention_v,
+            bshd_shape,
+        )
+        self.builder().attach_value_metadata(
+            attention_v_reshape,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_v_reshape",
+                "llama2:common.reshape",
+                "attention_v_reshape",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_v_reshape)
+        attention_v_bhsd = self.builder().common_transpose(
+            attention_v_reshape,
+            (0, 2, 1, 3),
+        )
+        self.builder().attach_value_metadata(
+            attention_v_bhsd,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_v_bhsd",
+                "llama2:common.transpose",
+                "attention_v_bhsd",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_v_bhsd)
+
+        attention_query_rope = self.builder().transformer_rotary_embedding(
+            attention_q_bhsd,
+            attention_rotary_cos,
+            attention_rotary_sin,
+            self._rotary_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            attention_query_rope,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_query_rope",
+                "llama2:transformer.rotary_embedding",
+                "attention_query_rope",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_query_rope)
+        attention_key_rope = self.builder().transformer_rotary_embedding(
+            attention_k_bhsd,
+            attention_rotary_cos,
+            attention_rotary_sin,
+            self._rotary_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            attention_key_rope,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_key_rope",
+                "llama2:transformer.rotary_embedding",
+                "attention_key_rope",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_key_rope)
+
+        attention_context_value = self.builder().transformer_attention(
+            attention_query_rope,
+            attention_key_rope,
+            attention_v_bhsd,
+            self._attention_attrs(4, 8),
+        )
+        self.builder().attach_value_metadata(
+            attention_context_value,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_context",
+                "llama2:transformer.attention",
+                "attention_context",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_context_value)
+        attention_context_bshd = self.builder().common_transpose(
+            attention_context_value,
+            (0, 2, 1, 3),
+        )
+        self.builder().attach_value_metadata(
+            attention_context_bshd,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_context_bshd",
+                "llama2:common.transpose",
+                "attention_context_bshd",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_context_bshd)
+        attention_context_hidden = self.builder().common_reshape(
+            attention_context_bshd,
+            (1, sequence_length, 32),
+        )
+        self.builder().attach_value_metadata(
+            attention_context_hidden,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_context_hidden",
+                "llama2:common.reshape",
+                "attention_context_hidden",
+            ),
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_context_hidden)
+        attention_output = self.builder().common_linear_v3(
+            attention_context_hidden,
+            attention_wo,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            attention_output,
+            self._multi_pu_operator_metadata(
+                attention_identity,
+                "attention_output_projection",
+                "llama2:common.linear",
+                "attention_output_projection",
+            ),
+        )
+        self.builder().set_value_source_position(
+            attention_output,
+            attention_file,
+            attention_line + 1,
+        )
+        self.builder().append_program_unit_value(attention_pu,
+                                                attention_output)
+        self.builder().return_pu_values(attention_pu, [attention_output])
+
+        decoder_pu = self.builder().minimal_program_unit(
+            "TinyLlama2DecoderLayer"
+        )
+        self._set_pu_source_identity(decoder_pu, decoder_identity)
+        decoder_file = self.builder().register_source_file(
+            decoder_pu,
+            decoder_definition.source_file,
+        )
+        decoder_line = decoder_definition.source_line
+        decoder_input = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_input",
+            0,
+            tensor_type,
+            decoder_file,
+            decoder_line,
+        )
+        self.builder().attach_value_metadata(
+            decoder_input,
+            self._multi_pu_value_metadata(
+                decoder_identity,
+                "decoder_input",
+                "activation",
+                "",
+            ),
+        )
+        decoder_attention_norm_scale = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_attention_norm_scale",
+            1,
+            scale_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_attention_norm_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "decoder_attention_norm_scale",
+            "rms_norm_scale",
+            "weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_attention_norm_scale,
+            decoder_attention_norm_metadata,
+        )
+        decoder_attention_wq = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_attention_wq_weight",
+            2,
+            hidden_weight_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_attention_wq_metadata = self._multi_pu_value_metadata(
+            attention_identity,
+            "decoder_attention_wq_weight",
+            "attention_q_weight",
+            "wq.weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_attention_wq,
+            decoder_attention_wq_metadata,
+        )
+        decoder_attention_wk = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_attention_wk_weight",
+            3,
+            hidden_weight_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_attention_wk_metadata = self._multi_pu_value_metadata(
+            attention_identity,
+            "decoder_attention_wk_weight",
+            "attention_k_weight",
+            "wk.weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_attention_wk,
+            decoder_attention_wk_metadata,
+        )
+        decoder_attention_wv = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_attention_wv_weight",
+            4,
+            hidden_weight_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_attention_wv_metadata = self._multi_pu_value_metadata(
+            attention_identity,
+            "decoder_attention_wv_weight",
+            "attention_v_weight",
+            "wv.weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_attention_wv,
+            decoder_attention_wv_metadata,
+        )
+        decoder_attention_wo = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_attention_wo_weight",
+            5,
+            hidden_weight_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_attention_wo_metadata = self._multi_pu_value_metadata(
+            attention_identity,
+            "decoder_attention_wo_weight",
+            "attention_o_weight",
+            "wo.weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_attention_wo,
+            decoder_attention_wo_metadata,
+        )
+        decoder_rotary_cos = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_rotary_cos",
+            6,
+            rotary_table_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_rotary_cos_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "decoder_rotary_cos",
+            "rotary_cos",
+            "cos",
+        )
+        self.builder().attach_value_metadata(
+            decoder_rotary_cos,
+            decoder_rotary_cos_metadata,
+        )
+        decoder_rotary_sin = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_rotary_sin",
+            7,
+            rotary_table_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_rotary_sin_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "decoder_rotary_sin",
+            "rotary_sin",
+            "sin",
+        )
+        self.builder().attach_value_metadata(
+            decoder_rotary_sin,
+            decoder_rotary_sin_metadata,
+        )
+        decoder_ffn_norm_scale = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_ffn_norm_scale",
+            8,
+            scale_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_ffn_norm_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "decoder_ffn_norm_scale",
+            "rms_norm_scale",
+            "weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_norm_scale,
+            decoder_ffn_norm_metadata,
+        )
+        decoder_ffn_gate = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_ffn_gate_weight",
+            9,
+            ffn_up_weight_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_ffn_gate_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "decoder_ffn_gate_weight",
+            "ffn_gate_weight",
+            "gate_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_gate,
+            decoder_ffn_gate_metadata,
+        )
+        decoder_ffn_up = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_ffn_up_weight",
+            10,
+            ffn_up_weight_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_ffn_up_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "decoder_ffn_up_weight",
+            "ffn_up_weight",
+            "up_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_up,
+            decoder_ffn_up_metadata,
+        )
+        decoder_ffn_down = self.builder().declare_pu_formal(
+            decoder_pu,
+            "decoder_ffn_down_weight",
+            11,
+            ffn_down_weight_type,
+            decoder_file,
+            decoder_line,
+        )
+        decoder_ffn_down_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "decoder_ffn_down_weight",
+            "ffn_down_weight",
+            "down_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_down,
+            decoder_ffn_down_metadata,
+        )
+        self.builder().declare_pu_result(
+            decoder_pu,
+            "decoder_output",
+            0,
+            tensor_type,
+            file_id=decoder_file,
+            line=decoder_line + 1,
+        )
+
+        decoder_attention_norm_call = self.builder().create_pu_call(
+            decoder_pu,
+            rms_pu,
+            [decoder_input, decoder_attention_norm_scale],
+            ["decoder_attention_norm_result"],
+            rms_definition.canonical_name,
+            "layers.0.attention_norm",
+            f"{decoder_context}.attention_norm",
+            0,
+            decoder_file,
+            decoder_line + 1,
+        )
+        decoder_attention_norm_result = self.builder().get_pu_call_result(
+            decoder_attention_norm_call,
+            0,
+            tensor_type,
+        )
+        self.builder().attach_value_metadata(
+            decoder_attention_norm_result,
+            self._multi_pu_value_metadata(
+                rms_identity,
+                "decoder_attention_norm_result",
+                "call_result",
+                "",
+            ),
+        )
+        decoder_attention_call = self.builder().create_pu_call(
+            decoder_pu,
+            attention_pu,
+            [
+                decoder_attention_norm_result,
+                decoder_attention_wq,
+                decoder_attention_wk,
+                decoder_attention_wv,
+                decoder_attention_wo,
+                decoder_rotary_cos,
+                decoder_rotary_sin,
+            ],
+            ["decoder_attention_output"],
+            attention_definition.canonical_name,
+            attention_instance,
+            f"{decoder_context}.attention",
+            1,
+            decoder_file,
+            decoder_line + 2,
+        )
+        decoder_attention_output = self.builder().get_pu_call_result(
+            decoder_attention_call,
+            0,
+            tensor_type,
+        )
+        self.builder().attach_value_metadata(
+            decoder_attention_output,
+            self._multi_pu_value_metadata(
+                attention_identity,
+                "decoder_attention_output",
+                "call_result",
+                "",
+            ),
+        )
+        decoder_attention_residual = self.builder().common_residual_add(
+            decoder_input,
+            decoder_attention_output,
+        )
+        self.builder().attach_value_metadata(
+            decoder_attention_residual,
+            self._multi_pu_operator_metadata(
+                decoder_identity,
+                "decoder_attention_residual",
+                "llama2:common.residual_add",
+                "attention_residual",
+            ),
+        )
+        self.builder().append_program_unit_value(
+            decoder_pu,
+            decoder_attention_residual,
+        )
+        decoder_ffn_norm_result = self.builder().transformer_rms_norm(
+            decoder_attention_residual,
+            decoder_ffn_norm_scale,
+            self._rms_norm_attrs(rms_module),
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_norm_result,
+            self._multi_pu_operator_metadata(
+                decoder_identity,
+                "decoder_ffn_norm_result",
+                "llama2:transformer.rms_norm",
+                "ffn_norm",
+            ),
+        )
+        self.builder().append_program_unit_value(
+            decoder_pu,
+            decoder_ffn_norm_result,
+        )
+        decoder_ffn_gate_projection = self.builder().common_linear_v3(
+            decoder_ffn_norm_result,
+            decoder_ffn_gate,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_gate_projection,
+            self._multi_pu_operator_metadata(
+                decoder_identity,
+                "decoder_ffn_gate_projection",
+                "llama2:common.linear",
+                "ffn_gate_projection",
+            ),
+        )
+        self.builder().append_program_unit_value(
+            decoder_pu,
+            decoder_ffn_gate_projection,
+        )
+        decoder_ffn_up_projection = self.builder().common_linear_v3(
+            decoder_ffn_norm_result,
+            decoder_ffn_up,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_up_projection,
+            self._multi_pu_operator_metadata(
+                decoder_identity,
+                "decoder_ffn_up_projection",
+                "llama2:common.linear",
+                "ffn_up_projection",
+            ),
+        )
+        self.builder().append_program_unit_value(
+            decoder_pu,
+            decoder_ffn_up_projection,
+        )
+        decoder_ffn_swiglu = self.builder().transformer_swiglu(
+            decoder_ffn_gate_projection,
+            decoder_ffn_up_projection,
+            {"attr.activation": "silu"},
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_swiglu,
+            self._multi_pu_operator_metadata(
+                decoder_identity,
+                "decoder_ffn_swiglu",
+                "llama2:transformer.swiglu",
+                "ffn_swiglu",
+            ),
+        )
+        self.builder().append_program_unit_value(decoder_pu,
+                                                decoder_ffn_swiglu)
+        decoder_ffn_output = self.builder().common_linear_v3(
+            decoder_ffn_swiglu,
+            decoder_ffn_down,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            decoder_ffn_output,
+            self._multi_pu_operator_metadata(
+                decoder_identity,
+                "decoder_ffn_output",
+                "llama2:common.linear",
+                "ffn_output",
+            ),
+        )
+        self.builder().append_program_unit_value(decoder_pu,
+                                                decoder_ffn_output)
+        decoder_output = self.builder().common_residual_add(
+            decoder_attention_residual,
+            decoder_ffn_output,
+        )
+        self.builder().attach_value_metadata(
+            decoder_output,
+            self._multi_pu_operator_metadata(
+                decoder_identity,
+                "decoder_output",
+                "llama2:common.residual_add",
+                "decoder_output",
+            ),
+        )
+        self.builder().set_value_source_position(
+            decoder_output,
+            decoder_file,
+            decoder_line + 4,
+        )
+        self.builder().append_program_unit_value(decoder_pu, decoder_output)
+        self.builder().return_pu_values(decoder_pu, [decoder_output])
+
         entry_pu = self.builder().minimal_program_unit(entry_name)
+        self._set_pu_source_identity(entry_pu, entry_identity)
         entry_file = self.builder().register_source_file(
             entry_pu,
             entry_definition.source_file,
@@ -298,6 +1634,439 @@ class WhirlExportInterpreter:
             entry_file,
             entry_line,
         )
+        self.builder().attach_value_metadata(
+            model_hidden,
+            self._multi_pu_value_metadata(
+                rms_identity,
+                "model_hidden",
+                "call_actual",
+                "",
+            ),
+        )
+        model_norm_scale = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_norm_scale",
+            1,
+            scale_type,
+            entry_file,
+            entry_line,
+        )
+        model_scale_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "model_norm_scale",
+            "rms_norm_scale",
+            "weight",
+        )
+        self.builder().attach_value_metadata(
+            model_norm_scale,
+            model_scale_metadata,
+        )
+        model_ffn_gate_weight = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_ffn_gate_weight",
+            2,
+            ffn_up_weight_type,
+            entry_file,
+            entry_line,
+        )
+        model_ffn_gate_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "model_ffn_gate_weight",
+            "ffn_gate_weight",
+            "gate_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            model_ffn_gate_weight,
+            model_ffn_gate_metadata,
+        )
+        model_ffn_up_weight = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_ffn_up_weight",
+            3,
+            ffn_up_weight_type,
+            entry_file,
+            entry_line,
+        )
+        model_ffn_up_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "model_ffn_up_weight",
+            "ffn_up_weight",
+            "up_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            model_ffn_up_weight,
+            model_ffn_up_metadata,
+        )
+        model_ffn_down_weight = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_ffn_down_weight",
+            4,
+            ffn_down_weight_type,
+            entry_file,
+            entry_line,
+        )
+        model_ffn_down_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "model_ffn_down_weight",
+            "ffn_down_weight",
+            "down_proj.weight",
+        )
+        self.builder().attach_value_metadata(
+            model_ffn_down_weight,
+            model_ffn_down_metadata,
+        )
+        model_rotary_value = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_rotary_value",
+            5,
+            rotary_type,
+            entry_file,
+            entry_line,
+        )
+        self.builder().attach_value_metadata(
+            model_rotary_value,
+            self._multi_pu_value_metadata(
+                rotary_identity,
+                "model_rotary_value",
+                "call_actual",
+                "",
+            ),
+        )
+        model_rotary_cos = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_rotary_cos",
+            6,
+            rotary_table_type,
+            entry_file,
+            entry_line,
+        )
+        model_rotary_cos_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "model_rotary_cos",
+            "rotary_cos",
+            "cos",
+        )
+        self.builder().attach_value_metadata(
+            model_rotary_cos,
+            model_rotary_cos_metadata,
+        )
+        model_rotary_sin = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_rotary_sin",
+            7,
+            rotary_table_type,
+            entry_file,
+            entry_line,
+        )
+        model_rotary_sin_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "model_rotary_sin",
+            "rotary_sin",
+            "sin",
+        )
+        self.builder().attach_value_metadata(
+            model_rotary_sin,
+            model_rotary_sin_metadata,
+        )
+        def entry_formal(
+            name: str,
+            ordinal: int,
+            ty: TensorTypeHandle,
+            identity: Mapping[str, str],
+            source_layer_name: str,
+            tensor_role: str,
+            source_parameter: str = "",
+            source_buffer: str = "",
+            source_instance_path: str = "",
+        ) -> ValueHandle:
+            if source_buffer:
+                metadata = self._multi_pu_buffer_metadata(
+                    identity,
+                    source_layer_name,
+                    tensor_role,
+                    source_buffer,
+                )
+            else:
+                metadata = self._multi_pu_value_metadata(
+                    identity,
+                    source_layer_name,
+                    tensor_role,
+                    source_parameter,
+                )
+            if source_instance_path and (source_parameter or source_buffer):
+                suffix = source_parameter or source_buffer
+                metadata["source_instance_state"] = (
+                    f"{source_instance_path}.{suffix}"
+                )
+            handle = self.builder().declare_pu_formal(
+                entry_pu,
+                name,
+                ordinal,
+                ty,
+                entry_file,
+                entry_line,
+            )
+            self.builder().attach_value_metadata(handle, metadata)
+            return handle
+
+        model_token_ids = entry_formal(
+            "model_token_ids",
+            8,
+            token_ids_type,
+            entry_identity,
+            "model_token_ids",
+            "input_tokens",
+        )
+        model_token_embedding_weight = entry_formal(
+            "model_token_embedding_weight",
+            9,
+            token_weight_type,
+            entry_identity,
+            "model_token_embedding_weight",
+            "token_embedding_weight",
+            "token_embedding.weight",
+            source_instance_path="<model>",
+        )
+        model_layer0_attention_norm_scale = entry_formal(
+            "model_layer0_attention_norm_scale",
+            10,
+            scale_type,
+            rms_identity,
+            "model_layer0_attention_norm_scale",
+            "rms_norm_scale",
+            "weight",
+            source_instance_path="layers.0.attention_norm",
+        )
+        model_layer0_wq = entry_formal(
+            "model_layer0_wq_weight",
+            11,
+            hidden_weight_type,
+            attention_identity,
+            "model_layer0_wq_weight",
+            "attention_q_weight",
+            "wq.weight",
+            source_instance_path="layers.0.attention",
+        )
+        model_layer0_wk = entry_formal(
+            "model_layer0_wk_weight",
+            12,
+            hidden_weight_type,
+            attention_identity,
+            "model_layer0_wk_weight",
+            "attention_k_weight",
+            "wk.weight",
+            source_instance_path="layers.0.attention",
+        )
+        model_layer0_wv = entry_formal(
+            "model_layer0_wv_weight",
+            13,
+            hidden_weight_type,
+            attention_identity,
+            "model_layer0_wv_weight",
+            "attention_v_weight",
+            "wv.weight",
+            source_instance_path="layers.0.attention",
+        )
+        model_layer0_wo = entry_formal(
+            "model_layer0_wo_weight",
+            14,
+            hidden_weight_type,
+            attention_identity,
+            "model_layer0_wo_weight",
+            "attention_o_weight",
+            "wo.weight",
+            source_instance_path="layers.0.attention",
+        )
+        model_layer0_rotary_cos = entry_formal(
+            "model_layer0_rotary_cos",
+            15,
+            rotary_table_type,
+            rotary_identity,
+            "model_layer0_rotary_cos",
+            "rotary_cos",
+            source_buffer="cos",
+            source_instance_path="layers.0.attention.rotary",
+        )
+        model_layer0_rotary_sin = entry_formal(
+            "model_layer0_rotary_sin",
+            16,
+            rotary_table_type,
+            rotary_identity,
+            "model_layer0_rotary_sin",
+            "rotary_sin",
+            source_buffer="sin",
+            source_instance_path="layers.0.attention.rotary",
+        )
+        model_layer0_ffn_norm_scale = entry_formal(
+            "model_layer0_ffn_norm_scale",
+            17,
+            scale_type,
+            rms_identity,
+            "model_layer0_ffn_norm_scale",
+            "rms_norm_scale",
+            "weight",
+            source_instance_path="layers.0.ffn_norm",
+        )
+        model_layer0_ffn_gate = entry_formal(
+            "model_layer0_ffn_gate_weight",
+            18,
+            ffn_up_weight_type,
+            ffn_identity,
+            "model_layer0_ffn_gate_weight",
+            "ffn_gate_weight",
+            "gate_proj.weight",
+            source_instance_path="layers.0.feed_forward",
+        )
+        model_layer0_ffn_up = entry_formal(
+            "model_layer0_ffn_up_weight",
+            19,
+            ffn_up_weight_type,
+            ffn_identity,
+            "model_layer0_ffn_up_weight",
+            "ffn_up_weight",
+            "up_proj.weight",
+            source_instance_path="layers.0.feed_forward",
+        )
+        model_layer0_ffn_down = entry_formal(
+            "model_layer0_ffn_down_weight",
+            20,
+            ffn_down_weight_type,
+            ffn_identity,
+            "model_layer0_ffn_down_weight",
+            "ffn_down_weight",
+            "down_proj.weight",
+            source_instance_path="layers.0.feed_forward",
+        )
+        model_layer1_attention_norm_scale = entry_formal(
+            "model_layer1_attention_norm_scale",
+            21,
+            scale_type,
+            rms_identity,
+            "model_layer1_attention_norm_scale",
+            "rms_norm_scale",
+            "weight",
+            source_instance_path="layers.1.attention_norm",
+        )
+        model_layer1_wq = entry_formal(
+            "model_layer1_wq_weight",
+            22,
+            hidden_weight_type,
+            attention_identity,
+            "model_layer1_wq_weight",
+            "attention_q_weight",
+            "wq.weight",
+            source_instance_path="layers.1.attention",
+        )
+        model_layer1_wk = entry_formal(
+            "model_layer1_wk_weight",
+            23,
+            hidden_weight_type,
+            attention_identity,
+            "model_layer1_wk_weight",
+            "attention_k_weight",
+            "wk.weight",
+            source_instance_path="layers.1.attention",
+        )
+        model_layer1_wv = entry_formal(
+            "model_layer1_wv_weight",
+            24,
+            hidden_weight_type,
+            attention_identity,
+            "model_layer1_wv_weight",
+            "attention_v_weight",
+            "wv.weight",
+            source_instance_path="layers.1.attention",
+        )
+        model_layer1_wo = entry_formal(
+            "model_layer1_wo_weight",
+            25,
+            hidden_weight_type,
+            attention_identity,
+            "model_layer1_wo_weight",
+            "attention_o_weight",
+            "wo.weight",
+            source_instance_path="layers.1.attention",
+        )
+        model_layer1_rotary_cos = entry_formal(
+            "model_layer1_rotary_cos",
+            26,
+            rotary_table_type,
+            rotary_identity,
+            "model_layer1_rotary_cos",
+            "rotary_cos",
+            source_buffer="cos",
+            source_instance_path="layers.1.attention.rotary",
+        )
+        model_layer1_rotary_sin = entry_formal(
+            "model_layer1_rotary_sin",
+            27,
+            rotary_table_type,
+            rotary_identity,
+            "model_layer1_rotary_sin",
+            "rotary_sin",
+            source_buffer="sin",
+            source_instance_path="layers.1.attention.rotary",
+        )
+        model_layer1_ffn_norm_scale = entry_formal(
+            "model_layer1_ffn_norm_scale",
+            28,
+            scale_type,
+            rms_identity,
+            "model_layer1_ffn_norm_scale",
+            "rms_norm_scale",
+            "weight",
+            source_instance_path="layers.1.ffn_norm",
+        )
+        model_layer1_ffn_gate = entry_formal(
+            "model_layer1_ffn_gate_weight",
+            29,
+            ffn_up_weight_type,
+            ffn_identity,
+            "model_layer1_ffn_gate_weight",
+            "ffn_gate_weight",
+            "gate_proj.weight",
+            source_instance_path="layers.1.feed_forward",
+        )
+        model_layer1_ffn_up = entry_formal(
+            "model_layer1_ffn_up_weight",
+            30,
+            ffn_up_weight_type,
+            ffn_identity,
+            "model_layer1_ffn_up_weight",
+            "ffn_up_weight",
+            "up_proj.weight",
+            source_instance_path="layers.1.feed_forward",
+        )
+        model_layer1_ffn_down = entry_formal(
+            "model_layer1_ffn_down_weight",
+            31,
+            ffn_down_weight_type,
+            ffn_identity,
+            "model_layer1_ffn_down_weight",
+            "ffn_down_weight",
+            "down_proj.weight",
+            source_instance_path="layers.1.feed_forward",
+        )
+        model_final_norm_scale = entry_formal(
+            "model_final_norm_scale",
+            32,
+            scale_type,
+            rms_identity,
+            "model_final_norm_scale",
+            "rms_norm_scale",
+            "weight",
+            source_instance_path="norm",
+        )
+        model_output_weight = entry_formal(
+            "model_output_weight",
+            33,
+            output_weight_type,
+            entry_identity,
+            "model_output_weight",
+            "output_weight",
+            "output.weight",
+            source_instance_path="<model>",
+        )
         self.builder().declare_pu_result(
             entry_pu,
             "model_result",
@@ -306,24 +2075,255 @@ class WhirlExportInterpreter:
             file_id=entry_file,
             line=entry_line + 1,
         )
-        rms_instance = self._first_instance_path(
-            class_instances,
-            rms_definition.canonical_name,
-        )
         call = self.builder().create_pu_call(
             entry_pu,
             rms_pu,
-            [model_hidden],
+            [model_hidden, model_norm_scale],
             ["norm_call_result"],
             rms_definition.canonical_name,
             rms_instance,
-            f"{entry_name}.{rms_instance}",
+            rms_context,
             0,
             entry_file,
             entry_line + 2,
         )
         call_result = self.builder().get_pu_call_result(call, 0, tensor_type)
-        self.builder().return_pu_values(entry_pu, [call_result])
+        call_result_metadata = self._multi_pu_value_metadata(
+            rms_identity,
+            "norm_call_result",
+            "call_result",
+            "",
+        )
+        call_result_metadata["result_source"] = "TinyRMSNorm.normalized_result"
+        self.builder().attach_value_metadata(call_result, call_result_metadata)
+        self.builder().set_value_source_position(
+            call_result,
+            entry_file,
+            entry_line + 2,
+        )
+        ffn_call = self.builder().create_pu_call(
+            entry_pu,
+            ffn_pu,
+            [
+                call_result,
+                model_ffn_gate_weight,
+                model_ffn_up_weight,
+                model_ffn_down_weight,
+            ],
+            ["ffn_call_result"],
+            ffn_definition.canonical_name,
+            ffn_instance,
+            ffn_context,
+            1,
+            entry_file,
+            entry_line + 3,
+        )
+        ffn_call_result = self.builder().get_pu_call_result(
+            ffn_call,
+            0,
+            tensor_type,
+        )
+        ffn_call_result_metadata = self._multi_pu_value_metadata(
+            ffn_identity,
+            "ffn_call_result",
+            "call_result",
+            "",
+        )
+        ffn_call_result_metadata["result_source"] = (
+            "TinyLlama2FeedForward.ffn_output"
+        )
+        self.builder().attach_value_metadata(
+            ffn_call_result,
+            ffn_call_result_metadata,
+        )
+        self.builder().set_value_source_position(
+            ffn_call_result,
+            entry_file,
+            entry_line + 3,
+        )
+        rotary_call = self.builder().create_pu_call(
+            entry_pu,
+            rotary_pu,
+            [
+                model_rotary_value,
+                model_rotary_cos,
+                model_rotary_sin,
+            ],
+            ["rotary_call_result"],
+            rotary_definition.canonical_name,
+            rotary_instance,
+            rotary_context,
+            2,
+            entry_file,
+            entry_line + 4,
+        )
+        rotary_call_result = self.builder().get_pu_call_result(
+            rotary_call,
+            0,
+            rotary_type,
+        )
+        rotary_call_result_metadata = self._multi_pu_value_metadata(
+            rotary_identity,
+            "rotary_call_result",
+            "call_result",
+            "",
+        )
+        rotary_call_result_metadata["result_source"] = (
+            "TinyRotaryEmbedding.rotated_value"
+        )
+        self.builder().attach_value_metadata(
+            rotary_call_result,
+            rotary_call_result_metadata,
+        )
+        self.builder().set_value_source_position(
+            rotary_call_result,
+            entry_file,
+            entry_line + 4,
+        )
+        layer0_call = self.builder().create_pu_call(
+            entry_pu,
+            decoder_pu,
+            [
+                model_hidden,
+                model_layer0_attention_norm_scale,
+                model_layer0_wq,
+                model_layer0_wk,
+                model_layer0_wv,
+                model_layer0_wo,
+                model_layer0_rotary_cos,
+                model_layer0_rotary_sin,
+                model_layer0_ffn_norm_scale,
+                model_layer0_ffn_gate,
+                model_layer0_ffn_up,
+                model_layer0_ffn_down,
+            ],
+            ["model_layer0_output"],
+            decoder_definition.canonical_name,
+            "layers.0",
+            f"{entry_name}.layers.0",
+            3,
+            entry_file,
+            entry_line + 2,
+        )
+        model_layer0_output = self.builder().get_pu_call_result(
+            layer0_call,
+            0,
+            tensor_type,
+        )
+        self.builder().attach_value_metadata(
+            model_layer0_output,
+            self._multi_pu_value_metadata(
+                decoder_identity,
+                "model_layer0_output",
+                "call_result",
+                "",
+            ),
+        )
+        layer1_call = self.builder().create_pu_call(
+            entry_pu,
+            decoder_pu,
+            [
+                model_layer0_output,
+                model_layer1_attention_norm_scale,
+                model_layer1_wq,
+                model_layer1_wk,
+                model_layer1_wv,
+                model_layer1_wo,
+                model_layer1_rotary_cos,
+                model_layer1_rotary_sin,
+                model_layer1_ffn_norm_scale,
+                model_layer1_ffn_gate,
+                model_layer1_ffn_up,
+                model_layer1_ffn_down,
+            ],
+            ["model_layer1_output"],
+            decoder_definition.canonical_name,
+            "layers.1",
+            f"{entry_name}.layers.1",
+            4,
+            entry_file,
+            entry_line + 3,
+        )
+        model_layer1_output = self.builder().get_pu_call_result(
+            layer1_call,
+            0,
+            tensor_type,
+        )
+        self.builder().attach_value_metadata(
+            model_layer1_output,
+            self._multi_pu_value_metadata(
+                decoder_identity,
+                "model_layer1_output",
+                "call_result",
+                "",
+            ),
+        )
+        final_norm_call = self.builder().create_pu_call(
+            entry_pu,
+            rms_pu,
+            [model_layer1_output, model_final_norm_scale],
+            ["model_final_norm_result"],
+            rms_definition.canonical_name,
+            "norm",
+            f"{entry_name}.norm",
+            5,
+            entry_file,
+            entry_line + 4,
+        )
+        model_final_norm_result = self.builder().get_pu_call_result(
+            final_norm_call,
+            0,
+            tensor_type,
+        )
+        self.builder().attach_value_metadata(
+            model_final_norm_result,
+            self._multi_pu_value_metadata(
+                rms_identity,
+                "model_final_norm_result",
+                "call_result",
+                "",
+            ),
+        )
+        model_output_projection = self.builder().common_linear_v3(
+            model_final_norm_result,
+            model_output_weight,
+            self._linear_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            model_output_projection,
+            self._multi_pu_operator_metadata(
+                entry_identity,
+                "model_output_projection",
+                "llama2:common.linear",
+                "output_projection",
+            ),
+        )
+        self.builder().append_program_unit_value(entry_pu,
+                                                model_output_projection)
+        model_output_logits = self.builder().common_output_logits_v3(
+            model_output_projection,
+            {
+                "attr.semantic": "token_logits",
+                "attr.sequence_axis": "-2",
+                "attr.vocabulary_axis": "-1",
+            },
+        )
+        self.builder().attach_value_metadata(
+            model_output_logits,
+            self._multi_pu_operator_metadata(
+                entry_identity,
+                "model_output_logits",
+                "llama2:common.output_logits",
+                "output_logits",
+            ),
+        )
+        self.builder().set_value_source_position(
+            model_output_logits,
+            entry_file,
+            entry_line + 5,
+        )
+        self.builder().append_program_unit_value(entry_pu, model_output_logits)
+        self.builder().return_pu_values(entry_pu, [model_final_norm_result])
 
         model_module = inspect.getmodule(type(model))
         return WhirlModule(
@@ -333,10 +2333,33 @@ class WhirlExportInterpreter:
             entry_function=WhirlProgramUnitRecord(
                 name=entry_name,
                 handle=entry_pu.value,
-                body_markers=["call:TinyRMSNorm"],
+                body_markers=[
+                    "call:TinyRMSNorm",
+                    "call:TinyLlama2FeedForward",
+                    "call:TinyRotaryEmbedding",
+                    "call:TinyLlama2Attention",
+                    "call:TinyLlama2DecoderLayer",
+                ],
             ),
             graph_source="torch.fx+llama2_multiple_pu_boundary",
-            operators=[common.ADD, "call:TinyRMSNorm"],
+            operators=[
+                transformer.RMS_NORM,
+                "call:TinyRMSNorm",
+                common.LINEAR,
+                common.LINEAR,
+                transformer.SWIGLU,
+                common.LINEAR,
+                "call:TinyLlama2FeedForward",
+                transformer.ROTARY_EMBEDDING,
+                "call:TinyRotaryEmbedding",
+                common.RESHAPE,
+                common.TRANSPOSE,
+                transformer.ATTENTION,
+                "call:TinyLlama2Attention",
+                common.RESIDUAL_ADD,
+                "call:TinyLlama2DecoderLayer",
+                common.OUTPUT_LOGITS,
+            ],
             tensor_types=[
                 WhirlTensorTypeRecord(
                     name="llama2_multi_pu_hidden_type",
@@ -351,6 +2374,96 @@ class WhirlExportInterpreter:
                         "layout": "BSC",
                         "lineage": "python.multi_pu.hidden",
                     },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_scale_type",
+                    handle=scale_type.value,
+                    dtype="float32",
+                    rank=1,
+                    logical_shape="[32]",
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 1,
+                        "logical_shape": "[32]",
+                        "layout": "C",
+                        "lineage": "python.multi_pu.rms_norm.scale",
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_intermediate_type",
+                    handle=intermediate_type.value,
+                    dtype="float32",
+                    rank=3,
+                    logical_shape=intermediate_shape,
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 3,
+                        "logical_shape": intermediate_shape,
+                        "layout": "BSC",
+                        "lineage": (
+                            "python.multi_pu.feed_forward.intermediate"
+                        ),
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_ffn_up_weight_type",
+                    handle=ffn_up_weight_type.value,
+                    dtype="float32",
+                    rank=2,
+                    logical_shape="[88,32]",
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 2,
+                        "logical_shape": "[88,32]",
+                        "layout": "OI",
+                        "lineage": (
+                            "python.multi_pu.feed_forward.up_weight"
+                        ),
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_ffn_down_weight_type",
+                    handle=ffn_down_weight_type.value,
+                    dtype="float32",
+                    rank=2,
+                    logical_shape="[32,88]",
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 2,
+                        "logical_shape": "[32,88]",
+                        "layout": "OI",
+                        "lineage": (
+                            "python.multi_pu.feed_forward.down_weight"
+                        ),
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_rotary_bhsd_type",
+                    handle=rotary_type.value,
+                    dtype="float32",
+                    rank=4,
+                    logical_shape=rotary_shape,
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 4,
+                        "logical_shape": rotary_shape,
+                        "layout": "BHSD",
+                        "lineage": "python.multi_pu.rotary.value",
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_rotary_table_type",
+                    handle=rotary_table_type.value,
+                    dtype="float32",
+                    rank=4,
+                    logical_shape=rotary_table_shape,
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 4,
+                        "logical_shape": rotary_table_shape,
+                        "layout": "BHSD",
+                        "lineage": "python.multi_pu.rotary.table",
+                    },
                 )
             ],
             values=[
@@ -359,29 +2472,269 @@ class WhirlExportInterpreter:
                     handle=hidden.value,
                     type_name="llama2_multi_pu_hidden_type",
                     value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        rms_identity,
+                        "hidden_states",
+                        "activation",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="rms_norm_scale",
+                    handle=scale.value,
+                    type_name="llama2_multi_pu_scale_type",
+                    value_kind="formal",
+                    metadata=dict(scale_metadata),
                 ),
                 WhirlValueRecord(
                     name="model_hidden",
                     handle=model_hidden.value,
                     type_name="llama2_multi_pu_hidden_type",
                     value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        rms_identity,
+                        "model_hidden",
+                        "call_actual",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="model_norm_scale",
+                    handle=model_norm_scale.value,
+                    type_name="llama2_multi_pu_scale_type",
+                    value_kind="formal",
+                    metadata=dict(model_scale_metadata),
                 ),
                 WhirlValueRecord(
                     name="norm_call_result",
                     handle=call_result.value,
                     type_name="llama2_multi_pu_hidden_type",
                     value_kind="call_result",
+                    metadata=dict(call_result_metadata),
+                ),
+                WhirlValueRecord(
+                    name="ffn_hidden_states",
+                    handle=ffn_hidden.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        ffn_identity,
+                        "ffn_hidden_states",
+                        "activation",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="ffn_gate_weight",
+                    handle=ffn_gate_weight.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(ffn_gate_metadata),
+                ),
+                WhirlValueRecord(
+                    name="ffn_up_weight",
+                    handle=ffn_up_weight.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(ffn_up_metadata),
+                ),
+                WhirlValueRecord(
+                    name="ffn_down_weight",
+                    handle=ffn_down_weight.value,
+                    type_name="llama2_multi_pu_ffn_down_weight_type",
+                    value_kind="formal",
+                    metadata=dict(ffn_down_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_ffn_gate_weight",
+                    handle=model_ffn_gate_weight.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(model_ffn_gate_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_ffn_up_weight",
+                    handle=model_ffn_up_weight.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(model_ffn_up_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_ffn_down_weight",
+                    handle=model_ffn_down_weight.value,
+                    type_name="llama2_multi_pu_ffn_down_weight_type",
+                    value_kind="formal",
+                    metadata=dict(model_ffn_down_metadata),
+                ),
+                WhirlValueRecord(
+                    name="ffn_call_result",
+                    handle=ffn_call_result.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="call_result",
+                    metadata=dict(ffn_call_result_metadata),
+                ),
+                WhirlValueRecord(
+                    name="rotary_value",
+                    handle=rotary_value.value,
+                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        rotary_identity,
+                        "rotary_value",
+                        "activation",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="rotary_cos",
+                    handle=rotary_cos.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(rotary_cos_metadata),
+                ),
+                WhirlValueRecord(
+                    name="rotary_sin",
+                    handle=rotary_sin.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(rotary_sin_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_rotary_value",
+                    handle=model_rotary_value.value,
+                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        rotary_identity,
+                        "model_rotary_value",
+                        "call_actual",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="model_rotary_cos",
+                    handle=model_rotary_cos.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(model_rotary_cos_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_rotary_sin",
+                    handle=model_rotary_sin.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(model_rotary_sin_metadata),
+                ),
+                WhirlValueRecord(
+                    name="rotary_call_result",
+                    handle=rotary_call_result.value,
+                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    value_kind="call_result",
+                    metadata=dict(rotary_call_result_metadata),
                 ),
             ],
             graph_operators=[
                 WhirlOperatorRecord(
                     name="call:TinyRMSNorm",
                     handle=call.value,
-                    kids=["model_hidden"],
+                    kids=["model_hidden", "model_norm_scale"],
                     attrs={
                         "canonical_class_name": rms_definition.canonical_name,
                         "instance_path": rms_instance,
-                        "context_identity": f"{entry_name}.{rms_instance}",
+                        "context_identity": rms_context,
+                    },
+                    metadata={
+                        "declaration_kind": "python_class_callable",
+                        "callable_identity": rms_identity[
+                            "callable_identity"
+                        ],
+                        "implementation_method": rms_identity[
+                            "implementation_method"
+                        ],
+                        "implementation_fingerprint": rms_identity[
+                            "implementation_fingerprint"
+                        ],
+                        "class_state_parameters": rms_identity[
+                            "class_state_parameters"
+                        ],
+                        "class_state_submodules": rms_identity[
+                            "class_state_submodules"
+                        ],
+                        "class_state_scalars": rms_identity[
+                            "class_state_scalars"
+                        ],
+                    },
+                ),
+                WhirlOperatorRecord(
+                    name="call:TinyLlama2FeedForward",
+                    handle=ffn_call.value,
+                    kids=[
+                        "norm_call_result",
+                        "model_ffn_gate_weight",
+                        "model_ffn_up_weight",
+                        "model_ffn_down_weight",
+                    ],
+                    attrs={
+                        "canonical_class_name": (
+                            ffn_definition.canonical_name
+                        ),
+                        "instance_path": ffn_instance,
+                        "context_identity": ffn_context,
+                    },
+                    metadata={
+                        "declaration_kind": "python_class_callable",
+                        "callable_identity": ffn_identity[
+                            "callable_identity"
+                        ],
+                        "implementation_method": ffn_identity[
+                            "implementation_method"
+                        ],
+                        "implementation_fingerprint": ffn_identity[
+                            "implementation_fingerprint"
+                        ],
+                        "class_state_parameters": ffn_identity[
+                            "class_state_parameters"
+                        ],
+                        "class_state_submodules": ffn_identity[
+                            "class_state_submodules"
+                        ],
+                        "class_state_scalars": ffn_identity[
+                            "class_state_scalars"
+                        ],
+                    },
+                ),
+                WhirlOperatorRecord(
+                    name="call:TinyRotaryEmbedding",
+                    handle=rotary_call.value,
+                    kids=[
+                        "model_rotary_value",
+                        "model_rotary_cos",
+                        "model_rotary_sin",
+                    ],
+                    attrs={
+                        "canonical_class_name": (
+                            rotary_definition.canonical_name
+                        ),
+                        "instance_path": rotary_instance,
+                        "context_identity": rotary_context,
+                    },
+                    metadata={
+                        "declaration_kind": "python_class_callable",
+                        "callable_identity": rotary_identity[
+                            "callable_identity"
+                        ],
+                        "implementation_method": rotary_identity[
+                            "implementation_method"
+                        ],
+                        "implementation_fingerprint": rotary_identity[
+                            "implementation_fingerprint"
+                        ],
+                        "class_state_buffers": rotary_identity[
+                            "class_state_buffers"
+                        ],
+                        "class_state_scalars": rotary_identity[
+                            "class_state_scalars"
+                        ],
                     },
                 )
             ],
@@ -392,6 +2745,164 @@ class WhirlExportInterpreter:
             python_class_definitions=class_definitions,
             python_class_instances=class_instances,
         )
+
+    def _module_at_instance_path(self, model: Any, instance_path: str) -> Any:
+        current = model
+        for component in instance_path.split("."):
+            if component.isdigit():
+                current = current[int(component)]
+            else:
+                current = getattr(current, component)
+        return current
+
+    def _callable_identity_metadata(
+        self,
+        definition: Any,
+        module: Any,
+        instance_path: str,
+        context_identity: str,
+    ) -> Dict[str, str]:
+        try:
+            class_source_line = str(inspect.getsourcelines(type(module))[1])
+        except (OSError, TypeError):
+            class_source_line = "0"
+        parameters = tuple(str(name) for name in getattr(
+            module,
+            "_parameters",
+            {},
+        ).keys())
+        buffers = tuple(str(name) for name in getattr(
+            module,
+            "_buffers",
+            {},
+        ).keys())
+        submodules = tuple(
+            str(name)
+            for name, submodule in getattr(module, "_modules", {}).items()
+            if submodule is not None
+        )
+        scalar_state = {
+            str(name): str(value)
+            for name, value in vars(module).items()
+            if not name.startswith("_") and
+            isinstance(value, (bool, float, int, str))
+        }
+        return {
+            "declaration_kind": "python_class_callable",
+            "canonical_class_name": definition.canonical_name,
+            "callable_identity": (
+                f"{definition.canonical_name}."
+                f"{definition.implementation_method}"
+            ),
+            "defining_module": str(getattr(type(module), "__module__", "")),
+            "implementation_method": definition.implementation_method,
+            "implementation_signature": definition.implementation_signature,
+            "implementation_fingerprint": (
+                definition.implementation_fingerprint
+            ),
+            "source_file": definition.source_file,
+            "source_line": str(definition.source_line),
+            "class_source_line": class_source_line,
+            "instance_path": instance_path,
+            "context_identity": context_identity,
+            "class_state_parameters": ",".join(parameters),
+            "class_state_buffers": ",".join(buffers),
+            "class_state_submodules": ",".join(submodules),
+            "class_state_scalars": ",".join(
+                f"{name}={scalar_state[name]}"
+                for name in sorted(scalar_state)
+            ),
+        }
+
+    def _set_pu_source_identity(
+        self,
+        program_unit: ProgramUnitHandle,
+        identity: Mapping[str, str],
+    ) -> None:
+        self.builder().set_pu_source_identity(
+            program_unit,
+            identity["callable_identity"],
+            identity["defining_module"],
+            identity["source_file"],
+            int(identity["source_line"]),
+        )
+
+    def _multi_pu_value_metadata(
+        self,
+        identity: Mapping[str, str],
+        source_layer_name: str,
+        tensor_role: str,
+        source_parameter: str,
+    ) -> Dict[str, str]:
+        metadata = {
+            "declaration_kind": identity["declaration_kind"],
+            "canonical_class_name": identity["canonical_class_name"],
+            "callable_identity": identity["callable_identity"],
+            "implementation_method": identity["implementation_method"],
+            "implementation_fingerprint": (
+                identity["implementation_fingerprint"]
+            ),
+            "source_file": identity["source_file"],
+            "source_line": identity["source_line"],
+            "class_source_line": identity["class_source_line"],
+            "instance_path": identity["instance_path"],
+            "context_identity": identity["context_identity"],
+            "class_state_parameters": identity["class_state_parameters"],
+            "class_state_buffers": identity["class_state_buffers"],
+            "class_state_submodules": identity["class_state_submodules"],
+            "class_state_scalars": identity["class_state_scalars"],
+            "source_layer_name": source_layer_name,
+            "tensor_role": tensor_role,
+        }
+        if source_parameter:
+            metadata["source_parameter"] = source_parameter
+            metadata["source_class_state"] = (
+                f"{identity['canonical_class_name']}.{source_parameter}"
+            )
+            metadata["source_instance_state"] = (
+                f"{identity['instance_path']}.{source_parameter}"
+            )
+        return metadata
+
+    def _multi_pu_operator_metadata(
+        self,
+        identity: Mapping[str, str],
+        source_layer_name: str,
+        lowering_hint: str,
+        semantic_name: str,
+    ) -> Dict[str, str]:
+        metadata = self._multi_pu_value_metadata(
+            identity,
+            source_layer_name,
+            "operator_result",
+            "",
+        )
+        metadata["lowering_hint"] = lowering_hint
+        metadata["semantic_name"] = semantic_name
+        return metadata
+
+    def _multi_pu_buffer_metadata(
+        self,
+        identity: Mapping[str, str],
+        source_layer_name: str,
+        tensor_role: str,
+        source_buffer: str,
+    ) -> Dict[str, str]:
+        metadata = self._multi_pu_value_metadata(
+            identity,
+            source_layer_name,
+            tensor_role,
+            "",
+        )
+        if source_buffer:
+            metadata["source_buffer"] = source_buffer
+            metadata["source_class_state"] = (
+                f"{identity['canonical_class_name']}.{source_buffer}"
+            )
+            metadata["source_instance_state"] = (
+                f"{identity['instance_path']}.{source_buffer}"
+            )
+        return metadata
 
     def _first_instance_path(
         self,

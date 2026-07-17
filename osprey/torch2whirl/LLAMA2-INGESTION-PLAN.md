@@ -666,12 +666,56 @@ inspection.
 ## Multiple-PU Callable Boundary
 
 Status: opt-in frontend certification is available for the first tiny Llama
-callable-boundary artifact.  `--single-pu` remains the default flattened
+callable-boundary artifacts.  `--single-pu` remains the default flattened
 semantic operator baseline.  `--multiple-pu` selects the alternative
-class-centric layout and currently certifies a real call boundary between
-`TinyLlama2ForCausalLM` and reachable `TinyRMSNorm`.
+class-centric layout and currently certifies real call boundaries from
+`TinyLlama2ForCausalLM` to reachable `TinyRMSNorm` and
+`TinyLlama2FeedForward` PUs.
 
-The certified multiple-PU smoke:
+### Current Certified Boundary
+
+The certified boundary is intentionally incremental:
+
+```text
+TinyLlama2ForCausalLM
+  formal 0: model_hidden
+  formal 1: model_norm_scale
+  formal 2: model_ffn_gate_weight
+  formal 3: model_ffn_up_weight
+  formal 4: model_ffn_down_weight
+  call: TinyRMSNorm(model_hidden, model_norm_scale)
+  call: TinyLlama2FeedForward(
+    norm_call_result,
+    model_ffn_gate_weight,
+    model_ffn_up_weight,
+    model_ffn_down_weight)
+  result 0: ffn_call_result -> model_result
+
+TinyRMSNorm
+  formal 0: hidden_states
+  formal 1: rms_norm_scale
+  body: transformer.rms_norm.v1(hidden_states, rms_norm_scale)
+  result 0: normalized_result
+
+TinyLlama2FeedForward
+  formal 0: ffn_hidden_states
+  formal 1: ffn_gate_weight
+  formal 2: ffn_up_weight
+  formal 3: ffn_down_weight
+  body:
+    common.linear.v3(ffn_hidden_states, ffn_gate_weight)
+    common.linear.v3(ffn_hidden_states, ffn_up_weight)
+    transformer.swiglu.v1(gate_projection, up_projection)
+    common.linear.v3(swiglu, ffn_down_weight)
+  result 0: ffn_output
+```
+
+The `TinyRMSNorm` callee body now emits the reviewed
+`transformer.rms_norm.v1` semantics with ordered `hidden_states` and
+`rms_norm_scale` formals.  It no longer uses the temporary demonstration
+`common.add` body.
+
+The certified smoke command is:
 
 ```sh
 torch2whirl llama2_model.py \
@@ -684,12 +728,33 @@ torch2whirl llama2_model.py \
 ir_b2a -st -src llama2_multi_pu.B llama2_multi_pu.T
 ```
 
-Machine checks require two real class-named `FUNC_ENTRY` records,
-independent local `IDNAME` symbols, source evidence, a standard
-`VCALL TinyRMSNorm`, read-only input and out result `PARM` nodes, owner-PU
-metadata, and the retained `__WHIRL_DSL_CALL__` logical call comment.  The
-Python frontend keeps all PU, value, call, formal, and result objects opaque.
-It does not pass callee-local `DSL_BUILDER_VALUE` handles across PU boundaries.
+Machine checks require:
+
+1. Exactly two real class-named `FUNC_ENTRY` records:
+   `TinyRMSNorm` and `TinyLlama2ForCausalLM`.
+2. Independent local `IDNAME` symbols, including repeated local symbol
+   indices disambiguated by `owner_pu` metadata.
+3. `transformer.rms_norm.v1` evidence in the `TinyRMSNorm` callee:
+   operands `hidden_states` and `rms_norm_scale`, attributes
+   `attr.axis=-1`, `attr.epsilon=1e-05`, and
+   `attr.accum_dtype=float32`.
+4. A standard `VCALL TinyRMSNorm` in the caller.
+5. Read-only `PARM` nodes for `model_hidden` and `model_norm_scale`.
+6. An out `PARM` node for `norm_call_result`.
+7. Source evidence for the class body and callsite in `ir_b2a -st -src`.
+8. The retained `__WHIRL_DSL_CALL__` logical call comment with callee,
+   canonical class name, instance path, context identity, and call ordinal.
+9. Native `DSL PU Source Identity Table` evidence for both emitted PUs:
+   `TinyRMSNorm.forward` and `TinyLlama2ForCausalLM.forward`.
+10. Native `DSL Callsite Metadata Table` evidence for the call edge, including
+    caller PU, callee PU, class, instance path, context identity, and source
+    ordinal.
+11. No frontend-visible physical escape text such as private `OPR_DSL`,
+   `MDSL`, or `OPC_MDSL` encodings.
+
+The Python frontend keeps all PU, value, call, formal, and result objects
+opaque.  It does not pass callee-local `DSL_BUILDER_VALUE` handles across PU
+boundaries.
 
 Retained evidence from the Docker lane:
 
@@ -699,10 +764,250 @@ Retained evidence from the Docker lane:
 /private/tmp/open64-torch2whirl-torch-test/test-artifacts/llama2-multi-pu/llama2_multi_pu_driver.log
 ```
 
-Remaining multiple-PU work is to expand from this certified call-boundary
-artifact to one real PU for each reachable Python-defined class callable whose
-body has a reviewed semantic lowering.  Repeated invocation remains context
-sensitivity, not an operator-version mechanism.
+### Import And Declaration Identity Work
+
+The next refinement is to make the multiple-PU artifact preserve enough
+Python declaration identity for reviewers to connect the WHIRL PUs back to
+the source model, not only to the emitted DSL operator body.
+
+For each emitted Python-defined class callable, preserve:
+
+1. Canonical class definition name, for example
+   `models.llama2_model.TinyRMSNorm`.
+2. Callable identity, currently the class `forward` body captured from the
+   source fixture.
+3. Import/declaration identity from the existing reachable callable census,
+   including imported spelling when available.
+4. Source file, class definition line, method body line, and callsite line.
+5. Instance path in the model object graph, for example `norm`,
+   `layers.0.attention_norm`, or `layers.1.feed_forward`.
+6. Context identity for the specific call edge, for example
+   `TinyLlama2ForCausalLM.norm`.
+7. Class state ownership: parameters, buffers, scalar attributes, and any
+   derived semantic formals introduced at the PU boundary.
+8. The mapping from Python class state to WHIRL formals.  For `TinyRMSNorm`,
+   `self.weight` must be visible as the source of `rms_norm_scale`.
+9. Context-sensitive call records for repeated uses of the same Python
+   definition.  Repeated `TinyRMSNorm` calls are separate call contexts, not
+   operator versions and not duplicate class definitions.
+
+Do not encode missing declaration identity into tensor descriptors or DSL
+operator attributes as a workaround.  If the native call comment or metadata
+surface cannot represent a required field, report the precise missing API to
+the infrastructure task.
+
+### Expansion Invariants
+
+Every incremental multiple-PU step must preserve these rules:
+
+1. `--single-pu` remains the default and must produce the existing flattened
+   prefill artifact.
+2. `--multiple-pu` is opt-in and must add only one reviewed callable boundary
+   per commit unless the change is purely mechanical test plumbing.
+3. Each emitted PU must contain a real reviewed semantic body.  Do not emit
+   empty, decorative, census-only, or placeholder PUs.
+4. PU identity is class-centric, not the generic method name `forward`.
+5. Repeated calls to one Python definition are represented by call-context
+   metadata, not by changing operator versions.
+6. Callee-local values never cross PU boundaries.  Use formals, result slots,
+   `DSL_Builder_Create_PU_Call`, and `DSL_Builder_Get_PU_Call_Result`.
+7. Activation, K cache, V cache, logits, and other multi-result values are
+   ordered named result slots with semantic roles, not a generic tuple type.
+8. Python bindings remain opaque and must not inspect WN layout, ST entries,
+   mapped-image tables, physical `OPR_DSL` records, or backend lowering state.
+9. Unsupported or ambiguous boundaries fail with a stable diagnostic before
+   a usable `.B` is accepted.
+10. Every step retains a `.B`, an `ir_b2a -st -src` `.T`, and enough log
+    evidence to reproduce the exact command.
+
+### Boundary Expansion Queue
+
+Expand from the current certified `TinyRMSNorm` boundary in this order.
+
+1. `TinyRMSNorm` declaration identity
+   - Status: complete in the frontend branch.
+   - Keep the existing two-PU topology.
+   - Reviewable metadata connects `rms_norm_scale` to
+     `TinyRMSNorm.weight` through `source_parameter`,
+     `source_class_state`, and `source_instance_state`.
+   - The artifact preserves canonical class, callable identity, instance
+     path, call context, source file/line, scalar `eps`, and PyTorch
+     `training` state.
+   - Machine checks require exactly two `FUNC_ENTRY` records, one
+     `VCALL TinyRMSNorm`, `transformer.rms_norm.v1`, declaration metadata,
+     native PU source identity table entries, native callsite metadata, and
+     the `TinyRMSNorm.weight` state mapping.
+   - The single-PU prefill artifact lane passes unchanged.
+
+2. `TinyLlama2FeedForward`
+   - Status: complete in the frontend branch pending continued expansion to
+     later callable boundaries.
+   - Introduces a real PU for the feed-forward class.
+   - Body must match the single-PU semantic sequence:
+     `common.linear.v3` gate projection, `common.linear.v3` up projection,
+     fused `transformer.swiglu.v1(attr.activation=silu)`, and
+     `common.linear.v3` down projection.
+   - Formals include activation plus the ordered gate, up, and down weights.
+   - Result slot: feed-forward activation.
+   - The current step certifies the first reachable context
+     `layers.0.feed_forward`; later decoder-layer expansion must distinguish
+     `layers.0.feed_forward` and `layers.1.feed_forward` as separate call
+     contexts of the same class definition.
+   - Machine checks require exactly three `FUNC_ENTRY` records, two retained
+     `__WHIRL_DSL_CALL__` comments, `VCALL TinyRMSNorm`,
+     `VCALL TinyLlama2FeedForward`, `common.linear`,
+     `transformer.swiglu`, three ordered feed-forward weight formals,
+     caller-owned call result evidence, source positions, owner-PU metadata,
+     native PU source identity table entries, native callsite metadata, and
+     the `TinyLlama2FeedForward.{gate_proj,up_proj,down_proj}.weight` state
+     mappings.
+   - Retained `.B`/`.T` artifacts remain under the standard
+     `llama2-multi-pu` artifact directory so reviewers can compare the
+     incremental trace against the previous RMSNorm-only evidence.
+
+3. `TinyRotaryEmbedding`
+   - Status: complete in the frontend branch pending the later attention
+     boundary that will place the rotary call in its natural nested context.
+   - Introduces a real PU for the rotary embedding class.
+   - Body must match prefill `transformer.rotary_embedding.v1` semantics.
+   - Formals include the BHSD query/key value plus cosine and sine tables.
+   - Preserves scalar configuration and attrs:
+     `head_layout=BHSD`, `sequence_axis=2`, `feature_axis=3`,
+     `pairing=half_split`, and static position mode for prefill.
+   - The current step certifies the first reachable context
+     `layers.0.attention.rotary`; the later attention expansion must
+     distinguish both query/key uses and both decoder-layer instances as
+     separate call contexts of the same class definition.
+   - Machine checks require exactly four `FUNC_ENTRY` records, three retained
+     `__WHIRL_DSL_CALL__` comments, `VCALL TinyRotaryEmbedding`,
+     `transformer.rotary_embedding.v1`, ordered `rotary_value`,
+     `rotary_cos`, and `rotary_sin` formals, source positions, owner-PU
+     metadata, native PU source identity table entries, native callsite
+     metadata, and the `TinyRotaryEmbedding.{cos,sin}` buffer state mappings.
+   - Decode rotary v2 remains a separate later step unless the batch
+     explicitly targets decode.
+
+4. `TinyLlama2Attention`
+   - Status: complete for a certifiable real Attention PU body.
+   - Introduces a real PU for the attention class.
+   - Body preserves q/k/v/o projections, reshape/transpose layout
+     operators, rotary calls, `transformer.attention.v1`, and output
+     projection in the same semantic order as the single-PU baseline.
+   - Formals include activation, projection weights, rotary cosine table, and
+     rotary sine table.
+   - Result slot: attention output activation.
+   - Current native call interfaces reject passing caller-local operator
+     results as inter-PU actuals.  Therefore the attention PU emits
+     `transformer.rotary_embedding.v1` directly for query/key RoPE while the
+     separate `TinyRotaryEmbedding` PU remains certified by its own call edge.
+     The remaining infrastructure request is an opaque API or native support
+     for materializing operator results as call actuals before enabling nested
+     Attention-to-Rotary calls.
+   - No grouped-query, paged-cache, decode-cache, or dynamic-shape behavior
+     enters the prefill boundary.
+
+5. `TinyLlama2DecoderLayer`
+   - Status: complete for a certifiable real DecoderLayer PU body.
+   - Introduces a real PU for the decoder layer class.
+   - Body preserves attention norm, attention call, residual add, FFN
+     norm, feed-forward semantics, and final residual add.
+   - Formals include layer input plus all layer-owned weights/tables
+     needed by child calls.
+   - Result slot: layer output activation.
+   - Top-level call contexts distinguish `layers.0` and `layers.1` while
+     sharing the same Python class definition identity.
+   - The DecoderLayer PU uses real call edges for the pre-attention RMSNorm
+     and Attention child boundary.  The post-residual FFN norm and
+     feed-forward sequence remain inline because the native call API currently
+     rejects passing the residual operator result as an inter-PU actual.
+     Enabling the nested post-residual RMSNorm and FeedForward call edges
+     requires the same operator-result materialization/call-actual support
+     noted for Attention-to-Rotary.
+
+6. `TinyLlama2ForCausalLM`
+   - Status: complete for the current native call/result capability envelope.
+   - The top-level PU emits ordered decoder-layer calls for `layers.0` and
+     `layers.1`, a final RMSNorm call, output projection evidence, and an
+     output-logits marker.
+   - Child calls receive caller-owned formals or call results and return
+     caller-owned results.
+   - The native return path currently rejects returning the top-level
+     output-logits/operator result directly, so the certified artifact returns
+     the final RMSNorm call result while retaining output projection and
+     `common.output_logits.v3` as reviewable trace evidence.  A future native
+     API update should allow returning logits-producing operator results from
+     the top-level PU.
+   - The token-embedding expression is not connected to the decoder call in
+     this certified multiple-PU artifact because the first decoder call cannot
+     yet accept the token-embedding operator result as an actual.  The
+     remaining top-level completion work is to use the same operator-result
+     call-actual support to connect token embedding into the first decoder
+     layer and return the final logits result.
+   - Final evidence includes all six real PUs, reviewed call edges that are
+     legal under the current native API, source/class/instance metadata, and
+     no placeholder operator bodies.
+
+### Frontend Optimization Classification
+
+Status: import-visible classification is available for the current
+multiple-PU Llama operator surface.
+
+The frontend now publishes `open64_dsc.optimization` traits for the imported
+`LLAMA2_MULTIPLE_PU_OPERATORS` set.  These traits are review metadata only:
+they identify pure operators, layout-only shape views, projection,
+normalization, RoPE, attention, SwiGLU, residual, and logits-boundary
+opportunities so native VHO/common work can consume a stable operator census.
+
+Current candidates recorded by importable traits:
+
+1. `common.reshape.v1` and `common.transpose.v1`
+   - Shape/layout metadata optimization candidates:
+     `reshape_transpose_folding`, `transpose_cancel`, and
+     `layout_propagation`.
+2. `common.linear.v3`
+   - Projection optimization candidates:
+     `weight_layout_canonicalization` and `projection_chain_fusion`.
+3. `transformer.rms_norm.v1`
+   - Normalization candidates:
+     `norm_scale_fusion` and `accumulation_policy_lowering`.
+4. `transformer.rotary_embedding.v1`
+   - RoPE candidates:
+     `rope_table_hoist` and `rotary_pair_fusion`.
+5. `transformer.attention.v1`
+   - Attention candidates:
+     `attention_projection_fusion`, `mask_scale_softmax_fusion`, and
+     `fused_attention_lowering`.
+6. `transformer.swiglu.v1`
+   - Feed-forward activation candidates:
+     `gate_up_projection_fusion` and `activation_multiply_fusion`.
+7. `common.residual_add.v2` and `common.output_logits.v3`
+   - Residual scheduling, gatekeeper-proven shape-check elision, and logits
+     boundary recognition candidates.
+
+Every trait is marked `classification_only` on the Python side and
+`native_vho_dsl` as the optimization owner.  Torch2whirl must not lower these
+patterns, introduce runtime calls, or bypass native WHIRL gatekeeper/VHO
+ownership.  The remaining native API requests for operator-result call actuals
+and top-level operator-result returns still gate complete cross-PU optimization
+visibility in the artifact.
+
+### Per-Step Validation Checklist
+
+Each boundary step must run and report:
+
+1. `python3 -m compileall -q osprey/torch2whirl/python/open64_dsc`
+2. Dependency-light `make -C osprey/torch2whirl -f Makefile.gbase python_test`
+3. Focused multiple-PU native artifact lane for the step.
+4. Existing single-PU Llama prefill artifact lane.
+5. Separate-process `ir_b2a -st -src <artifact>.B <artifact>.T`
+6. Machine checks for expected `FUNC_ENTRY`, `VCALL`, `PARM` flags,
+   result slots, source positions, owner-PU metadata, and logical DSL names.
+7. `git diff --check`
+8. No-tab scan for touched non-Makefile files.
+9. Backend-isolation scan for touched frontend files.
+
+Do not mark a boundary complete until both the multiple-PU artifact and the
+single-PU baseline artifact are retained and directly inspectable.
 
 ## Real Checkpoint Policy
 

@@ -186,6 +186,38 @@ _CONTRACTS = {
 }
 
 _VERSIONED_CONTRACTS = {
+    (common.MATMUL, 2): OperatorContract(
+        common.MATMUL,
+        2,
+        2,
+        (
+            "attr.transpose_kid0",
+            "attr.transpose_kid1",
+            "attr.batch_rule",
+            "attr.accum_dtype",
+        ),
+    ),
+    (common.LINEAR, 3): OperatorContract(
+        common.LINEAR,
+        3,
+        2,
+        (
+            "attr.has_bias",
+            "attr.transpose_input",
+            "attr.transpose_weight",
+            "attr.weight_layout",
+        ),
+    ),
+    (common.OUTPUT_LOGITS, 3): OperatorContract(
+        common.OUTPUT_LOGITS,
+        3,
+        1,
+        (
+            "attr.semantic",
+            "attr.sequence_axis",
+            "attr.vocabulary_axis",
+        ),
+    ),
     (transformer.ROTARY_EMBEDDING, 2): OperatorContract(
         transformer.ROTARY_EMBEDDING,
         2,
