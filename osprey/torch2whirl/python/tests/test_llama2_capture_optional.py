@@ -309,6 +309,8 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
                 "transformer.swiglu",
                 "common.linear",
                 "call:TinyLlama2FeedForward",
+                "transformer.rotary_embedding",
+                "call:TinyRotaryEmbedding",
             ],
         )
         calls = {operator.name: operator for operator in module.graph_operators}
@@ -363,6 +365,35 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             ffn_call.metadata["class_state_submodules"],
             "gate_proj,up_proj,down_proj",
         )
+        rotary_call = calls["call:TinyRotaryEmbedding"]
+        self.assertEqual(
+            tuple(rotary_call.kids),
+            (
+                "model_rotary_value",
+                "model_rotary_cos",
+                "model_rotary_sin",
+            ),
+        )
+        self.assertEqual(
+            rotary_call.attrs["canonical_class_name"],
+            "models.llama2_model.TinyRotaryEmbedding",
+        )
+        self.assertEqual(rotary_call.attrs["instance_path"],
+                         "layers.0.attention.rotary")
+        self.assertEqual(
+            rotary_call.attrs["context_identity"],
+            "TinyLlama2ForCausalLM.layers.0.attention.rotary",
+        )
+        self.assertEqual(
+            rotary_call.metadata["callable_identity"],
+            "models.llama2_model.TinyRotaryEmbedding.forward",
+        )
+        self.assertEqual(rotary_call.metadata["class_state_buffers"],
+                         "cos,sin")
+        self.assertEqual(
+            rotary_call.metadata["class_state_scalars"],
+            "half_dim=4,training=False",
+        )
 
         values = {value.name: value for value in module.values}
         self.assertEqual(values["hidden_states"].value_kind, "formal")
@@ -378,6 +409,14 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
         self.assertEqual(values["model_ffn_up_weight"].value_kind, "formal")
         self.assertEqual(values["model_ffn_down_weight"].value_kind, "formal")
         self.assertEqual(values["ffn_call_result"].value_kind, "call_result")
+        self.assertEqual(values["rotary_value"].value_kind, "formal")
+        self.assertEqual(values["rotary_cos"].value_kind, "formal")
+        self.assertEqual(values["rotary_sin"].value_kind, "formal")
+        self.assertEqual(values["model_rotary_value"].value_kind, "formal")
+        self.assertEqual(values["model_rotary_cos"].value_kind, "formal")
+        self.assertEqual(values["model_rotary_sin"].value_kind, "formal")
+        self.assertEqual(values["rotary_call_result"].value_kind,
+                         "call_result")
 
         scale = values["rms_norm_scale"]
         self.assertEqual(scale.metadata["tensor_role"], "rms_norm_scale")
@@ -416,6 +455,23 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             gate.metadata["class_state_submodules"],
             "gate_proj,up_proj,down_proj",
         )
+
+        cos = values["rotary_cos"]
+        self.assertEqual(cos.metadata["tensor_role"], "rotary_cos")
+        self.assertEqual(cos.metadata["source_buffer"], "cos")
+        self.assertEqual(
+            cos.metadata["source_class_state"],
+            "models.llama2_model.TinyRotaryEmbedding.cos",
+        )
+        self.assertEqual(
+            cos.metadata["source_instance_state"],
+            "layers.0.attention.rotary.cos",
+        )
+        self.assertEqual(
+            cos.metadata["callable_identity"],
+            "models.llama2_model.TinyRotaryEmbedding.forward",
+        )
+        self.assertEqual(cos.metadata["class_state_buffers"], "cos,sin")
 
     def test_int_shape_sample_input_and_source_provider(self) -> None:
         parsed = _sample_input_from_spec("int-shape:1,8")

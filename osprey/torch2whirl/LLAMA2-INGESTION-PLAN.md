@@ -866,14 +866,24 @@ Expand from the current certified `TinyRMSNorm` boundary in this order.
      incremental trace against the previous RMSNorm-only evidence.
 
 3. `TinyRotaryEmbedding`
-   - Introduce a real PU for the rotary embedding class.
+   - Status: complete in the frontend branch pending the later attention
+     boundary that will place the rotary call in its natural nested context.
+   - Introduces a real PU for the rotary embedding class.
    - Body must match prefill `transformer.rotary_embedding.v1` semantics.
-   - Formals must include query/key value plus cosine and sine tables.
-   - Preserve scalar configuration and attrs:
+   - Formals include the BHSD query/key value plus cosine and sine tables.
+   - Preserves scalar configuration and attrs:
      `head_layout=BHSD`, `sequence_axis=2`, `feature_axis=3`,
      `pairing=half_split`, and static position mode for prefill.
-   - Call contexts must distinguish the attention instances that own rotary
-     embedding.
+   - The current step certifies the first reachable context
+     `layers.0.attention.rotary`; the later attention expansion must
+     distinguish both query/key uses and both decoder-layer instances as
+     separate call contexts of the same class definition.
+   - Machine checks require exactly four `FUNC_ENTRY` records, three retained
+     `__WHIRL_DSL_CALL__` comments, `VCALL TinyRotaryEmbedding`,
+     `transformer.rotary_embedding.v1`, ordered `rotary_value`,
+     `rotary_cos`, and `rotary_sin` formals, source positions, owner-PU
+     metadata, native PU source identity table entries, native callsite
+     metadata, and the `TinyRotaryEmbedding.{cos,sin}` buffer state mappings.
    - Decode rotary v2 remains a separate later step unless the batch
      explicitly targets decode.
 

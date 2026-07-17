@@ -234,10 +234,12 @@ class WhirlExportInterpreter:
         entry_definition = definitions.get(entry_name)
         rms_definition = definitions.get("TinyRMSNorm")
         ffn_definition = definitions.get("TinyLlama2FeedForward")
+        rotary_definition = definitions.get("TinyRotaryEmbedding")
         if (
             entry_definition is None or
             rms_definition is None or
-            ffn_definition is None
+            ffn_definition is None or
+            rotary_definition is None
         ):
             raise NotImplementedError(
                 "multiple-PU emission requires class source definitions"
@@ -272,12 +274,32 @@ class WhirlExportInterpreter:
             ffn_instance,
             ffn_context,
         )
+        rotary_instance = self._first_instance_path(
+            class_instances,
+            rotary_definition.canonical_name,
+        )
+        rotary_module = self._module_at_instance_path(model, rotary_instance)
+        rotary_context = f"{entry_name}.{rotary_instance}"
+        rotary_identity = self._callable_identity_metadata(
+            rotary_definition,
+            rotary_module,
+            rotary_instance,
+            rotary_context,
+        )
 
         hidden_shape = "[1,1,32]" if self._is_tiny_llama2_decode_model(model) \
             else "[1,8,32]"
         intermediate_shape = (
             "[1,1,88]" if self._is_tiny_llama2_decode_model(model)
             else "[1,8,88]"
+        )
+        rotary_shape = (
+            "[1,4,1,8]" if self._is_tiny_llama2_decode_model(model)
+            else "[1,4,8,8]"
+        )
+        rotary_table_shape = (
+            "[1,1,1,8]" if self._is_tiny_llama2_decode_model(model)
+            else "[1,1,8,8]"
         )
         tensor_type = self.builder().tensor_type(
             "llama2_multi_pu_hidden_type",
@@ -342,6 +364,32 @@ class WhirlExportInterpreter:
                 "logical_shape": "[32,88]",
                 "layout": "OI",
                 "lineage": "python.multi_pu.feed_forward.down_weight",
+            },
+        )
+        rotary_type = self.builder().tensor_type(
+            "llama2_multi_pu_rotary_bhsd_type",
+            "float32",
+            4,
+            rotary_shape,
+            {
+                "dtype": "float32",
+                "rank": 4,
+                "logical_shape": rotary_shape,
+                "layout": "BHSD",
+                "lineage": "python.multi_pu.rotary.value",
+            },
+        )
+        rotary_table_type = self.builder().tensor_type(
+            "llama2_multi_pu_rotary_table_type",
+            "float32",
+            4,
+            rotary_table_shape,
+            {
+                "dtype": "float32",
+                "rank": 4,
+                "logical_shape": rotary_table_shape,
+                "layout": "BHSD",
+                "lineage": "python.multi_pu.rotary.table",
             },
         )
 
@@ -573,6 +621,91 @@ class WhirlExportInterpreter:
         self.builder().append_program_unit_value(ffn_pu, ffn_down)
         self.builder().return_pu_values(ffn_pu, [ffn_down])
 
+        rotary_pu = self.builder().minimal_program_unit("TinyRotaryEmbedding")
+        self._set_pu_source_identity(rotary_pu, rotary_identity)
+        rotary_file = self.builder().register_source_file(
+            rotary_pu,
+            rotary_definition.source_file,
+        )
+        rotary_line = rotary_definition.source_line
+        rotary_value = self.builder().declare_pu_formal(
+            rotary_pu,
+            "rotary_value",
+            0,
+            rotary_type,
+            rotary_file,
+            rotary_line,
+        )
+        self.builder().attach_value_metadata(
+            rotary_value,
+            self._multi_pu_value_metadata(
+                rotary_identity,
+                "rotary_value",
+                "activation",
+                "",
+            ),
+        )
+        rotary_cos = self.builder().declare_pu_formal(
+            rotary_pu,
+            "rotary_cos",
+            1,
+            rotary_table_type,
+            rotary_file,
+            rotary_line,
+        )
+        rotary_cos_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "rotary_cos",
+            "rotary_cos",
+            "cos",
+        )
+        self.builder().attach_value_metadata(rotary_cos, rotary_cos_metadata)
+        rotary_sin = self.builder().declare_pu_formal(
+            rotary_pu,
+            "rotary_sin",
+            2,
+            rotary_table_type,
+            rotary_file,
+            rotary_line,
+        )
+        rotary_sin_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "rotary_sin",
+            "rotary_sin",
+            "sin",
+        )
+        self.builder().attach_value_metadata(rotary_sin, rotary_sin_metadata)
+        self.builder().declare_pu_result(
+            rotary_pu,
+            "rotated_value",
+            0,
+            rotary_type,
+            file_id=rotary_file,
+            line=rotary_line + 1,
+        )
+        rotated_value = self.builder().transformer_rotary_embedding(
+            rotary_value,
+            rotary_cos,
+            rotary_sin,
+            self._rotary_attrs(),
+        )
+        self.builder().attach_value_metadata(
+            rotated_value,
+            self._multi_pu_operator_metadata(
+                rotary_identity,
+                "rotary_embedding",
+                "llama2:transformer.rotary_embedding",
+                "rotary_embedding",
+            ),
+        )
+        self.builder().set_value_source_position(
+            rotated_value,
+            rotary_file,
+            rotary_line + 1,
+        )
+        self.builder().append_program_unit_value(rotary_pu, rotated_value)
+        self.builder().return_pu_values(rotary_pu, [rotated_value])
+
         entry_pu = self.builder().minimal_program_unit(entry_name)
         self._set_pu_source_identity(entry_pu, entry_identity)
         entry_file = self.builder().register_source_file(
@@ -669,6 +802,59 @@ class WhirlExportInterpreter:
             model_ffn_down_weight,
             model_ffn_down_metadata,
         )
+        model_rotary_value = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_rotary_value",
+            5,
+            rotary_type,
+            entry_file,
+            entry_line,
+        )
+        self.builder().attach_value_metadata(
+            model_rotary_value,
+            self._multi_pu_value_metadata(
+                rotary_identity,
+                "model_rotary_value",
+                "call_actual",
+                "",
+            ),
+        )
+        model_rotary_cos = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_rotary_cos",
+            6,
+            rotary_table_type,
+            entry_file,
+            entry_line,
+        )
+        model_rotary_cos_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "model_rotary_cos",
+            "rotary_cos",
+            "cos",
+        )
+        self.builder().attach_value_metadata(
+            model_rotary_cos,
+            model_rotary_cos_metadata,
+        )
+        model_rotary_sin = self.builder().declare_pu_formal(
+            entry_pu,
+            "model_rotary_sin",
+            7,
+            rotary_table_type,
+            entry_file,
+            entry_line,
+        )
+        model_rotary_sin_metadata = self._multi_pu_buffer_metadata(
+            rotary_identity,
+            "model_rotary_sin",
+            "rotary_sin",
+            "sin",
+        )
+        self.builder().attach_value_metadata(
+            model_rotary_sin,
+            model_rotary_sin_metadata,
+        )
         self.builder().declare_pu_result(
             entry_pu,
             "model_result",
@@ -743,6 +929,45 @@ class WhirlExportInterpreter:
             entry_file,
             entry_line + 3,
         )
+        rotary_call = self.builder().create_pu_call(
+            entry_pu,
+            rotary_pu,
+            [
+                model_rotary_value,
+                model_rotary_cos,
+                model_rotary_sin,
+            ],
+            ["rotary_call_result"],
+            rotary_definition.canonical_name,
+            rotary_instance,
+            rotary_context,
+            2,
+            entry_file,
+            entry_line + 4,
+        )
+        rotary_call_result = self.builder().get_pu_call_result(
+            rotary_call,
+            0,
+            rotary_type,
+        )
+        rotary_call_result_metadata = self._multi_pu_value_metadata(
+            rotary_identity,
+            "rotary_call_result",
+            "call_result",
+            "",
+        )
+        rotary_call_result_metadata["result_source"] = (
+            "TinyRotaryEmbedding.rotated_value"
+        )
+        self.builder().attach_value_metadata(
+            rotary_call_result,
+            rotary_call_result_metadata,
+        )
+        self.builder().set_value_source_position(
+            rotary_call_result,
+            entry_file,
+            entry_line + 4,
+        )
         self.builder().return_pu_values(entry_pu, [ffn_call_result])
 
         model_module = inspect.getmodule(type(model))
@@ -756,6 +981,7 @@ class WhirlExportInterpreter:
                 body_markers=[
                     "call:TinyRMSNorm",
                     "call:TinyLlama2FeedForward",
+                    "call:TinyRotaryEmbedding",
                 ],
             ),
             graph_source="torch.fx+llama2_multiple_pu_boundary",
@@ -767,6 +993,8 @@ class WhirlExportInterpreter:
                 transformer.SWIGLU,
                 common.LINEAR,
                 "call:TinyLlama2FeedForward",
+                transformer.ROTARY_EMBEDDING,
+                "call:TinyRotaryEmbedding",
             ],
             tensor_types=[
                 WhirlTensorTypeRecord(
@@ -843,6 +1071,34 @@ class WhirlExportInterpreter:
                         "lineage": (
                             "python.multi_pu.feed_forward.down_weight"
                         ),
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_rotary_bhsd_type",
+                    handle=rotary_type.value,
+                    dtype="float32",
+                    rank=4,
+                    logical_shape=rotary_shape,
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 4,
+                        "logical_shape": rotary_shape,
+                        "layout": "BHSD",
+                        "lineage": "python.multi_pu.rotary.value",
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_rotary_table_type",
+                    handle=rotary_table_type.value,
+                    dtype="float32",
+                    rank=4,
+                    logical_shape=rotary_table_shape,
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 4,
+                        "logical_shape": rotary_table_shape,
+                        "layout": "BHSD",
+                        "lineage": "python.multi_pu.rotary.table",
                     },
                 )
             ],
@@ -953,6 +1209,65 @@ class WhirlExportInterpreter:
                     value_kind="call_result",
                     metadata=dict(ffn_call_result_metadata),
                 ),
+                WhirlValueRecord(
+                    name="rotary_value",
+                    handle=rotary_value.value,
+                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        rotary_identity,
+                        "rotary_value",
+                        "activation",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="rotary_cos",
+                    handle=rotary_cos.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(rotary_cos_metadata),
+                ),
+                WhirlValueRecord(
+                    name="rotary_sin",
+                    handle=rotary_sin.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(rotary_sin_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_rotary_value",
+                    handle=model_rotary_value.value,
+                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        rotary_identity,
+                        "model_rotary_value",
+                        "call_actual",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="model_rotary_cos",
+                    handle=model_rotary_cos.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(model_rotary_cos_metadata),
+                ),
+                WhirlValueRecord(
+                    name="model_rotary_sin",
+                    handle=model_rotary_sin.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(model_rotary_sin_metadata),
+                ),
+                WhirlValueRecord(
+                    name="rotary_call_result",
+                    handle=rotary_call_result.value,
+                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    value_kind="call_result",
+                    metadata=dict(rotary_call_result_metadata),
+                ),
             ],
             graph_operators=[
                 WhirlOperatorRecord(
@@ -1020,6 +1335,40 @@ class WhirlExportInterpreter:
                             "class_state_submodules"
                         ],
                         "class_state_scalars": ffn_identity[
+                            "class_state_scalars"
+                        ],
+                    },
+                ),
+                WhirlOperatorRecord(
+                    name="call:TinyRotaryEmbedding",
+                    handle=rotary_call.value,
+                    kids=[
+                        "model_rotary_value",
+                        "model_rotary_cos",
+                        "model_rotary_sin",
+                    ],
+                    attrs={
+                        "canonical_class_name": (
+                            rotary_definition.canonical_name
+                        ),
+                        "instance_path": rotary_instance,
+                        "context_identity": rotary_context,
+                    },
+                    metadata={
+                        "declaration_kind": "python_class_callable",
+                        "callable_identity": rotary_identity[
+                            "callable_identity"
+                        ],
+                        "implementation_method": rotary_identity[
+                            "implementation_method"
+                        ],
+                        "implementation_fingerprint": rotary_identity[
+                            "implementation_fingerprint"
+                        ],
+                        "class_state_buffers": rotary_identity[
+                            "class_state_buffers"
+                        ],
+                        "class_state_scalars": rotary_identity[
                             "class_state_scalars"
                         ],
                     },
@@ -1166,6 +1515,29 @@ class WhirlExportInterpreter:
         )
         metadata["lowering_hint"] = lowering_hint
         metadata["semantic_name"] = semantic_name
+        return metadata
+
+    def _multi_pu_buffer_metadata(
+        self,
+        identity: Mapping[str, str],
+        source_layer_name: str,
+        tensor_role: str,
+        source_buffer: str,
+    ) -> Dict[str, str]:
+        metadata = self._multi_pu_value_metadata(
+            identity,
+            source_layer_name,
+            tensor_role,
+            "",
+        )
+        if source_buffer:
+            metadata["source_buffer"] = source_buffer
+            metadata["source_class_state"] = (
+                f"{identity['canonical_class_name']}.{source_buffer}"
+            )
+            metadata["source_instance_state"] = (
+                f"{identity['instance_path']}.{source_buffer}"
+            )
         return metadata
 
     def _first_instance_path(

@@ -115,6 +115,7 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         "FUNC_ENTRY",
         "TinyRMSNorm",
         "TinyLlama2FeedForward",
+        "TinyRotaryEmbedding",
         "TinyLlama2ForCausalLM",
         "IDNAME 0 <2,1,hidden_states>",
         "IDNAME 0 <2,2,rms_norm_scale>",
@@ -124,18 +125,28 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         "ffn_up_weight",
         "ffn_down_weight",
         "ffn_output",
+        "rotary_value",
+        "rotary_cos",
+        "rotary_sin",
+        "rotated_value",
         "IDNAME 0 <2,1,model_hidden>",
         "IDNAME 0 <2,2,model_norm_scale>",
         "model_ffn_gate_weight",
         "model_ffn_up_weight",
         "model_ffn_down_weight",
+        "model_rotary_value",
+        "model_rotary_cos",
+        "model_rotary_sin",
         "model_result",
         "transformer.rms_norm",
         "common.linear",
         "transformer.swiglu",
+        "transformer.rotary_embedding",
+        "attr.position_mode=zero_based_static",
         "VCALL",
         "TinyRMSNorm",
         "TinyLlama2FeedForward",
+        "TinyRotaryEmbedding",
         "__WHIRL_DSL_CALL__",
         "instance=norm",
         "context=TinyLlama2ForCausalLM.norm",
@@ -143,13 +154,19 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         "instance=layers.0.feed_forward",
         "context=TinyLlama2ForCausalLM.layers.0.feed_forward",
         "source_ordinal=1",
+        "instance=layers.0.attention.rotary",
+        "context=TinyLlama2ForCausalLM.layers.0.attention.rotary",
+        "source_ordinal=2",
         "declaration_kind = python_class_callable",
         "callable_identity = ",
         "TinyRMSNorm.forward",
         "TinyLlama2FeedForward.forward",
+        "TinyRotaryEmbedding.forward",
         "class_state_parameters = weight",
         "class_state_submodules = gate_proj,up_proj,down_proj",
+        "class_state_buffers = cos,sin",
         "class_state_scalars = eps=1e-05,training=False",
+        "class_state_scalars = half_dim=4,training=False",
         "source_parameter = weight",
         "source_instance_state = norm.weight",
         "source_parameter = gate_proj.weight",
@@ -158,20 +175,27 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         "source_instance_state = layers.0.feed_forward.up_proj.weight",
         "source_parameter = down_proj.weight",
         "source_instance_state = layers.0.feed_forward.down_proj.weight",
+        "source_buffer = cos",
+        "source_instance_state = layers.0.attention.rotary.cos",
+        "source_buffer = sin",
+        "source_instance_state = layers.0.attention.rotary.sin",
         "source_class_state = ",
         "TinyRMSNorm.weight",
         "TinyLlama2FeedForward.gate_proj.weight",
-        "DSL PU Source Identity Table: version=1 entries=3",
+        "TinyRotaryEmbedding.cos",
+        "DSL PU Source Identity Table: version=1 entries=4",
         "definition=",
         "TinyRMSNorm.forward",
         "TinyLlama2FeedForward.forward",
+        "TinyRotaryEmbedding.forward",
         "TinyLlama2ForCausalLM.forward",
         "module=_torch2whirl_model_",
-        "DSL Callsite Metadata Table: version=1 entries=2",
+        "DSL Callsite Metadata Table: version=1 entries=3",
         "read_only passed_not_saved",
         "out passed_not_saved",
         "metadata=owner_pu=TinyRMSNorm",
         "metadata=owner_pu=TinyLlama2FeedForward",
+        "metadata=owner_pu=TinyRotaryEmbedding",
         "metadata=owner_pu=TinyLlama2ForCausalLM",
     ]
     missing = [needle for needle in required if needle not in text]
@@ -184,12 +208,12 @@ def _inspect_artifact(ir_b2a: Path, artifact: Path, text_dump: Path) -> int:
         print(text, file=sys.stderr)
         return 1
 
-    if len(re.findall(r"FUNC_ENTRY <[^>]*Tiny", text)) != 3:
-        print("multiple-PU trace did not expose exactly three Tiny FUNC_ENTRYs",
+    if len(re.findall(r"FUNC_ENTRY <[^>]*Tiny", text)) != 4:
+        print("multiple-PU trace did not expose exactly four Tiny FUNC_ENTRYs",
               file=sys.stderr)
         return 1
 
-    if text.count("__WHIRL_DSL_CALL__") < 2:
+    if text.count("__WHIRL_DSL_CALL__") < 3:
         print("multiple-PU trace missed logical call comment", file=sys.stderr)
         return 1
 
