@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Command wrapper for open64_dsc.symbol_filt."""
+
+from open64_dsc.symbol_filt import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
