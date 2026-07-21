@@ -980,6 +980,15 @@ The native builder publishes the following opaque interfaces:
   caller-local value handle.  A callee-local value handle never crosses the PU
   boundary.
 
+Operator results are materialized in their owning PU before they are used as
+call actuals or copied to declared result slots.  The builder recursively emits
+pending operand definitions in dependency order and emits each defining
+`STID MTYPE_M` at most once.  This permits nested Python expressions to remain
+opaque builder values while ensuring that no raw expression WN or callee-local
+value handle crosses a PU boundary.  Explicit
+`DSL_Builder_Append_PU_Value()` remains compatible and is idempotent for an
+already materialized native value.
+
 Tensor inputs are passed through standard `PARM` nodes marked
 `BY_REFERENCE|READ_ONLY|PASSED_NOT_SAVED`.  Result slots are passed through
 `BY_REFERENCE|OUT|PASSED_NOT_SAVED`; the caller owns their unique no-alias

@@ -46,6 +46,8 @@ typedef struct {
     ST_IDX result_st;
     TY_IDX result_ty;
     DSL_IR_VALUE_ID image_value_id;
+    BOOL materializing;
+    BOOL materialized;
 } DSL_BUILDER_VALUE_RECORD;
 
 static std::vector<DSL_BUILDER_VALUE_RECORD> DSL_builder_value_registry;
@@ -265,6 +267,44 @@ DSL_Builder_PU_Body (DSL_BUILDER_PROGRAM_UNIT pu)
         return NULL;
 
     return body;
+}
+
+static BOOL
+DSL_Builder_Materialize_PU_Value
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_VALUE_RECORD *record)
+{
+    WN *body = DSL_Builder_PU_Body(pu);
+
+    if (body == NULL || record == NULL || record->pu != pu)
+        return FALSE;
+    if (record->materialized)
+        return TRUE;
+    if (record->materializing || record->assignment == NULL ||
+        record->expression == NULL ||
+        !DSL_Builder_Get_Value_Annotation(record->assignment, NULL))
+        return FALSE;
+
+    record->materializing = TRUE;
+    for (UINT32 i = 0; i < WN_kid_count(record->expression); ++i) {
+        WN *kid = WN_kid(record->expression, i);
+        if (kid == NULL || WN_operator(kid) != OPR_LDID) {
+            record->materializing = FALSE;
+            return FALSE;
+        }
+        DSL_BUILDER_VALUE_RECORD *dependency =
+            DSL_Builder_Find_Value_Record_By_ST(WN_st_idx(kid));
+        if (dependency == NULL ||
+            !DSL_Builder_Materialize_PU_Value(pu, dependency)) {
+            record->materializing = FALSE;
+            return FALSE;
+        }
+    }
+
+    WN_INSERT_BlockLast(body, record->assignment);
+    record->materializing = FALSE;
+    record->materialized = TRUE;
+    return TRUE;
 }
 
 static BOOL
@@ -1775,6 +1815,8 @@ DSL_Builder_Create_Native_Value
     record.result_st = result_st;
     record.result_ty = result_ty;
     record.image_value_id = image_value_id;
+    record.materializing = FALSE;
+    record.materialized = FALSE;
     DSL_builder_value_registry.push_back(record);
     return assignment;
 }
@@ -2709,6 +2751,8 @@ DSL_Builder_Declare_PU_Formal
     value_record.result_st = ST_st_idx(*st);
     value_record.result_ty = ty;
     value_record.image_value_id = image_value_id;
+    value_record.materializing = FALSE;
+    value_record.materialized = TRUE;
     DSL_builder_value_registry.push_back(value_record);
 
     dsl_builder_pu_interface_value formal;
@@ -2768,6 +2812,8 @@ DSL_Builder_Declare_PU_Result
     value_record.result_st = ST_st_idx(*st);
     value_record.result_ty = ty;
     value_record.image_value_id = image_value_id;
+    value_record.materializing = FALSE;
+    value_record.materialized = TRUE;
     DSL_builder_value_registry.push_back(value_record);
 
     dsl_builder_pu_interface_value result;
@@ -2802,6 +2848,12 @@ DSL_Builder_Return_PU_Values
             DSL_Builder_Find_Value_Record(values[i]);
         if (value_record == NULL || value_record->pu != pu ||
             value_record->result_ty != interface_record->results[i].ty)
+            return FALSE;
+    }
+    for (UINT32 i = 0; i < value_count; ++i) {
+        DSL_BUILDER_VALUE_RECORD *value_record =
+            DSL_Builder_Find_Value_Record(values[i]);
+        if (!DSL_Builder_Materialize_PU_Value(pu, value_record))
             return FALSE;
     }
     for (UINT32 i = 0; i < value_count; ++i) {
@@ -2854,6 +2906,11 @@ DSL_Builder_Create_PU_Call
     }
     for (UINT32 i = 0; i < result_count; ++i) {
         if (result_names[i] == NULL || result_names[i][0] == '\0')
+            return NULL;
+    }
+    for (UINT32 i = 0; i < argument_count; ++i) {
+        if (!DSL_Builder_Materialize_PU_Value(caller,
+                                              argument_records[i]))
             return NULL;
     }
 
@@ -2939,6 +2996,8 @@ DSL_Builder_Create_PU_Call
         value_record.result_st = result_st;
         value_record.result_ty = result_ty;
         value_record.image_value_id = image_value_id;
+        value_record.materializing = FALSE;
+        value_record.materialized = TRUE;
         DSL_builder_value_registry.push_back(value_record);
         call_record->results.push_back(value);
     }
@@ -3540,6 +3599,9 @@ DSL_Builder_Append_PU_Value
         return FALSE;
     if (!DSL_Builder_Get_Value_Annotation(value, NULL))
         return FALSE;
+
+    if (record != NULL)
+        return DSL_Builder_Materialize_PU_Value(pu, record);
 
     WN_INSERT_BlockLast(body, value);
     return TRUE;
