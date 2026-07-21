@@ -636,6 +636,29 @@ input0_type : TENSOR element .predef_F4 (#10) align 4
 The `.B` file stem must also be used for the `.T` output, and the original
 source path must remain available so `-src` can interleave source statements.
 
+### whirl2c Diagnostic Projection
+
+`whirl2c` is part of the Open64 inspection and review surface for DSL WHIRL,
+but early DSL output is a C-like diagnostic projection rather than a normative
+source program that must compile.  The authoritative artifact remains binary
+WHIRL, and `ir_b2a -st -src` remains the compatibility gate for mapped-image,
+symbol-table, source-correlation, and logical DSL evidence.
+
+For tensor declarations, `whirl2c` should spell the carrier as
+`TENSOR` and attach a comment projection derived from
+TensorDescriptorIR facts on the `TY_IDX`.  The projection may show element type,
+rank, shape, layout, placement, memory, quantization, runtime state, lineage,
+and similar descriptor fields.  It must not create a new ABI type contract,
+change tensor type equivalence, add a binary section, or expose private tensor
+table storage details.
+
+For native DSL expressions, `whirl2c` should use the logical DSL accessor APIs
+and stable logical names, matching the `ir_b2a` rule that ordinary dumps do not
+print the physical `OPR_DSL` escape tag, `OPC_MDSL`, `MDSL`, or private record
+IDs.  Exact formatting can evolve with shared printer helpers, but the first
+requirement is reviewable, deterministic evidence that keeps domain operators
+visible until gatekeeper verification and lowering consume them.
+
 ## Change Checklist
 
 Any tensor type handling change should answer these questions:

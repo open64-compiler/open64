@@ -252,6 +252,7 @@ static void TY2C_struct(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context);
 static void TY2C_function(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context);
 static void TY2C_pointer(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context);
 static void TY2C_void(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context);
+static void TY2C_tensor(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context);
 static void TY2C_invalid(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context);
 
 
@@ -272,6 +273,7 @@ static const TY2C_HANDLER_FUNC
    &TY2C_pointer,   /* KIND_POINTER */
    &TY2C_function,  /* KIND_FUNCTION */
    &TY2C_void,      /* KIND_VOID */
+   &TY2C_tensor,    /* KIND_TENSOR */
 };
 
 
@@ -956,6 +958,123 @@ TY2C_void(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context)
    Prepend_Token_String(decl_tokens, Special_Void_TypeName);
    TY2C_prepend_qualifiers(decl_tokens, ty, context);
 } /* TY2C_void */
+
+
+static const char *
+TY2C_tensor_attribute_or_pending(TY_IDX ty, TY_TENSOR_SCHEMA_KEY key)
+{
+   const char *value = TY_tensor_attribute(ty, key);
+   return value != NULL && value[0] != '\0' ? value : "<pending>";
+} /* TY2C_tensor_attribute_or_pending */
+
+
+static const char *
+TY2C_tensor_element_name(TY_IDX element_ty)
+{
+   if (TY_IDX_index(element_ty) == 0)
+      return "<pending>";
+
+   if (TY_kind(element_ty) == KIND_SCALAR &&
+       TY_mtype(element_ty) > MTYPE_UNKNOWN &&
+       TY_mtype(element_ty) <= MTYPE_PREDEF)
+      return Scalar_C_Names[TY_mtype(element_ty)].pseudo_name;
+
+   if (TY_name(element_ty) != NULL && TY_name(element_ty)[0] != '\0')
+      return TY_name(element_ty);
+
+   return "<unnamed>";
+} /* TY2C_tensor_element_name */
+
+
+static void
+TY2C_tensor_append_optional_attribute(char *buffer, size_t buffer_size,
+                                      size_t *used, TY_IDX ty,
+                                      TY_TENSOR_SCHEMA_KEY key)
+{
+   const char *value = TY_tensor_attribute(ty, key);
+   int written;
+   if (value == NULL || value[0] == '\0' || *used >= buffer_size)
+      return;
+
+   written = snprintf(buffer + *used, buffer_size - *used, ", %s=%s",
+                      TY_tensor_schema_key_name(key), value);
+   if (written > 0 && (size_t)written < buffer_size - *used)
+      *used += written;
+   else if (written > 0)
+      *used = buffer_size - 1;
+} /* TY2C_tensor_append_optional_attribute */
+
+
+static void
+TY2C_tensor(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context)
+{
+   char descriptor[1024];
+   size_t used;
+   BOOL has_descriptor = TY_is_tensor_extension(ty);
+   TY_IDX element_ty = has_descriptor ? TY_tensor_element_ty(ty) : TY_IDX_ZERO;
+   const char *dtype = has_descriptor ?
+       TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_DTYPE) : NULL;
+
+   Is_True(TY_kind(ty) == KIND_TENSOR,
+           ("Non-tensor TY kind (%d) in TY2C_tensor()", TY_kind(ty)));
+
+   {
+      int written = snprintf(descriptor, sizeof(descriptor),
+                             "/* tensor<%s>%s, element_ty=%s, rank=%d%s",
+                             dtype != NULL && dtype[0] != '\0' ? dtype :
+                                 TY2C_tensor_element_name(element_ty),
+                             has_descriptor ?
+                                 TY2C_tensor_attribute_or_pending
+                                     (ty, TY_TENSOR_SCHEMA_SHAPE) :
+                                 "<missing-descriptor>",
+                             TY2C_tensor_element_name(element_ty),
+                             has_descriptor ? TY_tensor_rank(ty) : -1,
+                             has_descriptor ? "" :
+                                 ", descriptor=missing");
+      if (written > 0 && (size_t)written < sizeof(descriptor))
+         used = written;
+      else if (written > 0)
+         used = sizeof(descriptor) - 1;
+      else
+         used = 0;
+   }
+   if (has_descriptor) {
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty, TY_TENSOR_SCHEMA_KIND);
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty, TY_TENSOR_SCHEMA_TRAITS);
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty, TY_TENSOR_SCHEMA_LAYOUT);
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty,
+           TY_TENSOR_SCHEMA_SHARDING);
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty,
+           TY_TENSOR_SCHEMA_PLACEMENT);
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty, TY_TENSOR_SCHEMA_MEMORY);
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty,
+           TY_TENSOR_SCHEMA_QUANTIZATION);
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty,
+           TY_TENSOR_SCHEMA_RUNTIME_STATE);
+      TY2C_tensor_append_optional_attribute
+          (descriptor, sizeof(descriptor), &used, ty, TY_TENSOR_SCHEMA_LINEAGE);
+   }
+   if (used + 4 < sizeof(descriptor))
+      snprintf(descriptor + used, sizeof(descriptor) - used, " */");
+   else {
+      descriptor[sizeof(descriptor) - 4] = ' ';
+      descriptor[sizeof(descriptor) - 3] = '*';
+      descriptor[sizeof(descriptor) - 2] = '/';
+      descriptor[sizeof(descriptor) - 1] = '\0';
+   }
+
+   Prepend_Token_String(decl_tokens, descriptor);
+   Prepend_Token_String(decl_tokens, "TENSOR");
+   TY2C_prepend_qualifiers(decl_tokens, ty, context);
+} /* TY2C_tensor */
 
 
 static void 

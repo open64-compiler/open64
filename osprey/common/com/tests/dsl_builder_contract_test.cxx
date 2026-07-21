@@ -3457,6 +3457,16 @@ Check_Llama2_Decode_State_Region(void)
 {
     char diagnostic[2048];
     const char *artifact = getenv("OPEN64_DSL_DECODE_STATE_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0') {
+        if (!Build_And_Verify_Decode_State_Region
+                 (FALSE, artifact, diagnostic, sizeof(diagnostic))) {
+            fprintf(stderr, "valid decode state region was rejected: %s\n",
+                    diagnostic);
+            return 1;
+        }
+        return 0;
+    }
+
     if (Build_And_Verify_Decode_State_Region
             (TRUE, NULL, diagnostic, sizeof(diagnostic)) ||
         strstr(diagnostic, "DDECODE_ORDER") == NULL) {
@@ -3681,6 +3691,9 @@ main(void)
     Initialize_Test_Context();
     if (getenv("OPEN64_DSL_INGESTION_API_ONLY") != NULL)
         return Check_Upgraded_Ingestion_APIs();
+    if (getenv("OPEN64_DSL_PRODUCTION_NATIVE_ONLY") != NULL)
+        return Check_Operator_Creation() |
+               Check_Production_Native_Builder();
     if (getenv("OPEN64_DSL_LLAMA2_COMMON_ONLY") != NULL)
         return Check_Llama2_Common_Substrate();
     if (getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ONLY") != NULL)
