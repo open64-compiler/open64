@@ -952,5 +952,57 @@ def finalize_mapped_image(path: str, module_manifest: Mapping[str, object]) -> b
                         f"graph_operator_metadata.{index}={metadata_text}"
                     )
 
+    python_imports = module_manifest.get("python_imports", ())
+    if isinstance(python_imports, Sequence) and not isinstance(python_imports, str):
+        for index, imported in enumerate(python_imports):
+            if isinstance(imported, Mapping):
+                names = imported.get("import_names", ())
+                if not isinstance(names, Sequence) or isinstance(names, str):
+                    names = ()
+                lines.append(
+                    f"python_import.{index}="
+                    f"{imported.get('canonical_name', '')}:"
+                    f"{'|'.join(str(name) for name in names)}:"
+                    f"{imported.get('importing_module', '')}:"
+                    f"{imported.get('declaration_kind', '')}"
+                )
+
+    python_reachable_imports = module_manifest.get(
+        "python_reachable_imports",
+        (),
+    )
+    if (
+        isinstance(python_reachable_imports, Sequence) and
+        not isinstance(python_reachable_imports, str)
+    ):
+        for index, imported in enumerate(python_reachable_imports):
+            if isinstance(imported, Mapping):
+                paths = imported.get("instance_paths", ())
+                if not isinstance(paths, Sequence) or isinstance(paths, str):
+                    paths = ()
+                lines.append(
+                    f"python_reachable_import.{index}="
+                    f"{imported.get('canonical_name', '')}:"
+                    f"{imported.get('imported_spelling', '')}:"
+                    f"{'|'.join(str(path) for path in paths)}"
+                )
+
+    python_import_diagnostics = module_manifest.get(
+        "python_import_diagnostics",
+        (),
+    )
+    if (
+        isinstance(python_import_diagnostics, Sequence) and
+        not isinstance(python_import_diagnostics, str)
+    ):
+        for index, diagnostic in enumerate(python_import_diagnostics):
+            if isinstance(diagnostic, Mapping):
+                lines.append(
+                    f"python_import_diagnostic.{index}="
+                    f"{diagnostic.get('code', '')}:"
+                    f"{diagnostic.get('import_name', '')}:"
+                    f"{diagnostic.get('source_line', '')}"
+                )
+
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return True

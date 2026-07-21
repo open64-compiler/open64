@@ -592,6 +592,27 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "_Z3foov",
         )
 
+    def test_symbol_filter_demangles_import_identity(self) -> None:
+        self.assertEqual(
+            symbol_filt.demangle_text("imported_spelling=ImportedLayer.forward"),
+            "python-import imported_spelling=ImportedLayer.forward",
+        )
+        self.assertEqual(
+            symbol_filt.demangle_text(
+                "imported_spelling=AliasLayer.forward;"
+                "alias_chain=AliasLayer<-ImportedLayer;"
+                "defining_module=dependency;"
+                "importing_module=consumer;"
+                "declaration_kind=reexport_alias",
+            ),
+            "python-import "
+            "imported_spelling=AliasLayer.forward "
+            "alias_chain=AliasLayer<-ImportedLayer "
+            "defining_module=dependency "
+            "importing_module=consumer "
+            "declaration_kind=reexport_alias",
+        )
+
     def test_symbol_filter_cli_reads_arguments_and_stdin(self) -> None:
         argv_out = io.StringIO()
         self.assertEqual(

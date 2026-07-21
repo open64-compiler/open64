@@ -39,7 +39,10 @@ from .module import (
 )
 from .options import WhirlExportOptions
 from .python_classes import collect_python_model_classes
-from .python_imports import collect_imported_python_callables
+from .python_imports import (
+    collect_python_import_census,
+    resolve_reachable_imported_callables,
+)
 
 
 @dataclass(frozen=True)
@@ -186,8 +189,23 @@ class WhirlExportInterpreter:
                 )
             )
 
-        model_module = inspect.getmodule(type(model))
         class_definitions, class_instances = collect_python_model_classes(model)
+        model_module = inspect.getmodule(type(model))
+        import_census = (
+            collect_python_import_census(model_module)
+            if model_module is not None else None
+        )
+        python_imports = import_census.callables if import_census else ()
+        python_import_diagnostics = (
+            import_census.diagnostics if import_census else ()
+        )
+        python_reachable_imports = resolve_reachable_imported_callables(
+            model_module,
+            python_imports,
+            class_definitions,
+            class_instances,
+            entry_name,
+        )
         return WhirlModule(
             options=self._options,
             model_name=model_name,
@@ -203,10 +221,9 @@ class WhirlExportInterpreter:
             values=values,
             tensor_payloads=tensor_payloads,
             graph_operators=graph_operators,
-            python_imports=(
-                collect_imported_python_callables(model_module)
-                if model_module is not None else ()
-            ),
+            python_imports=python_imports,
+            python_import_diagnostics=python_import_diagnostics,
+            python_reachable_imports=python_reachable_imports,
             python_class_definitions=class_definitions,
             python_class_instances=class_instances,
         )
@@ -2326,6 +2343,21 @@ class WhirlExportInterpreter:
         self.builder().return_pu_values(entry_pu, [model_final_norm_result])
 
         model_module = inspect.getmodule(type(model))
+        import_census = (
+            collect_python_import_census(model_module)
+            if model_module is not None else None
+        )
+        python_imports = import_census.callables if import_census else ()
+        python_import_diagnostics = (
+            import_census.diagnostics if import_census else ()
+        )
+        python_reachable_imports = resolve_reachable_imported_callables(
+            model_module,
+            python_imports,
+            class_definitions,
+            class_instances,
+            entry_name,
+        )
         return WhirlModule(
             options=self._options,
             model_name=model_name,
@@ -2738,10 +2770,9 @@ class WhirlExportInterpreter:
                     },
                 )
             ],
-            python_imports=(
-                collect_imported_python_callables(model_module)
-                if model_module is not None else ()
-            ),
+            python_imports=python_imports,
+            python_import_diagnostics=python_import_diagnostics,
+            python_reachable_imports=python_reachable_imports,
             python_class_definitions=class_definitions,
             python_class_instances=class_instances,
         )

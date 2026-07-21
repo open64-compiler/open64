@@ -796,6 +796,87 @@ operator attributes as a workaround.  If the native call comment or metadata
 surface cannot represent a required field, report the precise missing API to
 the infrastructure task.
 
+### Import-Support Progress Dashboard
+
+This queue consolidates the active import work and ties it to the protocol in
+`doc/TORCH2WHIRL-WHIRL-DSL-API-CONTRACT.md`.  Import support starts as
+frontend discovery and manifest/review evidence.  It becomes a main-agent API
+request only after the frontend proves that a source-language identity field
+must persist in binary WHIRL and appear in `ir_b2a -st -src`.
+
+| Item | Owner | Protocol phase | Status | Exit evidence |
+| --- | --- | --- | --- | --- |
+| I0: Consolidate import plan and protocol gates | torch2whirl | Discovery | complete | This dashboard and protocol checklist |
+| I1: Strengthen import discovery tests | torch2whirl | Discovery | complete | Tests cover `import module`, `from module import X`, aliases, re-export aliases, imported classes, imported helpers, and stable unsupported diagnostics |
+| I2: Build reachable import resolver | torch2whirl | Discovery | complete | Reachable callable census maps imports to Python definition identity, class instance paths, call contexts, and class-state/formal evidence |
+| I3: Extend manifest and review evidence | torch2whirl | Discovery | complete | Manifest records imported spelling, defining module, importing module, source lines, alias facts, reachable instances, diagnostics, and class-state mapping |
+| I4: Extend `torch2whirl-filt` import explanations | torch2whirl | Discovery | complete | Filter output explains imported spelling, alias chains, defining/importing modules, re-export sources, and declaration kind |
+| I5: Decide whether durable IR import metadata is required | torch2whirl + main | Contract request | next | Either frontend-only manifest is sufficient, or a precise API request is sent to the main agent |
+| I6: Bind published native import metadata API | torch2whirl | Frontend binding | blocked on I5 if needed | Opaque `Open64_DSC_*`, `_whirl`, `WhirlBackend`, `WhirlBuilder`, and mock bindings consume a clean native commit |
+| I7: Certify import-aware artifacts | torch2whirl | Certification | pending | `.B`, `.T`, manifest, source evidence, negative tests, Docker lane, no-tab, diff, and isolation checks pass |
+
+Current decision:
+
+1. I1-I4 are implemented as frontend-only work.
+2. Do not request a native API merely to mirror Python import syntax.
+3. Request a native API only if the I2-I3 evidence shows that review,
+   certification, or
+   downstream IPA/inliner visibility needs import identity inside durable IR.
+4. Keep import identity separate from tensor type equality, DSL operator
+   attributes, and lowering semantics unless common/com explicitly promotes a
+   field into one of those contracts.
+
+Candidate frontend-only evidence fields:
+
+```text
+imported_spelling
+alias_chain
+defining_module
+importing_module
+reexport_source
+declaration_kind
+definition_file
+definition_line
+method_file
+method_line
+instance_path
+context_identity
+class_state_members
+state_to_formal_mapping
+```
+
+Unsupported or ambiguous import patterns must fail with stable diagnostics
+until their semantics are reviewed.  Initial negative cases include dynamic
+`__import__`, monkey-patched callables, source-less native extension callables,
+ambiguous re-exports, import-cycle identity conflicts, and wildcard imports
+whose selected binding cannot be traced to a unique Python definition.
+
+### API-Contract Protocol Validation
+
+The import work validates the protocol in
+`doc/TORCH2WHIRL-WHIRL-DSL-API-CONTRACT.md` as follows:
+
+| Protocol step | Validation for import work |
+| --- | --- |
+| Frontend discovery | I1-I4 must produce fixture coverage, a reachable callable/import census, manifest evidence, and stable diagnostics before common/com is asked to add anything |
+| Contract request | If durable IR is needed, the request must use the API-contract handoff template and list source pattern, semantic fields, `.B` lifetime, `ir_b2a -st -src` evidence, gatekeeper needs, diagnostics, and desired opaque signatures |
+| Main/common implementation | The main agent owns any new `DSL_Builder_*` API, mapped-image persistence, gatekeeper checks, logical printing, and native producer/consumer tests |
+| Frontend binding | Torch2whirl consumes only a clean native commit and binds through opaque `Open64_DSC_*`, `_whirl`, `WhirlBackend`, and `WhirlBuilder` layers |
+| Certification | Acceptance requires standalone `torch2whirl`, retained `.B`/side files, separate-process `ir_b2a -st -src`, logical evidence, negative failures before a usable `.B`, `git diff --check`, no-tab scan, and backend-isolation scan |
+| PR dependency | If common/com changes are required, use stacked PRs with the native PR first and the torch2whirl PR reviewed while stacked on that branch |
+
+Protocol status:
+
+1. The current native APIs already cover PU identity, callsite identity,
+   source files/lines, value metadata, and symbol metadata.
+2. Import support has completed the frontend discovery pass without main-agent
+   work.
+3. No durable import-metadata API request is justified yet; I5 is the next
+   review step after inspecting the new manifest/filter evidence.
+4. The already known non-import native gap remains operator-result
+   materialization for inter-PU call actuals and top-level operator-result
+   returns.  Keep that as a separate API request from import identity.
+
 ### Expansion Invariants
 
 Every incremental multiple-PU step must preserve these rules:

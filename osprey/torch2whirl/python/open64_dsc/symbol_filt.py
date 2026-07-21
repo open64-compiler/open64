@@ -23,6 +23,14 @@ _PYTHON_QUALIFIED_NAME = re.compile(
 _CALLABLE_FORWARD = re.compile(
     rf"^(?P<class>{_IDENT}(?:\.{_IDENT})*)\.forward$"
 )
+_IMPORT_FIELD_PREFIXES = (
+    "imported_spelling=",
+    "alias_chain=",
+    "defining_module=",
+    "importing_module=",
+    "reexport_source=",
+    "declaration_kind=",
+)
 
 
 @dataclass(frozen=True)
@@ -71,12 +79,54 @@ def _format_python_context(symbol: str) -> Optional[str]:
     return None
 
 
+def _format_import_identity(original: str) -> Optional[DemangledSymbol]:
+    fields = _split_record_fields(original)
+    if (
+        not fields and
+        any(original.startswith(prefix) for prefix in _IMPORT_FIELD_PREFIXES)
+    ):
+        key, value = original.split("=", 1)
+        fields = {key.strip(): value.strip()}
+    if not any(key in fields for key in (
+        "imported_spelling",
+        "alias_chain",
+        "defining_module",
+        "importing_module",
+        "reexport_source",
+        "declaration_kind",
+    )):
+        return None
+
+    pieces = ["python-import"]
+    for key in (
+        "imported_spelling",
+        "alias_chain",
+        "defining_module",
+        "importing_module",
+        "reexport_source",
+        "declaration_kind",
+    ):
+        value = fields.get(key)
+        if value:
+            pieces.append(f"{key}={value}")
+    return DemangledSymbol(
+        original,
+        "python-import",
+        " ".join(pieces),
+        fields,
+    )
+
+
 def demangle(symbol: str) -> DemangledSymbol:
     """Return a demangled representation, or the input unchanged."""
 
     original = symbol.strip()
     if not original:
         return DemangledSymbol(symbol, "empty", symbol, {})
+
+    import_identity = _format_import_identity(original)
+    if import_identity is not None:
+        return import_identity
 
     if original.startswith(_CALL_PREFIX):
         fields = _split_record_fields(original[len(_CALL_PREFIX):])

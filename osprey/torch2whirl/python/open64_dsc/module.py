@@ -7,7 +7,11 @@ from typing import Dict, List, Mapping, Sequence
 
 from .options import WhirlExportOptions
 from .python_classes import PythonClassDefinition, PythonClassInstance
-from .python_imports import PythonImportedCallable
+from .python_imports import (
+    PythonImportDiagnostic,
+    PythonImportedCallable,
+    PythonReachableImport,
+)
 
 
 @dataclass(frozen=True)
@@ -122,6 +126,12 @@ class WhirlModule:
     python_imports: Sequence[PythonImportedCallable] = field(
         default_factory=list
     )
+    python_import_diagnostics: Sequence[PythonImportDiagnostic] = field(
+        default_factory=list
+    )
+    python_reachable_imports: Sequence[PythonReachableImport] = field(
+        default_factory=list
+    )
     python_class_definitions: Sequence[PythonClassDefinition] = field(
         default_factory=list
     )
@@ -155,6 +165,14 @@ class WhirlModule:
             "python_imports": [
                 imported.to_manifest()
                 for imported in self.python_imports
+            ],
+            "python_import_diagnostics": [
+                diagnostic.to_manifest()
+                for diagnostic in self.python_import_diagnostics
+            ],
+            "python_reachable_imports": [
+                imported.to_manifest()
+                for imported in self.python_reachable_imports
             ],
             "python_class_definitions": [
                 definition.to_manifest()
