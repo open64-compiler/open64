@@ -165,10 +165,33 @@ PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
 ```
 
 The multiple-PU path preserves `--single-pu` as the default baseline.  Its
-first certified fixture emits real class-named `FUNC_ENTRY` PUs for
-`TinyRMSNorm` and `TinyLlama2ForCausalLM`, with independent local symbols and a
-standard call edge.  It is intentionally an opt-in callable-boundary artifact;
-the full flattened semantic Llama operator path remains under `--single-pu`.
+current certified fixture emits real class-named `FUNC_ENTRY` PUs for
+`TinyRMSNorm`, `TinyLlama2FeedForward`, `TinyRotaryEmbedding`,
+`TinyLlama2Attention`, `TinyLlama2DecoderLayer`, and
+`TinyLlama2ForCausalLM`, with independent local symbols and reviewed call
+edges. It is intentionally an opt-in callable-boundary artifact; the full
+flattened semantic Llama operator path remains under `--single-pu`.
+
+## Symbol Filtering
+
+`torch2whirl-filt` is the frontend companion to tools such as `c++filt`.  It
+does not demangle C++ ABI symbols.  Instead, it explains torch2whirl review
+symbols and retained DSL call projections from `ir_b2a -st -src` output:
+
+```sh
+PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
+  python3 -m open64_dsc.symbol_filt TinyLlama2Attention.forward
+
+PYTHONPATH=/path/to/open64/osprey/torch2whirl/python \
+  osprey/torch2whirl/scripts/torch2whirl-filt \
+  '__WHIRL_DSL_CALL__:callee=TinyLlama2Attention;class=TinyLlama2Attention;instance=layers.0.attention;context=TinyLlama2ForCausalLM.layers.0.attention;ordinal=2'
+```
+
+Recognized inputs include `__WHIRL_DSL_CALL__` records, `call:<callee>`
+markers, `metadata=owner_pu=<pu>` records, callable spellings such as
+`TinyLlama2Attention.forward`, and context paths such as
+`TinyLlama2ForCausalLM.layers.0.attention`. Unknown symbols are printed
+unchanged.
 
 For a reproducible Linux Docker version of that lane:
 

@@ -154,6 +154,8 @@ make_deps: $(TARGETS)
 install: $(TARGETS)
 	$(MKDIR_P) $(DESTDIR)$(BINDIR)
 	$(INSTALL) -m 755 torch2whirl $(DESTDIR)$(BINDIR)/torch2whirl
+	$(INSTALL) -m 755 $(BUILD_BASE)/scripts/torch2whirl-filt \
+	    $(DESTDIR)$(BINDIR)/torch2whirl-filt
 
 python_test:
 	PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$(BUILD_BASE)/python \

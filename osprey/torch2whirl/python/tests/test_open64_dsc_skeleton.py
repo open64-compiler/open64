@@ -35,6 +35,7 @@ from open64_dsc import WhirlVerificationError, export_to_whirl
 from open64_dsc import load_builder, save_as_whirl, verify_module
 from open64_dsc import optimization
 from open64_dsc import operators
+from open64_dsc import symbol_filt
 from open64_dsc.builder import (
     REGION_INPUT,
     REGION_OUTPUT,
@@ -545,6 +546,101 @@ class Open64DscSkeletonTest(unittest.TestCase):
             for trait in LLAMA2_MULTIPLE_PU_OPTIMIZATION_TRAITS.values()
         }
         self.assertEqual(owners, {optimization.NATIVE_OWNER_VHO_DSL})
+
+    def test_symbol_filter_demangles_python_callsite_records(self) -> None:
+        record = (
+            "__WHIRL_DSL_CALL__:callee=TinyLlama2Attention;"
+            "class=models.llama2_model.TinyLlama2Attention;"
+            "instance=layers.0.attention;"
+            "context=TinyLlama2ForCausalLM.layers.0.attention;"
+            "ordinal=2"
+        )
+        demangled = symbol_filt.demangle(record)
+
+        self.assertEqual(demangled.kind, "dsl-call")
+        self.assertEqual(
+            demangled.text,
+            "python-call "
+            "context=TinyLlama2ForCausalLM.layers.0.attention "
+            "instance=layers.0.attention "
+            "callee=TinyLlama2Attention "
+            "class=models.llama2_model.TinyLlama2Attention "
+            "ordinal=2",
+        )
+
+    def test_symbol_filter_demangles_frontend_review_names(self) -> None:
+        self.assertEqual(
+            symbol_filt.demangle_text("call:TinyLlama2Attention"),
+            "python-call callee=TinyLlama2Attention",
+        )
+        self.assertEqual(
+            symbol_filt.demangle_text("TinyLlama2Attention.forward"),
+            "python-callable TinyLlama2Attention.forward method=forward",
+        )
+        self.assertEqual(
+            symbol_filt.demangle_text("metadata=owner_pu=TinyLlama2Attention"),
+            "python-owner-pu TinyLlama2Attention",
+        )
+        self.assertEqual(
+            symbol_filt.demangle_text(
+                "TinyLlama2ForCausalLM.layers.0.attention",
+            ),
+            "python-context TinyLlama2ForCausalLM.layers.0.attention",
+        )
+        self.assertEqual(
+            symbol_filt.demangle_text("_Z3foov"),
+            "_Z3foov",
+        )
+
+    def test_symbol_filter_demangles_import_identity(self) -> None:
+        self.assertEqual(
+            symbol_filt.demangle_text("imported_spelling=ImportedLayer.forward"),
+            "python-import imported_spelling=ImportedLayer.forward",
+        )
+        self.assertEqual(
+            symbol_filt.demangle_text(
+                "imported_spelling=AliasLayer.forward;"
+                "alias_chain=AliasLayer<-ImportedLayer;"
+                "defining_module=dependency;"
+                "importing_module=consumer;"
+                "declaration_kind=reexport_alias",
+            ),
+            "python-import "
+            "imported_spelling=AliasLayer.forward "
+            "alias_chain=AliasLayer<-ImportedLayer "
+            "defining_module=dependency "
+            "importing_module=consumer "
+            "declaration_kind=reexport_alias",
+        )
+
+    def test_symbol_filter_cli_reads_arguments_and_stdin(self) -> None:
+        argv_out = io.StringIO()
+        self.assertEqual(
+            symbol_filt.run(
+                ["--kind", "TinyLlama2Attention.forward"],
+                stdout=argv_out,
+            ),
+            0,
+        )
+        self.assertEqual(
+            argv_out.getvalue(),
+            "python-callable: "
+            "python-callable TinyLlama2Attention.forward method=forward\n",
+        )
+
+        stdin_out = io.StringIO()
+        self.assertEqual(
+            symbol_filt.run(
+                [],
+                stdin=io.StringIO("call:TinyRMSNorm\nplain_symbol\n"),
+                stdout=stdin_out,
+            ),
+            0,
+        )
+        self.assertEqual(
+            stdin_out.getvalue(),
+            "python-call callee=TinyRMSNorm\nplain_symbol\n",
+        )
 
     def test_builder_uses_published_operator_versions(self) -> None:
         builder = load_builder("mock")

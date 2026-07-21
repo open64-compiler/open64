@@ -18,6 +18,7 @@ if TORCH_AVAILABLE:
     from models.llama2_model import create_tiny_llama2
     from models.llama2_model import open64_sample_inputs
     from models.llama2_model import sample_input_ids
+    from models.llama2_imported_model import create_tiny_imported_llama2
 
     from open64_dsc.cli import _sample_input_from_spec
     from open64_dsc.export import export_to_whirl, save_as_whirl
@@ -285,6 +286,111 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             self.assertIn("tensor_payload.0=llama2.safetensors", artifact)
             self.assertTrue((Path(temp_dir) / "llama2.safetensors").is_file())
 
+    def test_imported_llama_fixture_records_reachable_imports(self) -> None:
+        config = TinyLlama2Config()
+        model = create_tiny_imported_llama2(config)
+        module = export_to_whirl(
+            model,
+            [sample_input_ids(config)],
+            WhirlExportOptions(backend="mock", model_name="llama2_imported"),
+        )
+
+        imported = {
+            record.canonical_name: record
+            for record in module.python_imports
+        }
+        self.assertIn(
+            "models.llama2_model.TinyRMSNorm.forward",
+            imported,
+        )
+        self.assertIn(
+            "models.llama2_model.TinyLlama2DecoderLayer.forward",
+            imported,
+        )
+        self.assertEqual(
+            imported[
+                "models.llama2_model.TinyRMSNorm.forward"
+            ].importing_module,
+            "models.llama2_imported_model",
+        )
+
+        reachable = {
+            record.canonical_name: record
+            for record in module.python_reachable_imports
+        }
+        self.assertEqual(module.python_import_diagnostics, ())
+        self.assertTrue({
+            "models.llama2_model.TinyLlama2Attention.forward",
+            "models.llama2_model.TinyLlama2DecoderLayer.forward",
+            "models.llama2_model.TinyLlama2FeedForward.forward",
+            "models.llama2_model.TinyRMSNorm.forward",
+            "models.llama2_model.TinyRotaryEmbedding.forward",
+        }.issubset(reachable))
+        self.assertEqual(
+            reachable[
+                "models.llama2_model.TinyRMSNorm.forward"
+            ].instance_paths,
+            (
+                "layers.0.attention_norm",
+                "layers.0.ffn_norm",
+                "layers.1.attention_norm",
+                "layers.1.ffn_norm",
+                "norm",
+            ),
+        )
+        self.assertEqual(
+            reachable[
+                "models.llama2_model.TinyLlama2DecoderLayer.forward"
+            ].instance_paths,
+            ("layers.0", "layers.1"),
+        )
+        self.assertEqual(
+            reachable[
+                "models.llama2_model.TinyLlama2Attention.forward"
+            ].declaration_kind,
+            "transitive_reachable_class",
+        )
+        self.assertEqual(
+            reachable[
+                "models.llama2_model.TinyRMSNorm.forward"
+            ].state_to_formal_mapping["self.weight"],
+            "layers.0.attention_norm.weight",
+        )
+
+    def test_imported_llama_mock_artifact_retains_import_evidence(self) -> None:
+        config = TinyLlama2Config()
+        model = create_tiny_imported_llama2(config)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "llama2_imported.B"
+            module = export_to_whirl(
+                model,
+                [sample_input_ids(config)],
+                WhirlExportOptions(
+                    backend="mock",
+                    model_name="llama2_imported",
+                    external_data_file="llama2_imported.safetensors",
+                ),
+            )
+            save_as_whirl(module, str(output_path))
+
+            artifact = output_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "models.llama2_model.TinyLlama2DecoderLayer",
+                artifact,
+            )
+            self.assertIn(
+                "models.llama2_model.TinyLlama2DecoderLayer.forward",
+                artifact,
+            )
+            self.assertIn(
+                "models.llama2_model.TinyRMSNorm.forward",
+                artifact,
+            )
+            self.assertIn(
+                "models.llama2_model.TinyLlama2Attention.forward",
+                artifact,
+            )
+
     def test_multiple_pu_export_keeps_class_call_boundary(self) -> None:
         config = TinyLlama2Config()
         model = create_tiny_llama2(config)
@@ -315,37 +421,48 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
         ):
             self.assertIn(operator, module.operators)
         calls = {operator.name: operator for operator in module.graph_operators}
-        call = calls["call:TinyRMSNorm"]
-        self.assertEqual(call.name, "call:TinyRMSNorm")
-        self.assertEqual(tuple(call.kids), ("model_hidden", "model_norm_scale"))
-        self.assertEqual(
-            call.attrs["canonical_class_name"],
-            "models.llama2_model.TinyRMSNorm",
-        )
-        self.assertEqual(call.attrs["instance_path"], "norm")
-        self.assertEqual(
-            call.attrs["context_identity"],
-            "TinyLlama2ForCausalLM.norm",
-        )
-        self.assertEqual(
-            call.metadata["callable_identity"],
-            "models.llama2_model.TinyRMSNorm.forward",
-        )
-        self.assertEqual(call.metadata["class_state_parameters"], "weight")
-        self.assertEqual(
-            call.metadata["class_state_scalars"],
-            "eps=1e-05,training=False",
-        )
-        self.assertEqual(call.metadata["class_state_submodules"], "")
+        self.assertIn("call:TinyRotaryEmbedding.query", calls)
+        self.assertIn("call:TinyLlama2FeedForward.ffn_normed", calls)
+        self.assertIn("call:TinyLlama2DecoderLayer.layers.0", calls)
 
-        ffn_call = calls["call:TinyLlama2FeedForward"]
+        rotary_call = calls["call:TinyRotaryEmbedding.query"]
+        self.assertEqual(
+            tuple(rotary_call.kids),
+            (
+                "attention_q_bhsd",
+                "attention_rotary_cos",
+                "attention_rotary_sin",
+            ),
+        )
+        self.assertEqual(
+            rotary_call.attrs["canonical_class_name"],
+            "models.llama2_model.TinyRotaryEmbedding",
+        )
+        self.assertEqual(rotary_call.attrs["instance_path"],
+                         "layers.0.attention.rotary")
+        self.assertEqual(
+            rotary_call.attrs["context_identity"],
+            "TinyLlama2ForCausalLM.layers.0.attention.rotary.query",
+        )
+        self.assertEqual(
+            rotary_call.metadata["callable_identity"],
+            "models.llama2_model.TinyRotaryEmbedding.forward",
+        )
+        self.assertEqual(rotary_call.metadata["class_state_buffers"],
+                         "cos,sin")
+        self.assertEqual(
+            rotary_call.metadata["class_state_scalars"],
+            "half_dim=4,training=False",
+        )
+
+        ffn_call = calls["call:TinyLlama2FeedForward.ffn_normed"]
         self.assertEqual(
             tuple(ffn_call.kids),
             (
-                "norm_call_result",
-                "model_ffn_gate_weight",
-                "model_ffn_up_weight",
-                "model_ffn_down_weight",
+                "decoder_ffn_norm_result",
+                "decoder_ffn_gate_weight",
+                "decoder_ffn_up_weight",
+                "decoder_ffn_down_weight",
             ),
         )
         self.assertEqual(
@@ -366,58 +483,53 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             ffn_call.metadata["class_state_submodules"],
             "gate_proj,up_proj,down_proj",
         )
-        rotary_call = calls["call:TinyRotaryEmbedding"]
+
+        decoder_call = calls["call:TinyLlama2DecoderLayer.layers.0"]
         self.assertEqual(
-            tuple(rotary_call.kids),
-            (
-                "model_rotary_value",
-                "model_rotary_cos",
-                "model_rotary_sin",
-            ),
+            tuple(decoder_call.kids),
+            ("model_token_embedding",),
         )
         self.assertEqual(
-            rotary_call.attrs["canonical_class_name"],
-            "models.llama2_model.TinyRotaryEmbedding",
+            decoder_call.attrs["canonical_class_name"],
+            "models.llama2_model.TinyLlama2DecoderLayer",
         )
-        self.assertEqual(rotary_call.attrs["instance_path"],
-                         "layers.0.attention.rotary")
+        self.assertEqual(decoder_call.attrs["instance_path"], "layers.0")
         self.assertEqual(
-            rotary_call.attrs["context_identity"],
-            "TinyLlama2ForCausalLM.layers.0.attention.rotary",
-        )
-        self.assertEqual(
-            rotary_call.metadata["callable_identity"],
-            "models.llama2_model.TinyRotaryEmbedding.forward",
-        )
-        self.assertEqual(rotary_call.metadata["class_state_buffers"],
-                         "cos,sin")
-        self.assertEqual(
-            rotary_call.metadata["class_state_scalars"],
-            "half_dim=4,training=False",
+            decoder_call.attrs["context_identity"],
+            "TinyLlama2ForCausalLM.layers.0",
         )
 
         values = {value.name: value for value in module.values}
         self.assertEqual(values["hidden_states"].value_kind, "formal")
         self.assertEqual(values["rms_norm_scale"].value_kind, "formal")
-        self.assertEqual(values["model_hidden"].value_kind, "formal")
-        self.assertEqual(values["model_norm_scale"].value_kind, "formal")
-        self.assertEqual(values["norm_call_result"].value_kind, "call_result")
+        self.assertEqual(values["model_token_ids"].value_kind, "formal")
+        self.assertEqual(
+            values["model_token_embedding_weight"].value_kind,
+            "formal",
+        )
+        self.assertEqual(
+            values["model_token_embedding"].value_kind,
+            "operator_result",
+        )
         self.assertEqual(values["ffn_hidden_states"].value_kind, "formal")
         self.assertEqual(values["ffn_gate_weight"].value_kind, "formal")
         self.assertEqual(values["ffn_up_weight"].value_kind, "formal")
         self.assertEqual(values["ffn_down_weight"].value_kind, "formal")
-        self.assertEqual(values["model_ffn_gate_weight"].value_kind, "formal")
-        self.assertEqual(values["model_ffn_up_weight"].value_kind, "formal")
-        self.assertEqual(values["model_ffn_down_weight"].value_kind, "formal")
-        self.assertEqual(values["ffn_call_result"].value_kind, "call_result")
         self.assertEqual(values["rotary_value"].value_kind, "formal")
         self.assertEqual(values["rotary_cos"].value_kind, "formal")
         self.assertEqual(values["rotary_sin"].value_kind, "formal")
-        self.assertEqual(values["model_rotary_value"].value_kind, "formal")
-        self.assertEqual(values["model_rotary_cos"].value_kind, "formal")
-        self.assertEqual(values["model_rotary_sin"].value_kind, "formal")
-        self.assertEqual(values["rotary_call_result"].value_kind,
+        self.assertEqual(values["attention_query_rope"].value_kind,
                          "call_result")
+        self.assertEqual(values["attention_key_rope"].value_kind, "call_result")
+        self.assertEqual(
+            values["decoder_ffn_norm_result"].value_kind,
+            "call_result",
+        )
+        self.assertEqual(values["decoder_ffn_output"].value_kind, "call_result")
+        self.assertEqual(
+            values["model_output_logits"].value_kind,
+            "operator_result",
+        )
 
         scale = values["rms_norm_scale"]
         self.assertEqual(scale.metadata["tensor_role"], "rms_norm_scale")
