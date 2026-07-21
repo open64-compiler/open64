@@ -32,6 +32,7 @@ for evidence in \
   "model_hidden" \
   "model_result" \
   "normalized_hidden" \
+  "U8LDA 0 <2,3,dsl_result_2>" \
   "Sclass: FORMAL" \
   "Sclass: FORMAL_REF" \
   "by_reference  read_only passed_not_saved" \
@@ -50,6 +51,22 @@ for evidence in \
     exit 1
   fi
 done
+
+callee_definition_line="$(grep -nF 'MSTID 0 <2,3,dsl_result_1>' "$trace" |
+  head -1 | cut -d: -f1)"
+callee_result_line="$(grep -nF 'MSTID 0 <2,2,normalized_result>' "$trace" |
+  head -1 | cut -d: -f1)"
+caller_definition_line="$(grep -nF 'MSTID 0 <2,3,dsl_result_2>' "$trace" |
+  head -1 | cut -d: -f1)"
+call_line="$(grep -nF 'VCALL 126 <1,50,TinyRMSNorm>' "$trace" |
+  head -1 | cut -d: -f1)"
+if [[ -z "$callee_definition_line" || -z "$callee_result_line" ||
+      -z "$caller_definition_line" || -z "$call_line" ||
+      "$callee_definition_line" -ge "$callee_result_line" ||
+      "$caller_definition_line" -ge "$call_line" ]]; then
+  echo "operator result materialization order changed in $trace" >&2
+  exit 1
+fi
 
 echo "multiple-PU mapped-image fixture passed"
 echo "review trace: $trace"

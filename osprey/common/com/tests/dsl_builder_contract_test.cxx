@@ -3498,6 +3498,7 @@ Check_Multiple_Program_Units(void)
     DSL_BUILDER_VALUE normalized;
     DSL_BUILDER_VALUE second_formal;
     DSL_BUILDER_VALUE second_result;
+    DSL_BUILDER_VALUE call_argument;
     DSL_BUILDER_VALUE call_result;
     DSL_BUILDER_CALL call;
     DSL_BUILDER_CALLSITE_INFO callsite;
@@ -3560,13 +3561,14 @@ Check_Multiple_Program_Units(void)
     first_st = DSL_Builder_Get_Value_Result_Symbol(first_formal);
     BOOL first_position = normalized != NULL &&
         DSL_Builder_Set_Value_Source_Position(normalized, &position);
-    BOOL first_append = normalized != NULL &&
-        DSL_Builder_Append_PU_Value(first_pu, normalized);
     BOOL first_return = normalized != NULL &&
         DSL_Builder_Return_PU_Values(first_pu, &normalized, 1);
+    BOOL first_reappend = normalized != NULL &&
+        DSL_Builder_Append_PU_Value(first_pu, normalized);
     if (first_pu == NULL || first_file == 0 || first_formal == NULL ||
         first_result == NULL || normalized == NULL || !first_position ||
-        !first_append || !first_return) {
+        !first_return || !first_reappend ||
+        DSL_Builder_Count_PU_Values(first_pu) != 1) {
         fprintf(stderr, "failed to construct first program unit\n");
         return 1;
     }
@@ -3582,6 +3584,14 @@ Check_Multiple_Program_Units(void)
     second_result = DSL_Builder_Declare_PU_Result
                         (second_pu, "model_result", 0, tensor_ty,
                          DSL_PU_RESULT_TENSOR, &position);
+    add_kids[0] = second_formal;
+    add_kids[1] = second_formal;
+    call_argument = DSL_Builder_Create_Operator
+                        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                         DSL_OPCODE_COMMON_ADD, 1),
+                         1, add_kids, 2, &add_attr, 1);
+    BOOL second_position = call_argument != NULL &&
+        DSL_Builder_Set_Value_Source_Position(call_argument, &position);
     memset(&callsite, 0, sizeof(callsite));
     callsite.canonical_class_name = "TinyRMSNorm";
     callsite.instance_path = "model.norm";
@@ -3590,13 +3600,14 @@ Check_Multiple_Program_Units(void)
     callsite.source_position = position;
     ++callsite.source_position.line;
     call = DSL_Builder_Create_PU_Call
-               (second_pu, first_pu, &second_formal, 1,
+               (second_pu, first_pu, &call_argument, 1,
                 call_result_names, 1, &callsite);
     memset(&observed_identity, 0, sizeof(observed_identity));
     memset(&observed_callsite, 0, sizeof(observed_callsite));
     second_st = DSL_Builder_Get_Value_Result_Symbol(second_formal);
     if (second_pu == NULL || second_pu == first_pu || second_file == 0 ||
         second_formal == NULL || second_result == NULL || call == NULL ||
+        call_argument == NULL || !second_position ||
         !DSL_Builder_Get_PU_Source_Identity(first_pu, &observed_identity) ||
         strcmp(observed_identity.canonical_definition_name,
                "TinyRMSNorm.forward") != 0 ||
@@ -3612,6 +3623,7 @@ Check_Multiple_Program_Units(void)
         observed_callsite.source_position.line != 74 ||
         !DSL_Builder_Get_PU_Call_Result(call, 0, &call_result) ||
         !DSL_Builder_Return_PU_Values(second_pu, &call_result, 1) ||
+        DSL_Builder_Count_PU_Values(second_pu) != 1 ||
         DSL_Builder_Append_PU_Value(second_pu, first_formal) ||
         PU_Info_next(first_pu) != second_pu ||
         PU_Info_maptab(first_pu) == PU_Info_maptab(second_pu)) {
@@ -3667,8 +3679,8 @@ Check_Multiple_Program_Units(void)
     verify.diagnostic = diagnostic;
     verify.diagnostic_capacity = sizeof(diagnostic);
     if (!DSL_Builder_Verify_Program(&verify) ||
-        verify.native_node_count != 1 ||
-        verify.result_symbol_count != 6 ||
+        verify.native_node_count != 2 ||
+        verify.result_symbol_count != 7 ||
         verify.error_count != 0 || diagnostic[0] != '\0') {
         fprintf(stderr, "multiple-PU verification failed: %s\n", diagnostic);
         return 1;
