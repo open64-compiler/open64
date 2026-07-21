@@ -811,17 +811,18 @@ must persist in binary WHIRL and appear in `ir_b2a -st -src`.
 | I2: Build reachable import resolver | torch2whirl | Discovery | complete | Reachable callable census maps imports to Python definition identity, class instance paths, call contexts, and class-state/formal evidence |
 | I3: Extend manifest and review evidence | torch2whirl | Discovery | complete | Manifest records imported spelling, defining module, importing module, source lines, alias facts, reachable instances, diagnostics, and class-state mapping |
 | I4: Extend `torch2whirl-filt` import explanations | torch2whirl | Discovery | complete | Filter output explains imported spelling, alias chains, defining/importing modules, re-export sources, and declaration kind |
-| I5: Decide whether durable IR import metadata is required | torch2whirl + main | Contract request | next | Either frontend-only manifest is sufficient, or a precise API request is sent to the main agent |
-| I6: Bind published native import metadata API | torch2whirl | Frontend binding | blocked on I5 if needed | Opaque `Open64_DSC_*`, `_whirl`, `WhirlBackend`, `WhirlBuilder`, and mock bindings consume a clean native commit |
-| I7: Certify import-aware artifacts | torch2whirl | Certification | pending | `.B`, `.T`, manifest, source evidence, negative tests, Docker lane, no-tab, diff, and isolation checks pass |
+| I5: Decide whether durable IR import metadata is required | torch2whirl + main | Contract request | complete | No native API request is justified for import spelling alone; frontend manifest/filter evidence is sufficient for current review |
+| I6: Bind published native import metadata API | torch2whirl | Frontend binding | not required | Reserved for a future clean native commit if durable import metadata is promoted into binary WHIRL |
+| I7: Certify import-aware frontend artifacts | torch2whirl | Certification | complete | Mock artifact manifest retains import evidence; Docker torch/native lanes pass without changing certified `.B`/`.T` semantics |
+| I8: Add imported tiny-Llama fixture | torch2whirl | Discovery | complete | `llama2_imported_model.py` exercises direct and transitive imported Llama class identity without perturbing `llama2_model.py` |
 
 Current decision:
 
 1. I1-I4 are implemented as frontend-only work.
 2. Do not request a native API merely to mirror Python import syntax.
-3. Request a native API only if the I2-I3 evidence shows that review,
-   certification, or
-   downstream IPA/inliner visibility needs import identity inside durable IR.
+3. No import-metadata native API is requested at this point.  Request one only
+   if review, certification, or downstream IPA/inliner visibility needs import
+   identity inside durable IR.
 4. Keep import identity separate from tensor type equality, DSL operator
    attributes, and lowering semantics unless common/com explicitly promotes a
    field into one of those contracts.
@@ -869,10 +870,13 @@ Protocol status:
 
 1. The current native APIs already cover PU identity, callsite identity,
    source files/lines, value metadata, and symbol metadata.
-2. Import support has completed the frontend discovery pass without main-agent
-   work.
-3. No durable import-metadata API request is justified yet; I5 is the next
-   review step after inspecting the new manifest/filter evidence.
+2. Import support has completed the frontend discovery and certification pass
+   for manifest, mock artifact, filter, and Docker regression evidence without
+   main-agent work.
+3. No durable import-metadata API request is justified yet.  The next
+   import-specific blocker would be a review requirement that imported
+   spelling, alias chains, or transitive declaration identity appear after
+   binary `.B` reopen in `ir_b2a -st -src`.
 4. The already known non-import native gap remains operator-result
    materialization for inter-PU call actuals and top-level operator-result
    returns.  Keep that as a separate API request from import identity.

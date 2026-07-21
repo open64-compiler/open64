@@ -18,6 +18,7 @@ if TORCH_AVAILABLE:
     from models.llama2_model import create_tiny_llama2
     from models.llama2_model import open64_sample_inputs
     from models.llama2_model import sample_input_ids
+    from models.llama2_imported_model import create_tiny_imported_llama2
 
     from open64_dsc.cli import _sample_input_from_spec
     from open64_dsc.export import export_to_whirl, save_as_whirl
@@ -284,6 +285,111 @@ class TinyLlama2WhirlExportOptionalTest(unittest.TestCase):
             self.assertIn("operator.0=transformer.token_embedding", artifact)
             self.assertIn("tensor_payload.0=llama2.safetensors", artifact)
             self.assertTrue((Path(temp_dir) / "llama2.safetensors").is_file())
+
+    def test_imported_llama_fixture_records_reachable_imports(self) -> None:
+        config = TinyLlama2Config()
+        model = create_tiny_imported_llama2(config)
+        module = export_to_whirl(
+            model,
+            [sample_input_ids(config)],
+            WhirlExportOptions(backend="mock", model_name="llama2_imported"),
+        )
+
+        imported = {
+            record.canonical_name: record
+            for record in module.python_imports
+        }
+        self.assertIn(
+            "models.llama2_model.TinyRMSNorm.forward",
+            imported,
+        )
+        self.assertIn(
+            "models.llama2_model.TinyLlama2DecoderLayer.forward",
+            imported,
+        )
+        self.assertEqual(
+            imported[
+                "models.llama2_model.TinyRMSNorm.forward"
+            ].importing_module,
+            "models.llama2_imported_model",
+        )
+
+        reachable = {
+            record.canonical_name: record
+            for record in module.python_reachable_imports
+        }
+        self.assertEqual(module.python_import_diagnostics, ())
+        self.assertTrue({
+            "models.llama2_model.TinyLlama2Attention.forward",
+            "models.llama2_model.TinyLlama2DecoderLayer.forward",
+            "models.llama2_model.TinyLlama2FeedForward.forward",
+            "models.llama2_model.TinyRMSNorm.forward",
+            "models.llama2_model.TinyRotaryEmbedding.forward",
+        }.issubset(reachable))
+        self.assertEqual(
+            reachable[
+                "models.llama2_model.TinyRMSNorm.forward"
+            ].instance_paths,
+            (
+                "layers.0.attention_norm",
+                "layers.0.ffn_norm",
+                "layers.1.attention_norm",
+                "layers.1.ffn_norm",
+                "norm",
+            ),
+        )
+        self.assertEqual(
+            reachable[
+                "models.llama2_model.TinyLlama2DecoderLayer.forward"
+            ].instance_paths,
+            ("layers.0", "layers.1"),
+        )
+        self.assertEqual(
+            reachable[
+                "models.llama2_model.TinyLlama2Attention.forward"
+            ].declaration_kind,
+            "transitive_reachable_class",
+        )
+        self.assertEqual(
+            reachable[
+                "models.llama2_model.TinyRMSNorm.forward"
+            ].state_to_formal_mapping["self.weight"],
+            "layers.0.attention_norm.weight",
+        )
+
+    def test_imported_llama_mock_artifact_retains_import_evidence(self) -> None:
+        config = TinyLlama2Config()
+        model = create_tiny_imported_llama2(config)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "llama2_imported.B"
+            module = export_to_whirl(
+                model,
+                [sample_input_ids(config)],
+                WhirlExportOptions(
+                    backend="mock",
+                    model_name="llama2_imported",
+                    external_data_file="llama2_imported.safetensors",
+                ),
+            )
+            save_as_whirl(module, str(output_path))
+
+            artifact = output_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "models.llama2_model.TinyLlama2DecoderLayer",
+                artifact,
+            )
+            self.assertIn(
+                "models.llama2_model.TinyLlama2DecoderLayer.forward",
+                artifact,
+            )
+            self.assertIn(
+                "models.llama2_model.TinyRMSNorm.forward",
+                artifact,
+            )
+            self.assertIn(
+                "models.llama2_model.TinyLlama2Attention.forward",
+                artifact,
+            )
 
     def test_multiple_pu_export_keeps_class_call_boundary(self) -> None:
         config = TinyLlama2Config()

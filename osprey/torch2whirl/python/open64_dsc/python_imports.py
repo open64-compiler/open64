@@ -185,6 +185,41 @@ def _module_source(module: ModuleType) -> Tuple[str, Optional[ast.Module]]:
         return source_file, None
 
 
+def _same_source_tree(source_file: str, imported_file: str) -> bool:
+    if not source_file or not imported_file:
+        return False
+    source_dir = os.path.dirname(os.path.realpath(source_file))
+    imported_file = os.path.realpath(imported_file)
+    if os.path.dirname(imported_file) == source_dir:
+        return True
+    try:
+        return os.path.commonpath((source_dir, imported_file)) == source_dir
+    except ValueError:
+        return False
+
+
+def _reviewable_imported_module(
+    facts: _ImportFacts,
+    imported_module: ModuleType,
+) -> bool:
+    try:
+        imported_file = inspect.getsourcefile(imported_module) or ""
+    except (OSError, TypeError):
+        imported_file = ""
+    return _same_source_tree(facts.source_file, imported_file)
+
+
+def _reviewable_imported_callable(
+    facts: _ImportFacts,
+    imported: object,
+) -> bool:
+    try:
+        imported_file = inspect.getsourcefile(imported) or ""
+    except (OSError, TypeError):
+        imported_file = ""
+    return _same_source_tree(facts.source_file, imported_file)
+
+
 def _name_root(node: ast.AST) -> str:
     current = node
     while isinstance(current, ast.Attribute):
@@ -231,7 +266,6 @@ def _collect_import_facts(module: ModuleType) -> _ImportFacts:
         )
         return facts
 
-    seen_import_names: Dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -239,15 +273,6 @@ def _collect_import_facts(module: ModuleType) -> _ImportFacts:
                 facts.imported_spelling[local_name] = alias.name
                 facts.module_imports[local_name] = alias.name
                 facts.declaration_kinds[local_name] = "module_import"
-                prior = seen_import_names.setdefault(local_name, alias.name)
-                if prior != alias.name:
-                    _record_diagnostic(
-                        facts,
-                        "import_name_conflict",
-                        "one local name is bound by multiple imports",
-                        local_name,
-                        node.lineno,
-                    )
         elif isinstance(node, ast.ImportFrom):
             module_name = node.module or ""
             for alias in node.names:
@@ -264,15 +289,6 @@ def _collect_import_facts(module: ModuleType) -> _ImportFacts:
                 spelling = f"{module_name}.{alias.name}"
                 facts.imported_spelling[local_name] = spelling
                 facts.declaration_kinds[local_name] = "direct_import"
-                prior = seen_import_names.setdefault(local_name, spelling)
-                if prior != spelling:
-                    _record_diagnostic(
-                        facts,
-                        "import_name_conflict",
-                        "one local name is bound by multiple imports",
-                        local_name,
-                        node.lineno,
-                    )
         elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             targets: Sequence[ast.AST]
             value: Optional[ast.AST]
@@ -455,10 +471,15 @@ def collect_python_import_census(
         )
         candidates: Sequence[Tuple[str, object, str]] = ()
         if isinstance(imported, ModuleType):
-            if import_name not in facts.module_imports:
+            if (
+                import_name not in facts.module_imports or
+                not _reviewable_imported_module(facts, imported)
+            ):
                 continue
             candidates = _module_candidates(import_name, imported)
         elif is_external_callable:
+            if not _reviewable_imported_callable(facts, imported):
+                continue
             candidates = _callable_candidates(import_name, imported)
 
         if (
@@ -595,12 +616,27 @@ def resolve_reachable_imported_callables(
         callable_name = f"{canonical_class_name}.forward"
         imported_record = callables_by_name.get(callable_name)
         definition = definitions_by_name.get(canonical_class_name)
-        if imported_record is None or definition is None:
+        if definition is None:
             continue
-        imported_spelling = (
-            imported_record.import_names[0]
-            if imported_record.import_names else callable_name
-        )
+        if imported_record is not None:
+            imported_spelling = (
+                imported_record.import_names[0]
+                if imported_record.import_names else callable_name
+            )
+            defining_module = imported_record.module_name
+            definition_file = imported_record.source_file
+            definition_line = imported_record.source_line
+            declaration_kind = imported_record.declaration_kind
+        else:
+            imported_spelling = callable_name
+            suffix = f".{definition.class_name}"
+            if canonical_class_name.endswith(suffix):
+                defining_module = canonical_class_name[:-len(suffix)]
+            else:
+                defining_module = canonical_class_name.rsplit(".", 1)[0]
+            definition_file = definition.source_file
+            definition_line = definition.source_line
+            declaration_kind = "transitive_reachable_class"
         instance_paths = tuple(instance.instance_path for instance in instances)
         context_identities = tuple(
             entry_class_name if path == "<model>" else f"{entry_class_name}.{path}"
@@ -611,13 +647,13 @@ def resolve_reachable_imported_callables(
             PythonReachableImport(
                 canonical_name=callable_name,
                 imported_spelling=imported_spelling,
-                defining_module=imported_record.module_name,
+                defining_module=defining_module,
                 importing_module=importing_module_name,
                 instance_paths=instance_paths,
                 context_identities=context_identities,
-                definition_file=imported_record.source_file,
-                definition_line=imported_record.source_line,
-                declaration_kind=imported_record.declaration_kind,
+                definition_file=definition_file,
+                definition_line=definition_line,
+                declaration_kind=declaration_kind,
                 class_state_members=_state_members(primary_instance),
                 state_to_formal_mapping=_state_to_formal_mapping(
                     primary_instance
