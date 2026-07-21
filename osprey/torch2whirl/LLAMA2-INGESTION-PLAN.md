@@ -981,13 +981,16 @@ Expand from the current certified `TinyRMSNorm` boundary in this order.
    - Formals include activation, projection weights, rotary cosine table, and
      rotary sine table.
    - Result slot: attention output activation.
-   - Current native call interfaces reject passing caller-local operator
-     results as inter-PU actuals.  Therefore the attention PU emits
-     `transformer.rotary_embedding.v1` directly for query/key RoPE while the
-     separate `TinyRotaryEmbedding` PU remains certified by its own call edge.
-     The remaining infrastructure request is an opaque API or native support
-     for materializing operator results as call actuals before enabling nested
-     Attention-to-Rotary calls.
+   - After PR #87, the Attention PU uses real inter-PU calls to
+     `TinyRotaryEmbedding` for both query and key RoPE.  The two callsites
+     share the same Python definition and instance path while preserving
+     distinct context identities:
+     `TinyLlama2ForCausalLM.layers.0.attention.rotary.query` and
+     `TinyLlama2ForCausalLM.layers.0.attention.rotary.key`.
+   - Boundary-producing q/k transpose results are typed with the same
+     representation contract as the rotary-value formal so native call
+     materialization can pass them by reference without Python inspecting WN
+     or ST layout.
    - No grouped-query, paged-cache, decode-cache, or dynamic-shape behavior
      enters the prefill boundary.
 
@@ -1001,36 +1004,36 @@ Expand from the current certified `TinyRMSNorm` boundary in this order.
    - Result slot: layer output activation.
    - Top-level call contexts distinguish `layers.0` and `layers.1` while
      sharing the same Python class definition identity.
-   - The DecoderLayer PU uses real call edges for the pre-attention RMSNorm
-     and Attention child boundary.  The post-residual FFN norm and
-     feed-forward sequence remain inline because the native call API currently
-     rejects passing the residual operator result as an inter-PU actual.
-     Enabling the nested post-residual RMSNorm and FeedForward call edges
-     requires the same operator-result materialization/call-actual support
-     noted for Attention-to-Rotary.
+   - After PR #87, the DecoderLayer PU uses real call edges for all reviewed
+     child callable boundaries: pre-attention RMSNorm, Attention,
+     post-residual FFN RMSNorm, and FeedForward.  The post-residual activation
+     is materialized by the native builder before being passed to
+     `TinyRMSNorm`, and the resulting value is passed to
+     `TinyLlama2FeedForward`.
 
 6. `TinyLlama2ForCausalLM`
-   - Status: complete for the current native call/result capability envelope.
+   - Status: complete for the PR #87 native call/result capability envelope.
    - The top-level PU emits ordered decoder-layer calls for `layers.0` and
      `layers.1`, a final RMSNorm call, output projection evidence, and an
      output-logits marker.
    - Child calls receive caller-owned formals or call results and return
      caller-owned results.
-   - The native return path currently rejects returning the top-level
-     output-logits/operator result directly, so the certified artifact returns
-     the final RMSNorm call result while retaining output projection and
-     `common.output_logits.v3` as reviewable trace evidence.  A future native
-     API update should allow returning logits-producing operator results from
-     the top-level PU.
-   - The token-embedding expression is not connected to the decoder call in
-     this certified multiple-PU artifact because the first decoder call cannot
-     yet accept the token-embedding operator result as an actual.  The
-     remaining top-level completion work is to use the same operator-result
-     call-actual support to connect token embedding into the first decoder
-     layer and return the final logits result.
-   - Final evidence includes all six real PUs, reviewed call edges that are
-     legal under the current native API, source/class/instance metadata, and
-     no placeholder operator bodies.
+   - The top-level PU now emits `transformer.token_embedding.v1`, passes that
+     operator result into the first decoder-layer call, emits final RMSNorm,
+     output projection, `common.output_logits.v3`, and returns the logits
+     operator result through the declared PU result slot.
+   - Final focused evidence includes all six real PUs, nine reviewed call
+     sites, source/class/instance metadata, caller-owned call results,
+     read-only/out `PARM` flags, retained high-level call comments, token
+     embedding, output logits, and no placeholder operator bodies.
+   - Focused retained artifacts:
+     `/Users/shinmingliu/.codex/worktrees/a2fe/open64/artifacts/torch2whirl/llama2-multi-pu/llama2_multi_pu.B`
+     and
+     `/Users/shinmingliu/.codex/worktrees/a2fe/open64/artifacts/torch2whirl/llama2-multi-pu/llama2_multi_pu.T`.
+   - Aggregate Docker status: the focused Llama multiple-PU native lane passes,
+     but the full `run_torch_docker_test.sh` lane is currently blocked before
+     Llama by a ResNet/common-com gatekeeper regression after PR #87:
+     `result symbol <...> has multiple native definitions`.
 
 ### Frontend Optimization Classification
 
@@ -1072,9 +1075,9 @@ Current candidates recorded by importable traits:
 Every trait is marked `classification_only` on the Python side and
 `native_vho_dsl` as the optimization owner.  Torch2whirl must not lower these
 patterns, introduce runtime calls, or bypass native WHIRL gatekeeper/VHO
-ownership.  The remaining native API requests for operator-result call actuals
-and top-level operator-result returns still gate complete cross-PU optimization
-visibility in the artifact.
+ownership.  PR #87 removes the previous operator-result call-actual and
+top-level operator-result return blocker for the focused Llama multiple-PU
+prefill artifact.
 
 ### Per-Step Validation Checklist
 

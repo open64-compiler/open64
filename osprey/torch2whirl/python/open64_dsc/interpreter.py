@@ -28,7 +28,7 @@ from .builder import (
     load_builder,
 )
 from .mapping import cnn, common, transformer
-from .mapping.contract import operator_arity
+from .mapping.contract import operator_arity, operator_version
 from .module import (
     WhirlModule,
     WhirlOperatorRecord,
@@ -364,7 +364,7 @@ class WhirlExportInterpreter:
                 "dtype": "float32",
                 "rank": 3,
                 "logical_shape": hidden_shape,
-                "layout": "BSC",
+                "layout": "VC",
                 "lineage": "python.multi_pu.hidden",
             },
         )
@@ -390,7 +390,7 @@ class WhirlExportInterpreter:
                 "dtype": "float32",
                 "rank": 3,
                 "logical_shape": intermediate_shape,
-                "layout": "BSC",
+                "layout": "VC",
                 "lineage": "python.multi_pu.feed_forward.intermediate",
             },
         )
@@ -429,7 +429,7 @@ class WhirlExportInterpreter:
                 "dtype": "float32",
                 "rank": 4,
                 "logical_shape": rotary_shape,
-                "layout": "BHSD",
+                "layout": "VC",
                 "lineage": "python.multi_pu.rotary.value",
             },
         )
@@ -559,10 +559,13 @@ class WhirlExportInterpreter:
             file_id=rms_file,
             line=rms_line + 1,
         )
-        normalized = self.builder().transformer_rms_norm(
-            hidden,
-            scale,
+        normalized = self.builder().operator(
+            transformer.RMS_NORM,
+            1,
+            [hidden, scale],
             self._rms_norm_attrs(rms_module),
+            result_name="normalized_result",
+            result_type=tensor_type,
         )
         normalized_metadata = self._multi_pu_value_metadata(
             rms_identity,
@@ -718,10 +721,13 @@ class WhirlExportInterpreter:
             ffn_line + 1,
         )
         self.builder().append_program_unit_value(ffn_pu, ffn_swiglu)
-        ffn_down = self.builder().common_linear_v3(
-            ffn_swiglu,
-            ffn_down_weight,
+        ffn_down = self.builder().operator(
+            common.LINEAR,
+            3,
+            [ffn_swiglu, ffn_down_weight],
             self._linear_attrs(),
+            result_name="ffn_down_projection",
+            result_type=tensor_type,
         )
         self.builder().attach_value_metadata(
             ffn_down,
@@ -802,11 +808,13 @@ class WhirlExportInterpreter:
             file_id=rotary_file,
             line=rotary_line + 1,
         )
-        rotated_value = self.builder().transformer_rotary_embedding(
-            rotary_value,
-            rotary_cos,
-            rotary_sin,
+        rotated_value = self.builder().operator(
+            transformer.ROTARY_EMBEDDING,
+            1,
+            [rotary_value, rotary_cos, rotary_sin],
             self._rotary_attrs(),
+            result_name="rotated_value",
+            result_type=rotary_type,
         )
         self.builder().attach_value_metadata(
             rotated_value,
@@ -1038,9 +1046,13 @@ class WhirlExportInterpreter:
         )
         self.builder().append_program_unit_value(attention_pu,
                                                 attention_q_reshape)
-        attention_q_bhsd = self.builder().common_transpose(
-            attention_q_reshape,
-            (0, 2, 1, 3),
+        attention_q_bhsd = self.builder().operator(
+            common.TRANSPOSE,
+            1,
+            [attention_q_reshape],
+            {"attr.permutation": "0,2,1,3"},
+            result_name="attention_q_bhsd",
+            result_type=rotary_type,
         )
         self.builder().attach_value_metadata(
             attention_q_bhsd,
@@ -1068,9 +1080,13 @@ class WhirlExportInterpreter:
         )
         self.builder().append_program_unit_value(attention_pu,
                                                 attention_k_reshape)
-        attention_k_bhsd = self.builder().common_transpose(
-            attention_k_reshape,
-            (0, 2, 1, 3),
+        attention_k_bhsd = self.builder().operator(
+            common.TRANSPOSE,
+            1,
+            [attention_k_reshape],
+            {"attr.permutation": "0,2,1,3"},
+            result_name="attention_k_bhsd",
+            result_type=rotary_type,
         )
         self.builder().attach_value_metadata(
             attention_k_bhsd,
@@ -1114,40 +1130,76 @@ class WhirlExportInterpreter:
         self.builder().append_program_unit_value(attention_pu,
                                                 attention_v_bhsd)
 
-        attention_query_rope = self.builder().transformer_rotary_embedding(
-            attention_q_bhsd,
-            attention_rotary_cos,
-            attention_rotary_sin,
-            self._rotary_attrs(),
+        attention_query_rope_call = self.builder().create_pu_call(
+            attention_pu,
+            rotary_pu,
+            [
+                attention_q_bhsd,
+                attention_rotary_cos,
+                attention_rotary_sin,
+            ],
+            ["attention_query_rope"],
+            rotary_definition.canonical_name,
+            rotary_instance,
+            f"{attention_context}.rotary.query",
+            0,
+            attention_file,
+            attention_line + 1,
+        )
+        attention_query_rope = self.builder().get_pu_call_result(
+            attention_query_rope_call,
+            0,
+            rotary_type,
         )
         self.builder().attach_value_metadata(
             attention_query_rope,
             self._multi_pu_operator_metadata(
-                attention_identity,
+                rotary_identity,
                 "attention_query_rope",
-                "llama2:transformer.rotary_embedding",
-                "attention_query_rope",
+                "call_result",
+                "",
             ),
         )
-        self.builder().append_program_unit_value(attention_pu,
-                                                attention_query_rope)
-        attention_key_rope = self.builder().transformer_rotary_embedding(
-            attention_k_bhsd,
-            attention_rotary_cos,
-            attention_rotary_sin,
-            self._rotary_attrs(),
+        self.builder().set_value_source_position(
+            attention_query_rope,
+            attention_file,
+            attention_line + 1,
+        )
+        attention_key_rope_call = self.builder().create_pu_call(
+            attention_pu,
+            rotary_pu,
+            [
+                attention_k_bhsd,
+                attention_rotary_cos,
+                attention_rotary_sin,
+            ],
+            ["attention_key_rope"],
+            rotary_definition.canonical_name,
+            rotary_instance,
+            f"{attention_context}.rotary.key",
+            1,
+            attention_file,
+            attention_line + 1,
+        )
+        attention_key_rope = self.builder().get_pu_call_result(
+            attention_key_rope_call,
+            0,
+            rotary_type,
         )
         self.builder().attach_value_metadata(
             attention_key_rope,
             self._multi_pu_operator_metadata(
-                attention_identity,
+                rotary_identity,
                 "attention_key_rope",
-                "llama2:transformer.rotary_embedding",
-                "attention_key_rope",
+                "call_result",
+                "",
             ),
         )
-        self.builder().append_program_unit_value(attention_pu,
-                                                attention_key_rope)
+        self.builder().set_value_source_position(
+            attention_key_rope,
+            attention_file,
+            attention_line + 1,
+        )
 
         attention_context_value = self.builder().transformer_attention(
             attention_query_rope,
@@ -1181,9 +1233,15 @@ class WhirlExportInterpreter:
         )
         self.builder().append_program_unit_value(attention_pu,
                                                 attention_context_bshd)
-        attention_context_hidden = self.builder().common_reshape(
-            attention_context_bshd,
-            (1, sequence_length, 32),
+        attention_context_hidden = self.builder().operator(
+            common.RESHAPE,
+            1,
+            [attention_context_bshd],
+            {
+                "attr.target_shape": f"1,{sequence_length},32",
+            },
+            result_name="attention_context_hidden",
+            result_type=tensor_type,
         )
         self.builder().attach_value_metadata(
             attention_context_hidden,
@@ -1196,10 +1254,13 @@ class WhirlExportInterpreter:
         )
         self.builder().append_program_unit_value(attention_pu,
                                                 attention_context_hidden)
-        attention_output = self.builder().common_linear_v3(
-            attention_context_hidden,
-            attention_wo,
+        attention_output = self.builder().operator(
+            common.LINEAR,
+            3,
+            [attention_context_hidden, attention_wo],
             self._linear_attrs(),
+            result_name="attention_output_projection",
+            result_type=tensor_type,
         )
         self.builder().attach_value_metadata(
             attention_output,
@@ -1512,9 +1573,17 @@ class WhirlExportInterpreter:
                 "",
             ),
         )
-        decoder_attention_residual = self.builder().common_residual_add(
-            decoder_input,
-            decoder_attention_output,
+        decoder_attention_residual = self.builder().operator(
+            common.RESIDUAL_ADD,
+            operator_version(common.RESIDUAL_ADD),
+            [decoder_input, decoder_attention_output],
+            {
+                "attr.broadcast_rule": "none",
+                "attr.shape_check": "exact",
+                "attr.residual_path": "true",
+            },
+            result_name="decoder_attention_residual",
+            result_type=tensor_type,
         )
         self.builder().attach_value_metadata(
             decoder_attention_residual,
@@ -1529,95 +1598,74 @@ class WhirlExportInterpreter:
             decoder_pu,
             decoder_attention_residual,
         )
-        decoder_ffn_norm_result = self.builder().transformer_rms_norm(
-            decoder_attention_residual,
-            decoder_ffn_norm_scale,
-            self._rms_norm_attrs(rms_module),
+        decoder_ffn_norm_call = self.builder().create_pu_call(
+            decoder_pu,
+            rms_pu,
+            [decoder_attention_residual, decoder_ffn_norm_scale],
+            ["decoder_ffn_norm_result"],
+            rms_definition.canonical_name,
+            "layers.0.ffn_norm",
+            f"{decoder_context}.ffn_norm",
+            2,
+            decoder_file,
+            decoder_line + 3,
+        )
+        decoder_ffn_norm_result = self.builder().get_pu_call_result(
+            decoder_ffn_norm_call,
+            0,
+            tensor_type,
         )
         self.builder().attach_value_metadata(
             decoder_ffn_norm_result,
-            self._multi_pu_operator_metadata(
-                decoder_identity,
+            self._multi_pu_value_metadata(
+                rms_identity,
                 "decoder_ffn_norm_result",
-                "llama2:transformer.rms_norm",
-                "ffn_norm",
+                "call_result",
+                "",
             ),
         )
-        self.builder().append_program_unit_value(
+        decoder_ffn_call = self.builder().create_pu_call(
             decoder_pu,
-            decoder_ffn_norm_result,
+            ffn_pu,
+            [
+                decoder_ffn_norm_result,
+                decoder_ffn_gate,
+                decoder_ffn_up,
+                decoder_ffn_down,
+            ],
+            ["decoder_ffn_output"],
+            ffn_definition.canonical_name,
+            "layers.0.feed_forward",
+            f"{decoder_context}.feed_forward",
+            3,
+            decoder_file,
+            decoder_line + 3,
         )
-        decoder_ffn_gate_projection = self.builder().common_linear_v3(
-            decoder_ffn_norm_result,
-            decoder_ffn_gate,
-            self._linear_attrs(),
-        )
-        self.builder().attach_value_metadata(
-            decoder_ffn_gate_projection,
-            self._multi_pu_operator_metadata(
-                decoder_identity,
-                "decoder_ffn_gate_projection",
-                "llama2:common.linear",
-                "ffn_gate_projection",
-            ),
-        )
-        self.builder().append_program_unit_value(
-            decoder_pu,
-            decoder_ffn_gate_projection,
-        )
-        decoder_ffn_up_projection = self.builder().common_linear_v3(
-            decoder_ffn_norm_result,
-            decoder_ffn_up,
-            self._linear_attrs(),
-        )
-        self.builder().attach_value_metadata(
-            decoder_ffn_up_projection,
-            self._multi_pu_operator_metadata(
-                decoder_identity,
-                "decoder_ffn_up_projection",
-                "llama2:common.linear",
-                "ffn_up_projection",
-            ),
-        )
-        self.builder().append_program_unit_value(
-            decoder_pu,
-            decoder_ffn_up_projection,
-        )
-        decoder_ffn_swiglu = self.builder().transformer_swiglu(
-            decoder_ffn_gate_projection,
-            decoder_ffn_up_projection,
-            {"attr.activation": "silu"},
-        )
-        self.builder().attach_value_metadata(
-            decoder_ffn_swiglu,
-            self._multi_pu_operator_metadata(
-                decoder_identity,
-                "decoder_ffn_swiglu",
-                "llama2:transformer.swiglu",
-                "ffn_swiglu",
-            ),
-        )
-        self.builder().append_program_unit_value(decoder_pu,
-                                                decoder_ffn_swiglu)
-        decoder_ffn_output = self.builder().common_linear_v3(
-            decoder_ffn_swiglu,
-            decoder_ffn_down,
-            self._linear_attrs(),
+        decoder_ffn_output = self.builder().get_pu_call_result(
+            decoder_ffn_call,
+            0,
+            tensor_type,
         )
         self.builder().attach_value_metadata(
             decoder_ffn_output,
-            self._multi_pu_operator_metadata(
-                decoder_identity,
+            self._multi_pu_value_metadata(
+                ffn_identity,
                 "decoder_ffn_output",
-                "llama2:common.linear",
-                "ffn_output",
+                "call_result",
+                "",
             ),
         )
-        self.builder().append_program_unit_value(decoder_pu,
-                                                decoder_ffn_output)
-        decoder_output = self.builder().common_residual_add(
-            decoder_attention_residual,
-            decoder_ffn_output,
+        decoder_output = self.builder().operator(
+            common.RESIDUAL_ADD,
+            operator_version(common.RESIDUAL_ADD),
+            [decoder_attention_residual, decoder_ffn_output],
+            {
+                "attr.broadcast_rule": "none",
+                "attr.shape_check": "exact",
+                "attr.residual_path": "true",
+            },
+            result_name="decoder_output",
+            result_type=tensor_type,
         )
         self.builder().attach_value_metadata(
             decoder_output,
@@ -1643,148 +1691,6 @@ class WhirlExportInterpreter:
             entry_definition.source_file,
         )
         entry_line = entry_definition.source_line
-        model_hidden = self.builder().declare_pu_formal(
-            entry_pu,
-            "model_hidden",
-            0,
-            tensor_type,
-            entry_file,
-            entry_line,
-        )
-        self.builder().attach_value_metadata(
-            model_hidden,
-            self._multi_pu_value_metadata(
-                rms_identity,
-                "model_hidden",
-                "call_actual",
-                "",
-            ),
-        )
-        model_norm_scale = self.builder().declare_pu_formal(
-            entry_pu,
-            "model_norm_scale",
-            1,
-            scale_type,
-            entry_file,
-            entry_line,
-        )
-        model_scale_metadata = self._multi_pu_value_metadata(
-            rms_identity,
-            "model_norm_scale",
-            "rms_norm_scale",
-            "weight",
-        )
-        self.builder().attach_value_metadata(
-            model_norm_scale,
-            model_scale_metadata,
-        )
-        model_ffn_gate_weight = self.builder().declare_pu_formal(
-            entry_pu,
-            "model_ffn_gate_weight",
-            2,
-            ffn_up_weight_type,
-            entry_file,
-            entry_line,
-        )
-        model_ffn_gate_metadata = self._multi_pu_value_metadata(
-            ffn_identity,
-            "model_ffn_gate_weight",
-            "ffn_gate_weight",
-            "gate_proj.weight",
-        )
-        self.builder().attach_value_metadata(
-            model_ffn_gate_weight,
-            model_ffn_gate_metadata,
-        )
-        model_ffn_up_weight = self.builder().declare_pu_formal(
-            entry_pu,
-            "model_ffn_up_weight",
-            3,
-            ffn_up_weight_type,
-            entry_file,
-            entry_line,
-        )
-        model_ffn_up_metadata = self._multi_pu_value_metadata(
-            ffn_identity,
-            "model_ffn_up_weight",
-            "ffn_up_weight",
-            "up_proj.weight",
-        )
-        self.builder().attach_value_metadata(
-            model_ffn_up_weight,
-            model_ffn_up_metadata,
-        )
-        model_ffn_down_weight = self.builder().declare_pu_formal(
-            entry_pu,
-            "model_ffn_down_weight",
-            4,
-            ffn_down_weight_type,
-            entry_file,
-            entry_line,
-        )
-        model_ffn_down_metadata = self._multi_pu_value_metadata(
-            ffn_identity,
-            "model_ffn_down_weight",
-            "ffn_down_weight",
-            "down_proj.weight",
-        )
-        self.builder().attach_value_metadata(
-            model_ffn_down_weight,
-            model_ffn_down_metadata,
-        )
-        model_rotary_value = self.builder().declare_pu_formal(
-            entry_pu,
-            "model_rotary_value",
-            5,
-            rotary_type,
-            entry_file,
-            entry_line,
-        )
-        self.builder().attach_value_metadata(
-            model_rotary_value,
-            self._multi_pu_value_metadata(
-                rotary_identity,
-                "model_rotary_value",
-                "call_actual",
-                "",
-            ),
-        )
-        model_rotary_cos = self.builder().declare_pu_formal(
-            entry_pu,
-            "model_rotary_cos",
-            6,
-            rotary_table_type,
-            entry_file,
-            entry_line,
-        )
-        model_rotary_cos_metadata = self._multi_pu_buffer_metadata(
-            rotary_identity,
-            "model_rotary_cos",
-            "rotary_cos",
-            "cos",
-        )
-        self.builder().attach_value_metadata(
-            model_rotary_cos,
-            model_rotary_cos_metadata,
-        )
-        model_rotary_sin = self.builder().declare_pu_formal(
-            entry_pu,
-            "model_rotary_sin",
-            7,
-            rotary_table_type,
-            entry_file,
-            entry_line,
-        )
-        model_rotary_sin_metadata = self._multi_pu_buffer_metadata(
-            rotary_identity,
-            "model_rotary_sin",
-            "rotary_sin",
-            "sin",
-        )
-        self.builder().attach_value_metadata(
-            model_rotary_sin,
-            model_rotary_sin_metadata,
-        )
         def entry_formal(
             name: str,
             ordinal: int,
@@ -1828,7 +1734,7 @@ class WhirlExportInterpreter:
 
         model_token_ids = entry_formal(
             "model_token_ids",
-            8,
+            0,
             token_ids_type,
             entry_identity,
             "model_token_ids",
@@ -1836,7 +1742,7 @@ class WhirlExportInterpreter:
         )
         model_token_embedding_weight = entry_formal(
             "model_token_embedding_weight",
-            9,
+            1,
             token_weight_type,
             entry_identity,
             "model_token_embedding_weight",
@@ -1846,7 +1752,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_attention_norm_scale = entry_formal(
             "model_layer0_attention_norm_scale",
-            10,
+            2,
             scale_type,
             rms_identity,
             "model_layer0_attention_norm_scale",
@@ -1856,7 +1762,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_wq = entry_formal(
             "model_layer0_wq_weight",
-            11,
+            3,
             hidden_weight_type,
             attention_identity,
             "model_layer0_wq_weight",
@@ -1866,7 +1772,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_wk = entry_formal(
             "model_layer0_wk_weight",
-            12,
+            4,
             hidden_weight_type,
             attention_identity,
             "model_layer0_wk_weight",
@@ -1876,7 +1782,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_wv = entry_formal(
             "model_layer0_wv_weight",
-            13,
+            5,
             hidden_weight_type,
             attention_identity,
             "model_layer0_wv_weight",
@@ -1886,7 +1792,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_wo = entry_formal(
             "model_layer0_wo_weight",
-            14,
+            6,
             hidden_weight_type,
             attention_identity,
             "model_layer0_wo_weight",
@@ -1896,7 +1802,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_rotary_cos = entry_formal(
             "model_layer0_rotary_cos",
-            15,
+            7,
             rotary_table_type,
             rotary_identity,
             "model_layer0_rotary_cos",
@@ -1906,7 +1812,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_rotary_sin = entry_formal(
             "model_layer0_rotary_sin",
-            16,
+            8,
             rotary_table_type,
             rotary_identity,
             "model_layer0_rotary_sin",
@@ -1916,7 +1822,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_ffn_norm_scale = entry_formal(
             "model_layer0_ffn_norm_scale",
-            17,
+            9,
             scale_type,
             rms_identity,
             "model_layer0_ffn_norm_scale",
@@ -1926,7 +1832,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_ffn_gate = entry_formal(
             "model_layer0_ffn_gate_weight",
-            18,
+            10,
             ffn_up_weight_type,
             ffn_identity,
             "model_layer0_ffn_gate_weight",
@@ -1936,7 +1842,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_ffn_up = entry_formal(
             "model_layer0_ffn_up_weight",
-            19,
+            11,
             ffn_up_weight_type,
             ffn_identity,
             "model_layer0_ffn_up_weight",
@@ -1946,7 +1852,7 @@ class WhirlExportInterpreter:
         )
         model_layer0_ffn_down = entry_formal(
             "model_layer0_ffn_down_weight",
-            20,
+            12,
             ffn_down_weight_type,
             ffn_identity,
             "model_layer0_ffn_down_weight",
@@ -1956,7 +1862,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_attention_norm_scale = entry_formal(
             "model_layer1_attention_norm_scale",
-            21,
+            13,
             scale_type,
             rms_identity,
             "model_layer1_attention_norm_scale",
@@ -1966,7 +1872,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_wq = entry_formal(
             "model_layer1_wq_weight",
-            22,
+            14,
             hidden_weight_type,
             attention_identity,
             "model_layer1_wq_weight",
@@ -1976,7 +1882,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_wk = entry_formal(
             "model_layer1_wk_weight",
-            23,
+            15,
             hidden_weight_type,
             attention_identity,
             "model_layer1_wk_weight",
@@ -1986,7 +1892,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_wv = entry_formal(
             "model_layer1_wv_weight",
-            24,
+            16,
             hidden_weight_type,
             attention_identity,
             "model_layer1_wv_weight",
@@ -1996,7 +1902,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_wo = entry_formal(
             "model_layer1_wo_weight",
-            25,
+            17,
             hidden_weight_type,
             attention_identity,
             "model_layer1_wo_weight",
@@ -2006,7 +1912,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_rotary_cos = entry_formal(
             "model_layer1_rotary_cos",
-            26,
+            18,
             rotary_table_type,
             rotary_identity,
             "model_layer1_rotary_cos",
@@ -2016,7 +1922,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_rotary_sin = entry_formal(
             "model_layer1_rotary_sin",
-            27,
+            19,
             rotary_table_type,
             rotary_identity,
             "model_layer1_rotary_sin",
@@ -2026,7 +1932,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_ffn_norm_scale = entry_formal(
             "model_layer1_ffn_norm_scale",
-            28,
+            20,
             scale_type,
             rms_identity,
             "model_layer1_ffn_norm_scale",
@@ -2036,7 +1942,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_ffn_gate = entry_formal(
             "model_layer1_ffn_gate_weight",
-            29,
+            21,
             ffn_up_weight_type,
             ffn_identity,
             "model_layer1_ffn_gate_weight",
@@ -2046,7 +1952,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_ffn_up = entry_formal(
             "model_layer1_ffn_up_weight",
-            30,
+            22,
             ffn_up_weight_type,
             ffn_identity,
             "model_layer1_ffn_up_weight",
@@ -2056,7 +1962,7 @@ class WhirlExportInterpreter:
         )
         model_layer1_ffn_down = entry_formal(
             "model_layer1_ffn_down_weight",
-            31,
+            23,
             ffn_down_weight_type,
             ffn_identity,
             "model_layer1_ffn_down_weight",
@@ -2066,7 +1972,7 @@ class WhirlExportInterpreter:
         )
         model_final_norm_scale = entry_formal(
             "model_final_norm_scale",
-            32,
+            24,
             scale_type,
             rms_identity,
             "model_final_norm_scale",
@@ -2076,7 +1982,7 @@ class WhirlExportInterpreter:
         )
         model_output_weight = entry_formal(
             "model_output_weight",
-            33,
+            25,
             output_weight_type,
             entry_identity,
             "model_output_weight",
@@ -2084,124 +1990,38 @@ class WhirlExportInterpreter:
             "output.weight",
             source_instance_path="<model>",
         )
-        self.builder().declare_pu_result(
-            entry_pu,
-            "model_result",
-            0,
-            tensor_type,
-            file_id=entry_file,
-            line=entry_line + 1,
-        )
-        call = self.builder().create_pu_call(
-            entry_pu,
-            rms_pu,
-            [model_hidden, model_norm_scale],
-            ["norm_call_result"],
-            rms_definition.canonical_name,
-            rms_instance,
-            rms_context,
-            0,
-            entry_file,
-            entry_line + 2,
-        )
-        call_result = self.builder().get_pu_call_result(call, 0, tensor_type)
-        call_result_metadata = self._multi_pu_value_metadata(
-            rms_identity,
-            "norm_call_result",
-            "call_result",
-            "",
-        )
-        call_result_metadata["result_source"] = "TinyRMSNorm.normalized_result"
-        self.builder().attach_value_metadata(call_result, call_result_metadata)
-        self.builder().set_value_source_position(
-            call_result,
-            entry_file,
-            entry_line + 2,
-        )
-        ffn_call = self.builder().create_pu_call(
-            entry_pu,
-            ffn_pu,
-            [
-                call_result,
-                model_ffn_gate_weight,
-                model_ffn_up_weight,
-                model_ffn_down_weight,
-            ],
-            ["ffn_call_result"],
-            ffn_definition.canonical_name,
-            ffn_instance,
-            ffn_context,
+        model_token_embedding = self.builder().operator(
+            transformer.TOKEN_EMBEDDING,
             1,
-            entry_file,
-            entry_line + 3,
-        )
-        ffn_call_result = self.builder().get_pu_call_result(
-            ffn_call,
-            0,
-            tensor_type,
-        )
-        ffn_call_result_metadata = self._multi_pu_value_metadata(
-            ffn_identity,
-            "ffn_call_result",
-            "call_result",
-            "",
-        )
-        ffn_call_result_metadata["result_source"] = (
-            "TinyLlama2FeedForward.ffn_output"
+            [model_token_ids, model_token_embedding_weight],
+            {
+                "attr.padding_idx": "none",
+                "attr.bounds_policy": "runtime_check",
+            },
+            result_name="model_token_embedding",
+            result_type=tensor_type,
         )
         self.builder().attach_value_metadata(
-            ffn_call_result,
-            ffn_call_result_metadata,
+            model_token_embedding,
+            self._multi_pu_operator_metadata(
+                entry_identity,
+                "model_token_embedding",
+                "llama2:transformer.token_embedding",
+                "token_embedding",
+            ),
         )
         self.builder().set_value_source_position(
-            ffn_call_result,
+            model_token_embedding,
             entry_file,
-            entry_line + 3,
+            entry_line + 1,
         )
-        rotary_call = self.builder().create_pu_call(
-            entry_pu,
-            rotary_pu,
-            [
-                model_rotary_value,
-                model_rotary_cos,
-                model_rotary_sin,
-            ],
-            ["rotary_call_result"],
-            rotary_definition.canonical_name,
-            rotary_instance,
-            rotary_context,
-            2,
-            entry_file,
-            entry_line + 4,
-        )
-        rotary_call_result = self.builder().get_pu_call_result(
-            rotary_call,
-            0,
-            rotary_type,
-        )
-        rotary_call_result_metadata = self._multi_pu_value_metadata(
-            rotary_identity,
-            "rotary_call_result",
-            "call_result",
-            "",
-        )
-        rotary_call_result_metadata["result_source"] = (
-            "TinyRotaryEmbedding.rotated_value"
-        )
-        self.builder().attach_value_metadata(
-            rotary_call_result,
-            rotary_call_result_metadata,
-        )
-        self.builder().set_value_source_position(
-            rotary_call_result,
-            entry_file,
-            entry_line + 4,
-        )
+        self.builder().append_program_unit_value(entry_pu,
+                                                model_token_embedding)
         layer0_call = self.builder().create_pu_call(
             entry_pu,
             decoder_pu,
             [
-                model_hidden,
+                model_token_embedding,
                 model_layer0_attention_norm_scale,
                 model_layer0_wq,
                 model_layer0_wk,
@@ -2218,7 +2038,7 @@ class WhirlExportInterpreter:
             decoder_definition.canonical_name,
             "layers.0",
             f"{entry_name}.layers.0",
-            3,
+            0,
             entry_file,
             entry_line + 2,
         )
@@ -2257,7 +2077,7 @@ class WhirlExportInterpreter:
             decoder_definition.canonical_name,
             "layers.1",
             f"{entry_name}.layers.1",
-            4,
+            1,
             entry_file,
             entry_line + 3,
         )
@@ -2283,7 +2103,7 @@ class WhirlExportInterpreter:
             rms_definition.canonical_name,
             "norm",
             f"{entry_name}.norm",
-            5,
+            2,
             entry_file,
             entry_line + 4,
         )
@@ -2340,7 +2160,15 @@ class WhirlExportInterpreter:
             entry_line + 5,
         )
         self.builder().append_program_unit_value(entry_pu, model_output_logits)
-        self.builder().return_pu_values(entry_pu, [model_final_norm_result])
+        self.builder().declare_pu_result(
+            entry_pu,
+            "model_result",
+            0,
+            self.builder().value_type(model_output_logits),
+            file_id=entry_file,
+            line=entry_line + 5,
+        )
+        self.builder().return_pu_values(entry_pu, [model_output_logits])
 
         model_module = inspect.getmodule(type(model))
         import_census = (
@@ -2403,7 +2231,7 @@ class WhirlExportInterpreter:
                         "dtype": "float32",
                         "rank": 3,
                         "logical_shape": hidden_shape,
-                        "layout": "BSC",
+                        "layout": "VC",
                         "lineage": "python.multi_pu.hidden",
                     },
                 ),
@@ -2422,6 +2250,34 @@ class WhirlExportInterpreter:
                     },
                 ),
                 WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_token_ids_type",
+                    handle=token_ids_type.value,
+                    dtype="int64",
+                    rank=2,
+                    logical_shape=f"[1,{sequence_length}]",
+                    descriptor={
+                        "dtype": "int64",
+                        "rank": 2,
+                        "logical_shape": f"[1,{sequence_length}]",
+                        "layout": "BS",
+                        "lineage": "python.multi_pu.input_tokens",
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_token_weight_type",
+                    handle=token_weight_type.value,
+                    dtype="float32",
+                    rank=2,
+                    logical_shape="[128,32]",
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 2,
+                        "logical_shape": "[128,32]",
+                        "layout": "VC",
+                        "lineage": "python.multi_pu.token_embedding.weight",
+                    },
+                ),
+                WhirlTensorTypeRecord(
                     name="llama2_multi_pu_intermediate_type",
                     handle=intermediate_type.value,
                     dtype="float32",
@@ -2431,7 +2287,7 @@ class WhirlExportInterpreter:
                         "dtype": "float32",
                         "rank": 3,
                         "logical_shape": intermediate_shape,
-                        "layout": "BSC",
+                        "layout": "VC",
                         "lineage": (
                             "python.multi_pu.feed_forward.intermediate"
                         ),
@@ -2479,7 +2335,7 @@ class WhirlExportInterpreter:
                         "dtype": "float32",
                         "rank": 4,
                         "logical_shape": rotary_shape,
-                        "layout": "BHSD",
+                        "layout": "VC",
                         "lineage": "python.multi_pu.rotary.value",
                     },
                 ),
@@ -2495,6 +2351,20 @@ class WhirlExportInterpreter:
                         "logical_shape": rotary_table_shape,
                         "layout": "BHSD",
                         "lineage": "python.multi_pu.rotary.table",
+                    },
+                ),
+                WhirlTensorTypeRecord(
+                    name="llama2_multi_pu_logits_type",
+                    handle=logits_type.value,
+                    dtype="float32",
+                    rank=3,
+                    logical_shape=logits_shape,
+                    descriptor={
+                        "dtype": "float32",
+                        "rank": 3,
+                        "logical_shape": logits_shape,
+                        "layout": "BSV",
+                        "lineage": "python.multi_pu.output.logits",
                     },
                 )
             ],
@@ -2519,30 +2389,28 @@ class WhirlExportInterpreter:
                     metadata=dict(scale_metadata),
                 ),
                 WhirlValueRecord(
-                    name="model_hidden",
-                    handle=model_hidden.value,
-                    type_name="llama2_multi_pu_hidden_type",
+                    name="model_token_ids",
+                    handle=model_token_ids.value,
+                    type_name="llama2_multi_pu_token_ids_type",
                     value_kind="formal",
                     metadata=self._multi_pu_value_metadata(
-                        rms_identity,
-                        "model_hidden",
-                        "call_actual",
+                        entry_identity,
+                        "model_token_ids",
+                        "input_tokens",
                         "",
                     ),
                 ),
                 WhirlValueRecord(
-                    name="model_norm_scale",
-                    handle=model_norm_scale.value,
-                    type_name="llama2_multi_pu_scale_type",
+                    name="model_token_embedding_weight",
+                    handle=model_token_embedding_weight.value,
+                    type_name="llama2_multi_pu_token_weight_type",
                     value_kind="formal",
-                    metadata=dict(model_scale_metadata),
-                ),
-                WhirlValueRecord(
-                    name="norm_call_result",
-                    handle=call_result.value,
-                    type_name="llama2_multi_pu_hidden_type",
-                    value_kind="call_result",
-                    metadata=dict(call_result_metadata),
+                    metadata=self._multi_pu_value_metadata(
+                        entry_identity,
+                        "model_token_embedding_weight",
+                        "token_embedding_weight",
+                        "token_embedding.weight",
+                    ),
                 ),
                 WhirlValueRecord(
                     name="ffn_hidden_states",
@@ -2578,34 +2446,6 @@ class WhirlExportInterpreter:
                     metadata=dict(ffn_down_metadata),
                 ),
                 WhirlValueRecord(
-                    name="model_ffn_gate_weight",
-                    handle=model_ffn_gate_weight.value,
-                    type_name="llama2_multi_pu_ffn_up_weight_type",
-                    value_kind="formal",
-                    metadata=dict(model_ffn_gate_metadata),
-                ),
-                WhirlValueRecord(
-                    name="model_ffn_up_weight",
-                    handle=model_ffn_up_weight.value,
-                    type_name="llama2_multi_pu_ffn_up_weight_type",
-                    value_kind="formal",
-                    metadata=dict(model_ffn_up_metadata),
-                ),
-                WhirlValueRecord(
-                    name="model_ffn_down_weight",
-                    handle=model_ffn_down_weight.value,
-                    type_name="llama2_multi_pu_ffn_down_weight_type",
-                    value_kind="formal",
-                    metadata=dict(model_ffn_down_metadata),
-                ),
-                WhirlValueRecord(
-                    name="ffn_call_result",
-                    handle=ffn_call_result.value,
-                    type_name="llama2_multi_pu_hidden_type",
-                    value_kind="call_result",
-                    metadata=dict(ffn_call_result_metadata),
-                ),
-                WhirlValueRecord(
                     name="rotary_value",
                     handle=rotary_value.value,
                     type_name="llama2_multi_pu_rotary_bhsd_type",
@@ -2632,86 +2472,237 @@ class WhirlExportInterpreter:
                     metadata=dict(rotary_sin_metadata),
                 ),
                 WhirlValueRecord(
-                    name="model_rotary_value",
-                    handle=model_rotary_value.value,
-                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    name="attention_input",
+                    handle=attention_input.value,
+                    type_name="llama2_multi_pu_hidden_type",
                     value_kind="formal",
                     metadata=self._multi_pu_value_metadata(
-                        rotary_identity,
-                        "model_rotary_value",
-                        "call_actual",
+                        attention_identity,
+                        "attention_input",
+                        "activation",
                         "",
                     ),
                 ),
                 WhirlValueRecord(
-                    name="model_rotary_cos",
-                    handle=model_rotary_cos.value,
-                    type_name="llama2_multi_pu_rotary_table_type",
-                    value_kind="formal",
-                    metadata=dict(model_rotary_cos_metadata),
+                    name="attention_q_bhsd",
+                    handle=attention_q_bhsd.value,
+                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    value_kind="operator_result",
+                    metadata=self._multi_pu_value_metadata(
+                        attention_identity,
+                        "attention_q_bhsd",
+                        "activation",
+                        "",
+                    ),
                 ),
                 WhirlValueRecord(
-                    name="model_rotary_sin",
-                    handle=model_rotary_sin.value,
+                    name="attention_rotary_cos",
+                    handle=attention_rotary_cos.value,
                     type_name="llama2_multi_pu_rotary_table_type",
                     value_kind="formal",
-                    metadata=dict(model_rotary_sin_metadata),
+                    metadata=dict(attention_rotary_cos_metadata),
                 ),
                 WhirlValueRecord(
-                    name="rotary_call_result",
-                    handle=rotary_call_result.value,
+                    name="attention_rotary_sin",
+                    handle=attention_rotary_sin.value,
+                    type_name="llama2_multi_pu_rotary_table_type",
+                    value_kind="formal",
+                    metadata=dict(attention_rotary_sin_metadata),
+                ),
+                WhirlValueRecord(
+                    name="attention_query_rope",
+                    handle=attention_query_rope.value,
                     type_name="llama2_multi_pu_rotary_bhsd_type",
                     value_kind="call_result",
-                    metadata=dict(rotary_call_result_metadata),
+                    metadata=self._multi_pu_value_metadata(
+                        rotary_identity,
+                        "attention_query_rope",
+                        "call_result",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="attention_key_rope",
+                    handle=attention_key_rope.value,
+                    type_name="llama2_multi_pu_rotary_bhsd_type",
+                    value_kind="call_result",
+                    metadata=self._multi_pu_value_metadata(
+                        rotary_identity,
+                        "attention_key_rope",
+                        "call_result",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="decoder_input",
+                    handle=decoder_input.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="formal",
+                    metadata=self._multi_pu_value_metadata(
+                        decoder_identity,
+                        "decoder_input",
+                        "activation",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="decoder_attention_norm_result",
+                    handle=decoder_attention_norm_result.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="call_result",
+                    metadata=self._multi_pu_value_metadata(
+                        rms_identity,
+                        "decoder_attention_norm_result",
+                        "call_result",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="decoder_attention_residual",
+                    handle=decoder_attention_residual.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="operator_result",
+                    metadata=self._multi_pu_value_metadata(
+                        decoder_identity,
+                        "decoder_attention_residual",
+                        "activation",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="decoder_ffn_norm_result",
+                    handle=decoder_ffn_norm_result.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="call_result",
+                    metadata=self._multi_pu_value_metadata(
+                        rms_identity,
+                        "decoder_ffn_norm_result",
+                        "call_result",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="decoder_ffn_gate_weight",
+                    handle=decoder_ffn_gate.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(decoder_ffn_gate_metadata),
+                ),
+                WhirlValueRecord(
+                    name="decoder_ffn_up_weight",
+                    handle=decoder_ffn_up.value,
+                    type_name="llama2_multi_pu_ffn_up_weight_type",
+                    value_kind="formal",
+                    metadata=dict(decoder_ffn_up_metadata),
+                ),
+                WhirlValueRecord(
+                    name="decoder_ffn_down_weight",
+                    handle=decoder_ffn_down.value,
+                    type_name="llama2_multi_pu_ffn_down_weight_type",
+                    value_kind="formal",
+                    metadata=dict(decoder_ffn_down_metadata),
+                ),
+                WhirlValueRecord(
+                    name="decoder_ffn_output",
+                    handle=decoder_ffn_output.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="call_result",
+                    metadata=self._multi_pu_value_metadata(
+                        ffn_identity,
+                        "decoder_ffn_output",
+                        "call_result",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="model_token_embedding",
+                    handle=model_token_embedding.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="operator_result",
+                    metadata=self._multi_pu_value_metadata(
+                        entry_identity,
+                        "model_token_embedding",
+                        "activation",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="model_layer0_output",
+                    handle=model_layer0_output.value,
+                    type_name="llama2_multi_pu_hidden_type",
+                    value_kind="call_result",
+                    metadata=self._multi_pu_value_metadata(
+                        decoder_identity,
+                        "model_layer0_output",
+                        "call_result",
+                        "",
+                    ),
+                ),
+                WhirlValueRecord(
+                    name="model_output_logits",
+                    handle=model_output_logits.value,
+                    type_name="llama2_multi_pu_logits_type",
+                    value_kind="operator_result",
+                    metadata=self._multi_pu_value_metadata(
+                        entry_identity,
+                        "model_output_logits",
+                        "output_logits",
+                        "",
+                    ),
                 ),
             ],
             graph_operators=[
                 WhirlOperatorRecord(
-                    name="call:TinyRMSNorm",
-                    handle=call.value,
-                    kids=["model_hidden", "model_norm_scale"],
+                    name="call:TinyRotaryEmbedding.query",
+                    handle=attention_query_rope_call.value,
+                    kids=[
+                        "attention_q_bhsd",
+                        "attention_rotary_cos",
+                        "attention_rotary_sin",
+                    ],
                     attrs={
-                        "canonical_class_name": rms_definition.canonical_name,
-                        "instance_path": rms_instance,
-                        "context_identity": rms_context,
+                        "canonical_class_name": (
+                            rotary_definition.canonical_name
+                        ),
+                        "instance_path": rotary_instance,
+                        "context_identity": (
+                            f"{attention_context}.rotary.query"
+                        ),
                     },
                     metadata={
                         "declaration_kind": "python_class_callable",
-                        "callable_identity": rms_identity[
+                        "callable_identity": rotary_identity[
                             "callable_identity"
                         ],
-                        "implementation_method": rms_identity[
+                        "implementation_method": rotary_identity[
                             "implementation_method"
                         ],
-                        "implementation_fingerprint": rms_identity[
+                        "implementation_fingerprint": rotary_identity[
                             "implementation_fingerprint"
                         ],
-                        "class_state_parameters": rms_identity[
-                            "class_state_parameters"
+                        "class_state_buffers": rotary_identity[
+                            "class_state_buffers"
                         ],
-                        "class_state_submodules": rms_identity[
-                            "class_state_submodules"
-                        ],
-                        "class_state_scalars": rms_identity[
+                        "class_state_scalars": rotary_identity[
                             "class_state_scalars"
                         ],
                     },
                 ),
                 WhirlOperatorRecord(
-                    name="call:TinyLlama2FeedForward",
-                    handle=ffn_call.value,
+                    name="call:TinyLlama2FeedForward.ffn_normed",
+                    handle=decoder_ffn_call.value,
                     kids=[
-                        "norm_call_result",
-                        "model_ffn_gate_weight",
-                        "model_ffn_up_weight",
-                        "model_ffn_down_weight",
+                        "decoder_ffn_norm_result",
+                        "decoder_ffn_gate_weight",
+                        "decoder_ffn_up_weight",
+                        "decoder_ffn_down_weight",
                     ],
                     attrs={
                         "canonical_class_name": (
                             ffn_definition.canonical_name
                         ),
-                        "instance_path": ffn_instance,
-                        "context_identity": ffn_context,
+                        "instance_path": "layers.0.feed_forward",
+                        "context_identity": f"{decoder_context}.feed_forward",
                     },
                     metadata={
                         "declaration_kind": "python_class_callable",
@@ -2736,35 +2727,33 @@ class WhirlExportInterpreter:
                     },
                 ),
                 WhirlOperatorRecord(
-                    name="call:TinyRotaryEmbedding",
-                    handle=rotary_call.value,
+                    name="call:TinyLlama2DecoderLayer.layers.0",
+                    handle=layer0_call.value,
                     kids=[
-                        "model_rotary_value",
-                        "model_rotary_cos",
-                        "model_rotary_sin",
+                        "model_token_embedding",
                     ],
                     attrs={
                         "canonical_class_name": (
-                            rotary_definition.canonical_name
+                            decoder_definition.canonical_name
                         ),
-                        "instance_path": rotary_instance,
-                        "context_identity": rotary_context,
+                        "instance_path": "layers.0",
+                        "context_identity": f"{entry_name}.layers.0",
                     },
                     metadata={
                         "declaration_kind": "python_class_callable",
-                        "callable_identity": rotary_identity[
+                        "callable_identity": decoder_identity[
                             "callable_identity"
                         ],
-                        "implementation_method": rotary_identity[
+                        "implementation_method": decoder_identity[
                             "implementation_method"
                         ],
-                        "implementation_fingerprint": rotary_identity[
+                        "implementation_fingerprint": decoder_identity[
                             "implementation_fingerprint"
                         ],
-                        "class_state_buffers": rotary_identity[
-                            "class_state_buffers"
+                        "class_state_submodules": decoder_identity[
+                            "class_state_submodules"
                         ],
-                        "class_state_scalars": rotary_identity[
+                        "class_state_scalars": decoder_identity[
                             "class_state_scalars"
                         ],
                     },
