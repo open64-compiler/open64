@@ -260,13 +260,15 @@ Load these only when the task needs the detail:
    optimization, parallelization, Preopt/IPA, and compiler-library codesign.
 4. `doc/HOW-TO-TRIAGE-RUNTIME-FAILURE-OPEN64.md` - runtime failure and
    optimization triage method.
-5. `doc/Open64_Domain_Specific_Compiler_IR_Design.md` - large staged design;
+5. `doc/TORCH2WHIRL-WHIRL-DSL-API-CONTRACT.md` - torch2whirl to common/com
+   DSL builder API inventory and subagent/main-agent API creation protocol.
+6. `doc/Open64_Domain_Specific_Compiler_IR_Design.md` - large staged design;
    search within it instead of loading it whole.
-6. `imported_docs/DSC_Master_Design_Doc_v0.9_chapter_7.md` - Python DSL
+7. `imported_docs/DSC_Master_Design_Doc_v0.9_chapter_7.md` - Python DSL
    ingestion architecture background.
-7. `osprey/clang2whirl/README.md` and
+8. `osprey/clang2whirl/README.md` and
    `osprey/clang2whirl/NAMING_CONVENTION.md` - use only for clang2whirl work.
-8. `WHIRL.pdf` - normative WHIRL architecture and semantic baseline. Consult
+9. `WHIRL.pdf` - normative WHIRL architecture and semantic baseline. Consult
    the relevant operator, node-layout, level, type, mapping, and ASCII-format
    sections before designing DSL extensions. The planned DSL appendix must
    remain consistent with this document or explicitly document extensions.
