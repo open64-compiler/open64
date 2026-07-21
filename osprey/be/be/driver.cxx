@@ -1615,6 +1615,10 @@ static WN *
 Preprocess_PU (PU_Info *current_pu)
 {
   WN *pu = NULL;
+  BOOL w2c_only = Run_w2c &&
+                  !Run_lno && !Run_preopt &&
+                  !Run_wopt && !Run_vsaopt && !Run_ipsaopt &&
+                  !Run_cg && !Run_ipl;
 
   Initialize_PU_Stats ();  /* Needed for Olimit as well as tracing */
 
@@ -1812,8 +1816,10 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
-  Set_Error_Phase ( "DSL VHO Processing" );
-  pu = VHO_DSL_Lower_Driver (current_pu, pu);
+  if (!w2c_only) {
+    Set_Error_Phase ( "DSL VHO Processing" );
+    pu = VHO_DSL_Lower_Driver (current_pu, pu);
+  }
 
   Set_Error_Phase ( "Language VHO Processing" );
   pu = VHO_Lower_Driver (current_pu, pu);
@@ -1833,7 +1839,8 @@ Preprocess_PU (PU_Info *current_pu)
    * with no regions also */
   /* NOTE: part of what REGION_initialize does can be moved
    * to when the .B file is read in. */
-  REGION_Initialize (pu, PU_has_region (Get_Current_PU ()));
+  if (!w2c_only)
+    REGION_Initialize (pu, PU_has_region (Get_Current_PU ()));
   return pu;
 } /* Preprocess_PU */
 

@@ -280,6 +280,7 @@ static STATUS WN2C_dealloca(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context);
 static STATUS WN2C_asm_stmt(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context);
 static STATUS WN2C_extract_bits(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context);
 static STATUS WN2C_agoto(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context);
+static STATUS WN2C_dsl(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context);
 
 typedef STATUS (*WN2C_HANDLER_FUNC)(TOKEN_BUFFER, const WN*, CONTEXT);
 
@@ -419,6 +420,7 @@ static const OPR2HANDLER WN2C_Opr_Handler_Map[] =
    {OPR_COMPOSE_BITS, &WN2C_binaryop},
 #endif
    {OPR_AGOTO, &WN2C_agoto},
+   {OPR_DSL, &WN2C_dsl},
 }; /* WN2C_Opr_Handler_Map */
 
 
@@ -2586,7 +2588,8 @@ WN2C_Append_Assignment(TOKEN_BUFFER  tokens,
 		       CONTEXT       context)
 {
    TOKEN_BUFFER rhs_buffer = New_Token_Buffer();
-   TY_IDX       rhs_ty = WN_Tree_Type(rhs);
+   TY_IDX       rhs_ty = DSL_WN_Is_Native(rhs) ? assign_ty :
+                         WN_Tree_Type(rhs);
 
    /* Get the rhs expression */
    if (!WN2C_assignment_compatible_types(assign_ty, rhs_ty))
@@ -6638,6 +6641,52 @@ WN2C_extract_bits(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
    return EMPTY_STATUS;
 }
 
+
+static STATUS
+WN2C_dsl(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
+{
+   DSL_LOGICAL_OPCODE logical_opcode;
+   char logical_name[64];
+   UINT kid_count;
+   UINT kid;
+
+   Is_True(WN_operator(wn) == OPR_DSL,
+           ("Invalid operator for WN2C_dsl()"));
+
+   if (!DSL_WN_Get_Logical_Opcode(wn, &logical_opcode, NULL) ||
+       logical_opcode.dsl_operator == OPR_DSLUNKNOWN)
+   {
+      Append_Token_String(tokens, "OPR_DSLUNKNOWN");
+      Append_Token_Special(tokens, '(');
+      Append_Token_Special(tokens, ')');
+      return EMPTY_STATUS;
+   }
+
+   snprintf(logical_name, sizeof(logical_name), "%s.v%u",
+            DSL_OPERATOR_name(logical_opcode.dsl_operator),
+            logical_opcode.effective_version);
+   Append_Token_String(tokens, logical_name);
+   Append_Token_Special(tokens, '(');
+
+   kid_count = WN_kid_count(wn);
+   for (kid = 0; kid < kid_count; ++kid)
+   {
+      if (kid != 0)
+         Append_Token_Special(tokens, ',');
+      (void)WN2C_translate(tokens, WN_kid(wn, kid), context);
+   }
+   Append_Token_Special(tokens, ')');
+
+   if (logical_opcode.payload != NULL && logical_opcode.payload[0] != '\0')
+   {
+      Append_Token_String(tokens, "/* payload=");
+      Append_Token_String(tokens, logical_opcode.payload);
+      Append_Token_String(tokens, " */");
+   }
+
+   return EMPTY_STATUS;
+} /* WN2C_dsl */
+
 /*------------------------ exported routines --------------------------*/
 /*---------------------------------------------------------------------*/
 
@@ -6852,5 +6901,3 @@ WN2C_stid_lhs(TOKEN_BUFFER tokens,
 	 Prepend_Token_Special(tokens, '*');
    }
 } /* WN2C_stid_lhs */
-
-
