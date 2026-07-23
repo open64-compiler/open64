@@ -1099,8 +1099,8 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 
 | Milestone | Status | Merge dependency | Review artifact |
 | --- | --- | --- | --- |
-| M0 | Ready for review | None | Contract/API test report |
-| M1 | Blocked by M0 | M0 merged | Simplifier bridge traces |
+| M0 | PR #89 open | None | Contract/API test report |
+| M1 | Canonicalization/control preparation | M0 merged | Simplifier bridge traces |
 | M2 | Blocked by M1 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
@@ -1127,11 +1127,22 @@ bounded results, policies, and structured rejection reasons. The target hook
 deliberately rejects evaluation in M0; no tensor TCON is created and no
 builder behavior changes.
 
-Canonical ordering, `common.mul.v1`, builder integration, and the
-master-control hierarchy remain M1 work. In particular, any builder-local
-control must be subordinate to `Enable_WN_Simp`, and M1 must follow the
-prepare, traditional Open64 engine, and postprocess protocol before claiming
-construction-time simplification.
+The first M1 preparation is implemented:
+
+- `common.add.v1` and appended `common.mul.v1` have runtime-only algebraic
+  contracts;
+- paired factor/distribute relations record all four operand positions;
+- integer tensor operands with equivalent semantic descriptors are placed in a
+  deterministic order, with a lone constant normalized to `kid1`;
+- canonical keys include logical operator/version, sorted opcode attributes,
+  semantic TensorDescriptorIR fields, and recursively ordered operands;
+- compiler metadata, source context, and lineage do not participate;
+- the builder-local control can further restrict work but cannot override a
+  disabled `Enable_WN_Simp` master control.
+
+This preparation does not complete M1. Stack-local physical WN preparation,
+the traditional `wn_simp_code.h` engine call, DSL postprocessing, structured
+traces, and the mock tensor evaluator remain required.
 
 ## Staged Action List
 

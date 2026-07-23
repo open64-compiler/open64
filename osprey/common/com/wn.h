@@ -1053,6 +1053,7 @@ extern STR_IDX WN_GetComment (const WN *wn);  /* get string idx from comment nod
 #define WN_DSL_OPERAND_PREFIX "__WHIRL_DSL_OPERAND__:"
 #define WN_DSL_NODE_CARRIER_OPERATOR OPR_EVAL
 #define DSL_OPCODE_COMMON_ADD "common.add"
+#define DSL_OPCODE_COMMON_MUL "common.mul"
 #define DSL_OPCODE_COMMON_MATMUL "common.matmul"
 #define DSL_OPCODE_COMMON_TENSOR_CONST "common.tensor_const"
 #define DSL_OPCODE_COMMON_ZERO_INIT "common.zero_init"

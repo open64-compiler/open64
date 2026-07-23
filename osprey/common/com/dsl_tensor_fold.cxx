@@ -50,6 +50,7 @@ DSL_Tensor_Fold_Get_Evaluator
 
     switch (dsl_operator) {
     case OPR_DSLADD:
+    case OPR_DSLMUL:
         if (evaluator != NULL) {
             evaluator->dsl_operator = dsl_operator;
             evaluator->version = version;
