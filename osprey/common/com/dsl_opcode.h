@@ -41,8 +41,63 @@ typedef enum {
     OPR_DSLROTARYEMBEDDING = 18,
     OPR_DSLATTENTION = 19,
     OPR_DSLSWIGLU = 20,
-    OPR_DSLSCATTER = 21
+    OPR_DSLSCATTER = 21,
+    OPR_DSLMUL = 22
 } DSL_OPERATOR;
+
+typedef enum {
+    DSL_ALGEBRAIC_IDENTITY_NONE = 0,
+    DSL_ALGEBRAIC_IDENTITY_ZERO = 1,
+    DSL_ALGEBRAIC_IDENTITY_ONE = 2
+} DSL_ALGEBRAIC_IDENTITY;
+
+typedef enum {
+    DSL_ALGEBRAIC_SAFETY_NEVER = 0,
+    DSL_ALGEBRAIC_SAFETY_EXACT = 1,
+    DSL_ALGEBRAIC_SAFETY_INTEGER = 2,
+    DSL_ALGEBRAIC_SAFETY_INTEGER_OR_FP_REASSOCIATE = 3,
+    DSL_ALGEBRAIC_SAFETY_RELAXED_MATH = 4
+} DSL_ALGEBRAIC_SAFETY;
+
+typedef enum {
+    DSL_ALGEBRAIC_RELATION_FACTOR = 0,
+    DSL_ALGEBRAIC_RELATION_DISTRIBUTE = 1
+} DSL_ALGEBRAIC_RELATION;
+
+enum {
+    DSL_ALGEBRAIC_ALLOW_COMMUTATION = 1U << 0,
+    DSL_ALGEBRAIC_ALLOW_REASSOCIATION = 1U << 1
+};
+
+enum {
+    DSL_ALGEBRAIC_OPERAND_11 = 1U << 0,
+    DSL_ALGEBRAIC_OPERAND_12 = 1U << 1,
+    DSL_ALGEBRAIC_OPERAND_21 = 1U << 2,
+    DSL_ALGEBRAIC_OPERAND_22 = 1U << 3,
+    DSL_ALGEBRAIC_OPERAND_ALL =
+        DSL_ALGEBRAIC_OPERAND_11 | DSL_ALGEBRAIC_OPERAND_12 |
+        DSL_ALGEBRAIC_OPERAND_21 | DSL_ALGEBRAIC_OPERAND_22
+};
+
+typedef struct {
+    DSL_OPERATOR dsl_operator;
+    UINT16 version;
+    DSL_OPERATOR swap_equivalent;
+    DSL_ALGEBRAIC_IDENTITY identity;
+    DSL_ALGEBRAIC_SAFETY commutation_safety;
+    DSL_ALGEBRAIC_SAFETY reassociation_safety;
+    UINT32 flags;
+} DSL_ALGEBRAIC_INFO;
+
+typedef struct {
+    DSL_OPERATOR outer_operator;
+    UINT16 outer_version;
+    DSL_OPERATOR inner_operator;
+    UINT16 inner_version;
+    DSL_ALGEBRAIC_RELATION relation;
+    DSL_ALGEBRAIC_SAFETY safety;
+    UINT32 operand_mask;
+} DSL_ALGEBRAIC_RELATION_INFO;
 
 typedef enum {
     DSL_OPCODE_CATEGORY_EXECUTABLE = 0,
@@ -190,6 +245,34 @@ extern DSL_OPERATOR DSL_Operator_Find (const char *stable_name,
 extern DSL_OPERATOR DSL_Operator_Find_Current (const char *stable_name,
                                                UINT32 stable_name_len);
 extern const char *DSL_OPERATOR_name (DSL_OPERATOR dsl_operator);
+extern BOOL DSL_Operator_Get_Algebraic_Info
+                                (DSL_OPERATOR dsl_operator,
+                                 UINT16 version,
+                                 DSL_ALGEBRAIC_INFO *info);
+extern BOOL DSL_Operator_Get_Swap_Equivalent
+                                (DSL_OPERATOR dsl_operator,
+                                 UINT16 version,
+                                 DSL_OPERATOR *swap_equivalent);
+extern BOOL DSL_Algebraic_Should_Swap_Binary_Operands
+                                (DSL_OPERATOR dsl_operator,
+                                 UINT16 version,
+                                 BOOL integer_operands,
+                                 BOOL equivalent_descriptors,
+                                 BOOL kid0_is_constant,
+                                 BOOL kid1_is_constant,
+                                 const char *kid0_key,
+                                 const char *kid1_key);
+extern UINT32 DSL_Algebraic_Relation_Count (void);
+extern BOOL DSL_Algebraic_Relation_At
+                                (UINT32 ordinal,
+                                 DSL_ALGEBRAIC_RELATION_INFO *info);
+extern BOOL DSL_Algebraic_Relation_Get
+                                (DSL_OPERATOR outer_operator,
+                                 UINT16 outer_version,
+                                 DSL_OPERATOR inner_operator,
+                                 UINT16 inner_version,
+                                 DSL_ALGEBRAIC_RELATION relation,
+                                 DSL_ALGEBRAIC_RELATION_INFO *info);
 extern UINT32 DSL_Opcode_Register_Common_Substrate (void);
 extern UINT32 DSL_Opcode_Register_Transformer_Domain (void);
 extern UINT32 DSL_Opcode_Register_Domain_Wrapper_Examples (void);

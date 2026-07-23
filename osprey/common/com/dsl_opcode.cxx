@@ -136,7 +136,8 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLROTARYEMBEDDING",
     "OPR_DSLATTENTION",
     "OPR_DSLSWIGLU",
-    "OPR_DSLSCATTER"
+    "OPR_DSLSCATTER",
+    "OPR_DSLMUL"
 };
 
 static const char *DSL_cprom_diagnostic_code[] = {
@@ -449,7 +450,11 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     { "common.tensor_const", DSL_OPCODE_CATEGORY_EXECUTABLE,
         DSL_OPCODE_LEVEL_1_TENSOR, 0,
         DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
-        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_TENSOR_CONST" }
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_TENSOR_CONST" },
+    { "common.mul", DSL_OPCODE_CATEGORY_EXECUTABLE,
+        DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MUL" }
 };
 
 static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
@@ -596,7 +601,12 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_4_RUNTIME, 3,
         DSL_SHAPE_RULE_VIEW, DSL_EFFECT_MODEL_RUNTIME_EFFECT,
         DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_COMMON_SCATTER_V1",
-        "attr.axis" }
+        "attr.axis" },
+    { OPR_DSLMUL, "common.mul", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MUL",
+        "attr.broadcast_rule" }
 };
 
 static const DSL_LOGICAL_OPERATOR_SEED *
@@ -728,6 +738,135 @@ DSL_OPERATOR_name (DSL_OPERATOR dsl_operator)
            (UINT32)dsl_operator < DSL_ARRAY_COUNT(DSL_operator_name) ?
            DSL_operator_name[dsl_operator] :
            DSL_operator_name[OPR_DSLUNKNOWN];
+}
+
+static const DSL_ALGEBRAIC_INFO DSL_algebraic_info[] = {
+    { OPR_DSLADD, 1, OPR_DSLADD, DSL_ALGEBRAIC_IDENTITY_ZERO,
+        DSL_ALGEBRAIC_SAFETY_INTEGER,
+        DSL_ALGEBRAIC_SAFETY_INTEGER_OR_FP_REASSOCIATE,
+        DSL_ALGEBRAIC_ALLOW_COMMUTATION |
+        DSL_ALGEBRAIC_ALLOW_REASSOCIATION },
+    { OPR_DSLMUL, 1, OPR_DSLMUL, DSL_ALGEBRAIC_IDENTITY_ONE,
+        DSL_ALGEBRAIC_SAFETY_INTEGER,
+        DSL_ALGEBRAIC_SAFETY_INTEGER_OR_FP_REASSOCIATE,
+        DSL_ALGEBRAIC_ALLOW_COMMUTATION |
+        DSL_ALGEBRAIC_ALLOW_REASSOCIATION }
+};
+
+static const DSL_ALGEBRAIC_RELATION_INFO DSL_algebraic_relation[] = {
+    { OPR_DSLADD, 1, OPR_DSLMUL, 1, DSL_ALGEBRAIC_RELATION_FACTOR,
+        DSL_ALGEBRAIC_SAFETY_INTEGER_OR_FP_REASSOCIATE,
+        DSL_ALGEBRAIC_OPERAND_ALL },
+    { OPR_DSLMUL, 1, OPR_DSLADD, 1,
+        DSL_ALGEBRAIC_RELATION_DISTRIBUTE,
+        DSL_ALGEBRAIC_SAFETY_INTEGER_OR_FP_REASSOCIATE,
+        DSL_ALGEBRAIC_OPERAND_ALL }
+};
+
+BOOL
+DSL_Operator_Get_Algebraic_Info
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         DSL_ALGEBRAIC_INFO *info)
+{
+    for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_algebraic_info); ++i) {
+        if (DSL_algebraic_info[i].dsl_operator != dsl_operator ||
+            DSL_algebraic_info[i].version != version)
+            continue;
+        if (info != NULL)
+            *info = DSL_algebraic_info[i];
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+BOOL
+DSL_Operator_Get_Swap_Equivalent
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         DSL_OPERATOR *swap_equivalent)
+{
+    DSL_ALGEBRAIC_INFO info;
+
+    if (!DSL_Operator_Get_Algebraic_Info
+             (dsl_operator, version, &info) ||
+        (info.flags & DSL_ALGEBRAIC_ALLOW_COMMUTATION) == 0 ||
+        info.swap_equivalent == OPR_DSLUNKNOWN)
+        return FALSE;
+    if (swap_equivalent != NULL)
+        *swap_equivalent = info.swap_equivalent;
+    return TRUE;
+}
+
+BOOL
+DSL_Algebraic_Should_Swap_Binary_Operands
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         BOOL integer_operands,
+         BOOL equivalent_descriptors,
+         BOOL kid0_is_constant,
+         BOOL kid1_is_constant,
+         const char *kid0_key,
+         const char *kid1_key)
+{
+    DSL_ALGEBRAIC_INFO info;
+
+    if (!integer_operands || !equivalent_descriptors ||
+        kid0_key == NULL || kid1_key == NULL ||
+        !DSL_Operator_Get_Algebraic_Info
+             (dsl_operator, version, &info) ||
+        (info.flags & DSL_ALGEBRAIC_ALLOW_COMMUTATION) == 0 ||
+        info.commutation_safety != DSL_ALGEBRAIC_SAFETY_INTEGER)
+        return FALSE;
+
+    if (kid0_is_constant != kid1_is_constant)
+        return kid0_is_constant;
+    return strcmp(kid0_key, kid1_key) > 0;
+}
+
+UINT32
+DSL_Algebraic_Relation_Count (void)
+{
+    return DSL_ARRAY_COUNT(DSL_algebraic_relation);
+}
+
+BOOL
+DSL_Algebraic_Relation_At
+        (UINT32 ordinal,
+         DSL_ALGEBRAIC_RELATION_INFO *info)
+{
+    if (ordinal >= DSL_ARRAY_COUNT(DSL_algebraic_relation))
+        return FALSE;
+    if (info != NULL)
+        *info = DSL_algebraic_relation[ordinal];
+    return TRUE;
+}
+
+BOOL
+DSL_Algebraic_Relation_Get
+        (DSL_OPERATOR outer_operator,
+         UINT16 outer_version,
+         DSL_OPERATOR inner_operator,
+         UINT16 inner_version,
+         DSL_ALGEBRAIC_RELATION relation,
+         DSL_ALGEBRAIC_RELATION_INFO *info)
+{
+    for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_algebraic_relation); ++i) {
+        const DSL_ALGEBRAIC_RELATION_INFO &candidate =
+            DSL_algebraic_relation[i];
+        if (candidate.outer_operator != outer_operator ||
+            candidate.outer_version != outer_version ||
+            candidate.inner_operator != inner_operator ||
+            candidate.inner_version != inner_version ||
+            candidate.relation != relation)
+            continue;
+        if (info != NULL)
+            *info = candidate;
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 static const DSL_DOMAIN_WRAPPER_SEED DSL_domain_wrapper_seed[] = {

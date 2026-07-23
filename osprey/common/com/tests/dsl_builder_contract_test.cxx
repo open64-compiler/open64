@@ -1483,6 +1483,165 @@ Check_DSL_IR_Image_Tables(void)
 }
 
 static int
+Check_Algebraic_Canonicalization(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_VALUE_INFO operand_info;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_VALUE alpha;
+    DSL_BUILDER_VALUE zeta;
+    DSL_BUILDER_VALUE zero;
+    DSL_BUILDER_VALUE canonical;
+    DSL_BUILDER_VALUE master_disabled;
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID add_id;
+    DSL_OPCODE_ID mul_id;
+    TY_IDX tensor_ty;
+    BOOL saved_wn_simp = Enable_WN_Simp;
+    BOOL saved_canonicalization = DSL_Builder_Canonicalization_Enabled();
+    int failed = 0;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "int32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("canonicalization_tensor", MTYPE_To_TY(MTYPE_I4),
+                     &descriptor);
+    common_id = DSL_Domain_Find("common");
+    add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+    mul_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_MUL, 1);
+    DSL_Builder_Create_Minimal_PU("algebraic_canonicalization_contract");
+
+    if (tensor_ty == TY_IDX_ZERO || add_id == DSL_OPCODE_INVALID_ID ||
+        mul_id == DSL_OPCODE_INVALID_ID) {
+        fprintf(stderr, "DSL algebraic operator registration failed\n");
+        failed = 1;
+    }
+
+    alpha = DSL_Builder_Create_Model_Input("alpha", tensor_ty, 0);
+    zeta = DSL_Builder_Create_Model_Input("zeta", tensor_ty, 1);
+    zero = DSL_Builder_Create_Tensor_Constant
+               ("zero", tensor_ty, "int32", 2, "[2,2]", "splat", "0");
+    if (alpha == NULL || zeta == NULL || zero == NULL) {
+        fprintf(stderr, "DSL canonicalization operand creation failed\n");
+        DSL_Builder_Set_Canonicalization_Enabled(saved_canonicalization);
+        Enable_WN_Simp = saved_wn_simp;
+        return 1;
+    }
+
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    Enable_WN_Simp = TRUE;
+    DSL_Builder_Set_Canonicalization_Enabled(TRUE);
+
+    kids[0] = zeta;
+    kids[1] = alpha;
+    canonical = DSL_Builder_Create_Operator_With_Result
+                    (add_id, 1, kids, 2, &attribute, 1,
+                     "canonical_add", tensor_ty);
+    if (canonical == NULL ||
+        kids[0] != zeta || kids[1] != alpha ||
+        !DSL_Builder_Get_Value_Operand(canonical, 0, &operand_info) ||
+        operand_info.payload == NULL ||
+        strstr(operand_info.payload, "name=alpha") == NULL ||
+        !DSL_Builder_Get_Value_Operand(canonical, 1, &operand_info) ||
+        operand_info.payload == NULL ||
+        strstr(operand_info.payload, "name=zeta") == NULL) {
+        fprintf(stderr,
+                "DSL deterministic operand order changed: enabled=%d\n",
+                DSL_Builder_Canonicalization_Enabled());
+        if (canonical != NULL) {
+            WN *expression = WN_kid0(canonical);
+            fprintf(stderr, "  expression=%s kids=%d\n",
+                    OPERATOR_name(WN_operator(expression)),
+                    WN_kid_count(expression));
+            for (INT32 i = 0; i < WN_kid_count(expression); ++i)
+                fprintf(stderr, "  physical kid%d=%s st=%u\n", i,
+                        OPERATOR_name(WN_operator(WN_kid(expression, i))),
+                        (unsigned int)WN_st_idx(WN_kid(expression, i)));
+            fprintf(stderr, "  alpha st=%u zeta st=%u\n",
+                    (unsigned int)WN_st_idx(alpha),
+                    (unsigned int)WN_st_idx(zeta));
+        }
+        if (canonical != NULL &&
+            DSL_Builder_Get_Value_Operand(canonical, 0, &operand_info))
+            fprintf(stderr, "  kid0=%s\n",
+                    operand_info.payload == NULL ? "<null>" :
+                    operand_info.payload);
+        if (canonical != NULL &&
+            DSL_Builder_Get_Value_Operand(canonical, 1, &operand_info))
+            fprintf(stderr, "  kid1=%s\n",
+                    operand_info.payload == NULL ? "<null>" :
+                    operand_info.payload);
+        failed = 1;
+    }
+
+    kids[0] = zero;
+    kids[1] = alpha;
+    canonical = DSL_Builder_Create_Operator_With_Result
+                    (mul_id, 1, kids, 2, &attribute, 1,
+                     "canonical_mul", tensor_ty);
+    if (canonical == NULL ||
+        !DSL_Builder_Get_Value_Info(canonical, &operand_info) ||
+        operand_info.opcode_name_len != strlen(DSL_OPCODE_COMMON_MUL) ||
+        strncmp(operand_info.opcode_name, DSL_OPCODE_COMMON_MUL,
+                operand_info.opcode_name_len) != 0 ||
+        !DSL_Builder_Get_Value_Operand(canonical, 0, &operand_info) ||
+        operand_info.payload == NULL ||
+        strstr(operand_info.payload, "name=alpha") == NULL) {
+        fprintf(stderr,
+                "DSL constant-to-kid1 normalization changed: enabled=%d\n",
+                DSL_Builder_Canonicalization_Enabled());
+        if (canonical != NULL &&
+            DSL_Builder_Get_Value_Operand(canonical, 0, &operand_info))
+            fprintf(stderr, "  kid0=%s\n",
+                    operand_info.payload == NULL ? "<null>" :
+                    operand_info.payload);
+        if (canonical != NULL &&
+            DSL_Builder_Get_Value_Operand(canonical, 1, &operand_info))
+            fprintf(stderr, "  kid1=%s\n",
+                    operand_info.payload == NULL ? "<null>" :
+                    operand_info.payload);
+        failed = 1;
+    }
+
+    Enable_WN_Simp = FALSE;
+    kids[0] = zeta;
+    kids[1] = alpha;
+    master_disabled = DSL_Builder_Create_Operator_With_Result
+                          (add_id, 1, kids, 2, &attribute, 1,
+                           "master_disabled_add", tensor_ty);
+    if (DSL_Builder_Canonicalization_Enabled() ||
+        master_disabled == NULL ||
+        !DSL_Builder_Get_Value_Operand
+             (master_disabled, 0, &operand_info) ||
+        operand_info.payload == NULL ||
+        strstr(operand_info.payload, "name=zeta") == NULL) {
+        fprintf(stderr,
+                "Enable_WN_Simp master control was bypassed: enabled=%d\n",
+                DSL_Builder_Canonicalization_Enabled());
+        if (master_disabled != NULL &&
+            DSL_Builder_Get_Value_Operand
+                (master_disabled, 0, &operand_info))
+            fprintf(stderr, "  kid0=%s\n",
+                    operand_info.payload == NULL ? "<null>" :
+                    operand_info.payload);
+        failed = 1;
+    }
+
+    DSL_Builder_Set_Canonicalization_Enabled(saved_canonicalization);
+    Enable_WN_Simp = saved_wn_simp;
+    if (!failed)
+        printf("DSL builder algebraic canonicalization contract passed\n");
+    return failed;
+}
+
+static int
 Check_Native_DSL_Node_Layout(void)
 {
     DSL_BUILDER_TENSOR_TYPE_CORE type_core;
@@ -3738,6 +3897,8 @@ main(void)
         return Check_Llama2_Decode_State_Region();
     if (getenv("OPEN64_DSL_MULTI_PU_ONLY") != NULL)
         return Check_Multiple_Program_Units();
+    if (getenv("OPEN64_DSL_CANONICALIZATION_ONLY") != NULL)
+        return Check_Algebraic_Canonicalization();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();

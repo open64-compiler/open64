@@ -545,8 +545,8 @@ The clean pull-request rule is:
 
 | Milestone | Status | Merge dependency | Review artifact |
 | --- | --- | --- | --- |
-| M0 | Ready for review | None | Contract/API test report |
-| M1 | Blocked by M0 | M0 merged | Simplifier bridge traces |
+| M0 | PR #89 open | None | Contract/API test report |
+| M1 | Canonicalization/control preparation | M0 merged | Simplifier bridge traces |
 | M2 | Blocked by M1 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
