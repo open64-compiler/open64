@@ -143,6 +143,12 @@ typedef struct {
 
 typedef DSL_BUILDER_MARKER_INFO DSL_BUILDER_VALUE_INFO;
 
+/*
+ * This builder control may further restrict construction-time
+ * canonicalization. It must never enable work disabled by Enable_WN_Simp.
+ */
+extern void DSL_Builder_Set_Canonicalization_Enabled (BOOL enabled);
+extern BOOL DSL_Builder_Canonicalization_Enabled (void);
 extern TY_IDX DSL_Builder_Create_Tensor_Type_Core
                                 (const char *name,
                                  TY_IDX element_ty,

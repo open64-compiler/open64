@@ -6,6 +6,7 @@
 #include "common_com_pch.h"
 #endif /* USE_PCH */
 #pragma hdrstop
+#include <algorithm>
 #include <ctype.h>
 #include <float.h>
 #include <stdio.h>
@@ -19,6 +20,7 @@
 
 #include "dsl_builder.h"
 #include "dsl_gatekeeper.h"
+#include "config.h"
 #include "dwarf_DST.h"
 #include "dwarf_DST_mem.h"
 #include "dwarf_DST_producer.h"
@@ -46,11 +48,14 @@ typedef struct {
     ST_IDX result_st;
     TY_IDX result_ty;
     DSL_IR_VALUE_ID image_value_id;
+    UINT32 value_kind;
+    std::string canonical_key;
     BOOL materializing;
     BOOL materialized;
 } DSL_BUILDER_VALUE_RECORD;
 
 static std::vector<DSL_BUILDER_VALUE_RECORD> DSL_builder_value_registry;
+static BOOL DSL_builder_canonicalization_enabled = FALSE;
 
 struct dsl_builder_state {
     DSL_BUILDER_PROGRAM_UNIT pu;
@@ -415,6 +420,179 @@ DSL_Builder_Safe_String (const char *value)
     return value == NULL ? "" : value;
 }
 
+static void
+DSL_Builder_Append_Canonical_Field
+        (std::string *key,
+         const char *name,
+         const char *value)
+{
+    char length[32];
+    const char *safe_value = DSL_Builder_Safe_String(value);
+
+    snprintf(length, sizeof(length), "%u",
+             (unsigned int)strlen(safe_value));
+    *key += name;
+    *key += ":";
+    *key += length;
+    *key += ":";
+    *key += safe_value;
+    *key += ";";
+}
+
+static std::string
+DSL_Builder_Tensor_Canonical_Key (TY_IDX ty)
+{
+    static const TY_TENSOR_SCHEMA_KEY semantic_key[] = {
+        TY_TENSOR_SCHEMA_KIND,
+        TY_TENSOR_SCHEMA_DTYPE,
+        TY_TENSOR_SCHEMA_RANK,
+        TY_TENSOR_SCHEMA_SHAPE,
+        TY_TENSOR_SCHEMA_TRAITS,
+        TY_TENSOR_SCHEMA_LAYOUT,
+        TY_TENSOR_SCHEMA_SHARDING,
+        TY_TENSOR_SCHEMA_PLACEMENT,
+        TY_TENSOR_SCHEMA_MEMORY,
+        TY_TENSOR_SCHEMA_QUANTIZATION,
+        TY_TENSOR_SCHEMA_RUNTIME_STATE
+    };
+    std::string key;
+    char element_type[32];
+
+    if (!TY_is_tensor_extension(ty))
+        return key;
+
+    snprintf(element_type, sizeof(element_type), "%u",
+             (unsigned int)TY_mtype(TY_tensor_element_ty(ty)));
+    DSL_Builder_Append_Canonical_Field
+        (&key, "element_type", element_type);
+    for (UINT32 i = 0;
+         i < sizeof(semantic_key) / sizeof(semantic_key[0]); ++i) {
+        const char *name = TY_tensor_schema_key_name(semantic_key[i]);
+        const char *value = TY_tensor_attribute(ty, semantic_key[i]);
+        DSL_Builder_Append_Canonical_Field(&key, name, value);
+    }
+
+    return key;
+}
+
+static std::string
+DSL_Builder_Attribute_Canonical_Key
+        (const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count)
+{
+    std::vector<std::string> fields;
+    std::string key;
+
+    for (UINT32 i = 0; attrs != NULL && i < attr_count; ++i) {
+        std::string field;
+        DSL_Builder_Append_Canonical_Field
+            (&field, DSL_Builder_Safe_String(attrs[i].name),
+             attrs[i].value);
+        fields.push_back(field);
+    }
+    std::sort(fields.begin(), fields.end());
+    for (UINT32 i = 0; i < fields.size(); ++i)
+        key += fields[i];
+    return key;
+}
+
+static std::string
+DSL_Builder_Value_Canonical_Key
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         TY_IDX result_ty,
+         DSL_BUILDER_VALUE_RECORD **operand_records,
+         UINT32 operand_count,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *result_name)
+{
+    std::string key;
+    char version_text[32];
+
+    DSL_Builder_Append_Canonical_Field
+        (&key, "operator", DSL_OPERATOR_name(dsl_operator));
+    snprintf(version_text, sizeof(version_text), "%u",
+             (unsigned int)version);
+    DSL_Builder_Append_Canonical_Field(&key, "version", version_text);
+    key += DSL_Builder_Tensor_Canonical_Key(result_ty);
+    key += DSL_Builder_Attribute_Canonical_Key(attrs, attr_count);
+    for (UINT32 i = 0; i < operand_count; ++i)
+        DSL_Builder_Append_Canonical_Field
+            (&key, "operand", operand_records[i]->canonical_key.c_str());
+    if (operand_count == 0)
+        DSL_Builder_Append_Canonical_Field(&key, "name", result_name);
+    return key;
+}
+
+static BOOL
+DSL_Builder_Is_Integer_Tensor (TY_IDX ty)
+{
+    return TY_is_tensor_extension(ty) &&
+           MTYPE_is_integral(TY_mtype(TY_tensor_element_ty(ty)));
+}
+
+static BOOL
+DSL_Builder_Canonicalize_Kids
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         DSL_BUILDER_VALUE *kids,
+         UINT32 kid_count)
+{
+    DSL_BUILDER_VALUE_RECORD *kid0;
+    DSL_BUILDER_VALUE_RECORD *kid1;
+    BOOL kid0_constant;
+    BOOL kid1_constant;
+    BOOL equivalent_descriptors;
+    BOOL swap;
+    std::string kid0_descriptor_key;
+    std::string kid1_descriptor_key;
+
+    if (!DSL_Builder_Canonicalization_Enabled() || kids == NULL ||
+        kid_count != 2)
+        return FALSE;
+
+    kid0 = DSL_Builder_Find_Value_Record(kids[0]);
+    kid1 = DSL_Builder_Find_Value_Record(kids[1]);
+    if (kid0 == NULL || kid1 == NULL ||
+        !DSL_Builder_Is_Integer_Tensor(kid0->result_ty) ||
+        !DSL_Builder_Is_Integer_Tensor(kid1->result_ty))
+        return FALSE;
+
+    kid0_descriptor_key =
+        DSL_Builder_Tensor_Canonical_Key(kid0->result_ty);
+    kid1_descriptor_key =
+        DSL_Builder_Tensor_Canonical_Key(kid1->result_ty);
+    equivalent_descriptors =
+        !kid0_descriptor_key.empty() &&
+        kid0_descriptor_key == kid1_descriptor_key;
+    kid0_constant = kid0->value_kind == DSL_IR_VALUE_CONSTANT;
+    kid1_constant = kid1->value_kind == DSL_IR_VALUE_CONSTANT;
+    swap = DSL_Algebraic_Should_Swap_Binary_Operands
+               (dsl_operator, version, TRUE, equivalent_descriptors,
+                kid0_constant, kid1_constant,
+                kid0->canonical_key.c_str(), kid1->canonical_key.c_str());
+
+    if (swap) {
+        DSL_BUILDER_VALUE temporary = kids[0];
+        kids[0] = kids[1];
+        kids[1] = temporary;
+    }
+    return swap;
+}
+
+void
+DSL_Builder_Set_Canonicalization_Enabled (BOOL enabled)
+{
+    DSL_builder_canonicalization_enabled = enabled;
+}
+
+BOOL
+DSL_Builder_Canonicalization_Enabled (void)
+{
+    return Enable_WN_Simp && DSL_builder_canonicalization_enabled;
+}
+
 BOOL
 DSL_Builder_Set_PU_Source_Identity
         (DSL_BUILDER_PROGRAM_UNIT pu,
@@ -494,6 +672,7 @@ DSL_Builder_Uses_Xpragma_Carrier (const DSL_OPCODE_INFO *info)
         return FALSE;
 
     return strcmp (info->name, DSL_OPCODE_COMMON_ADD) == 0 ||
+           strcmp (info->name, DSL_OPCODE_COMMON_MUL) == 0 ||
            strcmp (info->name, DSL_OPCODE_COMMON_MATMUL) == 0 ||
            strcmp (info->name, DSL_OPCODE_COMMON_TENSOR_CONST) == 0;
 }
@@ -1806,6 +1985,10 @@ DSL_Builder_Create_Native_Value
         delete [] operand_records;
         return NULL;
     }
+    std::string canonical_key = DSL_Builder_Value_Canonical_Key
+                                    (dsl_operator, version, result_ty,
+                                     operand_records, kid_count, attrs,
+                                     attr_count, result_name);
     delete [] operand_records;
 
     DSL_BUILDER_VALUE_RECORD record;
@@ -1815,6 +1998,8 @@ DSL_Builder_Create_Native_Value
     record.result_st = result_st;
     record.result_ty = result_ty;
     record.image_value_id = image_value_id;
+    record.value_kind = value_kind;
+    record.canonical_key = canonical_key;
     record.materializing = FALSE;
     record.materialized = FALSE;
     DSL_builder_value_registry.push_back(record);
@@ -2253,6 +2438,8 @@ DSL_Builder_Create_Operator
     DSL_OPCODE_INFO info;
     DSL_OPERATOR dsl_operator;
     DSL_OPERATOR_INFO logical_info;
+    DSL_BUILDER_VALUE canonical_kids[2];
+    DSL_BUILDER_VALUE *effective_kids = kids;
     char *payload;
     WN *wn;
 
@@ -2265,13 +2452,21 @@ DSL_Builder_Create_Operator
               (dsl_operator, version, &logical_info) ||
          (DSL_Builder_Requires_Exact_Attribute_Schema
               (dsl_operator, version) &&
-          !DSL_Builder_Attributes_Match_Schema
+         !DSL_Builder_Attributes_Match_Schema
                (&logical_info, attrs, attr_count))))
         return NULL;
 
-    payload = DSL_Builder_Format_Operator_Payload (kids, kid_count, attrs,
-                                                   attr_count);
-    if ((dsl_operator == OPR_DSLADD || dsl_operator == OPR_DSLMATMUL ||
+    if (dsl_operator != OPR_DSLUNKNOWN && kid_count == 2 && kids != NULL) {
+        canonical_kids[0] = kids[0];
+        canonical_kids[1] = kids[1];
+        DSL_Builder_Canonicalize_Kids
+            (dsl_operator, version, canonical_kids, kid_count);
+        effective_kids = canonical_kids;
+    }
+    payload = DSL_Builder_Format_Operator_Payload
+                  (effective_kids, kid_count, attrs, attr_count);
+    if ((dsl_operator == OPR_DSLADD || dsl_operator == OPR_DSLMUL ||
+         dsl_operator == OPR_DSLMATMUL ||
          dsl_operator == OPR_DSLLINEAR ||
          dsl_operator == OPR_DSLRELU || dsl_operator == OPR_DSLFLATTEN ||
          dsl_operator == OPR_DSLRESIDUALADD ||
@@ -2294,7 +2489,7 @@ DSL_Builder_Create_Operator
             return NULL;
         }
         DSL_BUILDER_VALUE_RECORD *first =
-            DSL_Builder_Find_Value_Record(kids[0]);
+            DSL_Builder_Find_Value_Record(effective_kids[0]);
         char result_name[64];
         char result_type_name[80];
 
@@ -2426,21 +2621,21 @@ DSL_Builder_Create_Operator
                 }
             }
             wn = DSL_Builder_Create_Native_Value
-                     (dsl_operator, version, payload, kids, kid_count, attrs,
-                      attr_count, result_name, result_ty,
+                     (dsl_operator, version, payload, effective_kids,
+                      kid_count, attrs, attr_count, result_name, result_ty,
                       DSL_IR_VALUE_OPERATOR_RESULT);
             delete [] payload;
             return wn;
         }
     }
 
-    WN **compatibility_kids = kids;
+    WN **compatibility_kids = effective_kids;
     if (kid_count != 0) {
         compatibility_kids = new WN *[kid_count];
         for (UINT32 i = 0; i < kid_count; ++i) {
             DSL_BUILDER_VALUE_RECORD *kid_record =
-                DSL_Builder_Find_Value_Record(kids[i]);
-            compatibility_kids[i] = kid_record == NULL ? kids[i] :
+                DSL_Builder_Find_Value_Record(effective_kids[i]);
+            compatibility_kids[i] = kid_record == NULL ? effective_kids[i] :
                 DSL_WN_Create_Opcode_Comment_Projection
                     (kid_record->expression);
             if (compatibility_kids[i] == NULL) {
@@ -2466,7 +2661,7 @@ DSL_Builder_Create_Operator
         wn = DSL_WN_Create_Opcode_With_Operands
                  (info.name, version, payload, compatibility_kids, kid_count);
     }
-    if (compatibility_kids != kids)
+    if (compatibility_kids != effective_kids)
         delete [] compatibility_kids;
     delete [] payload;
     return wn;
@@ -2486,6 +2681,8 @@ DSL_Builder_Create_Operator_With_Result
     DSL_OPCODE_INFO info;
     DSL_OPERATOR dsl_operator;
     DSL_OPERATOR_INFO logical_info;
+    DSL_BUILDER_VALUE canonical_kids[2];
+    DSL_BUILDER_VALUE *effective_kids = kids;
     char *payload;
     DSL_BUILDER_OPERATOR result;
 
@@ -2512,11 +2709,18 @@ DSL_Builder_Create_Operator_With_Result
               (&logical_info, attrs, attr_count)))
         return NULL;
 
+    if (kid_count == 2 && kids != NULL) {
+        canonical_kids[0] = kids[0];
+        canonical_kids[1] = kids[1];
+        DSL_Builder_Canonicalize_Kids
+            (dsl_operator, version, canonical_kids, kid_count);
+        effective_kids = canonical_kids;
+    }
     payload = DSL_Builder_Format_Operator_Payload
-                  (kids, kid_count, attrs, attr_count);
+                  (effective_kids, kid_count, attrs, attr_count);
     result = DSL_Builder_Create_Native_Value
-                 (dsl_operator, version, payload, kids, kid_count, attrs,
-                  attr_count, result_name, result_ty,
+                 (dsl_operator, version, payload, effective_kids, kid_count,
+                  attrs, attr_count, result_name, result_ty,
                   DSL_IR_VALUE_OPERATOR_RESULT);
     delete [] payload;
     return result;
@@ -2751,6 +2955,10 @@ DSL_Builder_Declare_PU_Formal
     value_record.result_st = ST_st_idx(*st);
     value_record.result_ty = ty;
     value_record.image_value_id = image_value_id;
+    value_record.value_kind = DSL_IR_VALUE_SYMBOL;
+    value_record.canonical_key = DSL_Builder_Value_Canonical_Key
+                                     (OPR_DSLUNKNOWN, 0, ty, NULL, 0,
+                                      NULL, 0, name);
     value_record.materializing = FALSE;
     value_record.materialized = TRUE;
     DSL_builder_value_registry.push_back(value_record);
@@ -2812,6 +3020,10 @@ DSL_Builder_Declare_PU_Result
     value_record.result_st = ST_st_idx(*st);
     value_record.result_ty = ty;
     value_record.image_value_id = image_value_id;
+    value_record.value_kind = DSL_IR_VALUE_SYMBOL;
+    value_record.canonical_key = DSL_Builder_Value_Canonical_Key
+                                     (OPR_DSLUNKNOWN, 0, ty, NULL, 0,
+                                      NULL, 0, name);
     value_record.materializing = FALSE;
     value_record.materialized = TRUE;
     DSL_builder_value_registry.push_back(value_record);
@@ -2996,6 +3208,11 @@ DSL_Builder_Create_PU_Call
         value_record.result_st = result_st;
         value_record.result_ty = result_ty;
         value_record.image_value_id = image_value_id;
+        value_record.value_kind = DSL_IR_VALUE_SYMBOL;
+        value_record.canonical_key = DSL_Builder_Value_Canonical_Key
+                                         (OPR_DSLUNKNOWN, 0, result_ty,
+                                          NULL, 0, NULL, 0,
+                                          ST_name(St_Table[result_st]));
         value_record.materializing = FALSE;
         value_record.materialized = TRUE;
         DSL_builder_value_registry.push_back(value_record);
