@@ -98,8 +98,20 @@ typedef struct {
     DSL_TENSOR_FOLD_RESULT_SLOT results[DSL_TENSOR_FOLD_MAX_RESULTS];
 } DSL_TENSOR_FOLD_OUTPUT;
 
+typedef struct {
+    DSL_TENSOR_FOLD_STATUS status;
+    UINT16 result_count;
+    UINT16 rejected_result_index;
+    UINT32 flags;
+} DSL_TENSOR_FOLD_MOCK_RESPONSE;
+
 extern void DSL_Tensor_Fold_Default_Policy
                                 (DSL_TENSOR_FOLD_POLICY *policy);
+extern void DSL_Tensor_Fold_Reset_Mock_Evaluator (void);
+extern BOOL DSL_Tensor_Fold_Set_Mock_Response
+                                (const DSL_TENSOR_FOLD_MOCK_RESPONSE
+                                     *response);
+extern BOOL DSL_Tensor_Fold_Mock_Evaluator_Enabled (void);
 extern BOOL DSL_Tensor_Fold_Get_Evaluator
                                 (DSL_OPERATOR dsl_operator,
                                  UINT16 version,

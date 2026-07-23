@@ -50,6 +50,7 @@ sources=(
   "osprey/common/com/dsl_ir_image.cxx"
   "osprey/common/com/dsl_region.cxx"
   "osprey/common/com/dsl_ir_print.cxx"
+  "osprey/common/com/dsl_simp.cxx"
   "osprey/common/com/dsl_tensor_fold.cxx"
   "osprey/common/com/tests/dsl_builder_contract_test.cxx"
   "osprey/common/com/tests/dsl_builder_simplifier_control_test.cxx"
