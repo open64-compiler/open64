@@ -50,9 +50,11 @@ sources=(
   "osprey/common/com/dsl_ir_image.cxx"
   "osprey/common/com/dsl_region.cxx"
   "osprey/common/com/dsl_ir_print.cxx"
+  "osprey/common/com/dsl_tensor_fold.cxx"
   "osprey/common/com/tests/dsl_builder_contract_test.cxx"
   "osprey/common/com/tests/dsl_common_add_print_test.cxx"
   "osprey/common/com/tests/dsl_common_matmul_print_test.cxx"
+  "osprey/common/com/tests/dsl_tensor_fold_contract_test.cxx"
   "osprey/torch2whirl/python/native/open64_dsc_native_bridge.cxx"
 )
 
@@ -67,6 +69,7 @@ for source in "${sources[@]}"; do
   echo "syntax ok: $source"
 done
 
+"$script_dir/dsl_tensor_fold_contract_test.sh"
 "$script_dir/dsl_operator_layout_test.sh"
 
 echo "DSL native syntax fixture passed"
