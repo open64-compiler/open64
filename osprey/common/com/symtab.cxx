@@ -509,6 +509,7 @@ TY_Create_Tensor_Extension_Type (const char *name, TY_IDX element_ty,
     TY& ty = New_TY(ty_idx);
     TY_Init(ty, 0, KIND_STRUCT, MTYPE_M,
             Save_Str(name ? name : "__dsl_tensor"));
+    Set_TY_align (ty_idx, TY_align (element_ty));
     TY_Mark_Tensor_Extension (ty_idx, element_ty, rank);
     return ty_idx;
 }
@@ -520,6 +521,7 @@ TY_Create_Tensor_Type (const char *name, TY_IDX element_ty, INT32 rank)
     TY& ty = New_TY(ty_idx);
     TY_Init(ty, 0, KIND_TENSOR, MTYPE_M,
             Save_Str(name ? name : "__dsl_tensor"));
+    Set_TY_align (ty_idx, TY_align (element_ty));
     TY_Mark_Tensor_Extension (ty_idx, element_ty, rank);
     return ty_idx;
 }

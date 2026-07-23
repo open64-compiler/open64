@@ -71,6 +71,7 @@ Check_Tensor_Type_And_Descriptor(void)
     DSL_BUILDER_TENSOR_TYPE_CORE type_core;
     DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
     TY_IDX tensor_ty;
+    TY_IDX extension_ty;
     TENSOR_DESCRIPTOR_RECORD record;
     int failed = 0;
 
@@ -85,12 +86,24 @@ Check_Tensor_Type_And_Descriptor(void)
     tensor_ty = DSL_Builder_Create_Tensor_Type_Core("builder_tensor_type",
                                                     MTYPE_To_TY(MTYPE_I4),
                                                     &type_core);
+    extension_ty = TY_Create_Tensor_Extension_Type
+                       ("builder_tensor_extension",
+                        MTYPE_To_TY(MTYPE_F8), 2);
 
     if (TY_kind(tensor_ty) != KIND_TENSOR ||
         !TY_is_tensor_extension(tensor_ty) ||
         TY_tensor_element_ty(tensor_ty) != MTYPE_To_TY(MTYPE_I4) ||
-        TY_tensor_rank(tensor_ty) != 2) {
+        TY_tensor_rank(tensor_ty) != 2 ||
+        TY_align(tensor_ty) != TY_align(MTYPE_To_TY(MTYPE_I4))) {
         fprintf(stderr, "builder did not create a native tensor type core\n");
+        failed = 1;
+    }
+    if (TY_kind(extension_ty) != KIND_STRUCT ||
+        !TY_is_tensor_extension(extension_ty) ||
+        TY_tensor_element_ty(extension_ty) != MTYPE_To_TY(MTYPE_F8) ||
+        TY_tensor_rank(extension_ty) != 2 ||
+        TY_align(extension_ty) != TY_align(MTYPE_To_TY(MTYPE_F8))) {
+        fprintf(stderr, "tensor extension did not inherit element alignment\n");
         failed = 1;
     }
 
@@ -3703,6 +3716,8 @@ main(void)
     Initialize_Test_Context();
     if (getenv("OPEN64_DSL_INGESTION_API_ONLY") != NULL)
         return Check_Upgraded_Ingestion_APIs();
+    if (getenv("OPEN64_DSL_TENSOR_ALIGNMENT_ONLY") != NULL)
+        return Check_Tensor_Type_And_Descriptor();
     if (getenv("OPEN64_DSL_PRODUCTION_NATIVE_ONLY") != NULL)
         return Check_Operator_Creation() |
                Check_Production_Native_Builder();
