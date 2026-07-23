@@ -95,11 +95,17 @@ Check_Candidate_Contract(void)
         return 1;
     }
 
+    DSL_Tensor_Fold_Reset_Mock_Evaluator();
+    if (DSL_Tensor_Fold_Mock_Evaluator_Enabled()) {
+        fprintf(stderr, "mock evaluator did not reset\n");
+        return 1;
+    }
+
     if (Targ_DSL_WhirlOp(&candidate, &output) !=
-            DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR ||
-        output.status != DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR ||
+            DSL_TENSOR_FOLD_NOT_APPLICABLE ||
+        output.status != DSL_TENSOR_FOLD_NOT_APPLICABLE ||
         output.result_count != 0) {
-        fprintf(stderr, "M0 non-evaluator result contract changed\n");
+        fprintf(stderr, "production tensor fold fallback changed\n");
         return 1;
     }
 
@@ -145,6 +151,106 @@ Check_Candidate_Contract(void)
     return 0;
 }
 
+static int
+Check_Mock_Evaluator(void)
+{
+    DSL_TENSOR_FOLD_POLICY policy;
+    DSL_TENSOR_FOLD_CANDIDATE candidate;
+    DSL_TENSOR_FOLD_MOCK_RESPONSE response;
+    DSL_TENSOR_FOLD_OUTPUT output;
+    TCON operands[2];
+    TY_IDX operand_ty[2];
+    TY_IDX result_ty[DSL_TENSOR_FOLD_MAX_RESULTS];
+
+    DSL_Tensor_Fold_Default_Policy(&policy);
+    memset(operands, 0, sizeof(operands));
+    memset(operand_ty, 0, sizeof(operand_ty));
+    memset(result_ty, 0, sizeof(result_ty));
+    memset(&candidate, 0, sizeof(candidate));
+    memset(&response, 0, sizeof(response));
+
+    Set_TY_IDX_index(result_ty[0], 41);
+    candidate.dsl_operator = OPR_DSLADD;
+    candidate.version = 1;
+    candidate.result_count = 1;
+    candidate.operand_count = 2;
+    candidate.operands = operands;
+    candidate.operand_ty = operand_ty;
+    candidate.result_ty = result_ty;
+    candidate.policy = &policy;
+
+    response.status = DSL_TENSOR_FOLD_SUCCESS;
+    response.result_count = 1;
+    response.flags = 7;
+    if (!DSL_Tensor_Fold_Set_Mock_Response(&response) ||
+        !DSL_Tensor_Fold_Mock_Evaluator_Enabled()) {
+        fprintf(stderr, "mock tensor fold evaluator did not install\n");
+        return 1;
+    }
+
+    memset(&output, 0xff, sizeof(output));
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_SUCCESS ||
+        output.status != DSL_TENSOR_FOLD_SUCCESS ||
+        output.result_count != 1 ||
+        output.results[0].kind != DSL_TENSOR_FOLD_RESULT_TCON ||
+        output.results[0].result_ty != result_ty[0] ||
+        output.results[0].flags != 7) {
+        fprintf(stderr, "mock tensor fold success contract changed\n");
+        return 1;
+    }
+
+    response.status = DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY;
+    response.result_count = 0;
+    if (!DSL_Tensor_Fold_Set_Mock_Response(&response) ||
+        Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY ||
+        output.rejection !=
+            DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY ||
+        output.result_count != 0) {
+        fprintf(stderr, "mock tensor fold rejection contract changed\n");
+        return 1;
+    }
+
+    response.status = DSL_TENSOR_FOLD_NOT_APPLICABLE;
+    response.result_count = 0;
+    if (!DSL_Tensor_Fold_Set_Mock_Response(&response) ||
+        Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_NOT_APPLICABLE ||
+        output.status != DSL_TENSOR_FOLD_NOT_APPLICABLE ||
+        output.result_count != 0) {
+        fprintf(stderr, "mock tensor fold unchanged path changed\n");
+        return 1;
+    }
+
+    policy.max_evaluator_work = 1;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_WORK_BUDGET ||
+        output.rejection != DSL_TENSOR_FOLD_REJECT_WORK_BUDGET) {
+        fprintf(stderr, "tensor fold work-budget rejection changed\n");
+        return 1;
+    }
+
+    policy.max_evaluator_work = 0;
+    response.status = DSL_TENSOR_FOLD_SUCCESS;
+    response.result_count = 2;
+    if (!DSL_Tensor_Fold_Set_Mock_Response(&response) ||
+        Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_RESULT_BUDGET ||
+        output.rejection != DSL_TENSOR_FOLD_REJECT_RESULT_BUDGET) {
+        fprintf(stderr, "mock tensor fold result-budget handling changed\n");
+        return 1;
+    }
+
+    DSL_Tensor_Fold_Reset_Mock_Evaluator();
+    if (DSL_Tensor_Fold_Mock_Evaluator_Enabled()) {
+        fprintf(stderr, "mock tensor fold evaluator remained installed\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int
 main(void)
 {
@@ -155,9 +261,10 @@ main(void)
 
     if (Check_Status_Names() ||
         Check_Evaluator_Identity() ||
-        Check_Candidate_Contract())
+        Check_Candidate_Contract() ||
+        Check_Mock_Evaluator())
         return 1;
 
-    printf("DSL tensor fold M0 contract passed\n");
+    printf("DSL tensor fold M1 mock contract passed\n");
     return 0;
 }

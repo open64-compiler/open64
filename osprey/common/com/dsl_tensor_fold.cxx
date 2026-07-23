@@ -26,6 +26,29 @@ static const char *DSL_tensor_fold_status_name[] = {
     "invalid"
 };
 
+static BOOL DSL_tensor_fold_mock_enabled = FALSE;
+static DSL_TENSOR_FOLD_MOCK_RESPONSE DSL_tensor_fold_mock_response;
+
+static void
+DSL_Tensor_Fold_Clear_Output (DSL_TENSOR_FOLD_OUTPUT *output)
+{
+    if (output != NULL)
+        memset(output, 0, sizeof(*output));
+}
+
+static void
+DSL_Tensor_Fold_Set_Output_Status
+        (DSL_TENSOR_FOLD_OUTPUT *output,
+         DSL_TENSOR_FOLD_STATUS status)
+{
+    if (output == NULL)
+        return;
+
+    output->status = status;
+    output->rejection = DSL_Tensor_Fold_Status_Is_Rejection(status) ?
+                            status : DSL_TENSOR_FOLD_SUCCESS;
+}
+
 void
 DSL_Tensor_Fold_Default_Policy (DSL_TENSOR_FOLD_POLICY *policy)
 {
@@ -34,6 +57,49 @@ DSL_Tensor_Fold_Default_Policy (DSL_TENSOR_FOLD_POLICY *policy)
 
     memset(policy, 0, sizeof(*policy));
     policy->preserve_compact_splats = TRUE;
+}
+
+void
+DSL_Tensor_Fold_Reset_Mock_Evaluator (void)
+{
+    DSL_tensor_fold_mock_enabled = FALSE;
+    memset(&DSL_tensor_fold_mock_response, 0,
+           sizeof(DSL_tensor_fold_mock_response));
+}
+
+BOOL
+DSL_Tensor_Fold_Set_Mock_Response
+        (const DSL_TENSOR_FOLD_MOCK_RESPONSE *response)
+{
+    if (response == NULL ||
+        response->result_count > DSL_TENSOR_FOLD_MAX_RESULTS)
+        return FALSE;
+
+    switch (response->status) {
+    case DSL_TENSOR_FOLD_SUCCESS:
+        if (response->result_count == 0)
+            return FALSE;
+        break;
+    case DSL_TENSOR_FOLD_NOT_APPLICABLE:
+        if (response->result_count != 0)
+            return FALSE;
+        break;
+    default:
+        if (!DSL_Tensor_Fold_Status_Is_Rejection(response->status) ||
+            response->result_count != 0)
+            return FALSE;
+        break;
+    }
+
+    DSL_tensor_fold_mock_response = *response;
+    DSL_tensor_fold_mock_enabled = TRUE;
+    return TRUE;
+}
+
+BOOL
+DSL_Tensor_Fold_Mock_Evaluator_Enabled (void)
+{
+    return DSL_tensor_fold_mock_enabled;
 }
 
 BOOL
@@ -101,6 +167,7 @@ DSL_Tensor_Fold_Candidate_Valid
 {
     DSL_TENSOR_FOLD_EVALUATOR_ID evaluator;
     DSL_OPERATOR_INFO operator_info;
+    const DSL_TENSOR_FOLD_POLICY *policy;
 
     if (reason != NULL)
         *reason = DSL_TENSOR_FOLD_SUCCESS;
@@ -138,7 +205,52 @@ DSL_Tensor_Fold_Candidate_Valid
         return FALSE;
     }
 
+    policy = candidate->policy;
+    if (policy != NULL &&
+        policy->max_evaluator_work != 0 &&
+        candidate->operand_count > policy->max_evaluator_work) {
+        if (reason != NULL)
+            *reason = DSL_TENSOR_FOLD_REJECT_WORK_BUDGET;
+        return FALSE;
+    }
+
     return TRUE;
+}
+
+static DSL_TENSOR_FOLD_STATUS
+DSL_Tensor_Fold_Apply_Mock
+        (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
+         DSL_TENSOR_FOLD_OUTPUT *output)
+{
+    const DSL_TENSOR_FOLD_MOCK_RESPONSE *response =
+        &DSL_tensor_fold_mock_response;
+    UINT32 i;
+
+    if (response->status == DSL_TENSOR_FOLD_SUCCESS &&
+        response->result_count > candidate->result_count) {
+        DSL_Tensor_Fold_Set_Output_Status
+            (output, DSL_TENSOR_FOLD_REJECT_RESULT_BUDGET);
+        return DSL_TENSOR_FOLD_REJECT_RESULT_BUDGET;
+    }
+
+    if (output != NULL) {
+        output->status = response->status;
+        output->rejection =
+            DSL_Tensor_Fold_Status_Is_Rejection(response->status) ?
+                response->status : DSL_TENSOR_FOLD_SUCCESS;
+        output->result_count = response->result_count;
+        output->rejected_result_index = response->rejected_result_index;
+
+        if (response->status == DSL_TENSOR_FOLD_SUCCESS) {
+            for (i = 0; i < response->result_count; ++i) {
+                output->results[i].kind = DSL_TENSOR_FOLD_RESULT_TCON;
+                output->results[i].result_ty = candidate->result_ty[i];
+                output->results[i].flags = response->flags;
+            }
+        }
+    }
+
+    return response->status;
 }
 
 DSL_TENSOR_FOLD_STATUS
@@ -148,20 +260,17 @@ Targ_DSL_WhirlOp
 {
     DSL_TENSOR_FOLD_STATUS reason;
 
-    if (output != NULL)
-        memset(output, 0, sizeof(*output));
+    DSL_Tensor_Fold_Clear_Output(output);
 
     if (!DSL_Tensor_Fold_Candidate_Valid(candidate, &reason)) {
-        if (output != NULL) {
-            output->status = reason;
-            output->rejection = reason;
-        }
+        DSL_Tensor_Fold_Set_Output_Status(output, reason);
         return reason;
     }
 
-    if (output != NULL) {
-        output->status = DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR;
-        output->rejection = DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR;
-    }
-    return DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR;
+    if (DSL_tensor_fold_mock_enabled)
+        return DSL_Tensor_Fold_Apply_Mock(candidate, output);
+
+    DSL_Tensor_Fold_Set_Output_Status(output,
+                                      DSL_TENSOR_FOLD_NOT_APPLICABLE);
+    return DSL_TENSOR_FOLD_NOT_APPLICABLE;
 }
