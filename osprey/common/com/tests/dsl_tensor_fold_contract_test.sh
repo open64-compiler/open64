@@ -16,6 +16,7 @@ output="${TMPDIR:-/tmp}/dsl_tensor_fold_contract_test"
   "$repo_root/osprey/common/com/dsl_domain.cxx" \
   "$repo_root/osprey/common/com/dsl_opcode.cxx" \
   "$repo_root/osprey/common/com/dsl_tensor_fold.cxx" \
+  "$repo_root/osprey/common/com/tests/dsl_tensor_fold_strtab_stub.cxx" \
   "$repo_root/osprey/common/com/tests/dsl_tensor_fold_contract_test.cxx" \
   -o "$output"
 

@@ -106,6 +106,8 @@
 /* Include the target machine type IDs: */
 #include "mtypes.h"
 
+#define TCON_DSL_TENSOR_CARRIER 0x80000000U
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -283,6 +285,23 @@ inline mUINT32
 TCON_str_idx (const TCON& tcon)		{ return tcon.vals.sval.cp; }
 inline mUINT32
 TCON_str_len (const TCON& tcon)		{ return tcon.vals.sval.len; }
+inline BOOL
+TCON_is_dsl_tensor_carrier (const TCON& tcon)
+{
+  return (tcon.flags & TCON_DSL_TENSOR_CARRIER) != 0;
+}
+inline void
+Set_TCON_dsl_tensor_carrier (TCON& tcon)
+{
+  tcon.flags |= TCON_DSL_TENSOR_CARRIER;
+}
+inline void
+Set_TCON_string_payload (TCON& tcon, TYPE_ID mtype, mUINT32 cp, mUINT32 len)
+{
+  tcon.ty = mtype;
+  tcon.vals.sval.cp = cp;
+  tcon.vals.sval.len = len;
+}
 #else /* __cplusplus */
 typedef struct TCON TCON;
 #endif /* __cplusplus */
