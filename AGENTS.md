@@ -56,6 +56,36 @@ only when the current task needs detail.
    demonstrated and documented.
 13. Follow the coding guidelines below for every touched file.
 
+## Open64 Design Continuity
+
+1. When new DSL infrastructure overlaps an established Open64 service, first
+   study and reuse that service's intended extension points, controls, data
+   structures, and tests. Preparation and postprocessing for DSL semantics are
+   acceptable; an independent parallel implementation requires a documented
+   incompatibility and explicit design review.
+2. DSL expression simplification must use the traditional Open64
+   `wn_simp_code.h` rule engine whenever the traditional rule has equivalent
+   semantics. Follow the established physical-WN protocol: prepare a
+   stack-local WN view for the simplifier, discard that temporary input after
+   the call, and retain only simplifier results allocated in the normal WN
+   memory-pool space. Tensor descriptor, effect, ownership, and logical-opcode
+   checks belong in preparation; DSL result symbols, metadata, lineage, and
+   mapped-image relationships belong in postprocessing.
+3. Do not duplicate traditional constant folding, identity, reassociation,
+   cancellation, or factorization rules in a separate DSL rule engine. Add a
+   DSL-only rule only when no traditional rule has equivalent semantics, and
+   document and test that distinction.
+4. Revisit this continuity principle during design reviews for new DSL
+   services. The concrete reuse mechanism may differ by subsystem, but the
+   review must identify the existing Open64 design being preserved or explain
+   why it cannot be reused.
+5. When WOPT admits unlowered DSL expressions, decode the physical `OPR_DSL`
+   boundary representation into a first-class logical CODEREP identity.
+   CODEREP hashing, equality, printing, effects, and simplification must include
+   the DSL operator, version, canonical attributes, and TensorDescriptorIR
+   identity. Continue using WOPT's existing `CODEREP` instantiation of
+   `wn_simp_code.h`; do not add a parallel WOPT simplifier.
+
 ## Coding Guidelines
 
 1. Do not introduce tab characters in any file touched in this Open64 project.
@@ -247,6 +277,13 @@ add one condition at a time:
 5. If `-O*` works but `-O* -ipa` fails, suspect IPA.
 6. After identifying a component, reduce by file, then procedure, then specific
    optimization. Use binary search where possible.
+7. Treat `-OPT:wn_simplify` and its abbreviation `-OPT:wn_simp` as the master
+   WHIRL construction-time simplifier control. When triaging a simplifier
+   regression, preserve separate `.B` files with simplification enabled and
+   disabled, produce matching `ir_b2a -st -src` traces, and compare the
+   resulting WHIRL. New DSL construction-time simplification must honor
+   `Enable_WN_Simp`; a DSL-specific control may further restrict a stage but
+   must not override the master switch.
 
 ## Reference Docs
 
