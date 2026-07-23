@@ -1099,8 +1099,8 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 
 | Milestone | Status | Merge dependency | Review artifact |
 | --- | --- | --- | --- |
-| M0 | PR #89 open | None | Contract/API test report |
-| M1 | Canonicalization/control preparation | M0 merged | Simplifier bridge traces |
+| M0 | Merged through PR #89/#92 | None | Contract/API test report |
+| M1 | Implementation complete; PR pending | M0 merged | Simplifier bridge traces |
 | M2 | Blocked by M1 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
@@ -1124,8 +1124,8 @@ The M0 tensor-folding handoff is implemented in
 `osprey/common/com/dsl_tensor_fold.{h,cxx}`. It recognizes the reviewed
 `common.add.v1` evaluator identity and defines fixed-layout candidates,
 bounded results, policies, and structured rejection reasons. The target hook
-deliberately rejects evaluation in M0; no tensor TCON is created and no
-builder behavior changes.
+remains non-folding by default; no tensor TCON is created and no builder
+behavior changes.
 
 The first M1 preparation is implemented:
 
@@ -1140,9 +1140,26 @@ The first M1 preparation is implemented:
 - the builder-local control can further restrict work but cannot override a
   disabled `Enable_WN_Simp` master control.
 
-This preparation does not complete M1. Stack-local physical WN preparation,
-the traditional `wn_simp_code.h` engine call, DSL postprocessing, structured
-traces, and the mock tensor evaluator remain required.
+The remaining M1 foundation is implemented:
+
+- `dsl_simp.{h,cxx}` validates logical operator/version, purity, canonical
+  TensorDescriptorIR equivalence, integer numeric policy, and the active
+  `Enable_WN_Simp` master control;
+- preparation initializes a temporary stack-local WN with the equivalent
+  traditional `OPR_ADD` or `OPR_MPY` opcode and disposable projected kids;
+- application invokes `WN_SimplifyExp2`, preserving its established
+  consume/delete ownership convention;
+- postprocessing classifies an unchanged result, retained `kid0`/`kid1`, or a
+  new pool-backed WN without publishing a tensor replacement;
+- stable traces expose `OPR_DSLADD`/`common.add.v1` and
+  `OPR_DSLMUL`/`common.mul.v1`, never the physical DSL escape tag; and
+- the tensor-fold mock is explicit, resettable, runtime-only, and disabled by
+  default. It exercises success, structured rejection, budget, and unchanged
+  paths without reading tensor payload bytes.
+
+The scalar operand projection remains test-only in M1. Production tensor
+projection and builder publication remain disabled until M2 establishes
+tensor TCON storage and M3 integrates the first real folding path.
 
 ## Staged Action List
 

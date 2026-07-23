@@ -34,6 +34,7 @@
 #include "dsl_contract.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
+#include "dsl_simp.h"
 
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
@@ -149,6 +150,111 @@ Check_Tensor_Type_And_Descriptor(void)
     }
 
     return failed;
+}
+
+static int
+Check_DSL_Simplifier_Bridge(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_SIMP_BINARY_CANDIDATE candidate;
+    DSL_SIMP_BINARY_RESULT result;
+    TY_IDX tensor_ty;
+    TY_IDX different_tensor_ty;
+    WN stack_view;
+    WN *variable;
+    WN *identity;
+
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "int32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    descriptor.traits.traits = "dense";
+    descriptor.representation.layout = "row_major";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("dsl_simp_tensor", MTYPE_To_TY(MTYPE_I4), &descriptor);
+    if (TY_IDX_index(tensor_ty) == 0) {
+        fprintf(stderr, "DSL simplifier tensor descriptor setup failed\n");
+        return 1;
+    }
+
+    variable = WN_LdidPreg(MTYPE_I4, 1);
+    identity = WN_Intconst(MTYPE_I4, 0);
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.dsl_operator = OPR_DSLADD;
+    candidate.version = 1;
+    candidate.result_ty = tensor_ty;
+    candidate.operand_ty[0] = tensor_ty;
+    candidate.operand_ty[1] = tensor_ty;
+    candidate.projection_kind = DSL_SIMP_PROJECTION_TEST_SCALAR;
+    candidate.projected_kid[0] = variable;
+    candidate.projected_kid[1] = identity;
+
+    if (DSL_Simp_Binary(&candidate, &result) !=
+            DSL_SIMP_ENGINE_REWRITE ||
+        result.replacement != DSL_SIMP_REPLACEMENT_KID0 ||
+        result.engine_result != variable) {
+        DSL_Simp_Trace_Binary(stderr, &result);
+        fprintf(stderr, "traditional wn_simp add-zero bridge failed\n");
+        return 1;
+    }
+    DSL_Simp_Trace_Binary(stdout, &result);
+
+    variable = WN_LdidPreg(MTYPE_I4, 2);
+    identity = WN_Intconst(MTYPE_I4, 1);
+    candidate.dsl_operator = OPR_DSLMUL;
+    candidate.projected_kid[0] = variable;
+    candidate.projected_kid[1] = identity;
+    if (DSL_Simp_Prepare_Binary(&candidate, &stack_view, &result) !=
+            DSL_SIMP_NOT_APPLICABLE ||
+        WN_operator(&stack_view) != OPR_MPY ||
+        DSL_Simp_Apply_Binary(&stack_view, &result) !=
+            DSL_SIMP_ENGINE_REWRITE ||
+        DSL_Simp_Postprocess_Binary(&result) != DSL_SIMP_ENGINE_REWRITE ||
+        result.replacement != DSL_SIMP_REPLACEMENT_KID0) {
+        DSL_Simp_Trace_Binary(stderr, &result);
+        fprintf(stderr, "three-stage wn_simp multiply-one bridge failed\n");
+        return 1;
+    }
+    DSL_Simp_Trace_Binary(stdout, &result);
+
+    Enable_WN_Simp = FALSE;
+    candidate.dsl_operator = OPR_DSLADD;
+    candidate.projected_kid[0] = WN_LdidPreg(MTYPE_I4, 3);
+    candidate.projected_kid[1] = WN_Intconst(MTYPE_I4, 0);
+    if (DSL_Simp_Binary(&candidate, &result) !=
+            DSL_SIMP_REJECT_DISABLED) {
+        fprintf(stderr, "DSL simplifier bypassed Enable_WN_Simp\n");
+        Enable_WN_Simp = TRUE;
+        return 1;
+    }
+    Enable_WN_Simp = TRUE;
+
+    candidate.projection_kind = DSL_SIMP_PROJECTION_NONE;
+    if (DSL_Simp_Binary(&candidate, &result) !=
+            DSL_SIMP_REJECT_PROJECTION) {
+        fprintf(stderr, "production tensor projection became active in M1\n");
+        return 1;
+    }
+
+    descriptor.type_core.logical_shape = "[4,1]";
+    different_tensor_ty = DSL_Builder_Intern_Tensor_Type
+                              ("dsl_simp_different_tensor",
+                               MTYPE_To_TY(MTYPE_I4), &descriptor);
+    candidate.operand_ty[1] = different_tensor_ty;
+    if (TY_IDX_index(different_tensor_ty) == 0 ||
+        DSL_Simp_Binary(&candidate, &result) !=
+            DSL_SIMP_REJECT_DESCRIPTOR) {
+        fprintf(stderr, "DSL simplifier accepted mismatched descriptors\n");
+        return 1;
+    }
+
+    DSL_Simp_Trace_Binary(stdout, &result);
+    return 0;
 }
 
 static int
@@ -3899,6 +4005,8 @@ main(void)
         return Check_Multiple_Program_Units();
     if (getenv("OPEN64_DSL_CANONICALIZATION_ONLY") != NULL)
         return Check_Algebraic_Canonicalization();
+    if (getenv("OPEN64_DSL_SIMPLIFIER_ONLY") != NULL)
+        return Check_DSL_Simplifier_Bridge();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -3917,6 +4025,7 @@ main(void)
     failed |= Check_Llama2_Decode_State_Region();
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
+    failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;
 }

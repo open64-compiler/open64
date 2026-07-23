@@ -46,7 +46,7 @@ DSL_Tensor_Fold_Set_Output_Status
 
     output->status = status;
     output->rejection = DSL_Tensor_Fold_Status_Is_Rejection(status) ?
-                            status : DSL_TENSOR_FOLD_SUCCESS;
+                            status : DSL_TENSOR_FOLD_NOT_APPLICABLE;
 }
 
 void
@@ -237,7 +237,7 @@ DSL_Tensor_Fold_Apply_Mock
         output->status = response->status;
         output->rejection =
             DSL_Tensor_Fold_Status_Is_Rejection(response->status) ?
-                response->status : DSL_TENSOR_FOLD_SUCCESS;
+                response->status : DSL_TENSOR_FOLD_NOT_APPLICABLE;
         output->result_count = response->result_count;
         output->rejected_result_index = response->rejected_result_index;
 
