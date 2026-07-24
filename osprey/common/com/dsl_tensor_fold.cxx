@@ -366,7 +366,10 @@ DSL_Tensor_TCON_Envelope_Offsets_Valid
         record->header_size != DSL_TENSOR_TCON_ENVELOPE_SIZE ||
         record->flags != 0 ||
         record->record_size != payload_length ||
-        payload_length < DSL_TENSOR_TCON_ENVELOPE_SIZE)
+        payload_length <= DSL_TENSOR_TCON_ENVELOPE_SIZE)
+        return FALSE;
+
+    if (record->record_size == 0)
         return FALSE;
 
     if (record->side_path_length != 0) {
@@ -374,7 +377,7 @@ DSL_Tensor_TCON_Envelope_Offsets_Valid
             record->side_path_offset + record->side_path_length <
                 record->side_path_offset ||
             record->side_path_offset + record->side_path_length >
-                payload_length)
+                payload_length - 1)
             return FALSE;
     } else if (record->side_path_offset != 0) {
         return FALSE;
@@ -388,18 +391,19 @@ DSL_Tensor_TCON_Envelope_Offsets_Valid
         if (record->dense_offset != expected_dense_offset ||
             record->dense_offset + record->dense_length <
                 record->dense_offset ||
-            record->dense_offset + record->dense_length > payload_length)
+            record->dense_offset + record->dense_length > payload_length - 1)
             return FALSE;
     } else if (record->dense_offset != 0) {
         return FALSE;
     }
 
     if (record->dense_length != 0)
-        return record->dense_offset + record->dense_length == payload_length;
+        return record->dense_offset + record->dense_length ==
+               payload_length - 1;
     if (record->side_path_length != 0)
         return record->side_path_offset + record->side_path_length ==
-               payload_length;
-    return payload_length == DSL_TENSOR_TCON_ENVELOPE_SIZE;
+               payload_length - 1;
+    return payload_length == DSL_TENSOR_TCON_ENVELOPE_SIZE + 1;
 }
 
 static BOOL
@@ -423,7 +427,8 @@ DSL_Tensor_TCON_Record_Valid
     payload = Index_to_char_array(TCON_str_idx(*carrier));
     payload_length = TCON_str_len(*carrier);
     if (payload == NULL ||
-        memcmp(payload, record, sizeof(*record)) != 0)
+        memcmp(payload, record, sizeof(*record)) != 0 ||
+        payload[payload_length - 1] != '\0')
         return FALSE;
 
     if (record->magic != DSL_TENSOR_TCON_MAGIC ||
@@ -674,6 +679,9 @@ DSL_Tensor_TCON_Create_Record
             return FALSE;
         payload_length += info->dense_bytes_length;
     }
+    if (payload_length + 1 < payload_length)
+        return FALSE;
+    payload_length += 1;
     record.record_size = payload_length;
 
     payload = (char *)malloc(payload_length);

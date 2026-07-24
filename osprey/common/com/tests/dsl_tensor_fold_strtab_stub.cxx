@@ -116,9 +116,18 @@ TCON
 Host_To_Targ_String (TYPE_ID ctype, const char *bytes, UINT32 length)
 {
     TCON result;
+    UINT32 saved_length;
     TCON_clear(result);
     Set_TCON_ty(result, ctype);
-    result.vals.sval.cp = Save_StrN(bytes, length);
+    saved_length = (length == 0 || bytes[length - 1] != '\0') ?
+                       length + 1 : length;
+    if (saved_length != length) {
+        std::string safe(bytes, length);
+        safe.push_back('\0');
+        result.vals.sval.cp = Save_StrN(safe.data(), saved_length);
+    } else {
+        result.vals.sval.cp = Save_StrN(bytes, saved_length);
+    }
     result.vals.sval.len = length;
     return result;
 }

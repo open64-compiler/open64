@@ -355,7 +355,7 @@ Check_Tensor_TCON_Storage(void)
         record.magic != DSL_TENSOR_TCON_MAGIC ||
         record.version != DSL_TENSOR_TCON_VERSION ||
         record.header_size != DSL_TENSOR_TCON_ENVELOPE_SIZE ||
-        record.record_size != DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+        record.record_size != DSL_TENSOR_TCON_ENVELOPE_SIZE + 1 ||
         record.storage_kind != DSL_TENSOR_TCON_STORAGE_ZERO ||
         record.descriptor_ty != info.descriptor_ty ||
         record.scalar_tcon != info.scalar_tcon ||
@@ -427,7 +427,10 @@ Check_Tensor_TCON_Storage(void)
         record.dense_offset != DSL_TENSOR_TCON_ENVELOPE_SIZE ||
         record.dense_length != 16 ||
         TCON_str_len(carrier) !=
-            DSL_TENSOR_TCON_ENVELOPE_SIZE + 16 ||
+            DSL_TENSOR_TCON_ENVELOPE_SIZE + 17 ||
+        Index_to_length(TCON_str_idx(carrier)) != TCON_str_len(carrier) ||
+        Index_to_char_array(TCON_str_idx(carrier))
+            [TCON_str_len(carrier) - 1] != '\0' ||
         !DSL_Tensor_TCON_Get_Dense_Bytes(inline_idx, &dense_bytes,
                                          &dense_length) ||
         dense_length != 16 ||
@@ -439,7 +442,7 @@ Check_Tensor_TCON_Storage(void)
     }
     inline_hash = DSL_Tensor_TCON_Semantic_Hash(inline_idx);
     memcpy(malformed_payload, Index_to_char_array(TCON_str_idx(carrier)),
-           DSL_TENSOR_TCON_ENVELOPE_SIZE + 16);
+           DSL_TENSOR_TCON_ENVELOPE_SIZE + 17);
     malformed_payload[DSL_TENSOR_TCON_ENVELOPE_SIZE + 16] = '\7';
     malformed_carrier =
         Host_To_Targ_String(MTYPE_STRING, malformed_payload,
