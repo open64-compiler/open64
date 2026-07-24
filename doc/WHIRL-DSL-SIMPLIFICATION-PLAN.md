@@ -991,6 +991,13 @@ parts of 13 through 15: tensor TCON escape records, ZERO/ONE/SPLAT,
 INLINE_DENSE, SIDE_FILE_DENSE, target-format element access, identity,
 printing, verification, and mapped-image reopen.
 
+The M2 persistent representation uses a legal string TCON whose sized
+character-array payload carries the fixed-layout tensor envelope and optional
+inline bytes. `TCON_IDX` is the stable tensor-constant identity. The existing
+TCON table and TCON character-array table own the mapped image; runtime lookup
+or deduplication indexes are derived and rebuildable. Do not append tensor
+rows to or bump the strict version-1 `.WHIRL.dsl` image for this milestone.
+
 **Exit criteria:** tensor constants can be created, deduplicated, printed,
 written, reopened, and verified without invoking the simplifier. Existing
 `sizeof(TCON)`, scalar TCON behavior, and old-reader compatibility remain
@@ -1100,8 +1107,8 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | Milestone | Status | Merge dependency | Review artifact |
 | --- | --- | --- | --- |
 | M0 | Merged through PR #89/#92 | None | Contract/API test report |
-| M1 | Implementation complete; PR pending | M0 merged | Simplifier bridge traces |
-| M2 | Blocked by M1 | M1 merged | Tensor TCON `.B` and `.T` |
+| M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
+| M2 | Active on coordinated main/Lagrange branches | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
