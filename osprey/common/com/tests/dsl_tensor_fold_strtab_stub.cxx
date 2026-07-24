@@ -8,9 +8,11 @@
 #include <vector>
 
 #include "strtab.h"
+#include "targ_const.h"
 
 static std::vector<std::string> DSL_tensor_fold_test_strtab;
 static std::vector<std::string> DSL_tensor_fold_test_char_table;
+static std::vector<TCON> DSL_tensor_fold_test_tcon_table;
 
 void
 Initialize_Strtab (UINT32)
@@ -19,6 +21,10 @@ Initialize_Strtab (UINT32)
     DSL_tensor_fold_test_strtab.push_back("");
     DSL_tensor_fold_test_char_table.clear();
     DSL_tensor_fold_test_char_table.push_back("");
+    DSL_tensor_fold_test_tcon_table.clear();
+    TCON zero;
+    TCON_clear(zero);
+    DSL_tensor_fold_test_tcon_table.push_back(zero);
 }
 
 void
@@ -67,8 +73,34 @@ Index_to_char_array (UINT32 idx)
     return const_cast<char *>(DSL_tensor_fold_test_char_table[idx].data());
 }
 
+UINT32
+Index_to_length (UINT32 idx)
+{
+    if (idx >= DSL_tensor_fold_test_char_table.size())
+        return 0;
+    return DSL_tensor_fold_test_char_table[idx].size();
+}
+
 STR_IDX
 STR_Table_Size ()
 {
     return DSL_tensor_fold_test_strtab.size();
+}
+
+TCON_IDX
+Enter_tcon (const TCON& tcon)
+{
+    DSL_tensor_fold_test_tcon_table.push_back(tcon);
+    return DSL_tensor_fold_test_tcon_table.size() - 1;
+}
+
+TCON
+TCON_from_IDX (TCON_IDX tcon_idx)
+{
+    if (tcon_idx >= DSL_tensor_fold_test_tcon_table.size()) {
+        TCON zero;
+        TCON_clear(zero);
+        return zero;
+    }
+    return DSL_tensor_fold_test_tcon_table[tcon_idx];
 }

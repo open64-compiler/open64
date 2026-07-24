@@ -31,11 +31,11 @@ static const char *DSL_tensor_fold_status_name[] = {
 
 static BOOL DSL_tensor_fold_mock_enabled = FALSE;
 static DSL_TENSOR_FOLD_MOCK_RESPONSE DSL_tensor_fold_mock_response;
-static DSL_TENSOR_TCON_RECORD
-    DSL_tensor_tcon_records[DSL_TENSOR_TCON_TABLE_CAPACITY];
-static UINT32 DSL_tensor_tcon_record_count = 0;
-static const char *DSL_tensor_tcon_carrier_prefix =
-    "__WHIRL_DSL_TCON__:v1:";
+static TCON_IDX DSL_tensor_tcon_cache[4096];
+static UINT32 DSL_tensor_tcon_cache_count = 0;
+
+extern TCON_IDX Enter_tcon (const TCON& tcon);
+extern TCON TCON_from_IDX (TCON_IDX tcon_idx);
 
 static void
 DSL_Tensor_Fold_Clear_Output (DSL_TENSOR_FOLD_OUTPUT *output)
@@ -88,36 +88,39 @@ DSL_Tensor_TCON_Mul_Exact (UINT64 left, UINT32 right, UINT64 *result)
 }
 
 static BOOL
-DSL_Tensor_TCON_Relative_Path_Valid (STR_IDX path)
+DSL_Tensor_TCON_Relative_Path_Valid (const char *text, UINT32 length)
 {
-    const char *text;
-    const char *component;
-    const char *cursor;
+    UINT32 component_start;
+    UINT32 i;
 
-    if (path == STR_IDX_ZERO || path >= STR_Table_Size())
+    if (text == NULL || length == 0 || text[0] == '/' || text[0] == '\\')
         return FALSE;
 
-    text = Index_To_Str(path);
-    if (text == NULL || text[0] == '\0' || text[0] == '/' ||
-        text[0] == '\\')
-        return FALSE;
-
-    component = text;
-    for (cursor = text; ; ++cursor) {
-        if (*cursor == '\\')
+    component_start = 0;
+    for (i = 0; i <= length; ++i) {
+        char ch = (i == length) ? '\0' : text[i];
+        if (i != length && (ch == '\0' || ch == '\\'))
             return FALSE;
-        if (*cursor == '/' || *cursor == '\0') {
-            if (cursor == component)
+        if (ch == '/') {
+            if (i == component_start)
                 return FALSE;
-            if ((cursor - component == 1 && component[0] == '.') ||
-                (cursor - component == 2 &&
-                 component[0] == '.' && component[1] == '.'))
+            if ((i - component_start == 1 &&
+                 text[component_start] == '.') ||
+                (i - component_start == 2 &&
+                 text[component_start] == '.' &&
+                 text[component_start + 1] == '.'))
                 return FALSE;
-            if (*cursor == '\0')
-                break;
-            component = cursor + 1;
+            component_start = i + 1;
         }
     }
+
+    if (length == component_start)
+        return FALSE;
+    if ((length - component_start == 1 && text[component_start] == '.') ||
+        (length - component_start == 2 &&
+         text[component_start] == '.' && text[component_start + 1] == '.'))
+        return FALSE;
+
     return TRUE;
 }
 
@@ -162,13 +165,35 @@ DSL_Tensor_TCON_Is_Dense
            storage_kind == DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE;
 }
 
+static const unsigned char *
+DSL_Tensor_TCON_Record_Dense_Bytes
+        (const DSL_TENSOR_TCON_RECORD *record,
+         const TCON *carrier)
+{
+    char *payload;
+
+    if (record == NULL || carrier == NULL || record->dense_length == 0)
+        return NULL;
+    if (record->dense_offset < DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+        record->dense_offset + record->dense_length < record->dense_offset ||
+        record->dense_offset + record->dense_length > TCON_str_len(*carrier))
+        return NULL;
+
+    payload = Index_to_char_array(TCON_str_idx(*carrier));
+    if (payload == NULL)
+        return NULL;
+    return (const unsigned char *)(payload + record->dense_offset);
+}
+
 static BOOL
 DSL_Tensor_TCON_Record_Semantic_Equal
         (const DSL_TENSOR_TCON_RECORD *left,
-         const DSL_TENSOR_TCON_RECORD *right)
+         const TCON *left_carrier,
+         const DSL_TENSOR_TCON_RECORD *right,
+         const TCON *right_carrier)
 {
-    const char *left_bytes;
-    const char *right_bytes;
+    const unsigned char *left_bytes;
+    const unsigned char *right_bytes;
 
     if (left == NULL || right == NULL)
         return FALSE;
@@ -184,17 +209,13 @@ DSL_Tensor_TCON_Record_Semantic_Equal
             left->checksum_lo != right->checksum_lo)
             return FALSE;
 
-        if (left->dense_payload_ref == 0 ||
-            right->dense_payload_ref == 0 ||
-            left->dense_payload_bytes != right->dense_payload_bytes)
+        left_bytes = DSL_Tensor_TCON_Record_Dense_Bytes(left, left_carrier);
+        right_bytes = DSL_Tensor_TCON_Record_Dense_Bytes(right, right_carrier);
+        if (left_bytes == NULL || right_bytes == NULL ||
+            left->dense_length != right->dense_length)
             return FALSE;
 
-        left_bytes = Index_to_char_array(left->dense_payload_ref);
-        right_bytes = Index_to_char_array(right->dense_payload_ref);
-        return left_bytes != NULL &&
-               right_bytes != NULL &&
-               memcmp(left_bytes, right_bytes,
-                      left->dense_payload_bytes) == 0;
+        return memcmp(left_bytes, right_bytes, left->dense_length) == 0;
     }
 
     return left->storage_kind == right->storage_kind &&
@@ -238,49 +259,183 @@ DSL_Tensor_TCON_Record_Semantic_Hash
     return hash;
 }
 
-static DSL_TENSOR_TCON_ID
-DSL_Tensor_TCON_Find_Equal (const DSL_TENSOR_TCON_RECORD *record)
+static TCON_IDX
+DSL_Tensor_TCON_Find_Cached_Equal
+        (const DSL_TENSOR_TCON_RECORD *record,
+         const TCON *carrier)
 {
     UINT32 i;
 
-    for (i = 0; i < DSL_tensor_tcon_record_count; ++i) {
-        if (DSL_Tensor_TCON_Record_Semantic_Equal
-                (&DSL_tensor_tcon_records[i], record))
-            return DSL_tensor_tcon_records[i].id;
+    for (i = 0; i < DSL_tensor_tcon_cache_count; ++i) {
+        TCON_IDX cached_idx = DSL_tensor_tcon_cache[i];
+        TCON cached_carrier = TCON_from_IDX(cached_idx);
+        DSL_TENSOR_TCON_RECORD cached_record;
+
+        if (DSL_Tensor_TCON_Decode_Carrier(&cached_carrier,
+                                           &cached_record) &&
+            DSL_Tensor_TCON_Record_Semantic_Equal
+                (&cached_record, &cached_carrier, record, carrier))
+            return cached_idx;
     }
 
-    return DSL_TENSOR_TCON_INVALID_ID;
+    return TCON_IDX_ZERO;
+}
+
+static void
+DSL_Tensor_TCON_Cache (TCON_IDX tcon_idx)
+{
+    if (tcon_idx == TCON_IDX_ZERO ||
+        DSL_tensor_tcon_cache_count >=
+            sizeof(DSL_tensor_tcon_cache) / sizeof(DSL_tensor_tcon_cache[0]))
+        return;
+
+    DSL_tensor_tcon_cache[DSL_tensor_tcon_cache_count++] = tcon_idx;
 }
 
 static BOOL
-DSL_Tensor_TCON_Init_Carrier
-        (DSL_TENSOR_TCON_ID id,
-         DSL_TENSOR_TCON_RECORD *record,
-         TCON *carrier)
+DSL_Tensor_TCON_Envelope_Offsets_Valid
+        (const DSL_TENSOR_TCON_RECORD *record,
+         UINT32 payload_length)
 {
-    char token[96];
-    UINT32 token_idx;
-    UINT32 token_length;
-
-    if (id == DSL_TENSOR_TCON_INVALID_ID)
+    if (record == NULL ||
+        record->reserved0 != 0 ||
+        record->reserved1 != 0 ||
+        record->reserved2 != 0 ||
+        record->header_size != DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+        record->record_size != DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+        payload_length < DSL_TENSOR_TCON_ENVELOPE_SIZE)
         return FALSE;
 
-    snprintf(token, sizeof(token), "%s%u", DSL_tensor_tcon_carrier_prefix,
-             (unsigned int)id);
-    token_length = strlen(token) + 1;
-    token_idx = Save_StrN(token, token_length);
-    if (token_idx == 0)
+    if (record->side_path_length != 0) {
+        if (record->side_path_offset < DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+            record->side_path_offset + record->side_path_length <
+                record->side_path_offset ||
+            record->side_path_offset + record->side_path_length >
+                payload_length)
+            return FALSE;
+    } else if (record->side_path_offset != 0) {
+        return FALSE;
+    }
+
+    if (record->dense_length != 0) {
+        if (record->dense_offset < DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+            record->dense_offset + record->dense_length <
+                record->dense_offset ||
+            record->dense_offset + record->dense_length > payload_length)
+            return FALSE;
+    } else if (record->dense_offset != 0) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static BOOL
+DSL_Tensor_TCON_Record_Valid
+        (const DSL_TENSOR_TCON_RECORD *record,
+         const TCON *carrier)
+{
+    char *payload;
+    UINT32 payload_length;
+    UINT64 computed_bytes;
+
+    if (record == NULL ||
+        carrier == NULL ||
+        TCON_ty(*carrier) != MTYPE_STRING ||
+        TCON_str_idx(*carrier) == 0 ||
+        TCON_str_len(*carrier) < DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+        Index_to_length(TCON_str_idx(*carrier)) != TCON_str_len(*carrier))
+        return FALSE;
+
+    payload = Index_to_char_array(TCON_str_idx(*carrier));
+    payload_length = TCON_str_len(*carrier);
+    if (payload == NULL ||
+        memcmp(payload, record, sizeof(*record)) != 0)
+        return FALSE;
+
+    if (record->magic != DSL_TENSOR_TCON_MAGIC ||
+        record->version != DSL_TENSOR_TCON_VERSION ||
+        !DSL_Tensor_TCON_Envelope_Offsets_Valid(record, payload_length) ||
+        record->descriptor_ty == TY_IDX_ZERO ||
+        record->element_mtype == MTYPE_UNKNOWN ||
+        record->element_size == 0 ||
+        record->element_count == 0 ||
+        record->logical_bytes == 0 ||
+        !DSL_Tensor_TCON_Alignment_Valid(record->required_alignment) ||
+        record->required_alignment < record->element_size)
+        return FALSE;
+
+    if (!DSL_Tensor_TCON_Mul_Exact(record->element_count,
+                                   record->element_size,
+                                   &computed_bytes) ||
+        computed_bytes != record->logical_bytes)
+        return FALSE;
+
+    switch (record->storage_kind) {
+    case DSL_TENSOR_TCON_STORAGE_ZERO:
+        return record->scalar_tcon != TCON_IDX_ZERO &&
+               record->scalar_integer_value == 0 &&
+               record->side_path_length == 0 &&
+               record->dense_length == 0;
+    case DSL_TENSOR_TCON_STORAGE_ONE:
+        return record->scalar_tcon != TCON_IDX_ZERO &&
+               record->scalar_integer_value == 1 &&
+               record->side_path_length == 0 &&
+               record->dense_length == 0;
+    case DSL_TENSOR_TCON_STORAGE_SPLAT:
+        return record->scalar_tcon != TCON_IDX_ZERO &&
+               record->side_path_length == 0 &&
+               record->dense_length == 0;
+    case DSL_TENSOR_TCON_STORAGE_INLINE_DENSE:
+        return record->scalar_tcon == TCON_IDX_ZERO &&
+               record->side_path_length == 0 &&
+               record->dense_length == record->logical_bytes &&
+               DSL_Tensor_TCON_Checksum_Valid(record->checksum_hi,
+                                              record->checksum_lo);
+    case DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE:
+        return record->side_path_length != 0 &&
+               record->byte_length == record->logical_bytes &&
+               (record->byte_offset % record->required_alignment) == 0 &&
+               (record->dense_length == 0 ||
+                record->dense_length == record->logical_bytes) &&
+               DSL_Tensor_TCON_Checksum_Valid(record->checksum_hi,
+                                              record->checksum_lo) &&
+               DSL_Tensor_TCON_Relative_Path_Valid
+                   (payload + record->side_path_offset,
+                    record->side_path_length);
+    default:
+        return FALSE;
+    }
+}
+
+BOOL
+DSL_Tensor_TCON_Decode_Carrier
+        (const TCON *carrier,
+         DSL_TENSOR_TCON_RECORD *record)
+{
+    char *payload;
+    DSL_TENSOR_TCON_RECORD decoded;
+
+    if (record != NULL)
+        memset(record, 0, sizeof(*record));
+
+    if (carrier == NULL ||
+        TCON_ty(*carrier) != MTYPE_STRING ||
+        TCON_str_idx(*carrier) == 0 ||
+        TCON_str_len(*carrier) < DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+        Index_to_length(TCON_str_idx(*carrier)) != TCON_str_len(*carrier))
+        return FALSE;
+
+    payload = Index_to_char_array(TCON_str_idx(*carrier));
+    if (payload == NULL)
+        return FALSE;
+
+    memcpy(&decoded, payload, sizeof(decoded));
+    if (!DSL_Tensor_TCON_Record_Valid(&decoded, carrier))
         return FALSE;
 
     if (record != NULL)
-        record->carrier_token = token_idx;
-    if (carrier != NULL) {
-        TCON_clear(*carrier);
-        Set_TCON_string_payload(*carrier, MTYPE_STR, token_idx,
-                                token_length);
-        Set_TCON_dsl_tensor_carrier(*carrier);
-    }
-
+        *record = decoded;
     return TRUE;
 }
 
@@ -288,20 +443,29 @@ static BOOL
 DSL_Tensor_TCON_Create_Record
         (DSL_TENSOR_TCON_STORAGE_KIND storage_kind,
          const DSL_TENSOR_TCON_CREATE_INFO *info,
-         DSL_TENSOR_TCON_ID *id,
+         TCON_IDX *tcon_idx,
          TCON *carrier)
 {
     DSL_TENSOR_TCON_RECORD record;
-    DSL_TENSOR_TCON_ID existing_id;
+    TCON built_carrier;
+    TCON_IDX existing_idx;
+    TCON_IDX entered_idx;
+    char *payload;
+    UINT32 payload_length;
+    UINT32 cursor;
+    UINT32 payload_idx;
 
-    if (id != NULL)
-        *id = DSL_TENSOR_TCON_INVALID_ID;
+    if (tcon_idx != NULL)
+        *tcon_idx = TCON_IDX_ZERO;
 
     if (!DSL_Tensor_TCON_Common_Info_Valid(info))
         return FALSE;
 
     memset(&record, 0, sizeof(record));
-    record.version = 1;
+    record.magic = DSL_TENSOR_TCON_MAGIC;
+    record.version = DSL_TENSOR_TCON_VERSION;
+    record.header_size = DSL_TENSOR_TCON_ENVELOPE_SIZE;
+    record.record_size = DSL_TENSOR_TCON_ENVELOPE_SIZE;
     record.storage_kind = storage_kind;
     record.descriptor_ty = info->descriptor_ty;
     record.scalar_tcon = info->scalar_tcon;
@@ -311,7 +475,6 @@ DSL_Tensor_TCON_Create_Record
     record.element_count = info->element_count;
     record.logical_bytes = info->logical_bytes;
     record.required_alignment = info->required_alignment;
-    record.side_file = info->side_file;
     record.byte_offset = info->byte_offset;
     record.byte_length = info->byte_length;
     record.checksum_hi = info->checksum_hi;
@@ -343,7 +506,8 @@ DSL_Tensor_TCON_Create_Record
             return FALSE;
         break;
     case DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE:
-        if (!DSL_Tensor_TCON_Relative_Path_Valid(info->side_file) ||
+        if (!DSL_Tensor_TCON_Relative_Path_Valid(info->side_path,
+                                                 info->side_path_length) ||
             !DSL_Tensor_TCON_Range_Valid(info->byte_offset,
                                          info->byte_length) ||
             info->byte_length != info->logical_bytes ||
@@ -358,32 +522,65 @@ DSL_Tensor_TCON_Create_Record
         return FALSE;
     }
 
-    if (info->dense_bytes != NULL && info->dense_bytes_length != 0) {
-        record.dense_payload_ref =
-            Save_StrN((const char *)info->dense_bytes,
-                      info->dense_bytes_length);
-        if (record.dense_payload_ref == 0)
+    payload_length = DSL_TENSOR_TCON_ENVELOPE_SIZE;
+    if (storage_kind == DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE) {
+        if (payload_length + info->side_path_length < payload_length)
             return FALSE;
-        record.dense_payload_bytes = info->dense_bytes_length;
+        payload_length += info->side_path_length;
+    }
+    if (info->dense_bytes_length != 0) {
+        if (payload_length + info->dense_bytes_length < payload_length)
+            return FALSE;
+        payload_length += info->dense_bytes_length;
     }
 
-    existing_id = DSL_Tensor_TCON_Find_Equal(&record);
-    if (existing_id != DSL_TENSOR_TCON_INVALID_ID) {
-        if (id != NULL)
-            *id = existing_id;
-        return DSL_Tensor_TCON_Create_Carrier(existing_id, carrier);
+    payload = (char *)malloc(payload_length);
+    if (payload == NULL)
+        return FALSE;
+
+    memset(payload, 0, payload_length);
+    cursor = DSL_TENSOR_TCON_ENVELOPE_SIZE;
+    if (storage_kind == DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE) {
+        record.side_path_offset = cursor;
+        record.side_path_length = info->side_path_length;
+        memcpy(payload + cursor, info->side_path, info->side_path_length);
+        cursor += info->side_path_length;
+    }
+    if (info->dense_bytes_length != 0) {
+        record.dense_offset = cursor;
+        record.dense_length = info->dense_bytes_length;
+        memcpy(payload + cursor, info->dense_bytes,
+               info->dense_bytes_length);
+        cursor += info->dense_bytes_length;
+    }
+    memcpy(payload, &record, sizeof(record));
+
+    payload_idx = Save_StrN(payload, payload_length);
+    free(payload);
+    if (payload_idx == 0)
+        return FALSE;
+
+    TCON_clear(built_carrier);
+    Set_TCON_string_payload(built_carrier, MTYPE_STRING, payload_idx,
+                            payload_length);
+    if (!DSL_Tensor_TCON_Decode_Carrier(&built_carrier, NULL))
+        return FALSE;
+
+    existing_idx = DSL_Tensor_TCON_Find_Cached_Equal(&record, &built_carrier);
+    if (existing_idx != TCON_IDX_ZERO) {
+        if (carrier != NULL)
+            *carrier = TCON_from_IDX(existing_idx);
+        if (tcon_idx != NULL)
+            *tcon_idx = existing_idx;
+        return TRUE;
     }
 
-    if (DSL_tensor_tcon_record_count >= DSL_TENSOR_TCON_TABLE_CAPACITY)
-        return FALSE;
-
-    record.id = DSL_tensor_tcon_record_count + 1;
-    if (!DSL_Tensor_TCON_Init_Carrier(record.id, &record, carrier))
-        return FALSE;
-
-    DSL_tensor_tcon_records[DSL_tensor_tcon_record_count++] = record;
-    if (id != NULL)
-        *id = record.id;
+    entered_idx = Enter_tcon(built_carrier);
+    if (carrier != NULL)
+        *carrier = built_carrier;
+    if (tcon_idx != NULL)
+        *tcon_idx = entered_idx;
+    DSL_Tensor_TCON_Cache(entered_idx);
     return TRUE;
 }
 
@@ -616,160 +813,140 @@ Targ_DSL_WhirlOp
 void
 DSL_Tensor_TCON_Reset (void)
 {
-    memset(DSL_tensor_tcon_records, 0, sizeof(DSL_tensor_tcon_records));
-    DSL_tensor_tcon_record_count = 0;
+    /*
+     * Tensor TCON ownership is persistent in Tcon_Table and the TCON
+     * character array.  M2-B has no authoritative runtime table to clear.
+     */
+    memset(DSL_tensor_tcon_cache, 0, sizeof(DSL_tensor_tcon_cache));
+    DSL_tensor_tcon_cache_count = 0;
 }
 
-UINT32
-DSL_Tensor_TCON_Count (void)
+void
+DSL_Tensor_TCON_Rebuild_Derived_Cache
+        (TCON_IDX first_tcon_idx,
+         TCON_IDX limit_tcon_idx)
 {
-    return DSL_tensor_tcon_record_count;
+    TCON_IDX idx;
+
+    DSL_Tensor_TCON_Reset();
+    if (first_tcon_idx == TCON_IDX_ZERO)
+        first_tcon_idx = 1;
+
+    for (idx = first_tcon_idx; idx < limit_tcon_idx; ++idx) {
+        TCON carrier = TCON_from_IDX(idx);
+        if (DSL_Tensor_TCON_Decode_Carrier(&carrier, NULL))
+            DSL_Tensor_TCON_Cache(idx);
+    }
 }
 
 BOOL
 DSL_Tensor_TCON_Get
-        (DSL_TENSOR_TCON_ID id,
+        (TCON_IDX tcon_idx,
          DSL_TENSOR_TCON_RECORD *record)
 {
-    if (id == DSL_TENSOR_TCON_INVALID_ID ||
-        id > DSL_tensor_tcon_record_count ||
-        record == NULL)
+    TCON carrier;
+
+    if (tcon_idx == TCON_IDX_ZERO || record == NULL)
         return FALSE;
 
-    *record = DSL_tensor_tcon_records[id - 1];
-    return TRUE;
+    carrier = TCON_from_IDX(tcon_idx);
+    return DSL_Tensor_TCON_Decode_Carrier(&carrier, record);
 }
 
 BOOL
 DSL_Tensor_TCON_Is_Carrier
-        (const TCON *carrier,
-         DSL_TENSOR_TCON_ID *id)
+        (TCON_IDX tcon_idx,
+         DSL_TENSOR_TCON_RECORD *record)
 {
-    const char *token;
-    const char *digits;
-    char *end;
-    unsigned long parsed_id;
-
-    if (id != NULL)
-        *id = DSL_TENSOR_TCON_INVALID_ID;
-
-    if (carrier == NULL ||
-        TCON_ty(*carrier) != MTYPE_STR ||
-        !TCON_is_dsl_tensor_carrier(*carrier) ||
-        TCON_str_idx(*carrier) == 0 ||
-        TCON_str_len(*carrier) == 0)
-        return FALSE;
-
-    token = Index_to_char_array(TCON_str_idx(*carrier));
-    if (token == NULL)
-        return FALSE;
-
-    digits = token + strlen(DSL_tensor_tcon_carrier_prefix);
-    if (strncmp(token, DSL_tensor_tcon_carrier_prefix,
-                strlen(DSL_tensor_tcon_carrier_prefix)) != 0 ||
-        digits[0] == '\0')
-        return FALSE;
-
-    parsed_id = strtoul(digits, &end, 10);
-    if (end == digits || *end != '\0' ||
-        parsed_id == DSL_TENSOR_TCON_INVALID_ID ||
-        parsed_id > DSL_tensor_tcon_record_count)
-        return FALSE;
-
-    if (id != NULL)
-        *id = (DSL_TENSOR_TCON_ID)parsed_id;
-    return TRUE;
-}
-
-BOOL
-DSL_Tensor_TCON_Create_Carrier
-        (DSL_TENSOR_TCON_ID id,
-         TCON *carrier)
-{
-    DSL_TENSOR_TCON_RECORD record;
-
-    if (!DSL_Tensor_TCON_Get(id, &record))
-        return FALSE;
-    return DSL_Tensor_TCON_Init_Carrier(id, NULL, carrier);
+    return DSL_Tensor_TCON_Get(tcon_idx, record);
 }
 
 BOOL
 DSL_Tensor_TCON_Create_Zero
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
-         DSL_TENSOR_TCON_ID *id,
+         TCON_IDX *tcon_idx,
          TCON *carrier)
 {
     return DSL_Tensor_TCON_Create_Record
-               (DSL_TENSOR_TCON_STORAGE_ZERO, info, id, carrier);
+               (DSL_TENSOR_TCON_STORAGE_ZERO, info, tcon_idx, carrier);
 }
 
 BOOL
 DSL_Tensor_TCON_Create_One
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
-         DSL_TENSOR_TCON_ID *id,
+         TCON_IDX *tcon_idx,
          TCON *carrier)
 {
     return DSL_Tensor_TCON_Create_Record
-               (DSL_TENSOR_TCON_STORAGE_ONE, info, id, carrier);
+               (DSL_TENSOR_TCON_STORAGE_ONE, info, tcon_idx, carrier);
 }
 
 BOOL
 DSL_Tensor_TCON_Create_Splat
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
-         DSL_TENSOR_TCON_ID *id,
+         TCON_IDX *tcon_idx,
          TCON *carrier)
 {
     return DSL_Tensor_TCON_Create_Record
-               (DSL_TENSOR_TCON_STORAGE_SPLAT, info, id, carrier);
+               (DSL_TENSOR_TCON_STORAGE_SPLAT, info, tcon_idx, carrier);
 }
 
 BOOL
 DSL_Tensor_TCON_Create_Inline_Dense
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
-         DSL_TENSOR_TCON_ID *id,
+         TCON_IDX *tcon_idx,
          TCON *carrier)
 {
     return DSL_Tensor_TCON_Create_Record
-               (DSL_TENSOR_TCON_STORAGE_INLINE_DENSE, info, id, carrier);
+               (DSL_TENSOR_TCON_STORAGE_INLINE_DENSE, info, tcon_idx,
+                carrier);
 }
 
 BOOL
 DSL_Tensor_TCON_Create_Side_File_Dense
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
-         DSL_TENSOR_TCON_ID *id,
+         TCON_IDX *tcon_idx,
          TCON *carrier)
 {
     return DSL_Tensor_TCON_Create_Record
-               (DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE, info, id, carrier);
+               (DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE, info, tcon_idx,
+                carrier);
 }
 
 UINT64
-DSL_Tensor_TCON_Semantic_Hash (DSL_TENSOR_TCON_ID id)
+DSL_Tensor_TCON_Semantic_Hash (TCON_IDX tcon_idx)
 {
     DSL_TENSOR_TCON_RECORD record;
 
-    if (!DSL_Tensor_TCON_Get(id, &record))
+    if (!DSL_Tensor_TCON_Get(tcon_idx, &record))
         return 0;
     return DSL_Tensor_TCON_Record_Semantic_Hash(&record);
 }
 
 BOOL
 DSL_Tensor_TCON_Semantic_Equal
-        (DSL_TENSOR_TCON_ID left,
-         DSL_TENSOR_TCON_ID right)
+        (TCON_IDX left,
+         TCON_IDX right)
 {
     DSL_TENSOR_TCON_RECORD left_record;
     DSL_TENSOR_TCON_RECORD right_record;
+    TCON left_carrier;
+    TCON right_carrier;
 
-    return DSL_Tensor_TCON_Get(left, &left_record) &&
-           DSL_Tensor_TCON_Get(right, &right_record) &&
+    if (left == TCON_IDX_ZERO || right == TCON_IDX_ZERO)
+        return FALSE;
+
+    left_carrier = TCON_from_IDX(left);
+    right_carrier = TCON_from_IDX(right);
+    return DSL_Tensor_TCON_Decode_Carrier(&left_carrier, &left_record) &&
+           DSL_Tensor_TCON_Decode_Carrier(&right_carrier, &right_record) &&
            DSL_Tensor_TCON_Record_Semantic_Equal
-               (&left_record, &right_record);
+               (&left_record, &left_carrier, &right_record, &right_carrier);
 }
 
 BOOL
 DSL_Tensor_TCON_Get_Element_TCON
-        (DSL_TENSOR_TCON_ID id,
+        (TCON_IDX tcon_idx,
          UINT64 element_index,
          TCON_IDX *element_tcon)
 {
@@ -778,7 +955,7 @@ DSL_Tensor_TCON_Get_Element_TCON
     if (element_tcon != NULL)
         *element_tcon = TCON_IDX_ZERO;
 
-    if (!DSL_Tensor_TCON_Get(id, &record) ||
+    if (!DSL_Tensor_TCON_Get(tcon_idx, &record) ||
         element_index >= record.element_count ||
         element_tcon == NULL)
         return FALSE;
