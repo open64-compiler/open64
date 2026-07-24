@@ -15,6 +15,8 @@ static std::vector<std::string> DSL_tensor_fold_test_strtab;
 static std::vector<std::string> DSL_tensor_fold_test_char_table;
 static std::vector<TCON> DSL_tensor_fold_test_tcon_table;
 
+TYPE_DESC Machine_Types[MTYPE_LAST + 1];
+
 void
 Initialize_Strtab (UINT32)
 {
@@ -26,6 +28,7 @@ Initialize_Strtab (UINT32)
     TCON zero;
     TCON_clear(zero);
     DSL_tensor_fold_test_tcon_table.push_back(zero);
+    Machine_Types[MTYPE_I4].name = "I4";
 }
 
 void

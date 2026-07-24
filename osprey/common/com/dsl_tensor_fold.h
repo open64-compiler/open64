@@ -5,6 +5,8 @@
 #ifndef dsl_tensor_fold_INCLUDED
 #define dsl_tensor_fold_INCLUDED
 
+#include <stdio.h>
+
 #include "defs.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
@@ -212,6 +214,9 @@ extern BOOL DSL_Tensor_TCON_Get_Dense_Bytes
                                 (TCON_IDX tcon_idx,
                                  const unsigned char **bytes,
                                  UINT32 *length);
+extern BOOL DSL_Tensor_TCON_Print
+                                (FILE *file,
+                                 TCON_IDX tcon_idx);
 extern BOOL DSL_Tensor_TCON_Create_Zero
                                 (const DSL_TENSOR_TCON_CREATE_INFO *info,
                                  TCON_IDX *tcon_idx,

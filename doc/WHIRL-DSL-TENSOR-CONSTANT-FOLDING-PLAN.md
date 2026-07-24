@@ -554,11 +554,19 @@ The clean pull-request rule is:
 6. Each pull request must retain the milestone-specific `.B`, side payload,
    and `ir_b2a -st -src` artifacts identified by the authoritative plan.
 
+PR #94 completed the M2 storage side. The coordinated main integration calls
+`DSL_Tensor_TCON_Rebuild_Derived_Cache()` after the existing global TCON and
+TCON character-array tables are mapped, prints logical tensor constants from
+both symbol and global TCON dumps, and hides the private `MTYPE_STRING`
+carrier. Its retained `tensor_tcon.B` and `tensor_tcon.T` fixture covers a
+compact ZERO and an aligned SIDE_FILE_DENSE reference with filename, byte
+range, and checksum.
+
 | Milestone | Status | Merge dependency | Review artifact |
 | --- | --- | --- | --- |
 | M0 | Merged through PR #89/#92 | None | Contract/API test report |
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
-| M2 | Active on coordinated main/Lagrange branches | M1 merged | Tensor TCON `.B` and `.T` |
+| M2 | Storage merged through PR #94; main integration under review | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |

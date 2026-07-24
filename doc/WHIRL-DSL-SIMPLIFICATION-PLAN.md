@@ -1108,7 +1108,7 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | --- | --- | --- | --- |
 | M0 | Merged through PR #89/#92 | None | Contract/API test report |
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
-| M2 | Active on coordinated main/Lagrange branches | M1 merged | Tensor TCON `.B` and `.T` |
+| M2 | Storage merged through PR #94; main integration under review | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
@@ -1167,6 +1167,15 @@ The remaining M1 foundation is implemented:
 The scalar operand projection remains test-only in M1. Production tensor
 projection and builder publication remain disabled until M2 establishes
 tensor TCON storage and M3 integrates the first real folding path.
+
+The M2 tensor TCON storage implementation merged through PR #94. The
+coordinated main integration rebuilds the derived tensor TCON cache after the
+standard global TCON tables are mapped, links the tensor TCON service into
+Open64 phases that use the shared symbol-table implementation, and makes
+symbol-table and global-TCON dumps print the logical tensor constant instead
+of its private string-TCON carrier. The retained M2 fixture reopens
+`tensor_tcon.B` through `ir_b2a -st -src` and records compact ZERO and
+SIDE_FILE_DENSE constants in `tensor_tcon.T`.
 
 ## Staged Action List
 

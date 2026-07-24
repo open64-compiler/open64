@@ -74,6 +74,7 @@
 #include "ttype.h"
 #include "targ_sim.h"
 #include "config_asm.h"
+#include "dsl_tensor_fold.h"
 
 extern void IR_Srcpos_Filename (SRCPOS srcpos,
                                 const char **fname,
@@ -2671,6 +2672,54 @@ Print_tensor_symbol_storage (FILE *f, ST_IDX st, TY_IDX ty)
     fprintf (f, "\n");
 }
 
+static BOOL
+Print_tensor_tcon_value (std::ostream &os, TCON_IDX tcon_idx)
+{
+    DSL_TENSOR_TCON_RECORD record;
+    const char *side_path;
+    UINT32 side_path_length;
+
+    if (!DSL_Tensor_TCON_Get(tcon_idx, &record))
+        return FALSE;
+
+    static const char *storage_name[] = {
+        "zero", "one", "splat", "inline_dense", "side_file"
+    };
+    UINT32 storage = (UINT32)record.storage_kind;
+    os << "tensor_tcon storage="
+       << (storage < sizeof(storage_name) / sizeof(storage_name[0]) ?
+               storage_name[storage] : "unknown")
+       << " descriptor_ty=" << (UINT32)record.descriptor_ty
+       << " element=" << MTYPE_name((TYPE_ID)record.element_mtype)
+       << " elements=" << (unsigned long long)record.element_count
+       << " bytes=" << (unsigned long long)record.logical_bytes
+       << " alignment=" << record.required_alignment;
+
+    if (record.storage_kind <= DSL_TENSOR_TCON_STORAGE_SPLAT) {
+        os << " scalar_tcon=" << (UINT32)record.scalar_tcon
+           << " scalar=" << (long long)record.scalar_integer_value;
+    } else if (record.storage_kind ==
+                   DSL_TENSOR_TCON_STORAGE_INLINE_DENSE) {
+        os << " inline_bytes=" << record.dense_length
+           << " checksum=" << std::hex << record.checksum_hi
+           << record.checksum_lo << std::dec;
+    } else if (record.storage_kind ==
+                   DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE &&
+               DSL_Tensor_TCON_Get_Side_Path
+                   (tcon_idx, &side_path, &side_path_length)) {
+        os << " side_file=";
+        os.write(side_path, side_path_length);
+        os << " byte_offset=" << (unsigned long long)record.byte_offset
+           << " byte_length=" << (unsigned long long)record.byte_length
+           << " available_bytes=" << record.dense_length
+           << " checksum=" << std::hex << record.checksum_hi
+           << record.checksum_lo << std::dec;
+    } else {
+        return FALSE;
+    }
+    return TRUE;
+}
+
 void
 ST::Print (FILE *f, BOOL verbose) const
 {
@@ -2846,8 +2895,12 @@ ST::Print (FILE *f, BOOL verbose) const
 	}
     }
 	
-    if (sym_class == CLASS_CONST)
-	fprintf (f, "\t\tvalue: %s\n", Targ_Print (NULL, Tcon_Table[u1.tcon]));
+    if (sym_class == CLASS_CONST) {
+        fputs("\t\tvalue: ", f);
+        if (!DSL_Tensor_TCON_Print(f, u1.tcon))
+            fputs(Targ_Print(NULL, Tcon_Table[u1.tcon]), f);
+        fputc('\n', f);
+    }
 
     if (verbose) {
 	// Print address
@@ -3208,9 +3261,12 @@ std::ostream& operator<<(std::ostream &os, const ST &st )
 	}
     }
 	
-    if (st.sym_class == CLASS_CONST)
-        os << "\t\tvalue: " 
-           << Targ_Print (NULL, Tcon_Table[st.u1.tcon]) << std::endl;
+    if (st.sym_class == CLASS_CONST) {
+        os << "\t\tvalue: ";
+        if (!Print_tensor_tcon_value(os, st.u1.tcon))
+            os << Targ_Print(NULL, Tcon_Table[st.u1.tcon]);
+        os << std::endl;
+    }
 
     if (verbose) {
 	// Print address
@@ -3680,7 +3736,11 @@ template<>
 inline void
 print_op<TCON>::operator () (UINT idx, TCON *c) const
 {
-    fprintf (fid, "[%d] %s: %s\n", idx, MTYPE_name(TCON_ty(*c)),Targ_Print (NULL, *c));
+    fprintf(fid, "[%d] ", idx);
+    if (!DSL_Tensor_TCON_Print(fid, idx))
+        fprintf(fid, "%s: %s", MTYPE_name(TCON_ty(*c)),
+                Targ_Print(NULL, *c));
+    fputc('\n', fid);
 } // print_op<TCON>::operator ()
 
 
