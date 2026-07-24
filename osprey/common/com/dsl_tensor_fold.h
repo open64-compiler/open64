@@ -22,6 +22,69 @@
  */
 
 #define DSL_TENSOR_FOLD_MAX_RESULTS 2
+#define DSL_TENSOR_TCON_MAGIC 0x44535443U
+#define DSL_TENSOR_TCON_VERSION 1
+#define DSL_TENSOR_TCON_ENVELOPE_SIZE 128
+
+typedef enum {
+    DSL_TENSOR_TCON_STORAGE_ZERO = 0,
+    DSL_TENSOR_TCON_STORAGE_ONE = 1,
+    DSL_TENSOR_TCON_STORAGE_SPLAT = 2,
+    DSL_TENSOR_TCON_STORAGE_INLINE_DENSE = 3,
+    DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE = 4
+} DSL_TENSOR_TCON_STORAGE_KIND;
+
+typedef struct {
+    UINT64 element_count;
+    UINT64 logical_bytes;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+    UINT64 checksum_hi;
+    UINT64 checksum_lo;
+    INT64 scalar_integer_value;
+    UINT32 magic;
+    UINT32 version;
+    UINT32 header_size;
+    UINT32 record_size;
+    DSL_TENSOR_TCON_STORAGE_KIND storage_kind;
+    UINT32 flags;
+    TY_IDX descriptor_ty;
+    TCON_IDX scalar_tcon;
+    UINT32 element_mtype;
+    UINT32 element_size;
+    UINT32 required_alignment;
+    UINT32 side_path_offset;
+    UINT32 side_path_length;
+    UINT32 dense_offset;
+    UINT32 dense_length;
+    UINT32 reserved0;
+    UINT32 reserved1;
+    UINT32 reserved2;
+} DSL_TENSOR_TCON_ENVELOPE;
+
+typedef DSL_TENSOR_TCON_ENVELOPE DSL_TENSOR_TCON_RECORD;
+
+typedef char DSL_TENSOR_TCON_ENVELOPE_SIZE_ASSERT
+    [(sizeof(DSL_TENSOR_TCON_ENVELOPE) == DSL_TENSOR_TCON_ENVELOPE_SIZE) ? 1 : -1];
+
+typedef struct {
+    TY_IDX descriptor_ty;
+    TCON_IDX scalar_tcon;
+    TYPE_ID element_mtype;
+    UINT64 element_count;
+    UINT64 logical_bytes;
+    UINT32 required_alignment;
+    UINT32 element_size;
+    INT64 scalar_integer_value;
+    const unsigned char *dense_bytes;
+    UINT32 dense_bytes_length;
+    const char *side_path;
+    UINT32 side_path_length;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+    UINT64 checksum_hi;
+    UINT64 checksum_lo;
+} DSL_TENSOR_TCON_CREATE_INFO;
 
 typedef enum {
     DSL_TENSOR_FOLD_RESULT_NONE = 0,
@@ -128,5 +191,55 @@ extern BOOL DSL_Tensor_Fold_Candidate_Valid
 extern DSL_TENSOR_FOLD_STATUS Targ_DSL_WhirlOp
                                 (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
                                  DSL_TENSOR_FOLD_OUTPUT *output);
+extern void DSL_Tensor_TCON_Reset (void);
+extern void DSL_Tensor_TCON_Rebuild_Derived_Cache
+                                (TCON_IDX first_tcon_idx,
+                                 TCON_IDX limit_tcon_idx);
+extern BOOL DSL_Tensor_TCON_Get
+                                (TCON_IDX tcon_idx,
+                                 DSL_TENSOR_TCON_RECORD *record);
+extern BOOL DSL_Tensor_TCON_Is_Carrier
+                                (TCON_IDX tcon_idx,
+                                 DSL_TENSOR_TCON_RECORD *record);
+extern BOOL DSL_Tensor_TCON_Decode_Carrier
+                                (const TCON *carrier,
+                                 DSL_TENSOR_TCON_RECORD *record);
+extern BOOL DSL_Tensor_TCON_Get_Side_Path
+                                (TCON_IDX tcon_idx,
+                                 const char **bytes,
+                                 UINT32 *length);
+extern BOOL DSL_Tensor_TCON_Get_Dense_Bytes
+                                (TCON_IDX tcon_idx,
+                                 const unsigned char **bytes,
+                                 UINT32 *length);
+extern BOOL DSL_Tensor_TCON_Create_Zero
+                                (const DSL_TENSOR_TCON_CREATE_INFO *info,
+                                 TCON_IDX *tcon_idx,
+                                 TCON *carrier);
+extern BOOL DSL_Tensor_TCON_Create_One
+                                (const DSL_TENSOR_TCON_CREATE_INFO *info,
+                                 TCON_IDX *tcon_idx,
+                                 TCON *carrier);
+extern BOOL DSL_Tensor_TCON_Create_Splat
+                                (const DSL_TENSOR_TCON_CREATE_INFO *info,
+                                 TCON_IDX *tcon_idx,
+                                 TCON *carrier);
+extern BOOL DSL_Tensor_TCON_Create_Inline_Dense
+                                (const DSL_TENSOR_TCON_CREATE_INFO *info,
+                                 TCON_IDX *tcon_idx,
+                                 TCON *carrier);
+extern BOOL DSL_Tensor_TCON_Create_Side_File_Dense
+                                (const DSL_TENSOR_TCON_CREATE_INFO *info,
+                                 TCON_IDX *tcon_idx,
+                                 TCON *carrier);
+extern UINT64 DSL_Tensor_TCON_Semantic_Hash
+                                (TCON_IDX tcon_idx);
+extern BOOL DSL_Tensor_TCON_Semantic_Equal
+                                (TCON_IDX left,
+                                 TCON_IDX right);
+extern BOOL DSL_Tensor_TCON_Get_Element_TCON
+                                (TCON_IDX tcon_idx,
+                                 UINT64 element_index,
+                                 TCON_IDX *element_tcon);
 
 #endif /* dsl_tensor_fold_INCLUDED */
