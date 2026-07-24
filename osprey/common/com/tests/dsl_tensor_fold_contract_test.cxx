@@ -8,6 +8,9 @@
 #include "dsl_tensor_fold.h"
 #include "strtab.h"
 
+extern TCON_IDX Enter_tcon (const TCON& tcon);
+extern UINT32 TCON_Table_Size (void);
+
 static int
 Check_Status_Names(void)
 {
@@ -260,6 +263,16 @@ Test_Tensor_Type(UINT32 index)
     return ty;
 }
 
+static TCON_IDX
+Test_Scalar_TCON(TYPE_ID mtype)
+{
+    TCON scalar;
+
+    TCON_clear(scalar);
+    Set_TCON_ty(scalar, mtype);
+    return Enter_tcon(scalar);
+}
+
 static int
 Check_Tensor_TCON_Storage(void)
 {
@@ -275,13 +288,22 @@ Check_Tensor_TCON_Storage(void)
     TCON_IDX collision_idx;
     TCON_IDX side_unproven_idx;
     TCON_IDX side_distinct_idx;
+    TCON_IDX zero_scalar;
+    TCON_IDX one_scalar;
+    TCON_IDX splat_scalar;
+    TCON_IDX wrong_scalar;
     TCON carrier;
+    TCON malformed_carrier;
     TCON side_carrier;
     TCON scalar;
     TCON_IDX element_tcon;
     UINT64 inline_hash;
     UINT64 side_hash;
     char *payload;
+    const char *side_bytes;
+    const unsigned char *dense_bytes;
+    UINT32 side_length;
+    UINT32 dense_length;
     const char side_path[] = "weights/tensor.bin";
     const unsigned char inline_bytes[16] = {
         'a', 0, 'b', 3, 4, 5, 6, 7,
@@ -291,9 +313,14 @@ Check_Tensor_TCON_Storage(void)
         'a', 0, 'b', 3, 4, 5, 6, 7,
         8, 9, 10, 11, 12, 13, 14, 16
     };
+    char malformed_payload[DSL_TENSOR_TCON_ENVELOPE_SIZE + 17];
 
     Initialize_Strtab(1024);
     DSL_Tensor_TCON_Reset();
+    zero_scalar = Test_Scalar_TCON(MTYPE_I4);
+    one_scalar = Test_Scalar_TCON(MTYPE_I4);
+    splat_scalar = Test_Scalar_TCON(MTYPE_I4);
+    wrong_scalar = Test_Scalar_TCON(MTYPE_F4);
 
     if (sizeof(DSL_TENSOR_TCON_RECORD) !=
         DSL_TENSOR_TCON_ENVELOPE_SIZE) {
@@ -312,7 +339,7 @@ Check_Tensor_TCON_Storage(void)
 
     memset(&info, 0, sizeof(info));
     info.descriptor_ty = Test_Tensor_Type(101);
-    info.scalar_tcon = 11;
+    info.scalar_tcon = zero_scalar;
     info.element_mtype = MTYPE_I4;
     info.element_size = 4;
     info.scalar_integer_value = 0;
@@ -328,6 +355,7 @@ Check_Tensor_TCON_Storage(void)
         record.magic != DSL_TENSOR_TCON_MAGIC ||
         record.version != DSL_TENSOR_TCON_VERSION ||
         record.header_size != DSL_TENSOR_TCON_ENVELOPE_SIZE ||
+        record.record_size != DSL_TENSOR_TCON_ENVELOPE_SIZE ||
         record.storage_kind != DSL_TENSOR_TCON_STORAGE_ZERO ||
         record.descriptor_ty != info.descriptor_ty ||
         record.scalar_tcon != info.scalar_tcon ||
@@ -348,7 +376,7 @@ Check_Tensor_TCON_Storage(void)
     }
 
     if (!DSL_Tensor_TCON_Get_Element_TCON(zero_idx, 7, &element_tcon) ||
-        element_tcon != info.scalar_tcon ||
+        element_tcon != zero_scalar ||
         DSL_Tensor_TCON_Get_Element_TCON(zero_idx, 8, &element_tcon)) {
         fprintf(stderr, "compact tensor TCON element access changed\n");
         return 1;
@@ -360,7 +388,7 @@ Check_Tensor_TCON_Storage(void)
         return 1;
     }
 
-    info.scalar_tcon = 12;
+    info.scalar_tcon = one_scalar;
     info.scalar_integer_value = 1;
     if (!DSL_Tensor_TCON_Create_One(&info, &one_idx, NULL) ||
         !DSL_Tensor_TCON_Get(one_idx, &record) ||
@@ -370,21 +398,21 @@ Check_Tensor_TCON_Storage(void)
         return 1;
     }
 
-    info.scalar_tcon = 13;
+    info.scalar_tcon = splat_scalar;
     info.scalar_integer_value = 42;
     if (!DSL_Tensor_TCON_Create_Splat(&info, &splat_idx, NULL) ||
         !DSL_Tensor_TCON_Get(splat_idx, &record) ||
         record.storage_kind != DSL_TENSOR_TCON_STORAGE_SPLAT ||
         !DSL_Tensor_TCON_Get_Element_TCON(splat_idx, 3,
                                           &element_tcon) ||
-        element_tcon != 13) {
+        element_tcon != splat_scalar) {
         fprintf(stderr, "splat tensor TCON record contract changed\n");
         return 1;
     }
 
     memset(&info, 0, sizeof(info));
     info.descriptor_ty = Test_Tensor_Type(201);
-    info.element_mtype = MTYPE_U1;
+    info.element_mtype = MTYPE_I4;
     info.element_size = 4;
     info.element_count = 4;
     info.logical_bytes = 16;
@@ -400,14 +428,26 @@ Check_Tensor_TCON_Storage(void)
         record.dense_length != 16 ||
         TCON_str_len(carrier) !=
             DSL_TENSOR_TCON_ENVELOPE_SIZE + 16 ||
-        memcmp(Index_to_char_array(TCON_str_idx(carrier)) +
-               record.dense_offset, inline_bytes, 16) != 0 ||
+        !DSL_Tensor_TCON_Get_Dense_Bytes(inline_idx, &dense_bytes,
+                                         &dense_length) ||
+        dense_length != 16 ||
+        memcmp(dense_bytes, inline_bytes, 16) != 0 ||
         DSL_Tensor_TCON_Get_Element_TCON(inline_idx, 0,
                                          &element_tcon)) {
         fprintf(stderr, "inline dense tensor TCON contract changed\n");
         return 1;
     }
     inline_hash = DSL_Tensor_TCON_Semantic_Hash(inline_idx);
+    memcpy(malformed_payload, Index_to_char_array(TCON_str_idx(carrier)),
+           DSL_TENSOR_TCON_ENVELOPE_SIZE + 16);
+    malformed_payload[DSL_TENSOR_TCON_ENVELOPE_SIZE + 16] = '\7';
+    malformed_carrier =
+        Host_To_Targ_String(MTYPE_STRING, malformed_payload,
+                            DSL_TENSOR_TCON_ENVELOPE_SIZE + 17);
+    if (DSL_Tensor_TCON_Decode_Carrier(&malformed_carrier, NULL)) {
+        fprintf(stderr, "tensor TCON trailing payload accepted\n");
+        return 1;
+    }
 
     if (!DSL_Tensor_TCON_Create_Inline_Dense(&info, &duplicate_idx, NULL) ||
         duplicate_idx != inline_idx) {
@@ -426,7 +466,7 @@ Check_Tensor_TCON_Storage(void)
 
     memset(&info, 0, sizeof(info));
     info.descriptor_ty = Test_Tensor_Type(201);
-    info.element_mtype = MTYPE_U1;
+    info.element_mtype = MTYPE_I4;
     info.element_size = 4;
     info.element_count = 4;
     info.logical_bytes = 16;
@@ -457,6 +497,8 @@ Check_Tensor_TCON_Storage(void)
     if (!DSL_Tensor_TCON_Create_Side_File_Dense(&info, &side_unproven_idx,
                                                 NULL) ||
         side_unproven_idx == inline_idx ||
+        !DSL_Tensor_TCON_Semantic_Equal(side_unproven_idx,
+                                        side_unproven_idx) ||
         DSL_Tensor_TCON_Semantic_Equal(inline_idx, side_unproven_idx)) {
         fprintf(stderr, "dense tensor TCON storage policy changed\n");
         return 1;
@@ -482,6 +524,17 @@ Check_Tensor_TCON_Storage(void)
         memcmp(payload + record.side_path_offset, side_path,
                record.side_path_length) != 0) {
         fprintf(stderr, "side-file tensor path was not carrier-owned\n");
+        return 1;
+    }
+    if (!DSL_Tensor_TCON_Get_Side_Path(side_distinct_idx, &side_bytes,
+                                       &side_length) ||
+        side_length != strlen(side_path) ||
+        memcmp(side_bytes, side_path, side_length) != 0 ||
+        !DSL_Tensor_TCON_Get_Dense_Bytes(side_distinct_idx, &dense_bytes,
+                                         &dense_length) ||
+        dense_length != 16 ||
+        memcmp(dense_bytes, inline_bytes, 16) != 0) {
+        fprintf(stderr, "tensor TCON bounded byte access changed\n");
         return 1;
     }
 
@@ -523,10 +576,22 @@ Check_Tensor_TCON_Storage(void)
         return 1;
     }
 
-    TCON_clear(carrier);
-    Set_TCON_string_payload(carrier, MTYPE_STR,
-                            Save_StrN("__WHIRL_DSL_TCON__:v1:not-id", 30),
-                            30);
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = Test_Tensor_Type(201);
+    info.scalar_tcon = wrong_scalar;
+    info.element_mtype = MTYPE_I4;
+    info.element_size = 4;
+    info.scalar_integer_value = 0;
+    info.element_count = 1;
+    info.logical_bytes = 4;
+    info.required_alignment = 4;
+    if (DSL_Tensor_TCON_Create_Zero(&info, NULL, NULL)) {
+        fprintf(stderr, "wrong-type scalar tensor TCON accepted\n");
+        return 1;
+    }
+
+    carrier = Host_To_Targ_String(MTYPE_STRING,
+                                  "__WHIRL_DSL_TCON__:v1:not-id", 30);
     if (DSL_Tensor_TCON_Decode_Carrier(&carrier, NULL)) {
         fprintf(stderr, "invalid tensor TCON carrier accepted\n");
         return 1;
@@ -535,7 +600,15 @@ Check_Tensor_TCON_Storage(void)
     DSL_Tensor_TCON_Reset();
     if (!DSL_Tensor_TCON_Get(inline_idx, &record) ||
         record.storage_kind != DSL_TENSOR_TCON_STORAGE_INLINE_DENSE ||
-        DSL_Tensor_TCON_Decode_Carrier(&carrier, NULL)) {
+        DSL_Tensor_TCON_Decode_Carrier(&carrier, NULL) ||
+        DSL_Tensor_TCON_Get(TCON_Table_Size(), &record) ||
+        DSL_Tensor_TCON_Semantic_Hash(TCON_Table_Size()) != 0 ||
+        DSL_Tensor_TCON_Semantic_Equal(TCON_Table_Size(),
+                                       TCON_Table_Size()) ||
+        DSL_Tensor_TCON_Get_Dense_Bytes(TCON_Table_Size(), &dense_bytes,
+                                        &dense_length) ||
+        DSL_Tensor_TCON_Get_Side_Path(TCON_Table_Size(), &side_bytes,
+                                      &side_length)) {
         fprintf(stderr, "tensor TCON reset behavior changed\n");
         return 1;
     }

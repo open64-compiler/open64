@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "strtab.h"
+#include "symtab_idx.h"
 #include "targ_const.h"
 
 static std::vector<std::string> DSL_tensor_fold_test_strtab;
@@ -94,6 +95,12 @@ Enter_tcon (const TCON& tcon)
     return DSL_tensor_fold_test_tcon_table.size() - 1;
 }
 
+UINT32
+TCON_Table_Size (void)
+{
+    return DSL_tensor_fold_test_tcon_table.size();
+}
+
 TCON
 TCON_from_IDX (TCON_IDX tcon_idx)
 {
@@ -103,4 +110,53 @@ TCON_from_IDX (TCON_IDX tcon_idx)
         return zero;
     }
     return DSL_tensor_fold_test_tcon_table[tcon_idx];
+}
+
+TCON
+Host_To_Targ_String (TYPE_ID ctype, const char *bytes, UINT32 length)
+{
+    TCON result;
+    TCON_clear(result);
+    Set_TCON_ty(result, ctype);
+    result.vals.sval.cp = Save_StrN(bytes, length);
+    result.vals.sval.len = length;
+    return result;
+}
+
+UINT32
+TY_Table_Size (void)
+{
+    return 512;
+}
+
+BOOL
+TY_is_tensor_extension (TY_IDX ty)
+{
+    return TY_IDX_index(ty) == 101 || TY_IDX_index(ty) == 201;
+}
+
+BOOL
+TY_tensor_is_canonical (TY_IDX ty)
+{
+    return TY_is_tensor_extension(ty);
+}
+
+TY_IDX
+TY_tensor_element_ty (TY_IDX)
+{
+    TY_IDX ty = TY_IDX_ZERO;
+    Set_TY_IDX_index(ty, 301);
+    return ty;
+}
+
+TYPE_ID
+TY_mtype (TY_IDX ty)
+{
+    return TY_IDX_index(ty) == 301 ? MTYPE_I4 : MTYPE_UNKNOWN;
+}
+
+UINT64
+TY_size (TY_IDX ty)
+{
+    return TY_IDX_index(ty) == 301 ? 4 : 0;
 }

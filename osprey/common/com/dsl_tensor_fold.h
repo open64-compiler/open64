@@ -204,6 +204,14 @@ extern BOOL DSL_Tensor_TCON_Is_Carrier
 extern BOOL DSL_Tensor_TCON_Decode_Carrier
                                 (const TCON *carrier,
                                  DSL_TENSOR_TCON_RECORD *record);
+extern BOOL DSL_Tensor_TCON_Get_Side_Path
+                                (TCON_IDX tcon_idx,
+                                 const char **bytes,
+                                 UINT32 *length);
+extern BOOL DSL_Tensor_TCON_Get_Dense_Bytes
+                                (TCON_IDX tcon_idx,
+                                 const unsigned char **bytes,
+                                 UINT32 *length);
 extern BOOL DSL_Tensor_TCON_Create_Zero
                                 (const DSL_TENSOR_TCON_CREATE_INFO *info,
                                  TCON_IDX *tcon_idx,

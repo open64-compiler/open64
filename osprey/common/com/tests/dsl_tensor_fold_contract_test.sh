@@ -8,6 +8,7 @@ cxx="${CXX:-g++}"
 output="${TMPDIR:-/tmp}/dsl_tensor_fold_contract_test"
 
 "$cxx" -std=gnu++98 \
+  -DDSL_TENSOR_FOLD_TEST_STUB \
   -I"$repo_root/osprey/linux/include" \
   -I"$repo_root/osprey/common/com" \
   -I"$repo_root/osprey/common/com/x8664" \

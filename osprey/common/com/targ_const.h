@@ -283,13 +283,6 @@ inline mUINT32
 TCON_str_idx (const TCON& tcon)		{ return tcon.vals.sval.cp; }
 inline mUINT32
 TCON_str_len (const TCON& tcon)		{ return tcon.vals.sval.len; }
-inline void
-Set_TCON_string_payload (TCON& tcon, TYPE_ID mtype, mUINT32 cp, mUINT32 len)
-{
-  tcon.ty = mtype;
-  tcon.vals.sval.cp = cp;
-  tcon.vals.sval.len = len;
-}
 #else /* __cplusplus */
 typedef struct TCON TCON;
 #endif /* __cplusplus */
