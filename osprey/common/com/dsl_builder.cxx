@@ -8,6 +8,7 @@
 #pragma hdrstop
 #include <algorithm>
 #include <ctype.h>
+#include <errno.h>
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +21,10 @@
 
 #include "dsl_builder.h"
 #include "dsl_gatekeeper.h"
+#include "dsl_simp.h"
+#include "dsl_tensor_fold.h"
 #include "config.h"
+#include "const.h"
 #include "dwarf_DST.h"
 #include "dwarf_DST_mem.h"
 #include "dwarf_DST_producer.h"
@@ -49,6 +53,7 @@ typedef struct {
     TY_IDX result_ty;
     DSL_IR_VALUE_ID image_value_id;
     UINT32 value_kind;
+    TCON_IDX tensor_tcon;
     std::string canonical_key;
     BOOL materializing;
     BOOL materialized;
@@ -56,6 +61,7 @@ typedef struct {
 
 static std::vector<DSL_BUILDER_VALUE_RECORD> DSL_builder_value_registry;
 static BOOL DSL_builder_canonicalization_enabled = FALSE;
+static BOOL DSL_builder_tensor_folding_enabled = FALSE;
 
 struct dsl_builder_state {
     DSL_BUILDER_PROGRAM_UNIT pu;
@@ -591,6 +597,18 @@ BOOL
 DSL_Builder_Canonicalization_Enabled (void)
 {
     return Enable_WN_Simp && DSL_builder_canonicalization_enabled;
+}
+
+void
+DSL_Builder_Set_Tensor_Folding_Enabled (BOOL enabled)
+{
+    DSL_builder_tensor_folding_enabled = enabled;
+}
+
+BOOL
+DSL_Builder_Tensor_Folding_Enabled (void)
+{
+    return Enable_WN_Simp && DSL_builder_tensor_folding_enabled;
 }
 
 BOOL
@@ -1999,6 +2017,7 @@ DSL_Builder_Create_Native_Value
     record.result_ty = result_ty;
     record.image_value_id = image_value_id;
     record.value_kind = value_kind;
+    record.tensor_tcon = TCON_IDX_ZERO;
     record.canonical_key = canonical_key;
     record.materializing = FALSE;
     record.materialized = FALSE;
@@ -2212,15 +2231,108 @@ DSL_Builder_Tensor_Has_Unique_Ownership (ST_IDX st)
     return value != NULL && strcmp(value, "true") == 0;
 }
 
-DSL_BUILDER_VALUE
-DSL_Builder_Create_Tensor_Constant
+static BOOL
+DSL_Builder_Attach_Tensor_TCON
+        (DSL_BUILDER_VALUE value,
+         TCON_IDX tensor_tcon)
+{
+    DSL_BUILDER_VALUE_RECORD *record =
+        DSL_Builder_Find_Value_Record(value);
+    DSL_TENSOR_TCON_RECORD tensor_record;
+    char tcon_text[32];
+
+    if (record == NULL || tensor_tcon == TCON_IDX_ZERO ||
+        !DSL_Tensor_TCON_Get(tensor_tcon, &tensor_record) ||
+        tensor_record.descriptor_ty != record->result_ty)
+        return FALSE;
+
+    record->tensor_tcon = tensor_tcon;
+    snprintf(tcon_text, sizeof(tcon_text), "%u", (UINT32)tensor_tcon);
+    ST_tensor_bind_metadata(record->result_st, "tensor_tcon_idx", tcon_text);
+    return TRUE;
+}
+
+static BOOL
+DSL_Builder_Create_Compact_Tensor_TCON
+        (TY_IDX tensor_ty,
+         const char *value,
+         TCON_IDX *tensor_tcon)
+{
+    std::vector<UINT64> dimensions;
+    DSL_TENSOR_TCON_CREATE_INFO info;
+    TY_IDX element_ty;
+    TYPE_ID element_mtype;
+    TCON scalar;
+    TCON_IDX scalar_tcon;
+    UINT64 element_count = 1;
+    INT64 integer_value;
+    char *end;
+
+    if (tensor_tcon != NULL)
+        *tensor_tcon = TCON_IDX_ZERO;
+    if (tensor_tcon == NULL || value == NULL ||
+        !DSL_Builder_Tensor_Type_Is_Canonical(tensor_ty) ||
+        !DSL_Builder_Parse_Static_Shape
+             (TY_tensor_attribute(tensor_ty, TY_TENSOR_SCHEMA_SHAPE),
+              &dimensions))
+        return FALSE;
+
+    for (UINT32 i = 0; i < dimensions.size(); ++i) {
+        if (dimensions[i] == 0 ||
+            element_count > ~(UINT64)0 / dimensions[i])
+            return FALSE;
+        element_count *= dimensions[i];
+    }
+
+    element_ty = TY_tensor_element_ty(tensor_ty);
+    element_mtype = TY_mtype(element_ty);
+    if (!MTYPE_is_integral(element_mtype) || TY_size(element_ty) == 0)
+        return FALSE;
+
+    errno = 0;
+    integer_value = strtoll(value, &end, 0);
+    if (errno == ERANGE || end == value || *end != '\0')
+        return FALSE;
+    scalar = Host_To_Targ(element_mtype, integer_value);
+    if (Targ_To_Host(scalar) != integer_value)
+        return FALSE;
+    scalar_tcon = Enter_tcon(scalar);
+    if (scalar_tcon == TCON_IDX_ZERO)
+        return FALSE;
+
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = tensor_ty;
+    info.scalar_tcon = scalar_tcon;
+    info.element_mtype = element_mtype;
+    info.element_count = element_count;
+    info.element_size = TY_size(element_ty);
+    if (element_count > ~(UINT64)0 / info.element_size)
+        return FALSE;
+    info.logical_bytes = element_count * info.element_size;
+    info.required_alignment = TY_align(tensor_ty);
+    if (info.required_alignment < info.element_size)
+        info.required_alignment = info.element_size;
+    info.scalar_integer_value = integer_value;
+
+    if (integer_value == 0)
+        return DSL_Tensor_TCON_Create_Zero
+                   (&info, tensor_tcon, NULL);
+    if (integer_value == 1)
+        return DSL_Tensor_TCON_Create_One
+                   (&info, tensor_tcon, NULL);
+    return DSL_Tensor_TCON_Create_Splat(&info, tensor_tcon, NULL);
+}
+
+static DSL_BUILDER_VALUE
+DSL_Builder_Create_Tensor_Constant_Value
         (const char *name,
          TY_IDX tensor_ty,
          const char *dtype,
          UINT32 rank,
          const char *logical_shape,
          const char *value_kind,
-         const char *value)
+         const char *value,
+         TCON_IDX tensor_tcon)
 {
     char *payload;
     DSL_BUILDER_VALUE result;
@@ -2241,7 +2353,29 @@ DSL_Builder_Create_Tensor_Constant
                  (OPR_DSLTENSORCONST, 1, payload, NULL, 0, attrs, 2,
                   name, tensor_ty, DSL_IR_VALUE_CONSTANT);
     delete [] payload;
+    if (result != NULL && tensor_tcon != TCON_IDX_ZERO)
+        DSL_Builder_Attach_Tensor_TCON(result, tensor_tcon);
     return result;
+}
+
+DSL_BUILDER_VALUE
+DSL_Builder_Create_Tensor_Constant
+        (const char *name,
+         TY_IDX tensor_ty,
+         const char *dtype,
+         UINT32 rank,
+         const char *logical_shape,
+         const char *value_kind,
+         const char *value)
+{
+    TCON_IDX tensor_tcon = TCON_IDX_ZERO;
+
+    if (value_kind != NULL && strcmp(value_kind, "splat") == 0)
+        DSL_Builder_Create_Compact_Tensor_TCON
+            (tensor_ty, value, &tensor_tcon);
+    return DSL_Builder_Create_Tensor_Constant_Value
+               (name, tensor_ty, dtype, rank, logical_shape, value_kind,
+                value, tensor_tcon);
 }
 
 DSL_BUILDER_VALUE
@@ -2424,6 +2558,152 @@ DSL_Builder_Create_External_Tensor_Constant
     ST_tensor_bind_metadata(result_st, "storage_byte_length", byte_length);
     ST_tensor_bind_metadata(result_st, "storage_checksum", checksum);
     return result;
+}
+
+static WN *
+DSL_Builder_Project_Compact_Tensor_Constant
+        (const DSL_BUILDER_VALUE_RECORD *record)
+{
+    DSL_TENSOR_TCON_RECORD tensor_tcon;
+    TY_IDX element_ty;
+    TYPE_ID element_mtype;
+    ST *scalar_st;
+
+    if (record == NULL || record->tensor_tcon == TCON_IDX_ZERO ||
+        !DSL_Tensor_TCON_Get(record->tensor_tcon, &tensor_tcon) ||
+        (tensor_tcon.storage_kind != DSL_TENSOR_TCON_STORAGE_ZERO &&
+         tensor_tcon.storage_kind != DSL_TENSOR_TCON_STORAGE_ONE &&
+         tensor_tcon.storage_kind != DSL_TENSOR_TCON_STORAGE_SPLAT))
+        return NULL;
+
+    element_ty = TY_tensor_element_ty(record->result_ty);
+    element_mtype = TY_mtype(element_ty);
+    scalar_st = New_Const_Sym(tensor_tcon.scalar_tcon, element_ty);
+    return scalar_st == NULL ? NULL :
+        WN_CreateConst(OPR_CONST, element_mtype, MTYPE_V, scalar_st);
+}
+
+static DSL_BUILDER_VALUE
+DSL_Builder_Try_Fold_Tensor_Binary
+        (DSL_OPERATOR dsl_operator,
+         UINT16 version,
+         DSL_BUILDER_VALUE *kids,
+         UINT32 kid_count,
+         const DSL_BUILDER_OPERATOR_ATTRIBUTE *attrs,
+         UINT32 attr_count,
+         const char *result_name,
+         TY_IDX result_ty)
+{
+    DSL_BUILDER_VALUE_RECORD *kid_record[2];
+    DSL_SIMP_BINARY_CANDIDATE simp_candidate;
+    DSL_SIMP_BINARY_RESULT simp_result;
+    DSL_TENSOR_FOLD_CANDIDATE fold_candidate;
+    DSL_TENSOR_FOLD_OUTPUT fold_output;
+    DSL_TENSOR_FOLD_POLICY fold_policy;
+    DSL_TENSOR_TCON_RECORD folded_record;
+    DSL_IR_ATTRIBUTE_RECORD *fold_attrs = NULL;
+    TCON operands[2];
+    TY_IDX operand_ty[2];
+    TY_IDX result_types[1];
+    TCON_IDX folded_tcon;
+    DSL_BUILDER_VALUE folded_value;
+    DSL_SIMP_STATUS simp_status;
+    char folded_text[64];
+    const char *dtype;
+    const char *shape;
+    INT32 rank;
+
+    if (!DSL_Builder_Tensor_Folding_Enabled() || kids == NULL ||
+        kid_count != 2 ||
+        (dsl_operator != OPR_DSLADD && dsl_operator != OPR_DSLMUL))
+        return NULL;
+
+    for (UINT32 i = 0; i < 2; ++i) {
+        kid_record[i] = DSL_Builder_Find_Value_Record(kids[i]);
+        if (kid_record[i] == NULL ||
+            kid_record[i]->tensor_tcon == TCON_IDX_ZERO)
+            return NULL;
+        if (!DSL_Tensor_TCON_Get_Carrier
+                 (kid_record[i]->tensor_tcon, &operands[i]))
+            return NULL;
+        operand_ty[i] = kid_record[i]->result_ty;
+    }
+
+    memset(&simp_candidate, 0, sizeof(simp_candidate));
+    simp_candidate.dsl_operator = dsl_operator;
+    simp_candidate.version = version;
+    simp_candidate.result_ty = result_ty;
+    simp_candidate.operand_ty[0] = operand_ty[0];
+    simp_candidate.operand_ty[1] = operand_ty[1];
+    simp_candidate.projected_kid[0] =
+        DSL_Builder_Project_Compact_Tensor_Constant(kid_record[0]);
+    simp_candidate.projected_kid[1] =
+        DSL_Builder_Project_Compact_Tensor_Constant(kid_record[1]);
+    simp_candidate.projection_kind = DSL_SIMP_PROJECTION_TEST_SCALAR;
+    if (simp_candidate.projected_kid[0] == NULL ||
+        simp_candidate.projected_kid[1] == NULL)
+        return NULL;
+    simp_status = DSL_Simp_Binary(&simp_candidate, &simp_result);
+    if (simp_status != DSL_SIMP_ENGINE_REWRITE &&
+        simp_status != DSL_SIMP_UNCHANGED)
+        return NULL;
+
+    if (attr_count != 0) {
+        fold_attrs = new DSL_IR_ATTRIBUTE_RECORD[attr_count];
+        for (UINT32 i = 0; i < attr_count; ++i) {
+            DSL_IR_Attribute_Record_Init(&fold_attrs[i]);
+            fold_attrs[i].value_kind = DSL_IR_ATTRIBUTE_VALUE_STRING;
+            fold_attrs[i].name = Save_Str(attrs[i].name);
+            fold_attrs[i].value =
+                Save_Str(DSL_Builder_Safe_String(attrs[i].value));
+        }
+    }
+
+    DSL_Tensor_Fold_Default_Policy(&fold_policy);
+    result_types[0] = result_ty;
+    memset(&fold_candidate, 0, sizeof(fold_candidate));
+    fold_candidate.dsl_operator = dsl_operator;
+    fold_candidate.version = version;
+    fold_candidate.result_count = 1;
+    fold_candidate.operand_count = 2;
+    fold_candidate.operands = operands;
+    fold_candidate.operand_ty = operand_ty;
+    fold_candidate.result_ty = result_types;
+    fold_candidate.attributes = fold_attrs;
+    fold_candidate.attribute_count = attr_count;
+    fold_candidate.policy = &fold_policy;
+    DSL_TENSOR_FOLD_STATUS fold_status =
+        Targ_DSL_WhirlOp(&fold_candidate, &fold_output);
+    delete [] fold_attrs;
+    if (fold_status != DSL_TENSOR_FOLD_SUCCESS ||
+        fold_output.result_count != 1 ||
+        fold_output.results[0].kind != DSL_TENSOR_FOLD_RESULT_TCON ||
+        fold_output.results[0].result_ty != result_ty)
+        return NULL;
+
+    if (!DSL_Tensor_TCON_Find_Carrier
+             (&fold_output.results[0].result, &folded_tcon) ||
+        !DSL_Tensor_TCON_Get(folded_tcon, &folded_record))
+        return NULL;
+
+    dtype = TY_tensor_attribute(result_ty, TY_TENSOR_SCHEMA_DTYPE);
+    shape = TY_tensor_attribute(result_ty, TY_TENSOR_SCHEMA_SHAPE);
+    rank = TY_tensor_rank(result_ty);
+    if (dtype == NULL || shape == NULL || rank < 0)
+        return NULL;
+    snprintf(folded_text, sizeof(folded_text), "%lld",
+             (long long)folded_record.scalar_integer_value);
+    folded_value = DSL_Builder_Create_Tensor_Constant_Value
+                       (result_name, result_ty, dtype, rank, shape,
+                        "splat", folded_text, folded_tcon);
+    if (folded_value != NULL) {
+        DSL_BUILDER_VALUE_RECORD *folded_value_record =
+            DSL_Builder_Find_Value_Record(folded_value);
+        ST_tensor_bind_metadata
+            (folded_value_record->result_st, "tensor_fold.origin",
+             DSL_OPERATOR_name(dsl_operator));
+    }
+    return folded_value;
 }
 
 DSL_BUILDER_OPERATOR
@@ -2716,6 +2996,11 @@ DSL_Builder_Create_Operator_With_Result
             (dsl_operator, version, canonical_kids, kid_count);
         effective_kids = canonical_kids;
     }
+    result = DSL_Builder_Try_Fold_Tensor_Binary
+                 (dsl_operator, version, effective_kids, kid_count,
+                  attrs, attr_count, result_name, result_ty);
+    if (result != NULL)
+        return result;
     payload = DSL_Builder_Format_Operator_Payload
                   (effective_kids, kid_count, attrs, attr_count);
     result = DSL_Builder_Create_Native_Value
@@ -2956,6 +3241,7 @@ DSL_Builder_Declare_PU_Formal
     value_record.result_ty = ty;
     value_record.image_value_id = image_value_id;
     value_record.value_kind = DSL_IR_VALUE_SYMBOL;
+    value_record.tensor_tcon = TCON_IDX_ZERO;
     value_record.canonical_key = DSL_Builder_Value_Canonical_Key
                                      (OPR_DSLUNKNOWN, 0, ty, NULL, 0,
                                       NULL, 0, name);
@@ -3021,6 +3307,7 @@ DSL_Builder_Declare_PU_Result
     value_record.result_ty = ty;
     value_record.image_value_id = image_value_id;
     value_record.value_kind = DSL_IR_VALUE_SYMBOL;
+    value_record.tensor_tcon = TCON_IDX_ZERO;
     value_record.canonical_key = DSL_Builder_Value_Canonical_Key
                                      (OPR_DSLUNKNOWN, 0, ty, NULL, 0,
                                       NULL, 0, name);
@@ -3209,6 +3496,7 @@ DSL_Builder_Create_PU_Call
         value_record.result_ty = result_ty;
         value_record.image_value_id = image_value_id;
         value_record.value_kind = DSL_IR_VALUE_SYMBOL;
+        value_record.tensor_tcon = TCON_IDX_ZERO;
         value_record.canonical_key = DSL_Builder_Value_Canonical_Key
                                          (OPR_DSLUNKNOWN, 0, result_ty,
                                           NULL, 0, NULL, 0,

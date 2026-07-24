@@ -106,10 +106,10 @@ Check_Candidate_Contract(void)
     }
 
     if (Targ_DSL_WhirlOp(&candidate, &output) !=
-            DSL_TENSOR_FOLD_NOT_APPLICABLE ||
-        output.status != DSL_TENSOR_FOLD_NOT_APPLICABLE ||
+            DSL_TENSOR_FOLD_REJECT_NON_CONSTANT_OPERAND ||
+        output.status != DSL_TENSOR_FOLD_REJECT_NON_CONSTANT_OPERAND ||
         output.result_count != 0) {
-        fprintf(stderr, "production tensor fold fallback changed\n");
+        fprintf(stderr, "non-constant tensor fold rejection changed\n");
         return 1;
     }
 
@@ -619,6 +619,130 @@ Check_Tensor_TCON_Storage(void)
     return 0;
 }
 
+static TCON_IDX
+Test_Integer_TCON (INT64 value)
+{
+    TCON scalar;
+
+    TCON_clear(scalar);
+    Set_TCON_ty(scalar, MTYPE_I4);
+    scalar.vals.i0 = value;
+    return Enter_tcon(scalar);
+}
+
+static int
+Check_Compact_Integer_Evaluator(void)
+{
+    DSL_TENSOR_TCON_CREATE_INFO info;
+    DSL_TENSOR_TCON_RECORD result_record;
+    DSL_TENSOR_FOLD_POLICY policy;
+    DSL_TENSOR_FOLD_CANDIDATE candidate;
+    DSL_TENSOR_FOLD_OUTPUT output;
+    TCON operands[2];
+    TY_IDX operand_ty[2];
+    TY_IDX result_ty[1];
+    TCON_IDX one_idx;
+    TCON_IDX three_idx;
+    TCON_IDX dense_idx;
+    unsigned char dense_bytes[16];
+
+    Initialize_Strtab(1024);
+    DSL_Tensor_TCON_Reset();
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = Test_Tensor_Type(101);
+    info.element_mtype = MTYPE_I4;
+    info.element_size = 4;
+    info.element_count = 4;
+    info.logical_bytes = 16;
+    info.required_alignment = 4;
+
+    info.scalar_tcon = Test_Integer_TCON(1);
+    info.scalar_integer_value = 1;
+    if (!DSL_Tensor_TCON_Create_One(&info, &one_idx, NULL))
+        return 1;
+    info.scalar_tcon = Test_Integer_TCON(3);
+    info.scalar_integer_value = 3;
+    if (!DSL_Tensor_TCON_Create_Splat(&info, &three_idx, NULL) ||
+        !DSL_Tensor_TCON_Get_Carrier(one_idx, &operands[0]) ||
+        !DSL_Tensor_TCON_Get_Carrier(three_idx, &operands[1]))
+        return 1;
+
+    operand_ty[0] = info.descriptor_ty;
+    operand_ty[1] = info.descriptor_ty;
+    result_ty[0] = info.descriptor_ty;
+    DSL_Tensor_Fold_Default_Policy(&policy);
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.dsl_operator = OPR_DSLADD;
+    candidate.version = 1;
+    candidate.result_count = 1;
+    candidate.operand_count = 2;
+    candidate.operands = operands;
+    candidate.operand_ty = operand_ty;
+    candidate.result_ty = result_ty;
+    candidate.policy = &policy;
+    DSL_TENSOR_FOLD_STATUS status =
+        Targ_DSL_WhirlOp(&candidate, &output);
+    if (status != DSL_TENSOR_FOLD_SUCCESS ||
+        output.result_count != 1 ||
+        !DSL_Tensor_TCON_Decode_Carrier
+             (&output.results[0].result, &result_record) ||
+        result_record.storage_kind != DSL_TENSOR_TCON_STORAGE_SPLAT ||
+        result_record.scalar_integer_value != 4) {
+        fprintf(stderr,
+                "compact integer tensor add evaluation changed: %s\n",
+                DSL_Tensor_Fold_Status_Name(status));
+        return 1;
+    }
+
+    policy.preserve_compact_splats = FALSE;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY) {
+        fprintf(stderr, "compact tensor materialization policy changed\n");
+        return 1;
+    }
+    policy.preserve_compact_splats = TRUE;
+
+    candidate.dsl_operator = OPR_DSLMUL;
+    operands[0] = operands[1];
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_SUCCESS ||
+        !DSL_Tensor_TCON_Decode_Carrier
+             (&output.results[0].result, &result_record) ||
+        result_record.scalar_integer_value != 9) {
+        fprintf(stderr, "compact integer tensor multiply evaluation changed\n");
+        return 1;
+    }
+
+    memset(dense_bytes, 1, sizeof(dense_bytes));
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = result_ty[0];
+    info.element_mtype = MTYPE_I4;
+    info.element_size = 4;
+    info.element_count = 4;
+    info.logical_bytes = 16;
+    info.required_alignment = 4;
+    info.dense_bytes = dense_bytes;
+    info.dense_bytes_length = sizeof(dense_bytes);
+    info.checksum_hi = 1;
+    if (!DSL_Tensor_TCON_Create_Inline_Dense
+             (&info, &dense_idx, &operands[0]) ||
+        Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_NON_CONSTANT_OPERAND ||
+        output.result_count != 0) {
+        fprintf(stderr, "dense tensor fold rejection changed\n");
+        return 1;
+    }
+
+    DSL_Tensor_TCON_Get_Carrier(three_idx, &operands[0]);
+    policy.max_evaluator_work = 2;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_WORK_BUDGET) {
+        fprintf(stderr, "tensor evaluator work budget changed\n");
+        return 1;
+    }
+    return 0;
+}
+
 int
 main(void)
 {
@@ -631,9 +755,10 @@ main(void)
         Check_Evaluator_Identity() ||
         Check_Candidate_Contract() ||
         Check_Mock_Evaluator() ||
-        Check_Tensor_TCON_Storage())
+        Check_Tensor_TCON_Storage() ||
+        Check_Compact_Integer_Evaluator())
         return 1;
 
-    printf("DSL tensor fold M2 storage contract passed\n");
+    printf("DSL tensor fold M3 compact evaluator contract passed\n");
     return 0;
 }

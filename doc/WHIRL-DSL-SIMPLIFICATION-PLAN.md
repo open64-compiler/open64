@@ -1108,8 +1108,8 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | --- | --- | --- | --- |
 | M0 | Merged through PR #89/#92 | None | Contract/API test report |
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
-| M2 | Storage merged through PR #94; main integration under review | M1 merged | Tensor TCON `.B` and `.T` |
-| M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
+| M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
+| M3 | Compact integral slice implemented and validated on `codex/dsl-simplifier-m3` | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
@@ -1177,6 +1177,20 @@ of its private string-TCON carrier. The retained M2 fixture reopens
 `tensor_tcon.B` through `ir_b2a -st -src` and records compact ZERO and
 SIDE_FILE_DENSE constants in `tensor_tcon.T`.
 
+M3 begins with exact integral `common.add.v1` and `common.mul.v1` over compact
+ZERO, ONE, and SPLAT tensor TCONs. These forms already carry target-format
+scalar TCON values and therefore reuse traditional Open64 target constant
+operations without reinterpreting tensor bytes in host format. INLINE_DENSE
+and SIDE_FILE_DENSE operands without reviewed target-format element extraction
+must return a structured non-constant/materialization rejection and preserve
+the original logical operator.
+
+The compact M3 slice is now implemented. The builder hook is disabled by
+default, remains subordinate to `Enable_WN_Simp`, invokes the traditional
+three-step simplifier bridge before `Targ_DSL_WhirlOp`, publishes a
+`common.tensor_const` result, and permits the folded value to feed a parent
+fold. Dense payload evaluation remains deferred.
+
 ## Staged Action List
 
 ### S0: Baseline and contract review
@@ -1227,8 +1241,10 @@ SIDE_FILE_DENSE constants in `tensor_tcon.T`.
 - Add constant-to-`kid1`, ordered-relation, and deterministic structural
   normalization.
 - Preserve result symbol, source position, lineage, and metadata.
-- Queue, but do not evaluate, all-constant tensor payload candidates for the
-  tensor constant-folding service.
+- Send all-constant tensor payload candidates to the tensor constant-folding
+  service. The current compact M3 slice evaluates ZERO, ONE, and SPLAT
+  integral `common.add.v1` and `common.mul.v1`; unsupported dense forms retain
+  the original logical operator.
 - Allow a stage-specific option to disable the hook only as a further
   restriction; it must never re-enable work disabled by `Enable_WN_Simp`.
 

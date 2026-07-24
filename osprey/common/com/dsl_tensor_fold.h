@@ -200,6 +200,12 @@ extern void DSL_Tensor_TCON_Rebuild_Derived_Cache
 extern BOOL DSL_Tensor_TCON_Get
                                 (TCON_IDX tcon_idx,
                                  DSL_TENSOR_TCON_RECORD *record);
+extern BOOL DSL_Tensor_TCON_Get_Carrier
+                                (TCON_IDX tcon_idx,
+                                 TCON *carrier);
+extern BOOL DSL_Tensor_TCON_Find_Carrier
+                                (const TCON *carrier,
+                                 TCON_IDX *tcon_idx);
 extern BOOL DSL_Tensor_TCON_Is_Carrier
                                 (TCON_IDX tcon_idx,
                                  DSL_TENSOR_TCON_RECORD *record);
