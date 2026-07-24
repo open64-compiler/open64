@@ -566,8 +566,8 @@ range, and checksum.
 | --- | --- | --- | --- |
 | M0 | Merged through PR #89/#92 | None | Contract/API test report |
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
-| M2 | Storage merged through PR #94; main integration under review | M1 merged | Tensor TCON `.B` and `.T` |
-| M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
+| M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
+| M3 | Compact integral slice implemented and validated on `codex/dsl-simplifier-m3` | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
@@ -579,26 +579,41 @@ Update both copies of the status table in the same documentation change.
 
 The milestone mapping above controls when each action may begin integration.
 
+M3 initially evaluates compact integral ZERO, ONE, and SPLAT carriers. Their
+scalar TCON is already in target format and is evaluated through the existing
+Open64 target constant operation. Dense inline and side-file payloads remain
+valid M2 constants, but M3 must reject them unless the evaluator can obtain
+each element through a reviewed target-format accessor. It must never cast
+their bytes to host integer pointers.
+
+The compact M3 slice is implemented through `Targ_WhirlOp` and
+`Targ_DSL_WhirlOp`. Construction-time publication is disabled by default and
+subordinate to `Enable_WN_Simp`. Its retained artifact proves enabled,
+stage-disabled, master-disabled, non-constant rejection, mapped-image reopen,
+and bottom-up parent-fold behavior. Items below that mention dense payloads,
+side-file publication, VHO, or WOPT remain future work.
+
 1. [x] Define a fixed-layout evaluator registry keyed by logical operator and
    version.
 2. [x] Define the simplifier candidate-input and folded-result handoff APIs.
-3. [ ] Add tensor TCON creation, query, target-format element access, hashing,
+3. [x] Add tensor TCON creation, query, target-format compact-scalar access, hashing,
    comparison, printing, and verification APIs.
 4. [x] Define result-size and evaluator-work budgets.
-5. [ ] Add the fixed-layout tensor envelope in a backward-compatible
+5. [x] Add the fixed-layout tensor envelope in a backward-compatible
    string-TCON carrier without changing `sizeof(TCON)`. Use `TCON_IDX` as the
    stable identity and the existing TCON character-array table as persistent
    byte ownership; any runtime lookup table is derived and rebuildable.
-6. [ ] Implement ZERO, ONE, and general SPLAT preservation.
+6. [x] Implement ZERO, ONE, and general SPLAT preservation.
 7. [ ] Implement INLINE_DENSE and SIDE_FILE_DENSE readers independent of
    Python and backend CG.
-8. [ ] Implement exact integer `common.add` and `common.mul` through
-   target-format element operations.
+8. [x] Implement exact integer `common.add` and `common.mul` for compact
+   ZERO, ONE, and SPLAT carriers through target-format scalar operations.
 9. [ ] After the projectable-operation contract is published, implement
    exact integer tensor DIVREM evaluation and quotient/remainder TCON
    projections.
 10. [ ] Publish folded constants atomically to the mapped image and side file.
-11. [ ] Requeue affected parent expressions after successful publication.
+11. [x] Revisit affected parent expressions after successful compact
+   publication.
 12. [ ] Preserve source position, result symbol, lineage, and descriptor
    identity.
 13. [ ] Add gatekeeper checks for carrier/record consistency, folded result
@@ -609,7 +624,8 @@ The milestone mapping above controls when each action may begin integration.
    reason.
 16. [ ] Add deterministic option A/B tests for construction, explicit VHO
    folding, and adapted WOPT.
-17. [ ] Preserve `.B`, side payload, and `ir_b2a -st -src` evidence.
+17. [x] Preserve compact-fold `.B` and `ir_b2a -st -src` evidence. Preserve
+   side payload evidence when dense side-file folding is implemented.
 
 ## Non-Goals
 

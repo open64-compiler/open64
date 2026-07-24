@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "opcode.h"
 #include "strtab.h"
 #include "symtab_idx.h"
 #include "targ_const.h"
@@ -28,7 +29,9 @@ Initialize_Strtab (UINT32)
     TCON zero;
     TCON_clear(zero);
     DSL_tensor_fold_test_tcon_table.push_back(zero);
+    Machine_Types[MTYPE_I4].id = MTYPE_I4;
     Machine_Types[MTYPE_I4].name = "I4";
+    Machine_Types[MTYPE_I4].type_class_bits = MTYPE_CLASS_INTEGER;
 }
 
 void
@@ -132,6 +135,38 @@ Host_To_Targ_String (TYPE_ID ctype, const char *bytes, UINT32 length)
         result.vals.sval.cp = Save_StrN(bytes, saved_length);
     }
     result.vals.sval.len = length;
+    return result;
+}
+
+INT64
+Targ_To_Host (TCON value)
+{
+    return TCON_i0(value);
+}
+
+TCON
+Targ_WhirlOp (OPCODE opcode, TCON left, TCON right, BOOL *folded)
+{
+    TCON result;
+    INT64 value;
+
+    TCON_clear(result);
+    Set_TCON_ty(result, OPCODE_rtype(opcode));
+    switch (OPCODE_operator(opcode)) {
+    case OPR_ADD:
+        value = TCON_i0(left) + TCON_i0(right);
+        break;
+    case OPR_MPY:
+        value = TCON_i0(left) * TCON_i0(right);
+        break;
+    default:
+        if (folded != NULL)
+            *folded = FALSE;
+        return result;
+    }
+    result.vals.i0 = value;
+    if (folded != NULL)
+        *folded = TRUE;
     return result;
 }
 

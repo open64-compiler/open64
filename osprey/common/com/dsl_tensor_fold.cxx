@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "opcode.h"
 #include "dsl_tensor_fold.h"
 #include "strtab.h"
 #ifdef DSL_TENSOR_FOLD_TEST_STUB
@@ -933,6 +934,130 @@ DSL_Tensor_Fold_Apply_Mock
     return response->status;
 }
 
+static BOOL
+DSL_Tensor_Fold_Compact_Record
+        (const TCON *carrier,
+         DSL_TENSOR_TCON_RECORD *record)
+{
+    if (!DSL_Tensor_TCON_Decode_Carrier(carrier, record))
+        return FALSE;
+
+    return record->storage_kind == DSL_TENSOR_TCON_STORAGE_ZERO ||
+           record->storage_kind == DSL_TENSOR_TCON_STORAGE_ONE ||
+           record->storage_kind == DSL_TENSOR_TCON_STORAGE_SPLAT;
+}
+
+static DSL_TENSOR_FOLD_STATUS
+DSL_Tensor_Fold_Compact_Integer_Binary
+        (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
+         DSL_TENSOR_FOLD_OUTPUT *output)
+{
+    DSL_TENSOR_TCON_RECORD left_record;
+    DSL_TENSOR_TCON_RECORD right_record;
+    DSL_TENSOR_TCON_CREATE_INFO result_info;
+    OPERATOR whirl_operator;
+    TYPE_ID element_mtype;
+    TCON left_scalar;
+    TCON right_scalar;
+    TCON result_scalar;
+    TCON result_carrier;
+    TCON_IDX result_scalar_idx;
+    TCON_IDX result_tcon_idx = TCON_IDX_ZERO;
+    INT64 result_value;
+    BOOL folded = FALSE;
+    BOOL created;
+
+    if (candidate->operand_count != 2 || candidate->result_count != 1)
+        return DSL_TENSOR_FOLD_REJECT_MALFORMED_CANDIDATE;
+    if (!DSL_Tensor_Fold_Compact_Record
+             (&candidate->operands[0], &left_record) ||
+        !DSL_Tensor_Fold_Compact_Record
+             (&candidate->operands[1], &right_record))
+        return DSL_TENSOR_FOLD_REJECT_NON_CONSTANT_OPERAND;
+    if (left_record.descriptor_ty != candidate->operand_ty[0] ||
+        right_record.descriptor_ty != candidate->operand_ty[1] ||
+        left_record.descriptor_ty != right_record.descriptor_ty ||
+        left_record.descriptor_ty != candidate->result_ty[0] ||
+        left_record.element_mtype != right_record.element_mtype ||
+        left_record.element_count != right_record.element_count ||
+        left_record.logical_bytes != right_record.logical_bytes)
+        return DSL_TENSOR_FOLD_REJECT_DESCRIPTOR_MISMATCH;
+
+    element_mtype = (TYPE_ID)left_record.element_mtype;
+    if (!MTYPE_is_integral(element_mtype))
+        return DSL_TENSOR_FOLD_REJECT_NUMERIC_POLICY;
+    if (candidate->policy != NULL &&
+        !candidate->policy->preserve_compact_splats)
+        return DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY;
+    if (candidate->policy != NULL &&
+        ((candidate->policy->max_result_elements != 0 &&
+          left_record.element_count >
+              candidate->policy->max_result_elements) ||
+         (candidate->policy->max_evaluator_work != 0 &&
+          left_record.element_count >
+              candidate->policy->max_evaluator_work)))
+        return DSL_TENSOR_FOLD_REJECT_WORK_BUDGET;
+
+    switch (candidate->dsl_operator) {
+    case OPR_DSLADD:
+        whirl_operator = OPR_ADD;
+        break;
+    case OPR_DSLMUL:
+        whirl_operator = OPR_MPY;
+        break;
+    default:
+        return DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR;
+    }
+
+    left_scalar = TCON_from_IDX(left_record.scalar_tcon);
+    right_scalar = TCON_from_IDX(right_record.scalar_tcon);
+    result_scalar = Targ_WhirlOp
+                        (OPCODE_make_op(whirl_operator, element_mtype,
+                                        MTYPE_V),
+                         left_scalar, right_scalar, &folded);
+    if (!folded || TCON_ty(result_scalar) != element_mtype)
+        return DSL_TENSOR_FOLD_REJECT_TARGET_CAPABILITY;
+
+    result_scalar_idx = Enter_tcon(result_scalar);
+    if (result_scalar_idx == TCON_IDX_ZERO)
+        return DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY;
+
+    memset(&result_info, 0, sizeof(result_info));
+    result_info.descriptor_ty = candidate->result_ty[0];
+    result_info.scalar_tcon = result_scalar_idx;
+    result_info.element_mtype = element_mtype;
+    result_info.element_count = left_record.element_count;
+    result_info.logical_bytes = left_record.logical_bytes;
+    result_info.required_alignment =
+        left_record.required_alignment > right_record.required_alignment ?
+            left_record.required_alignment : right_record.required_alignment;
+    result_info.element_size = left_record.element_size;
+    result_value = Targ_To_Host(result_scalar);
+    result_info.scalar_integer_value = result_value;
+
+    if (result_value == 0)
+        created = DSL_Tensor_TCON_Create_Zero
+                      (&result_info, &result_tcon_idx, &result_carrier);
+    else if (result_value == 1)
+        created = DSL_Tensor_TCON_Create_One
+                      (&result_info, &result_tcon_idx, &result_carrier);
+    else
+        created = DSL_Tensor_TCON_Create_Splat
+                      (&result_info, &result_tcon_idx, &result_carrier);
+    if (!created || result_tcon_idx == TCON_IDX_ZERO)
+        return DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY;
+
+    if (output != NULL) {
+        output->status = DSL_TENSOR_FOLD_SUCCESS;
+        output->rejection = DSL_TENSOR_FOLD_NOT_APPLICABLE;
+        output->result_count = 1;
+        output->results[0].kind = DSL_TENSOR_FOLD_RESULT_TCON;
+        output->results[0].result_ty = candidate->result_ty[0];
+        output->results[0].result = result_carrier;
+    }
+    return DSL_TENSOR_FOLD_SUCCESS;
+}
+
 DSL_TENSOR_FOLD_STATUS
 Targ_DSL_WhirlOp
         (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
@@ -950,9 +1075,10 @@ Targ_DSL_WhirlOp
     if (DSL_tensor_fold_mock_enabled)
         return DSL_Tensor_Fold_Apply_Mock(candidate, output);
 
-    DSL_Tensor_Fold_Set_Output_Status(output,
-                                      DSL_TENSOR_FOLD_NOT_APPLICABLE);
-    return DSL_TENSOR_FOLD_NOT_APPLICABLE;
+    reason = DSL_Tensor_Fold_Compact_Integer_Binary(candidate, output);
+    if (reason != DSL_TENSOR_FOLD_SUCCESS)
+        DSL_Tensor_Fold_Set_Output_Status(output, reason);
+    return reason;
 }
 
 void
@@ -1003,6 +1129,43 @@ DSL_Tensor_TCON_Get
 
     carrier = TCON_from_IDX(tcon_idx);
     return DSL_Tensor_TCON_Decode_Carrier(&carrier, record);
+}
+
+BOOL
+DSL_Tensor_TCON_Get_Carrier
+        (TCON_IDX tcon_idx,
+         TCON *carrier)
+{
+    DSL_TENSOR_TCON_RECORD record;
+
+    if (carrier != NULL)
+        TCON_clear(*carrier);
+    if (carrier == NULL || !DSL_Tensor_TCON_IDX_Valid(tcon_idx))
+        return FALSE;
+
+    *carrier = TCON_from_IDX(tcon_idx);
+    return DSL_Tensor_TCON_Decode_Carrier(carrier, &record);
+}
+
+BOOL
+DSL_Tensor_TCON_Find_Carrier
+        (const TCON *carrier,
+         TCON_IDX *tcon_idx)
+{
+    DSL_TENSOR_TCON_RECORD record;
+    TCON_IDX found;
+
+    if (tcon_idx != NULL)
+        *tcon_idx = TCON_IDX_ZERO;
+    if (carrier == NULL || tcon_idx == NULL ||
+        !DSL_Tensor_TCON_Decode_Carrier(carrier, &record))
+        return FALSE;
+
+    found = DSL_Tensor_TCON_Find_Cached_Equal(&record, carrier);
+    if (found == TCON_IDX_ZERO)
+        return FALSE;
+    *tcon_idx = found;
+    return TRUE;
 }
 
 BOOL

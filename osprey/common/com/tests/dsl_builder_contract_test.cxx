@@ -1748,6 +1748,241 @@ Check_Algebraic_Canonicalization(void)
     return failed;
 }
 
+static BOOL
+DSL_Test_Value_Has_Opcode
+        (DSL_BUILDER_VALUE value,
+         const char *opcode_name)
+{
+    DSL_BUILDER_VALUE_INFO info;
+
+    return value != NULL && opcode_name != NULL &&
+           DSL_Builder_Get_Value_Info(value, &info) &&
+           info.opcode_name_len == strlen(opcode_name) &&
+           strncmp(info.opcode_name, opcode_name,
+                   info.opcode_name_len) == 0;
+}
+
+static int
+Check_Construction_Tensor_Folding(void)
+{
+    const char *artifact =
+        getenv("OPEN64_DSL_TENSOR_FOLD_M3_ARTIFACT");
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_COMPILER_METADATA metadata;
+    DSL_BUILDER_SOURCE_POSITION source_position;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_VALUE constants[4];
+    DSL_BUILDER_VALUE disabled_add;
+    DSL_BUILDER_VALUE folded_add;
+    DSL_BUILDER_VALUE folded_mul;
+    DSL_BUILDER_VALUE folded_parent;
+    DSL_BUILDER_VALUE runtime_input;
+    DSL_BUILDER_VALUE rejected_add;
+    DSL_BUILDER_VALUE master_disabled;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID add_id;
+    DSL_OPCODE_ID mul_id;
+    TY_IDX tensor_ty;
+    BOOL saved_wn_simp = Enable_WN_Simp;
+    BOOL saved_canonicalization = DSL_Builder_Canonicalization_Enabled();
+    BOOL saved_tensor_folding = DSL_Builder_Tensor_Folding_Enabled();
+    UINT32 file_id;
+    char diagnostic[1024];
+    int failed = 0;
+
+    if (artifact == NULL || artifact[0] == '\0')
+        artifact = "dsl_tensor_fold_m3.B";
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "int32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("tensor_fold_m3_i32_2x2", MTYPE_To_TY(MTYPE_I4),
+                     &descriptor);
+    common_id = DSL_Domain_Find("common");
+    add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+    mul_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_MUL, 1);
+    pu = DSL_Builder_Create_Minimal_PU("tensor_fold_m3_contract");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    if (tensor_ty == TY_IDX_ZERO || add_id == DSL_OPCODE_INVALID_ID ||
+        mul_id == DSL_OPCODE_INVALID_ID || pu == NULL || file_id == 0) {
+        fprintf(stderr, "M3 tensor folding setup failed\n");
+        return 1;
+    }
+
+    constants[0] = DSL_Builder_Create_Tensor_Constant
+                       ("zero", tensor_ty, "int32", 2, "[2,2]",
+                        "splat", "0");
+    constants[1] = DSL_Builder_Create_Tensor_Constant
+                       ("one", tensor_ty, "int32", 2, "[2,2]",
+                        "splat", "1");
+    constants[2] = DSL_Builder_Create_Tensor_Constant
+                       ("three", tensor_ty, "int32", 2, "[2,2]",
+                        "splat", "3");
+    constants[3] = DSL_Builder_Create_Tensor_Constant
+                       ("four", tensor_ty, "int32", 2, "[2,2]",
+                        "splat", "4");
+    for (UINT32 i = 0; i < 4; ++i) {
+        if (constants[i] == NULL) {
+            fprintf(stderr, "M3 compact tensor constant creation failed\n");
+            return 1;
+        }
+    }
+
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    Enable_WN_Simp = TRUE;
+    DSL_Builder_Set_Canonicalization_Enabled(TRUE);
+    DSL_Builder_Set_Tensor_Folding_Enabled(FALSE);
+    kids[0] = constants[0];
+    kids[1] = constants[1];
+    disabled_add = DSL_Builder_Create_Operator_With_Result
+                       (add_id, 1, kids, 2, &attribute, 1,
+                        "disabled_add", tensor_ty);
+
+    DSL_Builder_Set_Tensor_Folding_Enabled(TRUE);
+    folded_add = DSL_Builder_Create_Operator_With_Result
+                     (add_id, 1, kids, 2, &attribute, 1,
+                      "folded_add", tensor_ty);
+    kids[0] = constants[2];
+    kids[1] = constants[3];
+    folded_mul = DSL_Builder_Create_Operator_With_Result
+                     (mul_id, 1, kids, 2, &attribute, 1,
+                      "folded_mul", tensor_ty);
+    kids[0] = folded_add;
+    kids[1] = folded_mul;
+    folded_parent = DSL_Builder_Create_Operator_With_Result
+                        (add_id, 1, kids, 2, &attribute, 1,
+                         "folded_parent", tensor_ty);
+
+    runtime_input = DSL_Builder_Create_Model_Input
+                        ("runtime_input", tensor_ty, 0);
+    kids[0] = runtime_input;
+    kids[1] = constants[1];
+    rejected_add = DSL_Builder_Create_Operator_With_Result
+                       (add_id, 1, kids, 2, &attribute, 1,
+                        "rejected_add", tensor_ty);
+
+    Enable_WN_Simp = FALSE;
+    kids[0] = constants[2];
+    kids[1] = constants[3];
+    master_disabled = DSL_Builder_Create_Operator_With_Result
+                          (add_id, 1, kids, 2, &attribute, 1,
+                           "master_disabled_add", tensor_ty);
+    Enable_WN_Simp = TRUE;
+
+    if (!DSL_Test_Value_Has_Opcode(disabled_add,
+                                   DSL_OPCODE_COMMON_ADD) ||
+        !DSL_Test_Value_Has_Opcode(folded_add,
+                                   DSL_OPCODE_COMMON_TENSOR_CONST) ||
+        !DSL_Test_Value_Has_Opcode(folded_mul,
+                                   DSL_OPCODE_COMMON_TENSOR_CONST) ||
+        !DSL_Test_Value_Has_Opcode(folded_parent,
+                                   DSL_OPCODE_COMMON_TENSOR_CONST) ||
+        !DSL_Test_Value_Has_Opcode(rejected_add,
+                                   DSL_OPCODE_COMMON_ADD) ||
+        !DSL_Test_Value_Has_Opcode(master_disabled,
+                                   DSL_OPCODE_COMMON_ADD)) {
+        fprintf(stderr, "M3 enabled/disabled operator evidence changed\n");
+        failed = 1;
+    }
+
+    ST_IDX folded_add_st = DSL_Builder_Get_Value_Result_Symbol(folded_add);
+    ST_IDX folded_mul_st = DSL_Builder_Get_Value_Result_Symbol(folded_mul);
+    const char *add_tcon =
+        ST_tensor_metadata(folded_add_st, "tensor_tcon_idx");
+    const char *mul_tcon =
+        ST_tensor_metadata(folded_mul_st, "tensor_tcon_idx");
+    const char *add_origin =
+        ST_tensor_metadata(folded_add_st, "tensor_fold.origin");
+    const char *mul_origin =
+        ST_tensor_metadata(folded_mul_st, "tensor_fold.origin");
+    if (ST_IDX_index(folded_add_st) == 0 ||
+        ST_IDX_index(folded_mul_st) == 0 ||
+        strcmp(ST_name(St_Table[folded_add_st]), "folded_add") != 0 ||
+        strcmp(ST_name(St_Table[folded_mul_st]), "folded_mul") != 0 ||
+        add_tcon == NULL || mul_tcon == NULL ||
+        add_origin == NULL || strcmp(add_origin, "OPR_DSLADD") != 0 ||
+        mul_origin == NULL || strcmp(mul_origin, "OPR_DSLMUL") != 0) {
+        fprintf(stderr, "M3 folded result identity was not preserved\n");
+        failed = 1;
+    }
+    DSL_BUILDER_VALUE_INFO folded_parent_info;
+    if (!DSL_Builder_Get_Value_Info(folded_parent, &folded_parent_info) ||
+        folded_parent_info.payload == NULL ||
+        strstr(folded_parent_info.payload, "value=13") == NULL) {
+        fprintf(stderr, "M3 folded parent was not revisited bottom-up\n");
+        failed = 1;
+    }
+
+    memset(&source_position, 0, sizeof(source_position));
+    source_position.file_id = file_id;
+    source_position.line = __LINE__ + 1;
+    source_position.column = 1;
+    source_position.statement_begin = 1;
+    if (!DSL_Builder_Set_Value_Source_Position
+             (folded_add, &source_position)) {
+        fprintf(stderr, "M3 folded source position was not preserved\n");
+        failed = 1;
+    }
+    metadata.name = "source.expression";
+    metadata.value = "zero + one";
+    const char *source_expression;
+    if (!DSL_Builder_Attach_Value_Metadata(folded_add, &metadata, 1))
+        source_expression = NULL;
+    else
+        source_expression =
+            ST_tensor_metadata(folded_add_st, "source.expression");
+    if (source_expression == NULL ||
+        strcmp(source_expression, "zero + one") != 0) {
+        fprintf(stderr, "M3 folded compiler metadata was not preserved\n");
+        failed = 1;
+    }
+
+    DSL_BUILDER_VALUE values[] = {
+        disabled_add, folded_add, folded_mul, folded_parent,
+        rejected_add, master_disabled
+    };
+    for (UINT32 i = 0; i < sizeof(values) / sizeof(values[0]); ++i) {
+        if (values[i] == NULL ||
+            !DSL_Builder_Append_PU_Value(pu, values[i])) {
+            fprintf(stderr, "M3 folded value materialization failed\n");
+            failed = 1;
+        }
+    }
+
+    request.path = artifact;
+    request.flags = 0;
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!failed && !DSL_Builder_Verify_Program(&verify)) {
+        fprintf(stderr, "M3 tensor fold gatekeeper failed: %s\n",
+                diagnostic);
+        failed = 1;
+    }
+    if (!failed && !DSL_Builder_Finalize_Mapped_Image(&request)) {
+        fprintf(stderr, "M3 tensor fold mapped-image finalization failed\n");
+        failed = 1;
+    }
+
+    DSL_Builder_Set_Tensor_Folding_Enabled(saved_tensor_folding);
+    DSL_Builder_Set_Canonicalization_Enabled(saved_canonicalization);
+    Enable_WN_Simp = saved_wn_simp;
+    if (!failed)
+        printf("DSL construction tensor folding contract passed\n");
+    return failed;
+}
+
 static int
 Check_Native_DSL_Node_Layout(void)
 {
@@ -4108,6 +4343,8 @@ main(void)
         return Check_Multiple_Program_Units();
     if (getenv("OPEN64_DSL_CANONICALIZATION_ONLY") != NULL)
         return Check_Algebraic_Canonicalization();
+    if (getenv("OPEN64_DSL_TENSOR_FOLD_M3_ONLY") != NULL)
+        return Check_Construction_Tensor_Folding();
     if (getenv("OPEN64_DSL_SIMPLIFIER_ONLY") != NULL)
         return Check_DSL_Simplifier_Bridge();
     if (getenv("OPEN64_DSL_TENSOR_TCON_ONLY") != NULL)
