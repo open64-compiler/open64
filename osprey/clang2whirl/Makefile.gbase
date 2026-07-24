@@ -197,6 +197,7 @@ COMMON_COM_CXX_SRCS =   \
    dsl_region.cxx       \
    dsl_memory_behavior.cxx \
    dsl_opcode.cxx       \
+   dsl_tensor_fold.cxx  \
    dwarf_DST.cxx        \
    dwarf_DST_dump.cxx   \
    dwarf_DST_mem.cxx    \

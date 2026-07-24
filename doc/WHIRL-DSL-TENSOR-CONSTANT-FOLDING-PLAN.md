@@ -44,46 +44,50 @@ that would require a separately reviewed, versioned WHIRL change.
 ## Tensor TCON Escape Representation
 
 The first compatible physical representation uses an existing legal string
-TCON as the private escape carrier:
+TCON as the private escape carrier. Its sized character-array payload begins
+with a fixed-layout tensor envelope:
 
 ```text
-TCON.ty       = MTYPE_STR
-TCON.flags   |= TCON_DSL_TENSOR
-TCON.sval.cp  = STR_IDX of a valid escape token
-TCON.sval.len = escape-token byte length
-
-escape token:
-  __WHIRL_DSL_TCON__:v1:<tensor_tcon_id>
-```
-
-The token must be a valid TCON string so an older reader or diagnostic printer
-can inspect it without dereferencing an invalid string-table index. DSL-aware
-compiler code must use `TCON_is_tensor()` and tensor TCON accessors; it must
-not test `MTYPE_STR`, parse the token, or inspect the private value fields.
-Logical dumps print the tensor constant, never the string escape.
-
-`TENSOR_TCON_ID` indexes a fixed-row tensor constant table carried through the
-existing optional DSL mapped-image section. A normative record needs at least:
-
-```text
-id
-carrier TCON_IDX
-TY_IDX
-TensorDescriptorIR ID
+magic
+version
+envelope size
 storage kind
+flags and reserved fields
+canonical TensorDescriptorIR TY_IDX
 element count
 logical byte count
 required alignment
-payload STR_IDX or external-reference ID
-splat element TCON_IDX
-content checksum STR_IDX
-flags and reserved fields
+compact scalar TCON_IDX, when applicable
+side-file or inline payload offsets and lengths
+content checksum
 ```
 
-The fixed row contains only sized scalars, table IDs, `TY_IDX`, `TCON_IDX`, and
-`STR_IDX`. It contains no pointers or STL containers. The carrier TCON and
-tensor constant row must reference each other consistently, and the
-gatekeeper must reject missing, duplicate, or mismatched relationships.
+The existing TCON table owns the carrier and its `TCON_IDX` is the stable
+tensor-constant identity. The existing TCON character-array table owns the
+sized envelope and any inline bytes. Both tables already participate in the
+standard global-symbol-table mapped-image write and reopen path. No tensor
+record is appended to the strict version-1 `.WHIRL.dsl` image, and no new ELF
+section is required for this stage.
+
+The envelope contains only explicitly sized scalars and Open64 table IDs. It
+contains no host pointers or STL ownership. INLINE_DENSE may place arbitrary
+bytes, including embedded NUL bytes, after the envelope; all offsets and
+lengths are validated against the carrier's `TCON_str_len`. SIDE_FILE_DENSE
+stores a relative location contract without a host pointer or absolute
+producer path.
+
+Older readers continue to see a legal `MTYPE_STRING` TCON and preserve its
+sized bytes even though they do not interpret the tensor envelope. DSL-aware
+compiler code must use `TCON_is_tensor()` and tensor TCON accessors; it must
+not test `MTYPE_STR`, parse envelope fields directly, or inspect private TCON
+value fields. Logical dumps print the tensor constant, never the physical
+escape representation.
+
+Runtime lookup, hashing, and deduplication indexes may accelerate access, but
+they are derived state. Clearing them must not make a reopened tensor TCON
+unqueryable. The gatekeeper validates envelope magic, version, record size,
+reserved fields, descriptor identity, bounds, alignment, checksum, and
+storage-kind-specific contracts directly from the mapped TCON image.
 
 The escape is a compatibility mechanism, not the logical tensor constant
 type. A future native tensor MTYPE may replace it only through a versioned
@@ -99,7 +103,7 @@ Use a closed, versioned storage-kind enum. The initial kinds are:
 | `TENSOR_TCON_ZERO` | Every logical element is semantic zero | No dense payload |
 | `TENSOR_TCON_ONE` | Every logical element is semantic one | No dense payload |
 | `TENSOR_TCON_SPLAT` | Every logical element equals one target-format scalar TCON | One `TCON_IDX` |
-| `TENSOR_TCON_INLINE_DENSE` | Small dense target-format tensor | Sized bytes in mapped string/blob storage |
+| `TENSOR_TCON_INLINE_DENSE` | Small dense target-format tensor | Sized bytes following the TCON envelope |
 | `TENSOR_TCON_SIDE_FILE_DENSE` | Large dense target-format tensor | External tensor reference |
 
 ZERO and ONE are specialized splats because they are common algebraic
@@ -117,7 +121,8 @@ compact representation whenever legal.
 INLINE_DENSE is for bounded constants whose bytes are small enough to remain
 in the mapped image under the active materialization policy. The bytes are in
 target element format and logical tensor layout, not an arbitrary host-native
-array representation.
+array representation. The TCON character-array table is binary-safe; normal
+symbol-string APIs such as `Save_Str` are not suitable for this payload.
 
 SIDE_FILE_DENSE is the normal representation for model parameters and large
 folded results. An LLM weight matrix is a constant tensor even though its bytes
@@ -479,12 +484,13 @@ hidden under a general positive/negative test item.
 ### Open64 integration and compatibility
 
 1. `sizeof(TCON)` and existing TCON field offsets remain unchanged.
-2. The string-TCON escape contains a valid string-table reference and older
-   tools can inspect it without failure.
+2. The string-TCON escape contains a valid sized TCON character-array
+   reference and older tools can preserve or inspect it without failure.
 3. DSL-aware diagnostics and `ir_b2a -st -src` hide the escape and print ZERO,
    ONE, SPLAT, INLINE_DENSE, or SIDE_FILE_DENSE logically.
-4. Tensor TCON records survive mapped-image write, reopen, and table
-   verification with carrier relationships intact.
+4. Tensor TCON envelopes survive mapped-image write and reopen through the
+   existing TCON table and TCON character-array table. Query and verification
+   still succeed after all runtime-derived lookup state is cleared.
 5. WN construction and adapted WOPT produce equivalent tensor TCONs and typed
    constant symbols for the same request.
 6. `Enter_tcon()` and constant-symbol merging distinguish semantic identity
@@ -493,11 +499,14 @@ hidden under a general positive/negative test item.
    printing occurs only under an explicit diagnostic control.
 8. Retained `.B`, side payload, and `ir_b2a -st -src` artifacts provide
    reviewable evidence for every storage kind.
-9. Matching tensor DIV and REM share one projectable DIVREM in WOPT when
+9. The strict version-1 `.WHIRL.dsl` image is unchanged by tensor-TCON
+   storage, and its existing reader still accepts files both with and without
+   tensor constants.
+10. Matching tensor DIV and REM share one projectable DIVREM in WOPT when
    enabled and profitable; differing operands or descriptors remain separate.
-10. A sole live DIVPART or REMPART reconstructs standalone tensor DIV or REM,
+11. A sole live DIVPART or REMPART reconstructs standalone tensor DIV or REM,
     while two live projections retain the shared operation.
-11. `-WOPT:divrem=on|off` and a target-declined combination produce equivalent
+12. `-WOPT:divrem=on|off` and a target-declined combination produce equivalent
     results with reviewable structural differences.
 
 This matrix incorporates the useful comparison scenarios:
@@ -534,7 +543,9 @@ The clean pull-request rule is:
 2. Never publish a simplifier candidate producer that requires an evaluator
    absent from the same milestone or an already merged milestone.
 3. M2 may land independently because it exposes tested tensor TCON
-   construction/storage APIs without changing simplifier behavior.
+   construction/storage APIs without changing simplifier behavior. Its
+   persistent owner is the existing TCON table plus TCON character-array
+   table; `.WHIRL.dsl` version 1 remains unchanged.
 4. M3 is the first pull request allowed to change actual DSL expression
    construction through tensor folding.
 5. M6 must land as one coherent projectable-operation feature. Do not split
@@ -543,11 +554,19 @@ The clean pull-request rule is:
 6. Each pull request must retain the milestone-specific `.B`, side payload,
    and `ir_b2a -st -src` artifacts identified by the authoritative plan.
 
+PR #94 completed the M2 storage side. The coordinated main integration calls
+`DSL_Tensor_TCON_Rebuild_Derived_Cache()` after the existing global TCON and
+TCON character-array tables are mapped, prints logical tensor constants from
+both symbol and global TCON dumps, and hides the private `MTYPE_STRING`
+carrier. Its retained `tensor_tcon.B` and `tensor_tcon.T` fixture covers a
+compact ZERO and an aligned SIDE_FILE_DENSE reference with filename, byte
+range, and checksum.
+
 | Milestone | Status | Merge dependency | Review artifact |
 | --- | --- | --- | --- |
 | M0 | Merged through PR #89/#92 | None | Contract/API test report |
-| M1 | Implementation complete; PR pending | M0 merged | Simplifier bridge traces |
-| M2 | Blocked by M1 | M1 merged | Tensor TCON `.B` and `.T` |
+| M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
+| M2 | Storage merged through PR #94; main integration under review | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Blocked by M2 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
@@ -566,8 +585,10 @@ The milestone mapping above controls when each action may begin integration.
 3. [ ] Add tensor TCON creation, query, target-format element access, hashing,
    comparison, printing, and verification APIs.
 4. [x] Define result-size and evaluator-work budgets.
-5. [ ] Add the fixed-row tensor TCON table and backward-compatible string-TCON
-   escape carrier without changing `sizeof(TCON)`.
+5. [ ] Add the fixed-layout tensor envelope in a backward-compatible
+   string-TCON carrier without changing `sizeof(TCON)`. Use `TCON_IDX` as the
+   stable identity and the existing TCON character-array table as persistent
+   byte ownership; any runtime lookup table is derived and rebuildable.
 6. [ ] Implement ZERO, ONE, and general SPLAT preservation.
 7. [ ] Implement INLINE_DENSE and SIDE_FILE_DENSE readers independent of
    Python and backend CG.

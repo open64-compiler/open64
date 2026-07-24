@@ -35,6 +35,7 @@
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_simp.h"
+#include "dsl_tensor_fold.h"
 
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
@@ -3973,6 +3974,108 @@ Check_Multiple_Program_Units(void)
     return 0;
 }
 
+static int
+Check_Tensor_TCON_Mapped_Image(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_TENSOR_TCON_ARTIFACT");
+    DSL_BUILDER_TENSOR_TYPE_CORE core;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_TENSOR_TCON_CREATE_INFO info;
+    TCON scalar;
+    TCON_IDX scalar_idx;
+    TCON_IDX zero_idx;
+    TCON_IDX side_idx;
+    TY_IDX tensor_ty;
+    ST *zero_st;
+    ST *side_st;
+    USRCPOS source_position;
+    UINT32 file_id;
+    const char side_path[] = "weights/tensor.bin";
+
+    if (artifact == NULL || artifact[0] == '\0')
+        artifact = "tensor_tcon_mapped_image.B";
+
+    if (!DSL_Builder_Begin_Program()) {
+        fprintf(stderr, "tensor TCON program initialization failed\n");
+        return 1;
+    }
+
+    memset(&core, 0, sizeof(core));
+    core.kind = "tensor";
+    core.dtype = "int32";
+    core.rank = 2;
+    core.logical_shape = "[2,2]";
+    tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+                    ("tensor_tcon_i32_2x2", MTYPE_To_TY(MTYPE_I4), &core);
+    pu = DSL_Builder_Create_Minimal_PU("tensor_tcon_mapped_image");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    if (tensor_ty == TY_IDX_ZERO || !TY_tensor_seal(tensor_ty) ||
+        pu == NULL || file_id == 0) {
+        fprintf(stderr, "tensor TCON type, PU, or source setup failed\n");
+        return 1;
+    }
+
+    scalar = Host_To_Targ(MTYPE_I4, 0);
+    scalar_idx = Enter_tcon(scalar);
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = tensor_ty;
+    info.scalar_tcon = scalar_idx;
+    info.element_mtype = MTYPE_I4;
+    info.element_count = 4;
+    info.logical_bytes = 16;
+    info.required_alignment = 16;
+    info.element_size = 4;
+    if (!DSL_Tensor_TCON_Create_Zero(&info, &zero_idx, NULL)) {
+        fprintf(stderr, "tensor zero TCON creation failed\n");
+        return 1;
+    }
+
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = tensor_ty;
+    info.element_mtype = MTYPE_I4;
+    info.element_count = 4;
+    info.logical_bytes = 16;
+    info.required_alignment = 16;
+    info.element_size = 4;
+    info.side_path = side_path;
+    info.side_path_length = strlen(side_path);
+    info.byte_length = 16;
+    info.checksum_hi = 0x1234;
+    info.checksum_lo = 0x5678;
+    if (!DSL_Tensor_TCON_Create_Side_File_Dense
+             (&info, &side_idx, NULL)) {
+        fprintf(stderr, "tensor side-file TCON creation failed\n");
+        return 1;
+    }
+
+    USRCPOS_clear(source_position);
+    USRCPOS_filenum(source_position) = file_id;
+    USRCPOS_linenum(source_position) = __LINE__ + 1;
+    zero_st = New_ST(GLOBAL_SYMTAB);
+    ST_Init(zero_st, Save_Str("tensor_zero"), CLASS_CONST,
+            SCLASS_FSTATIC, EXPORT_LOCAL, tensor_ty);
+    Set_ST_tcon(zero_st, zero_idx);
+    Set_ST_is_initialized(zero_st);
+    Set_ST_Srcpos(*zero_st, USRCPOS_srcpos(source_position));
+
+    USRCPOS_linenum(source_position) = __LINE__ + 1;
+    side_st = New_ST(GLOBAL_SYMTAB);
+    ST_Init(side_st, Save_Str("tensor_side_file"), CLASS_CONST,
+            SCLASS_FSTATIC, EXPORT_LOCAL, tensor_ty);
+    Set_ST_tcon(side_st, side_idx);
+    Set_ST_is_initialized(side_st);
+    Set_ST_Srcpos(*side_st, USRCPOS_srcpos(source_position));
+
+    request.path = artifact;
+    request.flags = 0;
+    if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+        fprintf(stderr, "tensor TCON mapped-image finalization failed\n");
+        return 1;
+    }
+    return 0;
+}
+
 int
 main(void)
 {
@@ -4007,6 +4110,8 @@ main(void)
         return Check_Algebraic_Canonicalization();
     if (getenv("OPEN64_DSL_SIMPLIFIER_ONLY") != NULL)
         return Check_DSL_Simplifier_Bridge();
+    if (getenv("OPEN64_DSL_TENSOR_TCON_ONLY") != NULL)
+        return Check_Tensor_TCON_Mapped_Image();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();

@@ -88,6 +88,7 @@
 #include "irbdata.h"		    /* for init_data */
 #include "wn_core.h"		    /* for WN */
 #include "wn.h"		            /* for max_region_id */
+#include "dsl_tensor_fold.h"
 #include "wn_map.h"		    /* for WN maps */
 
 #define USE_DST_INTERNALS
@@ -1626,6 +1627,7 @@ Read_Global_Info (INT32 *p_num_PUs)
     if ((INT) WN_get_global_symtab (global_fhandle) == -1) {
 	ErrMsg ( EC_IR_Scn_Read, "global symtab", global_ir_file);
     }
+    DSL_Tensor_TCON_Rebuild_Derived_Cache(1, TCON_Table_Size());
 
     if (WN_get_dsl_ir_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL image", global_ir_file);

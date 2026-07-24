@@ -1076,6 +1076,79 @@ DSL_Tensor_TCON_Get_Dense_Bytes
     return TRUE;
 }
 
+static const char *
+DSL_Tensor_TCON_Storage_Name (DSL_TENSOR_TCON_STORAGE_KIND storage_kind)
+{
+    static const char *storage_name[] = {
+        "zero",
+        "one",
+        "splat",
+        "inline_dense",
+        "side_file"
+    };
+    UINT32 index = (UINT32)storage_kind;
+
+    if (index >= sizeof(storage_name) / sizeof(storage_name[0]))
+        return "unknown";
+    return storage_name[index];
+}
+
+BOOL
+DSL_Tensor_TCON_Print (FILE *file, TCON_IDX tcon_idx)
+{
+    DSL_TENSOR_TCON_RECORD record;
+    const char *side_path;
+    UINT32 side_path_length;
+
+    if (file == NULL || !DSL_Tensor_TCON_Get(tcon_idx, &record))
+        return FALSE;
+
+    fprintf(file,
+            "tensor_tcon storage=%s descriptor_ty=%u element=%s"
+            " elements=%llu bytes=%llu alignment=%u",
+            DSL_Tensor_TCON_Storage_Name(record.storage_kind),
+            (UINT32)record.descriptor_ty,
+            MTYPE_name((TYPE_ID)record.element_mtype),
+            (unsigned long long)record.element_count,
+            (unsigned long long)record.logical_bytes,
+            record.required_alignment);
+
+    switch (record.storage_kind) {
+    case DSL_TENSOR_TCON_STORAGE_ZERO:
+    case DSL_TENSOR_TCON_STORAGE_ONE:
+    case DSL_TENSOR_TCON_STORAGE_SPLAT:
+        fprintf(file, " scalar_tcon=%u scalar=%lld",
+                (UINT32)record.scalar_tcon,
+                (long long)record.scalar_integer_value);
+        break;
+    case DSL_TENSOR_TCON_STORAGE_INLINE_DENSE:
+        fprintf(file,
+                " inline_bytes=%u checksum=%016llx%016llx",
+                record.dense_length,
+                (unsigned long long)record.checksum_hi,
+                (unsigned long long)record.checksum_lo);
+        break;
+    case DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE:
+        if (!DSL_Tensor_TCON_Get_Side_Path
+                 (tcon_idx, &side_path, &side_path_length))
+            return FALSE;
+        fputs(" side_file=", file);
+        fwrite(side_path, 1, side_path_length, file);
+        fprintf(file,
+                " byte_offset=%llu byte_length=%llu"
+                " available_bytes=%u checksum=%016llx%016llx",
+                (unsigned long long)record.byte_offset,
+                (unsigned long long)record.byte_length,
+                record.dense_length,
+                (unsigned long long)record.checksum_hi,
+                (unsigned long long)record.checksum_lo);
+        break;
+    default:
+        return FALSE;
+    }
+    return TRUE;
+}
+
 BOOL
 DSL_Tensor_TCON_Create_Zero
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
