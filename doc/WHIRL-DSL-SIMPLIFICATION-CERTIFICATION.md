@@ -52,7 +52,14 @@ behavior:
 - reshape, transpose, reduce, matmul, and convolution require
   operator-specific handlers; and
 - a target must independently approve DIVREM lowering capability and
-  profitability before WOPT can retain the combined form.
+  profitability before WOPT can retain the combined form; and
+- tensor division may later be transformed from `x / y` to
+  `x * reciprocal(y)` and the reciprocal scheduled early on a GPU target
+  that can overlap its latency with independent matrix-unit work. This is a
+  target-aware optimization, not an unconditional algebraic identity. It
+  requires reviewed strict-FP, NaN, infinity, signed-zero, exception,
+  approximation-accuracy, descriptor, effect, dependency, and profitability
+  checks.
 
 These cases should land as independently reviewable post-M7 operator-family
 changes, each with positive and rejection coverage.

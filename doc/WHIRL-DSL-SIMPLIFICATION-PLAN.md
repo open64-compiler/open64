@@ -1423,6 +1423,15 @@ and statement SRCPOS. The retained M4 artifact reopens through
 
 - Add broadcasting-aware elementwise rules.
 - Review symbolic-shape, quantized, and placement-sensitive cases.
+- Add a target-aware tensor division-strength-reduction contract for
+  `x / y -> x * reciprocal(y)`. On a GPU with a matrix-multiply unit, permit
+  the scheduler to place an independent `reciprocal(y)` early enough to
+  overlap reciprocal latency with matrix-unit work. Keep the transformation
+  disabled until strict-FP, NaN, infinity, signed-zero, exception,
+  approximation-accuracy, TensorDescriptorIR compatibility, effects,
+  dependencies, target capability, and profitability are all reviewed.
+  Construction-time simplification may expose the candidate, but WOPT/VHO
+  target-aware optimization owns the rewrite and scheduling decision.
 - Add operator-specific rules only when their legality and profitability are
   documented.
 

@@ -743,6 +743,14 @@ algebraic graphs retain pre-lowering WOPT traces and expected diagnostics.
 - Defer general `MPY/DIV` cancellation until a reviewed operator contract,
   nonzero/exception semantics, numeric-safety policy, and traditional
   simplifier rule exist.
+- Defer target-aware tensor division strength reduction
+  `x / y -> x * reciprocal(y)` until reciprocal semantics and target
+  profitability are published. A GPU target with a matrix-multiply unit may
+  schedule an independent reciprocal early to overlap its latency with
+  matrix-unit work, but only when strict-FP, NaN, infinity, signed-zero,
+  exception, approximation-accuracy, TensorDescriptorIR, effect, and
+  dependency checks permit the rewrite. Keep candidate recognition separate
+  from the target-owned rewrite and scheduling decision.
 - Re-materialize unique no-alias DSL result STIDs during emission and prove
   that internal propagation never creates duplicate native definitions in
   WHIRL or the mapped DSL image.
