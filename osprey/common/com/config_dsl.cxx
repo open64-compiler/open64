@@ -7,6 +7,8 @@
 
 #include "config_dsl.h"
 
+BOOL VHO_DSL_Enable_WOPT = FALSE;
+BOOL VHO_DSL_Enable_WOPT_Set = FALSE;
 BOOL VHO_DSL_Enable_Canonicalization = FALSE;
 BOOL VHO_DSL_Enable_Canonicalization_Set = FALSE;
 BOOL VHO_DSL_Enable_Descriptor_Propagation = FALSE;
@@ -33,6 +35,9 @@ BOOL VHO_DSL_Dump_After_Lowering = FALSE;
 BOOL VHO_DSL_Dump_After_Lowering_Set = FALSE;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_BOOL, OV_VISIBLE, TRUE, "wopt", "wopt",
+    FALSE, 0, 0, &VHO_DSL_Enable_WOPT,
+    &VHO_DSL_Enable_WOPT_Set },
   { OVK_BOOL, OV_VISIBLE, TRUE, "canon", "canon",
     FALSE, 0, 0, &VHO_DSL_Enable_Canonicalization,
     &VHO_DSL_Enable_Canonicalization_Set },

@@ -74,7 +74,7 @@ Create_Tensor_Type(void)
 }
 
 int
-main(void)
+main(int argc, char **argv)
 {
   Initialize_Test_Context();
   if (!DSL_Builder_Begin_Program()) {
@@ -90,6 +90,21 @@ main(void)
   Current_PU_Info = pu;
 
   TY_IDX ty = Create_Tensor_Type();
+  if (argc > 1) {
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = DSL_Builder_Register_Source_File
+                           (pu, "dsl_wopt_bridge_test.cxx");
+    position.line = 1;
+    position.statement_begin = 1;
+    if (position.file_id == 0 ||
+        DSL_Builder_Declare_PU_Result
+            (pu, "wopt_result", 0, ty, DSL_PU_RESULT_TENSOR,
+             &position) == NULL) {
+      fprintf(stderr, "failed to declare DSL WOPT fixture result\n");
+      return 1;
+    }
+  }
   DSL_BUILDER_VALUE zero =
       DSL_Builder_Create_Tensor_Constant
           ("wopt_zero", ty, "int32", 2, "[2,2]", "splat", "0");
@@ -117,6 +132,23 @@ main(void)
             "domain=%u opcode=%u\n",
             (UINT32)ty, zero, one, add, common, add_opcode);
     return 1;
+  }
+
+  if (argc > 1) {
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    if (!DSL_Builder_Return_PU_Values(pu, &add, 1)) {
+      fprintf(stderr, "failed to return DSL WOPT fixture result\n");
+      return 1;
+    }
+    request.path = argv[1];
+    request.flags = 0;
+    if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+      fprintf(stderr, "failed to finalize DSL WOPT input image: %s\n",
+              request.path);
+      return 1;
+    }
+    printf("wrote unfused DSL WOPT input image: %s\n", request.path);
+    return 0;
   }
 
   const char *owner = ST_name(St_Table[PU_Info_proc_sym(pu)]);

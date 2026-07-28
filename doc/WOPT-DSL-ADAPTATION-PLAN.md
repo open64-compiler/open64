@@ -435,10 +435,46 @@ TCON identity and proves that reconstruction provenance does not inhibit
 value numbering.
 
 Broad optimizer admission is intentionally deferred to W7. The normal backend
-still invokes `VHO_DSL_Lower_Driver` before WOPT, so driver reordering and
-full `-WOPT:cr_simp` / `-WOPT:fold2const` binary A/B certification must wait
-until CSE, copy propagation, PRE, DCE, type queries, effects, and profitability
-have conservative DSL policies.
+now provides an opt-in `-DSL:wopt=on|off` hook immediately before
+`VHO_DSL_Lower_Driver`. The option is off by default. When enabled, the driver
+loads and initializes WOPT even if the later scalar WOPT phase is disabled,
+creates the temporary REGION/RID analysis context required by WOPT, invokes
+`Perform_Preopt_Optimization` on the Very High Level DSL WHIRL PU, and discards
+that temporary REGION context before passing the returned PU to final DSL
+lowering. The normal post-lowering REGION initialization then reconstructs
+authoritative RID state from the lowered tree. The later scalar WOPT pipeline
+remains unchanged.
+
+The hook makes full `-DSL:wopt`, `-WOPT:cr_simp`, and
+`-WOPT:fold2const` binary A/B certification possible. Broad enablement still
+depends on W7 review of CSE, copy propagation, PRE, DCE, type queries, effects,
+and profitability. Unsupported DSL operators must fail through the existing
+import/gatekeeper boundary rather than being silently lowered or skipped.
+
+Driver-level validation exposed and corrected an existing PREOPT lifetime bug
+in `Manage_pu_level_memory`: a `PREOPT_PHASE` `COMP_UNIT` was deleted from
+`Opt_preopt_pool` and then deleted a second time from `Opt_global_pool`.
+The PREOPT caller now passes the same pool selected for construction. The
+helper verifies that caller-provided owner, releases the PREOPT object and pool
+once, and returns before the global-pool cleanup path.
+
+WOPT input propagation preserves DSL value boundaries. It does not substitute
+a producer DSL CODEREP directly beneath a consumer DSL CODEREP because native
+DSL WHIRL requires each operator result to retain its unique no-alias result
+temporary. Tensor constant folding instead follows the operand LDID's defining
+STID through `WOPT_DSL_Compact_TCON`, so keeping the value boundary does not
+forfeit the fold.
+
+`dsl_wopt_driver_test.sh` certifies the option and phase order through the
+real backend executable. It publishes one mapped-image input containing two
+rank-2 integer tensor constants, `common.add`, a unique no-alias result
+temporary, and a returned aggregate result. With `-DSL:wopt=off`, the retained
+post-backend image contains two tensor-constant runtime calls and
+`__open64_dsl_add_v1`. With `-DSL:wopt=on`, the pre-lowering driver trace
+contains one logical `OPR_DSLTENSORCONST` with splat value 1 assigned to the
+original result temporary, and the post-backend image contains only the
+tensor-constant runtime call. Both paths retain `.B`/`.O`, `ir_b2a -st -src`
+`.T`, and backend trace artifacts for review.
 
 The same batch covers the non-behavioral W2 mechanics. `Init_op()` clears the
 semantic index, `CODEREP::Copy()` preserves it, and existing stack allocation,

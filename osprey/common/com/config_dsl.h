@@ -5,6 +5,8 @@
 #ifndef config_dsl_INCLUDED
 #define config_dsl_INCLUDED
 
+extern BOOL VHO_DSL_Enable_WOPT;
+extern BOOL VHO_DSL_Enable_WOPT_Set;
 extern BOOL VHO_DSL_Enable_Canonicalization;
 extern BOOL VHO_DSL_Enable_Canonicalization_Set;
 extern BOOL VHO_DSL_Enable_Descriptor_Propagation;

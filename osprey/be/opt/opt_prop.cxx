@@ -430,6 +430,9 @@ COPYPROP::Propagatable(CODEREP *x, BOOL chk_inverse,
       return prop;
     }
   case CK_OP: {
+    if (x->Is_dsl_op())
+      return NOT_PROPAGATABLE;
+
     if (OPERATOR_is_volatile(x->Opr()))
       return NOT_PROPAGATABLE;
 
@@ -2449,4 +2452,3 @@ COMP_UNIT::Do_copy_propagate()
   Opt_tlog( "MAINPROP", 0, "%d copy propagations",
 	    Htable()->Num_mainprops() );
 }
-

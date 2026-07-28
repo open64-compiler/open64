@@ -128,8 +128,6 @@ Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
             WN_operator(WN_kid0(statement_wn)) == OPR_DSL)
           original = WN_kid0(statement_wn);
       }
-      FmtAssert(result_st != ST_IDX_ZERO,
-                ("Gen_exp_wn: DSL result has no owning symbol"));
       wn = WOPT_DSL_Emit_WN
                (&info, original, result_st, dsl_kids,
                 exp->Kid_count(), TFile);

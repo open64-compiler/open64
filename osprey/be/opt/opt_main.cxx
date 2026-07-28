@@ -446,15 +446,20 @@ static void Terminate_opt_memory_pools(void)
 static void Manage_pu_level_memory(COMP_UNIT *comp_unit, MEM_POOL *pool)
 {
   if (comp_unit->Phase() == PREOPT_PHASE) {
-    CXX_DELETE(comp_unit, &Opt_preopt_pool);
+    Is_True(pool == &Opt_preopt_pool,
+            ("PREOPT COMP_UNIT is not owned by Opt_preopt_pool"));
+    CXX_DELETE(comp_unit, pool);
     OPT_POOL_Pop(&Opt_preopt_pool, MEM_DUMP_FLAG+1);
+    return;
   }
 
 #ifdef BUILD_MASTIFF
   if (IPSA_manager != NULL) return;
 #endif
 
-  CXX_DELETE(comp_unit, &Opt_global_pool);
+  Is_True(pool == &Opt_global_pool,
+          ("non-PREOPT COMP_UNIT is not owned by Opt_global_pool"));
+  CXX_DELETE(comp_unit, pool);
   Terminate_opt_memory_pools();
 }
 
@@ -2295,7 +2300,7 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
     // free up optimizer's pools
     // NOTE that the rvi phase uses its own
-    Manage_pu_level_memory(comp_unit, &Opt_global_pool);
+    Manage_pu_level_memory(comp_unit, gpool);
 
   } /* if ( phase == MAINOPT_PHASE ) */
   else { 
@@ -2423,7 +2428,7 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
     // Identify redudant mem clears that follow a calloc and remove them
     remove_redundant_mem_clears(opt_wn, alias_mgr, du_mgr);
 
-    Manage_pu_level_memory(comp_unit, &Opt_global_pool);
+    Manage_pu_level_memory(comp_unit, gpool);
 
     if (WN_opcode(opt_wn) == OPC_FUNC_ENTRY)
       Verify_SYMTAB (CURRENT_SYMTAB);

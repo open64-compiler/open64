@@ -56,6 +56,53 @@ WOPT_DSL_Result_Value(ST_IDX result_st, const char *owner_pu,
 }
 
 static BOOL
+WOPT_DSL_Result_Value_For_WN(const DSL_LOGICAL_OPCODE *logical,
+                             UINT32 operand_count, const char *owner_pu,
+                             DSL_IR_VALUE_RECORD *value,
+                             DSL_IR_NODE_RECORD *node)
+{
+  DSL_IR_VALUE_RECORD match_value;
+  DSL_IR_NODE_RECORD match_node;
+  BOOL found = FALSE;
+
+  if (logical == NULL || owner_pu == NULL || value == NULL || node == NULL)
+    return FALSE;
+
+  for (UINT32 id = 1; id <= DSL_IR_Image_Node_Count(); ++id) {
+    DSL_IR_NODE_RECORD candidate;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    DSL_IR_VALUE_RECORD result;
+    DSL_IR_VALUE_RECORD owned_result;
+    if (!DSL_IR_Image_Get_Node(id, &candidate) ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+            (candidate.opcode_descriptor_id, &descriptor) ||
+        descriptor.logical_operator != (UINT32)logical->dsl_operator ||
+        descriptor.version != logical->effective_version ||
+        candidate.operand_count != operand_count ||
+        strcmp(candidate.payload == STR_IDX_ZERO ? "" :
+                   Index_To_Str(candidate.payload),
+               logical->payload == NULL ? "" : logical->payload) != 0 ||
+        !DSL_IR_Image_Get_Value(candidate.result_value_id, &result) ||
+        result.st == ST_IDX_ZERO || result.name == STR_IDX_ZERO ||
+        !DSL_IR_Image_Find_PU_Value
+            (result.st, Index_To_Str(result.name), owner_pu, &owned_result) ||
+        owned_result.id != result.id)
+      continue;
+    if (found)
+      return FALSE;
+    match_value = result;
+    match_node = candidate;
+    found = TRUE;
+  }
+
+  if (!found)
+    return FALSE;
+  *value = match_value;
+  *node = match_node;
+  return TRUE;
+}
+
+static BOOL
 WOPT_DSL_TCON_Index(ST_IDX st, TCON_IDX *tcon_idx)
 {
   DSL_TENSOR_TCON_RECORD record;
@@ -88,6 +135,7 @@ WOPT_DSL_Import_Semantic_Info(const WN *wn, ST_IDX result_st,
   DSL_IR_NODE_RECORD node;
   UINT64 attribute_hash = 1469598103934665603ULL;
   UINT64 operand_hash = 1469598103934665603ULL;
+  ST_IDX semantic_result_st = result_st;
 
   if (info != NULL)
     memset(info, 0, sizeof(*info));
@@ -95,13 +143,17 @@ WOPT_DSL_Import_Semantic_Info(const WN *wn, ST_IDX result_st,
       !DSL_WN_Get_Logical_Opcode(wn, &logical, diagnostic) ||
       !DSL_Operator_Get_Info_Version
           (logical.dsl_operator, logical.effective_version, &operator_info) ||
-      !WOPT_DSL_Result_Value
-          (result_st, owner_pu, &result_value, &node) ||
+      (!WOPT_DSL_Result_Value
+           (result_st, owner_pu, &result_value, &node) &&
+       !WOPT_DSL_Result_Value_For_WN
+           (&logical, (UINT32)WN_kid_count(wn), owner_pu,
+            &result_value, &node)) ||
       node.operand_count != (UINT32)WN_kid_count(wn)) {
     if (diagnostic != NULL)
       fprintf(diagnostic, "WOPT DSL import: incomplete semantic identity\n");
     return FALSE;
   }
+  semantic_result_st = result_value.st;
 
   if (logical.dsl_operator != OPR_DSLTENSORCONST &&
       logical.dsl_operator != OPR_DSLADD &&
@@ -153,7 +205,7 @@ WOPT_DSL_Import_Semantic_Info(const WN *wn, ST_IDX result_st,
   info->operand_descriptor_hash = operand_hash;
   info->effect_identity = operator_info.effect_model;
   if (logical.dsl_operator == OPR_DSLTENSORCONST &&
-      !WOPT_DSL_TCON_Index(result_st, &info->tensor_tcon_idx)) {
+      !WOPT_DSL_TCON_Index(semantic_result_st, &info->tensor_tcon_idx)) {
     if (diagnostic != NULL)
       fprintf(diagnostic,
               "WOPT DSL import: tensor constant has no compact TCON\n");
@@ -300,10 +352,25 @@ WOPT_DSL_Emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
   const char *payload = NULL;
 
   if (info == NULL ||
-      (kid_count != 0 && kids == NULL) ||
-      !WOPT_DSL_Result_Value
-          (result_st, owner_pu, &result_value, &node))
+      (kid_count != 0 && kids == NULL))
     return NULL;
+  if (!WOPT_DSL_Result_Value
+          (result_st, owner_pu, &result_value, &node)) {
+    DSL_IR_VALUE_RECORD owned_result;
+    if (info->origin_result_value_id == DSL_IR_VALUE_INVALID_ID ||
+        !DSL_IR_Image_Get_Value
+            (info->origin_result_value_id, &result_value) ||
+        result_value.st == ST_IDX_ZERO ||
+        result_value.name == STR_IDX_ZERO ||
+        !DSL_IR_Image_Find_PU_Value
+            (result_value.st, Index_To_Str(result_value.name), owner_pu,
+             &owned_result) ||
+        owned_result.id != result_value.id ||
+        result_value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+        !DSL_IR_Image_Get_Node(result_value.producer_node_id, &node))
+      return NULL;
+  }
+  result_st = result_value.st;
 
   if (original != NULL &&
       DSL_WN_Get_Logical_Opcode(original, &original_logical, NULL) &&
@@ -311,6 +378,8 @@ WOPT_DSL_Emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
       original_logical.effective_version == info->version &&
       DSL_WN_Get_Opcode_Annotation(original, &annotation))
     payload = annotation.payload;
+  if (payload == NULL && node.payload != STR_IDX_ZERO)
+    payload = Index_To_Str(node.payload);
 
   if (info->logical_operator == OPR_DSLTENSORCONST) {
     DSL_TENSOR_TCON_RECORD tcon;

@@ -165,6 +165,7 @@
 #include "comp_decl.h"
 #include "report.h"
 #include "config_vsa.h"
+#include "config_dsl.h"
 
 extern ERROR_DESC EDESC_BE[], EDESC_CG[];
 
@@ -474,7 +475,8 @@ load_components (INT argc, char **argv)
     }
 
     if ((Run_wopt || (Run_vsaopt || Run_ipsaopt))
-	|| Run_preopt || Run_lno || Run_autopar) {
+        || Run_preopt || Run_lno || Run_autopar ||
+        VHO_DSL_Enable_WOPT) {
       Get_Phase_Args (PHASE_WOPT, &phase_argc, &phase_argv);
 #if !defined(BUILD_FAST_BIN)
       load_so (WOPT_SO_NAME, WOPT_Path, Show_Progress);
@@ -553,7 +555,8 @@ Phase_Init (void)
 
     if (Run_cg)
 	CG_Init ();
-    if ((Run_wopt || (Run_vsaopt || Run_ipsaopt))  || Run_preopt)
+    if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt ||
+        VHO_DSL_Enable_WOPT)
 	Wopt_Init ();
     if (Run_ipl)
 	Ipl_Init ();
@@ -649,7 +652,8 @@ Phase_Fini (void)
 	Lno_Fini ();
     if (Run_ipl)
 	Ipl_Fini ();
-    if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt)
+    if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt ||
+        VHO_DSL_Enable_WOPT)
 	Wopt_Fini ();
     if (Run_cg)
 	CG_Fini ();
@@ -1618,7 +1622,7 @@ Preprocess_PU (PU_Info *current_pu)
   BOOL w2c_only = Run_w2c &&
                   !Run_lno && !Run_preopt &&
                   !Run_wopt && !Run_vsaopt && !Run_ipsaopt &&
-                  !Run_cg && !Run_ipl;
+                  !Run_cg && !Run_ipl && !VHO_DSL_Enable_WOPT;
 
   Initialize_PU_Stats ();  /* Needed for Olimit as well as tracing */
 
@@ -1815,6 +1819,18 @@ Preprocess_PU (PU_Info *current_pu)
     CYG_Instrument_Driver( pu );
   }
 #endif
+
+  if (!w2c_only && VHO_DSL_Enable_WOPT) {
+    Is_True(wopt_loaded,
+            ("DSL WOPT requested but the WOPT component is unavailable"));
+    REGION_Initialize(pu, PU_has_region(Get_Current_PU()));
+    Set_Error_Phase ( "DSL WOPT Processing" );
+    pu = Perform_Preopt_Optimization(pu, pu);
+    Is_True(pu != NULL, ("DSL WOPT returned a NULL PU"));
+    Set_PU_Info_tree_ptr(current_pu, pu);
+    Check_for_IR_Dump(TP_GLOBOPT, pu, "DSL_WOPT");
+    REGION_Finalize();
+  }
 
   if (!w2c_only) {
     Set_Error_Phase ( "DSL VHO Processing" );
