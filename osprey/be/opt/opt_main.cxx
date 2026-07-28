@@ -1668,10 +1668,15 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
   SET_OPT_PHASE("Preparation");
 
+#if defined(TARG_X8664) && defined(_LP64)
+  // Guard the measured x86-64 LP64 layout against inadvertent expansion.
+  Is_True(sizeof(CODEREP) == 88,
+    ("x86-64 LP64 CODEREP size changed (is now %lu, expected 88)!",
+     (unsigned long)sizeof(CODEREP)));
+#endif
+
 #ifdef SKIP
-  // check for inadvertent increase in size of data structures
-  Is_True(sizeof(CODEREP) == 48,
-    ("Size of CODEREP has been changed (is now %d)!",sizeof(CODEREP)));
+  // Historical STMTREP size checks remain disabled.
 #if defined(linux) || defined(BUILD_OS_DARWIN)
   Is_True(sizeof(STMTREP) == 60,
     ("Size of STMTREP has been changed (is now %d)!",sizeof(STMTREP)));

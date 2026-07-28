@@ -68,8 +68,14 @@ WOPT-local operator field may fit without increasing the 88-byte CODEREP on
 this ABI. This is an observation, not a portable guarantee. Any layout change
 must be compiled and measured for every supported target.
 
-The old disabled size assertion in `opt_main.cxx` expects a historical
-48-byte CODEREP and does not describe the current x86-64 layout.
+The historical disabled 48-byte assertion in `opt_main.cxx` has been
+corrected for the measured x86-64 LP64 layout. The active runtime assertion
+and the compile-time guard in `opt_htable.cxx` both require
+`sizeof(CODEREP) == 88`. An intentional CODEREP expansion must update these
+guards in the same reviewed change after documenting the new field, measured
+target layouts, memory-cost impact, stack/pool allocation behavior, and
+required regression results. Other target layouts remain measurements to add,
+not assumptions copied from x86-64.
 
 ### Existing stack and pool protocol
 
