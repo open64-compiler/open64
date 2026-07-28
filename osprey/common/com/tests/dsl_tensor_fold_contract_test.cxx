@@ -815,6 +815,22 @@ Check_VHO_Service_Boundary(void)
     context.flags = 0x20;
 
     UINT32 tcon_count = TCON_Table_Size();
+    const TY_IDX *saved_result_ty = candidate.result_ty;
+    candidate.result_ty = NULL;
+    memset(&replacement, 0xff, sizeof(replacement));
+    if (DSL_Tensor_Fold_Describe_Replacement
+            (&candidate, &context, &replacement) !=
+            DSL_TENSOR_FOLD_REJECT_MALFORMED_CANDIDATE ||
+        replacement.status !=
+            DSL_TENSOR_FOLD_REJECT_MALFORMED_CANDIDATE ||
+        replacement.result_count != 0 ||
+        replacement.result_tcon_idx != TCON_IDX_ZERO ||
+        TCON_Table_Size() != tcon_count) {
+        fprintf(stderr, "M4 malformed replacement created a TCON\n");
+        return 1;
+    }
+    candidate.result_ty = saved_result_ty;
+
     memset(&replacement, 0xff, sizeof(replacement));
     if (DSL_Tensor_Fold_Describe_Replacement
             (&candidate, &context, &replacement) !=

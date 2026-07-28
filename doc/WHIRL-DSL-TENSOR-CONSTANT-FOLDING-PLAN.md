@@ -568,7 +568,7 @@ range, and checksum.
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
-| M4 | Implemented and validated on `codex/dsl-simplifier-m4` | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
+| M4 | PR #97 open; implemented and validated on `codex/dsl-simplifier-m4` | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
 | M7 | Blocked by M6 | M6 merged | Full certification matrix |
@@ -596,6 +596,16 @@ node/value identity, publishes `common.tensor_const`, and revisits parent
 definitions without recursively entering the evaluator. Items below that
 mention dense payloads, side-file evaluation, WOPT, or DIVREM remain future
 work.
+
+M4 atomic publication means that a node's logical opcode, active operands,
+active attributes, payload, and result kind become visible as one coherent
+mapped-image relationship set. Rewriting compacts and renumbers the
+relationship tables so stale rows cannot survive in table-wide consumers or
+`ir_b2a -st -src`. This does not promise rollback of Open64's global,
+deduplicated TCON table: evaluator-created but ultimately unused TCON entries
+are legal in the same way as other unreferenced constants. Only a successfully
+published node and result-symbol binding makes a folded tensor constant
+semantically reachable.
 
 1. [x] Define a fixed-layout evaluator registry keyed by logical operator and
    version.

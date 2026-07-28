@@ -1830,8 +1830,8 @@ Check_VHO_DSL_M4_Canonicalization(void)
         !DSL_Builder_Append_PU_Value(pu, three) ||
         !DSL_Builder_Append_PU_Value(pu, add) ||
         !DSL_Builder_Append_PU_Value(pu, duplicate_add) ||
-        !DSL_Builder_Append_PU_Value(pu, folded_add) ||
-        !DSL_Builder_Append_PU_Value(pu, folded_parent))
+        !DSL_Builder_Append_PU_Value(pu, folded_parent) ||
+        !DSL_Builder_Append_PU_Value(pu, folded_add))
         return FALSE;
 
     WN *tree = PU_Info_tree_ptr(pu);

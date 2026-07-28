@@ -1111,7 +1111,7 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
-| M4 | Implemented and validated on `codex/dsl-simplifier-m4` | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
+| M4 | PR #97 open; implemented and validated on `codex/dsl-simplifier-m4` | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
 | M7 | Blocked by M6 | M6 merged | Full certification matrix |
@@ -1273,6 +1273,9 @@ and statement SRCPOS. The retained M4 artifact reopens through
 - Invoke tensor constant folding after descriptor and constant propagation
   have completed, publish the resulting `common.tensor_const`, and revisit
   affected parent expressions under their existing simplifier controls.
+- Treat publication atomicity as semantic mapped-image visibility: compact
+  relationship tables before exposing the replacement node, while permitting
+  ordinary unreferenced entries in Open64's global deduplicated TCON table.
 - Re-run the gatekeeper after the pass in validation builds and tests.
 
 ### S5: Reassociation and factorization

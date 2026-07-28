@@ -1238,7 +1238,7 @@ DSL_Tensor_Fold_Describe_Replacement
     DSL_Tensor_Fold_Replacement_Init(replacement);
 
     if (candidate == NULL || context == NULL ||
-        candidate->result_count != 1)
+        candidate->result_count != 1 || candidate->result_ty == NULL)
         return DSL_Tensor_Fold_Describe_Failure
                    (replacement, DSL_TENSOR_FOLD_REJECT_MALFORMED_CANDIDATE);
     if (context->result_ty != TY_IDX_ZERO &&
@@ -1388,6 +1388,21 @@ DSL_Tensor_TCON_Find_Carrier
         return FALSE;
 
     found = DSL_Tensor_TCON_Find_Cached_Equal(&record, carrier);
+    if (found == TCON_IDX_ZERO) {
+        UINT32 table_size = TCON_Table_Size();
+        for (TCON_IDX idx = 1; idx < table_size; ++idx) {
+            TCON candidate = TCON_from_IDX(idx);
+            DSL_TENSOR_TCON_RECORD candidate_record;
+            if (DSL_Tensor_TCON_Decode_Carrier
+                    (&candidate, &candidate_record) &&
+                DSL_Tensor_TCON_Record_Semantic_Equal
+                    (&candidate_record, &candidate, &record, carrier)) {
+                found = idx;
+                DSL_Tensor_TCON_Cache(found);
+                break;
+            }
+        }
+    }
     if (found == TCON_IDX_ZERO)
         return FALSE;
     *tcon_idx = found;
@@ -1606,12 +1621,12 @@ DSL_Tensor_TCON_Create_Integer_Splat
 
     memset(&info, 0, sizeof(info));
     info.descriptor_ty = descriptor_ty;
-    info.scalar_tcon = Enter_tcon(scalar);
     info.element_mtype = element_mtype;
     info.element_count = element_count;
     info.element_size = TY_size(element_ty);
     if (element_count > ~0ULL / info.element_size)
         return FALSE;
+    info.scalar_tcon = Enter_tcon(scalar);
     info.logical_bytes = element_count * info.element_size;
     info.required_alignment = TY_align(descriptor_ty);
     if (info.required_alignment < info.element_size)
