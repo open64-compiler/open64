@@ -95,6 +95,7 @@
 #include "opt_cfg.h"
 #include "opt_sym.h"
 #include "opt_htable.h"
+#include "opt_dsl.h"
 #include "opt_ssa.h"
 #include "opt_combine.h"
 #include "opt_main.h"
@@ -110,6 +111,11 @@
 
 #include <strings.h>   // bcopy
 #include "opt_sys.h"
+
+#if defined(TARG_X8664) && defined(_LP64)
+typedef char WOPT_DSL_Coderep_Size_Check
+    [sizeof(CODEREP) == 88 ? 1 : -1];
+#endif
 
 #ifdef BUILD_MASTIFF
 #include "opt_dbg.h"   // g_ipsa_manager
@@ -320,6 +326,7 @@ CODEREP::Copy(const CODEREP &cr)
   }
   else if (kind == CK_OP) {
     Set_opr(cr.Opr());
+    Set_dsl_semantic_info_id(cr.Dsl_semantic_info_id());
     Set_kid_count(cr.Kid_count());
     for (INT i = 0; i < Kid_count(); i++) {
       Set_opnd(i, cr.Get_opnd(i));
@@ -515,7 +522,9 @@ CODEREP::Match(CODEREP* cr, INT32 mu_vsym_depth, OPT_STAB *sym)
 
 
   case CK_OP:
-    if (Op() == cr->Op() && Kid_count() == cr->Kid_count()) {
+    if (Op() == cr->Op() &&
+        Dsl_semantic_info_id() == cr->Dsl_semantic_info_id() &&
+        Kid_count() == cr->Kid_count()) {
       for (INT i = 0; i < Kid_count(); i++)
 	if (Get_opnd(i) != cr->Get_opnd(i))
 	  return FALSE;
@@ -892,8 +901,18 @@ CODEREP::Print_node(INT32 indent, FILE *fp) const
     fprintf(fp, ">");	// mark line visually as htable dump
     for (i = 0; i < indent; i++) fprintf(fp, " ");
     char buf[32];
-    sprintf(buf, "%s", OPCODE_name(Op()));
-    fprintf(fp, "%s", buf+4);
+    if (Is_dsl_op()) {
+      WOPT_DSL_SEMANTIC_INFO info;
+      if (Dsl_semantic_info(&info))
+        fprintf(fp, "%s.v%u ty=%u",
+                DSL_OPERATOR_name(info.logical_operator), info.version,
+                (UINT32)info.result_ty);
+      else
+        fprintf(fp, "OPR_DSLUNKNOWN");
+    } else {
+      sprintf(buf, "%s", OPCODE_name(Op()));
+      fprintf(fp, "%s", buf+4);
+    }
     switch (Opr()) {
     case OPR_CVTL:
       fprintf(fp, " %d", Offset());
@@ -1502,6 +1521,8 @@ CODEMAP::Hash_op_and_canon(CODEREP *cr, BOOL canonicalize)
   }
 
   INT val = cr->Op();
+  if (cr->Is_dsl_op())
+    val += WOPT_DSL_Semantic_Info_Hash(cr->Dsl_semantic_info_id());
 
   for (INT i = 0; i < cr->Kid_count(); i++) {
     CODEREP *opnd = cr->Get_opnd(i);
@@ -3179,6 +3200,9 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
   const OPERATOR    oper = WN_operator(wn);
   BOOL  propagated = FALSE;
 
+  FmtAssert(oper != OPR_DSL,
+            ("CODEMAP::Add_expr: logical DSL import is not enabled; "
+             "run VHO DSL lowering before WOPT"));
   FmtAssert (OPCODE_is_expression(op) || OPCODE_is_fake(op),
 	     ("CODEMAP::Hash: opcode %s is not an expression",OPCODE_name(op)));
 
@@ -6343,4 +6367,3 @@ STMTREP_LIST_CONTAINER::Prepend(STMTREP *sr, MEM_POOL *pool)
     ErrMsg ( EC_No_Mem, "STMTREP_LIST_CONTAINER::Prepend" );
   Prepend(new_srlst);
 }
-
