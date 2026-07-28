@@ -18,12 +18,14 @@
 #include "errors.h"
 #include "err_host.tab"
 #include "config.h"
+#include "config_dsl.h"
 #include "controls.h"
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_lower.h"
+#include "dsl_opt.h"
 #include "dsl_region.h"
 #include "open64_dsl_runtime_abi.h"
 
@@ -1754,6 +1756,205 @@ Check_Llama2_Decode_Lowering(void)
     return TRUE;
 }
 
+static BOOL
+Check_VHO_DSL_M4_Canonicalization(void)
+{
+    BOOL saved_canonicalization = VHO_DSL_Enable_Canonicalization;
+    BOOL saved_algebraic = VHO_DSL_Enable_Algebraic_Simplification;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_SOURCE_POSITION source_position;
+    DSL_BUILDER_VALUE kids[2];
+    VHO_DSL_OPT_RESULT result;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_Builder_Set_Canonicalization_Enabled(FALSE);
+    DSL_Builder_Set_Tensor_Folding_Enabled(FALSE);
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "int32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    TY_IDX tensor_ty = DSL_Builder_Intern_Tensor_Type
+                           ("vho_m4_i32_2x2", MTYPE_To_TY(MTYPE_I4),
+                            &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("vho_dsl_m4_canonicalization");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    DSL_BUILDER_VALUE input =
+        DSL_Builder_Create_Model_Input("canonical_input", tensor_ty, 0);
+    DSL_BUILDER_VALUE one = DSL_Builder_Create_Tensor_Constant
+                                ("canonical_one", tensor_ty, "int32", 2,
+                                 "[2,2]", "splat", "1");
+    DSL_BUILDER_VALUE two = DSL_Builder_Create_Tensor_Constant
+                                ("fold_two", tensor_ty, "int32", 2,
+                                 "[2,2]", "splat", "2");
+    DSL_BUILDER_VALUE three = DSL_Builder_Create_Tensor_Constant
+                                  ("fold_three", tensor_ty, "int32", 2,
+                                   "[2,2]", "splat", "3");
+    DSL_DOMAIN_ID common = DSL_Domain_Find("common");
+    DSL_OPCODE_ID add_id =
+        DSL_Opcode_Find(common, DSL_OPCODE_COMMON_ADD, 1);
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    kids[0] = one;
+    kids[1] = input;
+    DSL_BUILDER_VALUE add = DSL_Builder_Create_Operator_With_Result
+                                (add_id, 1, kids, 2, &attribute, 1,
+                                 "canonical_add", tensor_ty);
+    kids[0] = input;
+    kids[1] = input;
+    DSL_BUILDER_VALUE duplicate_add =
+        DSL_Builder_Create_Operator_With_Result
+            (add_id, 1, kids, 2, &attribute, 1,
+             "duplicate_add", tensor_ty);
+    kids[0] = two;
+    kids[1] = three;
+    DSL_BUILDER_VALUE folded_add =
+        DSL_Builder_Create_Operator_With_Result
+            (add_id, 1, kids, 2, &attribute, 1, "folded_add", tensor_ty);
+    kids[0] = folded_add;
+    kids[1] = one;
+    DSL_BUILDER_VALUE folded_parent =
+        DSL_Builder_Create_Operator_With_Result
+            (add_id, 1, kids, 2, &attribute, 1, "folded_parent", tensor_ty);
+    if (tensor_ty == TY_IDX_ZERO || pu == NULL || input == NULL ||
+        file_id == 0 ||
+        one == NULL || two == NULL || three == NULL || add == NULL ||
+        duplicate_add == NULL || folded_add == NULL ||
+        folded_parent == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, input) ||
+        !DSL_Builder_Append_PU_Value(pu, one) ||
+        !DSL_Builder_Append_PU_Value(pu, two) ||
+        !DSL_Builder_Append_PU_Value(pu, three) ||
+        !DSL_Builder_Append_PU_Value(pu, add) ||
+        !DSL_Builder_Append_PU_Value(pu, duplicate_add) ||
+        !DSL_Builder_Append_PU_Value(pu, folded_parent) ||
+        !DSL_Builder_Append_PU_Value(pu, folded_add))
+        return FALSE;
+
+    WN *tree = PU_Info_tree_ptr(pu);
+    WN *expression = WN_kid0(add);
+    ST_IDX folded_result_st = WN_st_idx(folded_add);
+    TY_IDX folded_result_ty = WN_ty(folded_add);
+    memset(&source_position, 0, sizeof(source_position));
+    source_position.file_id = file_id;
+    source_position.line = __LINE__ + 1;
+    source_position.column = 1;
+    source_position.statement_begin = 1;
+    if (!DSL_Builder_Set_Value_Source_Position
+             (folded_add, &source_position))
+        return FALSE;
+    SRCPOS folded_source_position = WN_Get_Linenum(folded_add);
+    ST_IDX duplicate_result_st = WN_st_idx(duplicate_add);
+    TY_IDX duplicate_result_ty = WN_ty(duplicate_add);
+    ++source_position.line;
+    if (!DSL_Builder_Set_Value_Source_Position
+             (duplicate_add, &source_position))
+        return FALSE;
+    SRCPOS duplicate_source_position = WN_Get_Linenum(duplicate_add);
+    if (WN_st_idx(WN_kid0(expression)) != WN_st_idx(one) ||
+        WN_st_idx(WN_kid1(expression)) != WN_st_idx(input) ||
+        !DSL_WN_Is_Native(WN_kid0(folded_add)) ||
+        WN_kid_count(WN_kid0(folded_add)) != 2)
+        return FALSE;
+
+    VHO_DSL_Opt_Reset_Passes();
+    if (!VHO_DSL_Opt_Register_Default_Passes())
+        return FALSE;
+    VHO_DSL_Enable_Canonicalization = FALSE;
+    VHO_DSL_Enable_Algebraic_Simplification = FALSE;
+    if (!VHO_DSL_Optimize_Program_Unit
+             (pu, &tree, stderr, &result) ||
+        result.executed_stage_count != 0 ||
+        WN_st_idx(WN_kid0(WN_kid0(add))) != WN_st_idx(one))
+        return FALSE;
+
+    VHO_DSL_Enable_Canonicalization = TRUE;
+    if (!VHO_DSL_Optimize_Program_Unit
+             (pu, &tree, stderr, &result) ||
+        result.executed_stage_count != 1)
+        return FALSE;
+    expression = WN_kid0(add);
+    DSL_OPCODE_ANNOTATION annotation;
+    DSL_LOGICAL_OPCODE duplicate_logical_opcode;
+    const char *coefficient_origin =
+        ST_tensor_metadata
+            (WN_st_idx(WN_kid1(WN_kid0(duplicate_add))),
+             "tensor_fold.origin");
+    if (WN_st_idx(WN_kid0(expression)) != WN_st_idx(input) ||
+        WN_st_idx(WN_kid1(expression)) != WN_st_idx(one) ||
+        !DSL_WN_Get_Opcode_Annotation(expression, &annotation) ||
+        strstr(annotation.payload, "kid0=canonical_input") == NULL ||
+        strstr(annotation.payload, "kid1=canonical_one") == NULL ||
+        WN_st_idx(duplicate_add) != duplicate_result_st ||
+        WN_ty(duplicate_add) != duplicate_result_ty ||
+        WN_Get_Linenum(duplicate_add) != duplicate_source_position ||
+        !DSL_WN_Get_Logical_Opcode
+             (WN_kid0(duplicate_add), &duplicate_logical_opcode, stderr) ||
+        duplicate_logical_opcode.dsl_operator != OPR_DSLMUL ||
+        WN_kid_count(WN_kid0(duplicate_add)) != 2 ||
+        WN_st_idx(WN_kid0(WN_kid0(duplicate_add))) != WN_st_idx(input) ||
+        coefficient_origin == NULL ||
+        strcmp(coefficient_origin, "vho.coefficient_collection") != 0 ||
+        !DSL_IR_Image_Validate(stderr))
+        return FALSE;
+
+    VHO_DSL_Enable_Canonicalization = FALSE;
+    VHO_DSL_Enable_Algebraic_Simplification = TRUE;
+    DSL_LOGICAL_OPCODE folded_logical_opcode;
+    DSL_LOGICAL_OPCODE parent_logical_opcode;
+    if (!VHO_DSL_Optimize_Program_Unit
+             (pu, &tree, stderr, &result) ||
+        result.executed_stage_count != 1 ||
+        WN_st_idx(folded_add) != folded_result_st ||
+        WN_ty(folded_add) != folded_result_ty ||
+        WN_Get_Linenum(folded_add) != folded_source_position ||
+        !DSL_WN_Is_Native(WN_kid0(folded_add)) ||
+        WN_kid_count(WN_kid0(folded_add)) != 0 ||
+        !DSL_WN_Get_Logical_Opcode
+             (WN_kid0(folded_add), &folded_logical_opcode, stderr) ||
+        folded_logical_opcode.dsl_operator != OPR_DSLTENSORCONST ||
+        !DSL_WN_Get_Opcode_Annotation
+             (WN_kid0(folded_add), &annotation) ||
+        strstr(annotation.payload, "value_kind=splat") == NULL ||
+        strstr(annotation.payload, "value=5") == NULL ||
+        ST_tensor_metadata(folded_result_st, "tensor_tcon_idx") == NULL ||
+        strcmp(ST_tensor_metadata
+                   (folded_result_st, "tensor_fold.origin"),
+               "OPR_DSLADD") != 0 ||
+        !DSL_WN_Get_Logical_Opcode
+             (WN_kid0(folded_parent), &parent_logical_opcode, stderr) ||
+        parent_logical_opcode.dsl_operator != OPR_DSLTENSORCONST ||
+        !DSL_WN_Get_Opcode_Annotation
+             (WN_kid0(folded_parent), &annotation) ||
+        strstr(annotation.payload, "value=6") == NULL ||
+        !DSL_IR_Image_Validate(stderr))
+        return FALSE;
+
+    DSL_GATEKEEPER_RESULT gatekeeper_result;
+    BOOL valid = DSL_Gatekeeper_Verify_Program
+                     (pu, stderr, &gatekeeper_result) &&
+                 gatekeeper_result.error_count == 0;
+    const char *artifact =
+        getenv("OPEN64_DSL_VHO_M4_ARTIFACT");
+    if (valid && artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+        request.path = artifact;
+        request.flags = 0;
+        (void)unlink(request.path);
+        valid = DSL_Builder_Finalize_Mapped_Image(&request) &&
+                access(request.path, F_OK) == 0;
+    }
+    VHO_DSL_Enable_Canonicalization = saved_canonicalization;
+    VHO_DSL_Enable_Algebraic_Simplification = saved_algebraic;
+    VHO_DSL_Opt_Reset_Passes();
+    if (valid)
+        printf("DSL VHO M4 canonicalization contract passed\n");
+    return valid;
+}
+
 int
 main(void)
 {
@@ -1762,6 +1963,8 @@ main(void)
     memset(&empty_pu, 0, sizeof(empty_pu));
 
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_VHO_M4_ONLY") != NULL)
+        return Check_VHO_DSL_M4_Canonicalization() ? 0 : 1;
     if (getenv("OPEN64_DSL_LLAMA2_DECODE_LOWER_ONLY") != NULL)
         return Check_Llama2_Decode_Lowering() ? 0 : 1;
     if (getenv("OPEN64_DSL_STATE_LOWER_ONLY") != NULL)

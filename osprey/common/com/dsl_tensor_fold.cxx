@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
+#include <errno.h>
 
 #include "opcode.h"
 #include "dsl_tensor_fold.h"
@@ -116,6 +118,62 @@ DSL_Tensor_TCON_Mul_Exact (UINT64 left, UINT32 right, UINT64 *result)
         *result = left * right;
     return TRUE;
 }
+
+#ifndef DSL_TENSOR_FOLD_TEST_STUB
+static BOOL
+DSL_Tensor_TCON_Static_Element_Count
+        (TY_IDX descriptor_ty,
+         UINT64 *element_count)
+{
+    const char *shape =
+        TY_tensor_attribute(descriptor_ty, TY_TENSOR_SCHEMA_SHAPE);
+    INT32 rank = TY_tensor_rank(descriptor_ty);
+    const char *cursor;
+    UINT32 dimensions = 0;
+    UINT64 count = 1;
+
+    if (element_count != NULL)
+        *element_count = 0;
+    if (shape == NULL || rank < 0 || element_count == NULL)
+        return FALSE;
+    cursor = shape;
+    while (isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor++ != '[')
+        return FALSE;
+    while (TRUE) {
+        while (isspace((unsigned char)*cursor))
+            ++cursor;
+        if (*cursor == ']') {
+            ++cursor;
+            break;
+        }
+        errno = 0;
+        char *end;
+        unsigned long long dimension = strtoull(cursor, &end, 10);
+        if (errno == ERANGE || end == cursor || dimension == 0 ||
+            count > ~0ULL / dimension)
+            return FALSE;
+        count *= dimension;
+        ++dimensions;
+        cursor = end;
+        while (isspace((unsigned char)*cursor))
+            ++cursor;
+        if (*cursor == ',') {
+            ++cursor;
+            continue;
+        }
+        if (*cursor != ']')
+            return FALSE;
+    }
+    while (isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor != '\0' || dimensions != (UINT32)rank)
+        return FALSE;
+    *element_count = count;
+    return TRUE;
+}
+#endif
 
 static BOOL
 DSL_Tensor_TCON_Relative_Path_Valid (const char *text, UINT32 length)
@@ -1082,6 +1140,174 @@ Targ_DSL_WhirlOp
 }
 
 void
+DSL_Tensor_Fold_Value_Init (DSL_TENSOR_FOLD_VALUE *value)
+{
+    if (value != NULL)
+        memset(value, 0, sizeof(*value));
+}
+
+BOOL
+DSL_Tensor_Fold_Identify_Compact_TCON
+        (TCON_IDX tcon_idx,
+         TY_IDX expected_ty,
+         ST_IDX st,
+         DSL_IR_VALUE_ID dsl_value_id,
+         DSL_TENSOR_FOLD_VALUE *value,
+         DSL_TENSOR_FOLD_STATUS *reason)
+{
+    DSL_TENSOR_TCON_RECORD record;
+    TCON carrier;
+
+    if (reason != NULL)
+        *reason = DSL_TENSOR_FOLD_SUCCESS;
+    DSL_Tensor_Fold_Value_Init(value);
+
+    if (value == NULL) {
+        if (reason != NULL)
+            *reason = DSL_TENSOR_FOLD_REJECT_MALFORMED_CANDIDATE;
+        return FALSE;
+    }
+
+    if (!DSL_Tensor_TCON_Get_Carrier(tcon_idx, &carrier) ||
+        !DSL_Tensor_TCON_Decode_Carrier(&carrier, &record)) {
+        if (reason != NULL)
+            *reason = DSL_TENSOR_FOLD_REJECT_NON_CONSTANT_OPERAND;
+        return FALSE;
+    }
+
+    if (record.storage_kind != DSL_TENSOR_TCON_STORAGE_ZERO &&
+        record.storage_kind != DSL_TENSOR_TCON_STORAGE_ONE &&
+        record.storage_kind != DSL_TENSOR_TCON_STORAGE_SPLAT) {
+        if (reason != NULL)
+            *reason = DSL_TENSOR_FOLD_REJECT_NON_CONSTANT_OPERAND;
+        return FALSE;
+    }
+
+    if (expected_ty != TY_IDX_ZERO && record.descriptor_ty != expected_ty) {
+        if (reason != NULL)
+            *reason = DSL_TENSOR_FOLD_REJECT_DESCRIPTOR_MISMATCH;
+        return FALSE;
+    }
+
+    value->kind = DSL_TENSOR_FOLD_VALUE_COMPACT_TCON;
+    value->tcon_idx = tcon_idx;
+    value->carrier = carrier;
+    value->tensor_record = record;
+    value->ty = record.descriptor_ty;
+    value->st = st;
+    value->dsl_value_id = dsl_value_id;
+    value->flags = DSL_TENSOR_FOLD_VALUE_FLAG_COMPACT;
+    return TRUE;
+}
+
+void
+DSL_Tensor_Fold_Replacement_Init
+        (DSL_TENSOR_FOLD_REPLACEMENT *replacement)
+{
+    if (replacement != NULL) {
+        memset(replacement, 0, sizeof(*replacement));
+        replacement->status = DSL_TENSOR_FOLD_NOT_APPLICABLE;
+    }
+}
+
+static DSL_TENSOR_FOLD_STATUS
+DSL_Tensor_Fold_Describe_Failure
+        (DSL_TENSOR_FOLD_REPLACEMENT *replacement,
+         DSL_TENSOR_FOLD_STATUS status)
+{
+    DSL_Tensor_Fold_Replacement_Init(replacement);
+    if (replacement != NULL)
+        replacement->status = status;
+    return status;
+}
+
+DSL_TENSOR_FOLD_STATUS
+DSL_Tensor_Fold_Describe_Replacement
+        (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
+         const DSL_TENSOR_FOLD_REPLACEMENT_CONTEXT *context,
+         DSL_TENSOR_FOLD_REPLACEMENT *replacement)
+{
+    DSL_TENSOR_FOLD_OUTPUT output;
+    DSL_TENSOR_FOLD_STATUS status;
+    DSL_TENSOR_TCON_RECORD record;
+    TCON_IDX result_tcon_idx;
+    TY_IDX result_ty;
+
+    if (replacement == NULL)
+        return DSL_TENSOR_FOLD_REJECT_MALFORMED_CANDIDATE;
+    DSL_Tensor_Fold_Replacement_Init(replacement);
+
+    if (candidate == NULL || context == NULL ||
+        candidate->result_count != 1 || candidate->result_ty == NULL)
+        return DSL_Tensor_Fold_Describe_Failure
+                   (replacement, DSL_TENSOR_FOLD_REJECT_MALFORMED_CANDIDATE);
+    if (context->result_ty != TY_IDX_ZERO &&
+        context->result_ty != candidate->result_ty[0])
+        return DSL_Tensor_Fold_Describe_Failure
+                   (replacement,
+                    DSL_TENSOR_FOLD_REJECT_DESCRIPTOR_MISMATCH);
+
+    status = Targ_DSL_WhirlOp(candidate, &output);
+    if (status != DSL_TENSOR_FOLD_SUCCESS)
+        return DSL_Tensor_Fold_Describe_Failure(replacement, status);
+
+    if (output.result_count != 1 ||
+        output.results[0].kind != DSL_TENSOR_FOLD_RESULT_TCON ||
+        output.results[0].result_ty != candidate->result_ty[0])
+        return DSL_Tensor_Fold_Describe_Failure
+                   (replacement,
+                    DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY);
+
+    if (!DSL_Tensor_TCON_Find_Carrier(&output.results[0].result,
+                                      &result_tcon_idx) ||
+        result_tcon_idx == TCON_IDX_ZERO ||
+        !DSL_Tensor_TCON_Get(result_tcon_idx, &record))
+        return DSL_Tensor_Fold_Describe_Failure
+                   (replacement,
+                    DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY);
+
+    if (record.storage_kind != DSL_TENSOR_TCON_STORAGE_ZERO &&
+        record.storage_kind != DSL_TENSOR_TCON_STORAGE_ONE &&
+        record.storage_kind != DSL_TENSOR_TCON_STORAGE_SPLAT)
+        return DSL_Tensor_Fold_Describe_Failure
+                   (replacement,
+                    DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY);
+
+    result_ty = context->result_ty != TY_IDX_ZERO ?
+                    context->result_ty : candidate->result_ty[0];
+    if (result_ty != record.descriptor_ty ||
+        candidate->result_ty[0] != record.descriptor_ty)
+        return DSL_Tensor_Fold_Describe_Failure
+                   (replacement,
+                    DSL_TENSOR_FOLD_REJECT_DESCRIPTOR_MISMATCH);
+
+    replacement->status = DSL_TENSOR_FOLD_SUCCESS;
+    replacement->logical_operator = OPR_DSLTENSORCONST;
+    replacement->version = 1;
+    replacement->result_count = 1;
+    replacement->result_tcon_idx = result_tcon_idx;
+    replacement->result_tcon = output.results[0].result;
+    replacement->result_ty = result_ty;
+    replacement->result_st = context->result_st;
+    replacement->descriptor_ty = record.descriptor_ty;
+    replacement->result_storage_kind = record.storage_kind;
+    replacement->scalar_tcon = record.scalar_tcon;
+    replacement->scalar_integer_value = record.scalar_integer_value;
+    snprintf(replacement->compact_scalar_text,
+             sizeof(replacement->compact_scalar_text), "%lld",
+             (long long)record.scalar_integer_value);
+    replacement->source_position = context->source_position;
+    replacement->origin_node_id = context->origin_node_id;
+    replacement->origin_result_value_id = context->origin_result_value_id;
+    replacement->result_name = context->result_name;
+    replacement->metadata = context->metadata;
+    replacement->lineage = context->lineage;
+    replacement->flags = context->flags |
+                         DSL_TENSOR_FOLD_REPLACEMENT_REVISIT_PARENTS;
+    return DSL_TENSOR_FOLD_SUCCESS;
+}
+
+void
 DSL_Tensor_TCON_Reset (void)
 {
     /*
@@ -1162,6 +1388,21 @@ DSL_Tensor_TCON_Find_Carrier
         return FALSE;
 
     found = DSL_Tensor_TCON_Find_Cached_Equal(&record, carrier);
+    if (found == TCON_IDX_ZERO) {
+        UINT32 table_size = TCON_Table_Size();
+        for (TCON_IDX idx = 1; idx < table_size; ++idx) {
+            TCON candidate = TCON_from_IDX(idx);
+            DSL_TENSOR_TCON_RECORD candidate_record;
+            if (DSL_Tensor_TCON_Decode_Carrier
+                    (&candidate, &candidate_record) &&
+                DSL_Tensor_TCON_Record_Semantic_Equal
+                    (&candidate_record, &candidate, &record, carrier)) {
+                found = idx;
+                DSL_Tensor_TCON_Cache(found);
+                break;
+            }
+        }
+    }
     if (found == TCON_IDX_ZERO)
         return FALSE;
     *tcon_idx = found;
@@ -1340,6 +1581,65 @@ DSL_Tensor_TCON_Create_Splat
 {
     return DSL_Tensor_TCON_Create_Record
                (DSL_TENSOR_TCON_STORAGE_SPLAT, info, tcon_idx, carrier);
+}
+
+BOOL
+DSL_Tensor_TCON_Create_Integer_Splat
+        (TY_IDX descriptor_ty,
+         INT64 scalar_value,
+         TCON_IDX *tcon_idx,
+         TCON *carrier)
+{
+#ifdef DSL_TENSOR_FOLD_TEST_STUB
+    if (tcon_idx != NULL)
+        *tcon_idx = TCON_IDX_ZERO;
+    if (carrier != NULL)
+        memset(carrier, 0, sizeof(*carrier));
+    return FALSE;
+#else
+    DSL_TENSOR_TCON_CREATE_INFO info;
+    TY_IDX element_ty;
+    TYPE_ID element_mtype;
+    UINT64 element_count;
+    TCON scalar;
+
+    if (tcon_idx != NULL)
+        *tcon_idx = TCON_IDX_ZERO;
+    if (descriptor_ty == TY_IDX_ZERO || tcon_idx == NULL ||
+        !TY_tensor_is_canonical(descriptor_ty) ||
+        !DSL_Tensor_TCON_Static_Element_Count
+             (descriptor_ty, &element_count))
+        return FALSE;
+
+    element_ty = TY_tensor_element_ty(descriptor_ty);
+    element_mtype = TY_mtype(element_ty);
+    if (!MTYPE_is_integral(element_mtype) || TY_size(element_ty) == 0)
+        return FALSE;
+    scalar = Host_To_Targ(element_mtype, scalar_value);
+    if (Targ_To_Host(scalar) != scalar_value)
+        return FALSE;
+
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = descriptor_ty;
+    info.element_mtype = element_mtype;
+    info.element_count = element_count;
+    info.element_size = TY_size(element_ty);
+    if (element_count > ~0ULL / info.element_size)
+        return FALSE;
+    info.scalar_tcon = Enter_tcon(scalar);
+    info.logical_bytes = element_count * info.element_size;
+    info.required_alignment = TY_align(descriptor_ty);
+    if (info.required_alignment < info.element_size)
+        info.required_alignment = info.element_size;
+    info.scalar_integer_value = scalar_value;
+    if (scalar_value == 0)
+        return DSL_Tensor_TCON_Create_Zero
+                   (&info, tcon_idx, carrier);
+    if (scalar_value == 1)
+        return DSL_Tensor_TCON_Create_One
+                   (&info, tcon_idx, carrier);
+    return DSL_Tensor_TCON_Create_Splat(&info, tcon_idx, carrier);
+#endif
 }
 
 BOOL

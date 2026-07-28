@@ -567,8 +567,8 @@ range, and checksum.
 | M0 | Merged through PR #89/#92 | None | Contract/API test report |
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
-| M3 | Compact integral slice implemented and validated on `codex/dsl-simplifier-m3` | M2 merged | Enabled/disabled fold artifacts |
-| M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
+| M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
+| M4 | PR #97 open; implemented and validated on `codex/dsl-simplifier-m4` | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
 | M7 | Blocked by M6 | M6 merged | Full certification matrix |
@@ -588,10 +588,24 @@ their bytes to host integer pointers.
 
 The compact M3 slice is implemented through `Targ_WhirlOp` and
 `Targ_DSL_WhirlOp`. Construction-time publication is disabled by default and
-subordinate to `Enable_WN_Simp`. Its retained artifact proves enabled,
-stage-disabled, master-disabled, non-constant rejection, mapped-image reopen,
-and bottom-up parent-fold behavior. Items below that mention dense payloads,
-side-file publication, VHO, or WOPT remain future work.
+subordinate to `Enable_WN_Simp`. M4 adds a fixed-layout VHO replacement
+description, compact operand identification, integer-splat creation from a
+canonical TensorDescriptorIR, and the explicit VHO consumer under
+`-DSL:algebraic`. The consumer retains result ST/TY/SRCPOS and mapped-image
+node/value identity, publishes `common.tensor_const`, and revisits parent
+definitions without recursively entering the evaluator. Items below that
+mention dense payloads, side-file evaluation, WOPT, or DIVREM remain future
+work.
+
+M4 atomic publication means that a node's logical opcode, active operands,
+active attributes, payload, and result kind become visible as one coherent
+mapped-image relationship set. Rewriting compacts and renumbers the
+relationship tables so stale rows cannot survive in table-wide consumers or
+`ir_b2a -st -src`. This does not promise rollback of Open64's global,
+deduplicated TCON table: evaluator-created but ultimately unused TCON entries
+are legal in the same way as other unreferenced constants. Only a successfully
+published node and result-symbol binding makes a folded tensor constant
+semantically reachable.
 
 1. [x] Define a fixed-layout evaluator registry keyed by logical operator and
    version.
@@ -611,10 +625,11 @@ side-file publication, VHO, or WOPT remain future work.
 9. [ ] After the projectable-operation contract is published, implement
    exact integer tensor DIVREM evaluation and quotient/remainder TCON
    projections.
-10. [ ] Publish folded constants atomically to the mapped image and side file.
+10. [x] Publish compact folded constants atomically to the mapped image.
+    Dense side-file evaluation and publication remain deferred.
 11. [x] Revisit affected parent expressions after successful compact
    publication.
-12. [ ] Preserve source position, result symbol, lineage, and descriptor
+12. [x] Preserve source position, result symbol, lineage, and descriptor
    identity.
 13. [ ] Add gatekeeper checks for carrier/record consistency, folded result
    descriptor, alignment, checksum, and payload size.

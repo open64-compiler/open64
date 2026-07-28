@@ -1737,7 +1737,8 @@ VHO_DSL_Lower_Driver
               ("DSL gatekeeper rejected Very High Level WHIRL"));
 
     VHO_DSL_OPT_RESULT opt_result;
-    BOOL opt_valid = VHO_DSL_Optimize_Program_Unit
+    BOOL opt_valid = VHO_DSL_Opt_Register_Default_Passes() &&
+                     VHO_DSL_Optimize_Program_Unit
                          (pu_info, &tree, stderr, &opt_result);
     FmtAssert(opt_valid,
               ("DSL VHO optimization pipeline failed"));
