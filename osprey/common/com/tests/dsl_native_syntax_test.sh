@@ -42,6 +42,8 @@ cxxflags=(
 
 sources=(
   "osprey/be/opt/opt_dsl.cxx"
+  "osprey/be/opt/opt_dsl_semantic.cxx"
+  "osprey/be/opt/tests/dsl_wopt_bridge_test.cxx"
   "osprey/be/opt/tests/dsl_wopt_semantic_info_test.cxx"
   "osprey/be/vho/dsl_lower.cxx"
   "osprey/be/vho/dsl_opt.cxx"

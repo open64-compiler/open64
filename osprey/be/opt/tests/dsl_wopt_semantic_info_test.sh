@@ -14,7 +14,7 @@ cxx="${CXX:-g++}"
   -I"$repo_root/osprey/common/util" \
   -I"$repo_root/osprey/linux/include" \
   -I"$repo_root/osprey/be/opt" \
-  "$repo_root/osprey/be/opt/opt_dsl.cxx" \
+  "$repo_root/osprey/be/opt/opt_dsl_semantic.cxx" \
   "$repo_root/osprey/be/opt/tests/dsl_wopt_semantic_info_test.cxx" \
   -o "$tmp_dir/dsl_wopt_semantic_info_test"
 

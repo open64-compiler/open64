@@ -69,6 +69,21 @@ main(void)
     return 1;
   }
 
+  other = add;
+  other.tensor_tcon_idx = 41;
+  if (WOPT_DSL_Semantic_Info_Intern(&other) == add_id) {
+    fprintf(stderr, "tensor constant identities collapsed in WOPT identity\n");
+    return 1;
+  }
+
+  other = add;
+  other.origin_node_id = 73;
+  other.origin_result_value_id = 91;
+  if (WOPT_DSL_Semantic_Info_Intern(&other) != add_id) {
+    fprintf(stderr, "DSL reconstruction provenance inhibited value numbering\n");
+    return 1;
+  }
+
   printf("WOPT DSL semantic-info contract passed\n");
   return 0;
 }

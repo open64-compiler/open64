@@ -223,6 +223,7 @@ BE_OPT_CXX_SRCS = \
   opt_find.cxx		\
   opt_fold.cxx		\
   opt_dsl.cxx		\
+  opt_dsl_semantic.cxx	\
   opt_htable.cxx	\
   opt_htable_emit.cxx	\
   opt_ivr.cxx		\

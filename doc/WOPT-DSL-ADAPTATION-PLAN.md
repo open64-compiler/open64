@@ -395,7 +395,7 @@ or runtime state.
 
 ### M5 Progress
 
-M5 is active on `codex/dsl-wopt-m5` after PR #97 merged. The first W0/W1
+M5 is active on `codex/dsl-wopt-m5` after PR #97 merged. The W0/W1
 batch selected a 32-bit WOPT-local semantic-info index and placed it in the
 existing x86-64 `CK_OP` alignment space. Linux DWARF still reports
 `sizeof(CODEREP) == 88`. The fixed-layout semantic record is runtime-only and
@@ -403,11 +403,31 @@ interns logical operator, version, canonical attributes, result descriptor,
 operand descriptor identity, effects, and algebraic flags. Initialization,
 copy, hash, equality, and logical printing now preserve that identity.
 
-The generic WN importer is intentionally still closed to DSL nodes. W3 may
-open it only after it can construct a complete semantic record before the
-first hash operation. WOPT simplification and emission remain disabled until
-W5 and W6 respectively; this prevents an incomplete first-class CODEREP from
-escaping the staged implementation.
+W3-W6 now form one guarded vertical slice for pure `common.tensor_const`,
+`common.add`, and `common.mul`. `CODEMAP::Add_expr` resolves the result
+symbol, mapped-image node, logical opcode/version, canonical attributes,
+operand descriptor identity, result descriptor, effect identity, and compact
+tensor TCON before the first hash operation. Developer dumps expose the
+logical operator and semantic hashes without exposing physical `OPR_DSL`.
+Eligible constant add/mul expressions call
+`DSL_Tensor_Fold_Describe_Replacement`, the same evaluator/publication
+service used by WN and VHO folding. The emitter intercepts logical DSL
+CODEREPs before generic `WN_CreateExp*`, rebuilds them through the public DSL
+WN API, rewrites the mapped-image node when a fold changes the operator, and
+reruns the PU gatekeeper.
+
+The native `dsl_wopt_bridge_test` constructs real builder values and proves
+WN semantic import, shared tensor evaluation, folded tensor-constant
+emission, mapped-image rewrite, and gatekeeper acceptance. The lightweight
+semantic-info test separately proves operator/version/attribute/descriptor/
+TCON identity and proves that reconstruction provenance does not inhibit
+value numbering.
+
+Broad optimizer admission is intentionally deferred to W7. The normal backend
+still invokes `VHO_DSL_Lower_Driver` before WOPT, so driver reordering and
+full `-WOPT:cr_simp` / `-WOPT:fold2const` binary A/B certification must wait
+until CSE, copy propagation, PRE, DCE, type queries, effects, and profitability
+have conservative DSL policies.
 
 The same batch covers the non-behavioral W2 mechanics. `Init_op()` clears the
 semantic index, `CODEREP::Copy()` preserves it, and existing stack allocation,
@@ -448,11 +468,16 @@ their previous paths.
 - Add negative tests for differing operator, version, attribute, descriptor,
   and effect identity.
 
+Status: implemented for the M5 pure integer tensor vertical slice.
+
 ### W4: Printing and inspection
 
 - Print logical DSL operators in CODEREP dumps and WOPT traces.
 - Add stable version, attribute, and descriptor evidence.
 - Prohibit physical escape details in developer-visible output.
+
+Status: implemented for logical name/version, result type, canonical
+attribute identity, operand descriptor identity, and effect identity.
 
 ### W5: Simplifier bridge
 
@@ -461,12 +486,23 @@ their previous paths.
 - Add DSL result postprocessing and rehashing.
 - Honor `WOPT_Enable_CRSIMP` and `WOPT_Enable_Fold2const`.
 
+Status: the compact tensor constant extension calls the common M3 evaluator
+and honors both controls. Traditional scalar rules continue through the
+existing CODEREP instantiation of `wn_simp_code.h`; broader DSL preparation
+for traditional rules remains staged with W7 service review.
+
 ### W6: Emission
 
 - Rebuild native DSL WNs through public APIs.
 - Restore mapped-image records, source positions, and comment projection.
 - Re-run the gatekeeper.
 - Verify binary WHIRL roundtrip behavior.
+
+Status: native reconstruction, mapped-image rewrite, comment projection
+through the logical printer, source-position preservation on the owning
+statement, and post-emission gatekeeper verification are implemented.
+Process-boundary binary A/B certification remains paired with W7 driver
+admission.
 
 ### W7: WOPT service audit
 

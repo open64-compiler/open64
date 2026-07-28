@@ -157,6 +157,8 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
+LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
+LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
 	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
@@ -300,6 +302,21 @@ dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 
 dsl_lower_contract_test.o: \
 	$(BE_VHO_DIR)/tests/dsl_lower_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_wopt_bridge_test: $(OBJECTS) controls.o dsl_wopt_bridge_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_wopt_bridge_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_wopt_bridge_test.o: \
+	$(BE_OPT_DIR)/tests/dsl_wopt_bridge_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+opt_dsl_wopt_test.o: $(BE_OPT_DIR)/opt_dsl.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+opt_dsl_semantic_wopt_test.o: $(BE_OPT_DIR)/opt_dsl_semantic.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 uwasm_nwrap: $(OBJECTS) uwasm_nwrap.o

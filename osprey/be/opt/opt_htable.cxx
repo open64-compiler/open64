@@ -104,6 +104,7 @@
 #include "opt_fold.h"
 #include "config_targ.h"		// ISA info
 #include "opt_prop.h"
+#include "pu_info.h"
 #include "bb_node_set.h"
 #include "opt_bb.h"
 #include "opt_cvtl_rule.h"
@@ -904,9 +905,13 @@ CODEREP::Print_node(INT32 indent, FILE *fp) const
     if (Is_dsl_op()) {
       WOPT_DSL_SEMANTIC_INFO info;
       if (Dsl_semantic_info(&info))
-        fprintf(fp, "%s.v%u ty=%u",
+        fprintf(fp,
+                "%s.v%u ty=%u attrs=%llx operands=%llx effect=%llu",
                 DSL_OPERATOR_name(info.logical_operator), info.version,
-                (UINT32)info.result_ty);
+                (UINT32)info.result_ty,
+                (unsigned long long)info.canonical_attribute_hash,
+                (unsigned long long)info.operand_descriptor_hash,
+                (unsigned long long)info.effect_identity);
       else
         fprintf(fp, "OPR_DSLUNKNOWN");
     } else {
@@ -3200,11 +3205,43 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
   const OPERATOR    oper = WN_operator(wn);
   BOOL  propagated = FALSE;
 
-  FmtAssert(oper != OPR_DSL,
-            ("CODEMAP::Add_expr: logical DSL import is not enabled; "
-             "run VHO DSL lowering before WOPT"));
   FmtAssert (OPCODE_is_expression(op) || OPCODE_is_fake(op),
 	     ("CODEMAP::Hash: opcode %s is not an expression",OPCODE_name(op)));
+
+  if (oper == OPR_DSL) {
+    WN *statement_wn = stmt == NULL ? NULL : stmt->Wn();
+    ST_IDX result_st =
+        statement_wn != NULL &&
+        (WN_operator(statement_wn) == OPR_STID ||
+         WN_operator(statement_wn) == OPR_STBITS) ?
+            WN_st_idx(statement_wn) : ST_IDX_ZERO;
+    WOPT_DSL_SEMANTIC_INFO info;
+    WOPT_DSL_SEMANTIC_INFO_ID info_id;
+
+    FmtAssert(result_st != ST_IDX_ZERO &&
+              WOPT_DSL_Import_Semantic_Info
+                  (wn, result_st,
+                   Current_PU_Info == NULL ? NULL :
+                       ST_name(PU_Info_proc_sym(Current_PU_Info)),
+                   &info, TFile),
+              ("CODEMAP::Add_expr: incomplete logical DSL import"));
+    info_id = WOPT_DSL_Semantic_Info_Intern(&info);
+    FmtAssert(info_id != WOPT_DSL_SEMANTIC_INFO_INVALID_ID,
+              ("CODEMAP::Add_expr: failed to intern logical DSL identity"));
+
+    cr->Init_op(op, WN_kid_count(wn));
+    cr->Set_dsl_semantic_info_id(info_id);
+    for (INT i = 0; i < WN_kid_count(wn); ++i) {
+      CODEREP *kid = Add_expr
+                         (WN_kid(wn, i), opt_stab, stmt, &propagated,
+                          copyprop);
+      cr->Set_opnd(i, kid);
+    }
+    retv = Hash_Op(cr, FALSE);
+    ccr->Set_tree(retv);
+    ccr->Set_scale(0);
+    return propagated;
+  }
 
   if (OPCODE_is_leaf(op)) {
     if (OPERATOR_is_scalar_load (oper)) {

@@ -166,6 +166,66 @@ Initialize_CR_simp(CODEMAP *htable)
   return NULL;
 }
 
+static BOOL
+WOPT_DSL_Compact_TCON(CODEREP *cr, UINT32 depth, TCON_IDX *tcon_idx)
+{
+  WOPT_DSL_SEMANTIC_INFO info;
+
+  if (tcon_idx != NULL)
+    *tcon_idx = TCON_IDX_ZERO;
+  if (cr == NULL || tcon_idx == NULL || depth > 8)
+    return FALSE;
+
+  if (cr->Is_dsl_op()) {
+    if (!WOPT_DSL_Semantic_Info_Get
+            (cr->Dsl_semantic_info_id(), &info) ||
+        info.logical_operator != OPR_DSLTENSORCONST ||
+        info.tensor_tcon_idx == TCON_IDX_ZERO)
+      return FALSE;
+    *tcon_idx = info.tensor_tcon_idx;
+    return TRUE;
+  }
+
+  if (cr->Kind() == CK_VAR && cr->Defstmt() != NULL &&
+      cr->Defstmt()->Rhs() != cr)
+    return WOPT_DSL_Compact_TCON
+               (cr->Defstmt()->Rhs(), depth + 1, tcon_idx);
+  return FALSE;
+}
+
+static CODEREP *
+WOPT_DSL_Fold_Expr(CODEREP *cr)
+{
+  WOPT_DSL_SEMANTIC_INFO origin;
+  WOPT_DSL_SEMANTIC_INFO folded;
+  WOPT_DSL_SEMANTIC_INFO_ID folded_id;
+  TCON_IDX operand_tcon_idx[2];
+  CODEREP *replacement;
+
+  if (!WOPT_Enable_CRSIMP || cr == NULL || !cr->Is_dsl_op() ||
+      cr->Kid_count() != 2 ||
+      !WOPT_DSL_Semantic_Info_Get
+          (cr->Dsl_semantic_info_id(), &origin) ||
+      (origin.logical_operator != OPR_DSLADD &&
+       origin.logical_operator != OPR_DSLMUL))
+    return NULL;
+  if (!WOPT_DSL_Compact_TCON
+          (cr->Get_opnd(0), 0, &operand_tcon_idx[0]) ||
+      !WOPT_DSL_Compact_TCON
+          (cr->Get_opnd(1), 0, &operand_tcon_idx[1]) ||
+      !WOPT_DSL_Fold_Compact_Tensors
+          (&origin, operand_tcon_idx, 2, &folded, TFile))
+    return NULL;
+
+  folded_id = WOPT_DSL_Semantic_Info_Intern(&folded);
+  if (folded_id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID)
+    return NULL;
+  replacement = Alloc_stack_cr(0);
+  replacement->Init_op(cr->Op(), 0);
+  replacement->Set_dsl_semantic_info_id(folded_id);
+  return fold_htable->Hash_Op(replacement, FALSE);
+}
+
 // entry point for single level constant folder
 CODEREP *
 FOLD::Fold_Expr(CODEREP *cr)
@@ -180,6 +240,9 @@ FOLD::Fold_Expr(CODEREP *cr)
 
   if (cr->Kind() != CK_OP)
     return NOHASH;
+
+  if (cr->Is_dsl_op())
+    return WOPT_DSL_Fold_Expr(cr);
 
   return CR_Simplify_Expr(cr);
 }

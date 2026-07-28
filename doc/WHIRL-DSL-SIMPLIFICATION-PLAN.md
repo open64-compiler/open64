@@ -1067,6 +1067,15 @@ second tensor-folding implementation. `-WOPT:cr_simp` and
 **Pull request:** WOPT admission and existing-rule reuse only. DIVREM remains
 disabled until M6.
 
+**Current status:** W3-W6 are implemented as a guarded pure integer tensor
+vertical slice for `common.tensor_const`, `common.add`, and `common.mul`.
+Logical CODEREP import/printing/emission is complete for this slice, and WOPT
+calls the same `DSL_Tensor_Fold_Describe_Replacement` service used by WN/VHO.
+The native bridge test proves import, evaluation, mapped-image rewrite,
+emission, and gatekeeper acceptance. Full backend option A/B artifacts remain
+blocked on W7's conservative audit because the established driver currently
+lowers DSL WHIRL before WOPT.
+
 ### M6: Add projectable tensor DIVREM
 
 **Simplifier work:** complete the projectable-operation portion of S2 and S8:
@@ -1112,7 +1121,7 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Merged through PR #97 | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
-| M5 | Active on `codex/dsl-wopt-m5`; W0/W1 foundation in progress | M4 merged | WOPT A/B artifacts |
+| M5 | W3-W6 vertical slice implemented; W7 service/driver audit remains | M4 merged | Native bridge passed; WOPT A/B pending W7 |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
 | M7 | Blocked by M6 | M6 merged | Full certification matrix |
 
