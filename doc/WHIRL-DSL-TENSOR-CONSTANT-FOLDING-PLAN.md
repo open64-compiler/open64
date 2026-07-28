@@ -569,9 +569,9 @@ range, and checksum.
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Merged through PR #97 | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
-| M5 | WOPT compact add/mul bridge implemented; W7 admission remains | M4 merged | Shared-evaluator bridge passed; WOPT A/B pending W7 |
-| M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
-| M7 | Blocked by M6 | M6 merged | Full certification matrix |
+| M5 | Merged through PR #98 | M4 merged | WOPT fold/factor A/B artifacts |
+| M6 | Merged through PR #99 | M5 merged | DIVREM gate/projection artifacts |
+| M7 | Complete; PR pending | M6 merged | Full certification matrix |
 
 Update both copies of the status table in the same documentation change.
 
@@ -622,7 +622,7 @@ semantically reachable.
    Python and backend CG.
 8. [x] Implement exact integer `common.add` and `common.mul` for compact
    ZERO, ONE, and SPLAT carriers through target-format scalar operations.
-9. [ ] After the projectable-operation contract is published, implement
+9. [x] After the projectable-operation contract is published, implement
    exact integer tensor DIVREM evaluation and quotient/remainder TCON
    projections.
 10. [x] Publish compact folded constants atomically to the mapped image.
@@ -631,14 +631,18 @@ semantically reachable.
    publication.
 12. [x] Preserve source position, result symbol, lineage, and descriptor
    identity.
-13. [ ] Add gatekeeper checks for carrier/record consistency, folded result
-   descriptor, alignment, checksum, and payload size.
-14. [ ] Add old-reader fallback, mapped-image roundtrip, WN, and WOPT tests.
-15. [ ] Implement every group in the Required Test Matrix and maintain a
-   coverage table by evaluator, storage kind, representation, and rejection
-   reason.
-16. [ ] Add deterministic option A/B tests for construction, explicit VHO
-   folding, and adapted WOPT.
+13. [x] Add gatekeeper checks for enabled compact carrier/record consistency,
+    folded result descriptor, alignment, and payload size. Dense side-file
+    content verification remains coupled to action item 7.
+14. [x] Add unchanged-image fallback, mapped-image roundtrip, WN, and WOPT
+    tests. No old-reader format branch is needed because `.WHIRL.dsl` remains
+    version 1 and the tensor TCON uses the existing string-TCON table.
+15. [x] Classify every group in the Required Test Matrix and maintain a
+    coverage table by evaluator, storage kind, representation, and rejection
+    reason. Positive execution is required for enabled rules; unreviewed
+    operator families must have an explicit rejection or deferred entry.
+16. [x] Add deterministic option A/B tests for construction, explicit VHO
+    folding, and adapted WOPT.
 17. [x] Preserve compact-fold `.B` and `ir_b2a -st -src` evidence. Preserve
    side payload evidence when dense side-file folding is implemented.
 

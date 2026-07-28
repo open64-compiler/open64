@@ -1219,6 +1219,21 @@ checks, gatekeeper verification, mapped-image reopen, and retained
 **Pull requests:** one independently reviewable operator family or semantic
 capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 
+**Implemented certification:** M7 closes the initially enabled integer,
+same-descriptor simplification surface. The gatekeeper cross-checks every
+folded tensor result against its tensor TCON carrier, canonical descriptor,
+logical byte size, alignment, and printed compact value. The evaluator
+rejects effectful and unresolved-shape candidates, accounts for the total
+result elements and work of both DIVREM projections before publication, and
+rejects signed-minimum divided by `-1` before target constant arithmetic.
+
+`WHIRL-DSL-SIMPLIFICATION-CERTIFICATION.md` records the positive, rejection,
+option A/B, WN, VHO, WOPT, mapped-image, and inspection coverage. S6 operator
+families that have not received semantic review remain explicit post-M7
+expansion work; certification does not silently enable broadcasting,
+quantized, placement-changing, reshape, reduce, matmul, convolution, or dense
+payload evaluation.
+
 ### Milestone status
 
 | Milestone | Status | Merge dependency | Review artifact |
@@ -1229,8 +1244,8 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Merged through PR #97 | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
 | M5 | Merged through PR #98 | M4 merged | Fold A/B, factor/no-factor traces, strict-FP policy test |
-| M6 | Complete; PR pending | M5 merged | DIVREM gate/projection artifacts |
-| M7 | Blocked by M6 | M6 merged | Full certification matrix |
+| M6 | Merged through PR #99 | M5 merged | DIVREM gate/projection artifacts |
+| M7 | Complete; PR pending | M6 merged | Full certification matrix |
 
 Update this table when a milestone starts, when its pull request opens, and
 when it merges. The next milestone must not begin integration work against an

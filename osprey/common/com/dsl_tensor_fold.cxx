@@ -941,6 +941,20 @@ DSL_Tensor_Fold_Candidate_Valid
         return FALSE;
     }
 
+    if ((candidate->flags & DSL_TENSOR_FOLD_CANDIDATE_EFFECTFUL) != 0 ||
+        operator_info.effect_model != DSL_EFFECT_MODEL_PURE) {
+        if (reason != NULL)
+            *reason = DSL_TENSOR_FOLD_REJECT_EFFECTFUL_OPERATOR;
+        return FALSE;
+    }
+
+    if ((candidate->flags &
+         DSL_TENSOR_FOLD_CANDIDATE_UNRESOLVED_SHAPE) != 0) {
+        if (reason != NULL)
+            *reason = DSL_TENSOR_FOLD_REJECT_UNRESOLVED_SHAPE;
+        return FALSE;
+    }
+
     if (!DSL_Tensor_Fold_Get_Evaluator(candidate->dsl_operator,
                                        candidate->version, &evaluator)) {
         if (reason != NULL)
@@ -1075,6 +1089,7 @@ DSL_Tensor_Fold_Compact_Integer_Binary
     TCON result_scalar[DSL_TENSOR_FOLD_MAX_RESULTS];
     TCON result_carrier[DSL_TENSOR_FOLD_MAX_RESULTS];
     UINT16 expected_results;
+    UINT64 total_result_elements;
 
     expected_results =
         candidate->dsl_operator == OPR_DSLDIVREM ? 2 : 1;
@@ -1104,13 +1119,20 @@ DSL_Tensor_Fold_Compact_Integer_Binary
     if (candidate->policy != NULL &&
         !candidate->policy->preserve_compact_splats)
         return DSL_TENSOR_FOLD_REJECT_MATERIALIZATION_POLICY;
+    if (left_record.element_count >
+        ~(UINT64)0 / expected_results)
+        return DSL_TENSOR_FOLD_REJECT_RESULT_BUDGET;
+    total_result_elements =
+        left_record.element_count * expected_results;
     if (candidate->policy != NULL &&
-        ((candidate->policy->max_result_elements != 0 &&
-          left_record.element_count >
-              candidate->policy->max_result_elements) ||
-         (candidate->policy->max_evaluator_work != 0 &&
-          left_record.element_count >
-              candidate->policy->max_evaluator_work)))
+        candidate->policy->max_result_elements != 0 &&
+        total_result_elements >
+            candidate->policy->max_result_elements)
+        return DSL_TENSOR_FOLD_REJECT_RESULT_BUDGET;
+    if (candidate->policy != NULL &&
+        candidate->policy->max_evaluator_work != 0 &&
+        total_result_elements >
+            candidate->policy->max_evaluator_work)
         return DSL_TENSOR_FOLD_REJECT_WORK_BUDGET;
 
     switch (candidate->dsl_operator) {
@@ -1141,6 +1163,20 @@ DSL_Tensor_Fold_Compact_Integer_Binary
          candidate->dsl_operator == OPR_DSLDIVREM) &&
         Targ_To_Host(right_scalar) == 0)
         return DSL_TENSOR_FOLD_REJECT_DIVISION_BY_ZERO;
+    if ((candidate->dsl_operator == OPR_DSLDIV ||
+         candidate->dsl_operator == OPR_DSLREM ||
+         candidate->dsl_operator == OPR_DSLDIVREM) &&
+        MTYPE_is_signed(element_mtype) &&
+        Targ_To_Host(right_scalar) == -1) {
+        UINT32 bit_size = MTYPE_bit_size(element_mtype);
+        if (bit_size == 0 || bit_size > 64)
+            return DSL_TENSOR_FOLD_REJECT_NUMERIC_POLICY;
+        INT64 minimum =
+            bit_size == 64 ? (-9223372036854775807LL - 1) :
+            -(1LL << (bit_size - 1));
+        if (Targ_To_Host(left_scalar) == minimum)
+            return DSL_TENSOR_FOLD_REJECT_NUMERIC_POLICY;
+    }
 
     for (UINT16 i = 0; i < expected_results; ++i) {
         BOOL folded = FALSE;
