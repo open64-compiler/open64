@@ -194,6 +194,11 @@ Sin_cos_intrinsic(const INTRINSIC intrinsic)
 inline BOOL
 Projectable_operation(const CODEREP *const cr)
 {
+  if (cr->Is_dsl_op()) {
+    WOPT_DSL_SEMANTIC_INFO info;
+    return cr->Dsl_semantic_info(&info) &&
+           WOPT_DSL_Projectable_Info(&info);
+  }
 #ifdef TARG_X8664
   return (Projectable_operation(cr->Op()) || OPCODE_rtype(cr->Op()) == MTYPE_V16C8 ||
 #else
@@ -220,6 +225,18 @@ inline BOOL
 Projection_operation(const OPCODE opc)
 {
   return Projection_operation(OPCODE_operator(opc));
+}
+
+// Can the root of the given CODEREP project a projectable operation?
+inline BOOL
+Projection_operation(const CODEREP *const cr)
+{
+  if (cr->Is_dsl_op()) {
+    WOPT_DSL_SEMANTIC_INFO info;
+    return cr->Dsl_semantic_info(&info) &&
+           WOPT_DSL_Projection_Info(&info);
+  }
+  return Projection_operation(cr->Opr());
 }
 
 // Projectable operations that need recombining can show up only in

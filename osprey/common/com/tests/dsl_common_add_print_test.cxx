@@ -891,7 +891,7 @@ Check_DSL_Logical_ResNet_Contracts(void)
 static int
 Check_DSL_Opcode_Registry(void)
 {
-    const UINT32 common_seed_count = 71;
+    const UINT32 common_seed_count = 73;
     const UINT32 wrapper_seed_count = 12;
     DSL_DOMAIN_ID common_id;
     DSL_DOMAIN_ID cnn_id;

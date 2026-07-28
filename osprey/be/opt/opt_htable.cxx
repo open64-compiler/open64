@@ -87,6 +87,7 @@
 #include "stblock.h"
 #include "w2op.h"
 #include "config_opt.h"         // for Delay_U64_Lowering
+#include "config_wopt.h"
 
 #include "opt_sys.h"            // BZERO definition
 #include "opt_config.h"
@@ -908,9 +909,11 @@ CODEREP::Print_node(INT32 indent, FILE *fp) const
       WOPT_DSL_SEMANTIC_INFO info;
       if (Dsl_semantic_info(&info))
         fprintf(fp,
-                "%s.v%u ty=%u attrs=%llx operands=%llx effect=%llu",
+                "%s.v%u ty=%u second_ty=%u projection=%u "
+                "attrs=%llx operands=%llx effect=%llu",
                 DSL_OPERATOR_name(info.logical_operator), info.version,
-                (UINT32)info.result_ty,
+                (UINT32)info.result_ty, (UINT32)info.second_result_ty,
+                info.projection_kind,
                 (unsigned long long)info.canonical_attribute_hash,
                 (unsigned long long)info.operand_descriptor_hash,
                 (unsigned long long)info.effect_identity);
@@ -3245,7 +3248,37 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
                           copyprop);
       cr->Set_opnd(i, kid);
     }
-    retv = Hash_Op(cr, FALSE);
+    if ((info.logical_operator == OPR_DSLDIV ||
+         info.logical_operator == OPR_DSLREM) &&
+        WOPT_DSL_DIVREM_Combination_Enabled(WOPT_Enable_DIVREM)) {
+      WOPT_DSL_SEMANTIC_INFO combined_info;
+      WOPT_DSL_SEMANTIC_INFO projection_info;
+      FmtAssert(WOPT_DSL_Create_DIVREM_Semantics
+                    (&info, &combined_info, &projection_info),
+                ("CODEMAP::Add_expr: invalid DSL DIVREM semantics"));
+      WOPT_DSL_SEMANTIC_INFO_ID combined_id =
+          WOPT_DSL_Semantic_Info_Intern(&combined_info);
+      WOPT_DSL_SEMANTIC_INFO_ID projection_id =
+          WOPT_DSL_Semantic_Info_Intern(&projection_info);
+      FmtAssert(combined_id != WOPT_DSL_SEMANTIC_INFO_INVALID_ID &&
+                projection_id != WOPT_DSL_SEMANTIC_INFO_INVALID_ID,
+                ("CODEMAP::Add_expr: failed to intern DSL DIVREM"));
+
+      CODEREP *combined = Alloc_stack_cr(2);
+      combined->Init_op(OPC_MDSL, 2);
+      combined->Set_dsl_semantic_info_id(combined_id);
+      combined->Set_opnd(0, cr->Get_opnd(0));
+      combined->Set_opnd(1, cr->Get_opnd(1));
+      combined = Hash_Op(combined, FALSE);
+
+      CODEREP *projection = Alloc_stack_cr(1);
+      projection->Init_op(OPC_MDSL, 1);
+      projection->Set_dsl_semantic_info_id(projection_id);
+      projection->Set_opnd(0, combined);
+      retv = Hash_Op(projection, FALSE);
+    } else {
+      retv = Hash_Op(cr, FALSE);
+    }
     ccr->Set_tree(retv);
     ccr->Set_scale(0);
     return propagated;

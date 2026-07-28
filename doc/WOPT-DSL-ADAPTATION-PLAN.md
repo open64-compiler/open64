@@ -768,14 +768,26 @@ algebraic graphs retain pre-lowering WOPT traces and expected diagnostics.
   when an update cannot be removed.
 - Generalize projectable-operation and projection queries to reviewed logical
   DSL contracts without exposing `OPR_DSL`.
+  Status: implemented for logical `common.divrem.v1`,
+  `common.divpart.v1`, and `common.rempart.v1`.
 - Combine matching tensor DIV and REM into logical DIVPART/REMPART projections
   of one tensor DIVREM under `WOPT_Enable_DIVREM`.
+  Status: implemented behind independent target lowering-capability and
+  profitability gates. Both target gates default off.
 - Include logical operator/version, both result descriptors, attributes, and
   operand identities in projectable CODEREP hashing and equality.
+  Status: implemented in the runtime-only 64-byte
+  `WOPT_DSL_SEMANTIC_INFO`; CODEREP size and binary WHIRL layout are
+  unchanged.
 - Extend DCE projection-use accounting and emission-time uncombining so one
   surviving tensor projection becomes standalone DIV or REM.
+  Status: implemented by extending the existing `opt_project.h`,
+  `opt_dce.cxx`, and emitter queries.
 - Add enabled, disabled, one-projection, two-projection, mismatched-operand,
   descriptor-rejection, effect-rejection, and target-unprofitable tests.
+  Status: evaluator, semantic-identity, option-disabled, and target-declined
+  coverage is implemented. A combined target artifact remains conditional on
+  selection of a real tensor DIVREM lowering consumer.
 
 ### W8: Certification
 

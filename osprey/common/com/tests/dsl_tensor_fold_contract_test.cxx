@@ -640,7 +640,7 @@ Check_Compact_Integer_Evaluator(void)
     DSL_TENSOR_FOLD_OUTPUT output;
     TCON operands[2];
     TY_IDX operand_ty[2];
-    TY_IDX result_ty[1];
+    TY_IDX result_ty[DSL_TENSOR_FOLD_MAX_RESULTS];
     TCON_IDX one_idx;
     TCON_IDX three_idx;
     TCON_IDX dense_idx;
@@ -670,6 +670,7 @@ Check_Compact_Integer_Evaluator(void)
     operand_ty[0] = info.descriptor_ty;
     operand_ty[1] = info.descriptor_ty;
     result_ty[0] = info.descriptor_ty;
+    result_ty[1] = info.descriptor_ty;
     DSL_Tensor_Fold_Default_Policy(&policy);
     memset(&candidate, 0, sizeof(candidate));
     candidate.dsl_operator = OPR_DSLADD;
@@ -712,6 +713,58 @@ Check_Compact_Integer_Evaluator(void)
         fprintf(stderr, "compact integer tensor multiply evaluation changed\n");
         return 1;
     }
+
+    candidate.dsl_operator = OPR_DSLDIVREM;
+    candidate.result_count = 2;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_SUCCESS ||
+        output.result_count != 2 ||
+        !DSL_Tensor_TCON_Decode_Carrier
+             (&output.results[0].result, &result_record) ||
+        result_record.scalar_integer_value != 1 ||
+        !DSL_Tensor_TCON_Decode_Carrier
+             (&output.results[1].result, &result_record) ||
+        result_record.scalar_integer_value != 0) {
+        fprintf(stderr, "projectable tensor DIVREM evaluation changed\n");
+        return 1;
+    }
+
+    candidate.dsl_operator = OPR_DSLDIV;
+    candidate.result_count = 1;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_SUCCESS ||
+        !DSL_Tensor_TCON_Decode_Carrier
+             (&output.results[0].result, &result_record) ||
+        result_record.scalar_integer_value != 1) {
+        fprintf(stderr, "standalone tensor DIV evaluation changed\n");
+        return 1;
+    }
+
+    candidate.dsl_operator = OPR_DSLREM;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_SUCCESS ||
+        !DSL_Tensor_TCON_Decode_Carrier
+             (&output.results[0].result, &result_record) ||
+        result_record.scalar_integer_value != 0) {
+        fprintf(stderr, "standalone tensor REM evaluation changed\n");
+        return 1;
+    }
+
+    DSL_Tensor_TCON_Get_Carrier(one_idx, &operands[1]);
+    info.scalar_tcon = Test_Integer_TCON(0);
+    info.scalar_integer_value = 0;
+    TCON_IDX zero_idx;
+    if (!DSL_Tensor_TCON_Create_Zero(&info, &zero_idx, &operands[1])) {
+        fprintf(stderr, "failed to create zero divisor fixture\n");
+        return 1;
+    }
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_DIVISION_BY_ZERO ||
+        output.result_count != 0) {
+        fprintf(stderr, "tensor division-by-zero rejection changed\n");
+        return 1;
+    }
+    DSL_Tensor_TCON_Get_Carrier(three_idx, &operands[1]);
 
     memset(dense_bytes, 1, sizeof(dense_bytes));
     memset(&info, 0, sizeof(info));

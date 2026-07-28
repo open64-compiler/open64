@@ -157,7 +157,9 @@ WOPT_DSL_Import_Semantic_Info(const WN *wn, ST_IDX result_st,
 
   if (logical.dsl_operator != OPR_DSLTENSORCONST &&
       logical.dsl_operator != OPR_DSLADD &&
-      logical.dsl_operator != OPR_DSLMUL) {
+      logical.dsl_operator != OPR_DSLMUL &&
+      logical.dsl_operator != OPR_DSLDIV &&
+      logical.dsl_operator != OPR_DSLREM) {
     if (diagnostic != NULL)
       fprintf(diagnostic, "WOPT DSL import: %s is outside M5 scope\n",
               DSL_OPERATOR_name(logical.dsl_operator));
@@ -258,7 +260,9 @@ WOPT_DSL_Fold_Compact_Tensors
   if (origin == NULL || operand_tcon_idx == NULL || result == NULL ||
       operand_count != 2 ||
       (origin->logical_operator != OPR_DSLADD &&
-       origin->logical_operator != OPR_DSLMUL) ||
+       origin->logical_operator != OPR_DSLMUL &&
+       origin->logical_operator != OPR_DSLDIV &&
+       origin->logical_operator != OPR_DSLREM) ||
       !DSL_IR_Image_Get_Node(origin->origin_node_id, &node) ||
       node.operand_count != operand_count)
     return FALSE;
@@ -483,7 +487,9 @@ WOPT_DSL_Emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
     ST_tensor_bind_metadata(result_st, "tensor_tcon_idx", tcon_text);
     ST_tensor_bind_metadata(result_st, "tensor_fold.origin", "WOPT");
   } else if (info->logical_operator == OPR_DSLADD ||
-             info->logical_operator == OPR_DSLMUL) {
+             info->logical_operator == OPR_DSLMUL ||
+             info->logical_operator == OPR_DSLDIV ||
+             info->logical_operator == OPR_DSLREM) {
     DSL_IR_VALUE_ID operand_ids[2];
     if (kid_count != 2 ||
         !WOPT_DSL_Copy_Node_Attributes(&node, &attributes))

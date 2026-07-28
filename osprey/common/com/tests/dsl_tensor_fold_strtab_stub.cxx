@@ -159,6 +159,22 @@ Targ_WhirlOp (OPCODE opcode, TCON left, TCON right, BOOL *folded)
     case OPR_MPY:
         value = TCON_i0(left) * TCON_i0(right);
         break;
+    case OPR_DIV:
+        if (TCON_i0(right) == 0) {
+            if (folded != NULL)
+                *folded = FALSE;
+            return result;
+        }
+        value = TCON_i0(left) / TCON_i0(right);
+        break;
+    case OPR_REM:
+        if (TCON_i0(right) == 0) {
+            if (folded != NULL)
+                *folded = FALSE;
+            return result;
+        }
+        value = TCON_i0(left) % TCON_i0(right);
+        break;
     default:
         if (folded != NULL)
             *folded = FALSE;
