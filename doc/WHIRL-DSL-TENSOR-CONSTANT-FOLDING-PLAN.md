@@ -568,8 +568,8 @@ range, and checksum.
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
-| M4 | PR #97 open; implemented and validated on `codex/dsl-simplifier-m4` | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
-| M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
+| M4 | Merged through PR #97 | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
+| M5 | WOPT compact add/mul bridge implemented; W7 admission remains | M4 merged | Shared-evaluator bridge passed; WOPT A/B pending W7 |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
 | M7 | Blocked by M6 | M6 merged | Full certification matrix |
 

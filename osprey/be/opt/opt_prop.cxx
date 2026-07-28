@@ -106,6 +106,76 @@
 #include "opt_vsa.h"
 #endif
 
+static OPERATOR
+WOPT_DSL_Projected_Operator(CODEREP *cr)
+{
+  if (cr == NULL || cr->Kind() != CK_OP)
+    return OPERATOR_UNKNOWN;
+  if (!cr->Is_dsl_op())
+    return cr->Opr();
+
+  WOPT_DSL_SEMANTIC_INFO info;
+  if (!cr->Dsl_semantic_info(&info))
+    return OPERATOR_UNKNOWN;
+  switch (info.logical_operator) {
+  case OPR_DSLADD:
+    return OPR_ADD;
+  case OPR_DSLMUL:
+    return OPR_MPY;
+  default:
+    return OPERATOR_UNKNOWN;
+  }
+}
+
+static BOOL
+WOPT_DSL_Pure_Projectable(CODEREP *cr,
+                          WOPT_DSL_SEMANTIC_INFO *info)
+{
+  return cr != NULL && cr->Is_dsl_op() &&
+         cr->Dsl_semantic_info(info) &&
+         (info->flags & (WOPT_DSL_SEMANTIC_PURE |
+                         WOPT_DSL_SEMANTIC_PROJECTABLE)) ==
+             (WOPT_DSL_SEMANTIC_PURE |
+              WOPT_DSL_SEMANTIC_PROJECTABLE) &&
+         info->effect_identity == DSL_EFFECT_MODEL_PURE;
+}
+
+static BOOL
+WOPT_DSL_Derive_Semantic_Info(
+    const WOPT_DSL_SEMANTIC_INFO *result_owner,
+    const WOPT_DSL_SEMANTIC_INFO *operator_semantics,
+    WOPT_DSL_SEMANTIC_INFO *derived)
+{
+  if (result_owner == NULL || operator_semantics == NULL ||
+      derived == NULL || result_owner->result_ty == TY_IDX_ZERO)
+    return FALSE;
+
+  *derived = *operator_semantics;
+  derived->id = WOPT_DSL_SEMANTIC_INFO_INVALID_ID;
+  derived->result_ty = result_owner->result_ty;
+  derived->origin_node_id = result_owner->origin_node_id;
+  derived->origin_result_value_id =
+      result_owner->origin_result_value_id;
+  derived->tensor_tcon_idx = TCON_IDX_ZERO;
+  return TRUE;
+}
+
+static BOOL
+WOPT_DSL_Unique_Result_Store(CODEMAP *htable, STMTREP *stmt)
+{
+  if (htable == NULL || stmt == NULL || stmt->Lhs() == NULL ||
+      stmt->Lhs()->Kind() != CK_VAR)
+    return FALSE;
+  ST *st = htable->Opt_stab()->St(stmt->Lhs()->Aux_id());
+  if (st == NULL || !ST_is_temp_var(*st))
+    return FALSE;
+  const char *no_alias =
+      ST_tensor_attribute
+          (ST_st_idx(*st),
+           TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS));
+  return no_alias != NULL && strcmp(no_alias, "true") == 0;
+}
+
 // ====================================================================
 // Contains_only_constants - see if the expr contains only constants
 // ====================================================================
@@ -430,6 +500,9 @@ COPYPROP::Propagatable(CODEREP *x, BOOL chk_inverse,
       return prop;
     }
   case CK_OP: {
+    if (x->Is_dsl_op())
+      return NOT_PROPAGATABLE;
+
     if (OPERATOR_is_volatile(x->Opr()))
       return NOT_PROPAGATABLE;
 
@@ -1692,6 +1765,194 @@ COPYPROP::Copy_propagate_cr(CODEREP *x, STMTREP* curstmt, BB_NODE *curbb,
   return NULL;
 }
 
+BOOL
+COPYPROP::Is_exp_cancellable(CODEREP *producer_rhs,
+                             CODEREP *consumer_rhs) const
+{
+  OPERATOR producer_opr = WOPT_DSL_Projected_Operator(producer_rhs);
+  OPERATOR consumer_opr = WOPT_DSL_Projected_Operator(consumer_rhs);
+  BOOL additive =
+      (producer_opr == OPR_ADD || producer_opr == OPR_SUB) &&
+      (consumer_opr == OPR_ADD || consumer_opr == OPR_SUB) &&
+      (producer_opr == OPR_SUB || consumer_opr == OPR_SUB);
+  BOOL multiplicative =
+      (producer_opr == OPR_MPY || producer_opr == OPR_DIV) &&
+      (consumer_opr == OPR_MPY || consumer_opr == OPR_DIV) &&
+      (producer_opr == OPR_DIV || consumer_opr == OPR_DIV);
+  return additive || multiplicative;
+}
+
+BOOL
+COPYPROP::Is_exp_factorable(CODEREP *producer_rhs,
+                            CODEREP *consumer_rhs,
+                            UINT32 consumer_kid) const
+{
+  WOPT_DSL_SEMANTIC_INFO producer_info;
+  WOPT_DSL_SEMANTIC_INFO consumer_info;
+  DSL_ALGEBRAIC_RELATION_INFO relation;
+
+  if (consumer_kid >= 2 ||
+      WOPT_DSL_Projected_Operator(producer_rhs) != OPR_MPY ||
+      (WOPT_DSL_Projected_Operator(consumer_rhs) != OPR_ADD &&
+       WOPT_DSL_Projected_Operator(consumer_rhs) != OPR_SUB) ||
+      !WOPT_DSL_Pure_Projectable(producer_rhs, &producer_info) ||
+      !WOPT_DSL_Pure_Projectable(consumer_rhs, &consumer_info) ||
+      producer_info.result_ty != consumer_info.result_ty ||
+      !TY_is_tensor_extension(producer_info.result_ty))
+    return FALSE;
+
+  TYPE_ID element_mtype =
+      TY_mtype(TY_tensor_element_ty(producer_info.result_ty));
+  BOOL floating_point = MTYPE_is_float(element_mtype);
+  return (MTYPE_is_integral(element_mtype) || floating_point) &&
+         DSL_Algebraic_Relation_Get
+             (consumer_info.logical_operator, consumer_info.version,
+              producer_info.logical_operator, producer_info.version,
+              DSL_ALGEBRAIC_RELATION_FACTOR, &relation) &&
+         relation.operand_mask != 0 &&
+         WOPT_DSL_Algebraic_Safety_Allows
+             (relation.safety, floating_point,
+              Enable_Cfold_Reassociate);
+}
+
+BOOL
+COPYPROP::Is_simplification_propagatable(
+    CODEREP *use, STMTREP *producer, STMTREP *consumer,
+    BOOL adjacent_only) const
+{
+  if (use == NULL || producer == NULL || consumer == NULL ||
+      use->Kind() != CK_VAR || use->Defstmt() != producer ||
+      use->Usecnt() != 1 || producer->Bb() != consumer->Bb() ||
+      producer->Rhs() == NULL || consumer->Rhs() == NULL ||
+      consumer->Rhs()->Kind() != CK_OP ||
+      (consumer->Rhs()->Get_opnd(0) != use &&
+       consumer->Rhs()->Get_opnd(1) != use))
+    return FALSE;
+
+  UINT32 distance = 0;
+  STMTREP *cursor = (STMTREP *)producer->Next();
+  while (cursor != NULL && cursor != consumer && distance < 8) {
+    WOPT_DSL_SEMANTIC_INFO info;
+    if (cursor->Black_box() ||
+        !OPERATOR_is_scalar_store(cursor->Opr()) ||
+        cursor->Rhs() == NULL ||
+        !WOPT_DSL_Pure_Projectable(cursor->Rhs(), &info) ||
+        !WOPT_DSL_Unique_Result_Store(Htable(), cursor))
+      return FALSE;
+    cursor = (STMTREP *)cursor->Next();
+    ++distance;
+  }
+  if (cursor != consumer || (adjacent_only && distance != 0))
+    return FALSE;
+  return TRUE;
+}
+
+BOOL
+COPYPROP::Try_dsl_factorization(STMTREP *stmt)
+{
+  static const UINT32 factor_mask[2][2] = {
+      { DSL_ALGEBRAIC_OPERAND_11, DSL_ALGEBRAIC_OPERAND_12 },
+      { DSL_ALGEBRAIC_OPERAND_21, DSL_ALGEBRAIC_OPERAND_22 }
+  };
+  CODEREP *outer = stmt == NULL ? NULL : stmt->Rhs();
+  if (outer == NULL || outer->Kind() != CK_OP ||
+      outer->Kid_count() != 2 ||
+      WOPT_DSL_Projected_Operator(outer) != OPR_ADD)
+    return FALSE;
+
+  CODEREP *use[2] = { outer->Get_opnd(0), outer->Get_opnd(1) };
+  if (use[0]->Kind() != CK_VAR || use[1]->Kind() != CK_VAR)
+    return FALSE;
+
+  STMTREP *producer[2] = { use[0]->Defstmt(), use[1]->Defstmt() };
+  CODEREP *product[2] = {
+      producer[0] == NULL ? NULL : producer[0]->Rhs(),
+      producer[1] == NULL ? NULL : producer[1]->Rhs()
+  };
+  if (!Is_exp_factorable(product[0], outer, 0) ||
+      !Is_exp_factorable(product[1], outer, 1) ||
+      !Is_simplification_propagatable
+          (use[0], producer[0], stmt, FALSE) ||
+      !Is_simplification_propagatable
+          (use[1], producer[1], stmt, FALSE))
+    return FALSE;
+
+  WOPT_DSL_SEMANTIC_INFO outer_info;
+  WOPT_DSL_SEMANTIC_INFO product_info[2];
+  DSL_ALGEBRAIC_RELATION_INFO relation;
+  if (!outer->Dsl_semantic_info(&outer_info) ||
+      !product[0]->Dsl_semantic_info(&product_info[0]) ||
+      !product[1]->Dsl_semantic_info(&product_info[1]) ||
+      product_info[0].result_ty != product_info[1].result_ty ||
+      product_info[0].result_ty != outer_info.result_ty ||
+      !DSL_Algebraic_Relation_Get
+          (outer_info.logical_operator, outer_info.version,
+           product_info[0].logical_operator, product_info[0].version,
+           DSL_ALGEBRAIC_RELATION_FACTOR, &relation))
+    return FALSE;
+
+  INT common0 = -1;
+  INT common1 = -1;
+  for (INT i = 0; i < 2 && common0 < 0; ++i) {
+    for (INT j = 0; j < 2; ++j) {
+      if ((relation.operand_mask & factor_mask[i][j]) != 0 &&
+          product[0]->Get_opnd(i) == product[1]->Get_opnd(j)) {
+        common0 = i;
+        common1 = j;
+        break;
+      }
+    }
+  }
+  if (common0 < 0)
+    return FALSE;
+
+  FOLD simplifier;
+  if (!simplifier.Prove_DSL_Factorization
+          (product[0], product[1], OPR_ADD, relation.safety))
+    return FALSE;
+
+  WOPT_DSL_SEMANTIC_INFO inner_info;
+  WOPT_DSL_SEMANTIC_INFO result_info;
+  if (!WOPT_DSL_Derive_Semantic_Info
+          (&product_info[0], &outer_info, &inner_info) ||
+      !WOPT_DSL_Derive_Semantic_Info
+          (&outer_info, &product_info[0], &result_info))
+    return FALSE;
+
+  WOPT_DSL_SEMANTIC_INFO_ID inner_id =
+      WOPT_DSL_Semantic_Info_Intern(&inner_info);
+  WOPT_DSL_SEMANTIC_INFO_ID result_id =
+      WOPT_DSL_Semantic_Info_Intern(&result_info);
+  if (inner_id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID ||
+      result_id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID)
+    return FALSE;
+
+  CODEREP *inner_view = Alloc_stack_cr(2);
+  inner_view->Init_op(OPC_MDSL, 2);
+  inner_view->Set_dsl_semantic_info_id(inner_id);
+  inner_view->Set_opnd(0, product[0]->Get_opnd(1 - common0));
+  inner_view->Set_opnd(1, product[1]->Get_opnd(1 - common1));
+  CODEREP *inner = Htable()->Hash_Op(inner_view, FALSE);
+
+  CODEREP *result_view = Alloc_stack_cr(2);
+  result_view->Init_op(OPC_MDSL, 2);
+  result_view->Set_dsl_semantic_info_id(result_id);
+  result_view->Set_opnd(0, product[0]->Get_opnd(common0));
+  result_view->Set_opnd(1, use[0]);
+  CODEREP *result = Htable()->Hash_Op(result_view, FALSE);
+
+  product[0]->DecUsecnt_rec();
+  producer[0]->Set_rhs(inner);
+  outer->DecUsecnt_rec();
+  stmt->Set_rhs(result);
+
+  if (Get_Trace(TP_GLOBOPT, PROP_DUMP_FLAG))
+    fprintf(TFile,
+            "DSL WOPT factorization: stmt %d reuses stmt %d result\n",
+            stmt->Stmtrep_id(), producer[0]->Stmtrep_id());
+  return TRUE;
+}
+
 // ====================================================================
 //  Determine if we should propagate into this statement
 // ====================================================================
@@ -1724,6 +1985,7 @@ COPYPROP::Copy_propagate_stmt(STMTREP *stmt, BB_NODE *bb)
 
   CODEREP* orig_rhs = stmt->Rhs();
   if (orig_rhs) {
+    Try_dsl_factorization(stmt);
     x = Copy_propagate_cr(stmt->Rhs(), stmt, bb, FALSE, FALSE/*in_array*/);
     if (x) {
       CODEREP *y = Htable()->Canon_rhs(x);
@@ -2449,4 +2711,3 @@ COMP_UNIT::Do_copy_propagate()
   Opt_tlog( "MAINPROP", 0, "%d copy propagations",
 	    Htable()->Num_mainprops() );
 }
-

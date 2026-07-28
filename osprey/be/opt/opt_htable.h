@@ -109,6 +109,7 @@
 
 #include "tracing.h"
 #include "id_map.h"
+#include "opt_dsl.h"
 #include "opt_ssa.h"
 
 #include <vector>
@@ -427,6 +428,7 @@ private:
       mINT32    _num_of_min_max:6;   // number of minmax, collectively
       mUINT8    max_depth;           // used in estimating rehash cost (SSAPRE)
       IDTYPE    _temp_id:24;         // processing this CR in new PRE step1
+      mUINT32   dsl_semantic_info_id; // runtime logical DSL identity
       void * node_cache;             // Hold CR or BB pointer for parents on new differnt paths       
       CODEREP  *kids[3];             // array of kid pointers
     } isop;
@@ -582,6 +584,7 @@ public:
       Set_dsctyp(OPCODE_desc(c));
       Set_kid_count(kcnt);
       Set_temp_id(0);
+      Set_dsl_semantic_info_id(0);
       Reset_isop_flags();
       Set_max_depth(0);
       Set_ISOP_mtype_b_cache(NULL);
@@ -1158,6 +1161,31 @@ public:
 				            ("CODEREP::Set_opr, illegal kind"));
 					(Kind() == CK_OP) ? u2.isop._opr = c :
 						u2.isivar._opr = c; }
+  mUINT32   Dsl_semantic_info_id(void) const
+                                      { Is_True(Kind() == CK_OP,
+                                          ("CODEREP::Dsl_semantic_info_id, "
+                                           "illegal kind"));
+                                        return u2.isop.dsl_semantic_info_id; }
+  void      Set_dsl_semantic_info_id(mUINT32 id)
+                                      { Is_True(Kind() == CK_OP,
+                                          ("CODEREP::Set_dsl_semantic_info_id, "
+                                           "illegal kind"));
+                                        u2.isop.dsl_semantic_info_id = id; }
+  BOOL      Is_dsl_op(void) const      { return Kind() == CK_OP &&
+                                        Dsl_semantic_info_id() != 0; }
+  BOOL      Dsl_semantic_info(WOPT_DSL_SEMANTIC_INFO *info) const
+                                      { return Is_dsl_op() &&
+                                        WOPT_DSL_Semantic_Info_Get
+                                            (Dsl_semantic_info_id(), info); }
+  DSL_OPERATOR Dsl_operator(void) const
+                                      { WOPT_DSL_SEMANTIC_INFO info;
+                                        return Dsl_semantic_info(&info) ?
+                                            info.logical_operator :
+                                            OPR_DSLUNKNOWN; }
+  OPERATOR  Native_opr(void) const     { Is_True(!Is_dsl_op(),
+                                          ("CODEREP::Native_opr called for "
+                                           "logical DSL operator"));
+                                        return Opr(); }
   mINT16    Kid_count(void) const     { Is_True(Kind() == CK_OP,
 				        ("CODEREP::Kid_count, illegal kind %s",
 					  Print_kind()));

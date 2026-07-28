@@ -75,12 +75,14 @@ in all four operand positions using `FACTOR_11`, `FACTOR_12`, `FACTOR_21`, and
 z*x + z*y  -> z*(x+y)
 x*z + y*z  -> (x+y)*z
 z*x - z*y  -> z*(x-y)
-z*x + z    -> z*(x+1)
+z*c + z    -> z*(c+1)
 ```
 
 The same framework is also used for selected bitwise and logical identities.
 Arithmetic factorization requires aggressive simplification. Floating-point
-factorization is rejected unless reassociation is enabled.
+factorization is rejected unless reassociation is enabled. The arithmetic
+`simp_factor_idty()` call uses `const_only=TRUE`, so the final identity form
+above requires the non-common product operand to be constant.
 
 Factorization is a relationship between an outer operator and an inner
 operator. It is not adequately represented by a single `factorable` bit on
@@ -99,10 +101,71 @@ reassociation followed by tree comparison and cancellation. It is enabled for
 integer types and requires `Enable_Cfold_Reassociate` for floating-point
 types. The cancellation search also requires `Enable_Cfold_Aggressive`.
 
+WOPT exposes this rule through a deliberately limited copy-propagation
+classification:
+
+```text
+Is_exp_cancellable(producer_rhs, consumer_rhs)
+```
+
+`Is_exp_cancellable()` classifies the producer and consumer RHS operator
+relationship. Its first supported family is `ADD/SUB`. `MPY/DIV` is a
+potential mathematical family but is not admitted merely from operator names:
+integer division is not an inverse under truncation, floating-point
+multiplication and division are sensitive to zero, NaN, infinity, and
+rounding, and tensor division may define additional elementwise behavior.
+The traditional simplifier currently implements `x/x -> 1` under its existing
+aggressive and numeric controls, but it does not provide a general
+`(x*y)/x -> y` or `x*(y/x) -> y` rule.
+
+A separate structural predicate controls whether the classified producer can
+actually be propagated:
+
+```text
+Is_simplification_propagatable(use, producer_stmt, consumer_stmt, relation)
+```
+
+The first cancellation implementation accepts only an adjacent same-BB
+producer and consumer, a direct single use of the producer result in the
+consumer RHS, pure/projectable DSL semantics, compatible TensorDescriptorIR
+identities, no effects, and numeric safety that permits reassociation.
+Operator compatibility identifies an opportunity; it does not prove
+cancellation. The traditional `simp_add_sub()` implementation still compares
+operands and is the sole authority that performs or rejects the rewrite.
+
+This predicate authorizes only the exact producer CODEREP. It does not enable
+general DSL copy propagation, propagation across another statement, or
+recursive propagation of nested DSL definitions. CODEREP-to-WN emission must
+re-materialize the retained unique no-alias result STIDs and mapped-image
+relationships after simplification.
+
 `simp_factor()` and `simp_factor_idty()` handle the second family across all
 four common-factor operand positions. They require
 `Enable_Cfold_Aggressive`, and floating-point factorization additionally
 requires `Enable_Cfold_Reassociate`.
+
+Factorization also depends on opportunity-forming copy propagation. Given:
+
+```text
+t0 = x * y
+t1 = x * z
+t2 = t0 + t1
+```
+
+both producer expressions must become visible to `simp_factor()` as
+`(x*y) + (x*z)`. An adjacency-only predicate cannot expose this form because
+`t0` is not immediately adjacent to `t2`. Therefore factorization uses a
+separate `Is_exp_factorable()` operator-relation classifier and permits a
+bounded same-BB walk over pure statements. Each propagated value must still be
+single-use, dominate the consumer, have no prohibited boundary between its
+definition and use, and satisfy the registered factorization operand mask.
+The traditional factorization engine remains responsible for finding the
+actual common operand.
+
+For commutative elementwise `common.mul`, all four factor positions may be
+eligible. Noncommutative operations such as matrix multiplication require a
+different relation contract and operand mask; they must never inherit the
+elementwise `FACTOR_ALL` behavior.
 
 `Enable_Cfold_Aggressive` is normally enabled by Open64 configuration unless
 the user overrides `-OPT:fold_aggressive`. Consequently, the DSL
@@ -110,6 +173,21 @@ implementation must not duplicate these rules. If either rule fails for an
 eligible DSL integer expression, investigate the logical-DSL preparation,
 traditional opcode projection, option state, tree comparison, or
 TensorDescriptorIR legality checks.
+
+The first cancellation family also demonstrates why the owner of a rule is
+not necessarily the phase that exposes it. Given:
+
+```text
+t0 = y - x
+t1 = x + t0
+```
+
+WOPT copy propagation must first form `x + (y - x)`. The resulting expression
+is then simplified by the traditional `simp_add_sub()` rule. Therefore,
+controlled DSL copy propagation is part of the immediate DSL WOPT expression
+milestone even though cancellation itself remains a `wn_simp` responsibility.
+Emission must restore unique no-alias result STIDs instead of publishing
+propagated DSL producer nodes as duplicate nested definitions.
 
 The TVM div/mod reconstruction family requires a more precise Open64
 comparison. The traditional WN simplifier handles individual `DIV`, `MOD`,
@@ -1067,6 +1145,21 @@ second tensor-folding implementation. `-WOPT:cr_simp` and
 **Pull request:** WOPT admission and existing-rule reuse only. DIVREM remains
 disabled until M6.
 
+**Current status:** W3-W6 and the first controlled W7 transform are
+implemented as a guarded pure integer tensor vertical slice for
+`common.tensor_const`, `common.add`, and `common.mul`. Logical CODEREP
+import/printing/emission is complete for this slice, and WOPT calls the same
+`DSL_Tensor_Fold_Describe_Replacement` service used by WN/VHO. Bounded
+single-use same-BB factorization projects tensor-element-typed stack CODEREPs
+through the traditional `wn_simp_code.h` engine, then rematerializes unique
+DSL result STIDs and mapped-image records. Retained tests cover the positive
+integer rewrite, `-WOPT:cr_simp=off`, and no-common-factor rejection.
+The non-asserting algebraic-safety test covers strict FP and explicitly
+enabled reassociation before WOPT enters the traditional simplifier.
+Cancellation remains inactive until a native subtraction contract exists;
+general DSL copy propagation, MPY/DIV cancellation, CSE, PRE, and broad
+enablement remain deferred.
+
 ### M6: Add projectable tensor DIVREM
 
 **Simplifier work:** complete the projectable-operation portion of S2 and S8:
@@ -1111,8 +1204,8 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
-| M4 | PR #97 open; implemented and validated on `codex/dsl-simplifier-m4` | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
-| M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
+| M4 | Merged through PR #97 | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
+| M5 | Complete; PR pending | M4 merged | Fold A/B, factor/no-factor traces, strict-FP policy test |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
 | M7 | Blocked by M6 | M6 merged | Full certification matrix |
 
@@ -1315,6 +1408,10 @@ and statement SRCPOS. The retained M4 artifact reopens through
   CODEREP-to-WN emission.
 - Include DSL operator, version, attributes, and TensorDescriptorIR identity
   in hash and equality.
+- Allow controlled copy propagation to form eligible multi-level expressions
+  before invoking the traditional simplifier.
+- Re-materialize every retained logical DSL operator result into its unique
+  no-alias STID during CODEREP-to-WN emission.
 - Add logical CODEREP printing and effect-aware optimization queries.
 - Route eligible DSL algebra through the existing CODEREP instantiation of
   `wn_simp_code.h`.

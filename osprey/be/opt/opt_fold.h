@@ -84,6 +84,8 @@ public:
   // main entry points for folding to a constant
   CODEREP *Fold_Expr(CODEREP *);	// one level
   CODEREP *Fold_Tree(CODEREP *);	// entire tree
+  BOOL Prove_DSL_Factorization(CODEREP *, CODEREP *, OPERATOR,
+                               DSL_ALGEBRAIC_SAFETY);
 
 private:
   // a pointer is returned

@@ -30,6 +30,7 @@ cxxflags=(
   -I"$python_include"
   -I"$repo_root/osprey/linux/include"
   -I"$repo_root/osprey/ir_tools"
+  -I"$repo_root/osprey/be/opt"
   -I"$repo_root/osprey/be/vho"
   -I"$repo_root/osprey/common/com"
   -I"$repo_root/osprey/common/com/x8664"
@@ -40,6 +41,10 @@ cxxflags=(
 )
 
 sources=(
+  "osprey/be/opt/opt_dsl.cxx"
+  "osprey/be/opt/opt_dsl_semantic.cxx"
+  "osprey/be/opt/tests/dsl_wopt_bridge_test.cxx"
+  "osprey/be/opt/tests/dsl_wopt_semantic_info_test.cxx"
   "osprey/be/vho/dsl_lower.cxx"
   "osprey/be/vho/dsl_opt.cxx"
   "osprey/be/vho/tests/dsl_lower_contract_test.cxx"
@@ -76,5 +81,6 @@ done
 "$script_dir/dsl_canonicalization_contract_test.sh"
 "$script_dir/dsl_tensor_fold_contract_test.sh"
 "$script_dir/dsl_operator_layout_test.sh"
+bash "$repo_root/osprey/be/opt/tests/dsl_wopt_semantic_info_test.sh"
 
 echo "DSL native syntax fixture passed"

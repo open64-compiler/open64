@@ -105,6 +105,43 @@ Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
 
   switch (exp->Kind()) {
   case CK_OP:
+    if (exp->Is_dsl_op()) {
+      WOPT_DSL_SEMANTIC_INFO info;
+      WN *dsl_kids[2];
+      WN *original = NULL;
+      WN *statement_wn = stmt == NULL ? NULL : stmt->Wn();
+      ST_IDX result_st = ST_IDX_ZERO;
+
+      FmtAssert(exp->Kid_count() <= 2 &&
+                WOPT_DSL_Semantic_Info_Get
+                    (exp->Dsl_semantic_info_id(), &info),
+                ("Gen_exp_wn: invalid logical DSL CODEREP"));
+      for (INT i = 0; i < exp->Kid_count(); ++i)
+        dsl_kids[i] =
+            Gen_exp_wn(stmt, exp->Get_opnd(i), emitter);
+
+      if (statement_wn != NULL &&
+          (WN_operator(statement_wn) == OPR_STID ||
+           WN_operator(statement_wn) == OPR_STBITS)) {
+        result_st = WN_st_idx(statement_wn);
+        if (WN_kid_count(statement_wn) != 0 &&
+            WN_operator(WN_kid0(statement_wn)) == OPR_DSL)
+          original = WN_kid0(statement_wn);
+      }
+      if (stmt != NULL && stmt->Lhs() != NULL &&
+          stmt->Lhs()->Kind() == CK_VAR) {
+        ST *result =
+            emitter->Opt_stab()->St(stmt->Lhs()->Aux_id());
+        if (result != NULL)
+          result_st = ST_st_idx(result);
+      }
+      wn = WOPT_DSL_Emit_WN
+               (&info, original, result_st, dsl_kids,
+                exp->Kid_count(), TFile);
+      FmtAssert(wn != NULL,
+                ("Gen_exp_wn: failed to emit logical DSL CODEREP"));
+      break;
+    }
     opr = exp->Opr();
     switch (opr) {
     /* CVTL-RELATED start (performance) */

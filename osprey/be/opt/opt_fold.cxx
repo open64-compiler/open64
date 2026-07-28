@@ -166,6 +166,66 @@ Initialize_CR_simp(CODEMAP *htable)
   return NULL;
 }
 
+static BOOL
+WOPT_DSL_Compact_TCON(CODEREP *cr, UINT32 depth, TCON_IDX *tcon_idx)
+{
+  WOPT_DSL_SEMANTIC_INFO info;
+
+  if (tcon_idx != NULL)
+    *tcon_idx = TCON_IDX_ZERO;
+  if (cr == NULL || tcon_idx == NULL || depth > 8)
+    return FALSE;
+
+  if (cr->Is_dsl_op()) {
+    if (!WOPT_DSL_Semantic_Info_Get
+            (cr->Dsl_semantic_info_id(), &info) ||
+        info.logical_operator != OPR_DSLTENSORCONST ||
+        info.tensor_tcon_idx == TCON_IDX_ZERO)
+      return FALSE;
+    *tcon_idx = info.tensor_tcon_idx;
+    return TRUE;
+  }
+
+  if (cr->Kind() == CK_VAR && cr->Defstmt() != NULL &&
+      cr->Defstmt()->Rhs() != cr)
+    return WOPT_DSL_Compact_TCON
+               (cr->Defstmt()->Rhs(), depth + 1, tcon_idx);
+  return FALSE;
+}
+
+static CODEREP *
+WOPT_DSL_Fold_Expr(CODEREP *cr)
+{
+  WOPT_DSL_SEMANTIC_INFO origin;
+  WOPT_DSL_SEMANTIC_INFO folded;
+  WOPT_DSL_SEMANTIC_INFO_ID folded_id;
+  TCON_IDX operand_tcon_idx[2];
+  CODEREP *replacement;
+
+  if (!WOPT_Enable_CRSIMP || cr == NULL || !cr->Is_dsl_op() ||
+      cr->Kid_count() != 2 ||
+      !WOPT_DSL_Semantic_Info_Get
+          (cr->Dsl_semantic_info_id(), &origin) ||
+      (origin.logical_operator != OPR_DSLADD &&
+       origin.logical_operator != OPR_DSLMUL))
+    return NULL;
+  if (!WOPT_DSL_Compact_TCON
+          (cr->Get_opnd(0), 0, &operand_tcon_idx[0]) ||
+      !WOPT_DSL_Compact_TCON
+          (cr->Get_opnd(1), 0, &operand_tcon_idx[1]) ||
+      !WOPT_DSL_Fold_Compact_Tensors
+          (&origin, operand_tcon_idx, 2, &folded, TFile))
+    return NULL;
+
+  folded_id = WOPT_DSL_Semantic_Info_Intern(&folded);
+  if (folded_id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID)
+    return NULL;
+  replacement = Alloc_stack_cr(0);
+  replacement->Init_op(cr->Op(), 0);
+  replacement->Set_dsl_semantic_info_id(folded_id);
+  return fold_htable->Hash_Op(replacement, FALSE);
+}
+
 // entry point for single level constant folder
 CODEREP *
 FOLD::Fold_Expr(CODEREP *cr)
@@ -181,6 +241,9 @@ FOLD::Fold_Expr(CODEREP *cr)
   if (cr->Kind() != CK_OP)
     return NOHASH;
 
+  if (cr->Is_dsl_op())
+    return WOPT_DSL_Fold_Expr(cr);
+
   return CR_Simplify_Expr(cr);
 }
 
@@ -195,6 +258,80 @@ FOLD::Fold_Tree(CODEREP *cr)
     return NOHASH;
 
   return CR_Simplify_Tree(cr);
+}
+
+BOOL
+FOLD::Prove_DSL_Factorization(CODEREP *left, CODEREP *right,
+                              OPERATOR outer_opr,
+                              DSL_ALGEBRAIC_SAFETY safety)
+{
+  if (!WOPT_Enable_CRSIMP || left == NULL || right == NULL ||
+      !left->Is_dsl_op() || !right->Is_dsl_op() ||
+      left->Kid_count() != 2 || right->Kid_count() != 2 ||
+      (outer_opr != OPR_ADD && outer_opr != OPR_SUB))
+    return FALSE;
+
+  WOPT_DSL_SEMANTIC_INFO left_info;
+  WOPT_DSL_SEMANTIC_INFO right_info;
+  if (!left->Dsl_semantic_info(&left_info) ||
+      !right->Dsl_semantic_info(&right_info) ||
+      left_info.result_ty != right_info.result_ty ||
+      !TY_is_tensor_extension(left_info.result_ty))
+    return FALSE;
+  TYPE_ID element_mtype =
+      TY_mtype(TY_tensor_element_ty(left_info.result_ty));
+  BOOL floating_point = MTYPE_is_float(element_mtype);
+  if ((!MTYPE_is_integral(element_mtype) && !floating_point) ||
+      !WOPT_DSL_Algebraic_Safety_Allows
+          (safety, floating_point, Enable_Cfold_Reassociate))
+    return FALSE;
+
+  CODEREP *leaf[4] = {
+      left->Get_opnd(0), left->Get_opnd(1),
+      right->Get_opnd(0), right->Get_opnd(1)
+  };
+  INT32 saved_usecnt[4];
+  for (INT i = 0; i < 4; ++i)
+    saved_usecnt[i] = leaf[i]->Usecnt();
+
+  CODEREP *left_view = Alloc_stack_cr(2);
+  left_view->Init_op
+      (OPCODE_make_op(OPR_MPY, element_mtype, MTYPE_V), 2);
+  left_view->Set_opnd(0, leaf[0]);
+  left_view->Set_opnd(1, leaf[1]);
+  left_view->Set_usecnt(1);
+  leaf[0]->IncUsecnt();
+  leaf[1]->IncUsecnt();
+
+  CODEREP *right_view = Alloc_stack_cr(2);
+  right_view->Init_op
+      (OPCODE_make_op(OPR_MPY, element_mtype, MTYPE_V), 2);
+  right_view->Set_opnd(0, leaf[2]);
+  right_view->Set_opnd(1, leaf[3]);
+  right_view->Set_usecnt(1);
+  leaf[2]->IncUsecnt();
+  leaf[3]->IncUsecnt();
+
+  CODEREP *outer_view = Alloc_stack_cr(2);
+  outer_view->Init_op
+      (OPCODE_make_op(outer_opr, element_mtype, MTYPE_V), 2);
+  outer_view->Set_opnd(0, left_view);
+  outer_view->Set_opnd(1, right_view);
+  outer_view->Set_usecnt(1);
+
+  CODEREP *result = CR_Simplify_Expr(outer_view);
+  BOOL proved = result != NOHASH && result->Kind() == CK_OP &&
+                result->Opr() == OPR_MPY &&
+                ((result->Get_opnd(0)->Kind() == CK_OP &&
+                  result->Get_opnd(0)->Opr() == outer_opr) ||
+                 (result->Get_opnd(1)->Kind() == CK_OP &&
+                  result->Get_opnd(1)->Opr() == outer_opr));
+  if (result != NOHASH)
+    result->DecUsecnt_rec();
+
+  for (INT i = 0; i < 4; ++i)
+    leaf[i]->Set_usecnt(saved_usecnt[i]);
+  return proved;
 }
 
 //============================================================================

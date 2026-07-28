@@ -344,6 +344,7 @@
 #include "opt_dbg.h"
 #include "opt_goto.h"
 #include "opt_rvi.h"
+#include "dsl_gatekeeper.h"
 #include "opt_util.h"
 #include "opt_alias_mgr.h"
 #include "opt_alias_interface.h"	/* for Verify_alias() */
@@ -445,15 +446,20 @@ static void Terminate_opt_memory_pools(void)
 static void Manage_pu_level_memory(COMP_UNIT *comp_unit, MEM_POOL *pool)
 {
   if (comp_unit->Phase() == PREOPT_PHASE) {
-    CXX_DELETE(comp_unit, &Opt_preopt_pool);
+    Is_True(pool == &Opt_preopt_pool,
+            ("PREOPT COMP_UNIT is not owned by Opt_preopt_pool"));
+    CXX_DELETE(comp_unit, pool);
     OPT_POOL_Pop(&Opt_preopt_pool, MEM_DUMP_FLAG+1);
+    return;
   }
 
 #ifdef BUILD_MASTIFF
   if (IPSA_manager != NULL) return;
 #endif
 
-  CXX_DELETE(comp_unit, &Opt_global_pool);
+  Is_True(pool == &Opt_global_pool,
+          ("non-PREOPT COMP_UNIT is not owned by Opt_global_pool"));
+  CXX_DELETE(comp_unit, pool);
   Terminate_opt_memory_pools();
 }
 
@@ -1462,6 +1468,8 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
   Is_True(WN_opcode(wn_orig)==OPC_FUNC_ENTRY || WN_opcode(wn_orig)==OPC_REGION,
 	  ("Pre_Optimizer, unknown WHIRL entry point"));
 
+  WOPT_DSL_Semantic_Info_Reset();
+
   // sets Opt_current_pu_st static
   Opt_set_current_pu_name(wn_tree);
 
@@ -1665,17 +1673,14 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
   SET_OPT_PHASE("Preparation");
 
-#ifdef SKIP
-  // check for inadvertent increase in size of data structures
-  Is_True(sizeof(CODEREP) == 48,
-    ("Size of CODEREP has been changed (is now %d)!",sizeof(CODEREP)));
-#if defined(linux) || defined(BUILD_OS_DARWIN)
-  Is_True(sizeof(STMTREP) == 60,
-    ("Size of STMTREP has been changed (is now %d)!",sizeof(STMTREP)));
-#else
-  Is_True(sizeof(STMTREP) == 64,
-    ("Size of STMTREP has been changed (is now %d)!",sizeof(STMTREP)));
-#endif
+#if defined(TARG_X8664) && defined(_LP64)
+  // Guard the measured x86-64 LP64 WOPT layouts against inadvertent expansion.
+  Is_True(sizeof(CODEREP) == 88,
+    ("x86-64 LP64 CODEREP size changed (is now %lu, expected 88)!",
+     (unsigned long)sizeof(CODEREP)));
+  Is_True(sizeof(STMTREP) == 112,
+    ("x86-64 LP64 STMTREP size changed (is now %lu, expected 112)!",
+     (unsigned long)sizeof(STMTREP)));
 #endif
 
   // allocate space for cfg, htable, and itable
@@ -2295,7 +2300,7 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
     // free up optimizer's pools
     // NOTE that the rvi phase uses its own
-    Manage_pu_level_memory(comp_unit, &Opt_global_pool);
+    Manage_pu_level_memory(comp_unit, gpool);
 
   } /* if ( phase == MAINOPT_PHASE ) */
   else { 
@@ -2423,7 +2428,7 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
     // Identify redudant mem clears that follow a calloc and remove them
     remove_redundant_mem_clears(opt_wn, alias_mgr, du_mgr);
 
-    Manage_pu_level_memory(comp_unit, &Opt_global_pool);
+    Manage_pu_level_memory(comp_unit, gpool);
 
     if (WN_opcode(opt_wn) == OPC_FUNC_ENTRY)
       Verify_SYMTAB (CURRENT_SYMTAB);
@@ -2458,6 +2463,14 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
   if (WN_opcode(opt_wn) == OPC_FUNC_ENTRY)
     Set_PU_Info_tree_ptr (Current_PU_Info, opt_wn);
+
+  if (WOPT_DSL_Semantic_Info_Count() != 0 &&
+      Current_PU_Info != NULL) {
+    DSL_GATEKEEPER_RESULT result;
+    FmtAssert(DSL_Gatekeeper_Verify_PU
+                  (Current_PU_Info, TFile, &result),
+              ("WOPT emitted invalid DSL WHIRL"));
+  }
 
   WN_CopyMap(opt_wn, WN_MAP_FEEDBACK, wn_orig);
 
