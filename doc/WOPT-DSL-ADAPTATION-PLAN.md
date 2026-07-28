@@ -277,6 +277,28 @@ no runtime state or effects
 The projection is stack-local and is never published as the permanent
 identity of the DSL expression.
 
+### Opportunity formation
+
+WOPT copy propagation must form expressions before the traditional
+simplifier is invoked. For example:
+
+```text
+t0 = y - x
+t1 = x + t0
+```
+
+must become the temporary CODEREP expression `x + (y - x)` so that
+`simp_add_sub()` can produce `y`. The cancellation rule remains traditional
+`wn_simp` work; copy propagation is the enabling WOPT transformation.
+
+Controlled DSL propagation may expand logical CODEREPs inside WOPT, but
+CODEREP-to-WN emission must reconstruct the reviewed DSL value model. Each
+retained operator result must again have one unique no-alias result STID, and
+consumer operands must use those values rather than publish duplicated nested
+native DSL definitions. The current blanket `Is_dsl_op()` non-propagatable
+guard is transitional and must be replaced by this controlled propagation and
+boundary-rematerialization protocol.
+
 ### Existing engine
 
 Run the existing CODEREP instantiation of `wn_simp_code.h`.
@@ -337,9 +359,16 @@ DSL WHIRL.
   hook creates a temporary REGION/RID context only because the transitional
   broad PREOPT entry requires it; that context is discarded before final DSL
   lowering.
+- Controlled copy propagation sufficient to expose traditional algebraic
+  rules is part of the immediate expression-simplification milestone.
+- Context-sensitive control-flow optimization is staged later in WOPT and
+  covers the previously classified TVM item 5.
+- WOPT PRE admission is staged later and covers the previously classified TVM
+  item 6.
 - Create the DSL ROOT RID when DSL parallelization optimization begins. At
   that milestone, review and harvest applicable existing LNO analyses and
-  transformations instead of developing an unrelated parallel framework.
+  transformations, including tiling for the previously classified TVM item 8,
+  instead of developing an unrelated parallel framework.
 - Enable PRE services when a reviewed DSL domain requires them. Forthcoming
   fully homomorphic encryption (FHE) domains are expected to provide an early
   motivating use case, but PRE admission still requires explicit operator,
@@ -575,7 +604,13 @@ admission.
 
 ### W7: WOPT service audit
 
-- Audit CSE, copy propagation, value numbering, PRE, DCE, effects, type
+- Replace the blanket non-propagatable DSL guard with controlled copy
+  propagation that exposes eligible cancellation, reassociation,
+  factorization, and constant-folding expressions to `wn_simp`.
+- Re-materialize unique no-alias DSL result STIDs during emission and prove
+  that internal propagation never creates duplicate native definitions in
+  WHIRL or the mapped DSL image.
+- Audit CSE, value numbering, PRE, DCE, effects, type
   queries, and profitability.
 - Enable only services with reviewed DSL legality.
 - Make unsupported services conservatively preserve DSL expressions.

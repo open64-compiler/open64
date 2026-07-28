@@ -111,6 +111,21 @@ eligible DSL integer expression, investigate the logical-DSL preparation,
 traditional opcode projection, option state, tree comparison, or
 TensorDescriptorIR legality checks.
 
+The first cancellation family also demonstrates why the owner of a rule is
+not necessarily the phase that exposes it. Given:
+
+```text
+t0 = y - x
+t1 = x + t0
+```
+
+WOPT copy propagation must first form `x + (y - x)`. The resulting expression
+is then simplified by the traditional `simp_add_sub()` rule. Therefore,
+controlled DSL copy propagation is part of the immediate DSL WOPT expression
+milestone even though cancellation itself remains a `wn_simp` responsibility.
+Emission must restore unique no-alias result STIDs instead of publishing
+propagated DSL producer nodes as duplicate nested definitions.
+
 The TVM div/mod reconstruction family requires a more precise Open64
 comparison. The traditional WN simplifier handles individual `DIV`, `MOD`,
 and `REM` identities and power-of-two cases, but it does not directly
@@ -1324,6 +1339,10 @@ and statement SRCPOS. The retained M4 artifact reopens through
   CODEREP-to-WN emission.
 - Include DSL operator, version, attributes, and TensorDescriptorIR identity
   in hash and equality.
+- Allow controlled copy propagation to form eligible multi-level expressions
+  before invoking the traditional simplifier.
+- Re-materialize every retained logical DSL operator result into its unique
+  no-alias STID during CODEREP-to-WN emission.
 - Add logical CODEREP printing and effect-aware optimization queries.
 - Route eligible DSL algebra through the existing CODEREP instantiation of
   `wn_simp_code.h`.
