@@ -98,6 +98,84 @@ main(void)
     return 1;
   }
 
+  WOPT_DSL_DIVREM_TARGET_POLICY policy;
+  WOPT_DSL_Reset_DIVREM_Target_Policy();
+  if (!WOPT_DSL_Get_DIVREM_Target_Policy(&policy) ||
+      policy.lowering_capability || policy.profitable ||
+      WOPT_DSL_DIVREM_Combination_Enabled(TRUE)) {
+    fprintf(stderr, "DSL DIVREM target policy did not default off\n");
+    return 1;
+  }
+  policy.lowering_capability = TRUE;
+  policy.profitable = FALSE;
+  if (!WOPT_DSL_Set_DIVREM_Target_Policy(&policy) ||
+      WOPT_DSL_DIVREM_Combination_Enabled(TRUE)) {
+    fprintf(stderr, "DSL DIVREM ignored profitability gate\n");
+    return 1;
+  }
+  policy.profitable = TRUE;
+  if (!WOPT_DSL_Set_DIVREM_Target_Policy(&policy) ||
+      WOPT_DSL_DIVREM_Combination_Enabled(FALSE) ||
+      !WOPT_DSL_DIVREM_Combination_Enabled(TRUE)) {
+    fprintf(stderr, "DSL DIVREM option/capability gates changed\n");
+    return 1;
+  }
+
+  WOPT_DSL_SEMANTIC_INFO standalone = add;
+  WOPT_DSL_SEMANTIC_INFO combined;
+  WOPT_DSL_SEMANTIC_INFO projection;
+  WOPT_DSL_SEMANTIC_INFO recovered;
+  standalone.logical_operator = OPR_DSLDIV;
+  standalone.flags = WOPT_DSL_SEMANTIC_PURE;
+  if (!WOPT_DSL_Create_DIVREM_Semantics
+          (&standalone, &combined, &projection) ||
+      !WOPT_DSL_Projectable_Info(&combined) ||
+      !WOPT_DSL_Projection_Info(&projection) ||
+      combined.logical_operator != OPR_DSLDIVREM ||
+      combined.second_result_ty != standalone.result_ty ||
+      projection.logical_operator != OPR_DSLDIVPART ||
+      projection.projection_kind !=
+          WOPT_DSL_PROJECTION_QUOTIENT ||
+      !WOPT_DSL_Uncombine_Projection_Semantics
+          (&projection, &recovered) ||
+      recovered.logical_operator != OPR_DSLDIV ||
+      recovered.second_result_ty != TY_IDX_ZERO ||
+      recovered.projection_kind != WOPT_DSL_PROJECTION_NONE) {
+    fprintf(stderr, "DSL quotient projectable semantics changed\n");
+    return 1;
+  }
+
+  standalone.logical_operator = OPR_DSLREM;
+  WOPT_DSL_SEMANTIC_INFO quotient_combined = combined;
+  if (!WOPT_DSL_Create_DIVREM_Semantics
+          (&standalone, &combined, &projection) ||
+      projection.logical_operator != OPR_DSLREMPART ||
+      projection.projection_kind !=
+          WOPT_DSL_PROJECTION_REMAINDER ||
+      !WOPT_DSL_Uncombine_Projection_Semantics
+          (&projection, &recovered) ||
+      recovered.logical_operator != OPR_DSLREM) {
+    fprintf(stderr, "DSL remainder projectable semantics changed\n");
+    return 1;
+  }
+  quotient_combined.origin_node_id = 101;
+  combined.origin_node_id = 202;
+  WOPT_DSL_SEMANTIC_INFO_ID quotient_combined_id =
+      WOPT_DSL_Semantic_Info_Intern(&quotient_combined);
+  WOPT_DSL_SEMANTIC_INFO_ID remainder_combined_id =
+      WOPT_DSL_Semantic_Info_Intern(&combined);
+  if (quotient_combined_id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID ||
+      quotient_combined_id != remainder_combined_id) {
+    fprintf(stderr, "matching DSL DIV/REM did not share DIVREM identity\n");
+    return 1;
+  }
+  ++combined.second_result_ty;
+  if (WOPT_DSL_Semantic_Info_Intern(&combined) ==
+          quotient_combined_id) {
+    fprintf(stderr, "DSL DIVREM second result descriptor was ignored\n");
+    return 1;
+  }
+
   printf("WOPT DSL semantic-info contract passed\n");
   return 0;
 }

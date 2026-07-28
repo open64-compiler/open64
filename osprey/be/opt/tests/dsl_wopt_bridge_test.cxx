@@ -92,29 +92,41 @@ main(int argc, char **argv)
   BOOL factor_fixture = argc > 2 && strcmp(argv[2], "factor") == 0;
   BOOL no_factor_fixture =
       argc > 2 && strcmp(argv[2], "no-factor") == 0;
-  BOOL algebra_fixture = factor_fixture || no_factor_fixture;
+  BOOL divrem_fixture =
+      argc > 2 && strcmp(argv[2], "divrem") == 0;
+  BOOL algebra_fixture =
+      factor_fixture || no_factor_fixture || divrem_fixture;
   TY_IDX ty = Create_Tensor_Type();
   DSL_BUILDER_VALUE x = NULL;
   DSL_BUILDER_VALUE y = NULL;
   DSL_BUILDER_VALUE z = NULL;
+  DSL_BUILDER_SOURCE_POSITION position;
+  memset(&position, 0, sizeof(position));
   if (argc > 1) {
-    DSL_BUILDER_SOURCE_POSITION position;
-    memset(&position, 0, sizeof(position));
     position.file_id = DSL_Builder_Register_Source_File
-                           (pu, "dsl_wopt_bridge_test.cxx");
+                           (pu, __FILE__);
     position.line = 1;
     position.statement_begin = 1;
     if (algebra_fixture && position.file_id != 0) {
       x = DSL_Builder_Declare_PU_Formal(pu, "wopt_x", 0, ty, &position);
       y = DSL_Builder_Declare_PU_Formal(pu, "wopt_y", 1, ty, &position);
-      z = DSL_Builder_Declare_PU_Formal(pu, "wopt_z", 2, ty, &position);
+      if (!divrem_fixture)
+        z = DSL_Builder_Declare_PU_Formal(pu, "wopt_z", 2, ty, &position);
     }
     if (position.file_id == 0 ||
-        (algebra_fixture && (x == NULL || y == NULL || z == NULL)) ||
+        (algebra_fixture && (x == NULL || y == NULL ||
+                             (!divrem_fixture && z == NULL))) ||
         DSL_Builder_Declare_PU_Result
             (pu, "wopt_result", 0, ty, DSL_PU_RESULT_TENSOR,
              &position) == NULL) {
       fprintf(stderr, "failed to declare DSL WOPT fixture result\n");
+      return 1;
+    }
+    if (divrem_fixture &&
+        DSL_Builder_Declare_PU_Result
+            (pu, "wopt_remainder", 1, ty, DSL_PU_RESULT_TENSOR,
+             &position) == NULL) {
+      fprintf(stderr, "failed to declare DSL DIVREM fixture result\n");
       return 1;
     }
   }
@@ -124,6 +136,10 @@ main(int argc, char **argv)
       DSL_Opcode_Find(common, DSL_OPCODE_COMMON_ADD, 1);
   DSL_OPCODE_ID mul_opcode =
       DSL_Opcode_Find(common, DSL_OPCODE_COMMON_MUL, 1);
+  DSL_OPCODE_ID div_opcode =
+      DSL_Opcode_Find(common, DSL_OPCODE_COMMON_DIV, 1);
+  DSL_OPCODE_ID rem_opcode =
+      DSL_Opcode_Find(common, DSL_OPCODE_COMMON_REM, 1);
   DSL_BUILDER_OPERATOR_ATTRIBUTE attribute = {
       "attr.broadcast_rule", "none"
   };
@@ -131,7 +147,28 @@ main(int argc, char **argv)
   DSL_BUILDER_VALUE zero = NULL;
   DSL_BUILDER_VALUE one = NULL;
   DSL_BUILDER_VALUE add = NULL;
-  if (algebra_fixture) {
+  DSL_BUILDER_VALUE second_result = NULL;
+  if (divrem_fixture) {
+    DSL_BUILDER_VALUE divrem_kids[2] = { x, y };
+    position.line = __LINE__ + 1;
+    add = DSL_Builder_Create_Operator_With_Result
+              (div_opcode, 1, divrem_kids, 2, &attribute, 1,
+               "wopt_quotient", ty);
+    if (add != NULL)
+      DSL_Builder_Set_Value_Source_Position(add, &position);
+    position.line = __LINE__ + 1;
+    second_result = DSL_Builder_Create_Operator_With_Result
+                        (rem_opcode, 1, divrem_kids, 2, &attribute, 1,
+                         "wopt_remainder", ty);
+    if (second_result != NULL)
+      DSL_Builder_Set_Value_Source_Position(second_result, &position);
+    if (add == NULL || second_result == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, add) ||
+        !DSL_Builder_Append_PU_Value(pu, second_result)) {
+      fprintf(stderr, "failed to create DSL DIVREM fixture\n");
+      return 1;
+    }
+  } else if (algebra_fixture) {
     DSL_BUILDER_VALUE xy_kids[2] = { x, y };
     DSL_BUILDER_VALUE xz_kids[2] = {
         no_factor_fixture ? z : x, z
@@ -172,14 +209,18 @@ main(int argc, char **argv)
     }
   }
   if (ty == TY_IDX_ZERO || add_opcode == DSL_OPCODE_INVALID_ID ||
-      mul_opcode == DSL_OPCODE_INVALID_ID) {
+      mul_opcode == DSL_OPCODE_INVALID_ID ||
+      div_opcode == DSL_OPCODE_INVALID_ID ||
+      rem_opcode == DSL_OPCODE_INVALID_ID) {
     fprintf(stderr, "failed to register DSL WOPT operators\n");
     return 1;
   }
 
   if (argc > 1) {
     DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
-    if (!DSL_Builder_Return_PU_Values(pu, &add, 1)) {
+    DSL_BUILDER_VALUE results[2] = { add, second_result };
+    UINT32 result_count = divrem_fixture ? 2 : 1;
+    if (!DSL_Builder_Return_PU_Values(pu, results, result_count)) {
       fprintf(stderr, "failed to return DSL WOPT fixture result\n");
       return 1;
     }
@@ -192,7 +233,8 @@ main(int argc, char **argv)
     }
     const char *fixture =
         factor_fixture ? "factorization" :
-        no_factor_fixture ? "no-factor" : "fold";
+        no_factor_fixture ? "no-factor" :
+        divrem_fixture ? "divrem" : "fold";
     printf("wrote DSL WOPT %s input image: %s\n", fixture, request.path);
     return 0;
   }

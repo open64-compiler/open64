@@ -1180,6 +1180,29 @@ semantically equivalent and structurally reviewable.
 tensor evaluator, WOPT projectability, gatekeeper, and tests. Do not merge a
 partial producer without all required consumers.
 
+**Implemented staging:** `common.div.v1` and `common.rem.v1` are the stable,
+single-result operators admitted to binary WHIRL. `common.divrem.v1`,
+`common.divpart.v1`, and `common.rempart.v1` are logical WOPT identities.
+They do not add an ELF section or change the mapped DSL image row layout.
+The runtime WOPT semantic record carries both DIVREM result descriptors and a
+projection ordinal, while reconstruction provenance remains outside value
+equivalence.
+
+The target policy has independent `lowering_capability` and `profitable`
+decisions and defaults both to false. `WOPT_Enable_DIVREM` remains the user
+optimization control, but it cannot override either target decision. With no
+selected combined tensor lowering, WOPT and the gatekeeper retain and emit
+standalone DIV/REM. The gatekeeper explicitly rejects an internal DIVREM or
+projection that reaches binary publication without a selected consumer.
+
+The compact tensor evaluator registers the two-result projectable evaluator,
+computes both quotient and remainder before publishing either output slot,
+and rejects zero divisors, descriptor mismatches, unsupported numeric policy,
+and result-budget violations. Standalone DIV and REM use the same evaluator
+path. WOPT projectability, DCE projection accounting, CSE identity, and
+single-live-projection uncombining extend the traditional
+`opt_project.h`/emitter framework.
+
 ### M7: Expand and certify
 
 **Simplifier work:** complete S6 and S7 for each newly reviewed operator,
@@ -1205,8 +1228,8 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
 | M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
 | M4 | Merged through PR #97 | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
-| M5 | Complete; PR pending | M4 merged | Fold A/B, factor/no-factor traces, strict-FP policy test |
-| M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
+| M5 | Merged through PR #98 | M4 merged | Fold A/B, factor/no-factor traces, strict-FP policy test |
+| M6 | Complete; PR pending | M5 merged | DIVREM gate/projection artifacts |
 | M7 | Blocked by M6 | M6 merged | Full certification matrix |
 
 Update this table when a milestone starts, when its pull request opens, and

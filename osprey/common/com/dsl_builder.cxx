@@ -691,6 +691,8 @@ DSL_Builder_Uses_Xpragma_Carrier (const DSL_OPCODE_INFO *info)
 
     return strcmp (info->name, DSL_OPCODE_COMMON_ADD) == 0 ||
            strcmp (info->name, DSL_OPCODE_COMMON_MUL) == 0 ||
+           strcmp (info->name, DSL_OPCODE_COMMON_DIV) == 0 ||
+           strcmp (info->name, DSL_OPCODE_COMMON_REM) == 0 ||
            strcmp (info->name, DSL_OPCODE_COMMON_MATMUL) == 0 ||
            strcmp (info->name, DSL_OPCODE_COMMON_TENSOR_CONST) == 0;
 }
@@ -2615,7 +2617,8 @@ DSL_Builder_Try_Fold_Tensor_Binary
 
     if (!DSL_Builder_Tensor_Folding_Enabled() || kids == NULL ||
         kid_count != 2 ||
-        (dsl_operator != OPR_DSLADD && dsl_operator != OPR_DSLMUL))
+        (dsl_operator != OPR_DSLADD && dsl_operator != OPR_DSLMUL &&
+         dsl_operator != OPR_DSLDIV && dsl_operator != OPR_DSLREM))
         return NULL;
 
     for (UINT32 i = 0; i < 2; ++i) {
@@ -2746,6 +2749,7 @@ DSL_Builder_Create_Operator
     payload = DSL_Builder_Format_Operator_Payload
                   (effective_kids, kid_count, attrs, attr_count);
     if ((dsl_operator == OPR_DSLADD || dsl_operator == OPR_DSLMUL ||
+         dsl_operator == OPR_DSLDIV || dsl_operator == OPR_DSLREM ||
          dsl_operator == OPR_DSLMATMUL ||
          dsl_operator == OPR_DSLLINEAR ||
          dsl_operator == OPR_DSLRELU || dsl_operator == OPR_DSLFLATTEN ||

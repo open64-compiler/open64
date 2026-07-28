@@ -2728,7 +2728,7 @@ DCE::Mark_coderep_live( CODEREP *cr ) const
 	    return;
 	  ((DCE *) this)->Set_dce_visited( cr );
 
-	  if (Projection_operation(cr->Opr())) {
+          if (Projection_operation(cr)) {
 	    CODEREP *opnd     = cr->Opnd(0);
 
 	    if (opnd->Kind() == CK_VAR) {

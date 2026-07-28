@@ -42,7 +42,12 @@ typedef enum {
     OPR_DSLATTENTION = 19,
     OPR_DSLSWIGLU = 20,
     OPR_DSLSCATTER = 21,
-    OPR_DSLMUL = 22
+    OPR_DSLMUL = 22,
+    OPR_DSLDIV = 23,
+    OPR_DSLREM = 24,
+    OPR_DSLDIVREM = 25,
+    OPR_DSLDIVPART = 26,
+    OPR_DSLREMPART = 27
 } DSL_OPERATOR;
 
 typedef enum {

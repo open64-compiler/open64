@@ -1490,6 +1490,13 @@ DSL_Gatekeeper_Verify_Native_Node
         (info.nkids >= 0 && (UINT32)info.nkids != WN_kid_count(expression)))
         valid = DSL_Gatekeeper_Report
                     (context, "unsupported logical operator or version");
+    if (dsl_operator == OPR_DSLDIVREM ||
+        dsl_operator == OPR_DSLDIVPART ||
+        dsl_operator == OPR_DSLREMPART)
+        valid = DSL_Gatekeeper_Report
+                   (context, "%s is a WOPT-internal projectable operator "
+                    "without a selected binary lowering contract",
+                    DSL_OPERATOR_name(dsl_operator));
 
     if (WN_rtype(expression) != MTYPE_M || WN_desc(expression) != MTYPE_V ||
         WN_desc(assignment) != MTYPE_M ||
@@ -1556,11 +1563,17 @@ DSL_Gatekeeper_Verify_Native_Node
             if (i == 1)
                 second_operand_ty = WN_ty(operand);
             if ((dsl_operator == OPR_DSLADD ||
+                 dsl_operator == OPR_DSLMUL ||
+                 dsl_operator == OPR_DSLDIV ||
+                 dsl_operator == OPR_DSLREM ||
                  dsl_operator == OPR_DSLMATMUL ||
                  dsl_operator == OPR_DSLRESIDUALADD) &&
                 !DSL_Gatekeeper_Tensor_Compatible
                       (first_operand_ty, WN_ty(operand),
                        dsl_operator == OPR_DSLADD ||
+                       dsl_operator == OPR_DSLMUL ||
+                       dsl_operator == OPR_DSLDIV ||
+                       dsl_operator == OPR_DSLREM ||
                        dsl_operator == OPR_DSLRESIDUALADD))
                 valid = DSL_Gatekeeper_Report
                             (context, "%s kid%u tensor is incompatible "
@@ -1569,12 +1582,17 @@ DSL_Gatekeeper_Verify_Native_Node
         }
     }
 
-    if (dsl_operator == OPR_DSLADD && first_operand_ty != TY_IDX_ZERO &&
+    if ((dsl_operator == OPR_DSLADD ||
+         dsl_operator == OPR_DSLMUL ||
+         dsl_operator == OPR_DSLDIV ||
+         dsl_operator == OPR_DSLREM) &&
+        first_operand_ty != TY_IDX_ZERO &&
         !DSL_Gatekeeper_Tensor_Compatible
              (first_operand_ty, result_ty, TRUE))
         valid = DSL_Gatekeeper_Report
-                    (context, "OPR_DSLADD result tensor is incompatible "
-                     "with its operands");
+                    (context, "%s result tensor is incompatible "
+                     "with its operands",
+                     DSL_OPERATOR_name(dsl_operator));
     if (dsl_operator == OPR_DSLMATMUL && first_operand_ty != TY_IDX_ZERO) {
         BOOL matmul_valid = second_operand_ty != TY_IDX_ZERO && image_valid;
         if (matmul_valid && logical_opcode.effective_version == 1)

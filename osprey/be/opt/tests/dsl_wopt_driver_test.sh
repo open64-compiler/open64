@@ -67,6 +67,14 @@ no_factor_input_text="$artifact_dir/dsl_wopt_no_factor_input.T"
 no_factor_on_object="$artifact_dir/.dsl_wopt_no_factor_on.tmp.o"
 no_factor_on_trace="$artifact_dir/dsl_wopt_no_factor_on.trc"
 no_factor_on_stderr="$artifact_dir/dsl_wopt_no_factor_on.stderr"
+divrem_input_image="$artifact_dir/dsl_wopt_divrem_input.B"
+divrem_input_text="$artifact_dir/dsl_wopt_divrem_input.T"
+divrem_on_object="$artifact_dir/.dsl_wopt_divrem_on.tmp.o"
+divrem_on_trace="$artifact_dir/dsl_wopt_divrem_on.trc"
+divrem_on_stderr="$artifact_dir/dsl_wopt_divrem_on.stderr"
+divrem_off_object="$artifact_dir/.dsl_wopt_divrem_off.tmp.o"
+divrem_off_trace="$artifact_dir/dsl_wopt_divrem_off.trc"
+divrem_off_stderr="$artifact_dir/dsl_wopt_divrem_off.stderr"
 
 "$producer" "$input_image"
 "$ir_b2a" -st -src "$input_image" "$input_text"
@@ -78,6 +86,7 @@ run_backend()
   local object="$3"
   local trace="$4"
   local cr_simp="${5:-on}"
+  local divrem="${6:-on}"
 
   LD_LIBRARY_PATH="$(dirname "$backend"):$wopt_dir:${LD_LIBRARY_PATH:-}" \
     "$backend" \
@@ -88,6 +97,7 @@ run_backend()
       -O2 \
       "-DSL:wopt=$enabled" \
       "-WOPT:cr_simp=$cr_simp" \
+      "-WOPT:divrem=$divrem" \
       -tr25 \
       "$source_file"
 }
@@ -165,6 +175,39 @@ require_text "$no_factor_on_trace" \
   "payload=kid0=wopt_xy;kid1=wopt_xz;attr.broadcast_rule=none"
 require_text "$no_factor_on_stderr" \
   "OPR_DSLMUL.v1 has no executable VHO lowering route"
+
+"$producer" "$divrem_input_image" divrem
+"$ir_b2a" -st -src "$divrem_input_image" "$divrem_input_text"
+if run_backend "$divrem_input_image" on \
+     "$divrem_on_object" "$divrem_on_trace" on on \
+     2>"$divrem_on_stderr"; then
+  echo "DIVREM target-declined fixture unexpectedly passed lowering" >&2
+  exit 1
+fi
+rm -f "$divrem_on_object" "${divrem_on_object%.o}.O"
+if run_backend "$divrem_input_image" on \
+     "$divrem_off_object" "$divrem_off_trace" on off \
+     2>"$divrem_off_stderr"; then
+  echo "DIVREM option-disabled fixture unexpectedly passed lowering" >&2
+  exit 1
+fi
+rm -f "$divrem_off_object" "${divrem_off_object%.o}.O"
+
+require_text "$divrem_input_text" "OPR_DSLDIV"
+require_text "$divrem_input_text" "OPR_DSLREM"
+require_text "$divrem_on_trace" "OPR_DSLDIV"
+require_text "$divrem_on_trace" "OPR_DSLREM"
+require_text "$divrem_off_trace" "OPR_DSLDIV"
+require_text "$divrem_off_trace" "OPR_DSLREM"
+if grep -Fq "OPR_DSLDIVREM" "$divrem_on_trace" ||
+   grep -Fq "OPR_DSLDIVREM" "$divrem_off_trace"; then
+  echo "target-declined DSL DIVREM reached emitted WHIRL" >&2
+  exit 1
+fi
+require_text "$divrem_on_stderr" \
+  "OPR_DSLDIV.v1 has no executable VHO lowering route"
+require_text "$divrem_off_stderr" \
+  "OPR_DSLDIV.v1 has no executable VHO lowering route"
 
 echo "backend DSL WOPT option and phase-order fixture passed"
 echo "review artifacts: $artifact_dir"
