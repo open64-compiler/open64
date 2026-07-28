@@ -59,12 +59,16 @@
 #define ipa_feedback_INCLUDED
 
 
-// Main output file(s) for feedback info
-extern FILE *IPA_Feedback_exl_fd;
-extern FILE *IPA_Feedback_dve_fd;
-extern FILE *IPA_Feedback_dfe_fd;
-extern FILE *IPA_Feedback_prg_fd;
-extern FILE *IPA_Feedback_con_fd;
+// Feedback file descriptors now live in IPA_Context (ipa_context.h).
+// These macros provide backward-compatible access for existing code.
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define IPA_Feedback_exl_fd  (g_ipa_ctx->feedback.exl_fd)
+#define IPA_Feedback_dve_fd  (g_ipa_ctx->feedback.dve_fd)
+#define IPA_Feedback_dfe_fd  (g_ipa_ctx->feedback.dfe_fd)
+#define IPA_Feedback_prg_fd  (g_ipa_ctx->feedback.prg_fd)
+#define IPA_Feedback_con_fd  (g_ipa_ctx->feedback.con_fd)
 
 // for string table + hash table manipulation
 #define FBK_HASH_TAB_SIZE 128

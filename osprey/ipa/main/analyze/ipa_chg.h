@@ -145,8 +145,11 @@ private:
     CLASS_RELATIONSHIP virtual_bases;
 };
 
-// Global class hierarchy graph
-extern IPA_CLASS_HIERARCHY* IPA_Class_Hierarchy;
+// IPA_Class_Hierarchy now lives in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define IPA_Class_Hierarchy (g_ipa_ctx->chg.class_hierarchy)
 
 // Build the global class hierarchy graph
 extern IPA_CLASS_HIERARCHY* Build_Class_Hierarchy();

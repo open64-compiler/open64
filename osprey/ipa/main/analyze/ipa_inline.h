@@ -54,11 +54,13 @@
 #endif
 
 #include <map>
-extern INT Total_Prog_Size;		// size of the final program
-
-extern INT Total_Inlined;
-
-extern INT Total_Not_Inlined;
+// Inline stats now live in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define Total_Prog_Size   (g_ipa_ctx->inline_stats.total_prog_size)
+#define Total_Inlined     (g_ipa_ctx->inline_stats.total_inlined)
+#define Total_Not_Inlined (g_ipa_ctx->inline_stats.total_not_inlined)
 
 /* Report the reason for not inlining a call: */
 extern void

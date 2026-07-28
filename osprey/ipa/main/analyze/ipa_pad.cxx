@@ -71,8 +71,8 @@
 #include "ipa_pad.h"
 #define MAX_ALIGN 16
 
-INT IPO_Pad_Count = 0;
-COMMON_SNODE_TBL* IPA_Common_Table = NULL;
+// IPO_Pad_Count and IPA_Common_Table migrated to
+// g_ipa_ctx->common (ipa_context.h).
 
 static MEM_POOL IPA_Pad_Split_Mem_Pool;
 static BOOL trace_split_common = FALSE;

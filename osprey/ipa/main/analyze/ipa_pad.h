@@ -244,8 +244,11 @@ Common_Array_Pad_Size(INT);
 extern void
 Padding_Analysis (INT num_ir);
 
-extern INT IPO_Pad_Count;
-
-extern COMMON_SNODE_TBL* IPA_Common_Table;
+// Common-block globals now live in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define IPO_Pad_Count    (g_ipa_ctx->common.pad_count)
+#define IPA_Common_Table (*(COMMON_SNODE_TBL**)&(g_ipa_ctx->common.common_table))
 
 #endif /* ipa_pad_INCLUDED */

@@ -54,16 +54,20 @@
 #include "ipa_df.h"
 #endif
 
-extern INT IPA_Constant_Count;
+// Cprop globals now live in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define IPA_Constant_Count   (g_ipa_ctx->cprop.constant_count)
 extern void Init_Cprop_Annotations (IPA_NODE *);
 
-extern MEM_POOL Ipa_cprop_pool;
-extern MEM_POOL local_cprop_pool;
-extern MEM_POOL Global_mem_pool;
+#define Ipa_cprop_pool       (g_ipa_ctx->cprop.cprop_pool)
+#define local_cprop_pool     (g_ipa_ctx->cprop.local_pool)
+#define Global_mem_pool      (g_ipa_ctx->cprop.global_pool)
 
 // Maximum and count for the total number of clone nodes
-extern UINT32 IPA_Max_Total_Clones;
-extern UINT32 IPA_Num_Total_Clones;
+#define IPA_Max_Total_Clones (g_ipa_ctx->cprop.max_total_clones)
+#define IPA_Num_Total_Clones (g_ipa_ctx->cprop.num_total_clones)
 
 typedef DYN_ARRAY<SUMMARY_VALUE> VALUE_DYN_ARRAY;
 

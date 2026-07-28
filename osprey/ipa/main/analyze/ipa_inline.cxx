@@ -93,9 +93,8 @@
 //INLINING_TUNIN$
 #define TINY_SIZE 10
 
-INT Total_Prog_Size = 0;	// Size of the final program
-INT Total_Inlined = 0;
-INT Total_Not_Inlined = 0;
+// Total_Prog_Size, Total_Inlined, Total_Not_Inlined migrated to
+// g_ipa_ctx->inline_stats (ipa_context.h).
 static UINT32 Max_Total_Prog_Size; // max. program size allowed
 static INT Real_Orig_Prog_Weight; // Orig_Prog_Weight - dead code
 static UINT32 non_aggr_callee_limit;

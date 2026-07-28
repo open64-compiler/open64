@@ -29,7 +29,7 @@
 
 #include "ipa_chg.h"
 
-IPA_CLASS_HIERARCHY *IPA_Class_Hierarchy;
+// IPA_Class_Hierarchy migrated to g_ipa_ctx->chg.class_hierarchy (ipa_context.h).
 
 IPA_CLASS_HIERARCHY::IPA_CLASS_HIERARCHY() {
 }
