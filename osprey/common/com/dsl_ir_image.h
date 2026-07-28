@@ -218,6 +218,22 @@ typedef struct {
     UINT32 reserved;
 } DSL_IR_VALUE_REFERENCE_RECORD;
 
+/*
+ * Runtime-only request for replacing one logical operation while retaining
+ * its node and result identities.  Referenced arrays are borrowed for the
+ * duration of the call and are copied into the existing WHIRL image tables.
+ */
+typedef struct {
+    DSL_IR_NODE_ID node_id;
+    DSL_IR_OPCODE_DESCRIPTOR_ID opcode_descriptor_id;
+    STR_IDX payload;
+    const DSL_IR_VALUE_ID *operand_value_ids;
+    UINT32 operand_count;
+    const DSL_IR_ATTRIBUTE_RECORD *attributes;
+    UINT32 attribute_count;
+    UINT32 result_value_kind;
+} DSL_IR_NODE_REWRITE_REQUEST;
+
 typedef enum {
     DSL_STATE_KIND_UNKNOWN = 0,
     DSL_STATE_KIND_RUNTIME_STATUS = 1,
@@ -346,6 +362,9 @@ extern DSL_IR_OPCODE_DESCRIPTOR_ID DSL_IR_Image_Add_Opcode_Descriptor
 extern DSL_IR_OPCODE_DESCRIPTOR_ID DSL_IR_Image_Find_Opcode_Descriptor
                                 (UINT32 logical_operator,
                                  UINT32 version);
+extern DSL_IR_OPCODE_DESCRIPTOR_ID DSL_IR_Image_Ensure_Opcode_Descriptor
+                                (UINT32 logical_operator,
+                                 UINT32 version);
 extern DSL_IR_NODE_ID DSL_IR_Image_Add_Node
                                 (const DSL_IR_NODE_RECORD *record);
 extern DSL_IR_ATTRIBUTE_ID DSL_IR_Image_Add_Attribute
@@ -361,6 +380,17 @@ extern BOOL DSL_IR_Image_Set_Node_Links
                                  DSL_IR_ATTRIBUTE_ID first_attribute_id,
                                  UINT32 attribute_count,
                                  DSL_IR_VALUE_ID result_value_id);
+extern BOOL DSL_IR_Image_Rewrite_Node
+                                (const DSL_IR_NODE_REWRITE_REQUEST *request);
+extern BOOL DSL_IR_Image_Find_Value
+                                (ST_IDX st,
+                                 const char *name,
+                                 DSL_IR_VALUE_RECORD *record);
+extern BOOL DSL_IR_Image_Find_PU_Value
+                                (ST_IDX st,
+                                 const char *name,
+                                 const char *owner_pu,
+                                 DSL_IR_VALUE_RECORD *record);
 
 extern UINT32 DSL_IR_Image_Opcode_Descriptor_Count (void);
 extern UINT32 DSL_IR_Image_Node_Count (void);

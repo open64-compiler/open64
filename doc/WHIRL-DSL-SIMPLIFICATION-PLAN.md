@@ -1042,9 +1042,10 @@ descriptor and constant propagation; revisit parents without recursively
 entering the folder.
 
 **Exit criteria:** construction-time and VHO-time folding share one legality,
-evaluator, publication, and trace contract. `-OPT:wn_simp` and `-DSL:canon`
-A/B artifacts distinguish the two simplification points without changing
-program results.
+evaluator, publication, and trace contract. `-OPT:wn_simp`, `-DSL:canon`, and
+`-DSL:algebraic` A/B artifacts distinguish construction simplification, VHO
+canonicalization/coefficient collection, and VHO tensor evaluation without
+changing program results.
 
 **Pull request:** VHO pipeline integration and canonicalization only.
 
@@ -1109,8 +1110,8 @@ capability per pull request. Do not use M7 as a miscellaneous cleanup batch.
 | M0 | Merged through PR #89/#92 | None | Contract/API test report |
 | M1 | Merged through PR #93 | M0 merged | Simplifier bridge traces |
 | M2 | Merged through PR #94/#95 | M1 merged | Tensor TCON `.B` and `.T` |
-| M3 | Compact integral slice implemented and validated on `codex/dsl-simplifier-m3` | M2 merged | Enabled/disabled fold artifacts |
-| M4 | Blocked by M3 | M3 merged | Construction/VHO A/B artifacts |
+| M3 | Merged through PR #96 | M2 merged | Enabled/disabled fold artifacts |
+| M4 | Implemented and validated on `codex/dsl-simplifier-m4` | M3 merged | `artifacts/m4-vho-simplification/vho_simplification.{B,T}` |
 | M5 | Blocked by M4 | M4 merged | WOPT A/B artifacts |
 | M6 | Blocked by M5 | M5 merged | DIVREM gate/projection artifacts |
 | M7 | Blocked by M6 | M6 merged | Full certification matrix |
@@ -1190,6 +1191,17 @@ default, remains subordinate to `Enable_WN_Simp`, invokes the traditional
 three-step simplifier bridge before `Targ_DSL_WhirlOp`, publishes a
 `common.tensor_const` result, and permits the folded value to feed a parent
 fold. Dense payload evaluation remains deferred.
+
+The M4 VHO slice is implemented after the released descriptor- and
+constant-propagation stage positions. `-DSL:canon` controls deterministic
+operand order and the reviewed integer tensor coefficient rewrite
+`x+x -> 2*x`; the coefficient is a real compact tensor TCON and logical
+`common.tensor_const`. `-DSL:algebraic` independently controls all-constant
+tensor evaluation through the same `Targ_DSL_WhirlOp` service used by M3.
+Both rewrites update the physical WN and logical DSL image together while
+retaining the original result node/value identity, ST, TY, metadata, lineage,
+and statement SRCPOS. The retained M4 artifact reopens through
+`ir_b2a -st -src` without changing the `.WHIRL.dsl` row layout or version.
 
 ## Staged Action List
 

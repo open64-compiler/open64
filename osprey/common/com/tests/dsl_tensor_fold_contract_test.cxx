@@ -743,6 +743,123 @@ Check_Compact_Integer_Evaluator(void)
     return 0;
 }
 
+static int
+Check_VHO_Service_Boundary(void)
+{
+    DSL_TENSOR_TCON_CREATE_INFO info;
+    DSL_TENSOR_FOLD_VALUE left_value;
+    DSL_TENSOR_FOLD_VALUE right_value;
+    DSL_TENSOR_FOLD_POLICY policy;
+    DSL_TENSOR_FOLD_CANDIDATE candidate;
+    DSL_TENSOR_FOLD_REPLACEMENT_CONTEXT context;
+    DSL_TENSOR_FOLD_REPLACEMENT replacement;
+    DSL_TENSOR_TCON_RECORD replacement_record;
+    DSL_TENSOR_FOLD_STATUS reason;
+    TCON operands[2];
+    TY_IDX operand_ty[2];
+    TY_IDX result_ty[1];
+    TCON_IDX two_idx;
+    TCON_IDX three_idx;
+    TY_IDX descriptor_ty = Test_Tensor_Type(101);
+    TY_IDX wrong_ty = Test_Tensor_Type(201);
+
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = descriptor_ty;
+    info.element_mtype = MTYPE_I4;
+    info.element_size = 4;
+    info.element_count = 4;
+    info.logical_bytes = 16;
+    info.required_alignment = 4;
+    info.scalar_tcon = Test_Integer_TCON(2);
+    info.scalar_integer_value = 2;
+    if (!DSL_Tensor_TCON_Create_Splat(&info, &two_idx, NULL))
+        return 1;
+    info.scalar_tcon = Test_Integer_TCON(3);
+    info.scalar_integer_value = 3;
+    if (!DSL_Tensor_TCON_Create_Splat(&info, &three_idx, NULL))
+        return 1;
+
+    if (!DSL_Tensor_Fold_Identify_Compact_TCON
+             (two_idx, descriptor_ty, 11, 21, &left_value, &reason) ||
+        !DSL_Tensor_Fold_Identify_Compact_TCON
+             (three_idx, descriptor_ty, 12, 22, &right_value, &reason)) {
+        fprintf(stderr, "M4 compact tensor identification failed\n");
+        return 1;
+    }
+
+    operands[0] = left_value.carrier;
+    operands[1] = right_value.carrier;
+    operand_ty[0] = left_value.ty;
+    operand_ty[1] = right_value.ty;
+    result_ty[0] = descriptor_ty;
+    DSL_Tensor_Fold_Default_Policy(&policy);
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.dsl_operator = OPR_DSLADD;
+    candidate.version = 1;
+    candidate.result_count = 1;
+    candidate.operand_count = 2;
+    candidate.operands = operands;
+    candidate.operand_ty = operand_ty;
+    candidate.result_ty = result_ty;
+    candidate.policy = &policy;
+
+    memset(&context, 0, sizeof(context));
+    context.result_ty = wrong_ty;
+    context.result_st = 77;
+    context.source_position = 0x1234;
+    context.origin_node_id = 31;
+    context.origin_result_value_id = 32;
+    context.result_name = Save_Str("folded_splat");
+    context.metadata = Save_Str("tensor_fold.origin=OPR_DSLADD");
+    context.lineage = Save_Str("lineage:add-after-propagation");
+    context.flags = 0x20;
+
+    UINT32 tcon_count = TCON_Table_Size();
+    memset(&replacement, 0xff, sizeof(replacement));
+    if (DSL_Tensor_Fold_Describe_Replacement
+            (&candidate, &context, &replacement) !=
+            DSL_TENSOR_FOLD_REJECT_DESCRIPTOR_MISMATCH ||
+        replacement.status !=
+            DSL_TENSOR_FOLD_REJECT_DESCRIPTOR_MISMATCH ||
+        replacement.result_count != 0 ||
+        replacement.result_tcon_idx != TCON_IDX_ZERO ||
+        TCON_Table_Size() != tcon_count) {
+        fprintf(stderr, "M4 descriptor rejection created a TCON\n");
+        return 1;
+    }
+
+    context.result_ty = descriptor_ty;
+    if (DSL_Tensor_Fold_Describe_Replacement
+            (&candidate, &context, &replacement) !=
+            DSL_TENSOR_FOLD_SUCCESS ||
+        replacement.status != DSL_TENSOR_FOLD_SUCCESS ||
+        replacement.logical_operator != OPR_DSLTENSORCONST ||
+        replacement.version != 1 ||
+        replacement.result_count != 1 ||
+        replacement.result_tcon_idx == TCON_IDX_ZERO ||
+        !DSL_Tensor_TCON_Get(replacement.result_tcon_idx,
+                             &replacement_record) ||
+        replacement_record.scalar_integer_value != 5 ||
+        replacement.result_ty != descriptor_ty ||
+        replacement.result_st != context.result_st ||
+        replacement.source_position != context.source_position ||
+        replacement.origin_node_id != context.origin_node_id ||
+        replacement.origin_result_value_id !=
+            context.origin_result_value_id ||
+        replacement.result_name != context.result_name ||
+        replacement.metadata != context.metadata ||
+        replacement.lineage != context.lineage ||
+        strcmp(replacement.compact_scalar_text, "5") != 0 ||
+        (replacement.flags &
+             DSL_TENSOR_FOLD_REPLACEMENT_REVISIT_PARENTS) == 0 ||
+        (replacement.flags & context.flags) == 0) {
+        fprintf(stderr, "M4 tensor replacement descriptor changed\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int
 main(void)
 {
@@ -756,9 +873,10 @@ main(void)
         Check_Candidate_Contract() ||
         Check_Mock_Evaluator() ||
         Check_Tensor_TCON_Storage() ||
-        Check_Compact_Integer_Evaluator())
+        Check_Compact_Integer_Evaluator() ||
+        Check_VHO_Service_Boundary())
         return 1;
 
-    printf("DSL tensor fold M3 compact evaluator contract passed\n");
+    printf("DSL tensor fold M4 VHO service contract passed\n");
     return 0;
 }

@@ -10,6 +10,7 @@
 #include "defs.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
+#include "srcpos.h"
 #include "symtab_idx.h"
 #include "targ_const.h"
 
@@ -24,6 +25,7 @@
  */
 
 #define DSL_TENSOR_FOLD_MAX_RESULTS 2
+#define DSL_TENSOR_FOLD_SCALAR_TEXT_SIZE 32
 #define DSL_TENSOR_TCON_MAGIC 0x44535443U
 #define DSL_TENSOR_TCON_VERSION 1
 #define DSL_TENSOR_TCON_ENVELOPE_SIZE 128
@@ -170,6 +172,66 @@ typedef struct {
     UINT32 flags;
 } DSL_TENSOR_FOLD_MOCK_RESPONSE;
 
+typedef enum {
+    DSL_TENSOR_FOLD_VALUE_NONE = 0,
+    DSL_TENSOR_FOLD_VALUE_COMPACT_TCON = 1
+} DSL_TENSOR_FOLD_VALUE_KIND;
+
+enum {
+    DSL_TENSOR_FOLD_VALUE_FLAG_COMPACT = 0x00000001,
+    DSL_TENSOR_FOLD_REPLACEMENT_REVISIT_PARENTS = 0x00000001
+};
+
+typedef struct {
+    DSL_TENSOR_FOLD_VALUE_KIND kind;
+    TCON_IDX tcon_idx;
+    TCON carrier;
+    DSL_TENSOR_TCON_RECORD tensor_record;
+    TY_IDX ty;
+    ST_IDX st;
+    DSL_IR_VALUE_ID dsl_value_id;
+    UINT32 flags;
+} DSL_TENSOR_FOLD_VALUE;
+
+/*
+ * STR_IDX and SRCPOS members are borrowed pass-through identities.  This
+ * service does not own or mutate their source tables.
+ */
+typedef struct {
+    TY_IDX result_ty;
+    ST_IDX result_st;
+    SRCPOS source_position;
+    DSL_IR_NODE_ID origin_node_id;
+    DSL_IR_VALUE_ID origin_result_value_id;
+    STR_IDX result_name;
+    STR_IDX metadata;
+    STR_IDX lineage;
+    UINT32 flags;
+} DSL_TENSOR_FOLD_REPLACEMENT_CONTEXT;
+
+typedef struct {
+    DSL_TENSOR_FOLD_STATUS status;
+    DSL_OPERATOR logical_operator;
+    UINT16 version;
+    UINT16 result_count;
+    TCON_IDX result_tcon_idx;
+    TCON result_tcon;
+    TY_IDX result_ty;
+    ST_IDX result_st;
+    TY_IDX descriptor_ty;
+    DSL_TENSOR_TCON_STORAGE_KIND result_storage_kind;
+    TCON_IDX scalar_tcon;
+    INT64 scalar_integer_value;
+    char compact_scalar_text[DSL_TENSOR_FOLD_SCALAR_TEXT_SIZE];
+    SRCPOS source_position;
+    DSL_IR_NODE_ID origin_node_id;
+    DSL_IR_VALUE_ID origin_result_value_id;
+    STR_IDX result_name;
+    STR_IDX metadata;
+    STR_IDX lineage;
+    UINT32 flags;
+} DSL_TENSOR_FOLD_REPLACEMENT;
+
 extern void DSL_Tensor_Fold_Default_Policy
                                 (DSL_TENSOR_FOLD_POLICY *policy);
 extern void DSL_Tensor_Fold_Reset_Mock_Evaluator (void);
@@ -193,6 +255,22 @@ extern BOOL DSL_Tensor_Fold_Candidate_Valid
 extern DSL_TENSOR_FOLD_STATUS Targ_DSL_WhirlOp
                                 (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
                                  DSL_TENSOR_FOLD_OUTPUT *output);
+extern void DSL_Tensor_Fold_Value_Init
+                                (DSL_TENSOR_FOLD_VALUE *value);
+extern BOOL DSL_Tensor_Fold_Identify_Compact_TCON
+                                (TCON_IDX tcon_idx,
+                                 TY_IDX expected_ty,
+                                 ST_IDX st,
+                                 DSL_IR_VALUE_ID dsl_value_id,
+                                 DSL_TENSOR_FOLD_VALUE *value,
+                                 DSL_TENSOR_FOLD_STATUS *reason);
+extern void DSL_Tensor_Fold_Replacement_Init
+                                (DSL_TENSOR_FOLD_REPLACEMENT *replacement);
+extern DSL_TENSOR_FOLD_STATUS DSL_Tensor_Fold_Describe_Replacement
+                                (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
+                                 const DSL_TENSOR_FOLD_REPLACEMENT_CONTEXT
+                                     *context,
+                                 DSL_TENSOR_FOLD_REPLACEMENT *replacement);
 extern void DSL_Tensor_TCON_Reset (void);
 extern void DSL_Tensor_TCON_Rebuild_Derived_Cache
                                 (TCON_IDX first_tcon_idx,
@@ -233,6 +311,11 @@ extern BOOL DSL_Tensor_TCON_Create_One
                                  TCON *carrier);
 extern BOOL DSL_Tensor_TCON_Create_Splat
                                 (const DSL_TENSOR_TCON_CREATE_INFO *info,
+                                 TCON_IDX *tcon_idx,
+                                 TCON *carrier);
+extern BOOL DSL_Tensor_TCON_Create_Integer_Splat
+                                (TY_IDX descriptor_ty,
+                                 INT64 scalar_value,
                                  TCON_IDX *tcon_idx,
                                  TCON *carrier);
 extern BOOL DSL_Tensor_TCON_Create_Inline_Dense

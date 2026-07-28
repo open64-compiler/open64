@@ -3,6 +3,7 @@
  */
 
 #include <string.h>
+#include <string>
 #include <vector>
 
 #include "dsl_ir_image.h"
@@ -764,6 +765,42 @@ DSL_IR_Image_Find_Opcode_Descriptor
     return DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID;
 }
 
+DSL_IR_OPCODE_DESCRIPTOR_ID
+DSL_IR_Image_Ensure_Opcode_Descriptor
+        (UINT32 logical_operator,
+         UINT32 version)
+{
+    DSL_IR_OPCODE_DESCRIPTOR_ID id =
+        DSL_IR_Image_Find_Opcode_Descriptor(logical_operator, version);
+    if (id != DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
+        return id;
+
+    DSL_OPERATOR_INFO info;
+    if (!DSL_Operator_Get_Info_Version
+             ((DSL_OPERATOR)logical_operator, version, &info))
+        return DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID;
+
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD record;
+    DSL_IR_Opcode_Descriptor_Record_Init(&record);
+    record.logical_operator = logical_operator;
+    record.version = info.version;
+    record.operand_count = info.nkids;
+    record.category = info.category;
+    record.level = info.level;
+    record.shape_rule = info.shape_rule;
+    record.effect_model = info.effect_model;
+    record.lowering_model = info.lowering_model;
+    record.flags = info.flags;
+    record.logical_name = Save_Str(info.logical_name);
+    record.stable_name = Save_Str(info.stable_name);
+    record.attribute_schema =
+        Save_Str(info.attribute_schema == NULL ? "" : info.attribute_schema);
+    record.diagnostic_prefix =
+        Save_Str(info.diagnostic_prefix == NULL ? "" :
+                 info.diagnostic_prefix);
+    return DSL_IR_Image_Add_Opcode_Descriptor(&record);
+}
+
 DSL_IR_NODE_ID
 DSL_IR_Image_Add_Node (const DSL_IR_NODE_RECORD *record)
 {
@@ -889,6 +926,140 @@ DSL_IR_Image_Set_Node_Links
     node.attribute_count = attribute_count;
     node.result_value_id = result_value_id;
     return TRUE;
+}
+
+BOOL
+DSL_IR_Image_Rewrite_Node
+        (const DSL_IR_NODE_REWRITE_REQUEST *request)
+{
+    if (request == NULL ||
+        request->node_id == DSL_IR_NODE_INVALID_ID ||
+        request->node_id > DSL_ir_node_table.Size() ||
+        request->opcode_descriptor_id ==
+            DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID ||
+        request->opcode_descriptor_id >
+            DSL_ir_opcode_descriptor_table.Size() ||
+        (request->operand_count != 0 &&
+         request->operand_value_ids == NULL) ||
+        (request->attribute_count != 0 &&
+         request->attributes == NULL) ||
+        request->result_value_kind == DSL_IR_VALUE_UNKNOWN)
+        return FALSE;
+
+    const DSL_IR_OPCODE_DESCRIPTOR_RECORD &descriptor =
+        DSL_ir_opcode_descriptor_table[request->opcode_descriptor_id - 1];
+    if (descriptor.operand_count >= 0 &&
+        (UINT32)descriptor.operand_count != request->operand_count)
+        return FALSE;
+
+    DSL_IR_NODE_RECORD &node =
+        DSL_ir_node_table[request->node_id - 1];
+    if (node.result_value_id == DSL_IR_VALUE_INVALID_ID ||
+        node.result_value_id > DSL_ir_value_table.Size())
+        return FALSE;
+    DSL_IR_VALUE_RECORD &result =
+        DSL_ir_value_table[node.result_value_id - 1];
+    if (result.producer_node_id != request->node_id)
+        return FALSE;
+
+    for (UINT32 i = 0; i < request->operand_count; ++i) {
+        if (request->operand_value_ids[i] == DSL_IR_VALUE_INVALID_ID ||
+            request->operand_value_ids[i] > DSL_ir_value_table.Size())
+            return FALSE;
+    }
+    for (UINT32 i = 0; i < request->attribute_count; ++i) {
+        const DSL_IR_ATTRIBUTE_RECORD &attribute = request->attributes[i];
+        if (attribute.name == STR_IDX_ZERO ||
+            attribute.value_kind == DSL_IR_ATTRIBUTE_VALUE_UNKNOWN)
+            return FALSE;
+    }
+
+    UINT32 reference_checkpoint = DSL_ir_value_reference_table.Size();
+    UINT32 attribute_checkpoint = DSL_ir_attribute_table.Size();
+    DSL_IR_VALUE_REFERENCE_ID first_operand_id =
+        DSL_IR_VALUE_REFERENCE_INVALID_ID;
+    DSL_IR_ATTRIBUTE_ID first_attribute_id = DSL_IR_ATTRIBUTE_INVALID_ID;
+
+    for (UINT32 i = 0; i < request->operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        DSL_IR_Value_Reference_Record_Init(&reference);
+        reference.owner_node_id = request->node_id;
+        reference.ordinal = i;
+        reference.value_id = request->operand_value_ids[i];
+        DSL_IR_VALUE_REFERENCE_ID id =
+            DSL_IR_Image_Add_Value_Reference(&reference);
+        if (id == DSL_IR_VALUE_REFERENCE_INVALID_ID) {
+            DSL_ir_value_reference_table.Delete_down_to(reference_checkpoint);
+            return FALSE;
+        }
+        if (i == 0)
+            first_operand_id = id;
+    }
+
+    for (UINT32 i = 0; i < request->attribute_count; ++i) {
+        DSL_IR_ATTRIBUTE_RECORD attribute = request->attributes[i];
+        attribute.id = DSL_IR_ATTRIBUTE_INVALID_ID;
+        attribute.owner_node_id = request->node_id;
+        DSL_IR_ATTRIBUTE_ID id = DSL_IR_Image_Add_Attribute(&attribute);
+        if (id == DSL_IR_ATTRIBUTE_INVALID_ID) {
+            DSL_ir_value_reference_table.Delete_down_to(reference_checkpoint);
+            DSL_ir_attribute_table.Delete_down_to(attribute_checkpoint);
+            return FALSE;
+        }
+        if (i == 0)
+            first_attribute_id = id;
+    }
+
+    node.opcode_descriptor_id = request->opcode_descriptor_id;
+    node.first_operand_reference_id = first_operand_id;
+    node.operand_count = request->operand_count;
+    node.first_attribute_id = first_attribute_id;
+    node.attribute_count = request->attribute_count;
+    node.payload = request->payload;
+    result.value_kind = request->result_value_kind;
+    return TRUE;
+}
+
+BOOL
+DSL_IR_Image_Find_PU_Value
+        (ST_IDX st,
+         const char *name,
+         const char *owner_pu,
+         DSL_IR_VALUE_RECORD *record)
+{
+    DSL_IR_VALUE_ID found = DSL_IR_VALUE_INVALID_ID;
+    std::string owner_metadata;
+
+    if (ST_IDX_index(st) == 0 || name == NULL)
+        return FALSE;
+    if (owner_pu != NULL) {
+        owner_metadata = "owner_pu=";
+        owner_metadata += owner_pu;
+    }
+    for (UINT32 i = 0; i < DSL_ir_value_table.Size(); ++i) {
+        const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[i];
+        if (value.st != st || value.name == STR_IDX_ZERO ||
+            strcmp(Index_To_Str(value.name), name) != 0)
+            continue;
+        if (owner_pu != NULL &&
+            (value.metadata == STR_IDX_ZERO ||
+             owner_metadata != Index_To_Str(value.metadata)))
+            continue;
+        if (found != DSL_IR_VALUE_INVALID_ID)
+            return FALSE;
+        found = i + 1;
+    }
+    return found != DSL_IR_VALUE_INVALID_ID &&
+           DSL_IR_Image_Get_Value(found, record);
+}
+
+BOOL
+DSL_IR_Image_Find_Value
+        (ST_IDX st,
+         const char *name,
+         DSL_IR_VALUE_RECORD *record)
+{
+    return DSL_IR_Image_Find_PU_Value(st, name, NULL, record);
 }
 
 UINT32

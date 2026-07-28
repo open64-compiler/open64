@@ -45,6 +45,7 @@ extern BOOL VHO_DSL_Opt_Stage_Enabled (VHO_DSL_OPT_STAGE stage);
 extern BOOL VHO_DSL_Opt_Register_Pass
                                 (VHO_DSL_OPT_STAGE stage,
                                  VHO_DSL_OPT_PASS pass);
+extern BOOL VHO_DSL_Opt_Register_Default_Passes (void);
 extern void VHO_DSL_Opt_Reset_Passes (void);
 extern BOOL VHO_DSL_Optimize_Program_Unit
                                 (struct pu_info *pu_info,
