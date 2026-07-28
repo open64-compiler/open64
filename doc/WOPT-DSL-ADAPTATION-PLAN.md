@@ -326,6 +326,28 @@ WOPT services before enabling DSL admission:
 Each service must either understand the reviewed DSL contract or conservatively
 preserve the expression without transforming it.
 
+## Future Optimizer Activation
+
+The immediate DSL WOPT objective is the focused expression-simplification
+pipeline. It must not imply that all WOPT, LNO, or PRE services are enabled for
+DSL WHIRL.
+
+- The focused expression-simplification path should not create or persist an
+  architectural ROOT RID merely to simplify expressions. The current backend
+  hook creates a temporary REGION/RID context only because the transitional
+  broad PREOPT entry requires it; that context is discarded before final DSL
+  lowering.
+- Create the DSL ROOT RID when DSL parallelization optimization begins. At
+  that milestone, review and harvest applicable existing LNO analyses and
+  transformations instead of developing an unrelated parallel framework.
+- Enable PRE services when a reviewed DSL domain requires them. Forthcoming
+  fully homomorphic encryption (FHE) domains are expected to provide an early
+  motivating use case, but PRE admission still requires explicit operator,
+  effect, ownership, descriptor, cost, and legality contracts.
+- Treat ROOT RID parallelization, LNO transformation reuse, and PRE admission
+  as staged capabilities. They are planned extensions, not prerequisites for
+  the first DSL expression-simplification milestone.
+
 ## CODEREP-to-WN Emission
 
 Intercept first-class DSL CODEREPs before generic `cr->Op()` emission.
