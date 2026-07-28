@@ -152,6 +152,21 @@ Check_Candidate_Contract(void)
         return 1;
     }
 
+    candidate.version = 1;
+    candidate.flags = DSL_TENSOR_FOLD_CANDIDATE_EFFECTFUL;
+    if (DSL_Tensor_Fold_Candidate_Valid(&candidate, &reason) ||
+        reason != DSL_TENSOR_FOLD_REJECT_EFFECTFUL_OPERATOR) {
+        fprintf(stderr, "effectful tensor fold candidate was accepted\n");
+        return 1;
+    }
+
+    candidate.flags = DSL_TENSOR_FOLD_CANDIDATE_UNRESOLVED_SHAPE;
+    if (DSL_Tensor_Fold_Candidate_Valid(&candidate, &reason) ||
+        reason != DSL_TENSOR_FOLD_REJECT_UNRESOLVED_SHAPE) {
+        fprintf(stderr, "unresolved tensor fold shape was accepted\n");
+        return 1;
+    }
+
     return 0;
 }
 
@@ -729,6 +744,24 @@ Check_Compact_Integer_Evaluator(void)
         return 1;
     }
 
+    policy.max_result_elements = 7;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_RESULT_BUDGET ||
+        output.result_count != 0) {
+        fprintf(stderr, "DIVREM total result budget changed\n");
+        return 1;
+    }
+    policy.max_result_elements = 8;
+    policy.max_evaluator_work = 7;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_WORK_BUDGET ||
+        output.result_count != 0) {
+        fprintf(stderr, "DIVREM combined work budget changed\n");
+        return 1;
+    }
+    policy.max_result_elements = 0;
+    policy.max_evaluator_work = 0;
+
     candidate.dsl_operator = OPR_DSLDIV;
     candidate.result_count = 1;
     if (Targ_DSL_WhirlOp(&candidate, &output) !=
@@ -764,6 +797,53 @@ Check_Compact_Integer_Evaluator(void)
         fprintf(stderr, "tensor division-by-zero rejection changed\n");
         return 1;
     }
+
+    info.scalar_tcon = Test_Integer_TCON(-2147483647LL - 1);
+    info.scalar_integer_value = -2147483647LL - 1;
+    TCON_IDX minimum_idx;
+    if (!DSL_Tensor_TCON_Create_Splat
+             (&info, &minimum_idx, &operands[0])) {
+        fprintf(stderr, "failed to create signed-minimum fixture\n");
+        return 1;
+    }
+    info.scalar_tcon = Test_Integer_TCON(-1);
+    info.scalar_integer_value = -1;
+    TCON_IDX minus_one_idx;
+    if (!DSL_Tensor_TCON_Create_Splat
+             (&info, &minus_one_idx, &operands[1])) {
+        fprintf(stderr, "failed to create negative-one fixture\n");
+        return 1;
+    }
+    candidate.dsl_operator = OPR_DSLDIVREM;
+    candidate.result_count = 2;
+    if (Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_REJECT_NUMERIC_POLICY ||
+        output.result_count != 0) {
+        fprintf(stderr, "signed DIVREM overflow risk was accepted\n");
+        return 1;
+    }
+
+    info.scalar_tcon = Test_Integer_TCON(-7);
+    info.scalar_integer_value = -7;
+    TCON_IDX negative_idx;
+    if (!DSL_Tensor_TCON_Create_Splat
+             (&info, &negative_idx, &operands[0]) ||
+        !DSL_Tensor_TCON_Get_Carrier(three_idx, &operands[1]) ||
+        Targ_DSL_WhirlOp(&candidate, &output) !=
+            DSL_TENSOR_FOLD_SUCCESS ||
+        !DSL_Tensor_TCON_Decode_Carrier
+             (&output.results[0].result, &result_record) ||
+        result_record.scalar_integer_value != -2 ||
+        !DSL_Tensor_TCON_Decode_Carrier
+             (&output.results[1].result, &result_record) ||
+        result_record.scalar_integer_value != -1) {
+        fprintf(stderr, "signed DIVREM quotient/remainder changed\n");
+        return 1;
+    }
+
+    candidate.dsl_operator = OPR_DSLREM;
+    candidate.result_count = 1;
+    DSL_Tensor_TCON_Get_Carrier(three_idx, &operands[0]);
     DSL_Tensor_TCON_Get_Carrier(three_idx, &operands[1]);
 
     memset(dense_bytes, 1, sizeof(dense_bytes));

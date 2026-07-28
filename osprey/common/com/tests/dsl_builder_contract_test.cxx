@@ -13,6 +13,7 @@
 #include "defs.h"
 #include "mempool.h"
 #include "wn.h"
+#include "wn_simp.h"
 #include "wn_util.h"
 #include "stab.h"
 #include "elf_stuff.h"
@@ -164,6 +165,39 @@ Check_DSL_Simplifier_Bridge(void)
     WN stack_view;
     WN *variable;
     WN *identity;
+    WN *scalar_result;
+
+    scalar_result = WN_SimplifyExp2
+                        (OPCODE_make_op(OPR_ADD, MTYPE_I4, MTYPE_V),
+                         WN_Intconst(MTYPE_I4, 2),
+                         WN_Intconst(MTYPE_I4, 3));
+    if (scalar_result == NULL ||
+        WN_operator(scalar_result) != OPR_INTCONST ||
+        WN_const_val(scalar_result) != 5) {
+        fprintf(stderr, "traditional scalar constant folding changed\n");
+        return 1;
+    }
+
+    variable = WN_LdidPreg(MTYPE_I4, 31);
+    scalar_result = WN_SimplifyExp2
+                        (OPCODE_make_op(OPR_BAND, MTYPE_I4, MTYPE_V),
+                         variable, WN_Intconst(MTYPE_I4, -1));
+    if (scalar_result != variable) {
+        fprintf(stderr, "traditional scalar bitwise identity changed\n");
+        return 1;
+    }
+
+    scalar_result = WN_SimplifyExp3
+                        (OPCODE_make_op(OPR_SELECT, MTYPE_I4, MTYPE_V),
+                         WN_Intconst(MTYPE_I4, 1),
+                         WN_Intconst(MTYPE_I4, 7),
+                         WN_Intconst(MTYPE_I4, 9));
+    if (scalar_result == NULL ||
+        WN_operator(scalar_result) != OPR_INTCONST ||
+        WN_const_val(scalar_result) != 7) {
+        fprintf(stderr, "traditional scalar SELECT folding changed\n");
+        return 1;
+    }
 
     memset(&descriptor, 0, sizeof(descriptor));
     descriptor.type_core.kind = "tensor";
@@ -1792,6 +1826,7 @@ Check_Construction_Tensor_Folding(void)
     BOOL saved_tensor_folding = DSL_Builder_Tensor_Folding_Enabled();
     UINT32 file_id;
     char diagnostic[1024];
+    char saved_add_tcon[32];
     int failed = 0;
 
     if (artifact == NULL || artifact[0] == '\0')
@@ -1915,6 +1950,8 @@ Check_Construction_Tensor_Folding(void)
         fprintf(stderr, "M3 folded result identity was not preserved\n");
         failed = 1;
     }
+    snprintf(saved_add_tcon, sizeof(saved_add_tcon), "%s",
+             add_tcon == NULL ? "" : add_tcon);
     DSL_BUILDER_VALUE_INFO folded_parent_info;
     if (!DSL_Builder_Get_Value_Info(folded_parent, &folded_parent_info) ||
         folded_parent_info.payload == NULL ||
@@ -1969,6 +2006,35 @@ Check_Construction_Tensor_Folding(void)
         fprintf(stderr, "M3 tensor fold gatekeeper failed: %s\n",
                 diagnostic);
         failed = 1;
+    }
+    if (!failed) {
+        ST_tensor_bind_metadata(folded_add_st, "tensor_tcon_idx", "0");
+        memset(&verify, 0, sizeof(verify));
+        memset(diagnostic, 0, sizeof(diagnostic));
+        verify.diagnostic = diagnostic;
+        verify.diagnostic_capacity = sizeof(diagnostic);
+        if (DSL_Builder_Verify_Program(&verify) ||
+            strstr(diagnostic,
+                   "folded tensor constant carrier, descriptor, or result "
+                   "binding is inconsistent") == NULL) {
+            fprintf(stderr,
+                    "M7 gatekeeper accepted a corrupt folded TCON binding\n");
+            failed = 1;
+        }
+        ST_tensor_bind_metadata(folded_add_st, "tensor_tcon_idx",
+                                saved_add_tcon);
+    }
+    if (!failed) {
+        memset(&verify, 0, sizeof(verify));
+        memset(diagnostic, 0, sizeof(diagnostic));
+        verify.diagnostic = diagnostic;
+        verify.diagnostic_capacity = sizeof(diagnostic);
+        if (!DSL_Builder_Verify_Program(&verify)) {
+            fprintf(stderr,
+                    "M7 gatekeeper did not recover after binding repair: %s\n",
+                    diagnostic);
+            failed = 1;
+        }
     }
     if (!failed && !DSL_Builder_Finalize_Mapped_Image(&request)) {
         fprintf(stderr, "M3 tensor fold mapped-image finalization failed\n");

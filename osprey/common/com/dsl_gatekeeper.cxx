@@ -14,6 +14,7 @@
 #include "dsl_ir_image.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_opcode.h"
+#include "dsl_tensor_fold.h"
 #include "symtab.h"
 #include "wn.h"
 
@@ -1364,6 +1365,58 @@ DSL_Gatekeeper_Verify_External_Tensor
 }
 
 static BOOL
+DSL_Gatekeeper_Verify_Folded_Tensor_Constant
+        (const DSL_IR_NODE_RECORD *node,
+         ST_IDX result_st,
+         TY_IDX result_ty,
+         DSL_GATEKEEPER_CONTEXT *context)
+{
+    const char *origin = ST_tensor_metadata(result_st, "tensor_fold.origin");
+    if (origin == NULL)
+        return TRUE;
+
+    const char *tcon_text =
+        ST_tensor_metadata(result_st, "tensor_tcon_idx");
+    const char *value_kind = NULL;
+    const char *value = NULL;
+    UINT64 tcon_ordinal = 0;
+    UINT64 element_size = 0;
+    UINT64 logical_bytes = 0;
+    DSL_TENSOR_TCON_RECORD record;
+    char expected_value[32];
+
+    if (origin[0] == '\0' ||
+        !DSL_Gatekeeper_Parse_Unsigned(tcon_text, &tcon_ordinal) ||
+        tcon_ordinal == 0 || tcon_ordinal > ~(UINT32)0 ||
+        !DSL_Tensor_TCON_Get((TCON_IDX)tcon_ordinal, &record) ||
+        record.descriptor_ty != result_ty ||
+        (record.storage_kind != DSL_TENSOR_TCON_STORAGE_ZERO &&
+         record.storage_kind != DSL_TENSOR_TCON_STORAGE_ONE &&
+         record.storage_kind != DSL_TENSOR_TCON_STORAGE_SPLAT) ||
+        !DSL_Gatekeeper_Static_Tensor_Byte_Size
+             (result_ty, &element_size, &logical_bytes) ||
+        record.element_size != element_size ||
+        record.logical_bytes != logical_bytes ||
+        record.required_alignment < TY_align(result_ty) ||
+        !DSL_Gatekeeper_Node_Attribute
+             (node, "value_kind", &value_kind) ||
+        value_kind == NULL || strcmp(value_kind, "splat") != 0 ||
+        !DSL_Gatekeeper_Node_Attribute(node, "value", &value) ||
+        value == NULL)
+        return DSL_Gatekeeper_Report
+                   (context, "folded tensor constant carrier, descriptor, "
+                    "or result binding is inconsistent");
+
+    snprintf(expected_value, sizeof(expected_value), "%lld",
+             (long long)record.scalar_integer_value);
+    return strcmp(value, expected_value) == 0 ?
+               TRUE :
+               DSL_Gatekeeper_Report
+                   (context, "folded tensor constant payload does not match "
+                    "its tensor TCON");
+}
+
+static BOOL
 DSL_Gatekeeper_Required_Attributes
         (const DSL_IR_NODE_RECORD *node,
          const DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptor,
@@ -1529,6 +1582,10 @@ DSL_Gatekeeper_Verify_Native_Node
             valid = FALSE;
         if (dsl_operator == OPR_DSLTENSORCONST &&
             !DSL_Gatekeeper_Verify_External_Tensor
+                 (&image_node, result_st, result_ty, context))
+            valid = FALSE;
+        if (dsl_operator == OPR_DSLTENSORCONST &&
+            !DSL_Gatekeeper_Verify_Folded_Tensor_Constant
                  (&image_node, result_st, result_ty, context))
             valid = FALSE;
         if (info.effect_model == DSL_EFFECT_MODEL_RUNTIME_EFFECT &&

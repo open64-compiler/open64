@@ -32,6 +32,8 @@ Initialize_Strtab (UINT32)
     Machine_Types[MTYPE_I4].id = MTYPE_I4;
     Machine_Types[MTYPE_I4].name = "I4";
     Machine_Types[MTYPE_I4].type_class_bits = MTYPE_CLASS_INTEGER;
+    Machine_Types[MTYPE_I4].bit_size = 32;
+    Machine_Types[MTYPE_I4].signed_type = TRUE;
 }
 
 void
