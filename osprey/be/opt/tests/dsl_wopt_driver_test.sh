@@ -54,30 +54,46 @@ on_object="$artifact_dir/dsl_wopt_on.o"
 on_image="$artifact_dir/dsl_wopt_on.O"
 on_text="$artifact_dir/dsl_wopt_on.T"
 on_trace="$artifact_dir/dsl_wopt_on.trc"
+factor_input_image="$artifact_dir/dsl_wopt_factor_input.B"
+factor_input_text="$artifact_dir/dsl_wopt_factor_input.T"
+factor_on_object="$artifact_dir/.dsl_wopt_factor_on.tmp.o"
+factor_on_trace="$artifact_dir/dsl_wopt_factor_on.trc"
+factor_on_stderr="$artifact_dir/dsl_wopt_factor_on.stderr"
+factor_simp_off_object="$artifact_dir/.dsl_wopt_factor_simp_off.tmp.o"
+factor_simp_off_trace="$artifact_dir/dsl_wopt_factor_simp_off.trc"
+factor_simp_off_stderr="$artifact_dir/dsl_wopt_factor_simp_off.stderr"
+no_factor_input_image="$artifact_dir/dsl_wopt_no_factor_input.B"
+no_factor_input_text="$artifact_dir/dsl_wopt_no_factor_input.T"
+no_factor_on_object="$artifact_dir/.dsl_wopt_no_factor_on.tmp.o"
+no_factor_on_trace="$artifact_dir/dsl_wopt_no_factor_on.trc"
+no_factor_on_stderr="$artifact_dir/dsl_wopt_no_factor_on.stderr"
 
 "$producer" "$input_image"
 "$ir_b2a" -st -src "$input_image" "$input_text"
 
 run_backend()
 {
-  local enabled="$1"
-  local object="$2"
-  local trace="$3"
+  local input="$1"
+  local enabled="$2"
+  local object="$3"
+  local trace="$4"
+  local cr_simp="${5:-on}"
 
   LD_LIBRARY_PATH="$(dirname "$backend"):$wopt_dir:${LD_LIBRARY_PATH:-}" \
     "$backend" \
-      "-fB,$input_image" \
+      "-fB,$input" \
       "-fo,$object" \
       "-ft,$trace" \
       "-PHASE:w=on:c=off:wpath=$wopt_dir" \
       -O2 \
       "-DSL:wopt=$enabled" \
+      "-WOPT:cr_simp=$cr_simp" \
       -tr25 \
       "$source_file"
 }
 
-run_backend off "$off_object" "$off_trace"
-run_backend on "$on_object" "$on_trace"
+run_backend "$input_image" off "$off_object" "$off_trace"
+run_backend "$input_image" on "$on_object" "$on_trace"
 
 "$ir_b2a" -st -src "$off_image" "$off_text"
 "$ir_b2a" -st -src "$on_image" "$on_text"
@@ -96,6 +112,59 @@ if grep -Fq "OPR_DSLADD" "$on_trace"; then
   echo "enabled DSL WOPT did not fold common.add" >&2
   exit 1
 fi
+
+"$producer" "$factor_input_image" factor
+"$ir_b2a" -st -src "$factor_input_image" "$factor_input_text"
+if run_backend "$factor_input_image" on \
+     "$factor_on_object" "$factor_on_trace" 2>"$factor_on_stderr"; then
+  echo "factorization fixture unexpectedly passed marker-only lowering" >&2
+  exit 1
+fi
+rm -f "$factor_on_object" "${factor_on_object%.o}.O"
+
+require_text "$factor_input_text" \
+  "payload=kid0=wopt_xy;kid1=wopt_xz;attr.broadcast_rule=none"
+require_text "$factor_on_trace" \
+  "payload=kid0=wopt_y;kid1=wopt_z;attr.broadcast_rule=none"
+require_text "$factor_on_trace" \
+  "payload=kid0=wopt_x;kid1=wopt_xy;attr.broadcast_rule=none"
+require_text "$factor_on_stderr" \
+  "OPR_DSLMUL.v1 has no executable VHO lowering route"
+
+if run_backend "$factor_input_image" on \
+     "$factor_simp_off_object" "$factor_simp_off_trace" off \
+     2>"$factor_simp_off_stderr"; then
+  echo "simplifier-disabled fixture unexpectedly passed lowering" >&2
+  exit 1
+fi
+rm -f "$factor_simp_off_object" "${factor_simp_off_object%.o}.O"
+require_text "$factor_simp_off_trace" \
+  "payload=kid0=wopt_x;kid1=wopt_y;attr.broadcast_rule=none"
+require_text "$factor_simp_off_trace" \
+  "payload=kid0=wopt_x;kid1=wopt_z;attr.broadcast_rule=none"
+require_text "$factor_simp_off_trace" \
+  "payload=kid0=wopt_xy;kid1=wopt_xz;attr.broadcast_rule=none"
+require_text "$factor_simp_off_stderr" \
+  "OPR_DSLMUL.v1 has no executable VHO lowering route"
+
+"$producer" "$no_factor_input_image" no-factor
+"$ir_b2a" -st -src "$no_factor_input_image" "$no_factor_input_text"
+if run_backend "$no_factor_input_image" on \
+     "$no_factor_on_object" "$no_factor_on_trace" \
+     2>"$no_factor_on_stderr"; then
+  echo "no-factor fixture unexpectedly passed marker-only lowering" >&2
+  exit 1
+fi
+rm -f "$no_factor_on_object" "${no_factor_on_object%.o}.O"
+
+require_text "$no_factor_on_trace" \
+  "payload=kid0=wopt_x;kid1=wopt_y;attr.broadcast_rule=none"
+require_text "$no_factor_on_trace" \
+  "payload=kid0=wopt_z;kid1=wopt_z;attr.broadcast_rule=none"
+require_text "$no_factor_on_trace" \
+  "payload=kid0=wopt_xy;kid1=wopt_xz;attr.broadcast_rule=none"
+require_text "$no_factor_on_stderr" \
+  "OPR_DSLMUL.v1 has no executable VHO lowering route"
 
 echo "backend DSL WOPT option and phase-order fixture passed"
 echo "review artifacts: $artifact_dir"

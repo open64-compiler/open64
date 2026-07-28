@@ -119,6 +119,16 @@ private:
   INT32 Invertible_occurrences(CODEREP *var, CODEREP *cr);
   BOOL Is_function_of_itself(STMTREP *stmt, OPT_STAB *sym);
   BOOL Is_function_of_cur(CODEREP *var, CODEREP *cur_var);
+  BOOL Is_exp_cancellable(CODEREP *producer_rhs,
+                          CODEREP *consumer_rhs) const;
+  BOOL Is_exp_factorable(CODEREP *producer_rhs,
+                         CODEREP *consumer_rhs,
+                         UINT32 consumer_kid) const;
+  BOOL Is_simplification_propagatable(CODEREP *use,
+                                      STMTREP *producer,
+                                      STMTREP *consumer,
+                                      BOOL adjacent_only) const;
+  BOOL Try_dsl_factorization(STMTREP *stmt);
   CODEREP *Form_inverse(CODEREP *v, CODEREP *x, CODEREP *forming_x);
   CODEREP *Rehash_inverted_expr(CODEREP *x, BOOL icopy_phase);
   BB_NODE *Propagated_to_loop_branch(BB_NODE *srcbb, BB_NODE *destbb);

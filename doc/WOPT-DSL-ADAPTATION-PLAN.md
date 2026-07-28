@@ -291,6 +291,92 @@ must become the temporary CODEREP expression `x + (y - x)` so that
 `simp_add_sub()` can produce `y`. The cancellation rule remains traditional
 `wn_simp` work; copy propagation is the enabling WOPT transformation.
 
+Operator relationships and propagation safety are separate decisions.
+`COPYPROP::Is_exp_cancellable()` classifies whether the producer and consumer
+right-hand-side operators belong to a reviewed cancellation family:
+
+```text
+BOOL Is_exp_cancellable(CODEREP *producer_rhs,
+                        CODEREP *consumer_rhs);
+```
+
+The first supported relationship is `ADD/SUB`. Although `MPY/DIV` is a
+potential mathematical cancellation family, it is not enabled from operator
+names alone. Integer truncation, division by zero, and floating-point
+NaN/infinity/rounding behavior require a more specific semantic contract.
+Traditional `wn_simp` implements `x/x -> 1` under its existing controls, but
+does not provide a general `(x*y)/x -> y` or `x*(y/x) -> y` rule.
+
+`COPYPROP::Is_simplification_propagatable()` combines an operator relationship
+with the def-use and semantic checks:
+
+```text
+BOOL Is_simplification_propagatable(
+         CODEREP *use,
+         STMTREP *producer,
+         STMTREP *consumer,
+         WOPT_DSL_SIMPLIFICATION_RELATION relation);
+```
+
+For the first adjacent cancellation slice it returns true only when all of the
+following hold:
+
+1. `producer` and `consumer` belong to the same basic block and
+   `producer->Next() == consumer`.
+2. `use` is the value defined by `producer`, has one use, and occurs as a
+   direct kid of `consumer->Rhs()`.
+3. Both right-hand sides are expressions in the reviewed cancellation
+   operator family. The first family is `ADD/SUB`; operator-pair matching
+   recognizes a possible cancellation opportunity but does not claim that
+   operands cancel.
+4. Every participating logical DSL operator is pure and projectable, has the
+   reviewed version and algebraic contract, and permits the reassociation
+   required by the traditional rule.
+5. Result and operand TensorDescriptorIR identities are compatible, effects
+   are empty, and integer or floating-point safety controls permit the
+   transformation.
+6. Neither statement introduces an intervening control, memory, region, or
+   runtime-state boundary.
+
+The predicate is only a propagation permission. It authorizes the exact
+producer CODEREP, not all nested DSL CODEREPs and not general propagation
+through later statements. After substitution, the CODEREP instantiation of
+`simp_add_sub()` compares the actual operands and either performs the
+cancellation or leaves the expression unchanged. For example, the same
+`SUB/ADD` operator pair in `t0 = y - z; t1 = x + t0` passes the opportunity
+classification but does not simplify unless the traditional engine proves an
+operand equality with opposite signs.
+
+Factorization needs a distinct operator classifier:
+
+```text
+BOOL Is_exp_factorable(CODEREP *producer_rhs,
+                       CODEREP *consumer_rhs,
+                       UINT32 consumer_kid);
+```
+
+For:
+
+```text
+t0 = x * y
+t1 = x * z
+t2 = t0 + t1
+```
+
+copy propagation must expose `(x*y) + (x*z)` before `simp_factor()` can compare
+all four possible common-factor positions. Strict adjacency cannot work for
+both producers, so the factorization relation permits a bounded same-BB walk
+over pure statements. The producer must dominate the consumer, remain
+single-use, cross no effect/control/runtime-state boundary, satisfy descriptor
+compatibility, and match the registered factorization operand mask.
+
+`simp_factor()` remains the authority that proves a common operand.
+`simp_factor_idty()` handles the product-plus-factor form, but its arithmetic
+caller uses `const_only=TRUE`; for example, `z*c + z -> z*(c+1)` requires `c`
+to be constant. Elementwise commutative `common.mul` may use all four operand
+positions. Matrix multiplication and other noncommutative operators require
+their own ordered relation and must not use `FACTOR_ALL`.
+
 Controlled DSL propagation may expand logical CODEREPs inside WOPT, but
 CODEREP-to-WN emission must reconstruct the reviewed DSL value model. Each
 retained operator result must again have one unique no-alias result STID, and
@@ -457,7 +543,8 @@ or runtime state.
 
 ### M5 Progress
 
-M5 is active on `codex/dsl-wopt-m5` after PR #97 merged. The W0/W1
+M5 implementation is complete on `codex/dsl-wopt-m5` after PR #97 merged.
+The W0/W1
 batch selected a 32-bit WOPT-local semantic-info index and placed it in the
 existing x86-64 `CK_OP` alignment space. Linux DWARF still reports
 `sizeof(CODEREP) == 88`. The fixed-layout semantic record is runtime-only and
@@ -516,6 +603,22 @@ temporary. Tensor constant folding instead follows the operand LDID's defining
 STID through `WOPT_DSL_Compact_TCON`, so keeping the value boundary does not
 forfeit the fold.
 
+The first controlled opportunity-forming transform is implemented for pure
+integer `common.mul.v1` producers consumed by `common.add.v1`. It performs a
+bounded same-BB walk across pure unique-ownership DSL result stores, requires
+single-use producer values, identical TensorDescriptorIR identities, and a
+registered four-position factor relation, then presents stack-local CODEREP
+views using the tensor element machine type to the traditional
+`wn_simp_code.h` factorization engine. When that engine proves the rewrite,
+WOPT reuses the first producer result as the inner `common.add`, emits the
+outer `common.mul` into the original consumer result, and leaves normal WOPT
+cleanup to remove the dead second product.
+
+Import and emission now recover each DSL result symbol from the authoritative
+`STMTREP`/`OPT_STAB` identity instead of the historical WN pointer. This is
+required when several `MTYPE_M` DSL result stores occur in one basic block and
+prevents one result from inheriting another result's mapped-image identity.
+
 `dsl_wopt_driver_test.sh` certifies the option and phase order through the
 real backend executable. It publishes one mapped-image input containing two
 rank-2 integer tensor constants, `common.add`, a unique no-alias result
@@ -526,6 +629,25 @@ contains one logical `OPR_DSLTENSORCONST` with splat value 1 assigned to the
 original result temporary, and the post-backend image contains only the
 tensor-constant runtime call. Both paths retain `.B`/`.O`, `ir_b2a -st -src`
 `.T`, and backend trace artifacts for review.
+
+The same test retains a positive integer factorization family and a
+no-common-factor negative family.
+The positive trace contains `wopt_xy = common.add(wopt_y,wopt_z)` followed by
+`wopt_factor = common.mul(wopt_x,wopt_xy)`. The negative trace preserves the
+original three operators. A second positive-input run with
+`-WOPT:cr_simp=off` also preserves the original form, proving that the DSL
+bridge does not bypass the traditional simplifier control. These algebra
+fixtures intentionally stop at the reviewed WOPT boundary:
+`common.mul.v1` remains marker-only, so the subsequent VHO lowering rejection
+is expected and retained as a diagnostic artifact.
+
+Strict floating-point legality is tested without relying on that later
+development assertion. `WOPT_DSL_Algebraic_Safety_Allows()` accepts
+floating-point factorization only when Open64's reassociation control is
+enabled. With strict FP active, meaning reassociation is disabled, it returns
+not-applicable, WOPT preserves the original expression, and the traditional
+simplifier is not entered. The standalone semantic-policy test covers both
+control states.
 
 The same batch covers the non-behavioral W2 mechanics. `Init_op()` clears the
 semantic index, `CODEREP::Copy()` preserves it, and existing stack allocation,
@@ -585,9 +707,10 @@ attribute identity, operand descriptor identity, and effect identity.
 - Honor `WOPT_Enable_CRSIMP` and `WOPT_Enable_Fold2const`.
 
 Status: the compact tensor constant extension calls the common M3 evaluator
-and honors both controls. Traditional scalar rules continue through the
-existing CODEREP instantiation of `wn_simp_code.h`; broader DSL preparation
-for traditional rules remains staged with W7 service review.
+and honors both controls. Integer multiply/add factorization projects
+stack-local CODEREP views into the existing CODEREP instantiation of
+`wn_simp_code.h` and uses the traditional result as the proof for DSL
+postprocessing. Other DSL preparation remains staged with W7 service review.
 
 ### W6: Emission
 
@@ -596,17 +719,30 @@ for traditional rules remains staged with W7 service review.
 - Re-run the gatekeeper.
 - Verify binary WHIRL roundtrip behavior.
 
-Status: native reconstruction, mapped-image rewrite, comment projection
-through the logical printer, source-position preservation on the owning
-statement, and post-emission gatekeeper verification are implemented.
-Process-boundary binary A/B certification remains paired with W7 driver
-admission.
+Status: native reconstruction, generic add/mul mapped-image rewrite, comment
+projection through the logical printer, source-position preservation on the
+owning statement, unique result STID rematerialization, and post-emission
+gatekeeper verification are implemented. Process-boundary binary A/B
+certification is complete for executable constant folding; marker-only
+algebraic graphs retain pre-lowering WOPT traces and expected diagnostics.
 
 ### W7: WOPT service audit
 
-- Replace the blanket non-propagatable DSL guard with controlled copy
-  propagation that exposes eligible cancellation, reassociation,
-  factorization, and constant-folding expressions to `wn_simp`.
+- Keep the blanket general DSL propagation guard until each relationship is
+  reviewed. The `Is_exp_cancellable()` and
+  `Is_simplification_propagatable()` classifiers are implemented; activate
+  ADD/SUB cancellation only after a native `common.sub` contract exists.
+- Add `Is_exp_factorable()` with a bounded pure same-BB producer search so both
+  multiplicative operands of an `ADD/SUB` consumer can become visible to
+  `simp_factor()`. Enforce the registered operand mask and do not generalize
+  this permission to unrelated DSL propagation.
+  Status: implemented for pure integer `common.mul.v1` under
+  `common.add.v1`, including positive and no-common-factor artifacts.
+  Strict-FP rejection and reassociation-enabled acceptance are covered by the
+  non-asserting semantic-policy test.
+- Defer general `MPY/DIV` cancellation until a reviewed operator contract,
+  nonzero/exception semantics, numeric-safety policy, and traditional
+  simplifier rule exist.
 - Re-materialize unique no-alias DSL result STIDs during emission and prove
   that internal propagation never creates duplicate native definitions in
   WHIRL or the mapped DSL image.

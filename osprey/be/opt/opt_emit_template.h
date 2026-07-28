@@ -128,6 +128,13 @@ Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
             WN_operator(WN_kid0(statement_wn)) == OPR_DSL)
           original = WN_kid0(statement_wn);
       }
+      if (stmt != NULL && stmt->Lhs() != NULL &&
+          stmt->Lhs()->Kind() == CK_VAR) {
+        ST *result =
+            emitter->Opt_stab()->St(stmt->Lhs()->Aux_id());
+        if (result != NULL)
+          result_st = ST_st_idx(result);
+      }
       wn = WOPT_DSL_Emit_WN
                (&info, original, result_st, dsl_kids,
                 exp->Kid_count(), TFile);

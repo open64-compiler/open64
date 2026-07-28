@@ -89,7 +89,14 @@ main(int argc, char **argv)
   }
   Current_PU_Info = pu;
 
+  BOOL factor_fixture = argc > 2 && strcmp(argv[2], "factor") == 0;
+  BOOL no_factor_fixture =
+      argc > 2 && strcmp(argv[2], "no-factor") == 0;
+  BOOL algebra_fixture = factor_fixture || no_factor_fixture;
   TY_IDX ty = Create_Tensor_Type();
+  DSL_BUILDER_VALUE x = NULL;
+  DSL_BUILDER_VALUE y = NULL;
+  DSL_BUILDER_VALUE z = NULL;
   if (argc > 1) {
     DSL_BUILDER_SOURCE_POSITION position;
     memset(&position, 0, sizeof(position));
@@ -97,7 +104,13 @@ main(int argc, char **argv)
                            (pu, "dsl_wopt_bridge_test.cxx");
     position.line = 1;
     position.statement_begin = 1;
+    if (algebra_fixture && position.file_id != 0) {
+      x = DSL_Builder_Declare_PU_Formal(pu, "wopt_x", 0, ty, &position);
+      y = DSL_Builder_Declare_PU_Formal(pu, "wopt_y", 1, ty, &position);
+      z = DSL_Builder_Declare_PU_Formal(pu, "wopt_z", 2, ty, &position);
+    }
     if (position.file_id == 0 ||
+        (algebra_fixture && (x == NULL || y == NULL || z == NULL)) ||
         DSL_Builder_Declare_PU_Result
             (pu, "wopt_result", 0, ty, DSL_PU_RESULT_TENSOR,
              &position) == NULL) {
@@ -105,32 +118,62 @@ main(int argc, char **argv)
       return 1;
     }
   }
-  DSL_BUILDER_VALUE zero =
-      DSL_Builder_Create_Tensor_Constant
-          ("wopt_zero", ty, "int32", 2, "[2,2]", "splat", "0");
-  DSL_BUILDER_VALUE one =
-      DSL_Builder_Create_Tensor_Constant
-          ("wopt_one", ty, "int32", 2, "[2,2]", "splat", "1");
   DSL_Opcode_Register_Common_Substrate();
   DSL_DOMAIN_ID common = DSL_Domain_Find("common");
   DSL_OPCODE_ID add_opcode =
       DSL_Opcode_Find(common, DSL_OPCODE_COMMON_ADD, 1);
-  DSL_BUILDER_VALUE kids[2] = { zero, one };
+  DSL_OPCODE_ID mul_opcode =
+      DSL_Opcode_Find(common, DSL_OPCODE_COMMON_MUL, 1);
   DSL_BUILDER_OPERATOR_ATTRIBUTE attribute = {
       "attr.broadcast_rule", "none"
   };
   Enable_WN_Simp = FALSE;
-  DSL_BUILDER_VALUE add =
-      DSL_Builder_Create_Operator_With_Result
-          (add_opcode, 1, kids, 2, &attribute, 1, "wopt_add", ty);
-  if (ty == TY_IDX_ZERO || zero == NULL || one == NULL || add == NULL ||
-      !DSL_Builder_Append_PU_Value(pu, zero) ||
-      !DSL_Builder_Append_PU_Value(pu, one) ||
-      !DSL_Builder_Append_PU_Value(pu, add)) {
-    fprintf(stderr,
-            "failed to create DSL values: ty=%u zero=%p one=%p add=%p "
-            "domain=%u opcode=%u\n",
-            (UINT32)ty, zero, one, add, common, add_opcode);
+  DSL_BUILDER_VALUE zero = NULL;
+  DSL_BUILDER_VALUE one = NULL;
+  DSL_BUILDER_VALUE add = NULL;
+  if (algebra_fixture) {
+    DSL_BUILDER_VALUE xy_kids[2] = { x, y };
+    DSL_BUILDER_VALUE xz_kids[2] = {
+        no_factor_fixture ? z : x, z
+    };
+    DSL_BUILDER_VALUE xy =
+        DSL_Builder_Create_Operator_With_Result
+            (mul_opcode, 1, xy_kids, 2, &attribute, 1, "wopt_xy", ty);
+    DSL_BUILDER_VALUE xz =
+        DSL_Builder_Create_Operator_With_Result
+            (mul_opcode, 1, xz_kids, 2, &attribute, 1, "wopt_xz", ty);
+    DSL_BUILDER_VALUE factor_kids[2] = { xy, xz };
+    add = DSL_Builder_Create_Operator_With_Result
+              (add_opcode, 1, factor_kids, 2, &attribute, 1,
+               "wopt_factor", ty);
+    if (x == NULL || y == NULL || z == NULL || xy == NULL || xz == NULL ||
+        add == NULL || !DSL_Builder_Append_PU_Value(pu, xy) ||
+        !DSL_Builder_Append_PU_Value(pu, xz) ||
+        !DSL_Builder_Append_PU_Value(pu, add)) {
+      fprintf(stderr, "failed to create DSL factorization fixture\n");
+      return 1;
+    }
+  } else {
+    zero = DSL_Builder_Create_Tensor_Constant
+               ("wopt_zero", ty, "int32", 2, "[2,2]", "splat", "0");
+    one = DSL_Builder_Create_Tensor_Constant
+              ("wopt_one", ty, "int32", 2, "[2,2]", "splat", "1");
+    DSL_BUILDER_VALUE kids[2] = { zero, one };
+    add = DSL_Builder_Create_Operator_With_Result
+              (add_opcode, 1, kids, 2, &attribute, 1, "wopt_add", ty);
+    if (zero == NULL || one == NULL || add == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, zero) ||
+        !DSL_Builder_Append_PU_Value(pu, one) ||
+        !DSL_Builder_Append_PU_Value(pu, add)) {
+      fprintf(stderr,
+              "failed to create DSL fold fixture: zero=%p one=%p add=%p\n",
+              zero, one, add);
+      return 1;
+    }
+  }
+  if (ty == TY_IDX_ZERO || add_opcode == DSL_OPCODE_INVALID_ID ||
+      mul_opcode == DSL_OPCODE_INVALID_ID) {
+    fprintf(stderr, "failed to register DSL WOPT operators\n");
     return 1;
   }
 
@@ -147,7 +190,10 @@ main(int argc, char **argv)
               request.path);
       return 1;
     }
-    printf("wrote unfused DSL WOPT input image: %s\n", request.path);
+    const char *fixture =
+        factor_fixture ? "factorization" :
+        no_factor_fixture ? "no-factor" : "fold";
+    printf("wrote DSL WOPT %s input image: %s\n", fixture, request.path);
     return 0;
   }
 

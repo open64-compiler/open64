@@ -53,6 +53,9 @@ extern BOOL WOPT_DSL_Semantic_Info_Get
 extern UINT32 WOPT_DSL_Semantic_Info_Hash
     (WOPT_DSL_SEMANTIC_INFO_ID id);
 extern UINT32 WOPT_DSL_Semantic_Info_Count(void);
+extern BOOL WOPT_DSL_Algebraic_Safety_Allows
+    (DSL_ALGEBRAIC_SAFETY safety, BOOL floating_point,
+     BOOL reassociation_enabled);
 extern BOOL WOPT_DSL_Import_Semantic_Info
     (const WN *wn, ST_IDX result_st, const char *owner_pu,
      WOPT_DSL_SEMANTIC_INFO *info, FILE *diagnostic);

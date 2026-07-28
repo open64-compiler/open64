@@ -93,3 +93,21 @@ WOPT_DSL_Semantic_Info_Count(void)
 {
   return WOPT_dsl_semantic_info.size();
 }
+
+BOOL
+WOPT_DSL_Algebraic_Safety_Allows
+    (DSL_ALGEBRAIC_SAFETY safety, BOOL floating_point,
+     BOOL reassociation_enabled)
+{
+  switch (safety) {
+  case DSL_ALGEBRAIC_SAFETY_EXACT:
+    return TRUE;
+  case DSL_ALGEBRAIC_SAFETY_INTEGER:
+    return !floating_point;
+  case DSL_ALGEBRAIC_SAFETY_INTEGER_OR_FP_REASSOCIATE:
+  case DSL_ALGEBRAIC_SAFETY_RELAXED_MATH:
+    return !floating_point || reassociation_enabled;
+  default:
+    return FALSE;
+  }
+}

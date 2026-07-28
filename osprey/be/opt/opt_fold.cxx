@@ -260,6 +260,80 @@ FOLD::Fold_Tree(CODEREP *cr)
   return CR_Simplify_Tree(cr);
 }
 
+BOOL
+FOLD::Prove_DSL_Factorization(CODEREP *left, CODEREP *right,
+                              OPERATOR outer_opr,
+                              DSL_ALGEBRAIC_SAFETY safety)
+{
+  if (!WOPT_Enable_CRSIMP || left == NULL || right == NULL ||
+      !left->Is_dsl_op() || !right->Is_dsl_op() ||
+      left->Kid_count() != 2 || right->Kid_count() != 2 ||
+      (outer_opr != OPR_ADD && outer_opr != OPR_SUB))
+    return FALSE;
+
+  WOPT_DSL_SEMANTIC_INFO left_info;
+  WOPT_DSL_SEMANTIC_INFO right_info;
+  if (!left->Dsl_semantic_info(&left_info) ||
+      !right->Dsl_semantic_info(&right_info) ||
+      left_info.result_ty != right_info.result_ty ||
+      !TY_is_tensor_extension(left_info.result_ty))
+    return FALSE;
+  TYPE_ID element_mtype =
+      TY_mtype(TY_tensor_element_ty(left_info.result_ty));
+  BOOL floating_point = MTYPE_is_float(element_mtype);
+  if ((!MTYPE_is_integral(element_mtype) && !floating_point) ||
+      !WOPT_DSL_Algebraic_Safety_Allows
+          (safety, floating_point, Enable_Cfold_Reassociate))
+    return FALSE;
+
+  CODEREP *leaf[4] = {
+      left->Get_opnd(0), left->Get_opnd(1),
+      right->Get_opnd(0), right->Get_opnd(1)
+  };
+  INT32 saved_usecnt[4];
+  for (INT i = 0; i < 4; ++i)
+    saved_usecnt[i] = leaf[i]->Usecnt();
+
+  CODEREP *left_view = Alloc_stack_cr(2);
+  left_view->Init_op
+      (OPCODE_make_op(OPR_MPY, element_mtype, MTYPE_V), 2);
+  left_view->Set_opnd(0, leaf[0]);
+  left_view->Set_opnd(1, leaf[1]);
+  left_view->Set_usecnt(1);
+  leaf[0]->IncUsecnt();
+  leaf[1]->IncUsecnt();
+
+  CODEREP *right_view = Alloc_stack_cr(2);
+  right_view->Init_op
+      (OPCODE_make_op(OPR_MPY, element_mtype, MTYPE_V), 2);
+  right_view->Set_opnd(0, leaf[2]);
+  right_view->Set_opnd(1, leaf[3]);
+  right_view->Set_usecnt(1);
+  leaf[2]->IncUsecnt();
+  leaf[3]->IncUsecnt();
+
+  CODEREP *outer_view = Alloc_stack_cr(2);
+  outer_view->Init_op
+      (OPCODE_make_op(outer_opr, element_mtype, MTYPE_V), 2);
+  outer_view->Set_opnd(0, left_view);
+  outer_view->Set_opnd(1, right_view);
+  outer_view->Set_usecnt(1);
+
+  CODEREP *result = CR_Simplify_Expr(outer_view);
+  BOOL proved = result != NOHASH && result->Kind() == CK_OP &&
+                result->Opr() == OPR_MPY &&
+                ((result->Get_opnd(0)->Kind() == CK_OP &&
+                  result->Get_opnd(0)->Opr() == outer_opr) ||
+                 (result->Get_opnd(1)->Kind() == CK_OP &&
+                  result->Get_opnd(1)->Opr() == outer_opr));
+  if (result != NOHASH)
+    result->DecUsecnt_rec();
+
+  for (INT i = 0; i < 4; ++i)
+    leaf[i]->Set_usecnt(saved_usecnt[i]);
+  return proved;
+}
+
 //============================================================================
 // default constructor sets debug flag
 FOLD::FOLD(void)

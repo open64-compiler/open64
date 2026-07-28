@@ -84,6 +84,20 @@ main(void)
     return 1;
   }
 
+  if (!WOPT_DSL_Algebraic_Safety_Allows
+          (DSL_ALGEBRAIC_SAFETY_INTEGER, FALSE, FALSE) ||
+      WOPT_DSL_Algebraic_Safety_Allows
+          (DSL_ALGEBRAIC_SAFETY_INTEGER, TRUE, TRUE) ||
+      WOPT_DSL_Algebraic_Safety_Allows
+          (DSL_ALGEBRAIC_SAFETY_INTEGER_OR_FP_REASSOCIATE,
+           TRUE, FALSE) ||
+      !WOPT_DSL_Algebraic_Safety_Allows
+          (DSL_ALGEBRAIC_SAFETY_INTEGER_OR_FP_REASSOCIATE,
+           TRUE, TRUE)) {
+    fprintf(stderr, "DSL strict-FP algebraic safety contract failed\n");
+    return 1;
+  }
+
   printf("WOPT DSL semantic-info contract passed\n");
   return 0;
 }

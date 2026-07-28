@@ -3217,6 +3217,12 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
         (WN_operator(statement_wn) == OPR_STID ||
          WN_operator(statement_wn) == OPR_STBITS) ?
             WN_st_idx(statement_wn) : ST_IDX_ZERO;
+    if (stmt != NULL && stmt->Lhs() != NULL &&
+        stmt->Lhs()->Kind() == CK_VAR) {
+      ST *result = opt_stab->St(stmt->Lhs()->Aux_id());
+      if (result != NULL)
+        result_st = ST_st_idx(result);
+    }
     WOPT_DSL_SEMANTIC_INFO info;
     WOPT_DSL_SEMANTIC_INFO_ID info_id;
 

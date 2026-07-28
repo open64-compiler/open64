@@ -336,6 +336,64 @@ WOPT_DSL_Tensor_Constant_Payload(const char *name, TY_IDX ty,
   return payload;
 }
 
+static BOOL
+WOPT_DSL_Copy_Node_Attributes(
+    const DSL_IR_NODE_RECORD *node,
+    std::vector<DSL_IR_ATTRIBUTE_RECORD> *attributes)
+{
+  if (node == NULL || attributes == NULL)
+    return FALSE;
+  attributes->clear();
+  for (UINT32 i = 0; i < node->attribute_count; ++i) {
+    DSL_IR_ATTRIBUTE_RECORD attribute;
+    if (!DSL_IR_Image_Get_Attribute
+            (node->first_attribute_id + i, &attribute))
+      return FALSE;
+    attribute.id = DSL_IR_ATTRIBUTE_INVALID_ID;
+    attribute.owner_node_id = DSL_IR_NODE_INVALID_ID;
+    attributes->push_back(attribute);
+  }
+  return TRUE;
+}
+
+static BOOL
+WOPT_DSL_Operand_Value(const WN *operand, const char *owner_pu,
+                       DSL_IR_VALUE_RECORD *value)
+{
+  return operand != NULL && WN_operator(operand) == OPR_LDID &&
+         owner_pu != NULL && value != NULL &&
+         DSL_IR_Image_Find_PU_Value
+             (WN_st_idx(operand), ST_name(WN_st(operand)),
+              owner_pu, value);
+}
+
+static std::string
+WOPT_DSL_Binary_Payload(
+    WN **kids, UINT32 kid_count,
+    const std::vector<DSL_IR_ATTRIBUTE_RECORD> &attributes)
+{
+  std::string payload;
+  for (UINT32 i = 0; i < kid_count; ++i) {
+    char ordinal[32];
+    snprintf(ordinal, sizeof(ordinal), "%u", i);
+    if (!payload.empty())
+      payload += ";";
+    payload += "kid";
+    payload += ordinal;
+    payload += "=";
+    payload += ST_name(WN_st(kids[i]));
+  }
+  for (UINT32 i = 0; i < attributes.size(); ++i) {
+    if (!payload.empty())
+      payload += ";";
+    payload += Index_To_Str(attributes[i].name);
+    payload += "=";
+    if (attributes[i].value != STR_IDX_ZERO)
+      payload += Index_To_Str(attributes[i].value);
+  }
+  return payload;
+}
+
 WN *
 WOPT_DSL_Emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
                  const WN *original, ST_IDX result_st,
@@ -349,6 +407,7 @@ WOPT_DSL_Emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
       Current_PU_Info == NULL ? NULL :
           ST_name(PU_Info_proc_sym(Current_PU_Info));
   std::string generated_payload;
+  std::vector<DSL_IR_ATTRIBUTE_RECORD> attributes;
   const char *payload = NULL;
 
   if (info == NULL ||
@@ -423,6 +482,39 @@ WOPT_DSL_Emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
              (UINT32)info->tensor_tcon_idx);
     ST_tensor_bind_metadata(result_st, "tensor_tcon_idx", tcon_text);
     ST_tensor_bind_metadata(result_st, "tensor_fold.origin", "WOPT");
+  } else if (info->logical_operator == OPR_DSLADD ||
+             info->logical_operator == OPR_DSLMUL) {
+    DSL_IR_VALUE_ID operand_ids[2];
+    if (kid_count != 2 ||
+        !WOPT_DSL_Copy_Node_Attributes(&node, &attributes))
+      return NULL;
+    for (UINT32 i = 0; i < kid_count; ++i) {
+      DSL_IR_VALUE_RECORD operand;
+      if (!WOPT_DSL_Operand_Value(kids[i], owner_pu, &operand))
+        return NULL;
+      operand_ids[i] = operand.id;
+    }
+
+    generated_payload =
+        WOPT_DSL_Binary_Payload(kids, kid_count, attributes);
+    payload = generated_payload.c_str();
+    DSL_IR_NODE_REWRITE_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.node_id = node.id;
+    request.opcode_descriptor_id =
+        DSL_IR_Image_Ensure_Opcode_Descriptor
+            (info->logical_operator, info->version);
+    request.payload = Save_Str(payload);
+    request.operand_value_ids = operand_ids;
+    request.operand_count = kid_count;
+    request.attributes =
+        attributes.empty() ? NULL : &attributes[0];
+    request.attribute_count = (UINT32)attributes.size();
+    request.result_value_kind = result_value.value_kind;
+    if (request.opcode_descriptor_id ==
+            DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID ||
+        !DSL_IR_Image_Rewrite_Node(&request))
+      return NULL;
   }
 
   if (payload == NULL) {
