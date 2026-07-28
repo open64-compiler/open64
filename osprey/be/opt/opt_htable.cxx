@@ -114,8 +114,10 @@
 #include "opt_sys.h"
 
 #if defined(TARG_X8664) && defined(_LP64)
-typedef char WOPT_DSL_Coderep_Size_Check
+typedef char WOPT_X8664_Coderep_Size_Check
     [sizeof(CODEREP) == 88 ? 1 : -1];
+typedef char WOPT_X8664_Stmtrep_Size_Check
+    [sizeof(STMTREP) == 112 ? 1 : -1];
 #endif
 
 #ifdef BUILD_MASTIFF

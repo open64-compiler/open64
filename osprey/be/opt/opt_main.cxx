@@ -1669,21 +1669,13 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
   SET_OPT_PHASE("Preparation");
 
 #if defined(TARG_X8664) && defined(_LP64)
-  // Guard the measured x86-64 LP64 layout against inadvertent expansion.
+  // Guard the measured x86-64 LP64 WOPT layouts against inadvertent expansion.
   Is_True(sizeof(CODEREP) == 88,
     ("x86-64 LP64 CODEREP size changed (is now %lu, expected 88)!",
      (unsigned long)sizeof(CODEREP)));
-#endif
-
-#ifdef SKIP
-  // Historical STMTREP size checks remain disabled.
-#if defined(linux) || defined(BUILD_OS_DARWIN)
-  Is_True(sizeof(STMTREP) == 60,
-    ("Size of STMTREP has been changed (is now %d)!",sizeof(STMTREP)));
-#else
-  Is_True(sizeof(STMTREP) == 64,
-    ("Size of STMTREP has been changed (is now %d)!",sizeof(STMTREP)));
-#endif
+  Is_True(sizeof(STMTREP) == 112,
+    ("x86-64 LP64 STMTREP size changed (is now %lu, expected 112)!",
+     (unsigned long)sizeof(STMTREP)));
 #endif
 
   // allocate space for cfg, htable, and itable

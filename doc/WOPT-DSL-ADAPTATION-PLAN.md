@@ -58,6 +58,7 @@ DWARF information in the current Linux x86-64 WOPT build reports:
 | Entity | Observed size |
 | --- | ---: |
 | `CODEREP` | 88 bytes |
+| `STMTREP` | 112 bytes |
 | `CK_OP` subrecord | 48 bytes |
 | `CK_IVAR` subrecord | 40 bytes |
 | `CK_OP::_opr` | 8 bits |
@@ -68,14 +69,18 @@ WOPT-local operator field may fit without increasing the 88-byte CODEREP on
 this ABI. This is an observation, not a portable guarantee. Any layout change
 must be compiled and measured for every supported target.
 
-The historical disabled 48-byte assertion in `opt_main.cxx` has been
-corrected for the measured x86-64 LP64 layout. The active runtime assertion
-and the compile-time guard in `opt_htable.cxx` both require
-`sizeof(CODEREP) == 88`. An intentional CODEREP expansion must update these
-guards in the same reviewed change after documenting the new field, measured
-target layouts, memory-cost impact, stack/pool allocation behavior, and
-required regression results. Other target layouts remain measurements to add,
-not assumptions copied from x86-64.
+The historical disabled 48-byte `CODEREP` and 60/64-byte `STMTREP` assertions
+in `opt_main.cxx` have been corrected for the measured x86-64 LP64 layout.
+Active runtime assertions and compile-time guards in `opt_htable.cxx` require
+`sizeof(CODEREP) == 88` and `sizeof(STMTREP) == 112`. The two records must be
+reviewed together because DSL value expressions enter WOPT as CODEREPs while
+DSL assignments, including `STID`, enter as STMTREPs.
+
+An intentional expansion of either record must update its guards in the same
+reviewed change after documenting the new field, measured target layouts,
+memory-cost impact, stack/pool allocation behavior, and required regression
+results. Other target layouts remain measurements to add, not assumptions
+copied from x86-64.
 
 ### Existing stack and pool protocol
 
