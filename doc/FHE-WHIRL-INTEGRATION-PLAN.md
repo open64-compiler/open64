@@ -485,6 +485,23 @@ SYNC vocabulary.
 | SYNC-7: Optimized-versus-`-O0` proof | ReSBM, boundary movement/fusion, HPOLY/HPAO | Every optimized transform has an independent option and proves source semantics, approximation error, CKKS scale/level legality, key availability, provenance, and tolerance against the retained `-O0` baseline. |
 | SYNC-8: Separate GPU architecture review | GPU capability/layout/cost and later POLY/RNS path | GPU work remains separate from the OpenFHE CPU/reference milestone; provider capability, target description, memory/lifetime, POLY/RNS contracts, toolchain, fallback, telemetry, and regression methodology are reviewed before implementation. |
 
+### Actionable Work List by Sync Point
+
+This checklist makes the coordination work explicit. The consolidated plan
+remains authoritative when ownership or ordering questions arise.
+
+| Sync | Main/common work | FHE task work | Exit handoff |
+| --- | --- | --- | --- |
+| SYNC-0 | Inventory existing common/CNN operators, tensor APIs, builder hooks, binary WHIRL constraints, and current `common.relu` / `OPR_DSLRELU` support. Classify requested contracts as reuse, extension, promotion, or new. | Publish the FHE operator/type handoff table; freeze ResNet-20-first scope, FHE descriptors, option semantics, ReLU refresh policy, and test strategy. | Accepted contract matrix, binary compatibility decision, and shared planning baseline. No opcode/type allocation or image coding starts before closure. |
+| SYNC-1 | Add and certify the optional `.WHIRL.dsl_fhe` image, fixed row ABI, mapped-image read/write, printer, validation, and opaque builder APIs. Preserve old and non-FHE `.B` behavior. | Provide the semantic row proposal, deduplication keys, malformed-image cases, and post-merge consumption notes. Rebase after merge and consume only `DSL_FHE_*` / `DSL_Builder_*` APIs. | `doc/FHE-SYNC1-NATIVE-CONTRACT.md` controls physical layout and API names; FHE proposal text is retained only as semantic input. |
+| SYNC-2 | Review shared operator/type/source/side-file/FHE table evidence. Fix common-owned printer or ownership-validation issues, including FHE entry-value local-symtab safety. | Capture complete deterministic ResNet-20/CIFAR-10 with class-centric PUs, five context-specialized `ResNet20Block` compiler PUs, nine callsites, source positions, external weights, FHE entry contracts, encryption descriptors, tensor bindings, and key requirements. Preserve every source ReLU as existing `common.relu`; emit no Python bootstrap, CKKS, SIHE, or FHE conversion operators. | Retained `artifacts/fhe/resnet20_capture/` family with source, `.B`, independent-process `ir_b2a -st -src` `.T`, side file, census, options, and gatekeeper log. |
+| SYNC-3 | Provide driver phase hook and common/tensor legality services needed by FHE conversion. Keep shared diagnostics and logical operator evidence inspectable. | Implement FHE gatekeeper, legal BatchNorm folding, ResNet model adaptation, CNN-to-FHE conversion, approximation contract attachment for surviving `common.relu`, and stable illegal-input diagnostics. | `secure_resnet20.fhe.B`, `.T`, and conversion report show convolution, residual, pooling, classifier, and ReLU disposition. |
+| SYNC-4 | Preserve and print `common.relu` source, result, descriptor, and provenance evidence through conversion. | Materialize the `-O0` ReLU rule: `bootstrap=auto|on` inserts the mandatory pre-ReLU refresh boundary, then evaluates the approved polynomial approximation; `manual` requires explicit compatible boundaries; `off` rejects surviving encrypted CKKS ReLU. | ReLU refresh and approximation artifacts prove no `-O0` boundary movement, merging, deduplication, or profitability placement. |
+| SYNC-5 | Supply standard WHIRL call/result construction, unlowered-node gate, and assigned `whirl2c` integration edits. | Lower FHE/SIHE/CKKS constructs to standard runtime calls; publish stable mock FHE C ABI; implement mock provider and generated-C compile/link tests. | `secure_resnet20.mid.B`, `.T`, generated C, and mock-linked executable evidence contain only standard WHIRL at the `whirl2c` boundary. |
+| SYNC-6 | Complete driver link flow, provider manifest consumption, and retained artifact expectations. | Implement the OpenFHE provider path, client provisioning, context/evaluation-key import, CKKS execution, encrypted CIFAR-10 input handling, and encrypted-logit result production. | Full `-O0` ResNet-20 binary WHIRL-to-OpenFHE executable path passes without server-side secret-key material. |
+| SYNC-7 | Enable reviewed VHO/WOPT integration points and per-pass controls. | Add ReSBM and optional optimization passes for boundary movement, merging, deduplication, fusion, HPOLY/HPAO planning, and reports. Each transform must prove legality, numerical equivalence, CKKS scale/level correctness, key availability, provenance, and tolerance against the retained `-O0` baseline. | Optimized artifacts and reports compare cleanly against the `-O0` baseline, with each transform controlled independently. |
+| SYNC-8 | Coordinate target-description, runtime, and integration expectations for GPU work. | Publish GPU capability, layout, cost, memory/lifetime, async execution, fallback, telemetry, and regression methodology. Defer native POLY/RNS and GPU lowering until review closes. | Separate GPU architecture review closes before any GPU-specific implementation enters the main FHE path. |
+
 ## SYNC-1 Native API and Image Contract Closure
 
 Status: closed. PR #102 merged into `develop` at `8ba9ee31`, with
@@ -529,22 +546,23 @@ The FHE frontend binding checkpoint for SYNC-2 is:
    and encrypted/encoded-plaintext representation descriptors after graph
    capture, before native verification/finalization.
 
-Status: in progress. The FHE branch consumes the merged PR #102 opaque APIs
-through the torch2whirl native bridge and can retain preliminary local evidence
-under
+Status: certified after PR #104 merged into `develop` (`e72ce709`). The FHE
+branch consumes the merged PR #102, PR #103, and PR #104 substrate through the
+torch2whirl native bridge and retains review evidence under
 `artifacts/fhe/resnet20_capture/{secure_resnet20.py,secure_resnet20.B,secure_resnet20.T,secure_resnet20.safetensors,operator-census.txt,capture-options.txt,gatekeeper.log}`.
-The captured model is a complete deterministic ResNet-20/CIFAR-10 graph with
-`common.relu` preserved and no Python-created bootstrap, CKKS, SIHE, or FHE
-conversion operators.
-
-Final native artifact certification is gated on PR #103
-(`codex/fhe-sync2-infrastructure-review`) merging and this FHE branch rebasing
-onto the updated `develop`. PR #103 owns the native fixes for torch2whirl
-linkage, canonical tensor interning, and REGION dependency/result materialization;
-the FHE branch must not duplicate those fixes. After that rebase, the FHE task
-must regenerate `secure_resnet20.B` and `secure_resnet20.T` with `ir_b2a -st -src`
-for main-side review and then close the class-centric ResNet PU certification
-item on the corrected native substrate.
+The captured model is a complete deterministic ResNet-20/CIFAR-10 inference
+graph with `common.relu` preserved, no Python-created bootstrap/CKKS/SIHE/FHE
+conversion operators, and external plaintext weights retained in the side file.
+The native image contains the `SecureResNet20` entry PU plus five
+signature-specialized `ResNet20Block` compiler PUs, nine explicit block
+callsites, and five `cnn.basic_block.v1` REGION contracts inside the clone PUs.
+FHE entry rows resolve through `owner_pu=SecureResNet20`; source-derived
+external tensor parameters and implicit parameters have non-null constructor
+source locations. The retained census records 11 reusable `common.relu` node
+definitions representing 19 source-context ReLU uses.
+The source definition remains `secure_resnet20.ResNet20Block.forward`; repeated
+uses are represented as context-sensitive callsites and structural/type
+signature clones, not operator or function-version changes.
 
 ### Deduplication and Equivalence Keys
 

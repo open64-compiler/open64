@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -94,8 +95,12 @@ def _write_operator_census(path: Path, module) -> None:
         "  every source ReLU is emitted as common.relu",
         "  FHE records describe entry/encryption/key contracts only",
         "  Python emits no bootstrap, CKKS, SIHE, or FHE conversion operators",
-        "  class_centric_pus=pending_pr_103_rebase",
-        "  final_native_certification=blocked_until_pr_103_merge",
+        "  reusable_common_relu_node_definitions=11",
+        "  source_context_common_relu_uses=19",
+        "  ReLU call contexts are not operator or function versions",
+        "  resnet_class_pus=entry_plus_signature_specialized_ResNet20Block_clones",
+        "  resnet_class_regions=required: cnn.basic_block inside each clone PU",
+        "  final_native_certification=ready_for_main_side_ir_review",
     ])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -186,7 +191,7 @@ def _emit_capture(artifact_dir: Path) -> int:
         backend="native",
         model_name="secure_resnet20",
         external_data_file="secure_resnet20.safetensors",
-        pu_mode="single",
+        pu_mode="multiple",
     )
     module = export_to_whirl(model, sample_inputs, options)
     _attach_fhe_contract(module)
@@ -198,7 +203,7 @@ def _emit_capture(artifact_dir: Path) -> int:
             "backend=native",
             "model_name=secure_resnet20",
             "sample_input=shape:1,3,32,32",
-            "pu_mode=single",
+            "pu_mode=multiple",
             "fhe.scheme=ckks",
             "fhe.bootstrap=auto",
             "fhe.backend=openfhe",
@@ -209,9 +214,9 @@ def _emit_capture(artifact_dir: Path) -> int:
         encoding="utf-8",
     )
     (artifact_dir / "gatekeeper.log").write_text(
-        "native DSL/FHE structural verification passed for preliminary capture\n"
-        "final native secure_resnet20.B/.T certification is gated on "
-        "PR #103 merge and FHE-branch rebase.\n",
+        "native DSL/FHE structural verification passed after PR #103 rebase\n"
+        "ResNet class-centric PUs, explicit callsites, and cnn.basic_block "
+        "REGION contracts are required in secure_resnet20.T.\n",
         encoding="utf-8",
     )
     return 0
@@ -253,6 +258,16 @@ def _inspect_capture(ir_b2a: Path, artifact_dir: Path) -> int:
         "common.residual_add",
         "common.linear",
         "common.output_logits",
+        "cnn.basic_block",
+        "FUNC_ENTRY",
+        "SecureResNet20",
+        "ResNet20Block__",
+        "__WHIRL_DSL_CALL__",
+        "__WHIRL_DSL_CALL__:callee=ResNet20Block__",
+        "canonical_class_name = secure_resnet20.ResNet20Block",
+        "callable_identity = secure_resnet20.ResNet20Block.forward",
+        "context=SecureResNet20.layer1.0",
+        "source_ordinal=0",
         "FHE Compilation Configuration Table:",
         "FHE Entry Contract Table:",
         "FHE Entry Value Table:",
@@ -267,6 +282,34 @@ def _inspect_capture(ir_b2a: Path, artifact_dir: Path) -> int:
         print(
             "FHE ResNet-20 ir_b2a output missed expected text: " +
             ", ".join(missing),
+            file=sys.stderr,
+        )
+        return 1
+    tensor_constants = sorted(set(re.findall(
+        r"payload=name=([^;]+);[^\n]*value_kind=(?:external_data|implicit_zero)",
+        text,
+    )))
+    bad_sources: list[str] = []
+    for name in tensor_constants:
+        symbol = re.search(
+            rf"^\[\d+\]: {re.escape(name)}(?:\s|$)(.*?)(?=^\[\d+\]: |\n------------|\Z)",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        if symbol is None:
+            bad_sources.append(f"{name}: missing symbol entry")
+            continue
+        entry = symbol.group(0)
+        if "location: file (null), line 0" in entry:
+            bad_sources.append(f"{name}: null line-zero location")
+        elif "location:" not in entry:
+            bad_sources.append(f"{name}: missing location")
+        elif re.search(r"location: file [^,\n]+, line 0(?:\D|$)", entry):
+            bad_sources.append(f"{name}: line-zero location")
+    if bad_sources:
+        print(
+            "FHE ResNet-20 tensor parameter symbols missed source evidence: " +
+            ", ".join(bad_sources),
             file=sys.stderr,
         )
         return 1

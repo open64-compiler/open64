@@ -221,10 +221,7 @@ combined `openpy` gate pass:
 
 ## FHE SYNC-2 ResNet-20 Capture
 
-Status: in progress on the FHE task branch after PR #102 merged at
-`8ba9ee31`; final native artifact certification is gated on PR #103
-(`codex/fhe-sync2-infrastructure-review`) merging and the FHE branch rebasing
-onto the updated `develop`.
+Status: certified on the FHE task branch after PR #104 merged at `e72ce709`.
 
 The FHE lane now targets complete deterministic ResNet-20/CIFAR-10 capture,
 not a smaller CNN milestone. It consumes the merged `DSL_FHE_*` and
@@ -238,20 +235,25 @@ Retained artifact family:
 `secure_resnet20.T` is produced in a separate process with `ir_b2a -st -src`
 after the Python capture process exits.
 
-Current preliminary evidence:
+Current evidence:
 
-- `operator-census.txt` records 74 graph operators: 21 `cnn.conv2d`, 21
-  `cnn.batch_norm_infer`, 19 `common.relu`, 9 `common.residual_add`, 1
-  `cnn.global_avg_pool2d`, 1 `common.flatten`, 1 `common.linear`, and 1
-  `common.output_logits`.
+- `operator-census.txt` records the class-centric ResNet profile: 9
+  `call:ResNet20Block` callsites, 13 `cnn.conv2d`, 13
+  `cnn.batch_norm_infer`, 11 reusable `common.relu` node definitions, 5
+  `common.residual_add`, 1 `cnn.global_avg_pool2d`, 1 `common.flatten`, 1
+  `common.linear`, and 1 `common.output_logits`. Those reusable ReLU
+  definitions represent 19 source-context ReLU uses across block calls and are
+  not operator or function versions.
+- `secure_resnet20.T` shows 6 `FUNC_ENTRY` records: the `SecureResNet20` entry
+  plus five deterministic signature-specialized `ResNet20Block__*` compiler
+  clones. The single source definition remains
+  `secure_resnet20.ResNet20Block.forward`.
+- The `.T` shows 9 explicit `VCALL` block callsites and 5 managed
+  `cnn.basic_block.v1` REGION contracts inside the clone PUs.
+- FHE entry rows resolve through `owner_pu=SecureResNet20`, and external or
+  implicit parameter symbols carry constructor source locations rather than
+  `file (null), line 0`.
 - FHE tables appear in `secure_resnet20.T` with the stable SYNC-1 headings from
   `doc/FHE-SYNC1-NATIVE-CONTRACT.md`.
 - The side-file payload is retained as `secure_resnet20.safetensors`, and the
   `.T` dump references it through `safetensors://secure_resnet20.safetensors`.
-
-Open item before SYNC-2 closure: PR #103 owns the native corrections for
-torch2whirl linkage, canonical tensor interning, and REGION
-dependency/result materialization. The FHE branch must not duplicate those
-main-owned fixes. After PR #103 merges, this branch must rebase, regenerate the
-complete `secure_resnet20.B`/`.T` artifact family with `ir_b2a -st -src`, and
-complete class-centric ResNet PU certification on the corrected substrate.
