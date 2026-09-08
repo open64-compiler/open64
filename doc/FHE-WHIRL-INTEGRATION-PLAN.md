@@ -485,6 +485,196 @@ SYNC vocabulary.
 | SYNC-7: Optimized-versus-`-O0` proof | ReSBM, boundary movement/fusion, HPOLY/HPAO | Every optimized transform has an independent option and proves source semantics, approximation error, CKKS scale/level legality, key availability, provenance, and tolerance against the retained `-O0` baseline. |
 | SYNC-8: Separate GPU architecture review | GPU capability/layout/cost and later POLY/RNS path | GPU work remains separate from the OpenFHE CPU/reference milestone; provider capability, target description, memory/lifetime, POLY/RNS contracts, toolchain, fallback, telemetry, and regression methodology are reviewed before implementation. |
 
+## SYNC-1 Native API and Image Contract Preparation
+
+This section is the FHE-side preparation package for SYNC-1. It is a contract
+draft only. It does not allocate opcode values, edit shared files, add a WHIRL
+section, or begin reader/writer implementation before the main infrastructure
+PR merges.
+
+The precise FHE-owned SYNC-1 proposal is
+`doc/FHE-SYNC1-NATIVE-IMAGE-API-PROPOSAL.md`. That proposal freezes the minimal
+row layouts, deduplication keys, tensor encryption versus CKKS value-state API
+split, opaque builder declarations, `ir_b2a -st -src` spelling, malformed-image
+tests, required main hooks, proposed new FHE-owned files, and the
+`WT_DSL_FHE_IMAGE` staging assessment.
+
+### SYNC-1 Work Items
+
+| Work item | FHE output for review | Main dependency |
+| --- | --- | --- |
+| Fixed FHE records | Field-level record schema below, fixed-width storage rules, invalid-zero ID policy, and version/capability rules | Main-owned mapped-image extension point and reader/writer hook decision |
+| Semantic equivalence | Deduplication keys for config, encryption descriptor, tensor binding, approximation, CKKS state, key requirements, and backend requirements | TensorDescriptorIR identity and representation attachment hook |
+| Opaque builder API | Exact C/C++ declarations below for config, descriptor, entry, boundary value, key, approximation, and descriptor query APIs | Main-owned generic builder handle and source-position conventions |
+| Malformed input rules | Negative-test matrix below for bad versions, invalid IDs, out-of-range spans, missing links, secret-key material, and ReLU refresh errors | Main-owned generic gatekeeper invocation and diagnostic plumbing |
+| `ir_b2a -st -src` spelling | Stable section names and required printed fields below | Main-owned logical DSL printer and symbol/type dump integration |
+| Minimal native producer | A SYNC-1 test producer that writes, reopens, verifies, and prints one FHE entry without Python | Main-owned binary read/write and optional-section policy |
+
+### Record Storage Rules
+
+1. Every persisted FHE ID is a fixed-width unsigned integer. ID value zero is
+   invalid/null unless a field explicitly permits zero as absent.
+2. Persist only scalar values, `STR_IDX`, `TY_IDX`, `ST_IDX`, stable enum
+   values, record IDs, and `first/count` ranges. Do not persist C++ pointers,
+   `std::string`, `std::vector`, maps, OpenFHE objects, or backend handles.
+3. Every record family is append-only after publication. New fields require a
+   version/capability bit and a reader rule.
+4. Reader bounds checks validate every `first/count` range before exposing a
+   record to compiler passes.
+5. Source names and diagnostics are metadata. They do not participate in tensor
+   or encryption descriptor equivalence.
+6. Secret-key paths, bytes, or key-generation requests are rejected, not
+   redacted into valid records.
+
+### Initial Fixed Record Schema
+
+| Record | Required fields for SYNC-1 freeze |
+| --- | --- |
+| `FHE_IMAGE_HEADER` | `magic`, `major_version`, `minor_version`, `capabilities`, record counts for every present table, string-table dependency version, reserved zeros |
+| `FHE_COMPILATION_CONFIG_RECORD` | `scheme`, `security_level`, `ring_dimension`, `mult_depth_policy`, `scale_bits`, `first_mod_bits`, `slots_policy`, `key_switch_policy`, `bootstrap_policy`, `backend_policy`, provenance flags |
+| `FHE_ENTRY_CONTRACT_RECORD` | owner PU identity, config ID, first/count for entry values, input count, output count, parameter count, encrypted I/O policy, parameter policy, accuracy budget ID, flags |
+| `FHE_ENTRY_VALUE_RECORD` | entry contract ID, value symbol/ST identity, tensor TY identity, ordinal, role, value class, encryption descriptor ID, side-file reference ID, source-position reference, flags |
+| `FHE_ENCRYPTION_DESCRIPTOR_RECORD` | value class, scheme, config ID, CKKS state ID, encrypted-layout ID, key-set ID, boundary role, confidentiality flags, representation flags |
+| `FHE_TENSOR_BINDING_RECORD` | canonical tensor `TY_IDX`, TensorDescriptorIR ID, encryption descriptor ID, value/symbol identity when value-specific, flags |
+| `FHE_APPROXIMATION_CONTRACT_RECORD` | source operator identity, approximated function, polynomial degree, coefficient constant/value ID, valid-range bounds, error budget, policy flags |
+| `FHE_CKKS_VALUE_STATE_RECORD` | level, scale bits or scale ID, basis kind, component count, precision estimate, pending relinearization flag, pending rescale flag, flags |
+| `FHE_KEY_REQUIREMENT_RECORD` | key class, key-set ID, config ID, first/count for rotation requirements, bootstrap profile ID, relinearization requirement, flags |
+| `FHE_ROTATION_REQUIREMENT_RECORD` | key requirement ID, signed rotation offset, source use count, flags |
+| `FHE_BACKEND_REQUIREMENT_RECORD` | provider ABI version, backend family, required capabilities, target class, serialization format, memory policy, flags |
+
+SYNC-1 may implement only the config, entry, entry-value, encryption descriptor,
+tensor binding, approximation contract, key requirement, and rotation
+requirement families. CKKS state and backend rows may remain schema-frozen but
+unmaterialized until later checkpoints if the main image hook records their
+counts as zero.
+
+### Deduplication and Equivalence Keys
+
+| Object | Deduplication key | Not part of equivalence |
+| --- | --- | --- |
+| Compilation config | Scheme, security, ring dimension, depth policy, scale bits, first modulus bits, slots policy, key-switch policy, bootstrap policy, backend policy | Source option spelling, diagnostics, profile name |
+| Encryption descriptor | Value class, scheme, config ID, CKKS state ID, encrypted layout ID, key-set ID, boundary role, confidentiality flags | Source symbol name, source line, pass provenance |
+| FHE tensor binding | Canonical TensorDescriptorIR ID plus EncryptionDescriptorIR ID; value identity only when the descriptor is value-specific | Diagnostic labels, temporary names, selected backend implementation |
+| Approximation contract | Source operator identity, approximated function, degree, coefficient identity, valid range, error budget | Test name, report path, runtime timing |
+| CKKS value state | Level, scale, basis, component count, precision estimate, pending rescale/relinearization obligations | Source name, debug text |
+| Key requirement | Key class, key-set ID, config ID, rotation offsets, bootstrap profile, relinearization requirement | Key file path spelling, secret-key provenance |
+| Backend requirement | Provider ABI version, capabilities, target class, serialization format, memory policy | Host path, local installation prefix |
+
+### Opaque Native Builder API Draft
+
+The frontend receives opaque handles only. These declarations are the SYNC-1
+FHE request; exact names may be adjusted by the main owner to match existing
+builder conventions.
+
+```c++
+typedef UINT32 DSL_FHE_CONFIG_ID;
+typedef UINT32 DSL_FHE_ENTRY_CONTRACT_ID;
+typedef UINT32 DSL_FHE_ENCRYPTION_DESCRIPTOR_ID;
+typedef UINT32 DSL_FHE_APPROXIMATION_CONTRACT_ID;
+typedef UINT32 DSL_FHE_KEY_REQUIREMENT_ID;
+
+DSL_FHE_CONFIG_ID
+DSL_FHE_Intern_Compilation_Config(
+    const DSL_FHE_COMPILATION_CONFIG *config);
+
+DSL_FHE_ENCRYPTION_DESCRIPTOR_ID
+DSL_FHE_Intern_Encryption_Descriptor(
+    const DSL_FHE_ENCRYPTION_DESCRIPTOR *descriptor);
+
+TY_IDX
+DSL_Builder_Intern_FHE_Tensor_Type(
+    const char *name,
+    const DSL_BUILDER_TENSOR_DESCRIPTOR *tensor,
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encryption);
+
+DSL_FHE_ENTRY_CONTRACT_ID
+DSL_Builder_Attach_FHE_Entry_Contract(
+    DSL_BUILDER_PROGRAM_UNIT pu,
+    const DSL_FHE_ENTRY_CONTRACT *contract);
+
+BOOL
+DSL_Builder_Declare_FHE_Entry_Value(
+    DSL_FHE_ENTRY_CONTRACT_ID entry,
+    DSL_BUILDER_VALUE value,
+    UINT32 ordinal,
+    DSL_FHE_ENTRY_VALUE_ROLE role);
+
+DSL_FHE_KEY_REQUIREMENT_ID
+DSL_Builder_Add_FHE_Key_Requirement(
+    DSL_FHE_CONFIG_ID config,
+    const DSL_FHE_KEY_REQUIREMENT *requirement);
+
+DSL_FHE_APPROXIMATION_CONTRACT_ID
+DSL_Builder_Attach_FHE_Approximation_Contract(
+    DSL_BUILDER_VALUE value,
+    const DSL_FHE_APPROXIMATION_CONTRACT *contract);
+
+BOOL
+DSL_Builder_Get_FHE_Encryption_Descriptor(
+    DSL_BUILDER_VALUE value,
+    DSL_FHE_ENCRYPTION_DESCRIPTOR *descriptor);
+```
+
+`common.relu` construction must continue to use the existing common logical
+operator path. FHE APIs may attach approximation and bootstrap provenance to
+the value after conversion, but they must not create a second ReLU constructor.
+
+### Malformed Record and Gatekeeper Test Matrix
+
+| Test class | Expected result |
+| --- | --- |
+| Old non-FHE `.B` | Reopens unchanged and prints no empty FHE section. |
+| New non-FHE `.B` | Does not emit an empty FHE section. |
+| Bad FHE image magic or unsupported required capability | Reader rejects with precise version/capability diagnostic. |
+| Invalid nonzero ID reference | Reader/gatekeeper rejects before pass use. |
+| Out-of-range `first/count` span | Reader rejects before exposing records. |
+| Duplicate FHE entry ordinal | Gatekeeper rejects the entry contract. |
+| Missing encrypted input/output declaration | Gatekeeper rejects with boundary diagnostic. |
+| Tensor binding without TensorDescriptorIR or EncryptionDescriptorIR | Gatekeeper rejects with descriptor diagnostic. |
+| Secret-key material, decrypt op, or server key-generation request | Gatekeeper rejects; no redacted valid record is created. |
+| `common.relu` without approximation contract in encrypted CKKS path | FHE conversion/gatekeeper rejects. |
+| `bootstrap=manual` with surviving ReLU and no explicit refresh boundary | FHE gatekeeper rejects. |
+| `bootstrap=off` with surviving ReLU | FHE gatekeeper rejects in the first CKKS release. |
+| Unlowered FHE/SIHE/CKKS node before `whirl2c` | Lowering gate rejects before C emission. |
+
+### `ir_b2a -st -src` Spelling Freeze
+
+When records exist, the printer should use these section headings:
+
+```text
+FHE Compilation Configurations
+FHE Entry Contracts
+FHE Entry Values
+FHE Encryption Descriptors
+FHE Tensor Bindings
+FHE Approximation Contracts
+FHE CKKS Value States
+FHE Key Requirements
+FHE Backend Requirements
+```
+
+Each printed DSL expression or FHE record must use stable logical names,
+record IDs, source position, result symbol/TY, TensorDescriptorIR ID,
+EncryptionDescriptorIR ID, approximation contract ID when present, bootstrap
+reason when present, and CKKS state ID when known. The printer must not expose
+physical `OPR_DSL` payload details, secret-key material, ciphertext bytes, or
+backend C++ object layouts.
+
+### SYNC-1 Exit Evidence Checklist
+
+1. Main infrastructure PR has merged first, or the implementation remains
+   blocked at contract-only review.
+2. FHE branch is rebased on updated `develop`; duplicate SYNC-0 patches are
+   omitted.
+3. Headers for the accepted API compile on the shared base.
+4. Old non-FHE `.B` files reopen unchanged.
+5. New non-FHE `.B` files do not emit empty FHE sections.
+6. A minimal native FHE producer writes, reopens, verifies, and prints one FHE
+   image with `ir_b2a -st -src`.
+7. Negative malformed-record tests fail with stable diagnostics.
+8. The exact artifact directory contains `.B`, `.T`, diagnostics, and command
+   lines for review.
+
 ## Coordination Checkpoints
 
 1. SYNC-0: main task reviews the handoff table below and publishes whether each
