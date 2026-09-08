@@ -4396,7 +4396,9 @@ Check_FHE_SYNC1_Mapped_Image(void)
     DSL_BUILDER_SOURCE_POSITION source_position;
     DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
     DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_PROGRAM_UNIT foreign_pu;
     DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE foreign_input;
     DSL_BUILDER_VALUE weight;
     DSL_BUILDER_VALUE result;
     DSL_BUILDER_VALUE kids[2];
@@ -4418,6 +4420,7 @@ Check_FHE_SYNC1_Mapped_Image(void)
     DSL_FHE_ENCRYPTION_DESCRIPTOR_ID ciphertext_id;
     DSL_FHE_ENCRYPTION_DESCRIPTOR_ID plaintext_id;
     DSL_FHE_ENTRY_CONTRACT_ID entry_id;
+    BOOL foreign_value_rejected;
     const char checksum[] =
         "0123456789abcdef0123456789abcdef"
         "0123456789abcdef0123456789abcdef";
@@ -4561,6 +4564,20 @@ Check_FHE_SYNC1_Mapped_Image(void)
     memset(&value_info, 0, sizeof(value_info));
     value_info.encryption_descriptor_id = ciphertext_id;
     value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    foreign_pu = DSL_Builder_Create_Minimal_PU("fhe_sync1_foreign");
+    foreign_input = DSL_Builder_Create_Model_Input
+                        ("foreign_input", tensor_ty, 0);
+    foreign_value_rejected =
+        foreign_pu != NULL && foreign_input != NULL &&
+        DSL_Builder_Append_PU_Value(foreign_pu, foreign_input) &&
+        DSL_Builder_Declare_FHE_Entry_Value
+            (entry_id, foreign_input, 0, DSL_FHE_ENTRY_VALUE_INPUT,
+             &value_info) == DSL_FHE_ENTRY_VALUE_INVALID_ID;
+    FHE_SYNC1_CHECK
+        (foreign_value_rejected,
+         "reject an entry value owned by another program unit");
+    FHE_SYNC1_CHECK
+        (DSL_Builder_Select_PU(pu), "restore entry program unit");
     FHE_SYNC1_CHECK
         (entry_id != 0 &&
          DSL_Builder_Declare_FHE_Entry_Value
@@ -4705,6 +4722,11 @@ Check_FHE_SYNC1_Mapped_Image(void)
     FHE_SYNC1_CHECK
         (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
          "reject invalid owner-PU symbol reference");
+    mapped_entry->owner_pu_st = saved_owner_pu_st;
+    mapped_entry->owner_pu_st = PU_Info_proc_sym(foreign_pu);
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject an entry contract whose values belong to another PU");
     mapped_entry->owner_pu_st = saved_owner_pu_st;
     DSL_FHE_ENTRY_VALUE_RECORD *mapped_value =
         (DSL_FHE_ENTRY_VALUE_RECORD *)

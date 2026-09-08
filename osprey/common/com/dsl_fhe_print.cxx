@@ -3,8 +3,6 @@
  */
 
 #include "dsl_fhe.h"
-#include "dsl_tensor_fold.h"
-#include "ir_reader.h"
 #include "strtab.h"
 #include "symtab.h"
 
@@ -67,34 +65,20 @@ DSL_FHE_Key_Class_Name (UINT32 value)
 }
 
 static void
-DSL_FHE_Print_Value_Symbol (FILE *file, const DSL_IR_VALUE_RECORD &value)
+DSL_FHE_Print_Value_Symbol
+        (FILE *file, const DSL_IR_VALUE_RECORD &value,
+         const char *owner_pu_name)
 {
     fprintf(file, " value=value%u", value.id);
     if (value.name != STR_IDX_ZERO)
         fprintf(file, " name=%s", Index_To_Str(value.name));
-    if (ST_IDX_index(value.st) == 0 ||
-        ST_IDX_level(value.st) > CURRENT_SYMTAB ||
-        Scope_tab[ST_IDX_level(value.st)].st_tab == NULL ||
-        ST_IDX_index(value.st) >= ST_Table_Size(ST_IDX_level(value.st)))
-        return;
-    ST &st = St_Table[value.st];
-    fprintf(file, " st=<%u,%u,%s>", ST_IDX_level(value.st),
-            ST_IDX_index(value.st), ST_name(st));
-    SRCPOS source_position = ST_Srcpos(st);
-    if (SRCPOS_linenum(source_position) != 0) {
-        const char *file_name = NULL;
-        const char *directory_name = NULL;
-        IR_Srcpos_Filename(source_position, &file_name, &directory_name);
-        if (file_name != NULL)
-            fprintf(file, " source=%s:%u", file_name,
-                    SRCPOS_linenum(source_position));
-        else
-            fprintf(file, " source_line=%u", SRCPOS_linenum(source_position));
-    }
-    if (ST_class(st) == CLASS_CONST) {
-        fputs(" ", file);
-        DSL_Tensor_TCON_Print(file, ST_tcon(st));
-    }
+    if (ST_IDX_index(value.st) != 0)
+        fprintf(file, " st=<%u,%u,%s>", ST_IDX_level(value.st),
+                ST_IDX_index(value.st),
+                value.name == STR_IDX_ZERO ? "" :
+                    Index_To_Str(value.name));
+    if (owner_pu_name != NULL)
+        fprintf(file, " owner_pu=%s", owner_pu_name);
 }
 
 void
@@ -139,14 +123,18 @@ DSL_FHE_Image_Print (FILE *file)
     for (UINT32 i = 1; i <= header.entry_value_count; ++i) {
         DSL_FHE_ENTRY_VALUE_RECORD record;
         DSL_IR_VALUE_RECORD value;
+        DSL_FHE_ENTRY_CONTRACT_RECORD entry;
+        const char *owner_pu_name;
         DSL_FHE_Get_Entry_Value(i, &record);
         DSL_IR_Image_Get_Value(record.value_id, &value);
+        DSL_FHE_Get_Entry_Contract(record.entry_contract_id, &entry);
+        owner_pu_name = ST_name(St_Table[entry.owner_pu_st]);
         fprintf(file, "  [%u] entry=%u role=%s ordinal=%u class=%s "
                 "encryption=%u", record.id, record.entry_contract_id,
                 DSL_FHE_Entry_Role_Name(record.role), record.ordinal,
                 DSL_FHE_Value_Class_Name(record.value_class),
                 record.encryption_descriptor_id);
-        DSL_FHE_Print_Value_Symbol(file, value);
+        DSL_FHE_Print_Value_Symbol(file, value, owner_pu_name);
         fprintf(file, " flags=0x%x\n", record.flags);
     }
 

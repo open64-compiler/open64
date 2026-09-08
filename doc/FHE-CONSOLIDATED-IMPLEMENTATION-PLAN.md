@@ -219,6 +219,15 @@ Status: active.  The merged SYNC-1 opaque APIs are available.  The FHE task
 owns ResNet-20 capture and artifact production while the main task audits the
 shared operator, type, source-position, side-file, and printer evidence.
 
+The first full trace exposed a PU-scope correctness gap in shared
+infrastructure: FHE entry values carried valid PU-relative `ST_IDX` values,
+but the global FHE printer resolved them through the last selected local symbol
+table.  SYNC-2 therefore remains active while common/com enforces the existing
+managed `owner_pu` relation during insertion and mapped-image validation and
+prints stable stored value identity.  The frontend concurrently assigns source
+positions to external and implicit parameter symbols.  Neither correction
+changes the FHE image layout or operator contracts.
+
 Main-side readiness at SYNC-2 entry:
 
 | Capture requirement | Merged infrastructure evidence | Ownership now |

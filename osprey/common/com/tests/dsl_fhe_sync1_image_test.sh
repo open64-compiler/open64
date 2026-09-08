@@ -50,8 +50,11 @@ for evidence in \
   'pu=fhe_sync1_add config=1' \
   'FHE Entry Value Table:' \
   'role=input ordinal=0 class=ciphertext' \
+  'name=encrypted_input st=<2,1,encrypted_input> owner_pu=fhe_sync1_add' \
   'role=parameter ordinal=0 class=encoded_plaintext' \
+  'name=plaintext_weight st=<2,2,plaintext_weight> owner_pu=fhe_sync1_add' \
   'role=output ordinal=0 class=ciphertext' \
+  'name=encrypted_result st=<2,3,encrypted_result> owner_pu=fhe_sync1_add' \
   'FHE Encryption Descriptor Table:' \
   'FHE Tensor Binding Table:' \
   'FHE Key Requirement Table:' \

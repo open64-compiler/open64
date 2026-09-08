@@ -1666,6 +1666,26 @@ full-sequence causal prompt evaluation with no KV cache.
    definitions when a REGION result feeds a later expression.  No frontend
    lowering workaround or FHE image change is part of this repair.
 
+33. [ ] Certify FHE SYNC-2 entry-value ownership and artifact evidence.
+
+   FHE entry contracts are owned by a global PU symbol, while their DSL values
+   commonly reference PU-relative local `ST_IDX` values.  Insertion and mapped
+   image validation must confirm that every entry value's existing
+   `owner_pu=<name>` metadata agrees with the entry contract owner.  Reject a
+   value from another PU even when its numeric local `ST_IDX` matches.
+
+   Global FHE table printing must use the value record's stored name and the
+   entry contract's PU identity.  It must not dereference a PU-relative symbol
+   through whichever local symbol table happens to be selected when `ir_b2a`
+   prints the tables.  Source and constant detail remain available in their
+   owning PU's standard symbol/value evidence.  This correction changes no
+   mapped-image row, record size, opcode, version, or ELF section contract.
+
+   Close this item only after the ResNet-20 frontend assigns source positions
+   to source-derived external and implicit parameter symbols, regenerates the
+   artifact family, and the main task reviews `secure_resnet20.T`.  Evidence
+   must distinguish reusable ReLU node definitions from source-context uses.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up
