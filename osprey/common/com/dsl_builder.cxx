@@ -20,6 +20,7 @@
 #endif /* ! defined(BUILD_OS_DARWIN) */
 
 #include "dsl_builder.h"
+#include "dsl_fhe.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_simp.h"
 #include "dsl_tensor_fold.h"
@@ -136,6 +137,7 @@ DSL_Builder_Reset_Program (void)
     DSL_builder_pu_source_identities.clear();
     DSL_builder_call_registry.clear();
     DSL_IR_Image_Reset();
+    DSL_FHE_Image_Reset();
     DSL_Region_Reset();
 }
 
@@ -3087,6 +3089,13 @@ DSL_Builder_Get_Value_Result_Symbol (DSL_BUILDER_VALUE value)
     return record == NULL ? ST_IDX_ZERO : record->result_st;
 }
 
+DSL_IR_VALUE_ID
+DSL_Builder_Get_Value_Image_Id (DSL_BUILDER_VALUE value)
+{
+    DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
+    return record == NULL ? DSL_IR_VALUE_INVALID_ID : record->image_value_id;
+}
+
 BOOL
 DSL_Builder_Begin_Program (void)
 {
@@ -3856,6 +3865,10 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
             valid = FALSE;
             ++gatekeeper_result.error_count;
         }
+    }
+    if (!DSL_FHE_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++gatekeeper_result.error_count;
     }
     if (gatekeeper_result.native_node_count != DSL_IR_Image_Node_Count()) {
         if (diagnostic != NULL)

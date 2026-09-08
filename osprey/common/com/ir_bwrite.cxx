@@ -100,6 +100,7 @@
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
 #include "dsl_ir_image.h"
+#include "dsl_fhe.h"
 #include "dsl_region.h"
 #include "ir_bread.h"
 #include "tracing.h"                /* TEMPORARY FOR ROBERT'S DEBUGGING */
@@ -910,6 +911,64 @@ WN_write_dsl_callsite_image (Output_File *fl)
                   ("missing DSL callsite %u", i));
         ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
     }
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
+void
+WN_write_dsl_fhe_image (Output_File *fl)
+{
+    if (!DSL_FHE_Image_Has_Records())
+        return;
+
+    FmtAssert(DSL_FHE_Image_Validate(stderr),
+              ("invalid FHE image tables"));
+    Section *cur_section = get_section
+                               (WT_DSL_FHE_IMAGE,
+                                MIPS_WHIRL_DSL_FHE_IMAGE, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+
+    DSL_FHE_IMAGE_HEADER header;
+    DSL_FHE_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+    for (UINT32 i = 1; i <= header.config_count; ++i) {
+        DSL_FHE_COMPILATION_CONFIG_RECORD record;
+        FmtAssert(DSL_FHE_Get_Compilation_Config(i, &record),
+                  ("missing FHE configuration %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.entry_contract_count; ++i) {
+        DSL_FHE_ENTRY_CONTRACT_RECORD record;
+        FmtAssert(DSL_FHE_Get_Entry_Contract(i, &record),
+                  ("missing FHE entry contract %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.entry_value_count; ++i) {
+        DSL_FHE_ENTRY_VALUE_RECORD record;
+        FmtAssert(DSL_FHE_Get_Entry_Value(i, &record),
+                  ("missing FHE entry value %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.encryption_descriptor_count; ++i) {
+        DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD record;
+        FmtAssert(DSL_FHE_Get_Encryption_Descriptor(i, &record),
+                  ("missing FHE encryption descriptor %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.tensor_binding_count; ++i) {
+        DSL_FHE_TENSOR_BINDING_RECORD record;
+        FmtAssert(DSL_FHE_Get_Tensor_Binding(i, &record),
+                  ("missing FHE tensor binding %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.key_requirement_count; ++i) {
+        DSL_FHE_KEY_REQUIREMENT_RECORD record;
+        FmtAssert(DSL_FHE_Get_Key_Requirement(i, &record),
+                  ("missing FHE key requirement %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+
     cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
     cur_section->shdr.sh_addralign = sizeof(mINT64);
 }
@@ -1738,6 +1797,7 @@ Write_Global_Info (PU_Info *pu_tree)
     WN_write_dsl_ir_image(ir_output);
     WN_write_dsl_effect_image(ir_output);
     WN_write_dsl_callsite_image(ir_output);
+    WN_write_dsl_fhe_image(ir_output);
 
     WN_write_strtab(Index_To_Str (0), STR_Table_Size (), ir_output);
 

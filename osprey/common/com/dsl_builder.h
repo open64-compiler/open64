@@ -228,6 +228,8 @@ extern BOOL DSL_Builder_Attach_Value_Lineage
                                  const char *lineage);
 extern TY_IDX DSL_Builder_Get_Value_Type (DSL_BUILDER_VALUE value);
 extern ST_IDX DSL_Builder_Get_Value_Result_Symbol (DSL_BUILDER_VALUE value);
+extern DSL_IR_VALUE_ID DSL_Builder_Get_Value_Image_Id
+                                (DSL_BUILDER_VALUE value);
 extern BOOL DSL_Builder_Begin_Program (void);
 extern void DSL_Builder_Abort_Program (void);
 extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU

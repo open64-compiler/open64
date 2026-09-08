@@ -49,7 +49,19 @@ static TCON_IDX DSL_tensor_tcon_cache[4096];
 static UINT32 DSL_tensor_tcon_cache_count = 0;
 
 extern TCON_IDX Enter_tcon (const TCON& tcon);
+#ifdef DSL_TENSOR_FOLD_TEST_STUB
 extern TCON TCON_from_IDX (TCON_IDX tcon_idx);
+#endif
+
+static TCON
+DSL_Tensor_TCON_From_IDX (TCON_IDX tcon_idx)
+{
+#ifdef DSL_TENSOR_FOLD_TEST_STUB
+    return TCON_from_IDX(tcon_idx);
+#else
+    return Tcon_Table[tcon_idx];
+#endif
+}
 
 static void
 DSL_Tensor_Fold_Clear_Output (DSL_TENSOR_FOLD_OUTPUT *output)
@@ -256,7 +268,7 @@ DSL_Tensor_TCON_Scalar_Info_Valid
     if (!DSL_Tensor_TCON_IDX_Valid(scalar_tcon))
         return FALSE;
 
-    scalar = TCON_from_IDX(scalar_tcon);
+    scalar = DSL_Tensor_TCON_From_IDX(scalar_tcon);
     return TCON_ty(scalar) == element_mtype;
 }
 
@@ -384,7 +396,7 @@ DSL_Tensor_TCON_Find_Cached_Equal
 
         if (!DSL_Tensor_TCON_IDX_Valid(cached_idx))
             continue;
-        cached_carrier = TCON_from_IDX(cached_idx);
+        cached_carrier = DSL_Tensor_TCON_From_IDX(cached_idx);
         if (DSL_Tensor_TCON_Decode_Carrier(&cached_carrier,
                                            &cached_record) &&
             DSL_Tensor_TCON_Record_Semantic_Equal
@@ -773,7 +785,7 @@ DSL_Tensor_TCON_Create_Record
     existing_idx = DSL_Tensor_TCON_Find_Cached_Equal(&record, &built_carrier);
     if (existing_idx != TCON_IDX_ZERO) {
         if (carrier != NULL)
-            *carrier = TCON_from_IDX(existing_idx);
+            *carrier = DSL_Tensor_TCON_From_IDX(existing_idx);
         if (tcon_idx != NULL)
             *tcon_idx = existing_idx;
         return TRUE;
@@ -1156,8 +1168,8 @@ DSL_Tensor_Fold_Compact_Integer_Binary
         return DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR;
     }
 
-    left_scalar = TCON_from_IDX(left_record.scalar_tcon);
-    right_scalar = TCON_from_IDX(right_record.scalar_tcon);
+    left_scalar = DSL_Tensor_TCON_From_IDX(left_record.scalar_tcon);
+    right_scalar = DSL_Tensor_TCON_From_IDX(right_record.scalar_tcon);
     if ((candidate->dsl_operator == OPR_DSLDIV ||
          candidate->dsl_operator == OPR_DSLREM ||
          candidate->dsl_operator == OPR_DSLDIVREM) &&
@@ -1428,7 +1440,7 @@ DSL_Tensor_TCON_Rebuild_Derived_Cache
         return;
 
     for (idx = first_tcon_idx; idx < limit_tcon_idx; ++idx) {
-        TCON carrier = TCON_from_IDX(idx);
+        TCON carrier = DSL_Tensor_TCON_From_IDX(idx);
         if (DSL_Tensor_TCON_Decode_Carrier(&carrier, NULL))
             DSL_Tensor_TCON_Cache(idx);
     }
@@ -1446,7 +1458,7 @@ DSL_Tensor_TCON_Get
     if (!DSL_Tensor_TCON_IDX_Valid(tcon_idx))
         return FALSE;
 
-    carrier = TCON_from_IDX(tcon_idx);
+    carrier = DSL_Tensor_TCON_From_IDX(tcon_idx);
     return DSL_Tensor_TCON_Decode_Carrier(&carrier, record);
 }
 
@@ -1462,7 +1474,7 @@ DSL_Tensor_TCON_Get_Carrier
     if (carrier == NULL || !DSL_Tensor_TCON_IDX_Valid(tcon_idx))
         return FALSE;
 
-    *carrier = TCON_from_IDX(tcon_idx);
+    *carrier = DSL_Tensor_TCON_From_IDX(tcon_idx);
     return DSL_Tensor_TCON_Decode_Carrier(carrier, &record);
 }
 
@@ -1484,7 +1496,7 @@ DSL_Tensor_TCON_Find_Carrier
     if (found == TCON_IDX_ZERO) {
         UINT32 table_size = TCON_Table_Size();
         for (TCON_IDX idx = 1; idx < table_size; ++idx) {
-            TCON candidate = TCON_from_IDX(idx);
+            TCON candidate = DSL_Tensor_TCON_From_IDX(idx);
             DSL_TENSOR_TCON_RECORD candidate_record;
             if (DSL_Tensor_TCON_Decode_Carrier
                     (&candidate, &candidate_record) &&
@@ -1528,7 +1540,7 @@ DSL_Tensor_TCON_Get_Side_Path
         !DSL_Tensor_TCON_IDX_Valid(tcon_idx))
         return FALSE;
 
-    carrier = TCON_from_IDX(tcon_idx);
+    carrier = DSL_Tensor_TCON_From_IDX(tcon_idx);
     if (!DSL_Tensor_TCON_Decode_Carrier(&carrier, &record) ||
         record.side_path_length == 0)
         return FALSE;
@@ -1560,7 +1572,7 @@ DSL_Tensor_TCON_Get_Dense_Bytes
         !DSL_Tensor_TCON_IDX_Valid(tcon_idx))
         return FALSE;
 
-    carrier = TCON_from_IDX(tcon_idx);
+    carrier = DSL_Tensor_TCON_From_IDX(tcon_idx);
     if (!DSL_Tensor_TCON_Decode_Carrier(&carrier, &record))
         return FALSE;
 
@@ -1783,8 +1795,8 @@ DSL_Tensor_TCON_Semantic_Equal
     if (left == right)
         return DSL_Tensor_TCON_Get(left, &left_record);
 
-    left_carrier = TCON_from_IDX(left);
-    right_carrier = TCON_from_IDX(right);
+    left_carrier = DSL_Tensor_TCON_From_IDX(left);
+    right_carrier = DSL_Tensor_TCON_From_IDX(right);
     return DSL_Tensor_TCON_Decode_Carrier(&left_carrier, &left_record) &&
            DSL_Tensor_TCON_Decode_Carrier(&right_carrier, &right_record) &&
            DSL_Tensor_TCON_Record_Semantic_Equal

@@ -99,6 +99,7 @@
 #include "ir_bcom.h"
 #include "ir_bread.h"
 #include "dsl_ir_image.h"
+#include "dsl_fhe.h"
 #include "dsl_region.h"
 #include "config_opt.h"
 
@@ -481,6 +482,21 @@ WN_get_dsl_callsite_image (void *handle)
     }
     const void *section_base = (const char *)handle + shdr.offset;
     return DSL_Call_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
+INT
+WN_get_dsl_fhe_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_FHE_IMAGE);
+    if (shdr.offset == 0) {
+        DSL_FHE_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_FHE_Image_Load_Mapped
                (section_base, shdr.size, stderr) ? 0 : -1;
 }
 
@@ -1638,6 +1654,9 @@ Read_Global_Info (INT32 *p_num_PUs)
     if (WN_get_dsl_callsite_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL callsite image", global_ir_file);
     }
+    if (WN_get_dsl_fhe_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL FHE image", global_ir_file);
+    }
 
 #if defined(KEY) && defined(BACK_END)
     WN_get_mod_ref_table (global_fhandle);
@@ -1834,6 +1853,7 @@ void
 Free_Input_Info (void)
 {
     DSL_IR_Image_Reset();
+    DSL_FHE_Image_Reset();
 	WN_free_input(global_fhandle, &global_mapHandle, global_mapped_size);
     if (global_fhandle != local_fhandle) {
       Free_Local_Input();
@@ -1859,6 +1879,7 @@ void
 Free_Input_Info (void)
 {
     DSL_IR_Image_Reset();
+    DSL_FHE_Image_Reset();
     WN_free_input(global_fhandle, global_mapped_size);
     if (global_fhandle != local_fhandle) {
       Free_Local_Input();

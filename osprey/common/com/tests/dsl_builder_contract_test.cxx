@@ -33,6 +33,7 @@
 #include "srcpos.h"
 #include "dsl_builder.h"
 #include "dsl_contract.h"
+#include "dsl_fhe.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_simp.h"
@@ -4377,6 +4378,399 @@ Check_Tensor_TCON_Mapped_Image(void)
     return 0;
 }
 
+static int
+Check_FHE_SYNC1_Mapped_Image(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_FHE_ARTIFACT");
+    BOOL retain_artifact = artifact != NULL && artifact[0] != '\0';
+    DSL_BUILDER_TENSOR_DESCRIPTOR tensor_descriptor;
+    DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE external_reference;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE add_attribute;
+    DSL_BUILDER_SOURCE_POSITION source_position;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE weight;
+    DSL_BUILDER_VALUE result;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID add_id;
+    TY_IDX tensor_ty;
+    UINT32 file_id;
+    DSL_FHE_COMPILATION_CONFIG_RECORD config;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD ciphertext;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD plaintext;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD observed_descriptor;
+    DSL_FHE_TENSOR_BINDING_RECORD observed_binding;
+    DSL_FHE_ENTRY_CONTRACT_INFO entry_info;
+    DSL_FHE_ENTRY_VALUE_INFO value_info;
+    DSL_FHE_KEY_REQUIREMENT_RECORD key_requirement;
+    DSL_FHE_IMAGE_HEADER image_header;
+    TY_IDX weight_ty;
+    DSL_FHE_CONFIG_ID config_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID ciphertext_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID plaintext_id;
+    DSL_FHE_ENTRY_CONTRACT_ID entry_id;
+    const char checksum[] =
+        "0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef";
+    int failed = 0;
+#define FHE_SYNC1_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "FHE SYNC-1 check failed: %s\n", message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    if (artifact == NULL || artifact[0] == '\0')
+        artifact = "fhe_sync1_contract.B";
+    if (!DSL_Builder_Begin_Program())
+        return 1;
+    DSL_Opcode_Register_Common_Substrate();
+
+    memset(&tensor_descriptor, 0, sizeof(tensor_descriptor));
+    tensor_descriptor.type_core.kind = "tensor";
+    tensor_descriptor.type_core.dtype = "float32";
+    tensor_descriptor.type_core.rank = 2;
+    tensor_descriptor.type_core.logical_shape = "[2,2]";
+    tensor_descriptor.traits.traits = "activation";
+    tensor_descriptor.representation.layout = "row_major";
+    tensor_descriptor.representation.sharding = "replicated";
+    tensor_descriptor.representation.placement = "host";
+    tensor_descriptor.representation.memory = "contiguous";
+    tensor_descriptor.representation.quantization = "none";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("fhe_sync1_f32_2x2", MTYPE_To_TY(MTYPE_F4),
+                     &tensor_descriptor);
+    tensor_descriptor.traits.traits = "parameter";
+    tensor_descriptor.representation.placement = "side_file";
+    tensor_descriptor.representation.memory = "external_data";
+    weight_ty = DSL_Builder_Intern_Tensor_Type
+                    ("fhe_sync1_weight_f32_2x2", MTYPE_To_TY(MTYPE_F4),
+                     &tensor_descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("fhe_sync1_add");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    common_id = DSL_Domain_Find("common");
+    add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+    input = DSL_Builder_Create_Model_Input("encrypted_input", tensor_ty, 0);
+
+    memset(&external_reference, 0, sizeof(external_reference));
+    external_reference.storage_format = "safetensors";
+    external_reference.side_file = "fhe_sync1_weights.safetensors";
+    external_reference.tensor_key = "weight";
+    external_reference.byte_length = 16;
+    external_reference.checksum = checksum;
+    weight = DSL_Builder_Create_External_Tensor_Constant
+                 ("plaintext_weight", weight_ty, &external_reference);
+    kids[0] = input;
+    kids[1] = input;
+    add_attribute.name = "attr.broadcast_rule";
+    add_attribute.value = "none";
+    result = DSL_Builder_Create_Operator_With_Result
+                 (add_id, 1, kids, 2, &add_attribute, 1,
+                  "encrypted_result", tensor_ty);
+
+    memset(&source_position, 0, sizeof(source_position));
+    source_position.file_id = file_id;
+    source_position.line = __LINE__ + 1;
+    source_position.column = 5;
+    source_position.statement_begin = 1;
+    FHE_SYNC1_CHECK
+        (tensor_ty != TY_IDX_ZERO && weight_ty != TY_IDX_ZERO &&
+         pu != NULL && file_id != 0 &&
+         add_id != DSL_OPCODE_INVALID_ID && input != NULL && weight != NULL &&
+         result != NULL &&
+         DSL_Builder_Set_Value_Source_Position(input, &source_position),
+         "builder values and input source position");
+    ++source_position.line;
+    FHE_SYNC1_CHECK
+        (DSL_Builder_Set_Value_Source_Position(weight, &source_position),
+         "parameter source position");
+    ++source_position.line;
+    FHE_SYNC1_CHECK
+        (DSL_Builder_Set_Value_Source_Position(result, &source_position),
+         "result source position");
+    FHE_SYNC1_CHECK
+        (DSL_Builder_Append_PU_Value(pu, input) &&
+         DSL_Builder_Append_PU_Value(pu, weight) &&
+         DSL_Builder_Append_PU_Value(pu, result),
+         "append entry values to the owning program unit");
+
+    DSL_FHE_Compilation_Config_Record_Init(&config);
+    config.provenance_mask = 1;
+    config.scheme = DSL_FHE_SCHEME_CKKS;
+    config.security_level = DSL_FHE_SECURITY_128_CLASSIC;
+    config.ring_dimension = 65536;
+    config.multiplicative_depth_policy = DSL_FHE_POLICY_AUTO;
+    config.scale_bits = 56;
+    config.first_modulus_bits = 60;
+    config.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    config.key_switch_policy = 1;
+    config.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
+    config.backend_policy = DSL_FHE_BACKEND_OPENFHE;
+    config_id = DSL_FHE_Intern_Compilation_Config(&config);
+    FHE_SYNC1_CHECK
+        (config_id != 0 &&
+         DSL_FHE_Intern_Compilation_Config(&config) == config_id,
+         "configuration creation and interning");
+
+    DSL_FHE_Encryption_Descriptor_Record_Init(&ciphertext);
+    ciphertext.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    ciphertext.scheme = DSL_FHE_SCHEME_CKKS;
+    ciphertext.config_id = config_id;
+    ciphertext.key_set_name = Save_Str("request_key");
+    ciphertext.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    ciphertext.encoding_policy = DSL_FHE_ENCODING_NONE;
+    ciphertext.packing_policy = DSL_FHE_PACKING_AUTO;
+    ciphertext_id = DSL_FHE_Intern_Encryption_Descriptor(&ciphertext);
+
+    DSL_FHE_Encryption_Descriptor_Record_Init(&plaintext);
+    plaintext.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+    plaintext.scheme = DSL_FHE_SCHEME_CKKS;
+    plaintext.config_id = config_id;
+    plaintext.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    plaintext.encoding_policy = DSL_FHE_ENCODING_CKKS_PACKED;
+    plaintext.packing_policy = DSL_FHE_PACKING_METAKERNEL;
+    plaintext_id = DSL_FHE_Intern_Encryption_Descriptor(&plaintext);
+    FHE_SYNC1_CHECK
+        (ciphertext_id != 0 && plaintext_id != 0 &&
+         DSL_Builder_Bind_FHE_Tensor_Descriptor
+             (tensor_ty, ciphertext_id, 0) != 0 &&
+         DSL_Builder_Bind_FHE_Tensor_Descriptor
+             (weight_ty, plaintext_id, 0) != 0,
+         "encryption descriptors and tensor bindings");
+
+    memset(&entry_info, 0, sizeof(entry_info));
+    entry_info.config_id = config_id;
+    entry_info.input_count = 1;
+    entry_info.output_count = 1;
+    entry_info.parameter_count = 1;
+    entry_info.encrypted_io_policy = 1;
+    entry_info.parameter_policy =
+        DSL_FHE_PARAMETER_POLICY_ENCODED_PLAINTEXT;
+    entry_id = DSL_Builder_Attach_FHE_Entry_Contract(pu, &entry_info);
+
+    memset(&value_info, 0, sizeof(value_info));
+    value_info.encryption_descriptor_id = ciphertext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    FHE_SYNC1_CHECK
+        (entry_id != 0 &&
+         DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_INPUT,
+              &value_info) != 0,
+         "entry contract and input value");
+    value_info.encryption_descriptor_id = plaintext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+    FHE_SYNC1_CHECK
+        (DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, weight, 0, DSL_FHE_ENTRY_VALUE_PARAMETER,
+              &value_info) != 0,
+         "entry parameter value");
+    value_info.encryption_descriptor_id = ciphertext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    FHE_SYNC1_CHECK
+        (DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, result, 0, DSL_FHE_ENTRY_VALUE_OUTPUT,
+              &value_info) != 0,
+         "entry output value");
+    FHE_SYNC1_CHECK
+        (DSL_Builder_Get_FHE_Value_Encryption_Descriptor
+             (result, &observed_descriptor) &&
+         observed_descriptor.id == ciphertext_id &&
+         DSL_FHE_Find_Tensor_Binding
+             (weight_ty, plaintext_id, &observed_binding) &&
+         observed_binding.encryption_descriptor_id == plaintext_id,
+         "opaque value and tensor descriptor retrieval");
+
+    DSL_FHE_Key_Requirement_Record_Init(&key_requirement);
+    key_requirement.config_id = config_id;
+    key_requirement.key_set_name = Save_Str("request_key");
+    key_requirement.key_class = DSL_FHE_KEY_PUBLIC;
+    FHE_SYNC1_CHECK
+        (DSL_FHE_Intern_Key_Requirement(&key_requirement) != 0,
+         "public-key requirement");
+    FHE_SYNC1_CHECK
+        (DSL_FHE_Image_Validate(stderr), "complete in-memory image");
+
+    DSL_FHE_Image_Get_Header(&image_header);
+    UINT64 image_size = DSL_FHE_IMAGE_HEADER_SIZE +
+        (UINT64)image_header.config_count * DSL_FHE_CONFIG_RECORD_SIZE +
+        (UINT64)image_header.entry_contract_count *
+            DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE +
+        (UINT64)image_header.entry_value_count *
+            DSL_FHE_ENTRY_VALUE_RECORD_SIZE +
+        (UINT64)image_header.encryption_descriptor_count *
+            DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD_SIZE +
+        (UINT64)image_header.tensor_binding_count *
+            DSL_FHE_TENSOR_BINDING_RECORD_SIZE +
+        (UINT64)image_header.key_requirement_count *
+            DSL_FHE_KEY_REQUIREMENT_RECORD_SIZE;
+    unsigned char *image_bytes = new unsigned char[image_size];
+    unsigned char *cursor = image_bytes;
+    memcpy(cursor, &image_header, sizeof(image_header));
+    cursor += sizeof(image_header);
+    for (UINT32 i = 1; i <= image_header.config_count; ++i) {
+        DSL_FHE_COMPILATION_CONFIG_RECORD record;
+        DSL_FHE_Get_Compilation_Config(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= image_header.entry_contract_count; ++i) {
+        DSL_FHE_ENTRY_CONTRACT_RECORD record;
+        DSL_FHE_Get_Entry_Contract(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= image_header.entry_value_count; ++i) {
+        DSL_FHE_ENTRY_VALUE_RECORD record;
+        DSL_FHE_Get_Entry_Value(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1;
+         i <= image_header.encryption_descriptor_count; ++i) {
+        DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD record;
+        DSL_FHE_Get_Encryption_Descriptor(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= image_header.tensor_binding_count; ++i) {
+        DSL_FHE_TENSOR_BINDING_RECORD record;
+        DSL_FHE_Get_Tensor_Binding(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= image_header.key_requirement_count; ++i) {
+        DSL_FHE_KEY_REQUIREMENT_RECORD record;
+        DSL_FHE_Get_Key_Requirement(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+
+    DSL_FHE_IMAGE_HEADER *mapped_header =
+        (DSL_FHE_IMAGE_HEADER *)image_bytes;
+    mapped_header->magic = 0;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject bad image magic");
+    mapped_header->magic = DSL_FHE_IMAGE_MAGIC;
+    mapped_header->version = DSL_FHE_IMAGE_VERSION + 1;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject unsupported image version");
+    mapped_header->version = DSL_FHE_IMAGE_VERSION;
+    mapped_header->capabilities ^= DSL_FHE_IMAGE_CAP_KEY_REQUIREMENT;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject missing image capability");
+    mapped_header->capabilities ^= DSL_FHE_IMAGE_CAP_KEY_REQUIREMENT;
+    mapped_header->reserved0 = 1;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject nonzero reserved header field");
+    mapped_header->reserved0 = 0;
+    mapped_header->config_count = ~(UINT32)0;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject impossible record count");
+    mapped_header->config_count = image_header.config_count;
+
+    DSL_FHE_COMPILATION_CONFIG_RECORD *mapped_config =
+        (DSL_FHE_COMPILATION_CONFIG_RECORD *)
+            (image_bytes + DSL_FHE_IMAGE_HEADER_SIZE);
+    mapped_config->id = 2;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject nonsequential record id");
+    mapped_config->id = 1;
+    DSL_FHE_ENTRY_CONTRACT_RECORD *mapped_entry =
+        (DSL_FHE_ENTRY_CONTRACT_RECORD *)
+            (image_bytes + DSL_FHE_IMAGE_HEADER_SIZE +
+             image_header.config_count * DSL_FHE_CONFIG_RECORD_SIZE);
+    mapped_entry->first_entry_value_id = 2;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject invalid entry-value range");
+    mapped_entry->first_entry_value_id = 1;
+    ST_IDX saved_owner_pu_st = mapped_entry->owner_pu_st;
+    mapped_entry->owner_pu_st = ST_IDX_ZERO;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject invalid owner-PU symbol reference");
+    mapped_entry->owner_pu_st = saved_owner_pu_st;
+    DSL_FHE_ENTRY_VALUE_RECORD *mapped_value =
+        (DSL_FHE_ENTRY_VALUE_RECORD *)
+            ((unsigned char *)mapped_entry +
+             image_header.entry_contract_count *
+                 DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE);
+    DSL_IR_VALUE_ID saved_value_id = mapped_value->value_id;
+    mapped_value->value_id = DSL_IR_Image_Value_Count() + 1;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject invalid DSL value reference");
+    mapped_value->value_id = saved_value_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *mapped_descriptor =
+        (DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *)
+            (image_bytes + DSL_FHE_IMAGE_HEADER_SIZE +
+             image_header.config_count * DSL_FHE_CONFIG_RECORD_SIZE +
+             image_header.entry_contract_count *
+                 DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE +
+             image_header.entry_value_count *
+                 DSL_FHE_ENTRY_VALUE_RECORD_SIZE);
+    STR_IDX saved_key_set_name = mapped_descriptor->key_set_name;
+    mapped_descriptor->key_set_name = STR_Table_Size();
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject invalid string-table reference");
+    mapped_descriptor->key_set_name = saved_key_set_name;
+    DSL_FHE_TENSOR_BINDING_RECORD *mapped_binding =
+        (DSL_FHE_TENSOR_BINDING_RECORD *)
+            ((unsigned char *)mapped_descriptor +
+             image_header.encryption_descriptor_count *
+                 DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD_SIZE);
+    TY_IDX saved_tensor_ty = mapped_binding->tensor_ty;
+    mapped_binding->tensor_ty = TY_IDX_ZERO;
+    FHE_SYNC1_CHECK
+        (!DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "reject invalid TensorDescriptorIR reference");
+    mapped_binding->tensor_ty = saved_tensor_ty;
+    FHE_SYNC1_CHECK
+        (DSL_FHE_Image_Load_Mapped(image_bytes, image_size, stderr) &&
+         DSL_FHE_Config_Count() == 1 &&
+         DSL_FHE_Entry_Value_Count() == 3,
+         "reload valid image and preserve record counts");
+    delete [] image_bytes;
+
+    DSL_BUILDER_VERIFY_RESULT verify;
+    char diagnostic[1024];
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    FHE_SYNC1_CHECK
+        (DSL_Builder_Verify_Program(&verify),
+         diagnostic[0] == '\0' ? "program verification" : diagnostic);
+
+    request.path = artifact;
+    request.flags = 0;
+    (void) unlink(request.path);
+    if (failed) {
+        fprintf(stderr, "FHE SYNC-1 validation checks failed\n");
+        return 1;
+    }
+    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+        access(request.path, F_OK) != 0) {
+        fprintf(stderr, "FHE SYNC-1 mapped-image contract failed\n");
+        return 1;
+    }
+    if (!retain_artifact)
+        (void) unlink(request.path);
+    printf("FHE SYNC-1 mapped-image contract passed\n");
+#undef FHE_SYNC1_CHECK
+    return 0;
+}
+
 int
 main(void)
 {
@@ -4415,6 +4809,8 @@ main(void)
         return Check_DSL_Simplifier_Bridge();
     if (getenv("OPEN64_DSL_TENSOR_TCON_ONLY") != NULL)
         return Check_Tensor_TCON_Mapped_Image();
+    if (getenv("OPEN64_DSL_FHE_SYNC1_ONLY") != NULL)
+        return Check_FHE_SYNC1_Mapped_Image();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -4433,6 +4829,7 @@ main(void)
     failed |= Check_Llama2_Decode_State_Region();
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
+    failed |= Check_FHE_SYNC1_Mapped_Image();
     failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;

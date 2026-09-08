@@ -3,6 +3,7 @@
  */
 
 #include "dsl_ir_image.h"
+#include "dsl_fhe.h"
 #include "dsl_opcode.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -255,4 +256,5 @@ DSL_IR_Image_Print (FILE *file)
                 DSL_IR_String(record.context_identity),
                 record.source_call_ordinal, record.flags);
     }
+    DSL_FHE_Image_Print(file);
 }

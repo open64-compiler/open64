@@ -184,6 +184,11 @@ image coding begins before this checkpoint closes.
 
 ### **SYNC-1: Native API And Image Contract Freeze**
 
+Status: main/common implementation and validation complete on
+`codex/fhe-sync1-native-contract`; FHE semantic review accepted the contract
+without blockers.  Infrastructure PR merge and FHE-task rebase remain before
+the coordination checkpoint is closed across both tasks.
+
 Main task provides:
 
 - Stable common operator identities and version lookup.
