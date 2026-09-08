@@ -257,3 +257,28 @@ Current evidence:
   `doc/FHE-SYNC1-NATIVE-CONTRACT.md`.
 - The side-file payload is retained as `secure_resnet20.safetensors`, and the
   `.T` dump references it through `safetensors://secure_resnet20.safetensors`.
+
+## FHE SYNC-3 Conversion Contract
+
+Status: active contract preparation after PR #105 merged into `develop` at
+`73d8ec0d`.
+
+The reviewable SYNC-3 handoff is
+`doc/FHE-SYNC3-CONVERSION-CONTRACT.md`. The torch2whirl-owned SYNC-2 capture
+artifact remains the input to this stage; Python must not invent bootstrap,
+CKKS, SIHE, OpenFHE, or FHE-conversion operators. SYNC-3 begins after the
+binary WHIRL artifact is reopened by native compiler infrastructure.
+
+Frontend-relevant requirements for SYNC-3 are:
+
+- preserve the class-centric ResNet-20 source structure, source positions,
+  FHE entry rows, encryption descriptors, tensor bindings, and external
+  plaintext side-file references from SYNC-2;
+- provide stable `secure_resnet20.py`, `secure_resnet20.B`,
+  `secure_resnet20.T`, and `secure_resnet20.safetensors` inputs for the
+  conversion artifact family;
+- keep `common.relu` as the source-semantic operator; ReLU approximation
+  contracts and later bootstrap boundaries are native FHE conversion/planning
+  responsibilities; and
+- report any missing opaque native API rather than adding frontend workarounds
+  that inspect WN, TY, ST, physical `OPR_DSL`, or mapped-image details.

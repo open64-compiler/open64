@@ -1695,6 +1695,35 @@ full-sequence causal prompt evaluation with no KV cache.
    `common.relu` node definitions representing 19 source-context ReLU uses.
    Those source contexts are not operator or function versions.
 
+34. [ ] Stage the FHE SYNC-3 conversion infrastructure.
+
+   Use `doc/FHE-SYNC3-CONVERSION-CONTRACT.md` as the semantic handoff after
+   the merged ResNet-20 capture. Publish the exact main/common physical
+   contract before coding: preserve `.WHIRL.dsl_fhe` version 1 and add a
+   separate optional fixed-row `.WHIRL.dsl_fhe_plan` image for conversion
+   disposition, approximation contracts, value-specific CKKS state, and
+   BatchNorm-fold provenance. The new image must use 8-byte alignment,
+   pointer-free rows, existing mapped-image read/write/reset conventions,
+   stable `ir_b2a -st -src` headings, and malformed/legacy-image tests.
+
+   Preserve domain-visible FHE semantics through the domain-wrapper registry
+   when an FHE-CNN wrapper delegates to an existing common/CNN operator. Do
+   not allocate a new `DSL_OPERATOR` enum merely to retain the wrapper name,
+   and do not expose physical `OPR_DSL` details. A new semantic operation still
+   requires separate opcode review.
+
+   The conversion driver runs after optional DSL WOPT/Preopt and before
+   `VHO_DSL_Lower_Driver()`. Add an independently controlled FHE option group,
+   semantic gatekeeper entry points, opaque update APIs, and retained
+   conversion artifacts. BatchNorm folding must account for shared
+   signature-specialized PUs: rewrite a shared body/signature once, produce
+   instance-specific folded payloads at callsites, and report physical
+   definition rewrites separately from source-context folds. Fixture counts
+   belong to ResNet-20 certification tests, not the generic gatekeeper.
+
+   SYNC-3 does not insert bootstrap, allocate SIHE/CKKS arithmetic opcodes, or
+   lower to OpenFHE/runtime calls. Those remain later synchronized stages.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up
