@@ -549,22 +549,22 @@ it does not allocate enum values or authorize shared-file edits.
 
 | Contract family | SYNC-0 classification | Owner | Decision |
 | --- | --- | --- | --- |
-| `common.model_input` | Extend/promote existing common boundary vocabulary | Main common/com | Main decides whether to reuse an existing marker or publish a stable common name; FHE supplies encrypted-boundary requirements. |
-| `common.model_output` | Extend/promote existing common boundary vocabulary | Main common/com | Main decides whether to reuse an existing marker or publish a stable common name; FHE supplies encrypted-output requirements. |
-| `common.output_logits` | Reuse/extend if existing, otherwise promote common classifier-output marker | Main common/com | Needed for ResNet-20 classifier evidence; FHE adds encrypted-output policy only. |
+| `common.model_input` | Reuse existing native contract | Main common/com | Reuse `OPR_DSLMODELINPUT` and `common.model_input.v2`; FHE supplies encrypted-boundary requirements. |
+| `common.model_output` | Defer native promotion | Main common/com | Registry vocabulary exists, but ResNet-20 uses native `common.output_logits`; revisit only after a captured model requires generic model output. |
+| `common.output_logits` | Reuse existing native contract | Main common/com | Reuse `OPR_DSLOUTPUTLOGITS`; ResNet-20 uses version 2 and FHE adds encrypted-output policy only. |
 | `common.add` | Reuse existing common arithmetic contract | Main common/com | FHE supplies encrypted/plain legality, scale/level, and lowering rules. |
-| `common.bias_add` | Extend/promote common arithmetic/broadcast contract | Main common/com | Main determines whether this remains `common.add` plus attributes or a separate stable common helper. |
-| `common.mul` | Reuse/extend existing common arithmetic contract | Main common/com | FHE supplies depth, ciphertext/plaintext, and scale/level obligations. |
+| `common.bias_add` | Defer native promotion | Main common/com | Registry vocabulary exists; first-slice conv/linear operands and BatchNorm folding preserve bias semantics without a new native operator. |
+| `common.mul` | Reuse existing native contract | Main common/com | Reuse `OPR_DSLMUL`, version 1; FHE supplies depth, ciphertext/plaintext, and scale/level obligations. |
 | `common.relu` / `OPR_DSLRELU` | Reuse and semantically strengthen existing registry contract | Main common/com | Current source already contains `OPR_DSLRELU` and logical `common.relu`; no second ReLU opcode or replacement enum is allowed. |
-| `common.linear` | Reuse/extend existing common linear contract where present; otherwise promote common linalg op | Main common/com | FHE supplies plaintext-weight and MVM/MetaKernel requirements. |
-| `common.flatten` | Reuse/extend existing common shape contract | Main common/com | FHE supplies encrypted-layout reinterpretation/conversion requirements. |
-| `common.reshape` | Reuse/extend existing common shape contract | Main common/com | FHE supplies packing/layout legality requirements. |
-| `common.window_reduce` | Extend/promote common reduction contract | Main common/com | FHE accepts linear average/sum policy and rejects unsupported max/min for first CKKS release. |
-| `common.residual_add` | Promote source residual semantics through common plus CNN metadata | Main common/com with CNN/FHE requirements | FHE supplies residual scale/level/layout alignment obligations. |
-| `cnn.conv2d` | Reuse/extend CNN domain contract | Main/common CNN owner | FHE adapts reviewed CNN conv semantics to encrypted conv planning. |
-| `cnn.batch_norm_infer` | Reuse/extend CNN inference contract | Main/common CNN owner | FHE folds into plaintext weights/bias when legal. |
-| `cnn.max_pool2d` | Reuse/extend CNN pooling contract | Main/common CNN owner | FHE rejects or replaces only through explicit policy. |
-| `cnn.global_avg_pool2d` | Reuse/extend CNN or common reduction contract | Main/common CNN owner | FHE lowers linear pooling through sum/scale sequence. |
+| `common.linear` | Reuse existing native contracts | Main common/com | Reuse `OPR_DSLLINEAR` versions 2 and 3; FHE supplies plaintext-weight and MVM/MetaKernel requirements. |
+| `common.flatten` | Reuse existing native contract | Main common/com | Reuse `OPR_DSLFLATTEN`, version 2; FHE supplies encrypted-layout reinterpretation/conversion requirements. |
+| `common.reshape` | Reuse existing native contract | Main common/com | Reuse `OPR_DSLRESHAPE`, version 1; FHE supplies packing/layout legality requirements. |
+| `common.window_reduce` | Defer native promotion | Main common/com | Registry vocabulary exists; first-slice pooling remains native CNN operators through gatekeeping. |
+| `common.residual_add` | Reuse and semantically strengthen existing native contract | Main common/com with CNN/FHE requirements | Reuse `OPR_DSLRESIDUALADD`, version 2; FHE supplies residual scale/level/layout alignment obligations. |
+| `cnn.conv2d` | Reuse existing native contract | Main/common CNN owner | Reuse `OPR_DSLCONV2D`, version 2; FHE adapts reviewed CNN conv semantics to encrypted conv planning. |
+| `cnn.batch_norm_infer` | Reuse existing native contract | Main/common CNN owner | Reuse `OPR_DSLBATCHNORMINFER`, version 2; FHE folds into plaintext weights/bias when legal. |
+| `cnn.max_pool2d` | Reuse existing native contract | Main/common CNN owner | Reuse `OPR_DSLMAXPOOL2D`, version 2; FHE rejects or replaces only through explicit policy. |
+| `cnn.global_avg_pool2d` | Reuse existing native contract | Main/common CNN owner | Reuse `OPR_DSLGLOBALAVGPOOL2D`, version 2; FHE lowers linear pooling through sum/scale sequence. |
 | `fhe.entry_contract` | New FHE-owned contract using reviewed common attachment hooks | FHE task after SYNC-1 | Main owns generic attachment/image/printer hooks; FHE owns FHE semantics and verifier. |
 | `fhe.encryption_descriptor` | New FHE-owned descriptor using reviewed TensorDescriptorIR attachment | FHE task after SYNC-1 | Main owns type/descriptor attachment mechanics; FHE owns value-class, scheme, key, and CKKS-state meaning. |
 | `fhe.cnn.conv2d` | New FHE domain wrapper | FHE task after SYNC-3 | Created only after CNN/FHE gatekeeper accepts source `cnn.conv2d`. |
