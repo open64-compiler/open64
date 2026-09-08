@@ -184,10 +184,9 @@ image coding begins before this checkpoint closes.
 
 ### **SYNC-1: Native API And Image Contract Freeze**
 
-Status: main/common implementation and validation complete on
-`codex/fhe-sync1-native-contract`; FHE semantic review accepted the contract
-without blockers.  Infrastructure PR merge and FHE-task rebase remain before
-the coordination checkpoint is closed across both tasks.
+Status: closed.  Main/common implementation merged through PR #102 at
+`8ba9ee31`; FHE semantic review accepted the contract without blockers.  The
+FHE task rebases on this merged contract before producing SYNC-2 artifacts.
 
 Main task provides:
 
@@ -215,6 +214,25 @@ Merge rule: main infrastructure PR merges first. The FHE task rebases onto the
 updated `develop`; duplicate cherry-picks are omitted.
 
 ### **SYNC-2: Frontend Artifact Certification**
+
+Status: active.  The merged SYNC-1 opaque APIs are available.  The FHE task
+owns ResNet-20 capture and artifact production while the main task audits the
+shared operator, type, source-position, side-file, and printer evidence.
+
+Main-side readiness at SYNC-2 entry:
+
+| Capture requirement | Merged infrastructure evidence | Ownership now |
+| --- | --- | --- |
+| ResNet expression nodes | `common.relu`, `common.flatten`, `common.residual_add`, `common.linear`, and the reviewed CNN v2 operators are registered logical DSL operators with gatekeeper checks | FHE frontend binds existing operator IDs and versions |
+| Class-centric procedures and calls | PU creation/selection, source identity, formals, returns, call results, and callsite identity use opaque builder handles | FHE frontend emits the reachable ResNet-20 PU graph |
+| Source cross-reference | Source-file registration and value, symbol, callsite, and region source-position APIs feed existing WHIRL source records | FHE frontend supplies captured Python file/line/column evidence |
+| Tensor parameters | Canonical TensorDescriptorIR types and external tensor constants preserve side-file names and ranges through symbol/TCON evidence | FHE frontend publishes deterministic SafeTensors keys and payloads |
+| FHE boundary | Entry contracts, entry values, encryption descriptors, tensor bindings, and key requirements use the optional `.WHIRL.dsl_fhe` image | FHE frontend binds the merged opaque APIs |
+| Inspection and verification | Builder verification invokes structural FHE image validation; `ir_b2a -st -src` prints logical DSL, tensor, symbol, PU/region, and FHE evidence | Main task reviews the independent-process `.T` artifact |
+
+No additional common/com API gap is known at SYNC-2 entry.  A newly discovered
+gap must be reported at the opaque API boundary; it must not be bypassed by
+constructing WN, TY, ST, or mapped-image records in Python.
 
 Required artifact family:
 

@@ -667,11 +667,10 @@ backend C++ object layouts.
 
 ### SYNC-1 Exit Evidence Checklist
 
-Main/common implementation is complete on
-`codex/fhe-sync1-native-contract` and awaits infrastructure PR merge plus the
-FHE-task rebase step.  The FHE task has accepted the semantic split without
-blocking conflicts.  The exact accepted physical contract is
-`FHE-SYNC1-NATIVE-CONTRACT.md`.
+Main/common implementation merged through PR #102 at `8ba9ee31`.  The FHE task
+accepted the semantic split without blocking conflicts and must rebase on that
+merged foundation before producing SYNC-2 artifacts.  The exact accepted
+physical contract is `FHE-SYNC1-NATIVE-CONTRACT.md`.
 
 1. Main infrastructure PR has merged first, or the implementation remains
    blocked at contract-only review.

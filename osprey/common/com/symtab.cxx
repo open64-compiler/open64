@@ -119,7 +119,7 @@ Find_Tensor_Extension (TY_IDX ty)
 {
     for (UINT32 i = 0; i < Ty_tensor_extensions.Size(); ++i) {
         TY_TENSOR_EXTENSION_STORE &ext = Ty_tensor_extensions[i];
-        if (ext.ty == ty)
+        if (TY_IDX_index(ext.ty) == TY_IDX_index(ty))
             return &ext;
     }
     return NULL;

@@ -1635,17 +1635,16 @@ full-sequence causal prompt evaluation with no KV cache.
    native `.B`/`.T` artifact pair.  Do not allocate FHE/SIHE/CKKS opcodes or
    begin ReLU/bootstrap lowering in this checkpoint.
 
-   Implemented on `codex/fhe-sync1-native-contract`: the optional section,
+   Merged through PR #102 at `8ba9ee31`: the optional section,
    fixed rows, interning and lookup, opaque builder wrappers, reader/writer and
    reset integration, structural gatekeeper hook, logical printer, malformed
    image checks, and focused producer are complete.  Linux validation confirms
    8-byte ELF alignment, omission from non-FHE files, mapped reopen, and
    reviewable `.B`/`.T` evidence.  The FHE task accepted the semantic split
-   without blockers.  SYNC-2 remains gated on merge and FHE-task rebase; this
-   item allocates no FHE opcode and performs no FHE
-   lowering.
+   without blockers and SYNC-2 is active on the merged foundation.  This item
+   allocates no FHE opcode and performs no FHE lowering.
 
-32. [ ] Restore the torch2whirl native dependency closure after tensor folding.
+32. [x] Restore the torch2whirl native dependency closure after tensor folding.
 
    The current `origin/develop` native object list omits `dsl_simp.o` and
    `dsl_tensor_fold.o` even though `dsl_builder.o` now references both.  The
@@ -1653,9 +1652,19 @@ full-sequence causal prompt evaluation with no KV cache.
    `DSL_Tensor_TCON_Find_Carrier`.  Adding the missing objects exposes two
    existing frontend expectation failures: positional marker lookup after
    recursively materializing a convolution bias, and canonical tensor
-   interning across differing runtime-state/lineage context.  Repair and
-   certify this as a focused pre-SYNC-2 integration batch; do not mix frontend
-   workarounds into the FHE image contract.
+   interning across differing runtime-state/lineage context.
+
+   The native object list now links both dependencies.  Tensor interning now
+   restores the aligned/qualified `TY_IDX` associated with each TY table entry
+   before comparing and returning a canonical tensor type; runtime state and
+   lineage remain excluded from canonical type identity.  The external-weight
+   test locates the intended tensor constant by logical payload identity rather
+   than by a position changed by recursive bias materialization.  The full
+   native Python suite and common builder contract suite pass.  REGION value
+   materialization now places the complete dependency chain in the REGION body
+   and marks those values materialized, preventing duplicate outer-PU STID
+   definitions when a REGION result feeds a later expression.  No frontend
+   lowering workaround or FHE image change is part of this repair.
 
 ### Deferred work TODO
 

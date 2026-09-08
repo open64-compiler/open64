@@ -283,13 +283,13 @@ DSL_Builder_PU_Body (DSL_BUILDER_PROGRAM_UNIT pu)
 }
 
 static BOOL
-DSL_Builder_Materialize_PU_Value
+DSL_Builder_Materialize_Value_In_Block
         (DSL_BUILDER_PROGRAM_UNIT pu,
+         WN *body,
          DSL_BUILDER_VALUE_RECORD *record)
 {
-    WN *body = DSL_Builder_PU_Body(pu);
-
-    if (body == NULL || record == NULL || record->pu != pu)
+    if (body == NULL || WN_operator(body) != OPR_BLOCK || record == NULL ||
+        record->pu != pu)
         return FALSE;
     if (record->materialized)
         return TRUE;
@@ -308,7 +308,8 @@ DSL_Builder_Materialize_PU_Value
         DSL_BUILDER_VALUE_RECORD *dependency =
             DSL_Builder_Find_Value_Record_By_ST(WN_st_idx(kid));
         if (dependency == NULL ||
-            !DSL_Builder_Materialize_PU_Value(pu, dependency)) {
+            !DSL_Builder_Materialize_Value_In_Block
+                 (pu, body, dependency)) {
             record->materializing = FALSE;
             return FALSE;
         }
@@ -318,6 +319,15 @@ DSL_Builder_Materialize_PU_Value
     record->materializing = FALSE;
     record->materialized = TRUE;
     return TRUE;
+}
+
+static BOOL
+DSL_Builder_Materialize_PU_Value
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         DSL_BUILDER_VALUE_RECORD *record)
+{
+    return DSL_Builder_Materialize_Value_In_Block
+               (pu, DSL_Builder_PU_Body(pu), record);
 }
 
 static BOOL
@@ -2126,8 +2136,12 @@ DSL_Builder_Intern_Tensor_Type
 
     for (UINT32 index = 1; index < Ty_tab.Size(); ++index) {
         TY_IDX candidate = TY_IDX_ZERO;
+        TY_TENSOR_EXTENSION_INFO candidate_info;
         Set_TY_IDX_index(candidate, index);
-        if (candidate != tensor_ty && TY_is_tensor_extension(candidate) &&
+        if (!TY_Get_Tensor_Extension_Info(candidate, &candidate_info))
+            continue;
+        candidate = candidate_info.ty;
+        if (candidate != tensor_ty &&
             TY_tensor_is_canonical(candidate) &&
             TY_are_equivalent(candidate, tensor_ty, TY_EQUIV_IGNORE_NAMES))
             return candidate;
@@ -3913,8 +3927,11 @@ DSL_Builder_Append_Region_Value
          DSL_BUILDER_VALUE value)
 {
     DSL_BUILDER_VALUE_RECORD *record = DSL_Builder_Find_Value_Record(value);
-    return record != NULL &&
-           DSL_Region_Append_Statement(region, record->assignment);
+    WN *region_wn = DSL_Region_WN(region);
+    return record != NULL && region_wn != NULL &&
+           DSL_Builder_Select_PU(record->pu) &&
+           DSL_Builder_Materialize_Value_In_Block
+               (record->pu, WN_region_body(region_wn), record);
 }
 
 BOOL

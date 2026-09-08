@@ -3569,6 +3569,7 @@ Check_Structured_Region_Builder(void)
     DSL_BUILDER_REGION region;
     DSL_BUILDER_VALUE input;
     DSL_BUILDER_VALUE add;
+    DSL_BUILDER_VALUE relu;
     DSL_BUILDER_VALUE kids[2];
     DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
     DSL_DOMAIN_ID common_id;
@@ -3594,10 +3595,14 @@ Check_Structured_Region_Builder(void)
     add = DSL_Builder_Create_Operator_With_Result
               (DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1), 1,
                kids, 2, &attribute, 1, "region_result", tensor_ty);
+    kids[0] = add;
+    relu = DSL_Builder_Create_Operator_With_Result
+               (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                kids, 1, NULL, 0, "post_region_result", tensor_ty);
     region = DSL_Builder_Create_Region(pu, NULL, "cnn.basic_block", 1);
 
     if (tensor_ty == TY_IDX_ZERO || pu == NULL || input == NULL ||
-        add == NULL || region == NULL ||
+        add == NULL || relu == NULL || region == NULL ||
         !DSL_Builder_Append_PU_Value(pu, input) ||
         !DSL_Builder_Append_Region_Value(region, add) ||
         !DSL_Builder_Declare_Region_Value
@@ -3605,7 +3610,8 @@ Check_Structured_Region_Builder(void)
         !DSL_Builder_Declare_Region_Value
              (region, add,
               DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT, 1, 0) ||
-        !DSL_Builder_Append_PU_Region(pu, region)) {
+        !DSL_Builder_Append_PU_Region(pu, region) ||
+        !DSL_Builder_Append_PU_Value(pu, relu)) {
         fprintf(stderr, "structured region construction failed\n");
         return 1;
     }
@@ -3632,7 +3638,8 @@ Check_Structured_Region_Builder(void)
         WN_operator(WN_first(WN_region_pragmas(region_wn))) != OPR_PRAGMA ||
         WN_pragma(WN_first(WN_region_pragmas(region_wn))) !=
             WN_PRAGMA_OPAQUE ||
-        WN_first(body) != input || WN_last(body) != region_wn ||
+        WN_first(body) != input || WN_next(input) != region_wn ||
+        WN_next(region_wn) != relu || WN_last(body) != relu ||
         WN_Get_Linenum(region_wn) == 0) {
         fprintf(stderr, "structured region WN layout changed\n");
         failed = 1;
