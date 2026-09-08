@@ -529,20 +529,22 @@ The FHE frontend binding checkpoint for SYNC-2 is:
    and encrypted/encoded-plaintext representation descriptors after graph
    capture, before native verification/finalization.
 
-Status: in progress. The FHE branch now consumes the merged opaque APIs through
-the torch2whirl native bridge and retains
+Status: in progress. The FHE branch consumes the merged PR #102 opaque APIs
+through the torch2whirl native bridge and can retain preliminary local evidence
+under
 `artifacts/fhe/resnet20_capture/{secure_resnet20.py,secure_resnet20.B,secure_resnet20.T,secure_resnet20.safetensors,operator-census.txt,capture-options.txt,gatekeeper.log}`.
 The captured model is a complete deterministic ResNet-20/CIFAR-10 graph with
 `common.relu` preserved and no Python-created bootstrap, CKKS, SIHE, or FHE
 conversion operators.
 
-Open frontend gap: current ResNet capture does not yet implement true
-class-centric ResNet PUs. The existing ResNet region path hits a native
-duplicate result-symbol verification failure at full ResNet-20 scale, so the
-current SYNC-2 artifact uses single-PU graph capture while retaining source
-positions and the full operator census. Closing class-centric ResNet PUs should
-be handled as the next frontend-owned refinement before declaring SYNC-2 fully
-closed.
+Final native artifact certification is gated on PR #103
+(`codex/fhe-sync2-infrastructure-review`) merging and this FHE branch rebasing
+onto the updated `develop`. PR #103 owns the native fixes for torch2whirl
+linkage, canonical tensor interning, and REGION dependency/result materialization;
+the FHE branch must not duplicate those fixes. After that rebase, the FHE task
+must regenerate `secure_resnet20.B` and `secure_resnet20.T` with `ir_b2a -st -src`
+for main-side review and then close the class-centric ResNet PU certification
+item on the corrected native substrate.
 
 ### Deduplication and Equivalence Keys
 

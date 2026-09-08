@@ -94,7 +94,8 @@ def _write_operator_census(path: Path, module) -> None:
         "  every source ReLU is emitted as common.relu",
         "  FHE records describe entry/encryption/key contracts only",
         "  Python emits no bootstrap, CKKS, SIHE, or FHE conversion operators",
-        "  class_centric_pus=blocked: current ResNet frontend emits class regions, not ResNet class PUs",
+        "  class_centric_pus=pending_pr_103_rebase",
+        "  final_native_certification=blocked_until_pr_103_merge",
     ])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -208,9 +209,9 @@ def _emit_capture(artifact_dir: Path) -> int:
         encoding="utf-8",
     )
     (artifact_dir / "gatekeeper.log").write_text(
-        "native DSL/FHE structural verification passed\n"
-        "note: ResNet class-centric PU emission remains a frontend gap; "
-        "SYNC-2 artifact uses class-region evidence in the entry PU.\n",
+        "native DSL/FHE structural verification passed for preliminary capture\n"
+        "final native secure_resnet20.B/.T certification is gated on "
+        "PR #103 merge and FHE-branch rebase.\n",
         encoding="utf-8",
     )
     return 0

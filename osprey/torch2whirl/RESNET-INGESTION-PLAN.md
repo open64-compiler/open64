@@ -222,7 +222,9 @@ combined `openpy` gate pass:
 ## FHE SYNC-2 ResNet-20 Capture
 
 Status: in progress on the FHE task branch after PR #102 merged at
-`8ba9ee31`.
+`8ba9ee31`; final native artifact certification is gated on PR #103
+(`codex/fhe-sync2-infrastructure-review`) merging and the FHE branch rebasing
+onto the updated `develop`.
 
 The FHE lane now targets complete deterministic ResNet-20/CIFAR-10 capture,
 not a smaller CNN milestone. It consumes the merged `DSL_FHE_*` and
@@ -236,7 +238,7 @@ Retained artifact family:
 `secure_resnet20.T` is produced in a separate process with `ir_b2a -st -src`
 after the Python capture process exits.
 
-Current evidence:
+Current preliminary evidence:
 
 - `operator-census.txt` records 74 graph operators: 21 `cnn.conv2d`, 21
   `cnn.batch_norm_infer`, 19 `common.relu`, 9 `common.residual_add`, 1
@@ -247,9 +249,9 @@ Current evidence:
 - The side-file payload is retained as `secure_resnet20.safetensors`, and the
   `.T` dump references it through `safetensors://secure_resnet20.safetensors`.
 
-Open frontend item before SYNC-2 closure: true class-centric ResNet PUs are not
-implemented yet. The current full-model artifact uses single-PU graph capture.
-The existing ResNet class-region path reaches a duplicate native result-symbol
-verification failure at full ResNet-20 scale, so class-centric ResNet PU
-emission should be completed as a focused frontend refinement rather than
-papered over with raw native access.
+Open item before SYNC-2 closure: PR #103 owns the native corrections for
+torch2whirl linkage, canonical tensor interning, and REGION
+dependency/result materialization. The FHE branch must not duplicate those
+main-owned fixes. After PR #103 merges, this branch must rebase, regenerate the
+complete `secure_resnet20.B`/`.T` artifact family with `ir_b2a -st -src`, and
+complete class-centric ResNet PU certification on the corrected substrate.
