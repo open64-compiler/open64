@@ -540,20 +540,25 @@ class Open64DscNativeOptionalTest(unittest.TestCase):
         builder.append_program_unit_marker(pu, weight)
         builder.append_program_unit_marker(pu, conv2d)
         markers = builder.inspect_program_unit_markers(pu)
+        weight_marker = next(
+            marker
+            for marker in markers
+            if marker["opcode"] == "common.tensor_const"
+            and "#conv1.weight" in str(marker["payload"])
+        )
 
         self.assertGreater(weight.symbol, 0)
         self.assertEqual(weight.metadata["tensor_role"], "weight")
         self.assertEqual(weight.metadata["storage_file"], "resnet.safetensors")
         self.assertEqual(weight.metadata["storage_tensor_key"], "conv1.weight")
         self.assertEqual(weight.metadata["storage_byte_length"], "37632")
-        self.assertEqual(markers[-2]["opcode"], "common.tensor_const")
-        self.assertIn("value_kind=external_data", str(markers[-2]["payload"]))
+        self.assertIn("value_kind=external_data", str(weight_marker["payload"]))
         self.assertIn(
             "value=safetensors://resnet.safetensors#conv1.weight",
-            str(markers[-2]["payload"]),
+            str(weight_marker["payload"]),
         )
-        self.assertIn("offset=128", str(markers[-2]["payload"]))
-        self.assertIn("length=37632", str(markers[-2]["payload"]))
+        self.assertIn("offset=128", str(weight_marker["payload"]))
+        self.assertIn("length=37632", str(weight_marker["payload"]))
         self.assertEqual(markers[-1]["opcode"], "cnn.conv2d")
         self.assertIn("kid1=native_external_weight", str(markers[-1]["payload"]))
         self.assertIn("kid2=native_external_bias", str(markers[-1]["payload"]))
