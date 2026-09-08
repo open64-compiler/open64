@@ -129,6 +129,7 @@ extern INT WN_get_global_symtab (void *handle);
 extern INT WN_get_strtab (void *handle);
 extern INT WN_get_dsl_ir_image (void *handle);
 extern INT WN_get_dsl_effect_image (void *handle);
+extern INT WN_get_dsl_fhe_image (void *handle);
 
 
 extern INT WN_get_dst (void *handle);

@@ -1618,6 +1618,45 @@ full-sequence causal prompt evaluation with no KV cache.
    coverage passes.  Any mapped-image record or version change is a separate
    reviewed implementation stage, not an implication of this planning item.
 
+31. [x] Complete the FHE SYNC-1 native image and API contract.
+
+   The accepted main/common contract is
+   `doc/FHE-SYNC1-NATIVE-CONTRACT.md`; the FHE requirements input is
+   `doc/FHE-SYNC1-NATIVE-IMAGE-API-PROPOSAL.md`.  Add the optional
+   `.WHIRL.dsl_fhe` fixed-row image without changing existing WN, TY, ST, DSL
+   image, or revision layouts.  Keep canonical `TY_IDX` as the current
+   TensorDescriptorIR identity, bind an interned EncryptionDescriptorIR as a
+   separate semantic dimension, and defer changing CKKS level/scale to a
+   value-state capability that cannot mutate canonical types.
+
+   Completion requires exact record-size checks, semantic interning, opaque
+   builder wrappers, reader/writer/reset hooks, stable `ir_b2a -st -src`
+   tables, malformed-image rejection, legacy/non-FHE behavior, and a retained
+   native `.B`/`.T` artifact pair.  Do not allocate FHE/SIHE/CKKS opcodes or
+   begin ReLU/bootstrap lowering in this checkpoint.
+
+   Implemented on `codex/fhe-sync1-native-contract`: the optional section,
+   fixed rows, interning and lookup, opaque builder wrappers, reader/writer and
+   reset integration, structural gatekeeper hook, logical printer, malformed
+   image checks, and focused producer are complete.  Linux validation confirms
+   8-byte ELF alignment, omission from non-FHE files, mapped reopen, and
+   reviewable `.B`/`.T` evidence.  The FHE task accepted the semantic split
+   without blockers.  SYNC-2 remains gated on merge and FHE-task rebase; this
+   item allocates no FHE opcode and performs no FHE
+   lowering.
+
+32. [ ] Restore the torch2whirl native dependency closure after tensor folding.
+
+   The current `origin/develop` native object list omits `dsl_simp.o` and
+   `dsl_tensor_fold.o` even though `dsl_builder.o` now references both.  The
+   shared object links permissively but fails to load with an unresolved
+   `DSL_Tensor_TCON_Find_Carrier`.  Adding the missing objects exposes two
+   existing frontend expectation failures: positional marker lookup after
+   recursively materializing a convolution bias, and canonical tensor
+   interning across differing runtime-state/lineage context.  Repair and
+   certify this as a focused pre-SYNC-2 integration batch; do not mix frontend
+   workarounds into the FHE image contract.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

@@ -499,6 +499,11 @@ split, opaque builder declarations, `ir_b2a -st -src` spelling, malformed-image
 tests, required main hooks, proposed new FHE-owned files, and the
 `WT_DSL_FHE_IMAGE` staging assessment.
 
+The reconciled main/common contract is
+`doc/FHE-SYNC1-NATIVE-CONTRACT.md`. It is authoritative where the proposal's
+abstract carrier widths, duplicate tensor-descriptor ID, per-row sizing, or
+placeholder builder context types differ from the current Open64 source.
+
 ### SYNC-1 Work Items
 
 | Work item | FHE output for review | Main dependency |
@@ -661,6 +666,12 @@ physical `OPR_DSL` payload details, secret-key material, ciphertext bytes, or
 backend C++ object layouts.
 
 ### SYNC-1 Exit Evidence Checklist
+
+Main/common implementation is complete on
+`codex/fhe-sync1-native-contract` and awaits infrastructure PR merge plus the
+FHE-task rebase step.  The FHE task has accepted the semantic split without
+blocking conflicts.  The exact accepted physical contract is
+`FHE-SYNC1-NATIVE-CONTRACT.md`.
 
 1. Main infrastructure PR has merged first, or the implementation remains
    blocked at contract-only review.

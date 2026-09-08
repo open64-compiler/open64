@@ -5,6 +5,10 @@ Coordination authority:
 `/Users/shinmingliu/open64/doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md`  
 Scope: contract freeze only; no opcode allocation or shared-file implementation
 
+Main/common audit resolution: `FHE-SYNC1-NATIVE-CONTRACT.md` is authoritative
+for the implemented physical rows, Open64 index widths, exact version-1 sizes,
+and builder names. This proposal remains the FHE semantic requirements input.
+
 This document is the FHE support task's SYNC-1 handoff to the main
 WHIRL/common infrastructure task. It proposes the minimal first FHE image,
 semantic interning rules, opaque builder API, `ir_b2a -st -src` spelling,
@@ -26,7 +30,10 @@ malformed-image tests, required main hooks, and FHE-owned file boundaries.
 
 ## Fixed-Width Row Layout Rules
 
-All rows use fixed-width serialized fields and 4-byte alignment. The proposed
+The historical FHE-side proposal below used fixed-width mapped-image fields and
+4-byte alignment. Main/common review replaced that physical proposal with the
+exact version-1 rows and 8-byte section/row-start alignment defined in
+`FHE-SYNC1-NATIVE-CONTRACT.md`. The proposed
 minimum C assumption is `sizeof(UINT32) == 4` and two's-complement `INT32`.
 Rows intentionally avoid `UINT64` so layout is stable on 32-bit and 64-bit
 hosts. Any 64-bit scalar is stored as `{lo, hi}` little-endian words in the
@@ -600,7 +607,7 @@ For SYNC-1, the FHE task asks the main task to audit:
 1. whether the current DSL image can carry the minimal fixed FHE rows, or
    whether `WT_DSL_FHE_IMAGE` is required now;
 2. exact `TY_IDX`, `ST_IDX`, PU, source-position, and TensorDescriptorIR ID
-   carrier widths for the serialized rows;
+   carrier widths for the mapped-image rows;
 3. whether row alignment must be 4 bytes or match an existing mapped-image
    alignment rule;
 4. the generic attachment hook for EncryptionDescriptorIR on canonical tensor

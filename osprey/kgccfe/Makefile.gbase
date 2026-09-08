@@ -224,6 +224,7 @@ COMMON_COM_CXX_SRCS =	\
   const.cxx		\
   controls.cxx		\
   dsl_domain.cxx        \
+  dsl_fhe.cxx           \
   dsl_ir_image.cxx      \
   dsl_region.cxx        \
   dsl_memory_behavior.cxx \
