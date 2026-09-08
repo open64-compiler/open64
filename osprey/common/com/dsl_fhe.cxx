@@ -111,6 +111,23 @@ DSL_FHE_PU_ST_Valid (ST_IDX st)
 }
 
 static BOOL
+DSL_FHE_Value_Belongs_To_PU
+        (const DSL_IR_VALUE_RECORD &value, ST_IDX owner_pu_st)
+{
+    DSL_IR_VALUE_RECORD owned_value;
+    const char *owner_pu_name;
+
+    if (!DSL_FHE_PU_ST_Valid(owner_pu_st) ||
+        value.name == STR_IDX_ZERO)
+        return FALSE;
+    owner_pu_name = ST_name(St_Table[owner_pu_st]);
+    return DSL_IR_Image_Find_PU_Value
+               (value.st, Index_To_Str(value.name), owner_pu_name,
+                &owned_value) &&
+           owned_value.id == value.id;
+}
+
+static BOOL
 DSL_FHE_Config_Valid (const DSL_FHE_COMPILATION_CONFIG_RECORD &record)
 {
     return record.scheme == DSL_FHE_SCHEME_CKKS &&
@@ -224,10 +241,16 @@ DSL_FHE_View_Validate (const DSL_FHE_IMAGE_VIEW *view, FILE *diagnostic)
     for (UINT32 i = 0; i < header.entry_value_count; ++i) {
         const DSL_FHE_ENTRY_VALUE_RECORD &record = view->entry_values[i];
         DSL_IR_VALUE_RECORD value;
+        const DSL_FHE_ENTRY_CONTRACT_RECORD *entry =
+            record.entry_contract_id == 0 ||
+            record.entry_contract_id > header.entry_contract_count ? NULL :
+            &view->entry_contracts[record.entry_contract_id - 1];
         if (record.id != i + 1 || record.entry_contract_id == 0 ||
             record.entry_contract_id > header.entry_contract_count ||
             record.value_id == 0 ||
             !DSL_IR_Image_Get_Value(record.value_id, &value) ||
+            entry == NULL ||
+            !DSL_FHE_Value_Belongs_To_PU(value, entry->owner_pu_st) ||
             record.role < DSL_FHE_ENTRY_VALUE_INPUT ||
             record.role > DSL_FHE_ENTRY_VALUE_PARAMETER ||
             record.value_class < DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
@@ -619,10 +642,16 @@ DSL_FHE_ENTRY_VALUE_ID
 DSL_FHE_Add_Entry_Value (const DSL_FHE_ENTRY_VALUE_RECORD *record)
 {
     DSL_IR_VALUE_RECORD value;
+    const DSL_FHE_ENTRY_CONTRACT_RECORD *entry =
+        record == NULL || record->entry_contract_id == 0 ||
+        record->entry_contract_id > DSL_fhe_entry_contract_table.Size() ?
+        NULL : &DSL_fhe_entry_contract_table[record->entry_contract_id - 1];
     if (record == NULL || record->entry_contract_id == 0 ||
         record->entry_contract_id > DSL_fhe_entry_contract_table.Size() ||
         record->value_id == 0 ||
         !DSL_IR_Image_Get_Value(record->value_id, &value) ||
+        entry == NULL ||
+        !DSL_FHE_Value_Belongs_To_PU(value, entry->owner_pu_st) ||
         record->role < DSL_FHE_ENTRY_VALUE_INPUT ||
         record->role > DSL_FHE_ENTRY_VALUE_PARAMETER ||
         record->value_class < DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
