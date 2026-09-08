@@ -485,73 +485,84 @@ SYNC vocabulary.
 | SYNC-7: Optimized-versus-`-O0` proof | ReSBM, boundary movement/fusion, HPOLY/HPAO | Every optimized transform has an independent option and proves source semantics, approximation error, CKKS scale/level legality, key availability, provenance, and tolerance against the retained `-O0` baseline. |
 | SYNC-8: Separate GPU architecture review | GPU capability/layout/cost and later POLY/RNS path | GPU work remains separate from the OpenFHE CPU/reference milestone; provider capability, target description, memory/lifetime, POLY/RNS contracts, toolchain, fallback, telemetry, and regression methodology are reviewed before implementation. |
 
-## SYNC-1 Native API and Image Contract Preparation
+### Actionable Work List by Sync Point
 
-This section is the FHE-side preparation package for SYNC-1. It is a contract
-draft only. It does not allocate opcode values, edit shared files, add a WHIRL
-section, or begin reader/writer implementation before the main infrastructure
-PR merges.
+This checklist makes the coordination work explicit. The consolidated plan
+remains authoritative when ownership or ordering questions arise.
+
+| Sync | Main/common work | FHE task work | Exit handoff |
+| --- | --- | --- | --- |
+| SYNC-0 | Inventory existing common/CNN operators, tensor APIs, builder hooks, binary WHIRL constraints, and current `common.relu` / `OPR_DSLRELU` support. Classify requested contracts as reuse, extension, promotion, or new. | Publish the FHE operator/type handoff table; freeze ResNet-20-first scope, FHE descriptors, option semantics, ReLU refresh policy, and test strategy. | Accepted contract matrix, binary compatibility decision, and shared planning baseline. No opcode/type allocation or image coding starts before closure. |
+| SYNC-1 | Add and certify the optional `.WHIRL.dsl_fhe` image, fixed row ABI, mapped-image read/write, printer, validation, and opaque builder APIs. Preserve old and non-FHE `.B` behavior. | Provide the semantic row proposal, deduplication keys, malformed-image cases, and post-merge consumption notes. Rebase after merge and consume only `DSL_FHE_*` / `DSL_Builder_*` APIs. | `doc/FHE-SYNC1-NATIVE-CONTRACT.md` controls physical layout and API names; FHE proposal text is retained only as semantic input. |
+| SYNC-2 | Review shared operator/type/source/side-file/FHE table evidence. Fix common-owned printer or ownership-validation issues, including FHE entry-value local-symtab safety. | Capture complete deterministic ResNet-20/CIFAR-10 with class-centric PUs, five context-specialized `ResNet20Block` compiler PUs, nine callsites, source positions, external weights, FHE entry contracts, encryption descriptors, tensor bindings, and key requirements. Preserve every source ReLU as existing `common.relu`; emit no Python bootstrap, CKKS, SIHE, or FHE conversion operators. | Retained `artifacts/fhe/resnet20_capture/` family with source, `.B`, independent-process `ir_b2a -st -src` `.T`, side file, census, options, and gatekeeper log. |
+| SYNC-3 | Provide driver phase hook and common/tensor legality services needed by FHE conversion. Keep shared diagnostics and logical operator evidence inspectable. | Implement FHE gatekeeper, legal BatchNorm folding, ResNet model adaptation, CNN-to-FHE conversion, approximation contract attachment for surviving `common.relu`, and stable illegal-input diagnostics. | `secure_resnet20.fhe.B`, `.T`, and conversion report show convolution, residual, pooling, classifier, and ReLU disposition. |
+| SYNC-4 | Preserve and print `common.relu` source, result, descriptor, and provenance evidence through conversion. | Materialize the `-O0` ReLU rule: `bootstrap=auto|on` inserts the mandatory pre-ReLU refresh boundary, then evaluates the approved polynomial approximation; `manual` requires explicit compatible boundaries; `off` rejects surviving encrypted CKKS ReLU. | ReLU refresh and approximation artifacts prove no `-O0` boundary movement, merging, deduplication, or profitability placement. |
+| SYNC-5 | Supply standard WHIRL call/result construction, unlowered-node gate, and assigned `whirl2c` integration edits. | Lower FHE/SIHE/CKKS constructs to standard runtime calls; publish stable mock FHE C ABI; implement mock provider and generated-C compile/link tests. | `secure_resnet20.mid.B`, `.T`, generated C, and mock-linked executable evidence contain only standard WHIRL at the `whirl2c` boundary. |
+| SYNC-6 | Complete driver link flow, provider manifest consumption, and retained artifact expectations. | Implement the OpenFHE provider path, client provisioning, context/evaluation-key import, CKKS execution, encrypted CIFAR-10 input handling, and encrypted-logit result production. | Full `-O0` ResNet-20 binary WHIRL-to-OpenFHE executable path passes without server-side secret-key material. |
+| SYNC-7 | Enable reviewed VHO/WOPT integration points and per-pass controls. | Add ReSBM and optional optimization passes for boundary movement, merging, deduplication, fusion, HPOLY/HPAO planning, and reports. Each transform must prove legality, numerical equivalence, CKKS scale/level correctness, key availability, provenance, and tolerance against the retained `-O0` baseline. | Optimized artifacts and reports compare cleanly against the `-O0` baseline, with each transform controlled independently. |
+| SYNC-8 | Coordinate target-description, runtime, and integration expectations for GPU work. | Publish GPU capability, layout, cost, memory/lifetime, async execution, fallback, telemetry, and regression methodology. Defer native POLY/RNS and GPU lowering until review closes. | Separate GPU architecture review closes before any GPU-specific implementation enters the main FHE path. |
+
+## SYNC-1 Native API and Image Contract Closure
+
+Status: closed. PR #102 merged into `develop` at `8ba9ee31`, with
+`doc/FHE-SYNC1-NATIVE-CONTRACT.md` as the authoritative native contract.
 
 The precise FHE-owned SYNC-1 proposal is
-`doc/FHE-SYNC1-NATIVE-IMAGE-API-PROPOSAL.md`. That proposal freezes the minimal
-row layouts, deduplication keys, tensor encryption versus CKKS value-state API
-split, opaque builder declarations, `ir_b2a -st -src` spelling, malformed-image
-tests, required main hooks, proposed new FHE-owned files, and the
-`WT_DSL_FHE_IMAGE` staging assessment.
+`doc/FHE-SYNC1-NATIVE-IMAGE-API-PROPOSAL.md`. That proposal is retained as
+semantic input and post-merge consumption notes, not as physical ABI text.
 
 The reconciled main/common contract is
-`doc/FHE-SYNC1-NATIVE-CONTRACT.md`. It is authoritative where the proposal's
-abstract carrier widths, duplicate tensor-descriptor ID, per-row sizing, or
-placeholder builder context types differ from the current Open64 source.
+`doc/FHE-SYNC1-NATIVE-CONTRACT.md`. It is authoritative for `.WHIRL.dsl_fhe`,
+`WT_DSL_FHE_IMAGE`, row sizes/alignment, Open64 index widths, tensor identity,
+entry/encryption/key records, builder API names, mapped-image compatibility,
+validation, and `ir_b2a -st -src` table headings.
 
-### SYNC-1 Work Items
+### SYNC-1 Consumption Decisions
 
-| Work item | FHE output for review | Main dependency |
-| --- | --- | --- |
-| Fixed FHE records | Field-level record schema below, fixed-width storage rules, invalid-zero ID policy, and version/capability rules | Main-owned mapped-image extension point and reader/writer hook decision |
-| Semantic equivalence | Deduplication keys for config, encryption descriptor, tensor binding, approximation, CKKS state, key requirements, and backend requirements | TensorDescriptorIR identity and representation attachment hook |
-| Opaque builder API | Exact C/C++ declarations below for config, descriptor, entry, boundary value, key, approximation, and descriptor query APIs | Main-owned generic builder handle and source-position conventions |
-| Malformed input rules | Negative-test matrix below for bad versions, invalid IDs, out-of-range spans, missing links, secret-key material, and ReLU refresh errors | Main-owned generic gatekeeper invocation and diagnostic plumbing |
-| `ir_b2a -st -src` spelling | Stable section names and required printed fields below | Main-owned logical DSL printer and symbol/type dump integration |
-| Minimal native producer | A SYNC-1 test producer that writes, reopens, verifies, and prints one FHE entry without Python | Main-owned binary read/write and optional-section policy |
-
-### Record Storage Rules
-
-1. Every persisted FHE ID is a fixed-width unsigned integer. ID value zero is
-   invalid/null unless a field explicitly permits zero as absent.
-2. Persist only scalar values, `STR_IDX`, `TY_IDX`, `ST_IDX`, stable enum
-   values, record IDs, and `first/count` ranges. Do not persist C++ pointers,
-   `std::string`, `std::vector`, maps, OpenFHE objects, or backend handles.
-3. Every record family is append-only after publication. New fields require a
-   version/capability bit and a reader rule.
-4. Reader bounds checks validate every `first/count` range before exposing a
-   record to compiler passes.
-5. Source names and diagnostics are metadata. They do not participate in tensor
-   or encryption descriptor equivalence.
-6. Secret-key paths, bytes, or key-generation requests are rejected, not
-   redacted into valid records.
-
-### Initial Fixed Record Schema
-
-| Record | Required fields for SYNC-1 freeze |
+| Topic | Closed decision |
 | --- | --- |
-| `FHE_IMAGE_HEADER` | `magic`, `major_version`, `minor_version`, `capabilities`, record counts for every present table, string-table dependency version, reserved zeros |
-| `FHE_COMPILATION_CONFIG_RECORD` | `scheme`, `security_level`, `ring_dimension`, `mult_depth_policy`, `scale_bits`, `first_mod_bits`, `slots_policy`, `key_switch_policy`, `bootstrap_policy`, `backend_policy`, provenance flags |
-| `FHE_ENTRY_CONTRACT_RECORD` | owner PU identity, config ID, first/count for entry values, input count, output count, parameter count, encrypted I/O policy, parameter policy, accuracy budget ID, flags |
-| `FHE_ENTRY_VALUE_RECORD` | entry contract ID, value symbol/ST identity, tensor TY identity, ordinal, role, value class, encryption descriptor ID, side-file reference ID, source-position reference, flags |
-| `FHE_ENCRYPTION_DESCRIPTOR_RECORD` | value class, scheme, config ID, CKKS state ID, encrypted-layout ID, key-set ID, boundary role, confidentiality flags, representation flags |
-| `FHE_TENSOR_BINDING_RECORD` | canonical tensor `TY_IDX`, TensorDescriptorIR ID, encryption descriptor ID, value/symbol identity when value-specific, flags |
-| `FHE_APPROXIMATION_CONTRACT_RECORD` | source operator identity, approximated function, polynomial degree, coefficient constant/value ID, valid-range bounds, error budget, policy flags |
-| `FHE_CKKS_VALUE_STATE_RECORD` | level, scale bits or scale ID, basis kind, component count, precision estimate, pending relinearization flag, pending rescale flag, flags |
-| `FHE_KEY_REQUIREMENT_RECORD` | key class, key-set ID, config ID, first/count for rotation requirements, bootstrap profile ID, relinearization requirement, flags |
-| `FHE_ROTATION_REQUIREMENT_RECORD` | key requirement ID, signed rotation offset, source use count, flags |
-| `FHE_BACKEND_REQUIREMENT_RECORD` | provider ABI version, backend family, required capabilities, target class, serialization format, memory policy, flags |
+| Image carrier | Separate optional `.WHIRL.dsl_fhe` section with `WT_DSL_FHE_IMAGE`; existing `.WHIRL.dsl` is not extended. |
+| Compatibility | Non-FHE writers omit the section; new readers treat absence as empty; legacy readers ignore unknown optional `SHT_MIPS_WHIRL` sections. |
+| Row contract | Exact v1 sizes: header 64, config 64, entry contract 48, entry value 32, encryption descriptor 56, tensor binding 24, key requirement 48; section and rows are 8-byte aligned. |
+| Index widths | `TY_IDX` and `ST_IDX` are 32-bit; `STR_IDX` is 64-bit. |
+| Tensor identity | Canonical `TY_IDX` is the TensorDescriptorIR identity; no parallel TensorDescriptorIR ID is persisted. |
+| FHE representation | EncryptionDescriptorIR is interned representation semantics and binds independently to canonical tensor TY. |
+| CKKS value state | Level, scale, component count, and precision are deferred value-specific state; canonical TY is never mutated for them. |
+| Frontend surface | SYNC-2 consumes only opaque `DSL_FHE_*` services and `DSL_Builder_*` wrappers through the native bridge. |
+| Validation scope | `DSL_Builder_Verify_Program` invokes `DSL_FHE_Image_Validate`; deeper FHE gatekeeper diagnostics and unlowered-node gates remain later milestones. |
+| Inspection | Stable headings are the six `FHE ... Table:` sections defined in `FHE-SYNC1-NATIVE-CONTRACT.md`. |
 
-SYNC-1 may implement only the config, entry, entry-value, encryption descriptor,
-tensor binding, approximation contract, key requirement, and rotation
-requirement families. CKKS state and backend rows may remain schema-frozen but
-unmaterialized until later checkpoints if the main image hook records their
-counts as zero.
+### SYNC-2 API-Binding Checkpoint
+
+The FHE frontend binding checkpoint for SYNC-2 is:
+
+1. The Python native bridge exposes opaque wrappers for the merged config,
+   encryption descriptor, tensor binding, entry contract, entry value, key
+   requirement, and value encryption descriptor query APIs.
+2. Python calls pass declarative dictionaries and opaque handles only. They do
+   not construct WN nodes, inspect TY/ST indexes, or write mapped-image rows.
+3. Ordinary non-FHE ResNet exports remain unchanged and emit no FHE section.
+4. The SYNC-2 ResNet-20 certification lane opts in to FHE boundary contracts
+   and encrypted/encoded-plaintext representation descriptors after graph
+   capture, before native verification/finalization.
+
+Status: certified after PR #104 merged into `develop` (`e72ce709`). The FHE
+branch consumes the merged PR #102, PR #103, and PR #104 substrate through the
+torch2whirl native bridge and retains review evidence under
+`artifacts/fhe/resnet20_capture/{secure_resnet20.py,secure_resnet20.B,secure_resnet20.T,secure_resnet20.safetensors,operator-census.txt,capture-options.txt,gatekeeper.log}`.
+The captured model is a complete deterministic ResNet-20/CIFAR-10 inference
+graph with `common.relu` preserved, no Python-created bootstrap/CKKS/SIHE/FHE
+conversion operators, and external plaintext weights retained in the side file.
+The native image contains the `SecureResNet20` entry PU plus five
+signature-specialized `ResNet20Block` compiler PUs, nine explicit block
+callsites, and five `cnn.basic_block.v1` REGION contracts inside the clone PUs.
+FHE entry rows resolve through `owner_pu=SecureResNet20`; source-derived
+external tensor parameters and implicit parameters have non-null constructor
+source locations. The retained census records 11 reusable `common.relu` node
+definitions representing 19 source-context ReLU uses.
+The source definition remains `secure_resnet20.ResNet20Block.forward`; repeated
+uses are represented as context-sensitive callsites and structural/type
+signature clones, not operator or function-version changes.
 
 ### Deduplication and Equivalence Keys
 
@@ -565,59 +576,53 @@ counts as zero.
 | Key requirement | Key class, key-set ID, config ID, rotation offsets, bootstrap profile, relinearization requirement | Key file path spelling, secret-key provenance |
 | Backend requirement | Provider ABI version, capabilities, target class, serialization format, memory policy | Host path, local installation prefix |
 
-### Opaque Native Builder API Draft
+### Opaque Native Builder API Consumption
 
-The frontend receives opaque handles only. These declarations are the SYNC-1
-FHE request; exact names may be adjusted by the main owner to match existing
-builder conventions.
+The frontend receives opaque handles only and consumes the exact merged names:
 
 ```c++
 typedef UINT32 DSL_FHE_CONFIG_ID;
 typedef UINT32 DSL_FHE_ENTRY_CONTRACT_ID;
+typedef UINT32 DSL_FHE_ENTRY_VALUE_ID;
 typedef UINT32 DSL_FHE_ENCRYPTION_DESCRIPTOR_ID;
-typedef UINT32 DSL_FHE_APPROXIMATION_CONTRACT_ID;
+typedef UINT32 DSL_FHE_TENSOR_BINDING_ID;
 typedef UINT32 DSL_FHE_KEY_REQUIREMENT_ID;
 
 DSL_FHE_CONFIG_ID
 DSL_FHE_Intern_Compilation_Config(
-    const DSL_FHE_COMPILATION_CONFIG *config);
+    const DSL_FHE_COMPILATION_CONFIG_RECORD *record);
 
 DSL_FHE_ENCRYPTION_DESCRIPTOR_ID
 DSL_FHE_Intern_Encryption_Descriptor(
-    const DSL_FHE_ENCRYPTION_DESCRIPTOR *descriptor);
+    const DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *record);
 
-TY_IDX
-DSL_Builder_Intern_FHE_Tensor_Type(
-    const char *name,
-    const DSL_BUILDER_TENSOR_DESCRIPTOR *tensor,
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encryption);
+DSL_FHE_TENSOR_BINDING_ID
+DSL_Builder_Bind_FHE_Tensor_Descriptor(
+    TY_IDX tensor_ty,
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID descriptor_id,
+    UINT32 flags);
 
 DSL_FHE_ENTRY_CONTRACT_ID
 DSL_Builder_Attach_FHE_Entry_Contract(
     DSL_BUILDER_PROGRAM_UNIT pu,
-    const DSL_FHE_ENTRY_CONTRACT *contract);
+    const DSL_FHE_ENTRY_CONTRACT_INFO *info);
 
-BOOL
+DSL_FHE_ENTRY_VALUE_ID
 DSL_Builder_Declare_FHE_Entry_Value(
     DSL_FHE_ENTRY_CONTRACT_ID entry,
     DSL_BUILDER_VALUE value,
     UINT32 ordinal,
-    DSL_FHE_ENTRY_VALUE_ROLE role);
+    DSL_FHE_ENTRY_VALUE_ROLE role,
+    const DSL_FHE_ENTRY_VALUE_INFO *info);
 
 DSL_FHE_KEY_REQUIREMENT_ID
-DSL_Builder_Add_FHE_Key_Requirement(
-    DSL_FHE_CONFIG_ID config,
-    const DSL_FHE_KEY_REQUIREMENT *requirement);
-
-DSL_FHE_APPROXIMATION_CONTRACT_ID
-DSL_Builder_Attach_FHE_Approximation_Contract(
-    DSL_BUILDER_VALUE value,
-    const DSL_FHE_APPROXIMATION_CONTRACT *contract);
+DSL_FHE_Intern_Key_Requirement(
+    const DSL_FHE_KEY_REQUIREMENT_RECORD *record);
 
 BOOL
-DSL_Builder_Get_FHE_Encryption_Descriptor(
+DSL_Builder_Get_FHE_Value_Encryption_Descriptor(
     DSL_BUILDER_VALUE value,
-    DSL_FHE_ENCRYPTION_DESCRIPTOR *descriptor);
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *record);
 ```
 
 `common.relu` construction must continue to use the existing common logical

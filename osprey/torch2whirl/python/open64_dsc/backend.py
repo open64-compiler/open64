@@ -322,6 +322,49 @@ class WhirlBackend(Protocol):
     ) -> bool:
         ...
 
+    def intern_fhe_compilation_config(
+        self,
+        config: Mapping[str, object],
+    ) -> int:
+        ...
+
+    def intern_fhe_encryption_descriptor(
+        self,
+        descriptor: Mapping[str, object],
+    ) -> int:
+        ...
+
+    def bind_fhe_tensor_descriptor(
+        self,
+        tensor_type: int,
+        encryption_descriptor: int,
+        flags: int,
+    ) -> int:
+        ...
+
+    def attach_fhe_entry_contract(
+        self,
+        program_unit: int,
+        contract: Mapping[str, object],
+    ) -> int:
+        ...
+
+    def declare_fhe_entry_value(
+        self,
+        entry_contract: int,
+        value: int,
+        ordinal: int,
+        role: int,
+        info: Mapping[str, object],
+    ) -> int:
+        ...
+
+    def intern_fhe_key_requirement(
+        self,
+        requirement: Mapping[str, object],
+    ) -> int:
+        ...
+
 
 def load_backend(name: str) -> WhirlBackend:
     if name == "mock":

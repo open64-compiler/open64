@@ -72,6 +72,36 @@ class StateHandle(OpaqueHandle):
     pass
 
 
+@dataclass(frozen=True)
+class FHEConfigHandle(OpaqueHandle):
+    pass
+
+
+@dataclass(frozen=True)
+class FHEEncryptionDescriptorHandle(OpaqueHandle):
+    value_class: int = 0
+
+
+@dataclass(frozen=True)
+class FHETensorBindingHandle(OpaqueHandle):
+    pass
+
+
+@dataclass(frozen=True)
+class FHEEntryContractHandle(OpaqueHandle):
+    pass
+
+
+@dataclass(frozen=True)
+class FHEEntryValueHandle(OpaqueHandle):
+    pass
+
+
+@dataclass(frozen=True)
+class FHEKeyRequirementHandle(OpaqueHandle):
+    pass
+
+
 REGION_INPUT = 0x1
 REGION_OUTPUT = 0x2
 REGION_INOUT = 0x4
@@ -93,6 +123,36 @@ REGION_STATE_LAYER_OWNED = 0x10
 
 PU_RESULT_TENSOR = 1
 PU_RESULT_STATE = 2
+
+FHE_SCHEME_CKKS = 1
+FHE_SECURITY_128_CLASSIC = 1
+FHE_POLICY_AUTO = 1
+FHE_POLICY_EXPLICIT = 2
+FHE_POLICY_INHERIT = 3
+FHE_BOOTSTRAP_AUTO = 1
+FHE_BOOTSTRAP_ON = 2
+FHE_BOOTSTRAP_MANUAL = 3
+FHE_BOOTSTRAP_OFF = 4
+FHE_BACKEND_AUTO = 1
+FHE_BACKEND_OPENFHE = 2
+FHE_BACKEND_MOCK = 3
+FHE_VALUE_CLASS_CIPHERTEXT = 1
+FHE_VALUE_CLASS_ENCODED_PLAINTEXT = 2
+FHE_VALUE_CLASS_CLEAR = 3
+FHE_ENTRY_VALUE_INPUT = 1
+FHE_ENTRY_VALUE_OUTPUT = 2
+FHE_ENTRY_VALUE_PARAMETER = 3
+FHE_PARAMETER_POLICY_PLAINTEXT = 1
+FHE_PARAMETER_POLICY_ENCODED_PLAINTEXT = 2
+FHE_ENCODING_NONE = 1
+FHE_ENCODING_CKKS_PACKED = 2
+FHE_PACKING_AUTO = 1
+FHE_PACKING_METAKERNEL = 2
+FHE_PACKING_INHERIT = 4
+FHE_KEY_PUBLIC = 1
+FHE_KEY_RELINEARIZATION = 2
+FHE_KEY_ROTATION = 3
+FHE_KEY_BOOTSTRAP = 4
 
 
 class WhirlBuilder:
@@ -162,6 +222,199 @@ class WhirlBuilder:
                 diagnostic or "native DSL program verification failed"
             )
         return result
+
+    def fhe_compilation_config(
+        self,
+        *,
+        bootstrap_policy: int = FHE_BOOTSTRAP_AUTO,
+        backend_policy: int = FHE_BACKEND_OPENFHE,
+        ring_dimension: int = 0,
+        multiplicative_depth: int = 0,
+        scale_bits: int = 0,
+        first_modulus_bits: int = 0,
+        slot_count: int = 0,
+        flags: int = 0,
+    ) -> FHEConfigHandle:
+        config = {
+            "flags": flags,
+            "provenance_mask": 0,
+            "scheme": FHE_SCHEME_CKKS,
+            "security_level": FHE_SECURITY_128_CLASSIC,
+            "ring_dimension": ring_dimension,
+            "multiplicative_depth_policy": (
+                FHE_POLICY_EXPLICIT if multiplicative_depth else FHE_POLICY_AUTO
+            ),
+            "multiplicative_depth": multiplicative_depth,
+            "scale_bits": scale_bits,
+            "first_modulus_bits": first_modulus_bits,
+            "slot_count_policy": (
+                FHE_POLICY_EXPLICIT if slot_count else FHE_POLICY_AUTO
+            ),
+            "slot_count": slot_count,
+            "key_switch_policy": 0,
+            "bootstrap_policy": bootstrap_policy,
+            "backend_policy": backend_policy,
+        }
+        handle = self._call_fhe_backend(
+            "intern_fhe_compilation_config",
+            "intern FHE compilation config",
+            config,
+        )
+        return FHEConfigHandle(handle)
+
+    def fhe_encryption_descriptor(
+        self,
+        config: FHEConfigHandle,
+        *,
+        value_class: int,
+        key_set_name: str = "request_key",
+        slot_count_policy: int = FHE_POLICY_INHERIT,
+        slot_count: int = 0,
+        encoding_policy: int = FHE_ENCODING_NONE,
+        packing_policy: int = FHE_PACKING_AUTO,
+        flags: int = 0,
+    ) -> FHEEncryptionDescriptorHandle:
+        descriptor = {
+            "value_class": value_class,
+            "scheme": (
+                0 if value_class == FHE_VALUE_CLASS_CLEAR else FHE_SCHEME_CKKS
+            ),
+            "config": (
+                0 if value_class == FHE_VALUE_CLASS_CLEAR else config.value
+            ),
+            "key_set_name": (
+                "" if value_class == FHE_VALUE_CLASS_CLEAR else key_set_name
+            ),
+            "slot_count_policy": slot_count_policy,
+            "slot_count": slot_count,
+            "encoding_policy": encoding_policy,
+            "packing_policy": packing_policy,
+            "flags": flags,
+        }
+        handle = self._call_fhe_backend(
+            "intern_fhe_encryption_descriptor",
+            "intern FHE encryption descriptor",
+            descriptor,
+        )
+        return FHEEncryptionDescriptorHandle(handle, value_class)
+
+    def bind_fhe_tensor_descriptor(
+        self,
+        tensor_type: TensorTypeHandle,
+        descriptor: FHEEncryptionDescriptorHandle,
+        flags: int = 0,
+    ) -> FHETensorBindingHandle:
+        handle = self._call_fhe_backend(
+            "bind_fhe_tensor_descriptor",
+            "bind FHE tensor descriptor",
+            tensor_type.value,
+            descriptor.value,
+            flags,
+        )
+        return FHETensorBindingHandle(handle)
+
+    def fhe_entry_contract(
+        self,
+        program_unit: ProgramUnitHandle,
+        config: FHEConfigHandle,
+        *,
+        input_count: int,
+        output_count: int,
+        parameter_count: int,
+        encrypted_io_policy: int = 1,
+        parameter_policy: int = FHE_PARAMETER_POLICY_ENCODED_PLAINTEXT,
+        flags: int = 0,
+    ) -> FHEEntryContractHandle:
+        contract = {
+            "config": config.value,
+            "input_count": input_count,
+            "output_count": output_count,
+            "parameter_count": parameter_count,
+            "encrypted_io_policy": encrypted_io_policy,
+            "parameter_policy": parameter_policy,
+            "flags": flags,
+        }
+        handle = self._call_fhe_backend(
+            "attach_fhe_entry_contract",
+            "attach FHE entry contract",
+            program_unit.value,
+            contract,
+        )
+        return FHEEntryContractHandle(handle)
+
+    def declare_fhe_entry_value(
+        self,
+        entry_contract: FHEEntryContractHandle,
+        value: ValueHandle,
+        ordinal: int,
+        role: int,
+        descriptor: FHEEncryptionDescriptorHandle,
+        flags: int = 0,
+    ) -> FHEEntryValueHandle:
+        tensor_type = self._value_types.get(value.value)
+        if tensor_type is None:
+            tensor_type = TensorTypeHandle(
+                int(self._backend.get_value_type(value.value))
+            )
+        self.bind_fhe_tensor_descriptor(tensor_type, descriptor)
+        info = {
+            "encryption_descriptor": descriptor.value,
+            "value_class": descriptor.value_class,
+            "flags": flags,
+        }
+        handle = self._call_fhe_backend(
+            "declare_fhe_entry_value",
+            "declare FHE entry value",
+            entry_contract.value,
+            value.value,
+            ordinal,
+            role,
+            info,
+        )
+        return FHEEntryValueHandle(handle)
+
+    def fhe_key_requirement(
+        self,
+        config: FHEConfigHandle,
+        *,
+        key_set_name: str = "request_key",
+        key_class: int = FHE_KEY_PUBLIC,
+        rotation_offset: int = 0,
+        bootstrap_profile: str = "",
+        flags: int = 0,
+    ) -> FHEKeyRequirementHandle:
+        requirement = {
+            "config": config.value,
+            "key_set_name": key_set_name,
+            "key_class": key_class,
+            "rotation_offset": rotation_offset,
+            "bootstrap_profile": bootstrap_profile,
+            "flags": flags,
+        }
+        handle = self._call_fhe_backend(
+            "intern_fhe_key_requirement",
+            "intern FHE key requirement",
+            requirement,
+        )
+        return FHEKeyRequirementHandle(handle)
+
+    def _call_fhe_backend(self, method_name: str, action: str, *args: object) -> int:
+        method = getattr(self._backend, method_name, None)
+        if method is None:
+            raise RuntimeError(
+                f"{self.backend_name()} backend does not support {action}"
+            )
+        try:
+            handle = int(method(*args))
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"{self.backend_name()} backend failed to {action}"
+            ) from exc
+        if handle <= 0:
+            raise RuntimeError(
+                f"{self.backend_name()} backend failed to {action}"
+            )
+        return handle
 
     def symbol(
         self,

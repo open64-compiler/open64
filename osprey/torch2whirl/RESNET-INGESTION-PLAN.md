@@ -218,3 +218,42 @@ combined `openpy` gate pass:
 - `codex/torch2whirl-python-fe` PR: depends on the native infrastructure PR and
   supplies the standalone Python/PyTorch frontend, CLI, driver executable,
   tests, and plans.
+
+## FHE SYNC-2 ResNet-20 Capture
+
+Status: certified on the FHE task branch after PR #104 merged at `e72ce709`.
+
+The FHE lane now targets complete deterministic ResNet-20/CIFAR-10 capture,
+not a smaller CNN milestone. It consumes the merged `DSL_FHE_*` and
+`DSL_Builder_*` APIs through opaque Python-native bridge calls, preserves every
+source ReLU as `common.relu`, attaches FHE entry/encryption/key contracts only
+after graph capture, and emits no bootstrap, CKKS, SIHE, or FHE-conversion
+operators from Python.
+
+Retained artifact family:
+`artifacts/fhe/resnet20_capture/{secure_resnet20.py,secure_resnet20.B,secure_resnet20.T,secure_resnet20.safetensors,operator-census.txt,capture-options.txt,gatekeeper.log}`.
+`secure_resnet20.T` is produced in a separate process with `ir_b2a -st -src`
+after the Python capture process exits.
+
+Current evidence:
+
+- `operator-census.txt` records the class-centric ResNet profile: 9
+  `call:ResNet20Block` callsites, 13 `cnn.conv2d`, 13
+  `cnn.batch_norm_infer`, 11 reusable `common.relu` node definitions, 5
+  `common.residual_add`, 1 `cnn.global_avg_pool2d`, 1 `common.flatten`, 1
+  `common.linear`, and 1 `common.output_logits`. Those reusable ReLU
+  definitions represent 19 source-context ReLU uses across block calls and are
+  not operator or function versions.
+- `secure_resnet20.T` shows 6 `FUNC_ENTRY` records: the `SecureResNet20` entry
+  plus five deterministic signature-specialized `ResNet20Block__*` compiler
+  clones. The single source definition remains
+  `secure_resnet20.ResNet20Block.forward`.
+- The `.T` shows 9 explicit `VCALL` block callsites and 5 managed
+  `cnn.basic_block.v1` REGION contracts inside the clone PUs.
+- FHE entry rows resolve through `owner_pu=SecureResNet20`, and external or
+  implicit parameter symbols carry constructor source locations rather than
+  `file (null), line 0`.
+- FHE tables appear in `secure_resnet20.T` with the stable SYNC-1 headings from
+  `doc/FHE-SYNC1-NATIVE-CONTRACT.md`.
+- The side-file payload is retained as `secure_resnet20.safetensors`, and the
+  `.T` dump references it through `safetensors://secure_resnet20.safetensors`.

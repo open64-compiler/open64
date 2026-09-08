@@ -19,6 +19,7 @@
 #include "config.h"
 #include "config_targ_opt.h"
 #include "stab.h"
+#include "dsl_fhe.h"
 #include "dsl_builder.h"
 #include "open64_dsc_native_bridge.h"
 
@@ -862,6 +863,149 @@ Open64_DSC_Get_Program_Unit_Marker(Open64_DSC_Handle program_unit,
                                    Open64_DSC_Marker_Info *info)
 {
     return Open64_DSC_Get_Program_Unit_Value(program_unit, index, info);
+}
+
+Open64_DSC_Handle
+Open64_DSC_FHE_Intern_Compilation_Config
+        (const Open64_DSC_FHE_Compilation_Config *config)
+{
+    DSL_FHE_COMPILATION_CONFIG_RECORD record;
+
+    if (config == NULL)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+    DSL_FHE_Compilation_Config_Record_Init(&record);
+    record.flags = config->flags;
+    record.provenance_mask = config->provenance_mask;
+    record.scheme = config->scheme;
+    record.security_level = config->security_level;
+    record.ring_dimension = config->ring_dimension;
+    record.multiplicative_depth_policy =
+        config->multiplicative_depth_policy;
+    record.multiplicative_depth = config->multiplicative_depth;
+    record.scale_bits = config->scale_bits;
+    record.first_modulus_bits = config->first_modulus_bits;
+    record.slot_count_policy = config->slot_count_policy;
+    record.slot_count = config->slot_count;
+    record.key_switch_policy = config->key_switch_policy;
+    record.bootstrap_policy = config->bootstrap_policy;
+    record.backend_policy = config->backend_policy;
+    return (Open64_DSC_Handle) DSL_FHE_Intern_Compilation_Config(&record);
+}
+
+Open64_DSC_Handle
+Open64_DSC_FHE_Intern_Encryption_Descriptor
+        (const Open64_DSC_FHE_Encryption_Descriptor *descriptor)
+{
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD record;
+
+    if (descriptor == NULL)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+    DSL_FHE_Encryption_Descriptor_Record_Init(&record);
+    record.value_class = descriptor->value_class;
+    record.scheme = descriptor->scheme;
+    record.config_id = (DSL_FHE_CONFIG_ID) descriptor->config;
+    record.key_set_name = Save_Str(descriptor->key_set_name == NULL ?
+                                   "" : descriptor->key_set_name);
+    record.slot_count_policy = descriptor->slot_count_policy;
+    record.slot_count = descriptor->slot_count;
+    record.encoding_policy = descriptor->encoding_policy;
+    record.packing_policy = descriptor->packing_policy;
+    record.flags = descriptor->flags;
+    return (Open64_DSC_Handle)
+        DSL_FHE_Intern_Encryption_Descriptor(&record);
+}
+
+Open64_DSC_Handle
+Open64_DSC_FHE_Bind_Tensor_Descriptor
+        (Open64_DSC_Handle tensor_type,
+         Open64_DSC_Handle encryption_descriptor,
+         unsigned int flags)
+{
+    if (tensor_type == 0 || encryption_descriptor == 0)
+        return 0;
+    Open64_DSC_Initialize_Context();
+    return (Open64_DSC_Handle) DSL_Builder_Bind_FHE_Tensor_Descriptor
+               ((TY_IDX) tensor_type,
+                (DSL_FHE_ENCRYPTION_DESCRIPTOR_ID) encryption_descriptor,
+                (UINT32) flags);
+}
+
+Open64_DSC_Handle
+Open64_DSC_FHE_Attach_Entry_Contract
+        (Open64_DSC_Handle program_unit,
+         const Open64_DSC_FHE_Entry_Contract *contract)
+{
+    DSL_FHE_ENTRY_CONTRACT_INFO info;
+
+    if (program_unit == 0 || contract == NULL || contract->config == 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+    memset(&info, 0, sizeof(info));
+    info.config_id = (DSL_FHE_CONFIG_ID) contract->config;
+    info.input_count = contract->input_count;
+    info.output_count = contract->output_count;
+    info.parameter_count = contract->parameter_count;
+    info.encrypted_io_policy = contract->encrypted_io_policy;
+    info.parameter_policy = contract->parameter_policy;
+    info.flags = contract->flags;
+    return (Open64_DSC_Handle) DSL_Builder_Attach_FHE_Entry_Contract
+               ((DSL_BUILDER_PROGRAM_UNIT) program_unit, &info);
+}
+
+Open64_DSC_Handle
+Open64_DSC_FHE_Declare_Entry_Value
+        (Open64_DSC_Handle entry_contract,
+         Open64_DSC_Handle value,
+         unsigned int ordinal,
+         unsigned int role,
+         const Open64_DSC_FHE_Entry_Value *info)
+{
+    DSL_FHE_ENTRY_VALUE_INFO builder_info;
+
+    if (entry_contract == 0 || value == 0 || info == NULL ||
+        info->encryption_descriptor == 0)
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+    memset(&builder_info, 0, sizeof(builder_info));
+    builder_info.encryption_descriptor_id =
+        (DSL_FHE_ENCRYPTION_DESCRIPTOR_ID) info->encryption_descriptor;
+    builder_info.value_class = info->value_class;
+    builder_info.flags = info->flags;
+    return (Open64_DSC_Handle) DSL_Builder_Declare_FHE_Entry_Value
+               ((DSL_FHE_ENTRY_CONTRACT_ID) entry_contract,
+                (DSL_BUILDER_VALUE) value, (UINT32) ordinal,
+                (DSL_FHE_ENTRY_VALUE_ROLE) role, &builder_info);
+}
+
+Open64_DSC_Handle
+Open64_DSC_FHE_Intern_Key_Requirement
+        (const Open64_DSC_FHE_Key_Requirement *requirement)
+{
+    DSL_FHE_KEY_REQUIREMENT_RECORD record;
+
+    if (requirement == NULL || requirement->config == 0 ||
+        requirement->key_set_name == NULL ||
+        requirement->key_set_name[0] == '\0')
+        return 0;
+
+    Open64_DSC_Initialize_Context();
+    DSL_FHE_Key_Requirement_Record_Init(&record);
+    record.config_id = (DSL_FHE_CONFIG_ID) requirement->config;
+    record.key_set_name = Save_Str(requirement->key_set_name);
+    record.key_class = requirement->key_class;
+    record.rotation_offset = requirement->rotation_offset;
+    record.bootstrap_profile =
+        requirement->bootstrap_profile == NULL ||
+        requirement->bootstrap_profile[0] == '\0' ?
+        STR_IDX_ZERO : Save_Str(requirement->bootstrap_profile);
+    record.flags = requirement->flags;
+    return (Open64_DSC_Handle) DSL_FHE_Intern_Key_Requirement(&record);
 }
 
 int

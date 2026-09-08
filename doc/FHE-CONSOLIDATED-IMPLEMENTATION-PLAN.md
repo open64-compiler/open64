@@ -215,18 +215,19 @@ updated `develop`; duplicate cherry-picks are omitted.
 
 ### **SYNC-2: Frontend Artifact Certification**
 
-Status: active.  The merged SYNC-1 opaque APIs are available.  The FHE task
-owns ResNet-20 capture and artifact production while the main task audits the
-shared operator, type, source-position, side-file, and printer evidence.
+Status: completed after PR #104 merged into `develop` and the FHE branch
+rebased, regenerated the ResNet-20 artifact family, and passed final
+post-rebase certification.
 
 The first full trace exposed a PU-scope correctness gap in shared
 infrastructure: FHE entry values carried valid PU-relative `ST_IDX` values,
 but the global FHE printer resolved them through the last selected local symbol
-table.  SYNC-2 therefore remains active while common/com enforces the existing
-managed `owner_pu` relation during insertion and mapped-image validation and
-prints stable stored value identity.  The frontend concurrently assigns source
-positions to external and implicit parameter symbols.  Neither correction
-changes the FHE image layout or operator contracts.
+table.  PR #104 corrected the issue without changing the FHE image layout,
+record sizes, opcode contracts, or operator versions by enforcing the existing
+managed `owner_pu` relation during construction and mapped-image reopen and by
+printing stable stored value identity.  The frontend concurrently assigned
+source positions to external and implicit parameter symbols through the opaque
+value source-position API.
 
 Main-side readiness at SYNC-2 entry:
 
@@ -265,6 +266,18 @@ Acceptance checks:
 - Every source ReLU is `common.relu`.
 - No bootstrap or CKKS operator is invented by Python ingestion.
 - Python exits before an independent process reopens the `.B` file.
+
+Final evidence:
+
+- FHE rows resolve to `owner_pu=SecureResNet20` with stable entry-PU names for
+  `input0`, external parameters, and `common_output_logits_46`.
+- Source-derived external tensor parameters and implicit parameters have
+  non-null source locations from the defining Python constructors.
+- The retained trace contains 6 `FUNC_ENTRY` records, 9 `VCALL` block
+  callsites, and 5 `cnn.basic_block.v1` REGION contracts.
+- The retained census distinguishes 11 reusable `common.relu` node definitions
+  from 19 source-context ReLU uses across calls; those contexts are not
+  operator or function versions.
 
 Merge rule: frontend/FHE capture PR depends on merged native infrastructure.
 The main task reviews the `.T` evidence before this checkpoint closes.

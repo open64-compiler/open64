@@ -1666,7 +1666,7 @@ full-sequence causal prompt evaluation with no KV cache.
    definitions when a REGION result feeds a later expression.  No frontend
    lowering workaround or FHE image change is part of this repair.
 
-33. [ ] Certify FHE SYNC-2 entry-value ownership and artifact evidence.
+33. [x] Certify FHE SYNC-2 entry-value ownership and artifact evidence.
 
    FHE entry contracts are owned by a global PU symbol, while their DSL values
    commonly reference PU-relative local `ST_IDX` values.  Insertion and mapped
@@ -1681,10 +1681,19 @@ full-sequence causal prompt evaluation with no KV cache.
    owning PU's standard symbol/value evidence.  This correction changes no
    mapped-image row, record size, opcode, version, or ELF section contract.
 
-   Close this item only after the ResNet-20 frontend assigns source positions
-   to source-derived external and implicit parameter symbols, regenerates the
-   artifact family, and the main task reviews `secure_resnet20.T`.  Evidence
-   must distinguish reusable ReLU node definitions from source-context uses.
+   Closed after PR #104 merged and the FHE branch rebased on the updated
+   `develop`.  The ResNet-20 artifact family was regenerated, and
+   `secure_resnet20.T` now shows FHE entry rows resolving through
+   `owner_pu=SecureResNet20` with stable entry-PU value names.  Source-derived
+   external tensor parameters and implicit parameters carry source locations
+   from the defining Python constructors: top-level model parameters at
+   `secure_resnet20.py:64` and block/downsample parameters at
+   `secure_resnet20.py:17`, with instance-path metadata retained separately.
+
+   Final post-#104 evidence: 6 `FUNC_ENTRY` records, 9 `VCALL` block
+   callsites, 5 `cnn.basic_block.v1` REGION contracts, and 11 reusable
+   `common.relu` node definitions representing 19 source-context ReLU uses.
+   Those source contexts are not operator or function versions.
 
 ### Deferred work TODO
 

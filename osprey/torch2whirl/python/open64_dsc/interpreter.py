@@ -233,13 +233,16 @@ class WhirlExportInterpreter:
         model: Any,
         inputs: Sequence[Any],
     ) -> WhirlModule:
+        if self._is_resnet20_model(model):
+            return self._export_resnet20_multiple_pu_program(model, inputs)
+
         if (
             not self._is_tiny_llama2_prefill_model(model) and
             not self._is_tiny_llama2_decode_model(model)
         ):
             raise NotImplementedError(
                 "multiple-PU emission currently supports the tiny Llama "
-                "prefill/decode fixtures"
+                "prefill/decode fixtures and the SecureResNet20 fixture"
             )
 
         model_name = self._model_name(model)
@@ -2962,6 +2965,834 @@ class WhirlExportInterpreter:
             hasattr(model, "output")
         )
 
+    def _is_resnet20_model(self, model: Any) -> bool:
+        return (
+            model.__class__.__name__ == "SecureResNet20" and
+            hasattr(model, "conv1") and
+            hasattr(model, "bn1") and
+            hasattr(model, "layer1") and
+            hasattr(model, "layer2") and
+            hasattr(model, "layer3") and
+            hasattr(model, "avgpool") and
+            hasattr(model, "flatten") and
+            hasattr(model, "fc")
+        )
+
+    def _export_resnet20_multiple_pu_program(
+        self,
+        model: Any,
+        inputs: Sequence[Any],
+    ) -> WhirlModule:
+        if len(inputs) != 1:
+            raise NotImplementedError("ResNet-20 export expects one image tensor")
+        if bool(getattr(model, "training", False)):
+            raise NotImplementedError("ResNet-20 export requires eval mode")
+
+        model_name = self._model_name(model)
+        entry_name = self._model_class_name(model)
+        class_definitions, class_instances = collect_python_model_classes(model)
+        definitions = {
+            definition.class_name: definition
+            for definition in class_definitions
+        }
+        entry_definition = definitions.get(entry_name)
+        block_definition = definitions.get("ResNet20Block")
+        if entry_definition is None or block_definition is None:
+            raise NotImplementedError(
+                "ResNet-20 multiple-PU emission requires source definitions"
+            )
+
+        tensor_types: List[WhirlTensorTypeRecord] = []
+        values: List[WhirlValueRecord] = []
+        tensor_payloads: List[WhirlTensorPayloadRecord] = []
+        operators: List[str] = []
+        body_markers: List[str] = []
+        graph_operators: List[WhirlOperatorRecord] = []
+        attr_env: Dict[str, _GraphValue] = {}
+        tensor_type_names: Dict[int, str] = {}
+        entry_value_ids: Set[int] = set()
+        clone_cache: Dict[
+            Tuple[str, str, str, bool],
+            Tuple[ProgramUnitHandle, TensorTypeHandle],
+        ] = {}
+
+        def tensor_type(
+            name: str,
+            shape: Sequence[int],
+            layout: str,
+            lineage: str,
+        ) -> TensorTypeHandle:
+            logical_shape = self._format_shape(shape)
+            descriptor = {
+                "kind": "tensor",
+                "dtype": "float32",
+                "rank": len(shape),
+                "logical_shape": logical_shape,
+                "layout": layout,
+                "lineage": lineage,
+            }
+            handle = self.builder().tensor_type(
+                name,
+                "float32",
+                len(shape),
+                logical_shape,
+                descriptor,
+            )
+            tensor_type_names.setdefault(handle.value, name)
+            tensor_types.append(
+                WhirlTensorTypeRecord(
+                    name=name,
+                    handle=handle.value,
+                    dtype="float32",
+                    rank=len(shape),
+                    logical_shape=logical_shape,
+                    descriptor=descriptor,
+                )
+            )
+            return handle
+
+        def value_record(
+            name: str,
+            handle: ValueHandle,
+            tensor: TensorTypeHandle,
+            value_kind: str,
+            metadata: Mapping[str, str],
+        ) -> None:
+            symbol = self.builder().value_result_symbol(handle)
+            values.append(
+                WhirlValueRecord(
+                    name=name,
+                    handle=handle.value,
+                    type_name=tensor_type_names.get(
+                        tensor.value,
+                        f"type_{tensor.value}",
+                    ),
+                    value_kind=value_kind,
+                    symbol_handle=symbol.value,
+                    metadata=dict(metadata),
+                )
+            )
+
+        entry_identity = self._callable_identity_metadata(
+            entry_definition,
+            model,
+            "<model>",
+            entry_name,
+        )
+        entry_pu = self.builder().minimal_program_unit(entry_name)
+        self._set_pu_source_identity(entry_pu, entry_identity)
+        entry_file = self.builder().register_source_file(
+            entry_pu,
+            entry_definition.source_file,
+        )
+        entry_line = entry_definition.source_line
+        try:
+            entry_constructor_line = inspect.getsourcelines(
+                type(model).__init__,
+            )[1]
+        except (OSError, TypeError):
+            entry_constructor_line = entry_line
+        try:
+            block_constructor_line = inspect.getsourcelines(
+                type(self._module_at_instance_path(model, "layer1.0")).__init__,
+            )[1]
+        except (OSError, TypeError):
+            block_constructor_line = block_definition.source_line
+        input_shape = self._input_shape(inputs[0])
+        if input_shape != (1, 3, 32, 32):
+            raise NotImplementedError(
+                "ResNet-20 SYNC-2 profile expects CIFAR-10 input [1,3,32,32]"
+            )
+        image_type = tensor_type(
+            "resnet20_input_nchw_type",
+            input_shape,
+            "NCHW",
+            "python.resnet20.input",
+        )
+        image = self.builder().declare_pu_formal(
+            entry_pu,
+            "input0",
+            0,
+            image_type,
+            entry_file,
+            entry_line,
+        )
+        input_metadata = {
+            "source_layer_name": "input0",
+            "tensor_role": "activation",
+            "lowering_hint": "model_input",
+            "logical_shape": self._format_shape(input_shape),
+            "input_ordinal": "0",
+        }
+        self.builder().attach_value_metadata(image, input_metadata)
+        value_record("input0", image, image_type, "model_input", input_metadata)
+        entry_value_ids.add(image.value)
+        body_markers.append("input0")
+
+        def parameter_source(target: str) -> Tuple[int, Mapping[str, str]]:
+            instance_path = target.rsplit(".", 1)[0] if "." in target else target
+            if target.startswith("layer"):
+                definition = block_definition
+                line = block_constructor_line
+            else:
+                definition = entry_definition
+                line = entry_constructor_line
+            return line, {
+                "canonical_class_name": definition.canonical_name,
+                "callable_identity": (
+                    f"{definition.canonical_name}.__init__"
+                ),
+                "source_definition": "constructor",
+                "source_parameter_name": target,
+                "instance_path": instance_path,
+            }
+
+        def parameter(target: str, role: Optional[str] = None) -> _GraphValue:
+            tensor = self._resolve_attr(model, target)
+            if tensor is None:
+                graph_value = self._absent_parameter_for_target(
+                    model,
+                    target,
+                    tensor_types,
+                    values,
+                    role,
+                )
+            else:
+                graph_value = self._external_tensor_for_target(
+                    model,
+                    target,
+                    model_name,
+                    tensor_types,
+                    values,
+                    tensor_payloads,
+                    attr_env,
+                    role,
+                )
+            source_line, source_metadata = parameter_source(target)
+            for record in values:
+                if record.handle == graph_value.handle.value:
+                    merged_metadata = dict(record.metadata)
+                    merged_metadata.update(source_metadata)
+                    if record.value_kind == "external_data":
+                        merged_metadata["storage_checksum"] = ""
+                    record.metadata.update(source_metadata)
+                    self.builder().attach_value_metadata(
+                        graph_value.handle,
+                        merged_metadata,
+                    )
+                    break
+            self.builder().set_value_source_position(
+                graph_value.handle,
+                entry_file,
+                source_line,
+            )
+            graph_value_type = self.builder().value_type(graph_value.handle)
+            for record in values:
+                if record.handle == graph_value.handle.value and record.type_name:
+                    tensor_type_names.setdefault(
+                        graph_value_type.value,
+                        record.type_name,
+                    )
+            if graph_value.handle.value not in entry_value_ids:
+                self.builder().append_program_unit_value(entry_pu,
+                                                        graph_value.handle)
+                entry_value_ids.add(graph_value.handle.value)
+                body_markers.append(graph_value.name)
+            return graph_value
+
+        def emit(
+            pu: ProgramUnitHandle,
+            operator_name: str,
+            operands: Sequence[_GraphValue],
+            attrs: Mapping[str, str],
+            result_name: str,
+            result_type: Optional[TensorTypeHandle],
+            identity: Mapping[str, str],
+            source_layer: str,
+            source_line: int,
+            region: Optional[RegionHandle] = None,
+            region_inputs: Optional[Set[int]] = None,
+            region_values: Optional[Set[int]] = None,
+        ) -> _GraphValue:
+            self.builder().select_program_unit(pu)
+            handle, emitted_attrs = self._emit_operator(
+                operator_name,
+                [operand.handle for operand in operands],
+                attrs,
+            )
+            metadata = self._multi_pu_operator_metadata(
+                identity,
+                source_layer,
+                f"resnet20:{operator_name}",
+                result_name,
+            )
+            self.builder().attach_value_metadata(handle, metadata)
+            self.builder().set_value_source_position(
+                handle,
+                self.builder().register_source_file(
+                    pu,
+                    identity["source_file"],
+                ),
+                source_line,
+            )
+            if region is None:
+                self.builder().append_program_unit_value(pu, handle)
+            else:
+                if region_inputs is None:
+                    region_inputs = set()
+                if region_values is None:
+                    region_values = set()
+                for operand in operands:
+                    if (
+                        operand.handle.value not in region_inputs and
+                        operand.handle.value not in region_values
+                    ):
+                        self.builder().declare_region_value(
+                            region,
+                            operand.handle,
+                            REGION_INPUT,
+                            len(region_inputs),
+                        )
+                        region_inputs.add(operand.handle.value)
+                self.builder().append_region_value(region, handle)
+                region_values.add(handle.value)
+            operators.append(operator_name)
+            body_markers.append(operator_name)
+            graph_operators.append(
+                WhirlOperatorRecord(
+                    name=operator_name,
+                    handle=handle.value,
+                    kids=[operand.name for operand in operands],
+                    attrs=emitted_attrs,
+                    metadata=metadata,
+                )
+            )
+            if result_type is not None:
+                value_record(result_name, handle, result_type,
+                             "operator_result", metadata)
+            return _GraphValue(handle, result_name)
+
+        def block_targets(path: str, has_downsample: bool) -> List[str]:
+            targets = [
+                f"{path}.conv1.weight",
+                f"{path}.conv1.bias",
+                f"{path}.bn1.weight",
+                f"{path}.bn1.bias",
+                f"{path}.bn1.running_mean",
+                f"{path}.bn1.running_var",
+                f"{path}.conv2.weight",
+                f"{path}.conv2.bias",
+                f"{path}.bn2.weight",
+                f"{path}.bn2.bias",
+                f"{path}.bn2.running_mean",
+                f"{path}.bn2.running_var",
+            ]
+            if has_downsample:
+                targets.extend([
+                    f"{path}.downsample.0.weight",
+                    f"{path}.downsample.0.bias",
+                    f"{path}.downsample.1.weight",
+                    f"{path}.downsample.1.bias",
+                    f"{path}.downsample.1.running_mean",
+                    f"{path}.downsample.1.running_var",
+                ])
+            return targets
+
+        def define_block_clone(
+            path: str,
+            block: Any,
+            input_ty: TensorTypeHandle,
+            output_ty: TensorTypeHandle,
+            actuals: Sequence[_GraphValue],
+            signature: Tuple[str, str, str, bool],
+        ) -> Tuple[ProgramUnitHandle, TensorTypeHandle]:
+            cached = clone_cache.get(signature)
+            if cached is not None:
+                return cached
+            suffix = signature[0].replace(",", "x").replace("[", "").replace("]", "")
+            suffix = f"{suffix}_to_{signature[1].replace(',', 'x').replace('[', '').replace(']', '')}"
+            suffix = f"{suffix}_stride{signature[2].replace(',', 'x')}"
+            if signature[3]:
+                suffix = f"{suffix}_projection"
+            else:
+                suffix = f"{suffix}_identity"
+            clone_name = f"ResNet20Block__{suffix}"
+            clone_identity = self._callable_identity_metadata(
+                block_definition,
+                block,
+                f"signature:{suffix}",
+                f"{entry_name}.ResNet20Block[{suffix}]",
+            )
+            clone_pu = self.builder().minimal_program_unit(clone_name)
+            self._set_pu_source_identity(clone_pu, clone_identity)
+            block_file = self.builder().register_source_file(
+                clone_pu,
+                block_definition.source_file,
+            )
+            block_line = block_definition.source_line
+            self.builder().select_program_unit(clone_pu)
+            formal_specs = [(f"{suffix}_block_input", input_ty)]
+            formal_specs.extend(
+                (f"{suffix}_{target.split(f'{path}.', 1)[1].replace('.', '_')}",
+                 self.builder().value_type(actual.handle))
+                for target, actual in zip(block_targets(path, signature[3]), actuals)
+            )
+            formals: List[_GraphValue] = []
+            for ordinal, (name, formal_type) in enumerate(formal_specs):
+                formal = self.builder().declare_pu_formal(
+                    clone_pu,
+                    name,
+                    ordinal,
+                    formal_type,
+                    block_file,
+                    block_line,
+                )
+                metadata = self._multi_pu_value_metadata(
+                    clone_identity,
+                    name,
+                    "activation" if ordinal == 0 else "parameter",
+                    "" if ordinal == 0 else name.replace("_", "."),
+                )
+                self.builder().attach_value_metadata(formal, metadata)
+                value_record(name, formal, formal_type, "formal", metadata)
+                formals.append(_GraphValue(formal, name))
+            block_region = self.builder().region(
+                clone_pu,
+                "cnn.basic_block",
+                1,
+            )
+            self.builder().append_program_unit_region(clone_pu, block_region)
+            self.builder().set_region_source_position(
+                block_region,
+                block_file,
+                block_line,
+            )
+            self.builder().set_region_metadata(
+                block_region,
+                "canonical_class_name",
+                block_definition.canonical_name,
+            )
+            self.builder().set_region_metadata(
+                block_region,
+                "context_specialization",
+                suffix,
+            )
+            region_inputs: Set[int] = set()
+            region_values: Set[int] = set()
+            for ordinal, formal in enumerate(formals):
+                self.builder().declare_region_value(
+                    block_region,
+                    formal.handle,
+                    REGION_INPUT,
+                    ordinal,
+                )
+                region_inputs.add(formal.handle.value)
+            cursor = formals[0]
+            offset = 1
+            identity = clone_identity
+            if signature[3]:
+                ds_weight, ds_conv_bias, ds_scale, ds_bias, ds_mean, ds_var = \
+                    formals[-6:]
+                projected = emit(
+                    clone_pu,
+                    cnn.CONV2D,
+                    [cursor, ds_weight, ds_conv_bias],
+                    self._fx_module_static_attrs(cnn.CONV2D,
+                                                 block.downsample[0]),
+                    f"{suffix}_downsample_conv",
+                    output_ty,
+                    identity,
+                    "downsample.0",
+                    block_line + 1,
+                    block_region,
+                    region_inputs,
+                    region_values,
+                )
+                identity_value = emit(
+                    clone_pu,
+                    cnn.BATCH_NORM_INFER,
+                    [projected, ds_scale, ds_bias, ds_mean, ds_var],
+                    self._fx_module_static_attrs(cnn.BATCH_NORM_INFER,
+                                                 block.downsample[1]),
+                    f"{suffix}_downsample_bn",
+                    output_ty,
+                    identity,
+                    "downsample.1",
+                    block_line + 1,
+                    block_region,
+                    region_inputs,
+                    region_values,
+                )
+            else:
+                identity_value = cursor
+            conv1_weight, conv1_bias, bn1_scale, bn1_bias, bn1_mean, bn1_var = \
+                formals[offset:offset + 6]
+            conv2_weight, conv2_bias, bn2_scale, bn2_bias, bn2_mean, bn2_var = \
+                formals[offset + 6:offset + 12]
+            conv1 = emit(
+                clone_pu,
+                cnn.CONV2D,
+                [cursor, conv1_weight, conv1_bias],
+                self._fx_module_static_attrs(cnn.CONV2D, block.conv1),
+                f"{suffix}_conv1",
+                output_ty,
+                identity,
+                "conv1",
+                block_line + 1,
+                block_region,
+                region_inputs,
+                region_values,
+            )
+            bn1 = emit(
+                clone_pu,
+                cnn.BATCH_NORM_INFER,
+                [conv1, bn1_scale, bn1_bias, bn1_mean, bn1_var],
+                self._fx_module_static_attrs(cnn.BATCH_NORM_INFER, block.bn1),
+                f"{suffix}_bn1",
+                output_ty,
+                identity,
+                "bn1",
+                block_line + 1,
+                block_region,
+                region_inputs,
+                region_values,
+            )
+            relu1 = emit(
+                clone_pu,
+                common.RELU,
+                [bn1],
+                {},
+                f"{suffix}_relu1",
+                output_ty,
+                identity,
+                "relu",
+                block_line + 1,
+                block_region,
+                region_inputs,
+                region_values,
+            )
+            conv2 = emit(
+                clone_pu,
+                cnn.CONV2D,
+                [relu1, conv2_weight, conv2_bias],
+                self._fx_module_static_attrs(cnn.CONV2D, block.conv2),
+                f"{suffix}_conv2",
+                output_ty,
+                identity,
+                "conv2",
+                block_line + 1,
+                block_region,
+                region_inputs,
+                region_values,
+            )
+            bn2 = emit(
+                clone_pu,
+                cnn.BATCH_NORM_INFER,
+                [conv2, bn2_scale, bn2_bias, bn2_mean, bn2_var],
+                self._fx_module_static_attrs(cnn.BATCH_NORM_INFER, block.bn2),
+                f"{suffix}_bn2",
+                output_ty,
+                identity,
+                "bn2",
+                block_line + 1,
+                block_region,
+                region_inputs,
+                region_values,
+            )
+            residual = emit(
+                clone_pu,
+                common.RESIDUAL_ADD,
+                [bn2, identity_value],
+                {},
+                f"{suffix}_residual",
+                output_ty,
+                identity,
+                "residual_add",
+                block_line + 1,
+                block_region,
+                region_inputs,
+                region_values,
+            )
+            relu2 = emit(
+                clone_pu,
+                common.RELU,
+                [residual],
+                {},
+                f"{suffix}_block_output",
+                output_ty,
+                identity,
+                "relu",
+                block_line + 1,
+                block_region,
+                region_inputs,
+                region_values,
+            )
+            self.builder().declare_region_value(
+                block_region,
+                relu2.handle,
+                REGION_OUTPUT | REGION_RESULT,
+                len(region_inputs),
+            )
+            self.builder().declare_pu_result(
+                clone_pu,
+                "block_result",
+                0,
+                output_ty,
+                file_id=block_file,
+                line=block_line + 1,
+            )
+            self.builder().return_pu_values(clone_pu, [relu2.handle])
+            clone_cache[signature] = (clone_pu, output_ty)
+            return clone_cache[signature]
+
+        def emit_entry_op(
+            operator_name: str,
+            operands: Sequence[_GraphValue],
+            attrs: Mapping[str, str],
+            result_name: str,
+            result_shape: Sequence[int],
+            source_layer: str,
+            source_line: int,
+        ) -> _GraphValue:
+            result_type = tensor_type(
+                f"{result_name}_type",
+                result_shape,
+                "NCHW" if len(result_shape) == 4 else "NC",
+                f"python.resnet20.{result_name}",
+            )
+            return emit(
+                entry_pu,
+                operator_name,
+                operands,
+                attrs,
+                result_name,
+                result_type,
+                entry_identity,
+                source_layer,
+                source_line,
+            )
+
+        self.builder().select_program_unit(entry_pu)
+        current = _GraphValue(image, "input0")
+        stem_weight = parameter("conv1.weight", "weight")
+        stem_bias = parameter("conv1.bias", "bias")
+        stem_bn_scale = parameter("bn1.weight", "batchnorm_scale")
+        stem_bn_bias = parameter("bn1.bias", "batchnorm_bias")
+        stem_bn_mean = parameter("bn1.running_mean", "batchnorm_running_mean")
+        stem_bn_var = parameter("bn1.running_var", "batchnorm_running_var")
+        current = emit_entry_op(
+            cnn.CONV2D,
+            [current, stem_weight, stem_bias],
+            self._fx_module_static_attrs(cnn.CONV2D, model.conv1),
+            "stem_conv",
+            (1, 16, 32, 32),
+            "conv1",
+            entry_line + 1,
+        )
+        current = emit_entry_op(
+            cnn.BATCH_NORM_INFER,
+            [current, stem_bn_scale, stem_bn_bias, stem_bn_mean, stem_bn_var],
+            self._fx_module_static_attrs(cnn.BATCH_NORM_INFER, model.bn1),
+            "stem_bn",
+            (1, 16, 32, 32),
+            "bn1",
+            entry_line + 1,
+        )
+        current = emit_entry_op(
+            common.RELU,
+            [current],
+            {},
+            "stem_relu",
+            (1, 16, 32, 32),
+            "relu",
+            entry_line + 1,
+        )
+        block_plan = [
+            ("layer1.0", (1, 16, 32, 32), (1, 16, 32, 32), "1,1", False),
+            ("layer1.1", (1, 16, 32, 32), (1, 16, 32, 32), "1,1", False),
+            ("layer1.2", (1, 16, 32, 32), (1, 16, 32, 32), "1,1", False),
+            ("layer2.0", (1, 16, 32, 32), (1, 32, 16, 16), "2,2", True),
+            ("layer2.1", (1, 32, 16, 16), (1, 32, 16, 16), "1,1", False),
+            ("layer2.2", (1, 32, 16, 16), (1, 32, 16, 16), "1,1", False),
+            ("layer3.0", (1, 32, 16, 16), (1, 64, 8, 8), "2,2", True),
+            ("layer3.1", (1, 64, 8, 8), (1, 64, 8, 8), "1,1", False),
+            ("layer3.2", (1, 64, 8, 8), (1, 64, 8, 8), "1,1", False),
+        ]
+        for call_ordinal, (path, in_shape, out_shape, stride, downsample) in \
+                enumerate(block_plan):
+            block = self._module_at_instance_path(model, path)
+            actuals = [parameter(target) for target in block_targets(path, downsample)]
+            input_ty = tensor_type(
+                f"{path.replace('.', '_')}_input_type",
+                in_shape,
+                "NCHW",
+                f"python.resnet20.{path}.input",
+            )
+            output_ty = tensor_type(
+                f"{path.replace('.', '_')}_output_type",
+                out_shape,
+                "NCHW",
+                f"python.resnet20.{path}.output",
+            )
+            signature = (
+                self._format_shape(in_shape),
+                self._format_shape(out_shape),
+                stride,
+                downsample,
+            )
+            clone_pu, clone_result_ty = define_block_clone(
+                path,
+                block,
+                input_ty,
+                output_ty,
+                actuals,
+                signature,
+            )
+            self.builder().select_program_unit(entry_pu)
+            call = self.builder().create_pu_call(
+                entry_pu,
+                clone_pu,
+                [current.handle] + [actual.handle for actual in actuals],
+                [f"{path.replace('.', '_')}_output"],
+                block_definition.canonical_name,
+                path,
+                f"{entry_name}.{path}",
+                call_ordinal,
+                entry_file,
+                entry_line + 2 + call_ordinal,
+            )
+            call_result = self.builder().get_pu_call_result(
+                call,
+                0,
+                clone_result_ty,
+            )
+            call_metadata = self._multi_pu_value_metadata(
+                self._callable_identity_metadata(
+                    block_definition,
+                    block,
+                    path,
+                    f"{entry_name}.{path}",
+                ),
+                f"{path}_output",
+                "call_result",
+                "",
+            )
+            self.builder().attach_value_metadata(call_result, call_metadata)
+            self.builder().set_value_source_position(
+                call_result,
+                entry_file,
+                entry_line + 2 + call_ordinal,
+            )
+            result_name = f"{path.replace('.', '_')}_output"
+            value_record(result_name, call_result, clone_result_ty,
+                         "call_result", call_metadata)
+            operators.append("call:ResNet20Block")
+            body_markers.append("call:ResNet20Block")
+            graph_operators.append(
+                WhirlOperatorRecord(
+                    name=f"call:ResNet20Block.{path}",
+                    handle=call_result.value,
+                    kids=[current.name] + [actual.name for actual in actuals],
+                    attrs={
+                        "canonical_class_name": block_definition.canonical_name,
+                        "instance_path": path,
+                        "context_identity": f"{entry_name}.{path}",
+                        "source_ordinal": str(call_ordinal),
+                        "compiler_pu_specialization": signature[0] + "->" +
+                        signature[1] + ";stride=" + stride +
+                        (";projection" if downsample else ";identity"),
+                    },
+                    metadata=call_metadata,
+                )
+            )
+            current = _GraphValue(call_result, result_name)
+
+        current = emit_entry_op(
+            cnn.GLOBAL_AVG_POOL2D,
+            [current],
+            self._fx_module_static_attrs(cnn.GLOBAL_AVG_POOL2D, model.avgpool),
+            "avgpool",
+            (1, 64, 1, 1),
+            "avgpool",
+            entry_line + 12,
+        )
+        current = emit_entry_op(
+            common.FLATTEN,
+            [current],
+            self._fx_module_static_attrs(common.FLATTEN, model.flatten),
+            "flatten",
+            (1, 64),
+            "flatten",
+            entry_line + 13,
+        )
+        fc_weight = parameter("fc.weight", "weight")
+        fc_bias = parameter("fc.bias", "bias")
+        current = emit_entry_op(
+            common.LINEAR,
+            [current, fc_weight, fc_bias],
+            self._fx_module_static_attrs(common.LINEAR, model.fc),
+            "fc",
+            (1, 10),
+            "fc",
+            entry_line + 14,
+        )
+        current = emit_entry_op(
+            common.OUTPUT_LOGITS,
+            [current],
+            {"attr.semantic": "logits"},
+            "output_logits",
+            (1, 10),
+            "fc",
+            entry_line + 14,
+        )
+        self.builder().declare_pu_result(
+            entry_pu,
+            "model_result",
+            0,
+            self.builder().value_type(current.handle),
+            file_id=entry_file,
+            line=entry_line + 14,
+        )
+        self.builder().return_pu_values(entry_pu, [current.handle])
+
+        model_module = inspect.getmodule(type(model))
+        import_census = (
+            collect_python_import_census(model_module)
+            if model_module is not None else None
+        )
+        python_imports = import_census.callables if import_census else ()
+        python_import_diagnostics = (
+            import_census.diagnostics if import_census else ()
+        )
+        python_reachable_imports = resolve_reachable_imported_callables(
+            model_module,
+            python_imports,
+            class_definitions,
+            class_instances,
+            entry_name,
+        )
+        return WhirlModule(
+            options=self._options,
+            model_name=model_name,
+            input_count=1,
+            entry_function=WhirlProgramUnitRecord(
+                name=entry_name,
+                handle=entry_pu.value,
+                body_markers=body_markers,
+            ),
+            graph_source="torch.fx+resnet20_multiple_pu_boundary",
+            operators=operators,
+            tensor_types=tensor_types,
+            values=values,
+            tensor_payloads=tensor_payloads,
+            graph_operators=graph_operators,
+            python_imports=python_imports,
+            python_import_diagnostics=python_import_diagnostics,
+            python_reachable_imports=python_reachable_imports,
+            python_class_definitions=class_definitions,
+            python_class_instances=class_instances,
+        )
+
     def _emit_llama2_model(
         self,
         model: Any,
@@ -5498,7 +6329,11 @@ class WhirlExportInterpreter:
                 kwargs: Dict[str, Any],
             ) -> Any:
                 module_kind = type(module).__name__
-                is_region = module_kind in {"BasicBlock", "Bottleneck"}
+                is_region = module_kind in {
+                    "BasicBlock",
+                    "Bottleneck",
+                    "ResNet20Block",
+                }
                 if is_region:
                     self._open64_region_stack.append(
                         (self.path_of_module(module), module_kind)

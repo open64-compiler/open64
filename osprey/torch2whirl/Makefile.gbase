@@ -140,6 +140,7 @@ OBJECTS = $(TORCH2WHIRL_CXX_SRCS:.cxx=.o)
 
 .PHONY: default all clean clobber install make_deps python_test \
   driver_native_ir_tools_smoke resnet_native_ir_tools_smoke \
+  fhe_resnet20_capture \
   driver_opencc_smoke driver_torch_test \
   llama2_prefill_native_ir_tools_smoke llama2_decode_native_ir_tools_smoke \
   llama2_multi_pu_native_ir_tools_smoke \
@@ -189,6 +190,14 @@ resnet_native_ir_tools_smoke: $(TARGETS) python_native_extension \
 	    PYTHONPATH=$(TORCH2WHIRL_PYTHONPATH) \
 	    TORCH2WHIRL_DRIVER=$(TORCH2WHIRL_DRIVER) \
 	    $(PYTHON) $(BUILD_BASE)/python/tests/driver_native_ir_tools_smoke.py
+
+fhe_resnet20_capture: $(TARGETS) python_native_extension \
+  python_native_ir_tools_deps
+	PYTHONDONTWRITEBYTECODE=1 \
+	    OPEN64_IR_B2A="$(OPEN64_IR_B2A)" \
+	    PYTHONPATH=$(PYTHON_BUILD_ROOT):$(TORCH2WHIRL_PYTHONPATH) \
+	    $(PYTHON) $(BUILD_BASE)/python/tests/fhe_resnet20_capture.py \
+	        "$(OPEN64_SRC_ROOT)/artifacts/fhe/resnet20_capture"
 
 llama2_prefill_native_ir_tools_smoke: $(TARGETS) python_native_extension \
   python_native_ir_tools_deps

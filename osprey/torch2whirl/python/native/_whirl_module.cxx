@@ -366,6 +366,181 @@ Open64_DSC_Read_Attributes(PyObject *attrs_obj,
     return 1;
 }
 
+static unsigned int
+Open64_DSC_Dict_UInt(PyObject *dict, const char *key,
+                     unsigned int fallback)
+{
+    PyObject *item = PyDict_GetItemString(dict, key);
+    unsigned long value;
+
+    if (item == NULL)
+        return fallback;
+    value = PyLong_AsUnsignedLong(item);
+    if (PyErr_Occurred())
+        return 0;
+    return (unsigned int) value;
+}
+
+static Open64_DSC_Handle
+Open64_DSC_Dict_Handle(PyObject *dict, const char *key,
+                       Open64_DSC_Handle fallback)
+{
+    PyObject *item = PyDict_GetItemString(dict, key);
+
+    if (item == NULL)
+        return fallback;
+    return PyLong_AsUnsignedLongLong(item);
+}
+
+static int
+Open64_DSC_Dict_Int(PyObject *dict, const char *key, int fallback)
+{
+    PyObject *item = PyDict_GetItemString(dict, key);
+    long value;
+
+    if (item == NULL)
+        return fallback;
+    value = PyLong_AsLong(item);
+    if (PyErr_Occurred())
+        return 0;
+    return (int) value;
+}
+
+static int
+Open64_DSC_Read_FHE_Config
+        (PyObject *dict, Open64_DSC_FHE_Compilation_Config *config)
+{
+    if (config == NULL)
+        return 0;
+    if (!PyDict_Check(dict)) {
+        PyErr_SetString(PyExc_TypeError, "FHE config must be a dict");
+        return 0;
+    }
+    memset(config, 0, sizeof(*config));
+    config->flags = Open64_DSC_Dict_UInt(dict, "flags", 0);
+    config->provenance_mask =
+        Open64_DSC_Dict_UInt(dict, "provenance_mask", 0);
+    config->scheme = Open64_DSC_Dict_UInt(dict, "scheme", 1);
+    config->security_level =
+        Open64_DSC_Dict_UInt(dict, "security_level", 1);
+    config->ring_dimension =
+        Open64_DSC_Dict_UInt(dict, "ring_dimension", 0);
+    config->multiplicative_depth_policy =
+        Open64_DSC_Dict_UInt(dict, "multiplicative_depth_policy", 1);
+    config->multiplicative_depth =
+        Open64_DSC_Dict_UInt(dict, "multiplicative_depth", 0);
+    config->scale_bits = Open64_DSC_Dict_UInt(dict, "scale_bits", 0);
+    config->first_modulus_bits =
+        Open64_DSC_Dict_UInt(dict, "first_modulus_bits", 0);
+    config->slot_count_policy =
+        Open64_DSC_Dict_UInt(dict, "slot_count_policy", 1);
+    config->slot_count = Open64_DSC_Dict_UInt(dict, "slot_count", 0);
+    config->key_switch_policy =
+        Open64_DSC_Dict_UInt(dict, "key_switch_policy", 0);
+    config->bootstrap_policy =
+        Open64_DSC_Dict_UInt(dict, "bootstrap_policy", 1);
+    config->backend_policy =
+        Open64_DSC_Dict_UInt(dict, "backend_policy", 2);
+    return !PyErr_Occurred();
+}
+
+static int
+Open64_DSC_Read_FHE_Encryption_Descriptor
+        (PyObject *dict, Open64_DSC_FHE_Encryption_Descriptor *descriptor)
+{
+    if (descriptor == NULL)
+        return 0;
+    if (!PyDict_Check(dict)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "FHE encryption descriptor must be a dict");
+        return 0;
+    }
+    memset(descriptor, 0, sizeof(*descriptor));
+    descriptor->value_class =
+        Open64_DSC_Dict_UInt(dict, "value_class", 1);
+    descriptor->scheme = Open64_DSC_Dict_UInt(dict, "scheme", 1);
+    descriptor->config = Open64_DSC_Dict_Handle(dict, "config", 0);
+    descriptor->key_set_name =
+        Open64_DSC_Dict_String(dict, "key_set_name", "");
+    descriptor->slot_count_policy =
+        Open64_DSC_Dict_UInt(dict, "slot_count_policy", 3);
+    descriptor->slot_count = Open64_DSC_Dict_UInt(dict, "slot_count", 0);
+    descriptor->encoding_policy =
+        Open64_DSC_Dict_UInt(dict, "encoding_policy", 1);
+    descriptor->packing_policy =
+        Open64_DSC_Dict_UInt(dict, "packing_policy", 1);
+    descriptor->flags = Open64_DSC_Dict_UInt(dict, "flags", 0);
+    return !PyErr_Occurred();
+}
+
+static int
+Open64_DSC_Read_FHE_Entry_Contract
+        (PyObject *dict, Open64_DSC_FHE_Entry_Contract *contract)
+{
+    if (contract == NULL)
+        return 0;
+    if (!PyDict_Check(dict)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "FHE entry contract must be a dict");
+        return 0;
+    }
+    memset(contract, 0, sizeof(*contract));
+    contract->config = Open64_DSC_Dict_Handle(dict, "config", 0);
+    contract->input_count = Open64_DSC_Dict_UInt(dict, "input_count", 0);
+    contract->output_count = Open64_DSC_Dict_UInt(dict, "output_count", 0);
+    contract->parameter_count =
+        Open64_DSC_Dict_UInt(dict, "parameter_count", 0);
+    contract->encrypted_io_policy =
+        Open64_DSC_Dict_UInt(dict, "encrypted_io_policy", 1);
+    contract->parameter_policy =
+        Open64_DSC_Dict_UInt(dict, "parameter_policy", 2);
+    contract->flags = Open64_DSC_Dict_UInt(dict, "flags", 0);
+    return !PyErr_Occurred();
+}
+
+static int
+Open64_DSC_Read_FHE_Entry_Value
+        (PyObject *dict, Open64_DSC_FHE_Entry_Value *entry_value)
+{
+    if (entry_value == NULL)
+        return 0;
+    if (!PyDict_Check(dict)) {
+        PyErr_SetString(PyExc_TypeError, "FHE entry value must be a dict");
+        return 0;
+    }
+    memset(entry_value, 0, sizeof(*entry_value));
+    entry_value->encryption_descriptor =
+        Open64_DSC_Dict_Handle(dict, "encryption_descriptor", 0);
+    entry_value->value_class =
+        Open64_DSC_Dict_UInt(dict, "value_class", 1);
+    entry_value->flags = Open64_DSC_Dict_UInt(dict, "flags", 0);
+    return !PyErr_Occurred();
+}
+
+static int
+Open64_DSC_Read_FHE_Key_Requirement
+        (PyObject *dict, Open64_DSC_FHE_Key_Requirement *requirement)
+{
+    if (requirement == NULL)
+        return 0;
+    if (!PyDict_Check(dict)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "FHE key requirement must be a dict");
+        return 0;
+    }
+    memset(requirement, 0, sizeof(*requirement));
+    requirement->config = Open64_DSC_Dict_Handle(dict, "config", 0);
+    requirement->key_set_name =
+        Open64_DSC_Dict_String(dict, "key_set_name", "");
+    requirement->key_class = Open64_DSC_Dict_UInt(dict, "key_class", 1);
+    requirement->rotation_offset =
+        Open64_DSC_Dict_Int(dict, "rotation_offset", 0);
+    requirement->bootstrap_profile =
+        Open64_DSC_Dict_String(dict, "bootstrap_profile", "");
+    requirement->flags = Open64_DSC_Dict_UInt(dict, "flags", 0);
+    return !PyErr_Occurred();
+}
+
 static PyObject *
 Open64_DSC_Create_Operator(PyObject *self, PyObject *args)
 {
@@ -1162,6 +1337,118 @@ Open64_DSC_Inspect_Program_Unit_Markers(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_FHE_Intern_Compilation_Config(PyObject *self, PyObject *args)
+{
+    PyObject *config_obj;
+    Open64_DSC_FHE_Compilation_Config config;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "O!:intern_fhe_compilation_config",
+                          &PyDict_Type, &config_obj))
+        return NULL;
+    if (!Open64_DSC_Read_FHE_Config(config_obj, &config))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_FHE_Intern_Compilation_Config(&config),
+                "intern FHE compilation config");
+}
+
+static PyObject *
+Open64_DSC_FHE_Intern_Encryption_Descriptor(PyObject *self, PyObject *args)
+{
+    PyObject *descriptor_obj;
+    Open64_DSC_FHE_Encryption_Descriptor descriptor;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "O!:intern_fhe_encryption_descriptor",
+                          &PyDict_Type, &descriptor_obj))
+        return NULL;
+    if (!Open64_DSC_Read_FHE_Encryption_Descriptor(descriptor_obj,
+                                                   &descriptor))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_FHE_Intern_Encryption_Descriptor(&descriptor),
+                "intern FHE encryption descriptor");
+}
+
+static PyObject *
+Open64_DSC_FHE_Bind_Tensor_Descriptor(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle tensor_type;
+    Open64_DSC_Handle descriptor;
+    unsigned int flags;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KKI:bind_fhe_tensor_descriptor",
+                          &tensor_type, &descriptor, &flags))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_FHE_Bind_Tensor_Descriptor
+                    (tensor_type, descriptor, flags),
+                "bind FHE tensor descriptor");
+}
+
+static PyObject *
+Open64_DSC_FHE_Attach_Entry_Contract(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle program_unit;
+    PyObject *contract_obj;
+    Open64_DSC_FHE_Entry_Contract contract;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KO!:attach_fhe_entry_contract",
+                          &program_unit, &PyDict_Type, &contract_obj))
+        return NULL;
+    if (!Open64_DSC_Read_FHE_Entry_Contract(contract_obj, &contract))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_FHE_Attach_Entry_Contract
+                    (program_unit, &contract),
+                "attach FHE entry contract");
+}
+
+static PyObject *
+Open64_DSC_FHE_Declare_Entry_Value(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle entry_contract;
+    Open64_DSC_Handle value;
+    unsigned int ordinal;
+    unsigned int role;
+    PyObject *info_obj;
+    Open64_DSC_FHE_Entry_Value info;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KKIIO!:declare_fhe_entry_value",
+                          &entry_contract, &value, &ordinal, &role,
+                          &PyDict_Type, &info_obj))
+        return NULL;
+    if (!Open64_DSC_Read_FHE_Entry_Value(info_obj, &info))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_FHE_Declare_Entry_Value
+                    (entry_contract, value, ordinal, role, &info),
+                "declare FHE entry value");
+}
+
+static PyObject *
+Open64_DSC_FHE_Intern_Key_Requirement(PyObject *self, PyObject *args)
+{
+    PyObject *requirement_obj;
+    Open64_DSC_FHE_Key_Requirement requirement;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "O!:intern_fhe_key_requirement",
+                          &PyDict_Type, &requirement_obj))
+        return NULL;
+    if (!Open64_DSC_Read_FHE_Key_Requirement(requirement_obj,
+                                             &requirement))
+        return NULL;
+    return Open64_DSC_Handle_Result
+               (Open64_DSC_FHE_Intern_Key_Requirement(&requirement),
+                "intern FHE key requirement");
+}
+
+static PyObject *
 Open64_DSC_Finalize(PyObject *self, PyObject *args)
 {
     const char *path;
@@ -1438,6 +1725,42 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Inspect_Program_Unit_Markers,
         METH_VARARGS,
         "Inspect staged DSL markers attached to a native PU body."
+    },
+    {
+        "intern_fhe_compilation_config",
+        Open64_DSC_FHE_Intern_Compilation_Config,
+        METH_VARARGS,
+        "Intern an FHE compilation configuration."
+    },
+    {
+        "intern_fhe_encryption_descriptor",
+        Open64_DSC_FHE_Intern_Encryption_Descriptor,
+        METH_VARARGS,
+        "Intern an FHE encryption descriptor."
+    },
+    {
+        "bind_fhe_tensor_descriptor",
+        Open64_DSC_FHE_Bind_Tensor_Descriptor,
+        METH_VARARGS,
+        "Bind an FHE encryption descriptor to a tensor descriptor."
+    },
+    {
+        "attach_fhe_entry_contract",
+        Open64_DSC_FHE_Attach_Entry_Contract,
+        METH_VARARGS,
+        "Attach an FHE entry contract to a program unit."
+    },
+    {
+        "declare_fhe_entry_value",
+        Open64_DSC_FHE_Declare_Entry_Value,
+        METH_VARARGS,
+        "Declare an FHE entry value through opaque handles."
+    },
+    {
+        "intern_fhe_key_requirement",
+        Open64_DSC_FHE_Intern_Key_Requirement,
+        METH_VARARGS,
+        "Intern an FHE key requirement."
     },
     {
         "finalize_mapped_image",
