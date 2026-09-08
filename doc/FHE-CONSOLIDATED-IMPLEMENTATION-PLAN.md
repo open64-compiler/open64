@@ -284,13 +284,26 @@ The main task reviews the `.T` evidence before this checkpoint closes.
 
 ### **SYNC-3: ResNet FHE Conversion Review**
 
+Status: active contract preparation after PR #105 merged into `develop` at
+`73d8ec0d`. The reviewable proposal is
+`doc/FHE-SYNC3-CONVERSION-CONTRACT.md`. Implementation must remain limited to
+the accepted SYNC-3 conversion scope: FHE gatekeeper, legal BatchNorm folding,
+CNN-to-FHE disposition, ReLU approximation-contract attachment, value-specific
+CKKS state evidence, and retained conversion artifacts. Opcode allocation,
+bootstrap insertion, SIHE/CKKS primitive lowering, OpenFHE/runtime lowering,
+and shared common/com edits require their reviewed checkpoints.
+
 Required phase output:
 
 ```text
 secure_resnet20.B
+  -> ordinary DSL/common gatekeeper
+  -> FHE semantic gatekeeper
   -> VHO_FHE_Convert_Driver()
+  -> FHE semantic gatekeeper, converted form
   -> secure_resnet20.fhe.B
-  -> secure_resnet20.fhe.T
+  -> ir_b2a -st -src secure_resnet20.fhe.B secure_resnet20.fhe.T
+  -> secure_resnet20.fhe.conversion-report.txt
 ```
 
 Acceptance checks:
@@ -302,6 +315,27 @@ Acceptance checks:
 - The conversion report lists accepted, rewritten, and rejected operations.
 - Missing scheme, illegal secret-key use, unsupported activation, training
   behavior, and malformed descriptors fail with stable diagnostics.
+
+Main/common hooks requested for this checkpoint include the
+`VHO_FHE_Convert_Driver()` phase hook, opaque logical-DSL and FHE-image read
+APIs, reviewed converted-operator or annotation update APIs, value-specific
+CKKS state attachment, approximation-contract attachment, folded side-file
+payload writer support, diagnostic-code registry conventions, and printer
+support for converted FHE-CNN provenance.
+
+The main/common review preserves the exact version-1 `.WHIRL.dsl_fhe` image.
+New conversion-plan evidence is staged in a separate optional fixed-row
+`.WHIRL.dsl_fhe_plan` section after its row contract is published. FHE-CNN
+identity should use the existing domain-wrapper mechanism when it delegates to
+an existing common/CNN semantic target; wrapper identity alone does not
+justify a new `DSL_OPERATOR` enum.
+
+BatchNorm folding must respect the certified shared-PU representation. Rewrite
+each compatible physical clone body/signature once, create folded payloads for
+each source call context, and rewrite caller actuals accordingly. The report
+must distinguish physical definition rewrites from context-specific payload
+folds. Exact ResNet-20 counts are certification assertions, not generic
+gatekeeper rules.
 
 ### **SYNC-4: ReLU `-O0` Baseline Certification**
 

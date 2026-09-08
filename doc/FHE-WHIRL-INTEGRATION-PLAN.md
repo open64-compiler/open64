@@ -163,6 +163,14 @@ remain domain-visible through gatekeeper verification.
 | unsupported data-dependent control | unsupported diagnostic | reject | Required rejection. |
 | training ops / mutation | unsupported diagnostic | reject | First release is inference-only. |
 
+BatchNorm folding must account for the SYNC-2 shared, signature-specialized
+PU structure. A compatible clone body/signature is rewritten once, while folded
+weight and bias payloads are created per source call context. Callers rewrite
+their actual parameter lists to pass the folded payloads for that context.
+Compiler clones are split only if the rewritten structural/tensor signatures
+diverge. Conversion reports distinguish physical definition rewrites from
+source-context folds.
+
 ## Ingestion Path
 
 Python remains a source-language frontend and artifact producer. It captures
@@ -273,6 +281,12 @@ Mandatory checks:
 13. Diagnostics use stable families such as `CFHE-*`, `CFHECNN-*`,
     `CFHELAYOUT-*`, `CFHECKKS-*`, and `CFHERT-*`.
 
+Generic gatekeeper checks validate semantic relationships, descriptor
+completeness, security policy, and conversion legality. Exact ResNet-20
+cardinality such as PU, callsite, REGION, convolution, BatchNorm, residual, or
+ReLU counts belongs to the ResNet-20 certification profile and retained
+artifact assertions, not to the generic gatekeeper.
+
 ## Optimization and Lowering Stages
 
 The FHE pass pipeline should be staged so correctness is established before
@@ -317,6 +331,11 @@ cryptographic performance choices harden:
    the MVP, but ACE `POLY` should be the first comparison point for naming and
    phase boundaries.
 
+`VHO_FHE_Convert_Driver()` is the SYNC-3 model-adaptation boundary. It runs
+after optional DSL WOPT/Preopt and before `VHO_DSL_Lower_Driver()`, so FHE
+conversion sees the optimized very-high-level DSL graph but still completes
+before generic DSL lowering hides source-domain contracts.
+
 ## Runtime and C ABI
 
 The MVP runtime target is an opaque C ABI backed first by a mock/reference
@@ -358,16 +377,20 @@ Required visibility:
    diagnostic/certification status.
 5. Conversion, layout, depth, bootstrap, and backend planning reports as
    reviewable side artifacts linked from the retained test artifact directory.
-6. ReLU evidence: original `common.relu` source position, approximation
-   contract ID, mandatory pre-ReLU bootstrap boundary or explicit manual
-   boundary, bootstrap reason, and resulting CKKS state.
+6. ReLU evidence: original `common.relu` source evidence through existing
+   WN/ST/DST/value records, approximation contract ID, mandatory pre-ReLU
+   bootstrap boundary or explicit manual boundary, bootstrap reason, and
+   resulting CKKS state. Approximation records reference source evidence; they
+   do not duplicate source-position fields.
 7. `ir_b2a -st -src input.B input.T` naming using the input `.B` stem, with the
    original source path preserved when source interleaving is expected.
 
-FHE must not add new binary sections or type encodings in this effort without a
-reviewed common/com compatibility plan. If FHE descriptors initially use
-existing side-table or metadata mechanisms, the dumps must still present a
-descriptor-shaped logical view.
+FHE must not change `.WHIRL.dsl_fhe` version 1 or add new binary sections or
+type encodings without a reviewed common/com compatibility plan. SYNC-3
+conversion-plan records should stage in a separate optional fixed-row
+`.WHIRL.dsl_fhe_plan` section only after an exact physical contract is
+published. If FHE descriptors initially use existing side-table or metadata
+mechanisms, the dumps must still present a descriptor-shaped logical view.
 
 ## Compatibility Strategy
 
@@ -381,8 +404,10 @@ descriptor-shaped logical view.
    Encryption state, scale/level, packing, key-set handles, and backend
    planning are representation/domain compatibility facts, not a new scalar
    type universe.
-4. Lower all FHE-specific semantics before WOPT/LNO/CG and before `whirl2c`
-   unless a later reviewed stage extends those consumers deliberately.
+4. Run SYNC-3 FHE conversion after optional DSL WOPT/Preopt and before
+   `VHO_DSL_Lower_Driver()`. Lower all FHE-specific semantics before LNO/CG
+   and before `whirl2c` unless a later reviewed stage extends those consumers
+   deliberately.
 5. Keep `ir_a2b` and `ir_b2a` as compatibility gates for any text/binary
    surface exposed by tests.
 
@@ -435,9 +460,10 @@ Initial validation ladder:
    calls, run through `whirl2c`, compile generated C, link with mock runtime,
    and return an opaque ciphertext handle.
 6. ResNet-20 FHE conversion certification: validate folded batch norm,
-   convolution, residual alignment, common ReLU approximation/refresh
-   contracts, pooling policy, classifier path, encrypted logits, conversion
-   report, and generated C call sequence.
+   convolution, residual alignment, common ReLU approximation contracts,
+   pooling policy, classifier path, encrypted logits, conversion report, and
+   converted FHE WHIRL evidence. Bootstrap refresh and generated C call
+   sequence validation begin in later sync points.
 7. `-O0` end-to-end acceptance: compile complete ResNet-20 binary WHIRL through
    FHE/CKKS lowering, `whirl2c`, generated-C compilation, and final
    OpenFHE-linked executable creation. The executable imports context,
@@ -478,7 +504,7 @@ SYNC vocabulary.
 | SYNC-0: Plan and contract reconciliation | Baseline freeze and handoff review | Consolidated plan is accepted; this plan marks common/CNN requests as reuse, extend, promote, or new; complete ResNet-20 operator census scope, FHE descriptors, option semantics, and handoff requests are frozen before implementation. |
 | SYNC-1: Native API and image contract freeze | Shared native contracts before frontend certification | FHE record layouts, builder API requests, malformed-record rules, printer spelling, and negative-test matrix are finalized against main-owned common/type, mapped-image, and gatekeeper hooks. |
 | SYNC-2: Frontend artifact certification | Complete ResNet-20 capture using merged opaque APIs | `artifacts/fhe/resnet20_capture/` retains source, weights, `.B`, `ir_b2a -st -src` `.T`, operator census, options, and gatekeeper log; every source ReLU is existing `common.relu`; Python invents no bootstrap or CKKS operators. |
-| SYNC-3: ResNet FHE conversion review | FHE gatekeeper and CNN-to-FHE conversion | `secure_resnet20.fhe.B` and `.T` show folded batch norm, conv/residual/pooling/classifier disposition, `common.relu` approximation contracts, conversion report, and stable diagnostics for illegal inputs. |
+| SYNC-3: ResNet FHE conversion review | FHE gatekeeper and CNN-to-FHE conversion | Active after PR #105 merge. `doc/FHE-SYNC3-CONVERSION-CONTRACT.md` is the reviewable handoff. `secure_resnet20.fhe.B`, `.T`, and conversion report show folded batch norm, conv/residual/pooling/classifier disposition, `common.relu` approximation contracts, value-specific CKKS state evidence, and stable diagnostics for illegal inputs. |
 | SYNC-4: ReLU `-O0` baseline certification | Mandatory pre-ReLU refresh and polynomial approximation | `bootstrap=auto|on` inserts one required pre-ReLU boundary per surviving `common.relu`; `manual` requires explicit compatible boundaries; `off` rejects surviving ReLU; no `-O0` movement, merging, deduplication, or profitability placement occurs. |
 | SYNC-5: Middle-WHIRL and mock executable gate | Standard WHIRL boundary and mock runtime | `secure_resnet20.mid.B` and `.T` contain only standard WHIRL calls, formals, symbols, initializers, status checks, and control flow; `whirl2c` emits C that compiles and links with the mock FHE C ABI. |
 | SYNC-6: End-to-end `-O0` acceptance | Complete OpenFHE ResNet path | Full ResNet-20 binary WHIRL lowers through FHE/CKKS, `whirl2c`, generated-C compilation, and OpenFHE provider link; the executable imports context/evaluation keys/encrypted CIFAR-10 input, uses no server-side secret key, and returns encrypted logits/result within budget. |
@@ -495,7 +521,7 @@ remains authoritative when ownership or ordering questions arise.
 | SYNC-0 | Inventory existing common/CNN operators, tensor APIs, builder hooks, binary WHIRL constraints, and current `common.relu` / `OPR_DSLRELU` support. Classify requested contracts as reuse, extension, promotion, or new. | Publish the FHE operator/type handoff table; freeze ResNet-20-first scope, FHE descriptors, option semantics, ReLU refresh policy, and test strategy. | Accepted contract matrix, binary compatibility decision, and shared planning baseline. No opcode/type allocation or image coding starts before closure. |
 | SYNC-1 | Add and certify the optional `.WHIRL.dsl_fhe` image, fixed row ABI, mapped-image read/write, printer, validation, and opaque builder APIs. Preserve old and non-FHE `.B` behavior. | Provide the semantic row proposal, deduplication keys, malformed-image cases, and post-merge consumption notes. Rebase after merge and consume only `DSL_FHE_*` / `DSL_Builder_*` APIs. | `doc/FHE-SYNC1-NATIVE-CONTRACT.md` controls physical layout and API names; FHE proposal text is retained only as semantic input. |
 | SYNC-2 | Review shared operator/type/source/side-file/FHE table evidence. Fix common-owned printer or ownership-validation issues, including FHE entry-value local-symtab safety. | Capture complete deterministic ResNet-20/CIFAR-10 with class-centric PUs, five context-specialized `ResNet20Block` compiler PUs, nine callsites, source positions, external weights, FHE entry contracts, encryption descriptors, tensor bindings, and key requirements. Preserve every source ReLU as existing `common.relu`; emit no Python bootstrap, CKKS, SIHE, or FHE conversion operators. | Retained `artifacts/fhe/resnet20_capture/` family with source, `.B`, independent-process `ir_b2a -st -src` `.T`, side file, census, options, and gatekeeper log. |
-| SYNC-3 | Provide driver phase hook and common/tensor legality services needed by FHE conversion. Keep shared diagnostics and logical operator evidence inspectable. | Implement FHE gatekeeper, legal BatchNorm folding, ResNet model adaptation, CNN-to-FHE conversion, approximation contract attachment for surviving `common.relu`, and stable illegal-input diagnostics. | `secure_resnet20.fhe.B`, `.T`, and conversion report show convolution, residual, pooling, classifier, and ReLU disposition. |
+| SYNC-3 | Provide driver phase hook, logical DSL read APIs, FHE-image read APIs, converted-operator/annotation update hooks, value-specific CKKS state attachment, approximation-contract attachment, folded payload writer support, diagnostic registry conventions, and printer support. | Implement FHE gatekeeper, legal BatchNorm folding, ResNet model adaptation, CNN-to-FHE conversion, approximation contract attachment for surviving `common.relu`, value-specific CKKS state propagation, conversion reports, and stable illegal-input diagnostics. | `doc/FHE-SYNC3-CONVERSION-CONTRACT.md` is reviewed; `secure_resnet20.fhe.B`, `.T`, side payload, and conversion report show convolution, residual, pooling, classifier, ReLU, provenance, and CKKS-state disposition. |
 | SYNC-4 | Preserve and print `common.relu` source, result, descriptor, and provenance evidence through conversion. | Materialize the `-O0` ReLU rule: `bootstrap=auto|on` inserts the mandatory pre-ReLU refresh boundary, then evaluates the approved polynomial approximation; `manual` requires explicit compatible boundaries; `off` rejects surviving encrypted CKKS ReLU. | ReLU refresh and approximation artifacts prove no `-O0` boundary movement, merging, deduplication, or profitability placement. |
 | SYNC-5 | Supply standard WHIRL call/result construction, unlowered-node gate, and assigned `whirl2c` integration edits. | Lower FHE/SIHE/CKKS constructs to standard runtime calls; publish stable mock FHE C ABI; implement mock provider and generated-C compile/link tests. | `secure_resnet20.mid.B`, `.T`, generated C, and mock-linked executable evidence contain only standard WHIRL at the `whirl2c` boundary. |
 | SYNC-6 | Complete driver link flow, provider manifest consumption, and retained artifact expectations. | Implement the OpenFHE provider path, client provisioning, context/evaluation-key import, CKKS execution, encrypted CIFAR-10 input handling, and encrypted-logit result production. | Full `-O0` ResNet-20 binary WHIRL-to-OpenFHE executable path passes without server-side secret-key material. |
@@ -801,9 +827,9 @@ it does not allocate enum values or authorize shared-file edits.
 | `cnn.global_avg_pool2d` | CNN domain or common wrapper | v1 | Input -> result | `data_layout`, `keepdims` | feature-map shape/layout | Pure | Shape/layout and FHE average legality | FHE lowers to HE sum/scale sequence | Can lower through `common.window_reduce` after CNN gatekeeper. |
 | `fhe.entry_contract` | FHE domain contract | v1 | Function/module-level contract, no value result | `scheme`, `encrypted_inputs`, `encrypted_outputs`, `parameter_policy`, `security_level`, `accuracy_budget`, `backend_policy` | References boundary tensor descriptors | Contract only | Complete FHE policy; no secret key | FHE gatekeeper consumes; lowering emits runtime manifest | Should use DSL contract/metadata path, not common opcode enum. |
 | `fhe.encryption_descriptor` | FHE domain descriptor | v1 | Attached to tensor value/type descriptor | `value_class`, `scheme`, `scale`, `level`, `slot_count`, `packing_layout_id`, `key_set_id`, `boundary_role` | Extends representation/domain view; not type equivalence core | Descriptor only | Required fields by stage; redact key/ciphertext internals | FHE gatekeeper/planner consumes | Coordinate storage with common TensorDescriptorIR; avoid new type kind. |
-| `fhe.cnn.conv2d` | FHE domain wrapper | v1 | Encrypted input, encoded plaintext weight, optional bias -> encrypted result | `source_op`, `packing_policy`, `metakernel_plan_id` | encrypted input/result; encoded plaintext weight; layout plan | Pure, consumes runtime key handles at lowering | Scheme legality, depth, rotations, key requirements | FHE lowers to SIHE/CKKS/runtime calls | Domain wrapper only; no shared opcode allocation until reviewed. |
-| `fhe.cnn.poly_activation` | FHE domain wrapper | v1 | Encrypted input -> encrypted result | `source_activation=common.relu`, `source_pos`, `polynomial_id`, `degree`, `approx_error_budget`, `refresh_boundary_id` | encrypted tensor, scale/depth state before and after bootstrap and polynomial evaluation | Pure activation approximation; depends on prior refresh boundary | Explicit approximation policy, accuracy budget, and bootstrap policy proof | FHE lowers to bootstrap plus HE polynomial multiply/add chain at `-O0`; backend may fuse only with preserved evidence | Domain wrapper records approximation of `common.relu`; it is not the source ReLU semantic operator. |
-| `fhe.cnn.residual_add` | FHE domain wrapper | v1 | Encrypted main, encrypted skip -> encrypted result | `source_residual_id`, `alignment_policy` | scale/level/layout alignment group | Pure | Branch compatibility, rescale/bootstrap obligations | FHE lowers to alignment plus HE add | Domain wrapper around accepted `common.residual_add`. |
+| `fhe.cnn.conv2d` | FHE domain wrapper | v1 | Encrypted input, encoded plaintext weight, optional bias -> encrypted result | `source_op`, `packing_policy`, `metakernel_plan_id` | encrypted input/result; encoded plaintext weight; layout plan | Pure, consumes runtime key handles at lowering | Scheme legality, depth, rotations, key requirements | FHE lowers to SIHE/CKKS/runtime calls | Use domain-wrapper registry when delegating to accepted `cnn.conv2d`; no new `DSL_OPERATOR` enum solely for wrapper identity. |
+| `fhe.cnn.poly_activation` | FHE domain wrapper | v1 | Encrypted input -> encrypted result | `source_activation=common.relu`, `polynomial_id`, `degree`, `approx_error_budget`, `refresh_boundary_id` | encrypted tensor, scale/depth state before and after bootstrap and polynomial evaluation | Pure activation approximation; depends on prior refresh boundary | Explicit approximation policy, accuracy budget, bootstrap policy proof, and source evidence through existing WN/ST/DST/value records | FHE lowers to bootstrap plus HE polynomial multiply/add chain at `-O0`; backend may fuse only with preserved evidence | Domain wrapper records approximation of `common.relu`; it is not the source ReLU semantic operator and does not duplicate source-position fields. |
+| `fhe.cnn.residual_add` | FHE domain wrapper | v1 | Encrypted main, encrypted skip -> encrypted result | `source_residual_id`, `alignment_policy` | scale/level/layout alignment group | Pure | Branch compatibility, rescale/bootstrap obligations | FHE lowers to alignment plus HE add | Use domain-wrapper registry when delegating to accepted `common.residual_add`; no new `DSL_OPERATOR` enum solely for wrapper identity. |
 | `sihe.add` | FHE scheme-independent domain | v1 | Cipher/plain operands -> cipher/plain result | `value_class_policy` | encryption descriptors complete | Pure runtime op after lowering | HE value-class legality | FHE lowering to CKKS/runtime | Not common; may be an internal FHE logical layer. |
 | `sihe.sub` | FHE scheme-independent domain | v1 | Cipher/plain operands -> cipher/plain result | `value_class_policy` | encryption descriptors complete | Pure runtime op after lowering | HE value-class legality | FHE lowering to CKKS/runtime | Aligns with ACE `SIHE::sub`; not common. |
 | `sihe.mul` | FHE scheme-independent domain | v1 | Cipher/plain operands -> cipher/plain result | `value_class_policy` | encryption descriptors, depth state | Pure runtime op after lowering | HE multiplication legality and depth accounting | FHE lowering to CKKS/runtime | Not common. |
