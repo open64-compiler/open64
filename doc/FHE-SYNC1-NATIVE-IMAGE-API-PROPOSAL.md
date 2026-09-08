@@ -1,13 +1,18 @@
-# Open64 FHE SYNC-1 Native Image and API Proposal
+# Open64 FHE SYNC-1 Semantic Proposal and Consumption Notes
 
-Status: FHE-owned planning proposal for SYNC-1 review  
+Status: FHE-owned semantic input, consumed after PR #102 merge
 Coordination authority:
 `/Users/shinmingliu/open64/doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md`  
-Scope: contract freeze only; no opcode allocation or shared-file implementation
+Authoritative native contract: `FHE-SYNC1-NATIVE-CONTRACT.md`
+Scope: semantic requirements and post-merge consumption notes only; no opcode
+allocation or shared-file implementation
 
 Main/common audit resolution: `FHE-SYNC1-NATIVE-CONTRACT.md` is authoritative
 for the implemented physical rows, Open64 index widths, exact version-1 sizes,
-and builder names. This proposal remains the FHE semantic requirements input.
+builder names, optional-section behavior, validation scope, and printer
+headings. This document remains the FHE semantic requirements input and records
+where the earlier proposal was superseded by source-verified main/common
+decisions.
 
 This document is the FHE support task's SYNC-1 handoff to the main
 WHIRL/common infrastructure task. It proposes the minimal first FHE image,
@@ -18,8 +23,9 @@ malformed-image tests, required main hooks, and FHE-owned file boundaries.
 
 1. Preserve binary WHIRL compatibility and the private physical `OPR_DSL`
    abstraction.
-2. Do not edit existing shared common/com, ELF, reader/writer, tensor, or
-   printer files from the FHE branch before the main SYNC-1 infrastructure PR.
+2. After the SYNC-1 infrastructure merge, consume only the published
+   `DSL_FHE_*` managed-image services and `DSL_Builder_*` opaque wrappers from
+   FHE-owned work.
 3. Reuse existing `OPR_DSLRELU` and logical `common.relu`; do not allocate a
    second ReLU operator.
 4. Keep Python as a source frontend. Python receives opaque handles only.
@@ -28,17 +34,50 @@ malformed-image tests, required main hooks, and FHE-owned file boundaries.
 6. Do not persist C++ pointers, STL containers, OpenFHE objects, backend
    handles, ciphertext bytes, key bytes, or secret-key material in WHIRL.
 
-## Fixed-Width Row Layout Rules
+## Authoritative SYNC-1 Contract Consumption
+
+The FHE task accepts the merged main/common SYNC-1 substrate without blocking
+conflicts:
+
+1. The minimal FHE image is a separate optional `.WHIRL.dsl_fhe` section with
+   `sh_info` value `WT_DSL_FHE_IMAGE` (`0x23`). The existing `.WHIRL.dsl` image
+   is exact-sized and must not be extended in place for these rows.
+2. The section and every row start are 8-byte aligned. Version-1 row sizes are
+   exact: header 64, config 64, entry contract 48, entry value 32, encryption
+   descriptor 56, tensor binding 24, and key requirement 48 bytes.
+3. `TY_IDX` and `ST_IDX`, including PU global function ST identity, are
+   32-bit. `STR_IDX` is 64-bit.
+4. The canonical tensor `TY_IDX` is the TensorDescriptorIR identity. There is
+   no separate persisted TensorDescriptorIR ID in the FHE image.
+5. Source positions, symbol names, diagnostics, profiles, physical side-file
+   paths, and transformation history remain in existing WN/ST/DST/value records
+   and compiler metadata. They are not duplicated into FHE source-position
+   rows and do not participate in type or encryption equivalence.
+6. EncryptionDescriptorIR stores stable representation semantics and binds
+   independently to canonical tensor TY. CKKS level, scale, component count,
+   and precision are value-specific state and remain deferred to a later
+   capability/API; canonical TY and encryption descriptors are not mutated for
+   arithmetic state changes.
+7. `DSL_Builder_Verify_Program` invokes `DSL_FHE_Image_Validate` after normal
+   DSL/tensor validation. SYNC-1 structural validation does not allocate FHE
+   opcodes, convert ReLU, insert bootstrap, lower to OpenFHE, or own later
+   stable `CFHE*` semantic diagnostics.
+8. Legacy and non-FHE compatibility follows the native contract: old readers
+   ignore unknown optional `SHT_MIPS_WHIRL` sections, new readers treat absence
+   as an empty FHE image, and non-FHE writers omit `.WHIRL.dsl_fhe`.
+
+The historical physical row sketches below are retained only as the semantic
+requirements that fed SYNC-1 review. They are not ABI text and must not be used
+for implementation when they differ from `FHE-SYNC1-NATIVE-CONTRACT.md`.
+
+## Historical Fixed-Width Row Layout Proposal, Superseded Physically
 
 The historical FHE-side proposal below used fixed-width mapped-image fields and
 4-byte alignment. Main/common review replaced that physical proposal with the
 exact version-1 rows and 8-byte section/row-start alignment defined in
-`FHE-SYNC1-NATIVE-CONTRACT.md`. The proposed
-minimum C assumption is `sizeof(UINT32) == 4` and two's-complement `INT32`.
-Rows intentionally avoid `UINT64` so layout is stable on 32-bit and 64-bit
-hosts. Any 64-bit scalar is stored as `{lo, hi}` little-endian words in the
-mapped image. Every row begins with `record_size` and `record_version` so a
-future reader can reject or skip compatible extensions.
+`FHE-SYNC1-NATIVE-CONTRACT.md`. The authoritative contract uses current Open64
+fixed-width table-index types, including 64-bit `STR_IDX`, and exact v1 row
+sizes rather than per-row `record_size`/`record_version` fields.
 
 All persisted FHE IDs are `UINT32`. ID zero is invalid unless the field name or
 row contract explicitly says `0 means absent`. Record arrays are one-based for
@@ -65,13 +104,13 @@ Append-only rules:
 5. Reserved fields must be written as zero and rejected if nonzero unless a
    later capability gives them meaning.
 
-## Minimal FHE Image Rows
+## Historical Minimal FHE Image Rows, Superseded Physically
 
-The minimal first image contains seven row families: image header, compilation
-config, entry contract, entry value, encryption descriptor, tensor binding, and
-key requirement. CKKS value-state rows are intentionally not canonical type
-rows; value-state persistence is a separate later table or phase-local binding
-owned by CKKS planning.
+The authoritative minimal image contains these seven row families: image
+header, compilation config, entry contract, entry value, encryption descriptor,
+tensor binding, and key requirement. CKKS value-state rows are intentionally
+not canonical type rows; value-state persistence remains a separate later table
+or phase-local binding owned by CKKS planning.
 
 ### Header
 
@@ -312,7 +351,7 @@ rotation keys, bootstrap profile for bootstrap keys, and requirement group when
 nonzero. Excluded: source position, diagnostics, key file path spelling,
 secret-key provenance, and runtime installation path.
 
-## Value-Specific CKKS State Binding
+## Value-Specific CKKS State Binding, Deferred
 
 The minimal image deliberately separates canonical tensor encryption from
 changing CKKS value state. Arithmetic, rescale, relinearization, mod switch, and
@@ -320,8 +359,8 @@ bootstrap produce new value-state associations. They must not mutate a
 canonical `TY_IDX`, TensorDescriptorIR, or EncryptionDescriptorIR behind
 existing values.
 
-SYNC-1 should freeze the API below even if the persisted
-`FHE_CKKS_VALUE_STATE_RECORD` table is materialized later:
+SYNC-1 intentionally does not freeze a persisted CKKS value-state table. A
+later FHE/CKKS checkpoint may add APIs equivalent to:
 
 ```c++
 typedef UINT32 DSL_FHE_CKKS_VALUE_STATE_ID;
@@ -341,12 +380,10 @@ DSL_Builder_Get_FHE_Value_CKKS_State(
     DSL_FHE_CKKS_VALUE_STATE *state);
 ```
 
-If SYNC-1 does not add a persisted CKKS state table, these APIs may bind to a
-phase-local or existing extensible DSL association. `ir_b2a` may print
-`ckks_state_id=0` for source-level FHE records until CKKS planning materializes
-state rows.
+Those deferred APIs must not reinterpret any version-1
+EncryptionDescriptorIR or tensor-binding fields.
 
-## Opaque Builder API Proposal
+## Opaque Builder API Consumption
 
 The FHE frontend and tests use opaque IDs and `DSL_BUILDER_VALUE` handles only.
 They must not inspect `TY_IDX`, `ST_IDX`, WN fields, mapped-image offsets,
@@ -359,55 +396,28 @@ typedef UINT32 DSL_FHE_ENTRY_VALUE_ID;
 typedef UINT32 DSL_FHE_ENCRYPTION_DESCRIPTOR_ID;
 typedef UINT32 DSL_FHE_TENSOR_BINDING_ID;
 typedef UINT32 DSL_FHE_KEY_REQUIREMENT_ID;
-typedef UINT32 DSL_FHE_CKKS_VALUE_STATE_ID;
-
-void
-DSL_FHE_Reset_Image(DSL_BUILDER_CONTEXT ctx);
 
 BOOL
-DSL_FHE_Validate_Image(
-    DSL_BUILDER_CONTEXT ctx,
-    DSL_DIAGNOSTIC_SINK diagnostics);
+DSL_FHE_Image_Validate(...);
 
 DSL_FHE_CONFIG_ID
 DSL_FHE_Intern_Compilation_Config(
-    DSL_BUILDER_CONTEXT ctx,
-    const DSL_FHE_COMPILATION_CONFIG *config);
-
-BOOL
-DSL_FHE_Get_Compilation_Config(
-    DSL_BUILDER_CONTEXT ctx,
-    DSL_FHE_CONFIG_ID config,
-    DSL_FHE_COMPILATION_CONFIG *out_config);
+    const DSL_FHE_COMPILATION_CONFIG_RECORD *record);
 
 DSL_FHE_ENCRYPTION_DESCRIPTOR_ID
 DSL_FHE_Intern_Encryption_Descriptor(
-    DSL_BUILDER_CONTEXT ctx,
-    const DSL_FHE_ENCRYPTION_DESCRIPTOR *descriptor);
-
-BOOL
-DSL_FHE_Get_Encryption_Descriptor(
-    DSL_BUILDER_CONTEXT ctx,
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID descriptor,
-    DSL_FHE_ENCRYPTION_DESCRIPTOR *out_descriptor);
+    const DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *record);
 
 DSL_FHE_TENSOR_BINDING_ID
 DSL_Builder_Bind_FHE_Tensor_Descriptor(
-    DSL_BUILDER_CONTEXT ctx,
     TY_IDX canonical_ty,
-    DSL_TENSOR_DESCRIPTOR_ID tensor,
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encryption);
-
-BOOL
-DSL_Builder_Get_FHE_Tensor_Binding(
-    DSL_BUILDER_CONTEXT ctx,
-    TY_IDX canonical_ty,
-    DSL_FHE_TENSOR_BINDING *out_binding);
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encryption_descriptor_id,
+    UINT32 flags);
 
 DSL_FHE_ENTRY_CONTRACT_ID
 DSL_Builder_Attach_FHE_Entry_Contract(
     DSL_BUILDER_PROGRAM_UNIT pu,
-    const DSL_FHE_ENTRY_CONTRACT *contract);
+    const DSL_FHE_ENTRY_CONTRACT_INFO *info);
 
 DSL_FHE_ENTRY_VALUE_ID
 DSL_Builder_Declare_FHE_Entry_Value(
@@ -418,50 +428,30 @@ DSL_Builder_Declare_FHE_Entry_Value(
     const DSL_FHE_ENTRY_VALUE_INFO *info);
 
 DSL_FHE_KEY_REQUIREMENT_ID
-DSL_Builder_Add_FHE_Key_Requirement(
-    DSL_BUILDER_CONTEXT ctx,
-    DSL_FHE_CONFIG_ID config,
-    const DSL_FHE_KEY_REQUIREMENT *requirement);
-
-DSL_FHE_APPROXIMATION_ID
-DSL_Builder_Attach_FHE_Approximation_Contract(
-    DSL_BUILDER_VALUE value,
-    const DSL_FHE_APPROXIMATION_CONTRACT *contract);
-
-DSL_FHE_CKKS_VALUE_STATE_ID
-DSL_FHE_Intern_CKKS_Value_State(
-    DSL_BUILDER_CONTEXT ctx,
-    const DSL_FHE_CKKS_VALUE_STATE *state);
+DSL_FHE_Intern_Key_Requirement(
+    const DSL_FHE_KEY_REQUIREMENT_RECORD *record);
 
 BOOL
-DSL_Builder_Bind_FHE_Value_CKKS_State(
+DSL_Builder_Get_FHE_Value_Encryption_Descriptor(
     DSL_BUILDER_VALUE value,
-    DSL_FHE_CKKS_VALUE_STATE_ID state);
-
-BOOL
-DSL_Builder_Get_FHE_Value_CKKS_State(
-    DSL_BUILDER_VALUE value,
-    DSL_FHE_CKKS_VALUE_STATE *out_state);
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *record);
 ```
 
 `DSL_Builder_Bind_FHE_Tensor_Descriptor` binds the canonical tensor descriptor
-to an encryption descriptor. `DSL_Builder_Bind_FHE_Value_CKKS_State` binds the
-current CKKS state to a produced value. These APIs are intentionally separate.
+to an encryption descriptor. Later CKKS value-state APIs remain intentionally
+separate.
 
 ## `ir_b2a -st -src` Spelling
 
-When FHE rows exist, `ir_b2a -st -src` prints these headings in this order:
+When FHE rows exist, the authoritative `ir_b2a -st -src` headings are:
 
 ```text
-FHE Compilation Configurations
-FHE Entry Contracts
-FHE Entry Values
-FHE Encryption Descriptors
-FHE Tensor Bindings
-FHE Key Requirements
-FHE Approximation Contracts
-FHE CKKS Value States
-FHE Backend Requirements
+FHE Compilation Configuration Table:
+FHE Entry Contract Table:
+FHE Entry Value Table:
+FHE Encryption Descriptor Table:
+FHE Tensor Binding Table:
+FHE Key Requirement Table:
 ```
 
 Representative output:
@@ -536,86 +526,51 @@ OpenFHE C++ types, or backend object layouts.
 | `bootstrap=manual` and surviving `common.relu` lacks explicit refresh | FHE gatekeeper rejects. |
 | `bootstrap=off` and surviving `common.relu` remains | FHE gatekeeper rejects in first release. |
 
-## Generic Hooks Required From Main Task
+## Generic Hooks Resolved By Main Task
 
-The FHE task requests these main-owned hooks for SYNC-1:
+The main/common SYNC-1 implementation resolved the structural hooks required
+for the first FHE image:
 
-1. Optional mapped-image registration or existing extensible DSL image carrier
-   for FHE fixed rows.
-2. Reader/writer dispatch hooks with row-size, capability, and range validation
-   before pass use.
-3. TensorDescriptorIR association hook that binds an FHE encryption descriptor
-   without changing `TY_KIND`, canonical tensor shape/dtype, or WHIRL type
-   encoding.
-4. Value-specific association hook for CKKS state that is not part of canonical
-   type equivalence.
-5. Opaque builder context/value/program-unit handles and source-position
-   propagation.
-6. Logical DSL printer hooks for FHE section headings and per-node descriptor
-   summaries.
-7. Generic gatekeeper invocation point after DSL/TensorDescriptorIR validation
-   and before FHE conversion/lowering.
-8. Diagnostic sink for stable `CFHE-*`, `CFHECNN-*`, `CFHECKKS-*`, and
-   `CFHERT-*` errors.
-9. Unlowered-node verifier before `whirl2c`.
+1. Optional mapped-image registration through `.WHIRL.dsl_fhe`.
+2. Reader/writer dispatch hooks with exact row-size, capability, reserved-field,
+   ID, string/table-reference, and first/count validation.
+3. Tensor encryption binding against canonical `TY_IDX` without changing
+   `TY_KIND`, tensor shape/dtype identity, or WHIRL type encoding.
+4. Opaque builder wrappers for FHE config, descriptor, tensor/type binding,
+   entry contract, entry value, key requirement, query, reset, and validation.
+5. Logical `ir_b2a -st -src` table headings and printing for the six v1 row
+   tables.
+6. Structural validation from `DSL_Builder_Verify_Program`.
 
-## FHE-Owned Files Proposed After SYNC-1 Review
+Deferred to later FHE milestones: CKKS value-state persistence, FHE semantic
+gatekeeper diagnostics, ReLU approximation/refresh checks, unlowered
+FHE/SIHE/CKKS-node gates, frontend bindings, and lowering.
 
-The FHE task proposes these new files after main hook review. Existing shared
-files remain main-owned unless explicitly assigned in a checkpoint.
+## FHE-Owned Files After SYNC-1 Review
+
+The main/common PR owns the initial native infrastructure files. FHE-owned
+later work should avoid overlapping shared files unless assigned at a sync
+checkpoint.
 
 | File | Purpose |
 | --- | --- |
-| `osprey/common/com/dsl_fhe.h` | Public fixed-row structs, IDs, enums, and builder declarations reviewed by main. |
-| `osprey/common/com/dsl_fhe.cxx` | FHE row interning, validation helpers, and descriptor association implementation behind main hooks. |
-| `osprey/common/com/dsl_fhe_reader.cxx` | FHE-specific row validation and image import helpers, called from main reader hooks. |
-| `osprey/common/com/dsl_fhe_writer.cxx` | FHE-specific image finalization helpers, called from main writer hooks. |
-| `osprey/common/com/dsl_fhe_print.cxx` | FHE `ir_b2a -st -src` section formatting behind main printer hooks. |
-| `osprey/common/com/dsl_fhe_gatekeeper.cxx` | FHE entry, encryption, secret-key, approximation, and bootstrap validation. |
-| `osprey/common/com/tests/dsl_fhe_image_contract_test.cxx` | Minimal producer/read/print test and non-FHE compatibility test. |
-| `osprey/common/com/tests/dsl_fhe_malformed_image_test.cxx` | Bad version, capability, ID, row-size, range, and reserved-field tests. |
+| File area | Purpose |
+| --- | --- |
+| Existing `osprey/common/com/dsl_fhe*` native files | Main/common-owned structural image, validation, print, reader/writer, and builder substrate from SYNC-1. |
+| FHE semantic gatekeeper files, exact path TBD | Entry, encryption, secret-key, approximation, and bootstrap validation after ownership assignment. |
+| FHE conversion/lowering files, exact path TBD | ResNet-20 FHE adaptation, SIHE/CKKS planning, and runtime ABI lowering after later checkpoints. |
 | `osprey/torch2whirl/FHE-INGESTION-PLAN.md` | SYNC-2 frontend plan for ResNet-20 capture, after native APIs merge. |
 
 ## WT_DSL_FHE_IMAGE Assessment
 
-There is no SYNC-1 semantic conflict with adding `WT_DSL_FHE_IMAGE` if the main
-task confirms the WHIRL extension point is optional, versioned, ignored or
-rejected deterministically by legacy readers according to existing policy, and
-covered by reader/writer and `ir_b2a -st -src` tests.
-
-The minimal records can safely stage through an existing extensible DSL image
-only if that carrier supports:
-
-1. fixed-row typed payloads or an equivalent schema table;
-2. image-level version and capability bits;
-3. row-size validation;
-4. deterministic `first/count` range checks;
-5. optional absence for non-FHE files with no empty section emission;
-6. stable FHE printer headings; and
-7. rejection of required unknown versions/capabilities.
-
-Recommendation: prefer `WT_DSL_FHE_IMAGE` if the existing DSL image cannot
-provide typed fixed rows and capability-gated versioning cleanly. Otherwise,
-stage the minimal FHE records through the existing extensible DSL image for
-SYNC-1 and reserve `WT_DSL_FHE_IMAGE` for the point where main concludes a
-separate section is necessary for compatibility or maintenance.
+Resolved: SYNC-1 requires `WT_DSL_FHE_IMAGE` and `.WHIRL.dsl_fhe`. The existing
+`.WHIRL.dsl` v1 header is exact-sized, so staging the minimal records through
+that image would violate compatibility.
 
 ## Main-Task Handoff
 
-For SYNC-1, the FHE task asks the main task to audit:
-
-1. whether the current DSL image can carry the minimal fixed FHE rows, or
-   whether `WT_DSL_FHE_IMAGE` is required now;
-2. exact `TY_IDX`, `ST_IDX`, PU, source-position, and TensorDescriptorIR ID
-   carrier widths for the mapped-image rows;
-3. whether row alignment must be 4 bytes or match an existing mapped-image
-   alignment rule;
-4. the generic attachment hook for EncryptionDescriptorIR on canonical tensor
-   descriptors;
-5. the separate value-state association hook for CKKS level/scale;
-6. final names for the opaque builder entry points;
-7. `ir_b2a -st -src` printer integration points and section ordering; and
-8. the legacy-reader behavior for an unknown optional FHE image.
-
-Until that audit closes, the FHE branch should not implement reader/writer
-wiring, allocate FHE/SIHE/CKKS opcodes, or edit existing shared files.
+SYNC-1 main/common audit is closed by `FHE-SYNC1-NATIVE-CONTRACT.md` and PR
+#102. FHE follow-on work should now consume that substrate and prepare the
+SYNC-2 ResNet-20 frontend artifact certification plan. FHE opcode allocation,
+semantic gatekeeper implementation, ReLU conversion, CKKS value-state planning,
+and lowering still require their later synchronized checkpoints.

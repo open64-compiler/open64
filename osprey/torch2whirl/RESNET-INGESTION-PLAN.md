@@ -218,3 +218,38 @@ combined `openpy` gate pass:
 - `codex/torch2whirl-python-fe` PR: depends on the native infrastructure PR and
   supplies the standalone Python/PyTorch frontend, CLI, driver executable,
   tests, and plans.
+
+## FHE SYNC-2 ResNet-20 Capture
+
+Status: in progress on the FHE task branch after PR #102 merged at
+`8ba9ee31`.
+
+The FHE lane now targets complete deterministic ResNet-20/CIFAR-10 capture,
+not a smaller CNN milestone. It consumes the merged `DSL_FHE_*` and
+`DSL_Builder_*` APIs through opaque Python-native bridge calls, preserves every
+source ReLU as `common.relu`, attaches FHE entry/encryption/key contracts only
+after graph capture, and emits no bootstrap, CKKS, SIHE, or FHE-conversion
+operators from Python.
+
+Retained artifact family:
+`artifacts/fhe/resnet20_capture/{secure_resnet20.py,secure_resnet20.B,secure_resnet20.T,secure_resnet20.safetensors,operator-census.txt,capture-options.txt,gatekeeper.log}`.
+`secure_resnet20.T` is produced in a separate process with `ir_b2a -st -src`
+after the Python capture process exits.
+
+Current evidence:
+
+- `operator-census.txt` records 74 graph operators: 21 `cnn.conv2d`, 21
+  `cnn.batch_norm_infer`, 19 `common.relu`, 9 `common.residual_add`, 1
+  `cnn.global_avg_pool2d`, 1 `common.flatten`, 1 `common.linear`, and 1
+  `common.output_logits`.
+- FHE tables appear in `secure_resnet20.T` with the stable SYNC-1 headings from
+  `doc/FHE-SYNC1-NATIVE-CONTRACT.md`.
+- The side-file payload is retained as `secure_resnet20.safetensors`, and the
+  `.T` dump references it through `safetensors://secure_resnet20.safetensors`.
+
+Open frontend item before SYNC-2 closure: true class-centric ResNet PUs are not
+implemented yet. The current full-model artifact uses single-PU graph capture.
+The existing ResNet class-region path reaches a duplicate native result-symbol
+verification failure at full ResNet-20 scale, so class-centric ResNet PU
+emission should be completed as a focused frontend refinement rather than
+papered over with raw native access.

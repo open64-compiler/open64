@@ -65,6 +65,60 @@ typedef struct {
 
 typedef Open64_DSC_Marker_Info Open64_DSC_Value_Info;
 
+typedef struct {
+    unsigned int flags;
+    unsigned int provenance_mask;
+    unsigned int scheme;
+    unsigned int security_level;
+    unsigned int ring_dimension;
+    unsigned int multiplicative_depth_policy;
+    unsigned int multiplicative_depth;
+    unsigned int scale_bits;
+    unsigned int first_modulus_bits;
+    unsigned int slot_count_policy;
+    unsigned int slot_count;
+    unsigned int key_switch_policy;
+    unsigned int bootstrap_policy;
+    unsigned int backend_policy;
+} Open64_DSC_FHE_Compilation_Config;
+
+typedef struct {
+    unsigned int value_class;
+    unsigned int scheme;
+    Open64_DSC_Handle config;
+    const char *key_set_name;
+    unsigned int slot_count_policy;
+    unsigned int slot_count;
+    unsigned int encoding_policy;
+    unsigned int packing_policy;
+    unsigned int flags;
+} Open64_DSC_FHE_Encryption_Descriptor;
+
+typedef struct {
+    Open64_DSC_Handle config;
+    unsigned int input_count;
+    unsigned int output_count;
+    unsigned int parameter_count;
+    unsigned int encrypted_io_policy;
+    unsigned int parameter_policy;
+    unsigned int flags;
+} Open64_DSC_FHE_Entry_Contract;
+
+typedef struct {
+    Open64_DSC_Handle encryption_descriptor;
+    unsigned int value_class;
+    unsigned int flags;
+} Open64_DSC_FHE_Entry_Value;
+
+typedef struct {
+    Open64_DSC_Handle config;
+    const char *key_set_name;
+    unsigned int key_class;
+    int rotation_offset;
+    const char *bootstrap_profile;
+    unsigned int flags;
+} Open64_DSC_FHE_Key_Requirement;
+
 extern Open64_DSC_Handle Open64_DSC_Create_Tensor_Type
                                 (const char *name,
                                  const char *dtype,
@@ -238,6 +292,29 @@ extern int Open64_DSC_Get_Program_Unit_Marker
                                 (Open64_DSC_Handle program_unit,
                                  unsigned int index,
                                  Open64_DSC_Marker_Info *info);
+extern Open64_DSC_Handle Open64_DSC_FHE_Intern_Compilation_Config
+                                (const Open64_DSC_FHE_Compilation_Config
+                                     *config);
+extern Open64_DSC_Handle Open64_DSC_FHE_Intern_Encryption_Descriptor
+                                (const Open64_DSC_FHE_Encryption_Descriptor
+                                     *descriptor);
+extern Open64_DSC_Handle Open64_DSC_FHE_Bind_Tensor_Descriptor
+                                (Open64_DSC_Handle tensor_type,
+                                 Open64_DSC_Handle encryption_descriptor,
+                                 unsigned int flags);
+extern Open64_DSC_Handle Open64_DSC_FHE_Attach_Entry_Contract
+                                (Open64_DSC_Handle program_unit,
+                                 const Open64_DSC_FHE_Entry_Contract
+                                     *contract);
+extern Open64_DSC_Handle Open64_DSC_FHE_Declare_Entry_Value
+                                (Open64_DSC_Handle entry_contract,
+                                 Open64_DSC_Handle value,
+                                 unsigned int ordinal,
+                                 unsigned int role,
+                                 const Open64_DSC_FHE_Entry_Value *info);
+extern Open64_DSC_Handle Open64_DSC_FHE_Intern_Key_Requirement
+                                (const Open64_DSC_FHE_Key_Requirement
+                                     *requirement);
 extern int Open64_DSC_Finalize_Mapped_Image(const char *path);
 
 #ifdef __cplusplus
