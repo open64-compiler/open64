@@ -392,6 +392,11 @@ conversion-plan records should stage in a separate optional fixed-row
 published. If FHE descriptors initially use existing side-table or metadata
 mechanisms, the dumps must still present a descriptor-shaped logical view.
 
+The main/common physical review is
+`doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md`. The FHE implementation consumes its
+opaque services and must not reinterpret the fixed rows or duplicate their
+referenced WN/ST/DST/value, TY, callsite, FHE-v1, or TCON evidence.
+
 ## Compatibility Strategy
 
 1. Keep older WHIRL readers deterministic: legacy images without FHE metadata
