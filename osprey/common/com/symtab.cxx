@@ -686,6 +686,69 @@ TY_tensor_seal (TY_IDX ty)
     return TRUE;
 }
 
+static void
+TY_Tensor_Bind_Attribute_If_Present
+        (TY_IDX ty, TY_TENSOR_SCHEMA_KEY key, const char *value)
+{
+    if (value != NULL && value[0] != '\0')
+        TY_tensor_bind_attribute(ty, key, value);
+}
+
+TY_IDX
+TY_Intern_Tensor_Type
+        (const char *name,
+         TY_IDX element_ty,
+         const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor)
+{
+    char rank_buf[32];
+
+    if (descriptor == NULL || TY_IDX_index(element_ty) == 0 ||
+        descriptor->kind == NULL || descriptor->kind[0] == '\0' ||
+        descriptor->dtype == NULL || descriptor->dtype[0] == '\0' ||
+        descriptor->rank < 0 || descriptor->logical_shape == NULL ||
+        descriptor->logical_shape[0] == '\0')
+        return TY_IDX_ZERO;
+
+    TY_IDX tensor_ty = TY_Create_Tensor_Type
+                           (name, element_ty, descriptor->rank);
+    snprintf(rank_buf, sizeof(rank_buf), "%d", descriptor->rank);
+    TY_tensor_bind_attribute
+        (tensor_ty, TY_TENSOR_SCHEMA_KIND, descriptor->kind);
+    TY_tensor_bind_attribute
+        (tensor_ty, TY_TENSOR_SCHEMA_DTYPE, descriptor->dtype);
+    TY_tensor_bind_attribute
+        (tensor_ty, TY_TENSOR_SCHEMA_RANK, rank_buf);
+    TY_tensor_bind_attribute
+        (tensor_ty, TY_TENSOR_SCHEMA_SHAPE, descriptor->logical_shape);
+    TY_Tensor_Bind_Attribute_If_Present
+        (tensor_ty, TY_TENSOR_SCHEMA_TRAITS, descriptor->traits);
+    TY_Tensor_Bind_Attribute_If_Present
+        (tensor_ty, TY_TENSOR_SCHEMA_LAYOUT, descriptor->layout);
+    TY_Tensor_Bind_Attribute_If_Present
+        (tensor_ty, TY_TENSOR_SCHEMA_SHARDING, descriptor->sharding);
+    TY_Tensor_Bind_Attribute_If_Present
+        (tensor_ty, TY_TENSOR_SCHEMA_PLACEMENT, descriptor->placement);
+    TY_Tensor_Bind_Attribute_If_Present
+        (tensor_ty, TY_TENSOR_SCHEMA_MEMORY, descriptor->memory);
+    TY_Tensor_Bind_Attribute_If_Present
+        (tensor_ty, TY_TENSOR_SCHEMA_QUANTIZATION, descriptor->quantization);
+    if (!TY_tensor_seal(tensor_ty))
+        return TY_IDX_ZERO;
+
+    for (UINT32 index = 1; index < Ty_tab.Size(); ++index) {
+        TY_IDX candidate = TY_IDX_ZERO;
+        TY_TENSOR_EXTENSION_INFO candidate_info;
+        Set_TY_IDX_index(candidate, index);
+        if (!TY_Get_Tensor_Extension_Info(candidate, &candidate_info))
+            continue;
+        candidate = candidate_info.ty;
+        if (candidate != tensor_ty && TY_tensor_is_canonical(candidate) &&
+            TY_are_equivalent(candidate, tensor_ty, TY_EQUIV_IGNORE_NAMES))
+            return candidate;
+    }
+    return tensor_ty;
+}
+
 UINT32
 TY_tensor_unbound_required_attribute_count
         (TY_IDX ty, const TY_TENSOR_SCHEMA_KEY *required, UINT32 required_count)
