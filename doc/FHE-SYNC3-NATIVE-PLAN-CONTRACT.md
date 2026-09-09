@@ -688,20 +688,33 @@ converted without an error and that the complete DSL, effect, call, FHE, and
 FHE-plan images are valid. It then calls the standard `Write_Global_Info()`
 and closes the binary WHIRL image.
 
+Checkpoint mode does not initialize the backend REGION optimization service
+after conversion, and its matching PU postprocessing does not finalize that
+service. The checkpoint only preserves and writes REGION WN nodes and their
+managed RID records; it does not consume, lower, or optimize them. Optional
+DSL WOPT preparation retains its own paired REGION initialization and
+finalization before FHE conversion.
+
 The writer initially uses `<path>.tmp` in the destination directory. Only a
 fully converted, validated, and closed file is atomically renamed to `<path>`.
 A failed run removes the temporary file and never publishes a partial artifact
-under the requested checkpoint name. The FHE semantic task consumes this
-mode; it must not reproduce PU selection, local-symbol-table lifetime, managed
-image validation, or binary writer orchestration.
+under the requested checkpoint name. The temporary output is registered with
+the backend's standard error and signal cleanup callback service so failures
+outside the conversion callback also remove it without introducing a shared
+library dependency on the backend driver executable. The FHE semantic task consumes this mode;
+it must not reproduce PU selection, local-symbol-table lifetime, managed image
+validation, or binary writer orchestration.
 
 The retained integration fixture is
 `osprey/common/com/tests/dsl_fhe_conversion_checkpoint_test.sh`. It requires a
 reviewed multi-PU input, reopens the checkpoint with `ir_b2a -st -src`, checks
 the expected `FUNC_ENTRY` count, and stages the source named by
 `OPEN64_FHE_CHECKPOINT_SOURCE` beside the artifact for source-interleaved
-inspection. It may also prove fail-closed behavior with an FHE-bearing input
-when semantic conversion support is intentionally absent.
+inspection. Optional REGION count and contract-name checks prove that legal DSL
+REGION metadata passes through checkpoint mode without invoking backend REGION
+optimization initialization. The fixture may also prove fail-closed behavior
+with an FHE-bearing input when semantic conversion support is intentionally
+absent.
 
 Stable checkpoint diagnostics are `CFHE-CHECKPOINT-001` for incomplete PU
 coverage, `CFHE-CHECKPOINT-002` for aggregated conversion errors, and
