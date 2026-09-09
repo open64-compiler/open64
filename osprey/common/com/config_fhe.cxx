@@ -15,6 +15,7 @@ BOOL VHO_FHE_Dump_Before_Conversion = FALSE;
 BOOL VHO_FHE_Dump_Before_Conversion_Set = FALSE;
 BOOL VHO_FHE_Dump_After_Conversion = FALSE;
 BOOL VHO_FHE_Dump_After_Conversion_Set = FALSE;
+char *VHO_FHE_Conversion_Checkpoint_Output = NULL;
 
 static OPTION_DESC Options_FHE[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "convert", "convert",
@@ -29,5 +30,7 @@ static OPTION_DESC Options_FHE[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "dump_after", "dump_after",
     FALSE, 0, 0, &VHO_FHE_Dump_After_Conversion,
     &VHO_FHE_Dump_After_Conversion_Set },
+  { OVK_NAME, OV_VISIBLE, FALSE, "checkpoint", "checkpoint",
+    0, 0, 0, &VHO_FHE_Conversion_Checkpoint_Output, NULL },
   { OVK_COUNT }
 };

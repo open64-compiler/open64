@@ -1,6 +1,7 @@
 # Open64 FHE SYNC-3 Native Planning-Image Contract
 
-Status: Stage 3 VHO phase substrate implemented after PR #110, pending review
+Status: Stage 3 VHO phase and all-PU conversion-checkpoint substrate
+implemented, pending review
 
 Semantic authority:
 
@@ -631,6 +632,10 @@ ciphertext bytes, or backend object state.
    `VHO_DSL_Lower_Driver()`.
 6. Hand the merged APIs to the FHE task for semantic gatekeeper, BatchNorm
    folding, conversion reports, and retained ResNet-20 artifacts.
+7. Add a backend-owned all-PU conversion checkpoint that writes each converted
+   PU while its local symbol table is active, validates the complete managed
+   image after traversal, and atomically publishes a binary WHIRL artifact
+   before ordinary DSL or language lowering.
 
 Stage 5 is implemented by the Stage 3 infrastructure PR. The public option
 surface is:
@@ -640,7 +645,9 @@ surface is:
 - `-FHE:strict_o0=on|off`, enabled by default so the conversion pass can
   distinguish mandatory semantic adaptation from optional optimization;
 - `-FHE:dump_before=on|off`; and
-- `-FHE:dump_after=on|off`.
+- `-FHE:dump_after=on|off`;
+- `-FHE:checkpoint=<path>`, which selects conversion-only certification and
+  names the binary WHIRL output.
 
 `VHO_FHE_Convert_Program_Unit()` performs the structural DSL/FHE/FHE-plan
 gate, invokes the registered semantic gatekeeper, invokes the registered
@@ -656,6 +663,51 @@ Until the FHE semantic implementation is linked, enabling conversion for an
 artifact that contains FHE records fails with `CFHE-CONVERT-001` instead of
 silently lowering away FHE semantics. Non-FHE and legacy artifacts remain
 unchanged even though the option defaults to enabled.
+
+### All-PU Conversion Checkpoint
+
+`-FHE:checkpoint=<path>` is an explicit file-level certification mode. It may
+run the option-controlled DSL WOPT/Preopt preparation, then invokes
+`VHO_FHE_Convert_Driver_Try()` exactly once for every PU. It does not
+run `VHO_DSL_Lower_Driver()`, language VHO lowering, WOPT/LNO/CG, whirl2c, or
+whirl2f after conversion. Unrelated phase options continue to be accepted and
+are silently ignored in this mode according to the Open64 phase-option
+convention.
+
+`VHO_FHE_Convert_Driver_With_Result()` remains the public ordinary-pipeline
+helper that returns the per-PU counters and preserves the established
+fail-closed assertion. `VHO_FHE_Convert_Driver()` remains its source-compatible
+wrapper for callers that do not need the result.
+
+The backend owns traversal and file construction. While each PU and its local
+symbol table are selected, it verifies the tree and symbol table and calls the
+standard `Write_PU_Info()` service. After all PUs have succeeded, it aggregates
+the `VHO_FHE_CONVERT_RESULT` counters and calls
+`VHO_FHE_Convert_Checkpoint_Validate()` to prove that every expected PU was
+converted without an error and that the complete DSL, effect, call, FHE, and
+FHE-plan images are valid. It then calls the standard `Write_Global_Info()`
+and closes the binary WHIRL image.
+
+The writer initially uses `<path>.tmp` in the destination directory. Only a
+fully converted, validated, and closed file is atomically renamed to `<path>`.
+A failed run removes the temporary file and never publishes a partial artifact
+under the requested checkpoint name. The FHE semantic task consumes this
+mode; it must not reproduce PU selection, local-symbol-table lifetime, managed
+image validation, or binary writer orchestration.
+
+The retained integration fixture is
+`osprey/common/com/tests/dsl_fhe_conversion_checkpoint_test.sh`. It requires a
+reviewed multi-PU input, reopens the checkpoint with `ir_b2a -st -src`, checks
+the expected `FUNC_ENTRY` count, and stages the source named by
+`OPEN64_FHE_CHECKPOINT_SOURCE` beside the artifact for source-interleaved
+inspection. It may also prove fail-closed behavior with an FHE-bearing input
+when semantic conversion support is intentionally absent.
+
+Stable checkpoint diagnostics are `CFHE-CHECKPOINT-001` for incomplete PU
+coverage, `CFHE-CHECKPOINT-002` for aggregated conversion errors, and
+`CFHE-CHECKPOINT-003` for an invalid complete managed image. A successful run
+reports PU, semantic-gate, pass, disposition, rewrite, BatchNorm-fold,
+approximation, and error counts.
 
 No bootstrap insertion, SIHE/CKKS arithmetic opcode allocation,
 `fhe.cnn.poly_activation` emission, OpenFHE/runtime lowering, or generated-C
