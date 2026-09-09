@@ -5306,10 +5306,24 @@ Check_External_Tensor_Materialization(void)
     for (UINT32 i = 0; i < 6; ++i) {
         TY_IDX ty = (i & 1) == 0 ? weight_ty : bias_ty;
         UINT64 byte_length = (i & 1) == 0 ? 16 : 8;
-        sources[i] = Create_External_Rewrite_Source
-                         (source_names[i], ty, source_keys[i],
-                          i * 32, byte_length, contexts[i], checksum,
-                          &position);
+        if (i == 1) {
+            sources[i] = DSL_Builder_Create_Tensor_Constant
+                (source_names[i], ty, "float32", 1, "[2]",
+                 "implicit_zero", "0");
+            DSL_BUILDER_COMPILER_METADATA metadata;
+            metadata.name = "source.instance_path";
+            metadata.value = contexts[i];
+            if (sources[i] != NULL) {
+                DSL_Builder_Set_Value_Source_Position(sources[i], &position);
+                DSL_Builder_Attach_Value_Metadata(sources[i], &metadata, 1);
+            }
+            ++position.line;
+        } else {
+            sources[i] = Create_External_Rewrite_Source
+                             (source_names[i], ty, source_keys[i],
+                              i * 32, byte_length, contexts[i], checksum,
+                              &position);
+        }
     }
     EXTERNAL_REWRITE_CHECK(caller != NULL && caller_file != 0,
                            "caller program unit");
@@ -5345,6 +5359,19 @@ Check_External_Tensor_Materialization(void)
                     &callsite);
     EXTERNAL_REWRITE_CHECK(calls[0] != NULL && calls[1] != NULL,
                            "two shared-callee calls");
+    EXTERNAL_REWRITE_CHECK
+        (DSL_Builder_Set_PU_Call_Argument_Role
+             (calls[0], 0, 0, "cnn.basic_block.conv1.weight") &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (calls[0], 1, 1, "cnn.basic_block.conv1.bias") &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (calls[1], 0, 0, "cnn.basic_block.conv1.weight") &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (calls[1], 1, 1, "cnn.basic_block.conv1.bias") &&
+         !DSL_Builder_Set_PU_Call_Argument_Role
+             (calls[1], 0, 0, "cnn.basic_block.conv2.weight") &&
+         DSL_Call_ABI_Image_Argument_Count() == 4,
+         "structured call ABI argument roles");
     if (failed)
         return failed;
 
@@ -5383,6 +5410,9 @@ Check_External_Tensor_Materialization(void)
         requests[i].byte_offset = i * 32;
         requests[i].byte_length = (i & 1) == 0 ? 16 : 8;
         requests[i].checksum = checksum;
+        if (i == 1)
+            requests[i].source_policy =
+                DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_OR_IMPLICIT_ZERO;
         if (i < 4) {
             requests[i].call = calls[i / 2];
             requests[i].actual_ordinal = i & 1;
@@ -5407,6 +5437,15 @@ Check_External_Tensor_Materialization(void)
          WN_st_idx(WN_kid0(WN_kid(calls[0], 1))) ==
              original_actual_st[1],
          "weight and bias batch rejects without partial mutation");
+    DSL_CALL_ARGUMENT_RECORD argument_record;
+    EXTERNAL_REWRITE_CHECK
+        (DSL_Call_ABI_Image_Find_Argument(calls[0], 0, &argument_record) &&
+         argument_record.argument_value_id ==
+             DSL_Builder_Get_Value_Image_Id(sources[0]) &&
+         DSL_Call_ABI_Image_Find_Argument(calls[0], 1, &argument_record) &&
+         argument_record.argument_value_id ==
+             DSL_Builder_Get_Value_Image_Id(sources[1]),
+         "rejected batch leaves call ABI values unchanged");
 
     memcpy(rejected, requests, sizeof(rejected));
     rejected[1].name = rejected[0].name;
@@ -5491,6 +5530,13 @@ Check_External_Tensor_Materialization(void)
             (WN_st_idx(WN_kid0(WN_kid(calls[i / 2], i & 1))) ==
                  materialized[i].st,
              "caller actual uses the context-owned folded value");
+    for (UINT32 i = 0; i < 4; ++i) {
+        EXTERNAL_REWRITE_CHECK
+            (DSL_Call_ABI_Image_Find_Argument
+                 (calls[i / 2], i & 1, &argument_record) &&
+             argument_record.argument_value_id == materialized[i].value_id,
+             "call ABI follows the materialized actual");
+    }
     EXTERNAL_REWRITE_CHECK
         (DSL_IR_Image_Get_External_Tensor_Reference
              (PU_Info_proc_sym(caller), materialized[0].value_id,
@@ -5516,7 +5562,11 @@ Check_External_Tensor_Materialization(void)
          "source payload remains immutable");
 
     EXTERNAL_REWRITE_CHECK
+        (!DSL_Call_ABI_Image_Validate_PU(callee, NULL),
+         "call ABI rejects a non-active callee local symbol table");
+    EXTERNAL_REWRITE_CHECK
         (DSL_Builder_Select_PU(callee) &&
+         DSL_Call_ABI_Image_Validate_PU(callee, stderr) &&
          WN_num_formals(PU_Info_tree_ptr(callee)) == 3 &&
          strcmp(ST_name(St_Table
                     [WN_st_idx(WN_formal(PU_Info_tree_ptr(callee), 0))]),
@@ -5527,6 +5577,39 @@ Check_External_Tensor_Materialization(void)
          "shared callee signature remains unchanged");
     EXTERNAL_REWRITE_CHECK(DSL_Builder_Select_PU(caller),
                            "restore caller program unit");
+
+    DSL_CALL_ABI_IMAGE_HEADER abi_header;
+    DSL_Call_ABI_Image_Get_Header(&abi_header);
+    UINT64 abi_size = DSL_CALL_ABI_IMAGE_HEADER_SIZE +
+        (UINT64)abi_header.argument_count * DSL_CALL_ARGUMENT_RECORD_SIZE;
+    unsigned char *abi_bytes = new unsigned char[abi_size];
+    memcpy(abi_bytes, &abi_header, sizeof(abi_header));
+    DSL_CALL_ARGUMENT_RECORD *abi_rows =
+        (DSL_CALL_ARGUMENT_RECORD *)
+            (abi_bytes + DSL_CALL_ABI_IMAGE_HEADER_SIZE);
+    for (UINT32 i = 1; i <= abi_header.argument_count; ++i)
+        DSL_Call_ABI_Image_Get_Argument(i, &abi_rows[i - 1]);
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_Call_ABI_Image_Load_Mapped(abi_bytes, abi_size - 1, NULL) &&
+         !DSL_Call_ABI_Image_Load_Mapped(abi_bytes, abi_size + 1, NULL),
+         "truncated and trailing call ABI images reject");
+    abi_rows[0].flags = 1;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_Call_ABI_Image_Load_Mapped(abi_bytes, abi_size, NULL),
+         "nonzero call ABI flags reject");
+    abi_rows[0].flags = 0;
+    abi_rows[1].callsite_id = abi_rows[0].callsite_id;
+    abi_rows[1].actual_ordinal = abi_rows[0].actual_ordinal;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_Call_ABI_Image_Load_Mapped(abi_bytes, abi_size, NULL),
+         "duplicate call ABI identity rejects");
+    abi_rows[1].callsite_id = 1;
+    abi_rows[1].actual_ordinal = 1;
+    EXTERNAL_REWRITE_CHECK
+        (DSL_Call_ABI_Image_Load_Mapped(abi_bytes, abi_size, stderr) &&
+         DSL_Call_ABI_Image_Argument_Count() == 4,
+         "valid call ABI image reloads after malformed inputs");
+    delete [] abi_bytes;
 
     memset(&verify, 0, sizeof(verify));
     memset(diagnostic, 0, sizeof(diagnostic));
@@ -6048,6 +6131,384 @@ Check_FHE_SYNC3_Plan_Image(void)
     return failed;
 }
 
+static WN *
+Find_STID_In_Block (WN *block, ST_IDX st)
+{
+    if (block == NULL || WN_operator(block) != OPR_BLOCK)
+        return NULL;
+    for (WN *statement = WN_first(block); statement != NULL;
+         statement = WN_next(statement)) {
+        if (WN_operator(statement) == OPR_STID && WN_st_idx(statement) == st)
+            return statement;
+    }
+    return NULL;
+}
+
+static unsigned char *
+Capture_DSL_IR_Image (UINT64 *image_size)
+{
+    DSL_IR_IMAGE_HEADER header;
+    DSL_IR_Image_Get_Header(&header);
+    UINT64 size = DSL_IR_IMAGE_HEADER_SIZE +
+        (UINT64)header.opcode_descriptor_count *
+            DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE +
+        (UINT64)header.node_count * DSL_IR_NODE_RECORD_SIZE +
+        (UINT64)header.attribute_count * DSL_IR_ATTRIBUTE_RECORD_SIZE +
+        (UINT64)header.value_count * DSL_IR_VALUE_RECORD_SIZE +
+        (UINT64)header.value_reference_count *
+            DSL_IR_VALUE_REFERENCE_RECORD_SIZE;
+    unsigned char *bytes = new unsigned char[size];
+    unsigned char *cursor = bytes;
+    memcpy(cursor, &header, sizeof(header));
+    cursor += DSL_IR_IMAGE_HEADER_SIZE;
+    for (UINT32 i = 1; i <= header.opcode_descriptor_count; ++i) {
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD record;
+        DSL_IR_Image_Get_Opcode_Descriptor(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.node_count; ++i) {
+        DSL_IR_NODE_RECORD record;
+        DSL_IR_Image_Get_Node(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_IR_NODE_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.attribute_count; ++i) {
+        DSL_IR_ATTRIBUTE_RECORD record;
+        DSL_IR_Image_Get_Attribute(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_IR_ATTRIBUTE_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.value_count; ++i) {
+        DSL_IR_VALUE_RECORD record;
+        DSL_IR_Image_Get_Value(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_IR_VALUE_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.value_reference_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD record;
+        DSL_IR_Image_Get_Value_Reference(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_IR_VALUE_REFERENCE_RECORD_SIZE;
+    }
+    *image_size = size;
+    return bytes;
+}
+
+static int
+Check_DSL_Value_Retirement(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_VALUE_RETIRE_ARTIFACT");
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE values[3];
+    DSL_BUILDER_VALUE kid[1];
+    DSL_IR_NATIVE_VALUE_RETIRE_REQUEST request;
+    DSL_IR_NODE_RECORD retired_node;
+    DSL_IR_VALUE_RECORD retired_value;
+    DSL_IR_VALUE_ID target;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
+    WN *body;
+    WN *replacement_definition;
+    WN *retiring_definition;
+    WN *consumer_definition;
+    WN *address_use;
+    WN *nested_block;
+    WN *nested_if;
+    TY_IDX ty;
+    TY_IDX pointer_ty;
+    int failed = 0;
+#define RETIRE_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "DSL retirement check failed: %s\n", message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    RETIRE_CHECK(DSL_Builder_Begin_Program(), "program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "row_major";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+    ty = DSL_Builder_Intern_Tensor_Type
+             ("retire_f32_2x2", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("dsl_value_retirement");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    input = DSL_Builder_Create_Model_Input("input", ty, 0);
+    kid[0] = input;
+    values[0] = DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                     "common.relu", 2),
+                     2, kid, 1, NULL, 0, "relu_first", ty);
+    kid[0] = values[0];
+    values[1] = DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                     "common.relu", 2),
+                     2, kid, 1, NULL, 0, "relu_retired", ty);
+    kid[0] = values[1];
+    values[2] = DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                     "common.relu", 2),
+                     2, kid, 1, NULL, 0, "relu_consumer", ty);
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    RETIRE_CHECK(ty != TY_IDX_ZERO && pu != NULL && file_id != 0 &&
+                 input != NULL && values[0] != NULL && values[1] != NULL &&
+                 values[2] != NULL,
+                 "retirement fixture creation");
+    DSL_Builder_Set_Value_Source_Position(input, &position);
+    for (UINT32 i = 0; i < 3; ++i) {
+        ++position.line;
+        DSL_Builder_Set_Value_Source_Position(values[i], &position);
+    }
+    RETIRE_CHECK(DSL_Builder_Append_PU_Value(pu, values[2]),
+                 "materialize expression chain");
+
+    body = WN_func_body(PU_Info_tree_ptr(pu));
+    replacement_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(values[0]));
+    retiring_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(values[1]));
+    consumer_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(values[2]));
+    memset(&request, 0, sizeof(request));
+    request.pu_root = PU_Info_tree_ptr(pu);
+    request.containing_block = body;
+    request.replacement_definition = replacement_definition;
+    request.replacement_value_id = DSL_Builder_Get_Value_Image_Id(values[0]);
+    request.retiring_definition = retiring_definition;
+    request.retiring_value_id = DSL_Builder_Get_Value_Image_Id(values[1]);
+    request.expected_retiring_operator = OPR_DSLRELU;
+    request.expected_retiring_version = 2;
+    request.replacement_operand_ordinal = 0;
+    pointer_ty = Make_Pointer_Type(ty);
+    address_use = WN_CreateEval
+        (WN_CreateLda(OPR_LDA, Pointer_Mtype, MTYPE_V, 0, pointer_ty,
+                      DSL_Builder_Get_Value_Result_Symbol(values[1])));
+    WN_INSERT_BlockAfter(body, retiring_definition, address_use);
+    RETIRE_CHECK
+        (!DSL_IR_Redirect_And_Retire_Native_Value
+              (PU_Info_proc_sym(pu), &request) &&
+         Find_STID_In_Block
+             (body, DSL_Builder_Get_Value_Result_Symbol(values[1])) != NULL &&
+         WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+             DSL_Builder_Get_Value_Result_Symbol(values[1]),
+         "address-taken value rejects without mutation");
+    WN_EXTRACT_FromBlock(body, address_use);
+    WN_DELETE_Tree(address_use);
+    WN_EXTRACT_FromBlock(body, replacement_definition);
+    WN_EXTRACT_FromBlock(body, retiring_definition);
+    nested_block = WN_CreateBlock();
+    WN_INSERT_BlockLast(nested_block, replacement_definition);
+    WN_INSERT_BlockLast(nested_block, retiring_definition);
+    nested_if = WN_CreateIf(WN_Intconst(MTYPE_I4, 1), nested_block,
+                            WN_CreateBlock());
+    WN_INSERT_BlockBefore(body, consumer_definition, nested_if);
+    request.containing_block = nested_block;
+    RETIRE_CHECK
+        (!DSL_IR_Redirect_And_Retire_Native_Value
+              (PU_Info_proc_sym(pu), &request) &&
+         Find_STID_In_Block
+             (nested_block,
+              DSL_Builder_Get_Value_Result_Symbol(values[1])) != NULL &&
+         WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+             DSL_Builder_Get_Value_Result_Symbol(values[1]),
+         "use outside the defining block rejects without mutation");
+    WN_EXTRACT_FromBlock(nested_block, replacement_definition);
+    WN_EXTRACT_FromBlock(nested_block, retiring_definition);
+    WN_EXTRACT_FromBlock(body, nested_if);
+    WN_DELETE_Tree(nested_if);
+    WN_INSERT_BlockBefore(body, consumer_definition, replacement_definition);
+    WN_INSERT_BlockAfter(body, replacement_definition, retiring_definition);
+    request.containing_block = body;
+    RETIRE_CHECK
+        (replacement_definition != NULL && retiring_definition != NULL &&
+         consumer_definition != NULL &&
+         DSL_IR_Redirect_And_Retire_Native_Value
+             (PU_Info_proc_sym(pu), &request),
+         "redirect and retire pure value");
+    RETIRE_CHECK
+        (Find_STID_In_Block
+             (body, DSL_Builder_Get_Value_Result_Symbol(values[1])) == NULL &&
+         WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+             DSL_Builder_Get_Value_Result_Symbol(values[0]) &&
+         DSL_IR_Image_Executable_Node_Count() + 1 ==
+             DSL_IR_Image_Node_Count(),
+         "tree use and executable count reflect retirement");
+    RETIRE_CHECK
+        (DSL_IR_Image_Get_Value(request.retiring_value_id, &retired_value) &&
+         DSL_IR_Image_Get_Node(retired_value.producer_node_id, &retired_node) &&
+         (retired_node.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 &&
+         (retired_value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 &&
+         DSL_IR_Image_Value_Redirect_Target(retired_value.id, &target) &&
+         target == request.replacement_value_id &&
+         DSL_IR_Image_Validate(stderr),
+         "retirement evidence remains mapped-image valid");
+
+    UINT64 image_size = 0;
+    unsigned char *image_bytes = Capture_DSL_IR_Image(&image_size);
+    DSL_IR_IMAGE_HEADER *header = (DSL_IR_IMAGE_HEADER *)image_bytes;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptors =
+        (DSL_IR_OPCODE_DESCRIPTOR_RECORD *)
+            (image_bytes + DSL_IR_IMAGE_HEADER_SIZE);
+    DSL_IR_NODE_RECORD *nodes = (DSL_IR_NODE_RECORD *)
+        ((unsigned char *)descriptors +
+         (UINT64)header->opcode_descriptor_count *
+             DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE);
+    DSL_IR_ATTRIBUTE_RECORD *attributes = (DSL_IR_ATTRIBUTE_RECORD *)
+        ((unsigned char *)nodes +
+         (UINT64)header->node_count * DSL_IR_NODE_RECORD_SIZE);
+    DSL_IR_VALUE_RECORD *image_values = (DSL_IR_VALUE_RECORD *)
+        ((unsigned char *)attributes +
+         (UINT64)header->attribute_count * DSL_IR_ATTRIBUTE_RECORD_SIZE);
+    DSL_IR_VALUE_REFERENCE_RECORD *references =
+        (DSL_IR_VALUE_REFERENCE_RECORD *)
+            ((unsigned char *)image_values +
+             (UINT64)header->value_count * DSL_IR_VALUE_RECORD_SIZE);
+    DSL_IR_NODE_RECORD &retired_image_node =
+        nodes[retired_value.producer_node_id - 1];
+    UINT32 redirect_ordinal =
+        (retired_image_node.flags & DSL_IR_NODE_REDIRECT_ORDINAL_MASK) >>
+        DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT;
+    DSL_IR_VALUE_REFERENCE_RECORD &redirect_reference =
+        references[retired_image_node.first_operand_reference_id - 1 +
+                   redirect_ordinal];
+    DSL_IR_VALUE_RECORD &redirect_value =
+        image_values[redirect_reference.value_id - 1];
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD &retired_descriptor =
+        descriptors[retired_image_node.opcode_descriptor_id - 1];
+    DSL_IR_VALUE_ID saved_target = redirect_reference.value_id;
+    TY_IDX saved_target_ty = redirect_value.ty;
+    UINT32 saved_target_flags = redirect_value.flags;
+    UINT32 saved_effect_model = retired_descriptor.effect_model;
+
+    redirect_reference.value_id = retired_value.id;
+    RETIRE_CHECK(!DSL_IR_Image_Load_Mapped(image_bytes, image_size, NULL),
+                 "self redirect target rejects on mapped load");
+    redirect_reference.value_id = saved_target;
+    redirect_value.ty = MTYPE_To_TY(MTYPE_I4);
+    RETIRE_CHECK(!DSL_IR_Image_Load_Mapped(image_bytes, image_size, NULL),
+                 "wrong-TY redirect target rejects on mapped load");
+    redirect_value.ty = saved_target_ty;
+    redirect_value.flags = DSL_IR_VALUE_FLAG_REDIRECTED;
+    RETIRE_CHECK(!DSL_IR_Image_Load_Mapped(image_bytes, image_size, NULL),
+                 "redirect chain rejects on mapped load");
+    redirect_value.flags = saved_target_flags;
+    retired_descriptor.effect_model = DSL_EFFECT_MODEL_RUNTIME_EFFECT;
+    RETIRE_CHECK(!DSL_IR_Image_Load_Mapped(image_bytes, image_size, NULL),
+                 "effectful retired node rejects on mapped load");
+    retired_descriptor.effect_model = saved_effect_model;
+    RETIRE_CHECK(DSL_IR_Image_Load_Mapped(image_bytes, image_size, stderr),
+                 "valid retired image reloads after malformed inputs");
+    delete [] image_bytes;
+
+    DSL_BUILDER_VALUE collision[3];
+    kid[0] = input;
+    collision[0] = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kid, 1, NULL, 0, "region_collision_first", ty);
+    kid[0] = collision[0];
+    collision[1] = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kid, 1, NULL, 0, "region_collision_retired", ty);
+    kid[0] = collision[1];
+    collision[2] = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kid, 1, NULL, 0, "region_collision_consumer", ty);
+    RETIRE_CHECK(collision[0] != NULL && collision[1] != NULL &&
+                 collision[2] != NULL &&
+                 DSL_Builder_Append_PU_Value(pu, collision[2]),
+                 "REGION collision fixture values");
+    DSL_REGION collision_region =
+        DSL_Region_Create(pu, NULL, "cnn.basic_block", 1);
+    RETIRE_CHECK
+        (collision_region != NULL &&
+         DSL_Region_Declare_Symbol
+             (collision_region,
+              DSL_Builder_Get_Value_Result_Symbol(collision[0]),
+              DSL_REGION_VALUE_INPUT, 0, DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Declare_Symbol
+             (collision_region,
+              DSL_Builder_Get_Value_Result_Symbol(collision[1]),
+              DSL_REGION_VALUE_INPUT, 1, DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Append_To_PU(collision_region) &&
+         DSL_Region_Verify_PU(pu, stderr),
+         "valid REGION interfaces before redirect");
+    char region_before[2048];
+    char region_after[2048];
+    FILE *region_dump = tmpfile();
+    RETIRE_CHECK(region_dump != NULL, "REGION preflight trace creation");
+    size_t region_before_size = 0;
+    if (region_dump != NULL) {
+        DSL_Region_Print_PU(region_dump, pu);
+        rewind(region_dump);
+        region_before_size = fread(region_before, 1,
+                                   sizeof(region_before) - 1, region_dump);
+        region_before[region_before_size] = '\0';
+        fclose(region_dump);
+    }
+    replacement_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(collision[0]));
+    retiring_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(collision[1]));
+    consumer_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(collision[2]));
+    request.replacement_definition = replacement_definition;
+    request.replacement_value_id =
+        DSL_Builder_Get_Value_Image_Id(collision[0]);
+    request.retiring_definition = retiring_definition;
+    request.retiring_value_id = DSL_Builder_Get_Value_Image_Id(collision[1]);
+    UINT32 collision_node_count = DSL_IR_Image_Node_Count();
+    BOOL collision_rejected = !DSL_IR_Redirect_And_Retire_Native_Value
+        (PU_Info_proc_sym(pu), &request);
+    region_dump = tmpfile();
+    size_t region_after_size = 0;
+    if (region_dump != NULL) {
+        DSL_Region_Print_PU(region_dump, pu);
+        rewind(region_dump);
+        region_after_size = fread(region_after, 1,
+                                  sizeof(region_after) - 1, region_dump);
+        region_after[region_after_size] = '\0';
+        fclose(region_dump);
+    }
+    RETIRE_CHECK
+        (collision_rejected && region_dump != NULL &&
+         region_before_size == region_after_size &&
+         strcmp(region_before, region_after) == 0 &&
+         DSL_IR_Image_Node_Count() == collision_node_count &&
+         Find_STID_In_Block
+             (body, DSL_Builder_Get_Value_Result_Symbol(collision[1])) !=
+                 NULL &&
+         WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+             DSL_Builder_Get_Value_Result_Symbol(collision[1]) &&
+         DSL_Region_Verify_PU(pu, stderr),
+         "REGION redirect collision rejects without mutation");
+    if (!failed && artifact != NULL && artifact[0] != '\0') {
+        image_request.path = artifact;
+        image_request.flags = 0;
+        (void) unlink(artifact);
+        RETIRE_CHECK(DSL_Builder_Finalize_Mapped_Image(&image_request),
+                     "mapped-image finalization");
+    }
+    if (!failed)
+        printf("DSL native value retirement contract passed\n");
+#undef RETIRE_CHECK
+    return failed;
+}
+
 int
 main(void)
 {
@@ -6094,6 +6555,8 @@ main(void)
         return Check_FHE_SYNC3_Native_Rewrite();
     if (getenv("OPEN64_DSL_EXTERNAL_TENSOR_REWRITE_ONLY") != NULL)
         return Check_External_Tensor_Materialization();
+    if (getenv("OPEN64_DSL_VALUE_RETIRE_ONLY") != NULL)
+        return Check_DSL_Value_Retirement();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -6116,6 +6579,7 @@ main(void)
     failed |= Check_FHE_SYNC3_Plan_Image();
     failed |= Check_FHE_SYNC3_Native_Rewrite();
     failed |= Check_External_Tensor_Materialization();
+    failed |= Check_DSL_Value_Retirement();
     failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;

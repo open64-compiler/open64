@@ -305,6 +305,7 @@ DSL_Gatekeeper_Find_Image_Node
     for (UINT32 i = 1; i <= DSL_IR_Image_Value_Count(); ++i) {
         DSL_IR_VALUE_RECORD value;
         if (!DSL_IR_Image_Get_Value(i, &value) || value.st != result_st ||
+            (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
             value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
             result_name == NULL ||
             value.name == STR_IDX_ZERO ||
@@ -1845,6 +1846,10 @@ DSL_Gatekeeper_Verify_PU
         valid = FALSE;
         ++context.result.error_count;
     }
+    if (!DSL_Call_ABI_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
     if (pu == NULL || PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
         PU_Info_tree_ptr(pu) == NULL)
         valid = DSL_Gatekeeper_Report
@@ -1884,6 +1889,10 @@ DSL_Gatekeeper_Verify_Program
         valid = FALSE;
         ++context.result.error_count;
     }
+    if (!DSL_Call_ABI_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
 
     for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
         if (PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
@@ -1904,12 +1913,13 @@ DSL_Gatekeeper_Verify_Program
             valid = FALSE;
     }
 
-    if (context.result.native_node_count != DSL_IR_Image_Node_Count())
+    if (context.result.native_node_count !=
+            DSL_IR_Image_Executable_Node_Count())
         valid = DSL_Gatekeeper_Report
                     (&context, "native tree node count %u does not match "
                      "DSL image node count %u",
                      context.result.native_node_count,
-                     DSL_IR_Image_Node_Count());
+                     DSL_IR_Image_Executable_Node_Count());
 
     if (result != NULL)
         *result = context.result;

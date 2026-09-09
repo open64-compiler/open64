@@ -1911,6 +1911,32 @@ full-sequence causal prompt evaluation with no KV cache.
    `doc/FHE-SYNC3-CHECKPOINT-ARTIFACT-CONTRACT.md`. This adds no mapped-image
    row, ELF section, opcode, type encoding, or binary revision.
 
+41. [x] Publish cross-PU call roles, implicit-zero materialization, and pure
+   value retirement.
+
+   Add optional `.WHIRL.dsl_call_abi` fixed rows that map each call actual to
+   its callee formal and versioned structural semantic role. Validate exact
+   owner, callsite, ST, `TY_IDX`, ordinal, and shared-callee role agreement;
+   provide enumeration plus callsite/actual and callee/formal queries. Batch
+   external-tensor materialization updates the physical actual and its ABI row
+   atomically within the complete request-array preflight/commit unit.
+
+   Extend materialization with a named, fail-closed source policy. The default
+   remains external-data only; an explicit policy also accepts an exact pure,
+   typed `common.tensor_const.v1` implicit-zero source while requiring full
+   checksum, TCON, range, shape, and dtype evidence on the new external value.
+
+   Add conservative redirection and executable retirement for a uniquely
+   defined pure DSL result. Require same-BLOCK dominance, post-definition
+   direct LDID uses, no address taking or second write, exact operand/TY
+   agreement, no state effects, and complete managed-reference coverage.
+   Redirect WN, DSL, and REGION-interface references together, remove the STID
+   from the executable tree, and retain explicitly flagged logical
+   node/value rows for provenance and `ir_b2a -st -src` review. Derive the
+   redirect target from the retired node operand instead of repurposing a
+   reserved fixed-row field. The detailed compatibility and atomicity contract
+   is in `doc/FHE-SYNC3-EXTERNAL-TENSOR-REWRITE-CONTRACT.md`.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

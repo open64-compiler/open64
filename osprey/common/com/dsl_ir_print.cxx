@@ -150,6 +150,11 @@ DSL_IR_Image_Print (FILE *file)
                      DSL_IR_String(attribute.value));
         }
         fprintf (file, "] result=value%u", node.result_value_id);
+        if ((node.flags & DSL_IR_NODE_FLAG_RETIRED) != 0) {
+            DSL_IR_VALUE_ID target = DSL_IR_VALUE_INVALID_ID;
+            DSL_IR_Image_Value_Redirect_Target(node.result_value_id, &target);
+            fprintf(file, " status=retired redirected_to=value%u", target);
+        }
         if (node.payload != STR_IDX_ZERO)
             fprintf (file, " payload=%s", DSL_IR_String(node.payload));
         fprintf (file, " flags=0x%x\n", node.flags);
@@ -181,6 +186,11 @@ DSL_IR_Image_Print (FILE *file)
         DSL_IR_Print_Result_Symbol(file, record.st, record.name);
         if (record.metadata != STR_IDX_ZERO)
             fprintf (file, " metadata=%s", DSL_IR_String(record.metadata));
+        if ((record.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0) {
+            DSL_IR_VALUE_ID target = DSL_IR_VALUE_INVALID_ID;
+            DSL_IR_Image_Value_Redirect_Target(record.id, &target);
+            fprintf(file, " status=redirected redirected_to=value%u", target);
+        }
         fprintf (file, " flags=0x%x\n", record.flags);
     }
 
@@ -256,6 +266,23 @@ DSL_IR_Image_Print (FILE *file)
                 DSL_IR_String(record.instance_path),
                 DSL_IR_String(record.context_identity),
                 record.source_call_ordinal, record.flags);
+    }
+    DSL_CALL_ABI_IMAGE_HEADER call_abi_header;
+    DSL_Call_ABI_Image_Get_Header(&call_abi_header);
+    fprintf(file, "DSL Call ABI Argument Table: version=%u entries=%u\n",
+            call_abi_header.version, call_abi_header.argument_count);
+    for (UINT32 i = 1; i <= call_abi_header.argument_count; ++i) {
+        DSL_CALL_ARGUMENT_RECORD record;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        DSL_Call_ABI_Image_Get_Argument(i, &record);
+        DSL_Call_Image_Get_Callsite(record.callsite_id, &callsite);
+        fprintf(file, "  [%u] callsite=%u callee=<%u,%u> actual=%u "
+                "formal=%u argument_value=%u role=%s flags=0x%x\n",
+                record.id, record.callsite_id,
+                ST_IDX_level(callsite.callee_pu_st),
+                ST_IDX_index(callsite.callee_pu_st), record.actual_ordinal,
+                record.callee_formal_ordinal, record.argument_value_id,
+                DSL_IR_String(record.semantic_role), record.flags);
     }
     DSL_FHE_Image_Print(file);
     DSL_FHE_Plan_Image_Print(file);

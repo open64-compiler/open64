@@ -29,6 +29,7 @@ typedef SEGMENTED_ARRAY<DSL_PU_SOURCE_IDENTITY_RECORD>
     DSL_PU_SOURCE_IDENTITY_TABLE;
 typedef SEGMENTED_ARRAY<DSL_CALLSITE_METADATA_RECORD>
     DSL_CALLSITE_METADATA_TABLE;
+typedef SEGMENTED_ARRAY<DSL_CALL_ARGUMENT_RECORD> DSL_CALL_ARGUMENT_TABLE;
 
 static DSL_IR_OPCODE_DESCRIPTOR_TABLE DSL_ir_opcode_descriptor_table;
 static DSL_IR_NODE_TABLE DSL_ir_node_table;
@@ -39,6 +40,7 @@ static DSL_STATE_OBJECT_TABLE DSL_state_object_table;
 static DSL_STATE_EFFECT_TABLE DSL_state_effect_table;
 static DSL_PU_SOURCE_IDENTITY_TABLE DSL_pu_source_identity_table;
 static DSL_CALLSITE_METADATA_TABLE DSL_callsite_metadata_table;
+static DSL_CALL_ARGUMENT_TABLE DSL_call_argument_table;
 
 typedef struct {
     ST_IDX owner_pu_st;
@@ -88,6 +90,10 @@ typedef char DSL_PU_Source_Identity_Size_Check
 typedef char DSL_Callsite_Metadata_Size_Check
     [sizeof(DSL_CALLSITE_METADATA_RECORD) ==
         DSL_CALLSITE_METADATA_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Call_ABI_Image_Header_Size_Check
+    [sizeof(DSL_CALL_ABI_IMAGE_HEADER) == DSL_CALL_ABI_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_Call_Argument_Size_Check
+    [sizeof(DSL_CALL_ARGUMENT_RECORD) == DSL_CALL_ARGUMENT_RECORD_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -120,6 +126,7 @@ DSL_IR_Image_Reset (void)
     DSL_state_object_table.Delete_down_to(0);
     DSL_state_effect_table.Delete_down_to(0);
     DSL_Call_Image_Reset();
+    DSL_Call_ABI_Image_Reset();
 }
 
 static BOOL
@@ -292,6 +299,16 @@ DSL_Call_Image_Find_Callsite
     return FALSE;
 }
 
+const WN *
+DSL_Call_Image_Get_Call_WN (DSL_CALLSITE_METADATA_ID id)
+{
+    for (UINT32 i = 0; i < DSL_callsite_runtime_associations.size(); ++i) {
+        if (DSL_callsite_runtime_associations[i].id == id)
+            return DSL_callsite_runtime_associations[i].call;
+    }
+    return NULL;
+}
+
 UINT32 DSL_Call_Image_PU_Identity_Count (void)
 { return DSL_pu_source_identity_table.Size(); }
 
@@ -400,6 +417,227 @@ DSL_Call_Image_Load_Mapped
     return TRUE;
 }
 
+static BOOL
+DSL_Call_ABI_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL call ABI image error: %s id=%u\n",
+                message, id);
+    return FALSE;
+}
+
+void
+DSL_Call_ABI_Image_Get_Header (DSL_CALL_ABI_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset(header, 0, sizeof(*header));
+    header->magic = DSL_CALL_ABI_IMAGE_MAGIC;
+    header->version = DSL_CALL_ABI_IMAGE_VERSION;
+    header->argument_count = DSL_call_argument_table.Size();
+}
+
+void
+DSL_Call_ABI_Image_Reset (void)
+{
+    DSL_call_argument_table.Delete_down_to(0);
+}
+
+BOOL
+DSL_Call_ABI_Image_Has_Records (void)
+{
+    return DSL_call_argument_table.Size() != 0;
+}
+
+BOOL
+DSL_Call_ABI_Image_Validate (FILE *diagnostic)
+{
+    for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+        const DSL_CALL_ARGUMENT_RECORD &record = DSL_call_argument_table[i];
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (record.id != i + 1 ||
+            record.callsite_id == DSL_CALLSITE_METADATA_INVALID_ID ||
+            !DSL_Call_Image_Get_Callsite(record.callsite_id, &callsite) ||
+            record.argument_value_id == DSL_IR_VALUE_INVALID_ID ||
+            record.argument_value_id > DSL_ir_value_table.Size() ||
+            record.actual_ordinal == DSL_CALL_ARGUMENT_INVALID_ORDINAL ||
+            record.callee_formal_ordinal ==
+                DSL_CALL_ARGUMENT_INVALID_ORDINAL ||
+            record.flags != 0 ||
+            !DSL_IR_Image_String_Id_Valid(record.semantic_role, TRUE))
+            return DSL_Call_ABI_Image_Report
+                       (diagnostic, "invalid argument", i + 1);
+
+        for (UINT32 j = 0; j < i; ++j) {
+            const DSL_CALL_ARGUMENT_RECORD &previous =
+                DSL_call_argument_table[j];
+            if (previous.callsite_id == record.callsite_id &&
+                previous.actual_ordinal == record.actual_ordinal)
+                return DSL_Call_ABI_Image_Report
+                           (diagnostic, "duplicate call argument", i + 1);
+            DSL_CALLSITE_METADATA_RECORD previous_callsite;
+            if (previous.callee_formal_ordinal ==
+                    record.callee_formal_ordinal &&
+                DSL_Call_Image_Get_Callsite
+                    (previous.callsite_id, &previous_callsite) &&
+                previous_callsite.callee_pu_st == callsite.callee_pu_st &&
+                strcmp(Index_To_Str(previous.semantic_role),
+                       Index_To_Str(record.semantic_role)) != 0)
+                return DSL_Call_ABI_Image_Report
+                           (diagnostic, "inconsistent formal role", i + 1);
+        }
+    }
+    return TRUE;
+}
+
+DSL_CALL_ARGUMENT_ID
+DSL_Call_ABI_Image_Add_Argument
+        (const WN *call, const DSL_CALL_ARGUMENT_RECORD *record)
+{
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    if (call == NULL || record == NULL ||
+        !DSL_Call_Image_Find_Callsite(call, &callsite) ||
+        record->callsite_id != callsite.id)
+        return DSL_CALL_ARGUMENT_INVALID_ID;
+
+    DSL_CALL_ARGUMENT_RECORD copy = *record;
+    UINT32 index = DSL_call_argument_table.Insert(copy);
+    DSL_call_argument_table[index].id = index + 1;
+    if (!DSL_Call_ABI_Image_Validate(NULL)) {
+        DSL_call_argument_table.Delete_down_to(index);
+        return DSL_CALL_ARGUMENT_INVALID_ID;
+    }
+    return index + 1;
+}
+
+UINT32
+DSL_Call_ABI_Image_Argument_Count (void)
+{
+    return DSL_call_argument_table.Size();
+}
+
+BOOL
+DSL_Call_ABI_Image_Get_Argument
+        (DSL_CALL_ARGUMENT_ID id, DSL_CALL_ARGUMENT_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_call_argument_table, id, record);
+}
+
+BOOL
+DSL_Call_ABI_Image_Find_Argument_By_Id
+        (DSL_CALLSITE_METADATA_ID callsite_id, UINT32 actual_ordinal,
+         DSL_CALL_ARGUMENT_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+        if (DSL_call_argument_table[i].callsite_id == callsite_id &&
+            DSL_call_argument_table[i].actual_ordinal == actual_ordinal)
+            return DSL_IR_Table_Get(DSL_call_argument_table, i + 1, record);
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_Call_ABI_Image_Find_Argument
+        (const WN *call, UINT32 actual_ordinal,
+         DSL_CALL_ARGUMENT_RECORD *record)
+{
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    return DSL_Call_Image_Find_Callsite(call, &callsite) &&
+           DSL_Call_ABI_Image_Find_Argument_By_Id
+               (callsite.id, actual_ordinal, record);
+}
+
+BOOL
+DSL_Call_ABI_Image_Update_Argument_Value
+        (const WN *call, UINT32 actual_ordinal,
+         DSL_IR_VALUE_ID expected_value_id,
+         DSL_IR_VALUE_ID replacement_value_id)
+{
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    if (call == NULL || replacement_value_id == DSL_IR_VALUE_INVALID_ID ||
+        replacement_value_id > DSL_ir_value_table.Size() ||
+        !DSL_Call_Image_Find_Callsite(call, &callsite))
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+        DSL_CALL_ARGUMENT_RECORD &argument = DSL_call_argument_table[i];
+        if (argument.callsite_id == callsite.id &&
+            argument.actual_ordinal == actual_ordinal) {
+            if (argument.argument_value_id != expected_value_id)
+                return FALSE;
+            argument.argument_value_id = replacement_value_id;
+            return TRUE;
+        }
+    }
+    return TRUE;
+}
+
+UINT32
+DSL_Call_ABI_Image_Callee_Formal_Count
+        (ST_IDX callee_pu_st, UINT32 callee_formal_ordinal)
+{
+    UINT32 count = 0;
+    for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (DSL_call_argument_table[i].callee_formal_ordinal ==
+                callee_formal_ordinal &&
+            DSL_Call_Image_Get_Callsite
+                (DSL_call_argument_table[i].callsite_id, &callsite) &&
+            callsite.callee_pu_st == callee_pu_st)
+            ++count;
+    }
+    return count;
+}
+
+BOOL
+DSL_Call_ABI_Image_Get_Callee_Formal_Argument
+        (ST_IDX callee_pu_st, UINT32 callee_formal_ordinal, UINT32 index,
+         DSL_CALL_ARGUMENT_RECORD *record)
+{
+    UINT32 found = 0;
+    for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (DSL_call_argument_table[i].callee_formal_ordinal !=
+                callee_formal_ordinal ||
+            !DSL_Call_Image_Get_Callsite
+                (DSL_call_argument_table[i].callsite_id, &callsite) ||
+            callsite.callee_pu_st != callee_pu_st)
+            continue;
+        if (found++ == index)
+            return DSL_IR_Table_Get(DSL_call_argument_table, i + 1, record);
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_Call_ABI_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    if (section_base == NULL || section_size < DSL_CALL_ABI_IMAGE_HEADER_SIZE)
+        return DSL_Call_ABI_Image_Report
+                   (diagnostic, "section is truncated", 0);
+    const DSL_CALL_ABI_IMAGE_HEADER *header =
+        (const DSL_CALL_ABI_IMAGE_HEADER *)section_base;
+    UINT64 expected = DSL_CALL_ABI_IMAGE_HEADER_SIZE +
+        (UINT64)header->argument_count * DSL_CALL_ARGUMENT_RECORD_SIZE;
+    if (header->magic != DSL_CALL_ABI_IMAGE_MAGIC ||
+        header->version != DSL_CALL_ABI_IMAGE_VERSION || header->flags != 0 ||
+        header->reserved0 != 0 || header->reserved1 != 0 ||
+        expected != section_size)
+        return DSL_Call_ABI_Image_Report(diagnostic, "invalid header", 0);
+
+    const DSL_CALL_ARGUMENT_RECORD *arguments =
+        (const DSL_CALL_ARGUMENT_RECORD *)
+            ((const char *)section_base + DSL_CALL_ABI_IMAGE_HEADER_SIZE);
+    DSL_Call_ABI_Image_Reset();
+    if (header->argument_count != 0)
+        DSL_call_argument_table.Insert(arguments, header->argument_count);
+    if (!DSL_Call_ABI_Image_Validate(diagnostic)) {
+        DSL_Call_ABI_Image_Reset();
+        return FALSE;
+    }
+    return TRUE;
+}
+
 void
 DSL_IR_Image_Get_Header (DSL_IR_IMAGE_HEADER *header)
 {
@@ -490,6 +728,8 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         const DSL_IR_VALUE_RECORD &record = view->values[i];
         if (record.id != i + 1 || record.value_kind == DSL_IR_VALUE_UNKNOWN ||
             record.producer_node_id > header.node_count ||
+            (record.flags & ~DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
+            record.reserved != 0 ||
             !DSL_IR_Image_String_Id_Valid(record.name, FALSE) ||
             !DSL_IR_Image_String_Id_Valid(record.metadata, FALSE))
             return DSL_IR_Image_Report(diagnostic, "invalid value", i + 1);
@@ -517,12 +757,17 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
 
     for (UINT32 i = 0; i < header.node_count; ++i) {
         const DSL_IR_NODE_RECORD &record = view->nodes[i];
+        const UINT32 valid_node_flags = DSL_IR_NODE_FLAG_RETIRED |
+                                        DSL_IR_NODE_REDIRECT_ORDINAL_MASK;
         active_attribute_count += record.attribute_count;
         active_value_reference_count += record.operand_count;
         if (record.id != i + 1 || record.opcode_descriptor_id == 0 ||
             record.opcode_descriptor_id > header.opcode_descriptor_count ||
             record.result_value_id == 0 ||
             record.result_value_id > header.value_count ||
+            (record.flags & ~valid_node_flags) != 0 ||
+            ((record.flags & DSL_IR_NODE_FLAG_RETIRED) == 0 &&
+             (record.flags & DSL_IR_NODE_REDIRECT_ORDINAL_MASK) != 0) ||
             !DSL_IR_Image_String_Id_Valid(record.payload, FALSE))
             return DSL_IR_Image_Report(diagnostic, "invalid node", i + 1);
 
@@ -574,6 +819,30 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         if (result.producer_node_id != record.id)
             return DSL_IR_Image_Report
                        (diagnostic, "node result provenance mismatch", i + 1);
+        if ((record.flags & DSL_IR_NODE_FLAG_RETIRED) != 0) {
+            UINT32 ordinal = (record.flags &
+                              DSL_IR_NODE_REDIRECT_ORDINAL_MASK) >>
+                             DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT;
+            const DSL_IR_VALUE_REFERENCE_RECORD *target_reference =
+                ordinal >= record.operand_count ? NULL :
+                &view->value_references
+                    [record.first_operand_reference_id - 1 + ordinal];
+            const DSL_IR_VALUE_RECORD *target = target_reference == NULL ?
+                NULL : &view->values[target_reference->value_id - 1];
+            if ((result.flags & DSL_IR_VALUE_FLAG_REDIRECTED) == 0 ||
+                descriptor.effect_model != DSL_EFFECT_MODEL_PURE ||
+                target_reference == NULL ||
+                target_reference->owner_node_id != record.id ||
+                target_reference->ordinal != ordinal ||
+                target == NULL || target->id == result.id ||
+                target->ty != result.ty ||
+                (target->flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0)
+                return DSL_IR_Image_Report
+                           (diagnostic, "invalid retired node", i + 1);
+        } else if ((result.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0) {
+            return DSL_IR_Image_Report
+                       (diagnostic, "redirected live value", result.id);
+        }
     }
 
     if (active_attribute_count != header.attribute_count ||
@@ -581,6 +850,88 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         return DSL_IR_Image_Report
                    (diagnostic, "unowned relationship record", 0);
 
+    for (UINT32 i = 0; i < header.value_reference_count; ++i) {
+        const DSL_IR_VALUE_RECORD &referenced =
+            view->values[view->value_references[i].value_id - 1];
+        if ((referenced.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0)
+            return DSL_IR_Image_Report
+                       (diagnostic, "reference to redirected value", i + 1);
+    }
+
+    return TRUE;
+}
+
+BOOL
+DSL_IR_Image_Redirect_And_Retire_Value
+        (DSL_IR_VALUE_ID replacement_value_id,
+         DSL_IR_VALUE_ID retiring_value_id,
+         UINT32 replacement_operand_ordinal)
+{
+    DSL_IR_VALUE_RECORD replacement;
+    DSL_IR_VALUE_RECORD retiring;
+    if (!DSL_IR_Table_Get
+            (DSL_ir_value_table, replacement_value_id, &replacement) ||
+        !DSL_IR_Table_Get
+            (DSL_ir_value_table, retiring_value_id, &retiring) ||
+        replacement_value_id == retiring_value_id ||
+        replacement.ty != retiring.ty ||
+        retiring.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+        retiring.producer_node_id > DSL_ir_node_table.Size() ||
+        (retiring.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0)
+        return FALSE;
+
+    DSL_IR_NODE_RECORD &node =
+        DSL_ir_node_table[retiring.producer_node_id - 1];
+    if ((node.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 ||
+        node.result_value_id != retiring_value_id ||
+        replacement_operand_ordinal >= node.operand_count)
+        return FALSE;
+    DSL_IR_VALUE_REFERENCE_RECORD &replacement_reference =
+        DSL_ir_value_reference_table
+            [node.first_operand_reference_id - 1 + replacement_operand_ordinal];
+    if (replacement_reference.value_id != replacement_value_id)
+        return FALSE;
+
+    for (UINT32 i = 0; i < DSL_ir_value_reference_table.Size(); ++i) {
+        const DSL_IR_VALUE_REFERENCE_RECORD &reference =
+            DSL_ir_value_reference_table[i];
+        if (reference.value_id == retiring_value_id &&
+            reference.owner_node_id == node.id)
+            return FALSE;
+    }
+
+    for (UINT32 i = 0; i < DSL_ir_value_reference_table.Size(); ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD &reference =
+            DSL_ir_value_reference_table[i];
+        if (reference.value_id == retiring_value_id)
+            reference.value_id = replacement_value_id;
+    }
+    node.flags = DSL_IR_NODE_FLAG_RETIRED |
+        (replacement_operand_ordinal << DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT);
+    DSL_ir_value_table[retiring_value_id - 1].flags |=
+        DSL_IR_VALUE_FLAG_REDIRECTED;
+    return TRUE;
+}
+
+BOOL
+DSL_IR_Image_Value_Redirect_Target
+        (DSL_IR_VALUE_ID value_id, DSL_IR_VALUE_ID *target_value_id)
+{
+    DSL_IR_VALUE_RECORD value;
+    if (target_value_id == NULL ||
+        !DSL_IR_Table_Get(DSL_ir_value_table, value_id, &value) ||
+        (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) == 0 ||
+        value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+        return FALSE;
+    const DSL_IR_NODE_RECORD &node =
+        DSL_ir_node_table[value.producer_node_id - 1];
+    UINT32 ordinal = (node.flags & DSL_IR_NODE_REDIRECT_ORDINAL_MASK) >>
+                     DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT;
+    if ((node.flags & DSL_IR_NODE_FLAG_RETIRED) == 0 ||
+        ordinal >= node.operand_count)
+        return FALSE;
+    *target_value_id = DSL_ir_value_reference_table
+        [node.first_operand_reference_id - 1 + ordinal].value_id;
     return TRUE;
 }
 
@@ -1114,6 +1465,17 @@ UINT32
 DSL_IR_Image_Node_Count (void)
 {
     return DSL_ir_node_table.Size();
+}
+
+UINT32
+DSL_IR_Image_Executable_Node_Count (void)
+{
+    UINT32 count = 0;
+    for (UINT32 i = 0; i < DSL_ir_node_table.Size(); ++i) {
+        if ((DSL_ir_node_table[i].flags & DSL_IR_NODE_FLAG_RETIRED) == 0)
+            ++count;
+    }
+    return count;
 }
 
 UINT32

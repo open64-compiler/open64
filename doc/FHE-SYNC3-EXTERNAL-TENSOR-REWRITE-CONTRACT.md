@@ -51,7 +51,7 @@ FHE producer and semantic gatekeeper own payload digest verification.
 
 `DSL_IR_Materialize_External_Tensor_Values()` preflights the complete request
 array before creating a symbol, WN, image row, or call replacement. Each
-request names an existing owner-PU external tensor source and creates one
+request names an existing owner-PU tensor-constant source and creates one
 caller-owned `common.tensor_const.v1` value with:
 
 - the exact canonical tensor `TY_IDX`;
@@ -62,6 +62,18 @@ caller-owned `common.tensor_const.v1` value with:
 - `dsl.converted_from_value_id` provenance;
 - immutable original source payload and source value; and
 - stable logical `ir_b2a -st -src` evidence.
+
+The request's named `source_policy` is fail-closed. Its zero/default value,
+`DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_ONLY`, preserves the original contract.
+`DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_OR_IMPLICIT_ZERO` additionally admits an
+exact, pure `common.tensor_const.v1` constant whose value kind is
+`implicit_zero`. The implicit-zero value must be the existing physical actual,
+have the exact owner and canonical `TY_IDX`, and agree with the output's dtype,
+shape, and byte length. It legitimately has no source checksum. The resulting
+external-data value must have a nonempty checksum, valid tensor TCON, and valid
+side-file byte range. `dsl.converted_from_value_id` continues to identify the
+implicit-zero source; BatchNorm inputs remain separately identified by the
+fold-provenance row.
 
 When `call` is non-null, the request must identify one existing read-only,
 passed-not-saved, by-reference actual and its expected source value. Commit
@@ -109,9 +121,88 @@ continued conversion. A failure after materialization is terminal for the
 conversion-only process: it must not retry or continue transforming the
 mutated in-memory image.
 
-No mapped-image row, ELF section, WHIRL opcode, TY encoding, or binary revision
-is added. New logical node/value/ST metadata records use the existing managed
-tables and mapped-image writer/reader path.
+The call-ABI extension below adds one optional ELF section. It does not change
+an existing mapped-image row, WHIRL opcode, TY encoding, binary revision, or
+the `.WHIRL.dsl` v1 row sizes.
+
+## Durable Call ABI Roles
+
+The optional `.WHIRL.dsl_call_abi` image records the semantic relationship
+between a call argument and a callee formal without retaining caller-local WN
+pointers or parsing source variable names. Its v1 header is 24 bytes and each
+argument row is 32 bytes. Row identity is `(callsite_id, actual_ordinal)`;
+zero IDs, `UINT32_MAX` ordinals, unknown flags, duplicate identities, and
+trailing or truncated images are rejected.
+
+Each row records `argument_value_id`, `callee_formal_ordinal`, and a stable
+structural semantic role. Role names are versioned by the producer/domain
+contract and use lowercase dot-separated identifiers, for example
+`cnn.basic_block.conv1.weight`. They describe structural paths, not Python or
+source variable spellings. Equivalent contexts that call one shared PU must
+agree on the role assigned to a given callee formal ordinal.
+
+Validation proves that the callsite's callee agrees, both ordinals are in
+range, the argument value is caller-owned and matches the physical call
+actual's ST and `TY_IDX`, and the callee formal has that exact `TY_IDX`.
+Per-PU validation requires that PU's local symbol table and `Current_pu` to be
+active; a mismatched active PU is rejected before any local ST is dereferenced.
+Consumers may enumerate rows, query by `(callsite_id, actual_ordinal)`, or
+query by `(callee_pu_st, callee_formal_ordinal)`. Borrowed records must not be
+retained across managed-table mutation or reset.
+
+Batch materialization updates `argument_value_id` in the same preflight/commit
+unit as the physical call actual. A rejected request array changes neither the
+call nor the ABI table. Original provenance remains in
+`dsl.converted_from_value_id` and does not enter ABI-row identity.
+
+## Native Value Redirection And Retirement
+
+`DSL_IR_Redirect_And_Retire_Native_Value()` supports the narrow pure-expression
+case required to retire a folded BatchNorm result. The caller supplies the
+owner PU, function root, containing BLOCK, replacement and retiring STIDs,
+their managed value IDs, the expected logical operator/version, and the
+operand ordinal that names the replacement.
+
+Preflight requires:
+
+- both definitions are in the same BLOCK and the replacement precedes the
+  retiring STID, so it dominates every accepted use;
+- every executable use occurs after the retiring STID;
+- the retiring result symbol has one definition and unique ownership;
+- the registered logical operator is pure and has no state-effect rows;
+- the replacement operand agrees in the physical WN, logical operand row,
+  result ST, and exact canonical `TY_IDX`;
+- uses are direct LDID reads, including nested BLOCK/REGION bodies; and
+- no LDA/address-taken use, second STID/write, alias escape, call-ABI argument,
+  or unsupported managed relationship exists.
+
+Commit redirects physical LDID reads, managed DSL value references, and
+managed REGION interface ST references, then removes the retiring STID from
+the executable tree. FHE disposition and fold rows remain provenance and are
+not redirected. The logical node and value rows remain visible for inspection:
+the node carries `DSL_IR_NODE_FLAG_RETIRED`, the value carries
+`DSL_IR_VALUE_FLAG_REDIRECTED`, and the redirect target is derived from the
+retired node's recorded replacement operand ordinal. No existing reserved row
+field is reclassified.
+
+REGION interface redirection has its own no-mutation preflight. It applies the
+candidate ST replacement to a copied interface set and runs the same generic
+and contract-profile verifier used after mapped reopen. A duplicate symbol,
+role/ordinal conflict, or profile violation rejects retirement before any WN,
+REGION, or DSL row changes.
+
+Gatekeeper and `ir_b2a -st -src` distinguish total logical rows from executable
+nodes. Mapped reopen preserves the retired/redirected evidence and validates
+that the derived target remains well formed. The immediately previous
+same-revision reader ignores the unknown optional `.WHIRL.dsl_call_abi`
+section, reopens both fixtures, and passes its traditional WHIRL verifier. Its
+per-PU DSL gatekeeper also accepts the non-retirement fixture because the
+physical tree and the existing DSL image remain consistent. For a
+retirement-bearing image, its program-level DSL gatekeeper fails closed with a
+physical/logical node-count mismatch; it does not silently treat the retained
+logical row as executable. Such images therefore require the updated DSL-aware
+gatekeeper even though their physical WHIRL remains readable by the previous
+tool.
 
 ## Focused Evidence
 
