@@ -84,6 +84,14 @@
 BOOL Whirl2f_loaded = FALSE;
 BOOL Whirl2c_loaded = FALSE;
 
+static CLEANUP_CALLBACK Cleanup_Callback = NULL;
+
+void
+Register_Cleanup_Callback (CLEANUP_CALLBACK callback)
+{
+    Cleanup_Callback = callback;
+}
+
 /* The subroutines we use from Whirl2c, and Whirl2f
  */
 
@@ -107,6 +115,12 @@ void
 Cleanup_Files (BOOL report,         /* Report errors during cleanup? */
                BOOL delete_dotofile /* remove .o file ? */)
 {
+    if (Cleanup_Callback != NULL) {
+        CLEANUP_CALLBACK callback = Cleanup_Callback;
+        Cleanup_Callback = NULL;
+        callback();
+    }
+
     /* No current line number for errors: */
     Set_Error_Line (ERROR_LINE_UNKNOWN);
 

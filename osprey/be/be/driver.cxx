@@ -458,6 +458,37 @@ FHE_Conversion_Checkpoint_Enabled (void)
 }
 
 static void
+Close_FHE_Conversion_Checkpoint (void)
+{
+  if (ir_output != NULL) {
+    ir_output = NULL;
+    Close_Output_Info();
+  }
+}
+
+static void
+Release_FHE_Conversion_Checkpoint (void)
+{
+  Register_Cleanup_Callback(NULL);
+  free(fhe_checkpoint_temp_name);
+  fhe_checkpoint_temp_name = NULL;
+  need_fhe_checkpoint_output = FALSE;
+}
+
+static void
+Cleanup_FHE_Conversion_Checkpoint (void)
+{
+  if (!need_fhe_checkpoint_output && fhe_checkpoint_temp_name == NULL)
+    return;
+
+  Register_Cleanup_Callback(NULL);
+  Close_FHE_Conversion_Checkpoint();
+  if (fhe_checkpoint_temp_name != NULL)
+    remove(fhe_checkpoint_temp_name);
+  Release_FHE_Conversion_Checkpoint();
+}
+
+static void
 Open_FHE_Conversion_Checkpoint (void)
 {
   const char *output = VHO_FHE_Conversion_Checkpoint_Output;
@@ -472,6 +503,7 @@ Open_FHE_Conversion_Checkpoint (void)
   VHO_FHE_Convert_Result_Init(&fhe_checkpoint_result);
   fhe_checkpoint_pu_count = 0;
   need_fhe_checkpoint_output = TRUE;
+  Register_Cleanup_Callback(Cleanup_FHE_Conversion_Checkpoint);
   ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
   FmtAssert(ir_output != NULL,
             ("could not open FHE checkpoint output %s",
@@ -1892,8 +1924,7 @@ Preprocess_PU (PU_Info *current_pu)
         fprintf(stderr,
                 "CFHE-CHECKPOINT-002: conversion failed before all-PU "
                 "checkpoint completion\n");
-        Close_Output_Info();
-        remove(fhe_checkpoint_temp_name);
+        Cleanup_FHE_Conversion_Checkpoint();
         FmtAssert(FALSE, ("FHE conversion checkpoint failed"));
       }
       ++fhe_checkpoint_pu_count;
@@ -1908,7 +1939,6 @@ Preprocess_PU (PU_Info *current_pu)
     if (need_fhe_checkpoint_output) {
       if (wopt_loaded)
         Create_Restricted_Map(MEM_pu_nz_pool_ptr);
-      REGION_Initialize(pu, PU_has_region(Get_Current_PU()));
       return pu;
     }
 
@@ -1953,8 +1983,10 @@ Postprocess_PU (PU_Info *current_pu)
 
   Current_Map_Tab = PU_Info_maptab(current_pu);
  
-  if (IPSA_insession && ! IPSA_insession()) REGION_Finalize();
-  else REGION_Finalize_wo_delete();
+  if (!need_fhe_checkpoint_output) {
+    if (IPSA_insession && ! IPSA_insession()) REGION_Finalize();
+    else REGION_Finalize_wo_delete();
+  }
 
   if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_cg) {
     // delete lowering map
@@ -2504,17 +2536,16 @@ main (INT argc, char **argv)
                      (total_pu_count, fhe_checkpoint_pu_count,
                       &fhe_checkpoint_result, stderr);
     if (!valid) {
-      Close_Output_Info();
-      remove(fhe_checkpoint_temp_name);
+      Cleanup_FHE_Conversion_Checkpoint();
       FmtAssert(FALSE, ("FHE conversion checkpoint validation failed"));
     }
 
     Write_Global_Info(pu_tree);
-    Close_Output_Info();
+    Close_FHE_Conversion_Checkpoint();
     if (rename(fhe_checkpoint_temp_name,
                VHO_FHE_Conversion_Checkpoint_Output) != 0) {
       INT rename_error = errno;
-      remove(fhe_checkpoint_temp_name);
+      Cleanup_FHE_Conversion_Checkpoint();
       FmtAssert(FALSE,
                 ("could not publish FHE conversion checkpoint %s: %s",
                  VHO_FHE_Conversion_Checkpoint_Output,
@@ -2534,8 +2565,7 @@ main (INT argc, char **argv)
             fhe_checkpoint_result.folded_batch_norm_count,
             fhe_checkpoint_result.approximation_contract_count,
             fhe_checkpoint_result.error_count);
-    free(fhe_checkpoint_temp_name);
-    fhe_checkpoint_temp_name = NULL;
+    Release_FHE_Conversion_Checkpoint();
   }
   else if (need_wopt_output || need_lno_output || need_ipl_output) {
     Write_Global_Info (pu_tree);

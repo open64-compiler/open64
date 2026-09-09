@@ -202,6 +202,10 @@ extern BOOL Keep_Flag;             /* Keep intermediate files(-kp) */
 extern UINT32 File_Index;       /* File index for multiple files compilation */
 
 /* Clean up files after failure: */
+typedef void (*CLEANUP_CALLBACK)(void);
+
+extern void Register_Cleanup_Callback (CLEANUP_CALLBACK callback);
+
 extern void Cleanup_Files (
   BOOL report	/* Report errors which occur during file cleanup? */
 		/* This should generally be FALSE for failures.   */

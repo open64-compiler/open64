@@ -99,6 +99,7 @@ Can_Do_Fast_Remainder
 Change_Base__19SYSTEM_OF_EQUATIONSGiT1P8mem_pool
 Check_for_IR_Dump__GiP2WNPc
 Cleanup_Files
+Register_Cleanup_Callback
 Clone_INITVs_For_EH__10IPO_SYMTABGUiT1
 Clone_Tree__9IPO_CLONEGP2WNP2ST
 Close_Output_Info

@@ -13,6 +13,8 @@ input="${OPEN64_FHE_CHECKPOINT_INPUT:-}"
 source_file="${OPEN64_FHE_CHECKPOINT_SOURCE:-}"
 reject_input="${OPEN64_FHE_CHECKPOINT_REJECT_INPUT:-}"
 expected_pus="${OPEN64_FHE_CHECKPOINT_EXPECTED_PUS:-2}"
+expected_regions="${OPEN64_FHE_CHECKPOINT_EXPECTED_REGIONS:-}"
+expected_region_contract="${OPEN64_FHE_CHECKPOINT_EXPECTED_REGION_CONTRACT:-}"
 artifact_dir="${OPEN64_FHE_CHECKPOINT_ARTIFACT_DIR:-$repo_root/artifacts/fhe/conversion-checkpoint-driver}"
 
 if [[ ! -x "$be" ]]; then
@@ -65,6 +67,18 @@ fi
 actual_pus="$(grep -c '^FUNC_ENTRY' "$trace")"
 if [[ "$actual_pus" != "$expected_pus" ]]; then
   echo "expected $expected_pus PUs, found $actual_pus in $trace" >&2
+  exit 1
+fi
+if [[ -n "$expected_regions" ]]; then
+  actual_regions="$(grep -c '^ REGION [0-9]' "$trace")"
+  if [[ "$actual_regions" != "$expected_regions" ]]; then
+    echo "expected $expected_regions REGIONs, found $actual_regions in $trace" >&2
+    exit 1
+  fi
+fi
+if [[ -n "$expected_region_contract" ]] &&
+   ! grep -Fq "contract=$expected_region_contract" "$trace"; then
+  echo "missing REGION contract $expected_region_contract in $trace" >&2
   exit 1
 fi
 if ! grep -Fq 'FHE conversion checkpoint: output=' "$validation_log"; then
