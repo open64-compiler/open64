@@ -644,19 +644,25 @@ DSL_FHE_Add_Entry_Contract (const DSL_FHE_ENTRY_CONTRACT_RECORD *record)
     return index + 1;
 }
 
-DSL_FHE_ENTRY_VALUE_ID
-DSL_FHE_Add_Entry_Value (const DSL_FHE_ENTRY_VALUE_RECORD *record)
+/* Validate the owner PU, role, value class, and encryption descriptor of an
+   entry value record without mutating any table.  This is the validate-before-
+   mutation half of the failure-atomic publication contract (v0.9 Section 15.4;
+   Appendix F.2): both DSL_FHE_Add_Entry_Value and the builder-level insertion
+   path run these checks before a row is appended or first_entry_value_id /
+   entry_value_count are changed, so a rejected value cannot leave the entry
+   value table or the entry contract in a partially updated state. */
+static BOOL
+DSL_FHE_Entry_Value_Record_Valid (const DSL_FHE_ENTRY_VALUE_RECORD *record)
 {
     DSL_IR_VALUE_RECORD value;
-    const DSL_FHE_ENTRY_CONTRACT_RECORD *entry =
-        record == NULL || record->entry_contract_id == 0 ||
-        record->entry_contract_id > DSL_fhe_entry_contract_table.Size() ?
-        NULL : &DSL_fhe_entry_contract_table[record->entry_contract_id - 1];
+    const DSL_FHE_ENTRY_CONTRACT_RECORD *entry;
+
     if (record == NULL || record->entry_contract_id == 0 ||
-        record->entry_contract_id > DSL_fhe_entry_contract_table.Size() ||
-        record->value_id == 0 ||
+        record->entry_contract_id > DSL_fhe_entry_contract_table.Size())
+        return FALSE;
+    entry = &DSL_fhe_entry_contract_table[record->entry_contract_id - 1];
+    if (record->value_id == 0 ||
         !DSL_IR_Image_Get_Value(record->value_id, &value) ||
-        entry == NULL ||
         !DSL_FHE_Value_Belongs_To_PU(value, entry->owner_pu_st) ||
         record->role < DSL_FHE_ENTRY_VALUE_INPUT ||
         record->role > DSL_FHE_ENTRY_VALUE_PARAMETER ||
@@ -668,6 +674,14 @@ DSL_FHE_Add_Entry_Value (const DSL_FHE_ENTRY_VALUE_RECORD *record)
         DSL_fhe_encryption_descriptor_table
             [record->encryption_descriptor_id - 1].value_class !=
                 record->value_class)
+        return FALSE;
+    return TRUE;
+}
+
+DSL_FHE_ENTRY_VALUE_ID
+DSL_FHE_Add_Entry_Value (const DSL_FHE_ENTRY_VALUE_RECORD *record)
+{
+    if (!DSL_FHE_Entry_Value_Record_Valid(record))
         return DSL_FHE_ENTRY_VALUE_INVALID_ID;
     DSL_FHE_ENTRY_VALUE_RECORD copy = *record;
     UINT32 index = DSL_fhe_entry_value_table.Insert(copy);
@@ -821,28 +835,41 @@ DSL_Builder_Declare_FHE_Entry_Value
              (tensor_ty, info->encryption_descriptor_id, &binding))
         return DSL_FHE_ENTRY_VALUE_INVALID_ID;
 
-    DSL_FHE_ENTRY_CONTRACT_RECORD &entry =
+    /* Validate owner, role, ordinal, descriptor, and range before changing
+       first_entry_value_id or entry_value_count (v0.9 Section 15.4;
+       Appendix F.2).  Every rejection below returns before any table or
+       entry-contract mutation, so a failed insertion leaves the entry value
+       table and the entry contract exactly as they were.  The entry contract is
+       read through a snapshot so the validation cannot depend on state that a
+       later rollback would have to restore. */
+    DSL_FHE_ENTRY_CONTRACT_RECORD contract =
         DSL_fhe_entry_contract_table[entry_contract_id - 1];
+    UINT32 role_limit = role == DSL_FHE_ENTRY_VALUE_INPUT ?
+                        contract.input_count :
+                        role == DSL_FHE_ENTRY_VALUE_OUTPUT ?
+                        contract.output_count :
+                        role == DSL_FHE_ENTRY_VALUE_PARAMETER ?
+                        contract.parameter_count : 0;
+    if (role_limit == 0 || ordinal >= role_limit)
+        return DSL_FHE_ENTRY_VALUE_INVALID_ID;
     UINT32 role_count = 0;
-    for (UINT32 i = 0; i < entry.entry_value_count; ++i) {
-        if (DSL_fhe_entry_value_table
-                [entry.first_entry_value_id - 1 + i].role == (UINT32)role)
+    for (UINT32 i = 0; i < contract.entry_value_count; ++i) {
+        const DSL_FHE_ENTRY_VALUE_RECORD &existing =
+            DSL_fhe_entry_value_table
+                [contract.first_entry_value_id - 1 + i];
+        if (existing.role == (UINT32)role) {
             ++role_count;
+            if (existing.ordinal == ordinal)
+                return DSL_FHE_ENTRY_VALUE_INVALID_ID;
+        }
     }
-    UINT32 expected_role_count = role == DSL_FHE_ENTRY_VALUE_INPUT ?
-                                 entry.input_count :
-                                 role == DSL_FHE_ENTRY_VALUE_OUTPUT ?
-                                 entry.output_count :
-                                 role == DSL_FHE_ENTRY_VALUE_PARAMETER ?
-                                 entry.parameter_count : 0;
-    if (expected_role_count == 0 || role_count >= expected_role_count)
+    if (role_count >= role_limit)
         return DSL_FHE_ENTRY_VALUE_INVALID_ID;
     UINT32 next_id = DSL_fhe_entry_value_table.Size() + 1;
-    if (entry.entry_value_count != 0 &&
-        next_id != entry.first_entry_value_id + entry.entry_value_count)
+    if (contract.entry_value_count != 0 &&
+        next_id != contract.first_entry_value_id +
+                        contract.entry_value_count)
         return DSL_FHE_ENTRY_VALUE_INVALID_ID;
-    if (entry.entry_value_count == 0)
-        entry.first_entry_value_id = next_id;
 
     DSL_FHE_ENTRY_VALUE_RECORD record;
     DSL_FHE_Entry_Value_Record_Init(&record);
@@ -853,9 +880,23 @@ DSL_Builder_Declare_FHE_Entry_Value
     record.value_class = info->value_class;
     record.encryption_descriptor_id = info->encryption_descriptor_id;
     record.flags = info->flags;
+    if (!DSL_FHE_Entry_Value_Record_Valid(&record))
+        return DSL_FHE_ENTRY_VALUE_INVALID_ID;
+
+    /* Commit the table insertion and the entry-contract range update as one
+       operation.  DSL_FHE_Add_Entry_Value re-validates and appends the row; it
+       cannot leave a partial row because it validates fully before inserting.
+       Only on a successful insertion is the entry contract's
+       first_entry_value_id / entry_value_count updated, so a failed insertion
+       rolls both the table and the entry contract back to their pre-call
+       state. */
     DSL_FHE_ENTRY_VALUE_ID id = DSL_FHE_Add_Entry_Value(&record);
     if (id == DSL_FHE_ENTRY_VALUE_INVALID_ID)
         return id;
+    DSL_FHE_ENTRY_CONTRACT_RECORD &entry =
+        DSL_fhe_entry_contract_table[entry_contract_id - 1];
+    if (entry.entry_value_count == 0)
+        entry.first_entry_value_id = id;
     ++entry.entry_value_count;
     return id;
 }

@@ -5136,6 +5136,451 @@ Check_FHE_Tensor_Binding_V1_Identity(void)
     return 0;
 }
 
+/* Serialize the current managed FHE image into a freshly allocated byte buffer
+   in the canonical mapped-image order (header, compilation configs, entry
+   contracts, entry values, encryption descriptors, tensor bindings, key
+   requirements).  The caller owns the returned buffer and must delete[] it.  The
+   byte length is returned through size_out.  This is the focused-test "write"
+   half of the failure-atomic publication check. */
+static unsigned char *
+DSL_FHE_Test_Serialize_Image (UINT64 *size_out)
+{
+    DSL_FHE_IMAGE_HEADER header;
+    DSL_FHE_Image_Get_Header(&header);
+    UINT64 size = DSL_FHE_IMAGE_HEADER_SIZE +
+        (UINT64)header.config_count * DSL_FHE_CONFIG_RECORD_SIZE +
+        (UINT64)header.entry_contract_count *
+            DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE +
+        (UINT64)header.entry_value_count * DSL_FHE_ENTRY_VALUE_RECORD_SIZE +
+        (UINT64)header.encryption_descriptor_count *
+            DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD_SIZE +
+        (UINT64)header.tensor_binding_count *
+            DSL_FHE_TENSOR_BINDING_RECORD_SIZE +
+        (UINT64)header.key_requirement_count *
+            DSL_FHE_KEY_REQUIREMENT_RECORD_SIZE;
+    unsigned char *bytes = new unsigned char[size];
+    unsigned char *cursor = bytes;
+    memcpy(cursor, &header, sizeof(header));
+    cursor += sizeof(header);
+    for (UINT32 i = 1; i <= header.config_count; ++i) {
+        DSL_FHE_COMPILATION_CONFIG_RECORD record;
+        DSL_FHE_Get_Compilation_Config(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.entry_contract_count; ++i) {
+        DSL_FHE_ENTRY_CONTRACT_RECORD record;
+        DSL_FHE_Get_Entry_Contract(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.entry_value_count; ++i) {
+        DSL_FHE_ENTRY_VALUE_RECORD record;
+        DSL_FHE_Get_Entry_Value(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.encryption_descriptor_count; ++i) {
+        DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD record;
+        DSL_FHE_Get_Encryption_Descriptor(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.tensor_binding_count; ++i) {
+        DSL_FHE_TENSOR_BINDING_RECORD record;
+        DSL_FHE_Get_Tensor_Binding(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.key_requirement_count; ++i) {
+        DSL_FHE_KEY_REQUIREMENT_RECORD record;
+        DSL_FHE_Get_Key_Requirement(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    *size_out = size;
+    return bytes;
+}
+
+/* Focused contract for failure-atomic FHE entry value insertion (v0.9 Section
+   15.4; Appendix F.2).  Proves that owner, role, ordinal, descriptor, and range
+   are validated before first_entry_value_id or entry_value_count change, that a
+   rejection leaves both the entry value table and the entry contract exactly
+   as they were, and that the legal first insertion plus a contiguous range can
+   still be validated, written, and reopened. */
+static int
+Check_FHE_Entry_Value_Insertion_Atomicity(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR tensor_descriptor;
+    DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE external_reference;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE add_attribute;
+    DSL_BUILDER_SOURCE_POSITION source_position;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_PROGRAM_UNIT foreign_pu;
+    DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE weight;
+    DSL_BUILDER_VALUE result;
+    DSL_BUILDER_VALUE foreign_input;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_DOMAIN_ID common_id;
+    DSL_OPCODE_ID add_id;
+    TY_IDX tensor_ty;
+    TY_IDX weight_ty;
+    UINT32 file_id;
+    DSL_FHE_COMPILATION_CONFIG_RECORD config;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD ciphertext;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD plaintext;
+    DSL_FHE_ENTRY_CONTRACT_INFO entry_info;
+    DSL_FHE_ENTRY_VALUE_INFO value_info;
+    DSL_FHE_ENTRY_CONTRACT_RECORD contract_record;
+    DSL_FHE_ENTRY_CONTRACT_ID entry_id;
+    DSL_FHE_CONFIG_ID config_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID ciphertext_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID plaintext_id;
+    DSL_FHE_ENTRY_VALUE_ID id;
+    const char checksum[] =
+        "0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef";
+    UINT64 size_before, size_after;
+    unsigned char *bytes_before;
+    unsigned char *bytes_after;
+    int failed = 0;
+#define ENTRY_ATOMIC_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, \
+                    "FHE entry value insertion atomicity check failed: %s\n", \
+                    message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    DSL_FHE_Image_Reset();
+    if (!DSL_Builder_Begin_Program()) {
+        fprintf(stderr, "FHE entry value atomicity setup failed\n");
+        return 1;
+    }
+    DSL_Opcode_Register_Common_Substrate();
+
+    memset(&tensor_descriptor, 0, sizeof(tensor_descriptor));
+    tensor_descriptor.type_core.kind = "tensor";
+    tensor_descriptor.type_core.dtype = "float32";
+    tensor_descriptor.type_core.rank = 2;
+    tensor_descriptor.type_core.logical_shape = "[2,2]";
+    tensor_descriptor.traits.traits = "activation";
+    tensor_descriptor.representation.layout = "row_major";
+    tensor_descriptor.representation.sharding = "replicated";
+    tensor_descriptor.representation.placement = "host";
+    tensor_descriptor.representation.memory = "contiguous";
+    tensor_descriptor.representation.quantization = "none";
+    tensor_descriptor.lineage.lineage = "entry_atomicity_activation";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                   ("fhe_entry_atomicity_f32_2x2", MTYPE_To_TY(MTYPE_F4),
+                    &tensor_descriptor);
+    tensor_descriptor.traits.traits = "parameter";
+    tensor_descriptor.representation.placement = "side_file";
+    tensor_descriptor.representation.memory = "external_data";
+    tensor_descriptor.lineage.lineage = "entry_atomicity_weight";
+    weight_ty = DSL_Builder_Intern_Tensor_Type
+                    ("fhe_entry_atomicity_weight_f32_2x2",
+                     MTYPE_To_TY(MTYPE_F4), &tensor_descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("fhe_entry_atomicity_add");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    common_id = DSL_Domain_Find("common");
+    add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
+    input = DSL_Builder_Create_Model_Input("atomic_input", tensor_ty, 0);
+    memset(&external_reference, 0, sizeof(external_reference));
+    external_reference.storage_format = "safetensors";
+    external_reference.side_file = "fhe_entry_atomicity_weights.safetensors";
+    external_reference.tensor_key = "weight";
+    external_reference.byte_length = 16;
+    external_reference.checksum = checksum;
+    weight = DSL_Builder_Create_External_Tensor_Constant
+                 ("atomic_weight", weight_ty, &external_reference);
+    kids[0] = input;
+    kids[1] = input;
+    add_attribute.name = "attr.broadcast_rule";
+    add_attribute.value = "none";
+    result = DSL_Builder_Create_Operator_With_Result
+                 (add_id, 1, kids, 2, &add_attribute, 1,
+                  "atomic_result", tensor_ty);
+
+    memset(&source_position, 0, sizeof(source_position));
+    source_position.file_id = file_id;
+    source_position.line = __LINE__ + 1;
+    source_position.column = 5;
+    source_position.statement_begin = 1;
+    ENTRY_ATOMIC_CHECK
+        (tensor_ty != TY_IDX_ZERO && weight_ty != TY_IDX_ZERO &&
+         pu != NULL && file_id != 0 &&
+         add_id != DSL_OPCODE_INVALID_ID && input != NULL && weight != NULL &&
+         result != NULL &&
+         DSL_Builder_Set_Value_Source_Position(input, &source_position),
+         "builder values and input source position");
+    ++source_position.line;
+    ENTRY_ATOMIC_CHECK
+        (DSL_Builder_Set_Value_Source_Position(weight, &source_position),
+         "parameter source position");
+    ++source_position.line;
+    ENTRY_ATOMIC_CHECK
+        (DSL_Builder_Set_Value_Source_Position(result, &source_position),
+         "result source position");
+    ENTRY_ATOMIC_CHECK
+        (DSL_Builder_Append_PU_Value(pu, input) &&
+         DSL_Builder_Append_PU_Value(pu, weight) &&
+         DSL_Builder_Append_PU_Value(pu, result),
+         "append entry values to the owning program unit");
+
+    DSL_FHE_Compilation_Config_Record_Init(&config);
+    config.provenance_mask = 1;
+    config.scheme = DSL_FHE_SCHEME_CKKS;
+    config.security_level = DSL_FHE_SECURITY_128_CLASSIC;
+    config.ring_dimension = 65536;
+    config.multiplicative_depth_policy = DSL_FHE_POLICY_AUTO;
+    config.scale_bits = 56;
+    config.first_modulus_bits = 60;
+    config.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    config.key_switch_policy = 1;
+    config.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
+    config.backend_policy = DSL_FHE_BACKEND_OPENFHE;
+    config_id = DSL_FHE_Intern_Compilation_Config(&config);
+    ENTRY_ATOMIC_CHECK(config_id != 0, "configuration creation");
+
+    DSL_FHE_Encryption_Descriptor_Record_Init(&ciphertext);
+    ciphertext.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    ciphertext.scheme = DSL_FHE_SCHEME_CKKS;
+    ciphertext.config_id = config_id;
+    ciphertext.key_set_name = Save_Str("atomic_request_key");
+    ciphertext.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    ciphertext.encoding_policy = DSL_FHE_ENCODING_NONE;
+    ciphertext.packing_policy = DSL_FHE_PACKING_AUTO;
+    ciphertext_id = DSL_FHE_Intern_Encryption_Descriptor(&ciphertext);
+
+    DSL_FHE_Encryption_Descriptor_Record_Init(&plaintext);
+    plaintext.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+    plaintext.scheme = DSL_FHE_SCHEME_CKKS;
+    plaintext.config_id = config_id;
+    plaintext.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    plaintext.encoding_policy = DSL_FHE_ENCODING_CKKS_PACKED;
+    plaintext.packing_policy = DSL_FHE_PACKING_METAKERNEL;
+    plaintext_id = DSL_FHE_Intern_Encryption_Descriptor(&plaintext);
+    ENTRY_ATOMIC_CHECK
+        (ciphertext_id != 0 && plaintext_id != 0 &&
+         DSL_Builder_Bind_FHE_Tensor_Descriptor(tensor_ty, ciphertext_id, 0)
+             != 0 &&
+         DSL_Builder_Bind_FHE_Tensor_Descriptor(weight_ty, plaintext_id, 0)
+             != 0,
+         "encryption descriptors and tensor bindings");
+
+    /* The entry contract declares input_count == 2 so a duplicate input ordinal
+       can be rejected while the role still has spare capacity, isolating the
+       ordinal check from the capacity check.  The contract is empty until the
+       first legal value is declared. */
+    memset(&entry_info, 0, sizeof(entry_info));
+    entry_info.config_id = config_id;
+    entry_info.input_count = 2;
+    entry_info.output_count = 1;
+    entry_info.parameter_count = 1;
+    entry_info.encrypted_io_policy = 1;
+    entry_info.parameter_policy =
+        DSL_FHE_PARAMETER_POLICY_ENCODED_PLAINTEXT;
+    entry_id = DSL_Builder_Attach_FHE_Entry_Contract(pu, &entry_info);
+    ENTRY_ATOMIC_CHECK(entry_id != 0, "attach empty entry contract");
+    ENTRY_ATOMIC_CHECK
+        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
+         contract_record.first_entry_value_id == 0 &&
+         contract_record.entry_value_count == 0,
+         "empty entry contract has zero range");
+    ENTRY_ATOMIC_CHECK(DSL_FHE_Entry_Value_Count() == 0,
+                       "entry value table starts empty");
+
+    /* Foreign-PU rejection on an empty contract must not mutate either the
+       table or the entry contract.  Compare the serialized byte image and the
+       logical range before and after the rejected declaration.  This is the
+       foreign-PU empty-contract regression: it is red on the parent, where the
+       contract's first_entry_value_id was advanced before the owner check, and
+       green on the candidate, where validation precedes any mutation. */
+    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
+    foreign_pu = DSL_Builder_Create_Minimal_PU("fhe_entry_atomicity_foreign");
+    foreign_input = DSL_Builder_Create_Model_Input
+                        ("atomic_foreign_input", tensor_ty, 0);
+    ENTRY_ATOMIC_CHECK(foreign_pu != NULL && foreign_input != NULL,
+                       "foreign program unit and value");
+    ENTRY_ATOMIC_CHECK
+        (DSL_Builder_Append_PU_Value(foreign_pu, foreign_input),
+         "append foreign value to the foreign program unit");
+    memset(&value_info, 0, sizeof(value_info));
+    value_info.encryption_descriptor_id = ciphertext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, foreign_input, 0, DSL_FHE_ENTRY_VALUE_INPUT,
+              &value_info);
+    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
+                       "reject an entry value owned by another program unit");
+    ENTRY_ATOMIC_CHECK(DSL_Builder_Select_PU(pu),
+                       "restore entry program unit");
+    ENTRY_ATOMIC_CHECK
+        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
+         contract_record.first_entry_value_id == 0 &&
+         contract_record.entry_value_count == 0,
+         "foreign-PU rejection leaves entry contract range empty");
+    ENTRY_ATOMIC_CHECK(DSL_FHE_Entry_Value_Count() == 0,
+                       "foreign-PU rejection leaves value table empty");
+    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
+    ENTRY_ATOMIC_CHECK
+        (size_after == size_before &&
+         memcmp(bytes_after, bytes_before, size_before) == 0,
+         "foreign-PU rejection leaves serialized image byte-identical");
+    delete [] bytes_after;
+    delete [] bytes_before;
+
+    /* Legal first insertion: an input owned by the contract PU with ordinal 0
+       succeeds and sets the contiguous first_entry_value_id. */
+    memset(&value_info, 0, sizeof(value_info));
+    value_info.encryption_descriptor_id = ciphertext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_INPUT, &value_info);
+    ENTRY_ATOMIC_CHECK(id == 1,
+                       "legal first insertion returns the first entry value id");
+    ENTRY_ATOMIC_CHECK
+        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
+         contract_record.first_entry_value_id == 1 &&
+         contract_record.entry_value_count == 1,
+         "legal first insertion sets first_entry_value_id and count");
+
+    /* Duplicate input ordinal while the role still has capacity (one input
+       declared, input_count == 2) is rejected before any mutation.  The
+       serialized image must be byte-identical before and after. */
+    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_INPUT, &value_info);
+    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
+                       "reject duplicate input ordinal within capacity");
+    ENTRY_ATOMIC_CHECK
+        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
+         contract_record.first_entry_value_id == 1 &&
+         contract_record.entry_value_count == 1 &&
+         DSL_FHE_Entry_Value_Count() == 1,
+         "duplicate ordinal rejection preserves contract and table");
+    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
+    ENTRY_ATOMIC_CHECK
+        (size_after == size_before &&
+         memcmp(bytes_after, bytes_before, size_before) == 0,
+         "duplicate ordinal rejection leaves serialized image byte-identical");
+    delete [] bytes_after;
+    delete [] bytes_before;
+
+    /* A role outside the INPUT/OUTPUT/PARAMETER range is rejected before any
+       mutation regardless of capacity. */
+    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, input, 0,
+              (DSL_FHE_ENTRY_VALUE_ROLE) DSL_FHE_ENTRY_VALUE_UNKNOWN,
+              &value_info);
+    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
+                       "reject unknown entry value role");
+    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
+    ENTRY_ATOMIC_CHECK
+        (size_after == size_before &&
+         memcmp(bytes_after, bytes_before, size_before) == 0 &&
+         DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
+         contract_record.first_entry_value_id == 1 &&
+         contract_record.entry_value_count == 1 &&
+         DSL_FHE_Entry_Value_Count() == 1,
+         "bad role rejection preserves contract, table, and image");
+    delete [] bytes_after;
+    delete [] bytes_before;
+
+    /* Invalid descriptor: a zero descriptor id has no tensor binding, so the
+       declaration is rejected before mutation.  The output role still has its
+       full capacity, so the rejection is due to the descriptor, not capacity. */
+    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
+    memset(&value_info, 0, sizeof(value_info));
+    value_info.encryption_descriptor_id = 0;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_OUTPUT, &value_info);
+    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
+                       "reject zero encryption descriptor id");
+    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
+    ENTRY_ATOMIC_CHECK
+        (size_after == size_before &&
+         memcmp(bytes_after, bytes_before, size_before) == 0,
+         "zero descriptor rejection leaves serialized image byte-identical");
+    delete [] bytes_after;
+    delete [] bytes_before;
+
+    /* Descriptor present but value class mismatched with it: the binding
+       resolves, but the record-level descriptor/value-class check rejects the
+       value before mutation. */
+    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
+    value_info.encryption_descriptor_id = ciphertext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_OUTPUT, &value_info);
+    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
+                       "reject value-class mismatch with the descriptor");
+    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
+    ENTRY_ATOMIC_CHECK
+        (size_after == size_before &&
+         memcmp(bytes_after, bytes_before, size_before) == 0,
+         "value-class mismatch rejection leaves image byte-identical");
+    delete [] bytes_after;
+    delete [] bytes_before;
+
+    /* Contiguous range construction: a second input, the parameter, and the
+       output extend the range contiguously to [1,4] so the image validates. */
+    memset(&value_info, 0, sizeof(value_info));
+    value_info.encryption_descriptor_id = ciphertext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, input, 1, DSL_FHE_ENTRY_VALUE_INPUT, &value_info);
+    ENTRY_ATOMIC_CHECK(id == 2, "contiguous second input value");
+    value_info.encryption_descriptor_id = plaintext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, weight, 0, DSL_FHE_ENTRY_VALUE_PARAMETER, &value_info);
+    ENTRY_ATOMIC_CHECK(id == 3, "contiguous parameter value");
+    value_info.encryption_descriptor_id = ciphertext_id;
+    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    id = DSL_Builder_Declare_FHE_Entry_Value
+             (entry_id, result, 0, DSL_FHE_ENTRY_VALUE_OUTPUT, &value_info);
+    ENTRY_ATOMIC_CHECK(id == 4, "contiguous output value");
+    ENTRY_ATOMIC_CHECK
+        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
+         contract_record.first_entry_value_id == 1 &&
+         contract_record.entry_value_count == 4 &&
+         DSL_FHE_Entry_Value_Count() == 4 &&
+         DSL_FHE_Image_Validate(NULL),
+         "contiguous range [1,4] validates in memory");
+
+    /* After every rejection the four-value image is unchanged and reopens in
+     an independent pass through the mapped-image loader, preserving the
+     contiguous range. */
+    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
+    ENTRY_ATOMIC_CHECK
+        (DSL_FHE_Image_Load_Mapped(bytes_before, size_before, NULL),
+         "reopen the populated image after every rejection");
+    ENTRY_ATOMIC_CHECK
+        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
+         contract_record.first_entry_value_id == 1 &&
+         contract_record.entry_value_count == 4 &&
+         DSL_FHE_Entry_Value_Count() == 4 &&
+         DSL_FHE_Image_Validate(NULL),
+         "reopened populated image preserves the contiguous range");
+    delete [] bytes_before;
+
+    if (failed) {
+        fprintf(stderr,
+                "FHE entry value insertion atomicity checks failed\n");
+        return 1;
+    }
+    printf("FHE entry value insertion atomicity contract passed\n");
+#undef ENTRY_ATOMIC_CHECK
+    return 0;
+}
+
 int
 main(void)
 {
@@ -5178,6 +5623,8 @@ main(void)
         return Check_FHE_SYNC1_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_BINDING_ONLY") != NULL)
         return Check_FHE_Tensor_Binding_V1_Identity();
+    if (getenv("OPEN64_DSL_FHE_ENTRY_ATOMICITY_ONLY") != NULL)
+        return Check_FHE_Entry_Value_Insertion_Atomicity();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -5198,6 +5645,7 @@ main(void)
     failed |= Check_DSL_IR_Image_Tables();
     failed |= Check_FHE_SYNC1_Mapped_Image();
     failed |= Check_FHE_Tensor_Binding_V1_Identity();
+    failed |= Check_FHE_Entry_Value_Insertion_Atomicity();
     failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;
