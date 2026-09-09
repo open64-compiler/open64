@@ -3112,6 +3112,130 @@ DSL_Builder_Get_Value_Image_Id (DSL_BUILDER_VALUE value)
     return record == NULL ? DSL_IR_VALUE_INVALID_ID : record->image_value_id;
 }
 
+DSL_FHE_CONVERSION_DISPOSITION_ID
+DSL_Builder_Record_FHE_Conversion_Disposition
+        (DSL_BUILDER_VALUE source_value,
+         const DSL_FHE_CONVERSION_DISPOSITION_INFO *info)
+{
+    DSL_BUILDER_VALUE_RECORD *source =
+        DSL_Builder_Find_Value_Record(source_value);
+    DSL_IR_VALUE_RECORD image_value;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD record;
+
+    if (source == NULL || source->pu == NULL || info == NULL ||
+        !DSL_IR_Image_Get_Value(source->image_value_id, &image_value) ||
+        image_value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+        return DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID;
+
+    DSL_FHE_Conversion_Disposition_Record_Init(&record);
+    record.source_node_id = image_value.producer_node_id;
+    record.result_value_id = image_value.id;
+    record.disposition = info->disposition;
+    record.owner_pu_st = PU_Info_proc_sym(source->pu);
+    record.wrapper_version = info->wrapper_version;
+    if (info->wrapper_name != NULL && info->wrapper_name[0] != '\0')
+        record.wrapper_name = Save_Str(info->wrapper_name);
+    record.approximation_contract_id = info->approximation_contract_id;
+    record.result_ckks_value_state_id = info->result_ckks_value_state_id;
+    record.first_bn_fold_id = info->first_bn_fold_id;
+    record.bn_fold_count = info->bn_fold_count;
+    record.flags = info->flags;
+    return DSL_FHE_Plan_Add_Conversion_Disposition(&record);
+}
+
+DSL_FHE_CKKS_VALUE_STATE_ID
+DSL_Builder_Bind_FHE_Value_CKKS_State
+        (DSL_BUILDER_VALUE value,
+         const DSL_FHE_CKKS_VALUE_STATE_INFO *info)
+{
+    DSL_BUILDER_VALUE_RECORD *source = DSL_Builder_Find_Value_Record(value);
+    DSL_FHE_CKKS_VALUE_STATE_RECORD record;
+
+    if (source == NULL || info == NULL)
+        return DSL_FHE_CKKS_VALUE_STATE_INVALID_ID;
+
+    DSL_FHE_CKKS_Value_State_Record_Init(&record);
+    record.value_id = source->image_value_id;
+    record.encryption_descriptor_id = info->encryption_descriptor_id;
+    record.state_version = info->state_version;
+    record.scheme = info->scheme;
+    record.value_class = info->value_class;
+    record.level = info->level;
+    record.scale_bits = info->scale_bits;
+    record.component_count = info->component_count;
+    record.precision_bits = info->precision_bits;
+    record.slot_count = info->slot_count;
+    record.alignment_group = info->alignment_group;
+    if (info->encrypted_layout_name != NULL &&
+        info->encrypted_layout_name[0] != '\0')
+        record.encrypted_layout_name =
+            Save_Str(info->encrypted_layout_name);
+    record.pending_actions = info->pending_actions;
+    record.pending_bootstrap_reason = info->pending_bootstrap_reason;
+    return DSL_FHE_Plan_Add_CKKS_Value_State(&record);
+}
+
+DSL_FHE_BN_FOLD_PROVENANCE_ID
+DSL_Builder_Record_FHE_BN_Fold
+        (DSL_BUILDER_VALUE conv_value,
+         DSL_BUILDER_VALUE batch_norm_value,
+         const DSL_FHE_BN_FOLD_INFO *info)
+{
+    DSL_BUILDER_VALUE_RECORD *conv =
+        DSL_Builder_Find_Value_Record(conv_value);
+    DSL_BUILDER_VALUE_RECORD *batch_norm =
+        DSL_Builder_Find_Value_Record(batch_norm_value);
+    DSL_BUILDER_VALUE inputs[] = {
+        info == NULL ? NULL : info->source_conv_weight,
+        info == NULL ? NULL : info->source_conv_bias,
+        info == NULL ? NULL : info->source_bn_scale,
+        info == NULL ? NULL : info->source_bn_bias,
+        info == NULL ? NULL : info->source_bn_mean,
+        info == NULL ? NULL : info->source_bn_variance
+    };
+    DSL_IR_VALUE_ID input_ids[6];
+    DSL_IR_VALUE_RECORD conv_image;
+    DSL_IR_VALUE_RECORD batch_norm_image;
+    DSL_FHE_BN_FOLD_PROVENANCE_RECORD record;
+
+    if (conv == NULL || batch_norm == NULL || info == NULL ||
+        conv->pu == NULL || conv->pu != batch_norm->pu ||
+        !DSL_IR_Image_Get_Value(conv->image_value_id, &conv_image) ||
+        !DSL_IR_Image_Get_Value(batch_norm->image_value_id,
+                                &batch_norm_image))
+        return DSL_FHE_BN_FOLD_PROVENANCE_INVALID_ID;
+
+    for (UINT32 i = 0; i < 6; ++i) {
+        DSL_BUILDER_VALUE_RECORD *input;
+        if (i == 1 && inputs[i] == NULL &&
+            (info->flags & DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS) != 0) {
+            input_ids[i] = DSL_IR_VALUE_INVALID_ID;
+            continue;
+        }
+        input = DSL_Builder_Find_Value_Record(inputs[i]);
+        if (input == NULL || input->pu != conv->pu)
+            return DSL_FHE_BN_FOLD_PROVENANCE_INVALID_ID;
+        input_ids[i] = input->image_value_id;
+    }
+
+    DSL_FHE_BN_Fold_Provenance_Record_Init(&record);
+    record.owner_pu_st = PU_Info_proc_sym(conv->pu);
+    record.conv_node_id = conv_image.producer_node_id;
+    record.batch_norm_node_id = batch_norm_image.producer_node_id;
+    record.context_pu_identity_id = info->context_pu_identity_id;
+    record.context_callsite_id = info->context_callsite_id;
+    record.source_conv_weight_value_id = input_ids[0];
+    record.source_conv_bias_value_id = input_ids[1];
+    record.source_bn_scale_value_id = input_ids[2];
+    record.source_bn_bias_value_id = input_ids[3];
+    record.source_bn_mean_value_id = input_ids[4];
+    record.source_bn_variance_value_id = input_ids[5];
+    record.folded_weight_tcon = info->folded_weight_tcon;
+    record.folded_bias_tcon = info->folded_bias_tcon;
+    record.flags = info->flags;
+    return DSL_FHE_Plan_Add_BN_Fold_Provenance(&record);
+}
+
 BOOL
 DSL_Builder_Begin_Program (void)
 {

@@ -192,6 +192,7 @@ COMMON_COM_CXX_SRC =	\
         dsl_fhe_plan_print.cxx \
         dsl_fhe_print.cxx \
         dsl_ir_image.cxx \
+        dsl_ir_rewrite.cxx \
         dsl_ir_print.cxx \
         dsl_region.cxx \
 	dsl_memory_behavior.cxx \

@@ -194,6 +194,48 @@ typedef struct {
     UINT32 reserved;
 } DSL_FHE_BN_FOLD_PROVENANCE_RECORD;
 
+/* Producer-runtime inputs. No pointer in these records enters the IR image. */
+typedef struct {
+    UINT32 disposition;
+    UINT32 wrapper_version;
+    const char *wrapper_name;
+    DSL_FHE_APPROXIMATION_CONTRACT_ID approximation_contract_id;
+    DSL_FHE_CKKS_VALUE_STATE_ID result_ckks_value_state_id;
+    DSL_FHE_BN_FOLD_PROVENANCE_ID first_bn_fold_id;
+    UINT32 bn_fold_count;
+    UINT32 flags;
+} DSL_FHE_CONVERSION_DISPOSITION_INFO;
+
+typedef struct {
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encryption_descriptor_id;
+    UINT32 state_version;
+    UINT32 scheme;
+    UINT32 value_class;
+    INT32 level;
+    INT32 scale_bits;
+    INT32 component_count;
+    INT32 precision_bits;
+    UINT32 slot_count;
+    UINT32 alignment_group;
+    const char *encrypted_layout_name;
+    UINT32 pending_actions;
+    UINT32 pending_bootstrap_reason;
+} DSL_FHE_CKKS_VALUE_STATE_INFO;
+
+typedef struct {
+    DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id;
+    DSL_CALLSITE_METADATA_ID context_callsite_id;
+    DSL_BUILDER_VALUE source_conv_weight;
+    DSL_BUILDER_VALUE source_conv_bias;
+    DSL_BUILDER_VALUE source_bn_scale;
+    DSL_BUILDER_VALUE source_bn_bias;
+    DSL_BUILDER_VALUE source_bn_mean;
+    DSL_BUILDER_VALUE source_bn_variance;
+    TCON_IDX folded_weight_tcon;
+    TCON_IDX folded_bias_tcon;
+    UINT32 flags;
+} DSL_FHE_BN_FOLD_INFO;
+
 extern UINT32 DSL_FHE_Plan_Register_Domain_Wrappers (void);
 
 extern void DSL_FHE_Plan_Image_Reset (void);
@@ -229,6 +271,20 @@ extern DSL_FHE_BN_FOLD_PROVENANCE_ID
     DSL_FHE_Plan_Add_BN_Fold_Provenance
                                 (const DSL_FHE_BN_FOLD_PROVENANCE_RECORD
                                      *record);
+
+extern DSL_FHE_CONVERSION_DISPOSITION_ID
+    DSL_Builder_Record_FHE_Conversion_Disposition
+                                (DSL_BUILDER_VALUE source_value,
+                                 const DSL_FHE_CONVERSION_DISPOSITION_INFO
+                                     *info);
+extern DSL_FHE_CKKS_VALUE_STATE_ID
+    DSL_Builder_Bind_FHE_Value_CKKS_State
+                                (DSL_BUILDER_VALUE value,
+                                 const DSL_FHE_CKKS_VALUE_STATE_INFO *info);
+extern DSL_FHE_BN_FOLD_PROVENANCE_ID DSL_Builder_Record_FHE_BN_Fold
+                                (DSL_BUILDER_VALUE conv_value,
+                                 DSL_BUILDER_VALUE batch_norm_value,
+                                 const DSL_FHE_BN_FOLD_INFO *info);
 
 extern UINT32 DSL_FHE_Plan_Conversion_Disposition_Count (void);
 extern UINT32 DSL_FHE_Plan_Approximation_Contract_Count (void);
