@@ -1724,6 +1724,17 @@ full-sequence causal prompt evaluation with no KV cache.
    SYNC-3 does not insert bootstrap, allocate SIHE/CKKS arithmetic opcodes, or
    lower to OpenFHE/runtime calls. Those remain later synchronized stages.
 
+   Stage 1 is the exact native planning-image review in
+   `doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md`. It fixes the provisional section
+   code, four pointer-free row layouts, interning and sentinel rules, opaque
+   attachment/rewrite APIs, malformed-image behavior, and stable printer
+   headings before implementation. It also records that the current domain
+   wrapper registry cannot by itself emit a native result-producing WN for an
+   operator without a `DSL_OPERATOR` value. SYNC-3 therefore retains the
+   source-semantic WN and carries the logical FHE wrapper in a first-class
+   disposition row; genuinely new executable semantics still require reviewed
+   append-only opcode allocation.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

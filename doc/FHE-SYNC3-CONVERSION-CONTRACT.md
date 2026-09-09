@@ -94,6 +94,7 @@ secret-key material, ciphertext bytes, backend C++ object state, or physical
 | `CFHECNN-BN-001` | BatchNorm is not inference-mode and cannot be folded. |
 | `CFHECNN-BN-002` | BatchNorm channel count does not match preceding convolution output channels. |
 | `CFHECNN-BN-003` | BatchNorm epsilon/variance would produce non-finite folded parameters. |
+| `CFHECNN-BN-004` | Context-specific folding would require divergent signatures for one shared compiler clone. |
 | `CFHECNN-CONV-001` | Unsupported convolution layout, rank, groups, dilation, stride, or padding policy. |
 | `CFHECNN-POOL-001` | Max/data-dependent pooling is unsupported without approved replacement policy. |
 | `CFHECNN-RELU-001` | Encrypted `common.relu` lacks required approximation contract for SYNC-3 output. |
@@ -184,9 +185,13 @@ operator shape, effect, and lowering contract delegates to an existing
 common/CNN semantic target. The wrapper's logical `fhe.cnn.*` name remains
 first-class in diagnostics and ASCII output while its common target remains an
 implementation detail available through `DSL_Opcode_Wrapper_Target()`. This
-does not require a new `DSL_OPERATOR` enum value. A genuinely new semantic
+does not require a new `DSL_OPERATOR` enum value because SYNC-3 stores the
+wrapper identity in the planning image while retaining the source-semantic WN.
+The current registry alone does not create a native result-producing WN for an
+operator without a `DSL_OPERATOR` value. A genuinely new executable semantic
 operation still requires reviewed opcode allocation; SYNC-3 performs no such
-allocation.
+allocation. The exact physical contract is
+`doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md`.
 
 ## ReLU Approximation Contract Fields
 
@@ -299,7 +304,7 @@ implementation:
 
 Do not enlarge or reinterpret the exact-sized version-1 `.WHIRL.dsl_fhe`
 image. SYNC-3 should add a separate optional fixed-row planning section,
-provisionally `.WHIRL.dsl_fhe_plan` / `WT_DSL_FHE_PLAN`, for conversion
+`.WHIRL.dsl_fhe_plan` / `WT_DSL_FHE_PLAN`, for conversion
 dispositions, approximation contracts, value-specific CKKS state, and fold
 provenance. The section is omitted when empty, uses 8-byte section and row
 alignment, contains no pointers or STL objects, and is copied through the
@@ -351,6 +356,7 @@ After the hooks above are reviewed, FHE owns:
 | Training-mode BatchNorm | `CFHECNN-BN-001` |
 | BatchNorm channel mismatch | `CFHECNN-BN-002` |
 | Non-finite folded BatchNorm parameter | `CFHECNN-BN-003` |
+| Shared clone requires divergent rewritten signatures | `CFHECNN-BN-004` |
 | Unsupported grouped or dilated convolution policy | `CFHECNN-CONV-001` |
 | Unsupported max pooling | `CFHECNN-POOL-001` |
 | Encrypted ReLU without approximation contract | `CFHECNN-RELU-001` |

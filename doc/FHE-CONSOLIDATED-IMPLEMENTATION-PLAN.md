@@ -337,6 +337,12 @@ must distinguish physical definition rewrites from context-specific payload
 folds. Exact ResNet-20 counts are certification assertions, not generic
 gatekeeper rules.
 
+The exact physical review is
+`doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md`. It defines the four fixed record
+families, opaque APIs, wrapper-registry boundary, sentinel rules, mapped-image
+compatibility, and stable `ir_b2a -st -src` headings required before SYNC-3
+implementation.
+
 ### **SYNC-4: ReLU `-O0` Baseline Certification**
 
 Normative transformation:
