@@ -227,6 +227,7 @@ DSL_FHE_View_Validate (const DSL_FHE_IMAGE_VIEW *view, FILE *diagnostic)
             record.encryption_descriptor_id == 0 ||
             record.encryption_descriptor_id >
                 header.encryption_descriptor_count ||
+            record.flags != 0 ||
             record.reserved0 != 0 || record.reserved1 != 0)
             return DSL_FHE_Report(diagnostic, "invalid tensor binding", i + 1);
         for (UINT32 j = 0; j < i; ++j) {
@@ -602,7 +603,13 @@ DSL_FHE_Intern_Tensor_Binding
          DSL_FHE_ENCRYPTION_DESCRIPTOR_ID descriptor_id,
          UINT32 flags)
 {
-    if (TY_IDX_index(tensor_ty) == 0 ||
+    /* Version 1 reserves the tensor-binding flags word.  Any nonzero value
+       would create an image the version-1 validator must reject, so it is
+       refused before the interning lookup or any table mutation.  The
+       version-1 identity is exactly (tensor_ty, encryption_descriptor_id),
+       which matches the lookup, validation, and writer paths. */
+    if (flags != 0 ||
+        TY_IDX_index(tensor_ty) == 0 ||
         TY_IDX_index(tensor_ty) >= Ty_tab.Size() ||
         !TY_is_tensor_extension(tensor_ty) || descriptor_id == 0 ||
         descriptor_id > DSL_fhe_encryption_descriptor_table.Size())
@@ -611,8 +618,7 @@ DSL_FHE_Intern_Tensor_Binding
         const DSL_FHE_TENSOR_BINDING_RECORD &record =
             DSL_fhe_tensor_binding_table[i];
         if (record.tensor_ty == tensor_ty &&
-            record.encryption_descriptor_id == descriptor_id &&
-            record.flags == flags)
+            record.encryption_descriptor_id == descriptor_id)
             return i + 1;
     }
     DSL_FHE_TENSOR_BINDING_RECORD record;

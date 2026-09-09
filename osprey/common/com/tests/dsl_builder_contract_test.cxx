@@ -4800,6 +4800,342 @@ Check_FHE_SYNC1_Mapped_Image(void)
     return 0;
 }
 
+static int
+Check_FHE_Tensor_Binding_V1_Identity(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR tensor_descriptor;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_FHE_COMPILATION_CONFIG_RECORD config;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD ciphertext;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD plaintext;
+    DSL_FHE_TENSOR_BINDING_RECORD observed;
+    DSL_FHE_IMAGE_HEADER header;
+    TY_IDX tensor_ty;
+    TY_IDX weight_ty;
+    DSL_FHE_CONFIG_ID config_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID ciphertext_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID plaintext_id;
+    DSL_FHE_TENSOR_BINDING_ID id_input;
+    DSL_FHE_TENSOR_BINDING_ID id_weight;
+    DSL_FHE_TENSOR_BINDING_ID id_weight_cipher;
+    DSL_FHE_TENSOR_BINDING_ID duplicate_id;
+    DSL_FHE_TENSOR_BINDING_ID bad_id;
+    UINT32 count_before;
+    int failed = 0;
+#define BINDING_V1_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "FHE tensor binding v1 check failed: %s\n", \
+                    message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    DSL_FHE_Image_Reset();
+    if (!DSL_Builder_Begin_Program()) {
+        fprintf(stderr, "FHE tensor binding v1 setup failed\n");
+        return 1;
+    }
+    DSL_Opcode_Register_Common_Substrate();
+    pu = DSL_Builder_Create_Minimal_PU("fhe_tensor_binding_v1_contract");
+    if (pu == NULL) {
+        fprintf(stderr, "FHE tensor binding v1 PU setup failed\n");
+        return 1;
+    }
+
+    memset(&tensor_descriptor, 0, sizeof(tensor_descriptor));
+    tensor_descriptor.type_core.kind = "tensor";
+    tensor_descriptor.type_core.dtype = "float32";
+    tensor_descriptor.type_core.rank = 2;
+    tensor_descriptor.type_core.logical_shape = "[2,2]";
+    tensor_descriptor.traits.traits = "activation";
+    tensor_descriptor.representation.layout = "row_major";
+    tensor_descriptor.representation.sharding = "replicated";
+    tensor_descriptor.representation.placement = "host";
+    tensor_descriptor.representation.memory = "contiguous";
+    tensor_descriptor.representation.quantization = "none";
+    tensor_descriptor.lineage.lineage = "tensor_binding_v1_contract";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                   ("fhe_v1_binding_input", MTYPE_To_TY(MTYPE_F4),
+                    &tensor_descriptor);
+    tensor_descriptor.traits.traits = "parameter";
+    tensor_descriptor.lineage.lineage = "tensor_binding_v1_weight";
+    weight_ty = DSL_Builder_Intern_Tensor_Type
+                    ("fhe_v1_binding_weight", MTYPE_To_TY(MTYPE_F4),
+                     &tensor_descriptor);
+    if (tensor_ty == TY_IDX_ZERO || weight_ty == TY_IDX_ZERO ||
+        !TY_is_tensor_extension(tensor_ty) ||
+        !TY_is_tensor_extension(weight_ty)) {
+        fprintf(stderr, "FHE tensor binding v1 tensor types failed\n");
+        return 1;
+    }
+
+    DSL_FHE_Compilation_Config_Record_Init(&config);
+    config.provenance_mask = 1;
+    config.scheme = DSL_FHE_SCHEME_CKKS;
+    config.security_level = DSL_FHE_SECURITY_128_CLASSIC;
+    config.ring_dimension = 65536;
+    config.multiplicative_depth_policy = DSL_FHE_POLICY_AUTO;
+    config.scale_bits = 56;
+    config.first_modulus_bits = 60;
+    config.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    config.key_switch_policy = 1;
+    config.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
+    config.backend_policy = DSL_FHE_BACKEND_OPENFHE;
+    config_id = DSL_FHE_Intern_Compilation_Config(&config);
+    if (config_id == 0) {
+        fprintf(stderr, "FHE tensor binding v1 config failed\n");
+        return 1;
+    }
+
+    DSL_FHE_Encryption_Descriptor_Record_Init(&ciphertext);
+    ciphertext.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    ciphertext.scheme = DSL_FHE_SCHEME_CKKS;
+    ciphertext.config_id = config_id;
+    ciphertext.key_set_name = Save_Str("fhe_v1_binding_key");
+    ciphertext.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    ciphertext.encoding_policy = DSL_FHE_ENCODING_NONE;
+    ciphertext.packing_policy = DSL_FHE_PACKING_AUTO;
+    ciphertext_id = DSL_FHE_Intern_Encryption_Descriptor(&ciphertext);
+
+    DSL_FHE_Encryption_Descriptor_Record_Init(&plaintext);
+    plaintext.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+    plaintext.scheme = DSL_FHE_SCHEME_CKKS;
+    plaintext.config_id = config_id;
+    plaintext.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    plaintext.encoding_policy = DSL_FHE_ENCODING_CKKS_PACKED;
+    plaintext.packing_policy = DSL_FHE_PACKING_METAKERNEL;
+    plaintext_id = DSL_FHE_Intern_Encryption_Descriptor(&plaintext);
+    if (ciphertext_id == 0 || plaintext_id == 0) {
+        fprintf(stderr, "FHE tensor binding v1 descriptors failed\n");
+        return 1;
+    }
+
+    /* In-memory version-1 identity and flag checks.  The version-1 identity
+       is exactly (tensor_ty, encryption_descriptor_id); flags must be zero. */
+    id_input = DSL_Builder_Bind_FHE_Tensor_Descriptor
+                   (tensor_ty, ciphertext_id, 0);
+    id_weight = DSL_Builder_Bind_FHE_Tensor_Descriptor
+                    (weight_ty, plaintext_id, 0);
+    if (id_input == 0 || id_weight == 0 || id_input == id_weight) {
+        fprintf(stderr, "FHE tensor binding v1 initial bindings failed\n");
+        return 1;
+    }
+    count_before = DSL_FHE_Tensor_Binding_Count();
+    BINDING_V1_CHECK(count_before == 2, "initial tensor binding count");
+
+    /* Duplicate insertion of the same key dedups to the original id. */
+    duplicate_id = DSL_FHE_Intern_Tensor_Binding
+                       (tensor_ty, ciphertext_id, 0);
+    BINDING_V1_CHECK(duplicate_id == id_input &&
+                     DSL_FHE_Tensor_Binding_Count() == count_before,
+                     "duplicate insertion dedups to the same key");
+
+    /* A distinct (tensor_ty, descriptor_id) key creates a new binding. */
+    id_weight_cipher = DSL_FHE_Intern_Tensor_Binding
+                           (weight_ty, ciphertext_id, 0);
+    BINDING_V1_CHECK(id_weight_cipher != 0 &&
+                     id_weight_cipher != id_input &&
+                     id_weight_cipher != id_weight &&
+                     DSL_FHE_Tensor_Binding_Count() == count_before + 1,
+                     "distinct tensor binding key creates a new row");
+
+    /* Invalid nonzero flags are rejected before mutation even when the key
+       already exists. */
+    bad_id = DSL_FHE_Intern_Tensor_Binding(tensor_ty, ciphertext_id, 1);
+    BINDING_V1_CHECK(bad_id == 0, "reject nonzero flags (low bit)");
+    bad_id = DSL_FHE_Intern_Tensor_Binding
+                 (tensor_ty, ciphertext_id, 0xFFFFFFFF);
+    BINDING_V1_CHECK(bad_id == 0, "reject nonzero flags (all bits)");
+
+    /* A failed add leaves the managed image unchanged. */
+    BINDING_V1_CHECK(DSL_FHE_Tensor_Binding_Count() == count_before + 1,
+                     "failed add leaves binding count unchanged");
+    BINDING_V1_CHECK(DSL_FHE_Find_Tensor_Binding
+                         (tensor_ty, ciphertext_id, &observed) &&
+                     observed.id == id_input &&
+                     observed.tensor_ty == tensor_ty &&
+                     observed.encryption_descriptor_id == ciphertext_id &&
+                     observed.flags == 0,
+                     "failed add preserves the existing binding");
+
+    /* Lookup by id and by (tensor_ty, encryption_descriptor_id). */
+    BINDING_V1_CHECK(DSL_FHE_Get_Tensor_Binding(id_weight, &observed) &&
+                     observed.tensor_ty == weight_ty &&
+                     observed.encryption_descriptor_id == plaintext_id &&
+                     observed.flags == 0,
+                     "get tensor binding by id");
+    BINDING_V1_CHECK(DSL_FHE_Find_Tensor_Binding
+                         (weight_ty, ciphertext_id, &observed) &&
+                     observed.id == id_weight_cipher,
+                     "find tensor binding for the distinct key");
+    BINDING_V1_CHECK(!DSL_FHE_Find_Tensor_Binding
+                         (tensor_ty, plaintext_id, &observed),
+                     "unbound tensor binding pair is not found");
+    BINDING_V1_CHECK(DSL_FHE_Image_Validate(NULL),
+                     "legal in-memory v1 image validates");
+
+    /* Build a minimal legal version-1 FHE byte image (config + two
+       descriptors + two bindings) for the reader and publication checks. */
+    DSL_FHE_Image_Reset();
+    (void) DSL_FHE_Intern_Compilation_Config(&config);
+    ciphertext_id = DSL_FHE_Intern_Encryption_Descriptor(&ciphertext);
+    plaintext_id = DSL_FHE_Intern_Encryption_Descriptor(&plaintext);
+    id_input = DSL_FHE_Intern_Tensor_Binding(tensor_ty, ciphertext_id, 0);
+    id_weight = DSL_FHE_Intern_Tensor_Binding(weight_ty, plaintext_id, 0);
+    if (id_input != 1 || id_weight != 2 ||
+        DSL_FHE_Tensor_Binding_Count() != 2 || !DSL_FHE_Image_Validate(NULL)) {
+        fprintf(stderr, "FHE tensor binding v1 byte image source failed\n");
+        return 1;
+    }
+
+    DSL_FHE_Image_Get_Header(&header);
+    UINT64 image_size = DSL_FHE_IMAGE_HEADER_SIZE +
+        (UINT64)header.config_count * DSL_FHE_CONFIG_RECORD_SIZE +
+        (UINT64)header.entry_contract_count *
+            DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE +
+        (UINT64)header.entry_value_count * DSL_FHE_ENTRY_VALUE_RECORD_SIZE +
+        (UINT64)header.encryption_descriptor_count *
+            DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD_SIZE +
+        (UINT64)header.tensor_binding_count *
+            DSL_FHE_TENSOR_BINDING_RECORD_SIZE +
+        (UINT64)header.key_requirement_count *
+            DSL_FHE_KEY_REQUIREMENT_RECORD_SIZE;
+    unsigned char *image_bytes = new unsigned char[image_size];
+    unsigned char *cursor = image_bytes;
+    memcpy(cursor, &header, sizeof(header));
+    cursor += sizeof(header);
+    for (UINT32 i = 1; i <= header.config_count; ++i) {
+        DSL_FHE_COMPILATION_CONFIG_RECORD record;
+        DSL_FHE_Get_Compilation_Config(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.entry_contract_count; ++i) {
+        DSL_FHE_ENTRY_CONTRACT_RECORD record;
+        DSL_FHE_Get_Entry_Contract(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.entry_value_count; ++i) {
+        DSL_FHE_ENTRY_VALUE_RECORD record;
+        DSL_FHE_Get_Entry_Value(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.encryption_descriptor_count; ++i) {
+        DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD record;
+        DSL_FHE_Get_Encryption_Descriptor(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.tensor_binding_count; ++i) {
+        DSL_FHE_TENSOR_BINDING_RECORD record;
+        DSL_FHE_Get_Tensor_Binding(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+    for (UINT32 i = 1; i <= header.key_requirement_count; ++i) {
+        DSL_FHE_KEY_REQUIREMENT_RECORD record;
+        DSL_FHE_Get_Key_Requirement(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += sizeof(record);
+    }
+
+    UINT64 binding_offset = DSL_FHE_IMAGE_HEADER_SIZE +
+        (UINT64)header.config_count * DSL_FHE_CONFIG_RECORD_SIZE +
+        (UINT64)header.entry_contract_count *
+            DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE +
+        (UINT64)header.entry_value_count * DSL_FHE_ENTRY_VALUE_RECORD_SIZE +
+        (UINT64)header.encryption_descriptor_count *
+            DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD_SIZE;
+    DSL_FHE_TENSOR_BINDING_RECORD *pristine_input =
+        (DSL_FHE_TENSOR_BINDING_RECORD *)(image_bytes + binding_offset);
+    TY_IDX input_ty = pristine_input->tensor_ty;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID input_desc =
+        pristine_input->encryption_descriptor_id;
+
+    /* Reopen of a legal version-1 FHE image: producer, finder, and reader
+       agree on one (tensor_ty, encryption_descriptor_id) identity. */
+    BINDING_V1_CHECK(DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
+                     "reopen legal v1 image");
+    BINDING_V1_CHECK(DSL_FHE_Config_Count() == 1 &&
+                     DSL_FHE_Encryption_Descriptor_Count() == 2 &&
+                     DSL_FHE_Tensor_Binding_Count() == 2,
+                     "reopened legal v1 image preserves counts");
+    BINDING_V1_CHECK(DSL_FHE_Find_Tensor_Binding
+                         (tensor_ty, ciphertext_id, &observed) &&
+                     observed.id == 1 &&
+                     observed.tensor_ty == tensor_ty &&
+                     observed.encryption_descriptor_id == ciphertext_id &&
+                     observed.flags == 0 &&
+                     DSL_FHE_Find_Tensor_Binding
+                         (weight_ty, plaintext_id, &observed) &&
+                     observed.id == 2 &&
+                     observed.tensor_ty == weight_ty &&
+                     observed.encryption_descriptor_id == plaintext_id &&
+                     observed.flags == 0 &&
+                     DSL_FHE_Image_Validate(NULL),
+                     "reopened legal v1 image agrees on identity");
+
+    /* Malicious mapped duplicate: an external image carries two bindings for
+       the same (tensor_ty, encryption_descriptor_id).  The reader must reject
+       it before mutating the managed image. */
+    {
+        unsigned char *dup_bytes = new unsigned char[image_size];
+        memcpy(dup_bytes, image_bytes, image_size);
+        DSL_FHE_TENSOR_BINDING_RECORD *dup_weight =
+            (DSL_FHE_TENSOR_BINDING_RECORD *)
+                (dup_bytes + binding_offset +
+                 DSL_FHE_TENSOR_BINDING_RECORD_SIZE);
+        dup_weight->tensor_ty = input_ty;
+        dup_weight->encryption_descriptor_id = input_desc;
+        dup_weight->flags = 0;
+        dup_weight->reserved0 = 0;
+        dup_weight->reserved1 = 0;
+        BINDING_V1_CHECK(!DSL_FHE_Image_Load_Mapped
+                             (dup_bytes, image_size, NULL),
+                         "reject malicious mapped duplicate tensor binding");
+        BINDING_V1_CHECK(DSL_FHE_Tensor_Binding_Count() == 2 &&
+                         DSL_FHE_Find_Tensor_Binding
+                             (tensor_ty, ciphertext_id, &observed) &&
+                         observed.id == 1,
+                         "failed duplicate load leaves managed image unchanged");
+        delete [] dup_bytes;
+    }
+
+    /* Validation before publication: an external image with nonzero tensor
+       binding flags is rejected by the same validator the writer calls, and
+     the managed image stays unchanged. */
+    {
+        unsigned char *flag_bytes = new unsigned char[image_size];
+        memcpy(flag_bytes, image_bytes, image_size);
+        DSL_FHE_TENSOR_BINDING_RECORD *flag_input =
+            (DSL_FHE_TENSOR_BINDING_RECORD *)(flag_bytes + binding_offset);
+        flag_input->flags = 1;
+        BINDING_V1_CHECK(!DSL_FHE_Image_Load_Mapped
+                             (flag_bytes, image_size, NULL),
+                         "reject nonzero flags before publication");
+        BINDING_V1_CHECK(DSL_FHE_Tensor_Binding_Count() == 2 &&
+                         DSL_FHE_Find_Tensor_Binding
+                             (tensor_ty, ciphertext_id, &observed) &&
+                         observed.id == 1 &&
+                         observed.flags == 0,
+                         "failed flagged load leaves managed image unchanged");
+        delete [] flag_bytes;
+    }
+
+    delete [] image_bytes;
+
+    if (failed) {
+        fprintf(stderr, "FHE tensor binding v1 identity checks failed\n");
+        return 1;
+    }
+    printf("FHE tensor binding v1 identity contract passed\n");
+#undef BINDING_V1_CHECK
+    return 0;
+}
+
 int
 main(void)
 {
@@ -4840,6 +5176,8 @@ main(void)
         return Check_Tensor_TCON_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC1_ONLY") != NULL)
         return Check_FHE_SYNC1_Mapped_Image();
+    if (getenv("OPEN64_DSL_FHE_BINDING_ONLY") != NULL)
+        return Check_FHE_Tensor_Binding_V1_Identity();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -4859,6 +5197,7 @@ main(void)
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
     failed |= Check_FHE_SYNC1_Mapped_Image();
+    failed |= Check_FHE_Tensor_Binding_V1_Identity();
     failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;
