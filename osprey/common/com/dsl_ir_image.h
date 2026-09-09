@@ -9,7 +9,9 @@
 
 #include "defs.h"
 #include "dsl_opcode.h"
+#include "srcpos.h"
 #include "symtab_idx.h"
+#include "targ_const.h"
 
 class WN;
 typedef INT32 WN_MAP;
@@ -210,6 +212,61 @@ typedef struct {
     STR_IDX metadata;
 } DSL_IR_VALUE_RECORD;
 
+/*
+ * Runtime-only borrowed view of one external tensor constant. The underlying
+ * facts remain in the existing DSL value, ST metadata, and canonical TY
+ * descriptor tables; this view does not add a mapped-image record. String
+ * fields must not be retained across owner-PU table mutation or image reset.
+ */
+typedef struct {
+    DSL_IR_VALUE_ID value_id;
+    DSL_IR_NODE_ID producer_node_id;
+    TY_IDX descriptor_ty;
+    ST_IDX st;
+    TY_IDX element_ty;
+    INT32 rank;
+    const char *storage_format;
+    const char *side_file;
+    const char *tensor_key;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+    const char *checksum;
+    const char *dtype;
+    const char *logical_shape;
+    const char *layout;
+} DSL_IR_EXTERNAL_TENSOR_REFERENCE;
+
+/*
+ * Runtime-only request for materializing converted side-file tensor values.
+ * All requests are preflighted before any symbol, WN, or image table changes.
+ * source_value_id must name an existing external tensor in the owner PU. A
+ * null call creates an entry-owned value without rewriting a call actual.
+ */
+typedef struct {
+    const char *name;
+    TY_IDX descriptor_ty;
+    TCON_IDX tensor_tcon;
+    DSL_IR_VALUE_ID source_value_id;
+    WN *insertion_block;
+    WN *insert_before;
+    WN *call;
+    UINT32 actual_ordinal;
+    DSL_IR_VALUE_ID expected_actual_value_id;
+    SRCPOS source_position;
+    const char *storage_format;
+    const char *side_file;
+    const char *tensor_key;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+    const char *checksum;
+} DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST;
+
+typedef struct {
+    DSL_IR_VALUE_ID value_id;
+    ST_IDX st;
+    WN *definition;
+} DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT;
+
 typedef struct {
     DSL_IR_VALUE_REFERENCE_ID id;
     DSL_IR_NODE_ID owner_node_id;
@@ -407,6 +464,17 @@ extern BOOL DSL_IR_Image_Find_Definition_Value
                                 (ST_IDX owner_pu_st,
                                  const WN *definition,
                                  DSL_IR_VALUE_RECORD *value_record);
+extern BOOL DSL_IR_Image_Get_External_Tensor_Reference
+                                (ST_IDX owner_pu_st,
+                                 DSL_IR_VALUE_ID value_id,
+                                 DSL_IR_EXTERNAL_TENSOR_REFERENCE *reference);
+extern BOOL DSL_IR_Materialize_External_Tensor_Values
+                                (ST_IDX owner_pu_st,
+                                 const DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST
+                                     *requests,
+                                 UINT32 request_count,
+                                 DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT
+                                     *results);
 extern BOOL DSL_IR_Rewrite_Native_Value
                                 (ST_IDX owner_pu_st,
                                  WN *definition,
