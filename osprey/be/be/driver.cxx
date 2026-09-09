@@ -72,6 +72,7 @@
 #include <cmplrs/rcodes.h>
 #include <dirent.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #ifndef __MINGW32__
@@ -428,6 +429,7 @@ static Output_File *ir_output = 0;
 static char *fhe_checkpoint_temp_name = NULL;
 static UINT32 fhe_checkpoint_pu_count;
 static VHO_FHE_CONVERT_RESULT fhe_checkpoint_result;
+static BOOL fhe_checkpoint_published = FALSE;
 
 // options stack for PU and region level pragmas
 static OPTIONS_STACK *Options_Stack;
@@ -472,6 +474,7 @@ Release_FHE_Conversion_Checkpoint (void)
   Register_Cleanup_Callback(NULL);
   free(fhe_checkpoint_temp_name);
   fhe_checkpoint_temp_name = NULL;
+  fhe_checkpoint_published = FALSE;
   need_fhe_checkpoint_output = FALSE;
 }
 
@@ -485,7 +488,44 @@ Cleanup_FHE_Conversion_Checkpoint (void)
   Close_FHE_Conversion_Checkpoint();
   if (fhe_checkpoint_temp_name != NULL)
     remove(fhe_checkpoint_temp_name);
+  if (fhe_checkpoint_published &&
+      VHO_FHE_Conversion_Checkpoint_Output != NULL)
+    remove(VHO_FHE_Conversion_Checkpoint_Output);
+  VHO_FHE_Convert_Checkpoint_Abort();
   Release_FHE_Conversion_Checkpoint();
+}
+
+static BOOL
+Publish_FHE_Conversion_Checkpoint (void)
+{
+  sigset_t all_signals;
+  sigset_t previous_signals;
+  if (sigfillset(&all_signals) != 0 ||
+      sigprocmask(SIG_BLOCK, &all_signals, &previous_signals) != 0)
+    return FALSE;
+
+  BOOL published = FALSE;
+  INT publish_error = 0;
+  if (link(fhe_checkpoint_temp_name,
+           VHO_FHE_Conversion_Checkpoint_Output) != 0) {
+    publish_error = errno;
+  }
+  else {
+    fhe_checkpoint_published = TRUE;
+    if (unlink(fhe_checkpoint_temp_name) != 0)
+      publish_error = errno;
+    else
+      published = TRUE;
+  }
+
+  INT restore_error = 0;
+  if (sigprocmask(SIG_SETMASK, &previous_signals, NULL) != 0)
+    restore_error = errno;
+  if (restore_error != 0)
+    errno = restore_error;
+  else if (!published)
+    errno = publish_error;
+  return published && restore_error == 0;
 }
 
 static void
@@ -500,8 +540,16 @@ Open_FHE_Conversion_Checkpoint (void)
   snprintf(fhe_checkpoint_temp_name, length, "%s.tmp", output);
   remove(fhe_checkpoint_temp_name);
 
+  if (!VHO_FHE_Convert_Checkpoint_Begin
+           (fhe_checkpoint_temp_name, output, stderr)) {
+    free(fhe_checkpoint_temp_name);
+    fhe_checkpoint_temp_name = NULL;
+    FmtAssert(FALSE, ("could not reserve FHE checkpoint output %s", output));
+  }
+
   VHO_FHE_Convert_Result_Init(&fhe_checkpoint_result);
   fhe_checkpoint_pu_count = 0;
+  fhe_checkpoint_published = FALSE;
   need_fhe_checkpoint_output = TRUE;
   Register_Cleanup_Callback(Cleanup_FHE_Conversion_Checkpoint);
   ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
@@ -2539,18 +2587,31 @@ main (INT argc, char **argv)
       Cleanup_FHE_Conversion_Checkpoint();
       FmtAssert(FALSE, ("FHE conversion checkpoint validation failed"));
     }
+    if (!VHO_FHE_Convert_Checkpoint_Finalize
+             (&fhe_checkpoint_result, stderr)) {
+      Cleanup_FHE_Conversion_Checkpoint();
+      FmtAssert(FALSE, ("FHE conversion checkpoint finalization failed"));
+    }
 
     Write_Global_Info(pu_tree);
     Close_FHE_Conversion_Checkpoint();
-    if (rename(fhe_checkpoint_temp_name,
-               VHO_FHE_Conversion_Checkpoint_Output) != 0) {
+    if (!VHO_FHE_Convert_Checkpoint_Publish_Artifacts(stderr)) {
+      Cleanup_FHE_Conversion_Checkpoint();
+      FmtAssert(FALSE,
+                ("FHE conversion checkpoint auxiliary publication failed"));
+    }
+    if (!Publish_FHE_Conversion_Checkpoint()) {
       INT rename_error = errno;
       Cleanup_FHE_Conversion_Checkpoint();
       FmtAssert(FALSE,
-                ("could not publish FHE conversion checkpoint %s: %s",
-                 VHO_FHE_Conversion_Checkpoint_Output,
+                ("could not publish FHE conversion checkpoint %s without "
+                 "replacement: %s",
+                VHO_FHE_Conversion_Checkpoint_Output,
                  strerror(rename_error)));
     }
+    Register_Cleanup_Callback(NULL);
+    fhe_checkpoint_published = FALSE;
+    VHO_FHE_Convert_Checkpoint_Complete();
     fprintf(stderr,
             "FHE conversion checkpoint: output=%s pu=%u "
             "semantic_gates=%u passes=%u source=%u converted=%u "

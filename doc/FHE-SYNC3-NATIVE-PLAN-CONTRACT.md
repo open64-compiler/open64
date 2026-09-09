@@ -685,8 +685,11 @@ standard `Write_PU_Info()` service. After all PUs have succeeded, it aggregates
 the `VHO_FHE_CONVERT_RESULT` counters and calls
 `VHO_FHE_Convert_Checkpoint_Validate()` to prove that every expected PU was
 converted without an error and that the complete DSL, effect, call, FHE, and
-FHE-plan images are valid. It then calls the standard `Write_Global_Info()`
-and closes the binary WHIRL image.
+FHE-plan images are valid. It then invokes the registered
+`VHO_FHE_CHECKPOINT_FINALIZER`, calls the standard `Write_Global_Info()`, and
+closes the binary WHIRL image. The finalizer may complete temporary FHE side
+payloads and reports and validate aggregate semantics, but it may not mutate
+WHIRL or managed image tables at this late boundary.
 
 Checkpoint mode does not initialize the backend REGION optimization service
 after conversion, and its matching PU postprocessing does not finalize that
@@ -695,15 +698,31 @@ managed RID records; it does not consume, lower, or optimize them. Optional
 DSL WOPT preparation retains its own paired REGION initialization and
 finalization before FHE conversion.
 
-The writer initially uses `<path>.tmp` in the destination directory. Only a
-fully converted, validated, and closed file is atomically renamed to `<path>`.
-A failed run removes the temporary file and never publishes a partial artifact
-under the requested checkpoint name. The temporary output is registered with
+The writer records an in-process reservation for `<path>.tmp` and `<path>`
+before conversion begins and rejects a pre-existing final destination. This
+reservation is not a cross-process lock; atomic no-replace publication handles
+a concurrent destination race. Only a fully converted, validated,
+and closed file is published to `<path>` with an atomic no-replace hard link,
+then the temporary name is removed. Temporary and final paths must reside on
+the same file system. A failed run removes the temporary file and never
+publishes a partial artifact under the requested checkpoint name. The
+temporary output is registered with
 the backend's standard error and signal cleanup callback service so failures
 outside the conversion callback also remove it without introducing a shared
-library dependency on the backend driver executable. The FHE semantic task consumes this mode;
-it must not reproduce PU selection, local-symbol-table lifetime, managed image
-validation, or binary writer orchestration.
+library dependency on the backend driver executable.
+
+FHE-owned side payloads and reports register temporary/final path pairs through
+the backend-safe service described in
+`doc/FHE-SYNC3-CHECKPOINT-ARTIFACT-CONTRACT.md`. After finalization and binary
+close, the driver publishes auxiliary artifacts with atomic no-replace
+semantics in deterministic final-path order and publishes `.fhe.B` last. Every
+auxiliary endpoint must be distinct from all other transaction endpoints,
+including the binary temporary and final paths. Handled signals are blocked
+across each publication and its published-state update. Any later publication
+failure removes every member published by the current run. The FHE semantic
+task consumes this mode; it must
+not reproduce PU selection, local-symbol-table lifetime, managed image
+validation, binary writer orchestration, or final artifact publication.
 
 The retained integration fixture is
 `osprey/common/com/tests/dsl_fhe_conversion_checkpoint_test.sh`. It requires a
@@ -718,9 +737,13 @@ absent.
 
 Stable checkpoint diagnostics are `CFHE-CHECKPOINT-001` for incomplete PU
 coverage, `CFHE-CHECKPOINT-002` for aggregated conversion errors, and
-`CFHE-CHECKPOINT-003` for an invalid complete managed image. A successful run
-reports PU, semantic-gate, pass, disposition, rewrite, BatchNorm-fold,
-approximation, and error counts.
+`CFHE-CHECKPOINT-003` for an invalid complete managed image.
+`CFHE-CHECKPOINT-004` covers finalizer failure, and
+`CFHE-CHECKPOINT-005` covers auxiliary-artifact publication failure.
+`CFHE-CHECKPOINT-006` covers invalid binary output reservation and stale final
+checkpoint rejection. A successful run reports PU, semantic-gate, pass,
+disposition, rewrite,
+BatchNorm-fold, approximation, and error counts.
 
 No bootstrap insertion, SIHE/CKKS arithmetic opcode allocation,
 `fhe.cnn.poly_activation` emission, OpenFHE/runtime lowering, or generated-C

@@ -40,10 +40,23 @@ typedef BOOL (*VHO_FHE_CONVERSION_PASS)
                                  FILE *diagnostic,
                                  VHO_FHE_CONVERT_RESULT *result);
 
+typedef BOOL (*VHO_FHE_CHECKPOINT_FINALIZER)
+                                (const VHO_FHE_CONVERT_RESULT *aggregate,
+                                 FILE *diagnostic);
+
+typedef void (*VHO_FHE_CHECKPOINT_COMPLETION) (BOOL committed);
+
 extern BOOL VHO_FHE_Convert_Register_Semantic_Gatekeeper
                                 (VHO_FHE_SEMANTIC_GATEKEEPER gatekeeper);
 extern BOOL VHO_FHE_Convert_Register_Pass
                                 (VHO_FHE_CONVERSION_PASS pass);
+extern BOOL VHO_FHE_Convert_Register_Checkpoint_Lifecycle
+                                (VHO_FHE_CHECKPOINT_FINALIZER finalizer,
+                                 VHO_FHE_CHECKPOINT_COMPLETION completion);
+extern BOOL VHO_FHE_Convert_Checkpoint_Begin
+                                (const char *temporary_binary_path,
+                                 const char *final_binary_path,
+                                 FILE *diagnostic);
 extern void VHO_FHE_Convert_Reset_Passes (void);
 extern BOOL VHO_FHE_Convert_Program_Unit
                                 (struct pu_info *pu_info,
@@ -60,6 +73,17 @@ extern BOOL VHO_FHE_Convert_Checkpoint_Validate
                                  UINT32 converted_pu_count,
                                  const VHO_FHE_CONVERT_RESULT *aggregate,
                                  FILE *diagnostic);
+extern BOOL VHO_FHE_Convert_Checkpoint_Register_Artifact
+                                (const char *temporary_path,
+                                 const char *final_path);
+extern UINT32 VHO_FHE_Convert_Checkpoint_Artifact_Count (void);
+extern BOOL VHO_FHE_Convert_Checkpoint_Finalize
+                                (const VHO_FHE_CONVERT_RESULT *aggregate,
+                                 FILE *diagnostic);
+extern BOOL VHO_FHE_Convert_Checkpoint_Publish_Artifacts
+                                (FILE *diagnostic);
+extern void VHO_FHE_Convert_Checkpoint_Complete (void);
+extern void VHO_FHE_Convert_Checkpoint_Abort (void);
 extern BOOL VHO_FHE_Convert_Driver_Try
                                 (struct pu_info *pu_info,
                                  WN **tree,

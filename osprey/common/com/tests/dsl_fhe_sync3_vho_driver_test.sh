@@ -43,15 +43,31 @@ done
 
 for evidence in \
   'VHO_FHE_Convert_Driver_With_Result' \
+  'VHO_FHE_Convert_Checkpoint_Begin' \
   'VHO_FHE_Convert_Checkpoint_Validate' \
+  'VHO_FHE_Convert_Checkpoint_Finalize' \
+  'VHO_FHE_Convert_Checkpoint_Publish_Artifacts' \
+  'VHO_FHE_Convert_Checkpoint_Complete' \
+  'VHO_FHE_Convert_Checkpoint_Abort' \
   'Write_PU_Info(current_pu)' \
   'Write_Global_Info(pu_tree)' \
-  'rename(fhe_checkpoint_temp_name'; do
+  'Publish_FHE_Conversion_Checkpoint'; do
   if ! grep -Fq "$evidence" "$driver_source"; then
     echo "missing all-PU checkpoint evidence '$evidence' in $driver_source" >&2
     exit 1
   fi
 done
+
+finalize_line="$(grep -n 'VHO_FHE_Convert_Checkpoint_Finalize' "$driver_source" | tail -1 | cut -d: -f1)"
+global_line="$(grep -n 'Write_Global_Info(pu_tree)' "$driver_source" | tail -1 | cut -d: -f1)"
+publish_line="$(grep -n 'VHO_FHE_Convert_Checkpoint_Publish_Artifacts' "$driver_source" | tail -1 | cut -d: -f1)"
+binary_line="$(grep -n 'if (!Publish_FHE_Conversion_Checkpoint())' "$driver_source" | tail -1 | cut -d: -f1)"
+complete_line="$(grep -n 'VHO_FHE_Convert_Checkpoint_Complete' "$driver_source" | tail -1 | cut -d: -f1)"
+if (( finalize_line >= global_line || global_line >= publish_line ||
+      publish_line >= binary_line || binary_line >= complete_line )); then
+  echo "FHE checkpoint publication ordering changed in $driver_source" >&2
+  exit 1
+fi
 
 if ! grep -Fq '"checkpoint", "checkpoint"' "$config_source"; then
   echo "missing -FHE:checkpoint option in $config_source" >&2

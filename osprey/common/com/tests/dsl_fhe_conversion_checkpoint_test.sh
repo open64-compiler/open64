@@ -39,11 +39,14 @@ output="$artifact_dir/$input_stem.fhe.B"
 trace="$artifact_dir/$input_stem.fhe.T"
 validation_log="$artifact_dir/validation.log"
 failure_log="$artifact_dir/failure.log"
+stale_output_log="$artifact_dir/stale-output.log"
 command_log="$artifact_dir/commands.txt"
 
 printf '%s\n' \
   "$be -FHE:checkpoint=$output $input" \
-  "$ir_b2a -st -src $output $trace" >"$command_log"
+  "$ir_b2a -st -src $output $trace" \
+  "$be -FHE:checkpoint=$output $input # must reject stale output" \
+  >"$command_log"
 
 if [[ -n "$source_file" ]]; then
   if [[ ! -f "$source_file" ]]; then
@@ -86,6 +89,25 @@ if ! grep -Fq 'FHE conversion checkpoint: output=' "$validation_log"; then
   exit 1
 fi
 
+output_checksum="$(cksum "$output")"
+if "$be" -FHE:checkpoint="$output" "$input" \
+    >"$stale_output_log" 2>&1; then
+  echo "checkpoint unexpectedly replaced a stale final output" >&2
+  exit 1
+fi
+if [[ "$(cksum "$output")" != "$output_checksum" ]]; then
+  echo "stale checkpoint output changed after rejected publication" >&2
+  exit 1
+fi
+if [[ -e "$output.tmp" ]]; then
+  echo "stale-output rejection left a temporary checkpoint" >&2
+  exit 1
+fi
+if ! grep -Fq 'CFHE-CHECKPOINT-006' "$stale_output_log"; then
+  echo "missing stale checkpoint destination diagnostic" >&2
+  exit 1
+fi
+
 if [[ -n "$reject_input" ]]; then
   rejected_output="$artifact_dir/must_not_exist.fhe.B"
   if "$be" -FHE:checkpoint="$rejected_output" "$reject_input" \
@@ -108,6 +130,7 @@ echo "review binary: $output"
 echo "review trace: $trace"
 echo "review commands: $command_log"
 echo "review diagnostics: $validation_log"
+echo "review stale-output diagnostics: $stale_output_log"
 if [[ -f "$failure_log" ]]; then
   echo "review rejected-run diagnostics: $failure_log"
 fi
