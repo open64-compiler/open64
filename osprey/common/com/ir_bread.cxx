@@ -487,6 +487,21 @@ WN_get_dsl_callsite_image (void *handle)
 }
 
 INT
+WN_get_dsl_call_abi_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_CALL_ABI_IMAGE);
+    if (shdr.offset == 0) {
+        DSL_Call_ABI_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_Call_ABI_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
+INT
 WN_get_dsl_fhe_image (void *handle)
 {
     OFFSET_AND_SIZE shdr = get_section
@@ -1670,6 +1685,9 @@ Read_Global_Info (INT32 *p_num_PUs)
     if (WN_get_dsl_callsite_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL callsite image", global_ir_file);
     }
+    if (WN_get_dsl_call_abi_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL call ABI image", global_ir_file);
+    }
     if (WN_get_dsl_fhe_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL FHE image", global_ir_file);
     }
@@ -1767,6 +1785,8 @@ Read_Local_Info (MEM_POOL *pool, PU_Info *pu)
                   tree_base, tree_size))
             ErrMsg (EC_IR_Scn_Read, "DSL callsites", local_ir_file);
     }
+    if (!DSL_Call_ABI_Image_Validate_PU(pu, stderr))
+        ErrMsg (EC_IR_Scn_Read, "DSL call ABI", local_ir_file);
 
     if (PU_Info_state(pu, WT_REGIONS) == Subsect_Exists) {
         OFFSET_AND_SIZE pu_section = get_section

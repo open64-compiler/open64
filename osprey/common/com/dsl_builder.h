@@ -269,6 +269,11 @@ extern DSL_BUILDER_CALL DSL_Builder_Create_PU_Call
                                  const char *const *result_names,
                                  UINT32 result_count,
                                  const DSL_BUILDER_CALLSITE_INFO *callsite);
+extern BOOL DSL_Builder_Set_PU_Call_Argument_Role
+                                (DSL_BUILDER_CALL call,
+                                 UINT32 actual_ordinal,
+                                 UINT32 callee_formal_ordinal,
+                                 const char *semantic_role);
 extern BOOL DSL_Builder_Get_PU_Call_Result
                                 (DSL_BUILDER_CALL call,
                                  UINT32 ordinal,

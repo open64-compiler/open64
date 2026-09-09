@@ -721,10 +721,9 @@ DSL_Region_Verify_State_Interface
     return TRUE;
 }
 
-BOOL
-DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
+static BOOL
+DSL_Region_Verify_Store (DSL_REGION_STORE *store, FILE *diagnostic)
 {
-    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
     if (store == NULL)
         return TRUE;
 
@@ -847,6 +846,11 @@ DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
                                         DSL_REGION_VALUE_INOUT |
                                         DSL_REGION_VALUE_RESULT;
             if (previous.region_id == binding.region_id &&
+                previous.st == binding.st)
+                return DSL_Region_Report
+                           (diagnostic, "duplicate interface symbol",
+                            binding.region_id);
+            if (previous.region_id == binding.region_id &&
                 previous.ordinal == binding.ordinal &&
                 (((previous.roles & input_roles) != 0 &&
                   (binding.roles & input_roles) != 0) ||
@@ -856,6 +860,56 @@ DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
                            (diagnostic, "duplicate interface ordinal",
                             binding.region_id);
         }
+    }
+    return TRUE;
+}
+
+BOOL
+DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
+{
+    return DSL_Region_Verify_Store(DSL_Region_Find_Store(pu), diagnostic);
+}
+
+UINT32
+DSL_Region_Symbol_Use_Count (PU_Info *pu, ST_IDX st)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (store == NULL || ST_IDX_index(st) == 0)
+        return 0;
+    UINT32 count = 0;
+    for (UINT32 i = 0; i < store->interfaces.size(); ++i) {
+        if (store->interfaces[i].st == st)
+            ++count;
+    }
+    return count;
+}
+
+BOOL
+DSL_Region_Can_Redirect_Symbol (PU_Info *pu, ST_IDX old_st, ST_IDX new_st)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (store == NULL)
+        return TRUE;
+    if (ST_IDX_index(old_st) == 0 || ST_IDX_index(new_st) == 0)
+        return FALSE;
+    DSL_REGION_STORE candidate = *store;
+    for (UINT32 i = 0; i < candidate.interfaces.size(); ++i) {
+        if (candidate.interfaces[i].st == old_st)
+            candidate.interfaces[i].st = new_st;
+    }
+    return DSL_Region_Verify_Store(&candidate, NULL);
+}
+
+BOOL
+DSL_Region_Redirect_Symbol (PU_Info *pu, ST_IDX old_st, ST_IDX new_st)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (store == NULL ||
+        !DSL_Region_Can_Redirect_Symbol(pu, old_st, new_st))
+        return FALSE;
+    for (UINT32 i = 0; i < store->interfaces.size(); ++i) {
+        if (store->interfaces[i].st == old_st)
+            store->interfaces[i].st = new_st;
     }
     return TRUE;
 }

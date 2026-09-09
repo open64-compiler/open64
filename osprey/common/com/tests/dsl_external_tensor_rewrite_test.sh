@@ -53,6 +53,9 @@ for evidence in \
   'converted.safetensors#stem.conv.folded_bias' \
   'side_file=converted.safetensors' \
   'dsl.converted_from_value_id' \
+  'DSL Call ABI Argument Table: version=1 entries=4' \
+  'role=cnn.basic_block.conv1.weight' \
+  'role=cnn.basic_block.conv1.bias' \
   'dsl_builder_contract_test.cxx'; do
   if ! grep -Fq "$evidence" "$trace"; then
     echo "missing external tensor rewrite evidence '$evidence' in $trace" >&2

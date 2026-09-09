@@ -107,6 +107,7 @@ struct dsl_builder_call_record {
     std::string context_identity;
     UINT32 call_ordinal;
     DSL_BUILDER_SOURCE_POSITION source_position;
+    std::vector<DSL_BUILDER_VALUE> arguments;
     std::vector<DSL_BUILDER_VALUE> results;
 };
 
@@ -129,6 +130,7 @@ DSL_Builder_Reset_Program (void)
     DSL_Builder_PU_Root = NULL;
     DSL_Builder_PU_Last = NULL;
     DSL_Builder_Active_PU = NULL;
+    Current_PU_Info = NULL;
     DSL_Builder_Result_Number = 0;
     DSL_Builder_CU_DST = DST_INVALID_IDX;
     DSL_builder_source_files.clear();
@@ -221,6 +223,7 @@ DSL_Builder_Select_PU (DSL_BUILDER_PROGRAM_UNIT pu)
     Current_scope = Current_pu->lexical_level;
     Restore_Local_Symtab(pu);
     Current_Map_Tab = PU_Info_maptab(pu);
+    Current_PU_Info = pu;
     DSL_Builder_Active_PU = pu;
     return TRUE;
 }
@@ -3416,6 +3419,7 @@ DSL_Builder_Create_Minimal_PU (const char *name)
 
     Save_Local_Symtab(Current_scope, pu_info);
     DSL_Builder_Active_PU = pu_info;
+    Current_PU_Info = pu_info;
 
     dsl_builder_pu_interface *interface_record =
         new dsl_builder_pu_interface;
@@ -3666,6 +3670,8 @@ DSL_Builder_Create_PU_Call
                                         (callsite->context_identity);
     call_record->call_ordinal = callsite->call_ordinal;
     call_record->source_position = callsite->source_position;
+    for (UINT32 i = 0; i < argument_count; ++i)
+        call_record->arguments.push_back(arguments[i]);
     for (UINT32 i = 0; i < result_count; ++i) {
         TY_IDX result_ty = callee_interface->results[i].ty;
         ST_IDX result_st = DSL_Builder_Create_Tensor_Result_Symbol
@@ -3768,6 +3774,67 @@ DSL_Builder_Create_PU_Call
     WN_INSERT_BlockLast(body, call);
     DSL_builder_call_registry.push_back(call_record);
     return call;
+}
+
+static BOOL
+DSL_Builder_Call_Argument_Role_Valid (const char *role)
+{
+    if (role == NULL || role[0] == '\0')
+        return FALSE;
+    BOOL component_start = TRUE;
+    for (const char *cursor = role; *cursor != '\0'; ++cursor) {
+        if (*cursor == '.') {
+            if (component_start)
+                return FALSE;
+            component_start = TRUE;
+            continue;
+        }
+        if (component_start) {
+            if (*cursor < 'a' || *cursor > 'z')
+                return FALSE;
+            component_start = FALSE;
+        } else if ((*cursor < 'a' || *cursor > 'z') &&
+                   (*cursor < '0' || *cursor > '9') && *cursor != '_') {
+            return FALSE;
+        }
+    }
+    return !component_start;
+}
+
+BOOL
+DSL_Builder_Set_PU_Call_Argument_Role
+        (DSL_BUILDER_CALL call, UINT32 actual_ordinal,
+         UINT32 callee_formal_ordinal, const char *semantic_role)
+{
+    dsl_builder_call_record *call_record =
+        DSL_Builder_Find_Call_Record(call);
+    dsl_builder_pu_interface *callee_interface = call_record == NULL ? NULL :
+        DSL_Builder_Find_PU_Interface(call_record->callee);
+    if (call_record == NULL || callee_interface == NULL ||
+        !DSL_Builder_Call_Argument_Role_Valid(semantic_role) ||
+        actual_ordinal >= call_record->arguments.size() ||
+        callee_formal_ordinal >= callee_interface->formals.size())
+        return FALSE;
+
+    DSL_BUILDER_VALUE_RECORD *argument = DSL_Builder_Find_Value_Record
+        (call_record->arguments[actual_ordinal]);
+    if (argument == NULL || argument->pu != call_record->caller ||
+        argument->result_ty !=
+            callee_interface->formals[callee_formal_ordinal].ty)
+        return FALSE;
+
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    if (!DSL_Call_Image_Find_Callsite(call, &callsite))
+        return FALSE;
+    DSL_CALL_ARGUMENT_RECORD record;
+    memset(&record, 0, sizeof(record));
+    record.callsite_id = callsite.id;
+    record.argument_value_id = argument->image_value_id;
+    record.actual_ordinal = actual_ordinal;
+    record.callee_formal_ordinal = callee_formal_ordinal;
+    record.semantic_role = Save_Str(semantic_role);
+    return DSL_Call_ABI_Image_Add_Argument(call, &record) !=
+           DSL_CALL_ARGUMENT_INVALID_ID;
 }
 
 BOOL
@@ -4075,6 +4142,10 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
             valid = FALSE;
             ++gatekeeper_result.error_count;
         }
+        if (!DSL_Call_ABI_Image_Validate_PU(pu, diagnostic)) {
+            valid = FALSE;
+            ++gatekeeper_result.error_count;
+        }
     }
     if (!DSL_FHE_Image_Validate(diagnostic)) {
         valid = FALSE;
@@ -4084,13 +4155,14 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
         valid = FALSE;
         ++gatekeeper_result.error_count;
     }
-    if (gatekeeper_result.native_node_count != DSL_IR_Image_Node_Count()) {
+    if (gatekeeper_result.native_node_count !=
+            DSL_IR_Image_Executable_Node_Count()) {
         if (diagnostic != NULL)
             fprintf(diagnostic,
                     "native tree node count %u does not match "
                     "DSL image node count %u\n",
                     gatekeeper_result.native_node_count,
-                    DSL_IR_Image_Node_Count());
+                    DSL_IR_Image_Executable_Node_Count());
         valid = FALSE;
         ++gatekeeper_result.error_count;
     }

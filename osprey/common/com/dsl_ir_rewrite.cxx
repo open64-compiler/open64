@@ -12,9 +12,21 @@
 #include "dsl_memory_behavior.h"
 #include "dsl_tensor_fold.h"
 #include "dsl_ir_image.h"
+#include "dsl_region.h"
+#include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
 #include "wn.h"
+
+/* Commit-only helpers; public callers must use the transactional APIs below. */
+extern BOOL DSL_Call_ABI_Image_Update_Argument_Value
+                                (const WN *, UINT32, DSL_IR_VALUE_ID,
+                                 DSL_IR_VALUE_ID);
+extern BOOL DSL_IR_Image_Redirect_And_Retire_Value
+                                (DSL_IR_VALUE_ID, DSL_IR_VALUE_ID, UINT32);
+extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
+extern BOOL DSL_Region_Can_Redirect_Symbol (PU_Info *, ST_IDX, ST_IDX);
+extern BOOL DSL_Region_Redirect_Symbol (PU_Info *, ST_IDX, ST_IDX);
 #include "wn_util.h"
 
 static BOOL
@@ -31,6 +43,89 @@ DSL_IR_Image_Current_PU_Is (ST_IDX owner_pu_st)
 {
     return DSL_IR_Image_PU_ST_Valid(owner_pu_st) && Current_pu != NULL &&
            Current_pu == &Pu_Table[ST_pu(St_Table[owner_pu_st])];
+}
+
+static BOOL
+DSL_Call_ABI_PU_Report (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL call ABI PU error: %s id=%u\n", message, id);
+    return FALSE;
+}
+
+static BOOL
+DSL_Call_ABI_Value_Matches_ST
+        (const DSL_IR_VALUE_RECORD &value, ST_IDX owner_pu_st, ST_IDX st)
+{
+    if (ST_IDX_level(st) != CURRENT_SYMTAB || ST_IDX_index(st) == 0 ||
+        ST_IDX_index(st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+        value.st != st || value.ty != ST_type(St_Table[st]) ||
+        value.metadata == STR_IDX_ZERO)
+        return FALSE;
+    std::string owner = "owner_pu=";
+    owner += ST_name(St_Table[owner_pu_st]);
+    return owner == Index_To_Str(value.metadata);
+}
+
+BOOL
+DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
+{
+    if (pu == NULL || PU_Info_tree_ptr(pu) == NULL ||
+        ST_IDX_index(PU_Info_proc_sym(pu)) == 0 || Current_pu == NULL ||
+        Current_pu != &Pu_Table[ST_pu(St_Table[PU_Info_proc_sym(pu)])])
+        return DSL_Call_ABI_PU_Report(diagnostic, "missing program unit", 0);
+    ST_IDX owner_pu_st = PU_Info_proc_sym(pu);
+    WN *entry = PU_Info_tree_ptr(pu);
+
+    for (UINT32 i = 1; i <= DSL_Call_ABI_Image_Argument_Count(); ++i) {
+        DSL_CALL_ARGUMENT_RECORD argument;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Call_ABI_Image_Get_Argument(i, &argument) ||
+            !DSL_Call_Image_Get_Callsite(argument.callsite_id, &callsite))
+            return DSL_Call_ABI_PU_Report
+                       (diagnostic, "missing relationship", i);
+
+        if (callsite.owner_pu_st == owner_pu_st) {
+            const WN *call = DSL_Call_Image_Get_Call_WN(callsite.id);
+            if (call == NULL || argument.actual_ordinal >= WN_kid_count(call))
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "actual ordinal out of range",
+                            argument.id);
+            const WN *parm = WN_kid(call, argument.actual_ordinal);
+            const WN *address = parm == NULL || WN_operator(parm) != OPR_PARM ?
+                                NULL : WN_kid0(parm);
+            DSL_IR_VALUE_RECORD value;
+            if (WN_st_idx(call) != callsite.callee_pu_st ||
+                address == NULL || WN_operator(address) != OPR_LDA ||
+                !WN_Parm_By_Reference(parm) || !WN_Parm_Read_Only(parm) ||
+                WN_Parm_Out(parm) || !WN_Parm_Passed_Not_Saved(parm) ||
+                !DSL_IR_Image_Get_Value(argument.argument_value_id, &value) ||
+                !DSL_Call_ABI_Value_Matches_ST
+                    (value, owner_pu_st, WN_st_idx(address)) ||
+                WN_ty(parm) != WN_ty(address) ||
+                TY_kind(WN_ty(parm)) != KIND_POINTER ||
+                TY_pointed(WN_ty(parm)) != value.ty)
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "argument value mismatch", argument.id);
+        }
+
+        if (callsite.callee_pu_st == owner_pu_st) {
+            if (entry == NULL || WN_operator(entry) != OPR_FUNC_ENTRY ||
+                argument.callee_formal_ordinal >= WN_num_formals(entry))
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "formal ordinal out of range",
+                            argument.id);
+            ST_IDX formal_st =
+                WN_st_idx(WN_formal(entry, argument.callee_formal_ordinal));
+            DSL_IR_VALUE_RECORD value;
+            if (!DSL_IR_Image_Get_Value(argument.argument_value_id, &value) ||
+                value.ty != ST_type(St_Table[formal_st]))
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "actual/formal type mismatch",
+                            argument.id);
+        }
+    }
+    return TRUE;
 }
 
 static BOOL
@@ -404,7 +499,11 @@ DSL_IR_External_Tensor_Request_Valid
         request.side_file[0] == '\0' || request.tensor_key == NULL ||
         request.tensor_key[0] == '\0' || request.byte_length == 0 ||
         request.byte_offset + request.byte_length < request.byte_offset ||
+        request.checksum == NULL || request.checksum[0] == '\0' ||
         !DSL_IR_Checksum_Valid(request.checksum) ||
+        (request.source_policy != DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_ONLY &&
+         request.source_policy !=
+             DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_OR_IMPLICIT_ZERO) ||
         !TY_get_tensor_descriptor_record(request.descriptor_ty, &descriptor) ||
         !DSL_IR_Static_Tensor_Byte_Size
              (descriptor, &element_size, &tensor_size) ||
@@ -437,11 +536,46 @@ DSL_IR_External_Tensor_Request_Valid
         return FALSE;
 
     DSL_IR_VALUE_RECORD source;
-    if (!DSL_IR_Image_Get_External_Tensor_Reference
-             (owner_pu_st, request.source_value_id, &source_reference) ||
-        source_reference.descriptor_ty != request.descriptor_ty ||
-        !DSL_IR_Image_Get_Value(request.source_value_id, &source))
+    BOOL source_is_external =
+        DSL_IR_Image_Get_External_Tensor_Reference
+            (owner_pu_st, request.source_value_id, &source_reference);
+    BOOL source_is_implicit_zero = FALSE;
+    if (!source_is_external && request.source_policy ==
+            DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_OR_IMPLICIT_ZERO &&
+        DSL_IR_Image_Get_Value(request.source_value_id, &source) &&
+        source.value_kind == DSL_IR_VALUE_CONSTANT &&
+        source.ty == request.descriptor_ty &&
+        DSL_IR_Image_Value_Belongs_To_PU(source, owner_pu_st)) {
+        DSL_IR_NODE_RECORD source_node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD source_opcode;
+        const char *source_kind = NULL;
+        source_is_implicit_zero =
+            DSL_IR_Image_Get_Node(source.producer_node_id, &source_node) &&
+            source_node.result_value_id == source.id &&
+            DSL_IR_Image_Get_Opcode_Descriptor
+                (source_node.opcode_descriptor_id, &source_opcode) &&
+            source_opcode.logical_operator == OPR_DSLTENSORCONST &&
+            source_opcode.version == 1 &&
+            source_opcode.effect_model == DSL_EFFECT_MODEL_PURE &&
+            DSL_IR_Node_Attribute
+                (source_node, "value_kind", &source_kind) &&
+            strcmp(source_kind, "implicit_zero") == 0;
+        for (UINT32 i = 1;
+             source_is_implicit_zero &&
+             i <= DSL_Effect_Image_State_Effect_Count(); ++i) {
+            DSL_STATE_EFFECT_RECORD effect;
+            if (!DSL_Effect_Image_Get_State_Effect(i, &effect) ||
+                effect.owner_node_id == source_node.id)
+                source_is_implicit_zero = FALSE;
+        }
+    }
+    if (!source_is_external && !source_is_implicit_zero)
         return FALSE;
+    if (source_is_external) {
+        if (source_reference.descriptor_ty != request.descriptor_ty ||
+            !DSL_IR_Image_Get_Value(request.source_value_id, &source))
+            return FALSE;
+    }
     if (source_value != NULL)
         *source_value = source;
 
@@ -496,6 +630,16 @@ DSL_IR_External_Tensor_Request_Valid
     return TRUE;
 }
 
+void
+DSL_IR_External_Tensor_Materialization_Request_Init
+        (DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST *request)
+{
+    if (request != NULL) {
+        memset(request, 0, sizeof(*request));
+        request->source_policy = DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_ONLY;
+    }
+}
+
 static void
 DSL_IR_Copy_Tensor_Metadata (ST_IDX source, ST_IDX destination)
 {
@@ -523,12 +667,23 @@ DSL_IR_Materialize_External_Tensor_Values
     std::vector<DSL_IR_VALUE_RECORD> source_values(request_count);
     std::vector<std::string> uris(request_count);
     std::vector<std::string> payloads(request_count);
+    std::vector<BOOL> update_call_abi(request_count, FALSE);
     for (UINT32 i = 0; i < request_count; ++i) {
         if (!DSL_IR_External_Tensor_Request_Valid
                  (owner_pu_st, requests[i], &source_values[i], &uris[i],
                   &payloads[i]) ||
             DSL_IR_PU_Value_Name_Exists(owner_pu_st, requests[i].name))
             return FALSE;
+        if (requests[i].call != NULL) {
+            DSL_CALL_ARGUMENT_RECORD argument;
+            if (DSL_Call_ABI_Image_Find_Argument
+                    (requests[i].call, requests[i].actual_ordinal,
+                     &argument)) {
+                if (argument.argument_value_id != requests[i].source_value_id)
+                    return FALSE;
+                update_call_abi[i] = TRUE;
+            }
+        }
         for (UINT32 prior = 0; prior < i; ++prior) {
             if (strcmp(requests[prior].name, requests[i].name) == 0 ||
                 (requests[i].call != NULL &&
@@ -634,6 +789,13 @@ DSL_IR_Materialize_External_Tensor_Values
                            (WN_kid(request.call, request.actual_ordinal));
             WN_st_idx(WN_kid0(parm)) = result_st;
             WN_kid(request.call, request.actual_ordinal) = parm;
+            if (update_call_abi[i]) {
+                BOOL updated = DSL_Call_ABI_Image_Update_Argument_Value
+                    (request.call, request.actual_ordinal,
+                     request.source_value_id, value_id);
+                FmtAssert(updated,
+                          ("preflighted DSL call ABI update failed"));
+            }
         }
 
         results[i].value_id = value_id;
@@ -790,5 +952,220 @@ DSL_IR_Rewrite_Native_Value
         return FALSE;
 
     WN_kid0(definition) = replacement;
+    return TRUE;
+}
+
+typedef struct {
+    ST_IDX retiring_st;
+    WN *retiring_definition;
+    BOOL retiring_seen;
+    BOOL valid;
+    UINT32 definition_count;
+    std::vector<WN *> reads;
+} DSL_IR_RETIRE_USE_SCAN;
+
+static void
+DSL_IR_Retire_Scan_Tree (WN *wn, DSL_IR_RETIRE_USE_SCAN *scan)
+{
+    if (wn == NULL || scan == NULL || !scan->valid)
+        return;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (WN *statement = WN_first(wn); statement != NULL;
+             statement = WN_next(statement)) {
+            if (statement == scan->retiring_definition) {
+                if (scan->retiring_seen) {
+                    scan->valid = FALSE;
+                    return;
+                }
+                for (INT32 kid = 0; kid < WN_kid_count(statement); ++kid)
+                    DSL_IR_Retire_Scan_Tree(WN_kid(statement, kid), scan);
+                ++scan->definition_count;
+                scan->retiring_seen = TRUE;
+            } else {
+                DSL_IR_Retire_Scan_Tree(statement, scan);
+            }
+        }
+        return;
+    }
+
+    if (WN_has_sym(wn) && WN_st_idx(wn) == scan->retiring_st) {
+        if (WN_operator(wn) == OPR_STID) {
+            ++scan->definition_count;
+            if (wn != scan->retiring_definition)
+                scan->valid = FALSE;
+        } else if (WN_operator(wn) == OPR_LDID && scan->retiring_seen) {
+            scan->reads.push_back(wn);
+        } else {
+            scan->valid = FALSE;
+        }
+    }
+    for (INT32 kid = 0; scan->valid && kid < WN_kid_count(wn); ++kid)
+        DSL_IR_Retire_Scan_Tree(WN_kid(wn, kid), scan);
+}
+
+static BOOL
+DSL_IR_Definition_Precedes
+        (const WN *block, const WN *first, const WN *second)
+{
+    if (block == NULL || WN_operator(block) != OPR_BLOCK || first == NULL ||
+        second == NULL)
+        return FALSE;
+    BOOL first_seen = FALSE;
+    for (const WN *statement = WN_first(block); statement != NULL;
+         statement = WN_next(statement)) {
+        if (statement == first)
+            first_seen = TRUE;
+        if (statement == second)
+            return first_seen;
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_IR_Retire_Has_Use_Outside_Block
+        (const WN *wn, const WN *containing_block, ST_IDX retiring_st)
+{
+    if (wn == NULL || wn == containing_block)
+        return FALSE;
+    if (WN_has_sym(wn) && WN_st_idx(wn) == retiring_st)
+        return TRUE;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(wn); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_IR_Retire_Has_Use_Outside_Block
+                    (statement, containing_block, retiring_st))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(wn); ++kid) {
+        if (DSL_IR_Retire_Has_Use_Outside_Block
+                (WN_kid(wn, kid), containing_block, retiring_st))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_IR_Redirect_And_Retire_Native_Value
+        (ST_IDX owner_pu_st,
+         const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST *request)
+{
+    if (!DSL_IR_Image_Current_PU_Is(owner_pu_st) || request == NULL ||
+        Current_PU_Info == NULL ||
+        PU_Info_proc_sym(Current_PU_Info) != owner_pu_st ||
+        request->pu_root != PU_Info_tree_ptr(Current_PU_Info) ||
+        request->containing_block == NULL ||
+        WN_operator(request->containing_block) != OPR_BLOCK ||
+        !DSL_IR_Block_Contains
+            (request->containing_block, request->replacement_definition) ||
+        !DSL_IR_Block_Contains
+            (request->containing_block, request->retiring_definition) ||
+        !DSL_IR_Definition_Precedes
+            (request->containing_block, request->replacement_definition,
+             request->retiring_definition))
+        return FALSE;
+
+    DSL_IR_VALUE_RECORD replacement;
+    DSL_IR_VALUE_RECORD retiring;
+    if (!DSL_IR_Image_Find_Definition_Value
+            (owner_pu_st, request->replacement_definition, &replacement) ||
+        !DSL_IR_Image_Find_Definition_Value
+            (owner_pu_st, request->retiring_definition, &retiring) ||
+        replacement.id != request->replacement_value_id ||
+        retiring.id != request->retiring_value_id ||
+        replacement.ty != retiring.ty ||
+        !DSL_Tensor_Has_Unique_Ownership(retiring.st))
+        return FALSE;
+
+    DSL_IR_NODE_RECORD retiring_node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD retiring_opcode;
+    if (!DSL_IR_Image_Get_Node
+            (retiring.producer_node_id, &retiring_node) ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+            (retiring_node.opcode_descriptor_id, &retiring_opcode) ||
+        retiring_opcode.logical_operator !=
+            request->expected_retiring_operator ||
+        retiring_opcode.version != request->expected_retiring_version ||
+        retiring_opcode.effect_model != DSL_EFFECT_MODEL_PURE ||
+        request->replacement_operand_ordinal >= retiring_node.operand_count)
+        return FALSE;
+    DSL_IR_VALUE_REFERENCE_RECORD replacement_reference;
+    if (!DSL_IR_Image_Get_Value_Reference
+            (retiring_node.first_operand_reference_id +
+             request->replacement_operand_ordinal,
+             &replacement_reference) ||
+        replacement_reference.value_id != replacement.id)
+        return FALSE;
+    WN *retiring_expression = WN_kid0(request->retiring_definition);
+    WN *replacement_operand = retiring_expression == NULL ||
+        request->replacement_operand_ordinal >=
+            (UINT32)WN_kid_count(retiring_expression) ? NULL :
+        WN_kid(retiring_expression, request->replacement_operand_ordinal);
+    if (replacement_operand == NULL ||
+        WN_operator(replacement_operand) != OPR_LDID ||
+        WN_st_idx(replacement_operand) != replacement.st ||
+        WN_ty(replacement_operand) != replacement.ty)
+        return FALSE;
+
+    for (UINT32 i = 1; i <= DSL_IR_Image_Value_Reference_Count(); ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        if (!DSL_IR_Image_Get_Value_Reference(i, &reference) ||
+            (reference.owner_node_id == retiring_node.id &&
+             reference.value_id == retiring.id))
+            return FALSE;
+    }
+
+    for (UINT32 i = 1; i <= DSL_Effect_Image_State_Effect_Count(); ++i) {
+        DSL_STATE_EFFECT_RECORD effect;
+        if (!DSL_Effect_Image_Get_State_Effect(i, &effect) ||
+            effect.owner_node_id == retiring_node.id)
+            return FALSE;
+    }
+    for (UINT32 i = 1; i <= DSL_Call_ABI_Image_Argument_Count(); ++i) {
+        DSL_CALL_ARGUMENT_RECORD argument;
+        if (!DSL_Call_ABI_Image_Get_Argument(i, &argument) ||
+            argument.argument_value_id == retiring.id)
+            return FALSE;
+    }
+
+    DSL_IR_RETIRE_USE_SCAN scan;
+    scan.retiring_st = retiring.st;
+    scan.retiring_definition = request->retiring_definition;
+    scan.retiring_seen = FALSE;
+    scan.valid = TRUE;
+    scan.definition_count = 0;
+    DSL_IR_Retire_Scan_Tree(request->containing_block, &scan);
+    if (!scan.valid || !scan.retiring_seen || scan.definition_count != 1 ||
+        DSL_IR_Retire_Has_Use_Outside_Block
+            (request->pu_root, request->containing_block, retiring.st))
+        return FALSE;
+
+    UINT32 region_uses = DSL_Region_Symbol_Use_Count
+                             (Current_PU_Info, retiring.st);
+    if (region_uses != 0 &&
+        !DSL_Region_Can_Redirect_Symbol
+             (Current_PU_Info, retiring.st, replacement.st))
+        return FALSE;
+
+    for (UINT32 i = 0; i < scan.reads.size(); ++i)
+        WN_st_idx(scan.reads[i]) = replacement.st;
+    if (region_uses != 0) {
+        BOOL redirected = DSL_Region_Redirect_Symbol
+                              (Current_PU_Info, retiring.st, replacement.st);
+        FmtAssert(redirected, ("preflighted REGION redirect failed"));
+    }
+    BOOL image_redirected = DSL_IR_Image_Redirect_And_Retire_Value
+        (replacement.id, retiring.id, request->replacement_operand_ordinal);
+    FmtAssert(image_redirected, ("preflighted DSL value redirect failed"));
+    WN *removed = WN_EXTRACT_FromBlock
+                      (request->containing_block,
+                       request->retiring_definition);
+    FmtAssert(removed == request->retiring_definition,
+              ("preflighted DSL definition retirement failed"));
+    WN_DELETE_Tree(removed);
+    FmtAssert(DSL_IR_Image_Validate(NULL) &&
+              DSL_Region_Verify_PU(Current_PU_Info, NULL),
+              ("retired DSL value failed postcondition"));
     return TRUE;
 }

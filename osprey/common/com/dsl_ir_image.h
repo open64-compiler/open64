@@ -14,6 +14,8 @@
 #include "targ_const.h"
 
 class WN;
+struct pu_info;
+typedef struct pu_info PU_Info;
 typedef INT32 WN_MAP;
 
 /*
@@ -49,6 +51,11 @@ typedef INT32 WN_MAP;
 #define DSL_PU_SOURCE_IDENTITY_RECORD_SIZE  48
 #define DSL_CALLSITE_METADATA_RECORD_SIZE   48
 
+#define DSL_CALL_ABI_IMAGE_MAGIC            0x44534142
+#define DSL_CALL_ABI_IMAGE_VERSION          1
+#define DSL_CALL_ABI_IMAGE_HEADER_SIZE      24
+#define DSL_CALL_ARGUMENT_RECORD_SIZE       32
+
 #define DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID 0
 #define DSL_IR_NODE_INVALID_ID              0
 #define DSL_IR_ATTRIBUTE_INVALID_ID         0
@@ -64,11 +71,14 @@ typedef UINT32 DSL_STATE_OBJECT_ID;
 typedef UINT32 DSL_STATE_EFFECT_ID;
 typedef UINT32 DSL_PU_SOURCE_IDENTITY_ID;
 typedef UINT32 DSL_CALLSITE_METADATA_ID;
+typedef UINT32 DSL_CALL_ARGUMENT_ID;
 
 #define DSL_STATE_OBJECT_INVALID_ID 0
 #define DSL_STATE_EFFECT_INVALID_ID 0
 #define DSL_PU_SOURCE_IDENTITY_INVALID_ID 0
 #define DSL_CALLSITE_METADATA_INVALID_ID 0
+#define DSL_CALL_ARGUMENT_INVALID_ID 0
+#define DSL_CALL_ARGUMENT_INVALID_ORDINAL ((UINT32)-1)
 
 typedef struct {
     UINT32 magic;
@@ -101,6 +111,25 @@ typedef struct {
     UINT32 source_call_ordinal;
     UINT32 flags;
 } DSL_CALLSITE_METADATA_RECORD;
+
+typedef struct {
+    UINT32 magic;
+    UINT32 version;
+    UINT32 argument_count;
+    UINT32 flags;
+    UINT32 reserved0;
+    UINT32 reserved1;
+} DSL_CALL_ABI_IMAGE_HEADER;
+
+typedef struct {
+    DSL_CALL_ARGUMENT_ID id;
+    DSL_CALLSITE_METADATA_ID callsite_id;
+    DSL_IR_VALUE_ID argument_value_id;
+    UINT32 actual_ordinal;
+    UINT32 callee_formal_ordinal;
+    UINT32 flags;
+    STR_IDX semantic_role;
+} DSL_CALL_ARGUMENT_RECORD;
 
 typedef enum {
     DSL_IR_IMAGE_RECORD_UNKNOWN = 0,
@@ -173,6 +202,14 @@ typedef struct {
 } DSL_IR_NODE_RECORD;
 
 typedef enum {
+    DSL_IR_NODE_FLAG_NONE = 0,
+    DSL_IR_NODE_FLAG_RETIRED = 0x00000001
+} DSL_IR_NODE_FLAG;
+
+#define DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT 16
+#define DSL_IR_NODE_REDIRECT_ORDINAL_MASK  0xffff0000
+
+typedef enum {
     DSL_IR_ATTRIBUTE_VALUE_UNKNOWN = 0,
     DSL_IR_ATTRIBUTE_VALUE_STRING = 1,
     DSL_IR_ATTRIBUTE_VALUE_SIGNED = 2,
@@ -212,6 +249,11 @@ typedef struct {
     STR_IDX metadata;
 } DSL_IR_VALUE_RECORD;
 
+typedef enum {
+    DSL_IR_VALUE_FLAG_NONE = 0,
+    DSL_IR_VALUE_FLAG_REDIRECTED = 0x00000001
+} DSL_IR_VALUE_FLAG;
+
 /*
  * Runtime-only borrowed view of one external tensor constant. The underlying
  * facts remain in the existing DSL value, ST metadata, and canonical TY
@@ -236,6 +278,11 @@ typedef struct {
     const char *layout;
 } DSL_IR_EXTERNAL_TENSOR_REFERENCE;
 
+typedef enum {
+    DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_ONLY = 0,
+    DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_OR_IMPLICIT_ZERO = 1
+} DSL_IR_MATERIALIZE_SOURCE_POLICY;
+
 /*
  * Runtime-only request for materializing converted side-file tensor values.
  * All requests are preflighted before any symbol, WN, or image table changes.
@@ -259,6 +306,7 @@ typedef struct {
     UINT64 byte_offset;
     UINT64 byte_length;
     const char *checksum;
+    UINT32 source_policy;
 } DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST;
 
 typedef struct {
@@ -266,6 +314,10 @@ typedef struct {
     ST_IDX st;
     WN *definition;
 } DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT;
+
+extern void DSL_IR_External_Tensor_Materialization_Request_Init
+                                (DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST
+                                     *request);
 
 typedef struct {
     DSL_IR_VALUE_REFERENCE_ID id;
@@ -311,6 +363,18 @@ typedef struct {
     STR_IDX payload;
     UINT32 result_value_kind;
 } DSL_IR_NATIVE_VALUE_REWRITE_REQUEST;
+
+typedef struct {
+    WN *pu_root;
+    WN *containing_block;
+    WN *replacement_definition;
+    DSL_IR_VALUE_ID replacement_value_id;
+    WN *retiring_definition;
+    DSL_IR_VALUE_ID retiring_value_id;
+    DSL_OPERATOR expected_retiring_operator;
+    UINT16 expected_retiring_version;
+    UINT16 replacement_operand_ordinal;
+} DSL_IR_NATIVE_VALUE_RETIRE_REQUEST;
 
 typedef enum {
     DSL_STATE_KIND_UNKNOWN = 0,
@@ -388,6 +452,8 @@ extern BOOL DSL_Call_Image_Find_PU_Identity
 extern BOOL DSL_Call_Image_Find_Callsite
                                 (const WN *call,
                                  DSL_CALLSITE_METADATA_RECORD *record);
+extern const WN *DSL_Call_Image_Get_Call_WN
+                                (DSL_CALLSITE_METADATA_ID id);
 extern UINT32 DSL_Call_Image_PU_Identity_Count (void);
 extern UINT32 DSL_Call_Image_Callsite_Count (void);
 extern BOOL DSL_Call_Image_Get_PU_Identity
@@ -401,6 +467,38 @@ extern BOOL DSL_Call_Image_Finalize_PU (ST_IDX owner_pu_st, WN_MAP off_map);
 extern BOOL DSL_Call_Image_Load_PU (ST_IDX owner_pu_st,
                                     const void *tree_base,
                                     UINT64 tree_size);
+
+extern void DSL_Call_ABI_Image_Get_Header (DSL_CALL_ABI_IMAGE_HEADER *header);
+extern void DSL_Call_ABI_Image_Reset (void);
+extern BOOL DSL_Call_ABI_Image_Has_Records (void);
+extern BOOL DSL_Call_ABI_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_Call_ABI_Image_Load_Mapped (const void *section_base,
+                                            UINT64 section_size,
+                                            FILE *diagnostic);
+extern DSL_CALL_ARGUMENT_ID DSL_Call_ABI_Image_Add_Argument
+                                (const WN *call,
+                                 const DSL_CALL_ARGUMENT_RECORD *record);
+extern UINT32 DSL_Call_ABI_Image_Argument_Count (void);
+extern BOOL DSL_Call_ABI_Image_Get_Argument
+                                (DSL_CALL_ARGUMENT_ID id,
+                                 DSL_CALL_ARGUMENT_RECORD *record);
+extern BOOL DSL_Call_ABI_Image_Find_Argument
+                                (const WN *call, UINT32 actual_ordinal,
+                                 DSL_CALL_ARGUMENT_RECORD *record);
+extern BOOL DSL_Call_ABI_Image_Find_Argument_By_Id
+                                (DSL_CALLSITE_METADATA_ID callsite_id,
+                                 UINT32 actual_ordinal,
+                                 DSL_CALL_ARGUMENT_RECORD *record);
+extern UINT32 DSL_Call_ABI_Image_Callee_Formal_Count
+                                (ST_IDX callee_pu_st,
+                                 UINT32 callee_formal_ordinal);
+extern BOOL DSL_Call_ABI_Image_Get_Callee_Formal_Argument
+                                (ST_IDX callee_pu_st,
+                                 UINT32 callee_formal_ordinal,
+                                 UINT32 index,
+                                 DSL_CALL_ARGUMENT_RECORD *record);
+extern BOOL DSL_Call_ABI_Image_Validate_PU
+                                (PU_Info *pu, FILE *diagnostic);
 
 extern void DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header);
 extern void DSL_Effect_Image_Reset (void);
@@ -481,6 +579,13 @@ extern BOOL DSL_IR_Rewrite_Native_Value
                                  DSL_IR_VALUE_ID value_id,
                                  const DSL_IR_NATIVE_VALUE_REWRITE_REQUEST
                                      *request);
+extern BOOL DSL_IR_Redirect_And_Retire_Native_Value
+                                (ST_IDX owner_pu_st,
+                                 const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST
+                                     *request);
+extern BOOL DSL_IR_Image_Value_Redirect_Target
+                                (DSL_IR_VALUE_ID value_id,
+                                 DSL_IR_VALUE_ID *target_value_id);
 extern BOOL DSL_IR_Image_Find_Value
                                 (ST_IDX st,
                                  const char *name,
@@ -493,6 +598,7 @@ extern BOOL DSL_IR_Image_Find_PU_Value
 
 extern UINT32 DSL_IR_Image_Opcode_Descriptor_Count (void);
 extern UINT32 DSL_IR_Image_Node_Count (void);
+extern UINT32 DSL_IR_Image_Executable_Node_Count (void);
 extern UINT32 DSL_IR_Image_Attribute_Count (void);
 extern UINT32 DSL_IR_Image_Value_Count (void);
 extern UINT32 DSL_IR_Image_Value_Reference_Count (void);
