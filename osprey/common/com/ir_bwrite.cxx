@@ -101,6 +101,7 @@
 #include "ir_bcom.h"
 #include "dsl_ir_image.h"
 #include "dsl_fhe.h"
+#include "dsl_fhe_plan.h"
 #include "dsl_region.h"
 #include "ir_bread.h"
 #include "tracing.h"                /* TEMPORARY FOR ROBERT'S DEBUGGING */
@@ -973,6 +974,52 @@ WN_write_dsl_fhe_image (Output_File *fl)
     cur_section->shdr.sh_addralign = sizeof(mINT64);
 }
 
+void
+WN_write_dsl_fhe_plan_image (Output_File *fl)
+{
+    if (!DSL_FHE_Plan_Image_Has_Records())
+        return;
+
+    FmtAssert(DSL_FHE_Plan_Image_Validate(stderr),
+              ("invalid FHE plan image tables"));
+    Section *cur_section = get_section
+                               (WT_DSL_FHE_PLAN,
+                                MIPS_WHIRL_DSL_FHE_PLAN, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+
+    DSL_FHE_PLAN_IMAGE_HEADER header;
+    DSL_FHE_Plan_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+    for (UINT32 i = 1; i <= header.disposition_count; ++i) {
+        DSL_FHE_CONVERSION_DISPOSITION_RECORD record;
+        FmtAssert(DSL_FHE_Plan_Get_Conversion_Disposition(i, &record),
+                  ("missing FHE conversion disposition %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.approximation_count; ++i) {
+        DSL_FHE_APPROXIMATION_CONTRACT_RECORD record;
+        FmtAssert(DSL_FHE_Plan_Get_Approximation_Contract(i, &record),
+                  ("missing FHE approximation contract %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.ckks_value_state_count; ++i) {
+        DSL_FHE_CKKS_VALUE_STATE_RECORD record;
+        FmtAssert(DSL_FHE_Plan_Get_CKKS_Value_State(i, &record),
+                  ("missing FHE CKKS value state %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.bn_fold_count; ++i) {
+        DSL_FHE_BN_FOLD_PROVENANCE_RECORD record;
+        FmtAssert(DSL_FHE_Plan_Get_BN_Fold_Provenance(i, &record),
+                  ("missing FHE BatchNorm fold provenance %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
 
 /*
  * Write out the debug symbol table (dst).  The DST gets its own Elf
@@ -1798,6 +1845,7 @@ Write_Global_Info (PU_Info *pu_tree)
     WN_write_dsl_effect_image(ir_output);
     WN_write_dsl_callsite_image(ir_output);
     WN_write_dsl_fhe_image(ir_output);
+    WN_write_dsl_fhe_plan_image(ir_output);
 
     WN_write_strtab(Index_To_Str (0), STR_Table_Size (), ir_output);
 

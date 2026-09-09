@@ -157,6 +157,7 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
+LDIRT += fhe_convert_contract_test fhe_convert_contract_test.o fhe_convert.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
@@ -188,8 +189,11 @@ COMMON_COM_CXX_SRC =	\
 	dsl_contract.cxx \
         dsl_domain.cxx	\
         dsl_fhe.cxx \
+        dsl_fhe_plan.cxx \
+        dsl_fhe_plan_print.cxx \
         dsl_fhe_print.cxx \
         dsl_ir_image.cxx \
+        dsl_ir_rewrite.cxx \
         dsl_ir_print.cxx \
         dsl_region.cxx \
 	dsl_memory_behavior.cxx \
@@ -304,6 +308,18 @@ dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 
 dsl_lower_contract_test.o: \
 	$(BE_VHO_DIR)/tests/dsl_lower_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_convert_contract_test: $(OBJECTS) controls.o fhe_convert.o \
+		fhe_convert_contract_test.o
+	$(link.c++f) -o $@ fhe_convert_contract_test.o controls.o \
+		fhe_convert.o $(OBJECTS) $(LDFLAGS)
+
+fhe_convert.o: $(BE_VHO_DIR)/fhe_convert.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_convert_contract_test.o: \
+	$(BE_VHO_DIR)/tests/fhe_convert_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_wopt_bridge_test: $(OBJECTS) controls.o dsl_wopt_bridge_test.o \

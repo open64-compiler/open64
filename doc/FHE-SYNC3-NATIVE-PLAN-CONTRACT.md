@@ -1,7 +1,6 @@
 # Open64 FHE SYNC-3 Native Planning-Image Contract
 
-Status: blocked main/common physical contract for review before SYNC-3 source
-coding
+Status: Stage 3 VHO phase substrate implemented after PR #110, pending review
 
 Semantic authority:
 
@@ -428,6 +427,57 @@ DSL_Builder_Record_FHE_BN_Fold(
     const DSL_FHE_BN_FOLD_INFO *info);
 ```
 
+The producer-runtime input structures are pointer-bearing API objects only;
+they are resolved immediately and are never copied into the mapped image:
+
+```c++
+typedef struct {
+    UINT32 disposition;
+    UINT32 wrapper_version;
+    const char *wrapper_name;
+    DSL_FHE_APPROXIMATION_CONTRACT_ID approximation_contract_id;
+    DSL_FHE_CKKS_VALUE_STATE_ID result_ckks_value_state_id;
+    DSL_FHE_BN_FOLD_PROVENANCE_ID first_bn_fold_id;
+    UINT32 bn_fold_count;
+    UINT32 flags;
+} DSL_FHE_CONVERSION_DISPOSITION_INFO;
+
+typedef struct {
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encryption_descriptor_id;
+    UINT32 state_version;
+    UINT32 scheme;
+    UINT32 value_class;
+    INT32 level;
+    INT32 scale_bits;
+    INT32 component_count;
+    INT32 precision_bits;
+    UINT32 slot_count;
+    UINT32 alignment_group;
+    const char *encrypted_layout_name;
+    UINT32 pending_actions;
+    UINT32 pending_bootstrap_reason;
+} DSL_FHE_CKKS_VALUE_STATE_INFO;
+
+typedef struct {
+    DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id;
+    DSL_CALLSITE_METADATA_ID context_callsite_id;
+    DSL_BUILDER_VALUE source_conv_weight;
+    DSL_BUILDER_VALUE source_conv_bias;
+    DSL_BUILDER_VALUE source_bn_scale;
+    DSL_BUILDER_VALUE source_bn_bias;
+    DSL_BUILDER_VALUE source_bn_mean;
+    DSL_BUILDER_VALUE source_bn_variance;
+    TCON_IDX folded_weight_tcon;
+    TCON_IDX folded_bias_tcon;
+    UINT32 flags;
+} DSL_FHE_BN_FOLD_INFO;
+```
+
+`source_conv_bias` may be null only with
+`DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS`; the remaining source values must be
+registered builder values owned by the same PU as the convolution and
+BatchNorm definitions.
+
 After mapped-image reopen, compiler phases use stable DSL image IDs. A common
 accessor resolves a physical definition in its PU context without requiring a
 builder registry or comparing ambiguous PU-local `ST_IDX` values:
@@ -573,6 +623,31 @@ ciphertext bytes, or backend object state.
    `VHO_DSL_Lower_Driver()`.
 6. Hand the merged APIs to the FHE task for semantic gatekeeper, BatchNorm
    folding, conversion reports, and retained ResNet-20 artifacts.
+
+Stage 5 is implemented by the Stage 3 infrastructure PR. The public option
+surface is:
+
+- `-FHE:convert=on|off`, enabled by default and a no-op when the artifact has
+  no FHE records;
+- `-FHE:strict_o0=on|off`, enabled by default so the conversion pass can
+  distinguish mandatory semantic adaptation from optional optimization;
+- `-FHE:dump_before=on|off`; and
+- `-FHE:dump_after=on|off`.
+
+`VHO_FHE_Convert_Program_Unit()` performs the structural DSL/FHE/FHE-plan
+gate, invokes the registered semantic gatekeeper, invokes the registered
+conversion pass, then repeats structural and semantic verification. The
+backend-facing `VHO_FHE_Convert_Driver()` wraps that checked service and owns
+the optional before/after WHIRL trace. `VHO_FHE_Convert_Register_*` APIs let
+the FHE task install semantic behavior without editing backend phase order or
+mapped-image services. A registered pass may inspect its supplied WN root but
+must use the reviewed DSL/FHE lookup and rewrite APIs for persistent changes;
+it must not mutate WN, ST, TY, or mapped-image table fields directly.
+
+Until the FHE semantic implementation is linked, enabling conversion for an
+artifact that contains FHE records fails with `CFHE-CONVERT-001` instead of
+silently lowering away FHE semantics. Non-FHE and legacy artifacts remain
+unchanged even though the option defaults to enabled.
 
 No bootstrap insertion, SIHE/CKKS arithmetic opcode allocation,
 `fhe.cnn.poly_activation` emission, OpenFHE/runtime lowering, or generated-C

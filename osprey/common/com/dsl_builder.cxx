@@ -21,7 +21,9 @@
 
 #include "dsl_builder.h"
 #include "dsl_fhe.h"
+#include "dsl_fhe_plan.h"
 #include "dsl_gatekeeper.h"
+#include "dsl_memory_behavior.h"
 #include "dsl_simp.h"
 #include "dsl_tensor_fold.h"
 #include "config.h"
@@ -138,6 +140,7 @@ DSL_Builder_Reset_Program (void)
     DSL_builder_call_registry.clear();
     DSL_IR_Image_Reset();
     DSL_FHE_Image_Reset();
+    DSL_FHE_Plan_Image_Reset();
     DSL_Region_Reset();
 }
 
@@ -2207,13 +2210,7 @@ DSL_Builder_Create_Symbol
 BOOL
 DSL_Builder_Set_Tensor_Unique_Ownership (ST_IDX st)
 {
-    if (ST_IDX_index(st) == 0 ||
-        !TY_is_tensor_extension(ST_type(St_Table[st])))
-        return FALSE;
-
-    ST_tensor_bind_attribute
-        (st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS), "true");
-    return TRUE;
+    return DSL_Tensor_Set_Unique_Ownership(st);
 }
 
 ST_IDX
@@ -2223,30 +2220,14 @@ DSL_Builder_Create_Tensor_Result_Symbol
          ST_SCLASS storage_class,
          ST_EXPORT export_class)
 {
-    if (!TY_is_tensor_extension(ty))
-        return ST_IDX_ZERO;
-
-    ST_IDX st = DSL_Builder_Create_Symbol
-                    (name, ty, CLASS_VAR, storage_class, export_class);
-    Set_ST_is_temp_var(St_Table[st]);
-    if (!DSL_Builder_Set_Tensor_Unique_Ownership(st))
-        return ST_IDX_ZERO;
-
-    return st;
+    return DSL_Tensor_Create_Result_Symbol
+               (name, ty, storage_class, export_class);
 }
 
 BOOL
 DSL_Builder_Tensor_Has_Unique_Ownership (ST_IDX st)
 {
-    const char *value;
-
-    if (ST_IDX_index(st) == 0 ||
-        !TY_is_tensor_extension(ST_type(St_Table[st])))
-        return FALSE;
-
-    value = ST_tensor_attribute
-                (st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS));
-    return value != NULL && strcmp(value, "true") == 0;
+    return DSL_Tensor_Has_Unique_Ownership(st);
 }
 
 static BOOL
@@ -3110,6 +3091,240 @@ DSL_Builder_Get_Value_Image_Id (DSL_BUILDER_VALUE value)
     return record == NULL ? DSL_IR_VALUE_INVALID_ID : record->image_value_id;
 }
 
+DSL_FHE_TENSOR_BINDING_ID
+DSL_Builder_Bind_FHE_Tensor_Descriptor
+        (TY_IDX tensor_ty,
+         DSL_FHE_ENCRYPTION_DESCRIPTOR_ID descriptor_id,
+         UINT32 flags)
+{
+    return DSL_FHE_Intern_Tensor_Binding(tensor_ty, descriptor_id, flags);
+}
+
+DSL_FHE_ENTRY_CONTRACT_ID
+DSL_Builder_Attach_FHE_Entry_Contract
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         const DSL_FHE_ENTRY_CONTRACT_INFO *info)
+{
+    if (pu == NULL || info == NULL)
+        return DSL_FHE_ENTRY_CONTRACT_INVALID_ID;
+    DSL_FHE_ENTRY_CONTRACT_RECORD record;
+    DSL_FHE_Entry_Contract_Record_Init(&record);
+    record.owner_pu_st = PU_Info_proc_sym(pu);
+    record.config_id = info->config_id;
+    record.input_count = info->input_count;
+    record.output_count = info->output_count;
+    record.parameter_count = info->parameter_count;
+    record.encrypted_io_policy = info->encrypted_io_policy;
+    record.parameter_policy = info->parameter_policy;
+    record.flags = info->flags;
+    return DSL_FHE_Add_Entry_Contract(&record);
+}
+
+DSL_FHE_ENTRY_VALUE_ID
+DSL_Builder_Declare_FHE_Entry_Value
+        (DSL_FHE_ENTRY_CONTRACT_ID entry_contract_id,
+         DSL_BUILDER_VALUE value,
+         UINT32 ordinal,
+         DSL_FHE_ENTRY_VALUE_ROLE role,
+         const DSL_FHE_ENTRY_VALUE_INFO *info)
+{
+    DSL_BUILDER_VALUE_RECORD *value_record =
+        DSL_Builder_Find_Value_Record(value);
+    DSL_FHE_ENTRY_CONTRACT_RECORD entry;
+    DSL_FHE_TENSOR_BINDING_RECORD binding;
+    if (value_record == NULL || info == NULL ||
+        !DSL_FHE_Get_Entry_Contract(entry_contract_id, &entry) ||
+        !DSL_FHE_Find_Tensor_Binding
+             (value_record->result_ty, info->encryption_descriptor_id,
+              &binding))
+        return DSL_FHE_ENTRY_VALUE_INVALID_ID;
+
+    UINT32 role_count = 0;
+    for (UINT32 i = 0; i < entry.entry_value_count; ++i) {
+        DSL_FHE_ENTRY_VALUE_RECORD existing;
+        if (!DSL_FHE_Get_Entry_Value
+                 (entry.first_entry_value_id + i, &existing))
+            return DSL_FHE_ENTRY_VALUE_INVALID_ID;
+        if (existing.role == (UINT32)role)
+            ++role_count;
+    }
+    UINT32 expected_role_count = role == DSL_FHE_ENTRY_VALUE_INPUT ?
+                                 entry.input_count :
+                                 role == DSL_FHE_ENTRY_VALUE_OUTPUT ?
+                                 entry.output_count :
+                                 role == DSL_FHE_ENTRY_VALUE_PARAMETER ?
+                                 entry.parameter_count : 0;
+    if (expected_role_count == 0 || role_count >= expected_role_count)
+        return DSL_FHE_ENTRY_VALUE_INVALID_ID;
+
+    DSL_FHE_ENTRY_VALUE_ID next_id = DSL_FHE_Entry_Value_Count() + 1;
+    if (entry.entry_value_count != 0 &&
+        next_id != entry.first_entry_value_id + entry.entry_value_count)
+        return DSL_FHE_ENTRY_VALUE_INVALID_ID;
+
+    DSL_FHE_ENTRY_VALUE_RECORD record;
+    DSL_FHE_Entry_Value_Record_Init(&record);
+    record.entry_contract_id = entry_contract_id;
+    record.value_id = value_record->image_value_id;
+    record.ordinal = ordinal;
+    record.role = role;
+    record.value_class = info->value_class;
+    record.encryption_descriptor_id = info->encryption_descriptor_id;
+    record.flags = info->flags;
+    DSL_FHE_ENTRY_VALUE_ID id = DSL_FHE_Add_Entry_Value(&record);
+    DSL_FHE_ENTRY_VALUE_ID first_id = entry.entry_value_count == 0 ?
+                                      id : entry.first_entry_value_id;
+    if (id == DSL_FHE_ENTRY_VALUE_INVALID_ID ||
+        !DSL_FHE_Set_Entry_Value_Range
+             (entry_contract_id, first_id, entry.entry_value_count + 1))
+        return DSL_FHE_ENTRY_VALUE_INVALID_ID;
+    return id;
+}
+
+BOOL
+DSL_Builder_Get_FHE_Value_Encryption_Descriptor
+        (DSL_BUILDER_VALUE value,
+         DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *record)
+{
+    DSL_BUILDER_VALUE_RECORD *value_record =
+        DSL_Builder_Find_Value_Record(value);
+    if (value_record == NULL)
+        return FALSE;
+    for (UINT32 i = 1; i <= DSL_FHE_Entry_Value_Count(); ++i) {
+        DSL_FHE_ENTRY_VALUE_RECORD entry_value;
+        if (!DSL_FHE_Get_Entry_Value(i, &entry_value))
+            return FALSE;
+        if (entry_value.value_id == value_record->image_value_id)
+            return DSL_FHE_Get_Encryption_Descriptor
+                       (entry_value.encryption_descriptor_id, record);
+    }
+    return FALSE;
+}
+
+DSL_FHE_CONVERSION_DISPOSITION_ID
+DSL_Builder_Record_FHE_Conversion_Disposition
+        (DSL_BUILDER_VALUE source_value,
+         const DSL_FHE_CONVERSION_DISPOSITION_INFO *info)
+{
+    DSL_BUILDER_VALUE_RECORD *source =
+        DSL_Builder_Find_Value_Record(source_value);
+    DSL_IR_VALUE_RECORD image_value;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD record;
+
+    if (source == NULL || source->pu == NULL || info == NULL ||
+        !DSL_IR_Image_Get_Value(source->image_value_id, &image_value) ||
+        image_value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+        return DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID;
+
+    DSL_FHE_Conversion_Disposition_Record_Init(&record);
+    record.source_node_id = image_value.producer_node_id;
+    record.result_value_id = image_value.id;
+    record.disposition = info->disposition;
+    record.owner_pu_st = PU_Info_proc_sym(source->pu);
+    record.wrapper_version = info->wrapper_version;
+    if (info->wrapper_name != NULL && info->wrapper_name[0] != '\0')
+        record.wrapper_name = Save_Str(info->wrapper_name);
+    record.approximation_contract_id = info->approximation_contract_id;
+    record.result_ckks_value_state_id = info->result_ckks_value_state_id;
+    record.first_bn_fold_id = info->first_bn_fold_id;
+    record.bn_fold_count = info->bn_fold_count;
+    record.flags = info->flags;
+    return DSL_FHE_Plan_Add_Conversion_Disposition(&record);
+}
+
+DSL_FHE_CKKS_VALUE_STATE_ID
+DSL_Builder_Bind_FHE_Value_CKKS_State
+        (DSL_BUILDER_VALUE value,
+         const DSL_FHE_CKKS_VALUE_STATE_INFO *info)
+{
+    DSL_BUILDER_VALUE_RECORD *source = DSL_Builder_Find_Value_Record(value);
+    DSL_FHE_CKKS_VALUE_STATE_RECORD record;
+
+    if (source == NULL || info == NULL)
+        return DSL_FHE_CKKS_VALUE_STATE_INVALID_ID;
+
+    DSL_FHE_CKKS_Value_State_Record_Init(&record);
+    record.value_id = source->image_value_id;
+    record.encryption_descriptor_id = info->encryption_descriptor_id;
+    record.state_version = info->state_version;
+    record.scheme = info->scheme;
+    record.value_class = info->value_class;
+    record.level = info->level;
+    record.scale_bits = info->scale_bits;
+    record.component_count = info->component_count;
+    record.precision_bits = info->precision_bits;
+    record.slot_count = info->slot_count;
+    record.alignment_group = info->alignment_group;
+    if (info->encrypted_layout_name != NULL &&
+        info->encrypted_layout_name[0] != '\0')
+        record.encrypted_layout_name =
+            Save_Str(info->encrypted_layout_name);
+    record.pending_actions = info->pending_actions;
+    record.pending_bootstrap_reason = info->pending_bootstrap_reason;
+    return DSL_FHE_Plan_Add_CKKS_Value_State(&record);
+}
+
+DSL_FHE_BN_FOLD_PROVENANCE_ID
+DSL_Builder_Record_FHE_BN_Fold
+        (DSL_BUILDER_VALUE conv_value,
+         DSL_BUILDER_VALUE batch_norm_value,
+         const DSL_FHE_BN_FOLD_INFO *info)
+{
+    DSL_BUILDER_VALUE_RECORD *conv =
+        DSL_Builder_Find_Value_Record(conv_value);
+    DSL_BUILDER_VALUE_RECORD *batch_norm =
+        DSL_Builder_Find_Value_Record(batch_norm_value);
+    DSL_BUILDER_VALUE inputs[] = {
+        info == NULL ? NULL : info->source_conv_weight,
+        info == NULL ? NULL : info->source_conv_bias,
+        info == NULL ? NULL : info->source_bn_scale,
+        info == NULL ? NULL : info->source_bn_bias,
+        info == NULL ? NULL : info->source_bn_mean,
+        info == NULL ? NULL : info->source_bn_variance
+    };
+    DSL_IR_VALUE_ID input_ids[6];
+    DSL_IR_VALUE_RECORD conv_image;
+    DSL_IR_VALUE_RECORD batch_norm_image;
+    DSL_FHE_BN_FOLD_PROVENANCE_RECORD record;
+
+    if (conv == NULL || batch_norm == NULL || info == NULL ||
+        conv->pu == NULL || conv->pu != batch_norm->pu ||
+        !DSL_IR_Image_Get_Value(conv->image_value_id, &conv_image) ||
+        !DSL_IR_Image_Get_Value(batch_norm->image_value_id,
+                                &batch_norm_image))
+        return DSL_FHE_BN_FOLD_PROVENANCE_INVALID_ID;
+
+    for (UINT32 i = 0; i < 6; ++i) {
+        DSL_BUILDER_VALUE_RECORD *input;
+        if (i == 1 && inputs[i] == NULL &&
+            (info->flags & DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS) != 0) {
+            input_ids[i] = DSL_IR_VALUE_INVALID_ID;
+            continue;
+        }
+        input = DSL_Builder_Find_Value_Record(inputs[i]);
+        if (input == NULL || input->pu != conv->pu)
+            return DSL_FHE_BN_FOLD_PROVENANCE_INVALID_ID;
+        input_ids[i] = input->image_value_id;
+    }
+
+    DSL_FHE_BN_Fold_Provenance_Record_Init(&record);
+    record.owner_pu_st = PU_Info_proc_sym(conv->pu);
+    record.conv_node_id = conv_image.producer_node_id;
+    record.batch_norm_node_id = batch_norm_image.producer_node_id;
+    record.context_pu_identity_id = info->context_pu_identity_id;
+    record.context_callsite_id = info->context_callsite_id;
+    record.source_conv_weight_value_id = input_ids[0];
+    record.source_conv_bias_value_id = input_ids[1];
+    record.source_bn_scale_value_id = input_ids[2];
+    record.source_bn_bias_value_id = input_ids[3];
+    record.source_bn_mean_value_id = input_ids[4];
+    record.source_bn_variance_value_id = input_ids[5];
+    record.folded_weight_tcon = info->folded_weight_tcon;
+    record.folded_bias_tcon = info->folded_bias_tcon;
+    record.flags = info->flags;
+    return DSL_FHE_Plan_Add_BN_Fold_Provenance(&record);
+}
+
 BOOL
 DSL_Builder_Begin_Program (void)
 {
@@ -3881,6 +4096,10 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
         }
     }
     if (!DSL_FHE_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++gatekeeper_result.error_count;
+    }
+    if (!DSL_FHE_Plan_Image_Validate(diagnostic)) {
         valid = FALSE;
         ++gatekeeper_result.error_count;
     }

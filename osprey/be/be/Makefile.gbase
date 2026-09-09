@@ -309,6 +309,7 @@ BE_REGION_CXX_SRCS = \
 BE_VHO_CXX_SRCS = \
   dsl_lower.cxx          \
   dsl_opt.cxx            \
+  fhe_convert.cxx        \
   f90_lower.cxx           \
   f90_lower_dep.cxx     \
   vho_lower.cxx		\
@@ -321,7 +322,9 @@ COMMON_COM_CXX_SRCS = \
   dsl_domain.cxx       \
   dsl_gatekeeper.cxx   \
   dsl_fhe.cxx          \
+  dsl_fhe_plan.cxx     \
   dsl_ir_image.cxx     \
+  dsl_ir_rewrite.cxx   \
   dsl_region.cxx       \
   dsl_memory_behavior.cxx \
   dsl_opcode.cxx       \

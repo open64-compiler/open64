@@ -34,6 +34,7 @@
 #include "dsl_builder.h"
 #include "dsl_contract.h"
 #include "dsl_fhe.h"
+#include "dsl_fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_simp.h"
@@ -4386,6 +4387,266 @@ Check_Tensor_TCON_Mapped_Image(void)
 }
 
 static int
+Check_FHE_SYNC3_Native_Rewrite(void)
+{
+    const char *artifact =
+        getenv("OPEN64_DSL_FHE_SYNC3_REWRITE_ARTIFACT");
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_PROGRAM_UNIT first_pu;
+    DSL_BUILDER_PROGRAM_UNIT second_pu;
+    DSL_BUILDER_VALUE first_input[2];
+    DSL_BUILDER_VALUE second_input[2];
+    DSL_BUILDER_VALUE first_add;
+    DSL_BUILDER_VALUE second_add;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE add_attr;
+    DSL_IR_ATTRIBUTE_RECORD image_attr;
+    DSL_IR_NATIVE_VALUE_REWRITE_REQUEST rewrite;
+    DSL_IR_VALUE_RECORD first_value;
+    DSL_IR_VALUE_RECORD second_value;
+    DSL_IR_VALUE_RECORD observed_value;
+    DSL_IR_NODE_RECORD node_before;
+    DSL_IR_NODE_RECORD node_after;
+    DSL_LOGICAL_OPCODE logical_opcode;
+    const WN *operand_templates[2];
+    DSL_IR_VALUE_ID operand_value_ids[2];
+    WN *expression_before;
+    TY_IDX tensor_ty;
+    UINT32 opcode_count;
+    UINT32 node_count;
+    UINT32 value_count;
+    UINT32 reference_count;
+    UINT32 attribute_count;
+    char diagnostic[4096];
+    int failed = 0;
+#define FHE_SYNC3_REWRITE_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "FHE SYNC-3 rewrite check failed: %s\n", \
+                    message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    FHE_SYNC3_REWRITE_CHECK(DSL_Builder_Begin_Program(),
+                            "program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "row_major";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("fhe_sync3_rewrite_f32_2x2",
+                     MTYPE_To_TY(MTYPE_F4), &descriptor);
+
+    first_pu = DSL_Builder_Create_Minimal_PU("fhe_rewrite_first");
+    UINT32 first_file = DSL_Builder_Register_Source_File(first_pu, __FILE__);
+    first_input[0] = DSL_Builder_Create_Model_Input
+                         ("operand0", tensor_ty, 0);
+    first_input[1] = DSL_Builder_Create_Model_Input
+                         ("operand1", tensor_ty, 1);
+    add_attr.name = "attr.broadcast_rule";
+    add_attr.value = "none";
+    first_add = DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                     DSL_OPCODE_COMMON_ADD, 1),
+                     1, first_input, 2, &add_attr, 1,
+                     "shared_result", tensor_ty);
+    memset(&position, 0, sizeof(position));
+    position.file_id = first_file;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    FHE_SYNC3_REWRITE_CHECK(first_pu != NULL && first_file != 0,
+                            "first PU and source file construction");
+    FHE_SYNC3_REWRITE_CHECK(first_input[0] != NULL,
+                            "first PU operand0 construction");
+    FHE_SYNC3_REWRITE_CHECK(first_input[1] != NULL,
+                            "first PU operand1 construction");
+    FHE_SYNC3_REWRITE_CHECK(first_add != NULL,
+                            "first PU add construction");
+    if (failed)
+        return failed;
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Set_Value_Source_Position(first_add, &position),
+         "first PU result source position");
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Append_PU_Value(first_pu, first_input[0]) &&
+         DSL_Builder_Append_PU_Value(first_pu, first_input[1]) &&
+         DSL_Builder_Append_PU_Value(first_pu, first_add),
+         "first PU value materialization");
+    if (failed)
+        return failed;
+
+    second_pu = DSL_Builder_Create_Minimal_PU("fhe_rewrite_second");
+    UINT32 second_file = DSL_Builder_Register_Source_File(second_pu, __FILE__);
+    second_input[0] = DSL_Builder_Create_Model_Input
+                          ("operand0", tensor_ty, 0);
+    second_input[1] = DSL_Builder_Create_Model_Input
+                          ("operand1", tensor_ty, 1);
+    second_add = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                      DSL_OPCODE_COMMON_ADD, 1),
+                      1, second_input, 2, &add_attr, 1,
+                      "shared_result", tensor_ty);
+    position.file_id = second_file;
+    position.line = __LINE__ + 1;
+    FHE_SYNC3_REWRITE_CHECK(second_pu != NULL && second_file != 0,
+                            "second PU and source file construction");
+    FHE_SYNC3_REWRITE_CHECK(second_input[0] != NULL,
+                            "second PU operand0 construction");
+    FHE_SYNC3_REWRITE_CHECK(second_input[1] != NULL,
+                            "second PU operand1 construction");
+    FHE_SYNC3_REWRITE_CHECK(second_add != NULL,
+                            "second PU add construction");
+    if (failed)
+        return failed;
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Set_Value_Source_Position(second_add, &position),
+         "second PU result source position");
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Append_PU_Value(second_pu, second_input[0]) &&
+         DSL_Builder_Append_PU_Value(second_pu, second_input[1]) &&
+         DSL_Builder_Append_PU_Value(second_pu, second_add),
+         "second PU value materialization");
+    if (failed)
+        return failed;
+
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Get_Value_Result_Symbol(first_add) ==
+             DSL_Builder_Get_Value_Result_Symbol(second_add),
+         "fixture has colliding PU-local result indices");
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(first_add), &first_value) &&
+         DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(second_add), &second_value) &&
+         first_value.id == DSL_Builder_Get_Value_Image_Id(first_add) &&
+         second_value.id == DSL_Builder_Get_Value_Image_Id(second_add),
+         "stable image values for colliding local symbols");
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_IR_Image_Find_Definition_Value
+             (PU_Info_proc_sym(second_pu), second_add, &observed_value) &&
+         observed_value.id == second_value.id,
+         "owner-aware definition lookup selects the second PU value");
+    FHE_SYNC3_REWRITE_CHECK
+        (!DSL_IR_Image_Find_Definition_Value
+              (PU_Info_proc_sym(first_pu), second_add, NULL),
+         "owner-aware definition lookup rejects the colliding foreign PU");
+    if (failed)
+        return failed;
+
+    expression_before = WN_kid0(second_add);
+    operand_templates[0] = WN_kid(expression_before, 0);
+    operand_templates[1] = WN_kid(expression_before, 1);
+    operand_value_ids[0] = DSL_Builder_Get_Value_Image_Id(second_input[0]);
+    operand_value_ids[1] = DSL_Builder_Get_Value_Image_Id(second_input[1]);
+    DSL_IR_Attribute_Record_Init(&image_attr);
+    image_attr.name = Save_Str("attr.broadcast_rule");
+    image_attr.value = Save_Str("none");
+    image_attr.value_kind = DSL_IR_ATTRIBUTE_VALUE_STRING;
+    memset(&rewrite, 0, sizeof(rewrite));
+    rewrite.expected_operator = OPR_DSLADD;
+    rewrite.expected_version = 1;
+    rewrite.replacement_operator = OPR_DSLMUL;
+    rewrite.replacement_version = 1;
+    rewrite.operand_templates = operand_templates;
+    rewrite.operand_value_ids = operand_value_ids;
+    rewrite.operand_count = 2;
+    rewrite.attributes = &image_attr;
+    rewrite.attribute_count = 1;
+    rewrite.result_value_kind = DSL_IR_VALUE_OPERATOR_RESULT;
+
+    opcode_count = DSL_IR_Image_Opcode_Descriptor_Count();
+    node_count = DSL_IR_Image_Node_Count();
+    value_count = DSL_IR_Image_Value_Count();
+    reference_count = DSL_IR_Image_Value_Reference_Count();
+    attribute_count = DSL_IR_Image_Attribute_Count();
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_IR_Image_Get_Node(second_value.producer_node_id, &node_before),
+         "source logical node");
+    rewrite.payload = node_before.payload;
+    rewrite.expected_operator = OPR_DSLMUL;
+    FHE_SYNC3_REWRITE_CHECK
+        (!DSL_IR_Rewrite_Native_Value
+             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+              &rewrite) &&
+         WN_kid0(second_add) == expression_before &&
+         DSL_IR_Image_Get_Node(second_value.producer_node_id, &node_after) &&
+         memcmp(&node_before, &node_after, sizeof(node_before)) == 0 &&
+         DSL_IR_Image_Opcode_Descriptor_Count() == opcode_count &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         DSL_IR_Image_Value_Reference_Count() == reference_count &&
+         DSL_IR_Image_Attribute_Count() == attribute_count,
+         "failed rewrite leaves tree and image unchanged");
+
+    rewrite.expected_operator = OPR_DSLADD;
+    operand_value_ids[0] = DSL_Builder_Get_Value_Image_Id(first_input[0]);
+    FHE_SYNC3_REWRITE_CHECK
+        (!DSL_IR_Rewrite_Native_Value
+             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+              &rewrite) &&
+         WN_kid0(second_add) == expression_before &&
+         DSL_IR_Image_Get_Node(second_value.producer_node_id, &node_after) &&
+         memcmp(&node_before, &node_after, sizeof(node_before)) == 0 &&
+         DSL_IR_Image_Opcode_Descriptor_Count() == opcode_count &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         DSL_IR_Image_Value_Reference_Count() == reference_count &&
+         DSL_IR_Image_Attribute_Count() == attribute_count,
+         "cross-PU operand rewrite rolls back without image mutation");
+    operand_value_ids[0] = DSL_Builder_Get_Value_Image_Id(second_input[0]);
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_IR_Rewrite_Native_Value
+             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+              &rewrite) &&
+         WN_kid0(second_add) != expression_before &&
+         DSL_WN_Get_Logical_Opcode
+             (WN_kid0(second_add), &logical_opcode, NULL) &&
+         logical_opcode.dsl_operator == OPR_DSLMUL &&
+         logical_opcode.source_version == 1 &&
+         DSL_IR_Image_Find_Definition_Value
+             (PU_Info_proc_sym(second_pu), second_add, &observed_value) &&
+         observed_value.id == second_value.id &&
+         observed_value.st == second_value.st &&
+         observed_value.ty == second_value.ty &&
+         WN_Get_Linenum(second_add) != 0,
+         "native tree and logical image rewrite together");
+
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Verify_Program(&verify),
+         diagnostic[0] == '\0' ? "rewritten program verification" :
+                                  diagnostic);
+    if (!failed && artifact != NULL && artifact[0] != '\0') {
+        image_request.path = artifact;
+        image_request.flags = 0;
+        (void) unlink(artifact);
+        FHE_SYNC3_REWRITE_CHECK
+            (DSL_Builder_Finalize_Mapped_Image(&image_request) &&
+             access(artifact, F_OK) == 0,
+             "rewritten mapped-image artifact");
+    }
+
+    if (!failed)
+        printf("FHE SYNC-3 native rewrite contract passed\n");
+#undef FHE_SYNC3_REWRITE_CHECK
+    return failed;
+}
+
+static int
 Check_FHE_SYNC1_Mapped_Image(void)
 {
     const char *artifact = getenv("OPEN64_DSL_FHE_ARTIFACT");
@@ -4801,535 +5062,221 @@ Check_FHE_SYNC1_Mapped_Image(void)
 }
 
 static int
-Check_FHE_Tensor_Binding_V1_Identity(void)
+Check_FHE_SYNC3_Plan_Image(void)
 {
-    DSL_BUILDER_TENSOR_DESCRIPTOR tensor_descriptor;
-    DSL_BUILDER_PROGRAM_UNIT pu;
-    DSL_FHE_COMPILATION_CONFIG_RECORD config;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD ciphertext;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD plaintext;
-    DSL_FHE_TENSOR_BINDING_RECORD observed;
-    DSL_FHE_IMAGE_HEADER header;
-    TY_IDX tensor_ty;
-    TY_IDX weight_ty;
-    DSL_FHE_CONFIG_ID config_id;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID ciphertext_id;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID plaintext_id;
-    DSL_FHE_TENSOR_BINDING_ID id_input;
-    DSL_FHE_TENSOR_BINDING_ID id_weight;
-    DSL_FHE_TENSOR_BINDING_ID id_weight_cipher;
-    DSL_FHE_TENSOR_BINDING_ID duplicate_id;
-    DSL_FHE_TENSOR_BINDING_ID bad_id;
-    UINT32 count_before;
-    int failed = 0;
-#define BINDING_V1_CHECK(condition, message) \
-    do { \
-        if (!(condition)) { \
-            fprintf(stderr, "FHE tensor binding v1 check failed: %s\n", \
-                    message); \
-            failed = 1; \
-        } \
-    } while (0)
-
-    DSL_FHE_Image_Reset();
-    if (!DSL_Builder_Begin_Program()) {
-        fprintf(stderr, "FHE tensor binding v1 setup failed\n");
-        return 1;
-    }
-    DSL_Opcode_Register_Common_Substrate();
-    pu = DSL_Builder_Create_Minimal_PU("fhe_tensor_binding_v1_contract");
-    if (pu == NULL) {
-        fprintf(stderr, "FHE tensor binding v1 PU setup failed\n");
-        return 1;
-    }
-
-    memset(&tensor_descriptor, 0, sizeof(tensor_descriptor));
-    tensor_descriptor.type_core.kind = "tensor";
-    tensor_descriptor.type_core.dtype = "float32";
-    tensor_descriptor.type_core.rank = 2;
-    tensor_descriptor.type_core.logical_shape = "[2,2]";
-    tensor_descriptor.traits.traits = "activation";
-    tensor_descriptor.representation.layout = "row_major";
-    tensor_descriptor.representation.sharding = "replicated";
-    tensor_descriptor.representation.placement = "host";
-    tensor_descriptor.representation.memory = "contiguous";
-    tensor_descriptor.representation.quantization = "none";
-    tensor_descriptor.lineage.lineage = "tensor_binding_v1_contract";
-    tensor_ty = DSL_Builder_Intern_Tensor_Type
-                   ("fhe_v1_binding_input", MTYPE_To_TY(MTYPE_F4),
-                    &tensor_descriptor);
-    tensor_descriptor.traits.traits = "parameter";
-    tensor_descriptor.lineage.lineage = "tensor_binding_v1_weight";
-    weight_ty = DSL_Builder_Intern_Tensor_Type
-                    ("fhe_v1_binding_weight", MTYPE_To_TY(MTYPE_F4),
-                     &tensor_descriptor);
-    if (tensor_ty == TY_IDX_ZERO || weight_ty == TY_IDX_ZERO ||
-        !TY_is_tensor_extension(tensor_ty) ||
-        !TY_is_tensor_extension(weight_ty)) {
-        fprintf(stderr, "FHE tensor binding v1 tensor types failed\n");
-        return 1;
-    }
-
-    DSL_FHE_Compilation_Config_Record_Init(&config);
-    config.provenance_mask = 1;
-    config.scheme = DSL_FHE_SCHEME_CKKS;
-    config.security_level = DSL_FHE_SECURITY_128_CLASSIC;
-    config.ring_dimension = 65536;
-    config.multiplicative_depth_policy = DSL_FHE_POLICY_AUTO;
-    config.scale_bits = 56;
-    config.first_modulus_bits = 60;
-    config.slot_count_policy = DSL_FHE_POLICY_AUTO;
-    config.key_switch_policy = 1;
-    config.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
-    config.backend_policy = DSL_FHE_BACKEND_OPENFHE;
-    config_id = DSL_FHE_Intern_Compilation_Config(&config);
-    if (config_id == 0) {
-        fprintf(stderr, "FHE tensor binding v1 config failed\n");
-        return 1;
-    }
-
-    DSL_FHE_Encryption_Descriptor_Record_Init(&ciphertext);
-    ciphertext.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-    ciphertext.scheme = DSL_FHE_SCHEME_CKKS;
-    ciphertext.config_id = config_id;
-    ciphertext.key_set_name = Save_Str("fhe_v1_binding_key");
-    ciphertext.slot_count_policy = DSL_FHE_POLICY_AUTO;
-    ciphertext.encoding_policy = DSL_FHE_ENCODING_NONE;
-    ciphertext.packing_policy = DSL_FHE_PACKING_AUTO;
-    ciphertext_id = DSL_FHE_Intern_Encryption_Descriptor(&ciphertext);
-
-    DSL_FHE_Encryption_Descriptor_Record_Init(&plaintext);
-    plaintext.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
-    plaintext.scheme = DSL_FHE_SCHEME_CKKS;
-    plaintext.config_id = config_id;
-    plaintext.slot_count_policy = DSL_FHE_POLICY_AUTO;
-    plaintext.encoding_policy = DSL_FHE_ENCODING_CKKS_PACKED;
-    plaintext.packing_policy = DSL_FHE_PACKING_METAKERNEL;
-    plaintext_id = DSL_FHE_Intern_Encryption_Descriptor(&plaintext);
-    if (ciphertext_id == 0 || plaintext_id == 0) {
-        fprintf(stderr, "FHE tensor binding v1 descriptors failed\n");
-        return 1;
-    }
-
-    /* In-memory version-1 identity and flag checks.  The version-1 identity
-       is exactly (tensor_ty, encryption_descriptor_id); flags must be zero. */
-    id_input = DSL_Builder_Bind_FHE_Tensor_Descriptor
-                   (tensor_ty, ciphertext_id, 0);
-    id_weight = DSL_Builder_Bind_FHE_Tensor_Descriptor
-                    (weight_ty, plaintext_id, 0);
-    if (id_input == 0 || id_weight == 0 || id_input == id_weight) {
-        fprintf(stderr, "FHE tensor binding v1 initial bindings failed\n");
-        return 1;
-    }
-    count_before = DSL_FHE_Tensor_Binding_Count();
-    BINDING_V1_CHECK(count_before == 2, "initial tensor binding count");
-
-    /* Duplicate insertion of the same key dedups to the original id. */
-    duplicate_id = DSL_FHE_Intern_Tensor_Binding
-                       (tensor_ty, ciphertext_id, 0);
-    BINDING_V1_CHECK(duplicate_id == id_input &&
-                     DSL_FHE_Tensor_Binding_Count() == count_before,
-                     "duplicate insertion dedups to the same key");
-
-    /* A distinct (tensor_ty, descriptor_id) key creates a new binding. */
-    id_weight_cipher = DSL_FHE_Intern_Tensor_Binding
-                           (weight_ty, ciphertext_id, 0);
-    BINDING_V1_CHECK(id_weight_cipher != 0 &&
-                     id_weight_cipher != id_input &&
-                     id_weight_cipher != id_weight &&
-                     DSL_FHE_Tensor_Binding_Count() == count_before + 1,
-                     "distinct tensor binding key creates a new row");
-
-    /* Invalid nonzero flags are rejected before mutation even when the key
-       already exists. */
-    bad_id = DSL_FHE_Intern_Tensor_Binding(tensor_ty, ciphertext_id, 1);
-    BINDING_V1_CHECK(bad_id == 0, "reject nonzero flags (low bit)");
-    bad_id = DSL_FHE_Intern_Tensor_Binding
-                 (tensor_ty, ciphertext_id, 0xFFFFFFFF);
-    BINDING_V1_CHECK(bad_id == 0, "reject nonzero flags (all bits)");
-
-    /* A failed add leaves the managed image unchanged. */
-    BINDING_V1_CHECK(DSL_FHE_Tensor_Binding_Count() == count_before + 1,
-                     "failed add leaves binding count unchanged");
-    BINDING_V1_CHECK(DSL_FHE_Find_Tensor_Binding
-                         (tensor_ty, ciphertext_id, &observed) &&
-                     observed.id == id_input &&
-                     observed.tensor_ty == tensor_ty &&
-                     observed.encryption_descriptor_id == ciphertext_id &&
-                     observed.flags == 0,
-                     "failed add preserves the existing binding");
-
-    /* Lookup by id and by (tensor_ty, encryption_descriptor_id). */
-    BINDING_V1_CHECK(DSL_FHE_Get_Tensor_Binding(id_weight, &observed) &&
-                     observed.tensor_ty == weight_ty &&
-                     observed.encryption_descriptor_id == plaintext_id &&
-                     observed.flags == 0,
-                     "get tensor binding by id");
-    BINDING_V1_CHECK(DSL_FHE_Find_Tensor_Binding
-                         (weight_ty, ciphertext_id, &observed) &&
-                     observed.id == id_weight_cipher,
-                     "find tensor binding for the distinct key");
-    BINDING_V1_CHECK(!DSL_FHE_Find_Tensor_Binding
-                         (tensor_ty, plaintext_id, &observed),
-                     "unbound tensor binding pair is not found");
-    BINDING_V1_CHECK(DSL_FHE_Image_Validate(NULL),
-                     "legal in-memory v1 image validates");
-
-    /* Build a minimal legal version-1 FHE byte image (config + two
-       descriptors + two bindings) for the reader and publication checks. */
-    DSL_FHE_Image_Reset();
-    (void) DSL_FHE_Intern_Compilation_Config(&config);
-    ciphertext_id = DSL_FHE_Intern_Encryption_Descriptor(&ciphertext);
-    plaintext_id = DSL_FHE_Intern_Encryption_Descriptor(&plaintext);
-    id_input = DSL_FHE_Intern_Tensor_Binding(tensor_ty, ciphertext_id, 0);
-    id_weight = DSL_FHE_Intern_Tensor_Binding(weight_ty, plaintext_id, 0);
-    if (id_input != 1 || id_weight != 2 ||
-        DSL_FHE_Tensor_Binding_Count() != 2 || !DSL_FHE_Image_Validate(NULL)) {
-        fprintf(stderr, "FHE tensor binding v1 byte image source failed\n");
-        return 1;
-    }
-
-    DSL_FHE_Image_Get_Header(&header);
-    UINT64 image_size = DSL_FHE_IMAGE_HEADER_SIZE +
-        (UINT64)header.config_count * DSL_FHE_CONFIG_RECORD_SIZE +
-        (UINT64)header.entry_contract_count *
-            DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE +
-        (UINT64)header.entry_value_count * DSL_FHE_ENTRY_VALUE_RECORD_SIZE +
-        (UINT64)header.encryption_descriptor_count *
-            DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD_SIZE +
-        (UINT64)header.tensor_binding_count *
-            DSL_FHE_TENSOR_BINDING_RECORD_SIZE +
-        (UINT64)header.key_requirement_count *
-            DSL_FHE_KEY_REQUIREMENT_RECORD_SIZE;
-    unsigned char *image_bytes = new unsigned char[image_size];
-    unsigned char *cursor = image_bytes;
-    memcpy(cursor, &header, sizeof(header));
-    cursor += sizeof(header);
-    for (UINT32 i = 1; i <= header.config_count; ++i) {
-        DSL_FHE_COMPILATION_CONFIG_RECORD record;
-        DSL_FHE_Get_Compilation_Config(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.entry_contract_count; ++i) {
-        DSL_FHE_ENTRY_CONTRACT_RECORD record;
-        DSL_FHE_Get_Entry_Contract(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.entry_value_count; ++i) {
-        DSL_FHE_ENTRY_VALUE_RECORD record;
-        DSL_FHE_Get_Entry_Value(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.encryption_descriptor_count; ++i) {
-        DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD record;
-        DSL_FHE_Get_Encryption_Descriptor(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.tensor_binding_count; ++i) {
-        DSL_FHE_TENSOR_BINDING_RECORD record;
-        DSL_FHE_Get_Tensor_Binding(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.key_requirement_count; ++i) {
-        DSL_FHE_KEY_REQUIREMENT_RECORD record;
-        DSL_FHE_Get_Key_Requirement(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-
-    UINT64 binding_offset = DSL_FHE_IMAGE_HEADER_SIZE +
-        (UINT64)header.config_count * DSL_FHE_CONFIG_RECORD_SIZE +
-        (UINT64)header.entry_contract_count *
-            DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE +
-        (UINT64)header.entry_value_count * DSL_FHE_ENTRY_VALUE_RECORD_SIZE +
-        (UINT64)header.encryption_descriptor_count *
-            DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD_SIZE;
-    DSL_FHE_TENSOR_BINDING_RECORD *pristine_input =
-        (DSL_FHE_TENSOR_BINDING_RECORD *)(image_bytes + binding_offset);
-    TY_IDX input_ty = pristine_input->tensor_ty;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID input_desc =
-        pristine_input->encryption_descriptor_id;
-
-    /* Reopen of a legal version-1 FHE image: producer, finder, and reader
-       agree on one (tensor_ty, encryption_descriptor_id) identity. */
-    BINDING_V1_CHECK(DSL_FHE_Image_Load_Mapped(image_bytes, image_size, NULL),
-                     "reopen legal v1 image");
-    BINDING_V1_CHECK(DSL_FHE_Config_Count() == 1 &&
-                     DSL_FHE_Encryption_Descriptor_Count() == 2 &&
-                     DSL_FHE_Tensor_Binding_Count() == 2,
-                     "reopened legal v1 image preserves counts");
-    BINDING_V1_CHECK(DSL_FHE_Find_Tensor_Binding
-                         (tensor_ty, ciphertext_id, &observed) &&
-                     observed.id == 1 &&
-                     observed.tensor_ty == tensor_ty &&
-                     observed.encryption_descriptor_id == ciphertext_id &&
-                     observed.flags == 0 &&
-                     DSL_FHE_Find_Tensor_Binding
-                         (weight_ty, plaintext_id, &observed) &&
-                     observed.id == 2 &&
-                     observed.tensor_ty == weight_ty &&
-                     observed.encryption_descriptor_id == plaintext_id &&
-                     observed.flags == 0 &&
-                     DSL_FHE_Image_Validate(NULL),
-                     "reopened legal v1 image agrees on identity");
-
-    /* Malicious mapped duplicate: an external image carries two bindings for
-       the same (tensor_ty, encryption_descriptor_id).  The reader must reject
-       it before mutating the managed image. */
-    {
-        unsigned char *dup_bytes = new unsigned char[image_size];
-        memcpy(dup_bytes, image_bytes, image_size);
-        DSL_FHE_TENSOR_BINDING_RECORD *dup_weight =
-            (DSL_FHE_TENSOR_BINDING_RECORD *)
-                (dup_bytes + binding_offset +
-                 DSL_FHE_TENSOR_BINDING_RECORD_SIZE);
-        dup_weight->tensor_ty = input_ty;
-        dup_weight->encryption_descriptor_id = input_desc;
-        dup_weight->flags = 0;
-        dup_weight->reserved0 = 0;
-        dup_weight->reserved1 = 0;
-        BINDING_V1_CHECK(!DSL_FHE_Image_Load_Mapped
-                             (dup_bytes, image_size, NULL),
-                         "reject malicious mapped duplicate tensor binding");
-        BINDING_V1_CHECK(DSL_FHE_Tensor_Binding_Count() == 2 &&
-                         DSL_FHE_Find_Tensor_Binding
-                             (tensor_ty, ciphertext_id, &observed) &&
-                         observed.id == 1,
-                         "failed duplicate load leaves managed image unchanged");
-        delete [] dup_bytes;
-    }
-
-    /* Validation before publication: an external image with nonzero tensor
-       binding flags is rejected by the same validator the writer calls, and
-     the managed image stays unchanged. */
-    {
-        unsigned char *flag_bytes = new unsigned char[image_size];
-        memcpy(flag_bytes, image_bytes, image_size);
-        DSL_FHE_TENSOR_BINDING_RECORD *flag_input =
-            (DSL_FHE_TENSOR_BINDING_RECORD *)(flag_bytes + binding_offset);
-        flag_input->flags = 1;
-        BINDING_V1_CHECK(!DSL_FHE_Image_Load_Mapped
-                             (flag_bytes, image_size, NULL),
-                         "reject nonzero flags before publication");
-        BINDING_V1_CHECK(DSL_FHE_Tensor_Binding_Count() == 2 &&
-                         DSL_FHE_Find_Tensor_Binding
-                             (tensor_ty, ciphertext_id, &observed) &&
-                         observed.id == 1 &&
-                         observed.flags == 0,
-                         "failed flagged load leaves managed image unchanged");
-        delete [] flag_bytes;
-    }
-
-    delete [] image_bytes;
-
-    if (failed) {
-        fprintf(stderr, "FHE tensor binding v1 identity checks failed\n");
-        return 1;
-    }
-    printf("FHE tensor binding v1 identity contract passed\n");
-#undef BINDING_V1_CHECK
-    return 0;
-}
-
-/* Serialize the current managed FHE image into a freshly allocated byte buffer
-   in the canonical mapped-image order (header, compilation configs, entry
-   contracts, entry values, encryption descriptors, tensor bindings, key
-   requirements).  The caller owns the returned buffer and must delete[] it.  The
-   byte length is returned through size_out.  This is the focused-test "write"
-   half of the failure-atomic publication check. */
-static unsigned char *
-DSL_FHE_Test_Serialize_Image (UINT64 *size_out)
-{
-    DSL_FHE_IMAGE_HEADER header;
-    DSL_FHE_Image_Get_Header(&header);
-    UINT64 size = DSL_FHE_IMAGE_HEADER_SIZE +
-        (UINT64)header.config_count * DSL_FHE_CONFIG_RECORD_SIZE +
-        (UINT64)header.entry_contract_count *
-            DSL_FHE_ENTRY_CONTRACT_RECORD_SIZE +
-        (UINT64)header.entry_value_count * DSL_FHE_ENTRY_VALUE_RECORD_SIZE +
-        (UINT64)header.encryption_descriptor_count *
-            DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD_SIZE +
-        (UINT64)header.tensor_binding_count *
-            DSL_FHE_TENSOR_BINDING_RECORD_SIZE +
-        (UINT64)header.key_requirement_count *
-            DSL_FHE_KEY_REQUIREMENT_RECORD_SIZE;
-    unsigned char *bytes = new unsigned char[size];
-    unsigned char *cursor = bytes;
-    memcpy(cursor, &header, sizeof(header));
-    cursor += sizeof(header);
-    for (UINT32 i = 1; i <= header.config_count; ++i) {
-        DSL_FHE_COMPILATION_CONFIG_RECORD record;
-        DSL_FHE_Get_Compilation_Config(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.entry_contract_count; ++i) {
-        DSL_FHE_ENTRY_CONTRACT_RECORD record;
-        DSL_FHE_Get_Entry_Contract(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.entry_value_count; ++i) {
-        DSL_FHE_ENTRY_VALUE_RECORD record;
-        DSL_FHE_Get_Entry_Value(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.encryption_descriptor_count; ++i) {
-        DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD record;
-        DSL_FHE_Get_Encryption_Descriptor(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.tensor_binding_count; ++i) {
-        DSL_FHE_TENSOR_BINDING_RECORD record;
-        DSL_FHE_Get_Tensor_Binding(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    for (UINT32 i = 1; i <= header.key_requirement_count; ++i) {
-        DSL_FHE_KEY_REQUIREMENT_RECORD record;
-        DSL_FHE_Get_Key_Requirement(i, &record);
-        memcpy(cursor, &record, sizeof(record));
-        cursor += sizeof(record);
-    }
-    *size_out = size;
-    return bytes;
-}
-
-/* Focused contract for failure-atomic FHE entry value insertion (v0.9 Section
-   15.4; Appendix F.2).  Proves that owner, role, ordinal, descriptor, and range
-   are validated before first_entry_value_id or entry_value_count change, that a
-   rejection leaves both the entry value table and the entry contract exactly
-   as they were, and that the legal first insertion plus a contiguous range can
-   still be validated, written, and reopened. */
-static int
-Check_FHE_Entry_Value_Insertion_Atomicity(void)
-{
-    DSL_BUILDER_TENSOR_DESCRIPTOR tensor_descriptor;
-    DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE external_reference;
-    DSL_BUILDER_OPERATOR_ATTRIBUTE add_attribute;
+    const char *artifact = getenv("OPEN64_DSL_FHE_SYNC3_ARTIFACT");
+    BOOL retain_artifact = artifact != NULL && artifact[0] != '\0';
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_TENSOR_TYPE_CORE coefficient_core;
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
     DSL_BUILDER_SOURCE_POSITION source_position;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_VERIFY_RESULT verify;
     DSL_BUILDER_PROGRAM_UNIT pu;
-    DSL_BUILDER_PROGRAM_UNIT foreign_pu;
     DSL_BUILDER_VALUE input;
-    DSL_BUILDER_VALUE weight;
-    DSL_BUILDER_VALUE result;
-    DSL_BUILDER_VALUE foreign_input;
-    DSL_BUILDER_VALUE kids[2];
-    DSL_DOMAIN_ID common_id;
-    DSL_OPCODE_ID add_id;
-    TY_IDX tensor_ty;
-    TY_IDX weight_ty;
-    UINT32 file_id;
+    DSL_BUILDER_VALUE conv_weight;
+    DSL_BUILDER_VALUE channel_parameter;
+    DSL_BUILDER_VALUE conv;
+    DSL_BUILDER_VALUE batch_norm;
+    DSL_BUILDER_VALUE relu;
+    DSL_BUILDER_VALUE conv_kids[3];
+    DSL_BUILDER_VALUE bn_kids[5];
+    DSL_BUILDER_VALUE unary_kid[1];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE conv_attributes[8] = {
+        { "attr.kernel_shape", "1,1" },
+        { "attr.stride", "1,1" },
+        { "attr.padding", "0,0" },
+        { "attr.dilation", "1,1" },
+        { "attr.groups", "1" },
+        { "attr.input_layout", "NCHW" },
+        { "attr.weight_layout", "OIHW" },
+        { "attr.output_layout", "NCHW" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE batch_norm_attributes[4] = {
+        { "attr.epsilon", "0.00001" },
+        { "attr.training", "false" },
+        { "attr.input_layout", "NCHW" },
+        { "attr.channel_axis", "1" }
+    };
+    DSL_IR_VALUE_RECORD conv_value;
+    DSL_IR_VALUE_RECORD relu_value;
+    DSL_PU_SOURCE_IDENTITY_RECORD pu_identity;
     DSL_FHE_COMPILATION_CONFIG_RECORD config;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD ciphertext;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD plaintext;
-    DSL_FHE_ENTRY_CONTRACT_INFO entry_info;
-    DSL_FHE_ENTRY_VALUE_INFO value_info;
-    DSL_FHE_ENTRY_CONTRACT_RECORD contract_record;
-    DSL_FHE_ENTRY_CONTRACT_ID entry_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encrypted;
+    DSL_FHE_APPROXIMATION_CONTRACT_RECORD approximation;
+    DSL_FHE_CKKS_VALUE_STATE_RECORD ckks_state;
+    DSL_FHE_CKKS_VALUE_STATE_INFO ckks_info;
+    DSL_FHE_BN_FOLD_PROVENANCE_RECORD bn_fold;
+    DSL_FHE_BN_FOLD_INFO bn_fold_info;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD disposition;
+    DSL_FHE_CONVERSION_DISPOSITION_INFO disposition_info;
+    DSL_FHE_PLAN_IMAGE_HEADER header;
+    DSL_TENSOR_TCON_CREATE_INFO tcon_info;
+    DSL_FHE_APPROXIMATION_CONTRACT_ID approximation_id;
+    DSL_FHE_CKKS_VALUE_STATE_ID conv_state_id;
+    DSL_FHE_CKKS_VALUE_STATE_ID relu_state_id;
+    DSL_FHE_BN_FOLD_PROVENANCE_ID bn_fold_id;
     DSL_FHE_CONFIG_ID config_id;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID ciphertext_id;
-    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID plaintext_id;
-    DSL_FHE_ENTRY_VALUE_ID id;
-    const char checksum[] =
-        "0123456789abcdef0123456789abcdef"
-        "0123456789abcdef0123456789abcdef";
-    UINT64 size_before, size_after;
-    unsigned char *bytes_before;
-    unsigned char *bytes_after;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encrypted_id;
+    TCON_IDX coefficients_tcon;
+    TCON_IDX folded_weight_tcon;
+    TCON_IDX folded_bias_tcon;
+    TCON_IDX range_min_tcon;
+    TCON_IDX range_max_tcon;
+    TCON_IDX max_error_tcon;
+    TY_IDX tensor_ty;
+    TY_IDX conv_weight_ty;
+    TY_IDX channel_parameter_ty;
+    TY_IDX coefficient_ty;
+    DSL_DOMAIN_ID cnn_id;
+    UINT32 file_id;
+    BOOL positions_set;
     int failed = 0;
-#define ENTRY_ATOMIC_CHECK(condition, message) \
+#define FHE_SYNC3_CHECK(condition, message) \
     do { \
         if (!(condition)) { \
-            fprintf(stderr, \
-                    "FHE entry value insertion atomicity check failed: %s\n", \
-                    message); \
+            fprintf(stderr, "FHE SYNC-3 check failed: %s\n", message); \
             failed = 1; \
         } \
     } while (0)
 
-    DSL_FHE_Image_Reset();
-    if (!DSL_Builder_Begin_Program()) {
-        fprintf(stderr, "FHE entry value atomicity setup failed\n");
+    if (!retain_artifact)
+        artifact = "fhe_sync3_plan_contract.B";
+    FHE_SYNC3_CHECK
+        (sizeof(DSL_FHE_PLAN_IMAGE_HEADER) == 64 &&
+         sizeof(DSL_FHE_CONVERSION_DISPOSITION_RECORD) == 56 &&
+         sizeof(DSL_FHE_APPROXIMATION_CONTRACT_RECORD) == 64 &&
+         sizeof(DSL_FHE_CKKS_VALUE_STATE_RECORD) == 64 &&
+         sizeof(DSL_FHE_BN_FOLD_PROVENANCE_RECORD) == 64,
+         "fixed record sizes");
+    if (!DSL_Builder_Begin_Program())
         return 1;
-    }
-    DSL_Opcode_Register_Common_Substrate();
+    DSL_Opcode_Register_Domain_Wrapper_Examples();
+    cnn_id = DSL_Domain_Find("cnn");
 
-    memset(&tensor_descriptor, 0, sizeof(tensor_descriptor));
-    tensor_descriptor.type_core.kind = "tensor";
-    tensor_descriptor.type_core.dtype = "float32";
-    tensor_descriptor.type_core.rank = 2;
-    tensor_descriptor.type_core.logical_shape = "[2,2]";
-    tensor_descriptor.traits.traits = "activation";
-    tensor_descriptor.representation.layout = "row_major";
-    tensor_descriptor.representation.sharding = "replicated";
-    tensor_descriptor.representation.placement = "host";
-    tensor_descriptor.representation.memory = "contiguous";
-    tensor_descriptor.representation.quantization = "none";
-    tensor_descriptor.lineage.lineage = "entry_atomicity_activation";
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 4;
+    descriptor.type_core.logical_shape = "[1,4,4,4]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "nchw";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
     tensor_ty = DSL_Builder_Intern_Tensor_Type
-                   ("fhe_entry_atomicity_f32_2x2", MTYPE_To_TY(MTYPE_F4),
-                    &tensor_descriptor);
-    tensor_descriptor.traits.traits = "parameter";
-    tensor_descriptor.representation.placement = "side_file";
-    tensor_descriptor.representation.memory = "external_data";
-    tensor_descriptor.lineage.lineage = "entry_atomicity_weight";
-    weight_ty = DSL_Builder_Intern_Tensor_Type
-                    ("fhe_entry_atomicity_weight_f32_2x2",
-                     MTYPE_To_TY(MTYPE_F4), &tensor_descriptor);
-    pu = DSL_Builder_Create_Minimal_PU("fhe_entry_atomicity_add");
+                    ("fhe_sync3_f32_1x4x4x4", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    descriptor.type_core.logical_shape = "[4,4,1,1]";
+    descriptor.traits.traits = "parameter";
+    conv_weight_ty = DSL_Builder_Intern_Tensor_Type
+                         ("fhe_sync3_conv_weight_f32_4x4x1x1",
+                          MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[4]";
+    channel_parameter_ty = DSL_Builder_Intern_Tensor_Type
+                               ("fhe_sync3_channel_parameter_f32_4",
+                                MTYPE_To_TY(MTYPE_F4), &descriptor);
+    memset(&coefficient_core, 0, sizeof(coefficient_core));
+    coefficient_core.kind = "tensor";
+    coefficient_core.dtype = "float32";
+    coefficient_core.rank = 1;
+    coefficient_core.logical_shape = "[4]";
+    coefficient_ty = DSL_Builder_Create_Tensor_Type_Core
+                         ("fhe_sync3_coeff_f32_4", MTYPE_To_TY(MTYPE_F4),
+                          &coefficient_core);
+    pu = DSL_Builder_Create_Minimal_PU("fhe_sync3_plan");
     file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
-    common_id = DSL_Domain_Find("common");
-    add_id = DSL_Opcode_Find(common_id, DSL_OPCODE_COMMON_ADD, 1);
-    input = DSL_Builder_Create_Model_Input("atomic_input", tensor_ty, 0);
-    memset(&external_reference, 0, sizeof(external_reference));
-    external_reference.storage_format = "safetensors";
-    external_reference.side_file = "fhe_entry_atomicity_weights.safetensors";
-    external_reference.tensor_key = "weight";
-    external_reference.byte_length = 16;
-    external_reference.checksum = checksum;
-    weight = DSL_Builder_Create_External_Tensor_Constant
-                 ("atomic_weight", weight_ty, &external_reference);
-    kids[0] = input;
-    kids[1] = input;
-    add_attribute.name = "attr.broadcast_rule";
-    add_attribute.value = "none";
-    result = DSL_Builder_Create_Operator_With_Result
-                 (add_id, 1, kids, 2, &add_attribute, 1,
-                  "atomic_result", tensor_ty);
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "FHEResNet.forward";
+    source_identity.defining_module = "fhe_resnet";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = 1;
+    FHE_SYNC3_CHECK
+        (tensor_ty != TY_IDX_ZERO && conv_weight_ty != TY_IDX_ZERO &&
+         channel_parameter_ty != TY_IDX_ZERO &&
+         coefficient_ty != TY_IDX_ZERO &&
+         TY_tensor_seal(coefficient_ty) &&
+         pu != NULL && file_id != 0 && cnn_id != DSL_DOMAIN_INVALID_ID &&
+         DSL_Builder_Set_PU_Source_Identity(pu, &source_identity),
+         "program, tensor types, and source identity");
 
+    input = DSL_Builder_Create_Model_Input("encrypted_input", tensor_ty, 0);
+    conv_weight = DSL_Builder_Create_Model_Input
+                      ("conv_weight", conv_weight_ty, 1);
+    channel_parameter = DSL_Builder_Create_Model_Input
+                            ("channel_parameter", channel_parameter_ty, 2);
+    conv_kids[0] = input;
+    conv_kids[1] = conv_weight;
+    conv_kids[2] = channel_parameter;
+    conv = DSL_Builder_Create_Operator_With_Result
+               (DSL_Opcode_Find(cnn_id, "cnn.conv2d", 2), 2,
+                conv_kids, 3, conv_attributes, 8,
+                "conv_result", tensor_ty);
+    bn_kids[0] = conv;
+    for (UINT32 i = 1; i < 5; ++i)
+        bn_kids[i] = channel_parameter;
+    batch_norm = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find(cnn_id, "cnn.batch_norm_infer", 2), 2,
+                      bn_kids, 5, batch_norm_attributes, 4,
+                      "batch_norm_result", tensor_ty);
+    unary_kid[0] = batch_norm;
+    relu = DSL_Builder_Create_Operator_With_Result
+               (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                "common.relu", 2),
+                2, unary_kid, 1, NULL, 0, "relu_result", tensor_ty);
     memset(&source_position, 0, sizeof(source_position));
     source_position.file_id = file_id;
     source_position.line = __LINE__ + 1;
     source_position.column = 5;
     source_position.statement_begin = 1;
-    ENTRY_ATOMIC_CHECK
-        (tensor_ty != TY_IDX_ZERO && weight_ty != TY_IDX_ZERO &&
-         pu != NULL && file_id != 0 &&
-         add_id != DSL_OPCODE_INVALID_ID && input != NULL && weight != NULL &&
-         result != NULL &&
-         DSL_Builder_Set_Value_Source_Position(input, &source_position),
-         "builder values and input source position");
-    ++source_position.line;
-    ENTRY_ATOMIC_CHECK
-        (DSL_Builder_Set_Value_Source_Position(weight, &source_position),
-         "parameter source position");
-    ++source_position.line;
-    ENTRY_ATOMIC_CHECK
-        (DSL_Builder_Set_Value_Source_Position(result, &source_position),
-         "result source position");
-    ENTRY_ATOMIC_CHECK
-        (DSL_Builder_Append_PU_Value(pu, input) &&
-         DSL_Builder_Append_PU_Value(pu, weight) &&
-         DSL_Builder_Append_PU_Value(pu, result),
-         "append entry values to the owning program unit");
+    positions_set = input != NULL && conv_weight != NULL &&
+                    channel_parameter != NULL && conv != NULL &&
+                    batch_norm != NULL && relu != NULL;
+    if (positions_set) {
+        positions_set = DSL_Builder_Set_Value_Source_Position
+                            (input, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (conv_weight, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (channel_parameter, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (conv, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (batch_norm, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (relu, &source_position);
+    }
+    FHE_SYNC3_CHECK
+        (input != NULL && conv_weight != NULL && channel_parameter != NULL &&
+         conv != NULL && batch_norm != NULL && relu != NULL &&
+         positions_set &&
+         DSL_Builder_Append_PU_Value(pu, input) &&
+         DSL_Builder_Append_PU_Value(pu, conv_weight) &&
+         DSL_Builder_Append_PU_Value(pu, channel_parameter) &&
+         DSL_Builder_Append_PU_Value(pu, conv) &&
+         DSL_Builder_Append_PU_Value(pu, batch_norm) &&
+         DSL_Builder_Append_PU_Value(pu, relu),
+         "source-semantic CNN values");
+
+    FHE_SYNC3_CHECK
+        (DSL_IR_Image_Get_Value(DSL_Builder_Get_Value_Image_Id(conv),
+                                &conv_value) &&
+         DSL_IR_Image_Get_Value(DSL_Builder_Get_Value_Image_Id(relu),
+                                &relu_value) &&
+         DSL_Call_Image_Find_PU_Identity(PU_Info_proc_sym(pu), &pu_identity),
+         "stable source image identities");
 
     DSL_FHE_Compilation_Config_Record_Init(&config);
     config.provenance_mask = 1;
@@ -5344,241 +5291,238 @@ Check_FHE_Entry_Value_Insertion_Atomicity(void)
     config.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
     config.backend_policy = DSL_FHE_BACKEND_OPENFHE;
     config_id = DSL_FHE_Intern_Compilation_Config(&config);
-    ENTRY_ATOMIC_CHECK(config_id != 0, "configuration creation");
+    DSL_FHE_Encryption_Descriptor_Record_Init(&encrypted);
+    encrypted.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    encrypted.scheme = DSL_FHE_SCHEME_CKKS;
+    encrypted.config_id = config_id;
+    encrypted.key_set_name = Save_Str("fhe_sync3_key");
+    encrypted.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    encrypted.encoding_policy = DSL_FHE_ENCODING_NONE;
+    encrypted.packing_policy = DSL_FHE_PACKING_AUTO;
+    encrypted_id = DSL_FHE_Intern_Encryption_Descriptor(&encrypted);
+    FHE_SYNC3_CHECK
+        (config_id != 0 && encrypted_id != 0,
+         "FHE configuration and encryption descriptor");
 
-    DSL_FHE_Encryption_Descriptor_Record_Init(&ciphertext);
-    ciphertext.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-    ciphertext.scheme = DSL_FHE_SCHEME_CKKS;
-    ciphertext.config_id = config_id;
-    ciphertext.key_set_name = Save_Str("atomic_request_key");
-    ciphertext.slot_count_policy = DSL_FHE_POLICY_AUTO;
-    ciphertext.encoding_policy = DSL_FHE_ENCODING_NONE;
-    ciphertext.packing_policy = DSL_FHE_PACKING_AUTO;
-    ciphertext_id = DSL_FHE_Intern_Encryption_Descriptor(&ciphertext);
+    memset(&tcon_info, 0, sizeof(tcon_info));
+    tcon_info.descriptor_ty = coefficient_ty;
+    tcon_info.scalar_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 0.0));
+    tcon_info.element_mtype = MTYPE_F4;
+    tcon_info.element_count = 4;
+    tcon_info.logical_bytes = 16;
+    tcon_info.required_alignment = 16;
+    tcon_info.element_size = 4;
+    FHE_SYNC3_CHECK
+        (DSL_Tensor_TCON_Create_Zero
+             (&tcon_info, &coefficients_tcon, NULL),
+         "coefficient and folded tensor constants");
+    folded_weight_tcon = coefficients_tcon;
+    folded_bias_tcon = coefficients_tcon;
+    range_min_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, -3.0));
+    range_max_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 3.0));
+    max_error_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 0.01));
 
-    DSL_FHE_Encryption_Descriptor_Record_Init(&plaintext);
-    plaintext.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
-    plaintext.scheme = DSL_FHE_SCHEME_CKKS;
-    plaintext.config_id = config_id;
-    plaintext.slot_count_policy = DSL_FHE_POLICY_AUTO;
-    plaintext.encoding_policy = DSL_FHE_ENCODING_CKKS_PACKED;
-    plaintext.packing_policy = DSL_FHE_PACKING_METAKERNEL;
-    plaintext_id = DSL_FHE_Intern_Encryption_Descriptor(&plaintext);
-    ENTRY_ATOMIC_CHECK
-        (ciphertext_id != 0 && plaintext_id != 0 &&
-         DSL_Builder_Bind_FHE_Tensor_Descriptor(tensor_ty, ciphertext_id, 0)
-             != 0 &&
-         DSL_Builder_Bind_FHE_Tensor_Descriptor(weight_ty, plaintext_id, 0)
-             != 0,
-         "encryption descriptors and tensor bindings");
+    DSL_FHE_Approximation_Contract_Record_Init(&approximation);
+    approximation.config_id = config_id;
+    approximation.polynomial_name = Save_Str("relu_minimax_degree3");
+    approximation.approximation_family = DSL_FHE_APPROXIMATION_MINIMAX;
+    approximation.polynomial_version = 1;
+    approximation.degree = 3;
+    approximation.coefficient_tensor_tcon = coefficients_tcon;
+    approximation.valid_range_min_tcon = range_min_tcon;
+    approximation.valid_range_max_tcon = range_max_tcon;
+    approximation.max_abs_error_tcon = max_error_tcon;
+    approximation.scale_policy = DSL_FHE_APPROX_SCALE_INHERIT;
+    approximation.required_multiplicative_depth = 2;
+    approximation.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
+    approximation.requires_pre_refresh = 1;
+    approximation_id =
+        DSL_FHE_Plan_Intern_Approximation_Contract(&approximation);
+    FHE_SYNC3_CHECK
+        (approximation_id != 0 &&
+         DSL_FHE_Plan_Intern_Approximation_Contract(&approximation) ==
+             approximation_id,
+         "semantic approximation interning");
 
-    /* The entry contract declares input_count == 2 so a duplicate input ordinal
-       can be rejected while the role still has spare capacity, isolating the
-       ordinal check from the capacity check.  The contract is empty until the
-       first legal value is declared. */
-    memset(&entry_info, 0, sizeof(entry_info));
-    entry_info.config_id = config_id;
-    entry_info.input_count = 2;
-    entry_info.output_count = 1;
-    entry_info.parameter_count = 1;
-    entry_info.encrypted_io_policy = 1;
-    entry_info.parameter_policy =
-        DSL_FHE_PARAMETER_POLICY_ENCODED_PLAINTEXT;
-    entry_id = DSL_Builder_Attach_FHE_Entry_Contract(pu, &entry_info);
-    ENTRY_ATOMIC_CHECK(entry_id != 0, "attach empty entry contract");
-    ENTRY_ATOMIC_CHECK
-        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
-         contract_record.first_entry_value_id == 0 &&
-         contract_record.entry_value_count == 0,
-         "empty entry contract has zero range");
-    ENTRY_ATOMIC_CHECK(DSL_FHE_Entry_Value_Count() == 0,
-                       "entry value table starts empty");
+    memset(&ckks_info, 0, sizeof(ckks_info));
+    ckks_info.encryption_descriptor_id = encrypted_id;
+    ckks_info.state_version = 1;
+    ckks_info.scheme = DSL_FHE_SCHEME_CKKS;
+    ckks_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    ckks_info.level = -1;
+    ckks_info.scale_bits = -1;
+    ckks_info.component_count = -1;
+    ckks_info.precision_bits = -1;
+    ckks_info.encrypted_layout_name = "nchw_slots";
+    conv_state_id =
+        DSL_Builder_Bind_FHE_Value_CKKS_State(conv, &ckks_info);
+    DSL_FHE_Plan_Get_CKKS_Value_State(conv_state_id, &ckks_state);
+    FHE_SYNC3_CHECK
+        (conv_state_id != 0 &&
+         DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state) == 0,
+         "CKKS state identity rejects duplicates");
+    ckks_info.pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
+    ckks_info.pending_bootstrap_reason =
+        DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
+    relu_state_id =
+        DSL_Builder_Bind_FHE_Value_CKKS_State(relu, &ckks_info);
+    FHE_SYNC3_CHECK(relu_state_id != 0, "ReLU CKKS pending state");
 
-    /* Foreign-PU rejection on an empty contract must not mutate either the
-       table or the entry contract.  Compare the serialized byte image and the
-       logical range before and after the rejected declaration.  This is the
-       foreign-PU empty-contract regression: it is red on the parent, where the
-       contract's first_entry_value_id was advanced before the owner check, and
-       green on the candidate, where validation precedes any mutation. */
-    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
-    foreign_pu = DSL_Builder_Create_Minimal_PU("fhe_entry_atomicity_foreign");
-    foreign_input = DSL_Builder_Create_Model_Input
-                        ("atomic_foreign_input", tensor_ty, 0);
-    ENTRY_ATOMIC_CHECK(foreign_pu != NULL && foreign_input != NULL,
-                       "foreign program unit and value");
-    ENTRY_ATOMIC_CHECK
-        (DSL_Builder_Append_PU_Value(foreign_pu, foreign_input),
-         "append foreign value to the foreign program unit");
-    memset(&value_info, 0, sizeof(value_info));
-    value_info.encryption_descriptor_id = ciphertext_id;
-    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, foreign_input, 0, DSL_FHE_ENTRY_VALUE_INPUT,
-              &value_info);
-    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
-                       "reject an entry value owned by another program unit");
-    ENTRY_ATOMIC_CHECK(DSL_Builder_Select_PU(pu),
-                       "restore entry program unit");
-    ENTRY_ATOMIC_CHECK
-        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
-         contract_record.first_entry_value_id == 0 &&
-         contract_record.entry_value_count == 0,
-         "foreign-PU rejection leaves entry contract range empty");
-    ENTRY_ATOMIC_CHECK(DSL_FHE_Entry_Value_Count() == 0,
-                       "foreign-PU rejection leaves value table empty");
-    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
-    ENTRY_ATOMIC_CHECK
-        (size_after == size_before &&
-         memcmp(bytes_after, bytes_before, size_before) == 0,
-         "foreign-PU rejection leaves serialized image byte-identical");
-    delete [] bytes_after;
-    delete [] bytes_before;
+    memset(&bn_fold_info, 0, sizeof(bn_fold_info));
+    bn_fold_info.context_pu_identity_id = pu_identity.id;
+    bn_fold_info.source_conv_weight = conv_weight;
+    bn_fold_info.source_bn_scale = channel_parameter;
+    bn_fold_info.source_bn_bias = channel_parameter;
+    bn_fold_info.source_bn_mean = channel_parameter;
+    bn_fold_info.source_bn_variance = channel_parameter;
+    bn_fold_info.folded_weight_tcon = folded_weight_tcon;
+    bn_fold_info.folded_bias_tcon = folded_bias_tcon;
+    bn_fold_info.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS;
+    bn_fold_id = DSL_Builder_Record_FHE_BN_Fold
+                     (conv, batch_norm, &bn_fold_info);
+    FHE_SYNC3_CHECK(bn_fold_id != 0, "BatchNorm fold provenance");
 
-    /* Legal first insertion: an input owned by the contract PU with ordinal 0
-       succeeds and sets the contiguous first_entry_value_id. */
-    memset(&value_info, 0, sizeof(value_info));
-    value_info.encryption_descriptor_id = ciphertext_id;
-    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_INPUT, &value_info);
-    ENTRY_ATOMIC_CHECK(id == 1,
-                       "legal first insertion returns the first entry value id");
-    ENTRY_ATOMIC_CHECK
-        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
-         contract_record.first_entry_value_id == 1 &&
-         contract_record.entry_value_count == 1,
-         "legal first insertion sets first_entry_value_id and count");
+    memset(&disposition_info, 0, sizeof(disposition_info));
+    disposition_info.disposition = DSL_FHE_DISPOSITION_DOMAIN_WRAPPER;
+    disposition_info.wrapper_version = 1;
+    disposition_info.wrapper_name = DSL_FHE_WRAPPER_CNN_CONV2D;
+    disposition_info.result_ckks_value_state_id = conv_state_id;
+    disposition_info.first_bn_fold_id = bn_fold_id;
+    disposition_info.bn_fold_count = 1;
+    disposition_info.flags = DSL_FHE_DISPOSITION_DEFINITION_REWRITE |
+                             DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    FHE_SYNC3_CHECK
+        (DSL_Builder_Record_FHE_Conversion_Disposition
+             (conv, &disposition_info) != 0,
+         "domain-wrapper disposition");
+    memset(&disposition_info, 0, sizeof(disposition_info));
+    disposition_info.disposition = DSL_FHE_DISPOSITION_REQUIRE_APPROXIMATION;
+    disposition_info.approximation_contract_id = approximation_id;
+    disposition_info.result_ckks_value_state_id = relu_state_id;
+    disposition_info.flags = DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    FHE_SYNC3_CHECK
+        (DSL_Builder_Record_FHE_Conversion_Disposition
+             (relu, &disposition_info) != 0,
+         "ReLU approximation disposition");
 
-    /* Duplicate input ordinal while the role still has capacity (one input
-       declared, input_count == 2) is rejected before any mutation.  The
-       serialized image must be byte-identical before and after. */
-    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_INPUT, &value_info);
-    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
-                       "reject duplicate input ordinal within capacity");
-    ENTRY_ATOMIC_CHECK
-        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
-         contract_record.first_entry_value_id == 1 &&
-         contract_record.entry_value_count == 1 &&
-         DSL_FHE_Entry_Value_Count() == 1,
-         "duplicate ordinal rejection preserves contract and table");
-    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
-    ENTRY_ATOMIC_CHECK
-        (size_after == size_before &&
-         memcmp(bytes_after, bytes_before, size_before) == 0,
-         "duplicate ordinal rejection leaves serialized image byte-identical");
-    delete [] bytes_after;
-    delete [] bytes_before;
+    DSL_FHE_Plan_Image_Get_Header(&header);
+    FHE_SYNC3_CHECK
+        (header.disposition_count == 2 && header.approximation_count == 1 &&
+         header.ckks_value_state_count == 2 && header.bn_fold_count == 1 &&
+         DSL_FHE_Plan_Image_Has_Records() &&
+         DSL_FHE_Plan_Image_Validate(stderr),
+         "complete planning image validates");
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Find_Conversion_Disposition
+             (conv_value.producer_node_id, &disposition) &&
+         disposition.first_bn_fold_id == bn_fold_id &&
+         DSL_FHE_Plan_Find_Latest_CKKS_Value_State
+             (relu_value.id, &ckks_state) &&
+         ckks_state.pending_bootstrap_reason ==
+             DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH &&
+         DSL_FHE_Plan_Find_BN_Fold_Provenance
+             (conv_value.producer_node_id, pu_identity.id, 0, &bn_fold),
+         "planning image semantic lookups");
 
-    /* A role outside the INPUT/OUTPUT/PARAMETER range is rejected before any
-       mutation regardless of capacity. */
-    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, input, 0,
-              (DSL_FHE_ENTRY_VALUE_ROLE) DSL_FHE_ENTRY_VALUE_UNKNOWN,
-              &value_info);
-    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
-                       "reject unknown entry value role");
-    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
-    ENTRY_ATOMIC_CHECK
-        (size_after == size_before &&
-         memcmp(bytes_after, bytes_before, size_before) == 0 &&
-         DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
-         contract_record.first_entry_value_id == 1 &&
-         contract_record.entry_value_count == 1 &&
-         DSL_FHE_Entry_Value_Count() == 1,
-         "bad role rejection preserves contract, table, and image");
-    delete [] bytes_after;
-    delete [] bytes_before;
+    ckks_state.pending_actions = 0x80000000U;
+    ckks_state.state_version = 2;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state) == 0,
+         "unknown CKKS pending action rejected");
 
-    /* Invalid descriptor: a zero descriptor id has no tensor binding, so the
-       declaration is rejected before mutation.  The output role still has its
-       full capacity, so the rejection is due to the descriptor, not capacity. */
-    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
-    memset(&value_info, 0, sizeof(value_info));
-    value_info.encryption_descriptor_id = 0;
-    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_OUTPUT, &value_info);
-    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
-                       "reject zero encryption descriptor id");
-    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
-    ENTRY_ATOMIC_CHECK
-        (size_after == size_before &&
-         memcmp(bytes_after, bytes_before, size_before) == 0,
-         "zero descriptor rejection leaves serialized image byte-identical");
-    delete [] bytes_after;
-    delete [] bytes_before;
-
-    /* Descriptor present but value class mismatched with it: the binding
-       resolves, but the record-level descriptor/value-class check rejects the
-       value before mutation. */
-    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
-    value_info.encryption_descriptor_id = ciphertext_id;
-    value_info.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, input, 0, DSL_FHE_ENTRY_VALUE_OUTPUT, &value_info);
-    ENTRY_ATOMIC_CHECK(id == DSL_FHE_ENTRY_VALUE_INVALID_ID,
-                       "reject value-class mismatch with the descriptor");
-    bytes_after = DSL_FHE_Test_Serialize_Image(&size_after);
-    ENTRY_ATOMIC_CHECK
-        (size_after == size_before &&
-         memcmp(bytes_after, bytes_before, size_before) == 0,
-         "value-class mismatch rejection leaves image byte-identical");
-    delete [] bytes_after;
-    delete [] bytes_before;
-
-    /* Contiguous range construction: a second input, the parameter, and the
-       output extend the range contiguously to [1,4] so the image validates. */
-    memset(&value_info, 0, sizeof(value_info));
-    value_info.encryption_descriptor_id = ciphertext_id;
-    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, input, 1, DSL_FHE_ENTRY_VALUE_INPUT, &value_info);
-    ENTRY_ATOMIC_CHECK(id == 2, "contiguous second input value");
-    value_info.encryption_descriptor_id = plaintext_id;
-    value_info.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, weight, 0, DSL_FHE_ENTRY_VALUE_PARAMETER, &value_info);
-    ENTRY_ATOMIC_CHECK(id == 3, "contiguous parameter value");
-    value_info.encryption_descriptor_id = ciphertext_id;
-    value_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-    id = DSL_Builder_Declare_FHE_Entry_Value
-             (entry_id, result, 0, DSL_FHE_ENTRY_VALUE_OUTPUT, &value_info);
-    ENTRY_ATOMIC_CHECK(id == 4, "contiguous output value");
-    ENTRY_ATOMIC_CHECK
-        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
-         contract_record.first_entry_value_id == 1 &&
-         contract_record.entry_value_count == 4 &&
-         DSL_FHE_Entry_Value_Count() == 4 &&
-         DSL_FHE_Image_Validate(NULL),
-         "contiguous range [1,4] validates in memory");
-
-    /* After every rejection the four-value image is unchanged and reopens in
-     an independent pass through the mapped-image loader, preserving the
-     contiguous range. */
-    bytes_before = DSL_FHE_Test_Serialize_Image(&size_before);
-    ENTRY_ATOMIC_CHECK
-        (DSL_FHE_Image_Load_Mapped(bytes_before, size_before, NULL),
-         "reopen the populated image after every rejection");
-    ENTRY_ATOMIC_CHECK
-        (DSL_FHE_Get_Entry_Contract(entry_id, &contract_record) &&
-         contract_record.first_entry_value_id == 1 &&
-         contract_record.entry_value_count == 4 &&
-         DSL_FHE_Entry_Value_Count() == 4 &&
-         DSL_FHE_Image_Validate(NULL),
-         "reopened populated image preserves the contiguous range");
-    delete [] bytes_before;
-
-    if (failed) {
-        fprintf(stderr,
-                "FHE entry value insertion atomicity checks failed\n");
-        return 1;
+    UINT64 image_size = DSL_FHE_PLAN_IMAGE_HEADER_SIZE +
+        (UINT64)header.disposition_count *
+            DSL_FHE_PLAN_DISPOSITION_RECORD_SIZE +
+        (UINT64)header.approximation_count *
+            DSL_FHE_PLAN_APPROXIMATION_RECORD_SIZE +
+        (UINT64)header.ckks_value_state_count *
+            DSL_FHE_PLAN_CKKS_STATE_RECORD_SIZE +
+        (UINT64)header.bn_fold_count * DSL_FHE_PLAN_BN_FOLD_RECORD_SIZE;
+    unsigned char *image_bytes = new unsigned char[image_size];
+    unsigned char *cursor = image_bytes;
+    memcpy(cursor, &header, sizeof(header));
+    cursor += sizeof(header);
+    for (UINT32 i = 1; i <= header.disposition_count; ++i) {
+        DSL_FHE_Plan_Get_Conversion_Disposition(i, &disposition);
+        memcpy(cursor, &disposition, sizeof(disposition));
+        cursor += sizeof(disposition);
     }
-    printf("FHE entry value insertion atomicity contract passed\n");
-#undef ENTRY_ATOMIC_CHECK
-    return 0;
+    for (UINT32 i = 1; i <= header.approximation_count; ++i) {
+        DSL_FHE_Plan_Get_Approximation_Contract(i, &approximation);
+        memcpy(cursor, &approximation, sizeof(approximation));
+        cursor += sizeof(approximation);
+    }
+    for (UINT32 i = 1; i <= header.ckks_value_state_count; ++i) {
+        DSL_FHE_Plan_Get_CKKS_Value_State(i, &ckks_state);
+        memcpy(cursor, &ckks_state, sizeof(ckks_state));
+        cursor += sizeof(ckks_state);
+    }
+    for (UINT32 i = 1; i <= header.bn_fold_count; ++i) {
+        DSL_FHE_Plan_Get_BN_Fold_Provenance(i, &bn_fold);
+        memcpy(cursor, &bn_fold, sizeof(bn_fold));
+        cursor += sizeof(bn_fold);
+    }
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Plan_Image_Load_Mapped
+             (image_bytes, image_size - 1, NULL) &&
+         !DSL_FHE_Plan_Image_Load_Mapped
+             (image_bytes, image_size + 1, NULL),
+         "truncated and trailing mapped images rejected");
+    DSL_FHE_PLAN_IMAGE_HEADER *mapped_header =
+        (DSL_FHE_PLAN_IMAGE_HEADER *)image_bytes;
+    mapped_header->reserved0 = 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Plan_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "nonzero mapped header reserved field rejected");
+    mapped_header->reserved0 = 0;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD *mapped_disposition =
+        (DSL_FHE_CONVERSION_DISPOSITION_RECORD *)
+            (image_bytes + DSL_FHE_PLAN_IMAGE_HEADER_SIZE);
+    DSL_IR_VALUE_ID saved_result_value_id =
+        mapped_disposition->result_value_id;
+    mapped_disposition->result_value_id = DSL_IR_Image_Value_Count() + 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Plan_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "invalid mapped DSL value reference rejected");
+    mapped_disposition->result_value_id = saved_result_value_id;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Image_Load_Mapped(image_bytes, image_size, stderr) &&
+         DSL_FHE_Plan_Conversion_Disposition_Count() == 2 &&
+         DSL_FHE_Plan_Approximation_Contract_Count() == 1 &&
+         DSL_FHE_Plan_CKKS_Value_State_Count() == 2 &&
+         DSL_FHE_Plan_BN_Fold_Provenance_Count() == 1,
+         "mapped planning image copied into managed tables");
+    delete [] image_bytes;
+
+    char diagnostic[4096];
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    FHE_SYNC3_CHECK
+        (DSL_Builder_Verify_Program(&verify),
+         diagnostic[0] == '\0' ? "program verification" : diagnostic);
+
+    request.path = artifact;
+    request.flags = 0;
+    (void) unlink(request.path);
+    FHE_SYNC3_CHECK
+        (DSL_Builder_Finalize_Mapped_Image(&request) &&
+         access(request.path, F_OK) == 0,
+         "mapped-image artifact finalization");
+    DSL_FHE_Plan_Image_Reset();
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Plan_Image_Has_Records() &&
+         DSL_FHE_Plan_Conversion_Disposition_Count() == 0 &&
+         DSL_FHE_Plan_Image_Validate(NULL),
+         "planning image reset");
+    if (!retain_artifact)
+        (void) unlink(request.path);
+    if (!failed)
+        printf("FHE SYNC-3 planning-image contract passed\n");
+
+#undef FHE_SYNC3_CHECK
+    return failed;
 }
 
 int
@@ -5621,10 +5565,10 @@ main(void)
         return Check_Tensor_TCON_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC1_ONLY") != NULL)
         return Check_FHE_SYNC1_Mapped_Image();
-    if (getenv("OPEN64_DSL_FHE_BINDING_ONLY") != NULL)
-        return Check_FHE_Tensor_Binding_V1_Identity();
-    if (getenv("OPEN64_DSL_FHE_ENTRY_ATOMICITY_ONLY") != NULL)
-        return Check_FHE_Entry_Value_Insertion_Atomicity();
+    if (getenv("OPEN64_DSL_FHE_SYNC3_PLAN_ONLY") != NULL)
+        return Check_FHE_SYNC3_Plan_Image();
+    if (getenv("OPEN64_DSL_FHE_SYNC3_REWRITE_ONLY") != NULL)
+        return Check_FHE_SYNC3_Native_Rewrite();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -5644,8 +5588,8 @@ main(void)
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
     failed |= Check_FHE_SYNC1_Mapped_Image();
-    failed |= Check_FHE_Tensor_Binding_V1_Identity();
-    failed |= Check_FHE_Entry_Value_Insertion_Atomicity();
+    failed |= Check_FHE_SYNC3_Plan_Image();
+    failed |= Check_FHE_SYNC3_Native_Rewrite();
     failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;

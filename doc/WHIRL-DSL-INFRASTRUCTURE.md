@@ -1695,7 +1695,7 @@ full-sequence causal prompt evaluation with no KV cache.
    `common.relu` node definitions representing 19 source-context ReLU uses.
    Those source contexts are not operator or function versions.
 
-34. [ ] Stage the FHE SYNC-3 conversion infrastructure.
+34. [x] Stage the FHE SYNC-3 conversion infrastructure.
 
    Use `doc/FHE-SYNC3-CONVERSION-CONTRACT.md` as the semantic handoff after
    the merged ResNet-20 capture. Publish the exact main/common physical
@@ -1734,6 +1734,84 @@ full-sequence causal prompt evaluation with no KV cache.
    source-semantic WN and carries the logical FHE wrapper in a first-class
    disposition row; genuinely new executable semantics still require reviewed
    append-only opcode allocation.
+
+   Stage 1 contract review completed in PR #107. Stage 2 is deliberately split
+   at the managed-image boundary. Stage 2a adds `dsl_fhe_plan.{h,cxx}`, exact
+   compile-time row-size checks, deterministic FHE-CNN wrapper registration,
+   managed add/intern/get/find/reset services, cross-table validation, and a
+   focused linked producer test. It does not yet add the optional ELF section,
+   mapped-image loading, `ir_b2a` headings, builder attachment wrappers, or the
+   VHO conversion driver. Stage 2b owns that reader/writer/printer wiring and
+   must preserve the version-1 `.WHIRL.dsl_fhe` image unchanged.
+
+   Stage 2b adds optional `WT_DSL_FHE_PLAN` (`0x24`) section emission and
+   discovery under `.WHIRL.dsl_fhe_plan`. The mapped reader validates the
+   exact section size and every cross-table reference before resetting live
+   state, then copies the accepted fixed rows into managed tables; it never
+   adopts mapped ELF storage as mutable compiler state. An absent section
+   resets to an empty valid plan so pre-SYNC-3 files remain readable.
+   `ir_b2a -st -src` prints stable logical conversion-disposition,
+   approximation, CKKS value-state, and BatchNorm-fold tables. The focused
+   producer rejects truncated, trailing, reserved-field, and invalid-reference
+   images, then writes and reopens a retained `.B`/`.T` pair through the normal
+   ELF path. The existing `.WHIRL.dsl_fhe` version and all earlier image rows
+   remain unchanged.
+
+   Stage 2c adds producer-only opaque builder wrappers for conversion
+   dispositions, CKKS value state, and BatchNorm-fold provenance. The wrappers
+   resolve `DSL_BUILDER_VALUE` handles immediately into stable node/value/PU
+   identities; no producer pointer enters the mapped image. Compiler phases
+   use `DSL_IR_Image_Find_Definition_Value()` in the active PU context and
+   `DSL_IR_Rewrite_Native_Value()` to apply a prepared logical replacement to
+   the physical WN and managed image together. The rewrite preserves node,
+   result value, ST, TY, source-position, and owner identities, validates the
+   replacement attribute schema, copies operand templates into normal WN pool
+   storage, and leaves both representations unchanged on rejected expected-op,
+   owner, or operand checks. A retained two-PU fixture deliberately collides
+   local ST indices and proves the selected PU remains authoritative while one
+   `common.add.v1` becomes `common.mul.v1` in both the tree and `ir_b2a` image.
+
+   Stage 3 is the later VHO-owned stage. It adds
+   `VHO_FHE_Convert_Driver()`, independent option control, semantic
+   gatekeeper, and before/after conversion artifacts after optional DSL
+   WOPT/Preopt and before `VHO_DSL_Lower_Driver()`. Keep the FHE task blocked
+   from semantic conversion implementation until that reviewed hook lands; do
+   not let it reach into WN, ST, TY, or mapped-image internals.
+
+   Stage 3 implements `config_fhe.{h,cxx}` with `convert`, `strict_o0`,
+   `dump_before`, and `dump_after` controls in the independent `-FHE:` option
+   group. Conversion defaults on but is an exact no-op for artifacts without
+   FHE image or FHE-plan records. An FHE-bearing artifact requires a
+   registered semantic gatekeeper and conversion pass; absence is diagnosed
+   as `CFHE-CONVERT-001` rather than allowing generic DSL lowering to erase
+   FHE intent. The fixed execution order is structural gate, semantic gate,
+   conversion pass, structural gate, semantic gate. Registration APIs isolate
+   FHE-owned semantics from backend phase ordering, and the pass must use the
+   reviewed logical lookup/rewrite services instead of directly changing WN,
+   ST, TY, or mapped-image table fields. A focused linked test covers disabled
+   behavior, missing-pass rejection, duplicate registration, strict-O0 option
+   propagation, gate/pass ordering, legacy no-op compatibility, and retained
+   before/after WHIRL trace evidence.
+
+35. [x] Preserve the DSL producer/backend link boundary.
+
+   Backend-linked common services and VHO passes must not depend on the
+   frontend-only `DSL_Builder_*` value registry. Keep opaque builder entry
+   points as producer compatibility wrappers, but place tensor symbol and
+   unique-ownership operations needed by backend transformations in the
+   common DSL memory-behavior service. Keep FHE entry-value APIs that consume
+   opaque builder handles in `dsl_builder.cxx`; the mapped FHE table service
+   must operate only on stable image, type, symbol, and PU identities.
+
+   This separation keeps `be.so` self-contained for `lw_inline`, `whirl2c`,
+   and later IPA/WOPT consumers without linking the complete frontend builder
+   into backend phases. It changes no public builder signature, logical
+   opcode, type encoding, mapped-image row, ELF section, or binary WHIRL
+   compatibility contract. The Linux validation gate requires both `be.so`
+   and `lw_inline` to have no defined or undefined `DSL_Builder_*` symbols.
+   The normal `lw_inline` build enforces its side of this boundary after
+   linking. Existing builder, FHE planning-image, native-rewrite, and VHO
+   conversion contract tests must then pass.
 
 ### Deferred work TODO
 

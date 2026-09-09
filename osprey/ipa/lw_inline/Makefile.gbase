@@ -249,7 +249,7 @@ LLDLIBS =
 
 LLDLIBS += $(LIBIBERTY_OBJS)
 
-.PHONY: default first last install
+.PHONY: default first last install verify_dsl_builder_boundary
 
 default:
 	$(MAKE) first
@@ -269,7 +269,14 @@ endif
 #  The commands in this section are done AFTER every other target is
 #  built.
 #----------------------------------------------------------------------
-last : make_deps
+last : verify_dsl_builder_boundary make_deps
+
+verify_dsl_builder_boundary: lw_inline
+	@if nm lw_inline | grep -q 'DSL_Builder_'; then \
+	  echo "ERROR: lw_inline must not reference DSL_Builder_*"; \
+	  nm lw_inline | grep 'DSL_Builder_'; \
+	  exit 1; \
+	fi
 
 install:: default
 ifeq ($(BUILD_OS), LINUX)
