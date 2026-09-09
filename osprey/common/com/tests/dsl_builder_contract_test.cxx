@@ -4804,17 +4804,40 @@ Check_FHE_SYNC1_Mapped_Image(void)
 static int
 Check_FHE_SYNC3_Plan_Image(void)
 {
+    const char *artifact = getenv("OPEN64_DSL_FHE_SYNC3_ARTIFACT");
+    BOOL retain_artifact = artifact != NULL && artifact[0] != '\0';
     DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
     DSL_BUILDER_TENSOR_TYPE_CORE coefficient_core;
     DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    DSL_BUILDER_SOURCE_POSITION source_position;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_VERIFY_RESULT verify;
     DSL_BUILDER_PROGRAM_UNIT pu;
     DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE conv_weight;
+    DSL_BUILDER_VALUE channel_parameter;
     DSL_BUILDER_VALUE conv;
     DSL_BUILDER_VALUE batch_norm;
     DSL_BUILDER_VALUE relu;
     DSL_BUILDER_VALUE conv_kids[3];
     DSL_BUILDER_VALUE bn_kids[5];
     DSL_BUILDER_VALUE unary_kid[1];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE conv_attributes[8] = {
+        { "attr.kernel_shape", "1,1" },
+        { "attr.stride", "1,1" },
+        { "attr.padding", "0,0" },
+        { "attr.dilation", "1,1" },
+        { "attr.groups", "1" },
+        { "attr.input_layout", "NCHW" },
+        { "attr.weight_layout", "OIHW" },
+        { "attr.output_layout", "NCHW" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE batch_norm_attributes[4] = {
+        { "attr.epsilon", "0.00001" },
+        { "attr.training", "false" },
+        { "attr.input_layout", "NCHW" },
+        { "attr.channel_axis", "1" }
+    };
     DSL_IR_VALUE_RECORD conv_value;
     DSL_IR_VALUE_RECORD bn_value;
     DSL_IR_VALUE_RECORD relu_value;
@@ -4840,8 +4863,12 @@ Check_FHE_SYNC3_Plan_Image(void)
     TCON_IDX range_max_tcon;
     TCON_IDX max_error_tcon;
     TY_IDX tensor_ty;
+    TY_IDX conv_weight_ty;
+    TY_IDX channel_parameter_ty;
     TY_IDX coefficient_ty;
     DSL_DOMAIN_ID cnn_id;
+    UINT32 file_id;
+    BOOL positions_set;
     int failed = 0;
 #define FHE_SYNC3_CHECK(condition, message) \
     do { \
@@ -4851,6 +4878,8 @@ Check_FHE_SYNC3_Plan_Image(void)
         } \
     } while (0)
 
+    if (!retain_artifact)
+        artifact = "fhe_sync3_plan_contract.B";
     FHE_SYNC3_CHECK
         (sizeof(DSL_FHE_PLAN_IMAGE_HEADER) == 64 &&
          sizeof(DSL_FHE_CONVERSION_DISPOSITION_RECORD) == 56 &&
@@ -4877,6 +4906,16 @@ Check_FHE_SYNC3_Plan_Image(void)
     tensor_ty = DSL_Builder_Intern_Tensor_Type
                     ("fhe_sync3_f32_1x4x4x4", MTYPE_To_TY(MTYPE_F4),
                      &descriptor);
+    descriptor.type_core.logical_shape = "[4,4,1,1]";
+    descriptor.traits.traits = "parameter";
+    conv_weight_ty = DSL_Builder_Intern_Tensor_Type
+                         ("fhe_sync3_conv_weight_f32_4x4x1x1",
+                          MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[4]";
+    channel_parameter_ty = DSL_Builder_Intern_Tensor_Type
+                               ("fhe_sync3_channel_parameter_f32_4",
+                                MTYPE_To_TY(MTYPE_F4), &descriptor);
     memset(&coefficient_core, 0, sizeof(coefficient_core));
     coefficient_core.kind = "tensor";
     coefficient_core.dtype = "float32";
@@ -4886,38 +4925,84 @@ Check_FHE_SYNC3_Plan_Image(void)
                          ("fhe_sync3_coeff_f32_4", MTYPE_To_TY(MTYPE_F4),
                           &coefficient_core);
     pu = DSL_Builder_Create_Minimal_PU("fhe_sync3_plan");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
     memset(&source_identity, 0, sizeof(source_identity));
     source_identity.canonical_definition_name = "FHEResNet.forward";
     source_identity.defining_module = "fhe_resnet";
-    source_identity.defining_file = "fhe_resnet.py";
+    source_identity.defining_file = __FILE__;
     source_identity.defining_line = 1;
     FHE_SYNC3_CHECK
-        (tensor_ty != TY_IDX_ZERO && coefficient_ty != TY_IDX_ZERO &&
+        (tensor_ty != TY_IDX_ZERO && conv_weight_ty != TY_IDX_ZERO &&
+         channel_parameter_ty != TY_IDX_ZERO &&
+         coefficient_ty != TY_IDX_ZERO &&
          TY_tensor_seal(coefficient_ty) &&
-         pu != NULL && cnn_id != DSL_DOMAIN_INVALID_ID &&
+         pu != NULL && file_id != 0 && cnn_id != DSL_DOMAIN_INVALID_ID &&
          DSL_Builder_Set_PU_Source_Identity(pu, &source_identity),
          "program, tensor types, and source identity");
 
     input = DSL_Builder_Create_Model_Input("encrypted_input", tensor_ty, 0);
+    conv_weight = DSL_Builder_Create_Model_Input
+                      ("conv_weight", conv_weight_ty, 1);
+    channel_parameter = DSL_Builder_Create_Model_Input
+                            ("channel_parameter", channel_parameter_ty, 2);
     conv_kids[0] = input;
-    conv_kids[1] = input;
-    conv_kids[2] = input;
+    conv_kids[1] = conv_weight;
+    conv_kids[2] = channel_parameter;
     conv = DSL_Builder_Create_Operator_With_Result
                (DSL_Opcode_Find(cnn_id, "cnn.conv2d", 2), 2,
-                conv_kids, 3, NULL, 0, "conv_result", tensor_ty);
-    for (UINT32 i = 0; i < 5; ++i)
-        bn_kids[i] = i == 0 ? conv : input;
+                conv_kids, 3, conv_attributes, 8,
+                "conv_result", tensor_ty);
+    bn_kids[0] = conv;
+    for (UINT32 i = 1; i < 5; ++i)
+        bn_kids[i] = channel_parameter;
     batch_norm = DSL_Builder_Create_Operator_With_Result
                      (DSL_Opcode_Find(cnn_id, "cnn.batch_norm_infer", 2), 2,
-                      bn_kids, 5, NULL, 0, "batch_norm_result", tensor_ty);
+                      bn_kids, 5, batch_norm_attributes, 4,
+                      "batch_norm_result", tensor_ty);
     unary_kid[0] = batch_norm;
     relu = DSL_Builder_Create_Operator_With_Result
                (DSL_Opcode_Find(DSL_Domain_Find("common"),
                                 "common.relu", 2),
                 2, unary_kid, 1, NULL, 0, "relu_result", tensor_ty);
+    memset(&source_position, 0, sizeof(source_position));
+    source_position.file_id = file_id;
+    source_position.line = __LINE__ + 1;
+    source_position.column = 5;
+    source_position.statement_begin = 1;
+    positions_set = input != NULL && conv_weight != NULL &&
+                    channel_parameter != NULL && conv != NULL &&
+                    batch_norm != NULL && relu != NULL;
+    if (positions_set) {
+        positions_set = DSL_Builder_Set_Value_Source_Position
+                            (input, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (conv_weight, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (channel_parameter, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (conv, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (batch_norm, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (relu, &source_position);
+    }
     FHE_SYNC3_CHECK
-        (input != NULL && conv != NULL && batch_norm != NULL && relu != NULL &&
+        (input != NULL && conv_weight != NULL && channel_parameter != NULL &&
+         conv != NULL && batch_norm != NULL && relu != NULL &&
+         positions_set &&
          DSL_Builder_Append_PU_Value(pu, input) &&
+         DSL_Builder_Append_PU_Value(pu, conv_weight) &&
+         DSL_Builder_Append_PU_Value(pu, channel_parameter) &&
          DSL_Builder_Append_PU_Value(pu, conv) &&
          DSL_Builder_Append_PU_Value(pu, batch_norm) &&
          DSL_Builder_Append_PU_Value(pu, relu),
@@ -5028,15 +5113,15 @@ Check_FHE_SYNC3_Plan_Image(void)
     bn_fold.batch_norm_node_id = bn_value.producer_node_id;
     bn_fold.context_pu_identity_id = pu_identity.id;
     bn_fold.source_conv_weight_value_id =
-        DSL_Builder_Get_Value_Image_Id(input);
+        DSL_Builder_Get_Value_Image_Id(conv_weight);
     bn_fold.source_bn_scale_value_id =
-        DSL_Builder_Get_Value_Image_Id(input);
+        DSL_Builder_Get_Value_Image_Id(channel_parameter);
     bn_fold.source_bn_bias_value_id =
-        DSL_Builder_Get_Value_Image_Id(input);
+        DSL_Builder_Get_Value_Image_Id(channel_parameter);
     bn_fold.source_bn_mean_value_id =
-        DSL_Builder_Get_Value_Image_Id(input);
+        DSL_Builder_Get_Value_Image_Id(channel_parameter);
     bn_fold.source_bn_variance_value_id =
-        DSL_Builder_Get_Value_Image_Id(input);
+        DSL_Builder_Get_Value_Image_Id(channel_parameter);
     bn_fold.folded_weight_tcon = folded_weight_tcon;
     bn_fold.folded_bias_tcon = folded_bias_tcon;
     bn_fold.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS;
@@ -5094,12 +5179,97 @@ Check_FHE_SYNC3_Plan_Image(void)
     FHE_SYNC3_CHECK
         (DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state) == 0,
          "unknown CKKS pending action rejected");
+
+    UINT64 image_size = DSL_FHE_PLAN_IMAGE_HEADER_SIZE +
+        (UINT64)header.disposition_count *
+            DSL_FHE_PLAN_DISPOSITION_RECORD_SIZE +
+        (UINT64)header.approximation_count *
+            DSL_FHE_PLAN_APPROXIMATION_RECORD_SIZE +
+        (UINT64)header.ckks_value_state_count *
+            DSL_FHE_PLAN_CKKS_STATE_RECORD_SIZE +
+        (UINT64)header.bn_fold_count * DSL_FHE_PLAN_BN_FOLD_RECORD_SIZE;
+    unsigned char *image_bytes = new unsigned char[image_size];
+    unsigned char *cursor = image_bytes;
+    memcpy(cursor, &header, sizeof(header));
+    cursor += sizeof(header);
+    for (UINT32 i = 1; i <= header.disposition_count; ++i) {
+        DSL_FHE_Plan_Get_Conversion_Disposition(i, &disposition);
+        memcpy(cursor, &disposition, sizeof(disposition));
+        cursor += sizeof(disposition);
+    }
+    for (UINT32 i = 1; i <= header.approximation_count; ++i) {
+        DSL_FHE_Plan_Get_Approximation_Contract(i, &approximation);
+        memcpy(cursor, &approximation, sizeof(approximation));
+        cursor += sizeof(approximation);
+    }
+    for (UINT32 i = 1; i <= header.ckks_value_state_count; ++i) {
+        DSL_FHE_Plan_Get_CKKS_Value_State(i, &ckks_state);
+        memcpy(cursor, &ckks_state, sizeof(ckks_state));
+        cursor += sizeof(ckks_state);
+    }
+    for (UINT32 i = 1; i <= header.bn_fold_count; ++i) {
+        DSL_FHE_Plan_Get_BN_Fold_Provenance(i, &bn_fold);
+        memcpy(cursor, &bn_fold, sizeof(bn_fold));
+        cursor += sizeof(bn_fold);
+    }
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Plan_Image_Load_Mapped
+             (image_bytes, image_size - 1, NULL) &&
+         !DSL_FHE_Plan_Image_Load_Mapped
+             (image_bytes, image_size + 1, NULL),
+         "truncated and trailing mapped images rejected");
+    DSL_FHE_PLAN_IMAGE_HEADER *mapped_header =
+        (DSL_FHE_PLAN_IMAGE_HEADER *)image_bytes;
+    mapped_header->reserved0 = 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Plan_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "nonzero mapped header reserved field rejected");
+    mapped_header->reserved0 = 0;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD *mapped_disposition =
+        (DSL_FHE_CONVERSION_DISPOSITION_RECORD *)
+            (image_bytes + DSL_FHE_PLAN_IMAGE_HEADER_SIZE);
+    DSL_IR_VALUE_ID saved_result_value_id =
+        mapped_disposition->result_value_id;
+    mapped_disposition->result_value_id = DSL_IR_Image_Value_Count() + 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Plan_Image_Load_Mapped(image_bytes, image_size, NULL),
+         "invalid mapped DSL value reference rejected");
+    mapped_disposition->result_value_id = saved_result_value_id;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Image_Load_Mapped(image_bytes, image_size, stderr) &&
+         DSL_FHE_Plan_Conversion_Disposition_Count() == 2 &&
+         DSL_FHE_Plan_Approximation_Contract_Count() == 1 &&
+         DSL_FHE_Plan_CKKS_Value_State_Count() == 2 &&
+         DSL_FHE_Plan_BN_Fold_Provenance_Count() == 1,
+         "mapped planning image copied into managed tables");
+    delete [] image_bytes;
+
+    char diagnostic[4096];
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    FHE_SYNC3_CHECK
+        (DSL_Builder_Verify_Program(&verify),
+         diagnostic[0] == '\0' ? "program verification" : diagnostic);
+
+    request.path = artifact;
+    request.flags = 0;
+    (void) unlink(request.path);
+    FHE_SYNC3_CHECK
+        (DSL_Builder_Finalize_Mapped_Image(&request) &&
+         access(request.path, F_OK) == 0,
+         "mapped-image artifact finalization");
     DSL_FHE_Plan_Image_Reset();
     FHE_SYNC3_CHECK
         (!DSL_FHE_Plan_Image_Has_Records() &&
          DSL_FHE_Plan_Conversion_Disposition_Count() == 0 &&
          DSL_FHE_Plan_Image_Validate(NULL),
          "planning image reset");
+    if (!retain_artifact)
+        (void) unlink(request.path);
+    if (!failed)
+        printf("FHE SYNC-3 planning-image contract passed\n");
 
 #undef FHE_SYNC3_CHECK
     return failed;

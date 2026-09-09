@@ -4,6 +4,7 @@
 
 #include "dsl_ir_image.h"
 #include "dsl_fhe.h"
+#include "dsl_fhe_plan.h"
 #include "dsl_opcode.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -257,4 +258,5 @@ DSL_IR_Image_Print (FILE *file)
                 record.source_call_ordinal, record.flags);
     }
     DSL_FHE_Image_Print(file);
+    DSL_FHE_Plan_Image_Print(file);
 }

@@ -201,6 +201,10 @@ extern void DSL_FHE_Plan_Image_Get_Header
                                 (DSL_FHE_PLAN_IMAGE_HEADER *header);
 extern BOOL DSL_FHE_Plan_Image_Has_Records (void);
 extern BOOL DSL_FHE_Plan_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_FHE_Plan_Image_Load_Mapped (const void *section_base,
+                                            UINT64 section_size,
+                                            FILE *diagnostic);
+extern void DSL_FHE_Plan_Image_Print (FILE *file);
 
 extern void DSL_FHE_Conversion_Disposition_Record_Init
                                 (DSL_FHE_CONVERSION_DISPOSITION_RECORD *record);
