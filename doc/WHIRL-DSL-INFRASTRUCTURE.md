@@ -1757,12 +1757,26 @@ full-sequence causal prompt evaluation with no KV cache.
    ELF path. The existing `.WHIRL.dsl_fhe` version and all earlier image rows
    remain unchanged.
 
-   Stage 2c remains responsible for opaque builder attachment/rewrite APIs and
-   the common stable-definition/update services consumed by conversion. The
-   later VHO stage owns `VHO_FHE_Convert_Driver()`, its independent option
-   control, semantic gatekeeper, and before/after conversion artifacts. Keep
-   the FHE task blocked from conversion implementation until those reviewed
-   hooks land; do not let it reach into WN, ST, TY, or mapped-image internals.
+   Stage 2c adds producer-only opaque builder wrappers for conversion
+   dispositions, CKKS value state, and BatchNorm-fold provenance. The wrappers
+   resolve `DSL_BUILDER_VALUE` handles immediately into stable node/value/PU
+   identities; no producer pointer enters the mapped image. Compiler phases
+   use `DSL_IR_Image_Find_Definition_Value()` in the active PU context and
+   `DSL_IR_Rewrite_Native_Value()` to apply a prepared logical replacement to
+   the physical WN and managed image together. The rewrite preserves node,
+   result value, ST, TY, source-position, and owner identities, validates the
+   replacement attribute schema, copies operand templates into normal WN pool
+   storage, and leaves both representations unchanged on rejected expected-op,
+   owner, or operand checks. A retained two-PU fixture deliberately collides
+   local ST indices and proves the selected PU remains authoritative while one
+   `common.add.v1` becomes `common.mul.v1` in both the tree and `ir_b2a` image.
+
+   Stage 3 is the later VHO-owned stage. It adds
+   `VHO_FHE_Convert_Driver()`, independent option control, semantic
+   gatekeeper, and before/after conversion artifacts after optional DSL
+   WOPT/Preopt and before `VHO_DSL_Lower_Driver()`. Keep the FHE task blocked
+   from semantic conversion implementation until that reviewed hook lands; do
+   not let it reach into WN, ST, TY, or mapped-image internals.
 
 ### Deferred work TODO
 

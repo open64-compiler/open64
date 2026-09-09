@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "defs.h"
+#include "dsl_opcode.h"
 #include "symtab_idx.h"
 
 class WN;
@@ -234,6 +235,26 @@ typedef struct {
     UINT32 result_value_kind;
 } DSL_IR_NODE_REWRITE_REQUEST;
 
+/*
+ * Runtime-only request for atomically replacing a native DSL definition and
+ * its logical image record. Operand templates and arrays are borrowed for the
+ * call. Stable node, value, result symbol/type, and source identities remain
+ * unchanged.
+ */
+typedef struct {
+    DSL_OPERATOR expected_operator;
+    UINT16 expected_version;
+    UINT16 replacement_version;
+    DSL_OPERATOR replacement_operator;
+    const WN *const *operand_templates;
+    const DSL_IR_VALUE_ID *operand_value_ids;
+    UINT32 operand_count;
+    const DSL_IR_ATTRIBUTE_RECORD *attributes;
+    UINT32 attribute_count;
+    STR_IDX payload;
+    UINT32 result_value_kind;
+} DSL_IR_NATIVE_VALUE_REWRITE_REQUEST;
+
 typedef enum {
     DSL_STATE_KIND_UNKNOWN = 0,
     DSL_STATE_KIND_RUNTIME_STATUS = 1,
@@ -382,6 +403,16 @@ extern BOOL DSL_IR_Image_Set_Node_Links
                                  DSL_IR_VALUE_ID result_value_id);
 extern BOOL DSL_IR_Image_Rewrite_Node
                                 (const DSL_IR_NODE_REWRITE_REQUEST *request);
+extern BOOL DSL_IR_Image_Find_Definition_Value
+                                (ST_IDX owner_pu_st,
+                                 const WN *definition,
+                                 DSL_IR_VALUE_RECORD *value_record);
+extern BOOL DSL_IR_Rewrite_Native_Value
+                                (ST_IDX owner_pu_st,
+                                 WN *definition,
+                                 DSL_IR_VALUE_ID value_id,
+                                 const DSL_IR_NATIVE_VALUE_REWRITE_REQUEST
+                                     *request);
 extern BOOL DSL_IR_Image_Find_Value
                                 (ST_IDX st,
                                  const char *name,

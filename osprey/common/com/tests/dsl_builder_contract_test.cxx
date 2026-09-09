@@ -4387,6 +4387,266 @@ Check_Tensor_TCON_Mapped_Image(void)
 }
 
 static int
+Check_FHE_SYNC3_Native_Rewrite(void)
+{
+    const char *artifact =
+        getenv("OPEN64_DSL_FHE_SYNC3_REWRITE_ARTIFACT");
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_PROGRAM_UNIT first_pu;
+    DSL_BUILDER_PROGRAM_UNIT second_pu;
+    DSL_BUILDER_VALUE first_input[2];
+    DSL_BUILDER_VALUE second_input[2];
+    DSL_BUILDER_VALUE first_add;
+    DSL_BUILDER_VALUE second_add;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE add_attr;
+    DSL_IR_ATTRIBUTE_RECORD image_attr;
+    DSL_IR_NATIVE_VALUE_REWRITE_REQUEST rewrite;
+    DSL_IR_VALUE_RECORD first_value;
+    DSL_IR_VALUE_RECORD second_value;
+    DSL_IR_VALUE_RECORD observed_value;
+    DSL_IR_NODE_RECORD node_before;
+    DSL_IR_NODE_RECORD node_after;
+    DSL_LOGICAL_OPCODE logical_opcode;
+    const WN *operand_templates[2];
+    DSL_IR_VALUE_ID operand_value_ids[2];
+    WN *expression_before;
+    TY_IDX tensor_ty;
+    UINT32 opcode_count;
+    UINT32 node_count;
+    UINT32 value_count;
+    UINT32 reference_count;
+    UINT32 attribute_count;
+    char diagnostic[4096];
+    int failed = 0;
+#define FHE_SYNC3_REWRITE_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "FHE SYNC-3 rewrite check failed: %s\n", \
+                    message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    FHE_SYNC3_REWRITE_CHECK(DSL_Builder_Begin_Program(),
+                            "program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "row_major";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("fhe_sync3_rewrite_f32_2x2",
+                     MTYPE_To_TY(MTYPE_F4), &descriptor);
+
+    first_pu = DSL_Builder_Create_Minimal_PU("fhe_rewrite_first");
+    UINT32 first_file = DSL_Builder_Register_Source_File(first_pu, __FILE__);
+    first_input[0] = DSL_Builder_Create_Model_Input
+                         ("operand0", tensor_ty, 0);
+    first_input[1] = DSL_Builder_Create_Model_Input
+                         ("operand1", tensor_ty, 1);
+    add_attr.name = "attr.broadcast_rule";
+    add_attr.value = "none";
+    first_add = DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                     DSL_OPCODE_COMMON_ADD, 1),
+                     1, first_input, 2, &add_attr, 1,
+                     "shared_result", tensor_ty);
+    memset(&position, 0, sizeof(position));
+    position.file_id = first_file;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    FHE_SYNC3_REWRITE_CHECK(first_pu != NULL && first_file != 0,
+                            "first PU and source file construction");
+    FHE_SYNC3_REWRITE_CHECK(first_input[0] != NULL,
+                            "first PU operand0 construction");
+    FHE_SYNC3_REWRITE_CHECK(first_input[1] != NULL,
+                            "first PU operand1 construction");
+    FHE_SYNC3_REWRITE_CHECK(first_add != NULL,
+                            "first PU add construction");
+    if (failed)
+        return failed;
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Set_Value_Source_Position(first_add, &position),
+         "first PU result source position");
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Append_PU_Value(first_pu, first_input[0]) &&
+         DSL_Builder_Append_PU_Value(first_pu, first_input[1]) &&
+         DSL_Builder_Append_PU_Value(first_pu, first_add),
+         "first PU value materialization");
+    if (failed)
+        return failed;
+
+    second_pu = DSL_Builder_Create_Minimal_PU("fhe_rewrite_second");
+    UINT32 second_file = DSL_Builder_Register_Source_File(second_pu, __FILE__);
+    second_input[0] = DSL_Builder_Create_Model_Input
+                          ("operand0", tensor_ty, 0);
+    second_input[1] = DSL_Builder_Create_Model_Input
+                          ("operand1", tensor_ty, 1);
+    second_add = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                      DSL_OPCODE_COMMON_ADD, 1),
+                      1, second_input, 2, &add_attr, 1,
+                      "shared_result", tensor_ty);
+    position.file_id = second_file;
+    position.line = __LINE__ + 1;
+    FHE_SYNC3_REWRITE_CHECK(second_pu != NULL && second_file != 0,
+                            "second PU and source file construction");
+    FHE_SYNC3_REWRITE_CHECK(second_input[0] != NULL,
+                            "second PU operand0 construction");
+    FHE_SYNC3_REWRITE_CHECK(second_input[1] != NULL,
+                            "second PU operand1 construction");
+    FHE_SYNC3_REWRITE_CHECK(second_add != NULL,
+                            "second PU add construction");
+    if (failed)
+        return failed;
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Set_Value_Source_Position(second_add, &position),
+         "second PU result source position");
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Append_PU_Value(second_pu, second_input[0]) &&
+         DSL_Builder_Append_PU_Value(second_pu, second_input[1]) &&
+         DSL_Builder_Append_PU_Value(second_pu, second_add),
+         "second PU value materialization");
+    if (failed)
+        return failed;
+
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Get_Value_Result_Symbol(first_add) ==
+             DSL_Builder_Get_Value_Result_Symbol(second_add),
+         "fixture has colliding PU-local result indices");
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(first_add), &first_value) &&
+         DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(second_add), &second_value) &&
+         first_value.id == DSL_Builder_Get_Value_Image_Id(first_add) &&
+         second_value.id == DSL_Builder_Get_Value_Image_Id(second_add),
+         "stable image values for colliding local symbols");
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_IR_Image_Find_Definition_Value
+             (PU_Info_proc_sym(second_pu), second_add, &observed_value) &&
+         observed_value.id == second_value.id,
+         "owner-aware definition lookup selects the second PU value");
+    FHE_SYNC3_REWRITE_CHECK
+        (!DSL_IR_Image_Find_Definition_Value
+              (PU_Info_proc_sym(first_pu), second_add, NULL),
+         "owner-aware definition lookup rejects the colliding foreign PU");
+    if (failed)
+        return failed;
+
+    expression_before = WN_kid0(second_add);
+    operand_templates[0] = WN_kid(expression_before, 0);
+    operand_templates[1] = WN_kid(expression_before, 1);
+    operand_value_ids[0] = DSL_Builder_Get_Value_Image_Id(second_input[0]);
+    operand_value_ids[1] = DSL_Builder_Get_Value_Image_Id(second_input[1]);
+    DSL_IR_Attribute_Record_Init(&image_attr);
+    image_attr.name = Save_Str("attr.broadcast_rule");
+    image_attr.value = Save_Str("none");
+    image_attr.value_kind = DSL_IR_ATTRIBUTE_VALUE_STRING;
+    memset(&rewrite, 0, sizeof(rewrite));
+    rewrite.expected_operator = OPR_DSLADD;
+    rewrite.expected_version = 1;
+    rewrite.replacement_operator = OPR_DSLMUL;
+    rewrite.replacement_version = 1;
+    rewrite.operand_templates = operand_templates;
+    rewrite.operand_value_ids = operand_value_ids;
+    rewrite.operand_count = 2;
+    rewrite.attributes = &image_attr;
+    rewrite.attribute_count = 1;
+    rewrite.result_value_kind = DSL_IR_VALUE_OPERATOR_RESULT;
+
+    opcode_count = DSL_IR_Image_Opcode_Descriptor_Count();
+    node_count = DSL_IR_Image_Node_Count();
+    value_count = DSL_IR_Image_Value_Count();
+    reference_count = DSL_IR_Image_Value_Reference_Count();
+    attribute_count = DSL_IR_Image_Attribute_Count();
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_IR_Image_Get_Node(second_value.producer_node_id, &node_before),
+         "source logical node");
+    rewrite.payload = node_before.payload;
+    rewrite.expected_operator = OPR_DSLMUL;
+    FHE_SYNC3_REWRITE_CHECK
+        (!DSL_IR_Rewrite_Native_Value
+             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+              &rewrite) &&
+         WN_kid0(second_add) == expression_before &&
+         DSL_IR_Image_Get_Node(second_value.producer_node_id, &node_after) &&
+         memcmp(&node_before, &node_after, sizeof(node_before)) == 0 &&
+         DSL_IR_Image_Opcode_Descriptor_Count() == opcode_count &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         DSL_IR_Image_Value_Reference_Count() == reference_count &&
+         DSL_IR_Image_Attribute_Count() == attribute_count,
+         "failed rewrite leaves tree and image unchanged");
+
+    rewrite.expected_operator = OPR_DSLADD;
+    operand_value_ids[0] = DSL_Builder_Get_Value_Image_Id(first_input[0]);
+    FHE_SYNC3_REWRITE_CHECK
+        (!DSL_IR_Rewrite_Native_Value
+             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+              &rewrite) &&
+         WN_kid0(second_add) == expression_before &&
+         DSL_IR_Image_Get_Node(second_value.producer_node_id, &node_after) &&
+         memcmp(&node_before, &node_after, sizeof(node_before)) == 0 &&
+         DSL_IR_Image_Opcode_Descriptor_Count() == opcode_count &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         DSL_IR_Image_Value_Reference_Count() == reference_count &&
+         DSL_IR_Image_Attribute_Count() == attribute_count,
+         "cross-PU operand rewrite rolls back without image mutation");
+    operand_value_ids[0] = DSL_Builder_Get_Value_Image_Id(second_input[0]);
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_IR_Rewrite_Native_Value
+             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+              &rewrite) &&
+         WN_kid0(second_add) != expression_before &&
+         DSL_WN_Get_Logical_Opcode
+             (WN_kid0(second_add), &logical_opcode, NULL) &&
+         logical_opcode.dsl_operator == OPR_DSLMUL &&
+         logical_opcode.source_version == 1 &&
+         DSL_IR_Image_Find_Definition_Value
+             (PU_Info_proc_sym(second_pu), second_add, &observed_value) &&
+         observed_value.id == second_value.id &&
+         observed_value.st == second_value.st &&
+         observed_value.ty == second_value.ty &&
+         WN_Get_Linenum(second_add) != 0,
+         "native tree and logical image rewrite together");
+
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    FHE_SYNC3_REWRITE_CHECK
+        (DSL_Builder_Verify_Program(&verify),
+         diagnostic[0] == '\0' ? "rewritten program verification" :
+                                  diagnostic);
+    if (!failed && artifact != NULL && artifact[0] != '\0') {
+        image_request.path = artifact;
+        image_request.flags = 0;
+        (void) unlink(artifact);
+        FHE_SYNC3_REWRITE_CHECK
+            (DSL_Builder_Finalize_Mapped_Image(&image_request) &&
+             access(artifact, F_OK) == 0,
+             "rewritten mapped-image artifact");
+    }
+
+    if (!failed)
+        printf("FHE SYNC-3 native rewrite contract passed\n");
+#undef FHE_SYNC3_REWRITE_CHECK
+    return failed;
+}
+
+static int
 Check_FHE_SYNC1_Mapped_Image(void)
 {
     const char *artifact = getenv("OPEN64_DSL_FHE_ARTIFACT");
@@ -4839,15 +5099,17 @@ Check_FHE_SYNC3_Plan_Image(void)
         { "attr.channel_axis", "1" }
     };
     DSL_IR_VALUE_RECORD conv_value;
-    DSL_IR_VALUE_RECORD bn_value;
     DSL_IR_VALUE_RECORD relu_value;
     DSL_PU_SOURCE_IDENTITY_RECORD pu_identity;
     DSL_FHE_COMPILATION_CONFIG_RECORD config;
     DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encrypted;
     DSL_FHE_APPROXIMATION_CONTRACT_RECORD approximation;
     DSL_FHE_CKKS_VALUE_STATE_RECORD ckks_state;
+    DSL_FHE_CKKS_VALUE_STATE_INFO ckks_info;
     DSL_FHE_BN_FOLD_PROVENANCE_RECORD bn_fold;
+    DSL_FHE_BN_FOLD_INFO bn_fold_info;
     DSL_FHE_CONVERSION_DISPOSITION_RECORD disposition;
+    DSL_FHE_CONVERSION_DISPOSITION_INFO disposition_info;
     DSL_FHE_PLAN_IMAGE_HEADER header;
     DSL_TENSOR_TCON_CREATE_INFO tcon_info;
     DSL_FHE_APPROXIMATION_CONTRACT_ID approximation_id;
@@ -5011,8 +5273,6 @@ Check_FHE_SYNC3_Plan_Image(void)
     FHE_SYNC3_CHECK
         (DSL_IR_Image_Get_Value(DSL_Builder_Get_Value_Image_Id(conv),
                                 &conv_value) &&
-         DSL_IR_Image_Get_Value
-             (DSL_Builder_Get_Value_Image_Id(batch_norm), &bn_value) &&
          DSL_IR_Image_Get_Value(DSL_Builder_Get_Value_Image_Id(relu),
                                 &relu_value) &&
          DSL_Call_Image_Find_PU_Identity(PU_Info_proc_sym(pu), &pu_identity),
@@ -5084,75 +5344,65 @@ Check_FHE_SYNC3_Plan_Image(void)
              approximation_id,
          "semantic approximation interning");
 
-    DSL_FHE_CKKS_Value_State_Record_Init(&ckks_state);
-    ckks_state.value_id = conv_value.id;
-    ckks_state.encryption_descriptor_id = encrypted_id;
-    ckks_state.state_version = 1;
-    ckks_state.scheme = DSL_FHE_SCHEME_CKKS;
-    ckks_state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-    ckks_state.level = -1;
-    ckks_state.scale_bits = -1;
-    ckks_state.component_count = -1;
-    ckks_state.precision_bits = -1;
-    ckks_state.encrypted_layout_name = Save_Str("nchw_slots");
-    conv_state_id = DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state);
+    memset(&ckks_info, 0, sizeof(ckks_info));
+    ckks_info.encryption_descriptor_id = encrypted_id;
+    ckks_info.state_version = 1;
+    ckks_info.scheme = DSL_FHE_SCHEME_CKKS;
+    ckks_info.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    ckks_info.level = -1;
+    ckks_info.scale_bits = -1;
+    ckks_info.component_count = -1;
+    ckks_info.precision_bits = -1;
+    ckks_info.encrypted_layout_name = "nchw_slots";
+    conv_state_id =
+        DSL_Builder_Bind_FHE_Value_CKKS_State(conv, &ckks_info);
+    DSL_FHE_Plan_Get_CKKS_Value_State(conv_state_id, &ckks_state);
     FHE_SYNC3_CHECK
         (conv_state_id != 0 &&
          DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state) == 0,
          "CKKS state identity rejects duplicates");
-    ckks_state.value_id = relu_value.id;
-    ckks_state.pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
-    ckks_state.pending_bootstrap_reason =
+    ckks_info.pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
+    ckks_info.pending_bootstrap_reason =
         DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
-    relu_state_id = DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state);
+    relu_state_id =
+        DSL_Builder_Bind_FHE_Value_CKKS_State(relu, &ckks_info);
     FHE_SYNC3_CHECK(relu_state_id != 0, "ReLU CKKS pending state");
 
-    DSL_FHE_BN_Fold_Provenance_Record_Init(&bn_fold);
-    bn_fold.owner_pu_st = PU_Info_proc_sym(pu);
-    bn_fold.conv_node_id = conv_value.producer_node_id;
-    bn_fold.batch_norm_node_id = bn_value.producer_node_id;
-    bn_fold.context_pu_identity_id = pu_identity.id;
-    bn_fold.source_conv_weight_value_id =
-        DSL_Builder_Get_Value_Image_Id(conv_weight);
-    bn_fold.source_bn_scale_value_id =
-        DSL_Builder_Get_Value_Image_Id(channel_parameter);
-    bn_fold.source_bn_bias_value_id =
-        DSL_Builder_Get_Value_Image_Id(channel_parameter);
-    bn_fold.source_bn_mean_value_id =
-        DSL_Builder_Get_Value_Image_Id(channel_parameter);
-    bn_fold.source_bn_variance_value_id =
-        DSL_Builder_Get_Value_Image_Id(channel_parameter);
-    bn_fold.folded_weight_tcon = folded_weight_tcon;
-    bn_fold.folded_bias_tcon = folded_bias_tcon;
-    bn_fold.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS;
-    bn_fold_id = DSL_FHE_Plan_Add_BN_Fold_Provenance(&bn_fold);
+    memset(&bn_fold_info, 0, sizeof(bn_fold_info));
+    bn_fold_info.context_pu_identity_id = pu_identity.id;
+    bn_fold_info.source_conv_weight = conv_weight;
+    bn_fold_info.source_bn_scale = channel_parameter;
+    bn_fold_info.source_bn_bias = channel_parameter;
+    bn_fold_info.source_bn_mean = channel_parameter;
+    bn_fold_info.source_bn_variance = channel_parameter;
+    bn_fold_info.folded_weight_tcon = folded_weight_tcon;
+    bn_fold_info.folded_bias_tcon = folded_bias_tcon;
+    bn_fold_info.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS;
+    bn_fold_id = DSL_Builder_Record_FHE_BN_Fold
+                     (conv, batch_norm, &bn_fold_info);
     FHE_SYNC3_CHECK(bn_fold_id != 0, "BatchNorm fold provenance");
 
-    DSL_FHE_Conversion_Disposition_Record_Init(&disposition);
-    disposition.source_node_id = conv_value.producer_node_id;
-    disposition.result_value_id = conv_value.id;
-    disposition.disposition = DSL_FHE_DISPOSITION_DOMAIN_WRAPPER;
-    disposition.owner_pu_st = PU_Info_proc_sym(pu);
-    disposition.wrapper_version = 1;
-    disposition.wrapper_name = Save_Str(DSL_FHE_WRAPPER_CNN_CONV2D);
-    disposition.result_ckks_value_state_id = conv_state_id;
-    disposition.first_bn_fold_id = bn_fold_id;
-    disposition.bn_fold_count = 1;
-    disposition.flags = DSL_FHE_DISPOSITION_DEFINITION_REWRITE |
-                        DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    memset(&disposition_info, 0, sizeof(disposition_info));
+    disposition_info.disposition = DSL_FHE_DISPOSITION_DOMAIN_WRAPPER;
+    disposition_info.wrapper_version = 1;
+    disposition_info.wrapper_name = DSL_FHE_WRAPPER_CNN_CONV2D;
+    disposition_info.result_ckks_value_state_id = conv_state_id;
+    disposition_info.first_bn_fold_id = bn_fold_id;
+    disposition_info.bn_fold_count = 1;
+    disposition_info.flags = DSL_FHE_DISPOSITION_DEFINITION_REWRITE |
+                             DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
     FHE_SYNC3_CHECK
-        (DSL_FHE_Plan_Add_Conversion_Disposition(&disposition) != 0,
+        (DSL_Builder_Record_FHE_Conversion_Disposition
+             (conv, &disposition_info) != 0,
          "domain-wrapper disposition");
-    DSL_FHE_Conversion_Disposition_Record_Init(&disposition);
-    disposition.source_node_id = relu_value.producer_node_id;
-    disposition.result_value_id = relu_value.id;
-    disposition.disposition = DSL_FHE_DISPOSITION_REQUIRE_APPROXIMATION;
-    disposition.owner_pu_st = PU_Info_proc_sym(pu);
-    disposition.approximation_contract_id = approximation_id;
-    disposition.result_ckks_value_state_id = relu_state_id;
-    disposition.flags = DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    memset(&disposition_info, 0, sizeof(disposition_info));
+    disposition_info.disposition = DSL_FHE_DISPOSITION_REQUIRE_APPROXIMATION;
+    disposition_info.approximation_contract_id = approximation_id;
+    disposition_info.result_ckks_value_state_id = relu_state_id;
+    disposition_info.flags = DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
     FHE_SYNC3_CHECK
-        (DSL_FHE_Plan_Add_Conversion_Disposition(&disposition) != 0,
+        (DSL_Builder_Record_FHE_Conversion_Disposition
+             (relu, &disposition_info) != 0,
          "ReLU approximation disposition");
 
     DSL_FHE_Plan_Image_Get_Header(&header);
@@ -5317,6 +5567,8 @@ main(void)
         return Check_FHE_SYNC1_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC3_PLAN_ONLY") != NULL)
         return Check_FHE_SYNC3_Plan_Image();
+    if (getenv("OPEN64_DSL_FHE_SYNC3_REWRITE_ONLY") != NULL)
+        return Check_FHE_SYNC3_Native_Rewrite();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -5337,6 +5589,7 @@ main(void)
     failed |= Check_DSL_IR_Image_Tables();
     failed |= Check_FHE_SYNC1_Mapped_Image();
     failed |= Check_FHE_SYNC3_Plan_Image();
+    failed |= Check_FHE_SYNC3_Native_Rewrite();
     failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;

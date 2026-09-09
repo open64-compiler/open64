@@ -57,6 +57,7 @@ sources=(
   "osprey/common/com/dsl_fhe_print.cxx"
   "osprey/common/com/dsl_gatekeeper.cxx"
   "osprey/common/com/dsl_ir_image.cxx"
+  "osprey/common/com/dsl_ir_rewrite.cxx"
   "osprey/common/com/dsl_region.cxx"
   "osprey/common/com/dsl_ir_print.cxx"
   "osprey/common/com/dsl_simp.cxx"
