@@ -30,6 +30,7 @@ typedef SEGMENTED_ARRAY<DSL_PU_SOURCE_IDENTITY_RECORD>
 typedef SEGMENTED_ARRAY<DSL_CALLSITE_METADATA_RECORD>
     DSL_CALLSITE_METADATA_TABLE;
 typedef SEGMENTED_ARRAY<DSL_CALL_ARGUMENT_RECORD> DSL_CALL_ARGUMENT_TABLE;
+typedef SEGMENTED_ARRAY<DSL_PU_FORMAL_RECORD> DSL_PU_FORMAL_TABLE;
 
 static DSL_IR_OPCODE_DESCRIPTOR_TABLE DSL_ir_opcode_descriptor_table;
 static DSL_IR_NODE_TABLE DSL_ir_node_table;
@@ -41,6 +42,7 @@ static DSL_STATE_EFFECT_TABLE DSL_state_effect_table;
 static DSL_PU_SOURCE_IDENTITY_TABLE DSL_pu_source_identity_table;
 static DSL_CALLSITE_METADATA_TABLE DSL_callsite_metadata_table;
 static DSL_CALL_ARGUMENT_TABLE DSL_call_argument_table;
+static DSL_PU_FORMAL_TABLE DSL_pu_formal_table;
 
 typedef struct {
     ST_IDX owner_pu_st;
@@ -94,6 +96,11 @@ typedef char DSL_Call_ABI_Image_Header_Size_Check
     [sizeof(DSL_CALL_ABI_IMAGE_HEADER) == DSL_CALL_ABI_IMAGE_HEADER_SIZE ? 1 : -1];
 typedef char DSL_Call_Argument_Size_Check
     [sizeof(DSL_CALL_ARGUMENT_RECORD) == DSL_CALL_ARGUMENT_RECORD_SIZE ? 1 : -1];
+typedef char DSL_PU_Interface_Image_Header_Size_Check
+    [sizeof(DSL_PU_INTERFACE_IMAGE_HEADER) ==
+        DSL_PU_INTERFACE_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_PU_Formal_Size_Check
+    [sizeof(DSL_PU_FORMAL_RECORD) == DSL_PU_FORMAL_RECORD_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -127,6 +134,7 @@ DSL_IR_Image_Reset (void)
     DSL_state_effect_table.Delete_down_to(0);
     DSL_Call_Image_Reset();
     DSL_Call_ABI_Image_Reset();
+    DSL_PU_Interface_Image_Reset();
 }
 
 static BOOL
@@ -633,6 +641,115 @@ DSL_Call_ABI_Image_Load_Mapped
         DSL_call_argument_table.Insert(arguments, header->argument_count);
     if (!DSL_Call_ABI_Image_Validate(diagnostic)) {
         DSL_Call_ABI_Image_Reset();
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_PU_Interface_Image_Report
+        (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL PU interface image error: %s id=%u\n",
+                message, id);
+    return FALSE;
+}
+
+void
+DSL_PU_Interface_Image_Get_Header
+        (DSL_PU_INTERFACE_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset(header, 0, sizeof(*header));
+    header->magic = DSL_PU_INTERFACE_IMAGE_MAGIC;
+    header->version = DSL_PU_INTERFACE_IMAGE_VERSION;
+    header->formal_count = DSL_pu_formal_table.Size();
+}
+
+void
+DSL_PU_Interface_Image_Reset (void)
+{
+    DSL_pu_formal_table.Delete_down_to(0);
+}
+
+BOOL
+DSL_PU_Interface_Image_Has_Records (void)
+{
+    return DSL_pu_formal_table.Size() != 0;
+}
+
+DSL_PU_FORMAL_ID
+DSL_PU_Interface_Image_Add_Formal (const DSL_PU_FORMAL_RECORD *record)
+{
+    if (record == NULL)
+        return DSL_PU_FORMAL_INVALID_ID;
+    DSL_PU_FORMAL_RECORD copy = *record;
+    UINT32 index = DSL_pu_formal_table.Insert(copy);
+    DSL_pu_formal_table[index].id = index + 1;
+    if (!DSL_PU_Interface_Image_Validate(NULL)) {
+        DSL_pu_formal_table.Delete_down_to(index);
+        return DSL_PU_FORMAL_INVALID_ID;
+    }
+    return index + 1;
+}
+
+UINT32
+DSL_PU_Interface_Image_Formal_Count (void)
+{
+    return DSL_pu_formal_table.Size();
+}
+
+BOOL
+DSL_PU_Interface_Image_Get_Formal
+        (DSL_PU_FORMAL_ID id, DSL_PU_FORMAL_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_pu_formal_table, id, record);
+}
+
+BOOL
+DSL_PU_Interface_Image_Find_Formal
+        (ST_IDX owner_pu_st, UINT32 formal_ordinal,
+         DSL_PU_FORMAL_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_pu_formal_table.Size(); ++i) {
+        const DSL_PU_FORMAL_RECORD &formal = DSL_pu_formal_table[i];
+        if (formal.owner_pu_st == owner_pu_st &&
+            formal.formal_ordinal == formal_ordinal)
+            return DSL_IR_Table_Get(DSL_pu_formal_table, i + 1, record);
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_PU_Interface_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    if (section_base == NULL ||
+        section_size < DSL_PU_INTERFACE_IMAGE_HEADER_SIZE)
+        return DSL_PU_Interface_Image_Report
+                   (diagnostic, "section is truncated", 0);
+    const DSL_PU_INTERFACE_IMAGE_HEADER *header =
+        (const DSL_PU_INTERFACE_IMAGE_HEADER *)section_base;
+    UINT64 expected = DSL_PU_INTERFACE_IMAGE_HEADER_SIZE +
+        (UINT64)header->formal_count * DSL_PU_FORMAL_RECORD_SIZE;
+    if (header->magic != DSL_PU_INTERFACE_IMAGE_MAGIC ||
+        header->version != DSL_PU_INTERFACE_IMAGE_VERSION ||
+        header->flags != 0 || header->reserved0 != 0 ||
+        header->reserved1 != 0 || expected != section_size)
+        return DSL_PU_Interface_Image_Report
+                   (diagnostic, "invalid header", 0);
+
+    const DSL_PU_FORMAL_RECORD *formals =
+        (const DSL_PU_FORMAL_RECORD *)
+            ((const char *)section_base +
+             DSL_PU_INTERFACE_IMAGE_HEADER_SIZE);
+    DSL_PU_Interface_Image_Reset();
+    if (header->formal_count != 0)
+        DSL_pu_formal_table.Insert(formals, header->formal_count);
+    if (!DSL_PU_Interface_Image_Validate(diagnostic)) {
+        DSL_PU_Interface_Image_Reset();
         return FALSE;
     }
     return TRUE;

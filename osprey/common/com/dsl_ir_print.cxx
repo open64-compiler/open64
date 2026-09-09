@@ -267,6 +267,21 @@ DSL_IR_Image_Print (FILE *file)
                 DSL_IR_String(record.context_identity),
                 record.source_call_ordinal, record.flags);
     }
+    DSL_PU_INTERFACE_IMAGE_HEADER pu_interface_header;
+    DSL_PU_Interface_Image_Get_Header(&pu_interface_header);
+    fprintf(file, "DSL PU Interface Formal Table: version=%u entries=%u\n",
+            pu_interface_header.version, pu_interface_header.formal_count);
+    for (UINT32 i = 1; i <= pu_interface_header.formal_count; ++i) {
+        DSL_PU_FORMAL_RECORD record;
+        DSL_PU_Interface_Image_Get_Formal(i, &record);
+        fprintf(file, "  [%u] owner_pu=<%u,%u> formal=%u value=%u "
+                "st=<%u,%u> ty=%u flags=0x%x\n", record.id,
+                ST_IDX_level(record.owner_pu_st),
+                ST_IDX_index(record.owner_pu_st), record.formal_ordinal,
+                record.formal_value_id, ST_IDX_level(record.formal_st),
+                ST_IDX_index(record.formal_st), (UINT32)record.formal_ty,
+                record.flags);
+    }
     DSL_CALL_ABI_IMAGE_HEADER call_abi_header;
     DSL_Call_ABI_Image_Get_Header(&call_abi_header);
     fprintf(file, "DSL Call ABI Argument Table: version=%u entries=%u\n",

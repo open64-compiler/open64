@@ -155,6 +155,37 @@ unit as the physical call actual. A rejected request array changes neither the
 call nor the ABI table. Original provenance remains in
 `dsl.converted_from_value_id` and does not enter ABI-row identity.
 
+## Durable PU Formal Values
+
+The call-ABI row identifies a callee formal ordinal but does not identify the
+callee-owned DSL value representing that formal. Local `ST_IDX` values may
+collide between PUs, and free-form value metadata is not a structural owner
+relation. Backend consumers must not activate a callee while rewriting a
+caller merely to recover that relation.
+
+The optional `.WHIRL.dsl_pu_interface` image supplies the missing immutable
+relation. Its v1 header is 24 bytes and each formal row is 32 bytes. A row maps
+`(owner_pu_st, formal_ordinal)` to `formal_value_id`, `formal_st`, and the exact
+canonical `formal_ty`. The ordered rows cover the complete physical
+`FUNC_ENTRY` interface: input formals followed by hidden result formals. IDs
+and symbol/type indices are fixed-width existing WHIRL carriers; flags and
+reserved fields are zero in v1. Duplicate owner and ordinal, value, or symbol
+identities are rejected. The owner must resolve to an existing global function
+ST with a valid PU entry, so orphan rows cannot evade per-PU verification.
+
+`DSL_PU_Interface_Image_Find_Formal()` is globally usable after mapped-image
+load and requires no active callee symbol table. Per-PU validation still
+requires the matching `Current_pu` and local symbol table, then proves every
+physical formal is present exactly once and agrees with the `FUNC_ENTRY`
+`IDNAME`, formal or formal-reference storage class, value row, symbol, and
+exact `TY_IDX`. `ir_b2a -st -src` prints the table for review.
+
+The section is append-only and optional. Existing artifacts without it retain
+the v1 call-ABI behavior and load with an empty PU-interface table. Existing
+sections, call-ABI rows, opcode/type encodings, and the WHIRL binary revision
+are unchanged. New producers emit a formal row from the opaque PU-formal
+builder operation before creating call-role rows.
+
 ## Native Value Redirection And Retirement
 
 `DSL_IR_Redirect_And_Retire_Native_Value()` supports the narrow pure-expression

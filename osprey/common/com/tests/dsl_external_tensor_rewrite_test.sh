@@ -54,6 +54,10 @@ for evidence in \
   'side_file=converted.safetensors' \
   'dsl.converted_from_value_id' \
   'DSL Call ABI Argument Table: version=1 entries=4' \
+  'DSL PU Interface Formal Table: version=1 entries=3' \
+  'formal=0 value=' \
+  'formal=1 value=' \
+  'formal=2 value=' \
   'role=cnn.basic_block.conv1.weight' \
   'role=cnn.basic_block.conv1.bias' \
   'dsl_builder_contract_test.cxx'; do

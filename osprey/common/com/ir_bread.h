@@ -131,6 +131,7 @@ extern INT WN_get_dsl_ir_image (void *handle);
 extern INT WN_get_dsl_effect_image (void *handle);
 extern INT WN_get_dsl_callsite_image (void *handle);
 extern INT WN_get_dsl_call_abi_image (void *handle);
+extern INT WN_get_dsl_pu_interface_image (void *handle);
 extern INT WN_get_dsl_fhe_image (void *handle);
 extern INT WN_get_dsl_fhe_plan_image (void *handle);
 
