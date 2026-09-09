@@ -121,6 +121,7 @@ static INT32 Ignore_Int;
 #include "config_opt.cxx"
 #include "config_wopt.cxx"
 #include "config_dsl.cxx"
+#include "config_fhe.cxx"
 #include "config_vho.cxx"
 #include "config_vsa.cxx"
 #include "config_flist.cxx"
@@ -879,6 +880,8 @@ OPTION_GROUP Common_Option_Groups[] = {
     "Options to control internal WHIRL optimization" },
   { "DSL", ':', '=', Options_DSL, NULL,
     "Options to control Very High Level WHIRL DSL optimization" },
+  { "FHE", ':', '=', Options_FHE, NULL,
+    "Options to control Very High Level WHIRL FHE conversion" },
   { "VHO",	':', '=', Options_VHO, NULL,
     "Options to control internal VH WHIRL optimization" },
   { "VSA",	':', '=', Options_VSA, NULL,

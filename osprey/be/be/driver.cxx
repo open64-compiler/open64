@@ -131,6 +131,7 @@
 #include "eh_region.h"		    /* for EH_Generate_Range_List, etc. */
 #include "vho_lower.h"
 #include "dsl_lower.h"
+#include "fhe_convert.h"
 #include "iter.h"		    /* PU iterator for loops */
 #include "dra_export.h"             /* for DRA routines */
 #include "ti_init.h"		    /* for targ_info */
@@ -166,6 +167,7 @@
 #include "report.h"
 #include "config_vsa.h"
 #include "config_dsl.h"
+#include "config_fhe.h"
 
 extern ERROR_DESC EDESC_BE[], EDESC_CG[];
 
@@ -1833,6 +1835,11 @@ Preprocess_PU (PU_Info *current_pu)
   }
 
   if (!w2c_only) {
+    Set_Error_Phase ( "FHE VHO Conversion" );
+    pu = VHO_FHE_Convert_Driver (current_pu, pu);
+    Set_PU_Info_tree_ptr(current_pu, pu);
+    Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_CONVERT");
+
     Set_Error_Phase ( "DSL VHO Processing" );
     pu = VHO_DSL_Lower_Driver (current_pu, pu);
   }

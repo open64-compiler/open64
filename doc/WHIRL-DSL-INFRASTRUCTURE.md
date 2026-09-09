@@ -1695,7 +1695,7 @@ full-sequence causal prompt evaluation with no KV cache.
    `common.relu` node definitions representing 19 source-context ReLU uses.
    Those source contexts are not operator or function versions.
 
-34. [ ] Stage the FHE SYNC-3 conversion infrastructure.
+34. [x] Stage the FHE SYNC-3 conversion infrastructure.
 
    Use `doc/FHE-SYNC3-CONVERSION-CONTRACT.md` as the semantic handoff after
    the merged ResNet-20 capture. Publish the exact main/common physical
@@ -1777,6 +1777,21 @@ full-sequence causal prompt evaluation with no KV cache.
    WOPT/Preopt and before `VHO_DSL_Lower_Driver()`. Keep the FHE task blocked
    from semantic conversion implementation until that reviewed hook lands; do
    not let it reach into WN, ST, TY, or mapped-image internals.
+
+   Stage 3 implements `config_fhe.{h,cxx}` with `convert`, `strict_o0`,
+   `dump_before`, and `dump_after` controls in the independent `-FHE:` option
+   group. Conversion defaults on but is an exact no-op for artifacts without
+   FHE image or FHE-plan records. An FHE-bearing artifact requires a
+   registered semantic gatekeeper and conversion pass; absence is diagnosed
+   as `CFHE-CONVERT-001` rather than allowing generic DSL lowering to erase
+   FHE intent. The fixed execution order is structural gate, semantic gate,
+   conversion pass, structural gate, semantic gate. Registration APIs isolate
+   FHE-owned semantics from backend phase ordering, and the pass must use the
+   reviewed logical lookup/rewrite services instead of directly changing WN,
+   ST, TY, or mapped-image table fields. A focused linked test covers disabled
+   behavior, missing-pass rejection, duplicate registration, strict-O0 option
+   propagation, gate/pass ordering, legacy no-op compatibility, and retained
+   before/after WHIRL trace evidence.
 
 ### Deferred work TODO
 
