@@ -1793,6 +1793,26 @@ full-sequence causal prompt evaluation with no KV cache.
    propagation, gate/pass ordering, legacy no-op compatibility, and retained
    before/after WHIRL trace evidence.
 
+35. [x] Preserve the DSL producer/backend link boundary.
+
+   Backend-linked common services and VHO passes must not depend on the
+   frontend-only `DSL_Builder_*` value registry. Keep opaque builder entry
+   points as producer compatibility wrappers, but place tensor symbol and
+   unique-ownership operations needed by backend transformations in the
+   common DSL memory-behavior service. Keep FHE entry-value APIs that consume
+   opaque builder handles in `dsl_builder.cxx`; the mapped FHE table service
+   must operate only on stable image, type, symbol, and PU identities.
+
+   This separation keeps `be.so` self-contained for `lw_inline`, `whirl2c`,
+   and later IPA/WOPT consumers without linking the complete frontend builder
+   into backend phases. It changes no public builder signature, logical
+   opcode, type encoding, mapped-image row, ELF section, or binary WHIRL
+   compatibility contract. The Linux validation gate requires both `be.so`
+   and `lw_inline` to have no defined or undefined `DSL_Builder_*` symbols.
+   The normal `lw_inline` build enforces its side of this boundary after
+   linking. Existing builder, FHE planning-image, native-rewrite, and VHO
+   conversion contract tests must then pass.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

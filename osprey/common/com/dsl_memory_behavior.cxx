@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "dsl_memory_behavior.h"
+#include "strtab.h"
 
 typedef struct {
     DSL_OPERATOR dsl_operator;
@@ -85,4 +86,51 @@ DSL_Memory_Behavior_Flag_Name (UINT32 flag)
     UINT32 index = flag == 0 ? 0 : bit + 1;
     return index < sizeof(names) / sizeof(names[0]) ?
            names[index] : "unknown";
+}
+
+BOOL
+DSL_Tensor_Set_Unique_Ownership (ST_IDX st)
+{
+    if (ST_IDX_index(st) == 0 ||
+        !TY_is_tensor_extension(ST_type(St_Table[st])))
+        return FALSE;
+
+    ST_tensor_bind_attribute
+        (st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS), "true");
+    return TRUE;
+}
+
+BOOL
+DSL_Tensor_Has_Unique_Ownership (ST_IDX st)
+{
+    const char *value;
+
+    if (ST_IDX_index(st) == 0 ||
+        !TY_is_tensor_extension(ST_type(St_Table[st])))
+        return FALSE;
+
+    value = ST_tensor_attribute
+                (st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS));
+    return value != NULL && strcmp(value, "true") == 0;
+}
+
+ST_IDX
+DSL_Tensor_Create_Result_Symbol
+        (const char *name,
+         TY_IDX ty,
+         ST_SCLASS storage_class,
+         ST_EXPORT export_class)
+{
+    if (!TY_is_tensor_extension(ty))
+        return ST_IDX_ZERO;
+
+    ST *st = New_ST();
+    ST_Init (st, Save_Str(name == NULL ? "" : name), CLASS_VAR,
+             storage_class, export_class, ty);
+    ST_IDX st_idx = ST_st_idx(*st);
+    Set_ST_is_temp_var(St_Table[st_idx]);
+    if (!DSL_Tensor_Set_Unique_Ownership(st_idx))
+        return ST_IDX_ZERO;
+
+    return st_idx;
 }

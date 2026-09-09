@@ -7,6 +7,7 @@
 
 #include "defs.h"
 #include "dsl_opcode.h"
+#include "symtab.h"
 
 #define DSL_MEMORY_BEHAVIOR_MAX_OPERANDS 8
 
@@ -38,5 +39,12 @@ extern BOOL DSL_Memory_Behavior_Get_Contract
                                  UINT16 version,
                                  DSL_MEMORY_BEHAVIOR_CONTRACT *contract);
 extern const char *DSL_Memory_Behavior_Flag_Name (UINT32 flag);
+extern ST_IDX DSL_Tensor_Create_Result_Symbol
+                                (const char *name,
+                                 TY_IDX ty,
+                                 ST_SCLASS storage_class,
+                                 ST_EXPORT export_class);
+extern BOOL DSL_Tensor_Set_Unique_Ownership (ST_IDX st);
+extern BOOL DSL_Tensor_Has_Unique_Ownership (ST_IDX st);
 
 #endif /* dsl_memory_behavior_INCLUDED */
