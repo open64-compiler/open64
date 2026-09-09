@@ -12,8 +12,8 @@
 #include "dsl_opt.h"
 #include "config.h"
 #include "config_dsl.h"
-#include "dsl_builder.h"
 #include "dsl_ir_image.h"
+#include "dsl_memory_behavior.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_fold.h"
 #include "pu_info.h"
@@ -141,7 +141,7 @@ VHO_DSL_Publish_Coefficient_Two
              (ty, 2, &tcon_idx, NULL))
         return FALSE;
 
-    ST_IDX st = DSL_Builder_Create_Tensor_Result_Symbol
+    ST_IDX st = DSL_Tensor_Create_Result_Symbol
                     (name, ty, SCLASS_AUTO, EXPORT_LOCAL);
     if (ST_IDX_index(st) == 0)
         return FALSE;
