@@ -67,6 +67,14 @@ future operation with genuinely new expression semantics, including
 
 On image load, a nonempty wrapper name must resolve through the domain-wrapper
 registry, and its wrapper target must match the source node's logical operator.
+
+`fhe.cnn.linear` has two append-only wrapper identities. The original
+`fhe.cnn.linear.v1` continues to target the two-kid rank-generic
+`common.linear.v3` contract. `fhe.cnn.linear.v2` targets the three-kid
+`common.linear.v2` contract used by the certified ResNet capture. Conversion
+selects the wrapper version from the source logical operator version; the two
+wrapper versions may coexist in one program and neither reinterprets the
+other's persisted planning-image rows.
 The mapped image stores the stable name and version, never the runtime-assigned
 `DSL_OPCODE_ID`.
 

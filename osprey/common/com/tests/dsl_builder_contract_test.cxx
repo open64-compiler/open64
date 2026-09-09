@@ -5158,6 +5158,13 @@ Check_FHE_SYNC3_Plan_Image(void)
     TY_IDX channel_parameter_ty;
     TY_IDX coefficient_ty;
     DSL_DOMAIN_ID cnn_id;
+    DSL_DOMAIN_ID common_id;
+    DSL_DOMAIN_ID fhe_cnn_id;
+    DSL_OPCODE_ID common_linear_v2;
+    DSL_OPCODE_ID common_linear_v3;
+    DSL_OPCODE_ID fhe_linear_v1;
+    DSL_OPCODE_ID fhe_linear_v2;
+    DSL_OPCODE_INFO wrapper_info;
     UINT32 file_id;
     BOOL positions_set;
     int failed = 0;
@@ -5182,6 +5189,33 @@ Check_FHE_SYNC3_Plan_Image(void)
         return 1;
     DSL_Opcode_Register_Domain_Wrapper_Examples();
     cnn_id = DSL_Domain_Find("cnn");
+    common_id = DSL_Domain_Find("common");
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Register_Domain_Wrappers() == 5,
+         "FHE domain-wrapper registration");
+    fhe_cnn_id = DSL_Domain_Find("fhe.cnn");
+    common_linear_v2 = DSL_Opcode_Find
+                           (common_id, "common.linear", 2);
+    common_linear_v3 = DSL_Opcode_Find
+                           (common_id, "common.linear", 3);
+    fhe_linear_v1 = DSL_Opcode_Find
+                        (fhe_cnn_id, DSL_FHE_WRAPPER_CNN_LINEAR,
+                         DSL_FHE_WRAPPER_CNN_LINEAR_COMMON_V3_VERSION);
+    fhe_linear_v2 = DSL_Opcode_Find
+                        (fhe_cnn_id, DSL_FHE_WRAPPER_CNN_LINEAR,
+                         DSL_FHE_WRAPPER_CNN_LINEAR_COMMON_V2_VERSION);
+    FHE_SYNC3_CHECK
+        (common_linear_v2 != DSL_OPCODE_INVALID_ID &&
+         common_linear_v3 != DSL_OPCODE_INVALID_ID &&
+         fhe_linear_v1 != DSL_OPCODE_INVALID_ID &&
+         fhe_linear_v2 != DSL_OPCODE_INVALID_ID &&
+         DSL_Opcode_Get_Info(fhe_linear_v1, &wrapper_info) &&
+         wrapper_info.wrapper_target_id == common_linear_v3,
+         "fhe.cnn.linear.v1 preserves common.linear.v3 target");
+    FHE_SYNC3_CHECK
+        (DSL_Opcode_Get_Info(fhe_linear_v2, &wrapper_info) &&
+         wrapper_info.wrapper_target_id == common_linear_v2,
+         "fhe.cnn.linear.v2 targets common.linear.v2");
 
     memset(&descriptor, 0, sizeof(descriptor));
     descriptor.type_core.kind = "tensor";
