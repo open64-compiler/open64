@@ -52,6 +52,7 @@ sources=(
   "osprey/be/vho/tests/dsl_runtime_abi_contract_test.cxx"
   "osprey/common/com/dsl_builder.cxx"
   "osprey/common/com/dsl_fhe.cxx"
+  "osprey/common/com/dsl_fhe_plan.cxx"
   "osprey/common/com/dsl_fhe_print.cxx"
   "osprey/common/com/dsl_gatekeeper.cxx"
   "osprey/common/com/dsl_ir_image.cxx"

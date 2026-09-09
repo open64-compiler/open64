@@ -21,6 +21,7 @@
 
 #include "dsl_builder.h"
 #include "dsl_fhe.h"
+#include "dsl_fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_simp.h"
 #include "dsl_tensor_fold.h"
@@ -138,6 +139,7 @@ DSL_Builder_Reset_Program (void)
     DSL_builder_call_registry.clear();
     DSL_IR_Image_Reset();
     DSL_FHE_Image_Reset();
+    DSL_FHE_Plan_Image_Reset();
     DSL_Region_Reset();
 }
 

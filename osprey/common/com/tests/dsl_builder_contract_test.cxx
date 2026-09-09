@@ -34,6 +34,7 @@
 #include "dsl_builder.h"
 #include "dsl_contract.h"
 #include "dsl_fhe.h"
+#include "dsl_fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_simp.h"
@@ -4800,6 +4801,310 @@ Check_FHE_SYNC1_Mapped_Image(void)
     return 0;
 }
 
+static int
+Check_FHE_SYNC3_Plan_Image(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_TENSOR_TYPE_CORE coefficient_core;
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE conv;
+    DSL_BUILDER_VALUE batch_norm;
+    DSL_BUILDER_VALUE relu;
+    DSL_BUILDER_VALUE conv_kids[3];
+    DSL_BUILDER_VALUE bn_kids[5];
+    DSL_BUILDER_VALUE unary_kid[1];
+    DSL_IR_VALUE_RECORD conv_value;
+    DSL_IR_VALUE_RECORD bn_value;
+    DSL_IR_VALUE_RECORD relu_value;
+    DSL_PU_SOURCE_IDENTITY_RECORD pu_identity;
+    DSL_FHE_COMPILATION_CONFIG_RECORD config;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encrypted;
+    DSL_FHE_APPROXIMATION_CONTRACT_RECORD approximation;
+    DSL_FHE_CKKS_VALUE_STATE_RECORD ckks_state;
+    DSL_FHE_BN_FOLD_PROVENANCE_RECORD bn_fold;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD disposition;
+    DSL_FHE_PLAN_IMAGE_HEADER header;
+    DSL_TENSOR_TCON_CREATE_INFO tcon_info;
+    DSL_FHE_APPROXIMATION_CONTRACT_ID approximation_id;
+    DSL_FHE_CKKS_VALUE_STATE_ID conv_state_id;
+    DSL_FHE_CKKS_VALUE_STATE_ID relu_state_id;
+    DSL_FHE_BN_FOLD_PROVENANCE_ID bn_fold_id;
+    DSL_FHE_CONFIG_ID config_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encrypted_id;
+    TCON_IDX coefficients_tcon;
+    TCON_IDX folded_weight_tcon;
+    TCON_IDX folded_bias_tcon;
+    TCON_IDX range_min_tcon;
+    TCON_IDX range_max_tcon;
+    TCON_IDX max_error_tcon;
+    TY_IDX tensor_ty;
+    TY_IDX coefficient_ty;
+    DSL_DOMAIN_ID cnn_id;
+    int failed = 0;
+#define FHE_SYNC3_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "FHE SYNC-3 check failed: %s\n", message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    FHE_SYNC3_CHECK
+        (sizeof(DSL_FHE_PLAN_IMAGE_HEADER) == 64 &&
+         sizeof(DSL_FHE_CONVERSION_DISPOSITION_RECORD) == 56 &&
+         sizeof(DSL_FHE_APPROXIMATION_CONTRACT_RECORD) == 64 &&
+         sizeof(DSL_FHE_CKKS_VALUE_STATE_RECORD) == 64 &&
+         sizeof(DSL_FHE_BN_FOLD_PROVENANCE_RECORD) == 64,
+         "fixed record sizes");
+    if (!DSL_Builder_Begin_Program())
+        return 1;
+    DSL_Opcode_Register_Domain_Wrapper_Examples();
+    cnn_id = DSL_Domain_Find("cnn");
+
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 4;
+    descriptor.type_core.logical_shape = "[1,4,4,4]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "nchw";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("fhe_sync3_f32_1x4x4x4", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    memset(&coefficient_core, 0, sizeof(coefficient_core));
+    coefficient_core.kind = "tensor";
+    coefficient_core.dtype = "float32";
+    coefficient_core.rank = 1;
+    coefficient_core.logical_shape = "[4]";
+    coefficient_ty = DSL_Builder_Create_Tensor_Type_Core
+                         ("fhe_sync3_coeff_f32_4", MTYPE_To_TY(MTYPE_F4),
+                          &coefficient_core);
+    pu = DSL_Builder_Create_Minimal_PU("fhe_sync3_plan");
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "FHEResNet.forward";
+    source_identity.defining_module = "fhe_resnet";
+    source_identity.defining_file = "fhe_resnet.py";
+    source_identity.defining_line = 1;
+    FHE_SYNC3_CHECK
+        (tensor_ty != TY_IDX_ZERO && coefficient_ty != TY_IDX_ZERO &&
+         TY_tensor_seal(coefficient_ty) &&
+         pu != NULL && cnn_id != DSL_DOMAIN_INVALID_ID &&
+         DSL_Builder_Set_PU_Source_Identity(pu, &source_identity),
+         "program, tensor types, and source identity");
+
+    input = DSL_Builder_Create_Model_Input("encrypted_input", tensor_ty, 0);
+    conv_kids[0] = input;
+    conv_kids[1] = input;
+    conv_kids[2] = input;
+    conv = DSL_Builder_Create_Operator_With_Result
+               (DSL_Opcode_Find(cnn_id, "cnn.conv2d", 2), 2,
+                conv_kids, 3, NULL, 0, "conv_result", tensor_ty);
+    for (UINT32 i = 0; i < 5; ++i)
+        bn_kids[i] = i == 0 ? conv : input;
+    batch_norm = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find(cnn_id, "cnn.batch_norm_infer", 2), 2,
+                      bn_kids, 5, NULL, 0, "batch_norm_result", tensor_ty);
+    unary_kid[0] = batch_norm;
+    relu = DSL_Builder_Create_Operator_With_Result
+               (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                "common.relu", 2),
+                2, unary_kid, 1, NULL, 0, "relu_result", tensor_ty);
+    FHE_SYNC3_CHECK
+        (input != NULL && conv != NULL && batch_norm != NULL && relu != NULL &&
+         DSL_Builder_Append_PU_Value(pu, input) &&
+         DSL_Builder_Append_PU_Value(pu, conv) &&
+         DSL_Builder_Append_PU_Value(pu, batch_norm) &&
+         DSL_Builder_Append_PU_Value(pu, relu),
+         "source-semantic CNN values");
+
+    FHE_SYNC3_CHECK
+        (DSL_IR_Image_Get_Value(DSL_Builder_Get_Value_Image_Id(conv),
+                                &conv_value) &&
+         DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(batch_norm), &bn_value) &&
+         DSL_IR_Image_Get_Value(DSL_Builder_Get_Value_Image_Id(relu),
+                                &relu_value) &&
+         DSL_Call_Image_Find_PU_Identity(PU_Info_proc_sym(pu), &pu_identity),
+         "stable source image identities");
+
+    DSL_FHE_Compilation_Config_Record_Init(&config);
+    config.provenance_mask = 1;
+    config.scheme = DSL_FHE_SCHEME_CKKS;
+    config.security_level = DSL_FHE_SECURITY_128_CLASSIC;
+    config.ring_dimension = 32768;
+    config.multiplicative_depth_policy = DSL_FHE_POLICY_AUTO;
+    config.scale_bits = 50;
+    config.first_modulus_bits = 60;
+    config.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    config.key_switch_policy = 1;
+    config.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
+    config.backend_policy = DSL_FHE_BACKEND_OPENFHE;
+    config_id = DSL_FHE_Intern_Compilation_Config(&config);
+    DSL_FHE_Encryption_Descriptor_Record_Init(&encrypted);
+    encrypted.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    encrypted.scheme = DSL_FHE_SCHEME_CKKS;
+    encrypted.config_id = config_id;
+    encrypted.key_set_name = Save_Str("fhe_sync3_key");
+    encrypted.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    encrypted.encoding_policy = DSL_FHE_ENCODING_NONE;
+    encrypted.packing_policy = DSL_FHE_PACKING_AUTO;
+    encrypted_id = DSL_FHE_Intern_Encryption_Descriptor(&encrypted);
+    FHE_SYNC3_CHECK
+        (config_id != 0 && encrypted_id != 0,
+         "FHE configuration and encryption descriptor");
+
+    memset(&tcon_info, 0, sizeof(tcon_info));
+    tcon_info.descriptor_ty = coefficient_ty;
+    tcon_info.scalar_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 0.0));
+    tcon_info.element_mtype = MTYPE_F4;
+    tcon_info.element_count = 4;
+    tcon_info.logical_bytes = 16;
+    tcon_info.required_alignment = 16;
+    tcon_info.element_size = 4;
+    FHE_SYNC3_CHECK
+        (DSL_Tensor_TCON_Create_Zero
+             (&tcon_info, &coefficients_tcon, NULL),
+         "coefficient and folded tensor constants");
+    folded_weight_tcon = coefficients_tcon;
+    folded_bias_tcon = coefficients_tcon;
+    range_min_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, -3.0));
+    range_max_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 3.0));
+    max_error_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 0.01));
+
+    DSL_FHE_Approximation_Contract_Record_Init(&approximation);
+    approximation.config_id = config_id;
+    approximation.polynomial_name = Save_Str("relu_minimax_degree3");
+    approximation.approximation_family = DSL_FHE_APPROXIMATION_MINIMAX;
+    approximation.polynomial_version = 1;
+    approximation.degree = 3;
+    approximation.coefficient_tensor_tcon = coefficients_tcon;
+    approximation.valid_range_min_tcon = range_min_tcon;
+    approximation.valid_range_max_tcon = range_max_tcon;
+    approximation.max_abs_error_tcon = max_error_tcon;
+    approximation.scale_policy = DSL_FHE_APPROX_SCALE_INHERIT;
+    approximation.required_multiplicative_depth = 2;
+    approximation.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
+    approximation.requires_pre_refresh = 1;
+    approximation_id =
+        DSL_FHE_Plan_Intern_Approximation_Contract(&approximation);
+    FHE_SYNC3_CHECK
+        (approximation_id != 0 &&
+         DSL_FHE_Plan_Intern_Approximation_Contract(&approximation) ==
+             approximation_id,
+         "semantic approximation interning");
+
+    DSL_FHE_CKKS_Value_State_Record_Init(&ckks_state);
+    ckks_state.value_id = conv_value.id;
+    ckks_state.encryption_descriptor_id = encrypted_id;
+    ckks_state.state_version = 1;
+    ckks_state.scheme = DSL_FHE_SCHEME_CKKS;
+    ckks_state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    ckks_state.level = -1;
+    ckks_state.scale_bits = -1;
+    ckks_state.component_count = -1;
+    ckks_state.precision_bits = -1;
+    ckks_state.encrypted_layout_name = Save_Str("nchw_slots");
+    conv_state_id = DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state);
+    FHE_SYNC3_CHECK
+        (conv_state_id != 0 &&
+         DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state) == 0,
+         "CKKS state identity rejects duplicates");
+    ckks_state.value_id = relu_value.id;
+    ckks_state.pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
+    ckks_state.pending_bootstrap_reason =
+        DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
+    relu_state_id = DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state);
+    FHE_SYNC3_CHECK(relu_state_id != 0, "ReLU CKKS pending state");
+
+    DSL_FHE_BN_Fold_Provenance_Record_Init(&bn_fold);
+    bn_fold.owner_pu_st = PU_Info_proc_sym(pu);
+    bn_fold.conv_node_id = conv_value.producer_node_id;
+    bn_fold.batch_norm_node_id = bn_value.producer_node_id;
+    bn_fold.context_pu_identity_id = pu_identity.id;
+    bn_fold.source_conv_weight_value_id =
+        DSL_Builder_Get_Value_Image_Id(input);
+    bn_fold.source_bn_scale_value_id =
+        DSL_Builder_Get_Value_Image_Id(input);
+    bn_fold.source_bn_bias_value_id =
+        DSL_Builder_Get_Value_Image_Id(input);
+    bn_fold.source_bn_mean_value_id =
+        DSL_Builder_Get_Value_Image_Id(input);
+    bn_fold.source_bn_variance_value_id =
+        DSL_Builder_Get_Value_Image_Id(input);
+    bn_fold.folded_weight_tcon = folded_weight_tcon;
+    bn_fold.folded_bias_tcon = folded_bias_tcon;
+    bn_fold.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS;
+    bn_fold_id = DSL_FHE_Plan_Add_BN_Fold_Provenance(&bn_fold);
+    FHE_SYNC3_CHECK(bn_fold_id != 0, "BatchNorm fold provenance");
+
+    DSL_FHE_Conversion_Disposition_Record_Init(&disposition);
+    disposition.source_node_id = conv_value.producer_node_id;
+    disposition.result_value_id = conv_value.id;
+    disposition.disposition = DSL_FHE_DISPOSITION_DOMAIN_WRAPPER;
+    disposition.owner_pu_st = PU_Info_proc_sym(pu);
+    disposition.wrapper_version = 1;
+    disposition.wrapper_name = Save_Str(DSL_FHE_WRAPPER_CNN_CONV2D);
+    disposition.result_ckks_value_state_id = conv_state_id;
+    disposition.first_bn_fold_id = bn_fold_id;
+    disposition.bn_fold_count = 1;
+    disposition.flags = DSL_FHE_DISPOSITION_DEFINITION_REWRITE |
+                        DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Add_Conversion_Disposition(&disposition) != 0,
+         "domain-wrapper disposition");
+    DSL_FHE_Conversion_Disposition_Record_Init(&disposition);
+    disposition.source_node_id = relu_value.producer_node_id;
+    disposition.result_value_id = relu_value.id;
+    disposition.disposition = DSL_FHE_DISPOSITION_REQUIRE_APPROXIMATION;
+    disposition.owner_pu_st = PU_Info_proc_sym(pu);
+    disposition.approximation_contract_id = approximation_id;
+    disposition.result_ckks_value_state_id = relu_state_id;
+    disposition.flags = DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Add_Conversion_Disposition(&disposition) != 0,
+         "ReLU approximation disposition");
+
+    DSL_FHE_Plan_Image_Get_Header(&header);
+    FHE_SYNC3_CHECK
+        (header.disposition_count == 2 && header.approximation_count == 1 &&
+         header.ckks_value_state_count == 2 && header.bn_fold_count == 1 &&
+         DSL_FHE_Plan_Image_Has_Records() &&
+         DSL_FHE_Plan_Image_Validate(stderr),
+         "complete planning image validates");
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Find_Conversion_Disposition
+             (conv_value.producer_node_id, &disposition) &&
+         disposition.first_bn_fold_id == bn_fold_id &&
+         DSL_FHE_Plan_Find_Latest_CKKS_Value_State
+             (relu_value.id, &ckks_state) &&
+         ckks_state.pending_bootstrap_reason ==
+             DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH &&
+         DSL_FHE_Plan_Find_BN_Fold_Provenance
+             (conv_value.producer_node_id, pu_identity.id, 0, &bn_fold),
+         "planning image semantic lookups");
+
+    ckks_state.pending_actions = 0x80000000U;
+    ckks_state.state_version = 2;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state) == 0,
+         "unknown CKKS pending action rejected");
+    DSL_FHE_Plan_Image_Reset();
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Plan_Image_Has_Records() &&
+         DSL_FHE_Plan_Conversion_Disposition_Count() == 0 &&
+         DSL_FHE_Plan_Image_Validate(NULL),
+         "planning image reset");
+
+#undef FHE_SYNC3_CHECK
+    return failed;
+}
+
 int
 main(void)
 {
@@ -4840,6 +5145,8 @@ main(void)
         return Check_Tensor_TCON_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC1_ONLY") != NULL)
         return Check_FHE_SYNC1_Mapped_Image();
+    if (getenv("OPEN64_DSL_FHE_SYNC3_PLAN_ONLY") != NULL)
+        return Check_FHE_SYNC3_Plan_Image();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -4859,6 +5166,7 @@ main(void)
     failed |= Check_Native_DSL_Node_Layout();
     failed |= Check_DSL_IR_Image_Tables();
     failed |= Check_FHE_SYNC1_Mapped_Image();
+    failed |= Check_FHE_SYNC3_Plan_Image();
     failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;

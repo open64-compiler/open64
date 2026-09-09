@@ -1735,6 +1735,15 @@ full-sequence causal prompt evaluation with no KV cache.
    disposition row; genuinely new executable semantics still require reviewed
    append-only opcode allocation.
 
+   Stage 1 contract review completed in PR #107. Stage 2 is deliberately split
+   at the managed-image boundary. Stage 2a adds `dsl_fhe_plan.{h,cxx}`, exact
+   compile-time row-size checks, deterministic FHE-CNN wrapper registration,
+   managed add/intern/get/find/reset services, cross-table validation, and a
+   focused linked producer test. It does not yet add the optional ELF section,
+   mapped-image loading, `ir_b2a` headings, builder attachment wrappers, or the
+   VHO conversion driver. Stage 2b owns that reader/writer/printer wiring and
+   must preserve the version-1 `.WHIRL.dsl_fhe` image unchanged.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

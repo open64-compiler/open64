@@ -321,6 +321,7 @@ COMMON_COM_CXX_SRCS = \
   dsl_domain.cxx       \
   dsl_gatekeeper.cxx   \
   dsl_fhe.cxx          \
+  dsl_fhe_plan.cxx     \
   dsl_ir_image.cxx     \
   dsl_region.cxx       \
   dsl_memory_behavior.cxx \

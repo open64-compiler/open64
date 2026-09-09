@@ -188,6 +188,7 @@ COMMON_COM_CXX_SRC =	\
 	dsl_contract.cxx \
         dsl_domain.cxx	\
         dsl_fhe.cxx \
+        dsl_fhe_plan.cxx \
         dsl_fhe_print.cxx \
         dsl_ir_image.cxx \
         dsl_ir_print.cxx \
