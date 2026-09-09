@@ -56,6 +56,11 @@ typedef INT32 WN_MAP;
 #define DSL_CALL_ABI_IMAGE_HEADER_SIZE      24
 #define DSL_CALL_ARGUMENT_RECORD_SIZE       32
 
+#define DSL_PU_INTERFACE_IMAGE_MAGIC        0x44535049
+#define DSL_PU_INTERFACE_IMAGE_VERSION      1
+#define DSL_PU_INTERFACE_IMAGE_HEADER_SIZE  24
+#define DSL_PU_FORMAL_RECORD_SIZE           32
+
 #define DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID 0
 #define DSL_IR_NODE_INVALID_ID              0
 #define DSL_IR_ATTRIBUTE_INVALID_ID         0
@@ -72,6 +77,7 @@ typedef UINT32 DSL_STATE_EFFECT_ID;
 typedef UINT32 DSL_PU_SOURCE_IDENTITY_ID;
 typedef UINT32 DSL_CALLSITE_METADATA_ID;
 typedef UINT32 DSL_CALL_ARGUMENT_ID;
+typedef UINT32 DSL_PU_FORMAL_ID;
 
 #define DSL_STATE_OBJECT_INVALID_ID 0
 #define DSL_STATE_EFFECT_INVALID_ID 0
@@ -79,6 +85,8 @@ typedef UINT32 DSL_CALL_ARGUMENT_ID;
 #define DSL_CALLSITE_METADATA_INVALID_ID 0
 #define DSL_CALL_ARGUMENT_INVALID_ID 0
 #define DSL_CALL_ARGUMENT_INVALID_ORDINAL ((UINT32)-1)
+#define DSL_PU_FORMAL_INVALID_ID 0
+#define DSL_PU_FORMAL_INVALID_ORDINAL ((UINT32)-1)
 
 typedef struct {
     UINT32 magic;
@@ -130,6 +138,26 @@ typedef struct {
     UINT32 flags;
     STR_IDX semantic_role;
 } DSL_CALL_ARGUMENT_RECORD;
+
+typedef struct {
+    UINT32 magic;
+    UINT32 version;
+    UINT32 formal_count;
+    UINT32 flags;
+    UINT32 reserved0;
+    UINT32 reserved1;
+} DSL_PU_INTERFACE_IMAGE_HEADER;
+
+typedef struct {
+    DSL_PU_FORMAL_ID id;
+    ST_IDX owner_pu_st;
+    DSL_IR_VALUE_ID formal_value_id;
+    UINT32 formal_ordinal;
+    ST_IDX formal_st;
+    TY_IDX formal_ty;
+    UINT32 flags;
+    UINT32 reserved;
+} DSL_PU_FORMAL_RECORD;
 
 typedef enum {
     DSL_IR_IMAGE_RECORD_UNKNOWN = 0,
@@ -498,6 +526,28 @@ extern BOOL DSL_Call_ABI_Image_Get_Callee_Formal_Argument
                                  UINT32 index,
                                  DSL_CALL_ARGUMENT_RECORD *record);
 extern BOOL DSL_Call_ABI_Image_Validate_PU
+                                (PU_Info *pu, FILE *diagnostic);
+
+extern void DSL_PU_Interface_Image_Get_Header
+                                (DSL_PU_INTERFACE_IMAGE_HEADER *header);
+extern void DSL_PU_Interface_Image_Reset (void);
+extern BOOL DSL_PU_Interface_Image_Has_Records (void);
+extern BOOL DSL_PU_Interface_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_PU_Interface_Image_Load_Mapped
+                                (const void *section_base,
+                                 UINT64 section_size,
+                                 FILE *diagnostic);
+extern DSL_PU_FORMAL_ID DSL_PU_Interface_Image_Add_Formal
+                                (const DSL_PU_FORMAL_RECORD *record);
+extern UINT32 DSL_PU_Interface_Image_Formal_Count (void);
+extern BOOL DSL_PU_Interface_Image_Get_Formal
+                                (DSL_PU_FORMAL_ID id,
+                                 DSL_PU_FORMAL_RECORD *record);
+extern BOOL DSL_PU_Interface_Image_Find_Formal
+                                (ST_IDX owner_pu_st,
+                                 UINT32 formal_ordinal,
+                                 DSL_PU_FORMAL_RECORD *record);
+extern BOOL DSL_PU_Interface_Image_Validate_PU
                                 (PU_Info *pu, FILE *diagnostic);
 
 extern void DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header);

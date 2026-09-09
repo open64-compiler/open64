@@ -1937,6 +1937,23 @@ full-sequence causal prompt evaluation with no KV cache.
    reserved fixed-row field. The detailed compatibility and atomicity contract
    is in `doc/FHE-SYNC3-EXTERNAL-TENSOR-REWRITE-CONTRACT.md`.
 
+42. [x] Publish durable PU-formal value identity.
+
+   Add optional `.WHIRL.dsl_pu_interface` fixed rows mapping each ordered
+   physical formal, including hidden result formals, to its owner PU, DSL
+   value, local symbol, and exact `TY_IDX`.
+   This lets backend passes resolve `(callee_pu_st, formal_ordinal)` without
+   activating the callee, retaining caller-local WN pointers, parsing names,
+   or depending on free-form metadata. Validate the immutable rows globally
+   and prove complete coverage against the active `FUNC_ENTRY` and local symbol
+   table during per-PU verification. Reject orphan owner functions globally.
+   Print stable formal evidence in `ir_b2a -st -src`.
+
+   The section is additive and optional. Older artifacts load with an empty
+   table and preserve the prior call-ABI validation path; no existing row,
+   opcode, type encoding, or binary revision changes. The detailed contract is
+   in `doc/FHE-SYNC3-EXTERNAL-TENSOR-REWRITE-CONTRACT.md`.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

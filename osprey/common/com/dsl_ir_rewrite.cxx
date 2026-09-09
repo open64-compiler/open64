@@ -118,13 +118,117 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
             ST_IDX formal_st =
                 WN_st_idx(WN_formal(entry, argument.callee_formal_ordinal));
             DSL_IR_VALUE_RECORD value;
+            DSL_PU_FORMAL_RECORD formal;
             if (!DSL_IR_Image_Get_Value(argument.argument_value_id, &value) ||
-                value.ty != ST_type(St_Table[formal_st]))
+                value.ty != ST_type(St_Table[formal_st]) ||
+                (DSL_PU_Interface_Image_Has_Records() &&
+                 (!DSL_PU_Interface_Image_Find_Formal
+                      (owner_pu_st, argument.callee_formal_ordinal, &formal) ||
+                  formal.formal_st != formal_st ||
+                  formal.formal_ty != value.ty)))
                 return DSL_Call_ABI_PU_Report
                            (diagnostic, "actual/formal type mismatch",
                             argument.id);
         }
     }
+    return TRUE;
+}
+
+static BOOL
+DSL_PU_Interface_PU_Report
+        (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL PU interface error: %s id=%u\n",
+                message, id);
+    return FALSE;
+}
+
+BOOL
+DSL_PU_Interface_Image_Validate (FILE *diagnostic)
+{
+    for (UINT32 i = 1; i <= DSL_PU_Interface_Image_Formal_Count(); ++i) {
+        DSL_PU_FORMAL_RECORD record;
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_PU_Interface_Image_Get_Formal(i, &record) ||
+            record.id != i ||
+            !DSL_IR_Image_PU_ST_Valid(record.owner_pu_st) ||
+            record.formal_value_id == DSL_IR_VALUE_INVALID_ID ||
+            !DSL_IR_Image_Get_Value(record.formal_value_id, &value) ||
+            record.formal_ordinal == DSL_PU_FORMAL_INVALID_ORDINAL ||
+            ST_IDX_level(record.formal_st) <= GLOBAL_SYMTAB ||
+            ST_IDX_index(record.formal_st) == 0 ||
+            TY_IDX_index(record.formal_ty) == 0 ||
+            record.flags != 0 || record.reserved != 0 ||
+            value.value_kind != DSL_IR_VALUE_SYMBOL ||
+            value.producer_node_id != DSL_IR_NODE_INVALID_ID ||
+            value.st != record.formal_st || value.ty != record.formal_ty)
+            return DSL_PU_Interface_PU_Report
+                       (diagnostic, "invalid image formal", i);
+        for (UINT32 j = 1; j < i; ++j) {
+            DSL_PU_FORMAL_RECORD previous;
+            if (!DSL_PU_Interface_Image_Get_Formal(j, &previous))
+                return DSL_PU_Interface_PU_Report
+                           (diagnostic, "missing image formal", j);
+            if (previous.owner_pu_st == record.owner_pu_st &&
+                (previous.formal_ordinal == record.formal_ordinal ||
+                 previous.formal_value_id == record.formal_value_id ||
+                 previous.formal_st == record.formal_st))
+                return DSL_PU_Interface_PU_Report
+                           (diagnostic, "duplicate image formal", i);
+        }
+    }
+    return TRUE;
+}
+
+BOOL
+DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
+{
+    if (!DSL_PU_Interface_Image_Has_Records())
+        return TRUE;
+    if (pu == NULL || PU_Info_tree_ptr(pu) == NULL ||
+        ST_IDX_index(PU_Info_proc_sym(pu)) == 0 ||
+        !DSL_IR_Image_Current_PU_Is(PU_Info_proc_sym(pu)))
+        return DSL_PU_Interface_PU_Report
+                   (diagnostic, "missing program unit", 0);
+
+    ST_IDX owner_pu_st = PU_Info_proc_sym(pu);
+    WN *entry = PU_Info_tree_ptr(pu);
+    UINT32 expected_ordinal = 0;
+    if (WN_operator(entry) != OPR_FUNC_ENTRY)
+        return DSL_PU_Interface_PU_Report
+                   (diagnostic, "invalid function entry", 0);
+
+    for (UINT32 i = 1; i <= DSL_PU_Interface_Image_Formal_Count(); ++i) {
+        DSL_PU_FORMAL_RECORD formal;
+        if (!DSL_PU_Interface_Image_Get_Formal(i, &formal))
+            return DSL_PU_Interface_PU_Report
+                       (diagnostic, "missing formal", i);
+        if (formal.owner_pu_st != owner_pu_st)
+            continue;
+        if (formal.formal_ordinal != expected_ordinal ||
+            formal.formal_ordinal >= WN_num_formals(entry))
+            return DSL_PU_Interface_PU_Report
+                       (diagnostic, "formal ordinal mismatch", formal.id);
+        WN *idname = WN_formal(entry, formal.formal_ordinal);
+        DSL_IR_VALUE_RECORD value;
+        if (idname == NULL || WN_operator(idname) != OPR_IDNAME ||
+            WN_st_idx(idname) != formal.formal_st ||
+            ST_IDX_level(formal.formal_st) != CURRENT_SYMTAB ||
+            ST_IDX_index(formal.formal_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+            (ST_sclass(St_Table[formal.formal_st]) != SCLASS_FORMAL &&
+             ST_sclass(St_Table[formal.formal_st]) != SCLASS_FORMAL_REF) ||
+            ST_type(St_Table[formal.formal_st]) != formal.formal_ty ||
+            !DSL_IR_Image_Get_Value(formal.formal_value_id, &value) ||
+            !DSL_Call_ABI_Value_Matches_ST
+                 (value, owner_pu_st, formal.formal_st))
+            return DSL_PU_Interface_PU_Report
+                       (diagnostic, "formal value mismatch", formal.id);
+        ++expected_ordinal;
+    }
+    if (expected_ordinal != WN_num_formals(entry))
+        return DSL_PU_Interface_PU_Report
+                   (diagnostic, "incomplete formal interface", 0);
     return TRUE;
 }
 

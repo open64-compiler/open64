@@ -3485,6 +3485,16 @@ DSL_Builder_Declare_PU_Formal
     interface_record->formals.push_back(formal);
     if (!DSL_Builder_Rebuild_PU_Entry(interface_record))
         return NULL;
+    DSL_PU_FORMAL_RECORD image_formal;
+    memset(&image_formal, 0, sizeof(image_formal));
+    image_formal.owner_pu_st = PU_Info_proc_sym(pu);
+    image_formal.formal_value_id = image_value_id;
+    image_formal.formal_ordinal = ordinal;
+    image_formal.formal_st = ST_st_idx(*st);
+    image_formal.formal_ty = ty;
+    if (DSL_PU_Interface_Image_Add_Formal(&image_formal) ==
+        DSL_PU_FORMAL_INVALID_ID)
+        return NULL;
     return value;
 }
 
@@ -3550,6 +3560,16 @@ DSL_Builder_Declare_PU_Result
     result.role = role;
     interface_record->results.push_back(result);
     if (!DSL_Builder_Rebuild_PU_Entry(interface_record))
+        return NULL;
+    DSL_PU_FORMAL_RECORD image_formal;
+    memset(&image_formal, 0, sizeof(image_formal));
+    image_formal.owner_pu_st = PU_Info_proc_sym(pu);
+    image_formal.formal_value_id = image_value_id;
+    image_formal.formal_ordinal = interface_record->formals.size() + ordinal;
+    image_formal.formal_st = ST_st_idx(*st);
+    image_formal.formal_ty = ty;
+    if (DSL_PU_Interface_Image_Add_Formal(&image_formal) ==
+        DSL_PU_FORMAL_INVALID_ID)
         return NULL;
     return value;
 }
@@ -4143,6 +4163,10 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
             ++gatekeeper_result.error_count;
         }
         if (!DSL_Call_ABI_Image_Validate_PU(pu, diagnostic)) {
+            valid = FALSE;
+            ++gatekeeper_result.error_count;
+        }
+        if (!DSL_PU_Interface_Image_Validate_PU(pu, diagnostic)) {
             valid = FALSE;
             ++gatekeeper_result.error_count;
         }

@@ -5200,6 +5200,7 @@ Check_External_Tensor_Materialization(void)
     DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST rejected[2];
     DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT materialized[6];
     DSL_IR_EXTERNAL_TENSOR_REFERENCE observed;
+    DSL_PU_FORMAL_RECORD formal_record;
     TCON_IDX folded_tcons[6];
     TY_IDX weight_ty;
     TY_IDX bias_ty;
@@ -5372,6 +5373,30 @@ Check_External_Tensor_Materialization(void)
              (calls[1], 0, 0, "cnn.basic_block.conv2.weight") &&
          DSL_Call_ABI_Image_Argument_Count() == 4,
          "structured call ABI argument roles");
+    EXTERNAL_REWRITE_CHECK
+        (DSL_PU_Interface_Image_Formal_Count() == 3 &&
+         DSL_PU_Interface_Image_Find_Formal
+             (PU_Info_proc_sym(callee), 0, &formal_record) &&
+         formal_record.formal_value_id ==
+             DSL_Builder_Get_Value_Image_Id(formals[0]) &&
+         formal_record.formal_st ==
+             DSL_Builder_Get_Value_Result_Symbol(formals[0]) &&
+         formal_record.formal_ty == weight_ty &&
+         DSL_PU_Interface_Image_Find_Formal
+             (PU_Info_proc_sym(callee), 1, &formal_record) &&
+         formal_record.formal_value_id ==
+             DSL_Builder_Get_Value_Image_Id(formals[1]) &&
+         formal_record.formal_st ==
+             DSL_Builder_Get_Value_Result_Symbol(formals[1]) &&
+         formal_record.formal_ty == bias_ty &&
+         DSL_PU_Interface_Image_Find_Formal
+             (PU_Info_proc_sym(callee), 2, &formal_record) &&
+         formal_record.formal_value_id ==
+             DSL_Builder_Get_Value_Image_Id(result) &&
+         formal_record.formal_st ==
+             DSL_Builder_Get_Value_Result_Symbol(result) &&
+         formal_record.formal_ty == weight_ty,
+         "global callee formal value query");
     if (failed)
         return failed;
 
@@ -5562,10 +5587,12 @@ Check_External_Tensor_Materialization(void)
          "source payload remains immutable");
 
     EXTERNAL_REWRITE_CHECK
-        (!DSL_Call_ABI_Image_Validate_PU(callee, NULL),
-         "call ABI rejects a non-active callee local symbol table");
+        (!DSL_Call_ABI_Image_Validate_PU(callee, NULL) &&
+         !DSL_PU_Interface_Image_Validate_PU(callee, NULL),
+         "ABI tables reject a non-active callee local symbol table");
     EXTERNAL_REWRITE_CHECK
         (DSL_Builder_Select_PU(callee) &&
+         DSL_PU_Interface_Image_Validate_PU(callee, stderr) &&
          DSL_Call_ABI_Image_Validate_PU(callee, stderr) &&
          WN_num_formals(PU_Info_tree_ptr(callee)) == 3 &&
          strcmp(ST_name(St_Table
@@ -5610,6 +5637,95 @@ Check_External_Tensor_Materialization(void)
          DSL_Call_ABI_Image_Argument_Count() == 4,
          "valid call ABI image reloads after malformed inputs");
     delete [] abi_bytes;
+
+    DSL_PU_INTERFACE_IMAGE_HEADER interface_header;
+    DSL_PU_Interface_Image_Get_Header(&interface_header);
+    UINT64 interface_size = DSL_PU_INTERFACE_IMAGE_HEADER_SIZE +
+        (UINT64)interface_header.formal_count * DSL_PU_FORMAL_RECORD_SIZE;
+    unsigned char *interface_bytes = new unsigned char[interface_size];
+    memcpy(interface_bytes, &interface_header, sizeof(interface_header));
+    DSL_PU_FORMAL_RECORD *interface_rows =
+        (DSL_PU_FORMAL_RECORD *)
+            (interface_bytes + DSL_PU_INTERFACE_IMAGE_HEADER_SIZE);
+    for (UINT32 i = 1; i <= interface_header.formal_count; ++i)
+        DSL_PU_Interface_Image_Get_Formal(i, &interface_rows[i - 1]);
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_PU_Interface_Image_Load_Mapped
+              (interface_bytes, interface_size - 1, NULL) &&
+         !DSL_PU_Interface_Image_Load_Mapped
+              (interface_bytes, interface_size + 1, NULL),
+         "truncated and trailing PU interface images reject");
+    interface_rows[1].formal_ordinal = interface_rows[0].formal_ordinal;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_PU_Interface_Image_Load_Mapped
+              (interface_bytes, interface_size, NULL),
+         "duplicate PU formal ordinal rejects");
+    interface_rows[1].formal_ordinal = 1;
+    interface_rows[1].formal_value_id =
+        interface_rows[0].formal_value_id;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_PU_Interface_Image_Load_Mapped
+              (interface_bytes, interface_size, NULL),
+         "duplicate PU formal value rejects");
+    interface_rows[1].formal_value_id =
+        DSL_Builder_Get_Value_Image_Id(formals[1]);
+    interface_rows[1].formal_ty = weight_ty;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_PU_Interface_Image_Load_Mapped
+              (interface_bytes, interface_size, NULL),
+         "PU formal value and type mismatch rejects");
+    interface_rows[1].formal_ty = bias_ty;
+    ST_IDX valid_owner = interface_rows[0].owner_pu_st;
+    interface_rows[0].owner_pu_st =
+        make_ST_IDX(ST_Table_Size(GLOBAL_SYMTAB) + 1, GLOBAL_SYMTAB);
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_PU_Interface_Image_Load_Mapped
+              (interface_bytes, interface_size, NULL),
+         "orphan PU formal owner rejects");
+    interface_rows[0].owner_pu_st = valid_owner;
+    EXTERNAL_REWRITE_CHECK
+        (DSL_PU_Interface_Image_Load_Mapped
+             (interface_bytes, interface_size, stderr) &&
+         DSL_PU_Interface_Image_Find_Formal
+             (PU_Info_proc_sym(callee), 1, &formal_record) &&
+         formal_record.formal_value_id ==
+             DSL_Builder_Get_Value_Image_Id(formals[1]) &&
+         formal_record.formal_ty == bias_ty,
+         "global formal query survives mapped reload");
+    DSL_PU_INTERFACE_IMAGE_HEADER shortened_header = interface_header;
+    shortened_header.formal_count = interface_header.formal_count - 1;
+    memcpy(interface_bytes, &shortened_header, sizeof(shortened_header));
+    EXTERNAL_REWRITE_CHECK
+        (DSL_PU_Interface_Image_Load_Mapped
+             (interface_bytes,
+              DSL_PU_INTERFACE_IMAGE_HEADER_SIZE +
+                  (UINT64)shortened_header.formal_count *
+                      DSL_PU_FORMAL_RECORD_SIZE,
+              stderr) &&
+         DSL_Builder_Select_PU(callee) &&
+         !DSL_PU_Interface_Image_Validate_PU(callee, NULL),
+         "per-PU validation rejects a shortened formal interface");
+    memcpy(interface_bytes, &interface_header, sizeof(interface_header));
+    EXTERNAL_REWRITE_CHECK
+        (DSL_PU_Interface_Image_Load_Mapped
+             (interface_bytes, interface_size, stderr) &&
+         DSL_Builder_Select_PU(caller),
+         "restore complete PU interface image");
+    ST_IDX callee_owner = interface_rows[0].owner_pu_st;
+    interface_rows[0].owner_pu_st = PU_Info_proc_sym(caller);
+    EXTERNAL_REWRITE_CHECK
+        (DSL_PU_Interface_Image_Load_Mapped
+             (interface_bytes, interface_size, stderr) &&
+         DSL_Builder_Select_PU(callee) &&
+         !DSL_PU_Interface_Image_Validate_PU(callee, NULL),
+         "per-PU validation rejects a mismatched formal owner");
+    interface_rows[0].owner_pu_st = callee_owner;
+    EXTERNAL_REWRITE_CHECK
+        (DSL_PU_Interface_Image_Load_Mapped
+             (interface_bytes, interface_size, stderr) &&
+         DSL_Builder_Select_PU(caller),
+         "restore valid PU interface image and caller");
+    delete [] interface_bytes;
 
     memset(&verify, 0, sizeof(verify));
     memset(diagnostic, 0, sizeof(diagnostic));

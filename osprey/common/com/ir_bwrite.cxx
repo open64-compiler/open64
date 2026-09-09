@@ -942,6 +942,31 @@ WN_write_dsl_call_abi_image (Output_File *fl)
 }
 
 void
+WN_write_dsl_pu_interface_image (Output_File *fl)
+{
+    if (!DSL_PU_Interface_Image_Has_Records())
+        return;
+    FmtAssert(DSL_PU_Interface_Image_Validate(stderr),
+              ("invalid DSL PU interface table"));
+    Section *cur_section = get_section
+                               (WT_DSL_PU_INTERFACE_IMAGE,
+                                MIPS_WHIRL_DSL_PU_INTERFACE_IMAGE, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+    DSL_PU_INTERFACE_IMAGE_HEADER header;
+    DSL_PU_Interface_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+    for (UINT32 i = 1; i <= header.formal_count; ++i) {
+        DSL_PU_FORMAL_RECORD record;
+        FmtAssert(DSL_PU_Interface_Image_Get_Formal(i, &record),
+                  ("missing DSL PU formal %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
+void
 WN_write_dsl_fhe_image (Output_File *fl)
 {
     if (!DSL_FHE_Image_Has_Records())
@@ -1869,6 +1894,7 @@ Write_Global_Info (PU_Info *pu_tree)
     WN_write_dsl_ir_image(ir_output);
     WN_write_dsl_effect_image(ir_output);
     WN_write_dsl_callsite_image(ir_output);
+    WN_write_dsl_pu_interface_image(ir_output);
     WN_write_dsl_call_abi_image(ir_output);
     WN_write_dsl_fhe_image(ir_output);
     WN_write_dsl_fhe_plan_image(ir_output);
