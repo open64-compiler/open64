@@ -2,7 +2,13 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+#include <algorithm>
+#include <errno.h>
+#include <signal.h>
 #include <string.h>
+#include <unistd.h>
+#include <string>
+#include <vector>
 
 #include "fhe_convert.h"
 #include "config_fhe.h"
@@ -18,6 +24,41 @@
 
 static VHO_FHE_SEMANTIC_GATEKEEPER VHO_FHE_semantic_gatekeeper;
 static VHO_FHE_CONVERSION_PASS VHO_FHE_conversion_pass;
+static VHO_FHE_CHECKPOINT_FINALIZER VHO_FHE_checkpoint_finalizer;
+static VHO_FHE_CHECKPOINT_COMPLETION VHO_FHE_checkpoint_completion;
+
+typedef struct {
+    std::string temporary_path;
+    std::string final_path;
+    BOOL published;
+} VHO_FHE_CHECKPOINT_ARTIFACT;
+
+static std::vector<VHO_FHE_CHECKPOINT_ARTIFACT>
+    VHO_FHE_checkpoint_artifacts;
+static std::string VHO_FHE_checkpoint_binary_temporary_path;
+static std::string VHO_FHE_checkpoint_binary_final_path;
+static BOOL VHO_FHE_checkpoint_active;
+static BOOL VHO_FHE_checkpoint_finalized;
+
+static BOOL
+VHO_FHE_Checkpoint_Artifact_Order
+        (const VHO_FHE_CHECKPOINT_ARTIFACT &left,
+         const VHO_FHE_CHECKPOINT_ARTIFACT &right)
+{
+    return left.final_path < right.final_path;
+}
+
+static void
+VHO_FHE_Convert_Checkpoint_Clear_State (void)
+{
+    VHO_FHE_checkpoint_artifacts.clear();
+    VHO_FHE_checkpoint_binary_temporary_path.clear();
+    VHO_FHE_checkpoint_binary_final_path.clear();
+    VHO_FHE_checkpoint_active = FALSE;
+    VHO_FHE_checkpoint_finalizer = NULL;
+    VHO_FHE_checkpoint_completion = NULL;
+    VHO_FHE_checkpoint_finalized = FALSE;
+}
 
 void
 VHO_FHE_Convert_Result_Init (VHO_FHE_CONVERT_RESULT *result)
@@ -133,9 +174,240 @@ VHO_FHE_Convert_Register_Pass (VHO_FHE_CONVERSION_PASS pass)
     return TRUE;
 }
 
+BOOL
+VHO_FHE_Convert_Register_Checkpoint_Lifecycle
+        (VHO_FHE_CHECKPOINT_FINALIZER finalizer,
+         VHO_FHE_CHECKPOINT_COMPLETION completion)
+{
+    if (finalizer == NULL || completion == NULL ||
+        VHO_FHE_checkpoint_finalizer != NULL ||
+        VHO_FHE_checkpoint_completion != NULL ||
+        !VHO_FHE_checkpoint_artifacts.empty() ||
+        VHO_FHE_checkpoint_finalized)
+        return FALSE;
+    VHO_FHE_checkpoint_finalizer = finalizer;
+    VHO_FHE_checkpoint_completion = completion;
+    return TRUE;
+}
+
+BOOL
+VHO_FHE_Convert_Checkpoint_Begin
+        (const char *temporary_binary_path,
+         const char *final_binary_path,
+         FILE *diagnostic)
+{
+    if (VHO_FHE_checkpoint_active || VHO_FHE_checkpoint_finalized ||
+        !VHO_FHE_checkpoint_artifacts.empty() ||
+        temporary_binary_path == NULL ||
+        temporary_binary_path[0] == '\0' || final_binary_path == NULL ||
+        final_binary_path[0] == '\0' ||
+        strcmp(temporary_binary_path, final_binary_path) == 0) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "CFHE-CHECKPOINT-006: invalid checkpoint output "
+                    "reservation\n");
+        return FALSE;
+    }
+
+    errno = 0;
+    if (access(final_binary_path, F_OK) == 0 || errno != ENOENT) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "CFHE-CHECKPOINT-006: checkpoint destination already "
+                    "exists or cannot be inspected: %s\n",
+                    final_binary_path);
+        return FALSE;
+    }
+
+    VHO_FHE_checkpoint_binary_temporary_path = temporary_binary_path;
+    VHO_FHE_checkpoint_binary_final_path = final_binary_path;
+    VHO_FHE_checkpoint_active = TRUE;
+    return TRUE;
+}
+
+BOOL
+VHO_FHE_Convert_Checkpoint_Register_Artifact
+        (const char *temporary_path, const char *final_path)
+{
+    if (VHO_FHE_checkpoint_finalizer == NULL ||
+        !VHO_FHE_checkpoint_active || VHO_FHE_checkpoint_finalized ||
+        temporary_path == NULL ||
+        temporary_path[0] == '\0' || final_path == NULL ||
+        final_path[0] == '\0' || strcmp(temporary_path, final_path) == 0)
+        return FALSE;
+    if (VHO_FHE_checkpoint_binary_temporary_path == temporary_path ||
+        VHO_FHE_checkpoint_binary_temporary_path == final_path ||
+        VHO_FHE_checkpoint_binary_final_path == temporary_path ||
+        VHO_FHE_checkpoint_binary_final_path == final_path)
+        return FALSE;
+    for (size_t i = 0; i < VHO_FHE_checkpoint_artifacts.size(); ++i) {
+        const VHO_FHE_CHECKPOINT_ARTIFACT &artifact =
+            VHO_FHE_checkpoint_artifacts[i];
+        if (artifact.temporary_path == temporary_path ||
+            artifact.temporary_path == final_path ||
+            artifact.final_path == temporary_path ||
+            artifact.final_path == final_path)
+            return FALSE;
+    }
+
+    VHO_FHE_CHECKPOINT_ARTIFACT artifact;
+    artifact.temporary_path = temporary_path;
+    artifact.final_path = final_path;
+    artifact.published = FALSE;
+    VHO_FHE_checkpoint_artifacts.push_back(artifact);
+    return TRUE;
+}
+
+UINT32
+VHO_FHE_Convert_Checkpoint_Artifact_Count (void)
+{
+    return (UINT32)VHO_FHE_checkpoint_artifacts.size();
+}
+
+BOOL
+VHO_FHE_Convert_Checkpoint_Finalize
+        (const VHO_FHE_CONVERT_RESULT *aggregate, FILE *diagnostic)
+{
+    if (!VHO_FHE_checkpoint_active || aggregate == NULL ||
+        VHO_FHE_checkpoint_finalized) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "CFHE-CHECKPOINT-004: invalid checkpoint finalization "
+                    "state\n");
+        return FALSE;
+    }
+    if (VHO_FHE_checkpoint_finalizer != NULL &&
+        !VHO_FHE_checkpoint_finalizer(aggregate, diagnostic)) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "CFHE-CHECKPOINT-004: registered checkpoint finalizer "
+                    "failed\n");
+        return FALSE;
+    }
+    VHO_FHE_checkpoint_finalized = TRUE;
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Checkpoint_Publish_No_Replace
+        (VHO_FHE_CHECKPOINT_ARTIFACT *artifact, FILE *diagnostic)
+{
+    sigset_t all_signals;
+    sigset_t previous_signals;
+    if (sigfillset(&all_signals) != 0 ||
+        sigprocmask(SIG_BLOCK, &all_signals, &previous_signals) != 0) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "CFHE-CHECKPOINT-005: could not protect auxiliary "
+                    "artifact publication: %s\n", strerror(errno));
+        return FALSE;
+    }
+
+    BOOL published = FALSE;
+    INT publish_error = 0;
+    if (link(artifact->temporary_path.c_str(),
+             artifact->final_path.c_str()) != 0) {
+        publish_error = errno;
+    }
+    else {
+        artifact->published = TRUE;
+        if (unlink(artifact->temporary_path.c_str()) != 0)
+            publish_error = errno;
+        else
+            published = TRUE;
+    }
+
+    INT restore_error = 0;
+    if (sigprocmask(SIG_SETMASK, &previous_signals, NULL) != 0)
+        restore_error = errno;
+    if (!published || restore_error != 0) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "CFHE-CHECKPOINT-005: could not publish auxiliary "
+                    "artifact %s without replacement: %s\n",
+                    artifact->final_path.c_str(),
+                    strerror(restore_error != 0 ? restore_error :
+                             publish_error));
+        return FALSE;
+    }
+    return TRUE;
+}
+
+BOOL
+VHO_FHE_Convert_Checkpoint_Publish_Artifacts (FILE *diagnostic)
+{
+    if (!VHO_FHE_checkpoint_active || !VHO_FHE_checkpoint_finalized) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "CFHE-CHECKPOINT-005: auxiliary artifacts were not "
+                    "finalized\n");
+        return FALSE;
+    }
+
+    std::sort(VHO_FHE_checkpoint_artifacts.begin(),
+              VHO_FHE_checkpoint_artifacts.end(),
+              VHO_FHE_Checkpoint_Artifact_Order);
+    for (size_t i = 0; i < VHO_FHE_checkpoint_artifacts.size(); ++i) {
+        VHO_FHE_CHECKPOINT_ARTIFACT &artifact =
+            VHO_FHE_checkpoint_artifacts[i];
+        errno = 0;
+        if (access(artifact.temporary_path.c_str(), F_OK) != 0 ||
+            access(artifact.final_path.c_str(), F_OK) == 0 ||
+            errno != ENOENT) {
+            if (diagnostic != NULL)
+                fprintf(diagnostic,
+                        "CFHE-CHECKPOINT-005: auxiliary artifact is not "
+                        "ready for publication: %s -> %s\n",
+                        artifact.temporary_path.c_str(),
+                        artifact.final_path.c_str());
+            return FALSE;
+        }
+    }
+    for (size_t i = 0; i < VHO_FHE_checkpoint_artifacts.size(); ++i) {
+        VHO_FHE_CHECKPOINT_ARTIFACT &artifact =
+            VHO_FHE_checkpoint_artifacts[i];
+        if (!VHO_FHE_Checkpoint_Publish_No_Replace
+                 (&artifact, diagnostic))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+void
+VHO_FHE_Convert_Checkpoint_Complete (void)
+{
+    VHO_FHE_CHECKPOINT_COMPLETION completion =
+        VHO_FHE_checkpoint_completion;
+    for (size_t i = 0; i < VHO_FHE_checkpoint_artifacts.size(); ++i) {
+        if (!VHO_FHE_checkpoint_artifacts[i].published)
+            remove(VHO_FHE_checkpoint_artifacts[i].temporary_path.c_str());
+    }
+    VHO_FHE_Convert_Checkpoint_Clear_State();
+    if (completion != NULL)
+        completion(TRUE);
+}
+
+void
+VHO_FHE_Convert_Checkpoint_Abort (void)
+{
+    VHO_FHE_CHECKPOINT_COMPLETION completion =
+        VHO_FHE_checkpoint_completion;
+    for (size_t i = 0; i < VHO_FHE_checkpoint_artifacts.size(); ++i) {
+        VHO_FHE_CHECKPOINT_ARTIFACT &artifact =
+            VHO_FHE_checkpoint_artifacts[i];
+        remove(artifact.temporary_path.c_str());
+        if (artifact.published)
+            remove(artifact.final_path.c_str());
+    }
+    VHO_FHE_Convert_Checkpoint_Clear_State();
+    if (completion != NULL)
+        completion(FALSE);
+}
+
 void
 VHO_FHE_Convert_Reset_Passes (void)
 {
+    VHO_FHE_Convert_Checkpoint_Abort();
     VHO_FHE_semantic_gatekeeper = NULL;
     VHO_FHE_conversion_pass = NULL;
 }

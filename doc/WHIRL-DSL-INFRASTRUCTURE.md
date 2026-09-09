@@ -1889,6 +1889,28 @@ full-sequence causal prompt evaluation with no KV cache.
    checkpoint: a later failure is terminal, publishes neither `.fhe.B` nor its
    converted side payload, and does not continue on the mutated memory image.
 
+40. [x] Publish the FHE checkpoint auxiliary-artifact transaction.
+
+   Add a registered all-PU finalizer/completion lifecycle to the backend-safe
+   FHE conversion service. The finalizer runs only after PU coverage and all
+   managed-image gates; it may finish and digest temporary side payloads and
+   reports and validate aggregate semantic counts, but it must not mutate
+   WHIRL or managed tables at that late boundary.
+
+   Add runtime-only temporary/final auxiliary-artifact registration. The
+   backend records an in-process reservation for an absent `.fhe.B`
+   destination before conversion and
+   rejects every collision across auxiliary and binary transaction endpoints.
+   It closes the temporary binary WHIRL image, publishes auxiliary files in
+   deterministic order with atomic no-replace semantics, and publishes
+   `.fhe.B` last as the commit marker. Signals are blocked across each
+   publication and its rollback-state update. Any failure or handled signal
+   removes temporary files and every auxiliary member already published by
+   the current run. The exact API, ordering, ownership, diagnostics, and test
+   contract are in
+   `doc/FHE-SYNC3-CHECKPOINT-ARTIFACT-CONTRACT.md`. This adds no mapped-image
+   row, ELF section, opcode, type encoding, or binary revision.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up
