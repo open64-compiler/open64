@@ -227,6 +227,7 @@ DSL_FHE_View_Validate (const DSL_FHE_IMAGE_VIEW *view, FILE *diagnostic)
             record.encryption_descriptor_id == 0 ||
             record.encryption_descriptor_id >
                 header.encryption_descriptor_count ||
+            record.flags != 0 ||
             record.reserved0 != 0 || record.reserved1 != 0)
             return DSL_FHE_Report(diagnostic, "invalid tensor binding", i + 1);
         for (UINT32 j = 0; j < i; ++j) {
@@ -602,7 +603,13 @@ DSL_FHE_Intern_Tensor_Binding
          DSL_FHE_ENCRYPTION_DESCRIPTOR_ID descriptor_id,
          UINT32 flags)
 {
-    if (TY_IDX_index(tensor_ty) == 0 ||
+    /* Version 1 reserves the tensor-binding flags word.  Any nonzero value
+       would create an image the version-1 validator must reject, so it is
+       refused before the interning lookup or any table mutation.  The
+       version-1 identity is exactly (tensor_ty, encryption_descriptor_id),
+       which matches the lookup, validation, and writer paths. */
+    if (flags != 0 ||
+        TY_IDX_index(tensor_ty) == 0 ||
         TY_IDX_index(tensor_ty) >= Ty_tab.Size() ||
         !TY_is_tensor_extension(tensor_ty) || descriptor_id == 0 ||
         descriptor_id > DSL_fhe_encryption_descriptor_table.Size())
@@ -611,8 +618,7 @@ DSL_FHE_Intern_Tensor_Binding
         const DSL_FHE_TENSOR_BINDING_RECORD &record =
             DSL_fhe_tensor_binding_table[i];
         if (record.tensor_ty == tensor_ty &&
-            record.encryption_descriptor_id == descriptor_id &&
-            record.flags == flags)
+            record.encryption_descriptor_id == descriptor_id)
             return i + 1;
     }
     DSL_FHE_TENSOR_BINDING_RECORD record;
@@ -638,19 +644,25 @@ DSL_FHE_Add_Entry_Contract (const DSL_FHE_ENTRY_CONTRACT_RECORD *record)
     return index + 1;
 }
 
-DSL_FHE_ENTRY_VALUE_ID
-DSL_FHE_Add_Entry_Value (const DSL_FHE_ENTRY_VALUE_RECORD *record)
+/* Validate the owner PU, role, value class, and encryption descriptor of an
+   entry value record without mutating any table.  This is the validate-before-
+   mutation half of the failure-atomic publication contract (v0.9 Section 15.4;
+   Appendix F.2): both DSL_FHE_Add_Entry_Value and the builder-level insertion
+   path run these checks before a row is appended or first_entry_value_id /
+   entry_value_count are changed, so a rejected value cannot leave the entry
+   value table or the entry contract in a partially updated state. */
+static BOOL
+DSL_FHE_Entry_Value_Record_Valid (const DSL_FHE_ENTRY_VALUE_RECORD *record)
 {
     DSL_IR_VALUE_RECORD value;
-    const DSL_FHE_ENTRY_CONTRACT_RECORD *entry =
-        record == NULL || record->entry_contract_id == 0 ||
-        record->entry_contract_id > DSL_fhe_entry_contract_table.Size() ?
-        NULL : &DSL_fhe_entry_contract_table[record->entry_contract_id - 1];
+    const DSL_FHE_ENTRY_CONTRACT_RECORD *entry;
+
     if (record == NULL || record->entry_contract_id == 0 ||
-        record->entry_contract_id > DSL_fhe_entry_contract_table.Size() ||
-        record->value_id == 0 ||
+        record->entry_contract_id > DSL_fhe_entry_contract_table.Size())
+        return FALSE;
+    entry = &DSL_fhe_entry_contract_table[record->entry_contract_id - 1];
+    if (record->value_id == 0 ||
         !DSL_IR_Image_Get_Value(record->value_id, &value) ||
-        entry == NULL ||
         !DSL_FHE_Value_Belongs_To_PU(value, entry->owner_pu_st) ||
         record->role < DSL_FHE_ENTRY_VALUE_INPUT ||
         record->role > DSL_FHE_ENTRY_VALUE_PARAMETER ||
@@ -662,6 +674,14 @@ DSL_FHE_Add_Entry_Value (const DSL_FHE_ENTRY_VALUE_RECORD *record)
         DSL_fhe_encryption_descriptor_table
             [record->encryption_descriptor_id - 1].value_class !=
                 record->value_class)
+        return FALSE;
+    return TRUE;
+}
+
+DSL_FHE_ENTRY_VALUE_ID
+DSL_FHE_Add_Entry_Value (const DSL_FHE_ENTRY_VALUE_RECORD *record)
+{
+    if (!DSL_FHE_Entry_Value_Record_Valid(record))
         return DSL_FHE_ENTRY_VALUE_INVALID_ID;
     DSL_FHE_ENTRY_VALUE_RECORD copy = *record;
     UINT32 index = DSL_fhe_entry_value_table.Insert(copy);

@@ -15,6 +15,16 @@ It consolidates the architecture in
 implementation detail in `FHE-DSL-INTEGRATION-PLAN.md`, and the FHE-task plan
 in `FHE-WHIRL-INTEGRATION-PLAN.md`.
 
+The adjacent
+`../open64-plans/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`
+is the highest semantic authority. The reviewed copy has SHA-256
+`4B9DAC9927E86518142CA9A9E71AEAE7AEA5C454D01C544311359680639DF4B6`.
+This Markdown tracker may narrow architecture milestones into review
+checkpoints, but it may not override v0.9 semantics, boundaries, or completion
+criteria. In particular, focused C3 / SYNC-3 completion is not completion of
+v0.9 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4 remains
+mandatory.
+
 ## Shared Objective
 
 The first end-to-end target is the complete ResNet-20/CIFAR-10 inference model:
@@ -184,9 +194,13 @@ image coding begins before this checkpoint closes.
 
 ### **SYNC-1: Native API And Image Contract Freeze**
 
-Status: closed.  Main/common implementation merged through PR #102 at
-`8ba9ee31`; FHE semantic review accepted the contract without blockers.  The
-FHE task rebases on this merged contract before producing SYNC-2 artifacts.
+Status: implementation merged; corrective validation reopened. Main/common
+implementation merged through PR #102 at `8ba9ee31`, but later review reopened
+two required exit invariants: version-1 tensor-binding identity must agree
+across interning, lookup, validation, and writing, and rejected entry-value
+insertion must be failure-atomic. The earlier semantic review remains
+historical evidence, not a current closure claim. The FHE task must consume the
+corrected, independently accepted contract before SYNC-2 recertification.
 
 Main task provides:
 
@@ -215,9 +229,13 @@ updated `develop`; duplicate cherry-picks are omitted.
 
 ### **SYNC-2: Frontend Artifact Certification**
 
-Status: completed after PR #104 merged into `develop` and the FHE branch
-rebased, regenerated the ResNet-20 artifact family, and passed final
-post-rebase certification.
+Status: certification reopened. PR #104 merged into `develop`, the FHE branch
+rebased, and a ResNet-20 artifact family was previously generated, but later
+review reopened PU ownership, exact source provenance, fail-closed dependency
+and count/absence checks, and durable retained-artifact evidence. SYNC-2 may be
+described as completed again only after those corrections are merged, the FHE
+branch rebases, the complete certification is rerun, and the main task accepts
+the new evidence.
 
 The first full trace exposed a PU-scope correctness gap in shared
 infrastructure: FHE entry values carried valid PU-relative `ST_IDX` values,
@@ -267,7 +285,8 @@ Acceptance checks:
 - No bootstrap or CKKS operator is invented by Python ingestion.
 - Python exits before an independent process reopens the `.B` file.
 
-Final evidence:
+Previously recorded evidence, which does not replace the reopened
+recertification:
 
 - FHE rows resolve to `owner_pu=SecureResNet20` with stable entry-PU names for
   `input0`, external parameters, and `common_output_logits_46`.
@@ -282,16 +301,44 @@ Final evidence:
 Merge rule: frontend/FHE capture PR depends on merged native infrastructure.
 The main task reviews the `.T` evidence before this checkpoint closes.
 
+### **Corrective Checkpoint Before SYNC-3 Implementation**
+
+Status: open and blocking SYNC-3 source implementation.
+
+The existing C0-C8 and SYNC-0 through SYNC-8 numbering remains unchanged.
+This checkpoint restores prerequisites already required by those stages:
+
+1. Reconcile version-1 tensor-binding identity across interning, lookup,
+   validation, and writing, with nonzero flags rejected before mutation.
+2. Make FHE entry-value insertion failure-atomic.
+3. Enforce REGION/value PU ownership before BLOCK mutation, including
+   PU-local `ST_IDX` collision coverage.
+4. Replace inferred ResNet source offsets with exact source mapping for
+   definitions, call contexts, parameters, and results.
+5. Recertify SYNC-2 with fail-closed dependencies, exact positive and forbidden
+   counts, an independent `ir_b2a -st -src` reopen, and retained host-visible
+   artifacts identified by commands, toolchain, hashes, and paths.
+6. Select and accept one exact node-retirement contract for physical
+   BatchNorm removal, including logical-image state, users, provenance,
+   rollback, old-reader behavior, and reopen behavior.
+
+Main/common corrective commits merge first. The FHE/frontend branch then
+rebases and recertifies SYNC-2. Main/common and FHE reviewers must accept the
+node-retirement contract before any SYNC-3 implementation begins.
+
 ### **SYNC-3: ResNet FHE Conversion Review**
 
-Status: active contract preparation after PR #105 merged into `develop` at
+Status: blocked contract preparation after PR #105 merged into `develop` at
 `73d8ec0d`. The reviewable proposal is
-`doc/FHE-SYNC3-CONVERSION-CONTRACT.md`. Implementation must remain limited to
-the accepted SYNC-3 conversion scope: FHE gatekeeper, legal BatchNorm folding,
-CNN-to-FHE disposition, ReLU approximation-contract attachment, value-specific
-CKKS state evidence, and retained conversion artifacts. Opcode allocation,
-bootstrap insertion, SIHE/CKKS primitive lowering, OpenFHE/runtime lowering,
-and shared common/com edits require their reviewed checkpoints.
+`doc/FHE-SYNC3-CONVERSION-CONTRACT.md`. Source implementation is blocked until
+the pre-SYNC-3 corrective checkpoint closes and the node-retirement contract
+is jointly accepted. Once unblocked, implementation remains limited to the
+focused SYNC-3 conversion-planning scope: FHE gatekeeper, legal BatchNorm
+folding, CNN-to-FHE disposition, ReLU approximation-contract attachment,
+value-specific CKKS state evidence, and retained conversion artifacts. Opcode
+allocation, bootstrap insertion, SIHE/CKKS primitive lowering,
+OpenFHE/runtime lowering, and shared common/com edits require their reviewed
+checkpoints.
 
 Required phase output:
 
@@ -342,6 +389,14 @@ The exact physical review is
 families, opaque APIs, wrapper-registry boundary, sentinel rules, mapped-image
 compatibility, and stable `ir_b2a -st -src` headings required before SYNC-3
 implementation.
+
+Focused SYNC-3 exit evidence may close only this conversion-planning review
+checkpoint. It must prove the accepted dispositions, BatchNorm folds,
+approximation obligations, CKKS planning state, diagnostics, compatibility,
+and retained artifacts from the exact candidate. It must not claim v0.9
+Architecture Phase 3 or M4 completion. Those milestones still require C4 /
+SYNC-4 bootstrap-plus-polynomial materialization and the remaining v0.9
+execution evidence.
 
 ### **SYNC-4: ReLU `-O0` Baseline Certification**
 
@@ -480,17 +535,21 @@ The ResNet-first FHE project reaches its first complete milestone only when:
 
 ## Immediate Coordinated Queue
 
-1. **SYNC-0:** Commit and share the three plan documents, then reconcile the
-   FHE handoff table against the current source registry.
-2. Main task: publish a reuse/extension decision for every requested common and
-   CNN operator, explicitly recording that `common.relu` already exists.
-3. FHE task: freeze the complete ResNet-20 operator census and classify every
-   value as ciphertext, encoded plaintext, clear metadata, or illegal secret
-   material.
-4. Joint review: decide the exact relationship between TensorDescriptorIR and
-   EncryptionDescriptorIR, including deduplication and type equivalence.
-5. **SYNC-1:** Freeze fixed FHE records, opaque builder APIs, image capability
-   rules, printer spelling, and negative-test matrix.
-6. Main task: implement and merge shared native infrastructure.
-7. FHE task: rebase, bind the merged APIs, and produce the SYNC-2 ResNet capture
-   artifact family.
+1. Documentation owners: publish the reconciled status, authority, corrective
+   checkpoint, and commit acceptance plan without changing stage numbering or
+   architecture contracts.
+2. Main/common owner: fix version-1 tensor-binding identity and validate legal
+   FHE-v1 reopen behavior.
+3. Main/common owner: make FHE entry-value insertion failure-atomic and prove
+   rejected insertion leaves the image valid and unchanged.
+4. Main/common owner: enforce REGION/value PU ownership before mutation and
+   cover PU-local index collisions.
+5. FHE/frontend owner: repair exact ResNet source provenance through opaque
+   APIs, including definitions, call contexts, parameters, and results.
+6. FHE/frontend owner: rebase and rerun fail-closed SYNC-2 certification,
+   retain the complete host-visible artifact family, and obtain main-task
+   acceptance before restoring completed status.
+7. Main/common and FHE reviewers: accept one exact node-retirement contract for
+   BatchNorm removal, rollback, mapped reopen, old readers, and inspection.
+8. Resume focused SYNC-3 implementation only after items 2-7 close, with
+   main/common infrastructure merging before the FHE branch rebases.

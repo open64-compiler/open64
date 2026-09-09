@@ -5311,9 +5311,9 @@ Check_FHE_SYNC3_Plan_Image(void)
     config.provenance_mask = 1;
     config.scheme = DSL_FHE_SCHEME_CKKS;
     config.security_level = DSL_FHE_SECURITY_128_CLASSIC;
-    config.ring_dimension = 32768;
+    config.ring_dimension = 65536;
     config.multiplicative_depth_policy = DSL_FHE_POLICY_AUTO;
-    config.scale_bits = 50;
+    config.scale_bits = 56;
     config.first_modulus_bits = 60;
     config.slot_count_policy = DSL_FHE_POLICY_AUTO;
     config.key_switch_policy = 1;

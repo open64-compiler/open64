@@ -1,27 +1,53 @@
 # FHE SYNC-3 ResNet Conversion Contract
 
-Status: main/common staging contract for review after SYNC-2 merge. This
-document does not allocate opcodes, edit shared common/com files, insert bootstrap
-boundaries, lower to SIHE/CKKS primitives, or lower to OpenFHE/runtime calls.
+Status: blocked main/common staging contract for review after SYNC-2
+recertification. This document does not allocate opcodes, edit shared
+common/com files, insert bootstrap boundaries, lower to SIHE/CKKS primitives,
+or lower to OpenFHE/runtime calls.
 
 Authority:
 
+- `../open64-plans/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`
+  is the highest semantic authority; the reviewed copy has SHA-256
+  `4B9DAC9927E86518142CA9A9E71AEAE7AEA5C454D01C544311359680639DF4B6`.
 - `doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md`
 - `doc/FHE-WHIRL-INTEGRATION-PLAN.md`
 - `doc/FHE-SYNC1-NATIVE-CONTRACT.md`
 - `artifacts/fhe/resnet20_capture/` from the merged SYNC-2 frontend PR
 
+This contract is a narrowed C3 / SYNC-3 review checkpoint permitted by v0.9
+Appendix F.1. It cannot override v0.9 or establish completion of Architecture
+Phase 3 or focused milestone M4. C4 / SYNC-4 bootstrap-plus-polynomial
+materialization and the remaining v0.9 execution evidence stay mandatory.
+
+## Prerequisite Gate
+
+SYNC-3 source implementation remains blocked until all of the following are
+accepted:
+
+1. Corrective SYNC-1 validation establishes one version-1 tensor-binding
+   identity and failure-atomic FHE entry-value insertion.
+2. PU ownership and exact source provenance are corrected, and SYNC-2 is
+   recertified with fail-closed dependencies, exact count/absence assertions,
+   independent reopen, and retained host-visible artifacts.
+3. Main/common and FHE reviewers select one exact node-retirement contract for
+   physical BatchNorm removal, including users, provenance, rollback,
+   old-reader behavior, mapped reopen, and tree/image consistency.
+
 ## Scope
 
-SYNC-3 converts the accepted ResNet-20/CIFAR-10 source-level WHIRL artifact
-into FHE-visible CNN semantics while retaining reviewable evidence. It owns
-FHE gatekeeper checks, BatchNorm folding, operator disposition, approximation
-contract requirements for encrypted `common.relu`, value-specific CKKS state
-planning metadata, and retained conversion artifacts.
+After the prerequisite gate closes, focused SYNC-3 plans the conversion of the
+recertified ResNet-20/CIFAR-10 source-level WHIRL artifact into FHE-visible CNN
+semantics while retaining reviewable evidence. It owns FHE gatekeeper checks,
+BatchNorm folding, operator disposition, approximation-contract requirements
+for encrypted `common.relu`, value-specific CKKS state planning metadata, and
+retained conversion artifacts.
 
 SYNC-3 explicitly does not materialize bootstrap, polynomial activation,
 SIHE/CKKS arithmetic, runtime calls, generated C, OpenFHE provider logic,
 optimized boundary movement, ReSBM, HPOLY/HPAO, or GPU/POLY lowering.
+Focused SYNC-3 acceptance closes only this planning checkpoint, not v0.9
+Architecture Phase 3 or M4.
 
 ## Phase Boundary
 
