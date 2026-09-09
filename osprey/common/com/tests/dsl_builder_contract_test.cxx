@@ -4705,6 +4705,7 @@ Check_FHE_SYNC1_Mapped_Image(void)
     DSL_FHE_ENTRY_VALUE_INFO value_info;
     DSL_FHE_KEY_REQUIREMENT_RECORD key_requirement;
     DSL_FHE_IMAGE_HEADER image_header;
+    DSL_IR_EXTERNAL_TENSOR_REFERENCE observed_external;
     TY_IDX weight_ty;
     DSL_FHE_CONFIG_ID config_id;
     DSL_FHE_ENCRYPTION_DESCRIPTOR_ID ciphertext_id;
@@ -4787,6 +4788,26 @@ Check_FHE_SYNC1_Mapped_Image(void)
     FHE_SYNC1_CHECK
         (DSL_Builder_Set_Value_Source_Position(weight, &source_position),
          "parameter source position");
+    FHE_SYNC1_CHECK
+        (DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(pu),
+              DSL_Builder_Get_Value_Image_Id(weight), &observed_external) &&
+         observed_external.value_id ==
+             DSL_Builder_Get_Value_Image_Id(weight) &&
+         observed_external.descriptor_ty == weight_ty &&
+         observed_external.st == WN_st_idx(weight) &&
+         observed_external.rank == 2 &&
+         observed_external.byte_offset == 0 &&
+         observed_external.byte_length == 16 &&
+         strcmp(observed_external.storage_format, "safetensors") == 0 &&
+         strcmp(observed_external.side_file,
+                "fhe_sync1_weights.safetensors") == 0 &&
+         strcmp(observed_external.tensor_key, "weight") == 0 &&
+         strcmp(observed_external.checksum, checksum) == 0 &&
+         strcmp(observed_external.dtype, "float32") == 0 &&
+         strcmp(observed_external.logical_shape, "[2,2]") == 0 &&
+         strcmp(observed_external.layout, "row_major") == 0,
+         "typed external tensor lookup");
     ++source_position.line;
     FHE_SYNC1_CHECK
         (DSL_Builder_Set_Value_Source_Position(result, &source_position),
@@ -4866,6 +4887,11 @@ Check_FHE_SYNC1_Mapped_Image(void)
     FHE_SYNC1_CHECK
         (foreign_value_rejected,
          "reject an entry value owned by another program unit");
+    FHE_SYNC1_CHECK
+        (!DSL_IR_Image_Get_External_Tensor_Reference
+              (PU_Info_proc_sym(foreign_pu),
+               DSL_Builder_Get_Value_Image_Id(weight), &observed_external),
+         "typed external tensor lookup rejects a foreign PU value");
     FHE_SYNC1_CHECK
         (DSL_Builder_Select_PU(pu), "restore entry program unit");
     FHE_SYNC1_CHECK
@@ -5088,6 +5114,440 @@ Check_FHE_SYNC1_Mapped_Image(void)
     printf("FHE SYNC-1 mapped-image contract passed\n");
 #undef FHE_SYNC1_CHECK
     return 0;
+}
+
+static DSL_BUILDER_VALUE
+Create_External_Rewrite_Source
+        (const char *name,
+         TY_IDX ty,
+         const char *tensor_key,
+         UINT64 byte_offset,
+         UINT64 byte_length,
+         const char *context,
+         const char *checksum,
+         DSL_BUILDER_SOURCE_POSITION *position)
+{
+    DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE reference;
+    DSL_BUILDER_COMPILER_METADATA metadata;
+
+    memset(&reference, 0, sizeof(reference));
+    reference.storage_format = "safetensors";
+    reference.side_file = "source.safetensors";
+    reference.tensor_key = tensor_key;
+    reference.byte_offset = byte_offset;
+    reference.byte_length = byte_length;
+    reference.checksum = checksum;
+    DSL_BUILDER_VALUE value = DSL_Builder_Create_External_Tensor_Constant
+                                  (name, ty, &reference);
+    if (value == NULL ||
+        !DSL_Builder_Set_Value_Source_Position(value, position))
+        return NULL;
+    metadata.name = "source.instance_path";
+    metadata.value = context;
+    if (!DSL_Builder_Attach_Value_Metadata(value, &metadata, 1))
+        return NULL;
+    ++position->line;
+    return value;
+}
+
+static TCON_IDX
+Create_External_Rewrite_TCON
+        (TY_IDX ty,
+         UINT64 element_count,
+         UINT64 byte_offset,
+         UINT64 byte_length)
+{
+    DSL_TENSOR_TCON_CREATE_INFO info;
+    TCON_IDX tcon = TCON_IDX_ZERO;
+
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = ty;
+    info.element_mtype = MTYPE_F4;
+    info.element_count = element_count;
+    info.logical_bytes = byte_length;
+    info.required_alignment = 16;
+    info.element_size = 4;
+    info.side_path = "converted.safetensors";
+    info.side_path_length = strlen(info.side_path);
+    info.byte_offset = byte_offset;
+    info.byte_length = byte_length;
+    info.checksum_hi = 0x0123456789abcdefULL + byte_offset;
+    info.checksum_lo = 0xfedcba9876543210ULL - byte_offset;
+    if (!DSL_Tensor_TCON_Create_Side_File_Dense(&info, &tcon, NULL))
+        return TCON_IDX_ZERO;
+    return tcon;
+}
+
+static int
+Check_External_Tensor_Materialization(void)
+{
+    const char *artifact =
+        getenv("OPEN64_DSL_EXTERNAL_TENSOR_REWRITE_ARTIFACT");
+    DSL_BUILDER_TENSOR_DESCRIPTOR weight_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR bias_descriptor;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_PROGRAM_UNIT callee;
+    DSL_BUILDER_PROGRAM_UNIT caller;
+    DSL_BUILDER_VALUE formals[2];
+    DSL_BUILDER_VALUE result;
+    DSL_BUILDER_VALUE sources[6];
+    DSL_BUILDER_VALUE arguments[2];
+    DSL_BUILDER_CALL calls[2];
+    DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST requests[6];
+    DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST rejected[2];
+    DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT materialized[6];
+    DSL_IR_EXTERNAL_TENSOR_REFERENCE observed;
+    TCON_IDX folded_tcons[6];
+    TY_IDX weight_ty;
+    TY_IDX bias_ty;
+    WN *body;
+    ST_IDX original_actual_st[4];
+    UINT32 node_count;
+    UINT32 value_count;
+    UINT32 st_count;
+    char diagnostic[4096];
+    const char checksum[] =
+        "abcdef0123456789abcdef0123456789"
+        "abcdef0123456789abcdef0123456789";
+    const char *source_names[6] = {
+        "layer1_0_source_weight", "layer1_0_source_bias",
+        "layer1_1_source_weight", "layer1_1_source_bias",
+        "stem_source_weight", "stem_source_bias"
+    };
+    const char *source_keys[6] = {
+        "layer1.0.conv1.weight", "layer1.0.conv1.bias",
+        "layer1.1.conv1.weight", "layer1.1.conv1.bias",
+        "stem.conv.weight", "stem.conv.bias"
+    };
+    const char *contexts[6] = {
+        "layer1.0.conv1", "layer1.0.conv1",
+        "layer1.1.conv1", "layer1.1.conv1",
+        "stem.conv", "stem.conv"
+    };
+    const char *first_result_names[1] = { "layer1_0_result" };
+    const char *second_result_names[1] = { "layer1_1_result" };
+    const char *converted_names[6] = {
+        "layer1_0_folded_weight", "layer1_0_folded_bias",
+        "layer1_1_folded_weight", "layer1_1_folded_bias",
+        "stem_folded_weight", "stem_folded_bias"
+    };
+    const char *converted_keys[6] = {
+        "layer1.0.conv1.folded_weight", "layer1.0.conv1.folded_bias",
+        "layer1.1.conv1.folded_weight", "layer1.1.conv1.folded_bias",
+        "stem.conv.folded_weight", "stem.conv.folded_bias"
+    };
+    int failed = 0;
+#define EXTERNAL_REWRITE_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "external tensor rewrite check failed: %s\n", \
+                    message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    EXTERNAL_REWRITE_CHECK(DSL_Builder_Begin_Program(),
+                           "program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&weight_descriptor, 0, sizeof(weight_descriptor));
+    weight_descriptor.type_core.kind = "tensor";
+    weight_descriptor.type_core.dtype = "float32";
+    weight_descriptor.type_core.rank = 4;
+    weight_descriptor.type_core.logical_shape = "[2,2,1,1]";
+    weight_descriptor.traits.traits = "parameter.weight";
+    weight_descriptor.representation.layout = "row_major";
+    weight_descriptor.representation.sharding = "replicated";
+    weight_descriptor.representation.placement = "side_file";
+    weight_descriptor.representation.memory = "external_data";
+    weight_descriptor.representation.quantization = "none";
+    bias_descriptor = weight_descriptor;
+    bias_descriptor.type_core.rank = 1;
+    bias_descriptor.type_core.logical_shape = "[2]";
+    bias_descriptor.traits.traits = "parameter.bias";
+    weight_ty = DSL_Builder_Intern_Tensor_Type
+                    ("external_rewrite_weight_f32_2x2x1x1",
+                     MTYPE_To_TY(MTYPE_F4), &weight_descriptor);
+    bias_ty = DSL_Builder_Intern_Tensor_Type
+                  ("external_rewrite_bias_f32_2",
+                   MTYPE_To_TY(MTYPE_F4), &bias_descriptor);
+
+    callee = DSL_Builder_Create_Minimal_PU("external_tensor_callee");
+    UINT32 callee_file = DSL_Builder_Register_Source_File(callee, __FILE__);
+    memset(&position, 0, sizeof(position));
+    position.file_id = callee_file;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    formals[0] = DSL_Builder_Declare_PU_Formal
+                     (callee, "weight", 0, weight_ty, &position);
+    ++position.line;
+    formals[1] = DSL_Builder_Declare_PU_Formal
+                     (callee, "bias", 1, bias_ty, &position);
+    ++position.line;
+    result = DSL_Builder_Declare_PU_Result
+                 (callee, "result", 0, weight_ty, DSL_PU_RESULT_TENSOR,
+                  &position);
+    EXTERNAL_REWRITE_CHECK
+        (weight_ty != TY_IDX_ZERO && bias_ty != TY_IDX_ZERO &&
+         weight_ty != bias_ty && callee != NULL && callee_file != 0 &&
+         formals[0] != NULL && formals[1] != NULL && result != NULL &&
+         DSL_Builder_Return_PU_Values(callee, &formals[0], 1) &&
+         WN_num_formals(PU_Info_tree_ptr(callee)) == 3,
+         "two-formal callee interface");
+
+    caller = DSL_Builder_Create_Minimal_PU("external_tensor_caller");
+    UINT32 caller_file = DSL_Builder_Register_Source_File(caller, __FILE__);
+    memset(&position, 0, sizeof(position));
+    position.file_id = caller_file;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    for (UINT32 i = 0; i < 6; ++i) {
+        TY_IDX ty = (i & 1) == 0 ? weight_ty : bias_ty;
+        UINT64 byte_length = (i & 1) == 0 ? 16 : 8;
+        sources[i] = Create_External_Rewrite_Source
+                         (source_names[i], ty, source_keys[i],
+                          i * 32, byte_length, contexts[i], checksum,
+                          &position);
+    }
+    EXTERNAL_REWRITE_CHECK(caller != NULL && caller_file != 0,
+                           "caller program unit");
+    for (UINT32 i = 0; i < 6; ++i)
+        EXTERNAL_REWRITE_CHECK(sources[i] != NULL,
+                               "caller source tensor");
+    EXTERNAL_REWRITE_CHECK
+        (DSL_Builder_Append_PU_Value(caller, sources[4]) &&
+         DSL_Builder_Append_PU_Value(caller, sources[5]),
+         "materialize entry-owned source tensors");
+    if (failed)
+        return failed;
+
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "ExternalTensorCallee";
+    callsite.instance_path = "layer1.0";
+    callsite.context_identity = "layer1.0.conv1";
+    callsite.call_ordinal = 0;
+    callsite.source_position = position;
+    arguments[0] = sources[0];
+    arguments[1] = sources[1];
+    calls[0] = DSL_Builder_Create_PU_Call
+                   (caller, callee, arguments, 2, first_result_names, 1,
+                    &callsite);
+    ++callsite.source_position.line;
+    callsite.instance_path = "layer1.1";
+    callsite.context_identity = "layer1.1.conv1";
+    callsite.call_ordinal = 1;
+    arguments[0] = sources[2];
+    arguments[1] = sources[3];
+    calls[1] = DSL_Builder_Create_PU_Call
+                   (caller, callee, arguments, 2, second_result_names, 1,
+                    &callsite);
+    EXTERNAL_REWRITE_CHECK(calls[0] != NULL && calls[1] != NULL,
+                           "two shared-callee calls");
+    if (failed)
+        return failed;
+
+    for (UINT32 i = 0; i < 6; ++i) {
+        TY_IDX ty = (i & 1) == 0 ? weight_ty : bias_ty;
+        UINT64 element_count = (i & 1) == 0 ? 4 : 2;
+        UINT64 byte_length = (i & 1) == 0 ? 16 : 8;
+        UINT64 byte_offset = i * 32;
+        folded_tcons[i] = Create_External_Rewrite_TCON
+                              (ty, element_count, byte_offset, byte_length);
+        EXTERNAL_REWRITE_CHECK(folded_tcons[i] != TCON_IDX_ZERO,
+                               "converted side-file TCON");
+    }
+    if (failed)
+        return failed;
+
+    body = WN_func_body(PU_Info_tree_ptr(caller));
+    original_actual_st[0] = WN_st_idx(WN_kid0(WN_kid(calls[0], 0)));
+    original_actual_st[1] = WN_st_idx(WN_kid0(WN_kid(calls[0], 1)));
+    original_actual_st[2] = WN_st_idx(WN_kid0(WN_kid(calls[1], 0)));
+    original_actual_st[3] = WN_st_idx(WN_kid0(WN_kid(calls[1], 1)));
+    memset(requests, 0, sizeof(requests));
+    for (UINT32 i = 0; i < 6; ++i) {
+        requests[i].name = converted_names[i];
+        requests[i].descriptor_ty = (i & 1) == 0 ? weight_ty : bias_ty;
+        requests[i].tensor_tcon = folded_tcons[i];
+        requests[i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(sources[i]);
+        requests[i].insertion_block = body;
+        requests[i].insert_before = i < 2 ? calls[0] : calls[1];
+        requests[i].source_position =
+            WN_Get_Linenum(i < 2 ? calls[0] : calls[1]);
+        requests[i].storage_format = "safetensors";
+        requests[i].side_file = "converted.safetensors";
+        requests[i].tensor_key = converted_keys[i];
+        requests[i].byte_offset = i * 32;
+        requests[i].byte_length = (i & 1) == 0 ? 16 : 8;
+        requests[i].checksum = checksum;
+        if (i < 4) {
+            requests[i].call = calls[i / 2];
+            requests[i].actual_ordinal = i & 1;
+            requests[i].expected_actual_value_id =
+                DSL_Builder_Get_Value_Image_Id(sources[i]);
+        }
+    }
+
+    node_count = DSL_IR_Image_Node_Count();
+    value_count = DSL_IR_Image_Value_Count();
+    st_count = ST_Table_Size(CURRENT_SYMTAB);
+    memcpy(rejected, requests, sizeof(rejected));
+    rejected[1].byte_length = 4;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_External_Tensor_Values
+              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count &&
+         WN_st_idx(WN_kid0(WN_kid(calls[0], 0))) ==
+             original_actual_st[0] &&
+         WN_st_idx(WN_kid0(WN_kid(calls[0], 1))) ==
+             original_actual_st[1],
+         "weight and bias batch rejects without partial mutation");
+
+    memcpy(rejected, requests, sizeof(rejected));
+    rejected[1].name = rejected[0].name;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_External_Tensor_Values
+              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count,
+         "duplicate materialized name rejects the complete batch");
+
+    memcpy(rejected, requests, sizeof(rejected));
+    rejected[1] = rejected[0];
+    rejected[1].name = "duplicate_target_bias";
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_External_Tensor_Values
+              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count,
+         "duplicate call actual target rejects the complete batch");
+
+    memcpy(rejected, requests, sizeof(rejected));
+    rejected[1].checksum = "bad-checksum";
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_External_Tensor_Values
+              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count,
+         "bad checksum syntax rejects the complete batch");
+
+    memcpy(rejected, requests, sizeof(rejected));
+    rejected[1].tensor_tcon = TCON_IDX_ZERO;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_External_Tensor_Values
+              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count,
+         "bad tensor TCON rejects the complete batch");
+
+    memcpy(rejected, requests, sizeof(rejected));
+    rejected[1].descriptor_ty = MTYPE_To_TY(MTYPE_F4);
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_External_Tensor_Values
+              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count,
+         "wrong descriptor type rejects the complete batch");
+
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_External_Tensor_Values
+              (PU_Info_proc_sym(callee), requests, 6, materialized) &&
+         DSL_IR_Image_Node_Count() == node_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count,
+         "wrong owner rejects the complete batch");
+
+    EXTERNAL_REWRITE_CHECK
+        (DSL_IR_Materialize_External_Tensor_Values
+             (PU_Info_proc_sym(caller), requests, 6, materialized),
+         "two contexts plus entry weight and bias materialization");
+    for (UINT32 i = 0; i < 6; ++i) {
+        EXTERNAL_REWRITE_CHECK
+            (materialized[i].value_id != DSL_IR_VALUE_INVALID_ID &&
+             ST_type(St_Table[materialized[i].st]) ==
+                 ((i & 1) == 0 ? weight_ty : bias_ty) &&
+             strcmp(ST_tensor_metadata
+                        (materialized[i].st, "source.instance_path"),
+                    contexts[i]) == 0 &&
+             strtoul(ST_tensor_metadata
+                         (materialized[i].st,
+                          "dsl.converted_from_value_id"),
+                     NULL, 10) ==
+                 DSL_Builder_Get_Value_Image_Id(sources[i]),
+             "same-TY replacement and source context metadata");
+    }
+    for (UINT32 i = 0; i < 4; ++i)
+        EXTERNAL_REWRITE_CHECK
+            (WN_st_idx(WN_kid0(WN_kid(calls[i / 2], i & 1))) ==
+                 materialized[i].st,
+             "caller actual uses the context-owned folded value");
+    EXTERNAL_REWRITE_CHECK
+        (DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(caller), materialized[0].value_id,
+              &observed) &&
+         strcmp(observed.tensor_key,
+                "layer1.0.conv1.folded_weight") == 0 &&
+         DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(caller), materialized[2].value_id,
+              &observed) &&
+         strcmp(observed.tensor_key,
+                "layer1.1.conv1.folded_weight") == 0 &&
+         DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(caller), materialized[4].value_id,
+              &observed) &&
+         strcmp(observed.tensor_key, "stem.conv.folded_weight") == 0,
+         "typed lookup distinguishes contexts and entry values");
+    EXTERNAL_REWRITE_CHECK
+        (DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(caller),
+              DSL_Builder_Get_Value_Image_Id(sources[0]), &observed) &&
+         strcmp(observed.side_file, "source.safetensors") == 0 &&
+         strcmp(observed.tensor_key, "layer1.0.conv1.weight") == 0,
+         "source payload remains immutable");
+
+    EXTERNAL_REWRITE_CHECK
+        (DSL_Builder_Select_PU(callee) &&
+         WN_num_formals(PU_Info_tree_ptr(callee)) == 3 &&
+         strcmp(ST_name(St_Table
+                    [WN_st_idx(WN_formal(PU_Info_tree_ptr(callee), 0))]),
+                "weight") == 0 &&
+         strcmp(ST_name(St_Table
+                    [WN_st_idx(WN_formal(PU_Info_tree_ptr(callee), 1))]),
+                "bias") == 0,
+         "shared callee signature remains unchanged");
+    EXTERNAL_REWRITE_CHECK(DSL_Builder_Select_PU(caller),
+                           "restore caller program unit");
+
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    EXTERNAL_REWRITE_CHECK
+        (DSL_Builder_Verify_Program(&verify),
+         diagnostic[0] == '\0' ? "program verification" : diagnostic);
+
+    if (!failed && artifact != NULL && artifact[0] != '\0') {
+        image_request.path = artifact;
+        image_request.flags = 0;
+        (void) unlink(artifact);
+        EXTERNAL_REWRITE_CHECK
+            (DSL_Builder_Finalize_Mapped_Image(&image_request),
+             "mapped-image finalization");
+    }
+    if (!failed)
+        printf("external tensor materialization contract passed\n");
+#undef EXTERNAL_REWRITE_CHECK
+    return failed;
 }
 
 static int
@@ -5632,6 +6092,8 @@ main(void)
         return Check_FHE_SYNC3_Plan_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC3_REWRITE_ONLY") != NULL)
         return Check_FHE_SYNC3_Native_Rewrite();
+    if (getenv("OPEN64_DSL_EXTERNAL_TENSOR_REWRITE_ONLY") != NULL)
+        return Check_External_Tensor_Materialization();
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
@@ -5653,6 +6115,7 @@ main(void)
     failed |= Check_FHE_SYNC1_Mapped_Image();
     failed |= Check_FHE_SYNC3_Plan_Image();
     failed |= Check_FHE_SYNC3_Native_Rewrite();
+    failed |= Check_External_Tensor_Materialization();
     failed |= Check_DSL_Simplifier_Bridge();
 
     return failed;

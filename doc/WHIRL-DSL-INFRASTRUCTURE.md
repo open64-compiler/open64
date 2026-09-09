@@ -1859,6 +1859,36 @@ full-sequence causal prompt evaluation with no KV cache.
    code must continue to use the registered gatekeeper/pass APIs and must not
    reproduce PU, symbol-table, or writer management.
 
+39. [x] Publish typed external tensor lookup and batch payload materialization.
+
+   Add `DSL_IR_Image_Get_External_Tensor_Reference()` as a backend-safe,
+   owner-aware typed view over the existing DSL value row, ST metadata, and
+   canonical tensor TY. The service validates storage format, side-file path,
+   tensor key, aligned byte range, checksum syntax, dtype, rank, shape, layout,
+   placement, memory, and logical URI agreement. Compiler passes must use this
+   service instead of parsing tensor metadata strings.
+
+   Add `DSL_IR_Materialize_External_Tensor_Values()` as a complete-array
+   preflight/commit service. It creates same-`TY_IDX`, caller-owned external
+   tensor constants with side-file tensor TCON evidence, copied source/context
+   metadata, source-value provenance, and source positions. A request may
+   replace one existing read-only call actual or create an entry-owned value
+   without a fake callsite. Original source payloads remain immutable.
+
+   For the current ResNet profile, payload differences do not split shared
+   PUs because formal roles/order/types and the rewritten Conv body contract
+   remain equal. Rewrite a shared body once and materialize folded weight/bias
+   values per source context. Retained dead BatchNorm ABI inputs are permitted
+   only when the FHE verifier proves they have no executable uses. The exact
+   contract and retained evidence are in
+   `doc/FHE-SYNC3-EXTERNAL-TENSOR-REWRITE-CONTRACT.md`. This stage adds no ELF
+   section, mapped-image row, opcode, type kind, or binary revision.
+
+   This service guarantees complete request-array preflight in the active PU.
+   Whole-conversion artifact atomicity comes from the conversion-only
+   checkpoint: a later failure is terminal, publishes neither `.fhe.B` nor its
+   converted side payload, and does not continue on the mutated memory image.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up
