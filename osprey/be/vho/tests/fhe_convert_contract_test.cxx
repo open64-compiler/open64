@@ -165,6 +165,20 @@ main(void)
         return 1;
     }
 
+    VHO_FHE_CONVERT_RESULT aggregate;
+    VHO_FHE_Convert_Result_Init(&aggregate);
+    VHO_FHE_Convert_Result_Accumulate(&aggregate, &result);
+    if (aggregate.semantic_gatekeeper_count != 2 ||
+        aggregate.conversion_pass_count != 1 ||
+        aggregate.source_disposition_count != 1 ||
+        aggregate.converted_disposition_count != 1 ||
+        aggregate.error_count != 0 ||
+        !VHO_FHE_Convert_Checkpoint_Validate(1, 1, &aggregate, stderr) ||
+        VHO_FHE_Convert_Checkpoint_Validate(2, 1, &aggregate, NULL)) {
+        fprintf(stderr, "FHE checkpoint aggregation contract changed\n");
+        return 1;
+    }
+
     const char *trace = getenv("OPEN64_FHE_CONVERT_TRACE");
     if (trace != NULL) {
         FILE *trace_file = fopen(trace, "w");
@@ -173,7 +187,13 @@ main(void)
         Set_Trace_File_internal(trace_file);
         VHO_FHE_Dump_Before_Conversion = TRUE;
         VHO_FHE_Dump_After_Conversion = TRUE;
-        tree = VHO_FHE_Convert_Driver(pu, tree);
+        VHO_FHE_CONVERT_RESULT driver_result;
+        tree = VHO_FHE_Convert_Driver_With_Result
+                   (pu, tree, &driver_result);
+        if (driver_result.semantic_gatekeeper_count != 2 ||
+            driver_result.conversion_pass_count != 1 ||
+            driver_result.error_count != 0)
+            return 1;
         fclose(trace_file);
         Set_Trace_File_internal(stderr);
     }

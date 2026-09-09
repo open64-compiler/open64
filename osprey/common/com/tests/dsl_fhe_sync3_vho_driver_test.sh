@@ -11,6 +11,8 @@ artifact_dir="${OPEN64_DSL_FHE_SYNC3_VHO_ARTIFACT_DIR:-$repo_root/artifacts/fhe/
 trace="$artifact_dir/fhe_sync3_vho_conversion.T"
 command_log="$artifact_dir/commands.txt"
 validation_log="$artifact_dir/validation.log"
+driver_source="$repo_root/osprey/be/be/driver.cxx"
+config_source="$repo_root/osprey/common/com/config_fhe.cxx"
 
 if [[ ! -x "$contract_test" ]]; then
   echo "missing executable: $contract_test" >&2
@@ -38,6 +40,23 @@ for evidence in \
     exit 1
   fi
 done
+
+for evidence in \
+  'VHO_FHE_Convert_Driver_With_Result' \
+  'VHO_FHE_Convert_Checkpoint_Validate' \
+  'Write_PU_Info(current_pu)' \
+  'Write_Global_Info(pu_tree)' \
+  'rename(fhe_checkpoint_temp_name'; do
+  if ! grep -Fq "$evidence" "$driver_source"; then
+    echo "missing all-PU checkpoint evidence '$evidence' in $driver_source" >&2
+    exit 1
+  fi
+done
+
+if ! grep -Fq '"checkpoint", "checkpoint"' "$config_source"; then
+  echo "missing -FHE:checkpoint option in $config_source" >&2
+  exit 1
+fi
 
 echo "FHE SYNC-3 VHO conversion phase fixture passed"
 echo "review trace: $trace"

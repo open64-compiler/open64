@@ -50,6 +50,24 @@ extern BOOL VHO_FHE_Convert_Program_Unit
                                  WN **tree,
                                  FILE *diagnostic,
                                  VHO_FHE_CONVERT_RESULT *result);
+extern void VHO_FHE_Convert_Result_Init
+                                (VHO_FHE_CONVERT_RESULT *result);
+extern void VHO_FHE_Convert_Result_Accumulate
+                                (VHO_FHE_CONVERT_RESULT *aggregate,
+                                 const VHO_FHE_CONVERT_RESULT *result);
+extern BOOL VHO_FHE_Convert_Checkpoint_Validate
+                                (UINT32 expected_pu_count,
+                                 UINT32 converted_pu_count,
+                                 const VHO_FHE_CONVERT_RESULT *aggregate,
+                                 FILE *diagnostic);
+extern BOOL VHO_FHE_Convert_Driver_Try
+                                (struct pu_info *pu_info,
+                                 WN **tree,
+                                 VHO_FHE_CONVERT_RESULT *result);
+extern WN *VHO_FHE_Convert_Driver_With_Result
+                                (struct pu_info *pu_info,
+                                 WN *tree,
+                                 VHO_FHE_CONVERT_RESULT *result);
 extern WN *VHO_FHE_Convert_Driver (struct pu_info *pu_info, WN *tree);
 
 #endif /* fhe_convert_INCLUDED */

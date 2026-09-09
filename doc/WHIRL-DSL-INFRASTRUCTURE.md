@@ -1840,6 +1840,25 @@ full-sequence causal prompt evaluation with no KV cache.
    original logical targets. This changes no WN encoding, planning-image row,
    ELF section, or image revision.
 
+38. [x] Add an all-PU FHE conversion-only binary WHIRL checkpoint.
+
+   The per-PU backend pipeline cannot publish a complete converted artifact by
+   stopping after the first `VHO_FHE_Convert_Driver()` call: local symbol
+   tables are selected and released one PU at a time, and ordinary DSL lowering
+   immediately follows conversion. Add `-FHE:checkpoint=<path>` as an explicit
+   certification mode. It preserves optional DSL WOPT/Preopt, converts every
+   PU, writes each PU through `Write_PU_Info()` while its local symbol table is
+   active, aggregates conversion results, and validates the complete managed
+   DSL/effect/call/FHE/FHE-plan images.
+
+   Only after all-PU success may the driver call `Write_Global_Info()`, close
+   the standard binary WHIRL output, and atomically rename `<path>.tmp` to the
+   requested path. The mode returns before `VHO_DSL_Lower_Driver()`, language
+   VHO lowering, WOPT/LNO/CG, and source translation. Failed conversion must
+   not publish a partial `.fhe.B`. This is backend orchestration; FHE semantic
+   code must continue to use the registered gatekeeper/pass APIs and must not
+   reproduce PU, symbol-table, or writer management.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

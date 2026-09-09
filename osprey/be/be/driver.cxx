@@ -71,6 +71,9 @@
 #endif /* ! defined(BUILD_OS_DARWIN) */
 #include <cmplrs/rcodes.h>
 #include <dirent.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 #ifndef __MINGW32__
 #include <libgen.h>
 #endif
@@ -420,7 +423,11 @@ static INT total_pu_count;
 static BOOL need_wopt_output = FALSE;
 static BOOL need_lno_output = FALSE;
 static BOOL need_ipl_output = FALSE;
+static BOOL need_fhe_checkpoint_output = FALSE;
 static Output_File *ir_output = 0;
+static char *fhe_checkpoint_temp_name = NULL;
+static UINT32 fhe_checkpoint_pu_count;
+static VHO_FHE_CONVERT_RESULT fhe_checkpoint_result;
 
 // options stack for PU and region level pragmas
 static OPTIONS_STACK *Options_Stack;
@@ -443,15 +450,50 @@ FILE *DFile = stderr;
 
 extern char *Processor_Name;
 
+static BOOL
+FHE_Conversion_Checkpoint_Enabled (void)
+{
+  return VHO_FHE_Conversion_Checkpoint_Output != NULL &&
+         VHO_FHE_Conversion_Checkpoint_Output[0] != '\0';
+}
+
+static void
+Open_FHE_Conversion_Checkpoint (void)
+{
+  const char *output = VHO_FHE_Conversion_Checkpoint_Output;
+  size_t length = strlen(output) + sizeof(".tmp");
+
+  fhe_checkpoint_temp_name = (char *)malloc(length);
+  FmtAssert(fhe_checkpoint_temp_name != NULL,
+            ("could not allocate FHE checkpoint pathname"));
+  snprintf(fhe_checkpoint_temp_name, length, "%s.tmp", output);
+  remove(fhe_checkpoint_temp_name);
+
+  VHO_FHE_Convert_Result_Init(&fhe_checkpoint_result);
+  fhe_checkpoint_pu_count = 0;
+  need_fhe_checkpoint_output = TRUE;
+  ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
+  FmtAssert(ir_output != NULL,
+            ("could not open FHE checkpoint output %s",
+             fhe_checkpoint_temp_name));
+}
+
 static void
 load_components (INT argc, char **argv)
 {
     INT phase_argc;
     char **phase_argv;
 
+    if (FHE_Conversion_Checkpoint_Enabled()) {
+      Run_lno = Run_autopar = Run_Distr_Array = FALSE;
+      Run_preopt = Run_wopt = Run_vsaopt = Run_ipsaopt = FALSE;
+      Run_cg = Run_w2c = Run_w2f = Run_w2fc_early = Run_ipl = FALSE;
+    }
+
     if (!(Run_lno || (Run_wopt || (Run_vsaopt || Run_ipsaopt))
 	  || Run_preopt || Run_cg || Run_w2c || Run_w2f
-          || Run_w2fc_early || Run_ipl))
+          || Run_w2fc_early || Run_ipl) &&
+        !FHE_Conversion_Checkpoint_Enabled())
       Run_cg = TRUE;		    /* if nothing is set, run CG */
 
     if (Run_cg || Run_lno || Run_autopar) {
@@ -594,7 +636,11 @@ Phase_Init (void)
 	    output_file_name = Irb_File_Name;
     }
 
-    if (need_lno_output) {
+    if (FHE_Conversion_Checkpoint_Enabled()) {
+        Write_BE_Maps = FALSE;
+        Open_FHE_Conversion_Checkpoint();
+    }
+    if (!need_fhe_checkpoint_output && need_lno_output) {
 	Write_BE_Maps = TRUE;
 	// Output IR after preopt to .P file, and IR after LNO to .N file.
 	if (Run_lno)
@@ -602,18 +648,18 @@ Phase_Init (void)
 	else
 	    ir_output = Open_Output_Info(New_Extension(output_file_name,".P"));
     }
-    if (need_wopt_output) {
+    if (!need_fhe_checkpoint_output && need_wopt_output) {
 	Write_ALIAS_CLASS_Map = TRUE;
 	Write_BE_Maps = TRUE;
 	ir_output = Open_Output_Info(New_Extension(output_file_name,".O"));
     }
-    if (need_ipl_output) {
+    if (!need_fhe_checkpoint_output && need_ipl_output) {
 	Write_BE_Maps = FALSE;
 	ir_output = Open_Output_Info (Obj_File_Name ?
 				      Obj_File_Name :
 				      New_Extension(output_file_name, ".o"));
     }
-    if (Emit_Global_Data) {
+    if (!need_fhe_checkpoint_output && Emit_Global_Data) {
 	Write_BE_Maps = FALSE;
 	ir_output = Open_Output_Info (Global_File_Name);
     }
@@ -1835,10 +1881,36 @@ Preprocess_PU (PU_Info *current_pu)
   }
 
   if (!w2c_only) {
+    VHO_FHE_CONVERT_RESULT convert_result;
     Set_Error_Phase ( "FHE VHO Conversion" );
-    pu = VHO_FHE_Convert_Driver (current_pu, pu);
+    if (need_fhe_checkpoint_output) {
+      BOOL converted = VHO_FHE_Convert_Driver_Try
+                           (current_pu, &pu, &convert_result);
+      VHO_FHE_Convert_Result_Accumulate
+          (&fhe_checkpoint_result, &convert_result);
+      if (!converted) {
+        fprintf(stderr,
+                "CFHE-CHECKPOINT-002: conversion failed before all-PU "
+                "checkpoint completion\n");
+        Close_Output_Info();
+        remove(fhe_checkpoint_temp_name);
+        FmtAssert(FALSE, ("FHE conversion checkpoint failed"));
+      }
+      ++fhe_checkpoint_pu_count;
+    }
+    else {
+      pu = VHO_FHE_Convert_Driver_With_Result
+               (current_pu, pu, &convert_result);
+    }
     Set_PU_Info_tree_ptr(current_pu, pu);
     Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_CONVERT");
+
+    if (need_fhe_checkpoint_output) {
+      if (wopt_loaded)
+        Create_Restricted_Map(MEM_pu_nz_pool_ptr);
+      REGION_Initialize(pu, PU_has_region(Get_Current_PU()));
+      return pu;
+    }
 
     Set_Error_Phase ( "DSL VHO Processing" );
     pu = VHO_DSL_Lower_Driver (current_pu, pu);
@@ -1960,28 +2032,34 @@ Preorder_Process_PUs (PU_Info *current_pu)
 
   Verify_SYMTAB (CURRENT_SYMTAB);
 
-  if (!PU_mp (Get_Current_PU ()) &&
-      (Run_Dsm_Cloner || Run_Dsm_Common_Check || Run_Dsm_Check))
-    DRA_Processing(current_pu, pu, Cur_PU_Feedback != NULL);
-
-  /* If SYMTAB_IPA_on is set then we have run ipl,
-   * and therefore already done OMP_prelowering.
-   * So don't do it again.
-   */
-  if (PU_has_mp (Get_Current_PU ()) && !FILE_INFO_ipa (File_info)) {
-    Set_Error_Phase("OMP Pre-lowering");
-    WB_OMP_Initialize(pu);
-    pu = OMP_Prelower(current_pu, pu);
-    WB_OMP_Terminate(); 
-  }
-
-  if (Run_ipl) {
-    Ipl_Processing (current_pu, pu);
-    Verify_SYMTAB (CURRENT_SYMTAB);
+  if (need_fhe_checkpoint_output) {
+    Set_PU_Info_tree_ptr(current_pu, pu);
+    Write_PU_Info(current_pu);
   }
   else {
-    Backend_Processing (current_pu, pu);
-    Verify_SYMTAB (CURRENT_SYMTAB);
+    if (!PU_mp (Get_Current_PU ()) &&
+        (Run_Dsm_Cloner || Run_Dsm_Common_Check || Run_Dsm_Check))
+      DRA_Processing(current_pu, pu, Cur_PU_Feedback != NULL);
+
+    /* If SYMTAB_IPA_on is set then we have run ipl,
+     * and therefore already done OMP_prelowering.
+     * So don't do it again.
+     */
+    if (PU_has_mp (Get_Current_PU ()) && !FILE_INFO_ipa (File_info)) {
+      Set_Error_Phase("OMP Pre-lowering");
+      WB_OMP_Initialize(pu);
+      pu = OMP_Prelower(current_pu, pu);
+      WB_OMP_Terminate();
+    }
+
+    if (Run_ipl) {
+      Ipl_Processing (current_pu, pu);
+      Verify_SYMTAB (CURRENT_SYMTAB);
+    }
+    else {
+      Backend_Processing (current_pu, pu);
+      Verify_SYMTAB (CURRENT_SYMTAB);
+    }
   }
   if (reset_opt_level) {
     Opt_Level = orig_opt_level;
@@ -2286,7 +2364,7 @@ main (INT argc, char **argv)
   }
   BOOL needs_lno = FILE_INFO_needs_lno (File_info);
 
-  if (needs_lno && !Run_ipl) {
+  if (needs_lno && !Run_ipl && !FHE_Conversion_Checkpoint_Enabled()) {
     Run_Distr_Array = TRUE;
     if (!Run_lno && !Run_autopar) {
       /* ipl is not running, and LNO has not been loaded */
@@ -2421,7 +2499,45 @@ main (INT argc, char **argv)
   BE_symtab_free_be_scopes();
 
   
-  if (need_wopt_output || need_lno_output || need_ipl_output) {
+  if (need_fhe_checkpoint_output) {
+    BOOL valid = VHO_FHE_Convert_Checkpoint_Validate
+                     (total_pu_count, fhe_checkpoint_pu_count,
+                      &fhe_checkpoint_result, stderr);
+    if (!valid) {
+      Close_Output_Info();
+      remove(fhe_checkpoint_temp_name);
+      FmtAssert(FALSE, ("FHE conversion checkpoint validation failed"));
+    }
+
+    Write_Global_Info(pu_tree);
+    Close_Output_Info();
+    if (rename(fhe_checkpoint_temp_name,
+               VHO_FHE_Conversion_Checkpoint_Output) != 0) {
+      INT rename_error = errno;
+      remove(fhe_checkpoint_temp_name);
+      FmtAssert(FALSE,
+                ("could not publish FHE conversion checkpoint %s: %s",
+                 VHO_FHE_Conversion_Checkpoint_Output,
+                 strerror(rename_error)));
+    }
+    fprintf(stderr,
+            "FHE conversion checkpoint: output=%s pu=%u "
+            "semantic_gates=%u passes=%u source=%u converted=%u "
+            "rewritten=%u batch_norm=%u approximations=%u errors=%u\n",
+            VHO_FHE_Conversion_Checkpoint_Output,
+            fhe_checkpoint_pu_count,
+            fhe_checkpoint_result.semantic_gatekeeper_count,
+            fhe_checkpoint_result.conversion_pass_count,
+            fhe_checkpoint_result.source_disposition_count,
+            fhe_checkpoint_result.converted_disposition_count,
+            fhe_checkpoint_result.rewritten_value_count,
+            fhe_checkpoint_result.folded_batch_norm_count,
+            fhe_checkpoint_result.approximation_contract_count,
+            fhe_checkpoint_result.error_count);
+    free(fhe_checkpoint_temp_name);
+    fhe_checkpoint_temp_name = NULL;
+  }
+  else if (need_wopt_output || need_lno_output || need_ipl_output) {
     Write_Global_Info (pu_tree);
     if (need_ipl_output)
       Ipl_Extra_Output (ir_output);

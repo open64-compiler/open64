@@ -346,12 +346,22 @@ Required phase output:
 secure_resnet20.B
   -> ordinary DSL/common gatekeeper
   -> FHE semantic gatekeeper
-  -> VHO_FHE_Convert_Driver()
+  -> -FHE:checkpoint=secure_resnet20.fhe.B
+  -> VHO_FHE_Convert_Driver_Try() for every selected PU
   -> FHE semantic gatekeeper, converted form
+  -> complete managed-image validation
+  -> standard Write_PU_Info()/Write_Global_Info() binary WHIRL path
   -> secure_resnet20.fhe.B
   -> ir_b2a -st -src secure_resnet20.fhe.B secure_resnet20.fhe.T
   -> secure_resnet20.fhe.conversion-report.txt
 ```
+
+The checkpoint is conversion-only. It deliberately returns before ordinary
+DSL and language VHO lowering and before WOPT/LNO/CG. Each converted PU is
+written while its own local symbol table is active; the requested final path
+is published atomically only after all PUs and complete managed images pass.
+This main/backend-owned service prevents the FHE task from duplicating raw
+PU traversal, symbol-table lifetime, mapped-image, or writer orchestration.
 
 Acceptance checks:
 

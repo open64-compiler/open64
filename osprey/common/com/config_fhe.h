@@ -13,5 +13,6 @@ extern BOOL VHO_FHE_Dump_Before_Conversion;
 extern BOOL VHO_FHE_Dump_Before_Conversion_Set;
 extern BOOL VHO_FHE_Dump_After_Conversion;
 extern BOOL VHO_FHE_Dump_After_Conversion_Set;
+extern char *VHO_FHE_Conversion_Checkpoint_Output;
 
 #endif /* config_fhe_INCLUDED */
