@@ -30,6 +30,14 @@
 #define DSL_FHE_WRAPPER_CNN_LINEAR \
     "fhe.cnn.linear"
 
+/*
+ * Wrapper versions are append-only compatibility identities. Version 1 was
+ * published for common.linear.v3; version 2 admits the earlier three-kid
+ * common.linear.v2 contract used by the certified ResNet capture.
+ */
+#define DSL_FHE_WRAPPER_CNN_LINEAR_COMMON_V3_VERSION 1
+#define DSL_FHE_WRAPPER_CNN_LINEAR_COMMON_V2_VERSION 2
+
 typedef UINT32 DSL_FHE_CONVERSION_DISPOSITION_ID;
 typedef UINT32 DSL_FHE_APPROXIMATION_CONTRACT_ID;
 typedef UINT32 DSL_FHE_BN_FOLD_PROVENANCE_ID;

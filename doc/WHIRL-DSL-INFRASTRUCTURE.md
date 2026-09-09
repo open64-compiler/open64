@@ -1831,6 +1831,15 @@ full-sequence causal prompt evaluation with no KV cache.
    force. This introduces no new type kind, binary row, ELF section, or WHIRL
    image revision.
 
+37. [x] Admit both published `common.linear` contracts in FHE conversion.
+
+   Preserve `fhe.cnn.linear.v1` as the wrapper for `common.linear.v3`. Add the
+   append-only `fhe.cnn.linear.v2` wrapper for the three-kid
+   `common.linear.v2` contract used by the certified ResNet capture. Publish
+   named wrapper-version constants and prove both mappings coexist with their
+   original logical targets. This changes no WN encoding, planning-image row,
+   ELF section, or image revision.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

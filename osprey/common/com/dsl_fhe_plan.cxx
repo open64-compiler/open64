@@ -463,20 +463,25 @@ DSL_FHE_Plan_Register_Domain_Wrappers (void)
 {
     typedef struct {
         const char *wrapper_name;
+        UINT16 wrapper_version;
         const char *target_domain;
         const char *target_name;
         UINT16 target_version;
         const char *diagnostic_prefix;
     } DSL_FHE_WRAPPER_SEED;
     static const DSL_FHE_WRAPPER_SEED seeds[] = {
-        { DSL_FHE_WRAPPER_CNN_CONV2D, "cnn", "cnn.conv2d", 2,
+        { DSL_FHE_WRAPPER_CNN_CONV2D, 1, "cnn", "cnn.conv2d", 2,
           "CFHECNN_CONV2D" },
-        { DSL_FHE_WRAPPER_CNN_RESIDUAL_ADD, "common",
+        { DSL_FHE_WRAPPER_CNN_RESIDUAL_ADD, 1, "common",
           "common.residual_add", 2, "CFHECNN_RESIDUAL_ADD" },
-        { DSL_FHE_WRAPPER_CNN_GLOBAL_AVG_POOL2D, "cnn",
+        { DSL_FHE_WRAPPER_CNN_GLOBAL_AVG_POOL2D, 1, "cnn",
           "cnn.global_avg_pool2d", 2, "CFHECNN_GLOBAL_AVG_POOL2D" },
-        { DSL_FHE_WRAPPER_CNN_LINEAR, "common", "common.linear", 3,
-          "CFHECNN_LINEAR" }
+        { DSL_FHE_WRAPPER_CNN_LINEAR,
+          DSL_FHE_WRAPPER_CNN_LINEAR_COMMON_V3_VERSION,
+          "common", "common.linear", 3, "CFHECNN_LINEAR" },
+        { DSL_FHE_WRAPPER_CNN_LINEAR,
+          DSL_FHE_WRAPPER_CNN_LINEAR_COMMON_V2_VERSION,
+          "common", "common.linear", 2, "CFHECNN_LINEAR_V2" }
     };
     UINT32 registered = 0;
 
@@ -500,7 +505,8 @@ DSL_FHE_Plan_Register_Domain_Wrappers (void)
                                    (target_domain, seeds[i].target_name,
                                     seeds[i].target_version);
         DSL_OPCODE_ID wrapper = DSL_Opcode_Register_Domain_Wrapper
-                                    (fhe_cnn_id, seeds[i].wrapper_name, 1,
+                                    (fhe_cnn_id, seeds[i].wrapper_name,
+                                     seeds[i].wrapper_version,
                                      target, seeds[i].diagnostic_prefix, 0);
         if (wrapper != DSL_OPCODE_INVALID_ID)
             ++registered;
