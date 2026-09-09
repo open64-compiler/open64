@@ -1813,6 +1813,24 @@ full-sequence causal prompt evaluation with no KV cache.
    linking. Existing builder, FHE planning-image, native-rewrite, and VHO
    conversion contract tests must then pass.
 
+36. [x] Publish backend-safe canonical tensor type interning.
+
+   Canonical TensorDescriptorIR identity belongs to the common `TY` service,
+   not to the frontend builder registry. Publish `TY_Intern_Tensor_Type()`
+   with a canonical descriptor input that includes kind, dtype, rank, logical
+   shape, semantic traits, layout, sharding, placement, memory, and
+   quantization. Runtime state and lineage remain value context and do not
+   participate in canonical `TY_IDX` equivalence.
+
+   Keep `DSL_Builder_Intern_Tensor_Type()` as a source-producer compatibility
+   wrapper over the common service. Backend FHE conversion, WOPT, IPA, VHO,
+   and later LNO transformations may use the common service without linking or
+   calling `DSL_Builder_*`. A regression test must prove that builder and
+   common callers deduplicate the same descriptor to the same canonical
+   `TY_IDX`; the `be.so` and `lw_inline` no-builder-symbol gates remain in
+   force. This introduces no new type kind, binary row, ELF section, or WHIRL
+   image revision.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

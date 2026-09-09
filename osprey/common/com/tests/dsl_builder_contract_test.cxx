@@ -75,13 +75,17 @@ Check_Tensor_Type_And_Descriptor(void)
 {
     DSL_BUILDER_TENSOR_TYPE_CORE type_core;
     DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    TY_TENSOR_CANONICAL_DESCRIPTOR canonical_descriptor;
     TY_IDX tensor_ty;
     TY_IDX extension_ty;
+    TY_IDX common_service_ty;
+    TY_IDX builder_service_ty;
     TENSOR_DESCRIPTOR_RECORD record;
     int failed = 0;
 
     memset(&type_core, 0, sizeof(type_core));
     memset(&descriptor, 0, sizeof(descriptor));
+    memset(&canonical_descriptor, 0, sizeof(canonical_descriptor));
 
     type_core.kind = "tensor";
     type_core.dtype = "int32";
@@ -145,6 +149,31 @@ Check_Tensor_Type_And_Descriptor(void)
         record.rank != 2 ||
         record.attribute_count != TY_tensor_attribute_count(tensor_ty)) {
         fprintf(stderr, "builder tensor descriptor record is inconsistent\n");
+        failed = 1;
+    }
+
+    canonical_descriptor.kind = descriptor.type_core.kind;
+    canonical_descriptor.dtype = descriptor.type_core.dtype;
+    canonical_descriptor.rank = descriptor.type_core.rank;
+    canonical_descriptor.logical_shape = descriptor.type_core.logical_shape;
+    canonical_descriptor.traits = descriptor.traits.traits;
+    canonical_descriptor.layout = descriptor.representation.layout;
+    canonical_descriptor.sharding = descriptor.representation.sharding;
+    canonical_descriptor.placement = descriptor.representation.placement;
+    canonical_descriptor.memory = descriptor.representation.memory;
+    canonical_descriptor.quantization =
+        descriptor.representation.quantization;
+    common_service_ty = TY_Intern_Tensor_Type
+                            ("common_tensor_intern_contract",
+                             MTYPE_To_TY(MTYPE_I4),
+                             &canonical_descriptor);
+    builder_service_ty = DSL_Builder_Intern_Tensor_Type
+                             ("builder_tensor_intern_contract",
+                              MTYPE_To_TY(MTYPE_I4), &descriptor);
+    if (common_service_ty == TY_IDX_ZERO ||
+        builder_service_ty != common_service_ty ||
+        !TY_tensor_is_canonical(common_service_ty)) {
+        fprintf(stderr, "common and builder tensor interning diverged\n");
         failed = 1;
     }
 

@@ -2115,41 +2115,22 @@ DSL_Builder_Intern_Tensor_Type
          TY_IDX element_ty,
          const DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor)
 {
-    DSL_BUILDER_TENSOR_DESCRIPTOR type_descriptor;
-    TY_IDX tensor_ty;
-
-    if (descriptor == NULL || TY_IDX_index(element_ty) == 0 ||
-        descriptor->type_core.kind == NULL ||
-        descriptor->type_core.kind[0] == '\0' ||
-        descriptor->type_core.dtype == NULL ||
-        descriptor->type_core.dtype[0] == '\0' ||
-        descriptor->type_core.rank < 0 ||
-        descriptor->type_core.logical_shape == NULL ||
-        descriptor->type_core.logical_shape[0] == '\0')
+    if (descriptor == NULL)
         return TY_IDX_ZERO;
 
-    type_descriptor = *descriptor;
-    type_descriptor.representation.runtime_state = NULL;
-    type_descriptor.lineage.lineage = NULL;
-    tensor_ty = DSL_Builder_Create_Tensor_Type_Core
-                    (name, element_ty, &type_descriptor.type_core);
-    if (!DSL_Builder_Attach_Tensor_Descriptor(tensor_ty, &type_descriptor) ||
-        !TY_tensor_seal(tensor_ty))
-        return TY_IDX_ZERO;
-
-    for (UINT32 index = 1; index < Ty_tab.Size(); ++index) {
-        TY_IDX candidate = TY_IDX_ZERO;
-        TY_TENSOR_EXTENSION_INFO candidate_info;
-        Set_TY_IDX_index(candidate, index);
-        if (!TY_Get_Tensor_Extension_Info(candidate, &candidate_info))
-            continue;
-        candidate = candidate_info.ty;
-        if (candidate != tensor_ty &&
-            TY_tensor_is_canonical(candidate) &&
-            TY_are_equivalent(candidate, tensor_ty, TY_EQUIV_IGNORE_NAMES))
-            return candidate;
-    }
-    return tensor_ty;
+    TY_TENSOR_CANONICAL_DESCRIPTOR canonical = {
+        descriptor->type_core.kind,
+        descriptor->type_core.dtype,
+        descriptor->type_core.rank,
+        descriptor->type_core.logical_shape,
+        descriptor->traits.traits,
+        descriptor->representation.layout,
+        descriptor->representation.sharding,
+        descriptor->representation.placement,
+        descriptor->representation.memory,
+        descriptor->representation.quantization
+    };
+    return TY_Intern_Tensor_Type(name, element_ty, &canonical);
 }
 
 BOOL

@@ -512,6 +512,24 @@ struct TY_TENSOR_EXTENSION_INFO {
 };
 
 /*
+ * Canonical TensorDescriptorIR input for type-system clients. Runtime state
+ * and lineage are value context and are deliberately excluded from canonical
+ * TY identity.
+ */
+struct TY_TENSOR_CANONICAL_DESCRIPTOR {
+    const char *kind;
+    const char *dtype;
+    INT32 rank;
+    const char *logical_shape;
+    const char *traits;
+    const char *layout;
+    const char *sharding;
+    const char *placement;
+    const char *memory;
+    const char *quantization;
+};
+
+/*
  * Source-level TensorDescriptorIR probe.
  *
  * These IDs and records describe the future fixed descriptor shape, but they do
@@ -599,6 +617,10 @@ extern BOOL TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal,
 extern BOOL TY_tensor_attributes_are_equivalent (TY_IDX ty1, TY_IDX ty2);
 extern BOOL TY_tensor_is_canonical (TY_IDX ty);
 extern BOOL TY_tensor_seal (TY_IDX ty);
+extern TY_IDX TY_Intern_Tensor_Type
+                            (const char *name,
+                             TY_IDX element_ty,
+                             const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor);
 extern UINT32 TY_tensor_unbound_required_attribute_count
 				    (TY_IDX ty,
 				     const TY_TENSOR_SCHEMA_KEY *required,
