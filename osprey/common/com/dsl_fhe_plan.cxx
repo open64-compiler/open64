@@ -28,6 +28,14 @@ static DSL_FHE_APPROXIMATION_TABLE DSL_fhe_approximation_table;
 static DSL_FHE_CKKS_STATE_TABLE DSL_fhe_ckks_state_table;
 static DSL_FHE_BN_FOLD_TABLE DSL_fhe_bn_fold_table;
 
+typedef struct {
+    const DSL_FHE_PLAN_IMAGE_HEADER *header;
+    const DSL_FHE_CONVERSION_DISPOSITION_RECORD *dispositions;
+    const DSL_FHE_APPROXIMATION_CONTRACT_RECORD *approximations;
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD *ckks_states;
+    const DSL_FHE_BN_FOLD_PROVENANCE_RECORD *bn_folds;
+} DSL_FHE_PLAN_IMAGE_VIEW;
+
 typedef char DSL_FHE_Plan_TY_IDX_Width_Check
     [sizeof(TY_IDX) == 4 ? 1 : -1];
 typedef char DSL_FHE_Plan_ST_IDX_Width_Check
@@ -129,6 +137,66 @@ DSL_FHE_Plan_Range_Valid (UINT32 first, UINT32 count, UINT32 limit)
     if (count == 0)
         return first == 0;
     return first != 0 && count <= limit && first <= limit - count + 1;
+}
+
+static UINT32
+DSL_FHE_Plan_View_Disposition_Count (const DSL_FHE_PLAN_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_disposition_table.Size() :
+                          view->header->disposition_count;
+}
+
+static UINT32
+DSL_FHE_Plan_View_Approximation_Count (const DSL_FHE_PLAN_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_approximation_table.Size() :
+                          view->header->approximation_count;
+}
+
+static UINT32
+DSL_FHE_Plan_View_CKKS_State_Count (const DSL_FHE_PLAN_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_ckks_state_table.Size() :
+                          view->header->ckks_value_state_count;
+}
+
+static UINT32
+DSL_FHE_Plan_View_BN_Fold_Count (const DSL_FHE_PLAN_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_bn_fold_table.Size() :
+                          view->header->bn_fold_count;
+}
+
+static const DSL_FHE_CONVERSION_DISPOSITION_RECORD &
+DSL_FHE_Plan_View_Disposition
+        (const DSL_FHE_PLAN_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_disposition_table[ordinal] :
+                          view->dispositions[ordinal];
+}
+
+static const DSL_FHE_APPROXIMATION_CONTRACT_RECORD &
+DSL_FHE_Plan_View_Approximation
+        (const DSL_FHE_PLAN_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_approximation_table[ordinal] :
+                          view->approximations[ordinal];
+}
+
+static const DSL_FHE_CKKS_VALUE_STATE_RECORD &
+DSL_FHE_Plan_View_CKKS_State
+        (const DSL_FHE_PLAN_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_ckks_state_table[ordinal] :
+                          view->ckks_states[ordinal];
+}
+
+static const DSL_FHE_BN_FOLD_PROVENANCE_RECORD &
+DSL_FHE_Plan_View_BN_Fold
+        (const DSL_FHE_PLAN_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_bn_fold_table[ordinal] :
+                          view->bn_folds[ordinal];
 }
 
 static BOOL
@@ -328,7 +396,8 @@ DSL_FHE_Plan_Wrapper_Valid
 
 static BOOL
 DSL_FHE_Plan_Disposition_Valid
-        (const DSL_FHE_CONVERSION_DISPOSITION_RECORD &record)
+        (const DSL_FHE_CONVERSION_DISPOSITION_RECORD &record,
+         const DSL_FHE_PLAN_IMAGE_VIEW *view)
 {
     DSL_IR_NODE_RECORD node;
     DSL_IR_VALUE_RECORD value;
@@ -350,7 +419,7 @@ DSL_FHE_Plan_Disposition_Valid
         (record.flags & ~known_flags) != 0 || record.reserved != 0 ||
         !DSL_FHE_Plan_Range_Valid
             (record.first_bn_fold_id, record.bn_fold_count,
-             DSL_fhe_bn_fold_table.Size()))
+             DSL_FHE_Plan_View_BN_Fold_Count(view)))
         return FALSE;
 
     if (record.disposition == DSL_FHE_DISPOSITION_DOMAIN_WRAPPER) {
@@ -364,22 +433,24 @@ DSL_FHE_Plan_Disposition_Valid
     if (record.disposition == DSL_FHE_DISPOSITION_REQUIRE_APPROXIMATION) {
         if (record.approximation_contract_id == 0 ||
             record.approximation_contract_id >
-                DSL_fhe_approximation_table.Size())
+                DSL_FHE_Plan_View_Approximation_Count(view))
             return FALSE;
     } else if (record.approximation_contract_id != 0) {
         return FALSE;
     }
 
     if (record.result_ckks_value_state_id == 0 ||
-        record.result_ckks_value_state_id > DSL_fhe_ckks_state_table.Size() ||
-        DSL_fhe_ckks_state_table
-            [record.result_ckks_value_state_id - 1].value_id !=
+        record.result_ckks_value_state_id >
+            DSL_FHE_Plan_View_CKKS_State_Count(view) ||
+        DSL_FHE_Plan_View_CKKS_State
+            (view, record.result_ckks_value_state_id - 1).value_id !=
                 record.result_value_id)
         return FALSE;
 
     for (UINT32 i = 0; i < record.bn_fold_count; ++i) {
         const DSL_FHE_BN_FOLD_PROVENANCE_RECORD &fold =
-            DSL_fhe_bn_fold_table[record.first_bn_fold_id - 1 + i];
+            DSL_FHE_Plan_View_BN_Fold
+                (view, record.first_bn_fold_id - 1 + i);
         if (fold.conv_node_id != record.source_node_id ||
             fold.owner_pu_st != record.owner_pu_st)
             return FALSE;
@@ -475,11 +546,15 @@ DSL_FHE_Plan_Image_Has_Records (void)
            DSL_fhe_bn_fold_table.Size() != 0;
 }
 
-BOOL
-DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
+static BOOL
+DSL_FHE_Plan_View_Validate
+        (const DSL_FHE_PLAN_IMAGE_VIEW *view, FILE *diagnostic)
 {
     DSL_FHE_PLAN_IMAGE_HEADER header;
-    DSL_FHE_Plan_Image_Get_Header(&header);
+    if (view == NULL)
+        DSL_FHE_Plan_Image_Get_Header(&header);
+    else
+        header = *view->header;
     const UINT32 capabilities = DSL_FHE_PLAN_CAP_DISPOSITION |
                                 DSL_FHE_PLAN_CAP_APPROXIMATION |
                                 DSL_FHE_PLAN_CAP_CKKS_VALUE_STATE |
@@ -494,38 +569,42 @@ DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
         header.reserved4 != 0 || header.reserved5 != 0)
         return DSL_FHE_Plan_Report(diagnostic, "invalid header", 0);
 
-    for (UINT32 i = 0; i < DSL_fhe_approximation_table.Size(); ++i) {
+    for (UINT32 i = 0;
+         i < DSL_FHE_Plan_View_Approximation_Count(view); ++i) {
         const DSL_FHE_APPROXIMATION_CONTRACT_RECORD &record =
-            DSL_fhe_approximation_table[i];
+            DSL_FHE_Plan_View_Approximation(view, i);
         if (record.id != i + 1 ||
             !DSL_FHE_Plan_Approximation_Valid(record))
             return DSL_FHE_Plan_Report
                        (diagnostic, "invalid approximation", i + 1);
     }
-    for (UINT32 i = 0; i < DSL_fhe_ckks_state_table.Size(); ++i) {
+    for (UINT32 i = 0;
+         i < DSL_FHE_Plan_View_CKKS_State_Count(view); ++i) {
         const DSL_FHE_CKKS_VALUE_STATE_RECORD &record =
-            DSL_fhe_ckks_state_table[i];
+            DSL_FHE_Plan_View_CKKS_State(view, i);
         if (record.id != i + 1 || !DSL_FHE_Plan_CKKS_State_Valid(record))
             return DSL_FHE_Plan_Report
                        (diagnostic, "invalid CKKS value state", i + 1);
         UINT32 expected_version = 1;
         for (UINT32 j = 0; j < i; ++j) {
-            if (DSL_fhe_ckks_state_table[j].value_id == record.value_id)
+            if (DSL_FHE_Plan_View_CKKS_State(view, j).value_id ==
+                record.value_id)
                 ++expected_version;
         }
         if (record.state_version != expected_version)
             return DSL_FHE_Plan_Report
                        (diagnostic, "noncontiguous CKKS state version", i + 1);
     }
-    for (UINT32 i = 0; i < DSL_fhe_bn_fold_table.Size(); ++i) {
+    for (UINT32 i = 0;
+         i < DSL_FHE_Plan_View_BN_Fold_Count(view); ++i) {
         const DSL_FHE_BN_FOLD_PROVENANCE_RECORD &record =
-            DSL_fhe_bn_fold_table[i];
+            DSL_FHE_Plan_View_BN_Fold(view, i);
         if (record.id != i + 1 || !DSL_FHE_Plan_BN_Fold_Valid(record))
             return DSL_FHE_Plan_Report
                        (diagnostic, "invalid BatchNorm fold", i + 1);
         for (UINT32 j = 0; j < i; ++j) {
             const DSL_FHE_BN_FOLD_PROVENANCE_RECORD &prior =
-                DSL_fhe_bn_fold_table[j];
+                DSL_FHE_Plan_View_BN_Fold(view, j);
             if (prior.conv_node_id == record.conv_node_id &&
                 prior.batch_norm_node_id == record.batch_norm_node_id &&
                 prior.context_pu_identity_id ==
@@ -535,24 +614,28 @@ DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
                            (diagnostic, "duplicate BatchNorm fold", i + 1);
         }
     }
-    for (UINT32 i = 0; i < DSL_fhe_disposition_table.Size(); ++i) {
+    for (UINT32 i = 0;
+         i < DSL_FHE_Plan_View_Disposition_Count(view); ++i) {
         const DSL_FHE_CONVERSION_DISPOSITION_RECORD &record =
-            DSL_fhe_disposition_table[i];
-        if (record.id != i + 1 || !DSL_FHE_Plan_Disposition_Valid(record))
+            DSL_FHE_Plan_View_Disposition(view, i);
+        if (record.id != i + 1 ||
+            !DSL_FHE_Plan_Disposition_Valid(record, view))
             return DSL_FHE_Plan_Report
                        (diagnostic, "invalid disposition", i + 1);
         for (UINT32 j = 0; j < i; ++j) {
-            if (DSL_fhe_disposition_table[j].source_node_id ==
+            if (DSL_FHE_Plan_View_Disposition(view, j).source_node_id ==
                     record.source_node_id)
                 return DSL_FHE_Plan_Report
                            (diagnostic, "duplicate disposition", i + 1);
         }
     }
-    for (UINT32 i = 0; i < DSL_fhe_bn_fold_table.Size(); ++i) {
+    for (UINT32 i = 0;
+         i < DSL_FHE_Plan_View_BN_Fold_Count(view); ++i) {
         UINT32 owners = 0;
-        for (UINT32 j = 0; j < DSL_fhe_disposition_table.Size(); ++j) {
+        for (UINT32 j = 0;
+             j < DSL_FHE_Plan_View_Disposition_Count(view); ++j) {
             const DSL_FHE_CONVERSION_DISPOSITION_RECORD &disposition =
-                DSL_fhe_disposition_table[j];
+                DSL_FHE_Plan_View_Disposition(view, j);
             if (disposition.bn_fold_count != 0 &&
                 i + 1 >= disposition.first_bn_fold_id &&
                 i + 1 < disposition.first_bn_fold_id +
@@ -563,6 +646,83 @@ DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
             return DSL_FHE_Plan_Report
                        (diagnostic, "unowned BatchNorm fold", i + 1);
     }
+    return TRUE;
+}
+
+BOOL
+DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
+{
+    return DSL_FHE_Plan_View_Validate(NULL, diagnostic);
+}
+
+static BOOL
+DSL_FHE_Plan_Add_Section_Size
+        (UINT64 *size, UINT32 count, UINT32 record_size)
+{
+    const UINT64 max_size = (UINT64)-1;
+    if (count != 0 && count > (max_size - *size) / record_size)
+        return FALSE;
+    *size += (UINT64)count * record_size;
+    return TRUE;
+}
+
+BOOL
+DSL_FHE_Plan_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    if (section_base == NULL || section_size < DSL_FHE_PLAN_IMAGE_HEADER_SIZE)
+        return DSL_FHE_Plan_Report(diagnostic, "section is truncated", 0);
+    const char *cursor = (const char *)section_base;
+    const DSL_FHE_PLAN_IMAGE_HEADER *header =
+        (const DSL_FHE_PLAN_IMAGE_HEADER *)cursor;
+    UINT64 expected_size = DSL_FHE_PLAN_IMAGE_HEADER_SIZE;
+    if (!DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->disposition_count,
+              DSL_FHE_PLAN_DISPOSITION_RECORD_SIZE) ||
+        !DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->approximation_count,
+              DSL_FHE_PLAN_APPROXIMATION_RECORD_SIZE) ||
+        !DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->ckks_value_state_count,
+              DSL_FHE_PLAN_CKKS_STATE_RECORD_SIZE) ||
+        !DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->bn_fold_count,
+              DSL_FHE_PLAN_BN_FOLD_RECORD_SIZE) ||
+        expected_size != section_size)
+        return DSL_FHE_Plan_Report
+                   (diagnostic, "section size mismatch", 0);
+
+    DSL_FHE_PLAN_IMAGE_VIEW view;
+    view.header = header;
+    cursor += DSL_FHE_PLAN_IMAGE_HEADER_SIZE;
+    view.dispositions =
+        (const DSL_FHE_CONVERSION_DISPOSITION_RECORD *)cursor;
+    cursor += (UINT64)header->disposition_count *
+              DSL_FHE_PLAN_DISPOSITION_RECORD_SIZE;
+    view.approximations =
+        (const DSL_FHE_APPROXIMATION_CONTRACT_RECORD *)cursor;
+    cursor += (UINT64)header->approximation_count *
+              DSL_FHE_PLAN_APPROXIMATION_RECORD_SIZE;
+    view.ckks_states = (const DSL_FHE_CKKS_VALUE_STATE_RECORD *)cursor;
+    cursor += (UINT64)header->ckks_value_state_count *
+              DSL_FHE_PLAN_CKKS_STATE_RECORD_SIZE;
+    view.bn_folds = (const DSL_FHE_BN_FOLD_PROVENANCE_RECORD *)cursor;
+
+    if (!DSL_FHE_Plan_View_Validate(&view, diagnostic))
+        return FALSE;
+
+    DSL_FHE_Plan_Image_Reset();
+    if (header->disposition_count != 0)
+        DSL_fhe_disposition_table.Insert
+            (view.dispositions, header->disposition_count);
+    if (header->approximation_count != 0)
+        DSL_fhe_approximation_table.Insert
+            (view.approximations, header->approximation_count);
+    if (header->ckks_value_state_count != 0)
+        DSL_fhe_ckks_state_table.Insert
+            (view.ckks_states, header->ckks_value_state_count);
+    if (header->bn_fold_count != 0)
+        DSL_fhe_bn_fold_table.Insert(view.bn_folds, header->bn_fold_count);
     return TRUE;
 }
 
@@ -644,7 +804,7 @@ DSL_FHE_CONVERSION_DISPOSITION_ID
 DSL_FHE_Plan_Add_Conversion_Disposition
         (const DSL_FHE_CONVERSION_DISPOSITION_RECORD *record)
 {
-    if (record == NULL || !DSL_FHE_Plan_Disposition_Valid(*record))
+    if (record == NULL || !DSL_FHE_Plan_Disposition_Valid(*record, NULL))
         return DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID;
     for (UINT32 i = 0; i < DSL_fhe_disposition_table.Size(); ++i) {
         if (DSL_fhe_disposition_table[i].source_node_id ==

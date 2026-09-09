@@ -84,6 +84,7 @@
 #define WT_DSL_EFFECT_IMAGE 0x21
 #define WT_DSL_CALLSITE_IMAGE 0x22
 #define WT_DSL_FHE_IMAGE 0x23
+#define WT_DSL_FHE_PLAN 0x24
 
 /*
  * Special WHIRL section names.
@@ -101,6 +102,7 @@
 #define MIPS_WHIRL_DSL_EFFECT_IMAGE ".WHIRL.dsl_effects"
 #define MIPS_WHIRL_DSL_CALLSITE_IMAGE ".WHIRL.dsl_calls"
 #define MIPS_WHIRL_DSL_FHE_IMAGE ".WHIRL.dsl_fhe"
+#define MIPS_WHIRL_DSL_FHE_PLAN ".WHIRL.dsl_fhe_plan"
 #if defined(TARG_SL)
 #define MIPS_WHIRL_CALLGRAPH    ".WHIRL.callgraph"
 #endif

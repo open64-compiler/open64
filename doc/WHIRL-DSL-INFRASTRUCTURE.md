@@ -1744,6 +1744,26 @@ full-sequence causal prompt evaluation with no KV cache.
    VHO conversion driver. Stage 2b owns that reader/writer/printer wiring and
    must preserve the version-1 `.WHIRL.dsl_fhe` image unchanged.
 
+   Stage 2b adds optional `WT_DSL_FHE_PLAN` (`0x24`) section emission and
+   discovery under `.WHIRL.dsl_fhe_plan`. The mapped reader validates the
+   exact section size and every cross-table reference before resetting live
+   state, then copies the accepted fixed rows into managed tables; it never
+   adopts mapped ELF storage as mutable compiler state. An absent section
+   resets to an empty valid plan so pre-SYNC-3 files remain readable.
+   `ir_b2a -st -src` prints stable logical conversion-disposition,
+   approximation, CKKS value-state, and BatchNorm-fold tables. The focused
+   producer rejects truncated, trailing, reserved-field, and invalid-reference
+   images, then writes and reopens a retained `.B`/`.T` pair through the normal
+   ELF path. The existing `.WHIRL.dsl_fhe` version and all earlier image rows
+   remain unchanged.
+
+   Stage 2c remains responsible for opaque builder attachment/rewrite APIs and
+   the common stable-definition/update services consumed by conversion. The
+   later VHO stage owns `VHO_FHE_Convert_Driver()`, its independent option
+   control, semantic gatekeeper, and before/after conversion artifacts. Keep
+   the FHE task blocked from conversion implementation until those reviewed
+   hooks land; do not let it reach into WN, ST, TY, or mapped-image internals.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

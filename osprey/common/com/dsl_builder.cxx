@@ -3886,6 +3886,10 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
         valid = FALSE;
         ++gatekeeper_result.error_count;
     }
+    if (!DSL_FHE_Plan_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++gatekeeper_result.error_count;
+    }
     if (gatekeeper_result.native_node_count != DSL_IR_Image_Node_Count()) {
         if (diagnostic != NULL)
             fprintf(diagnostic,

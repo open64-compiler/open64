@@ -100,6 +100,7 @@
 #include "ir_bread.h"
 #include "dsl_ir_image.h"
 #include "dsl_fhe.h"
+#include "dsl_fhe_plan.h"
 #include "dsl_region.h"
 #include "config_opt.h"
 
@@ -497,6 +498,21 @@ WN_get_dsl_fhe_image (void *handle)
     }
     const void *section_base = (const char *)handle + shdr.offset;
     return DSL_FHE_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
+INT
+WN_get_dsl_fhe_plan_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_FHE_PLAN);
+    if (shdr.offset == 0) {
+        DSL_FHE_Plan_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_FHE_Plan_Image_Load_Mapped
                (section_base, shdr.size, stderr) ? 0 : -1;
 }
 
@@ -1656,6 +1672,9 @@ Read_Global_Info (INT32 *p_num_PUs)
     }
     if (WN_get_dsl_fhe_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL FHE image", global_ir_file);
+    }
+    if (WN_get_dsl_fhe_plan_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL FHE plan image", global_ir_file);
     }
 
 #if defined(KEY) && defined(BACK_END)
