@@ -1779,8 +1779,10 @@ full-sequence causal prompt evaluation with no KV cache.
    not let it reach into WN, ST, TY, or mapped-image internals.
 
    Stage 3 implements `config_fhe.{h,cxx}` with `convert`, `strict_o0`,
-   `dump_before`, and `dump_after` controls in the independent `-FHE:` option
-   group. Conversion defaults on but is an exact no-op for artifacts without
+   `dump_before`, `dump_after`, authenticated `calibration_manifest` plus
+   `calibration_sha256`, and conversion `checkpoint` controls in the
+   independent `-FHE:` option group. Conversion defaults on but is an exact
+   no-op for artifacts without
    FHE image or FHE-plan records. An FHE-bearing artifact requires a
    registered semantic gatekeeper and conversion pass; absence is diagnosed
    as `CFHE-CONVERT-001` rather than allowing generic DSL lowering to erase
