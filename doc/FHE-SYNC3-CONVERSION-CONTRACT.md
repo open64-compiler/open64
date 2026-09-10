@@ -140,6 +140,7 @@ secret-key material, ciphertext bytes, backend C++ object state, or physical
 | `CFHECNN-CONV-001` | Unsupported convolution layout, rank, groups, dilation, stride, or padding policy. |
 | `CFHECNN-POOL-001` | Max/data-dependent pooling is unsupported without approved replacement policy. |
 | `CFHECNN-RELU-001` | Encrypted `common.relu` lacks required approximation contract for SYNC-3 output. |
+| `CFHECNN-RELU-002` | The selected composite ReLU profile is not completely represented and certified; no full-model checkpoint is published. |
 | `CFHECNN-RESIDUAL-001` | Residual add has incompatible shape, layout, value class, scale, or level obligation. |
 | `CFHECKKS-STATE-001` | Value-specific CKKS state is missing where conversion requires level/scale tracking. |
 | `CFHE-LOWER-001` | FHE/SIHE/CKKS/runtime lowering was requested during SYNC-3 conversion. |
@@ -341,8 +342,10 @@ allocation. The exact physical contract is
 
 ## ReLU Approximation Contract Fields
 
-Every surviving encrypted `common.relu` needs an attached approximation
-contract before SYNC-4 can insert bootstrap and polynomial evaluation.
+Every surviving encrypted `common.relu` needs an attached composite profile
+and context range binding before SYNC-4 can insert bootstrap and polynomial
+evaluation. The selected ResNet candidate is
+`ace.chebyshev.sign.7x15x13.depth11.v1`.
 
 | Field | Requirement |
 | --- | --- |
@@ -351,21 +354,25 @@ contract before SYNC-4 can insert bootstrap and polynomial evaluation.
 | Source evidence | Use the existing source WN/ST/DST/value records; do not duplicate source-position fields in the approximation row. |
 | `function` | `relu`. |
 | `approximation_family` | Approved polynomial family, such as minimax, Chebyshev, or Taylor-by-policy. |
-| `polynomial_id` | Stable name/version for coefficient set. |
-| `degree` | Non-negative integer degree; first release should use one fixed approved degree. |
-| `coefficient_payload` | External or interned plaintext coefficient vector reference. |
+| `profile_id` | Stable name/version for the complete composition and reconstruction rule. |
+| `ordered_stages` | Three Chebyshev stages with ordinals 0, 1, 2 and degrees 7, 15, 13. |
+| `coefficient_payload` | One external or interned plaintext coefficient vector reference per stage, with exact binary64 checksum. |
 | `coefficient_dtype` | Planning evidence dtype, normally `float64`, with backend lowering policy deferred. |
-| `valid_input_range` | Closed numeric range assumed for approximation. |
-| `max_abs_error` | Certified approximation error over the valid range. |
+| `context_bound` | Positive `B` bound joined to exact ReLU value/context identity; normalization is `x/B`. |
+| `valid_input_range` | Closed normalized range, initially `[-1,1]`; out-of-range behavior is reject. |
+| `max_abs_error` | Certified stage, composed-sign, reconstructed-ReLU, and model-level error evidence. |
 | `scale_policy` | Desired input/output scale relation for CKKS planning. |
 | `level_policy` | Minimum level/depth budget consumed by polynomial evaluation. |
 | `bootstrap_policy` | `auto`, `on`, `manual`, or `off` behavior inherited from entry config. |
 | `requires_pre_refresh` | True for the first CKKS `-O0` path unless a manual boundary is already proven. |
 | `provenance` | Source ReLU value, owning PU, context path, and conversion pass ID. |
 
-SYNC-3 may attach or require the contract reference. SYNC-4 materializes
-bootstrap and polynomial evaluation. Bootstrap restores capacity and does not
-compute ReLU.
+SYNC-3 may attach or require the profile obligation. SYNC-4 materializes
+bootstrap, normalization, ordered stage evaluation, and ReLU reconstruction.
+Bootstrap restores capacity and does not compute ReLU. The existing v1
+approximation row describes one polynomial and cannot faithfully persist the
+ordered composition; main/common must review an append-only profile/stage/range
+representation before this policy is enabled.
 
 ## Value-Specific CKKS State
 

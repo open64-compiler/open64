@@ -722,10 +722,19 @@ Ready for submission when:
 
 ### Commit 17: `Record ReLU approximation and CKKS planning state`
 
+Policy checkpoint: the ResNet baseline is now the composite Chebyshev sign
+profile `ace.chebyshev.sign.7x15x13.depth11.v1`, not a single degree-3
+polynomial. Candidate coefficient review may begin in this commit, but accepted
+planning rows remain blocked until the append-only ordered-stage
+representation, all 19 context range bindings, model accuracy, and CKKS
+state/depth evidence are reviewed. The compiler continues to emit
+`CFHECNN-RELU-002` in the interim.
+
 Implementation:
 
-- Intern approved approximation contracts and attach each surviving encrypted
-  `common.relu` disposition to one contract.
+- Intern an approved composite profile and its ordered stage contracts, then
+  attach each surviving encrypted `common.relu` disposition and exact context
+  range binding to that profile.
 - Add value-specific versioned CKKS state, alignment groups, pending actions,
   and explicit pending-bootstrap reasons without changing canonical tensor or
   encryption descriptor identity.
@@ -736,7 +745,8 @@ Implementation:
 
 Verification:
 
-- Validate coefficient rank and `degree + 1` cardinality, finite range/error,
+- Validate each stage's coefficient rank and `degree + 1` cardinality, stage
+  order `[7,15,13]`, finite range/error, canonical binary64 checksum,
   scale/depth/bootstrap policy, and complete semantic interning.
 - Test contiguous state versions beginning at one, duplicate rejection,
   pending sentinels, unknown bits, descriptor scheme/value-class agreement,
@@ -748,7 +758,8 @@ Verification:
 
 Ready for submission when:
 
-- every surviving encrypted ReLU has a valid source-linked contract;
+- every surviving encrypted ReLU has a valid source-linked composite profile
+  and positive context range binding;
 - every required value has a valid CKKS state and all cross-references reopen;
 - the output contains planning evidence only and remains inside SYNC-3.
 
@@ -812,6 +823,10 @@ secure_resnet20.B
 - Prove exact certified cardinalities, including 13 physical Conv/BN rewrites,
   21 source-context folds, and 19 source-context ReLU associations, while
   keeping those counts out of generic gatekeepers.
+- Prove the selected composite profile retains three inspectable ordered
+  Chebyshev stages, depth 11, exact coefficient and manifest checksums, and 19
+  identity-bound normalization ranges. A candidate-only profile cannot close
+  commit 19.
 - Prove every target operator has an accepted disposition, every required CKKS
   value has state, no standalone BN survives, and source/context provenance is
   complete.

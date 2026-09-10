@@ -171,7 +171,7 @@ coverage in the same infrastructure PR.
 | C1: Native contracts | Publish accepted common/type contracts; add generic attachment, image, printer, and gatekeeper hooks | Finalize fixed FHE records, FHE-specific builder API, malformed-record rules, and negative tests | **SYNC-1: Native API and image contract freeze** |
 | C2: Full-model capture | Supply merged opaque builder capabilities and common operator evidence | Capture complete ResNet-20 with class-centric PUs, source positions, weights, FHE entry, and encrypted descriptors | **SYNC-2: Frontend artifact certification** |
 | C3: FHE conversion | Supply driver hook, cross-PU value identity, generic shape analysis, transactional rewrites, value-state attachment, and artifact publication | Certify shapes; implement FHE gatekeeping, 13-definition/21-context BatchNorm folding, converted-shape checks, operator dispositions, CKKS-state propagation, and reports | **SYNC-3: ResNet FHE conversion review** |
-| C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor/approximation evidence | Freeze polynomial policy, then materialize mandatory pre-ReLU bootstrap and approved polynomial approximation with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
+| C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor/composite-stage/range evidence | Certify the ACE-compatible `7 -> 15 -> 13` Chebyshev sign profile, then materialize mandatory pre-ReLU bootstrap, normalization, ordered stages, and reconstruction with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
 | C5: Standard WHIRL boundary | Supply standard call/result construction, unlowered-node gate, and `whirl2c` integration point | Implement runtime-call lowering, FHE C ABI, and mock provider | **SYNC-5: Middle-WHIRL and mock executable gate** |
 | C6: OpenFHE ResNet | Complete driver link flow, provider manifest consumption, and retained artifact family | Implement OpenFHE provider, client provisioning, CKKS execution, and full ResNet validation | **SYNC-6: End-to-end `-O0` acceptance** |
 | C7: Optimized planning | Enable reviewed VHO/WOPT integration, common encrypted-iteration-space records, census verification, and per-pass controls | Implement selectable MetaKernel and Fhelipe planners, then add ReSBM, boundary movement/fusion, the dedicated SSAPRE-model HPAO-MU phase, HPAO-FM/HPAO-LM, and equivalence reports. HPAO-MD remains design TBD. | **SYNC-7A-E: layout-planner A/B proof and optimized-versus-`-O0` proof** |
@@ -459,8 +459,20 @@ Normative transformation:
 ```text
 common.relu(x)
   -> sihe.bootstrap(x, reason=relu_boundary)
-  -> fhe.cnn.poly_activation(..., source_activation=common.relu)
+  -> normalize(x, context_bound=B)
+  -> composite_chebyshev_sign(stage_degrees=[7,15,13])
+  -> fhe.cnn.poly_activation(0.5*x*sign(x/B) + 0.5*x,
+                             source_activation=common.relu)
 ```
+
+The selected architecture candidate is
+`ace.chebyshev.sign.7x15x13.depth11.v1`. Degree 3 is retained only as a future
+experimental low-depth profile. The existing v1 approximation row describes a
+single polynomial and is not sufficient to persist this composition; an
+append-only ordered-stage contract must be reviewed before enablement. Exact
+coefficient bytes, all 19 identity-bound normalization ranges, clear/model
+error, and CKKS depth/state remain certification gates, so full SecureResNet
+publication continues to fail closed with `CFHECNN-RELU-002` until they pass.
 
 Required tests:
 
@@ -474,6 +486,8 @@ Required tests:
 Exit evidence:
 
 - Focused ReLU `.B` and `.T` before and after FHE/CKKS planning.
+- Candidate profile manifest and independent three-stage clear-evaluation
+  report.
 - Full ResNet depth/bootstrap report with source positions.
 - Fused backend path, when present, retains the same logical evidence.
 - No `-O0` movement, merging, deduplication, or profitability placement.
