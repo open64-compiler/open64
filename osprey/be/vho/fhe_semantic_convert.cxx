@@ -605,7 +605,7 @@ VHO_FHE_Create_Relu_Approximation
         *approximation_id = DSL_FHE_APPROXIMATION_CONTRACT_INVALID_ID;
     return VHO_FHE_Semantic_Report
                (diagnostic, "CFHECNN-RELU-002",
-                "common.relu degree-3 coefficient policy is not approved");
+                "common.relu composite approximation profile is not certified");
 }
 
 static BOOL
@@ -2186,7 +2186,7 @@ VHO_FHE_Default_Checkpoint_Finalizer
     if (VHO_FHE_relu_policy_blocked)
         return VHO_FHE_Semantic_Report
                    (diagnostic, "CFHECNN-RELU-002",
-                    "common.relu degree-3 coefficient policy is not approved");
+                    "common.relu composite approximation profile is not certified");
     if (!VHO_FHE_artifacts_registered)
         return TRUE;
     return VHO_FHE_Write_Converted_Payload(diagnostic) &&

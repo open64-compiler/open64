@@ -268,6 +268,6 @@ main(void)
     }
 
     DSL_Builder_Abort_Program();
-    printf("FHE semantic conversion defers unapproved ReLU policy\n");
+    printf("FHE semantic conversion defers uncertified composite ReLU policy\n");
     return 0;
 }
