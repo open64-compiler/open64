@@ -22,11 +22,25 @@ typedef SEGMENTED_ARRAY<DSL_FHE_CKKS_VALUE_STATE_RECORD>
     DSL_FHE_CKKS_STATE_TABLE;
 typedef SEGMENTED_ARRAY<DSL_FHE_BN_FOLD_PROVENANCE_RECORD>
     DSL_FHE_BN_FOLD_TABLE;
+typedef SEGMENTED_ARRAY<DSL_FHE_COMPOSITE_PROFILE_RECORD>
+    DSL_FHE_COMPOSITE_PROFILE_TABLE;
+typedef SEGMENTED_ARRAY<DSL_FHE_APPROX_STAGE_RECORD>
+    DSL_FHE_APPROX_STAGE_TABLE;
+typedef SEGMENTED_ARRAY<DSL_FHE_APPROX_ASSOCIATION_RECORD>
+    DSL_FHE_APPROX_ASSOCIATION_TABLE;
+typedef SEGMENTED_ARRAY<DSL_FHE_CONTEXT_RANGE_RECORD>
+    DSL_FHE_CONTEXT_RANGE_TABLE;
 
 static DSL_FHE_DISPOSITION_TABLE DSL_fhe_disposition_table;
 static DSL_FHE_APPROXIMATION_TABLE DSL_fhe_approximation_table;
 static DSL_FHE_CKKS_STATE_TABLE DSL_fhe_ckks_state_table;
 static DSL_FHE_BN_FOLD_TABLE DSL_fhe_bn_fold_table;
+static DSL_FHE_COMPOSITE_PROFILE_TABLE DSL_fhe_composite_profile_table;
+static DSL_FHE_APPROX_STAGE_TABLE DSL_fhe_approx_stage_table;
+static DSL_FHE_APPROX_ASSOCIATION_TABLE DSL_fhe_approx_association_table;
+static DSL_FHE_CONTEXT_RANGE_TABLE DSL_fhe_context_range_table;
+
+static BOOL DSL_FHE_Approx_Profile_Cross_Validate (FILE *diagnostic);
 
 typedef struct {
     const DSL_FHE_PLAN_IMAGE_HEADER *header;
@@ -35,6 +49,14 @@ typedef struct {
     const DSL_FHE_CKKS_VALUE_STATE_RECORD *ckks_states;
     const DSL_FHE_BN_FOLD_PROVENANCE_RECORD *bn_folds;
 } DSL_FHE_PLAN_IMAGE_VIEW;
+
+typedef struct {
+    const DSL_FHE_APPROX_PROFILE_IMAGE_HEADER *header;
+    const DSL_FHE_COMPOSITE_PROFILE_RECORD *profiles;
+    const DSL_FHE_APPROX_STAGE_RECORD *stages;
+    const DSL_FHE_APPROX_ASSOCIATION_RECORD *associations;
+    const DSL_FHE_CONTEXT_RANGE_RECORD *context_ranges;
+} DSL_FHE_APPROX_PROFILE_IMAGE_VIEW;
 
 typedef char DSL_FHE_Plan_TY_IDX_Width_Check
     [sizeof(TY_IDX) == 4 ? 1 : -1];
@@ -59,6 +81,21 @@ typedef char DSL_FHE_Plan_CKKS_State_Size_Check
 typedef char DSL_FHE_Plan_BN_Fold_Size_Check
     [sizeof(DSL_FHE_BN_FOLD_PROVENANCE_RECORD) ==
         DSL_FHE_PLAN_BN_FOLD_RECORD_SIZE ? 1 : -1];
+typedef char DSL_FHE_Approx_Profile_Header_Size_Check
+    [sizeof(DSL_FHE_APPROX_PROFILE_IMAGE_HEADER) ==
+        DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_FHE_Composite_Profile_Size_Check
+    [sizeof(DSL_FHE_COMPOSITE_PROFILE_RECORD) ==
+        DSL_FHE_COMPOSITE_PROFILE_RECORD_SIZE ? 1 : -1];
+typedef char DSL_FHE_Approx_Stage_Size_Check
+    [sizeof(DSL_FHE_APPROX_STAGE_RECORD) ==
+        DSL_FHE_APPROX_STAGE_RECORD_SIZE ? 1 : -1];
+typedef char DSL_FHE_Approx_Association_Size_Check
+    [sizeof(DSL_FHE_APPROX_ASSOCIATION_RECORD) ==
+        DSL_FHE_APPROX_ASSOCIATION_RECORD_SIZE ? 1 : -1];
+typedef char DSL_FHE_Context_Range_Size_Check
+    [sizeof(DSL_FHE_CONTEXT_RANGE_RECORD) ==
+        DSL_FHE_CONTEXT_RANGE_RECORD_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -415,7 +452,8 @@ DSL_FHE_Plan_Disposition_Valid
         value.producer_node_id != record.source_node_id ||
         !DSL_FHE_Plan_Value_Belongs_To_PU(value, record.owner_pu_st) ||
         record.disposition < DSL_FHE_DISPOSITION_PRESERVE ||
-        record.disposition > DSL_FHE_DISPOSITION_REQUIRE_APPROXIMATION ||
+        record.disposition >
+            DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION ||
         (record.flags & ~known_flags) != 0 || record.reserved != 0 ||
         !DSL_FHE_Plan_Range_Valid
             (record.first_bn_fold_id, record.bn_fold_count,
@@ -434,6 +472,10 @@ DSL_FHE_Plan_Disposition_Valid
         if (record.approximation_contract_id == 0 ||
             record.approximation_contract_id >
                 DSL_FHE_Plan_View_Approximation_Count(view))
+            return FALSE;
+    } else if (record.disposition ==
+                   DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION) {
+        if (record.approximation_contract_id == 0)
             return FALSE;
     } else if (record.approximation_contract_id != 0) {
         return FALSE;
@@ -521,6 +563,7 @@ DSL_FHE_Plan_Image_Reset (void)
     DSL_fhe_approximation_table.Delete_down_to(0);
     DSL_fhe_ckks_state_table.Delete_down_to(0);
     DSL_fhe_bn_fold_table.Delete_down_to(0);
+    DSL_FHE_Approx_Profile_Image_Reset();
 }
 
 void
@@ -658,7 +701,8 @@ DSL_FHE_Plan_View_Validate
 BOOL
 DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
 {
-    return DSL_FHE_Plan_View_Validate(NULL, diagnostic);
+    return DSL_FHE_Plan_View_Validate(NULL, diagnostic) &&
+           DSL_FHE_Approx_Profile_Cross_Validate(diagnostic);
 }
 
 static BOOL
@@ -810,7 +854,9 @@ DSL_FHE_CONVERSION_DISPOSITION_ID
 DSL_FHE_Plan_Add_Conversion_Disposition
         (const DSL_FHE_CONVERSION_DISPOSITION_RECORD *record)
 {
-    if (record == NULL || !DSL_FHE_Plan_Disposition_Valid(*record, NULL))
+    if (record == NULL || record->disposition ==
+            DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION ||
+        !DSL_FHE_Plan_Disposition_Valid(*record, NULL))
         return DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID;
     for (UINT32 i = 0; i < DSL_fhe_disposition_table.Size(); ++i) {
         if (DSL_fhe_disposition_table[i].source_node_id ==
@@ -903,6 +949,762 @@ DSL_FHE_Plan_Find_BN_Fold_Provenance
             fold.context_callsite_id == context_callsite_id)
             return DSL_FHE_Plan_Table_Get
                        (DSL_fhe_bn_fold_table, i + 1, record);
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_FHE_Approx_Profile_Report
+        (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "FHE approximation profile image error: "
+                "%s id=%u\n", message, id);
+    return FALSE;
+}
+
+static BOOL
+DSL_FHE_Approx_Profile_SHA256_Valid (STR_IDX id)
+{
+    if (!DSL_FHE_Plan_String_Id_Valid(id, TRUE))
+        return FALSE;
+    const char *value = Index_To_Str(id);
+    if (strlen(value) != 64)
+        return FALSE;
+    for (UINT32 i = 0; i < 64; ++i) {
+        if (!((value[i] >= '0' && value[i] <= '9') ||
+              (value[i] >= 'a' && value[i] <= 'f')))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_FHE_Composite_Profile_Basic_Valid
+        (const DSL_FHE_COMPOSITE_PROFILE_RECORD &record,
+         UINT32 stage_limit)
+{
+    DSL_FHE_COMPILATION_CONFIG_RECORD config;
+    return DSL_FHE_Get_Compilation_Config(record.config_id, &config) &&
+           DSL_FHE_Plan_String_Id_Valid(record.profile_name, TRUE) &&
+           record.profile_version != 0 &&
+           record.reconstruction ==
+               DSL_FHE_RECONSTRUCTION_RELU_FROM_NORMALIZED_SIGN &&
+           record.total_multiplicative_depth != 0 &&
+           record.normalization_policy ==
+               DSL_FHE_NORMALIZATION_POSITIVE_CONTEXT_BOUND &&
+           record.pre_refresh_policy >= DSL_FHE_PRE_REFRESH_INHERIT &&
+           record.pre_refresh_policy <=
+               DSL_FHE_PRE_REFRESH_PROVEN_EXISTING &&
+           DSL_FHE_Plan_String_Id_Valid(record.source_revision, TRUE) &&
+           DSL_FHE_Approx_Profile_SHA256_Valid(record.manifest_sha256) &&
+           record.stage_count != 0 &&
+           DSL_FHE_Plan_Range_Valid
+               (record.first_stage_id, record.stage_count, stage_limit) &&
+           record.flags == 0 && record.reserved0 == 0 &&
+           record.reserved1 == 0 && record.reserved2 == 0 &&
+           record.reserved3 == 0;
+}
+
+static BOOL
+DSL_FHE_Approx_Stage_Basic_Valid
+        (const DSL_FHE_APPROX_STAGE_RECORD &record, UINT32 profile_limit)
+{
+    DSL_TENSOR_TCON_RECORD coefficients;
+    if (record.profile_id == 0 || record.profile_id > profile_limit ||
+        record.approximation_family < DSL_FHE_APPROXIMATION_MINIMAX ||
+        record.approximation_family > DSL_FHE_APPROXIMATION_TAYLOR ||
+        record.basis < DSL_FHE_APPROX_BASIS_CHEBYSHEV ||
+        record.basis > DSL_FHE_APPROX_BASIS_MONOMIAL ||
+        record.degree == 0 ||
+        record.evaluation_scheme < DSL_FHE_APPROX_EVAL_CLENSHAW ||
+        record.evaluation_scheme >
+            DSL_FHE_APPROX_EVAL_ADDITION_CHAIN ||
+        record.required_input_value_class <
+            DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
+        record.required_input_value_class > DSL_FHE_VALUE_CLASS_CLEAR ||
+        record.input_scale_policy <
+            DSL_FHE_APPROX_INPUT_SCALE_ANY_COMPATIBLE ||
+        record.input_scale_policy >
+            DSL_FHE_APPROX_INPUT_SCALE_PROFILE_NORMALIZED ||
+        record.input_level_policy < DSL_FHE_APPROX_LEVEL_ANY_SUFFICIENT ||
+        record.input_level_policy > DSL_FHE_APPROX_LEVEL_EXACT ||
+        record.level_consumption < 0 ||
+        record.output_scale_policy <
+            DSL_FHE_APPROX_OUTPUT_SCALE_PRESERVE_INPUT ||
+        record.output_scale_policy >
+            DSL_FHE_APPROX_OUTPUT_SCALE_DEFAULT_RESCALE ||
+        record.output_component_policy <
+            DSL_FHE_APPROX_COMPONENT_PRESERVE ||
+        record.output_component_policy > DSL_FHE_APPROX_COMPONENT_MAY_GROW ||
+        record.minimum_precision_bits <= 0 ||
+        !DSL_Tensor_TCON_Get(record.coefficient_tensor_tcon, &coefficients) ||
+        TY_tensor_rank(coefficients.descriptor_ty) != 1 ||
+        (coefficients.element_mtype != MTYPE_F4 &&
+         coefficients.element_mtype != MTYPE_F8) ||
+        coefficients.element_count != (UINT64)record.degree + 1 ||
+        !DSL_FHE_Approx_Profile_SHA256_Valid(record.coefficient_sha256) ||
+        record.flags != 0 || record.reserved != 0)
+        return FALSE;
+    if (record.input_level_policy == DSL_FHE_APPROX_LEVEL_ANY_SUFFICIENT)
+        return record.required_input_level == -1;
+    return record.required_input_level >= 0;
+}
+
+static BOOL
+DSL_FHE_Approx_Profile_Value_Is_Live_Relu
+        (DSL_IR_VALUE_ID value_id, ST_IDX owner_pu_st)
+{
+    DSL_IR_VALUE_RECORD value;
+    DSL_OPERATOR dsl_operator;
+    if (!DSL_IR_Image_Get_Value(value_id, &value) ||
+        (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
+        value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+        !DSL_FHE_Plan_Value_Belongs_To_PU(value, owner_pu_st) ||
+        !DSL_FHE_Plan_Node_Operator
+            (value.producer_node_id, &dsl_operator, NULL))
+        return FALSE;
+    return dsl_operator == OPR_DSLRELU;
+}
+
+static BOOL
+DSL_FHE_Context_Range_Basic_Valid
+        (const DSL_FHE_CONTEXT_RANGE_RECORD &record, UINT32 profile_limit)
+{
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    double bound;
+    double observed_min;
+    double observed_max;
+    if (record.profile_id == 0 || record.profile_id > profile_limit ||
+        !DSL_FHE_Approx_Profile_Value_Is_Live_Relu
+            (record.source_relu_value_id, record.owner_pu_st) ||
+        !DSL_Call_Image_Get_PU_Identity
+            (record.context_pu_identity_id, &identity) ||
+        !DSL_FHE_Plan_Scalar_TCON_Value
+            (record.positive_bound_tcon, &bound) || bound <= 0.0 ||
+        !DSL_FHE_Plan_Scalar_TCON_Value
+            (record.observed_min_tcon, &observed_min) ||
+        !DSL_FHE_Plan_Scalar_TCON_Value
+            (record.observed_max_tcon, &observed_max) ||
+        observed_min > observed_max || observed_min < -bound ||
+        observed_max > bound ||
+        record.out_of_range_policy != DSL_FHE_CONTEXT_RANGE_REJECT ||
+        !DSL_FHE_Plan_String_Id_Valid(record.provenance, TRUE) ||
+        record.flags != 0 || record.reserved0 != 0 ||
+        record.reserved1 != 0 || record.reserved2 != 0)
+        return FALSE;
+
+    if (record.context_callsite_id == DSL_CALLSITE_METADATA_INVALID_ID)
+        return identity.owner_pu_st == record.owner_pu_st;
+    return DSL_Call_Image_Get_Callsite(record.context_callsite_id, &callsite) &&
+           callsite.callee_pu_st == record.owner_pu_st &&
+           callsite.owner_pu_st == identity.owner_pu_st;
+}
+
+static UINT32
+DSL_FHE_Approx_Profile_View_Profile_Count
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_composite_profile_table.Size() :
+                          view->header->profile_count;
+}
+
+static UINT32
+DSL_FHE_Approx_Profile_View_Stage_Count
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_approx_stage_table.Size() :
+                          view->header->stage_count;
+}
+
+static UINT32
+DSL_FHE_Approx_Profile_View_Association_Count
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_approx_association_table.Size() :
+                          view->header->association_count;
+}
+
+static UINT32
+DSL_FHE_Approx_Profile_View_Context_Count
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_context_range_table.Size() :
+                          view->header->context_range_count;
+}
+
+static const DSL_FHE_COMPOSITE_PROFILE_RECORD &
+DSL_FHE_Approx_Profile_View_Profile
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_composite_profile_table[ordinal] :
+                          view->profiles[ordinal];
+}
+
+static const DSL_FHE_APPROX_STAGE_RECORD &
+DSL_FHE_Approx_Profile_View_Stage
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_approx_stage_table[ordinal] :
+                          view->stages[ordinal];
+}
+
+static const DSL_FHE_APPROX_ASSOCIATION_RECORD &
+DSL_FHE_Approx_Profile_View_Association
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_approx_association_table[ordinal] :
+                          view->associations[ordinal];
+}
+
+static const DSL_FHE_CONTEXT_RANGE_RECORD &
+DSL_FHE_Approx_Profile_View_Context
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_context_range_table[ordinal] :
+                          view->context_ranges[ordinal];
+}
+
+static BOOL
+DSL_FHE_Approx_Profile_View_Validate
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_VIEW *view, FILE *diagnostic)
+{
+    DSL_FHE_APPROX_PROFILE_IMAGE_HEADER header;
+    if (view == NULL)
+        DSL_FHE_Approx_Profile_Image_Get_Header(&header);
+    else
+        header = *view->header;
+    const UINT32 capabilities = DSL_FHE_APPROX_PROFILE_CAP_PROFILE |
+                                DSL_FHE_APPROX_PROFILE_CAP_STAGE |
+                                DSL_FHE_APPROX_PROFILE_CAP_ASSOCIATION |
+                                DSL_FHE_APPROX_PROFILE_CAP_CONTEXT_RANGE;
+    if (header.magic != DSL_FHE_APPROX_PROFILE_IMAGE_MAGIC ||
+        header.version != DSL_FHE_APPROX_PROFILE_IMAGE_VERSION ||
+        header.header_size != DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE ||
+        header.record_kind_count != 4 ||
+        header.capabilities != capabilities || header.flags != 0 ||
+        header.reserved0 != 0 || header.reserved1 != 0 ||
+        header.reserved2 != 0 || header.reserved3 != 0 ||
+        header.reserved4 != 0 || header.reserved5 != 0)
+        return DSL_FHE_Approx_Profile_Report
+                   (diagnostic, "invalid header", 0);
+
+    for (UINT32 i = 0;
+         i < DSL_FHE_Approx_Profile_View_Profile_Count(view); ++i) {
+        const DSL_FHE_COMPOSITE_PROFILE_RECORD &profile =
+            DSL_FHE_Approx_Profile_View_Profile(view, i);
+        UINT64 total_level_consumption = 0;
+        if (profile.id != i + 1 ||
+            !DSL_FHE_Composite_Profile_Basic_Valid
+                (profile, DSL_FHE_Approx_Profile_View_Stage_Count(view)))
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "invalid composite profile", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            const DSL_FHE_COMPOSITE_PROFILE_RECORD &prior =
+                DSL_FHE_Approx_Profile_View_Profile(view, j);
+            if (prior.config_id == profile.config_id &&
+                prior.profile_name == profile.profile_name &&
+                prior.profile_version == profile.profile_version)
+                return DSL_FHE_Approx_Profile_Report
+                           (diagnostic, "duplicate composite profile", i + 1);
+        }
+        for (UINT32 j = 0; j < profile.stage_count; ++j) {
+            const DSL_FHE_APPROX_STAGE_RECORD &stage =
+                DSL_FHE_Approx_Profile_View_Stage
+                    (view, profile.first_stage_id - 1 + j);
+            if (stage.profile_id != profile.id ||
+                stage.stage_ordinal != j)
+                return DSL_FHE_Approx_Profile_Report
+                           (diagnostic, "noncontiguous profile stages", i + 1);
+            total_level_consumption += (UINT32)stage.level_consumption;
+        }
+        if (total_level_consumption !=
+                profile.total_multiplicative_depth)
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "profile depth does not match stages",
+                        i + 1);
+    }
+    for (UINT32 i = 0;
+         i < DSL_FHE_Approx_Profile_View_Stage_Count(view); ++i) {
+        const DSL_FHE_APPROX_STAGE_RECORD &stage =
+            DSL_FHE_Approx_Profile_View_Stage(view, i);
+        if (stage.id != i + 1 ||
+            !DSL_FHE_Approx_Stage_Basic_Valid
+                (stage, DSL_FHE_Approx_Profile_View_Profile_Count(view)))
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "invalid approximation stage", i + 1);
+        UINT32 owners = 0;
+        for (UINT32 j = 0;
+             j < DSL_FHE_Approx_Profile_View_Profile_Count(view); ++j) {
+            const DSL_FHE_COMPOSITE_PROFILE_RECORD &profile =
+                DSL_FHE_Approx_Profile_View_Profile(view, j);
+            if (stage.id >= profile.first_stage_id &&
+                stage.id < profile.first_stage_id + profile.stage_count)
+                ++owners;
+        }
+        if (owners != 1)
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "orphaned approximation stage", i + 1);
+    }
+    for (UINT32 i = 0;
+         i < DSL_FHE_Approx_Profile_View_Association_Count(view); ++i) {
+        const DSL_FHE_APPROX_ASSOCIATION_RECORD &association =
+            DSL_FHE_Approx_Profile_View_Association(view, i);
+        DSL_FHE_CONVERSION_DISPOSITION_RECORD disposition;
+        DSL_FHE_CKKS_VALUE_STATE_RECORD state;
+        DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encryption;
+        if (association.id != i + 1 || association.profile_id == 0 ||
+            association.profile_id >
+                DSL_FHE_Approx_Profile_View_Profile_Count(view))
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "invalid profile association", i + 1);
+        const DSL_FHE_COMPOSITE_PROFILE_RECORD &profile =
+            DSL_FHE_Approx_Profile_View_Profile
+                (view, association.profile_id - 1);
+        if (!DSL_FHE_Plan_Get_Conversion_Disposition
+                (association.disposition_id, &disposition) ||
+            disposition.disposition !=
+                DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION ||
+            disposition.approximation_contract_id != association.profile_id ||
+            disposition.result_value_id != association.source_relu_value_id ||
+            disposition.owner_pu_st != association.owner_pu_st ||
+            !DSL_FHE_Plan_Get_CKKS_Value_State
+                (disposition.result_ckks_value_state_id, &state) ||
+            !DSL_FHE_Get_Encryption_Descriptor
+                (state.encryption_descriptor_id, &encryption) ||
+            profile.config_id != encryption.config_id ||
+            !DSL_FHE_Approx_Profile_Value_Is_Live_Relu
+                (association.source_relu_value_id, association.owner_pu_st) ||
+            association.flags != 0 || association.reserved0 != 0 ||
+            association.reserved1 != 0)
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "invalid profile association", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            const DSL_FHE_APPROX_ASSOCIATION_RECORD &prior =
+                DSL_FHE_Approx_Profile_View_Association(view, j);
+            if (prior.disposition_id == association.disposition_id ||
+                prior.source_relu_value_id ==
+                    association.source_relu_value_id)
+                return DSL_FHE_Approx_Profile_Report
+                           (diagnostic, "duplicate profile association", i + 1);
+        }
+    }
+    for (UINT32 i = 0;
+         i < DSL_FHE_Approx_Profile_View_Context_Count(view); ++i) {
+        const DSL_FHE_CONTEXT_RANGE_RECORD &context =
+            DSL_FHE_Approx_Profile_View_Context(view, i);
+        if (context.id != i + 1 ||
+            !DSL_FHE_Context_Range_Basic_Valid
+                (context, DSL_FHE_Approx_Profile_View_Profile_Count(view)))
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "invalid context range", i + 1);
+        UINT32 associations = 0;
+        for (UINT32 j = 0;
+             j < DSL_FHE_Approx_Profile_View_Association_Count(view); ++j) {
+            const DSL_FHE_APPROX_ASSOCIATION_RECORD &association =
+                DSL_FHE_Approx_Profile_View_Association(view, j);
+            if (association.profile_id == context.profile_id &&
+                association.source_relu_value_id ==
+                    context.source_relu_value_id)
+                ++associations;
+        }
+        if (associations != 1)
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "unassociated context range", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            const DSL_FHE_CONTEXT_RANGE_RECORD &prior =
+                DSL_FHE_Approx_Profile_View_Context(view, j);
+            if (prior.profile_id == context.profile_id &&
+                prior.source_relu_value_id == context.source_relu_value_id &&
+                prior.context_pu_identity_id ==
+                    context.context_pu_identity_id &&
+                prior.context_callsite_id == context.context_callsite_id)
+                return DSL_FHE_Approx_Profile_Report
+                           (diagnostic, "duplicate context range", i + 1);
+        }
+    }
+    for (UINT32 i = 0; i < DSL_fhe_disposition_table.Size(); ++i) {
+        const DSL_FHE_CONVERSION_DISPOSITION_RECORD &disposition =
+            DSL_fhe_disposition_table[i];
+        if (disposition.disposition !=
+            DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION)
+            continue;
+        UINT32 associations = 0;
+        UINT32 contexts = 0;
+        for (UINT32 j = 0;
+             j < DSL_FHE_Approx_Profile_View_Association_Count(view); ++j) {
+            const DSL_FHE_APPROX_ASSOCIATION_RECORD &association =
+                DSL_FHE_Approx_Profile_View_Association(view, j);
+            if (association.disposition_id == disposition.id)
+                ++associations;
+        }
+        for (UINT32 j = 0;
+             j < DSL_FHE_Approx_Profile_View_Context_Count(view); ++j) {
+            const DSL_FHE_CONTEXT_RANGE_RECORD &context =
+                DSL_FHE_Approx_Profile_View_Context(view, j);
+            if (context.profile_id ==
+                    disposition.approximation_contract_id &&
+                context.source_relu_value_id == disposition.result_value_id)
+                ++contexts;
+        }
+        if (associations != 1 || contexts == 0)
+            return DSL_FHE_Approx_Profile_Report
+                       (diagnostic, "incomplete composite disposition",
+                        disposition.id);
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_FHE_Approx_Profile_Cross_Validate (FILE *diagnostic)
+{
+    return DSL_FHE_Approx_Profile_View_Validate(NULL, diagnostic);
+}
+
+void
+DSL_FHE_Approx_Profile_Image_Reset (void)
+{
+    DSL_fhe_composite_profile_table.Delete_down_to(0);
+    DSL_fhe_approx_stage_table.Delete_down_to(0);
+    DSL_fhe_approx_association_table.Delete_down_to(0);
+    DSL_fhe_context_range_table.Delete_down_to(0);
+}
+
+void
+DSL_FHE_Approx_Profile_Image_Get_Header
+        (DSL_FHE_APPROX_PROFILE_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset(header, 0, sizeof(*header));
+    header->magic = DSL_FHE_APPROX_PROFILE_IMAGE_MAGIC;
+    header->version = DSL_FHE_APPROX_PROFILE_IMAGE_VERSION;
+    header->header_size = DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE;
+    header->record_kind_count = 4;
+    header->capabilities = DSL_FHE_APPROX_PROFILE_CAP_PROFILE |
+                           DSL_FHE_APPROX_PROFILE_CAP_STAGE |
+                           DSL_FHE_APPROX_PROFILE_CAP_ASSOCIATION |
+                           DSL_FHE_APPROX_PROFILE_CAP_CONTEXT_RANGE;
+    header->profile_count = DSL_fhe_composite_profile_table.Size();
+    header->stage_count = DSL_fhe_approx_stage_table.Size();
+    header->association_count = DSL_fhe_approx_association_table.Size();
+    header->context_range_count = DSL_fhe_context_range_table.Size();
+}
+
+BOOL
+DSL_FHE_Approx_Profile_Image_Has_Records (void)
+{
+    return DSL_fhe_composite_profile_table.Size() != 0 ||
+           DSL_fhe_approx_stage_table.Size() != 0 ||
+           DSL_fhe_approx_association_table.Size() != 0 ||
+           DSL_fhe_context_range_table.Size() != 0;
+}
+
+BOOL
+DSL_FHE_Approx_Profile_Image_Validate (FILE *diagnostic)
+{
+    return DSL_FHE_Approx_Profile_Cross_Validate(diagnostic);
+}
+
+BOOL
+DSL_FHE_Approx_Profile_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    if (section_base == NULL ||
+        section_size < DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE)
+        return DSL_FHE_Approx_Profile_Report
+                   (diagnostic, "section is truncated", 0);
+    const char *cursor = (const char *)section_base;
+    const DSL_FHE_APPROX_PROFILE_IMAGE_HEADER *header =
+        (const DSL_FHE_APPROX_PROFILE_IMAGE_HEADER *)cursor;
+    UINT64 expected_size = DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE;
+    if (!DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->profile_count,
+              DSL_FHE_COMPOSITE_PROFILE_RECORD_SIZE) ||
+        !DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->stage_count,
+              DSL_FHE_APPROX_STAGE_RECORD_SIZE) ||
+        !DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->association_count,
+              DSL_FHE_APPROX_ASSOCIATION_RECORD_SIZE) ||
+        !DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->context_range_count,
+              DSL_FHE_CONTEXT_RANGE_RECORD_SIZE) ||
+        expected_size != section_size)
+        return DSL_FHE_Approx_Profile_Report
+                   (diagnostic, "section size mismatch", 0);
+
+    DSL_FHE_APPROX_PROFILE_IMAGE_VIEW view;
+    view.header = header;
+    cursor += DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE;
+    view.profiles = (const DSL_FHE_COMPOSITE_PROFILE_RECORD *)cursor;
+    cursor += (UINT64)header->profile_count *
+              DSL_FHE_COMPOSITE_PROFILE_RECORD_SIZE;
+    view.stages = (const DSL_FHE_APPROX_STAGE_RECORD *)cursor;
+    cursor += (UINT64)header->stage_count *
+              DSL_FHE_APPROX_STAGE_RECORD_SIZE;
+    view.associations = (const DSL_FHE_APPROX_ASSOCIATION_RECORD *)cursor;
+    cursor += (UINT64)header->association_count *
+              DSL_FHE_APPROX_ASSOCIATION_RECORD_SIZE;
+    view.context_ranges = (const DSL_FHE_CONTEXT_RANGE_RECORD *)cursor;
+    if (!DSL_FHE_Approx_Profile_View_Validate(&view, diagnostic))
+        return FALSE;
+
+    DSL_FHE_Approx_Profile_Image_Reset();
+    if (header->profile_count != 0)
+        DSL_fhe_composite_profile_table.Insert
+            (view.profiles, header->profile_count);
+    if (header->stage_count != 0)
+        DSL_fhe_approx_stage_table.Insert(view.stages, header->stage_count);
+    if (header->association_count != 0)
+        DSL_fhe_approx_association_table.Insert
+            (view.associations, header->association_count);
+    if (header->context_range_count != 0)
+        DSL_fhe_context_range_table.Insert
+            (view.context_ranges, header->context_range_count);
+    return DSL_FHE_Approx_Profile_Cross_Validate(diagnostic);
+}
+
+void DSL_FHE_Composite_Profile_Record_Init
+        (DSL_FHE_COMPOSITE_PROFILE_RECORD *record)
+{ DSL_FHE_Plan_Record_Init(record); }
+void DSL_FHE_Approx_Stage_Record_Init
+        (DSL_FHE_APPROX_STAGE_RECORD *record)
+{
+    DSL_FHE_Plan_Record_Init(record);
+    if (record != NULL)
+        record->required_input_level = -1;
+}
+void DSL_FHE_Approx_Association_Record_Init
+        (DSL_FHE_APPROX_ASSOCIATION_RECORD *record)
+{ DSL_FHE_Plan_Record_Init(record); }
+void DSL_FHE_Context_Range_Record_Init
+        (DSL_FHE_CONTEXT_RANGE_RECORD *record)
+{ DSL_FHE_Plan_Record_Init(record); }
+
+DSL_FHE_COMPOSITE_PROFILE_ID
+DSL_FHE_Approx_Profile_Intern_Complete
+        (const DSL_FHE_COMPOSITE_PROFILE_RECORD *profile,
+         const DSL_FHE_APPROX_STAGE_RECORD *stages, UINT32 stage_count)
+{
+    if (profile == NULL || stages == NULL || stage_count == 0 ||
+        profile->stage_count != stage_count)
+        return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+    for (UINT32 i = 0; i < DSL_fhe_composite_profile_table.Size(); ++i) {
+        const DSL_FHE_COMPOSITE_PROFILE_RECORD &prior =
+            DSL_fhe_composite_profile_table[i];
+        if (prior.config_id != profile->config_id ||
+            prior.profile_name != profile->profile_name ||
+            prior.profile_version != profile->profile_version)
+            continue;
+        if (prior.stage_count != stage_count)
+            return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+        DSL_FHE_COMPOSITE_PROFILE_RECORD candidate = *profile;
+        candidate.id = prior.id;
+        candidate.first_stage_id = prior.first_stage_id;
+        if (memcmp(&candidate, &prior, sizeof(candidate)) != 0)
+            return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+        for (UINT32 j = 0; j < stage_count; ++j) {
+            DSL_FHE_APPROX_STAGE_RECORD candidate_stage = stages[j];
+            candidate_stage.id = prior.first_stage_id + j;
+            candidate_stage.profile_id = prior.id;
+            candidate_stage.stage_ordinal = j;
+            if (memcmp(&candidate_stage,
+                       &DSL_fhe_approx_stage_table
+                            [prior.first_stage_id - 1 + j],
+                       sizeof(candidate_stage)) != 0)
+                return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+        }
+        return prior.id;
+    }
+
+    const UINT32 profile_id = DSL_fhe_composite_profile_table.Size() + 1;
+    const UINT32 first_stage_id = DSL_fhe_approx_stage_table.Size() + 1;
+    DSL_FHE_COMPOSITE_PROFILE_RECORD profile_copy = *profile;
+    profile_copy.id = profile_id;
+    profile_copy.first_stage_id = first_stage_id;
+    profile_copy.stage_count = stage_count;
+    if (!DSL_FHE_Composite_Profile_Basic_Valid
+            (profile_copy, first_stage_id + stage_count - 1))
+        return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+    UINT64 total_level_consumption = 0;
+    for (UINT32 i = 0; i < stage_count; ++i) {
+        DSL_FHE_APPROX_STAGE_RECORD stage = stages[i];
+        stage.id = first_stage_id + i;
+        stage.profile_id = profile_id;
+        stage.stage_ordinal = i;
+        if (!DSL_FHE_Approx_Stage_Basic_Valid(stage, profile_id))
+            return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+        total_level_consumption += (UINT32)stage.level_consumption;
+    }
+    if (total_level_consumption !=
+            profile_copy.total_multiplicative_depth)
+        return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+    DSL_fhe_composite_profile_table.Insert(profile_copy);
+    for (UINT32 i = 0; i < stage_count; ++i) {
+        DSL_FHE_APPROX_STAGE_RECORD stage = stages[i];
+        stage.id = first_stage_id + i;
+        stage.profile_id = profile_id;
+        stage.stage_ordinal = i;
+        DSL_fhe_approx_stage_table.Insert(stage);
+    }
+    return profile_id;
+}
+
+DSL_FHE_CONVERSION_DISPOSITION_ID
+DSL_FHE_Plan_Add_Composite_Disposition
+        (const DSL_FHE_CONVERSION_DISPOSITION_RECORD *disposition,
+         DSL_FHE_COMPOSITE_PROFILE_ID profile_id)
+{
+    if (disposition == NULL || profile_id == 0 ||
+        profile_id > DSL_fhe_composite_profile_table.Size() ||
+        disposition->disposition !=
+            DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION ||
+        disposition->approximation_contract_id != profile_id ||
+        !DSL_FHE_Plan_Disposition_Valid(*disposition, NULL))
+        return DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID;
+    for (UINT32 i = 0; i < DSL_fhe_disposition_table.Size(); ++i) {
+        if (DSL_fhe_disposition_table[i].source_node_id ==
+            disposition->source_node_id)
+            return DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID;
+    }
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD disposition_copy = *disposition;
+    disposition_copy.id = DSL_fhe_disposition_table.Size() + 1;
+    DSL_FHE_APPROX_ASSOCIATION_RECORD association;
+    DSL_FHE_Approx_Association_Record_Init(&association);
+    association.id = DSL_fhe_approx_association_table.Size() + 1;
+    association.disposition_id = disposition_copy.id;
+    association.source_relu_value_id = disposition_copy.result_value_id;
+    association.profile_id = profile_id;
+    association.owner_pu_st = disposition_copy.owner_pu_st;
+    DSL_fhe_disposition_table.Insert(disposition_copy);
+    DSL_fhe_approx_association_table.Insert(association);
+    return disposition_copy.id;
+}
+
+DSL_FHE_CONTEXT_RANGE_ID
+DSL_FHE_Approx_Profile_Bind_Context_Range
+        (const DSL_FHE_CONTEXT_RANGE_RECORD *record)
+{
+    if (record == NULL || !DSL_FHE_Context_Range_Basic_Valid
+            (*record, DSL_fhe_composite_profile_table.Size()))
+        return DSL_FHE_CONTEXT_RANGE_INVALID_ID;
+    BOOL associated = FALSE;
+    for (UINT32 i = 0; i < DSL_fhe_approx_association_table.Size(); ++i) {
+        const DSL_FHE_APPROX_ASSOCIATION_RECORD &association =
+            DSL_fhe_approx_association_table[i];
+        if (association.profile_id == record->profile_id &&
+            association.source_relu_value_id ==
+                record->source_relu_value_id)
+            associated = TRUE;
+    }
+    if (!associated)
+        return DSL_FHE_CONTEXT_RANGE_INVALID_ID;
+    for (UINT32 i = 0; i < DSL_fhe_context_range_table.Size(); ++i) {
+        const DSL_FHE_CONTEXT_RANGE_RECORD &prior =
+            DSL_fhe_context_range_table[i];
+        if (prior.profile_id == record->profile_id &&
+            prior.source_relu_value_id == record->source_relu_value_id &&
+            prior.context_pu_identity_id == record->context_pu_identity_id &&
+            prior.context_callsite_id == record->context_callsite_id)
+            return DSL_FHE_CONTEXT_RANGE_INVALID_ID;
+    }
+    DSL_FHE_CONTEXT_RANGE_RECORD copy = *record;
+    UINT32 index = DSL_fhe_context_range_table.Insert(copy);
+    DSL_fhe_context_range_table[index].id = index + 1;
+    return index + 1;
+}
+
+UINT32 DSL_FHE_Approx_Profile_Count (void)
+{ return DSL_fhe_composite_profile_table.Size(); }
+UINT32 DSL_FHE_Approx_Stage_Count (void)
+{ return DSL_fhe_approx_stage_table.Size(); }
+UINT32 DSL_FHE_Approx_Association_Count (void)
+{ return DSL_fhe_approx_association_table.Size(); }
+UINT32 DSL_FHE_Context_Range_Count (void)
+{ return DSL_fhe_context_range_table.Size(); }
+
+BOOL DSL_FHE_Approx_Profile_Get
+        (DSL_FHE_COMPOSITE_PROFILE_ID id,
+         DSL_FHE_COMPOSITE_PROFILE_RECORD *record)
+{ return DSL_FHE_Plan_Table_Get
+             (DSL_fhe_composite_profile_table, id, record); }
+BOOL DSL_FHE_Approx_Stage_Get
+        (DSL_FHE_APPROX_STAGE_ID id, DSL_FHE_APPROX_STAGE_RECORD *record)
+{ return DSL_FHE_Plan_Table_Get(DSL_fhe_approx_stage_table, id, record); }
+BOOL DSL_FHE_Approx_Association_Get
+        (DSL_FHE_APPROX_ASSOCIATION_ID id,
+         DSL_FHE_APPROX_ASSOCIATION_RECORD *record)
+{ return DSL_FHE_Plan_Table_Get
+             (DSL_fhe_approx_association_table, id, record); }
+BOOL DSL_FHE_Context_Range_Get
+        (DSL_FHE_CONTEXT_RANGE_ID id, DSL_FHE_CONTEXT_RANGE_RECORD *record)
+{ return DSL_FHE_Plan_Table_Get(DSL_fhe_context_range_table, id, record); }
+
+BOOL
+DSL_FHE_Approx_Profile_Find
+        (DSL_FHE_CONFIG_ID config_id, const char *profile_name,
+         UINT32 profile_version,
+         DSL_FHE_COMPOSITE_PROFILE_RECORD *record)
+{
+    if (profile_name == NULL)
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_fhe_composite_profile_table.Size(); ++i) {
+        const DSL_FHE_COMPOSITE_PROFILE_RECORD &profile =
+            DSL_fhe_composite_profile_table[i];
+        if (profile.config_id == config_id &&
+            profile.profile_version == profile_version &&
+            strcmp(Index_To_Str(profile.profile_name), profile_name) == 0)
+            return DSL_FHE_Approx_Profile_Get(i + 1, record);
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_FHE_Approx_Stage_Find
+        (DSL_FHE_COMPOSITE_PROFILE_ID profile_id, UINT32 stage_ordinal,
+         DSL_FHE_APPROX_STAGE_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_fhe_approx_stage_table.Size(); ++i) {
+        const DSL_FHE_APPROX_STAGE_RECORD &stage =
+            DSL_fhe_approx_stage_table[i];
+        if (stage.profile_id == profile_id &&
+            stage.stage_ordinal == stage_ordinal)
+            return DSL_FHE_Approx_Stage_Get(i + 1, record);
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_FHE_Approx_Association_Find
+        (DSL_FHE_CONVERSION_DISPOSITION_ID disposition_id,
+         DSL_FHE_APPROX_ASSOCIATION_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_fhe_approx_association_table.Size(); ++i) {
+        if (DSL_fhe_approx_association_table[i].disposition_id ==
+            disposition_id)
+            return DSL_FHE_Approx_Association_Get(i + 1, record);
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_FHE_Context_Range_Find
+        (DSL_FHE_COMPOSITE_PROFILE_ID profile_id,
+         DSL_IR_VALUE_ID source_relu_value_id,
+         DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id,
+         DSL_CALLSITE_METADATA_ID context_callsite_id,
+         DSL_FHE_CONTEXT_RANGE_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_fhe_context_range_table.Size(); ++i) {
+        const DSL_FHE_CONTEXT_RANGE_RECORD &context =
+            DSL_fhe_context_range_table[i];
+        if (context.profile_id == profile_id &&
+            context.source_relu_value_id == source_relu_value_id &&
+            context.context_pu_identity_id == context_pu_identity_id &&
+            context.context_callsite_id == context_callsite_id)
+            return DSL_FHE_Context_Range_Get(i + 1, record);
     }
     return FALSE;
 }

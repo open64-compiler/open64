@@ -1954,6 +1954,32 @@ full-sequence causal prompt evaluation with no KV cache.
    opcode, type encoding, or binary revision changes. The detailed contract is
    in `doc/FHE-SYNC3-EXTERNAL-TENSOR-REWRITE-CONTRACT.md`.
 
+43. [x] Publish the SYNC-C composite FHE approximation profile image.
+
+   Add optional `.WHIRL.dsl_fhe_approx_profile` fixed rows for one composite
+   profile, its immutable ordered polynomial stages, an explicit tagged
+   disposition association, and independently keyed source/context range
+   evidence. Preserve the version-1 single-polynomial approximation table
+   unchanged. Append disposition value `6` for composite approximation;
+   previous readers fail closed on that unknown value instead of confusing a
+   profile identity with a version-1 approximation identity.
+
+   Represent stage input and output state as machine-verifiable symbolic
+   policy, not free-form strings or concrete CKKS value-state IDs. Intern a
+   complete profile and all contiguous stages atomically, require each
+   coefficient tensor to contain `degree + 1` elements, and require the sum of
+   stage level consumption to equal the declared profile depth. Bind contexts
+   separately with the established owner-PU, PU-identity, and callsite
+   semantics; the current SecureResNet profile expects one root and eighteen
+   called ReLU contexts.
+
+   Reader, writer, validation, and `ir_b2a -st -src` support land together.
+   This stage defines representation and inspection only: it does not invent
+   coefficients, approve range evidence, create stage values, insert
+   bootstrap, or lower the composite to OpenFHE. The exact compatibility and
+   API contract is in
+   `doc/FHE-SYNC-C-COMPOSITE-APPROXIMATION-CONTRACT.md`.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

@@ -546,6 +546,21 @@ WN_get_dsl_fhe_plan_image (void *handle)
                (section_base, shdr.size, stderr) ? 0 : -1;
 }
 
+INT
+WN_get_dsl_fhe_approx_profile_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_FHE_APPROX_PROFILE);
+    if (shdr.offset == 0) {
+        DSL_FHE_Approx_Profile_Image_Reset();
+        return DSL_FHE_Plan_Image_Validate(stderr) ? 0 : -1;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_FHE_Approx_Profile_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
 /*
  *  Note: get SSA info from file into memory 
  */
@@ -1711,6 +1726,10 @@ Read_Global_Info (INT32 *p_num_PUs)
     }
     if (WN_get_dsl_fhe_plan_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL FHE plan image", global_ir_file);
+    }
+    if (WN_get_dsl_fhe_approx_profile_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL FHE approximation profile image",
+                global_ir_file);
     }
 
 #if defined(KEY) && defined(BACK_END)

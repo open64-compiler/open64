@@ -5767,6 +5767,7 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_BUILDER_VALUE conv;
     DSL_BUILDER_VALUE batch_norm;
     DSL_BUILDER_VALUE relu;
+    DSL_BUILDER_VALUE composite_relu;
     DSL_BUILDER_VALUE conv_kids[3];
     DSL_BUILDER_VALUE bn_kids[5];
     DSL_BUILDER_VALUE unary_kid[1];
@@ -5788,6 +5789,7 @@ Check_FHE_SYNC3_Plan_Image(void)
     };
     DSL_IR_VALUE_RECORD conv_value;
     DSL_IR_VALUE_RECORD relu_value;
+    DSL_IR_VALUE_RECORD composite_relu_value;
     DSL_PU_SOURCE_IDENTITY_RECORD pu_identity;
     DSL_FHE_COMPILATION_CONFIG_RECORD config;
     DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encrypted;
@@ -5799,14 +5801,25 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_FHE_CONVERSION_DISPOSITION_RECORD disposition;
     DSL_FHE_CONVERSION_DISPOSITION_INFO disposition_info;
     DSL_FHE_PLAN_IMAGE_HEADER header;
+    DSL_FHE_APPROX_PROFILE_IMAGE_HEADER profile_header;
+    DSL_FHE_COMPOSITE_PROFILE_RECORD composite_profile;
+    DSL_FHE_APPROX_STAGE_RECORD composite_stages[3];
+    DSL_FHE_APPROX_ASSOCIATION_RECORD composite_association;
+    DSL_FHE_CONTEXT_RANGE_RECORD context_range;
     DSL_TENSOR_TCON_CREATE_INFO tcon_info;
     DSL_FHE_APPROXIMATION_CONTRACT_ID approximation_id;
     DSL_FHE_CKKS_VALUE_STATE_ID conv_state_id;
     DSL_FHE_CKKS_VALUE_STATE_ID relu_state_id;
+    DSL_FHE_CKKS_VALUE_STATE_ID composite_relu_state_id;
+    DSL_FHE_COMPOSITE_PROFILE_ID composite_profile_id;
+    DSL_FHE_CONVERSION_DISPOSITION_ID composite_disposition_id;
+    DSL_FHE_CONTEXT_RANGE_ID context_range_id;
     DSL_FHE_BN_FOLD_PROVENANCE_ID bn_fold_id;
     DSL_FHE_CONFIG_ID config_id;
+    DSL_FHE_CONFIG_ID alternate_config_id;
     DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encrypted_id;
     TCON_IDX coefficients_tcon;
+    TCON_IDX composite_coefficients_tcon[3];
     TCON_IDX folded_weight_tcon;
     TCON_IDX folded_bias_tcon;
     TCON_IDX range_min_tcon;
@@ -5816,6 +5829,7 @@ Check_FHE_SYNC3_Plan_Image(void)
     TY_IDX conv_weight_ty;
     TY_IDX channel_parameter_ty;
     TY_IDX coefficient_ty;
+    TY_IDX composite_coefficient_ty[3];
     DSL_DOMAIN_ID cnn_id;
     DSL_DOMAIN_ID common_id;
     DSL_DOMAIN_ID fhe_cnn_id;
@@ -5842,7 +5856,12 @@ Check_FHE_SYNC3_Plan_Image(void)
          sizeof(DSL_FHE_CONVERSION_DISPOSITION_RECORD) == 56 &&
          sizeof(DSL_FHE_APPROXIMATION_CONTRACT_RECORD) == 64 &&
          sizeof(DSL_FHE_CKKS_VALUE_STATE_RECORD) == 64 &&
-         sizeof(DSL_FHE_BN_FOLD_PROVENANCE_RECORD) == 64,
+         sizeof(DSL_FHE_BN_FOLD_PROVENANCE_RECORD) == 64 &&
+         sizeof(DSL_FHE_APPROX_PROFILE_IMAGE_HEADER) == 64 &&
+         sizeof(DSL_FHE_COMPOSITE_PROFILE_RECORD) == 80 &&
+         sizeof(DSL_FHE_APPROX_STAGE_RECORD) == 80 &&
+         sizeof(DSL_FHE_APPROX_ASSOCIATION_RECORD) == 32 &&
+         sizeof(DSL_FHE_CONTEXT_RANGE_RECORD) == 64,
          "fixed record sizes");
     if (!DSL_Builder_Begin_Program())
         return 1;
@@ -5908,6 +5927,19 @@ Check_FHE_SYNC3_Plan_Image(void)
     coefficient_ty = DSL_Builder_Create_Tensor_Type_Core
                          ("fhe_sync3_coeff_f32_4", MTYPE_To_TY(MTYPE_F4),
                           &coefficient_core);
+    const char *composite_coefficient_shape[3] = { "[8]", "[16]", "[14]" };
+    const char *composite_coefficient_name[3] = {
+        "fhe_sync_c_coeff_f32_8",
+        "fhe_sync_c_coeff_f32_16",
+        "fhe_sync_c_coeff_f32_14"
+    };
+    for (UINT32 i = 0; i < 3; ++i) {
+        coefficient_core.logical_shape = composite_coefficient_shape[i];
+        composite_coefficient_ty[i] = DSL_Builder_Create_Tensor_Type_Core
+                                          (composite_coefficient_name[i],
+                                           MTYPE_To_TY(MTYPE_F4),
+                                           &coefficient_core);
+    }
     pu = DSL_Builder_Create_Minimal_PU("fhe_sync3_plan");
     file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
     memset(&source_identity, 0, sizeof(source_identity));
@@ -5920,6 +5952,12 @@ Check_FHE_SYNC3_Plan_Image(void)
          channel_parameter_ty != TY_IDX_ZERO &&
          coefficient_ty != TY_IDX_ZERO &&
          TY_tensor_seal(coefficient_ty) &&
+         composite_coefficient_ty[0] != TY_IDX_ZERO &&
+         composite_coefficient_ty[1] != TY_IDX_ZERO &&
+         composite_coefficient_ty[2] != TY_IDX_ZERO &&
+         TY_tensor_seal(composite_coefficient_ty[0]) &&
+         TY_tensor_seal(composite_coefficient_ty[1]) &&
+         TY_tensor_seal(composite_coefficient_ty[2]) &&
          pu != NULL && file_id != 0 && cnn_id != DSL_DOMAIN_INVALID_ID &&
          DSL_Builder_Set_PU_Source_Identity(pu, &source_identity),
          "program, tensor types, and source identity");
@@ -5948,6 +5986,11 @@ Check_FHE_SYNC3_Plan_Image(void)
                (DSL_Opcode_Find(DSL_Domain_Find("common"),
                                 "common.relu", 2),
                 2, unary_kid, 1, NULL, 0, "relu_result", tensor_ty);
+    composite_relu = DSL_Builder_Create_Operator_With_Result
+               (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                "common.relu", 2),
+                2, unary_kid, 1, NULL, 0, "composite_relu_result",
+                tensor_ty);
     memset(&source_position, 0, sizeof(source_position));
     source_position.file_id = file_id;
     source_position.line = __LINE__ + 1;
@@ -5955,7 +5998,8 @@ Check_FHE_SYNC3_Plan_Image(void)
     source_position.statement_begin = 1;
     positions_set = input != NULL && conv_weight != NULL &&
                     channel_parameter != NULL && conv != NULL &&
-                    batch_norm != NULL && relu != NULL;
+                    batch_norm != NULL && relu != NULL &&
+                    composite_relu != NULL;
     if (positions_set) {
         positions_set = DSL_Builder_Set_Value_Source_Position
                             (input, &source_position);
@@ -5979,17 +6023,23 @@ Check_FHE_SYNC3_Plan_Image(void)
         positions_set = positions_set &&
                         DSL_Builder_Set_Value_Source_Position
                             (relu, &source_position);
+        ++source_position.line;
+        positions_set = positions_set &&
+                        DSL_Builder_Set_Value_Source_Position
+                            (composite_relu, &source_position);
     }
     FHE_SYNC3_CHECK
         (input != NULL && conv_weight != NULL && channel_parameter != NULL &&
          conv != NULL && batch_norm != NULL && relu != NULL &&
+         composite_relu != NULL &&
          positions_set &&
          DSL_Builder_Append_PU_Value(pu, input) &&
          DSL_Builder_Append_PU_Value(pu, conv_weight) &&
          DSL_Builder_Append_PU_Value(pu, channel_parameter) &&
          DSL_Builder_Append_PU_Value(pu, conv) &&
          DSL_Builder_Append_PU_Value(pu, batch_norm) &&
-         DSL_Builder_Append_PU_Value(pu, relu),
+         DSL_Builder_Append_PU_Value(pu, relu) &&
+         DSL_Builder_Append_PU_Value(pu, composite_relu),
          "source-semantic CNN values");
 
     FHE_SYNC3_CHECK
@@ -5997,6 +6047,9 @@ Check_FHE_SYNC3_Plan_Image(void)
                                 &conv_value) &&
          DSL_IR_Image_Get_Value(DSL_Builder_Get_Value_Image_Id(relu),
                                 &relu_value) &&
+         DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(composite_relu),
+              &composite_relu_value) &&
          DSL_Call_Image_Find_PU_Identity(PU_Info_proc_sym(pu), &pu_identity),
          "stable source image identities");
 
@@ -6013,6 +6066,9 @@ Check_FHE_SYNC3_Plan_Image(void)
     config.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
     config.backend_policy = DSL_FHE_BACKEND_OPENFHE;
     config_id = DSL_FHE_Intern_Compilation_Config(&config);
+    config.ring_dimension = 32768;
+    alternate_config_id = DSL_FHE_Intern_Compilation_Config(&config);
+    config.ring_dimension = 65536;
     DSL_FHE_Encryption_Descriptor_Record_Init(&encrypted);
     encrypted.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
     encrypted.scheme = DSL_FHE_SCHEME_CKKS;
@@ -6023,7 +6079,8 @@ Check_FHE_SYNC3_Plan_Image(void)
     encrypted.packing_policy = DSL_FHE_PACKING_AUTO;
     encrypted_id = DSL_FHE_Intern_Encryption_Descriptor(&encrypted);
     FHE_SYNC3_CHECK
-        (config_id != 0 && encrypted_id != 0,
+        (config_id != 0 && alternate_config_id != 0 &&
+         alternate_config_id != config_id && encrypted_id != 0,
          "FHE configuration and encryption descriptor");
 
     memset(&tcon_info, 0, sizeof(tcon_info));
@@ -6040,9 +6097,100 @@ Check_FHE_SYNC3_Plan_Image(void)
          "coefficient and folded tensor constants");
     folded_weight_tcon = coefficients_tcon;
     folded_bias_tcon = coefficients_tcon;
+    const UINT64 composite_coefficient_count[3] = { 8, 16, 14 };
+    for (UINT32 i = 0; i < 3; ++i) {
+        tcon_info.descriptor_ty = composite_coefficient_ty[i];
+        tcon_info.element_count = composite_coefficient_count[i];
+        tcon_info.logical_bytes = composite_coefficient_count[i] * 4;
+        FHE_SYNC3_CHECK
+            (DSL_Tensor_TCON_Create_Zero
+                 (&tcon_info, &composite_coefficients_tcon[i], NULL),
+             "composite coefficient tensor constant");
+    }
     range_min_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, -3.0));
     range_max_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 3.0));
     max_error_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 0.01));
+
+    DSL_FHE_Composite_Profile_Record_Init(&composite_profile);
+    composite_profile.config_id = config_id;
+    composite_profile.profile_name =
+        Save_Str("ace.chebyshev.sign.7x15x13.depth11");
+    composite_profile.profile_version = 1;
+    composite_profile.reconstruction =
+        DSL_FHE_RECONSTRUCTION_RELU_FROM_NORMALIZED_SIGN;
+    composite_profile.total_multiplicative_depth = 11;
+    composite_profile.normalization_policy =
+        DSL_FHE_NORMALIZATION_POSITIVE_CONTEXT_BOUND;
+    composite_profile.pre_refresh_policy = DSL_FHE_PRE_REFRESH_REQUIRED;
+    composite_profile.source_revision = Save_Str("ace-test-revision");
+    composite_profile.manifest_sha256 = Save_Str
+        ("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    composite_profile.stage_count = 3;
+    const UINT32 composite_degrees[3] = { 7, 15, 13 };
+    for (UINT32 i = 0; i < 3; ++i) {
+        DSL_FHE_Approx_Stage_Record_Init(&composite_stages[i]);
+        composite_stages[i].approximation_family =
+            DSL_FHE_APPROXIMATION_CHEBYSHEV;
+        composite_stages[i].basis = DSL_FHE_APPROX_BASIS_CHEBYSHEV;
+        composite_stages[i].degree = composite_degrees[i];
+        composite_stages[i].evaluation_scheme =
+            DSL_FHE_APPROX_EVAL_CLENSHAW;
+        composite_stages[i].required_input_value_class =
+            DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+        composite_stages[i].input_scale_policy =
+            DSL_FHE_APPROX_INPUT_SCALE_PROFILE_NORMALIZED;
+        composite_stages[i].input_level_policy =
+            DSL_FHE_APPROX_LEVEL_ANY_SUFFICIENT;
+        composite_stages[i].level_consumption = i == 0 ? 3 : 4;
+        composite_stages[i].output_scale_policy =
+            DSL_FHE_APPROX_OUTPUT_SCALE_PRESERVE_INPUT;
+        composite_stages[i].output_component_policy =
+            DSL_FHE_APPROX_COMPONENT_RELINEARIZED_TWO;
+        composite_stages[i].minimum_precision_bits = 30;
+        composite_stages[i].coefficient_tensor_tcon =
+            composite_coefficients_tcon[i];
+        composite_stages[i].coefficient_sha256 = Save_Str
+            (i == 0 ?
+             "1111111111111111111111111111111111111111111111111111111111111111" :
+             i == 1 ?
+             "2222222222222222222222222222222222222222222222222222222222222222" :
+             "3333333333333333333333333333333333333333333333333333333333333333");
+    }
+    ++composite_profile.total_multiplicative_depth;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Approx_Profile_Intern_Complete
+             (&composite_profile, composite_stages, 3) == 0 &&
+         DSL_FHE_Approx_Profile_Count() == 0 &&
+         DSL_FHE_Approx_Stage_Count() == 0,
+         "invalid profile depth rejects before atomic insertion");
+    --composite_profile.total_multiplicative_depth;
+    composite_profile_id = DSL_FHE_Approx_Profile_Intern_Complete
+                               (&composite_profile, composite_stages, 3);
+    FHE_SYNC3_CHECK
+        (composite_profile_id != 0 &&
+         DSL_FHE_Approx_Profile_Intern_Complete
+             (&composite_profile, composite_stages, 3) ==
+                 composite_profile_id,
+         "atomic composite profile and ordered-stage interning");
+    composite_profile.config_id = alternate_config_id;
+    DSL_FHE_COMPOSITE_PROFILE_ID alternate_profile_id =
+        DSL_FHE_Approx_Profile_Intern_Complete
+            (&composite_profile, composite_stages, 3);
+    DSL_FHE_COMPOSITE_PROFILE_RECORD found_profile;
+    FHE_SYNC3_CHECK
+        (alternate_profile_id != 0 &&
+         alternate_profile_id != composite_profile_id &&
+         DSL_FHE_Approx_Profile_Find
+             (config_id, "ace.chebyshev.sign.7x15x13.depth11", 1,
+              &found_profile) &&
+         found_profile.id == composite_profile_id &&
+         DSL_FHE_Approx_Profile_Find
+             (alternate_config_id,
+              "ace.chebyshev.sign.7x15x13.depth11", 1,
+              &found_profile) &&
+         found_profile.id == alternate_profile_id,
+         "same profile name and version coexist across configurations");
+    composite_profile.config_id = config_id;
 
     DSL_FHE_Approximation_Contract_Record_Init(&approximation);
     approximation.config_id = config_id;
@@ -6089,6 +6237,11 @@ Check_FHE_SYNC3_Plan_Image(void)
     relu_state_id =
         DSL_Builder_Bind_FHE_Value_CKKS_State(relu, &ckks_info);
     FHE_SYNC3_CHECK(relu_state_id != 0, "ReLU CKKS pending state");
+    composite_relu_state_id =
+        DSL_Builder_Bind_FHE_Value_CKKS_State(composite_relu, &ckks_info);
+    FHE_SYNC3_CHECK
+        (composite_relu_state_id != 0,
+         "composite ReLU CKKS pending state");
 
     memset(&bn_fold_info, 0, sizeof(bn_fold_info));
     bn_fold_info.context_pu_identity_id = pu_identity.id;
@@ -6127,13 +6280,63 @@ Check_FHE_SYNC3_Plan_Image(void)
              (relu, &disposition_info) != 0,
          "ReLU approximation disposition");
 
+    DSL_FHE_Conversion_Disposition_Record_Init(&disposition);
+    disposition.source_node_id = composite_relu_value.producer_node_id;
+    disposition.result_value_id = composite_relu_value.id;
+    disposition.disposition =
+        DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION;
+    disposition.owner_pu_st = PU_Info_proc_sym(pu);
+    disposition.approximation_contract_id = composite_profile_id;
+    disposition.result_ckks_value_state_id = composite_relu_state_id;
+    disposition.flags = DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Plan_Add_Conversion_Disposition(&disposition) == 0,
+         "ordinary disposition API rejects unassociated composite row");
+    composite_disposition_id =
+        DSL_FHE_Plan_Add_Composite_Disposition
+            (&disposition, composite_profile_id);
+    FHE_SYNC3_CHECK
+        (composite_disposition_id != 0 &&
+         DSL_FHE_Approx_Association_Find
+             (composite_disposition_id, &composite_association) &&
+         composite_association.source_relu_value_id ==
+             composite_relu_value.id,
+         "atomic composite disposition association");
+
+    DSL_FHE_Context_Range_Record_Init(&context_range);
+    context_range.profile_id = composite_profile_id;
+    context_range.source_relu_value_id = composite_relu_value.id;
+    context_range.context_pu_identity_id = pu_identity.id;
+    context_range.owner_pu_st = PU_Info_proc_sym(pu);
+    context_range.positive_bound_tcon = range_max_tcon;
+    context_range.observed_min_tcon = range_min_tcon;
+    context_range.observed_max_tcon = range_max_tcon;
+    context_range.out_of_range_policy = DSL_FHE_CONTEXT_RANGE_REJECT;
+    context_range.provenance = Save_Str("fhe.sync-c.root-range.v1");
+    context_range_id =
+        DSL_FHE_Approx_Profile_Bind_Context_Range(&context_range);
+    FHE_SYNC3_CHECK
+        (context_range_id != 0 &&
+         DSL_FHE_Context_Range_Find
+             (composite_profile_id, composite_relu_value.id,
+              pu_identity.id, 0, &context_range) &&
+         DSL_FHE_Approx_Profile_Image_Validate(stderr),
+         "root composite ReLU context range");
+
     DSL_FHE_Plan_Image_Get_Header(&header);
     FHE_SYNC3_CHECK
-        (header.disposition_count == 2 && header.approximation_count == 1 &&
-         header.ckks_value_state_count == 2 && header.bn_fold_count == 1 &&
+        (header.disposition_count == 3 && header.approximation_count == 1 &&
+         header.ckks_value_state_count == 3 && header.bn_fold_count == 1 &&
          DSL_FHE_Plan_Image_Has_Records() &&
          DSL_FHE_Plan_Image_Validate(stderr),
          "complete planning image validates");
+    DSL_FHE_Approx_Profile_Image_Get_Header(&profile_header);
+    FHE_SYNC3_CHECK
+        (profile_header.profile_count == 2 &&
+         profile_header.stage_count == 6 &&
+         profile_header.association_count == 1 &&
+         profile_header.context_range_count == 1,
+         "composite approximation image counts");
     FHE_SYNC3_CHECK
         (DSL_FHE_Plan_Find_Conversion_Disposition
              (conv_value.producer_node_id, &disposition) &&
@@ -6151,6 +6354,116 @@ Check_FHE_SYNC3_Plan_Image(void)
     FHE_SYNC3_CHECK
         (DSL_FHE_Plan_Add_CKKS_Value_State(&ckks_state) == 0,
          "unknown CKKS pending action rejected");
+
+    UINT64 profile_image_size = DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE +
+        (UINT64)profile_header.profile_count *
+            DSL_FHE_COMPOSITE_PROFILE_RECORD_SIZE +
+        (UINT64)profile_header.stage_count *
+            DSL_FHE_APPROX_STAGE_RECORD_SIZE +
+        (UINT64)profile_header.association_count *
+            DSL_FHE_APPROX_ASSOCIATION_RECORD_SIZE +
+        (UINT64)profile_header.context_range_count *
+            DSL_FHE_CONTEXT_RANGE_RECORD_SIZE;
+    unsigned char *profile_image_bytes =
+        new unsigned char[profile_image_size];
+    unsigned char *profile_cursor = profile_image_bytes;
+    memcpy(profile_cursor, &profile_header, sizeof(profile_header));
+    profile_cursor += sizeof(profile_header);
+    for (UINT32 i = 1; i <= profile_header.profile_count; ++i) {
+        DSL_FHE_Approx_Profile_Get(i, &composite_profile);
+        memcpy(profile_cursor, &composite_profile,
+               sizeof(composite_profile));
+        profile_cursor += sizeof(composite_profile);
+    }
+    for (UINT32 i = 1; i <= profile_header.stage_count; ++i) {
+        DSL_FHE_Approx_Stage_Get(i, &composite_stages[0]);
+        memcpy(profile_cursor, &composite_stages[0],
+               sizeof(composite_stages[0]));
+        profile_cursor += sizeof(composite_stages[0]);
+    }
+    for (UINT32 i = 1; i <= profile_header.association_count; ++i) {
+        DSL_FHE_Approx_Association_Get(i, &composite_association);
+        memcpy(profile_cursor, &composite_association,
+               sizeof(composite_association));
+        profile_cursor += sizeof(composite_association);
+    }
+    for (UINT32 i = 1; i <= profile_header.context_range_count; ++i) {
+        DSL_FHE_Context_Range_Get(i, &context_range);
+        memcpy(profile_cursor, &context_range, sizeof(context_range));
+        profile_cursor += sizeof(context_range);
+    }
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size - 1, NULL) &&
+         !DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size + 1, NULL),
+         "composite profile truncated and trailing images rejected");
+    DSL_FHE_COMPOSITE_PROFILE_RECORD *mapped_profile =
+        (DSL_FHE_COMPOSITE_PROFILE_RECORD *)
+            (profile_image_bytes + DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE);
+    UINT32 saved_total_depth = mapped_profile->total_multiplicative_depth;
+    mapped_profile->total_multiplicative_depth = saved_total_depth + 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "composite profile and stage depth mismatch rejected");
+    mapped_profile->total_multiplicative_depth = saved_total_depth;
+    DSL_FHE_APPROX_STAGE_RECORD *mapped_stage =
+        (DSL_FHE_APPROX_STAGE_RECORD *)
+            (profile_image_bytes + DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE +
+             profile_header.profile_count *
+                 DSL_FHE_COMPOSITE_PROFILE_RECORD_SIZE);
+    UINT32 saved_degree = mapped_stage->degree;
+    mapped_stage->degree = saved_degree - 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "stage coefficient count and degree mismatch rejected");
+    mapped_stage->degree = saved_degree;
+    UINT32 saved_stage_ordinal = mapped_stage->stage_ordinal;
+    mapped_stage->stage_ordinal = 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "non-dense stage ordinal rejected");
+    mapped_stage->stage_ordinal = saved_stage_ordinal;
+    UINT32 saved_evaluation_scheme = mapped_stage->evaluation_scheme;
+    mapped_stage->evaluation_scheme = DSL_FHE_APPROX_EVAL_UNKNOWN;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "unresolved stage evaluator rejected");
+    mapped_stage->evaluation_scheme = saved_evaluation_scheme;
+    UINT32 saved_input_scale_policy = mapped_stage->input_scale_policy;
+    mapped_stage->input_scale_policy = DSL_FHE_APPROX_SCALE_EXPLICIT;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "unresolved explicit stage scale rejected");
+    mapped_stage->input_scale_policy = saved_input_scale_policy;
+    DSL_FHE_CONTEXT_RANGE_RECORD *mapped_context =
+        (DSL_FHE_CONTEXT_RANGE_RECORD *)
+            (profile_image_bytes + DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE +
+             profile_header.profile_count *
+                 DSL_FHE_COMPOSITE_PROFILE_RECORD_SIZE +
+             profile_header.stage_count * DSL_FHE_APPROX_STAGE_RECORD_SIZE +
+             profile_header.association_count *
+                 DSL_FHE_APPROX_ASSOCIATION_RECORD_SIZE);
+    DSL_CALLSITE_METADATA_ID saved_context_callsite =
+        mapped_context->context_callsite_id;
+    mapped_context->context_callsite_id = DSL_Call_Image_Callsite_Count() + 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "invalid non-root context callsite rejected");
+    mapped_context->context_callsite_id = saved_context_callsite;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Approx_Profile_Count() == 2 &&
+         DSL_FHE_Approx_Stage_Count() == 6 &&
+         DSL_FHE_Approx_Association_Count() == 1 &&
+         DSL_FHE_Context_Range_Count() == 1 &&
+         DSL_FHE_Approx_Profile_Image_Validate(NULL),
+         "rejected mapped profiles leave managed tables unchanged");
 
     UINT64 image_size = DSL_FHE_PLAN_IMAGE_HEADER_SIZE +
         (UINT64)header.disposition_count *
@@ -6209,12 +6522,22 @@ Check_FHE_SYNC3_Plan_Image(void)
     mapped_disposition->result_value_id = saved_result_value_id;
     FHE_SYNC3_CHECK
         (DSL_FHE_Plan_Image_Load_Mapped(image_bytes, image_size, stderr) &&
-         DSL_FHE_Plan_Conversion_Disposition_Count() == 2 &&
+         DSL_FHE_Plan_Conversion_Disposition_Count() == 3 &&
          DSL_FHE_Plan_Approximation_Contract_Count() == 1 &&
-         DSL_FHE_Plan_CKKS_Value_State_Count() == 2 &&
+         DSL_FHE_Plan_CKKS_Value_State_Count() == 3 &&
          DSL_FHE_Plan_BN_Fold_Provenance_Count() == 1,
          "mapped planning image copied into managed tables");
     delete [] image_bytes;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, stderr) &&
+         DSL_FHE_Approx_Profile_Count() == 2 &&
+         DSL_FHE_Approx_Stage_Count() == 6 &&
+         DSL_FHE_Approx_Association_Count() == 1 &&
+         DSL_FHE_Context_Range_Count() == 1 &&
+         DSL_FHE_Plan_Image_Validate(stderr),
+         "mapped composite profile copied and cross-validated");
+    delete [] profile_image_bytes;
 
     char diagnostic[4096];
     memset(&verify, 0, sizeof(verify));
@@ -6235,6 +6558,7 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_FHE_Plan_Image_Reset();
     FHE_SYNC3_CHECK
         (!DSL_FHE_Plan_Image_Has_Records() &&
+         !DSL_FHE_Approx_Profile_Image_Has_Records() &&
          DSL_FHE_Plan_Conversion_Disposition_Count() == 0 &&
          DSL_FHE_Plan_Image_Validate(NULL),
          "planning image reset");
