@@ -592,6 +592,33 @@ class WhirlBuilder:
             ) from exc
         return CallHandle(call)
 
+    def set_pu_call_argument_role(
+        self,
+        call: CallHandle,
+        actual_ordinal: int,
+        callee_formal_ordinal: int,
+        semantic_role: str,
+    ) -> None:
+        try:
+            ok = self._backend.set_pu_call_argument_role(
+                call.value,
+                actual_ordinal,
+                callee_formal_ordinal,
+                semantic_role,
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "failed to set program unit call argument role "
+                f"call=<{call.value}> actual={actual_ordinal} "
+                f"formal={callee_formal_ordinal} role={semantic_role}"
+            ) from exc
+        if not ok:
+            raise RuntimeError(
+                "failed to set program unit call argument role "
+                f"call=<{call.value}> actual={actual_ordinal} "
+                f"formal={callee_formal_ordinal} role={semantic_role}"
+            )
+
     def get_pu_call_result(
         self,
         call: CallHandle,
@@ -823,6 +850,30 @@ class WhirlBuilder:
         value_handle = ValueHandle(
             self._backend.create_tensor_constant(
                 name,
+                dtype,
+                rank,
+                logical_shape,
+                value_kind,
+                value,
+            )
+        )
+        self._value_types[value_handle.value] = tensor_type
+        return value_handle
+
+    def typed_tensor_constant(
+        self,
+        name: str,
+        tensor_type: TensorTypeHandle,
+        dtype: str,
+        rank: int,
+        logical_shape: str,
+        value_kind: str,
+        value: str,
+    ) -> ValueHandle:
+        value_handle = ValueHandle(
+            self._backend.create_typed_tensor_constant(
+                name,
+                tensor_type.value,
                 dtype,
                 rank,
                 logical_shape,

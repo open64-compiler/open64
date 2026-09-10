@@ -2990,6 +2990,9 @@ class WhirlExportInterpreter:
 
         model_name = self._model_name(model)
         entry_name = self._model_class_name(model)
+        bn_fold_certification = bool(
+            getattr(model, "open64_bn_fold_certification_no_relu", False)
+        )
         class_definitions, class_instances = collect_python_model_classes(model)
         definitions = {
             definition.class_name: definition
@@ -3173,8 +3176,6 @@ class WhirlExportInterpreter:
                 if record.handle == graph_value.handle.value:
                     merged_metadata = dict(record.metadata)
                     merged_metadata.update(source_metadata)
-                    if record.value_kind == "external_data":
-                        merged_metadata["storage_checksum"] = ""
                     record.metadata.update(source_metadata)
                     self.builder().attach_value_metadata(
                         graph_value.handle,
@@ -3297,6 +3298,32 @@ class WhirlExportInterpreter:
                     f"{path}.downsample.1.running_var",
                 ])
             return targets
+
+        def block_argument_roles(has_downsample: bool) -> List[str]:
+            roles = [
+                "cnn.basic_block.conv1.weight",
+                "cnn.basic_block.conv1.bias",
+                "cnn.basic_block.bn1.scale",
+                "cnn.basic_block.bn1.bias",
+                "cnn.basic_block.bn1.mean",
+                "cnn.basic_block.bn1.variance",
+                "cnn.basic_block.conv2.weight",
+                "cnn.basic_block.conv2.bias",
+                "cnn.basic_block.bn2.scale",
+                "cnn.basic_block.bn2.bias",
+                "cnn.basic_block.bn2.mean",
+                "cnn.basic_block.bn2.variance",
+            ]
+            if has_downsample:
+                roles.extend([
+                    "cnn.basic_block.downsample.conv.weight",
+                    "cnn.basic_block.downsample.conv.bias",
+                    "cnn.basic_block.downsample.bn.scale",
+                    "cnn.basic_block.downsample.bn.bias",
+                    "cnn.basic_block.downsample.bn.mean",
+                    "cnn.basic_block.downsample.bn.variance",
+                ])
+            return roles
 
         def define_block_clone(
             path: str,
@@ -3457,20 +3484,22 @@ class WhirlExportInterpreter:
                 region_inputs,
                 region_values,
             )
-            relu1 = emit(
-                clone_pu,
-                common.RELU,
-                [bn1],
-                {},
-                f"{suffix}_relu1",
-                output_ty,
-                identity,
-                "relu",
-                block_line + 1,
-                block_region,
-                region_inputs,
-                region_values,
-            )
+            relu1 = bn1
+            if not bn_fold_certification:
+                relu1 = emit(
+                    clone_pu,
+                    common.RELU,
+                    [bn1],
+                    {},
+                    f"{suffix}_relu1",
+                    output_ty,
+                    identity,
+                    "relu",
+                    block_line + 1,
+                    block_region,
+                    region_inputs,
+                    region_values,
+                )
             conv2 = emit(
                 clone_pu,
                 cnn.CONV2D,
@@ -3513,20 +3542,22 @@ class WhirlExportInterpreter:
                 region_inputs,
                 region_values,
             )
-            relu2 = emit(
-                clone_pu,
-                common.RELU,
-                [residual],
-                {},
-                f"{suffix}_block_output",
-                output_ty,
-                identity,
-                "relu",
-                block_line + 1,
-                block_region,
-                region_inputs,
-                region_values,
-            )
+            relu2 = residual
+            if not bn_fold_certification:
+                relu2 = emit(
+                    clone_pu,
+                    common.RELU,
+                    [residual],
+                    {},
+                    f"{suffix}_block_output",
+                    output_ty,
+                    identity,
+                    "relu",
+                    block_line + 1,
+                    block_region,
+                    region_inputs,
+                    region_values,
+                )
             self.builder().declare_region_value(
                 block_region,
                 relu2.handle,
@@ -3598,15 +3629,59 @@ class WhirlExportInterpreter:
             "bn1",
             entry_line + 1,
         )
-        current = emit_entry_op(
-            common.RELU,
-            [current],
-            {},
-            "stem_relu",
-            (1, 16, 32, 32),
-            "relu",
-            entry_line + 1,
-        )
+        if bn_fold_certification:
+            zero_type = self.builder().value_type(current.handle)
+            zero_handle = self.builder().typed_tensor_constant(
+                "stem_bn_identity_zero",
+                zero_type,
+                "float32",
+                4,
+                "[1,16,32,32]",
+                "implicit_zero",
+                "0",
+            )
+            self.builder().set_value_source_position(
+                zero_handle,
+                self.builder().register_source_file(
+                    entry_pu, entry_identity["source_file"]
+                ),
+                entry_line + 1,
+            )
+            zero_metadata = self._multi_pu_value_metadata(
+                entry_identity,
+                "stem_bn_identity_zero",
+                "activation",
+                "bn1_identity",
+            )
+            self.builder().attach_value_metadata(zero_handle, zero_metadata)
+            self.builder().append_program_unit_value(entry_pu, zero_handle)
+            value_record(
+                "stem_bn_identity_zero",
+                zero_handle,
+                zero_type,
+                "implicit_zero",
+                zero_metadata,
+            )
+            zero = _GraphValue(zero_handle, "stem_bn_identity_zero")
+            current = emit_entry_op(
+                common.ADD,
+                [current, zero],
+                {"attr.broadcast_rule": "none"},
+                "stem_bn_identity",
+                (1, 16, 32, 32),
+                "bn1_identity",
+                entry_line + 1,
+            )
+        else:
+            current = emit_entry_op(
+                common.RELU,
+                [current],
+                {},
+                "stem_relu",
+                (1, 16, 32, 32),
+                "relu",
+                entry_line + 1,
+            )
         block_plan = [
             ("layer1.0", (1, 16, 32, 32), (1, 16, 32, 32), "1,1", False),
             ("layer1.1", (1, 16, 32, 32), (1, 16, 32, 32), "1,1", False),
@@ -3661,6 +3736,17 @@ class WhirlExportInterpreter:
                 entry_file,
                 entry_line + 2 + call_ordinal,
             )
+            argument_roles = [
+                "cnn.basic_block.input",
+                *block_argument_roles(downsample),
+            ]
+            for argument_ordinal, semantic_role in enumerate(argument_roles):
+                self.builder().set_pu_call_argument_role(
+                    call,
+                    argument_ordinal,
+                    argument_ordinal,
+                    semantic_role,
+                )
             call_result = self.builder().get_pu_call_result(
                 call,
                 0,
@@ -6087,22 +6173,31 @@ class WhirlExportInterpreter:
                     value_kind = "implicit_zero"
                     value_text = "0"
 
-        handle = self.builder().tensor_constant(
+        type_name = f"{name}_type"
+        descriptor = {
+            "kind": "tensor",
+            "dtype": dtype,
+            "rank": rank,
+            "logical_shape": logical_shape,
+            "traits": parameter_role,
+            "layout": "C" if rank == 1 else "contiguous",
+            "sharding": "replicated",
+            "placement": "side_file",
+            "memory": "external_data",
+            "quantization": "none",
+        }
+        tensor_type = self.builder().tensor_type(
+            type_name, dtype, rank, logical_shape, descriptor
+        )
+        handle = self.builder().typed_tensor_constant(
             name,
+            tensor_type,
             dtype,
             rank,
             logical_shape,
             value_kind,
             value_text,
         )
-        type_name = f"{name}_type"
-        tensor_type = self.builder().value_type(handle)
-        descriptor = {
-            "kind": "tensor",
-            "dtype": dtype,
-            "rank": rank,
-            "logical_shape": logical_shape,
-        }
         tensor_types.append(
             WhirlTensorTypeRecord(
                 name=type_name,
@@ -6169,7 +6264,7 @@ class WhirlExportInterpreter:
             target,
             byte_offset,
             byte_length,
-            "",
+            checksum,
             self._parameter_layout(tensor_role, len(shape)),
         )
         metadata = dict(handle.metadata)

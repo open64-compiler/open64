@@ -137,6 +137,14 @@ extern Open64_DSC_Handle Open64_DSC_Create_Tensor_Constant
                                  const char *logical_shape,
                                  const char *value_kind,
                                  const char *value);
+extern Open64_DSC_Handle Open64_DSC_Create_Typed_Tensor_Constant
+                                (const char *name,
+                                 Open64_DSC_Handle tensor_type,
+                                 const char *dtype,
+                                 unsigned int rank,
+                                 const char *logical_shape,
+                                 const char *value_kind,
+                                 const char *value);
 extern Open64_DSC_Handle Open64_DSC_Create_Model_Input
                                 (const char *name,
                                  Open64_DSC_Handle tensor_type,
@@ -222,6 +230,11 @@ extern Open64_DSC_Handle Open64_DSC_Create_PU_Call
                                  const char *context_identity,
                                  unsigned int call_ordinal,
                                  const Open64_DSC_Source_Position *position);
+extern int Open64_DSC_Set_PU_Call_Argument_Role
+                                (Open64_DSC_Handle call,
+                                 unsigned int actual_ordinal,
+                                 unsigned int callee_formal_ordinal,
+                                 const char *semantic_role);
 extern Open64_DSC_Handle Open64_DSC_Get_PU_Call_Result
                                 (Open64_DSC_Handle call,
                                  unsigned int ordinal);

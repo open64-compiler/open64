@@ -116,6 +116,24 @@ def create_tensor_constant(
     )
 
 
+def create_typed_tensor_constant(
+    name: str,
+    tensor_type: int,
+    dtype: str,
+    rank: int,
+    logical_shape: str,
+    value_kind: str,
+    value: str,
+) -> int:
+    if tensor_type not in _objects:
+        raise RuntimeError("failed to create typed tensor constant")
+    handle = create_tensor_constant(
+        name, dtype, rank, logical_shape, value_kind, value
+    )
+    _objects[handle]["tensor_type"] = tensor_type
+    return handle
+
+
 def create_model_input(name: str, tensor_type: int, input_ordinal: int) -> int:
     if not name:
         raise RuntimeError("failed to create model input")
@@ -480,7 +498,32 @@ def create_pu_call(
         "source_position": _source_position(
             file_id, line, column, statement_begin, basic_block_begin
         ),
+        "argument_roles": {},
     })
+
+
+def set_pu_call_argument_role(
+    call: int,
+    actual_ordinal: int,
+    callee_formal_ordinal: int,
+    semantic_role: str,
+) -> bool:
+    if call not in _objects or _objects[call].get("kind") != "pu_call":
+        return False
+    record = dict(_objects[call])
+    arguments = record.get("arguments", [])
+    if actual_ordinal < 0 or actual_ordinal >= len(arguments):
+        return False
+    roles = dict(record.get("argument_roles", {}))
+    if actual_ordinal in roles:
+        return False
+    roles[actual_ordinal] = {
+        "callee_formal_ordinal": callee_formal_ordinal,
+        "semantic_role": semantic_role,
+    }
+    record["argument_roles"] = roles
+    _objects[call] = record
+    return True
 
 
 def get_pu_call_result(call: int, ordinal: int) -> int:
