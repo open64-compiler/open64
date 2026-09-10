@@ -213,6 +213,26 @@ Open64_DSC_Create_Tensor_Constant(const char *name,
                   value_kind, value);
     return (Open64_DSC_Handle) result;
 }
+
+Open64_DSC_Handle
+Open64_DSC_Create_Typed_Tensor_Constant
+        (const char *name,
+         Open64_DSC_Handle tensor_type,
+         const char *dtype,
+         unsigned int rank,
+         const char *logical_shape,
+         const char *value_kind,
+         const char *value)
+{
+    if (name == NULL || name[0] == '\0' || tensor_type == 0 ||
+        dtype == NULL || dtype[0] == '\0' || logical_shape == NULL ||
+        value_kind == NULL || value == NULL)
+        return 0;
+    Open64_DSC_Initialize_Context();
+    return (Open64_DSC_Handle)DSL_Builder_Create_Tensor_Constant
+               (name, (TY_IDX)tensor_type, dtype, rank, logical_shape,
+                value_kind, value);
+}
 Open64_DSC_Handle
 Open64_DSC_Create_Model_Input(const char *name,
                               Open64_DSC_Handle tensor_type,
@@ -628,6 +648,19 @@ Open64_DSC_Create_PU_Call
                 (DSL_BUILDER_VALUE *) arguments,
                 (UINT32) argument_count, result_names,
                 (UINT32) result_count, &callsite);
+}
+
+int
+Open64_DSC_Set_PU_Call_Argument_Role
+        (Open64_DSC_Handle call,
+         unsigned int actual_ordinal,
+         unsigned int callee_formal_ordinal,
+         const char *semantic_role)
+{
+    Open64_DSC_Initialize_Context();
+    return DSL_Builder_Set_PU_Call_Argument_Role
+               ((DSL_BUILDER_CALL) call, (UINT32) actual_ordinal,
+                (UINT32) callee_formal_ordinal, semantic_role) ? 1 : 0;
 }
 
 Open64_DSC_Handle

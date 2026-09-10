@@ -45,6 +45,18 @@ class WhirlBackend(Protocol):
     ) -> int:
         ...
 
+    def create_typed_tensor_constant(
+        self,
+        name: str,
+        tensor_type: int,
+        dtype: str,
+        rank: int,
+        logical_shape: str,
+        value_kind: str,
+        value: str,
+    ) -> int:
+        ...
+
     def create_model_input(
         self,
         name: str,
@@ -189,6 +201,15 @@ class WhirlBackend(Protocol):
         statement_begin: bool,
         basic_block_begin: bool,
     ) -> int:
+        ...
+
+    def set_pu_call_argument_role(
+        self,
+        call: int,
+        actual_ordinal: int,
+        callee_formal_ordinal: int,
+        semantic_role: str,
+    ) -> bool:
         ...
 
     def get_pu_call_result(self, call: int, ordinal: int) -> int:

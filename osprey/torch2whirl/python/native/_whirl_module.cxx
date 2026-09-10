@@ -219,6 +219,29 @@ Open64_DSC_Create_Tensor_Constant(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Create_Typed_Tensor_Constant(PyObject *self, PyObject *args)
+{
+    const char *name;
+    const char *dtype;
+    const char *logical_shape;
+    const char *value_kind;
+    const char *value;
+    unsigned long long tensor_type;
+    unsigned int rank;
+    Open64_DSC_Handle handle;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "sKsIsss:create_typed_tensor_constant",
+                          &name, &tensor_type, &dtype, &rank, &logical_shape,
+                          &value_kind, &value))
+        return NULL;
+    handle = ::Open64_DSC_Create_Typed_Tensor_Constant
+                 (name, (Open64_DSC_Handle)tensor_type, dtype, rank,
+                  logical_shape, value_kind, value);
+    return Open64_DSC_Handle_Result(handle, "create typed tensor constant");
+}
+
+static PyObject *
 Open64_DSC_Create_Model_Input(PyObject *self, PyObject *args)
 {
     const char *name;
@@ -908,6 +931,26 @@ Open64_DSC_Create_PU_Call(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+Open64_DSC_Set_PU_Call_Argument_Role(PyObject *self, PyObject *args)
+{
+    Open64_DSC_Handle call;
+    unsigned int actual_ordinal;
+    unsigned int callee_formal_ordinal;
+    const char *semantic_role;
+
+    (void) self;
+    if (!PyArg_ParseTuple(args, "KIIs:set_pu_call_argument_role", &call,
+                          &actual_ordinal, &callee_formal_ordinal,
+                          &semantic_role))
+        return NULL;
+    return Open64_DSC_Bool_Result
+               (Open64_DSC_Set_PU_Call_Argument_Role
+                    (call, actual_ordinal, callee_formal_ordinal,
+                     semantic_role),
+                "set program unit call argument role");
+}
+
+static PyObject *
 Open64_DSC_Get_PU_Call_Result(PyObject *self, PyObject *args)
 {
     Open64_DSC_Handle call;
@@ -1505,6 +1548,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         "Create a native tensor constant and return an opaque handle."
     },
     {
+        "create_typed_tensor_constant",
+        Open64_DSC_Create_Typed_Tensor_Constant,
+        METH_VARARGS,
+        "Create a native tensor constant with an opaque tensor type."
+    },
+    {
         "create_model_input",
         Open64_DSC_Create_Model_Input,
         METH_VARARGS,
@@ -1617,6 +1666,12 @@ static PyMethodDef Open64_DSC_Methods[] = {
         Open64_DSC_Create_PU_Call,
         METH_VARARGS,
         "Create an opaque inter-PU call."
+    },
+    {
+        "set_pu_call_argument_role",
+        Open64_DSC_Set_PU_Call_Argument_Role,
+        METH_VARARGS,
+        "Attach a structural semantic role to an opaque call argument."
     },
     {
         "get_pu_call_result",
