@@ -11,18 +11,18 @@ This document coordinates two Open64 workstreams:
   planning, runtime integration, and FHE-specific validation.
 
 It consolidates the architecture in
-`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`, the main-task
+`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`, the main-task
 implementation detail in `FHE-DSL-INTEGRATION-PLAN.md`, and the FHE-task plan
 in `FHE-WHIRL-INTEGRATION-PLAN.md`.
 
-The adjacent
-`../open64-plans/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`
-is the highest semantic authority. The reviewed copy has SHA-256
-`4B9DAC9927E86518142CA9A9E71AEAE7AEA5C454D01C544311359680639DF4B6`.
+The repository document
+`doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
+is the highest FHE semantic authority. The reviewed copy has SHA-256
+`0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 This Markdown tracker may narrow architecture milestones into review
-checkpoints, but it may not override v0.9 semantics, boundaries, or completion
+checkpoints, but it may not override v0.10 semantics, boundaries, or completion
 criteria. In particular, focused C3 / SYNC-3 completion is not completion of
-v0.9 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4 remains
+v0.10 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4 remains
 mandatory.
 
 ## Shared Objective
@@ -160,7 +160,7 @@ coverage in the same infrastructure PR.
 | C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor evidence | Materialize mandatory pre-ReLU bootstrap and polynomial approximation with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
 | C5: Standard WHIRL boundary | Supply standard call/result construction, unlowered-node gate, and `whirl2c` integration point | Implement runtime-call lowering, FHE C ABI, and mock provider | **SYNC-5: Middle-WHIRL and mock executable gate** |
 | C6: OpenFHE ResNet | Complete driver link flow, provider manifest consumption, and retained artifact family | Implement OpenFHE provider, client provisioning, CKKS execution, and full ResNet validation | **SYNC-6: End-to-end `-O0` acceptance** |
-| C7: Optimized planning | Enable reviewed VHO/WOPT integration and per-pass controls | Add ReSBM, boundary movement/fusion, HPOLY/HPAO, and equivalence reports | **SYNC-7: Optimized-versus-`-O0` proof** |
+| C7: Optimized planning | Enable reviewed VHO/WOPT integration, common encrypted-iteration-space records, census verification, and per-pass controls | Implement selectable MetaKernel and Fhelipe planners, then add ReSBM, boundary movement/fusion, the dedicated SSAPRE-model HPAO-MU phase, HPAO-FM/HPAO-LM, and equivalence reports. HPAO-MD remains design TBD. | **SYNC-7A-E: layout-planner A/B proof and optimized-versus-`-O0` proof** |
 | C8: GPU path | Coordinate NVIDIA runtime and target-description infrastructure | Add FHE GPU capability, layout, cost, and later native POLY/RNS plans | **SYNC-8: Separate GPU architecture review** |
 
 ## Highlighted Synchronization Points
@@ -169,7 +169,7 @@ coverage in the same infrastructure PR.
 
 Inputs:
 
-- Architecture plan v0.9.
+- Architecture plan v0.10.
 - Main-task `FHE-DSL-INTEGRATION-PLAN.md`.
 - FHE-task `FHE-WHIRL-INTEGRATION-PLAN.md` and operator/type handoff table.
 - Current source inventory, including existing `OPR_DSLRELU` and
@@ -499,6 +499,35 @@ Before enabling any ReSBM, HPOLY/HPAO, fusion, or refresh-boundary movement:
 - Prove source semantics, polynomial approximation error, CKKS scale/level
   legality, key availability, and result tolerance.
 - Fall back to the `-O0` plan when proof or provider capability is missing.
+
+The encrypted-layout portion of SYNC-7 is divided into these jointly reviewed
+gates:
+
+| Gate | Analysis and transformation | Required evidence |
+| --- | --- | --- |
+| **SYNC-7A: common baseline** | Freeze the gatekeeper-approved FHE-CNN graph, TensorDescriptorIR and encryption state, ring dimension, backend manifest, and all relevant options. | One pre-layout `.B`/`.T` image and manifest used without change by both planners. |
+| **SYNC-7B: MetaKernel** | Analyze Conv/MVM decomposition and batching, immediately transform the kernel iteration space, then derive packing and masks. | Original/transformed domains, MetaKernel-unit decomposition, packed layout, rotation schedule, and independently recomputed census. |
+| **SYNC-7C: Fhelipe** | Analyze the whole graph, assign dimension-bit/interleaved layouts, choose compaction and conversions, then materialize the resulting one-dimensional CKKS schedule. | Global layout decisions, compaction/conversion provenance, materialized schedule, and independently recomputed census. |
+| **SYNC-7D: normalized comparison** | Canonicalize both outputs into the common encrypted layout and iteration-space interface and prove equivalent source semantics. | Per-value, per-operator, per-PU, and whole-program comparison with stable source identities. |
+| **SYNC-7E: selected-plan handoff** | Select a plan under the reviewed policy and hand it to SIHE/CKKS, ReSBM, and HPOLY without changing its recorded provenance. | Selection rationale, fallback evidence, and retained downstream `.B`/`.T` checkpoints. |
+
+Both planners must report the same metric definitions after transformation is
+materialized and before ReSBM changes the graph: static rotation operations,
+execution-weighted rotations when trip counts are known, unique signed rotation
+offsets, total CKKS slots, active logical slots, gap/invalid slots, gap ratio,
+peak/introduced/compacted gaps, masked slots, ciphertext count, packing density,
+layout conversions, permutations, masks, and rotate-add reductions.
+
+The canonical aggregate is `gap_slots = total_slots - active_slots`.
+Padding and replicated slots are reported separately and are not counted as
+active logical elements. A common checker recomputes rotation and gap totals
+from each materialized WHIRL image; planner self-reported estimates alone do
+not close SYNC-7B or SYNC-7C.
+
+HPAO-MU follows the SSAPRE algorithmic model in a dedicated HPOLY phase; the
+existing WOPT SSAPRE implementation remains unchanged. HPAO-MD implementation
+is blocked until its analysis, legality, ordering, extended-basis lifetime, and
+profitability design receives a separate review.
 
 ### **SYNC-8: Separate GPU Architecture Review**
 
