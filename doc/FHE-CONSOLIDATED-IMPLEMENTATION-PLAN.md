@@ -356,6 +356,12 @@ the coefficient profile is integrated. All 19 persisted Open64 ReLU context
 keys are frozen in machine-readable review manifests. This is not trained-model
 approval: measured context ranges, predeclared accuracy acceptance, and a
 concrete executed OpenFHE CKKS state schedule remain absent.
+The deterministic collector in
+`doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` now proves the 19-way identity join,
+pre-ReLU observation algorithm, distribution evidence, bound checks, and
+canonical manifest hashing. Its fixture is explicitly not calibration. A
+trained checkpoint/dataset decision and a main-owned manifest path/hash option
+remain prerequisites for native model binding.
 Opcode allocation, bootstrap insertion, SIHE/CKKS primitive lowering, and
 OpenFHE/runtime lowering remain outside this checkpoint.
 
@@ -645,18 +651,21 @@ The ResNet-first FHE project reaches its first complete milestone only when:
    package.
 3. Frontend/model owner: first approve a trained checkpoint, immutable
    calibration split, preprocessing, bound estimator, safety margin, and
-   outlier policy; then collect measured extrema for all 19 ReLU
+   outlier policy; then run the implemented collector for all 19 ReLU
    source contexts and bind each approved positive bound to exact Open64 value,
    PU identity, and callsite records. No name-only or default fallback is valid.
-4. Numerical-policy reviewers: certify clear sign/ReLU error and pinned
+4. Main/common owner: add a reviewed calibration-manifest path/URI and expected
+   SHA-256 to the FHE conversion options so the all-PU driver can authenticate
+   approved evidence before native context binding.
+5. Numerical-policy reviewers: certify clear sign/ReLU error and pinned
    ResNet-20 logit/top-1 tolerances against named dataset hashes.
-5. FHE/runtime owners: prove the depth-11 schedule and concrete post-refresh
+6. FHE/runtime owners: prove the depth-11 schedule and concrete post-refresh
    CKKS level, scale, component, and precision contracts.
-6. FHE owner: consume the PR #123 opaque profile APIs only after items 2-5 are
+7. FHE owner: consume the PR #123 opaque profile APIs only after items 2-6 are
    accepted, then record composite dispositions, ordered stages, 19 context
    ranges, and value-specific CKKS planning state.
-7. FHE owner: rerun the full six-PU SecureResNet checkpoint, publish auxiliary
+8. FHE owner: rerun the full six-PU SecureResNet checkpoint, publish auxiliary
    payload/report artifacts transactionally, and publish `.fhe.B` last.
-8. Independent reviewer: reopen with `ir_b2a -st -src`, reconcile report and
+9. Independent reviewer: reopen with `ir_b2a -st -src`, reconcile report and
    image counts, and close only focused SYNC-3. Bootstrap insertion and
    polynomial materialization remain SYNC-4 work.
