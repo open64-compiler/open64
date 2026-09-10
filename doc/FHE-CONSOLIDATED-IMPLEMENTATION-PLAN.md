@@ -78,6 +78,20 @@ capture or planning of the complete ResNet-20 graph.
     initializers, and control flow.
 12. Secret keys never enter WHIRL, generated server C, server artifacts,
     diagnostics, or server runtime state.
+13. Preserving callee-specific data-value metadata is a first-order correctness
+    requirement. Every caller actual must remain structurally joined through
+    call ABI and PU-interface identity to the exact callee formal
+    `DSL_IR_VALUE_ID`, operator operand, and result value.
+14. XLA-style shape propagation is a generic DSL/common analysis over Open64
+    value identities. It certifies tensor geometry before FHE planning; shape
+    equality does not replace value identity or provenance.
+15. FHE encryption-state propagation runs after shape certification and model
+    adaptation. It attaches value-specific CKKS layout, level, scale,
+    precision, alignment, rotation, and pending-action facts without mutating
+    canonical TensorDescriptorIR/TY identity.
+
+The detailed algorithm and validation contract for decisions 13-15 is
+`doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
 
 ## Workstream Ownership
 
@@ -156,8 +170,8 @@ coverage in the same infrastructure PR.
 | C0: Baseline freeze | Inventory existing common/CNN operators, tensor APIs, builder capabilities, and binary hooks | Freeze ResNet-20 operator census, FHE descriptors, option semantics, and handoff requests | **SYNC-0: Plan and contract reconciliation** |
 | C1: Native contracts | Publish accepted common/type contracts; add generic attachment, image, printer, and gatekeeper hooks | Finalize fixed FHE records, FHE-specific builder API, malformed-record rules, and negative tests | **SYNC-1: Native API and image contract freeze** |
 | C2: Full-model capture | Supply merged opaque builder capabilities and common operator evidence | Capture complete ResNet-20 with class-centric PUs, source positions, weights, FHE entry, and encrypted descriptors | **SYNC-2: Frontend artifact certification** |
-| C3: FHE conversion | Supply driver phase hook and common/tensor legality services | Implement FHE gatekeeper, BatchNorm folding, model adaptation, approximation contracts, and conversion report | **SYNC-3: ResNet FHE conversion review** |
-| C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor evidence | Materialize mandatory pre-ReLU bootstrap and polynomial approximation with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
+| C3: FHE conversion | Supply driver hook, cross-PU value identity, generic shape analysis, transactional rewrites, value-state attachment, and artifact publication | Certify shapes; implement FHE gatekeeping, 13-definition/21-context BatchNorm folding, converted-shape checks, operator dispositions, CKKS-state propagation, and reports | **SYNC-3: ResNet FHE conversion review** |
+| C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor/approximation evidence | Freeze polynomial policy, then materialize mandatory pre-ReLU bootstrap and approved polynomial approximation with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
 | C5: Standard WHIRL boundary | Supply standard call/result construction, unlowered-node gate, and `whirl2c` integration point | Implement runtime-call lowering, FHE C ABI, and mock provider | **SYNC-5: Middle-WHIRL and mock executable gate** |
 | C6: OpenFHE ResNet | Complete driver link flow, provider manifest consumption, and retained artifact family | Implement OpenFHE provider, client provisioning, CKKS execution, and full ResNet validation | **SYNC-6: End-to-end `-O0` acceptance** |
 | C7: Optimized planning | Enable reviewed VHO/WOPT integration, common encrypted-iteration-space records, census verification, and per-pass controls | Implement selectable MetaKernel and Fhelipe planners, then add ReSBM, boundary movement/fusion, the dedicated SSAPRE-model HPAO-MU phase, HPAO-FM/HPAO-LM, and equivalence reports. HPAO-MD remains design TBD. | **SYNC-7A-E: layout-planner A/B proof and optimized-versus-`-O0` proof** |
@@ -345,9 +359,13 @@ Required phase output:
 ```text
 secure_resnet20.B
   -> ordinary DSL/common gatekeeper
+  -> call-ABI and PU-interface identity validation
+  -> generic XLA-style tensor shape propagation
   -> FHE semantic gatekeeper
   -> -FHE:checkpoint=secure_resnet20.fhe.B
   -> VHO_FHE_Convert_Driver_Try() for every selected PU
+  -> converted-shape verification
+  -> value-specific CKKS-state propagation
   -> FHE semantic gatekeeper, converted form
   -> complete managed-image validation
   -> standard Write_PU_Info()/Write_Global_Info() binary WHIRL path
@@ -363,11 +381,37 @@ is published atomically only after all PUs and complete managed images pass.
 This main/backend-owned service prevents the FHE task from duplicating raw
 PU traversal, symbol-table lifetime, mapped-image, or writer orchestration.
 
+The cross-PU analysis spine is normative for the complete `-O0` project:
+
+```text
+caller actual value
+  -> call-argument role
+  -> callee formal ordinal
+  -> callee formal DSL_IR_VALUE_ID
+  -> callee operator operand and result
+```
+
+Generic shape propagation follows this identity before FHE conversion. After
+BatchNorm folding and retirement, converted-shape verification proves geometry
+is unchanged and dead BN-only inputs have no executable uses. FHE CKKS-state
+propagation then uses the same identities to infer value class, packing,
+layout, level, scale, precision, alignment, rotation keys, and pending actions.
+None of these value-specific facts may be inferred by name, local `ST_IDX`,
+argument-order convention, or shape equality alone. The full algorithm is in
+`doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
+
 Acceptance checks:
 
 - BatchNorm folding is explicit and source-linked.
+- Every caller actual resolves to the exact callee value through validated
+  call-ABI and complete PU-interface records.
+- Source and converted tensor shapes pass deterministic propagation and
+  operator, REGION, call-formal, and call-result consistency checks.
 - Conv2d, residual add, pooling, flatten, classifier, and encrypted logits have
   reviewed FHE dispositions.
+- Every live encrypted value has accepted value-specific CKKS planning state;
+  retired values and verified dead BN ABI inputs are excluded from live
+  accounting.
 - `common.relu` remains traceable to its approximation contract.
 - The conversion report lists accepted, rewritten, and rejected operations.
 - Missing scheme, illegal secret-key use, unsupported activation, training

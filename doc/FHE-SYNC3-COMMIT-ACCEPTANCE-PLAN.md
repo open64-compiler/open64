@@ -616,12 +616,21 @@ reopen, and the main/common PR to merge before PR-E rebases.
 
 ## PR-E: focused FHE SYNC-3 conversion planning and certification
 
+PR-E must also satisfy
+`doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`. Its central correctness
+condition is preservation of the exact caller-actual to callee-formal
+`DSL_IR_VALUE_ID` relationship. Generic tensor shape propagation runs before
+FHE state propagation; neither analysis may substitute shape, names, or local
+symbol indexes for callee-specific value identity.
+
 ### Commit 14: `Add SYNC-3 FHE semantic gatekeeper`
 
 Implementation:
 
 - Validate entry/configuration, descriptors, tensor bindings, source graph,
   payloads, operator relationships, and options for source and converted form.
+- Validate the call-ABI/PU-interface join and run deterministic source-shape
+  propagation before accepting FHE semantics.
 - Emit the stable `CFHE-*`, `CFHECNN-*`, and `CFHECKKS-*` diagnostic families.
 - Keep exact ResNet counts in a certification profile, not generic validation.
 
@@ -642,6 +651,14 @@ Ready for submission when:
 
 ### Commit 15: `Fold ResNet BatchNorm into convolution payloads`
 
+Implementation checkpoint: the FHE branch now derives and rewrites all 13
+physical Conv/BatchNorm definitions and materializes 21 context-specific
+weight/bias pairs (42 tensors). A ReLU-free six-PU certification fixture
+publishes and reopens the converted payload, report, `.fhe.B`, and
+`ir_b2a -st -src` `.fhe.T`; an independent double-precision oracle verifies
+every folded tensor exactly. Full SecureResNet reaches the separate
+`CFHECNN-RELU-002` policy gate and publishes no partial artifact.
+
 Implementation:
 
 - Implement inference-only BN legality and the accepted folding formula.
@@ -649,6 +666,11 @@ Implementation:
 - Write a new converted SafeTensors payload without modifying the source file.
 - Rewrite each compatible physical clone once and each source call context's
   actual payloads separately; reject v1 signature divergence.
+- Resolve every semantic parameter role to its exact callee formal value;
+  never use symbol-name parsing, foreign local symbol tables, or shape-only
+  matching.
+- Run converted-shape verification after body rewrite and BN retirement; prove
+  retained BN-only ABI inputs have no executable uses.
 
 Verification:
 
@@ -707,6 +729,9 @@ Implementation:
 - Add value-specific versioned CKKS state, alignment groups, pending actions,
   and explicit pending-bootstrap reasons without changing canonical tensor or
   encryption descriptor identity.
+- Propagate CKKS state through call edges and operators by exact
+  `DSL_IR_VALUE_ID`, after successful shape certification, using the transfer
+  rules in `doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
 - Record required pre-refresh planning only; do not materialize SYNC-4 work.
 
 Verification:

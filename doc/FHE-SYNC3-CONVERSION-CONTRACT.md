@@ -56,8 +56,12 @@ Proposed phase:
 ```text
 secure_resnet20.B
   -> ordinary DSL/common gatekeeper
+  -> call-ABI and PU-interface identity validation
+  -> generic XLA-style tensor shape propagation
   -> FHE semantic gatekeeper
   -> VHO_FHE_Convert_Driver()
+  -> converted-shape verification
+  -> value-specific CKKS-state propagation
   -> FHE semantic gatekeeper, converted form
   -> secure_resnet20.fhe.B
   -> ir_b2a -st -src secure_resnet20.fhe.B secure_resnet20.fhe.T
@@ -69,6 +73,18 @@ it performs deterministic legality and adaptation only: BatchNorm folding,
 source operator disposition, encrypted value-class propagation, required
 approximation-contract attachment, residual obligations, and conversion
 reporting.
+
+The exact cross-PU identity and analysis algorithms are specified in
+`doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`. Preserving
+callee-specific data-value metadata is the central requirement: each caller
+actual and semantic role must resolve through the callee formal ordinal to the
+exact callee `DSL_IR_VALUE_ID`, operator operand, and result. Tensor shape,
+local symbol index, or source name is never an identity substitute.
+
+Generic shape propagation certifies source geometry before FHE adaptation and
+reruns after BatchNorm retirement. FHE encryption-state propagation follows
+the converted-shape gate and attaches CKKS facts to values without changing
+canonical TensorDescriptorIR/TY identity.
 
 ## Gatekeeper Inputs
 
@@ -130,6 +146,12 @@ secret-key material, ciphertext bytes, backend C++ object state, or physical
 
 ## BatchNorm-to-Conv Folding
 
+Current certification status: the ReLU-free shared-PU profile certifies 13
+physical retirements, 21 context folds, 42 converted tensors, atomic auxiliary
+publication, and mapped-image reopen. The complete SecureResNet profile reaches
+the same derived counts before failing closed at the unapproved ReLU policy;
+see `FHE-RELU-DEGREE3-POLICY-DECISION.md`.
+
 Fold `cnn.batch_norm_infer` into the immediately preceding legal convolution
 when all legality checks pass:
 
@@ -190,6 +212,104 @@ that sharing correctly:
    remains identical. Split a compiler clone when those signatures diverge.
 5. Report physical definition rewrites separately from source-context payload
    folds so the 13-definition/21-context distinction remains visible.
+
+### ResNet physical-definition/context map
+
+The certification profile derives the 13/21 counts from source structure; the
+generic conversion pass must not contain these constants.
+
+| Owning PU or clone | Call contexts | Conv/BN definition pairs | Context folds |
+| --- | --- | ---: | ---: |
+| `SecureResNet20` entry stem | entry stem | 1 | 1 |
+| `1x16x32x32_to_1x16x32x32_stride1x1_identity` | `layer1.0`, `layer1.1`, `layer1.2` | 2 | 6 |
+| `1x16x32x32_to_1x32x16x16_stride2x2_projection` | `layer2.0` | 3, including projection | 3 |
+| `1x32x16x16_to_1x32x16x16_stride1x1_identity` | `layer2.1`, `layer2.2` | 2 | 4 |
+| `1x32x16x16_to_1x64x8x8_stride2x2_projection` | `layer3.0` | 3, including projection | 3 |
+| `1x64x8x8_to_1x64x8x8_stride1x1_identity` | `layer3.1`, `layer3.2` | 2 | 4 |
+| **Total** | **entry plus 9 calls** | **13** | **21** |
+
+Each physical pair is rewritten once. Each table cell in the context-fold
+column represents a separately computed folded weight/bias pair, deterministic
+converted side-file keys, one caller-owned pair of converted parameter values,
+and one provenance association to the source callsite or entry context.
+
+### Clone reuse and splitting rule
+
+The post-fold clone key is semantic and deterministic. It contains:
+
+- canonical Python definition and REGION contract identity/version;
+- ordered surviving formal roles and exact formal `TY_IDX` values;
+- exact return `TY_IDX` and result convention;
+- convolution count, order, and structural attributes, including kernel,
+  stride, padding, dilation, groups, activation/weight layout, and projection
+  topology; and
+- representation-level encryption descriptor requirements that affect the
+  shared clone body.
+
+Reuse one clone when this key is equal, even when folded bytes, side-file keys,
+checksums, instance paths, call ordinals, source positions, or value-specific
+CKKS state differ. Those are context/value facts and are excluded from clone
+identity. An absent source convolution bias does not itself require a split
+when conversion materializes the same typed folded-bias formal used by biased
+contexts.
+
+Split a clone only when the post-fold key differs: exact formal or return
+`TY_IDX` mismatch, different surviving formal count/order, incompatible bias
+materialization, different convolution/projection topology or attributes, or
+a representation contract that changes the shared body. A malformed or
+numerically illegal payload is not a reason to split: it rejects the affected
+conversion and rolls back the complete artifact transaction.
+
+### Native consumer transaction
+
+The FHE pass consumes structured APIs only. For every external source value it
+needs storage format, side-file path, tensor key, byte range, checksum, dtype,
+logical shape, and layout without parsing marker text. Strings returned by a
+lookup remain valid through the conversion transaction or until managed-image
+reset, whichever occurs first.
+
+One atomic rewrite transaction covers a physical clone and all of its source
+call contexts. Before mutation it validates owners, callsite identities,
+operand roles, exact formal/actual `TY_IDX` equality, source Conv/BN adjacency,
+and every converted payload descriptor. On commit it must:
+
+1. create caller-owned converted folded-weight and folded-bias values for each
+   context, preserving source and instance metadata;
+2. rewrite the clone formal list once and each caller actual list separately;
+3. rewrite the Conv/BN definition pair so no executable standalone BatchNorm
+   remains, while retaining both source node/value identities in disposition
+   and fold-provenance evidence;
+4. update physical WN, logical DSL records, symbols, call metadata, and plan
+   associations consistently; and
+5. leave canonical tensor types unchanged and keep value-specific CKKS state
+   outside `TY_IDX` identity.
+
+Any failed owner, callsite, type, operand, payload, or image validation rolls
+back WN, managed rows, symbol/formal/actual changes, and converted-value
+creation. The converted side file is written to a temporary path and is
+published only after the IR transaction and final gatekeeper succeed. The
+source `.safetensors` file is never modified.
+
+### Focused shared-clone tests
+
+- One two-caller clone with equal post-fold keys and different source payload
+  bytes remains one PU, receives two caller-owned folded pairs, and records two
+  context folds for one physical definition rewrite.
+- Equal types with different instance paths, keys, checksums, call ordinals,
+  source positions, or CKKS state do not split the clone.
+- An absent source bias normalized to the common typed folded-bias formal does
+  not split the clone.
+- Different exact formal `TY_IDX`, formal count/order, projection topology, or
+  convolution attributes produce deterministic context-specialized clones;
+  equivalent contexts reuse the same resulting clone.
+- One bad caller owner, callsite, actual type, side-file range, checksum, or
+  payload shape rejects the whole transaction and leaves the original tree,
+  image tables, call graph, side file, and clone set byte-for-byte unchanged.
+- A second clean conversion produces identical clone names, folded keys,
+  payload bytes, provenance rows, report ordering, and hashes.
+- Independent graph traversal proves 13 physical definition rewrites map to
+  21 context folds for ResNet-20, with no standalone executable BatchNorm and
+  no fixture cardinality embedded in generic conversion code.
 
 ## Operator Disposition
 
