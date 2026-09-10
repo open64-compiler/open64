@@ -539,8 +539,10 @@ without range evidence.
 pre-ReLU collector, complete identity join, distribution evidence, positive
 bound rule, approval validation, and canonical manifest hash. The focused
 fixture proves machinery only. Native model binding remains blocked until a
-trained checkpoint and CIFAR-10 calibration authority are approved and the
-main task publishes a reviewed manifest path/hash conversion option.
+trained checkpoint and CIFAR-10 calibration authority are approved. PR #127
+provides the reviewed runtime-only manifest path/hash option; the FHE consumer
+authenticates exact bytes before RapidJSON parsing, validates the exact 19-row
+identity set, binds ranges, and checks all-PU consumption at finalization.
 
 ### Actionable Work List by Sync Point
 

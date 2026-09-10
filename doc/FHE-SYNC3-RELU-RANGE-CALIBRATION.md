@@ -1,7 +1,9 @@
 # FHE SYNC-3 Identity-Bound ReLU Range Calibration
 
-Status: collector and structural validation implemented; trained-model
-calibration evidence not yet available; `CFHECNN-RELU-003` remains required.
+Status: calibration machinery, authenticated all-PU binding, and structural
+validation are implementation-complete locally after PR #128. Trained-model
+calibration evidence is not yet available; `CFHECNN-RELU-003` remains required
+without an approved manifest.
 
 ## Purpose and boundary
 
@@ -86,18 +88,31 @@ separation. Candidate and fixture manifests cannot authorize native records.
 
 After approval, the FHE conversion pass must:
 
-1. authenticate the selected manifest against an expected SHA-256;
-2. join each manifest context to the live source ReLU by the complete identity;
-3. create the finite observed-min, observed-max, and positive-bound TCONs;
-4. call `DSL_FHE_Approx_Profile_Bind_Context_Range()` exactly once per context;
-5. add the corresponding composite disposition only after the range preflight;
-6. require 19 reopened context rows and inspect them with
+1. deep-copy the path and lowercase digest from
+   `VHO_FHE_CONVERT_OPTIONS` on the first semantic callback and require the
+   same pair on every later PU callback;
+2. read exact bytes and verify the external SHA-256 before parsing or using
+   any semantic field;
+3. parse the fixed schema with bundled header-only RapidJSON, verify the
+   embedded canonical-content hash, approval authority, source/checkpoint/data
+   hashes, sample evidence, finite bounds, and held-out acceptance-data role;
+4. derive the expected identity set from live Open64 DSL node, PU-identity,
+   callsite, and value tables and reject anything other than the exact 19-row
+   set before mutating planning tables;
+5. join each manifest context to the live source ReLU by the complete identity
+   and create finite observed-min, observed-max, and positive-bound TCONs;
+6. call `DSL_FHE_Approx_Profile_Bind_Context_Range()` exactly once per context
+   and add one composite disposition per reusable physical ReLU definition;
+7. require the checkpoint finalizer to prove all 19 contexts were consumed
+   exactly once, then clear retained state through completion on success or
+   failure; and
+8. require 19 reopened context rows and inspect them with
    `ir_b2a -st -src`.
 
-The current `VHO_FHE_CONVERT_OPTIONS` has no reviewed manifest path/URI plus
-expected SHA-256. That main-owned transport hook is required before a real
-approved external manifest can be selected by the all-PU driver. No binary row,
-opcode, type encoding, or common/com mutation is requested.
+PR #127 supplies the reviewed runtime-only path and expected SHA-256 fields.
+The FHE consumer adds no JsonCpp or frontend-builder dependency; it uses the
+repository's bundled RapidJSON headers. No binary row, opcode, type encoding,
+or common/com mutation is introduced.
 
 ## Tests and evidence
 
@@ -109,6 +124,11 @@ Focused tests prove:
 - identity mismatch rejection;
 - zero and negative `B` rejection;
 - manifest hash mismatch rejection;
+- native exact-byte SHA rejection before JSON use;
+- native malformed JSON, unapproved status, unknown/duplicate/missing identity,
+  and invalid-bound rejection with no checkpoint artifact;
+- real six-PU fail-closed derivation of exactly 19 expected context identities;
+- callback selection mismatch rejection and retained-state cleanup;
 - candidate manifests cannot pass approval validation; and
 - a fully populated, explicitly approved test-only manifest can pass the
   approval validator without being bound into a model artifact.
@@ -128,6 +148,8 @@ To produce a model-authoritative manifest, reviewers must supply or approve:
 5. a safety factor and explicit outlier/rejection policy; and
 6. a disjoint held-out acceptance set with predeclared metrics and thresholds.
 
-Until those inputs and the manifest transport hook are accepted,
-`CFHECNN-RELU-003` remains the correct conversion boundary and no ReLU-bearing
-`secure_resnet20.fhe.B` may be published.
+Until those evidence inputs are accepted, `CFHECNN-RELU-003` remains the
+correct no-manifest conversion boundary and no ReLU-bearing
+`secure_resnet20.fhe.B` may be published. Authenticated but malformed,
+unapproved, or identity-incomplete manifests fail earlier under the stable
+`CFHECNN-RELU-004` / `CFHECNN-RELU-005` diagnostics.

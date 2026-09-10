@@ -251,7 +251,7 @@ verdict, and wait for authorization before starting the next numbered item.
 | 14: semantic gatekeeper | Complete in the FHE-owned branch | Focused semantic contract test passes after rebasing onto PR #123 | Final full-model integration rerun |
 | 15: BatchNorm folding | Complete | ReLU-free six-PU certification proves 13 physical definition retirements, 21 context folds, and 42 converted tensors with independent payload verification | Final integration rerun at the accepted PR-E tip |
 | 16: operator dispositions | Complete for the ReLU-free positive path; ReLU remains fail-closed | The positive artifact records 36 source and 36 converted dispositions | Composite ReLU dispositions require certified policy evidence |
-| 17: ReLU profile and CKKS planning | Exact ACE coefficient profile and identity-bound range collector implemented; model enablement blocked | Empirically approved bytes/stage hashes are interned; deterministic pre-ReLU collection validates all 19 persisted identities, bounds, tail evidence, and manifest hashes | Approved trained checkpoint/CIFAR-10 calibration inputs, main-owned manifest transport, predeclared accuracy acceptance, and concrete OpenFHE state/depth proof |
+| 17: ReLU profile and CKKS planning | Exact ACE coefficient profile, identity-bound range collector, and authenticated all-PU native consumer implemented; model enablement blocked | Empirically approved bytes/stage hashes are interned; deterministic collection and RapidJSON consumption validate exact bytes, authority, all 19 persisted identities, bounds, tail evidence, and manifest hashes | Approved trained checkpoint/CIFAR-10 calibration inputs, predeclared accuracy acceptance, and concrete OpenFHE state/depth proof |
 | 18: reports and diagnostics | Complete for BatchNorm certification and ReLU-policy rejection | Atomic payload/report publication and range-specific `CFHECNN-RELU-003` rejection are retained | Full composite-profile report evidence |
 | 19: full ResNet-20 SYNC-3 evidence | Blocked | No ReLU-bearing `.fhe.B` is published | Completion of commit 17 evidence followed by the full acceptance lane |
 
@@ -269,8 +269,11 @@ evidence exists, and `CFHECNN-RELU-003` remains required.
 
 The identity-bound collector and approval validator are specified by
 `doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md`. Their deterministic fixture validates
-the complete 19-context join but is not trained-model evidence. Real binding
-also awaits a reviewed manifest path/hash in `VHO_FHE_CONVERT_OPTIONS`.
+the complete 19-context join but is not trained-model evidence. PR #127 now
+provides the reviewed runtime-only manifest path/hash pair. The FHE consumer
+authenticates before parsing, retains one selection across all PUs, binds only
+the exact approved identity set, and verifies complete consumption in the
+checkpoint finalizer.
 
 PR-A must merge first. PR-B then rebases and recertifies SYNC-2. PR-C must be
 accepted by both main/common and FHE reviewers before PR-D implementation.
