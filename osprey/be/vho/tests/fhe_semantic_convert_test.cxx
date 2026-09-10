@@ -14,7 +14,9 @@
 #include "dsl_builder.h"
 #include "dsl_fhe.h"
 #include "dsl_fhe_plan.h"
+#include "dsl_ir_image.h"
 #include "dsl_opcode.h"
+#include "dsl_tensor_fold.h"
 #include "dwarf_DST_mem.h"
 #include "erglob.h"
 #include "errors.h"
@@ -254,12 +256,16 @@ main(void)
         result.source_disposition_count != 3 ||
         result.converted_disposition_count != 2 ||
         result.folded_batch_norm_count != 0 ||
-        result.approximation_contract_count != 0 ||
+        result.approximation_contract_count != 1 ||
         result.error_count != 0 ||
         DSL_FHE_Plan_Conversion_Disposition_Count() != 2 ||
         DSL_FHE_Plan_Approximation_Contract_Count() != 0 ||
-        DSL_FHE_Plan_CKKS_Value_State_Count() != 2 ||
+        DSL_FHE_Plan_CKKS_Value_State_Count() != 3 ||
         DSL_FHE_Plan_BN_Fold_Provenance_Count() != 0 ||
+        DSL_FHE_Approx_Profile_Count() != 1 ||
+        DSL_FHE_Approx_Stage_Count() != 3 ||
+        DSL_FHE_Approx_Association_Count() != 0 ||
+        DSL_FHE_Context_Range_Count() != 0 ||
         !DSL_FHE_Plan_Get_Conversion_Disposition(1, &disposition) ||
         disposition.disposition != DSL_FHE_DISPOSITION_DOMAIN_WRAPPER ||
         disposition.bn_fold_count != 0) {
@@ -267,7 +273,217 @@ main(void)
         return 1;
     }
 
+    const VHO_FHE_RELU_PROFILE_MANIFEST *approved =
+        VHO_FHE_Approved_Ace_Relu_Profile();
+    VHO_FHE_RELU_PROFILE_MANIFEST malformed = *approved;
+    if (!VHO_FHE_Validate_Relu_Profile_Manifest(approved, stderr)) {
+        fprintf(stderr, "approved ACE profile manifest did not validate\n");
+        return 1;
+    }
+    malformed.stage_count = 2;
+    if (VHO_FHE_Validate_Relu_Profile_Manifest(&malformed, NULL)) {
+        fprintf(stderr, "incomplete ACE profile manifest was accepted\n");
+        return 1;
+    }
+    malformed = *approved;
+    malformed.manifest_sha256 =
+        "0000000000000000000000000000000000000000000000000000000000000000";
+    if (VHO_FHE_Validate_Relu_Profile_Manifest(&malformed, NULL)) {
+        fprintf(stderr, "ACE profile manifest hash mismatch was accepted\n");
+        return 1;
+    }
+
+    VHO_FHE_RELU_STAGE_MANIFEST malformed_stages[3];
+    memcpy(malformed_stages, approved->stages, sizeof(malformed_stages));
+    malformed = *approved;
+    malformed.stages = malformed_stages;
+    malformed_stages[0].coefficient_sha256 =
+        "0000000000000000000000000000000000000000000000000000000000000000";
+    if (VHO_FHE_Validate_Relu_Profile_Manifest(&malformed, NULL)) {
+        fprintf(stderr, "ACE profile hash mismatch was accepted\n");
+        return 1;
+    }
+    memcpy(malformed_stages, approved->stages, sizeof(malformed_stages));
+    malformed_stages[0].ordinal = 1;
+    if (VHO_FHE_Validate_Relu_Profile_Manifest(&malformed, NULL)) {
+        fprintf(stderr, "ACE profile stage reordering was accepted\n");
+        return 1;
+    }
+
+    UINT64 changed_bits[8];
+    memcpy(changed_bits, approved->stages[0].coefficient_binary64_bits,
+           sizeof(changed_bits));
+    changed_bits[1] ^= 1;
+    memcpy(malformed_stages, approved->stages, sizeof(malformed_stages));
+    malformed_stages[0].coefficient_binary64_bits = changed_bits;
+    if (VHO_FHE_Validate_Relu_Profile_Manifest(&malformed, NULL)) {
+        fprintf(stderr, "changed ACE coefficient bytes were accepted\n");
+        return 1;
+    }
+
+    DSL_FHE_COMPOSITE_PROFILE_RECORD profile;
+    DSL_FHE_CKKS_VALUE_STATE_RECORD relu_state;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    DSL_FHE_CONTEXT_RANGE_RECORD range;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD relu_disposition;
+    DSL_IR_VALUE_ID relu_value_id = DSL_Builder_Get_Value_Image_Id(relu);
+    DSL_FHE_COMPOSITE_PROFILE_ID profile_id;
+    DSL_FHE_CONVERSION_DISPOSITION_ID relu_disposition_id;
+    TCON_IDX observed_min =
+        Enter_tcon(Host_To_Targ_Float(MTYPE_F8, -1.0));
+    TCON_IDX observed_max =
+        Enter_tcon(Host_To_Targ_Float(MTYPE_F8, 1.0));
+    TCON_IDX positive_bound =
+        Enter_tcon(Host_To_Targ_Float(MTYPE_F8, 1.25));
+    if (!DSL_FHE_Approx_Profile_Find
+             (config_id, VHO_FHE_ACE_RELU_PROFILE_NAME,
+              VHO_FHE_ACE_RELU_PROFILE_VERSION, &profile) ||
+        strcmp(Index_To_Str(profile.manifest_sha256),
+               VHO_FHE_ACE_RELU_MANIFEST_SHA256) != 0 ||
+        !DSL_FHE_Plan_Find_Latest_CKKS_Value_State
+             (relu_value_id, &relu_state) ||
+        relu_state.pending_actions != DSL_FHE_CKKS_PENDING_BOOTSTRAP ||
+        relu_state.pending_bootstrap_reason !=
+            DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH ||
+        !DSL_Call_Image_Find_PU_Identity
+             (PU_Info_proc_sym(pu), &identity)) {
+        fprintf(stderr, "approved ACE profile or ReLU state is incomplete\n");
+        return 1;
+    }
+    profile_id = profile.id;
+    for (UINT32 stage_ordinal = 0; stage_ordinal < 3; ++stage_ordinal) {
+        DSL_FHE_APPROX_STAGE_RECORD stage;
+        const unsigned char *dense_bytes = NULL;
+        UINT32 dense_length = 0;
+        if (!DSL_FHE_Approx_Stage_Get
+                 (profile.first_stage_id + stage_ordinal, &stage) ||
+            stage.stage_ordinal != stage_ordinal ||
+            strcmp(Index_To_Str(stage.coefficient_sha256),
+                   approved->stages[stage_ordinal].coefficient_sha256) != 0 ||
+            !DSL_Tensor_TCON_Get_Dense_Bytes
+                 (stage.coefficient_tensor_tcon, &dense_bytes,
+                  &dense_length) ||
+            dense_length != approved->stages[stage_ordinal].coefficient_count *
+                                sizeof(UINT64)) {
+            fprintf(stderr, "ACE profile coefficient TCON is incomplete\n");
+            return 1;
+        }
+        for (UINT32 coefficient = 0;
+             coefficient < approved->stages[stage_ordinal].coefficient_count;
+             ++coefficient) {
+            UINT64 bits = approved->stages[stage_ordinal]
+                              .coefficient_binary64_bits[coefficient];
+            for (UINT32 byte = 0; byte < 8; ++byte) {
+                if (dense_bytes[coefficient * 8 + byte] !=
+                    (unsigned char)(bits >> (byte * 8))) {
+                    fprintf(stderr,
+                            "ACE profile coefficient TCON bytes changed\n");
+                    return 1;
+                }
+            }
+        }
+    }
+
+    DSL_FHE_Conversion_Disposition_Record_Init(&relu_disposition);
+    DSL_IR_VALUE_RECORD relu_value;
+    if (!DSL_IR_Image_Get_Value(relu_value_id, &relu_value)) {
+        fprintf(stderr, "ReLU image value lookup failed\n");
+        return 1;
+    }
+    relu_disposition.source_node_id = relu_value.producer_node_id;
+    relu_disposition.result_value_id = relu_value_id;
+    relu_disposition.disposition =
+        DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION;
+    relu_disposition.owner_pu_st = PU_Info_proc_sym(pu);
+    relu_disposition.approximation_contract_id = profile_id;
+    relu_disposition.result_ckks_value_state_id = relu_state.id;
+    relu_disposition.flags = DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    relu_disposition_id = DSL_FHE_Plan_Add_Composite_Disposition
+                              (&relu_disposition, profile_id);
+
+    DSL_FHE_Context_Range_Record_Init(&range);
+    range.profile_id = profile_id;
+    range.source_relu_value_id = relu_value_id;
+    range.context_pu_identity_id = identity.id;
+    range.context_callsite_id = DSL_CALLSITE_METADATA_INVALID_ID;
+    range.owner_pu_st = PU_Info_proc_sym(pu);
+    range.positive_bound_tcon = positive_bound;
+    range.observed_min_tcon = observed_min;
+    range.observed_max_tcon = observed_max;
+    range.out_of_range_policy = DSL_FHE_CONTEXT_RANGE_REJECT;
+    range.provenance = Save_Str("deterministic-policy-fixture-not-model-data");
+    if (relu_disposition_id == 0 ||
+        DSL_FHE_Approx_Profile_Bind_Context_Range(&range) == 0 ||
+        !DSL_FHE_Approx_Profile_Image_Validate(stderr)) {
+        fprintf(stderr, "deterministic ACE profile fixture did not validate\n");
+        return 1;
+    }
+
+    DSL_FHE_APPROX_PROFILE_IMAGE_HEADER profile_header;
+    DSL_FHE_Approx_Profile_Image_Get_Header(&profile_header);
+    UINT64 image_size = DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE +
+        (UINT64)profile_header.profile_count *
+            DSL_FHE_COMPOSITE_PROFILE_RECORD_SIZE +
+        (UINT64)profile_header.stage_count * DSL_FHE_APPROX_STAGE_RECORD_SIZE +
+        (UINT64)profile_header.association_count *
+            DSL_FHE_APPROX_ASSOCIATION_RECORD_SIZE +
+        (UINT64)profile_header.context_range_count *
+            DSL_FHE_CONTEXT_RANGE_RECORD_SIZE;
+    unsigned char *image = new unsigned char[image_size];
+    unsigned char *cursor = image;
+    memcpy(cursor, &profile_header, sizeof(profile_header));
+    cursor += sizeof(profile_header);
+    for (UINT32 i = 1; i <= profile_header.profile_count; ++i) {
+        DSL_FHE_Approx_Profile_Get(i, &profile);
+        memcpy(cursor, &profile, sizeof(profile));
+        cursor += sizeof(profile);
+    }
+    for (UINT32 i = 1; i <= profile_header.stage_count; ++i) {
+        DSL_FHE_APPROX_STAGE_RECORD stage;
+        DSL_FHE_Approx_Stage_Get(i, &stage);
+        memcpy(cursor, &stage, sizeof(stage));
+        cursor += sizeof(stage);
+    }
+    for (UINT32 i = 1; i <= profile_header.association_count; ++i) {
+        DSL_FHE_APPROX_ASSOCIATION_RECORD association;
+        DSL_FHE_Approx_Association_Get(i, &association);
+        memcpy(cursor, &association, sizeof(association));
+        cursor += sizeof(association);
+    }
+    for (UINT32 i = 1; i <= profile_header.context_range_count; ++i) {
+        DSL_FHE_CONTEXT_RANGE_RECORD context_range;
+        DSL_FHE_Context_Range_Get(i, &context_range);
+        memcpy(cursor, &context_range, sizeof(context_range));
+        cursor += sizeof(context_range);
+    }
+    DSL_FHE_Approx_Profile_Image_Reset();
+    if (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (image, image_size, stderr) ||
+        !DSL_FHE_Approx_Profile_Image_Validate(stderr) ||
+        DSL_FHE_Approx_Profile_Count() != 1 ||
+        DSL_FHE_Approx_Stage_Count() != 3 ||
+        DSL_FHE_Approx_Association_Count() != 1 ||
+        DSL_FHE_Context_Range_Count() != 1) {
+        fprintf(stderr, "ACE profile mapped-image reopen failed\n");
+        delete [] image;
+        return 1;
+    }
+    delete [] image;
+
+    const char *output_path = getenv("FHE_RELU_POLICY_OUTPUT");
+    if (output_path != NULL && output_path[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+        memset(&request, 0, sizeof(request));
+        request.path = output_path;
+        (void)remove(output_path);
+        if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+            fprintf(stderr, "ACE profile policy fixture output failed\n");
+            return 1;
+        }
+    }
+
     DSL_Builder_Abort_Program();
-    printf("FHE semantic conversion defers uncertified composite ReLU policy\n");
+    printf("FHE semantic conversion interns the approved ACE profile and "
+           "defers missing model ranges\n");
     return 0;
 }

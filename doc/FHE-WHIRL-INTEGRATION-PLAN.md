@@ -519,12 +519,21 @@ operator operand, and result value remain structurally connected. Shape or
 | SYNC-0: Plan and contract reconciliation | Baseline freeze and handoff review | Consolidated plan is accepted; this plan marks common/CNN requests as reuse, extend, promote, or new; complete ResNet-20 operator census scope, FHE descriptors, option semantics, and handoff requests are frozen before implementation. |
 | SYNC-1: Native API and image contract freeze | Shared native contracts before frontend certification | FHE record layouts, builder API requests, malformed-record rules, printer spelling, and negative-test matrix are finalized against main-owned common/type, mapped-image, and gatekeeper hooks. |
 | SYNC-2: Frontend artifact certification | Complete ResNet-20 capture using merged opaque APIs | `artifacts/fhe/resnet20_capture/` retains source, weights, `.B`, `ir_b2a -st -src` `.T`, operator census, options, and gatekeeper log; every source ReLU is existing `common.relu`; Python invents no bootstrap or CKKS operators. |
-| SYNC-3: ResNet FHE conversion review | FHE gatekeeper and CNN-to-FHE conversion | After identity validation, run generic XLA-style shape propagation, legal BatchNorm folding, converted-shape verification, and value-specific CKKS-state propagation. `secure_resnet20.fhe.B`, `.T`, side payload, and report show callee-value identity, 13 definition/21 context folds, operator dispositions, ReLU obligations, CKKS state, and stable diagnostics. |
+| SYNC-3: ResNet FHE conversion review | FHE gatekeeper and CNN-to-FHE conversion | The ReLU-free certification proves callee-value identity, 13 definition/21 context folds, 42 converted tensors, dispositions, and atomic artifacts. The exact ACE coefficient profile is integrated, but full `secure_resnet20.fhe.B` publication remains fail-closed at `CFHECNN-RELU-003` until identity-bound ranges, trained-model accuracy, and concrete CKKS evidence are approved. |
 | SYNC-4: ReLU `-O0` baseline certification | Mandatory pre-ReLU refresh and composite polynomial approximation | Certify the selected ACE-compatible Chebyshev sign profile with ordered degrees `7 -> 15 -> 13`, depth 11, exact coefficient bytes/checksums, identity-bound normalization ranges, model accuracy, and CKKS state. Then `bootstrap=auto|on` inserts one required pre-ReLU boundary per surviving `common.relu`; `manual` requires explicit compatible boundaries; `off` rejects surviving ReLU; no `-O0` movement, merging, deduplication, or profitability placement occurs. |
 | SYNC-5: Middle-WHIRL and mock executable gate | Standard WHIRL boundary and mock runtime | `secure_resnet20.mid.B` and `.T` contain only standard WHIRL calls, formals, symbols, initializers, status checks, and control flow; `whirl2c` emits C that compiles and links with the mock FHE C ABI. |
 | SYNC-6: End-to-end `-O0` acceptance | Complete OpenFHE ResNet path | Full ResNet-20 binary WHIRL lowers through FHE/CKKS, `whirl2c`, generated-C compilation, and OpenFHE provider link; the executable imports context/evaluation keys/encrypted CIFAR-10 input, uses no server-side secret key, and returns encrypted logits/result within budget. |
 | SYNC-7: Optimized-versus-`-O0` proof | ReSBM, boundary movement/fusion, HPOLY/HPAO | Every optimized transform has an independent option and proves source semantics, approximation error, CKKS scale/level legality, key availability, provenance, and tolerance against the retained `-O0` baseline. |
 | SYNC-8: Separate GPU architecture review | GPU capability/layout/cost and later POLY/RNS path | GPU work remains separate from the OpenFHE CPU/reference milestone; provider capability, target description, memory/lifetime, POLY/RNS contracts, toolchain, fallback, telemetry, and regression methodology are reviewed before implementation. |
+
+The current Commit 17 policy checkpoint is
+`doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`. Exact ACE candidate bytes and
+the 19 Open64 identity keys are frozen in `doc/fhe-policy/sync3-relu/`. The
+ACE coefficient profile is approved from empirical ANT ACE evidence and may be
+interned. The manifests still reject model enablement until an approved trained
+checkpoint, calibration and accuracy protocol, and concrete OpenFHE state
+schedule are present. No model composite disposition/context rows are emitted
+without range evidence.
 
 ### Actionable Work List by Sync Point
 

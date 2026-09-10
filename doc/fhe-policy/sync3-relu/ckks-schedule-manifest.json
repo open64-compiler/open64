@@ -1,0 +1,46 @@
+{
+  "schema": "open64.fhe.relu.ckks-schedule.v1",
+  "status": "blocked_missing_concrete_openfhe_configuration",
+  "profile_name": "ace.chebyshev.sign.7x15x13.depth11.v1",
+  "coefficient_manifest_sha256": "75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931",
+  "symbolic_stage_contract_approved": true,
+  "symbolic_contract": {
+    "pre_refresh": "required",
+    "bootstrap_reason": "PRE_RELU_REFRESH",
+    "normalization": "x_divided_by_positive_context_bound",
+    "stage_degrees": [7, 15, 13],
+    "claimed_total_multiplicative_depth": 11,
+    "reconstruction": "0.5*x*composite_sign(x/B)+0.5*x"
+  },
+  "selected_fhe_config": {
+    "config_id": null,
+    "openfhe_revision": null,
+    "security_level": null,
+    "ring_dimension": null,
+    "slot_count": null,
+    "scaling_technique": null,
+    "first_modulus_bits": null,
+    "scaling_modulus_bits": null,
+    "multiplicative_depth": null,
+    "bootstrap_depth": null,
+    "level_budget": null,
+    "secret_key_distribution": null
+  },
+  "bootstrap_post_state": {
+    "level": null,
+    "scale_bits": null,
+    "component_count": null,
+    "minimum_precision_bits": null
+  },
+  "schedule": [
+    {"ordinal":0,"operation":"normalize","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null},
+    {"ordinal":1,"operation":"chebyshev_stage_7","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null},
+    {"ordinal":2,"operation":"chebyshev_stage_15","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null},
+    {"ordinal":3,"operation":"chebyshev_stage_13","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null},
+    {"ordinal":4,"operation":"relu_reconstruction","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null}
+  ],
+  "depth_sum": null,
+  "symbolic_proof": null,
+  "executed_openfhe_evidence": null,
+  "blocker": "Select and approve one concrete OpenFHE CKKS configuration and evaluator schedule, then prove exact level/scale/component/precision transitions and execute the focused runtime test. ACE's depth-11 label alone is not an OpenFHE state proof."
+}

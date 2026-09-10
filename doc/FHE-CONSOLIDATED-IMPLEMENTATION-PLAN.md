@@ -342,17 +342,22 @@ node-retirement contract before any SYNC-3 implementation begins.
 
 ### **SYNC-3: ResNet FHE Conversion Review**
 
-Status: blocked contract preparation after PR #105 merged into `develop` at
-`73d8ec0d`. The reviewable proposal is
-`doc/FHE-SYNC3-CONVERSION-CONTRACT.md`. Source implementation is blocked until
-the pre-SYNC-3 corrective checkpoint closes and the node-retirement contract
-is jointly accepted. Once unblocked, implementation remains limited to the
-focused SYNC-3 conversion-planning scope: FHE gatekeeper, legal BatchNorm
-folding, CNN-to-FHE disposition, ReLU approximation-contract attachment,
-value-specific CKKS state evidence, and retained conversion artifacts. Opcode
-allocation, bootstrap insertion, SIHE/CKKS primitive lowering,
-OpenFHE/runtime lowering, and shared common/com edits require their reviewed
-checkpoints.
+Status: BatchNorm conversion and fail-closed ReLU-policy handling are
+implemented and certified on the FHE-owned path. The positive ReLU-free
+six-PU artifact proves 13 physical Conv/BN definition rewrites, 21
+source-context folds, and 42 converted tensors. PR #123 supplies the accepted
+composite-profile image and APIs. Full ReLU-bearing SecureResNet publication
+remains blocked at range-specific `CFHECNN-RELU-003` pending the remaining
+Commit 17 model-policy tuple
+documented by `doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`.
+
+The exact ACE bytes are project-approved from empirical ANT ACE evidence and
+the coefficient profile is integrated. All 19 persisted Open64 ReLU context
+keys are frozen in machine-readable review manifests. This is not trained-model
+approval: measured context ranges, predeclared accuracy acceptance, and a
+concrete executed OpenFHE CKKS state schedule remain absent.
+Opcode allocation, bootstrap insertion, SIHE/CKKS primitive lowering, and
+OpenFHE/runtime lowering remain outside this checkpoint.
 
 Required phase output:
 
@@ -472,7 +477,7 @@ single polynomial and is not sufficient to persist this composition; an
 append-only ordered-stage contract must be reviewed before enablement. Exact
 coefficient bytes, all 19 identity-bound normalization ranges, clear/model
 error, and CKKS depth/state remain certification gates, so full SecureResNet
-publication continues to fail closed with `CFHECNN-RELU-002` until they pass.
+publication continues to fail closed with `CFHECNN-RELU-003` until they pass.
 
 Required tests:
 
@@ -634,9 +639,13 @@ The ResNet-first FHE project reaches its first complete milestone only when:
 
 1. FHE owner: retain the certified ReLU-free BatchNorm checkpoint proving 13
    physical definition retirements, 21 context folds, and 42 converted tensors.
-2. FHE and numerical-policy reviewers: freeze the exact ACE coefficient bytes,
-   coefficient ordering, stage checksums, source revision, and manifest hash.
-3. Frontend/model owner: collect measured calibration extrema for all 19 ReLU
+2. FHE and numerical-policy reviewers: review and explicitly approve the
+   frozen ACE coefficient source, license, ordering, exact binary64 bytes,
+   stage checksums, source revision, and manifest hash in the Commit 17
+   package.
+3. Frontend/model owner: first approve a trained checkpoint, immutable
+   calibration split, preprocessing, bound estimator, safety margin, and
+   outlier policy; then collect measured extrema for all 19 ReLU
    source contexts and bind each approved positive bound to exact Open64 value,
    PU identity, and callsite records. No name-only or default fallback is valid.
 4. Numerical-policy reviewers: certify clear sign/ReLU error and pinned
