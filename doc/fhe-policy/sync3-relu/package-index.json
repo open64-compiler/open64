@@ -12,13 +12,13 @@
     {
       "gate": "identity_bound_ranges",
       "path": "doc/fhe-policy/sync3-relu/range-manifest.json",
-      "sha256": "f3877a0dc98360b39f27ea6d7dc27eb28849d3df190fd1214808b306b2df7dd2",
+      "sha256": "3a76073bccad7559f9b3968115170c2c8c987ce614a88567f11a7961fee84e98",
       "status": "blocked_missing_calibration_authority"
     },
     {
       "gate": "accuracy",
       "path": "doc/fhe-policy/sync3-relu/accuracy-manifest.json",
-      "sha256": "a6c7992462e590804564d0bddd13704ca2a7ebe7cf587c67645b1c575336c530",
+      "sha256": "f931e40a7a6a88d167198f679663c7a6713226199196928b0b7d7fb6cdc23031",
       "status": "blocked_missing_predeclared_acceptance_protocol"
     },
     {

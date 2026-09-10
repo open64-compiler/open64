@@ -273,6 +273,28 @@ main(void)
         return 1;
     }
 
+    VHO_FHE_Calibration_Manifest_Path =
+        const_cast<char *>("changed-after-first-callback.json");
+    VHO_FHE_Calibration_Manifest_SHA256 = const_cast<char *>(
+        "0000000000000000000000000000000000000000000000000000000000000000");
+    memset(&result, 0, sizeof(result));
+    if (VHO_FHE_Convert_Program_Unit(pu, &tree, NULL, &result)) {
+        fprintf(stderr, "cross-callback calibration selection changed\n");
+        return 1;
+    }
+    VHO_FHE_Calibration_Manifest_Path = NULL;
+    VHO_FHE_Calibration_Manifest_SHA256 = NULL;
+    VHO_FHE_Convert_Reset_Passes();
+    if (!VHO_FHE_Register_Default_Semantic_Conversion()) {
+        fprintf(stderr, "calibration failure cleanup did not re-register\n");
+        return 1;
+    }
+    memset(&result, 0, sizeof(result));
+    if (!VHO_FHE_Convert_Program_Unit(pu, &tree, stderr, &result)) {
+        fprintf(stderr, "calibration failure retained callback state\n");
+        return 1;
+    }
+
     const VHO_FHE_RELU_PROFILE_MANIFEST *approved =
         VHO_FHE_Approved_Ace_Relu_Profile();
     VHO_FHE_RELU_PROFILE_MANIFEST malformed = *approved;

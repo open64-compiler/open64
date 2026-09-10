@@ -356,6 +356,14 @@ the coefficient profile is integrated. All 19 persisted Open64 ReLU context
 keys are frozen in machine-readable review manifests. This is not trained-model
 approval: measured context ranges, predeclared accuracy acceptance, and a
 concrete executed OpenFHE CKKS state schedule remain absent.
+The deterministic collector in
+`doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` now proves the 19-way identity join,
+pre-ReLU observation algorithm, distribution evidence, bound checks, and
+canonical manifest hashing. Its fixture is explicitly not calibration.
+PR #127 supplies authenticated runtime manifest selection, and the FHE-owned
+RapidJSON consumer verifies exact bytes, approval, identity coverage, and
+all-PU consumption before publishing. A trained checkpoint/dataset decision
+remains the prerequisite for native model binding.
 Opcode allocation, bootstrap insertion, SIHE/CKKS primitive lowering, and
 OpenFHE/runtime lowering remain outside this checkpoint.
 
@@ -645,18 +653,24 @@ The ResNet-first FHE project reaches its first complete milestone only when:
    package.
 3. Frontend/model owner: first approve a trained checkpoint, immutable
    calibration split, preprocessing, bound estimator, safety margin, and
-   outlier policy; then collect measured extrema for all 19 ReLU
+   outlier policy; then run the implemented collector for all 19 ReLU
    source contexts and bind each approved positive bound to exact Open64 value,
    PU identity, and callsite records. No name-only or default fallback is valid.
-4. Numerical-policy reviewers: certify clear sign/ReLU error and pinned
+4. Completed infrastructure: PR #127 added the reviewed calibration-manifest
+   path and expected SHA-256 conversion options, and PR #128 exposed bundled
+   RapidJSON to backend consumers without a new linked-library dependency. The
+   FHE consumer authenticates exact bytes before parsing and retains one
+   selection across the all-PU checkpoint.
+5. Numerical-policy reviewers: certify clear sign/ReLU error and pinned
    ResNet-20 logit/top-1 tolerances against named dataset hashes.
-5. FHE/runtime owners: prove the depth-11 schedule and concrete post-refresh
+6. FHE/runtime owners: prove the depth-11 schedule and concrete post-refresh
    CKKS level, scale, component, and precision contracts.
-6. FHE owner: consume the PR #123 opaque profile APIs only after items 2-5 are
-   accepted, then record composite dispositions, ordered stages, 19 context
-   ranges, and value-specific CKKS planning state.
-7. FHE owner: rerun the full six-PU SecureResNet checkpoint, publish auxiliary
+7. FHE owner: calibration machinery and authenticated 19-context binding are
+   implemented against the PR #123 opaque profile APIs. Activate those bindings
+   for SecureResNet only after items 3, 5, and 6 are accepted, then complete
+   value-specific CKKS planning state.
+8. FHE owner: rerun the full six-PU SecureResNet checkpoint, publish auxiliary
    payload/report artifacts transactionally, and publish `.fhe.B` last.
-8. Independent reviewer: reopen with `ir_b2a -st -src`, reconcile report and
+9. Independent reviewer: reopen with `ir_b2a -st -src`, reconcile report and
    image counts, and close only focused SYNC-3. Bootstrap insertion and
    polynomial materialization remain SYNC-4 work.

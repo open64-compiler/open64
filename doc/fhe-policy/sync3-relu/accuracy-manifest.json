@@ -9,7 +9,7 @@
     "preprocessing_sha256": null,
     "trained_checkpoint_sha256": null,
     "coefficient_manifest_sha256": "75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931",
-    "range_manifest_sha256": "f3877a0dc98360b39f27ea6d7dc27eb28849d3df190fd1214808b306b2df7dd2",
+    "range_manifest_sha256": "3a76073bccad7559f9b3968115170c2c8c987ce614a88567f11a7961fee84e98",
     "software_lock_sha256": null
   },
   "predeclared_metrics": {

@@ -17,7 +17,7 @@ lower polynomial arithmetic, or authorize publication of a ReLU-bearing
 | Gate | Status | Decision or blocker |
 | --- | --- | --- |
 | Canonical coefficient provenance | Approved from empirical ANT ACE evidence | The exact ACE `7 -> 15 -> 13` Chebyshev coefficient bytes, source revision, file digest, SPDX expression, stage digests, and bundle digest are frozen without fitting or scaling. Open64's independent formal proof is deferred. |
-| Nineteen identity-bound ranges | Blocked | All 19 Open64 identity keys are enumerated, but the current SecureResNet fixture has synthetic weights and only an all-ones sample. An approved trained checkpoint, calibration split, preprocessing, bound estimator, and safety/outlier policy are missing. |
+| Nineteen identity-bound ranges | Collector implemented; model evidence blocked | All 19 Open64 identity keys and clear-model routes are enumerated. Deterministic pre-ReLU collection, distribution evidence, positive-bound checks, canonical hashing, and approval validation are tested. An approved trained checkpoint, calibration split, preprocessing, bound estimator, and safety/outlier policy are missing. |
 | Accuracy evidence | Blocked | The dataset/checkpoint protocol and numerical thresholds have not been approved in advance. No accuracy or tolerance claim can be made from the synthetic fixture. |
 | Concrete CKKS state proof | Blocked | ACE's symbolic depth-11 label is not a concrete OpenFHE level/scale/precision proof. One OpenFHE configuration and evaluator schedule must be selected and executed. |
 
@@ -74,6 +74,7 @@ contexts. Each key is:
 
 ```text
 (profile_name,
+ owner_pu_st,
  source_relu_value_id,
  context_pu_identity_id,
  context_callsite_id)
@@ -141,23 +142,25 @@ Two proofs are required and remain distinct:
 
 | Evidence | Native mapping after approval | Current action |
 | --- | --- | --- |
-| Profile name/version, reconstruction, total depth, normalization, refresh, source revision, coefficient-manifest hash | `DSL_FHE_COMPOSITE_PROFILE_RECORD` passed to `DSL_FHE_Approx_Profile_Intern_Complete()` | Blocked until all four manifests form one approved tuple |
-| Three ordered coefficient tensors, byte hashes, basis, degree, evaluator, scale/level policies | Three `DSL_FHE_APPROX_STAGE_RECORD` rows passed atomically with the profile | Coefficient bytes frozen; evaluator and concrete state policies blocked |
+| Profile name/version, reconstruction, total depth, normalization, refresh, source revision, coefficient-manifest hash | `DSL_FHE_COMPOSITE_PROFILE_RECORD` passed to `DSL_FHE_Approx_Profile_Intern_Complete()` | Integrated from approved empirical ACE profile |
+| Three ordered coefficient tensors, byte hashes, basis, degree, evaluator, scale/level policies | Three `DSL_FHE_APPROX_STAGE_RECORD` rows passed atomically with the profile | Exact stages integrated; concrete runtime state execution remains blocked |
 | One composite disposition per live source ReLU | `DSL_FHE_Plan_Add_Composite_Disposition()` | Continue range-specific `CFHECNN-RELU-003`; do not insert model rows |
-| Nineteen exact value/PU/callsite bounds and extrema | `DSL_FHE_Approx_Profile_Bind_Context_Range()` | Identity keys enumerated; numeric records blocked |
+| Nineteen exact value/PU/callsite bounds and extrema | `DSL_FHE_Approx_Profile_Bind_Context_Range()` | Collector certified on a fixture; numeric model records blocked pending approved evidence and manifest transport |
 | Value-specific level, scale, components, precision, pending refresh reason | `DSL_FHE_Plan_Add_CKKS_Value_State()` and lookup APIs | Symbolic skeleton only; concrete rows blocked |
 | Reopen and cross-table evidence | profile/stage/association/context count/get/find APIs plus `ir_b2a -st -src` | Run only after accepted rows exist |
 
-Approval is atomic: no subset authorizes a native profile row, disposition,
-context binding, or full `.fhe.B` publication.
+Coefficient-profile approval authorizes the already integrated profile and
+ordered stage rows. It does not authorize a model disposition, context binding,
+or full `.fhe.B` publication. Those remain atomic with approved range evidence
+and the later accuracy/CKKS gates.
 
 ## Machine-Readable Evidence
 
 | Artifact | SHA-256 |
 | --- | --- |
 | `doc/fhe-policy/sync3-relu/coefficient-manifest.json` | `75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931` |
-| `doc/fhe-policy/sync3-relu/range-manifest.json` | `f3877a0dc98360b39f27ea6d7dc27eb28849d3df190fd1214808b306b2df7dd2` |
-| `doc/fhe-policy/sync3-relu/accuracy-manifest.json` | `a6c7992462e590804564d0bddd13704ca2a7ebe7cf587c67645b1c575336c530` |
+| `doc/fhe-policy/sync3-relu/range-manifest.json` | `3a76073bccad7559f9b3968115170c2c8c987ce614a88567f11a7961fee84e98` |
+| `doc/fhe-policy/sync3-relu/accuracy-manifest.json` | `f931e40a7a6a88d167198f679663c7a6713226199196928b0b7d7fb6cdc23031` |
 | `doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json` | `95d7b63c7a7c509fdd9115bcef1c067009c90e7f8b63fe1357262ba320da342f` |
 
 `doc/fhe-policy/sync3-relu/package-index.json` binds those paths, hashes, gate

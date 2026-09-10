@@ -11,9 +11,14 @@
 #include <algorithm>
 #include <deque>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 #include "fhe_semantic_convert.h"
 #include "fhe_convert.h"
@@ -78,6 +83,27 @@ typedef struct {
     std::string checksum;
 } FHE_CONVERTED_TENSOR;
 
+typedef struct {
+    ST_IDX owner_pu_st;
+    DSL_IR_VALUE_ID source_relu_value_id;
+    DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id;
+    DSL_CALLSITE_METADATA_ID context_callsite_id;
+    double observed_min;
+    double observed_max;
+    double positive_bound;
+    std::string instance_path;
+    BOOL consumed;
+} FHE_RELU_CALIBRATION_CONTEXT;
+
+typedef struct {
+    BOOL initialized;
+    BOOL approved;
+    std::string manifest_path;
+    std::string external_sha256;
+    std::string embedded_sha256;
+    std::vector<FHE_RELU_CALIBRATION_CONTEXT> contexts;
+} FHE_RELU_CALIBRATION_STATE;
+
 static std::vector<FHE_BN_CONTEXT_FOLD> VHO_FHE_bn_context_folds;
 static std::deque<FHE_CONVERTED_TENSOR> VHO_FHE_converted_tensors;
 static std::string VHO_FHE_converted_payload_temp;
@@ -86,11 +112,16 @@ static std::string VHO_FHE_conversion_report_temp;
 static std::string VHO_FHE_conversion_report_final;
 static BOOL VHO_FHE_artifacts_registered;
 static BOOL VHO_FHE_relu_range_blocked;
+static FHE_RELU_CALIBRATION_STATE VHO_FHE_relu_calibration;
 
 static BOOL VHO_FHE_Semantic_Report
                                 (FILE *diagnostic,
                                  const char *code,
                                  const char *message);
+static BOOL VHO_FHE_PU_Is_FHE_Entry (ST_IDX owner_pu_st);
+static BOOL VHO_FHE_Value_Belongs_To_PU
+                                (const DSL_IR_VALUE_RECORD *value,
+                                 ST_IDX owner_pu_st);
 
 static const UINT64 VHO_FHE_ace_relu_stage_7_bits[] = {
     0x0000000000000000ULL, 0x3ff46f736ad8da32ULL,
@@ -377,6 +408,592 @@ VHO_FHE_Semantic_Report (FILE *diagnostic, const char *code,
     if (diagnostic != NULL)
         fprintf(diagnostic, "%s: %s\n", code, message);
     return FALSE;
+}
+
+static const rapidjson::Value *
+VHO_FHE_JSON_Member
+        (const rapidjson::Value &object,
+         const char *name)
+{
+    if (!object.IsObject() || !object.HasMember(name))
+        return NULL;
+    return &object[name];
+}
+
+static BOOL
+VHO_FHE_JSON_String
+        (const rapidjson::Value &object,
+         const char *name,
+         std::string *value)
+{
+    const rapidjson::Value *member = VHO_FHE_JSON_Member(object, name);
+    if (member == NULL || !member->IsString())
+        return FALSE;
+    if (value != NULL)
+        value->assign(member->GetString(), member->GetStringLength());
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_JSON_Uint
+        (const rapidjson::Value &object,
+         const char *name,
+         UINT32 *value)
+{
+    const rapidjson::Value *member = VHO_FHE_JSON_Member(object, name);
+    if (member == NULL || !member->IsUint())
+        return FALSE;
+    if (value != NULL)
+        *value = member->GetUint();
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_JSON_Double
+        (const rapidjson::Value &object,
+         const char *name,
+         double *value)
+{
+    const rapidjson::Value *member = VHO_FHE_JSON_Member(object, name);
+    if (member == NULL || !member->IsNumber() ||
+        !isfinite(member->GetDouble()))
+        return FALSE;
+    if (value != NULL)
+        *value = member->GetDouble();
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_JSON_SHA256
+        (const rapidjson::Value &object,
+         const char *name,
+         std::string *value)
+{
+    std::string checksum;
+    if (!VHO_FHE_JSON_String(object, name, &checksum) ||
+        !VHO_FHE_Is_SHA256(checksum.c_str()))
+        return FALSE;
+    if (value != NULL)
+        *value = checksum;
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_JSON_Nonempty
+        (const rapidjson::Value &object,
+         const char *name)
+{
+    const rapidjson::Value *member = VHO_FHE_JSON_Member(object, name);
+    if (member == NULL)
+        return FALSE;
+    if (member->IsString())
+        return member->GetStringLength() != 0;
+    if (member->IsObject())
+        return member->MemberCount() != 0;
+    if (member->IsArray())
+        return member->Size() != 0;
+    return !member->IsNull();
+}
+
+static BOOL
+VHO_FHE_Read_Exact_File
+        (const char *path,
+         std::vector<unsigned char> *bytes,
+         FILE *diagnostic)
+{
+    static const UINT64 max_manifest_size = 16ULL * 1024ULL * 1024ULL;
+    FILE *file;
+    long length;
+
+    if (path == NULL || path[0] == '\0' || bytes == NULL)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest path is empty");
+    file = fopen(path, "rb");
+    if (file == NULL)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "could not open calibration manifest");
+    BOOL valid = fseek(file, 0, SEEK_END) == 0 &&
+                 (length = ftell(file)) >= 0 &&
+                 (UINT64)length <= max_manifest_size &&
+                 fseek(file, 0, SEEK_SET) == 0;
+    if (valid) {
+        bytes->resize((size_t)length);
+        valid = length == 0 ||
+                fread(&(*bytes)[0], 1, (size_t)length, file) ==
+                    (size_t)length;
+    }
+    valid = fclose(file) == 0 && valid;
+    if (!valid)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "could not read complete calibration manifest bytes");
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Canonical_Content_SHA256
+        (const std::vector<unsigned char> &bytes,
+         const std::string &embedded_sha256,
+         std::string *canonical_sha256,
+         FILE *diagnostic)
+{
+    std::string content(bytes.begin(), bytes.end());
+    std::string field = "\"manifest_sha256\":\"" +
+                        embedded_sha256 + "\"";
+    std::string::size_type position = content.find(field);
+    if (position == std::string::npos ||
+        content.find(field, position + 1) != std::string::npos)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "canonical calibration hash field is not unique");
+    std::string::size_type erase_begin = position;
+    std::string::size_type erase_end = position + field.size();
+    if (erase_begin != 0 && content[erase_begin - 1] == ',')
+        --erase_begin;
+    else if (erase_end < content.size() && content[erase_end] == ',')
+        ++erase_end;
+    else
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "canonical calibration hash field is malformed");
+    content.erase(erase_begin, erase_end - erase_begin);
+    std::vector<unsigned char> canonical(content.begin(), content.end());
+    *canonical_sha256 = VHO_FHE_SHA256(canonical);
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Parse_ST_IDX
+        (const std::string &text,
+         ST_IDX *st)
+{
+    unsigned level;
+    unsigned index;
+    char trailing;
+    if (st == NULL || sscanf(text.c_str(), "<%u,%u>%c",
+                             &level, &index, &trailing) != 2 ||
+        level != GLOBAL_SYMTAB || index == 0)
+        return FALSE;
+    if (index > 0x00ffffffU)
+        return FALSE;
+    *st = make_ST_IDX(index, level);
+    return TRUE;
+}
+
+static std::string
+VHO_FHE_Relu_Context_Key
+        (ST_IDX owner_pu_st,
+         DSL_IR_VALUE_ID source_relu_value_id,
+         DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id,
+         DSL_CALLSITE_METADATA_ID context_callsite_id)
+{
+    char key[128];
+    snprintf(key, sizeof(key), "%u:%u:%u:%u",
+             (unsigned)owner_pu_st,
+             (unsigned)source_relu_value_id,
+             (unsigned)context_pu_identity_id,
+             (unsigned)context_callsite_id);
+    return key;
+}
+
+static BOOL
+VHO_FHE_Find_Relu_Owner_Identity
+        (const DSL_IR_VALUE_RECORD *value,
+         DSL_PU_SOURCE_IDENTITY_RECORD *identity)
+{
+    UINT32 matches = 0;
+    DSL_PU_SOURCE_IDENTITY_RECORD matched;
+    for (UINT32 id = 1; id <= DSL_Call_Image_PU_Identity_Count(); ++id) {
+        DSL_PU_SOURCE_IDENTITY_RECORD candidate;
+        if (!DSL_Call_Image_Get_PU_Identity(id, &candidate) ||
+            !VHO_FHE_Value_Belongs_To_PU(value, candidate.owner_pu_st))
+            continue;
+        matched = candidate;
+        ++matches;
+    }
+    if (matches != 1)
+        return FALSE;
+    if (identity != NULL)
+        *identity = matched;
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Collect_Expected_Relu_Contexts
+        (std::set<std::string> *expected,
+         FILE *diagnostic)
+{
+    if (expected == NULL)
+        return FALSE;
+    expected->clear();
+    for (UINT32 node_id = 1; node_id <= DSL_IR_Image_Node_Count(); ++node_id) {
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+        DSL_IR_VALUE_RECORD value;
+        DSL_PU_SOURCE_IDENTITY_RECORD identity;
+        if (!DSL_IR_Image_Get_Node(node_id, &node) ||
+            (node.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 ||
+            !DSL_IR_Image_Get_Opcode_Descriptor
+                (node.opcode_descriptor_id, &descriptor) ||
+            descriptor.logical_operator != OPR_DSLRELU ||
+            !DSL_IR_Image_Get_Value(node.result_value_id, &value))
+            continue;
+        if (!VHO_FHE_Find_Relu_Owner_Identity(&value, &identity))
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-005",
+                        "ReLU value has no unique structured PU identity");
+        UINT32 call_count = 0;
+        for (UINT32 callsite_id = 1;
+             callsite_id <= DSL_Call_Image_Callsite_Count(); ++callsite_id) {
+            DSL_CALLSITE_METADATA_RECORD callsite;
+            if (!DSL_Call_Image_Get_Callsite(callsite_id, &callsite) ||
+                callsite.callee_pu_st != identity.owner_pu_st)
+                continue;
+            expected->insert(VHO_FHE_Relu_Context_Key
+                (identity.owner_pu_st, value.id, identity.id, callsite.id));
+            ++call_count;
+        }
+        if (call_count == 0) {
+            if (!VHO_FHE_PU_Is_FHE_Entry(identity.owner_pu_st))
+                return VHO_FHE_Semantic_Report
+                           (diagnostic, "CFHECNN-RELU-005",
+                            "non-entry ReLU has no source call context");
+            expected->insert(VHO_FHE_Relu_Context_Key
+                (identity.owner_pu_st, value.id, identity.id,
+                 DSL_CALLSITE_METADATA_INVALID_ID));
+        }
+    }
+    if (expected->size() != 19)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-005",
+                    "SecureResNet calibration requires exactly 19 contexts");
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Validate_Calibration_Authority
+        (const rapidjson::Value &root,
+         FILE *diagnostic)
+{
+    static const char *required[] = {
+        "dataset_name", "dataset_version", "dataset_split",
+        "dataset_sha256", "preprocessing", "preprocessing_sha256",
+        "trained_checkpoint_identity", "trained_checkpoint_sha256",
+        "collector_revision", "environment", "bound_rule",
+        "approval_identity"
+    };
+    const rapidjson::Value *authority =
+        VHO_FHE_JSON_Member(root, "calibration_authority");
+    std::string text;
+    if (authority == NULL || !authority->IsObject())
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration authority is missing");
+    for (UINT32 i = 0; i < sizeof(required) / sizeof(required[0]); ++i) {
+        if (!VHO_FHE_JSON_Nonempty(*authority, required[i]))
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-004",
+                        "approved calibration authority is incomplete");
+    }
+    if (!VHO_FHE_JSON_SHA256(*authority, "dataset_sha256", NULL) ||
+        !VHO_FHE_JSON_SHA256
+            (*authority, "preprocessing_sha256", NULL) ||
+        !VHO_FHE_JSON_SHA256
+            (*authority, "trained_checkpoint_sha256", NULL) ||
+        !VHO_FHE_JSON_String(*authority, "out_of_range_policy", &text) ||
+        text != "reject" ||
+        !VHO_FHE_JSON_String(*authority, "acceptance_data_role", &text) ||
+        text != "disjoint_held_out") {
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration authority policy is not admissible");
+    }
+    static const char *anti_placeholder[] = {
+        "dataset_name", "dataset_version", "dataset_split",
+        "sample_selection", "preprocessing",
+        "trained_checkpoint_identity", "approval_identity"
+    };
+    std::string policy;
+    for (UINT32 i = 0;
+         i < sizeof(anti_placeholder) / sizeof(anti_placeholder[0]); ++i) {
+        if (VHO_FHE_JSON_String(*authority, anti_placeholder[i], &text)) {
+            for (size_t j = 0; j < text.size(); ++j)
+                text[j] = (char)tolower((unsigned char)text[j]);
+            policy += " " + text;
+        }
+    }
+    if (policy.find("fixture") != std::string::npos ||
+        policy.find("synthetic") != std::string::npos ||
+        policy.find("placeholder") != std::string::npos ||
+        policy.find("none:") != std::string::npos) {
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "fixture evidence cannot approve model calibration");
+    }
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Parse_Approved_Calibration
+        (const std::vector<unsigned char> &bytes,
+         std::vector<FHE_RELU_CALIBRATION_CONTEXT> *contexts,
+         std::string *embedded_sha256,
+         FILE *diagnostic)
+{
+    std::vector<char> json(bytes.begin(), bytes.end());
+    if (bytes.empty() ||
+        std::find(bytes.begin(), bytes.end(), (unsigned char)0) != bytes.end())
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest byte stream is invalid");
+    json.push_back('\0');
+    rapidjson::Document root;
+    root.Parse(&json[0]);
+    if (root.HasParseError() || !root.IsObject())
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest is malformed JSON");
+
+    std::string text;
+    std::string status;
+    std::string canonical_sha256;
+    if (!VHO_FHE_JSON_String(root, "schema", &text) ||
+        text != "open64.fhe.relu.context-ranges.v1" ||
+        !VHO_FHE_JSON_String(root, "profile_name", &text) ||
+        text != VHO_FHE_ACE_RELU_PROFILE_IDENTITY ||
+        !VHO_FHE_JSON_SHA256
+            (root, "coefficient_manifest_sha256", &text) ||
+        text != VHO_FHE_ACE_RELU_MANIFEST_SHA256)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest identity is invalid");
+    if (!VHO_FHE_JSON_SHA256(root, "manifest_sha256", embedded_sha256) ||
+        !VHO_FHE_Canonical_Content_SHA256
+            (bytes, *embedded_sha256, &canonical_sha256, diagnostic) ||
+        canonical_sha256 != *embedded_sha256)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest content hash is invalid");
+    if (!VHO_FHE_JSON_String(root, "status", &status) ||
+        (status != "approved" && status != "candidate_unapproved"))
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest status is invalid");
+
+    const rapidjson::Value *source = VHO_FHE_JSON_Member
+                                         (root, "source_artifact");
+    if (source == NULL || !source->IsObject() ||
+        !VHO_FHE_JSON_SHA256(*source, "binary_whirl_sha256", NULL) ||
+        !VHO_FHE_JSON_SHA256(*source, "model_source_sha256", NULL) ||
+        !VHO_FHE_JSON_SHA256(*source, "parameter_payload_sha256", NULL))
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration source artifact identity is incomplete");
+
+    const rapidjson::Value *collection = VHO_FHE_JSON_Member
+                                             (root, "collection");
+    UINT32 sample_count;
+    if (collection == NULL || !collection->IsObject() ||
+        !VHO_FHE_JSON_Uint(*collection, "sample_count", &sample_count) ||
+        sample_count == 0 ||
+        !VHO_FHE_JSON_SHA256
+            (*collection, "sample_order_sha256", NULL) ||
+        !VHO_FHE_JSON_SHA256
+            (*collection, "observed_input_sha256", NULL) ||
+        !VHO_FHE_JSON_SHA256
+            (*collection, "observed_model_state_sha256", NULL)) {
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration collection evidence is incomplete");
+    }
+    const rapidjson::Value *sample_ids =
+        VHO_FHE_JSON_Member(*collection, "sample_ids");
+    std::set<std::string> unique_samples;
+    std::string sample_order_sha256;
+    if (sample_ids == NULL || !sample_ids->IsArray() ||
+        sample_ids->Size() != sample_count)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration sample order is incomplete");
+    for (rapidjson::SizeType i = 0; i < sample_ids->Size(); ++i) {
+        if (!(*sample_ids)[i].IsString() ||
+            (*sample_ids)[i].GetStringLength() == 0 ||
+            !unique_samples.insert(std::string
+                ((*sample_ids)[i].GetString(),
+                 (*sample_ids)[i].GetStringLength())).second)
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-004",
+                        "calibration sample IDs are invalid");
+        const char *sample = (*sample_ids)[i].GetString();
+        for (rapidjson::SizeType j = 0;
+             j < (*sample_ids)[i].GetStringLength(); ++j) {
+            if ((unsigned char)sample[j] >= 0x80)
+                return VHO_FHE_Semantic_Report
+                           (diagnostic, "CFHECNN-RELU-004",
+                            "calibration sample IDs must be canonical ASCII");
+        }
+    }
+    rapidjson::StringBuffer sample_order;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sample_order);
+    writer.StartObject();
+    writer.Key("sample_ids");
+    sample_ids->Accept(writer);
+    writer.EndObject();
+    std::vector<unsigned char> sample_order_bytes
+        (sample_order.GetString(),
+         sample_order.GetString() + sample_order.GetSize());
+    sample_order_bytes.push_back('\n');
+    if (!VHO_FHE_JSON_String
+            (*collection, "sample_order_sha256", &sample_order_sha256) ||
+        VHO_FHE_SHA256(sample_order_bytes) != sample_order_sha256)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration sample-order hash does not match");
+
+    std::set<std::string> expected;
+    if (!VHO_FHE_Collect_Expected_Relu_Contexts(&expected, diagnostic))
+        return FALSE;
+    const rapidjson::Value *rows = VHO_FHE_JSON_Member(root, "contexts");
+    if (rows == NULL || !rows->IsArray() || rows->Size() != 19)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-005",
+                    "calibration manifest must contain 19 contexts");
+    std::set<std::string> observed;
+    contexts->clear();
+    UINT32 root_count = 0;
+    for (rapidjson::SizeType i = 0; i < rows->Size(); ++i) {
+        const rapidjson::Value &row = (*rows)[i];
+        FHE_RELU_CALIBRATION_CONTEXT context;
+        std::string owner;
+        std::string module_path;
+        UINT32 invocation_ordinal;
+        UINT32 row_sample_count;
+        UINT32 element_count;
+        UINT32 nonfinite_count;
+        UINT32 outlier_count;
+        double observed_abs_max;
+        double quantile;
+        if (!row.IsObject() ||
+            !VHO_FHE_JSON_String(row, "owner_pu_st", &owner) ||
+            !VHO_FHE_Parse_ST_IDX(owner, &context.owner_pu_st) ||
+            !VHO_FHE_JSON_Uint
+                (row, "source_relu_value_id", &context.source_relu_value_id) ||
+            !VHO_FHE_JSON_Uint
+                (row, "context_pu_identity_id",
+                 &context.context_pu_identity_id) ||
+            !VHO_FHE_JSON_Uint
+                (row, "context_callsite_id", &context.context_callsite_id) ||
+            !VHO_FHE_JSON_String
+                (row, "instance_path", &context.instance_path) ||
+            context.instance_path.empty() ||
+            !VHO_FHE_JSON_String(row, "module_path", &module_path) ||
+            module_path.empty() ||
+            !VHO_FHE_JSON_Uint
+                (row, "invocation_ordinal", &invocation_ordinal) ||
+            !VHO_FHE_JSON_Double
+                (row, "observed_min", &context.observed_min) ||
+            !VHO_FHE_JSON_Double
+                (row, "observed_max", &context.observed_max) ||
+            !VHO_FHE_JSON_Double
+                (row, "observed_abs_max", &observed_abs_max) ||
+            !VHO_FHE_JSON_Double(row, "per_sample_abs_q99", &quantile) ||
+            !VHO_FHE_JSON_Double(row, "per_sample_abs_q999", &quantile) ||
+            !VHO_FHE_JSON_Double(row, "bound_b", &context.positive_bound) ||
+            !VHO_FHE_JSON_Uint
+                (row, "sample_count", &row_sample_count) ||
+            !VHO_FHE_JSON_Uint(row, "element_count", &element_count) ||
+            !VHO_FHE_JSON_Uint
+                (row, "nonfinite_count", &nonfinite_count) ||
+            !VHO_FHE_JSON_Uint(row, "outlier_count", &outlier_count) ||
+            context.source_relu_value_id == DSL_IR_VALUE_INVALID_ID ||
+            context.context_pu_identity_id ==
+                DSL_PU_SOURCE_IDENTITY_INVALID_ID ||
+            context.observed_min > context.observed_max ||
+            context.positive_bound <= 0.0 || observed_abs_max < 0.0 ||
+            context.positive_bound < observed_abs_max ||
+            context.positive_bound < fabs(context.observed_min) ||
+            context.positive_bound < fabs(context.observed_max) ||
+            row_sample_count != sample_count || element_count == 0 ||
+            nonfinite_count != 0 || outlier_count != 0) {
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-004",
+                        "calibration context evidence is malformed");
+        }
+        std::string key = VHO_FHE_Relu_Context_Key
+            (context.owner_pu_st, context.source_relu_value_id,
+             context.context_pu_identity_id, context.context_callsite_id);
+        if (expected.find(key) == expected.end() ||
+            !observed.insert(key).second)
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-005",
+                        "calibration context identity is unknown or duplicate");
+        if (context.context_callsite_id ==
+            DSL_CALLSITE_METADATA_INVALID_ID)
+            ++root_count;
+        context.consumed = FALSE;
+        contexts->push_back(context);
+    }
+    if (observed != expected || root_count != 1)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-005",
+                    "calibration context identity coverage is incomplete");
+    if (status != "approved")
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest is not approved");
+    if (!VHO_FHE_Validate_Calibration_Authority(root, diagnostic))
+        return FALSE;
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Prepare_Relu_Calibration
+        (const VHO_FHE_CONVERT_OPTIONS *options,
+         FILE *diagnostic)
+{
+    std::string path = options != NULL &&
+                       options->calibration_manifest_path != NULL ?
+                       options->calibration_manifest_path : "";
+    std::string digest = options != NULL &&
+                         options->calibration_manifest_sha256 != NULL ?
+                         options->calibration_manifest_sha256 : "";
+    if (VHO_FHE_relu_calibration.initialized) {
+        if (path != VHO_FHE_relu_calibration.manifest_path ||
+            digest != VHO_FHE_relu_calibration.external_sha256)
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-004",
+                        "calibration manifest selection changed across PUs");
+        return TRUE;
+    }
+    if (path.empty() && digest.empty()) {
+        VHO_FHE_relu_calibration.initialized = TRUE;
+        return TRUE;
+    }
+    if (path.empty() || !VHO_FHE_Is_SHA256(digest.c_str()))
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest path and digest are incomplete");
+    std::vector<unsigned char> bytes;
+    if (!VHO_FHE_Read_Exact_File(path.c_str(), &bytes, diagnostic))
+        return FALSE;
+    if (VHO_FHE_SHA256(bytes) != digest)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-004",
+                    "calibration manifest exact-byte SHA-256 mismatch");
+    std::vector<FHE_RELU_CALIBRATION_CONTEXT> contexts;
+    std::string embedded_sha256;
+    if (!VHO_FHE_Parse_Approved_Calibration
+            (bytes, &contexts, &embedded_sha256, diagnostic))
+        return FALSE;
+    VHO_FHE_relu_calibration.initialized = TRUE;
+    VHO_FHE_relu_calibration.manifest_path = path;
+    VHO_FHE_relu_calibration.external_sha256 = digest;
+    VHO_FHE_relu_calibration.embedded_sha256 = embedded_sha256;
+    VHO_FHE_relu_calibration.contexts.swap(contexts);
+    VHO_FHE_relu_calibration.approved = TRUE;
+    return TRUE;
 }
 
 static BOOL
@@ -2115,6 +2732,8 @@ VHO_FHE_Default_Semantic_Gatekeeper
     (void)tree;
     if (pu_info == NULL || options == NULL)
         return FALSE;
+    if (!VHO_FHE_Prepare_Relu_Calibration(options, diagnostic))
+        return FALSE;
     owner_pu_st = PU_Info_proc_sym(pu_info);
     if (!VHO_FHE_Select_Default_Context(owner_pu_st, &context, diagnostic))
         return FALSE;
@@ -2151,6 +2770,82 @@ VHO_FHE_Default_Semantic_Gatekeeper
 }
 
 static BOOL
+VHO_FHE_Bind_Approved_Relu_Contexts
+        (ST_IDX owner_pu_st,
+         const DSL_IR_NODE_RECORD *node,
+         const DSL_IR_VALUE_RECORD *value,
+         DSL_FHE_COMPOSITE_PROFILE_ID profile_id,
+         DSL_FHE_CKKS_VALUE_STATE_ID state_id,
+         VHO_FHE_CONVERT_RESULT *result,
+         FILE *diagnostic)
+{
+    std::vector<size_t> matches;
+    for (size_t i = 0; i < VHO_FHE_relu_calibration.contexts.size(); ++i) {
+        FHE_RELU_CALIBRATION_CONTEXT &context =
+            VHO_FHE_relu_calibration.contexts[i];
+        if (context.owner_pu_st == owner_pu_st &&
+            context.source_relu_value_id == value->id)
+            matches.push_back(i);
+    }
+    if (matches.empty())
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-005",
+                    "ReLU definition has no approved source context");
+
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD disposition;
+    DSL_FHE_Conversion_Disposition_Record_Init(&disposition);
+    disposition.source_node_id = node->id;
+    disposition.result_value_id = value->id;
+    disposition.disposition =
+        DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION;
+    disposition.owner_pu_st = owner_pu_st;
+    disposition.approximation_contract_id = profile_id;
+    disposition.result_ckks_value_state_id = state_id;
+    disposition.flags = DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
+    if (DSL_FHE_Plan_Add_Composite_Disposition(&disposition, profile_id) ==
+        DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-005",
+                    "could not associate ReLU with composite profile");
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        FHE_RELU_CALIBRATION_CONTEXT &context =
+            VHO_FHE_relu_calibration.contexts[matches[i]];
+        if (context.consumed)
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-005",
+                        "ReLU calibration context was consumed twice");
+        DSL_FHE_CONTEXT_RANGE_RECORD range;
+        DSL_FHE_Context_Range_Record_Init(&range);
+        range.profile_id = profile_id;
+        range.source_relu_value_id = value->id;
+        range.context_pu_identity_id = context.context_pu_identity_id;
+        range.context_callsite_id = context.context_callsite_id;
+        range.owner_pu_st = owner_pu_st;
+        range.positive_bound_tcon = Enter_tcon
+            (Host_To_Targ_Float(MTYPE_F8, context.positive_bound));
+        range.observed_min_tcon = Enter_tcon
+            (Host_To_Targ_Float(MTYPE_F8, context.observed_min));
+        range.observed_max_tcon = Enter_tcon
+            (Host_To_Targ_Float(MTYPE_F8, context.observed_max));
+        range.out_of_range_policy = DSL_FHE_CONTEXT_RANGE_REJECT;
+        std::string provenance =
+            "calibration_manifest_sha256=" +
+            VHO_FHE_relu_calibration.external_sha256 +
+            ";instance_path=" + context.instance_path;
+        range.provenance = Save_Str(provenance.c_str());
+        if (DSL_FHE_Approx_Profile_Bind_Context_Range(&range) ==
+            DSL_FHE_CONTEXT_RANGE_INVALID_ID)
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-005",
+                        "could not bind approved ReLU context range");
+        context.consumed = TRUE;
+    }
+    ++result->converted_disposition_count;
+    return TRUE;
+}
+
+static BOOL
 VHO_FHE_Default_Conversion_Pass
         (struct pu_info *pu_info,
          WN **tree,
@@ -2163,8 +2858,9 @@ VHO_FHE_Default_Conversion_Pass
     BOOL valid = TRUE;
 
     (void)tree;
-    (void)options;
     if (pu_info == NULL || result == NULL)
+        return FALSE;
+    if (!VHO_FHE_Prepare_Relu_Calibration(options, diagnostic))
         return FALSE;
     owner_pu_st = PU_Info_proc_sym(pu_info);
     if (!VHO_FHE_Select_Default_Context(owner_pu_st, &context, diagnostic))
@@ -2195,6 +2891,8 @@ VHO_FHE_Default_Conversion_Pass
         BOOL supported;
         UINT32 pending_actions = DSL_FHE_CKKS_PENDING_NONE;
         UINT32 bootstrap_reason = DSL_FHE_BOOTSTRAP_REASON_NONE;
+        DSL_FHE_COMPOSITE_PROFILE_ID relu_profile_id =
+            DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
 
         if (!DSL_IR_Image_Get_Node(id, &node) ||
             !DSL_IR_Image_Get_Opcode_Descriptor
@@ -2235,9 +2933,9 @@ VHO_FHE_Default_Conversion_Pass
             if (!VHO_FHE_Bootstrap_Policy_Allows_Relu
                      (context.bootstrap_policy, diagnostic))
                 return FALSE;
-            if (VHO_FHE_Intern_Approved_Ace_Relu_Profile
-                    (context.config_id, diagnostic) ==
-                DSL_FHE_COMPOSITE_PROFILE_INVALID_ID)
+            relu_profile_id = VHO_FHE_Intern_Approved_Ace_Relu_Profile
+                                  (context.config_id, diagnostic);
+            if (relu_profile_id == DSL_FHE_COMPOSITE_PROFILE_INVALID_ID)
                 return FALSE;
             if (profile_was_absent)
                 ++result->approximation_contract_count;
@@ -2257,7 +2955,14 @@ VHO_FHE_Default_Conversion_Pass
         disposition.result_ckks_value_state_id = state_id;
 
         if (descriptor.logical_operator == OPR_DSLRELU) {
-            VHO_FHE_relu_range_blocked = TRUE;
+            if (!VHO_FHE_relu_calibration.approved) {
+                VHO_FHE_relu_range_blocked = TRUE;
+                continue;
+            }
+            if (!VHO_FHE_Bind_Approved_Relu_Contexts
+                    (owner_pu_st, &node, &value, relu_profile_id, state_id,
+                     result, diagnostic))
+                valid = FALSE;
             continue;
         } else if (descriptor.logical_operator == OPR_DSLCONV2D) {
             if (!VHO_FHE_Record_BN_Fold_For_Conv
@@ -2400,6 +3105,16 @@ VHO_FHE_Write_Conversion_Report
             (unsigned)VHO_FHE_bn_context_folds.size());
     fprintf(file, "converted_tensors=%u\n",
             (unsigned)VHO_FHE_converted_tensors.size());
+    fprintf(file, "relu_calibration=%s\n",
+            VHO_FHE_relu_calibration.approved ? "approved" : "absent");
+    if (VHO_FHE_relu_calibration.approved) {
+        fprintf(file, "relu_calibration_external_sha256=%s\n",
+                VHO_FHE_relu_calibration.external_sha256.c_str());
+        fprintf(file, "relu_calibration_content_sha256=%s\n",
+                VHO_FHE_relu_calibration.embedded_sha256.c_str());
+        fprintf(file, "relu_calibration_contexts=%u\n",
+                (unsigned)VHO_FHE_relu_calibration.contexts.size());
+    }
     for (size_t i = 0; i < VHO_FHE_converted_tensors.size(); ++i) {
         const FHE_CONVERTED_TENSOR &tensor = VHO_FHE_converted_tensors[i];
         fprintf(file,
@@ -2464,6 +3179,45 @@ VHO_FHE_Verify_BN_Retirement
 }
 
 static BOOL
+VHO_FHE_Verify_Relu_Calibration (FILE *diagnostic)
+{
+    if (!VHO_FHE_relu_calibration.approved)
+        return TRUE;
+    if (VHO_FHE_relu_calibration.contexts.size() != 19 ||
+        DSL_FHE_Context_Range_Count() != 19)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-005",
+                    "approved ReLU range coverage is not exactly 19");
+    for (size_t i = 0; i < VHO_FHE_relu_calibration.contexts.size(); ++i) {
+        const FHE_RELU_CALIBRATION_CONTEXT &context =
+            VHO_FHE_relu_calibration.contexts[i];
+        UINT32 matches = 0;
+        if (!context.consumed)
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-005",
+                        "approved ReLU range was not consumed");
+        for (UINT32 id = 1; id <= DSL_FHE_Context_Range_Count(); ++id) {
+            DSL_FHE_CONTEXT_RANGE_RECORD range;
+            if (DSL_FHE_Context_Range_Get(id, &range) &&
+                range.owner_pu_st == context.owner_pu_st &&
+                range.source_relu_value_id == context.source_relu_value_id &&
+                range.context_pu_identity_id ==
+                    context.context_pu_identity_id &&
+                range.context_callsite_id == context.context_callsite_id)
+                ++matches;
+        }
+        if (matches != 1)
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-005",
+                        "approved ReLU range row is missing or duplicated");
+    }
+    fprintf(diagnostic,
+            "FHE-RELU-CALIBRATION: contexts=19 manifest_sha256=%s\n",
+            VHO_FHE_relu_calibration.external_sha256.c_str());
+    return TRUE;
+}
+
+static BOOL
 VHO_FHE_Default_Checkpoint_Finalizer
         (const VHO_FHE_CONVERT_RESULT *aggregate,
          FILE *diagnostic)
@@ -2471,6 +3225,8 @@ VHO_FHE_Default_Checkpoint_Finalizer
     UINT32 retired_definition_count = 0;
     if (!VHO_FHE_Verify_BN_Retirement
              (&retired_definition_count, diagnostic))
+        return FALSE;
+    if (!VHO_FHE_Verify_Relu_Calibration(diagnostic))
         return FALSE;
     fprintf(diagnostic,
             "FHE-BN-CHECKPOINT: definitions=%u contexts=%u tensors=%u "
@@ -2480,10 +3236,17 @@ VHO_FHE_Default_Checkpoint_Finalizer
             (unsigned)VHO_FHE_converted_tensors.size(),
             (unsigned)aggregate->folded_batch_norm_count,
             (unsigned)aggregate->rewritten_value_count);
-    if (VHO_FHE_relu_range_blocked)
+    if (VHO_FHE_relu_range_blocked) {
+        std::set<std::string> expected;
+        if (!VHO_FHE_Collect_Expected_Relu_Contexts(&expected, diagnostic))
+            return FALSE;
+        fprintf(diagnostic,
+                "FHE-RELU-CALIBRATION: expected_contexts=%u status=missing\n",
+                (unsigned)expected.size());
         return VHO_FHE_Semantic_Report
                    (diagnostic, "CFHECNN-RELU-003",
                     "common.relu requires an approved identity-bound range");
+    }
     if (!VHO_FHE_artifacts_registered)
         return TRUE;
     return VHO_FHE_Write_Converted_Payload(diagnostic) &&
@@ -2502,6 +3265,7 @@ VHO_FHE_Default_Checkpoint_Completion (BOOL committed)
     VHO_FHE_conversion_report_final.clear();
     VHO_FHE_artifacts_registered = FALSE;
     VHO_FHE_relu_range_blocked = FALSE;
+    VHO_FHE_relu_calibration = FHE_RELU_CALIBRATION_STATE();
 }
 
 BOOL
