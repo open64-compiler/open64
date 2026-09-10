@@ -134,6 +134,7 @@ extern INT WN_get_dsl_call_abi_image (void *handle);
 extern INT WN_get_dsl_pu_interface_image (void *handle);
 extern INT WN_get_dsl_fhe_image (void *handle);
 extern INT WN_get_dsl_fhe_plan_image (void *handle);
+extern INT WN_get_dsl_fhe_approx_profile_image (void *handle);
 
 
 extern INT WN_get_dst (void *handle);

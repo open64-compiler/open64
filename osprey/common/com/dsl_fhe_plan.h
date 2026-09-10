@@ -21,6 +21,14 @@
 #define DSL_FHE_PLAN_CKKS_STATE_RECORD_SIZE     64
 #define DSL_FHE_PLAN_BN_FOLD_RECORD_SIZE        64
 
+#define DSL_FHE_APPROX_PROFILE_IMAGE_MAGIC        0x46415031
+#define DSL_FHE_APPROX_PROFILE_IMAGE_VERSION      1
+#define DSL_FHE_APPROX_PROFILE_IMAGE_HEADER_SIZE  64
+#define DSL_FHE_COMPOSITE_PROFILE_RECORD_SIZE     80
+#define DSL_FHE_APPROX_STAGE_RECORD_SIZE           80
+#define DSL_FHE_APPROX_ASSOCIATION_RECORD_SIZE     32
+#define DSL_FHE_CONTEXT_RANGE_RECORD_SIZE          64
+
 #define DSL_FHE_WRAPPER_CNN_CONV2D \
     "fhe.cnn.conv2d"
 #define DSL_FHE_WRAPPER_CNN_RESIDUAL_ADD \
@@ -41,10 +49,18 @@
 typedef UINT32 DSL_FHE_CONVERSION_DISPOSITION_ID;
 typedef UINT32 DSL_FHE_APPROXIMATION_CONTRACT_ID;
 typedef UINT32 DSL_FHE_BN_FOLD_PROVENANCE_ID;
+typedef UINT32 DSL_FHE_COMPOSITE_PROFILE_ID;
+typedef UINT32 DSL_FHE_APPROX_STAGE_ID;
+typedef UINT32 DSL_FHE_APPROX_ASSOCIATION_ID;
+typedef UINT32 DSL_FHE_CONTEXT_RANGE_ID;
 
 #define DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID 0
 #define DSL_FHE_APPROXIMATION_CONTRACT_INVALID_ID 0
 #define DSL_FHE_BN_FOLD_PROVENANCE_INVALID_ID     0
+#define DSL_FHE_COMPOSITE_PROFILE_INVALID_ID       0
+#define DSL_FHE_APPROX_STAGE_INVALID_ID             0
+#define DSL_FHE_APPROX_ASSOCIATION_INVALID_ID       0
+#define DSL_FHE_CONTEXT_RANGE_INVALID_ID            0
 
 typedef enum {
     DSL_FHE_PLAN_RECORD_UNKNOWN = 0,
@@ -67,8 +83,77 @@ typedef enum {
     DSL_FHE_DISPOSITION_DOMAIN_WRAPPER = 2,
     DSL_FHE_DISPOSITION_FOLD_INTO_PRODUCER = 3,
     DSL_FHE_DISPOSITION_LAYOUT_REINTERPRET = 4,
-    DSL_FHE_DISPOSITION_REQUIRE_APPROXIMATION = 5
+    DSL_FHE_DISPOSITION_REQUIRE_APPROXIMATION = 5,
+    DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION = 6
 } DSL_FHE_CONVERSION_DISPOSITION;
+
+typedef enum {
+    DSL_FHE_APPROX_PROFILE_CAP_PROFILE = 0x00000001,
+    DSL_FHE_APPROX_PROFILE_CAP_STAGE = 0x00000002,
+    DSL_FHE_APPROX_PROFILE_CAP_ASSOCIATION = 0x00000004,
+    DSL_FHE_APPROX_PROFILE_CAP_CONTEXT_RANGE = 0x00000008
+} DSL_FHE_APPROX_PROFILE_CAPABILITY;
+
+typedef enum {
+    DSL_FHE_RECONSTRUCTION_UNKNOWN = 0,
+    DSL_FHE_RECONSTRUCTION_RELU_FROM_NORMALIZED_SIGN = 1
+} DSL_FHE_APPROX_RECONSTRUCTION;
+
+typedef enum {
+    DSL_FHE_NORMALIZATION_UNKNOWN = 0,
+    DSL_FHE_NORMALIZATION_POSITIVE_CONTEXT_BOUND = 1
+} DSL_FHE_APPROX_NORMALIZATION_POLICY;
+
+typedef enum {
+    DSL_FHE_PRE_REFRESH_UNKNOWN = 0,
+    DSL_FHE_PRE_REFRESH_INHERIT = 1,
+    DSL_FHE_PRE_REFRESH_REQUIRED = 2,
+    DSL_FHE_PRE_REFRESH_PROVEN_EXISTING = 3
+} DSL_FHE_APPROX_PRE_REFRESH_POLICY;
+
+typedef enum {
+    DSL_FHE_APPROX_BASIS_UNKNOWN = 0,
+    DSL_FHE_APPROX_BASIS_CHEBYSHEV = 1,
+    DSL_FHE_APPROX_BASIS_MONOMIAL = 2
+} DSL_FHE_APPROX_BASIS;
+
+typedef enum {
+    DSL_FHE_APPROX_EVAL_UNKNOWN = 0,
+    DSL_FHE_APPROX_EVAL_CLENSHAW = 1,
+    DSL_FHE_APPROX_EVAL_PATERSON_STOCKMEYER = 2,
+    DSL_FHE_APPROX_EVAL_ADDITION_CHAIN = 3
+} DSL_FHE_APPROX_EVALUATION_SCHEME;
+
+typedef enum {
+    DSL_FHE_APPROX_INPUT_SCALE_UNKNOWN = 0,
+    DSL_FHE_APPROX_INPUT_SCALE_ANY_COMPATIBLE = 1,
+    DSL_FHE_APPROX_INPUT_SCALE_PROFILE_NORMALIZED = 2
+} DSL_FHE_APPROX_INPUT_SCALE_POLICY;
+
+typedef enum {
+    DSL_FHE_APPROX_OUTPUT_SCALE_UNKNOWN = 0,
+    DSL_FHE_APPROX_OUTPUT_SCALE_PRESERVE_INPUT = 1,
+    DSL_FHE_APPROX_OUTPUT_SCALE_DEFAULT_RESCALE = 2
+} DSL_FHE_APPROX_OUTPUT_SCALE_POLICY;
+
+typedef enum {
+    DSL_FHE_APPROX_LEVEL_UNKNOWN = 0,
+    DSL_FHE_APPROX_LEVEL_ANY_SUFFICIENT = 1,
+    DSL_FHE_APPROX_LEVEL_MINIMUM = 2,
+    DSL_FHE_APPROX_LEVEL_EXACT = 3
+} DSL_FHE_APPROX_LEVEL_POLICY;
+
+typedef enum {
+    DSL_FHE_APPROX_COMPONENT_UNKNOWN = 0,
+    DSL_FHE_APPROX_COMPONENT_PRESERVE = 1,
+    DSL_FHE_APPROX_COMPONENT_RELINEARIZED_TWO = 2,
+    DSL_FHE_APPROX_COMPONENT_MAY_GROW = 3
+} DSL_FHE_APPROX_COMPONENT_POLICY;
+
+typedef enum {
+    DSL_FHE_CONTEXT_RANGE_UNKNOWN = 0,
+    DSL_FHE_CONTEXT_RANGE_REJECT = 1
+} DSL_FHE_CONTEXT_OUT_OF_RANGE_POLICY;
 
 typedef enum {
     DSL_FHE_DISPOSITION_FLAG_NONE = 0,
@@ -202,6 +287,96 @@ typedef struct {
     UINT32 reserved;
 } DSL_FHE_BN_FOLD_PROVENANCE_RECORD;
 
+typedef struct {
+    UINT32 magic;
+    UINT32 version;
+    UINT32 header_size;
+    UINT32 record_kind_count;
+    UINT32 capabilities;
+    UINT32 flags;
+    UINT32 profile_count;
+    UINT32 stage_count;
+    UINT32 association_count;
+    UINT32 context_range_count;
+    UINT32 reserved0;
+    UINT32 reserved1;
+    UINT32 reserved2;
+    UINT32 reserved3;
+    UINT32 reserved4;
+    UINT32 reserved5;
+} DSL_FHE_APPROX_PROFILE_IMAGE_HEADER;
+
+typedef struct {
+    DSL_FHE_COMPOSITE_PROFILE_ID id;
+    DSL_FHE_CONFIG_ID config_id;
+    STR_IDX profile_name;
+    STR_IDX source_revision;
+    STR_IDX manifest_sha256;
+    UINT32 profile_version;
+    UINT32 reconstruction;
+    UINT32 total_multiplicative_depth;
+    UINT32 normalization_policy;
+    UINT32 pre_refresh_policy;
+    DSL_FHE_APPROX_STAGE_ID first_stage_id;
+    UINT32 stage_count;
+    UINT32 flags;
+    UINT32 reserved0;
+    UINT32 reserved1;
+    UINT32 reserved2;
+    UINT32 reserved3;
+} DSL_FHE_COMPOSITE_PROFILE_RECORD;
+
+typedef struct {
+    DSL_FHE_APPROX_STAGE_ID id;
+    DSL_FHE_COMPOSITE_PROFILE_ID profile_id;
+    UINT32 stage_ordinal;
+    UINT32 approximation_family;
+    UINT32 basis;
+    UINT32 degree;
+    UINT32 evaluation_scheme;
+    UINT32 required_input_value_class;
+    UINT32 input_scale_policy;
+    UINT32 input_level_policy;
+    INT32 required_input_level;
+    INT32 level_consumption;
+    UINT32 output_scale_policy;
+    UINT32 output_component_policy;
+    INT32 minimum_precision_bits;
+    TCON_IDX coefficient_tensor_tcon;
+    STR_IDX coefficient_sha256;
+    UINT32 flags;
+    UINT32 reserved;
+} DSL_FHE_APPROX_STAGE_RECORD;
+
+typedef struct {
+    DSL_FHE_APPROX_ASSOCIATION_ID id;
+    DSL_FHE_CONVERSION_DISPOSITION_ID disposition_id;
+    DSL_IR_VALUE_ID source_relu_value_id;
+    DSL_FHE_COMPOSITE_PROFILE_ID profile_id;
+    ST_IDX owner_pu_st;
+    UINT32 flags;
+    UINT32 reserved0;
+    UINT32 reserved1;
+} DSL_FHE_APPROX_ASSOCIATION_RECORD;
+
+typedef struct {
+    DSL_FHE_CONTEXT_RANGE_ID id;
+    DSL_FHE_COMPOSITE_PROFILE_ID profile_id;
+    DSL_IR_VALUE_ID source_relu_value_id;
+    DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id;
+    DSL_CALLSITE_METADATA_ID context_callsite_id;
+    ST_IDX owner_pu_st;
+    TCON_IDX positive_bound_tcon;
+    TCON_IDX observed_min_tcon;
+    TCON_IDX observed_max_tcon;
+    UINT32 out_of_range_policy;
+    STR_IDX provenance;
+    UINT32 flags;
+    UINT32 reserved0;
+    UINT32 reserved1;
+    UINT32 reserved2;
+} DSL_FHE_CONTEXT_RANGE_RECORD;
+
 /* Producer-runtime inputs. No pointer in these records enters the IR image. */
 typedef struct {
     UINT32 disposition;
@@ -328,5 +503,77 @@ extern BOOL DSL_FHE_Plan_Find_BN_Fold_Provenance
                                      context_pu_identity_id,
                                  DSL_CALLSITE_METADATA_ID context_callsite_id,
                                  DSL_FHE_BN_FOLD_PROVENANCE_RECORD *record);
+
+extern void DSL_FHE_Approx_Profile_Image_Reset (void);
+extern void DSL_FHE_Approx_Profile_Image_Get_Header
+                                (DSL_FHE_APPROX_PROFILE_IMAGE_HEADER *header);
+extern BOOL DSL_FHE_Approx_Profile_Image_Has_Records (void);
+extern BOOL DSL_FHE_Approx_Profile_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_FHE_Approx_Profile_Image_Load_Mapped
+                                (const void *section_base,
+                                 UINT64 section_size,
+                                 FILE *diagnostic);
+extern void DSL_FHE_Approx_Profile_Image_Print (FILE *file);
+
+extern void DSL_FHE_Composite_Profile_Record_Init
+                                (DSL_FHE_COMPOSITE_PROFILE_RECORD *record);
+extern void DSL_FHE_Approx_Stage_Record_Init
+                                (DSL_FHE_APPROX_STAGE_RECORD *record);
+extern void DSL_FHE_Approx_Association_Record_Init
+                                (DSL_FHE_APPROX_ASSOCIATION_RECORD *record);
+extern void DSL_FHE_Context_Range_Record_Init
+                                (DSL_FHE_CONTEXT_RANGE_RECORD *record);
+
+extern DSL_FHE_COMPOSITE_PROFILE_ID
+    DSL_FHE_Approx_Profile_Intern_Complete
+                                (const DSL_FHE_COMPOSITE_PROFILE_RECORD
+                                     *profile,
+                                 const DSL_FHE_APPROX_STAGE_RECORD *stages,
+                                 UINT32 stage_count);
+extern DSL_FHE_CONVERSION_DISPOSITION_ID
+    DSL_FHE_Plan_Add_Composite_Disposition
+                                (const DSL_FHE_CONVERSION_DISPOSITION_RECORD
+                                     *disposition,
+                                 DSL_FHE_COMPOSITE_PROFILE_ID profile_id);
+extern DSL_FHE_CONTEXT_RANGE_ID
+    DSL_FHE_Approx_Profile_Bind_Context_Range
+                                (const DSL_FHE_CONTEXT_RANGE_RECORD *record);
+
+extern UINT32 DSL_FHE_Approx_Profile_Count (void);
+extern UINT32 DSL_FHE_Approx_Stage_Count (void);
+extern UINT32 DSL_FHE_Approx_Association_Count (void);
+extern UINT32 DSL_FHE_Context_Range_Count (void);
+extern BOOL DSL_FHE_Approx_Profile_Get
+                                (DSL_FHE_COMPOSITE_PROFILE_ID id,
+                                 DSL_FHE_COMPOSITE_PROFILE_RECORD *record);
+extern BOOL DSL_FHE_Approx_Stage_Get
+                                (DSL_FHE_APPROX_STAGE_ID id,
+                                 DSL_FHE_APPROX_STAGE_RECORD *record);
+extern BOOL DSL_FHE_Approx_Association_Get
+                                (DSL_FHE_APPROX_ASSOCIATION_ID id,
+                                 DSL_FHE_APPROX_ASSOCIATION_RECORD *record);
+extern BOOL DSL_FHE_Context_Range_Get
+                                (DSL_FHE_CONTEXT_RANGE_ID id,
+                                 DSL_FHE_CONTEXT_RANGE_RECORD *record);
+extern BOOL DSL_FHE_Approx_Profile_Find
+                                (DSL_FHE_CONFIG_ID config_id,
+                                 const char *profile_name,
+                                 UINT32 profile_version,
+                                 DSL_FHE_COMPOSITE_PROFILE_RECORD *record);
+extern BOOL DSL_FHE_Approx_Stage_Find
+                                (DSL_FHE_COMPOSITE_PROFILE_ID profile_id,
+                                 UINT32 stage_ordinal,
+                                 DSL_FHE_APPROX_STAGE_RECORD *record);
+extern BOOL DSL_FHE_Approx_Association_Find
+                                (DSL_FHE_CONVERSION_DISPOSITION_ID
+                                     disposition_id,
+                                 DSL_FHE_APPROX_ASSOCIATION_RECORD *record);
+extern BOOL DSL_FHE_Context_Range_Find
+                                (DSL_FHE_COMPOSITE_PROFILE_ID profile_id,
+                                 DSL_IR_VALUE_ID source_relu_value_id,
+                                 DSL_PU_SOURCE_IDENTITY_ID
+                                     context_pu_identity_id,
+                                 DSL_CALLSITE_METADATA_ID context_callsite_id,
+                                 DSL_FHE_CONTEXT_RANGE_RECORD *record);
 
 #endif /* dsl_fhe_plan_INCLUDED */

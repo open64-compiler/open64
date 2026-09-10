@@ -50,6 +50,17 @@ for evidence in \
   'disposition=require_approximation' \
   'FHE Approximation Contract Table:' \
   'polynomial=relu_minimax_degree3.v1' \
+  'disposition=require_composite_approximation' \
+  'composite_profile=1' \
+  'FHE Composite Approximation Profile Image: version=1 capabilities=0x0000000f' \
+  'profile=ace.chebyshev.sign.7x15x13.depth11.v1' \
+  'FHE Ordered Approximation Stage Table:' \
+  'ordinal=0 family=chebyshev basis=chebyshev degree=7' \
+  'ordinal=1 family=chebyshev basis=chebyshev degree=15' \
+  'ordinal=2 family=chebyshev basis=chebyshev degree=13' \
+  'FHE Composite Approximation Association Table:' \
+  'FHE ReLU Context Range Table:' \
+  'out_of_range=reject provenance=fhe.sync-c.root-range.v1' \
   'FHE CKKS Value State Table:' \
   'level=<pending>' \
   'bootstrap_reason=pre_relu_refresh' \

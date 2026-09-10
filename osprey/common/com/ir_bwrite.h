@@ -118,6 +118,7 @@ extern void WN_write_dsl_call_abi_image (Output_File *fl);
 extern void WN_write_dsl_pu_interface_image (Output_File *fl);
 extern void WN_write_dsl_fhe_image (Output_File *fl);
 extern void WN_write_dsl_fhe_plan_image (Output_File *fl);
+extern void WN_write_dsl_fhe_approx_profile_image (Output_File *fl);
 extern void WN_write_localmap (void *localmap, Output_File *fl);
 extern void IPA_write_summary (void (*IPA_irb_write_summary) (Output_File*),
 			      Output_File *fl);
