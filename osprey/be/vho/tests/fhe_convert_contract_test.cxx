@@ -47,6 +47,8 @@ Host_Format_Parm(INT kind, MEM_PTR parm)
 static char observed_order[8];
 static UINT32 observed_count;
 static BOOL observed_strict_o0;
+static const char *observed_calibration_manifest_path;
+static const char *observed_calibration_manifest_sha256;
 static char checkpoint_temporary[2][256];
 static char checkpoint_final[2][256];
 static char checkpoint_alias[2][256];
@@ -67,6 +69,10 @@ Observe_Semantic_Gatekeeper
     (void)diagnostic;
     observed_order[observed_count++] = 'G';
     observed_strict_o0 = options->strict_o0;
+    observed_calibration_manifest_path =
+        options->calibration_manifest_path;
+    observed_calibration_manifest_sha256 =
+        options->calibration_manifest_sha256;
     return pu_info != NULL && tree != NULL;
 }
 
@@ -81,6 +87,10 @@ Observe_Conversion
     (void)diagnostic;
     observed_order[observed_count++] = 'C';
     observed_strict_o0 = options->strict_o0;
+    observed_calibration_manifest_path =
+        options->calibration_manifest_path;
+    observed_calibration_manifest_sha256 =
+        options->calibration_manifest_sha256;
     result->source_disposition_count = 1;
     result->converted_disposition_count = 1;
     return pu_info != NULL && tree != NULL && *tree != NULL;
@@ -372,7 +382,14 @@ main(void)
 
     observed_count = 0;
     observed_strict_o0 = FALSE;
+    observed_calibration_manifest_path = NULL;
+    observed_calibration_manifest_sha256 = NULL;
     VHO_FHE_Strict_O0 = TRUE;
+    VHO_FHE_Calibration_Manifest_Path =
+        (char *)"/tmp/open64-fhe-calibration.json";
+    VHO_FHE_Calibration_Manifest_SHA256 =
+        (char *)"0123456789abcdef0123456789abcdef"
+                "0123456789abcdef0123456789abcdef";
     if (!VHO_FHE_Convert_Program_Unit(pu, &tree, stderr, &result) ||
         result.semantic_gatekeeper_count != 2 ||
         result.conversion_pass_count != 1 || result.error_count != 0 ||
@@ -380,14 +397,51 @@ main(void)
         result.converted_disposition_count != 1 ||
         observed_count != 3 || observed_order[0] != 'G' ||
         observed_order[1] != 'C' || observed_order[2] != 'G' ||
-        !observed_strict_o0) {
+        !observed_strict_o0 ||
+        observed_calibration_manifest_path !=
+            VHO_FHE_Calibration_Manifest_Path ||
+        observed_calibration_manifest_sha256 !=
+            VHO_FHE_Calibration_Manifest_SHA256) {
         fprintf(stderr, "FHE gatekeeper/conversion ordering changed\n");
         return 1;
     }
+    VHO_FHE_CONVERT_RESULT valid_result = result;
+
+    VHO_FHE_Calibration_Manifest_SHA256 = NULL;
+    if (VHO_FHE_Convert_Program_Unit(pu, &tree, NULL, &result) ||
+        result.error_count != 1) {
+        fprintf(stderr, "unauthenticated FHE calibration was not rejected\n");
+        return 1;
+    }
+    VHO_FHE_Calibration_Manifest_SHA256 =
+        (char *)"abc";
+    if (VHO_FHE_Convert_Program_Unit(pu, &tree, NULL, &result) ||
+        result.error_count != 1) {
+        fprintf(stderr, "short FHE calibration digest was not rejected\n");
+        return 1;
+    }
+    VHO_FHE_Calibration_Manifest_SHA256 =
+        (char *)"ABCDEF0123456789ABCDEF0123456789"
+                "ABCDEF0123456789ABCDEF0123456789";
+    if (VHO_FHE_Convert_Program_Unit(pu, &tree, NULL, &result) ||
+        result.error_count != 1) {
+        fprintf(stderr, "uppercase FHE calibration digest was not rejected\n");
+        return 1;
+    }
+    VHO_FHE_Calibration_Manifest_SHA256 =
+        (char *)"0123456789abcdef0123456789abcdef"
+                "0123456789abcdef0123456789abcdeg";
+    if (VHO_FHE_Convert_Program_Unit(pu, &tree, NULL, &result) ||
+        result.error_count != 1) {
+        fprintf(stderr, "non-hex FHE calibration digest was not rejected\n");
+        return 1;
+    }
+    VHO_FHE_Calibration_Manifest_Path = NULL;
+    VHO_FHE_Calibration_Manifest_SHA256 = NULL;
 
     VHO_FHE_CONVERT_RESULT aggregate;
     VHO_FHE_Convert_Result_Init(&aggregate);
-    VHO_FHE_Convert_Result_Accumulate(&aggregate, &result);
+    VHO_FHE_Convert_Result_Accumulate(&aggregate, &valid_result);
     if (aggregate.semantic_gatekeeper_count != 2 ||
         aggregate.conversion_pass_count != 1 ||
         aggregate.source_disposition_count != 1 ||

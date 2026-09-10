@@ -73,6 +73,12 @@ if ! grep -Fq '"checkpoint", "checkpoint"' "$config_source"; then
   echo "missing -FHE:checkpoint option in $config_source" >&2
   exit 1
 fi
+for option in calibration_manifest calibration_sha256; do
+  if ! grep -Fq "\"$option\"" "$config_source"; then
+    echo "missing -FHE:$option option in $config_source" >&2
+    exit 1
+  fi
+done
 
 echo "FHE SYNC-3 VHO conversion phase fixture passed"
 echo "review trace: $trace"

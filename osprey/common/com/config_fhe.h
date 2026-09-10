@@ -14,5 +14,7 @@ extern BOOL VHO_FHE_Dump_Before_Conversion_Set;
 extern BOOL VHO_FHE_Dump_After_Conversion;
 extern BOOL VHO_FHE_Dump_After_Conversion_Set;
 extern char *VHO_FHE_Conversion_Checkpoint_Output;
+extern char *VHO_FHE_Calibration_Manifest_Path;
+extern char *VHO_FHE_Calibration_Manifest_SHA256;
 
 #endif /* config_fhe_INCLUDED */

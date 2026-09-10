@@ -16,6 +16,8 @@ BOOL VHO_FHE_Dump_Before_Conversion_Set = FALSE;
 BOOL VHO_FHE_Dump_After_Conversion = FALSE;
 BOOL VHO_FHE_Dump_After_Conversion_Set = FALSE;
 char *VHO_FHE_Conversion_Checkpoint_Output = NULL;
+char *VHO_FHE_Calibration_Manifest_Path = NULL;
+char *VHO_FHE_Calibration_Manifest_SHA256 = NULL;
 
 static OPTION_DESC Options_FHE[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "convert", "convert",
@@ -32,5 +34,11 @@ static OPTION_DESC Options_FHE[] = {
     &VHO_FHE_Dump_After_Conversion_Set },
   { OVK_NAME, OV_VISIBLE, FALSE, "checkpoint", "checkpoint",
     0, 0, 0, &VHO_FHE_Conversion_Checkpoint_Output, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "calibration_manifest",
+    "calibration_manifest",
+    0, 0, 0, &VHO_FHE_Calibration_Manifest_Path, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "calibration_sha256",
+    "calibration_sha256",
+    0, 0, 0, &VHO_FHE_Calibration_Manifest_SHA256, NULL },
   { OVK_COUNT }
 };

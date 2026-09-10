@@ -648,6 +648,19 @@ surface is:
 - `-FHE:dump_after=on|off`;
 - `-FHE:checkpoint=<path>`, which selects conversion-only certification and
   names the binary WHIRL output.
+- `-FHE:calibration_manifest=<path>` and
+  `-FHE:calibration_sha256=<digest>`, which must be supplied together when an
+  approved external calibration manifest is selected. The digest is exactly
+  64 lowercase hexadecimal characters. The backend transports this
+  authenticated reference to every PU conversion; the registered FHE pass
+  owns reading the manifest, verifying its bytes against the digest, and
+  validating its identity-bound range policy.
+
+The calibration options are runtime phase inputs. They do not enter WHIRL,
+the mapped image, or tensor type identity. An FHE-bearing conversion rejects
+an incomplete or malformed pair before invoking the semantic gatekeeper.
+Ordinary WHIRL remains a no-op even when unrelated FHE options are propagated
+through the phase pipeline.
 
 `VHO_FHE_Convert_Program_Unit()` performs the structural DSL/FHE/FHE-plan
 gate, invokes the registered semantic gatekeeper, invokes the registered
