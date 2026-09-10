@@ -447,9 +447,9 @@ implementation.
 Focused SYNC-3 exit evidence may close only this conversion-planning review
 checkpoint. It must prove the accepted dispositions, BatchNorm folds,
 approximation obligations, CKKS planning state, diagnostics, compatibility,
-and retained artifacts from the exact candidate. It must not claim v0.9
+and retained artifacts from the exact candidate. It must not claim v0.10
 Architecture Phase 3 or M4 completion. Those milestones still require C4 /
-SYNC-4 bootstrap-plus-polynomial materialization and the remaining v0.9
+SYNC-4 bootstrap-plus-polynomial materialization and the remaining v0.10
 execution evidence.
 
 ### **SYNC-4: ReLU `-O0` Baseline Certification**
@@ -632,21 +632,22 @@ The ResNet-first FHE project reaches its first complete milestone only when:
 
 ## Immediate Coordinated Queue
 
-1. Documentation owners: publish the reconciled status, authority, corrective
-   checkpoint, and commit acceptance plan without changing stage numbering or
-   architecture contracts.
-2. Main/common owner: fix version-1 tensor-binding identity and validate legal
-   FHE-v1 reopen behavior.
-3. Main/common owner: make FHE entry-value insertion failure-atomic and prove
-   rejected insertion leaves the image valid and unchanged.
-4. Main/common owner: enforce REGION/value PU ownership before mutation and
-   cover PU-local index collisions.
-5. FHE/frontend owner: repair exact ResNet source provenance through opaque
-   APIs, including definitions, call contexts, parameters, and results.
-6. FHE/frontend owner: rebase and rerun fail-closed SYNC-2 certification,
-   retain the complete host-visible artifact family, and obtain main-task
-   acceptance before restoring completed status.
-7. Main/common and FHE reviewers: accept one exact node-retirement contract for
-   BatchNorm removal, rollback, mapped reopen, old readers, and inspection.
-8. Resume focused SYNC-3 implementation only after items 2-7 close, with
-   main/common infrastructure merging before the FHE branch rebases.
+1. FHE owner: retain the certified ReLU-free BatchNorm checkpoint proving 13
+   physical definition retirements, 21 context folds, and 42 converted tensors.
+2. FHE and numerical-policy reviewers: freeze the exact ACE coefficient bytes,
+   coefficient ordering, stage checksums, source revision, and manifest hash.
+3. Frontend/model owner: collect measured calibration extrema for all 19 ReLU
+   source contexts and bind each approved positive bound to exact Open64 value,
+   PU identity, and callsite records. No name-only or default fallback is valid.
+4. Numerical-policy reviewers: certify clear sign/ReLU error and pinned
+   ResNet-20 logit/top-1 tolerances against named dataset hashes.
+5. FHE/runtime owners: prove the depth-11 schedule and concrete post-refresh
+   CKKS level, scale, component, and precision contracts.
+6. FHE owner: consume the PR #123 opaque profile APIs only after items 2-5 are
+   accepted, then record composite dispositions, ordered stages, 19 context
+   ranges, and value-specific CKKS planning state.
+7. FHE owner: rerun the full six-PU SecureResNet checkpoint, publish auxiliary
+   payload/report artifacts transactionally, and publish `.fhe.B` last.
+8. Independent reviewer: reopen with `ir_b2a -st -src`, reconcile report and
+   image counts, and close only focused SYNC-3. Bootstrap insertion and
+   polynomial materialization remain SYNC-4 work.

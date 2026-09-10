@@ -1,7 +1,8 @@
 # FHE ReLU Composite-Polynomial Policy Decision
 
-Status: composite architecture selected; coefficient certification pending;
-compiler enablement remains fail-closed.
+Status: composite architecture and persistent profile substrate accepted;
+coefficient and context-range certification pending; compiler enablement
+remains fail-closed.
 
 The filename is retained for review-link compatibility. Degree 3 is no longer
 the recommended ResNet-20 baseline.
@@ -93,16 +94,18 @@ bindings do not: each of the 19 source contexts must retain its exact
 profile. Compatible contexts may share coefficient storage after those joins
 are proven.
 
-## Current Representation Gap
+## Composite Representation Substrate
 
-The version-1 `DSL_FHE_APPROXIMATION_CONTRACT_RECORD` stores one degree, one
-coefficient tensor, one range, and one depth. It cannot represent three ordered
+The version-1 `DSL_FHE_APPROXIMATION_CONTRACT_RECORD` remains unchanged and
+continues to describe one polynomial. It cannot represent three ordered
 polynomial stages without losing stage order, basis, coefficient identity, or
 evaluation obligations. Open64 must not flatten the composition to an
 effective degree or overload `polynomial_name` with hidden semantics.
 
-Before compiler enablement, main/common must review an append-only composite
-profile representation. The minimum semantic surface is:
+PR #123, commit `d513ea61`, closed this representation gap with the optional
+append-only `.WHIRL.dsl_fhe_approx_profile` image defined by
+`doc/FHE-SYNC-C-COMPOSITE-APPROXIMATION-CONTRACT.md`. Its accepted semantic
+surface is:
 
 | Record | Required identity and fields |
 | --- | --- |
@@ -110,8 +113,14 @@ profile representation. The minimum semantic surface is:
 | Ordered stage | Parent profile ID plus stage ordinal; basis, degree, coefficient TCON, coefficient-byte SHA-256, evaluation scheme, stage input/output contract |
 | Context range binding | Source ReLU value/context identity, profile ID, positive bound `B`, bound provenance, observed calibration extrema, out-of-range policy |
 
-The physical layout, section ownership, and APIs remain main/common decisions.
-No FHE task code may change the existing v1 row or mapped-image layout.
+The main/common image owns fixed profile, ordered-stage, association, and
+context-range rows. FHE conversion consumes only the accepted
+`DSL_FHE_Approx_Profile_*` and composite-disposition APIs. It must not change
+the existing v1 approximation row or either mapped-image layout.
+
+This infrastructure merge does not certify the ACE coefficient bytes, measured
+range evidence for the 19 SecureResNet contexts, model accuracy, or concrete
+CKKS stage states. Those remain policy evidence and consumer-side gates.
 
 ## Certification Gates
 
@@ -135,7 +144,7 @@ enablement requires all gates below:
 
 ## Fail-Closed Behavior
 
-Until the representation and certification gates close:
+Until the remaining certification gates close:
 
 - SecureResNet checkpoint publication stops with `CFHECNN-RELU-002`;
 - no zero, cubic, or ACE coefficients are silently substituted;

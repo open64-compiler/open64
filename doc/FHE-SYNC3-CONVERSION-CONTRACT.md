@@ -1,24 +1,26 @@
 # FHE SYNC-3 ResNet Conversion Contract
 
-Status: blocked main/common staging contract for review after SYNC-2
-recertification. This document does not allocate opcodes, edit shared
-common/com files, insert bootstrap boundaries, lower to SIHE/CKKS primitives,
-or lower to OpenFHE/runtime calls.
+Status: active FHE-owned SYNC-3 implementation contract. Main/common planning,
+rewrite, checkpoint, PU-interface, and composite-profile substrates through
+PR #123 are merged. BatchNorm folding has positive certification; full
+SecureResNet publication remains blocked by `CFHECNN-RELU-002`. This document
+does not allocate opcodes, edit shared common/com files, insert bootstrap
+boundaries, lower to SIHE/CKKS primitives, or lower to OpenFHE/runtime calls.
 
 Authority:
 
-- `../open64-plans/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`
-  is the highest semantic authority; the reviewed copy has SHA-256
-  `4B9DAC9927E86518142CA9A9E71AEAE7AEA5C454D01C544311359680639DF4B6`.
+- `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
+  is the highest semantic authority; the repository copy has SHA-256
+  `0018769c26b5a0bcd1bdfcbd85aa97b8bafea381d7640fbb9e2e81b0022013d9`.
 - `doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md`
 - `doc/FHE-WHIRL-INTEGRATION-PLAN.md`
 - `doc/FHE-SYNC1-NATIVE-CONTRACT.md`
 - `artifacts/fhe/resnet20_capture/` from the merged SYNC-2 frontend PR
 
-This contract is a narrowed C3 / SYNC-3 review checkpoint permitted by v0.9
-Appendix F.1. It cannot override v0.9 or establish completion of Architecture
+This contract is a narrowed C3 / SYNC-3 review checkpoint permitted by v0.10
+Appendix F.1. It cannot override v0.10 or establish completion of Architecture
 Phase 3 or focused milestone M4. C4 / SYNC-4 bootstrap-plus-polynomial
-materialization and the remaining v0.9 execution evidence stay mandatory.
+materialization and the remaining v0.10 execution evidence stay mandatory.
 
 ## Prerequisite Gate
 
@@ -46,7 +48,7 @@ retained conversion artifacts.
 SYNC-3 explicitly does not materialize bootstrap, polynomial activation,
 SIHE/CKKS arithmetic, runtime calls, generated C, OpenFHE provider logic,
 optimized boundary movement, ReSBM, HPOLY/HPAO, or GPU/POLY lowering.
-Focused SYNC-3 acceptance closes only this planning checkpoint, not v0.9
+Focused SYNC-3 acceptance closes only this planning checkpoint, not v0.10
 Architecture Phase 3 or M4.
 
 ## Phase Boundary
@@ -369,10 +371,12 @@ evaluation. The selected ResNet candidate is
 
 SYNC-3 may attach or require the profile obligation. SYNC-4 materializes
 bootstrap, normalization, ordered stage evaluation, and ReLU reconstruction.
-Bootstrap restores capacity and does not compute ReLU. The existing v1
-approximation row describes one polynomial and cannot faithfully persist the
-ordered composition; main/common must review an append-only profile/stage/range
-representation before this policy is enabled.
+Bootstrap restores capacity and does not compute ReLU. PR #123 added the
+optional `.WHIRL.dsl_fhe_approx_profile` image without changing the existing
+v1 approximation row. The accepted profile/stage/association/context contract
+is `doc/FHE-SYNC-C-COMPOSITE-APPROXIMATION-CONTRACT.md`. Consumer enablement
+still requires certified coefficient bytes, all 19 identity-bound context
+ranges, model-level numerical evidence, and concrete CKKS state/depth proof.
 
 ## Value-Specific CKKS State
 
