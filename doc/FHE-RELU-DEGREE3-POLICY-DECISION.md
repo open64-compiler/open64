@@ -1,8 +1,15 @@
 # FHE ReLU Composite-Polynomial Policy Decision
 
-Status: composite architecture and persistent profile substrate accepted;
-coefficient and context-range certification pending; compiler enablement
-remains fail-closed.
+Status: composite architecture, persistent profile substrate, and exact ACE
+coefficient profile accepted from empirical ANT ACE evidence; context-range,
+trained-model accuracy, and concrete CKKS certification pending; full-model
+enablement remains fail-closed.
+
+The Commit 17 evidence and approval checklist are maintained in
+`doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`. Its machine-readable
+manifests freeze the exact ACE candidate bytes and all 19 Open64 context
+identities, while explicitly blocking range, accuracy, and CKKS claims that do
+not yet have approved inputs.
 
 The filename is retained for review-link compatibility. Degree 3 is no longer
 the recommended ResNet-20 baseline.
@@ -139,14 +146,23 @@ enablement requires all gates below:
 5. Prove the depth-11 evaluation schedule and post-bootstrap CKKS
    level/scale/precision state using the selected OpenFHE parameters.
 6. Run focused OpenFHE numerical tests and complete encrypted ResNet inference.
-7. Only after review of retained evidence may `CFHECNN-RELU-002` be removed for
-   this exact profile.
+7. Only after review of retained context-range, accuracy, and CKKS evidence may
+   range-specific `CFHECNN-RELU-003` be removed for this exact profile.
+
+Current checkpoint: Gate 1 is project-approved from empirical ANT ACE evidence
+with exact provenance retained; independent formal proof and broader
+reproducibility are deferred. Gate 2 is the first execution blocker because no
+approved trained checkpoint, CIFAR-10 calibration split, preprocessing
+contract, bound rule, or outlier policy has been supplied. Gates 3 and 4 remain
+blocked behind predeclared accuracy thresholds and a concrete OpenFHE
+configuration, respectively.
 
 ## Fail-Closed Behavior
 
 Until the remaining certification gates close:
 
-- SecureResNet checkpoint publication stops with `CFHECNN-RELU-002`;
+- SecureResNet checkpoint publication stops with range-specific
+  `CFHECNN-RELU-003`;
 - no zero, cubic, or ACE coefficients are silently substituted;
 - no `.fhe.B` is published for the full ReLU-bearing model;
 - the ReLU-free six-PU fixture remains the positive BatchNorm-fold

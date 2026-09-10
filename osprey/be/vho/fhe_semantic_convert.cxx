@@ -85,7 +85,60 @@ static std::string VHO_FHE_converted_payload_final;
 static std::string VHO_FHE_conversion_report_temp;
 static std::string VHO_FHE_conversion_report_final;
 static BOOL VHO_FHE_artifacts_registered;
-static BOOL VHO_FHE_relu_policy_blocked;
+static BOOL VHO_FHE_relu_range_blocked;
+
+static BOOL VHO_FHE_Semantic_Report
+                                (FILE *diagnostic,
+                                 const char *code,
+                                 const char *message);
+
+static const UINT64 VHO_FHE_ace_relu_stage_7_bits[] = {
+    0x0000000000000000ULL, 0x3ff46f736ad8da32ULL,
+    0x0000000000000000ULL, 0xbfdbf782998bf412ULL,
+    0x0000000000000000ULL, 0x3fd1cd8bf5f01c9fULL,
+    0x0000000000000000ULL, 0xbfee793d8d541e49ULL
+};
+
+static const UINT64 VHO_FHE_ace_relu_stage_15_bits[] = {
+    0x0000000000000000ULL, 0x3ff56394c7bad599ULL,
+    0x0000000000000000ULL, 0xbfd535ccc671c7cbULL,
+    0x0000000000000000ULL, 0x3fd1879808693b03ULL,
+    0x0000000000000000ULL, 0xbfcad6656a165b05ULL,
+    0x0000000000000000ULL, 0x3fb17a3c44c1bd91ULL,
+    0x0000000000000000ULL, 0xbf8537eb402f4c42ULL,
+    0x0000000000000000ULL, 0x3f482fc447cb9eb6ULL,
+    0x0000000000000000ULL, 0xbef4f9a683aea42aULL
+};
+
+static const UINT64 VHO_FHE_ace_relu_stage_13_bits[] = {
+    0x0000000000000000ULL, 0x3ff3adbdcb24abaaULL,
+    0x0000000000000000ULL, 0xbfd3d6ddcc0eb0c1ULL,
+    0x0000000000000000ULL, 0x3fbad3b577e574f6ULL,
+    0x0000000000000000ULL, 0xbf9f21deea6e9740ULL,
+    0x0000000000000000ULL, 0x3f7aa820a8125a07ULL,
+    0x0000000000000000ULL, 0xbf4ce2fc4a68de1bULL,
+    0x0000000000000000ULL, 0x3f0d20982f661269ULL
+};
+
+static const VHO_FHE_RELU_STAGE_MANIFEST VHO_FHE_ace_relu_stages[] = {
+    { 0, 7, VHO_FHE_ace_relu_stage_7_bits, 8,
+      "6bcab92ecd5198ae14d21a633e2767758d8f53145d136b1d578f2c821a95f736" },
+    { 1, 15, VHO_FHE_ace_relu_stage_15_bits, 16,
+      "f509c310ab54d31aa7f61e4bdc18f896dd920bcde01bc9c9d41ae95902f4545a" },
+    { 2, 13, VHO_FHE_ace_relu_stage_13_bits, 14,
+      "7768d20e17d427ece7f1ed572f7f065a606e40ee7e1f081253222376ad93378f" }
+};
+
+static const VHO_FHE_RELU_PROFILE_MANIFEST VHO_FHE_ace_relu_profile = {
+    VHO_FHE_ACE_RELU_PROFILE_NAME,
+    VHO_FHE_ACE_RELU_PROFILE_VERSION,
+    "ant-ace@fb76131171b9f82aa6387f84dd73684fba5277e8",
+    "bd752b96eaaef5e4f14851c057d38cee9e45264e230dbb637dd59ba3cabb0f93",
+    VHO_FHE_ACE_RELU_MANIFEST_SHA256,
+    "d4e7f691fe763d5673384e23e0bc825875e49de545df78d7f7d7b2ca5e613438",
+    VHO_FHE_ace_relu_stages,
+    3
+};
 
 typedef struct {
     UINT32 state[8];
@@ -218,12 +271,267 @@ VHO_FHE_SHA256 (const std::vector<unsigned char> &bytes)
 }
 
 static BOOL
+VHO_FHE_Is_SHA256 (const char *text)
+{
+    if (text == NULL || strlen(text) != 64)
+        return FALSE;
+    for (UINT32 i = 0; i < 64; ++i) {
+        if (!isdigit((unsigned char)text[i]) &&
+            (text[i] < 'a' || text[i] > 'f'))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static void
+VHO_FHE_Append_Binary64_Little_Endian
+        (UINT64 bits,
+         std::vector<unsigned char> *bytes)
+{
+    for (UINT32 i = 0; i < 8; ++i)
+        bytes->push_back((unsigned char)(bits >> (i * 8)));
+}
+
+const VHO_FHE_RELU_PROFILE_MANIFEST *
+VHO_FHE_Approved_Ace_Relu_Profile (void)
+{
+    return &VHO_FHE_ace_relu_profile;
+}
+
+BOOL
+VHO_FHE_Validate_Relu_Profile_Manifest
+        (const VHO_FHE_RELU_PROFILE_MANIFEST *manifest,
+         FILE *diagnostic)
+{
+    static const UINT32 degrees[3] = { 7, 15, 13 };
+    std::vector<unsigned char> bundle;
+
+    if (manifest == NULL || manifest->profile_name == NULL ||
+        strcmp(manifest->profile_name, VHO_FHE_ACE_RELU_PROFILE_NAME) != 0 ||
+        manifest->profile_version != VHO_FHE_ACE_RELU_PROFILE_VERSION ||
+        manifest->source_revision == NULL ||
+        strcmp(manifest->source_revision,
+               VHO_FHE_ace_relu_profile.source_revision) != 0 ||
+        !VHO_FHE_Is_SHA256(manifest->source_sha256) ||
+        strcmp(manifest->source_sha256,
+               VHO_FHE_ace_relu_profile.source_sha256) != 0 ||
+        !VHO_FHE_Is_SHA256(manifest->manifest_sha256) ||
+        strcmp(manifest->manifest_sha256,
+               VHO_FHE_ACE_RELU_MANIFEST_SHA256) != 0 ||
+        !VHO_FHE_Is_SHA256(manifest->coefficient_bundle_sha256) ||
+        manifest->stages == NULL || manifest->stage_count != 3) {
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-002",
+                    "ACE composite ReLU profile manifest is incomplete");
+    }
+
+    for (UINT32 i = 0; i < manifest->stage_count; ++i) {
+        const VHO_FHE_RELU_STAGE_MANIFEST &stage = manifest->stages[i];
+        std::vector<unsigned char> bytes;
+        if (stage.ordinal != i || stage.degree != degrees[i] ||
+            stage.coefficient_binary64_bits == NULL ||
+            stage.coefficient_count != stage.degree + 1 ||
+            !VHO_FHE_Is_SHA256(stage.coefficient_sha256) ||
+            strcmp(stage.coefficient_sha256,
+                   VHO_FHE_ace_relu_stages[i].coefficient_sha256) != 0 ||
+            memcmp(stage.coefficient_binary64_bits,
+                   VHO_FHE_ace_relu_stages[i].coefficient_binary64_bits,
+                   stage.coefficient_count * sizeof(UINT64)) != 0) {
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-002",
+                        "ACE composite ReLU stage order is invalid");
+        }
+        for (UINT32 coefficient = 0;
+             coefficient < stage.coefficient_count; ++coefficient) {
+            UINT64 bits = stage.coefficient_binary64_bits[coefficient];
+            if ((bits & 0x7ff0000000000000ULL) ==
+                    0x7ff0000000000000ULL ||
+                (coefficient % 2 == 0 && bits != 0)) {
+                return VHO_FHE_Semantic_Report
+                           (diagnostic, "CFHECNN-RELU-002",
+                            "ACE composite ReLU coefficient is invalid");
+            }
+            VHO_FHE_Append_Binary64_Little_Endian(bits, &bytes);
+        }
+        if (VHO_FHE_SHA256(bytes) != stage.coefficient_sha256) {
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-002",
+                        "ACE composite ReLU stage checksum does not match");
+        }
+        bundle.insert(bundle.end(), bytes.begin(), bytes.end());
+    }
+    if (strcmp(manifest->coefficient_bundle_sha256,
+               VHO_FHE_ace_relu_profile.coefficient_bundle_sha256) != 0 ||
+        VHO_FHE_SHA256(bundle) != manifest->coefficient_bundle_sha256) {
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-002",
+                    "ACE composite ReLU bundle checksum does not match");
+    }
+    return TRUE;
+}
+
+static BOOL
 VHO_FHE_Semantic_Report (FILE *diagnostic, const char *code,
                          const char *message)
 {
     if (diagnostic != NULL)
         fprintf(diagnostic, "%s: %s\n", code, message);
     return FALSE;
+}
+
+static BOOL
+VHO_FHE_SHA256_Prefix_To_U64
+        (const char *checksum,
+         UINT64 *checksum_hi,
+         UINT64 *checksum_lo)
+{
+    if (!VHO_FHE_Is_SHA256(checksum) || checksum_hi == NULL ||
+        checksum_lo == NULL)
+        return FALSE;
+    *checksum_hi = 0;
+    *checksum_lo = 0;
+    for (UINT32 i = 0; i < 16; ++i) {
+        char pair[3] = { checksum[i * 2], checksum[i * 2 + 1], '\0' };
+        UINT64 byte = strtoul(pair, NULL, 16);
+        if (i < 8)
+            *checksum_hi = (*checksum_hi << 8) | byte;
+        else
+            *checksum_lo = (*checksum_lo << 8) | byte;
+    }
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Create_Relu_Coefficient_TCON
+        (const VHO_FHE_RELU_STAGE_MANIFEST *stage,
+         TCON_IDX *tcon)
+{
+    TY_TENSOR_CANONICAL_DESCRIPTOR descriptor;
+    DSL_TENSOR_TCON_CREATE_INFO info;
+    std::vector<unsigned char> bytes;
+    char shape[32];
+    char type_name[96];
+    TY_IDX coefficient_ty;
+    UINT64 checksum_hi;
+    UINT64 checksum_lo;
+
+    if (stage == NULL || tcon == NULL ||
+        stage->coefficient_binary64_bits == NULL ||
+        stage->coefficient_count != stage->degree + 1 ||
+        !VHO_FHE_SHA256_Prefix_To_U64
+             (stage->coefficient_sha256, &checksum_hi, &checksum_lo))
+        return FALSE;
+    for (UINT32 i = 0; i < stage->coefficient_count; ++i)
+        VHO_FHE_Append_Binary64_Little_Endian
+            (stage->coefficient_binary64_bits[i], &bytes);
+
+    snprintf(shape, sizeof(shape), "[%u]",
+             (unsigned)stage->coefficient_count);
+    snprintf(type_name, sizeof(type_name),
+             "fhe_relu_chebyshev_degree%u_coefficients_f64",
+             (unsigned)stage->degree);
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.kind = "tensor";
+    descriptor.dtype = "float64";
+    descriptor.rank = 1;
+    descriptor.logical_shape = shape;
+    descriptor.traits = "coefficient";
+    descriptor.layout = "dense";
+    descriptor.sharding = "replicated";
+    descriptor.placement = "host";
+    descriptor.memory = "contiguous";
+    descriptor.quantization = "none";
+    coefficient_ty = TY_Intern_Tensor_Type
+                         (type_name, MTYPE_To_TY(MTYPE_F8), &descriptor);
+    if (coefficient_ty == TY_IDX_ZERO)
+        return FALSE;
+
+    memset(&info, 0, sizeof(info));
+    info.descriptor_ty = coefficient_ty;
+    info.element_mtype = MTYPE_F8;
+    info.element_count = stage->coefficient_count;
+    info.logical_bytes = bytes.size();
+    info.required_alignment = 8;
+    info.element_size = 8;
+    info.dense_bytes = &bytes[0];
+    info.dense_bytes_length = (UINT32)bytes.size();
+    info.checksum_hi = checksum_hi;
+    info.checksum_lo = checksum_lo;
+    return DSL_Tensor_TCON_Create_Inline_Dense(&info, tcon, NULL);
+}
+
+DSL_FHE_COMPOSITE_PROFILE_ID
+VHO_FHE_Intern_Approved_Ace_Relu_Profile
+        (DSL_FHE_CONFIG_ID config_id,
+         FILE *diagnostic)
+{
+    const VHO_FHE_RELU_PROFILE_MANIFEST *manifest =
+        VHO_FHE_Approved_Ace_Relu_Profile();
+    DSL_FHE_COMPILATION_CONFIG_RECORD config;
+    DSL_FHE_COMPOSITE_PROFILE_RECORD profile;
+    DSL_FHE_APPROX_STAGE_RECORD stages[3];
+    static const INT32 level_consumption[3] = { 3, 4, 4 };
+
+    if (!VHO_FHE_Validate_Relu_Profile_Manifest(manifest, diagnostic) ||
+        !DSL_FHE_Get_Compilation_Config(config_id, &config) ||
+        config.scheme != DSL_FHE_SCHEME_CKKS) {
+        VHO_FHE_Semantic_Report
+            (diagnostic, "CFHECNN-RELU-002",
+             "ACE composite ReLU profile requires a CKKS configuration");
+        return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+    }
+
+    DSL_FHE_Composite_Profile_Record_Init(&profile);
+    profile.config_id = config_id;
+    profile.profile_name = Save_Str(manifest->profile_name);
+    profile.profile_version = manifest->profile_version;
+    profile.reconstruction =
+        DSL_FHE_RECONSTRUCTION_RELU_FROM_NORMALIZED_SIGN;
+    profile.total_multiplicative_depth = 11;
+    profile.normalization_policy =
+        DSL_FHE_NORMALIZATION_POSITIVE_CONTEXT_BOUND;
+    profile.pre_refresh_policy = DSL_FHE_PRE_REFRESH_REQUIRED;
+    profile.source_revision = Save_Str(manifest->source_revision);
+    profile.manifest_sha256 = Save_Str(manifest->manifest_sha256);
+    profile.stage_count = 3;
+
+    for (UINT32 i = 0; i < 3; ++i) {
+        TCON_IDX coefficient_tcon = TCON_IDX_ZERO;
+        if (!VHO_FHE_Create_Relu_Coefficient_TCON
+                 (&manifest->stages[i], &coefficient_tcon)) {
+            VHO_FHE_Semantic_Report
+                (diagnostic, "CFHECNN-RELU-002",
+                 "could not create canonical ReLU coefficient tensor");
+            return DSL_FHE_COMPOSITE_PROFILE_INVALID_ID;
+        }
+        DSL_FHE_Approx_Stage_Record_Init(&stages[i]);
+        stages[i].approximation_family = DSL_FHE_APPROXIMATION_CHEBYSHEV;
+        stages[i].basis = DSL_FHE_APPROX_BASIS_CHEBYSHEV;
+        stages[i].degree = manifest->stages[i].degree;
+        stages[i].evaluation_scheme = DSL_FHE_APPROX_EVAL_CLENSHAW;
+        stages[i].required_input_value_class =
+            DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+        stages[i].input_scale_policy =
+            DSL_FHE_APPROX_INPUT_SCALE_PROFILE_NORMALIZED;
+        stages[i].input_level_policy = DSL_FHE_APPROX_LEVEL_ANY_SUFFICIENT;
+        stages[i].level_consumption = level_consumption[i];
+        stages[i].output_scale_policy =
+            DSL_FHE_APPROX_OUTPUT_SCALE_PRESERVE_INPUT;
+        stages[i].output_component_policy =
+            DSL_FHE_APPROX_COMPONENT_RELINEARIZED_TWO;
+        stages[i].minimum_precision_bits = 30;
+        stages[i].coefficient_tensor_tcon = coefficient_tcon;
+        stages[i].coefficient_sha256 =
+            Save_Str(manifest->stages[i].coefficient_sha256);
+    }
+
+    DSL_FHE_COMPOSITE_PROFILE_ID id =
+        DSL_FHE_Approx_Profile_Intern_Complete(&profile, stages, 3);
+    if (id == DSL_FHE_COMPOSITE_PROFILE_INVALID_ID)
+        VHO_FHE_Semantic_Report
+            (diagnostic, "CFHECNN-RELU-002",
+             "could not intern approved ACE composite ReLU profile");
+    return id;
 }
 
 static BOOL
@@ -590,22 +898,6 @@ VHO_FHE_Bootstrap_Policy_Allows_Relu
     return VHO_FHE_Semantic_Report
                (diagnostic, "CFHECNN-RELU-001",
                 "common.relu requires a known bootstrap policy");
-}
-
-static BOOL
-VHO_FHE_Create_Relu_Approximation
-        (const FHE_CONVERSION_CONTEXT *context,
-         TY_IDX result_ty,
-         DSL_FHE_APPROXIMATION_CONTRACT_ID *approximation_id,
-         FILE *diagnostic)
-{
-    (void)context;
-    (void)result_ty;
-    if (approximation_id != NULL)
-        *approximation_id = DSL_FHE_APPROXIMATION_CONTRACT_INVALID_ID;
-    return VHO_FHE_Semantic_Report
-               (diagnostic, "CFHECNN-RELU-002",
-                "common.relu composite approximation profile is not certified");
 }
 
 static BOOL
@@ -1935,11 +2227,22 @@ VHO_FHE_Default_Conversion_Pass
             continue;
 
         if (descriptor.logical_operator == OPR_DSLRELU) {
+            DSL_FHE_COMPOSITE_PROFILE_RECORD prior_profile;
+            BOOL profile_was_absent =
+                !DSL_FHE_Approx_Profile_Find
+                    (context.config_id, VHO_FHE_ACE_RELU_PROFILE_NAME,
+                     VHO_FHE_ACE_RELU_PROFILE_VERSION, &prior_profile);
             if (!VHO_FHE_Bootstrap_Policy_Allows_Relu
                      (context.bootstrap_policy, diagnostic))
                 return FALSE;
-            VHO_FHE_relu_policy_blocked = TRUE;
-            continue;
+            if (VHO_FHE_Intern_Approved_Ace_Relu_Profile
+                    (context.config_id, diagnostic) ==
+                DSL_FHE_COMPOSITE_PROFILE_INVALID_ID)
+                return FALSE;
+            if (profile_was_absent)
+                ++result->approximation_contract_count;
+            pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
+            bootstrap_reason = DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
         }
 
         state_id = VHO_FHE_Record_CKKS_State
@@ -1954,14 +2257,8 @@ VHO_FHE_Default_Conversion_Pass
         disposition.result_ckks_value_state_id = state_id;
 
         if (descriptor.logical_operator == OPR_DSLRELU) {
-            if (!VHO_FHE_Create_Relu_Approximation
-                     (&context, value.ty,
-                      &disposition.approximation_contract_id,
-                      diagnostic)) {
-                valid = FALSE;
-                continue;
-            }
-            ++result->approximation_contract_count;
+            VHO_FHE_relu_range_blocked = TRUE;
+            continue;
         } else if (descriptor.logical_operator == OPR_DSLCONV2D) {
             if (!VHO_FHE_Record_BN_Fold_For_Conv
                      (owner_pu_st, &node, &value,
@@ -2183,10 +2480,10 @@ VHO_FHE_Default_Checkpoint_Finalizer
             (unsigned)VHO_FHE_converted_tensors.size(),
             (unsigned)aggregate->folded_batch_norm_count,
             (unsigned)aggregate->rewritten_value_count);
-    if (VHO_FHE_relu_policy_blocked)
+    if (VHO_FHE_relu_range_blocked)
         return VHO_FHE_Semantic_Report
-                   (diagnostic, "CFHECNN-RELU-002",
-                    "common.relu composite approximation profile is not certified");
+                   (diagnostic, "CFHECNN-RELU-003",
+                    "common.relu requires an approved identity-bound range");
     if (!VHO_FHE_artifacts_registered)
         return TRUE;
     return VHO_FHE_Write_Converted_Payload(diagnostic) &&
@@ -2204,7 +2501,7 @@ VHO_FHE_Default_Checkpoint_Completion (BOOL committed)
     VHO_FHE_conversion_report_temp.clear();
     VHO_FHE_conversion_report_final.clear();
     VHO_FHE_artifacts_registered = FALSE;
-    VHO_FHE_relu_policy_blocked = FALSE;
+    VHO_FHE_relu_range_blocked = FALSE;
 }
 
 BOOL

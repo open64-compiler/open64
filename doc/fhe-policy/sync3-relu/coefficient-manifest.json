@@ -1,0 +1,130 @@
+{
+  "schema": "open64.fhe.relu.coefficients.v1",
+  "status": "approved_empirical_ace",
+  "profile": {
+    "name": "ace.chebyshev.sign.7x15x13.depth11.v1",
+    "version": 1,
+    "basis": "chebyshev",
+    "stage_degrees": [7, 15, 13],
+    "claimed_multiplicative_depth": 11,
+    "coefficient_order": "T0_through_Tdegree",
+    "c0_convention": "direct_sum_c_i_times_T_i_no_half_weight",
+    "coefficient_dtype": "ieee754_binary64",
+    "coefficient_byte_encoding": "little_endian_8_bytes_each",
+    "coefficient_bundle_sha256": "d4e7f691fe763d5673384e23e0bc825875e49de545df78d7f7d7b2ca5e613438"
+  },
+  "provenance": {
+    "repository": "https://github.com/ant-research/ace-compiler",
+    "revision": "fb76131171b9f82aa6387f84dd73684fba5277e8",
+    "introduction_revision": "15c95a7346d89355d68d5bf4fe8ab3b952740e1a",
+    "source_path": "fhe-cmplr/util/src/app_composite_poly.cxx",
+    "source_sha256": "bd752b96eaaef5e4f14851c057d38cee9e45264e230dbb637dd59ba3cabb0f93",
+    "declaration": "App_sign_comp_poly_chebyshev_alfa6_depth11",
+    "license_expression": "Apache-2.0 WITH LLVM-exception",
+    "copyright_notice": "Copyright (c) Ant Group Co., Ltd",
+    "coefficient_container": "std::vector<double>",
+    "lowering_source_path": "fhe-cmplr/sihe/src/tensor2sihe_impl.cxx",
+    "reconstruction": "raw stages approximate sign; lowering computes 0.5*x*composite_sign(x/B)+0.5*x",
+    "canonicalization": "Parse each pinned C++ decimal token as nearest IEEE-754 binary64, serialize in T0..Tdegree order as little-endian bytes, hash each stage and then the concatenated stages. No fitting or coefficient scaling is performed."
+  },
+  "stages": [
+    {
+      "ordinal": 0,
+      "degree": 7,
+      "source_decimals": [
+        "0.",
+        "1.277209679957775013e+00",
+        "0.",
+        "-4.369818210105346212e-01",
+        "0.",
+        "2.781705762612975419e-01",
+        "0.",
+        "-9.522998581241576277e-01"
+      ],
+      "binary64_hex": [
+        "0000000000000000", "3ff46f736ad8da32",
+        "0000000000000000", "bfdbf782998bf412",
+        "0000000000000000", "3fd1cd8bf5f01c9f",
+        "0000000000000000", "bfee793d8d541e49"
+      ],
+      "little_endian_bytes_base64": "AAAAAAAAAAAy2thqc2/0PwAAAAAAAAAAEvSLmYL3278AAAAAAAAAAJ8c8PWLzdE/AAAAAAAAAABJHlSNPXnuvw==",
+      "coefficient_bytes_sha256": "6bcab92ecd5198ae14d21a633e2767758d8f53145d136b1d578f2c821a95f736"
+    },
+    {
+      "ordinal": 1,
+      "degree": 15,
+      "source_decimals": [
+        "0.",
+        "1.336811809725395372e+00",
+        "0.",
+        "-3.314086854871873267e-01",
+        "0.",
+        "2.739009935511804161e-01",
+        "0.",
+        "-2.096678512577555831e-01",
+        "0.",
+        "6.827141455300124451e-02",
+        "0.",
+        "-1.036056317926726048e-02",
+        "0.",
+        "7.381161118162535544e-04",
+        "0.",
+        "-2.000350671563594715e-05"
+      ],
+      "binary64_hex": [
+        "0000000000000000", "3ff56394c7bad599",
+        "0000000000000000", "bfd535ccc671c7cb",
+        "0000000000000000", "3fd1879808693b03",
+        "0000000000000000", "bfcad6656a165b05",
+        "0000000000000000", "3fb17a3c44c1bd91",
+        "0000000000000000", "bf8537eb402f4c42",
+        "0000000000000000", "3f482fc447cb9eb6",
+        "0000000000000000", "bef4f9a683aea42a"
+      ],
+      "little_endian_bytes_base64": "AAAAAAAAAACZ1brHlGP1PwAAAAAAAAAAy8dxxsw11b8AAAAAAAAAAAM7aQiYh9E/AAAAAAAAAAAFWxZqZdbKvwAAAAAAAAAAkb3BRDx6sT8AAAAAAAAAAEJML0DrN4W/AAAAAAAAAAC2nstHxC9IPwAAAAAAAAAAKqSug6b59L4=",
+      "coefficient_bytes_sha256": "f509c310ab54d31aa7f61e4bdc18f896dd920bcde01bc9c9d41ae95902f4545a"
+    },
+    {
+      "ordinal": 2,
+      "degree": 13,
+      "source_decimals": [
+        "0.",
+        "1.229917329338358289e+00",
+        "0.",
+        "-3.099894039867301943e-01",
+        "0.",
+        "1.047929208484282559e-01",
+        "0.",
+        "-3.040264421328875422e-02",
+        "0.",
+        "6.507995190210730772e-03",
+        "0.",
+        "-8.815509689332230855e-04",
+        "0.",
+        "5.555595810150389487e-05"
+      ],
+      "binary64_hex": [
+        "0000000000000000", "3ff3adbdcb24abaa",
+        "0000000000000000", "bfd3d6ddcc0eb0c1",
+        "0000000000000000", "3fbad3b577e574f6",
+        "0000000000000000", "bf9f21deea6e9740",
+        "0000000000000000", "3f7aa820a8125a07",
+        "0000000000000000", "bf4ce2fc4a68de1b",
+        "0000000000000000", "3f0d20982f661269"
+      ],
+      "little_endian_bytes_base64": "AAAAAAAAAACqqyTLva3zPwAAAAAAAAAAwbAOzN3W078AAAAAAAAAAPZ05Xe107o/AAAAAAAAAABAl27q3iGfvwAAAAAAAAAAB1oSqCCoej8AAAAAAAAAABveaEr84ky/AAAAAAAAAABpEmYvmCANPw==",
+      "coefficient_bytes_sha256": "7768d20e17d427ece7f1ed572f7f065a606e40ee7e1f081253222376ad93378f"
+    }
+  ],
+  "approval": {
+    "coefficient_provenance_reviewed": true,
+    "license_provenance_reviewed": true,
+    "native_profile_enablement_allowed": true,
+    "authority": "Project-owner acceptance of empirical ANT ACE implementation evidence",
+    "limitations": [
+      "Open64 has not independently proved the polynomial approximation",
+      "This approval does not establish trained SecureResNet accuracy",
+      "Independent formal proof and broader reproducibility evidence are deferred"
+    ]
+  }
+}

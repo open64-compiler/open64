@@ -1,0 +1,53 @@
+{
+  "schema": "open64.fhe.relu.context-ranges.v1",
+  "status": "blocked_missing_calibration_authority",
+  "profile_name": "ace.chebyshev.sign.7x15x13.depth11.v1",
+  "coefficient_manifest_sha256": "75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931",
+  "source_artifact": {
+    "binary_whirl_sha256": "7d6505f9f351f1983567c990ae4fad6779dd8441b79c22aae7b1d0bda6054d68",
+    "model_source_sha256": "1362bd7fe87a983f3842136ffb1d4cf3b59ec51309b96b49b17e1dd81c4c8e5e",
+    "parameter_payload_sha256": "b60445bd8373fab1c4d002603de0de6528bceeaa43b0d6ab4b38c8b2aa10032e"
+  },
+  "calibration_authority": {
+    "dataset": null,
+    "dataset_sha256": null,
+    "split": null,
+    "sample_selection": null,
+    "sample_count": 0,
+    "preprocessing": null,
+    "preprocessing_sha256": null,
+    "trained_checkpoint": null,
+    "trained_checkpoint_sha256": null,
+    "bound_rule": null,
+    "outlier_policy": "reject",
+    "acceptance_data_must_be_disjoint": true
+  },
+  "identity_key": [
+    "profile_name",
+    "source_relu_value_id",
+    "context_pu_identity_id",
+    "context_callsite_id"
+  ],
+  "contexts": [
+    {"instance_path":"stem.relu","owner_pu_st":"<1,50>","source_relu_value_id":10,"context_pu_identity_id":1,"context_callsite_id":0,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer1.0.relu1","owner_pu_st":"<1,51>","source_relu_value_id":38,"context_pu_identity_id":2,"context_callsite_id":1,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer1.0.relu2","owner_pu_st":"<1,51>","source_relu_value_id":42,"context_pu_identity_id":2,"context_callsite_id":1,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer1.1.relu1","owner_pu_st":"<1,51>","source_relu_value_id":38,"context_pu_identity_id":2,"context_callsite_id":2,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer1.1.relu2","owner_pu_st":"<1,51>","source_relu_value_id":42,"context_pu_identity_id":2,"context_callsite_id":2,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer1.2.relu1","owner_pu_st":"<1,51>","source_relu_value_id":38,"context_pu_identity_id":2,"context_callsite_id":3,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer1.2.relu2","owner_pu_st":"<1,51>","source_relu_value_id":42,"context_pu_identity_id":2,"context_callsite_id":3,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer2.0.relu1","owner_pu_st":"<1,52>","source_relu_value_id":112,"context_pu_identity_id":3,"context_callsite_id":4,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer2.0.relu2","owner_pu_st":"<1,52>","source_relu_value_id":116,"context_pu_identity_id":3,"context_callsite_id":4,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer2.1.relu1","owner_pu_st":"<1,53>","source_relu_value_id":146,"context_pu_identity_id":4,"context_callsite_id":5,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer2.1.relu2","owner_pu_st":"<1,53>","source_relu_value_id":150,"context_pu_identity_id":4,"context_callsite_id":5,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer2.2.relu1","owner_pu_st":"<1,53>","source_relu_value_id":146,"context_pu_identity_id":4,"context_callsite_id":6,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer2.2.relu2","owner_pu_st":"<1,53>","source_relu_value_id":150,"context_pu_identity_id":4,"context_callsite_id":6,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer3.0.relu1","owner_pu_st":"<1,54>","source_relu_value_id":207,"context_pu_identity_id":5,"context_callsite_id":7,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer3.0.relu2","owner_pu_st":"<1,54>","source_relu_value_id":211,"context_pu_identity_id":5,"context_callsite_id":7,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer3.1.relu1","owner_pu_st":"<1,55>","source_relu_value_id":241,"context_pu_identity_id":6,"context_callsite_id":8,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer3.1.relu2","owner_pu_st":"<1,55>","source_relu_value_id":245,"context_pu_identity_id":6,"context_callsite_id":8,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer3.2.relu1","owner_pu_st":"<1,55>","source_relu_value_id":241,"context_pu_identity_id":6,"context_callsite_id":9,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null},
+    {"instance_path":"layer3.2.relu2","owner_pu_st":"<1,55>","source_relu_value_id":245,"context_pu_identity_id":6,"context_callsite_id":9,"observed_min":null,"observed_max":null,"sample_count":0,"bound_b":null}
+  ],
+  "blocker": "Approve a trained ResNet-20 checkpoint, immutable CIFAR-10 calibration split and preprocessing, deterministic sample order, bound estimator, safety margin, and outlier policy. The current synthetic fixture and one all-ones sample are not admissible range evidence."
+}
