@@ -86,6 +86,25 @@ only when the current task needs detail.
    identity. Continue using WOPT's existing `CODEREP` instantiation of
    `wn_simp_code.h`; do not add a parallel WOPT simplifier.
 
+## Backend Shared-Library Dependencies
+
+1. Do not add a new library dependency to `be.so` without explicit design and
+   build approval. This includes direct linkage and source-level references
+   that create new defined or undefined symbols in the shared library.
+2. Before approving a dependency, identify every consumer of `be.so`, including
+   `lw_inline`, backend plugins, and standalone tools, and prove that each
+   consumer remains link-closed on every supported build configuration.
+3. Prefer an existing Open64 service or an already compatible header-only
+   facility when structured parsing or another utility is needed in a backend
+   pass. Do not introduce ad hoc parsing to avoid the dependency review.
+4. Validation for an approved dependency change must rebuild `be.so` and its
+   shared consumers, inspect their defined and undefined symbols, and document
+   platform, static/shared, licensing, version, and binary-distribution impact.
+5. Frontend-only libraries and interfaces, including `DSL_Builder_*`, must not
+   leak into `be.so`. For example, an FHE backend may parse an authenticated
+   JSON manifest with the repository's compatible header-only RapidJSON
+   facility, but must not add JsonCpp linkage to `be.so` without approval.
+
 ## Coding Guidelines
 
 1. Do not introduce tab characters in any file touched in this Open64 project.

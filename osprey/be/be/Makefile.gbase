@@ -254,6 +254,7 @@ HEADER_DIRS += $(TARGDIR)/include/libelf
 endif
 
 HEADER_DIRS += $(BUILD_TOT)/include/gnu
+HEADER_DIRS += $(BUILD_TOT)
 
 #----------------------------------------------------------------------
 # Build derived files

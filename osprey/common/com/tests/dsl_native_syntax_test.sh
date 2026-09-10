@@ -37,6 +37,7 @@ cxxflags=(
   -I"$repo_root/osprey/common/util"
   -I"$repo_root/osprey/include"
   -I"$repo_root/osprey/libdwarf/libdwarf"
+  -I"$repo_root/osprey"
   -I"$repo_root/osprey/torch2whirl/python/native"
 )
 

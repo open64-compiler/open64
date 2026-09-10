@@ -166,6 +166,7 @@ LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
 	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
         -I$(BUILD_TOT)/include
+LCINCS += -I$(BUILD_TOT)
 ifeq ($(BUILD_OS), LINUX)
 LCINCS += -I$(BUILD_AREA)/include/libelf -I$(BUILD_TOT)/libjson/include
 endif
