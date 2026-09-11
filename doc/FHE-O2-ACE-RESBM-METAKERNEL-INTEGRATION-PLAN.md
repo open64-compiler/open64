@@ -1,238 +1,225 @@
 # Open64 FHE `-O2` Integration Plan
 
-Status: revision proposal with an active architecture freeze
+Status: revision proposal; O2 implementation and external O0 acceptance remain open
 
-Plan version: 1.2
+Plan version: 1.4
 
-Date: 2026-09-10
+Date: 2026-09-12
 
-Repository baseline: `develop@e349477270e6f8b09fdf0509c5726d191233efeb`
+Reviewed working-tree baseline: `develop@eca97d4843aef03c50e5cb866f2f0e6c82e6b064`
 
-Detailed delivery target: `O2 Stage 1` (`ACE + MetaKernel + ReSBM`)
+Governing architecture commit: `ee1dc6382246c58f49a3097157a8c4e8ff2440c8`
 
-Deferred but retained final capability: `O2 Stage 2` (`FHEFusion + HPAO`)
+Detailed delivery target: `O2 Stage 1` (`ACE mapping + MetaKernel + ReSBM`)
 
-Revision 1.2: makes fixed `N` an immutable pipeline input; restores mandatory
-immediate relinearization after `MulCC`; makes the source-locked MetaKernel and
-ReSBM artifacts authoritative inside their accepted Stage 1 production domains;
-splits F1 and P1 so their dependencies are executable; narrows ordinary WOPT to
-non-interference; and records the measurable cost of the unresolved Fhelipe/O0
-architecture freeze. Non-immediate relinearization research is outside current
-O2 scope.
+Retained final capability: `O2 Stage 2` (`FHEFusion + reviewed HPOLY/HPAO`)
 
-## 0. Implementation Freeze: `-O0` Layout and Fhelipe Baseline
+Revision 1.4 adopts the user-selected planning direction: the frozen mature
+Fhelipe layout/lowering pipeline and its default DP bootstrap placement form
+the proposed O0 baseline. O2 owns enhancements beyond that baseline. This
+supersedes v1.3's attempt to move Fhelipe's existing cost-guided passes into O2.
+The DP baseline conflicts with the current v0.10 O0 policy and is not yet an
+accepted architecture or executable baseline. F0 records the required explicit
+reconciliation; this revision edits only this O2 plan, not architecture or O0
+source trackers. HPAO-MU/FM/LM and the MD design gate remain unchanged.
 
-### 0.1 Why this plan is frozen
+## 0. Proposed Baseline Policy and Cross-Plan Ownership
 
-The v0.9 design document currently describes Fhelipe as a peer layout planner
-whose output feeds the selected CKKS scale/bootstrap policy. That description is
-not sufficient to assign production ownership.
+### 0.1 Selected planning direction and existing architecture conflict
 
-The reviewed Fhelipe paper describes one end-to-end compiler path: it assigns
-tensor layouts and inserts conversions, applies EVA waterline rescaling, places
-bootstraps automatically, and then lowers to CKKS vector operations. Therefore,
-the current project interpretation is that a complete Fhelipe path covers both
-the MetaKernel-like layout responsibility and the ReSBM-like scale/bootstrap
-responsibility. Under that interpretation, these are alternative end-to-end
-planning paths:
+The user has selected a mature Fhelipe baseline rather than a new reduced
+packing/bootstrap implementation. The adoption unit is the fixed source
+revision plus an accepted pass/configuration/support manifest, not every future
+feature carrying the Fhelipe name. Its existing layout assignment, compaction,
+conversion hoisting/decomposition, lowering and default DP placement remain
+baseline capabilities even when upstream calls them optimizations.
 
-```text
-common canonical FHE input
-  +-> complete Fhelipe path --------------------+
-  |                                             +-> normalized final plan
-  +-> MetaKernel layout -> ReSBM scale/BTS -----+
-```
+| Owner | Proposed scope after F0 reconciliation | Required evidence |
+| --- | --- | --- |
+| O0/Fhelipe execution owner | Frozen mature Fhelipe layout/lowering and default DP initial bootstrap placement, with accepted rescale/state handling; required canonicalization, immediate Relin, provider ABI and executable acceptance | Full pass/config/source lock, policy-compatible DP adaptation, complete agreed support domain, independent reopen and ResNet-20 acceptance |
+| O1 execution owner | Any separately accepted local incremental policy above the same baseline | Preserve the baseline manifest and protected semantics; F0 reconciles the old local-policy mapping without redefining O1 here |
+| O2 integration owner | Additional MetaKernel layout/kernel optimization, ReSBM replacement of permitted baseline placement, FHEFusion, reviewed HPOLY/HPAO and individually reviewed further enhancements | Compare incremental effects against the frozen Fhelipe baseline; retain baseline-off controls and semantic/placement provenance |
+| Future O3 owner | Physical parallel scheduling and memory/data optimization of the finalized selected semantic plan | Preserve approximation, layout semantics, state, protected bootstrap boundaries, keys and source provenance |
 
-Composing complete Fhelipe with MetaKernel and ReSBM would give two planners
-ownership of the same decisions. The second planner could invalidate the first
-planner's costs, layouts, level assumptions, and bootstrap placement.
+This is a proposed change to the existing DSC O0 definition, not a claim that
+v0.10 already permits it. The conflict is precise:
 
-The v0.9 baseline requires an executable bare-`-O0`/OpenFHE path before the
-MetaKernel/Fhelipe planning phase, but it also has three unresolved gaps:
+| Current v0.10 requirement | Conflict with proposed baseline | Required reconciliation |
+| --- | --- | --- |
+| Section 11.4, line 812: O0 is no profitability optimization | Mature Fhelipe includes cost-guided layout passes and DP | Architecture must define the frozen baseline package as baseline policy; names or cost-guided implementation alone no longer assign it to O2 |
+| Section 11.4, lines 814, 826: pre-ReLU boundaries and greedy JIT refresh elsewhere | Default Fhelipe DP supplies a different initial placement rule | Explicitly replace or scope the automatic JIT rule; decide protected boundaries and DP domain before O0 acceptance |
+| Section 11.4, line 830: no removal/motion/merging/global replacement at O0 | Upstream DP removes bootstrap nodes before planning | Adapt the producer to preserve hard boundaries; do not import unrestricted removal |
+| Section 11.5, line 838: O0 disables DP/min-cut planning | Default DP is now the selected baseline direction | Accept the specific DP/related boundary options in the manifest and synchronize architecture/options/source trackers |
 
-1. it does not specify a concrete non-Fhelipe `-O0` layout planner;
-2. it assigns `-O0` scale/bootstrap legality to a local manager without fixing
-   its complete algorithm and persisted result; and
-3. it does not bind the MetaKernel/Fhelipe choice, automatic/manual/off
-   behavior, or planner defaults to optimization levels.
+Until reconciliation, the existing architecture remains the implementation
+contract for any claim of v0.10 conformance. It is not the target comparison
+baseline of this revision. A legacy greedy/JIT implementation may remain a
+diagnostic profile, but cannot close the proposed Fhelipe baseline gate.
+Independent source/oracle work may proceed; production defaults and integrated
+acceptance await the conflicting contract's resolution.
 
-The preferred project direction is to independently implement the complete
-Fhelipe paper path as the bare `-O0` baseline. This would provide a meaningful,
-non-throwaway baseline instead of spending project time on temporary local
-layout and bootstrap planners used only to certify `-O2`. This direction is a
-proposal for architecture review. It is not an accepted v0.9 amendment.
+### 0.2 Paper/code evidence and limits of the baseline claim
 
-### 0.2 Fhelipe evidence and source-lock status
+MetaKernel Section 5 (PDF page 19) implements the method in ANT-ACE's Vector
+IR and uses Fhelipe as a comparison baseline. It is not a code dependency or
+patch to Fhelipe. Its Section 1 (PDF page 2) excludes multicore implementation;
+its algebraic horizontal/vertical batching remains an O2 increment, distinct
+from physical O3 thread scheduling.
 
-The exact paper inspected for this revision is:
+Fhelipe Sections 5-6 describe mature layout/lowering and placement passes. The
+new project choice retains the frozen pipeline as O0; cost guidance, an
+`Optimizer` class name or upstream default is not by itself a reason to strip
+a capability from that baseline. Keeping separate layout and CKKS interfaces
+allows O2 replacements without making the baseline an indivisible algorithm.
 
-- Aleksandar Krastev, Nikola Samardzic, Simon Langowski, Srinivas Devadas, and
-  Daniel Sanchez, *A Tensor Compiler with Automatic Data Packing for Simple and
-  Efficient Fully Homomorphic Encryption*, PLDI 2024,
-  [DOI 10.1145/3656382](https://doi.org/10.1145/3656382), 25 pages;
-- [author PDF](https://people.csail.mit.edu/devadas/pubs/pldi24_fhelipe.pdf);
-- [official repository](https://github.com/fhelipe-compiler/fhelipe).
+Section 6.2 (PDF pages 15-16) limits the DP search to depth boundaries, with a
+fixed bootstrap result budget `l0` and basic complexity `O(d * l0)`. Section
+6.3 describes boundary/shortcut refinements. The paper's latency recurrence
+and the inspected implementation's bootstrap-count objective are different
+evidence claims; neither establishes unrestricted global latency optimality.
+Section 8.2/Table 6 reports a 3.5x geometric-mean DP-versus-Lazy speedup in the
+paper's evaluation. It is not an Open64 performance prediction, and must not
+be attributed to a protected-boundary adaptation before measurement.
 
-The paper's Figure 4 and Sections 5-6 verify the combined scope described above.
-The current upstream repository contains matching implementation families:
+| Fixed source | Direct evidence | Adoption consequence |
+| --- | --- | --- |
+| `../../ace-compiler`, `origin/metakernel-proof@d0c14ab101c1f1fedfb31d8fdb553867ae7ce7be` | `nn-addon/vector/src/vector_utils.cxx:48-83,538-595` and `nn-addon/include/nn/vector/tensor2vector_handler.h:611-620,633-655,694-712`: cost search, IMRA, batching and Ke2Col | O2 candidate above the frozen baseline, with isolated comparison and fallback |
+| `../../fhelipe/fhelipe`, `891b3086bf6a144deebac79290801253b9cc510c` | `backend/src/compiler.cc:65-71`, `backend/src/targets/compile.cc:142-154` separate layout, optimization, rescale and bootstrap components | Freeze mature components/configuration as one baseline package while retaining independent semantic owners |
+| Same Fhelipe snapshot | `backend/src/layout_hoisting_pass.cc:47-68,94-100` uses legality and cost | Existing baseline pass; no duplicate O2 implementation solely because it is cost-guided |
+| Same Fhelipe snapshot | `backend/src/targets/compile.cc:70,82-86` selects `dp` by default; `backend/src/dp_bootstrapping_pass.cc:451-487` minimizes bootstrap count using frontier and shortcut counts | DP is the selected baseline initial-placement policy; lock the actual objective/domain/options separately from paper latency claims |
+| Same Fhelipe snapshot | `backend/src/dp_bootstrapping_pass.cc:502-506,554-556` removes all `TBootstrapC` before DP; `:540-546` restores usable levels | Upstream cannot be copied unchanged across DSC hard boundaries; O0 owns protected-boundary adaptation and acceptance |
 
-- `backend/src/generic_layout_pass.cc`,
-  `backend/src/fill_gaps_layout_pass.cc`, and
-  `backend/src/layout_hoisting_pass.cc` implement layout selection/conversion
-  cleanup;
-- `backend/src/level_minimization_pass.cc` implements the level-minimization /
-  waterline-rescaling side of the pipeline; and
-- `backend/src/dag_depth_info.cc` and
-  `backend/src/dp_bootstrapping_pass.cc` provide DAG depth information and
-  dynamic-programming bootstrap placement.
+### 0.3 Migration ledger relative to the frozen baseline
 
-However, the intended fixed implementation revision is **Unknown**. The upstream
-history shows a paper-era initial commit
-`6afbd1cb1630cba896b9ab85f93647413430b48d` and a later observed commit
-`a631dae4bbf48a144c1e0a474bf81fc46e257f3e`; the repository page reports a
-moving `main`, and intervening commits include a layout bug fix and performance
-changes. Neither observed revision has been accepted or copied into the project
-source lock. The remote paper and repository also do not have a locally reviewed
-SHA-256 snapshot.
+Source sections refer to the previously reviewed tracker snapshot. This revision
+does not edit those sources. F0 must synchronize their ownership links and the
+architecture conflict explicitly, so pending old text cannot create a second
+implementation queue or an accepted-baseline claim.
 
-Consequently:
+| ID | Source activity | Proposed owner/disposition | Destination / acceptance |
+| --- | --- | --- | --- |
+| MIG-01 | FHE-DSL-INTEGRATION-PLAN.md conversion (436-448); architecture 11.4-11.5 | O0 keeps canonicalization, legality/runtime; its automatic placement policy must change through F0 to the selected Fhelipe baseline | External F1/P0/P1 contracts; no O2 dependency for baseline bring-up |
+| MIG-02 | FHE-DSL-INTEGRATION-PLAN.md layout/SYNC-7A-E (450-528); consolidated C7/SYNC-7 (177,571-609) | Frozen Fhelipe layout/lowering, including existing optimizers, belongs to O0; common records to common/com; only MetaKernel and additional reviewed layout enhancements belong to O2 | Import baseline evidence; S1.3/S1.4 and S1.LAYOUT compare increments and recompute census; no second Fhelipe implementation |
+| MIG-03 | Deferred Work (924-929); consolidated SYNC-7 (573-580); FHE-WHIRL-INTEGRATION-PLAN.md (529,564) | Baseline DP initial placement belongs to O0; ReSBM and permitted placement replacement/fusion, plus FHEFusion beyond baseline, belong to O2 | F1 placement-policy evidence then S1.6-S1.9/S2.0-S2.2/S2.5; hard boundaries preserved |
+| MIG-04 | FHE-DSL-INTEGRATION-PLAN.md (440-448); consolidated (606-609); architecture 12.4-12.8 | HPOLY, dedicated SSAPRE-model MU and FM/LM remain O2; MD remains design-gated | S2.3/S2.4 and MD-DESIGN; legacy WOPT SSAPRE unchanged |
+| MIG-05 | Architecture 8.8-8.9,11.5-11.7,12.6; consolidated C8/SYNC-8 | New target-aware ReSBM/HPOLY profitability remains O2; baseline's own frozen costs do not become an O2 prerequisite | O2 extension records and source/cost/oracle gates; provider availability remains external |
+| MIG-06 | Architecture O3 rows (654,841,844) and GPU/native deferrals | Physical scheduling, NUMA/GPU memory placement, transfer overlap and working-set management remain reserved to third plan | Section 0.6 handoff, no third-plan implementation here |
+| MIG-07 | Earlier F1-PREP/F1-IMPL/F1-ACCEPT and P0/P1 queues; v1.3 S1.LAYOUT Fhelipe implementation | O0/source/runtime owners implement the frozen mature baseline and protected DP; O2 imports it and deletes duplicate baseline implementation work | Section 13 handoffs; S1.LAYOUT is incremental verification, with new algorithm work only when defined |
 
-- the paper-backed statement that Fhelipe performs layout, rescaling, and
-  bootstrap planning is **Verified**;
-- treating complete Fhelipe and MetaKernel+ReSBM as interchangeable Open64
-  planner families is a **Project interpretation requiring confirmation**;
-- all Fhelipe code-level equivalence, test-vector, and performance claims remain
-  **Unknown** until a fixed source revision is selected and hashed locally.
+### 0.4 Required architecture and baseline reconciliation gate
 
-### 0.3 What is frozen and what may proceed
+The selected direction is settled for this plan; its detailed manifest,
+hard-boundary adaptation and architecture acceptance are not yet settled.
 
-The following work is frozen until Section 0.5 is resolved and v0.9 is updated
-or accompanied by an accepted ADR:
+| Decision | Remaining contract | Owner / evidence | Blocks |
+| --- | --- | --- | --- |
+| FRZ-01 | Freeze mature Fhelipe revision, complete layout/lowering/rescale/DP pass order, defaults and supported domain; distinguish future increments | O0/Fhelipe owner; source-to-pass/config manifest, disabled experimental options and delta review | Baseline implementation/acceptance; S1 comparisons |
+| FRZ-02 | Reproducible complete source/build/fixtures/oracles | O0/Fhelipe owner; fixed bundle/file/build hashes, license and supported/unsupported corpus | F1-IMPL/F1-ACCEPT |
+| FRZ-03 | Resolve v0.10 O0 no-profitability/JIT/no-DP conflicts and protected-boundary policy | Architecture/O0 owners; explicit amendment/ADR, Section 11.3 truth table and constrained-DP feasibility/oracle evidence | Production defaults, F1 acceptance, S1.9/S2.6 |
+| FRZ-04 | Auto/manual/off, baseline DP, O1 and O2 increment controls, advanced-off and fallback mappings | Driver/O0/O2 owners; four-level truth table; O2 off preserves baseline passes and DP | F0/default integration |
+| FRZ-05 | Baseline layout/CKKS/placement/provenance records first; separate O2 candidate/replanning extensions | O0/common-com then O2 owners; versioned crosswalk and independent reopen | Baseline consumers before P2; O2 schema after P2 |
+| FRZ-06 | Frozen-baseline versus increment comparisons, identical DP algorithm/constraints for layout ablations | Performance/O2 owners; profile/support matrix, objective labels, fixed artifacts and controls | S1.LAYOUT/S1.9/S2.6 |
+| FRZ-07 | Synchronize architecture and source-tracker links for MIG-01..07 | Architecture/tracker editors; explicit changed/unchanged policy inventory and accepted document diffs | F0 closure |
 
-- production ownership of layout, scale, rescale, and bootstrap placement;
-- bare `-O0` and bare `-O2` defaults;
-- public planner-family and automatic/manual/off option semantics;
-- allocation of persisted planner-family fields or a normalized top-level plan
-  to a physical WHIRL image/table;
-- integrated Fhelipe, MetaKernel, or ReSBM materialization behind a default
-  optimization level; and
-- `O2 Stage 1` or complete `-O2` certification.
+Do not infer that the architecture has accepted DP merely because this execution
+plan chooses it. F0 architecture reconciliation is not an O2 implementation gate
+for O0: it produces the baseline contract, after which O0 can build and accept
+the complete baseline without P2 or any MetaKernel/ReSBM implementation.
 
-The following work may proceed because it does not claim production ownership:
+### 0.5 Proposed option and fallback contract
 
-- source locking and paper-to-code mapping;
-- the mandatory canonicalizer and its verifier;
-- the runtime/provider boundary and provider-neutral capability manifest;
-- pure MetaKernel and ReSBM algorithm libraries;
-- independent semantic oracles and fixed test-vector preparation;
-- schema prototypes that do not allocate a frozen planner-family or top-level
-  physical record; and
-- serialization mechanics for already accepted Open64 record owners.
+Exact syntax for baseline policy/configuration remains an F0 contract; do not
+invent an accepted public DP flag. The target semantics after reconciliation are:
 
-No proceeding task may write a default planner choice into a user-visible
-interface or claim v0.9 conformance while this freeze is active.
+- Bare O0 uses the frozen Fhelipe baseline, including its accepted existing
+  layout optimizers and DP initial placement when automatic bootstrap is allowed.
+- O1 inherits that baseline; any additional local policy is separately defined.
+  The old local-only mapping cannot silently disable baseline DP.
+- `advanced=off` or an O2 layout/replanning enhancement set to off disables only
+  increments beyond the frozen baseline. It preserves baseline layout passes,
+  default DP and all required legality/protected-boundary checks.
+- `scale-policy=auto` at O2 may select reviewed ReSBM as an incremental
+  replacement; with it off or unsupported, use the accepted baseline DP policy.
+  `fusion=auto` similarly controls additional FHEFusion, not baseline passes.
+- `manual` permits no compiler-created bootstrap and preserves explicit sites;
+  `off` forbids bootstrap. These modes bypass automatic DP/ReSBM placement and
+  fail if protected-boundary or depth requirements cannot be met. `auto/on`
+  uses the reconciled Section 11.3 policy, never unrestricted bootstrap removal.
+- O3 inherits the selected result; its parallel/memory controls remain separate.
+  Phases receive the full option set and ignore unrelated driver options.
 
-### 0.4 Cost/Consequences of the Freeze
+Fallback means the accepted mature baseline, not an invented weaker local/JIT
+plan. Failed incremental planning must not publish mixed/stale placement or
+layout data. If baseline DP cannot consume a changed layout, reject that
+increment or fall back to the whole baseline profile. Retain manifests, protected
+sites, source/cost/state provenance and the explicit reason for every fallback.
 
-The freeze has a concrete delivery cost; it is not a statement that the current
-architecture has no bootstrap semantics. v0.9's existing
-`bootstrap=auto|on|manual|off` meanings remain authoritative. What is frozen is
-whether a complete Fhelipe implementation preserves those meanings or changes
-them through the F0 ADR, and which layer realizes them.
+### 0.6 O2-to-O3 handoff for the reserved third plan
 
-Until Fhelipe's final responsibility and bare-`-O0` role are accepted:
+The third plan is not created in this revision. The shared DSC parallel/data
+owner consumes independently reopenable finalized layout, iteration-space,
+CKKS/HPOLY and placement records, config/target hashes, effect/dependence facts,
+key requirements and protected/manual boundaries. It verifies completeness and
+staleness before physical scheduling or placement.
 
-- planner ownership, bare-`-O0`/bare-`-O2` defaults, Fhelipe bootstrap behavior,
-  and the final public option mapping cannot be closed;
-- if Fhelipe is accepted as an indivisible end-to-end baseline, the only
-  formally defined Stage 1 comparison is `BASE-O0` versus `S1-FULL`;
-- the `S1-MKR` and `S1-RESBM` single-factor ablations are `F0-blocked`, not hard
-  Stage 1 gates, until F0 proves component separability or approves a neutral
-  layout/CKKS baseline for those experiments;
-- source locks, fixtures, golden results, independent oracles, pure algorithms,
-  `F1-PREP`, `P0`, `P1a`, and `P2` work within already accepted record
-  ownership may proceed; `P1b` may follow an accepted P2 contract; but frozen
-  top-level record choices still await F0, and `F1-IMPL`, `F1-ACCEPT`, `S1.9`,
-  and final O2 certification cannot close; and
-- work allowed to proceed must not publish a production planner/default or
-  treat a provisional top-level record as architecture authority.
-
-This dependency is reflected in Sections 13, 15, 17, 18, and 20. It prevents a
-nominal ablation matrix from becoming an implicit F0 decision.
-
-### 0.5 Decisions required to lift the freeze
-
-An accepted ADR, followed by a synchronized v0.9 amendment, must decide all of
-the following as one coherent contract:
-
-| Decision ID | Required decision | Owner | Required evidence | Blocking milestone |
-| --- | --- | --- | --- | --- |
-| `FRZ-01` | exact Fhelipe paper scope adopted by Open64 | architecture owner | paper-to-semantics review | `F0` |
-| `FRZ-02` | fixed Fhelipe source revision and local SHA-256 source bundle | Fhelipe/O0 owner | revision delta, license, reproducible build/test evidence | `F0` |
-| `FRZ-03` | bare `-O0` layout owner and bootstrap/scale owner | architecture and O0 owners | architecture comparison and implementation cost | `F0`, `F1-IMPL`, `F1-ACCEPT` |
-| `FRZ-04` | bare `-O2`, explicit planner-family, and `auto/on/manual/off` mappings | driver/config owner | option truth table and compatibility review | `F0` |
-| `FRZ-05` | common planner input and normalized final-plan contracts | common-com and FHE planner owners | record crosswalk and independent verifier prototype | `F0`, `P2` |
-| `FRZ-06` | comparison protocol for Fhelipe versus MetaKernel+ReSBM | performance and acceptance owners | fixed inputs, resolved parameters, oracles, metrics, and statistical protocol | `S1.9` |
-| `FRZ-07` | accepted ADR and synchronized v0.9 text | architecture owner | architecture-owner approval and synchronized document diff | `F0`, `F1-IMPL`, `F1-ACCEPT`, `S1.9`, `S2.6` |
-
-Partial decisions do not lift the freeze. In particular, selecting a Fhelipe
-commit without deciding O-level and bootstrap option semantics is insufficient.
+Baseline layout optimization and DP belong to the frozen O0 package; new
+MetaKernel algebraic packing/batching, ReSBM replanning and HPOLY profitability
+belong to O2. O3 maps the selected finalized operations/data to physical threads
+and memory hierarchies. It may not rerun baseline DP, extend ReSBM search, or
+change logical packing, approximation, scale/level or protected boundaries.
+Any required semantic change returns to the owning baseline/O2 planner and
+produces a new verified handoff. Parallel/memory-off evidence must preserve the
+exact selected semantic plan; O3 execution acceptance remains the third plan's.
 
 ## 1. Executive Delivery Decision
 
-`-O2` remains one capability delivered in two stages:
-
-| Delivery stage | Included work | Completion rule |
+| Delivery | O2-owned work | Completion rule |
 | --- | --- | --- |
-| `O2 Stage 1` | ACE responsibility mapping, full canonicalization prerequisite, provider boundary, MetaKernel MVM/Conv planning, CKKS contract, ReSBM planning, logical/provider key contracts, and standard-call lowering | independently accepted only after `F0`, `F1-PREP`, `P0`, `P1a`, `P2`, `P1b`, `F1-IMPL`, and `F1-ACCEPT` |
-| `O2 Stage 2` | complete FHEFusion rule catalog and search, HPOLY/HPAO, backend-aware recosting, full ablations, and bare-`-O2` certification | remains part of final `-O2`; cannot close while the Section 0 freeze is active |
-
-The intended final architecture, subject to `FRZ-01` through `FRZ-07`, is:
+| Stage 1 | ACE/O2 responsibility mapping, O2 record/transaction extensions, additional MetaKernel MVM/Conv optimization, ReSBM core/approved replacement planning, incremental comparison and materialization | F0 reconciliation accepted; external mature Fhelipe baseline accepted; P2/S1.0-S1.9 and S1.LAYOUT verification pass |
+| Stage 2 | Additional FHEFusion, HPOLY and independently controlled HPAO-MU/FM/LM, MD-DESIGN, recosting/ablations/default certification | All Stage 1 and Stage 2 gates; MD implementation only after separate design acceptance and plan amendment |
 
 ```text
-Python frontend
-  -> common/CNN/FHE WHIRL
-  -> mandatory file-wide FHE canonicalization
-  -> FHEFusion search                         [O2 Stage 2]
-  -> one selected end-to-end planner family
-       Fhelipe                                [preferred bare O0 proposal]
-       or MetaKernel -> CKKS -> ReSBM         [O2 Stage 1]
-  -> HPOLY/HPAO                               [O2 Stage 2]
-  -> standard WHIRL calls and stable C ABI
-  -> provider runtime
+accepted baseline source/config/protected-boundary contract
+  -> mandatory canonical input
+  -> frozen Fhelipe layout/lowering + state/rescale handling
+  -> baseline DP initial placement within accepted boundary policy
+  -> accepted baseline plan and executable evidence
+O2 increment path from the same inputs:
+  -> optional additional FHEFusion                     [Stage 2]
+  -> baseline layout or additional MetaKernel           [Stage 1]
+  -> authoritative state analysis + baseline DP policy
+  -> optional permitted ReSBM replacement               [Stage 1]
+  -> HPOLY + reviewed HPAO                              [Stage 2]
+  -> finalized semantic handoff / standard WHIRL / provider
 ```
 
-Stage names are delivery states, not public optimization levels. No new public
-`o2-stage` switch is proposed. Until the freeze is lifted, examples of
-`-dsc-fhe-layout-planner=...` and `-dsc-fhe-ckks-scale-policy=...` are design
-vocabulary only, not accepted command-line behavior.
+Separate interfaces do not require two planners to own one decision. O0 owns
+initial placement; enabled ReSBM explicitly replaces only permitted automatic
+placement and records its provenance. Required state transfer, immediate Relin
+and hard boundaries remain authoritative throughout. Stage numbers are delivery
+milestones, not new public O levels. No new baseline is accepted by this edit.
 
 ## 2. Authority, Evidence, and Status Labels
 
 ### 2.1 Authority order
 
-Unless an accepted ADR explicitly amends it, authority is:
+1. Explicit user requirements and applicable `AGENTS.md` repository invariants.
+2. `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx` and its
+   Markdown companion at commit `ee1dc6382246c58f49a3097157a8c4e8ff2440c8`.
+3. Accepted versioned contracts and an ADR only for its explicit amendment.
+4. This O2 execution plan and the O0/consolidated trackers in their assigned
+   scopes; current source and tests prove implementation status, not semantics.
+5. Original papers for intent/claims within their assumptions, and fixed
+   artifacts for implementation evidence. Source-locked MetaKernel/ReSBM
+   production rows retain their explicit artifact-backed deviations below.
+6. `../../ace-paper-guide/` for navigation, never independent authority.
 
-1. `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx` for
-   architecture and semantics;
-2. an accepted ADR for an explicitly identified v0.9 conflict or omission;
-3. `AGENTS.md` and current Open64 code for repository invariants and observed
-   implementation behavior;
-4. original papers for algorithm intent and claims inside their stated
-   assumptions;
-5. fixed artifact revisions for implementation evidence and, inside the
-   source-locked MetaKernel/ReSBM production support domains, production
-   algorithm semantics when paper and artifact differ; and
-6. `../../ace-paper-guide/` for navigation and explanation.
-
-This plan owns implementation staging, test contracts, retained evidence, and
-handoffs. It does not silently amend v0.9. Code demonstrates current behavior;
-it does not override the architecture. Papers do not define Open64 behavior
-outside their assumptions. A fixed artifact may explain a paper but may not
-expand the paper's theorem, scope, or evaluation claim. Within a source-locked
-MetaKernel/ReSBM support row, an artifact/paper difference is named as
-`Artifact-backed behavior/extension`; it is never silently reported as a
-paper-exact implementation.
+The PR suggestion and the user's interpretation were reviewed against both
+architecture and research evidence in Section 0. Neither paper names nor an
+existing implementation silently determine Open64 O-level ownership. This plan
+does not amend architecture or claim paper-exact behavior for artifact-only
+extensions. The selected baseline is proposed policy until F0 explicitly reconciles the
+identified v0.10 conflict; unchanged architecture is not evidence of acceptance.
 
 ### 2.2 Status labels
 
@@ -253,10 +240,25 @@ paper-exact implementation.
 | MetaKernel | `../../ace-paper/MetaKernel_paper.pdf`, `E2AB5C3C89EBC7B5B6CEA7E79EAA00BC98975EF66EC69104EA458570DDBE2FEF` | `origin/metakernel-proof@d0c14ab101c1f1fedfb31d8fdb553867ae7ce7be` | Stage 1 production algorithm authority inside the locked support domain; paper-strict behavior is differential evidence |
 | FHEFusion | `../../ace-paper/FHEFusion_paper.pdf`, `415E2ACFE8E7505263B369BF3B550A190612E48E8E92D66A321C0D8098A24A7E` | `origin/fhefusion@f18f971710b7270aec2c3963878ac3493d9f8e06` | Stage 2 pre-layout work |
 | HPAO | `../../ace-paper/HPAO_AE.pdf`, `FAFCEE50E3978FECE2D847DD7B2623C71DB5B8E7CD79226B43917F87188D02FC` | `origin/hpao@990e2289a866397e92c69ebe251adedba46cd44a` | Stage 2 post-CKKS work |
-| Fhelipe | author PDF and DOI above; local SHA-256 **Unknown** | intended fixed revision **Unknown**; two observed candidates are in Section 0.2 | architecture-freeze evidence only |
+| Fhelipe | `../../fhelipe/fhelipe-paper.pdf`, `6E7A58F934AC64B4A043166980BFA81BFE162EFDFBA371A47D649A5A77DA0D65`; [DOI 10.1145/3656382](https://doi.org/10.1145/3656382) | local `../../fhelipe/fhelipe@891b3086bf6a144deebac79290801253b9cc510c`; inspected component files below | activity-boundary evidence verified; full source bundle/build and implementation acceptance pending |
 
-The v0.9 SHA-256 is
-`4B9DAC9927E86518142CA9A9E71AEAE7AEA5C454D01C544311359680639DF4B6`.
+The inspected Fhelipe evidence files at that commit have SHA-256:
+
+| File relative to `../../fhelipe/fhelipe/` | SHA-256 |
+| --- | --- |
+| `backend/src/compiler.cc` | `DA1732396725CBE16D06E70CC1344F0CE2FF48B73F35086CA25C162686346BEA` |
+| `backend/src/targets/compile.cc` | `5A3D61E24A41B29223357F080B3B109ABF4FC471F6B953CF9353912A922FB090` |
+| `backend/src/layout_hoisting_pass.cc` | `DE71CB7FEE5F4844C6DFF27DFD8D08CF4D859AE1A0571F5CC1992603EB8FDA72` |
+| `backend/src/dp_bootstrapping_pass.cc` | `BD057964E7260F72D604C115B434C859A05162DAE0359C5AB49A5D26A64D0A16` |
+
+These four hashes support this revision's ownership analysis, not a claim of
+complete reproducible source-bundle/build acceptance. FRZ-02/F1-ACCEPT must
+lock the complete adopted implementation and test dependencies before release.
+
+The v0.10 SHA-256 is
+`0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
+The v0.10 Markdown SHA-256 is
+`7EF644E9BECEFB541102514B83656C78756ECA71398A771A2A5160FC10B0CB25`.
 The guide snapshot remains locked to:
 
 | Guide | SHA-256 |
@@ -293,12 +295,17 @@ The Stage 1 source delta is itself acceptance evidence:
   not imported as a second physical IR universe.
 - The semantic gatekeeper runs before lowering. No FHE, SIHE, CKKS, HPOLY, or
   private planner node may reach an unmodified `whirl2c` path.
-- `-O0` is the correctness and comparison baseline, but its concrete planning
-  owner is currently frozen by Section 0.
+- `-O0` is the external correctness/comparison baseline; its frozen mature Fhelipe
+  manifest, protected DP adaptation and acceptance come from the O0 owner.
+  This baseline remains proposed until F0 reconciliation and F1 acceptance.
 
-### 3.2 Verified implementation baseline
+### 3.2 Carried-forward implementation inventory
 
-| Area | Verified state | Planning consequence |
+The following inventory was established for v1.2 at `e349477270e6f8b09fdf0509c5726d191233efeb`.
+This document revision does not recertify those implementations at the current
+HEAD. F0/P2 revalidate relevant source deltas before consuming a claimed gate.
+
+| Area | Previously observed state | Planning consequence |
 | --- | --- | --- |
 | FHE source image | `osprey/common/com/dsl_fhe.h/.cxx` persists compilation configuration, entry contracts, encrypted tensor bindings, packing policy, and logical key requirements | extend accepted owners; do not duplicate them |
 | SYNC-3 plan image | `osprey/common/com/dsl_fhe_plan.h/.cxx` version 1 has conversion disposition, approximation, a small CKKS state record, and BN-fold provenance | insufficient for O2; do not overload it without a versioned compatibility review |
@@ -306,9 +313,9 @@ The Stage 1 source delta is itself acceptance evidence:
 | Conversion | `osprey/be/vho/fhe_convert.cxx` fails closed if the production gatekeeper/pass is absent | integrated O0/O2 execution is not currently accepted |
 | Generic DSL optimizer | `osprey/be/vho/dsl_opt.cxx` has ordered stages, with only canonicalization/algebraic defaults implemented | add FHE work through reviewed stage contracts |
 | WOPT | semantic-info and bridge tests exist | admit only operators with explicit alias/effect rules |
-| Optional images | `osprey/include/sys/elf_whirl.h` allocates optional sections through current FHE/PU interface images | a new identity requires common/com compatibility review; exact O2 allocation is frozen |
+| Optional images | `osprey/include/sys/elf_whirl.h` allocates optional sections through current FHE/PU interface images | a new identity requires common/com compatibility review; O2 allocation awaits P2 |
 
-`O2 Stage 1` is planned, not implemented. There is no production MetaKernel
+`O2 Stage 1` is planned, not implemented. The recorded baseline has no production MetaKernel
 planner, complete CKKS contract, ReSBM implementation, stable provider ABI, or
 accepted Stage 1 executable path in this baseline.
 
@@ -316,7 +323,12 @@ accepted Stage 1 executable path in this baseline.
 
 ### 4.1 Stage scope
 
-Stage 1 includes:
+Stage 1 consumes external prerequisites and implements O2 work as follows.
+Items 1-3 and mandatory portions of 6, 9 and lowering belong to O0/shared
+infrastructure; their presence here is an interface requirement, not ownership
+of an O0 implementation queue. Items 4-8 include O2-specific extensions.
+
+The integrated capability includes:
 
 1. a pre-canonicalization `FHECompilationConfigIR` with fixed `N`, security,
    bootstrap policy, and precision/scale constraints;
@@ -331,7 +343,8 @@ Stage 1 includes:
 10. independent reopen and standard-call materialization; and
 11. objective Stage 1 acceptance against the accepted O0 baseline.
 
-Stage 2 retains full FHEFusion and HPAO; it is not removed from `-O2`.
+Stage 2 retains full FHEFusion and reviewed HPAO-MU/FM/LM plus the
+HPAO-MD design gate; these activities are not removed from `-O2`.
 
 ### 4.2 Stage 1 algorithm support matrix
 
@@ -401,7 +414,7 @@ Reports may say `region-optimal under artifact contract and cost model <id>`
 only when the locked support assumptions and oracle gates pass. They must never
 say globally optimal or general paper-Algorithm-3 exact.
 
-## 6. Mandatory File-Wide FHE Canonicalization
+## 6. Imported Mandatory File-Wide FHE Canonicalization Contract
 
 Canonicalization is a prerequisite for both O0 and O2 and is not disabled with
 FHEFusion. It is distinct from generic DSL simplification and from Stage 2
@@ -418,7 +431,7 @@ The canonicalizer shall produce one deterministic normal form across every PU:
 - explicit `valid`, `zero`, `junk`, and `gap` slot classifications;
 - explicit masks, strided slices, padding, compaction, and layout conversions;
 - canonical polynomial/approximation identity without erasing `common.relu` or
-  its v0.9 bootstrap policy provenance;
+  its v0.10 bootstrap policy provenance;
 - canonical direct-call formal/actual links and one result identity per return;
 - canonical external plaintext payload identity and content hash; and
 - deterministic node ordering independent of address, traversal accident, PU
@@ -444,7 +457,7 @@ with nonzero sentinels, execute the canonical and lowered plan, and prove that
 valid outputs are unchanged and required-zero outputs are zero. Tests that seed
 all gaps with zero cannot establish this property.
 
-## 7. Stable Runtime and Provider Boundary
+## 7. Imported Stable Runtime and Provider Boundary Contract
 
 Stage 1 cannot call a provider through C++ library types, `std::shared_ptr`, STL
 containers, exceptions, or provider-owned class layouts and then label that
@@ -516,10 +529,10 @@ never allowed to overwrite user intent or resolved parameters.
 
 | Semantic record | Existing image/table | Proposed physical record or gap | Authority versus derived/cache | Verifier | Serialization owner |
 | --- | --- | --- | --- | --- | --- |
-| `FHECompilationConfigIR` | `WT_DSL_FHE_IMAGE` / `DSL_FHE_COMPILATION_CONFIG_RECORD` | versioned extension for accepted O-level/planner options after `F0`; fixed `N`, security target, bootstrap policy, and precision/scale constraints exist before canonicalization; no frozen option allocation while frozen | authoritative user/project intent; normalized aliases derived; `N` is never resolver-selected | FHE config verifier plus option truth-table and fixed-`N` tests | `osprey/common/com/dsl_fhe.*` |
-| `CKKSResolvedParameterIR` | no complete table; current value-state rows are insufficient | proposed versioned parameter record referencing one config/key domain | authoritative resolved compilation contract; provider import blob is cache/evidence | parameter/security/provider verifier | `osprey/common/com` after `P2` review |
-| `CKKSValueStateIR` | `DSL_FHE_CKKS_VALUE_STATE_RECORD` v1 | proposed compatible successor with parameter ID, scale identity, bounds, chain position, and action IDs | derived from source plus resolved parameters; never a second parameter truth; three components exist only in the transient `MulCC` result before immediate `Relin` | independent CKKS transfer verifier | `osprey/common/com` FHE plan owner |
-| `CKKSScaleBootstrapPlanIR` | pending-action fields only | proposed region/action records; exact storage frozen until `F0` | selected plan is authoritative for materialization; candidates/cost tables are derived | ReSBM semantic oracle and materializer verifier | planner producer plus `osprey/common/com` serializer |
+| `FHECompilationConfigIR` | `WT_DSL_FHE_IMAGE` / `DSL_FHE_COMPILATION_CONFIG_RECORD` | versioned extension for accepted O-level/planner options after `F0`; fixed `N`, security target, bootstrap policy, and precision/scale constraints exist before canonicalization; no unreviewed public option allocation | authoritative user/project intent; normalized aliases derived; `N` is never resolver-selected | FHE config verifier plus option truth-table and fixed-`N` tests | `osprey/common/com/dsl_fhe.*` |
+| `CKKSResolvedParameterIR` | no complete table; current value-state rows are insufficient | O0/shared baseline parameter record referencing one config/key domain; P2 may add reviewed O2-only provenance or extension fields | authoritative resolved compilation contract; provider import blob is cache/evidence | parameter/security/provider verifier | O0 and `osprey/common/com` accept baseline before P1b/F1/P2; P2 owns only O2 extensions |
+| `CKKSValueStateIR` | `DSL_FHE_CKKS_VALUE_STATE_RECORD` v1 | O0/shared compatible state successor with parameter ID, scale identity, bounds, chain position and mandatory action IDs; P2 adds only reviewed O2 references | derived from source plus resolved parameters; never a second parameter truth; three components exist only in the transient `MulCC` result before immediate `Relin` | independent CKKS transfer verifier | O0/common-com baseline owner before P1b/F1/P2; same editor reviews P2 extension |
+| `CKKSScaleBootstrapPlanIR` | pending-action fields only | After FRZ-03 policy reconciliation, O0/common-com first accept baseline DP/manual/protected-boundary action, profile and objective records; ReSBM candidate/replanning extensions require P2 | selected placement is authoritative for materialization; O2 candidates/cost tables are derived | O0 independent baseline-DP and hard-boundary verifier; ReSBM oracle for O2 extensions; common materializer verifier | O0/common-com baseline before P1b/F1/P2; O2 planner and same serializer own later global extensions |
 | `EncryptedTensorLayoutIR` | packing policy plus layout-name string | proposed explicit logical-to-physical slot map, class map, shards, masks, and lineage | selected layout authoritative; candidate costs/cache derived | slot-map oracle and canonicalization verifier | planner producer plus `osprey/common/com` serializer |
 | `MetaKernelPlanIR` | none | proposed input, artifact-equivalent `(Pb,Ps)` reparameterization, derived values, cost components, operations, extension flags | selected candidate authoritative within selected planner; transformed weights derived/cache | independent artifact-contract and slot oracle plus separate paper-strict differential oracle | MetaKernel planner plus `osprey/common/com` serializer |
 | `FHEBackendCapabilityIR` | none | proposed normalized capability/ABI manifest reference | provider evidence, not compilation intent; hash-bound to resolved parameters | ABI probe and capability-consumption verifier | runtime adapter; compiler stores immutable reference |
@@ -642,7 +655,7 @@ and DP proof obligation must be restated, and the exhaustive oracle must be
 extended before enabling it.
 
 Relinearization is mandatory immediately after every canonical `MulCC`, as
-required by v0.9. The three-component multiply result may be represented for the
+required by v0.10. The three-component multiply result may be represented for the
 single transition edge so its state is auditable, but it is not a normal SSA
 value available to subsequent operations. A provider without the immediate
 relin operation/capability is incompatible with current O2. Any non-immediate
@@ -914,41 +927,61 @@ relinearization, conjugation, bootstrap, decomposition, or other provider key
 material. Provider-expanded equality is tested separately under the same
 provider manifest.
 
-### 11.3 Bootstrap language
+### 11.3 Bootstrap policy: protected baseline DP and O2 replacement
 
-Neither ReLU nor arbitrary nonlinear computation implies a general theorem that
-a bootstrap must occur at a particular point. Mandatory refresh immediately
-before each surviving `common.relu` is the frozen first-release DSC v0.9 policy,
-not a ReSBM or CKKS theorem.
+The current v0.10 first-release policy requires a pre-ReLU bootstrap and
+greedy JIT refresh at O0; it forbids DP and global replacement. The proposed
+baseline changes automatic initial placement to frozen Fhelipe DP. FRZ-03 must
+explicitly reconcile these provisions before production or acceptance; current
+architecture text has not been edited by this plan.
 
-The current v0.9 meanings remain authoritative during the freeze:
+The default protection for the pending design is:
 
-- `auto/on` at bare `-O0` materializes a mandatory refresh before each surviving
-  `common.relu` and deterministic greedy JIT refresh elsewhere when permitted;
-- `manual` creates no compiler bootstrap, requires every surviving ReLU boundary
-  to be explicit, and rejects any path that exhausts the chain; and
-- `off` forbids bootstrap, rejects a surviving ReLU under the first-release
-  policy, and requires every other path to fit the resolved chain.
+| Boundary/policy | Proposed O0 producer behavior | O2 replacement constraint / evidence |
+| --- | --- | --- |
+| User-authored manual site | Preserve exact site, identity and semantic state; no compiler-created bootstrap in manual mode | Never remove, move, merge or reclassify the site; byte/source identity and state oracle checks |
+| Required pre-ReLU boundary | Preserve as a hard boundary unless an explicit architecture decision changes it | Neither baseline DP nor ReSBM may silently erase/move it; every surviving ReLU has boundary/approximation provenance |
+| Automatic depth refresh in auto/on | Initial placement by the accepted DP policy within admissible regions and hard-boundary constraints | ReSBM may replace only permitted automatic placement after state/legality/provenance checks |
+| Bootstrap off | No bootstrap; retain existing rejection of surviving ReLU or insufficient-depth paths unless separately amended | No planner may create a forbidden refresh or hide failure behind fallback |
 
-`FRZ-03` and `FRZ-04` must decide whether a complete Fhelipe path preserves and
-implements these semantics directly or proposes a specific ADR amendment, and
-which layer realizes the policy. The freeze does not turn the current modes into
-undefined behavior.
+F0 must decide whether pre-ReLU remains a hard fixed barrier or becomes
+planner-selectable. This revision adopts preservation as the safe pending-design
+default, not permission to remove it. Changing that rule requires an explicit
+architecture decision covering approximation, range/error, scale/level and
+source-visible semantics, followed by matching acceptance cases.
 
-An explicit user-authored manual bootstrap site remains authoritative in every
-case: a planner may not delete or relocate it. The freeze concerns supplemental
-automatic placement and surrounding optimization semantics, not permission to
-override the manual site.
+The inspected Fhelipe DP calls `RemoveBootstraps` before planning and removes
+all `TBootstrapC`; it cannot be imported unchanged. The O0 adaptation must
+distinguish hard/manual boundaries from DP-owned automatic sites, partition or
+constrain candidate regions, and preserve site identities. Define the actual
+depth-boundary domain, result budget, count objective, shortcut behavior,
+tie-breaking and infeasible cases in the baseline manifest. A constrained
+variant is an Open64 adaptation, not proven equivalent to unrestricted upstream
+output, the paper's latency objective or its reported speedup.
 
-Every mode fails closed when the final plan violates level, scale, range,
-precision, security, or provider capability. Reports distinguish
-`policy-mandated`, `planner-selected`, and `provider-required` bootstraps.
+F1 evidence must include positive and negative manual/off/auto/on cases,
+pre-ReLU barriers, deep chains, joins/shortcuts, no feasible placement and stale
+site provenance. Compare against an independent enumerator on bounded graphs;
+reopen persisted boundary and placement records; prove hard sites survive and
+no partial plan is published on failure. An unavailable feasible constrained-DP
+design keeps F1 acceptance open; it does not authorize a weak JIT substitute.
+Retain measured bootstrap count, compile time and execution latency under the
+actual protected-boundary policy. DP by name alone does not certify baseline
+quality; record constraint-induced limitations and any proposed relaxation as
+a separate architecture decision, without promising the paper speedup.
+
+O0's initial DP placement is baseline construction. O2 ReSBM replacement is an
+additional transformation with separate controls and records. Invalidate only
+replaceable automatic placement; do not run both as competing materializers.
+Reports distinguish `manual`, `policy-mandated`, `baseline-DP-selected` and
+`O2-ReSBM-selected` sites, and always verify level, scale, precision, security,
+approximation and provider capability.
 
 ## 12. Program-Wide Planning and Materialization Flow
 
 ### 12.1 Required transaction
 
-Subject to the architecture freeze, the target implementation flow is:
+After the required imported and O2 contracts are accepted, the target flow is:
 
 ```text
 requested configuration: fixed N + security + bootstrap + precision/scale
@@ -957,9 +990,11 @@ accepted converted application.fhe.B + fixed configuration
   -> independent reopen and complete source/image validation
   -> canonicalize every PU and persist canonical evidence
   -> build immutable common planner input
-  -> select exactly one ADR-approved planner family
-       complete Fhelipe using fixed N and S=N/2
-       or MetaKernel using fixed N and S=N/2 -> CKKS -> ReSBM
+  -> optional Stage 2 FHEFusion and reverified canonical evidence
+  -> select frozen Fhelipe layout or an additional reviewed MetaKernel candidate
+       fixed N and S=N/2; common iteration/rotation/gap/key contract
+  -> canonical CKKS state + baseline DP under protected-boundary policy
+  -> optional ReSBM replacement of permitted automatic placement
   -> finalize remaining CKKS parameters and validate the fixed N
   -> resolve logical/provider keys and provider capabilities
   -> independently verify normalized final plan
@@ -1000,159 +1035,110 @@ exist. A milestone cannot close while its fixture `SHA256SUMS` contains a
 placeholder, while a required test is skipped, or while the command differs from
 the checked-in contract without a reviewed plan update.
 
-Acceptance dependencies are:
+The old prerequisite IDs are retained as external handoff names, not O2-owned
+implementation milestones. The existing O0 execution-plan owner chooses its
+internal queue. O2 must not require O0 to implement optional MetaKernel,
+FHEFusion, ReSBM or HPAO to close these handoffs.
 
 ```text
-F0 -> F1-PREP -> P0 -> P1a -> P2 -> P1b -> F1-IMPL -> F1-ACCEPT
-                                                   -> Stage 1 integration
+Baseline contract: F0 architecture/policy reconciliation
+O0 owner: frozen Fhelipe manifest -> canonicalization + ABI/state records
+         -> mature layout/lowering + protected DP + provider -> O0 acceptance
+common-com: shared baseline records -> reviewed O2 record extensions (P2)
+O2 owner: F0 + imported contracts -> S1.0..S1.8 + S1.LAYOUT
+         -> accepted external O0 evidence -> S1.9 -> Stage 2 acceptance
 ```
 
-F1-PREP and provider-independent preparation for P0/P1a/P2 may overlap in time,
-but no arrow may be bypassed at milestone closure. In particular, P1b consumes
-P2 parameters/profiles, F1-IMPL consumes all P0/P1a/P2/P1b contracts, and S1.9
-requires F1-ACCEPT.
+Pure source/oracle work may proceed before executable O0 acceptance. O2
+production use of extension records waits for P2; O0 baseline records and
+consumers follow their own accepted contract. Comparisons and release acceptance
+wait for F1-ACCEPT.
+Each shared record has one common/com editor. O0 record changes merge first;
+P2 rebases and extends them; O2 producers then consume the reviewed APIs.
 
-### F0: Resolve planner ownership and synchronize architecture
+### F0: Reconcile the selected mature baseline with architecture and trackers
 
-**Objective:** accept `FRZ-01` through `FRZ-07`, update v0.9, and make the common
-planner input/final-plan ownership mechanically unambiguous.
+**Owner:** architecture/O0/common-com/driver owners, plus O2 interface reviewers;
+one editor per source document. This is contract reconciliation, not an O2
+algorithm implementation prerequisite for the O0 producer.
 
-**Implementation:** write one ADR containing the Fhelipe source lock, ownership
-matrix, O-level/option truth table, common input/output semantics, comparison
-protocol, fallback policy, and physical-record decision. Update v0.9 in the same
-review. This milestone makes no compiler code change.
+**Implementation:** record FRZ-01..07 in the proposed
+`doc/adr/FHE-O0-O2-PLANNER-OWNERSHIP.md`. Freeze the mature Fhelipe source/pass/
+config/support manifest, count-based DP objective and protected-site adaptation.
+Explicitly amend the conflicting O0 no-profitability/JIT/no-DP provisions and
+their option mappings, then synchronize architecture and source-tracker links.
+Until those changes are accepted, label the new baseline proposed. This edit
+does not itself perform the architecture or source-tracker synchronization.
 
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `O2-F0-001`; `python3 osprey/common/com/tests/verify_fhe_o2_architecture_lock.py --adr doc/adr/FHE-O0-O2-PLANNER-OWNERSHIP.md --design doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx --plan doc/FHE-O2-ACE-RESBM-METAKERNEL-INTEGRATION-PLAN.md --source-lock testdata/fhe_o2/source-lock.json` | v0.9 hash in Section 2.3; ADR and Fhelipe bundle hashes must be concrete; architecture-document input | exact presence/consistency of all seven decisions; no tolerance; `FHE-O2-ARCH-FREEZE-UNRESOLVED` on any omission | deterministic; 64 option combinations minimum | any supported host; no provider | 0 warmups, 1 run, 120 s; retain normalized truth table, hash report, and ADR diff in `test-artifacts/o2/O2-F0-001/` for repository lifetime | architecture owner / common-com, FHE, runtime reviewers; exit 0, zero `UNKNOWN`, and accepted ADR+v0.9 in same change |
+**Verification:** proposed `python3 osprey/common/com/tests/verify_fhe_o2_architecture_lock.py
+--adr doc/adr/FHE-O0-O2-PLANNER-OWNERSHIP.md
+--design doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.md
+--plan doc/FHE-O2-ACE-RESBM-METAKERNEL-INTEGRATION-PLAN.md
+--source-lock testdata/fhe_o2/source-lock.json` (`O2-F0-001`; shown wrapped).
+Inspect actual accepted amendment/source diffs, not only a plan checklist.
+Enumerate four O levels and automatic/manual/off/on modes, protected ReLU/manual
+sites, explicit choices and unrelated driver options. O2 advanced/layout/ReSBM
+off must retain the frozen baseline optimizers/DP. Reject contradictory accepted
+documents, missing manifest fields, uncontrolled `RemoveBootstraps`, duplicate
+owners or O0 dependence on O2 records with `FHE-O2-ARCH-FREEZE-UNRESOLVED`.
+Deterministic, one run, 120 s on a supported host; retain truth table, source/
+manifest hashes, conflict disposition and accepted diffs for repository lifetime.
 
-**Exit:** the Section 0 freeze is lifted only for the exact accepted contract.
+**Exit:** the specific architecture conflicts and baseline contract are accepted
+and synchronized. This does not certify the protected-DP implementation; O0
+then closes F1 independently of P2/MetaKernel/ReSBM. S1 release acceptance waits
+for the imported executable baseline bundle.
 
-### F1-PREP: Prepare the F0-selected bare-`-O0` baseline evidence
+### External O0 prerequisite handoffs (F1-PREP/P0/P1a/P1b/F1-IMPL/F1-ACCEPT)
 
-**Objective:** prepare reproducible inputs for the baseline selected by F0
-without publishing a production planner or closing bare-`-O0` acceptance. This
-work may begin in parallel with P0/P1a preparations, but it closes only against
-the concrete source lock accepted by F0.
+Sections 6-7 and mandatory parts of Sections 8-9 specify what O2 consumes; they
+do not transfer implementation ownership from FHE-DSL-INTEGRATION-PLAN.md,
+FHE-WHIRL-INTEGRATION-PLAN.md and consolidated SYNC-4..6.
 
-**Implementation:** inspect the source, record paper/code delta and license,
-reproduce the fixed build, freeze supported fixtures/golden outputs, and specify
-an independent layout/state/bootstrap oracle. If F0 selects complete Fhelipe,
-the evidence covers its indivisible layout/rescale/bootstrap path. If F0 selects
-another baseline, this milestone requires an amendment of equal specificity.
-It may not add a production planner, public default, or O0 acceptance claim.
+| Handoff | Producer / prerequisites | Required imported evidence and rejection checks | O2 consumer / exit |
+| --- | --- | --- | --- |
+| F1-PREP | O0 source/test owner; FRZ-03 baseline scope | Frozen Fhelipe source/pass/config/support manifest, build/license hashes, DP objective/domain/result-budget/shortcut options, protected-boundary specification, layout/state/placement oracles and locked focused/ResNet fixtures; reject moving refs or undocumented stripped baseline passes | F1-IMPL support/input agreement; preparation never claims O0 execution |
+| P0 | O0 canonicalization owner; config fixed before transformation | Canonical `.B`/`ir_b2a`, stable source/slot/gap identities, fixed N, two-pass and reopen idempotence, nonzero sentinels, malformed/capacity/lineage negatives; Section 6 contract | P2, S1.1, FHEFusion; no fusion-dependent canonicalization |
+| P1a | O0/runtime ABI owner; common-com capability contract | Public C-only ABI, mock manifest, C compile/link/load/run, lifecycle/status/effect tests and ownership/capability/version negatives; mandatory immediate Relin and bootstrap contract | P2 and optimized materializer; no provider C++ ABI leakage |
+| P1b | O0/OpenFHE owner; accepted baseline CKKS records and P1a | Pinned build/provider manifest, exact fixed-N/profile mapping, generated-C execution, rotate/mul/relin/rescale/bootstrap tests, unsupported profile failures and lifecycle reports | F1-ACCEPT and O2 provider support; adapter cannot override persisted configuration |
+| F1-IMPL | O0 layout/CKKS owner; F1-PREP, P0/P1a and baseline records | Complete frozen Fhelipe layout/lowering and existing layout optimizers, state/rescale handling and constrained DP initial placement after FRZ-03; hard/manual/pre-ReLU checks, independent layout/state/count-objective oracle, infeasibility/failure atomicity and reopen | F1-ACCEPT; O2 increments disabled while baseline optimizers/DP remain active; no O2 implementation or P2 prerequisite |
+| F1-ACCEPT | O0 acceptance owner; accepted preceding handoffs and P1b | Signed reconciled-baseline SYNC-6-equivalent whole ResNet-20 binary-WHIRL -> generated-C -> OpenFHE bundle; `.B`, `ir_b2a`, code, manifests, key requirements, decoded/oracle outputs, build/run logs and hashes; no server secret key; frozen baseline manifest, protected-DP provenance, mandatory Relin, fixed N and negative policy evidence | S1.9/S2.6 baseline gate; Section 15 numeric/support/measurement requirements must be met or explicitly remain unverified |
 
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `O2-F1P-001`; `python3 osprey/be/vho/tests/prepare_fhe_o0_baseline_evidence.py --source-lock testdata/fhe_o2/o0/source-lock.json --manifest testdata/fhe_o2/o0-prep/SHA256SUMS --artifacts test-artifacts/o2/O2-F1P-001` | exact F0-selected source ref/hash and local bundle; paper, license, build recipe, static MVM/Conv/branch/deep-bootstrap fixtures and locked ResNet-20 inputs | source/hash/delta/license/build reproduction exact; golden/oracle schema complete; unsupported rows have exact diagnostics; no production plan/default or acceptance artifact is emitted | seed `0x46315052`; focused shapes 1..32, depth 0..12; full inputs fixed by manifest | pinned Ubuntu 22.04 x86_64; source build plus provider-free golden generator; no production adapter required | 0 warmups, 2 clean builds/golden generations, 60 min; retain source-lock report, delta, license, build logs, fixtures, goldens, oracle design, and hashes for repository lifetime | O0 preparation owner / architecture, legal, independent test reviewers; exact F0 hash, reproducible outputs, zero placeholder, and audit proves no production planner/default was published |
+An O2 reviewer imports the producer's exact accepted bundle and records source
+commit, environment, commands, seeds, support rows, tolerances, counts and
+signoff. Baseline acceptance evidence is retained for repository lifetime.
+Provider availability or a missing required check keeps the dependent gate
+unverified. The O2 plan must not silently rename a synthetic fixture as full O0
+acceptance. Earlier `O2-F1P-001`, `O2-P0-001`, `O2-P1A-001`, `O2-P1B-001`,
+`O2-F1I-001`, and `O2-F1A-001` are retired O2 implementation test proposals;
+F0 maps them to producer tests/evidence without requiring duplicate scripts.
 
-**Exit:** the accepted source and test basis is reproducible and ready for
-implementation. Bare `-O0` remains unimplemented/unaccepted at this point.
+### P2: Shared-record import and O2 semantic record extensions
 
-### P0: Mandatory file-wide FHE canonicalization
+**Owner:** common/com serialization editor; O0 supplies baseline state/ABI,
+O2 planner owners supply extension requirements. **Prerequisites:** P0/P1a,
+accepted baseline configuration/state/DP placement and protected-site records,
+FRZ-05 decisions. P2 does not introduce the baseline DP representation.
 
-**Objective:** provide the common normal form in Section 6 independently of
-planner family and FHEFusion enablement.
+**Implementation:** audit Section 8 crosswalk; reuse baseline identities and
+transfer functions; add only approved common iteration-space/census and O2
+candidate/selected-plan records, provenance and version/capability gates. Keep
+layout selection separate from CKKS scale/bootstrap placement. Do not make the
+O0 provider depend on O2-only records or allocate a new image before review.
 
-**Implementation:** add a dedicated FHE canonicalization stage, file-wide
-lineage and slot-class verifier, stable dump, corruption diagnostics, and an
-all-PU checkpoint. Reuse generic DSL helpers only when their semantics are
-identical.
+**Verification:** proposed `python3 osprey/common/com/tests/run_fhe_o2_record_contract.py
+--build-dir build --manifest testdata/fhe_o2/records/SHA256SUMS
+--artifacts test-artifacts/o2/O2-P2-001` (`O2-P2-001`; shown wrapped). Cover old
+artifacts, new feature-absent artifacts and O2 records, every count/range/ID/hash
+corruption, fixed N, layout/iteration/census ownership and immediate Relin.
+Use seed `0x52454344`, chain sizes 1..16, component counts 2/3, two clean
+serializations and independent producer-free reopen on supported readers; 300 s,
+no tolerance. Retain images, `ir_b2a`, hashes and corruptions for 180 days,
+accepted goldens indefinitely. Missing reader or compatibility evidence blocks
+the gate; no new legacy-WOPT or provider-library dependency is authorized.
 
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `O2-P0-001`; `python3 osprey/be/vho/tests/run_fhe_canonicalization_contract.py --build-dir build --manifest testdata/fhe_o2/canonicalization/SHA256SUMS --artifacts test-artifacts/o2/O2-P0-001` | checked-in raw/canonical `.B` plus fixed-N `FHECompilationConfigIR`; all-PU calls, mask, slice, valid/zero/junk/gap, padding, lineage, disabled fusion | two applications and reopen reach byte-identical normal form; requested `N` unchanged; per-slot oracle exact; capacity/lineage negatives emit fixture diagnostic; no numeric tolerance | seed `0x43414e4f`; fixed `N in {2^12..2^16}`, <=8 PUs, <=1000 nodes, sentinels `{-7,-1,2,11}` | supported host; provider-free mock evaluator | 0 warmups, 2 clean invocations per fixture, 300 s; retain requested config, input/output `.B`, dumps, hashes, corruptions 180 days and accepted corpus for repository lifetime | FHE canonicalization owner / common-com and optimizer reviewers; exact idempotence/determinism, zero N mutation, no unresolved slot class or skipped fixture |
-
-**Exit:** canonicalization is identical with fusion off/on-bypass and survives an
-independent reopen.
-
-### P1a: Provider-neutral C ABI and mock provider
-
-**Objective:** accept the provider-neutral ABI, capability, ownership, error,
-immediate-relin, and bootstrap boundary in Section 7 before records or generated
-code depend on provider-specific behavior.
-
-**Implementation:** add the provider-neutral C header/library, deterministic mock
-adapter, capability manifest schema, ABI conformance tool, and generated C smoke
-programs. No OpenFHE adapter is included and no provider C++ type crosses the
-public header.
-
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `O2-P1A-001`; `python3 osprey/libfhe/tests/run_provider_cabi_mock_contract.py --build-dir build --manifest testdata/fhe_o2/provider-mock/SHA256SUMS --artifacts test-artifacts/o2/O2-P1A-001` | public C header hash, ABI golden layouts, fixed mock manifest, generated C ownership/error programs | C/C++ compile and C link/load/run exact; fixed-`N` capability, mandatory `MulCC->Relin`, bootstrap setup, status ordering and mock values exact; invalid ownership/version/capability returns manifest code and no leak | seed `0x50314131`; 1..4 threads, 100 create/use/destroy cycles, component counts 2/3 | pinned Ubuntu 22.04 x86_64; deterministic mock; ASan/LSan required for leak subtest | 1 warmup, 10 functional runs, 30 min; retain headers, ABI sizes, mock manifest, generated C, logs, and sanitizer reports for repository lifetime | runtime ABI owner / FHE planner and external C reviewer; zero C++ ABI exposure, zero sanitizer finding, exact call/effect ordering, all mock capabilities consumed consistently |
-
-**Exit:** the public C ABI and mock provider are accepted. No claim about an
-OpenFHE adapter or cryptographic execution is made.
-
-### P2: Semantic record and CKKS contract review
-
-**Objective:** accept the crosswalk, CKKS semantics, and physical serialization
-decision allowed by F0 without creating duplicate authority.
-
-**Implementation:** add builders/readers/verifiers/dumpers for accepted records;
-add fixed-`N` provenance, transfer-rule tables, mandatory immediate-relin state,
-security validation, bootstrap profiles, corruption tests, and the independent
-reopen harness. P2 consumes P0 identities and the P1a ABI/capability schema.
-
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `O2-P2-001`; `python3 osprey/common/com/tests/run_fhe_o2_record_contract.py --build-dir build --manifest testdata/fhe_o2/records/SHA256SUMS --artifacts test-artifacts/o2/O2-P2-001` | public builders, P0 stable identities, P1a manifest schema, golden/corrupt `.B`, fixed `N`, resolved uniform/non-uniform chains, bootstrap profiles | clean reopen and `ir_b2a` exact; requested `N` unchanged; immediate `MulCC->Relin` exact; every invalid ID/range/hash/profile fails with listed diagnostic; no tolerance | seed `0x52454344`; every header/count/range/enum family, chain lengths 1..16, components 2/3 | all supported readers; fixed mock capabilities; OpenFHE profile examples are data only | 0 warmups, 2 clean serializations, 300 s; retain `.B`, dumps, hashes and corruptions 180 days, golden images indefinitely | common-com serialization owner / architecture, FHE, CKKS, compatibility reviewers; exact sizes/version behavior, old-reader policy, fixed-N provenance, no duplicate truth |
-
-**Exit:** a producer-free independent process proves the accepted physical and
-semantic contract. Frozen top-level fields remain absent unless F0 authorized
-them.
-
-### P1b: OpenFHE adapter on the accepted P2 parameter/profile contract
-
-**Objective:** implement the OpenFHE provider behind P1a only after P2 fixes the
-parameter, bootstrap-profile, state, immediate-relin, and serialization contract.
-
-**Implementation:** pin the OpenFHE revision/build, map every P2 field and
-capability explicitly, import the fixed `N`, construct the resolved Q/P chain and
-keys, execute generated C smoke programs, and reject unsupported fixed-N/profile
-combinations. No adapter default may override the compilation record.
-
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `O2-P1B-001`; `python3 osprey/libfhe/tests/run_openfhe_adapter_contract.py --build-dir build --manifest testdata/fhe_o2/provider-openfhe/SHA256SUMS --records testdata/fhe_o2/records/SHA256SUMS --artifacts test-artifacts/o2/O2-P1B-001` | pinned OpenFHE source/build hashes, accepted P1a header and P2 golden parameter/profile records; add/mul/rotate/immediate-relin/rescale/bootstrap programs | field/capability mapping and `MulCC->Relin` adjacency exact; generated C compiles/links/loads/runs; decoded `abs<=1e-4`, `rel<=1e-6`; unsupported fixed N, profile, ownership, or version returns exact diagnostic without fallback/leak | seed `0x50314231`; fixed `N in {2^12..2^16}`, chain 1..16, 1..4 threads, 100 lifecycle cycles | pinned Ubuntu 22.04 x86_64 and pinned OpenFHE; ASan/LSan where supported | 2 warmups/10 functional runs, 30 min/sample; retain source/build manifests, records, C, binaries, outputs, logs, and sanitizer reports for repository lifetime | OpenFHE adapter owner / P1a ABI, P2 CKKS, crypto, external C reviewers; no C++ ABI leak, no record override, zero sanitizer finding, all fixtures/diagnostics exact |
-
-**Exit:** OpenFHE implements the accepted P1a/P2 contract and generated C
-executes without changing requested `N` or any persisted parameter/profile fact.
-
-### F1-IMPL: Implement the F0-approved bare-`-O0` planner
-
-**Objective:** implement the complete baseline selected by F0 on accepted P0,
-P1a, P2, and P1b contracts. Complete Fhelipe remains a preferred proposal until
-F0 accepts it; this milestone does not pre-decide that choice.
-
-**Implementation:** consume P0 canonical input and fixed `N`, implement the
-F1-PREP locked layout/rescale/bootstrap semantics as one production owner, emit
-the accepted normalized plan representation, and materialize through P1a calls.
-If F0 chooses a non-Fhelipe baseline, the plan is amended with equal algorithmic
-and test specificity before implementation.
-
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `O2-F1I-001`; `python3 osprey/be/vho/tests/run_fhe_o0_baseline_plan_contract.py --build-dir build --source-lock testdata/fhe_o2/o0/source-lock.json --manifest testdata/fhe_o2/o0-plan/SHA256SUMS --artifacts test-artifacts/o2/O2-F1I-001` | exact F0/F1-PREP source ref/hash, P0 canonical `.B`, accepted P2 records; static MVM/Conv/branch/deep-bootstrap and locked ResNet-20 plan inputs | normalized plan, layout, state, v0.9 bootstrap policy, immediate relin, and keys match the independent oracle exactly; fixed `N` unchanged; unsupported input gives manifest diagnostic before publication | seed `0x4631494d`; focused shapes 1..32, depth 0..12, PUs 1..16; full input fixed by manifest | supported host; provider-free oracle plus accepted P1a mock | 0 warmups, 2 deterministic productions, 60 min; retain source/canonical/plan `.B`, dumps, hashes, oracle diff, and diagnostics for repository lifetime | O0 planner owner / architecture, P0/P2, independent oracle reviewers; zero structural mismatch, no unexpected fallback, deterministic independent reopen |
-
-**Exit:** the F0-approved planner is implemented and emits an independently
-verifiable plan, but bare-`-O0` is not accepted until F1-ACCEPT.
-
-### F1-ACCEPT: Materialize and accept bare `-O0`
-
-**Objective:** accept the F1-IMPL plan through independent reopen,
-materialization, generated C, OpenFHE execution, and the exact F0 option policy.
-
-**Implementation:** reopen the normalized plan in a producer-free process,
-materialize all PUs with mandatory immediate relin, generate C, execute through
-P1b, and retain layout/state/bootstrap/key and numerical evidence.
-
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `O2-F1A-001`; `python3 osprey/be/vho/tests/run_fhe_o0_baseline_acceptance.py --build-dir build --manifest testdata/fhe_o2/o0/SHA256SUMS --artifacts test-artifacts/o2/O2-F1A-001` | F0/F1-PREP/F1-IMPL hashes; P0/P1a/P2/P1b accepted artifacts; static MVM, Conv, branching, deep-bootstrap and locked ResNet-20 application/data/weights | normalized-plan reopen/materialization exact; generated C and OpenFHE run; immediate relin/key/lifetime exact; focused decoded `abs<=1e-4`, `rel<=1e-6`; Section 15.3 application gate; exact unsupported diagnostic | seed `0x4648454c`; focused shapes 1..32, depth 0..12; full application fixed by manifest | pinned Ubuntu 22.04 x86_64; accepted mock/OpenFHE manifests | correctness 0/1; focused performance 5/30 paired; full 1/5 paired; 20 min focused, 3 h full; retain `.B`, `ir_b2a`, C, manifests, keys, decoded/oracle output, sanitizer and run logs for repository lifetime | O0 acceptance owner / architecture, independent O2, crypto, runtime reviewers; all locked fixtures pass, zero unexpected fallback/leak, fixed N unchanged, signed `bare O0 accepted` decision |
-
-**Exit:** bare `-O0` is executable, independently reopened, and accepted under
-the exact F0/v0.9 option semantics. Stage 1 remains blocked until this exit.
+**Exit:** common-com and compatibility reviewers accept one authoritative owner
+per record and a verified independent reopen; S1 producers can use the contract.
 
 ### S1.0: Lock Stage 1 algorithms, fixtures, diagnostics, and cost model
 
@@ -1293,6 +1279,31 @@ multi-level consumption.
 | --- | --- | --- | --- | --- | --- | --- |
 | `O2-S17-001`; `python3 osprey/be/vho/tests/run_resbm_semantic_oracle.py --build-dir build --source-ref 323e8bb02a0e036fe2369eb48badfe6692398c2b --manifest testdata/fhe_o2/resbm-oracle/SHA256SUMS --artifacts test-artifacts/o2/O2-S17-001` | locked artifact; raw graphs/tables; `q_w=q` and `q_w!=q`; below/equal/above scale thresholds; uniform/non-uniform/multi-level profiles; known/zero/unknown/saturating frequency; bypass/formal/callsite/result-level cases | artifact legality, projection, regions, cuts, bootstrap, before/after full state, frequency/provenance, result levels, integer cost/tie exact; `q_w!=q`, non-uniform and multi-level reject before ReSBM; first diagnostic exact | Section 10.5 exhaustive bounds; random 2000 seed `0x5253424d`; checked saturation at `UINT64_MAX` | provider-free oracle; accepted fixed capability/profile records | 0 warmups, 1 exhaustive run, 600 s; retain source ref/delta, threshold cases, production/oracle complete plans, summary and minimized mismatches 180 days | ReSBM solver owner / artifact, independent oracle and CKKS reviewers; oracle imports no production helper, zero field mismatch, no general-Algorithm-3 claim |
 
+**Protected-baseline integration gate (`O2-S17-PROTECTED`):** alongside the
+unchanged artifact-core cases, add a separately labeled Open64 adapter test to
+the same proposed oracle runner with
+`--protected-sites testdata/fhe_o2/resbm-protected/sites.json` and
+`--manifest testdata/fhe_o2/resbm-protected/SHA256SUMS`. Import F1's immutable
+protected-site manifest and baseline-DP provenance; remove only explicitly
+replaceable DP-owned automatic sites. Protected/manual/pre-ReLU boundaries
+constrain region construction, endpoint windows and admissible cuts. If the
+artifact core cannot represent those constraints, split at verified boundary
+contracts or reject the increment and retain the whole accepted baseline.
+Manual/off modes bypass automatic replanning; they never erase or add forbidden
+sites. Do not claim the constrained adapter is the original full-graph artifact.
+
+Use an independent constraint-aware enumerator on graphs of at most 8 nodes/12
+edges, fixed seed `0x52534250`, protected barriers/joins/shortcuts, replaceable
+DP sites, manual/off modes, infeasible cuts and stale/corrupt site IDs. Verify
+exact protected-site identity/order/state, permitted-site replacement and
+failure-atomic baseline fallback; reopen the selected plan and manifest in an
+independent process. Retain source/constraint hashes, original baseline,
+production/oracle constrained domains, selected sites and fallback diagnostics
+for 180 days; provider-free, 0 warmups, one exhaustive run, 600 s. The independent
+CKKS/boundary reviewer must accept both core equality and this distinct adapter
+gate before integrated ReSBM acceptance. S1.8 also imports these cases to verify
+protected identities survive generated-code materialization and execution.
+
 **Exit:** production and independent enumeration agree completely; a cost-only
 or placement-only match is insufficient.
 
@@ -1315,24 +1326,84 @@ frequency fail before publication.
 **Exit:** the independently reopened plan is the sole source of materialization
 decisions and the generated program executes correctly.
 
+### S1.LAYOUT: Verify layout increments against the frozen baseline
+
+**Objective:** import Fhelipe's baseline layout evidence once and verify
+additional MetaKernel changes against it using the common SYNC-7A-E interface.
+This is an incremental comparison gate, not another Fhelipe implementation stage.
+
+**Prerequisites/owner:** accepted FRZ-01..06/F1 baseline manifests, P0/P2 records
+and S1.3/S1.4 MetaKernel evidence. O0 produces the frozen baseline; O2 integration
+owns the delta/comparison and common/com owns shared census records. Independent
+layout/census reviewers accept the result.
+
+**Work:** reuse the imported mature layout/lowering, compaction, conversion
+hoisting/decomposition and schedule materialization. Implement no duplicate
+baseline pass. MetaKernel's new algorithm work is already in S1.3/S1.4; this gate
+adds its normalized comparison. A further Fhelipe-derived enhancement is optional
+future work only when an explicit delta algorithm, support domain, control and
+oracle are defined in a plan amendment. An empty future delta creates no required
+implementation milestone or completion claim.
+
+Retain the frozen baseline as the selection/fallback candidate. Auto selection
+accepts a legal increment only under the reviewed cost/tie model. Unprofitable or
+unsupported increments retain the whole baseline or the documented composable
+baseline component. No fallback disables baseline layout optimizers or DP.
+For layout-only execution comparisons, run the same baseline DP algorithm,
+manifest and hard-boundary policy on each resulting layout; placement output may
+differ because the graph differs. This regenerates DP-owned sites for the changed graph; it does not reuse stale
+baseline site locations or alter protected sites. ReSBM remains off in that cell.
+
+**Verification:** proposed `python3 osprey/be/vho/tests/run_fhe_layout_ab_comparison.py
+--build-dir build --source-lock testdata/fhe_o2/source-lock.json
+--manifest testdata/fhe_o2/layout-ab/SHA256SUMS
+--artifacts test-artifacts/o2/O2-LAYOUT-001` (`O2-LAYOUT-001`; shown wrapped).
+Use identical pre-layout input, N/parameters, provider, protected sites and all
+non-layout controls. Retain the materialized layout checkpoint before automatic
+bootstrap placement, plus end-to-end baseline-DP outputs with full provenance.
+Cover MVM/Conv/residual, single/multiple ciphertexts, gaps, padding/replication,
+capacity/unsupported/no-profitable-candidate boundaries, increment off, stale
+census and whole-baseline fallback. Prove increment-off uses the same frozen
+Fhelipe pass/config manifest rather than a reduced layout.
+
+Recompute per-value/op/PU/program static and known-frequency weighted rotations,
+signed key offsets, total/active/gap slots, gap ratio and peak/introduced/compacted
+gaps, masks, ciphertext count, packing density, conversions, permutations and
+rotate-add reductions. `gap_slots = total_slots - active_slots`; padding and
+replicas are not active logical values. Unknown frequency remains explicit.
+Independent slot/census oracles verify both outputs against source semantics.
+
+Seed `0x4c41594f`, focused dimensions 1..32 and locked full ResNet-20; use Section
+15 tolerances/protocol. Structure tests run twice within 300 s; execution uses
+accepted mock/OpenFHE. Retain baseline and candidate manifests, pre-layout,
+decision/materialized `.B`/`ir_b2a`, census, protected sites, DP outputs, fallback
+reason and decoded/oracle results for 180 days; accepted bundles indefinitely.
+
+**Exit:** baseline evidence is imported, defined increments have independently
+verified census/equivalence, increment-off preserves the mature baseline, and
+selected-plan provenance survives handoff. No extra baseline implementation or
+undefined future enhancement is claimed complete.
+
 ### S1.9: O2 Stage 1 acceptance
 
 **Objective:** certify MetaKernel+ReSBM against the accepted F1-ACCEPT bare-O0
 baseline using the F0 comparison protocol.
 
 **Implementation:** run correctness, structural, key, cost-model, performance,
-determinism, and failure matrices in Section 15. If F0 treats Fhelipe as an
-indivisible end-to-end baseline, only `BASE-O0` versus `S1-FULL` is a hard
-comparison. `S1-MKR`/`S1-RESBM` remain marked `F0-blocked` unless F0 approves
-component separability or a neutral baseline. Publish one immutable acceptance
-bundle and review decision.
+determinism, failure and Section 15 single-factor matrices. S1.LAYOUT isolates
+layout changes before ReSBM; S1-MKR uses the same accepted baseline DP
+algorithm and hard-boundary
+policy on the changed layout; S1-RESBM holds baseline layout fixed and replaces
+only permitted automatic placement. These required cells must
+not be excused by the superseded indivisible-family interpretation. Publish one
+immutable acceptance bundle and review decision.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S19-001`; `python3 osprey/be/vho/tests/run_o2_stage1_acceptance.py --build-dir build --manifest testdata/fhe_o2/acceptance-stage1/SHA256SUMS --protocol testdata/fhe_o2/acceptance-stage1/protocol.json --artifacts test-artifacts/o2/O2-S19-001` | accepted F0/P0/P1a/P2/P1b/F1-PREP/F1-IMPL/F1-ACCEPT and Stage 1 hashes; fixed-resolved and auto-remaining suites with the same fixed N; frozen focused/full workloads | all Section 15 hard gates; artifact-oracle equality and recorded paper differentials; focused decoded `1e-4/1e-6`, application max-abs `<=1e-3`, top-1 exact; immediate relin and no N mutation; only F0-defined comparison cells are hard | workload seeds in protocol; resampling seed `0x4f325331`; support matrix and F0 profile-status table fixed | one pinned Ubuntu x86_64 machine, accepted mock/OpenFHE manifests; no cross-machine ratio | focused 5 warmups/30 paired/20 min; full 1/5 paired/3 h; no outlier deletion; retain complete accepted bundle for repository lifetime | Stage 1 owner / architecture, independent test, artifact, crypto, runtime reviewers; every prerequisite and hard quantitative gate passes, F0-blocked cells are labeled not fabricated, signed review says only `O2 Stage 1 accepted` |
+| `O2-S19-001`; `python3 osprey/be/vho/tests/run_o2_stage1_acceptance.py --build-dir build --manifest testdata/fhe_o2/acceptance-stage1/SHA256SUMS --protocol testdata/fhe_o2/acceptance-stage1/protocol.json --artifacts test-artifacts/o2/O2-S19-001` | accepted F0/P0/P1a/P2/P1b/F1-PREP/F1-IMPL/F1-ACCEPT and Stage 1 hashes; fixed-resolved and auto-remaining suites with the same fixed N; frozen focused/full workloads | all Section 15 hard gates; artifact-oracle equality and recorded paper differentials; focused decoded `1e-4/1e-6`, application max-abs `<=1e-3`, top-1 exact; immediate relin and no N mutation; only F0-defined comparison cells are hard | workload seeds in protocol; resampling seed `0x4f325331`; support matrix and F0 profile-status table fixed | one pinned Ubuntu x86_64 machine, accepted mock/OpenFHE manifests; no cross-machine ratio | focused 5 warmups/30 paired/20 min; full 1/5 paired/3 h; no outlier deletion; retain complete accepted bundle for repository lifetime | Stage 1 owner / architecture, independent test, artifact, crypto, runtime reviewers; every prerequisite and hard quantitative gate passes, all required baseline and single-factor cells pass, signed review says only `O2 Stage 1 accepted` |
 
 **Exit:** Stage 1 is accepted. The report must not say `O2 complete`, `full O2
-accepted`, or `v0.9 O2 complete`.
+accepted`, or `v0.10 O2 complete`.
 
 ## 14. O2 Stage 2 Milestones
 
@@ -1401,8 +1472,9 @@ bootstrap internals or changing accepted CKKS plan semantics.
 **Implementation:** define versioned HPOLY operators, basis/level/scale/static
 attributes, effect/alias rules, CKKS-to-HPOLY and HPOLY-to-POLY/runtime lowering,
 and independent serialization if the architecture review selects persistence.
-HPAO reuses Open64 SSA/HSSA, value numbering, CSE/DCE, and dominance facilities;
-it does not introduce an external analysis universe. Bootstrap remains an opaque
+HPAO reuses stable, non-invasive Open64 analysis services where suitable.
+HPAO-MU is a new HPOLY phase following the SSAPRE algorithmic model; it must
+not route HPOLY through, or modify, the existing WOPT SSAPRE implementation. Bootstrap remains an opaque
 runtime call with complete input/output contract. Lowering may expose the
 polynomial substructure of the already adjacent Relin, but may not relocate the
 canonical `MulCC->Relin` boundary or make its result available before Relin.
@@ -1414,23 +1486,66 @@ canonical `MulCC->Relin` boundary or make its result available before Relin.
 **Exit:** HPOLY is a verified middle level, not a second CKKS parameter truth or
 a leak of provider internals.
 
-### S2.4: Implement full HPAO catalog with static weights
+### S2.4: Implement reviewed HPAO-MU/FM/LM; close MD-DESIGN
 
-**Objective:** implement the fixed-paper ModUp hoisting, ModDown optimization,
-fusion/factoring, and lazy modular reduction rules under explicit bounds.
+**Objective:** implement the v0.10 adopted MU/FM/LM rules and preserve its
+explicit HPAO-MD implementation gate. A paper rule catalog is an inventory,
+not permission to implement every transformation.
 
-**Implementation:** assign stable rule IDs, static integer-ns weights, overflow
-bounds, effect/alias legality, profitability decisions, and fallback. Recompute
-weights after provider, parameters, or upstream planner graph changes. Rule
-matching and cleanup use the accepted Open64 analysis infrastructure at HPOLY,
-not ordinary pre-conversion or post-materialization WOPT.
+**Prerequisites/owner:** S2.3 and fixed HPAO source/target model; HPOLY owner,
+independent polynomial/basis, crypto, WOPT-continuity and performance reviewers.
 
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `O2-S24-001`; `python3 osprey/be/vho/tests/run_hpao_rule_contract.py --build-dir build --catalog testdata/fhe_o2/hpao/rules.json --weights testdata/fhe_o2/hpao/openfhe-v1.json --manifest testdata/fhe_o2/hpao/SHA256SUMS --artifacts test-artifacts/o2/O2-S24-001` | HPAO paper/ref hashes; positive/negative MU/MD/FM/LM graphs, alias/effect/overflow cases | rule decisions, basis transitions, modular results, operation counts and predicted integer costs exact; decoded `1e-4/1e-6`; exact diagnostic | seed `0x4850414f`; primes 1..16, fanout 1..8, dot length 1..64, values include overflow boundaries | pinned OpenFHE and CPU manifest; required counter/capability bits | 5 warmups/30 paired focused samples, 20 min/sample; no outlier deletion; retain rule traces, weights, measured counters, dumps/C/`.B` 180 days | HPAO owner / POLY, crypto, performance reviewers; zero basis/overflow/effect violation and every enabled rule passes model gate |
+**Implementation:** MU uses an independently controlled dedicated HPOLY phase
+following SSAPRE's redundancy discovery, equivalence, placement and elimination
+model. Include level, scale, basis, decomposition and effects in equivalence.
+Reuse stable services where non-invasive; leave legacy WOPT SSAPRE unchanged.
+FM pre-encodes eligible static weights with parameter-keyed package/cache
+identity and explicit storage/compile-time tradeoffs, then specializes eligible
+ciphertext-times-plaintext multiplication as HPOLY `poly.fast_mul` under the
+approved level/scale/basis/static-operand and provider-capability predicates.
+Keep ordinary ct x pt multiplication when specialization is unsafe or unprofitable.
+LM uses forward/backward
+bit-width bounds and inserts reduction whenever word safety is not proven.
+Each family has stable rule IDs, fixed integer-ns weights, legality/effect
+checks, invalidation after provider/parameter/graph change, and independent off
+controls. Bootstrap remains opaque and immediate Relin remains mandatory.
 
-**Exit:** every HPAO rewrite is semantically valid, profitable under its fixed
-model, and independently measurable.
+**MD-DESIGN:** retain ModDown sinking/merging as a design item. The design owner
+must specify analysis, legal extended-basis operations, control-flow/placement,
+lifetime, transform order, cost interface and positive/negative oracles.
+Until a separate review accepts these and amends the support/acceptance matrix,
+MD cannot execute. Record `design-pending, implementation-disabled`; do not
+fabricate an MD ablation or claim full HPAO-paper equivalence. Closing this
+delivery's MD-DESIGN disposition means the blocked design and owner are explicit,
+not that its technical design or implementation has been accepted.
+
+**Verification:** proposed `python3 osprey/be/vho/tests/run_hpao_rule_contract.py
+--build-dir build --catalog testdata/fhe_o2/hpao/rules.json
+--weights testdata/fhe_o2/hpao/openfhe-v1.json
+--manifest testdata/fhe_o2/hpao/SHA256SUMS
+--artifacts test-artifacts/o2/O2-S24-001` (`O2-S24-001`; shown wrapped).
+MU covers equivalent and distinct basis/scale/decomposition/effect inputs,
+dominance and illegal motion; verify the legacy WOPT SSAPRE source/control
+behavior is unchanged. FM compares `poly.fast_mul` against independent ordinary
+ct x pt multiplication for eligible static weights; cover dynamic/plaintext and
+ciphertext operands, mismatched level/scale/basis, absent capability, unprofitable
+selection, parameter/payload/cache mismatch, and ordinary-operation fallback.
+Require exact modular/state agreement with the ordinary reference and exact
+operation counts against the independent expected specialization schedule,
+decoded error within the stated tolerance, and predicted/measured specialization
+cost evidence including offline encoding/storage. LM covers exact overflow
+boundaries and required-reduction fallback.
+Verify MD remains disabled without accepted design and emits its declared
+unsupported diagnostic. Rule/state/modular/operation-count comparisons are exact;
+decoded tolerances are `1e-4/1e-6`. Seed `0x4850414f`; primes 1..16, fanout
+1..8, dot length 1..64. Pinned OpenFHE/target model, 5 warmups/30 paired focused
+samples, 20 min/sample, no outlier removal. Retain rules, oracle traces,
+bit-width/basis proofs, package/cost hashes, counters, `.B`/dumps/C/output and
+MD disposition for 180 days; accepted design/disposition indefinitely.
+
+**Exit:** every enabled MU/FM/LM rule passes semantics, safety, controls and
+cost-model gates, legacy WOPT is unchanged, and MD is explicitly design-gated.
+Any later MD implementation requires a new plan amendment and acceptance rows.
 
 ### S2.5: Cross-pass recosting and F0-defined ablation matrix
 
@@ -1441,13 +1556,14 @@ ReSBM, and HPAO instead of assuming their paper speedups compose.
 layouts, CKKS states, ReSBM plans, keys, minimum-required-`N` diagnostics, and
 HPAO weights while preserving requested `N`. Run every F0-defined single pass,
 legal pair, Stage 1/full, and all-on profile with fixed parameters; repeat
-auto-resolution of remaining parameters with the same fixed N. A profile such
-as `S1-MKR` or `S1-RESBM` that remains F0-blocked is labeled unavailable, not
-synthesized with incompatible ownership.
+auto-resolution of remaining parameters with the same fixed N.
+Required `S1-MKR`/`S1-RESBM` cells use the accepted separate baseline owners.
+Only design-gated MD or an explicitly out-of-support optional extension may be
+labeled unavailable, with a reason and owner; this cannot waive a required cell.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S25-001`; `python3 osprey/be/vho/tests/run_o2_factorial_ablations.py --build-dir build --manifest testdata/fhe_o2/ablations/SHA256SUMS --protocol testdata/fhe_o2/ablations/protocol.json --artifacts test-artifacts/o2/O2-S25-001` | F0-defined legal profile matrix, workload/data/fixed-N/parameter/provider hashes; auto-remaining suite separate with same N | all hard correctness gates; complete metrics for required cells; unavailable cells carry exact F0-blocked reason; stale downstream plan/key or N mutation gives exact diagnostic | workload seeds locked; statistical seed `0x41424c32` | one pinned host/OpenFHE manifest; no cross-machine speed ratios | focused 5/30, full 1/5 paired, timeouts 20 min/3 h; no outlier deletion; retain matrix, unavailable-cell reasons, and plan deltas for repository lifetime | integration owner / all pass owners and independent performance reviewer; no missing F0-required cell, no fabricated blocked cell, stale plan, or N mutation; quantitative gates pass |
+| `O2-S25-001`; `python3 osprey/be/vho/tests/run_o2_factorial_ablations.py --build-dir build --manifest testdata/fhe_o2/ablations/SHA256SUMS --protocol testdata/fhe_o2/ablations/protocol.json --artifacts test-artifacts/o2/O2-S25-001` | F0-defined legal profile matrix, workload/data/fixed-N/parameter/provider hashes; auto-remaining suite separate with same N | all hard correctness gates; complete metrics for required cells; design-gated/out-of-support optional cells carry exact reason; stale downstream plan/key or N mutation gives exact diagnostic | workload seeds locked; statistical seed `0x41424c32` | one pinned host/OpenFHE manifest; no cross-machine speed ratios | focused 5/30, full 1/5 paired, timeouts 20 min/3 h; no outlier deletion; retain matrix, unavailable-cell reasons, and plan deltas for repository lifetime | integration owner / all pass owners and independent performance reviewer; no missing F0-required cell, no fabricated blocked cell, stale plan, or N mutation; quantitative gates pass |
 
 **Exit:** the report identifies positive and negative interactions and the final
 profile is replanned from the actual all-on graph.
@@ -1465,8 +1581,8 @@ performance, deterministic evidence, and unsupported diagnostics.
 | --- | --- | --- | --- | --- | --- | --- |
 | `O2-S26-001`; `python3 osprey/be/vho/tests/run_o2_final_acceptance.py --build-dir build --manifest testdata/fhe_o2/acceptance-final/SHA256SUMS --protocol testdata/fhe_o2/acceptance-final/protocol.json --artifacts test-artifacts/o2/O2-S26-001` | F0 option/profile truth table; accepted P0/P1a/P2/P1b/F1-ACCEPT/Stage1/Stage2 hashes; fixed and auto-remaining suites with identical fixed N | all Section 15 hard gates; focused decoded `1e-4/1e-6`, application max-abs `<=1e-3`, top-1 exact; immediate relin, exact diagnostics, zero N mutation; bare O2 maps to accepted profile | locked workload/statistical seeds | pinned host, accepted mock/OpenFHE manifests and security estimator | focused 5/30, full 1/5 paired, 20 min/3 h; no outlier deletion; retain signed release bundle for repository lifetime | release owner / architecture, crypto, runtime, all pass owners, independent reviewer; F0 through F1-ACCEPT and S1/S2 complete, every required gate passes |
 
-**Exit:** only this milestone may declare `O2 complete` or `v0.9 O2 complete`,
-and only if the accepted ADR/v0.9 text authorizes those exact words.
+**Exit:** only this milestone may declare `O2 complete` or `v0.10 O2 complete`,
+and only if the accepted ADR/v0.10 text authorizes those exact words.
 
 ## 15. Acceptance and Measurement Contract
 
@@ -1476,13 +1592,17 @@ Profile names below identify evidence rows, not yet accepted command-line syntax
 
 | Profile ID | Planner/transforms | Purpose |
 | --- | --- | --- |
-| `BASE-O0` | exact F1-ACCEPT bare-O0 end-to-end behavior | correctness and performance baseline; hard after F1-ACCEPT |
-| `S1-MKR` | proposed MetaKernel plus a neutral/accepted non-ReSBM CKKS schedule | `F0-blocked`; single-factor layout ablation only if F0 proves separability or accepts the neutral schedule |
-| `S1-RESBM` | proposed ReSBM plus a neutral/accepted non-MetaKernel layout | `F0-blocked`; single-factor scale/bootstrap ablation only if F0 proves separability or accepts the neutral layout |
-| `S1-FULL` | MetaKernel plus ReSBM end-to-end | Stage 1 candidate and the only hard Stage 1 comparison to `BASE-O0` if Fhelipe is indivisible |
-| `S2-CF`, `S2-MF`, `S2-SF` | one FHEFusion family at a time | Stage 2 rule ablation |
-| `S2-HPAO-MU`, `MD`, `FM`, `LM` | one HPAO family at a time | backend ablation |
-| `O2-ALL` | accepted bare-O2 profile | final candidate only |
+| `BASE-O0` | Frozen mature Fhelipe layout/lowering and baseline DP under the accepted protected-boundary policy | Required after F0/F1 acceptance; not the legacy greedy/JIT or stripped-layout profile |
+| `BASE-O1` | Same frozen baseline plus any separately accepted O1 increment | Conditional on supported O1 increment; its controls must not strip baseline passes/DP |
+| `S1-MKR` | Additional MetaKernel plus the same baseline DP algorithm/config/protected-boundary policy | Required layout increment comparison; DP output may differ on the changed graph |
+| `S1-RESBM` | Frozen Fhelipe layout plus ReSBM replacement of permitted baseline automatic placement | Required placement increment comparison; hard/manual sites unchanged |
+| `S1-FULL` | MetaKernel plus ReSBM | Stage 1 combined candidate versus BASE-O0 and each component |
+| `LAYOUT-FHELIPE`, `LAYOUT-MKR` | Frozen Fhelipe versus additional MetaKernel with same pre-layout input and baseline DP policy | Required defined-increment SYNC-7 comparison; import Fhelipe evidence rather than implement it again |
+| `S2-CF`, `S2-MF`, `S2-SF` | One FHEFusion family at a time | Required Stage 2 rule ablation |
+| `S2-HPAO-MU`, `S2-HPAO-FM`, `S2-HPAO-LM` | One approved HPAO family at a time | Required Stage 2 polynomial ablation |
+| `S2-HPAO-MD` | Design-pending, implementation disabled | Not runnable until separate accepted design and plan amendment |
+| `O2-ALL`, `O2-ADVANCED-OFF` | Accepted O2 increments and frozen-baseline fallback under advanced=off | Required final controls; baseline layout optimizers and DP retained |
+| `O3-HANDOFF` | Reopened finalized plan with O3 scheduling/memory controls disabled | O2 handoff integrity only; future O3 execution acceptance belongs to the third plan |
 
 Every comparison has two experiment families:
 
@@ -1494,10 +1614,13 @@ Every comparison has two experiment families:
   are resolved. Results are labeled auto and never substitute for a defined
   fixed-parameter comparison.
 
-F0 records each profile as `required`, `informational`, or `blocked`. A blocked
-single-factor profile is not a missing test and is not silently turned into a
-hard gate. If F0 later approves component separability or a neutral baseline,
-the exact profile becomes required through a reviewed protocol update.
+F0 records exact control settings and supported fixtures for every required row.
+An unsupported optional extension or MD design gate is reported separately;
+it does not waive the required baseline, component, combined, default or
+advanced-off cells. Unmodified upstream or legacy Lazy/JIT profiles may be
+informational only.
+They cannot replace BASE-O0, imply the constrained adaptation attains the paper
+speedup, or change both layout and placement algorithms in a single-factor cell.
 
 ### 15.2 Hard correctness and integration gates
 
@@ -1564,6 +1687,8 @@ manifest seed and generator version.
   the S1.0 manifest before measurement.
 - ReSBM modeled total latency is no greater than its independently evaluated
   legal local schedule for every accepted graph under the same raw table.
+  This is an independent solver/oracle bound, not the project performance
+  baseline; performance comparisons use the accepted Fhelipe-DP profile.
 - No profile or rewrite changes requested `N`. A larger minimum-required `N`
   rejects the rewrite or requests a user recompilation. Changes to ciphertext
   shards, bootstrap count, logical key classes, provider key bytes,
@@ -1683,16 +1808,9 @@ may combine a semantic change with unrelated formatting or generated artifacts.
 
 | Commit group | Change | Required evidence before merge |
 | --- | --- | --- |
-| `ARCH-1` | F0 ADR, Fhelipe source lock, v0.9 sync | `O2-F0-001` |
-| `O0-PREP` | F1-PREP source inspection/delta/license/build, fixtures, goldens and independent-oracle design only | `O2-F1P-001`; no production planner/default |
-| `CAN-1` | canonical record vocabulary and verifier | builder/unit/corruption tests |
-| `CAN-2` | file-wide canonicalization transaction | `O2-P0-001` |
-| `ABI-1` | P1a public provider C ABI and mock | `O2-P1A-001` |
-| `REC-1` | accepted record builders/readers/dumpers | independent reopen and old-reader tests |
-| `REC-2` | complete CKKS parameters/profiles/states/actions | `O2-P2-001` |
-| `ABI-2` | P1b OpenFHE adapter against P2 parameters/profiles | `O2-P1B-001` |
-| `O0-IMPL` | F1-IMPL complete F0-approved planner on P0/P1a/P2/P1b | `O2-F1I-001` |
-| `O0-ACCEPT` | F1-ACCEPT reopen/materialize/generated-C/OpenFHE acceptance | `O2-F1A-001` |
+| `ARCH-1` | F0 ownership/options, fixed source lock and source-tracker relinks against v0.10 | `O2-F0-001`; this revision does not edit those trackers |
+| `IMPORT-O0` | Import accepted producer evidence for F1/P0/P1; no O0 implementation commit is owned here | Section 13 external handoffs and immutable bundle hashes |
+| `REC-O2` | P2 shared-contract reuse and O2 record extensions after baseline records merge | `O2-P2-001`; independent reopen and legacy compatibility |
 | `S1-1` | source/support/diagnostic/cost locks | `O2-S10-001` |
 | `S1-2` | atomic identity-plan transaction | `O2-S11-001` |
 | `S1-3` | ACE virtual graph/effects/transfers | `O2-S12-001` |
@@ -1706,12 +1824,13 @@ may combine a semantic change with unrelated formatting or generated artifacts.
 | `S1-11` | independent raw-graph oracle | `O2-S17-001` and dependency audit |
 | `S1-12` | bounded call/control-flow extension | positive/negative extension tests |
 | `S1-13` | key manifests and standard-call materializer | `O2-S18-001` |
+| `S1-LAYOUT` | Imported baseline evidence, defined-increment census and comparison only; no duplicate Fhelipe pass implementation | `O2-LAYOUT-001` |
 | `S1-14` | acceptance bundle only | `O2-S19-001` and signed review |
 | `S2-1` | full FHEFusion catalog | `O2-S20-001` |
 | `S2-2` | CF/MF/SF semantic rewrites | `O2-S21-001` |
 | `S2-3` | gap/minimum-required-N diagnostics with immutable requested N | `O2-S22-001` |
 | `S2-4` | HPOLY contract | `O2-S23-001` |
-| `S2-5` | one HPAO rule family per commit | applicable `O2-S24-001` rows |
+| `S2-5` | one approved MU/FM/LM family per commit; MD design/disposition separate | applicable `O2-S24-001` rows; MD implementation disabled |
 | `S2-6` | cross-pass invalidation and ablations | `O2-S25-001` |
 | `S2-7` | final acceptance bundle only | `O2-S26-001` and signed review |
 
@@ -1721,9 +1840,11 @@ may combine a semantic change with unrelated formatting or generated artifacts.
 
 Stage 1 is done only when:
 
-- F0, F1-PREP, P0, P1a, P2, P1b, F1-IMPL, and F1-ACCEPT are accepted in that
-  dependency order and v0.9/ADR/options agree;
-- S1.0-S1.9 pass their exact commands;
+- F0 explicitly reconciles the selected baseline with architecture/options and
+  source links; P2 is accepted only after independent baseline records, and
+  the external F1/P0/P1 acceptance bundle is imported and independently checked;
+- S1.0-S1.9 and S1.LAYOUT pass their exact contracts;
+
 - artifact-backed production behavior, paper-strict differential behavior, and
   Open64 extensions are separated in code, reports, and capability bits;
 - every accepted input belongs to the frozen support matrix and every other
@@ -1736,16 +1857,20 @@ Stage 1 is done only when:
 - MetaKernel and ReSBM independent oracles have zero structural mismatch;
 - plan production and materialization cross an independent binary reopen;
 - generated C executes through the stable provider ABI;
-- all hard, numeric, model, and performance gates pass; F0-blocked
-  `S1-MKR`/`S1-RESBM` cells are not fabricated or counted as failures; and
+- all hard, numeric, model, performance, required ablation and advanced-off
+  gates pass; no superseded indivisible-family waiver hides missing cells; and
 - the signed report uses `O2 Stage 1 accepted`, not a full-O2 claim.
 
 ### 17.2 Complete O2
 
-Complete O2 additionally requires S2.0-S2.6, every F0-defined legal ablation
-cell, actual post-pass replanning with fixed `N`, accepted bare-O2 default
-mapping, and the release-lifetime evidence bundle. Stage 1 acceptance does not
-waive any Stage 2 gate. Post-five-paper research in Section 19 is not required.
+Complete O2 for this v0.10 delivery requires S2.0-S2.6, every required legal
+ablation, actual post-pass replanning with fixed N, accepted default/advanced-off
+behavior, the O3 handoff contract, and release-lifetime evidence. Stage 1 cannot
+waive Stage 2. The release states precisely: MetaKernel/ReSBM/FHEFusion and
+reviewed HPOLY/HPAO-MU/FM/LM accepted; HPAO-MD design pending and disabled unless
+separately approved. It must not claim the full HPAO paper or all future v0.10
+research is implemented. Future O3 parallel/data execution, MD implementation
+and Section 19 research are not concealed completion requirements.
 
 ## 18. Decision Register, Risks, and Stop Rules
 
@@ -1753,11 +1878,12 @@ waive any Stage 2 gate. Post-five-paper research in Section 19 is not required.
 
 | Decision | Status | Owner | Evidence required | Blocks |
 | --- | --- | --- | --- | --- |
-| complete Fhelipe as bare O0 baseline | Proposed preferred direction | architecture owner | `FRZ-01` to `FRZ-03`, fixed source/build/oracle comparison | F0, F1-IMPL, F1-ACCEPT, S1.9, S2.6 |
-| Fhelipe fixed revision (`6afbd1c...`, `a631dae...`, or another reviewed snapshot) | Unknown | Fhelipe/O0 owner | local source bundle SHA-256, commit delta, license and reproducibility | F0/F1-PREP |
-| Fhelipe and MetaKernel+ReSBM are alternative end-to-end families | Project interpretation requiring confirmation | architecture owner | paper/source scope and ownership matrix | F0, physical top-level plan |
-| bare O0/O2 and explicit option mapping | Unknown | driver/config owner | full option truth table including auto/on/manual/off/fallback | F0, UI, acceptance |
-| normalized final-plan physical storage | Frozen | common-com owner | v0.9/ADR, image identity/version/compatibility review | P2/S1.1 production schema |
+| Mature Fhelipe O0 package and DP | User-selected proposed baseline; architecture conflict open | O0/architecture owners | Frozen pass/config/support manifest, FRZ-03 amendment and protected-DP acceptance | F1 acceptance, S1.9/S2.6 |
+| Fhelipe fixed research snapshot | Source-inspected; full baseline acceptance pending | Fhelipe/O0 owner | `891b3086bf6a144deebac79290801253b9cc510c`, complete hashes/build/pass/objective/oracle evidence | F1 acceptance before S1 comparisons |
+| Separate layout and CKKS owners | v0.10 governing decision | common/com and FHE owners | shared interfaces and source-component crosswalk | F0/P2 |
+| Bare levels, DP and increment-off mapping | Proposed; current v0.10 O0 conflicts require reconciliation | driver/config/architecture owners | Four O levels, auto/on/manual/off, protected sites, baseline-preserving O2 off/fallback | F0/default acceptance |
+| O2 physical record storage | Proposed, requires acceptance | common/com owner | versioned crosswalk/reopen/compatibility review after shared baseline records | P2/S1.1 |
+| HPAO-MD implementation | Design pending, disabled | HPOLY design owner | separate analysis/legality/lifetime/order/cost review and amended tests | MD implementation only |
 | Stage 1 `q_w=q`, integer scale-degree/logical-level, uniform one-level ReSBM restriction | Frozen artifact-backed plan contract | CKKS/ReSBM owner | fixed artifact, projection and rejection tests | S1.5-S1.9 |
 | MetaKernel minimum artifact cost, then larger `Ps`, then first enumeration order | Frozen artifact-backed plan contract | MetaKernel owner | fixed artifact plus independent artifact/paper-differential cases | S1.3 |
 | broader Conv rows | Proposed one-by-one extensions | MetaKernel Conv owner | exact oracle and capability row | S1.4 |
@@ -1772,12 +1898,12 @@ because implementation code exists.
 
 | Risk | Stop rule or mitigation |
 | --- | --- |
-| duplicate planner ownership | stop integrated work until F0; one final plan has exactly one planner-family owner |
+| duplicate planner ownership | one selected layout producer and one authoritative CKKS plan owner; stop only affected integration pending F0 |
 | paper and artifact semantics silently conflated | source-locked production oracle plus separate paper-strict differential oracle; use `Artifact-backed behavior/extension`, never paper-exact language |
-| temporary O0 planners become permanent | preferred Fhelipe baseline or equally complete F0 alternative; no throwaway acceptance baseline |
-| freeze treated as absence of bootstrap semantics | preserve v0.9 `auto/on/manual/off`; F0 decides only Fhelipe preservation/amendment and ownership |
-| F0-blocked ablations become hidden architecture decisions | only `BASE-O0` versus `S1-FULL` is hard for an indivisible Fhelipe baseline; record blocked cells and require F0 for separability/neutral baseline |
-| F1 implemented before its inputs exist | enforce F1-PREP -> P0 -> P1a -> P2 -> P1b -> F1-IMPL -> F1-ACCEPT closure order |
+| baseline weakened or gated by O2 | O0 supplies frozen mature Fhelipe pipeline and protected DP independently; P2/MetaKernel/ReSBM are never baseline prerequisites |
+| unrestricted RemoveBootstraps erases hard sites | FRZ-03 reconciles no-DP/JIT conflict explicitly; O0 adaptation preserves manual/pre-ReLU sites by default and proves constrained placement |
+| ablation or advanced-off strips baseline optimization | freeze pass/config manifest; layout cell keeps DP algorithm/constraints, placement cell keeps layout, O2 off retains both |
+| duplicate O0 queue or lost migration item | external producer owns F1/P0/P1; source-tracker relinks and MIG ledger close in F0, O2 acceptance consumes signed producer evidence |
 | duplicate on-disk truth | enforce Section 8 crosswalk and one authoritative owner per field |
 | WHIRL compatibility regression | common-com review, version/capability gates, old/new reader tests, binary reopen |
 | canonicalization hides junk/gap bugs | nonzero sentinel negatives and per-slot verification |
@@ -1797,8 +1923,8 @@ Implementation stops and returns to architecture review if any of the following
 occurs:
 
 - a required planner decision has two owners or no owner;
-- an accepted v0.9 statement conflicts with the intended implementation and no
-  accepted ADR exists;
+- the known v0.10 O0 conflict is treated as resolved without an accepted
+  FRZ-03 amendment, or another architecture conflict lacks an accepted ADR;
 - a moving/unhashed source is needed for an algorithm claim;
 - any stage changes requested `N`, silently accepts a larger-N rewrite, or
   materializes a non-adjacent Relin after `MulCC`;
@@ -1810,43 +1936,42 @@ occurs:
 - any acceptance fixture requires relaxing a tolerance after observing its
   result without a fresh pre-registered review.
 
-## 19. Post-Five-Paper Deferred Work / Research Backlog
+## 19. Deferred Work and Research Backlog
 
-Lazy relinearization is not part of O2 Stage 1, O2 Stage 2, `O2 complete`, or
-the accepted five-paper capability. It may be reconsidered only after Fhelipe,
-MetaKernel, ReSBM, FHEFusion, and HPAO are all implemented and accepted under
-their current contracts.
+HPAO-MD implementation remains behind MD-DESIGN (Section 14); O3 parallel/data
+optimization belongs to the reserved third plan (Section 0.6). Target-sensitive
+ReSBM extensions remain O2 research with separate support/oracle gates, not O3.
+Bootstrap-internal HPOLY/native GPU lowering requires the separate architecture
+and provider reviews already identified by v0.10 and consolidated SYNC-8.
 
-A future lazy-relin proposal requires a new ADR; an explicit provider capability;
-component-count, alias, state-transition, effect, lifetime, serialization, and
-bootstrap-boundary proofs; an independent placement/state oracle; complete key
-manifest changes; and pre-registered performance evidence against mandatory
-immediate relin. This plan makes no commitment to implement or accept that work.
+Lazy relinearization is outside both delivery stages and this O2 completion
+claim. A future proposal needs a new ADR, explicit provider capability,
+component-count/alias/state/effect/lifetime/serialization/bootstrap proofs,
+independent placement oracle, complete keys and pre-registered performance
+evidence against mandatory immediate Relin. This revision makes no commitment
+to implement or accept these research items.
 
-## 20. Immediate Work Queue Under the Freeze
+## 20. Immediate Dependency-Ready Queue
 
-Work may proceed in this order without pre-deciding the frozen architecture:
-
-1. prepare and close F0: locally lock the chosen Fhelipe/baseline revision,
-   decide ownership/options/profile separability, and accept the ADR plus v0.9
-   synchronization;
-2. perform F1-PREP source inspection, paper/code delta, license/build
-   reproduction, fixtures, goldens, and independent-oracle design only; publish
-   no production planner/default or O0 acceptance;
-3. implement P0 canonicalization and sentinel/idempotence/reopen tests using the
-   already fixed `N` from `FHECompilationConfigIR`;
-4. implement P1a provider-neutral C ABI and mock, including immediate-relin
-   ordering/effects;
-5. close P2 semantic/physical records, fixed-N CKKS contract, serialization and
-   independent reopen on P0/P1a identities;
-6. implement P1b OpenFHE only against accepted P2 parameter/bootstrap profiles;
-7. after the freeze is lifted, implement F1-IMPL on P0/P1a/P2/P1b, then close
-   F1-ACCEPT through plan reopen, materialization, generated C and OpenFHE;
-8. in parallel where ownership-neutral, lock S1.0 MetaKernel/ReSBM artifact
-   fixtures, differentials, diagnostics and raw tables, and implement pure
-   artifact-contract algorithms plus genuinely independent oracles; and
-9. begin integrated Stage 1 materialization/acceptance only after F1-ACCEPT;
-   treat `S1-MKR` and `S1-RESBM` as blocked unless F0 explicitly defines them.
+1. Close F0's explicit architecture conflict for the selected mature Fhelipe
+   baseline/DP. Freeze pass/config/support and objective manifests, hard/manual/
+   pre-ReLU semantics, protected-DP adaptation and baseline-preserving controls;
+   synchronize architecture and source trackers through their owners.
+2. O0/runtime owners implement and accept that baseline through F1/P0/P1,
+   including constrained-DP feasibility/oracle and boundary-preservation evidence.
+   Do not wait for P2 or implement a reduced JIT/layout substitute for acceptance.
+3. Common/com accepts baseline configuration/state/placement records before
+   their consumers; P2 subsequently reviews only O2 extensions.
+4. Independent source-lock, oracle and pure MetaKernel/ReSBM work may proceed;
+   production default and integration acceptance remain behind required contracts.
+5. Implement the defined S1 increments; S1.LAYOUT imports baseline evidence and
+   verifies the MetaKernel delta without reimplementing existing Fhelipe passes.
+6. Import F1-ACCEPT before S1.9; compare baseline/component/combined profiles
+   with manifest/algorithm-controlled ablations and baseline-preserving off tests.
+7. Complete Stage 2 with the existing MU/FM/LM contracts and explicit disabled
+   MD disposition pending separate design acceptance.
+8. Publish the finalized O2-to-O3 handoff; third-plan physical parallel/data
+   work does not change baseline DP or ReSBM semantic decisions.
 
 This plan does not unfreeze SYNC-3 Commit 16 and does not modify either PDF in
 `doc/` associated with that issue.
