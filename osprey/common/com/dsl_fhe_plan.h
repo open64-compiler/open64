@@ -29,6 +29,11 @@
 #define DSL_FHE_APPROX_ASSOCIATION_RECORD_SIZE     32
 #define DSL_FHE_CONTEXT_RANGE_RECORD_SIZE          64
 
+#define DSL_FHE_CONTEXT_STATE_IMAGE_MAGIC        0x46435331
+#define DSL_FHE_CONTEXT_STATE_IMAGE_VERSION      1
+#define DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE  64
+#define DSL_FHE_CONTEXT_CKKS_STATE_RECORD_SIZE   88
+
 #define DSL_FHE_WRAPPER_CNN_CONV2D \
     "fhe.cnn.conv2d"
 #define DSL_FHE_WRAPPER_CNN_RESIDUAL_ADD \
@@ -53,6 +58,7 @@ typedef UINT32 DSL_FHE_COMPOSITE_PROFILE_ID;
 typedef UINT32 DSL_FHE_APPROX_STAGE_ID;
 typedef UINT32 DSL_FHE_APPROX_ASSOCIATION_ID;
 typedef UINT32 DSL_FHE_CONTEXT_RANGE_ID;
+typedef UINT32 DSL_FHE_CONTEXT_CKKS_STATE_ID;
 
 #define DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID 0
 #define DSL_FHE_APPROXIMATION_CONTRACT_INVALID_ID 0
@@ -61,6 +67,7 @@ typedef UINT32 DSL_FHE_CONTEXT_RANGE_ID;
 #define DSL_FHE_APPROX_STAGE_INVALID_ID             0
 #define DSL_FHE_APPROX_ASSOCIATION_INVALID_ID       0
 #define DSL_FHE_CONTEXT_RANGE_INVALID_ID            0
+#define DSL_FHE_CONTEXT_CKKS_STATE_INVALID_ID        0
 
 typedef enum {
     DSL_FHE_PLAN_RECORD_UNKNOWN = 0,
@@ -156,6 +163,23 @@ typedef enum {
 } DSL_FHE_CONTEXT_OUT_OF_RANGE_POLICY;
 
 typedef enum {
+    DSL_FHE_CONTEXT_RANGE_FLAG_NONE = 0,
+    DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE = 0x00000001
+} DSL_FHE_CONTEXT_RANGE_FLAG;
+
+typedef enum {
+    DSL_FHE_CONTEXT_STATE_ROLE_UNKNOWN = 0,
+    DSL_FHE_CONTEXT_STATE_ROLE_PRE_OPERATION = 1,
+    DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH = 2,
+    DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION = 3,
+    DSL_FHE_CONTEXT_STATE_ROLE_RESULT = 4
+} DSL_FHE_CONTEXT_STATE_ROLE;
+
+typedef enum {
+    DSL_FHE_CONTEXT_STATE_CAP_CKKS_STATE = 0x00000001
+} DSL_FHE_CONTEXT_STATE_CAPABILITY;
+
+typedef enum {
     DSL_FHE_DISPOSITION_FLAG_NONE = 0,
     DSL_FHE_DISPOSITION_DEFINITION_REWRITE = 0x00000001,
     DSL_FHE_DISPOSITION_CONTEXT_SENSITIVE = 0x00000002,
@@ -194,7 +218,8 @@ typedef enum {
 typedef enum {
     DSL_FHE_BN_FOLD_FLAG_NONE = 0,
     DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS = 0x00000001,
-    DSL_FHE_BN_FOLD_SHARED_PU_DEFINITION = 0x00000002
+    DSL_FHE_BN_FOLD_SHARED_PU_DEFINITION = 0x00000002,
+    DSL_FHE_BN_FOLD_CONTEXT_IDENTITY_IS_CALLEE = 0x00000004
 } DSL_FHE_BN_FOLD_FLAG;
 
 typedef struct {
@@ -376,6 +401,54 @@ typedef struct {
     UINT32 reserved1;
     UINT32 reserved2;
 } DSL_FHE_CONTEXT_RANGE_RECORD;
+
+typedef struct {
+    UINT32 magic;
+    UINT32 version;
+    UINT32 header_size;
+    UINT32 record_kind_count;
+    UINT32 capabilities;
+    UINT32 flags;
+    UINT32 context_ckks_state_count;
+    UINT32 reserved0;
+    UINT32 reserved1;
+    UINT32 reserved2;
+    UINT32 reserved3;
+    UINT32 reserved4;
+    UINT32 reserved5;
+    UINT32 reserved6;
+    UINT32 reserved7;
+    UINT32 reserved8;
+} DSL_FHE_CONTEXT_STATE_IMAGE_HEADER;
+
+/*
+ * Context-specific planning state for a shared source value. POST_REFRESH is
+ * the target of a planned pre-operation refresh, not evidence that the
+ * refresh has executed. State version never identifies a call context.
+ */
+typedef struct {
+    DSL_FHE_CONTEXT_CKKS_STATE_ID id;
+    ST_IDX owner_pu_st;
+    DSL_IR_VALUE_ID source_value_id;
+    DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id;
+    DSL_CALLSITE_METADATA_ID context_callsite_id;
+    UINT32 state_role;
+    UINT32 state_version;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encryption_descriptor_id;
+    UINT32 scheme;
+    UINT32 value_class;
+    INT32 level;
+    INT32 scale_bits;
+    INT32 component_count;
+    INT32 precision_bits;
+    UINT32 slot_count;
+    UINT32 alignment_group;
+    STR_IDX encrypted_layout_name;
+    UINT32 pending_actions;
+    UINT32 pending_bootstrap_reason;
+    UINT32 flags;
+    UINT32 reserved;
+} DSL_FHE_CONTEXT_CKKS_STATE_RECORD;
 
 /* Producer-runtime inputs. No pointer in these records enters the IR image. */
 typedef struct {
@@ -575,5 +648,44 @@ extern BOOL DSL_FHE_Context_Range_Find
                                      context_pu_identity_id,
                                  DSL_CALLSITE_METADATA_ID context_callsite_id,
                                  DSL_FHE_CONTEXT_RANGE_RECORD *record);
+
+extern void DSL_FHE_Context_State_Image_Reset (void);
+extern void DSL_FHE_Context_State_Image_Get_Header
+                                (DSL_FHE_CONTEXT_STATE_IMAGE_HEADER *header);
+extern BOOL DSL_FHE_Context_State_Image_Has_Records (void);
+extern BOOL DSL_FHE_Context_State_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_FHE_Context_State_Image_Load_Mapped
+                                (const void *section_base,
+                                 UINT64 section_size,
+                                 FILE *diagnostic);
+extern void DSL_FHE_Context_State_Image_Print (FILE *file);
+
+extern void DSL_FHE_Context_CKKS_State_Record_Init
+                                (DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record);
+extern DSL_FHE_CONTEXT_CKKS_STATE_ID
+    DSL_FHE_Context_State_Intern
+                                (const DSL_FHE_CONTEXT_CKKS_STATE_RECORD
+                                     *record);
+extern UINT32 DSL_FHE_Context_State_Count (void);
+extern BOOL DSL_FHE_Context_State_Get
+                                (DSL_FHE_CONTEXT_CKKS_STATE_ID id,
+                                 DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record);
+extern BOOL DSL_FHE_Context_State_Find
+                                (ST_IDX owner_pu_st,
+                                 DSL_IR_VALUE_ID source_value_id,
+                                 DSL_PU_SOURCE_IDENTITY_ID
+                                     context_pu_identity_id,
+                                 DSL_CALLSITE_METADATA_ID context_callsite_id,
+                                 UINT32 state_role,
+                                 UINT32 state_version,
+                                 DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record);
+extern BOOL DSL_FHE_Context_State_Find_Latest
+                                (ST_IDX owner_pu_st,
+                                 DSL_IR_VALUE_ID source_value_id,
+                                 DSL_PU_SOURCE_IDENTITY_ID
+                                     context_pu_identity_id,
+                                 DSL_CALLSITE_METADATA_ID context_callsite_id,
+                                 UINT32 state_role,
+                                 DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record);
 
 #endif /* dsl_fhe_plan_INCLUDED */

@@ -30,6 +30,8 @@ typedef SEGMENTED_ARRAY<DSL_FHE_APPROX_ASSOCIATION_RECORD>
     DSL_FHE_APPROX_ASSOCIATION_TABLE;
 typedef SEGMENTED_ARRAY<DSL_FHE_CONTEXT_RANGE_RECORD>
     DSL_FHE_CONTEXT_RANGE_TABLE;
+typedef SEGMENTED_ARRAY<DSL_FHE_CONTEXT_CKKS_STATE_RECORD>
+    DSL_FHE_CONTEXT_CKKS_STATE_TABLE;
 
 static DSL_FHE_DISPOSITION_TABLE DSL_fhe_disposition_table;
 static DSL_FHE_APPROXIMATION_TABLE DSL_fhe_approximation_table;
@@ -39,6 +41,7 @@ static DSL_FHE_COMPOSITE_PROFILE_TABLE DSL_fhe_composite_profile_table;
 static DSL_FHE_APPROX_STAGE_TABLE DSL_fhe_approx_stage_table;
 static DSL_FHE_APPROX_ASSOCIATION_TABLE DSL_fhe_approx_association_table;
 static DSL_FHE_CONTEXT_RANGE_TABLE DSL_fhe_context_range_table;
+static DSL_FHE_CONTEXT_CKKS_STATE_TABLE DSL_fhe_context_ckks_state_table;
 
 static BOOL DSL_FHE_Approx_Profile_Cross_Validate (FILE *diagnostic);
 
@@ -57,6 +60,11 @@ typedef struct {
     const DSL_FHE_APPROX_ASSOCIATION_RECORD *associations;
     const DSL_FHE_CONTEXT_RANGE_RECORD *context_ranges;
 } DSL_FHE_APPROX_PROFILE_IMAGE_VIEW;
+
+typedef struct {
+    const DSL_FHE_CONTEXT_STATE_IMAGE_HEADER *header;
+    const DSL_FHE_CONTEXT_CKKS_STATE_RECORD *states;
+} DSL_FHE_CONTEXT_STATE_IMAGE_VIEW;
 
 typedef char DSL_FHE_Plan_TY_IDX_Width_Check
     [sizeof(TY_IDX) == 4 ? 1 : -1];
@@ -96,6 +104,12 @@ typedef char DSL_FHE_Approx_Association_Size_Check
 typedef char DSL_FHE_Context_Range_Size_Check
     [sizeof(DSL_FHE_CONTEXT_RANGE_RECORD) ==
         DSL_FHE_CONTEXT_RANGE_RECORD_SIZE ? 1 : -1];
+typedef char DSL_FHE_Context_State_Header_Size_Check
+    [sizeof(DSL_FHE_CONTEXT_STATE_IMAGE_HEADER) ==
+        DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_FHE_Context_CKKS_State_Size_Check
+    [sizeof(DSL_FHE_CONTEXT_CKKS_STATE_RECORD) ==
+        DSL_FHE_CONTEXT_CKKS_STATE_RECORD_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -353,7 +367,8 @@ DSL_FHE_Plan_BN_Fold_Valid
     DSL_OPERATOR conv_operator;
     DSL_OPERATOR bn_operator;
     const UINT32 known_flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS |
-                               DSL_FHE_BN_FOLD_SHARED_PU_DEFINITION;
+                               DSL_FHE_BN_FOLD_SHARED_PU_DEFINITION |
+                               DSL_FHE_BN_FOLD_CONTEXT_IDENTITY_IS_CALLEE;
     DSL_IR_VALUE_RECORD value;
 
     if (!DSL_FHE_Plan_PU_ST_Valid(record.owner_pu_st) ||
@@ -374,9 +389,16 @@ DSL_FHE_Plan_BN_Fold_Valid
     } else {
         if (!DSL_Call_Image_Get_Callsite
                 (record.context_callsite_id, &callsite) ||
-            callsite.callee_pu_st != record.owner_pu_st ||
-            callsite.owner_pu_st != identity.owner_pu_st)
+            callsite.callee_pu_st != record.owner_pu_st)
             return FALSE;
+        if ((record.flags &
+             DSL_FHE_BN_FOLD_CONTEXT_IDENTITY_IS_CALLEE) != 0) {
+            if (identity.owner_pu_st != record.owner_pu_st ||
+                !DSL_FHE_Plan_PU_ST_Valid(callsite.owner_pu_st))
+                return FALSE;
+        } else if (callsite.owner_pu_st != identity.owner_pu_st) {
+            return FALSE;
+        }
     }
 
     const DSL_IR_VALUE_ID required_values[] = {
@@ -564,6 +586,7 @@ DSL_FHE_Plan_Image_Reset (void)
     DSL_fhe_ckks_state_table.Delete_down_to(0);
     DSL_fhe_bn_fold_table.Delete_down_to(0);
     DSL_FHE_Approx_Profile_Image_Reset();
+    DSL_FHE_Context_State_Image_Reset();
 }
 
 void
@@ -702,7 +725,8 @@ BOOL
 DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
 {
     return DSL_FHE_Plan_View_Validate(NULL, diagnostic) &&
-           DSL_FHE_Approx_Profile_Cross_Validate(diagnostic);
+           DSL_FHE_Approx_Profile_Cross_Validate(diagnostic) &&
+           DSL_FHE_Context_State_Image_Validate(diagnostic);
 }
 
 static BOOL
@@ -1076,6 +1100,8 @@ DSL_FHE_Context_Range_Basic_Valid
     double bound;
     double observed_min;
     double observed_max;
+    const UINT32 known_flags =
+        DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE;
     if (record.profile_id == 0 || record.profile_id > profile_limit ||
         !DSL_FHE_Approx_Profile_Value_Is_Live_Relu
             (record.source_relu_value_id, record.owner_pu_st) ||
@@ -1091,15 +1117,21 @@ DSL_FHE_Context_Range_Basic_Valid
         observed_max > bound ||
         record.out_of_range_policy != DSL_FHE_CONTEXT_RANGE_REJECT ||
         !DSL_FHE_Plan_String_Id_Valid(record.provenance, TRUE) ||
-        record.flags != 0 || record.reserved0 != 0 ||
+        (record.flags & ~known_flags) != 0 || record.reserved0 != 0 ||
         record.reserved1 != 0 || record.reserved2 != 0)
         return FALSE;
 
     if (record.context_callsite_id == DSL_CALLSITE_METADATA_INVALID_ID)
         return identity.owner_pu_st == record.owner_pu_st;
-    return DSL_Call_Image_Get_Callsite(record.context_callsite_id, &callsite) &&
-           callsite.callee_pu_st == record.owner_pu_st &&
-           callsite.owner_pu_st == identity.owner_pu_st;
+    if (!DSL_Call_Image_Get_Callsite
+            (record.context_callsite_id, &callsite) ||
+        callsite.callee_pu_st != record.owner_pu_st)
+        return FALSE;
+    if ((record.flags &
+         DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE) != 0)
+        return identity.owner_pu_st == record.owner_pu_st &&
+               DSL_FHE_Plan_PU_ST_Valid(callsite.owner_pu_st);
+    return callsite.owner_pu_st == identity.owner_pu_st;
 }
 
 static UINT32
@@ -1707,4 +1739,352 @@ DSL_FHE_Context_Range_Find
             return DSL_FHE_Context_Range_Get(i + 1, record);
     }
     return FALSE;
+}
+
+static BOOL
+DSL_FHE_Context_State_Report
+        (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "FHE context CKKS state image error: "
+                "%s id=%u\n", message, id);
+    return FALSE;
+}
+
+static BOOL
+DSL_FHE_Context_State_Basic_Valid
+        (const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &record)
+{
+    DSL_IR_VALUE_RECORD value;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    DSL_FHE_CKKS_VALUE_STATE_RECORD state;
+
+    if (!DSL_FHE_Plan_PU_ST_Valid(record.owner_pu_st) ||
+        !DSL_IR_Image_Get_Value(record.source_value_id, &value) ||
+        (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
+        !DSL_FHE_Plan_Value_Belongs_To_PU(value, record.owner_pu_st) ||
+        !DSL_Call_Image_Get_PU_Identity
+            (record.context_pu_identity_id, &identity) ||
+        identity.owner_pu_st != record.owner_pu_st ||
+        record.state_role < DSL_FHE_CONTEXT_STATE_ROLE_PRE_OPERATION ||
+        record.state_role > DSL_FHE_CONTEXT_STATE_ROLE_RESULT ||
+        record.flags != 0 || record.reserved != 0)
+        return FALSE;
+
+    if (record.context_callsite_id == DSL_CALLSITE_METADATA_INVALID_ID) {
+        if (identity.owner_pu_st != record.owner_pu_st)
+            return FALSE;
+    } else {
+        if (!DSL_Call_Image_Get_Callsite
+                (record.context_callsite_id, &callsite) ||
+            callsite.callee_pu_st != record.owner_pu_st ||
+            identity.owner_pu_st != callsite.callee_pu_st ||
+            !DSL_FHE_Plan_PU_ST_Valid(callsite.owner_pu_st))
+            return FALSE;
+    }
+
+    DSL_FHE_CKKS_Value_State_Record_Init(&state);
+    state.value_id = record.source_value_id;
+    state.encryption_descriptor_id = record.encryption_descriptor_id;
+    state.state_version = record.state_version;
+    state.scheme = record.scheme;
+    state.value_class = record.value_class;
+    state.level = record.level;
+    state.scale_bits = record.scale_bits;
+    state.component_count = record.component_count;
+    state.precision_bits = record.precision_bits;
+    state.slot_count = record.slot_count;
+    state.alignment_group = record.alignment_group;
+    state.encrypted_layout_name = record.encrypted_layout_name;
+    state.pending_actions = record.pending_actions;
+    state.pending_bootstrap_reason = record.pending_bootstrap_reason;
+    return DSL_FHE_Plan_CKKS_State_Valid(state);
+}
+
+static UINT32
+DSL_FHE_Context_State_View_Count
+        (const DSL_FHE_CONTEXT_STATE_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_context_ckks_state_table.Size() :
+                          view->header->context_ckks_state_count;
+}
+
+static const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &
+DSL_FHE_Context_State_View_Record
+        (const DSL_FHE_CONTEXT_STATE_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_context_ckks_state_table[ordinal] :
+                          view->states[ordinal];
+}
+
+static BOOL
+DSL_FHE_Context_State_Same_Key
+        (const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &left,
+         const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &right)
+{
+    return left.owner_pu_st == right.owner_pu_st &&
+           left.source_value_id == right.source_value_id &&
+           left.context_pu_identity_id == right.context_pu_identity_id &&
+           left.context_callsite_id == right.context_callsite_id &&
+           left.state_role == right.state_role &&
+           left.state_version == right.state_version;
+}
+
+static BOOL
+DSL_FHE_Context_State_View_Validate
+        (const DSL_FHE_CONTEXT_STATE_IMAGE_VIEW *view, FILE *diagnostic)
+{
+    DSL_FHE_CONTEXT_STATE_IMAGE_HEADER header;
+    if (view == NULL)
+        DSL_FHE_Context_State_Image_Get_Header(&header);
+    else
+        header = *view->header;
+    if (header.magic != DSL_FHE_CONTEXT_STATE_IMAGE_MAGIC ||
+        header.version != DSL_FHE_CONTEXT_STATE_IMAGE_VERSION ||
+        header.header_size != DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE ||
+        header.record_kind_count != 1 ||
+        header.capabilities != DSL_FHE_CONTEXT_STATE_CAP_CKKS_STATE ||
+        header.flags != 0 || header.reserved0 != 0 ||
+        header.reserved1 != 0 || header.reserved2 != 0 ||
+        header.reserved3 != 0 || header.reserved4 != 0 ||
+        header.reserved5 != 0 || header.reserved6 != 0 ||
+        header.reserved7 != 0 || header.reserved8 != 0)
+        return DSL_FHE_Context_State_Report
+                   (diagnostic, "invalid header", 0);
+
+    const UINT32 count = DSL_FHE_Context_State_View_Count(view);
+    for (UINT32 i = 0; i < count; ++i) {
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &record =
+            DSL_FHE_Context_State_View_Record(view, i);
+        if (record.id != i + 1 ||
+            !DSL_FHE_Context_State_Basic_Valid(record))
+            return DSL_FHE_Context_State_Report
+                       (diagnostic, "invalid context state", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            if (DSL_FHE_Context_State_Same_Key
+                    (DSL_FHE_Context_State_View_Record(view, j), record))
+                return DSL_FHE_Context_State_Report
+                           (diagnostic, "duplicate context state", i + 1);
+        }
+    }
+
+    /* An absent optional section remains valid for pre-extension images. */
+    if (count == 0)
+        return view == NULL || DSL_FHE_Context_Range_Count() == 0 ? TRUE :
+                   DSL_FHE_Context_State_Report
+                       (diagnostic, "missing context states", 0);
+    for (UINT32 i = 0; i < count; ++i) {
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &state =
+            DSL_FHE_Context_State_View_Record(view, i);
+        DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encryption;
+        UINT32 matches = 0;
+        if (state.state_role != DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH ||
+            state.state_version != 1)
+            continue;
+        if (!DSL_FHE_Get_Encryption_Descriptor
+                (state.encryption_descriptor_id, &encryption))
+            return DSL_FHE_Context_State_Report
+                       (diagnostic, "invalid composite refresh state", i + 1);
+        for (UINT32 j = 1; j <= DSL_FHE_Context_Range_Count(); ++j) {
+            DSL_FHE_CONTEXT_RANGE_RECORD range;
+            DSL_FHE_COMPOSITE_PROFILE_RECORD profile;
+            if (!DSL_FHE_Context_Range_Get(j, &range) ||
+                (range.flags &
+                 DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE) == 0 ||
+                range.owner_pu_st != state.owner_pu_st ||
+                range.source_relu_value_id != state.source_value_id ||
+                range.context_pu_identity_id !=
+                    state.context_pu_identity_id ||
+                range.context_callsite_id != state.context_callsite_id)
+                continue;
+            if (!DSL_FHE_Approx_Profile_Get(range.profile_id, &profile) ||
+                profile.config_id != encryption.config_id)
+                return DSL_FHE_Context_State_Report
+                           (diagnostic, "profile config mismatch", i + 1);
+            ++matches;
+        }
+        if (matches != 1)
+            return DSL_FHE_Context_State_Report
+                       (diagnostic, "unmatched context state", i + 1);
+    }
+    for (UINT32 i = 1; i <= DSL_FHE_Context_Range_Count(); ++i) {
+        DSL_FHE_CONTEXT_RANGE_RECORD range;
+        UINT32 matches = 0;
+        if (!DSL_FHE_Context_Range_Get(i, &range))
+            return DSL_FHE_Context_State_Report
+                       (diagnostic, "invalid context range", i);
+        if ((range.flags &
+             DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE) == 0)
+            return DSL_FHE_Context_State_Report
+                       (diagnostic, "legacy context range has no state join",
+                        i);
+        for (UINT32 j = 0; j < count; ++j) {
+            const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &state =
+                DSL_FHE_Context_State_View_Record(view, j);
+            if (state.state_role ==
+                    DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH &&
+                state.state_version == 1 &&
+                state.owner_pu_st == range.owner_pu_st &&
+                state.source_value_id == range.source_relu_value_id &&
+                state.context_pu_identity_id ==
+                    range.context_pu_identity_id &&
+                state.context_callsite_id == range.context_callsite_id)
+                ++matches;
+        }
+        if (matches != 1)
+            return DSL_FHE_Context_State_Report
+                       (diagnostic, "missing composite refresh state", i);
+    }
+    return TRUE;
+}
+
+void
+DSL_FHE_Context_State_Image_Reset (void)
+{
+    DSL_fhe_context_ckks_state_table.Delete_down_to(0);
+}
+
+void
+DSL_FHE_Context_State_Image_Get_Header
+        (DSL_FHE_CONTEXT_STATE_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset(header, 0, sizeof(*header));
+    header->magic = DSL_FHE_CONTEXT_STATE_IMAGE_MAGIC;
+    header->version = DSL_FHE_CONTEXT_STATE_IMAGE_VERSION;
+    header->header_size = DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE;
+    header->record_kind_count = 1;
+    header->capabilities = DSL_FHE_CONTEXT_STATE_CAP_CKKS_STATE;
+    header->context_ckks_state_count =
+        DSL_fhe_context_ckks_state_table.Size();
+}
+
+BOOL
+DSL_FHE_Context_State_Image_Has_Records (void)
+{
+    return DSL_fhe_context_ckks_state_table.Size() != 0;
+}
+
+BOOL
+DSL_FHE_Context_State_Image_Validate (FILE *diagnostic)
+{
+    return DSL_FHE_Context_State_View_Validate(NULL, diagnostic);
+}
+
+BOOL
+DSL_FHE_Context_State_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    if (section_base == NULL ||
+        section_size < DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE)
+        return DSL_FHE_Context_State_Report
+                   (diagnostic, "section is truncated", 0);
+    const char *cursor = (const char *)section_base;
+    const DSL_FHE_CONTEXT_STATE_IMAGE_HEADER *header =
+        (const DSL_FHE_CONTEXT_STATE_IMAGE_HEADER *)cursor;
+    UINT64 expected_size = DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE;
+    if (!DSL_FHE_Plan_Add_Section_Size
+             (&expected_size, header->context_ckks_state_count,
+              DSL_FHE_CONTEXT_CKKS_STATE_RECORD_SIZE) ||
+        expected_size != section_size)
+        return DSL_FHE_Context_State_Report
+                   (diagnostic, "section size mismatch", 0);
+
+    DSL_FHE_CONTEXT_STATE_IMAGE_VIEW view;
+    view.header = header;
+    cursor += DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE;
+    view.states = (const DSL_FHE_CONTEXT_CKKS_STATE_RECORD *)cursor;
+    if (!DSL_FHE_Context_State_View_Validate(&view, diagnostic))
+        return FALSE;
+
+    DSL_FHE_Context_State_Image_Reset();
+    if (header->context_ckks_state_count != 0)
+        DSL_fhe_context_ckks_state_table.Insert
+            (view.states, header->context_ckks_state_count);
+    return DSL_FHE_Context_State_View_Validate(NULL, diagnostic);
+}
+
+void
+DSL_FHE_Context_CKKS_State_Record_Init
+        (DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record)
+{
+    DSL_FHE_Plan_Record_Init(record);
+}
+
+DSL_FHE_CONTEXT_CKKS_STATE_ID
+DSL_FHE_Context_State_Intern
+        (const DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record)
+{
+    if (record == NULL || !DSL_FHE_Context_State_Basic_Valid(*record))
+        return DSL_FHE_CONTEXT_CKKS_STATE_INVALID_ID;
+    for (UINT32 i = 0; i < DSL_fhe_context_ckks_state_table.Size(); ++i) {
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &prior =
+            DSL_fhe_context_ckks_state_table[i];
+        if (!DSL_FHE_Context_State_Same_Key(prior, *record))
+            continue;
+        return DSL_FHE_Plan_Equivalent_Record(prior, *record) ? i + 1 :
+                   DSL_FHE_CONTEXT_CKKS_STATE_INVALID_ID;
+    }
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD copy = *record;
+    UINT32 index = DSL_fhe_context_ckks_state_table.Insert(copy);
+    DSL_fhe_context_ckks_state_table[index].id = index + 1;
+    return index + 1;
+}
+
+UINT32 DSL_FHE_Context_State_Count (void)
+{ return DSL_fhe_context_ckks_state_table.Size(); }
+
+BOOL
+DSL_FHE_Context_State_Get
+        (DSL_FHE_CONTEXT_CKKS_STATE_ID id,
+         DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record)
+{
+    return DSL_FHE_Plan_Table_Get
+               (DSL_fhe_context_ckks_state_table, id, record);
+}
+
+BOOL
+DSL_FHE_Context_State_Find
+        (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
+         DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id,
+         DSL_CALLSITE_METADATA_ID context_callsite_id, UINT32 state_role,
+         UINT32 state_version, DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_fhe_context_ckks_state_table.Size(); ++i) {
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &state =
+            DSL_fhe_context_ckks_state_table[i];
+        if (state.owner_pu_st == owner_pu_st &&
+            state.source_value_id == source_value_id &&
+            state.context_pu_identity_id == context_pu_identity_id &&
+            state.context_callsite_id == context_callsite_id &&
+            state.state_role == state_role &&
+            state.state_version == state_version)
+            return DSL_FHE_Context_State_Get(i + 1, record);
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_FHE_Context_State_Find_Latest
+        (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
+         DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id,
+         DSL_CALLSITE_METADATA_ID context_callsite_id, UINT32 state_role,
+         DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record)
+{
+    UINT32 latest = 0;
+    for (UINT32 i = 0; i < DSL_fhe_context_ckks_state_table.Size(); ++i) {
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &state =
+            DSL_fhe_context_ckks_state_table[i];
+        if (state.owner_pu_st == owner_pu_st &&
+            state.source_value_id == source_value_id &&
+            state.context_pu_identity_id == context_pu_identity_id &&
+            state.context_callsite_id == context_callsite_id &&
+            state.state_role == state_role &&
+            (latest == 0 || state.state_version >
+                DSL_fhe_context_ckks_state_table[latest - 1].state_version))
+            latest = i + 1;
+    }
+    return latest != 0 && DSL_FHE_Context_State_Get(latest, record);
 }

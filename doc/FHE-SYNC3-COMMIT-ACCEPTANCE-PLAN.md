@@ -870,6 +870,11 @@ secure_resnet20.B
 - Prove every target operator has an accepted disposition, every required CKKS
   value has state, no standalone BN survives, and source/context provenance is
   complete.
+- For shared ReLU definitions, prove every one of the 19 context ranges has one
+  exact `POST_REFRESH.v1` record in `.WHIRL.dsl_fhe_context_state`. Contexts
+  must not be represented as `state_version` variants. Common validation proves
+  identity/config correspondence; the FHE gate proves the approved ACE level,
+  scale, component, precision, and pending-refresh policy.
 - Prove absence of materialized bootstrap, polynomial evaluation, SIHE/CKKS
   arithmetic lowering, runtime calls, generated C, OpenFHE provider behavior,
   optimization, and GPU work.

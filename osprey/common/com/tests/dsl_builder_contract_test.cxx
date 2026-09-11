@@ -5761,6 +5761,7 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
     DSL_BUILDER_VERIFY_RESULT verify;
     DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_PROGRAM_UNIT caller_pu;
     DSL_BUILDER_VALUE input;
     DSL_BUILDER_VALUE conv_weight;
     DSL_BUILDER_VALUE channel_parameter;
@@ -5768,6 +5769,8 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_BUILDER_VALUE batch_norm;
     DSL_BUILDER_VALUE relu;
     DSL_BUILDER_VALUE composite_relu;
+    DSL_BUILDER_VALUE pu_result;
+    DSL_BUILDER_CALL caller_call;
     DSL_BUILDER_VALUE conv_kids[3];
     DSL_BUILDER_VALUE bn_kids[5];
     DSL_BUILDER_VALUE unary_kid[1];
@@ -5791,6 +5794,9 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_IR_VALUE_RECORD relu_value;
     DSL_IR_VALUE_RECORD composite_relu_value;
     DSL_PU_SOURCE_IDENTITY_RECORD pu_identity;
+    DSL_PU_SOURCE_IDENTITY_RECORD caller_identity;
+    DSL_CALLSITE_METADATA_RECORD called_context;
+    DSL_BUILDER_CALLSITE_INFO callsite_info;
     DSL_FHE_COMPILATION_CONFIG_RECORD config;
     DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encrypted;
     DSL_FHE_APPROXIMATION_CONTRACT_RECORD approximation;
@@ -5806,6 +5812,8 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_FHE_APPROX_STAGE_RECORD composite_stages[3];
     DSL_FHE_APPROX_ASSOCIATION_RECORD composite_association;
     DSL_FHE_CONTEXT_RANGE_RECORD context_range;
+    DSL_FHE_CONTEXT_STATE_IMAGE_HEADER context_state_header;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD context_state;
     DSL_TENSOR_TCON_CREATE_INFO tcon_info;
     DSL_FHE_APPROXIMATION_CONTRACT_ID approximation_id;
     DSL_FHE_CKKS_VALUE_STATE_ID conv_state_id;
@@ -5814,10 +5822,17 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_FHE_COMPOSITE_PROFILE_ID composite_profile_id;
     DSL_FHE_CONVERSION_DISPOSITION_ID composite_disposition_id;
     DSL_FHE_CONTEXT_RANGE_ID context_range_id;
+    DSL_FHE_CONTEXT_RANGE_ID called_context_range_id;
+    DSL_FHE_CONTEXT_CKKS_STATE_ID context_state_id;
+    DSL_FHE_CONTEXT_CKKS_STATE_ID called_context_state_id;
+    DSL_FHE_CONTEXT_CKKS_STATE_ID pre_operation_state_id;
     DSL_FHE_BN_FOLD_PROVENANCE_ID bn_fold_id;
+    DSL_FHE_BN_FOLD_PROVENANCE_ID called_bn_fold_id;
+    DSL_FHE_BN_FOLD_PROVENANCE_ID legacy_bn_fold_id;
     DSL_FHE_CONFIG_ID config_id;
     DSL_FHE_CONFIG_ID alternate_config_id;
     DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encrypted_id;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID alternate_encrypted_id;
     TCON_IDX coefficients_tcon;
     TCON_IDX composite_coefficients_tcon[3];
     TCON_IDX folded_weight_tcon;
@@ -5861,7 +5876,9 @@ Check_FHE_SYNC3_Plan_Image(void)
          sizeof(DSL_FHE_COMPOSITE_PROFILE_RECORD) == 80 &&
          sizeof(DSL_FHE_APPROX_STAGE_RECORD) == 80 &&
          sizeof(DSL_FHE_APPROX_ASSOCIATION_RECORD) == 32 &&
-         sizeof(DSL_FHE_CONTEXT_RANGE_RECORD) == 64,
+         sizeof(DSL_FHE_CONTEXT_RANGE_RECORD) == 64 &&
+         sizeof(DSL_FHE_CONTEXT_STATE_IMAGE_HEADER) == 64 &&
+         sizeof(DSL_FHE_CONTEXT_CKKS_STATE_RECORD) == 88,
          "fixed record sizes");
     if (!DSL_Builder_Begin_Program())
         return 1;
@@ -6078,9 +6095,15 @@ Check_FHE_SYNC3_Plan_Image(void)
     encrypted.encoding_policy = DSL_FHE_ENCODING_NONE;
     encrypted.packing_policy = DSL_FHE_PACKING_AUTO;
     encrypted_id = DSL_FHE_Intern_Encryption_Descriptor(&encrypted);
+    encrypted.config_id = alternate_config_id;
+    alternate_encrypted_id =
+        DSL_FHE_Intern_Encryption_Descriptor(&encrypted);
+    encrypted.config_id = config_id;
     FHE_SYNC3_CHECK
         (config_id != 0 && alternate_config_id != 0 &&
-         alternate_config_id != config_id && encrypted_id != 0,
+         alternate_config_id != config_id && encrypted_id != 0 &&
+         alternate_encrypted_id != 0 &&
+         alternate_encrypted_id != encrypted_id,
          "FHE configuration and encryption descriptor");
 
     memset(&tcon_info, 0, sizeof(tcon_info));
@@ -6252,10 +6275,67 @@ Check_FHE_SYNC3_Plan_Image(void)
     bn_fold_info.source_bn_variance = channel_parameter;
     bn_fold_info.folded_weight_tcon = folded_weight_tcon;
     bn_fold_info.folded_bias_tcon = folded_bias_tcon;
-    bn_fold_info.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS;
+    bn_fold_info.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS |
+                         DSL_FHE_BN_FOLD_CONTEXT_IDENTITY_IS_CALLEE;
     bn_fold_id = DSL_Builder_Record_FHE_BN_Fold
                      (conv, batch_norm, &bn_fold_info);
     FHE_SYNC3_CHECK(bn_fold_id != 0, "BatchNorm fold provenance");
+
+    memset(&source_position, 0, sizeof(source_position));
+    source_position.file_id = file_id;
+    source_position.line = __LINE__ + 1;
+    source_position.column = 5;
+    source_position.statement_begin = 1;
+    pu_result = DSL_Builder_Declare_PU_Result
+                    (pu, "fhe_sync3_result", 0, tensor_ty,
+                     DSL_PU_RESULT_TENSOR, &source_position);
+    DSL_BUILDER_VALUE return_value = composite_relu;
+    FHE_SYNC3_CHECK
+        (pu_result != NULL &&
+         DSL_Builder_Return_PU_Values(pu, &return_value, 1),
+         "callee result contract for called-context test");
+
+    caller_pu = DSL_Builder_Create_Minimal_PU("fhe_sync3_caller");
+    UINT32 caller_file_id =
+        DSL_Builder_Register_Source_File(caller_pu, __FILE__);
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "FHEResNet.caller";
+    source_identity.defining_module = "fhe_resnet";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = 2;
+    FHE_SYNC3_CHECK
+        (caller_pu != NULL && caller_file_id != 0 &&
+         DSL_Builder_Set_PU_Source_Identity(caller_pu, &source_identity),
+         "caller PU identity");
+    memset(&callsite_info, 0, sizeof(callsite_info));
+    callsite_info.canonical_class_name = "FHEResNet";
+    callsite_info.instance_path = "layer1.0";
+    callsite_info.context_identity = "layer1.0.relu";
+    callsite_info.call_ordinal = 0;
+    callsite_info.source_position.file_id = caller_file_id;
+    callsite_info.source_position.line = __LINE__ + 1;
+    callsite_info.source_position.column = 5;
+    callsite_info.source_position.statement_begin = 1;
+    const char *called_result_names[1] = { "called_result" };
+    caller_call = DSL_Builder_Create_PU_Call
+                      (caller_pu, pu, NULL, 0, called_result_names, 1,
+                       &callsite_info);
+    FHE_SYNC3_CHECK
+        (caller_call != NULL && DSL_Call_Image_Callsite_Count() == 1 &&
+         DSL_Call_Image_Get_Callsite(1, &called_context) &&
+         DSL_Call_Image_Find_PU_Identity
+             (PU_Info_proc_sym(caller_pu), &caller_identity),
+         "two-PU called-context identity");
+
+    bn_fold_info.context_callsite_id = called_context.id;
+    bn_fold_info.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS |
+                         DSL_FHE_BN_FOLD_SHARED_PU_DEFINITION |
+                         DSL_FHE_BN_FOLD_CONTEXT_IDENTITY_IS_CALLEE;
+    called_bn_fold_id = DSL_Builder_Record_FHE_BN_Fold
+                            (conv, batch_norm, &bn_fold_info);
+    FHE_SYNC3_CHECK
+        (called_bn_fold_id == bn_fold_id + 1,
+         "contiguous called-context BatchNorm provenance");
 
     memset(&disposition_info, 0, sizeof(disposition_info));
     disposition_info.disposition = DSL_FHE_DISPOSITION_DOMAIN_WRAPPER;
@@ -6263,7 +6343,7 @@ Check_FHE_SYNC3_Plan_Image(void)
     disposition_info.wrapper_name = DSL_FHE_WRAPPER_CNN_CONV2D;
     disposition_info.result_ckks_value_state_id = conv_state_id;
     disposition_info.first_bn_fold_id = bn_fold_id;
-    disposition_info.bn_fold_count = 1;
+    disposition_info.bn_fold_count = 2;
     disposition_info.flags = DSL_FHE_DISPOSITION_DEFINITION_REWRITE |
                              DSL_FHE_DISPOSITION_OUTPUT_ENCRYPTED;
     FHE_SYNC3_CHECK
@@ -6313,6 +6393,7 @@ Check_FHE_SYNC3_Plan_Image(void)
     context_range.observed_max_tcon = range_max_tcon;
     context_range.out_of_range_policy = DSL_FHE_CONTEXT_RANGE_REJECT;
     context_range.provenance = Save_Str("fhe.sync-c.root-range.v1");
+    context_range.flags = DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE;
     context_range_id =
         DSL_FHE_Approx_Profile_Bind_Context_Range(&context_range);
     FHE_SYNC3_CHECK
@@ -6323,19 +6404,113 @@ Check_FHE_SYNC3_Plan_Image(void)
          DSL_FHE_Approx_Profile_Image_Validate(stderr),
          "root composite ReLU context range");
 
+    DSL_FHE_Context_CKKS_State_Record_Init(&context_state);
+    context_state.owner_pu_st = PU_Info_proc_sym(pu);
+    context_state.source_value_id = composite_relu_value.id;
+    context_state.context_pu_identity_id = pu_identity.id;
+    context_state.state_role = DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH;
+    context_state.state_version = 1;
+    context_state.encryption_descriptor_id = encrypted_id;
+    context_state.scheme = DSL_FHE_SCHEME_CKKS;
+    context_state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    context_state.level = 15;
+    context_state.scale_bits = 56;
+    context_state.component_count = 2;
+    context_state.precision_bits = 30;
+    context_state.slot_count = 32768;
+    context_state.alignment_group = 1;
+    context_state.encrypted_layout_name = Save_Str("nchw_slots");
+    context_state.pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
+    context_state.pending_bootstrap_reason =
+        DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
+    context_state_id = DSL_FHE_Context_State_Intern(&context_state);
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD found_context_state;
+    FHE_SYNC3_CHECK
+        (context_state_id != 0 &&
+         DSL_FHE_Context_State_Intern(&context_state) == context_state_id &&
+         DSL_FHE_Context_State_Find
+             (PU_Info_proc_sym(pu), composite_relu_value.id, pu_identity.id,
+              0, DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH, 1,
+              &found_context_state) &&
+         found_context_state.level == 15 &&
+         DSL_FHE_Context_State_Find_Latest
+             (PU_Info_proc_sym(pu), composite_relu_value.id, pu_identity.id,
+              0, DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH,
+              &found_context_state),
+         "context-specific post-refresh CKKS state");
+    context_state.level = 17;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Context_State_Intern(&context_state) == 0,
+         "same context state key rejects conflicting payload");
+    context_state.level = 15;
+    context_state.state_role = DSL_FHE_CONTEXT_STATE_ROLE_PRE_OPERATION;
+    pre_operation_state_id = DSL_FHE_Context_State_Intern(&context_state);
+    FHE_SYNC3_CHECK
+        (pre_operation_state_id != 0 &&
+         pre_operation_state_id != context_state_id,
+         "additional generic context state role remains valid");
+    context_state.state_role = DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH;
+
+    DSL_FHE_Context_Range_Record_Init(&context_range);
+    context_range.profile_id = composite_profile_id;
+    context_range.source_relu_value_id = composite_relu_value.id;
+    context_range.context_pu_identity_id = pu_identity.id;
+    context_range.context_callsite_id = called_context.id;
+    context_range.owner_pu_st = PU_Info_proc_sym(pu);
+    context_range.positive_bound_tcon = range_max_tcon;
+    context_range.observed_min_tcon = range_min_tcon;
+    context_range.observed_max_tcon = range_max_tcon;
+    context_range.out_of_range_policy = DSL_FHE_CONTEXT_RANGE_REJECT;
+    context_range.provenance = Save_Str("fhe.sync-c.called-range.v1");
+    context_range.flags = DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE;
+    called_context_range_id =
+        DSL_FHE_Approx_Profile_Bind_Context_Range(&context_range);
+
+    DSL_FHE_Context_CKKS_State_Record_Init(&context_state);
+    context_state.owner_pu_st = PU_Info_proc_sym(pu);
+    context_state.source_value_id = composite_relu_value.id;
+    context_state.context_pu_identity_id = pu_identity.id;
+    context_state.context_callsite_id = called_context.id;
+    context_state.state_role = DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH;
+    context_state.state_version = 1;
+    context_state.encryption_descriptor_id = encrypted_id;
+    context_state.scheme = DSL_FHE_SCHEME_CKKS;
+    context_state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    context_state.level = 18;
+    context_state.scale_bits = 56;
+    context_state.component_count = 2;
+    context_state.precision_bits = 30;
+    context_state.slot_count = 32768;
+    context_state.alignment_group = 2;
+    context_state.encrypted_layout_name = Save_Str("nchw_slots");
+    context_state.pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
+    context_state.pending_bootstrap_reason =
+        DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
+    called_context_state_id = DSL_FHE_Context_State_Intern(&context_state);
+    FHE_SYNC3_CHECK
+        (called_context_range_id != 0 && called_context_state_id != 0 &&
+         DSL_FHE_Context_State_Find
+             (PU_Info_proc_sym(pu), composite_relu_value.id, pu_identity.id,
+              called_context.id, DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH, 1,
+              &found_context_state) && found_context_state.level == 18,
+         "callee-identity called-context state join");
+
     DSL_FHE_Plan_Image_Get_Header(&header);
     FHE_SYNC3_CHECK
         (header.disposition_count == 3 && header.approximation_count == 1 &&
-         header.ckks_value_state_count == 3 && header.bn_fold_count == 1 &&
+         header.ckks_value_state_count == 3 && header.bn_fold_count == 2 &&
          DSL_FHE_Plan_Image_Has_Records() &&
          DSL_FHE_Plan_Image_Validate(stderr),
          "complete planning image validates");
     DSL_FHE_Approx_Profile_Image_Get_Header(&profile_header);
+    DSL_FHE_Context_State_Image_Get_Header(&context_state_header);
     FHE_SYNC3_CHECK
         (profile_header.profile_count == 2 &&
          profile_header.stage_count == 6 &&
          profile_header.association_count == 1 &&
-         profile_header.context_range_count == 1,
+         profile_header.context_range_count == 2 &&
+         context_state_header.context_ckks_state_count == 3 &&
+         DSL_FHE_Context_State_Image_Validate(stderr),
          "composite approximation image counts");
     FHE_SYNC3_CHECK
         (DSL_FHE_Plan_Find_Conversion_Disposition
@@ -6457,14 +6632,138 @@ Check_FHE_SYNC3_Plan_Image(void)
              (profile_image_bytes, profile_image_size, NULL),
          "invalid non-root context callsite rejected");
     mapped_context->context_callsite_id = saved_context_callsite;
+    DSL_FHE_CONTEXT_RANGE_RECORD *mapped_called_context = mapped_context + 1;
+    DSL_PU_SOURCE_IDENTITY_ID saved_called_identity =
+        mapped_called_context->context_pu_identity_id;
+    UINT32 saved_called_flags = mapped_called_context->flags;
+    mapped_called_context->flags = DSL_FHE_CONTEXT_RANGE_FLAG_NONE;
+    mapped_called_context->context_pu_identity_id = caller_identity.id;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "legacy caller-identity context range remains loadable");
+    mapped_called_context->flags = saved_called_flags;
+    mapped_called_context->context_pu_identity_id = caller_identity.id;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "callee-tagged caller identity rejected");
+    mapped_called_context->context_pu_identity_id = saved_called_identity;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Approx_Profile_Image_Load_Mapped
+             (profile_image_bytes, profile_image_size, NULL),
+         "callee-tagged context range restored after compatibility tests");
     FHE_SYNC3_CHECK
         (DSL_FHE_Approx_Profile_Count() == 2 &&
          DSL_FHE_Approx_Stage_Count() == 6 &&
          DSL_FHE_Approx_Association_Count() == 1 &&
-         DSL_FHE_Context_Range_Count() == 1 &&
+         DSL_FHE_Context_Range_Count() == 2 &&
          DSL_FHE_Approx_Profile_Image_Validate(NULL),
          "rejected mapped profiles leave managed tables unchanged");
 
+    UINT64 context_state_image_size =
+        DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE +
+        (UINT64)context_state_header.context_ckks_state_count *
+            DSL_FHE_CONTEXT_CKKS_STATE_RECORD_SIZE;
+    unsigned char *context_state_image_bytes =
+        new unsigned char[context_state_image_size];
+    memcpy(context_state_image_bytes, &context_state_header,
+           sizeof(context_state_header));
+    unsigned char *context_state_cursor = context_state_image_bytes +
+        DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE;
+    for (UINT32 i = 1;
+         i <= context_state_header.context_ckks_state_count; ++i) {
+        DSL_FHE_Context_State_Get(i, &context_state);
+        memcpy(context_state_cursor, &context_state, sizeof(context_state));
+        context_state_cursor += sizeof(context_state);
+    }
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size - 1,
+              NULL) &&
+         !DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size + 1,
+              NULL),
+         "context state truncated and trailing images rejected");
+    DSL_FHE_CONTEXT_STATE_IMAGE_HEADER *mapped_context_state_header =
+        (DSL_FHE_CONTEXT_STATE_IMAGE_HEADER *)context_state_image_bytes;
+    mapped_context_state_header->reserved0 = 1;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size, NULL),
+         "context state header reserved field rejected");
+    mapped_context_state_header->reserved0 = 0;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD *mapped_context_state =
+        (DSL_FHE_CONTEXT_CKKS_STATE_RECORD *)
+            (context_state_image_bytes +
+             DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE);
+    UINT32 saved_context_state_role = mapped_context_state->state_role;
+    mapped_context_state->state_role = DSL_FHE_CONTEXT_STATE_ROLE_UNKNOWN;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size, NULL),
+         "unknown context state role rejected");
+    mapped_context_state->state_role = saved_context_state_role;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_ID saved_context_encryption =
+        mapped_context_state->encryption_descriptor_id;
+    mapped_context_state->encryption_descriptor_id =
+        DSL_FHE_ENCRYPTION_DESCRIPTOR_INVALID_ID;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size, NULL),
+         "invalid context state encryption descriptor rejected");
+    mapped_context_state->encryption_descriptor_id =
+        saved_context_encryption;
+    mapped_context_state->encryption_descriptor_id = alternate_encrypted_id;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size, NULL),
+         "context state and composite profile config mismatch rejected");
+    mapped_context_state->encryption_descriptor_id =
+        saved_context_encryption;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD *mapped_called_state =
+        mapped_context_state + 2;
+    DSL_PU_SOURCE_IDENTITY_ID saved_called_state_identity =
+        mapped_called_state->context_pu_identity_id;
+    mapped_called_state->context_pu_identity_id = caller_identity.id;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size, NULL),
+         "called context state requires callee definition identity");
+    mapped_called_state->context_pu_identity_id = saved_called_state_identity;
+    UINT32 saved_context_state_count =
+        mapped_context_state_header->context_ckks_state_count;
+    mapped_context_state_header->context_ckks_state_count = 2;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes,
+              context_state_image_size -
+                  DSL_FHE_CONTEXT_CKKS_STATE_RECORD_SIZE,
+              NULL),
+         "missing called-context refresh state rejected");
+    mapped_context_state_header->context_ckks_state_count =
+        saved_context_state_count;
+    DSL_IR_VALUE_ID saved_extra_source =
+        mapped_context_state[1].source_value_id;
+    UINT32 saved_extra_role = mapped_context_state[1].state_role;
+    mapped_context_state[1].source_value_id = relu_value.id;
+    mapped_context_state[1].state_role =
+        DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size, NULL),
+         "unmatched extra post-refresh context state rejected");
+    mapped_context_state[1].source_value_id = saved_extra_source;
+    mapped_context_state[1].state_role = saved_extra_role;
+    DSL_FHE_CONTEXT_STATE_IMAGE_HEADER empty_context_state_header =
+        context_state_header;
+    empty_context_state_header.context_ckks_state_count = 0;
+    FHE_SYNC3_CHECK
+        (!DSL_FHE_Context_State_Image_Load_Mapped
+             (&empty_context_state_header, sizeof(empty_context_state_header),
+              NULL) &&
+         DSL_FHE_Context_State_Count() == 3,
+         "present context state image requires complete range coverage");
     UINT64 image_size = DSL_FHE_PLAN_IMAGE_HEADER_SIZE +
         (UINT64)header.disposition_count *
             DSL_FHE_PLAN_DISPOSITION_RECORD_SIZE +
@@ -6525,7 +6824,7 @@ Check_FHE_SYNC3_Plan_Image(void)
          DSL_FHE_Plan_Conversion_Disposition_Count() == 3 &&
          DSL_FHE_Plan_Approximation_Contract_Count() == 1 &&
          DSL_FHE_Plan_CKKS_Value_State_Count() == 3 &&
-         DSL_FHE_Plan_BN_Fold_Provenance_Count() == 1,
+         DSL_FHE_Plan_BN_Fold_Provenance_Count() == 2,
          "mapped planning image copied into managed tables");
     delete [] image_bytes;
     FHE_SYNC3_CHECK
@@ -6534,10 +6833,17 @@ Check_FHE_SYNC3_Plan_Image(void)
          DSL_FHE_Approx_Profile_Count() == 2 &&
          DSL_FHE_Approx_Stage_Count() == 6 &&
          DSL_FHE_Approx_Association_Count() == 1 &&
-         DSL_FHE_Context_Range_Count() == 1 &&
-         DSL_FHE_Plan_Image_Validate(stderr),
+         DSL_FHE_Context_Range_Count() == 2 &&
+         DSL_FHE_Approx_Profile_Image_Validate(stderr),
          "mapped composite profile copied and cross-validated");
     delete [] profile_image_bytes;
+    FHE_SYNC3_CHECK
+        (DSL_FHE_Context_State_Image_Load_Mapped
+             (context_state_image_bytes, context_state_image_size, stderr) &&
+         DSL_FHE_Context_State_Count() == 3 &&
+         DSL_FHE_Plan_Image_Validate(stderr),
+         "mapped context state copied and cross-validated");
+    delete [] context_state_image_bytes;
 
     char diagnostic[4096];
     memset(&verify, 0, sizeof(verify));
@@ -6555,10 +6861,25 @@ Check_FHE_SYNC3_Plan_Image(void)
         (DSL_Builder_Finalize_Mapped_Image(&request) &&
          access(request.path, F_OK) == 0,
          "mapped-image artifact finalization");
+    bn_fold_info.context_pu_identity_id = pu_identity.id;
+    bn_fold_info.context_callsite_id = called_context.id;
+    bn_fold_info.context_pu_identity_id = caller_identity.id;
+    bn_fold_info.flags = DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS |
+                         DSL_FHE_BN_FOLD_SHARED_PU_DEFINITION;
+    legacy_bn_fold_id = DSL_Builder_Record_FHE_BN_Fold
+                            (conv, batch_norm, &bn_fold_info);
+    bn_fold_info.flags |= DSL_FHE_BN_FOLD_CONTEXT_IDENTITY_IS_CALLEE;
+    FHE_SYNC3_CHECK
+        (called_bn_fold_id != 0 && legacy_bn_fold_id != 0 &&
+         called_bn_fold_id != legacy_bn_fold_id &&
+         DSL_Builder_Record_FHE_BN_Fold
+             (conv, batch_norm, &bn_fold_info) == 0,
+         "called-context BatchNorm identity migration validation");
     DSL_FHE_Plan_Image_Reset();
     FHE_SYNC3_CHECK
         (!DSL_FHE_Plan_Image_Has_Records() &&
          !DSL_FHE_Approx_Profile_Image_Has_Records() &&
+         !DSL_FHE_Context_State_Image_Has_Records() &&
          DSL_FHE_Plan_Conversion_Disposition_Count() == 0 &&
          DSL_FHE_Plan_Image_Validate(NULL),
          "planning image reset");
