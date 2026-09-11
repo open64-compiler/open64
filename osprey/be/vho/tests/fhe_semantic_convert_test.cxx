@@ -35,6 +35,10 @@
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
 
+extern BOOL VHO_FHE_Ace_Relu_Post_Refresh_Level
+                                (const char *instance_path,
+                                 INT32 *level);
+
 void
 Signal_Cleanup(INT sig)
 {
@@ -110,8 +114,21 @@ main(void)
     TY_IDX conv_weight_ty;
     TY_IDX channel_parameter_ty;
     WN *tree;
+    INT32 refresh_level;
 
     Initialize_Test_Context();
+    /* The linked schedule accepts only a route, so table IDs cannot select it. */
+    if (!VHO_FHE_Ace_Relu_Post_Refresh_Level
+            ("stem.relu", &refresh_level) || refresh_level != 15 ||
+        !VHO_FHE_Ace_Relu_Post_Refresh_Level
+            ("layer2.2.relu2", &refresh_level) || refresh_level != 18 ||
+        !VHO_FHE_Ace_Relu_Post_Refresh_Level
+            ("layer3.2.relu2", &refresh_level) || refresh_level != 17 ||
+        VHO_FHE_Ace_Relu_Post_Refresh_Level
+            ("unknown.relu", &refresh_level)) {
+        fprintf(stderr, "ACE route-specific level schedule is invalid\n");
+        return 1;
+    }
     if (!DSL_Builder_Begin_Program())
         return 1;
     DSL_Opcode_Register_Domain_Wrapper_Examples();
@@ -193,12 +210,13 @@ main(void)
     DSL_FHE_Compilation_Config_Record_Init(&config);
     config.scheme = DSL_FHE_SCHEME_CKKS;
     config.security_level = DSL_FHE_SECURITY_128_CLASSIC;
-    config.ring_dimension = 16384;
-    config.multiplicative_depth_policy = DSL_FHE_POLICY_AUTO;
-    config.multiplicative_depth = 8;
-    config.scale_bits = 50;
+    config.ring_dimension = 65536;
+    config.multiplicative_depth_policy = DSL_FHE_POLICY_EXPLICIT;
+    config.multiplicative_depth = 33;
+    config.scale_bits = 56;
     config.first_modulus_bits = 60;
-    config.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    config.slot_count_policy = DSL_FHE_POLICY_EXPLICIT;
+    config.slot_count = 32768;
     config.bootstrap_policy = DSL_FHE_BOOTSTRAP_AUTO;
     config.backend_policy = DSL_FHE_BACKEND_OPENFHE;
     config_id = DSL_FHE_Intern_Compilation_Config(&config);
@@ -208,7 +226,7 @@ main(void)
     encrypted.scheme = DSL_FHE_SCHEME_CKKS;
     encrypted.config_id = config_id;
     encrypted.key_set_name = Save_Str("fhe_semantic_key");
-    encrypted.slot_count_policy = DSL_FHE_POLICY_AUTO;
+    encrypted.slot_count_policy = DSL_FHE_POLICY_INHERIT;
     encrypted.encoding_policy = DSL_FHE_ENCODING_CKKS_PACKED;
     encrypted.packing_policy = DSL_FHE_PACKING_AUTO;
     encrypted_id = DSL_FHE_Intern_Encryption_Descriptor(&encrypted);
@@ -434,9 +452,32 @@ main(void)
     range.observed_max_tcon = observed_max;
     range.out_of_range_policy = DSL_FHE_CONTEXT_RANGE_REJECT;
     range.provenance = Save_Str("deterministic-policy-fixture-not-model-data");
+    range.flags = DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD context_state;
+    DSL_FHE_Context_CKKS_State_Record_Init(&context_state);
+    context_state.owner_pu_st = PU_Info_proc_sym(pu);
+    context_state.source_value_id = relu_value_id;
+    context_state.context_pu_identity_id = identity.id;
+    context_state.context_callsite_id = DSL_CALLSITE_METADATA_INVALID_ID;
+    context_state.state_role = DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH;
+    context_state.state_version = 1;
+    context_state.encryption_descriptor_id = encrypted_id;
+    context_state.scheme = DSL_FHE_SCHEME_CKKS;
+    context_state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    context_state.level = 15;
+    context_state.scale_bits = 56;
+    context_state.component_count = 2;
+    context_state.precision_bits = 30;
+    context_state.slot_count = 32768;
+    context_state.encrypted_layout_name = Save_Str("ckks.packed");
+    context_state.pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
+    context_state.pending_bootstrap_reason =
+        DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
     if (relu_disposition_id == 0 ||
         DSL_FHE_Approx_Profile_Bind_Context_Range(&range) == 0 ||
-        !DSL_FHE_Approx_Profile_Image_Validate(stderr)) {
+        DSL_FHE_Context_State_Intern(&context_state) == 0 ||
+        !DSL_FHE_Approx_Profile_Image_Validate(stderr) ||
+        !DSL_FHE_Context_State_Image_Validate(stderr)) {
         fprintf(stderr, "deterministic ACE profile fixture did not validate\n");
         return 1;
     }

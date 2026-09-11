@@ -77,6 +77,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--checkpoint-identity", required=True)
     parser.add_argument("--samples", type=Path, required=True)
+    parser.add_argument("--protocol", type=Path)
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--dataset-version", required=True)
     parser.add_argument("--dataset-split", required=True)
@@ -102,13 +103,34 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise RuntimeError("identity template lacks contexts")
     samples = _load_samples(args.samples)
     preprocessing_text = args.preprocessing.read_text(encoding="utf-8")
+    protocol = _load_json(args.protocol) if args.protocol is not None else None
+    if protocol is not None:
+        if protocol.get("status") != "predeclared_before_acceptance":
+            raise RuntimeError("calibration protocol is not predeclared")
+        if protocol.get("authority", {}).get("open64_checkpoint_sha256") != \
+                file_sha256(args.checkpoint):
+            raise RuntimeError("calibration checkpoint differs from protocol")
+        if protocol.get("preprocessing", {}).get("sha256") != \
+                file_sha256(args.preprocessing):
+            raise RuntimeError("calibration preprocessing differs from protocol")
+        calibration = protocol.get("calibration", {})
+        if calibration.get("archive_sha256") != file_sha256(args.samples):
+            raise RuntimeError("calibration sample archive differs from protocol")
+        if calibration.get("sample_ids") != [sample.sample_id for sample in samples]:
+            raise RuntimeError("calibration sample order differs from protocol")
+    dataset = protocol.get("dataset", {}) if protocol is not None else {}
+    calibration = protocol.get("calibration", {}) if protocol is not None else {}
     authority = {
         "dataset_name": args.dataset_name,
         "dataset_version": args.dataset_version,
         "dataset_split": args.dataset_split,
-        "dataset_files": [args.samples.name],
-        "dataset_sha256": file_sha256(args.samples),
-        "sample_selection": args.sample_selection,
+        "dataset_files": dataset.get("files", [args.samples.name]),
+        "dataset_sha256": dataset.get(
+            "canonical_files_sha256", file_sha256(args.samples)
+        ),
+        "sample_selection": calibration.get(
+            "selection", args.sample_selection
+        ),
         "sample_seed": args.sample_seed,
         "preprocessing": preprocessing_text,
         "preprocessing_sha256": file_sha256(args.preprocessing),
@@ -117,6 +139,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "acceptance_data_role": "disjoint_held_out",
         "out_of_range_policy": "reject",
         "approval_identity": args.approved_by or None,
+        "calibration_protocol_sha256": (
+            file_sha256(args.protocol) if args.protocol is not None else None
+        ),
+        "calibration_sample_archive_sha256": file_sha256(args.samples),
+        "ace_onnx_sha256": (
+            protocol.get("authority", {}).get("ace_onnx_sha256")
+            if protocol is not None else None
+        ),
+        "training_provenance": (
+            protocol.get("authority", {}).get("training_provenance")
+            if protocol is not None else None
+        ),
     }
     collector = IdentityBoundReluCalibrationCollector(
         _load_model(args.model_source, args.checkpoint),

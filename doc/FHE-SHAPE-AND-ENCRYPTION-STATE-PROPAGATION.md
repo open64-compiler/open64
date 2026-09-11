@@ -351,15 +351,14 @@ and numerical-equivalence proofs.
 
 ### ReLU policy boundary
 
-SYNC-3 may persist a structurally valid approximation obligation and CKKS
-refresh reason, but it must not invent polynomial coefficients. The selected
-ResNet architecture candidate is the ACE-compatible composite Chebyshev sign
-profile with ordered degrees `7 -> 15 -> 13` and claimed depth 11. SYNC-4
-requires certified stage coefficients, exact context-bound identity, clear and
-model error, evaluation scheme, and CKKS depth/state authority. Only then may
-the compiler materialize bootstrap, normalization, the ordered stages, and
+SYNC-3 persists the approved approximation obligation and CKKS refresh reason
+without materializing either operation. Commit 19 certifies the ACE-compatible
+composite Chebyshev sign profile with ordered degrees `7 -> 15 -> 13`, depth
+11, exact coefficient bytes, 19 context-bound ranges, held-out clear-model
+evidence, and context-specific static CKKS planning states. SYNC-4 consumes
+that evidence to materialize bootstrap, normalization, the ordered stages, and
 ReLU reconstruction. A single cubic remains experimental and cannot substitute
-for that evidence.
+for the accepted profile.
 
 ## Integrated `-O0` Execution Order
 

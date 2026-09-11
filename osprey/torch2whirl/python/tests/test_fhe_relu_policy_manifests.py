@@ -107,14 +107,19 @@ def validate_ranges(manifest: dict, require_ready: bool = False) -> None:
     root_count = 0
     for context in contexts:
         key = (
+            context.get("owner_pu_st"),
             context.get("source_relu_value_id"),
             context.get("context_pu_identity_id"),
             context.get("context_callsite_id"),
         )
-        if any(not isinstance(value, int) for value in key) or key in keys:
+        if (
+            not isinstance(key[0], str)
+            or any(not isinstance(value, int) for value in key[1:])
+            or key in keys
+        ):
             raise ManifestError("invalid or duplicate ReLU context identity")
         keys.add(key)
-        if context["context_callsite_id"] == 0:
+        if key[3] == 0:
             root_count += 1
     if root_count != 1:
         raise ManifestError("one root and eighteen called contexts are required")
@@ -131,6 +136,12 @@ def validate_ranges(manifest: dict, require_ready: bool = False) -> None:
         )
         if any(not authority.get(field) for field in required):
             raise ManifestError("range calibration authority is incomplete")
+        for field in (
+            "dataset_sha256",
+            "preprocessing_sha256",
+            "trained_checkpoint_sha256",
+        ):
+            require_sha256(authority.get(field), field)
         for context in contexts:
             if any(
                 context.get(field) is None
@@ -160,45 +171,87 @@ def validate_accuracy(manifest: dict, require_ready: bool = False) -> None:
             require_sha256(inputs.get(field), field)
         if any(value is None for value in metrics.values()):
             raise ManifestError("accuracy thresholds were not predeclared")
-        if not isinstance(manifest.get("results"), dict):
+        results = manifest.get("results")
+        if not isinstance(results, dict):
             raise ManifestError("accuracy results are absent")
+        if manifest.get("failures") != []:
+            raise ManifestError("accuracy run recorded policy failures")
+        if not isinstance(results.get("sample_count"), int) or \
+                results["sample_count"] <= 0:
+            raise ManifestError("accuracy sample count is invalid")
+        checks = (
+            results.get("clear_baseline_top1_percent", -1.0) >=
+                metrics["minimum_clear_top1_percent"],
+            abs(
+                results.get("clear_baseline_top1_percent", -1.0) -
+                metrics["published_ace_clear_reference_percent"]
+            ) <= metrics["maximum_clear_reference_difference_points"],
+            results.get("polynomial_top1_drop_points", float("inf")) <=
+                metrics["maximum_polynomial_top1_drop_points"],
+            results.get("prediction_agreement_percent", -1.0) >=
+                metrics["minimum_prediction_agreement_percent"],
+            results.get("out_of_range_value_count", -1) <=
+                metrics["maximum_out_of_range_values"],
+        )
+        if not all(checks):
+            raise ManifestError("accuracy result violates a predeclared gate")
 
 
 def validate_ckks(manifest: dict, require_ready: bool = False) -> None:
     if manifest.get("schema") != "open64.fhe.relu.ckks-schedule.v1":
         raise ManifestError("unknown CKKS schedule schema")
-    symbolic = manifest.get("symbolic_contract", {})
-    if symbolic.get("stage_degrees") != [7, 15, 13]:
-        raise ManifestError("CKKS schedule stage order mismatch")
-    schedule = manifest.get("schedule")
+    schedule = manifest.get("profile_schedule")
     if not isinstance(schedule, list) or len(schedule) != 5:
         raise ManifestError("CKKS schedule must cover five ordered steps")
+    if [step.get("ordinal") for step in schedule] != list(range(5)):
+        raise ManifestError("CKKS schedule ordinals are not dense")
+    if sum(step.get("level_consumption", -1) for step in schedule) != 11:
+        raise ManifestError("CKKS schedule does not prove depth 11")
+    contexts = manifest.get("contexts")
+    if not isinstance(contexts, list) or len(contexts) != 19:
+        raise ManifestError("CKKS schedule must cover 19 ReLU contexts")
+    names = [context.get("instance_path") for context in contexts]
+    if len(set(names)) != 19:
+        raise ManifestError("CKKS context schedule contains duplicates")
+    levels = [context.get("post_refresh_level") for context in contexts]
+    if set(levels) != {15, 17, 18}:
+        raise ManifestError("CKKS context levels do not match ACE")
+    if any(
+        context.get("final_level") != context.get("post_refresh_level") - 11
+        for context in contexts
+    ):
+        raise ManifestError("CKKS context depth transition is inconsistent")
     if require_ready:
-        if manifest.get("status") != "approved":
+        if manifest.get("status") != "approved_static_compiler_schedule":
             raise ManifestError("CKKS state proof is not approved")
         config = manifest.get("selected_fhe_config", {})
-        if any(value is None for value in config.values()):
+        expected_config = {
+            "scheme": "CKKS",
+            "security_level": "128_classic",
+            "ring_dimension": 65536,
+            "slot_count": 32768,
+            "multiplicative_depth": 33,
+            "first_modulus_bits": 60,
+            "scaling_modulus_bits": 56,
+            "bootstrap_policy": "auto_or_on",
+        }
+        if any(config.get(key) != value for key, value in expected_config.items()):
             raise ManifestError("concrete OpenFHE configuration is incomplete")
-        fields = (
-            "input_level",
-            "output_level",
-            "input_scale_bits",
-            "output_scale_bits",
-            "component_count",
-            "minimum_precision_bits",
-            "evaluation_algorithm",
-            "level_consumption",
-        )
+        fields = ("input_level_offset", "output_level_offset", "scale_bits",
+                  "component_count", "minimum_precision_bits",
+                  "evaluation_algorithm", "level_consumption")
         if any(step.get(field) is None for step in schedule for field in fields):
             raise ManifestError("CKKS schedule transition is incomplete")
-        if sum(step["level_consumption"] for step in schedule) != 11:
-            raise ManifestError("CKKS schedule does not prove depth 11")
-        if manifest.get("depth_sum") != 11:
-            raise ManifestError("CKKS depth sum is inconsistent")
-        if not manifest.get("symbolic_proof"):
-            raise ManifestError("symbolic CKKS proof is absent")
-        if not manifest.get("executed_openfhe_evidence"):
-            raise ManifestError("executed OpenFHE evidence is absent")
+        contract = manifest.get("context_state_contract", {})
+        if contract.get("state_role") != "POST_REFRESH" or \
+                contract.get("state_version") != 1 or \
+                contract.get("scale_bits") != 56 or \
+                contract.get("component_count") != 2 or \
+                contract.get("minimum_precision_bits") != 30 or \
+                contract.get("pending_actions") != ["BOOTSTRAP"] or \
+                contract.get("pending_bootstrap_reason") != \
+                    "PRE_RELU_REFRESH":
+            raise ManifestError("CKKS context-state contract is incomplete")
 
 
 def validate_package_index(manifest: dict) -> None:
@@ -236,15 +289,11 @@ class FHEReluPolicyManifestTest(unittest.TestCase):
         validate_ckks(self.ckks)
         validate_package_index(self.package)
 
-    def test_only_coefficient_profile_gate_is_approved(self) -> None:
+    def test_all_commit19_policy_evidence_gates_are_approved(self) -> None:
         validate_coefficients(self.coefficients, True)
-        for validator, manifest in (
-            (validate_ranges, self.ranges),
-            (validate_accuracy, self.accuracy),
-            (validate_ckks, self.ckks),
-        ):
-            with self.assertRaises(ManifestError):
-                validator(manifest, True)
+        validate_ranges(self.ranges, True)
+        validate_accuracy(self.accuracy, True)
+        validate_ckks(self.ckks, True)
 
     def test_incomplete_coefficient_stage_is_rejected(self) -> None:
         malformed = copy.deepcopy(self.coefficients)
@@ -264,17 +313,29 @@ class FHEReluPolicyManifestTest(unittest.TestCase):
         with self.assertRaises(ManifestError):
             validate_ranges(malformed)
 
-    def test_ready_range_manifest_without_measurements_is_rejected(self) -> None:
+    def test_approved_range_manifest_without_measurements_is_rejected(self) -> None:
         malformed = copy.deepcopy(self.ranges)
-        malformed["status"] = "approved"
+        malformed["contexts"][0]["bound_b"] = None
         with self.assertRaises(ManifestError):
             validate_ranges(malformed, require_ready=True)
 
-    def test_ready_accuracy_manifest_without_thresholds_is_rejected(self) -> None:
+    def test_approved_accuracy_manifest_with_threshold_failure_is_rejected(self) -> None:
         malformed = copy.deepcopy(self.accuracy)
-        malformed["status"] = "approved"
+        malformed["results"]["prediction_agreement_percent"] = 97.9
         with self.assertRaises(ManifestError):
             validate_accuracy(malformed, require_ready=True)
+
+    def test_ckks_context_level_mismatch_is_rejected(self) -> None:
+        malformed = copy.deepcopy(self.ckks)
+        malformed["contexts"][0]["post_refresh_level"] = 16
+        with self.assertRaises(ManifestError):
+            validate_ckks(malformed, require_ready=True)
+
+    def test_ckks_depth_mismatch_is_rejected(self) -> None:
+        malformed = copy.deepcopy(self.ckks)
+        malformed["profile_schedule"][4]["level_consumption"] = 2
+        with self.assertRaises(ManifestError):
+            validate_ckks(malformed, require_ready=True)
 
     def test_ready_ckks_manifest_without_transitions_is_rejected(self) -> None:
         malformed = copy.deepcopy(self.ckks)

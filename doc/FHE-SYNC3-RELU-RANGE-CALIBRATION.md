@@ -1,9 +1,8 @@
 # FHE SYNC-3 Identity-Bound ReLU Range Calibration
 
-Status: calibration machinery, authenticated all-PU binding, and structural
-validation are implementation-complete locally after PR #128. Trained-model
-calibration evidence is not yet available; `CFHECNN-RELU-003` remains required
-without an approved manifest.
+Status: calibration machinery, authenticated all-PU binding, trained-model
+range evidence, and Commit 19 structural validation are complete. An absent
+manifest still requires fail-closed `CFHECNN-RELU-003` behavior.
 
 ## Purpose and boundary
 
@@ -25,10 +24,11 @@ native range binding. The committed template enumerates exactly one root ReLU
 and eighteen called contexts. Shared compiler PUs therefore retain distinct
 callsite observations even when they reuse the same source ReLU value ID.
 
-This commit does not certify full SecureResNet FHE. The repository has no
-approved trained SecureResNet20 checkpoint or immutable CIFAR-10 calibration
-input locally. The deterministic source fixture and generated inputs certify
-the collector machinery only.
+The accepted model evidence uses the pinned ACE ONNX artifact as the compiler
+fixture, an immutable Open64 PyTorch translation, and the canonical CIFAR-10
+distribution. Original training provenance is unknown and is not claimed. The
+deterministic synthetic fixture remains a machinery-only test and contributes
+no model range or accuracy evidence.
 
 ## Collection algorithm
 
@@ -94,20 +94,33 @@ After approval, the FHE conversion pass must:
 2. read exact bytes and verify the external SHA-256 before parsing or using
    any semantic field;
 3. parse the fixed schema with bundled header-only RapidJSON, verify the
-   embedded canonical-content hash, approval authority, source/checkpoint/data
-   hashes, sample evidence, finite bounds, and held-out acceptance-data role;
-4. derive the expected identity set from live Open64 DSL node, PU-identity,
+   embedded canonical-content hash, approval authority, hash syntax, sample
+   evidence, finite bounds, and held-out acceptance-data role;
+4. before conversion, hash the active SafeTensors parameter side file and
+   require an exact match with `source_artifact.parameter_payload_sha256`;
+   this is the native model-state binding available at the binary-WHIRL
+   boundary;
+5. derive the expected identity set from live Open64 DSL node, PU-identity,
    callsite, and value tables and reject anything other than the exact 19-row
    set before mutating planning tables;
-5. join each manifest context to the live source ReLU by the complete identity
+6. join each manifest context to the live source ReLU by the complete identity
    and create finite observed-min, observed-max, and positive-bound TCONs;
-6. call `DSL_FHE_Approx_Profile_Bind_Context_Range()` exactly once per context
-   and add one composite disposition per reusable physical ReLU definition;
-7. require the checkpoint finalizer to prove all 19 contexts were consumed
-   exactly once, then clear retained state through completion on success or
-   failure; and
-8. require 19 reopened context rows and inspect them with
+7. call `DSL_FHE_Approx_Profile_Bind_Context_Range()` exactly once per context,
+   add one matching `POST_REFRESH.v1` context-state row, and add one composite
+   disposition per reusable physical ReLU definition;
+8. require the checkpoint finalizer to prove all 19 ranges and states were
+   consumed exactly once, then clear retained state through completion on
+   success or failure; and
+9. require 19 reopened range rows and 19 context-state rows with
    `ir_b2a -st -src`.
+
+The backend does not reopen the training checkpoint or source file, and it
+does not derive an input `.B` whole-file digest from the per-PU callback. The
+independent certification lane therefore verifies the exact `.B`, model
+source, trained checkpoint, CIFAR-10 inputs, and their recorded hashes before
+the candidate is accepted. Native prepublication verification covers the
+active SafeTensors whole-file digest plus live WHIRL identities, routes, and
+FHE configuration.
 
 PR #127 supplies the reviewed runtime-only path and expected SHA-256 fields.
 The FHE consumer adds no JsonCpp or frontend-builder dependency; it uses the
@@ -125,31 +138,38 @@ Focused tests prove:
 - zero and negative `B` rejection;
 - manifest hash mismatch rejection;
 - native exact-byte SHA rejection before JSON use;
+- active parameter payload mismatch rejection before conversion;
 - native malformed JSON, unapproved status, unknown/duplicate/missing identity,
   and invalid-bound rejection with no checkpoint artifact;
+- route-to-level lookup structurally accepts no mapped-image numeric identity,
+  so an equivalent legal table allocation cannot alter the stable
+  `instance_path` schedule;
 - real six-PU fail-closed derivation of exactly 19 expected context identities;
 - callback selection mismatch rejection and retained-state cleanup;
 - candidate manifests cannot pass approval validation; and
 - a fully populated, explicitly approved test-only manifest can pass the
-  approval validator without being bound into a model artifact.
+  approval validator without being bound into a model artifact; and
+- the model-authoritative manifest binds all 19 ranges and context states in a
+  six-PU checkpoint that independently reopens.
 
 The retained fixture must be labeled `fixture-only-not-calibration`. It may not
 replace trained checkpoint, CIFAR-10 calibration, held-out acceptance, or
 runtime CKKS evidence.
 
-## External evidence blocker
+## Accepted model evidence
 
-To produce a model-authoritative manifest, reviewers must supply or approve:
+The Commit 19 model-authoritative manifest freezes:
 
-1. a licensed trained ResNet-20/CIFAR-10 checkpoint and immutable SHA-256;
-2. the CIFAR-10 source/version and redistribution or download policy;
-3. a frozen calibration split or ordered sample-ID list and canonical digest;
-4. a preprocessing definition and implementation hash;
-5. a safety factor and explicit outlier/rejection policy; and
-6. a disjoint held-out acceptance set with predeclared metrics and thresholds.
+1. the pinned ACE-derived checkpoint SHA-256, while recording unknown original
+   training provenance;
+2. the canonical CIFAR-10 source/version and local-only hashed-input policy;
+3. a deterministic class-stratified 5,000-image training calibration subset;
+4. the exact ACE preprocessing definition and hash;
+5. `B = 1.1 * observed_abs_max` and reject-on-outlier policy; and
+6. a disjoint 1,000-image held-out test subset with predeclared thresholds.
 
-Until those evidence inputs are accepted, `CFHECNN-RELU-003` remains the
-correct no-manifest conversion boundary and no ReLU-bearing
-`secure_resnet20.fhe.B` may be published. Authenticated but malformed,
-unapproved, or identity-incomplete manifests fail earlier under the stable
-`CFHECNN-RELU-004` / `CFHECNN-RELU-005` diagnostics.
+The accepted model manifest permits only the SYNC-3 planning checkpoint.
+Without it, `CFHECNN-RELU-003` remains the correct conversion boundary.
+Authenticated but malformed, unapproved, or identity-incomplete manifests
+fail under stable `CFHECNN-RELU-004` / `CFHECNN-RELU-005` diagnostics. SYNC-4
+materialization and later ciphertext execution remain separate gates.

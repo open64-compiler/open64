@@ -342,38 +342,42 @@ node-retirement contract before any SYNC-3 implementation begins.
 
 ### **SYNC-3: ResNet FHE Conversion Review**
 
-Status: BatchNorm conversion and fail-closed ReLU-policy handling are
-implemented and certified on the FHE-owned path. The positive ReLU-free
-six-PU artifact proves 13 physical Conv/BN definition rewrites, 21
-source-context folds, and 42 converted tensors. PR #123 supplies the accepted
-composite-profile image and APIs. Full ReLU-bearing SecureResNet publication
-remains blocked at range-specific `CFHECNN-RELU-003` pending the remaining
-Commit 17 model-policy tuple
-documented by `doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`.
+Status: Commit 19 implementation and local certification are complete on the
+FHE-owned candidate; independent main-side artifact review and merge remain.
+The six-PU SecureResNet planning artifact proves 13 physical Conv/BN
+definition rewrites, 21 source-context folds, 42 converted tensors, 46
+operator dispositions, 19 authenticated ReLU ranges, and 19 matching
+context-specific CKKS states. The converted side payload and report publish
+before `.fhe.B`, which is the atomic commit marker.
 
 The exact ACE bytes are project-approved from empirical ANT ACE evidence and
-the coefficient profile is integrated. All 19 persisted Open64 ReLU context
-keys are frozen in machine-readable review manifests. This is not trained-model
-approval: measured context ranges, predeclared accuracy acceptance, and a
-concrete executed OpenFHE CKKS state schedule remain absent.
+the coefficient profile is integrated. A pinned ACE-derived checkpoint and a
+deterministic 5,000-image class-stratified CIFAR-10 training subset supply the
+19 approved ranges. A disjoint 1,000-image held-out test run records 91.6%
+clear accuracy, 91.5% polynomial accuracy, 0.1 percentage-point degradation,
+99.9% prediction agreement, and zero out-of-range values against predeclared
+gates. Original training provenance remains unknown and is not claimed.
 The deterministic collector in
 `doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` now proves the 19-way identity join,
 pre-ReLU observation algorithm, distribution evidence, bound checks, and
 canonical manifest hashing. Its fixture is explicitly not calibration.
 PR #127 supplies authenticated runtime manifest selection, and the FHE-owned
 RapidJSON consumer verifies exact bytes, approval, identity coverage, and
-all-PU consumption before publishing. A trained checkpoint/dataset decision
-remains the prerequisite for native model binding.
+all-PU consumption before publishing. It also authenticates the active
+SafeTensors whole-file digest against the approved model payload; a changed
+payload fails natively before conversion. PR #130 supplies the context-state
+image. The FHE pass records one callee-tagged `POST_REFRESH.v1` row per range,
+with ACE levels 15, 17, or 18, scale 56, two components, precision 30, and a
+pending pre-ReLU bootstrap reason. This is compiler/static schedule evidence,
+not executed OpenFHE ciphertext inference.
 Opcode allocation, bootstrap insertion, SIHE/CKKS primitive lowering, and
 OpenFHE/runtime lowering remain outside this checkpoint.
 
-The next main/common synchronization point adds the optional
-`.WHIRL.dsl_fhe_context_state` image defined by
-`doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md`. It preserves shared procedure
-definitions while recording exact call-context CKKS planning state. After that
-infrastructure merges, the FHE task binds one `POST_REFRESH.v1` row to each of
-the 19 authenticated ReLU context ranges and certifies the ACE-specific state
-policy before Commit 19 publication.
+The optional `.WHIRL.dsl_fhe_context_state` image defined by
+`doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md` is merged and consumed. It
+preserves shared procedure definitions while recording exact call-context CKKS
+planning state. SYNC-4 remains responsible for materializing bootstrap,
+normalization, the three Chebyshev stages, and ReLU reconstruction.
 
 Required phase output:
 

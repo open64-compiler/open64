@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import os
 from pathlib import Path
@@ -11,6 +12,8 @@ import shutil
 import subprocess
 import sys
 from typing import Optional, Sequence
+
+import torch
 
 from open64_dsc.builder import (
     FHE_BACKEND_OPENFHE,
@@ -47,14 +50,24 @@ def _fixture_source(bn_fold_only: bool = False) -> Path:
     return Path(__file__).resolve().parent / "models" / name
 
 
-def _load_model(source: Path):
+def _load_model(source: Path, checkpoint: Optional[Path] = None):
     spec = importlib.util.spec_from_file_location("secure_resnet20", source)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"failed to load fixture: {source}")
     module = importlib.util.module_from_spec(spec)
     sys.modules["secure_resnet20"] = module
     spec.loader.exec_module(module)
-    return module.create_model(), module.open64_sample_inputs()
+    model = module.create_model()
+    if checkpoint is not None:
+        try:
+            stored = torch.load(checkpoint, map_location="cpu", weights_only=True)
+        except TypeError:
+            stored = torch.load(checkpoint, map_location="cpu")
+        state = stored.get("state_dict", stored) if isinstance(stored, dict) else stored
+        if not isinstance(state, dict):
+            raise RuntimeError("checkpoint does not contain a state dictionary")
+        model.load_state_dict(state, strict=True)
+    return model.eval(), module.open64_sample_inputs()
 
 
 def _prepare_artifact_dir(path: Path) -> None:
@@ -114,6 +127,11 @@ def _attach_fhe_contract(module) -> None:
     config = builder.fhe_compilation_config(
         bootstrap_policy=FHE_BOOTSTRAP_AUTO,
         backend_policy=FHE_BACKEND_OPENFHE,
+        ring_dimension=65536,
+        multiplicative_depth=33,
+        scale_bits=56,
+        first_modulus_bits=60,
+        slot_count=32768,
     )
     ciphertext = builder.fhe_encryption_descriptor(
         config,
@@ -185,11 +203,15 @@ def _attach_fhe_contract(module) -> None:
     )
 
 
-def _emit_capture(artifact_dir: Path, bn_fold_only: bool = False) -> int:
+def _emit_capture(
+    artifact_dir: Path,
+    bn_fold_only: bool = False,
+    checkpoint: Optional[Path] = None,
+) -> int:
     _prepare_artifact_dir(artifact_dir)
     source = artifact_dir / "secure_resnet20.py"
     shutil.copyfile(_fixture_source(bn_fold_only), source)
-    model, sample_inputs = _load_model(source)
+    model, sample_inputs = _load_model(source, checkpoint)
     options = WhirlExportOptions(
         entry="forward",
         backend="native",
@@ -220,6 +242,8 @@ def _emit_capture(artifact_dir: Path, bn_fold_only: bool = False) -> int:
             "fhe.parameters=value_class:encoded_plaintext;side_file=secure_resnet20.safetensors",
             "certification=bn_fold_relu_free" if bn_fold_only else
             "certification=full_resnet20_capture",
+            "checkpoint=source_fixture_default" if checkpoint is None else
+            f"checkpoint_sha256={hashlib.sha256(checkpoint.read_bytes()).hexdigest()}",
         ]) + "\n",
         encoding="utf-8",
     )
@@ -390,13 +414,17 @@ def _inspect_capture(ir_b2a: Path, artifact_dir: Path) -> int:
     return 0
 
 
-def _run_parent(artifact_dir: Path) -> int:
+def _run_parent(artifact_dir: Path, checkpoint: Optional[Path]) -> int:
     ir_b2a = _find_ir_b2a()
     if ir_b2a is None:
         return 0
     env = os.environ.copy()
+    command = [sys.executable, __file__, "--emit-only"]
+    if checkpoint is not None:
+        command.extend(["--checkpoint", str(checkpoint)])
+    command.append(str(artifact_dir))
     completed = subprocess.run(
-        [sys.executable, __file__, "--emit-only", str(artifact_dir)],
+        command,
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -418,6 +446,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--emit-only", action="store_true")
     parser.add_argument("--bn-fold-only", action="store_true")
+    parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("artifact_dir", nargs="?")
     args = parser.parse_args(argv)
     artifact_dir = (
@@ -426,8 +455,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         else _repo_root() / "artifacts" / "fhe" / "resnet20_capture"
     )
     if args.emit_only:
-        return _emit_capture(artifact_dir, args.bn_fold_only)
-    return _run_parent(artifact_dir)
+        return _emit_capture(artifact_dir, args.bn_fold_only, args.checkpoint)
+    return _run_parent(artifact_dir, args.checkpoint)
 
 
 if __name__ == "__main__":

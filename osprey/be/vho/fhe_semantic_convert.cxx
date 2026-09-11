@@ -43,7 +43,7 @@ typedef struct {
 
 typedef struct {
     ST_IDX callee_pu_st;
-    DSL_PU_SOURCE_IDENTITY_ID caller_identity_id;
+    DSL_PU_SOURCE_IDENTITY_ID context_identity_id;
     DSL_CALLSITE_METADATA_ID callsite_id;
     UINT32 conv_weight_formal;
     UINT32 conv_bias_formal;
@@ -98,11 +98,18 @@ typedef struct {
 typedef struct {
     BOOL initialized;
     BOOL approved;
+    BOOL source_artifact_validated;
     std::string manifest_path;
     std::string external_sha256;
     std::string embedded_sha256;
+    std::string source_parameter_payload_sha256;
     std::vector<FHE_RELU_CALIBRATION_CONTEXT> contexts;
 } FHE_RELU_CALIBRATION_STATE;
+
+typedef struct {
+    const char *instance_path;
+    INT32 post_refresh_level;
+} FHE_ACE_RELU_CONTEXT_SCHEDULE;
 
 static std::vector<FHE_BN_CONTEXT_FOLD> VHO_FHE_bn_context_folds;
 static std::deque<FHE_CONVERTED_TENSOR> VHO_FHE_converted_tensors;
@@ -114,6 +121,50 @@ static BOOL VHO_FHE_artifacts_registered;
 static BOOL VHO_FHE_relu_range_blocked;
 static FHE_RELU_CALIBRATION_STATE VHO_FHE_relu_calibration;
 
+static const FHE_ACE_RELU_CONTEXT_SCHEDULE
+VHO_FHE_ace_relu_context_schedule[] = {
+    { "stem.relu", 15 },
+    { "layer1.0.relu1", 15 },
+    { "layer1.0.relu2", 15 },
+    { "layer1.1.relu1", 15 },
+    { "layer1.1.relu2", 15 },
+    { "layer1.2.relu1", 15 },
+    { "layer1.2.relu2", 18 },
+    { "layer2.0.relu1", 15 },
+    { "layer2.0.relu2", 15 },
+    { "layer2.1.relu1", 15 },
+    { "layer2.1.relu2", 15 },
+    { "layer2.2.relu1", 15 },
+    { "layer2.2.relu2", 18 },
+    { "layer3.0.relu1", 15 },
+    { "layer3.0.relu2", 15 },
+    { "layer3.1.relu1", 15 },
+    { "layer3.1.relu2", 15 },
+    { "layer3.2.relu1", 15 },
+    { "layer3.2.relu2", 17 }
+};
+
+BOOL
+VHO_FHE_Ace_Relu_Post_Refresh_Level
+        (const char *instance_path,
+         INT32 *level)
+{
+    if (instance_path == NULL || level == NULL)
+        return FALSE;
+    for (UINT32 i = 0;
+         i < sizeof(VHO_FHE_ace_relu_context_schedule) /
+                 sizeof(VHO_FHE_ace_relu_context_schedule[0]);
+         ++i) {
+        const FHE_ACE_RELU_CONTEXT_SCHEDULE &schedule =
+            VHO_FHE_ace_relu_context_schedule[i];
+        if (strcmp(instance_path, schedule.instance_path) == 0) {
+            *level = VHO_FHE_ace_relu_context_schedule[i].post_refresh_level;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static BOOL VHO_FHE_Semantic_Report
                                 (FILE *diagnostic,
                                  const char *code,
@@ -122,6 +173,10 @@ static BOOL VHO_FHE_PU_Is_FHE_Entry (ST_IDX owner_pu_st);
 static BOOL VHO_FHE_Value_Belongs_To_PU
                                 (const DSL_IR_VALUE_RECORD *value,
                                  ST_IDX owner_pu_st);
+static BOOL VHO_FHE_Validate_Ace_Context_States
+                                (ST_IDX owner_pu_st,
+                                 BOOL require_complete,
+                                 FILE *diagnostic);
 
 static const UINT64 VHO_FHE_ace_relu_stage_7_bits[] = {
     0x0000000000000000ULL, 0x3ff46f736ad8da32ULL,
@@ -673,6 +728,39 @@ VHO_FHE_Collect_Expected_Relu_Contexts
 }
 
 static BOOL
+VHO_FHE_Validate_Ace_Relu_Context_Route
+        (const FHE_RELU_CALIBRATION_CONTEXT &context,
+         const std::string &module_path,
+         UINT32 invocation_ordinal,
+         FILE *diagnostic)
+{
+    if (context.context_callsite_id ==
+        DSL_CALLSITE_METADATA_INVALID_ID) {
+        if (context.instance_path == "stem.relu" &&
+            module_path == "relu" && invocation_ordinal == 0)
+            return TRUE;
+    } else {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (DSL_Call_Image_Get_Callsite
+                (context.context_callsite_id, &callsite) &&
+            callsite.callee_pu_st == context.owner_pu_st &&
+            callsite.instance_path != STR_IDX_ZERO &&
+            invocation_ordinal < 2) {
+            std::string expected_module =
+                std::string(Index_To_Str(callsite.instance_path)) + ".relu";
+            std::ostringstream expected_instance;
+            expected_instance << expected_module << invocation_ordinal + 1;
+            if (module_path == expected_module &&
+                context.instance_path == expected_instance.str())
+                return TRUE;
+        }
+    }
+    return VHO_FHE_Semantic_Report
+               (diagnostic, "CFHECNN-RELU-005",
+                "calibration route does not match the persisted callsite");
+}
+
+static BOOL
 VHO_FHE_Validate_Calibration_Authority
         (const rapidjson::Value &root,
          FILE *diagnostic)
@@ -740,6 +828,7 @@ VHO_FHE_Parse_Approved_Calibration
         (const std::vector<unsigned char> &bytes,
          std::vector<FHE_RELU_CALIBRATION_CONTEXT> *contexts,
          std::string *embedded_sha256,
+         std::string *source_parameter_payload_sha256,
          FILE *diagnostic)
 {
     std::vector<char> json(bytes.begin(), bytes.end());
@@ -787,7 +876,9 @@ VHO_FHE_Parse_Approved_Calibration
     if (source == NULL || !source->IsObject() ||
         !VHO_FHE_JSON_SHA256(*source, "binary_whirl_sha256", NULL) ||
         !VHO_FHE_JSON_SHA256(*source, "model_source_sha256", NULL) ||
-        !VHO_FHE_JSON_SHA256(*source, "parameter_payload_sha256", NULL))
+        !VHO_FHE_JSON_SHA256
+            (*source, "parameter_payload_sha256",
+             source_parameter_payload_sha256))
         return VHO_FHE_Semantic_Report
                    (diagnostic, "CFHECNN-RELU-004",
                     "calibration source artifact identity is incomplete");
@@ -929,6 +1020,9 @@ VHO_FHE_Parse_Approved_Calibration
             return VHO_FHE_Semantic_Report
                        (diagnostic, "CFHECNN-RELU-005",
                         "calibration context identity is unknown or duplicate");
+        if (!VHO_FHE_Validate_Ace_Relu_Context_Route
+                (context, module_path, invocation_ordinal, diagnostic))
+            return FALSE;
         if (context.context_callsite_id ==
             DSL_CALLSITE_METADATA_INVALID_ID)
             ++root_count;
@@ -984,15 +1078,102 @@ VHO_FHE_Prepare_Relu_Calibration
                     "calibration manifest exact-byte SHA-256 mismatch");
     std::vector<FHE_RELU_CALIBRATION_CONTEXT> contexts;
     std::string embedded_sha256;
+    std::string source_parameter_payload_sha256;
     if (!VHO_FHE_Parse_Approved_Calibration
-            (bytes, &contexts, &embedded_sha256, diagnostic))
+            (bytes, &contexts, &embedded_sha256,
+             &source_parameter_payload_sha256, diagnostic))
         return FALSE;
     VHO_FHE_relu_calibration.initialized = TRUE;
     VHO_FHE_relu_calibration.manifest_path = path;
     VHO_FHE_relu_calibration.external_sha256 = digest;
     VHO_FHE_relu_calibration.embedded_sha256 = embedded_sha256;
+    VHO_FHE_relu_calibration.source_parameter_payload_sha256 =
+        source_parameter_payload_sha256;
     VHO_FHE_relu_calibration.contexts.swap(contexts);
     VHO_FHE_relu_calibration.approved = TRUE;
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_SHA256_Source_Payload
+        (const char *path,
+         std::string *digest,
+         FILE *diagnostic)
+{
+    static const UINT64 max_payload_size = 1024ULL * 1024ULL * 1024ULL;
+    FILE *file;
+    long length;
+    std::vector<unsigned char> bytes;
+
+    if (path == NULL || path[0] == '\0' || digest == NULL ||
+        (file = fopen(path, "rb")) == NULL)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-007",
+                    "could not open the active parameter payload");
+    BOOL valid = fseek(file, 0, SEEK_END) == 0 &&
+                 (length = ftell(file)) > 0 &&
+                 (UINT64)length <= max_payload_size &&
+                 fseek(file, 0, SEEK_SET) == 0;
+    if (valid) {
+        bytes.resize((size_t)length);
+        valid = fread(&bytes[0], 1, bytes.size(), file) == bytes.size();
+    }
+    valid = fclose(file) == 0 && valid;
+    if (!valid)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-007",
+                    "could not authenticate the active parameter payload");
+    *digest = VHO_FHE_SHA256(bytes);
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Validate_Active_Source_Artifact
+        (ST_IDX owner_pu_st,
+         FILE *diagnostic)
+{
+    if (!VHO_FHE_relu_calibration.approved ||
+        VHO_FHE_relu_calibration.source_artifact_validated)
+        return TRUE;
+    if (!VHO_FHE_PU_Is_FHE_Entry(owner_pu_st))
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-007",
+                    "entry parameter payload must be authenticated first");
+
+    std::set<std::string> side_files;
+    UINT32 external_value_count = 0;
+    for (DSL_IR_VALUE_ID id = 1; id <= DSL_IR_Image_Value_Count(); ++id) {
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_EXTERNAL_TENSOR_REFERENCE reference;
+        if (!DSL_IR_Image_Get_Value(id, &value) ||
+            !VHO_FHE_Value_Belongs_To_PU(&value, owner_pu_st) ||
+            !DSL_IR_Image_Get_External_Tensor_Reference
+                 (owner_pu_st, id, &reference))
+            continue;
+        if (reference.side_file == NULL || reference.side_file[0] == '\0' ||
+            reference.checksum == NULL ||
+            !VHO_FHE_Is_SHA256(reference.checksum))
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-007",
+                        "active external tensor provenance is incomplete");
+        side_files.insert(reference.side_file);
+        ++external_value_count;
+    }
+    if (external_value_count == 0 || side_files.size() != 1)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-007",
+                    "active model must use one authenticated parameter payload");
+
+    std::string digest;
+    if (!VHO_FHE_SHA256_Source_Payload
+            (side_files.begin()->c_str(), &digest, diagnostic))
+        return FALSE;
+    if (digest !=
+        VHO_FHE_relu_calibration.source_parameter_payload_sha256)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-007",
+                    "active parameter payload does not match calibration");
+    VHO_FHE_relu_calibration.source_artifact_validated = TRUE;
     return TRUE;
 }
 
@@ -1933,11 +2114,9 @@ VHO_FHE_Prepare_Call_Context_Folds
         "cnn.basic_block.bn2",
         "cnn.basic_block.downsample.bn"
     };
-    DSL_PU_SOURCE_IDENTITY_RECORD caller_identity;
     WN *body = WN_func_body(tree);
     size_t first_context = VHO_FHE_bn_context_folds.size();
-    if (body == NULL || !DSL_Call_Image_Find_PU_Identity
-                            (owner_pu_st, &caller_identity))
+    if (body == NULL)
         return FALSE;
 
     for (UINT32 callsite_id = 1;
@@ -2006,8 +2185,14 @@ VHO_FHE_Prepare_Call_Context_Folds
                 return FALSE;
 
             FHE_BN_CONTEXT_FOLD fold;
+            DSL_PU_SOURCE_IDENTITY_RECORD callee_identity;
+            if (!DSL_Call_Image_Find_PU_Identity
+                    (callsite.callee_pu_st, &callee_identity))
+                return VHO_FHE_Semantic_Report
+                           (diagnostic, "CFHECNN-BN-001",
+                            "callee PU identity is not resolvable");
             fold.callee_pu_st = callsite.callee_pu_st;
-            fold.caller_identity_id = caller_identity.id;
+            fold.context_identity_id = callee_identity.id;
             fold.callsite_id = callsite_id;
             fold.conv_weight_formal = weight.callee_formal_ordinal;
             fold.conv_bias_formal = bias.callee_formal_ordinal;
@@ -2301,7 +2486,7 @@ VHO_FHE_Prepare_Entry_Context_Folds
 
         FHE_BN_CONTEXT_FOLD fold;
         fold.callee_pu_st = owner_pu_st;
-        fold.caller_identity_id = identity.id;
+        fold.context_identity_id = identity.id;
         fold.callsite_id = DSL_CALLSITE_METADATA_INVALID_ID;
         fold.conv_weight_formal = 0;
         fold.conv_bias_formal = 0;
@@ -2427,7 +2612,7 @@ VHO_FHE_Record_BN_Fold_For_Conv
         fold.owner_pu_st = owner_pu_st;
         fold.conv_node_id = conv_node->id;
         fold.batch_norm_node_id = context.batch_norm_node_id;
-        fold.context_pu_identity_id = context.caller_identity_id;
+        fold.context_pu_identity_id = context.context_identity_id;
         fold.context_callsite_id = context.callsite_id;
         fold.source_conv_weight_value_id = context.source_conv_weight;
         fold.source_conv_bias_value_id = context.implicit_zero_bias ?
@@ -2444,7 +2629,8 @@ VHO_FHE_Record_BN_Fold_For_Conv
              DSL_FHE_BN_FOLD_FLAG_NONE) |
             (context.implicit_zero_bias ?
              DSL_FHE_BN_FOLD_IMPLICIT_ZERO_BIAS :
-             DSL_FHE_BN_FOLD_FLAG_NONE);
+             DSL_FHE_BN_FOLD_FLAG_NONE) |
+            DSL_FHE_BN_FOLD_CONTEXT_IDENTITY_IS_CALLEE;
 
         DSL_FHE_BN_FOLD_PROVENANCE_ID fold_id =
             DSL_FHE_Plan_Add_BN_Fold_Provenance(&fold);
@@ -2597,6 +2783,82 @@ VHO_FHE_Record_CKKS_State
 }
 
 static BOOL
+VHO_FHE_Validate_Ace_Config
+        (const FHE_CONVERSION_CONTEXT *context,
+         FILE *diagnostic)
+{
+    DSL_FHE_COMPILATION_CONFIG_RECORD config;
+    if (context == NULL ||
+        !DSL_FHE_Get_Compilation_Config(context->config_id, &config) ||
+        config.scheme != DSL_FHE_SCHEME_CKKS ||
+        config.security_level != DSL_FHE_SECURITY_128_CLASSIC ||
+        config.ring_dimension != 65536 ||
+        config.multiplicative_depth_policy != DSL_FHE_POLICY_EXPLICIT ||
+        config.multiplicative_depth != 33 ||
+        config.scale_bits != 56 || config.first_modulus_bits != 60 ||
+        config.slot_count_policy != DSL_FHE_POLICY_EXPLICIT ||
+        config.slot_count != 32768) {
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-006",
+                    "ACE ReLU schedule requires N=65536, depth=33, "
+                    "Q0=60, Delta=56, slots=32768, and 128-bit security");
+    }
+    return TRUE;
+}
+
+static BOOL
+VHO_FHE_Validate_Ace_Context_States
+        (ST_IDX owner_pu_st,
+         BOOL require_complete,
+         FILE *diagnostic)
+{
+    UINT32 matched = 0;
+    for (size_t i = 0; i < VHO_FHE_relu_calibration.contexts.size(); ++i) {
+        const FHE_RELU_CALIBRATION_CONTEXT &context =
+            VHO_FHE_relu_calibration.contexts[i];
+        INT32 expected_level;
+        if (owner_pu_st != ST_IDX_ZERO && context.owner_pu_st != owner_pu_st)
+            continue;
+        if (!context.consumed) {
+            if (require_complete)
+                return VHO_FHE_Semantic_Report
+                           (diagnostic, "CFHECKKS-STATE-001",
+                            "approved ReLU context has no CKKS state");
+            continue;
+        }
+        DSL_FHE_CONTEXT_CKKS_STATE_RECORD state;
+        if (!VHO_FHE_Ace_Relu_Post_Refresh_Level
+                 (context.instance_path.c_str(), &expected_level) ||
+            !DSL_FHE_Context_State_Find
+                 (context.owner_pu_st, context.source_relu_value_id,
+                  context.context_pu_identity_id,
+                  context.context_callsite_id,
+                  DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH, 1, &state) ||
+            state.scheme != DSL_FHE_SCHEME_CKKS ||
+            state.value_class != DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
+            state.level != expected_level || state.scale_bits != 56 ||
+            state.component_count != 2 || state.precision_bits < 30 ||
+            state.slot_count != 32768 || state.alignment_group != 0 ||
+            strcmp(Index_To_Str(state.encrypted_layout_name),
+                   "ckks.packed") != 0 ||
+            state.pending_actions != DSL_FHE_CKKS_PENDING_BOOTSTRAP ||
+            state.pending_bootstrap_reason !=
+                DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH) {
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECKKS-STATE-001",
+                        "ReLU context violates the approved ACE CKKS state");
+        }
+        ++matched;
+    }
+    if (require_complete &&
+        (matched != 19 || DSL_FHE_Context_State_Count() != 19))
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECKKS-STATE-001",
+                    "ACE CKKS context-state coverage is not exactly 19");
+    return TRUE;
+}
+
+static BOOL
 VHO_FHE_Operator_Is_Diagnostic_Source (DSL_OPERATOR dsl_operator)
 {
     return dsl_operator == OPR_DSLMODELINPUT ||
@@ -2735,6 +2997,9 @@ VHO_FHE_Default_Semantic_Gatekeeper
     if (!VHO_FHE_Prepare_Relu_Calibration(options, diagnostic))
         return FALSE;
     owner_pu_st = PU_Info_proc_sym(pu_info);
+    if (VHO_FHE_relu_calibration.approved &&
+        !VHO_FHE_Validate_Active_Source_Artifact(owner_pu_st, diagnostic))
+        return FALSE;
     if (!VHO_FHE_Select_Default_Context(owner_pu_st, &context, diagnostic))
         return FALSE;
     if (!VHO_FHE_Validate_Entry_Contracts(owner_pu_st, diagnostic))
@@ -2766,7 +3031,8 @@ VHO_FHE_Default_Semantic_Gatekeeper
             valid = FALSE;
     }
 
-    return valid;
+    return VHO_FHE_Validate_Ace_Context_States
+               (owner_pu_st, FALSE, diagnostic) && valid;
 }
 
 static BOOL
@@ -2780,6 +3046,11 @@ VHO_FHE_Bind_Approved_Relu_Contexts
          FILE *diagnostic)
 {
     std::vector<size_t> matches;
+    DSL_FHE_CKKS_VALUE_STATE_RECORD base_state;
+    if (!DSL_FHE_Plan_Get_CKKS_Value_State(state_id, &base_state))
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-006",
+                    "ReLU base CKKS state is not resolvable");
     for (size_t i = 0; i < VHO_FHE_relu_calibration.contexts.size(); ++i) {
         FHE_RELU_CALIBRATION_CONTEXT &context =
             VHO_FHE_relu_calibration.contexts[i];
@@ -2811,6 +3082,12 @@ VHO_FHE_Bind_Approved_Relu_Contexts
     for (size_t i = 0; i < matches.size(); ++i) {
         FHE_RELU_CALIBRATION_CONTEXT &context =
             VHO_FHE_relu_calibration.contexts[matches[i]];
+        INT32 post_refresh_level;
+        if (!VHO_FHE_Ace_Relu_Post_Refresh_Level
+                 (context.instance_path.c_str(), &post_refresh_level))
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-006",
+                        "ReLU context has no approved ACE refresh level");
         if (context.consumed)
             return VHO_FHE_Semantic_Report
                        (diagnostic, "CFHECNN-RELU-005",
@@ -2829,6 +3106,7 @@ VHO_FHE_Bind_Approved_Relu_Contexts
         range.observed_max_tcon = Enter_tcon
             (Host_To_Targ_Float(MTYPE_F8, context.observed_max));
         range.out_of_range_policy = DSL_FHE_CONTEXT_RANGE_REJECT;
+        range.flags = DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE;
         std::string provenance =
             "calibration_manifest_sha256=" +
             VHO_FHE_relu_calibration.external_sha256 +
@@ -2839,6 +3117,33 @@ VHO_FHE_Bind_Approved_Relu_Contexts
             return VHO_FHE_Semantic_Report
                        (diagnostic, "CFHECNN-RELU-005",
                         "could not bind approved ReLU context range");
+        DSL_FHE_CONTEXT_CKKS_STATE_RECORD state;
+        DSL_FHE_Context_CKKS_State_Record_Init(&state);
+        state.owner_pu_st = owner_pu_st;
+        state.source_value_id = value->id;
+        state.context_pu_identity_id = context.context_pu_identity_id;
+        state.context_callsite_id = context.context_callsite_id;
+        state.state_role = DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH;
+        state.state_version = 1;
+        state.encryption_descriptor_id =
+            base_state.encryption_descriptor_id;
+        state.scheme = DSL_FHE_SCHEME_CKKS;
+        state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+        state.level = post_refresh_level;
+        state.scale_bits = 56;
+        state.component_count = 2;
+        state.precision_bits = 30;
+        state.slot_count = 32768;
+        state.alignment_group = 0;
+        state.encrypted_layout_name = Save_Str("ckks.packed");
+        state.pending_actions = DSL_FHE_CKKS_PENDING_BOOTSTRAP;
+        state.pending_bootstrap_reason =
+            DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
+        if (DSL_FHE_Context_State_Intern(&state) ==
+            DSL_FHE_CONTEXT_CKKS_STATE_INVALID_ID)
+            return VHO_FHE_Semantic_Report
+                       (diagnostic, "CFHECNN-RELU-006",
+                        "could not record approved ACE context state");
         context.consumed = TRUE;
     }
     ++result->converted_disposition_count;
@@ -2863,6 +3168,11 @@ VHO_FHE_Default_Conversion_Pass
     if (!VHO_FHE_Prepare_Relu_Calibration(options, diagnostic))
         return FALSE;
     owner_pu_st = PU_Info_proc_sym(pu_info);
+    if (VHO_FHE_relu_calibration.approved &&
+        !VHO_FHE_relu_calibration.source_artifact_validated)
+        return VHO_FHE_Semantic_Report
+                   (diagnostic, "CFHECNN-RELU-007",
+                    "active parameter payload was not authenticated");
     if (!VHO_FHE_Select_Default_Context(owner_pu_st, &context, diagnostic))
         return FALSE;
     DSL_FHE_Plan_Register_Domain_Wrappers();
@@ -2932,6 +3242,9 @@ VHO_FHE_Default_Conversion_Pass
                      VHO_FHE_ACE_RELU_PROFILE_VERSION, &prior_profile);
             if (!VHO_FHE_Bootstrap_Policy_Allows_Relu
                      (context.bootstrap_policy, diagnostic))
+                return FALSE;
+            if (VHO_FHE_relu_calibration.approved &&
+                !VHO_FHE_Validate_Ace_Config(&context, diagnostic))
                 return FALSE;
             relu_profile_id = VHO_FHE_Intern_Approved_Ace_Relu_Profile
                                   (context.config_id, diagnostic);
@@ -3184,10 +3497,13 @@ VHO_FHE_Verify_Relu_Calibration (FILE *diagnostic)
     if (!VHO_FHE_relu_calibration.approved)
         return TRUE;
     if (VHO_FHE_relu_calibration.contexts.size() != 19 ||
-        DSL_FHE_Context_Range_Count() != 19)
+        DSL_FHE_Context_Range_Count() != 19 ||
+        !VHO_FHE_Validate_Ace_Context_States
+             (ST_IDX_ZERO, TRUE, diagnostic) ||
+        !DSL_FHE_Context_State_Image_Validate(diagnostic))
         return VHO_FHE_Semantic_Report
                    (diagnostic, "CFHECNN-RELU-005",
-                    "approved ReLU range coverage is not exactly 19");
+                    "approved ReLU range/state coverage is not exactly 19");
     for (size_t i = 0; i < VHO_FHE_relu_calibration.contexts.size(); ++i) {
         const FHE_RELU_CALIBRATION_CONTEXT &context =
             VHO_FHE_relu_calibration.contexts[i];
@@ -3212,7 +3528,8 @@ VHO_FHE_Verify_Relu_Calibration (FILE *diagnostic)
                         "approved ReLU range row is missing or duplicated");
     }
     fprintf(diagnostic,
-            "FHE-RELU-CALIBRATION: contexts=19 manifest_sha256=%s\n",
+            "FHE-RELU-CALIBRATION: contexts=19 states=19 "
+            "manifest_sha256=%s\n",
             VHO_FHE_relu_calibration.external_sha256.c_str());
     return TRUE;
 }
