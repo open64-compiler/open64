@@ -301,4 +301,6 @@ DSL_IR_Image_Print (FILE *file)
     }
     DSL_FHE_Image_Print(file);
     DSL_FHE_Plan_Image_Print(file);
+    DSL_FHE_Approx_Profile_Image_Print(file);
+    DSL_FHE_Context_State_Image_Print(file);
 }

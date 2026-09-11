@@ -11,18 +11,18 @@ This document coordinates two Open64 workstreams:
   planning, runtime integration, and FHE-specific validation.
 
 It consolidates the architecture in
-`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`, the main-task
+`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`, the main-task
 implementation detail in `FHE-DSL-INTEGRATION-PLAN.md`, and the FHE-task plan
 in `FHE-WHIRL-INTEGRATION-PLAN.md`.
 
-The adjacent
-`../open64-plans/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`
-is the highest semantic authority. The reviewed copy has SHA-256
-`4B9DAC9927E86518142CA9A9E71AEAE7AEA5C454D01C544311359680639DF4B6`.
+The repository document
+`doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
+is the highest FHE semantic authority. The reviewed copy has SHA-256
+`0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 This Markdown tracker may narrow architecture milestones into review
-checkpoints, but it may not override v0.9 semantics, boundaries, or completion
+checkpoints, but it may not override v0.10 semantics, boundaries, or completion
 criteria. In particular, focused C3 / SYNC-3 completion is not completion of
-v0.9 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4 remains
+v0.10 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4 remains
 mandatory.
 
 ## Shared Objective
@@ -78,6 +78,20 @@ capture or planning of the complete ResNet-20 graph.
     initializers, and control flow.
 12. Secret keys never enter WHIRL, generated server C, server artifacts,
     diagnostics, or server runtime state.
+13. Preserving callee-specific data-value metadata is a first-order correctness
+    requirement. Every caller actual must remain structurally joined through
+    call ABI and PU-interface identity to the exact callee formal
+    `DSL_IR_VALUE_ID`, operator operand, and result value.
+14. XLA-style shape propagation is a generic DSL/common analysis over Open64
+    value identities. It certifies tensor geometry before FHE planning; shape
+    equality does not replace value identity or provenance.
+15. FHE encryption-state propagation runs after shape certification and model
+    adaptation. It attaches value-specific CKKS layout, level, scale,
+    precision, alignment, rotation, and pending-action facts without mutating
+    canonical TensorDescriptorIR/TY identity.
+
+The detailed algorithm and validation contract for decisions 13-15 is
+`doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
 
 ## Workstream Ownership
 
@@ -156,11 +170,11 @@ coverage in the same infrastructure PR.
 | C0: Baseline freeze | Inventory existing common/CNN operators, tensor APIs, builder capabilities, and binary hooks | Freeze ResNet-20 operator census, FHE descriptors, option semantics, and handoff requests | **SYNC-0: Plan and contract reconciliation** |
 | C1: Native contracts | Publish accepted common/type contracts; add generic attachment, image, printer, and gatekeeper hooks | Finalize fixed FHE records, FHE-specific builder API, malformed-record rules, and negative tests | **SYNC-1: Native API and image contract freeze** |
 | C2: Full-model capture | Supply merged opaque builder capabilities and common operator evidence | Capture complete ResNet-20 with class-centric PUs, source positions, weights, FHE entry, and encrypted descriptors | **SYNC-2: Frontend artifact certification** |
-| C3: FHE conversion | Supply driver phase hook and common/tensor legality services | Implement FHE gatekeeper, BatchNorm folding, model adaptation, approximation contracts, and conversion report | **SYNC-3: ResNet FHE conversion review** |
-| C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor evidence | Materialize mandatory pre-ReLU bootstrap and polynomial approximation with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
+| C3: FHE conversion | Supply driver hook, cross-PU value identity, generic shape analysis, transactional rewrites, value-state attachment, and artifact publication | Certify shapes; implement FHE gatekeeping, 13-definition/21-context BatchNorm folding, converted-shape checks, operator dispositions, CKKS-state propagation, and reports | **SYNC-3: ResNet FHE conversion review** |
+| C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor/composite-stage/range evidence | Certify the ACE-compatible `7 -> 15 -> 13` Chebyshev sign profile, then materialize mandatory pre-ReLU bootstrap, normalization, ordered stages, and reconstruction with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
 | C5: Standard WHIRL boundary | Supply standard call/result construction, unlowered-node gate, and `whirl2c` integration point | Implement runtime-call lowering, FHE C ABI, and mock provider | **SYNC-5: Middle-WHIRL and mock executable gate** |
 | C6: OpenFHE ResNet | Complete driver link flow, provider manifest consumption, and retained artifact family | Implement OpenFHE provider, client provisioning, CKKS execution, and full ResNet validation | **SYNC-6: End-to-end `-O0` acceptance** |
-| C7: Optimized planning | Enable reviewed VHO/WOPT integration and per-pass controls | Add ReSBM, boundary movement/fusion, HPOLY/HPAO, and equivalence reports | **SYNC-7: Optimized-versus-`-O0` proof** |
+| C7: Optimized planning | Enable reviewed VHO/WOPT integration, common encrypted-iteration-space records, census verification, and per-pass controls | Implement selectable MetaKernel and Fhelipe planners, then add ReSBM, boundary movement/fusion, the dedicated SSAPRE-model HPAO-MU phase, HPAO-FM/HPAO-LM, and equivalence reports. HPAO-MD remains design TBD. | **SYNC-7A-E: layout-planner A/B proof and optimized-versus-`-O0` proof** |
 | C8: GPU path | Coordinate NVIDIA runtime and target-description infrastructure | Add FHE GPU capability, layout, cost, and later native POLY/RNS plans | **SYNC-8: Separate GPU architecture review** |
 
 ## Highlighted Synchronization Points
@@ -169,7 +183,7 @@ coverage in the same infrastructure PR.
 
 Inputs:
 
-- Architecture plan v0.9.
+- Architecture plan v0.10.
 - Main-task `FHE-DSL-INTEGRATION-PLAN.md`.
 - FHE-task `FHE-WHIRL-INTEGRATION-PLAN.md` and operator/type handoff table.
 - Current source inventory, including existing `OPR_DSLRELU` and
@@ -328,26 +342,51 @@ node-retirement contract before any SYNC-3 implementation begins.
 
 ### **SYNC-3: ResNet FHE Conversion Review**
 
-Status: blocked contract preparation after PR #105 merged into `develop` at
-`73d8ec0d`. The reviewable proposal is
-`doc/FHE-SYNC3-CONVERSION-CONTRACT.md`. Source implementation is blocked until
-the pre-SYNC-3 corrective checkpoint closes and the node-retirement contract
-is jointly accepted. Once unblocked, implementation remains limited to the
-focused SYNC-3 conversion-planning scope: FHE gatekeeper, legal BatchNorm
-folding, CNN-to-FHE disposition, ReLU approximation-contract attachment,
-value-specific CKKS state evidence, and retained conversion artifacts. Opcode
-allocation, bootstrap insertion, SIHE/CKKS primitive lowering,
-OpenFHE/runtime lowering, and shared common/com edits require their reviewed
-checkpoints.
+Status: BatchNorm conversion and fail-closed ReLU-policy handling are
+implemented and certified on the FHE-owned path. The positive ReLU-free
+six-PU artifact proves 13 physical Conv/BN definition rewrites, 21
+source-context folds, and 42 converted tensors. PR #123 supplies the accepted
+composite-profile image and APIs. Full ReLU-bearing SecureResNet publication
+remains blocked at range-specific `CFHECNN-RELU-003` pending the remaining
+Commit 17 model-policy tuple
+documented by `doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`.
+
+The exact ACE bytes are project-approved from empirical ANT ACE evidence and
+the coefficient profile is integrated. All 19 persisted Open64 ReLU context
+keys are frozen in machine-readable review manifests. This is not trained-model
+approval: measured context ranges, predeclared accuracy acceptance, and a
+concrete executed OpenFHE CKKS state schedule remain absent.
+The deterministic collector in
+`doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` now proves the 19-way identity join,
+pre-ReLU observation algorithm, distribution evidence, bound checks, and
+canonical manifest hashing. Its fixture is explicitly not calibration.
+PR #127 supplies authenticated runtime manifest selection, and the FHE-owned
+RapidJSON consumer verifies exact bytes, approval, identity coverage, and
+all-PU consumption before publishing. A trained checkpoint/dataset decision
+remains the prerequisite for native model binding.
+Opcode allocation, bootstrap insertion, SIHE/CKKS primitive lowering, and
+OpenFHE/runtime lowering remain outside this checkpoint.
+
+The next main/common synchronization point adds the optional
+`.WHIRL.dsl_fhe_context_state` image defined by
+`doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md`. It preserves shared procedure
+definitions while recording exact call-context CKKS planning state. After that
+infrastructure merges, the FHE task binds one `POST_REFRESH.v1` row to each of
+the 19 authenticated ReLU context ranges and certifies the ACE-specific state
+policy before Commit 19 publication.
 
 Required phase output:
 
 ```text
 secure_resnet20.B
   -> ordinary DSL/common gatekeeper
+  -> call-ABI and PU-interface identity validation
+  -> generic XLA-style tensor shape propagation
   -> FHE semantic gatekeeper
   -> -FHE:checkpoint=secure_resnet20.fhe.B
   -> VHO_FHE_Convert_Driver_Try() for every selected PU
+  -> converted-shape verification
+  -> value-specific CKKS-state propagation
   -> FHE semantic gatekeeper, converted form
   -> complete managed-image validation
   -> standard Write_PU_Info()/Write_Global_Info() binary WHIRL path
@@ -363,11 +402,37 @@ is published atomically only after all PUs and complete managed images pass.
 This main/backend-owned service prevents the FHE task from duplicating raw
 PU traversal, symbol-table lifetime, mapped-image, or writer orchestration.
 
+The cross-PU analysis spine is normative for the complete `-O0` project:
+
+```text
+caller actual value
+  -> call-argument role
+  -> callee formal ordinal
+  -> callee formal DSL_IR_VALUE_ID
+  -> callee operator operand and result
+```
+
+Generic shape propagation follows this identity before FHE conversion. After
+BatchNorm folding and retirement, converted-shape verification proves geometry
+is unchanged and dead BN-only inputs have no executable uses. FHE CKKS-state
+propagation then uses the same identities to infer value class, packing,
+layout, level, scale, precision, alignment, rotation keys, and pending actions.
+None of these value-specific facts may be inferred by name, local `ST_IDX`,
+argument-order convention, or shape equality alone. The full algorithm is in
+`doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
+
 Acceptance checks:
 
 - BatchNorm folding is explicit and source-linked.
+- Every caller actual resolves to the exact callee value through validated
+  call-ABI and complete PU-interface records.
+- Source and converted tensor shapes pass deterministic propagation and
+  operator, REGION, call-formal, and call-result consistency checks.
 - Conv2d, residual add, pooling, flatten, classifier, and encrypted logits have
   reviewed FHE dispositions.
+- Every live encrypted value has accepted value-specific CKKS planning state;
+  retired values and verified dead BN ABI inputs are excluded from live
+  accounting.
 - `common.relu` remains traceable to its approximation contract.
 - The conversion report lists accepted, rewritten, and rejected operations.
 - Missing scheme, illegal secret-key use, unsupported activation, training
@@ -403,9 +468,9 @@ implementation.
 Focused SYNC-3 exit evidence may close only this conversion-planning review
 checkpoint. It must prove the accepted dispositions, BatchNorm folds,
 approximation obligations, CKKS planning state, diagnostics, compatibility,
-and retained artifacts from the exact candidate. It must not claim v0.9
+and retained artifacts from the exact candidate. It must not claim v0.10
 Architecture Phase 3 or M4 completion. Those milestones still require C4 /
-SYNC-4 bootstrap-plus-polynomial materialization and the remaining v0.9
+SYNC-4 bootstrap-plus-polynomial materialization and the remaining v0.10
 execution evidence.
 
 ### **SYNC-4: ReLU `-O0` Baseline Certification**
@@ -415,8 +480,20 @@ Normative transformation:
 ```text
 common.relu(x)
   -> sihe.bootstrap(x, reason=relu_boundary)
-  -> fhe.cnn.poly_activation(..., source_activation=common.relu)
+  -> normalize(x, context_bound=B)
+  -> composite_chebyshev_sign(stage_degrees=[7,15,13])
+  -> fhe.cnn.poly_activation(0.5*x*sign(x/B) + 0.5*x,
+                             source_activation=common.relu)
 ```
+
+The selected architecture candidate is
+`ace.chebyshev.sign.7x15x13.depth11.v1`. Degree 3 is retained only as a future
+experimental low-depth profile. The existing v1 approximation row describes a
+single polynomial and is not sufficient to persist this composition; an
+append-only ordered-stage contract must be reviewed before enablement. Exact
+coefficient bytes, all 19 identity-bound normalization ranges, clear/model
+error, and CKKS depth/state remain certification gates, so full SecureResNet
+publication continues to fail closed with `CFHECNN-RELU-003` until they pass.
 
 Required tests:
 
@@ -430,6 +507,8 @@ Required tests:
 Exit evidence:
 
 - Focused ReLU `.B` and `.T` before and after FHE/CKKS planning.
+- Candidate profile manifest and independent three-stage clear-evaluation
+  report.
 - Full ResNet depth/bootstrap report with source positions.
 - Fused backend path, when present, retains the same logical evidence.
 - No `-O0` movement, merging, deduplication, or profitability placement.
@@ -500,6 +579,35 @@ Before enabling any ReSBM, HPOLY/HPAO, fusion, or refresh-boundary movement:
   legality, key availability, and result tolerance.
 - Fall back to the `-O0` plan when proof or provider capability is missing.
 
+The encrypted-layout portion of SYNC-7 is divided into these jointly reviewed
+gates:
+
+| Gate | Analysis and transformation | Required evidence |
+| --- | --- | --- |
+| **SYNC-7A: common baseline** | Freeze the gatekeeper-approved FHE-CNN graph, TensorDescriptorIR and encryption state, ring dimension, backend manifest, and all relevant options. | One pre-layout `.B`/`.T` image and manifest used without change by both planners. |
+| **SYNC-7B: MetaKernel** | Analyze Conv/MVM decomposition and batching, immediately transform the kernel iteration space, then derive packing and masks. | Original/transformed domains, MetaKernel-unit decomposition, packed layout, rotation schedule, and independently recomputed census. |
+| **SYNC-7C: Fhelipe** | Analyze the whole graph, assign dimension-bit/interleaved layouts, choose compaction and conversions, then materialize the resulting one-dimensional CKKS schedule. | Global layout decisions, compaction/conversion provenance, materialized schedule, and independently recomputed census. |
+| **SYNC-7D: normalized comparison** | Canonicalize both outputs into the common encrypted layout and iteration-space interface and prove equivalent source semantics. | Per-value, per-operator, per-PU, and whole-program comparison with stable source identities. |
+| **SYNC-7E: selected-plan handoff** | Select a plan under the reviewed policy and hand it to SIHE/CKKS, ReSBM, and HPOLY without changing its recorded provenance. | Selection rationale, fallback evidence, and retained downstream `.B`/`.T` checkpoints. |
+
+Both planners must report the same metric definitions after transformation is
+materialized and before ReSBM changes the graph: static rotation operations,
+execution-weighted rotations when trip counts are known, unique signed rotation
+offsets, total CKKS slots, active logical slots, gap/invalid slots, gap ratio,
+peak/introduced/compacted gaps, masked slots, ciphertext count, packing density,
+layout conversions, permutations, masks, and rotate-add reductions.
+
+The canonical aggregate is `gap_slots = total_slots - active_slots`.
+Padding and replicated slots are reported separately and are not counted as
+active logical elements. A common checker recomputes rotation and gap totals
+from each materialized WHIRL image; planner self-reported estimates alone do
+not close SYNC-7B or SYNC-7C.
+
+HPAO-MU follows the SSAPRE algorithmic model in a dedicated HPOLY phase; the
+existing WOPT SSAPRE implementation remains unchanged. HPAO-MD implementation
+is blocked until its analysis, legality, ordering, extended-basis lifetime, and
+profitability design receives a separate review.
+
 ### **SYNC-8: Separate GPU Architecture Review**
 
 GPU work does not silently extend the OpenFHE CPU/reference milestone. Before
@@ -545,21 +653,32 @@ The ResNet-first FHE project reaches its first complete milestone only when:
 
 ## Immediate Coordinated Queue
 
-1. Documentation owners: publish the reconciled status, authority, corrective
-   checkpoint, and commit acceptance plan without changing stage numbering or
-   architecture contracts.
-2. Main/common owner: fix version-1 tensor-binding identity and validate legal
-   FHE-v1 reopen behavior.
-3. Main/common owner: make FHE entry-value insertion failure-atomic and prove
-   rejected insertion leaves the image valid and unchanged.
-4. Main/common owner: enforce REGION/value PU ownership before mutation and
-   cover PU-local index collisions.
-5. FHE/frontend owner: repair exact ResNet source provenance through opaque
-   APIs, including definitions, call contexts, parameters, and results.
-6. FHE/frontend owner: rebase and rerun fail-closed SYNC-2 certification,
-   retain the complete host-visible artifact family, and obtain main-task
-   acceptance before restoring completed status.
-7. Main/common and FHE reviewers: accept one exact node-retirement contract for
-   BatchNorm removal, rollback, mapped reopen, old readers, and inspection.
-8. Resume focused SYNC-3 implementation only after items 2-7 close, with
-   main/common infrastructure merging before the FHE branch rebases.
+1. FHE owner: retain the certified ReLU-free BatchNorm checkpoint proving 13
+   physical definition retirements, 21 context folds, and 42 converted tensors.
+2. FHE and numerical-policy reviewers: review and explicitly approve the
+   frozen ACE coefficient source, license, ordering, exact binary64 bytes,
+   stage checksums, source revision, and manifest hash in the Commit 17
+   package.
+3. Frontend/model owner: first approve a trained checkpoint, immutable
+   calibration split, preprocessing, bound estimator, safety margin, and
+   outlier policy; then run the implemented collector for all 19 ReLU
+   source contexts and bind each approved positive bound to exact Open64 value,
+   PU identity, and callsite records. No name-only or default fallback is valid.
+4. Completed infrastructure: PR #127 added the reviewed calibration-manifest
+   path and expected SHA-256 conversion options, and PR #128 exposed bundled
+   RapidJSON to backend consumers without a new linked-library dependency. The
+   FHE consumer authenticates exact bytes before parsing and retains one
+   selection across the all-PU checkpoint.
+5. Numerical-policy reviewers: certify clear sign/ReLU error and pinned
+   ResNet-20 logit/top-1 tolerances against named dataset hashes.
+6. FHE/runtime owners: prove the depth-11 schedule and concrete post-refresh
+   CKKS level, scale, component, and precision contracts.
+7. FHE owner: calibration machinery and authenticated 19-context binding are
+   implemented against the PR #123 opaque profile APIs. Activate those bindings
+   for SecureResNet only after items 3, 5, and 6 are accepted, then complete
+   value-specific CKKS planning state.
+8. FHE owner: rerun the full six-PU SecureResNet checkpoint, publish auxiliary
+   payload/report artifacts transactionally, and publish `.fhe.B` last.
+9. Independent reviewer: reopen with `ir_b2a -st -src`, reconcile report and
+   image counts, and close only focused SYNC-3. Bootstrap insertion and
+   polynomial materialization remain SYNC-4 work.

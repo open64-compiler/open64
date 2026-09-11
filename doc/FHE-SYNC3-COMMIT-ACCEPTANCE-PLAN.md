@@ -6,21 +6,21 @@ Planning baseline: `ebc6e9a13cf92f41c40405461853d2f648954789`.
 
 Short-term objective: complete only the focused C3 / SYNC-3 review gate without
 implementing C4 / SYNC-4 behavior. This checkpoint is not completion of
-Architecture Phase 3 or focused milestone M4 in the authoritative v0.9 plan.
+Architecture Phase 3 or focused milestone M4 in the authoritative v0.10 plan.
 
 ## Authority and relationship to the main plan
 
 This plan is subordinate to, and must remain consistent with, the following
 sources in this order:
 
-1. `DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`, held in the
-   adjacent `open64-plans` directory, is the authoritative architecture and
-   semantic plan. The reviewed copy has SHA-256
-   `4B9DAC9927E86518142CA9A9E71AEAE7AEA5C454D01C544311359680639DF4B6`.
-   No earlier version, including v0.7, is authoritative for this plan.
+1. `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx` is the
+   authoritative architecture and semantic plan. The repository copy has
+   SHA-256
+   `0018769c26b5a0bcd1bdfcbd85aa97b8bafea381d7640fbb9e2e81b0022013d9`.
+   No earlier version is authoritative for this plan.
 2. `doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md` is the focused implementation
    and coordination tracker. It may divide an architecture milestone into
-   smaller checkpoints, but it may not override v0.9 semantics, boundaries, or
+   smaller checkpoints, but it may not override v0.10 semantics, boundaries, or
    completion criteria.
 3. `doc/FHE-SYNC3-CONVERSION-CONTRACT.md` provides the currently proposed
    focused C3 conversion semantics, diagnostics, BatchNorm folding, operator
@@ -36,41 +36,41 @@ but they do not replace the main plan. This document supersedes the earlier
 candidate commit outline only as an execution and acceptance procedure. It does
 not renumber or redefine C0-C8 or SYNC-0 through SYNC-8.
 
-### v0.9 phase boundary and the meaning of SYNC-3
+### v0.10 phase boundary and the meaning of SYNC-3
 
 The names in the focused tracker must not be confused with the architecture
-phase names in v0.9:
+phase names in v0.10:
 
-- v0.9 Architecture Phase 3 and focused milestone M4 require the full
+- v0.10 Architecture Phase 3 and focused milestone M4 require the full
   ResNet-20 CNN adaptation, including BatchNorm folding, the
   `common.relu` bootstrap-plus-polynomial conversion, pooling, residual and
   classifier handling, a reviewable report, and execution under the reference
   CKKS path.
-- v0.9 Appendix F.1 permits the Markdown implementation plan to narrow an
+- v0.10 Appendix F.1 permits the Markdown implementation plan to narrow an
   architecture milestone into smaller review checkpoints. The consolidated
   plan uses that permission to split preparation and materialization: C3 /
   SYNC-3 freezes and persists conversion decisions and legality evidence, while
   C4 / SYNC-4 materializes the mandatory pre-ReLU bootstrap and approved
   polynomial activation.
 - Therefore, closing this focused SYNC-3 is only an intermediate gate on the
-  path to v0.9 Phase 3 and M4. Neither this document nor commit 19 may claim
-  that v0.9 Phase 3 or M4 is complete. C4 / SYNC-4 remains mandatory, not
+  path to v0.10 Phase 3 and M4. Neither this document nor commit 19 may claim
+  that v0.10 Phase 3 or M4 is complete. C4 / SYNC-4 remains mandatory, not
   optional or cancelled.
-- If a focused tracker or contract conflicts with v0.9, v0.9 wins and
+- If a focused tracker or contract conflicts with v0.10, v0.10 wins and
   implementation stops until the subordinate document is reconciled.
 
-### Commit-by-commit v0.9 traceability
+### Commit-by-commit v0.10 traceability
 
-The table classifies why each proposed commit is allowed. "Direct" means v0.9
+The table classifies why each proposed commit is allowed. "Direct" means v0.10
 states the deliverable or invariant. "Enabling" means the commit repairs or
-implements repository machinery required to produce v0.9 evidence without
+implements repository machinery required to produce v0.10 evidence without
 violating its boundaries. "Narrowed" means it is a deliberately incomplete
 checkpoint permitted by Appendix F.1 and must not be described as completion
 of the containing architecture milestone.
 
-| Commit | v0.9 anchor | Classification and loyalty condition |
+| Commit | v0.10 anchor | Classification and loyalty condition |
 | --- | --- | --- |
-| 1 | Appendix F.1, F.4, and F.5 | Enabling: restores truthful status and review gates; it must name v0.9 as the authority and must not change architecture semantics. |
+| 1 | Appendix F.1, F.4, and F.5 | Enabling: restores truthful status and review gates; it must name v0.10 as the authority and must not change architecture semantics. |
 | 2 | Sections 6.4 and 15.4; Appendix F.2 | Enabling: makes shared tensor/encryption identity deterministic and mapped-image evidence verifiable without creating a separate FHE tensor universe. |
 | 3 | Section 15.4; Appendix F.2 | Enabling: failure-atomic publication prevents a failed build from masquerading as a valid retained artifact. |
 | 4 | Section 16.1 step 1; Appendix F.2 | Enabling: preserves class-centric PU ownership needed by the complete ResNet-20 capture and later conversion. |
@@ -88,7 +88,7 @@ of the containing architecture milestone.
 | 16 | Section 7.2 steps 4-8; Sections 15.1 and 17.1 | Direct/narrowed: records a reviewed disposition for every operator, but does not yet claim executable CKKS conversion. |
 | 17 | Section 7.2 step 4; Sections 11.4 and 15.1 | Narrowed: preserves `common.relu`, its approved approximation contract, refresh reason, and value-state obligations. Materialization is deliberately left to mandatory C4 / SYNC-4. |
 | 18 | Sections 15.4 and 17.1 | Direct: emits source-linked conversion, depth, approximation, and diagnostic evidence from actual compiler state. |
-| 19 | Appendix F.1 and F.3 | Narrowed: certifies only the focused C3 / SYNC-3 evidence gate. Its subject, status update, and report must explicitly avoid claiming v0.9 Phase 3 or M4 completion. |
+| 19 | Appendix F.1 and F.3 | Narrowed: certifies only the focused C3 / SYNC-3 evidence gate. Its subject, status update, and report must explicitly avoid claiming v0.10 Phase 3 or M4 completion. |
 
 This mapping is a necessary planning proof, not proof that an implementation
 commit is correct. Each frozen candidate must still pass its own claim,
@@ -244,6 +244,37 @@ verdict, and wait for authorization before starting the next numbered item.
 | PR-D | Implement main/common SYNC-3 infrastructure | 8-13 |
 | PR-E | Implement and certify the focused FHE SYNC-3 conversion-planning gate | 14-19 |
 
+### Current PR-E execution status
+
+| Commit | Implementation | Verification | Remaining gate |
+| --- | --- | --- | --- |
+| 14: semantic gatekeeper | Complete in the FHE-owned branch | Focused semantic contract test passes after rebasing onto PR #123 | Final full-model integration rerun |
+| 15: BatchNorm folding | Complete | ReLU-free six-PU certification proves 13 physical definition retirements, 21 context folds, and 42 converted tensors with independent payload verification | Final integration rerun at the accepted PR-E tip |
+| 16: operator dispositions | Complete for the ReLU-free positive path; ReLU remains fail-closed | The positive artifact records 36 source and 36 converted dispositions | Composite ReLU dispositions require certified policy evidence |
+| 17: ReLU profile and CKKS planning | Exact ACE coefficient profile, identity-bound range collector, and authenticated all-PU native consumer implemented; model enablement blocked | Empirically approved bytes/stage hashes are interned; deterministic collection and RapidJSON consumption validate exact bytes, authority, all 19 persisted identities, bounds, tail evidence, and manifest hashes | Approved trained checkpoint/CIFAR-10 calibration inputs, predeclared accuracy acceptance, and concrete OpenFHE state/depth proof |
+| 18: reports and diagnostics | Complete for BatchNorm certification and ReLU-policy rejection | Atomic payload/report publication and range-specific `CFHECNN-RELU-003` rejection are retained | Full composite-profile report evidence |
+| 19: full ResNet-20 SYNC-3 evidence | Blocked | No ReLU-bearing `.fhe.B` is published | Completion of commit 17 evidence followed by the full acceptance lane |
+
+PR #123 closes the physical composite-profile representation dependency only.
+It does not authorize numeric ACE coefficients, default context bounds, or
+placeholder CKKS states. The conversion pass must continue to fail closed until
+all commit 17 evidence is reviewed as one exact policy tuple.
+
+The current Commit 17 decision package is
+`doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`, with machine-readable evidence
+under `doc/fhe-policy/sync3-relu/`. It is an incomplete model-policy checkpoint,
+not a completion claim. The exact coefficient profile is approved and may be
+interned; model disposition/context rows remain prohibited until range
+evidence exists, and `CFHECNN-RELU-003` remains required.
+
+The identity-bound collector and approval validator are specified by
+`doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md`. Their deterministic fixture validates
+the complete 19-context join but is not trained-model evidence. PR #127 now
+provides the reviewed runtime-only manifest path/hash pair. The FHE consumer
+authenticates before parsing, retains one selection across all PUs, binds only
+the exact approved identity set, and verifies complete consumption in the
+checkpoint finalizer.
+
 PR-A must merge first. PR-B then rebases and recertifies SYNC-2. PR-C must be
 accepted by both main/common and FHE reviewers before PR-D implementation.
 PR-D merges before PR-E rebases and consumes its opaque APIs.
@@ -256,8 +287,8 @@ Implementation:
 
 - Add this execution plan.
 - Reconcile the consolidated plan and both SYNC-3 contracts so that they name
-  v0.9 as the semantic authority and describe C3 / SYNC-3 as a narrowed review
-  checkpoint rather than completion of v0.9 Phase 3 or M4.
+  v0.10 as the semantic authority and describe C3 / SYNC-3 as a narrowed review
+  checkpoint rather than completion of v0.10 Phase 3 or M4.
 - Correct the consolidated plan's SYNC-1, SYNC-2, and SYNC-3 status language.
 - Add the pre-SYNC-3 corrective gate and update the coordinated queue.
 - Preserve all existing stage numbers, ownership, ABI, and image contracts.
@@ -266,7 +297,7 @@ Verification:
 
 - Compare the status, prerequisites, queue, and exit evidence in every affected
   plan section.
-- Compare the focused C3 exclusions with v0.9 Sections 7, 11, 15, and 16 and
+- Compare the focused C3 exclusions with v0.10 Sections 7, 11, 15, and 16 and
   Appendix F; confirm that deferred C4 work remains explicitly mandatory.
 - Confirm that no sentence claims completion while a reviewed blocker remains.
 - Confirm that only documentation changed and that all repository text passes
@@ -277,8 +308,8 @@ Ready for submission when:
 - the main plan describes SYNC-1 implementation as merged but corrective
   validation reopened, SYNC-2 certification as reopened, and SYNC-3 as blocked
   on those corrections plus the node-retirement contract;
-- v0.9 is the declared highest authority and no document equates focused
-  SYNC-3 closure with v0.9 Phase 3 or M4 completion;
+- v0.10 is the declared highest authority and no document equates focused
+  SYNC-3 closure with v0.10 Phase 3 or M4 completion;
 - no C0-C8 responsibility or later-stage scope changed;
 - the diff has no code, ABI, opcode, or mapped-image change.
 
@@ -616,12 +647,21 @@ reopen, and the main/common PR to merge before PR-E rebases.
 
 ## PR-E: focused FHE SYNC-3 conversion planning and certification
 
+PR-E must also satisfy
+`doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`. Its central correctness
+condition is preservation of the exact caller-actual to callee-formal
+`DSL_IR_VALUE_ID` relationship. Generic tensor shape propagation runs before
+FHE state propagation; neither analysis may substitute shape, names, or local
+symbol indexes for callee-specific value identity.
+
 ### Commit 14: `Add SYNC-3 FHE semantic gatekeeper`
 
 Implementation:
 
 - Validate entry/configuration, descriptors, tensor bindings, source graph,
   payloads, operator relationships, and options for source and converted form.
+- Validate the call-ABI/PU-interface join and run deterministic source-shape
+  propagation before accepting FHE semantics.
 - Emit the stable `CFHE-*`, `CFHECNN-*`, and `CFHECKKS-*` diagnostic families.
 - Keep exact ResNet counts in a certification profile, not generic validation.
 
@@ -642,6 +682,15 @@ Ready for submission when:
 
 ### Commit 15: `Fold ResNet BatchNorm into convolution payloads`
 
+Implementation checkpoint: the FHE branch now derives and rewrites all 13
+physical Conv/BatchNorm definitions and materializes 21 context-specific
+weight/bias pairs (42 tensors). A ReLU-free six-PU certification fixture
+publishes and reopens the converted payload, report, `.fhe.B`, and
+`ir_b2a -st -src` `.fhe.T`; an independent double-precision oracle verifies
+every folded tensor exactly. Full SecureResNet reaches the separate
+the coefficient-policy gate, now superseded by range-specific
+`CFHECNN-RELU-003`, and publishes no partial artifact.
+
 Implementation:
 
 - Implement inference-only BN legality and the accepted folding formula.
@@ -649,6 +698,11 @@ Implementation:
 - Write a new converted SafeTensors payload without modifying the source file.
 - Rewrite each compatible physical clone once and each source call context's
   actual payloads separately; reject v1 signature divergence.
+- Resolve every semantic parameter role to its exact callee formal value;
+  never use symbol-name parsing, foreign local symbol tables, or shape-only
+  matching.
+- Run converted-shape verification after body rewrite and BN retirement; prove
+  retained BN-only ABI inputs have no executable uses.
 
 Verification:
 
@@ -700,18 +754,39 @@ Ready for submission when:
 
 ### Commit 17: `Record ReLU approximation and CKKS planning state`
 
+Policy checkpoint: PR #123 (`d513ea61`) has merged the append-only composite
+profile image and opaque APIs. The ResNet baseline is the Chebyshev sign
+profile `ace.chebyshev.sign.7x15x13.depth11.v1`, not a single degree-3
+polynomial. Candidate coefficient review may begin in this commit, but accepted
+planning rows remain blocked until the coefficient bytes, all 19 context range
+bindings, model accuracy, and CKKS state/depth evidence are reviewed. The
+compiler continues to fail closed before full-model publication in the
+interim.
+
+Evidence checkpoint: the approval package records project approval of the
+exact ACE source revision, direct Chebyshev coefficient convention, binary64
+bytes, and per-stage hashes from empirical ANT ACE evidence, plus the 19
+Open64 context keys. It deliberately records null measurements and a blocked
+status rather than treating the deterministic synthetic fixture as calibration
+or accuracy evidence. The full-model diagnostic is `CFHECNN-RELU-003`.
+
 Implementation:
 
-- Intern approved approximation contracts and attach each surviving encrypted
-  `common.relu` disposition to one contract.
+- Intern an approved composite profile and its ordered stage contracts, then
+  attach each surviving encrypted `common.relu` disposition and exact context
+  range binding to that profile.
 - Add value-specific versioned CKKS state, alignment groups, pending actions,
   and explicit pending-bootstrap reasons without changing canonical tensor or
   encryption descriptor identity.
+- Propagate CKKS state through call edges and operators by exact
+  `DSL_IR_VALUE_ID`, after successful shape certification, using the transfer
+  rules in `doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
 - Record required pre-refresh planning only; do not materialize SYNC-4 work.
 
 Verification:
 
-- Validate coefficient rank and `degree + 1` cardinality, finite range/error,
+- Validate each stage's coefficient rank and `degree + 1` cardinality, stage
+  order `[7,15,13]`, finite range/error, canonical binary64 checksum,
   scale/depth/bootstrap policy, and complete semantic interning.
 - Test contiguous state versions beginning at one, duplicate rejection,
   pending sentinels, unknown bits, descriptor scheme/value-class agreement,
@@ -723,7 +798,8 @@ Verification:
 
 Ready for submission when:
 
-- every surviving encrypted ReLU has a valid source-linked contract;
+- every surviving encrypted ReLU has a valid source-linked composite profile
+  and positive context range binding;
 - every required value has a valid CKKS state and all cross-references reopen;
 - the output contains planning evidence only and remains inside SYNC-3.
 
@@ -787,9 +863,18 @@ secure_resnet20.B
 - Prove exact certified cardinalities, including 13 physical Conv/BN rewrites,
   21 source-context folds, and 19 source-context ReLU associations, while
   keeping those counts out of generic gatekeepers.
+- Prove the selected composite profile retains three inspectable ordered
+  Chebyshev stages, depth 11, exact coefficient and manifest checksums, and 19
+  identity-bound normalization ranges. A candidate-only profile cannot close
+  commit 19.
 - Prove every target operator has an accepted disposition, every required CKKS
   value has state, no standalone BN survives, and source/context provenance is
   complete.
+- For shared ReLU definitions, prove every one of the 19 context ranges has one
+  exact `POST_REFRESH.v1` record in `.WHIRL.dsl_fhe_context_state`. Contexts
+  must not be represented as `state_version` variants. Common validation proves
+  identity/config correspondence; the FHE gate proves the approved ACE level,
+  scale, component, precision, and pending-refresh policy.
 - Prove absence of materialized bootstrap, polynomial evaluation, SIHE/CKKS
   arithmetic lowering, runtime calls, generated C, OpenFHE provider behavior,
   optimization, and GPU work.
@@ -809,7 +894,7 @@ Ready for submission when:
 - the independent review verdict is `Pass` with no missing required
   validation;
 - the decision record does not claim SYNC-4 or the project's later joint
-  definition of done, and does not claim v0.9 Architecture Phase 3 or M4
+  definition of done, and does not claim v0.10 Architecture Phase 3 or M4
   completion.
 
 ## Merge review and milestone closure
@@ -836,7 +921,7 @@ English decision record accurately identifies the accepted source and evidence.
 
 The following work is prohibited in this focused C3 plan and remains assigned
 to later focused checkpoints. Deferral here does not make the work optional:
-v0.9 still requires the ReLU bootstrap-plus-polynomial path and reference CKKS
+v0.10 still requires the ReLU bootstrap-plus-polynomial path and reference CKKS
 execution before Architecture Phase 3 / M4 can be reported complete.
 
 - bootstrap insertion and polynomial evaluation;

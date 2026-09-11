@@ -42,8 +42,9 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
-def _fixture_source() -> Path:
-    return Path(__file__).resolve().parent / "models" / "secure_resnet20.py"
+def _fixture_source(bn_fold_only: bool = False) -> Path:
+    name = "secure_resnet20_bn_fold.py" if bn_fold_only else "secure_resnet20.py"
+    return Path(__file__).resolve().parent / "models" / name
 
 
 def _load_model(source: Path):
@@ -72,11 +73,12 @@ def _prepare_artifact_dir(path: Path) -> None:
             candidate.unlink()
 
 
-def _write_operator_census(path: Path, module) -> None:
+def _write_operator_census(path: Path, module, bn_fold_only: bool) -> None:
     counts: dict[str, int] = {}
     for name in module.operators:
         counts[name] = counts.get(name, 0) + 1
     lines = [
+        "model=SecureResNet20BNFoldCertification" if bn_fold_only else
         "model=SecureResNet20",
         "dataset=CIFAR-10",
         f"graph_source={module.graph_source}",
@@ -95,8 +97,10 @@ def _write_operator_census(path: Path, module) -> None:
         "  every source ReLU is emitted as common.relu",
         "  FHE records describe entry/encryption/key contracts only",
         "  Python emits no bootstrap, CKKS, SIHE, or FHE conversion operators",
-        "  reusable_common_relu_node_definitions=11",
-        "  source_context_common_relu_uses=19",
+        "  reusable_common_relu_node_definitions=" +
+        ("0" if bn_fold_only else "11"),
+        "  source_context_common_relu_uses=" +
+        ("0" if bn_fold_only else "19"),
         "  ReLU call contexts are not operator or function versions",
         "  resnet_class_pus=entry_plus_signature_specialized_ResNet20Block_clones",
         "  resnet_class_regions=required: cnn.basic_block inside each clone PU",
@@ -181,22 +185,26 @@ def _attach_fhe_contract(module) -> None:
     )
 
 
-def _emit_capture(artifact_dir: Path) -> int:
+def _emit_capture(artifact_dir: Path, bn_fold_only: bool = False) -> int:
     _prepare_artifact_dir(artifact_dir)
     source = artifact_dir / "secure_resnet20.py"
-    shutil.copyfile(_fixture_source(), source)
+    shutil.copyfile(_fixture_source(bn_fold_only), source)
     model, sample_inputs = _load_model(source)
     options = WhirlExportOptions(
         entry="forward",
         backend="native",
-        model_name="secure_resnet20",
+        model_name=(
+            "secure_resnet20_bn_fold" if bn_fold_only else "secure_resnet20"
+        ),
         external_data_file="secure_resnet20.safetensors",
         pu_mode="multiple",
     )
     module = export_to_whirl(model, sample_inputs, options)
     _attach_fhe_contract(module)
     save_as_whirl(module, str(artifact_dir / "secure_resnet20.B"))
-    _write_operator_census(artifact_dir / "operator-census.txt", module)
+    _write_operator_census(
+        artifact_dir / "operator-census.txt", module, bn_fold_only
+    )
     (artifact_dir / "capture-options.txt").write_text(
         "\n".join([
             "entry=forward",
@@ -210,6 +218,8 @@ def _emit_capture(artifact_dir: Path) -> int:
             "fhe.input=value_class:ciphertext",
             "fhe.output=value_class:ciphertext",
             "fhe.parameters=value_class:encoded_plaintext;side_file=secure_resnet20.safetensors",
+            "certification=bn_fold_relu_free" if bn_fold_only else
+            "certification=full_resnet20_capture",
         ]) + "\n",
         encoding="utf-8",
     )
@@ -274,6 +284,11 @@ def _inspect_capture(ir_b2a: Path, artifact_dir: Path) -> int:
         "FHE Encryption Descriptor Table:",
         "FHE Tensor Binding Table:",
         "FHE Key Requirement Table:",
+        "DSL PU Interface Formal Table: version=1 entries=84",
+        "DSL Call ABI Argument Table: version=1 entries=129",
+        "role=cnn.basic_block.conv1.weight",
+        "role=cnn.basic_block.bn2.variance",
+        "role=cnn.basic_block.downsample.bn.variance",
         "value=safetensors://secure_resnet20.safetensors",
         "secure_resnet20.py",
     ]
@@ -282,6 +297,65 @@ def _inspect_capture(ir_b2a: Path, artifact_dir: Path) -> int:
         print(
             "FHE ResNet-20 ir_b2a output missed expected text: " +
             ", ".join(missing),
+            file=sys.stderr,
+        )
+        return 1
+    call_abi_rows = re.findall(
+        r"^\s+\[\d+\] callsite=\d+.*role=cnn\.basic_block\.",
+        text,
+        re.MULTILINE,
+    )
+    if len(call_abi_rows) != 129:
+        print(
+            "FHE ResNet-20 expected 129 call ABI argument rows, found "
+            f"{len(call_abi_rows)}",
+            file=sys.stderr,
+        )
+        return 1
+    interface_rows = re.findall(
+        r"^\s+\[\d+\] owner_pu=<[^>]+> formal=(\d+) value=\d+ "
+        r"st=<[^>]+> ty=\d+ flags=0x0$",
+        text,
+        re.MULTILINE,
+    )
+    if len(interface_rows) != 84:
+        print(
+            "FHE ResNet-20 expected 84 PU interface formal rows, found "
+            f"{len(interface_rows)}",
+            file=sys.stderr,
+        )
+        return 1
+    interface_by_owner: dict[str, list[int]] = {}
+    for owner, formal in re.findall(
+        r"^\s+\[\d+\] owner_pu=(<[^>]+>) formal=(\d+) value=\d+ "
+        r"st=<[^>]+> ty=\d+ flags=0x0$",
+        text,
+        re.MULTILINE,
+    ):
+        interface_by_owner.setdefault(owner, []).append(int(formal))
+    interface_counts = sorted(len(formals) for formals in interface_by_owner.values())
+    if interface_counts != [2, 14, 14, 14, 20, 20] or any(
+        sorted(formals) != list(range(len(formals)))
+        for formals in interface_by_owner.values()
+    ):
+        print(
+            "FHE ResNet-20 PU interface is incomplete or has noncontiguous "
+            f"formal ordinals: {interface_by_owner}",
+            file=sys.stderr,
+        )
+        return 1
+    external_uris = re.findall(
+        r"value=safetensors://secure_resnet20\.safetensors#[^\s;]+"
+        r"\?offset=\d+&length=\d+&checksum=([^\s;\)\"\]]+)",
+        text,
+    )
+    if not external_uris or any(
+        re.fullmatch(r"[0-9a-f]{64}", checksum) is None
+        for checksum in external_uris
+    ):
+        print(
+            "FHE ResNet-20 external tensor checksum evidence is missing "
+            "or malformed",
             file=sys.stderr,
         )
         return 1
@@ -343,6 +417,7 @@ def _run_parent(artifact_dir: Path) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--emit-only", action="store_true")
+    parser.add_argument("--bn-fold-only", action="store_true")
     parser.add_argument("artifact_dir", nargs="?")
     args = parser.parse_args(argv)
     artifact_dir = (
@@ -351,7 +426,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else _repo_root() / "artifacts" / "fhe" / "resnet20_capture"
     )
     if args.emit_only:
-        return _emit_capture(artifact_dir)
+        return _emit_capture(artifact_dir, args.bn_fold_only)
     return _run_parent(artifact_dir)
 
 

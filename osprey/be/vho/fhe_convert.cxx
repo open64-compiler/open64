@@ -138,6 +138,38 @@ VHO_FHE_Convert_Report
 }
 
 static BOOL
+VHO_FHE_Convert_Calibration_Options_Valid
+        (FILE *diagnostic, VHO_FHE_CONVERT_RESULT *result)
+{
+    const char *path = VHO_FHE_Calibration_Manifest_Path;
+    const char *sha256 = VHO_FHE_Calibration_Manifest_SHA256;
+    BOOL has_path = path != NULL && path[0] != '\0';
+    BOOL has_sha256 = sha256 != NULL && sha256[0] != '\0';
+
+    if (has_path != has_sha256)
+        return VHO_FHE_Convert_Report
+                   (diagnostic, result,
+                    "calibration manifest and SHA-256 must be specified "
+                    "together");
+    if (!has_path)
+        return TRUE;
+    if (strlen(sha256) != 64)
+        return VHO_FHE_Convert_Report
+                   (diagnostic, result,
+                    "calibration manifest SHA-256 must contain exactly 64 "
+                    "lowercase hexadecimal characters");
+    for (UINT32 i = 0; i < 64; ++i) {
+        if (!((sha256[i] >= '0' && sha256[i] <= '9') ||
+              (sha256[i] >= 'a' && sha256[i] <= 'f')))
+            return VHO_FHE_Convert_Report
+                       (diagnostic, result,
+                        "calibration manifest SHA-256 must contain exactly "
+                        "64 lowercase hexadecimal characters");
+    }
+    return TRUE;
+}
+
+static BOOL
 VHO_FHE_Convert_Structural_Gatekeeper
         (struct pu_info *pu_info,
          FILE *diagnostic,
@@ -423,6 +455,10 @@ VHO_FHE_Convert_Program_Unit
     VHO_FHE_CONVERT_OPTIONS options;
     memset(&local_result, 0, sizeof(local_result));
     options.strict_o0 = VHO_FHE_Strict_O0;
+    options.calibration_manifest_path =
+        VHO_FHE_Calibration_Manifest_Path;
+    options.calibration_manifest_sha256 =
+        VHO_FHE_Calibration_Manifest_SHA256;
 
     if (pu_info == NULL || tree == NULL || *tree == NULL) {
         VHO_FHE_Convert_Report
@@ -439,6 +475,13 @@ VHO_FHE_Convert_Program_Unit
         if (result != NULL)
             *result = local_result;
         return TRUE;
+    }
+
+    if (!VHO_FHE_Convert_Calibration_Options_Valid
+             (diagnostic, &local_result)) {
+        if (result != NULL)
+            *result = local_result;
+        return FALSE;
     }
 
     if (!VHO_FHE_Convert_Structural_Gatekeeper

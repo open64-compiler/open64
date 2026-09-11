@@ -254,6 +254,7 @@ HEADER_DIRS += $(TARGDIR)/include/libelf
 endif
 
 HEADER_DIRS += $(BUILD_TOT)/include/gnu
+HEADER_DIRS += $(BUILD_TOT)
 
 #----------------------------------------------------------------------
 # Build derived files
@@ -310,6 +311,7 @@ BE_VHO_CXX_SRCS = \
   dsl_lower.cxx          \
   dsl_opt.cxx            \
   fhe_convert.cxx        \
+  fhe_semantic_convert.cxx \
   f90_lower.cxx           \
   f90_lower_dep.cxx     \
   vho_lower.cxx		\

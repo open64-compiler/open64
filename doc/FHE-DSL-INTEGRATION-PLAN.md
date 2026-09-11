@@ -3,7 +3,7 @@
 ## Status And Purpose
 
 This document turns
-`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx` into an
+`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx` into an
 implementation plan for Open64. It covers the complete first path from a
 Python model with an FHE boundary to binary very-high-level WHIRL, reviewable
 `ir_b2a` output, FHE conversion and CKKS planning, standard middle-WHIRL,
@@ -437,6 +437,98 @@ At `-O0`, conversion performs only mandatory semantic adaptation and
 deterministic legality work. Fusion, global packing search, ReSBM, and HPOLY
 profitability transforms remain off unless their own phase option enables them.
 
+At `-O2`, HPOLY/HPAO is advanced FHE optimization beneath the shared DSC
+optimization-level policy. HPAO-MU shall use a new, independently controlled
+HPOLY phase based on the SSAPRE algorithmic model for GVN/CSE-equivalent ModUp
+redundancy elimination. The existing WOPT SSAPRE implementation and behavior
+remain unchanged. HPAO-MD implementation is blocked: its analysis, legality,
+transformation ordering, extended-basis lifetime, and profitability design are
+TBD and require a separate review. `-O3` may parallelize and optimize memory
+behavior for the finalized HPOLY plan, but it does not redefine these HPAO
+transformations.
+
+## Encrypted Layout Planning And Comparative Measurement
+
+### Common planner boundary
+
+MetaKernel and Fhelipe are alternative encrypted-layout planners at SYNC-7.
+They consume the same gatekeeper-approved FHE-CNN graph, tensor descriptors,
+scheme configuration, ring dimension, backend capabilities, and optimization
+controls. They must produce a common `EncryptedTensorLayoutIR`, transformed
+`EncryptedIterationSpaceIR`, rotation schedule, mask/gap description, and key
+requirement interface. The planner name is provenance; downstream lowering
+must consume the common result rather than branch on private planner data.
+
+The input graph and configuration are frozen before either planner runs. No
+fusion, bootstrap movement, scale-policy change, or backend option may differ
+between the two comparison runs.
+
+### MetaKernel stage order
+
+MetaKernel performs kernel-local analysis for Conv and MVM, selects MetaKernel
+units and horizontal/vertical batching, and immediately transforms the logical
+iteration space. Packing and mask generation then map that transformed space
+onto CKKS vectors. The retained plan must show the original iteration domain,
+the selected decomposition, the transformed domain, output-layout constraints,
+and the resulting slot and rotation schedules.
+
+### Fhelipe stage order
+
+Fhelipe first preserves the logical tensor graph while performing graph-wide
+analytical layout assignment. It selects dimension-bit order, interleaving,
+ciphertext/slot partitioning, and producer-consumer layout compatibility.
+Gap-producing operations then trigger compaction decisions; required layout
+conversions, permutations, and masks become explicit. Only after those global
+decisions does CKKS lowering materialize the corresponding one-dimensional
+iteration space as rotations, masks, elementwise operations, and rotate-add
+reductions. The retained plan must distinguish layout selection from physical
+materialization.
+
+### Required transformation census
+
+Every planner run must publish a deterministic census after its transformation
+has been materialized and before ReSBM or later CKKS scheduling can alter the
+graph:
+
+- static rotation-operation count;
+- execution-weighted rotation count when loop or region trip counts are known;
+- unique signed rotation offsets and therefore required rotation-key offsets;
+- total CKKS slot capacity across all produced ciphertexts;
+- active logical slots and gap/invalid slots, both per value and in aggregate;
+- gap ratio, peak gap count, gaps introduced, gaps removed by compaction, and
+  slots cleared by masks;
+- ciphertext count, packing density, layout-conversion count, permutation
+  count, mask count, and rotate-add reduction count; and
+- per-operator, per-PU, and whole-program totals linked to stable source and
+  logical DSL identities.
+
+`gap_slots = total_slots - active_slots` is the canonical aggregate definition.
+The report must not count padding or replicated values as active logical slots;
+it records them separately so two planners cannot report incompatible notions
+of utilization. Static and execution-weighted rotation counts must never be
+silently substituted for each other.
+
+Retain the pre-planner `.B`/`.T`, planner-decision `.B`/`.T`, materialized
+CKKS-vector `.B`/`.T`, and machine-readable census for both planners. A common
+checker recomputes the counts from the materialized image and rejects a report
+that disagrees with the IR.
+
+### SYNC-7 layout-planner gates
+
+1. **SYNC-7A, baseline freeze:** certify one common pre-layout FHE-CNN image,
+   scheme/backend manifest, and option set for both runs.
+2. **SYNC-7B, MetaKernel transformation:** retain decomposition,
+   iteration-space transformation, packing/mask plan, and recomputed census.
+3. **SYNC-7C, Fhelipe transformation:** retain global layout assignment,
+   compaction/conversion decisions, materialized iteration space, and
+   recomputed census.
+4. **SYNC-7D, normalized A/B comparison:** prove semantic and descriptor
+   equivalence, compare rotation/gap and secondary cost metrics, and explain
+   any difference by stable operator/value identity.
+5. **SYNC-7E, downstream handoff:** pass the selected common plan to
+   SIHE/CKKS, ReSBM, and HPOLY. Planner selection remains explicit; no default
+   changes until correctness and representative-model evidence are reviewed.
+
 ## Runtime Call Lowering And Whirl2c
 
 ### FHE lowering gate
@@ -829,7 +921,8 @@ accuracy, security, layout, key, depth, memory, and artifact-review gates.
 
 ## Deferred Work
 
-- MetaKernel and Fhelipe planner implementation and A/B comparison;
+- SYNC-7A through SYNC-7E MetaKernel and Fhelipe planner implementation,
+  materialized rotation/gap census, and normalized A/B comparison;
 - FHEFusion graph search beyond mandatory canonicalization;
 - ReSBM global scale/bootstrap placement;
 - HPOLY/HPAO and optional native POLY/RNS lowering;
@@ -840,7 +933,7 @@ accuracy, security, layout, key, depth, memory, and artifact-review gates.
 
 ## References
 
-- `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.7.docx`
+- `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
 - `doc/WHIRL-DSL-INFRASTRUCTURE.md`
 - `doc/WHIRL-DSL-TENSOR-TYPE-HANDLING.md`
 - `doc/Open64_Python_FE_Plan.md`

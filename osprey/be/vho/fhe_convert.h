@@ -14,6 +14,8 @@ struct pu_info;
 
 typedef struct {
     BOOL strict_o0;
+    const char *calibration_manifest_path;
+    const char *calibration_manifest_sha256;
 } VHO_FHE_CONVERT_OPTIONS;
 
 typedef struct {
