@@ -367,6 +367,14 @@ remains the prerequisite for native model binding.
 Opcode allocation, bootstrap insertion, SIHE/CKKS primitive lowering, and
 OpenFHE/runtime lowering remain outside this checkpoint.
 
+The next main/common synchronization point adds the optional
+`.WHIRL.dsl_fhe_context_state` image defined by
+`doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md`. It preserves shared procedure
+definitions while recording exact call-context CKKS planning state. After that
+infrastructure merges, the FHE task binds one `POST_REFRESH.v1` row to each of
+the 19 authenticated ReLU context ranges and certifies the ACE-specific state
+policy before Commit 19 publication.
+
 Required phase output:
 
 ```text

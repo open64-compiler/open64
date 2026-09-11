@@ -57,6 +57,37 @@ DSL_FHE_Plan_Bootstrap_Reason_Name (UINT32 value)
 }
 
 static const char *
+DSL_FHE_Context_State_Role_Name (UINT32 value)
+{
+    static const char *names[] = {
+        "unknown", "pre_operation", "post_refresh", "post_operation",
+        "result"
+    };
+    return DSL_FHE_Plan_Name
+               (value, names, sizeof(names) / sizeof(names[0]));
+}
+
+static const char *
+DSL_FHE_Context_State_Scheme_Name (UINT32 value)
+{
+    static const char *names[] = {
+        "unknown", "ckks"
+    };
+    return DSL_FHE_Plan_Name
+               (value, names, sizeof(names) / sizeof(names[0]));
+}
+
+static const char *
+DSL_FHE_Context_State_Value_Class_Name (UINT32 value)
+{
+    static const char *names[] = {
+        "unknown", "ciphertext", "encoded_plaintext", "clear"
+    };
+    return DSL_FHE_Plan_Name
+               (value, names, sizeof(names) / sizeof(names[0]));
+}
+
+static const char *
 DSL_FHE_Plan_Value_Name (DSL_IR_VALUE_ID value_id)
 {
     DSL_IR_VALUE_RECORD value;
@@ -393,5 +424,52 @@ DSL_FHE_Approx_Profile_Image_Print (FILE *file)
                 (UINT32)record.observed_min_tcon,
                 (UINT32)record.observed_max_tcon,
                 Index_To_Str(record.provenance), record.flags);
+    }
+}
+
+void
+DSL_FHE_Context_State_Image_Print (FILE *file)
+{
+    if (file == NULL || !DSL_FHE_Context_State_Image_Has_Records())
+        return;
+    DSL_FHE_CONTEXT_STATE_IMAGE_HEADER header;
+    DSL_FHE_Context_State_Image_Get_Header(&header);
+    fprintf(file, "\nFHE Context CKKS State Image: version=%u "
+            "capabilities=0x%08x\n", header.version, header.capabilities);
+    fprintf(file, "FHE Context CKKS State Table:\n");
+    for (UINT32 i = 1; i <= header.context_ckks_state_count; ++i) {
+        DSL_FHE_CONTEXT_CKKS_STATE_RECORD record;
+        DSL_PU_SOURCE_IDENTITY_RECORD identity;
+        DSL_FHE_Context_State_Get(i, &record);
+        DSL_Call_Image_Get_PU_Identity
+            (record.context_pu_identity_id, &identity);
+        fprintf(file, "  [%u] owner_pu=%s source=value%u(%s) "
+                "context_identity=%u(%s) callsite=%u role=%s "
+                "state_version=%u encryption=%u scheme=%s class=%s",
+                record.id, ST_name(St_Table[record.owner_pu_st]),
+                record.source_value_id,
+                DSL_FHE_Plan_Value_Name(record.source_value_id),
+                record.context_pu_identity_id,
+                Index_To_Str(identity.canonical_definition_name),
+                record.context_callsite_id,
+                DSL_FHE_Context_State_Role_Name(record.state_role),
+                record.state_version, record.encryption_descriptor_id,
+                DSL_FHE_Context_State_Scheme_Name(record.scheme),
+                DSL_FHE_Context_State_Value_Class_Name(record.value_class));
+        DSL_FHE_Plan_Print_Pending_Integer(file, "level", record.level);
+        DSL_FHE_Plan_Print_Pending_Integer
+            (file, "scale_bits", record.scale_bits);
+        DSL_FHE_Plan_Print_Pending_Integer
+            (file, "components", record.component_count);
+        DSL_FHE_Plan_Print_Pending_Integer
+            (file, "precision_bits", record.precision_bits);
+        fprintf(file, " slots=%u alignment_group=%u layout=%s "
+                "pending=0x%x bootstrap_reason=%s flags=0x%x\n",
+                record.slot_count, record.alignment_group,
+                record.encrypted_layout_name == STR_IDX_ZERO ? "<pending>" :
+                    Index_To_Str(record.encrypted_layout_name),
+                record.pending_actions,
+                DSL_FHE_Plan_Bootstrap_Reason_Name
+                    (record.pending_bootstrap_reason), record.flags);
     }
 }

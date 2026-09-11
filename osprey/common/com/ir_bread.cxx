@@ -561,6 +561,21 @@ WN_get_dsl_fhe_approx_profile_image (void *handle)
                (section_base, shdr.size, stderr) ? 0 : -1;
 }
 
+INT
+WN_get_dsl_fhe_context_state_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_FHE_CONTEXT_STATE);
+    if (shdr.offset == 0) {
+        DSL_FHE_Context_State_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_FHE_Context_State_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
 /*
  *  Note: get SSA info from file into memory 
  */
@@ -1729,6 +1744,10 @@ Read_Global_Info (INT32 *p_num_PUs)
     }
     if (WN_get_dsl_fhe_approx_profile_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL FHE approximation profile image",
+                global_ir_file);
+    }
+    if (WN_get_dsl_fhe_context_state_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL FHE context CKKS state image",
                 global_ir_file);
     }
 

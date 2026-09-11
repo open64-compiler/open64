@@ -284,10 +284,19 @@ failure and is never persisted as an accepted state.
 The current `.WHIRL.dsl_fhe_plan` v1 CKKS-state row is identified only by
 `(value_id, state_version)`. A contextual analysis may collapse into that row
 only when every represented call context has an identical accepted state. If
-context states differ, the compiler must fail closed until either deterministic
-context specialization makes values distinct or a reviewed append-only
-context-to-state association is available. It must never persist whichever
-callsite happened to be analyzed last.
+context states differ, the append-only `.WHIRL.dsl_fhe_context_state` image
+records the complete state under the exact source-definition/call-context key.
+It must never persist whichever callsite happened to be analyzed last or use
+`state_version` as a callsite or approximation-stage ordinal. The normative
+physical and validation contract is
+`doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md`.
+
+For the ACE composite ReLU path, `POST_REFRESH.v1` describes the target of the
+planned mandatory pre-operation refresh. It is not evidence that bootstrap has
+executed. Common infrastructure verifies one-to-one context-range association
+and profile/config agreement; the FHE semantic gate verifies the approved ACE
+levels, scale, component count, precision requirement, and pending-refresh
+policy.
 
 ### Initialization
 
