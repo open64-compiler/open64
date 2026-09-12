@@ -1,46 +1,128 @@
 {
   "schema": "open64.fhe.relu.ckks-schedule.v1",
-  "status": "blocked_missing_concrete_openfhe_configuration",
+  "status": "approved_static_compiler_schedule",
   "profile_name": "ace.chebyshev.sign.7x15x13.depth11.v1",
+  "scope": "SYNC-3 conversion-planning evidence; no bootstrap or ciphertext execution claim",
   "coefficient_manifest_sha256": "75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931",
-  "symbolic_stage_contract_approved": true,
-  "symbolic_contract": {
-    "pre_refresh": "required",
-    "bootstrap_reason": "PRE_RELU_REFRESH",
-    "normalization": "x_divided_by_positive_context_bound",
-    "stage_degrees": [7, 15, 13],
-    "claimed_total_multiplicative_depth": 11,
-    "reconstruction": "0.5*x*composite_sign(x/B)+0.5*x"
+  "authority": {
+    "ace_revision": "fb76131171b9f82aa6387f84dd73684fba5277e8",
+    "generated_program": "fhe-cmplr/rtlib/ant/dataset/resnet20_cifar10_pre.onnx.inc",
+    "generated_program_sha256": "55e0deded19fdef9383f1e368dfeb3d3920535635a07ac55cadd1086bc9b1c94",
+    "build_recipe": "scripts/build_resnet20_cifar10.sh",
+    "build_recipe_sha256": "e0a223bd5b0acd4ec0bf4be6ff0b5b2eb256bd1ff8636e03f82dfaf3d068dac3",
+    "performance_log": "scripts/ace_pre.log",
+    "performance_log_sha256": "f5cc87fb983dfa8e145407066d7aab399496cb0f7ab98857d1b8ce3a3023cb63",
+    "evidence_kind": "pinned ACE compiler-generated static program and project-reviewed configuration",
+    "executed_openfhe_ciphertext_inference": false
   },
   "selected_fhe_config": {
-    "config_id": null,
-    "openfhe_revision": null,
-    "security_level": null,
-    "ring_dimension": null,
-    "slot_count": null,
-    "scaling_technique": null,
-    "first_modulus_bits": null,
-    "scaling_modulus_bits": null,
-    "multiplicative_depth": null,
-    "bootstrap_depth": null,
-    "level_budget": null,
-    "secret_key_distribution": null
+    "config_id": "resolved_from_whirl",
+    "scheme": "CKKS",
+    "security_level": "128_classic",
+    "ring_dimension": 65536,
+    "slot_count": 32768,
+    "multiplicative_depth": 33,
+    "first_modulus_bits": 60,
+    "scaling_modulus_bits": 56,
+    "bootstrap_policy": "auto_or_on"
   },
-  "bootstrap_post_state": {
-    "level": null,
-    "scale_bits": null,
-    "component_count": null,
-    "minimum_precision_bits": null
+  "context_state_contract": {
+    "state_role": "POST_REFRESH",
+    "state_version": 1,
+    "scale_bits": 56,
+    "component_count": 2,
+    "minimum_precision_bits": 30,
+    "encrypted_layout": "ckks.packed",
+    "pending_actions": ["BOOTSTRAP"],
+    "pending_bootstrap_reason": "PRE_RELU_REFRESH",
+    "meaning": "target state after the planned mandatory refresh, not proof of execution"
   },
-  "schedule": [
-    {"ordinal":0,"operation":"normalize","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null},
-    {"ordinal":1,"operation":"chebyshev_stage_7","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null},
-    {"ordinal":2,"operation":"chebyshev_stage_15","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null},
-    {"ordinal":3,"operation":"chebyshev_stage_13","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null},
-    {"ordinal":4,"operation":"relu_reconstruction","input_level":null,"output_level":null,"input_scale_bits":null,"output_scale_bits":null,"component_count":null,"minimum_precision_bits":null,"evaluation_algorithm":null,"level_consumption":null}
+  "profile_schedule": [
+    {
+      "ordinal": 0,
+      "operation": "normalize_x_by_positive_context_bound",
+      "input_level_offset": 0,
+      "output_level_offset": 0,
+      "scale_bits": 56,
+      "component_count": 2,
+      "minimum_precision_bits": 30,
+      "evaluation_algorithm": "plaintext_scale_normalization",
+      "level_consumption": 0
+    },
+    {
+      "ordinal": 1,
+      "operation": "chebyshev_stage_7",
+      "input_level_offset": 0,
+      "output_level_offset": -3,
+      "scale_bits": 56,
+      "component_count": 2,
+      "minimum_precision_bits": 30,
+      "evaluation_algorithm": "clenshaw",
+      "level_consumption": 3
+    },
+    {
+      "ordinal": 2,
+      "operation": "chebyshev_stage_15",
+      "input_level_offset": -3,
+      "output_level_offset": -7,
+      "scale_bits": 56,
+      "component_count": 2,
+      "minimum_precision_bits": 30,
+      "evaluation_algorithm": "clenshaw",
+      "level_consumption": 4
+    },
+    {
+      "ordinal": 3,
+      "operation": "chebyshev_stage_13",
+      "input_level_offset": -7,
+      "output_level_offset": -10,
+      "scale_bits": 56,
+      "component_count": 2,
+      "minimum_precision_bits": 30,
+      "evaluation_algorithm": "clenshaw",
+      "level_consumption": 3
+    },
+    {
+      "ordinal": 4,
+      "operation": "relu_reconstruction_0.5_x_sign_plus_0.5_x",
+      "input_level_offset": -10,
+      "output_level_offset": -11,
+      "scale_bits": 56,
+      "component_count": 2,
+      "minimum_precision_bits": 30,
+      "evaluation_algorithm": "multiply_add_relinearized",
+      "level_consumption": 1
+    }
   ],
-  "depth_sum": null,
-  "symbolic_proof": null,
-  "executed_openfhe_evidence": null,
-  "blocker": "Select and approve one concrete OpenFHE CKKS configuration and evaluator schedule, then prove exact level/scale/component/precision transitions and execute the focused runtime test. ACE's depth-11 label alone is not an OpenFHE state proof."
+  "total_multiplicative_depth": 11,
+  "contexts": [
+    {"instance_path":"stem.relu","post_refresh_level":15,"final_level":4,"ace_program_line":1577},
+    {"instance_path":"layer1.0.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":1708},
+    {"instance_path":"layer1.0.relu2","post_refresh_level":15,"final_level":4,"ace_program_line":1857},
+    {"instance_path":"layer1.1.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":1988},
+    {"instance_path":"layer1.1.relu2","post_refresh_level":15,"final_level":4,"ace_program_line":2137},
+    {"instance_path":"layer1.2.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":2268},
+    {"instance_path":"layer1.2.relu2","post_refresh_level":18,"final_level":7,"ace_program_line":2417},
+    {"instance_path":"layer2.0.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":2647},
+    {"instance_path":"layer2.0.relu2","post_refresh_level":15,"final_level":4,"ace_program_line":2995},
+    {"instance_path":"layer2.1.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":3126},
+    {"instance_path":"layer2.1.relu2","post_refresh_level":15,"final_level":4,"ace_program_line":3275},
+    {"instance_path":"layer2.2.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":3406},
+    {"instance_path":"layer2.2.relu2","post_refresh_level":18,"final_level":7,"ace_program_line":3555},
+    {"instance_path":"layer3.0.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":3800},
+    {"instance_path":"layer3.0.relu2","post_refresh_level":15,"final_level":4,"ace_program_line":4163},
+    {"instance_path":"layer3.1.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":4294},
+    {"instance_path":"layer3.1.relu2","post_refresh_level":15,"final_level":4,"ace_program_line":4443},
+    {"instance_path":"layer3.2.relu1","post_refresh_level":15,"final_level":4,"ace_program_line":4574},
+    {"instance_path":"layer3.2.relu2","post_refresh_level":17,"final_level":6,"ace_program_line":4723}
+  ],
+  "proof": {
+    "context_count": 19,
+    "post_refresh_level_set": [15, 17, 18],
+    "profile_depth_sum": 11,
+    "all_final_levels_nonnegative": true,
+    "static_schedule_internally_consistent": true,
+    "independent_formal_polynomial_proof": "deferred",
+    "executed_44gb_ciphertext_inference": "deferred_to_runtime_lowering_certification"
+  }
 }

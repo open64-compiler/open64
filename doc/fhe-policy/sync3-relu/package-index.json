@@ -1,6 +1,6 @@
 {
   "schema": "open64.fhe.relu.policy-package.v1",
-  "status": "reviewable_blocked",
+  "status": "sync3_commit19_conversion_planning_certified",
   "profile_name": "ace.chebyshev.sign.7x15x13.depth11.v1",
   "artifacts": [
     {
@@ -12,25 +12,27 @@
     {
       "gate": "identity_bound_ranges",
       "path": "doc/fhe-policy/sync3-relu/range-manifest.json",
-      "sha256": "3a76073bccad7559f9b3968115170c2c8c987ce614a88567f11a7961fee84e98",
-      "status": "blocked_missing_calibration_authority"
+      "sha256": "55dcb4ec993a9f09901eaf61aa49dde8628e3eb032a24429a40715fc3fc4113c",
+      "status": "approved"
     },
     {
       "gate": "accuracy",
       "path": "doc/fhe-policy/sync3-relu/accuracy-manifest.json",
-      "sha256": "f931e40a7a6a88d167198f679663c7a6713226199196928b0b7d7fb6cdc23031",
-      "status": "blocked_missing_predeclared_acceptance_protocol"
+      "sha256": "1fd33f514363cf5b1f4f092e5553cb4e77d0f03eff3bbed4852ca0a6ae32ea25",
+      "status": "approved"
     },
     {
       "gate": "ckks_state_proof",
       "path": "doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json",
-      "sha256": "95d7b63c7a7c509fdd9115bcef1c067009c90e7f8b63fe1357262ba320da342f",
-      "status": "blocked_missing_concrete_openfhe_configuration"
+      "sha256": "27fe104aa5a159baefd0255c82e0c9193c1ecdf28b73f97e2f8830bb1444ae62",
+      "status": "approved_static_compiler_schedule"
     }
   ],
   "enablement": {
     "allowed": false,
     "diagnostic": "CFHECNN-RELU-003",
-    "full_secure_resnet_fhe_binary_publication": false
+    "full_secure_resnet_fhe_binary_publication": false,
+    "sync3_conversion_planning_binary_publication": true,
+    "scope": "SYNC-3 planning evidence only; SYNC-4 materialization and OpenFHE execution remain fail-closed"
   }
 }

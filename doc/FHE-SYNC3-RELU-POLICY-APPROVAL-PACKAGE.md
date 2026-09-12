@@ -1,30 +1,31 @@
 # FHE SYNC-3 ReLU Composite-Policy Approval Package
 
-Status: reviewable evidence package; compiler enablement blocked
+Status: Commit 17 policy tuple approved; Commit 19 planning evidence certified
 
 Profile under review:
 `ace.chebyshev.sign.7x15x13.depth11.v1`
 
-This package supports Commit 17 of
+This package supports Commit 17 and the focused Commit 19 gate of
 `doc/FHE-SYNC3-COMMIT-ACCEPTANCE-PLAN.md`. It records project approval of the
-exact numeric ACE coefficient profile from empirical ANT ACE evidence. It does
-not approve model-specific ranges or trained-model accuracy, insert bootstrap,
-lower polynomial arithmetic, or authorize publication of a ReLU-bearing
-`secure_resnet20.fhe.B`.
+exact numeric ACE coefficient profile from empirical ANT ACE evidence, the
+approved identity-bound calibration ranges, the held-out clear accuracy run,
+and the compiler/static CKKS schedule. It authorizes only the focused SYNC-3
+conversion-planning `secure_resnet20.fhe.B`. It does not insert bootstrap,
+lower polynomial arithmetic, execute ciphertext inference, or claim SYNC-4.
 
 ## Decision Summary
 
 | Gate | Status | Decision or blocker |
 | --- | --- | --- |
 | Canonical coefficient provenance | Approved from empirical ANT ACE evidence | The exact ACE `7 -> 15 -> 13` Chebyshev coefficient bytes, source revision, file digest, SPDX expression, stage digests, and bundle digest are frozen without fitting or scaling. Open64's independent formal proof is deferred. |
-| Nineteen identity-bound ranges | Collector implemented; model evidence blocked | All 19 Open64 identity keys and clear-model routes are enumerated. Deterministic pre-ReLU collection, distribution evidence, positive-bound checks, canonical hashing, and approval validation are tested. An approved trained checkpoint, calibration split, preprocessing, bound estimator, and safety/outlier policy are missing. |
-| Accuracy evidence | Blocked | The dataset/checkpoint protocol and numerical thresholds have not been approved in advance. No accuracy or tolerance claim can be made from the synthetic fixture. |
-| Concrete CKKS state proof | Blocked | ACE's symbolic depth-11 label is not a concrete OpenFHE level/scale/precision proof. One OpenFHE configuration and evaluator schedule must be selected and executed. |
+| Nineteen identity-bound ranges | Approved | A 5,000-image class-stratified CIFAR-10 training subset records all 19 exact Open64 identities, extrema, distribution evidence, positive bounds, hashes, and reject-on-outlier policy. |
+| Accuracy evidence | Approved for SYNC-3 planning | A disjoint 1,000-image held-out test subset reproduces 91.6% clear and 91.5% polynomial accuracy, 0.1 percentage-point degradation, 99.9% prediction agreement, and zero out-of-range values against thresholds frozen before execution. |
+| Concrete CKKS state proof | Approved static compiler schedule | Pinned ACE compiler output and project-reviewed `N=65536`, `Q0=60`, scale 56 configuration establish context-specific post-refresh levels 15, 17, and 18 and depth 11. This is planning evidence, not executed OpenFHE ciphertext inference. |
 
-The coefficient profile may now be interned and certified independently. The
-correct model decision remains **do not enable SecureResNet ReLU conversion**:
-preserve fail-closed behavior at the range/calibration gate and publish no full
-SecureResNet FHE binary.
+The complete tuple may now be interned and certified as SYNC-3 planning
+evidence. Runtime enablement remains false: the resulting `.fhe.B` records
+required composite approximation and pending pre-ReLU refresh, but does not
+materialize either operation.
 
 ## Gate 1: Coefficient Provenance
 
@@ -84,87 +85,74 @@ The 11 reusable physical `common.relu` definitions expand to 19 source
 contexts through the nine persisted callsites. Shared physical values retain
 distinct callsite identities; no name or tensor-shape fallback is allowed.
 
-The current source fixture cannot certify ranges. It initializes synthetic
-parameters by a deterministic arithmetic pattern and exposes one all-ones
-sample input. Before instrumentation runs, reviewers must freeze:
-
-1. A trained ResNet-20/CIFAR-10 checkpoint and SHA-256.
-2. An immutable calibration dataset/split, sample order, and dataset hash.
-3. Exact normalization, resize/crop, dtype, and layout preprocessing with a
-   hashed executable specification.
-4. A bound estimator, safety margin, and `reject` out-of-range behavior.
-5. A separate acceptance set or a documented non-tuning role for acceptance
-   data.
-
-After approval, clear/reference instrumentation records pre-ReLU minima,
-maxima, element sample counts, and the selected positive `B` against the exact
-19 keys. Calibration chooses bounds; acceptance data only evaluates the
-already frozen policy.
+The accepted collector uses the pinned ACE-derived Open64 checkpoint
+`75fb9294272845b19eaeea3e1ee644d289536ea6711b27ec9527e658f5d20ff5`.
+Original training provenance is unknown and is not claimed. It observes a
+deterministic class-stratified 5,000-image subset of the canonical CIFAR-10
+training split after the frozen ACE preprocessing. For each identity it
+records minima, maxima, sample and element counts, tail quantiles, nonfinite
+and outlier counts, and `B = 1.1 * max(abs(min), abs(max))`. Runtime policy is
+to reject values outside the approved bound. The official CIFAR-10 test split
+is excluded from calibration and reserved for held-out acceptance.
 
 ## Gate 3: Accuracy Evidence
 
-Accuracy execution is ordered after Gates 1 and 2. The comparison must run the
-same trained checkpoint and preprocessing twice:
+Accuracy execution ran after Gates 1 and 2 with the same trained checkpoint and
+preprocessing twice:
 
 ```text
 clear common.relu baseline
 clear 0.5*x*P13(P15(P7(x/B)))+0.5*x emulation
 ```
 
-Before either run, reviewers must approve minimum sample count, maximum top-1
-drop, maximum logit `Linf`, and per-context ReLU `Linf`/`L2` limits. The run
-manifest then records baseline and emulated top-1, logit differences,
-activation errors, out-of-range count, software lock, and every input hash.
-No threshold may be selected after results are visible.
+The predeclared gates required a credible clear baseline, at most 1.0
+percentage-point polynomial degradation, at least 98% prediction agreement,
+and zero out-of-range values. The disjoint 1,000-image result is 91.6% clear,
+91.5% polynomial, 0.1 percentage-point degradation, 99.9% agreement, and zero
+out-of-range values. Logit and activation errors remain report-only evidence;
+no threshold was changed after results were visible.
 
 ## Gate 4: CKKS State Proof
 
-The symbolic obligations are known: required pre-ReLU refresh with reason
+The accepted static compiler schedule requires pre-ReLU refresh with reason
 `PRE_RELU_REFRESH`, normalization by positive `B`, ordered degrees
-`7 -> 15 -> 13`, claimed total multiplicative depth 11, and ReLU
-reconstruction. These facts are not yet a concrete state schedule.
+`7 -> 15 -> 13`, total multiplicative depth 11, and ReLU reconstruction. The
+selected contract uses CKKS security class 128-classic, `N=65536`, 32768
+slots, depth 33, `Q0=60`, scale 56, two components, and minimum precision 30.
+The exact 19 context states preserve ACE post-refresh levels 15, 17, or 18.
 
-Reviewers must select one OpenFHE revision and CKKS configuration, including
-security level, ring dimension, slots, modulus chain, scaling technique,
-bootstrap parameters, and secret-key distribution. For normalization, each
-stage, and reconstruction, the completed manifest must state input/output
-level, scale, component count, minimum precision, evaluator, and level
-consumption. The consumptions must sum to 11 under the profile contract.
-
-Two proofs are required and remain distinct:
-
-- Symbolic proof: the schedule transitions are internally consistent and meet
-  every stage/profile contract.
-- Executed proof: a focused OpenFHE run observes compatible state and numerical
-  precision for the exact configuration and coefficient/range manifests.
+The symbolic/static schedule is internally consistent and accepted for this
+conversion-planning checkpoint. Executed OpenFHE ciphertext state and numerical
+precision remain a later runtime/lowering certification gate.
 
 ## Native API Approval Checklist
 
 | Evidence | Native mapping after approval | Current action |
 | --- | --- | --- |
 | Profile name/version, reconstruction, total depth, normalization, refresh, source revision, coefficient-manifest hash | `DSL_FHE_COMPOSITE_PROFILE_RECORD` passed to `DSL_FHE_Approx_Profile_Intern_Complete()` | Integrated from approved empirical ACE profile |
-| Three ordered coefficient tensors, byte hashes, basis, degree, evaluator, scale/level policies | Three `DSL_FHE_APPROX_STAGE_RECORD` rows passed atomically with the profile | Exact stages integrated; concrete runtime state execution remains blocked |
-| One composite disposition per live source ReLU | `DSL_FHE_Plan_Add_Composite_Disposition()` | Continue range-specific `CFHECNN-RELU-003`; do not insert model rows |
-| Nineteen exact value/PU/callsite bounds and extrema | `DSL_FHE_Approx_Profile_Bind_Context_Range()` | Collector certified on a fixture; numeric model records blocked pending approved evidence and manifest transport |
-| Value-specific level, scale, components, precision, pending refresh reason | `DSL_FHE_Plan_Add_CKKS_Value_State()` and lookup APIs | Symbolic skeleton only; concrete rows blocked |
-| Reopen and cross-table evidence | profile/stage/association/context count/get/find APIs plus `ir_b2a -st -src` | Run only after accepted rows exist |
+| Three ordered coefficient tensors, byte hashes, basis, degree, evaluator, scale/level policies | Three `DSL_FHE_APPROX_STAGE_RECORD` rows passed atomically with the profile | Complete: ordered degrees `7,15,13`, depth 11, and exact stage hashes reopen |
+| One composite disposition per live source ReLU | `DSL_FHE_Plan_Add_Composite_Disposition()` | Complete: 11 reusable definition dispositions cover 19 source contexts |
+| Nineteen exact value/PU/callsite bounds and extrema | `DSL_FHE_Approx_Profile_Bind_Context_Range()` | Complete: 19 callee-tagged approved context rows |
+| Context-specific level, scale, components, precision, pending refresh reason | `DSL_FHE_Context_State_Intern()` | Complete: one exact `POST_REFRESH.v1` row per range, with levels 15/17/18 |
+| Reopen and cross-table evidence | profile/stage/association/context/state APIs plus `ir_b2a -st -src` | Complete for the focused SYNC-3 planning artifact |
 
-Coefficient-profile approval authorizes the already integrated profile and
-ordered stage rows. It does not authorize a model disposition, context binding,
-or full `.fhe.B` publication. Those remain atomic with approved range evidence
-and the later accuracy/CKKS gates.
+The approved tuple authorizes the focused Commit 19 planning image and its
+atomic payload/report publication. It does not authorize SYNC-4 bootstrap or
+polynomial materialization, standard-WHIRL runtime lowering, or OpenFHE
+execution.
 
 ## Machine-Readable Evidence
 
 | Artifact | SHA-256 |
 | --- | --- |
 | `doc/fhe-policy/sync3-relu/coefficient-manifest.json` | `75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931` |
-| `doc/fhe-policy/sync3-relu/range-manifest.json` | `3a76073bccad7559f9b3968115170c2c8c987ce614a88567f11a7961fee84e98` |
-| `doc/fhe-policy/sync3-relu/accuracy-manifest.json` | `f931e40a7a6a88d167198f679663c7a6713226199196928b0b7d7fb6cdc23031` |
-| `doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json` | `95d7b63c7a7c509fdd9115bcef1c067009c90e7f8b63fe1357262ba320da342f` |
+| `doc/fhe-policy/sync3-relu/range-manifest.json` | `55dcb4ec993a9f09901eaf61aa49dde8628e3eb032a24429a40715fc3fc4113c` |
+| `doc/fhe-policy/sync3-relu/accuracy-manifest.json` | `1fd33f514363cf5b1f4f092e5553cb4e77d0f03eff3bbed4852ca0a6ae32ea25` |
+| `doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json` | `27fe104aa5a159baefd0255c82e0c9193c1ecdf28b73f97e2f8830bb1444ae62` |
 
 `doc/fhe-policy/sync3-relu/package-index.json` binds those paths, hashes, gate
-statuses, and the fail-closed result. The manifest test independently rebuilds
+statuses, permits SYNC-3 planning publication, and keeps runtime enablement
+false. The manifest test independently rebuilds
 the coefficient bytes and hashes, validates all 19 identities, and rejects
 missing stages, changed hashes, duplicate identities, incomplete range or
 accuracy evidence, and incomplete CKKS schedules.
@@ -174,13 +162,17 @@ accuracy evidence, and incomplete CKKS schedules.
 - [x] Coefficient source, revision, license provenance, decimal order,
   binary64 bytes, and reconstruction interpretation accepted from empirical
   ANT ACE evidence.
-- [ ] Trained checkpoint, calibration data, preprocessing, bound rule, and
+- [x] Trained checkpoint, calibration data, preprocessing, bound rule, and
   outlier policy accepted before capture.
-- [ ] Accuracy dataset, metrics, and thresholds accepted before execution.
-- [ ] OpenFHE configuration and depth/state schedule accepted and executed.
-- [ ] All four final manifest hashes reviewed as one immutable tuple.
-- [ ] FHE conversion may replace `CFHECNN-RELU-003` with complete
+- [x] Accuracy dataset, metrics, and thresholds accepted before execution.
+- [x] CKKS configuration and compiler/static depth/state schedule accepted for
+  SYNC-3 planning.
+- [x] All four final manifest hashes reviewed as one immutable tuple.
+- [x] FHE conversion may replace `CFHECNN-RELU-003` with complete
   context-bound composite planning.
+- [ ] OpenFHE ciphertext execution confirms the planned schedule; deferred to
+  the runtime/lowering milestone and not a Commit 19 blocker.
 
-Until every box is checked, Commit 17 remains evidence preparation, Commit 19
-remains blocked, and the certified ReLU-free BatchNorm path is preserved.
+Commit 17 is complete and Commit 19 may close after exact-candidate integration
+review. The unchecked runtime item remains mandatory later but does not block
+the focused SYNC-3 conversion-planning checkpoint.

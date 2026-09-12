@@ -248,17 +248,18 @@ verdict, and wait for authorization before starting the next numbered item.
 
 | Commit | Implementation | Verification | Remaining gate |
 | --- | --- | --- | --- |
-| 14: semantic gatekeeper | Complete in the FHE-owned branch | Focused semantic contract test passes after rebasing onto PR #123 | Final full-model integration rerun |
-| 15: BatchNorm folding | Complete | ReLU-free six-PU certification proves 13 physical definition retirements, 21 context folds, and 42 converted tensors with independent payload verification | Final integration rerun at the accepted PR-E tip |
-| 16: operator dispositions | Complete for the ReLU-free positive path; ReLU remains fail-closed | The positive artifact records 36 source and 36 converted dispositions | Composite ReLU dispositions require certified policy evidence |
-| 17: ReLU profile and CKKS planning | Exact ACE coefficient profile, identity-bound range collector, and authenticated all-PU native consumer implemented; model enablement blocked | Empirically approved bytes/stage hashes are interned; deterministic collection and RapidJSON consumption validate exact bytes, authority, all 19 persisted identities, bounds, tail evidence, and manifest hashes | Approved trained checkpoint/CIFAR-10 calibration inputs, predeclared accuracy acceptance, and concrete OpenFHE state/depth proof |
-| 18: reports and diagnostics | Complete for BatchNorm certification and ReLU-policy rejection | Atomic payload/report publication and range-specific `CFHECNN-RELU-003` rejection are retained | Full composite-profile report evidence |
-| 19: full ResNet-20 SYNC-3 evidence | Blocked | No ReLU-bearing `.fhe.B` is published | Completion of commit 17 evidence followed by the full acceptance lane |
+| 14: semantic gatekeeper | Complete | Focused native tests and the six-PU candidate pass source and converted-form gates; malformed inputs fail closed | Main-side exact-candidate review |
+| 15: BatchNorm folding | Complete | The candidate proves 13 physical definition retirements, 21 context folds, 42 converted tensors, dead BN ABI inputs, and independent payload equality | Main-side exact-candidate review |
+| 16: operator dispositions | Complete | The candidate records 46 source and 46 converted dispositions; 11 reusable ReLU definitions use the composite profile | Main-side exact-candidate review |
+| 17: ReLU profile and CKKS planning | Complete for SYNC-3 | Exact ACE stages and hashes, 19 approved ranges, and 19 callee-tagged `POST_REFRESH.v1` rows reopen with levels 15/17/18, scale 56, two components, and precision 30 | SYNC-4 materialization remains intentionally deferred |
+| 18: reports and diagnostics | Complete | Atomic payload/report publication and `CFHECNN-RELU-003/004/005/007` plus stale-output negatives are retained with no partial artifacts | Main-side exact-candidate review |
+| 19: full ResNet-20 SYNC-3 evidence | Implementation and local verification complete | Six-PU `.fhe.B` publishes last and independently reopens; clear accuracy 91.6%, polynomial 91.5%, degradation 0.1 points, agreement 99.9%, range violations 0 | Independent main-side verdict, clean commit/PR, and merged-tip rerun |
 
-PR #123 closes the physical composite-profile representation dependency only.
-It does not authorize numeric ACE coefficients, default context bounds, or
-placeholder CKKS states. The conversion pass must continue to fail closed until
-all commit 17 evidence is reviewed as one exact policy tuple.
+PR #123 closed the physical composite-profile representation dependency and PR
+#130 closed the context-specific CKKS-state dependency. The exact ACE
+coefficient bytes, calibrated ranges, held-out accuracy evidence, and static
+compiler schedule are now reviewed as one policy tuple. This authorizes only
+the focused SYNC-3 planning artifact; runtime model enablement remains false.
 
 The current Commit 17 decision package is
 `doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`, with machine-readable evidence
@@ -765,10 +766,12 @@ interim.
 
 Evidence checkpoint: the approval package records project approval of the
 exact ACE source revision, direct Chebyshev coefficient convention, binary64
-bytes, and per-stage hashes from empirical ANT ACE evidence, plus the 19
-Open64 context keys. It deliberately records null measurements and a blocked
-status rather than treating the deterministic synthetic fixture as calibration
-or accuracy evidence. The full-model diagnostic is `CFHECNN-RELU-003`.
+bytes, and per-stage hashes from empirical ANT ACE evidence. A pinned
+ACE-derived checkpoint and a 5,000-image class-stratified CIFAR-10 training
+subset provide measured bounds for all 19 Open64 context keys. A disjoint
+1,000-image held-out test run passes the predeclared accuracy and agreement
+gates. The compiler/static CKKS schedule records context-specific post-refresh
+levels without claiming executed ciphertext inference.
 
 Implementation:
 
