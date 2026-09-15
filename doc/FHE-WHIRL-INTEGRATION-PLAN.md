@@ -18,6 +18,13 @@ optimization/lowering planning, runtime/library integration, and FHE-specific
 tests. Shared/common opcode and type-system additions remain owned by the main
 common/com task.
 
+The sole highest FHE semantic authority is
+`doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`, whose
+repository copy has SHA-256
+`0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
+This plan may refine review checkpoints but cannot override v0.10 semantics or
+completion criteria.
+
 ## Architecture Decision
 
 The first FHE vertical slice targets full inference-only ResNet-20/CIFAR-10:
@@ -525,21 +532,22 @@ encoded as value-state versions.
 | SYNC-0: Plan and contract reconciliation | Baseline freeze and handoff review | Consolidated plan is accepted; this plan marks common/CNN requests as reuse, extend, promote, or new; complete ResNet-20 operator census scope, FHE descriptors, option semantics, and handoff requests are frozen before implementation. |
 | SYNC-1: Native API and image contract freeze | Shared native contracts before frontend certification | FHE record layouts, builder API requests, malformed-record rules, printer spelling, and negative-test matrix are finalized against main-owned common/type, mapped-image, and gatekeeper hooks. |
 | SYNC-2: Frontend artifact certification | Complete ResNet-20 capture using merged opaque APIs | `artifacts/fhe/resnet20_capture/` retains source, weights, `.B`, `ir_b2a -st -src` `.T`, operator census, options, and gatekeeper log; every source ReLU is existing `common.relu`; Python invents no bootstrap or CKKS operators. |
-| SYNC-3: ResNet FHE conversion review | FHE gatekeeper and CNN-to-FHE conversion | **Complete at merged develop `d424c00b`.** Commit 19 certification proves callee-value identity, 13 definition/21 context folds, 42 converted tensors, 46 dispositions, the exact ACE coefficient profile, 19 authenticated ranges, and 19 context-specific `POST_REFRESH.v1` CKKS planning states. Native prepublication checks authenticate the active parameter-payload digest and stable route schedule; the independent lane authenticates the exact `.B`, model source, checkpoint, and dataset evidence. The six-PU `secure_resnet20.fhe.B` is published atomically with its converted payload/report and reopens through `ir_b2a -st -src`. This remains planning evidence only. |
+| SYNC-3: ResNet FHE conversion review | FHE gatekeeper and CNN-to-FHE conversion | **Implementation merged; current independent verification unverified.** The 2026-09-14 merged-tip record reports callee-value identity, 13 definition/21 context folds, 42 converted tensors, 46 dispositions, the exact ACE coefficient profile, 19 authenticated ranges, and 19 context-specific `POST_REFRESH.v1` CKKS planning states. Those historical results were not rerun here. The referenced host-local retained bytes are unavailable, and their hashes cannot replace them; publish an accessible immutable complete bundle or retain a new exact-snapshot rerun before SYNC-4 implementation consumes this planning input. |
 | SYNC-4: ReLU `-O0` baseline certification | Mandatory pre-ReLU refresh and composite polynomial approximation | Certify the selected ACE-compatible Chebyshev sign profile with ordered degrees `7 -> 15 -> 13`, depth 11, exact coefficient bytes/checksums, identity-bound normalization ranges, model accuracy, and CKKS state. Then `bootstrap=auto|on` inserts one required pre-ReLU boundary per surviving `common.relu`; `manual` requires explicit compatible boundaries; `off` rejects surviving ReLU; no `-O0` movement, merging, deduplication, or profitability placement occurs. |
 | SYNC-5: Middle-WHIRL and mock executable gate | Standard WHIRL boundary and mock runtime | `secure_resnet20.mid.B` and `.T` contain only standard WHIRL calls, formals, symbols, initializers, status checks, and control flow; `whirl2c` emits C that compiles and links with the mock FHE C ABI. |
 | SYNC-6: End-to-end `-O0` functional acceptance | Complete ACE ANT ResNet path | Full ResNet-20 binary WHIRL lowers through FHE/CKKS, `whirl2c`, generated-C compilation, the Open64 ACE provider adapter, and pinned `FHErt_ant`; the local harness executes the encrypted workload and validates the result within budget. |
 | SYNC-7: Optimized-versus-`-O0` proof | ReSBM, boundary movement/fusion, HPOLY/HPAO | Every optimized transform has an independent option and proves source semantics, approximation error, CKKS scale/level legality, key availability, provenance, and tolerance against the retained `-O0` baseline. |
 | SYNC-8: Separate GPU architecture review | GPU capability/layout/cost and later POLY/RNS path | GPU work remains separate from the ACE ANT CPU/reference milestone; provider capability, target description, memory/lifetime, POLY/RNS contracts, toolchain, fallback, telemetry, and regression methodology are reviewed before implementation. |
 
-The completed Commit 17 policy checkpoint is
+The historically completed Commit 17 policy checkpoint is
 `doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`. Exact ACE candidate bytes and
 the 19 Open64 identity keys are frozen in `doc/fhe-policy/sync3-relu/`. The
 ACE coefficient profile is approved from empirical ANT ACE evidence. The
 pinned ACE-derived checkpoint, deterministic 5,000-image CIFAR-10 training
 calibration subset, disjoint 1,000-image held-out test subset, and static ACE
-CKKS schedule are approved for SYNC-3 planning. Runtime model enablement remains
-false because bootstrap and polynomial materialization belong to SYNC-4.
+CKKS schedule were approved for SYNC-3 planning. These recorded results are not
+a current exact-snapshot rerun. Runtime model enablement remains false because
+bootstrap and polynomial materialization belong to SYNC-4.
 
 `doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` defines the deterministic
 pre-ReLU collector, complete identity join, distribution evidence, positive
@@ -933,15 +941,22 @@ layer.
 
 ## Immediate Next Actions
 
-1. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` to record the active
+No SYNC-4 implementation may consume SYNC-3 until item 1 passes. While it is
+open, work is limited to contract and design preparation.
+
+1. Publish an accessible immutable complete SYNC-3 evidence bundle, or retain a
+   new complete exact-snapshot rerun, and obtain independent review of every
+   required artifact byte, command, toolchain identity, log, and negative
+   result.
+2. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` to record the active
    authority revisions, named owners, reviewers, branches, and artifact roots.
-2. Freeze the SYNC-4 bootstrap and composite-activation materialization
+3. Freeze the SYNC-4 bootstrap and composite-activation materialization
    contracts with exact main/common file ownership.
-3. Validate the pinned `ace-ant` capability manifest against the planned 19
+4. Validate the pinned `ace-ant` capability manifest against the planned 19
    refresh contexts, rotation keys, slots, and post-bootstrap levels.
-4. Implement and certify the deterministic `-O0` ReLU materialization and
+5. Implement and certify the deterministic `-O0` ReLU materialization and
    all four bootstrap option modes.
-5. Freeze the provider-independent C ABI and pass the SYNC-5 standard-WHIRL,
+6. Freeze the provider-independent C ABI and pass the SYNC-5 standard-WHIRL,
    `whirl2c`, and mock-provider gate.
-6. Integrate pinned `FHErt_ant` behind the unchanged ABI and run the SYNC-6
+7. Integrate pinned `FHErt_ant` behind the unchanged ABI and run the SYNC-6
    local functional acceptance suite.

@@ -1,11 +1,19 @@
-# FHE SYNC-3 Commit 19 Certification Record
+# FHE SYNC-3 Commit 19 Historical Certification Record
 
-Status: **formally accepted and complete**. PR #131 merged and the complete
-certification passed again at the exact merged `develop` tip on 2026-09-14.
+Status: PR #131 is merged, and a complete certification was recorded as Pass at
+the exact merged `develop` tip on 2026-09-14. That is historical evidence.
+Current independent re-certification is **unverified** because the retained
+artifact bytes are not presently accessible.
+
+The sole highest FHE semantic authority is
+`doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`, whose
+repository copy has SHA-256
+`0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 
 ## Scope
 
-This record certifies the focused C3 / SYNC-3 conversion-planning checkpoint.
+This record documents the historical certification of the focused C3 / SYNC-3
+conversion-planning checkpoint.
 It does not claim completion of architecture Phase 3, M4, SYNC-4 ReLU
 materialization, standard-WHIRL runtime lowering, generated C, or OpenFHE
 ciphertext execution.
@@ -18,7 +26,8 @@ the exact independently reviewed feature tree.
 
 ## Decision
 
-Final merged-tip verdict: **Pass**.
+Historical merged-tip verdict on 2026-09-14: **Pass**. The tests and numerical
+results below were not rerun for this documentation revision.
 
 The six-PU SecureResNet20 checkpoint publishes the converted side payload and
 conversion report as auxiliary artifacts, then publishes `.fhe.B` last as the
@@ -50,6 +59,11 @@ materialized in this checkpoint.
 
 ## Policy Tuple
 
+The SHA-256 values below cover the exact ASCII artifact bytes committed to Git.
+Each JSON file uses LF line endings and exactly one terminal LF. Verification
+hashes the validated bytes directly, without JSON reserialization, text-mode
+newline conversion, or platform-native line-ending substitution.
+
 | Artifact | SHA-256 |
 | --- | --- |
 | `doc/fhe-policy/sync3-relu/coefficient-manifest.json` | `75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931` |
@@ -65,8 +79,13 @@ Original training provenance is unknown and is not claimed.
 
 ## Retained Evidence
 
-Host directory:
+Historical host-local directory (not a current evidence locator):
 `/private/tmp/open64-fhe-sync3-final-closure-artifacts/sync3_commit19_merged_tip`
+
+This directory is unavailable to the current reviewer. The hashes below are
+useful identities, but they cannot substitute for the artifact bytes. Current
+re-certification requires either an accessible immutable complete bundle or a
+new exact-snapshot run that retains the full evidence family.
 
 | Artifact | SHA-256 |
 | --- | --- |
@@ -81,30 +100,33 @@ Host directory:
 | `conversion.log` | `8f2cb8d4ab762f6e75e234e6228354a7166fedc73876563ce5f836a1db67e1b8` |
 | `independent-verifier.log` | `5f9376be1a6fe6980c763fd2d3765c88591e219426f70734152311b7768f6191` |
 
-## Validation
+## Historical Validation
 
-- The linked native semantic test passes.
-- The full native Python suite passes 170 tests.
-- The optional capture lane passes 56 tests.
-- Native ResNet and Llama prefill, decode, and multiple-PU lanes pass and
+- The linked native semantic test was recorded as passing.
+- The full native Python suite was recorded as passing 170 tests.
+- The optional capture lane was recorded as passing 56 tests.
+- Native ResNet and Llama prefill, decode, and multiple-PU lanes were recorded
+  as passing and
   retain artifacts.
 - The x86-64, MIPS, MIPS-SL, KEY-generic, Loongson, and baseline syntax/layout
-  matrix passes.
-- A dependency-light SafeTensors oracle authenticates the pinned checkpoint,
-  source, binary WHIRL, and source payload hashes, then recomputes all 42
-  folded tensors without calling production folding code.
-- Independent trace validation proves the exact disposition, stage, range,
-  state, source, and report joins.
+  matrix was recorded as passing.
+- A dependency-light SafeTensors oracle was recorded as authenticating the
+  pinned checkpoint, source, binary WHIRL, and source payload hashes, then
+  recomputing all 42 folded tensors without calling production folding code.
+- Independent trace validation was recorded as proving the exact disposition,
+  stage, range, state, source, and report joins.
 - Missing manifest (`CFHECNN-RELU-003`), wrong exact-byte hash and malformed
   bounds (`CFHECNN-RELU-004`), unknown identity or a correctly hashed route
   inconsistent with its persisted callsite (`CFHECNN-RELU-005`), and stale
-  destination (`CFHE-CHECKPOINT-006`) fail without final or temporary output.
-- A topology-identical input paired with changed parameter-payload bytes fails
-  natively under `CFHECNN-RELU-007` before conversion or publication.
+  destination (`CFHE-CHECKPOINT-006`) were recorded as failing without final or
+  temporary output.
+- A topology-identical input paired with changed parameter-payload bytes was
+  recorded as failing natively under `CFHECNN-RELU-007` before conversion or
+  publication.
 
-## Formal Acceptance
+## Historical Formal Acceptance
 
-All procedural gates are complete:
+The 2026-09-14 record states that all procedural gates were complete:
 
 1. the exact FHE-owned Commit 19 diff received independent main-side review;
 2. the retained `.fhe.T`, payload, report, diagnostics, and hashes passed that
@@ -115,6 +137,9 @@ All procedural gates are complete:
 Merge mechanics: **Pass**. The merge parents are `864eb7cc` and `93d80a6b`,
 and the merge tree exactly equals the accepted Commit 19 tree.
 
-Integrated feature state: **Pass; focused C3 / SYNC-3 is closed.** SYNC-4 must
-consume these planning records to materialize the mandatory pre-ReLU refresh,
-context normalization, three Chebyshev stages, and ReLU reconstruction.
+Integrated implementation state: Commit 19 remains merged through PR #131.
+Current verification state: **unverified**. SYNC-4 may use these records for
+contract and design preparation, but must not consume them as verified
+implementation input until the complete bytes are accessible and independently
+checked, or an exact-snapshot certification is rerun and retained. Focused
+SYNC-3 remains distinct from v0.10 Architecture Phase 3 and M4.

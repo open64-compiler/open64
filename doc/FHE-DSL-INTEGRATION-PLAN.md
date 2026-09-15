@@ -9,6 +9,11 @@ Python model with an FHE boundary to binary very-high-level WHIRL, reviewable
 `ir_b2a` output, FHE conversion and CKKS planning, standard middle-WHIRL,
 `whirl2c` C output, ACE ANT runtime binding, and a linked executable.
 
+The sole highest FHE semantic authority is
+`doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`, whose
+repository copy has SHA-256
+`0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
+
 The first executable target is CKKS inference with ciphertext inputs and
 outputs, plaintext model parameters, and the pinned ACE `FHErt_ant` CPU
 runtime behind an Open64 provider adapter.
@@ -22,10 +27,14 @@ optimization algorithm. MetaKernel, Fhelipe, ReSBM, HPOLY, and GPU providers
 must all fit behind the contracts defined here without changing the Python
 frontend boundary or the original application-level `.B` file.
 
-SYNC-3 is complete through PR #131 and the merged-tip recertification recorded
-in `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md`. Current execution begins at
-SYNC-4; the earlier milestones below remain as architectural history and
-regression obligations.
+SYNC-3 implementation is merged through PR #131. The 2026-09-14 merged-tip Pass
+in `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md` is historical and was not rerun for
+this documentation revision. Because its host-local retained artifact bytes are
+currently inaccessible, independent re-certification is **unverified**. SYNC-4
+contract and design preparation may proceed, but SYNC-4 implementation must not
+consume SYNC-3 as verified input until an accessible immutable complete bundle
+is independently checked or an exact-snapshot certification is rerun and
+retained. Focused SYNC-3 is not v0.10 Architecture Phase 3 or M4 completion.
 
 ## Normative Decisions
 
@@ -914,21 +923,28 @@ gates. Production server key separation remains deferred.
 
 ## Immediate Action Queue
 
-1. Merge the ACE runtime decision and team handoff, then record the exact
+No SYNC-4 implementation may consume SYNC-3 until item 1 passes. While it is
+open, work is limited to contract and design preparation.
+
+1. Publish an accessible immutable complete SYNC-3 evidence bundle, or retain a
+   new complete exact-snapshot rerun, and obtain independent review of every
+   required artifact byte, command, toolchain identity, log, and negative
+   result.
+2. Merge the ACE runtime decision and team handoff, then record the exact
    authority-document revisions used by the team.
-2. Assign the SYNC-4 shared-file owners and freeze bootstrap/composite
+3. Assign the SYNC-4 shared-file owners and freeze bootstrap/composite
    materialization contracts before implementation.
-3. Validate the pinned `ace-ant` capability manifest against all planned
+4. Validate the pinned `ace-ant` capability manifest against all planned
    operations, rotations, slots, and post-bootstrap levels.
-4. Materialize and certify the 19 mandatory `-O0` refresh and approved
+5. Materialize and certify the 19 mandatory `-O0` refresh and approved
    composite ReLU contexts.
-5. Freeze `open64_fhe_runtime_abi.h` v1 and pass the standard-WHIRL,
+6. Freeze `open64_fhe_runtime_abi.h` v1 and pass the standard-WHIRL,
    `whirl2c`, and mock-provider gate.
-6. Build the ACE ANT provider adapter behind the unchanged ABI and local
+7. Build the ACE ANT provider adapter behind the unchanged ABI and local
    functional harness.
-7. Run focused ACE ANT operator certification, then complete the ResNet-20
+8. Run focused ACE ANT operator certification, then complete the ResNet-20
    `-O0` process-boundary certification.
-8. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` as the commit, test,
+9. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` as the commit, test,
    retained-artifact, and kickoff checklist.
 
 ## Deferred Work
