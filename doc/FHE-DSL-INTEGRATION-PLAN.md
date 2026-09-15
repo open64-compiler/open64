@@ -17,6 +17,9 @@ repository copy has SHA-256
 The first executable target is CKKS inference with ciphertext inputs and
 outputs, plaintext model parameters, and the pinned ACE `FHErt_ant` CPU
 runtime behind an Open64 provider adapter.
+The sole normative public runtime ABI source is
+`doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md`. This plan assigns lowering and
+milestone ownership; it does not define a second set of public signatures.
 The first end-to-end model target is ResNet-20/CIFAR-10. Small deterministic
 add, linear, and ReLU fixtures remain mandatory diagnostic unit tests, but they
 are not earlier model milestones and do not gate capture of the complete
@@ -58,15 +61,18 @@ retained. Focused SYNC-3 is not v0.10 Architecture Phase 3 or M4 completion.
 7. No FHE, CKKS, or HPOLY DSL operator may reach unmodified `whirl2c`. The FHE
    lowering gate produces standard WHIRL, primarily `OPR_CALL`, `LDID`, `STID`,
    `PARM`, ordinary control flow, and static initializer records.
-8. Generated C calls a versioned C ABI using opaque pointer-sized handles. ACE
-   ciphertext, plaintext, evaluator, polynomial, bootstrap, and key structures
-   remain confined to the ACE ANT provider adapter.
-9. The first executable is an embedded/local functional harness matching the
-   proven ACE ResNet path. It may create ephemeral test keys and decrypt for
-   validation, but key material must not enter WHIRL, generated model C,
-   compiler diagnostics, retained public artifacts, or Git. Production
-   client/server key separation is a later security milestone.
-10. The first linkable path is pinned ACE `FHErt_ant` CPU/reference. A direct
+8. Generated C calls ABI v1 from
+   `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md` using opaque pointer-sized handles.
+   ACE ciphertext, plaintext, evaluator, polynomial, bootstrap, and key
+   structures remain confined to the ACE ANT provider worker.
+9. The v0.10 client/server boundary applies to the first complete executable
+   path. A separate client or provisioner owns key generation, the secret key,
+   input encryption, output import, and decryption. The server imports only an
+   authenticated public context, required public/evaluation keys, plaintext
+   model data, and ciphertexts. No server binary, process, generated C object,
+   runtime state, log, or retained public artifact may create, contain, or
+   require a secret key.
+10. The first linkable provider is pinned ACE `FHErt_ant` CPU/reference. A direct
     OpenFHE adapter, GPU library, and native POLY/RNS paths are later providers,
     not alternate frontend encodings.
 11. ReLU is represented by the common-substrate operator `common.relu`. For
@@ -102,11 +108,11 @@ Python model plus @open64_dsc.fhe.entry
   -> whirl2c
   -> application.c plus application.w2c.h
   -> C compilation
-  -> final link with libopen64_fhe_runtime, ACE adapter, and FHErt_ant
-  -> a.out
-  -> local ACE context/key preparation and ciphertext input
-  -> encrypted evaluation
-  -> ciphertext output for local harness decryption and validation
+  -> server link with libopen64_fhe_runtime and the ACE broker adapter
+  -> import authenticated public context, evaluation keys, weights, and input
+  -> one supervised FHErt_ant worker for that public context
+  -> encrypted evaluation and ciphertext-result export
+  -> separate client import, decryption, and validation
 ```
 
 Each `.B` checkpoint uses the existing mapped-image and ELF WHIRL framework.
@@ -123,9 +129,9 @@ stream format.
 | CNN-to-FHE, SIHE-to-CKKS, and runtime-call lowering | `osprey/be/vho` initially, behind dedicated FHE drivers |
 | FHE optimization controls | `config_fhe.{h,cxx}`, following Open64 phase-option conventions |
 | Standard WHIRL-to-C output | `osprey/be/whirl2c` |
-| Stable C ABI and provider dispatch | new Open64 FHE runtime library |
-| Mapping C ABI operations to ACE ANT | Open64 ACE provider adapter plus pinned `FHErt_ant` |
-| Local key generation, encryption, and decryption | test harness/runtime only; never WHIRL, generated model C, public artifacts, or Git |
+| Stable C ABI, ownership, mock, and provider dispatch | new Open64 FHE runtime library following `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md` |
+| Mapping C ABI operations to ACE ANT | Open64 broker/worker provider adapter plus pinned `FHErt_ant` |
+| Key generation, secret-key custody, encryption, and decryption | separate client/provisioner validation helper; never linked into or called by the server broker/worker |
 
 ## DSL Domain And Operator Inventory
 
@@ -584,66 +590,73 @@ generated C by hand.
 
 ## Stable FHE C ABI
 
-Create a public header such as `osprey/include/open64_fhe_runtime_abi.h`.
-Published structures begin with `abi_version` and `struct_size`; fields are
-append-only. All functions return a stable status code or document an
-unambiguous null-handle failure path.
+SYNC-5 creates `osprey/include/open64_fhe_runtime_abi.h` from the single
+normative contract in `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md`. That contract
+freezes the explicit trusted broker, opaque context/keyset/model-package/model/
+plaintext/ciphertext handles, fixed-width status values, versioned envelopes,
+privileged-launcher trust domain, separate authenticated import/export
+bindings, broker/context diagnostics, ownership, worker-failure containment,
+and the complete high-level ResNet-20 call surface.
 
-The first ABI families are:
+The host-only launcher capability is acquired, claimed once by broker creation,
+or explicitly released under the lifecycle frozen by that contract. Its
+registry mapping, verifier reference, generation, and nonce are cleaned on
+partial acquire, direct release, and every post-claim outcome; generated C and
+request handlers never receive it. This plan does not redefine those public
+symbols or ownership states.
 
-| Family | Initial calls |
-| --- | --- |
-| Lifecycle | `open64_fhe_context_create_ckks_v1`, `open64_fhe_context_destroy_v1`, `open64_fhe_synchronize_v1` |
-| Import/export | `open64_fhe_context_import_v1`, `open64_fhe_keyset_import_v1`, `open64_fhe_ciphertext_import_v1`, `open64_fhe_ciphertext_export_v1` |
-| Plaintext | `open64_fhe_plaintext_encode_v1`, `open64_fhe_plaintext_import_v1` |
-| Lifetime | `open64_fhe_ciphertext_retain_v1`, `open64_fhe_ciphertext_release_v1`, `open64_fhe_plaintext_release_v1` |
-| Arithmetic | `open64_fhe_add_ct_v1`, `open64_fhe_add_plain_v1`, `open64_fhe_sub_ct_v1`, `open64_fhe_sub_plain_v1`, `open64_fhe_mul_plain_v1`, `open64_fhe_mul_ct_v1` |
-| Scheme operations | `open64_fhe_rotate_v1`, `open64_fhe_relinearize_v1`, `open64_fhe_rescale_v1`, `open64_fhe_mod_switch_v1`, `open64_fhe_bootstrap_v1` |
-| High-level MVP | `open64_fhe_poly_eval_v1`, `open64_fhe_conv2d_plain_v1`, `open64_fhe_linear_plain_v1`, `open64_fhe_average_pool_v1`, `open64_fhe_layout_convert_v1` |
-| Inspection | `open64_fhe_get_level_v1`, `open64_fhe_get_scale_v1`, `open64_fhe_get_size_bytes_v1` |
-| Diagnostics | `open64_fhe_get_last_status_v1`, `open64_fhe_get_last_error_v1`, optional diagnostic callback |
+The library-call MVP includes lifecycle and public/evaluation-key import,
+ciphertext import/export, plaintext model tensors, plain-weight convolution,
+residual add, bootstrap, ReLU normalization, three ordered polynomial stages,
+ReLU reconstruction, average pool, exactly one flatten/layout conversion, and
+plain-weight linear. Host lifecycle code explicitly binds manifest assets that
+are not evaluation arguments; weights, biases, and polynomial coefficients stay
+explicit call operands. BatchNorm is folded before lowering and has no runtime
+call. The mock implements this complete surface with deterministic semantics,
+call-order checks, failure injection, and lifetime accounting.
 
-The runtime owns provider selection and failure containment. No assertion,
-provider-private status, or C++ exception crosses the C ABI. Every provider
-failure becomes a stable status plus a retained diagnostic containing
-operation, source identity, config ID, and backend detail without exposing
-secret values.
+SYNC-5 derives and retains the execution-expanded semantic event schedule and
+successful evaluation-call census from the full candidate, separately from
+transport/lifecycle and failure transcripts. The versioned model package
+carries those complete artifacts, descriptor/weight directories, source
+identity, rotations, and key requirements; the broker parses and admits them
+against their exhaustive schemas before evaluation. The one normative schedule
+schema declares 148 value declarations for the model input plus every dynamic
+output and joins each of 147 events, including both edges of two-input calls, to
+one descriptor, rotation record, and key-requirement record. The existing
+descriptor-directory entry also freezes the canonical ReLU profile, ordered
+coefficient schedule, and CKKS transitions. SYNC-6 uses the
+unchanged header, descriptors, schedule,
+census, and generated C. A provider-specific call or a new lowering decision
+introduced during SYNC-6 is a contract failure.
 
 ## ACE ANT Provider Mapping
 
 ### Provider boundary
 
-Implement `libopen64_fhe_ace_ant` as the adapter between the versioned Open64
-FHE C ABI and pinned ACE `FHErt_ant`. It owns all ACE ciphertext, plaintext,
-context, evaluator, polynomial, bootstrap, and key objects. The public runtime
-and generated C see only opaque handles and fixed C descriptors.
+Implement `libopen64_fhe_ace_ant` as the private provider behind the public ABI
+broker. The provider uses one supervised worker process per public Open64
+context and exactly one ACE singleton context inside each worker. It owns all
+ACE ciphertext, plaintext, evaluator, polynomial, bootstrap, and key objects.
+The public runtime and generated C see only the handles and descriptors frozen
+by `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md`.
 
 Pin ACE commit `fb76131171b9f82aa6387f84dd73684fba5277e8` and record
 the source-tree hash, `FHErt_ant` build options, compiler ABI, shared/static
 choice, math dependencies, transitive libraries, and applicable license
 notices. Certification must not build against an unrecorded moving branch.
 
-### Initial API map
+The complete provider-private service map, ACE consuming-ownership rules,
+worker state transitions, and exact-pin capability gate are specified by
+`doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`. That mapping is not a public ABI.
+`Prepare_input`, key generation, and decrypting `Handle_output` belong only to
+the separate client/provisioner validation helper and are not linked into or
+called by the server worker.
 
-| Open64 runtime operation | ACE ANT service or adapter behavior |
-| --- | --- |
-| CKKS context creation | Supply the compiler-resolved `CKKS_PARAMS` contract and invoke ACE context preparation; verify ring degree, depth, Q0, scale, security, decomposition, hamming weight, and rotations against the provider manifest |
-| Plaintext encoding | Use ACE encoding services with compiler-resolved slots, scale degree, and level |
-| Ciphertext addition/subtraction | Map to `Add_ciph`, `Add_plain`, and reviewed subtraction/scalar services after descriptor checks |
-| Ciphertext-by-plaintext multiplication | Map to `Mul_plain` with explicit state validation |
-| Ciphertext multiplication | Map to `Mul_ciph`; keep `Relin` and `Rescale_ciph` separate unless a reviewed fused ABI call is selected |
-| Rotation | Map to `Rotate_ciph`; every signed offset must appear in the key-requirement manifest |
-| Relinearization | Map to `Relin` and verify the component-count transition |
-| Rescale/level change | Map only after proving the exact ACE service semantics and output state; do not rely on similar operation names |
-| Bootstrap | Map to `Bootstrap(res, input, level_after_bts)` and require slot-specific precomputation plus the exact context target level 15, 17, or 18 |
-| Polynomial activation | Emit the approved normalization, ordered `7 -> 15 -> 13` stages, and reconstruction through ACE arithmetic primitives while retaining the composite-profile identity |
-| Linear/conv/pool | Use compiler-selected rotate, multiply-plaintext, add, mask, and scale metakernels matching the certified ACE packing contract |
-
-The first functional harness follows ACE's embedded key lifecycle. Production
-context/key import and export, client provisioning, remote ciphertext transport,
-and server-without-secret-key execution are deferred and must not be inferred
-from SYNC-6 success. The full decision is
-`doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`.
+The exact pin must prove evaluation-only public context, keyset, and ciphertext
+import plus ciphertext export. If it cannot, SYNC-6 remains blocked pending a
+reviewed patch and new immutable pin. The implementation must not substitute
+ACE's embedded secret-key lifecycle or weaken the v0.10 threat model.
 
 ## Driver, Build, And Link Flow
 
@@ -668,26 +681,28 @@ openpy
   -> FHE runtime-call lowering -> secure_model.mid.B
   -> whirl2c -> secure_model.c and secure_model.w2c.h
   -> C compiler -> secure_model.o
-  -> linker driver
+  -> server linker driver
        secure_model.o
        libopen64_fhe_runtime.so
-       libopen64_fhe_ace_ant
-       pinned FHErt_ant and required system libraries
+       libopen64_fhe_ace_ant_broker
   -> a.out
+  -> supervised open64_fhe_ace_ant_worker
+       pinned FHErt_ant and required system libraries
 ```
 
 Build the ACE provider against the pinned ACE source and capture the exact
 source revision, source-tree hash, compile flags, include path, library path,
-static/shared choice, transitive library set, and executable linker flags into
-an installed Open64 provider manifest or linker response file. The Open64
-driver consumes that generated configuration; it does not guess library names
-or scrape command output.
+static/shared choice, transitive library set, broker/worker protocol version,
+worker executable hash, and worker linker flags into an installed Open64
+provider manifest. The Open64 driver consumes that generated configuration; it
+does not guess library names or scrape command output.
 
-The adapter, not generated C, links to `FHErt_ant`. `a.out` must have a complete
-runtime dependency graph visible through normal platform inspection. Missing
-provider, incompatible ACE revision/ABI, invalid runtime configuration, or an
-unsupported scheme capability is a driver/runtime diagnostic, not an
-unresolved symbol or Python error.
+The supervised worker, not generated C or the server broker, links to
+`FHErt_ant`. Both `a.out` and the worker must have complete runtime dependency
+graphs visible through normal platform inspection. Missing provider,
+incompatible ACE revision/ABI, invalid runtime configuration, or an unsupported
+scheme capability is a stable driver/runtime diagnostic, not an unresolved
+symbol, process abort, or Python error.
 
 All user options continue through the phase pipeline. Each phase consumes its
 own `-dsc-fhe-*` options and silently ignores options owned elsewhere. `-keep`
@@ -759,11 +774,11 @@ Required traces are:
 | F3 | `ir_b2a` test | Stable FHE tables, symbols/types, operators, source lines, side-file references |
 | F4 | torch2whirl ResNet-20 smoke | Decorated full model produces the certified original `.B` in a separate process |
 | F5 | Conversion test | Full common/CNN graph converts without lost source, type, region, residual, or class-centric PU state |
-| F6 | Mock runtime path | Full ResNet-20 runtime-call lowering, `whirl2c`, C compile, link, and opaque-handle execution |
+| F6 | SYNC-5 complete mock runtime path | Full ResNet-20 high-level call lowering, exact schedule/census hashes, `whirl2c`, C compile/link, deterministic execution, failure injection, ownership, and zero-leak cleanup |
 | F7 | ReLU correctness test | Every source `common.relu` has a pre-ReLU bootstrap and approved polynomial activation at `-O0` |
 | F8 | CKKS operator diagnostics | Add, linear, convolution, residual, pooling, and ReLU kernels satisfy focused numerical and state checks |
 | F9 | ResNet-20 structural gate | Residual regions, layouts, scales, levels, rotation keys, ownership joins, and encrypted logits pass |
-| F10 | ResNet-20 encrypted execution | End-to-end inference reports accuracy, CKKS error, depth, keys, memory, runtime, and retained artifacts |
+| F10 | SYNC-6 ResNet-20 client/server execution | Unchanged SYNC-5 generated C imports only public/evaluation state on the server; client-side validation reports accuracy, CKKS error, depth, keys, memory, runtime, worker failures, and retained artifacts |
 
 ### First model fixture
 
@@ -813,15 +828,22 @@ artifacts/fhe/resnet20_ace_ant/
   ace_source_manifest.txt
   ace_provider_manifest.txt
   ace_runtime_config.txt
+  ace_worker_dependency.txt
+  runtime_call_schedule_v1.json
+  runtime_call_census_v1.json
   input_ciphertext.bin
   output_ciphertext.bin
   validation.txt
 ```
 
-Any test-only secret key is ephemeral or kept in a separate access-controlled
-runtime directory. It is never copied into WHIRL, generated model C, the public
-compiler artifact family, or Git. Docker tests bind-mount the artifact directory
-and clean it at the start of the next run rather than at completion.
+The separate client/provisioner validation directory may contain an ephemeral
+test secret key. That directory is never mounted into the server or worker and
+is not part of the public compiler artifact family. The server binary, worker
+binary, their dependency closures, imported envelopes, process state, logs,
+WHIRL, generated model C, public artifacts, and Git contain no secret-key
+material or secret-key API dependency. Docker tests bind-mount public and
+client-only artifacts at distinct paths and clean them at the start of the next
+run rather than at completion.
 
 Validation compares the decrypted result with a high-precision clear
 reference using the CKKS tolerance and reports maximum/mean absolute and
@@ -872,54 +894,61 @@ Exit: focused native add, linear, and ReLU producers have reviewable `.B` and
 Exit: `torch2whirl secure_resnet20.py --fhe ...` emits the complete certified
 ResNet-20 source contract without exposing WHIRL internals to Python.
 
-### M4 Conversion and mock executable
+### M4 SYNC-5 complete conversion and mock executable
 
-- Add `VHO_FHE_Convert_Driver`, `VHO_FHE_Lower_Driver`, and phase controls.
-- Define the C ABI and implement a mock provider.
-- Add the `whirl2c` header/prelude and unlowered-node gate.
-- Compile and link the generated full-model C into a mock `a.out`.
+- Consume only revalidated SYNC-3 input and certified SYNC-4 ReLU
+  materialization.
+- Add `VHO_FHE_Lower_Driver`, phase controls, the `whirl2c` header/prelude, and
+  the unlowered-node gate for the high-level library-call MVP.
+- Publish the ABI v1 header from
+  `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md` and implement its complete mock
+  provider, including import/export, ownership, deterministic semantics,
+  call-order checking, failure injection, and cleanup.
+- Generate the complete full-model C; derive its exact execution-expanded
+  semantic schedule and successful static/dynamic evaluation census separately
+  from lifecycle and failure transcripts; and bind the complete artifacts,
+  source identity, descriptors, weights, rotations, and key requirements into
+  the explicit versioned model package.
 
-Exit: all ResNet-20 operators traverse the entire compiler and mock executable
-through opaque encrypted handles without ACE `FHErt_ant` installed.
+Exit: the complete ResNet-20 graph, including folded-BatchNorm convolution,
+residuals, all six calls for each ReLU boundary, pooling, flatten/layout, and
+classifier, traverses standard WHIRL, generated C, and the mock executable.
+The retained candidate uses no ACE installation and has no missing or
+`UNSUPPORTED` required call.
 
-### M5 ACE ANT provider and real a.out
+### M5 SYNC-6 ACE ANT complete ResNet execution
 
-- Pin the accepted ACE revision and generate the `FHErt_ant` provider/link
-  manifest from its exact source and build configuration.
-- Implement context/config mapping, encode, add, multiply, rotate,
-  relinearize, rescale, bootstrap, composite polynomial evaluation, output,
-  lifetime, and failure/status translation. Use focused operator fixtures to
-  diagnose provider failures.
-- Add the local functional harness and isolate its ephemeral test key material
-  from compiler artifacts.
-- Complete driver link, RUNPATH, missing-provider diagnostics, and artifact
-  preservation.
+- Compare the pinned ACE revision and exact build against the complete SYNC-5
+  operation, signed-rotation, key, context-import, and transport manifest. A
+  missing required capability blocks this milestone before adapter coding.
+- Implement the broker/worker mapping behind the unchanged ABI: one supervised
+  worker per public context, one ACE singleton per worker, stable failure
+  translation, and explicit private ownership adaptation.
+- Use a separate client/provisioner for key generation, encryption, result
+  import, and decryption. The server imports only the public context, required
+  public/evaluation keys, plaintext parameters, and ciphertexts.
+- Link and run the unchanged complete ResNet-20 generated C, compare encrypted
+  results on the client, and retain the complete process-boundary evidence.
 
-Exit: the focused operator fixtures execute through the ACE ANT adapter and
-establish the runtime primitives needed by the complete ResNet-20 path.
+Exit: the exact SYNC-5 generated C and expanded semantic schedule execute through pinned
+`FHErt_ant` with no server secret-key material or secret-key dependency and
+satisfy the functional, numerical, layout, key, depth, memory, failure, and
+artifact-review gates. Focused operator tests diagnose failures but do not
+replace the full-model exit.
 
-### M6 Primitive CKKS path
+### M6 optional primitive CKKS expansion
 
-- Add rotate, ct multiplication, relinearize, rescale, mod-switch review, key
-  manifests, and scale/level propagation.
-- At `-O0`, insert mandatory bootstrap before every surviving `common.relu`
-  under auto/on policy, require explicit boundaries under manual policy, and
-  reject surviving ReLU under off policy.
+After the first complete library-call path passes, an independently reviewed
+mode may expose rotate, ciphertext multiplication, relinearize, rescale, and
+mod-switch calls. It must preserve the public v1 compatibility rules or use a
+new negotiated ABI version. It is not a prerequisite for SYNC-5 or SYNC-6.
 
-Exit: primitive-plan results match the pinned ACE ANT baseline, and
-every ReLU boundary has stable source-linked inspection evidence.
+### M7 later planner and provider expansion
 
-### M7 CNN and ResNet path
-
-- Add BatchNorm folding, polynomial activation, convolution/linear plaintext
-  weights, average pooling, residual joins, encrypted logits, and packing.
-- Certify the complete ResNet-20 model directly. Focused operator tests remain
-  diagnostic aids; no micro-block or reduced CNN is a prerequisite model.
-
-Exit: `openpy -O0 -keep ... -o a.out` creates a local ACE-ANT-linked reference
-executable that runs without Python; encrypted ResNet-20 inference satisfies
-the functional, accuracy, layout, key, depth, memory, and artifact-review
-gates. Production server key separation remains deferred.
+MetaKernel/Fhelipe selection, HPOLY/HPAO, GPU providers, and direct OpenFHE
+support follow the complete reference path. They consume the frozen semantic
+and security contracts and may not change the original source, binary-WHIRL,
+or v1 generated-C interfaces without a reviewed version transition.
 
 ## Immediate Action Queue
 
@@ -934,16 +963,18 @@ open, work is limited to contract and design preparation.
    authority-document revisions used by the team.
 3. Assign the SYNC-4 shared-file owners and freeze bootstrap/composite
    materialization contracts before implementation.
-4. Validate the pinned `ace-ant` capability manifest against all planned
-   operations, rotations, slots, and post-bootstrap levels.
-5. Materialize and certify the 19 mandatory `-O0` refresh and approved
+4. Materialize and certify the 19 mandatory `-O0` refresh and approved
    composite ReLU contexts.
-6. Freeze `open64_fhe_runtime_abi.h` v1 and pass the standard-WHIRL,
-   `whirl2c`, and mock-provider gate.
-7. Build the ACE ANT provider adapter behind the unchanged ABI and local
-   functional harness.
-8. Run focused ACE ANT operator certification, then complete the ResNet-20
-   `-O0` process-boundary certification.
+5. Freeze the full ResNet correctness schedule, operation/rotation/key census,
+   `open64_fhe_runtime_abi.h` v1, and pass the standard-WHIRL, `whirl2c`, and
+   complete mock-provider gate.
+6. Compare the exact pinned `ace-ant` capabilities, including evaluation-only
+   public context/key/ciphertext import and ciphertext export, with the frozen
+   SYNC-5 manifest. Block SYNC-6 if any required capability is absent.
+7. Build the ACE ANT broker/worker adapter behind the unchanged ABI and the
+   separate client/provisioner validation helper.
+8. Run focused ACE ANT operator diagnostics, then complete the ResNet-20
+   `-O0` client/server process-boundary certification.
 9. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` as the commit, test,
    retained-artifact, and kickoff checklist.
 
@@ -958,7 +989,8 @@ open, work is limited to contract and design preparation.
 - encrypted model weights, training, dynamic encrypted control flow;
 - TFHE/BGV/BFV scheme domains; and
 - production key service, multi-tenant isolation, and remote execution protocol;
-- a direct OpenFHE provider and server-without-secret-key deployment proof.
+  and
+- a direct OpenFHE provider.
 
 ## References
 
@@ -966,5 +998,6 @@ open, work is limited to contract and design preparation.
 - `doc/WHIRL-DSL-INFRASTRUCTURE.md`
 - `doc/WHIRL-DSL-TENSOR-TYPE-HANDLING.md`
 - `doc/Open64_Python_FE_Plan.md`
+- `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md`
 - `doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`
 - ACE source revision `fb76131171b9f82aa6387f84dd73684fba5277e8`
