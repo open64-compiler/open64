@@ -317,7 +317,8 @@ The main task reviews the `.T` evidence before this checkpoint closes.
 
 ### **Corrective Checkpoint Before SYNC-3 Implementation**
 
-Status: open and blocking SYNC-3 source implementation.
+Status: completed before SYNC-3 source implementation. This historical
+checkpoint no longer blocks the project.
 
 The existing C0-C8 and SYNC-0 through SYNC-8 numbering remains unchanged.
 This checkpoint restores prerequisites already required by those stages:
@@ -342,8 +343,12 @@ node-retirement contract before any SYNC-3 implementation begins.
 
 ### **SYNC-3: ResNet FHE Conversion Review**
 
-Status: Commit 19 implementation and local certification are complete on the
-FHE-owned candidate; independent main-side artifact review and merge remain.
+Status: **complete**. Commit 19 was independently reviewed, merged through
+PR #131 at `d424c00be487f884a9ae7fb5cfc688f39e96d279`, and recertified from that
+exact merged `develop` tip on 2026-09-14. The merge tree is identical to the
+accepted Commit 19 tree at
+`93d80a6b79858ee5b7183f4426d3c94573b53e95`; no conflict resolution changed
+the certified feature.
 The six-PU SecureResNet planning artifact proves 13 physical Conv/BN
 definition rewrites, 21 source-context folds, 42 converted tensors, 46
 operator dispositions, 19 authenticated ReLU ranges, and 19 matching

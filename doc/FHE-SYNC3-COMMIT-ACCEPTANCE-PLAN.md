@@ -244,22 +244,29 @@ verdict, and wait for authorization before starting the next numbered item.
 | PR-D | Implement main/common SYNC-3 infrastructure | 8-13 |
 | PR-E | Implement and certify the focused FHE SYNC-3 conversion-planning gate | 14-19 |
 
-### Current PR-E execution status
+### Final PR-E acceptance status
 
 | Commit | Implementation | Verification | Remaining gate |
 | --- | --- | --- | --- |
-| 14: semantic gatekeeper | Complete | Focused native tests and the six-PU candidate pass source and converted-form gates; malformed inputs fail closed | Main-side exact-candidate review |
-| 15: BatchNorm folding | Complete | The candidate proves 13 physical definition retirements, 21 context folds, 42 converted tensors, dead BN ABI inputs, and independent payload equality | Main-side exact-candidate review |
-| 16: operator dispositions | Complete | The candidate records 46 source and 46 converted dispositions; 11 reusable ReLU definitions use the composite profile | Main-side exact-candidate review |
-| 17: ReLU profile and CKKS planning | Complete for SYNC-3 | Exact ACE stages and hashes, 19 approved ranges, and 19 callee-tagged `POST_REFRESH.v1` rows reopen with levels 15/17/18, scale 56, two components, and precision 30 | SYNC-4 materialization remains intentionally deferred |
-| 18: reports and diagnostics | Complete | Atomic payload/report publication and `CFHECNN-RELU-003/004/005/007` plus stale-output negatives are retained with no partial artifacts | Main-side exact-candidate review |
-| 19: full ResNet-20 SYNC-3 evidence | Implementation and local verification complete | Six-PU `.fhe.B` publishes last and independently reopens; clear accuracy 91.6%, polynomial 91.5%, degradation 0.1 points, agreement 99.9%, range violations 0 | Independent main-side verdict, clean commit/PR, and merged-tip rerun |
+| 14: semantic gatekeeper | Complete | Focused native tests and the six-PU merged-tip artifact pass source and converted-form gates; malformed inputs fail closed | Closed by PR #131 and merged-tip rerun |
+| 15: BatchNorm folding | Complete | The merged-tip artifact proves 13 physical definition retirements, 21 context folds, 42 converted tensors, dead BN ABI inputs, and independent payload equality | Closed by PR #131 and merged-tip rerun |
+| 16: operator dispositions | Complete | The merged-tip artifact records 46 source and 46 converted dispositions; 11 reusable ReLU definitions use the composite profile | Closed by PR #131 and merged-tip rerun |
+| 17: ReLU profile and CKKS planning | Complete for SYNC-3 | Exact ACE stages and hashes, 19 approved ranges, and 19 callee-tagged `POST_REFRESH.v1` rows reopen with levels 15/17/18, scale 56, two components, and precision 30 | SYNC-3 closed; SYNC-4 materialization remains intentionally deferred |
+| 18: reports and diagnostics | Complete | Atomic payload/report publication and `CFHECNN-RELU-003/004/005/007` plus stale-output negatives are retained with no partial artifacts | Closed by PR #131 and merged-tip rerun |
+| 19: full ResNet-20 SYNC-3 evidence | Complete | Six-PU `.fhe.B` publishes last and independently reopens; clear accuracy 91.6%, polynomial 91.5%, degradation 0.1 points, agreement 99.9%, range violations 0 | Closed at merged develop `d424c00b` on 2026-09-14 |
 
 PR #123 closed the physical composite-profile representation dependency and PR
 #130 closed the context-specific CKKS-state dependency. The exact ACE
 coefficient bytes, calibrated ranges, held-out accuracy evidence, and static
 compiler schedule are now reviewed as one policy tuple. This authorizes only
 the focused SYNC-3 planning artifact; runtime model enablement remains false.
+
+PR #131 merged the accepted Commit 19 implementation. The complete
+certification was rerun from merge commit
+`d424c00be487f884a9ae7fb5cfc688f39e96d279`; the linked semantic test, all-PU
+checkpoint, independent verifier, 170-test native Python suite, ResNet/Llama
+artifact lanes, backend symbol boundary, and target syntax/layout matrix pass.
+Focused C3 / SYNC-3 is therefore formally closed.
 
 The current Commit 17 decision package is
 `doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`, with machine-readable evidence
