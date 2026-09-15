@@ -37,8 +37,8 @@ secure_resnet20.py
   -> SIHE/CKKS correctness planning
   -> standard middle-WHIRL runtime calls
   -> whirl2c generated C
-  -> C compilation and OpenFHE provider link
-  -> server executable
+  -> C compilation and ACE ANT runtime provider link
+  -> local reference executable
   -> encrypted input -> encrypted logits
 ```
 
@@ -76,8 +76,11 @@ capture or planning of the complete ResNet-20 graph.
 11. No FHE, SIHE, CKKS, HPOLY, or private DSL node may reach unmodified
     `whirl2c`. The lowering gate must produce standard WHIRL calls, symbols,
     initializers, and control flow.
-12. Secret keys never enter WHIRL, generated server C, server artifacts,
-    diagnostics, or server runtime state.
+12. Secret keys never enter WHIRL, generated model C, compiler diagnostics, or
+    retained public compiler artifacts. The first ACE ANT runtime acceptance is
+    an embedded/local functional harness and may own ephemeral test keys. A
+    server-without-secret-key deployment is a separate post-SYNC-6 security
+    gate.
 13. Preserving callee-specific data-value metadata is a first-order correctness
     requirement. Every caller actual must remain structurally joined through
     call ABI and PU-interface identity to the exact callee formal
@@ -93,6 +96,14 @@ capture or planning of the complete ResNet-20 graph.
 The detailed algorithm and validation contract for decisions 13-15 is
 `doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
 
+The selected first executable backend and its security boundary are defined in
+`doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`. The first provider is pinned ACE
+`FHErt_ant`; a direct OpenFHE provider is optional later work and is no longer a
+SYNC-6 exit requirement.
+
+The team-facing commit, test, artifact, and kickoff procedure for SYNC-4
+through SYNC-6 is `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md`.
+
 ## Workstream Ownership
 
 | Area | Main task owns | FHE support task owns |
@@ -105,7 +116,7 @@ The detailed algorithm and validation contract for decisions 13-15 is
 | Frontend | Opaque native capability and builder interfaces | Python FHE surface, ResNet capture, operator census, diagnostics, and frontend tests |
 | Driver | Phase insertion points, option propagation convention, `-keep`, artifact naming, and process boundaries | `-dsc-fhe-*` option semantics and FHE phase implementations |
 | Lowering | Standard WHIRL call/formal/result construction and unlowered-node protection | CNN-to-FHE, SIHE-to-CKKS, runtime-call lowering, and conversion reports |
-| Runtime | Generic driver link integration and provider manifest consumption | Stable FHE C ABI, mock provider, OpenFHE adapter, key policy, and runtime tests |
+| Runtime | Generic driver link integration and provider manifest consumption | Stable FHE C ABI, mock provider, ACE `FHErt_ant` adapter, local key policy, and runtime tests |
 | Optimization | Shared WOPT/VHO extension rules and controls | FHE graph optimization, ReSBM, HPOLY/HPAO, and later GPU-specific planning |
 
 Ownership is semantic, not merely directory-based. Before either task edits a
@@ -123,7 +134,7 @@ shared integration file are prohibited.
 | `ir_bread.cxx`, `ir_bwrite.cxx`, `ir_reader.cxx`, `elf_whirl.h` | Main task | One compatibility PR owns section wiring and legacy-image tests |
 | New `dsl_fhe.*` records and verifier modules | FHE task after SYNC-1 | Main reviews fixed layout and integration boundaries before implementation |
 | `osprey/torch2whirl` FHE surface and tests | FHE task | Depends only on merged opaque native APIs; no physical WHIRL workarounds |
-| `config_fhe.*`, VHO FHE passes, runtime, OpenFHE provider | FHE task | Main reviews driver/pass placement and standard-WHIRL boundary at checkpoints |
+| `config_fhe.*`, VHO FHE passes, runtime, ACE ANT provider adapter | FHE task | Main reviews driver/pass placement and standard-WHIRL boundary at checkpoints |
 | Existing driver and `whirl2c` integration files | Assigned at SYNC-5 | Only one workstream edits each shared file in a coordinated PR batch |
 
 ## SYNC-0 Main Accepted Contract Matrix
@@ -173,7 +184,7 @@ coverage in the same infrastructure PR.
 | C3: FHE conversion | Supply driver hook, cross-PU value identity, generic shape analysis, transactional rewrites, value-state attachment, and artifact publication | Certify shapes; implement FHE gatekeeping, 13-definition/21-context BatchNorm folding, converted-shape checks, operator dispositions, CKKS-state propagation, and reports | **SYNC-3: ResNet FHE conversion review** |
 | C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor/composite-stage/range evidence | Certify the ACE-compatible `7 -> 15 -> 13` Chebyshev sign profile, then materialize mandatory pre-ReLU bootstrap, normalization, ordered stages, and reconstruction with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
 | C5: Standard WHIRL boundary | Supply standard call/result construction, unlowered-node gate, and `whirl2c` integration point | Implement runtime-call lowering, FHE C ABI, and mock provider | **SYNC-5: Middle-WHIRL and mock executable gate** |
-| C6: OpenFHE ResNet | Complete driver link flow, provider manifest consumption, and retained artifact family | Implement OpenFHE provider, client provisioning, CKKS execution, and full ResNet validation | **SYNC-6: End-to-end `-O0` acceptance** |
+| C6: ACE ANT ResNet | Complete driver link flow, provider manifest consumption, and retained artifact family | Map the stable C ABI to pinned `FHErt_ant`, execute CKKS, and validate the full ResNet result | **SYNC-6: End-to-end `-O0` functional acceptance** |
 | C7: Optimized planning | Enable reviewed VHO/WOPT integration, common encrypted-iteration-space records, census verification, and per-pass controls | Implement selectable MetaKernel and Fhelipe planners, then add ReSBM, boundary movement/fusion, the dedicated SSAPRE-model HPAO-MU phase, HPAO-FM/HPAO-LM, and equivalence reports. HPAO-MD remains design TBD. | **SYNC-7A-E: layout-planner A/B proof and optimized-versus-`-O0` proof** |
 | C8: GPU path | Coordinate NVIDIA runtime and target-description infrastructure | Add FHE GPU capability, layout, cost, and later native POLY/RNS plans | **SYNC-8: Separate GPU architecture review** |
 
@@ -374,9 +385,9 @@ payload fails natively before conversion. PR #130 supplies the context-state
 image. The FHE pass records one callee-tagged `POST_REFRESH.v1` row per range,
 with ACE levels 15, 17, or 18, scale 56, two components, precision 30, and a
 pending pre-ReLU bootstrap reason. This is compiler/static schedule evidence,
-not executed OpenFHE ciphertext inference.
+not executed ACE ANT ciphertext inference.
 Opcode allocation, bootstrap insertion, SIHE/CKKS primitive lowering, and
-OpenFHE/runtime lowering remain outside this checkpoint.
+ACE ANT/runtime lowering remain outside this checkpoint.
 
 The optional `.WHIRL.dsl_fhe_context_state` image defined by
 `doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md` is merged and consumed. It
@@ -543,13 +554,13 @@ Acceptance checks:
   symbols, initializers, status checks, and control flow only.
 - The unlowered-node verifier rejects remaining FHE/SIHE/CKKS/HPOLY nodes.
 - Result ciphertext handles use caller-owned no-alias temporaries.
-- Generated C includes only the stable C ABI, not OpenFHE C++ types.
+- Generated C includes only the stable C ABI, not ACE ANT internal types.
 - Source positions survive on generated calls and result stores.
 
 Merge rule: assign every shared driver/whirl2c file to one PR owner before
-editing. The mock-runtime PR must not depend on OpenFHE installation.
+editing. The mock-runtime PR must not depend on an ACE runtime installation.
 
-### **SYNC-6: End-To-End `-O0` Acceptance**
+### **SYNC-6: ACE ANT End-To-End `-O0` Functional Acceptance**
 
 Target command shape:
 
@@ -558,24 +569,28 @@ openpy -O0 -keep secure_resnet20.py \
   -dsc-fhe=cnn \
   -dsc-fhe-scheme=ckks \
   -dsc-fhe-bootstrap=auto \
-  -dsc-fhe-backend=openfhe \
+  -dsc-fhe-backend=ace-ant \
   -o secure_resnet20.out
 ```
 
 Required evidence:
 
 - Original, FHE, CKKS, and middle-WHIRL `.B`/`.T` pairs.
-- Generated C, compile command, link command, provider manifest, and dependency
-  inspection.
+- Generated C, compile command, link command, pinned ACE provider manifest, and
+  dependency inspection.
 - Encryption configuration, key requirements, layout, depth/bootstrap,
   accuracy, memory, and runtime reports.
-- Client-generated context, public/evaluation keys, encrypted input, encrypted
-  output, and client-side validation.
-- No secret key in the server artifact family.
+- Local harness context/key setup, encrypted input, encrypted output, and
+  decrypted validation. Ephemeral secret-key material remains outside WHIRL,
+  generated model C, compiler diagnostics, public artifacts, and Git.
+- Exact `FHErt_ant` revision, build options, operation capabilities, and the 19
+  bootstrap calls with post-refresh levels 15, 17, and 18.
 
-Exit: the OpenFHE-linked server executable consumes encrypted CIFAR-10 input
-and produces encrypted logits within the declared CKKS and model-accuracy
-budgets.
+Exit: the ACE-ANT-linked local reference executable consumes encrypted
+CIFAR-10 input and produces a result within the declared CKKS and
+model-accuracy budgets. This gate does not claim production client/server key
+separation; that proof is deferred to the deployment/security milestone in
+`doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`.
 
 ### **SYNC-7: Optimized-Versus-`-O0` Proof**
 
@@ -619,7 +634,7 @@ profitability design receives a separate review.
 
 ### **SYNC-8: Separate GPU Architecture Review**
 
-GPU work does not silently extend the OpenFHE CPU/reference milestone. Before
+GPU work does not silently extend the ACE ANT CPU/reference milestone. Before
 native FHE GPU implementation, jointly review:
 
 - provider capability and target-description schema;
@@ -653,9 +668,10 @@ The ResNet-first FHE project reaches its first complete milestone only when:
 - `-O0` materializes the mandatory pre-ReLU bootstrap and approved polynomial
   approximation;
 - all FHE/CKKS constructs lower to standard middle-WHIRL before `whirl2c`;
-- generated C compiles and links against the stable FHE C ABI and OpenFHE
-  provider;
-- the server executes without Python or secret-key material;
+- generated C compiles and links against the stable FHE C ABI, the ACE ANT
+  provider adapter, and pinned `FHErt_ant`;
+- the local reference executable runs without Python, while test key material
+  remains outside WHIRL, generated model C, public artifacts, and Git;
 - encrypted output validates within declared numerical and accuracy budgets;
 - old binary WHIRL compatibility tests continue to pass; and
 - all reviewable artifacts remain in a host-visible directory after testing.

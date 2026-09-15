@@ -886,7 +886,7 @@ secure_resnet20.B
   identity/config correspondence; the FHE gate proves the approved ACE level,
   scale, component, precision, and pending-refresh policy.
 - Prove absence of materialized bootstrap, polynomial evaluation, SIHE/CKKS
-  arithmetic lowering, runtime calls, generated C, OpenFHE provider behavior,
+  arithmetic lowering, runtime calls, generated C, ACE ANT provider behavior,
   optimization, and GPU work.
 - Reopen old/non-FHE/FHE-v1 artifacts and the new artifact in independent
   processes.
@@ -937,12 +937,16 @@ execution before Architecture Phase 3 / M4 can be reported complete.
 - bootstrap insertion and polynomial evaluation;
 - SIHE/CKKS primitive lowering;
 - runtime C ABI lowering, `whirl2c`, and generated C;
-- OpenFHE provider integration and encrypted end-to-end execution;
+- ACE `FHErt_ant` provider integration and encrypted end-to-end execution;
 - ReSBM, HPOLY/HPAO, optimized boundary movement, and profitability work;
 - GPU, POLY, RNS, device-memory, and architecture-specific work.
 
 Passing a later-stage experiment cannot substitute for any SYNC-3 acceptance
 criterion.
+
+The post-SYNC-3 runtime target is revised to pinned ACE `FHErt_ant` by
+`doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`. This changes no Commit 14-19 evidence
+or acceptance result; it only changes the deferred SYNC-5/SYNC-6 provider.
 
 ## Immediate execution rule
 
