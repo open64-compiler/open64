@@ -7,10 +7,11 @@ This document turns
 implementation plan for Open64. It covers the complete first path from a
 Python model with an FHE boundary to binary very-high-level WHIRL, reviewable
 `ir_b2a` output, FHE conversion and CKKS planning, standard middle-WHIRL,
-`whirl2c` C output, OpenFHE runtime binding, and a linked executable.
+`whirl2c` C output, ACE ANT runtime binding, and a linked executable.
 
 The first executable target is CKKS inference with ciphertext inputs and
-ciphertext outputs, plaintext model parameters, and an OpenFHE CPU provider.
+outputs, plaintext model parameters, and the pinned ACE `FHErt_ant` CPU
+runtime behind an Open64 provider adapter.
 The first end-to-end model target is ResNet-20/CIFAR-10. Small deterministic
 add, linear, and ReLU fixtures remain mandatory diagnostic unit tests, but they
 are not earlier model milestones and do not gate capture of the complete
@@ -21,14 +22,19 @@ optimization algorithm. MetaKernel, Fhelipe, ReSBM, HPOLY, and GPU providers
 must all fit behind the contracts defined here without changing the Python
 frontend boundary or the original application-level `.B` file.
 
+SYNC-3 is complete through PR #131 and the merged-tip recertification recorded
+in `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md`. Current execution begins at
+SYNC-4; the earlier milestones below remain as architectural history and
+regression obligations.
+
 ## Normative Decisions
 
 1. Python is a source frontend. It does not own WHIRL table layout, WN layout,
-   ELF sections, OpenFHE objects, or cryptographic key material.
+   ELF sections, ACE runtime objects, or cryptographic key material.
 2. The binary WHIRL artifact remains the frontend boundary. The compiler must
    be able to reopen it in a separate process without Python loaded.
 3. Existing tensor `TY_IDX` and TensorDescriptorIR machinery remains the type
-   carrier. Do not add a parallel `KIND_FHE`, expose a C++ OpenFHE type as a
+   carrier. Do not add a parallel `KIND_FHE`, expose an ACE runtime type as a
    WHIRL type, or duplicate logical tensor shape and dtype.
 4. EncryptionDescriptorIR is semantic representation state and participates
    in FHE tensor compatibility. Source names, diagnostics, pass ownership, and
@@ -43,15 +49,17 @@ frontend boundary or the original application-level `.B` file.
 7. No FHE, CKKS, or HPOLY DSL operator may reach unmodified `whirl2c`. The FHE
    lowering gate produces standard WHIRL, primarily `OPR_CALL`, `LDID`, `STID`,
    `PARM`, ordinary control flow, and static initializer records.
-8. Generated C calls a versioned C ABI using opaque pointer-sized handles.
-   OpenFHE C++ templates, smart pointers, exceptions, and object layouts remain
-   confined to the OpenFHE provider.
-9. The server executable may import a crypto context, public key, evaluation
-   keys, and ciphertexts. It must never contain, import, generate, or request a
-   secret key. Key generation and decryption belong to a separate client/test
-   provisioning program.
-10. The first linkable path is OpenFHE CPU/reference. GPU library and native
-    POLY/RNS paths are later providers, not alternate frontend encodings.
+8. Generated C calls a versioned C ABI using opaque pointer-sized handles. ACE
+   ciphertext, plaintext, evaluator, polynomial, bootstrap, and key structures
+   remain confined to the ACE ANT provider adapter.
+9. The first executable is an embedded/local functional harness matching the
+   proven ACE ResNet path. It may create ephemeral test keys and decrypt for
+   validation, but key material must not enter WHIRL, generated model C,
+   compiler diagnostics, retained public artifacts, or Git. Production
+   client/server key separation is a later security milestone.
+10. The first linkable path is pinned ACE `FHErt_ant` CPU/reference. A direct
+    OpenFHE adapter, GPU library, and native POLY/RNS paths are later providers,
+    not alternate frontend encodings.
 11. ReLU is represented by the common-substrate operator `common.relu`. For
     the first CKKS path, every surviving `common.relu` is a mandatory refresh
     boundary at `-O0`: bootstrap first, then evaluate the approved polynomial
@@ -85,11 +93,11 @@ Python model plus @open64_dsc.fhe.entry
   -> whirl2c
   -> application.c plus application.w2c.h
   -> C compilation
-  -> C++ final link with libopen64_fhe_runtime and OpenFHE provider
+  -> final link with libopen64_fhe_runtime, ACE adapter, and FHErt_ant
   -> a.out
-  -> import context, evaluation keys, and ciphertext input
+  -> local ACE context/key preparation and ciphertext input
   -> encrypted evaluation
-  -> ciphertext output for client-side decryption
+  -> ciphertext output for local harness decryption and validation
 ```
 
 Each `.B` checkpoint uses the existing mapped-image and ELF WHIRL framework.
@@ -107,8 +115,8 @@ stream format.
 | FHE optimization controls | `config_fhe.{h,cxx}`, following Open64 phase-option conventions |
 | Standard WHIRL-to-C output | `osprey/be/whirl2c` |
 | Stable C ABI and provider dispatch | new Open64 FHE runtime library |
-| Mapping C ABI operations to OpenFHE | OpenFHE C++ provider library |
-| Client key generation, encryption, and decryption | separate test/client harness, never the server compiler or generated server PU |
+| Mapping C ABI operations to ACE ANT | Open64 ACE provider adapter plus pinned `FHErt_ant` |
+| Local key generation, encryption, and decryption | test harness/runtime only; never WHIRL, generated model C, public artifacts, or Git |
 
 ## DSL Domain And Operator Inventory
 
@@ -210,7 +218,7 @@ CKKS operators make per-value scheme state explicit: `ckks.add`, `ckks.sub`,
 `hpoly.modup`, `hpoly.dotprod`, `hpoly.moddown`, and reviewed extended-basis
 variants.
 
-These sets are not required to complete the first high-level OpenFHE-call MVP.
+These sets are not required to complete the first high-level ACE-call MVP.
 They are required before primitive-plan optimization claims. Their enum values
 and attribute schemas must be published in separate append-only batches.
 
@@ -224,7 +232,7 @@ effect image, callsite image, TY records, and PU trees unchanged. Legacy files
 omit the section and load with an empty FHE image. Legacy readers continue to
 ignore an unrecognized optional WHIRL section.
 
-Do not place C++ pointers, `std::string`, `std::vector`, maps, OpenFHE objects,
+Do not place C++ pointers, `std::string`, `std::vector`, maps, provider objects,
 or variable-size ownership inside mapped rows. Use fixed-width scalars,
 `STR_IDX`, `TY_IDX`, `ST_IDX`, and first-record/count ranges. Every table has an
 invalid zero ID and append-only enum values.
@@ -277,8 +285,8 @@ Ciphertext and plaintext results are opaque owning handles stored in no-alias
 temporaries. Runtime context, key set, ciphertext import/export channel, and
 provider status are explicit DSL state objects. Operations declare READ or
 MODIFY effects through the existing effect image; do not encode them as string
-metadata. The first OpenFHE provider uses functional result handles even when
-OpenFHE offers an in-place operation.
+metadata. The first ACE ANT provider preserves distinct Open64 result handles
+even when an ACE operation permits destination/input aliasing.
 
 ## Native Builder API
 
@@ -348,7 +356,7 @@ fields, physical opcode tags, or table offsets as inspectable values.
 
 ### Python surface
 
-Add an importable package surface with no OpenFHE dependency:
+Add an importable package surface with no ACE runtime dependency:
 
 ```python
 from open64_dsc.fhe import CipherTensor, entry
@@ -365,7 +373,7 @@ class SecureModel(torch.nn.Module):
         return (x + self.bias) * self.scale
 ```
 
-The decorator records source intent. It does not instantiate OpenFHE,
+The decorator records source intent. It does not instantiate the ACE runtime,
 generate keys, encrypt data, or execute cryptography during capture.
 
 ### Frontend actions
@@ -559,7 +567,7 @@ the normal C emission boundary only where needed:
 - emit standard static descriptor initializers without C++ syntax;
 - preserve stable function, variable, and source identities;
 - diagnose an unlowered DSL node instead of printing malformed C; and
-- keep generated C independent of OpenFHE headers and namespaces.
+- keep generated C independent of ACE ANT headers and object layouts.
 
 The acceptance gate is that `whirl2c application.mid.B` produces C accepted by
 the selected C compiler, and the final C++ link succeeds without modifying the
@@ -586,48 +594,47 @@ The first ABI families are:
 | Inspection | `open64_fhe_get_level_v1`, `open64_fhe_get_scale_v1`, `open64_fhe_get_size_bytes_v1` |
 | Diagnostics | `open64_fhe_get_last_status_v1`, `open64_fhe_get_last_error_v1`, optional diagnostic callback |
 
-The runtime owns provider selection and exception containment. No C++
-exception crosses the C ABI. Every caught OpenFHE exception becomes a stable
-status plus a retained diagnostic containing operation, source identity,
-config ID, and backend detail without exposing secret values.
+The runtime owns provider selection and failure containment. No assertion,
+provider-private status, or C++ exception crosses the C ABI. Every provider
+failure becomes a stable status plus a retained diagnostic containing
+operation, source identity, config ID, and backend detail without exposing
+secret values.
 
-## OpenFHE Provider Mapping
+## ACE ANT Provider Mapping
 
 ### Provider boundary
 
-Implement `libopen64_fhe_openfhe.so` in C++. It owns all
-`lbcrypto::CryptoContext<DCRTPoly>`, `Ciphertext<DCRTPoly>`, `Plaintext`, key,
-and serialization objects. The public runtime and generated C see only opaque
-handles and fixed C descriptors.
+Implement `libopen64_fhe_ace_ant` as the adapter between the versioned Open64
+FHE C ABI and pinned ACE `FHErt_ant`. It owns all ACE ciphertext, plaintext,
+context, evaluator, polynomial, bootstrap, and key objects. The public runtime
+and generated C see only opaque handles and fixed C descriptors.
 
-Pin and record the tested OpenFHE release, build options, native integer size,
-math backend, compiler ABI, shared/static choice, and transitive libraries. Do
-not build against an unrecorded moving `main` branch for certification.
+Pin ACE commit `fb76131171b9f82aa6387f84dd73684fba5277e8` and record
+the source-tree hash, `FHErt_ant` build options, compiler ABI, shared/static
+choice, math dependencies, transitive libraries, and applicable license
+notices. Certification must not build against an unrecorded moving branch.
 
 ### Initial API map
 
-| Open64 runtime operation | OpenFHE service or adapter behavior |
+| Open64 runtime operation | ACE ANT service or adapter behavior |
 | --- | --- |
-| CKKS context creation | Build `CCParams<CryptoContextCKKSRNS>`, apply resolved setters such as multiplicative depth, scale modulus size, batch size, ring dimension and security policy, then call `GenCryptoContext` |
-| Feature enablement | `Enable(PKE)`, `Enable(KEYSWITCH)`, `Enable(LEVELEDSHE)`, and only enable `ADVANCEDSHE`/`FHE` when the plan requires them |
-| Context/ciphertext import and export | OpenFHE binary `Serial::DeserializeFromFile` and `Serial::SerializeToFile` behind checked runtime paths |
-| Evaluation-key import | OpenFHE evaluation-multiplication and automorphism-key import services; bootstrap key material when required |
-| Plaintext encoding | `MakeCKKSPackedPlaintext` using compiler-resolved slots, scale, and level |
-| Ciphertext addition/subtraction | `EvalAdd` and `EvalSub` after compiler/runtime descriptor checks |
-| Ciphertext-by-plaintext multiplication | `EvalMult(ciphertext, plaintext)` with explicit state validation |
-| Ciphertext multiplication | `EvalMult`; explicit `Relinearize` and `Rescale` remain separate unless a reviewed fused ABI call is selected |
-| Rotation | `EvalRotate`; all signed offsets must appear in the key-requirement manifest |
-| Relinearization | `Relinearize` or the matching non-mutating API |
-| Rescale | `Rescale`, with output state checked against CKKSValueStateIR |
-| Modulus/level change | Map only after proving the exact OpenFHE `LevelReduce`/scheme API semantics; do not equate CKKS `ModReduce` with a scale-preserving mod-switch by name alone |
-| Bootstrap | Setup/profile validation plus `EvalBootstrap` after compatible bootstrap keys are loaded |
-| Polynomial activation | `EvalPoly` for the reviewed coefficient and range contract |
-| Linear/conv/pool | Adapter-controlled sequences of rotate, multiply-plaintext, add, and scale operations; no claim that OpenFHE has one matching CNN API |
+| CKKS context creation | Supply the compiler-resolved `CKKS_PARAMS` contract and invoke ACE context preparation; verify ring degree, depth, Q0, scale, security, decomposition, hamming weight, and rotations against the provider manifest |
+| Plaintext encoding | Use ACE encoding services with compiler-resolved slots, scale degree, and level |
+| Ciphertext addition/subtraction | Map to `Add_ciph`, `Add_plain`, and reviewed subtraction/scalar services after descriptor checks |
+| Ciphertext-by-plaintext multiplication | Map to `Mul_plain` with explicit state validation |
+| Ciphertext multiplication | Map to `Mul_ciph`; keep `Relin` and `Rescale_ciph` separate unless a reviewed fused ABI call is selected |
+| Rotation | Map to `Rotate_ciph`; every signed offset must appear in the key-requirement manifest |
+| Relinearization | Map to `Relin` and verify the component-count transition |
+| Rescale/level change | Map only after proving the exact ACE service semantics and output state; do not rely on similar operation names |
+| Bootstrap | Map to `Bootstrap(res, input, level_after_bts)` and require slot-specific precomputation plus the exact context target level 15, 17, or 18 |
+| Polynomial activation | Emit the approved normalization, ordered `7 -> 15 -> 13` stages, and reconstruction through ACE arithmetic primitives while retaining the composite-profile identity |
+| Linear/conv/pool | Use compiler-selected rotate, multiply-plaintext, add, mask, and scale metakernels matching the certified ACE packing contract |
 
-OpenFHE `KeyGen`, `EvalMultKeyGen`, `EvalRotateKeyGen`, and
-`EvalBootstrapKeyGen` are used only by the client/test provisioning utility.
-They are prohibited in the compiled server path because they require secret
-key access.
+The first functional harness follows ACE's embedded key lifecycle. Production
+context/key import and export, client provisioning, remote ciphertext transport,
+and server-without-secret-key execution are deferred and must not be inferred
+from SYNC-6 success. The full decision is
+`doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`.
 
 ## Driver, Build, And Link Flow
 
@@ -637,7 +644,7 @@ The target user command is conceptually:
 openpy -O0 -keep secure_model.py \
   -dsc-fhe=cnn \
   -dsc-fhe-scheme=ckks \
-  -dsc-fhe-backend=openfhe \
+  -dsc-fhe-backend=ace-ant \
   -dsc-fhe-codegen=whirl2c \
   -o a.out
 ```
@@ -652,25 +659,26 @@ openpy
   -> FHE runtime-call lowering -> secure_model.mid.B
   -> whirl2c -> secure_model.c and secure_model.w2c.h
   -> C compiler -> secure_model.o
-  -> C++ linker driver
+  -> linker driver
        secure_model.o
        libopen64_fhe_runtime.so
-       libopen64_fhe_openfhe.so
-       OpenFHE shared libraries and required system libraries
+       libopen64_fhe_ace_ant
+       pinned FHErt_ant and required system libraries
   -> a.out
 ```
 
-Build the OpenFHE provider with OpenFHE's installed CMake package configuration
-and capture its `OpenFHE_CXX_FLAGS`, include path, library path, shared-library
-set, and executable linker flags into an installed Open64 provider manifest or
-linker response file. The Open64 driver consumes that generated configuration;
-it does not guess library names or scrape command output.
+Build the ACE provider against the pinned ACE source and capture the exact
+source revision, source-tree hash, compile flags, include path, library path,
+static/shared choice, transitive library set, and executable linker flags into
+an installed Open64 provider manifest or linker response file. The Open64
+driver consumes that generated configuration; it does not guess library names
+or scrape command output.
 
-The adapter, not generated C, links to OpenFHE. `a.out` must have a complete
+The adapter, not generated C, links to `FHErt_ant`. `a.out` must have a complete
 runtime dependency graph visible through normal platform inspection. Missing
-provider, incompatible OpenFHE ABI, missing context/key files, or unsupported
-scheme capability is a driver/runtime diagnostic, not an unresolved symbol or
-Python error.
+provider, incompatible ACE revision/ABI, invalid runtime configuration, or an
+unsupported scheme capability is a driver/runtime diagnostic, not an
+unresolved symbol or Python error.
 
 All user options continue through the phase pipeline. Each phase consumes its
 own `-dsc-fhe-*` options and silently ignores options owned elsewhere. `-keep`
@@ -772,7 +780,7 @@ state must remain inspectable.
 ### Artifact family
 
 ```text
-artifacts/fhe/resnet20_openfhe/
+artifacts/fhe/resnet20_ace_ant/
   secure_resnet20.py
   secure_resnet20.B
   secure_resnet20.T
@@ -793,19 +801,18 @@ artifacts/fhe/resnet20_openfhe/
   runtime.log
   fhe_config.txt
   key_requirements.txt
-  openfhe_build_manifest.txt
-  client_context.bin
-  client_public_key.bin
-  server_evaluation_keys.bin
+  ace_source_manifest.txt
+  ace_provider_manifest.txt
+  ace_runtime_config.txt
   input_ciphertext.bin
   output_ciphertext.bin
   validation.txt
 ```
 
-The test-only secret key is kept in a separate access-controlled client
-directory, never copied into the compiler artifact family, never mounted into
-the server run, and never committed to Git. Docker tests bind-mount the artifact
-directory and clean it at the start of the next run rather than at completion.
+Any test-only secret key is ephemeral or kept in a separate access-controlled
+runtime directory. It is never copied into WHIRL, generated model C, the public
+compiler artifact family, or Git. Docker tests bind-mount the artifact directory
+and clean it at the start of the next run rather than at completion.
 
 Validation compares the decrypted result with a high-precision clear
 reference using the CKKS tolerance and reports maximum/mean absolute and
@@ -864,21 +871,23 @@ ResNet-20 source contract without exposing WHIRL internals to Python.
 - Compile and link the generated full-model C into a mock `a.out`.
 
 Exit: all ResNet-20 operators traverse the entire compiler and mock executable
-through opaque encrypted handles without OpenFHE installed.
+through opaque encrypted handles without ACE `FHErt_ant` installed.
 
-### M5 OpenFHE provider and real a.out
+### M5 ACE ANT provider and real a.out
 
-- Pin an OpenFHE release and generate its provider/link manifest from the
-  installed CMake package.
-- Implement context/config mapping, imports, encode, add, mul_plain,
-  bootstrap, polynomial evaluation, export, lifetime, and exception/status
-  translation. Use focused operator fixtures to diagnose provider failures.
-- Add the separate client provisioning and decryption harness.
+- Pin the accepted ACE revision and generate the `FHErt_ant` provider/link
+  manifest from its exact source and build configuration.
+- Implement context/config mapping, encode, add, multiply, rotate,
+  relinearize, rescale, bootstrap, composite polynomial evaluation, output,
+  lifetime, and failure/status translation. Use focused operator fixtures to
+  diagnose provider failures.
+- Add the local functional harness and isolate its ephemeral test key material
+  from compiler artifacts.
 - Complete driver link, RUNPATH, missing-provider diagnostics, and artifact
   preservation.
 
-Exit: the focused operator fixtures execute through OpenFHE and establish the
-runtime primitives needed by the complete ResNet-20 path.
+Exit: the focused operator fixtures execute through the ACE ANT adapter and
+establish the runtime primitives needed by the complete ResNet-20 path.
 
 ### M6 Primitive CKKS path
 
@@ -888,7 +897,7 @@ runtime primitives needed by the complete ResNet-20 path.
   under auto/on policy, require explicit boundaries under manual policy, and
   reject surviving ReLU under off policy.
 
-Exit: primitive-plan results match the high-level OpenFHE-call baseline, and
+Exit: primitive-plan results match the pinned ACE ANT baseline, and
 every ReLU boundary has stable source-linked inspection evidence.
 
 ### M7 CNN and ResNet path
@@ -898,26 +907,29 @@ every ReLU boundary has stable source-linked inspection evidence.
 - Certify the complete ResNet-20 model directly. Focused operator tests remain
   diagnostic aids; no micro-block or reduced CNN is a prerequisite model.
 
-Exit: `openpy -O0 -keep ... -o a.out` creates a server executable that runs
-without Python or a secret key; encrypted ResNet-20 inference satisfies
-accuracy, security, layout, key, depth, memory, and artifact-review gates.
+Exit: `openpy -O0 -keep ... -o a.out` creates a local ACE-ANT-linked reference
+executable that runs without Python; encrypted ResNet-20 inference satisfies
+the functional, accuracy, layout, key, depth, memory, and artifact-review
+gates. Production server key separation remains deferred.
 
 ## Immediate Action Queue
 
-1. Approve the full ResNet-20 source contract, stable operator names,
-   `common.relu` semantics, and the mandatory `-O0` bootstrap policy.
-2. Decide and reserve the optional `WT_DSL_FHE_IMAGE` identifier.
-3. Define fixed row layouts and compile-time size assertions.
-4. Publish descriptor interning and tensor-equivalence rules.
-5. Implement M1 without adding frontend code.
-6. Implement native M2 producer and retain its `.B`/`.T` evidence.
-7. Hand exact APIs and expected trace evidence to the torch2whirl task for M3.
-8. Freeze `open64_fhe_runtime_abi.h` v1 and implement the mock provider.
-9. Add FHE conversion/runtime-call lowering and the unlowered-node verifier.
-10. Add `whirl2c` C-header emission and compile/link smoke test.
-11. Build the OpenFHE provider and client provisioning harness.
-12. Run focused OpenFHE operator certification, then complete the direct
-    ResNet-20 `-O0` process-boundary certification.
+1. Merge the ACE runtime decision and team handoff, then record the exact
+   authority-document revisions used by the team.
+2. Assign the SYNC-4 shared-file owners and freeze bootstrap/composite
+   materialization contracts before implementation.
+3. Validate the pinned `ace-ant` capability manifest against all planned
+   operations, rotations, slots, and post-bootstrap levels.
+4. Materialize and certify the 19 mandatory `-O0` refresh and approved
+   composite ReLU contexts.
+5. Freeze `open64_fhe_runtime_abi.h` v1 and pass the standard-WHIRL,
+   `whirl2c`, and mock-provider gate.
+6. Build the ACE ANT provider adapter behind the unchanged ABI and local
+   functional harness.
+7. Run focused ACE ANT operator certification, then complete the ResNet-20
+   `-O0` process-boundary certification.
+8. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` as the commit, test,
+   retained-artifact, and kickoff checklist.
 
 ## Deferred Work
 
@@ -929,7 +941,8 @@ accuracy, security, layout, key, depth, memory, and artifact-review gates.
 - FIDESlib, Cheddar-like, or native NVIDIA GPU providers;
 - encrypted model weights, training, dynamic encrypted control flow;
 - TFHE/BGV/BFV scheme domains; and
-- production key service, multi-tenant isolation, and remote execution protocol.
+- production key service, multi-tenant isolation, and remote execution protocol;
+- a direct OpenFHE provider and server-without-secret-key deployment proof.
 
 ## References
 
@@ -937,8 +950,5 @@ accuracy, security, layout, key, depth, memory, and artifact-review gates.
 - `doc/WHIRL-DSL-INFRASTRUCTURE.md`
 - `doc/WHIRL-DSL-TENSOR-TYPE-HANDLING.md`
 - `doc/Open64_Python_FE_Plan.md`
-- [OpenFHE development repository](https://github.com/openfheorg/openfhe-development)
-- [OpenFHE simple CKKS real-number example](https://github.com/openfheorg/openfhe-development/blob/main/src/pke/examples/simple-real-numbers.cpp)
-- [OpenFHE CKKS serialization example](https://github.com/openfheorg/openfhe-development/blob/main/src/pke/examples/simple-real-numbers-serial.cpp)
-- [OpenFHE CKKS bootstrapping guide](https://github.com/openfheorg/openfhe-development/blob/main/src/pke/examples/CKKS_BOOTSTRAPPING.md)
-- [OpenFHE user CMake example](https://github.com/openfheorg/openfhe-development/blob/main/CMakeLists.User.txt)
+- `doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`
+- ACE source revision `fb76131171b9f82aa6387f84dd73684fba5277e8`
