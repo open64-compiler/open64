@@ -17,7 +17,7 @@ in `FHE-WHIRL-INTEGRATION-PLAN.md`.
 
 The repository document
 `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
-is the highest FHE semantic authority. The reviewed copy has SHA-256
+is the sole highest FHE semantic authority. The reviewed copy has SHA-256
 `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 This Markdown tracker may narrow architecture milestones into review
 checkpoints, but it may not override v0.10 semantics, boundaries, or completion
@@ -219,13 +219,14 @@ image coding begins before this checkpoint closes.
 
 ### **SYNC-1: Native API And Image Contract Freeze**
 
-Status: implementation merged; corrective validation reopened. Main/common
-implementation merged through PR #102 at `8ba9ee31`, but later review reopened
-two required exit invariants: version-1 tensor-binding identity must agree
-across interning, lookup, validation, and writing, and rejected entry-value
-insertion must be failure-atomic. The earlier semantic review remains
-historical evidence, not a current closure claim. The FHE task must consume the
-corrected, independently accepted contract before SYNC-2 recertification.
+Historical status: implementation merged through PR #102 at `8ba9ee31`; the
+subsequent corrective checkpoint fixed version-1 tensor-binding identity and
+failure-atomic rejected entry-value insertion before SYNC-3 implementation.
+Those corrections and their then-current acceptance are complete historical
+prerequisites, not changes still waiting to merge or be recertified. Because
+the complete retained evidence bytes are not presently accessible, current
+independent evidence verification is unverified; that evidence gap does not
+reopen the merged SYNC-1 implementation.
 
 Main task provides:
 
@@ -254,13 +255,14 @@ updated `develop`; duplicate cherry-picks are omitted.
 
 ### **SYNC-2: Frontend Artifact Certification**
 
-Status: certification reopened. PR #104 merged into `develop`, the FHE branch
-rebased, and a ResNet-20 artifact family was previously generated, but later
-review reopened PU ownership, exact source provenance, fail-closed dependency
-and count/absence checks, and durable retained-artifact evidence. SYNC-2 may be
-described as completed again only after those corrections are merged, the FHE
-branch rebases, the complete certification is rerun, and the main task accepts
-the new evidence.
+Historical status: PR #104 merged into `develop`, the FHE branch rebased, and
+the subsequent corrective checkpoint resolved PU ownership, exact source
+provenance, fail-closed dependency and count/absence checks, and retained
+artifact requirements before SYNC-3 implementation. The corrected capture and
+its then-current acceptance are complete historical prerequisites, not work
+still waiting to merge or be recertified. Current independent evidence
+verification is unverified because the complete retained bytes are not
+presently accessible; this does not reopen the merged SYNC-2 implementation.
 
 The first full trace exposed a PU-scope correctness gap in shared
 infrastructure: FHE entry values carried valid PU-relative `ST_IDX` values,
@@ -310,8 +312,8 @@ Acceptance checks:
 - No bootstrap or CKKS operator is invented by Python ingestion.
 - Python exits before an independent process reopens the `.B` file.
 
-Previously recorded evidence, which does not replace the reopened
-recertification:
+Historically recorded evidence, which does not replace current independent
+verification of accessible bytes:
 
 - FHE rows resolve to `owner_pu=SecureResNet20` with stable entry-PU names for
   `input0`, external parameters, and `common_output_logits_46`.
@@ -354,29 +356,39 @@ node-retirement contract before any SYNC-3 implementation begins.
 
 ### **SYNC-3: ResNet FHE Conversion Review**
 
-Status: **complete**. Commit 19 was independently reviewed, merged through
-PR #131 at `d424c00be487f884a9ae7fb5cfc688f39e96d279`, and recertified from that
-exact merged `develop` tip on 2026-09-14. The merge tree is identical to the
-accepted Commit 19 tree at
+Implementation status: Commit 19 was independently reviewed and merged through
+PR #131 at `d424c00be487f884a9ae7fb5cfc688f39e96d279`. The merge tree is identical
+to the accepted Commit 19 tree at
 `93d80a6b79858ee5b7183f4426d3c94573b53e95`; no conflict resolution changed
-the certified feature.
-The six-PU SecureResNet planning artifact proves 13 physical Conv/BN
-definition rewrites, 21 source-context folds, 42 converted tensors, 46
-operator dispositions, 19 authenticated ReLU ranges, and 19 matching
-context-specific CKKS states. The converted side payload and report publish
-before `.fhe.B`, which is the atomic commit marker.
+the feature.
 
-The exact ACE bytes are project-approved from empirical ANT ACE evidence and
+Historical verification status: a complete merged-tip run was recorded as
+Pass on 2026-09-14. It reported 13 physical Conv/BN definition rewrites, 21
+source-context folds, 42 converted tensors, 46 operator dispositions, 19
+authenticated ReLU ranges, and 19 matching context-specific CKKS states. These
+numbers were not rerun for this documentation revision.
+
+Current independent verification status: **unverified**. The retained artifact
+bytes referenced by the historical host-local `/private/tmp/...` path are not
+presently accessible, and their recorded hashes cannot substitute for the
+bytes. Before implementation in SYNC-4 consumes this checkpoint, the shepherd
+must publish an accessible immutable complete bundle or retain a new
+exact-snapshot rerun, and an independent reviewer must verify it. SYNC-4
+contract and design preparation may continue while this gate is open.
+
+The exact ACE bytes were project-approved from empirical ANT ACE evidence and
 the coefficient profile is integrated. A pinned ACE-derived checkpoint and a
-deterministic 5,000-image class-stratified CIFAR-10 training subset supply the
-19 approved ranges. A disjoint 1,000-image held-out test run records 91.6%
+deterministic 5,000-image class-stratified CIFAR-10 training subset supplied the
+19 approved ranges. A disjoint 1,000-image held-out test run historically
+recorded 91.6%
 clear accuracy, 91.5% polynomial accuracy, 0.1 percentage-point degradation,
 99.9% prediction agreement, and zero out-of-range values against predeclared
 gates. Original training provenance remains unknown and is not claimed.
-The deterministic collector in
-`doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` now proves the 19-way identity join,
-pre-ReLU observation algorithm, distribution evidence, bound checks, and
-canonical manifest hashing. Its fixture is explicitly not calibration.
+The historical deterministic collector in
+`doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` was recorded as proving the 19-way
+identity join, pre-ReLU observation algorithm, distribution evidence, bound
+checks, and canonical manifest hashing. Its fixture is explicitly not
+calibration.
 PR #127 supplies authenticated runtime manifest selection, and the FHE-owned
 RapidJSON consumer verifies exact bytes, approval, identity coverage, and
 all-PU consumption before publishing. It also authenticates the active

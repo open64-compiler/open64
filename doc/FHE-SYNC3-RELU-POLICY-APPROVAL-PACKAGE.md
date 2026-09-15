@@ -1,6 +1,14 @@
 # FHE SYNC-3 ReLU Composite-Policy Approval Package
 
-Status: Commit 17 policy tuple approved; Commit 19 planning evidence certified
+Status: Commit 17 policy tuple was approved and Commit 19 planning evidence was
+historically certified. The 2026-09-14 results below were not rerun in this
+documentation revision, and current independent SYNC-3 re-certification is
+**unverified** while the complete retained artifact bytes remain inaccessible.
+
+The sole highest FHE semantic authority is
+`doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`, whose
+repository copy has SHA-256
+`0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 
 Profile under review:
 `ace.chebyshev.sign.7x15x13.depth11.v1`
@@ -22,8 +30,9 @@ lower polynomial arithmetic, execute ciphertext inference, or claim SYNC-4.
 | Accuracy evidence | Approved for SYNC-3 planning | A disjoint 1,000-image held-out test subset reproduces 91.6% clear and 91.5% polynomial accuracy, 0.1 percentage-point degradation, 99.9% prediction agreement, and zero out-of-range values against thresholds frozen before execution. |
 | Concrete CKKS state proof | Approved static compiler schedule | Pinned ACE compiler output and project-reviewed `N=65536`, `Q0=60`, scale 56 configuration establish context-specific post-refresh levels 15, 17, and 18 and depth 11. This is planning evidence, not executed OpenFHE ciphertext inference. |
 
-The complete tuple may now be interned and certified as SYNC-3 planning
-evidence. Runtime enablement remains false: the resulting `.fhe.B` records
+The complete tuple is eligible to be interned as SYNC-3 planning evidence.
+Historical certification does not by itself satisfy the current exact-snapshot
+gate. Runtime enablement remains false: the resulting `.fhe.B` records
 required composite approximation and pending pre-ReLU refresh, but does not
 materialize either operation.
 
@@ -143,6 +152,12 @@ execution.
 
 ## Machine-Readable Evidence
 
+Every SHA-256 in this package covers the exact ASCII artifact bytes committed
+to Git. Each JSON file uses LF line endings and has exactly one terminal LF.
+Verifiers must hash those validated bytes directly: JSON reserialization,
+text-mode newline conversion, and platform-native line-ending substitution are
+not part of the digest protocol.
+
 | Artifact | SHA-256 |
 | --- | --- |
 | `doc/fhe-policy/sync3-relu/coefficient-manifest.json` | `75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931` |
@@ -152,10 +167,11 @@ execution.
 
 `doc/fhe-policy/sync3-relu/package-index.json` binds those paths, hashes, gate
 statuses, permits SYNC-3 planning publication, and keeps runtime enablement
-false. The manifest test independently rebuilds
-the coefficient bytes and hashes, validates all 19 identities, and rejects
-missing stages, changed hashes, duplicate identities, incomplete range or
-accuracy evidence, and incomplete CKKS schedules.
+false. Its own recorded digest follows the same exact-ASCII/LF-byte rule. The
+manifest test independently rebuilds the coefficient bytes and hashes,
+validates all 19 identities, and rejects noncanonical line endings, missing
+terminal LF, missing stages, changed hashes, duplicate identities, incomplete
+range or accuracy evidence, and incomplete CKKS schedules.
 
 ## Approval Record
 
@@ -173,6 +189,8 @@ accuracy evidence, and incomplete CKKS schedules.
 - [ ] OpenFHE ciphertext execution confirms the planned schedule; deferred to
   the runtime/lowering milestone and not a Commit 19 blocker.
 
-Commit 17 is complete and Commit 19 may close after exact-candidate integration
-review. The unchecked runtime item remains mandatory later but does not block
-the focused SYNC-3 conversion-planning checkpoint.
+Commit 17 and the Commit 19 integration were recorded as complete in the
+historical PR #131 certification. The unchecked runtime item remains mandatory
+later. Independently of that later runtime gate, current SYNC-3 verification
+requires accessible retained bytes or a newly retained exact-snapshot rerun;
+manifest and artifact digests alone are not replacement evidence.

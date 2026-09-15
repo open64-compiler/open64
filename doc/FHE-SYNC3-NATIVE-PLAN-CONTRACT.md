@@ -1,33 +1,40 @@
 # Open64 FHE SYNC-3 Native Planning-Image Contract
 
-Status: Stage 3 VHO phase and all-PU conversion-checkpoint substrate
-implemented, pending review
+Status: Stage 3 VHO phase and all-PU conversion-checkpoint substrate were
+implemented and merged through PR #131. A 2026-09-14 merged-tip Pass is retained
+as historical evidence; current independent re-certification is **unverified**
+because the retained artifact bytes are not presently accessible.
 
 Semantic authority:
 
-- `../open64-plans/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.9.docx`
-  is the highest semantic authority; the reviewed copy has SHA-256
-  `4B9DAC9927E86518142CA9A9E71AEAE7AEA5C454D01C544311359680639DF4B6`.
+- `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
+  is the sole highest FHE semantic authority; the repository copy has SHA-256
+  `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 - `doc/FHE-SYNC3-CONVERSION-CONTRACT.md`
 - `doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md`
 - `doc/FHE-WHIRL-INTEGRATION-PLAN.md`
 - `doc/FHE-SYNC1-NATIVE-CONTRACT.md`
 
-This contract is subordinate to v0.9 and implements only the narrowed C3 /
+This contract is subordinate to v0.10 and implements only the narrowed C3 /
 SYNC-3 planning checkpoint permitted by Appendix F.1. It does not establish
-completion of v0.9 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4
-bootstrap-plus-polynomial materialization and the remaining v0.9 execution
+completion of v0.10 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4
+bootstrap-plus-polynomial materialization and the remaining v0.10 execution
 evidence stay mandatory.
 
-## Prerequisite Gate
+## Historical Prerequisites and Current Verification Gate
 
-SYNC-3 source coding remains blocked until corrective SYNC-1 validation fixes
-version-1 tensor-binding identity and FHE entry-value atomicity, PU ownership
-and exact source provenance are corrected, and SYNC-2 is recertified with
-fail-closed checks plus retained evidence. Main/common and FHE reviewers must
-also accept an exact node-retirement contract for physical BatchNorm removal,
-including users, provenance, rollback, old-reader behavior, mapped reopen, and
-tree/image consistency. This document does not invent that representation.
+PR #131 records that corrective SYNC-1 validation, SYNC-2 recertification, and
+the reviewed node-retirement contract were satisfied before the SYNC-3 source
+implementation merged. Those are historical implementation prerequisites, not
+current source-implementation blockers.
+
+The current checkout does not provide the artifact bytes named by the historical
+host-local `/private/tmp/...` locator. That path is not a current evidence
+locator, and recorded SHA-256 values do not substitute for the bytes. Until an
+accessible immutable complete bundle is published, or the exact-snapshot suite
+is rerun and retained, SYNC-3 must not be consumed as a verified SYNC-4 input.
+Downstream contract and design preparation may continue without claiming stage
+entry.
 
 ## Decision
 
@@ -764,13 +771,14 @@ work is part of this native planning-image stage.
 
 ## Exit Criteria
 
-The contract is ready for implementation only after main/common and FHE review
-agree on every row field, sentinel, identity, range rule, and API name and the
-prerequisite gate above is closed. Implementation closes the focused SYNC-3
-planning checkpoint when syntax/size tests, malformed-image tests, old-image
-tests, producer reopen, gatekeeper checks, and retained `.B`/`.T` evidence all
-pass without changing existing binary WHIRL behavior. It does not close v0.9
-Architecture Phase 3 or M4.
+The implementation recorded by PR #131 historically satisfied the focused
+contract only after main/common and FHE review agreed on every row field,
+sentinel, identity, range rule, and API name. Current closure still requires
+syntax/size tests, malformed-image tests, old-image tests, producer reopen,
+gatekeeper checks, and accessible retained `.B`/`.T` evidence from the exact
+candidate. Those checks have not been rerun in this documentation revision.
+Even a current Pass would close only focused SYNC-3, not v0.10 Architecture
+Phase 3 or M4.
 
 ## FHE Semantic Review Resolution
 

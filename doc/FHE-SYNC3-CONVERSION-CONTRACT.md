@@ -1,17 +1,17 @@
 # FHE SYNC-3 ResNet Conversion Contract
 
-Status: active FHE-owned SYNC-3 implementation contract. Main/common planning,
-rewrite, checkpoint, PU-interface, and composite-profile substrates through
-PR #123 are merged. BatchNorm folding has positive certification; full
-SecureResNet publication remains blocked by `CFHECNN-RELU-002`. This document
-does not allocate opcodes, edit shared common/com files, insert bootstrap
-boundaries, lower to SIHE/CKKS primitives, or lower to OpenFHE/runtime calls.
+Status: implemented and merged through PR #131. The Commit 19 and 2026-09-14
+merged-tip Pass remain historical records. Current independent
+re-certification is **unverified** because the retained artifact bytes are not
+presently accessible. This document does not allocate opcodes, edit shared
+common/com files, insert bootstrap boundaries, lower to SIHE/CKKS primitives,
+or lower to runtime calls.
 
 Authority:
 
 - `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
-  is the highest semantic authority; the repository copy has SHA-256
-  `0018769c26b5a0bcd1bdfcbd85aa97b8bafea381d7640fbb9e2e81b0022013d9`.
+  is the sole highest FHE semantic authority; the repository copy has SHA-256
+  `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 - `doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md`
 - `doc/FHE-WHIRL-INTEGRATION-PLAN.md`
 - `doc/FHE-SYNC1-NATIVE-CONTRACT.md`
@@ -22,10 +22,10 @@ Appendix F.1. It cannot override v0.10 or establish completion of Architecture
 Phase 3 or focused milestone M4. C4 / SYNC-4 bootstrap-plus-polynomial
 materialization and the remaining v0.10 execution evidence stay mandatory.
 
-## Prerequisite Gate
+## Historical Prerequisites and Current Verification Gate
 
-SYNC-3 source implementation remains blocked until all of the following are
-accepted:
+PR #131 records that the following prerequisites were accepted before the
+SYNC-3 source implementation merged:
 
 1. Corrective SYNC-1 validation establishes one version-1 tensor-binding
    identity and failure-atomic FHE entry-value insertion.
@@ -36,9 +36,17 @@ accepted:
    physical BatchNorm removal, including users, provenance, rollback,
    old-reader behavior, mapped reopen, and tree/image consistency.
 
+The historical certification points at a host-local `/private/tmp/...`
+directory that is unavailable to the current reviewer. That path is not a
+current locator, and digest text cannot replace the retained bytes. An
+accessible immutable complete bundle, or a newly retained exact-snapshot rerun,
+is required before SYNC-3 may be treated as a verified input to SYNC-4. The
+existing `CFHECNN-RELU-002` diagnostic remains the fail-closed result for an
+illegal or incomplete profile; it is not the current stage status.
+
 ## Scope
 
-After the prerequisite gate closes, focused SYNC-3 plans the conversion of the
+Focused SYNC-3 plans the conversion of the
 recertified ResNet-20/CIFAR-10 source-level WHIRL artifact into FHE-visible CNN
 semantics while retaining reviewable evidence. It owns FHE gatekeeper checks,
 BatchNorm folding, operator disposition, approximation-contract requirements
@@ -142,18 +150,23 @@ secret-key material, ciphertext bytes, backend C++ object state, or physical
 | `CFHECNN-CONV-001` | Unsupported convolution layout, rank, groups, dilation, stride, or padding policy. |
 | `CFHECNN-POOL-001` | Max/data-dependent pooling is unsupported without approved replacement policy. |
 | `CFHECNN-RELU-001` | Encrypted `common.relu` lacks required approximation contract for SYNC-3 output. |
-| `CFHECNN-RELU-002` | The selected composite ReLU profile is not completely represented and certified; no full-model checkpoint is published. |
+| `CFHECNN-RELU-002` | The selected composite ReLU profile is incomplete, illegal, or cannot be interned as one complete profile. |
+| `CFHECNN-RELU-003` | The authenticated complete identity-bound range manifest is missing. |
 | `CFHECNN-RESIDUAL-001` | Residual add has incompatible shape, layout, value class, scale, or level obligation. |
 | `CFHECKKS-STATE-001` | Value-specific CKKS state is missing where conversion requires level/scale tracking. |
 | `CFHE-LOWER-001` | FHE/SIHE/CKKS/runtime lowering was requested during SYNC-3 conversion. |
 
 ## BatchNorm-to-Conv Folding
 
-Current certification status: the ReLU-free shared-PU profile certifies 13
+Historical certification status: PR #131 recorded the complete approved
+composite profile and the full SecureResNet checkpoint as passing with 13
 physical retirements, 21 context folds, 42 converted tensors, atomic auxiliary
-publication, and mapped-image reopen. The complete SecureResNet profile reaches
-the same derived counts before failing closed at the unapproved ReLU policy;
-see `FHE-RELU-DEGREE3-POLICY-DECISION.md`.
+publication, and mapped-image reopen. Those results were not rerun here, and
+current independent verification is unverified only because the complete
+retained artifact bytes are not presently accessible. The earlier degree-3
+decision in `FHE-RELU-DEGREE3-POLICY-DECISION.md` is superseded historical
+input; the accepted profile is governed by
+`FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`.
 
 Fold `cnn.batch_norm_infer` into the immediately preceding legal convolution
 when all legality checks pass:
@@ -517,6 +530,8 @@ After the hooks above are reviewed, FHE owns:
 | Unsupported grouped or dilated convolution policy | `CFHECNN-CONV-001` |
 | Unsupported max pooling | `CFHECNN-POOL-001` |
 | Encrypted ReLU without approximation contract | `CFHECNN-RELU-001` |
+| Incomplete, illegal, or non-internable composite ReLU profile | `CFHECNN-RELU-002` |
+| Missing authenticated complete identity-bound range manifest | `CFHECNN-RELU-003` |
 | Residual shape/layout/value-class mismatch | `CFHECNN-RESIDUAL-001` |
 | CKKS state missing where required | `CFHECKKS-STATE-001` |
 | Runtime/OpenFHE lowering attempted during SYNC-3 | `CFHE-LOWER-001` |
