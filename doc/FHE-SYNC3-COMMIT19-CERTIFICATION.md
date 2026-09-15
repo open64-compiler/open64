@@ -1,7 +1,7 @@
 # FHE SYNC-3 Commit 19 Certification Record
 
-Status: local candidate pass; independent main-side review and merged-tip
-recertification remain before formal SYNC-3 acceptance.
+Status: **formally accepted and complete**. PR #131 merged and the complete
+certification passed again at the exact merged `develop` tip on 2026-09-14.
 
 ## Scope
 
@@ -10,13 +10,15 @@ It does not claim completion of architecture Phase 3, M4, SYNC-4 ReLU
 materialization, standard-WHIRL runtime lowering, generated C, or OpenFHE
 ciphertext execution.
 
-The candidate is based on `origin/develop` at
-`864eb7ccdef3a6bd042851b0da5a105ca4202d49` and inherits the merged
-context-state implementation at `1f02778018bb3759793e2bf7f5704187306bc344`.
+The accepted implementation is Commit 19
+`93d80a6b79858ee5b7183f4426d3c94573b53e95`, merged by PR #131 at
+`d424c00be487f884a9ae7fb5cfc688f39e96d279`. The merge and Commit 19 trees are
+both `14296246aca8ba61ec1d56fc6b1050d7db0a99e9`, so the merged-tip rerun tested
+the exact independently reviewed feature tree.
 
 ## Decision
 
-Local verdict: **Pass**.
+Final merged-tip verdict: **Pass**.
 
 The six-PU SecureResNet20 checkpoint publishes the converted side payload and
 conversion report as auxiliary artifacts, then publishes `.fhe.B` last as the
@@ -64,7 +66,7 @@ Original training provenance is unknown and is not claimed.
 ## Retained Evidence
 
 Host directory:
-`/private/tmp/open64-fhe-sync3-conversion/artifacts/fhe/sync3_commit19_lane`
+`/private/tmp/open64-fhe-sync3-final-closure-artifacts/sync3_commit19_merged_tip`
 
 | Artifact | SHA-256 |
 | --- | --- |
@@ -77,6 +79,7 @@ Host directory:
 | `secure_resnet20.fhe.conversion-report.txt` | `737e985457e2eb5dcd5b209dad10e60fd21cf6a559d8af80f381a00b478861db` |
 | `secure_resnet20.fhe.vho.t` | `5d9691ee0c9e8e4c8f4140ee8ee3168912091f6422518f9e47d882869d23cead` |
 | `conversion.log` | `8f2cb8d4ab762f6e75e234e6228354a7166fedc73876563ce5f836a1db67e1b8` |
+| `independent-verifier.log` | `5f9376be1a6fe6980c763fd2d3765c88591e219426f70734152311b7768f6191` |
 
 ## Validation
 
@@ -101,14 +104,17 @@ Host directory:
 
 ## Formal Acceptance
 
-The remaining steps are procedural rather than implementation blockers:
+All procedural gates are complete:
 
-1. freeze the FHE-owned candidate commit and review its exact diff;
-2. independently inspect the retained `.fhe.T`, payload, report, diagnostics,
-   and hashes;
-3. open and merge the narrow FHE-owned PR; and
-4. rerun this certification at the merged PR tip before marking SYNC-3 closed.
+1. the exact FHE-owned Commit 19 diff received independent main-side review;
+2. the retained `.fhe.T`, payload, report, diagnostics, and hashes passed that
+   review;
+3. PR #131 merged without conflict-resolution changes; and
+4. the complete certification passed again at merged tip `d424c00b`.
 
-SYNC-4 starts only after that acceptance. It must consume these planning
-records to materialize the mandatory pre-ReLU refresh, context normalization,
-three Chebyshev stages, and ReLU reconstruction.
+Merge mechanics: **Pass**. The merge parents are `864eb7cc` and `93d80a6b`,
+and the merge tree exactly equals the accepted Commit 19 tree.
+
+Integrated feature state: **Pass; focused C3 / SYNC-3 is closed.** SYNC-4 must
+consume these planning records to materialize the mandatory pre-ReLU refresh,
+context normalization, three Chebyshev stages, and ReLU reconstruction.
