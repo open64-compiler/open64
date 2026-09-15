@@ -1,14 +1,28 @@
 # FHE SYNC-4 Through SYNC-6 Team Handoff
 
-Status: ready for team kickoff after this documentation PR merges
+Status: contract and design preparation may begin after this documentation PR
+merges. SYNC-4 implementation kickoff is blocked until current independent
+SYNC-3 re-certification succeeds with accessible retained artifact bytes.
+
+Current machine-readable stage-entry gate:
+
+```text
+SYNC3_CURRENT_VERIFICATION=UNVERIFIED
+SYNC4_MAY_CONSUME_SYNC3=false
+```
+
+These fields are the automation-facing state for this revision. An unverified
+status requires the consumption flag to remain false; a future exact-snapshot
+re-certification must update both fields atomically with its retained evidence
+and independent verdict.
 
 ## Purpose
 
 This document is the operating handoff for moving the correctness-first Open64
-FHE path from the completed SYNC-3 planning artifact through an ACE
-`FHErt_ant`-linked ResNet-20 execution. It complements the authority documents
-below and converts their stage gates into team assignments, review boundaries,
-commit-sized work, tests, and retained evidence.
+FHE path from the historically certified SYNC-3 planning implementation through
+an ACE `FHErt_ant`-linked ResNet-20 execution. It complements the authority
+documents below and converts their stage gates into team assignments, review
+boundaries, commit-sized work, tests, and retained evidence.
 
 Each SYNC point is a release gate. A stage closes only when its implementation,
 negative tests, retained artifacts, and independent review evidence pass. A
@@ -20,18 +34,20 @@ The team must read these files from the same `develop` revision before coding:
 
 | Document | Role |
 | --- | --- |
+| `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx` | Sole highest FHE semantic authority; required SHA-256 `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9` |
 | `doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md` | Coordination authority, ownership, ordering, and joint exit criteria |
 | `doc/FHE-WHIRL-INTEGRATION-PLAN.md` | FHE semantics, lowering stages, diagnostics, and artifacts |
 | `doc/FHE-DSL-INTEGRATION-PLAN.md` | Complete frontend-to-runtime execution architecture |
 | `doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md` | Selected ACE ANT provider, ABI boundary, security scope, and runtime mapping |
-| `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md` | Accepted SYNC-3 baseline and retained evidence |
+| `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md` | Historical SYNC-3 Pass record and current re-certification requirements |
 | `doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md` | Context-specific CKKS state and callee-identity contract |
 
-Do not copy document blob hashes into long-lived instructions. At kickoff,
-record the active baseline with:
+At kickoff, verify the fixed v0.10 content hash above and record the active Git
+baseline and subordinate-document blob IDs with:
 
 ```sh
 git rev-parse HEAD
+git rev-parse HEAD:doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx
 git rev-parse HEAD:doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md
 git rev-parse HEAD:doc/FHE-WHIRL-INTEGRATION-PLAN.md
 git rev-parse HEAD:doc/FHE-DSL-INTEGRATION-PLAN.md
@@ -43,9 +59,9 @@ records whether assignments or acceptance criteria change.
 
 ## Starting Boundary
 
-SYNC-3 is complete at the merged PR #131 implementation plus merged-tip
-recertification recorded by the closure documentation. The accepted baseline
-contains:
+SYNC-3 implementation is merged through PR #131. Its 2026-09-14 merged-tip Pass
+record reports the following historical results; they were not rerun for this
+documentation revision:
 
 - six class-centric PUs;
 - 13 physical Conv/BatchNorm definition rewrites;
@@ -62,6 +78,13 @@ contains:
 This is conversion-planning evidence. It does not claim bootstrap
 materialization, standard-WHIRL runtime-call lowering, generated C, or
 `FHErt_ant` execution.
+
+The historical certification names a host-local `/private/tmp/...` directory
+that is unavailable to the current reviewer. It is not a current evidence
+locator, and its SHA-256 list cannot substitute for the artifact bytes. Current
+independent SYNC-3 re-certification is therefore **unverified**. An accessible
+immutable complete bundle or a newly retained exact-snapshot rerun must pass
+independent review before any SYNC-4 implementation consumes this checkpoint.
 
 The first executable provider is pinned ACE ANT `FHErt_ant` at commit
 `fb76131171b9f82aa6387f84dd73684fba5277e8`. OpenFHE remains a later optional
@@ -109,6 +132,10 @@ Publish a shared-file ownership table before any shared file is edited.
     remain outside SYNC-4 through SYNC-6.
 
 ## SYNC-4: ReLU O0 Materialization
+
+Entry gate: contract and design work may proceed, but implementation and its
+dependent commit stack must wait until the current SYNC-3 verification gate in
+the Starting Boundary is closed.
 
 ### Objective
 
@@ -265,15 +292,18 @@ Do not stack a dependent implementation on an unmerged shared-contract branch.
 ## Kickoff Procedure
 
 1. Merge the documentation authority PR and start from a clean `develop`.
-2. Run the deployability check below and attach its output to the kickoff issue.
-3. Record the baseline commit and authority-document blob IDs.
-4. Assign every team role, reviewer, and shared file.
-5. Create a SYNC-4 board with one item for each S4 commit and explicit
+2. Publish or regenerate the complete SYNC-3 evidence bundle, run current
+   independent re-certification, and record a Pass before implementation
+   kickoff.
+3. Run the deployability check below and attach its output to the kickoff issue.
+4. Record the baseline commit and authority-document blob IDs.
+5. Assign every team role, reviewer, and shared file.
+6. Create a SYNC-4 board with one item for each S4 commit and explicit
    dependency arrows.
-6. Open the S4-1 contract PR first. Do not begin dependent implementation until
+7. Open the S4-1 contract PR first. Do not begin dependent implementation until
    its shared contracts are merged.
-7. Reserve host-visible artifact roots for positive and negative runs.
-8. Schedule independent review checkpoints after S4-2, S4-5, and S4-6.
+8. Reserve host-visible artifact roots for positive and negative runs.
+9. Schedule independent review checkpoints after S4-2, S4-5, and S4-6.
 
 ## Deployability Check
 
@@ -283,6 +313,7 @@ Run from the Open64 repository root after checking out the handoff baseline:
 set -eu
 
 required_docs="
+doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx
 doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md
 doc/FHE-WHIRL-INTEGRATION-PLAN.md
 doc/FHE-DSL-INTEGRATION-PLAN.md
@@ -295,6 +326,9 @@ doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
 for path in $required_docs; do
   test -f "$path"
 done
+
+test "$(sha256sum doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx | cut -d' ' -f1)" = \
+  0018769c26b5a0bcd1bdfcbd85aa97b8bafea381d7640fbb9e2e81b0022013d9
 
 rg -q "fb76131171b9f82aa6387f84dd73684fba5277e8" \
   doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md
@@ -323,11 +357,12 @@ test "$(rg -c 'Bootstrap\([^,]+,[^,]+, 17\)' "$generated")" = 1
 test "$(rg -c 'Bootstrap\([^,]+,[^,]+, 18\)' "$generated")" = 2
 ```
 
-For the local SYNC-3 retained evidence, run `sha256sum -c SHA256SUMS` from its
-artifact directory and inspect `secure_resnet20.fhe.T` and the conversion
-report. A new team does not need the original local path; the shepherd must
-publish or regenerate an access-controlled evidence bundle and record its
-location in the kickoff issue.
+The `/private/tmp/...` directory in the historical certification is not a
+current locator. The shepherd must publish or regenerate an accessible,
+immutable, content-addressed complete bundle and record its location in the
+kickoff issue. Run `sha256sum -c SHA256SUMS` from that directory and inspect
+`secure_resnet20.fhe.T` and the conversion report. The digest list in the
+historical document does not replace these bytes.
 
 ## First Kickoff Record
 
@@ -343,5 +378,6 @@ The kickoff issue or meeting note must contain:
 - declared option modes, numerical thresholds, and stop conditions; and
 - links to the SYNC-3 evidence bundle and the first S4-1 contract review.
 
-The team is ready to code only after this record is complete and the S4-1
-shared contract has an assigned main/common owner.
+The team is ready to implement only after current SYNC-3 independent
+re-certification passes, this record is complete, and the S4-1 shared contract
+has an assigned main/common owner.
