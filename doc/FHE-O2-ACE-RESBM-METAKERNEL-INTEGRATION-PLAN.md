@@ -1,10 +1,11 @@
 # Open64 FHE `-O2` Integration Plan
 
-Status: revision proposal; O2 implementation and external O0 acceptance remain open
+Status: discussion-aligned revision proposal; master-plan reconciliation, O0
+qualification, and O2 implementation remain open
 
-Plan version: 1.4
+Plan version: 1.6
 
-Date: 2026-09-12
+Date: 2026-09-15
 
 Reviewed working-tree baseline: `develop@eca97d4843aef03c50e5cb866f2f0e6c82e6b064`
 
@@ -14,14 +15,37 @@ Detailed delivery target: `O2 Stage 1` (`ACE mapping + MetaKernel + ReSBM`)
 
 Retained final capability: `O2 Stage 2` (`FHEFusion + reviewed HPOLY/HPAO`)
 
-Revision 1.4 adopts the user-selected planning direction: the frozen mature
+Revision 1.6 retires the separate detailed-execution-plan outline and moves its
+remaining normative content into this plan. Sections 12.3-12.5 now define the
+three distinct dependency graphs, the engineering-stage-to-milestone mapping,
+the detailed stage-plan contract, the plan-set document structure, and the
+end-to-end traceability rule. The English detailed execution index and the 13
+English stage plans remain subordinate execution documents. This revision does
+not authorize implementation and does not modify the master plan or pending ADR.
+
+Revision 1.5 retains the user-selected mature Fhelipe O0 baseline from v1.4 and
+records two additional execution decisions. First, **no O2 phase, including
+provider-free algorithm or fixture work, starts until the complete external O0
+baseline has passed an independent O2-consumer qualification gate**. This is a
+deliberate sequencing policy: it sacrifices possible schedule overlap so a
+failure can be attributed to either the qualified O0 handoff or one O2 phase.
+Second, the runtime provider is fixed to ANT through the public C surface of the
+ACE compiler repository's rtlib (`FHErt_common` plus `FHErt_ant`, provider ID
+`LIB_ANT`). Open64 remains authoritative for CKKS-and-above semantic IR,
+planning, verification, and optimization; finalized CKKS and lower-level
+execution is projected to ACE rtlib/ANT.
+
+Revision 1.4 adopted the user-selected planning direction: the frozen mature
 Fhelipe layout/lowering pipeline and its default DP bootstrap placement form
 the proposed O0 baseline. O2 owns enhancements beyond that baseline. This
 supersedes v1.3's attempt to move Fhelipe's existing cost-guided passes into O2.
 The DP baseline conflicts with the current v0.10 O0 policy and is not yet an
 accepted architecture or executable baseline. F0 records the required explicit
 reconciliation; this revision edits only this O2 plan, not architecture or O0
-source trackers. HPAO-MU/FM/LM and the MD design gate remain unchanged.
+source trackers. This v1.5 edit likewise does not modify the master plan. The
+master-plan wording for the O0 baseline and runtime boundary remains pending
+collaborator agreement and must be reconciled before `F0`/O0 qualification can
+close. HPAO-MU/FM/LM and the MD design gate remain unchanged.
 
 ## 0. Proposed Baseline Policy and Cross-Plan Ownership
 
@@ -36,9 +60,9 @@ baseline capabilities even when upstream calls them optimizations.
 
 | Owner | Proposed scope after F0 reconciliation | Required evidence |
 | --- | --- | --- |
-| O0/Fhelipe execution owner | Frozen mature Fhelipe layout/lowering and default DP initial bootstrap placement, with accepted rescale/state handling; required canonicalization, immediate Relin, provider ABI and executable acceptance | Full pass/config/source lock, policy-compatible DP adaptation, complete agreed support domain, independent reopen and ResNet-20 acceptance |
+| O0/Fhelipe execution owner | Frozen mature Fhelipe layout/lowering and default DP initial bootstrap placement, with accepted rescale/state handling; required canonicalization, immediate Relin, ACE rtlib/ANT execution contract and executable acceptance | Full pass/config/source lock, policy-compatible DP adaptation, complete agreed support domain, independent reopen, ANT execution and ResNet-20 acceptance |
 | O1 execution owner | Any separately accepted local incremental policy above the same baseline | Preserve the baseline manifest and protected semantics; F0 reconciles the old local-policy mapping without redefining O1 here |
-| O2 integration owner | Additional MetaKernel layout/kernel optimization, ReSBM replacement of permitted baseline placement, FHEFusion, reviewed HPOLY/HPAO and individually reviewed further enhancements | Compare incremental effects against the frozen Fhelipe baseline; retain baseline-off controls and semantic/placement provenance |
+| O2 integration owner | Additional MetaKernel layout/kernel optimization, ReSBM replacement of permitted baseline placement, FHEFusion, reviewed HPOLY/HPAO and individually reviewed further enhancements | Start only after complete O0 consumer qualification; compare incremental effects against the frozen Fhelipe baseline; retain baseline-off controls and semantic/placement provenance |
 | Future O3 owner | Physical parallel scheduling and memory/data optimization of the finalized selected semantic plan | Preserve approximation, layout semantics, state, protected bootstrap boundaries, keys and source provenance |
 
 This is a proposed change to the existing DSC O0 definition, not a claim that
@@ -55,8 +79,8 @@ Until reconciliation, the existing architecture remains the implementation
 contract for any claim of v0.10 conformance. It is not the target comparison
 baseline of this revision. A legacy greedy/JIT implementation may remain a
 diagnostic profile, but cannot close the proposed Fhelipe baseline gate.
-Independent source/oracle work may proceed; production defaults and integrated
-acceptance await the conflicting contract's resolution.
+Only governance discussion and this plan revision may proceed; by project
+choice, O2 source/oracle implementation also waits for complete O0 qualification.
 
 ### 0.2 Paper/code evidence and limits of the baseline claim
 
@@ -120,8 +144,11 @@ hard-boundary adaptation and architecture acceptance are not yet settled.
 | FRZ-05 | Baseline layout/CKKS/placement/provenance records first; separate O2 candidate/replanning extensions | O0/common-com then O2 owners; versioned crosswalk and independent reopen | Baseline consumers before P2; O2 schema after P2 |
 | FRZ-06 | Frozen-baseline versus increment comparisons, identical DP algorithm/constraints for layout ablations | Performance/O2 owners; profile/support matrix, objective labels, fixed artifacts and controls | S1.LAYOUT/S1.9/S2.6 |
 | FRZ-07 | Synchronize architecture and source-tracker links for MIG-01..07 | Architecture/tracker editors; explicit changed/unchanged policy inventory and accepted document diffs | F0 closure |
+| FRZ-08 | Freeze ACE rtlib as the runtime interface and ANT as the only required provider; define the Open64 CKKS semantic-plan to rtlib projection | Runtime/Open64 owners; ACE rtlib revision/header/build hashes, generated-C include/symbol allowlist, parameter and operation mapping | P1a/P1b, O0 qualification, all executable O2 gates |
+| FRZ-09 | Decide compiler-side rtlib dependency topology and client/server key/context lifecycle | Build/runtime/security owners; explicit `be.so` dependency review or isolated resolver design, plus no-server-secret lifecycle tests | P1b release acceptance; does not reject ANT as the selected provider |
 
-Do not infer that the architecture has accepted DP merely because this execution
+Do not infer that the architecture has accepted DP or the revised rtlib boundary
+merely because this execution
 plan chooses it. F0 architecture reconciliation is not an O2 implementation gate
 for O0: it produces the baseline contract, after which O0 can build and accept
 the complete baseline without P2 or any MetaKernel/ReSBM implementation.
@@ -175,7 +202,7 @@ exact selected semantic plan; O3 execution acceptance remains the third plan's.
 
 | Delivery | O2-owned work | Completion rule |
 | --- | --- | --- |
-| Stage 1 | ACE/O2 responsibility mapping, O2 record/transaction extensions, additional MetaKernel MVM/Conv optimization, ReSBM core/approved replacement planning, incremental comparison and materialization | F0 reconciliation accepted; external mature Fhelipe baseline accepted; P2/S1.0-S1.9 and S1.LAYOUT verification pass |
+| Stage 1 | Open64/ACE mapping, O2 record/transaction extensions, additional MetaKernel MVM/Conv optimization, ReSBM core/approved replacement planning, incremental comparison and ACE rtlib/ANT materialization | F0 reconciliation accepted; complete external mature Fhelipe/ANT baseline passes `O2-O0Q-001`; P2/S1.0-S1.9 and S1.LAYOUT verification pass |
 | Stage 2 | Additional FHEFusion, HPOLY and independently controlled HPAO-MU/FM/LM, MD-DESIGN, recosting/ablations/default certification | All Stage 1 and Stage 2 gates; MD implementation only after separate design acceptance and plan amendment |
 
 ```text
@@ -221,6 +248,14 @@ does not amend architecture or claim paper-exact behavior for artifact-only
 extensions. The selected baseline is proposed policy until F0 explicitly reconciles the
 identified v0.10 conflict; unchanged architecture is not evidence of acceptance.
 
+The v0.10 master plan remains the current recorded architecture authority while
+its successor is being negotiated. Where this v1.6 proposal differs - most
+notably the mature O0 baseline sequencing and use of ACE rtlib's public C surface
+instead of the former proposed opaque `dsc_fhe_*` facade - the difference is
+explicitly `Proposed` and blocks `F0`/`O2-O0Q-001`. This document and the detailed
+execution plan set may be revised now, but neither may be used to claim that the
+master plan has already changed.
+
 ### 2.2 Status labels
 
 - **Verified**: directly observed in a reviewed document, current tree, fixed
@@ -241,6 +276,7 @@ identified v0.10 conflict; unchanged architecture is not evidence of acceptance.
 | FHEFusion | `../../ace-paper/FHEFusion_paper.pdf`, `415E2ACFE8E7505263B369BF3B550A190612E48E8E92D66A321C0D8098A24A7E` | `origin/fhefusion@f18f971710b7270aec2c3963878ac3493d9f8e06` | Stage 2 pre-layout work |
 | HPAO | `../../ace-paper/HPAO_AE.pdf`, `FAFCEE50E3978FECE2D847DD7B2623C71DB5B8E7CD79226B43917F87188D02FC` | `origin/hpao@990e2289a866397e92c69ebe251adedba46cd44a` | Stage 2 post-CKKS work |
 | Fhelipe | `../../fhelipe/fhelipe-paper.pdf`, `6E7A58F934AC64B4A043166980BFA81BFE162EFDFBA371A47D649A5A77DA0D65`; [DOI 10.1145/3656382](https://doi.org/10.1145/3656382) | local `../../fhelipe/fhelipe@891b3086bf6a144deebac79290801253b9cc510c`; inspected component files below | activity-boundary evidence verified; full source bundle/build and implementation acceptance pending |
+| ACE rtlib / ANT | no paper claim; public runtime/API source is authoritative | local `../../ace-compiler@929e9b621f11bebbaa9ec1e215f4a52e3d07109b` | Required runtime interface and only release provider; `FHErt_common` + `FHErt_ant`, `LIB_ANT` |
 
 The inspected Fhelipe evidence files at that commit have SHA-256:
 
@@ -254,6 +290,22 @@ The inspected Fhelipe evidence files at that commit have SHA-256:
 These four hashes support this revision's ownership analysis, not a claim of
 complete reproducible source-bundle/build acceptance. FRZ-02/F1-ACCEPT must
 lock the complete adopted implementation and test dependencies before release.
+
+The inspected ACE rtlib interface files at the selected revision have SHA-256:
+
+| File relative to `../../ace-compiler/` | SHA-256 |
+| --- | --- |
+| `fhe-cmplr/rtlib/include/common/rt_api.h` | `0025B6FB981F9578B15C9F05435DB0951E4B6C5E7547B398496F39CD0C5BC5C8` |
+| `fhe-cmplr/rtlib/include/common/common.h` | `1DF878C051ADACCEABD3ECB57A88C5566E19F446AAE9C974FF9430FBD64E4AAB` |
+| `fhe-cmplr/rtlib/include/rt_ant/rt_ant.h` | `AB4189F3970C2CEB80EC70018A31650E8ECC9C8102AB7BB55C3DB92A67E50C6E` |
+| `fhe-cmplr/rtlib/include/rt_ant/ant_api.h` | `B9AE0016F701DE2FBE6D12BE59604DDF5C04B7666A90AFA44B8E1B671B20577A` |
+| `fhe-cmplr/rtlib/ant/include/ckks/cipher.h` | `D5166E651AE61828841AFE8991A6AB0E73DAA36D161DE8A2C19344EBF4684469` |
+| `fhe-cmplr/include/fhe/core/lib_provider.h` | `E1C3D250F62AC7E72FDB2E24E75C150412743D39FFBE745BC5144D9E26EC40EF` |
+
+These hashes establish the current planning input, not a permanent upstream ABI
+promise. Any rtlib revision/header/build change invalidates P1a/P1b, provider
+manifests, parameter projections, operation mappings, cost models, and every
+dependent accepted plan until targeted requalification passes.
 
 The v0.10 SHA-256 is
 `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
@@ -315,9 +367,10 @@ HEAD. F0/P2 revalidate relevant source deltas before consuming a claimed gate.
 | WOPT | semantic-info and bridge tests exist | admit only operators with explicit alias/effect rules |
 | Optional images | `osprey/include/sys/elf_whirl.h` allocates optional sections through current FHE/PU interface images | a new identity requires common/com compatibility review; O2 allocation awaits P2 |
 
-`O2 Stage 1` is planned, not implemented. The recorded baseline has no production MetaKernel
-planner, complete CKKS contract, ReSBM implementation, stable provider ABI, or
-accepted Stage 1 executable path in this baseline.
+`O2 Stage 1` is planned, not implemented. The recorded Open64 baseline has no
+production MetaKernel planner, complete CKKS contract, ReSBM implementation,
+accepted ACE rtlib/ANT integration contract, or accepted Stage 1 executable
+path.
 
 ## 4. Scope and Frozen Support Matrices
 
@@ -351,19 +404,31 @@ HPAO-MD design gate; these activities are not removed from `-O2`.
 This matrix prevents circular definitions such as "supported graphs are the
 graphs that the implementation accepts."
 
-| Dimension | Source-locked Stage 1 production core | Open64 extension gate | Unsupported Stage 1 behavior |
-| --- | --- | --- | --- |
-| graph | static typed tensor/CKKS DFG accepted by the locked artifacts | file-wide identities and accepted direct-call summaries | indirect calls, unresolved externals, recursion, mutually recursive calls, irreducible encrypted control flow |
-| shape | fully static ranks/dimensions | deterministic padding recorded with lineage | dynamic rank/dimension or overflow |
-| fixed `N` | `FHECompilationConfigIR.N` exists before canonicalization; all planners use `S=N/2` capacity | minimum acceptable/recommended `N` may be reported as a diagnostic | `N=auto`, silent post-layout `N` change, or rewrite-selected larger `N` |
-| MVM | one ciphertext input, plaintext matrix, locked AE/source shape domain, fixed `S=N/2` | deterministic external-weight cache and approved whole-planner fallback | ciphertext weights, unknown weights, or unapproved shape fallback |
-| Conv | one ciphertext input/output, plaintext kernel, square odd kernel, stride 1, symmetric same padding, channel-divisible or explicitly zero-padded | every broader case below needs a dedicated oracle | unapproved fallback that silently changes shape/layout |
-| broader Conv | none assumed | stride >1, general/valid/asymmetric padding, depthwise/grouped Conv, multi-ciphertext tensors, height sharding, halo exchange, output compaction | rejected until its extension gate passes |
-| CKKS chain | complete named chain is represented; ReSBM projects it to integer scale-degree plus logical level with `q_w=q` | Stage 1 ReSBM accepts uniform one-level-consuming regions only | `q_w!=q`, non-uniform or multi-level-consuming ReSBM schedules |
-| relin | canonical `MulCC` has an instantaneous three-component result followed immediately by mandatory `Relin`; ordinary SSA values have two components | none in current O2 | non-immediate relin or a provider that cannot implement immediate relin |
-| loops/SCC | acyclic graph or compile-time-known retained loop whose multi-node SCC consumes zero levels | multiplication loops may be legally unrolled when trip <=64 and expanded encrypted nodes <=10000 | retained SCC with multiplication, unknown trip, scale-changing recurrence, or exceeded bound |
-| calls | intragraph artifact algorithm | nonrecursive direct calls with persisted formal/actual contracts and one resolved body | recursion, scale-changing recursive call, indirect call, missing effect or frequency summary |
-| frequency | known positive static count; unreachable is exactly zero | profile count only with provenance/hash | unknown treated as zero or silently guessed |
+| Dimension | Scope class | Source-locked Stage 1 production core | Open64 extension gate | Unsupported Stage 1 behavior |
+| --- | --- | --- | --- | --- |
+| graph | `shared-o0-o2-comparison-required` | static typed tensor/CKKS DFG accepted by the locked artifacts | file-wide identities and accepted direct-call summaries | indirect calls, unresolved externals, recursion, mutually recursive calls, irreducible encrypted control flow |
+| shape | `o0-handoff-required` | fully static ranks/dimensions | deterministic padding recorded with lineage | dynamic rank/dimension or overflow |
+| fixed `N` | `o0-handoff-required` | `FHECompilationConfigIR.N` exists before canonicalization; all planners use `S=N/2` capacity | minimum acceptable/recommended `N` may be reported as a diagnostic | `N=auto`, silent post-layout `N` change, or rewrite-selected larger `N` |
+| runtime/provider | `o0-handoff-required` | source-locked ACE rtlib public C surface, `FHErt_common` + `FHErt_ant`, `LIB_ANT` | Open64 plan is checked before projection; runtime-created Q/P/CRT/profile must match exactly | another release provider, rtlib drift without requalification, private ACE header leakage, or runtime override of the Open64 plan |
+| MVM | `shared-o0-o2-comparison-required` | one ciphertext input, plaintext matrix, locked AE/source shape domain, fixed `S=N/2` | deterministic external-weight cache and approved whole-planner fallback | ciphertext weights, unknown weights, or unapproved shape fallback |
+| Conv | `shared-o0-o2-comparison-required` | one ciphertext input/output, plaintext kernel, square odd kernel, stride 1, symmetric same padding, channel-divisible or explicitly zero-padded | every broader case below needs a dedicated oracle | unapproved fallback that silently changes shape/layout |
+| broader Conv | `o2-extension-only` | none assumed | stride >1, general/valid/asymmetric padding, depthwise/grouped Conv, multi-ciphertext tensors, height sharding, halo exchange, output compaction | rejected until its extension gate passes |
+| CKKS chain | `o0-handoff-required` | complete named chain is represented; ReSBM projects it to integer scale-degree plus logical level with `q_w=q` | Stage 1 ReSBM accepts uniform one-level-consuming regions only | `q_w!=q`, non-uniform or multi-level-consuming ReSBM schedules |
+| relin | `o0-handoff-required` | canonical `MulCC` has an instantaneous three-component result followed immediately by mandatory `Relin`; ordinary SSA values have two components | ANT maps this explicitly as `Mul_ciph3` followed by `Relin`; the richer fused `Mul_ciph` entry point remains available but is not the canonical O2 mapping | non-immediate relin or a provider that cannot implement immediate relin |
+| loops/SCC | `o2-core-only` | acyclic graph or compile-time-known retained loop whose multi-node SCC consumes zero levels | multiplication loops may be legally unrolled when trip <=64 and expanded encrypted nodes <=10000 | retained SCC with multiplication, unknown trip, scale-changing recurrence, or exceeded bound |
+| calls | `o2-core-only` | intragraph artifact algorithm | nonrecursive direct calls with persisted formal/actual contracts and one resolved body | recursion, scale-changing recursive call, indirect call, missing effect or frequency summary |
+| frequency | `o2-core-only` | known positive static count; unreachable is exactly zero | profile count only with provenance/hash | unknown treated as zero or silently guessed |
+
+The scope vocabulary is normative for detailed work plans:
+
+- `shared-o0-o2-comparison-required`: both the accepted O0 baseline and the O2
+  increment must execute the row under identical comparison inputs;
+- `o0-handoff-required`: O0 must produce the record/API/evidence, while O2 only
+  validates and consumes it;
+- `o2-core-only`: required O2 behavior that does not broaden O0 acceptance;
+- `o2-extension-only`: separately reviewed optional extension; and
+- `fallback-required`: unsupported O2 increment whose whole-profile fallback
+  must reproduce the qualified O0 baseline.
 
 Unsupported input must produce a stable diagnostic before any partial O2 plan is
 published. A whole-profile fallback to the accepted O0 path is allowed only if
@@ -379,9 +444,10 @@ unverified plan is forbidden.
 | ONNX/NN | existing Python capture and common/CNN FHE WHIRL | reuse logical operator registry and images |
 | VECTOR | MetaKernel layouts, packing, rotations, masks, reductions | virtual plan records keyed to persisted source values |
 | SIHE | Cipher/Plain flow, encode obligations, approximation semantics | one transfer-function implementation and verifier |
-| CKKS | resolved parameters, value state, immediate relin/rescale/mod-switch/bootstrap, ReSBM | immutable semantic plan plus materialization proof |
-| POLY | Stage 1 runtime-library implementation | no private POLY nodes; Stage 2 owns HPOLY/HPAO |
-| C/runtime | standard calls, descriptors, lifetimes, key/provider manifests | stable provider-neutral C ABI |
+| CKKS compiler semantics | resolved parameters, value state, immediate relin/rescale/mod-switch/bootstrap, ReSBM | Open64 immutable semantic plan plus materialization proof; never replaced by an ACE AIR image |
+| CKKS/POLY execution | project finalized CKKS actions and, where selected, HPOLY/POLY actions to ACE rtlib | public ACE rtlib C headers and `FHErt_common` + `FHErt_ant`; provider fixed to `LIB_ANT` |
+| HPOLY/HPAO | Stage 2 Open64 compiler-side contract and reviewed optimizations over finalized CKKS regions | bootstrap stays opaque; legal non-bootstrap lowering targets the ANT LPOLY/POLY surface and does not create a second CKKS truth |
+| C/runtime | generated calls, descriptors, lifetimes, context parameters and provider manifests | source-locked ACE rtlib public C interface; private ACE compiler/AIR headers are not a generated-C contract |
 
 Useful fixed ACE anchors include
 `fhe-cmplr/ckks/src/ckks.cxx:36-51`,
@@ -389,6 +455,14 @@ Useful fixed ACE anchors include
 `fhe-cmplr/poly/src/poly2c_driver.cxx:121-157`, and
 `fhe-cmplr/include/fhe/core/rt_data_mgr.h:19-79`. They are evidence, not code to
 copy blindly.
+
+ACE rtlib is suitable as the O2 runtime interface because its `common/rt_api.h`
+defines compiler-generated/runtime entry points, `common/common.h` defines the
+shared C records, `lib_provider.h` defines the provider set, and the build
+exports `FHErt_common` and `FHErt_ant`. Provider selection is principally a
+compiler/generated-code choice, not a promise of opaque runtime polymorphism.
+That distinction is acceptable because this plan fixes `LIB_ANT`; it must still
+be recorded in the provider manifest and generated-C include/symbol allowlist.
 
 ### 5.2 MetaKernel
 
@@ -457,65 +531,95 @@ with nonzero sentinels, execute the canonical and lowered plan, and prove that
 valid outputs are unchanged and required-zero outputs are zero. Tests that seed
 all gaps with zero cannot establish this property.
 
-## 7. Imported Stable Runtime and Provider Boundary Contract
+## 7. ACE rtlib and ANT Provider Boundary Contract
 
-Stage 1 cannot call a provider through C++ library types, `std::shared_ptr`, STL
-containers, exceptions, or provider-owned class layouts and then label that
-surface a stable C ABI.
+The selected runtime boundary is the ACE compiler repository's public C rtlib
+surface with ANT fixed as the provider. In this document, "ACE rtlib/ANT" means
+`FHErt_common` plus `FHErt_ant`, provider ID `LIB_ANT`; it does not mean
+`LIB_ACE`, the distinct GPU provider in the same provider list.
 
-### 7.1 ABI contract
+### 7.1 Interface contract
 
-The proposed boundary uses opaque handles and fixed C structures:
+Generated C may use only the reviewed installed/public header and symbol
+allowlist, initially:
 
-```c
-typedef struct dsc_fhe_provider dsc_fhe_provider;
-typedef struct dsc_fhe_context dsc_fhe_context;
-typedef struct dsc_fhe_keyset dsc_fhe_keyset;
-typedef struct dsc_fhe_ciphertext dsc_fhe_ciphertext;
-
-typedef struct {
-  uint32_t struct_size;
-  uint32_t abi_version;
-  uint64_t capability_bits;
-  uint32_t provider_id;
-  uint32_t provider_version;
-} dsc_fhe_capability_v1;
+```text
+common/rtlib.h
+common/rt_api.h
+common/common.h
+rt_ant/rt_ant.h
+rt_ant/rt_api.h
+reviewed ANT CKKS/LPOLY/POLY declarations reachable from rt_ant/rt_ant.h
 ```
 
-Every public structure starts with size/version fields and uses fixed-width
-integers. Provider memory is accessed only through opaque handles and exported
-create/retain/release/destroy functions. The ABI contract fixes:
+It links the source-locked `FHErt_common` and `FHErt_ant` targets. It must not
+include ACE compiler AIR/IR headers, private implementation headers, C++
+provider classes, STL types, or exceptions. `CKKS_PARAMS`, `CIPHER`, `CIPHER3`,
+`PLAIN`, and related ANT C records are accepted as the source-locked rtlib ABI
+for this plan. Because those records do not currently carry an independent ABI
+version, compatibility is controlled by the ACE rtlib revision, public-header
+hash set, build configuration, symbol inventory, and compile/link/run probes.
 
-- ownership, borrowing, aliasing, and destruction for every handle/buffer;
-- thread safety and reentrancy per handle type;
-- no exception crossing; stable status codes plus thread-local/handle-local
-  diagnostic retrieval;
-- capability query and manifest fingerprint;
-- context setup and resolved-parameter import/export;
-- key generation/import/export, including rotation, mandatory immediate relin,
-  and bootstrap data;
-- bootstrap setup/profile validation and evaluation;
-- encode/encrypt/decrypt/decode and Stage 1 arithmetic primitives; and
-- deterministic mock-provider behavior for tests.
+Open64 records remain authoritative. `FHECompilationConfigIR`,
+`CKKSResolvedParameterIR`, `CKKSValueStateIR`, layout, placement and logical key
+records are not replaced by `CKKS_PARAMS` or by provider memory. Materialization
+performs a checked one-way projection to rtlib parameters/calls, then verifies
+that the runtime-created `Q/P` chain, CRT data, levels, scales, slots, bootstrap
+profile and key capabilities agree with the persisted plan. rtlib may reject an
+unsupported projection but may not silently select a new `N`, chain, layout,
+placement or bootstrap policy.
+
+The canonical multiply mapping is explicit even though ANT provides a richer
+surface:
+
+```text
+Open64 MulCC(two,two)
+  -> ANT Mul_ciph3
+  -> Open64 mandatory adjacent Relin
+  -> ANT Relin(two-component result)
+```
+
+ANT's fused `Mul_ciph` remains available for other accepted use cases, but the
+O2 materializer does not map canonical `MulCC` to `Mul_ciph` and then emit a
+second `Relin`. The availability of both operations is a provider capability,
+not a provider defect.
+
+### 7.2 Build and compiler-query boundary
+
+No direct rtlib linkage or source-level dependency is added to `be.so` by this
+plan. If compiler-side exact parameter/CRT queries require
+`common/cmplr_api.h`, the implementation must first choose and review either an
+isolated resolver/tool or an explicitly approved backend dependency. A direct
+`be.so` dependency requires consumer link-closure, static/shared, platform,
+license and distribution evidence under `AGENTS.md`.
+
+### 7.3 Lifecycle and key-separation TODO
+
+The inspected ANT path currently uses a process-global `Context`, and
+`Prepare_context()` constructs key generation, encryptor, decryptor and
+evaluator objects together. This does not disqualify ANT as the selected
+provider, but `ANT-RT-TODO-CLIENT-SERVER-LIFECYCLE` must be resolved before P1b
+release acceptance: define test/client and server-evaluation modes, prove that
+the server path receives no secret key or decryptor, specify context
+reentrancy/concurrency, and close allocation/status/cleanup behavior. Until
+then, encrypted execution is qualification work, not accepted deployment
+evidence.
 
 No secret key or secret-key-derived private material is persisted in WHIRL,
 planner records, provider manifests, retained test artifacts, or generated C.
 Records may persist only the secret-key distribution identifier, logical key
 requirements, and hashes/provenance for public or evaluation-key setup. Test
-decryption keys remain ephemeral inside the isolated test provider process.
+decryption keys remain ephemeral inside the isolated client/test process.
 
-The OpenFHE adapter is behind this boundary. Generated C must compile, link,
-load the adapter, construct the context and keys, execute, decrypt/decode, and
-destroy every object under ASan/LSan where supported.
+### 7.4 Provider manifest
 
-### 7.2 Provider manifest
-
-Each execution records ABI version, provider/build ID, capability bits, target,
-resolved-parameter fingerprint, supported fixed ring dimensions, scaling
-technique, level semantics, immediate-relin support, bootstrap profiles,
-key-expansion rules, thread mode, and runtime library hash.
-The manifest is evidence/cache data, not an alternative source of compilation
-intent.
+Each execution records the ACE rtlib source revision and public-header hashes,
+build flags, installed target/library hashes, `LIB_ANT`, generated-C include and
+symbol inventory, target, resolved-parameter fingerprint, supported fixed ring
+dimensions, level/scale semantics, exact `Mul_ciph3 -> Relin` mapping, bootstrap
+profiles, key-expansion rules, lifecycle mode, thread mode, and runtime library
+hash. The manifest is evidence/cache data, not an alternative source of
+compilation intent.
 
 ## 8. Semantic Records and Physical Crosswalk
 
@@ -535,8 +639,8 @@ never allowed to overwrite user intent or resolved parameters.
 | `CKKSScaleBootstrapPlanIR` | pending-action fields only | After FRZ-03 policy reconciliation, O0/common-com first accept baseline DP/manual/protected-boundary action, profile and objective records; ReSBM candidate/replanning extensions require P2 | selected placement is authoritative for materialization; O2 candidates/cost tables are derived | O0 independent baseline-DP and hard-boundary verifier; ReSBM oracle for O2 extensions; common materializer verifier | O0/common-com baseline before P1b/F1/P2; O2 planner and same serializer own later global extensions |
 | `EncryptedTensorLayoutIR` | packing policy plus layout-name string | proposed explicit logical-to-physical slot map, class map, shards, masks, and lineage | selected layout authoritative; candidate costs/cache derived | slot-map oracle and canonicalization verifier | planner producer plus `osprey/common/com` serializer |
 | `MetaKernelPlanIR` | none | proposed input, artifact-equivalent `(Pb,Ps)` reparameterization, derived values, cost components, operations, extension flags | selected candidate authoritative within selected planner; transformed weights derived/cache | independent artifact-contract and slot oracle plus separate paper-strict differential oracle | MetaKernel planner plus `osprey/common/com` serializer |
-| `FHEBackendCapabilityIR` | none | proposed normalized capability/ABI manifest reference | provider evidence, not compilation intent; hash-bound to resolved parameters | ABI probe and capability-consumption verifier | runtime adapter; compiler stores immutable reference |
-| `KeyMaterialContractIR` | `DSL_FHE_KEY_REQUIREMENT_RECORD` | retain logical rows; add separate provider-expansion manifest reference | logical requirements authoritative; provider-expanded key list derived/evidence | logical collector and provider expansion verifier | `osprey/common/com/dsl_fhe.*` for logical; adapter for expansion |
+| `FHEBackendCapabilityIR` | none | proposed normalized ACE rtlib/ANT capability and source/build manifest reference | provider evidence, not compilation intent; hash-bound to resolved parameters | public-header/symbol/build probe and capability-consumption verifier | rtlib integration owner; compiler stores immutable reference |
+| `KeyMaterialContractIR` | `DSL_FHE_KEY_REQUIREMENT_RECORD` | retain logical rows; add separate ANT-expansion manifest reference | logical requirements authoritative; ANT-expanded key list derived/evidence | logical collector and ANT expansion verifier | `osprey/common/com/dsl_fhe.*` for logical; rtlib integration for expansion |
 | normalized final execution plan | no accepted top-level record | **Frozen:** semantic interface may be prototyped, but no `WT_*`, section, table, or planner-family field is named before `F0` | one selected plan authoritative; alternatives/reports derived | independent reopen and full-plan verifier | decided by ADR/common-com review |
 
 The former proposal to immediately name `.WHIRL.dsl_fhe_o2_plan` is withdrawn.
@@ -886,9 +990,9 @@ The effect contract is:
 | HPOLY operation | explicit basis/level/scale semantics | may later allocate/fail | HPAO rule only, using Open64 analysis infrastructure and the HPOLY legality/profitability contract |
 | context/key import or generation | establishes cryptographic state | I/O/allocation/provider global state may occur | ordered, effectful, never duplicated |
 | retain/release/destroy | lifetime effect | reference count/free | ordered; removal only by verified balanced lifetime rewrite |
-| materialized `dsc_fhe_*` call | ordered runtime action | context/key reads, allocation/lifetime, status and failure ordering | ordinary WOPT may optimize surrounding scalar/control flow only; the FHE call is ordered/effectful by default |
+| materialized ACE rtlib/ANT call | ordered runtime action | context/key reads, allocation/lifetime, status and failure ordering | ordinary WOPT may optimize surrounding scalar/control flow only; the rtlib call is ordered/effectful by default |
 
-The provider adapter must state immutable-result versus in-place behavior,
+The ACE rtlib/ANT integration contract must state immutable-result versus in-place behavior,
 alias/noalias guarantees, escape rules, ownership, and destruction for every
 entry point. Context and keys are read effects even when immutable. Allocation,
 bootstrap, and failure are observable effects.
@@ -904,7 +1008,7 @@ those proofs to ordinary WOPT.
 Negative/non-interference tests must prove that ordinary WOPT does not CSE, PRE,
 hoist, speculate, duplicate, or reorder bootstrap, key switch, immediate Relin,
 Rescale, ModSwitch, context/key import, provider allocation/lifetime, or
-`dsc_fhe_*` calls. They also cover distinct key domains/scales, may-alias
+ACE rtlib/ANT calls. They also cover distinct key domains/scales, may-alias
 operands, escaping ciphertexts, provider failures/context changes, calls, phis,
 fanout, critical edges, and loops.
 
@@ -993,10 +1097,13 @@ accepted converted application.fhe.B + fixed configuration
   -> optional Stage 2 FHEFusion and reverified canonical evidence
   -> select frozen Fhelipe layout or an additional reviewed MetaKernel candidate
        fixed N and S=N/2; common iteration/rotation/gap/key contract
-  -> canonical CKKS state + baseline DP under protected-boundary policy
+  -> construct and verify canonical pre-ReSBM CKKS state for the selected layout
+       provisional state/cost facts are distinct from canonical state
+  -> import baseline DP placement under protected-boundary policy
   -> optional ReSBM replacement of permitted automatic placement
+  -> verify selected actions and post-ReSBM final state
   -> finalize remaining CKKS parameters and validate the fixed N
-  -> resolve logical/provider keys and provider capabilities
+  -> resolve logical/ANT-expanded keys and ACE rtlib/ANT capabilities
   -> independently verify normalized final plan
   -> atomically write binary plan plus reports
   -> exit producer process
@@ -1006,7 +1113,7 @@ accepted converted application.fhe.B + fixed configuration
   -> lower all remaining virtual operations to standard WHIRL calls
   -> run WHIRL/DSL/FHE verifiers
   -> retain application.o2.mid.B and ir_b2a -st -src output
-  -> whirl2c -> generated C -> compile/link/load/run provider
+  -> whirl2c -> generated C -> compile/link/load/run ACE rtlib/ANT
 ```
 
 The current per-PU backend schedule is not allowed to run ReSBM independently
@@ -1027,6 +1134,140 @@ extension; it does not turn calls/SCCs into a paper claim.
 - a second materialization of the same plan is structurally identical; and
 - final `whirl2c` input contains only supported standard WHIRL.
 
+### 12.3 Implementation dependencies versus compiler pass order
+
+External governance, implementation sequencing, and the compiler's execution
+schedule are three different graphs. None may be inferred from section order or
+used as a substitute for another.
+
+```text
+external governance and O0 activation
+  accepted successor master and ownership ADR
+      -> PRE-O2-LOCK-EXIT
+      -> execute O2-E0 only
+      -> complete independent O0 qualification
+      -> O2-O0Q-001=Qualified
+      -> O2-E1 may start
+
+O2 implementation and build dependency
+  PRE-O2-LOCK -> O2-E0 -> O2-E1 -> O2-E2 -> O2-E3 -> O2-E4
+      -> O2-E5A -> O2-E5B -> O2-E5C -> O2-E6
+      -> O2-E7A ----\
+                       -> O2-E8
+      -> O2-E7B ----/
+
+compiler pass order for a complete accepted O2 plan
+  canonical Open64 FHE graph
+      -> optional FHEFusion
+      -> recanonicalization and derived-fact invalidation
+      -> frozen Fhelipe layout or selected MetaKernel layout
+      -> canonical selected-layout pre-ReSBM CKKS state
+      -> baseline DP import and protected-site provenance
+      -> optional ReSBM replacement of replaceable automatic sites
+      -> post-ReSBM state verification
+      -> final CKKS parameters, security, capabilities, and keys
+      -> optional HPOLY/HPAO on legal non-bootstrap regions
+      -> standard WHIRL and generated C
+      -> ACE rtlib/ANT execution
+```
+
+`PRE-O2-LOCK` is external contract closure, not O2 implementation. O2-E0 is an
+O2-consumer qualification stage, not an O2 identity-plan or algorithm stage. A
+failed O0 row returns to O0 remediation and complete requalification; no O2 work
+may overlap that loop.
+
+A provider-free MetaKernel search/plan can be implemented and verified before
+the final materializer, but O2-E4 cannot claim generated-C or ANT execution.
+Pre-ReSBM state is a distinct gate: provisional candidate facts are discarded,
+canonical state is recomputed for the selected layout in O2-E5A, ReSBM records
+the selected actions in O2-E5B, and post-ReSBM state is reverified before final
+parameter/key resolution and ANT projection in O2-E5C. O2-E7A and O2-E7B may be
+implemented independently after Stage 1 acceptance; O2-E8 alone owns their
+composition, full invalidation/replanning, and final certification.
+
+### 12.4 Engineering stages, milestone mapping, and exits
+
+The engineering stage names below are normative for the detailed execution plan
+set. They do not create new semantic milestones; they package the milestones in
+Sections 13-14 into reviewable implementation and certification units.
+
+| Engineering stage | Purpose | Governing milestones | Required entry | Exit gate |
+| --- | --- | --- | --- | --- |
+| `PRE-O2-LOCK` | Close master, baseline, record, runtime, and lifecycle contracts | `F0`, `FRZ-01..09` | Planning authorities available for review | `PRE-O2-LOCK-EXIT` |
+| `O2-E0` | Independently qualify the complete O0 baseline and handoff | consume `F1-PREP/P0/P1a/P1b/F1-IMPL/F1-ACCEPT` | `PRE-O2-LOCK-EXIT` | `O2-E0-EXIT` and `O2-O0Q-001=Qualified` |
+| `O2-E1` | Lock claims, support, fixtures, diagnostics, costs, and oracles | `S1.0` | current `O2-O0Q-001=Qualified` | `O2-E1-EXIT` |
+| `O2-E2` | Implement records, stable identities, and atomic plan publication | `P2`, `S1.1` | accepted E1 | `O2-E2-EXIT` |
+| `O2-E3` | Establish the Open64-owned CKKS semantic substrate | `S1.2`, substrate portion of `S1.5A` | accepted E2 | `O2-E3-EXIT` |
+| `O2-E4` | Implement provider-free MetaKernel layout increments | `S1.3`, `S1.4`, early `S1.LAYOUT` | accepted E3 | `O2-E4-EXIT` |
+| `O2-E5A` | Publish the selected-layout canonical pre-ReSBM state | `S1.5A` integration | accepted E4 | `O2-E5A-EXIT` |
+| `O2-E5B` | Implement the ReSBM artifact core and protected adapter | `S1.6`, `S1.7` | accepted E5A | `O2-E5B-EXIT` |
+| `O2-E5C` | Finalize CKKS, project to ANT, and materialize standard calls | `S1.5B`, `S1.8` | accepted E5B | `O2-E5C-EXIT` |
+| `O2-E6` | Integrate and certify Stage 1 | final `S1.LAYOUT`, `S1.9` | accepted E5C | `O2-E6-EXIT` |
+| `O2-E7A` | Implement and certify FHEFusion | `S2.0`, `S2.1`, `S2.2` | accepted E6 | `O2-E7A-EXIT` |
+| `O2-E7B` | Decide HPOLY representation; implement and certify HPOLY/HPAO | `S2.3`, `S2.4` | accepted E6 and representation ADR | `O2-E7B-EXIT` |
+| `O2-E8` | Replan across Stage 2, certify final O2, and publish the O3 handoff | `S2.5`, `S2.6` | accepted E7A and E7B | `O2-E8-EXIT` |
+
+`S1.5A` and `S1.5B` are an implementation split, not two conflicting semantic
+owners. S1.5A defines transfer, effect, immediate-Relin, and pre-ReSBM state.
+S1.5B resolves post-ReSBM parameters, security, capabilities, provider mapping,
+and key requirements after layout and placement are fixed.
+
+Every exit decision is exactly one of `Accepted`, `Rejected`, or `Unverified`.
+Only a current `Accepted` decision unlocks the next stage. A stale authority,
+source, schema, provider, build, lifecycle, support, or qualification fingerprint
+invalidates the exit and every dependent downstream result.
+
+### 12.5 Detailed stage-plan and traceability contract
+
+The detailed execution index is
+`doc/FHE-O2-DETAILED-EXECUTION-PLAN.md`. The stage plans are the 13 English files
+under `doc/fhe-o2-stages/`, using the names in the index. The index is navigation,
+not an additional architecture authority. Each stage plan is subordinate to this
+plan and must contain all of the following:
+
+1. metadata: stage ID, status, governing plan version, milestones, entry and exit
+   gates, owners, independent reviewers, and locked source identities;
+2. objectives, in-scope work, explicit non-goals, and support-scope labels;
+3. implementation/build dependencies and compiler pass-order relationships as
+   separate sections;
+4. records, APIs, versions, header and symbol allowlists, invariants, ownership,
+   serialization, and compatibility rules applicable to the stage;
+5. a WBS whose rows name the work ID, concrete change, proposed files,
+   dependencies, tests, retained artifacts, owner, reviewer, and row exit;
+6. a proposed commit and review split that keeps common/com, algorithm,
+   materialization, compatibility, security, and evidence reviews separable;
+7. a verification matrix with an exact proposed command, inputs and hashes,
+   expected result and tolerance, seed and bounds, platform/provider, run
+   protocol, artifacts, owner, reviewer, and pass rule;
+8. positive, negative, failure-atomicity, compatibility, security, determinism,
+   fallback, and performance cases appropriate to its claim;
+9. evidence layout, retention, independent reopen, exit wording, invalidation,
+   rollback, and architecture stop rules; and
+10. traceability from authority to implementation and evidence.
+
+Future scripts and interfaces must be labeled `Proposed target command` or
+`Proposed path`; a plan cannot claim that they already exist. A meaningful WHIRL
+artifact is a `.B` file plus its same-stem `.T` from
+`ir_b2a -st -src input.B input.T`. A renamed internal dump is supplementary and
+cannot replace the same-stem trace.
+
+The mandatory traceability chain is:
+
+```text
+accepted master section/version/hash
+  -> accepted ADR decision and hash, when applicable
+  -> this plan section and milestone
+  -> engineering stage and WBS item
+  -> verification row and exact command
+  -> retained artifact and content hash
+  -> exit decision and downstream consumer
+```
+
+If implementation requires a change to an invariant, support scope, runtime
+boundary, pass order, record owner, security lifecycle, or completion definition,
+the governing master/ADR or this plan must be updated first as required by the
+authority boundary. A stage plan cannot approve such a change by itself.
+
 ## 13. Prerequisites and O2 Stage 1 Milestones
 
 All commands in this section are **Proposed target commands** to be added by the
@@ -1038,21 +1279,29 @@ the checked-in contract without a reviewed plan update.
 The old prerequisite IDs are retained as external handoff names, not O2-owned
 implementation milestones. The existing O0 execution-plan owner chooses its
 internal queue. O2 must not require O0 to implement optional MetaKernel,
-FHEFusion, ReSBM or HPAO to close these handoffs.
+FHEFusion, ReSBM or HPAO to close these handoffs. However, **all** external O0
+handoffs must be complete and must pass `O2-O0Q-001` before any `P2`, `S1.*` or
+`S2.*` work starts.
 
 ```text
-Baseline contract: F0 architecture/policy reconciliation
-O0 owner: frozen Fhelipe manifest -> canonicalization + ABI/state records
-         -> mature layout/lowering + protected DP + provider -> O0 acceptance
-common-com: shared baseline records -> reviewed O2 record extensions (P2)
-O2 owner: F0 + imported contracts -> S1.0..S1.8 + S1.LAYOUT
-         -> accepted external O0 evidence -> S1.9 -> Stage 2 acceptance
+External governance: F0/master-policy reconciliation
+O0 owner: frozen Fhelipe manifest -> canonicalization + rtlib/state records
+         -> mature layout/lowering + protected DP + ACE rtlib/ANT
+         -> complete O0 producer acceptance
+O2 consumer gate: independently qualify the complete O0 bundle (O2-O0Q-001)
+O2 owner, only after O2-O0Q-001:
+         S1.0 -> P2/S1.1 -> S1.2..S1.8 + S1.LAYOUT -> S1.9
+         -> Stage 2 -> final acceptance
 ```
 
-Pure source/oracle work may proceed before executable O0 acceptance. O2
-production use of extension records waits for P2; O0 baseline records and
-consumers follow their own accepted contract. Comparisons and release acceptance
-wait for F1-ACCEPT.
+This sequencing intentionally rejects the earlier parallel-start proposal.
+Source review, fixture construction, provider-free algorithms, and independent
+oracles are O2 work and therefore do not begin early. Planning notes may be
+recorded in this document, but no implementation branch, acceptance fixture,
+cost model, or O2 production artifact is started before O0 qualification. This
+hard boundary provides fault attribution: a failure in `O2-O0Q-001` returns to
+the O0 producer; a later failure belongs to a named O2 milestone unless its
+bound qualification fingerprint is stale.
 Each shared record has one common/com editor. O0 record changes merge first;
 P2 rebases and extends them; O2 producers then consume the reviewed APIs.
 
@@ -1062,7 +1311,7 @@ P2 rebases and extends them; O2 producers then consume the reviewed APIs.
 one editor per source document. This is contract reconciliation, not an O2
 algorithm implementation prerequisite for the O0 producer.
 
-**Implementation:** record FRZ-01..07 in the proposed
+**Implementation:** record FRZ-01..09 in the proposed
 `doc/adr/FHE-O0-O2-PLANNER-OWNERSHIP.md`. Freeze the mature Fhelipe source/pass/
 config/support manifest, count-based DP objective and protected-site adaptation.
 Explicitly amend the conflicting O0 no-profitability/JIT/no-DP provisions and
@@ -1099,10 +1348,10 @@ FHE-WHIRL-INTEGRATION-PLAN.md and consolidated SYNC-4..6.
 | --- | --- | --- | --- |
 | F1-PREP | O0 source/test owner; FRZ-03 baseline scope | Frozen Fhelipe source/pass/config/support manifest, build/license hashes, DP objective/domain/result-budget/shortcut options, protected-boundary specification, layout/state/placement oracles and locked focused/ResNet fixtures; reject moving refs or undocumented stripped baseline passes | F1-IMPL support/input agreement; preparation never claims O0 execution |
 | P0 | O0 canonicalization owner; config fixed before transformation | Canonical `.B`/`ir_b2a`, stable source/slot/gap identities, fixed N, two-pass and reopen idempotence, nonzero sentinels, malformed/capacity/lineage negatives; Section 6 contract | P2, S1.1, FHEFusion; no fusion-dependent canonicalization |
-| P1a | O0/runtime ABI owner; common-com capability contract | Public C-only ABI, mock manifest, C compile/link/load/run, lifecycle/status/effect tests and ownership/capability/version negatives; mandatory immediate Relin and bootstrap contract | P2 and optimized materializer; no provider C++ ABI leakage |
-| P1b | O0/OpenFHE owner; accepted baseline CKKS records and P1a | Pinned build/provider manifest, exact fixed-N/profile mapping, generated-C execution, rotate/mul/relin/rescale/bootstrap tests, unsupported profile failures and lifecycle reports | F1-ACCEPT and O2 provider support; adapter cannot override persisted configuration |
+| P1a | O0/ACE-rtlib interface owner; common-com capability contract | Source-locked public C header/symbol allowlist for `FHErt_common` + `FHErt_ant`, `LIB_ANT` selection, compile/link/load/run probe, `CKKS_PARAMS` projection, lifecycle/effect/ownership tests, revision/header/build mismatch negatives, and exact `Mul_ciph3 -> Relin`/bootstrap contract; no ACE AIR/private compiler header leakage | O0 qualification, P2 and optimized materializer; rtlib cannot override persisted Open64 configuration |
+| P1b | O0/ANT provider owner; accepted baseline CKKS records and P1a | Pinned ACE rtlib/ANT build and provider manifest, exact fixed-N/Q/P/CRT/profile mapping, generated-C execution, rotate/mul3/relin/rescale/bootstrap tests, unsupported-profile failures, cleanup reports, and disposition of `ANT-RT-TODO-CLIENT-SERVER-LIFECYCLE` | F1-ACCEPT and O2 provider support; no server secret/decryptor in the accepted evaluation mode |
 | F1-IMPL | O0 layout/CKKS owner; F1-PREP, P0/P1a and baseline records | Complete frozen Fhelipe layout/lowering and existing layout optimizers, state/rescale handling and constrained DP initial placement after FRZ-03; hard/manual/pre-ReLU checks, independent layout/state/count-objective oracle, infeasibility/failure atomicity and reopen | F1-ACCEPT; O2 increments disabled while baseline optimizers/DP remain active; no O2 implementation or P2 prerequisite |
-| F1-ACCEPT | O0 acceptance owner; accepted preceding handoffs and P1b | Signed reconciled-baseline SYNC-6-equivalent whole ResNet-20 binary-WHIRL -> generated-C -> OpenFHE bundle; `.B`, `ir_b2a`, code, manifests, key requirements, decoded/oracle outputs, build/run logs and hashes; no server secret key; frozen baseline manifest, protected-DP provenance, mandatory Relin, fixed N and negative policy evidence | S1.9/S2.6 baseline gate; Section 15 numeric/support/measurement requirements must be met or explicitly remain unverified |
+| F1-ACCEPT | O0 acceptance owner; accepted preceding handoffs and P1b | Signed reconciled-baseline SYNC-6-equivalent whole ResNet-20 binary-WHIRL -> generated-C -> ACE rtlib/ANT bundle; matching `.B`/`.T`, code, manifests, logical and ANT-expanded key requirements, decoded/oracle outputs, build/run logs and hashes; no server secret key/decryptor; frozen baseline manifest, protected-DP provenance, mandatory Relin, fixed N and negative policy evidence | `O2-O0Q-001`; Section 15 numeric/support/measurement requirements must be met or explicitly remain unverified |
 
 An O2 reviewer imports the producer's exact accepted bundle and records source
 commit, environment, commands, seeds, support rows, tolerances, counts and
@@ -1113,12 +1362,85 @@ acceptance. Earlier `O2-F1P-001`, `O2-P0-001`, `O2-P1A-001`, `O2-P1B-001`,
 `O2-F1I-001`, and `O2-F1A-001` are retired O2 implementation test proposals;
 F0 maps them to producer tests/evidence without requiring duplicate scripts.
 
+### O2-O0Q: Complete O0 baseline qualification and O2 handoff gate
+
+**Objective:** independently establish that every foundation consumed by O2 is
+implemented, reproducible, complete, and executable before O2 work begins. This
+is an O2 consumer qualification, not an O0 implementation phase and not a
+second O0 feature queue.
+
+**Prerequisites/owner:** accepted F0/master-policy reconciliation and complete
+producer bundles for F1-PREP, P0, P1a, P1b, F1-IMPL and F1-ACCEPT. The O2
+qualification owner and reviewers must be independent of the producer signoff
+for the evidence they check.
+
+**Verification:** proposed `python3 osprey/be/vho/tests/run_o0_handoff_qualification.py
+--build-dir build --manifest testdata/fhe_o2/o0-qualification/SHA256SUMS
+--artifacts test-artifacts/o2/O2-O0Q-001` (`O2-O0Q-001`; shown wrapped). The
+qualification must cover:
+
+1. exact source/pass/config/support/license/toolchain and ACE rtlib/ANT hashes;
+2. all-PU and call-consistent canonicalization with `fusion=off`, exact
+   `valid/zero/junk/gap` slots, nonzero sentinels, fixed `N`, two-clean-run and
+   independent-reopen determinism;
+3. malformed shape, ambiguous lineage, overlapping-write, capacity, security,
+   stale/corrupt ID/range/hash and unsupported-provider/profile negatives, with
+   the gatekeeper rejecting before lowering, WOPT, LNO or CG;
+4. unique authoritative configuration/layout/CKKS state/placement/protected-site
+   and logical-key records, including old/feature-absent compatibility;
+5. P1a public-header/symbol audit, P1b exact Open64-to-`CKKS_PARAMS` and
+   runtime-created Q/P/CRT/profile agreement, explicit `Mul_ciph3 -> Relin`,
+   compile/link/load/run/cleanup, and rtlib-drift invalidation;
+6. separate client/test and server-evaluation key census, no server secret key
+   or decryptor, and no secret material in `.B`, `.T`, generated C, manifests,
+   logs or retained artifacts;
+7. complete mature Fhelipe layout/lowering/state/rescale/protected-DP execution
+   over the locked focused MVM/Conv/ReLU/residual cases and full ResNet-20; and
+8. an O2 consumer process that reopens the accepted O0 `.B` and baseline
+   records, validates schema/owners/fingerprints/protected sites, and emits only
+   a normalized immutable planner-input digest. It does **not** create, reopen
+   or materialize an O2 identity selected plan; that capability belongs to
+   P2/S1.1.
+
+The retained qualification family uses matching stems, including
+`canonical.fhe.B`/`canonical.fhe.T`, `baseline-plan.B`/`baseline-plan.T`, and
+`materialized.o0.mid.B`/`materialized.o0.mid.T`. A qualification ID binds the
+master/ADR decision, O0 source/pass/config, record schema, ACE rtlib revision and
+headers, ANT build, support matrix, test protocol and environment. A change to
+any bound input stales the qualification.
+
+**Exit:** the only results are `Qualified`, `Rejected`, or `Unverified`.
+`Qualified` is the sole unlock for every P2/S1/S2 task. `Rejected` returns the
+defect and evidence to its O0 owner. `Unverified` does not permit provisional O2
+work. O2 must not patch, substitute or silently narrow the baseline inside this
+gate.
+
+### S1.0: Lock Stage 1 algorithms, fixtures, diagnostics, and cost model
+
+**Objective:** translate paper/fixed-source assumptions into frozen executable
+contracts before production algorithms are written.
+
+**Prerequisite:** `O2-O0Q-001=Qualified`. The source/fixture/oracle lock is the
+first O2 work item and is not prepared in parallel with O0 implementation.
+
+**Implementation:** check in source-lock manifests, paper teaching cases,
+paper/artifact delta cases, support matrices, diagnostics, tie orders, raw
+latency tables, fixture generators, and independent-oracle interfaces. Record
+fixed-resolved and auto-resolved test families separately; `N` is the same fixed
+requested input in both, while only remaining CKKS parameters are auto-resolved.
+
+| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
+| --- | --- | --- | --- | --- | --- | --- |
+| `O2-S10-001`; `python3 osprey/be/vho/tests/verify_o2_stage1_source_lock.py --manifest testdata/fhe_o2/stage1/source-lock.json --diagnostics testdata/fhe_o2/stage1/diagnostics.json --support testdata/fhe_o2/stage1/support-matrix.json --artifacts test-artifacts/o2/O2-S10-001` | all hashes in Section 2.3, MetaKernel/ReSBM paper-artifact delta corpus, and generated fixture manifests | exact hashes, refs, test IDs, support rows, fixed-N rule, diagnostics, tolerances, cost units and artifact/paper claim labels; `FHE-O2-SOURCE-LOCK-MISMATCH` on change | generators declare fixed seeds/bounds; no unbounded generator | provider-free; manifests name ACE rtlib/ANT requirements | 0 warmups, 1 run, 120 s; retain normalized lock report, differential cases, and source delta indefinitely | Stage 1 owner / paper-code and test reviewers; exit 0 and no placeholder, moving ref, duplicate ID, unowned diagnostic, or paper-exact label on artifact-only behavior |
+
+**Exit:** every Stage 1 claim maps to a locked source and an independent test.
+
 ### P2: Shared-record import and O2 semantic record extensions
 
-**Owner:** common/com serialization editor; O0 supplies baseline state/ABI,
-O2 planner owners supply extension requirements. **Prerequisites:** P0/P1a,
-accepted baseline configuration/state/DP placement and protected-site records,
-FRZ-05 decisions. P2 does not introduce the baseline DP representation.
+**Owner:** common/com serialization editor; O0 supplies baseline state/rtlib
+contracts, O2 planner owners supply extension requirements. **Prerequisites:**
+`O2-O0Q-001=Qualified`, accepted S1.0 extension requirements, and FRZ-05
+decisions. P2 does not introduce the baseline DP representation.
 
 **Implementation:** audit Section 8 crosswalk; reuse baseline identities and
 transfer functions; add only approved common iteration-space/census and O2
@@ -1139,23 +1461,6 @@ the gate; no new legacy-WOPT or provider-library dependency is authorized.
 
 **Exit:** common-com and compatibility reviewers accept one authoritative owner
 per record and a verified independent reopen; S1 producers can use the contract.
-
-### S1.0: Lock Stage 1 algorithms, fixtures, diagnostics, and cost model
-
-**Objective:** translate paper/fixed-source assumptions into frozen executable
-contracts before production algorithms are written.
-
-**Implementation:** check in source-lock manifests, paper teaching cases,
-paper/artifact delta cases, support matrices, diagnostics, tie orders, raw
-latency tables, fixture generators, and independent-oracle interfaces. Record
-fixed-resolved and auto-resolved test families separately; `N` is the same fixed
-requested input in both, while only remaining CKKS parameters are auto-resolved.
-
-| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `O2-S10-001`; `python3 osprey/be/vho/tests/verify_o2_stage1_source_lock.py --manifest testdata/fhe_o2/stage1/source-lock.json --diagnostics testdata/fhe_o2/stage1/diagnostics.json --support testdata/fhe_o2/stage1/support-matrix.json --artifacts test-artifacts/o2/O2-S10-001` | all hashes in Section 2.3, MetaKernel/ReSBM paper-artifact delta corpus, and generated fixture manifests | exact hashes, refs, test IDs, support rows, fixed-N rule, diagnostics, tolerances, cost units and artifact/paper claim labels; `FHE-O2-SOURCE-LOCK-MISMATCH` on change | generators declare fixed seeds/bounds; no unbounded generator | provider-free; manifests name future provider requirements | 0 warmups, 1 run, 120 s; retain normalized lock report, differential cases, and source delta indefinitely | Stage 1 owner / paper-code and test reviewers; exit 0 and no placeholder, moving ref, duplicate ID, unowned diagnostic, or paper-exact label on artifact-only behavior |
-
-**Exit:** every Stage 1 claim maps to a locked source and an independent test.
 
 ### S1.1: File-wide plan transaction and independent reopen
 
@@ -1193,9 +1498,9 @@ state/effect merges are explicit.
 
 ### S1.3: MetaKernel MVM search and plan
 
-**Objective:** reproduce the source-locked artifact search/materialization
+**Objective:** reproduce the source-locked artifact search and selected-plan
 contract for the frozen MVM input class and separately measure its differences
-from paper Eq. 11.
+from paper Eq. 11. Provider execution belongs to S1.8.
 
 **Implementation:** reproduce artifact-equivalent `(Pb,Ps)` enumeration,
 `ceil(log2(rep))`, artifact capacity/full-slot predicate, `Get_num_rot` cost, and
@@ -1205,10 +1510,11 @@ Eq. 11/capacity differences. Do not call ReSBM.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S13-001`; `python3 osprey/be/vho/tests/run_metakernel_mvm_contract.py --build-dir build --source-ref d0c14ab101c1f1fedfb31d8fdb553867ae7ce7be --manifest testdata/fhe_o2/metakernel-mvm/SHA256SUMS --artifacts test-artifacts/o2/O2-S13-001` | locked `origin/metakernel-proof@d0c14ab101c1f1fedfb31d8fdb553867ae7ce7be`; AE/golden neural shapes, Figure 4, MVM1, MVM2, non-power-of-two rep/Ps, `nd<kd`, `kd==S`, exact/one-over capacity, zero/ill-conditioned weights | production candidate legality/cost components/tie/winner, full slot classes, no out-of-range access, transformed weights and signed rotations exact against independent artifact oracle; paper-strict differential equals recorded delta; clear `1e-12/1e-12`, decoded OpenFHE `1e-4/1e-6`; unsupported shape or no candidate emits manifest code | seed `0x4d4b5231`; `n,k=1..32`, fixed `N` with `S=N/2 in {8,16,32,64}`, all divisor pairs plus named AE bounds | pure search any host; accepted mock/OpenFHE for execution with rotate/mul/plain capabilities | pure 0/1; runtime 2 warmups/10 samples, 10 min/sample; retain source delta, artifact/paper candidate tables, complete slot traces, keys, outputs, C and `.B` 180 days | MetaKernel owner / independent artifact-oracle, paper-differential, tensor and runtime reviewers; zero production-oracle mismatch, recorded differential exact, numeric bounds met, no unsupported implicit fallback |
+| `O2-S13-001`; `python3 osprey/be/vho/tests/run_metakernel_mvm_contract.py --build-dir build --source-ref d0c14ab101c1f1fedfb31d8fdb553867ae7ce7be --manifest testdata/fhe_o2/metakernel-mvm/SHA256SUMS --artifacts test-artifacts/o2/O2-S13-001` | locked `origin/metakernel-proof@d0c14ab101c1f1fedfb31d8fdb553867ae7ce7be`; AE/golden neural shapes, Figure 4, MVM1, MVM2, non-power-of-two rep/Ps, `nd<kd`, `kd==S`, exact/one-over capacity, zero/ill-conditioned weights | production candidate legality/cost components/tie/winner, full slot classes, no out-of-range access, transformed weights and signed rotations exact against independent artifact oracle; paper-strict differential equals recorded delta; clear `1e-12/1e-12`; unsupported shape or no candidate emits manifest code | seed `0x4d4b5231`; `n,k=1..32`, fixed `N` with `S=N/2 in {8,16,32,64}`, all divisor pairs plus named AE bounds | provider-free pure search and clear slot/tensor oracle | 0 warmups/1 run, 10 min; retain source delta, artifact/paper candidate tables, selected-plan records, complete slot traces, transformed-plaintext hashes and matching `.B`/`.T` 180 days | MetaKernel owner / independent artifact-oracle, paper-differential and tensor reviewers; zero production-oracle mismatch, recorded differential exact, no unsupported implicit fallback; no generated-C/ANT execution claim |
 
-**Exit:** every candidate component is independently recomputed and every
-selected MVM executes correctly.
+**Exit:** every candidate component is independently recomputed, the selected
+MVM plan/slot map is exact and independently reopenable, and no runtime claim is
+made before S1.8.
 
 ### S1.4: MetaKernel Conv core and gated extensions
 
@@ -1221,31 +1527,32 @@ shard, halo, or compaction case. Each extension commit carries its exact oracle.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S14-001`; `python3 osprey/be/vho/tests/run_metakernel_conv_contract.py --build-dir build --source-ref d0c14ab101c1f1fedfb31d8fdb553867ae7ce7be --manifest testdata/fhe_o2/metakernel-conv/SHA256SUMS --support testdata/fhe_o2/stage1/support-matrix.json --artifacts test-artifacts/o2/O2-S14-001` | locked artifact/AE golden 1x1/3x3/5x5 stride-1 same-pad shapes plus one manifest row per approved extension and negative boundary | artifact plan, logical tensor, complete physical slot classes, masks, padding, output layout and rotation components exact; no out-of-range slot; clear `1e-12/1e-12`, decoded `1e-4/1e-6`; unsupported source-domain row emits exact code or approved whole-planner fallback | seed `0x4d4b5243`; fixed `N`; C in/out 1..16, H/W 3..32, kernel 1/3/5; extension bounds in manifest | accepted mock/OpenFHE; capability rows fixed per fixture | 2 warmups/10 samples focused, 20 min/sample; retain source ref/delta, transformed weights, full slot/sentinel traces, key manifests, output/C/`.B` 180 days | MetaKernel Conv owner / artifact, tensor-semantics and runtime reviewers; all locked core rows pass; an extension is enabled only if its entire row passes |
+| `O2-S14-001`; `python3 osprey/be/vho/tests/run_metakernel_conv_contract.py --build-dir build --source-ref d0c14ab101c1f1fedfb31d8fdb553867ae7ce7be --manifest testdata/fhe_o2/metakernel-conv/SHA256SUMS --support testdata/fhe_o2/stage1/support-matrix.json --artifacts test-artifacts/o2/O2-S14-001` | locked artifact/AE golden 1x1/3x3/5x5 stride-1 same-pad shapes plus one manifest row per approved extension and negative boundary | artifact plan, logical tensor, complete physical slot classes, masks, padding, output layout and rotation components exact; no out-of-range slot; clear `1e-12/1e-12`; unsupported source-domain row emits exact code or approved whole-planner fallback | seed `0x4d4b5243`; fixed `N`; C in/out 1..16, H/W 3..32, kernel 1/3/5; extension bounds in manifest | provider-free clear tensor/slot oracle; capability rows fixed per fixture | 0 warmups/1 run, 20 min; retain source ref/delta, selected-plan records, transformed-weight hashes, full slot/sentinel traces and matching `.B`/`.T` 180 days | MetaKernel Conv owner / artifact and tensor-semantics reviewers; all locked core rows pass; no generated-C/ANT execution claim; an extension is enabled only if its entire row passes |
 
 **Exit:** unsupported Conv inputs never enter the core path; supported outputs and
 slot classifications are exact.
 
-### S1.5: CKKS resolution, state/effect contracts, and WOPT non-interference
+### S1.5A: Pre-ReSBM CKKS state/effect contracts and WOPT non-interference
 
-**Objective:** finalize the remaining CKKS parameters while validating the fixed
-`N`, implement Section 9 state/action semantics and Section 11 effects, and prove
-that ordinary WOPT does not transform ordered FHE actions.
+**Objective:** implement the layout-independent Section 9 state/action schema
+and Section 11 effects, validate fixed `N`, and prove that ordinary WOPT does not
+transform ordered FHE actions. Final parameters/provider projection belong to
+S1.5B after layout and ReSBM decisions.
 
-**Implementation:** resolve complete parameter/profile records, propagate range
-and error, emit mandatory immediate `MulCC->Relin`, validate fixed-N capacity,
-resolved-Q/P security and provider support, and add optimizer
-negative/non-interference tests. Fixed-parameter and auto-resolution suites
-remain separate; the auto suite holds `N` fixed and resolves only slots, depth,
-chain, scale/bootstrap profiles, keys, and achieved security. No new
-FHE-specific WOPT profitability pass is promised here.
+**Implementation:** define transfer/effect/alias/order rules, propagate
+provisional range/error and chain requirements, emit mandatory immediate
+`MulCC->Relin`, preserve fixed `N`, and add optimizer negative/non-interference
+tests. Candidate/provisional state must be visibly distinct from the canonical
+pre-ReSBM state recomputed for the selected layout. No new FHE-specific WOPT
+profitability pass is promised here.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S15-001`; `python3 osprey/be/vho/tests/run_ckks_state_contract.py --build-dir build --manifest testdata/fhe_o2/ckks/SHA256SUMS --artifacts test-artifacts/o2/O2-S15-001` | fixed-N requested records, fixed/auto-remaining uniform chains, explicit non-uniform/multi-consumption negatives, bootstrap profiles, `MulCC->Relin`, and PRE/CSE/DCE/hoist/speculation cases for state actions/context/key/lifetime/`dsc_fhe_*` | requested `N` unchanged; remaining resolution, state/action/security/key traces and immediate-relin adjacency exact; bounds conservative; decoded `abs<=1e-4`, `rel<=1e-6`; capacity/security/provider failure reports minimum acceptable/recommended N without mutation; WOPT dump shows non-interference | seed `0x434b4b53`; fixed `N in {2^12..2^16}`, chain 1..16, canonical components 2 with transient 3, fanout 1..8 | accepted mock/OpenFHE manifests; security estimator/version hash fixed | 0/1 transfer; 2/10 encrypted, 20 min/sample; retain requested config, resolved params, traces, optimizer dumps, keys, diagnostics, output 180 days | CKKS owner / cryptography, optimizer, runtime reviewers; zero N mutation, illegal action movement or ordinary-WOPT FHE transform, all errors within predicted bounds |
+| `O2-S15A-001`; `python3 osprey/be/vho/tests/run_ckks_state_contract.py --mode pre-resbm --build-dir build --manifest testdata/fhe_o2/ckks/SHA256SUMS --artifacts test-artifacts/o2/O2-S15A-001` | fixed-N requested records, layout-independent transfer cases, uniform/non-uniform requirements, bootstrap barriers, `MulCC->Relin`, and PRE/CSE/DCE/hoist/speculation cases for state actions/context/key/lifetime | requested `N` unchanged; schema/transfer/effect traces and immediate-relin adjacency exact; bounds conservative; provisional/canonical state labels cannot alias; WOPT dump shows non-interference | seed `0x434b4b53`; fixed `N in {2^12..2^16}`, chain 1..16, canonical components 2 with transient 3, fanout 1..8 | provider-free capability fixtures | 0 warmups/1 transfer run, 20 min; retain requested config, traces, optimizer dumps, diagnostics and matching `.B`/`.T` 180 days | CKKS owner / cryptography and optimizer reviewers; zero N mutation, state-label ambiguity, illegal action movement or ordinary-WOPT FHE transform |
 
-**Exit:** every materializable value has one valid resolved state and no optimizer
-rewrite violates effects or error/security budgets.
+**Exit:** every selected-layout value can receive one canonical pre-ReSBM state,
+provisional facts cannot be published as final state, and no optimizer rewrite
+violates effects or error budgets.
 
 ### S1.6: ReSBM artifact-core regions and SCC boundary
 
@@ -1307,21 +1614,42 @@ protected identities survive generated-code materialization and execution.
 **Exit:** production and independent enumeration agree completely; a cost-only
 or placement-only match is insufficient.
 
+### S1.5B: Final CKKS parameters, ANT projection, and post-ReSBM state gate
+
+**Objective:** after the selected layout and placement actions are fixed,
+recompute authoritative state, finalize all remaining parameters, validate the
+fixed `N`, and prove exact agreement with ACE rtlib/ANT before materialization.
+
+**Implementation:** discard provisional candidate state; recompute canonical
+pre-ReSBM state on the selected layout; apply the selected baseline-DP/ReSBM
+actions; verify post-ReSBM state; finalize Q/P chain, CRT/profile, scales, levels,
+range/error/security and logical keys; project to `CKKS_PARAMS` and ANT-expanded
+keys/capabilities; query the created runtime context through the reviewed
+interface and compare exact Q/P/CRT/profile identities. The runtime may reject
+but may not mutate the Open64 plan.
+
+| Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
+| --- | --- | --- | --- | --- | --- | --- |
+| `O2-S15B-001`; `python3 osprey/be/vho/tests/run_ckks_state_contract.py --mode final-ant --build-dir build --manifest testdata/fhe_o2/ckks/SHA256SUMS --artifacts test-artifacts/o2/O2-S15B-001` | selected baseline/MetaKernel layouts, baseline-DP/ReSBM actions, fixed/auto-remaining suites, unsupported N/security/depth/bootstrap cases, pinned ACE rtlib/ANT manifest | pre/post state, Q/P/CRT, scale/level, security, `CKKS_PARAMS`, logical/ANT key manifests and `Mul_ciph3 -> Relin` mapping exact; mismatch or unsupported profile rejects without plan mutation | seed `0x434b4b42`; fixed `N in {2^12..2^16}`, chain 1..16 | pinned ACE rtlib/ANT revision/build; reviewed resolver topology | 0/1 resolver runs per case, 20 min; retain resolved records, rtlib projection/query, state/key traces, diagnostics and hashes 180 days | CKKS/runtime owners / cryptography, ReSBM and build reviewers; zero field mismatch, N mutation, stale state or unreviewed `be.so` dependency |
+
+**Exit:** the selected plan has one verified final CKKS state and one exact ANT
+projection; S1.8 may materialize it.
+
 ### S1.8: Open64 call/control-flow extension and standard-call materialization
 
 **Objective:** add the bounded Open64 extension, materialize the verified plan,
-and execute through P1b without private nodes.
+and execute through the accepted P1b ACE rtlib/ANT path without private nodes.
 
 **Implementation:** add direct-call summaries, compile-time-known zero-level
-retained loops, stable edge actions, exact logical/provider key manifests,
-mandatory adjacent relin actions, transformed data descriptors, lifetime/error
-code, standard calls, and final verifier. Unsupported multiplication SCC,
+retained loops, stable edge actions, exact logical/ANT-expanded key manifests,
+mandatory adjacent `Mul_ciph3 -> Relin` actions, transformed data descriptors,
+lifetime/error code, ACE rtlib/ANT calls, and final verifier. Unsupported multiplication SCC,
 unknown trip, recursion/scale-changing recursive call, indirect call, and unknown
 frequency fail before publication.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S18-001`; `python3 osprey/be/vho/tests/run_o2_materialization_contract.py --build-dir build --manifest testdata/fhe_o2/materialization/SHA256SUMS --artifacts test-artifacts/o2/O2-S18-001` | locked MetaKernel/ReSBM refs; direct-call, phi/fanout/critical-edge, zero-level loop, unrollable/rejected multiplication SCC, residual, MVM/Conv/ReLU/bootstrap, unknown-trip/recursive-scale-change/indirect/unknown-frequency fixtures | reopened materialization structurally exact; every `MulCC` immediately followed by Relin; no private op in `ir_b2a`; logical/provider keys exact separately; decoded `1e-4/1e-6`; exact diagnostics before partial publication | seed `0x4d415431`; call depth <=8, trip <=64, expanded nodes <=10000, fixed N | pinned Ubuntu 22.04 x86_64; accepted P1a mock/P1b OpenFHE manifests; generated-C capability required | 2 warmups/10 samples, 30 min/sample; retain source/plan/mid `.B`, `ir_b2a`, C, binaries, manifests, keys, outputs, diagnostics and logs 180 days | materializer owner / backend, WOPT, ReSBM, runtime reviewers; compile/link/load/run succeeds, zero leak, exact state/keys, no unsupported WHIRL or retained multiplication SCC |
+| `O2-S18-001`; `python3 osprey/be/vho/tests/run_o2_materialization_contract.py --build-dir build --manifest testdata/fhe_o2/materialization/SHA256SUMS --artifacts test-artifacts/o2/O2-S18-001` | locked MetaKernel/ReSBM refs; direct-call, phi/fanout/critical-edge, zero-level loop, unrollable/rejected multiplication SCC, residual, MVM/Conv/ReLU/bootstrap, unknown-trip/recursive-scale-change/indirect/unknown-frequency fixtures | reopened materialization structurally exact; every `MulCC` maps to adjacent ANT `Mul_ciph3` then `Relin`; no private op in `ir_b2a`; logical/ANT keys exact separately; decoded `1e-4/1e-6`; exact diagnostics before partial publication | seed `0x4d415431`; call depth <=8, trip <=64, expanded nodes <=10000, fixed N | pinned Ubuntu 22.04 x86_64; accepted P1a interface/P1b ACE rtlib/ANT manifests; generated-C capability required | 2 warmups/10 samples, 30 min/sample; retain source/plan/mid matching `.B`/`.T`, C, binaries, manifests, keys, outputs, diagnostics and logs 180 days | materializer owner / backend, WOPT, ReSBM, runtime reviewers; compile/link/load/run succeeds, no server secret/decryptor, zero leak, exact state/keys, no unsupported WHIRL or retained multiplication SCC |
 
 **Exit:** the independently reopened plan is the sole source of materialization
 decisions and the generated program executes correctly.
@@ -1332,7 +1660,8 @@ decisions and the generated program executes correctly.
 additional MetaKernel changes against it using the common SYNC-7A-E interface.
 This is an incremental comparison gate, not another Fhelipe implementation stage.
 
-**Prerequisites/owner:** accepted FRZ-01..06/F1 baseline manifests, P0/P2 records
+**Prerequisites/owner:** current O2 qualification, accepted FRZ-01..09/F1
+baseline/runtime manifests, and P2 records
 and S1.3/S1.4 MetaKernel evidence. O0 produces the frozen baseline; O2 integration
 owns the delta/comparison and common/com owns shared census records. Independent
 layout/census reviewers accept the result.
@@ -1375,7 +1704,7 @@ Independent slot/census oracles verify both outputs against source semantics.
 
 Seed `0x4c41594f`, focused dimensions 1..32 and locked full ResNet-20; use Section
 15 tolerances/protocol. Structure tests run twice within 300 s; execution uses
-accepted mock/OpenFHE. Retain baseline and candidate manifests, pre-layout,
+accepted P1a interface fixture/P1b ACE rtlib/ANT. Retain baseline and candidate manifests, pre-layout,
 decision/materialized `.B`/`ir_b2a`, census, protected sites, DP outputs, fallback
 reason and decoded/oracle results for 180 days; accepted bundles indefinitely.
 
@@ -1400,7 +1729,7 @@ immutable acceptance bundle and review decision.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S19-001`; `python3 osprey/be/vho/tests/run_o2_stage1_acceptance.py --build-dir build --manifest testdata/fhe_o2/acceptance-stage1/SHA256SUMS --protocol testdata/fhe_o2/acceptance-stage1/protocol.json --artifacts test-artifacts/o2/O2-S19-001` | accepted F0/P0/P1a/P2/P1b/F1-PREP/F1-IMPL/F1-ACCEPT and Stage 1 hashes; fixed-resolved and auto-remaining suites with the same fixed N; frozen focused/full workloads | all Section 15 hard gates; artifact-oracle equality and recorded paper differentials; focused decoded `1e-4/1e-6`, application max-abs `<=1e-3`, top-1 exact; immediate relin and no N mutation; only F0-defined comparison cells are hard | workload seeds in protocol; resampling seed `0x4f325331`; support matrix and F0 profile-status table fixed | one pinned Ubuntu x86_64 machine, accepted mock/OpenFHE manifests; no cross-machine ratio | focused 5 warmups/30 paired/20 min; full 1/5 paired/3 h; no outlier deletion; retain complete accepted bundle for repository lifetime | Stage 1 owner / architecture, independent test, artifact, crypto, runtime reviewers; every prerequisite and hard quantitative gate passes, all required baseline and single-factor cells pass, signed review says only `O2 Stage 1 accepted` |
+| `O2-S19-001`; `python3 osprey/be/vho/tests/run_o2_stage1_acceptance.py --build-dir build --manifest testdata/fhe_o2/acceptance-stage1/SHA256SUMS --protocol testdata/fhe_o2/acceptance-stage1/protocol.json --artifacts test-artifacts/o2/O2-S19-001` | accepted F0/O2-O0Q/P2/S1.0-S1.8/S1.LAYOUT hashes; fixed-resolved and auto-remaining suites with the same fixed N; frozen focused/full workloads | all Section 15 hard gates; artifact-oracle equality and recorded paper differentials; focused decoded `1e-4/1e-6`, application max-abs `<=1e-3`, top-1 exact; immediate relin and no N mutation; only F0-defined comparison cells are hard | workload seeds in protocol; resampling seed `0x4f325331`; support matrix and F0 profile-status table fixed | one pinned Ubuntu x86_64 machine, accepted ACE rtlib/ANT manifest; no cross-machine ratio | focused 5 warmups/30 paired/20 min; full 1/5 paired/3 h; no outlier deletion; retain complete accepted bundle for repository lifetime | Stage 1 owner / architecture, independent test, artifact, crypto, runtime reviewers; O0 qualification fingerprint remains valid, every prerequisite and hard quantitative gate passes, all required baseline and single-factor cells pass, signed review says only `O2 Stage 1 accepted` |
 
 **Exit:** Stage 1 is accepted. The report must not say `O2 complete`, `full O2
 accepted`, or `v0.10 O2 complete`.
@@ -1440,7 +1769,7 @@ slice/compaction folding, stable lineage, rewrite verification, and complete
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S21-001`; `python3 osprey/be/vho/tests/run_fhefusion_semantic_contract.py --build-dir build --catalog testdata/fhe_o2/fhefusion/rules.json --manifest testdata/fhe_o2/fhefusion/SHA256SUMS --artifacts test-artifacts/o2/O2-S21-001` | locked `origin/fhefusion@f18f971710b7270aec2c3963878ac3493d9f8e06` and fixture hashes; rule graphs, overlaps, pass permutations, sentinel junk/gaps, no-fusion controls | rule match/reject and slot-map output exact; clear `abs<=1e-12`, `rel<=1e-12`; decoded `1e-4/1e-6`; exact rule diagnostic | seed `0x4655534e`; <=12 nodes exhaustive local overlaps, 2000 random legal contexts | mock/OpenFHE; same parameters for before/after pair | 2 warmups/10 paired samples, 20 min/sample; retain pre/post `.B`, slot traces, outputs, rule log 180 days | FHEFusion owner / independent tensor oracle and CKKS reviewers; zero semantic mismatch, idempotent fixed point, deterministic rule order |
+| `O2-S21-001`; `python3 osprey/be/vho/tests/run_fhefusion_semantic_contract.py --build-dir build --catalog testdata/fhe_o2/fhefusion/rules.json --manifest testdata/fhe_o2/fhefusion/SHA256SUMS --artifacts test-artifacts/o2/O2-S21-001` | locked `origin/fhefusion@f18f971710b7270aec2c3963878ac3493d9f8e06` and fixture hashes; rule graphs, overlaps, pass permutations, sentinel junk/gaps, no-fusion controls | rule match/reject and slot-map output exact; clear `abs<=1e-12`, `rel<=1e-12`; decoded `1e-4/1e-6`; exact rule diagnostic | seed `0x4655534e`; <=12 nodes exhaustive local overlaps, 2000 random legal contexts | ACE rtlib/ANT; same parameters for before/after pair | 2 warmups/10 paired samples, 20 min/sample; retain matching pre/post `.B`/`.T`, slot traces, outputs, rule log 180 days | FHEFusion owner / independent tensor oracle and CKKS reviewers; zero semantic mismatch, idempotent fixed point, deterministic rule order |
 
 **Exit:** every enabled rule preserves visible output and required slot classes
 under all accepted overlaps.
@@ -1459,7 +1788,7 @@ mutate the current compilation input.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S22-001`; `python3 osprey/be/vho/tests/run_fhefusion_profitability_contract.py --build-dir build --manifest testdata/fhe_o2/fhefusion-profit/SHA256SUMS --model testdata/fhe_o2/cost/openfhe-v1.json --artifacts test-artifacts/o2/O2-S22-001` | locked `origin/fhefusion@f18f971710b7270aec2c3963878ac3493d9f8e06`, cost-model/fixture hashes; gap densities 0..15/16, boundary shapes around fixed `N/2`, fixed and auto-remaining suites with identical N | capacity/security decision and minimum-required-N diagnostic exact; predicted components exact; legal output within numeric tolerance; a larger-N rewrite is rejected or requests explicit recompilation; unprofitable/unsafe reason exact | seed `0x4741504e`; fixed `N in {2^12..2^16}`, shards 1..8 | pinned OpenFHE host/manifest; provider capability and memory counters required | 5 warmups/30 paired focused samples, 20 min/sample; no outlier deletion; retain requested config, decisions, recommendations, predictions, measurements, C/`.B` 180 days | profitability owner / CKKS security, MetaKernel, performance reviewers; zero N mutation, no infeasible rewrite, quantitative model gates pass |
+| `O2-S22-001`; `python3 osprey/be/vho/tests/run_fhefusion_profitability_contract.py --build-dir build --manifest testdata/fhe_o2/fhefusion-profit/SHA256SUMS --model testdata/fhe_o2/cost/ant-v1.json --artifacts test-artifacts/o2/O2-S22-001` | locked `origin/fhefusion@f18f971710b7270aec2c3963878ac3493d9f8e06`, ANT cost-model/fixture hashes; gap densities 0..15/16, boundary shapes around fixed `N/2`, fixed and auto-remaining suites with identical N | capacity/security decision and minimum-required-N diagnostic exact; predicted components exact; legal output within numeric tolerance; a larger-N rewrite is rejected or requests explicit recompilation; unprofitable/unsafe reason exact | seed `0x4741504e`; fixed `N in {2^12..2^16}`, shards 1..8 | pinned ACE rtlib/ANT host/manifest; provider capability and memory counters required | 5 warmups/30 paired focused samples, 20 min/sample; no outlier deletion; retain requested config, decisions, recommendations, predictions, measurements, C and matching `.B`/`.T` 180 days | profitability owner / CKKS security, MetaKernel, performance reviewers; zero N mutation, no infeasible rewrite, quantitative model gates pass |
 
 **Exit:** every selected fusion has a complete capacity/security/cost proof and
 uses the post-fusion graph for downstream planning.
@@ -1469,19 +1798,26 @@ uses the post-fusion graph for downstream planning.
 **Objective:** introduce the HPAO middle-level representation without exposing
 bootstrap internals or changing accepted CKKS plan semantics.
 
-**Implementation:** define versioned HPOLY operators, basis/level/scale/static
-attributes, effect/alias rules, CKKS-to-HPOLY and HPOLY-to-POLY/runtime lowering,
-and independent serialization if the architecture review selects persistence.
+**Implementation:** first review the semantic contract, logical operator set,
+physical carrier, allowed WHIRL level, and common/com ownership. Only then decide
+whether HPOLY is persisted. If persisted, define versioned records/operators,
+binary compatibility, `ir_b2a -st -src`, independent reopen and corruption
+tests. If transient, require reviewable pre-HPOLY and post-HPOLY matching
+`.B`/`.T` artifacts plus an HPOLY trace, but do not invent an independent-reopen
+requirement for a representation that never crosses a process boundary. Then
+implement basis/level/scale/static attributes, effect/alias rules,
+CKKS-to-HPOLY and HPOLY-to-ANT LPOLY/POLY/runtime lowering.
 HPAO reuses stable, non-invasive Open64 analysis services where suitable.
 HPAO-MU is a new HPOLY phase following the SSAPRE algorithmic model; it must
-not route HPOLY through, or modify, the existing WOPT SSAPRE implementation. Bootstrap remains an opaque
-runtime call with complete input/output contract. Lowering may expose the
+not route HPOLY through, or modify, the existing WOPT SSAPRE implementation.
+Bootstrap remains an opaque ACE rtlib/ANT call with a complete input/output
+contract. Lowering may expose the
 polynomial substructure of the already adjacent Relin, but may not relocate the
 canonical `MulCC->Relin` boundary or make its result available before Relin.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S23-001`; `python3 osprey/be/vho/tests/run_hpoly_contract.py --build-dir build --manifest testdata/fhe_o2/hpoly/SHA256SUMS --artifacts test-artifacts/o2/O2-S23-001` | fixed HPAO ref/hash, Rotate/KeySwitch/Mul/adjacent-Relin/ModUp/ModDown/DotProd graphs and bootstrap barriers | basis, level, scale, static attributes, effects and lowering exact; `MulCC->Relin` boundary unchanged; decoded `1e-4/1e-6`; crossing bootstrap/Relin boundary or unknown basis emits exact diagnostic | seed `0x48504f4c`; chain 1..16, fanout 1..8 | accepted mock/OpenFHE capability; bootstrap treated only by profile | 2 warmups/10 samples, 30 min/sample; retain CKKS/HPOLY/POLY dumps, `.B`, C, output 180 days | HPOLY owner / common-com, CKKS, runtime reviewers; zero bootstrap expansion or Relin relocation, no custom node reaches whirl2c, all state identities preserved |
+| `O2-S23-001`; `python3 osprey/be/vho/tests/run_hpoly_contract.py --build-dir build --manifest testdata/fhe_o2/hpoly/SHA256SUMS --artifacts test-artifacts/o2/O2-S23-001` | fixed HPAO ref/hash, Rotate/KeySwitch/Mul/adjacent-Relin/ModUp/ModDown/DotProd graphs and bootstrap barriers | basis, level, scale, static attributes, effects and lowering exact; `MulCC->Relin` boundary unchanged; decoded `1e-4/1e-6`; crossing bootstrap/Relin boundary or unknown basis emits exact diagnostic | seed `0x48504f4c`; chain 1..16, fanout 1..8 | accepted ACE rtlib/ANT CKKS/LPOLY/POLY capability; bootstrap treated only by profile | 2 warmups/10 samples, 30 min/sample; retain CKKS/HPOLY/POLY dumps, matching `.B`/`.T`, C, output 180 days | HPOLY owner / common-com, CKKS, ANT runtime reviewers; zero bootstrap expansion or Relin relocation, no custom node reaches whirl2c, all state identities preserved |
 
 **Exit:** HPOLY is a verified middle level, not a second CKKS parameter truth or
 a leak of provider internals.
@@ -1521,7 +1857,7 @@ not that its technical design or implementation has been accepted.
 
 **Verification:** proposed `python3 osprey/be/vho/tests/run_hpao_rule_contract.py
 --build-dir build --catalog testdata/fhe_o2/hpao/rules.json
---weights testdata/fhe_o2/hpao/openfhe-v1.json
+--weights testdata/fhe_o2/hpao/ant-v1.json
 --manifest testdata/fhe_o2/hpao/SHA256SUMS
 --artifacts test-artifacts/o2/O2-S24-001` (`O2-S24-001`; shown wrapped).
 MU covers equivalent and distinct basis/scale/decomposition/effect inputs,
@@ -1538,7 +1874,7 @@ boundaries and required-reduction fallback.
 Verify MD remains disabled without accepted design and emits its declared
 unsupported diagnostic. Rule/state/modular/operation-count comparisons are exact;
 decoded tolerances are `1e-4/1e-6`. Seed `0x4850414f`; primes 1..16, fanout
-1..8, dot length 1..64. Pinned OpenFHE/target model, 5 warmups/30 paired focused
+1..8, dot length 1..64. Pinned ACE rtlib/ANT target model, 5 warmups/30 paired focused
 samples, 20 min/sample, no outlier removal. Retain rules, oracle traces,
 bit-width/basis proofs, package/cost hashes, counters, `.B`/dumps/C/output and
 MD disposition for 180 days; accepted design/disposition indefinitely.
@@ -1563,7 +1899,7 @@ labeled unavailable, with a reason and owner; this cannot waive a required cell.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S25-001`; `python3 osprey/be/vho/tests/run_o2_factorial_ablations.py --build-dir build --manifest testdata/fhe_o2/ablations/SHA256SUMS --protocol testdata/fhe_o2/ablations/protocol.json --artifacts test-artifacts/o2/O2-S25-001` | F0-defined legal profile matrix, workload/data/fixed-N/parameter/provider hashes; auto-remaining suite separate with same N | all hard correctness gates; complete metrics for required cells; design-gated/out-of-support optional cells carry exact reason; stale downstream plan/key or N mutation gives exact diagnostic | workload seeds locked; statistical seed `0x41424c32` | one pinned host/OpenFHE manifest; no cross-machine speed ratios | focused 5/30, full 1/5 paired, timeouts 20 min/3 h; no outlier deletion; retain matrix, unavailable-cell reasons, and plan deltas for repository lifetime | integration owner / all pass owners and independent performance reviewer; no missing F0-required cell, no fabricated blocked cell, stale plan, or N mutation; quantitative gates pass |
+| `O2-S25-001`; `python3 osprey/be/vho/tests/run_o2_factorial_ablations.py --build-dir build --manifest testdata/fhe_o2/ablations/SHA256SUMS --protocol testdata/fhe_o2/ablations/protocol.json --artifacts test-artifacts/o2/O2-S25-001` | F0-defined legal profile matrix, workload/data/fixed-N/parameter/ACE-rtlib-ANT hashes; auto-remaining suite separate with same N | all hard correctness gates; complete metrics for required cells; design-gated/out-of-support optional cells carry exact reason; stale downstream plan/key or N mutation gives exact diagnostic | workload seeds locked; statistical seed `0x41424c32` | one pinned host/ACE rtlib/ANT manifest; no cross-machine speed ratios | focused 5/30, full 1/5 paired, timeouts 20 min/3 h; no outlier deletion; retain matrix, unavailable-cell reasons, and plan deltas for repository lifetime | integration owner / all pass owners and independent performance reviewer; no missing F0-required cell, no fabricated blocked cell, stale plan, or N mutation; quantitative gates pass |
 
 **Exit:** the report identifies positive and negative interactions and the final
 profile is replanned from the actual all-on graph.
@@ -1579,7 +1915,7 @@ performance, deterministic evidence, and unsupported diagnostics.
 
 | Test ID and exact command/target | Source/hash and input class | Expected result, tolerance, diagnostic | Seed/bounds | Platform/provider/capability | Warmup/sample/timeout and retained artifacts | Owner/reviewer and pass rule |
 | --- | --- | --- | --- | --- | --- | --- |
-| `O2-S26-001`; `python3 osprey/be/vho/tests/run_o2_final_acceptance.py --build-dir build --manifest testdata/fhe_o2/acceptance-final/SHA256SUMS --protocol testdata/fhe_o2/acceptance-final/protocol.json --artifacts test-artifacts/o2/O2-S26-001` | F0 option/profile truth table; accepted P0/P1a/P2/P1b/F1-ACCEPT/Stage1/Stage2 hashes; fixed and auto-remaining suites with identical fixed N | all Section 15 hard gates; focused decoded `1e-4/1e-6`, application max-abs `<=1e-3`, top-1 exact; immediate relin, exact diagnostics, zero N mutation; bare O2 maps to accepted profile | locked workload/statistical seeds | pinned host, accepted mock/OpenFHE manifests and security estimator | focused 5/30, full 1/5 paired, 20 min/3 h; no outlier deletion; retain signed release bundle for repository lifetime | release owner / architecture, crypto, runtime, all pass owners, independent reviewer; F0 through F1-ACCEPT and S1/S2 complete, every required gate passes |
+| `O2-S26-001`; `python3 osprey/be/vho/tests/run_o2_final_acceptance.py --build-dir build --manifest testdata/fhe_o2/acceptance-final/SHA256SUMS --protocol testdata/fhe_o2/acceptance-final/protocol.json --artifacts test-artifacts/o2/O2-S26-001` | F0 option/profile truth table; accepted O2-O0Q/Stage1/Stage2 hashes; fixed and auto-remaining suites with identical fixed N | all Section 15 hard gates; focused decoded `1e-4/1e-6`, application max-abs `<=1e-3`, top-1 exact; immediate relin, exact diagnostics, zero N mutation; bare O2 maps to accepted profile | locked workload/statistical seeds | pinned host, accepted ACE rtlib/ANT manifest and security estimator | focused 5/30, full 1/5 paired, 20 min/3 h; no outlier deletion; retain signed release bundle for repository lifetime | release owner / architecture, crypto, runtime, all pass owners, independent reviewer; O0 qualification and S1/S2 complete, every required gate passes |
 
 **Exit:** only this milestone may declare `O2 complete` or `v0.10 O2 complete`,
 and only if the accepted ADR/v0.10 text authorizes those exact words.
@@ -1649,8 +1985,9 @@ A profile fails if any item fails:
 10. independent logical key collection equals logical requirements exactly, and
    independent provider expansion equals the provider manifest exactly;
 11. no ciphertext-byte comparison is used as a correctness oracle;
-12. the generated C compiles, links, loads the pinned adapter, executes, and
-     destroys every object without sanitizer/lifetime failure;
+12. the generated C uses only the allowlisted ACE rtlib/ANT headers and symbols,
+    compiles, links, executes through `FHErt_common` + `FHErt_ant`, and cleans up
+    without sanitizer/lifetime failure or server secret/decryptor;
 13. `ir_b2a -st -src` contains no unlowered private FHE/O2/HPOLY operation at the
      final `whirl2c` boundary;
 14. two clean runs produce identical normalized plans, manifests, transformed
@@ -1726,7 +2063,8 @@ fails.
 The protocol JSON freezes before measurements:
 
 - machine/OS/kernel/CPU/memory/governor/thread/NUMA state;
-- compiler/linker flags, OpenFHE and adapter hashes, capability manifest,
+- compiler/linker flags, ACE rtlib revision/public-header/build/library hashes,
+  `LIB_ANT` capability manifest,
   security estimator, resolved parameters, keys/profiles, model/data/weights;
 - profile order, pairing, seeds, warmups, samples, timeouts, counters, and
   statistics.
@@ -1766,14 +2104,16 @@ support-matrix.json
 diagnostics.json
 requested-configuration.json
 input.fhe.B
+input.fhe.T
 canonical.fhe.B
+canonical.fhe.T
 normalized-planner-input.json
 resolved-parameters.json
 fixed-n-capacity-security-diagnostics.json
 provider-capabilities.json
 planner-candidates.json
 selected-plan.B
-selected-plan.ir
+selected-plan.T
 layout-and-slot-map.json
 metakernel-artifact-oracle.json
 metakernel-paper-differential.json
@@ -1784,7 +2124,7 @@ logical-key-requirements.json
 provider-key-manifest.json
 transformed-plaintext-manifest.json
 materialized.o2.mid.B
-materialized.o2.mid.ir
+materialized.o2.mid.T
 generated.c
 build-and-link.log
 decoded-output.json
@@ -1808,20 +2148,22 @@ may combine a semantic change with unrelated formatting or generated artifacts.
 
 | Commit group | Change | Required evidence before merge |
 | --- | --- | --- |
-| `ARCH-1` | F0 ownership/options, fixed source lock and source-tracker relinks against v0.10 | `O2-F0-001`; this revision does not edit those trackers |
+| `ARCH-1` | F0 ownership/options/runtime lock and source-tracker relinks against the accepted master | `O2-F0-001`; this revision does not edit master/trackers |
 | `IMPORT-O0` | Import accepted producer evidence for F1/P0/P1; no O0 implementation commit is owned here | Section 13 external handoffs and immutable bundle hashes |
-| `REC-O2` | P2 shared-contract reuse and O2 record extensions after baseline records merge | `O2-P2-001`; independent reopen and legacy compatibility |
-| `S1-1` | source/support/diagnostic/cost locks | `O2-S10-001` |
+| `QUAL-O0` | Independently qualify the complete O0 bundle before O2 work | `O2-O0Q-001=Qualified`; matching `.B`/`.T`, ANT and signed decision |
+| `S1-1` | first O2 work: source/support/diagnostic/cost locks | `O2-S10-001` |
+| `REC-O2` | P2 shared-contract reuse and O2 record extensions after S1.0 requirements | `O2-P2-001`; independent reopen and legacy compatibility |
 | `S1-2` | atomic identity-plan transaction | `O2-S11-001` |
 | `S1-3` | ACE virtual graph/effects/transfers | `O2-S12-001` |
 | `S1-4` | MetaKernel artifact-equivalent `(Pb,Ps)` search plus paper differential | Figure 4, MVM1/MVM2 and `O2-S13-001` |
-| `S1-5` | MVM transform and execution | `O2-S13-001` |
+| `S1-5` | MVM selected-plan/slot-map/clear-oracle slice | `O2-S13-001`; ANT execution deferred to `S1-13` |
 | `S1-6` | Ke2Col locked artifact/AE core | core rows of `O2-S14-001` |
 | `S1-7+` | one Conv extension per commit | complete extension row of `O2-S14-001` |
-| `S1-8` | fixed-N CKKS state/effect/security and WOPT non-interference | `O2-S15-001` |
+| `S1-8A` | fixed-N pre-ReSBM CKKS state/effect and WOPT non-interference | `O2-S15A-001` |
 | `S1-9` | ReSBM artifact-core region/SCC builder | `O2-S16-001` |
 | `S1-10` | artifact ScaleMgr, cuts, endpoint DP with `q_w=q` | teaching cases and unit tests |
 | `S1-11` | independent raw-graph oracle | `O2-S17-001` and dependency audit |
+| `S1-11B` | post-ReSBM final CKKS/security/ANT projection | `O2-S15B-001` |
 | `S1-12` | bounded call/control-flow extension | positive/negative extension tests |
 | `S1-13` | key manifests and standard-call materializer | `O2-S18-001` |
 | `S1-LAYOUT` | Imported baseline evidence, defined-increment census and comparison only; no duplicate Fhelipe pass implementation | `O2-LAYOUT-001` |
@@ -1840,9 +2182,9 @@ may combine a semantic change with unrelated formatting or generated artifacts.
 
 Stage 1 is done only when:
 
-- F0 explicitly reconciles the selected baseline with architecture/options and
-  source links; P2 is accepted only after independent baseline records, and
-  the external F1/P0/P1 acceptance bundle is imported and independently checked;
+- F0 explicitly reconciles the selected baseline and ACE rtlib boundary with
+  architecture/options and source links; `O2-O0Q-001=Qualified` before any O2
+  work, and its complete bound fingerprint remains valid;
 - S1.0-S1.9 and S1.LAYOUT pass their exact contracts;
 
 - artifact-backed production behavior, paper-strict differential behavior, and
@@ -1856,7 +2198,8 @@ Stage 1 is done only when:
   components;
 - MetaKernel and ReSBM independent oracles have zero structural mismatch;
 - plan production and materialization cross an independent binary reopen;
-- generated C executes through the stable provider ABI;
+- generated C executes through the source-locked ACE rtlib public C interface
+  with `LIB_ANT` and the exact accepted parameter/action/key mapping;
 - all hard, numeric, model, performance, required ablation and advanced-off
   gates pass; no superseded indivisible-family waiver hides missing cells; and
 - the signed report uses `O2 Stage 1 accepted`, not a full-O2 claim.
@@ -1882,9 +2225,13 @@ and Section 19 research are not concealed completion requirements.
 | Fhelipe fixed research snapshot | Source-inspected; full baseline acceptance pending | Fhelipe/O0 owner | `891b3086bf6a144deebac79290801253b9cc510c`, complete hashes/build/pass/objective/oracle evidence | F1 acceptance before S1 comparisons |
 | Separate layout and CKKS owners | v0.10 governing decision | common/com and FHE owners | shared interfaces and source-component crosswalk | F0/P2 |
 | Bare levels, DP and increment-off mapping | Proposed; current v0.10 O0 conflicts require reconciliation | driver/config/architecture owners | Four O levels, auto/on/manual/off, protected sites, baseline-preserving O2 off/fallback | F0/default acceptance |
+| Complete O0 before O2 | User-selected frozen sequencing policy | O2 qualification owner | `O2-O0Q-001` verifies every F1/P0/P1 record, executable path and negative row | Every P2/S1/S2 task |
+| Runtime provider | User-selected: ACE rtlib public C surface with `LIB_ANT`; master reconciliation pending | runtime/Open64 owners | pinned revision/header/build/symbol hashes, exact Open64-plan projection and P1a/P1b/O0Q execution | F0, P1a/P1b, O0Q and executable O2 gates |
+| ANT context/key separation | TODO; ANT remains selected | runtime/security owners | client/test versus server-evaluation lifecycle, no server secret/decryptor, reentrancy/cleanup/status tests | P1b and release execution acceptance |
+| Compiler-side rtlib dependency | TODO; no `be.so` dependency authorized | build/runtime owners | isolated resolver or explicit `be.so` dependency/link-closure review | S1.5B implementation |
 | O2 physical record storage | Proposed, requires acceptance | common/com owner | versioned crosswalk/reopen/compatibility review after shared baseline records | P2/S1.1 |
 | HPAO-MD implementation | Design pending, disabled | HPOLY design owner | separate analysis/legality/lifetime/order/cost review and amended tests | MD implementation only |
-| Stage 1 `q_w=q`, integer scale-degree/logical-level, uniform one-level ReSBM restriction | Frozen artifact-backed plan contract | CKKS/ReSBM owner | fixed artifact, projection and rejection tests | S1.5-S1.9 |
+| Stage 1 `q_w=q`, integer scale-degree/logical-level, uniform one-level ReSBM restriction | Frozen artifact-backed plan contract | CKKS/ReSBM owner | fixed artifact, projection and rejection tests | S1.5A/S1.5B, S1.6-S1.9 |
 | MetaKernel minimum artifact cost, then larger `Ps`, then first enumeration order | Frozen artifact-backed plan contract | MetaKernel owner | fixed artifact plus independent artifact/paper-differential cases | S1.3 |
 | broader Conv rows | Proposed one-by-one extensions | MetaKernel Conv owner | exact oracle and capability row | S1.4 |
 | direct-call/zero-level retained-loop ReSBM extension | Proposed conservative subset | ReSBM/Open64 owner | semantics, frequency/effect proof, multiplication-SCC and recursion rejections | S1.8 |
@@ -1907,7 +2254,10 @@ because implementation code exists.
 | duplicate on-disk truth | enforce Section 8 crosswalk and one authoritative owner per field |
 | WHIRL compatibility regression | common-com review, version/capability gates, old/new reader tests, binary reopen |
 | canonicalization hides junk/gap bugs | nonzero sentinel negatives and per-slot verification |
-| provider C++ ABI leaks | public-header audit and compile generated C without C++ provider headers |
+| ACE compiler/private ABI leaks into generated C | enforce the source-locked rtlib public-header/symbol allowlist and compile generated C without ACE AIR/private compiler headers |
+| ACE rtlib header or build drift silently changes the interface | revision/header/library hashes stale P1a/P1b, O0 qualification, projections, costs and dependent plans |
+| ANT global context mixes client secret and server evaluation | close `ANT-RT-TODO-CLIENT-SERVER-LIFECYCLE` before P1b; retain no secret/decryptor in server artifacts/process |
+| backend gains an unreviewed rtlib dependency | default to an isolated resolver; stop any direct `be.so` linkage until the repository dependency review passes |
 | resolver or rewrite silently changes `N` | fixed N is persisted before canonicalization; fail closed and report recommended N for explicit recompilation |
 | CKKS plan assumes uniform chain incorrectly | represent full chain, reject unsupported ReSBM consumption, stable diagnostic |
 | non-immediate relin enters current O2 | enforce canonical `MulCC->immediate Relin` and adjacent action/key tests; Section 19 is the sole deferred research record |
@@ -1926,9 +2276,18 @@ occurs:
 - the known v0.10 O0 conflict is treated as resolved without an accepted
   FRZ-03 amendment, or another architecture conflict lacks an accepted ADR;
 - a moving/unhashed source is needed for an algorithm claim;
+- any P2/S1/S2 work begins without a current `O2-O0Q-001=Qualified` fingerprint;
+- the ACE rtlib revision/public headers/build change without targeted
+  requalification, or generated C includes a non-allowlisted ACE header/symbol;
 - any stage changes requested `N`, silently accepts a larger-N rewrite, or
   materializes a non-adjacent Relin after `MulCC`;
+- the materializer maps canonical `MulCC` to fused `Mul_ciph` and also emits an
+  explicit `Relin`, or otherwise cannot prove the exact `Mul_ciph3 -> Relin`
+  transition;
 - a provider cannot express the complete resolved parameter/bootstrap profile;
+- runtime-created ANT Q/P/CRT/profile state differs from the persisted Open64
+  plan, a server evaluation path contains a secret/decryptor, or a direct
+  `be.so` rtlib dependency appears without explicit approval;
 - a record cannot be reopened independently without producer memory;
 - an extension lacks an exact oracle/rejection boundary;
 - a cost or security calculation saturates or relies on unknown frequency;
@@ -1953,21 +2312,25 @@ to implement or accept these research items.
 
 ## 20. Immediate Dependency-Ready Queue
 
-1. Close F0's explicit architecture conflict for the selected mature Fhelipe
-   baseline/DP. Freeze pass/config/support and objective manifests, hard/manual/
-   pre-ReLU semantics, protected-DP adaptation and baseline-preserving controls;
-   synchronize architecture and source trackers through their owners.
-2. O0/runtime owners implement and accept that baseline through F1/P0/P1,
-   including constrained-DP feasibility/oracle and boundary-preservation evidence.
-   Do not wait for P2 or implement a reduced JIT/layout substitute for acceptance.
-3. Common/com accepts baseline configuration/state/placement records before
-   their consumers; P2 subsequently reviews only O2 extensions.
-4. Independent source-lock, oracle and pure MetaKernel/ReSBM work may proceed;
-   production default and integration acceptance remain behind required contracts.
+1. Close F0's pending master/ADR reconciliation for the selected mature Fhelipe
+   baseline/DP and ACE rtlib/ANT boundary. Freeze pass/config/support/runtime and
+   objective manifests, hard/manual/pre-ReLU semantics, protected-DP adaptation,
+   baseline-preserving controls, and public rtlib header/symbol locks.
+2. O0/runtime owners implement and accept the complete baseline through
+   F1/P0/P1 using ACE rtlib/ANT, including constrained-DP feasibility/oracle,
+   boundary preservation, exact parameter projection and the client/server
+   lifecycle disposition. O0 does not wait for P2.
+3. Run `O2-O0Q-001` independently over the complete accepted O0 bundle. Do not
+   begin source-lock/oracle/fixture or other O2 work while the result is
+   `Rejected` or `Unverified`.
+4. After `O2-O0Q-001=Qualified`, lock S1.0 claims, sources and oracles; then P2
+   reviews only O2 record extensions and S1.1 owns the first O2 identity-plan
+   roundtrip.
 5. Implement the defined S1 increments; S1.LAYOUT imports baseline evidence and
    verifies the MetaKernel delta without reimplementing existing Fhelipe passes.
-6. Import F1-ACCEPT before S1.9; compare baseline/component/combined profiles
-   with manifest/algorithm-controlled ablations and baseline-preserving off tests.
+6. Reconfirm the O0 qualification fingerprint before S1.9; compare
+   baseline/component/combined profiles with manifest/algorithm-controlled
+   ablations and baseline-preserving off tests.
 7. Complete Stage 2 with the existing MU/FM/LM contracts and explicit disabled
    MD disposition pending separate design acceptance.
 8. Publish the finalized O2-to-O3 handoff; third-plan physical parallel/data
