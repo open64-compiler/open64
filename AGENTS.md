@@ -150,6 +150,41 @@ only when the current task needs detail.
    Require call-graph propagation or coordinated caller/callee transformation
    tests only for code that executes in IPA scope under `-ipa`.
 
+## Optimization-Level Scope
+
+1. Treat optimization levels as analysis and transformation scope contracts.
+   DSL optimization must follow the same contracts as traditional Open64; a
+   DSL operator, tensor type, REGION, or domain does not grant permission to
+   optimize at a broader scope.
+2. `-O0` performs no optimization. It may verify legality and perform only the
+   straightforward semantic lowering required to make the program executable.
+   It must not perform fusion, algebraic improvement, layout optimization,
+   profitability-driven rewriting, parallelization, or other
+   performance-oriented transformations.
+3. `-O1` permits basic-block-local optimization only. Its analysis and
+   transformations must not depend on control-flow facts outside the active
+   basic block, REGION-local equivalent, or other explicitly local unit.
+4. `-O2` permits PU-level optimization over the active procedure's control-flow
+   graph. It may use intraprocedural data-flow, alias, SSA, PRE, and related
+   analyses, but it must not infer or transform across a PU boundary.
+5. `-O3` adds optimization around canonical loops, with emphasis on memory
+   behavior and parallelization. Loop transformation, tiling, locality,
+   memory-hierarchy use, vectorization, and parallel execution must consume the
+   canonical loop and dependence contracts established by the earlier phases.
+6. `-ipa` explicitly expands analysis beyond one PU through the IPA-owned call
+   graph and summaries. Cross-PU transformation remains limited, reviewed, and
+   controlled; enabling `-ipa` does not authorize arbitrary whole-program
+   mutation by PU-local phases.
+7. Every new DSL analysis or transformation must declare its minimum
+   optimization level, maximum compilation scope, required canonical form,
+   invalidation behavior, and controlling option. The driver and phase must
+   leave it disabled below that level and must not silently enlarge its scope.
+8. Validation must exercise the level boundary: prove `-O0` preserves the
+   unoptimized semantic form through straightforward lowering, prove the pass
+   runs at its declared level, and prove it neither runs nor consumes
+   out-of-scope facts at lower levels. Cross-PU tests are required only for
+   explicitly enabled `-ipa` work.
+
 ## Backend Shared-Library Dependencies
 
 1. Do not add a new library dependency to `be.so` without explicit design and
