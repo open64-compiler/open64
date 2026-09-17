@@ -1105,6 +1105,45 @@ DSL_Shape_Same_Result
 }
 
 static BOOL
+DSL_Shape_Broadcast_Result
+        (const DSL_IR_NODE_RECORD *node,
+         const std::vector<TY_IDX> &operands,
+         TY_IDX result_ty,
+         UINT16)
+{
+    if (DSL_Shape_Attribute_Equals
+            (node, "attr.broadcast_rule", "none"))
+        return DSL_Shape_Same_Result(node, operands, result_ty, 0);
+    if (!DSL_Shape_Attribute_Equals
+             (node, "attr.broadcast_rule", "numpy") ||
+        operands.size() != 2 ||
+        !DSL_Shape_Tensor_Element_Representation_Compatible
+             (operands[0], operands[1]))
+        return FALSE;
+
+    std::vector<UINT64> left;
+    std::vector<UINT64> right;
+    if (!DSL_Shape_Static_Dimensions(operands[0], &left) ||
+        !DSL_Shape_Static_Dimensions(operands[1], &right))
+        return FALSE;
+    UINT32 rank = left.size() > right.size() ? left.size() : right.size();
+    std::vector<UINT64> expected(rank, 1);
+    for (UINT32 offset = 0; offset < rank; ++offset) {
+        UINT64 left_dimension = offset < left.size() ?
+            left[left.size() - 1 - offset] : 1;
+        UINT64 right_dimension = offset < right.size() ?
+            right[right.size() - 1 - offset] : 1;
+        if (left_dimension != right_dimension && left_dimension != 1 &&
+            right_dimension != 1)
+            return FALSE;
+        expected[rank - 1 - offset] =
+            left_dimension == 1 ? right_dimension : left_dimension;
+    }
+    return DSL_Shape_Result_Dimensions
+               (operands[0], result_ty, expected);
+}
+
+static BOOL
 DSL_Shape_Result_Matches_Kid0
         (const DSL_IR_NODE_RECORD *,
          const std::vector<TY_IDX> &operands,
@@ -1309,7 +1348,7 @@ DSL_Shape_Output_Logits_Result
 }
 
 static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
-    { OPR_DSLADD, 1, DSL_Shape_Same_Result },
+    { OPR_DSLADD, 1, DSL_Shape_Broadcast_Result },
     { OPR_DSLMATMUL, 1, DSL_Shape_Matmul_Result },
     { OPR_DSLMATMUL, 2, DSL_Shape_Matmul_Result },
     { OPR_DSLRELU, 2, DSL_Shape_Result_Matches_Kid0 },
@@ -1333,9 +1372,9 @@ static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
     { OPR_DSLATTENTION, 2, DSL_Shape_Attention_Result },
     { OPR_DSLSWIGLU, 1, DSL_Shape_SwiGLU_Result },
     { OPR_DSLSCATTER, 1, DSL_Shape_Result_Matches_Kid0 },
-    { OPR_DSLMUL, 1, DSL_Shape_Same_Result },
-    { OPR_DSLDIV, 1, DSL_Shape_Same_Result },
-    { OPR_DSLREM, 1, DSL_Shape_Same_Result }
+    { OPR_DSLMUL, 1, DSL_Shape_Broadcast_Result },
+    { OPR_DSLDIV, 1, DSL_Shape_Broadcast_Result },
+    { OPR_DSLREM, 1, DSL_Shape_Broadcast_Result }
 };
 
 static const DSL_SHAPE_RULE_ENTRY *
@@ -1459,6 +1498,150 @@ DSL_Shape_Check_Symbolic_Attention
                (input->node, "attr.softmax_accum_dtype", "float32");
 }
 
+static BOOL
+DSL_Shape_Matmul_Attributes
+        (const DSL_IR_NODE_RECORD *node,
+         UINT16 version,
+         BOOL *transpose_left,
+         BOOL *transpose_right)
+{
+    *transpose_left = FALSE;
+    *transpose_right = FALSE;
+    if (version == 1)
+        return TRUE;
+    if (version != 2)
+        return FALSE;
+    if (DSL_Shape_Attribute_Equals
+            (node, "attr.transpose_kid0", "true"))
+        *transpose_left = TRUE;
+    else if (!DSL_Shape_Attribute_Equals
+                 (node, "attr.transpose_kid0", "false"))
+        return FALSE;
+    if (DSL_Shape_Attribute_Equals
+            (node, "attr.transpose_kid1", "true"))
+        *transpose_right = TRUE;
+    else if (!DSL_Shape_Attribute_Equals
+                 (node, "attr.transpose_kid1", "false"))
+        return FALSE;
+    return DSL_Shape_Attribute_Equals
+               (node, "attr.batch_rule", "exact") &&
+           DSL_Shape_Attribute_Equals
+               (node, "attr.accum_dtype", "float32");
+}
+
+static BOOL
+DSL_Shape_Check_Symbolic_Matmul
+        (const DSL_SHAPE_OPERATOR_INPUT *input,
+         const std::vector<DSL_SHAPE_FACT> &operands,
+         const DSL_SHAPE_FACT &result)
+{
+    BOOL transpose_left;
+    BOOL transpose_right;
+    if (operands.size() != 2 || operands[0].rank < 2 ||
+        operands[0].rank != operands[1].rank ||
+        result.rank != operands[0].rank ||
+        (input->version == 1 && operands[0].rank != 2) ||
+        !DSL_Shape_Matmul_Attributes
+             (input->node, input->version, &transpose_left,
+              &transpose_right) ||
+        !DSL_Shape_Tensor_Element_Representation_Compatible
+             (input->operand_types[0], input->operand_types[1]) ||
+        !DSL_Shape_Tensor_Element_Representation_Compatible
+             (input->operand_types[0], input->result_ty))
+        return FALSE;
+
+    UINT32 rank = operands[0].rank;
+    for (UINT32 i = 0; i + 2 < rank; ++i) {
+        if (!DSL_Shape_Dimension_Proves_Equal
+                 (operands[0], i, operands[1], i) ||
+            !DSL_Shape_Dimension_Proves_Equal
+                 (operands[0], i, result, i))
+            return FALSE;
+    }
+    UINT32 left_m = rank - (transpose_left ? 1 : 2);
+    UINT32 left_k = rank - (transpose_left ? 2 : 1);
+    UINT32 right_k = rank - (transpose_right ? 1 : 2);
+    UINT32 right_n = rank - (transpose_right ? 2 : 1);
+    return DSL_Shape_Dimension_Proves_Equal
+               (operands[0], left_k, operands[1], right_k) &&
+           DSL_Shape_Dimension_Proves_Equal
+               (operands[0], left_m, result, rank - 2) &&
+           DSL_Shape_Dimension_Proves_Equal
+               (operands[1], right_n, result, rank - 1);
+}
+
+static BOOL
+DSL_Shape_Check_Symbolic_Broadcast
+        (const DSL_SHAPE_OPERATOR_INPUT *input,
+         const std::vector<DSL_SHAPE_FACT> &operands,
+         const DSL_SHAPE_FACT &result)
+{
+    if (operands.size() != 2 ||
+        !DSL_Shape_Tensor_Element_Representation_Compatible
+             (input->operand_types[0], input->operand_types[1]) ||
+        !DSL_Shape_Tensor_Element_Representation_Compatible
+             (input->operand_types[0], input->result_ty))
+        return FALSE;
+    if (DSL_Shape_Attribute_Equals
+            (input->node, "attr.broadcast_rule", "none"))
+        return DSL_Shape_Facts_Prove_Equal(operands[0], operands[1]) &&
+               DSL_Shape_Facts_Prove_Equal(operands[0], result);
+    if (!DSL_Shape_Attribute_Equals
+             (input->node, "attr.broadcast_rule", "numpy"))
+        return FALSE;
+
+    UINT32 left_rank = operands[0].rank;
+    UINT32 right_rank = operands[1].rank;
+    UINT32 rank = left_rank > right_rank ? left_rank : right_rank;
+    if ((UINT32)result.rank != rank)
+        return FALSE;
+    for (UINT32 offset = 0; offset < rank; ++offset) {
+        BOOL has_left = offset < left_rank;
+        BOOL has_right = offset < right_rank;
+        UINT32 result_ordinal = rank - 1 - offset;
+        if (!has_left) {
+            if (!DSL_Shape_Dimension_Proves_Equal
+                     (operands[1], right_rank - 1 - offset,
+                      result, result_ordinal))
+                return FALSE;
+            continue;
+        }
+        if (!has_right) {
+            if (!DSL_Shape_Dimension_Proves_Equal
+                     (operands[0], left_rank - 1 - offset,
+                      result, result_ordinal))
+                return FALSE;
+            continue;
+        }
+        UINT32 left_ordinal = left_rank - 1 - offset;
+        UINT32 right_ordinal = right_rank - 1 - offset;
+        const DSL_SHAPE_FACT *source = NULL;
+        UINT32 source_ordinal = 0;
+        if (DSL_Shape_Dimension_Proves_Equal
+                (operands[0], left_ordinal,
+                 operands[1], right_ordinal)) {
+            source = &operands[0];
+            source_ordinal = left_ordinal;
+        } else if (operands[0].dimension_kind[left_ordinal] ==
+                       DSL_SHAPE_DIMENSION_STATIC &&
+                   operands[0].dimension[left_ordinal] == 1) {
+            source = &operands[1];
+            source_ordinal = right_ordinal;
+        } else if (operands[1].dimension_kind[right_ordinal] ==
+                       DSL_SHAPE_DIMENSION_STATIC &&
+                   operands[1].dimension[right_ordinal] == 1) {
+            source = &operands[0];
+            source_ordinal = left_ordinal;
+        } else {
+            return FALSE;
+        }
+        if (!DSL_Shape_Dimension_Proves_Equal
+                 (*source, source_ordinal, result, result_ordinal))
+            return FALSE;
+    }
+    return TRUE;
+}
+
 BOOL
 DSL_Shape_Has_Operator_Rule
         (DSL_OPERATOR dsl_operator,
@@ -1523,6 +1706,18 @@ DSL_Shape_Check_Operator
     }
     if (non_static && input->dsl_operator == OPR_DSLATTENTION)
         return DSL_Shape_Check_Symbolic_Attention
+                   (input, operand_facts, result_fact) ?
+               DSL_SHAPE_CHECK_VALID : DSL_SHAPE_CHECK_INVALID;
+    if (non_static && input->dsl_operator == OPR_DSLMATMUL)
+        return DSL_Shape_Check_Symbolic_Matmul
+                   (input, operand_facts, result_fact) ?
+               DSL_SHAPE_CHECK_VALID : DSL_SHAPE_CHECK_INVALID;
+    if (non_static &&
+        (input->dsl_operator == OPR_DSLADD ||
+         input->dsl_operator == OPR_DSLMUL ||
+         input->dsl_operator == OPR_DSLDIV ||
+         input->dsl_operator == OPR_DSLREM))
+        return DSL_Shape_Check_Symbolic_Broadcast
                    (input, operand_facts, result_fact) ?
                DSL_SHAPE_CHECK_VALID : DSL_SHAPE_CHECK_INVALID;
     if (anonymous_dynamic && input->operand_count > 1)
@@ -1923,6 +2118,78 @@ DSL_Shape_Infer_Same
 }
 
 static BOOL
+DSL_Shape_Infer_Broadcast
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    if (input->operand_count != 2 ||
+        !DSL_Shape_Tensor_Element_Representation_Compatible
+             (input->operand_types[0], input->operand_types[1]))
+        return FALSE;
+    if (DSL_Shape_Attribute_Equals
+            (input->node, "attr.broadcast_rule", "none"))
+        return DSL_Shape_Infer_Same(input, result);
+    if (!DSL_Shape_Attribute_Equals
+             (input->node, "attr.broadcast_rule", "numpy"))
+        return FALSE;
+
+    const DSL_SHAPE_FACT &left = input->operand_facts[0];
+    const DSL_SHAPE_FACT &right = input->operand_facts[1];
+    if (!DSL_Shape_Fact_Complete(left) ||
+        !DSL_Shape_Fact_Complete(right))
+        return TRUE;
+    UINT32 left_rank = left.rank;
+    UINT32 right_rank = right.rank;
+    UINT32 rank = left_rank > right_rank ? left_rank : right_rank;
+    DSL_Shape_Fact_Init(result);
+    result->rank = rank;
+    for (UINT32 offset = 0; offset < rank; ++offset) {
+        BOOL has_left = offset < left_rank;
+        BOOL has_right = offset < right_rank;
+        const DSL_SHAPE_FACT *source;
+        UINT32 source_ordinal;
+        if (!has_left) {
+            source = &right;
+            source_ordinal = right_rank - 1 - offset;
+        } else if (!has_right) {
+            source = &left;
+            source_ordinal = left_rank - 1 - offset;
+        } else {
+            UINT32 left_ordinal = left_rank - 1 - offset;
+            UINT32 right_ordinal = right_rank - 1 - offset;
+            if (DSL_Shape_Dimension_Proves_Equal
+                    (left, left_ordinal, right, right_ordinal)) {
+                source = &left;
+                source_ordinal = left_ordinal;
+            } else if (left.dimension_kind[left_ordinal] ==
+                           DSL_SHAPE_DIMENSION_STATIC &&
+                       left.dimension[left_ordinal] == 1) {
+                source = &right;
+                source_ordinal = right_ordinal;
+            } else if (right.dimension_kind[right_ordinal] ==
+                           DSL_SHAPE_DIMENSION_STATIC &&
+                       right.dimension[right_ordinal] == 1) {
+                source = &left;
+                source_ordinal = left_ordinal;
+            } else {
+                return FALSE;
+            }
+        }
+        UINT32 result_ordinal = rank - 1 - offset;
+        result->dimension_kind[result_ordinal] =
+            source->dimension_kind[source_ordinal];
+        result->dimension_known[result_ordinal] =
+            source->dimension_known[source_ordinal];
+        result->dimension[result_ordinal] =
+            source->dimension[source_ordinal];
+        strcpy(result->dimension_text[result_ordinal],
+               source->dimension_text[source_ordinal]);
+    }
+    DSL_Shape_Fact_Classify(result);
+    return TRUE;
+}
+
+static BOOL
 DSL_Shape_Set_Complete
         (const std::vector<UINT64> &dimensions,
          DSL_SHAPE_FACT *result)
@@ -1966,54 +2233,58 @@ DSL_Shape_Infer_Matmul
         (const DSL_SHAPE_INFERENCE_INPUT *input,
          DSL_SHAPE_FACT *result)
 {
+    BOOL transpose_left;
+    BOOL transpose_right;
     if (input->operand_count != 2 ||
         !DSL_Shape_Tensor_Compatible
-             (input->operand_types[0], input->operand_types[1], FALSE))
+             (input->operand_types[0], input->operand_types[1], FALSE) ||
+        !DSL_Shape_Matmul_Attributes
+             (input->node, input->version, &transpose_left,
+              &transpose_right))
         return FALSE;
-    std::vector<UINT64> left;
-    std::vector<UINT64> right;
-    if (!DSL_Shape_Fact_To_Dimensions(input->operand_facts[0], &left) ||
-        !DSL_Shape_Fact_To_Dimensions(input->operand_facts[1], &right) ||
-        left.size() < 2 || left.size() != right.size())
+    const DSL_SHAPE_FACT &left = input->operand_facts[0];
+    const DSL_SHAPE_FACT &right = input->operand_facts[1];
+    if (left.rank >= 0 &&
+        (left.rank < 2 || left.rank != right.rank ||
+         (input->version == 1 && left.rank != 2)))
+        return FALSE;
+    if (!DSL_Shape_Fact_Complete(left) ||
+        !DSL_Shape_Fact_Complete(right))
         return TRUE;
 
-    BOOL transpose_left = FALSE;
-    BOOL transpose_right = FALSE;
-    if (input->version == 2) {
-        if (DSL_Shape_Attribute_Equals
-                (input->node, "attr.transpose_kid0", "true"))
-            transpose_left = TRUE;
-        else if (!DSL_Shape_Attribute_Equals
-                     (input->node, "attr.transpose_kid0", "false"))
-            return FALSE;
-        if (DSL_Shape_Attribute_Equals
-                (input->node, "attr.transpose_kid1", "true"))
-            transpose_right = TRUE;
-        else if (!DSL_Shape_Attribute_Equals
-                     (input->node, "attr.transpose_kid1", "false"))
-            return FALSE;
-        if (!DSL_Shape_Attribute_Equals
-                 (input->node, "attr.batch_rule", "exact") ||
-            !DSL_Shape_Attribute_Equals
-                 (input->node, "attr.accum_dtype", "float32"))
-            return FALSE;
-    } else if (input->version != 1) {
-        return FALSE;
-    }
-    for (UINT32 i = 0; i + 2 < left.size(); ++i) {
-        if (left[i] != right[i])
+    for (INT32 i = 0; i + 2 < left.rank; ++i) {
+        if (!DSL_Shape_Dimension_Proves_Equal(left, i, right, i))
             return FALSE;
     }
-    UINT32 rank = left.size();
-    UINT64 left_m = left[rank - (transpose_left ? 1 : 2)];
-    UINT64 left_k = left[rank - (transpose_left ? 2 : 1)];
-    UINT64 right_k = right[rank - (transpose_right ? 1 : 2)];
-    UINT64 right_n = right[rank - (transpose_right ? 2 : 1)];
-    if (left_k != right_k)
+    UINT32 rank = left.rank;
+    UINT32 left_m = rank - (transpose_left ? 1 : 2);
+    UINT32 left_k = rank - (transpose_left ? 2 : 1);
+    UINT32 right_k = rank - (transpose_right ? 1 : 2);
+    UINT32 right_n = rank - (transpose_right ? 2 : 1);
+    if (!DSL_Shape_Dimension_Proves_Equal
+             (left, left_k, right, right_k))
         return FALSE;
-    left[rank - 2] = left_m;
-    left[rank - 1] = right_n;
-    return DSL_Shape_Set_Complete(left, result);
+
+    DSL_Shape_Fact_Init(result);
+    result->rank = rank;
+    for (UINT32 i = 0; i + 2 < rank; ++i) {
+        result->dimension_kind[i] = left.dimension_kind[i];
+        result->dimension_known[i] = left.dimension_known[i];
+        result->dimension[i] = left.dimension[i];
+        strcpy(result->dimension_text[i], left.dimension_text[i]);
+    }
+    result->dimension_kind[rank - 2] = left.dimension_kind[left_m];
+    result->dimension_known[rank - 2] = left.dimension_known[left_m];
+    result->dimension[rank - 2] = left.dimension[left_m];
+    strcpy(result->dimension_text[rank - 2],
+           left.dimension_text[left_m]);
+    result->dimension_kind[rank - 1] = right.dimension_kind[right_n];
+    result->dimension_known[rank - 1] = right.dimension_known[right_n];
+    result->dimension[rank - 1] = right.dimension[right_n];
+    strcpy(result->dimension_text[rank - 1],
+           right.dimension_text[right_n]);
+    DSL_Shape_Fact_Classify(result);
+    return TRUE;
 }
 
 static BOOL
@@ -2332,7 +2603,7 @@ DSL_Shape_Infer_Operator
     case OPR_DSLMUL:
     case OPR_DSLDIV:
     case OPR_DSLREM:
-        valid = DSL_Shape_Infer_Same(input, result);
+        valid = DSL_Shape_Infer_Broadcast(input, result);
         break;
     case OPR_DSLRESIDUALADD:
         valid = DSL_Shape_Infer_Same(input, result) &&

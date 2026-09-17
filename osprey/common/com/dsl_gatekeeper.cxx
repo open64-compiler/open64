@@ -717,18 +717,10 @@ DSL_Gatekeeper_Verify_Native_Node
             if (i == 1)
                 second_operand_ty = WN_ty(operand);
             if (shape_ready &&
-                (dsl_operator == OPR_DSLADD ||
-                 dsl_operator == OPR_DSLMUL ||
-                 dsl_operator == OPR_DSLDIV ||
-                 dsl_operator == OPR_DSLREM ||
-                 dsl_operator == OPR_DSLMATMUL ||
+                (dsl_operator == OPR_DSLMATMUL ||
                  dsl_operator == OPR_DSLRESIDUALADD) &&
                 !DSL_Shape_Tensor_Compatible
                       (first_operand_ty, WN_ty(operand),
-                       dsl_operator == OPR_DSLADD ||
-                       dsl_operator == OPR_DSLMUL ||
-                       dsl_operator == OPR_DSLDIV ||
-                       dsl_operator == OPR_DSLREM ||
                        dsl_operator == OPR_DSLRESIDUALADD))
                 valid = DSL_Gatekeeper_Report
                             (context, "%s kid%u tensor is incompatible "
@@ -741,9 +733,10 @@ DSL_Gatekeeper_Verify_Native_Node
          dsl_operator == OPR_DSLMUL ||
          dsl_operator == OPR_DSLDIV ||
          dsl_operator == OPR_DSLREM) &&
-        shape_ready && first_operand_ty != TY_IDX_ZERO &&
-        !DSL_Shape_Tensor_Compatible
-             (first_operand_ty, result_ty, TRUE))
+        shape_ready && image_valid && first_operand_ty != TY_IDX_ZERO &&
+        !DSL_Gatekeeper_Shape_Valid
+             (dsl_operator, logical_opcode.effective_version,
+              &image_node, operand_types, result_ty))
         valid = DSL_Gatekeeper_Report
                     (context, "%s result tensor is incompatible "
                      "with its operands",

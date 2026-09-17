@@ -7489,7 +7489,9 @@ Init_Symbolic_Shape_Descriptor
 static int
 Check_Symbolic_Shape_Solver(void)
 {
-    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP8_ARTIFACT");
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP9_ARTIFACT");
+    if (artifact == NULL)
+        artifact = getenv("OPEN64_DSL_SHAPE_SP8_ARTIFACT");
     DSL_BUILDER_PROGRAM_UNIT pu;
     DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
     DSL_BUILDER_OPERATOR_ATTRIBUTE attributes[11];
@@ -7500,9 +7502,18 @@ Check_Symbolic_Shape_Solver(void)
     DSL_BUILDER_VALUE attention;
     DSL_BUILDER_VALUE dynamic_input;
     DSL_BUILDER_VALUE dynamic_relu;
+    DSL_BUILDER_VALUE matmul_left;
+    DSL_BUILDER_VALUE matmul_right;
+    DSL_BUILDER_VALUE matmul;
+    DSL_BUILDER_VALUE broadcast_left;
+    DSL_BUILDER_VALUE broadcast_right;
+    DSL_BUILDER_VALUE broadcast_add;
+    DSL_BUILDER_VALUE broadcast_mul;
     DSL_BUILDER_STATE key_state;
     DSL_BUILDER_STATE value_state;
     DSL_BUILDER_VALUE kids[3];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE matmul_attributes[4];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast_attribute;
     DSL_SHAPE_SOLVER_RESULT solver;
     DSL_BUILDER_VERIFY_RESULT verify;
     char diagnostic[4096];
@@ -7512,10 +7523,20 @@ Check_Symbolic_Shape_Solver(void)
     TY_IDX source_cache_ty_duplicate;
     TY_IDX dynamic_ty;
     TY_IDX pending_ty;
+    TY_IDX matmul_left_ty;
+    TY_IDX matmul_right_ty;
+    TY_IDX matmul_result_ty;
+    TY_IDX matmul_wrong_batch_ty;
+    TY_IDX matmul_wrong_contract_ty;
+    TY_IDX broadcast_left_ty;
+    TY_IDX broadcast_right_ty;
+    TY_IDX broadcast_result_ty;
+    TY_IDX broadcast_incompatible_ty;
     char source_shape[128];
     char updated_shape[128];
     char expected_source[128];
     char expected_updated[128];
+    char expected_matmul[256];
     int failed = 0;
 
     DSL_Builder_Begin_Program();
@@ -7561,11 +7582,61 @@ Check_Symbolic_Shape_Solver(void)
         (&descriptor, "[1,4,<pending>,8]");
     pending_ty = DSL_Builder_Intern_Tensor_Type
                      ("sp8_pending", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[B,H,M,K]");
+    matmul_left_ty = DSL_Builder_Intern_Tensor_Type
+                         ("sp9_matmul_left", MTYPE_To_TY(MTYPE_F4),
+                          &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[B,H,K,N]");
+    matmul_right_ty = DSL_Builder_Intern_Tensor_Type
+                          ("sp9_matmul_right", MTYPE_To_TY(MTYPE_F4),
+                           &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[B,H,M,N]");
+    matmul_result_ty = DSL_Builder_Intern_Tensor_Type
+                           ("sp9_matmul_result", MTYPE_To_TY(MTYPE_F4),
+                            &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[B,X,K,N]");
+    matmul_wrong_batch_ty = DSL_Builder_Intern_Tensor_Type
+                                ("sp9_matmul_wrong_batch",
+                                 MTYPE_To_TY(MTYPE_F4), &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[B,H,X,N]");
+    matmul_wrong_contract_ty = DSL_Builder_Intern_Tensor_Type
+                                   ("sp9_matmul_wrong_contract",
+                                    MTYPE_To_TY(MTYPE_F4), &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[2,1,3,1]");
+    broadcast_left_ty = DSL_Builder_Intern_Tensor_Type
+                            ("sp9_broadcast_left", MTYPE_To_TY(MTYPE_F4),
+                             &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,1,5]");
+    broadcast_right_ty = DSL_Builder_Intern_Tensor_Type
+                             ("sp9_broadcast_right", MTYPE_To_TY(MTYPE_F4),
+                              &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[2,4,3,5]");
+    broadcast_result_ty = DSL_Builder_Intern_Tensor_Type
+                              ("sp9_broadcast_result",
+                               MTYPE_To_TY(MTYPE_F4), &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[7,6,3,5]");
+    broadcast_incompatible_ty = DSL_Builder_Intern_Tensor_Type
+                                    ("sp9_broadcast_incompatible",
+                                     MTYPE_To_TY(MTYPE_F4), &descriptor);
+    snprintf(expected_matmul, sizeof(expected_matmul),
+             "[B@pu%08x,H@pu%08x,M@pu%08x,N@pu%08x]",
+             (unsigned int)PU_Info_proc_sym(pu),
+             (unsigned int)PU_Info_proc_sym(pu),
+             (unsigned int)PU_Info_proc_sym(pu),
+             (unsigned int)PU_Info_proc_sym(pu));
     if (file_id == 0 || key_state == NULL || value_state == NULL ||
         query_ty == TY_IDX_ZERO ||
         source_cache_ty == TY_IDX_ZERO || updated_cache_ty == TY_IDX_ZERO ||
         source_cache_ty_duplicate != source_cache_ty ||
         dynamic_ty == TY_IDX_ZERO || pending_ty == TY_IDX_ZERO ||
+        matmul_left_ty == TY_IDX_ZERO || matmul_right_ty == TY_IDX_ZERO ||
+        matmul_result_ty == TY_IDX_ZERO ||
+        matmul_wrong_batch_ty == TY_IDX_ZERO ||
+        matmul_wrong_contract_ty == TY_IDX_ZERO ||
+        broadcast_left_ty == TY_IDX_ZERO ||
+        broadcast_right_ty == TY_IDX_ZERO ||
+        broadcast_result_ty == TY_IDX_ZERO ||
+        broadcast_incompatible_ty == TY_IDX_ZERO ||
         strcmp(TY_tensor_attribute
                    (source_cache_ty, TY_TENSOR_SCHEMA_SHAPE),
                expected_source) != 0 ||
@@ -7583,6 +7654,14 @@ Check_Symbolic_Shape_Solver(void)
                 ("sp8_updated_value", updated_cache_ty, 2);
     dynamic_input = DSL_Builder_Create_Model_Input
                         ("sp8_dynamic_input", dynamic_ty, 3);
+    matmul_left = DSL_Builder_Create_Model_Input
+                      ("sp9_matmul_left", matmul_left_ty, 4);
+    matmul_right = DSL_Builder_Create_Model_Input
+                       ("sp9_matmul_right", matmul_right_ty, 5);
+    broadcast_left = DSL_Builder_Create_Model_Input
+                         ("sp9_broadcast_left", broadcast_left_ty, 6);
+    broadcast_right = DSL_Builder_Create_Model_Input
+                          ("sp9_broadcast_right", broadcast_right_ty, 7);
     const char *attribute_names[11] = {
         "attr.execution_mode", "attr.mask_mode", "attr.head_layout",
         "attr.query_heads", "attr.kv_heads", "attr.head_dim",
@@ -7611,7 +7690,43 @@ Check_Symbolic_Shape_Solver(void)
                        (DSL_Opcode_Find
                             (DSL_Domain_Find("common"), "common.relu", 2),
                         2, kids, 1, NULL, 0, "sp8_dynamic_relu", dynamic_ty);
-    if (attention == NULL ||
+    const char *matmul_attribute_names[4] = {
+        "attr.transpose_kid0", "attr.transpose_kid1",
+        "attr.batch_rule", "attr.accum_dtype"
+    };
+    const char *matmul_attribute_values[4] = {
+        "false", "false", "exact", "float32"
+    };
+    for (UINT32 i = 0; i < 4; ++i) {
+        matmul_attributes[i].name = matmul_attribute_names[i];
+        matmul_attributes[i].value = matmul_attribute_values[i];
+    }
+    kids[0] = matmul_left;
+    kids[1] = matmul_right;
+    matmul = DSL_Builder_Create_Operator_With_Result
+                 (DSL_Opcode_Find
+                      (DSL_Domain_Find("common"), "common.matmul", 2),
+                  2, kids, 2, matmul_attributes, 4,
+                  "sp9_symbolic_matmul", matmul_result_ty);
+    broadcast_attribute.name = "attr.broadcast_rule";
+    broadcast_attribute.value = "numpy";
+    kids[0] = broadcast_left;
+    kids[1] = broadcast_right;
+    broadcast_add = DSL_Builder_Create_Operator_With_Result
+                        (DSL_Opcode_Find
+                             (DSL_Domain_Find("common"),
+                              DSL_OPCODE_COMMON_ADD, 1),
+                         1, kids, 2, &broadcast_attribute, 1,
+                         "sp9_broadcast_add", broadcast_result_ty);
+    broadcast_mul = DSL_Builder_Create_Operator_With_Result
+                        (DSL_Opcode_Find
+                             (DSL_Domain_Find("common"), "common.mul", 1),
+                         1, kids, 2, &broadcast_attribute, 1,
+                         "sp9_broadcast_mul", broadcast_result_ty);
+    if (attention == NULL || matmul_left == NULL || matmul_right == NULL ||
+        matmul == NULL || broadcast_left == NULL ||
+        broadcast_right == NULL || broadcast_add == NULL ||
+        broadcast_mul == NULL ||
         !DSL_Builder_Add_State_Effect
              (attention, key_state, DSL_STATE_EFFECT_MODIFY) ||
         !DSL_Builder_Add_State_Effect
@@ -7621,7 +7736,9 @@ Check_Symbolic_Shape_Solver(void)
     position.file_id = file_id;
     position.statement_begin = 1;
     DSL_BUILDER_VALUE values[] = {
-        query, key, value, attention, dynamic_input, dynamic_relu
+        query, key, value, attention, dynamic_input, dynamic_relu,
+        matmul_left, matmul_right, matmul, broadcast_left, broadcast_right,
+        broadcast_add, broadcast_mul
     };
     for (UINT32 i = 0; i < sizeof(values) / sizeof(values[0]); ++i) {
         position.line = 100 + i;
@@ -7640,7 +7757,7 @@ Check_Symbolic_Shape_Solver(void)
                       (pu, PU_Info_tree_ptr(pu), stderr, &solver) ||
         solver.contradiction_count != 0 || solver.pending_value_count != 0 ||
         solver.unresolved_value_count != 0 ||
-        solver.symbolic_value_count != 2 ||
+        solver.symbolic_value_count != 5 ||
         solver.runtime_dynamic_value_count != 2 ||
         !DSL_Builder_Verify_Program(&verify) || verify.error_count != 0) {
         fprintf(stderr,
@@ -7650,6 +7767,112 @@ Check_Symbolic_Shape_Solver(void)
                 solver.runtime_dynamic_value_count,
                 solver.pending_value_count, solver.unresolved_value_count);
         fprintf(stderr, "%s", diagnostic);
+        failed = 1;
+    }
+
+    DSL_IR_VALUE_RECORD matmul_value;
+    DSL_IR_NODE_RECORD matmul_node;
+    DSL_SHAPE_FACT matmul_operands[2];
+    DSL_SHAPE_FACT matmul_result;
+    DSL_SHAPE_INFERENCE_INPUT inference;
+    char inferred_shape[256];
+    memset(&matmul_value, 0, sizeof(matmul_value));
+    memset(&matmul_node, 0, sizeof(matmul_node));
+    memset(&inference, 0, sizeof(inference));
+    TY_IDX matmul_operand_types[2] = {
+        matmul_left_ty, matmul_right_ty
+    };
+    if (!failed &&
+        (!DSL_IR_Image_Find_Value
+             (DSL_Builder_Get_Value_Result_Symbol(matmul),
+              "sp9_symbolic_matmul", &matmul_value) ||
+         !DSL_IR_Image_Get_Node
+             (matmul_value.producer_node_id, &matmul_node) ||
+         !DSL_Shape_Fact_From_Type
+             (matmul_left_ty, &matmul_operands[0]) ||
+         !DSL_Shape_Fact_From_Type
+             (matmul_right_ty, &matmul_operands[1]))) {
+        fprintf(stderr, "SP9 symbolic matmul setup failed\n");
+        failed = 1;
+    }
+    inference.dsl_operator = OPR_DSLMATMUL;
+    inference.version = 2;
+    inference.node = &matmul_node;
+    inference.operand_types = matmul_operand_types;
+    inference.operand_facts = matmul_operands;
+    inference.operand_count = 2;
+    inference.result_ty = matmul_result_ty;
+    if (!failed &&
+        (DSL_Shape_Infer_Operator(&inference, &matmul_result) !=
+             DSL_SHAPE_INFERENCE_COMPLETE ||
+         !DSL_Shape_Format_Fact
+             (&matmul_result, inferred_shape, sizeof(inferred_shape)) ||
+         strcmp(inferred_shape, expected_matmul) != 0)) {
+        fprintf(stderr, "SP9 symbolic matmul inference changed: %s\n",
+                inferred_shape);
+        failed = 1;
+    }
+
+    DSL_SHAPE_FACT invalid_operand;
+    BOOL rejected_wrong_batch = FALSE;
+    BOOL rejected_wrong_contract = FALSE;
+    if (!failed && DSL_Shape_Fact_From_Type
+                       (matmul_wrong_batch_ty, &invalid_operand)) {
+        matmul_operand_types[1] = matmul_wrong_batch_ty;
+        matmul_operands[1] = invalid_operand;
+        rejected_wrong_batch =
+            DSL_Shape_Infer_Operator(&inference, &matmul_result) ==
+                DSL_SHAPE_INFERENCE_CONTRADICTION;
+    }
+    if (!failed && DSL_Shape_Fact_From_Type
+                       (matmul_wrong_contract_ty, &invalid_operand)) {
+        matmul_operand_types[1] = matmul_wrong_contract_ty;
+        matmul_operands[1] = invalid_operand;
+        rejected_wrong_contract =
+            DSL_Shape_Infer_Operator(&inference, &matmul_result) ==
+                DSL_SHAPE_INFERENCE_CONTRADICTION;
+    }
+    if (!failed && (!rejected_wrong_batch || !rejected_wrong_contract)) {
+        fprintf(stderr,
+                "SP9 symbolic matmul accepted an unproved batch or "
+                "contraction\n");
+        failed = 1;
+    }
+
+    DSL_SHAPE_FACT broadcast_operands[2];
+    DSL_SHAPE_FACT broadcast_result;
+    TY_IDX broadcast_operand_types[2] = {
+        broadcast_left_ty, broadcast_incompatible_ty
+    };
+    inference.dsl_operator = OPR_DSLADD;
+    inference.version = 1;
+    inference.node = NULL;
+    DSL_IR_VALUE_RECORD broadcast_value;
+    DSL_IR_NODE_RECORD broadcast_node;
+    memset(&broadcast_value, 0, sizeof(broadcast_value));
+    memset(&broadcast_node, 0, sizeof(broadcast_node));
+    if (!failed &&
+        (!DSL_IR_Image_Find_Value
+             (DSL_Builder_Get_Value_Result_Symbol(broadcast_add),
+              "sp9_broadcast_add", &broadcast_value) ||
+         !DSL_IR_Image_Get_Node
+             (broadcast_value.producer_node_id, &broadcast_node) ||
+         !DSL_Shape_Fact_From_Type
+             (broadcast_left_ty, &broadcast_operands[0]) ||
+         !DSL_Shape_Fact_From_Type
+             (broadcast_incompatible_ty, &broadcast_operands[1]))) {
+        fprintf(stderr, "SP9 incompatible broadcast setup failed\n");
+        failed = 1;
+    }
+    inference.node = &broadcast_node;
+    inference.operand_types = broadcast_operand_types;
+    inference.operand_facts = broadcast_operands;
+    inference.operand_count = 2;
+    inference.result_ty = broadcast_result_ty;
+    if (!failed &&
+        DSL_Shape_Infer_Operator(&inference, &broadcast_result) !=
+            DSL_SHAPE_INFERENCE_CONTRADICTION) {
+        fprintf(stderr, "SP9 accepted an impossible NumPy broadcast\n");
         failed = 1;
     }
 
@@ -7759,11 +7982,14 @@ Check_Symbolic_Shape_Solver(void)
         }
     }
 
-    if (!failed)
+    if (!failed) {
         printf("SP8 symbolic shape contract passed: symbolic=%u "
                "runtime_dynamic=%u\n",
                solver.symbolic_value_count,
                solver.runtime_dynamic_value_count);
+        if (getenv("OPEN64_DSL_SHAPE_SP9_ONLY") != NULL)
+            printf("SP9 broadcast and symbolic matmul contract passed\n");
+    }
     return failed;
 }
 
@@ -8175,6 +8401,8 @@ main(void)
     if (getenv("OPEN64_DSL_SHAPE_SP3_ONLY") != NULL)
         return Check_Shape_Solver();
     if (getenv("OPEN64_DSL_SHAPE_SP8_ONLY") != NULL)
+        return Check_Symbolic_Shape_Solver();
+    if (getenv("OPEN64_DSL_SHAPE_SP9_ONLY") != NULL)
         return Check_Symbolic_Shape_Solver();
     if (getenv("OPEN64_DSL_FHE_SYNC1_ONLY") != NULL)
         return Check_FHE_SYNC1_Mapped_Image();
