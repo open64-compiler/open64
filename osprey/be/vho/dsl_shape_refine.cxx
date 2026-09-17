@@ -3,7 +3,6 @@
  */
 
 #include <string.h>
-#include <string>
 #include <vector>
 
 #include "dsl_shape_refine.h"
@@ -30,11 +29,35 @@ typedef struct {
     WN *tree;
     UINT64 generation;
     UINT64 validated_generation;
-    std::string invalidated_by;
+    VHO_DSL_SHAPE_TRIGGER invalidated_by;
 } VHO_DSL_SHAPE_GENERATION_STATE;
 
 static std::vector<VHO_DSL_SHAPE_GENERATION_STATE>
     VHO_DSL_shape_generation_state;
+
+static const char *VHO_DSL_shape_trigger_name[VHO_DSL_SHAPE_TRIGGER_COUNT] = {
+    "none",
+    "pu_admission",
+    "pu_identity_change",
+    "seed_refinement",
+    "operator_constraint_change",
+    "value_relationship_change",
+    "structural_transformation",
+    "pu_region_restructuring",
+    "symbolic_resolution",
+    "dsl_wopt",
+    "fhe_conversion",
+    "vho_dsl_optimization"
+};
+
+const char *
+VHO_DSL_Shape_Trigger_Name (VHO_DSL_SHAPE_TRIGGER trigger)
+{
+    if (trigger < VHO_DSL_SHAPE_TRIGGER_NONE ||
+        trigger >= VHO_DSL_SHAPE_TRIGGER_COUNT)
+        return "unknown";
+    return VHO_DSL_shape_trigger_name[trigger];
+}
 
 static VHO_DSL_SHAPE_GENERATION_STATE *
 VHO_DSL_Shape_Generation_State
@@ -56,7 +79,8 @@ VHO_DSL_Shape_Generation_State
                 state->tree = tree;
                 state->generation = 1;
                 state->validated_generation = 0;
-                state->invalidated_by = "PU identity changed";
+                state->invalidated_by =
+                    VHO_DSL_SHAPE_TRIGGER_PU_IDENTITY_CHANGE;
             }
             return state;
         }
@@ -69,7 +93,7 @@ VHO_DSL_Shape_Generation_State
     state.tree = tree;
     state.generation = 1;
     state.validated_generation = 0;
-    state.invalidated_by = "not yet refined";
+    state.invalidated_by = VHO_DSL_SHAPE_TRIGGER_PU_ADMISSION;
     VHO_DSL_shape_generation_state.push_back(state);
     return &VHO_DSL_shape_generation_state.back();
 }
@@ -85,7 +109,7 @@ VHO_DSL_Shape_Refinement_Mark_Current
         return FALSE;
     state->tree = tree;
     state->validated_generation = state->generation;
-    state->invalidated_by.clear();
+    state->invalidated_by = VHO_DSL_SHAPE_TRIGGER_NONE;
     return TRUE;
 }
 
@@ -93,9 +117,17 @@ BOOL
 VHO_DSL_Shape_Refinement_Invalidate
         (PU_Info *pu_info,
          WN *tree,
-         const char *reason,
+         VHO_DSL_SHAPE_TRIGGER trigger,
          FILE *diagnostic)
 {
+    if (trigger <= VHO_DSL_SHAPE_TRIGGER_NONE ||
+        trigger >= VHO_DSL_SHAPE_TRIGGER_COUNT) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "DSL-SHAPE-INVALIDATE-ERROR: trigger=%d name=%s\n",
+                    (INT)trigger, VHO_DSL_Shape_Trigger_Name(trigger));
+        return FALSE;
+    }
     VHO_DSL_SHAPE_GENERATION_STATE *state =
         VHO_DSL_Shape_Generation_State(pu_info, tree, TRUE);
     if (state == NULL)
@@ -104,13 +136,13 @@ VHO_DSL_Shape_Refinement_Invalidate
     ++state->generation;
     if (state->generation == 0)
         state->generation = 1;
-    state->invalidated_by = reason != NULL ? reason : "unspecified transform";
+    state->invalidated_by = trigger;
     if (diagnostic != NULL)
         fprintf(diagnostic,
                 "DSL-SHAPE-INVALIDATE: pu=%s generation=%llu reason=%s\n",
                 ST_name(St_Table[state->owner_pu_st]),
                 (unsigned long long)state->generation,
-                state->invalidated_by.c_str());
+                VHO_DSL_Shape_Trigger_Name(state->invalidated_by));
     return TRUE;
 }
 
@@ -135,8 +167,9 @@ VHO_DSL_Shape_Refinement_Is_Current
                 (unsigned long long)(state != NULL ? state->generation : 0),
                 (unsigned long long)(state != NULL ?
                     state->validated_generation : 0),
-                state != NULL && !state->invalidated_by.empty() ?
-                    state->invalidated_by.c_str() : "no refinement state");
+                state != NULL ?
+                    VHO_DSL_Shape_Trigger_Name(state->invalidated_by) :
+                    "no_refinement_state");
     }
     return current;
 }

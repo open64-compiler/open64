@@ -10,7 +10,7 @@ No implementation milestone may weaken binary WHIRL compatibility, mutate a
 sealed tensor type in place, duplicate shape formulas in independent services,
 or expose a partially retyped WHIRL program.
 
-Progress through SP8:
+Progress through SP10 implementation:
 
 - SP0 baseline inventory was consumed by the SP1 through SP3 implementation
   reviews.
@@ -28,6 +28,16 @@ Progress through SP8:
   the `symbol+constant` expression slice, symbolic decode-attention checking,
   strict pending rejection, and mapped-image inspection on
   `codex/dsl-shape-sp8-symbolic`.
+- SP9 adds reviewed NumPy broadcasting and symbolic batched-matmul inference,
+  and completes the common, model, FHE, non-DSL, reader-compatibility, and
+  target-matrix lanes on `codex/dsl-shape-sp9-certification`. Normal `-O0`
+  backend and DSL-aware `whirl2c` certification are also complete after
+  correcting the pre-existing backend static-initialization defects recorded
+  in `WHIRL-DSL-SHAPE-SP9-CERTIFICATION.md`.
+- SP10 publishes and enforces the Shape Inference Trigger Contract with
+  structured runtime trigger identities, richer transformation shape effects,
+  a current-call-site audit, and focused stale-generation tests. Certification
+  is recorded in `WHIRL-DSL-SHAPE-SP10-CERTIFICATION.md`.
 
 ## Objective
 
@@ -536,6 +546,16 @@ Implemented SP7 contract:
 6. The current/stale check is defensive compiler state, not frontend metadata.
    It is scoped to the driver-selected PU and never traverses or mutates another
    PU.
+7. The normative trigger taxonomy is recorded in the Shape Inference Trigger
+   Contract in `WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`. Seed creation,
+   constraint mutation, value/boundary mutation, structural transformation,
+   symbolic resolution, and shape-consuming phase boundaries are all covered.
+   A new pass is shape invalidating until its registration proves preservation.
+8. Inlining, cloning, specialization, outlining, and coordinated signature
+   changes must use the same trigger contract when their owning driver is
+   implemented. Their mention in the contract does not grant the current
+   per-PU VHO driver cross-PU scope; interprocedural scheduling remains future
+   `-ipa` work.
 
 Retained SP7 review evidence:
 
@@ -594,6 +614,9 @@ PR boundary: symbolic model and its compatibility contract.
 
 Dependencies: SP7 for static certification; SP8 for dynamic certification.
 
+Status: complete. See `WHIRL-DSL-SHAPE-SP9-CERTIFICATION.md` for the full
+matrix, backend startup correction, and retained evidence.
+
 Required matrix:
 
 - common add/mul broadcasting;
@@ -622,6 +645,43 @@ SHA256SUMS
 The `.T` file is produced with `ir_b2a -st -src`. Docker lanes use an explicit
 host bind mount and clean the artifact family only at the start of the next run.
 
+### SP10: Shape Inference Trigger Contract And Enforcement Audit
+
+Dependencies: SP9.
+
+Status: complete. The normative trigger taxonomy is published in
+`WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`; retained evidence and the enforcement
+audit are recorded in `WHIRL-DSL-SHAPE-SP10-CERTIFICATION.md`.
+
+Actions:
+
+1. Audit every current shape-refinement and invalidation site against the
+   trigger contract: initial per-PU admission, DSL WOPT/Preopt, FHE conversion,
+   fixed-order VHO DSL optimization, and the pre-lowering currency gate.
+2. Replace free-form invalidation reasons with a runtime-only structured trigger
+   identity and stable diagnostic name. Do not add persisted metadata, a WHIRL
+   section, or a binary compatibility dependency.
+3. Require every newly registered transformation to declare shape preserving,
+   monotonic refining, locally invalidating, or boundary invalidating. Unknown
+   classifications remain invalidating by default.
+4. Test that seed construction remains a frontend/admission responsibility and
+   that authoritative graph-wide retyping occurs only in the compiler-owned
+   per-PU pass.
+5. Test current-generation rejection at every shape-consuming boundary covered
+   by the current pipeline. Leave future inlining, cloning, specialization,
+   outlining, and cross-PU IPA scheduling to their owning implementations, but
+   require them to adopt this contract when introduced.
+
+Exit gate SP10:
+
+- every current trigger has an owner, structured identity, and focused test;
+- an unclassified transformation cannot silently preserve stale shape state;
+- no frontend, binary WHIRL, or cross-PU scope expansion is introduced; and
+- the SP9 certification matrix remains unchanged and passing.
+
+PR boundary: trigger contract, runtime-only trigger identities, call-site audit,
+and focused stale-state tests.
+
 ## Pull-Request Sequence
 
 | PR | Scope | Depends on |
@@ -635,6 +695,8 @@ host bind mount and clean the artifact family only at the start of the next run.
 | P6 | Driver-owned per-PU and REGION lifecycle certification | P5 |
 | P7 | Transformation invalidation and static certification | P6 |
 | P8 | Symbolic/runtime-dynamic model and certification | P7, design review |
+| P9 | Broadcasting, symbolic matmul, and final certification | P8 |
+| P10 | Trigger contract and enforcement audit | P9 |
 
 P1 and P2 are the only planned concurrent coding streams. Later PRs modify
 shared type/value relationships and should remain serial to keep review and
@@ -655,16 +717,14 @@ rollback reasoning tractable.
 
 ## Active Queue
 
-The active non-IPA queue is SP9. Future interprocedural shape
-work is collected separately in
+The per-PU SP0-SP10 implementation queue is complete. Future interprocedural
+shape work is collected separately in
 `doc/IPA-DSL-SHAPE-PROPAGATION-TODO.md`. That document is an incubating
 research queue, not a dependency of the current per-PU implementation. It
 becomes actionable only under `-ipa` after the IPA summary and call-graph
 contracts are reviewed.
 
-1. **SP9: Final certification.** Static lanes depend on SP7; dynamic Llama
-   decode certification uses the SP8 symbolic contract.
-2. **IPA-S0 and IPA-S1 research.** May collect architecture evidence in
+1. **IPA-S0 and IPA-S1 research.** May collect architecture evidence in
    parallel, but no cross-PU code begins before the IPA owners review the
    summary inventory and semantic transfer contract.
 

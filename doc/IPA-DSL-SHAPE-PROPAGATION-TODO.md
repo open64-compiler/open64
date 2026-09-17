@@ -188,4 +188,3 @@ Before coding begins, review IPA-S0 and IPA-S1 with both IPA and DSL owners.
 The first implementation PR should be check-only and must not add cloning,
 signature mutation, or a binary summary extension unless those contracts have
 already passed separate review.
-

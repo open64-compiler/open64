@@ -1747,7 +1747,8 @@ VHO_DSL_Lower_Driver
     if (shape_invalidated) {
         BOOL invalidated = VHO_DSL_Shape_Refinement_Invalidate
                                (pu_info, tree,
-                                "VHO DSL optimization", stderr);
+                                VHO_DSL_SHAPE_TRIGGER_VHO_DSL_OPTIMIZATION,
+                                stderr);
         FmtAssert(invalidated,
                   ("could not invalidate DSL tensor shape state"));
     }

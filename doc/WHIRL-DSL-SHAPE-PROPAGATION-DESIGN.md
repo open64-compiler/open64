@@ -540,6 +540,60 @@ Admission permits reviewed pending or symbolic shape states. Strict mode
 requires every fact needed by the next phase and compares the descriptor with
 the shared operator shape-function result.
 
+## Shape Inference Trigger Contract
+
+Shape inference is an operator-local transfer function. Shape propagation is
+the driver-scheduled, per-PU fixed-point process that applies those functions
+as shape evidence and constraints become available. Supplying a model input,
+parameter, or other tensor descriptor creates a seed; it does not give the
+frontend ownership of graph-wide propagation.
+
+The active compilation-scope owner must schedule initial refinement or
+invalidate current shape state when any of the following events occurs:
+
+| Trigger class | Events | Required action |
+| --- | --- | --- |
+| PU admission | A mapped binary PU is selected for backend processing, including `-O0` and `whirl2c`-only processing | Run mandatory per-PU refinement before any shape-consuming phase. |
+| New or refined seed | A model input, formal, parameter, buffer, constant, external payload, symbolic dimension, runtime dimension, or reviewed shape assertion supplies stronger tensor facts | Validate the seed locally; rerun per-PU refinement before consuming dependent results. |
+| Operator constraint change | An operator is created, removed, replaced, promoted to another version, or has a shape-relevant operand or attribute changed | Invalidate affected local results and rerun refinement. |
+| Value relationship change | A result, defining value, use, call actual, formal, return, hidden-result formal, or REGION input/result relationship changes | Invalidate the active PU's boundary evidence and rerun refinement. Cross-PU mutation requires an explicit IPA-owned operation. |
+| Structural transformation | Canonicalization, simplification, constant propagation or folding, CSE, PRE, dead-result removal, fusion, decomposition, quantization, packing, layout transformation, domain conversion, or another pass changes the shape constraint graph | The pass must prove preservation or invalidate and schedule refinement. |
+| PU/REGION restructuring | Inlining, cloning, specialization, outlining, REGION construction, or REGION-interface rewriting changes the active PU | The transformation owner must invalidate and rerun refinement for every affected PU in its established compilation scope. |
+| Runtime or symbolic resolution | A guard, assertion, specialization decision, or other reviewed evidence resolves or strengthens a symbolic/runtime dimension | Intern the refined immutable tensor type, rebind affected values atomically, and continue propagation to a fixed point. |
+| Shape consumer boundary | Strict gatekeeping, domain legality analysis, storage sizing, implementation selection, checkpoint publication, or DSL lowering requires authoritative shapes | Require current shape generation; reject stale, contradictory, or impermissibly unresolved state. |
+
+Frontend ingestion owns seed construction and admission checks. In particular,
+a complete model-input shape can enable inference for its users, but the
+authoritative mutable refinement remains the compiler-owned VHO pass. Builder
+finalization may run check-only analysis and reject malformed seeds; it must not
+become a second graph-wide shape compiler.
+
+The contract is intentionally expressed in terms of semantic mutations rather
+than a closed list of pass names. Every new transformation must declare one of
+the shape effects below when it is registered. A transformation not yet
+classified is shape invalidating by default. A pass may claim preservation only
+when it proves that no event in this table occurred.
+
+The current ordinary-backend trigger sites are:
+
+1. unconditional initial refinement for each driver-selected PU;
+2. invalidation before DSL WOPT/Preopt and refinement after it;
+3. invalidation and refinement after successful FHE conversion;
+4. invalidation around every currently enabled fixed-order VHO DSL
+   optimization stage; and
+5. a current-generation requirement immediately before DSL lowering.
+
+SP10 owns the enforcement audit for this contract. It gives current runtime
+trigger sites structured identities and focused tests without persisting trigger
+state in binary WHIRL.
+
+Inlining, cloning, specialization, and outlining are contractually covered but
+are not automatic cross-PU actions of `VHO_DSL_Shape_Refine_Driver()`. If they
+occur before the ordinary backend selects a PU, the mandatory initial pass sees
+their result. If they occur after refinement, their owning per-PU driver must
+invalidate and rerun it. Coordinated caller/callee changes belong to a future
+explicit `-ipa` shape phase.
+
 ## Transformation Invalidation
 
 Every DSL transformation must declare whether it:

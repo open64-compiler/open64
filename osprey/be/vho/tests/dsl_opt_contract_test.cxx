@@ -88,13 +88,26 @@ main(void)
     for (UINT32 ordinal = 0; ordinal < VHO_DSL_OPT_STAGE_COUNT; ++ordinal) {
         VHO_DSL_OPT_STAGE stage = (VHO_DSL_OPT_STAGE)ordinal;
         if (VHO_DSL_Opt_Stage_Shape_Effect(stage) !=
-                VHO_DSL_OPT_SHAPE_INVALIDATING) {
+                VHO_DSL_OPT_SHAPE_INVALIDATING_LOCAL) {
             fprintf(stderr,
                     "DSL VHO stage %s did not conservatively invalidate "
                     "shape state\n",
                     VHO_DSL_Opt_Stage_Name(stage));
             return 1;
         }
+    }
+    if (VHO_DSL_Opt_Shape_Effect_Invalidates
+            (VHO_DSL_OPT_SHAPE_PRESERVING) ||
+        VHO_DSL_Opt_Shape_Effect_Invalidates
+            (VHO_DSL_OPT_SHAPE_MONOTONIC_REFINING) ||
+        !VHO_DSL_Opt_Shape_Effect_Invalidates
+            (VHO_DSL_OPT_SHAPE_INVALIDATING_LOCAL) ||
+        !VHO_DSL_Opt_Shape_Effect_Invalidates
+            (VHO_DSL_OPT_SHAPE_INVALIDATING_BOUNDARY) ||
+        !VHO_DSL_Opt_Shape_Effect_Invalidates
+            ((VHO_DSL_OPT_SHAPE_EFFECT)99)) {
+        fprintf(stderr, "DSL VHO shape-effect classification changed\n");
+        return 1;
     }
 
     if (!VHO_DSL_Opt_Register_Pass

@@ -1958,7 +1958,7 @@ Preprocess_PU (PU_Info *current_pu)
     Is_True(wopt_loaded,
             ("DSL WOPT requested but the WOPT component is unavailable"));
     FmtAssert(VHO_DSL_Shape_Refinement_Invalidate
-                  (current_pu, pu, "DSL WOPT", stderr),
+                  (current_pu, pu, VHO_DSL_SHAPE_TRIGGER_DSL_WOPT, stderr),
               ("could not invalidate DSL shape state before WOPT"));
     REGION_Initialize(pu, PU_has_region(Get_Current_PU()));
     Set_Error_Phase ( "DSL WOPT Processing" );
@@ -1999,7 +1999,8 @@ Preprocess_PU (PU_Info *current_pu)
 
     if (convert_result.conversion_pass_count != 0) {
       FmtAssert(VHO_DSL_Shape_Refinement_Invalidate
-                    (current_pu, pu, "FHE VHO conversion", stderr),
+                    (current_pu, pu,
+                     VHO_DSL_SHAPE_TRIGGER_FHE_CONVERSION, stderr),
                 ("could not invalidate DSL shape state after FHE conversion"));
       Set_Error_Phase ( "DSL Shape Refinement after FHE Conversion" );
       pu = VHO_DSL_Shape_Refine_Driver(current_pu, pu);

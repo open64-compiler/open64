@@ -85,6 +85,36 @@ Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
            record.ty == expected;
 }
 
+static BOOL
+Shape_Trigger_Names_Are_Stable (void)
+{
+    static const char *expected[VHO_DSL_SHAPE_TRIGGER_COUNT] = {
+        "none",
+        "pu_admission",
+        "pu_identity_change",
+        "seed_refinement",
+        "operator_constraint_change",
+        "value_relationship_change",
+        "structural_transformation",
+        "pu_region_restructuring",
+        "symbolic_resolution",
+        "dsl_wopt",
+        "fhe_conversion",
+        "vho_dsl_optimization"
+    };
+    for (UINT32 ordinal = 0;
+         ordinal < VHO_DSL_SHAPE_TRIGGER_COUNT; ++ordinal) {
+        if (strcmp(VHO_DSL_Shape_Trigger_Name
+                       ((VHO_DSL_SHAPE_TRIGGER)ordinal),
+                   expected[ordinal]) != 0)
+            return FALSE;
+    }
+    return strcmp(VHO_DSL_Shape_Trigger_Name
+                      ((VHO_DSL_SHAPE_TRIGGER)-1), "unknown") == 0 &&
+           strcmp(VHO_DSL_Shape_Trigger_Name
+                      (VHO_DSL_SHAPE_TRIGGER_COUNT), "unknown") == 0;
+}
+
 int
 main(void)
 {
@@ -158,6 +188,22 @@ main(void)
         return 1;
     }
 
+    const char *before_artifact =
+        getenv("OPEN64_DSL_SHAPE_SP10_BEFORE_ARTIFACT");
+    if (before_artifact != NULL && before_artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST image;
+        image.path = before_artifact;
+        image.flags = 0;
+        (void)unlink(before_artifact);
+        if (!DSL_Builder_Finalize_Mapped_Image(&image) ||
+            access(before_artifact, F_OK) != 0) {
+            fprintf(stderr, "SP10 before-refinement image failed\n");
+            return 1;
+        }
+        printf("SP10 before-refinement admission image passed\n");
+        return 0;
+    }
+
     VHO_DSL_SHAPE_REFINE_RESULT disabled;
     if (VHO_DSL_Shape_Refine_Program_Unit
             (pu, PU_Info_tree_ptr(pu), FALSE, NULL, &disabled) ||
@@ -226,15 +272,26 @@ main(void)
         return 1;
     }
 
+    if (!Shape_Trigger_Names_Are_Stable() ||
+        VHO_DSL_Shape_Refinement_Invalidate
+            (pu, PU_Info_tree_ptr(pu),
+             VHO_DSL_SHAPE_TRIGGER_COUNT, stderr) ||
+        !VHO_DSL_Shape_Refinement_Is_Current
+            (pu, PU_Info_tree_ptr(pu), stderr)) {
+        fprintf(stderr, "SP10 shape trigger identity changed\n");
+        return 1;
+    }
+
     if (!VHO_DSL_Shape_Refinement_Is_Current
              (pu, PU_Info_tree_ptr(pu), stderr) ||
         !VHO_DSL_Shape_Refinement_Invalidate
-             (pu, PU_Info_tree_ptr(pu), "SP7 test transform", stderr) ||
+             (pu, PU_Info_tree_ptr(pu),
+              VHO_DSL_SHAPE_TRIGGER_OPERATOR_CONSTRAINT_CHANGE, stderr) ||
         VHO_DSL_Shape_Refinement_Is_Current
              (pu, PU_Info_tree_ptr(pu), NULL) ||
         !DSL_Gatekeeper_Verify_PU_Mode
              (pu, DSL_GATEKEEPER_STRICT, stderr, &gatekeeper)) {
-        fprintf(stderr, "SP7 shape generation invalidation changed\n");
+        fprintf(stderr, "SP10 shape generation invalidation changed\n");
         return 1;
     }
 
@@ -252,7 +309,32 @@ main(void)
         return 1;
     }
 
-    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP7_ARTIFACT");
+    static const VHO_DSL_SHAPE_TRIGGER current_triggers[] = {
+        VHO_DSL_SHAPE_TRIGGER_DSL_WOPT,
+        VHO_DSL_SHAPE_TRIGGER_FHE_CONVERSION,
+        VHO_DSL_SHAPE_TRIGGER_VHO_DSL_OPTIMIZATION
+    };
+    for (UINT32 index = 0;
+         index < sizeof(current_triggers) / sizeof(current_triggers[0]);
+         ++index) {
+        if (!VHO_DSL_Shape_Refinement_Invalidate
+                 (pu, PU_Info_tree_ptr(pu), current_triggers[index], stderr) ||
+            VHO_DSL_Shape_Refinement_Is_Current
+                 (pu, PU_Info_tree_ptr(pu), NULL) ||
+            !VHO_DSL_Shape_Refine_Program_Unit
+                 (pu, PU_Info_tree_ptr(pu), TRUE, stderr, &revalidated) ||
+            !VHO_DSL_Shape_Refinement_Is_Current
+                 (pu, PU_Info_tree_ptr(pu), stderr)) {
+            fprintf(stderr,
+                    "SP10 current trigger did not revalidate: %s\n",
+                    VHO_DSL_Shape_Trigger_Name(current_triggers[index]));
+            return 1;
+        }
+    }
+
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP10_ARTIFACT");
+    if (artifact == NULL || artifact[0] == '\0')
+        artifact = getenv("OPEN64_DSL_SHAPE_SP7_ARTIFACT");
     if (artifact == NULL || artifact[0] == '\0')
         artifact = getenv("OPEN64_DSL_SHAPE_SP5_ARTIFACT");
     if (artifact != NULL && artifact[0] != '\0') {
@@ -273,5 +355,9 @@ main(void)
            refined.retyped_value_count, refined.reused_type_count,
            forced_failure.rollback_count,
            revalidated.solver.unchanged_value_count);
+    printf("SP10 shape trigger contract passed: triggers=%u "
+           "unknown_rejected=1 stale_revalidated=1 "
+           "current_triggers=3\n",
+           (UINT32)VHO_DSL_SHAPE_TRIGGER_COUNT - 1);
     return 0;
 }

@@ -363,10 +363,30 @@ native representation, compatibility, verification, inspection, and lowering.
    IR. If the active `ir_b2a` build does not yet support `-src`, treat that as a
    tooling gap to fix; do not silently omit source cross-reference evidence.
 10. The `ir_b2a` output must use the input `.B` file's stem, for example
-   `ir_b2a -st -src resnet.B resnet.T`. On case-insensitive filesystems where
-   `resnet.T` collides with a driver-produced `resnet.t`, preserve the phase
-   trace under a descriptive non-colliding name such as `resnet.vho.t` before
-   producing `resnet.T`.
+    `ir_b2a -st -src resnet.B resnet.T`. On case-insensitive filesystems where
+    `resnet.T` collides with a driver-produced `resnet.t`, preserve the phase
+    trace under a descriptive non-colliding name such as `resnet.vho.t` before
+    producing `resnet.T`.
+11. Every coding change that adds or modifies an IR transformation must retain
+    reviewable before-and-after WHIRL evidence. Produce `<case>.before.B` and
+    `<case>.after.B`, reopen each independently with `ir_b2a -st -src` as
+    `<case>.before.T` and `<case>.after.T`, and retain a unified diff such as
+    `<case>.before-after.diff`. An in-memory phase trace alone is not a
+    substitute for mapped binary WHIRL evidence.
+12. Capture the before image immediately before the transformation and the
+    after image immediately after it, using the same input, options, target,
+    compilation scope, and source mapping. If the normal driver cannot publish
+    both boundaries, add a focused producer or reviewed checkpoint using the
+    existing WHIRL writer rather than fabricating textual IR.
+13. The transformation diff must make intentional WN, ST, TY, TensorDescriptorIR,
+    REGION, and managed-table changes visible while also demonstrating relevant
+    invariants. Preserve the raw `ir_b2a` diff; a focused or normalized excerpt
+    may supplement it but must not replace it.
+14. Treat unexplained diff churn as a review blocker. The validation report and
+    pull-request summary must describe the expected semantic changes, identify
+    important facts that remain unchanged, and link the retained before trace,
+    after trace, and full diff. If a transformation is expected to be a no-op
+    for a fixture, retain and report the empty diff as evidence.
 
 ## Near-Term Coding Priorities
 
