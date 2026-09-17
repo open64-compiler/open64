@@ -113,6 +113,12 @@ only when the current task needs detail.
    boundary, but it must not infer that it may rewrite the opposite side of a
    call edge. Coordinated caller/callee refinement requires an explicitly
    designed IPA pass enabled by `-ipa`.
+8. Test scope must match implementation scope. A PU-local change requires
+   intraprocedural positive, negative, rollback, and boundary-validation tests;
+   it does not require a cross-PU transformation test. Multiple-PU fixtures may
+   still prove independent driver coverage and absence of cross-PU mutation.
+   Require call-graph propagation or coordinated caller/callee transformation
+   tests only for code that executes in IPA scope under `-ipa`.
 
 ## Backend Shared-Library Dependencies
 

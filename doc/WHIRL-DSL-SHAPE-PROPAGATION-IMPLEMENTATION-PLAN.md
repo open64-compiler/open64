@@ -451,6 +451,8 @@ Tests:
 - one active-PU fixed point and atomic rollback;
 - REGION interface preservation within the active PU;
 - strict rejection of unresolved boundary descriptors;
+- a multiple-PU fixture proving independent per-PU invocation and no
+  caller/callee mutation, rather than testing interprocedural propagation;
 - non-DSL and legacy WHIRL no-op behavior.
 
 Exit gate SP6:
@@ -465,6 +467,11 @@ per-PU invocations. It is not interprocedural analysis. Globally loaded tables
 remain identity and boundary evidence only. Any future caller/callee shape
 propagation must be introduced as an IPA-owned pass and execute only under
 `-ipa`.
+
+Test ownership follows the same rule. SP6 and SP7 test PU-local inference,
+atomicity, boundary rejection, driver coverage, and preservation of other PUs.
+They do not claim or test cross-PU propagation. Cross-PU shape tests belong to
+the future IPA milestone that implements such behavior.
 
 Retained SP6 review evidence:
 

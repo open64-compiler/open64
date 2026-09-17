@@ -80,6 +80,12 @@ retyping, signature specialization, or cloning belongs to a future explicit
 IPA shape pass enabled by `-ipa`. It is not an automatic extension of
 `VHO_DSL_Shape_Refine_Driver()`.
 
+Validation follows the same scope. Tests for this pass exercise local fixed
+points, contradictions, rollback, REGION and call-boundary checks, repeated
+invocation, and independent processing of multiple PUs. They do not require or
+claim cross-PU propagation. Interprocedural shape tests become applicable only
+when an IPA-owned implementation is introduced under `-ipa`.
+
 ## Responsibilities
 
 ### Python frontend and torch2whirl
