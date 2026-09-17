@@ -37,6 +37,7 @@
 #include "dsl_fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
+#include "dsl_shape.h"
 #include "dsl_simp.h"
 #include "dsl_tensor_fold.h"
 
@@ -342,6 +343,13 @@ Check_Upgraded_Ingestion_APIs(void)
     TY_IDX different_ty;
     DSL_BUILDER_PROGRAM_UNIT pu;
     DSL_BUILDER_VALUE add;
+    DSL_IR_VALUE_RECORD add_value;
+    DSL_IR_NODE_RECORD add_node;
+    DSL_SHAPE_OPERATOR_INPUT shape_input;
+    TY_IDX shape_operands[2];
+    UINT64 parsed_dimensions[2];
+    UINT32 parsed_rank;
+    char normalized_shape[32];
     ST_IDX add_st;
     UINT32 file_id;
     char diagnostic[1024];
@@ -417,6 +425,113 @@ Check_Upgraded_Ingestion_APIs(void)
     add = DSL_Builder_Create_Operator_With_Result
               (add_id, 1, kids, 2, &attribute, 1, "explicit_add", tensor_ty);
     add_st = DSL_Builder_Get_Value_Result_Symbol(add);
+
+    memset(&add_value, 0, sizeof(add_value));
+    memset(&add_node, 0, sizeof(add_node));
+    memset(&shape_input, 0, sizeof(shape_input));
+    shape_operands[0] = tensor_ty;
+    shape_operands[1] = tensor_ty;
+    shape_input.dsl_operator = OPR_DSLADD;
+    shape_input.version = 1;
+    shape_input.operand_types = shape_operands;
+    shape_input.operand_count = 2;
+    shape_input.result_ty = tensor_ty;
+    if (add == NULL ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(add), &add_value) ||
+        !DSL_IR_Image_Get_Node(add_value.producer_node_id, &add_node)) {
+        fprintf(stderr, "shape service fixture creation failed\n");
+        failed = 1;
+    }
+    shape_input.node = &add_node;
+    UINT32 ty_count_before_shape_check = TY_Table_Size();
+    if (!DSL_Shape_Parse_Static_Dimensions
+             ("[2, 2]", parsed_dimensions, 2, &parsed_rank) ||
+        parsed_rank != 2 || parsed_dimensions[0] != 2 ||
+        parsed_dimensions[1] != 2 ||
+        !DSL_Shape_Format_Static_Dimensions
+             (parsed_dimensions, parsed_rank, normalized_shape,
+              sizeof(normalized_shape)) ||
+        strcmp(normalized_shape, "[2,2]") != 0 ||
+        DSL_Shape_Parse_Static_Dimensions
+             ("[2,<pending>]", parsed_dimensions, 2, &parsed_rank) ||
+        DSL_Shape_Parse_Static_Dimensions
+             ("[0,2]", parsed_dimensions, 2, &parsed_rank) ||
+        DSL_Shape_Parse_Static_Dimensions
+             ("[18446744073709551616]", parsed_dimensions, 2,
+              &parsed_rank)) {
+        fprintf(stderr, "static shape parsing or normalization changed\n");
+        failed = 1;
+    }
+    static const struct {
+        DSL_OPERATOR dsl_operator;
+        UINT16 version;
+    } required_shape_rules[] = {
+        { OPR_DSLADD, 1 },
+        { OPR_DSLMATMUL, 1 },
+        { OPR_DSLMATMUL, 2 },
+        { OPR_DSLRELU, 2 },
+        { OPR_DSLFLATTEN, 2 },
+        { OPR_DSLRESIDUALADD, 2 },
+        { OPR_DSLLINEAR, 2 },
+        { OPR_DSLLINEAR, 3 },
+        { OPR_DSLOUTPUTLOGITS, 2 },
+        { OPR_DSLOUTPUTLOGITS, 3 },
+        { OPR_DSLCONV2D, 2 },
+        { OPR_DSLBATCHNORMINFER, 2 },
+        { OPR_DSLMAXPOOL2D, 2 },
+        { OPR_DSLGLOBALAVGPOOL2D, 2 },
+        { OPR_DSLRESHAPE, 1 },
+        { OPR_DSLTRANSPOSE, 1 },
+        { OPR_DSLTOKENEMBEDDING, 1 },
+        { OPR_DSLRMSNORM, 1 },
+        { OPR_DSLROTARYEMBEDDING, 1 },
+        { OPR_DSLROTARYEMBEDDING, 2 },
+        { OPR_DSLATTENTION, 1 },
+        { OPR_DSLATTENTION, 2 },
+        { OPR_DSLSWIGLU, 1 },
+        { OPR_DSLSCATTER, 1 },
+        { OPR_DSLMUL, 1 },
+        { OPR_DSLDIV, 1 },
+        { OPR_DSLREM, 1 }
+    };
+    for (UINT32 i = 0;
+         i < sizeof(required_shape_rules) / sizeof(required_shape_rules[0]);
+         ++i) {
+        if (!DSL_Shape_Has_Operator_Rule
+                 (required_shape_rules[i].dsl_operator,
+                  required_shape_rules[i].version)) {
+            fprintf(stderr, "required versioned shape rule is absent\n");
+            failed = 1;
+        }
+    }
+    if (!DSL_Shape_Has_Operator_Rule(OPR_DSLADD, 1) ||
+        DSL_Shape_Has_Operator_Rule(OPR_DSLADD, 2) ||
+        DSL_Shape_Check_Operator(&shape_input) != DSL_SHAPE_CHECK_VALID) {
+        fprintf(stderr, "registered common.add.v1 shape rule changed\n");
+        failed = 1;
+    }
+    shape_input.result_ty = different_ty;
+    if (DSL_Shape_Check_Operator(&shape_input) != DSL_SHAPE_CHECK_INVALID ||
+        TY_Table_Size() != ty_count_before_shape_check) {
+        fprintf(stderr, "shape check accepted a mismatch or mutated TY\n");
+        failed = 1;
+    }
+    shape_input.result_ty = tensor_ty;
+    shape_input.version = 2;
+    if (DSL_Shape_Check_Operator(&shape_input) !=
+            DSL_SHAPE_CHECK_UNREGISTERED) {
+        fprintf(stderr, "shape service borrowed a rule from another version\n");
+        failed = 1;
+    }
+    shape_input.dsl_operator = OPR_DSLTENSORCONST;
+    shape_input.version = 1;
+    if (DSL_Shape_Check_Operator(&shape_input) !=
+            DSL_SHAPE_CHECK_UNREGISTERED ||
+        TY_Table_Size() != ty_count_before_shape_check) {
+        fprintf(stderr, "unregistered shape rule contract changed\n");
+        failed = 1;
+    }
 
     metadata.name = "source_layer_name";
     metadata.value = "residual_add";
