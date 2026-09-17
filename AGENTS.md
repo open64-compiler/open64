@@ -86,29 +86,35 @@ only when the current task needs detail.
    identity. Continue using WOPT's existing `CODEREP` instantiation of
    `wn_simp_code.h`; do not add a parallel WOPT simplifier.
 
-## PREOPT And WOPT Roles
+## PREOPT Canonicalization And Optimization Roles
 
 1. Preserve the two distinct roles of the WOPT component. PREOPT cleans up and
-   canonicalizes WHIRL before major optimization; WOPT performs optimization on
-   that canonical representation.
+   canonicalizes WHIRL before major optimization; full WOPT performs
+   optimization on that canonical representation. PREOPT is also the shared
+   canonicalization service for LNO and IPA where those pipelines invoke it;
+   do not describe or design its canonical form as WOPT-only.
 2. When introducing a new WHIRL or DSL construct, define its canonical form and
-   ensure PREOPT produces or verifies that form before WOPT consumes it.
+   identify every downstream consumer. Ensure PREOPT produces or verifies that
+   form before WOPT, LNO, or IPA consumes it in the applicable pipeline.
 3. Optimization candidate selection should rely on canonical IR whenever
    possible. Do not make every optimization recognize multiple equivalent tree
    shapes when PREOPT can normalize them once for all downstream phases.
 4. Keep canonicalization separate from profitability and transformation.
    PREOPT normalizes representation and exposes optimization opportunities;
-   WOPT identifies legal and profitable candidates and transforms them.
+   WOPT, LNO, and IPA identify legal and profitable candidates and perform
+   transformations within their respective compilation scopes.
 5. A new canonicalization rule must preserve language, tensor descriptor,
    effect, alias, source-position, and strict floating-point semantics. It must
    honor the relevant phase and simplifier controls.
-6. When WOPT requires a new canonical property, update the PREOPT contract,
-   verifier, diagnostics, and tests together. Tests must prove that equivalent
-   input forms converge to the canonical form and that WOPT obtains the
-   intended optimization opportunity from it.
-7. If a construct cannot be canonicalized before WOPT, document the reason and
-   the additional candidate-selection complexity explicitly. Treat this as an
-   exception requiring design review, not the default implementation path.
+6. When WOPT, LNO, or IPA requires a new canonical property, update the PREOPT
+   contract, phase ordering, verifier, diagnostics, and tests together. Tests
+   must prove that equivalent input forms converge to the canonical form and
+   that every claimed downstream consumer receives that form in its actual
+   pipeline and compilation scope.
+7. If a construct cannot be canonicalized before a downstream optimizer,
+   document the reason and the additional candidate-selection complexity
+   explicitly. Treat this as an exception requiring design review, not the
+   default implementation path.
 
 ## Compilation Scope And Optimization Ownership
 
