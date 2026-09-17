@@ -24,6 +24,7 @@
 #include "dsl_fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
+#include "dsl_shape.h"
 #include "dsl_simp.h"
 #include "dsl_tensor_fold.h"
 #include "config.h"
@@ -2053,6 +2054,18 @@ DSL_Builder_Create_Tensor_Type_Core
 {
     char rank_buf[32];
     INT32 rank = type_core == NULL ? -1 : type_core->rank;
+    char canonical_shape[2048];
+    const char *logical_shape = type_core == NULL ? NULL :
+                                type_core->logical_shape;
+    if (logical_shape != NULL) {
+        ST_IDX owner_pu_st = DSL_Builder_Active_PU == NULL ? ST_IDX_ZERO :
+                             PU_Info_proc_sym(DSL_Builder_Active_PU);
+        if (!DSL_Shape_Normalize_Logical_Shape
+                 (owner_pu_st, logical_shape, rank, canonical_shape,
+                  sizeof(canonical_shape)))
+            return TY_IDX_ZERO;
+        logical_shape = canonical_shape;
+    }
     TY_IDX tensor_ty = TY_Create_Tensor_Type (name, element_ty, rank);
 
     if (type_core != NULL) {
@@ -2063,7 +2076,7 @@ DSL_Builder_Create_Tensor_Type_Core
             (tensor_ty, TY_TENSOR_SCHEMA_DTYPE, type_core->dtype);
         TY_tensor_bind_attribute (tensor_ty, TY_TENSOR_SCHEMA_RANK, rank_buf);
         DSL_Builder_Bind_Attribute_If_Present
-            (tensor_ty, TY_TENSOR_SCHEMA_SHAPE, type_core->logical_shape);
+            (tensor_ty, TY_TENSOR_SCHEMA_SHAPE, logical_shape);
     }
 
     return tensor_ty;
@@ -2078,6 +2091,18 @@ DSL_Builder_Attach_Tensor_Descriptor
         TY_tensor_is_canonical(ty))
         return FALSE;
 
+    char canonical_shape[2048];
+    const char *logical_shape = descriptor->type_core.logical_shape;
+    if (logical_shape != NULL) {
+        ST_IDX owner_pu_st = DSL_Builder_Active_PU == NULL ? ST_IDX_ZERO :
+                             PU_Info_proc_sym(DSL_Builder_Active_PU);
+        if (!DSL_Shape_Normalize_Logical_Shape
+                 (owner_pu_st, logical_shape, descriptor->type_core.rank,
+                  canonical_shape, sizeof(canonical_shape)))
+            return FALSE;
+        logical_shape = canonical_shape;
+    }
+
     DSL_Builder_Bind_Attribute_If_Present
         (ty, TY_TENSOR_SCHEMA_KIND, descriptor->type_core.kind);
     DSL_Builder_Bind_Attribute_If_Present
@@ -2089,7 +2114,7 @@ DSL_Builder_Attach_Tensor_Descriptor
         TY_tensor_bind_attribute (ty, TY_TENSOR_SCHEMA_RANK, rank_buf);
     }
     DSL_Builder_Bind_Attribute_If_Present
-        (ty, TY_TENSOR_SCHEMA_SHAPE, descriptor->type_core.logical_shape);
+        (ty, TY_TENSOR_SCHEMA_SHAPE, logical_shape);
     DSL_Builder_Bind_Attribute_If_Present
         (ty, TY_TENSOR_SCHEMA_TRAITS, descriptor->traits.traits);
     DSL_Builder_Bind_Attribute_If_Present
@@ -2121,11 +2146,20 @@ DSL_Builder_Intern_Tensor_Type
     if (descriptor == NULL)
         return TY_IDX_ZERO;
 
+    char canonical_shape[2048];
+    ST_IDX owner_pu_st = DSL_Builder_Active_PU == NULL ? ST_IDX_ZERO :
+                         PU_Info_proc_sym(DSL_Builder_Active_PU);
+    if (!DSL_Shape_Normalize_Logical_Shape
+             (owner_pu_st, descriptor->type_core.logical_shape,
+              descriptor->type_core.rank, canonical_shape,
+              sizeof(canonical_shape)))
+        return TY_IDX_ZERO;
+
     TY_TENSOR_CANONICAL_DESCRIPTOR canonical = {
         descriptor->type_core.kind,
         descriptor->type_core.dtype,
         descriptor->type_core.rank,
-        descriptor->type_core.logical_shape,
+        canonical_shape,
         descriptor->traits.traits,
         descriptor->representation.layout,
         descriptor->representation.sharding,

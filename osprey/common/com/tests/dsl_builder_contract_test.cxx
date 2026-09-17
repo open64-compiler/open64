@@ -7468,6 +7468,305 @@ Check_Shape_Solver(void)
     return failed;
 }
 
+static void
+Init_Symbolic_Shape_Descriptor
+        (DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor,
+         const char *shape)
+{
+    memset(descriptor, 0, sizeof(*descriptor));
+    descriptor->type_core.kind = "tensor";
+    descriptor->type_core.dtype = "float32";
+    descriptor->type_core.rank = 4;
+    descriptor->type_core.logical_shape = shape;
+    descriptor->traits.traits = "activation";
+    descriptor->representation.layout = "BHSD";
+    descriptor->representation.sharding = "replicated";
+    descriptor->representation.placement = "host";
+    descriptor->representation.memory = "contiguous";
+    descriptor->representation.quantization = "none";
+}
+
+static int
+Check_Symbolic_Shape_Solver(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP8_ARTIFACT");
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attributes[11];
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_VALUE query;
+    DSL_BUILDER_VALUE key;
+    DSL_BUILDER_VALUE value;
+    DSL_BUILDER_VALUE attention;
+    DSL_BUILDER_VALUE dynamic_input;
+    DSL_BUILDER_VALUE dynamic_relu;
+    DSL_BUILDER_STATE key_state;
+    DSL_BUILDER_STATE value_state;
+    DSL_BUILDER_VALUE kids[3];
+    DSL_SHAPE_SOLVER_RESULT solver;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    char diagnostic[4096];
+    TY_IDX query_ty;
+    TY_IDX updated_cache_ty;
+    TY_IDX source_cache_ty;
+    TY_IDX source_cache_ty_duplicate;
+    TY_IDX dynamic_ty;
+    TY_IDX pending_ty;
+    char source_shape[128];
+    char updated_shape[128];
+    char expected_source[128];
+    char expected_updated[128];
+    int failed = 0;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Transformer_Domain();
+    pu = DSL_Builder_Create_Minimal_PU("dsl_shape_symbolic_sp8");
+    if (pu == NULL)
+        return 1;
+    key_state = DSL_Builder_Declare_State_Object_With_Flags
+                    (pu, "sp8.key_cache", DSL_STATE_KIND_MUTABLE_BUFFER,
+                     DSL_STATE_OBJECT_UNIQUE_OWNERSHIP);
+    value_state = DSL_Builder_Declare_State_Object_With_Flags
+                      (pu, "sp8.value_cache",
+                       DSL_STATE_KIND_MUTABLE_BUFFER,
+                       DSL_STATE_OBJECT_UNIQUE_OWNERSHIP);
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    snprintf(source_shape, sizeof(source_shape), "[1,4,L,8]");
+    snprintf(updated_shape, sizeof(updated_shape), "[1,4,L+1,8]");
+    snprintf(expected_source, sizeof(expected_source), "[1,4,L@pu%08x,8]",
+             (unsigned int)PU_Info_proc_sym(pu));
+    snprintf(expected_updated, sizeof(expected_updated),
+             "[1,4,L@pu%08x+1,8]",
+             (unsigned int)PU_Info_proc_sym(pu));
+
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,1,8]");
+    query_ty = DSL_Builder_Intern_Tensor_Type
+                   ("sp8_query", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, source_shape);
+    source_cache_ty = DSL_Builder_Intern_Tensor_Type
+                          ("sp8_source_cache", MTYPE_To_TY(MTYPE_F4),
+                           &descriptor);
+    source_cache_ty_duplicate = DSL_Builder_Intern_Tensor_Type
+                                    ("sp8_source_cache_duplicate",
+                                     MTYPE_To_TY(MTYPE_F4), &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, updated_shape);
+    updated_cache_ty = DSL_Builder_Intern_Tensor_Type
+                           ("sp8_updated_cache", MTYPE_To_TY(MTYPE_F4),
+                            &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,?,8]");
+    dynamic_ty = DSL_Builder_Intern_Tensor_Type
+                     ("sp8_runtime_dynamic", MTYPE_To_TY(MTYPE_F4),
+                      &descriptor);
+    Init_Symbolic_Shape_Descriptor
+        (&descriptor, "[1,4,<pending>,8]");
+    pending_ty = DSL_Builder_Intern_Tensor_Type
+                     ("sp8_pending", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    if (file_id == 0 || key_state == NULL || value_state == NULL ||
+        query_ty == TY_IDX_ZERO ||
+        source_cache_ty == TY_IDX_ZERO || updated_cache_ty == TY_IDX_ZERO ||
+        source_cache_ty_duplicate != source_cache_ty ||
+        dynamic_ty == TY_IDX_ZERO || pending_ty == TY_IDX_ZERO ||
+        strcmp(TY_tensor_attribute
+                   (source_cache_ty, TY_TENSOR_SCHEMA_SHAPE),
+               expected_source) != 0 ||
+        strcmp(TY_tensor_attribute
+                   (updated_cache_ty, TY_TENSOR_SCHEMA_SHAPE),
+               expected_updated) != 0) {
+        fprintf(stderr, "SP8 symbolic type normalization failed\n");
+        return 1;
+    }
+
+    query = DSL_Builder_Create_Model_Input("sp8_query", query_ty, 0);
+    key = DSL_Builder_Create_Model_Input
+              ("sp8_updated_key", updated_cache_ty, 1);
+    value = DSL_Builder_Create_Model_Input
+                ("sp8_updated_value", updated_cache_ty, 2);
+    dynamic_input = DSL_Builder_Create_Model_Input
+                        ("sp8_dynamic_input", dynamic_ty, 3);
+    const char *attribute_names[11] = {
+        "attr.execution_mode", "attr.mask_mode", "attr.head_layout",
+        "attr.query_heads", "attr.kv_heads", "attr.head_dim",
+        "attr.scale_mode", "attr.softmax_axis", "attr.softmax_accum_dtype",
+        "attr.cache_mode", "attr.cache_sequence_axis"
+    };
+    const char *attribute_values[11] = {
+        "single_token_decode", "implicit_prefix_causal", "BHSD",
+        "4", "4", "8", "inverse_sqrt_head_dim", "-1", "float32",
+        "functional_append", "2"
+    };
+    for (UINT32 i = 0; i < 11; ++i) {
+        attributes[i].name = attribute_names[i];
+        attributes[i].value = attribute_values[i];
+    }
+    kids[0] = query;
+    kids[1] = key;
+    kids[2] = value;
+    attention = DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find
+                         (DSL_Domain_Find("transformer"),
+                          "transformer.attention", 2),
+                     2, kids, 3, attributes, 11, "sp8_attention", query_ty);
+    kids[0] = dynamic_input;
+    dynamic_relu = DSL_Builder_Create_Operator_With_Result
+                       (DSL_Opcode_Find
+                            (DSL_Domain_Find("common"), "common.relu", 2),
+                        2, kids, 1, NULL, 0, "sp8_dynamic_relu", dynamic_ty);
+    if (attention == NULL ||
+        !DSL_Builder_Add_State_Effect
+             (attention, key_state, DSL_STATE_EFFECT_MODIFY) ||
+        !DSL_Builder_Add_State_Effect
+             (attention, value_state, DSL_STATE_EFFECT_MODIFY))
+        failed = 1;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE values[] = {
+        query, key, value, attention, dynamic_input, dynamic_relu
+    };
+    for (UINT32 i = 0; i < sizeof(values) / sizeof(values[0]); ++i) {
+        position.line = 100 + i;
+        if (values[i] == NULL ||
+            !DSL_Builder_Set_Value_Source_Position(values[i], &position) ||
+            !DSL_Builder_Append_PU_Value(pu, values[i]))
+            failed = 1;
+    }
+
+    memset(&solver, 0, sizeof(solver));
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (failed || !DSL_Shape_Analyze_PU
+                      (pu, PU_Info_tree_ptr(pu), stderr, &solver) ||
+        solver.contradiction_count != 0 || solver.pending_value_count != 0 ||
+        solver.unresolved_value_count != 0 ||
+        solver.symbolic_value_count != 2 ||
+        solver.runtime_dynamic_value_count != 2 ||
+        !DSL_Builder_Verify_Program(&verify) || verify.error_count != 0) {
+        fprintf(stderr,
+                "SP8 symbolic solver/gatekeeper failed: symbolic=%u "
+                "dynamic=%u pending=%u unresolved=%u\n",
+                solver.symbolic_value_count,
+                solver.runtime_dynamic_value_count,
+                solver.pending_value_count, solver.unresolved_value_count);
+        fprintf(stderr, "%s", diagnostic);
+        failed = 1;
+    }
+
+    if (!failed && artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+        request.path = artifact;
+        request.flags = 0;
+        (void) unlink(artifact);
+        if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+            fprintf(stderr, "SP8 mapped-image finalization failed\n");
+            failed = 1;
+        }
+    }
+
+    if (artifact == NULL) {
+        char normalized[128];
+        if (DSL_Shape_Normalize_Logical_Shape
+                (ST_IDX_ZERO, "[L]", 1, normalized,
+                 sizeof(normalized)) ||
+            DSL_Shape_Normalize_Logical_Shape
+                (PU_Info_proc_sym(pu), "[L*2]", 1, normalized,
+                 sizeof(normalized))) {
+            fprintf(stderr, "SP8 invalid symbolic forms were accepted\n");
+            failed = 1;
+        }
+
+        DSL_Builder_Begin_Program();
+        DSL_Opcode_Register_Common_Substrate();
+        DSL_BUILDER_PROGRAM_UNIT dynamic_pu =
+            DSL_Builder_Create_Minimal_PU("dsl_shape_dynamic_sp8");
+        Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,?,8]");
+        TY_IDX unproved_ty = DSL_Builder_Intern_Tensor_Type
+                                 ("sp8_unproved", MTYPE_To_TY(MTYPE_F4),
+                                  &descriptor);
+        DSL_BUILDER_VALUE unproved_kids[2];
+        unproved_kids[0] = DSL_Builder_Create_Model_Input
+                               ("sp8_unproved0", unproved_ty, 0);
+        unproved_kids[1] = DSL_Builder_Create_Model_Input
+                               ("sp8_unproved1", unproved_ty, 1);
+        DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+        broadcast.name = "attr.broadcast_rule";
+        broadcast.value = "none";
+        DSL_BUILDER_VALUE unproved_add =
+            DSL_Builder_Create_Operator_With_Result
+                (DSL_Opcode_Find
+                     (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+                 1, unproved_kids, 2, &broadcast, 1,
+                 "sp8_unproved_add", unproved_ty);
+        DSL_SHAPE_SOLVER_RESULT unproved_result;
+        memset(&unproved_result, 0, sizeof(unproved_result));
+        if (dynamic_pu == NULL || unproved_ty == TY_IDX_ZERO ||
+            unproved_kids[0] == NULL || unproved_kids[1] == NULL ||
+            unproved_add == NULL ||
+            !DSL_Builder_Append_PU_Value(dynamic_pu, unproved_add) ||
+            DSL_Shape_Analyze_PU
+                (dynamic_pu, PU_Info_tree_ptr(dynamic_pu), NULL,
+                 &unproved_result) ||
+            unproved_result.contradiction_count == 0) {
+            fprintf(stderr,
+                    "SP8 anonymous multi-operand proof did not fail closed\n");
+            failed = 1;
+        }
+
+        DSL_Builder_Begin_Program();
+        DSL_Opcode_Register_Common_Substrate();
+        DSL_BUILDER_PROGRAM_UNIT pending_pu =
+            DSL_Builder_Create_Minimal_PU("dsl_shape_pending_sp8");
+        Init_Symbolic_Shape_Descriptor
+            (&descriptor, "[1,4,<pending>,8]");
+        TY_IDX incomplete_ty = DSL_Builder_Intern_Tensor_Type
+                                   ("sp8_incomplete",
+                                    MTYPE_To_TY(MTYPE_F4), &descriptor);
+        DSL_BUILDER_VALUE incomplete = DSL_Builder_Create_Model_Input
+                                           ("sp8_incomplete", incomplete_ty,
+                                            0);
+        if (pending_pu == NULL || incomplete_ty == TY_IDX_ZERO ||
+            incomplete == NULL ||
+            !DSL_Builder_Append_PU_Value(pending_pu, incomplete) ||
+            DSL_Builder_Verify_Program(&verify)) {
+            fprintf(stderr, "SP8 pending shape reached strict lowering gate\n");
+            failed = 1;
+        }
+
+        DSL_Builder_Begin_Program();
+        DSL_Opcode_Register_Common_Substrate();
+        DSL_BUILDER_PROGRAM_UNIT scope0 =
+            DSL_Builder_Create_Minimal_PU("dsl_shape_scope0_sp8");
+        Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+        TY_IDX scope0_ty = DSL_Builder_Intern_Tensor_Type
+                               ("sp8_scope0", MTYPE_To_TY(MTYPE_F4),
+                                &descriptor);
+        DSL_BUILDER_PROGRAM_UNIT scope1 =
+            DSL_Builder_Create_Minimal_PU("dsl_shape_scope1_sp8");
+        TY_IDX scope1_ty = DSL_Builder_Intern_Tensor_Type
+                               ("sp8_scope1", MTYPE_To_TY(MTYPE_F4),
+                                &descriptor);
+        const char *scope0_shape = scope0_ty == TY_IDX_ZERO ? NULL :
+            TY_tensor_attribute(scope0_ty, TY_TENSOR_SCHEMA_SHAPE);
+        const char *scope1_shape = scope1_ty == TY_IDX_ZERO ? NULL :
+            TY_tensor_attribute(scope1_ty, TY_TENSOR_SCHEMA_SHAPE);
+        if (scope0 == NULL || scope1 == NULL || scope0_shape == NULL ||
+            scope1_shape == NULL || strcmp(scope0_shape, scope1_shape) == 0 ||
+            strstr(scope0_shape, "L@pu") == NULL ||
+            strstr(scope1_shape, "L@pu") == NULL) {
+            fprintf(stderr, "SP8 per-PU symbol scoping failed\n");
+            failed = 1;
+        }
+    }
+
+    if (!failed)
+        printf("SP8 symbolic shape contract passed: symbolic=%u "
+               "runtime_dynamic=%u\n",
+               solver.symbolic_value_count,
+               solver.runtime_dynamic_value_count);
+    return failed;
+}
+
 static unsigned char *
 Capture_DSL_IR_Image (UINT64 *image_size)
 {
@@ -7875,6 +8174,8 @@ main(void)
         return Check_Tensor_Interner_Mapped_Image();
     if (getenv("OPEN64_DSL_SHAPE_SP3_ONLY") != NULL)
         return Check_Shape_Solver();
+    if (getenv("OPEN64_DSL_SHAPE_SP8_ONLY") != NULL)
+        return Check_Symbolic_Shape_Solver();
     if (getenv("OPEN64_DSL_FHE_SYNC1_ONLY") != NULL)
         return Check_FHE_SYNC1_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC3_PLAN_ONLY") != NULL)
@@ -7910,6 +8211,7 @@ main(void)
     failed |= Check_DSL_Value_Retirement();
     failed |= Check_DSL_Simplifier_Bridge();
     failed |= Check_Shape_Solver();
+    failed |= Check_Symbolic_Shape_Solver();
 
     return failed;
 }

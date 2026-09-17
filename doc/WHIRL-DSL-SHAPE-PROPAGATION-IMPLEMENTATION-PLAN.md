@@ -10,7 +10,7 @@ No implementation milestone may weaken binary WHIRL compatibility, mutate a
 sealed tensor type in place, duplicate shape formulas in independent services,
 or expose a partially retyped WHIRL program.
 
-Progress through SP7:
+Progress through SP8:
 
 - SP0 baseline inventory was consumed by the SP1 through SP3 implementation
   reviews.
@@ -24,7 +24,10 @@ Progress through SP7:
 - SP7 integrates per-PU invalidation and revalidation with DSL WOPT, FHE
   conversion, the fixed VHO DSL optimization pipeline, checkpoint-only output,
   and final DSL lowering on `codex/dsl-shape-sp7-pipeline`.
-- SP8 is the next implementation milestone.
+- SP8 implements PU-scoped named dimensions, anonymous runtime dimensions,
+  the `symbol+constant` expression slice, symbolic decode-attention checking,
+  strict pending rejection, and mapped-image inspection on
+  `codex/dsl-shape-sp8-symbolic`.
 
 ## Objective
 
@@ -549,6 +552,9 @@ PR boundary: driver, options, and invalidation integration.
 
 Dependencies: SP7 and a separate review of the open symbolic-design topics.
 
+Status: complete for the reviewed v1 slice. The normative details are in
+`WHIRL-DSL-SYMBOLIC-SHAPE-CONTRACT.md`.
+
 Actions:
 
 1. Implement the reviewed distinction among `<pending>`, anonymous dynamic
@@ -559,6 +565,21 @@ Actions:
 4. Define printing, lowering, and mapped-image requirements before adding any
    new persisted table.
 5. Add backward inference only where operator contracts require it.
+
+SP8 resolves item 3 conservatively: no guard is fabricated. Unproved required
+relationships fail closed until the reserved assertion/guard descriptors gain
+a separately reviewed executable and lowering contract. No current published
+operator requires backward inference.
+
+Retained SP8 review evidence:
+
+```text
+/private/tmp/open64-shape-sp5/artifacts/shape/sp8-symbolic/shape_symbolic.B
+/private/tmp/open64-shape-sp5/artifacts/shape/sp8-symbolic/shape_symbolic.T
+/private/tmp/open64-shape-sp5/artifacts/shape/sp8-symbolic/contract.log
+/private/tmp/open64-shape-sp5/artifacts/shape/sp8-symbolic/producer.log
+/private/tmp/open64-shape-sp5/artifacts/shape/sp8-symbolic/certification.txt
+```
 
 Exit gate SP8:
 
@@ -634,19 +655,16 @@ rollback reasoning tractable.
 
 ## Active Queue
 
-The active non-IPA queue remains SP8 through SP9. Future interprocedural shape
+The active non-IPA queue is SP9. Future interprocedural shape
 work is collected separately in
 `doc/IPA-DSL-SHAPE-PROPAGATION-TODO.md`. That document is an incubating
 research queue, not a dependency of the current per-PU implementation. It
 becomes actionable only under `-ipa` after the IPA summary and call-graph
 contracts are reviewed.
 
-1. **SP8: Symbolic and runtime-dynamic dimensions.** Next implementation
-   milestone; SP7 is complete, but the symbolic-expression contract still
-   requires review.
-2. **SP9: Final certification.** Static lanes depend on SP7; dynamic Llama
-   decode certification also depends on SP8.
-3. **IPA-S0 and IPA-S1 research.** May collect architecture evidence in
+1. **SP9: Final certification.** Static lanes depend on SP7; dynamic Llama
+   decode certification uses the SP8 symbolic contract.
+2. **IPA-S0 and IPA-S1 research.** May collect architecture evidence in
    parallel, but no cross-PU code begins before the IPA owners review the
    summary inventory and semantic transfer contract.
 
@@ -675,6 +693,7 @@ The project is complete when:
 ## Related Documents
 
 - `doc/WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`
+- `doc/WHIRL-DSL-SYMBOLIC-SHAPE-CONTRACT.md`
 - `doc/WHIRL-DSL-TENSOR-TYPE-HANDLING.md`
 - `doc/WHIRL-DSL-INFRASTRUCTURE.md`
 - `doc/VHO-DSL-OPTIMIZATION-PLAN.md`

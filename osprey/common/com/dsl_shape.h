@@ -17,6 +17,7 @@ typedef struct pu_info PU_Info;
 class WN;
 
 #define DSL_SHAPE_MAX_RANK 16
+#define DSL_SHAPE_DIMENSION_TEXT_MAX 96
 
 typedef enum {
     DSL_SHAPE_CHECK_UNREGISTERED = 0,
@@ -39,11 +40,22 @@ typedef enum {
     DSL_SHAPE_FACT_CONTRADICTION = 2
 } DSL_SHAPE_FACT_STATE;
 
+typedef enum {
+    DSL_SHAPE_DIMENSION_PENDING = 0,
+    DSL_SHAPE_DIMENSION_STATIC = 1,
+    DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC = 2,
+    DSL_SHAPE_DIMENSION_SYMBOL = 3,
+    DSL_SHAPE_DIMENSION_EXPRESSION = 4
+} DSL_SHAPE_DIMENSION_KIND;
+
 typedef struct {
     UINT32 state;
     INT32 rank;
+    UINT8 dimension_kind[DSL_SHAPE_MAX_RANK];
     UINT8 dimension_known[DSL_SHAPE_MAX_RANK];
     UINT64 dimension[DSL_SHAPE_MAX_RANK];
+    char dimension_text[DSL_SHAPE_MAX_RANK]
+                       [DSL_SHAPE_DIMENSION_TEXT_MAX];
 } DSL_SHAPE_FACT;
 
 typedef enum {
@@ -70,6 +82,8 @@ typedef struct {
     UINT32 refinable_value_count;
     UINT32 pending_value_count;
     UINT32 unresolved_value_count;
+    UINT32 symbolic_value_count;
+    UINT32 runtime_dynamic_value_count;
     UINT32 contradiction_count;
     UINT32 iteration_count;
     UINT32 diagnostic_count;
@@ -96,6 +110,15 @@ extern BOOL DSL_Shape_Format_Static_Dimensions
                                  UINT32 rank,
                                  char *buffer,
                                  size_t buffer_size);
+extern BOOL DSL_Shape_Normalize_Logical_Shape
+                                (ST_IDX owner_pu_st,
+                                 const char *shape,
+                                 INT32 expected_rank,
+                                 char *buffer,
+                                 size_t buffer_size);
+extern BOOL DSL_Shape_Format_Fact (const DSL_SHAPE_FACT *fact,
+                                   char *buffer,
+                                   size_t buffer_size);
 extern BOOL DSL_Shape_Tensor_Compatible
                                 (TY_IDX ty0,
                                  TY_IDX ty1,

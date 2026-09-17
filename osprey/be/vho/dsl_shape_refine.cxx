@@ -175,16 +175,9 @@ VHO_DSL_Shape_Collect_Refinement
         return FALSE;
     VHO_DSL_SHAPE_REFINE_CONTEXT *context =
         (VHO_DSL_SHAPE_REFINE_CONTEXT *)opaque_context;
-    UINT64 dimensions[DSL_SHAPE_MAX_RANK];
-    for (INT32 i = 0; i < refinement->refined_fact.rank; ++i) {
-        if (!refinement->refined_fact.dimension_known[i])
-            return FALSE;
-        dimensions[i] = refinement->refined_fact.dimension[i];
-    }
     char shape[512];
-    if (!DSL_Shape_Format_Static_Dimensions
-             (dimensions, refinement->refined_fact.rank,
-              shape, sizeof(shape)))
+    if (!DSL_Shape_Format_Fact
+             (&refinement->refined_fact, shape, sizeof(shape)))
         return FALSE;
 
     TY_TENSOR_TYPE_CORE_REFINEMENT type_refinement;

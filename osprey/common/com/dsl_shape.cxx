@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <string>
 #include <vector>
 
 #include "dsl_shape.h"
@@ -1352,6 +1353,112 @@ DSL_Shape_Find_Rule
     return NULL;
 }
 
+static BOOL
+DSL_Shape_Dimension_Proves_Equal
+        (const DSL_SHAPE_FACT &left,
+         UINT32 left_ordinal,
+         const DSL_SHAPE_FACT &right,
+         UINT32 right_ordinal)
+{
+    if (left_ordinal >= (UINT32)left.rank ||
+        right_ordinal >= (UINT32)right.rank ||
+        left.dimension_kind[left_ordinal] ==
+            DSL_SHAPE_DIMENSION_PENDING ||
+        right.dimension_kind[right_ordinal] ==
+            DSL_SHAPE_DIMENSION_PENDING ||
+        left.dimension_kind[left_ordinal] ==
+            DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC ||
+        right.dimension_kind[right_ordinal] ==
+            DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC)
+        return FALSE;
+    return left.dimension_kind[left_ordinal] ==
+               right.dimension_kind[right_ordinal] &&
+           strcmp(left.dimension_text[left_ordinal],
+                  right.dimension_text[right_ordinal]) == 0;
+}
+
+static BOOL
+DSL_Shape_Facts_Prove_Equal
+        (const DSL_SHAPE_FACT &left,
+         const DSL_SHAPE_FACT &right)
+{
+    if (left.state != DSL_SHAPE_FACT_COMPLETE ||
+        right.state != DSL_SHAPE_FACT_COMPLETE ||
+        left.rank != right.rank)
+        return FALSE;
+    for (INT32 i = 0; i < left.rank; ++i) {
+        if (!DSL_Shape_Dimension_Proves_Equal(left, i, right, i))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Check_Symbolic_Attention
+        (const DSL_SHAPE_OPERATOR_INPUT *input,
+         const std::vector<DSL_SHAPE_FACT> &operands,
+         const DSL_SHAPE_FACT &result)
+{
+    if (input->version != 2 || operands.size() != 3 ||
+        operands[0].rank != 4 || operands[1].rank != 4 ||
+        operands[2].rank != 4 || result.rank != 4 ||
+        !DSL_Shape_Tensor_Element_Representation_Compatible
+             (input->operand_types[0], input->operand_types[1]) ||
+        !DSL_Shape_Tensor_Element_Representation_Compatible
+             (input->operand_types[0], input->operand_types[2]) ||
+        !DSL_Shape_Facts_Prove_Equal(operands[1], operands[2]) ||
+        !DSL_Shape_Facts_Prove_Equal(operands[0], result) ||
+        !DSL_Shape_Dimension_Proves_Equal
+             (operands[0], 0, operands[1], 0) ||
+        operands[0].dimension_kind[1] != DSL_SHAPE_DIMENSION_STATIC ||
+        operands[0].dimension_kind[2] != DSL_SHAPE_DIMENSION_STATIC ||
+        operands[0].dimension[2] != 1 ||
+        operands[0].dimension_kind[3] != DSL_SHAPE_DIMENSION_STATIC ||
+        operands[1].dimension_kind[1] != DSL_SHAPE_DIMENSION_STATIC ||
+        operands[1].dimension_kind[3] != DSL_SHAPE_DIMENSION_STATIC)
+        return FALSE;
+
+    const char *query_heads_text = NULL;
+    const char *kv_heads_text = NULL;
+    const char *head_dim_text = NULL;
+    UINT64 query_heads;
+    UINT64 kv_heads;
+    UINT64 head_dim;
+    return DSL_Shape_Node_Attribute
+               (input->node, "attr.query_heads", &query_heads_text) &&
+           DSL_Shape_Node_Attribute
+               (input->node, "attr.kv_heads", &kv_heads_text) &&
+           DSL_Shape_Node_Attribute
+               (input->node, "attr.head_dim", &head_dim_text) &&
+           DSL_Shape_Parse_Unsigned(query_heads_text, &query_heads) &&
+           DSL_Shape_Parse_Unsigned(kv_heads_text, &kv_heads) &&
+           DSL_Shape_Parse_Unsigned(head_dim_text, &head_dim) &&
+           query_heads != 0 && query_heads == kv_heads && head_dim != 0 &&
+           query_heads == operands[0].dimension[1] &&
+           query_heads == operands[1].dimension[1] &&
+           head_dim == operands[0].dimension[3] &&
+           head_dim == operands[1].dimension[3] &&
+           DSL_Shape_Attribute_Equals
+               (input->node, "attr.execution_mode",
+                "single_token_decode") &&
+           DSL_Shape_Attribute_Equals
+               (input->node, "attr.mask_mode",
+                "implicit_prefix_causal") &&
+           DSL_Shape_Attribute_Equals
+               (input->node, "attr.cache_mode", "functional_append") &&
+           DSL_Shape_Attribute_Equals
+               (input->node, "attr.cache_sequence_axis", "2") &&
+           DSL_Shape_Attribute_Equals
+               (input->node, "attr.head_layout", "BHSD") &&
+           DSL_Shape_Attribute_Equals
+               (input->node, "attr.scale_mode",
+                "inverse_sqrt_head_dim") &&
+           DSL_Shape_Attribute_Equals
+               (input->node, "attr.softmax_axis", "-1") &&
+           DSL_Shape_Attribute_Equals
+               (input->node, "attr.softmax_accum_dtype", "float32");
+}
+
 BOOL
 DSL_Shape_Has_Operator_Rule
         (DSL_OPERATOR dsl_operator,
@@ -1386,6 +1493,40 @@ DSL_Shape_Check_Operator
             return DSL_SHAPE_CHECK_INVALID;
         operands.push_back(input->operand_types[i]);
     }
+    std::vector<DSL_SHAPE_FACT> operand_facts(input->operand_count);
+    DSL_SHAPE_FACT result_fact;
+    BOOL non_static = FALSE;
+    BOOL anonymous_dynamic = FALSE;
+    for (UINT32 i = 0; i < input->operand_count; ++i) {
+        if (!DSL_Shape_Fact_From_Type
+                 (input->operand_types[i], &operand_facts[i]) ||
+            operand_facts[i].state != DSL_SHAPE_FACT_COMPLETE)
+            return DSL_SHAPE_CHECK_INVALID;
+        for (INT32 j = 0; j < operand_facts[i].rank; ++j) {
+            non_static = non_static ||
+                operand_facts[i].dimension_kind[j] !=
+                    DSL_SHAPE_DIMENSION_STATIC;
+            anonymous_dynamic = anonymous_dynamic ||
+                operand_facts[i].dimension_kind[j] ==
+                    DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC;
+        }
+    }
+    if (!DSL_Shape_Fact_From_Type(input->result_ty, &result_fact) ||
+        result_fact.state != DSL_SHAPE_FACT_COMPLETE)
+        return DSL_SHAPE_CHECK_INVALID;
+    for (INT32 i = 0; i < result_fact.rank; ++i) {
+        non_static = non_static ||
+            result_fact.dimension_kind[i] != DSL_SHAPE_DIMENSION_STATIC;
+        anonymous_dynamic = anonymous_dynamic ||
+            result_fact.dimension_kind[i] ==
+                DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC;
+    }
+    if (non_static && input->dsl_operator == OPR_DSLATTENTION)
+        return DSL_Shape_Check_Symbolic_Attention
+                   (input, operand_facts, result_fact) ?
+               DSL_SHAPE_CHECK_VALID : DSL_SHAPE_CHECK_INVALID;
+    if (anonymous_dynamic && input->operand_count > 1)
+        return DSL_SHAPE_CHECK_INVALID;
     return rule->function(input->node, operands, input->result_ty,
                           input->version) ?
            DSL_SHAPE_CHECK_VALID : DSL_SHAPE_CHECK_INVALID;
@@ -1409,7 +1550,7 @@ DSL_Shape_Fact_Classify (DSL_SHAPE_FACT *fact)
         return;
     }
     for (INT32 i = 0; i < fact->rank; ++i) {
-        if (!fact->dimension_known[i]) {
+        if (fact->dimension_kind[i] == DSL_SHAPE_DIMENSION_PENDING) {
             fact->state = DSL_SHAPE_FACT_PENDING;
             return;
         }
@@ -1418,18 +1559,179 @@ DSL_Shape_Fact_Classify (DSL_SHAPE_FACT *fact)
 }
 
 static BOOL
+DSL_Shape_Identifier_Valid (const std::string &text)
+{
+    if (text.empty() ||
+        (!isalpha((unsigned char)text[0]) && text[0] != '_'))
+        return FALSE;
+    for (size_t i = 1; i < text.size(); ++i) {
+        if (!isalnum((unsigned char)text[i]) && text[i] != '_')
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Parse_Symbol
+        (ST_IDX owner_pu_st,
+         const std::string &input,
+         std::string *canonical)
+{
+    size_t qualifier = input.find("@pu");
+    std::string name = qualifier == std::string::npos ?
+                       input : input.substr(0, qualifier);
+    if (!DSL_Shape_Identifier_Valid(name))
+        return FALSE;
+    if (qualifier == std::string::npos) {
+        if (ST_IDX_index(owner_pu_st) == 0)
+            return FALSE;
+        char suffix[16];
+        snprintf(suffix, sizeof(suffix), "@pu%08x",
+                 (unsigned int)owner_pu_st);
+        *canonical = name + suffix;
+        return TRUE;
+    }
+    if (qualifier + 11 != input.size())
+        return FALSE;
+    UINT32 identity = 0;
+    for (size_t i = qualifier + 3; i < input.size(); ++i) {
+        unsigned char character = (unsigned char)input[i];
+        if (!isxdigit(character))
+            return FALSE;
+        identity <<= 4;
+        identity += isdigit(character) ? character - '0' :
+                    tolower(character) - 'a' + 10;
+    }
+    if (identity == 0)
+        return FALSE;
+    char suffix[16];
+    snprintf(suffix, sizeof(suffix), "@pu%08x", identity);
+    *canonical = name + suffix;
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Parse_Dimension
+        (ST_IDX owner_pu_st,
+         const std::string &input,
+         DSL_SHAPE_DIMENSION_KIND *kind,
+         UINT64 *static_value,
+         std::string *canonical)
+{
+    if (input == "<pending>") {
+        *kind = DSL_SHAPE_DIMENSION_PENDING;
+        *canonical = input;
+        return TRUE;
+    }
+    if (input == "?") {
+        *kind = DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC;
+        *canonical = input;
+        return TRUE;
+    }
+    if (!input.empty() && isdigit((unsigned char)input[0])) {
+        UINT64 value = 0;
+        for (size_t i = 0; i < input.size(); ++i) {
+            if (!isdigit((unsigned char)input[i]))
+                return FALSE;
+            UINT64 digit = input[i] - '0';
+            if (value > (~(UINT64)0 - digit) / 10)
+                return FALSE;
+            value = value * 10 + digit;
+        }
+        if (value == 0)
+            return FALSE;
+        char number[32];
+        snprintf(number, sizeof(number), "%llu",
+                 (unsigned long long)value);
+        *kind = DSL_SHAPE_DIMENSION_STATIC;
+        *static_value = value;
+        *canonical = number;
+        return TRUE;
+    }
+
+    size_t operation = std::string::npos;
+    for (size_t i = 1; i < input.size(); ++i) {
+        if (input[i] == '+' || input[i] == '-') {
+            operation = i;
+            break;
+        }
+    }
+    std::string symbol = operation == std::string::npos ?
+                         input : input.substr(0, operation);
+    std::string canonical_symbol;
+    if (!DSL_Shape_Parse_Symbol
+             (owner_pu_st, symbol, &canonical_symbol))
+        return FALSE;
+    if (operation == std::string::npos) {
+        *kind = DSL_SHAPE_DIMENSION_SYMBOL;
+        *canonical = canonical_symbol;
+        return TRUE;
+    }
+    std::string constant = input.substr(operation + 1);
+    if (constant.empty())
+        return FALSE;
+    UINT64 value = 0;
+    for (size_t i = 0; i < constant.size(); ++i) {
+        if (!isdigit((unsigned char)constant[i]))
+            return FALSE;
+        UINT64 digit = constant[i] - '0';
+        if (value > (~(UINT64)0 - digit) / 10)
+            return FALSE;
+        value = value * 10 + digit;
+    }
+    if (value == 0) {
+        *kind = DSL_SHAPE_DIMENSION_SYMBOL;
+        *canonical = canonical_symbol;
+        return TRUE;
+    }
+    char number[32];
+    snprintf(number, sizeof(number), "%llu",
+             (unsigned long long)value);
+    *kind = DSL_SHAPE_DIMENSION_EXPRESSION;
+    *canonical = canonical_symbol + input[operation] + number;
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Store_Dimension
+        (DSL_SHAPE_FACT *fact,
+         INT32 ordinal,
+         DSL_SHAPE_DIMENSION_KIND kind,
+         UINT64 static_value,
+         const std::string &canonical)
+{
+    if (canonical.size() >= DSL_SHAPE_DIMENSION_TEXT_MAX)
+        return FALSE;
+    fact->dimension_kind[ordinal] = kind;
+    fact->dimension_known[ordinal] =
+        kind == DSL_SHAPE_DIMENSION_STATIC;
+    fact->dimension[ordinal] = static_value;
+    memcpy(fact->dimension_text[ordinal], canonical.c_str(),
+           canonical.size() + 1);
+    return TRUE;
+}
+
+static BOOL
 DSL_Shape_Parse_Fact
-        (const char *shape,
+        (ST_IDX owner_pu_st,
+         const char *shape,
          INT32 expected_rank,
          DSL_SHAPE_FACT *fact)
 {
     DSL_Shape_Fact_Init(fact);
-    if (shape == NULL || expected_rank < 0 ||
+    if (shape == NULL || expected_rank < -1 ||
         expected_rank > DSL_SHAPE_MAX_RANK)
         return FALSE;
+    if (expected_rank < 0)
+        return strcmp(shape, "<pending>") == 0;
     fact->rank = expected_rank;
-    if (strcmp(shape, "<pending>") == 0)
+    if (strcmp(shape, "<pending>") == 0) {
+        for (INT32 i = 0; i < expected_rank; ++i) {
+            fact->dimension_kind[i] = DSL_SHAPE_DIMENSION_PENDING;
+            strcpy(fact->dimension_text[i], "<pending>");
+        }
         return TRUE;
+    }
 
     const char *cursor = shape;
     while (isspace((unsigned char)*cursor))
@@ -1446,24 +1748,25 @@ DSL_Shape_Parse_Fact
         }
         if (ordinal >= expected_rank)
             return FALSE;
-        if (strncmp(cursor, "<pending>", 9) == 0) {
-            cursor += 9;
-        } else {
-            if (!isdigit((unsigned char)*cursor))
-                return FALSE;
-            UINT64 dimension = 0;
-            while (isdigit((unsigned char)*cursor)) {
-                UINT64 digit = (UINT64)(*cursor - '0');
-                if (dimension > (~(UINT64)0 - digit) / 10)
-                    return FALSE;
-                dimension = dimension * 10 + digit;
-                ++cursor;
-            }
-            if (dimension == 0)
-                return FALSE;
-            fact->dimension_known[ordinal] = 1;
-            fact->dimension[ordinal] = dimension;
-        }
+        const char *token_begin = cursor;
+        while (*cursor != '\0' && *cursor != ',' && *cursor != ']')
+            ++cursor;
+        const char *token_end = cursor;
+        while (token_end > token_begin &&
+               isspace((unsigned char)token_end[-1]))
+            --token_end;
+        while (token_begin < token_end &&
+               isspace((unsigned char)*token_begin))
+            ++token_begin;
+        std::string token(token_begin, token_end - token_begin);
+        DSL_SHAPE_DIMENSION_KIND kind;
+        UINT64 static_value = 0;
+        std::string canonical;
+        if (!DSL_Shape_Parse_Dimension
+                 (owner_pu_st, token, &kind, &static_value, &canonical) ||
+            !DSL_Shape_Store_Dimension
+                 (fact, ordinal, kind, static_value, canonical))
+            return FALSE;
         ++ordinal;
         while (isspace((unsigned char)*cursor))
             ++cursor;
@@ -1483,6 +1786,51 @@ DSL_Shape_Parse_Fact
 }
 
 BOOL
+DSL_Shape_Format_Fact
+        (const DSL_SHAPE_FACT *fact,
+         char *buffer,
+         size_t buffer_size)
+{
+    if (fact == NULL || buffer == NULL || buffer_size == 0 ||
+        fact->rank < -1 || fact->rank > DSL_SHAPE_MAX_RANK)
+        return FALSE;
+    if (fact->rank < 0)
+        return snprintf(buffer, buffer_size, "<pending>") >= 0 &&
+               strlen("<pending>") < buffer_size;
+    size_t used = 0;
+    int written = snprintf(buffer, buffer_size, "[");
+    if (written < 0 || (size_t)written >= buffer_size)
+        return FALSE;
+    used = written;
+    for (INT32 i = 0; i < fact->rank; ++i) {
+        const char *text = fact->dimension_text[i];
+        if (text[0] == '\0')
+            return FALSE;
+        written = snprintf(buffer + used, buffer_size - used,
+                           "%s%s", i == 0 ? "" : ",", text);
+        if (written < 0 || (size_t)written >= buffer_size - used)
+            return FALSE;
+        used += written;
+    }
+    written = snprintf(buffer + used, buffer_size - used, "]");
+    return written >= 0 && (size_t)written < buffer_size - used;
+}
+
+BOOL
+DSL_Shape_Normalize_Logical_Shape
+        (ST_IDX owner_pu_st,
+         const char *shape,
+         INT32 expected_rank,
+         char *buffer,
+         size_t buffer_size)
+{
+    DSL_SHAPE_FACT fact;
+    return DSL_Shape_Parse_Fact
+               (owner_pu_st, shape, expected_rank, &fact) &&
+           DSL_Shape_Format_Fact(&fact, buffer, buffer_size);
+}
+
+BOOL
 DSL_Shape_Fact_From_Type (TY_IDX ty, DSL_SHAPE_FACT *fact)
 {
     if (fact == NULL || !DSL_Shape_Tensor_Core_Complete(ty))
@@ -1495,7 +1843,7 @@ DSL_Shape_Fact_From_Type (TY_IDX ty, DSL_SHAPE_FACT *fact)
     INT32 recorded_rank;
     return DSL_Shape_Parse_Signed(rank_text, &recorded_rank) &&
            recorded_rank == rank &&
-           DSL_Shape_Parse_Fact(shape, rank, fact);
+           DSL_Shape_Parse_Fact(ST_IDX_ZERO, shape, rank, fact);
 }
 
 static BOOL
@@ -1508,9 +1856,9 @@ DSL_Shape_Facts_Equal
     if (left.rank < 0)
         return TRUE;
     for (INT32 i = 0; i < left.rank; ++i) {
-        if (left.dimension_known[i] != right.dimension_known[i] ||
-            (left.dimension_known[i] &&
-             left.dimension[i] != right.dimension[i]))
+        if (left.dimension_kind[i] != right.dimension_kind[i] ||
+            strcmp(left.dimension_text[i],
+                   right.dimension_text[i]) != 0)
             return FALSE;
     }
     return TRUE;
@@ -1535,15 +1883,19 @@ DSL_Shape_Merge_Equal_Fact
     if (target->rank < 0)
         return TRUE;
     for (INT32 i = 0; i < target->rank; ++i) {
-        if (!source.dimension_known[i])
+        if (source.dimension_kind[i] == DSL_SHAPE_DIMENSION_PENDING)
             continue;
-        if (target->dimension_known[i] &&
-            target->dimension[i] != source.dimension[i]) {
+        if (target->dimension_kind[i] != DSL_SHAPE_DIMENSION_PENDING &&
+            (target->dimension_kind[i] != source.dimension_kind[i] ||
+             strcmp(target->dimension_text[i],
+                    source.dimension_text[i]) != 0)) {
             target->state = DSL_SHAPE_FACT_CONTRADICTION;
             return FALSE;
         }
-        target->dimension_known[i] = 1;
+        target->dimension_kind[i] = source.dimension_kind[i];
+        target->dimension_known[i] = source.dimension_known[i];
         target->dimension[i] = source.dimension[i];
+        strcpy(target->dimension_text[i], source.dimension_text[i]);
     }
     DSL_Shape_Fact_Classify(target);
     return TRUE;
@@ -1582,8 +1934,12 @@ DSL_Shape_Set_Complete
     for (UINT32 i = 0; i < dimensions.size(); ++i) {
         if (dimensions[i] == 0)
             return FALSE;
+        result->dimension_kind[i] = DSL_SHAPE_DIMENSION_STATIC;
         result->dimension_known[i] = 1;
         result->dimension[i] = dimensions[i];
+        snprintf(result->dimension_text[i],
+                 sizeof(result->dimension_text[i]), "%llu",
+                 (unsigned long long)dimensions[i]);
     }
     result->state = DSL_SHAPE_FACT_COMPLETE;
     return TRUE;
@@ -1597,8 +1953,11 @@ DSL_Shape_Fact_To_Dimensions
     if (!DSL_Shape_Fact_Complete(fact) || dimensions == NULL)
         return FALSE;
     dimensions->clear();
-    for (INT32 i = 0; i < fact.rank; ++i)
+    for (INT32 i = 0; i < fact.rank; ++i) {
+        if (fact.dimension_kind[i] != DSL_SHAPE_DIMENSION_STATIC)
+            return FALSE;
         dimensions->push_back(fact.dimension[i]);
+    }
     return TRUE;
 }
 
@@ -1751,9 +2110,13 @@ DSL_Shape_Infer_Transpose
         if (permutation[i] >= (UINT32)source.rank || seen[permutation[i]])
             return FALSE;
         seen[permutation[i]] = TRUE;
+        result->dimension_kind[i] =
+            source.dimension_kind[permutation[i]];
         result->dimension_known[i] =
             source.dimension_known[permutation[i]];
         result->dimension[i] = source.dimension[permutation[i]];
+        strcpy(result->dimension_text[i],
+               source.dimension_text[permutation[i]]);
     }
     DSL_Shape_Fact_Classify(result);
     return TRUE;
@@ -1789,13 +2152,15 @@ DSL_Shape_Infer_Flatten
     result->rank = source.rank - (end - start);
     INT32 output = 0;
     for (INT32 i = 0; i < start; ++i, ++output) {
+        result->dimension_kind[output] = source.dimension_kind[i];
         result->dimension_known[output] = source.dimension_known[i];
         result->dimension[output] = source.dimension[i];
+        strcpy(result->dimension_text[output], source.dimension_text[i]);
     }
     UINT64 flattened = 1;
     BOOL known = TRUE;
     for (INT32 i = start; i <= end; ++i) {
-        if (!source.dimension_known[i]) {
+        if (source.dimension_kind[i] != DSL_SHAPE_DIMENSION_STATIC) {
             known = FALSE;
             continue;
         }
@@ -1803,11 +2168,23 @@ DSL_Shape_Infer_Flatten
             return FALSE;
         flattened *= source.dimension[i];
     }
-    result->dimension_known[output] = known;
-    result->dimension[output++] = flattened;
+    if (known) {
+        result->dimension_kind[output] = DSL_SHAPE_DIMENSION_STATIC;
+        result->dimension_known[output] = 1;
+        result->dimension[output] = flattened;
+        snprintf(result->dimension_text[output],
+                 sizeof(result->dimension_text[output]), "%llu",
+                 (unsigned long long)flattened);
+    } else {
+        result->dimension_kind[output] = DSL_SHAPE_DIMENSION_PENDING;
+        strcpy(result->dimension_text[output], "<pending>");
+    }
+    ++output;
     for (INT32 i = end + 1; i < source.rank; ++i, ++output) {
+        result->dimension_kind[output] = source.dimension_kind[i];
         result->dimension_known[output] = source.dimension_known[i];
         result->dimension[output] = source.dimension[i];
+        strcpy(result->dimension_text[output], source.dimension_text[i]);
     }
     DSL_Shape_Fact_Classify(result);
     return TRUE;
@@ -1992,7 +2369,8 @@ DSL_Shape_Infer_Operator
                 const DSL_SHAPE_FACT &parameter = input->operand_facts[i];
                 if (parameter.state == DSL_SHAPE_FACT_COMPLETE &&
                     (parameter.rank != 1 || result->rank != 4 ||
-                     parameter.dimension[0] != result->dimension[1]))
+                     !DSL_Shape_Dimension_Proves_Equal
+                          (parameter, 0, *result, 1)))
                     valid = FALSE;
             }
         }
@@ -2421,6 +2799,22 @@ DSL_Shape_Analyze_PU_Internal
             continue;
         }
         if (value.fact.state == DSL_SHAPE_FACT_COMPLETE) {
+            BOOL symbolic = FALSE;
+            BOOL runtime_dynamic = FALSE;
+            for (INT32 j = 0; j < value.fact.rank; ++j) {
+                symbolic = symbolic ||
+                    value.fact.dimension_kind[j] ==
+                        DSL_SHAPE_DIMENSION_SYMBOL ||
+                    value.fact.dimension_kind[j] ==
+                        DSL_SHAPE_DIMENSION_EXPRESSION;
+                runtime_dynamic = runtime_dynamic ||
+                    value.fact.dimension_kind[j] ==
+                        DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC;
+            }
+            if (symbolic)
+                ++local_result.symbolic_value_count;
+            if (runtime_dynamic)
+                ++local_result.runtime_dynamic_value_count;
             if (DSL_Shape_Facts_Equal(value.seed, value.fact))
                 ++local_result.unchanged_value_count;
             else

@@ -212,7 +212,17 @@ main(void)
         !DSL_Region_Verify_PU(pu, stderr) ||
         !DSL_Gatekeeper_Verify_PU_Mode
              (pu, DSL_GATEKEEPER_STRICT, stderr, &gatekeeper)) {
-        fprintf(stderr, "SP5 shape refinement result changed\n");
+        fprintf(stderr,
+                "SP5 shape refinement result changed: refinable=%u "
+                "requested=%u retyped=%u reused=%u rollback=%u "
+                "add_type=%d relu_type=%d kid_type=%d unrelated_type=%d\n",
+                refined.solver.refinable_value_count,
+                refined.requested_value_count, refined.retyped_value_count,
+                refined.reused_type_count, refined.rollback_count,
+                Value_Type_Is(add, refined_ty),
+                Value_Type_Is(relu, refined_ty),
+                WN_ty(WN_kid0(WN_kid0(relu))) == refined_ty,
+                ST_type(St_Table[unrelated]) == pending_ty);
         return 1;
     }
 

@@ -698,32 +698,39 @@ VHO DSL optimization, WOPT adaptation, and domain conversion.
 Finalize the symbolic-expression subset, runtime guards, shape assertions,
 inspection syntax, and lowering requirements.
 
+The SP8 v1 decision is recorded in
+`WHIRL-DSL-SYMBOLIC-SHAPE-CONTRACT.md`. It uses PU-qualified symbols and the
+minimum `symbol+constant` expression subset in the existing logical-shape
+field. Anonymous dynamic dimensions are a separate complete alternative, not
+an ordered refinement of named symbols. Unproved required relationships fail
+closed; executable runtime guards remain deferred.
+
 ## Open Refinement Topics
 
 The following decisions remain intentionally open:
 
-1. Whether anonymous runtime dynamic and named symbolic dimensions are ordered
-   in one lattice or represented as separate complete alternatives.
-2. The minimum canonical dimension-expression language and overflow rules.
-3. Whether shape constraints need a persisted optional image or can remain
+1. Whether later operator contracts require extending the SP8
+   `symbol+constant` expression language and what overflow rules those new
+   operations require.
+2. Whether shape constraints need a persisted optional image or can remain
    entirely reconstructible from operators, attributes, and descriptors.
-4. The exact admission-gate API and whether incomplete result descriptors may
+3. The exact admission-gate API and whether incomplete result descriptors may
    be sealed canonical pending types.
-5. Cross-PU mutation is not part of the VHO shape-refinement lifecycle. The
+4. Cross-PU mutation is not part of the VHO shape-refinement lifecycle. The
    backend driver processes every PU independently, while the SP4 transaction
    remains atomic within the active PU. A future transform that must change
    both sides of a PU boundary requires `-ipa`, an IPA-owned call-graph pass,
    and a separate reviewed contract.
-6. How transformation passes report shape preservation, invalidation, and
+5. How transformation passes report shape preservation, invalidation, and
    changed values without disrupting the existing fixed pipeline.
-7. How runtime shape guards are represented and lowered when static or
+6. How runtime shape guards are represented and lowered when static or
    symbolic proof is unavailable.
-8. How result descriptor refinement interacts with representation fields that
+7. How result descriptor refinement interacts with representation fields that
    become illegal after a shape change.
-9. Whether backward inference from result constraints to operands is required
+8. Whether backward inference from result constraints to operands is required
    in the first implementation or introduced after forward propagation.
-10. The stable diagnostic numbering and pass trace format.
-11. Whether explicit seed provenance needs a new structured compiler-metadata
+9. The stable diagnostic numbering and pass trace format.
+10. Whether explicit seed provenance needs a new structured compiler-metadata
     record. No additional torch2whirl API is required for the first static
     slice unless this distinction becomes necessary.
 

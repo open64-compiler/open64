@@ -157,13 +157,16 @@ even when its numeric value is unavailable at compile time.
 
 ### Adopted pending-shape representation
 
-The current staging decision is to represent an extent that shape inference
-has not determined as a tagged pending dimension. `ir_b2a -st -src` prints that
-state as `<pending>`. The text is an ASCII projection only; `<pending>` is not
-stored as the dimension value in TensorDescriptorIR.
+The current staging decision represents an extent that shape inference has not
+determined as `<pending>` in the canonical `logical_shape` field.
+`dsl_shape` parses that projection into a typed runtime fact; it never treats
+the spelling as a numeric dimension. `ir_b2a -st -src` prints the same
+canonical form.
 
-The internal representation shall distinguish rank completeness from the state
-of each dimension:
+The runtime fact representation distinguishes rank completeness from the state
+of each dimension. A future dedicated mapped-image representation, if needed,
+would require a separate binary compatibility review and could use fixed rows
+conceptually equivalent to:
 
 ```c++
 enum TENSOR_RANK_STATE {
@@ -206,10 +209,10 @@ The corresponding ASCII projections are:
 | `TENSOR_DIM_EXPRESSION` | `S_req+1` | Derived symbolic extent |
 
 For this implementation stage, `<pending>` is the required unresolved-shape
-notation. There is no current model requirement that justifies implementing
-named symbols such as `S_req`. The tagged design reserves `SYMBOL` and
-`EXPRESSION` kinds so they can be introduced later without confusing a valid
-symbolic dimension with an incomplete pending one.
+notation. SP8 also implements anonymous `?`, PU-scoped named symbols, and the
+minimum `symbol+constant` expression subset required by Llama decode. These
+forms are parsed into distinct runtime kinds and cannot be confused with an
+incomplete pending dimension.
 
 Examples:
 
@@ -221,18 +224,17 @@ fully inferred            : tensor<float>[1,32,128]
 ```
 
 A pending dimension may exist while a frontend or inference pass constructs a
-descriptor. It must not be sealed as a canonical tensor type or pass the
-gatekeeper when an operation requires a complete shape. The mapped-image
+descriptor and may be carried by a sealed staging type. It must not pass the
+strict gatekeeper when an operation requires a complete shape. The mapped-image
 framework may preserve pending records for staged tools, but a certified
 frontend `.B` artifact must satisfy the completeness required by its published
 operator contracts.
 
-The current implementation stores `logical_shape` as a string and most builder
-and gatekeeper shape parsers accept only positive integer dimensions. It
-therefore supports static shape semantics today. A string such as `[B,L,D]`
-may be retained for diagnostics, but it is not yet a compiler-understood
-symbolic representation and must not pass symbolic legality checks merely
-because the string is present.
+SP8 stores canonical static, pending, anonymous dynamic, PU-scoped symbol, and
+`symbol+constant` expression forms in the existing `logical_shape` field and
+parses them into typed runtime facts. An unqualified source spelling such as
+`L` is normalized under the active PU to `L@puXXXXXXXX`; it is not accepted as
+a persisted compiler identity. See `WHIRL-DSL-SYMBOLIC-SHAPE-CONTRACT.md`.
 
 ### Future symbolic refinement: Llama 2 decode
 
