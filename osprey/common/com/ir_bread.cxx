@@ -334,6 +334,8 @@ WN_get_global_symtab (void *handle)
 	}
     }
 
+    TY_Rebuild_Tensor_Type_Interner ();
+
     return 0;
 } // WN_get_global_symtab
 

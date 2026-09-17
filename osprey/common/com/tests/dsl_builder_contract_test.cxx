@@ -325,6 +325,46 @@ Check_DSL_Simplifier_Bridge(void)
 }
 
 static int
+Bind_Legacy_Canonical_Tensor
+        (TY_IDX ty,
+         const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor,
+         const char *extra_key,
+         const char *extra_value)
+{
+    char rank_buf[32];
+
+    if (ty == TY_IDX_ZERO || descriptor == NULL)
+        return 0;
+    snprintf(rank_buf, sizeof(rank_buf), "%d", descriptor->rank);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_KIND, descriptor->kind);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_DTYPE, descriptor->dtype);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_RANK, rank_buf);
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_SHAPE, descriptor->logical_shape);
+    if (descriptor->traits != NULL)
+        TY_tensor_bind_attribute
+            (ty, TY_TENSOR_SCHEMA_TRAITS, descriptor->traits);
+    if (descriptor->layout != NULL)
+        TY_tensor_bind_attribute
+            (ty, TY_TENSOR_SCHEMA_LAYOUT, descriptor->layout);
+    if (descriptor->sharding != NULL)
+        TY_tensor_bind_attribute
+            (ty, TY_TENSOR_SCHEMA_SHARDING, descriptor->sharding);
+    if (descriptor->placement != NULL)
+        TY_tensor_bind_attribute
+            (ty, TY_TENSOR_SCHEMA_PLACEMENT, descriptor->placement);
+    if (descriptor->memory != NULL)
+        TY_tensor_bind_attribute
+            (ty, TY_TENSOR_SCHEMA_MEMORY, descriptor->memory);
+    if (descriptor->quantization != NULL)
+        TY_tensor_bind_attribute
+            (ty, TY_TENSOR_SCHEMA_QUANTIZATION, descriptor->quantization);
+    if (extra_key != NULL && extra_value != NULL)
+        TY_tensor_bind_attribute(ty, extra_key, extra_value);
+    return TY_tensor_seal(ty);
+}
+
+static int
 Check_Upgraded_Ingestion_APIs(void)
 {
     DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
@@ -341,6 +381,21 @@ Check_Upgraded_Ingestion_APIs(void)
     TY_IDX duplicate_ty;
     TY_IDX contextual_duplicate_ty;
     TY_IDX different_ty;
+    TY_IDX refined_ty;
+    TY_IDX repeated_refined_ty;
+    TY_IDX legacy_first_ty;
+    TY_IDX legacy_second_ty;
+    TY_IDX legacy_interned_ty;
+    TY_IDX custom_base_ty;
+    TY_IDX custom_refined_ty;
+    UINT32 ty_count_before;
+    UINT32 ty_count_after_first;
+    UINT32 ty_count_after_duplicates;
+    UINT32 ty_count_after_different;
+    UINT32 ty_count_after_refined;
+    BOOL created;
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    TY_TENSOR_CANONICAL_DESCRIPTOR legacy_descriptor;
     DSL_BUILDER_PROGRAM_UNIT pu;
     DSL_BUILDER_VALUE add;
     DSL_IR_VALUE_RECORD add_value;
@@ -370,9 +425,11 @@ Check_Upgraded_Ingestion_APIs(void)
     descriptor.representation.runtime_state = "static";
     descriptor.lineage.lineage = "canonical_contract";
 
+    ty_count_before = Ty_tab.Size();
     tensor_ty = DSL_Builder_Intern_Tensor_Type
                     ("canonical_tensor_a", MTYPE_To_TY(MTYPE_I4),
                      &descriptor);
+    ty_count_after_first = Ty_tab.Size();
     duplicate_ty = DSL_Builder_Intern_Tensor_Type
                        ("canonical_tensor_b", MTYPE_To_TY(MTYPE_I4),
                         &descriptor);
@@ -383,19 +440,120 @@ Check_Upgraded_Ingestion_APIs(void)
                                   ("canonical_tensor_contextual",
                                    MTYPE_To_TY(MTYPE_I4),
                                    &different_descriptor);
+    ty_count_after_duplicates = Ty_tab.Size();
     different_descriptor = descriptor;
     different_descriptor.type_core.logical_shape = "[4,2]";
     different_ty = DSL_Builder_Intern_Tensor_Type
                        ("canonical_tensor_c", MTYPE_To_TY(MTYPE_I4),
                         &different_descriptor);
+    ty_count_after_different = Ty_tab.Size();
+
+    refinement.rank = 2;
+    refinement.logical_shape = "[8,2]";
+    created = FALSE;
+    refined_ty = TY_Intern_Refined_Tensor_Type
+                     (tensor_ty, &refinement, &created);
+    ty_count_after_refined = Ty_tab.Size();
+    if (!created)
+        failed = 1;
+    created = TRUE;
+    repeated_refined_ty = TY_Intern_Refined_Tensor_Type
+                              (tensor_ty, &refinement, &created);
+
+    TY_Reset_Tensor_Type_Interner();
+    TY_Rebuild_Tensor_Type_Interner();
+    duplicate_ty = DSL_Builder_Intern_Tensor_Type
+                       ("canonical_tensor_after_rebuild",
+                        MTYPE_To_TY(MTYPE_I4), &descriptor);
+
+    legacy_descriptor.kind = "tensor";
+    legacy_descriptor.dtype = "int32";
+    legacy_descriptor.rank = 2;
+    legacy_descriptor.logical_shape = "[3,3]";
+    legacy_descriptor.traits = "activation";
+    legacy_descriptor.layout = "row_major";
+    legacy_descriptor.sharding = "replicated";
+    legacy_descriptor.placement = "host";
+    legacy_descriptor.memory = "contiguous";
+    legacy_descriptor.quantization = "none";
+    legacy_first_ty = TY_Create_Tensor_Type
+                          ("legacy_tensor_first", MTYPE_To_TY(MTYPE_I4), 2);
+    legacy_second_ty = TY_Create_Tensor_Type
+                           ("legacy_tensor_second", MTYPE_To_TY(MTYPE_I4), 2);
+    if (!Bind_Legacy_Canonical_Tensor
+             (legacy_first_ty, &legacy_descriptor, NULL, NULL) ||
+        !Bind_Legacy_Canonical_Tensor
+             (legacy_second_ty, &legacy_descriptor, NULL, NULL))
+        failed = 1;
+    TY_Rebuild_Tensor_Type_Interner();
+    UINT32 legacy_ty_count = Ty_tab.Size();
+    legacy_interned_ty = TY_Intern_Tensor_Type
+                             ("legacy_tensor_lookup", MTYPE_To_TY(MTYPE_I4),
+                              &legacy_descriptor);
 
     if (tensor_ty == TY_IDX_ZERO || duplicate_ty != tensor_ty ||
         contextual_duplicate_ty != tensor_ty ||
         different_ty == TY_IDX_ZERO || different_ty == tensor_ty ||
+        ty_count_after_first != ty_count_before + 1 ||
+        ty_count_after_duplicates != ty_count_after_first ||
+        ty_count_after_different != ty_count_after_first + 1 ||
+        refined_ty == TY_IDX_ZERO || refined_ty == tensor_ty ||
+        repeated_refined_ty != refined_ty || created ||
+        ty_count_after_refined != ty_count_after_different + 1 ||
+        Ty_tab.Size() != legacy_ty_count ||
+        legacy_interned_ty != legacy_first_ty ||
+        TY_IDX_index(legacy_first_ty) >= TY_IDX_index(legacy_second_ty) ||
+        strcmp(TY_tensor_attribute(tensor_ty, TY_TENSOR_SCHEMA_SHAPE),
+               "[2,2]") != 0 ||
         !DSL_Builder_Tensor_Type_Is_Canonical(tensor_ty) ||
         !TY_tensor_attributes_are_equivalent(tensor_ty, duplicate_ty) ||
         TY_tensor_attributes_are_equivalent(tensor_ty, different_ty)) {
-        fprintf(stderr, "canonical tensor interning contract changed\n");
+        fprintf(stderr,
+                "canonical tensor interning contract changed: "
+                "ty=%u duplicate=%u contextual=%u different=%u "
+                "refined=%u repeated=%u created=%d "
+                "counts=%u/%u/%u/%u/%u/%u/%u legacy=%u/%u/%u "
+                "canonical=%d eq_duplicate=%d eq_different=%d shape=%s\n",
+                TY_IDX_index(tensor_ty), TY_IDX_index(duplicate_ty),
+                TY_IDX_index(contextual_duplicate_ty),
+                TY_IDX_index(different_ty), TY_IDX_index(refined_ty),
+                TY_IDX_index(repeated_refined_ty), created,
+                ty_count_before, ty_count_after_first,
+                ty_count_after_duplicates, ty_count_after_different,
+                ty_count_after_refined, legacy_ty_count, Ty_tab.Size(),
+                TY_IDX_index(legacy_first_ty),
+                TY_IDX_index(legacy_second_ty),
+                TY_IDX_index(legacy_interned_ty),
+                DSL_Builder_Tensor_Type_Is_Canonical(tensor_ty),
+                TY_tensor_attributes_are_equivalent
+                    (tensor_ty, duplicate_ty),
+                TY_tensor_attributes_are_equivalent
+                    (tensor_ty, different_ty),
+                TY_tensor_attribute(tensor_ty, TY_TENSOR_SCHEMA_SHAPE));
+        failed = 1;
+    }
+
+    legacy_descriptor.logical_shape = "[5,5]";
+    custom_base_ty = TY_Create_Tensor_Type
+                         ("custom_identity_tensor", MTYPE_To_TY(MTYPE_I4), 2);
+    if (!Bind_Legacy_Canonical_Tensor
+             (custom_base_ty, &legacy_descriptor, "shape_contract", "v1"))
+        failed = 1;
+    refinement.rank = 2;
+    refinement.logical_shape = "[6,5]";
+    created = FALSE;
+    custom_refined_ty = TY_Intern_Refined_Tensor_Type
+                            (custom_base_ty, &refinement, &created);
+    if (!created || custom_refined_ty == TY_IDX_ZERO ||
+        custom_refined_ty == custom_base_ty ||
+        TY_tensor_attribute(custom_refined_ty, "shape_contract") == NULL ||
+        strcmp(TY_tensor_attribute(custom_refined_ty, "shape_contract"),
+               "v1") != 0 ||
+        strcmp(TY_tensor_attribute(custom_base_ty,
+                                   TY_TENSOR_SCHEMA_SHAPE),
+               "[5,5]") != 0) {
+        fprintf(stderr,
+                "refined tensor type did not preserve canonical fields\n");
         failed = 1;
     }
 
@@ -4429,6 +4587,111 @@ Check_Multiple_Program_Units(void)
 }
 
 static int
+Check_Tensor_Interner_Mapped_Image(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP2_ARTIFACT");
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_SOURCE_POSITION source_position;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE input;
+    TY_TENSOR_CANONICAL_DESCRIPTOR canonical;
+    TY_IDX tensor_ty;
+    TY_IDX mapped_ty;
+    UINT32 ty_count;
+    UINT32 file_id;
+    BOOL source_position_set = FALSE;
+    char diagnostic[1024];
+    void *input_handle;
+
+    if (artifact == NULL || artifact[0] == '\0')
+        artifact = "tensor_interner_sp2.B";
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[2,2]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "row_major";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+
+    if (!DSL_Builder_Begin_Program()) {
+        fprintf(stderr, "SP2 program initialization failed\n");
+        return 1;
+    }
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("tensor_interner_f32_2x2", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("tensor_interner_sp2");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    input = DSL_Builder_Create_Model_Input("input", tensor_ty, 0);
+    memset(&source_position, 0, sizeof(source_position));
+    source_position.file_id = file_id;
+    source_position.line = __LINE__ + 1;
+    source_position.statement_begin = 1;
+    if (input != NULL)
+        source_position_set =
+            DSL_Builder_Set_Value_Source_Position(input, &source_position);
+    memset(&verify, 0, sizeof(verify));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (tensor_ty == TY_IDX_ZERO || pu == NULL || file_id == 0 ||
+        input == NULL ||
+        !source_position_set ||
+        !DSL_Builder_Append_PU_Value(pu, input) ||
+        !DSL_Builder_Verify_Program(&verify)) {
+        fprintf(stderr, "SP2 mapped fixture is invalid: %s\n", diagnostic);
+        return 1;
+    }
+
+    request.path = artifact;
+    request.flags = 0;
+    (void) unlink(artifact);
+    if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+        fprintf(stderr, "SP2 mapped-image finalization failed\n");
+        return 1;
+    }
+
+    TY_Reset_Tensor_Type_Interner();
+    input_handle = Open_Input_Info((char *)artifact);
+    if (input_handle == NULL || input_handle == (void *)-1 ||
+        WN_get_global_symtab(input_handle) != 0) {
+        fprintf(stderr, "SP2 mapped global symtab reopen failed\n");
+        return 1;
+    }
+
+    canonical.kind = descriptor.type_core.kind;
+    canonical.dtype = descriptor.type_core.dtype;
+    canonical.rank = descriptor.type_core.rank;
+    canonical.logical_shape = descriptor.type_core.logical_shape;
+    canonical.traits = descriptor.traits.traits;
+    canonical.layout = descriptor.representation.layout;
+    canonical.sharding = descriptor.representation.sharding;
+    canonical.placement = descriptor.representation.placement;
+    canonical.memory = descriptor.representation.memory;
+    canonical.quantization = descriptor.representation.quantization;
+    ty_count = Ty_tab.Size();
+    mapped_ty = TY_Intern_Tensor_Type
+                    ("mapped_tensor_interner_f32_2x2",
+                     MTYPE_To_TY(MTYPE_F4), &canonical);
+    if (mapped_ty != tensor_ty || Ty_tab.Size() != ty_count) {
+        fprintf(stderr,
+                "SP2 mapped interner did not reuse TY_IDX: "
+                "original=%u mapped=%u count=%u/%u\n",
+                TY_IDX_index(tensor_ty), TY_IDX_index(mapped_ty),
+                ty_count, Ty_tab.Size());
+        return 1;
+    }
+    Free_Input_Info();
+    printf("canonical tensor interner mapped-image contract passed\n");
+    return 0;
+}
+
+static int
 Check_Tensor_TCON_Mapped_Image(void)
 {
     const char *artifact = getenv("OPEN64_DSL_TENSOR_TCON_ARTIFACT");
@@ -7423,6 +7686,8 @@ main(void)
         return Check_DSL_Simplifier_Bridge();
     if (getenv("OPEN64_DSL_TENSOR_TCON_ONLY") != NULL)
         return Check_Tensor_TCON_Mapped_Image();
+    if (getenv("OPEN64_DSL_SHAPE_SP2_ONLY") != NULL)
+        return Check_Tensor_Interner_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC1_ONLY") != NULL)
         return Check_FHE_SYNC1_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC3_PLAN_ONLY") != NULL)

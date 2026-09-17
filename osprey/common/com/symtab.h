@@ -530,6 +530,15 @@ struct TY_TENSOR_CANONICAL_DESCRIPTOR {
 };
 
 /*
+ * Shape-only copy-on-write refinement of a canonical tensor type.  All
+ * canonical fields not named here are copied unchanged from the base type.
+ */
+struct TY_TENSOR_TYPE_CORE_REFINEMENT {
+    INT32 rank;
+    const char *logical_shape;
+};
+
+/*
  * Source-level TensorDescriptorIR probe.
  *
  * These IDs and records describe the future fixed descriptor shape, but they do
@@ -621,6 +630,13 @@ extern TY_IDX TY_Intern_Tensor_Type
                             (const char *name,
                              TY_IDX element_ty,
                              const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor);
+extern TY_IDX TY_Intern_Refined_Tensor_Type
+                            (TY_IDX base_ty,
+                             const TY_TENSOR_TYPE_CORE_REFINEMENT *refinement,
+                             BOOL *created);
+/* Runtime-only canonical index lifecycle; no state is written to WHIRL. */
+extern void TY_Rebuild_Tensor_Type_Interner (void);
+extern void TY_Reset_Tensor_Type_Interner (void);
 extern UINT32 TY_tensor_unbound_required_attribute_count
 				    (TY_IDX ty,
 				     const TY_TENSOR_SCHEMA_KEY *required,
