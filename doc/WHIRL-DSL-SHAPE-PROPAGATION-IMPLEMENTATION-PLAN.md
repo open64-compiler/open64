@@ -1,0 +1,579 @@
+# WHIRL DSL Tensor Shape Propagation Implementation Plan
+
+## Status
+
+Execution plan for `WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`. The architecture
+document is authoritative for semantics; this document orders the coding work,
+review gates, validation, and pull-request boundaries.
+
+No implementation milestone may weaken binary WHIRL compatibility, mutate a
+sealed tensor type in place, duplicate shape formulas in independent services,
+or expose a partially retyped WHIRL program.
+
+Progress through SP4:
+
+- SP0 baseline inventory was consumed by the SP1 through SP3 implementation
+  reviews.
+- SP1 completed in commit `08c5eb48`.
+- SP2 completed in commit `eb8b7273`.
+- SP3 completed in commit `0ef23ab9`.
+- SP4 is complete in `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`.
+- SP5 is the next implementation milestone.
+
+## Objective
+
+Deliver compiler-owned tensor shape propagation that:
+
+1. consumes frontend-provided TensorDescriptorIR seed facts;
+2. applies versioned logical DSL operator shape functions;
+3. reaches a deterministic program fixed point across operators, PUs, calls,
+   returns, and REGION interfaces;
+4. interns immutable and uniqued tensor `TY_IDX` records;
+5. atomically rebinds every affected WHIRL projection;
+6. runs before DSL optimization, FHE conversion, and DSL lowering;
+7. leaves reviewable binary and `ir_b2a -st -src` evidence.
+
+## Non-Goals For The First Delivery
+
+- Do not add a new `TY_KIND`, opcode encoding, ELF section, or mapped-image
+  record merely to record that shape inference ran.
+- Do not implement graph-wide shape inference in torch2whirl or Python.
+- Do not make the first solver a general symbolic theorem prover.
+- Do not specialize shared PUs until the cross-context type-conflict policy is
+  separately reviewed.
+- Do not fold layout, placement, sharding, quantization, runtime state, or FHE
+  state into a shape-only refinement without a separate proof.
+- Do not replace the optional descriptor-propagation optimization with this
+  mandatory legality phase. They have different responsibilities.
+
+## Original Baseline
+
+The implementation started from these observed conditions. SP1 through SP3
+have changed the items that describe missing services, but the list remains as
+the historical baseline against which those milestones were reviewed:
+
+1. `DSL_Builder_Intern_Tensor_Type()` creates and seals a candidate tensor type
+   before scanning `Ty_tab` for an equivalent type. Returning an earlier
+   `TY_IDX` can therefore leave an unused duplicate candidate in the table.
+2. Tensor equivalence and hashing already reach `KIND_TENSOR` through
+   `TY_are_equivalent()` and `TY_tensor_hash()`, but the hash currently covers
+   only a small subset of the canonical descriptor.
+3. Exact shape parsing and operator-specific checks are embedded in
+   `dsl_gatekeeper.cxx` for matmul, flatten, linear, convolution, BatchNorm,
+   pooling, and exact-shape operators.
+4. Logical shape is currently projected primarily through a string attribute.
+   Most checks accept static positive integer dimensions only.
+5. The managed DSL image, call ABI, PU-interface image, REGION service, and
+   `dsl_ir_rewrite.cxx` provide the relationships and preflight patterns needed
+   for later atomic retyping.
+6. There is no `dsl_shape` common service, no
+   `VHO_DSL_Shape_Refine_Driver()`, and no shape-refinement option today.
+
+Every baseline claim must be reconfirmed against merged `develop` before its
+milestone begins. The implementation branch must not be based on the older
+dirty development worktree.
+
+## Ownership And Files
+
+### Common semantic engine
+
+New files:
+
+```text
+osprey/common/com/dsl_shape.h
+osprey/common/com/dsl_shape.cxx
+```
+
+Responsibilities:
+
+- normalized static-shape parsing and formatting;
+- dimension and rank facts;
+- merge and contradiction operations;
+- canonical expression services introduced by later milestones;
+- versioned operator shape-function registry;
+- constraint graph and worklist solver;
+- check-only comparison against existing TensorDescriptorIR;
+- diagnostics independent of VHO, Python, FHE, WOPT, and code generation.
+
+### Tensor type uniquing
+
+Primary files:
+
+```text
+osprey/common/com/symtab.h
+osprey/common/com/symtab.cxx
+osprey/common/com/dsl_builder.h
+osprey/common/com/dsl_builder.cxx
+```
+
+The backend-safe canonical interner belongs in `symtab`, not in a frontend
+builder API. `DSL_Builder_Intern_Tensor_Type()` becomes a frontend wrapper over
+the same common service. The service must look up the complete canonical key
+before allocating a `TY` record.
+
+### Managed IR retyping
+
+Primary implementation:
+
+```text
+osprey/common/com/dsl_ir_rewrite.cxx
+osprey/common/com/dsl_ir_image.h
+osprey/common/com/dsl_region.cxx
+osprey/common/com/dsl_region.h
+```
+
+This work owns expected-old-type preflight, active-PU ownership, WN/ST/value
+agreement, call ABI updates, PU formal updates, return relationships, REGION
+interfaces, commit ordering, and rejection without mutation. Table-only
+mutation helpers must remain private.
+
+### VHO orchestration
+
+New files:
+
+```text
+osprey/be/vho/dsl_shape_refine.h
+osprey/be/vho/dsl_shape_refine.cxx
+```
+
+Existing integration files:
+
+```text
+osprey/be/be/driver.cxx
+osprey/common/com/config_dsl.h
+osprey/common/com/config_dsl.cxx
+osprey/be/be/Makefile.gbase
+osprey/ir_tools/Makefile.gbase
+```
+
+The VHO layer owns program traversal, active local-symbol-table coordination,
+begin/PU/end lifetime, mutation-plan application, tracing, and final strict
+verification. It does not own operator shape formulas.
+
+## Execution Rules
+
+1. Each milestone begins from merged `develop` and ends with a focused PR.
+2. Extract existing behavior before adding new inference behavior.
+3. Add check-only analysis before adding any mutation.
+4. Preflight the complete request set before changing any WHIRL structure.
+5. A failed phase leaves no partially retyped in-memory or binary artifact.
+6. New common services must remain link-safe for `be.so`, `lw_inline`, and IR
+   tools and must add no external library dependency.
+7. New C/C++ files follow existing Open64 spacing and contain no tab
+   characters. Make recipes may retain required tabs.
+8. Every artifact validation uses `ir_b2a -st -src` and retains the `.B`, `.T`,
+   source, phase trace, and diagnostics in a host-visible directory.
+
+## Milestone Queue
+
+### SP0: Baseline And Contract Inventory
+
+Status: completed as the baseline for the SP1 through SP3 reviews.
+
+Actions:
+
+1. Rebase a clean implementation branch onto merged `develop`.
+2. Inventory every shape parser, compatibility helper, and operator formula in
+   `dsl_gatekeeper.cxx`, `dsl_builder.cxx`, and `dsl_lower.cxx`.
+3. Produce a table keyed by logical operator and semantic version containing
+   operand requirements, attributes, result formula, representation checks,
+   and current diagnostics.
+4. Inventory every physical and managed location that carries a tensor
+   `TY_IDX`: WN, ST, DSL value, formal, call actual, return, constant, function
+   type, `TYLIST`, and REGION interface.
+5. Capture baseline test results and retained `.B`/`.T` artifacts for common
+   add, matmul, ResNet, Llama prefill, and Llama decode.
+6. Record current `Ty_tab` growth when the builder interns the same descriptor
+   repeatedly. This becomes the uniquing regression baseline.
+
+Deliverable:
+
+- checked-in inventory in the execution plan or a focused companion document;
+- no behavior change;
+- baseline artifact manifest with absolute local paths.
+
+Exit gate SP0:
+
+- reviewers agree that the operator table covers every existing shape check;
+- no shape formula is scheduled for deletion without a replacement test.
+
+### SP1: Shared Check-Only Shape Service
+
+Dependencies: SP0.
+
+Status: completed in commit `08c5eb48`.
+
+Actions:
+
+1. Add `dsl_shape.h/.cxx` with normalized static dimension vectors, overflow
+   checks, equality, exact-shape, identity, contraction, flatten, convolution,
+   pooling, and reduction helpers.
+2. Register shape functions by `(logical operator, semantic version)`.
+3. Move existing gatekeeper formulas into the shared service without changing
+   accepted or rejected programs.
+4. Make the gatekeeper call the shared service in strict check-only mode.
+5. Keep compatibility wrappers temporarily where a large mechanical move would
+   obscure review; mark and remove them before SP3.
+
+Initial operator set:
+
+- identity and same-shape operators;
+- `common.add`, `common.mul`, and `common.residual_add`;
+- `common.matmul`;
+- `common.linear` versions currently present in the registry;
+- reshape, transpose, and flatten forms currently ingested;
+- `cnn.conv2d`, inference BatchNorm, max pool, and global average pool.
+
+Tests:
+
+- old gatekeeper positive and negative cases remain byte-for-byte equivalent
+  where diagnostics are part of the contract;
+- unknown operator version rejects rather than borrowing another version;
+- arithmetic overflow and malformed static-shape input reject;
+- no Python, builder-state, FHE, WOPT, or CG dependency enters `dsl_shape`.
+
+Exit gate SP1:
+
+- one implementation supplies both gatekeeper checking and future inference;
+- current binary artifacts reopen and validate without change.
+
+PR boundary: shape-service extraction only.
+
+### SP2: Immutable Canonical Tensor Type Interner
+
+Dependencies: SP0. May proceed in parallel with SP1 after the canonical key is
+reviewed.
+
+Status: completed in commit `eb8b7273`.
+
+Actions:
+
+1. Define the normalized canonical key from the existing tensor type-equivalence
+   contract.
+2. Add a backend-safe common API for interning a complete descriptor or a
+   shape-refined copy of an existing canonical tensor type.
+3. Build a runtime canonical index from existing mapped tensor types.
+4. Use hash lookup followed by full structural equality.
+5. Select the lowest valid existing `TY_IDX` for legacy duplicate types without
+   deleting or renumbering records.
+6. Change `DSL_Builder_Intern_Tensor_Type()` to call the common interner.
+7. Prove lookup-before-create behavior. No unused candidate may remain when an
+   equivalent type already exists.
+
+Tests:
+
+- repeated equivalent requests return one `TY_IDX` with no `Ty_tab` growth;
+- different shapes return different `TY_IDX` values;
+- names, source data, lineage, and runtime/FHE state do not split canonical
+  types;
+- fields declared semantically significant do split types;
+- mapped input rebuilds the index deterministically;
+- legacy duplicate records remain readable and unchanged;
+- all existing builder tensor tests pass.
+
+Exit gate SP2:
+
+- sealed tensor types cannot be mutated;
+- builder and backend requests use one canonical service;
+- no binary layout or reader/writer change.
+
+PR boundary: canonical tensor interning and focused tests.
+
+### SP3: Per-PU Static Solver In Check-Only Mode
+
+Dependencies: SP1 and SP2.
+
+Status: completed in commit `0ef23ab9`.
+
+Actions:
+
+1. Add rank and static-dimension facts plus `pending`, `complete`, and
+   `contradiction` states.
+2. Build one shape variable per tensor value in a PU.
+3. Add constraints from seed descriptors, defining DSL nodes, result symbols,
+   and local REGION interfaces.
+4. Solve with a deterministic dependency worklist.
+5. Compare inferred results with existing descriptors without modifying WHIRL.
+6. Report unchanged, refinable, pending, unresolved, and contradictory values.
+7. Define provisional stable diagnostics and counters for review.
+
+Tests:
+
+- insertion-order-independent fixed point;
+- exact conflict diagnostics with source positions;
+- add/mul, matmul, linear, reshape/transpose/flatten, and CNN result inference;
+- non-DSL WHIRL is a no-op;
+- no type-table or managed-image mutation.
+
+Exit gate SP3:
+
+- real ResNet and Llama artifacts can be analyzed in check-only mode;
+- inferred complete descriptors agree with currently certified descriptors.
+
+PR boundary: static solver and check-only evidence.
+
+### SP4: Atomic Retyping Contract Review
+
+Dependencies: SP3. This is a mandatory design gate before mutation code.
+
+Status: completed by `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`. The approved v1
+slice is uniquely owned local native operator results; formal, return, call,
+constant, function-type, and cross-PU changes remain check-only.
+
+Actions:
+
+1. Specify the exact request row: owner PU, value ID, expected old `TY_IDX`, and
+   refined `TY_IDX`.
+2. Define exhaustive preflight coverage for WN, ST, DSL values, node results,
+   tensor constants, call ABI, PU formals, function types, `TYLIST`, returns,
+   and REGION interfaces.
+3. Define which references are authoritative and which are derived projections.
+4. Define rollback and failure behavior for one PU and for an all-PU request.
+5. Define shared-symbol and shared-callee conflict policy.
+6. Decide whether v1 supports only uniquely owned local results and fails closed
+   for formal/function-type changes.
+7. Review mapped-image and previous-reader consequences before implementation.
+
+Recommended v1 restriction:
+
+- mutate uniquely defined, non-address-taken local tensor result symbols first;
+- require all uses and managed rows to agree with the expected old type;
+- leave formal, return, and cross-PU refinement in check-only mode until SP6.
+
+Exit gate SP4:
+
+- common/com and VHO owners approve one preflight/commit protocol;
+- no public table-only mutation helper is introduced;
+- rejection cases and rollback tests are enumerated before coding.
+
+PR boundary: documentation and test scaffolding only, if needed.
+
+### SP5: Per-PU Canonical Refinement And VHO Driver
+
+Dependencies: SP2, SP3, and approved SP4.
+
+Status: next.
+
+Actions:
+
+1. Implement the reviewed atomic retyping API in `dsl_ir_rewrite.cxx`.
+2. Add `dsl_shape_refine.h/.cxx` with per-PU collection, solve, mutation-plan,
+   preflight, commit, and strict post-verification.
+3. Add `VHO_DSL_Shape_Refine_Driver()` in check-only and refine modes.
+4. Add result counters and trace output for old/new type, value, PU, operator,
+   constraint source, and iteration.
+5. Add `-DSL:shape_refine=on|off` and
+   `-DSL:dump_after_shape_refine=on|off` through `config_dsl`.
+6. Keep shape refinement enabled by default at every optimization level.
+7. When disabled, perform strict check-only validation rather than admitting an
+   incomplete artifact.
+
+Tests:
+
+- one refined value receives a new or reused canonical `TY_IDX`;
+- unrelated users retain the original `TY_IDX`;
+- second identical refinement reuses the first refined type;
+- failure in the last request leaves all earlier requests unchanged;
+- WN, ST, DSL value, and REGION evidence agree after commit;
+- disabled mode changes no IR and rejects required unresolved shapes.
+
+Exit gate SP5:
+
+- a single-PU binary artifact is refined, written through the standard WHIRL
+  path, reopened separately, and inspected with `ir_b2a -st -src`;
+- no partial validly named artifact survives a failed run.
+
+PR boundary: per-PU atomic refinement and driver, without cross-PU mutation.
+
+### SP6: Program Fixed Point Across PUs, Calls, Returns, And REGIONs
+
+Dependencies: SP5.
+
+Actions:
+
+1. Implement `Begin_Program`, per-PU application, and `End_Program` lifetime.
+2. Add constraints from call actual/formal rows, hidden result formals, returns,
+   PU-interface rows, and REGION input/output/live-out rows.
+3. Resolve global relationships before mutation, then apply local changes only
+   while the owning PU symbol table is active.
+4. Prove complete PU coverage before final validation.
+5. Detect incompatible context-specific demands on one shared formal or result.
+6. Apply the reviewed policy: preserve a valid symbolic type, specialize/clone
+   only if separately authorized, or fail closed.
+
+Tests:
+
+- two PUs with colliding local `ST_IDX` values;
+- multiple callers sharing one callee with compatible shapes;
+- incompatible shared-callee contexts reject without mutation;
+- actual/formal/result propagation;
+- nested REGION input/output/live-out propagation;
+- multi-PU batch failure leaves no partial binary artifact.
+
+Exit gate SP6:
+
+- deterministic all-PU fixed point and complete mapped-image verification;
+- ResNet and Llama multi-PU artifacts reopen with matching type evidence.
+
+PR boundary: all-PU and REGION propagation.
+
+### SP7: Backend Pipeline Integration And Invalidation
+
+Dependencies: SP6.
+
+Actions:
+
+1. Invoke initial refinement in `driver.cxx` after admission and before DSL WOPT,
+   FHE conversion, domain planning, or DSL lowering.
+2. Add a defensive current-generation check in `VHO_DSL_Lower_Driver()`.
+3. Conservatively rerun refinement after every executed DSL transformation that
+   changes operators, operands, attributes, calls, returns, or REGIONs.
+4. Define preservation/invalidation properties in the fixed DSL optimization
+   pipeline after the conservative implementation is certified.
+5. Ensure checkpoint-only and `whirl2c` paths follow the same legality rule.
+
+Tests:
+
+- `-O0` performs mandatory refinement;
+- every optimization level sees the same legal descriptor state;
+- canonicalization and algebraic simplification trigger revalidation;
+- FHE conversion receives refined descriptors;
+- stale-generation lowering rejects;
+- unrelated driver options remain silently ignored by this phase.
+
+Exit gate SP7:
+
+- the normal backend pipeline cannot consume stale or contradictory tensor
+  shapes;
+- non-DSL and legacy WHIRL behavior remains unchanged.
+
+PR boundary: driver, options, and invalidation integration.
+
+### SP8: Symbolic And Runtime-Dynamic Dimensions
+
+Dependencies: SP7 and a separate review of the open symbolic-design topics.
+
+Actions:
+
+1. Implement the reviewed distinction among `<pending>`, anonymous dynamic
+   `?`, named symbols, and canonical expressions.
+2. Add the minimum expression subset required by Llama decode and published
+   operator contracts.
+3. Add shape assertions and runtime guards where static proof is unavailable.
+4. Define printing, lowering, and mapped-image requirements before adding any
+   new persisted table.
+5. Add backward inference only where operator contracts require it.
+
+Exit gate SP8:
+
+- Llama decode sequence dimensions remain valid without substituting sample
+  input sizes;
+- `ir_b2a -st -src` distinguishes pending, dynamic, symbolic, and static facts;
+- unresolved required facts fail before lowering.
+
+PR boundary: symbolic model and its compatibility contract.
+
+### SP9: Final Certification
+
+Dependencies: SP7 for static certification; SP8 for dynamic certification.
+
+Required matrix:
+
+- common add/mul broadcasting;
+- common matmul and linear;
+- reshape, transpose, and flatten;
+- CNN convolution, BatchNorm, pooling, residual add, and logits;
+- ResNet multi-PU artifact;
+- Llama prefill and decode artifacts;
+- FHE conversion input without FHE-specific shape inference;
+- non-DSL C/C++ binary WHIRL;
+- prior binary WHIRL images and previous-reader behavior;
+- x86-64 plus the established syntax/operator-layout target matrix.
+
+Required retained evidence per model:
+
+```text
+<model>.B
+<model>.T
+<model>.shape-before.t
+<model>.shape-after.t
+<model>.shape-diagnostics.txt
+commands.txt
+SHA256SUMS
+```
+
+The `.T` file is produced with `ir_b2a -st -src`. Docker lanes use an explicit
+host bind mount and clean the artifact family only at the start of the next run.
+
+## Pull-Request Sequence
+
+| PR | Scope | Depends on |
+| --- | --- | --- |
+| P0 | Architecture design | none |
+| P1 | Baseline inventory and shared check-only shape extraction | P0 |
+| P2 | Lookup-before-create canonical tensor interner | P0; may run with P1 |
+| P3 | Per-PU static solver in check-only mode | P1, P2 |
+| P4 | Atomic retyping contract and focused substrate | P3, SP4 review |
+| P5 | Per-PU VHO refinement driver and options | P4 |
+| P6 | Cross-PU, call, return, and REGION fixed point | P5 |
+| P7 | Backend ordering, invalidation, and static certification | P6 |
+| P8 | Symbolic/runtime-dynamic model and certification | P7, design review |
+
+P1 and P2 are the only planned concurrent coding streams. Later PRs modify
+shared type/value relationships and should remain serial to keep review and
+rollback reasoning tractable.
+
+## Compatibility Gates For Every PR
+
+1. `git diff --check` and no-tab scan pass.
+2. No new `be.so` library dependency or frontend-builder symbol appears.
+3. `be.so`, `be`, `lw_inline`, and affected IR tools rebuild where applicable.
+4. Existing DSL native syntax and target-layout matrix passes.
+5. Existing binary WHIRL reopens through the mapped-image reader.
+6. `ir_b2a -st -src` shows logical DSL names and the same descriptor state used
+   by verification and lowering.
+7. No existing `TY_IDX` is renumbered, removed, or mutated after sealing.
+8. No new binary section lands without a separate reviewed versioned contract.
+9. Failed runs publish no final `.B` or misleading partial artifact.
+
+## Active Queue
+
+1. **SP0: Baseline and contract inventory.** Start only after the architecture
+   design PR is merged or its exact commit is explicitly accepted as the
+   implementation baseline.
+2. **SP1: Shared check-only shape service.** Ready after SP0 review.
+3. **SP2: Immutable canonical tensor interner.** Ready after SP0 canonical-key
+   review and may proceed concurrently with SP1.
+4. **SP3: Per-PU static solver.** Blocked on SP1 and SP2.
+5. **SP4-SP9.** Blocked on their stated gates.
+
+## Completion Criteria
+
+The project is complete when:
+
+1. Python supplies seed facts but performs no graph-wide compiler inference.
+2. One common set of versioned shape functions serves admission, propagation,
+   strict verification, and transformation revalidation.
+3. Repeated equivalent refinement does not grow the tensor type table.
+4. Existing canonical tensor types remain immutable and valid for unaffected
+   users.
+5. Per-PU and cross-PU retyping is atomic and owner-safe.
+6. Static ResNet and Llama prefill pass through the normal `-O0` pipeline with
+   compiler-refined types.
+7. Llama decode preserves reviewed dynamic or symbolic sequence semantics.
+8. FHE and other domains consume the same refined TensorDescriptorIR without a
+   private shape implementation.
+9. Binary WHIRL compatibility, separate-process reopen, `ir_b2a -st -src`, and
+   `whirl2c` evidence are certified.
+10. Every deferred caveat in the architecture document is either resolved or
+    remains behind an explicit fail-closed boundary.
+
+## Related Documents
+
+- `doc/WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`
+- `doc/WHIRL-DSL-TENSOR-TYPE-HANDLING.md`
+- `doc/WHIRL-DSL-INFRASTRUCTURE.md`
+- `doc/VHO-DSL-OPTIMIZATION-PLAN.md`
+- `doc/WOPT-DSL-ADAPTATION-PLAN.md`
+- `doc/Open64_Python_FE_Plan.md`
+- `AGENTS.md`

@@ -2,13 +2,16 @@
 
 ## Status
 
-Draft for architectural review. This document captures the current proposal
-for compiler-owned tensor shape propagation and refinement. Immutable and
-uniqued canonical tensor types are an adopted design requirement. The phase
-boundary, API names, dimension-expression model, and WHIRL value-rebinding
-protocol still require refinement before implementation begins. Nothing in
-this draft allocates a new binary WHIRL section or establishes a released API
-or ABI.
+Active staged implementation design. Immutable and uniqued canonical tensor
+types are adopted, the shared check-only shape service and per-PU static solver
+are implemented, and SP4 has approved the first atomic value-retyping
+contract. Symbolic dimension expressions, cross-PU mutation, and
+transformation invalidation still require later review. Nothing in this design
+allocates a new binary WHIRL section or establishes a released API or ABI.
+
+Execution is tracked in
+`WHIRL-DSL-SHAPE-PROPAGATION-IMPLEMENTATION-PLAN.md`. The first mutation
+protocol is specified by `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`.
 
 ## Purpose
 
@@ -273,10 +276,14 @@ context-specific refinements. Possible resolutions include preserving a
 symbolic type, materializing a uniquely owned temporary, cloning or
 specializing a PU, or failing closed.
 
-The exact transaction, rollback boundary, shared-symbol policy, and cross-PU
-specialization rules are deliberately deferred design work. Until they are
-reviewed, implementations may perform check-only inference but must not update
-only one of the WN, ST, DSL image, call, return, or REGION representations.
+The first transaction, rollback boundary, and shared-symbol policy are defined
+by `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`. Its v1 scope is deliberately
+limited to uniquely owned local native operator results. It supports REGION
+rows whose type derives through the same ST, but leaves formals, returns,
+calls, constants, function types, `TYLIST`, cross-PU refinement, and
+unregistered auxiliary-image relationships in check-only mode. Implementations
+must not update only one of the WN, ST, DSL image, call, return, or REGION
+representations.
 
 ## Versioned Operator Shape Functions
 
@@ -431,7 +438,7 @@ records. The per-PU driver applies the solved plan while the correct PU is
 active. `End_Program` proves complete PU coverage and final fixed-point
 validity. This coordination state is runtime-only.
 
-## Proposed Atomic Retyping API
+## Atomic Retyping Contract
 
 The common layer needs a batch operation conceptually equivalent to:
 
@@ -451,9 +458,12 @@ extern BOOL DSL_IR_Refine_Native_Value_Types
      FILE *diagnostic);
 ```
 
-This is an architectural sketch, not a frozen API. The implementation must
-follow the established preflight-then-commit pattern used by reviewed DSL IR
-rewrite services.
+This is an architectural sketch, not a frozen public API. The normative SP4
+protocol is in `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`. It requires
+complete-array preflight, private table mutation helpers, a rollback journal,
+strict post-verification, and unchanged mapped-image layout. SP5 may implement
+only the approved local-result slice; SP6 owns formal, call, return, shared
+callee, and all-PU extensions.
 
 ## Gatekeeper Modes
 
@@ -629,7 +639,9 @@ The following decisions remain intentionally open:
    entirely reconstructible from operators, attributes, and descriptors.
 4. The exact admission-gate API and whether incomplete result descriptors may
    be sealed canonical pending types.
-5. The exact atomic retyping API and rollback boundary across multiple PUs.
+5. The exact SP6 orchestration mechanism used to retain and reactivate per-PU
+   rollback journals across a program-wide transaction. The required atomic
+   semantics are fixed by the SP4 retyping contract.
 6. How transformation passes report shape preservation, invalidation, and
    changed values without disrupting the existing fixed pipeline.
 7. How runtime shape guards are represented and lowered when static or
