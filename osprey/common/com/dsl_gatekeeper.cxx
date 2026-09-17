@@ -930,6 +930,14 @@ DSL_Gatekeeper_Verify_PU
         if (!DSL_Gatekeeper_Verify_Tree
                  (PU_Info_tree_ptr(pu), NULL, -1, &context))
             valid = FALSE;
+        DSL_SHAPE_SOLVER_RESULT shape_result;
+        if (!DSL_Shape_Analyze_PU
+                 (pu, PU_Info_tree_ptr(pu), diagnostic, &shape_result)) {
+            valid = FALSE;
+            context.result.error_count +=
+                shape_result.contradiction_count == 0 ? 1 :
+                shape_result.contradiction_count;
+        }
     }
 
     if (result != NULL)

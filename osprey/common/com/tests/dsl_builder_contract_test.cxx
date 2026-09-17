@@ -7283,6 +7283,191 @@ Find_STID_In_Block (WN *block, ST_IDX st)
     return NULL;
 }
 
+static void
+Init_Shape_Solver_Descriptor
+        (DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor,
+         const char *shape)
+{
+    memset(descriptor, 0, sizeof(*descriptor));
+    descriptor->type_core.kind = "tensor";
+    descriptor->type_core.dtype = "float32";
+    descriptor->type_core.rank = 2;
+    descriptor->type_core.logical_shape = shape;
+    descriptor->traits.traits = "activation";
+    descriptor->representation.layout = "row_major";
+    descriptor->representation.sharding = "replicated";
+    descriptor->representation.placement = "host";
+    descriptor->representation.memory = "contiguous";
+    descriptor->representation.quantization = "none";
+}
+
+static int
+Check_Shape_Solver(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP3_ARTIFACT");
+    DSL_BUILDER_TENSOR_DESCRIPTOR complete_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR pending_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR conflict_descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE inputs[2];
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_VALUE add;
+    DSL_BUILDER_VALUE relu;
+    TY_IDX complete_ty;
+    TY_IDX pending_ty;
+    TY_IDX conflict_ty;
+    DSL_SHAPE_SOLVER_RESULT first;
+    DSL_SHAPE_SOLVER_RESULT second;
+    UINT32 type_count;
+    DSL_IR_IMAGE_HEADER image_header;
+    DSL_IR_IMAGE_HEADER image_after;
+    int failed = 0;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    Init_Shape_Solver_Descriptor(&complete_descriptor, "[2,3]");
+    Init_Shape_Solver_Descriptor(&pending_descriptor, "[2,<pending>]");
+    Init_Shape_Solver_Descriptor(&conflict_descriptor, "[2,4]");
+    complete_ty = DSL_Builder_Intern_Tensor_Type
+                      ("shape_solver_complete", MTYPE_To_TY(MTYPE_F4),
+                       &complete_descriptor);
+    pending_ty = DSL_Builder_Intern_Tensor_Type
+                     ("shape_solver_pending", MTYPE_To_TY(MTYPE_F4),
+                      &pending_descriptor);
+    conflict_ty = DSL_Builder_Intern_Tensor_Type
+                      ("shape_solver_conflict", MTYPE_To_TY(MTYPE_F4),
+                       &conflict_descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("dsl_shape_solver_sp3");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    inputs[0] = DSL_Builder_Create_Model_Input
+                    ("shape_input0", complete_ty, 0);
+    inputs[1] = DSL_Builder_Create_Model_Input
+                    ("shape_input1", complete_ty, 1);
+    kids[0] = inputs[0];
+    kids[1] = inputs[1];
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    add = DSL_Builder_Create_Operator_With_Result
+              (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                               DSL_OPCODE_COMMON_ADD, 1),
+               1, kids, 2, &attribute, 1, "shape_add",
+               artifact == NULL ? pending_ty : complete_ty);
+    kids[0] = add;
+    relu = DSL_Builder_Create_Operator_With_Result
+               (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                "common.relu", 2),
+                2, kids, 1, NULL, 0, "shape_relu",
+                artifact == NULL ? pending_ty : complete_ty);
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = 81;
+    position.statement_begin = 1;
+    if (complete_ty == TY_IDX_ZERO || pending_ty == TY_IDX_ZERO ||
+        conflict_ty == TY_IDX_ZERO || pu == NULL || file_id == 0 ||
+        inputs[0] == NULL || inputs[1] == NULL || add == NULL ||
+        relu == NULL ||
+        !DSL_Builder_Set_Value_Source_Position(add, &position) ||
+        (++position.line,
+         !DSL_Builder_Set_Value_Source_Position(relu, &position)) ||
+        !DSL_Builder_Append_PU_Value(pu, relu)) {
+        fprintf(stderr, "SP3 shape solver fixture creation failed\n");
+        return 1;
+    }
+
+    type_count = TY_Table_Size();
+    DSL_IR_Image_Get_Header(&image_header);
+    memset(&first, 0, sizeof(first));
+    memset(&second, 0, sizeof(second));
+    if (!DSL_Shape_Analyze_PU
+             (pu, PU_Info_tree_ptr(pu), stderr, &first) ||
+        !DSL_Shape_Analyze_PU
+             (pu, PU_Info_tree_ptr(pu), stderr, &second) ||
+        memcmp(&first, &second, sizeof(first)) != 0 ||
+        first.visited_node_count != 2 || first.value_count != 4 ||
+        first.contradiction_count != 0 ||
+        (artifact == NULL && first.refinable_value_count != 2) ||
+        (artifact != NULL && first.unchanged_value_count != 4) ||
+        first.iteration_count == 0 || TY_Table_Size() != type_count) {
+        fprintf(stderr, "SP3 deterministic fixed-point result changed\n");
+        failed = 1;
+    }
+    DSL_IR_Image_Get_Header(&image_after);
+    if (memcmp(&image_header, &image_after, sizeof(image_header)) != 0) {
+        fprintf(stderr, "SP3 check-only solver mutated the DSL image\n");
+        failed = 1;
+    }
+
+    if (artifact == NULL) {
+        kids[0] = inputs[0];
+        kids[1] = inputs[1];
+        DSL_BUILDER_VALUE conflict =
+            DSL_Builder_Create_Operator_With_Result
+                (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                 DSL_OPCODE_COMMON_ADD, 1),
+                 1, kids, 2, &attribute, 1, "shape_conflict",
+                 conflict_ty);
+        position.line = 91;
+        if (conflict == NULL ||
+            !DSL_Builder_Set_Value_Source_Position(conflict, &position) ||
+            !DSL_Builder_Append_PU_Value(pu, conflict)) {
+            fprintf(stderr, "SP3 contradiction fixture creation failed\n");
+            failed = 1;
+        } else {
+            char diagnostic[2048];
+            memset(diagnostic, 0, sizeof(diagnostic));
+            FILE *stream = tmpfile();
+            DSL_SHAPE_SOLVER_RESULT contradiction;
+            BOOL accepted = DSL_Shape_Analyze_PU
+                                (pu, PU_Info_tree_ptr(pu), stream,
+                                 &contradiction);
+            rewind(stream);
+            fread(diagnostic, 1, sizeof(diagnostic) - 1, stream);
+            fclose(stream);
+            if (accepted || contradiction.contradiction_count == 0 ||
+                strstr(diagnostic, "DSL-SHAPE-002") == NULL ||
+                strstr(diagnostic, "line 91") == NULL) {
+                fprintf(stderr,
+                        "SP3 source-positioned contradiction changed: %s\n",
+                        diagnostic);
+                failed = 1;
+            }
+        }
+
+        DSL_Builder_Begin_Program();
+        DSL_Opcode_Register_Common_Substrate();
+        DSL_BUILDER_PROGRAM_UNIT empty =
+            DSL_Builder_Create_Minimal_PU("dsl_shape_solver_noop");
+        DSL_SHAPE_SOLVER_RESULT noop;
+        if (empty == NULL ||
+            !DSL_Shape_Analyze_PU
+                 (empty, PU_Info_tree_ptr(empty), stderr, &noop) ||
+            noop.visited_node_count != 0 || noop.value_count != 0 ||
+            noop.contradiction_count != 0) {
+            fprintf(stderr, "SP3 non-DSL no-op behavior changed\n");
+            failed = 1;
+        }
+    } else if (!failed) {
+        request.path = artifact;
+        request.flags = 0;
+        (void) unlink(artifact);
+        if (!DSL_Builder_Finalize_Mapped_Image(&request)) {
+            fprintf(stderr, "SP3 mapped-image finalization failed\n");
+            failed = 1;
+        }
+    }
+    if (!failed)
+        printf("SP3 check-only shape solver contract passed: "
+               "nodes=%u values=%u unchanged=%u refinable=%u "
+               "iterations=%u\n",
+               first.visited_node_count, first.value_count,
+               first.unchanged_value_count, first.refinable_value_count,
+               first.iteration_count);
+    return failed;
+}
+
 static unsigned char *
 Capture_DSL_IR_Image (UINT64 *image_size)
 {
@@ -7688,6 +7873,8 @@ main(void)
         return Check_Tensor_TCON_Mapped_Image();
     if (getenv("OPEN64_DSL_SHAPE_SP2_ONLY") != NULL)
         return Check_Tensor_Interner_Mapped_Image();
+    if (getenv("OPEN64_DSL_SHAPE_SP3_ONLY") != NULL)
+        return Check_Shape_Solver();
     if (getenv("OPEN64_DSL_FHE_SYNC1_ONLY") != NULL)
         return Check_FHE_SYNC1_Mapped_Image();
     if (getenv("OPEN64_DSL_FHE_SYNC3_PLAN_ONLY") != NULL)
@@ -7722,6 +7909,7 @@ main(void)
     failed |= Check_External_Tensor_Materialization();
     failed |= Check_DSL_Value_Retirement();
     failed |= Check_DSL_Simplifier_Bridge();
+    failed |= Check_Shape_Solver();
 
     return failed;
 }

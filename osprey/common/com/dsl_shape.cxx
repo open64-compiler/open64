@@ -5,13 +5,17 @@
 #include <ctype.h>
 #include <float.h>
 #include <limits.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 #include <vector>
 
 #include "dsl_shape.h"
+#include "pu_info.h"
 #include "symtab.h"
+#include "wn.h"
 
 static BOOL
 DSL_Shape_TY_Valid (TY_IDX ty)
@@ -1385,4 +1389,1060 @@ DSL_Shape_Check_Operator
     return rule->function(input->node, operands, input->result_ty,
                           input->version) ?
            DSL_SHAPE_CHECK_VALID : DSL_SHAPE_CHECK_INVALID;
+}
+
+static void
+DSL_Shape_Fact_Init (DSL_SHAPE_FACT *fact)
+{
+    memset(fact, 0, sizeof(*fact));
+    fact->state = DSL_SHAPE_FACT_PENDING;
+    fact->rank = -1;
+}
+
+static void
+DSL_Shape_Fact_Classify (DSL_SHAPE_FACT *fact)
+{
+    if (fact->state == DSL_SHAPE_FACT_CONTRADICTION)
+        return;
+    if (fact->rank < 0) {
+        fact->state = DSL_SHAPE_FACT_PENDING;
+        return;
+    }
+    for (INT32 i = 0; i < fact->rank; ++i) {
+        if (!fact->dimension_known[i]) {
+            fact->state = DSL_SHAPE_FACT_PENDING;
+            return;
+        }
+    }
+    fact->state = DSL_SHAPE_FACT_COMPLETE;
+}
+
+static BOOL
+DSL_Shape_Parse_Fact
+        (const char *shape,
+         INT32 expected_rank,
+         DSL_SHAPE_FACT *fact)
+{
+    DSL_Shape_Fact_Init(fact);
+    if (shape == NULL || expected_rank < 0 ||
+        expected_rank > DSL_SHAPE_MAX_RANK)
+        return FALSE;
+    fact->rank = expected_rank;
+    if (strcmp(shape, "<pending>") == 0)
+        return TRUE;
+
+    const char *cursor = shape;
+    while (isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor++ != '[')
+        return FALSE;
+    INT32 ordinal = 0;
+    while (TRUE) {
+        while (isspace((unsigned char)*cursor))
+            ++cursor;
+        if (*cursor == ']') {
+            ++cursor;
+            break;
+        }
+        if (ordinal >= expected_rank)
+            return FALSE;
+        if (strncmp(cursor, "<pending>", 9) == 0) {
+            cursor += 9;
+        } else {
+            if (!isdigit((unsigned char)*cursor))
+                return FALSE;
+            UINT64 dimension = 0;
+            while (isdigit((unsigned char)*cursor)) {
+                UINT64 digit = (UINT64)(*cursor - '0');
+                if (dimension > (~(UINT64)0 - digit) / 10)
+                    return FALSE;
+                dimension = dimension * 10 + digit;
+                ++cursor;
+            }
+            if (dimension == 0)
+                return FALSE;
+            fact->dimension_known[ordinal] = 1;
+            fact->dimension[ordinal] = dimension;
+        }
+        ++ordinal;
+        while (isspace((unsigned char)*cursor))
+            ++cursor;
+        if (*cursor == ',') {
+            ++cursor;
+            continue;
+        }
+        if (*cursor != ']')
+            return FALSE;
+    }
+    while (isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor != '\0' || ordinal != expected_rank)
+        return FALSE;
+    DSL_Shape_Fact_Classify(fact);
+    return TRUE;
+}
+
+BOOL
+DSL_Shape_Fact_From_Type (TY_IDX ty, DSL_SHAPE_FACT *fact)
+{
+    if (fact == NULL || !DSL_Shape_Tensor_Core_Complete(ty))
+        return FALSE;
+    INT32 rank = TY_tensor_rank(ty);
+    const char *rank_text =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_RANK);
+    const char *shape =
+        TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_SHAPE);
+    INT32 recorded_rank;
+    return DSL_Shape_Parse_Signed(rank_text, &recorded_rank) &&
+           recorded_rank == rank &&
+           DSL_Shape_Parse_Fact(shape, rank, fact);
+}
+
+static BOOL
+DSL_Shape_Facts_Equal
+        (const DSL_SHAPE_FACT &left,
+         const DSL_SHAPE_FACT &right)
+{
+    if (left.state != right.state || left.rank != right.rank)
+        return FALSE;
+    if (left.rank < 0)
+        return TRUE;
+    for (INT32 i = 0; i < left.rank; ++i) {
+        if (left.dimension_known[i] != right.dimension_known[i] ||
+            (left.dimension_known[i] &&
+             left.dimension[i] != right.dimension[i]))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Merge_Equal_Fact
+        (DSL_SHAPE_FACT *target,
+         const DSL_SHAPE_FACT &source)
+{
+    if (target->state == DSL_SHAPE_FACT_CONTRADICTION ||
+        source.state == DSL_SHAPE_FACT_CONTRADICTION) {
+        target->state = DSL_SHAPE_FACT_CONTRADICTION;
+        return FALSE;
+    }
+    if (target->rank < 0)
+        target->rank = source.rank;
+    else if (source.rank >= 0 && target->rank != source.rank) {
+        target->state = DSL_SHAPE_FACT_CONTRADICTION;
+        return FALSE;
+    }
+    if (target->rank < 0)
+        return TRUE;
+    for (INT32 i = 0; i < target->rank; ++i) {
+        if (!source.dimension_known[i])
+            continue;
+        if (target->dimension_known[i] &&
+            target->dimension[i] != source.dimension[i]) {
+            target->state = DSL_SHAPE_FACT_CONTRADICTION;
+            return FALSE;
+        }
+        target->dimension_known[i] = 1;
+        target->dimension[i] = source.dimension[i];
+    }
+    DSL_Shape_Fact_Classify(target);
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Fact_Complete (const DSL_SHAPE_FACT &fact)
+{
+    return fact.state == DSL_SHAPE_FACT_COMPLETE;
+}
+
+static BOOL
+DSL_Shape_Infer_Same
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    if (input->operand_count == 0)
+        return FALSE;
+    *result = input->operand_facts[0];
+    for (UINT32 i = 1; i < input->operand_count; ++i) {
+        if (!DSL_Shape_Merge_Equal_Fact(result, input->operand_facts[i]))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Set_Complete
+        (const std::vector<UINT64> &dimensions,
+         DSL_SHAPE_FACT *result)
+{
+    if (dimensions.size() > DSL_SHAPE_MAX_RANK)
+        return FALSE;
+    DSL_Shape_Fact_Init(result);
+    result->rank = dimensions.size();
+    for (UINT32 i = 0; i < dimensions.size(); ++i) {
+        if (dimensions[i] == 0)
+            return FALSE;
+        result->dimension_known[i] = 1;
+        result->dimension[i] = dimensions[i];
+    }
+    result->state = DSL_SHAPE_FACT_COMPLETE;
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Fact_To_Dimensions
+        (const DSL_SHAPE_FACT &fact,
+         std::vector<UINT64> *dimensions)
+{
+    if (!DSL_Shape_Fact_Complete(fact) || dimensions == NULL)
+        return FALSE;
+    dimensions->clear();
+    for (INT32 i = 0; i < fact.rank; ++i)
+        dimensions->push_back(fact.dimension[i]);
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Infer_Matmul
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    if (input->operand_count != 2 ||
+        !DSL_Shape_Tensor_Compatible
+             (input->operand_types[0], input->operand_types[1], FALSE))
+        return FALSE;
+    std::vector<UINT64> left;
+    std::vector<UINT64> right;
+    if (!DSL_Shape_Fact_To_Dimensions(input->operand_facts[0], &left) ||
+        !DSL_Shape_Fact_To_Dimensions(input->operand_facts[1], &right) ||
+        left.size() < 2 || left.size() != right.size())
+        return TRUE;
+
+    BOOL transpose_left = FALSE;
+    BOOL transpose_right = FALSE;
+    if (input->version == 2) {
+        if (DSL_Shape_Attribute_Equals
+                (input->node, "attr.transpose_kid0", "true"))
+            transpose_left = TRUE;
+        else if (!DSL_Shape_Attribute_Equals
+                     (input->node, "attr.transpose_kid0", "false"))
+            return FALSE;
+        if (DSL_Shape_Attribute_Equals
+                (input->node, "attr.transpose_kid1", "true"))
+            transpose_right = TRUE;
+        else if (!DSL_Shape_Attribute_Equals
+                     (input->node, "attr.transpose_kid1", "false"))
+            return FALSE;
+        if (!DSL_Shape_Attribute_Equals
+                 (input->node, "attr.batch_rule", "exact") ||
+            !DSL_Shape_Attribute_Equals
+                 (input->node, "attr.accum_dtype", "float32"))
+            return FALSE;
+    } else if (input->version != 1) {
+        return FALSE;
+    }
+    for (UINT32 i = 0; i + 2 < left.size(); ++i) {
+        if (left[i] != right[i])
+            return FALSE;
+    }
+    UINT32 rank = left.size();
+    UINT64 left_m = left[rank - (transpose_left ? 1 : 2)];
+    UINT64 left_k = left[rank - (transpose_left ? 2 : 1)];
+    UINT64 right_k = right[rank - (transpose_right ? 1 : 2)];
+    UINT64 right_n = right[rank - (transpose_right ? 2 : 1)];
+    if (left_k != right_k)
+        return FALSE;
+    left[rank - 2] = left_m;
+    left[rank - 1] = right_n;
+    return DSL_Shape_Set_Complete(left, result);
+}
+
+static BOOL
+DSL_Shape_Infer_Linear
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    UINT32 expected_operands = input->version == 2 ? 3 : 2;
+    if ((input->version != 2 && input->version != 3) ||
+        input->operand_count != expected_operands ||
+        !DSL_Shape_Attribute_Equals
+             (input->node, "attr.has_bias",
+              input->version == 2 ? "true" : "false") ||
+        !DSL_Shape_Attribute_Equals
+             (input->node, "attr.transpose_input", "false") ||
+        !DSL_Shape_Attribute_Equals
+             (input->node, "attr.transpose_weight", "true") ||
+        !DSL_Shape_Attribute_Equals
+             (input->node, "attr.weight_layout", "OI"))
+        return FALSE;
+    std::vector<UINT64> activation;
+    std::vector<UINT64> weight;
+    std::vector<UINT64> bias;
+    if (!DSL_Shape_Fact_To_Dimensions
+             (input->operand_facts[0], &activation) ||
+        !DSL_Shape_Fact_To_Dimensions
+             (input->operand_facts[1], &weight))
+        return TRUE;
+    if (activation.size() < 2 || weight.size() != 2 ||
+        activation[activation.size() - 1] != weight[1])
+        return FALSE;
+    if (input->version == 2 &&
+        (!DSL_Shape_Fact_To_Dimensions
+             (input->operand_facts[2], &bias) ||
+         bias.size() != 1 || bias[0] != weight[0]))
+        return FALSE;
+    activation[activation.size() - 1] = weight[0];
+    return DSL_Shape_Set_Complete(activation, result);
+}
+
+static BOOL
+DSL_Shape_Infer_Reshape
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    const char *target_text = NULL;
+    std::vector<UINT64> target;
+    if (input->operand_count != 1 ||
+        !DSL_Shape_Node_Attribute
+             (input->node, "attr.target_shape", &target_text) ||
+        !DSL_Shape_Parse_Unsigned_List(target_text, FALSE, &target))
+        return FALSE;
+    std::vector<UINT64> source;
+    if (DSL_Shape_Fact_To_Dimensions(input->operand_facts[0], &source)) {
+        UINT64 source_elements = 1;
+        UINT64 target_elements = 1;
+        for (UINT32 i = 0; i < source.size(); ++i) {
+            if (source_elements > ~(UINT64)0 / source[i])
+                return FALSE;
+            source_elements *= source[i];
+        }
+        for (UINT32 i = 0; i < target.size(); ++i) {
+            if (target_elements > ~(UINT64)0 / target[i])
+                return FALSE;
+            target_elements *= target[i];
+        }
+        if (source_elements != target_elements)
+            return FALSE;
+    }
+    return DSL_Shape_Set_Complete(target, result);
+}
+
+static BOOL
+DSL_Shape_Infer_Transpose
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    const char *text = NULL;
+    std::vector<UINT64> permutation;
+    if (input->operand_count != 1 ||
+        !DSL_Shape_Node_Attribute
+             (input->node, "attr.permutation", &text) ||
+        !DSL_Shape_Parse_Unsigned_List(text, TRUE, &permutation))
+        return FALSE;
+    const DSL_SHAPE_FACT &source = input->operand_facts[0];
+    if (source.rank < 0)
+        return TRUE;
+    if (permutation.size() != (UINT32)source.rank)
+        return FALSE;
+    DSL_Shape_Fact_Init(result);
+    result->rank = source.rank;
+    std::vector<BOOL> seen(source.rank, FALSE);
+    for (UINT32 i = 0; i < permutation.size(); ++i) {
+        if (permutation[i] >= (UINT32)source.rank || seen[permutation[i]])
+            return FALSE;
+        seen[permutation[i]] = TRUE;
+        result->dimension_known[i] =
+            source.dimension_known[permutation[i]];
+        result->dimension[i] = source.dimension[permutation[i]];
+    }
+    DSL_Shape_Fact_Classify(result);
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Infer_Flatten
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    if (input->operand_count != 1)
+        return FALSE;
+    const DSL_SHAPE_FACT &source = input->operand_facts[0];
+    const char *start_text = NULL;
+    const char *end_text = NULL;
+    INT32 start;
+    INT32 end;
+    if (source.rank < 0 ||
+        !DSL_Shape_Node_Attribute
+             (input->node, "attr.start_dim", &start_text) ||
+        !DSL_Shape_Node_Attribute
+             (input->node, "attr.end_dim", &end_text) ||
+        !DSL_Shape_Parse_Signed(start_text, &start) ||
+        !DSL_Shape_Parse_Signed(end_text, &end))
+        return FALSE;
+    if (start < 0)
+        start += source.rank;
+    if (end < 0)
+        end += source.rank;
+    if (start < 0 || end < start || end >= source.rank)
+        return FALSE;
+    DSL_Shape_Fact_Init(result);
+    result->rank = source.rank - (end - start);
+    INT32 output = 0;
+    for (INT32 i = 0; i < start; ++i, ++output) {
+        result->dimension_known[output] = source.dimension_known[i];
+        result->dimension[output] = source.dimension[i];
+    }
+    UINT64 flattened = 1;
+    BOOL known = TRUE;
+    for (INT32 i = start; i <= end; ++i) {
+        if (!source.dimension_known[i]) {
+            known = FALSE;
+            continue;
+        }
+        if (flattened > ~(UINT64)0 / source.dimension[i])
+            return FALSE;
+        flattened *= source.dimension[i];
+    }
+    result->dimension_known[output] = known;
+    result->dimension[output++] = flattened;
+    for (INT32 i = end + 1; i < source.rank; ++i, ++output) {
+        result->dimension_known[output] = source.dimension_known[i];
+        result->dimension[output] = source.dimension[i];
+    }
+    DSL_Shape_Fact_Classify(result);
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Infer_Conv2D
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    if (input->operand_count != 3)
+        return FALSE;
+    std::vector<UINT64> activation;
+    std::vector<UINT64> weight;
+    std::vector<UINT64> bias;
+    if (!DSL_Shape_Fact_To_Dimensions
+             (input->operand_facts[0], &activation) ||
+        !DSL_Shape_Fact_To_Dimensions
+             (input->operand_facts[1], &weight) ||
+        !DSL_Shape_Fact_To_Dimensions
+             (input->operand_facts[2], &bias))
+        return TRUE;
+    UINT64 kernel[2];
+    UINT64 stride[2];
+    UINT64 padding[2];
+    UINT64 dilation[2];
+    const char *groups_text = NULL;
+    UINT64 groups;
+    if (activation.size() != 4 || weight.size() != 4 || bias.size() != 1 ||
+        !DSL_Shape_Attribute_Equals
+             (input->node, "attr.input_layout", "NCHW") ||
+        !DSL_Shape_Attribute_Equals
+             (input->node, "attr.weight_layout", "OIHW") ||
+        !DSL_Shape_Attribute_Equals
+             (input->node, "attr.output_layout", "NCHW") ||
+        !DSL_Shape_Parse_Pair
+             (input->node, "attr.kernel_shape", FALSE, kernel) ||
+        !DSL_Shape_Parse_Pair
+             (input->node, "attr.stride", FALSE, stride) ||
+        !DSL_Shape_Parse_Pair
+             (input->node, "attr.padding", TRUE, padding) ||
+        !DSL_Shape_Parse_Pair
+             (input->node, "attr.dilation", FALSE, dilation) ||
+        !DSL_Shape_Node_Attribute
+             (input->node, "attr.groups", &groups_text) ||
+        !DSL_Shape_Parse_Unsigned(groups_text, &groups) || groups == 0 ||
+        kernel[0] != weight[2] || kernel[1] != weight[3] ||
+        weight[1] > ~(UINT64)0 / groups ||
+        weight[1] * groups != activation[1] || bias[0] != weight[0])
+        return FALSE;
+    std::vector<UINT64> output(4);
+    output[0] = activation[0];
+    output[1] = weight[0];
+    for (UINT32 i = 0; i < 2; ++i) {
+        UINT64 effective = dilation[i] * (kernel[i] - 1) + 1;
+        UINT64 padded = activation[i + 2] + 2 * padding[i];
+        if (padded < effective)
+            return FALSE;
+        output[i + 2] = (padded - effective) / stride[i] + 1;
+    }
+    return DSL_Shape_Set_Complete(output, result);
+}
+
+static BOOL
+DSL_Shape_Infer_Pool
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result,
+         BOOL global_average)
+{
+    if (input->operand_count != 1)
+        return FALSE;
+    std::vector<UINT64> output;
+    if (!DSL_Shape_Fact_To_Dimensions(input->operand_facts[0], &output))
+        return TRUE;
+    if (output.size() != 4)
+        return FALSE;
+    if (global_average) {
+        UINT64 size[2];
+        if (!DSL_Shape_Parse_Pair
+             (input->node, "attr.output_size", FALSE, size))
+            return FALSE;
+        output[2] = size[0];
+        output[3] = size[1];
+        return DSL_Shape_Set_Complete(output, result);
+    }
+    UINT64 kernel[2];
+    UINT64 stride[2];
+    UINT64 padding[2];
+    UINT64 dilation[2];
+    BOOL ceil_mode = DSL_Shape_Attribute_Equals
+                         (input->node, "attr.ceil_mode", "true");
+    if (!ceil_mode && !DSL_Shape_Attribute_Equals
+                          (input->node, "attr.ceil_mode", "false"))
+        return FALSE;
+    if (!DSL_Shape_Parse_Pair
+             (input->node, "attr.kernel_shape", FALSE, kernel) ||
+        !DSL_Shape_Parse_Pair
+             (input->node, "attr.stride", FALSE, stride) ||
+        !DSL_Shape_Parse_Pair
+             (input->node, "attr.padding", TRUE, padding) ||
+        !DSL_Shape_Parse_Pair
+             (input->node, "attr.dilation", FALSE, dilation))
+        return FALSE;
+    for (UINT32 i = 0; i < 2; ++i) {
+        UINT64 effective = dilation[i] * (kernel[i] - 1) + 1;
+        UINT64 padded = output[i + 2] + 2 * padding[i];
+        if (padded < effective)
+            return FALSE;
+        UINT64 numerator = padded - effective;
+        output[i + 2] = numerator / stride[i] + 1;
+        if (ceil_mode && numerator % stride[i] != 0)
+            ++output[i + 2];
+    }
+    return DSL_Shape_Set_Complete(output, result);
+}
+
+DSL_SHAPE_INFERENCE_RESULT
+DSL_Shape_Infer_Operator
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    if (result == NULL)
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    DSL_Shape_Fact_Init(result);
+    if (input == NULL || input->node == NULL || input->result_ty == TY_IDX_ZERO ||
+        (input->operand_count != 0 &&
+         (input->operand_types == NULL || input->operand_facts == NULL)))
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    if (!DSL_Shape_Has_Operator_Rule(input->dsl_operator, input->version))
+        return DSL_SHAPE_INFERENCE_UNREGISTERED;
+    DSL_OPERATOR_INFO info;
+    if (!DSL_Operator_Get_Info_Version
+             (input->dsl_operator, input->version, &info) ||
+        (info.nkids >= 0 && (UINT32)info.nkids != input->operand_count))
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    for (UINT32 i = 0; i < input->operand_count; ++i) {
+        if (input->operand_facts[i].state == DSL_SHAPE_FACT_CONTRADICTION ||
+            !DSL_Shape_Tensor_Core_Complete(input->operand_types[i]))
+            return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    }
+
+    BOOL valid = FALSE;
+    switch (input->dsl_operator) {
+    case OPR_DSLADD:
+    case OPR_DSLMUL:
+    case OPR_DSLDIV:
+    case OPR_DSLREM:
+        valid = DSL_Shape_Infer_Same(input, result);
+        break;
+    case OPR_DSLRESIDUALADD:
+        valid = DSL_Shape_Infer_Same(input, result) &&
+                DSL_Shape_Attribute_Equals
+                    (input->node, "attr.broadcast_rule", "none") &&
+                DSL_Shape_Attribute_Equals
+                    (input->node, "attr.shape_check", "exact") &&
+                DSL_Shape_Attribute_Equals
+                    (input->node, "attr.residual_path", "true");
+        break;
+    case OPR_DSLRELU:
+    case OPR_DSLOUTPUTLOGITS:
+    case OPR_DSLRMSNORM:
+    case OPR_DSLROTARYEMBEDDING:
+    case OPR_DSLATTENTION:
+    case OPR_DSLSWIGLU:
+    case OPR_DSLSCATTER:
+        valid = input->operand_count != 0;
+        if (valid)
+            *result = input->operand_facts[0];
+        break;
+    case OPR_DSLBATCHNORMINFER:
+        valid = input->operand_count == 5 &&
+                DSL_Shape_Attribute_Equals
+                    (input->node, "attr.training", "false") &&
+                DSL_Shape_Attribute_Equals
+                    (input->node, "attr.input_layout", "NCHW") &&
+                DSL_Shape_Attribute_Equals
+                    (input->node, "attr.channel_axis", "1");
+        if (valid)
+            *result = input->operand_facts[0];
+        if (valid && DSL_Shape_Fact_Complete(*result)) {
+            for (UINT32 i = 1; i < input->operand_count; ++i) {
+                const DSL_SHAPE_FACT &parameter = input->operand_facts[i];
+                if (parameter.state == DSL_SHAPE_FACT_COMPLETE &&
+                    (parameter.rank != 1 || result->rank != 4 ||
+                     parameter.dimension[0] != result->dimension[1]))
+                    valid = FALSE;
+            }
+        }
+        break;
+    case OPR_DSLMATMUL:
+        valid = DSL_Shape_Infer_Matmul(input, result);
+        break;
+    case OPR_DSLLINEAR:
+        valid = DSL_Shape_Infer_Linear(input, result);
+        break;
+    case OPR_DSLRESHAPE:
+        valid = DSL_Shape_Infer_Reshape(input, result);
+        break;
+    case OPR_DSLTRANSPOSE:
+        valid = DSL_Shape_Infer_Transpose(input, result);
+        break;
+    case OPR_DSLFLATTEN:
+        valid = DSL_Shape_Infer_Flatten(input, result);
+        break;
+    case OPR_DSLCONV2D:
+        valid = DSL_Shape_Infer_Conv2D(input, result);
+        break;
+    case OPR_DSLMAXPOOL2D:
+        valid = DSL_Shape_Infer_Pool(input, result, FALSE);
+        break;
+    case OPR_DSLGLOBALAVGPOOL2D:
+        valid = DSL_Shape_Infer_Pool(input, result, TRUE);
+        break;
+    case OPR_DSLTOKENEMBEDDING:
+        if (input->operand_count == 2) {
+            std::vector<UINT64> tokens;
+            std::vector<UINT64> weights;
+            valid = TRUE;
+            if (DSL_Shape_Fact_To_Dimensions
+                    (input->operand_facts[0], &tokens) &&
+                DSL_Shape_Fact_To_Dimensions
+                    (input->operand_facts[1], &weights)) {
+                if (tokens.size() != 2 || weights.size() != 2)
+                    valid = FALSE;
+                else {
+                    tokens.push_back(weights[1]);
+                    valid = DSL_Shape_Set_Complete(tokens, result);
+                }
+            }
+        }
+        break;
+    default:
+        return DSL_SHAPE_INFERENCE_UNREGISTERED;
+    }
+    if (!valid) {
+        result->state = DSL_SHAPE_FACT_CONTRADICTION;
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    }
+    DSL_Shape_Fact_Classify(result);
+    return result->state == DSL_SHAPE_FACT_COMPLETE ?
+           DSL_SHAPE_INFERENCE_COMPLETE : DSL_SHAPE_INFERENCE_PENDING;
+}
+
+typedef struct {
+    DSL_IR_VALUE_ID value_id;
+    TY_IDX ty;
+    DSL_SHAPE_FACT seed;
+    DSL_SHAPE_FACT fact;
+    BOOL has_producer;
+    SRCPOS source_position;
+} DSL_SHAPE_SOLVER_VALUE;
+
+typedef struct {
+    DSL_IR_NODE_ID node_id;
+    DSL_OPERATOR dsl_operator;
+    UINT16 version;
+    DSL_IR_NODE_RECORD node;
+    UINT32 result_index;
+    std::vector<UINT32> operand_indices;
+    SRCPOS source_position;
+} DSL_SHAPE_SOLVER_CONSTRAINT;
+
+static UINT32
+DSL_Shape_Solver_Find_Value
+        (const std::vector<DSL_SHAPE_SOLVER_VALUE> &values,
+         DSL_IR_VALUE_ID value_id)
+{
+    for (UINT32 i = 0; i < values.size(); ++i) {
+        if (values[i].value_id == value_id)
+            return i;
+    }
+    return ~(UINT32)0;
+}
+
+static UINT32
+DSL_Shape_Solver_Add_Value
+        (std::vector<DSL_SHAPE_SOLVER_VALUE> *values,
+         const DSL_IR_VALUE_RECORD &record,
+         SRCPOS source_position)
+{
+    UINT32 found = DSL_Shape_Solver_Find_Value(*values, record.id);
+    if (found != ~(UINT32)0)
+        return found;
+    DSL_SHAPE_SOLVER_VALUE value;
+    memset(&value, 0, sizeof(value));
+    value.value_id = record.id;
+    value.ty = record.ty;
+    value.has_producer =
+        record.producer_node_id != DSL_IR_NODE_INVALID_ID;
+    value.source_position = source_position;
+    if (!DSL_Shape_Fact_From_Type(record.ty, &value.seed))
+        value.seed.state = DSL_SHAPE_FACT_CONTRADICTION;
+    value.fact = value.seed;
+    values->push_back(value);
+    return values->size() - 1;
+}
+
+static BOOL
+DSL_Shape_Constraint_Order
+        (const DSL_SHAPE_SOLVER_CONSTRAINT &left,
+         const DSL_SHAPE_SOLVER_CONSTRAINT &right)
+{
+    return left.node_id < right.node_id;
+}
+
+static BOOL
+DSL_Shape_Find_Definition_Value
+        (ST_IDX owner_pu_st,
+         WN *definition,
+         DSL_IR_VALUE_RECORD *value,
+         DSL_IR_NODE_RECORD *node,
+         DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptor,
+         DSL_LOGICAL_OPCODE *logical_opcode)
+{
+    if (definition == NULL || WN_operator(definition) != OPR_STID ||
+        WN_kid0(definition) == NULL ||
+        !DSL_WN_Get_Logical_Opcode
+             (WN_kid0(definition), logical_opcode, NULL))
+        return FALSE;
+    ST_IDX result_st = WN_st_idx(definition);
+    if (ST_IDX_index(owner_pu_st) == 0 || ST_IDX_index(result_st) == 0 ||
+        ST_IDX_level(result_st) != CURRENT_SYMTAB ||
+        ST_IDX_index(result_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+        !DSL_IR_Image_Find_PU_Value
+             (result_st, ST_name(St_Table[result_st]),
+              ST_name(St_Table[owner_pu_st]), value) ||
+        value->st != result_st || value->ty != WN_ty(definition) ||
+        !DSL_IR_Image_Get_Node(value->producer_node_id, node) ||
+        node->result_value_id != value->id ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+             (node->opcode_descriptor_id, descriptor) ||
+        descriptor->logical_operator !=
+            (UINT32)logical_opcode->dsl_operator ||
+        descriptor->version != logical_opcode->source_version ||
+        node->operand_count != (UINT32)WN_kid_count(WN_kid0(definition)))
+        return FALSE;
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Collect_Constraints
+        (ST_IDX owner_pu_st,
+         WN *wn,
+         std::vector<DSL_SHAPE_SOLVER_VALUE> *values,
+         std::vector<DSL_SHAPE_SOLVER_CONSTRAINT> *constraints,
+         FILE *diagnostic)
+{
+    if (wn == NULL)
+        return TRUE;
+    BOOL valid = TRUE;
+    if (WN_operator(wn) == OPR_STID && WN_kid0(wn) != NULL &&
+        DSL_WN_Is_Native(WN_kid0(wn))) {
+        DSL_IR_VALUE_RECORD result_value;
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+        DSL_LOGICAL_OPCODE logical_opcode;
+        if (!DSL_Shape_Find_Definition_Value
+                 (owner_pu_st, wn, &result_value, &node, &descriptor,
+                  &logical_opcode)) {
+            SRCPOS source_position = WN_Get_Linenum(wn);
+            if (diagnostic != NULL)
+                fprintf(diagnostic,
+                        "DSL-SHAPE-001: malformed native definition at "
+                        "line %u\n", SRCPOS_linenum(source_position));
+            return FALSE;
+        }
+        DSL_SHAPE_SOLVER_CONSTRAINT constraint;
+        constraint.node_id = node.id;
+        constraint.dsl_operator = logical_opcode.dsl_operator;
+        constraint.version = logical_opcode.effective_version;
+        constraint.node = node;
+        constraint.source_position = WN_Get_Linenum(wn);
+        constraint.result_index = DSL_Shape_Solver_Add_Value
+                                      (values, result_value,
+                                       constraint.source_position);
+        if (logical_opcode.dsl_operator == OPR_DSLMODELINPUT ||
+            logical_opcode.dsl_operator == OPR_DSLTENSORCONST) {
+            if (logical_opcode.dsl_operator == OPR_DSLMODELINPUT)
+                (*values)[constraint.result_index].has_producer = FALSE;
+            return TRUE;
+        }
+        for (UINT32 i = 0; i < node.operand_count; ++i) {
+            DSL_IR_VALUE_REFERENCE_RECORD reference;
+            DSL_IR_VALUE_RECORD operand;
+            if (!DSL_IR_Image_Get_Value_Reference
+                    (node.first_operand_reference_id + i, &reference) ||
+                reference.owner_node_id != node.id ||
+                reference.ordinal != i ||
+                !DSL_IR_Image_Get_Value(reference.value_id, &operand)) {
+                if (diagnostic != NULL)
+                    fprintf(diagnostic,
+                            "DSL-SHAPE-001: malformed operand %u for node "
+                            "%u at line %u\n", i, node.id,
+                            SRCPOS_linenum(constraint.source_position));
+                valid = FALSE;
+                break;
+            }
+            constraint.operand_indices.push_back
+                (DSL_Shape_Solver_Add_Value
+                     (values, operand, constraint.source_position));
+        }
+        if (valid)
+            constraints->push_back(constraint);
+    }
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (WN *stmt = WN_first(wn); stmt != NULL; stmt = WN_next(stmt)) {
+            if (!DSL_Shape_Collect_Constraints
+                     (owner_pu_st, stmt, values, constraints, diagnostic))
+                valid = FALSE;
+        }
+        return valid;
+    }
+    for (INT32 i = 0; i < WN_kid_count(wn); ++i) {
+        if (!DSL_Shape_Collect_Constraints
+                 (owner_pu_st, WN_kid(wn, i), values, constraints,
+                  diagnostic))
+            valid = FALSE;
+    }
+    return valid;
+}
+
+static BOOL
+DSL_Shape_Merge_Inference
+        (DSL_SHAPE_FACT *fact,
+         const DSL_SHAPE_FACT &inferred,
+         BOOL *changed)
+{
+    DSL_SHAPE_FACT before = *fact;
+    if (!DSL_Shape_Merge_Equal_Fact(fact, inferred))
+        return FALSE;
+    *changed = !DSL_Shape_Facts_Equal(before, *fact);
+    return TRUE;
+}
+
+static UINT64
+DSL_Shape_Fingerprint_Bytes
+        (UINT64 fingerprint,
+         const void *data,
+         size_t size)
+{
+    const unsigned char *bytes = (const unsigned char *)data;
+    for (size_t i = 0; i < size; ++i) {
+        fingerprint ^= bytes[i];
+        fingerprint *= 1099511628211ULL;
+    }
+    return fingerprint;
+}
+
+static UINT64
+DSL_Shape_Image_Fingerprint (void)
+{
+    UINT64 fingerprint = 1469598103934665603ULL;
+    DSL_IR_IMAGE_HEADER header;
+    DSL_IR_Image_Get_Header(&header);
+    fingerprint = DSL_Shape_Fingerprint_Bytes
+                      (fingerprint, &header, sizeof(header));
+    for (UINT32 i = 1; i <= header.opcode_descriptor_count; ++i) {
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD record;
+        DSL_IR_Image_Get_Opcode_Descriptor(i, &record);
+        fingerprint = DSL_Shape_Fingerprint_Bytes
+                          (fingerprint, &record, sizeof(record));
+    }
+    for (UINT32 i = 1; i <= header.node_count; ++i) {
+        DSL_IR_NODE_RECORD record;
+        DSL_IR_Image_Get_Node(i, &record);
+        fingerprint = DSL_Shape_Fingerprint_Bytes
+                          (fingerprint, &record, sizeof(record));
+    }
+    for (UINT32 i = 1; i <= header.attribute_count; ++i) {
+        DSL_IR_ATTRIBUTE_RECORD record;
+        DSL_IR_Image_Get_Attribute(i, &record);
+        fingerprint = DSL_Shape_Fingerprint_Bytes
+                          (fingerprint, &record, sizeof(record));
+    }
+    for (UINT32 i = 1; i <= header.value_count; ++i) {
+        DSL_IR_VALUE_RECORD record;
+        DSL_IR_Image_Get_Value(i, &record);
+        fingerprint = DSL_Shape_Fingerprint_Bytes
+                          (fingerprint, &record, sizeof(record));
+    }
+    for (UINT32 i = 1; i <= header.value_reference_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD record;
+        DSL_IR_Image_Get_Value_Reference(i, &record);
+        fingerprint = DSL_Shape_Fingerprint_Bytes
+                          (fingerprint, &record, sizeof(record));
+    }
+    return fingerprint;
+}
+
+BOOL
+DSL_Shape_Analyze_PU
+        (PU_Info *pu,
+         WN *tree,
+         FILE *diagnostic,
+         DSL_SHAPE_SOLVER_RESULT *result)
+{
+    DSL_SHAPE_SOLVER_RESULT local_result;
+    memset(&local_result, 0, sizeof(local_result));
+    DSL_IR_IMAGE_HEADER image_before;
+    DSL_IR_IMAGE_HEADER image_after;
+    DSL_IR_Image_Get_Header(&image_before);
+    UINT64 image_fingerprint_before = DSL_Shape_Image_Fingerprint();
+    UINT32 type_count_before = TY_Table_Size();
+
+    if (pu == NULL || tree == NULL) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic, "DSL-SHAPE-001: missing PU or WHIRL tree\n");
+        local_result.contradiction_count = 1;
+        local_result.diagnostic_count = 1;
+        if (result != NULL)
+            *result = local_result;
+        return FALSE;
+    }
+
+    std::vector<DSL_SHAPE_SOLVER_VALUE> values;
+    std::vector<DSL_SHAPE_SOLVER_CONSTRAINT> constraints;
+    BOOL valid = DSL_Shape_Collect_Constraints
+                     (PU_Info_proc_sym(pu), tree, &values, &constraints,
+                      diagnostic);
+    std::sort(constraints.begin(), constraints.end(),
+              DSL_Shape_Constraint_Order);
+    local_result.visited_node_count = constraints.size();
+    local_result.value_count = values.size();
+
+    BOOL changed = TRUE;
+    UINT32 iteration_limit = values.size() + constraints.size() + 1;
+    while (valid && changed && local_result.iteration_count < iteration_limit) {
+        changed = FALSE;
+        ++local_result.iteration_count;
+        for (UINT32 i = 0; i < constraints.size(); ++i) {
+            DSL_SHAPE_SOLVER_CONSTRAINT &constraint = constraints[i];
+            std::vector<TY_IDX> operand_types;
+            std::vector<DSL_SHAPE_FACT> operand_facts;
+            for (UINT32 j = 0; j < constraint.operand_indices.size(); ++j) {
+                DSL_SHAPE_SOLVER_VALUE &operand =
+                    values[constraint.operand_indices[j]];
+                operand_types.push_back(operand.ty);
+                operand_facts.push_back(operand.fact);
+            }
+            DSL_SHAPE_INFERENCE_INPUT input;
+            input.dsl_operator = constraint.dsl_operator;
+            input.version = constraint.version;
+            input.node = &constraint.node;
+            input.operand_types = operand_types.empty() ?
+                                  NULL : &operand_types[0];
+            input.operand_facts = operand_facts.empty() ?
+                                  NULL : &operand_facts[0];
+            input.operand_count = operand_types.size();
+            input.result_ty = values[constraint.result_index].ty;
+            DSL_SHAPE_FACT inferred;
+            DSL_SHAPE_INFERENCE_RESULT inference =
+                DSL_Shape_Infer_Operator(&input, &inferred);
+            BOOL all_seed_facts_complete =
+                values[constraint.result_index].seed.state ==
+                    DSL_SHAPE_FACT_COMPLETE;
+            for (UINT32 j = 0;
+                 j < constraint.operand_indices.size() &&
+                 all_seed_facts_complete; ++j) {
+                all_seed_facts_complete =
+                    values[constraint.operand_indices[j]].seed.state ==
+                        DSL_SHAPE_FACT_COMPLETE;
+            }
+            if (all_seed_facts_complete) {
+                DSL_SHAPE_OPERATOR_INPUT check;
+                check.dsl_operator = constraint.dsl_operator;
+                check.version = constraint.version;
+                check.node = &constraint.node;
+                check.operand_types = input.operand_types;
+                check.operand_count = input.operand_count;
+                check.result_ty = input.result_ty;
+                if (DSL_Shape_Check_Operator(&check) !=
+                    DSL_SHAPE_CHECK_VALID)
+                    inference = DSL_SHAPE_INFERENCE_CONTRADICTION;
+            }
+            if (inference == DSL_SHAPE_INFERENCE_UNREGISTERED)
+                continue;
+            if (inference == DSL_SHAPE_INFERENCE_CONTRADICTION) {
+                values[constraint.result_index].fact.state =
+                    DSL_SHAPE_FACT_CONTRADICTION;
+                valid = FALSE;
+            } else {
+                BOOL value_changed = FALSE;
+                if (!DSL_Shape_Merge_Inference
+                         (&values[constraint.result_index].fact, inferred,
+                          &value_changed))
+                    valid = FALSE;
+                changed = changed || value_changed;
+            }
+            if (!valid && diagnostic != NULL) {
+                fprintf(diagnostic,
+                        "DSL-SHAPE-002: %s.v%u shape contradiction for "
+                        "value %u at file %u line %u\n",
+                        DSL_OPERATOR_name(constraint.dsl_operator),
+                        constraint.version,
+                        values[constraint.result_index].value_id,
+                        SRCPOS_filenum(constraint.source_position),
+                        SRCPOS_linenum(constraint.source_position));
+                ++local_result.diagnostic_count;
+            }
+            if (!valid)
+                break;
+        }
+    }
+
+    for (UINT32 i = 0; i < values.size(); ++i) {
+        const DSL_SHAPE_SOLVER_VALUE &value = values[i];
+        if (value.fact.state == DSL_SHAPE_FACT_CONTRADICTION) {
+            ++local_result.contradiction_count;
+            continue;
+        }
+        if (value.fact.state == DSL_SHAPE_FACT_COMPLETE) {
+            if (DSL_Shape_Facts_Equal(value.seed, value.fact))
+                ++local_result.unchanged_value_count;
+            else
+                ++local_result.refinable_value_count;
+        } else if (value.has_producer) {
+            ++local_result.unresolved_value_count;
+        } else {
+            ++local_result.pending_value_count;
+        }
+    }
+
+    DSL_IR_Image_Get_Header(&image_after);
+    if (TY_Table_Size() != type_count_before ||
+        memcmp(&image_before, &image_after, sizeof(image_before)) != 0 ||
+        DSL_Shape_Image_Fingerprint() != image_fingerprint_before) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "DSL-SHAPE-003: check-only analysis mutated compiler "
+                    "tables\n");
+        ++local_result.contradiction_count;
+        ++local_result.diagnostic_count;
+        valid = FALSE;
+    }
+    if (result != NULL)
+        *result = local_result;
+    return valid && local_result.contradiction_count == 0;
 }
