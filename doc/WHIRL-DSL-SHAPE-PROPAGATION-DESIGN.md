@@ -22,13 +22,15 @@ Python frontend can provide shapes observed in source models, sample inputs,
 parameters, and buffers, but it must not become a second compiler that
 duplicates every versioned DSL operator shape rule.
 
-This design makes authoritative graph-wide shape propagation an Open64
-compiler service. It defines:
+This design makes authoritative shape propagation an Open64 compiler service.
+The shape service reaches a graph-wide fixed point inside the active PU; the
+backend driver obtains program-wide coverage by processing every PU. It
+defines:
 
 1. The boundary between frontend seed facts and compiler inference.
 2. A reusable shape-constraint engine in `osprey/common/com`.
 3. A WHIRL phase driver in `osprey/be/vho`.
-4. Cross-PU and structured-region propagation.
+4. Driver ownership of PU and REGION lifetimes plus boundary validation.
 5. Canonical TensorDescriptorIR refinement without mutating sealed types.
 6. Gatekeeper, optimization, binary compatibility, and inspection contracts.
 
@@ -120,16 +122,33 @@ The public spelling follows existing Open64 acronym conventions:
 VHO_DSL_Shape_Refine_Driver
 ```
 
-The driver owns:
+The backend driver owns:
 
 - program and PU traversal;
 - active local-symbol-table coordination;
-- collection of WN, DSL image, call, return, and REGION relationships;
-- preflight and application of refined `TY_IDX` bindings;
+- active-PU REGION initialization, traversal, and finalization;
+- invocation of shape refinement for each selected PU;
 - phase statistics, tracing, and diagnostics;
-- post-refinement strict gatekeeper invocation.
+- downstream phase scheduling.
 
-Individual operator shape formulas do not belong in the VHO driver.
+The shape-refinement service owns active-PU WN and DSL relationship
+collection, local fixed-point analysis, atomic `TY_IDX` rebinding, and strict
+post-refinement verification. Individual operator shape formulas remain in
+the common shape service, not in the backend driver.
+
+### REGION Ownership
+
+REGION is not a second program-traversal mechanism for shape propagation. The
+backend driver that selected the PU owns its REGION lifetime. A REGION
+interface row identifies an ST in that active PU; its tensor type therefore
+derives from the same ST updated by the local retype transaction. Shape
+refinement may verify that the row still belongs to the active PU and remains
+structurally valid, but it does not initialize REGION state, process another
+PU's REGIONs, or construct a program-wide REGION constraint graph.
+
+Any future transformation that outlines, clones, or changes a REGION interface
+owns that transformation and must invalidate or rerun shape refinement for the
+affected PU through the driver pipeline.
 
 ## Pipeline Placement
 
@@ -272,10 +291,10 @@ Consequently, obtaining a new or existing refined `TY_IDX` is only the first
 part of refinement. Open64 must later define and certify a preflighted atomic
 rebind transaction that updates every required projection without exposing a
 partially retyped WHIRL program. It must also define what happens when one
-shared symbol, formal, callee, or REGION interface is reached with incompatible
-context-specific refinements. Possible resolutions include preserving a
-symbolic type, materializing a uniquely owned temporary, cloning or
-specializing a PU, or failing closed.
+shared symbol or boundary interface is reached with incompatible
+context-specific refinements. The initial policy is to fail closed in the
+active PU. Cloning or specialization belongs to the transformation that
+requests it, not to the shape-refinement driver.
 
 The first transaction, rollback boundary, and shared-symbol policy are defined
 by `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`. Its v1 scope is deliberately
@@ -323,17 +342,19 @@ verification implementation.
 
 ## Constraint Graph
 
-The program graph contains one shape variable for each tensor value plus rank
-and dimension variables as needed. Constraints come from:
+The active-PU graph contains one shape variable for each tensor value plus
+rank and dimension variables as needed. Constraints come from:
 
 1. TensorDescriptorIR seed facts.
 2. Versioned logical operator shape functions.
 3. Result symbols and defining `STID` nodes.
-4. PU input formals and hidden result formals.
-5. Call actual-to-formal relationships.
-6. Return and caller-result relationships.
-7. REGION input, output, and live-out interfaces.
-8. Shape assertions and reviewed runtime guards.
+4. PU input and hidden-result seed descriptors.
+5. Call and return boundary descriptors visible in the active PU.
+6. Shape assertions and reviewed runtime guards.
+
+REGION interface rows do not create independent shape variables. They refer to
+the same active-PU ST and are verified after that ST is retyped. The shape pass
+does not follow REGIONs into another PU.
 
 Source positions and compiler metadata identify diagnostics but do not
 participate in shape equivalence.
@@ -342,15 +363,15 @@ participate in shape equivalence.
 
 ### 1. Collect
 
-Enumerate all logical DSL nodes and all managed inter-value relationships.
-Resolve each value to its owner PU, `ST_IDX`, `TY_IDX`, TensorDescriptorIR, and
-source evidence.
+Enumerate logical DSL nodes and managed relationships in the active PU.
+Resolve each value to its active owner, `ST_IDX`, `TY_IDX`,
+TensorDescriptorIR, and source evidence.
 
 ### 2. Build constraints
 
-Invoke the exact operator shape function and add call, formal, return, and
-REGION constraints. Reject unsupported versions rather than guessing a rule
-from a similarly named operator.
+Invoke the exact operator shape function and check call, formal, return, and
+REGION boundary evidence visible in the active PU. Reject unsupported versions
+rather than guessing a rule from a similarly named operator.
 
 ### 3. Solve
 
@@ -487,7 +508,7 @@ Every DSL transformation must declare whether it:
 - preserves all shape facts;
 - refines facts monotonically;
 - invalidates local result shapes;
-- invalidates cross-PU or REGION constraints.
+- invalidates call, return, or REGION boundary evidence in its active PU.
 
 For the first implementation, conservatively rerun refinement after any
 executed DSL transformation that changes the graph. Later, the fixed-order VHO

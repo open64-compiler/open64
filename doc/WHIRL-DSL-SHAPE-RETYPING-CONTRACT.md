@@ -247,6 +247,12 @@ the shape service to reactivate or mutate another PU. A future transformation
 that changes multiple PU signatures must define its own coordinated mutation
 contract. Failed compilation must not publish a validly named output artifact.
 
+REGION follows the same ownership rule. The backend driver owns REGION
+initialization, traversal, and finalization for the selected PU. The local
+retype transaction may validate an interface row and update the ST from which
+that row derives its type, but it does not own REGION processing and may not
+visit another PU's REGION state.
+
 ## Shared Symbols And Shared Callees
 
 Sharing one immutable old `TY_IDX` does not imply shared value ownership. A

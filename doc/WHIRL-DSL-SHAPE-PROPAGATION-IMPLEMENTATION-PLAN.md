@@ -434,6 +434,9 @@ Actions:
    second begin/PU/end traversal or reactivate another PU's local symbol table.
 3. Validate call actual/formal, hidden result, return, PU-interface, and REGION
    rows as boundary contracts when the owning PU is active.
+   REGION initialization, traversal, and finalization remain driver-owned;
+   shape refinement only verifies rows whose type derives from the locally
+   retyped ST.
 4. Require frontend or earlier compiler phases to provide sufficient boundary
    seed descriptors. Fail closed when a PU cannot establish the descriptor
    state required by its next phase.
@@ -562,8 +565,8 @@ host bind mount and clean the artifact family only at the start of the next run.
 | P3 | Per-PU static solver in check-only mode | P1, P2 |
 | P4 | Atomic retyping contract and focused substrate | P3, SP4 review |
 | P5 | Per-PU VHO refinement driver and options | P4 |
-| P6 | Cross-PU, call, return, and REGION fixed point | P5 |
-| P7 | Backend ordering, invalidation, and static certification | P6 |
+| P6 | Driver-owned per-PU and REGION lifecycle certification | P5 |
+| P7 | Transformation invalidation and static certification | P6 |
 | P8 | Symbolic/runtime-dynamic model and certification | P7, design review |
 
 P1 and P2 are the only planned concurrent coding streams. Later PRs modify
