@@ -603,14 +603,22 @@ rollback reasoning tractable.
 
 ## Active Queue
 
-1. **SP0: Baseline and contract inventory.** Start only after the architecture
-   design PR is merged or its exact commit is explicitly accepted as the
-   implementation baseline.
-2. **SP1: Shared check-only shape service.** Ready after SP0 review.
-3. **SP2: Immutable canonical tensor interner.** Ready after SP0 canonical-key
-   review and may proceed concurrently with SP1.
-4. **SP3: Per-PU static solver.** Blocked on SP1 and SP2.
-5. **SP4-SP9.** Blocked on their stated gates.
+The active non-IPA queue remains SP7 through SP9. Future interprocedural shape
+work is collected separately in
+`doc/IPA-DSL-SHAPE-PROPAGATION-TODO.md`. That document is an incubating
+research queue, not a dependency of the current per-PU implementation. It
+becomes actionable only under `-ipa` after the IPA summary and call-graph
+contracts are reviewed.
+
+1. **SP7: Backend pipeline invalidation.** Next per-PU implementation
+   milestone; depends on the completed SP6 lifecycle correction.
+2. **SP8: Symbolic and runtime-dynamic dimensions.** Blocked on SP7 and its
+   separate symbolic-expression review.
+3. **SP9: Final certification.** Static lanes depend on SP7; dynamic Llama
+   decode certification also depends on SP8.
+4. **IPA-S0 and IPA-S1 research.** May collect architecture evidence in
+   parallel, but no cross-PU code begins before the IPA owners review the
+   summary inventory and semantic transfer contract.
 
 ## Completion Criteria
 

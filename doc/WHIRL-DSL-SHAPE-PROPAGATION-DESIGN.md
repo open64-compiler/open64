@@ -13,6 +13,8 @@ allocates a new binary WHIRL section or establishes a released API or ABI.
 Execution is tracked in
 `WHIRL-DSL-SHAPE-PROPAGATION-IMPLEMENTATION-PLAN.md`. The first mutation
 protocol is specified by `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`.
+Incubating interprocedural work is collected separately in
+`IPA-DSL-SHAPE-PROPAGATION-TODO.md`; it does not broaden this VHO pass.
 
 ## Purpose
 
