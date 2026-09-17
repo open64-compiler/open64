@@ -141,7 +141,8 @@ public:
     INT32 GetNumOfRegisteredComponents() { return _NumOfRegisteredComponents; }
     void  SetNumOfRegisteredComponents(INT32 num) 
         { _NumOfRegisteredComponents = num; }
-    BOOL  SetComponentRegistered(INT32 comp) { _ComponentRegistered[comp] = TRUE; }
+    BOOL  SetComponentRegistered(INT32 comp)
+        { return _ComponentRegistered[comp] = TRUE; }
     BOOL  IsComponentRegistered(INT32 comp) { return _ComponentRegistered[comp]; }
     O64_ComponentDescriptor * GetComponentDescriptor(INT32 comp) {
         return _ComponentDescriptors[comp]; 
