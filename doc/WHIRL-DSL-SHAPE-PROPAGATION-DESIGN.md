@@ -416,28 +416,27 @@ typedef struct {
     UINT32 iteration_count;
 } VHO_DSL_SHAPE_REFINE_RESULT;
 
-extern BOOL VHO_DSL_Shape_Refine_Begin_Program
-    (PU_Info *pu_tree, FILE *diagnostic);
-
 extern BOOL VHO_DSL_Shape_Refine_Program_Unit
-    (PU_Info *pu_info, WN **tree, FILE *diagnostic,
+    (PU_Info *pu_info, WN *tree, BOOL enable_refinement, FILE *diagnostic,
      VHO_DSL_SHAPE_REFINE_RESULT *result);
 
 extern WN *VHO_DSL_Shape_Refine_Driver
     (PU_Info *pu_info, WN *tree);
-
-extern BOOL VHO_DSL_Shape_Refine_End_Program
-    (FILE *diagnostic, VHO_DSL_SHAPE_REFINE_RESULT *aggregate);
 ```
 
-The begin/PU/end protocol is needed because shape relationships cross PU
-boundaries while physical local symbols can be updated only with the owning
-PU's local symbol table active.
+Open64's backend driver already owns program traversal. `Preorder_Process_PUs()`
+selects one PU, restores its local symbol table, and calls `Preprocess_PU()`.
+The beginning of `Preprocess_PU()` invokes `VHO_DSL_Shape_Refine_Driver()`
+before DSL WOPT, FHE conversion, DSL lowering, and ordinary VHO lowering.
+Therefore the shape service does not need a separate begin/PU/end protocol,
+all-PU rollback journal, or private PU traversal.
 
-`Begin_Program` builds and solves the global constraint graph from managed
-records. The per-PU driver applies the solved plan while the correct PU is
-active. `End_Program` proves complete PU coverage and final fixed-point
-validity. This coordination state is runtime-only.
+The shape service reaches a fixed point for the active PU and commits only
+that PU's physical and managed projections. Call ABI and PU-interface records
+remain authoritative boundary contracts and are checked while their owning PU
+is active. The backend driver's normal traversal supplies complete program
+coverage. A missing or contradictory boundary descriptor fails closed in the
+PU where it is observed; the shape service does not reactivate another PU.
 
 ## Atomic Retyping Contract
 
@@ -463,8 +462,9 @@ This is an architectural sketch, not a frozen public API. The normative SP4
 protocol is in `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`. It requires
 complete-array preflight, private table mutation helpers, a rollback journal,
 strict post-verification, and unchanged mapped-image layout. SP5 may implement
-only the approved local-result slice; SP6 owns formal, call, return, shared
-callee, and all-PU extensions.
+only the approved local-result slice. Formal, call, return, and shared-callee
+relationships remain explicit boundary contracts until a concrete operator or
+transformation requires a separately reviewed cross-PU mutation mechanism.
 
 ## Gatekeeper Modes
 
@@ -614,10 +614,12 @@ support, and the per-PU VHO driver. Certify static result refinement, reuse of
 equivalent `TY_IDX` records, preservation of old shared types, and unchanged
 binary layout.
 
-### S3: Cross-PU and REGION fixed point
+### S3: Driver-owned per-PU completion
 
-Add begin/PU/end program coordination, call/formal/return constraints, REGION
-interfaces, complete preflight, and deterministic all-PU coverage.
+Certify that the backend invokes shape refinement once for every selected PU
+at the beginning of VHO processing. Validate call/formal/return and REGION
+interfaces as boundary contracts, while keeping mutation and rollback local to
+the active PU. Do not duplicate backend PU traversal in the shape service.
 
 ### S4: Transformation re-entry
 
@@ -640,9 +642,10 @@ The following decisions remain intentionally open:
    entirely reconstructible from operators, attributes, and descriptors.
 4. The exact admission-gate API and whether incomplete result descriptors may
    be sealed canonical pending types.
-5. The exact SP6 orchestration mechanism used to retain and reactivate per-PU
-   rollback journals across a program-wide transaction. The required atomic
-   semantics are fixed by the SP4 retyping contract.
+5. Cross-PU mutation is not part of the initial shape-refinement lifecycle.
+   The backend driver processes every PU, while the SP4 transaction remains
+   atomic within the active PU. A future transform that must change both sides
+   of a PU boundary requires a separate reviewed contract.
 6. How transformation passes report shape preservation, invalidation, and
    changed values without disrupting the existing fixed pipeline.
 7. How runtime shape guards are represented and lowered when static or

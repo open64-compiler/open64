@@ -10,7 +10,7 @@ No implementation milestone may weaken binary WHIRL compatibility, mutate a
 sealed tensor type in place, duplicate shape formulas in independent services,
 or expose a partially retyped WHIRL program.
 
-Progress through SP5:
+Progress through SP6:
 
 - SP0 baseline inventory was consumed by the SP1 through SP3 implementation
   reviews.
@@ -19,7 +19,9 @@ Progress through SP5:
 - SP3 completed in commit `0ef23ab9`.
 - SP4 is complete in `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`.
 - SP5 is complete on `codex/dsl-shape-sp5`.
-- SP6 is the next implementation milestone.
+- SP6 confirms the existing driver-owned per-PU lifecycle on
+  `codex/dsl-shape-sp6-pu-driver`.
+- SP7 is the next implementation milestone.
 
 ## Objective
 
@@ -27,8 +29,8 @@ Deliver compiler-owned tensor shape propagation that:
 
 1. consumes frontend-provided TensorDescriptorIR seed facts;
 2. applies versioned logical DSL operator shape functions;
-3. reaches a deterministic program fixed point across operators, PUs, calls,
-   returns, and REGION interfaces;
+3. reaches a deterministic fixed point within each PU while checking calls,
+   returns, and REGION interfaces as explicit boundary contracts;
 4. interns immutable and uniqued tensor `TY_IDX` records;
 5. atomically rebinds every affected WHIRL projection;
 6. runs before DSL optimization, FHE conversion, and DSL lowering;
@@ -329,7 +331,7 @@ Actions:
    tensor constants, call ABI, PU formals, function types, `TYLIST`, returns,
    and REGION interfaces.
 3. Define which references are authoritative and which are derived projections.
-4. Define rollback and failure behavior for one PU and for an all-PU request.
+4. Define rollback and failure behavior for one active PU.
 5. Define shared-symbol and shared-callee conflict policy.
 6. Decide whether v1 supports only uniquely owned local results and fails closed
    for formal/function-type changes.
@@ -415,37 +417,54 @@ Local review artifacts:
 /private/tmp/open64-shape-sp5/artifacts/shape/sp5-refinement/certification.txt
 ```
 
-### SP6: Program Fixed Point Across PUs, Calls, Returns, And REGIONs
+### SP6: Driver-Owned Per-PU Completion And Interface Verification
 
 Dependencies: SP5.
 
+Status: complete. The reviewed correction is that the backend driver, not the
+shape pass, owns complete program traversal. `Preorder_Process_PUs()` selects
+each PU and `Preprocess_PU()` invokes `VHO_DSL_Shape_Refine_Driver()` before
+DSL WOPT, FHE conversion, DSL lowering, and ordinary VHO lowering.
+
 Actions:
 
-1. Implement `Begin_Program`, per-PU application, and `End_Program` lifetime.
-2. Add constraints from call actual/formal rows, hidden result formals, returns,
-   PU-interface rows, and REGION input/output/live-out rows.
-3. Resolve global relationships before mutation, then apply local changes only
-   while the owning PU symbol table is active.
-4. Prove complete PU coverage before final validation.
-5. Detect incompatible context-specific demands on one shared formal or result.
-6. Apply the reviewed policy: preserve a valid symbolic type, specialize/clone
-   only if separately authorized, or fail closed.
+1. Keep shape analysis, immutable type interning, mutation, and rollback local
+   to the active PU.
+2. Let normal backend traversal provide complete PU coverage; do not add a
+   second begin/PU/end traversal or reactivate another PU's local symbol table.
+3. Validate call actual/formal, hidden result, return, PU-interface, and REGION
+   rows as boundary contracts when the owning PU is active.
+4. Require frontend or earlier compiler phases to provide sufficient boundary
+   seed descriptors. Fail closed when a PU cannot establish the descriptor
+   state required by its next phase.
+5. Leave multi-PU cloning, inlining, or coordinated signature mutation to the
+   transformation that creates that need and require a separate contract.
 
 Tests:
 
-- two PUs with colliding local `ST_IDX` values;
-- multiple callers sharing one callee with compatible shapes;
-- incompatible shared-callee contexts reject without mutation;
-- actual/formal/result propagation;
-- nested REGION input/output/live-out propagation;
-- multi-PU batch failure leaves no partial binary artifact.
+- driver-source phase-order certification;
+- one active-PU fixed point and atomic rollback;
+- REGION interface preservation within the active PU;
+- strict rejection of unresolved boundary descriptors;
+- non-DSL and legacy WHIRL no-op behavior.
 
 Exit gate SP6:
 
-- deterministic all-PU fixed point and complete mapped-image verification;
-- ResNet and Llama multi-PU artifacts reopen with matching type evidence.
+- every backend-selected PU encounters shape refinement at the beginning of
+  VHO processing;
+- no downstream DSL phase observes an unverified active PU;
+- the shape service contains no competing PU traversal or all-PU journal.
 
-PR boundary: all-PU and REGION propagation.
+Retained SP6 review evidence:
+
+```text
+/private/tmp/open64-shape-sp5/artifacts/shape/sp6-pu-driver/shape_refine.B
+/private/tmp/open64-shape-sp5/artifacts/shape/sp6-pu-driver/shape_refine.T
+/private/tmp/open64-shape-sp5/artifacts/shape/sp6-pu-driver/validation.log
+/private/tmp/open64-shape-sp5/artifacts/shape/sp6-pu-driver/certification.txt
+```
+
+PR boundary: driver-owned per-PU lifecycle clarification and certification.
 
 ### SP7: Backend Pipeline Integration And Invalidation
 
@@ -453,14 +472,12 @@ Dependencies: SP6.
 
 Actions:
 
-1. Invoke initial refinement in `driver.cxx` after admission and before DSL WOPT,
-   FHE conversion, domain planning, or DSL lowering.
-2. Add a defensive current-generation check in `VHO_DSL_Lower_Driver()`.
-3. Conservatively rerun refinement after every executed DSL transformation that
+1. Add a defensive current-generation check in `VHO_DSL_Lower_Driver()`.
+2. Conservatively rerun refinement after every executed DSL transformation that
    changes operators, operands, attributes, calls, returns, or REGIONs.
-4. Define preservation/invalidation properties in the fixed DSL optimization
+3. Define preservation/invalidation properties in the fixed DSL optimization
    pipeline after the conservative implementation is certified.
-5. Ensure checkpoint-only and `whirl2c` paths follow the same legality rule.
+4. Ensure checkpoint-only and `whirl2c` paths follow the same legality rule.
 
 Tests:
 

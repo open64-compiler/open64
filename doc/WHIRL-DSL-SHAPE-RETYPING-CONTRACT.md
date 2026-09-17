@@ -226,25 +226,26 @@ returns failure only after the old program is restored. A rollback failure is
 an internal compiler error and the compiler must terminate without publishing
 an artifact.
 
-## Per-PU And All-PU Atomicity
+## Per-PU Atomicity And Driver Ownership
 
 SP5 implements one active-PU transaction. Its success or failure is fully
 atomic in memory for that PU.
 
-SP6 shall use the same request and journal model for program-wide work:
+The backend driver already processes one PU at a time and restores the correct
+local symbol table before calling the VHO phases. SP6 therefore does not add an
+all-PU shape transaction. For each PU, refinement follows this contract:
 
-1. solve all logical constraints before mutation;
-2. activate each PU and preflight its complete local request set;
-3. retain every PU journal until all preflights succeed;
-4. commit only after complete program preflight;
-5. strictly verify every committed PU and the global managed images;
-6. on failure, reactivate affected PUs in reverse order and roll back every
-   committed journal;
-7. write and publish binary WHIRL only after complete program verification.
+1. the driver selects and loads the PU;
+2. the shape service solves the active PU before mutation;
+3. the SP5 transaction preflights and commits that PU atomically;
+4. strict gatekeeper and REGION checks run before downstream DSL phases;
+5. failure rolls back the active PU and terminates compilation;
+6. normal driver traversal repeats the process for the next PU.
 
-Artifact non-publication is required but is not a substitute for in-memory
-rollback. A failed all-PU transaction may not leave earlier PUs refined while
-later PUs retain old types.
+Call ABI and PU-interface records are boundary contracts, not permission for
+the shape service to reactivate or mutate another PU. A future transformation
+that changes multiple PU signatures must define its own coordinated mutation
+contract. Failed compilation must not publish a validly named output artifact.
 
 ## Shared Symbols And Shared Callees
 
