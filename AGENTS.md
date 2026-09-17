@@ -86,6 +86,34 @@ only when the current task needs detail.
    identity. Continue using WOPT's existing `CODEREP` instantiation of
    `wn_simp_code.h`; do not add a parallel WOPT simplifier.
 
+## Compilation Scope And Optimization Ownership
+
+1. The compiler driver establishes compilation scope and phase lifetime. A
+   service invoked by a phase must operate within that established scope; it
+   must not enlarge its own scope by traversing `PU_Info`, restoring another
+   PU's local symbol table, or switching `Current_pu` on its own.
+2. Normal backend compilation is per-PU. VHO, Preopt/WOPT, LNO, and CG operate
+   on the active PU or on an explicitly selected REGION nested within that PU.
+   REGION is a smaller intraprocedural scope, not an interprocedural scope, and
+   its RID/map/pool lifetime remains driver-owned.
+3. Global symbol, type, string, TCON, and managed DSL tables provide identity,
+   lookup, and boundary evidence. Their process-wide visibility does not grant
+   a per-PU pass authority to analyze or mutate another PU.
+4. IPL is a per-PU summary-producing phase. It may prepare facts for IPA, but it
+   does not turn an ordinary backend pass into an interprocedural pass.
+5. Cross-PU analysis or transformation belongs to IPA and occurs only when the
+   `-ipa` compilation path establishes call-graph scope. Such work must use
+   IPA-owned call-graph traversal, summaries, and explicit PU-context services
+   such as `IPA_NODE_CONTEXT`; it must not be smuggled into VHO, WOPT, LNO, CG,
+   or a common/com utility.
+6. Every new analysis or optimization must state its scope: expression, basic
+   block, REGION, PU, file summary, or IPA call graph. Its ownership,
+   invalidation, rollback, diagnostics, and tests must use that same scope.
+7. A per-PU pass may validate call/formal/result contracts visible at its
+   boundary, but it must not infer that it may rewrite the opposite side of a
+   call edge. Coordinated caller/callee refinement requires an explicitly
+   designed IPA pass enabled by `-ipa`.
+
 ## Backend Shared-Library Dependencies
 
 1. Do not add a new library dependency to `be.so` without explicit design and

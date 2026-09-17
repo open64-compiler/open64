@@ -34,6 +34,23 @@ binary WHIRL / physical OPR_DSL
 boundaries. WOPT diagnostics, traces, hashing, matching, and optimization
 logic operate on logical names such as `OPR_DSLADD`.
 
+### Compilation scope
+
+WOPT is an intraprocedural optimizer. The backend driver selects one PU and
+establishes its local symbol-table and map context before calling the WOPT
+entry point. `Perform_Global_Optimization()` and
+`Perform_Preopt_Optimization()` are per-program-unit entry points, and each
+`COMP_UNIT` owns the CFG, SSA, optimizer symbol table, codemap, alias manager,
+and REGION identity for that PU or an explicitly selected REGION within it.
+
+Admitting DSL CODEREPs does not enlarge that scope. WOPT may validate a call
+boundary represented in the active PU, but it must not reactivate or mutate a
+callee or caller PU. Interprocedural DSL analysis, propagation, cloning, or
+specialization belongs to an explicit IPA pass under `-ipa`, using the IPA
+call graph, summaries, and PU-context services. Process-wide symbol, type, and
+DSL tables supply identity and boundary evidence; their visibility does not
+make WOPT interprocedural.
+
 ## Current WOPT Findings
 
 ### CODEREP operator capacity

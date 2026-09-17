@@ -6,8 +6,8 @@ Active staged implementation design. Immutable and uniqued canonical tensor
 types are adopted, the shared check-only shape service and per-PU static solver
 are implemented, and SP5 implements the first atomic per-PU value-retyping
 transaction and VHO driver under the approved SP4 contract. Symbolic dimension
-expressions, cross-PU mutation, and
-transformation invalidation still require later review. Nothing in this design
+expressions, IPA-owned interprocedural refinement, and transformation
+invalidation still require later review. Nothing in this design
 allocates a new binary WHIRL section or establishes a released API or ABI.
 
 Execution is tracked in
@@ -53,6 +53,32 @@ defines:
 8. A transformation that changes operands, attributes, results, calls,
    returns, or region interfaces must preserve shape facts or invalidate them
    and schedule refinement again.
+
+## Compilation Scope
+
+Open64 does not derive optimization ownership from which tables happen to be
+visible in the process. The phase driver establishes scope before invoking an
+analysis or transformation.
+
+The ordinary backend scope is one active PU. `Preorder_Process_PUs()` selects
+the PU and restores its local symbol table before `Preprocess_PU()` invokes
+VHO shape refinement. WOPT builds one `COMP_UNIT` and CFG for that PU or for an
+explicit REGION within it. LNO similarly receives the enclosing PU plus either
+the PU tree or a smaller REGION. REGION is therefore nested intraprocedural
+scope, not permission to cross a call edge.
+
+IPL also executes per PU. Its role is to emit procedure summaries. Only the
+`-ipa` path builds an `IPA_CALL_GRAPH` from those summaries and uses explicit
+`IPA_NODE_CONTEXT` switching to establish the symbol-table, PU, map, REGION,
+DST, feedback, and memory-pool context for a selected call-graph node.
+
+Consequently, this VHO shape pass is strictly per-PU. Globally loaded TY,
+symbol, call ABI, PU-interface, and managed DSL tables may be read for stable
+identity and boundary verification, but they do not authorize another PU's
+analysis or mutation. Cross-PU shape propagation, coordinated caller/callee
+retyping, signature specialization, or cloning belongs to a future explicit
+IPA shape pass enabled by `-ipa`. It is not an automatic extension of
+`VHO_DSL_Shape_Refine_Driver()`.
 
 ## Responsibilities
 
@@ -459,6 +485,11 @@ is active. The backend driver's normal traversal supplies complete program
 coverage. A missing or contradictory boundary descriptor fails closed in the
 PU where it is observed; the shape service does not reactivate another PU.
 
+Program coverage here means that the driver independently invokes the per-PU
+pass for each selected PU. It does not mean that the pass has program-wide
+optimization scope. Without `-ipa`, no result discovered in one invocation may
+be propagated into another PU.
+
 ## Atomic Retyping Contract
 
 The common layer needs a batch operation conceptually equivalent to:
@@ -663,10 +694,11 @@ The following decisions remain intentionally open:
    entirely reconstructible from operators, attributes, and descriptors.
 4. The exact admission-gate API and whether incomplete result descriptors may
    be sealed canonical pending types.
-5. Cross-PU mutation is not part of the initial shape-refinement lifecycle.
-   The backend driver processes every PU, while the SP4 transaction remains
-   atomic within the active PU. A future transform that must change both sides
-   of a PU boundary requires a separate reviewed contract.
+5. Cross-PU mutation is not part of the VHO shape-refinement lifecycle. The
+   backend driver processes every PU independently, while the SP4 transaction
+   remains atomic within the active PU. A future transform that must change
+   both sides of a PU boundary requires `-ipa`, an IPA-owned call-graph pass,
+   and a separate reviewed contract.
 6. How transformation passes report shape preservation, invalidation, and
    changed values without disrupting the existing fixed pipeline.
 7. How runtime shape guards are represented and lowered when static or

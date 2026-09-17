@@ -13,6 +13,13 @@ propagation architecture. It retypes only uniquely owned local tensor results.
 Formal, return, call, constant, and cross-PU refinement remains check-only
 until SP6 or a separately reviewed extension.
 
+This contract's compilation scope is one active PU. Driver iteration over all
+PUs provides coverage, not interprocedural authority. A globally visible call,
+formal, or type record may be used to validate the current boundary, but the
+transaction must not reactivate or mutate another PU. Any coordinated
+caller/callee retyping extension belongs to an explicitly enabled IPA pass and
+requires its own call-graph-scoped contract.
+
 ## Decision
 
 Canonical tensor types are immutable. A shape proof may select a different

@@ -441,7 +441,9 @@ Actions:
    seed descriptors. Fail closed when a PU cannot establish the descriptor
    state required by its next phase.
 5. Leave multi-PU cloning, inlining, or coordinated signature mutation to the
-   transformation that creates that need and require a separate contract.
+   IPA transformation that creates that need. Require `-ipa`, IPA call-graph
+   scope, and a separate contract; never perform it automatically from the VHO
+   shape driver.
 
 Tests:
 
@@ -457,6 +459,12 @@ Exit gate SP6:
   VHO processing;
 - no downstream DSL phase observes an unverified active PU;
 - the shape service contains no competing PU traversal or all-PU journal.
+
+Compilation-scope rule: complete backend coverage is a sequence of independent
+per-PU invocations. It is not interprocedural analysis. Globally loaded tables
+remain identity and boundary evidence only. Any future caller/callee shape
+propagation must be introduced as an IPA-owned pass and execute only under
+`-ipa`.
 
 Retained SP6 review evidence:
 
@@ -607,7 +615,8 @@ The project is complete when:
 3. Repeated equivalent refinement does not grow the tensor type table.
 4. Existing canonical tensor types remain immutable and valid for unaffected
    users.
-5. Per-PU and cross-PU retyping is atomic and owner-safe.
+5. Per-PU retyping is atomic and owner-safe; any future cross-PU retyping is
+   confined to an explicitly enabled IPA pass with call-graph scope.
 6. Static ResNet and Llama prefill pass through the normal `-O0` pipeline with
    compiler-refined types.
 7. Llama decode preserves reviewed dynamic or symbolic sequence semantics.
