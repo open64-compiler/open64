@@ -4109,8 +4109,10 @@ DSL_Builder_Verify_PU_Interfaces (FILE *diagnostic, UINT32 *error_count)
     return TRUE;
 }
 
-BOOL
-DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
+static BOOL
+DSL_Builder_Verify_Program_Mode
+        (DSL_GATEKEEPER_MODE mode,
+         DSL_BUILDER_VERIFY_RESULT *result)
 {
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     FILE *diagnostic = NULL;
@@ -4153,7 +4155,8 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
             ++gatekeeper_result.error_count;
             continue;
         }
-        if (!DSL_Gatekeeper_Verify_PU(pu, diagnostic, &pu_result))
+        if (!DSL_Gatekeeper_Verify_PU_Mode
+                 (pu, mode, diagnostic, &pu_result))
             valid = FALSE;
         gatekeeper_result.native_node_count += pu_result.native_node_count;
         gatekeeper_result.result_symbol_count += pu_result.result_symbol_count;
@@ -4203,6 +4206,13 @@ DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
         result->error_count = gatekeeper_result.error_count;
     }
     return valid;
+}
+
+BOOL
+DSL_Builder_Verify_Program (DSL_BUILDER_VERIFY_RESULT *result)
+{
+    return DSL_Builder_Verify_Program_Mode
+               (DSL_GATEKEEPER_STRICT, result);
 }
 
 DSL_BUILDER_REGION
@@ -4599,8 +4609,10 @@ DSL_Builder_Finalize_Mapped_Image
         return FALSE;
 
     if (DSL_Builder_PU_Root == NULL ?
-        !DSL_Gatekeeper_Verify_Program(NULL, stderr, NULL) :
-        !DSL_Builder_Verify_Program(NULL))
+        !DSL_Gatekeeper_Verify_Program_Mode
+             (NULL, DSL_GATEKEEPER_ADMISSION, stderr, NULL) :
+        !DSL_Builder_Verify_Program_Mode
+             (DSL_GATEKEEPER_ADMISSION, NULL))
         return FALSE;
 
     Irb_File_Name = (char *)request->path;

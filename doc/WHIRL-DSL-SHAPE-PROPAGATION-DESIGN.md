@@ -4,8 +4,9 @@
 
 Active staged implementation design. Immutable and uniqued canonical tensor
 types are adopted, the shared check-only shape service and per-PU static solver
-are implemented, and SP4 has approved the first atomic value-retyping
-contract. Symbolic dimension expressions, cross-PU mutation, and
+are implemented, and SP5 implements the first atomic per-PU value-retyping
+transaction and VHO driver under the approved SP4 contract. Symbolic dimension
+expressions, cross-PU mutation, and
 transformation invalidation still require later review. Nothing in this design
 allocates a new binary WHIRL section or establishes a released API or ABI.
 

@@ -135,6 +135,7 @@
 #include "eh_region.h"		    /* for EH_Generate_Range_List, etc. */
 #include "vho_lower.h"
 #include "dsl_lower.h"
+#include "dsl_shape_refine.h"
 #include "fhe_convert.h"
 #include "iter.h"		    /* PU iterator for loops */
 #include "dra_export.h"             /* for DRA routines */
@@ -1947,6 +1948,11 @@ Preprocess_PU (PU_Info *current_pu)
     CYG_Instrument_Driver( pu );
   }
 #endif
+
+  Set_Error_Phase ( "DSL Shape Refinement" );
+  pu = VHO_DSL_Shape_Refine_Driver(current_pu, pu);
+  Set_PU_Info_tree_ptr(current_pu, pu);
+  Check_for_IR_Dump(TP_GLOBOPT, pu, "DSL_SHAPE_REFINE");
 
   if (!w2c_only && VHO_DSL_Enable_WOPT) {
     Is_True(wopt_loaded,

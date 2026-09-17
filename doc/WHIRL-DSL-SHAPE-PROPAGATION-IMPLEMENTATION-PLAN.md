@@ -10,7 +10,7 @@ No implementation milestone may weaken binary WHIRL compatibility, mutate a
 sealed tensor type in place, duplicate shape formulas in independent services,
 or expose a partially retyped WHIRL program.
 
-Progress through SP4:
+Progress through SP5:
 
 - SP0 baseline inventory was consumed by the SP1 through SP3 implementation
   reviews.
@@ -18,7 +18,8 @@ Progress through SP4:
 - SP2 completed in commit `eb8b7273`.
 - SP3 completed in commit `0ef23ab9`.
 - SP4 is complete in `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`.
-- SP5 is the next implementation milestone.
+- SP5 is complete on `codex/dsl-shape-sp5`.
+- SP6 is the next implementation milestone.
 
 ## Objective
 
@@ -352,7 +353,7 @@ PR boundary: documentation and test scaffolding only, if needed.
 
 Dependencies: SP2, SP3, and approved SP4.
 
-Status: next.
+Status: completed on `codex/dsl-shape-sp5`.
 
 Actions:
 
@@ -384,6 +385,35 @@ Exit gate SP5:
 - no partial validly named artifact survives a failed run.
 
 PR boundary: per-PU atomic refinement and driver, without cross-PU mutation.
+
+Completion evidence:
+
+- `DSL_IR_Refine_Native_Value_Types()` implements complete-array preflight,
+  fixed-width WN/ST/value commit, strict post-verification, and reverse-order
+  rollback for eligible local pure results.
+- `VHO_DSL_Shape_Refine_Driver()` runs before optional DSL WOPT, FHE
+  conversion, and DSL lowering. Non-DSL PUs are unchanged.
+- `-DSL:shape_refine=on|off` defaults on; off performs strict check-only
+  validation. `-DSL:dump_after_shape_refine=on|off` retains the post-phase
+  tree when requested.
+- The focused test proves admission-versus-strict behavior, disabled-mode
+  non-mutation, a forced late-failure rollback, immutable canonical type
+  creation/reuse, direct WN/ST/value agreement, and REGION preservation.
+- The retained `shape_refine.B` reopens in a separate `ir_b2a -st -src`
+  process. Its trace preserves old pending TY 53, contains refined canonical
+  TY 55 with shape `[2,3]`, and binds both refined result values to TY 55.
+- No mapped-image row or ELF section changed. `be.so`, `be`, and `lw_inline`
+  rebuild; `be.so` and `lw_inline` contain no `DSL_Builder_*` or `Json::`
+  symbols.
+
+Local review artifacts:
+
+```text
+/private/tmp/open64-shape-sp5/artifacts/shape/sp5-refinement/shape_refine.B
+/private/tmp/open64-shape-sp5/artifacts/shape/sp5-refinement/shape_refine.T
+/private/tmp/open64-shape-sp5/artifacts/shape/sp5-refinement/validation.log
+/private/tmp/open64-shape-sp5/artifacts/shape/sp5-refinement/certification.txt
+```
 
 ### SP6: Program Fixed Point Across PUs, Calls, Returns, And REGIONs
 

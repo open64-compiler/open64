@@ -17,6 +17,11 @@ typedef struct {
 } DSL_GATEKEEPER_RESULT;
 
 typedef enum {
+    DSL_GATEKEEPER_ADMISSION = 0,
+    DSL_GATEKEEPER_STRICT = 1
+} DSL_GATEKEEPER_MODE;
+
+typedef enum {
     DSL_KV_CACHE_UPDATE_INVALID = 0,
     DSL_KV_CACHE_UPDATE_FUNCTIONAL_APPEND = 1
 } DSL_KV_CACHE_UPDATE;
@@ -43,6 +48,16 @@ extern BOOL DSL_Gatekeeper_Verify_Program
                                  DSL_GATEKEEPER_RESULT *result);
 extern BOOL DSL_Gatekeeper_Verify_PU
                                 (PU_Info *pu,
+                                 FILE *diagnostic,
+                                 DSL_GATEKEEPER_RESULT *result);
+extern BOOL DSL_Gatekeeper_Verify_PU_Mode
+                                (PU_Info *pu,
+                                 DSL_GATEKEEPER_MODE mode,
+                                 FILE *diagnostic,
+                                 DSL_GATEKEEPER_RESULT *result);
+extern BOOL DSL_Gatekeeper_Verify_Program_Mode
+                                (PU_Info *pu_tree,
+                                 DSL_GATEKEEPER_MODE mode,
                                  FILE *diagnostic,
                                  DSL_GATEKEEPER_RESULT *result);
 extern BOOL DSL_Gatekeeper_Verify_Transformer_Decode_Profile

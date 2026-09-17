@@ -23,8 +23,30 @@ typedef struct {
     std::vector<ST_IDX> result_symbols;
     std::vector<UINT32> input_ordinals;
     FILE *diagnostic;
+    DSL_GATEKEEPER_MODE mode;
     DSL_GATEKEEPER_RESULT result;
 } DSL_GATEKEEPER_CONTEXT;
+
+static BOOL
+DSL_Gatekeeper_Tensor_Shape_Complete (TY_IDX ty)
+{
+    DSL_SHAPE_FACT fact;
+    return DSL_Shape_Fact_From_Type(ty, &fact) &&
+           fact.state == DSL_SHAPE_FACT_COMPLETE;
+}
+
+static BOOL
+DSL_Gatekeeper_Tensor_Type_Admissible
+        (TY_IDX ty,
+         DSL_GATEKEEPER_MODE mode)
+{
+    if (mode == DSL_GATEKEEPER_STRICT)
+        return DSL_Gatekeeper_Tensor_Shape_Complete(ty);
+    DSL_SHAPE_FACT fact;
+    return TY_is_tensor_extension(ty) && TY_tensor_is_canonical(ty) &&
+           DSL_Shape_Fact_From_Type(ty, &fact) &&
+           fact.state != DSL_SHAPE_FACT_CONTRADICTION;
+}
 
 static BOOL
 DSL_Gatekeeper_Report
@@ -628,11 +650,11 @@ DSL_Gatekeeper_Verify_Native_Node
         ST_class(St_Table[result_st]) != CLASS_VAR ||
         !ST_is_temp_var(St_Table[result_st]) ||
         ST_type(St_Table[result_st]) != result_ty ||
-        !DSL_Shape_Tensor_Core_Complete(result_ty) ||
+        !DSL_Gatekeeper_Tensor_Type_Admissible(result_ty, context->mode) ||
         !DSL_Gatekeeper_Has_Unique_Ownership(result_st))
         valid = DSL_Gatekeeper_Report
-                    (context, "%s result is not a complete no-alias tensor "
-                     "temporary", DSL_OPERATOR_name(dsl_operator));
+                    (context, "%s result is not an admissible no-alias "
+                     "tensor temporary", DSL_OPERATOR_name(dsl_operator));
 
     image_valid = DSL_WN_Get_Opcode_Annotation(expression, &annotation) &&
                   annotation.payload != NULL &&
@@ -670,6 +692,7 @@ DSL_Gatekeeper_Verify_Native_Node
     TY_IDX second_operand_ty = TY_IDX_ZERO;
     std::vector<TY_IDX> operand_types
                             (WN_kid_count(expression), TY_IDX_ZERO);
+    BOOL shape_ready = DSL_Gatekeeper_Tensor_Shape_Complete(result_ty);
     for (UINT32 i = 0; i < WN_kid_count(expression); ++i) {
         WN *operand = WN_kid(expression, i);
         if (operand == NULL || WN_operator(operand) != OPR_LDID ||
@@ -678,19 +701,23 @@ DSL_Gatekeeper_Verify_Native_Node
             !DSL_Gatekeeper_Is_Result_Symbol
                  (context, WN_st_idx(operand)) ||
             ST_type(St_Table[WN_st_idx(operand)]) != WN_ty(operand) ||
-            !DSL_Shape_Tensor_Core_Complete(WN_ty(operand))) {
+            !DSL_Gatekeeper_Tensor_Type_Admissible
+                 (WN_ty(operand), context->mode)) {
             valid = DSL_Gatekeeper_Report
                         (context, "%s kid%u is not a direct tensor-result "
                          "LDID", DSL_OPERATOR_name(dsl_operator), i);
             continue;
         }
         operand_types[i] = WN_ty(operand);
+        shape_ready = shape_ready &&
+                      DSL_Gatekeeper_Tensor_Shape_Complete(WN_ty(operand));
         if (i == 0)
             first_operand_ty = WN_ty(operand);
         else {
             if (i == 1)
                 second_operand_ty = WN_ty(operand);
-            if ((dsl_operator == OPR_DSLADD ||
+            if (shape_ready &&
+                (dsl_operator == OPR_DSLADD ||
                  dsl_operator == OPR_DSLMUL ||
                  dsl_operator == OPR_DSLDIV ||
                  dsl_operator == OPR_DSLREM ||
@@ -714,14 +741,15 @@ DSL_Gatekeeper_Verify_Native_Node
          dsl_operator == OPR_DSLMUL ||
          dsl_operator == OPR_DSLDIV ||
          dsl_operator == OPR_DSLREM) &&
-        first_operand_ty != TY_IDX_ZERO &&
+        shape_ready && first_operand_ty != TY_IDX_ZERO &&
         !DSL_Shape_Tensor_Compatible
              (first_operand_ty, result_ty, TRUE))
         valid = DSL_Gatekeeper_Report
                     (context, "%s result tensor is incompatible "
                      "with its operands",
                      DSL_OPERATOR_name(dsl_operator));
-    if (dsl_operator == OPR_DSLMATMUL && first_operand_ty != TY_IDX_ZERO) {
+    if (shape_ready && dsl_operator == OPR_DSLMATMUL &&
+        first_operand_ty != TY_IDX_ZERO) {
         BOOL matmul_valid = second_operand_ty != TY_IDX_ZERO && image_valid &&
             DSL_Gatekeeper_Shape_Valid
                 (dsl_operator, logical_opcode.effective_version,
@@ -736,41 +764,42 @@ DSL_Gatekeeper_Verify_Native_Node
          dsl_operator == OPR_DSLRESIDUALADD ||
          dsl_operator == OPR_DSLOUTPUTLOGITS ||
          dsl_operator == OPR_DSLSCATTER) &&
-        first_operand_ty != TY_IDX_ZERO &&
+        shape_ready && first_operand_ty != TY_IDX_ZERO &&
         !DSL_Shape_Tensor_Compatible
              (first_operand_ty, result_ty, TRUE))
         valid = DSL_Gatekeeper_Report
                     (context, "%s result tensor is incompatible with kid0",
                      DSL_OPERATOR_name(dsl_operator));
-    if (image_valid && dsl_operator == OPR_DSLFLATTEN &&
+    if (shape_ready && image_valid && dsl_operator == OPR_DSLFLATTEN &&
         first_operand_ty != TY_IDX_ZERO &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
               &image_node, operand_types, result_ty))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLFLATTEN result shape is invalid");
-    if (image_valid && dsl_operator == OPR_DSLLINEAR &&
+    if (shape_ready && image_valid && dsl_operator == OPR_DSLLINEAR &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
               &image_node, operand_types, result_ty))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLLINEAR tensor or attribute contract "
                      "is invalid");
-    if (image_valid && dsl_operator == OPR_DSLCONV2D &&
+    if (shape_ready && image_valid && dsl_operator == OPR_DSLCONV2D &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
               &image_node, operand_types, result_ty))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLCONV2D tensor or attribute contract "
                      "is invalid");
-    if (image_valid && dsl_operator == OPR_DSLBATCHNORMINFER &&
+    if (shape_ready && image_valid &&
+        dsl_operator == OPR_DSLBATCHNORMINFER &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
               &image_node, operand_types, result_ty))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLBATCHNORMINFER tensor or attribute "
                      "contract is invalid");
-    if (image_valid && dsl_operator == OPR_DSLMAXPOOL2D &&
+    if (shape_ready && image_valid && dsl_operator == OPR_DSLMAXPOOL2D &&
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
@@ -778,7 +807,8 @@ DSL_Gatekeeper_Verify_Native_Node
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLMAXPOOL2D result shape or attribute "
                      "contract is invalid");
-    if (image_valid && dsl_operator == OPR_DSLGLOBALAVGPOOL2D &&
+    if (shape_ready && image_valid &&
+        dsl_operator == OPR_DSLGLOBALAVGPOOL2D &&
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
@@ -786,7 +816,7 @@ DSL_Gatekeeper_Verify_Native_Node
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLGLOBALAVGPOOL2D result shape or "
                      "attribute contract is invalid");
-    if (image_valid && dsl_operator == OPR_DSLRESHAPE &&
+    if (shape_ready && image_valid && dsl_operator == OPR_DSLRESHAPE &&
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
@@ -794,7 +824,7 @@ DSL_Gatekeeper_Verify_Native_Node
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLRESHAPE result shape or attribute "
                      "contract is invalid");
-    if (image_valid && dsl_operator == OPR_DSLTRANSPOSE &&
+    if (shape_ready && image_valid && dsl_operator == OPR_DSLTRANSPOSE &&
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
@@ -802,7 +832,7 @@ DSL_Gatekeeper_Verify_Native_Node
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLTRANSPOSE result shape or permutation "
                      "contract is invalid");
-    if (image_valid &&
+    if (shape_ready && image_valid &&
         (dsl_operator == OPR_DSLTOKENEMBEDDING ||
          dsl_operator == OPR_DSLRMSNORM ||
          dsl_operator == OPR_DSLROTARYEMBEDDING ||
@@ -825,7 +855,7 @@ DSL_Gatekeeper_Verify_Native_Node
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLRESIDUALADD requires exact no-broadcast "
                      "residual semantics");
-    if (image_valid && dsl_operator == OPR_DSLOUTPUTLOGITS &&
+    if (shape_ready && image_valid && dsl_operator == OPR_DSLOUTPUTLOGITS &&
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
@@ -895,14 +925,16 @@ DSL_Gatekeeper_Verify_Tree
 }
 
 BOOL
-DSL_Gatekeeper_Verify_PU
+DSL_Gatekeeper_Verify_PU_Mode
         (PU_Info *pu,
+         DSL_GATEKEEPER_MODE mode,
          FILE *diagnostic,
          DSL_GATEKEEPER_RESULT *result)
 {
     DSL_GATEKEEPER_CONTEXT context;
     memset (&context.result, 0, sizeof(context.result));
     context.diagnostic = diagnostic;
+    context.mode = mode;
 
     BOOL valid = DSL_IR_Image_Validate(diagnostic);
     if (!valid)
@@ -937,6 +969,17 @@ DSL_Gatekeeper_Verify_PU
             context.result.error_count +=
                 shape_result.contradiction_count == 0 ? 1 :
                 shape_result.contradiction_count;
+        } else if (mode == DSL_GATEKEEPER_STRICT &&
+                   (shape_result.refinable_value_count != 0 ||
+                    shape_result.pending_value_count != 0 ||
+                    shape_result.unresolved_value_count != 0)) {
+            valid = DSL_Gatekeeper_Report
+                        (&context,
+                         "strict shape verification found refinable=%u "
+                         "pending=%u unresolved=%u",
+                         shape_result.refinable_value_count,
+                         shape_result.pending_value_count,
+                         shape_result.unresolved_value_count);
         }
     }
 
@@ -946,14 +989,26 @@ DSL_Gatekeeper_Verify_PU
 }
 
 BOOL
-DSL_Gatekeeper_Verify_Program
+DSL_Gatekeeper_Verify_PU
+        (PU_Info *pu,
+         FILE *diagnostic,
+         DSL_GATEKEEPER_RESULT *result)
+{
+    return DSL_Gatekeeper_Verify_PU_Mode
+               (pu, DSL_GATEKEEPER_STRICT, diagnostic, result);
+}
+
+BOOL
+DSL_Gatekeeper_Verify_Program_Mode
         (PU_Info *pu_tree,
+         DSL_GATEKEEPER_MODE mode,
          FILE *diagnostic,
          DSL_GATEKEEPER_RESULT *result)
 {
     DSL_GATEKEEPER_CONTEXT context;
     memset (&context.result, 0, sizeof(context.result));
     context.diagnostic = diagnostic;
+    context.mode = mode;
 
     BOOL valid = DSL_IR_Image_Validate(diagnostic);
     if (!valid)
@@ -1001,6 +1056,16 @@ DSL_Gatekeeper_Verify_Program
     if (result != NULL)
         *result = context.result;
     return valid && context.result.error_count == 0;
+}
+
+BOOL
+DSL_Gatekeeper_Verify_Program
+        (PU_Info *pu_tree,
+         FILE *diagnostic,
+         DSL_GATEKEEPER_RESULT *result)
+{
+    return DSL_Gatekeeper_Verify_Program_Mode
+               (pu_tree, DSL_GATEKEEPER_STRICT, diagnostic, result);
 }
 static BOOL
 DSL_Gatekeeper_Decode_Profile_Error

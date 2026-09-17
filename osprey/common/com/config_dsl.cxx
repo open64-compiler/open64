@@ -9,6 +9,8 @@
 
 BOOL VHO_DSL_Enable_WOPT = FALSE;
 BOOL VHO_DSL_Enable_WOPT_Set = FALSE;
+BOOL VHO_DSL_Enable_Shape_Refinement = TRUE;
+BOOL VHO_DSL_Enable_Shape_Refinement_Set = FALSE;
 BOOL VHO_DSL_Enable_Canonicalization = FALSE;
 BOOL VHO_DSL_Enable_Canonicalization_Set = FALSE;
 BOOL VHO_DSL_Enable_Descriptor_Propagation = FALSE;
@@ -33,8 +35,13 @@ BOOL VHO_DSL_Enable_Implementation_Selection = FALSE;
 BOOL VHO_DSL_Enable_Implementation_Selection_Set = FALSE;
 BOOL VHO_DSL_Dump_After_Lowering = FALSE;
 BOOL VHO_DSL_Dump_After_Lowering_Set = FALSE;
+BOOL VHO_DSL_Dump_After_Shape_Refinement = FALSE;
+BOOL VHO_DSL_Dump_After_Shape_Refinement_Set = FALSE;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_BOOL, OV_VISIBLE, TRUE, "shape_refine", "shape_refine",
+    FALSE, 0, 0, &VHO_DSL_Enable_Shape_Refinement,
+    &VHO_DSL_Enable_Shape_Refinement_Set },
   { OVK_BOOL, OV_VISIBLE, TRUE, "wopt", "wopt",
     FALSE, 0, 0, &VHO_DSL_Enable_WOPT,
     &VHO_DSL_Enable_WOPT_Set },
@@ -74,5 +81,9 @@ static OPTION_DESC Options_DSL[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "dump_after_lower", "dump_after_lower",
     FALSE, 0, 0, &VHO_DSL_Dump_After_Lowering,
     &VHO_DSL_Dump_After_Lowering_Set },
+  { OVK_BOOL, OV_VISIBLE, TRUE, "dump_after_shape_refine",
+    "dump_after_shape_refine", FALSE, 0, 0,
+    &VHO_DSL_Dump_After_Shape_Refinement,
+    &VHO_DSL_Dump_After_Shape_Refinement_Set },
   { OVK_COUNT }
 };

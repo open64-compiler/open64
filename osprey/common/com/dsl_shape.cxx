@@ -2297,11 +2297,13 @@ DSL_Shape_Image_Fingerprint (void)
     return fingerprint;
 }
 
-BOOL
-DSL_Shape_Analyze_PU
+static BOOL
+DSL_Shape_Analyze_PU_Internal
         (PU_Info *pu,
          WN *tree,
          FILE *diagnostic,
+         DSL_SHAPE_REFINEMENT_VISITOR visitor,
+         void *visitor_context,
          DSL_SHAPE_SOLVER_RESULT *result)
 {
     DSL_SHAPE_SOLVER_RESULT local_result;
@@ -2442,7 +2444,56 @@ DSL_Shape_Analyze_PU
         ++local_result.diagnostic_count;
         valid = FALSE;
     }
+    if (valid && visitor != NULL) {
+        for (UINT32 i = 0; i < values.size(); ++i) {
+            const DSL_SHAPE_SOLVER_VALUE &value = values[i];
+            if (value.fact.state != DSL_SHAPE_FACT_COMPLETE ||
+                DSL_Shape_Facts_Equal(value.seed, value.fact))
+                continue;
+            DSL_SHAPE_REFINEMENT refinement;
+            refinement.value_id = value.value_id;
+            refinement.expected_old_ty = value.ty;
+            refinement.refined_fact = value.fact;
+            refinement.source_position = value.source_position;
+            if (!visitor(&refinement, visitor_context)) {
+                if (diagnostic != NULL)
+                    fprintf(diagnostic,
+                            "DSL-SHAPE-004: refinement consumer rejected "
+                            "value %u at file %u line %u\n",
+                            refinement.value_id,
+                            SRCPOS_filenum(refinement.source_position),
+                            SRCPOS_linenum(refinement.source_position));
+                ++local_result.diagnostic_count;
+                valid = FALSE;
+                break;
+            }
+        }
+    }
     if (result != NULL)
         *result = local_result;
     return valid && local_result.contradiction_count == 0;
+}
+
+BOOL
+DSL_Shape_Analyze_PU
+        (PU_Info *pu,
+         WN *tree,
+         FILE *diagnostic,
+         DSL_SHAPE_SOLVER_RESULT *result)
+{
+    return DSL_Shape_Analyze_PU_Internal
+               (pu, tree, diagnostic, NULL, NULL, result);
+}
+
+BOOL
+DSL_Shape_Analyze_PU_With_Refinements
+        (PU_Info *pu,
+         WN *tree,
+         FILE *diagnostic,
+         DSL_SHAPE_REFINEMENT_VISITOR visitor,
+         void *visitor_context,
+         DSL_SHAPE_SOLVER_RESULT *result)
+{
+    return DSL_Shape_Analyze_PU_Internal
+               (pu, tree, diagnostic, visitor, visitor_context, result);
 }

@@ -75,6 +75,16 @@ typedef struct {
     UINT32 diagnostic_count;
 } DSL_SHAPE_SOLVER_RESULT;
 
+typedef struct {
+    DSL_IR_VALUE_ID value_id;
+    TY_IDX expected_old_ty;
+    DSL_SHAPE_FACT refined_fact;
+    SRCPOS source_position;
+} DSL_SHAPE_REFINEMENT;
+
+typedef BOOL (*DSL_SHAPE_REFINEMENT_VISITOR)
+    (const DSL_SHAPE_REFINEMENT *refinement, void *context);
+
 extern BOOL DSL_Shape_Tensor_Core_Complete(TY_IDX ty);
 extern BOOL DSL_Shape_Parse_Static_Dimensions
                                 (const char *shape,
@@ -101,5 +111,12 @@ extern DSL_SHAPE_CHECK_RESULT DSL_Shape_Check_Operator
                                 (const DSL_SHAPE_OPERATOR_INPUT *input);
 extern BOOL DSL_Shape_Analyze_PU (PU_Info *pu, WN *tree, FILE *diagnostic,
                                   DSL_SHAPE_SOLVER_RESULT *result);
+extern BOOL DSL_Shape_Analyze_PU_With_Refinements
+                                (PU_Info *pu,
+                                 WN *tree,
+                                 FILE *diagnostic,
+                                 DSL_SHAPE_REFINEMENT_VISITOR visitor,
+                                 void *visitor_context,
+                                 DSL_SHAPE_SOLVER_RESULT *result);
 
 #endif /* dsl_shape_INCLUDED */
