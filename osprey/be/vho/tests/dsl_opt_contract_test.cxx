@@ -78,8 +78,35 @@ main(void)
     if (!VHO_DSL_Optimize_Program_Unit
              (pu_info, &tree, NULL, &result) ||
         result.enabled_stage_count != 0 ||
-        result.executed_stage_count != 0) {
+        result.executed_stage_count != 0 ||
+        result.executed_shape_invalidating_stage_count != 0 ||
+        VHO_DSL_Opt_Enabled_Stages_Invalidate_Shape()) {
         fprintf(stderr, "disabled DSL VHO pipeline changed behavior\n");
+        return 1;
+    }
+
+    for (UINT32 ordinal = 0; ordinal < VHO_DSL_OPT_STAGE_COUNT; ++ordinal) {
+        VHO_DSL_OPT_STAGE stage = (VHO_DSL_OPT_STAGE)ordinal;
+        if (VHO_DSL_Opt_Stage_Shape_Effect(stage) !=
+                VHO_DSL_OPT_SHAPE_INVALIDATING_LOCAL) {
+            fprintf(stderr,
+                    "DSL VHO stage %s did not conservatively invalidate "
+                    "shape state\n",
+                    VHO_DSL_Opt_Stage_Name(stage));
+            return 1;
+        }
+    }
+    if (VHO_DSL_Opt_Shape_Effect_Invalidates
+            (VHO_DSL_OPT_SHAPE_PRESERVING) ||
+        VHO_DSL_Opt_Shape_Effect_Invalidates
+            (VHO_DSL_OPT_SHAPE_MONOTONIC_REFINING) ||
+        !VHO_DSL_Opt_Shape_Effect_Invalidates
+            (VHO_DSL_OPT_SHAPE_INVALIDATING_LOCAL) ||
+        !VHO_DSL_Opt_Shape_Effect_Invalidates
+            (VHO_DSL_OPT_SHAPE_INVALIDATING_BOUNDARY) ||
+        !VHO_DSL_Opt_Shape_Effect_Invalidates
+            ((VHO_DSL_OPT_SHAPE_EFFECT)99)) {
+        fprintf(stderr, "DSL VHO shape-effect classification changed\n");
         return 1;
     }
 
@@ -104,6 +131,8 @@ main(void)
              (pu_info, &tree, NULL, &result) ||
         result.enabled_stage_count != 3 ||
         result.executed_stage_count != 3 ||
+        result.executed_shape_invalidating_stage_count != 3 ||
+        !VHO_DSL_Opt_Enabled_Stages_Invalidate_Shape() ||
         observed_count != 3 ||
         observed[0] != VHO_DSL_OPT_CANONICALIZATION ||
         observed[1] != VHO_DSL_OPT_FUSION ||
@@ -118,6 +147,8 @@ main(void)
              (pu_info, &tree, NULL, &result) ||
         result.enabled_stage_count != 2 ||
         result.executed_stage_count != 2 ||
+        result.executed_shape_invalidating_stage_count != 2 ||
+        !VHO_DSL_Opt_Enabled_Stages_Invalidate_Shape() ||
         observed_count != 2 ||
         observed[0] != VHO_DSL_OPT_CANONICALIZATION ||
         observed[1] != VHO_DSL_OPT_IMPLEMENTATION_SELECTION) {

@@ -72,8 +72,11 @@ static O64_ComponentInitializer driver_init(
 // =======================================================================
 
 O64_Driver::O64_Driver()
-    : _CurrentOption(NULL), _CurrentWN(NULL), _CompOptionArgc(0)
+    : _NumRegisteredComponents(0), _CurrentOption(NULL), _CurrentWN(NULL),
+      _CompOptionArgc(0), _CompOptionArgv(NULL)
 {
+    BZERO(&_DriverPool, sizeof(_DriverPool));
+    BZERO(&_LocalPool, sizeof(_LocalPool));
     MEM_POOL_Initialize(&_DriverPool, "DriverPool", FALSE);
     MEM_POOL_Initialize(&_LocalPool, "LocalMemPool", FALSE);
 

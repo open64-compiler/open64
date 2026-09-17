@@ -7,6 +7,8 @@
 
 extern BOOL VHO_DSL_Enable_WOPT;
 extern BOOL VHO_DSL_Enable_WOPT_Set;
+extern BOOL VHO_DSL_Enable_Shape_Refinement;
+extern BOOL VHO_DSL_Enable_Shape_Refinement_Set;
 extern BOOL VHO_DSL_Enable_Canonicalization;
 extern BOOL VHO_DSL_Enable_Canonicalization_Set;
 extern BOOL VHO_DSL_Enable_Descriptor_Propagation;
@@ -31,5 +33,7 @@ extern BOOL VHO_DSL_Enable_Implementation_Selection;
 extern BOOL VHO_DSL_Enable_Implementation_Selection_Set;
 extern BOOL VHO_DSL_Dump_After_Lowering;
 extern BOOL VHO_DSL_Dump_After_Lowering_Set;
+extern BOOL VHO_DSL_Dump_After_Shape_Refinement;
+extern BOOL VHO_DSL_Dump_After_Shape_Refinement_Set;
 
 #endif /* config_dsl_INCLUDED */

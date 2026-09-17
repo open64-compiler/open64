@@ -86,6 +86,105 @@ only when the current task needs detail.
    identity. Continue using WOPT's existing `CODEREP` instantiation of
    `wn_simp_code.h`; do not add a parallel WOPT simplifier.
 
+## PREOPT Canonicalization And Optimization Roles
+
+1. Preserve the two distinct roles of the WOPT component. PREOPT cleans up and
+   canonicalizes WHIRL before major optimization; full WOPT performs
+   optimization on that canonical representation. PREOPT is also the shared
+   canonicalization service for LNO and IPA where those pipelines invoke it;
+   do not describe or design its canonical form as WOPT-only.
+2. When introducing a new WHIRL or DSL construct, define its canonical form and
+   identify every downstream consumer. Ensure PREOPT produces or verifies that
+   form before WOPT, LNO, or IPA consumes it in the applicable pipeline.
+3. Optimization candidate selection should rely on canonical IR whenever
+   possible. Do not make every optimization recognize multiple equivalent tree
+   shapes when PREOPT can normalize them once for all downstream phases.
+4. Keep canonicalization separate from profitability and transformation.
+   PREOPT normalizes representation and exposes optimization opportunities;
+   WOPT, LNO, and IPA identify legal and profitable candidates and perform
+   transformations within their respective compilation scopes.
+5. A new canonicalization rule must preserve language, tensor descriptor,
+   effect, alias, source-position, and strict floating-point semantics. It must
+   honor the relevant phase and simplifier controls.
+6. When WOPT, LNO, or IPA requires a new canonical property, update the PREOPT
+   contract, phase ordering, verifier, diagnostics, and tests together. Tests
+   must prove that equivalent input forms converge to the canonical form and
+   that every claimed downstream consumer receives that form in its actual
+   pipeline and compilation scope.
+7. If a construct cannot be canonicalized before a downstream optimizer,
+   document the reason and the additional candidate-selection complexity
+   explicitly. Treat this as an exception requiring design review, not the
+   default implementation path.
+
+## Compilation Scope And Optimization Ownership
+
+1. The compiler driver establishes compilation scope and phase lifetime. A
+   service invoked by a phase must operate within that established scope; it
+   must not enlarge its own scope by traversing `PU_Info`, restoring another
+   PU's local symbol table, or switching `Current_pu` on its own.
+2. Normal backend compilation is per-PU. VHO, Preopt/WOPT, LNO, and CG operate
+   on the active PU or on an explicitly selected REGION nested within that PU.
+   REGION is a smaller intraprocedural scope, not an interprocedural scope, and
+   its RID/map/pool lifetime remains driver-owned.
+3. Global symbol, type, string, TCON, and managed DSL tables provide identity,
+   lookup, and boundary evidence. Their process-wide visibility does not grant
+   a per-PU pass authority to analyze or mutate another PU.
+4. IPL is a per-PU summary-producing phase. It may prepare facts for IPA, but it
+   does not turn an ordinary backend pass into an interprocedural pass.
+5. Cross-PU analysis or transformation belongs to IPA and occurs only when the
+   `-ipa` compilation path establishes call-graph scope. Such work must use
+   IPA-owned call-graph traversal, summaries, and explicit PU-context services
+   such as `IPA_NODE_CONTEXT`; it must not be smuggled into VHO, WOPT, LNO, CG,
+   or a common/com utility.
+6. Every new analysis or optimization must state its scope: expression, basic
+   block, REGION, PU, file summary, or IPA call graph. Its ownership,
+   invalidation, rollback, diagnostics, and tests must use that same scope.
+7. A per-PU pass may validate call/formal/result contracts visible at its
+   boundary, but it must not infer that it may rewrite the opposite side of a
+   call edge. Coordinated caller/callee refinement requires an explicitly
+   designed IPA pass enabled by `-ipa`.
+8. Test scope must match implementation scope. A PU-local change requires
+   intraprocedural positive, negative, rollback, and boundary-validation tests;
+   it does not require a cross-PU transformation test. Multiple-PU fixtures may
+   still prove independent driver coverage and absence of cross-PU mutation.
+   Require call-graph propagation or coordinated caller/callee transformation
+   tests only for code that executes in IPA scope under `-ipa`.
+
+## Optimization-Level Scope
+
+1. Treat optimization levels as analysis and transformation scope contracts.
+   DSL optimization must follow the same contracts as traditional Open64; a
+   DSL operator, tensor type, REGION, or domain does not grant permission to
+   optimize at a broader scope.
+2. `-O0` performs no optimization. It may verify legality and perform only the
+   straightforward semantic lowering required to make the program executable.
+   It must not perform fusion, algebraic improvement, layout optimization,
+   profitability-driven rewriting, parallelization, or other
+   performance-oriented transformations.
+3. `-O1` permits basic-block-local optimization only. Its analysis and
+   transformations must not depend on control-flow facts outside the active
+   basic block, REGION-local equivalent, or other explicitly local unit.
+4. `-O2` permits PU-level optimization over the active procedure's control-flow
+   graph. It may use intraprocedural data-flow, alias, SSA, PRE, and related
+   analyses, but it must not infer or transform across a PU boundary.
+5. `-O3` adds optimization around canonical loops, with emphasis on memory
+   behavior and parallelization. Loop transformation, tiling, locality,
+   memory-hierarchy use, vectorization, and parallel execution must consume the
+   canonical loop and dependence contracts established by the earlier phases.
+6. `-ipa` explicitly expands analysis beyond one PU through the IPA-owned call
+   graph and summaries. Cross-PU transformation remains limited, reviewed, and
+   controlled; enabling `-ipa` does not authorize arbitrary whole-program
+   mutation by PU-local phases.
+7. Every new DSL analysis or transformation must declare its minimum
+   optimization level, maximum compilation scope, required canonical form,
+   invalidation behavior, and controlling option. The driver and phase must
+   leave it disabled below that level and must not silently enlarge its scope.
+8. Validation must exercise the level boundary: prove `-O0` preserves the
+   unoptimized semantic form through straightforward lowering, prove the pass
+   runs at its declared level, and prove it neither runs nor consumes
+   out-of-scope facts at lower levels. Cross-PU tests are required only for
+   explicitly enabled `-ipa` work.
+
 ## Backend Shared-Library Dependencies
 
 1. Do not add a new library dependency to `be.so` without explicit design and
@@ -264,10 +363,30 @@ native representation, compatibility, verification, inspection, and lowering.
    IR. If the active `ir_b2a` build does not yet support `-src`, treat that as a
    tooling gap to fix; do not silently omit source cross-reference evidence.
 10. The `ir_b2a` output must use the input `.B` file's stem, for example
-   `ir_b2a -st -src resnet.B resnet.T`. On case-insensitive filesystems where
-   `resnet.T` collides with a driver-produced `resnet.t`, preserve the phase
-   trace under a descriptive non-colliding name such as `resnet.vho.t` before
-   producing `resnet.T`.
+    `ir_b2a -st -src resnet.B resnet.T`. On case-insensitive filesystems where
+    `resnet.T` collides with a driver-produced `resnet.t`, preserve the phase
+    trace under a descriptive non-colliding name such as `resnet.vho.t` before
+    producing `resnet.T`.
+11. Every coding change that adds or modifies an IR transformation must retain
+    reviewable before-and-after WHIRL evidence. Produce `<case>.before.B` and
+    `<case>.after.B`, reopen each independently with `ir_b2a -st -src` as
+    `<case>.before.T` and `<case>.after.T`, and retain a unified diff such as
+    `<case>.before-after.diff`. An in-memory phase trace alone is not a
+    substitute for mapped binary WHIRL evidence.
+12. Capture the before image immediately before the transformation and the
+    after image immediately after it, using the same input, options, target,
+    compilation scope, and source mapping. If the normal driver cannot publish
+    both boundaries, add a focused producer or reviewed checkpoint using the
+    existing WHIRL writer rather than fabricating textual IR.
+13. The transformation diff must make intentional WN, ST, TY, TensorDescriptorIR,
+    REGION, and managed-table changes visible while also demonstrating relevant
+    invariants. Preserve the raw `ir_b2a` diff; a focused or normalized excerpt
+    may supplement it but must not replace it.
+14. Treat unexplained diff churn as a review blocker. The validation report and
+    pull-request summary must describe the expected semantic changes, identify
+    important facts that remain unchanged, and link the retained before trace,
+    after trace, and full diff. If a transformation is expected to be a no-op
+    for a fixture, retain and report the empty diff as evidence.
 
 ## Near-Term Coding Priorities
 

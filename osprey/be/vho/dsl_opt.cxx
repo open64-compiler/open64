@@ -697,6 +697,54 @@ VHO_DSL_Opt_Stage_Enabled (VHO_DSL_OPT_STAGE stage)
     }
 }
 
+VHO_DSL_OPT_SHAPE_EFFECT
+VHO_DSL_Opt_Stage_Shape_Effect (VHO_DSL_OPT_STAGE stage)
+{
+    switch (stage) {
+    case VHO_DSL_OPT_CANONICALIZATION:
+    case VHO_DSL_OPT_DESCRIPTOR_PROPAGATION:
+    case VHO_DSL_OPT_CONSTANT_PROPAGATION:
+    case VHO_DSL_OPT_ALGEBRAIC_SIMPLIFICATION:
+    case VHO_DSL_OPT_DEAD_RESULT_ELIMINATION:
+    case VHO_DSL_OPT_COMMON_SUBEXPRESSION:
+    case VHO_DSL_OPT_SSA_PRE:
+    case VHO_DSL_OPT_QUANTIZATION:
+    case VHO_DSL_OPT_FUSION:
+    case VHO_DSL_OPT_PARALLELIZATION:
+    case VHO_DSL_OPT_IMPLEMENTATION_SELECTION:
+        return VHO_DSL_OPT_SHAPE_INVALIDATING_LOCAL;
+    default:
+        return VHO_DSL_OPT_SHAPE_INVALIDATING_LOCAL;
+    }
+}
+
+BOOL
+VHO_DSL_Opt_Shape_Effect_Invalidates (VHO_DSL_OPT_SHAPE_EFFECT effect)
+{
+    switch (effect) {
+    case VHO_DSL_OPT_SHAPE_PRESERVING:
+    case VHO_DSL_OPT_SHAPE_MONOTONIC_REFINING:
+        return FALSE;
+    case VHO_DSL_OPT_SHAPE_INVALIDATING_LOCAL:
+    case VHO_DSL_OPT_SHAPE_INVALIDATING_BOUNDARY:
+    default:
+        return TRUE;
+    }
+}
+
+BOOL
+VHO_DSL_Opt_Enabled_Stages_Invalidate_Shape (void)
+{
+    for (UINT32 ordinal = 0; ordinal < VHO_DSL_OPT_STAGE_COUNT; ++ordinal) {
+        VHO_DSL_OPT_STAGE stage = (VHO_DSL_OPT_STAGE)ordinal;
+        if (VHO_DSL_Opt_Stage_Enabled(stage) &&
+            VHO_DSL_Opt_Shape_Effect_Invalidates
+                (VHO_DSL_Opt_Stage_Shape_Effect(stage)))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 BOOL
 VHO_DSL_Opt_Register_Pass
         (VHO_DSL_OPT_STAGE stage,
@@ -768,6 +816,9 @@ VHO_DSL_Optimize_Program_Unit
             return FALSE;
         }
         ++local_result.executed_stage_count;
+        if (VHO_DSL_Opt_Shape_Effect_Invalidates
+                (VHO_DSL_Opt_Stage_Shape_Effect(stage)))
+            ++local_result.executed_shape_invalidating_stage_count;
     }
 
     if (result != NULL)
