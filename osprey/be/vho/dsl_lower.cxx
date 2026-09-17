@@ -18,6 +18,7 @@
 #include "dsl_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_region.h"
+#include "dsl_shape_refine.h"
 #include "errors.h"
 #include "wn.h"
 #include "wn_map.h"
@@ -1730,11 +1731,26 @@ VHO_DSL_Lower_Driver
         (struct pu_info *pu_info,
          WN *tree)
 {
+    BOOL shape_current = VHO_DSL_Shape_Refinement_Is_Current
+                             (pu_info, tree, stderr);
+    FmtAssert(shape_current,
+              ("DSL lowering received stale tensor shape state"));
+
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     BOOL gatekeeper_valid = DSL_Gatekeeper_Verify_PU
                                 (pu_info, stderr, &gatekeeper_result);
     FmtAssert(gatekeeper_valid,
               ("DSL gatekeeper rejected Very High Level WHIRL"));
+
+    BOOL shape_invalidated =
+        VHO_DSL_Opt_Enabled_Stages_Invalidate_Shape();
+    if (shape_invalidated) {
+        BOOL invalidated = VHO_DSL_Shape_Refinement_Invalidate
+                               (pu_info, tree,
+                                "VHO DSL optimization", stderr);
+        FmtAssert(invalidated,
+                  ("could not invalidate DSL tensor shape state"));
+    }
 
     VHO_DSL_OPT_RESULT opt_result;
     BOOL opt_valid = VHO_DSL_Opt_Register_Default_Passes() &&
@@ -1743,12 +1759,23 @@ VHO_DSL_Lower_Driver
     FmtAssert(opt_valid,
               ("DSL VHO optimization pipeline failed"));
 
+    if (opt_result.executed_shape_invalidating_stage_count != 0) {
+        tree = VHO_DSL_Shape_Refine_Driver(pu_info, tree);
+        Set_PU_Info_tree_ptr(pu_info, tree);
+    }
+
     if (opt_result.executed_stage_count != 0) {
         gatekeeper_valid = DSL_Gatekeeper_Verify_PU
                                (pu_info, stderr, &gatekeeper_result);
         FmtAssert(gatekeeper_valid,
                   ("DSL VHO optimization produced invalid WHIRL"));
     }
+
+    shape_current = VHO_DSL_Shape_Refinement_Is_Current
+                        (pu_info, tree, stderr);
+    FmtAssert(shape_current,
+              ("DSL lowering received stale tensor shape state after "
+               "optimization"));
 
     VHO_DSL_LOWER_RESULT lower_result;
     BOOL lower_valid = VHO_DSL_Lower_Verified_Program_Unit

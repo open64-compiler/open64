@@ -549,11 +549,18 @@ Every DSL transformation must declare whether it:
 - invalidates local result shapes;
 - invalidates call, return, or REGION boundary evidence in its active PU.
 
-For the first implementation, conservatively rerun refinement after any
-executed DSL transformation that changes the graph. Later, the fixed-order VHO
-DSL pass registry may add explicit preservation and invalidation properties.
-The existing optional descriptor-propagation stage is broader than mandatory
-shape refinement and must not be used as its only implementation.
+The SP7 implementation conservatively classifies every current fixed-order VHO
+DSL optimization stage as shape invalidating. DSL WOPT invalidates before it
+runs; successful FHE conversion and every executed VHO DSL stage are followed
+by mandatory refinement. `VHO_DSL_Lower_Driver()` rejects a PU/tree whose
+runtime-only validated generation is not current. This generation is compiler
+process state, not persisted WHIRL metadata, and is owned by the active PU.
+
+Future pass reviews may classify a stage as shape preserving only after proving
+that it cannot alter operators, operands, attributes, calls, returns, REGION
+interfaces, or any descriptor relationship. The existing optional
+descriptor-propagation stage is broader than mandatory shape refinement and
+must not be used as its only implementation.
 
 ## Options And Debugging
 

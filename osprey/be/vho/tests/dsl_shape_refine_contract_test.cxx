@@ -216,7 +216,35 @@ main(void)
         return 1;
     }
 
-    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP5_ARTIFACT");
+    if (!VHO_DSL_Shape_Refinement_Is_Current
+             (pu, PU_Info_tree_ptr(pu), stderr) ||
+        !VHO_DSL_Shape_Refinement_Invalidate
+             (pu, PU_Info_tree_ptr(pu), "SP7 test transform", stderr) ||
+        VHO_DSL_Shape_Refinement_Is_Current
+             (pu, PU_Info_tree_ptr(pu), NULL) ||
+        !DSL_Gatekeeper_Verify_PU_Mode
+             (pu, DSL_GATEKEEPER_STRICT, stderr, &gatekeeper)) {
+        fprintf(stderr, "SP7 shape generation invalidation changed\n");
+        return 1;
+    }
+
+    VHO_DSL_SHAPE_REFINE_RESULT revalidated;
+    if (!VHO_DSL_Shape_Refine_Program_Unit
+             (pu, PU_Info_tree_ptr(pu), TRUE, stderr, &revalidated) ||
+        revalidated.solver.refinable_value_count != 0 ||
+        revalidated.requested_value_count != 0 ||
+        revalidated.retyped_value_count != 0 ||
+        !VHO_DSL_Shape_Refinement_Is_Current
+             (pu, PU_Info_tree_ptr(pu), stderr) ||
+        !Value_Type_Is(add, refined_ty) ||
+        !Value_Type_Is(relu, refined_ty)) {
+        fprintf(stderr, "SP7 shape revalidation changed\n");
+        return 1;
+    }
+
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_SP7_ARTIFACT");
+    if (artifact == NULL || artifact[0] == '\0')
+        artifact = getenv("OPEN64_DSL_SHAPE_SP5_ARTIFACT");
     if (artifact != NULL && artifact[0] != '\0') {
         DSL_BUILDER_MAPPED_IMAGE_REQUEST image;
         image.path = artifact;
@@ -229,10 +257,11 @@ main(void)
         }
     }
 
-    printf("SP5 shape refinement contract passed: refinable=%u "
-           "retyped=%u reused_types=%u rollback=%u\n",
+    printf("SP7 shape refinement contract passed: refinable=%u "
+           "retyped=%u reused_types=%u rollback=%u revalidated=%u\n",
            refined.solver.refinable_value_count,
            refined.retyped_value_count, refined.reused_type_count,
-           forced_failure.rollback_count);
+           forced_failure.rollback_count,
+           revalidated.solver.unchanged_value_count);
     return 0;
 }

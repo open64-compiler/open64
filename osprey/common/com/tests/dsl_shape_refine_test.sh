@@ -6,10 +6,11 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$script_dir/../../../.." && pwd)"
 producer="${OPEN64_DSL_SHAPE_REFINE_TEST:-$repo_root/build/osprey/targdir/ir_tools/dsl_shape_refine_contract_test}"
 ir_b2a="${OPEN64_IR_B2A:-$repo_root/build/osprey/targdir/ir_tools/ir_b2a}"
-artifact_dir="${OPEN64_DSL_SHAPE_SP5_ARTIFACT_DIR:-$repo_root/artifacts/shape/sp5-refinement}"
+artifact_dir="${OPEN64_DSL_SHAPE_SP7_ARTIFACT_DIR:-$repo_root/artifacts/shape/sp7-pipeline}"
 image="$artifact_dir/shape_refine.B"
 trace="$artifact_dir/shape_refine.T"
 driver_source="$repo_root/osprey/be/be/driver.cxx"
+lower_source="$repo_root/osprey/be/vho/dsl_lower.cxx"
 
 for executable in "$producer" "$ir_b2a"; do
   if [[ ! -x "$executable" ]]; then
@@ -22,16 +23,17 @@ mkdir -p "$artifact_dir"
 find "$artifact_dir" -mindepth 1 -maxdepth 1 -type f -delete
 
 printf '%s\n' \
-  "OPEN64_DSL_SHAPE_SP5_ARTIFACT=$image $producer" \
+  "OPEN64_DSL_SHAPE_SP7_ARTIFACT=$image $producer" \
   "$ir_b2a -st -src $image $trace" >"$artifact_dir/commands.txt"
 
-(cd "$repo_root" && OPEN64_DSL_SHAPE_SP5_ARTIFACT="$image" \
+(cd "$repo_root" && OPEN64_DSL_SHAPE_SP7_ARTIFACT="$image" \
   "$producer") >"$artifact_dir/validation.log" 2>&1
 (cd "$repo_root" && "$ir_b2a" -st -src "$image" "$trace") \
   >>"$artifact_dir/validation.log" 2>&1
 
-grep -Fq "SP5 shape refinement contract passed" \
+grep -Fq "SP7 shape refinement contract passed" \
   "$artifact_dir/validation.log"
+grep -Fq "DSL-SHAPE-INVALIDATE:" "$artifact_dir/validation.log"
 grep -Fq "shape_add" "$trace"
 grep -Fq "shape_relu" "$trace"
 grep -Fq "logical_shape = [2,3]" "$trace"
@@ -61,6 +63,20 @@ if [[ -z "$shape_line" || -z "$wopt_line" || -z "$fhe_line" ||
   echo "DSL shape refinement driver ordering changed" >&2
   exit 1
 fi
+for evidence in \
+  'DSL Shape Refinement after WOPT' \
+  'DSL Shape Refinement after FHE Conversion'; do
+  if ! grep -Fq "$evidence" "$driver_source"; then
+    echo "missing SP7 driver evidence: $evidence" >&2
+    exit 1
+  fi
+done
+if ! grep -Fq 'VHO_DSL_Shape_Refinement_Is_Current' "$lower_source" ||
+   ! grep -Fq 'VHO_DSL_Opt_Enabled_Stages_Invalidate_Shape' \
+      "$lower_source"; then
+  echo "missing SP7 defensive lowering evidence" >&2
+  exit 1
+fi
 
 cat >"$artifact_dir/certification.txt" <<EOF
 admission_then_strict=passed
@@ -69,16 +85,22 @@ immutable_uniqued_tensor_type=passed
 atomic_late_failure_rollback=passed
 wn_st_value_retype=passed
 region_interface_preserved=passed
+generation_invalidation=passed
+stale_generation_rejected=passed
+post_transform_revalidation=passed
 driver_owned_per_pu_traversal=passed
 shape_before_dsl_wopt=passed
 shape_before_fhe_conversion=passed
 shape_before_dsl_lowering=passed
+shape_after_dsl_wopt=passed
+shape_after_fhe_conversion=passed
+shape_after_vho_dsl_optimization=passed
 shape_before_language_vho=passed
 ir_b2a_st_src=passed
 binary_layout_change=none
 EOF
 
-echo "SP5 shape refinement fixture passed"
+echo "SP7 shape refinement fixture passed"
 echo "review image: $image"
 echo "review trace: $trace"
 echo "review diagnostics: $artifact_dir/validation.log"

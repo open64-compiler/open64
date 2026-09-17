@@ -3,6 +3,7 @@
  */
 
 #include <string.h>
+#include <string>
 #include <vector>
 
 #include "dsl_shape_refine.h"
@@ -22,6 +23,123 @@ typedef struct {
     VHO_DSL_SHAPE_REFINE_RESULT *result;
     std::vector<DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST> requests;
 } VHO_DSL_SHAPE_REFINE_CONTEXT;
+
+typedef struct {
+    PU_Info *pu_info;
+    ST_IDX owner_pu_st;
+    WN *tree;
+    UINT64 generation;
+    UINT64 validated_generation;
+    std::string invalidated_by;
+} VHO_DSL_SHAPE_GENERATION_STATE;
+
+static std::vector<VHO_DSL_SHAPE_GENERATION_STATE>
+    VHO_DSL_shape_generation_state;
+
+static VHO_DSL_SHAPE_GENERATION_STATE *
+VHO_DSL_Shape_Generation_State
+        (PU_Info *pu_info,
+         WN *tree,
+         BOOL create)
+{
+    if (pu_info == NULL || tree == NULL)
+        return NULL;
+    ST_IDX owner_pu_st = PU_Info_proc_sym(pu_info);
+    if (ST_IDX_index(owner_pu_st) == 0)
+        return NULL;
+    for (UINT32 i = 0; i < VHO_DSL_shape_generation_state.size(); ++i) {
+        VHO_DSL_SHAPE_GENERATION_STATE *state =
+            &VHO_DSL_shape_generation_state[i];
+        if (state->pu_info == pu_info) {
+            if (state->owner_pu_st != owner_pu_st) {
+                state->owner_pu_st = owner_pu_st;
+                state->tree = tree;
+                state->generation = 1;
+                state->validated_generation = 0;
+                state->invalidated_by = "PU identity changed";
+            }
+            return state;
+        }
+    }
+    if (!create)
+        return NULL;
+    VHO_DSL_SHAPE_GENERATION_STATE state;
+    state.pu_info = pu_info;
+    state.owner_pu_st = owner_pu_st;
+    state.tree = tree;
+    state.generation = 1;
+    state.validated_generation = 0;
+    state.invalidated_by = "not yet refined";
+    VHO_DSL_shape_generation_state.push_back(state);
+    return &VHO_DSL_shape_generation_state.back();
+}
+
+static BOOL
+VHO_DSL_Shape_Refinement_Mark_Current
+        (PU_Info *pu_info,
+         WN *tree)
+{
+    VHO_DSL_SHAPE_GENERATION_STATE *state =
+        VHO_DSL_Shape_Generation_State(pu_info, tree, TRUE);
+    if (state == NULL)
+        return FALSE;
+    state->tree = tree;
+    state->validated_generation = state->generation;
+    state->invalidated_by.clear();
+    return TRUE;
+}
+
+BOOL
+VHO_DSL_Shape_Refinement_Invalidate
+        (PU_Info *pu_info,
+         WN *tree,
+         const char *reason,
+         FILE *diagnostic)
+{
+    VHO_DSL_SHAPE_GENERATION_STATE *state =
+        VHO_DSL_Shape_Generation_State(pu_info, tree, TRUE);
+    if (state == NULL)
+        return FALSE;
+    state->tree = tree;
+    ++state->generation;
+    if (state->generation == 0)
+        state->generation = 1;
+    state->invalidated_by = reason != NULL ? reason : "unspecified transform";
+    if (diagnostic != NULL)
+        fprintf(diagnostic,
+                "DSL-SHAPE-INVALIDATE: pu=%s generation=%llu reason=%s\n",
+                ST_name(St_Table[state->owner_pu_st]),
+                (unsigned long long)state->generation,
+                state->invalidated_by.c_str());
+    return TRUE;
+}
+
+BOOL
+VHO_DSL_Shape_Refinement_Is_Current
+        (PU_Info *pu_info,
+         WN *tree,
+         FILE *diagnostic)
+{
+    VHO_DSL_SHAPE_GENERATION_STATE *state =
+        VHO_DSL_Shape_Generation_State(pu_info, tree, FALSE);
+    BOOL current = state != NULL && state->tree == tree &&
+                   state->validated_generation == state->generation;
+    if (!current && diagnostic != NULL) {
+        const char *pu_name = "<unknown>";
+        if (pu_info != NULL && ST_IDX_index(PU_Info_proc_sym(pu_info)) != 0)
+            pu_name = ST_name(St_Table[PU_Info_proc_sym(pu_info)]);
+        fprintf(diagnostic,
+                "DSL-SHAPE-STALE: pu=%s generation=%llu validated=%llu "
+                "reason=%s\n",
+                pu_name,
+                (unsigned long long)(state != NULL ? state->generation : 0),
+                (unsigned long long)(state != NULL ?
+                    state->validated_generation : 0),
+                state != NULL && !state->invalidated_by.empty() ?
+                    state->invalidated_by.c_str() : "no refinement state");
+    }
+    return current;
+}
 
 static BOOL
 VHO_DSL_Shape_Has_Native_Node (WN *wn)
@@ -124,6 +242,8 @@ VHO_DSL_Shape_Refine_Program_Unit
     memset(&local_result, 0, sizeof(local_result));
     if (pu_info != NULL && tree != NULL &&
         !VHO_DSL_Shape_Has_Native_Node(tree)) {
+        if (!VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree))
+            return FALSE;
         if (result != NULL)
             *result = local_result;
         return TRUE;
@@ -176,7 +296,8 @@ VHO_DSL_Shape_Refine_Program_Unit
                     "verification rejected pending or refinable shapes\n");
         if (result != NULL)
             *result = local_result;
-        return strict;
+        return strict &&
+               VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree);
     }
 
     if (!context.requests.empty()) {
@@ -203,6 +324,12 @@ VHO_DSL_Shape_Refine_Program_Unit
         return FALSE;
     }
 
+    if (!VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree)) {
+        ++local_result.diagnostic_count;
+        if (result != NULL)
+            *result = local_result;
+        return FALSE;
+    }
     if (result != NULL)
         *result = local_result;
     return TRUE;

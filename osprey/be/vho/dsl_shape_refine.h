@@ -33,5 +33,14 @@ extern BOOL VHO_DSL_Shape_Refine_Program_Unit
                                  VHO_DSL_SHAPE_REFINE_RESULT *result);
 extern WN *VHO_DSL_Shape_Refine_Driver
                                 (struct pu_info *pu_info, WN *tree);
+extern BOOL VHO_DSL_Shape_Refinement_Invalidate
+                                (struct pu_info *pu_info,
+                                 WN *tree,
+                                 const char *reason,
+                                 FILE *diagnostic);
+extern BOOL VHO_DSL_Shape_Refinement_Is_Current
+                                (struct pu_info *pu_info,
+                                 WN *tree,
+                                 FILE *diagnostic);
 
 #endif /* dsl_shape_refine_INCLUDED */

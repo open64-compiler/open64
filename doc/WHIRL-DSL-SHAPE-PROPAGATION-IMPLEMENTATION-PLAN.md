@@ -10,7 +10,7 @@ No implementation milestone may weaken binary WHIRL compatibility, mutate a
 sealed tensor type in place, duplicate shape formulas in independent services,
 or expose a partially retyped WHIRL program.
 
-Progress through SP6:
+Progress through SP7:
 
 - SP0 baseline inventory was consumed by the SP1 through SP3 implementation
   reviews.
@@ -21,7 +21,10 @@ Progress through SP6:
 - SP5 is complete on `codex/dsl-shape-sp5`.
 - SP6 confirms the existing driver-owned per-PU lifecycle on
   `codex/dsl-shape-sp6-pu-driver`.
-- SP7 is the next implementation milestone.
+- SP7 integrates per-PU invalidation and revalidation with DSL WOPT, FHE
+  conversion, the fixed VHO DSL optimization pipeline, checkpoint-only output,
+  and final DSL lowering on `codex/dsl-shape-sp7-pipeline`.
+- SP8 is the next implementation milestone.
 
 ## Objective
 
@@ -512,6 +515,34 @@ Exit gate SP7:
   shapes;
 - non-DSL and legacy WHIRL behavior remains unchanged.
 
+Implemented SP7 contract:
+
+1. Shape currency is a runtime-only per-PU generation state. It does not add a
+   WHIRL table, ELF section, or persisted generation number.
+2. Successful refinement, including strict check-only mode and a non-DSL PU,
+   marks the active PU/tree generation current.
+3. DSL WOPT invalidates before transformation and reruns refinement afterward.
+   A successful FHE conversion pass invalidates and reruns refinement before
+   checkpoint publication or ordinary lowering.
+4. Every current fixed-pipeline VHO DSL stage is conservatively declared shape
+   invalidating. The lowering driver invalidates before those stages, reruns
+   refinement after execution, and requires current state immediately before
+   native DSL lowering.
+5. `whirl2c`-only processing receives the mandatory initial per-PU strict
+   refinement/check. It does not run the skipped DSL transformations.
+6. The current/stale check is defensive compiler state, not frontend metadata.
+   It is scoped to the driver-selected PU and never traverses or mutates another
+   PU.
+
+Retained SP7 review evidence:
+
+```text
+/private/tmp/open64-shape-sp5/artifacts/shape/sp7-pipeline/shape_refine.B
+/private/tmp/open64-shape-sp5/artifacts/shape/sp7-pipeline/shape_refine.T
+/private/tmp/open64-shape-sp5/artifacts/shape/sp7-pipeline/validation.log
+/private/tmp/open64-shape-sp5/artifacts/shape/sp7-pipeline/certification.txt
+```
+
 PR boundary: driver, options, and invalidation integration.
 
 ### SP8: Symbolic And Runtime-Dynamic Dimensions
@@ -603,20 +634,19 @@ rollback reasoning tractable.
 
 ## Active Queue
 
-The active non-IPA queue remains SP7 through SP9. Future interprocedural shape
+The active non-IPA queue remains SP8 through SP9. Future interprocedural shape
 work is collected separately in
 `doc/IPA-DSL-SHAPE-PROPAGATION-TODO.md`. That document is an incubating
 research queue, not a dependency of the current per-PU implementation. It
 becomes actionable only under `-ipa` after the IPA summary and call-graph
 contracts are reviewed.
 
-1. **SP7: Backend pipeline invalidation.** Next per-PU implementation
-   milestone; depends on the completed SP6 lifecycle correction.
-2. **SP8: Symbolic and runtime-dynamic dimensions.** Blocked on SP7 and its
-   separate symbolic-expression review.
-3. **SP9: Final certification.** Static lanes depend on SP7; dynamic Llama
+1. **SP8: Symbolic and runtime-dynamic dimensions.** Next implementation
+   milestone; SP7 is complete, but the symbolic-expression contract still
+   requires review.
+2. **SP9: Final certification.** Static lanes depend on SP7; dynamic Llama
    decode certification also depends on SP8.
-4. **IPA-S0 and IPA-S1 research.** May collect architecture evidence in
+3. **IPA-S0 and IPA-S1 research.** May collect architecture evidence in
    parallel, but no cross-PU code begins before the IPA owners review the
    summary inventory and semantic transfer contract.
 

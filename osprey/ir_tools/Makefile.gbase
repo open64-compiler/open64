@@ -157,6 +157,7 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
+LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
 LDIRT += dsl_shape_refine.o
 LDIRT += fhe_convert_contract_test fhe_convert_contract_test.o fhe_convert.o
@@ -308,12 +309,21 @@ dsl_builder_contract_test.o: \
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
-		dsl_opt.o dsl_lower_contract_test.o
+		dsl_opt.o dsl_shape_refine.o dsl_lower_contract_test.o
 	$(link.c++f) -o $@ dsl_lower_contract_test.o controls.o \
-		dsl_lower.o dsl_opt.o $(OBJECTS) $(LDFLAGS)
+		dsl_lower.o dsl_opt.o dsl_shape_refine.o $(OBJECTS) $(LDFLAGS)
 
 dsl_lower_contract_test.o: \
 	$(BE_VHO_DIR)/tests/dsl_lower_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_opt_contract_test: $(OBJECTS) controls.o dsl_opt.o \
+		dsl_opt_contract_test.o
+	$(link.c++f) -o $@ dsl_opt_contract_test.o controls.o \
+		dsl_opt.o $(OBJECTS) $(LDFLAGS)
+
+dsl_opt_contract_test.o: \
+	$(BE_VHO_DIR)/tests/dsl_opt_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_shape_refine_contract_test: $(OBJECTS) controls.o \
