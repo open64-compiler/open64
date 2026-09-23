@@ -193,11 +193,13 @@ COMMON_COM_CXX_SRCS =	\
   dsl_domain.cxx        \
   dsl_fhe.cxx           \
   dsl_fhe_plan.cxx      \
+  dsl_gatekeeper.cxx    \
   dsl_ir_image.cxx      \
   dsl_ir_rewrite.cxx    \
   dsl_region.cxx        \
   dsl_memory_behavior.cxx \
   dsl_opcode.cxx        \
+  dsl_shape.cxx         \
   dsl_tensor_fold.cxx   \
   dwarf_DST.cxx		\
   dwarf_DST_dump.cxx	\
