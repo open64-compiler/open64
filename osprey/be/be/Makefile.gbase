@@ -330,6 +330,7 @@ COMMON_COM_CXX_SRCS = \
   dsl_region.cxx       \
   dsl_memory_behavior.cxx \
   dsl_opcode.cxx       \
+  dsl_opt_plan.cxx     \
   dsl_shape.cxx        \
   dsl_tensor_evolution.cxx \
   dsl_tensor_fold.cxx  \
