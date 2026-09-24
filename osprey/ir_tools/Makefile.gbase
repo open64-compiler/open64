@@ -156,6 +156,8 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
+LDIRT += dsl_tensor_evolution_contract_test \
+	dsl_tensor_evolution_contract_test.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += fhe_convert_contract_test fhe_convert_contract_test.o fhe_convert.o
 LDIRT += fhe_semantic_convert_test fhe_semantic_convert_test.o
@@ -203,6 +205,7 @@ COMMON_COM_CXX_SRC =	\
 	dsl_opcode.cxx	\
 	dsl_shape.cxx	\
 	dsl_simp.cxx	\
+        dsl_tensor_evolution.cxx \
         dsl_tensor_fold.cxx \
 	dwarf_DST.cxx	\
 	dwarf_DST_dump.cxx	\
@@ -303,6 +306,15 @@ dsl_builder_contract_test: $(OBJECTS) controls.o dsl_builder_contract_test.o
 
 dsl_builder_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_tensor_evolution_contract_test: $(OBJECTS) controls.o \
+		dsl_tensor_evolution_contract_test.o
+	$(link.c++f) -o $@ dsl_tensor_evolution_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_tensor_evolution_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_tensor_evolution_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
