@@ -1348,7 +1348,7 @@ DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
     if (old_ty == refined_ty || !TY_tensor_is_canonical(old_ty) ||
         !TY_tensor_is_canonical(refined_ty) ||
         !DSL_Shape_Tensor_Core_Complete(refined_ty) ||
-        TY_align(old_ty) != TY_align(refined_ty))
+        !TY_tensor_preserves_non_shape_state(old_ty, refined_ty))
         return FALSE;
 
     TENSOR_DESCRIPTOR_RECORD old_descriptor;
@@ -1552,9 +1552,9 @@ DSL_IR_Refine_Native_Value_Types
 {
     DSL_IR_VALUE_TYPE_REFINEMENT_RESULT local_result;
     memset(&local_result, 0, sizeof(local_result));
+    if (result != NULL)
+        *result = local_result;
     if (requests == NULL || request_count == 0) {
-        if (result != NULL)
-            *result = local_result;
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
                     "empty request array");

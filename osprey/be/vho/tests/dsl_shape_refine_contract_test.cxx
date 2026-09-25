@@ -73,6 +73,104 @@ Initialize_Descriptor
     descriptor->representation.quantization = "none";
 }
 
+static TY_IDX
+Create_Custom_Canonical_Tensor
+        (const char *name,
+         const char *shape,
+         const char *shape_contract)
+{
+    TY_IDX ty = TY_Create_Tensor_Type(name, MTYPE_To_TY(MTYPE_F4), 2);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_KIND, "tensor");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_DTYPE, "float32");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_RANK, "2");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_SHAPE, shape);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_TRAITS,
+                             "derived_activation");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_SHARDING, "replicated");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_PLACEMENT, "host");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_MEMORY, "contiguous");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_QUANTIZATION, "none");
+    TY_tensor_bind_attribute(ty, "shape_contract", shape_contract);
+    if (!TY_tensor_seal(ty))
+        return TY_IDX_ZERO;
+    return ty;
+}
+
+static int
+Run_Custom_Identity_Retype_Test(BOOL qualifier_repro)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR input_descriptor;
+    Initialize_Descriptor(&input_descriptor, "[2,3]", "activation");
+
+    if (!DSL_Builder_Begin_Program())
+        return 2;
+    DSL_Opcode_Register_Common_Substrate();
+    TY_IDX input_ty = DSL_Builder_Intern_Tensor_Type
+                          ("identity_repro_input", MTYPE_To_TY(MTYPE_F4),
+                           &input_descriptor);
+    TY_IDX pending_ty = Create_Custom_Canonical_Tensor
+                            ("identity_repro_tensor", "[2,<pending>]", "v1");
+    TY_IDX wrong_refined_ty = Create_Custom_Canonical_Tensor
+                                  ("identity_repro_tensor", "[2,3]",
+                                   qualifier_repro ? "v1" : "v2");
+    if (qualifier_repro)
+        Set_TY_is_const(wrong_refined_ty);
+    if (pending_ty == TY_IDX_ZERO || wrong_refined_ty == TY_IDX_ZERO)
+        return 3;
+
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("identity_repro");
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("input", input_ty, 0);
+    DSL_BUILDER_VALUE kids[2] = { input, input };
+    DSL_BUILDER_VALUE add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1, "result", pending_ty);
+    if (pu == NULL || input == NULL || add == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, input) ||
+        !DSL_Builder_Append_PU_Value(pu, add) ||
+        !DSL_Builder_Select_PU(pu))
+        return 4;
+
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST request;
+    request.owner_pu_st = PU_Info_proc_sym(pu);
+    request.value_id = DSL_Builder_Get_Value_Image_Id(add);
+    request.expected_old_ty = pending_ty;
+    request.refined_ty = wrong_refined_ty;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    memset(&result, 0, sizeof(result));
+    BOOL accepted = DSL_IR_Refine_Native_Value_Types
+                        (pu, PU_Info_tree_ptr(pu), &request, 1,
+                         stderr, &result);
+    ST_IDX result_st = DSL_Builder_Get_Value_Result_Symbol(add);
+    DSL_IR_VALUE_RECORD value;
+    BOOL unchanged = !accepted &&
+                     WN_ty(add) == pending_ty &&
+                     ST_type(St_Table[result_st]) == pending_ty &&
+                     DSL_IR_Image_Get_Value(request.value_id, &value) &&
+                     value.ty == pending_ty &&
+                     result.updated_st_count == 0 &&
+                     result.updated_wn_count == 0 &&
+                     result.updated_value_count == 0 &&
+                     result.rollback_count == 0;
+    printf("%s accepted=%d writes=%u/%u/%u rollback_count=%u "
+           "unchanged=%d old_contract=%s requested_contract=%s "
+           "old_const=%d requested_const=%d\n",
+           qualifier_repro ? "qualifier_repro" : "identity_repro",
+           accepted, result.updated_st_count, result.updated_wn_count,
+           result.updated_value_count, result.rollback_count, unchanged,
+           TY_tensor_attribute(pending_ty, "shape_contract"),
+           TY_tensor_attribute(wrong_refined_ty, "shape_contract"),
+           TY_is_const(pending_ty) != 0,
+           TY_is_const(wrong_refined_ty) != 0);
+    return unchanged ? 0 : 5;
+}
+
 static BOOL
 Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
 {
@@ -83,6 +181,904 @@ Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
            DSL_IR_Image_Get_Value
                (DSL_Builder_Get_Value_Image_Id(value), &record) &&
            record.ty == expected;
+}
+
+typedef enum {
+    AUTH_CUSTOM_VALUE,
+    AUTH_CUSTOM_ADDED,
+    AUTH_CUSTOM_REMOVED,
+    AUTH_DECLARED_TO_BOUND,
+    AUTH_BOUND_TO_DECLARED,
+    AUTH_DTYPE,
+    AUTH_TRAITS,
+    AUTH_LAYOUT,
+    AUTH_SHARDING,
+    AUTH_PLACEMENT,
+    AUTH_MEMORY,
+    AUTH_QUANTIZATION,
+    AUTH_TY_SIZE,
+    AUTH_TY_MTYPE,
+    AUTH_TY_FLAGS,
+    AUTH_NAME_IDX,
+    AUTH_ALIGNMENT,
+    AUTH_ELEMENT_TYPE,
+    AUTH_SCHEMA_KIND,
+    AUTH_CARRIER_KIND,
+    AUTH_SEMANTIC_ROLE,
+    AUTH_RUNTIME_STATE,
+    AUTH_LINEAGE,
+    AUTH_ENCRYPTION_REFERENCE,
+    AUTH_UNKNOWN_VALUE,
+    AUTH_RANK,
+    AUTH_CONST_QUALIFIER,
+    AUTH_VOLATILE_QUALIFIER,
+    AUTH_RESTRICT_QUALIFIER,
+    AUTH_USER_ALIGN_QUALIFIER,
+    AUTH_FLAGS_EXT,
+    AUTH_UNUSED_U1,
+    AUTH_UNUSED_U2,
+    AUTH_UNUSED_VTABLE,
+    AUTH_INVALID_BIND_STATE,
+    AUTH_VARIANT_COUNT
+} AUTHORIZATION_VARIANT;
+
+static const char *authorization_variant_name[AUTH_VARIANT_COUNT] = {
+    "custom_value",
+    "custom_added",
+    "custom_removed",
+    "declared_to_bound",
+    "bound_to_declared",
+    "dtype",
+    "traits",
+    "layout",
+    "sharding",
+    "placement",
+    "memory",
+    "quantization",
+    "ty_size",
+    "ty_mtype",
+    "ty_flags",
+    "name_idx",
+    "alignment",
+    "element_type",
+    "schema_kind",
+    "carrier_kind",
+    "semantic_role",
+    "runtime_state",
+    "lineage",
+    "encryption_reference",
+    "unknown_value",
+    "rank",
+    "const_qualifier",
+    "volatile_qualifier",
+    "restrict_qualifier",
+    "user_align_qualifier",
+    "flags_ext",
+    "unused_u1",
+    "unused_u2",
+    "unused_vtable",
+    "invalid_bind_state"
+};
+
+static const char *
+Authorization_Value
+        (AUTHORIZATION_VARIANT variant,
+         AUTHORIZATION_VARIANT field,
+         BOOL refined,
+         const char *stable,
+         const char *changed)
+{
+    return variant == field && refined ? changed : stable;
+}
+
+static TY_IDX
+Create_Authorization_Tensor
+        (const char *name,
+         const char *shape,
+         AUTHORIZATION_VARIANT variant,
+         BOOL refined)
+{
+    INT32 rank = variant == AUTH_RANK && refined ? 3 : 2;
+    TY_IDX element_ty = variant == AUTH_ELEMENT_TYPE && refined ?
+                            MTYPE_To_TY(MTYPE_F8) :
+                            MTYPE_To_TY(MTYPE_F4);
+    TY_IDX ty = variant == AUTH_CARRIER_KIND && refined ?
+                    TY_Create_Tensor_Extension_Type(name, element_ty, rank) :
+                    TY_Create_Tensor_Type(name, element_ty, rank);
+    char rank_text[16];
+    snprintf(rank_text, sizeof(rank_text), "%d", rank);
+
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_KIND,
+         Authorization_Value(variant, AUTH_SCHEMA_KIND, refined,
+                             "tensor", "foreign_tensor"));
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_DTYPE,
+         Authorization_Value(variant, AUTH_DTYPE, refined,
+                             "float32", "float64"));
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_RANK, rank_text);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_SHAPE, shape);
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_TRAITS,
+         Authorization_Value(variant, AUTH_TRAITS, refined,
+                             "derived_activation", "foreign_trait"));
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_LAYOUT,
+         Authorization_Value(variant, AUTH_LAYOUT, refined,
+                             "row_major", "column_major"));
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_SHARDING,
+         Authorization_Value(variant, AUTH_SHARDING, refined,
+                             "replicated", "sharded"));
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_PLACEMENT,
+         Authorization_Value(variant, AUTH_PLACEMENT, refined,
+                             "host", "device"));
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_MEMORY,
+         Authorization_Value(variant, AUTH_MEMORY, refined,
+                             "contiguous", "strided"));
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_QUANTIZATION,
+         Authorization_Value(variant, AUTH_QUANTIZATION, refined,
+                             "none", "int8"));
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_RUNTIME_STATE,
+         Authorization_Value(variant, AUTH_RUNTIME_STATE, refined,
+                             "resident", "evicted"));
+    TY_tensor_bind_attribute
+        (ty, TY_TENSOR_SCHEMA_LINEAGE,
+         Authorization_Value(variant, AUTH_LINEAGE, refined,
+                             "lineage-a", "lineage-b"));
+
+    if (variant != AUTH_CUSTOM_ADDED || refined)
+        TY_tensor_bind_attribute
+            (ty, "shape_contract",
+             Authorization_Value(variant, AUTH_CUSTOM_VALUE, refined,
+                                 "contract-v1", "contract-v2"));
+    if (variant == AUTH_CUSTOM_REMOVED && !refined)
+        TY_tensor_bind_attribute(ty, "removed_state", "present");
+    if (variant == AUTH_DECLARED_TO_BOUND) {
+        if (refined)
+            TY_tensor_bind_attribute(ty, "binding_state", "bound");
+        else
+            TY_tensor_declare_attribute(ty, "binding_state");
+    } else if (variant == AUTH_BOUND_TO_DECLARED) {
+        if (refined)
+            TY_tensor_declare_attribute(ty, "binding_state");
+        else
+            TY_tensor_bind_attribute(ty, "binding_state", "bound");
+    }
+    TY_tensor_bind_attribute
+        (ty, "semantic_role",
+         Authorization_Value(variant, AUTH_SEMANTIC_ROLE, refined,
+                             "activation", "weight"));
+    TY_tensor_bind_attribute
+        (ty, "encryption_descriptor_ref",
+         Authorization_Value(variant, AUTH_ENCRYPTION_REFERENCE, refined,
+                             "none", "foreign-encryption-state"));
+    TY_tensor_bind_attribute
+        (ty, "future_unknown_state",
+         Authorization_Value(variant, AUTH_UNKNOWN_VALUE, refined,
+                             "future-v1", "future-v2"));
+
+    if (!TY_tensor_seal(ty))
+        return TY_IDX_ZERO;
+    if (variant == AUTH_TY_SIZE && refined)
+        Set_TY_size(ty, 1);
+    if (variant == AUTH_TY_MTYPE && refined)
+        Set_TY_mtype(ty, MTYPE_I4);
+    if (variant == AUTH_TY_FLAGS && refined)
+        Set_TY_is_character(ty);
+    if (variant == AUTH_ALIGNMENT && refined)
+        Set_TY_align(ty, 8);
+    if (variant == AUTH_CONST_QUALIFIER && refined)
+        Set_TY_is_const(ty);
+    if (variant == AUTH_VOLATILE_QUALIFIER && refined)
+        Set_TY_is_volatile(ty);
+    if (variant == AUTH_RESTRICT_QUALIFIER && refined)
+        Set_TY_is_restrict(ty);
+    if (variant == AUTH_USER_ALIGN_QUALIFIER && refined)
+        Set_TY_is_user_align(ty);
+    if (variant == AUTH_FLAGS_EXT && refined)
+        Set_TY_is_atomic(ty);
+    if (variant == AUTH_UNUSED_U1 && refined)
+        Ty_Table[ty].u1.fld = 1;
+    if (variant == AUTH_UNUSED_U2 && refined)
+        Ty_Table[ty].u2.etype = MTYPE_To_TY(MTYPE_F8);
+    if (variant == AUTH_UNUSED_VTABLE && refined)
+        Ty_Table[ty].vtable = make_ST_IDX(1, GLOBAL_SYMTAB);
+    return ty;
+}
+
+static BOOL
+Find_Tensor_Attribute_Entry
+        (TY_IDX ty,
+         const char *expected_key,
+         TY_DSL_KV **found)
+{
+    if (found != NULL)
+        *found = NULL;
+    for (UINT32 index = 0; index < Ty_tensor_extensions.Size(); ++index) {
+        TY_TENSOR_EXTENSION_STORE &ext = Ty_tensor_extensions[index];
+        if (TY_IDX_index(ext.ty) != TY_IDX_index(ty))
+            continue;
+        for (UINT32 handle = ext.attribute_head; handle != 0;
+             handle = Tensor_dsl_kv_table[handle - 1].next) {
+            TY_DSL_KV *entry = &Tensor_dsl_kv_table[handle - 1];
+            if (entry->key != 0 &&
+                strcmp(&Str_Table[entry->key], expected_key) == 0) {
+                if (found != NULL)
+                    *found = entry;
+                return TRUE;
+            }
+        }
+    }
+    return FALSE;
+}
+
+static BOOL
+Run_Authorization_Rejection
+        (const char *case_name,
+         TY_IDX old_ty,
+         TY_IDX refined_ty,
+         BOOL corrupt_bind_state = FALSE)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR input_descriptor;
+    Initialize_Descriptor(&input_descriptor, "[2,3]", "activation");
+    if (!DSL_Builder_Begin_Program())
+        return FALSE;
+    DSL_Opcode_Register_Common_Substrate();
+    TY_IDX input_ty = DSL_Builder_Intern_Tensor_Type
+                          ("authorization_input", MTYPE_To_TY(MTYPE_F4),
+                           &input_descriptor);
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU(case_name);
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("input", input_ty, 0);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    DSL_BUILDER_VALUE add_kids[2] = { input, input };
+    DSL_BUILDER_VALUE add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, add_kids, 2, &attribute, 1, "authorization_add", old_ty);
+    DSL_BUILDER_VALUE relu_kids[1] = { add };
+    DSL_BUILDER_VALUE relu = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, relu_kids, 1, NULL, 0, "authorization_relu", old_ty);
+    DSL_BUILDER_REGION region = DSL_Builder_Create_Region
+                                    (pu, NULL, "shape.authorization.v1", 1);
+    if (pu == NULL || input == NULL || add == NULL || relu == NULL ||
+        region == NULL || !DSL_Builder_Append_PU_Value(pu, input) ||
+        !DSL_Builder_Append_Region_Value(region, add) ||
+        !DSL_Builder_Append_Region_Value(region, relu) ||
+        !DSL_Builder_Declare_Region_Value
+             (region, add, DSL_REGION_VALUE_OUTPUT,
+              1, DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Declare_Region_Value
+             (region, relu,
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+              0, DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Append_PU_Region(pu, region) ||
+        !DSL_Builder_Select_PU(pu) ||
+        !DSL_Region_Verify_PU(pu, stderr))
+        return FALSE;
+
+    ST_IDX add_st = DSL_Builder_Get_Value_Result_Symbol(add);
+    ST_tensor_bind_metadata(add_st, "wp1_context", "preserved");
+    WN *direct_ldid = WN_kid0(WN_kid0(relu));
+    BOOL current_before = VHO_DSL_Shape_Refinement_Is_Current
+                              (pu, PU_Info_tree_ptr(pu), NULL);
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST request;
+    request.owner_pu_st = PU_Info_proc_sym(pu);
+    request.value_id = DSL_Builder_Get_Value_Image_Id(add);
+    request.expected_old_ty = old_ty;
+    request.refined_ty = refined_ty;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    memset(&result, 0xff, sizeof(result));
+    TY_DSL_KV *corrupted_entry = NULL;
+    mUINT32 saved_state = TY_DSL_BIND_PENDING;
+    if (corrupt_bind_state) {
+        if (!Find_Tensor_Attribute_Entry
+                 (refined_ty, "future_unknown_state", &corrupted_entry))
+            return FALSE;
+        saved_state = corrupted_entry->state;
+        corrupted_entry->state = 2;
+    }
+    BOOL accepted = DSL_IR_Refine_Native_Value_Types
+                        (pu, PU_Info_tree_ptr(pu), &request, 1,
+                         stderr, &result);
+    if (corrupted_entry != NULL)
+        corrupted_entry->state = saved_state;
+    BOOL current_after = VHO_DSL_Shape_Refinement_Is_Current
+                             (pu, PU_Info_tree_ptr(pu), NULL);
+    BOOL unchanged = !accepted &&
+                     result.request_count == 0 &&
+                     result.updated_st_count == 0 &&
+                     result.updated_wn_count == 0 &&
+                     result.updated_value_count == 0 &&
+                     result.rollback_count == 0 &&
+                     Value_Type_Is(add, old_ty) &&
+                     Value_Type_Is(relu, old_ty) &&
+                     direct_ldid != NULL && WN_ty(direct_ldid) == old_ty &&
+                     strcmp(ST_tensor_metadata(add_st, "wp1_context"),
+                            "preserved") == 0 &&
+                     DSL_Region_Verify_PU(pu, stderr) &&
+                     current_before == current_after;
+    printf("authorization_case=%s accepted=%d requests=%u "
+           "writes=%u/%u/%u rollback=%u unchanged=%d "
+           "ldid=%d region=%d current_equal=%d\n",
+           case_name, accepted, result.request_count,
+           result.updated_st_count, result.updated_wn_count,
+           result.updated_value_count, result.rollback_count, unchanged,
+           direct_ldid != NULL && WN_ty(direct_ldid) == old_ty,
+           DSL_Region_Verify_PU(pu, NULL),
+           current_before == current_after);
+    return unchanged;
+}
+
+static int
+Run_Authorization_Matrix(void)
+{
+    UINT32 passed = 0;
+    const char *selected = getenv("OPEN64_DSL_SHAPE_AUTH_CASE");
+    for (UINT32 ordinal = 0; ordinal < AUTH_VARIANT_COUNT; ++ordinal) {
+        AUTHORIZATION_VARIANT variant =
+            (AUTHORIZATION_VARIANT)ordinal;
+        if (selected != NULL &&
+            strcmp(selected, authorization_variant_name[ordinal]) != 0)
+            continue;
+        char old_name[96];
+        char refined_name[96];
+        char shared_name[96];
+        snprintf(old_name, sizeof(old_name), "wp1_%s_old",
+                 authorization_variant_name[ordinal]);
+        snprintf(refined_name, sizeof(refined_name), "wp1_%s_refined",
+                 authorization_variant_name[ordinal]);
+        snprintf(shared_name, sizeof(shared_name), "wp1_%s_tensor",
+                 authorization_variant_name[ordinal]);
+        TY_IDX old_ty = Create_Authorization_Tensor
+                            (variant == AUTH_NAME_IDX ? old_name : shared_name,
+                             "[2,<pending>]", variant, FALSE);
+        TY_IDX refined_ty = Create_Authorization_Tensor
+                                (variant == AUTH_NAME_IDX ?
+                                     refined_name : shared_name,
+                                 variant == AUTH_RANK ? "[2,3,1]" : "[2,3]",
+                                 variant, TRUE);
+        TY_IDX baseline_refined_ty = Create_Authorization_Tensor
+                                         (variant == AUTH_NAME_IDX ?
+                                              old_name : shared_name,
+                                          "[2,3]", variant, FALSE);
+        BOOL baseline_helper =
+            TY_tensor_preserves_non_shape_state
+                (old_ty, baseline_refined_ty);
+        BOOL target_helper =
+            TY_tensor_preserves_non_shape_state(old_ty, refined_ty);
+        printf("authorization_isolation case=%s baseline_helper=%d "
+               "target_helper=%d\n",
+               authorization_variant_name[ordinal], baseline_helper,
+               target_helper);
+        if (old_ty == TY_IDX_ZERO || refined_ty == TY_IDX_ZERO ||
+            baseline_refined_ty == TY_IDX_ZERO || !baseline_helper ||
+            (variant != AUTH_INVALID_BIND_STATE && target_helper) ||
+            !Run_Authorization_Rejection
+                 (authorization_variant_name[ordinal], old_ty, refined_ty,
+                  variant == AUTH_INVALID_BIND_STATE)) {
+            fprintf(stderr, "WP1 authorization case failed: %s\n",
+                    authorization_variant_name[ordinal]);
+            return 10 + ordinal;
+        }
+        ++passed;
+    }
+    printf("WP1 authorization negative matrix passed: cases=%u "
+           "preflight_zero_write=1 ldid_unchanged=1 region_valid=1\n",
+           passed);
+    return selected == NULL || passed == 1 ? 0 : 9;
+}
+
+static TY_IDX
+Create_Preservation_Tensor
+        (const char *name,
+         const char *shape,
+         const char *contract,
+         const char *runtime_state,
+         const char *lineage)
+{
+    TY_IDX ty = TY_Create_Tensor_Type(name, MTYPE_To_TY(MTYPE_F4), 2);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_KIND, "tensor");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_DTYPE, "float32");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_RANK, "2");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_SHAPE, shape);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_TRAITS,
+                             "derived_activation");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_SHARDING, "replicated");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_PLACEMENT, "host");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_MEMORY, "contiguous");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_QUANTIZATION, "none");
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_RUNTIME_STATE,
+                             runtime_state);
+    TY_tensor_bind_attribute(ty, TY_TENSOR_SCHEMA_LINEAGE, lineage);
+    TY_tensor_bind_attribute(ty, "shape_contract", contract);
+    TY_tensor_bind_attribute(ty, "semantic_role", "activation");
+    TY_tensor_bind_attribute(ty, "encryption_descriptor_ref", "none");
+    TY_tensor_bind_attribute(ty, "future_unknown_state", "future-v1");
+    TY_tensor_declare_attribute(ty, "pending_auxiliary_state");
+    return TY_tensor_seal(ty) ? ty : TY_IDX_ZERO;
+}
+
+static BOOL
+Tensor_Attribute_Has_State
+        (TY_IDX ty,
+         const char *expected_key,
+         const char *expected_value,
+         TY_DSL_BIND_STATE expected_state)
+{
+    for (UINT32 ordinal = 0;
+         ordinal < TY_tensor_attribute_count(ty); ++ordinal) {
+        const char *key = NULL;
+        const char *value = NULL;
+        TY_DSL_BIND_STATE state = TY_DSL_BIND_PENDING;
+        if (!TY_tensor_attribute_at(ty, ordinal, &key, &value, &state) ||
+            key == NULL || strcmp(key, expected_key) != 0)
+            continue;
+        if (state != expected_state)
+            return FALSE;
+        return expected_state == TY_DSL_BIND_PENDING ? value == NULL :
+               value != NULL && expected_value != NULL &&
+               strcmp(value, expected_value) == 0;
+    }
+    return FALSE;
+}
+
+static BOOL
+Run_Authorization_Success
+        (TY_IDX old_ty,
+         TY_IDX refined_ty)
+{
+    if (!DSL_Builder_Begin_Program())
+        return FALSE;
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("authorization_positive");
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("input", refined_ty, 0);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    DSL_BUILDER_VALUE add_kids[2] = { input, input };
+    DSL_BUILDER_VALUE add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, add_kids, 2, &attribute, 1, "positive_add", old_ty);
+    DSL_BUILDER_VALUE relu_kids[1] = { add };
+    DSL_BUILDER_VALUE relu = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, relu_kids, 1, NULL, 0, "positive_relu", old_ty);
+    DSL_BUILDER_REGION region = DSL_Builder_Create_Region
+                                    (pu, NULL, "shape.positive.v1", 1);
+    ST_IDX unrelated = DSL_Builder_Create_Tensor_Result_Symbol
+                           ("positive_unrelated", old_ty,
+                            SCLASS_AUTO, EXPORT_LOCAL);
+    if (pu == NULL || input == NULL || add == NULL || relu == NULL ||
+        region == NULL || ST_IDX_index(unrelated) == 0 ||
+        !DSL_Builder_Append_PU_Value(pu, input) ||
+        !DSL_Builder_Append_Region_Value(region, add) ||
+        !DSL_Builder_Append_Region_Value(region, relu) ||
+        !DSL_Builder_Declare_Region_Value
+             (region, add, DSL_REGION_VALUE_OUTPUT,
+              1, DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Declare_Region_Value
+             (region, relu,
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+              0, DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Append_PU_Region(pu, region) ||
+        !DSL_Builder_Select_PU(pu))
+        return FALSE;
+
+    ST_IDX add_st = DSL_Builder_Get_Value_Result_Symbol(add);
+    ST_tensor_bind_metadata(add_st, "wp1_context", "preserved");
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST requests[2];
+    requests[0].owner_pu_st = PU_Info_proc_sym(pu);
+    requests[0].value_id = DSL_Builder_Get_Value_Image_Id(add);
+    requests[0].expected_old_ty = old_ty;
+    requests[0].refined_ty = refined_ty;
+    requests[1].owner_pu_st = PU_Info_proc_sym(pu);
+    requests[1].value_id = DSL_Builder_Get_Value_Image_Id(relu);
+    requests[1].expected_old_ty = old_ty;
+    requests[1].refined_ty = refined_ty;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    memset(&result, 0, sizeof(result));
+    UINT32 type_count_before = TY_Table_Size();
+    BOOL accepted = DSL_IR_Refine_Native_Value_Types
+                        (pu, PU_Info_tree_ptr(pu), requests, 2,
+                         stderr, &result);
+    WN *direct_ldid = WN_kid0(WN_kid0(relu));
+    BOOL valid = accepted && result.request_count == 2 &&
+                 result.updated_st_count == 2 &&
+                 result.updated_wn_count == 3 &&
+                 result.updated_value_count == 2 &&
+                 result.rollback_count == 0 &&
+                 Value_Type_Is(add, refined_ty) &&
+                 Value_Type_Is(relu, refined_ty) &&
+                 direct_ldid != NULL && WN_ty(direct_ldid) == refined_ty &&
+                 ST_type(St_Table[unrelated]) == old_ty &&
+                 strcmp(ST_tensor_metadata(add_st, "wp1_context"),
+                        "preserved") == 0 &&
+                 DSL_Region_Verify_PU(pu, stderr) &&
+                 TY_Table_Size() == type_count_before;
+    printf("authorization_positive accepted=%d requests=%u "
+           "writes=%u/%u/%u rollback=%u valid=%d ldid=%d "
+           "unrelated=%d metadata=%d ty_growth=%u\n",
+           accepted, result.request_count, result.updated_st_count,
+           result.updated_wn_count, result.updated_value_count,
+           result.rollback_count, valid,
+           direct_ldid != NULL && WN_ty(direct_ldid) == refined_ty,
+           ST_type(St_Table[unrelated]) == old_ty,
+           strcmp(ST_tensor_metadata(add_st, "wp1_context"),
+                  "preserved") == 0,
+           TY_Table_Size() - type_count_before);
+    return valid;
+}
+
+typedef enum {
+    PHYSICAL_PACKED = 0x01,
+    PHYSICAL_ATOMIC = 0x02,
+    PHYSICAL_CONST = 0x04,
+    PHYSICAL_VOLATILE = 0x08,
+    PHYSICAL_RESTRICT = 0x10,
+    PHYSICAL_USER_ALIGN = 0x20,
+    PHYSICAL_ALIGN_8 = 0x40
+} PHYSICAL_STATE_MASK;
+
+typedef struct {
+    const char *name;
+    UINT32 mask;
+} PHYSICAL_STATE_CASE;
+
+static const PHYSICAL_STATE_CASE physical_state_cases[] = {
+    { "packed", PHYSICAL_PACKED },
+    { "atomic", PHYSICAL_ATOMIC },
+    { "const", PHYSICAL_CONST },
+    { "volatile", PHYSICAL_VOLATILE },
+    { "restrict", PHYSICAL_RESTRICT },
+    { "user_align", PHYSICAL_USER_ALIGN },
+    { "align_8", PHYSICAL_ALIGN_8 },
+    { "combined", PHYSICAL_PACKED | PHYSICAL_ATOMIC |
+                  PHYSICAL_CONST | PHYSICAL_VOLATILE |
+                  PHYSICAL_RESTRICT | PHYSICAL_USER_ALIGN |
+                  PHYSICAL_ALIGN_8 }
+};
+
+static void
+Apply_Physical_State (TY_IDX *ty, UINT32 mask)
+{
+    if ((mask & PHYSICAL_PACKED) != 0)
+        Set_TY_is_packed(*ty);
+    if ((mask & PHYSICAL_ATOMIC) != 0)
+        Set_TY_is_atomic(*ty);
+    if ((mask & PHYSICAL_CONST) != 0)
+        Set_TY_is_const(*ty);
+    if ((mask & PHYSICAL_VOLATILE) != 0)
+        Set_TY_is_volatile(*ty);
+    if ((mask & PHYSICAL_RESTRICT) != 0)
+        Set_TY_is_restrict(*ty);
+    if ((mask & PHYSICAL_USER_ALIGN) != 0)
+        Set_TY_is_user_align(*ty);
+    if ((mask & PHYSICAL_ALIGN_8) != 0)
+        Set_TY_align(*ty, 8);
+}
+
+static BOOL
+Physical_State_Is_Preserved (TY_IDX base, TY_IDX refined)
+{
+    return TY_flags(base) == TY_flags(refined) &&
+           Ty_Table[base].flags_ext == Ty_Table[refined].flags_ext &&
+           TY_name_idx(base) == TY_name_idx(refined) &&
+           TY_align_exp(base) == TY_align_exp(refined) &&
+           TY_is_user_align(base) == TY_is_user_align(refined) &&
+           TY_is_const(base) == TY_is_const(refined) &&
+           TY_is_volatile(base) == TY_is_volatile(refined) &&
+           TY_is_restrict(base) == TY_is_restrict(refined) &&
+           Ty_Table[refined].u1.fld == 0 &&
+           Ty_Table[refined].u2.etype == TY_IDX_ZERO &&
+           Ty_Table[refined].vtable == ST_IDX_ZERO &&
+           TY_tensor_preserves_non_shape_state(base, refined);
+}
+
+static BOOL
+Run_Physical_Interner_Case (const PHYSICAL_STATE_CASE *physical)
+{
+    char tensor_name[96];
+    char contract[96];
+    snprintf(tensor_name, sizeof(tensor_name),
+             "wp1_physical_%s_tensor", physical->name);
+    snprintf(contract, sizeof(contract),
+             "wp1-physical-%s-contract", physical->name);
+    TY_IDX base = Create_Preservation_Tensor
+                      (tensor_name, "[2,<pending>]", contract,
+                       "resident-physical", "lineage-physical");
+    Apply_Physical_State(&base, physical->mask);
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    refinement.rank = 2;
+    refinement.logical_shape = "[2,3]";
+    UINT32 before_create = TY_Table_Size();
+    BOOL created = FALSE;
+    TY_IDX refined = TY_Intern_Refined_Tensor_Type
+                         (base, &refinement, &created);
+    UINT32 after_create = TY_Table_Size();
+    TY_Rebuild_Tensor_Type_Interner();
+    BOOL reused_created = TRUE;
+    TY_IDX reused = TY_Intern_Refined_Tensor_Type
+                        (base, &refinement, &reused_created);
+    UINT32 after_reuse = TY_Table_Size();
+    TY_TENSOR_EXTENSION_INFO stable_info;
+    BOOL stable_handle = TY_Get_Tensor_Extension_Info
+                             (refined, &stable_info) &&
+                         TY_IDX_index(stable_info.ty) ==
+                             TY_IDX_index(refined) &&
+                         TY_align(stable_info.ty) == 4 &&
+                         !TY_is_const(stable_info.ty) &&
+                         !TY_is_volatile(stable_info.ty) &&
+                         !TY_is_restrict(stable_info.ty) &&
+                         !TY_is_user_align(stable_info.ty);
+    BOOL state_preserved = base != TY_IDX_ZERO &&
+                           refined != TY_IDX_ZERO && created &&
+                           after_create == before_create + 1 &&
+                           reused == refined && !reused_created &&
+                           after_reuse == after_create &&
+                           stable_handle &&
+                           Physical_State_Is_Preserved(base, refined);
+    BOOL transaction = state_preserved &&
+                       Run_Authorization_Success(base, refined);
+    printf("interner_physical case=%s created=%d reused=%d "
+           "ty_growth=%u state_preserved=%d transaction=%d "
+           "flags=%u flags_ext=%u align=%u qualifiers=%d/%d/%d/%d "
+           "name=%d zero_storage=%d stable_handle=%d\n",
+           physical->name, created, reused == refined,
+           after_create - before_create, state_preserved, transaction,
+           (UINT32)TY_flags(refined),
+           (UINT32)Ty_Table[refined].flags_ext, TY_align(refined),
+           TY_is_const(refined) != 0, TY_is_volatile(refined) != 0,
+           TY_is_restrict(refined) != 0,
+           TY_is_user_align(refined) != 0,
+           TY_name_idx(base) == TY_name_idx(refined),
+           Ty_Table[refined].u1.fld == 0 &&
+           Ty_Table[refined].u2.etype == TY_IDX_ZERO &&
+           Ty_Table[refined].vtable == ST_IDX_ZERO,
+           stable_handle);
+    return transaction;
+}
+
+static BOOL
+Run_Physical_Handle_Variant_Case(void)
+{
+    TY_IDX raw_base = Create_Preservation_Tensor
+                          ("wp1_handle_variant_tensor", "[2,<pending>]",
+                           "wp1-handle-variant-contract",
+                           "resident-handle", "lineage-handle");
+    Set_TY_is_packed(raw_base);
+    Set_TY_is_atomic(raw_base);
+    TY_IDX const_base = raw_base;
+    Set_TY_is_const(const_base);
+    Set_TY_align(const_base, 8);
+    TY_IDX volatile_base = raw_base;
+    Set_TY_is_volatile(volatile_base);
+    Set_TY_is_user_align(volatile_base);
+
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    refinement.rank = 2;
+    refinement.logical_shape = "[2,3]";
+    UINT32 before_create = TY_Table_Size();
+    BOOL const_created = FALSE;
+    TY_IDX const_refined = TY_Intern_Refined_Tensor_Type
+                               (const_base, &refinement, &const_created);
+    UINT32 after_create = TY_Table_Size();
+    TY_Rebuild_Tensor_Type_Interner();
+    BOOL volatile_created = TRUE;
+    TY_IDX volatile_refined = TY_Intern_Refined_Tensor_Type
+                                  (volatile_base, &refinement,
+                                   &volatile_created);
+    UINT32 after_reuse = TY_Table_Size();
+    TY_TENSOR_EXTENSION_INFO stable_info;
+    BOOL stable_handle = TY_Get_Tensor_Extension_Info
+                             (const_refined, &stable_info) &&
+                         TY_IDX_index(stable_info.ty) ==
+                             TY_IDX_index(const_refined) &&
+                         TY_align(stable_info.ty) == 4 &&
+                         !TY_is_const(stable_info.ty) &&
+                         !TY_is_volatile(stable_info.ty) &&
+                         !TY_is_restrict(stable_info.ty) &&
+                         !TY_is_user_align(stable_info.ty);
+    BOOL isolated_handles = const_created && !volatile_created &&
+                            after_create == before_create + 1 &&
+                            after_reuse == after_create &&
+                            stable_handle &&
+                            TY_IDX_index(const_refined) ==
+                                TY_IDX_index(volatile_refined) &&
+                            Physical_State_Is_Preserved
+                                (const_base, const_refined) &&
+                            Physical_State_Is_Preserved
+                                (volatile_base, volatile_refined) &&
+                            TY_is_const(const_refined) &&
+                            !TY_is_volatile(const_refined) &&
+                            TY_align(const_refined) == 8 &&
+                            !TY_is_const(volatile_refined) &&
+                            TY_is_volatile(volatile_refined) &&
+                            TY_is_user_align(volatile_refined) &&
+                            TY_align(volatile_refined) == 4;
+    BOOL const_transaction = isolated_handles &&
+        Run_Authorization_Success(const_base, const_refined);
+    BOOL volatile_transaction = isolated_handles &&
+        Run_Authorization_Success(volatile_base, volatile_refined);
+    printf("interner_handle_variants created=%d reused=%d ty_growth=%u "
+           "same_index=%d isolated=%d stable_handle=%d transactions=%d/%d "
+           "const_align=%u volatile_align=%u\n",
+           const_created, !volatile_created,
+           after_create - before_create,
+           TY_IDX_index(const_refined) == TY_IDX_index(volatile_refined),
+           isolated_handles, stable_handle,
+           const_transaction, volatile_transaction,
+           TY_align(const_refined), TY_align(volatile_refined));
+    return const_transaction && volatile_transaction;
+}
+
+typedef enum {
+    PREEXISTING_NAME_MISMATCH,
+    PREEXISTING_FLAGS_MISMATCH,
+    PREEXISTING_FLAGS_EXT_MISMATCH,
+    PREEXISTING_METADATA_MISMATCH,
+    PREEXISTING_MISMATCH_COUNT
+} PREEXISTING_MISMATCH_KIND;
+
+static const char *preexisting_mismatch_name[PREEXISTING_MISMATCH_COUNT] = {
+    "name",
+    "flags",
+    "flags_ext",
+    "runtime_lineage"
+};
+
+static BOOL
+Run_Preexisting_Mismatch_Case (PREEXISTING_MISMATCH_KIND kind)
+{
+    char shared_name[96];
+    char candidate_name[96];
+    char contract[96];
+    snprintf(shared_name, sizeof(shared_name),
+             "wp1_preexisting_%s_tensor", preexisting_mismatch_name[kind]);
+    snprintf(candidate_name, sizeof(candidate_name),
+             "wp1_preexisting_%s_candidate",
+             preexisting_mismatch_name[kind]);
+    snprintf(contract, sizeof(contract),
+             "wp1-preexisting-%s-contract",
+             preexisting_mismatch_name[kind]);
+    TY_IDX base = Create_Preservation_Tensor
+                      (shared_name, "[2,<pending>]", contract,
+                       "resident-a", "lineage-a");
+    TY_IDX candidate = Create_Preservation_Tensor
+                           (kind == PREEXISTING_NAME_MISMATCH ?
+                                candidate_name : shared_name,
+                            "[2,3]", contract,
+                            kind == PREEXISTING_METADATA_MISMATCH ?
+                                "resident-b" : "resident-a",
+                            kind == PREEXISTING_METADATA_MISMATCH ?
+                                "lineage-b" : "lineage-a");
+    if (kind == PREEXISTING_FLAGS_MISMATCH)
+        Set_TY_is_packed(candidate);
+    if (kind == PREEXISTING_FLAGS_EXT_MISMATCH)
+        Set_TY_is_atomic(candidate);
+    TY_Rebuild_Tensor_Type_Interner();
+
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    refinement.rank = 2;
+    refinement.logical_shape = "[2,3]";
+    UINT32 before_reuse = TY_Table_Size();
+    BOOL created = TRUE;
+    TY_IDX reused = TY_Intern_Refined_Tensor_Type
+                        (base, &refinement, &created);
+    UINT32 after_reuse = TY_Table_Size();
+    BOOL owner_reuse = !created &&
+                       TY_IDX_index(reused) == TY_IDX_index(candidate) &&
+                       after_reuse == before_reuse &&
+                       TY_tensor_attributes_are_equivalent
+                           (reused, candidate) &&
+                       !TY_tensor_preserves_non_shape_state(base, reused);
+    BOOL rejected = owner_reuse &&
+        Run_Authorization_Rejection
+            (preexisting_mismatch_name[kind], base, reused);
+    printf("interner_preexisting case=%s reused=%d ty_growth=%u "
+           "authorization_preserves=%d rejected=%d\n",
+           preexisting_mismatch_name[kind],
+           TY_IDX_index(reused) == TY_IDX_index(candidate),
+           after_reuse - before_reuse,
+           TY_tensor_preserves_non_shape_state(base, reused), rejected);
+    return rejected;
+}
+
+static int
+Run_Interner_Authorization_Matrix(void)
+{
+    const char *selected_physical =
+        getenv("OPEN64_DSL_SHAPE_INTERNER_PHYSICAL_CASE");
+    if (selected_physical != NULL) {
+        if (strcmp(selected_physical, "handle_variants") == 0)
+            return Run_Physical_Handle_Variant_Case() ? 0 : 51;
+        for (UINT32 i = 0;
+             i < sizeof(physical_state_cases) /
+                 sizeof(physical_state_cases[0]); ++i) {
+            if (strcmp(selected_physical,
+                       physical_state_cases[i].name) == 0)
+                return Run_Physical_Interner_Case
+                           (&physical_state_cases[i]) ? 0 : 43 + i;
+        }
+        return 42;
+    }
+
+    TY_IDX base = Create_Preservation_Tensor
+                      ("wp1_preservation_base", "[2,<pending>]",
+                       "wp1-preservation-contract", "resident",
+                       "lineage-positive");
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    refinement.rank = 2;
+    refinement.logical_shape = "[2,3]";
+    UINT32 before_create = TY_Table_Size();
+    BOOL created = FALSE;
+    TY_IDX refined = TY_Intern_Refined_Tensor_Type
+                         (base, &refinement, &created);
+    UINT32 after_create = TY_Table_Size();
+    BOOL reused_created = TRUE;
+    TY_IDX reused = TY_Intern_Refined_Tensor_Type
+                        (base, &refinement, &reused_created);
+    UINT32 after_reuse = TY_Table_Size();
+    BOOL preservation = base != TY_IDX_ZERO && refined != TY_IDX_ZERO &&
+                        created && after_create == before_create + 1 &&
+                        reused == refined && !reused_created &&
+                        after_reuse == after_create &&
+                        TY_tensor_preserves_non_shape_state(base, refined) &&
+                        strcmp(TY_tensor_attribute
+                                   (refined,
+                                    TY_TENSOR_SCHEMA_RUNTIME_STATE),
+                               "resident") == 0 &&
+                        strcmp(TY_tensor_attribute
+                                   (refined, TY_TENSOR_SCHEMA_LINEAGE),
+                               "lineage-positive") == 0 &&
+                        Tensor_Attribute_Has_State
+                            (refined, "pending_auxiliary_state", NULL,
+                             TY_DSL_BIND_PENDING);
+    if (!preservation || !Run_Authorization_Success(base, refined)) {
+        fprintf(stderr, "WP1 interner preservation case failed\n");
+        return 40;
+    }
+
+    for (UINT32 i = 0;
+         i < sizeof(physical_state_cases) /
+             sizeof(physical_state_cases[0]); ++i) {
+        if (!Run_Physical_Interner_Case(&physical_state_cases[i])) {
+            fprintf(stderr, "WP1 physical interner case failed: %s\n",
+                    physical_state_cases[i].name);
+            return 42 + i;
+        }
+    }
+    if (!Run_Physical_Handle_Variant_Case()) {
+        fprintf(stderr, "WP1 physical handle variant case failed\n");
+        return 51;
+    }
+
+    for (UINT32 i = 0; i < PREEXISTING_MISMATCH_COUNT; ++i) {
+        if (!Run_Preexisting_Mismatch_Case
+                 ((PREEXISTING_MISMATCH_KIND)i)) {
+            fprintf(stderr, "WP1 preexisting mismatch case failed: %s\n",
+                    preexisting_mismatch_name[i]);
+            return 60 + i;
+        }
+    }
+
+    printf("WP1 interner authorization matrix passed: created=1 "
+           "reused=1 ty_growth=1 metadata_preserved=1 "
+           "physical_cases=9 preexisting_mismatches=4\n");
+    return 0;
 }
 
 static BOOL
@@ -119,6 +1115,14 @@ int
 main(void)
 {
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_SHAPE_IDENTITY_REPRO") != NULL)
+        return Run_Custom_Identity_Retype_Test(FALSE);
+    if (getenv("OPEN64_DSL_SHAPE_QUALIFIER_REPRO") != NULL)
+        return Run_Custom_Identity_Retype_Test(TRUE);
+    if (getenv("OPEN64_DSL_SHAPE_AUTH_MATRIX") != NULL)
+        return Run_Authorization_Matrix();
+    if (getenv("OPEN64_DSL_SHAPE_INTERNER_MATRIX") != NULL)
+        return Run_Interner_Authorization_Matrix();
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
 
