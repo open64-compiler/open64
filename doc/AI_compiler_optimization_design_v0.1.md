@@ -97,11 +97,137 @@ scoring in TorchInductor. DSC keeps its distinguishing TensorEvolutionGraph,
 domain semantics, Open64 scope discipline, and complete-plan profitability
 model around that generic core.
 
-## 3.4 Why Layout And Sharding Precede Communication
+## 3.4 Reusable Phase Rationale And Performance Contract
+
+Each optimization phase needs more than a name, an IR object, and an ordering
+position. Its design section must explain why the phase exists and how its
+analysis can lead to performance without confusing candidate discovery with an
+executed transformation. This becomes increasingly important as placement,
+sharding, residency, tiling, prefetch, scheduling, and runtime variants add
+interdependent alternatives.
+
+Every phase-specific rationale should use the following structure:
+
+| Field | Required question |
+| --- | --- |
+| Optimization problem | What performance limitation or lost opportunity does the phase expose? |
+| Input facts | Which semantic, shape, effect, ownership, locality, target, and profile facts must already be available? |
+| Candidate space | Which alternatives are represented, and what deterministic budget limits their enumeration? |
+| Performance mechanism | Which traffic, reuse, parallelism, occupancy, synchronization, launch, or communication term can improve? |
+| Legality contract | Which invariants must hold before an alternative can be selected? |
+| Cost and uncertainty | Which quantities are known, which require a target model, and which remain unknown? |
+| Downstream consumers | Which later phases refine or consume the result? |
+| Non-goals and ownership boundary | What is deliberately not decided or mutated in this phase? |
+| Fallback | Which executable baseline remains valid when evidence is incomplete or the candidate is rejected? |
+| Review evidence | Which analysis trace, before/after IR, counters, measurements, and negative cases prove the phase contract? |
+
+This structure should be filled in when each phase moves from architectural
+placeholder to implementation. A phase must not claim performance improvement
+merely because it generated a candidate. The claim becomes valid only after a
+complete plan selects and applies the candidate and measured or modeled
+evidence supports the expected benefit.
+
+## 3.5 AI-P3 Logical Layout Rationale
+
+### 3.5.1 Optimization Problem
+
+Two tensors can have the same dtype, rank, logical shape, and numerical values
+while admitting very different implementation performance. Axis order,
+blocking, packing, and alignment determine how later mappings can access and
+reuse those values. If the compiler commits to one physical representation too
+early, it can hide profitable fusion, tiling, vectorization, tensor-core, and
+communication choices. If layout remains an unstructured string, later phases
+cannot compare alternatives or account for conversion cost.
+
+AI-P3 therefore represents immutable logical-layout alternatives for one
+semantic tensor before selecting local storage or target instructions. The
+semantic tensor and its canonical `TY_IDX` remain unchanged. Each alternative
+is connected to the semantic root through a semantics-preserving
+TensorEvolutionGraph edge.
+
+### 3.5.2 Performance Mechanisms
+
+| Mechanism | Why logical layout matters |
+| --- | --- |
+| Global-memory coalescing | Axis order can place the dimension traversed by adjacent lanes on a contiguous or regularly strided axis, reducing memory transactions. |
+| Cache and shared-memory reuse | Logical blocking exposes reusable submatrices or tensor tiles that later residency and tiling phases can keep near the compute units. |
+| Vector access | Contiguous groups, alignment, and block factors determine whether later lowering can use wide loads and stores instead of scalar accesses. |
+| Tensor-core fragments | Suitable axis and block organization reduces rearrangement needed to map operands into MMA, WMMA, WGMMA, or other instruction fragments. |
+| Reduction efficiency | A contiguous or tiled reduction dimension can reduce strided traffic, synchronization, and reduction-tree overhead. |
+| Fusion | Producer and consumer operations with compatible layout contracts can avoid an intermediate materialization; an incompatible layout can split a fusion cluster. |
+| Placement and communication | Layout and sharding jointly determine local ownership, packing, collective shape, and whether an all-to-all or transpose is required. |
+| Prefetch and pipelines | A regular blocked layout gives AI-P8 a predictable transfer unit and makes double buffering or multidimensional bulk transfer easier to prove. |
+
+These are performance mechanisms, not automatic benefits. A transpose may
+improve the consumer while adding a full read-plus-write conversion. Blocking
+may improve reuse while increasing padding, boundary work, register pressure,
+or shared-memory consumption. Logical-layout candidates must therefore remain
+inside the common candidate, cost, plan, and fallback framework.
+
+### 3.5.3 Inputs, Candidate Space, And Legality
+
+AI-P3 consumes canonical TensorDescriptorIR identity, static or symbolic shape,
+semantic tensor role, producer-consumer shape rules, effects, ownership,
+lifetime/locality evidence, and REGION/control boundaries. Initial common
+alternatives include axis permutation and divisible logical blocking. Packed
+head and domain-provided layouts require their own reviewed contracts.
+
+A check-only alternative is proven compatible only when its consumers are
+representation-transparent under their logical operator contracts and the
+required lifetime, effect, and ownership conditions are established. Unknown
+control scope, dynamic dimensions, aliasing, effects, or consumer layout
+requirements keep legality or profitability unknown. They must not be guessed
+from Python source names or target-specific frontend annotations.
+
+### 3.5.4 Cost, Selection, And Fallback
+
+Static tensor size can determine conversion volume exactly. For example, a
+`[16,16]` float32 tensor occupies 1024 bytes, so a separately materialized
+layout conversion moves at least 1024 bytes in and 1024 bytes out. The 2048-byte
+volume is useful evidence, but it is not itself a latency. Memory level,
+bandwidth, cache residency, fusion, vector width, occupancy, and target
+architecture determine the time.
+
+AI-P3 records exact traffic when known and leaves latency incomplete until a
+target cost model converts it into cycles, time, or another comparable AIO-2
+unit. Every alternative names the unchanged semantic implementation as its
+fallback. An incomplete plan remains inspectable but cannot displace the
+complete executable baseline.
+
+### 3.5.5 Boundary With Physical Layout
+
+Logical layout describes a representation possibility and its constraints. It
+does not choose HBM, L2, shared memory, registers, target-specific swizzles,
+instruction fragments, or allocated storage. AI-P6 through AI-P9 own those
+physical decisions after placement, residency, tiling, resource, and schedule
+facts are available.
+
+Check-only analysis must not create speculative persistent tensor types for
+rejected alternatives. When a selected transformation is eventually applied,
+the owner constructs the refined immutable tensor descriptor and calls
+`TY_Intern_Tensor_Type()` so an identical canonical type is reused and the
+original tensor type is never modified in place.
+
+### 3.5.6 Downstream Consumers And Review Evidence
+
+AI-P4 and AI-P5 combine layout with sharding and communication. AI-P6 chooses
+local residency. AI-P7 refines layout into hierarchical tiles. AI-P8 uses the
+regular access unit for transfer planning. AI-P9 selects the physical kernel
+and schedule. Fusion candidate refinement may also consume layout
+compatibility before finalizing a cluster.
+
+The first reviewable implementation must show deterministic descriptors,
+evolution edges, compatibility, conversion volume, incomplete target latency,
+and baseline fallback. Because it is check-only, before/after/repeat binary
+WHIRL and `ir_b2a -st -src` output must remain byte-identical. The focused
+implementation contract is documented in
+`AI-COMPILER-OPTIMIZATION-AIO6-LOGICAL-LAYOUT.md`.
+
+## 3.6 Why Layout And Sharding Precede Communication
 
 Communication is derived from layout and placement decisions. The optimizer should first describe candidate ownership and sharding of tensors, then derive collective and peer-to-peer operations from those choices. This avoids treating communication as a fixed artifact independent of the plan that caused it.
 
-## 3.5 Why Runtime Variants Come Late
+## 3.7 Why Runtime Variants Come Late
 
 Runtime adaptation should not invent arbitrary schedules. The static compiler should generate legal variants, attach guards, and expose a selection policy. The runtime observes state and selects from certified variants.
 

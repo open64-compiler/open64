@@ -41,6 +41,12 @@ Open64 adopts the following design rules from v0.1:
    TensorDescriptorIR, VHO orchestration, PREOPT/WOPT, LNO dependence and
    locality analysis, target information, loop multiversioning, feedback, and
    mapped-image inspection.
+8. Before a phase advances from placeholder to implementation, its architecture
+   section must complete the reusable phase-rationale contract in Section 3.4
+   of the design document: problem, inputs, candidate space, performance
+   mechanism, legality, cost uncertainty, downstream consumers, ownership
+   boundary, fallback, and review evidence. A generated candidate alone is not
+   a performance claim.
 
 ## Optimization Scope Contract
 
