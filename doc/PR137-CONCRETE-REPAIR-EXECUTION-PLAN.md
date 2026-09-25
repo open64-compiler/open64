@@ -3,17 +3,24 @@
 ## Document Status
 
 This document turns the frozen PR 137 findings into an executable repair plan.
-The frozen review remains anchored at `7cac0d86...`; this design-only baseline
-is reconstructed for repair endpoint
-`6eada12d4a78623726711a2922642febf231174d`, after the B0 build dependency
-closure and before WP0 or any semantic repair implementation. B0 is not a
-semantic repair, and its required reference validation remains pending.
-
-A0 and WP0 through WP10 are open or planned at this snapshot. This document
-does not rewrite a frozen finding or commit verdict, change a broad
-certification claim to complete, or approve PR 137. It is a semantic
-reconstruction of the pre-WP0 plan state, not a claim of byte-identical
-historical recovery.
+The frozen review remains anchored at `7cac0d86...`; the reconstructed
+semantic repair endpoint is
+`fb3f31de0ca81fa2a7ba2166db30c008bd7a4f76`. B0 remains the focused build
+dependency closure at `6eada12d...`. Design authority was committed first in
+`b263e84a2e4c4df842cfff7884a19b50e7683010`, followed by seven atomic WP0
+through WP6 commits. WP1 through WP6 repair their focused endpoint scopes, but
+their retained validation bundles predate this history reconstruction. Those
+bundles support the patch-identical results described below; they are not new
+exact-commit attestations for the reconstructed hashes. Fresh exact-commit
+attestation for WP0 through WP6 remains pending. This document is the
+documentation-only successor to that semantic endpoint and intentionally does
+not name its own commit hash. It does not treat B0 as a semantic repair,
+rewrite a frozen finding or commit verdict, change a broad certification claim
+to complete, or approve PR 137. WP7 through WP10 remain open. The strict
+frozen-base four-cell reader matrix, B0 reference lane, and aggregate
+certification remain pending. The existing `dsl_multi_pu_artifact_test.sh`
+mapped-image admission/finalization failure is parent-identical at the WP5
+patch and remains an open aggregate blocker.
 
 Current recommendation: do not approve PR 137 until Gate 6 is complete.
 
@@ -25,11 +32,12 @@ Current recommendation: do not approve PR 137 until Gate 6 is complete.
 | Repair branch | `codex/pr137-review-fixes` |
 | Reviewed base, excluded | `590bdf3d58944cb93aafd89480a5590a863ded60` |
 | Reviewed PR head, included | `7cac0d86b6548805b53c05675ffb7e1dff9395fa` |
-| Design-baseline repair endpoint | `6eada12d4a78623726711a2922642febf231174d` |
+| Design-first repair-plan commit | `b263e84a2e4c4df842cfff7884a19b50e7683010` |
+| Semantic repair endpoint | `fb3f31de0ca81fa2a7ba2166db30c008bd7a4f76` |
 | Reviewed range | `590bdf3d58944cb93aafd89480a5590a863ded60..7cac0d86b6548805b53c05675ffb7e1dff9395fa` |
 | Range shape | 17 linear commits, no merge commits |
 | Post-review foundation | B0 build dependency closure implemented; required reference validation pending |
-| Semantic implementation status | A0 and WP0-WP10 are open or planned; no semantic work package is complete at this snapshot |
+| Semantic implementation status | WP0-WP6 are reconstructed as seven atomic commits; WP1-WP6 repair their focused endpoint scopes with patch-identical pre-reconstruction evidence, but fresh exact-commit attestation for the reconstructed hashes remains pending; WP7-WP10 remain open |
 | Initial approval status | Do not approve |
 
 All implementation must preserve these boundaries unless a separate design
@@ -115,10 +123,10 @@ from fixed policy and prerequisites.
 
 | ID | Decision | Recommended default | Current status |
 | --- | --- | --- | --- |
-| D1 | Shape-only delta authorization | Permit only monotonic `logical_shape` dimension refinement with unchanged rank. Preserve every other stored tensor/type/descriptor and domain field, including unknown state. Keep type equivalence and update authorization separate. | Open; blocks WP1 |
-| D2 | Symbol provenance | Preserve syntactically valid mapped forms for reading and printing, but require active-PU ownership or a reviewed host-independent interface mapping before equality/proof use. Coordinated opposite-side refinement remains IPA-owned. | Open; blocks WP6 |
-| D3 | Pass execution/effect contract | Every pass declares minimum optimization level, maximum scope, required canonical form, effect, invalidation behavior, and control. Per-pass effect storage is recommended for the current API gap but is not mandated by the master plan. | Open; blocks WP7 |
-| D4 | Active-PU boundary gate | Add one composed gate for call ABI, PU interface, and REGION validation. Run it at admission and before every successful shape-driver return. | Open; blocks WP2 |
+| D1 | Shape-only delta authorization | Permit only monotonic `logical_shape` dimension refinement with unchanged rank. Preserve every other stored tensor/type/descriptor and domain field, including unknown state. Keep type equivalence and update authorization separate. | Confirmed for WP1; reconstructed commit `fc6ef69e...`; fresh exact-commit attestation pending |
+| D2 | Symbol provenance | Preserve syntactically valid mapped forms for reading and printing, but require active-PU ownership or a reviewed host-independent interface mapping before equality/proof use. Coordinated opposite-side refinement remains IPA-owned. | Contract confirmed by WP0; implemented at the full WP6 semantic endpoint `fb3f31de0ca81fa2a7ba2166db30c008bd7a4f76`; fresh reconstructed exact-commit attestation and the strict frozen-base four-cell reader matrix remain pending |
+| D3 | Pass execution/effect contract | Every pass declares minimum optimization level, maximum scope, required canonical form, effect, invalidation behavior, and control. Per-pass effect storage is recommended for the current API gap but is not mandated by the master plan. | Contract confirmed by WP0; WP7 implementation and local storage choice pending |
+| D4 | Active-PU boundary gate | Add one composed gate for call ABI, PU interface, and REGION validation. Run it at admission and before every successful shape-driver return. | Confirmed by WP0; reconstructed WP2 commit `6c865f8e...`; fresh exact-commit attestation pending |
 | D5 | Multi-PU failure semantics | Keep independent per-PU transactions. A later failure does not rewind an earlier PU in memory, but it prevents final artifact publication. | Policy fixed |
 | D6 | Certification storage | Publish commit-pinned immutable CI artifacts with a manifest and SHA256 checksums. A local `/private/tmp` path is never the sole evidence. | Decision pending |
 | D7 | Delivery shape | Deliver six focused, stacked repair PRs as specified in Section 5. Record a waiver if the project instead keeps one combined SP2-SP10 PR. | Decision pending |
@@ -295,6 +303,36 @@ X1 fix or remains explicitly limited by a strict base/head differential result.
 - Suggested commit subject:
   `fix(shape): enforce complete shape-only retype authorization`
 
+Reconstructed WP1 status on 2026-09-25: the focused repair is committed as
+`fc6ef69e22d1d23a3a07fb56208c9b17c363267e`, with parent WP0 commit
+`b0c6f30267bb97e63460c7392b855186174582e1`. Its binary patch is identical to
+the previously validated WP1 patch, but the retained bundles below predate the
+history reconstruction and are not fresh exact-commit attestation for this
+hash. The commit changes exactly these four files:
+
+- `osprey/common/com/symtab.h`
+- `osprey/common/com/symtab.cxx`
+- `osprey/common/com/dsl_ir_rewrite.cxx`
+- `osprey/be/vho/tests/dsl_shape_refine_contract_test.cxx`
+
+The retained implementation evidence is
+`/home/zikai/workspace/open64-workspace/validation/pr137-wp1-20260925/`, and
+the independent evidence is
+`/home/zikai/workspace/open64-workspace/validation/pr137-wp1-independent-check-20260925/evidence/`.
+Both retain the same four-file patch with SHA256
+`6522b7e0f5617b025bffc0fdd9bca30b2f6809cb3dfd420a4e37a4bae8b9e22f`.
+The retained focused evidence reverses P1-01 for the patch-identical WP1
+content and completes only the WP1 authorization portion of P2-03. At that
+snapshot, owner
+validation, complete preflight, every write-position and post-validator
+injection, rollback certification, and repeated-failure coverage remain
+WP3/WP4 work. Later reconstructed commits WP3
+`c4a32b33eed0bf122ff919c2e09b7a6e987f1bbe` and WP4
+`697b38b49737a79d207dd6b5d614ad1e13f71179` complete those scopes at the
+current repair endpoint. The aggregate
+`dsl_builder_contract_test` still reports four mapped-image failures whose
+attribution is unknown; it is not reported as a pass.
+
 ### WP2: Centralize Active-PU Boundary Validation
 
 - Findings: P2-04 and the boundary prerequisite for P2-02 and P2-05.
@@ -359,6 +397,51 @@ X1 fix or remains explicitly limited by a strict base/head differential result.
 - Suggested commit subject:
   `fix(shape): validate active PU boundaries on every success path`
 
+Reconstructed WP2 status on 2026-09-25: the focused repair is committed as
+`6c865f8e186351e8508470764034568a8ff5fcce`, with parent WP1 commit
+`fc6ef69e22d1d23a3a07fb56208c9b17c363267e`. Its binary patch is identical to
+the previously validated WP2 patch, but the retained bundles below predate the
+history reconstruction and are not fresh exact-commit attestation for this
+hash. The WP2 commit changes exactly these seven files:
+
+- `osprey/be/vho/dsl_shape_refine.cxx`
+- `osprey/be/vho/dsl_shape_refine.h`
+- `osprey/be/vho/tests/dsl_shape_refine_contract_test.cxx`
+- `osprey/common/com/dsl_ir_image.h`
+- `osprey/common/com/dsl_ir_rewrite.cxx`
+- `osprey/common/com/dsl_region.cxx`
+- `osprey/common/com/dsl_region.h`
+
+The retained implementation evidence is
+`/home/zikai/workspace/open64-workspace/validation/pr137-wp2-build-20260925/evidence/`,
+and the current independent evidence is
+`/home/zikai/workspace/open64-workspace/validation/pr137-wp2-independent-20260925/evidence/`.
+The sibling independent `evidence-pre-consume/` bundle is stale and is not
+cited as passing evidence. The canonical seven-file patch SHA256 is
+`76ee4527c9f85b5160486d58048b20e8009c31ae9199699fb43addb4ac6a64ce`;
+it matches the current seven-file diff and the implementation bundle.
+
+The focused evidence passes six success paths, nine product negative cases,
+the two-case REGION consume matrix, and seven independent reviewer-harness
+cases. The consume repair keeps the runtime-only REGION owner-provenance vector
+aligned with persisted interface rows across erase, last-region removal, copy,
+redirect, and reset. Mapped load reconstructs that runtime provenance; no
+opcode, `TY_KIND`, ELF section, mapped-image record, mapped-image version or
+layout, node encoding, serialized provenance field, or reader/writer format
+changed. The retained evidence repairs P2-04 for the patch-identical WP2
+content. At that snapshot, it does not close WP3/P2-02, WP5/P2-05,
+WP6/P2-06, B0 reference validation, D8, or an aggregate gate. Later
+reconstructed commit WP3
+`c4a32b33eed0bf122ff919c2e09b7a6e987f1bbe` closes P2-02, reconstructed
+commit WP5 `70658faeed7660d9898a7355b2a2bb7b9066318c` closes P2-05, and the
+full WP6 semantic endpoint
+`fb3f31de0ca81fa2a7ba2166db30c008bd7a4f76` completes the focused P2-06
+repair. Fresh exact-commit attestation for the reconstructed commits, the
+strict frozen-base four-cell reader matrix, B0 reference validation, D8, and
+the aggregate gate remain open. The aggregate `dsl_builder_contract_test`
+retains the same four known unattributed mapped-image baseline failures and is
+not reported as a pass.
+
 ### WP3: Complete Owner-Safe Retype Preflight
 
 - Findings: P2-02 and the remaining preflight portion of P2-03.
@@ -420,6 +503,43 @@ X1 fix or remains explicitly limited by a strict base/head differential result.
 - Exit criteria: all preflight negatives report zero writes and
   `rollback_count=0`; the foreign-owner collision repro cannot transiently
   mutate either PU.
+- Reconstructed WP3 status: the owner-safe complete-array preflight repair is
+  committed as
+  `c4a32b33eed0bf122ff919c2e09b7a6e987f1bbe`, with parent WP2 commit
+  `6c865f8e186351e8508470764034568a8ff5fcce`. Its binary patch is identical to
+  the previously validated WP3 patch, but the retained bundles below predate
+  the history reconstruction and are not fresh exact-commit attestation for
+  this hash. The cumulative two-file
+  WP1/WP2/WP3 patch affects
+  `osprey/common/com/dsl_ir_rewrite.cxx` and
+  `osprey/be/vho/tests/dsl_shape_refine_contract_test.cxx`; its SHA256 is
+  `696ae99969b183f86d473558b747075d1d9fe2813edc5afdddbd2a79f162df3a`.
+  The retained implementation evidence is
+  `/home/zikai/workspace/open64-workspace/validation/pr137-wp3-implementation-20260925/evidence/`,
+  and the independent evidence is
+  `/home/zikai/workspace/open64-workspace/validation/pr137-wp3-independent-20260925/evidence/`.
+  The repaired implementation checksum set verifies; `MANIFEST.txt` has
+  SHA256 `b22195299276d76d5c9cbf8d52c723fff9da0edc30cb3021b84bac1c0c06bc09`
+  and `SHA256SUMS` has SHA256
+  `a0e9366eaf9a921ecd824d714641af2765419ddc5f466fec58ac07d06013e754`.
+  The formal red run committed one request and one ST/WN/value write before one
+  rollback. The fixed formal run has zero accepted requests, writes, and
+  rollbacks, one boundary precheck, no postcheck, one stable
+  `DSL-SHAPE-RETYPE-002` diagnostic, and unchanged snapshots for both PUs.
+  Independent foreign-first, foreign-middle, foreign-last, wrong-owner, and
+  same-owner cases preserve two-PU isolation; the three foreign-order cases
+  reject before journal allocation or writes, while the same-owner case
+  accepts all three requests without changing the foreign PU. This repairs
+  P2-02 for the patch-identical WP3 content and completes only the WP3
+  owner-preflight sub-scope of P2-03. At that snapshot, WP4 write-position,
+  post-validator, rollback, and repeated-failure work remains open. Later
+  reconstructed WP4 commit
+  `697b38b49737a79d207dd6b5d614ad1e13f71179` completes that remaining scope
+  at the current repair endpoint.
+  The evidence introduces no PU traversal,
+  PU switching, representation change, or M0-M8 completion claim. Ubuntu 24
+  remains supplemental, and the same four unattributed aggregate mapped-image
+  failures remain a non-pass.
 - Suggested commit subject:
   `fix(shape): complete owner-safe SP5 request preflight`
 
@@ -484,6 +604,20 @@ X1 fix or remains explicitly limited by a strict base/head differential result.
 - Exit criteria: for N writes, all N+1 boundary injections restore the exact
   snapshot; repeated failure leaks no journal, generation, or additional type;
   and failure publishes no final `.B`.
+- Reconstructed WP4 status: the focused repair is committed as
+  `697b38b49737a79d207dd6b5d614ad1e13f71179`, with parent WP3 commit
+  `c4a32b33eed0bf122ff919c2e09b7a6e987f1bbe`. Its binary patch is identical to
+  the previously validated WP4 patch. The retained pre-reconstruction evidence
+  is available under
+  `/home/zikai/workspace/open64-workspace/validation/pr137-exact-commit-validation-20260925/evidence/`.
+  The formal `W=7` matrix and independent zero-read three-request `W=9`
+  matrix cover pre-first-write injection, every write, all six post-commit
+  validators, repeated failure, recovery, canonical type reuse, exact
+  applied-prefix rollback, unchanged normalized state, and failure
+  non-publication. This repairs the remaining P2-03 transaction and rollback
+  scope for the patch-identical content. It is not fresh exact-commit
+  attestation for the reconstructed WP4 hash. The frozen finding remains
+  unchanged.
 - Suggested commit subject:
   `fix(shape): make SP5 rollback exact at every journal write`
 
@@ -538,6 +672,32 @@ X1 fix or remains explicitly limited by a strict base/head differential result.
   compiler exit status, and an atomic-publication report.
 - Exit criteria: runtime evidence replaces source-order grep; each PU is
   independent and exactly once; failure never publishes a valid final image.
+- Reconstructed WP5 status: the focused repair is committed as
+  `70658faeed7660d9898a7355b2a2bb7b9066318c`, with parent WP4 commit
+  `697b38b49737a79d207dd6b5d614ad1e13f71179`. Its binary patch is identical to
+  the previously validated WP5 patch. The retained pre-reconstruction evidence
+  is available under
+  `/home/zikai/workspace/open64-workspace/validation/pr137-wp5-exact-b132d0-20260925/evidence/`,
+  and guarded local publication evidence is retained under
+  `/home/zikai/workspace/open64-workspace/validation/pr137-wp5-commit-publication-20260925-01/`.
+  The clean detached exact snapshot passes six AB/BA unit cases, four real
+  single-process `be` success cases, two real later-PU failure cases, complete
+  local `ST_IDX` collision, per-PU exactly-once summary checks, first-PU state
+  isolation, successful `.B`/`.T`/raw-diff publication, and failure
+  non-publication. The commit changes only three test paths and no product or
+  representation source. This repairs P2-05 for the patch-identical content
+  and supplies the executable no-earlier-PU-rewind/no-final-artifact portion
+  of P3-01. It is not fresh exact-commit attestation for the reconstructed WP5
+  hash; frozen findings and verdicts remain unchanged.
+
+  The exact lane is Ubuntu 24.04/LLVM 15 supplemental evidence using the
+  disclosed build-only target-info portability overlay. Ubuntu 20/LLVM 11 is
+  still pending. The pre-existing `dsl_multi_pu_artifact_test.sh` fails at
+  both `697b38b4...` and `70658fae...` with the same mapped-image finalization
+  result because its old `OPR_DSLADD` fixtures do not satisfy current
+  admission constraints. This differential result means WP5 did not introduce
+  the failure, but it remains an open regression/aggregate blocker and is not
+  counted as a pass.
 - Suggested commit subject:
   `test(shape): certify driver-owned multi-PU isolation`
 
@@ -609,6 +769,24 @@ X1 fix or remains explicitly limited by a strict base/head differential result.
 - Exit criteria: both retained foreign-qualifier repros fail at proof use unless
   reviewed owner evidence is present; parse/print inspection remains possible,
   all local SP8 forms remain valid, and owner identity is host-independent.
+- Reconstructed WP6 status: the focused repair is committed as
+  `fb3f31de0ca81fa2a7ba2166db30c008bd7a4f76`, with parent WP5 commit
+  `70658faeed7660d9898a7355b2a2bb7b9066318c`. The commit changes exactly
+  `dsl_shape.h`, `dsl_shape.cxx`, `dsl_gatekeeper.cxx`,
+  `dsl_ir_rewrite.cxx`, `dsl_builder_contract_test.cxx`, and
+  `dsl_shape_symbolic_test.sh`. It separates parse/inspection from proof use,
+  requires the active owner or a unique reviewed interface mapping, validates
+  the complete stable identity tuple, and fails closed in solver, gatekeeper,
+  retype, and type-derived proof paths. It adds no representation format or
+  cross-PU traversal. The retained candidate and independent matrices under
+  `/home/zikai/workspace/open64-workspace/validation/pr137-wp6-exact-a354550-20260925/`
+  and
+  `/home/zikai/workspace/open64-workspace/validation/pr137-wp6-adversarial-final-20260925/`
+  repair P2-06 for the binary-patch-identical content, but predate the history
+  reconstruction and are not fresh exact-commit attestation for the
+  reconstructed WP6 hash. The strict frozen-base four-cell reader matrix,
+  B0 reference lane, linked model and product lanes, and aggregate
+  certification remain pending; no FHE or M0-M8 completion is claimed.
 - Suggested commit subject:
   `fix(shape): bind symbolic qualifiers to the active PU`
 
@@ -975,11 +1153,15 @@ artifact publication.
 Historical findings remain regressions and traceability obligations. They are
 not relabeled as live endpoint defects.
 
-The `State at reviewed head` column above remains frozen. At this design
-baseline, all live or unverified semantic findings remain open. B0 changes
-only build dependency closure and does not repair any semantic finding.
-Historical findings remain historical and their frozen verdicts are not
-recomputed from this plan.
+The `State at reviewed head` column above remains frozen. At the reconstructed
+semantic endpoint, P1-01, P2-02, P2-03, P2-04, P2-05, and P2-06 are repaired
+by WP1 through WP6. The retained pre-reconstruction evidence supports the
+binary-patch-identical results named in Section 4 but is not fresh exact-commit
+attestation for the reconstructed hashes. The repaired endpoint does not alter
+the frozen historical findings or associated commit verdicts. WP7 through
+WP10 and aggregate certification remain open. The parent-identical
+`dsl_multi_pu_artifact_test.sh` mapped-image failure also remains an aggregate
+blocker and is not counted as a passing WP5 regression.
 
 ## 7. CI Lane DAG and Required Checks
 
@@ -1240,9 +1422,9 @@ reader/layout requirement, or imply completion of any master-plan milestone.
 
 | Gate | Completion rule | Current status |
 | --- | --- | --- |
-| Gate 0: Authority, baseline, and decisions | A0 authority map and M0-M2 support-only crosswalk accepted; worktree, frozen 17-commit range, current repair head, B0, and X1 recorded; old repros retained as negative controls; D1-D4 confirmed for their owning semantic work; D6-D7 have an approved or explicitly assigned disposition; D8 satisfied for representation claims | Not complete: A0, WP0, D1-D4, D6-D8, and representation claims remain open or pending |
-| Gate 1: Trust boundaries and preflight | WP1-WP3 and WP6 complete; P1-01, P2-02, and P2-06 repros reversed; every preflight rejection has zero writes, rollback zero, and no global/table side effect | Not started |
-| Gate 2: Atomic transaction and per-PU lifecycle | WP4-WP5 complete and WP2 fast paths remain green; the existing journal is first tested, any implementation change is backed by a proved defect, and every write/post-validator injection, repeated failure, recovery, and real multi-PU isolation pass | Not started |
+| Gate 0: Authority, baseline, and decisions | A0 authority map and M0-M2 support-only crosswalk accepted; worktree, frozen 17-commit range, current repair head, B0, and X1 recorded; old repros retained as negative controls; D1-D4 confirmed for their owning semantic work; D6-D7 have an approved or explicitly assigned disposition; D8 satisfied for representation claims | In progress: A0/WP0 are complete for the no-representation semantic slice; D6-D7 delivery dispositions and D8 representation claims remain open |
+| Gate 1: Trust boundaries and preflight | WP1-WP3 and WP6 complete; P1-01, P2-02, and P2-06 repros reversed; every preflight rejection has zero writes, rollback zero, and no global/table side effect | In progress: WP1-WP3 and WP6 implementation is reconstructed with patch-identical pre-reconstruction focused evidence; fresh exact-commit attestation remains pending |
+| Gate 2: Atomic transaction and per-PU lifecycle | WP4-WP5 complete and WP2 fast paths remain green; the existing journal is first tested, any implementation change is backed by a proved defect, and every write/post-validator injection, repeated failure, recovery, and real multi-PU isolation pass | In progress: WP4-WP5 implementation is reconstructed with patch-identical pre-reconstruction focused evidence; fresh exact-commit attestation, the pre-existing mapped-image multi-PU regression, and aggregate qualification remain open |
 | Gate 3: Solver and effects | WP7-WP8 complete; genuine insertion permutations, historical matmul regressions, and four registered effects green; invalid/unknown fail closed | Not started |
 | Gate 4: Clean linked build | B0 subrange audit complete; `shape/static-policy` through `shape/backend-symbol-boundary` green in pinned Ubuntu 20.04/LLVM 11 linux/amd64; required binaries and every supported touched consumer start/link; Fortran/JFE are either run or remain explicitly unverified; no forbidden dependency | In progress: B0 is implemented and Ubuntu 24 evidence is supplemental; required reference lane is pending |
 | Gate 5: Compatibility and models | Strict four-cell reader/layout matrix, primary ResNet-20, supplemental Llama claim-specific regressions, optimization, target qualification, non-DSL, FHE/checkpoint, and `whirl2c` checks green; X1 has an external fix or an explicit strict differential limitation; no runtime skip is relabeled as pass | Not started |
@@ -1255,13 +1437,13 @@ not satisfy any gate.
 
 ### Decision Checklist
 
-- [ ] D1 type equivalence and shape-only delta authorization confirmed as
+- [x] D1 type equivalence and shape-only delta authorization confirmed as
       separate rules; every non-`logical_shape` field is unchanged.
-- [ ] D2 mapped-form parsing and proof-use admission confirmed as separate
+- [x] D2 mapped-form parsing and proof-use admission confirmed as separate
       rules with host-independent identity.
-- [ ] D3 the complete execution/effect contract is confirmed; any per-pass
+- [x] D3 the complete execution/effect contract is confirmed; any per-pass
       storage choice is recorded as a local implementation choice.
-- [ ] D4 composed active-PU boundary gate confirmed.
+- [x] D4 composed active-PU boundary gate confirmed.
 - [x] D5 per-PU rollback and no-publication semantics fixed by governing
       policy.
 - [ ] D6 immutable CI artifact store confirmed.
@@ -1270,7 +1452,7 @@ not satisfy any gate.
 
 ### Prerequisite Checklist
 
-- [ ] A0 authority reconciliation and M0-M2 support-only crosswalk accepted
+- [x] A0 authority reconciliation and M0-M2 support-only crosswalk accepted
       for the no-representation semantic slice; D8 still blocks representation
       claims.
 - [x] B0 copied-source closure implemented at `6eada12d...`.
@@ -1281,41 +1463,67 @@ not satisfy any gate.
 
 ### Implementation Checklist
 
-- [ ] WP0 semantic contract frozen for the no-representation semantic slice.
-- [ ] WP1 complete shape-only authorization implemented and verified.
-- [ ] WP2 all success paths use the active-PU boundary gate and are verified.
-- [ ] WP3 owner-safe zero-write preflight implemented and verified.
-- [ ] WP4 existing journal certified and any proved defect repaired.
-- [ ] WP5 real-backend multi-PU isolation focused gate complete.
-- [ ] WP6 mapped-form parsing and proof-use admission enforced.
+- [x] WP0 semantic contract frozen for the no-representation semantic slice.
+- [x] WP1 complete shape-only authorization implemented and reconstructed;
+      retained evidence covers the patch-identical predecessor, while fresh
+      exact-commit attestation remains pending.
+- [x] WP2 all success paths use the active-PU boundary gate; retained evidence
+      covers the patch-identical predecessor, while fresh exact-commit
+      attestation remains pending.
+- [x] WP3 owner-safe zero-write preflight implemented and reconstructed;
+      retained evidence covers the patch-identical predecessor, while fresh
+      exact-commit attestation remains pending.
+- [x] WP4 existing journal repair reconstructed; the retained
+      pre-reconstruction injection matrices cover the patch-identical content,
+      while fresh exact-commit attestation remains pending.
+- [x] WP5 real-backend multi-PU isolation repair reconstructed at
+      `70658fae...`; retained evidence covers the patch-identical content,
+      fresh exact-commit attestation is pending, and the pre-existing
+      mapped-image multi-PU regression blocks aggregate completion.
+- [x] WP6 mapped-form parsing and proof-use admission enforced at semantic
+      endpoint `fb3f31de...`; retained evidence covers the patch-identical
+      candidate, while fresh exact-commit attestation and the strict
+      frozen-base four-cell reader matrix remain pending.
 - [ ] WP7 complete pass execution/effect contract enforced.
 - [ ] WP8 existing solver/rule behavior tested first; rule-owner matrix and
       all owned rule cases executable without duplicating FHE propagation.
 - [ ] WP9 authority and claims reconciled.
 - [ ] WP10 full certification and immutable publication complete.
 
-### Design Baseline Status Table
+### Current Status Table
 
 | Item | Status | Evidence |
 | --- | --- | --- |
 | Frozen PR review | Complete at `7cac0d86...` | Original 17-commit verdict remains 5 Pass, 11 Partial, 1 Fail; it is not recomputed from the repair head |
-| A0 | Open | Authority reconciliation and the M0-M2 support-only crosswalk must precede semantic implementation |
+| A0 | Complete for the no-representation semantic slice | Authority order, M0-M2 support-only crosswalk, domain ownership, phase order, and compatibility freeze are established; D8 still blocks representation claims |
 | B0 | Implemented; reference validation pending | `6eada12d...` updates seven source lists after a ten-consumer audit; Ubuntu 24 is supplemental; Ubuntu 20/LLVM 11 remains required |
 | X1 | Base-owned external issue | Fresh-process A/B is 0/0 and same-process AB/BA is 1/1; no PR 137 product fix is planned; external follow-up or strict differential policy remains open |
-| D1-D4 | Open | Each decision blocks its owning semantic work package |
-| D6-D7 | Decision pending | Immutable delivery and final PR boundary remain open |
+| D1-D4 | Contract confirmed | The design-first plan and WP0-WP6 chain implement the no-representation semantic slice; retained evidence predates reconstruction and fresh exact-commit attestation remains pending |
+| D6-D7 | Decision pending | Immutable delivery and final PR boundary remain open and do not make WP1-WP6 broader than their retained evidence |
 | D5 | Policy fixed | Per-PU independence and no final publication after pipeline failure follow the governing plans |
 | D8 | Blocking prerequisite | Representation and compatibility claims wait for `WHIRL.pdf` review and reconciliation |
-| WP0-WP10 | Open or planned | No semantic work package is complete at this design baseline |
+| WP0 | Complete for the no-representation semantic slice | Four governing shape documents carry the frozen authority, ownership, per-PU, compatibility, and evidence boundaries |
+| Repair-plan baseline | Reconstructed before WP0 | Design-first commit `b263e84a2e4c4df842cfff7884a19b50e7683010` adds only the two English repair plans; no Chinese document is committed |
+| WP1 | Focused repair reconstructed | Commit `fc6ef69e22d1d23a3a07fb56208c9b17c363267e`; retained pre-reconstruction bundles cover binary-patch-identical content with patch SHA256 `6522b7e0f5617b025bffc0fdd9bca30b2f6809cb3dfd420a4e37a4bae8b9e22f`; fresh exact-commit attestation pending |
+| WP2 | Focused repair reconstructed | Commit `6c865f8e186351e8508470764034568a8ff5fcce`; retained pre-reconstruction bundles cover binary-patch-identical content with patch SHA256 `76ee4527c9f85b5160486d58048b20e8009c31ae9199699fb43addb4ac6a64ce`; fresh exact-commit attestation pending |
+| WP3 | Focused repair reconstructed | Commit `c4a32b33eed0bf122ff919c2e09b7a6e987f1bbe`; retained pre-reconstruction bundles cover binary-patch-identical content with cumulative patch SHA256 `696ae99969b183f86d473558b747075d1d9fe2813edc5afdddbd2a79f162df3a`; fresh exact-commit attestation pending |
+| WP4 | Focused repair reconstructed | Commit `697b38b49737a79d207dd6b5d614ad1e13f71179`; retained pre-reconstruction `W=7` and independent `W=9` matrices cover the binary-patch-identical content; fresh exact-commit attestation pending |
+| WP5 | Focused repair reconstructed | Commit `70658faeed7660d9898a7355b2a2bb7b9066318c`; retained pre-reconstruction multi-PU matrices cover the binary-patch-identical content; fresh exact-commit attestation pending and the parent-identical mapped-image regression remains open |
+| WP6 | Focused repair reconstructed | Semantic endpoint `fb3f31de0ca81fa2a7ba2166db30c008bd7a4f76` repairs P2-06 for the binary-patch-identical validated content; fresh exact-commit attestation and strict frozen-base four-cell reader validation remain pending |
+| WP7-WP10 | Open | Pass effects, solver/rule coverage, authority/claim reconciliation, B0 Gate 4, D8, and aggregate certification remain open |
+| Reconstructed repair chain | Detached and unpublicized | Eight commits from design-first plan `b263e84a...` through semantic endpoint `fb3f31de...`; no official branch ref or remote state is moved, and no `.zh-CN.md` path is committed |
 | 10 required CI checks | Not started | Ubuntu 24 supplemental results are not required-check completion |
-| Gate 0 | Not complete | A0, WP0, D1-D4, D6-D8, and representation claims remain open or pending |
+| Gate 0 | In progress at aggregate scope | A0/WP0 are complete for no-representation semantic work; D6-D7 and D8 remain open |
 | Gate 4 | In progress, reference lane blocked | B0 exists, but Ubuntu 20/LLVM 11 and supported touched-product linked results remain pending; Fortran/JFE are unverified |
-| Gate 1 | Not started | WP1-WP3 and WP6 remain open |
-| Gate 2 | Not started | WP2, WP4, and WP5 remain open |
+| Gate 1 | In progress | WP1-WP3 and WP6 implementation is reconstructed; fresh exact-commit attestation remains pending |
+| Gate 2 | In progress | WP4-WP5 implementation is reconstructed; fresh exact-commit attestation, the existing mapped-image multi-PU regression, and aggregate qualification remain open |
 | Gate 3, 5-6 | Not started | The approval recommendation remains unchanged |
 
-This document is planning material. It records the existing B0 implementation
-and the intended semantic repair sequence before WP0 begins. It creates no
-semantic implementation, pull request, remote update, required reference-lane
-result, broad certification artifact, milestone completion, or approval. The
-aggregate recommendation remains: do not approve yet.
+This document is planning material and a documentation-only successor to the
+WP6 semantic endpoint. It records the existing B0 implementation, the
+design-first plan commit, the reconstructed WP0-WP6 chain, and bounded
+pre-reconstruction evidence. Fresh exact-commit attestation for the
+reconstructed hashes remains pending. It creates no pull request, branch-ref
+movement, remote update, required reference-lane result, broad certification
+artifact, milestone completion, or approval. The aggregate recommendation
+remains: do not approve yet.
