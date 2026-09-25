@@ -2204,10 +2204,457 @@ Run_WP4_Single_Request_Baseline(void)
     return valid ? 0 : 120;
 }
 
+typedef struct {
+    const char *name;
+    const char *expected_shape;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE result;
+    ST_IDX result_st;
+    BOOL refinable;
+} WP5_PU_FIXTURE;
+
+typedef struct {
+    WN *tree;
+    WN *input_expression;
+    WN *result_expression;
+    UINT64 tree_structure_hash;
+    UINT32 tree_node_count;
+    OPERATOR input_expression_operator;
+    OPERATOR result_expression_operator;
+    TY_IDX input_wn_ty;
+    TY_IDX input_st_ty;
+    TY_IDX wn_ty;
+    TY_IDX st_ty;
+    DSL_IR_VALUE_RECORD input_value;
+    DSL_IR_VALUE_RECORD value;
+    DSL_IR_NODE_RECORD input_node;
+    DSL_IR_NODE_RECORD result_node;
+    UINT32 pu_value_count;
+    UINT32 region_count;
+    BOOL region_absent;
+    BOOL current;
+    BOOL boundary_valid;
+    PU_Info *active_pu_info;
+    PU *active_pu;
+    ST_IDX active_proc_st;
+    SYMTAB_IDX active_lexical_level;
+} WP5_PU_SNAPSHOT;
+
+static void
+WP5_Project_Tree
+        (WN *wn,
+         UINT64 *hash,
+         UINT32 *node_count)
+{
+    const UINT64 fnv_prime = 1099511628211ULL;
+    if (wn == NULL) {
+        *hash ^= 0xffffffffULL;
+        *hash *= fnv_prime;
+        return;
+    }
+    ++*node_count;
+    *hash ^= (UINT64)WN_operator(wn);
+    *hash *= fnv_prime;
+    *hash ^= (UINT64)WN_kid_count(wn);
+    *hash *= fnv_prime;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (WN *statement = WN_first(wn); statement != NULL;
+             statement = WN_next(statement))
+            WP5_Project_Tree(statement, hash, node_count);
+        return;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(wn); ++kid)
+        WP5_Project_Tree(WN_kid(wn, kid), hash, node_count);
+}
+
+static UINT32
+WP5_Count_Regions (WN *wn)
+{
+    if (wn == NULL)
+        return 0;
+    UINT32 count = WN_operator(wn) == OPR_REGION ? 1 : 0;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (WN *statement = WN_first(wn); statement != NULL;
+             statement = WN_next(statement))
+            count += WP5_Count_Regions(statement);
+        return count;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(wn); ++kid)
+        count += WP5_Count_Regions(WN_kid(wn, kid));
+    return count;
+}
+
+static BOOL
+WP5_Build_PU
+        (const char *name,
+         const char *expected_shape,
+         TY_IDX input_ty,
+         TY_IDX result_ty,
+         BOOL refinable,
+         WP5_PU_FIXTURE *fixture)
+{
+    if (fixture == NULL)
+        return FALSE;
+    fixture->name = name;
+    fixture->expected_shape = expected_shape;
+    fixture->refinable = refinable;
+    fixture->pu = DSL_Builder_Create_Minimal_PU(name);
+    char input_name[64];
+    char result_name[64];
+    snprintf(input_name, sizeof(input_name), "%s_input", name);
+    snprintf(result_name, sizeof(result_name), "%s_result", name);
+    fixture->input = DSL_Builder_Create_Model_Input
+                         (input_name, input_ty, 0);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    DSL_BUILDER_VALUE kids[2] = { fixture->input, fixture->input };
+    fixture->result = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1, result_name, result_ty);
+    if (fixture->pu == NULL || fixture->input == NULL ||
+        fixture->result == NULL ||
+        !DSL_Builder_Append_PU_Value(fixture->pu, fixture->input) ||
+        !DSL_Builder_Append_PU_Value(fixture->pu, fixture->result))
+        return FALSE;
+    fixture->result_st =
+        DSL_Builder_Get_Value_Result_Symbol(fixture->result);
+    return ST_IDX_index(fixture->result_st) != 0 &&
+           DSL_Builder_Set_Tensor_Unique_Ownership(fixture->result_st);
+}
+
+static BOOL
+WP5_Build_Program
+        (const char *mode,
+         WP5_PU_FIXTURE *first,
+         WP5_PU_FIXTURE *second)
+{
+    if (mode == NULL || first == NULL || second == NULL ||
+        !DSL_Builder_Begin_Program())
+        return FALSE;
+    BOOL order_ab = strncmp(mode, "ab-", 3) == 0;
+    BOOL order_ba = strncmp(mode, "ba-", 3) == 0;
+    BOOL both_refinable = strstr(mode, "both-refinable") != NULL ||
+                          strstr(mode, "success-success") != NULL;
+    BOOL complete_refinable = strstr(mode, "complete-refinable") != NULL ||
+                               strstr(mode, "success-failure") != NULL;
+    if ((!order_ab && !order_ba) ||
+        (!both_refinable && !complete_refinable))
+        return FALSE;
+
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_DESCRIPTOR a_input_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR b_input_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR pending_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR a_complete_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR b_complete_descriptor;
+    Initialize_Descriptor(&a_input_descriptor, "[2,3]", "activation");
+    Initialize_Descriptor(&b_input_descriptor, "[2,5]", "activation");
+    Initialize_Descriptor
+        (&pending_descriptor, "[2,<pending>]",
+         "derived_activation");
+    Initialize_Descriptor
+        (&a_complete_descriptor, "[2,3]", "derived_activation");
+    Initialize_Descriptor
+        (&b_complete_descriptor, "[2,5]", "derived_activation");
+    TY_IDX a_input_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp5_a_input_tensor", MTYPE_To_TY(MTYPE_F4),
+                             &a_input_descriptor);
+    TY_IDX b_input_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp5_b_input_tensor", MTYPE_To_TY(MTYPE_F4),
+                             &b_input_descriptor);
+    TY_IDX pending_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp5_pending_tensor", MTYPE_To_TY(MTYPE_F4),
+                             &pending_descriptor);
+    TY_IDX a_complete_ty = TY_IDX_ZERO;
+    TY_IDX b_complete_ty = TY_IDX_ZERO;
+    if (complete_refinable && order_ab)
+        a_complete_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp5_a_complete_tensor",
+                             MTYPE_To_TY(MTYPE_F4),
+                             &a_complete_descriptor);
+    if (complete_refinable && order_ba)
+        b_complete_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp5_b_complete_tensor",
+                             MTYPE_To_TY(MTYPE_F4),
+                             &b_complete_descriptor);
+    if (a_input_ty == TY_IDX_ZERO || b_input_ty == TY_IDX_ZERO ||
+        pending_ty == TY_IDX_ZERO ||
+        (complete_refinable && order_ab && a_complete_ty == TY_IDX_ZERO) ||
+        (complete_refinable && order_ba && b_complete_ty == TY_IDX_ZERO))
+        return FALSE;
+
+    WP5_PU_FIXTURE a;
+    WP5_PU_FIXTURE b;
+    TY_IDX a_result_ty = both_refinable || !order_ab ?
+                             pending_ty : a_complete_ty;
+    TY_IDX b_result_ty = both_refinable || !order_ba ?
+                             pending_ty : b_complete_ty;
+    BOOL a_refinable = a_result_ty == pending_ty;
+    BOOL b_refinable = b_result_ty == pending_ty;
+    if (order_ab) {
+        if (!WP5_Build_PU("shape_wp5_a", "[2,3]", a_input_ty,
+                          a_result_ty, a_refinable, &a) ||
+            !WP5_Build_PU("shape_wp5_b", "[2,5]", b_input_ty,
+                          b_result_ty, b_refinable, &b))
+            return FALSE;
+        *first = a;
+        *second = b;
+    } else {
+        if (!WP5_Build_PU("shape_wp5_b", "[2,5]", b_input_ty,
+                          b_result_ty, b_refinable, &b) ||
+            !WP5_Build_PU("shape_wp5_a", "[2,3]", a_input_ty,
+                          a_result_ty, a_refinable, &a))
+            return FALSE;
+        *first = b;
+        *second = a;
+    }
+    return first->result_st == second->result_st &&
+           PU_Info_proc_sym(first->pu) != PU_Info_proc_sym(second->pu);
+}
+
+static BOOL
+WP5_Capture_Snapshot
+        (const WP5_PU_FIXTURE &fixture,
+         WP5_PU_SNAPSHOT *snapshot)
+{
+    if (snapshot == NULL || !DSL_Builder_Select_PU(fixture.pu))
+        return FALSE;
+    DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT boundary;
+    boundary.pu_info = fixture.pu;
+    boundary.tree = PU_Info_tree_ptr(fixture.pu);
+    boundary.owner_pu_st = PU_Info_proc_sym(fixture.pu);
+    snapshot->tree = boundary.tree;
+    snapshot->input_expression = WN_kid0(fixture.input);
+    snapshot->result_expression = WN_kid0(fixture.result);
+    if (snapshot->tree == NULL || snapshot->input_expression == NULL ||
+        snapshot->result_expression == NULL)
+        return FALSE;
+    snapshot->tree_structure_hash = 1469598103934665603ULL;
+    snapshot->tree_node_count = 0;
+    WP5_Project_Tree(snapshot->tree, &snapshot->tree_structure_hash,
+                     &snapshot->tree_node_count);
+    snapshot->input_expression_operator =
+        WN_operator(snapshot->input_expression);
+    snapshot->result_expression_operator =
+        WN_operator(snapshot->result_expression);
+    snapshot->input_wn_ty = WN_ty(fixture.input);
+    snapshot->input_st_ty = ST_type(St_Table[WN_st_idx(fixture.input)]);
+    snapshot->wn_ty = WN_ty(fixture.result);
+    snapshot->st_ty = ST_type(St_Table[fixture.result_st]);
+    snapshot->pu_value_count = DSL_Builder_Count_PU_Values(fixture.pu);
+    snapshot->region_count = WP5_Count_Regions(snapshot->tree);
+    snapshot->region_absent = snapshot->region_count == 0;
+    snapshot->current = VHO_DSL_Shape_Refinement_Is_Current
+                            (fixture.pu, PU_Info_tree_ptr(fixture.pu), NULL);
+    snapshot->boundary_valid =
+        DSL_IR_Image_Validate_Active_PU_Boundaries(&boundary, NULL);
+    snapshot->active_pu_info = Current_PU_Info;
+    snapshot->active_pu = Current_pu;
+    snapshot->active_proc_st = PU_Info_proc_sym(Current_PU_Info);
+    snapshot->active_lexical_level = Current_pu->lexical_level;
+    return snapshot->tree == PU_Info_tree_ptr(fixture.pu) &&
+           WN_operator(snapshot->tree) == OPR_FUNC_ENTRY &&
+           snapshot->input_expression != NULL &&
+           snapshot->result_expression != NULL &&
+           WN_operator(fixture.input) == OPR_STID &&
+           WN_operator(fixture.result) == OPR_STID &&
+           snapshot->pu_value_count == 2 && snapshot->region_absent &&
+           Current_PU_Info == fixture.pu && Current_pu != NULL &&
+           snapshot->active_proc_st == PU_Info_proc_sym(fixture.pu) &&
+           DSL_IR_Image_Get_Value
+               (DSL_Builder_Get_Value_Image_Id(fixture.input),
+                &snapshot->input_value) &&
+           DSL_IR_Image_Find_Definition_Value
+               (PU_Info_proc_sym(fixture.pu), fixture.result,
+                &snapshot->value) &&
+           DSL_IR_Image_Get_Node
+               (snapshot->input_value.producer_node_id,
+                &snapshot->input_node) &&
+           DSL_IR_Image_Get_Node
+               (snapshot->value.producer_node_id,
+                &snapshot->result_node);
+}
+
+static BOOL
+WP5_Snapshot_Matches
+        (const WP5_PU_FIXTURE &fixture,
+         const WP5_PU_SNAPSHOT &before)
+{
+    WP5_PU_SNAPSHOT after;
+    return WP5_Capture_Snapshot(fixture, &after) &&
+           after.tree == before.tree &&
+           after.input_expression == before.input_expression &&
+           after.result_expression == before.result_expression &&
+           after.tree_structure_hash == before.tree_structure_hash &&
+           after.tree_node_count == before.tree_node_count &&
+           after.input_expression_operator ==
+               before.input_expression_operator &&
+           after.result_expression_operator ==
+               before.result_expression_operator &&
+           after.input_wn_ty == before.input_wn_ty &&
+           after.input_st_ty == before.input_st_ty &&
+           after.wn_ty == before.wn_ty &&
+           after.st_ty == before.st_ty &&
+           memcmp(&after.input_value, &before.input_value,
+                  sizeof(after.input_value)) == 0 &&
+           memcmp(&after.value, &before.value, sizeof(after.value)) == 0 &&
+           memcmp(&after.input_node, &before.input_node,
+                  sizeof(after.input_node)) == 0 &&
+           memcmp(&after.result_node, &before.result_node,
+                  sizeof(after.result_node)) == 0 &&
+           after.pu_value_count == before.pu_value_count &&
+           after.region_count == before.region_count &&
+           after.region_absent == before.region_absent &&
+           after.current == before.current &&
+           after.boundary_valid == before.boundary_valid &&
+           after.active_pu_info == before.active_pu_info &&
+           after.active_pu == before.active_pu &&
+           after.active_proc_st == before.active_proc_st &&
+           after.active_lexical_level == before.active_lexical_level;
+}
+
+static BOOL
+WP5_Result_Has_Expected_Shape (const WP5_PU_FIXTURE &fixture)
+{
+    WP5_PU_SNAPSHOT snapshot;
+    if (!WP5_Capture_Snapshot(fixture, &snapshot))
+        return FALSE;
+    const char *shape = TY_tensor_attribute
+                            (snapshot.wn_ty, TY_TENSOR_SCHEMA_SHAPE);
+    return snapshot.wn_ty == snapshot.st_ty &&
+           snapshot.wn_ty == snapshot.value.ty &&
+           shape != NULL && strcmp(shape, fixture.expected_shape) == 0 &&
+           snapshot.current && snapshot.boundary_valid;
+}
+
+static int
+Run_WP5_Producer (const char *mode)
+{
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_WP5_ARTIFACT");
+    if (artifact == NULL || artifact[0] == '\0')
+        return 121;
+    WP5_PU_FIXTURE first;
+    WP5_PU_FIXTURE second;
+    if (!WP5_Build_Program(mode, &first, &second))
+        return 122;
+    DSL_GATEKEEPER_RESULT first_gatekeeper;
+    DSL_GATEKEEPER_RESULT second_gatekeeper;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    request.path = artifact;
+    request.flags = 0;
+    (void)unlink(artifact);
+    if (!DSL_Builder_Select_PU(first.pu) ||
+        !DSL_Gatekeeper_Verify_PU_Mode
+             (first.pu, DSL_GATEKEEPER_ADMISSION, stderr,
+              &first_gatekeeper) ||
+        !DSL_Builder_Select_PU(second.pu) ||
+        !DSL_Gatekeeper_Verify_PU_Mode
+             (second.pu, DSL_GATEKEEPER_ADMISSION, stderr,
+              &second_gatekeeper) ||
+        !DSL_Builder_Finalize_Mapped_Image(&request) ||
+        access(artifact, F_OK) != 0) {
+        return 123;
+    }
+    printf("WP5 producer mode=%s first=%s second=%s "
+           "first_st=%u:%u second_st=%u:%u collision=1 artifact=%s\n",
+           mode, first.name, second.name,
+           ST_IDX_level(first.result_st), ST_IDX_index(first.result_st),
+           ST_IDX_level(second.result_st), ST_IDX_index(second.result_st),
+           artifact);
+    return 0;
+}
+
+static int
+Run_WP5_Unit (const char *mode)
+{
+    WP5_PU_FIXTURE first;
+    WP5_PU_FIXTURE second;
+    if (!WP5_Build_Program(mode, &first, &second))
+        return 124;
+    VHO_DSL_SHAPE_REFINE_RESULT first_result;
+    memset(&first_result, 0, sizeof(first_result));
+    if (!DSL_Builder_Select_PU(first.pu) ||
+        !VHO_DSL_Shape_Refine_Program_Unit
+             (first.pu, PU_Info_tree_ptr(first.pu), TRUE, stderr,
+              &first_result) ||
+        !WP5_Result_Has_Expected_Shape(first))
+        return 125;
+    WP5_PU_SNAPSHOT first_after;
+    if (!WP5_Capture_Snapshot(first, &first_after))
+        return 126;
+
+    BOOL expect_failure = strstr(mode, "success-failure") != NULL;
+    WP5_PU_SNAPSHOT second_before;
+    if (!WP5_Capture_Snapshot(second, &second_before))
+        return 127;
+    VHO_DSL_SHAPE_REFINE_RESULT second_result;
+    memset(&second_result, 0, sizeof(second_result));
+    FILE *diagnostic = expect_failure ? tmpfile() : stderr;
+    if (diagnostic == NULL)
+        return 128;
+    if (expect_failure)
+        setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE", "1", 1);
+    BOOL second_accepted = VHO_DSL_Shape_Refine_Program_Unit
+                               (second.pu, PU_Info_tree_ptr(second.pu),
+                                TRUE, diagnostic, &second_result);
+    if (expect_failure)
+        unsetenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+
+    BOOL diagnostic_008 = FALSE;
+    if (expect_failure) {
+        diagnostic_008 = WP4_Replay_Diagnostic_With_Code
+                             (diagnostic, "DSL-SHAPE-RETYPE-008:");
+        fclose(diagnostic);
+    }
+    BOOL first_isolated = WP5_Snapshot_Matches(first, first_after);
+    BOOL second_valid = expect_failure ?
+                            WP5_Snapshot_Matches(second, second_before) :
+                            WP5_Result_Has_Expected_Shape(second);
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_WP5_ARTIFACT");
+    BOOL artifact_absent = artifact == NULL || artifact[0] == '\0' ||
+                           access(artifact, F_OK) != 0;
+    BOOL valid;
+    if (expect_failure) {
+        valid = !second_accepted && diagnostic_008 && first_isolated &&
+                second_valid && artifact_absent &&
+                second_result.rollback_count == 1 &&
+                first_result.boundary_admission_count == 1 &&
+                first_result.boundary_success_exit_count == 1 &&
+                second_result.boundary_admission_count == 1 &&
+                second_result.boundary_success_exit_count == 0;
+    } else {
+        valid = second_accepted && first_isolated && second_valid &&
+                first_result.boundary_admission_count == 1 &&
+                first_result.boundary_success_exit_count == 1 &&
+                second_result.boundary_admission_count == 1 &&
+                second_result.boundary_success_exit_count == 1;
+    }
+    printf("WP5 unit mode=%s first=%s second=%s collision=1 "
+           "accepted=%d/%d refinable=%u/%u retyped=%u/%u rollback=%u "
+           "first_isolated=%d second_valid=%d diagnostic_008=%d "
+           "artifact_absent=%d valid=%d\n",
+           mode, first.name, second.name, TRUE, second_accepted,
+           first_result.solver.refinable_value_count,
+           second_result.solver.refinable_value_count,
+           first_result.retyped_value_count,
+           second_result.retyped_value_count, second_result.rollback_count,
+           first_isolated, second_valid, diagnostic_008, artifact_absent,
+           valid);
+    return valid ? 0 : 129;
+}
+
 int
 main(void)
 {
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_SHAPE_WP5_PRODUCER") != NULL)
+        return Run_WP5_Producer
+                   (getenv("OPEN64_DSL_SHAPE_WP5_PRODUCER"));
+    if (getenv("OPEN64_DSL_SHAPE_WP5_UNIT") != NULL)
+        return Run_WP5_Unit(getenv("OPEN64_DSL_SHAPE_WP5_UNIT"));
     if (getenv("OPEN64_DSL_SHAPE_WP4_SINGLE") != NULL)
         return Run_WP4_Single_Request_Baseline();
     if (getenv("OPEN64_DSL_SHAPE_WP2_SUCCESS") != NULL)
