@@ -458,6 +458,11 @@ and executable mutation land in later focused PRs.
 
 ### AIO-6: AI-P3 Logical Layout Alternatives
 
+Status: implemented as a check-only, per-PU vertical slice. Runtime-only
+`CommonLayoutIR` descriptors are immutable and uniqued; provisional evolution
+nodes retain the canonical semantic `TY_IDX` and carry a representation ID.
+No candidate tensor type or executable WHIRL mutation occurs in this stage.
+
 Actions:
 
 1. Define common logical layout descriptors and explicit layout-cast evolution
@@ -466,6 +471,9 @@ Actions:
    alternatives without selecting local memory storage.
 3. Model conversion cost and layout compatibility.
 4. Keep physical target layout out of frontend attributes.
+5. Materialize a refined canonical `TY_IDX` only when a later selected
+   transformation is applied; use `TY_Intern_Tensor_Type()` to deduplicate it
+   and never mutate the source tensor type.
 
 Acceptance:
 
@@ -474,6 +482,15 @@ Acceptance:
 - no in-place tensor type mutation.
 
 PR boundary: layout representation and check-only alternatives.
+
+Implemented vertical slice:
+
+- permuted and divisible blocked alternatives for intermediate tensors;
+- exact same-block/pure/layout-consumer compatibility proof;
+- conservative REGION/effect/unknown-shape behavior;
+- exact read-plus-write conversion volume, an incomplete latency term until a
+  target bandwidth model exists, and explicit baseline fallback through AIO-2;
+- byte-identical before/after/repeat `.B` and `ir_b2a -st -src` evidence.
 
 ### AIO-7: AI-P4 And AI-P5 Placement, Sharding, And Communication
 
@@ -730,7 +747,7 @@ artifact.
 9. [x] Execute `AIO-5`: establish the check-only fusion candidate, legality,
    cost, fallback, and selection skeleton with two reviewed vertical-slice
    patterns.
-10. [ ] Execute `AIO-6`: introduce immutable logical-layout alternatives and
+10. [x] Execute `AIO-6`: introduce immutable logical-layout alternatives and
     layout-compatibility evidence.
 11. [ ] Generalize AIO-5 with operator fusibility traits, generic
     producer-consumer edge discovery, and deterministic cluster growth.
@@ -748,6 +765,9 @@ artifact.
   facts, consumer roles, completeness, domain preservation, and certification.
 - `AI-COMPILER-OPTIMIZATION-AIO4-LIFETIME-LOCALITY.md` - per-PU lifetime,
   locality, reuse, control-scope, and conservative-boundary evidence.
+- `AI-COMPILER-OPTIMIZATION-AIO6-LOGICAL-LAYOUT.md` - runtime-only immutable
+  layout descriptors, TensorEvolutionGraph overlays, compatibility, conversion
+  cost, type materialization boundary, and certification.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion
   candidate skeleton, legality, cost, fallback, selection, and certification.
 - `VHO-DSL-OPTIMIZATION-PLAN.md` - fixed VHO DSL optimization pipeline and

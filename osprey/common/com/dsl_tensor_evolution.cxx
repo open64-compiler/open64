@@ -204,23 +204,93 @@ DSL_Tensor_Evolution_Build_Semantic_Roots
 }
 
 BOOL
+DSL_Tensor_Evolution_Add_Logical_Layout
+        (DSL_TENSOR_EVOLUTION_GRAPH *graph,
+         DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
+         UINT32 representation_descriptor_id,
+         DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
+         DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id, FILE *diagnostic)
+{
+    if (result_node_id != NULL)
+        *result_node_id = DSL_TENSOR_EVOLUTION_NODE_INVALID_ID;
+    if (edge_id != NULL)
+        *edge_id = DSL_TENSOR_EVOLUTION_EDGE_INVALID_ID;
+    if (!DSL_Tensor_Evolution_Active(graph) || source_node_id == 0 ||
+        source_node_id > graph->nodes.size() ||
+        representation_descriptor_id == 0 || result_node_id == NULL ||
+        edge_id == NULL)
+        return DSL_Tensor_Evolution_Report
+                   (diagnostic, "invalid logical layout input",
+                    source_node_id);
+
+    const DSL_TENSOR_EVOLUTION_NODE_RECORD &source =
+        graph->nodes[source_node_id - 1];
+    if (source.kind != DSL_TENSOR_EVOLUTION_NODE_SEMANTIC)
+        return DSL_Tensor_Evolution_Report
+                   (diagnostic, "invalid logical layout source",
+                    source_node_id);
+    for (UINT32 i = 0; i < graph->nodes.size(); ++i) {
+        const DSL_TENSOR_EVOLUTION_NODE_RECORD &candidate = graph->nodes[i];
+        if (candidate.kind == DSL_TENSOR_EVOLUTION_NODE_LOGICAL_LAYOUT &&
+            candidate.semantic_root_id == source.semantic_root_id &&
+            candidate.representation_descriptor_id ==
+                representation_descriptor_id) {
+            for (UINT32 j = 0; j < graph->edges.size(); ++j) {
+                if (graph->edges[j].result_node_id == candidate.id) {
+                    *result_node_id = candidate.id;
+                    *edge_id = graph->edges[j].id;
+                    return TRUE;
+                }
+            }
+            return DSL_Tensor_Evolution_Report
+                       (diagnostic, "logical layout node has no edge",
+                        candidate.id);
+        }
+    }
+
+    DSL_TENSOR_EVOLUTION_NODE_RECORD result;
+    DSL_TENSOR_EVOLUTION_EDGE_RECORD edge;
+    memset(&result, 0, sizeof(result));
+    result.id = graph->nodes.size() + 1;
+    result.kind = DSL_TENSOR_EVOLUTION_NODE_LOGICAL_LAYOUT;
+    result.owner_pu_st = graph->owner_pu_st;
+    result.semantic_value_id = source.semantic_value_id;
+    result.descriptor_ty = source.descriptor_ty;
+    result.semantic_root_id = source.semantic_root_id;
+    result.flags = DSL_TENSOR_EVOLUTION_NODE_PROVISIONAL;
+    result.representation_descriptor_id = representation_descriptor_id;
+
+    memset(&edge, 0, sizeof(edge));
+    edge.id = graph->edges.size() + 1;
+    edge.source_node_id = source.id;
+    edge.result_node_id = result.id;
+    edge.transformation_kind =
+        DSL_TENSOR_EVOLUTION_TRANSFORM_LOGICAL_LAYOUT;
+    edge.flags = DSL_TENSOR_EVOLUTION_EDGE_SEMANTICS_PRESERVING;
+
+    graph->nodes.push_back(result);
+    graph->edges.push_back(edge);
+    if (!DSL_Tensor_Evolution_Verify(graph, diagnostic)) {
+        graph->edges.pop_back();
+        graph->nodes.pop_back();
+        return FALSE;
+    }
+    *result_node_id = result.id;
+    *edge_id = edge.id;
+    return TRUE;
+}
+
+BOOL
 DSL_Tensor_Evolution_Verify
         (const DSL_TENSOR_EVOLUTION_GRAPH *graph, FILE *diagnostic)
 {
     if (!DSL_Tensor_Evolution_Active(graph))
         return DSL_Tensor_Evolution_Report
                    (diagnostic, "program unit is not active", 0);
-    if (!graph->edges.empty())
-        return DSL_Tensor_Evolution_Report
-                   (diagnostic, "AIO-1 graph contains evolution edges", 0);
-
     for (UINT32 i = 0; i < graph->nodes.size(); ++i) {
         const DSL_TENSOR_EVOLUTION_NODE_RECORD &node = graph->nodes[i];
         DSL_IR_VALUE_RECORD value;
-        if (node.id != i + 1 ||
-            node.kind != DSL_TENSOR_EVOLUTION_NODE_SEMANTIC ||
-            node.owner_pu_st != graph->owner_pu_st ||
-            node.semantic_root_id != node.id || node.flags != 0 ||
+        if (node.id != i + 1 || node.owner_pu_st != graph->owner_pu_st ||
             node.reserved != 0 ||
             !DSL_Tensor_Evolution_Descriptor_Valid(node.descriptor_ty) ||
             !DSL_IR_Image_Get_Value(node.semantic_value_id, &value) ||
@@ -228,12 +298,86 @@ DSL_Tensor_Evolution_Verify
             value.ty != node.descriptor_ty ||
             !DSL_Tensor_Evolution_Value_Owned(graph, value))
             return DSL_Tensor_Evolution_Report
-                       (diagnostic, "invalid semantic root", node.id);
-        for (UINT32 j = 0; j < i; ++j) {
-            if (graph->nodes[j].semantic_value_id == node.semantic_value_id)
+                       (diagnostic, "invalid evolution node", node.id);
+        if (node.kind == DSL_TENSOR_EVOLUTION_NODE_SEMANTIC) {
+            if (node.semantic_root_id != node.id || node.flags != 0 ||
+                node.representation_descriptor_id != 0)
                 return DSL_Tensor_Evolution_Report
-                           (diagnostic, "duplicate semantic root", node.id);
+                           (diagnostic, "invalid semantic root", node.id);
+            for (UINT32 j = 0; j < i; ++j) {
+                if (graph->nodes[j].kind ==
+                        DSL_TENSOR_EVOLUTION_NODE_SEMANTIC &&
+                    graph->nodes[j].semantic_value_id ==
+                        node.semantic_value_id)
+                    return DSL_Tensor_Evolution_Report
+                               (diagnostic, "duplicate semantic root",
+                                node.id);
+            }
+        } else if (node.kind ==
+                       DSL_TENSOR_EVOLUTION_NODE_LOGICAL_LAYOUT) {
+            if (node.semantic_root_id == 0 ||
+                node.semantic_root_id >= node.id ||
+                node.semantic_root_id > graph->nodes.size() ||
+                graph->nodes[node.semantic_root_id - 1].kind !=
+                    DSL_TENSOR_EVOLUTION_NODE_SEMANTIC ||
+                graph->nodes[node.semantic_root_id - 1].semantic_value_id !=
+                    node.semantic_value_id ||
+                node.flags != DSL_TENSOR_EVOLUTION_NODE_PROVISIONAL ||
+                node.representation_descriptor_id == 0)
+                return DSL_Tensor_Evolution_Report
+                           (diagnostic, "invalid logical layout node",
+                            node.id);
+            for (UINT32 j = 0; j < i; ++j) {
+                if (graph->nodes[j].kind ==
+                        DSL_TENSOR_EVOLUTION_NODE_LOGICAL_LAYOUT &&
+                    graph->nodes[j].semantic_root_id ==
+                        node.semantic_root_id &&
+                    graph->nodes[j].representation_descriptor_id ==
+                        node.representation_descriptor_id)
+                    return DSL_Tensor_Evolution_Report
+                               (diagnostic, "duplicate logical layout node",
+                                node.id);
+            }
+        } else {
+            return DSL_Tensor_Evolution_Report
+                       (diagnostic, "unsupported evolution node", node.id);
         }
+    }
+    std::vector<UINT32> incoming(graph->nodes.size(), 0);
+    for (UINT32 i = 0; i < graph->edges.size(); ++i) {
+        const DSL_TENSOR_EVOLUTION_EDGE_RECORD &edge = graph->edges[i];
+        if (edge.id != i + 1 || edge.source_node_id == 0 ||
+            edge.result_node_id == 0 ||
+            edge.source_node_id >= edge.result_node_id ||
+            edge.result_node_id > graph->nodes.size() ||
+            edge.transformation_kind !=
+                DSL_TENSOR_EVOLUTION_TRANSFORM_LOGICAL_LAYOUT ||
+            edge.flags !=
+                DSL_TENSOR_EVOLUTION_EDGE_SEMANTICS_PRESERVING ||
+            edge.reserved0 != 0 || edge.reserved1 != 0 ||
+            edge.reserved2 != 0)
+            return DSL_Tensor_Evolution_Report
+                       (diagnostic, "invalid evolution edge", edge.id);
+        const DSL_TENSOR_EVOLUTION_NODE_RECORD &source =
+            graph->nodes[edge.source_node_id - 1];
+        const DSL_TENSOR_EVOLUTION_NODE_RECORD &result =
+            graph->nodes[edge.result_node_id - 1];
+        if (result.kind != DSL_TENSOR_EVOLUTION_NODE_LOGICAL_LAYOUT ||
+            source.semantic_root_id != result.semantic_root_id ||
+            source.semantic_value_id != result.semantic_value_id ||
+            source.descriptor_ty != result.descriptor_ty ||
+            ++incoming[edge.result_node_id - 1] != 1)
+            return DSL_Tensor_Evolution_Report
+                       (diagnostic, "inconsistent evolution edge", edge.id);
+    }
+    for (UINT32 i = 0; i < graph->nodes.size(); ++i) {
+        if ((graph->nodes[i].kind ==
+                 DSL_TENSOR_EVOLUTION_NODE_SEMANTIC && incoming[i] != 0) ||
+            (graph->nodes[i].kind ==
+                 DSL_TENSOR_EVOLUTION_NODE_LOGICAL_LAYOUT &&
+             incoming[i] != 1))
+            return DSL_Tensor_Evolution_Report
+                       (diagnostic, "invalid incoming edge count", i + 1);
     }
     return TRUE;
 }
@@ -273,11 +417,21 @@ DSL_Tensor_Evolution_Print
         }
         fprintf(file,
                 "  [%u] kind=%s value=%u name=%s ty=%u "
-                "dtype=%s shape=%s semantic_root=%u flags=0x%x\n",
+                "dtype=%s shape=%s semantic_root=%u representation=%u "
+                "flags=0x%x\n",
                 node.id, DSL_Tensor_Evolution_Node_Kind_Name(node.kind),
                 node.semantic_value_id, value_name,
                 TY_IDX_index(node.descriptor_ty), dtype, shape,
-                node.semantic_root_id, node.flags);
+                node.semantic_root_id, node.representation_descriptor_id,
+                node.flags);
+    }
+    for (UINT32 i = 0; i < graph->edges.size(); ++i) {
+        const DSL_TENSOR_EVOLUTION_EDGE_RECORD &edge = graph->edges[i];
+        fprintf(file,
+                "  edge[%u] source=%u result=%u transform=%s flags=0x%x\n",
+                edge.id, edge.source_node_id, edge.result_node_id,
+                DSL_Tensor_Evolution_Transform_Kind_Name
+                    (edge.transformation_kind), edge.flags);
     }
 }
 

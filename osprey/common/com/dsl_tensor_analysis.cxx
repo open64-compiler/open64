@@ -455,9 +455,12 @@ DSL_Tensor_Analysis_Build
         UINT32 parsed_rank = 0;
 
         if (!DSL_Tensor_Evolution_Get_Node
-                 (analysis->graph, root_id, &root) ||
-            root.kind != DSL_TENSOR_EVOLUTION_NODE_SEMANTIC ||
-            !DSL_IR_Image_Get_Value(root.semantic_value_id, &value) ||
+                 (analysis->graph, root_id, &root))
+            return DSL_Tensor_Analysis_Report
+                       (diagnostic, "invalid evolution node", root_id);
+        if (root.kind != DSL_TENSOR_EVOLUTION_NODE_SEMANTIC)
+            continue;
+        if (!DSL_IR_Image_Get_Value(root.semantic_value_id, &value) ||
             !DSL_Tensor_Analysis_Value_Owned(analysis, value))
             return DSL_Tensor_Analysis_Report
                        (diagnostic, "invalid semantic root", root_id);
