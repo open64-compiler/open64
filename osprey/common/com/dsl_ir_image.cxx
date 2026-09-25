@@ -979,6 +979,20 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
 }
 
 BOOL
+DSL_IR_Image_Retype_Value
+        (DSL_IR_VALUE_ID value_id,
+         TY_IDX expected_old_ty,
+         TY_IDX refined_ty)
+{
+    DSL_IR_VALUE_RECORD value;
+    if (!DSL_IR_Table_Get(DSL_ir_value_table, value_id, &value) ||
+        value.ty != expected_old_ty || TY_IDX_index(refined_ty) == 0)
+        return FALSE;
+    DSL_ir_value_table[value_id - 1].ty = refined_ty;
+    return TRUE;
+}
+
+BOOL
 DSL_IR_Image_Redirect_And_Retire_Value
         (DSL_IR_VALUE_ID replacement_value_id,
          DSL_IR_VALUE_ID retiring_value_id,

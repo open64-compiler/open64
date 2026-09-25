@@ -135,6 +135,7 @@
 #include "eh_region.h"		    /* for EH_Generate_Range_List, etc. */
 #include "vho_lower.h"
 #include "dsl_lower.h"
+#include "dsl_shape_refine.h"
 #include "fhe_convert.h"
 #include "iter.h"		    /* PU iterator for loops */
 #include "dra_export.h"             /* for DRA routines */
@@ -1948,9 +1949,17 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
+  Set_Error_Phase ( "DSL Shape Refinement" );
+  pu = VHO_DSL_Shape_Refine_Driver(current_pu, pu);
+  Set_PU_Info_tree_ptr(current_pu, pu);
+  Check_for_IR_Dump(TP_GLOBOPT, pu, "DSL_SHAPE_REFINE");
+
   if (!w2c_only && VHO_DSL_Enable_WOPT) {
     Is_True(wopt_loaded,
             ("DSL WOPT requested but the WOPT component is unavailable"));
+    FmtAssert(VHO_DSL_Shape_Refinement_Invalidate
+                  (current_pu, pu, VHO_DSL_SHAPE_TRIGGER_DSL_WOPT, stderr),
+              ("could not invalidate DSL shape state before WOPT"));
     REGION_Initialize(pu, PU_has_region(Get_Current_PU()));
     Set_Error_Phase ( "DSL WOPT Processing" );
     pu = Perform_Preopt_Optimization(pu, pu);
@@ -1958,6 +1967,10 @@ Preprocess_PU (PU_Info *current_pu)
     Set_PU_Info_tree_ptr(current_pu, pu);
     Check_for_IR_Dump(TP_GLOBOPT, pu, "DSL_WOPT");
     REGION_Finalize();
+    Set_Error_Phase ( "DSL Shape Refinement after WOPT" );
+    pu = VHO_DSL_Shape_Refine_Driver(current_pu, pu);
+    Set_PU_Info_tree_ptr(current_pu, pu);
+    Check_for_IR_Dump(TP_GLOBOPT, pu, "DSL_SHAPE_REFINE_AFTER_WOPT");
   }
 
   if (!w2c_only) {
@@ -1983,6 +1996,18 @@ Preprocess_PU (PU_Info *current_pu)
     }
     Set_PU_Info_tree_ptr(current_pu, pu);
     Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_CONVERT");
+
+    if (convert_result.conversion_pass_count != 0) {
+      FmtAssert(VHO_DSL_Shape_Refinement_Invalidate
+                    (current_pu, pu,
+                     VHO_DSL_SHAPE_TRIGGER_FHE_CONVERSION, stderr),
+                ("could not invalidate DSL shape state after FHE conversion"));
+      Set_Error_Phase ( "DSL Shape Refinement after FHE Conversion" );
+      pu = VHO_DSL_Shape_Refine_Driver(current_pu, pu);
+      Set_PU_Info_tree_ptr(current_pu, pu);
+      Check_for_IR_Dump
+          (TP_GLOBOPT, pu, "DSL_SHAPE_REFINE_AFTER_FHE_CONVERT");
+    }
 
     if (need_fhe_checkpoint_output) {
       if (wopt_loaded)

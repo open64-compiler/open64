@@ -28,6 +28,13 @@ typedef enum {
     VHO_DSL_OPT_STAGE_COUNT = 11
 } VHO_DSL_OPT_STAGE;
 
+typedef enum {
+    VHO_DSL_OPT_SHAPE_PRESERVING = 0,
+    VHO_DSL_OPT_SHAPE_MONOTONIC_REFINING = 1,
+    VHO_DSL_OPT_SHAPE_INVALIDATING_LOCAL = 2,
+    VHO_DSL_OPT_SHAPE_INVALIDATING_BOUNDARY = 3
+} VHO_DSL_OPT_SHAPE_EFFECT;
+
 typedef BOOL (*VHO_DSL_OPT_PASS)
                                 (struct pu_info *pu_info,
                                  WN **tree,
@@ -36,12 +43,18 @@ typedef BOOL (*VHO_DSL_OPT_PASS)
 typedef struct {
     UINT32 enabled_stage_count;
     UINT32 executed_stage_count;
+    UINT32 executed_shape_invalidating_stage_count;
     UINT32 missing_stage_count;
     VHO_DSL_OPT_STAGE failed_stage;
 } VHO_DSL_OPT_RESULT;
 
 extern const char *VHO_DSL_Opt_Stage_Name (VHO_DSL_OPT_STAGE stage);
 extern BOOL VHO_DSL_Opt_Stage_Enabled (VHO_DSL_OPT_STAGE stage);
+extern VHO_DSL_OPT_SHAPE_EFFECT VHO_DSL_Opt_Stage_Shape_Effect
+                                (VHO_DSL_OPT_STAGE stage);
+extern BOOL VHO_DSL_Opt_Shape_Effect_Invalidates
+                                (VHO_DSL_OPT_SHAPE_EFFECT effect);
+extern BOOL VHO_DSL_Opt_Enabled_Stages_Invalidate_Shape (void);
 extern BOOL VHO_DSL_Opt_Register_Pass
                                 (VHO_DSL_OPT_STAGE stage,
                                  VHO_DSL_OPT_PASS pass);

@@ -309,6 +309,7 @@ BE_REGION_CXX_SRCS = \
 
 BE_VHO_CXX_SRCS = \
   dsl_lower.cxx          \
+  dsl_shape_refine.cxx   \
   dsl_opt.cxx            \
   fhe_convert.cxx        \
   fhe_semantic_convert.cxx \

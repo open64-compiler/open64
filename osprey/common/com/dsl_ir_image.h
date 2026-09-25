@@ -404,6 +404,26 @@ typedef struct {
     UINT16 replacement_operand_ordinal;
 } DSL_IR_NATIVE_VALUE_RETIRE_REQUEST;
 
+/*
+ * Runtime-only, active-PU shape refinement request. The complete request
+ * array is preflighted and committed atomically; no mapped-image layout is
+ * added or changed.
+ */
+typedef struct {
+    ST_IDX owner_pu_st;
+    DSL_IR_VALUE_ID value_id;
+    TY_IDX expected_old_ty;
+    TY_IDX refined_ty;
+} DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST;
+
+typedef struct {
+    UINT32 request_count;
+    UINT32 updated_st_count;
+    UINT32 updated_wn_count;
+    UINT32 updated_value_count;
+    UINT32 rollback_count;
+} DSL_IR_VALUE_TYPE_REFINEMENT_RESULT;
+
 typedef enum {
     DSL_STATE_KIND_UNKNOWN = 0,
     DSL_STATE_KIND_RUNTIME_STATUS = 1,
@@ -633,6 +653,14 @@ extern BOOL DSL_IR_Redirect_And_Retire_Native_Value
                                 (ST_IDX owner_pu_st,
                                  const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST
                                      *request);
+extern BOOL DSL_IR_Refine_Native_Value_Types
+                                (PU_Info *pu_info,
+                                 WN *tree,
+                                 const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST
+                                     *requests,
+                                 UINT32 request_count,
+                                 FILE *diagnostic,
+                                 DSL_IR_VALUE_TYPE_REFINEMENT_RESULT *result);
 extern BOOL DSL_IR_Image_Value_Redirect_Target
                                 (DSL_IR_VALUE_ID value_id,
                                  DSL_IR_VALUE_ID *target_value_id);

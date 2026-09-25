@@ -61,6 +61,7 @@
 #include <ext/hash_map>			// stl hash table
 #include <ext/algorithm>
 #include <ostream>
+#include <string>
 #include <vector>
 
 #include "defs.h"
@@ -141,11 +142,13 @@ Ensure_Tensor_Extension (TY_IDX ty, TY_IDX element_ty, INT32 rank)
 {
     TY_TENSOR_EXTENSION_STORE *existing = Find_Tensor_Extension (ty);
     if (existing != NULL) {
+        TY_Reset_Tensor_Type_Interner();
         existing->element_ty = element_ty;
         existing->rank = rank;
         return *existing;
     }
 
+    TY_Reset_Tensor_Type_Interner();
     TY_TENSOR_EXTENSION_STORE ext_record;
     UINT32 ext_index = Ty_tensor_extensions.Insert(ext_record);
     TY_TENSOR_EXTENSION_STORE &ext = Ty_tensor_extensions[ext_index];
@@ -405,6 +408,332 @@ Tensor_KV_Are_Equivalent (UINT32 head1, UINT32 head2)
     return TRUE;
 }
 
+typedef __gnu_cxx::hash_map<size_t, std::vector<TY_IDX> >
+        TY_TENSOR_CANONICAL_INDEX;
+
+static TY_TENSOR_CANONICAL_INDEX Tensor_canonical_index;
+static UINT32 Tensor_canonical_index_ty_count;
+static UINT32 Tensor_canonical_index_extension_count;
+static UINT32 Tensor_canonical_index_kv_count;
+static BOOL Tensor_canonical_index_valid;
+
+static const TY_TENSOR_SCHEMA_KEY Tensor_canonical_schema[] = {
+    TY_TENSOR_SCHEMA_KIND,
+    TY_TENSOR_SCHEMA_DTYPE,
+    TY_TENSOR_SCHEMA_RANK,
+    TY_TENSOR_SCHEMA_SHAPE,
+    TY_TENSOR_SCHEMA_TRAITS,
+    TY_TENSOR_SCHEMA_LAYOUT,
+    TY_TENSOR_SCHEMA_SHARDING,
+    TY_TENSOR_SCHEMA_PLACEMENT,
+    TY_TENSOR_SCHEMA_MEMORY,
+    TY_TENSOR_SCHEMA_QUANTIZATION,
+    TY_TENSOR_SCHEMA_CANONICAL
+};
+
+static size_t
+TY_Tensor_Hash_Bytes (size_t hash, const char *value)
+{
+    const unsigned char *cursor =
+        (const unsigned char *)(value == NULL ? "" : value);
+
+    while (*cursor != '\0') {
+        hash ^= *cursor++;
+        hash *= 16777619U;
+    }
+    hash ^= 0xffU;
+    return hash * 16777619U;
+}
+
+static size_t
+TY_Tensor_Hash_Number (size_t hash, UINT64 value)
+{
+    for (UINT32 i = 0; i < sizeof(value); ++i) {
+        hash ^= (unsigned char)(value & 0xffU);
+        hash *= 16777619U;
+        value >>= 8;
+    }
+    return hash;
+}
+
+static const char *
+TY_Tensor_Descriptor_Field
+        (const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor,
+         TY_TENSOR_SCHEMA_KEY key,
+         char *rank_buf,
+         size_t rank_buf_size)
+{
+    switch (key) {
+    case TY_TENSOR_SCHEMA_KIND:
+        return descriptor->kind;
+    case TY_TENSOR_SCHEMA_DTYPE:
+        return descriptor->dtype;
+    case TY_TENSOR_SCHEMA_RANK:
+        snprintf(rank_buf, rank_buf_size, "%d", descriptor->rank);
+        return rank_buf;
+    case TY_TENSOR_SCHEMA_SHAPE:
+        return descriptor->logical_shape;
+    case TY_TENSOR_SCHEMA_TRAITS:
+        return descriptor->traits;
+    case TY_TENSOR_SCHEMA_LAYOUT:
+        return descriptor->layout;
+    case TY_TENSOR_SCHEMA_SHARDING:
+        return descriptor->sharding;
+    case TY_TENSOR_SCHEMA_PLACEMENT:
+        return descriptor->placement;
+    case TY_TENSOR_SCHEMA_MEMORY:
+        return descriptor->memory;
+    case TY_TENSOR_SCHEMA_QUANTIZATION:
+        return descriptor->quantization;
+    case TY_TENSOR_SCHEMA_CANONICAL:
+        return "true";
+    default:
+        return NULL;
+    }
+}
+
+static UINT32
+TY_Tensor_Descriptor_Identity_Count
+        (const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor)
+{
+    UINT32 count = 0;
+    char rank_buf[32];
+
+    for (UINT32 i = 0;
+         i < sizeof(Tensor_canonical_schema) /
+             sizeof(Tensor_canonical_schema[0]); ++i) {
+        const char *value = TY_Tensor_Descriptor_Field
+                                (descriptor, Tensor_canonical_schema[i],
+                                 rank_buf, sizeof(rank_buf));
+        if (value != NULL && value[0] != '\0')
+            ++count;
+    }
+    return count;
+}
+
+static size_t
+TY_Tensor_Descriptor_Hash
+        (TY_IDX element_ty,
+         const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor)
+{
+    size_t hash = 2166136261U;
+    char rank_buf[32];
+
+    hash = TY_Tensor_Hash_Number(hash, TY_IDX_index(element_ty));
+    hash = TY_Tensor_Hash_Number(hash, descriptor->rank);
+    hash = TY_Tensor_Hash_Number
+               (hash, TY_Tensor_Descriptor_Identity_Count(descriptor));
+    for (UINT32 i = 0;
+         i < sizeof(Tensor_canonical_schema) /
+             sizeof(Tensor_canonical_schema[0]); ++i) {
+        const char *value = TY_Tensor_Descriptor_Field
+                                (descriptor, Tensor_canonical_schema[i],
+                                 rank_buf, sizeof(rank_buf));
+        hash = TY_Tensor_Hash_Number
+                   (hash, value != NULL && value[0] != '\0');
+        if (value != NULL && value[0] != '\0')
+            hash = TY_Tensor_Hash_Bytes(hash, value);
+    }
+    return hash;
+}
+
+static size_t
+TY_Tensor_Type_Hash (TY_IDX ty)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension(ty);
+    size_t hash = 2166136261U;
+
+    if (ext == NULL)
+        return 0;
+
+    hash = TY_Tensor_Hash_Number(hash, TY_IDX_index(ext->element_ty));
+    hash = TY_Tensor_Hash_Number(hash, ext->rank);
+    hash = TY_Tensor_Hash_Number
+               (hash, Tensor_KV_Type_Identity_Count(ext->attribute_head));
+    for (UINT32 i = 0;
+         i < sizeof(Tensor_canonical_schema) /
+             sizeof(Tensor_canonical_schema[0]); ++i) {
+        const char *value = Tensor_KV_Value
+                                (ext->attribute_head,
+                                 TY_tensor_schema_key_name
+                                     (Tensor_canonical_schema[i]));
+        hash = TY_Tensor_Hash_Number
+                   (hash, value != NULL && value[0] != '\0');
+        if (value != NULL && value[0] != '\0')
+            hash = TY_Tensor_Hash_Bytes(hash, value);
+    }
+    return hash;
+}
+
+static BOOL
+TY_Tensor_Type_Matches_Descriptor
+        (TY_IDX ty,
+         TY_IDX element_ty,
+         const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension(ty);
+    char rank_buf[32];
+
+    if (ext == NULL || TY_kind(ty) != KIND_TENSOR ||
+        !TY_tensor_is_canonical(ty) || ext->element_ty != element_ty ||
+        ext->rank != descriptor->rank ||
+        Tensor_KV_Type_Identity_Count(ext->attribute_head) !=
+            TY_Tensor_Descriptor_Identity_Count(descriptor))
+        return FALSE;
+
+    for (UINT32 i = 0;
+         i < sizeof(Tensor_canonical_schema) /
+             sizeof(Tensor_canonical_schema[0]); ++i) {
+        const char *expected = TY_Tensor_Descriptor_Field
+                                   (descriptor, Tensor_canonical_schema[i],
+                                    rank_buf, sizeof(rank_buf));
+        const char *actual = Tensor_KV_Value
+                                 (ext->attribute_head,
+                                  TY_tensor_schema_key_name
+                                      (Tensor_canonical_schema[i]));
+        BOOL expected_present = expected != NULL && expected[0] != '\0';
+        BOOL actual_present = actual != NULL && actual[0] != '\0';
+        if (expected_present != actual_present ||
+            (expected_present && strcmp(expected, actual) != 0))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static size_t
+TY_Tensor_Refined_Type_Hash
+        (TY_IDX base_ty,
+         const TY_TENSOR_TYPE_CORE_REFINEMENT *refinement)
+{
+    TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension(base_ty);
+    size_t hash = 2166136261U;
+    char rank_buf[32];
+
+    if (ext == NULL)
+        return 0;
+    snprintf(rank_buf, sizeof(rank_buf), "%d", refinement->rank);
+    hash = TY_Tensor_Hash_Number(hash, TY_IDX_index(ext->element_ty));
+    hash = TY_Tensor_Hash_Number(hash, refinement->rank);
+    hash = TY_Tensor_Hash_Number
+               (hash, Tensor_KV_Type_Identity_Count(ext->attribute_head));
+    for (UINT32 i = 0;
+         i < sizeof(Tensor_canonical_schema) /
+             sizeof(Tensor_canonical_schema[0]); ++i) {
+        TY_TENSOR_SCHEMA_KEY key = Tensor_canonical_schema[i];
+        const char *value;
+        if (key == TY_TENSOR_SCHEMA_RANK)
+            value = rank_buf;
+        else if (key == TY_TENSOR_SCHEMA_SHAPE)
+            value = refinement->logical_shape;
+        else
+            value = Tensor_KV_Value
+                        (ext->attribute_head,
+                         TY_tensor_schema_key_name(key));
+        hash = TY_Tensor_Hash_Number
+                   (hash, value != NULL && value[0] != '\0');
+        if (value != NULL && value[0] != '\0')
+            hash = TY_Tensor_Hash_Bytes(hash, value);
+    }
+    return hash;
+}
+
+static BOOL
+TY_Tensor_Type_Matches_Refinement
+        (TY_IDX candidate_ty,
+         TY_IDX base_ty,
+         const TY_TENSOR_TYPE_CORE_REFINEMENT *refinement)
+{
+    TY_TENSOR_EXTENSION_STORE *candidate =
+        Find_Tensor_Extension(candidate_ty);
+    TY_TENSOR_EXTENSION_STORE *base = Find_Tensor_Extension(base_ty);
+    char rank_buf[32];
+
+    if (candidate == NULL || base == NULL ||
+        TY_kind(candidate_ty) != KIND_TENSOR ||
+        !TY_tensor_is_canonical(candidate_ty) ||
+        candidate->element_ty != base->element_ty ||
+        candidate->rank != refinement->rank ||
+        Tensor_KV_Type_Identity_Count(candidate->attribute_head) !=
+            Tensor_KV_Type_Identity_Count(base->attribute_head))
+        return FALSE;
+
+    snprintf(rank_buf, sizeof(rank_buf), "%d", refinement->rank);
+    for (UINT32 handle = base->attribute_head; handle != 0;
+         handle = Tensor_dsl_kv_table[handle - 1].next) {
+        const TY_DSL_KV &base_entry = Tensor_dsl_kv_table[handle - 1];
+        const char *key = &Str_Table[base_entry.key];
+        if (!Tensor_KV_Is_Type_Identity_Key(key))
+            continue;
+        const TY_DSL_KV *candidate_entry =
+            Find_Tensor_KV_Const(candidate->attribute_head, key);
+        if (candidate_entry == NULL ||
+            candidate_entry->state != base_entry.state)
+            return FALSE;
+        if (base_entry.state == TY_DSL_BIND_BOUND) {
+            const char *expected;
+            if (strcmp(key, TY_tensor_schema_key_name
+                                (TY_TENSOR_SCHEMA_RANK)) == 0)
+                expected = rank_buf;
+            else if (strcmp(key, TY_tensor_schema_key_name
+                                     (TY_TENSOR_SCHEMA_SHAPE)) == 0)
+                expected = refinement->logical_shape;
+            else
+                expected = &Str_Table[base_entry.value];
+            if (strcmp(expected, &Str_Table[candidate_entry->value]) != 0)
+                return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+struct TY_TENSOR_ATTRIBUTE_COPY {
+    std::string key;
+    std::string value;
+    TY_DSL_BIND_STATE state;
+};
+
+void
+TY_Reset_Tensor_Type_Interner (void)
+{
+    Tensor_canonical_index.clear();
+    Tensor_canonical_index_ty_count = 0;
+    Tensor_canonical_index_extension_count = 0;
+    Tensor_canonical_index_kv_count = 0;
+    Tensor_canonical_index_valid = FALSE;
+}
+
+void
+TY_Rebuild_Tensor_Type_Interner (void)
+{
+    Tensor_canonical_index.clear();
+    for (UINT32 index = 1; index < Ty_tab.Size(); ++index) {
+        TY_IDX ty = TY_IDX_ZERO;
+        TY_TENSOR_EXTENSION_INFO info;
+        Set_TY_IDX_index(ty, index);
+        if (TY_kind(ty) != KIND_TENSOR ||
+            !TY_Get_Tensor_Extension_Info(ty, &info) ||
+            !TY_tensor_is_canonical(info.ty))
+            continue;
+        size_t hash = TY_Tensor_Type_Hash(info.ty);
+        Tensor_canonical_index[hash].push_back(info.ty);
+    }
+    Tensor_canonical_index_ty_count = Ty_tab.Size();
+    Tensor_canonical_index_extension_count = Ty_tensor_extensions.Size();
+    Tensor_canonical_index_kv_count = Tensor_dsl_kv_table.Size();
+    Tensor_canonical_index_valid = TRUE;
+}
+
+static void
+TY_Ensure_Tensor_Type_Interner (void)
+{
+    if (!Tensor_canonical_index_valid ||
+        Tensor_canonical_index_ty_count != Ty_tab.Size() ||
+        Tensor_canonical_index_extension_count !=
+            Ty_tensor_extensions.Size() ||
+        Tensor_canonical_index_kv_count != Tensor_dsl_kv_table.Size())
+        TY_Rebuild_Tensor_Type_Interner();
+}
+
 static void
 Check_Tensor_Extension (TY_IDX ty)
 {
@@ -578,6 +907,7 @@ TY_tensor_declare_attribute (TY_IDX ty, const char *key)
     Check_Tensor_Extension (ty);
     Is_True(!TY_tensor_is_canonical(ty),
             ("cannot mutate canonical tensor descriptor"));
+    TY_Reset_Tensor_Type_Interner();
     TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
     Declare_Tensor_KV (ext->attribute_head, ext->attribute_count, key);
 }
@@ -588,6 +918,7 @@ TY_tensor_bind_attribute (TY_IDX ty, const char *key, const char *value)
     Check_Tensor_Extension (ty);
     Is_True(!TY_tensor_is_canonical(ty),
             ("cannot mutate canonical tensor descriptor"));
+    TY_Reset_Tensor_Type_Interner();
     TY_TENSOR_EXTENSION_STORE *ext = Find_Tensor_Extension (ty);
     Bind_Tensor_KV (ext->attribute_head, ext->attribute_count, key, value);
 }
@@ -679,10 +1010,12 @@ TY_tensor_seal (TY_IDX ty)
 
     if (ext == NULL)
         return FALSE;
-    if (!TY_tensor_is_canonical(ty))
+    if (!TY_tensor_is_canonical(ty)) {
+        TY_Reset_Tensor_Type_Interner();
         Bind_Tensor_KV
             (ext->attribute_head, ext->attribute_count,
              TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_CANONICAL), "true");
+    }
     return TRUE;
 }
 
@@ -694,13 +1027,17 @@ TY_Tensor_Bind_Attribute_If_Present
         TY_tensor_bind_attribute(ty, key, value);
 }
 
-TY_IDX
-TY_Intern_Tensor_Type
+static TY_IDX
+TY_Intern_Tensor_Type_Internal
         (const char *name,
          TY_IDX element_ty,
-         const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor)
+         const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor,
+         BOOL *created)
 {
     char rank_buf[32];
+
+    if (created != NULL)
+        *created = FALSE;
 
     if (descriptor == NULL || TY_IDX_index(element_ty) == 0 ||
         descriptor->kind == NULL || descriptor->kind[0] == '\0' ||
@@ -708,6 +1045,19 @@ TY_Intern_Tensor_Type
         descriptor->rank < 0 || descriptor->logical_shape == NULL ||
         descriptor->logical_shape[0] == '\0')
         return TY_IDX_ZERO;
+
+    TY_Ensure_Tensor_Type_Interner();
+    size_t hash = TY_Tensor_Descriptor_Hash(element_ty, descriptor);
+    TY_TENSOR_CANONICAL_INDEX::const_iterator bucket =
+        Tensor_canonical_index.find(hash);
+    if (bucket != Tensor_canonical_index.end()) {
+        const std::vector<TY_IDX> &candidate = bucket->second;
+        for (UINT32 i = 0; i < candidate.size(); ++i) {
+            if (TY_Tensor_Type_Matches_Descriptor
+                    (candidate[i], element_ty, descriptor))
+                return candidate[i];
+        }
+    }
 
     TY_IDX tensor_ty = TY_Create_Tensor_Type
                            (name, element_ty, descriptor->rank);
@@ -735,17 +1085,106 @@ TY_Intern_Tensor_Type
     if (!TY_tensor_seal(tensor_ty))
         return TY_IDX_ZERO;
 
-    for (UINT32 index = 1; index < Ty_tab.Size(); ++index) {
-        TY_IDX candidate = TY_IDX_ZERO;
-        TY_TENSOR_EXTENSION_INFO candidate_info;
-        Set_TY_IDX_index(candidate, index);
-        if (!TY_Get_Tensor_Extension_Info(candidate, &candidate_info))
-            continue;
-        candidate = candidate_info.ty;
-        if (candidate != tensor_ty && TY_tensor_is_canonical(candidate) &&
-            TY_are_equivalent(candidate, tensor_ty, TY_EQUIV_IGNORE_NAMES))
-            return candidate;
+    TY_Rebuild_Tensor_Type_Interner();
+    if (created != NULL)
+        *created = TRUE;
+    return tensor_ty;
+}
+
+TY_IDX
+TY_Intern_Tensor_Type
+        (const char *name,
+         TY_IDX element_ty,
+         const TY_TENSOR_CANONICAL_DESCRIPTOR *descriptor)
+{
+    return TY_Intern_Tensor_Type_Internal
+               (name, element_ty, descriptor, NULL);
+}
+
+TY_IDX
+TY_Intern_Refined_Tensor_Type
+        (TY_IDX base_ty,
+         const TY_TENSOR_TYPE_CORE_REFINEMENT *refinement,
+         BOOL *created)
+{
+    TY_TENSOR_EXTENSION_STORE *base;
+
+    if (created != NULL)
+        *created = FALSE;
+    if (TY_IDX_index(base_ty) == 0 || refinement == NULL ||
+        refinement->rank < 0 || refinement->logical_shape == NULL ||
+        refinement->logical_shape[0] == '\0' ||
+        !TY_tensor_is_canonical(base_ty))
+        return TY_IDX_ZERO;
+
+    base = Find_Tensor_Extension(base_ty);
+    if (base == NULL ||
+        !TY_tensor_attribute_is_bound(base_ty, TY_TENSOR_SCHEMA_RANK) ||
+        !TY_tensor_attribute_is_bound(base_ty, TY_TENSOR_SCHEMA_SHAPE))
+        return TY_IDX_ZERO;
+
+    TY_Ensure_Tensor_Type_Interner();
+    size_t hash = TY_Tensor_Refined_Type_Hash(base_ty, refinement);
+    TY_TENSOR_CANONICAL_INDEX::const_iterator bucket =
+        Tensor_canonical_index.find(hash);
+    if (bucket != Tensor_canonical_index.end()) {
+        const std::vector<TY_IDX> &candidate = bucket->second;
+        for (UINT32 i = 0; i < candidate.size(); ++i) {
+            if (TY_Tensor_Type_Matches_Refinement
+                    (candidate[i], base_ty, refinement))
+                return candidate[i];
+        }
     }
+
+    const char *base_name = TY_name(Ty_Table[base_ty]);
+    std::string name(base_name == NULL ? "__dsl_tensor" : base_name);
+    std::string logical_shape(refinement->logical_shape);
+    std::vector<TY_TENSOR_ATTRIBUTE_COPY> attributes;
+    char rank_buf[32];
+    snprintf(rank_buf, sizeof(rank_buf), "%d", refinement->rank);
+    for (UINT32 handle = base->attribute_head; handle != 0;
+         handle = Tensor_dsl_kv_table[handle - 1].next) {
+        const TY_DSL_KV &entry = Tensor_dsl_kv_table[handle - 1];
+        const char *key = &Str_Table[entry.key];
+        if (!Tensor_KV_Is_Type_Identity_Key(key) ||
+            strcmp(key, TY_tensor_schema_key_name
+                            (TY_TENSOR_SCHEMA_CANONICAL)) == 0)
+            continue;
+
+        TY_TENSOR_ATTRIBUTE_COPY copy;
+        copy.key = key;
+        copy.state = (TY_DSL_BIND_STATE)entry.state;
+        if (copy.state == TY_DSL_BIND_BOUND) {
+            if (strcmp(key, TY_tensor_schema_key_name
+                                (TY_TENSOR_SCHEMA_RANK)) == 0)
+                copy.value = rank_buf;
+            else if (strcmp(key, TY_tensor_schema_key_name
+                                     (TY_TENSOR_SCHEMA_SHAPE)) == 0)
+                copy.value = logical_shape;
+            else
+                copy.value = &Str_Table[entry.value];
+        }
+        attributes.push_back(copy);
+    }
+
+    TY_IDX tensor_ty = TY_Create_Tensor_Type
+                           (name.c_str(), base->element_ty,
+                            refinement->rank);
+    for (UINT32 i = 0; i < attributes.size(); ++i) {
+        if (attributes[i].state == TY_DSL_BIND_BOUND)
+            TY_tensor_bind_attribute
+                (tensor_ty, attributes[i].key.c_str(),
+                 attributes[i].value.c_str());
+        else
+            TY_tensor_declare_attribute
+                (tensor_ty, attributes[i].key.c_str());
+    }
+    if (!TY_tensor_seal(tensor_ty))
+        return TY_IDX_ZERO;
+
+    TY_Rebuild_Tensor_Type_Interner();
+    if (created != NULL)
+        *created = TRUE;
     return tensor_ty;
 }
 
@@ -2255,6 +2694,8 @@ TY_is_unique (const TY_IDX ty_idx)
 void
 Reset_misc_symtab()
 {
+  TY_Reset_Tensor_Type_Interner();
+
   // reset ty unique tables
   Hash_ty_scalar_table.clear();
   Hash_ty_array_table.clear();
