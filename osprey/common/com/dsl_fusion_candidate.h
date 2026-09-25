@@ -2,6 +2,12 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * AIO-5 check-only semantic and generic fusion candidate discovery.
+ * Design: doc/AI_compiler_optimization_design_v0.1.md and
+ * doc/AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md.
+ */
+
 #ifndef dsl_fusion_candidate_INCLUDED
 #define dsl_fusion_candidate_INCLUDED
 

@@ -2,6 +2,12 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * AIO-1 runtime-only tensor identity and representation evolution graph.
+ * Design: doc/AI_compiler_optimization_design_v0.1.md and
+ * doc/AI-COMPILER-OPTIMIZATION-AIO1-TENSOR-EVOLUTION.md.
+ */
+
 #ifndef dsl_tensor_evolution_INCLUDED
 #define dsl_tensor_evolution_INCLUDED
 

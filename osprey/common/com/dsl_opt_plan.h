@@ -2,6 +2,12 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * AIO-2 candidate, legality, cost, fallback, and plan-selection service.
+ * Design: doc/AI_compiler_optimization_design_v0.1.md and
+ * doc/AI-COMPILER-OPTIMIZATION-AIO2-PLAN-COST.md.
+ */
+
 #ifndef dsl_opt_plan_INCLUDED
 #define dsl_opt_plan_INCLUDED
 

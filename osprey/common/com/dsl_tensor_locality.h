@@ -2,6 +2,12 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * AIO-4 PU-local lifetime, reuse, locality, and control-flow evidence.
+ * Design: doc/AI_compiler_optimization_design_v0.1.md and
+ * doc/AI-COMPILER-OPTIMIZATION-AIO4-LIFETIME-LOCALITY.md.
+ */
+
 #ifndef dsl_tensor_locality_INCLUDED
 #define dsl_tensor_locality_INCLUDED
 

@@ -412,6 +412,11 @@ DSL_Fusion_Match_Generic
             (analysis, root.result_value_id))
         return FALSE;
 
+    /*
+     * Grow one deterministic producer chain backward from the consumer. A
+     * fan-out, diamond, effect, semantic-pattern boundary, or budget limit
+     * terminates the cluster; this stage records a candidate and never fuses.
+     */
     DSL_IR_NODE_RECORD current = root;
     DSL_FUSIBILITY_INFO current_trait = root_trait;
     while (TRUE) {

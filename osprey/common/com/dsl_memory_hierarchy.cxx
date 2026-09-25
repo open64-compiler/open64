@@ -19,6 +19,11 @@ static const char *DSL_memory_scope_name[] = {
     "unknown", "system", "device", "sm", "cta", "thread"
 };
 
+/*
+ * These typed profiles are planning envelopes, not runtime device discovery.
+ * PROFILE_ASSUMPTION marks generic CPU values; exact GPU capacities follow the
+ * public Hopper and Blackwell tuning-guide values cited by the AIO-8 design.
+ */
 static const DSL_MEMORY_TIER_RECORD DSL_cpu_tiers[] = {
     { 1, DSL_MEMORY_TIER_SYSTEM, DSL_MEMORY_SCOPE_SYSTEM,
       DSL_MEMORY_CAPACITY_UNKNOWN, 64, 64, 24,

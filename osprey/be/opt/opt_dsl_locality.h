@@ -2,6 +2,12 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * WOPT adapter for the AIO-4 PU-local control snapshot. The common analysis
+ * consumes copied IDs and facts; it never retains WOPT object pointers.
+ * Design: doc/AI-COMPILER-OPTIMIZATION-AIO4-LIFETIME-LOCALITY.md.
+ */
+
 #ifndef opt_dsl_locality_INCLUDED
 #define opt_dsl_locality_INCLUDED
 

@@ -443,6 +443,11 @@ DSL_Tensor_Analysis_Build
     if (!analysis->facts.empty())
         return DSL_Tensor_Analysis_Verify(analysis, diagnostic);
 
+    /*
+     * Facts come from canonical tensor descriptors and versioned logical
+     * operator contracts. Source names and free-form metadata are not semantic
+     * evidence and therefore do not participate in classification.
+     */
     for (DSL_TENSOR_EVOLUTION_NODE_ID root_id = 1;
          root_id <= DSL_Tensor_Evolution_Node_Count(analysis->graph);
          ++root_id) {

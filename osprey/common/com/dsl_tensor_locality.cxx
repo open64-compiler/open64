@@ -567,6 +567,11 @@ DSL_Tensor_Locality_Finalize_Fact
                         DSL_TENSOR_ALIAS_CONSERVATIVE :
                         DSL_TENSOR_ALIAS_UNKNOWN;
 
+    /*
+     * Keep uncertain control flow conservative. Exact-block evidence is the
+     * only class later stages may treat as a precise lifetime; REGION, loop,
+     * effect, and alias boundaries remain explicit instead of being guessed.
+     */
     if (fact->alias_state != DSL_TENSOR_ALIAS_PROVEN_UNIQUE)
         fact->lifetime_state = DSL_TENSOR_LIFETIME_ALIAS;
     else if (effectful)

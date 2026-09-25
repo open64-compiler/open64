@@ -36,6 +36,10 @@ WOPT_DSL_Populate_Tensor_Control_Snapshot
       Current_PU_Info != pu)
     return FALSE;
 
+  /*
+   * Copy stable block relationships into common/com while this PU and CFG are
+   * active. No BB_NODE, STMTREP, or other WOPT-local pointer crosses the API.
+   */
   CFG_ITER iterator(cfg);
   BB_NODE *bb;
   FOR_ALL_ELEM (bb, iterator, Init()) {

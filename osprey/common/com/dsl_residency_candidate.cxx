@@ -208,6 +208,11 @@ DSL_Residency_Classify
          DSL_RESIDENCY_DESCRIPTOR_RECORD *descriptor,
          DSL_RESIDENCY_ALTERNATIVE_RECORD *alternative)
 {
+    /*
+     * Capacity fit proves only that an allocation can fit in the modeled tier.
+     * In particular, it does not promise cache retention, occupancy, or an
+     * executable allocation; those belong to later planning stages.
+     */
     if (locality.size_state == DSL_TENSOR_SIZE_STATIC)
         descriptor->required_bytes = DSL_Residency_Allocated_Bytes
                                          (locality.object_bytes,

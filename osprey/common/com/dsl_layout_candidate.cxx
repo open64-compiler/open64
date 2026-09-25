@@ -197,6 +197,11 @@ DSL_Logical_Layout_Intern_Descriptor
         return DSL_Logical_Layout_Report
                    (diagnostic, "layout kind and blocks disagree", kind);
 
+    /*
+     * Logical alternatives are immutable and uniqued by semantic source type,
+     * permutation, and blocking. They do not create a replacement TY_IDX until
+     * a later transformation is selected and applied.
+     */
     for (UINT32 i = 0; i < analysis->descriptors.size(); ++i) {
         const DSL_LOGICAL_LAYOUT_DESCRIPTOR_RECORD &candidate =
             analysis->descriptors[i];

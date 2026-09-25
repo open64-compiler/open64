@@ -2,6 +2,12 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * AIO-8 check-only local memory residency alternatives.
+ * Design: doc/AI_compiler_optimization_design_v0.1.md and
+ * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
+ */
+
 #ifndef dsl_residency_candidate_INCLUDED
 #define dsl_residency_candidate_INCLUDED
 

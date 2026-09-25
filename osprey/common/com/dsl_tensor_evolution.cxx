@@ -170,6 +170,10 @@ DSL_Tensor_Evolution_Build_Semantic_Roots
     if (!DSL_IR_Image_Validate(diagnostic))
         return FALSE;
 
+    /*
+     * A semantic root is the stable identity of one live tensor value. Later
+     * representation choices branch from it; they never replace or retype it.
+     */
     for (DSL_IR_VALUE_ID id = 1; id <= DSL_IR_Image_Value_Count(); ++id) {
         DSL_IR_VALUE_RECORD value;
         DSL_TENSOR_EVOLUTION_NODE_RECORD root;

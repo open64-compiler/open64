@@ -2,6 +2,12 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * AIO-3 semantic tensor facts derived from logical DSL contracts.
+ * Design: doc/AI_compiler_optimization_design_v0.1.md and
+ * doc/AI-COMPILER-OPTIMIZATION-AIO3-SEMANTIC-TENSOR.md.
+ */
+
 #ifndef dsl_tensor_analysis_INCLUDED
 #define dsl_tensor_analysis_INCLUDED
 

@@ -264,6 +264,11 @@ DSL_Distributed_Add_Descriptor
     alias.first_range_id = analysis->ranges.size() + 1;
     alias.visibility_epoch = epoch_id;
 
+    /*
+     * Ownership and exact per-device ranges are primary. Communication is
+     * derived later from this descriptor, never accepted as an unrelated
+     * frontend annotation.
+     */
     UINT32 range_count = analysis->control.device_count;
     if (sharding_kind == DSL_SHARDING_MIGRATED)
         range_count = 1;

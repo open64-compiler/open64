@@ -622,6 +622,11 @@ DSL_Opt_Plan_Select
         return TRUE;
     }
 
+    /*
+     * Selection is deliberately boring: only proven plans with complete cost
+     * evidence for this target compete. Candidate generation must preserve a
+     * legal baseline instead of asking selection to repair an incomplete plan.
+     */
     for (UINT32 i = 0; i < context->plans.size(); ++i) {
         const DSL_OPT_PLAN_RECORD &plan = context->plans[i];
         const DSL_OPT_COST_RECORD &cost = context->costs[plan.cost_id - 1];
