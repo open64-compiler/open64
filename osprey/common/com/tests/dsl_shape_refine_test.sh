@@ -24,6 +24,140 @@ for executable in "$producer" "$ir_b2a"; do
   fi
 done
 
+if [[ "${OPEN64_DSL_SHAPE_WP4_MATRIX:-0}" == "1" ]]; then
+  wp4_dir="$artifact_dir/wp4-matrix"
+  mkdir -p "$wp4_dir"
+  find "$wp4_dir" -mindepth 1 -maxdepth 1 -type f -delete
+  {
+    printf '%s\n' \
+      "OPEN64_DSL_SHAPE_WP4_SINGLE=1 $producer" \
+      "OPEN64_DSL_SHAPE_WP4_CASE=baseline $producer" \
+      "OPEN64_DSL_SHAPE_WP4_CASE=failure OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE=N $producer (N=0..7)" \
+      "OPEN64_DSL_SHAPE_WP4_CASE=postcheck OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_POSTCHECK=NAME $producer" \
+      "OPEN64_DSL_SHAPE_WP4_CASE=recovery OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE=5 OPEN64_DSL_SHAPE_WP4_REPEAT=2 $producer" \
+      "OPEN64_DSL_SHAPE_FOREIGN_OWNER_REPRO=1 $producer" \
+      "OPEN64_DSL_SHAPE_AUTH_MATRIX=1 $producer" \
+      "OPEN64_DSL_SHAPE_INTERNER_MATRIX=1 $producer" \
+      "OPEN64_DSL_SHAPE_WP2_SUCCESS=CASE $producer" \
+      "OPEN64_DSL_SHAPE_WP2_NEGATIVE=CASE $producer"
+  } >"$wp4_dir/commands.txt"
+
+  OPEN64_DSL_SHAPE_WP4_SINGLE=1 "$producer" \
+    >"$wp4_dir/baseline-single.log" 2>&1
+  grep -Fq "WP4 baseline requests=1" "$wp4_dir/baseline-single.log"
+  grep -Fq "valid=1" "$wp4_dir/baseline-single.log"
+
+  OPEN64_DSL_SHAPE_WP4_CASE=baseline "$producer" \
+    >"$wp4_dir/baseline-multi.log" 2>&1
+  grep -Fq "WP4 baseline requests=2" "$wp4_dir/baseline-multi.log"
+  grep -Fq "valid=1" "$wp4_dir/baseline-multi.log"
+
+  for ordinal in 0 1 2 3 4 5 6 7; do
+    final_artifact="$wp4_dir/write-$ordinal.final.B"
+    OPEN64_DSL_SHAPE_WP4_CASE=failure \
+    OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE="$ordinal" \
+    OPEN64_DSL_SHAPE_WP4_FINAL_ARTIFACT="$final_artifact" \
+      "$producer" >"$wp4_dir/write-$ordinal.log" 2>&1
+    grep -Fq "total=7 selected=$ordinal" \
+      "$wp4_dir/write-$ordinal.log"
+    grep -Fq "unchanged=1 diagnostic_008=1 artifact_absent=1 valid=1" \
+      "$wp4_dir/write-$ordinal.log"
+    grep -Fq "DSL-SHAPE-RETYPE-008:" "$wp4_dir/write-$ordinal.log"
+    if grep -Fq "DSL-SHAPE-RETYPE-007:" "$wp4_dir/write-$ordinal.log"; then
+      echo "WP4 write rollback used the preflight diagnostic code" >&2
+      exit 1
+    fi
+    if [[ "$ordinal" == "0" ]]; then
+      grep -Fq "rollback=0" "$wp4_dir/write-$ordinal.log"
+    elif (( ordinal <= 4 )); then
+      grep -Fq "rollback=1" "$wp4_dir/write-$ordinal.log"
+    else
+      grep -Fq "rollback=2" "$wp4_dir/write-$ordinal.log"
+    fi
+    if [[ -e "$final_artifact" ]]; then
+      echo "failed WP4 write case published a final artifact: $final_artifact" >&2
+      exit 1
+    fi
+  done
+
+  for postcheck in \
+    active_boundary dsl_image region gatekeeper shared_shape final; do
+    final_artifact="$wp4_dir/postcheck-$postcheck.final.B"
+    OPEN64_DSL_SHAPE_WP4_CASE=postcheck \
+    OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_POSTCHECK="$postcheck" \
+    OPEN64_DSL_SHAPE_WP4_FINAL_ARTIFACT="$final_artifact" \
+      "$producer" >"$wp4_dir/postcheck-$postcheck.log" 2>&1
+    grep -Fq "DSL-SHAPE-RETYPE-POSTCHECK: name=$postcheck action=fail" \
+      "$wp4_dir/postcheck-$postcheck.log"
+    grep -Fq "rollback=2" "$wp4_dir/postcheck-$postcheck.log"
+    grep -Fq "unchanged=1 diagnostic_008=1 artifact_absent=1 valid=1" \
+      "$wp4_dir/postcheck-$postcheck.log"
+    grep -Fq "DSL-SHAPE-RETYPE-008:" \
+      "$wp4_dir/postcheck-$postcheck.log"
+    if grep -Fq "DSL-SHAPE-RETYPE-007:" \
+         "$wp4_dir/postcheck-$postcheck.log"; then
+      echo "WP4 postcheck rollback used the preflight diagnostic code" >&2
+      exit 1
+    fi
+    if [[ -e "$final_artifact" ]]; then
+      echo "failed WP4 postcheck published a final artifact: $final_artifact" >&2
+      exit 1
+    fi
+  done
+
+  OPEN64_DSL_SHAPE_WP4_CASE=recovery \
+  OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE=5 \
+  OPEN64_DSL_SHAPE_WP4_REPEAT=2 \
+    "$producer" >"$wp4_dir/repeated-recovery.log" 2>&1
+  grep -Fq "WP4 recovery repeat=0" "$wp4_dir/repeated-recovery.log"
+  grep -Fq "WP4 recovery repeat=1" "$wp4_dir/repeated-recovery.log"
+  grep -Fq "WP4 recovery accepted=1 rollback=0 ty_reused=1 valid=1" \
+    "$wp4_dir/repeated-recovery.log"
+  if [[ "$(grep -Fc 'DSL-SHAPE-RETYPE-008:' \
+              "$wp4_dir/repeated-recovery.log")" != "2" ]]; then
+    echo "repeated WP4 rollback did not report diagnostic 008 twice" >&2
+    exit 1
+  fi
+
+  OPEN64_DSL_SHAPE_FOREIGN_OWNER_REPRO=1 "$producer" \
+    >"$wp4_dir/wp3-foreign-owner.log" 2>&1
+  grep -Fq "rollback=0" "$wp4_dir/wp3-foreign-owner.log"
+  grep -Fq "valid=1" "$wp4_dir/wp3-foreign-owner.log"
+
+  OPEN64_DSL_SHAPE_AUTH_MATRIX=1 "$producer" \
+    >"$wp4_dir/wp1-authorization.log" 2>&1
+  grep -Fq "WP1 authorization negative matrix passed" \
+    "$wp4_dir/wp1-authorization.log"
+  OPEN64_DSL_SHAPE_INTERNER_MATRIX=1 "$producer" \
+    >"$wp4_dir/wp1-interner.log" 2>&1
+  grep -Fq "WP1 interner authorization matrix passed" \
+    "$wp4_dir/wp1-interner.log"
+
+  for success_case in \
+    no_native ordinary region disabled already_complete no_request; do
+    OPEN64_DSL_SHAPE_WP2_SUCCESS="$success_case" "$producer" \
+      >"$wp4_dir/wp2-success-$success_case.log" 2>&1
+    grep -Fq "valid=1" "$wp4_dir/wp2-success-$success_case.log"
+  done
+  for negative_case in \
+    actual hidden_result formal return interface region region_owner \
+    region_global region_out_of_range; do
+    OPEN64_DSL_SHAPE_WP2_NEGATIVE="$negative_case" "$producer" \
+      >"$wp4_dir/wp2-negative-$negative_case.log" 2>&1
+    grep -Fq "rollback=0" "$wp4_dir/wp2-negative-$negative_case.log"
+    grep -Fq "valid=1" "$wp4_dir/wp2-negative-$negative_case.log"
+  done
+
+  if OPEN64_DSL_SHAPE_WP4_CASE=postcheck \
+     OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_POSTCHECK=unknown \
+       "$producer" >"$wp4_dir/invalid-postcheck.log" 2>&1; then
+    echo "unknown WP4 postcheck selector was accepted" >&2
+    exit 1
+  fi
+  grep -Fq "invalid test postcheck selector" \
+    "$wp4_dir/invalid-postcheck.log"
+fi
+
 mkdir -p "$artifact_dir"
 find "$artifact_dir" -mindepth 1 -maxdepth 1 -type f -delete
 
@@ -141,7 +275,7 @@ current_invalidation_call_sites_audited=passed
 unclassified_shape_effect_defaults_invalidating=passed
 stale_generation_rejected=passed
 post_transform_revalidation=passed
-driver_owned_per_pu_traversal=passed
+driver_source_phase_order=passed
 shape_before_dsl_wopt=passed
 shape_before_fhe_conversion=passed
 shape_before_dsl_lowering=passed
@@ -154,6 +288,19 @@ before_after_binary_whirl=passed
 before_after_trace_diff=passed
 binary_layout_change=none
 EOF
+
+{
+  printf 'source_commit=%s\n' "$(git -C "$repo_root" rev-parse HEAD)"
+  printf 'source_status_begin\n'
+  git -C "$repo_root" status --short
+  printf 'source_status_end\n'
+  printf 'producer=%s\n' "$producer"
+  printf 'ir_b2a=%s\n' "$ir_b2a"
+  printf 'uname=%s\n' "$(uname -a)"
+  "${CXX:-c++}" --version 2>/dev/null | head -1
+} >"$artifact_dir/MANIFEST.txt"
+find "$artifact_dir" -type f ! -name SHA256SUMS -print0 | \
+  sort -z | xargs -0 sha256sum >"$artifact_dir/SHA256SUMS"
 
 echo "SP7 shape refinement fixture passed"
 echo "review before trace: $before_trace"

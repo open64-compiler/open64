@@ -18,6 +18,10 @@
 #include "symtab.h"
 #include "wn.h"
 
+static BOOL DSL_Shape_Dimension_Symbol_Owner
+        (const DSL_SHAPE_FACT &, INT32, ST_IDX *);
+static BOOL DSL_Shape_PU_Locators_Equivalent(ST_IDX, ST_IDX);
+
 static BOOL
 DSL_Shape_TY_Valid (TY_IDX ty)
 {
@@ -1410,10 +1414,29 @@ DSL_Shape_Dimension_Proves_Equal
         right.dimension_kind[right_ordinal] ==
             DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC)
         return FALSE;
-    return left.dimension_kind[left_ordinal] ==
-               right.dimension_kind[right_ordinal] &&
-           strcmp(left.dimension_text[left_ordinal],
-                  right.dimension_text[right_ordinal]) == 0;
+    if (left.dimension_kind[left_ordinal] !=
+        right.dimension_kind[right_ordinal])
+        return FALSE;
+    const char *left_text = left.dimension_text[left_ordinal];
+    const char *right_text = right.dimension_text[right_ordinal];
+    if (strcmp(left_text, right_text) == 0)
+        return TRUE;
+    if (left.dimension_kind[left_ordinal] != DSL_SHAPE_DIMENSION_SYMBOL &&
+        left.dimension_kind[left_ordinal] != DSL_SHAPE_DIMENSION_EXPRESSION)
+        return FALSE;
+    const char *left_qualifier = strstr(left_text, "@pu");
+    const char *right_qualifier = strstr(right_text, "@pu");
+    ST_IDX left_owner;
+    ST_IDX right_owner;
+    return left_qualifier != NULL && right_qualifier != NULL &&
+           left_qualifier - left_text == right_qualifier - right_text &&
+           strncmp(left_text, right_text, left_qualifier - left_text) == 0 &&
+           strcmp(left_qualifier + 11, right_qualifier + 11) == 0 &&
+           DSL_Shape_Dimension_Symbol_Owner
+               (left, left_ordinal, &left_owner) &&
+           DSL_Shape_Dimension_Symbol_Owner
+               (right, right_ordinal, &right_owner) &&
+           DSL_Shape_PU_Locators_Equivalent(left_owner, right_owner);
 }
 
 static BOOL
@@ -1650,11 +1673,212 @@ DSL_Shape_Has_Operator_Rule
     return DSL_Shape_Find_Rule(dsl_operator, version) != NULL;
 }
 
+BOOL
+DSL_Shape_Proof_Context_Init
+        (DSL_SHAPE_PROOF_CONTEXT *context,
+         PU_Info *pu_info,
+         WN *tree,
+         ST_IDX owner_pu_st,
+         DSL_IR_NODE_ID node_id,
+         const DSL_IR_VALUE_ID *operand_value_ids,
+         UINT32 operand_value_count,
+         DSL_IR_VALUE_ID result_value_id)
+{
+    if (context == NULL || pu_info == NULL || tree == NULL ||
+        ST_IDX_index(owner_pu_st) == 0 ||
+        (operand_value_count != 0 && operand_value_ids == NULL) ||
+        PU_Info_proc_sym(pu_info) != owner_pu_st ||
+        PU_Info_tree_ptr(pu_info) != tree ||
+        WN_operator(tree) != OPR_FUNC_ENTRY ||
+        WN_st_idx(tree) != owner_pu_st)
+        return FALSE;
+    memset(context, 0, sizeof(*context));
+    context->active_boundary.pu_info = pu_info;
+    context->active_boundary.tree = tree;
+    context->active_boundary.owner_pu_st = owner_pu_st;
+    context->node_id = node_id;
+    context->operand_value_ids = operand_value_ids;
+    context->operand_value_count = operand_value_count;
+    context->result_value_id = result_value_id;
+    return TRUE;
+}
+
+static BOOL DSL_Shape_Str_Stable (STR_IDX value);
+static BOOL DSL_Shape_PU_Stable_Identity
+        (ST_IDX owner_locator,
+         DSL_PU_SOURCE_IDENTITY_RECORD *identity,
+         UINT64 *fingerprint);
+
+static BOOL
+DSL_Shape_Proof_Context_Select_Reviewed_Interface_Mapping
+        (DSL_SHAPE_PROOF_CONTEXT *context,
+         DSL_CALLSITE_METADATA_ID callsite_id,
+         UINT32 actual_ordinal,
+         ST_IDX destination_owner_pu_st,
+         UINT32 formal_ordinal)
+{
+    if (context == NULL || callsite_id == 0 ||
+        ST_IDX_index(destination_owner_pu_st) == 0 ||
+        context->active_boundary.owner_pu_st != destination_owner_pu_st)
+        return FALSE;
+    for (UINT32 i = 0; i < context->interface_mapping_count; ++i) {
+        const DSL_SHAPE_INTERFACE_MAPPING_SELECTOR &selected =
+            context->interface_mappings[i];
+        if (selected.callsite_id == callsite_id &&
+            selected.actual_ordinal == actual_ordinal &&
+            selected.destination_owner_pu_st == destination_owner_pu_st &&
+            selected.formal_ordinal == formal_ordinal)
+            return TRUE;
+    }
+    if (context->interface_mapping_count >=
+            DSL_SHAPE_MAX_INTERFACE_MAPPINGS)
+        return FALSE;
+
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    DSL_CALL_ARGUMENT_RECORD argument;
+    DSL_CALL_ARGUMENT_RECORD unique_argument;
+    DSL_PU_FORMAL_RECORD formal;
+    DSL_PU_SOURCE_IDENTITY_RECORD source_identity;
+    DSL_PU_SOURCE_IDENTITY_RECORD destination_identity;
+    DSL_IR_VALUE_RECORD actual_value;
+    DSL_IR_VALUE_RECORD formal_value;
+    UINT64 source_identity_fingerprint;
+    UINT64 destination_identity_fingerprint;
+    if (!DSL_Call_Image_Get_Callsite(callsite_id, &callsite) ||
+        !DSL_Call_ABI_Image_Find_Argument_By_Id
+             (callsite_id, actual_ordinal, &argument) ||
+        DSL_Call_ABI_Image_Callee_Formal_Count
+            (destination_owner_pu_st, formal_ordinal) != 1 ||
+        !DSL_Call_ABI_Image_Get_Callee_Formal_Argument
+             (destination_owner_pu_st, formal_ordinal, 0,
+              &unique_argument) ||
+        !DSL_PU_Interface_Image_Find_Formal
+             (destination_owner_pu_st, formal_ordinal, &formal) ||
+        !DSL_Call_Image_Find_PU_Identity
+             (callsite.owner_pu_st, &source_identity) ||
+        !DSL_Call_Image_Find_PU_Identity
+             (destination_owner_pu_st, &destination_identity) ||
+        !DSL_IR_Image_Get_Value
+             (argument.argument_value_id, &actual_value) ||
+        !DSL_IR_Image_Get_Value(formal.formal_value_id, &formal_value) ||
+        !DSL_Shape_PU_Stable_Identity
+             (callsite.owner_pu_st, &source_identity,
+              &source_identity_fingerprint) ||
+        !DSL_Shape_PU_Stable_Identity
+             (destination_owner_pu_st, &destination_identity,
+              &destination_identity_fingerprint) ||
+        callsite.id != callsite_id ||
+        ST_IDX_index(callsite.owner_pu_st) == 0 ||
+        callsite.callee_pu_st != destination_owner_pu_st ||
+        callsite.flags != 0 ||
+        !DSL_Shape_Str_Stable(callsite.canonical_class_name) ||
+        !DSL_Shape_Str_Stable(callsite.instance_path) ||
+        !DSL_Shape_Str_Stable(callsite.context_identity) ||
+        argument.callsite_id != callsite_id ||
+        argument.actual_ordinal != actual_ordinal ||
+        argument.callee_formal_ordinal != formal_ordinal ||
+        argument.argument_value_id == 0 ||
+        argument.flags != 0 ||
+        !DSL_Shape_Str_Stable(argument.semantic_role) ||
+        unique_argument.id != argument.id ||
+        unique_argument.callsite_id != argument.callsite_id ||
+        unique_argument.argument_value_id != argument.argument_value_id ||
+        unique_argument.actual_ordinal != argument.actual_ordinal ||
+        unique_argument.callee_formal_ordinal !=
+            argument.callee_formal_ordinal ||
+        unique_argument.semantic_role != argument.semantic_role ||
+        formal.owner_pu_st != destination_owner_pu_st ||
+        formal.formal_ordinal != formal_ordinal ||
+        formal.formal_value_id == 0 || formal.flags != 0 ||
+        formal.reserved != 0 ||
+        actual_value.id != argument.argument_value_id ||
+        actual_value.flags != 0 || actual_value.reserved != 0 ||
+        formal_value.id != formal.formal_value_id ||
+        formal_value.st != formal.formal_st ||
+        formal_value.ty != formal.formal_ty ||
+        formal_value.flags != 0 || formal_value.reserved != 0)
+        return FALSE;
+
+    DSL_SHAPE_INTERFACE_MAPPING_SELECTOR &selected =
+        context->interface_mappings[context->interface_mapping_count++];
+    memset(&selected, 0, sizeof(selected));
+    selected.callsite_id = callsite_id;
+    selected.actual_ordinal = actual_ordinal;
+    selected.destination_owner_pu_st =
+        destination_owner_pu_st;
+    selected.formal_ordinal = formal_ordinal;
+    selected.snapshot_version = 1;
+    selected.source_owner_pu_st = callsite.owner_pu_st;
+    selected.source_identity_fingerprint = source_identity_fingerprint;
+    selected.source_canonical_definition_name =
+        source_identity.canonical_definition_name;
+    selected.source_defining_module = source_identity.defining_module;
+    selected.source_defining_file = source_identity.defining_file;
+    selected.source_defining_line = source_identity.defining_line;
+    selected.destination_identity_fingerprint =
+        destination_identity_fingerprint;
+    selected.destination_canonical_definition_name =
+        destination_identity.canonical_definition_name;
+    selected.destination_defining_module = destination_identity.defining_module;
+    selected.destination_defining_file = destination_identity.defining_file;
+    selected.destination_defining_line = destination_identity.defining_line;
+    selected.callsite_owner_pu_st = callsite.owner_pu_st;
+    selected.callsite_callee_pu_st = callsite.callee_pu_st;
+    selected.canonical_class_name = callsite.canonical_class_name;
+    selected.instance_path = callsite.instance_path;
+    selected.context_identity = callsite.context_identity;
+    selected.source_call_ordinal = callsite.source_call_ordinal;
+    selected.argument_value_id = argument.argument_value_id;
+    selected.argument_semantic_role = argument.semantic_role;
+    selected.actual_st = actual_value.st;
+    selected.actual_ty = actual_value.ty;
+    selected.formal_owner_pu_st = formal.owner_pu_st;
+    selected.formal_value_id = formal.formal_value_id;
+    selected.formal_st = formal.formal_st;
+    selected.formal_ty = formal.formal_ty;
+    return TRUE;
+}
+
+typedef struct {
+    UINT32 count;
+    struct {
+        ST_IDX source_owner_locator;
+        UINT64 source_identity_fingerprint;
+        UINT64 destination_identity_fingerprint;
+        DSL_IR_VALUE_ID argument_value_id;
+        DSL_IR_VALUE_ID formal_value_id;
+    } entries[DSL_SHAPE_MAX_INTERFACE_MAPPINGS];
+} DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE;
+
+static BOOL DSL_Shape_Proof_Context_Validate
+        (const DSL_SHAPE_PROOF_CONTEXT *context,
+         const DSL_IR_NODE_RECORD *node,
+         const TY_IDX *operand_types,
+         UINT32 operand_count,
+         TY_IDX result_ty,
+         DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE *mapping);
+static BOOL DSL_Shape_Fact_Admitted
+        (const DSL_SHAPE_FACT &fact,
+         DSL_IR_VALUE_ID value_id,
+         const DSL_SHAPE_PROOF_CONTEXT *context,
+         const DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE &mapping);
+static BOOL DSL_Shape_Value_Provenance_Valid
+        (DSL_IR_VALUE_ID value_id,
+         const DSL_SHAPE_PROOF_CONTEXT *context,
+         const DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE &mapping,
+         std::vector<DSL_IR_VALUE_ID> *active_values);
+static BOOL DSL_Shape_Merge_Equal_Fact
+        (DSL_SHAPE_FACT *target,
+         const DSL_SHAPE_FACT &source);
+static BOOL DSL_Shape_Persisted_Fact_Proved_By_Inference
+        (const DSL_SHAPE_FACT &persisted,
+         const DSL_SHAPE_FACT &inferred);
+
 DSL_SHAPE_CHECK_RESULT
 DSL_Shape_Check_Operator
         (const DSL_SHAPE_OPERATOR_INPUT *input)
 {
-    if (input == NULL)
+    if (input == NULL || input->proof_context == NULL)
         return DSL_SHAPE_CHECK_INVALID;
     DSL_OPERATOR_INFO info;
     if (!DSL_Operator_Get_Info_Version
@@ -1667,6 +1891,18 @@ DSL_Shape_Check_Operator
     if (input->node == NULL || input->result_ty == TY_IDX_ZERO ||
         (input->operand_count != 0 && input->operand_types == NULL) ||
         (info.nkids >= 0 && (UINT32)info.nkids != input->operand_count))
+        return DSL_SHAPE_CHECK_INVALID;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    if (!DSL_IR_Image_Get_Opcode_Descriptor
+             (input->node->opcode_descriptor_id, &descriptor) ||
+        descriptor.logical_operator != (UINT32)input->dsl_operator ||
+        descriptor.version != input->version)
+        return DSL_SHAPE_CHECK_INVALID;
+    DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE mapping;
+    memset(&mapping, 0, sizeof(mapping));
+    if (!DSL_Shape_Proof_Context_Validate
+             (input->proof_context, input->node, input->operand_types,
+              input->operand_count, input->result_ty, &mapping))
         return DSL_SHAPE_CHECK_INVALID;
 
     std::vector<TY_IDX> operands;
@@ -1683,7 +1919,11 @@ DSL_Shape_Check_Operator
     for (UINT32 i = 0; i < input->operand_count; ++i) {
         if (!DSL_Shape_Fact_From_Type
                  (input->operand_types[i], &operand_facts[i]) ||
-            operand_facts[i].state != DSL_SHAPE_FACT_COMPLETE)
+            operand_facts[i].state != DSL_SHAPE_FACT_COMPLETE ||
+            !DSL_Shape_Fact_Admitted
+                 (operand_facts[i],
+                  input->proof_context->operand_value_ids[i],
+                  input->proof_context, mapping))
             return DSL_SHAPE_CHECK_INVALID;
         for (INT32 j = 0; j < operand_facts[i].rank; ++j) {
             non_static = non_static ||
@@ -1695,7 +1935,10 @@ DSL_Shape_Check_Operator
         }
     }
     if (!DSL_Shape_Fact_From_Type(input->result_ty, &result_fact) ||
-        result_fact.state != DSL_SHAPE_FACT_COMPLETE)
+        result_fact.state != DSL_SHAPE_FACT_COMPLETE ||
+        !DSL_Shape_Fact_Admitted
+             (result_fact, input->proof_context->result_value_id,
+              input->proof_context, mapping))
         return DSL_SHAPE_CHECK_INVALID;
     for (INT32 i = 0; i < result_fact.rank; ++i) {
         non_static = non_static ||
@@ -1798,6 +2041,9 @@ DSL_Shape_Parse_Symbol
                     tolower(character) - 'a' + 10;
     }
     if (identity == 0)
+        return FALSE;
+    if (ST_IDX_index(owner_pu_st) != 0 &&
+        identity != (UINT32)owner_pu_st)
         return FALSE;
     char suffix[16];
     snprintf(suffix, sizeof(suffix), "@pu%08x", identity);
@@ -2020,9 +2266,17 @@ DSL_Shape_Normalize_Logical_Shape
          size_t buffer_size)
 {
     DSL_SHAPE_FACT fact;
-    return DSL_Shape_Parse_Fact
-               (owner_pu_st, shape, expected_rank, &fact) &&
-           DSL_Shape_Format_Fact(&fact, buffer, buffer_size);
+    if (!DSL_Shape_Parse_Fact
+             (owner_pu_st, shape, expected_rank, &fact))
+        return FALSE;
+    if (ST_IDX_index(owner_pu_st) == 0 && fact.rank >= 0) {
+        for (INT32 i = 0; i < fact.rank; ++i) {
+            if (fact.dimension_kind[i] == DSL_SHAPE_DIMENSION_SYMBOL ||
+                fact.dimension_kind[i] == DSL_SHAPE_DIMENSION_EXPRESSION)
+                return FALSE;
+        }
+    }
+    return DSL_Shape_Format_Fact(&fact, buffer, buffer_size);
 }
 
 BOOL
@@ -2051,12 +2305,658 @@ DSL_Shape_Facts_Equal
     if (left.rank < 0)
         return TRUE;
     for (INT32 i = 0; i < left.rank; ++i) {
-        if (left.dimension_kind[i] != right.dimension_kind[i] ||
-            strcmp(left.dimension_text[i],
-                   right.dimension_text[i]) != 0)
+        if (left.dimension_kind[i] != right.dimension_kind[i])
+            return FALSE;
+        if ((left.dimension_kind[i] == DSL_SHAPE_DIMENSION_SYMBOL ||
+             left.dimension_kind[i] == DSL_SHAPE_DIMENSION_EXPRESSION) ?
+                !DSL_Shape_Dimension_Proves_Equal(left, i, right, i) :
+                strcmp(left.dimension_text[i],
+                       right.dimension_text[i]) != 0)
             return FALSE;
     }
     return TRUE;
+}
+
+BOOL
+DSL_Shape_Refinement_Matches_Type
+        (const DSL_SHAPE_REFINEMENT *refinement,
+         DSL_IR_VALUE_ID value_id,
+         TY_IDX expected_old_ty,
+         TY_IDX refined_ty)
+{
+    DSL_SHAPE_FACT refined_fact;
+    return refinement != NULL &&
+           refinement->value_id == value_id &&
+           refinement->expected_old_ty == expected_old_ty &&
+           refined_ty != TY_IDX_ZERO &&
+           DSL_Shape_Fact_From_Type(refined_ty, &refined_fact) &&
+           DSL_Shape_Facts_Equal(refinement->refined_fact, refined_fact);
+}
+
+static BOOL
+DSL_Shape_Dimension_Symbol_Owner
+        (const DSL_SHAPE_FACT &fact,
+         INT32 ordinal,
+         ST_IDX *owner_pu_st)
+{
+    if (owner_pu_st == NULL || ordinal < 0 || ordinal >= fact.rank ||
+        (fact.dimension_kind[ordinal] != DSL_SHAPE_DIMENSION_SYMBOL &&
+         fact.dimension_kind[ordinal] != DSL_SHAPE_DIMENSION_EXPRESSION))
+        return FALSE;
+    const char *qualifier = strstr(fact.dimension_text[ordinal], "@pu");
+    if (qualifier == NULL)
+        return FALSE;
+    UINT32 identity = 0;
+    for (UINT32 i = 0; i < 8; ++i) {
+        unsigned char character = (unsigned char)qualifier[3 + i];
+        if (!isxdigit(character))
+            return FALSE;
+        identity <<= 4;
+        identity += isdigit(character) ? character - '0' :
+                    tolower(character) - 'a' + 10;
+    }
+    if (identity == 0 ||
+        (qualifier[11] != '\0' && qualifier[11] != '+' &&
+         qualifier[11] != '-'))
+        return FALSE;
+    *owner_pu_st = (ST_IDX)identity;
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Fact_Foreign_Owner
+        (const DSL_SHAPE_FACT &fact,
+         ST_IDX active_owner_pu_st,
+         ST_IDX *foreign_owner_pu_st,
+         BOOL *has_foreign_owner)
+{
+    if (foreign_owner_pu_st == NULL || has_foreign_owner == NULL ||
+        ST_IDX_index(active_owner_pu_st) == 0)
+        return FALSE;
+    *foreign_owner_pu_st = ST_IDX_ZERO;
+    *has_foreign_owner = FALSE;
+    if (fact.rank < 0)
+        return TRUE;
+    for (INT32 i = 0; i < fact.rank; ++i) {
+        if (fact.dimension_kind[i] != DSL_SHAPE_DIMENSION_SYMBOL &&
+            fact.dimension_kind[i] != DSL_SHAPE_DIMENSION_EXPRESSION)
+            continue;
+        ST_IDX owner_pu_st;
+        if (!DSL_Shape_Dimension_Symbol_Owner(fact, i, &owner_pu_st))
+            return FALSE;
+        if (DSL_Shape_PU_Locators_Equivalent
+                (owner_pu_st, active_owner_pu_st))
+            continue;
+        if (*has_foreign_owner &&
+            !DSL_Shape_PU_Locators_Equivalent
+                 (*foreign_owner_pu_st, owner_pu_st))
+            return FALSE;
+        *foreign_owner_pu_st = owner_pu_st;
+        *has_foreign_owner = TRUE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Value_Belongs_To_PU
+        (const DSL_IR_VALUE_RECORD &value,
+         ST_IDX owner_pu_st)
+{
+    if (value.id == DSL_IR_VALUE_INVALID_ID ||
+        ST_IDX_index(value.st) == 0 || value.name == STR_IDX_ZERO ||
+        ST_IDX_level(owner_pu_st) != GLOBAL_SYMTAB ||
+        ST_IDX_index(owner_pu_st) >= ST_Table_Size(GLOBAL_SYMTAB))
+        return FALSE;
+    DSL_IR_VALUE_RECORD found;
+    return DSL_IR_Image_Find_PU_Value
+               (value.st, Index_To_Str(value.name),
+                ST_name(St_Table[owner_pu_st]), &found) &&
+           found.id == value.id && found.ty == value.ty &&
+           found.st == value.st;
+}
+
+static BOOL
+DSL_Shape_Str_Stable (STR_IDX value)
+{
+    return value != STR_IDX_ZERO && Index_To_Str(value) != NULL &&
+           Index_To_Str(value)[0] != '\0';
+}
+
+static BOOL
+DSL_Shape_Str_Content_Equal (STR_IDX left, STR_IDX right)
+{
+    return DSL_Shape_Str_Stable(left) && DSL_Shape_Str_Stable(right) &&
+           strcmp(Index_To_Str(left), Index_To_Str(right)) == 0;
+}
+
+static UINT64
+DSL_Shape_Stable_Identity_Hash_Bytes
+        (UINT64 fingerprint,
+         const void *data,
+         size_t size)
+{
+    const unsigned char *bytes = (const unsigned char *)data;
+    for (size_t i = 0; i < size; ++i) {
+        fingerprint ^= bytes[i];
+        fingerprint *= 1099511628211ULL;
+    }
+    return fingerprint;
+}
+
+static UINT64
+DSL_Shape_Stable_Identity_Hash_String
+        (UINT64 fingerprint,
+         STR_IDX text)
+{
+    const char *value = text == STR_IDX_ZERO ? "" : Index_To_Str(text);
+    size_t size = value == NULL ? 0 : strlen(value);
+    fingerprint = DSL_Shape_Stable_Identity_Hash_Bytes
+                      (fingerprint, value, size);
+    const unsigned char separator = 0;
+    return DSL_Shape_Stable_Identity_Hash_Bytes
+               (fingerprint, &separator, sizeof(separator));
+}
+
+static BOOL
+DSL_Shape_PU_Stable_Identity
+        (ST_IDX owner_locator,
+         DSL_PU_SOURCE_IDENTITY_RECORD *identity,
+         UINT64 *fingerprint)
+{
+    if (identity == NULL || fingerprint == NULL ||
+        !DSL_Call_Image_Find_PU_Identity(owner_locator, identity) ||
+        identity->owner_pu_st != owner_locator ||
+        !DSL_Shape_Str_Stable(identity->canonical_definition_name) ||
+        !DSL_Shape_Str_Stable(identity->defining_module) ||
+        !DSL_Shape_Str_Stable(identity->defining_file) ||
+        identity->defining_line == 0 || identity->flags != 0 ||
+        identity->reserved != 0)
+        return FALSE;
+    UINT64 value = 1469598103934665603ULL;
+    value = DSL_Shape_Stable_Identity_Hash_String
+                (value, identity->canonical_definition_name);
+    value = DSL_Shape_Stable_Identity_Hash_String
+                (value, identity->defining_module);
+    value = DSL_Shape_Stable_Identity_Hash_String
+                (value, identity->defining_file);
+    unsigned char line_bytes[4];
+    for (UINT32 i = 0; i < sizeof(line_bytes); ++i)
+        line_bytes[i] = (identity->defining_line >> (i * 8)) & 0xff;
+    value = DSL_Shape_Stable_Identity_Hash_Bytes
+                (value, line_bytes, sizeof(line_bytes));
+    UINT32 tuple_count = 0;
+    for (UINT32 i = 1; i <= DSL_Call_Image_PU_Identity_Count(); ++i) {
+        DSL_PU_SOURCE_IDENTITY_RECORD candidate;
+        if (!DSL_Call_Image_Get_PU_Identity(i, &candidate) ||
+            candidate.id != i ||
+            ST_IDX_index(candidate.owner_pu_st) == 0 ||
+            !DSL_Shape_Str_Stable
+                 (candidate.canonical_definition_name) ||
+            !DSL_Shape_Str_Stable(candidate.defining_module) ||
+            !DSL_Shape_Str_Stable(candidate.defining_file) ||
+            candidate.defining_line == 0 || candidate.flags != 0 ||
+            candidate.reserved != 0)
+            return FALSE;
+        if (strcmp(Index_To_Str(candidate.canonical_definition_name),
+                   Index_To_Str(identity->canonical_definition_name)) == 0 &&
+            strcmp(Index_To_Str(candidate.defining_module),
+                   Index_To_Str(identity->defining_module)) == 0 &&
+            strcmp(Index_To_Str(candidate.defining_file),
+                   Index_To_Str(identity->defining_file)) == 0 &&
+            candidate.defining_line == identity->defining_line)
+            ++tuple_count;
+    }
+    if (tuple_count != 1)
+        return FALSE;
+    *fingerprint = value;
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_PU_Locators_Equivalent
+        (ST_IDX left,
+         ST_IDX right)
+{
+    if (left == right)
+        return TRUE;
+    DSL_PU_SOURCE_IDENTITY_RECORD left_identity;
+    DSL_PU_SOURCE_IDENTITY_RECORD right_identity;
+    UINT64 left_fingerprint;
+    UINT64 right_fingerprint;
+    return DSL_Shape_PU_Stable_Identity
+               (left, &left_identity, &left_fingerprint) &&
+           DSL_Shape_PU_Stable_Identity
+               (right, &right_identity, &right_fingerprint) &&
+           left_fingerprint == right_fingerprint &&
+           strcmp(Index_To_Str(left_identity.canonical_definition_name),
+                  Index_To_Str(right_identity.canonical_definition_name)) == 0 &&
+           strcmp(Index_To_Str(left_identity.defining_module),
+                  Index_To_Str(right_identity.defining_module)) == 0 &&
+           strcmp(Index_To_Str(left_identity.defining_file),
+                  Index_To_Str(right_identity.defining_file)) == 0 &&
+           left_identity.defining_line == right_identity.defining_line;
+}
+
+static BOOL
+DSL_Shape_Find_Active_Formal
+        (const DSL_SHAPE_PROOF_CONTEXT *context,
+         DSL_IR_VALUE_ID value_id,
+         DSL_PU_FORMAL_RECORD *formal)
+{
+    if (context == NULL || formal == NULL ||
+        value_id == DSL_IR_VALUE_INVALID_ID)
+        return FALSE;
+    BOOL found = FALSE;
+    for (UINT32 i = 1; i <= DSL_PU_Interface_Image_Formal_Count(); ++i) {
+        DSL_PU_FORMAL_RECORD candidate;
+        if (!DSL_PU_Interface_Image_Get_Formal(i, &candidate))
+            return FALSE;
+        if (candidate.owner_pu_st !=
+                context->active_boundary.owner_pu_st ||
+            candidate.formal_value_id != value_id)
+            continue;
+        if (found)
+            return FALSE;
+        *formal = candidate;
+        found = TRUE;
+    }
+    return found;
+}
+
+static BOOL
+DSL_Shape_Interface_Mapping_Validate
+        (const DSL_SHAPE_PROOF_CONTEXT *context,
+         const DSL_SHAPE_INTERFACE_MAPPING_SELECTOR &selector,
+         DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE *evidence)
+{
+    if (context == NULL || evidence == NULL ||
+        evidence->count >= DSL_SHAPE_MAX_INTERFACE_MAPPINGS)
+        return FALSE;
+    if (selector.callsite_id == DSL_CALLSITE_METADATA_INVALID_ID ||
+        selector.snapshot_version != 1 ||
+        selector.destination_owner_pu_st !=
+            context->active_boundary.owner_pu_st)
+        return FALSE;
+
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    DSL_CALLSITE_METADATA_RECORD callsite_by_wn;
+    DSL_CALL_ARGUMENT_RECORD argument;
+    DSL_CALL_ARGUMENT_RECORD unique_argument;
+    DSL_PU_FORMAL_RECORD formal;
+    DSL_PU_SOURCE_IDENTITY_RECORD source_identity;
+    DSL_PU_SOURCE_IDENTITY_RECORD destination_identity;
+    DSL_IR_VALUE_RECORD actual_value;
+    DSL_IR_VALUE_RECORD formal_value;
+    UINT64 source_identity_fingerprint;
+    UINT64 destination_identity_fingerprint;
+    const WN *call = DSL_Call_Image_Get_Call_WN(selector.callsite_id);
+    const WN *parm = call == NULL ||
+                     selector.actual_ordinal >= (UINT32)WN_kid_count(call) ?
+                     NULL : WN_kid(call, selector.actual_ordinal);
+    const WN *address = parm == NULL || WN_operator(parm) != OPR_PARM ?
+                        NULL : WN_kid0(parm);
+    const WN *entry = context->active_boundary.tree;
+    const WN *formal_wn = entry == NULL ||
+        selector.formal_ordinal >= (UINT32)WN_num_formals(entry) ?
+        NULL : WN_formal(entry, selector.formal_ordinal);
+    if (!DSL_Call_Image_Get_Callsite(selector.callsite_id, &callsite) ||
+        call == NULL ||
+        WN_operator(call) != OPR_CALL ||
+        WN_st_idx(call) != selector.destination_owner_pu_st ||
+        parm == NULL || address == NULL || WN_operator(address) != OPR_LDA ||
+        !WN_Parm_By_Reference(parm) || !WN_Parm_Read_Only(parm) ||
+        WN_Parm_Out(parm) || !WN_Parm_Passed_Not_Saved(parm) ||
+        !DSL_Call_Image_Find_Callsite(call, &callsite_by_wn) ||
+        !DSL_Call_ABI_Image_Find_Argument_By_Id
+             (selector.callsite_id, selector.actual_ordinal, &argument) ||
+        DSL_Call_ABI_Image_Callee_Formal_Count
+            (selector.destination_owner_pu_st,
+             selector.formal_ordinal) != 1 ||
+        !DSL_Call_ABI_Image_Get_Callee_Formal_Argument
+             (selector.destination_owner_pu_st, selector.formal_ordinal, 0,
+              &unique_argument) ||
+        !DSL_PU_Interface_Image_Find_Formal
+             (selector.destination_owner_pu_st, selector.formal_ordinal,
+              &formal) ||
+        !DSL_Call_Image_Find_PU_Identity
+             (callsite.owner_pu_st, &source_identity) ||
+        !DSL_Call_Image_Find_PU_Identity
+             (selector.destination_owner_pu_st, &destination_identity) ||
+        !DSL_IR_Image_Get_Value
+             (argument.argument_value_id, &actual_value) ||
+        !DSL_IR_Image_Get_Value(formal.formal_value_id, &formal_value))
+        return FALSE;
+
+    if (callsite.id != selector.callsite_id ||
+        memcmp(&callsite, &callsite_by_wn, sizeof(callsite)) != 0 ||
+        ST_IDX_index(callsite.owner_pu_st) == 0 ||
+        callsite.callee_pu_st != selector.destination_owner_pu_st ||
+        callsite.flags != 0 ||
+        !DSL_Shape_Str_Stable(callsite.canonical_class_name) ||
+        !DSL_Shape_Str_Stable(callsite.instance_path) ||
+        !DSL_Shape_Str_Stable(callsite.context_identity) ||
+        argument.callsite_id != selector.callsite_id ||
+        argument.actual_ordinal != selector.actual_ordinal ||
+        argument.callee_formal_ordinal != selector.formal_ordinal ||
+        argument.argument_value_id == DSL_IR_VALUE_INVALID_ID ||
+        argument.flags != 0 ||
+        !DSL_Shape_Str_Stable(argument.semantic_role) ||
+        strcmp(Index_To_Str(argument.semantic_role), "shape_mapping") != 0 ||
+        unique_argument.id != argument.id ||
+        unique_argument.callsite_id != argument.callsite_id ||
+        unique_argument.argument_value_id != argument.argument_value_id ||
+        unique_argument.actual_ordinal != argument.actual_ordinal ||
+        unique_argument.callee_formal_ordinal !=
+            argument.callee_formal_ordinal ||
+        unique_argument.semantic_role != argument.semantic_role ||
+        formal.owner_pu_st != selector.destination_owner_pu_st ||
+        formal.formal_ordinal != selector.formal_ordinal ||
+        formal.formal_value_id == DSL_IR_VALUE_INVALID_ID ||
+        ST_IDX_index(formal.formal_st) == 0 ||
+        formal.formal_ty == TY_IDX_ZERO ||
+        formal.flags != 0 || formal.reserved != 0 ||
+        formal_wn == NULL || WN_operator(formal_wn) != OPR_IDNAME ||
+        WN_st_idx(formal_wn) != formal.formal_st ||
+        formal_value.id != formal.formal_value_id ||
+        formal_value.value_kind != DSL_IR_VALUE_SYMBOL ||
+        formal_value.producer_node_id != DSL_IR_NODE_INVALID_ID ||
+        formal_value.flags != 0 || formal_value.reserved != 0 ||
+        formal_value.st != formal.formal_st ||
+        formal_value.ty != formal.formal_ty ||
+        actual_value.id != argument.argument_value_id ||
+        actual_value.value_kind == DSL_IR_VALUE_UNKNOWN ||
+        actual_value.flags != 0 || actual_value.reserved != 0 ||
+        WN_st_idx(address) != actual_value.st ||
+        WN_ty(address) != WN_ty(parm) ||
+        TY_kind(WN_ty(parm)) != KIND_POINTER ||
+        TY_pointed(WN_ty(parm)) != actual_value.ty ||
+        actual_value.ty != formal.formal_ty ||
+        !DSL_Shape_Value_Belongs_To_PU
+             (actual_value, callsite.owner_pu_st) ||
+        !DSL_Shape_Value_Belongs_To_PU
+             (formal_value, selector.destination_owner_pu_st) ||
+        source_identity.owner_pu_st != callsite.owner_pu_st ||
+        destination_identity.owner_pu_st !=
+            selector.destination_owner_pu_st ||
+        !DSL_Shape_Str_Stable
+             (source_identity.canonical_definition_name) ||
+        !DSL_Shape_Str_Stable(source_identity.defining_module) ||
+        !DSL_Shape_Str_Stable(source_identity.defining_file) ||
+        source_identity.defining_line == 0 ||
+        !DSL_Shape_Str_Stable
+             (destination_identity.canonical_definition_name) ||
+        !DSL_Shape_Str_Stable(destination_identity.defining_module) ||
+        !DSL_Shape_Str_Stable(destination_identity.defining_file) ||
+        destination_identity.defining_line == 0 ||
+        !DSL_Shape_PU_Stable_Identity
+             (callsite.owner_pu_st, &source_identity,
+              &source_identity_fingerprint) ||
+        !DSL_Shape_PU_Stable_Identity
+             (selector.destination_owner_pu_st, &destination_identity,
+              &destination_identity_fingerprint))
+        return FALSE;
+
+    if (selector.source_owner_pu_st != callsite.owner_pu_st ||
+        selector.callsite_owner_pu_st != callsite.owner_pu_st ||
+        selector.callsite_callee_pu_st != callsite.callee_pu_st ||
+        selector.source_identity_fingerprint !=
+            source_identity_fingerprint ||
+        selector.destination_identity_fingerprint !=
+            destination_identity_fingerprint ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.source_canonical_definition_name,
+              source_identity.canonical_definition_name) ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.source_defining_module,
+              source_identity.defining_module) ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.source_defining_file,
+              source_identity.defining_file) ||
+        selector.source_defining_line != source_identity.defining_line ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.destination_canonical_definition_name,
+              destination_identity.canonical_definition_name) ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.destination_defining_module,
+              destination_identity.defining_module) ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.destination_defining_file,
+              destination_identity.defining_file) ||
+        selector.destination_defining_line !=
+            destination_identity.defining_line ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.canonical_class_name,
+              callsite.canonical_class_name) ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.instance_path, callsite.instance_path) ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.context_identity, callsite.context_identity) ||
+        selector.source_call_ordinal != callsite.source_call_ordinal ||
+        selector.argument_value_id != argument.argument_value_id ||
+        !DSL_Shape_Str_Content_Equal
+             (selector.argument_semantic_role,
+              argument.semantic_role) ||
+        selector.actual_st != actual_value.st ||
+        selector.actual_ty != actual_value.ty ||
+        selector.formal_owner_pu_st != formal.owner_pu_st ||
+        selector.formal_value_id != formal.formal_value_id ||
+        selector.formal_st != formal.formal_st ||
+        selector.formal_ty != formal.formal_ty)
+        return FALSE;
+
+    DSL_SHAPE_FACT actual_fact;
+    ST_IDX qualified_source_locator;
+    BOOL has_foreign_owner;
+    DSL_PU_SOURCE_IDENTITY_RECORD qualified_source_identity;
+    UINT64 qualified_source_fingerprint;
+    if (!DSL_Shape_Fact_From_Type(actual_value.ty, &actual_fact) ||
+        !DSL_Shape_Fact_Foreign_Owner
+             (actual_fact, selector.destination_owner_pu_st,
+              &qualified_source_locator, &has_foreign_owner) ||
+        !has_foreign_owner ||
+        !DSL_Shape_PU_Stable_Identity
+             (qualified_source_locator, &qualified_source_identity,
+              &qualified_source_fingerprint) ||
+        qualified_source_fingerprint != source_identity_fingerprint ||
+        !DSL_Shape_PU_Locators_Equivalent
+             (qualified_source_locator, callsite.owner_pu_st))
+        return FALSE;
+
+    evidence->entries[evidence->count].source_owner_locator =
+        callsite.owner_pu_st;
+    evidence->entries[evidence->count].source_identity_fingerprint =
+        source_identity_fingerprint;
+    evidence->entries[evidence->count].destination_identity_fingerprint =
+        destination_identity_fingerprint;
+    evidence->entries[evidence->count].argument_value_id =
+        argument.argument_value_id;
+    evidence->entries[evidence->count].formal_value_id =
+        formal.formal_value_id;
+    ++evidence->count;
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Proof_Context_Validate
+        (const DSL_SHAPE_PROOF_CONTEXT *context,
+         const DSL_IR_NODE_RECORD *node,
+         const TY_IDX *operand_types,
+         UINT32 operand_count,
+         TY_IDX result_ty,
+         DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE *mapping)
+{
+    if (mapping == NULL)
+        return FALSE;
+    memset(mapping, 0, sizeof(*mapping));
+    if (context == NULL || node == NULL || result_ty == TY_IDX_ZERO ||
+        (operand_count != 0 && operand_types == NULL) ||
+        context->active_boundary.pu_info == NULL ||
+        context->active_boundary.tree == NULL ||
+        ST_IDX_index(context->active_boundary.owner_pu_st) == 0 ||
+        PU_Info_proc_sym(context->active_boundary.pu_info) !=
+            context->active_boundary.owner_pu_st ||
+        PU_Info_tree_ptr(context->active_boundary.pu_info) !=
+            context->active_boundary.tree ||
+        WN_operator(context->active_boundary.tree) != OPR_FUNC_ENTRY ||
+        WN_st_idx(context->active_boundary.tree) !=
+            context->active_boundary.owner_pu_st ||
+        context->node_id != node->id ||
+        context->operand_value_count != operand_count ||
+        (operand_count != 0 && context->operand_value_ids == NULL) ||
+        context->result_value_id != node->result_value_id ||
+        context->interface_mapping_count >
+            DSL_SHAPE_MAX_INTERFACE_MAPPINGS)
+        return FALSE;
+
+    DSL_IR_NODE_RECORD image_node;
+    if (!DSL_IR_Image_Get_Node(node->id, &image_node) ||
+        memcmp(node, &image_node, sizeof(image_node)) != 0 ||
+        image_node.operand_count != operand_count)
+        return FALSE;
+    for (UINT32 i = 0; i < operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value_Reference
+                 (image_node.first_operand_reference_id + i, &reference) ||
+            reference.owner_node_id != image_node.id ||
+            reference.ordinal != i ||
+            reference.value_id != context->operand_value_ids[i] ||
+            !DSL_IR_Image_Get_Value(reference.value_id, &value) ||
+            value.ty != operand_types[i] ||
+            !DSL_Shape_Value_Belongs_To_PU
+                 (value, context->active_boundary.owner_pu_st))
+            return FALSE;
+    }
+    DSL_IR_VALUE_RECORD result_value;
+    if (!DSL_IR_Image_Get_Value(context->result_value_id, &result_value) ||
+        result_value.producer_node_id != image_node.id ||
+        result_value.ty != result_ty ||
+        !DSL_Shape_Value_Belongs_To_PU
+             (result_value, context->active_boundary.owner_pu_st))
+        return FALSE;
+    for (UINT32 i = 0; i < context->interface_mapping_count; ++i) {
+        for (UINT32 j = 0; j < i; ++j) {
+            if (context->interface_mappings[i].callsite_id ==
+                    context->interface_mappings[j].callsite_id &&
+                context->interface_mappings[i].actual_ordinal ==
+                    context->interface_mappings[j].actual_ordinal &&
+                context->interface_mappings[i].destination_owner_pu_st ==
+                    context->interface_mappings[j].destination_owner_pu_st &&
+                context->interface_mappings[i].formal_ordinal ==
+                    context->interface_mappings[j].formal_ordinal)
+                return FALSE;
+        }
+        if (!DSL_Shape_Interface_Mapping_Validate
+                 (context, context->interface_mappings[i], mapping))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Shape_Fact_Admitted
+        (const DSL_SHAPE_FACT &fact,
+         DSL_IR_VALUE_ID value_id,
+         const DSL_SHAPE_PROOF_CONTEXT *context,
+         const DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE &mapping)
+{
+    if (context == NULL)
+        return FALSE;
+    ST_IDX foreign_owner_pu_st;
+    BOOL has_foreign_owner;
+    if (!DSL_Shape_Fact_Foreign_Owner
+             (fact, context->active_boundary.owner_pu_st,
+              &foreign_owner_pu_st, &has_foreign_owner))
+        return FALSE;
+    std::vector<DSL_IR_VALUE_ID> active_values;
+    return DSL_Shape_Value_Provenance_Valid
+               (value_id, context, mapping, &active_values);
+}
+
+static BOOL
+DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping_For_Value
+        (DSL_SHAPE_PROOF_CONTEXT *context,
+         DSL_IR_VALUE_ID value_id,
+         std::vector<DSL_IR_VALUE_ID> *active_values)
+{
+    if (active_values == NULL ||
+        active_values->size() > DSL_IR_Image_Value_Count())
+        return FALSE;
+    for (UINT32 i = 0; i < active_values->size(); ++i) {
+        if ((*active_values)[i] == value_id)
+            return FALSE;
+    }
+    DSL_IR_VALUE_RECORD value;
+    DSL_SHAPE_FACT fact;
+    ST_IDX foreign_owner_pu_st;
+    BOOL has_foreign_owner;
+    if (!DSL_IR_Image_Get_Value(value_id, &value) ||
+        !DSL_Shape_Fact_From_Type(value.ty, &fact) ||
+        !DSL_Shape_Fact_Foreign_Owner
+             (fact, context->active_boundary.owner_pu_st,
+              &foreign_owner_pu_st, &has_foreign_owner))
+        return FALSE;
+    if (!has_foreign_owner)
+        return TRUE;
+    DSL_PU_FORMAL_RECORD formal;
+    if (!DSL_Shape_Find_Active_Formal(context, value.id, &formal)) {
+        if (value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+            return FALSE;
+        DSL_IR_NODE_RECORD node;
+        if (!DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+            node.result_value_id != value.id)
+            return FALSE;
+        active_values->push_back(value.id);
+        for (UINT32 i = 0; i < node.operand_count; ++i) {
+            DSL_IR_VALUE_REFERENCE_RECORD reference;
+            if (!DSL_IR_Image_Get_Value_Reference
+                     (node.first_operand_reference_id + i, &reference) ||
+                reference.owner_node_id != node.id ||
+                reference.ordinal != i ||
+                !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping_For_Value
+                     (context, reference.value_id, active_values)) {
+                active_values->pop_back();
+                return FALSE;
+            }
+        }
+        active_values->pop_back();
+        return TRUE;
+    }
+    DSL_CALL_ARGUMENT_RECORD argument;
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    if (DSL_Call_ABI_Image_Callee_Formal_Count
+            (context->active_boundary.owner_pu_st,
+             formal.formal_ordinal) != 1 ||
+        !DSL_Call_ABI_Image_Get_Callee_Formal_Argument
+             (context->active_boundary.owner_pu_st,
+              formal.formal_ordinal, 0, &argument) ||
+        !DSL_Call_Image_Get_Callsite(argument.callsite_id, &callsite) ||
+        !DSL_Shape_PU_Locators_Equivalent
+             (callsite.owner_pu_st, foreign_owner_pu_st))
+        return FALSE;
+    return DSL_Shape_Proof_Context_Select_Reviewed_Interface_Mapping
+               (context, argument.callsite_id, argument.actual_ordinal,
+                context->active_boundary.owner_pu_st,
+                formal.formal_ordinal);
+}
+
+BOOL
+DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+        (DSL_SHAPE_PROOF_CONTEXT *context)
+{
+    if (context == NULL || context->active_boundary.pu_info == NULL ||
+        context->active_boundary.tree == NULL ||
+        (context->operand_value_count != 0 &&
+         context->operand_value_ids == NULL))
+        return FALSE;
+    std::vector<DSL_IR_VALUE_ID> active_values;
+    for (UINT32 i = 0; i < context->operand_value_count; ++i) {
+        if (!DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping_For_Value
+                 (context, context->operand_value_ids[i], &active_values))
+            return FALSE;
+    }
+    return DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping_For_Value
+               (context, context->result_value_id, &active_values);
 }
 
 static BOOL
@@ -2082,8 +2982,13 @@ DSL_Shape_Merge_Equal_Fact
             continue;
         if (target->dimension_kind[i] != DSL_SHAPE_DIMENSION_PENDING &&
             (target->dimension_kind[i] != source.dimension_kind[i] ||
-             strcmp(target->dimension_text[i],
-                    source.dimension_text[i]) != 0)) {
+             ((target->dimension_kind[i] == DSL_SHAPE_DIMENSION_SYMBOL ||
+               target->dimension_kind[i] ==
+                   DSL_SHAPE_DIMENSION_EXPRESSION) ?
+                  !DSL_Shape_Dimension_Proves_Equal
+                       (*target, i, source, i) :
+                  strcmp(target->dimension_text[i],
+                         source.dimension_text[i]) != 0))) {
             target->state = DSL_SHAPE_FACT_CONTRADICTION;
             return FALSE;
         }
@@ -2094,6 +2999,16 @@ DSL_Shape_Merge_Equal_Fact
     }
     DSL_Shape_Fact_Classify(target);
     return TRUE;
+}
+
+static BOOL
+DSL_Shape_Persisted_Fact_Proved_By_Inference
+        (const DSL_SHAPE_FACT &persisted,
+         const DSL_SHAPE_FACT &inferred)
+{
+    DSL_SHAPE_FACT merged = persisted;
+    return DSL_Shape_Merge_Equal_Fact(&merged, inferred) &&
+           DSL_Shape_Facts_Equal(merged, inferred);
 }
 
 static BOOL
@@ -2572,31 +3487,11 @@ DSL_Shape_Infer_Pool
     return DSL_Shape_Set_Complete(output, result);
 }
 
-DSL_SHAPE_INFERENCE_RESULT
-DSL_Shape_Infer_Operator
+static DSL_SHAPE_INFERENCE_RESULT
+DSL_Shape_Infer_Operator_Core
         (const DSL_SHAPE_INFERENCE_INPUT *input,
          DSL_SHAPE_FACT *result)
 {
-    if (result == NULL)
-        return DSL_SHAPE_INFERENCE_CONTRADICTION;
-    DSL_Shape_Fact_Init(result);
-    if (input == NULL || input->node == NULL || input->result_ty == TY_IDX_ZERO ||
-        (input->operand_count != 0 &&
-         (input->operand_types == NULL || input->operand_facts == NULL)))
-        return DSL_SHAPE_INFERENCE_CONTRADICTION;
-    if (!DSL_Shape_Has_Operator_Rule(input->dsl_operator, input->version))
-        return DSL_SHAPE_INFERENCE_UNREGISTERED;
-    DSL_OPERATOR_INFO info;
-    if (!DSL_Operator_Get_Info_Version
-             (input->dsl_operator, input->version, &info) ||
-        (info.nkids >= 0 && (UINT32)info.nkids != input->operand_count))
-        return DSL_SHAPE_INFERENCE_CONTRADICTION;
-    for (UINT32 i = 0; i < input->operand_count; ++i) {
-        if (input->operand_facts[i].state == DSL_SHAPE_FACT_CONTRADICTION ||
-            !DSL_Shape_Tensor_Core_Complete(input->operand_types[i]))
-            return DSL_SHAPE_INFERENCE_CONTRADICTION;
-    }
-
     BOOL valid = FALSE;
     switch (input->dsl_operator) {
     case OPR_DSLADD:
@@ -2700,12 +3595,290 @@ DSL_Shape_Infer_Operator
            DSL_SHAPE_INFERENCE_COMPLETE : DSL_SHAPE_INFERENCE_PENDING;
 }
 
+static BOOL
+DSL_Shape_Value_Provenance_Valid
+        (DSL_IR_VALUE_ID value_id,
+         const DSL_SHAPE_PROOF_CONTEXT *context,
+         const DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE &mapping,
+         std::vector<DSL_IR_VALUE_ID> *active_values)
+{
+    if (context == NULL || active_values == NULL ||
+        active_values->size() > DSL_IR_Image_Value_Count())
+        return FALSE;
+    for (UINT32 i = 0; i < active_values->size(); ++i) {
+        if ((*active_values)[i] == value_id)
+            return FALSE;
+    }
+
+    DSL_IR_VALUE_RECORD value;
+    DSL_SHAPE_FACT persisted;
+    ST_IDX foreign_owner_pu_st;
+    BOOL has_foreign_owner;
+    if (!DSL_IR_Image_Get_Value(value_id, &value) ||
+        !DSL_Shape_Value_Belongs_To_PU
+             (value, context->active_boundary.owner_pu_st) ||
+        !DSL_Shape_Fact_From_Type(value.ty, &persisted) ||
+        !DSL_Shape_Fact_Foreign_Owner
+             (persisted, context->active_boundary.owner_pu_st,
+              &foreign_owner_pu_st, &has_foreign_owner))
+        return FALSE;
+    if (has_foreign_owner) {
+        DSL_PU_SOURCE_IDENTITY_RECORD foreign_identity;
+        UINT64 foreign_identity_fingerprint;
+        if (!DSL_Shape_PU_Stable_Identity
+                 (foreign_owner_pu_st, &foreign_identity,
+                  &foreign_identity_fingerprint))
+            return FALSE;
+        for (UINT32 i = 0; i < mapping.count; ++i) {
+            if (mapping.entries[i].source_identity_fingerprint ==
+                    foreign_identity_fingerprint &&
+                DSL_Shape_PU_Locators_Equivalent
+                    (mapping.entries[i].source_owner_locator,
+                     foreign_owner_pu_st) &&
+                mapping.entries[i].formal_value_id == value_id)
+                return TRUE;
+        }
+    }
+    if (value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+        return !has_foreign_owner;
+
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    if (!DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+        node.result_value_id != value.id ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+             (node.opcode_descriptor_id, &descriptor))
+        return FALSE;
+    if (!DSL_Shape_Has_Operator_Rule
+             ((DSL_OPERATOR)descriptor.logical_operator,
+              descriptor.version))
+        return !has_foreign_owner;
+
+    active_values->push_back(value.id);
+    std::vector<TY_IDX> operand_types;
+    std::vector<DSL_SHAPE_FACT> operand_facts;
+    for (UINT32 i = 0; i < node.operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        DSL_IR_VALUE_RECORD operand;
+        DSL_SHAPE_FACT fact;
+        if (!DSL_IR_Image_Get_Value_Reference
+                 (node.first_operand_reference_id + i, &reference) ||
+            reference.owner_node_id != node.id || reference.ordinal != i ||
+            !DSL_IR_Image_Get_Value(reference.value_id, &operand) ||
+            !DSL_Shape_Fact_From_Type(operand.ty, &fact) ||
+            !DSL_Shape_Value_Provenance_Valid
+                 (operand.id, context, mapping, active_values)) {
+            active_values->pop_back();
+            return FALSE;
+        }
+        operand_types.push_back(operand.ty);
+        operand_facts.push_back(fact);
+    }
+    active_values->pop_back();
+
+    DSL_SHAPE_INFERENCE_INPUT input;
+    memset(&input, 0, sizeof(input));
+    input.dsl_operator = (DSL_OPERATOR)descriptor.logical_operator;
+    input.version = descriptor.version;
+    input.node = &node;
+    input.operand_types = operand_types.empty() ? NULL : &operand_types[0];
+    input.operand_facts = operand_facts.empty() ? NULL : &operand_facts[0];
+    input.operand_count = operand_types.size();
+    input.result_ty = value.ty;
+    input.proof_context = context;
+    DSL_SHAPE_FACT inferred;
+    DSL_Shape_Fact_Init(&inferred);
+    DSL_SHAPE_INFERENCE_RESULT inference =
+        DSL_Shape_Infer_Operator_Core(&input, &inferred);
+    return (inference == DSL_SHAPE_INFERENCE_COMPLETE ||
+            inference == DSL_SHAPE_INFERENCE_PENDING) &&
+           DSL_Shape_Persisted_Fact_Proved_By_Inference
+               (persisted, inferred);
+}
+
+BOOL
+DSL_Shape_Proof_Context_Admit_Value
+        (const DSL_SHAPE_PROOF_CONTEXT *context,
+         DSL_IR_VALUE_ID value_id,
+         TY_IDX value_ty)
+{
+    if (context == NULL || value_id == DSL_IR_VALUE_INVALID_ID ||
+        value_ty == TY_IDX_ZERO)
+        return FALSE;
+    std::vector<TY_IDX> operand_types;
+    BOOL value_is_in_context = value_id == context->result_value_id;
+    for (UINT32 i = 0; i < context->operand_value_count; ++i) {
+        DSL_IR_VALUE_RECORD operand;
+        if (!DSL_IR_Image_Get_Value
+                 (context->operand_value_ids[i], &operand))
+            return FALSE;
+        operand_types.push_back(operand.ty);
+        value_is_in_context = value_is_in_context || operand.id == value_id;
+    }
+    DSL_IR_VALUE_RECORD result_value;
+    if (!value_is_in_context ||
+        !DSL_IR_Image_Get_Value(context->result_value_id, &result_value))
+        return FALSE;
+    DSL_IR_NODE_RECORD node;
+    DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE mapping;
+    memset(&mapping, 0, sizeof(mapping));
+    if (!DSL_IR_Image_Get_Node(context->node_id, &node) ||
+        !DSL_Shape_Proof_Context_Validate
+             (context, &node,
+              operand_types.empty() ? NULL : &operand_types[0],
+              operand_types.size(), result_value.ty, &mapping))
+        return FALSE;
+    DSL_IR_VALUE_RECORD value;
+    DSL_SHAPE_FACT fact;
+    return DSL_IR_Image_Get_Value(value_id, &value) &&
+           value.ty == value_ty &&
+           DSL_Shape_Fact_From_Type(value.ty, &fact) &&
+           DSL_Shape_Fact_Admitted
+               (fact, value_id, context, mapping);
+}
+
+BOOL
+DSL_Shape_Proof_Context_Admit_Refinement
+        (const DSL_SHAPE_PROOF_CONTEXT *context,
+         DSL_IR_VALUE_ID value_id,
+         TY_IDX expected_old_ty,
+         TY_IDX refined_ty)
+{
+    if (context == NULL || value_id == DSL_IR_VALUE_INVALID_ID ||
+        expected_old_ty == TY_IDX_ZERO || refined_ty == TY_IDX_ZERO ||
+        expected_old_ty == refined_ty ||
+        context->result_value_id != value_id)
+        return FALSE;
+
+    DSL_IR_VALUE_RECORD value;
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    if (!DSL_IR_Image_Get_Value(value_id, &value) ||
+        value.ty != expected_old_ty ||
+        value.producer_node_id != context->node_id ||
+        !DSL_IR_Image_Get_Node(context->node_id, &node) ||
+        node.result_value_id != value.id ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+             (node.opcode_descriptor_id, &descriptor) ||
+        !DSL_Shape_Has_Operator_Rule
+             ((DSL_OPERATOR)descriptor.logical_operator,
+              descriptor.version) ||
+        !DSL_Shape_Tensor_Core_Complete(expected_old_ty) ||
+        !DSL_Shape_Tensor_Core_Complete(refined_ty))
+        return FALSE;
+
+    std::vector<TY_IDX> operand_types;
+    std::vector<DSL_SHAPE_FACT> operand_facts;
+    operand_types.reserve(node.operand_count);
+    operand_facts.resize(node.operand_count);
+    for (UINT32 i = 0; i < node.operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        DSL_IR_VALUE_RECORD operand;
+        if (!DSL_IR_Image_Get_Value_Reference
+                 (node.first_operand_reference_id + i, &reference) ||
+            reference.owner_node_id != node.id || reference.ordinal != i ||
+            !DSL_IR_Image_Get_Value(reference.value_id, &operand) ||
+            !DSL_Shape_Fact_From_Type(operand.ty, &operand_facts[i]))
+            return FALSE;
+        operand_types.push_back(operand.ty);
+    }
+
+    DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE mapping;
+    memset(&mapping, 0, sizeof(mapping));
+    if (!DSL_Shape_Proof_Context_Validate
+             (context, &node,
+              operand_types.empty() ? NULL : &operand_types[0],
+              operand_types.size(), expected_old_ty, &mapping))
+        return FALSE;
+    for (UINT32 i = 0; i < operand_types.size(); ++i) {
+        if (!DSL_Shape_Fact_Admitted
+                 (operand_facts[i], context->operand_value_ids[i],
+                  context, mapping))
+            return FALSE;
+    }
+
+    DSL_SHAPE_FACT refined_fact;
+    if (!DSL_Shape_Fact_From_Type(refined_ty, &refined_fact) ||
+        refined_fact.state != DSL_SHAPE_FACT_COMPLETE)
+        return FALSE;
+    DSL_SHAPE_INFERENCE_INPUT input;
+    memset(&input, 0, sizeof(input));
+    input.dsl_operator = (DSL_OPERATOR)descriptor.logical_operator;
+    input.version = descriptor.version;
+    input.node = &node;
+    input.operand_types =
+        operand_types.empty() ? NULL : &operand_types[0];
+    input.operand_facts =
+        operand_facts.empty() ? NULL : &operand_facts[0];
+    input.operand_count = operand_types.size();
+    input.result_ty = refined_ty;
+    input.proof_context = context;
+    DSL_SHAPE_FACT inferred;
+    DSL_Shape_Fact_Init(&inferred);
+    DSL_SHAPE_INFERENCE_RESULT inference =
+        DSL_Shape_Infer_Operator_Core(&input, &inferred);
+    return (inference == DSL_SHAPE_INFERENCE_COMPLETE ||
+            inference == DSL_SHAPE_INFERENCE_PENDING) &&
+           DSL_Shape_Facts_Equal(inferred, refined_fact);
+}
+
+DSL_SHAPE_INFERENCE_RESULT
+DSL_Shape_Infer_Operator
+        (const DSL_SHAPE_INFERENCE_INPUT *input,
+         DSL_SHAPE_FACT *result)
+{
+    if (result == NULL)
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    DSL_Shape_Fact_Init(result);
+    if (input == NULL || input->proof_context == NULL ||
+        input->node == NULL ||
+        input->result_ty == TY_IDX_ZERO ||
+        (input->operand_count != 0 &&
+         (input->operand_types == NULL || input->operand_facts == NULL)))
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    if (!DSL_Shape_Has_Operator_Rule(input->dsl_operator, input->version))
+        return DSL_SHAPE_INFERENCE_UNREGISTERED;
+    DSL_OPERATOR_INFO info;
+    if (!DSL_Operator_Get_Info_Version
+             (input->dsl_operator, input->version, &info) ||
+        (info.nkids >= 0 && (UINT32)info.nkids != input->operand_count))
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    if (!DSL_IR_Image_Get_Opcode_Descriptor
+             (input->node->opcode_descriptor_id, &descriptor) ||
+        descriptor.logical_operator != (UINT32)input->dsl_operator ||
+        descriptor.version != input->version)
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE mapping;
+    memset(&mapping, 0, sizeof(mapping));
+    if (!DSL_Shape_Proof_Context_Validate
+             (input->proof_context, input->node, input->operand_types,
+              input->operand_count, input->result_ty, &mapping))
+        return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    for (UINT32 i = 0; i < input->operand_count; ++i) {
+        DSL_SHAPE_FACT authoritative;
+        if (input->operand_facts[i].state == DSL_SHAPE_FACT_CONTRADICTION ||
+            !DSL_Shape_Tensor_Core_Complete(input->operand_types[i]) ||
+            !DSL_Shape_Fact_From_Type
+                 (input->operand_types[i], &authoritative) ||
+            !DSL_Shape_Facts_Equal
+                 (input->operand_facts[i], authoritative) ||
+            !DSL_Shape_Fact_Admitted
+                 (authoritative,
+                  input->proof_context->operand_value_ids[i],
+                  input->proof_context, mapping))
+            return DSL_SHAPE_INFERENCE_CONTRADICTION;
+    }
+    return DSL_Shape_Infer_Operator_Core(input, result);
+}
+
 typedef struct {
     DSL_IR_VALUE_ID value_id;
     TY_IDX ty;
     DSL_SHAPE_FACT seed;
     DSL_SHAPE_FACT fact;
     BOOL has_producer;
+    BOOL provenance_trusted;
     SRCPOS source_position;
 } DSL_SHAPE_SOLVER_VALUE;
 
@@ -2947,6 +4120,87 @@ DSL_Shape_Image_Fingerprint (void)
 }
 
 static BOOL
+DSL_Shape_Solver_Preflight_Seeds
+        (PU_Info *pu,
+         WN *tree,
+         std::vector<DSL_SHAPE_SOLVER_VALUE> *values,
+         const std::vector<DSL_SHAPE_SOLVER_CONSTRAINT> &constraints,
+         FILE *diagnostic)
+{
+    if (pu == NULL || tree == NULL || values == NULL)
+        return FALSE;
+    for (UINT32 i = 0; i < values->size(); ++i) {
+        DSL_SHAPE_SOLVER_VALUE &solver_value = (*values)[i];
+        BOOL has_constraint_producer = FALSE;
+        for (UINT32 j = 0; j < constraints.size(); ++j) {
+            if (constraints[j].result_index == i) {
+                if (has_constraint_producer)
+                    return FALSE;
+                has_constraint_producer = TRUE;
+            }
+        }
+        if (has_constraint_producer) {
+            DSL_Shape_Fact_Init(&solver_value.fact);
+            solver_value.provenance_trusted = FALSE;
+            continue;
+        }
+
+        ST_IDX foreign_owner_pu_st;
+        BOOL has_foreign_owner;
+        if (!DSL_Shape_Fact_Foreign_Owner
+                 (solver_value.seed, PU_Info_proc_sym(pu),
+                  &foreign_owner_pu_st, &has_foreign_owner))
+            return FALSE;
+        if (!has_foreign_owner) {
+            solver_value.provenance_trusted = TRUE;
+            continue;
+        }
+
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(solver_value.value_id, &value))
+            return FALSE;
+        BOOL has_consumer = FALSE;
+        for (UINT32 j = 0; j < constraints.size(); ++j) {
+            const DSL_SHAPE_SOLVER_CONSTRAINT &constraint = constraints[j];
+            BOOL consumes_value = FALSE;
+            std::vector<DSL_IR_VALUE_ID> operand_value_ids;
+            for (UINT32 k = 0; k < constraint.operand_indices.size(); ++k) {
+                DSL_SHAPE_SOLVER_VALUE &operand =
+                    (*values)[constraint.operand_indices[k]];
+                operand_value_ids.push_back(operand.value_id);
+                consumes_value = consumes_value ||
+                                 constraint.operand_indices[k] == i;
+            }
+            if (!consumes_value)
+                continue;
+            has_consumer = TRUE;
+            DSL_SHAPE_PROOF_CONTEXT proof_context;
+            if (!DSL_Shape_Proof_Context_Init
+                     (&proof_context, pu, tree, PU_Info_proc_sym(pu),
+                      constraint.node_id,
+                      operand_value_ids.empty() ?
+                          NULL : &operand_value_ids[0],
+                      operand_value_ids.size(),
+                      (*values)[constraint.result_index].value_id) ||
+                !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+                     (&proof_context) ||
+                !DSL_Shape_Proof_Context_Admit_Value
+                     (&proof_context, value.id, value.ty))
+                return FALSE;
+        }
+        if (!has_consumer) {
+            if (diagnostic != NULL)
+                fprintf(diagnostic,
+                        "DSL-SHAPE-005: unproved symbolic seed for value "
+                        "%u\n", value.id);
+            return FALSE;
+        }
+        solver_value.provenance_trusted = TRUE;
+    }
+    return TRUE;
+}
+
+static BOOL
 DSL_Shape_Analyze_PU_Internal
         (PU_Info *pu,
          WN *tree,
@@ -2978,6 +4232,9 @@ DSL_Shape_Analyze_PU_Internal
     BOOL valid = DSL_Shape_Collect_Constraints
                      (PU_Info_proc_sym(pu), tree, &values, &constraints,
                       diagnostic);
+    if (valid && !DSL_Shape_Solver_Preflight_Seeds
+                     (pu, tree, &values, constraints, diagnostic))
+        valid = FALSE;
     std::sort(constraints.begin(), constraints.end(),
               DSL_Shape_Constraint_Order);
     local_result.visited_node_count = constraints.size();
@@ -2992,12 +4249,28 @@ DSL_Shape_Analyze_PU_Internal
             DSL_SHAPE_SOLVER_CONSTRAINT &constraint = constraints[i];
             std::vector<TY_IDX> operand_types;
             std::vector<DSL_SHAPE_FACT> operand_facts;
+            std::vector<DSL_IR_VALUE_ID> operand_value_ids;
+            BOOL operands_trusted = TRUE;
             for (UINT32 j = 0; j < constraint.operand_indices.size(); ++j) {
                 DSL_SHAPE_SOLVER_VALUE &operand =
                     values[constraint.operand_indices[j]];
+                operands_trusted = operands_trusted &&
+                                   operand.provenance_trusted;
                 operand_types.push_back(operand.ty);
                 operand_facts.push_back(operand.fact);
+                operand_value_ids.push_back(operand.value_id);
             }
+            if (!operands_trusted)
+                continue;
+            DSL_SHAPE_PROOF_CONTEXT proof_context;
+            BOOL proof_context_valid = DSL_Shape_Proof_Context_Init
+                (&proof_context, pu, tree, PU_Info_proc_sym(pu),
+                 constraint.node_id,
+                 operand_value_ids.empty() ? NULL : &operand_value_ids[0],
+                 operand_value_ids.size(),
+                 values[constraint.result_index].value_id) &&
+                DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+                    (&proof_context);
             DSL_SHAPE_INFERENCE_INPUT input;
             input.dsl_operator = constraint.dsl_operator;
             input.version = constraint.version;
@@ -3008,9 +4281,19 @@ DSL_Shape_Analyze_PU_Internal
                                   NULL : &operand_facts[0];
             input.operand_count = operand_types.size();
             input.result_ty = values[constraint.result_index].ty;
+            input.proof_context = &proof_context;
             DSL_SHAPE_FACT inferred;
-            DSL_SHAPE_INFERENCE_RESULT inference =
-                DSL_Shape_Infer_Operator(&input, &inferred);
+            DSL_Shape_Fact_Init(&inferred);
+            DSL_SHAPE_INTERFACE_MAPPING_EVIDENCE mapping;
+            memset(&mapping, 0, sizeof(mapping));
+            BOOL context_valid = proof_context_valid &&
+                DSL_Shape_Proof_Context_Validate
+                    (&proof_context, &constraint.node,
+                     input.operand_types, input.operand_count,
+                     input.result_ty, &mapping);
+            DSL_SHAPE_INFERENCE_RESULT inference = context_valid ?
+                DSL_Shape_Infer_Operator_Core(&input, &inferred) :
+                DSL_SHAPE_INFERENCE_CONTRADICTION;
             BOOL all_seed_facts_complete =
                 values[constraint.result_index].seed.state ==
                     DSL_SHAPE_FACT_COMPLETE;
@@ -3021,7 +4304,7 @@ DSL_Shape_Analyze_PU_Internal
                     values[constraint.operand_indices[j]].seed.state ==
                         DSL_SHAPE_FACT_COMPLETE;
             }
-            if (all_seed_facts_complete) {
+            if (context_valid && all_seed_facts_complete) {
                 DSL_SHAPE_OPERATOR_INPUT check;
                 check.dsl_operator = constraint.dsl_operator;
                 check.version = constraint.version;
@@ -3029,6 +4312,7 @@ DSL_Shape_Analyze_PU_Internal
                 check.operand_types = input.operand_types;
                 check.operand_count = input.operand_count;
                 check.result_ty = input.result_ty;
+                check.proof_context = &proof_context;
                 if (DSL_Shape_Check_Operator(&check) !=
                     DSL_SHAPE_CHECK_VALID)
                     inference = DSL_SHAPE_INFERENCE_CONTRADICTION;
@@ -3040,12 +4324,18 @@ DSL_Shape_Analyze_PU_Internal
                     DSL_SHAPE_FACT_CONTRADICTION;
                 valid = FALSE;
             } else {
+                BOOL was_trusted =
+                    values[constraint.result_index].provenance_trusted;
                 BOOL value_changed = FALSE;
-                if (!DSL_Shape_Merge_Inference
+                if (!DSL_Shape_Persisted_Fact_Proved_By_Inference
+                         (values[constraint.result_index].seed, inferred) ||
+                    !DSL_Shape_Merge_Inference
                          (&values[constraint.result_index].fact, inferred,
                           &value_changed))
                     valid = FALSE;
-                changed = changed || value_changed;
+                else
+                    values[constraint.result_index].provenance_trusted = TRUE;
+                changed = changed || value_changed || !was_trusted;
             }
             if (!valid && diagnostic != NULL) {
                 fprintf(diagnostic,
@@ -3060,6 +4350,17 @@ DSL_Shape_Analyze_PU_Internal
             }
             if (!valid)
                 break;
+        }
+    }
+
+    if (valid) {
+        for (UINT32 i = 0; i < constraints.size(); ++i) {
+            DSL_SHAPE_SOLVER_VALUE &produced =
+                values[constraints[i].result_index];
+            if (!produced.provenance_trusted) {
+                produced.fact.state = DSL_SHAPE_FACT_CONTRADICTION;
+                valid = FALSE;
+            }
         }
     }
 

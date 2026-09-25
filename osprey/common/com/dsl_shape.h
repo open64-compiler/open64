@@ -18,12 +18,63 @@ class WN;
 
 #define DSL_SHAPE_MAX_RANK 16
 #define DSL_SHAPE_DIMENSION_TEXT_MAX 96
+#define DSL_SHAPE_MAX_INTERFACE_MAPPINGS 16
 
 typedef enum {
     DSL_SHAPE_CHECK_UNREGISTERED = 0,
     DSL_SHAPE_CHECK_VALID = 1,
     DSL_SHAPE_CHECK_INVALID = 2
 } DSL_SHAPE_CHECK_RESULT;
+
+/*
+ * Runtime-only locator for one reviewed call-argument/formal relationship.
+ * The locator is not proof by itself; proof use must re-read and validate the
+ * referenced callsite, argument, and formal records.
+ */
+typedef struct {
+    DSL_CALLSITE_METADATA_ID callsite_id;
+    UINT32 actual_ordinal;
+    ST_IDX destination_owner_pu_st;
+    UINT32 formal_ordinal;
+    UINT32 snapshot_version;
+    ST_IDX source_owner_pu_st;
+    UINT64 source_identity_fingerprint;
+    STR_IDX source_canonical_definition_name;
+    STR_IDX source_defining_module;
+    STR_IDX source_defining_file;
+    UINT32 source_defining_line;
+    UINT64 destination_identity_fingerprint;
+    STR_IDX destination_canonical_definition_name;
+    STR_IDX destination_defining_module;
+    STR_IDX destination_defining_file;
+    UINT32 destination_defining_line;
+    ST_IDX callsite_owner_pu_st;
+    ST_IDX callsite_callee_pu_st;
+    STR_IDX canonical_class_name;
+    STR_IDX instance_path;
+    STR_IDX context_identity;
+    UINT32 source_call_ordinal;
+    DSL_IR_VALUE_ID argument_value_id;
+    STR_IDX argument_semantic_role;
+    ST_IDX actual_st;
+    TY_IDX actual_ty;
+    ST_IDX formal_owner_pu_st;
+    DSL_IR_VALUE_ID formal_value_id;
+    ST_IDX formal_st;
+    TY_IDX formal_ty;
+} DSL_SHAPE_INTERFACE_MAPPING_SELECTOR;
+
+/* Runtime-only proof provenance. These records are never mapped. */
+typedef struct {
+    DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT active_boundary;
+    DSL_IR_NODE_ID node_id;
+    const DSL_IR_VALUE_ID *operand_value_ids;
+    UINT32 operand_value_count;
+    DSL_IR_VALUE_ID result_value_id;
+    UINT32 interface_mapping_count;
+    DSL_SHAPE_INTERFACE_MAPPING_SELECTOR
+        interface_mappings[DSL_SHAPE_MAX_INTERFACE_MAPPINGS];
+} DSL_SHAPE_PROOF_CONTEXT;
 
 typedef struct {
     DSL_OPERATOR dsl_operator;
@@ -32,6 +83,7 @@ typedef struct {
     const TY_IDX *operand_types;
     UINT32 operand_count;
     TY_IDX result_ty;
+    const DSL_SHAPE_PROOF_CONTEXT *proof_context;
 } DSL_SHAPE_OPERATOR_INPUT;
 
 typedef enum {
@@ -73,6 +125,7 @@ typedef struct {
     const DSL_SHAPE_FACT *operand_facts;
     UINT32 operand_count;
     TY_IDX result_ty;
+    const DSL_SHAPE_PROOF_CONTEXT *proof_context;
 } DSL_SHAPE_INFERENCE_INPUT;
 
 typedef struct {
@@ -100,6 +153,31 @@ typedef BOOL (*DSL_SHAPE_REFINEMENT_VISITOR)
     (const DSL_SHAPE_REFINEMENT *refinement, void *context);
 
 extern BOOL DSL_Shape_Tensor_Core_Complete(TY_IDX ty);
+extern BOOL DSL_Shape_Proof_Context_Init
+                                (DSL_SHAPE_PROOF_CONTEXT *context,
+                                 PU_Info *pu_info,
+                                 WN *tree,
+                                 ST_IDX owner_pu_st,
+                                 DSL_IR_NODE_ID node_id,
+                                 const DSL_IR_VALUE_ID *operand_value_ids,
+                                 UINT32 operand_value_count,
+                                 DSL_IR_VALUE_ID result_value_id);
+extern BOOL DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+                                (DSL_SHAPE_PROOF_CONTEXT *context);
+extern BOOL DSL_Shape_Proof_Context_Admit_Value
+                                (const DSL_SHAPE_PROOF_CONTEXT *context,
+                                 DSL_IR_VALUE_ID value_id,
+                                 TY_IDX value_ty);
+extern BOOL DSL_Shape_Proof_Context_Admit_Refinement
+                                (const DSL_SHAPE_PROOF_CONTEXT *context,
+                                 DSL_IR_VALUE_ID value_id,
+                                 TY_IDX expected_old_ty,
+                                 TY_IDX refined_ty);
+extern BOOL DSL_Shape_Refinement_Matches_Type
+                                (const DSL_SHAPE_REFINEMENT *refinement,
+                                 DSL_IR_VALUE_ID value_id,
+                                 TY_IDX expected_old_ty,
+                                 TY_IDX refined_ty);
 extern BOOL DSL_Shape_Parse_Static_Dimensions
                                 (const char *shape,
                                  UINT64 *dimensions,

@@ -416,12 +416,21 @@ typedef struct {
     TY_IDX refined_ty;
 } DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST;
 
+/* Runtime-only context for the composed active-PU boundary gate. */
+typedef struct {
+    PU_Info *pu_info;
+    WN *tree;
+    ST_IDX owner_pu_st;
+} DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT;
+
 typedef struct {
     UINT32 request_count;
     UINT32 updated_st_count;
     UINT32 updated_wn_count;
     UINT32 updated_value_count;
     UINT32 rollback_count;
+    UINT32 boundary_precheck_count;
+    UINT32 boundary_postcheck_count;
 } DSL_IR_VALUE_TYPE_REFINEMENT_RESULT;
 
 typedef enum {
@@ -569,6 +578,10 @@ extern BOOL DSL_PU_Interface_Image_Find_Formal
                                  DSL_PU_FORMAL_RECORD *record);
 extern BOOL DSL_PU_Interface_Image_Validate_PU
                                 (PU_Info *pu, FILE *diagnostic);
+extern BOOL DSL_IR_Image_Validate_Active_PU_Boundaries
+                                (const DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT
+                                     *context,
+                                 FILE *diagnostic);
 
 extern void DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header);
 extern void DSL_Effect_Image_Reset (void);

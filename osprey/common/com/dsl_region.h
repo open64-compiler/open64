@@ -80,6 +80,9 @@ extern WN *DSL_Region_WN (DSL_REGION region);
 extern BOOL DSL_Region_Is_Managed_WN (PU_Info *pu, const WN *wn);
 extern BOOL DSL_Region_Consume_WN (PU_Info *pu, const WN *wn);
 extern BOOL DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic);
+extern BOOL DSL_Region_Verify_Active_PU (PU_Info *pu, WN *tree,
+                                         ST_IDX owner_pu_st,
+                                         FILE *diagnostic);
 extern void DSL_Region_Print_PU (FILE *file, PU_Info *pu);
 
 struct output_file;

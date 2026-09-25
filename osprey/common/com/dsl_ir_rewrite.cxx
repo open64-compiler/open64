@@ -73,11 +73,92 @@ DSL_Call_ABI_Value_Matches_ST
     return owner == Index_To_Str(value.metadata);
 }
 
+static BOOL
+DSL_IR_Tree_Contains (const WN *tree, const WN *target)
+{
+    if (tree == NULL || target == NULL)
+        return FALSE;
+    if (tree == target)
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_IR_Tree_Contains(statement, target))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        if (DSL_IR_Tree_Contains(WN_kid(tree, kid), target))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_Call_ABI_Validate_Visible_Parameters
+        (ST_IDX owner_pu_st, WN *entry, FILE *diagnostic)
+{
+    for (UINT32 i = 1; i <= DSL_Call_Image_Callsite_Count(); ++i) {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Call_Image_Get_Callsite(i, &callsite))
+            return DSL_Call_ABI_PU_Report
+                       (diagnostic, "missing callsite", i);
+        if (callsite.owner_pu_st != owner_pu_st)
+            continue;
+        const WN *call = DSL_Call_Image_Get_Call_WN(callsite.id);
+        if (call == NULL || WN_operator(call) != OPR_CALL ||
+            !DSL_IR_Tree_Contains(entry, call) ||
+            WN_st_idx(call) != callsite.callee_pu_st)
+            return DSL_Call_ABI_PU_Report
+                       (diagnostic, "callsite is outside active PU", i);
+        for (INT32 ordinal = 0; ordinal < WN_kid_count(call); ++ordinal) {
+            DSL_PU_FORMAL_RECORD formal;
+            const WN *parm = WN_kid(call, ordinal);
+            const WN *address = parm == NULL || WN_operator(parm) != OPR_PARM ?
+                                NULL : WN_kid0(parm);
+            if (address == NULL || WN_operator(address) != OPR_LDA ||
+                !DSL_PU_Interface_Image_Find_Formal
+                    (callsite.callee_pu_st, ordinal, &formal))
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "missing physical parameter", i);
+            ST_IDX actual_st = WN_st_idx(address);
+            DSL_IR_VALUE_RECORD value;
+            if (ST_IDX_level(actual_st) != CURRENT_SYMTAB ||
+                ST_IDX_index(actual_st) == 0 ||
+                ST_IDX_index(actual_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+                !DSL_IR_Image_Find_PU_Value
+                    (actual_st, ST_name(St_Table[actual_st]),
+                     ST_name(St_Table[owner_pu_st]), &value) ||
+                !DSL_Call_ABI_Value_Matches_ST
+                    (value, owner_pu_st, actual_st) ||
+                WN_ty(address) != WN_ty(parm) ||
+                TY_kind(WN_ty(parm)) != KIND_POINTER ||
+                TY_pointed(WN_ty(parm)) != value.ty ||
+                formal.formal_ty != value.ty ||
+                !WN_Parm_By_Reference(parm) ||
+                !WN_Parm_Passed_Not_Saved(parm))
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "physical parameter type mismatch", i);
+            if (WN_Parm_Out(parm)) {
+                if (WN_Parm_Read_Only(parm))
+                    return DSL_Call_ABI_PU_Report
+                               (diagnostic, "output parameter is read-only", i);
+            } else if (!WN_Parm_Read_Only(parm)) {
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "input parameter is writable", i);
+            }
+        }
+    }
+    return TRUE;
+}
+
 BOOL
 DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
 {
     if (pu == NULL || PU_Info_tree_ptr(pu) == NULL ||
-        ST_IDX_index(PU_Info_proc_sym(pu)) == 0 || Current_pu == NULL ||
+        !DSL_IR_Image_PU_ST_Valid(PU_Info_proc_sym(pu)) ||
+        Current_pu == NULL ||
         Current_pu != &Pu_Table[ST_pu(St_Table[PU_Info_proc_sym(pu)])])
         return DSL_Call_ABI_PU_Report(diagnostic, "missing program unit", 0);
     ST_IDX owner_pu_st = PU_Info_proc_sym(pu);
@@ -125,7 +206,10 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                 WN_st_idx(WN_formal(entry, argument.callee_formal_ordinal));
             DSL_IR_VALUE_RECORD value;
             DSL_PU_FORMAL_RECORD formal;
-            if (!DSL_IR_Image_Get_Value(argument.argument_value_id, &value) ||
+            if (ST_IDX_level(formal_st) != CURRENT_SYMTAB ||
+                ST_IDX_index(formal_st) == 0 ||
+                ST_IDX_index(formal_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+                !DSL_IR_Image_Get_Value(argument.argument_value_id, &value) ||
                 value.ty != ST_type(St_Table[formal_st]) ||
                 (DSL_PU_Interface_Image_Has_Records() &&
                  (!DSL_PU_Interface_Image_Find_Formal
@@ -137,7 +221,8 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                             argument.id);
         }
     }
-    return TRUE;
+    return DSL_Call_ABI_Validate_Visible_Parameters
+               (owner_pu_st, entry, diagnostic);
 }
 
 static BOOL
@@ -187,6 +272,57 @@ DSL_PU_Interface_Image_Validate (FILE *diagnostic)
     return TRUE;
 }
 
+static BOOL
+DSL_PU_Interface_Tree_Has_Return (const WN *tree)
+{
+    if (tree == NULL)
+        return FALSE;
+    if (WN_operator(tree) == OPR_RETURN ||
+        WN_operator(tree) == OPR_RETURN_VAL)
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_PU_Interface_Tree_Has_Return(statement))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        if (DSL_PU_Interface_Tree_Has_Return(WN_kid(tree, kid)))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_PU_Interface_Tree_Has_Result_Store
+        (const WN *tree, ST_IDX result_st, TY_IDX result_ty)
+{
+    if (tree == NULL)
+        return FALSE;
+    if (WN_operator(tree) == OPR_STID && WN_st_idx(tree) == result_st) {
+        const WN *value = WN_kid0(tree);
+        return WN_ty(tree) == result_ty && value != NULL &&
+               WN_ty(value) == result_ty;
+    }
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_PU_Interface_Tree_Has_Result_Store
+                    (statement, result_st, result_ty))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        if (DSL_PU_Interface_Tree_Has_Result_Store
+                (WN_kid(tree, kid), result_st, result_ty))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 BOOL
 DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
 {
@@ -201,6 +337,7 @@ DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
     ST_IDX owner_pu_st = PU_Info_proc_sym(pu);
     WN *entry = PU_Info_tree_ptr(pu);
     UINT32 expected_ordinal = 0;
+    BOOL saw_result = FALSE;
     if (WN_operator(entry) != OPR_FUNC_ENTRY)
         return DSL_PU_Interface_PU_Report
                    (diagnostic, "invalid function entry", 0);
@@ -221,8 +358,13 @@ DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
         if (idname == NULL || WN_operator(idname) != OPR_IDNAME ||
             WN_st_idx(idname) != formal.formal_st ||
             ST_IDX_level(formal.formal_st) != CURRENT_SYMTAB ||
-            ST_IDX_index(formal.formal_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
-            (ST_sclass(St_Table[formal.formal_st]) != SCLASS_FORMAL &&
+            ST_IDX_index(formal.formal_st) == 0 ||
+            ST_IDX_index(formal.formal_st) >= ST_Table_Size(CURRENT_SYMTAB))
+            return DSL_PU_Interface_PU_Report
+                       (diagnostic, "formal value mismatch", formal.id);
+        BOOL result_formal = ST_sclass(St_Table[formal.formal_st]) ==
+                             SCLASS_FORMAL_REF;
+        if ((ST_sclass(St_Table[formal.formal_st]) != SCLASS_FORMAL &&
              ST_sclass(St_Table[formal.formal_st]) != SCLASS_FORMAL_REF) ||
             ST_type(St_Table[formal.formal_st]) != formal.formal_ty ||
             !DSL_IR_Image_Get_Value(formal.formal_value_id, &value) ||
@@ -230,12 +372,61 @@ DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                  (value, owner_pu_st, formal.formal_st))
             return DSL_PU_Interface_PU_Report
                        (diagnostic, "formal value mismatch", formal.id);
+        if (saw_result && !result_formal)
+            return DSL_PU_Interface_PU_Report
+                       (diagnostic, "input follows result formal", formal.id);
+        if (result_formal) {
+            saw_result = TRUE;
+            if (!DSL_PU_Interface_Tree_Has_Result_Store
+                    (entry, formal.formal_st, formal.formal_ty))
+                return DSL_PU_Interface_PU_Report
+                           (diagnostic, "missing result store", formal.id);
+        }
         ++expected_ordinal;
     }
     if (expected_ordinal != WN_num_formals(entry))
         return DSL_PU_Interface_PU_Report
                    (diagnostic, "incomplete formal interface", 0);
+    if (saw_result && !DSL_PU_Interface_Tree_Has_Return(entry))
+        return DSL_PU_Interface_PU_Report
+                   (diagnostic, "missing function return", 0);
     return TRUE;
+}
+
+static BOOL
+DSL_IR_Active_PU_Boundary_Report (FILE *diagnostic, const char *message)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL active PU boundary error: %s\n", message);
+    return FALSE;
+}
+
+BOOL
+DSL_IR_Image_Validate_Active_PU_Boundaries
+        (const DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT *context,
+         FILE *diagnostic)
+{
+    if (context == NULL || context->pu_info == NULL ||
+        context->tree == NULL || context->owner_pu_st == ST_IDX_ZERO ||
+        Current_PU_Info != context->pu_info ||
+        PU_Info_tree_ptr(context->pu_info) != context->tree ||
+        PU_Info_proc_sym(context->pu_info) != context->owner_pu_st ||
+        !DSL_IR_Image_Current_PU_Is(context->owner_pu_st) ||
+        WN_operator(context->tree) != OPR_FUNC_ENTRY ||
+        WN_st_idx(context->tree) != context->owner_pu_st ||
+        CURRENT_SYMTAB <= GLOBAL_SYMTAB ||
+        Scope_tab[CURRENT_SYMTAB].st == NULL ||
+        ST_st_idx(Scope_tab[CURRENT_SYMTAB].st) != context->owner_pu_st)
+        return DSL_IR_Active_PU_Boundary_Report
+                   (diagnostic, "invalid explicit program-unit context");
+
+    if (!DSL_Call_ABI_Image_Validate_PU(context->pu_info, diagnostic))
+        return FALSE;
+    if (!DSL_PU_Interface_Image_Validate_PU(context->pu_info, diagnostic))
+        return FALSE;
+    return DSL_Region_Verify_Active_PU
+               (context->pu_info, context->tree, context->owner_pu_st,
+                diagnostic);
 }
 
 static BOOL
@@ -1294,7 +1485,15 @@ typedef struct {
     DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
     WN *definition;
     std::vector<WN *> reads;
+    UINT32 applied_write_count;
 } DSL_IR_RETYPE_JOURNAL;
+
+typedef struct {
+    BOOL enabled;
+    UINT32 fail_after_write;
+    UINT32 next_write;
+    FILE *diagnostic;
+} DSL_IR_RETYPE_TEST_WRITE_CONTROL;
 
 static BOOL
 DSL_IR_Retype_Report
@@ -1348,7 +1547,7 @@ DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
     if (old_ty == refined_ty || !TY_tensor_is_canonical(old_ty) ||
         !TY_tensor_is_canonical(refined_ty) ||
         !DSL_Shape_Tensor_Core_Complete(refined_ty) ||
-        TY_align(old_ty) != TY_align(refined_ty))
+        !TY_tensor_preserves_non_shape_state(old_ty, refined_ty))
         return FALSE;
 
     TENSOR_DESCRIPTOR_RECORD old_descriptor;
@@ -1378,6 +1577,46 @@ DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
             (!refined_fact.dimension_known[i] ||
              old_fact.dimension[i] != refined_fact.dimension[i]))
             return FALSE;
+    }
+    return TRUE;
+}
+
+typedef struct {
+    const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST *requests;
+    UINT32 request_count;
+    std::vector<BOOL> *matched;
+    BOOL valid;
+} DSL_IR_RETYPE_REFINEMENT_MATCH_CONTEXT;
+
+static BOOL
+DSL_IR_Retype_Match_Refinement
+        (const DSL_SHAPE_REFINEMENT *refinement,
+         void *visitor_context)
+{
+    DSL_IR_RETYPE_REFINEMENT_MATCH_CONTEXT *context =
+        static_cast<DSL_IR_RETYPE_REFINEMENT_MATCH_CONTEXT *>
+            (visitor_context);
+    if (refinement == NULL || context == NULL ||
+        context->requests == NULL || context->matched == NULL ||
+        context->matched->size() != context->request_count) {
+        if (context != NULL)
+            context->valid = FALSE;
+        return FALSE;
+    }
+    for (UINT32 i = 0; i < context->request_count; ++i) {
+        const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST &request =
+            context->requests[i];
+        if (request.value_id != refinement->value_id)
+            continue;
+        if ((*context->matched)[i] ||
+            !DSL_Shape_Refinement_Matches_Type
+                 (refinement, request.value_id, request.expected_old_ty,
+                  request.refined_ty)) {
+            context->valid = FALSE;
+            return FALSE;
+        }
+        (*context->matched)[i] = TRUE;
+        return TRUE;
     }
     return TRUE;
 }
@@ -1425,8 +1664,15 @@ DSL_IR_Retype_Preflight
                     "refined type is not a monotonic shape-only refinement");
 
     DSL_IR_VALUE_RECORD value;
-    if (!DSL_IR_Image_Get_Value(request.value_id, &value) ||
-        value.value_kind != DSL_IR_VALUE_OPERATOR_RESULT ||
+    if (!DSL_IR_Image_Get_Value(request.value_id, &value))
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-003", request.value_id,
+                    "value or expected old type does not match");
+    if (!DSL_IR_Image_Value_Belongs_To_PU(value, request.owner_pu_st))
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-002", request.value_id,
+                    "logical value is not owned by the active PU");
+    if (value.value_kind != DSL_IR_VALUE_OPERATOR_RESULT ||
         value.ty != request.expected_old_ty ||
         value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
         (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
@@ -1523,22 +1769,141 @@ DSL_IR_Retype_Preflight
     journal->opcode = opcode;
     journal->definition = use.definition;
     journal->reads.swap(use.reads);
+    journal->applied_write_count = 0;
     return TRUE;
 }
 
+static BOOL
+DSL_IR_Retype_Test_After_Write
+        (DSL_IR_RETYPE_TEST_WRITE_CONTROL *control)
+{
+    if (control == NULL || !control->enabled)
+        return TRUE;
+    ++control->next_write;
+    if (control->next_write != control->fail_after_write)
+        return TRUE;
+    if (control->diagnostic != NULL)
+        fprintf(control->diagnostic,
+                "DSL-SHAPE-RETYPE-INJECT: after_write=%u action=fail\n",
+                control->next_write);
+    return FALSE;
+}
+
+static UINT32
+DSL_IR_Retype_Write_Count (const DSL_IR_RETYPE_JOURNAL &journal)
+{
+    return journal.reads.size() + 3;
+}
+
+static BOOL
+DSL_IR_Retype_Test_Postcheck_Name_Valid (const char *name)
+{
+    return name == NULL || name[0] == '\0' ||
+           strcmp(name, "active_boundary") == 0 ||
+           strcmp(name, "dsl_image") == 0 ||
+           strcmp(name, "region") == 0 ||
+           strcmp(name, "gatekeeper") == 0 ||
+           strcmp(name, "shared_shape") == 0 ||
+           strcmp(name, "final") == 0;
+}
+
 static void
+DSL_IR_Retype_Print_Write_Map
+        (const std::vector<DSL_IR_RETYPE_JOURNAL> &journals,
+         UINT32 selected,
+         FILE *diagnostic)
+{
+    if (diagnostic == NULL)
+        return;
+    UINT32 ordinal = 0;
+    for (UINT32 request = 0; request < journals.size(); ++request) {
+        const DSL_IR_RETYPE_JOURNAL &journal = journals[request];
+        for (UINT32 read = 0; read < journal.reads.size(); ++read) {
+            ++ordinal;
+            fprintf(diagnostic,
+                    "DSL-SHAPE-RETYPE-WRITE-MAP: ordinal=%u request=%u "
+                    "value=%u kind=read read_index=%u\n",
+                    ordinal, request, journal.value.id, read);
+        }
+        ++ordinal;
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-WRITE-MAP: ordinal=%u request=%u "
+                "value=%u kind=definition read_index=-1\n",
+                ordinal, request, journal.value.id);
+        ++ordinal;
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-WRITE-MAP: ordinal=%u request=%u "
+                "value=%u kind=symbol read_index=-1\n",
+                ordinal, request, journal.value.id);
+        ++ordinal;
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-WRITE-MAP: ordinal=%u request=%u "
+                "value=%u kind=value read_index=-1\n",
+                ordinal, request, journal.value.id);
+    }
+    fprintf(diagnostic,
+            "DSL-SHAPE-RETYPE-WRITE-MAP: total=%u selected=%u\n",
+            ordinal, selected);
+}
+
+static BOOL
 DSL_IR_Retype_Apply
         (DSL_IR_RETYPE_JOURNAL *journal,
          TY_IDX from_ty,
-         TY_IDX to_ty)
+         TY_IDX to_ty,
+         DSL_IR_RETYPE_TEST_WRITE_CONTROL *control)
 {
-    for (UINT32 i = 0; i < journal->reads.size(); ++i)
+    FmtAssert(journal != NULL && journal->applied_write_count == 0,
+              ("invalid DSL shape retype journal apply state"));
+    for (UINT32 i = 0; i < journal->reads.size(); ++i) {
         WN_set_ty(journal->reads[i], to_ty);
+        ++journal->applied_write_count;
+        if (!DSL_IR_Retype_Test_After_Write(control))
+            return FALSE;
+    }
     WN_set_ty(journal->definition, to_ty);
+    ++journal->applied_write_count;
+    if (!DSL_IR_Retype_Test_After_Write(control))
+        return FALSE;
     Set_ST_type(St_Table[journal->value.st], to_ty);
+    ++journal->applied_write_count;
+    if (!DSL_IR_Retype_Test_After_Write(control))
+        return FALSE;
     BOOL changed = DSL_IR_Image_Retype_Value
                        (journal->value.id, from_ty, to_ty);
     FmtAssert(changed, ("preflighted DSL value retype failed"));
+    ++journal->applied_write_count;
+    if (!DSL_IR_Retype_Test_After_Write(control))
+        return FALSE;
+    return TRUE;
+}
+
+static BOOL
+DSL_IR_Retype_Rollback (DSL_IR_RETYPE_JOURNAL *journal)
+{
+    if (journal == NULL)
+        return FALSE;
+    UINT32 read_count = journal->reads.size();
+    UINT32 applied = journal->applied_write_count;
+    if (applied > read_count + 3)
+        return FALSE;
+    if (applied > read_count + 2) {
+        if (!DSL_IR_Image_Retype_Value
+                 (journal->value.id, journal->request.refined_ty,
+                  journal->request.expected_old_ty))
+            return FALSE;
+    }
+    if (applied > read_count + 1)
+        Set_ST_type(St_Table[journal->value.st],
+                    journal->request.expected_old_ty);
+    if (applied > read_count)
+        WN_set_ty(journal->definition, journal->request.expected_old_ty);
+    UINT32 applied_reads = applied < read_count ? applied : read_count;
+    for (UINT32 i = applied_reads; i != 0; --i)
+        WN_set_ty(journal->reads[i - 1],
+                  journal->request.expected_old_ty);
+    journal->applied_write_count = 0;
+    return TRUE;
 }
 
 BOOL
@@ -1552,42 +1917,171 @@ DSL_IR_Refine_Native_Value_Types
 {
     DSL_IR_VALUE_TYPE_REFINEMENT_RESULT local_result;
     memset(&local_result, 0, sizeof(local_result));
+    if (result != NULL)
+        *result = local_result;
     if (requests == NULL || request_count == 0) {
-        if (result != NULL)
-            *result = local_result;
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
                     "empty request array");
     }
-    if (!DSL_Region_Verify_PU(pu_info, diagnostic))
+    DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT boundary;
+    boundary.pu_info = pu_info;
+    boundary.tree = tree;
+    boundary.owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
+                           PU_Info_proc_sym(pu_info);
+    ++local_result.boundary_precheck_count;
+    if (!DSL_IR_Image_Validate_Active_PU_Boundaries
+             (&boundary, diagnostic)) {
+        if (result != NULL)
+            *result = local_result;
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-006", 0,
-                    "active REGION image is invalid before retyping");
+                    "active PU boundary is invalid before retyping");
+    }
 
-    std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
     for (UINT32 i = 0; i < request_count; ++i) {
-        for (UINT32 prior = 0; prior < i; ++prior) {
-            if (requests[prior].value_id == requests[i].value_id)
-                return DSL_IR_Retype_Report
-                           (diagnostic, "DSL-SHAPE-RETYPE-001",
-                            requests[i].value_id, "duplicate value request");
+        if (requests[i].value_id == DSL_IR_VALUE_INVALID_ID) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-001",
+                        requests[i].value_id, "request is malformed");
         }
-        if (!DSL_IR_Retype_Preflight
-                 (pu_info, tree, requests[i], diagnostic, &journals[i]))
-            return FALSE;
+        if (requests[i].owner_pu_st != boundary.owner_pu_st) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-002",
+                        requests[i].value_id,
+                        "request owner does not match the active PU");
+        }
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(requests[i].value_id, &value) ||
+            value.ty != requests[i].expected_old_ty) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-003",
+                        requests[i].value_id,
+                        "value or expected old type does not match");
+        }
+        if (!DSL_IR_Image_Value_Belongs_To_PU
+                 (value, requests[i].owner_pu_st)) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-002",
+                        requests[i].value_id,
+                        "logical value is not owned by the active PU");
+        }
+        if (!DSL_IR_Retype_Type_Valid
+                 (requests[i].expected_old_ty, requests[i].refined_ty)) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-004",
+                        requests[i].value_id,
+                        "refined type is not a monotonic shape-only refinement");
+        }
         for (UINT32 prior = 0; prior < i; ++prior) {
-            if (journals[prior].value.st == journals[i].value.st)
+            if (requests[prior].value_id == requests[i].value_id) {
+                if (result != NULL)
+                    *result = local_result;
                 return DSL_IR_Retype_Report
                            (diagnostic, "DSL-SHAPE-RETYPE-001",
-                            requests[i].value_id, "duplicate result symbol");
+                            requests[i].value_id,
+                            "duplicate value request");
+            }
         }
     }
 
-    local_result.request_count = request_count;
+    std::vector<BOOL> matched_refinements(request_count, FALSE);
+    DSL_IR_RETYPE_REFINEMENT_MATCH_CONTEXT match_context;
+    match_context.requests = requests;
+    match_context.request_count = request_count;
+    match_context.matched = &matched_refinements;
+    match_context.valid = TRUE;
+    DSL_SHAPE_SOLVER_RESULT solver_result;
+    memset(&solver_result, 0, sizeof(solver_result));
+    BOOL semantic_admitted = DSL_Shape_Analyze_PU_With_Refinements
+        (pu_info, tree, diagnostic, DSL_IR_Retype_Match_Refinement,
+         &match_context, &solver_result);
+    for (UINT32 i = 0; i < request_count && semantic_admitted; ++i)
+        semantic_admitted = matched_refinements[i];
+    if (!semantic_admitted || !match_context.valid) {
+        if (result != NULL)
+            *result = local_result;
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-006", 0,
+                    "candidate refinement batch is not solver-authorized");
+    }
+
+    std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
     for (UINT32 i = 0; i < request_count; ++i) {
-        DSL_IR_Retype_Apply
+        if (!DSL_IR_Retype_Preflight
+                 (pu_info, tree, requests[i], diagnostic, &journals[i])) {
+            if (result != NULL)
+                *result = local_result;
+            return FALSE;
+        }
+        for (UINT32 prior = 0; prior < i; ++prior) {
+            if (journals[prior].value.st == journals[i].value.st) {
+                if (result != NULL)
+                    *result = local_result;
+                return DSL_IR_Retype_Report
+                           (diagnostic, "DSL-SHAPE-RETYPE-001",
+                            requests[i].value_id, "duplicate result symbol");
+            }
+        }
+    }
+
+    DSL_IR_RETYPE_TEST_WRITE_CONTROL write_control;
+    memset(&write_control, 0, sizeof(write_control));
+    const char *fail_after_write =
+        getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+    const char *force_postcheck =
+        getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_POSTCHECK");
+    UINT32 total_write_count = 0;
+    for (UINT32 i = 0; i < request_count; ++i)
+        total_write_count += DSL_IR_Retype_Write_Count(journals[i]);
+    if (fail_after_write != NULL && fail_after_write[0] != '\0') {
+        char *end = NULL;
+        errno = 0;
+        unsigned long selected = strtoul(fail_after_write, &end, 10);
+        if (errno != 0 || end == fail_after_write || *end != '\0' ||
+            selected > total_write_count) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
+                        "invalid test write-failure ordinal");
+        }
+        write_control.enabled = TRUE;
+        write_control.fail_after_write = selected;
+        write_control.diagnostic = diagnostic;
+        DSL_IR_Retype_Print_Write_Map
+            (journals, write_control.fail_after_write, diagnostic);
+    }
+    if (!DSL_IR_Retype_Test_Postcheck_Name_Valid(force_postcheck)) {
+        if (result != NULL)
+            *result = local_result;
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
+                    "invalid test postcheck selector");
+    }
+
+    local_result.request_count = request_count;
+    BOOL apply_valid = !write_control.enabled ||
+                       write_control.fail_after_write != 0;
+    if (!apply_valid && write_control.enabled && diagnostic != NULL)
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-INJECT: after_write=0 action=fail\n");
+    for (UINT32 i = 0; apply_valid && i < request_count; ++i) {
+        apply_valid = DSL_IR_Retype_Apply
             (&journals[i], journals[i].request.expected_old_ty,
-             journals[i].request.refined_ty);
+             journals[i].request.refined_ty, &write_control);
+        if (!apply_valid)
+            break;
         ++local_result.updated_st_count;
         local_result.updated_wn_count += 1 + journals[i].reads.size();
         ++local_result.updated_value_count;
@@ -1596,19 +2090,54 @@ DSL_IR_Refine_Native_Value_Types
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     const char *force_post_failure =
         getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL");
-    BOOL valid = (force_post_failure == NULL ||
-                  strcmp(force_post_failure, "1") != 0) &&
-                 DSL_IR_Image_Validate(diagnostic) &&
-                 DSL_Region_Verify_PU(pu_info, diagnostic) &&
-                 DSL_Gatekeeper_Verify_PU_Mode
-                     (pu_info, DSL_GATEKEEPER_STRICT, diagnostic,
-                      &gatekeeper_result);
+    BOOL valid = apply_valid;
+    if (valid) {
+        ++local_result.boundary_postcheck_count;
+        valid = DSL_IR_Image_Validate_Active_PU_Boundaries
+                    (&boundary, diagnostic) &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "active_boundary") != 0);
+    }
+    if (valid)
+        valid = DSL_IR_Image_Validate(diagnostic) &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "dsl_image") != 0);
+    if (valid)
+        valid = DSL_Region_Verify_PU(pu_info, diagnostic) &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "region") != 0);
+    if (valid)
+        valid = DSL_Gatekeeper_Verify_PU_Mode
+                    (pu_info, DSL_GATEKEEPER_STRICT, diagnostic,
+                     &gatekeeper_result) &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "gatekeeper") != 0);
+    if (valid) {
+        DSL_SHAPE_SOLVER_RESULT shape_result;
+        valid = DSL_Shape_Analyze_PU
+                    (pu_info, tree, diagnostic, &shape_result) &&
+                shape_result.refinable_value_count == 0 &&
+                shape_result.pending_value_count == 0 &&
+                shape_result.unresolved_value_count == 0 &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "shared_shape") != 0);
+    }
+    if (valid)
+        valid = (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "final") != 0) &&
+                (force_post_failure == NULL ||
+                 strcmp(force_post_failure, "1") != 0);
+    if (!valid && force_postcheck != NULL && diagnostic != NULL)
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-POSTCHECK: name=%s action=fail\n",
+                force_postcheck);
     if (!valid) {
         for (UINT32 i = request_count; i != 0; --i) {
             DSL_IR_RETYPE_JOURNAL &journal = journals[i - 1];
-            DSL_IR_Retype_Apply
-                (&journal, journal.request.refined_ty,
-                 journal.request.expected_old_ty);
+            if (journal.applied_write_count == 0)
+                continue;
+            BOOL restored = DSL_IR_Retype_Rollback(&journal);
+            FmtAssert(restored, ("DSL shape retype rollback write failed"));
             ++local_result.rollback_count;
         }
         FmtAssert(DSL_IR_Image_Validate(diagnostic) &&
@@ -1617,8 +2146,10 @@ DSL_IR_Refine_Native_Value_Types
         if (result != NULL)
             *result = local_result;
         return DSL_IR_Retype_Report
-                   (diagnostic, "DSL-SHAPE-RETYPE-007", 0,
-                    "strict post-verification failed; transaction rolled back");
+                   (diagnostic, "DSL-SHAPE-RETYPE-008", 0,
+                    apply_valid ?
+                    "strict post-verification failed; transaction rolled back" :
+                    "injected commit write failure; transaction rolled back");
     }
     if (result != NULL)
         *result = local_result;

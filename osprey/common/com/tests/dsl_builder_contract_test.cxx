@@ -71,6 +71,31 @@ Initialize_Test_Context(void)
     DST_Init(NULL, 0);
 }
 
+static BOOL
+Init_Test_Shape_Proof_Context
+        (DSL_BUILDER_PROGRAM_UNIT pu,
+         const DSL_IR_NODE_RECORD *node,
+         DSL_IR_VALUE_ID *operand_value_ids,
+         UINT32 operand_capacity,
+         DSL_SHAPE_PROOF_CONTEXT *context)
+{
+    if (pu == NULL || node == NULL || context == NULL ||
+        node->operand_count > operand_capacity ||
+        (node->operand_count != 0 && operand_value_ids == NULL))
+        return FALSE;
+    for (UINT32 i = 0; i < node->operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        if (!DSL_IR_Image_Get_Value_Reference
+                 (node->first_operand_reference_id + i, &reference))
+            return FALSE;
+        operand_value_ids[i] = reference.value_id;
+    }
+    return DSL_Shape_Proof_Context_Init
+               (context, pu, PU_Info_tree_ptr(pu), PU_Info_proc_sym(pu),
+                node->id, operand_value_ids, node->operand_count,
+                node->result_value_id);
+}
+
 static int
 Check_Tensor_Type_And_Descriptor(void)
 {
@@ -400,6 +425,8 @@ Check_Upgraded_Ingestion_APIs(void)
     DSL_BUILDER_VALUE add;
     DSL_IR_VALUE_RECORD add_value;
     DSL_IR_NODE_RECORD add_node;
+    DSL_SHAPE_PROOF_CONTEXT shape_proof_context;
+    DSL_IR_VALUE_ID shape_operand_value_ids[2];
     DSL_SHAPE_OPERATOR_INPUT shape_input;
     TY_IDX shape_operands[2];
     UINT64 parsed_dimensions[2];
@@ -586,6 +613,8 @@ Check_Upgraded_Ingestion_APIs(void)
 
     memset(&add_value, 0, sizeof(add_value));
     memset(&add_node, 0, sizeof(add_node));
+    memset(&shape_proof_context, 0, sizeof(shape_proof_context));
+    memset(&shape_operand_value_ids, 0, sizeof(shape_operand_value_ids));
     memset(&shape_input, 0, sizeof(shape_input));
     shape_operands[0] = tensor_ty;
     shape_operands[1] = tensor_ty;
@@ -597,11 +626,15 @@ Check_Upgraded_Ingestion_APIs(void)
     if (add == NULL ||
         !DSL_IR_Image_Get_Value
              (DSL_Builder_Get_Value_Image_Id(add), &add_value) ||
-        !DSL_IR_Image_Get_Node(add_value.producer_node_id, &add_node)) {
+        !DSL_IR_Image_Get_Node(add_value.producer_node_id, &add_node) ||
+        !Init_Test_Shape_Proof_Context
+             (pu, &add_node, shape_operand_value_ids, 2,
+              &shape_proof_context)) {
         fprintf(stderr, "shape service fixture creation failed\n");
         failed = 1;
     }
     shape_input.node = &add_node;
+    shape_input.proof_context = &shape_proof_context;
     UINT32 ty_count_before_shape_check = TY_Table_Size();
     if (!DSL_Shape_Parse_Static_Dimensions
              ("[2, 2]", parsed_dimensions, 2, &parsed_rank) ||
@@ -7487,6 +7520,2624 @@ Init_Symbolic_Shape_Descriptor
 }
 
 static int
+Check_WP6_Symbolic_Proof_Use(void)
+{
+    DSL_BUILDER_PROGRAM_UNIT source_pu;
+    DSL_BUILDER_PROGRAM_UNIT active_pu;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    DSL_BUILDER_VALUE operands[2];
+    DSL_BUILDER_VALUE add;
+    DSL_IR_VALUE_RECORD add_value;
+    DSL_IR_NODE_RECORD add_node;
+    DSL_SHAPE_PROOF_CONTEXT proof_context;
+    DSL_IR_VALUE_ID proof_operand_value_ids[2];
+    DSL_SHAPE_FACT facts[2];
+    DSL_SHAPE_FACT inferred;
+    DSL_SHAPE_INFERENCE_INPUT inference;
+    DSL_SHAPE_OPERATOR_INPUT check;
+    DSL_SHAPE_SOLVER_RESULT solver;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    TY_IDX operand_types[2];
+    TY_IDX foreign_ty;
+    DSL_SHAPE_INFERENCE_RESULT infer_result =
+        DSL_SHAPE_INFERENCE_CONTRADICTION;
+    DSL_SHAPE_CHECK_RESULT check_result = DSL_SHAPE_CHECK_INVALID;
+    BOOL fact_loaded = FALSE;
+    BOOL fact_roundtrip = FALSE;
+    BOOL solver_accepted = FALSE;
+    BOOL gatekeeper_accepted = FALSE;
+    char diagnostic[4096];
+    char parsed_shape[256];
+    BOOL setup_complete = TRUE;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    source_pu = DSL_Builder_Create_Minimal_PU
+                    ("dsl_shape_wp6_proof_source");
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    foreign_ty = DSL_Builder_Intern_Tensor_Type
+                     ("wp6_foreign_symbol", MTYPE_To_TY(MTYPE_F4),
+                      &descriptor);
+    active_pu = DSL_Builder_Create_Minimal_PU
+                    ("dsl_shape_wp6_proof_active");
+    operands[0] = DSL_Builder_Create_Model_Input
+                      ("wp6_foreign_left", foreign_ty, 0);
+    operands[1] = DSL_Builder_Create_Model_Input
+                      ("wp6_foreign_right", foreign_ty, 1);
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    add = DSL_Builder_Create_Operator_With_Result
+              (DSL_Opcode_Find
+                   (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+               1, operands, 2, &broadcast, 1,
+               "wp6_foreign_add", foreign_ty);
+    if (source_pu == NULL || active_pu == NULL ||
+        foreign_ty == TY_IDX_ZERO || operands[0] == NULL ||
+        operands[1] == NULL || add == NULL ||
+        !DSL_Builder_Append_PU_Value(active_pu, operands[0]) ||
+        !DSL_Builder_Append_PU_Value(active_pu, operands[1]) ||
+        !DSL_Builder_Append_PU_Value(active_pu, add) ||
+        !DSL_Builder_Select_PU(active_pu) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(add), &add_value) ||
+        !DSL_IR_Image_Get_Node(add_value.producer_node_id, &add_node) ||
+        !Init_Test_Shape_Proof_Context
+             (active_pu, &add_node, proof_operand_value_ids, 2,
+              &proof_context))
+        setup_complete = FALSE;
+
+    memset(&facts, 0, sizeof(facts));
+    memset(&inferred, 0, sizeof(inferred));
+    memset(&inference, 0, sizeof(inference));
+    memset(&check, 0, sizeof(check));
+    memset(&solver, 0, sizeof(solver));
+    memset(&verify, 0, sizeof(verify));
+    memset(diagnostic, 0, sizeof(diagnostic));
+    memset(parsed_shape, 0, sizeof(parsed_shape));
+    if (setup_complete) {
+        fact_loaded = DSL_Shape_Fact_From_Type(foreign_ty, &facts[0]);
+        fact_roundtrip = fact_loaded && DSL_Shape_Format_Fact
+                                         (&facts[0], parsed_shape,
+                                          sizeof(parsed_shape)) &&
+            strcmp(parsed_shape,
+                   TY_tensor_attribute
+                       (foreign_ty, TY_TENSOR_SCHEMA_SHAPE)) == 0;
+        facts[1] = facts[0];
+        operand_types[0] = foreign_ty;
+        operand_types[1] = foreign_ty;
+        inference.dsl_operator = OPR_DSLADD;
+        inference.version = 1;
+        inference.node = &add_node;
+        inference.operand_types = operand_types;
+        inference.operand_facts = facts;
+        inference.operand_count = 2;
+        inference.result_ty = foreign_ty;
+        inference.proof_context = &proof_context;
+        if (fact_roundtrip)
+            infer_result = DSL_Shape_Infer_Operator
+                               (&inference, &inferred);
+        check.dsl_operator = OPR_DSLADD;
+        check.version = 1;
+        check.node = &add_node;
+        check.operand_types = operand_types;
+        check.operand_count = 2;
+        check.result_ty = foreign_ty;
+        check.proof_context = &proof_context;
+        check_result = DSL_Shape_Check_Operator(&check);
+        solver_accepted = DSL_Shape_Analyze_PU
+                              (active_pu, PU_Info_tree_ptr(active_pu),
+                               NULL, &solver);
+        verify.diagnostic = diagnostic;
+        verify.diagnostic_capacity = sizeof(diagnostic);
+        gatekeeper_accepted = DSL_Builder_Verify_Program(&verify);
+    }
+
+    printf("WP6 proof-use matrix: setup=%d fact_from_type=%d "
+           "inspection_roundtrip=%d infer=%u "
+           "check=%u solver_accepted=%d solver_contradictions=%u "
+           "gatekeeper_accepted=%d gatekeeper_errors=%u\n",
+           (int)setup_complete, (int)fact_loaded, (int)fact_roundtrip,
+           (unsigned int)infer_result, (unsigned int)check_result,
+           (int)solver_accepted,
+           solver.contradiction_count, (int)gatekeeper_accepted,
+           verify.error_count);
+
+    if (!setup_complete) {
+        fprintf(stderr, "WP6 foreign proof-use fixture setup failed\n");
+        return 1;
+    }
+    if (!fact_loaded || !fact_roundtrip) {
+        fprintf(stderr,
+                "WP6 inspection failed to preserve a qualified tensor fact\n");
+        return 1;
+    }
+    if (infer_result != DSL_SHAPE_INFERENCE_CONTRADICTION ||
+        check_result != DSL_SHAPE_CHECK_INVALID || solver_accepted ||
+        gatekeeper_accepted) {
+        fprintf(stderr,
+                "WP6 foreign qualified proof use did not fail closed\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Reviewed_Mapping_Capability(void)
+{
+    DSL_BUILDER_PROGRAM_UNIT source_pu;
+    DSL_BUILDER_PROGRAM_UNIT destination_pu;
+    DSL_BUILDER_PROGRAM_UNIT unmapped_pu;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    DSL_BUILDER_PU_SOURCE_IDENTITY destination_identity;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    DSL_BUILDER_VALUE formal;
+    DSL_BUILDER_VALUE actual;
+    DSL_BUILDER_VALUE mapped_operands[2];
+    DSL_BUILDER_VALUE unmapped_operands[2];
+    DSL_BUILDER_VALUE mapped_add;
+    DSL_BUILDER_VALUE unmapped_add;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    DSL_BUILDER_CALL call;
+    DSL_PU_SOURCE_IDENTITY_RECORD source_identity_record;
+    DSL_PU_SOURCE_IDENTITY_RECORD destination_identity_record;
+    DSL_CALLSITE_METADATA_RECORD callsite_record;
+    DSL_CALL_ARGUMENT_RECORD argument_record;
+    DSL_PU_FORMAL_RECORD formal_record;
+    DSL_IR_VALUE_RECORD mapped_value;
+    DSL_IR_VALUE_RECORD unmapped_value;
+    DSL_IR_NODE_RECORD mapped_node;
+    DSL_IR_NODE_RECORD unmapped_node;
+    DSL_SHAPE_PROOF_CONTEXT mapped_proof_context;
+    DSL_SHAPE_PROOF_CONTEXT unmapped_proof_context;
+    DSL_IR_VALUE_ID mapped_operand_value_ids[2];
+    DSL_IR_VALUE_ID unmapped_operand_value_ids[2];
+    DSL_SHAPE_FACT facts[2];
+    DSL_SHAPE_FACT mapped_result;
+    DSL_SHAPE_FACT unmapped_result;
+    DSL_SHAPE_INFERENCE_INPUT inference;
+    DSL_SHAPE_OPERATOR_INPUT check;
+    DSL_SHAPE_SOLVER_RESULT mapped_solver;
+    DSL_SHAPE_SOLVER_RESULT unmapped_solver;
+    TY_IDX operand_types[2];
+    TY_IDX symbolic_ty;
+    BOOL records_exact;
+    DSL_SHAPE_INFERENCE_RESULT mapped_infer;
+    DSL_SHAPE_INFERENCE_RESULT unmapped_infer;
+    DSL_SHAPE_CHECK_RESULT mapped_check;
+    DSL_SHAPE_CHECK_RESULT unmapped_check;
+    BOOL mapped_solver_accepted;
+    BOOL unmapped_solver_accepted;
+    BOOL selector_mutations_rejected = TRUE;
+    BOOL context_mutations_rejected = TRUE;
+    BOOL descriptor_mutations_rejected = TRUE;
+    BOOL wn_mutations_rejected = TRUE;
+    BOOL actual_wn_mutation_rejected = FALSE;
+    BOOL formal_wn_mutation_rejected = FALSE;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    source_pu = DSL_Builder_Create_Minimal_PU
+                    ("dsl_shape_wp6_mapping_source");
+    UINT32 source_file = DSL_Builder_Register_Source_File
+                             (source_pu, "wp6_mapping.py");
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "WP6Source.forward";
+    source_identity.defining_module = "wp6_mapping";
+    source_identity.defining_file = "wp6_mapping.py";
+    source_identity.defining_line = 10;
+    memset(&position, 0, sizeof(position));
+    position.file_id = source_file;
+    position.line = 11;
+    position.statement_begin = 1;
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    symbolic_ty = DSL_Builder_Intern_Tensor_Type
+                       ("wp6_mapping_symbol", MTYPE_To_TY(MTYPE_F4),
+                        &descriptor);
+    actual = DSL_Builder_Create_Model_Input
+                 ("mapped_actual", symbolic_ty, 0);
+    if (source_pu == NULL || source_file == 0 ||
+        symbolic_ty == TY_IDX_ZERO || actual == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity
+             (source_pu, &source_identity)) {
+        fprintf(stderr, "WP6 reviewed mapping source setup failed\n");
+        return 1;
+    }
+
+    destination_pu = DSL_Builder_Create_Minimal_PU
+                         ("dsl_shape_wp6_mapping_destination");
+    UINT32 destination_file = DSL_Builder_Register_Source_File
+                                  (destination_pu, "wp6_mapping.py");
+    memset(&destination_identity, 0, sizeof(destination_identity));
+    destination_identity.canonical_definition_name =
+        "WP6Destination.forward";
+    destination_identity.defining_module = "wp6_mapping";
+    destination_identity.defining_file = "wp6_mapping.py";
+    destination_identity.defining_line = 20;
+    position.file_id = destination_file;
+    position.line = 21;
+    formal = DSL_Builder_Declare_PU_Formal
+                 (destination_pu, "mapped_formal", 0,
+                  symbolic_ty, &position);
+    mapped_operands[0] = formal;
+    mapped_operands[1] = formal;
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    mapped_add = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find
+                          (DSL_Domain_Find("common"),
+                           DSL_OPCODE_COMMON_ADD, 1),
+                      1, mapped_operands, 2, &broadcast, 1,
+                      "wp6_mapped_add", symbolic_ty);
+    if (destination_pu == NULL || destination_file == 0 || formal == NULL ||
+        mapped_add == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity
+             (destination_pu, &destination_identity) ||
+        !DSL_Builder_Append_PU_Value(destination_pu, mapped_add) ||
+        !DSL_Builder_Return_PU_Values(destination_pu, NULL, 0)) {
+        fprintf(stderr, "WP6 reviewed mapping destination setup failed\n");
+        return 1;
+    }
+
+    position.file_id = source_file;
+    position.line = 30;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6Destination";
+    callsite.instance_path = "model.wp6_destination";
+    callsite.context_identity = "WP6Source.to_destination";
+    callsite.call_ordinal = 3;
+    callsite.source_position = position;
+    call = DSL_Builder_Create_PU_Call
+               (source_pu, destination_pu, &actual, 1,
+                NULL, 0, &callsite);
+    if (call == NULL ||
+        !DSL_Builder_Set_PU_Call_Argument_Role
+             (call, 0, 0, "shape_mapping")) {
+        fprintf(stderr, "WP6 reviewed mapping call setup failed\n");
+        return 1;
+    }
+
+    unmapped_pu = DSL_Builder_Create_Minimal_PU
+                      ("dsl_shape_wp6_unmapped_destination");
+    unmapped_operands[0] = DSL_Builder_Create_Model_Input
+                               ("unmapped_left", symbolic_ty, 0);
+    unmapped_operands[1] = DSL_Builder_Create_Model_Input
+                               ("unmapped_right", symbolic_ty, 1);
+    unmapped_add = DSL_Builder_Create_Operator_With_Result
+                       (DSL_Opcode_Find
+                            (DSL_Domain_Find("common"),
+                             DSL_OPCODE_COMMON_ADD, 1),
+                        1, unmapped_operands, 2, &broadcast, 1,
+                        "wp6_unmapped_add", symbolic_ty);
+    if (unmapped_pu == NULL || unmapped_operands[0] == NULL ||
+        unmapped_operands[1] == NULL || unmapped_add == NULL ||
+        !DSL_Builder_Append_PU_Value(unmapped_pu, unmapped_operands[0]) ||
+        !DSL_Builder_Append_PU_Value(unmapped_pu, unmapped_operands[1]) ||
+        !DSL_Builder_Append_PU_Value(unmapped_pu, unmapped_add)) {
+        fprintf(stderr, "WP6 unmapped destination setup failed\n");
+        return 1;
+    }
+
+    memset(&source_identity_record, 0, sizeof(source_identity_record));
+    memset(&destination_identity_record, 0,
+           sizeof(destination_identity_record));
+    memset(&callsite_record, 0, sizeof(callsite_record));
+    memset(&argument_record, 0, sizeof(argument_record));
+    memset(&formal_record, 0, sizeof(formal_record));
+    records_exact = DSL_Call_Image_Find_PU_Identity
+                        (PU_Info_proc_sym(source_pu),
+                         &source_identity_record) &&
+        DSL_Call_Image_Find_PU_Identity
+            (PU_Info_proc_sym(destination_pu),
+             &destination_identity_record) &&
+        DSL_Call_Image_Find_Callsite(call, &callsite_record) &&
+        DSL_Call_ABI_Image_Find_Argument(call, 0, &argument_record) &&
+        DSL_PU_Interface_Image_Find_Formal
+            (PU_Info_proc_sym(destination_pu), 0, &formal_record) &&
+        source_identity_record.owner_pu_st == PU_Info_proc_sym(source_pu) &&
+        destination_identity_record.owner_pu_st ==
+            PU_Info_proc_sym(destination_pu) &&
+        strcmp(Index_To_Str(source_identity_record.canonical_definition_name),
+               "WP6Source.forward") == 0 &&
+        strcmp(Index_To_Str
+                   (destination_identity_record.canonical_definition_name),
+               "WP6Destination.forward") == 0 &&
+        callsite_record.owner_pu_st == PU_Info_proc_sym(source_pu) &&
+        callsite_record.callee_pu_st == PU_Info_proc_sym(destination_pu) &&
+        callsite_record.source_call_ordinal == 3 &&
+        strcmp(Index_To_Str(callsite_record.context_identity),
+               "WP6Source.to_destination") == 0 &&
+        argument_record.callsite_id == callsite_record.id &&
+        argument_record.argument_value_id ==
+            DSL_Builder_Get_Value_Image_Id(actual) &&
+        argument_record.actual_ordinal == 0 &&
+        argument_record.callee_formal_ordinal == 0 &&
+        strcmp(Index_To_Str(argument_record.semantic_role),
+               "shape_mapping") == 0 &&
+        formal_record.owner_pu_st == PU_Info_proc_sym(destination_pu) &&
+        formal_record.formal_value_id ==
+            DSL_Builder_Get_Value_Image_Id(formal) &&
+        formal_record.formal_ordinal == 0 &&
+        formal_record.formal_st ==
+            DSL_Builder_Get_Value_Result_Symbol(formal) &&
+        formal_record.formal_ty == symbolic_ty;
+    memset(&mapped_value, 0, sizeof(mapped_value));
+    memset(&unmapped_value, 0, sizeof(unmapped_value));
+    memset(&mapped_node, 0, sizeof(mapped_node));
+    memset(&unmapped_node, 0, sizeof(unmapped_node));
+    memset(&facts, 0, sizeof(facts));
+    memset(&inference, 0, sizeof(inference));
+    memset(&check, 0, sizeof(check));
+    memset(&mapped_solver, 0, sizeof(mapped_solver));
+    memset(&unmapped_solver, 0, sizeof(unmapped_solver));
+    if (!records_exact ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(mapped_add), &mapped_value) ||
+        !DSL_IR_Image_Get_Node(mapped_value.producer_node_id, &mapped_node) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(unmapped_add),
+              &unmapped_value) ||
+        !DSL_IR_Image_Get_Node
+             (unmapped_value.producer_node_id, &unmapped_node) ||
+        !DSL_Shape_Fact_From_Type(symbolic_ty, &facts[0]) ||
+        !Init_Test_Shape_Proof_Context
+             (destination_pu, &mapped_node, mapped_operand_value_ids, 2,
+              &mapped_proof_context) ||
+        !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+             (&mapped_proof_context) ||
+        !Init_Test_Shape_Proof_Context
+             (unmapped_pu, &unmapped_node, unmapped_operand_value_ids, 2,
+              &unmapped_proof_context)) {
+        fprintf(stderr, "WP6 reviewed mapping proof setup failed\n");
+        return 1;
+    }
+    facts[1] = facts[0];
+    operand_types[0] = symbolic_ty;
+    operand_types[1] = symbolic_ty;
+    inference.dsl_operator = OPR_DSLADD;
+    inference.version = 1;
+    inference.operand_types = operand_types;
+    inference.operand_facts = facts;
+    inference.operand_count = 2;
+    inference.result_ty = symbolic_ty;
+    check.dsl_operator = OPR_DSLADD;
+    check.version = 1;
+    check.operand_types = operand_types;
+    check.operand_count = 2;
+    check.result_ty = symbolic_ty;
+    DSL_Builder_Select_PU(destination_pu);
+    inference.node = &mapped_node;
+    inference.proof_context = &mapped_proof_context;
+    check.node = &mapped_node;
+    check.proof_context = &mapped_proof_context;
+    mapped_infer = DSL_Shape_Infer_Operator(&inference, &mapped_result);
+    mapped_check = DSL_Shape_Check_Operator(&check);
+
+    for (UINT32 mutation = 0; mutation < 30; ++mutation) {
+        DSL_SHAPE_PROOF_CONTEXT changed = mapped_proof_context;
+        if (mutation == 0)
+            ++changed.interface_mappings[0].callsite_id;
+        else if (mutation == 1)
+            ++changed.interface_mappings[0].actual_ordinal;
+        else if (mutation == 2)
+            changed.interface_mappings[0].destination_owner_pu_st =
+                PU_Info_proc_sym(unmapped_pu);
+        else if (mutation == 3)
+            ++changed.interface_mappings[0].formal_ordinal;
+        else if (mutation == 4)
+            ++changed.interface_mappings[0].snapshot_version;
+        else if (mutation == 5)
+            changed.interface_mappings[0].source_owner_pu_st =
+                PU_Info_proc_sym(destination_pu);
+        else if (mutation == 6)
+            ++changed.interface_mappings[0].source_identity_fingerprint;
+        else if (mutation == 7)
+            changed.interface_mappings[0].source_canonical_definition_name =
+                changed.interface_mappings[0].source_defining_module;
+        else if (mutation == 8)
+            changed.interface_mappings[0].source_defining_module =
+                changed.interface_mappings[0].source_defining_file;
+        else if (mutation == 9)
+            changed.interface_mappings[0].source_defining_file =
+                changed.interface_mappings[0].source_canonical_definition_name;
+        else if (mutation == 10)
+            ++changed.interface_mappings[0].source_defining_line;
+        else if (mutation == 11)
+            ++changed.interface_mappings[0].destination_identity_fingerprint;
+        else if (mutation == 12)
+            changed.interface_mappings[0].destination_canonical_definition_name =
+                changed.interface_mappings[0].destination_defining_module;
+        else if (mutation == 13)
+            changed.interface_mappings[0].destination_defining_module =
+                changed.interface_mappings[0].destination_defining_file;
+        else if (mutation == 14)
+            changed.interface_mappings[0].destination_defining_file =
+                changed.interface_mappings[0].destination_canonical_definition_name;
+        else if (mutation == 15)
+            ++changed.interface_mappings[0].destination_defining_line;
+        else if (mutation == 16)
+            changed.interface_mappings[0].callsite_owner_pu_st =
+                PU_Info_proc_sym(destination_pu);
+        else if (mutation == 17)
+            changed.interface_mappings[0].callsite_callee_pu_st =
+                PU_Info_proc_sym(source_pu);
+        else if (mutation == 18)
+            changed.interface_mappings[0].canonical_class_name =
+                changed.interface_mappings[0].instance_path;
+        else if (mutation == 19)
+            changed.interface_mappings[0].instance_path =
+                changed.interface_mappings[0].context_identity;
+        else if (mutation == 20)
+            changed.interface_mappings[0].context_identity =
+                changed.interface_mappings[0].canonical_class_name;
+        else if (mutation == 21)
+            ++changed.interface_mappings[0].source_call_ordinal;
+        else if (mutation == 22)
+            ++changed.interface_mappings[0].argument_value_id;
+        else if (mutation == 23)
+            changed.interface_mappings[0].argument_semantic_role =
+                changed.interface_mappings[0].context_identity;
+        else if (mutation == 24)
+            ++changed.interface_mappings[0].actual_st;
+        else if (mutation == 25)
+            ++changed.interface_mappings[0].actual_ty;
+        else if (mutation == 26)
+            changed.interface_mappings[0].formal_owner_pu_st =
+                PU_Info_proc_sym(source_pu);
+        else if (mutation == 27)
+            ++changed.interface_mappings[0].formal_value_id;
+        else if (mutation == 28)
+            ++changed.interface_mappings[0].formal_st;
+        else
+            ++changed.interface_mappings[0].formal_ty;
+        inference.proof_context = &changed;
+        check.proof_context = &changed;
+        selector_mutations_rejected = selector_mutations_rejected &&
+            DSL_Shape_Infer_Operator(&inference, &mapped_result) ==
+                DSL_SHAPE_INFERENCE_CONTRADICTION &&
+            DSL_Shape_Check_Operator(&check) == DSL_SHAPE_CHECK_INVALID;
+    }
+    for (UINT32 mutation = 0; mutation < 6; ++mutation) {
+        DSL_SHAPE_PROOF_CONTEXT changed = mapped_proof_context;
+        DSL_IR_VALUE_ID changed_operands[2] = {
+            mapped_operand_value_ids[0], mapped_operand_value_ids[1]
+        };
+        if (mutation == 0)
+            changed.active_boundary.pu_info = unmapped_pu;
+        else if (mutation == 1)
+            changed.active_boundary.tree = PU_Info_tree_ptr(unmapped_pu);
+        else if (mutation == 2)
+            changed.active_boundary.owner_pu_st = PU_Info_proc_sym(unmapped_pu);
+        else if (mutation == 3)
+            ++changed.node_id;
+        else if (mutation == 4) {
+            ++changed_operands[0];
+            changed.operand_value_ids = changed_operands;
+        } else
+            ++changed.result_value_id;
+        inference.proof_context = &changed;
+        check.proof_context = &changed;
+        context_mutations_rejected = context_mutations_rejected &&
+            DSL_Shape_Infer_Operator(&inference, &mapped_result) ==
+                DSL_SHAPE_INFERENCE_CONTRADICTION &&
+            DSL_Shape_Check_Operator(&check) == DSL_SHAPE_CHECK_INVALID;
+    }
+    inference.proof_context = &mapped_proof_context;
+    check.proof_context = &mapped_proof_context;
+    inference.dsl_operator = OPR_DSLMUL;
+    check.dsl_operator = OPR_DSLMUL;
+    descriptor_mutations_rejected =
+        DSL_Shape_Infer_Operator(&inference, &mapped_result) ==
+            DSL_SHAPE_INFERENCE_CONTRADICTION &&
+        DSL_Shape_Check_Operator(&check) == DSL_SHAPE_CHECK_INVALID;
+    inference.dsl_operator = OPR_DSLADD;
+    check.dsl_operator = OPR_DSLADD;
+
+    WN *mapped_call =
+        (WN *)DSL_Call_Image_Get_Call_WN(callsite_record.id);
+    WN *mapped_parm = mapped_call == NULL ? NULL : WN_kid(mapped_call, 0);
+    WN *mapped_address = mapped_parm == NULL ? NULL : WN_kid0(mapped_parm);
+    WN *mapped_formal_wn =
+        WN_formal(PU_Info_tree_ptr(destination_pu), 0);
+    if (mapped_address == NULL || mapped_formal_wn == NULL) {
+        wn_mutations_rejected = FALSE;
+    } else {
+        ST_IDX saved_actual_st = WN_st_idx(mapped_address);
+        WN_st_idx(mapped_address) = (ST_IDX)((UINT32)saved_actual_st + 1);
+        actual_wn_mutation_rejected =
+            DSL_Shape_Infer_Operator(&inference, &mapped_result) ==
+                DSL_SHAPE_INFERENCE_CONTRADICTION;
+        WN_st_idx(mapped_address) = saved_actual_st;
+        ST_IDX saved_formal_st = WN_st_idx(mapped_formal_wn);
+        WN_st_idx(mapped_formal_wn) = (ST_IDX)((UINT32)saved_formal_st + 1);
+        formal_wn_mutation_rejected =
+            DSL_Shape_Infer_Operator(&inference, &mapped_result) ==
+                DSL_SHAPE_INFERENCE_CONTRADICTION;
+        WN_st_idx(mapped_formal_wn) = saved_formal_st;
+        wn_mutations_rejected = actual_wn_mutation_rejected &&
+                                formal_wn_mutation_rejected;
+    }
+    mapped_solver_accepted = DSL_Shape_Analyze_PU
+                                 (destination_pu,
+                                  PU_Info_tree_ptr(destination_pu),
+                                  NULL, &mapped_solver);
+    DSL_Builder_Select_PU(unmapped_pu);
+    inference.node = &unmapped_node;
+    inference.proof_context = &unmapped_proof_context;
+    check.node = &unmapped_node;
+    check.proof_context = &unmapped_proof_context;
+    unmapped_infer = DSL_Shape_Infer_Operator(&inference, &unmapped_result);
+    unmapped_check = DSL_Shape_Check_Operator(&check);
+    unmapped_solver_accepted = DSL_Shape_Analyze_PU
+                                   (unmapped_pu,
+                                    PU_Info_tree_ptr(unmapped_pu),
+                                    NULL, &unmapped_solver);
+    printf("WP6 reviewed mapping matrix: records_exact=%d "
+           "mapped=%u/%u/%d unmapped=%u/%u/%d results_equal=%d "
+           "mutations=%d/%d/%d/%d(%d/%d)\n",
+           (int)records_exact, (unsigned int)mapped_infer,
+           (unsigned int)mapped_check, (int)mapped_solver_accepted,
+           (unsigned int)unmapped_infer, (unsigned int)unmapped_check,
+           (int)unmapped_solver_accepted,
+           (int)(mapped_infer == unmapped_infer &&
+                 mapped_check == unmapped_check &&
+                 mapped_solver_accepted == unmapped_solver_accepted),
+           (int)selector_mutations_rejected,
+           (int)context_mutations_rejected,
+           (int)descriptor_mutations_rejected,
+           (int)wn_mutations_rejected, (int)actual_wn_mutation_rejected,
+           (int)formal_wn_mutation_rejected);
+    if (mapped_infer != DSL_SHAPE_INFERENCE_COMPLETE ||
+        mapped_check != DSL_SHAPE_CHECK_VALID || !mapped_solver_accepted ||
+        unmapped_infer != DSL_SHAPE_INFERENCE_CONTRADICTION ||
+        unmapped_check != DSL_SHAPE_CHECK_INVALID ||
+        unmapped_solver_accepted || !selector_mutations_rejected ||
+        !context_mutations_rejected || !descriptor_mutations_rejected ||
+        !wn_mutations_rejected) {
+        fprintf(stderr,
+                "WP6 proof API did not distinguish exact reviewed mapping "
+                "from unmapped foreign provenance\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Mapping_Ambiguity_Gatekeeper(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    DSL_BUILDER_VALUE operands[2];
+    DSL_GATEKEEPER_RESULT gate_result;
+    BOOL same_owner_gate;
+    BOOL exact_mapped_gate;
+    BOOL unmapped_gate;
+    BOOL multiple_exact_gate;
+    BOOL conflicting_gate;
+    BOOL same_owner_admission;
+    BOOL exact_mapped_admission;
+    BOOL unmapped_admission;
+    BOOL multiple_exact_admission;
+    BOOL conflicting_admission;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT same_owner_pu =
+        DSL_Builder_Create_Minimal_PU("dsl_shape_wp6_same_owner_gate");
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    TY_IDX same_owner_ty = DSL_Builder_Intern_Tensor_Type
+                               ("wp6_same_owner_gate_ty",
+                                MTYPE_To_TY(MTYPE_F4), &descriptor);
+    operands[0] = DSL_Builder_Create_Model_Input
+                      ("wp6_same_owner_left", same_owner_ty, 0);
+    operands[1] = DSL_Builder_Create_Model_Input
+                      ("wp6_same_owner_right", same_owner_ty, 1);
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    DSL_BUILDER_VALUE same_owner_add =
+        DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find
+                 (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+             1, operands, 2, &broadcast, 1,
+             "wp6_same_owner_add", same_owner_ty);
+    if (same_owner_pu == NULL || same_owner_ty == TY_IDX_ZERO ||
+        operands[0] == NULL || operands[1] == NULL ||
+        same_owner_add == NULL ||
+        !DSL_Builder_Append_PU_Value(same_owner_pu, operands[0]) ||
+        !DSL_Builder_Append_PU_Value(same_owner_pu, operands[1]) ||
+        !DSL_Builder_Append_PU_Value(same_owner_pu, same_owner_add) ||
+        !DSL_Builder_Select_PU(same_owner_pu)) {
+        fprintf(stderr, "WP6 same-owner gatekeeper fixture setup failed\n");
+        return 1;
+    }
+    memset(&gate_result, 0, sizeof(gate_result));
+    same_owner_gate = DSL_Gatekeeper_Verify_PU_Mode
+                          (same_owner_pu, DSL_GATEKEEPER_STRICT,
+                           stderr, &gate_result);
+    same_owner_admission = DSL_Gatekeeper_Verify_PU_Mode
+                               (same_owner_pu, DSL_GATEKEEPER_ADMISSION,
+                                stderr, &gate_result);
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT source_a =
+        DSL_Builder_Create_Minimal_PU("dsl_shape_wp6_source_a");
+    UINT32 source_a_file = DSL_Builder_Register_Source_File
+                               (source_a, "wp6_mapping_sources.py");
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_a_identity;
+    memset(&source_a_identity, 0, sizeof(source_a_identity));
+    source_a_identity.canonical_definition_name = "WP6SourceA.forward";
+    source_a_identity.defining_module = "wp6_mapping_sources";
+    source_a_identity.defining_file = "wp6_mapping_sources.py";
+    source_a_identity.defining_line = 10;
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    TY_IDX source_a_ty = DSL_Builder_Intern_Tensor_Type
+                             ("wp6_source_a_ty", MTYPE_To_TY(MTYPE_F4),
+                              &descriptor);
+    DSL_BUILDER_VALUE source_a_actual = DSL_Builder_Create_Model_Input
+                                            ("wp6_source_a_actual",
+                                             source_a_ty, 0);
+    if (source_a == NULL || source_a_file == 0 ||
+        source_a_ty == TY_IDX_ZERO || source_a_actual == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity
+             (source_a, &source_a_identity)) {
+        fprintf(stderr, "WP6 source A fixture setup failed\n");
+        return 1;
+    }
+
+    DSL_BUILDER_PROGRAM_UNIT destination_b =
+        DSL_Builder_Create_Minimal_PU("dsl_shape_wp6_destination_b");
+    UINT32 destination_b_file = DSL_Builder_Register_Source_File
+                                    (destination_b,
+                                     "wp6_mapping_destination.py");
+    DSL_BUILDER_PU_SOURCE_IDENTITY destination_b_identity;
+    memset(&destination_b_identity, 0, sizeof(destination_b_identity));
+    destination_b_identity.canonical_definition_name =
+        "WP6DestinationB.forward";
+    destination_b_identity.defining_module = "wp6_mapping_destination";
+    destination_b_identity.defining_file = "wp6_mapping_destination.py";
+    destination_b_identity.defining_line = 20;
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = destination_b_file;
+    position.line = 21;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE destination_b_formal =
+        DSL_Builder_Declare_PU_Formal
+            (destination_b, "wp6_destination_b_formal", 0,
+             source_a_ty, &position);
+    operands[0] = destination_b_formal;
+    operands[1] = destination_b_formal;
+    DSL_BUILDER_VALUE destination_b_add =
+        DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find
+                 (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+             1, operands, 2, &broadcast, 1,
+             "wp6_destination_b_add", source_a_ty);
+    if (destination_b == NULL || destination_b_file == 0 ||
+        destination_b_formal == NULL || destination_b_add == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity
+             (destination_b, &destination_b_identity) ||
+        !DSL_Builder_Append_PU_Value(destination_b, destination_b_add) ||
+        !DSL_Builder_Return_PU_Values(destination_b, NULL, 0)) {
+        fprintf(stderr, "WP6 destination B fixture setup failed\n");
+        return 1;
+    }
+
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6DestinationB";
+    callsite.instance_path = "model.destination_b.first";
+    callsite.context_identity = "WP6SourceA.to_destination_b.first";
+    callsite.call_ordinal = 0;
+    callsite.source_position.file_id = source_a_file;
+    callsite.source_position.line = 30;
+    callsite.source_position.statement_begin = 1;
+    DSL_BUILDER_CALL exact_call = DSL_Builder_Create_PU_Call
+        (source_a, destination_b, &source_a_actual, 1,
+         NULL, 0, &callsite);
+    if (exact_call == NULL ||
+        !DSL_Builder_Set_PU_Call_Argument_Role
+             (exact_call, 0, 0, "shape_mapping")) {
+        fprintf(stderr, "WP6 exact mapping setup failed\n");
+        return 1;
+    }
+    memset(&gate_result, 0, sizeof(gate_result));
+    exact_mapped_gate = DSL_Builder_Select_PU(destination_b) &&
+        DSL_Gatekeeper_Verify_PU_Mode
+            (destination_b, DSL_GATEKEEPER_STRICT, stderr, &gate_result);
+    exact_mapped_admission = DSL_Gatekeeper_Verify_PU_Mode
+        (destination_b, DSL_GATEKEEPER_ADMISSION, stderr, &gate_result);
+
+    DSL_BUILDER_PROGRAM_UNIT unmapped_pu =
+        DSL_Builder_Create_Minimal_PU("dsl_shape_wp6_unmapped_gate");
+    operands[0] = DSL_Builder_Create_Model_Input
+                      ("wp6_unmapped_gate_left", source_a_ty, 0);
+    operands[1] = DSL_Builder_Create_Model_Input
+                      ("wp6_unmapped_gate_right", source_a_ty, 1);
+    DSL_BUILDER_VALUE unmapped_add =
+        DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find
+                 (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+             1, operands, 2, &broadcast, 1,
+             "wp6_unmapped_gate_add", source_a_ty);
+    if (unmapped_pu == NULL || operands[0] == NULL || operands[1] == NULL ||
+        unmapped_add == NULL ||
+        !DSL_Builder_Append_PU_Value(unmapped_pu, operands[0]) ||
+        !DSL_Builder_Append_PU_Value(unmapped_pu, operands[1]) ||
+        !DSL_Builder_Append_PU_Value(unmapped_pu, unmapped_add)) {
+        fprintf(stderr, "WP6 unmapped gatekeeper fixture setup failed\n");
+        return 1;
+    }
+    memset(&gate_result, 0, sizeof(gate_result));
+    unmapped_gate = DSL_Builder_Select_PU(unmapped_pu) &&
+        DSL_Gatekeeper_Verify_PU_Mode
+            (unmapped_pu, DSL_GATEKEEPER_STRICT, stderr, &gate_result);
+    unmapped_admission = DSL_Gatekeeper_Verify_PU_Mode
+        (unmapped_pu, DSL_GATEKEEPER_ADMISSION, stderr, &gate_result);
+
+    callsite.instance_path = "model.destination_b.second";
+    callsite.context_identity = "WP6SourceA.to_destination_b.second";
+    callsite.call_ordinal = 1;
+    ++callsite.source_position.line;
+    DSL_BUILDER_CALL second_exact_call = DSL_Builder_Create_PU_Call
+        (source_a, destination_b, &source_a_actual, 1,
+         NULL, 0, &callsite);
+    if (second_exact_call == NULL ||
+        !DSL_Builder_Set_PU_Call_Argument_Role
+             (second_exact_call, 0, 0, "shape_mapping") ||
+        DSL_Call_ABI_Image_Callee_Formal_Count
+            (PU_Info_proc_sym(destination_b), 0) != 2) {
+        fprintf(stderr, "WP6 multiple exact mapping setup failed\n");
+        return 1;
+    }
+    memset(&gate_result, 0, sizeof(gate_result));
+    multiple_exact_gate = DSL_Builder_Select_PU(destination_b) &&
+        DSL_Gatekeeper_Verify_PU_Mode
+            (destination_b, DSL_GATEKEEPER_STRICT, stderr, &gate_result);
+    multiple_exact_admission = DSL_Gatekeeper_Verify_PU_Mode
+        (destination_b, DSL_GATEKEEPER_ADMISSION, stderr, &gate_result);
+
+    DSL_BUILDER_PROGRAM_UNIT source_c =
+        DSL_Builder_Create_Minimal_PU("dsl_shape_wp6_source_c");
+    UINT32 source_c_file = DSL_Builder_Register_Source_File
+                               (source_c, "wp6_mapping_sources.py");
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_c_identity;
+    memset(&source_c_identity, 0, sizeof(source_c_identity));
+    source_c_identity.canonical_definition_name = "WP6SourceC.forward";
+    source_c_identity.defining_module = "wp6_mapping_sources";
+    source_c_identity.defining_file = "wp6_mapping_sources.py";
+    source_c_identity.defining_line = 50;
+    DSL_BUILDER_VALUE source_c_actual = DSL_Builder_Create_Model_Input
+                                            ("wp6_source_c_actual",
+                                             source_a_ty, 0);
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6DestinationB";
+    callsite.instance_path = "model.destination_b.conflict";
+    callsite.context_identity = "WP6SourceC.to_destination_b";
+    callsite.call_ordinal = 0;
+    callsite.source_position.file_id = source_c_file;
+    callsite.source_position.line = 51;
+    callsite.source_position.statement_begin = 1;
+    if (source_c == NULL || source_c_file == 0 || source_c_actual == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity(source_c, &source_c_identity)) {
+        fprintf(stderr, "WP6 source C fixture setup failed\n");
+        return 1;
+    }
+    DSL_BUILDER_CALL conflicting_call = DSL_Builder_Create_PU_Call
+        (source_c, destination_b, &source_c_actual, 1,
+         NULL, 0, &callsite);
+    DSL_CALL_ARGUMENT_RECORD conflicting_argument;
+    DSL_CALLSITE_METADATA_RECORD conflicting_callsite;
+    memset(&conflicting_argument, 0, sizeof(conflicting_argument));
+    memset(&conflicting_callsite, 0, sizeof(conflicting_callsite));
+    BOOL conflicting_records_exact = conflicting_call != NULL &&
+        DSL_Builder_Set_PU_Call_Argument_Role
+            (conflicting_call, 0, 0, "shape_mapping") &&
+        DSL_Call_Image_Find_Callsite
+            (conflicting_call, &conflicting_callsite) &&
+        DSL_Call_ABI_Image_Find_Argument
+            (conflicting_call, 0, &conflicting_argument) &&
+        conflicting_callsite.owner_pu_st == PU_Info_proc_sym(source_c) &&
+        conflicting_callsite.callee_pu_st ==
+            PU_Info_proc_sym(destination_b) &&
+        conflicting_argument.argument_value_id ==
+            DSL_Builder_Get_Value_Image_Id(source_c_actual) &&
+        conflicting_argument.actual_ordinal == 0 &&
+        conflicting_argument.callee_formal_ordinal == 0 &&
+        DSL_Call_ABI_Image_Callee_Formal_Count
+            (PU_Info_proc_sym(destination_b), 0) == 3;
+    if (!conflicting_records_exact) {
+        fprintf(stderr, "WP6 conflicting mapping records are incomplete\n");
+        return 1;
+    }
+    memset(&gate_result, 0, sizeof(gate_result));
+    conflicting_gate = DSL_Builder_Select_PU(destination_b) &&
+        DSL_Gatekeeper_Verify_PU_Mode
+            (destination_b, DSL_GATEKEEPER_STRICT, stderr, &gate_result);
+    conflicting_admission = DSL_Gatekeeper_Verify_PU_Mode
+        (destination_b, DSL_GATEKEEPER_ADMISSION, stderr, &gate_result);
+
+    printf("WP6 per-PU mapping gate matrix: same_owner=%d exact=%d "
+           "unmapped=%d multiple_exact=%d conflicting=%d "
+           "incoming=3 conflicting_records=%d admission=%d/%d/%d/%d/%d\n",
+           (int)same_owner_gate, (int)exact_mapped_gate,
+           (int)unmapped_gate, (int)multiple_exact_gate,
+           (int)conflicting_gate, (int)conflicting_records_exact,
+           (int)same_owner_admission, (int)exact_mapped_admission,
+           (int)unmapped_admission, (int)multiple_exact_admission,
+           (int)conflicting_admission);
+    if (!same_owner_gate || !exact_mapped_gate || unmapped_gate ||
+        multiple_exact_gate || conflicting_gate || !same_owner_admission ||
+        !exact_mapped_admission || unmapped_admission ||
+        multiple_exact_admission || conflicting_admission) {
+        fprintf(stderr,
+                "WP6 per-PU gatekeeper did not fail closed for unmapped or "
+                "ambiguous symbolic provenance\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Foreign_Retype_Preflight(void)
+{
+    DSL_BUILDER_PROGRAM_UNIT source_pu;
+    DSL_BUILDER_PROGRAM_UNIT active_pu;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    DSL_BUILDER_VALUE input;
+    DSL_BUILDER_VALUE operands[2];
+    DSL_BUILDER_VALUE add;
+    DSL_IR_VALUE_RECORD value_before;
+    DSL_IR_VALUE_RECORD value_after;
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST request;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    TY_IDX pending_ty;
+    TY_IDX foreign_ty;
+    TY_IDX definition_ty_before;
+    TY_IDX symbol_ty_before;
+    ST_IDX result_st;
+    BOOL accepted;
+    BOOL unchanged;
+    BOOL created = FALSE;
+    char pending_shape[128];
+    char refined_shape[128];
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    source_pu = DSL_Builder_Create_Minimal_PU
+                    ("dsl_shape_wp6_retype_source");
+    active_pu = DSL_Builder_Create_Minimal_PU
+                    ("dsl_shape_wp6_retype_active");
+    if (source_pu == NULL || active_pu == NULL) {
+        fprintf(stderr, "WP6 foreign retype PU setup failed\n");
+        return 1;
+    }
+    snprintf(pending_shape, sizeof(pending_shape),
+             "[L@pu%08x,<pending>]",
+             (unsigned int)PU_Info_proc_sym(source_pu));
+    snprintf(refined_shape, sizeof(refined_shape), "[L@pu%08x,3]",
+             (unsigned int)PU_Info_proc_sym(source_pu));
+    if (!DSL_Builder_Select_PU(source_pu)) {
+        fprintf(stderr, "WP6 foreign retype source selection failed\n");
+        return 1;
+    }
+    Init_Symbolic_Shape_Descriptor(&descriptor, pending_shape);
+    descriptor.type_core.rank = 2;
+    pending_ty = DSL_Builder_Intern_Tensor_Type
+                     ("wp6_retype_pending", MTYPE_To_TY(MTYPE_F4),
+                      &descriptor);
+    memset(&refinement, 0, sizeof(refinement));
+    refinement.rank = 2;
+    refinement.logical_shape = refined_shape;
+    foreign_ty = TY_Intern_Refined_Tensor_Type
+                     (pending_ty, &refinement, &created);
+    if (!DSL_Builder_Select_PU(active_pu)) {
+        fprintf(stderr, "WP6 foreign retype active selection failed\n");
+        return 1;
+    }
+    input = DSL_Builder_Create_Model_Input
+                ("wp6_retype_input", foreign_ty, 0);
+    operands[0] = input;
+    operands[1] = input;
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    add = DSL_Builder_Create_Operator_With_Result
+              (DSL_Opcode_Find
+                   (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+               1, operands, 2, &broadcast, 1,
+               "wp6_retype_result", pending_ty);
+    if (foreign_ty == TY_IDX_ZERO || pending_ty == TY_IDX_ZERO ||
+        input == NULL || add == NULL ||
+        !DSL_Builder_Append_PU_Value(active_pu, input) ||
+        !DSL_Builder_Append_PU_Value(active_pu, add) ||
+        !DSL_Builder_Select_PU(active_pu)) {
+        fprintf(stderr, "WP6 foreign retype fixture setup failed\n");
+        return 1;
+    }
+
+    result_st = DSL_Builder_Get_Value_Result_Symbol(add);
+    definition_ty_before = WN_ty(add);
+    symbol_ty_before = ST_type(St_Table[result_st]);
+    if (!DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(add), &value_before)) {
+        fprintf(stderr, "WP6 foreign retype value snapshot failed\n");
+        return 1;
+    }
+    request.owner_pu_st = PU_Info_proc_sym(active_pu);
+    request.value_id = DSL_Builder_Get_Value_Image_Id(add);
+    request.expected_old_ty = pending_ty;
+    request.refined_ty = foreign_ty;
+    memset(&result, 0, sizeof(result));
+    accepted = DSL_IR_Refine_Native_Value_Types
+                   (active_pu, PU_Info_tree_ptr(active_pu), &request, 1,
+                    stderr, &result);
+    unchanged = !accepted && result.request_count == 0 &&
+                result.updated_st_count == 0 &&
+                result.updated_wn_count == 0 &&
+                result.updated_value_count == 0 &&
+                result.rollback_count == 0 &&
+                WN_ty(add) == definition_ty_before &&
+                ST_type(St_Table[result_st]) == symbol_ty_before &&
+                DSL_IR_Image_Get_Value(request.value_id, &value_after) &&
+                memcmp(&value_before, &value_after,
+                       sizeof(value_before)) == 0;
+    printf("WP6 foreign retype matrix: accepted=%d requests=%u "
+           "writes=%u/%u/%u rollback=%u unchanged=%d\n",
+           (int)accepted, result.request_count, result.updated_st_count,
+           result.updated_wn_count, result.updated_value_count,
+           result.rollback_count, (int)unchanged);
+    if (!unchanged) {
+        fprintf(stderr,
+                "WP6 foreign qualified retype did not reject before writes\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Same_Owner_Retype(void)
+{
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT active = DSL_Builder_Create_Minimal_PU
+                                          ("wp6_same_owner_retype");
+    if (active == NULL || !DSL_Builder_Select_PU(active))
+        return 1;
+    char pending_shape[128];
+    char refined_shape[128];
+    snprintf(pending_shape, sizeof(pending_shape),
+             "[L@pu%08x,<pending>]",
+             (unsigned int)PU_Info_proc_sym(active));
+    snprintf(refined_shape, sizeof(refined_shape), "[L@pu%08x,3]",
+             (unsigned int)PU_Info_proc_sym(active));
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Init_Symbolic_Shape_Descriptor(&descriptor, pending_shape);
+    descriptor.type_core.rank = 2;
+    TY_IDX pending_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp6_same_owner_pending",
+                             MTYPE_To_TY(MTYPE_F4), &descriptor);
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    memset(&refinement, 0, sizeof(refinement));
+    refinement.rank = 2;
+    refinement.logical_shape = refined_shape;
+    BOOL created = FALSE;
+    TY_IDX refined_ty = TY_Intern_Refined_Tensor_Type
+                            (pending_ty, &refinement, &created);
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("wp6_same_owner_input", refined_ty, 0);
+    DSL_BUILDER_VALUE operands[2] = { input, input };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    DSL_BUILDER_VALUE add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find
+             (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+         1, operands, 2, &broadcast, 1,
+         "wp6_same_owner_result", pending_ty);
+    if (pending_ty == TY_IDX_ZERO || refined_ty == TY_IDX_ZERO ||
+        input == NULL || add == NULL ||
+        !DSL_Builder_Append_PU_Value(active, input) ||
+        !DSL_Builder_Append_PU_Value(active, add) ||
+        !DSL_Builder_Select_PU(active))
+        return 1;
+
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST request;
+    request.owner_pu_st = PU_Info_proc_sym(active);
+    request.value_id = DSL_Builder_Get_Value_Image_Id(add);
+    request.expected_old_ty = pending_ty;
+    request.refined_ty = refined_ty;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    memset(&result, 0, sizeof(result));
+    BOOL accepted = DSL_IR_Refine_Native_Value_Types
+        (active, PU_Info_tree_ptr(active), &request, 1, stderr, &result);
+    DSL_IR_VALUE_RECORD value;
+    ST_IDX result_st = DSL_Builder_Get_Value_Result_Symbol(add);
+    BOOL exact = accepted && result.request_count == 1 &&
+        result.updated_st_count == 1 && result.updated_wn_count >= 1 &&
+        result.updated_value_count == 1 && result.rollback_count == 0 &&
+        WN_ty(add) == refined_ty &&
+        ST_type(St_Table[result_st]) == refined_ty &&
+        DSL_IR_Image_Get_Value(request.value_id, &value) &&
+        value.ty == refined_ty;
+    printf("WP6 same-owner retype: accepted=%d requests=%u "
+           "writes=%u/%u/%u rollback=%u exact=%d\n",
+           (int)accepted, result.request_count, result.updated_st_count,
+           result.updated_wn_count, result.updated_value_count,
+           result.rollback_count, (int)exact);
+    if (!exact) {
+        fprintf(stderr, "WP6 same-owner retype was not admitted\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Run_WP6_Mapped_Retype_Case
+        (const char *label,
+         UINT32 exact_mapping_count,
+         BOOL conflicting_source,
+         BOOL tamper_candidate,
+         BOOL expect_accept)
+{
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT source = DSL_Builder_Create_Minimal_PU
+                                          ("wp6_mapped_retype_source");
+    UINT32 source_file = DSL_Builder_Register_Source_File
+                             (source, "wp6_mapped_retype.py");
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6MappedRetypeSource.forward";
+    identity.defining_module = "wp6_mapped_retype";
+    identity.defining_file = "wp6_mapped_retype.py";
+    identity.defining_line = 10;
+    if (source == NULL || source_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(source, &identity) ||
+        !DSL_Builder_Select_PU(source))
+        return 1;
+    char pending_shape[128];
+    char refined_shape[128];
+    snprintf(pending_shape, sizeof(pending_shape),
+             "[L@pu%08x,<pending>]",
+             (unsigned int)PU_Info_proc_sym(source));
+    snprintf(refined_shape, sizeof(refined_shape), "[L@pu%08x,3]",
+             (unsigned int)PU_Info_proc_sym(source));
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Init_Symbolic_Shape_Descriptor(&descriptor, pending_shape);
+    descriptor.type_core.rank = 2;
+    TY_IDX pending_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp6_mapped_retype_pending",
+                             MTYPE_To_TY(MTYPE_F4), &descriptor);
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    memset(&refinement, 0, sizeof(refinement));
+    refinement.rank = 2;
+    refinement.logical_shape = refined_shape;
+    BOOL created = FALSE;
+    TY_IDX refined_ty = TY_Intern_Refined_Tensor_Type
+                            (pending_ty, &refinement, &created);
+    char tampered_shape[128];
+    snprintf(tampered_shape, sizeof(tampered_shape), "[L@pu%08x,4]",
+             (unsigned int)PU_Info_proc_sym(source));
+    refinement.logical_shape = tampered_shape;
+    TY_IDX tampered_ty = TY_Intern_Refined_Tensor_Type
+                             (pending_ty, &refinement, &created);
+    DSL_BUILDER_VALUE actual = DSL_Builder_Create_Model_Input
+                                   ("wp6_mapped_retype_actual",
+                                    refined_ty, 0);
+
+    DSL_BUILDER_PROGRAM_UNIT destination = DSL_Builder_Create_Minimal_PU
+                                               ("wp6_mapped_retype_destination");
+    UINT32 destination_file = DSL_Builder_Register_Source_File
+                                  (destination,
+                                   "wp6_mapped_retype.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name =
+        "WP6MappedRetypeDestination.forward";
+    identity.defining_module = "wp6_mapped_retype";
+    identity.defining_file = "wp6_mapped_retype.py";
+    identity.defining_line = 20;
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = destination_file;
+    position.line = 21;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
+        (destination, "wp6_mapped_retype_formal", 0,
+         refined_ty, &position);
+    DSL_BUILDER_VALUE operands[2] = { formal, formal };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    DSL_BUILDER_VALUE add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find
+             (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+         1, operands, 2, &broadcast, 1,
+         "wp6_mapped_retype_result", pending_ty);
+    if (pending_ty == TY_IDX_ZERO || refined_ty == TY_IDX_ZERO ||
+        actual == NULL || destination == NULL || destination_file == 0 ||
+        formal == NULL || add == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity(destination, &identity) ||
+        !DSL_Builder_Append_PU_Value(destination, add) ||
+        !DSL_Builder_Return_PU_Values(destination, NULL, 0))
+        return 1;
+
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6MappedRetypeDestination";
+    callsite.instance_path = "model.wp6_mapped_retype";
+    callsite.context_identity = "WP6MappedRetypeSource.to_destination";
+    callsite.source_position.file_id = source_file;
+    callsite.source_position.line = 30;
+    callsite.source_position.statement_begin = 1;
+    for (UINT32 i = 0; i < exact_mapping_count; ++i) {
+        callsite.call_ordinal = i;
+        callsite.source_position.line = 30 + i;
+        DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+            (source, destination, &actual, 1, NULL, 0, &callsite);
+        if (call == NULL || !DSL_Builder_Set_PU_Call_Argument_Role
+                                 (call, 0, 0, "shape_mapping"))
+            return 1;
+    }
+    if (conflicting_source) {
+        DSL_BUILDER_PROGRAM_UNIT conflict = DSL_Builder_Create_Minimal_PU
+            ("wp6_mapped_retype_conflict");
+        UINT32 conflict_file = DSL_Builder_Register_Source_File
+                                   (conflict, "wp6_mapped_retype.py");
+        memset(&identity, 0, sizeof(identity));
+        identity.canonical_definition_name =
+            "WP6MappedRetypeConflict.forward";
+        identity.defining_module = "wp6_mapped_retype";
+        identity.defining_file = "wp6_mapped_retype.py";
+        identity.defining_line = 40;
+        if (conflict == NULL || conflict_file == 0 ||
+            !DSL_Builder_Set_PU_Source_Identity(conflict, &identity) ||
+            !DSL_Builder_Select_PU(conflict))
+            return 1;
+        DSL_BUILDER_VALUE conflict_actual = DSL_Builder_Create_Model_Input
+            ("wp6_mapped_retype_conflict_actual", refined_ty, 0);
+        memset(&callsite, 0, sizeof(callsite));
+        callsite.canonical_class_name = "WP6MappedRetypeDestination";
+        callsite.instance_path = "model.wp6_mapped_retype_conflict";
+        callsite.context_identity = "WP6MappedRetypeConflict.to_destination";
+        callsite.call_ordinal = 0;
+        callsite.source_position.file_id = conflict_file;
+        callsite.source_position.line = 41;
+        callsite.source_position.statement_begin = 1;
+        DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+            (conflict, destination, &conflict_actual, 1,
+             NULL, 0, &callsite);
+        if (conflict_actual == NULL || call == NULL ||
+            !DSL_Builder_Set_PU_Call_Argument_Role
+                 (call, 0, 0, "shape_mapping"))
+            return 1;
+    }
+
+    if (!DSL_Builder_Select_PU(destination))
+        return 1;
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST request;
+    request.owner_pu_st = PU_Info_proc_sym(destination);
+    request.value_id = DSL_Builder_Get_Value_Image_Id(add);
+    request.expected_old_ty = pending_ty;
+    request.refined_ty = tamper_candidate ? tampered_ty : refined_ty;
+    DSL_IR_VALUE_RECORD value_before;
+    DSL_IR_VALUE_RECORD value_after;
+    ST_IDX result_st = DSL_Builder_Get_Value_Result_Symbol(add);
+    TY_IDX definition_ty_before = WN_ty(add);
+    TY_IDX symbol_ty_before = ST_type(St_Table[result_st]);
+    if (tampered_ty == TY_IDX_ZERO ||
+        !DSL_IR_Image_Get_Value(request.value_id, &value_before))
+        return 1;
+    BOOL tuple_tamper_rejected = TRUE;
+    if (exact_mapping_count == 1 && !conflicting_source &&
+        !tamper_candidate) {
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_VALUE_ID operand_ids[2];
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        DSL_SHAPE_PROOF_CONTEXT context;
+        if (!DSL_IR_Image_Get_Node(value_before.producer_node_id, &node))
+            return 1;
+        for (UINT32 i = 0; i < 2; ++i) {
+            if (!DSL_IR_Image_Get_Value_Reference
+                     (node.first_operand_reference_id + i, &reference))
+                return 1;
+            operand_ids[i] = reference.value_id;
+        }
+        if (!DSL_Shape_Proof_Context_Init
+                 (&context, destination, PU_Info_tree_ptr(destination),
+                  PU_Info_proc_sym(destination), node.id, operand_ids, 2,
+                  value_before.id) ||
+            !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+                 (&context))
+            return 1;
+        ++context.interface_mappings[0].source_call_ordinal;
+        tuple_tamper_rejected =
+            !DSL_Shape_Proof_Context_Admit_Refinement
+                 (&context, value_before.id, pending_ty, refined_ty);
+    }
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    memset(&result, 0, sizeof(result));
+    BOOL accepted = DSL_IR_Refine_Native_Value_Types
+        (destination, PU_Info_tree_ptr(destination), &request, 1,
+         stderr, &result);
+    BOOL exact;
+    if (expect_accept) {
+        exact = accepted && result.request_count == 1 &&
+            result.updated_st_count == 1 && result.updated_wn_count >= 1 &&
+            result.updated_value_count == 1 && result.rollback_count == 0 &&
+            WN_ty(add) == refined_ty &&
+            ST_type(St_Table[result_st]) == refined_ty &&
+            DSL_IR_Image_Get_Value(request.value_id, &value_after) &&
+            value_after.ty == refined_ty && tuple_tamper_rejected;
+    } else {
+        exact = !accepted && result.request_count == 0 &&
+            result.updated_st_count == 0 && result.updated_wn_count == 0 &&
+            result.updated_value_count == 0 && result.rollback_count == 0 &&
+            WN_ty(add) == definition_ty_before &&
+            ST_type(St_Table[result_st]) == symbol_ty_before &&
+            DSL_IR_Image_Get_Value(request.value_id, &value_after) &&
+            memcmp(&value_before, &value_after, sizeof(value_before)) == 0;
+    }
+    printf("WP6 mapped retype %s: accepted=%d requests=%u "
+           "writes=%u/%u/%u rollback=%u exact=%d incoming=%u/%d "
+           "tuple_tamper=%d\n",
+           label, (int)accepted, result.request_count,
+           result.updated_st_count, result.updated_wn_count,
+           result.updated_value_count, result.rollback_count, (int)exact,
+           exact_mapping_count, (int)conflicting_source,
+           (int)tuple_tamper_rejected);
+    if (!exact) {
+        fprintf(stderr, "WP6 mapped retype case %s failed\n", label);
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Multi_Request_Retype_Preflight(void)
+{
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT source = DSL_Builder_Create_Minimal_PU
+                                          ("wp6_multi_retype_source");
+    DSL_BUILDER_PROGRAM_UNIT active = DSL_Builder_Create_Minimal_PU
+                                          ("wp6_multi_retype_active");
+    if (source == NULL || active == NULL || !DSL_Builder_Select_PU(source))
+        return 1;
+    char foreign_pending_shape[128];
+    char foreign_refined_shape[128];
+    snprintf(foreign_pending_shape, sizeof(foreign_pending_shape),
+             "[L@pu%08x,<pending>]",
+             (unsigned int)PU_Info_proc_sym(source));
+    snprintf(foreign_refined_shape, sizeof(foreign_refined_shape),
+             "[L@pu%08x,3]", (unsigned int)PU_Info_proc_sym(source));
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Init_Symbolic_Shape_Descriptor(&descriptor, foreign_pending_shape);
+    descriptor.type_core.rank = 2;
+    TY_IDX foreign_pending_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_multi_foreign_pending", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    memset(&refinement, 0, sizeof(refinement));
+    refinement.rank = 2;
+    refinement.logical_shape = foreign_refined_shape;
+    BOOL created = FALSE;
+    TY_IDX foreign_refined_ty = TY_Intern_Refined_Tensor_Type
+        (foreign_pending_ty, &refinement, &created);
+
+    if (!DSL_Builder_Select_PU(active))
+        return 1;
+    char local_pending_shape[128];
+    char local_refined_shape[128];
+    snprintf(local_pending_shape, sizeof(local_pending_shape),
+             "[L@pu%08x,<pending>]",
+             (unsigned int)PU_Info_proc_sym(active));
+    snprintf(local_refined_shape, sizeof(local_refined_shape),
+             "[L@pu%08x,3]", (unsigned int)PU_Info_proc_sym(active));
+    Init_Symbolic_Shape_Descriptor(&descriptor, local_pending_shape);
+    descriptor.type_core.rank = 2;
+    TY_IDX local_pending_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_multi_local_pending", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    refinement.logical_shape = local_refined_shape;
+    TY_IDX local_refined_ty = TY_Intern_Refined_Tensor_Type
+        (local_pending_ty, &refinement, &created);
+    DSL_BUILDER_VALUE local_input = DSL_Builder_Create_Model_Input
+        ("wp6_multi_local_input", local_refined_ty, 0);
+    DSL_BUILDER_VALUE foreign_input = DSL_Builder_Create_Model_Input
+        ("wp6_multi_foreign_input", foreign_refined_ty, 1);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    DSL_BUILDER_VALUE operands[2] = { local_input, local_input };
+    DSL_BUILDER_VALUE local_add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find
+             (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+         1, operands, 2, &broadcast, 1,
+         "wp6_multi_local_result", local_pending_ty);
+    operands[0] = foreign_input;
+    operands[1] = foreign_input;
+    DSL_BUILDER_VALUE foreign_add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find
+             (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+         1, operands, 2, &broadcast, 1,
+         "wp6_multi_foreign_result", foreign_pending_ty);
+    if (foreign_pending_ty == TY_IDX_ZERO ||
+        foreign_refined_ty == TY_IDX_ZERO ||
+        local_pending_ty == TY_IDX_ZERO || local_refined_ty == TY_IDX_ZERO ||
+        local_input == NULL || foreign_input == NULL ||
+        local_add == NULL || foreign_add == NULL ||
+        !DSL_Builder_Append_PU_Value(active, local_input) ||
+        !DSL_Builder_Append_PU_Value(active, local_add) ||
+        !DSL_Builder_Append_PU_Value(active, foreign_input) ||
+        !DSL_Builder_Append_PU_Value(active, foreign_add) ||
+        !DSL_Builder_Select_PU(active))
+        return 1;
+
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST requests[2];
+    requests[0].owner_pu_st = PU_Info_proc_sym(active);
+    requests[0].value_id = DSL_Builder_Get_Value_Image_Id(local_add);
+    requests[0].expected_old_ty = local_pending_ty;
+    requests[0].refined_ty = local_refined_ty;
+    requests[1].owner_pu_st = PU_Info_proc_sym(active);
+    requests[1].value_id = DSL_Builder_Get_Value_Image_Id(foreign_add);
+    requests[1].expected_old_ty = foreign_pending_ty;
+    requests[1].refined_ty = foreign_refined_ty;
+    DSL_IR_VALUE_RECORD values_before[2];
+    DSL_IR_VALUE_RECORD values_after[2];
+    ST_IDX result_st[2] = {
+        DSL_Builder_Get_Value_Result_Symbol(local_add),
+        DSL_Builder_Get_Value_Result_Symbol(foreign_add)
+    };
+    TY_IDX wn_ty_before[2] = { WN_ty(local_add), WN_ty(foreign_add) };
+    TY_IDX st_ty_before[2] = {
+        ST_type(St_Table[result_st[0]]), ST_type(St_Table[result_st[1]])
+    };
+    if (!DSL_IR_Image_Get_Value(requests[0].value_id, &values_before[0]) ||
+        !DSL_IR_Image_Get_Value(requests[1].value_id, &values_before[1]))
+        return 1;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    memset(&result, 0, sizeof(result));
+    BOOL accepted = DSL_IR_Refine_Native_Value_Types
+        (active, PU_Info_tree_ptr(active), requests, 2, stderr, &result);
+    BOOL unchanged = !accepted && result.request_count == 0 &&
+        result.updated_st_count == 0 && result.updated_wn_count == 0 &&
+        result.updated_value_count == 0 && result.rollback_count == 0 &&
+        WN_ty(local_add) == wn_ty_before[0] &&
+        WN_ty(foreign_add) == wn_ty_before[1] &&
+        ST_type(St_Table[result_st[0]]) == st_ty_before[0] &&
+        ST_type(St_Table[result_st[1]]) == st_ty_before[1] &&
+        DSL_IR_Image_Get_Value(requests[0].value_id, &values_after[0]) &&
+        DSL_IR_Image_Get_Value(requests[1].value_id, &values_after[1]) &&
+        memcmp(&values_before[0], &values_after[0],
+               sizeof(values_before[0])) == 0 &&
+        memcmp(&values_before[1], &values_after[1],
+               sizeof(values_before[1])) == 0;
+    printf("WP6 multi-request retype: accepted=%d requests=%u "
+           "writes=%u/%u/%u rollback=%u unchanged=%d\n",
+           (int)accepted, result.request_count, result.updated_st_count,
+           result.updated_wn_count, result.updated_value_count,
+           result.rollback_count, (int)unchanged);
+    if (!unchanged) {
+        fprintf(stderr,
+                "WP6 multi-request provenance failure was not atomic\n");
+        return 1;
+    }
+    return 0;
+}
+
+static BOOL
+Rewrite_WP6_Node_Operands
+        (DSL_IR_NODE_ID node_id,
+         const DSL_IR_VALUE_ID *operand_ids,
+         UINT32 operand_count)
+{
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_VALUE_RECORD result;
+    if (!DSL_IR_Image_Get_Node(node_id, &node) ||
+        !DSL_IR_Image_Get_Value(node.result_value_id, &result))
+        return FALSE;
+    std::vector<DSL_IR_ATTRIBUTE_RECORD> attributes;
+    attributes.resize(node.attribute_count);
+    for (UINT32 i = 0; i < node.attribute_count; ++i) {
+        if (!DSL_IR_Image_Get_Attribute
+                 (node.first_attribute_id + i, &attributes[i]))
+            return FALSE;
+    }
+    DSL_IR_NODE_REWRITE_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.node_id = node.id;
+    request.opcode_descriptor_id = node.opcode_descriptor_id;
+    request.payload = node.payload;
+    request.operand_value_ids = operand_ids;
+    request.operand_count = operand_count;
+    request.attributes = attributes.empty() ? NULL : &attributes[0];
+    request.attribute_count = attributes.size();
+    request.result_value_kind = result.value_kind;
+    return DSL_IR_Image_Rewrite_Node(&request);
+}
+
+static int
+Check_WP6_Provenance_Cycle(void)
+{
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT source = DSL_Builder_Create_Minimal_PU
+                                          ("wp6_cycle_source");
+    DSL_BUILDER_PROGRAM_UNIT active = DSL_Builder_Create_Minimal_PU
+                                          ("wp6_cycle_active");
+    if (source == NULL || active == NULL || !DSL_Builder_Select_PU(source))
+        return 1;
+    char foreign_shape[128];
+    snprintf(foreign_shape, sizeof(foreign_shape), "[L@pu%08x,3]",
+             (unsigned int)PU_Info_proc_sym(source));
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Init_Symbolic_Shape_Descriptor(&descriptor, foreign_shape);
+    descriptor.type_core.rank = 2;
+    TY_IDX foreign_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_cycle_foreign", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    if (!DSL_Builder_Select_PU(active))
+        return 1;
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,3]");
+    descriptor.type_core.rank = 2;
+    TY_IDX local_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_cycle_local", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("wp6_cycle_input", local_ty, 0);
+    DSL_BUILDER_VALUE kid[1] = { input };
+    DSL_BUILDER_VALUE first = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kid, 1, NULL, 0, "wp6_cycle_first", foreign_ty);
+    kid[0] = first;
+    DSL_BUILDER_VALUE second = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kid, 1, NULL, 0, "wp6_cycle_second", foreign_ty);
+    if (foreign_ty == TY_IDX_ZERO || local_ty == TY_IDX_ZERO ||
+        input == NULL || first == NULL || second == NULL ||
+        !DSL_Builder_Append_PU_Value(active, second))
+        return 1;
+    DSL_IR_VALUE_RECORD first_value;
+    DSL_IR_VALUE_RECORD second_value;
+    if (!DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(first), &first_value) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(second), &second_value))
+        return 1;
+    DSL_IR_VALUE_ID rewritten_operand = second_value.id;
+    if (!Rewrite_WP6_Node_Operands
+             (first_value.producer_node_id, &rewritten_operand, 1))
+        return 1;
+    DSL_SHAPE_SOLVER_RESULT solver;
+    memset(&solver, 0, sizeof(solver));
+    BOOL accepted = DSL_Shape_Analyze_PU
+        (active, PU_Info_tree_ptr(active), NULL, &solver);
+    printf("WP6 provenance cycle: accepted=%d contradictions=%u "
+           "iterations=%u\n", (int)accepted, solver.contradiction_count,
+           solver.iteration_count);
+    if (accepted || solver.contradiction_count == 0) {
+        fprintf(stderr, "WP6 foreign provenance cycle was accepted\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Reverse_Order_Provenance(void)
+{
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT source = DSL_Builder_Create_Minimal_PU
+                                          ("wp6_reverse_source");
+    UINT32 source_file = DSL_Builder_Register_Source_File
+                             (source, "wp6_reverse.py");
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6ReverseSource.forward";
+    identity.defining_module = "wp6_reverse";
+    identity.defining_file = "wp6_reverse.py";
+    identity.defining_line = 10;
+    if (source == NULL || source_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(source, &identity) ||
+        !DSL_Builder_Select_PU(source))
+        return 1;
+    char foreign_shape[128];
+    snprintf(foreign_shape, sizeof(foreign_shape), "[L@pu%08x,3]",
+             (unsigned int)PU_Info_proc_sym(source));
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Init_Symbolic_Shape_Descriptor(&descriptor, foreign_shape);
+    descriptor.type_core.rank = 2;
+    TY_IDX foreign_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_reverse_foreign", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_VALUE actual = DSL_Builder_Create_Model_Input
+                                   ("wp6_reverse_actual", foreign_ty, 0);
+
+    DSL_BUILDER_PROGRAM_UNIT destination = DSL_Builder_Create_Minimal_PU
+                                               ("wp6_reverse_destination");
+    UINT32 destination_file = DSL_Builder_Register_Source_File
+                                  (destination, "wp6_reverse.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6ReverseDestination.forward";
+    identity.defining_module = "wp6_reverse";
+    identity.defining_file = "wp6_reverse.py";
+    identity.defining_line = 20;
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = destination_file;
+    position.line = 21;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
+        (destination, "wp6_reverse_formal", 0, foreign_ty, &position);
+    DSL_BUILDER_VALUE kid[1] = { formal };
+    DSL_BUILDER_VALUE early = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kid, 1, NULL, 0, "wp6_reverse_early", foreign_ty);
+    DSL_BUILDER_VALUE late = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kid, 1, NULL, 0, "wp6_reverse_late", foreign_ty);
+    if (foreign_ty == TY_IDX_ZERO || actual == NULL ||
+        destination == NULL || destination_file == 0 || formal == NULL ||
+        early == NULL || late == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity(destination, &identity) ||
+        !DSL_Builder_Append_PU_Value(destination, early) ||
+        !DSL_Builder_Append_PU_Value(destination, late) ||
+        !DSL_Builder_Return_PU_Values(destination, NULL, 0))
+        return 1;
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6ReverseDestination";
+    callsite.instance_path = "model.wp6_reverse";
+    callsite.context_identity = "WP6ReverseSource.to_destination";
+    callsite.call_ordinal = 0;
+    callsite.source_position.file_id = source_file;
+    callsite.source_position.line = 30;
+    callsite.source_position.statement_begin = 1;
+    DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+        (source, destination, &actual, 1, NULL, 0, &callsite);
+    if (call == NULL || !DSL_Builder_Set_PU_Call_Argument_Role
+                             (call, 0, 0, "shape_mapping"))
+        return 1;
+    DSL_IR_VALUE_RECORD early_value;
+    DSL_IR_VALUE_RECORD late_value;
+    if (!DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(early), &early_value) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(late), &late_value))
+        return 1;
+    DSL_IR_VALUE_ID rewritten_operand = late_value.id;
+    if (!Rewrite_WP6_Node_Operands
+             (early_value.producer_node_id, &rewritten_operand, 1) ||
+        !DSL_Builder_Select_PU(destination))
+        return 1;
+    DSL_SHAPE_SOLVER_RESULT solver;
+    memset(&solver, 0, sizeof(solver));
+    BOOL accepted = DSL_Shape_Analyze_PU
+        (destination, PU_Info_tree_ptr(destination), NULL, &solver);
+    printf("WP6 reverse provenance: accepted=%d contradictions=%u "
+           "iterations=%u values=%u\n", (int)accepted,
+           solver.contradiction_count, solver.iteration_count,
+           solver.value_count);
+    if (!accepted || solver.contradiction_count != 0 ||
+        solver.iteration_count < 2) {
+        fprintf(stderr,
+                "WP6 reverse-order producer was not revisited\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Directional_Provenance(void)
+{
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT pu = DSL_Builder_Create_Minimal_PU
+                                      ("wp6_directional_provenance");
+    if (pu == NULL || !DSL_Builder_Select_PU(pu))
+        return 1;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[2,<pending>]");
+    descriptor.type_core.rank = 2;
+    TY_IDX pending_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_directional_pending", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[2,3]");
+    descriptor.type_core.rank = 2;
+    TY_IDX complete_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_directional_complete", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_VALUE operand = DSL_Builder_Create_Model_Input
+        ("wp6_directional_operand", pending_ty, 0);
+    DSL_BUILDER_VALUE kids[1] = { operand };
+    DSL_BUILDER_VALUE relu = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kids, 1, NULL, 0, "wp6_directional_result", complete_ty);
+    if (pending_ty == TY_IDX_ZERO || complete_ty == TY_IDX_ZERO ||
+        operand == NULL || relu == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, relu) ||
+        !DSL_Builder_Select_PU(pu))
+        return 1;
+
+    DSL_IR_VALUE_RECORD operand_value;
+    DSL_IR_VALUE_RECORD result_before;
+    DSL_IR_VALUE_RECORD result_after;
+    DSL_IR_NODE_RECORD node_before;
+    DSL_IR_NODE_RECORD node_after;
+    DSL_IR_VALUE_ID operand_ids[1];
+    DSL_SHAPE_PROOF_CONTEXT context;
+    if (!DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(operand), &operand_value) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(relu), &result_before) ||
+        !DSL_IR_Image_Get_Node
+             (result_before.producer_node_id, &node_before) ||
+        !Init_Test_Shape_Proof_Context
+             (pu, &node_before, operand_ids, 1, &context) ||
+        !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping(&context))
+        return 1;
+
+    DSL_SHAPE_FACT operand_fact;
+    DSL_SHAPE_FACT inferred;
+    TY_IDX operand_types[1] = { pending_ty };
+    if (!DSL_Shape_Fact_From_Type(pending_ty, &operand_fact))
+        return 1;
+    DSL_SHAPE_INFERENCE_INPUT inference;
+    memset(&inference, 0, sizeof(inference));
+    inference.dsl_operator = OPR_DSLRELU;
+    inference.version = 2;
+    inference.node = &node_before;
+    inference.operand_types = operand_types;
+    inference.operand_facts = &operand_fact;
+    inference.operand_count = 1;
+    inference.result_ty = complete_ty;
+    inference.proof_context = &context;
+    DSL_SHAPE_INFERENCE_RESULT infer_result =
+        DSL_Shape_Infer_Operator(&inference, &inferred);
+    DSL_SHAPE_OPERATOR_INPUT check;
+    memset(&check, 0, sizeof(check));
+    check.dsl_operator = OPR_DSLRELU;
+    check.version = 2;
+    check.node = &node_before;
+    check.operand_types = operand_types;
+    check.operand_count = 1;
+    check.result_ty = complete_ty;
+    check.proof_context = &context;
+    DSL_SHAPE_CHECK_RESULT check_result = DSL_Shape_Check_Operator(&check);
+    BOOL admitted = DSL_Shape_Proof_Context_Admit_Value
+        (&context, result_before.id, result_before.ty);
+
+    DSL_IR_IMAGE_HEADER image_before;
+    DSL_IR_IMAGE_HEADER image_after;
+    DSL_IR_Image_Get_Header(&image_before);
+    ST_IDX result_st = DSL_Builder_Get_Value_Result_Symbol(relu);
+    TY_IDX wn_ty_before = WN_ty(relu);
+    TY_IDX st_ty_before = ST_type(St_Table[result_st]);
+    UINT32 type_count_before = TY_Table_Size();
+    PU_Info *active_info_before = Current_PU_Info;
+    PU *active_pu_before = Current_pu;
+    DSL_SHAPE_SOLVER_RESULT solver;
+    memset(&solver, 0, sizeof(solver));
+    BOOL solver_accepted = DSL_Shape_Analyze_PU
+        (pu, PU_Info_tree_ptr(pu), NULL, &solver);
+    DSL_GATEKEEPER_RESULT strict_result;
+    DSL_GATEKEEPER_RESULT admission_result;
+    memset(&strict_result, 0, sizeof(strict_result));
+    memset(&admission_result, 0, sizeof(admission_result));
+    BOOL strict = DSL_Gatekeeper_Verify_PU_Mode
+        (pu, DSL_GATEKEEPER_STRICT, NULL, &strict_result);
+    BOOL admission = DSL_Gatekeeper_Verify_PU_Mode
+        (pu, DSL_GATEKEEPER_ADMISSION, NULL, &admission_result);
+    DSL_IR_Image_Get_Header(&image_after);
+    BOOL unchanged = WN_ty(relu) == wn_ty_before &&
+        ST_type(St_Table[result_st]) == st_ty_before &&
+        TY_Table_Size() == type_count_before &&
+        Current_PU_Info == active_info_before && Current_pu == active_pu_before &&
+        DSL_IR_Image_Get_Value(result_before.id, &result_after) &&
+        DSL_IR_Image_Get_Node(node_before.id, &node_after) &&
+        memcmp(&result_before, &result_after, sizeof(result_before)) == 0 &&
+        memcmp(&node_before, &node_after, sizeof(node_before)) == 0 &&
+        memcmp(&image_before, &image_after, sizeof(image_before)) == 0;
+    printf("WP6 directional provenance: infer=%u/%u check=%u admitted=%d "
+           "solver=%d/%u gate=%d/%d errors=%u/%u unchanged=%d\n",
+           (unsigned int)infer_result, (unsigned int)inferred.state,
+           (unsigned int)check_result, (int)admitted,
+           (int)solver_accepted, solver.contradiction_count,
+           (int)strict, (int)admission, strict_result.error_count,
+           admission_result.error_count, (int)unchanged);
+    if (infer_result != DSL_SHAPE_INFERENCE_PENDING ||
+        inferred.state != DSL_SHAPE_FACT_PENDING ||
+        check_result != DSL_SHAPE_CHECK_INVALID || admitted ||
+        solver_accepted || strict || admission ||
+        strict_result.error_count == 0 ||
+        admission_result.error_count == 0 || !unchanged) {
+        fprintf(stderr,
+                "WP6 complete persisted fact was proved by pending inference\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Retype_Admission_Matrix(void)
+{
+    int failed = Check_WP6_Same_Owner_Retype();
+    failed |= Run_WP6_Mapped_Retype_Case
+                  ("exact", 1, FALSE, FALSE, TRUE);
+    failed |= Run_WP6_Mapped_Retype_Case
+                  ("unmapped", 0, FALSE, FALSE, FALSE);
+    failed |= Run_WP6_Mapped_Retype_Case
+                  ("multiple", 2, FALSE, FALSE, FALSE);
+    failed |= Run_WP6_Mapped_Retype_Case
+                  ("conflict", 0, TRUE, FALSE, FALSE);
+    failed |= Run_WP6_Mapped_Retype_Case
+                  ("candidate_tamper", 1, FALSE, TRUE, FALSE);
+    failed |= Check_WP6_Multi_Request_Retype_Preflight();
+    failed |= Check_WP6_Provenance_Cycle();
+    failed |= Check_WP6_Reverse_Order_Provenance();
+    failed |= Check_WP6_Directional_Provenance();
+    return failed;
+}
+
+static int
+Check_WP6_Duplicate_Stable_Identity(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    DSL_GATEKEEPER_RESULT gate;
+    DSL_SHAPE_SOLVER_RESULT solver;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT source =
+        DSL_Builder_Create_Minimal_PU("wp6_duplicate_identity_source");
+    UINT32 source_file = DSL_Builder_Register_Source_File
+                             (source, "wp6_duplicate_identity.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6DuplicateSource.forward";
+    identity.defining_module = "wp6_duplicate_identity";
+    identity.defining_file = "wp6_duplicate_identity.py";
+    identity.defining_line = 10;
+    if (source == NULL || source_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(source, &identity))
+        return 1;
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    TY_IDX source_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_duplicate_identity_ty", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_VALUE actual = DSL_Builder_Create_Model_Input
+        ("wp6_duplicate_identity_actual", source_ty, 0);
+
+    DSL_BUILDER_PROGRAM_UNIT duplicate =
+        DSL_Builder_Create_Minimal_PU("wp6_duplicate_identity_alias");
+    UINT32 duplicate_file = DSL_Builder_Register_Source_File
+                                (duplicate, "wp6_duplicate_identity.py");
+    if (duplicate == NULL || duplicate_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(duplicate, &identity))
+        return 1;
+
+    DSL_BUILDER_PROGRAM_UNIT destination =
+        DSL_Builder_Create_Minimal_PU("wp6_duplicate_identity_destination");
+    UINT32 destination_file = DSL_Builder_Register_Source_File
+        (destination, "wp6_duplicate_identity.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6DuplicateDestination.forward";
+    identity.defining_module = "wp6_duplicate_identity";
+    identity.defining_file = "wp6_duplicate_identity.py";
+    identity.defining_line = 20;
+    memset(&position, 0, sizeof(position));
+    position.file_id = destination_file;
+    position.line = 21;
+    position.statement_begin = 1;
+    if (destination == NULL || destination_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(destination, &identity))
+        return 1;
+    DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
+        (destination, "wp6_duplicate_identity_formal", 0, source_ty,
+         &position);
+    DSL_BUILDER_VALUE operands[2] = { formal, formal };
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    DSL_BUILDER_VALUE add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, operands, 2, &broadcast, 1,
+         "wp6_duplicate_identity_add", source_ty);
+    if (formal == NULL || add == NULL ||
+        !DSL_Builder_Append_PU_Value(destination, add) ||
+        !DSL_Builder_Return_PU_Values(destination, NULL, 0))
+        return 1;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6DuplicateDestination";
+    callsite.instance_path = "model.wp6_duplicate_destination";
+    callsite.context_identity = "WP6DuplicateSource.to_destination";
+    callsite.call_ordinal = 1;
+    position.file_id = source_file;
+    position.line = 30;
+    callsite.source_position = position;
+    DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+        (source, destination, &actual, 1, NULL, 0, &callsite);
+    if (actual == NULL || call == NULL ||
+        !DSL_Builder_Set_PU_Call_Argument_Role
+             (call, 0, 0, "shape_mapping"))
+        return 1;
+
+    DSL_IR_VALUE_RECORD value;
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_VALUE_ID operand_ids[2];
+    DSL_SHAPE_PROOF_CONTEXT context;
+    if (!DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(add), &value) ||
+        !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+        !Init_Test_Shape_Proof_Context
+             (destination, &node, operand_ids, 2, &context))
+        return 1;
+    BOOL selected =
+        DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping(&context);
+    BOOL admitted = selected && DSL_Shape_Proof_Context_Admit_Value
+                                  (&context, value.id, value.ty);
+    memset(&solver, 0, sizeof(solver));
+    BOOL pu_selected = DSL_Builder_Select_PU(destination);
+    BOOL solver_accepted = pu_selected && DSL_Shape_Analyze_PU
+        (destination, PU_Info_tree_ptr(destination), NULL, &solver);
+    BOOL strict = DSL_Gatekeeper_Verify_PU_Mode
+        (destination, DSL_GATEKEEPER_STRICT, NULL, &gate);
+    BOOL admission = DSL_Gatekeeper_Verify_PU_Mode
+        (destination, DSL_GATEKEEPER_ADMISSION, NULL, &gate);
+    printf("WP6 duplicate stable identity: selected=%d admitted=%d "
+           "solver=%d gate=%d/%d\n", (int)selected, (int)admitted,
+           (int)solver_accepted, (int)strict, (int)admission);
+    if (selected || admitted || solver_accepted || strict || admission) {
+        fprintf(stderr,
+                "WP6 duplicate stable identity was accepted as proof\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Derived_Provenance_Chain(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    DSL_BUILDER_PROGRAM_UNIT source;
+    DSL_BUILDER_PROGRAM_UNIT other_source;
+    DSL_BUILDER_PROGRAM_UNIT destination;
+    DSL_BUILDER_PROGRAM_UNIT bad_destination;
+    DSL_BUILDER_PROGRAM_UNIT mismatch_destination;
+    DSL_BUILDER_VALUE actuals[2];
+    DSL_BUILDER_VALUE formals[2];
+    DSL_BUILDER_VALUE add;
+    DSL_BUILDER_VALUE relu;
+    DSL_BUILDER_VALUE bad_formal;
+    DSL_BUILDER_VALUE bad_relu;
+    DSL_BUILDER_VALUE mismatch_actual;
+    DSL_BUILDER_VALUE mismatch_formal;
+    DSL_BUILDER_VALUE mismatch_relu;
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    DSL_BUILDER_CALL call;
+    DSL_BUILDER_CALL bad_call;
+    DSL_IR_VALUE_RECORD value;
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_VALUE_ID operand_ids[2];
+    DSL_SHAPE_PROOF_CONTEXT context;
+    DSL_SHAPE_SOLVER_RESULT solver;
+    DSL_GATEKEEPER_RESULT gate;
+    TY_IDX source_ty;
+    TY_IDX other_ty;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    source = DSL_Builder_Create_Minimal_PU("wp6_chain_source");
+    UINT32 source_file =
+        DSL_Builder_Register_Source_File(source, "wp6_chain.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6ChainSource.forward";
+    identity.defining_module = "wp6_chain";
+    identity.defining_file = "wp6_chain.py";
+    identity.defining_line = 10;
+    if (source == NULL || source_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(source, &identity))
+        return 1;
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    source_ty = DSL_Builder_Intern_Tensor_Type
+                    ("wp6_chain_source_ty", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    actuals[0] = DSL_Builder_Create_Model_Input
+                     ("wp6_chain_actual0", source_ty, 0);
+    actuals[1] = DSL_Builder_Create_Model_Input
+                     ("wp6_chain_actual1", source_ty, 1);
+
+    other_source = DSL_Builder_Create_Minimal_PU("wp6_chain_other_source");
+    UINT32 other_file =
+        DSL_Builder_Register_Source_File(other_source, "wp6_chain.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6ChainOtherSource.forward";
+    identity.defining_module = "wp6_chain";
+    identity.defining_file = "wp6_chain.py";
+    identity.defining_line = 20;
+    if (other_source == NULL || other_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(other_source, &identity))
+        return 1;
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    other_ty = DSL_Builder_Intern_Tensor_Type
+                   ("wp6_chain_other_ty", MTYPE_To_TY(MTYPE_F4),
+                    &descriptor);
+    if (!DSL_Builder_Select_PU(source))
+        return 1;
+    mismatch_actual = DSL_Builder_Create_Model_Input
+                          ("wp6_chain_mismatch_actual", other_ty, 2);
+
+    destination = DSL_Builder_Create_Minimal_PU("wp6_chain_destination");
+    UINT32 destination_file =
+        DSL_Builder_Register_Source_File(destination, "wp6_chain.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6ChainDestination.forward";
+    identity.defining_module = "wp6_chain";
+    identity.defining_file = "wp6_chain.py";
+    identity.defining_line = 30;
+    memset(&position, 0, sizeof(position));
+    position.file_id = destination_file;
+    position.line = 31;
+    position.statement_begin = 1;
+    if (destination == NULL || destination_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(destination, &identity))
+        return 1;
+    formals[0] = DSL_Builder_Declare_PU_Formal
+                     (destination, "wp6_chain_formal0", 0, source_ty,
+                      &position);
+    ++position.line;
+    formals[1] = DSL_Builder_Declare_PU_Formal
+                     (destination, "wp6_chain_formal1", 1, source_ty,
+                      &position);
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    kids[0] = formals[0];
+    kids[1] = formals[1];
+    add = DSL_Builder_Create_Operator_With_Result
+              (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                               DSL_OPCODE_COMMON_ADD, 1),
+               1, kids, 2, &broadcast, 1, "wp6_chain_add", source_ty);
+    kids[0] = add;
+    relu = DSL_Builder_Create_Operator_With_Result
+               (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                "common.relu", 2),
+                2, kids, 1, NULL, 0, "wp6_chain_relu", source_ty);
+    if (formals[0] == NULL || formals[1] == NULL || add == NULL ||
+        relu == NULL || !DSL_Builder_Append_PU_Value(destination, relu) ||
+        !DSL_Builder_Return_PU_Values(destination, NULL, 0))
+        return 1;
+
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6ChainDestination";
+    callsite.instance_path = "model.wp6_chain";
+    callsite.context_identity = "WP6ChainSource.to_destination";
+    callsite.call_ordinal = 1;
+    position.file_id = source_file;
+    position.line = 40;
+    callsite.source_position = position;
+    call = DSL_Builder_Create_PU_Call
+               (source, destination, actuals, 2, NULL, 0, &callsite);
+    if (call == NULL ||
+        !DSL_Builder_Set_PU_Call_Argument_Role(call, 0, 0,
+                                               "shape_mapping") ||
+        !DSL_Builder_Set_PU_Call_Argument_Role(call, 1, 1,
+                                               "shape_mapping"))
+        return 1;
+
+    if (!DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(relu), &value) ||
+        !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+        !Init_Test_Shape_Proof_Context
+             (destination, &node, operand_ids, 2, &context) ||
+        !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping(&context))
+        return 1;
+    UINT32 chain_mapping_count = context.interface_mapping_count;
+    DSL_IR_VALUE_RECORD add_value;
+    DSL_IR_NODE_RECORD add_node;
+    DSL_IR_VALUE_ID add_operand_ids[2];
+    DSL_SHAPE_PROOF_CONTEXT add_context;
+    BOOL per_operand_mismatches_rejected = FALSE;
+    if (DSL_IR_Image_Get_Value
+            (DSL_Builder_Get_Value_Image_Id(add), &add_value) &&
+        DSL_IR_Image_Get_Node(add_value.producer_node_id, &add_node) &&
+        Init_Test_Shape_Proof_Context
+            (destination, &add_node, add_operand_ids, 2, &add_context) &&
+        DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+            (&add_context) && add_context.interface_mapping_count == 2) {
+        DSL_SHAPE_PROOF_CONTEXT changed = add_context;
+        UINT32 saved_formal = changed.interface_mappings[0].formal_ordinal;
+        changed.interface_mappings[0].formal_ordinal =
+            changed.interface_mappings[1].formal_ordinal;
+        changed.interface_mappings[1].formal_ordinal = saved_formal;
+        BOOL selector_swap_rejected =
+            !DSL_Shape_Proof_Context_Admit_Value
+                (&changed, add_value.id, add_value.ty);
+        DSL_IR_VALUE_ID changed_operands[2] = {
+            add_operand_ids[1], add_operand_ids[0]
+        };
+        changed = add_context;
+        changed.operand_value_ids = changed_operands;
+        BOOL operand_swap_rejected =
+            !DSL_Shape_Proof_Context_Admit_Value
+                (&changed, add_value.id, add_value.ty);
+        per_operand_mismatches_rejected =
+            selector_swap_rejected && operand_swap_rejected;
+    }
+    BOOL chain_admitted = DSL_Shape_Proof_Context_Admit_Value
+                              (&context, value.id, value.ty);
+    memset(&solver, 0, sizeof(solver));
+    BOOL chain_selected = DSL_Builder_Select_PU(destination);
+    BOOL chain_solver = chain_selected && DSL_Shape_Analyze_PU
+                            (destination, PU_Info_tree_ptr(destination),
+                             stderr, &solver);
+    BOOL chain_strict = DSL_Gatekeeper_Verify_PU_Mode
+                            (destination, DSL_GATEKEEPER_STRICT, stderr, &gate);
+    BOOL chain_admission = DSL_Gatekeeper_Verify_PU_Mode
+                               (destination, DSL_GATEKEEPER_ADMISSION,
+                                stderr, &gate);
+
+    bad_destination =
+        DSL_Builder_Create_Minimal_PU("wp6_chain_bad_destination");
+    UINT32 bad_file =
+        DSL_Builder_Register_Source_File(bad_destination, "wp6_chain.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6ChainBadDestination.forward";
+    identity.defining_module = "wp6_chain";
+    identity.defining_file = "wp6_chain.py";
+    identity.defining_line = 50;
+    position.file_id = bad_file;
+    position.line = 51;
+    if (bad_destination == NULL || bad_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(bad_destination, &identity))
+        return 1;
+    bad_formal = DSL_Builder_Declare_PU_Formal
+                     (bad_destination, "wp6_chain_bad_formal", 0,
+                      source_ty, &position);
+    kids[0] = bad_formal;
+    bad_relu = DSL_Builder_Create_Operator_With_Result
+                   (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                    "common.relu", 2),
+                    2, kids, 1, NULL, 0, "wp6_chain_bad_relu", other_ty);
+    if (bad_formal == NULL || bad_relu == NULL ||
+        !DSL_Builder_Append_PU_Value(bad_destination, bad_relu) ||
+        !DSL_Builder_Return_PU_Values(bad_destination, NULL, 0))
+        return 1;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6ChainBadDestination";
+    callsite.instance_path = "model.wp6_chain_bad";
+    callsite.context_identity = "WP6ChainSource.to_bad_destination";
+    callsite.call_ordinal = 2;
+    position.file_id = source_file;
+    position.line = 60;
+    callsite.source_position = position;
+    bad_call = DSL_Builder_Create_PU_Call
+                   (source, bad_destination, actuals, 1,
+                    NULL, 0, &callsite);
+    if (bad_call == NULL ||
+        !DSL_Builder_Set_PU_Call_Argument_Role
+             (bad_call, 0, 0, "shape_mapping") ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(bad_relu), &value) ||
+        !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+        !Init_Test_Shape_Proof_Context
+             (bad_destination, &node, operand_ids, 2, &context) ||
+        !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping(&context))
+        return 1;
+    BOOL bad_admitted = DSL_Shape_Proof_Context_Admit_Value
+                            (&context, value.id, value.ty);
+    memset(&solver, 0, sizeof(solver));
+    BOOL bad_selected = DSL_Builder_Select_PU(bad_destination);
+    BOOL bad_solver = bad_selected && DSL_Shape_Analyze_PU
+                          (bad_destination,
+                           PU_Info_tree_ptr(bad_destination), NULL, &solver);
+    BOOL bad_strict = DSL_Gatekeeper_Verify_PU_Mode
+                          (bad_destination, DSL_GATEKEEPER_STRICT,
+                           NULL, &gate);
+    BOOL bad_admission = DSL_Gatekeeper_Verify_PU_Mode
+                             (bad_destination, DSL_GATEKEEPER_ADMISSION,
+                              NULL, &gate);
+
+    mismatch_destination =
+        DSL_Builder_Create_Minimal_PU("wp6_chain_mismatch_destination");
+    UINT32 mismatch_file = DSL_Builder_Register_Source_File
+                               (mismatch_destination, "wp6_chain.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name =
+        "WP6ChainMismatchDestination.forward";
+    identity.defining_module = "wp6_chain";
+    identity.defining_file = "wp6_chain.py";
+    identity.defining_line = 70;
+    position.file_id = mismatch_file;
+    position.line = 71;
+    if (mismatch_actual == NULL || mismatch_destination == NULL ||
+        mismatch_file == 0 || !DSL_Builder_Set_PU_Source_Identity
+             (mismatch_destination, &identity))
+        return 1;
+    mismatch_formal = DSL_Builder_Declare_PU_Formal
+                          (mismatch_destination,
+                           "wp6_chain_mismatch_formal", 0, other_ty,
+                           &position);
+    kids[0] = mismatch_formal;
+    mismatch_relu = DSL_Builder_Create_Operator_With_Result
+                        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                         "common.relu", 2),
+                         2, kids, 1, NULL, 0,
+                         "wp6_chain_mismatch_relu", other_ty);
+    if (mismatch_formal == NULL || mismatch_relu == NULL ||
+        !DSL_Builder_Append_PU_Value
+             (mismatch_destination, mismatch_relu) ||
+        !DSL_Builder_Return_PU_Values(mismatch_destination, NULL, 0))
+        return 1;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6ChainMismatchDestination";
+    callsite.instance_path = "model.wp6_chain_mismatch";
+    callsite.context_identity = "WP6ChainSource.to_mismatch_destination";
+    callsite.call_ordinal = 3;
+    position.file_id = source_file;
+    position.line = 80;
+    callsite.source_position = position;
+    DSL_BUILDER_CALL mismatch_call = DSL_Builder_Create_PU_Call
+        (source, mismatch_destination, &mismatch_actual, 1,
+         NULL, 0, &callsite);
+    if (mismatch_call == NULL ||
+        !DSL_Builder_Set_PU_Call_Argument_Role
+             (mismatch_call, 0, 0, "shape_mapping") ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(mismatch_relu), &value) ||
+        !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+        !Init_Test_Shape_Proof_Context
+             (mismatch_destination, &node, operand_ids, 2, &context))
+        return 1;
+    BOOL mismatch_selected =
+        DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping(&context);
+    BOOL mismatch_admitted = mismatch_selected &&
+        DSL_Shape_Proof_Context_Admit_Value(&context, value.id, value.ty);
+    memset(&solver, 0, sizeof(solver));
+    BOOL mismatch_pu_selected = DSL_Builder_Select_PU(mismatch_destination);
+    BOOL mismatch_solver = mismatch_pu_selected && DSL_Shape_Analyze_PU
+        (mismatch_destination, PU_Info_tree_ptr(mismatch_destination),
+         NULL, &solver);
+    BOOL mismatch_strict = DSL_Gatekeeper_Verify_PU_Mode
+        (mismatch_destination, DSL_GATEKEEPER_STRICT, NULL, &gate);
+    BOOL mismatch_admission = DSL_Gatekeeper_Verify_PU_Mode
+        (mismatch_destination, DSL_GATEKEEPER_ADMISSION, NULL, &gate);
+
+    printf("WP6 derived chain: dual_chain=%d/%d/%d/%d "
+           "tampered=%d/%d/%d/%d stable_mismatch=%d/%d/%d/%d/%d "
+           "mappings=%u swaps=%d\n",
+           (int)chain_admitted, (int)chain_solver, (int)chain_strict,
+           (int)chain_admission, (int)bad_admitted, (int)bad_solver,
+           (int)bad_strict, (int)bad_admission, (int)mismatch_selected,
+           (int)mismatch_admitted, (int)mismatch_solver,
+           (int)mismatch_strict, (int)mismatch_admission,
+           chain_mapping_count, (int)per_operand_mismatches_rejected);
+    if (!chain_admitted || !chain_solver || !chain_strict ||
+        !chain_admission || chain_mapping_count != 2 ||
+        !per_operand_mismatches_rejected || bad_admitted || bad_solver ||
+        bad_strict || bad_admission || mismatch_selected ||
+        mismatch_admitted || mismatch_solver || mismatch_strict ||
+        mismatch_admission) {
+        fprintf(stderr,
+                "WP6 derived provenance chain or tamper admission changed\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Unused_Foreign_Roots(void)
+{
+    BOOL model_solver;
+    BOOL model_strict;
+    BOOL model_relaxed;
+    BOOL constant_solver;
+    BOOL constant_strict;
+    BOOL constant_relaxed;
+    DSL_SHAPE_SOLVER_RESULT solver;
+    DSL_GATEKEEPER_RESULT gate;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT source =
+        DSL_Builder_Create_Minimal_PU("wp6_unused_model_source");
+    UINT32 source_file =
+        DSL_Builder_Register_Source_File(source, "wp6_unused.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6UnusedModelSource.forward";
+    identity.defining_module = "wp6_unused";
+    identity.defining_file = "wp6_unused.py";
+    identity.defining_line = 10;
+    if (source == NULL || source_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(source, &identity)) {
+        fprintf(stderr, "WP6 unused model source setup failed\n");
+        return 1;
+    }
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    TY_IDX foreign_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp6_unused_foreign_ty",
+                             MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT active =
+        DSL_Builder_Create_Minimal_PU("wp6_unused_model_active");
+    DSL_BUILDER_VALUE unused = DSL_Builder_Create_Model_Input
+                                   ("wp6_unused_foreign_model",
+                                    foreign_ty, 0);
+    if (foreign_ty == TY_IDX_ZERO || active == NULL || unused == NULL ||
+        !DSL_Builder_Append_PU_Value(active, unused)) {
+        fprintf(stderr, "WP6 unused model active setup failed\n");
+        return 1;
+    }
+    memset(&solver, 0, sizeof(solver));
+    model_solver = DSL_Shape_Analyze_PU
+                       (active, PU_Info_tree_ptr(active), NULL, &solver);
+    model_strict = DSL_Gatekeeper_Verify_PU_Mode
+                       (active, DSL_GATEKEEPER_STRICT, NULL, &gate);
+    model_relaxed = DSL_Gatekeeper_Verify_PU_Mode
+                        (active, DSL_GATEKEEPER_ADMISSION, NULL, &gate);
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    source = DSL_Builder_Create_Minimal_PU("wp6_unused_const_source");
+    source_file = DSL_Builder_Register_Source_File(source, "wp6_unused.py");
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6UnusedConstSource.forward";
+    identity.defining_module = "wp6_unused";
+    identity.defining_file = "wp6_unused.py";
+    identity.defining_line = 20;
+    if (source == NULL || source_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(source, &identity)) {
+        fprintf(stderr, "WP6 unused constant source setup failed\n");
+        return 1;
+    }
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[1,4,L,8]");
+    foreign_ty = DSL_Builder_Intern_Tensor_Type
+                     ("wp6_unused_const_foreign_ty",
+                      MTYPE_To_TY(MTYPE_F4), &descriptor);
+    active = DSL_Builder_Create_Minimal_PU("wp6_unused_const_active");
+    const char *foreign_shape =
+        TY_tensor_attribute(foreign_ty, TY_TENSOR_SCHEMA_SHAPE);
+    unused = DSL_Builder_Create_Tensor_Constant
+                 ("wp6_unused_foreign_const", foreign_ty, "float32", 4,
+                  foreign_shape, "splat", "1.0");
+    if (foreign_ty == TY_IDX_ZERO || foreign_shape == NULL ||
+        active == NULL || unused == NULL ||
+        !DSL_Builder_Append_PU_Value(active, unused)) {
+        fprintf(stderr, "WP6 unused constant active setup failed\n");
+        return 1;
+    }
+    memset(&solver, 0, sizeof(solver));
+    constant_solver = DSL_Shape_Analyze_PU
+                          (active, PU_Info_tree_ptr(active), NULL, &solver);
+    constant_strict = DSL_Gatekeeper_Verify_PU_Mode
+                          (active, DSL_GATEKEEPER_STRICT, NULL, &gate);
+    constant_relaxed = DSL_Gatekeeper_Verify_PU_Mode
+                           (active, DSL_GATEKEEPER_ADMISSION, NULL, &gate);
+
+    printf("WP6 unused foreign roots: model=%d/%d/%d const=%d/%d/%d\n",
+           (int)model_solver, (int)model_strict, (int)model_relaxed,
+           (int)constant_solver, (int)constant_strict,
+           (int)constant_relaxed);
+    if (model_solver || model_strict || model_relaxed || constant_solver ||
+        constant_strict || constant_relaxed) {
+        fprintf(stderr,
+                "WP6 unused foreign model input or tensor constant bypassed "
+                "provenance admission\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int
+Check_WP6_Symbolic_Admission(void)
+{
+    DSL_BUILDER_PROGRAM_UNIT source_pu;
+    DSL_BUILDER_PROGRAM_UNIT active_pu;
+    ST_IDX source_owner;
+    ST_IDX active_owner;
+    char qualified_shape[128];
+    char expected_local[128];
+    char normalized[128];
+    BOOL zero_owner_accepted;
+    BOOL mismatch_accepted;
+    BOOL same_owner_qualified_accepted;
+    BOOL same_owner_unqualified_accepted;
+    BOOL same_owner_qualified_exact;
+    BOOL same_owner_unqualified_exact;
+    BOOL zero_owner_static_exact;
+    BOOL zero_owner_dynamic_exact;
+    BOOL zero_owner_pending_exact;
+    BOOL malformed_rejected = TRUE;
+    int failed = 0;
+
+    DSL_Builder_Begin_Program();
+    source_pu = DSL_Builder_Create_Minimal_PU
+                    ("dsl_shape_wp6_source_owner");
+    active_pu = DSL_Builder_Create_Minimal_PU
+                    ("dsl_shape_wp6_active_owner");
+    if (source_pu == NULL || active_pu == NULL) {
+        fprintf(stderr, "WP6 symbolic admission PU setup failed\n");
+        return 1;
+    }
+    source_owner = PU_Info_proc_sym(source_pu);
+    active_owner = PU_Info_proc_sym(active_pu);
+    if (source_owner == ST_IDX_ZERO || active_owner == ST_IDX_ZERO ||
+        source_owner == active_owner) {
+        fprintf(stderr, "WP6 symbolic admission owner setup failed\n");
+        return 1;
+    }
+
+    snprintf(qualified_shape, sizeof(qualified_shape), "[L@pu%08x]",
+             (unsigned int)source_owner);
+    snprintf(expected_local, sizeof(expected_local), "[L@pu%08x]",
+             (unsigned int)active_owner);
+
+    memset(normalized, 0, sizeof(normalized));
+    zero_owner_accepted = DSL_Shape_Normalize_Logical_Shape
+                              (ST_IDX_ZERO, qualified_shape, 1,
+                               normalized, sizeof(normalized));
+    memset(normalized, 0, sizeof(normalized));
+    mismatch_accepted = DSL_Shape_Normalize_Logical_Shape
+                            (active_owner, qualified_shape, 1,
+                             normalized, sizeof(normalized));
+    memset(normalized, 0, sizeof(normalized));
+    same_owner_qualified_accepted = DSL_Shape_Normalize_Logical_Shape
+                                        (source_owner, qualified_shape, 1,
+                                         normalized, sizeof(normalized));
+    same_owner_qualified_exact = same_owner_qualified_accepted &&
+        strcmp(normalized, qualified_shape) == 0;
+    memset(normalized, 0, sizeof(normalized));
+    same_owner_unqualified_accepted = DSL_Shape_Normalize_Logical_Shape
+                                          (active_owner, "[L]", 1,
+                                           normalized, sizeof(normalized));
+    same_owner_unqualified_exact = same_owner_unqualified_accepted &&
+        strcmp(normalized, expected_local) == 0;
+    memset(normalized, 0, sizeof(normalized));
+    zero_owner_static_exact = DSL_Shape_Normalize_Logical_Shape
+                                  (ST_IDX_ZERO, "[2]", 1,
+                                   normalized, sizeof(normalized)) &&
+        strcmp(normalized, "[2]") == 0;
+    memset(normalized, 0, sizeof(normalized));
+    zero_owner_dynamic_exact = DSL_Shape_Normalize_Logical_Shape
+                                   (ST_IDX_ZERO, "[?]", 1,
+                                    normalized, sizeof(normalized)) &&
+        strcmp(normalized, "[?]") == 0;
+    memset(normalized, 0, sizeof(normalized));
+    zero_owner_pending_exact = DSL_Shape_Normalize_Logical_Shape
+                                   (ST_IDX_ZERO, "[<pending>]", 1,
+                                    normalized, sizeof(normalized)) &&
+        strcmp(normalized, "[<pending>]") == 0;
+    const char *malformed_shapes[] = {
+        "[L@pu00000000]",
+        "[L@pu0000000]",
+        "[L@pu000000000]",
+        "[L@pu0000000g]",
+        "[L@pufffffffff]",
+        "[L@pu]"
+    };
+    for (UINT32 i = 0;
+         i < sizeof(malformed_shapes) / sizeof(malformed_shapes[0]); ++i) {
+        memset(normalized, 0, sizeof(normalized));
+        malformed_rejected = malformed_rejected &&
+            !DSL_Shape_Normalize_Logical_Shape
+                 (active_owner, malformed_shapes[i], 1,
+                  normalized, sizeof(normalized));
+    }
+
+    printf("WP6 symbolic admission matrix: zero_owner_accepted=%d "
+           "mismatch_accepted=%d same_owner_qualified=%d "
+           "same_owner_unqualified=%d owner0_non_symbol=%d/%d/%d "
+           "malformed=%d\n",
+           (int)zero_owner_accepted, (int)mismatch_accepted,
+           (int)same_owner_qualified_exact,
+           (int)same_owner_unqualified_exact,
+           (int)zero_owner_static_exact, (int)zero_owner_dynamic_exact,
+           (int)zero_owner_pending_exact, (int)malformed_rejected);
+
+    if (zero_owner_accepted) {
+        fprintf(stderr,
+                "WP6 admission accepted a persisted qualifier without "
+                "an explicit owner\n");
+        failed = 1;
+    }
+    if (mismatch_accepted) {
+        fprintf(stderr,
+                "WP6 admission accepted a qualifier for a foreign owner\n");
+        failed = 1;
+    }
+    if (!same_owner_qualified_exact || !same_owner_unqualified_exact) {
+        fprintf(stderr,
+                "WP6 admission rejected or changed a trusted local symbol\n");
+        failed = 1;
+    }
+    if (!zero_owner_static_exact || !zero_owner_dynamic_exact ||
+        !zero_owner_pending_exact || !malformed_rejected) {
+        fprintf(stderr,
+                "WP6 admission rejected an owner-free non-symbol shape\n");
+        failed = 1;
+    }
+    failed |= Check_WP6_Symbolic_Proof_Use();
+    failed |= Check_WP6_Foreign_Retype_Preflight();
+    failed |= Check_WP6_Retype_Admission_Matrix();
+    failed |= Check_WP6_Reviewed_Mapping_Capability();
+    failed |= Check_WP6_Mapping_Ambiguity_Gatekeeper();
+    failed |= Check_WP6_Duplicate_Stable_Identity();
+    failed |= Check_WP6_Derived_Provenance_Chain();
+    failed |= Check_WP6_Unused_Foreign_Roots();
+    if (!failed)
+        printf("WP6 symbolic admission contract passed\n");
+    return failed;
+}
+
+static int
+Check_WP6_Fresh_Process_Order(void)
+{
+    const char *order = getenv("OPEN64_DSL_SHAPE_WP6_ORDER_ONLY");
+    if (order == NULL || (strcmp(order, "AB") != 0 &&
+                          strcmp(order, "BA") != 0))
+        return 1;
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_PROGRAM_UNIT source_a = NULL;
+    DSL_BUILDER_PROGRAM_UNIT source_b = NULL;
+    if (strcmp(order, "AB") == 0) {
+        source_a = DSL_Builder_Create_Minimal_PU("wp6_order_source_a");
+        source_b = DSL_Builder_Create_Minimal_PU("wp6_order_source_b");
+    } else {
+        source_b = DSL_Builder_Create_Minimal_PU("wp6_order_source_b");
+        source_a = DSL_Builder_Create_Minimal_PU("wp6_order_source_a");
+    }
+    UINT32 source_a_file = DSL_Builder_Register_Source_File
+                               (source_a, "wp6_order.py");
+    UINT32 source_b_file = DSL_Builder_Register_Source_File
+                               (source_b, "wp6_order.py");
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "WP6OrderSourceA.forward";
+    identity.defining_module = "wp6_order";
+    identity.defining_file = "wp6_order.py";
+    identity.defining_line = 10;
+    if (source_a == NULL || source_b == NULL || source_a_file == 0 ||
+        source_b_file == 0 ||
+        !DSL_Builder_Set_PU_Source_Identity(source_a, &identity))
+        return 1;
+    identity.canonical_definition_name = "WP6OrderSourceB.forward";
+    identity.defining_line = 20;
+    if (!DSL_Builder_Set_PU_Source_Identity(source_b, &identity) ||
+        !DSL_Builder_Select_PU(source_a))
+        return 1;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Init_Symbolic_Shape_Descriptor(&descriptor, "[L,3]");
+    descriptor.type_core.rank = 2;
+    TY_IDX source_a_ty = DSL_Builder_Intern_Tensor_Type
+        ("wp6_order_source_a_ty", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_VALUE source_a_actual = DSL_Builder_Create_Model_Input
+        ("wp6_order_source_a_actual", source_a_ty, 0);
+    if (!DSL_Builder_Select_PU(source_b))
+        return 1;
+    DSL_BUILDER_VALUE source_b_actual = DSL_Builder_Create_Model_Input
+        ("wp6_order_source_b_actual", source_a_ty, 0);
+
+    DSL_BUILDER_PROGRAM_UNIT exact = DSL_Builder_Create_Minimal_PU
+                                         ("wp6_order_exact_destination");
+    UINT32 exact_file = DSL_Builder_Register_Source_File
+                            (exact, "wp6_order.py");
+    identity.canonical_definition_name = "WP6OrderExact.forward";
+    identity.defining_line = 30;
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = exact_file;
+    position.line = 31;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE exact_formal = DSL_Builder_Declare_PU_Formal
+        (exact, "wp6_order_exact_formal", 0, source_a_ty, &position);
+    DSL_BUILDER_VALUE exact_kids[2] = { exact_formal, exact_formal };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE broadcast;
+    broadcast.name = "attr.broadcast_rule";
+    broadcast.value = "none";
+    DSL_BUILDER_VALUE exact_add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find
+             (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+         1, exact_kids, 2, &broadcast, 1,
+         "wp6_order_exact_add", source_a_ty);
+    if (source_a_ty == TY_IDX_ZERO || source_a_actual == NULL ||
+        source_b_actual == NULL || exact == NULL || exact_file == 0 ||
+        exact_formal == NULL || exact_add == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity(exact, &identity) ||
+        !DSL_Builder_Append_PU_Value(exact, exact_add) ||
+        !DSL_Builder_Return_PU_Values(exact, NULL, 0))
+        return 1;
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6OrderExact";
+    callsite.instance_path = "model.wp6_order_exact";
+    callsite.context_identity = "WP6OrderSourceA.to_exact";
+    callsite.call_ordinal = 0;
+    callsite.source_position.file_id = source_a_file;
+    callsite.source_position.line = 40;
+    callsite.source_position.statement_begin = 1;
+    DSL_BUILDER_CALL exact_call = DSL_Builder_Create_PU_Call
+        (source_a, exact, &source_a_actual, 1, NULL, 0, &callsite);
+    if (exact_call == NULL || !DSL_Builder_Set_PU_Call_Argument_Role
+                                   (exact_call, 0, 0, "shape_mapping"))
+        return 1;
+
+    DSL_BUILDER_PROGRAM_UNIT mismatch = DSL_Builder_Create_Minimal_PU
+                                            ("wp6_order_mismatch_destination");
+    UINT32 mismatch_file = DSL_Builder_Register_Source_File
+                               (mismatch, "wp6_order.py");
+    identity.canonical_definition_name = "WP6OrderMismatch.forward";
+    identity.defining_line = 50;
+    position.file_id = mismatch_file;
+    position.line = 51;
+    DSL_BUILDER_VALUE mismatch_formal = DSL_Builder_Declare_PU_Formal
+        (mismatch, "wp6_order_mismatch_formal", 0,
+         source_a_ty, &position);
+    DSL_BUILDER_VALUE mismatch_kids[2] = {
+        mismatch_formal, mismatch_formal
+    };
+    DSL_BUILDER_VALUE mismatch_add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find
+             (DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+         1, mismatch_kids, 2, &broadcast, 1,
+         "wp6_order_mismatch_add", source_a_ty);
+    if (mismatch == NULL || mismatch_file == 0 ||
+        mismatch_formal == NULL || mismatch_add == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity(mismatch, &identity) ||
+        !DSL_Builder_Append_PU_Value(mismatch, mismatch_add) ||
+        !DSL_Builder_Return_PU_Values(mismatch, NULL, 0))
+        return 1;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6OrderMismatch";
+    callsite.instance_path = "model.wp6_order_mismatch";
+    callsite.context_identity = "WP6OrderSourceB.to_mismatch";
+    callsite.call_ordinal = 0;
+    callsite.source_position.file_id = source_b_file;
+    callsite.source_position.line = 60;
+    callsite.source_position.statement_begin = 1;
+    DSL_BUILDER_CALL mismatch_call = DSL_Builder_Create_PU_Call
+        (source_b, mismatch, &source_b_actual, 1, NULL, 0, &callsite);
+    if (mismatch_call == NULL || !DSL_Builder_Set_PU_Call_Argument_Role
+                                      (mismatch_call, 0, 0,
+                                       "shape_mapping"))
+        return 1;
+
+    DSL_SHAPE_SOLVER_RESULT solver;
+    DSL_GATEKEEPER_RESULT gate;
+    memset(&solver, 0, sizeof(solver));
+    BOOL exact_solver = DSL_Builder_Select_PU(exact) &&
+        DSL_Shape_Analyze_PU(exact, PU_Info_tree_ptr(exact), NULL, &solver);
+    BOOL exact_strict = DSL_Gatekeeper_Verify_PU_Mode
+        (exact, DSL_GATEKEEPER_STRICT, NULL, &gate);
+    BOOL exact_admission = DSL_Gatekeeper_Verify_PU_Mode
+        (exact, DSL_GATEKEEPER_ADMISSION, NULL, &gate);
+    memset(&solver, 0, sizeof(solver));
+    BOOL mismatch_solver = DSL_Builder_Select_PU(mismatch) &&
+        DSL_Shape_Analyze_PU
+            (mismatch, PU_Info_tree_ptr(mismatch), NULL, &solver);
+    BOOL mismatch_strict = DSL_Gatekeeper_Verify_PU_Mode
+        (mismatch, DSL_GATEKEEPER_STRICT, NULL, &gate);
+    BOOL mismatch_admission = DSL_Gatekeeper_Verify_PU_Mode
+        (mismatch, DSL_GATEKEEPER_ADMISSION, NULL, &gate);
+    const char *shape = TY_tensor_attribute
+                            (source_a_ty, TY_TENSOR_SCHEMA_SHAPE);
+    printf("WP6 fresh order %s: exact=%d/%d/%d mismatch=%d/%d/%d "
+           "shape=%s\n", order, (int)exact_solver, (int)exact_strict,
+           (int)exact_admission, (int)mismatch_solver,
+           (int)mismatch_strict, (int)mismatch_admission,
+           shape == NULL ? "<missing>" : shape);
+    if (!exact_solver || !exact_strict || !exact_admission ||
+        mismatch_solver || mismatch_strict || mismatch_admission ||
+        shape == NULL)
+        return 1;
+    return 0;
+}
+
+static int
 Check_Symbolic_Shape_Solver(void)
 {
     const char *artifact = getenv("OPEN64_DSL_SHAPE_SP9_ARTIFACT");
@@ -7774,6 +10425,8 @@ Check_Symbolic_Shape_Solver(void)
     DSL_IR_NODE_RECORD matmul_node;
     DSL_SHAPE_FACT matmul_operands[2];
     DSL_SHAPE_FACT matmul_result;
+    DSL_SHAPE_PROOF_CONTEXT inference_proof_context;
+    DSL_IR_VALUE_ID inference_operand_value_ids[2];
     DSL_SHAPE_INFERENCE_INPUT inference;
     char inferred_shape[256];
     memset(&matmul_value, 0, sizeof(matmul_value));
@@ -7791,7 +10444,10 @@ Check_Symbolic_Shape_Solver(void)
          !DSL_Shape_Fact_From_Type
              (matmul_left_ty, &matmul_operands[0]) ||
          !DSL_Shape_Fact_From_Type
-             (matmul_right_ty, &matmul_operands[1]))) {
+             (matmul_right_ty, &matmul_operands[1]) ||
+         !Init_Test_Shape_Proof_Context
+             (pu, &matmul_node, inference_operand_value_ids, 2,
+              &inference_proof_context))) {
         fprintf(stderr, "SP9 symbolic matmul setup failed\n");
         failed = 1;
     }
@@ -7802,6 +10458,7 @@ Check_Symbolic_Shape_Solver(void)
     inference.operand_facts = matmul_operands;
     inference.operand_count = 2;
     inference.result_ty = matmul_result_ty;
+    inference.proof_context = &inference_proof_context;
     if (!failed &&
         (DSL_Shape_Infer_Operator(&inference, &matmul_result) !=
              DSL_SHAPE_INFERENCE_COMPLETE ||
@@ -7860,7 +10517,10 @@ Check_Symbolic_Shape_Solver(void)
          !DSL_Shape_Fact_From_Type
              (broadcast_left_ty, &broadcast_operands[0]) ||
          !DSL_Shape_Fact_From_Type
-             (broadcast_incompatible_ty, &broadcast_operands[1]))) {
+             (broadcast_incompatible_ty, &broadcast_operands[1]) ||
+         !Init_Test_Shape_Proof_Context
+             (pu, &broadcast_node, inference_operand_value_ids, 2,
+              &inference_proof_context))) {
         fprintf(stderr, "SP9 incompatible broadcast setup failed\n");
         failed = 1;
     }
@@ -7869,6 +10529,7 @@ Check_Symbolic_Shape_Solver(void)
     inference.operand_facts = broadcast_operands;
     inference.operand_count = 2;
     inference.result_ty = broadcast_result_ty;
+    inference.proof_context = &inference_proof_context;
     if (!failed &&
         DSL_Shape_Infer_Operator(&inference, &broadcast_result) !=
             DSL_SHAPE_INFERENCE_CONTRADICTION) {
@@ -8400,6 +11061,10 @@ main(void)
         return Check_Tensor_Interner_Mapped_Image();
     if (getenv("OPEN64_DSL_SHAPE_SP3_ONLY") != NULL)
         return Check_Shape_Solver();
+    if (getenv("OPEN64_DSL_SHAPE_WP6_ORDER_ONLY") != NULL)
+        return Check_WP6_Fresh_Process_Order();
+    if (getenv("OPEN64_DSL_SHAPE_WP6_ADMISSION_ONLY") != NULL)
+        return Check_WP6_Symbolic_Admission();
     if (getenv("OPEN64_DSL_SHAPE_SP8_ONLY") != NULL)
         return Check_Symbolic_Shape_Solver();
     if (getenv("OPEN64_DSL_SHAPE_SP9_ONLY") != NULL)

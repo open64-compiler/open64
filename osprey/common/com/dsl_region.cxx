@@ -30,6 +30,7 @@ typedef struct {
     PU_Info *pu;
     std::vector<dsl_region_runtime *> regions;
     std::vector<DSL_REGION_INTERFACE_RECORD> interfaces;
+    std::vector<ST_IDX> interface_owner_pu_st;
 } DSL_REGION_STORE;
 
 static std::vector<DSL_REGION_STORE *> DSL_region_stores;
@@ -225,6 +226,9 @@ DSL_Region_Declare_Symbol (DSL_REGION region, ST_IDX st, UINT32 roles,
     record.roles = roles;
     record.flags = flags;
     store->interfaces.push_back(record);
+    store->interface_owner_pu_st.push_back
+        (Current_PU_Info == NULL ? ST_IDX_ZERO :
+         PU_Info_proc_sym(Current_PU_Info));
     return TRUE;
 }
 
@@ -268,6 +272,8 @@ DSL_Region_Consume_WN (PU_Info *pu, const WN *wn)
     DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
     if (store == NULL || wn == NULL)
         return FALSE;
+    if (store->interface_owner_pu_st.size() != store->interfaces.size())
+        return FALSE;
 
     UINT32 region_index = store->regions.size();
     UINT32 region_id = 0;
@@ -284,10 +290,13 @@ DSL_Region_Consume_WN (PU_Info *pu, const WN *wn)
     delete store->regions[region_index];
     store->regions.erase(store->regions.begin() + region_index);
     for (UINT32 i = 0; i < store->interfaces.size(); ) {
-        if (store->interfaces[i].region_id == region_id)
+        if (store->interfaces[i].region_id == region_id) {
             store->interfaces.erase(store->interfaces.begin() + i);
-        else
+            store->interface_owner_pu_st.erase
+                (store->interface_owner_pu_st.begin() + i);
+        } else {
             ++i;
+        }
     }
     if (!store->regions.empty())
         return TRUE;
@@ -726,6 +735,9 @@ DSL_Region_Verify_Store (DSL_REGION_STORE *store, FILE *diagnostic)
 {
     if (store == NULL)
         return TRUE;
+    if (store->interface_owner_pu_st.size() != store->interfaces.size())
+        return DSL_Region_Report
+                   (diagnostic, "invalid runtime interface provenance", 0);
 
     for (UINT32 i = 0; i < store->regions.size(); ++i) {
         const dsl_region_runtime &region = *store->regions[i];
@@ -862,6 +874,84 @@ DSL_Region_Verify_Store (DSL_REGION_STORE *store, FILE *diagnostic)
         }
     }
     return TRUE;
+}
+
+static BOOL
+DSL_Region_Tree_Contains (const WN *tree, const WN *target)
+{
+    if (tree == NULL || target == NULL)
+        return FALSE;
+    if (tree == target)
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_Region_Tree_Contains(statement, target))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        if (DSL_Region_Tree_Contains(WN_kid(tree, kid), target))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_Region_Active_PU_Report (FILE *diagnostic, const char *message,
+                             UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL active PU REGION error: %s id=%u\n",
+                message, id);
+    return FALSE;
+}
+
+BOOL
+DSL_Region_Verify_Active_PU (PU_Info *pu, WN *tree, ST_IDX owner_pu_st,
+                             FILE *diagnostic)
+{
+    if (pu == NULL || tree == NULL || Current_PU_Info != pu ||
+        PU_Info_tree_ptr(pu) != tree || PU_Info_proc_sym(pu) != owner_pu_st ||
+        ST_IDX_level(owner_pu_st) != GLOBAL_SYMTAB ||
+        ST_IDX_index(owner_pu_st) == 0 ||
+        ST_IDX_index(owner_pu_st) >= ST_Table_Size(GLOBAL_SYMTAB) ||
+        ST_class(St_Table[owner_pu_st]) != CLASS_FUNC ||
+        ST_pu(St_Table[owner_pu_st]) == PU_IDX_ZERO ||
+        ST_pu(St_Table[owner_pu_st]) >= PU_Table_Size() ||
+        Current_pu != &Pu_Table[ST_pu(St_Table[owner_pu_st])])
+        return DSL_Region_Active_PU_Report
+                   (diagnostic, "invalid explicit program-unit context", 0);
+    if (WN_operator(tree) != OPR_FUNC_ENTRY ||
+        WN_st_idx(tree) != owner_pu_st)
+        return DSL_Region_Active_PU_Report
+                   (diagnostic, "function entry owner mismatch", 0);
+    if (CURRENT_SYMTAB <= GLOBAL_SYMTAB ||
+        Scope_tab[CURRENT_SYMTAB].st == NULL ||
+        ST_st_idx(Scope_tab[CURRENT_SYMTAB].st) != owner_pu_st)
+        return DSL_Region_Active_PU_Report
+                   (diagnostic, "missing active local symbol table", 0);
+
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (store == NULL)
+        return TRUE;
+    for (UINT32 i = 0; i < store->regions.size(); ++i) {
+        if (!DSL_Region_Tree_Contains(tree, store->regions[i]->wn))
+            return DSL_Region_Active_PU_Report
+                       (diagnostic, "region is outside supplied tree",
+                        store->regions[i]->image.region_id);
+    }
+    for (UINT32 i = 0; i < store->interfaces.size(); ++i) {
+        ST_IDX st = store->interfaces[i].st;
+        if (store->interface_owner_pu_st[i] != owner_pu_st ||
+            ST_IDX_level(st) != CURRENT_SYMTAB || ST_IDX_index(st) == 0 ||
+            ST_IDX_index(st) >= ST_Table_Size(CURRENT_SYMTAB))
+            return DSL_Region_Active_PU_Report
+                       (diagnostic, "interface symbol is outside active PU",
+                        store->interfaces[i].region_id);
+    }
+    return DSL_Region_Verify_Store(store, diagnostic);
 }
 
 BOOL
@@ -1030,6 +1120,9 @@ DSL_Region_Load_Mapped_PU (PU_Info *pu, const void *tree_base,
         (const DSL_REGION_INTERFACE_RECORD *)(records + header->region_count);
     store->interfaces.insert(store->interfaces.end(), interfaces,
                              interfaces + header->interface_count);
+    store->interface_owner_pu_st.insert
+        (store->interface_owner_pu_st.end(), header->interface_count,
+         PU_Info_proc_sym(pu));
     Set_PU_Info_state(pu, WT_REGIONS, Subsect_InMem);
     return DSL_Region_Verify_PU(pu, stderr) ? 0 : -1;
 }

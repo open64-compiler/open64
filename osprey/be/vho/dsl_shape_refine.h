@@ -39,6 +39,10 @@ typedef struct {
     UINT32 updated_wn_count;
     UINT32 rollback_count;
     UINT32 diagnostic_count;
+    UINT32 boundary_admission_count;
+    UINT32 boundary_success_exit_count;
+    UINT32 retype_boundary_precheck_count;
+    UINT32 retype_boundary_postcheck_count;
 } VHO_DSL_SHAPE_REFINE_RESULT;
 
 extern BOOL VHO_DSL_Shape_Refine_Program_Unit

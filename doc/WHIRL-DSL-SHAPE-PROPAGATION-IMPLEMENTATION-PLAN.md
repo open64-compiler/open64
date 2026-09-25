@@ -10,34 +10,76 @@ No implementation milestone may weaken binary WHIRL compatibility, mutate a
 sealed tensor type in place, duplicate shape formulas in independent services,
 or expose a partially retyped WHIRL program.
 
-Progress through SP10 implementation:
+The frozen PR range contains implementation work through SP10, but its repair
+status is not complete:
 
-- SP0 baseline inventory was consumed by the SP1 through SP3 implementation
-  reviews.
-- SP1 completed in commit `08c5eb48`.
-- SP2 completed in commit `eb8b7273`.
-- SP3 completed in commit `0ef23ab9`.
-- SP4 is complete in `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`.
-- SP5 is complete on `codex/dsl-shape-sp5`.
-- SP6 confirms the existing driver-owned per-PU lifecycle on
-  `codex/dsl-shape-sp6-pu-driver`.
-- SP7 integrates per-PU invalidation and revalidation with DSL WOPT, FHE
-  conversion, the fixed VHO DSL optimization pipeline, checkpoint-only output,
-  and final DSL lowering on `codex/dsl-shape-sp7-pipeline`.
-- SP8 implements PU-scoped named dimensions, anonymous runtime dimensions,
-  the `symbol+constant` expression slice, symbolic decode-attention checking,
-  strict pending rejection, and mapped-image inspection on
-  `codex/dsl-shape-sp8-symbolic`.
-- SP9 adds reviewed NumPy broadcasting and symbolic batched-matmul inference,
-  and completes the common, model, FHE, non-DSL, reader-compatibility, and
-  target-matrix lanes on `codex/dsl-shape-sp9-certification`. Normal `-O0`
-  backend and DSL-aware `whirl2c` certification are also complete after
-  correcting the pre-existing backend static-initialization defects recorded
-  in `WHIRL-DSL-SHAPE-SP9-CERTIFICATION.md`.
-- SP10 publishes and enforces the Shape Inference Trigger Contract with
-  structured runtime trigger identities, richer transformation shape effects,
-  a current-call-site audit, and focused stale-generation tests. Certification
-  is recorded in `WHIRL-DSL-SHAPE-SP10-CERTIFICATION.md`.
+- SP1 implementation exists in excluded base history. The short ID previously
+  listed here does not resolve, so exact SP1 commit traceability is pending and
+  no replacement hash is inferred.
+- SP2 is implemented by
+  `62cc9e9eeaac02c0732ec7a684110e88a13476ed`. Its frozen verdict remains Pass.
+- SP3 is implemented by
+  `aa8c7a8f9af5c400a928ec305cda1d15e7e8437e`. Its frozen verdict remains
+  Partial because insertion-order independence is not yet executable evidence.
+- SP4's document contract is updated by the PR 137 WP0 freeze, but SP5
+  conformance to shape-only authorization and complete preflight is pending.
+- SP5 implementation exists in the frozen range but retains P1-01, P2-02, and
+  P2-03 repair obligations.
+- SP6's driver-owned per-PU policy is retained; executable exact-once multi-PU
+  invocation and isolation evidence remains pending.
+- SP7-SP8 implementations exist, while reviewer-accessible pipeline evidence
+  and the symbolic foreign-qualifier trust boundary remain pending.
+- SP9 and SP10 documents record historical certification claims. Repair
+  certification remains pending until the complete claim matrix is rerun with
+  reviewer-accessible artifacts. P2-08 pass execution/effect registration also
+  remains open.
+
+The frozen 17-commit verdicts remain 5 Pass, 11 Partial, and 1 Fail. Later
+repair work may change the repair endpoint, but never rewrites those historical
+per-commit verdicts.
+
+## Authority And Repair Boundaries
+
+`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.md` is the highest
+architecture and overall implementation authority. `AGENTS.md` is mandatory
+repository policy, and `WHIRL.pdf` is the representation baseline. This plan
+is subordinate. Because `WHIRL.pdf` is absent from the current checkout, the
+repair makes no opcode, `TY_KIND`, ELF section, mapped-image layout, node
+encoding, reader/writer format, or printer-format change.
+
+The existing shared `TENSOR` / `TY_TENSOR` model remains authoritative. Common
+owns logical shape; CNN owns CNN semantics; FHE owns encryption, scale, level,
+noise, and keys; CNN/FHE lowering owns encrypted layout and bootstrap planning.
+Compiler metadata does not participate in tensor type equivalence. Domain
+operators remain visible until their owning gatekeeper, adaptation, and
+lowering phases complete.
+
+The shape service is common legality infrastructure and does not become a
+pipeline authority. It follows the v0.10 capture, high-level WHIRL, FHE
+gatekeeper, CNN-to-FHE, FHE canonicalization, encrypted-layout, SIHE, CKKS,
+HPOLY, middle-WHIRL, whirl2c, and C-ABI order. It also preserves the v0.10
+optimization-level limits. ResNet-20/CIFAR-10 is the primary full-model case;
+Llama and multi-PU cases are supplemental shape regressions. PR 137 repair is
+at most M0-M2 supporting infrastructure and completes no master-plan milestone.
+
+WP0 freezes D1-D4 as follows:
+
+1. Canonical type equivalence is separate from same-value shape-only update
+   authorization. Only monotonic `logical_shape` dimension refinement with
+   unchanged rank is allowed; every other stored tensor, descriptor, domain,
+   and unknown field remains unchanged.
+2. Syntax parsing and printing may preserve symbolic text. Equality or proof
+   use requires the active owner or a reviewed host-independent interface
+   mapping; coordinated cross-PU propagation remains IPA-owned.
+3. Every executable pass declares minimum optimization level, maximum scope,
+   required canonical form, effect, invalidation/revalidation behavior, and
+   controlling option. Missing, unknown, or mismatched contracts prevent
+   execution. Per-pass effect storage is recommended local design, not a
+   v0.10-mandated API.
+4. One composed active-PU boundary gate takes explicit PU/context input and
+   validates call ABI, PU interface, and REGION relationships at admission and
+   before every successful shape-driver return. Common code never traverses or
+   activates another PU.
 
 ## Objective
 
@@ -74,7 +116,8 @@ the historical baseline against which those milestones were reviewed:
 1. `DSL_Builder_Intern_Tensor_Type()` creates and seals a candidate tensor type
    before scanning `Ty_tab` for an equivalent type. Returning an earlier
    `TY_IDX` can therefore leave an unused duplicate candidate in the table.
-2. Tensor equivalence and hashing already reach `KIND_TENSOR` through
+2. Tensor equivalence and hashing already reach the shared tensor carrier,
+   spelled `KIND_TENSOR` by the current implementation, through
    `TY_are_equivalent()` and `TY_tensor_hash()`, but the hash currently covers
    only a small subset of the canonical descriptor.
 3. Exact shape parsing and operator-specific checks are embedded in
@@ -142,9 +185,11 @@ osprey/common/com/dsl_region.h
 ```
 
 This work owns expected-old-type preflight, active-PU ownership, WN/ST/value
-agreement, call ABI updates, PU formal updates, return relationships, REGION
-interfaces, commit ordering, and rejection without mutation. Table-only
-mutation helpers must remain private.
+agreement, active-PU REGION validation, local commit ordering, and rejection
+without mutation. In v1, call ABI, PU formal, and return relationships are
+check-only active-PU boundary contracts. Retyping does not change a signature,
+the opposite side of a call boundary, or another PU. Table-only mutation
+helpers must remain private.
 
 ### VHO orchestration
 
@@ -165,9 +210,12 @@ osprey/be/be/Makefile.gbase
 osprey/ir_tools/Makefile.gbase
 ```
 
-The VHO layer owns program traversal, active local-symbol-table coordination,
-begin/PU/end lifetime, mutation-plan application, tracing, and final strict
-verification. It does not own operator shape formulas.
+The backend driver owns complete program traversal, active local-symbol-table
+selection, begin/PU/end lifecycle, and per-PU service invocation. Common and
+VHO shape code operate only as services over an explicitly supplied active
+PU/context. They may preflight and apply an authorized local mutation plan,
+trace it, and run strict verification, but they never traverse, reactivate, or
+mutate another PU. They do not own operator shape formulas.
 
 ## Execution Rules
 
@@ -181,13 +229,16 @@ verification. It does not own operator shape formulas.
 7. New C/C++ files follow existing Open64 spacing and contain no tab
    characters. Make recipes may retain required tabs.
 8. Every artifact validation uses `ir_b2a -st -src` and retains the `.B`, `.T`,
-   source, phase trace, and diagnostics in a host-visible directory.
+   source, phase trace, and diagnostics in a reviewer-accessible host-visible
+   directory. Historical `/private/tmp` paths are claims to reproduce, not
+   current evidence.
 
 ## Milestone Queue
 
 ### SP0: Baseline And Contract Inventory
 
-Status: completed as the baseline for the SP1 through SP3 reviews.
+Status: historical baseline for the SP1 through SP3 reviews. Current repair
+traceability and evidence are governed by the authority section above.
 
 Actions:
 
@@ -220,7 +271,8 @@ Exit gate SP0:
 
 Dependencies: SP0.
 
-Status: completed in commit `08c5eb48`.
+Status: implemented in excluded base history; exact commit traceability is
+pending because the previously cited short ID does not resolve.
 
 Actions:
 
@@ -263,16 +315,20 @@ PR boundary: shape-service extraction only.
 Dependencies: SP0. May proceed in parallel with SP1 after the canonical key is
 reviewed.
 
-Status: completed in commit `eb8b7273`.
+Status: implemented by
+`62cc9e9eeaac02c0732ec7a684110e88a13476ed`; the frozen commit verdict is
+Pass and is not changed by this repair.
 
 Actions:
 
-1. Define the normalized canonical key from the existing tensor type-equivalence
-   contract.
+1. Reuse the tensor owner's authoritative normalized canonical key and
+   equivalence service; this shape plan does not define a parallel key or field
+   policy.
 2. Add a backend-safe common API for interning a complete descriptor or a
    shape-refined copy of an existing canonical tensor type.
 3. Build a runtime canonical index from existing mapped tensor types.
-4. Use hash lookup followed by full structural equality.
+4. Use hash lookup followed by the tensor owner's authoritative canonical
+   equivalence check.
 5. Select the lowest valid existing `TY_IDX` for legacy duplicate types without
    deleting or renumbering records.
 6. Change `DSL_Builder_Intern_Tensor_Type()` to call the common interner.
@@ -281,11 +337,14 @@ Actions:
 
 Tests:
 
-- repeated equivalent requests return one `TY_IDX` with no `Ty_tab` growth;
-- different shapes return different `TY_IDX` values;
-- names, source data, lineage, and runtime/FHE state do not split canonical
-  types;
-- fields declared semantically significant do split types;
+- requests that the tensor owner's authoritative equivalence classifies as
+  equivalent return one `TY_IDX` with no `Ty_tab` growth;
+- requests that the owner equivalence distinguishes return different `TY_IDX`
+  values;
+- canonical interning delegates the complete equivalence decision, including
+  Common-, CNN-, and FHE-owned state, to that owner service; this shape plan
+  defines no excluded-field list and does not define or take over domain
+  equivalence;
 - mapped input rebuilds the index deterministically;
 - legacy duplicate records remain readable and unchanged;
 - all existing builder tensor tests pass.
@@ -302,7 +361,9 @@ PR boundary: canonical tensor interning and focused tests.
 
 Dependencies: SP1 and SP2.
 
-Status: completed in commit `0ef23ab9`.
+Status: implemented by
+`aa8c7a8f9af5c400a928ec305cda1d15e7e8437e`; the frozen commit verdict is
+Partial and insertion-order evidence remains pending.
 
 Actions:
 
@@ -335,9 +396,10 @@ PR boundary: static solver and check-only evidence.
 
 Dependencies: SP3. This is a mandatory design gate before mutation code.
 
-Status: completed by `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`. The approved v1
-slice is uniquely owned local native operator results; formal, return, call,
-constant, function-type, and cross-PU changes remain check-only.
+Status: the normative v1 document is updated by the PR 137 WP0 freeze. Product
+conformance is pending WP1-WP4 repair and evidence. The slice remains uniquely
+owned local native operator results; formal, return, call, constant,
+function-type, and cross-PU changes remain check-only.
 
 Actions:
 
@@ -349,15 +411,17 @@ Actions:
 3. Define which references are authoritative and which are derived projections.
 4. Define rollback and failure behavior for one active PU.
 5. Define shared-symbol and shared-callee conflict policy.
-6. Decide whether v1 supports only uniquely owned local results and fails closed
-   for formal/function-type changes.
+6. Keep v1 limited to uniquely owned local results and fail closed for
+   formal/function-type changes. Cross-PU changes remain future IPA-owned work,
+   not an SP6 extension.
 7. Review mapped-image and previous-reader consequences before implementation.
 
 Recommended v1 restriction:
 
 - mutate uniquely defined, non-address-taken local tensor result symbols first;
 - require all uses and managed rows to agree with the expected old type;
-- leave formal, return, and cross-PU refinement in check-only mode until SP6.
+- leave formal, return, and cross-PU refinement in check-only mode until a
+  separately reviewed IPA-owned extension exists.
 
 Exit gate SP4:
 
@@ -371,7 +435,9 @@ PR boundary: documentation and test scaffolding only, if needed.
 
 Dependencies: SP2, SP3, and approved SP4.
 
-Status: completed on `codex/dsl-shape-sp5`.
+Status: implementation exists in the frozen range. Repair is pending for
+shape-only authorization, complete owner preflight, and the full rollback
+matrix; this milestone is not certified complete.
 
 Actions:
 
@@ -404,7 +470,8 @@ Exit gate SP5:
 
 PR boundary: per-PU atomic refinement and driver, without cross-PU mutation.
 
-Completion evidence:
+Historical implementation claims requiring repaired tests and retained
+reviewer-accessible evidence:
 
 - `DSL_IR_Refine_Native_Value_Types()` implements complete-array preflight,
   fixed-width WN/ST/value commit, strict post-verification, and reverse-order
@@ -424,7 +491,7 @@ Completion evidence:
   rebuild; `be.so` and `lw_inline` contain no `DSL_Builder_*` or `Json::`
   symbols.
 
-Local review artifacts:
+Historical local review paths, unavailable in the current review environment:
 
 ```text
 /private/tmp/open64-shape-sp5/artifacts/shape/sp5-refinement/shape_refine.B
@@ -437,10 +504,12 @@ Local review artifacts:
 
 Dependencies: SP5.
 
-Status: complete. The reviewed correction is that the backend driver, not the
-shape pass, owns complete program traversal. `Preorder_Process_PUs()` selects
-each PU and `Preprocess_PU()` invokes `VHO_DSL_Shape_Refine_Driver()` before
-DSL WOPT, FHE conversion, DSL lowering, and ordinary VHO lowering.
+Status: the driver-owned per-PU policy is accepted. Executable proof of
+backend-selected exact-once invocation, colliding-index isolation, and
+success/failure publication behavior remains pending; this milestone is not
+certified complete. `Preorder_Process_PUs()` selects each PU and
+`Preprocess_PU()` invokes `VHO_DSL_Shape_Refine_Driver()` before its local
+shape consumers.
 
 Actions:
 
@@ -489,7 +558,8 @@ atomicity, boundary rejection, driver coverage, and preservation of other PUs.
 They do not claim or test cross-PU propagation. Cross-PU shape tests belong to
 the future IPA milestone that implements such behavior.
 
-Retained SP6 review evidence:
+Historical SP6 local review paths, unavailable in the current review
+environment:
 
 ```text
 /private/tmp/open64-shape-sp5/artifacts/shape/sp6-pu-driver/shape_refine.B
@@ -503,6 +573,9 @@ PR boundary: driver-owned per-PU lifecycle clarification and certification.
 ### SP7: Backend Pipeline Integration And Invalidation
 
 Dependencies: SP6.
+
+Status: integration code exists, but P1-02 reviewer-accessible completion
+evidence and P2-04 all-success-path boundary validation remain pending.
 
 Actions:
 
@@ -528,7 +601,7 @@ Exit gate SP7:
   shapes;
 - non-DSL and legacy WHIRL behavior remains unchanged.
 
-Implemented SP7 contract:
+Historical endpoint behavior to retain while repairing its open gates:
 
 1. Shape currency is a runtime-only per-PU generation state. It does not add a
    WHIRL table, ELF section, or persisted generation number.
@@ -550,14 +623,17 @@ Implemented SP7 contract:
    Contract in `WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`. Seed creation,
    constraint mutation, value/boundary mutation, structural transformation,
    symbolic resolution, and shape-consuming phase boundaries are all covered.
-   A new pass is shape invalidating until its registration proves preservation.
+   A new pass cannot execute until its registration supplies a complete,
+   recognized, and matching contract. A valid contract then declares whether
+   the pass preserves, invalidates, or refines shape state.
 8. Inlining, cloning, specialization, outlining, and coordinated signature
    changes must use the same trigger contract when their owning driver is
    implemented. Their mention in the contract does not grant the current
    per-PU VHO driver cross-PU scope; interprocedural scheduling remains future
    `-ipa` work.
 
-Retained SP7 review evidence:
+Historical SP7 local review paths, unavailable in the current review
+environment:
 
 ```text
 /private/tmp/open64-shape-sp5/artifacts/shape/sp7-pipeline/shape_refine.B
@@ -572,7 +648,9 @@ PR boundary: driver, options, and invalidation integration.
 
 Dependencies: SP7 and a separate review of the open symbolic-design topics.
 
-Status: complete for the reviewed v1 slice. The normative details are in
+Status: implementation exists for the reviewed v1 syntax slice, but semantic
+admission of foreign PU qualifiers remains a live repair item. Repair
+certification is pending. The normative details are in
 `WHIRL-DSL-SYMBOLIC-SHAPE-CONTRACT.md`.
 
 Actions:
@@ -591,7 +669,8 @@ relationships fail closed until the reserved assertion/guard descriptors gain
 a separately reviewed executable and lowering contract. No current published
 operator requires backward inference.
 
-Retained SP8 review evidence:
+Historical SP8 local review paths, unavailable in the current review
+environment:
 
 ```text
 /private/tmp/open64-shape-sp5/artifacts/shape/sp8-symbolic/shape_symbolic.B
@@ -614,8 +693,10 @@ PR boundary: symbolic model and its compatibility contract.
 
 Dependencies: SP7 for static certification; SP8 for dynamic certification.
 
-Status: complete. See `WHIRL-DSL-SHAPE-SP9-CERTIFICATION.md` for the full
-matrix, backend startup correction, and retained evidence.
+Status: historical completion claim only. The referenced local artifacts are
+not reviewer-accessible, so the full matrix and provenance remain pending
+independent repair certification. See
+`WHIRL-DSL-SHAPE-SP9-CERTIFICATION.md` for the claim to reproduce.
 
 Required matrix:
 
@@ -649,9 +730,12 @@ host bind mount and clean the artifact family only at the start of the next run.
 
 Dependencies: SP9.
 
-Status: complete. The normative trigger taxonomy is published in
-`WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`; retained evidence and the enforcement
-audit are recorded in `WHIRL-DSL-SHAPE-SP10-CERTIFICATION.md`.
+Status: structured trigger implementation exists, but complete repair
+certification and the pass execution/effect registration contract remain
+pending. The normative trigger taxonomy is published in
+`WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`;
+`WHIRL-DSL-SHAPE-SP10-CERTIFICATION.md` records the historical claim to
+reproduce, not reviewer-accessible proof.
 
 Actions:
 
@@ -661,9 +745,12 @@ Actions:
 2. Replace free-form invalidation reasons with a runtime-only structured trigger
    identity and stable diagnostic name. Do not add persisted metadata, a WHIRL
    section, or a binary compatibility dependency.
-3. Require every newly registered transformation to declare shape preserving,
-   monotonic refining, locally invalidating, or boundary invalidating. Unknown
-   classifications remain invalidating by default.
+3. Require every executable transformation to declare its minimum optimization
+   level, maximum scope, required canonical form, controlling option, and one
+   of shape preserving, monotonic refining, locally invalidating, or boundary
+   invalidating. A missing, invalid, unknown, or mismatched declaration
+   prevents execution and fails closed; treating it as invalidating does not
+   authorize it to run.
 4. Test that seed construction remains a frontend/admission responsibility and
    that authoritative graph-wide retyping occurs only in the compiler-owned
    per-PU pass.
@@ -675,9 +762,10 @@ Actions:
 Exit gate SP10:
 
 - every current trigger has an owner, structured identity, and focused test;
-- an unclassified transformation cannot silently preserve stale shape state;
+- an unclassified or mismatched transformation cannot execute;
 - no frontend, binary WHIRL, or cross-PU scope expansion is introduced; and
-- the SP9 certification matrix remains unchanged and passing.
+- the SP9 claim matrix is rerun and independently reviewable before either
+  stage is marked repair-certified.
 
 PR boundary: trigger contract, runtime-only trigger identities, call-site audit,
 and focused stale-state tests.
@@ -717,8 +805,10 @@ rollback reasoning tractable.
 
 ## Active Queue
 
-The per-PU SP0-SP10 implementation queue is complete. Future interprocedural
-shape work is collected separately in
+The frozen range contains implementation work through SP10, but the PR 137
+repair queue remains open through WP10. SP9 and SP10 repair certification is
+pending, and no historical stage claim is upgraded by this document update.
+Future interprocedural shape work is collected separately in
 `doc/IPA-DSL-SHAPE-PROPAGATION-TODO.md`. That document is an incubating
 research queue, not a dependency of the current per-PU implementation. It
 becomes actionable only under `-ipa` after the IPA summary and call-graph
@@ -728,9 +818,9 @@ contracts are reviewed.
    parallel, but no cross-PU code begins before the IPA owners review the
    summary inventory and semantic transfer contract.
 
-## Completion Criteria
+## Shape-Subsystem Repair Completion Criteria
 
-The project is complete when:
+The repaired PR 137 shape subsystem is complete only when:
 
 1. Python supplies seed facts but performs no graph-wide compiler inference.
 2. One common set of versioned shape functions serves admission, propagation,
@@ -740,15 +830,19 @@ The project is complete when:
    users.
 5. Per-PU retyping is atomic and owner-safe; any future cross-PU retyping is
    confined to an explicitly enabled IPA pass with call-graph scope.
-6. Static ResNet and Llama prefill pass through the normal `-O0` pipeline with
-   compiler-refined types.
-7. Llama decode preserves reviewed dynamic or symbolic sequence semantics.
+6. The primary ResNet-20 case passes the applicable normal `-O0` shape path
+   with compiler-refined or independently verified types.
+7. Supplemental Llama prefill and decode cases preserve the reviewed static,
+   dynamic, or symbolic semantics without replacing ResNet-20 acceptance.
 8. FHE and other domains consume the same refined TensorDescriptorIR without a
    private shape implementation.
 9. Binary WHIRL compatibility, separate-process reopen, `ir_b2a -st -src`, and
    `whirl2c` evidence are certified.
 10. Every deferred caveat in the architecture document is either resolved or
     remains behind an explicit fail-closed boundary.
+
+These criteria certify only the PR 137 shape subsystem. They do not complete
+M0-M8 or the full FHE architecture.
 
 ## Related Documents
 

@@ -113,6 +113,46 @@ VHO_DSL_Shape_Refinement_Mark_Current
     return TRUE;
 }
 
+static BOOL
+VHO_DSL_Shape_Validate_Active_Boundary
+        (PU_Info *pu_info,
+         WN *tree,
+         FILE *diagnostic,
+         UINT32 *counter)
+{
+    if (counter != NULL)
+        ++*counter;
+    DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT boundary;
+    boundary.pu_info = pu_info;
+    boundary.tree = tree;
+    boundary.owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
+                           PU_Info_proc_sym(pu_info);
+    return DSL_IR_Image_Validate_Active_PU_Boundaries
+               (&boundary, diagnostic);
+}
+
+static BOOL
+VHO_DSL_Shape_Complete_Success
+        (PU_Info *pu_info,
+         WN *tree,
+         FILE *diagnostic,
+         VHO_DSL_SHAPE_REFINE_RESULT *local_result,
+         VHO_DSL_SHAPE_REFINE_RESULT *result)
+{
+    if (!VHO_DSL_Shape_Validate_Active_Boundary
+             (pu_info, tree, diagnostic,
+              &local_result->boundary_success_exit_count) ||
+        !VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree)) {
+        ++local_result->diagnostic_count;
+        if (result != NULL)
+            *result = *local_result;
+        return FALSE;
+    }
+    if (result != NULL)
+        *result = *local_result;
+    return TRUE;
+}
+
 BOOL
 VHO_DSL_Shape_Refinement_Invalidate
         (PU_Info *pu_info,
@@ -266,14 +306,17 @@ VHO_DSL_Shape_Refine_Program_Unit
 {
     VHO_DSL_SHAPE_REFINE_RESULT local_result;
     memset(&local_result, 0, sizeof(local_result));
-    if (pu_info != NULL && tree != NULL &&
-        !VHO_DSL_Shape_Has_Native_Node(tree)) {
-        if (!VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree))
-            return FALSE;
+    if (!VHO_DSL_Shape_Validate_Active_Boundary
+             (pu_info, tree, diagnostic,
+              &local_result.boundary_admission_count)) {
+        ++local_result.diagnostic_count;
         if (result != NULL)
             *result = local_result;
-        return TRUE;
+        return FALSE;
     }
+    if (!VHO_DSL_Shape_Has_Native_Node(tree))
+        return VHO_DSL_Shape_Complete_Success
+                   (pu_info, tree, diagnostic, &local_result, result);
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     if (!DSL_Gatekeeper_Verify_PU_Mode
              (pu_info, DSL_GATEKEEPER_ADMISSION, diagnostic,
@@ -320,10 +363,13 @@ VHO_DSL_Shape_Refine_Program_Unit
             fprintf(diagnostic,
                     "DSL-SHAPE-REFINE-DISABLED: strict check-only "
                     "verification rejected pending or refinable shapes\n");
-        if (result != NULL)
-            *result = local_result;
-        return strict &&
-               VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree);
+        if (!strict) {
+            if (result != NULL)
+                *result = local_result;
+            return FALSE;
+        }
+        return VHO_DSL_Shape_Complete_Success
+                   (pu_info, tree, diagnostic, &local_result, result);
     }
 
     if (!context.requests.empty()) {
@@ -332,6 +378,10 @@ VHO_DSL_Shape_Refine_Program_Unit
                  (pu_info, tree, &context.requests[0],
                   context.requests.size(), diagnostic, &retype_result)) {
             local_result.rollback_count = retype_result.rollback_count;
+            local_result.retype_boundary_precheck_count =
+                retype_result.boundary_precheck_count;
+            local_result.retype_boundary_postcheck_count =
+                retype_result.boundary_postcheck_count;
             ++local_result.diagnostic_count;
             if (result != NULL)
                 *result = local_result;
@@ -341,6 +391,10 @@ VHO_DSL_Shape_Refine_Program_Unit
         local_result.updated_st_count = retype_result.updated_st_count;
         local_result.updated_wn_count = retype_result.updated_wn_count;
         local_result.rollback_count = retype_result.rollback_count;
+        local_result.retype_boundary_precheck_count =
+            retype_result.boundary_precheck_count;
+        local_result.retype_boundary_postcheck_count =
+            retype_result.boundary_postcheck_count;
     } else if (!DSL_Gatekeeper_Verify_PU_Mode
                     (pu_info, DSL_GATEKEEPER_STRICT, diagnostic,
                      &gatekeeper_result)) {
@@ -350,15 +404,8 @@ VHO_DSL_Shape_Refine_Program_Unit
         return FALSE;
     }
 
-    if (!VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree)) {
-        ++local_result.diagnostic_count;
-        if (result != NULL)
-            *result = local_result;
-        return FALSE;
-    }
-    if (result != NULL)
-        *result = local_result;
-    return TRUE;
+    return VHO_DSL_Shape_Complete_Success
+               (pu_info, tree, diagnostic, &local_result, result);
 }
 
 WN *
