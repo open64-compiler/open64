@@ -34,6 +34,30 @@ It does not decode the physical `OPR_DSL` escape representation. Each site
 records ordered operator members, external inputs, the final output, and every
 intermediate materialization as an alternative fusion cut.
 
+## Scalability Boundary
+
+AIO-5 builds the basic skeleton of the optimization process. It proves how a
+per-PU analysis discovers a candidate, records members and boundaries,
+consumes semantic and locality evidence, classifies legality, constructs
+baseline and alternative plans, assigns cost and fallback evidence, performs
+selection, honors independent controls, and remains check-only. The amount of
+supporting code reflects that reusable skeleton; it does not mean that the
+long-term fusion strategy is to hand-code every operator sequence.
+
+The scalable follow-up uses a hybrid design. Generic producer-consumer edge
+discovery and deterministic cluster growth consume versioned operator
+fusibility traits: iteration-space and indexing relations, broadcast and
+reduction behavior, descriptor/layout constraints, effects, ownership,
+multi-use behavior, recomputation permission, numerical requirements, REGION
+scope, and resources. Explicit patterns remain for semantic compounds,
+stronger legality, and provider or library alternatives. Both paths publish
+through the same AIO-2 candidate, plan, cost, fallback, and selection services.
+
+Logical-layout compatibility from AIO-6 will become one of the generic edge
+and cluster predicates. Later placement, communication, tiling, and physical
+kernel phases refine the same provisional candidate rather than replacing it
+with an unrelated decision.
+
 ## Legality
 
 A proven candidate requires all of the following:
