@@ -155,6 +155,14 @@ The first AIO-5 implementation uses `matmul+bias+activation` and
 candidate, legality, cost, fallback, selection, and inspection skeleton. They
 are not the long-term enumeration strategy.
 
+The first scalable follow-up adds versioned iteration-space and operand-indexing
+traits and grows bounded clusters over ordinary producer-consumer edges. It
+keeps semantic compounds on the explicit path, stops conservatively at
+fan-out, diamonds, unsupported results, effects, and REGION boundaries, and
+publishes both discovery paths through the same OptimizationPlanIR services.
+AIO-6 layout compatibility is retained as explicit refinement evidence; it
+does not silently force a physical representation during high-level fusion.
+
 ### 3.3.4 Performance Mechanisms
 
 | Mechanism | Potential benefit | Countervailing risk |

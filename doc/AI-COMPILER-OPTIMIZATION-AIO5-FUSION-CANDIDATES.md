@@ -2,10 +2,12 @@
 
 ## Status
 
-Completed on 2026-09-24. AIO-5 is a runtime-only, check-only, per-PU
-implementation of AI-P2. It recognizes reviewed high-level tensor patterns,
-records their legality and boundaries, and constructs complete AIO-2 plan
-alternatives without rewriting executable WHIRL.
+Completed on 2026-09-24 and generalized in the following focused milestone.
+AIO-5 is a runtime-only, check-only, per-PU implementation of AI-P2. It
+recognizes reviewed high-level tensor patterns and trait-compatible generic
+producer-consumer clusters, records their legality and boundaries, and
+constructs complete AIO-2 plan alternatives without rewriting executable
+WHIRL.
 
 The architectural rationale, performance mechanisms, input and candidate
 contracts, uncertainty boundary, downstream consumers, fallback, and required
@@ -39,7 +41,7 @@ It does not decode the physical `OPR_DSL` escape representation. Each site
 records ordered operator members, external inputs, the final output, and every
 intermediate materialization as an alternative fusion cut.
 
-## Scalability Boundary
+## Generic Discovery
 
 AIO-5 builds the basic skeleton of the optimization process. It proves how a
 per-PU analysis discovers a candidate, records members and boundaries,
@@ -49,19 +51,34 @@ selection, honors independent controls, and remains check-only. The amount of
 supporting code reflects that reusable skeleton; it does not mean that the
 long-term fusion strategy is to hand-code every operator sequence.
 
-The scalable follow-up uses a hybrid design. Generic producer-consumer edge
-discovery and deterministic cluster growth consume versioned operator
-fusibility traits: iteration-space and indexing relations, broadcast and
-reduction behavior, descriptor/layout constraints, effects, ownership,
-multi-use behavior, recomputation permission, numerical requirements, REGION
-scope, and resources. Explicit patterns remain for semantic compounds,
-stronger legality, and provider or library alternatives. Both paths publish
-through the same AIO-2 candidate, plan, cost, fallback, and selection services.
+The scalable follow-up implements the first hybrid slice. Static, versioned
+operator traits record iteration-space class, operand-indexing class,
+producer/consumer eligibility, cluster anchors, exact-descriptor requirements,
+single-result structure, and semantic-pattern requirements. They are queried
+by logical operator and version, so a later version does not silently inherit
+an earlier operator's fusion contract.
 
-Logical-layout compatibility from AIO-6 will become one of the generic edge
-and cluster predicates. Later placement, communication, tiling, and physical
-kernel phases refine the same provisional candidate rather than replacing it
-with an unrelated decision.
+Generic discovery walks producer-consumer edges backward from a maximal
+eligible sink in deterministic value-ID order. Growth stops at a contraction
+anchor, the caller's member budget, an unregistered or semantic-only operator,
+multiple eligible producers, effects, or an unsupported result structure.
+Legality then reuses the same exact descriptor, single-use, ownership,
+same-block, REGION, size, and resource proof used by explicit patterns.
+
+This first slice intentionally rejects or stops before fan-out, diamonds,
+multiple results, reductions, views, recomputation, and REGION crossings.
+Those cases require additional trait fields and profitability policy; they are
+not inferred from a shape-rule name. Explicit patterns remain for semantic
+compounds, stronger legality, and provider or library alternatives. Both paths
+publish through the same AIO-2 candidate, plan, cost, fallback, and selection
+services.
+
+Generic candidates consume AIO-6 compatibility as a separate proven, unknown,
+or rejected layout fact. It is advisory in this check-only slice because the
+baseline canonical representation remains legal; selecting a noncanonical
+layout later must make compatibility a hard legality predicate. Later
+placement, communication, tiling, and physical-kernel phases refine the same
+provisional candidate rather than replacing it with an unrelated decision.
 
 ## Legality
 
@@ -125,6 +142,11 @@ The runtime control separates:
 - plan selection for a target profile; and
 - transformation application.
 
+It also independently enables semantic patterns and generic clusters and caps
+the deterministic generic member count. The compatibility entry point keeps
+the original semantic-pattern defaults; the layout-aware entry point accepts a
+verified AIO-6 analysis without transferring ownership.
+
 Candidate-only mode generates and verifies alternatives without selecting one.
 Selection mode may select a complete legal plan. Transformation application is
 intentionally unsupported and rejected in AIO-5. A later focused milestone
@@ -143,20 +165,25 @@ identical. Fusion and plan traces are retained separately for review.
 The focused contract covers:
 
 1. legal matmul-bias-activation and residual-activation sites;
-2. deterministic members, boundaries, eliminated bytes, and live-range growth;
-3. candidate-only and selected-plan controls;
-4. semantic-bias mismatch, descriptor mismatch, effect barrier, resource
+2. the same ordinary contraction/pointwise chain discovered without a
+   sequence-specific matcher;
+3. versioned trait lookup, semantic-only exclusion, deterministic member
+   budget, and AIO-6 compatibility consumption;
+4. deterministic members, boundaries, eliminated bytes, and live-range growth;
+5. candidate-only and selected-plan controls;
+6. semantic-bias mismatch, descriptor mismatch, effect barrier, resource
    rejection, and resource-unknown cases;
-5. explicit rejection of transformation application;
-6. complete selected fusion costs and baseline fallbacks;
-7. repeated-build determinism and no WHIRL/table mutation;
-8. byte-identical binary and ASCII WHIRL before and after analysis;
-9. active-PU ownership and wrong-PU rejection;
-10. Open64 target syntax and logical opcode-layout checks; and
-11. `be.so`, `be`, and `lw_inline` dependency closure.
+7. explicit rejection of transformation application;
+8. complete selected fusion costs and baseline fallbacks;
+9. repeated-build determinism and no WHIRL/table mutation;
+10. byte-identical binary and ASCII WHIRL before and after analysis;
+11. active-PU ownership and wrong-PU rejection;
+12. Open64 target syntax and logical opcode-layout checks; and
+13. `be.so`, `be`, and `lw_inline` dependency closure.
 
 ## Next Boundary
 
-AIO-6 introduces logical layout alternatives. It may refine a fusion site with
-layout constraints, but it must create child alternatives rather than mutate
-the released AIO-5 candidate meaning. Executable fusion remains deferred.
+Extend traits only with reviewed semantics for reductions, views, multi-use,
+recomputation, and numerical constraints. A selected noncanonical layout must
+become a child alternative with hard compatibility, conversion cost, and
+fallback evidence. Executable fusion remains deferred.

@@ -25,6 +25,7 @@ struct dsl_fusion_candidate_analysis {
     const DSL_TENSOR_EVOLUTION_GRAPH *graph;
     const DSL_TENSOR_ANALYSIS *tensor_analysis;
     const DSL_TENSOR_LOCALITY_ANALYSIS *locality;
+    const DSL_LOGICAL_LAYOUT_ANALYSIS *layout;
     DSL_FUSION_CONTROL control;
     std::vector<DSL_FUSION_SITE_RECORD> sites;
     std::vector<DSL_FUSION_MEMBER_RECORD> members;
@@ -34,11 +35,13 @@ struct dsl_fusion_candidate_analysis {
 };
 
 static const char *DSL_fusion_pattern_name[] = {
-    "unknown", "matmul_bias_activation", "residual_activation"
+    "unknown", "matmul_bias_activation", "residual_activation",
+    "generic_cluster"
 };
 
 static const char *DSL_fusion_member_role_name[] = {
-    "unknown", "matmul", "bias_add", "residual_add", "activation"
+    "unknown", "matmul", "bias_add", "residual_add", "activation",
+    "generic_contraction", "generic_pointwise"
 };
 
 static const char *DSL_fusion_boundary_kind_name[] = {
@@ -121,6 +124,8 @@ DSL_Fusion_Control_Init (DSL_FUSION_CONTROL *control)
     control->generate_candidates = 1;
     control->target_profile_id = 1;
     control->max_sites = 64;
+    control->enable_semantic_patterns = 1;
+    control->max_cluster_members = 8;
 }
 
 static BOOL
@@ -128,7 +133,10 @@ DSL_Fusion_Control_Valid (const DSL_FUSION_CONTROL &control)
 {
     return control.reserved == 0 && control.generate_candidates <= 1 &&
            control.select_plans <= 1 && control.apply_transformation <= 1 &&
+           control.enable_semantic_patterns <= 1 &&
+           control.enable_generic_clusters <= 1 &&
            control.max_sites != 0 && control.target_profile_id != 0 &&
+           control.max_cluster_members >= 2 &&
            (!control.select_plans || control.generate_candidates) &&
            control.apply_transformation == 0;
 }
@@ -336,6 +344,161 @@ DSL_Fusion_Match
 }
 
 static BOOL
+DSL_Fusion_Generic_Trait
+        (const DSL_IR_OPCODE_DESCRIPTOR_RECORD &descriptor,
+         DSL_FUSIBILITY_INFO *trait)
+{
+    return DSL_Operator_Get_Fusibility_Info
+               ((DSL_OPERATOR)descriptor.logical_operator,
+                descriptor.version, trait) &&
+           (trait->flags & DSL_FUSIBILITY_SEMANTIC_PATTERN_REQUIRED) == 0 &&
+           (trait->flags & DSL_FUSIBILITY_SINGLE_RESULT) != 0;
+}
+
+static BOOL
+DSL_Fusion_Generic_Has_Forward_Consumer
+        (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
+         DSL_IR_VALUE_ID value_id)
+{
+    DSL_TENSOR_FACT_RECORD fact;
+    DSL_TENSOR_USE_FACT_RECORD use;
+    DSL_FUSIBILITY_INFO trait;
+    if (!DSL_Tensor_Analysis_Find_Fact
+             (analysis->tensor_analysis, value_id, &fact) ||
+        fact.use_count != 1 ||
+        !DSL_Tensor_Analysis_Get_Use
+             (analysis->tensor_analysis, fact.first_use_id, &use) ||
+        !DSL_Operator_Get_Fusibility_Info
+             ((DSL_OPERATOR)use.consumer_operator,
+              use.consumer_version, &trait))
+        return FALSE;
+    return (trait.flags & DSL_FUSIBILITY_CONSUMER) != 0 &&
+           (trait.flags & DSL_FUSIBILITY_SEMANTIC_PATTERN_REQUIRED) == 0;
+}
+
+static BOOL
+DSL_Fusion_Generic_Member_Index
+        (const dsl_fusion_pattern_match &match, DSL_IR_NODE_ID node_id,
+         UINT32 *index)
+{
+    for (UINT32 i = 0; i < match.members.size(); ++i) {
+        if (match.members[i] == node_id) {
+            if (index != NULL)
+                *index = i;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_Fusion_Match_Generic
+        (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
+         DSL_IR_NODE_ID root_node_id, dsl_fusion_pattern_match *match)
+{
+    DSL_IR_NODE_RECORD root;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD root_descriptor;
+    DSL_FUSIBILITY_INFO root_trait;
+    std::vector<DSL_IR_NODE_ID> reverse_members;
+    std::vector<UINT32> reverse_roles;
+
+    if (analysis == NULL || match == NULL ||
+        !DSL_Fusion_Node_Info
+             (root_node_id, &root, &root_descriptor) ||
+        !DSL_Fusion_Generic_Trait(root_descriptor, &root_trait) ||
+        (root_trait.flags & DSL_FUSIBILITY_CONSUMER) == 0 ||
+        root_descriptor.effect_model != DSL_EFFECT_MODEL_PURE ||
+        DSL_Fusion_Generic_Has_Forward_Consumer
+            (analysis, root.result_value_id))
+        return FALSE;
+
+    DSL_IR_NODE_RECORD current = root;
+    DSL_FUSIBILITY_INFO current_trait = root_trait;
+    while (TRUE) {
+        reverse_members.push_back(current.id);
+        reverse_roles.push_back
+            (current_trait.iteration_space ==
+                 DSL_FUSION_ITERATION_CONTRACTION ?
+             DSL_FUSION_MEMBER_GENERIC_CONTRACTION :
+             DSL_FUSION_MEMBER_GENERIC_POINTWISE);
+        if ((current_trait.flags & DSL_FUSIBILITY_CLUSTER_ANCHOR) != 0 ||
+            reverse_members.size() >=
+                analysis->control.max_cluster_members)
+            break;
+
+        DSL_IR_NODE_RECORD next;
+        DSL_FUSIBILITY_INFO next_trait;
+        UINT32 eligible_count = 0;
+        for (UINT32 operand = 0; operand < current.operand_count; ++operand) {
+            DSL_IR_VALUE_ID value_id;
+            DSL_IR_VALUE_RECORD value;
+            DSL_IR_NODE_RECORD producer;
+            DSL_IR_OPCODE_DESCRIPTOR_RECORD producer_descriptor;
+            DSL_FUSIBILITY_INFO producer_trait;
+            if (!DSL_Fusion_Operand(current, operand, &value_id) ||
+                !DSL_Fusion_Value_Producer
+                     (value_id, &value, &producer,
+                      &producer_descriptor) ||
+                !DSL_Fusion_Generic_Trait
+                     (producer_descriptor, &producer_trait) ||
+                (producer_trait.flags & DSL_FUSIBILITY_PRODUCER) == 0 ||
+                producer_descriptor.effect_model != DSL_EFFECT_MODEL_PURE)
+                continue;
+            ++eligible_count;
+            next = producer;
+            next_trait = producer_trait;
+        }
+        if (eligible_count != 1)
+            break;
+        current = next;
+        current_trait = next_trait;
+    }
+    if (reverse_members.size() < 2)
+        return FALSE;
+
+    match->pattern = DSL_FUSION_PATTERN_GENERIC_CLUSTER;
+    match->root_node_id = root.id;
+    match->result_value_id = root.result_value_id;
+    for (INT32 i = (INT32)reverse_members.size() - 1; i >= 0; --i) {
+        match->members.push_back(reverse_members[i]);
+        match->member_roles.push_back(reverse_roles[i]);
+    }
+    for (UINT32 i = 0; i + 1 < match->members.size(); ++i) {
+        DSL_IR_NODE_RECORD member;
+        if (!DSL_IR_Image_Get_Node(match->members[i], &member))
+            return FALSE;
+        match->eliminated_values.push_back(member.result_value_id);
+    }
+    for (UINT32 i = 0; i < match->members.size(); ++i) {
+        DSL_IR_NODE_RECORD member;
+        if (!DSL_IR_Image_Get_Node(match->members[i], &member))
+            return FALSE;
+        for (UINT32 operand = 0; operand < member.operand_count; ++operand) {
+            DSL_IR_VALUE_ID value_id;
+            DSL_IR_VALUE_RECORD value;
+            UINT32 producer_index;
+            if (!DSL_Fusion_Operand(member, operand, &value_id) ||
+                !DSL_IR_Image_Get_Value(value_id, &value))
+                return FALSE;
+            if (DSL_Fusion_Generic_Member_Index
+                    (*match, value.producer_node_id, &producer_index)) {
+                DSL_Fusion_Add_Boundary
+                    (match, value_id, value.producer_node_id, member.id,
+                     DSL_FUSION_BOUNDARY_ALTERNATIVE_CUT, operand);
+            } else {
+                DSL_Fusion_Add_Boundary
+                    (match, value_id, value.producer_node_id, member.id,
+                     DSL_FUSION_BOUNDARY_INPUT, operand);
+            }
+        }
+    }
+    DSL_Fusion_Add_Boundary
+        (match, root.result_value_id, root.id, DSL_IR_NODE_INVALID_ID,
+         DSL_FUSION_BOUNDARY_OUTPUT, DSL_FUSION_BOUNDARY_NO_OPERAND);
+    return TRUE;
+}
+
+static BOOL
 DSL_Fusion_Node_Has_State_Effect (DSL_IR_NODE_ID node_id)
 {
     for (DSL_STATE_EFFECT_ID id = 1;
@@ -356,6 +519,48 @@ DSL_Fusion_Add_U64 (UINT64 value, UINT64 *sum)
         return FALSE;
     *sum += value;
     return TRUE;
+}
+
+static UINT32
+DSL_Fusion_Layout_State
+        (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
+         const dsl_fusion_pattern_match &match)
+{
+    if (analysis->layout == NULL)
+        return DSL_FUSION_FACT_UNKNOWN;
+    UINT32 aggregate = DSL_FUSION_FACT_PROVEN;
+    for (UINT32 i = 0; i < match.eliminated_values.size(); ++i) {
+        DSL_LOGICAL_LAYOUT_SITE_RECORD site;
+        if (!DSL_Logical_Layout_Find_Site
+                 (analysis->layout, match.eliminated_values[i], &site)) {
+            aggregate = DSL_FUSION_FACT_UNKNOWN;
+            continue;
+        }
+        BOOL found_proven = FALSE;
+        BOOL found_unknown = FALSE;
+        for (UINT32 j = 0; j < site.alternative_count; ++j) {
+            DSL_LOGICAL_LAYOUT_ALTERNATIVE_RECORD alternative;
+            if (!DSL_Logical_Layout_Get_Alternative
+                     (analysis->layout, site.first_alternative_id + j,
+                      &alternative)) {
+                found_unknown = TRUE;
+                continue;
+            }
+            if (alternative.compatibility_state ==
+                    DSL_LAYOUT_COMPATIBILITY_PROVEN)
+                found_proven = TRUE;
+            else if (alternative.compatibility_state ==
+                         DSL_LAYOUT_COMPATIBILITY_UNKNOWN)
+                found_unknown = TRUE;
+        }
+        if (!found_proven) {
+            if (found_unknown || site.alternative_count == 0)
+                aggregate = DSL_FUSION_FACT_UNKNOWN;
+            else
+                return DSL_FUSION_FACT_REJECTED;
+        }
+    }
+    return aggregate;
 }
 
 static void
@@ -468,6 +673,7 @@ DSL_Fusion_Classify
                                              DSL_FUSION_FACT_REJECTED;
     site->effect_state = effect_ok ? DSL_FUSION_FACT_PROVEN :
                                      DSL_FUSION_FACT_REJECTED;
+    site->layout_state = DSL_Fusion_Layout_State(analysis, match);
     site->eliminated_materialization_count =
         match.eliminated_values.size();
     site->eliminated_materialization_bytes =
@@ -711,13 +917,28 @@ DSL_Fusion_Candidates_Create
          const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
          const DSL_FUSION_CONTROL *control, FILE *diagnostic)
 {
+    return DSL_Fusion_Candidates_Create_With_Layout
+               (pu, graph, tensor_analysis, locality, NULL, control,
+                diagnostic);
+}
+
+DSL_FUSION_CANDIDATE_ANALYSIS *
+DSL_Fusion_Candidates_Create_With_Layout
+        (PU_Info *pu, const DSL_TENSOR_EVOLUTION_GRAPH *graph,
+         const DSL_TENSOR_ANALYSIS *tensor_analysis,
+         const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
+         const DSL_LOGICAL_LAYOUT_ANALYSIS *layout,
+         const DSL_FUSION_CONTROL *control, FILE *diagnostic)
+{
     if (pu == NULL || graph == NULL || tensor_analysis == NULL ||
         locality == NULL || control == NULL || Current_PU_Info != pu ||
         DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Fusion_Control_Valid(*control) ||
         !DSL_Tensor_Evolution_Verify(graph, diagnostic) ||
         !DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
-        !DSL_Tensor_Locality_Verify(locality, diagnostic)) {
+        !DSL_Tensor_Locality_Verify(locality, diagnostic) ||
+        (layout != NULL &&
+         !DSL_Logical_Layout_Verify(layout, diagnostic))) {
         DSL_Fusion_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -728,6 +949,7 @@ DSL_Fusion_Candidates_Create
     analysis->graph = graph;
     analysis->tensor_analysis = tensor_analysis;
     analysis->locality = locality;
+    analysis->layout = layout;
     analysis->control = *control;
     analysis->built = FALSE;
     return analysis;
@@ -760,8 +982,14 @@ DSL_Fusion_Candidates_Build
         dsl_fusion_pattern_match match;
         if (!DSL_Tensor_Analysis_Get_Fact
                  (analysis->tensor_analysis, id, &fact) ||
-            fact.producer_node_id == DSL_IR_NODE_INVALID_ID ||
-            !DSL_Fusion_Match(fact.producer_node_id, &match))
+            fact.producer_node_id == DSL_IR_NODE_INVALID_ID)
+            continue;
+        BOOL matched = analysis->control.enable_semantic_patterns &&
+                       DSL_Fusion_Match(fact.producer_node_id, &match);
+        if (!matched && analysis->control.enable_generic_clusters)
+            matched = DSL_Fusion_Match_Generic
+                          (analysis, fact.producer_node_id, &match);
+        if (!matched)
             continue;
         if (analysis->sites.size() >= analysis->control.max_sites)
             return DSL_Fusion_Report
@@ -822,17 +1050,27 @@ DSL_Fusion_Candidates_Verify
     UINT32 expected_boundary = 1;
     for (UINT32 i = 0; i < analysis->sites.size(); ++i) {
         const DSL_FUSION_SITE_RECORD &site = analysis->sites[i];
-        UINT32 expected_member_count =
-            site.pattern == DSL_FUSION_PATTERN_MATMUL_BIAS_ACTIVATION ?
-            3 : 2;
-        UINT32 expected_boundary_count =
-            site.pattern == DSL_FUSION_PATTERN_MATMUL_BIAS_ACTIVATION ?
-            6 : 4;
+        UINT32 expected_member_count = site.member_count;
+        UINT32 expected_boundary_count = site.boundary_count;
+        if (site.pattern == DSL_FUSION_PATTERN_MATMUL_BIAS_ACTIVATION) {
+            expected_member_count = 3;
+            expected_boundary_count = 6;
+        } else if (site.pattern == DSL_FUSION_PATTERN_RESIDUAL_ACTIVATION) {
+            expected_member_count = 2;
+            expected_boundary_count = 4;
+        }
         UINT32 expected_materialization_count = expected_member_count - 1;
         if (site.id != i + 1 || site.owner_pu_st != analysis->owner_pu_st ||
             site.pattern < DSL_FUSION_PATTERN_MATMUL_BIAS_ACTIVATION ||
-            site.pattern > DSL_FUSION_PATTERN_RESIDUAL_ACTIVATION ||
+            site.pattern > DSL_FUSION_PATTERN_GENERIC_CLUSTER ||
+            (site.pattern == DSL_FUSION_PATTERN_GENERIC_CLUSTER &&
+             (!analysis->control.enable_generic_clusters ||
+              site.member_count >
+                  analysis->control.max_cluster_members)) ||
+            (site.pattern != DSL_FUSION_PATTERN_GENERIC_CLUSTER &&
+             !analysis->control.enable_semantic_patterns) ||
             site.first_member_id != expected_member ||
+            expected_member_count < 2 ||
             site.member_count != expected_member_count ||
             site.first_boundary_id != expected_boundary ||
             site.boundary_count != expected_boundary_count ||
@@ -842,6 +1080,7 @@ DSL_Fusion_Candidates_Verify
             site.descriptor_state > DSL_FUSION_FACT_REJECTED ||
             site.effect_state > DSL_FUSION_FACT_REJECTED ||
             site.resource_state > DSL_FUSION_FACT_REJECTED ||
+            site.layout_state > DSL_FUSION_FACT_REJECTED ||
             site.baseline_candidate_id == 0 ||
             site.fusion_candidate_id == 0 ||
             site.baseline_plan_id == 0 || site.fusion_plan_id == 0 ||
@@ -883,7 +1122,11 @@ DSL_Fusion_Candidates_Verify
                 member.ordinal != j || member.node_id == 0 ||
                 member.result_value_id == 0 ||
                 member.role < DSL_FUSION_MEMBER_MATMUL ||
-                member.role > DSL_FUSION_MEMBER_ACTIVATION)
+                member.role > DSL_FUSION_MEMBER_GENERIC_POINTWISE ||
+                (site.pattern == DSL_FUSION_PATTERN_GENERIC_CLUSTER &&
+                 member.role < DSL_FUSION_MEMBER_GENERIC_CONTRACTION) ||
+                (site.pattern != DSL_FUSION_PATTERN_GENERIC_CLUSTER &&
+                 member.role > DSL_FUSION_MEMBER_ACTIVATION))
                 return DSL_Fusion_Report
                            (diagnostic, "invalid fusion member", member.id);
             ++expected_member;
@@ -892,9 +1135,12 @@ DSL_Fusion_Candidates_Verify
             analysis->members[site.first_member_id + site.member_count - 2];
         if (root_member.node_id != site.root_node_id ||
             root_member.result_value_id != site.result_value_id ||
-            root_member.role != DSL_FUSION_MEMBER_ACTIVATION)
+            (site.pattern != DSL_FUSION_PATTERN_GENERIC_CLUSTER &&
+             root_member.role != DSL_FUSION_MEMBER_ACTIVATION))
             return DSL_Fusion_Report
                        (diagnostic, "invalid fusion root member", site.id);
+        UINT32 cut_count = 0;
+        UINT32 output_count = 0;
         for (UINT32 j = 0; j < site.boundary_count; ++j) {
             const DSL_FUSION_BOUNDARY_RECORD &boundary =
                 analysis->boundaries[expected_boundary - 1];
@@ -908,8 +1154,15 @@ DSL_Fusion_Candidates_Verify
                 return DSL_Fusion_Report
                            (diagnostic, "invalid fusion boundary",
                             boundary.id);
+            if (boundary.kind == DSL_FUSION_BOUNDARY_ALTERNATIVE_CUT)
+                ++cut_count;
+            else if (boundary.kind == DSL_FUSION_BOUNDARY_OUTPUT)
+                ++output_count;
             ++expected_boundary;
         }
+        if (cut_count != site.member_count - 1 || output_count != 1)
+            return DSL_Fusion_Report
+                       (diagnostic, "invalid fusion cluster boundary", site.id);
     }
     if (expected_member != analysis->members.size() + 1 ||
         expected_boundary != analysis->boundaries.size() + 1)
@@ -934,11 +1187,14 @@ DSL_Fusion_Candidates_Print
         return;
     fprintf(file,
             "DSLFusionCandidates: owner=<%u,%u> sites=%u "
-            "generate=%s select=%s apply=%s target=%u resource_limit=",
+            "generate=%s semantic=%s generic=%s select=%s apply=%s "
+            "target=%u resource_limit=",
             ST_IDX_level(analysis->owner_pu_st),
             ST_IDX_index(analysis->owner_pu_st),
             (UINT32)analysis->sites.size(),
             analysis->control.generate_candidates ? "yes" : "no",
+            analysis->control.enable_semantic_patterns ? "yes" : "no",
+            analysis->control.enable_generic_clusters ? "yes" : "no",
             analysis->control.select_plans ? "yes" : "no",
             analysis->control.apply_transformation ? "yes" : "no",
             analysis->control.target_profile_id);
@@ -951,7 +1207,7 @@ DSL_Fusion_Candidates_Print
         fprintf(file,
                 "  site %u pattern=%s root=%u result=%u members=%u "
                 "boundaries=%u legality=%s reason=%s semantic=%s "
-                "descriptor=%s effect=%s resource=%s "
+                "descriptor=%s effect=%s resource=%s layout=%s "
                 "materializations=%u bytes=",
                 site.id, DSL_Fusion_Pattern_Name(site.pattern),
                 site.root_node_id, site.result_value_id,
@@ -962,6 +1218,7 @@ DSL_Fusion_Candidates_Print
                 DSL_Fusion_Fact_State_Name(site.descriptor_state),
                 DSL_Fusion_Fact_State_Name(site.effect_state),
                 DSL_Fusion_Fact_State_Name(site.resource_state),
+                DSL_Fusion_Fact_State_Name(site.layout_state),
                 site.eliminated_materialization_count);
         DSL_Fusion_Print_U64(file, site.eliminated_materialization_bytes);
         fprintf(file, " live_growth_bytes=");

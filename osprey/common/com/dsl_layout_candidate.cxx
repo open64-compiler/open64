@@ -1050,6 +1050,23 @@ DSL_Logical_Layout_Get_Site
 }
 
 BOOL
+DSL_Logical_Layout_Find_Site
+        (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
+         DSL_IR_VALUE_ID semantic_value_id,
+         DSL_LOGICAL_LAYOUT_SITE_RECORD *record)
+{
+    if (analysis == NULL || record == NULL || semantic_value_id == 0)
+        return FALSE;
+    for (UINT32 i = 0; i < analysis->sites.size(); ++i) {
+        if (analysis->sites[i].semantic_value_id == semantic_value_id) {
+            *record = analysis->sites[i];
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+BOOL
 DSL_Logical_Layout_Get_Alternative
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
          DSL_LOGICAL_LAYOUT_ALTERNATIVE_ID id,

@@ -169,6 +169,10 @@ extern BOOL DSL_Logical_Layout_Get_Site
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_LOGICAL_LAYOUT_SITE_ID id,
                                  DSL_LOGICAL_LAYOUT_SITE_RECORD *record);
+extern BOOL DSL_Logical_Layout_Find_Site
+                                (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
+                                 DSL_IR_VALUE_ID semantic_value_id,
+                                 DSL_LOGICAL_LAYOUT_SITE_RECORD *record);
 extern BOOL DSL_Logical_Layout_Get_Alternative
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_LOGICAL_LAYOUT_ALTERNATIVE_ID id,

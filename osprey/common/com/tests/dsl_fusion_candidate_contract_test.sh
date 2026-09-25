@@ -39,6 +39,12 @@ OPEN64_AIO5_MODE=after OPEN64_AIO5_ARTIFACT="$repeat_b" \
   OPEN64_AIO5_ANALYSIS="$repeat_analysis" \
   "$producer" >> "$validation" 2>&1
 OPEN64_AIO5_MODE=candidate "$producer" >> "$validation" 2>&1
+OPEN64_AIO5_MODE=traits "$producer" >> "$validation" 2>&1
+OPEN64_AIO5_MODE=generic_budget "$producer" >> "$validation" 2>&1
+OPEN64_AIO5_MODE=generic_descriptor "$producer" >> "$validation" 2>&1
+OPEN64_AIO5_MODE=generic_effect "$producer" >> "$validation" 2>&1
+OPEN64_AIO5_MODE=generic_fanout "$producer" >> "$validation" 2>&1
+OPEN64_AIO5_MODE=generic_region "$producer" >> "$validation" 2>&1
 OPEN64_AIO5_MODE=descriptor "$producer" >> "$validation" 2>&1
 OPEN64_AIO5_MODE=effect "$producer" >> "$validation" 2>&1
 OPEN64_AIO5_MODE=semantic "$producer" >> "$validation" 2>&1
@@ -58,11 +64,16 @@ cmp "$after_b" "$repeat_b"
 cmp "$after_t" "$repeat_t"
 cmp "$analysis" "$repeat_analysis"
 
-grep -q "DSLFusionCandidates:.*sites=2.*select=yes.*apply=no" "$analysis"
+grep -q "DSLFusionCandidates:.*sites=2.*semantic=yes.*generic=no.*select=yes.*apply=no" "$analysis"
+grep -q "DSLFusionCandidates:.*sites=1.*semantic=no.*generic=yes.*select=yes.*apply=no" "$analysis"
 grep -q "pattern=matmul_bias_activation.*legality=proven" "$analysis"
 grep -q "pattern=matmul_bias_activation.*materializations=2 bytes=32" "$analysis"
 grep -q "pattern=residual_activation.*materializations=1 bytes=16" "$analysis"
 grep -q "pattern=residual_activation.*selected=2" "$analysis"
+grep -q "pattern=generic_cluster.*legality=proven.*layout=unknown" "$analysis"
+grep -q "role=generic_contraction" "$analysis"
+grep -q "role=generic_pointwise" "$analysis"
+grep -q "DSLLogicalLayouts:" "$analysis"
 grep -q "kind=alternative_cut" "$analysis"
 grep -q "OPR_DSLMATMUL" "$after_t"
 grep -q "OPR_DSLRESIDUALADD" "$after_t"
@@ -81,6 +92,12 @@ OPEN64_AIO5_MODE=before OPEN64_AIO5_ARTIFACT=$before_b $producer
 OPEN64_AIO5_MODE=after OPEN64_AIO5_ARTIFACT=$after_b OPEN64_AIO5_ANALYSIS=$analysis $producer
 OPEN64_AIO5_MODE=after OPEN64_AIO5_ARTIFACT=$repeat_b OPEN64_AIO5_ANALYSIS=$repeat_analysis $producer
 OPEN64_AIO5_MODE=candidate $producer
+OPEN64_AIO5_MODE=traits $producer
+OPEN64_AIO5_MODE=generic_budget $producer
+OPEN64_AIO5_MODE=generic_descriptor $producer
+OPEN64_AIO5_MODE=generic_effect $producer
+OPEN64_AIO5_MODE=generic_fanout $producer
+OPEN64_AIO5_MODE=generic_region $producer
 OPEN64_AIO5_MODE=descriptor $producer
 OPEN64_AIO5_MODE=effect $producer
 OPEN64_AIO5_MODE=semantic $producer

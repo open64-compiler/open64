@@ -9,6 +9,7 @@
 
 #include "defs.h"
 #include "dsl_opt_plan.h"
+#include "dsl_layout_candidate.h"
 #include "dsl_tensor_analysis.h"
 #include "dsl_tensor_locality.h"
 
@@ -27,7 +28,8 @@ typedef UINT32 DSL_FUSION_BOUNDARY_ID;
 typedef enum {
     DSL_FUSION_PATTERN_UNKNOWN = 0,
     DSL_FUSION_PATTERN_MATMUL_BIAS_ACTIVATION = 1,
-    DSL_FUSION_PATTERN_RESIDUAL_ACTIVATION = 2
+    DSL_FUSION_PATTERN_RESIDUAL_ACTIVATION = 2,
+    DSL_FUSION_PATTERN_GENERIC_CLUSTER = 3
 } DSL_FUSION_PATTERN;
 
 typedef enum {
@@ -35,7 +37,9 @@ typedef enum {
     DSL_FUSION_MEMBER_MATMUL = 1,
     DSL_FUSION_MEMBER_BIAS_ADD = 2,
     DSL_FUSION_MEMBER_RESIDUAL_ADD = 3,
-    DSL_FUSION_MEMBER_ACTIVATION = 4
+    DSL_FUSION_MEMBER_ACTIVATION = 4,
+    DSL_FUSION_MEMBER_GENERIC_CONTRACTION = 5,
+    DSL_FUSION_MEMBER_GENERIC_POINTWISE = 6
 } DSL_FUSION_MEMBER_ROLE;
 
 typedef enum {
@@ -65,6 +69,9 @@ typedef struct {
     UINT32 target_profile_id;
     UINT64 resource_limit_bytes;
     UINT32 max_sites;
+    UINT32 enable_semantic_patterns;
+    UINT32 enable_generic_clusters;
+    UINT32 max_cluster_members;
     UINT32 reserved;
 } DSL_FUSION_CONTROL;
 
@@ -84,6 +91,7 @@ typedef struct {
     UINT32 descriptor_state;
     UINT32 effect_state;
     UINT32 resource_state;
+    UINT32 layout_state;
     UINT32 legality;
     UINT32 rejection_reason;
     UINT64 eliminated_materialization_bytes;
@@ -125,6 +133,14 @@ extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_Fusion_Candidates_Create
                                  const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_TENSOR_ANALYSIS *tensor_analysis,
                                  const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
+                                 const DSL_FUSION_CONTROL *control,
+                                 FILE *diagnostic);
+extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_Fusion_Candidates_Create_With_Layout
+                                (struct pu_info *pu,
+                                 const DSL_TENSOR_EVOLUTION_GRAPH *graph,
+                                 const DSL_TENSOR_ANALYSIS *tensor_analysis,
+                                 const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
+                                 const DSL_LOGICAL_LAYOUT_ANALYSIS *layout,
                                  const DSL_FUSION_CONTROL *control,
                                  FILE *diagnostic);
 extern void DSL_Fusion_Candidates_Destroy

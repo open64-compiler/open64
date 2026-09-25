@@ -145,6 +145,14 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLREMPART"
 };
 
+static const char *DSL_fusion_iteration_class_name[] = {
+    "opaque", "pointwise", "contraction", "reduction", "view"
+};
+
+static const char *DSL_fusion_indexing_class_name[] = {
+    "opaque", "identity", "broadcast", "contraction", "reduction", "view"
+};
+
 static const char *DSL_cprom_diagnostic_code[] = {
     "CPROM-001",
     "CPROM-002",
@@ -645,6 +653,45 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REMPART", "" }
 };
 
+static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {
+    { OPR_DSLADD, 1, 0, DSL_FUSION_ITERATION_POINTWISE,
+        DSL_FUSION_INDEXING_BROADCAST,
+        DSL_FUSIBILITY_PRODUCER | DSL_FUSIBILITY_CONSUMER |
+        DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT },
+    { OPR_DSLMATMUL, 1, 0, DSL_FUSION_ITERATION_CONTRACTION,
+        DSL_FUSION_INDEXING_CONTRACTION,
+        DSL_FUSIBILITY_PRODUCER | DSL_FUSIBILITY_CONSUMER |
+        DSL_FUSIBILITY_CLUSTER_ANCHOR |
+        DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT },
+    { OPR_DSLMATMUL, 2, 0, DSL_FUSION_ITERATION_CONTRACTION,
+        DSL_FUSION_INDEXING_CONTRACTION,
+        DSL_FUSIBILITY_PRODUCER | DSL_FUSIBILITY_CONSUMER |
+        DSL_FUSIBILITY_CLUSTER_ANCHOR |
+        DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT },
+    { OPR_DSLRELU, 2, 0, DSL_FUSION_ITERATION_POINTWISE,
+        DSL_FUSION_INDEXING_IDENTITY,
+        DSL_FUSIBILITY_PRODUCER | DSL_FUSIBILITY_CONSUMER |
+        DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT },
+    { OPR_DSLRESIDUALADD, 2, 0, DSL_FUSION_ITERATION_POINTWISE,
+        DSL_FUSION_INDEXING_BROADCAST,
+        DSL_FUSIBILITY_SEMANTIC_PATTERN_REQUIRED |
+        DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT },
+    { OPR_DSLLINEAR, 2, 0, DSL_FUSION_ITERATION_CONTRACTION,
+        DSL_FUSION_INDEXING_CONTRACTION,
+        DSL_FUSIBILITY_PRODUCER | DSL_FUSIBILITY_CONSUMER |
+        DSL_FUSIBILITY_CLUSTER_ANCHOR |
+        DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT },
+    { OPR_DSLLINEAR, 3, 0, DSL_FUSION_ITERATION_CONTRACTION,
+        DSL_FUSION_INDEXING_CONTRACTION,
+        DSL_FUSIBILITY_PRODUCER | DSL_FUSIBILITY_CONSUMER |
+        DSL_FUSIBILITY_CLUSTER_ANCHOR |
+        DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT },
+    { OPR_DSLMUL, 1, 0, DSL_FUSION_ITERATION_POINTWISE,
+        DSL_FUSION_INDEXING_BROADCAST,
+        DSL_FUSIBILITY_PRODUCER | DSL_FUSIBILITY_CONSUMER |
+        DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT }
+};
+
 static const DSL_LOGICAL_OPERATOR_SEED *
 DSL_Operator_Seed (DSL_OPERATOR dsl_operator)
 {
@@ -815,6 +862,38 @@ DSL_Operator_Get_Algebraic_Info
     }
 
     return FALSE;
+}
+
+BOOL
+DSL_Operator_Get_Fusibility_Info
+        (DSL_OPERATOR dsl_operator, UINT16 version,
+         DSL_FUSIBILITY_INFO *info)
+{
+    if (info == NULL)
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_ARRAY_COUNT(DSL_fusibility_info); ++i) {
+        if (DSL_fusibility_info[i].dsl_operator == dsl_operator &&
+            DSL_fusibility_info[i].version == version) {
+            *info = DSL_fusibility_info[i];
+            return TRUE;
+        }
+    }
+    memset(info, 0, sizeof(*info));
+    return FALSE;
+}
+
+const char *
+DSL_Fusion_Iteration_Class_Name (UINT32 iteration_space)
+{
+    return iteration_space < DSL_ARRAY_COUNT(DSL_fusion_iteration_class_name) ?
+           DSL_fusion_iteration_class_name[iteration_space] : "unknown";
+}
+
+const char *
+DSL_Fusion_Indexing_Class_Name (UINT32 operand_indexing)
+{
+    return operand_indexing < DSL_ARRAY_COUNT(DSL_fusion_indexing_class_name) ?
+           DSL_fusion_indexing_class_name[operand_indexing] : "unknown";
 }
 
 BOOL

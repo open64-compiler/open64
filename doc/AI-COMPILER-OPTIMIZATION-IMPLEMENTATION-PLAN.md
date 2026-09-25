@@ -454,6 +454,18 @@ Future scalable-fusion actions:
    elementwise and contraction-epilogue chains without a sequence-specific
    matcher, while semantic patterns remain domain-visible.
 
+Initial scalable-fusion slice completed on 2026-09-24:
+
+- versioned iteration-space/indexing fusibility traits and semantic-only flags;
+- deterministic, bounded producer-consumer cluster growth;
+- conservative stops for fan-out/diamonds, unsupported operators, REGION and
+  effect boundaries, and unsupported result structure;
+- AIO-6 layout compatibility consumption without forcing a representation;
+- the same AIO-2 candidate, plan, cost, fallback, and selection services for
+  semantic and generic candidates; and
+- comparative, deterministic, PU-scope, negative, and byte-identical binary
+  evidence.
+
 Acceptance:
 
 - legal, effectful, descriptor-mismatch, and resource-unknown cases;
@@ -757,7 +769,7 @@ artifact.
    patterns.
 10. [x] Execute `AIO-6`: introduce immutable logical-layout alternatives and
     layout-compatibility evidence.
-11. [ ] Generalize AIO-5 with operator fusibility traits, generic
+11. [x] Generalize AIO-5 with operator fusibility traits, generic
     producer-consumer edge discovery, and deterministic cluster growth.
 
 ## Related Documents
