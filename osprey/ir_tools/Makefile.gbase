@@ -169,6 +169,8 @@ LDIRT += dsl_layout_candidate_contract_test \
 	dsl_layout_candidate_contract_test.o
 LDIRT += dsl_distributed_candidate_contract_test \
 	dsl_distributed_candidate_contract_test.o
+LDIRT += dsl_residency_candidate_contract_test \
+	dsl_residency_candidate_contract_test.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += fhe_convert_contract_test fhe_convert_contract_test.o fhe_convert.o
 LDIRT += fhe_semantic_convert_test fhe_semantic_convert_test.o
@@ -218,6 +220,8 @@ COMMON_COM_CXX_SRC =	\
 	dsl_fusion_candidate.cxx \
 	dsl_layout_candidate.cxx \
 	dsl_distributed_candidate.cxx \
+	dsl_memory_hierarchy.cxx \
+	dsl_residency_candidate.cxx \
 	dsl_shape.cxx	\
 	dsl_tensor_analysis.cxx \
 	dsl_tensor_locality.cxx \
@@ -386,6 +390,15 @@ dsl_distributed_candidate_contract_test: $(OBJECTS) controls.o \
 
 dsl_distributed_candidate_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_distributed_candidate_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_residency_candidate_contract_test: $(OBJECTS) controls.o \
+		dsl_residency_candidate_contract_test.o
+	$(link.c++f) -o $@ dsl_residency_candidate_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_residency_candidate_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_residency_candidate_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \

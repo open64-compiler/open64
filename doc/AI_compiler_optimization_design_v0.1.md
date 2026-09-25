@@ -428,7 +428,75 @@ explicit costs and fallback; effect, REGION, shape, control, and active-PU
 negatives; and unchanged binary WHIRL. The focused implementation contract is
 documented in `AI-COMPILER-OPTIMIZATION-AIO7-DISTRIBUTED.md`.
 
-## 3.6 Why Runtime Variants Come Late
+## 3.6 AI-P6 Memory Residency Rationale
+
+### 3.6.1 Optimization Problem
+
+Placement and sharding answer which device owns a tensor. They do not answer
+where that device should keep the tensor during a particular producer-consumer
+interval. A local tensor may remain in HBM, be expected to persist in L2, be
+staged in shared memory, or be forwarded through registers. Host and pinned
+host memory may also be legal fallbacks or staging sources. These choices have
+different capacity, lifetime, ownership, alignment, spill, and eviction
+requirements.
+
+AI-P6 therefore separates a target-independent residency descriptor from typed
+target capability adapters. It creates provisional alternatives and delays
+allocation until later tiling, pipeline, resource, and implementation evidence
+is available.
+
+### 3.6.2 Performance Mechanisms
+
+| Mechanism | Why residency matters |
+| --- | --- |
+| HBM traffic elimination | Keeping a reusable intermediate in an on-chip tier can avoid a full write/read round trip. |
+| Latency hiding | Pinned-host, HBM, L2, and shared-memory choices determine which later prefetch and async-copy engines can overlap movement with compute. |
+| Producer-consumer forwarding | Exact short lifetimes and unique ownership may permit shared-memory or register forwarding without materialization. |
+| Capacity and occupancy | Shared-memory and register residency consume finite per-CTA/per-thread resources and can reduce active occupancy even when the object fits. |
+| Cache reuse | An object that fits in L2 may benefit from persistence, but fit alone does not prove a hit because other live data can evict it. |
+| Spill and eviction | A profitable fast tier needs a legal lower-tier fallback and explicit lifetime or pressure point for demotion. |
+| Tiling | A full tensor may not fit in shared memory or registers while a later AIO-9 tile or fragment does. |
+
+These mechanisms are conditional. A lower-latency tier can lose when promotion
+cost, pressure, occupancy loss, synchronization, or eviction exceeds the saved
+traffic. Residency must remain a candidate, not an allocation side effect.
+
+### 3.6.3 Inputs, Candidate Space, And Legality
+
+AI-P6 consumes canonical TensorDescriptorIR identity, static or symbolic object
+size, access pattern, reuse benefit, lifetime/control scope, alias ownership,
+placement/sharding results, and a typed target memory hierarchy. Initial tiers
+are system, pinned host, HBM, L2, shared memory, and registers.
+
+Known capacity overflow is rejected as a resource failure. Shared/register
+alternatives additionally require exact basic-block lifetime and proven unique
+ownership. Effects reject the candidate. Symbolic size and unknown capacity
+remain incomplete rather than guessed. For cache tiers, capacity feasibility
+means only that the object can fit; it does not promise retention.
+
+### 3.6.4 Cost, Selection, And Fallback
+
+The first target adapter supplies a relative latency class, capacity,
+granularity, and alignment. Relative latency is low-confidence target-model
+evidence, not cycles or nanoseconds. Every residency alternative retains the
+unchanged baseline as fallback. Later phases refine the plan with simultaneous
+live-set capacity, occupancy, tiling, transfer overlap, spill cost, and measured
+cache behavior before transformation is allowed.
+
+### 3.6.5 Scope, Persistence, And Evidence
+
+Ordinary compilation remains PU-scoped. The active backend driver owns the PU
+and local symbol table; AI-P6 does not inspect callers or callees. Cross-PU
+residency analysis requires explicit IPA summaries.
+
+The first implementation is runtime-only and check-only. It adds
+`local_physical` TensorEvolutionGraph nodes but no persistent type, opcode, ELF
+section, or executable allocation. CPU-baseline, Hopper, and Blackwell profiles
+are accessed through typed APIs rather than free-form parsing. Before/after/
+repeat `.B` and `ir_b2a -st -src` evidence remains byte-identical. The focused
+contract is documented in `AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md`.
+
+## 3.7 Why Runtime Variants Come Late
 
 Runtime adaptation should not invent arbitrary schedules. The static compiler should generate legal variants, attach guards, and expose a selection policy. The runtime observes state and selects from certified variants.
 

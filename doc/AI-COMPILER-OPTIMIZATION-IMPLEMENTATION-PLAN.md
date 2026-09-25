@@ -559,6 +559,12 @@ Deferred beyond this slice:
 
 ### AIO-8: AI-P6 Residency And Memory Hierarchy
 
+Status: completed as a check-only, runtime-only, per-PU vertical slice on
+2026-09-25. `MemoryHierarchyDescriptorIR` provides typed CPU-baseline,
+Hopper, and Blackwell adapters; `CommonMemoryResidencyIR` creates capacity and
+lifetime checked alternatives, TensorEvolutionGraph `local_physical` overlays,
+and AIO-2 plans without rewriting executable or binary WHIRL.
+
 Actions:
 
 1. Define target-independent memory tiers, capacity, lifetime, promotion,
@@ -574,6 +580,29 @@ Acceptance:
 - exact resource reasons in rejected-plan traces.
 
 PR boundary: common memory hierarchy, then target adapters.
+
+Implemented first vertical slice:
+
+- closed target-profile, memory-tier, and scope enums with typed hot queries;
+- CPU baseline plus distinct Hopper and Blackwell HBM/L2/shared/register
+  capabilities;
+- system, pinned-host, HBM, L2, shared, and register alternatives where the
+  selected profile supports them;
+- allocation-rounded capacity checks and conservative lifetime/ownership
+  legality;
+- explicit promotion, demotion, spill, and eviction policies;
+- TensorEvolutionGraph `local_physical` nodes/`local_layout` edges and AIO-2
+  cost, fallback, and deterministic selection;
+- exact resource/effect/ownership/lifetime/incomplete-analysis reasons;
+- PU-local scope and byte-identical before/after/repeat binary evidence.
+
+Deferred beyond this slice:
+
+- driver/runtime capability import and live device discovery;
+- simultaneous live-set capacity accounting and cache-contention modeling;
+- occupancy-aware register/shared budgets and spill costs;
+- executable allocation or transfer insertion;
+- mapped-image publication and explicit IPA residency summaries.
 
 ### AIO-9: AI-P7 Hierarchical Tile Plans
 
@@ -797,6 +826,9 @@ artifact.
 12. [x] Execute the first `AIO-7` vertical slice: define common distributed
     ownership alternatives and derive logical communication intent without
     changing executable or binary WHIRL.
+13. [x] Execute the first `AIO-8` vertical slice: define typed CPU/Hopper/
+    Blackwell memory hierarchies and capacity/lifetime checked residency
+    alternatives without allocating storage or changing binary WHIRL.
 
 ## Related Documents
 
@@ -817,6 +849,9 @@ artifact.
 - `AI-COMPILER-OPTIMIZATION-AIO7-DISTRIBUTED.md` - runtime-only placement,
   sharding, distributed alias/range, communication epoch/intent, AIO-2 plan,
   PU-scope, compatibility, and certification contract.
+- `AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md` - typed memory hierarchy
+  adapters, runtime-only residency alternatives, capacity/lifetime legality,
+  AIO-2 plans, compatibility, and certification.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion
   candidate skeleton, legality, cost, fallback, selection, and certification.
 - `VHO-DSL-OPTIMIZATION-PLAN.md` - fixed VHO DSL optimization pipeline and
