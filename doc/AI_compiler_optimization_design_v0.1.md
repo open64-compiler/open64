@@ -340,7 +340,93 @@ implementation contract is documented in
 
 ## 3.5 Why Layout And Sharding Precede Communication
 
-Communication is derived from layout and placement decisions. The optimizer should first describe candidate ownership and sharding of tensors, then derive collective and peer-to-peer operations from those choices. This avoids treating communication as a fixed artifact independent of the plan that caused it.
+### 3.5.1 Optimization Problem
+
+Distributed execution changes who owns each logical tensor element and when a
+consumer can observe it. Replication, axis sharding, partial reduction, and
+migration can all preserve the tensor's mathematical meaning while requiring
+different communication. A collective cannot be selected correctly before the
+compiler knows the ownership alternative that caused it.
+
+AI-P4 therefore creates immutable, runtime-only placement and sharding
+alternatives for a semantic tensor. Each alternative records device count,
+shard axis, ownership class, per-device tile ranges, disjointness evidence,
+and a visibility epoch. AI-P5 derives logical communication intent from that
+alternative. Communication is not an unrelated frontend annotation and does
+not become an executable collective during this check-only stage.
+
+### 3.5.2 Performance Mechanisms
+
+| Mechanism | Why ownership and communication matter |
+| --- | --- |
+| Parallel compute | Disjoint shards can divide independent output work across devices. Partial results can divide a contraction or reduction dimension. |
+| Replication | A local replica can avoid repeated remote reads, but consumes capacity and requires an initial or refreshed copy. |
+| Reduction | Partial ownership reduces local compute but requires a reduction collective before the complete value is visible. |
+| Migration | Moving a uniquely owned value may improve producer-consumer locality, but introduces peer-copy latency and changes the visibility epoch. |
+| Collective choice | Replication, disjoint distribution, partial reduction, and redistribution imply different AllGather, Scatter, AllReduce, ReduceScatter, AllToAll, or peer-copy intent. |
+| Layout interaction | Axis order and packing determine whether a shard is contiguous and whether redistribution also needs transpose or packing work. |
+| Fusion and residency | A fused cluster or retained resident value can eliminate a communication boundary; a split cluster can restore it. |
+
+These are alternatives, not automatic wins. Communication volume,
+synchronization, topology, bandwidth, capacity, overlap, and launch overhead
+must be compared with the unchanged baseline through OptimizationPlanIR.
+
+### 3.5.3 Inputs, Candidate Space, And Legality
+
+AI-P4 consumes the semantic tensor root, canonical TensorDescriptorIR, shape
+state, logical-layout evidence, producer shape rule, effects, ownership,
+aliasing, lifetime/locality, and REGION/control scope. The first common slice
+models replicated, axis-sharded, partial-reduction, and migrated ownership.
+Tile ranges make disjointness or overlap explicit instead of inferring it from
+a placement name.
+
+Axis sharding is proven only for a static dimension divisible by the device
+count. Partial reduction requires a contraction-producing logical operator.
+Migration and disjoint ownership require proven unique ownership. Effects,
+unknown aliasing, dynamic/non-divisible dimensions, and REGION boundaries are
+rejected or remain unknown according to the missing proof; they are not guessed
+from Python names or target annotations.
+
+### 3.5.4 Communication Derivation, Cost, And Fallback
+
+AI-P5 derives one logical communication intent in the alternative's visibility
+epoch. The initial mapping is deliberately inspectable: replication implies
+AllGather, axis sharding implies Scatter, partial reduction implies AllReduce,
+and migration implies peer copy. Later topology-aware planning may refine a
+logical intent into ReduceScatter, AllToAll, send/receive, RDMA, or an
+implementation library without changing why the communication exists.
+
+Known tensor size supplies a deterministic first communication-volume term.
+This is low-confidence relative cost, not a target latency model. Every plan
+retains the unchanged semantic implementation as fallback. Candidate
+generation, communication derivation, plan selection, and transformation
+application have independent controls; the first slice prohibits application.
+
+### 3.5.5 Scope And Persistence Boundary
+
+Ordinary compilation owns one active PU. AI-P4/P5 facts must therefore be
+complete and verifiable for that PU without inspecting another PU's local
+tables. Cross-PU placement summaries belong to an explicit later `-ipa` stage.
+
+The first slice is runtime-only and check-only. It adds no ELF section, binary
+WHIRL row, opcode, tensor type, executable collective, or frontend dependency.
+Before/after/repeat `.B` and `ir_b2a -st -src` output must remain byte-identical.
+Persistence or executable communication requires a separately reviewed
+contract.
+
+### 3.5.6 Downstream Consumers And Review Evidence
+
+AI-P6 consumes placement when selecting local memory residency. AI-P7 through
+AI-P9 combine ownership with tiles, transfers, pipelines, resources, and
+schedules. AI-P10 may select among already-certified distributed variants.
+Fusion refinement can eliminate or move an epoch only after proving the same
+ownership and visibility semantics.
+
+Review evidence must show replicated, disjoint, reduced, migrated, and unknown
+ownership; exact or unknown ranges; deterministic epochs and communication;
+explicit costs and fallback; effect, REGION, shape, control, and active-PU
+negatives; and unchanged binary WHIRL. The focused implementation contract is
+documented in `AI-COMPILER-OPTIMIZATION-AIO7-DISTRIBUTED.md`.
 
 ## 3.6 Why Runtime Variants Come Late
 

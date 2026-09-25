@@ -534,6 +534,29 @@ Acceptance:
 PR boundary: common ownership first, communication derivation second, IPA
 summary third.
 
+Implemented first vertical slice:
+
+- runtime-only immutable replication, equal-axis sharding,
+  partial-reduction, and migration alternatives;
+- explicit per-device ranges, distributed alias/disjointness, and one
+  visibility epoch per candidate site;
+- deterministic logical AllGather, Scatter, AllReduce, and peer-copy intent
+  derived from ownership rather than supplied by the frontend;
+- TensorEvolutionGraph `place`/`shard` overlays and AIO-2 cost, fallback, and
+  selection integration;
+- pure/same-block/unique-ownership/contraction/divisibility legality with
+  conservative effect, REGION, symbolic-shape, and incomplete-analysis states;
+- independent generation, communication-derivation, selection, and prohibited
+  application controls;
+- PU-local scope and byte-identical before/after/repeat binary evidence.
+
+Deferred beyond this slice:
+
+- executable collective insertion and implementation/provider selection;
+- target topology, bandwidth, overlap, and capacity-aware cost refinement;
+- mapped-image publication;
+- explicit `-ipa` summaries and cross-PU placement planning.
+
 ### AIO-8: AI-P6 Residency And Memory Hierarchy
 
 Actions:
@@ -771,6 +794,9 @@ artifact.
     layout-compatibility evidence.
 11. [x] Generalize AIO-5 with operator fusibility traits, generic
     producer-consumer edge discovery, and deterministic cluster growth.
+12. [x] Execute the first `AIO-7` vertical slice: define common distributed
+    ownership alternatives and derive logical communication intent without
+    changing executable or binary WHIRL.
 
 ## Related Documents
 
@@ -788,6 +814,9 @@ artifact.
 - `AI-COMPILER-OPTIMIZATION-AIO6-LOGICAL-LAYOUT.md` - runtime-only immutable
   layout descriptors, TensorEvolutionGraph overlays, compatibility, conversion
   cost, type materialization boundary, and certification.
+- `AI-COMPILER-OPTIMIZATION-AIO7-DISTRIBUTED.md` - runtime-only placement,
+  sharding, distributed alias/range, communication epoch/intent, AIO-2 plan,
+  PU-scope, compatibility, and certification contract.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion
   candidate skeleton, legality, cost, fallback, selection, and certification.
 - `VHO-DSL-OPTIMIZATION-PLAN.md` - fixed VHO DSL optimization pipeline and
