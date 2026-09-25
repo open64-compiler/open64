@@ -17,13 +17,19 @@ in `FHE-WHIRL-INTEGRATION-PLAN.md`.
 
 The repository document
 `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
-is the highest FHE semantic authority. The reviewed copy has SHA-256
+is the sole highest FHE semantic authority. The reviewed copy has SHA-256
 `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 This Markdown tracker may narrow architecture milestones into review
 checkpoints, but it may not override v0.10 semantics, boundaries, or completion
 criteria. In particular, focused C3 / SYNC-3 completion is not completion of
 v0.10 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4 remains
 mandatory.
+
+The project-approved ACE override selects `FHErt_ant` for the first executable
+provider and changes only provider selection and provider API mapping. It does
+not override the v0.10 privacy boundary, threat model, evidence requirements,
+stable C ABI boundary, or milestone exits. No downstream runtime decision or
+handoff document may redefine those authorities.
 
 ## Shared Objective
 
@@ -38,8 +44,8 @@ secure_resnet20.py
   -> standard middle-WHIRL runtime calls
   -> whirl2c generated C
   -> C compilation and ACE ANT runtime provider link
-  -> local reference executable
-  -> encrypted input -> encrypted logits
+  -> server executable with public context and evaluation-key import
+  -> encrypted input -> encrypted logits -> client validation
 ```
 
 Small add, linear, convolution, residual-add, and ReLU fixtures are mandatory
@@ -76,11 +82,16 @@ capture or planning of the complete ResNet-20 graph.
 11. No FHE, SIHE, CKKS, HPOLY, or private DSL node may reach unmodified
     `whirl2c`. The lowering gate must produce standard WHIRL calls, symbols,
     initializers, and control flow.
-12. Secret keys never enter WHIRL, generated model C, compiler diagnostics, or
-    retained public compiler artifacts. The first ACE ANT runtime acceptance is
-    an embedded/local functional harness and may own ephemeral test keys. A
-    server-without-secret-key deployment is a separate post-SYNC-6 security
-    gate.
+12. The client or provisioner owns and retains the secret key. The server
+    receives only a versioned public context, the evaluation, relinearization,
+    rotation, and bootstrap material required by the certified plan, and
+    ciphertext input. No server binary, runtime state, generated C object, or
+    runtime API may contain, generate, decrypt with, or require a secret key.
+    SYNC-6 and the first complete vertical slice require executable
+    server-without-secret-key evidence. An embedded/local ACE harness may create
+    ephemeral test keys and decrypt only as separate bring-up and numerical
+    diagnostic evidence; it cannot close SYNC-6 or replace the client/server
+    security gate.
 13. Preserving callee-specific data-value metadata is a first-order correctness
     requirement. Every caller actual must remain structurally joined through
     call ABI and PU-interface identity to the exact callee formal
@@ -96,10 +107,11 @@ capture or planning of the complete ResNet-20 graph.
 The detailed algorithm and validation contract for decisions 13-15 is
 `doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
 
-The selected first executable backend and its security boundary are defined in
+The selected first executable provider and its API mapping are defined in
 `doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`. The first provider is pinned ACE
 `FHErt_ant`; a direct OpenFHE provider is optional later work and is no longer a
-SYNC-6 exit requirement.
+SYNC-6 exit requirement. The runtime decision is subordinate to v0.10 for the
+privacy boundary, threat model, evidence, ABI boundary, and milestone exits.
 
 The team-facing commit, test, artifact, and kickoff procedure for SYNC-4
 through SYNC-6 is `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md`.
@@ -116,7 +128,7 @@ through SYNC-6 is `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md`.
 | Frontend | Opaque native capability and builder interfaces | Python FHE surface, ResNet capture, operator census, diagnostics, and frontend tests |
 | Driver | Phase insertion points, option propagation convention, `-keep`, artifact naming, and process boundaries | `-dsc-fhe-*` option semantics and FHE phase implementations |
 | Lowering | Standard WHIRL call/formal/result construction and unlowered-node protection | CNN-to-FHE, SIHE-to-CKKS, runtime-call lowering, and conversion reports |
-| Runtime | Generic driver link integration and provider manifest consumption | Stable FHE C ABI, mock provider, ACE `FHErt_ant` adapter, local key policy, and runtime tests |
+| Runtime | Generic driver link integration and provider manifest consumption | Stable FHE C ABI, mock provider, ACE `FHErt_ant` adapter, client/server key boundary, and runtime tests |
 | Optimization | Shared WOPT/VHO extension rules and controls | FHE graph optimization, ReSBM, HPOLY/HPAO, and later GPU-specific planning |
 
 Ownership is semantic, not merely directory-based. Before either task edits a
@@ -183,8 +195,8 @@ coverage in the same infrastructure PR.
 | C2: Full-model capture | Supply merged opaque builder capabilities and common operator evidence | Capture complete ResNet-20 with class-centric PUs, source positions, weights, FHE entry, and encrypted descriptors | **SYNC-2: Frontend artifact certification** |
 | C3: FHE conversion | Supply driver hook, cross-PU value identity, generic shape analysis, transactional rewrites, value-state attachment, and artifact publication | Certify shapes; implement FHE gatekeeping, 13-definition/21-context BatchNorm folding, converted-shape checks, operator dispositions, CKKS-state propagation, and reports | **SYNC-3: ResNet FHE conversion review** |
 | C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor/composite-stage/range evidence | Certify the ACE-compatible `7 -> 15 -> 13` Chebyshev sign profile, then materialize mandatory pre-ReLU bootstrap, normalization, ordered stages, and reconstruction with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
-| C5: Standard WHIRL boundary | Supply standard call/result construction, unlowered-node gate, and `whirl2c` integration point | Implement runtime-call lowering, FHE C ABI, and mock provider | **SYNC-5: Middle-WHIRL and mock executable gate** |
-| C6: ACE ANT ResNet | Complete driver link flow, provider manifest consumption, and retained artifact family | Map the stable C ABI to pinned `FHErt_ant`, execute CKKS, and validate the full ResNet result | **SYNC-6: End-to-end `-O0` functional acceptance** |
+| C5: Standard WHIRL boundary | Supply standard call/result construction, unlowered-node gate, and `whirl2c` integration point | Freeze the deterministic full-ResNet correctness schedule and runtime-call census, publish its complete operation/rotation/key-requirement manifest, and implement the FHE C ABI and mock provider against it | **SYNC-5: Middle-WHIRL and mock executable gate** |
+| C6: ACE ANT ResNet | Complete driver link flow, provider manifest consumption, versioned context/key/ciphertext transport, and retained artifact family | Map the unchanged stable C ABI to pinned `FHErt_ant`, compare ACE capabilities with the complete SYNC-5 manifest, execute the server without secret-key material, and validate the full ResNet result on the client | **SYNC-6: End-to-end `-O0` client/server acceptance** |
 | C7: Optimized planning | Enable reviewed VHO/WOPT integration, common encrypted-iteration-space records, census verification, and per-pass controls | Implement selectable MetaKernel and Fhelipe planners, then add ReSBM, boundary movement/fusion, the dedicated SSAPRE-model HPAO-MU phase, HPAO-FM/HPAO-LM, and equivalence reports. HPAO-MD remains design TBD. | **SYNC-7A-E: layout-planner A/B proof and optimized-versus-`-O0` proof** |
 | C8: GPU path | Coordinate NVIDIA runtime and target-description infrastructure | Add FHE GPU capability, layout, cost, and later native POLY/RNS plans | **SYNC-8: Separate GPU architecture review** |
 
@@ -219,13 +231,14 @@ image coding begins before this checkpoint closes.
 
 ### **SYNC-1: Native API And Image Contract Freeze**
 
-Status: implementation merged; corrective validation reopened. Main/common
-implementation merged through PR #102 at `8ba9ee31`, but later review reopened
-two required exit invariants: version-1 tensor-binding identity must agree
-across interning, lookup, validation, and writing, and rejected entry-value
-insertion must be failure-atomic. The earlier semantic review remains
-historical evidence, not a current closure claim. The FHE task must consume the
-corrected, independently accepted contract before SYNC-2 recertification.
+Historical status: implementation merged through PR #102 at `8ba9ee31`; the
+subsequent corrective checkpoint fixed version-1 tensor-binding identity and
+failure-atomic rejected entry-value insertion before SYNC-3 implementation.
+Those corrections and their then-current acceptance are complete historical
+prerequisites, not changes still waiting to merge or be recertified. Because
+the complete retained evidence bytes are not presently accessible, current
+independent evidence verification is unverified; that evidence gap does not
+reopen the merged SYNC-1 implementation.
 
 Main task provides:
 
@@ -254,13 +267,14 @@ updated `develop`; duplicate cherry-picks are omitted.
 
 ### **SYNC-2: Frontend Artifact Certification**
 
-Status: certification reopened. PR #104 merged into `develop`, the FHE branch
-rebased, and a ResNet-20 artifact family was previously generated, but later
-review reopened PU ownership, exact source provenance, fail-closed dependency
-and count/absence checks, and durable retained-artifact evidence. SYNC-2 may be
-described as completed again only after those corrections are merged, the FHE
-branch rebases, the complete certification is rerun, and the main task accepts
-the new evidence.
+Historical status: PR #104 merged into `develop`, the FHE branch rebased, and
+the subsequent corrective checkpoint resolved PU ownership, exact source
+provenance, fail-closed dependency and count/absence checks, and retained
+artifact requirements before SYNC-3 implementation. The corrected capture and
+its then-current acceptance are complete historical prerequisites, not work
+still waiting to merge or be recertified. Current independent evidence
+verification is unverified because the complete retained bytes are not
+presently accessible; this does not reopen the merged SYNC-2 implementation.
 
 The first full trace exposed a PU-scope correctness gap in shared
 infrastructure: FHE entry values carried valid PU-relative `ST_IDX` values,
@@ -310,8 +324,8 @@ Acceptance checks:
 - No bootstrap or CKKS operator is invented by Python ingestion.
 - Python exits before an independent process reopens the `.B` file.
 
-Previously recorded evidence, which does not replace the reopened
-recertification:
+Historically recorded evidence, which does not replace current independent
+verification of accessible bytes:
 
 - FHE rows resolve to `owner_pu=SecureResNet20` with stable entry-PU names for
   `input0`, external parameters, and `common_output_logits_46`.
@@ -354,29 +368,39 @@ node-retirement contract before any SYNC-3 implementation begins.
 
 ### **SYNC-3: ResNet FHE Conversion Review**
 
-Status: **complete**. Commit 19 was independently reviewed, merged through
-PR #131 at `d424c00be487f884a9ae7fb5cfc688f39e96d279`, and recertified from that
-exact merged `develop` tip on 2026-09-14. The merge tree is identical to the
-accepted Commit 19 tree at
+Implementation status: Commit 19 was independently reviewed and merged through
+PR #131 at `d424c00be487f884a9ae7fb5cfc688f39e96d279`. The merge tree is identical
+to the accepted Commit 19 tree at
 `93d80a6b79858ee5b7183f4426d3c94573b53e95`; no conflict resolution changed
-the certified feature.
-The six-PU SecureResNet planning artifact proves 13 physical Conv/BN
-definition rewrites, 21 source-context folds, 42 converted tensors, 46
-operator dispositions, 19 authenticated ReLU ranges, and 19 matching
-context-specific CKKS states. The converted side payload and report publish
-before `.fhe.B`, which is the atomic commit marker.
+the feature.
 
-The exact ACE bytes are project-approved from empirical ANT ACE evidence and
+Historical verification status: a complete merged-tip run was recorded as
+Pass on 2026-09-14. It reported 13 physical Conv/BN definition rewrites, 21
+source-context folds, 42 converted tensors, 46 operator dispositions, 19
+authenticated ReLU ranges, and 19 matching context-specific CKKS states. These
+numbers were not rerun for this documentation revision.
+
+Current independent verification status: **unverified**. The retained artifact
+bytes referenced by the historical host-local `/private/tmp/...` path are not
+presently accessible, and their recorded hashes cannot substitute for the
+bytes. Before implementation in SYNC-4 consumes this checkpoint, the shepherd
+must publish an accessible immutable complete bundle or retain a new
+exact-snapshot rerun, and an independent reviewer must verify it. SYNC-4
+contract and design preparation may continue while this gate is open.
+
+The exact ACE bytes were project-approved from empirical ANT ACE evidence and
 the coefficient profile is integrated. A pinned ACE-derived checkpoint and a
-deterministic 5,000-image class-stratified CIFAR-10 training subset supply the
-19 approved ranges. A disjoint 1,000-image held-out test run records 91.6%
+deterministic 5,000-image class-stratified CIFAR-10 training subset supplied the
+19 approved ranges. A disjoint 1,000-image held-out test run historically
+recorded 91.6%
 clear accuracy, 91.5% polynomial accuracy, 0.1 percentage-point degradation,
 99.9% prediction agreement, and zero out-of-range values against predeclared
 gates. Original training provenance remains unknown and is not claimed.
-The deterministic collector in
-`doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` now proves the 19-way identity join,
-pre-ReLU observation algorithm, distribution evidence, bound checks, and
-canonical manifest hashing. Its fixture is explicitly not calibration.
+The historical deterministic collector in
+`doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md` was recorded as proving the 19-way
+identity join, pre-ReLU observation algorithm, distribution evidence, bound
+checks, and canonical manifest hashing. Its fixture is explicitly not
+calibration.
 PR #127 supplies authenticated runtime manifest selection, and the FHE-owned
 RapidJSON consumer verifies exact bytes, approval, identity coverage, and
 all-PU consumption before publishing. It also authenticates the active
@@ -533,6 +557,13 @@ Exit evidence:
 - Fused backend path, when present, retains the same logical evidence.
 - No `-O0` movement, merging, deduplication, or profitability placement.
 
+The SYNC-4 provider-capability check covers only the operations materialized at
+this checkpoint: the approved ReLU composite arithmetic, slot configuration,
+bootstrap support, and post-bootstrap levels 15, 17, and 18. It must not claim
+coverage of the complete CNN signed-rotation set. SYNC-5 owns production of the
+complete deterministic correctness schedule and its operation, signed-rotation,
+and key-requirement manifest.
+
 ### **SYNC-5: Middle-WHIRL And Mock Executable Gate**
 
 Required phase output:
@@ -556,11 +587,16 @@ Acceptance checks:
 - Result ciphertext handles use caller-owned no-alias temporaries.
 - Generated C includes only the stable C ABI, not ACE ANT internal types.
 - Source positions survive on generated calls and result stores.
+- The full ResNet-20 correctness schedule and runtime-call census account for
+  every model operation and publish the complete operation, signed-rotation,
+  and evaluation-key requirements consumed by the mock and later ACE gate.
+- The mock executable validates the exact published manifest rather than a
+  provider-specific schedule inferred during SYNC-6.
 
 Merge rule: assign every shared driver/whirl2c file to one PR owner before
 editing. The mock-runtime PR must not depend on an ACE runtime installation.
 
-### **SYNC-6: ACE ANT End-To-End `-O0` Functional Acceptance**
+### **SYNC-6: ACE ANT End-To-End `-O0` Client/Server Acceptance**
 
 Target command shape:
 
@@ -580,17 +616,31 @@ Required evidence:
   dependency inspection.
 - Encryption configuration, key requirements, layout, depth/bootstrap,
   accuracy, memory, and runtime reports.
-- Local harness context/key setup, encrypted input, encrypted output, and
-  decrypted validation. Ephemeral secret-key material remains outside WHIRL,
-  generated model C, compiler diagnostics, public artifacts, and Git.
+- A separate client/provisioner owns the secret key and retains evidence that it
+  exported a versioned public context, only the required evaluation,
+  relinearization, rotation, and bootstrap material, and encrypted input. Only
+  that client may decrypt the returned ciphertext for validation.
+- The server imports those versioned artifacts, contains no key-generation or
+  decryption API or dependency, and returns encrypted logits without possessing
+  secret-key material in its binary, runtime state, logs, or artifacts.
+- The ACE capability manifest is compared field-for-field with the complete
+  SYNC-5 operation, signed-rotation, and key-requirement manifest before
+  execution.
 - Exact `FHErt_ant` revision, build options, operation capabilities, and the 19
   bootstrap calls with post-refresh levels 15, 17, and 18.
+- An embedded/local ACE harness may be retained for bring-up and numerical
+  diagnosis, but its result is labeled non-closing evidence and is not a
+  substitute for the client/server security test.
 
-Exit: the ACE-ANT-linked local reference executable consumes encrypted
-CIFAR-10 input and produces a result within the declared CKKS and
-model-accuracy budgets. This gate does not claim production client/server key
-separation; that proof is deferred to the deployment/security milestone in
-`doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`.
+Exit: the ACE-ANT-linked server imports the certified public context,
+evaluation-key family, and encrypted CIFAR-10 input, produces encrypted logits
+within the declared CKKS and model-accuracy budgets, and is proven to have no
+secret-key, key-generation, or decryption dependency. Versioned context,
+evaluation-key, ciphertext-input, and ciphertext-output import/export are
+mandatory for this exit. If the exact ACE pin cannot provide an evaluation-only
+server context and the required transport, ACE remains the selected provider
+but SYNC-6 is blocked pending a reviewed ACE patch and new immutable pin; the
+threat model must not be weakened to declare completion.
 
 ### **SYNC-7: Optimized-Versus-`-O0` Proof**
 
@@ -670,8 +720,13 @@ The ResNet-first FHE project reaches its first complete milestone only when:
 - all FHE/CKKS constructs lower to standard middle-WHIRL before `whirl2c`;
 - generated C compiles and links against the stable FHE C ABI, the ACE ANT
   provider adapter, and pinned `FHErt_ant`;
-- the local reference executable runs without Python, while test key material
-  remains outside WHIRL, generated model C, public artifacts, and Git;
+- a separate client/provisioner retains the secret key and supplies only the
+  certified public context, required evaluation-key material, and ciphertext;
+- the server executable runs without Python and without key-generation,
+  decryption, secret-key API, secret-key dependency, or secret-key runtime
+  state;
+- versioned context, evaluation-key, ciphertext-input, and ciphertext-output
+  transport is validated across the client/server process boundary;
 - encrypted output validates within declared numerical and accuracy budgets;
 - old binary WHIRL compatibility tests continue to pass; and
 - all reviewable artifacts remain in a host-visible directory after testing.

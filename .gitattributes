@@ -1,0 +1,2 @@
+# SYNC-3 certification digests cover exact ASCII bytes with LF line endings.
+doc/fhe-policy/sync3-relu/*.json text eol=lf

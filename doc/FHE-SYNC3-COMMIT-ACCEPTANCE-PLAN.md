@@ -1,12 +1,16 @@
 # FHE SYNC-3 Commit Implementation, Verification, and Acceptance Plan
 
-Status: execution plan for review. This document does not close any milestone.
+Status: historical execution and acceptance plan for the implementation merged
+through PR #131. Its recorded 2026-09-14 Pass is not a current re-certification.
+Current independent SYNC-3 verification is **unverified** until the complete
+retained bytes are accessible or the exact-snapshot suite is rerun.
 
 Planning baseline: `ebc6e9a13cf92f41c40405461853d2f648954789`.
 
-Short-term objective: complete only the focused C3 / SYNC-3 review gate without
-implementing C4 / SYNC-4 behavior. This checkpoint is not completion of
-Architecture Phase 3 or focused milestone M4 in the authoritative v0.10 plan.
+Historical objective: complete only the focused C3 / SYNC-3 review gate without
+implementing C4 / SYNC-4 behavior. This checkpoint never constituted completion
+of Architecture Phase 3 or focused milestone M4 in the authoritative v0.10
+plan.
 
 ## Authority and relationship to the main plan
 
@@ -16,16 +20,16 @@ sources in this order:
 1. `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx` is the
    authoritative architecture and semantic plan. The repository copy has
    SHA-256
-   `0018769c26b5a0bcd1bdfcbd85aa97b8bafea381d7640fbb9e2e81b0022013d9`.
+   `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
    No earlier version is authoritative for this plan.
 2. `doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md` is the focused implementation
    and coordination tracker. It may divide an architecture milestone into
    smaller checkpoints, but it may not override v0.10 semantics, boundaries, or
    completion criteria.
-3. `doc/FHE-SYNC3-CONVERSION-CONTRACT.md` provides the currently proposed
+3. `doc/FHE-SYNC3-CONVERSION-CONTRACT.md` provides the accepted
    focused C3 conversion semantics, diagnostics, BatchNorm folding, operator
    disposition, approximation contracts, CKKS state, and retained artifacts.
-4. `doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md` provides the proposed fixed-row
+4. `doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md` provides the accepted fixed-row
    planning-image layout, native APIs, mapped-image behavior, printing,
    compatibility, and native implementation stages.
 5. Repository `AGENTS.md` files provide coding, source-position, testing,
@@ -58,6 +62,16 @@ phase names in v0.10:
   optional or cancelled.
 - If a focused tracker or contract conflicts with v0.10, v0.10 wins and
   implementation stops until the subordinate document is reconciled.
+
+### Current verification state
+
+Commit 19 and PR #131 are implementation history. The test counts and numerical
+results below describe the recorded 2026-09-14 run and were not rerun for this
+documentation revision. Its `/private/tmp/...` evidence directory is a
+historical host-local path, not a current locator. Until a complete immutable
+bundle is made accessible or a new exact-snapshot run retains all required
+bytes, current independent re-certification is unverified and SYNC-4 may perform
+design preparation only. A list of SHA-256 values cannot replace the artifacts.
 
 ### Commit-by-commit v0.10 traceability
 
@@ -244,14 +258,17 @@ verdict, and wait for authorization before starting the next numbered item.
 | PR-D | Implement main/common SYNC-3 infrastructure | 8-13 |
 | PR-E | Implement and certify the focused FHE SYNC-3 conversion-planning gate | 14-19 |
 
-### Final PR-E acceptance status
+### Historical final PR-E acceptance status
 
-| Commit | Implementation | Verification | Remaining gate |
+The following results were recorded for PR #131. They are not current rerun
+results and do not satisfy the present independent evidence gate by themselves.
+
+| Commit | Historical implementation | Historical verification | Historical disposition |
 | --- | --- | --- | --- |
 | 14: semantic gatekeeper | Complete | Focused native tests and the six-PU merged-tip artifact pass source and converted-form gates; malformed inputs fail closed | Closed by PR #131 and merged-tip rerun |
 | 15: BatchNorm folding | Complete | The merged-tip artifact proves 13 physical definition retirements, 21 context folds, 42 converted tensors, dead BN ABI inputs, and independent payload equality | Closed by PR #131 and merged-tip rerun |
 | 16: operator dispositions | Complete | The merged-tip artifact records 46 source and 46 converted dispositions; 11 reusable ReLU definitions use the composite profile | Closed by PR #131 and merged-tip rerun |
-| 17: ReLU profile and CKKS planning | Complete for SYNC-3 | Exact ACE stages and hashes, 19 approved ranges, and 19 callee-tagged `POST_REFRESH.v1` rows reopen with levels 15/17/18, scale 56, two components, and precision 30 | SYNC-3 closed; SYNC-4 materialization remains intentionally deferred |
+| 17: ReLU profile and CKKS planning | Complete for SYNC-3 | Exact ACE stages and hashes, 19 approved ranges, and 19 callee-tagged `POST_REFRESH.v1` rows reopen with levels 15/17/18, scale 56, two components, and precision 30 | Recorded closed in the 2026-09-14 run; current re-certification is unverified and SYNC-4 materialization remains mandatory |
 | 18: reports and diagnostics | Complete | Atomic payload/report publication and `CFHECNN-RELU-003/004/005/007` plus stale-output negatives are retained with no partial artifacts | Closed by PR #131 and merged-tip rerun |
 | 19: full ResNet-20 SYNC-3 evidence | Complete | Six-PU `.fhe.B` publishes last and independently reopens; clear accuracy 91.6%, polynomial 91.5%, degradation 0.1 points, agreement 99.9%, range violations 0 | Closed at merged develop `d424c00b` on 2026-09-14 |
 
@@ -261,19 +278,22 @@ coefficient bytes, calibrated ranges, held-out accuracy evidence, and static
 compiler schedule are now reviewed as one policy tuple. This authorizes only
 the focused SYNC-3 planning artifact; runtime model enablement remains false.
 
-PR #131 merged the accepted Commit 19 implementation. The complete
+PR #131 merged the accepted Commit 19 implementation. The historical complete
 certification was rerun from merge commit
 `d424c00be487f884a9ae7fb5cfc688f39e96d279`; the linked semantic test, all-PU
 checkpoint, independent verifier, 170-test native Python suite, ResNet/Llama
-artifact lanes, backend symbol boundary, and target syntax/layout matrix pass.
-Focused C3 / SYNC-3 is therefore formally closed.
+artifact lanes, backend symbol boundary, and target syntax/layout matrix were
+recorded as passing. The implementation remains merged, but focused C3 /
+SYNC-3 is not currently independently verified because its retained bytes are
+unavailable.
 
-The current Commit 17 decision package is
+The Commit 17 decision package is
 `doc/FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`, with machine-readable evidence
-under `doc/fhe-policy/sync3-relu/`. It is an incomplete model-policy checkpoint,
-not a completion claim. The exact coefficient profile is approved and may be
-interned; model disposition/context rows remain prohibited until range
-evidence exists, and `CFHECNN-RELU-003` remains required.
+under `doc/fhe-policy/sync3-relu/`. The exact coefficient profile and the
+model disposition/context rows were accepted for the historical planning
+checkpoint; this is not SYNC-4 materialization or a substitute for current
+exact-snapshot evidence. `CFHECNN-RELU-003` remains required whenever the
+authenticated complete manifest is absent.
 
 The identity-bound collector and approval validator are specified by
 `doc/FHE-SYNC3-RELU-RANGE-CALIBRATION.md`. Their deterministic fixture validates
@@ -283,9 +303,9 @@ authenticates before parsing, retains one selection across all PUs, binds only
 the exact approved identity set, and verifies complete consumption in the
 checkpoint finalizer.
 
-PR-A must merge first. PR-B then rebases and recertifies SYNC-2. PR-C must be
-accepted by both main/common and FHE reviewers before PR-D implementation.
-PR-D merges before PR-E rebases and consumes its opaque APIs.
+The historical sequence required PR-A to merge before PR-B recertified SYNC-2,
+PR-C acceptance before PR-D implementation, and PR-D before PR-E consumed its
+opaque APIs.
 
 ## PR-A: reopened main/common invariants
 
@@ -948,8 +968,12 @@ The post-SYNC-3 runtime target is revised to pinned ACE `FHErt_ant` by
 `doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md`. This changes no Commit 14-19 evidence
 or acceptance result; it only changes the deferred SYNC-5/SYNC-6 provider.
 
-## Immediate execution rule
+## Current execution rule
 
-The next implementation action is commit 1 only. After its candidate hash is
-frozen, verify it using this plan, publish the acceptance record, report the
-result, and stop. Do not begin commit 2 in the same batch.
+Do not rerun only a convenient subset and reinterpret the historical Pass as a
+current result. First publish an accessible immutable complete evidence bundle,
+or rerun the complete exact-snapshot certification and retain all required
+bytes, commands, toolchain identity, logs, negative results, and hashes. Only
+after independent review of that material may SYNC-3 be marked currently
+verified and supplied as an implementation input to SYNC-4. Contract and design
+preparation may proceed while this gate remains open.
