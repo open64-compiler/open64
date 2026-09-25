@@ -332,6 +332,7 @@ COMMON_COM_CXX_SRCS = \
   dsl_opcode.cxx       \
   dsl_opt_plan.cxx     \
   dsl_shape.cxx        \
+  dsl_tensor_analysis.cxx \
   dsl_tensor_evolution.cxx \
   dsl_tensor_fold.cxx  \
   dra_demangle.cxx	\
