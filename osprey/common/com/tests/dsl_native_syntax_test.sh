@@ -65,6 +65,7 @@ sources=(
   "osprey/common/com/dsl_opt_plan.cxx"
   "osprey/common/com/dsl_shape.cxx"
   "osprey/common/com/dsl_tensor_analysis.cxx"
+  "osprey/common/com/dsl_tensor_locality.cxx"
   "osprey/common/com/dsl_tensor_evolution.cxx"
   "osprey/common/com/dsl_ir_rewrite.cxx"
   "osprey/common/com/dsl_region.cxx"
@@ -80,6 +81,7 @@ sources=(
   "osprey/common/com/tests/dsl_tensor_evolution_contract_test.cxx"
   "osprey/common/com/tests/dsl_opt_plan_contract_test.cxx"
   "osprey/common/com/tests/dsl_tensor_analysis_contract_test.cxx"
+  "osprey/common/com/tests/dsl_tensor_locality_contract_test.cxx"
   "osprey/torch2whirl/python/native/open64_dsc_native_bridge.cxx"
 )
 
@@ -105,6 +107,9 @@ if [[ -n "${OPEN64_AIO2_TEST:-}" ]]; then
 fi
 if [[ -n "${OPEN64_AIO3_TEST:-}" ]]; then
   "$script_dir/dsl_tensor_analysis_contract_test.sh"
+fi
+if [[ -n "${OPEN64_AIO4_TEST:-}" ]]; then
+  "$script_dir/dsl_tensor_locality_contract_test.sh"
 fi
 "$script_dir/dsl_operator_layout_test.sh"
 bash "$repo_root/osprey/be/opt/tests/dsl_wopt_semantic_info_test.sh"
