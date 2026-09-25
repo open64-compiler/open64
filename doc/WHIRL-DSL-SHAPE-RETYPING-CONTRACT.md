@@ -2,16 +2,19 @@
 
 ## Status
 
-Accepted SP4 design contract for the first shape-refinement mutation slice.
-This document closes the atomic-retyping design gate in
+Normative SP4 design contract updated by the PR 137 WP0 repair freeze for the
+first shape-refinement mutation slice. This document defines the design gate in
 `WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md`. It defines the protocol that SP5 may
 implement. It does not add a public API, mutate WHIRL, or change a mapped-image
-layout.
+layout. The frozen endpoint implementation is not certified against this
+contract: P1-01, P2-02, and P2-03 remain open until repaired tests prove
+shape-only authorization, zero-write owner rejection, and the rollback matrix.
 
 The first implementation is intentionally narrower than the complete shape
 propagation architecture. It retypes only uniquely owned local tensor results.
-Formal, return, call, constant, and cross-PU refinement remains check-only
-until SP6 or a separately reviewed extension.
+Formal, return, call, and constant refinement remains check-only until a
+separately reviewed extension. Coordinated cross-PU refinement remains
+IPA-owned; SP6 driver coverage does not broaden this transaction.
 
 This contract's compilation scope is one active PU. Driver iteration over all
 PUs provides coverage, not interprocedural authority. A globally visible call,
@@ -19,6 +22,34 @@ formal, or type record may be used to validate the current boundary, but the
 transaction must not reactivate or mutate another PU. Any coordinated
 caller/callee retyping extension belongs to an explicitly enabled IPA pass and
 requires its own call-graph-scoped contract.
+
+## Authority And Frozen Repair Decisions
+
+This contract is subordinate to
+`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.md`, mandatory
+`AGENTS.md` policy, and the `WHIRL.pdf` representation baseline. `WHIRL.pdf`
+is absent from the current checkout, so this repair authorizes no opcode,
+`TY_KIND`, ELF section, mapped-image layout, node encoding, reader/writer
+format, or printer-format change.
+
+The existing shared `TENSOR` / `TY_TENSOR` model remains authoritative. Common
+Compiler Substrate owns logical shape; CNN and FHE retain their domain state
+and legality. Compiler metadata does not participate in tensor type
+equivalence and is never changed by this transaction. This contract supports
+M0-M2 review infrastructure only and completes no master-plan milestone.
+
+Canonical tensor type equivalence and same-value transaction authorization are
+separate rules:
+
+1. An interned candidate matches a requested refined type only through the
+   tensor owner's complete canonical type-equivalence service.
+2. The old-to-requested delta authorizes only monotonic `logical_shape`
+   dimension refinement with unchanged rank.
+3. Every other stored tensor, descriptor, representation, domain, auxiliary,
+   and unknown field remains unchanged. Unknown state fails closed.
+4. Compiler metadata remains outside type equivalence and remains untouched.
+5. Rank-changing reshape or flatten creates and types a distinct result value;
+   it is never an exception for same-value SP5 retyping.
 
 ## Decision
 
@@ -137,12 +168,17 @@ Every request in the first implementation must satisfy all of these rules:
     shape-dependent domain image without a registered transaction participant.
 11. `expected_old_ty` exactly equals the DSL value type, result ST type,
     defining STID type, and every direct LDID type.
-12. Both types are sealed canonical tensor types. `refined_ty` preserves the
-    complete canonical descriptor except for shape-core facts justified by
-    the solver.
-13. The element type, dtype, tensor kind, traits, layout, sharding, placement,
-    memory, quantization, alignment contract, and every other non-shape
-    canonical field are exactly equal.
+12. Both types are sealed canonical tensor types. The requested refined type
+    is matched or interned through the tensor owner's complete canonical
+    type-equivalence service; shape-only authorization is not interning
+    equality.
+13. `refined_ty` preserves the complete stored tensor, descriptor,
+    representation, domain, and auxiliary state except for solver-proved
+    monotonic `logical_shape` dimensions. Rank, element type, dtype, tensor
+    kind, traits, layout, sharding, placement, memory, quantization, alignment,
+    semantic role, lineage, encryption references, and every other non-shape
+    or unknown field are exactly equal. Unknown state fails closed. Compiler
+    metadata remains untouched and outside type equivalence.
 14. The request array has no duplicate value, duplicate result ST, or
     conflicting expected/refined type pair.
 
@@ -174,8 +210,9 @@ SP5 shall perform the following steps without mutation:
 2. **Validate owner.** Prove the active `Current_pu`, `Current_PU_Info`, local
    symtab, supplied PU, and global owner function ST all agree.
 3. **Validate canonical types.** Check old and refined tensor descriptors,
-   canonical sealing, exact non-shape equivalence, and legal monotonic shape
-   refinement.
+   canonical sealing, canonical candidate equivalence, and the separate
+   old-to-requested shape-only delta. Rank and every non-shape or unknown field
+   must remain unchanged.
 4. **Resolve logical identity.** Resolve the value, producer node, opcode
    descriptor, result link, local ST, and one native STID definition.
 5. **Scan the complete physical tree.** Classify every WN that carries the
@@ -363,7 +400,9 @@ failure.
    postcondition failures and prove restoration.
 4. Fail the last request in a multi-request array and prove earlier requests
    are restored.
-5. In SP6, fail a later PU and prove every earlier PU is restored.
+5. In the driver-owned multi-PU fixture, fail a later PU and prove that the
+   earlier PU is not mutated by the failing invocation. Do not rewind an
+   already completed earlier PU in memory.
 6. Prove no validly named `.B` or partial temporary artifact is published on
    any failure.
 

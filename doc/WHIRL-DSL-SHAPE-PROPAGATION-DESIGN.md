@@ -2,19 +2,94 @@
 
 ## Status
 
-Active staged implementation design. Immutable and uniqued canonical tensor
-types are adopted, the shared check-only shape service and per-PU static solver
-are implemented, and SP5 implements the first atomic per-PU value-retyping
-transaction and VHO driver under the approved SP4 contract. Symbolic dimension
-expressions, IPA-owned interprocedural refinement, and transformation
-invalidation still require later review. Nothing in this design
-allocates a new binary WHIRL section or establishes a released API or ABI.
+Active staged implementation design under PR 137 repair. The frozen PR range
+contains implementations through SP10, but the current repair endpoint has
+live semantic and evidence findings. In particular, atomic shape-only
+authorization, complete owner preflight, active-PU boundary validation,
+symbolic-owner admission, pass-effect registration, and broad SP7-SP10
+certification remain pending repair or independent verification. Historical
+stage claims are not current certification. Nothing in this design allocates a
+new binary WHIRL section or establishes a released API or ABI.
 
 Execution is tracked in
 `WHIRL-DSL-SHAPE-PROPAGATION-IMPLEMENTATION-PLAN.md`. The first mutation
 protocol is specified by `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`.
 Incubating interprocedural work is collected separately in
 `IPA-DSL-SHAPE-PROPAGATION-TODO.md`; it does not broaden this VHO pass.
+
+## Authority And PR 137 Contract Freeze
+
+`DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.md` is the highest
+architecture and overall implementation authority. `AGENTS.md` is mandatory
+repository policy, and `WHIRL.pdf` is the representation baseline. This design
+is subordinate to all three. `WHIRL.pdf` is not available in the current
+checkout, so this repair does not approve or introduce an opcode, `TY_KIND`,
+ELF section, mapped-image layout, node encoding, reader/writer format, or
+printer-format change.
+
+The shared tensor authority is the existing `TENSOR` / `TY_TENSOR` model.
+Common Compiler Substrate owns logical tensor shape. CNN owns stride, padding,
+channel, residual, and other CNN semantics. FHE owns encryption, scale, level,
+noise, and key state; CNN/FHE lowering owns encrypted layout, rotations, and
+bootstrap placement. Compiler metadata such as source context, diagnostics,
+pass ownership, hints, and profiles does not participate in tensor type
+equivalence.
+
+This shape service is high-level common legality infrastructure. It does not
+replace the v0.10 pipeline authority:
+
+```text
+Python/model capture
+  -> binary very-high-level WHIRL
+  -> FHE gatekeeper
+  -> CNN-to-FHE conversion
+  -> FHE canonicalization
+  -> encrypted layout planning
+  -> SIHE
+  -> CKKS
+  -> HPOLY
+  -> standard middle-WHIRL
+  -> whirl2c
+  -> C ABI/runtime
+```
+
+Domain operators remain visible through their owning gatekeeper, adaptation,
+and lowering phases. Shape lifecycle integration may validate or revalidate
+logical shape around those phases, but it does not reorder them or copy the
+v0.10 Section 6.4 FHE encryption/type-propagation rules.
+
+Optimization levels remain scope contracts: `-O0` permits correctness,
+legality, necessary canonicalization, and correctness-required revalidation;
+`-O1` permits local simplification; `-O2` owns active-scope advanced/global FHE
+planning; and `-O3` adds parallelization and memory-hierarchy work without a
+more aggressive semantic mode. A shape effect never broadens a pass's level,
+scope, canonical-form, or option contract.
+
+ResNet-20/CIFAR-10 remains the first full end-to-end model vertical slice.
+Llama, attention, prefill, decode, and multi-PU cases in this subsystem are
+supplemental regressions for existing shape rules. PR 137 shape repair provides
+at most support for M0-M2 review and does not complete M0, M1, M2, or any later
+FHE milestone.
+
+The PR 137 repair freezes these local decisions:
+
+1. Canonical tensor type equivalence and shape-only transaction authorization
+   are separate. A same-value transaction may refine only monotonic
+   `logical_shape` dimensions with unchanged rank; every other stored tensor,
+   descriptor, domain, and unknown field remains unchanged.
+2. Parsing and printing may preserve a syntactically valid symbolic form, but
+   equality or proof use requires the active owner or a reviewed,
+   host-independent call/interface mapping. Coordinated cross-PU refinement
+   remains IPA-owned.
+3. Every executable pass declares its minimum optimization level, maximum
+   scope, required canonical form, shape effect, invalidation/revalidation
+   behavior, and controlling option. Missing, unknown, or mismatched contracts
+   prevent execution. Per-pass effect storage is the recommended local repair,
+   not a v0.10-mandated API.
+4. One composed active-PU boundary gate validates call ABI, PU interface, and
+   REGION relationships with explicit PU/context input. It runs at admission
+   and before every successful shape-driver return without traversing or
+   activating another PU.
 
 ## Purpose
 
@@ -569,10 +644,13 @@ finalization may run check-only analysis and reject malformed seeds; it must not
 become a second graph-wide shape compiler.
 
 The contract is intentionally expressed in terms of semantic mutations rather
-than a closed list of pass names. Every new transformation must declare one of
-the shape effects below when it is registered. A transformation not yet
-classified is shape invalidating by default. A pass may claim preservation only
-when it proves that no event in this table occurred.
+than a closed list of pass names. Every executable transformation must register
+its minimum optimization level, maximum compilation scope, required canonical
+form, controlling option, shape effect, and invalidation/revalidation behavior.
+A missing, unknown, or mismatched declaration prevents execution and fails
+closed; classifying an unknown pass as invalidating is not sufficient to let it
+run. A pass may claim preservation only when it proves that no event in this
+table occurred.
 
 The current ordinary-backend trigger sites are:
 
@@ -603,12 +681,15 @@ Every DSL transformation must declare whether it:
 - invalidates local result shapes;
 - invalidates call, return, or REGION boundary evidence in its active PU.
 
-The SP7 implementation conservatively classifies every current fixed-order VHO
-DSL optimization stage as shape invalidating. DSL WOPT invalidates before it
-runs; successful FHE conversion and every executed VHO DSL stage are followed
-by mandatory refinement. `VHO_DSL_Lower_Driver()` rejects a PU/tree whose
-runtime-only validated generation is not current. This generation is compiler
-process state, not persisted WHIRL metadata, and is owned by the active PU.
+The reviewed endpoint conservatively classifies every current fixed-order VHO
+DSL optimization stage as shape invalidating, but its registration API does not
+yet bind the complete execution/effect contract to each pass. That historical
+fallback is not the repaired contract. The repair must prevent a pass with a
+missing, unknown, invalid, or mismatched contract from executing. For an
+accepted pass, invalidation and immediate revalidation follow its stored
+declaration, and `VHO_DSL_Lower_Driver()` rejects a PU/tree whose runtime-only
+validated generation is not current. This generation is compiler process
+state, not persisted WHIRL metadata, and is owned by the active PU.
 
 Future pass reviews may classify a stage as shape preserving only after proving
 that it cannot alter operators, operands, attributes, calls, returns, REGION
@@ -663,9 +744,9 @@ After refinement:
 - compiler metadata may identify the inference source but does not affect type
   equivalence.
 
-## Initial Operator Coverage
+## Initial Common-Shape Operator Coverage
 
-The first vertical slice should support:
+The first common-shape coverage slice should support:
 
 1. Identity and same-shape operators.
 2. `common.add` and `common.mul` broadcast rules.
@@ -674,10 +755,11 @@ The first vertical slice should support:
 5. `common.reshape`, `common.transpose`, and `common.flatten`.
 6. `cnn.conv2d`, inference BatchNorm, max pool, and global average pool.
 
-The next slice adds transformer batched matmul, RMSNorm, rotary embedding,
-attention, and SwiGLU, followed by stateful decode relationships. Operator
-coverage is version-specific; a new semantic version does not inherit the old
-shape function automatically.
+Supplemental rule coverage adds transformer batched matmul, RMSNorm, rotary
+embedding, attention, and SwiGLU, followed by stateful decode relationships.
+These tests do not replace or precede the v0.10 ResNet-20 full-model vertical
+slice. Operator coverage is version-specific; a new semantic version does not
+inherit the old shape function automatically.
 
 ## Validation Plan
 
@@ -700,9 +782,11 @@ shape function automatically.
 
 - physical WN and managed-image agreement;
 - batch preflight rollback;
-- cross-PU actual/formal/return propagation;
-- colliding local ST indices in different PUs;
-- REGION input and result propagation;
+- active-PU actual/formal/return boundary validation without opposite-side
+  mutation;
+- independent driver invocation for PUs with colliding local ST indices;
+- success/success and success/failure isolation with no cross-PU mutation;
+- active-PU REGION input and result validation;
 - re-entry after cloning, inlining, outlining, and canonicalization;
 - disabled-pass check-only behavior;
 - no change for non-DSL WHIRL.
@@ -759,15 +843,19 @@ field. Anonymous dynamic dimensions are a separate complete alternative, not
 an ordered refinement of named symbols. Unproved required relationships fail
 closed; executable runtime guards remain deferred.
 
-## Open Refinement Topics
+## Open Local API And Future Proposal Topics
 
-The following decisions remain intentionally open:
+The D1-D4 semantic contracts above are frozen for PR 137 repair. The following
+items are limited to local API/storage mechanics or separately reviewed future
+extensions; they do not reopen the frozen contracts or the representation
+freeze:
 
 1. Whether later operator contracts require extending the SP8
    `symbol+constant` expression language and what overflow rules those new
    operations require.
-2. Whether shape constraints need a persisted optional image or can remain
-   entirely reconstructible from operators, attributes, and descriptors.
+2. Current repair reconstructs shape constraints from operators, attributes,
+   and descriptors. Any persisted optional image requires a separate
+   versioned-IR proposal and common/com representation review.
 3. The exact admission-gate API and whether incomplete result descriptors may
    be sealed canonical pending types.
 4. Cross-PU mutation is not part of the VHO shape-refinement lifecycle. The
@@ -775,12 +863,17 @@ The following decisions remain intentionally open:
    remains atomic within the active PU. A future transform that must change
    both sides of a PU boundary requires `-ipa`, an IPA-owned call-graph pass,
    and a separate reviewed contract.
-5. How transformation passes report shape preservation, invalidation, and
-   changed values without disrupting the existing fixed pipeline.
+5. The D3 execution/effect contract is normative and frozen. The remaining
+   local choice is the API and runtime-only storage used to bind each pass to
+   its level, scope, canonical form, controlling option, effect, and
+   invalidation/revalidation behavior without disrupting the fixed pipeline.
 6. How runtime shape guards are represented and lowered when static or
    symbolic proof is unavailable.
-7. How result descriptor refinement interacts with representation fields that
-   become illegal after a shape change.
+7. The D1 boundary is normative and frozen: if an otherwise shape-only delta
+   would make any unchanged representation or domain field illegal, preflight
+   rejects it before the first write. Converting such fields requires a
+   separately reviewed, versioned representation proposal owned by the
+   relevant domain; it is not an extension of same-value retyping.
 8. Whether backward inference from result constraints to operands is required
    in the first implementation or introduced after forward propagation.
 9. The stable diagnostic numbering and pass trace format.
@@ -788,5 +881,6 @@ The following decisions remain intentionally open:
     record. No additional torch2whirl API is required for the first static
     slice unless this distinction becomes necessary.
 
-These topics must be reviewed before corresponding APIs or binary contracts
-are treated as stable.
+These local choices and future proposals require their indicated reviews. None
+of them authorizes a different D1-D4 semantic contract or a binary-format
+change in PR 137 repair.
