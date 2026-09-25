@@ -73,11 +73,92 @@ DSL_Call_ABI_Value_Matches_ST
     return owner == Index_To_Str(value.metadata);
 }
 
+static BOOL
+DSL_IR_Tree_Contains (const WN *tree, const WN *target)
+{
+    if (tree == NULL || target == NULL)
+        return FALSE;
+    if (tree == target)
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_IR_Tree_Contains(statement, target))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        if (DSL_IR_Tree_Contains(WN_kid(tree, kid), target))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_Call_ABI_Validate_Visible_Parameters
+        (ST_IDX owner_pu_st, WN *entry, FILE *diagnostic)
+{
+    for (UINT32 i = 1; i <= DSL_Call_Image_Callsite_Count(); ++i) {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Call_Image_Get_Callsite(i, &callsite))
+            return DSL_Call_ABI_PU_Report
+                       (diagnostic, "missing callsite", i);
+        if (callsite.owner_pu_st != owner_pu_st)
+            continue;
+        const WN *call = DSL_Call_Image_Get_Call_WN(callsite.id);
+        if (call == NULL || WN_operator(call) != OPR_CALL ||
+            !DSL_IR_Tree_Contains(entry, call) ||
+            WN_st_idx(call) != callsite.callee_pu_st)
+            return DSL_Call_ABI_PU_Report
+                       (diagnostic, "callsite is outside active PU", i);
+        for (INT32 ordinal = 0; ordinal < WN_kid_count(call); ++ordinal) {
+            DSL_PU_FORMAL_RECORD formal;
+            const WN *parm = WN_kid(call, ordinal);
+            const WN *address = parm == NULL || WN_operator(parm) != OPR_PARM ?
+                                NULL : WN_kid0(parm);
+            if (address == NULL || WN_operator(address) != OPR_LDA ||
+                !DSL_PU_Interface_Image_Find_Formal
+                    (callsite.callee_pu_st, ordinal, &formal))
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "missing physical parameter", i);
+            ST_IDX actual_st = WN_st_idx(address);
+            DSL_IR_VALUE_RECORD value;
+            if (ST_IDX_level(actual_st) != CURRENT_SYMTAB ||
+                ST_IDX_index(actual_st) == 0 ||
+                ST_IDX_index(actual_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+                !DSL_IR_Image_Find_PU_Value
+                    (actual_st, ST_name(St_Table[actual_st]),
+                     ST_name(St_Table[owner_pu_st]), &value) ||
+                !DSL_Call_ABI_Value_Matches_ST
+                    (value, owner_pu_st, actual_st) ||
+                WN_ty(address) != WN_ty(parm) ||
+                TY_kind(WN_ty(parm)) != KIND_POINTER ||
+                TY_pointed(WN_ty(parm)) != value.ty ||
+                formal.formal_ty != value.ty ||
+                !WN_Parm_By_Reference(parm) ||
+                !WN_Parm_Passed_Not_Saved(parm))
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "physical parameter type mismatch", i);
+            if (WN_Parm_Out(parm)) {
+                if (WN_Parm_Read_Only(parm))
+                    return DSL_Call_ABI_PU_Report
+                               (diagnostic, "output parameter is read-only", i);
+            } else if (!WN_Parm_Read_Only(parm)) {
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "input parameter is writable", i);
+            }
+        }
+    }
+    return TRUE;
+}
+
 BOOL
 DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
 {
     if (pu == NULL || PU_Info_tree_ptr(pu) == NULL ||
-        ST_IDX_index(PU_Info_proc_sym(pu)) == 0 || Current_pu == NULL ||
+        !DSL_IR_Image_PU_ST_Valid(PU_Info_proc_sym(pu)) ||
+        Current_pu == NULL ||
         Current_pu != &Pu_Table[ST_pu(St_Table[PU_Info_proc_sym(pu)])])
         return DSL_Call_ABI_PU_Report(diagnostic, "missing program unit", 0);
     ST_IDX owner_pu_st = PU_Info_proc_sym(pu);
@@ -125,7 +206,10 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                 WN_st_idx(WN_formal(entry, argument.callee_formal_ordinal));
             DSL_IR_VALUE_RECORD value;
             DSL_PU_FORMAL_RECORD formal;
-            if (!DSL_IR_Image_Get_Value(argument.argument_value_id, &value) ||
+            if (ST_IDX_level(formal_st) != CURRENT_SYMTAB ||
+                ST_IDX_index(formal_st) == 0 ||
+                ST_IDX_index(formal_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+                !DSL_IR_Image_Get_Value(argument.argument_value_id, &value) ||
                 value.ty != ST_type(St_Table[formal_st]) ||
                 (DSL_PU_Interface_Image_Has_Records() &&
                  (!DSL_PU_Interface_Image_Find_Formal
@@ -137,7 +221,8 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                             argument.id);
         }
     }
-    return TRUE;
+    return DSL_Call_ABI_Validate_Visible_Parameters
+               (owner_pu_st, entry, diagnostic);
 }
 
 static BOOL
@@ -187,6 +272,57 @@ DSL_PU_Interface_Image_Validate (FILE *diagnostic)
     return TRUE;
 }
 
+static BOOL
+DSL_PU_Interface_Tree_Has_Return (const WN *tree)
+{
+    if (tree == NULL)
+        return FALSE;
+    if (WN_operator(tree) == OPR_RETURN ||
+        WN_operator(tree) == OPR_RETURN_VAL)
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_PU_Interface_Tree_Has_Return(statement))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        if (DSL_PU_Interface_Tree_Has_Return(WN_kid(tree, kid)))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_PU_Interface_Tree_Has_Result_Store
+        (const WN *tree, ST_IDX result_st, TY_IDX result_ty)
+{
+    if (tree == NULL)
+        return FALSE;
+    if (WN_operator(tree) == OPR_STID && WN_st_idx(tree) == result_st) {
+        const WN *value = WN_kid0(tree);
+        return WN_ty(tree) == result_ty && value != NULL &&
+               WN_ty(value) == result_ty;
+    }
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_PU_Interface_Tree_Has_Result_Store
+                    (statement, result_st, result_ty))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        if (DSL_PU_Interface_Tree_Has_Result_Store
+                (WN_kid(tree, kid), result_st, result_ty))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 BOOL
 DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
 {
@@ -201,6 +337,7 @@ DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
     ST_IDX owner_pu_st = PU_Info_proc_sym(pu);
     WN *entry = PU_Info_tree_ptr(pu);
     UINT32 expected_ordinal = 0;
+    BOOL saw_result = FALSE;
     if (WN_operator(entry) != OPR_FUNC_ENTRY)
         return DSL_PU_Interface_PU_Report
                    (diagnostic, "invalid function entry", 0);
@@ -221,8 +358,13 @@ DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
         if (idname == NULL || WN_operator(idname) != OPR_IDNAME ||
             WN_st_idx(idname) != formal.formal_st ||
             ST_IDX_level(formal.formal_st) != CURRENT_SYMTAB ||
-            ST_IDX_index(formal.formal_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
-            (ST_sclass(St_Table[formal.formal_st]) != SCLASS_FORMAL &&
+            ST_IDX_index(formal.formal_st) == 0 ||
+            ST_IDX_index(formal.formal_st) >= ST_Table_Size(CURRENT_SYMTAB))
+            return DSL_PU_Interface_PU_Report
+                       (diagnostic, "formal value mismatch", formal.id);
+        BOOL result_formal = ST_sclass(St_Table[formal.formal_st]) ==
+                             SCLASS_FORMAL_REF;
+        if ((ST_sclass(St_Table[formal.formal_st]) != SCLASS_FORMAL &&
              ST_sclass(St_Table[formal.formal_st]) != SCLASS_FORMAL_REF) ||
             ST_type(St_Table[formal.formal_st]) != formal.formal_ty ||
             !DSL_IR_Image_Get_Value(formal.formal_value_id, &value) ||
@@ -230,12 +372,61 @@ DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                  (value, owner_pu_st, formal.formal_st))
             return DSL_PU_Interface_PU_Report
                        (diagnostic, "formal value mismatch", formal.id);
+        if (saw_result && !result_formal)
+            return DSL_PU_Interface_PU_Report
+                       (diagnostic, "input follows result formal", formal.id);
+        if (result_formal) {
+            saw_result = TRUE;
+            if (!DSL_PU_Interface_Tree_Has_Result_Store
+                    (entry, formal.formal_st, formal.formal_ty))
+                return DSL_PU_Interface_PU_Report
+                           (diagnostic, "missing result store", formal.id);
+        }
         ++expected_ordinal;
     }
     if (expected_ordinal != WN_num_formals(entry))
         return DSL_PU_Interface_PU_Report
                    (diagnostic, "incomplete formal interface", 0);
+    if (saw_result && !DSL_PU_Interface_Tree_Has_Return(entry))
+        return DSL_PU_Interface_PU_Report
+                   (diagnostic, "missing function return", 0);
     return TRUE;
+}
+
+static BOOL
+DSL_IR_Active_PU_Boundary_Report (FILE *diagnostic, const char *message)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL active PU boundary error: %s\n", message);
+    return FALSE;
+}
+
+BOOL
+DSL_IR_Image_Validate_Active_PU_Boundaries
+        (const DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT *context,
+         FILE *diagnostic)
+{
+    if (context == NULL || context->pu_info == NULL ||
+        context->tree == NULL || context->owner_pu_st == ST_IDX_ZERO ||
+        Current_PU_Info != context->pu_info ||
+        PU_Info_tree_ptr(context->pu_info) != context->tree ||
+        PU_Info_proc_sym(context->pu_info) != context->owner_pu_st ||
+        !DSL_IR_Image_Current_PU_Is(context->owner_pu_st) ||
+        WN_operator(context->tree) != OPR_FUNC_ENTRY ||
+        WN_st_idx(context->tree) != context->owner_pu_st ||
+        CURRENT_SYMTAB <= GLOBAL_SYMTAB ||
+        Scope_tab[CURRENT_SYMTAB].st == NULL ||
+        ST_st_idx(Scope_tab[CURRENT_SYMTAB].st) != context->owner_pu_st)
+        return DSL_IR_Active_PU_Boundary_Report
+                   (diagnostic, "invalid explicit program-unit context");
+
+    if (!DSL_Call_ABI_Image_Validate_PU(context->pu_info, diagnostic))
+        return FALSE;
+    if (!DSL_PU_Interface_Image_Validate_PU(context->pu_info, diagnostic))
+        return FALSE;
+    return DSL_Region_Verify_Active_PU
+               (context->pu_info, context->tree, context->owner_pu_st,
+                diagnostic);
 }
 
 static BOOL
@@ -1559,10 +1750,20 @@ DSL_IR_Refine_Native_Value_Types
                    (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
                     "empty request array");
     }
-    if (!DSL_Region_Verify_PU(pu_info, diagnostic))
+    DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT boundary;
+    boundary.pu_info = pu_info;
+    boundary.tree = tree;
+    boundary.owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
+                           PU_Info_proc_sym(pu_info);
+    ++local_result.boundary_precheck_count;
+    if (!DSL_IR_Image_Validate_Active_PU_Boundaries
+             (&boundary, diagnostic)) {
+        if (result != NULL)
+            *result = local_result;
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-006", 0,
-                    "active REGION image is invalid before retyping");
+                    "active PU boundary is invalid before retyping");
+    }
 
     std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
     for (UINT32 i = 0; i < request_count; ++i) {
@@ -1596,13 +1797,15 @@ DSL_IR_Refine_Native_Value_Types
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     const char *force_post_failure =
         getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL");
-    BOOL valid = (force_post_failure == NULL ||
-                  strcmp(force_post_failure, "1") != 0) &&
-                 DSL_IR_Image_Validate(diagnostic) &&
-                 DSL_Region_Verify_PU(pu_info, diagnostic) &&
+    ++local_result.boundary_postcheck_count;
+    BOOL boundary_valid = DSL_IR_Image_Validate_Active_PU_Boundaries
+                              (&boundary, diagnostic);
+    BOOL valid = boundary_valid && DSL_IR_Image_Validate(diagnostic) &&
                  DSL_Gatekeeper_Verify_PU_Mode
                      (pu_info, DSL_GATEKEEPER_STRICT, diagnostic,
-                      &gatekeeper_result);
+                      &gatekeeper_result) &&
+                 (force_post_failure == NULL ||
+                  strcmp(force_post_failure, "1") != 0);
     if (!valid) {
         for (UINT32 i = request_count; i != 0; --i) {
             DSL_IR_RETYPE_JOURNAL &journal = journals[i - 1];

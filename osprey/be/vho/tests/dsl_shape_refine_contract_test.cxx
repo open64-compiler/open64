@@ -28,6 +28,8 @@
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
 
+extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
+
 void
 Signal_Cleanup(INT sig) {}
 
@@ -1111,10 +1113,633 @@ Shape_Trigger_Names_Are_Stable (void)
                       (VHO_DSL_SHAPE_TRIGGER_COUNT), "unknown") == 0;
 }
 
+typedef struct {
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE result_value;
+} WP2_SHAPE_FIXTURE;
+
+static BOOL
+Build_WP2_Shape_Fixture (const char *name, BOOL pending_result,
+                         BOOL use_region, WP2_SHAPE_FIXTURE *fixture)
+{
+    if (fixture == NULL || !DSL_Builder_Begin_Program())
+        return FALSE;
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_DESCRIPTOR input_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR result_descriptor;
+    Initialize_Descriptor(&input_descriptor, "[2,3]", "activation");
+    Initialize_Descriptor
+        (&result_descriptor, pending_result ? "[2,<pending>]" : "[2,3]",
+         "derived_activation");
+    TY_IDX input_ty = DSL_Builder_Intern_Tensor_Type
+                          ("wp2_input_tensor", MTYPE_To_TY(MTYPE_F4),
+                           &input_descriptor);
+    TY_IDX result_ty = DSL_Builder_Intern_Tensor_Type
+                           ("wp2_result_tensor", MTYPE_To_TY(MTYPE_F4),
+                            &result_descriptor);
+    fixture->pu = DSL_Builder_Create_Minimal_PU(name);
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("wp2_input", input_ty, 0);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    DSL_BUILDER_VALUE kids[2] = { input, input };
+    fixture->result_value = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1, "wp2_result", result_ty);
+    if (input_ty == TY_IDX_ZERO || result_ty == TY_IDX_ZERO ||
+        fixture->pu == NULL || input == NULL ||
+        fixture->result_value == NULL ||
+        !DSL_Builder_Append_PU_Value(fixture->pu, input))
+        return FALSE;
+    if (use_region) {
+        DSL_BUILDER_REGION region = DSL_Builder_Create_Region
+                                        (fixture->pu, NULL,
+                                         "shape.wp2.region.v1", 1);
+        if (region == NULL ||
+            !DSL_Builder_Append_Region_Value
+                 (region, fixture->result_value) ||
+            !DSL_Builder_Declare_Region_Value
+                 (region, fixture->result_value,
+                  DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+                  0, DSL_REGION_INTERFACE_FLAG_NONE) ||
+            !DSL_Builder_Append_PU_Region(fixture->pu, region))
+            return FALSE;
+    } else if (!DSL_Builder_Append_PU_Value
+                    (fixture->pu, fixture->result_value)) {
+        return FALSE;
+    }
+    return DSL_Builder_Select_PU(fixture->pu);
+}
+
+static BOOL
+WP2_Success_Counters_Valid
+        (const VHO_DSL_SHAPE_REFINE_RESULT &result, BOOL transaction)
+{
+    return result.boundary_admission_count == 1 &&
+           result.boundary_success_exit_count == 1 &&
+           result.retype_boundary_precheck_count == (transaction ? 1U : 0U) &&
+           result.retype_boundary_postcheck_count == (transaction ? 1U : 0U);
+}
+
+static int
+Run_WP2_Success_Test (const char *selected)
+{
+    if (selected == NULL)
+        return 80;
+    VHO_DSL_SHAPE_REFINE_RESULT result;
+    memset(&result, 0, sizeof(result));
+    BOOL accepted = FALSE;
+    BOOL transaction = FALSE;
+    DSL_BUILDER_PROGRAM_UNIT pu = NULL;
+    WN *tree = NULL;
+
+    if (strcmp(selected, "no_native") == 0) {
+        if (!DSL_Builder_Begin_Program())
+            return 81;
+        DSL_Opcode_Register_Common_Substrate();
+        pu = DSL_Builder_Create_Minimal_PU("wp2_no_native");
+        if (pu == NULL || !DSL_Builder_Select_PU(pu))
+            return 82;
+        tree = PU_Info_tree_ptr(pu);
+        accepted = VHO_DSL_Shape_Refine_Program_Unit
+                       (pu, tree, TRUE, stderr, &result);
+    } else {
+        BOOL pending = strcmp(selected, "ordinary") == 0;
+        BOOL region = strcmp(selected, "region") == 0;
+        BOOL disabled = strcmp(selected, "disabled") == 0;
+        BOOL already_complete = strcmp(selected, "already_complete") == 0;
+        if (!pending && !region && !disabled && !already_complete &&
+            strcmp(selected, "no_request") != 0)
+            return 83;
+        WP2_SHAPE_FIXTURE fixture;
+        if (!Build_WP2_Shape_Fixture
+                 (selected, pending, region, &fixture))
+            return 84;
+        pu = fixture.pu;
+        tree = PU_Info_tree_ptr(pu);
+        if (already_complete) {
+            VHO_DSL_SHAPE_REFINE_RESULT first;
+            memset(&first, 0, sizeof(first));
+            if (!VHO_DSL_Shape_Refine_Program_Unit
+                     (pu, tree, TRUE, stderr, &first) ||
+                !WP2_Success_Counters_Valid(first, FALSE) ||
+                !VHO_DSL_Shape_Refinement_Invalidate
+                     (pu, tree, VHO_DSL_SHAPE_TRIGGER_DSL_WOPT,
+                      stderr))
+                return 85;
+        }
+        accepted = VHO_DSL_Shape_Refine_Program_Unit
+                       (pu, tree, !disabled, stderr, &result);
+        transaction = pending;
+    }
+
+    BOOL current = VHO_DSL_Shape_Refinement_Is_Current(pu, tree, NULL);
+    BOOL valid = accepted && current && result.diagnostic_count == 0 &&
+                 WP2_Success_Counters_Valid(result, transaction) &&
+                 (transaction ? result.retyped_value_count == 1 &&
+                                result.rollback_count == 0 :
+                                result.retyped_value_count == 0 &&
+                                result.rollback_count == 0);
+    printf("WP2 success case=%s accepted=%d current=%d admission=%u "
+           "exit=%u transaction=%u/%u retyped=%u rollback=%u valid=%d\n",
+           selected, accepted, current, result.boundary_admission_count,
+           result.boundary_success_exit_count,
+           result.retype_boundary_precheck_count,
+           result.retype_boundary_postcheck_count,
+           result.retyped_value_count, result.rollback_count, valid);
+    return valid ? 0 : 86;
+}
+
+typedef struct {
+    DSL_BUILDER_PROGRAM_UNIT caller;
+    DSL_BUILDER_PROGRAM_UNIT callee;
+    DSL_BUILDER_CALL call;
+    ST_IDX callee_input_st;
+    ST_IDX callee_result_st;
+    TY_IDX tensor_ty;
+    TY_IDX wrong_ty;
+} WP2_INTERFACE_FIXTURE;
+
+static int Run_WP2_Region_Context_Red_Test(void);
+
+static int
+Run_WP2_Region_Owner_Negative_Test(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Initialize_Descriptor(&descriptor, "[2,3]", "activation");
+    if (!DSL_Builder_Begin_Program())
+        return 97;
+    DSL_Opcode_Register_Common_Substrate();
+    TY_IDX tensor_ty = DSL_Builder_Intern_Tensor_Type
+                           ("wp2_region_owner_tensor",
+                            MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT owner = DSL_Builder_Create_Minimal_PU
+                                         ("wp2_region_owner");
+    DSL_BUILDER_VALUE owner_value = DSL_Builder_Create_Model_Input
+                                        ("owner_value", tensor_ty, 0);
+    DSL_BUILDER_REGION region = DSL_Builder_Create_Region
+                                    (owner, NULL,
+                                     "shape.wp2.owner.v1", 1);
+    if (tensor_ty == TY_IDX_ZERO || owner == NULL || owner_value == NULL ||
+        region == NULL ||
+        !DSL_Builder_Append_PU_Value(owner, owner_value))
+        return 98;
+
+    DSL_BUILDER_PROGRAM_UNIT foreign = DSL_Builder_Create_Minimal_PU
+                                           ("wp2_region_foreign");
+    DSL_BUILDER_VALUE foreign_value = DSL_Builder_Create_Model_Input
+                                          ("foreign_value", tensor_ty, 0);
+    ST_IDX foreign_st = DSL_Builder_Get_Value_Result_Symbol(foreign_value);
+    if (foreign == NULL || foreign_value == NULL ||
+        ST_IDX_index(foreign_st) == 0 ||
+        !DSL_Region_Declare_Symbol
+             (region, foreign_st, DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Select_PU(owner) ||
+        !DSL_Builder_Append_PU_Region(owner, region))
+        return 99;
+
+    VHO_DSL_SHAPE_REFINE_RESULT result;
+    memset(&result, 0, sizeof(result));
+    WN *tree = PU_Info_tree_ptr(owner);
+    BOOL accepted = VHO_DSL_Shape_Refine_Program_Unit
+                        (owner, tree, TRUE, stderr, &result);
+    BOOL current = VHO_DSL_Shape_Refinement_Is_Current(owner, tree, NULL);
+    BOOL valid = !accepted && !current &&
+                 result.boundary_admission_count == 1 &&
+                 result.boundary_success_exit_count == 0 &&
+                 result.retype_boundary_precheck_count == 0 &&
+                 result.retype_boundary_postcheck_count == 0 &&
+                 result.updated_st_count == 0 &&
+                 result.updated_wn_count == 0 &&
+                 result.rollback_count == 0;
+    printf("WP2 REGION owner negative accepted=%d current=%d "
+           "admission=%u exit=%u writes=%u/%u rollback=%u valid=%d\n",
+           accepted, current, result.boundary_admission_count,
+           result.boundary_success_exit_count,
+           result.updated_st_count, result.updated_wn_count,
+           result.rollback_count, valid);
+    return valid ? 0 : 100;
+}
+
+static int
+Run_WP2_Region_Index_Negative_Test (const char *selected)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Initialize_Descriptor(&descriptor, "[2,3]", "activation");
+    if (!DSL_Builder_Begin_Program())
+        return 101;
+    DSL_Opcode_Register_Common_Substrate();
+    TY_IDX tensor_ty = DSL_Builder_Intern_Tensor_Type
+                           ("wp2_region_index_tensor",
+                            MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT owner = DSL_Builder_Create_Minimal_PU
+                                         ("wp2_region_index_owner");
+    DSL_BUILDER_VALUE owner_value = DSL_Builder_Create_Model_Input
+                                        ("owner_value", tensor_ty, 0);
+    DSL_BUILDER_REGION region = DSL_Builder_Create_Region
+                                    (owner, NULL,
+                                     "shape.wp2.index.v1", 1);
+    if (tensor_ty == TY_IDX_ZERO || owner == NULL || owner_value == NULL ||
+        region == NULL ||
+        !DSL_Builder_Append_PU_Value(owner, owner_value) ||
+        !DSL_Builder_Select_PU(owner))
+        return 102;
+    ST_IDX invalid_st = strcmp(selected, "region_global") == 0 ?
+                        PU_Info_proc_sym(owner) :
+                        make_ST_IDX(ST_Table_Size(CURRENT_SYMTAB) + 4,
+                                    CURRENT_SYMTAB);
+    if (!DSL_Region_Declare_Symbol
+             (region, invalid_st, DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Append_PU_Region(owner, region))
+        return 103;
+
+    VHO_DSL_SHAPE_REFINE_RESULT result;
+    memset(&result, 0, sizeof(result));
+    WN *tree = PU_Info_tree_ptr(owner);
+    BOOL accepted = VHO_DSL_Shape_Refine_Program_Unit
+                        (owner, tree, TRUE, stderr, &result);
+    BOOL current = VHO_DSL_Shape_Refinement_Is_Current(owner, tree, NULL);
+    BOOL valid = !accepted && !current &&
+                 result.boundary_admission_count == 1 &&
+                 result.boundary_success_exit_count == 0 &&
+                 result.retype_boundary_precheck_count == 0 &&
+                 result.retype_boundary_postcheck_count == 0 &&
+                 result.updated_st_count == 0 &&
+                 result.updated_wn_count == 0 &&
+                 result.rollback_count == 0;
+    printf("WP2 REGION index negative case=%s accepted=%d current=%d "
+           "admission=%u exit=%u writes=%u/%u rollback=%u valid=%d\n",
+           selected, accepted, current, result.boundary_admission_count,
+           result.boundary_success_exit_count,
+           result.updated_st_count, result.updated_wn_count,
+           result.rollback_count, valid);
+    return valid ? 0 : 104;
+}
+
+static int
+Run_WP2_Region_Consume_Test (const char *selected)
+{
+    BOOL wrong_owner = selected != NULL &&
+                       strcmp(selected, "wrong_owner") == 0;
+    if (!wrong_owner &&
+        (selected == NULL || strcmp(selected, "success") != 0))
+        return 105;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Initialize_Descriptor(&descriptor, "[2,3]", "activation");
+    if (!DSL_Builder_Begin_Program())
+        return 106;
+    DSL_Opcode_Register_Common_Substrate();
+    TY_IDX tensor_ty = DSL_Builder_Intern_Tensor_Type
+                           ("wp2_region_consume_tensor",
+                            MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT owner = DSL_Builder_Create_Minimal_PU
+                                         ("wp2_region_consume_owner");
+    DSL_BUILDER_VALUE first_value = DSL_Builder_Create_Model_Input
+                                        ("consume_first", tensor_ty, 0);
+    DSL_BUILDER_VALUE second_value = DSL_Builder_Create_Model_Input
+                                         ("consume_second", tensor_ty, 1);
+    DSL_BUILDER_REGION first_region = DSL_Builder_Create_Region
+                                          (owner, NULL,
+                                           "shape.wp2.consume.first", 1);
+    DSL_BUILDER_REGION second_region = DSL_Builder_Create_Region
+                                           (owner, NULL,
+                                            "shape.wp2.consume.second", 1);
+    ST_IDX first_st = DSL_Builder_Get_Value_Result_Symbol(first_value);
+    ST_IDX second_st = DSL_Builder_Get_Value_Result_Symbol(second_value);
+    if (tensor_ty == TY_IDX_ZERO || owner == NULL || first_value == NULL ||
+        second_value == NULL || first_region == NULL ||
+        second_region == NULL || ST_IDX_index(first_st) == 0 ||
+        ST_IDX_index(second_st) == 0 ||
+        !DSL_Builder_Append_Region_Value(first_region, first_value) ||
+        !DSL_Builder_Append_Region_Value(second_region, second_value) ||
+        !DSL_Region_Declare_Symbol
+             (first_region, first_st, DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_INTERFACE_FLAG_NONE))
+        return 107;
+
+    if (wrong_owner) {
+        DSL_BUILDER_PROGRAM_UNIT foreign = DSL_Builder_Create_Minimal_PU
+                                               ("wp2_region_consume_foreign");
+        DSL_BUILDER_VALUE foreign_value = DSL_Builder_Create_Model_Input
+                                              ("consume_foreign", tensor_ty,
+                                               0);
+        ST_IDX foreign_st =
+            DSL_Builder_Get_Value_Result_Symbol(foreign_value);
+        if (foreign == NULL || foreign_value == NULL ||
+            ST_IDX_index(foreign_st) == 0 ||
+            !DSL_Region_Declare_Symbol
+                 (second_region, foreign_st, DSL_REGION_VALUE_INPUT, 1,
+                  DSL_REGION_INTERFACE_FLAG_NONE) ||
+            !DSL_Builder_Select_PU(owner))
+            return 108;
+    } else if (!DSL_Region_Declare_Symbol
+                    (second_region, second_st, DSL_REGION_VALUE_INPUT, 1,
+                     DSL_REGION_INTERFACE_FLAG_NONE)) {
+        return 109;
+    }
+
+    WN *first_wn = DSL_Region_WN(first_region);
+    WN *second_wn = DSL_Region_WN(second_region);
+    if (!DSL_Builder_Append_PU_Region(owner, first_region) ||
+        !DSL_Builder_Append_PU_Region(owner, second_region) ||
+        !DSL_Region_Consume_WN(owner, first_wn))
+        return 110;
+
+    DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT boundary;
+    boundary.pu_info = owner;
+    boundary.tree = PU_Info_tree_ptr(owner);
+    boundary.owner_pu_st = PU_Info_proc_sym(owner);
+    BOOL store_valid = DSL_Region_Verify_PU(owner, stderr);
+    BOOL boundary_valid = DSL_IR_Image_Validate_Active_PU_Boundaries
+                              (&boundary, stderr);
+    UINT32 first_uses = DSL_Region_Symbol_Use_Count(owner, first_st);
+    UINT32 second_uses = DSL_Region_Symbol_Use_Count(owner, second_st);
+    BOOL interface_valid = first_uses + second_uses == 1 &&
+                           (wrong_owner ||
+                            (first_uses == 0 && second_uses == 1));
+    BOOL valid = store_valid &&
+                 interface_valid &&
+                 !DSL_Region_Is_Managed_WN(owner, first_wn) &&
+                 DSL_Region_Is_Managed_WN(owner, second_wn) &&
+                 boundary_valid == !wrong_owner;
+    printf("WP2 REGION consume case=%s store_valid=%d boundary_valid=%d "
+           "first_uses=%u second_uses=%u first_managed=%d "
+           "second_managed=%d valid=%d\n",
+           selected, store_valid, boundary_valid,
+           first_uses, second_uses,
+           DSL_Region_Is_Managed_WN(owner, first_wn),
+           DSL_Region_Is_Managed_WN(owner, second_wn), valid);
+    return valid ? 0 : 111;
+}
+
+static WN *
+Find_WP2_Store (WN *tree, ST_IDX st)
+{
+    if (tree == NULL)
+        return NULL;
+    if (WN_operator(tree) == OPR_STID && WN_st_idx(tree) == st)
+        return tree;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            WN *found = Find_WP2_Store(statement, st);
+            if (found != NULL)
+                return found;
+        }
+        return NULL;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        WN *found = Find_WP2_Store(WN_kid(tree, kid), st);
+        if (found != NULL)
+            return found;
+    }
+    return NULL;
+}
+
+static BOOL
+Build_WP2_Interface_Fixture (WP2_INTERFACE_FIXTURE *fixture)
+{
+    if (fixture == NULL || !DSL_Builder_Begin_Program())
+        return FALSE;
+    memset(fixture, 0, sizeof(*fixture));
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR wrong_descriptor;
+    Initialize_Descriptor(&descriptor, "[2,3]", "activation");
+    Initialize_Descriptor(&wrong_descriptor, "[2,4]", "activation");
+    fixture->tensor_ty = DSL_Builder_Intern_Tensor_Type
+                             ("wp2_interface_tensor",
+                              MTYPE_To_TY(MTYPE_F4), &descriptor);
+    fixture->wrong_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp2_interface_wrong_tensor",
+                             MTYPE_To_TY(MTYPE_F4), &wrong_descriptor);
+
+    fixture->callee = DSL_Builder_Create_Minimal_PU("wp2_callee");
+    UINT32 callee_file = DSL_Builder_Register_Source_File
+                             (fixture->callee, __FILE__);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = callee_file;
+    position.line = __LINE__ + 1;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
+                                   (fixture->callee, "callee_input", 0,
+                                    fixture->tensor_ty, &position);
+    ++position.line;
+    DSL_BUILDER_VALUE result = DSL_Builder_Declare_PU_Result
+                                   (fixture->callee, "callee_result", 0,
+                                    fixture->tensor_ty,
+                                    DSL_PU_RESULT_TENSOR, &position);
+    DSL_BUILDER_VALUE returned[1] = { formal };
+    if (fixture->tensor_ty == TY_IDX_ZERO ||
+        fixture->wrong_ty == TY_IDX_ZERO || fixture->callee == NULL ||
+        callee_file == 0 || formal == NULL || result == NULL ||
+        !DSL_Builder_Return_PU_Values(fixture->callee, returned, 1))
+        return FALSE;
+    WN *callee_entry = PU_Info_tree_ptr(fixture->callee);
+    fixture->callee_input_st = WN_st_idx(WN_formal(callee_entry, 0));
+    fixture->callee_result_st = WN_st_idx(WN_formal(callee_entry, 1));
+
+    fixture->caller = DSL_Builder_Create_Minimal_PU("wp2_caller");
+    UINT32 caller_file = DSL_Builder_Register_Source_File
+                             (fixture->caller, __FILE__);
+    DSL_BUILDER_VALUE actual = DSL_Builder_Create_Model_Input
+                                   ("caller_input", fixture->tensor_ty, 0);
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP2Boundary";
+    callsite.instance_path = "wp2.call";
+    callsite.context_identity = "wp2.call.0";
+    callsite.call_ordinal = 0;
+    callsite.source_position.file_id = caller_file;
+    callsite.source_position.line = __LINE__ + 1;
+    callsite.source_position.column = 1;
+    callsite.source_position.statement_begin = 1;
+    const char *result_names[1] = { "caller_result" };
+    fixture->call = DSL_Builder_Create_PU_Call
+                        (fixture->caller, fixture->callee, &actual, 1,
+                         result_names, 1, &callsite);
+    return fixture->caller != NULL && caller_file != 0 && actual != NULL &&
+           fixture->call != NULL &&
+           DSL_Builder_Set_PU_Call_Argument_Role
+               (fixture->call, 0, 0, "tensor.input");
+}
+
+static BOOL
+WP2_Local_Symbol_Types_Unchanged (const TY_IDX *before, UINT32 count)
+{
+    if (before == NULL || ST_Table_Size(CURRENT_SYMTAB) != count)
+        return FALSE;
+    for (UINT32 i = 1; i < count; ++i) {
+        ST_IDX st = make_ST_IDX(i, CURRENT_SYMTAB);
+        if (ST_type(St_Table[st]) != before[i])
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static int
+Run_WP2_Negative_Test (const char *selected)
+{
+    if (selected == NULL)
+        return 90;
+    if (strcmp(selected, "region") == 0)
+        return Run_WP2_Region_Context_Red_Test();
+    if (strcmp(selected, "region_owner") == 0)
+        return Run_WP2_Region_Owner_Negative_Test();
+    if (strcmp(selected, "region_global") == 0 ||
+        strcmp(selected, "region_out_of_range") == 0)
+        return Run_WP2_Region_Index_Negative_Test(selected);
+
+    WP2_INTERFACE_FIXTURE fixture;
+    if (!Build_WP2_Interface_Fixture(&fixture))
+        return 91;
+    BOOL caller_case = strcmp(selected, "actual") == 0 ||
+                       strcmp(selected, "hidden_result") == 0;
+    if (!caller_case && strcmp(selected, "formal") != 0 &&
+        strcmp(selected, "return") != 0 &&
+        strcmp(selected, "interface") != 0)
+        return 92;
+    DSL_BUILDER_PROGRAM_UNIT active = caller_case ? fixture.caller :
+                                       fixture.callee;
+    if (!DSL_Builder_Select_PU(active))
+        return 93;
+
+    if (caller_case) {
+        UINT32 ordinal = strcmp(selected, "actual") == 0 ? 0 : 1;
+        WN *parm = WN_kid(fixture.call, ordinal);
+        WN *address = parm == NULL ? NULL : WN_kid0(parm);
+        if (parm == NULL || address == NULL)
+            return 94;
+        TY_IDX wrong_pointer_ty = Make_Pointer_Type(fixture.wrong_ty);
+        WN_set_ty(parm, wrong_pointer_ty);
+        WN_set_ty(address, wrong_pointer_ty);
+    } else {
+        WN *entry = PU_Info_tree_ptr(fixture.callee);
+        if (strcmp(selected, "formal") == 0) {
+            WN_st_idx(WN_formal(entry, 0)) = fixture.callee_result_st;
+        } else if (strcmp(selected, "interface") == 0) {
+            Set_ST_type(St_Table[fixture.callee_input_st], fixture.wrong_ty);
+        } else {
+            WN *store = Find_WP2_Store(entry, fixture.callee_result_st);
+            if (store == NULL)
+                return 95;
+            WN_set_ty(store, fixture.wrong_ty);
+        }
+    }
+
+    UINT32 st_count = ST_Table_Size(CURRENT_SYMTAB);
+    TY_IDX *st_types = new TY_IDX[st_count];
+    for (UINT32 i = 1; i < st_count; ++i)
+        st_types[i] = ST_type(St_Table[make_ST_IDX(i, CURRENT_SYMTAB)]);
+    UINT32 type_count = TY_Table_Size();
+    VHO_DSL_SHAPE_REFINE_RESULT result;
+    memset(&result, 0, sizeof(result));
+    WN *tree = PU_Info_tree_ptr(active);
+    BOOL accepted = VHO_DSL_Shape_Refine_Program_Unit
+                        (active, tree, TRUE, stderr, &result);
+    BOOL current = VHO_DSL_Shape_Refinement_Is_Current(active, tree, NULL);
+    BOOL unchanged = WP2_Local_Symbol_Types_Unchanged(st_types, st_count) &&
+                     TY_Table_Size() == type_count;
+    delete[] st_types;
+    BOOL valid = !accepted && !current && unchanged &&
+                 result.boundary_admission_count == 1 &&
+                 result.boundary_success_exit_count == 0 &&
+                 result.retype_boundary_precheck_count == 0 &&
+                 result.retype_boundary_postcheck_count == 0 &&
+                 result.retyped_value_count == 0 &&
+                 result.updated_st_count == 0 &&
+                 result.updated_wn_count == 0 &&
+                 result.rollback_count == 0 && result.diagnostic_count == 1;
+    printf("WP2 negative case=%s accepted=%d current=%d admission=%u "
+           "exit=%u transaction=%u/%u writes=%u/%u rollback=%u "
+           "unchanged=%d valid=%d\n",
+           selected, accepted, current, result.boundary_admission_count,
+           result.boundary_success_exit_count,
+           result.retype_boundary_precheck_count,
+           result.retype_boundary_postcheck_count,
+           result.updated_st_count, result.updated_wn_count,
+           result.rollback_count, unchanged, valid);
+    return valid ? 0 : 96;
+}
+
+static int
+Run_WP2_Region_Context_Red_Test(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Initialize_Descriptor(&descriptor, "[2,3]", "activation");
+    if (!DSL_Builder_Begin_Program())
+        return 70;
+    DSL_Opcode_Register_Common_Substrate();
+    TY_IDX tensor_ty = DSL_Builder_Intern_Tensor_Type
+                           ("wp2_region_context_tensor",
+                            MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT region_pu =
+        DSL_Builder_Create_Minimal_PU("wp2_region_context_owner");
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("region_input", tensor_ty, 0);
+    DSL_BUILDER_REGION region = DSL_Builder_Create_Region
+                                    (region_pu, NULL,
+                                     "shape.wp2.region.v1", 1);
+    if (tensor_ty == TY_IDX_ZERO || region_pu == NULL || input == NULL ||
+        region == NULL || !DSL_Builder_Append_Region_Value(region, input) ||
+        !DSL_Builder_Declare_Region_Value
+             (region, input, DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Append_PU_Region(region_pu, region))
+        return 71;
+
+    DSL_BUILDER_PROGRAM_UNIT foreign_tree_pu =
+        DSL_Builder_Create_Minimal_PU("wp2_foreign_tree");
+    if (foreign_tree_pu == NULL || !DSL_Builder_Select_PU(region_pu))
+        return 72;
+
+    WN *foreign_tree = PU_Info_tree_ptr(foreign_tree_pu);
+    VHO_DSL_SHAPE_REFINE_RESULT result;
+    memset(&result, 0, sizeof(result));
+    BOOL accepted = VHO_DSL_Shape_Refine_Program_Unit
+                        (region_pu, foreign_tree, TRUE, stderr, &result);
+    BOOL current = VHO_DSL_Shape_Refinement_Is_Current
+                       (region_pu, foreign_tree, NULL);
+    BOOL valid = !accepted && !current && result.diagnostic_count == 1 &&
+                 result.boundary_admission_count == 1 &&
+                 result.boundary_success_exit_count == 0 &&
+                 result.retype_boundary_precheck_count == 0 &&
+                 result.retype_boundary_postcheck_count == 0 &&
+                 result.retyped_value_count == 0 &&
+                 result.updated_st_count == 0 &&
+                 result.updated_wn_count == 0 &&
+                 result.rollback_count == 0;
+    printf("WP2 region context red: accepted=%d current=%d "
+           "admission=%u exit=%u writes=%u/%u rollback=%u "
+           "diagnostics=%u valid=%d\n",
+           accepted, current, result.boundary_admission_count,
+           result.boundary_success_exit_count,
+           result.updated_st_count, result.updated_wn_count,
+           result.rollback_count, result.diagnostic_count, valid);
+    return valid ? 0 : 73;
+}
+
 int
 main(void)
 {
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_SHAPE_WP2_SUCCESS") != NULL)
+        return Run_WP2_Success_Test
+                   (getenv("OPEN64_DSL_SHAPE_WP2_SUCCESS"));
+    if (getenv("OPEN64_DSL_SHAPE_WP2_NEGATIVE") != NULL)
+        return Run_WP2_Negative_Test
+                   (getenv("OPEN64_DSL_SHAPE_WP2_NEGATIVE"));
+    if (getenv("OPEN64_DSL_SHAPE_WP2_REGION_CONSUME") != NULL)
+        return Run_WP2_Region_Consume_Test
+                   (getenv("OPEN64_DSL_SHAPE_WP2_REGION_CONSUME"));
+    if (getenv("OPEN64_DSL_SHAPE_WP2_RED") != NULL)
+        return Run_WP2_Region_Context_Red_Test();
     if (getenv("OPEN64_DSL_SHAPE_IDENTITY_REPRO") != NULL)
         return Run_Custom_Identity_Retype_Test(FALSE);
     if (getenv("OPEN64_DSL_SHAPE_QUALIFIER_REPRO") != NULL)
