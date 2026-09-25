@@ -7,6 +7,11 @@ implementation of AI-P2. It recognizes reviewed high-level tensor patterns,
 records their legality and boundaries, and constructs complete AIO-2 plan
 alternatives without rewriting executable WHIRL.
 
+The architectural rationale, performance mechanisms, input and candidate
+contracts, uncertainty boundary, downstream consumers, fallback, and required
+review evidence are defined in Section 3.3 of
+`AI_compiler_optimization_design_v0.1.md`.
+
 ## Scope And Ownership
 
 `DSL_FUSION_CANDIDATE_ANALYSIS` belongs to one active PU and borrows the

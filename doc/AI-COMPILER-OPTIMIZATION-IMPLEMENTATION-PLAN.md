@@ -42,7 +42,7 @@ Open64 adopts the following design rules from v0.1:
    locality analysis, target information, loop multiversioning, feedback, and
    mapped-image inspection.
 8. Before a phase advances from placeholder to implementation, its architecture
-   section must complete the reusable phase-rationale contract in Section 3.4
+   section must complete the reusable phase-rationale contract in Section 3.1
    of the design document: problem, inputs, candidate space, performance
    mechanism, legality, cost uncertainty, downstream consumers, ownership
    boundary, fallback, and review evidence. A generated candidate alone is not
@@ -414,7 +414,9 @@ PR boundary: PU-local lifetime and locality analysis.
 Status: completed on 2026-09-24. The runtime-only per-PU fusion-site,
 member/boundary, legality, resource, independent site-plan, control, and
 certification contract is recorded in
-`AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md`.
+`AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md`. The complete phase
+rationale and performance contract is retrofitted in Section 3.3 of the
+architecture design.
 
 PR scope characterization: the AIO-5 implementation is intentionally the
 basic skeleton of the optimization process, even though the supporting code

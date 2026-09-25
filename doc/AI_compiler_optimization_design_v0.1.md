@@ -54,50 +54,7 @@ The phases below are ordered to preserve semantic information early, introduce p
 
 The ordering is driven by the fact that AI tensors with identical numerical type may have very different optimization behavior. A KV-cache block, an activation tensor, and a model weight may all be low-precision tensors, but their lifetime, reuse distance, placement, fetch policy, sharding, and runtime sensitivity differ sharply.
 
-## 3.1 Why Semantics Come First
-
-Semantic tensor analysis must occur before aggressive lowering because attention, MoE, KV cache, residual paths, and normalization have domain-specific lifetimes and reuse structures. Once lowered too early into generic loops or opaque kernels, the optimizer loses the reason a tensor should remain resident, be replicated, be sharded, or be prefetched.
-
-## 3.2 Why Fusion Cannot Be Finalized Early
-
-Fusion saves materialization and launch overhead, but can increase register pressure, shared-memory footprint, live ranges, synchronization constraints, and communication cost. A candidate that looks profitable before tiling and sharding may become unprofitable after occupancy loss or communication-boundary disruption is accounted for.
-
-## 3.3 Why Fusion Discovery Must Be Mostly Generic
-
-Enumerating every useful operator sequence as a hand-written pattern is not a
-scalable fusion architecture. Explicit patterns remain valuable when a
-sequence has compound semantics, numerical constraints, a library contract,
-or a target implementation identity that generic graph connectivity cannot
-recover. They must not be the only source of fusion candidates.
-
-The primary candidate-discovery mechanism should operate on producer-consumer
-edges and reusable operator fusibility contracts. Each logical operator should
-publish the properties needed to answer whether an edge can participate in a
-fusion cluster: iteration-space class, operand indexing relation, broadcast or
-reduction behavior, descriptor and layout requirements, effect and ownership
-semantics, multi-use behavior, recomputation permission, REGION constraints,
-and relevant resource requirements. The compiler can then grow deterministic
-clusters under legality and search-budget controls without naming every
-operator sequence.
-
-The intended design is therefore hybrid:
-
-- generic edge and cluster formation handles ordinary elementwise,
-  broadcast, contraction-epilogue, view, and compatible reduction cases;
-- explicit semantic patterns recognize important compounds such as attention,
-  normalization, residual structures, quantization sequences, and provider
-  or library dispatch opportunities; and
-- OptimizationPlanIR compares the baseline, generic clusters, and semantic
-  alternatives before any executable WHIRL mutation.
-
-This follows the broad industry direction represented by OpenXLA fusibility
-predicates and cost-driven fusion, TVM operator-category and post-dominator
-fusion, MLIR Linalg indexing-map composition, and scheduler-driven candidate
-scoring in TorchInductor. DSC keeps its distinguishing TensorEvolutionGraph,
-domain semantics, Open64 scope discipline, and complete-plan profitability
-model around that generic core.
-
-## 3.4 Reusable Phase Rationale And Performance Contract
+## 3.1 Reusable Phase Rationale And Performance Contract
 
 Each optimization phase needs more than a name, an IR object, and an ordering
 position. Its design section must explain why the phase exists and how its
@@ -127,9 +84,159 @@ merely because it generated a candidate. The claim becomes valid only after a
 complete plan selects and applies the candidate and measured or modeled
 evidence supports the expected benefit.
 
-## 3.5 AI-P3 Logical Layout Rationale
+## 3.2 Why Semantics Come First
 
-### 3.5.1 Optimization Problem
+Semantic tensor analysis must occur before aggressive lowering because attention, MoE, KV cache, residual paths, and normalization have domain-specific lifetimes and reuse structures. Once lowered too early into generic loops or opaque kernels, the optimizer loses the reason a tensor should remain resident, be replicated, be sharded, or be prefetched.
+
+## 3.3 AI-P2 High-Level Fusion Rationale
+
+### 3.3.1 Optimization Problem
+
+A high-level operator graph commonly materializes an intermediate tensor and
+launches a separate implementation at every operator boundary. Those
+boundaries are semantically useful but can produce avoidable memory traffic,
+launch overhead, synchronization, and loss of producer-consumer locality.
+AI-P2 exposes legal high-level fusion alternatives while operator semantics,
+TensorDescriptorIR, REGION boundaries, and source provenance are still
+available.
+
+Fusion is not intrinsically profitable. Eliminating an intermediate can extend
+live ranges, increase register and shared-memory demand, reduce occupancy,
+duplicate computation at fan-out, constrain tiling, introduce layout
+conversions, or cross a communication boundary. AI-P2 therefore discovers and
+classifies candidates; it does not treat graph adjacency as proof of legality
+or performance.
+
+### 3.3.2 Input Facts
+
+AI-P2 consumes:
+
+- logical operator identity, version, shape rule, effects, attributes, and
+  domain contract;
+- canonical TensorDescriptorIR identity and TensorEvolutionGraph roots;
+- producer-consumer value references, use counts, external boundaries, and
+  result ownership;
+- AI-P1 lifetime, reuse distance, materialization size, alias, and control-scope
+  evidence;
+- REGION membership and source-level semantic boundaries; and
+- explicit numerical, recomputation, and provider constraints when applicable.
+
+It must not infer fusibility from symbol names, Python class names, physical
+`OPR_DSL` encoding, or an assumed target kernel. Missing facts remain unknown
+and keep the corresponding candidate unselectable.
+
+### 3.3.3 Candidate Space
+
+Enumerating every useful operator sequence as a hand-written pattern is not a
+scalable fusion architecture. The primary discovery mechanism should operate
+on producer-consumer edges and versioned operator fusibility contracts. Each
+operator publishes the properties needed to decide whether an edge may join a
+cluster: iteration-space class, operand indexing relation, broadcast or
+reduction behavior, descriptor and layout requirements, effects, ownership,
+multi-use behavior, recomputation permission, numerical constraints, REGION
+scope, and relevant resource requirements.
+
+The compiler grows deterministic clusters under explicit candidate and plan
+budgets. Fan-out, diamonds, multiple results, external uses, and alternative
+cuts remain visible rather than being hidden by a greedy rewrite.
+
+The intended architecture is hybrid:
+
+- generic edge and cluster formation handles ordinary elementwise,
+  broadcast, contraction-epilogue, view, and compatible reduction cases;
+- explicit semantic patterns recognize compounds such as attention,
+  normalization, residual structures, quantization sequences, and provider or
+  library dispatch opportunities; and
+- OptimizationPlanIR compares the baseline, generic clusters, semantic
+  compounds, and alternative fusion cuts before executable WHIRL mutation.
+
+The first AIO-5 implementation uses `matmul+bias+activation` and
+`residual+activation` patterns only as vertical slices for the shared
+candidate, legality, cost, fallback, selection, and inspection skeleton. They
+are not the long-term enumeration strategy.
+
+### 3.3.4 Performance Mechanisms
+
+| Mechanism | Potential benefit | Countervailing risk |
+| --- | --- | --- |
+| Intermediate materialization | Avoid a complete producer write and consumer read. | A fused schedule may still spill or require a layout conversion. |
+| Kernel or library launch | Amortize launch, dispatch, and synchronization overhead. | A larger kernel can reduce concurrency or prevent provider dispatch. |
+| Producer-consumer locality | Forward values through registers, shared memory, or an on-chip tile. | Longer live ranges can increase register pressure and occupancy loss. |
+| Cross-operator simplification | Expose constant folding, algebraic cancellation, epilogue folding, and redundant conversion removal. | Numerical, reassociation, or strict-FP rules can prohibit the rewrite. |
+| Shared iteration space | Traverse one tile once for multiple compatible operations. | Broadcast, reduction, or indexing relations may require incompatible traversals. |
+| Semantic compound or provider implementation | Select a reviewed attention, normalization, convolution epilogue, or library contract. | Hiding domain semantics or choosing the provider too early can block later optimization. |
+| Communication boundary reduction | Keep local producer-consumer work together when ownership permits. | Fusion can obstruct sharding, collectives, overlap, or remote ownership. |
+
+These mechanisms explain what the candidate could improve. They do not prove
+the fused plan is faster. The complete plan must account for both eliminated
+cost and newly introduced resource or scheduling cost.
+
+### 3.3.5 Legality Contract
+
+A proven high-level fusion candidate requires compatible logical iteration and
+indexing contracts, canonical descriptors or an explicit representation path,
+pure or explicitly composable effects, legal ownership, supported result and
+use structure, preserved REGION/domain semantics, and an admissible numerical
+contract. Eliminated intermediate values require sufficient use-count,
+aliasing, and lifetime proof. A multi-use producer may require recomputation,
+partial fusion, or retention of the materialization rather than unconditional
+absorption.
+
+Effects, incompatible descriptors, ownership violations, illegal REGION
+crossing, and violated numerical rules are structured rejections. Unknown
+shape, alias, resource, layout, or control evidence remains an unknown
+candidate, never a zero-cost or implicitly legal one.
+
+### 3.3.6 Cost, Uncertainty, And Fallback
+
+AI-P2 can often calculate eliminated tensor bytes, eliminated launch count,
+boundary live-range growth, and known alternative cuts. Target-independent
+analysis usually cannot yet determine register allocation, occupancy,
+shared-memory allocation, final tile shape, communication interaction, or the
+latency of a physical fused kernel.
+
+The initial check-only implementation may use a deterministic relative score
+to exercise plan selection, but that score is not a latency prediction and
+must be refined or superseded by AI-P3 through AI-P9. If a required term is
+unknown, the fusion plan remains incomplete. Every fusion alternative names
+the original unfused operator sequence as a complete executable fallback.
+
+Early selection is therefore provisional. A later phase may retain, split, or
+reject the cluster when layout, placement, communication, residency, tiling,
+or target-resource facts become available.
+
+### 3.3.7 Downstream Consumers, Boundary, And Evidence
+
+AI-P3 consumes and refines fusion boundaries with logical-layout
+compatibility. AI-P4 and AI-P5 evaluate ownership and communication effects.
+AI-P6 through AI-P9 determine physical residency, tiling, resources, kernel
+implementation, and final scheduling. Runtime variants may retain more than
+one statically certified physical realization.
+
+AI-P2 owns high-level candidate discovery and semantic legality. It does not
+choose a target kernel, allocate storage, finalize physical fusion, or erase
+domain-visible operators before their gatekeepers run. The check-only AIO-5
+stage does not rewrite WN, mapped-image tables, types, symbols, or binary
+WHIRL.
+
+Review evidence must show deterministic members and boundaries, eliminated
+materializations, live-range growth, legality and unknown states, complete or
+incomplete cost terms, explicit fallback, independent generation and selection
+controls, resource/effect/descriptor/REGION negatives, and active-PU scope.
+For a check-only milestone, before/after/repeat `.B` and `ir_b2a -st -src`
+output remain byte-identical. The focused implementation contract is recorded
+in `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md`.
+
+This architecture follows the broad industry direction represented by
+OpenXLA fusibility predicates and cost-driven fusion, TVM operator-category and
+post-dominator fusion, MLIR Linalg indexing-map composition, and
+scheduler-driven candidate scoring in TorchInductor. DSC keeps its
+TensorEvolutionGraph, domain semantics, Open64 scope discipline, explicit
+fallback, and complete-plan profitability model around that generic core.
+
+## 3.4 AI-P3 Logical Layout Rationale
+
+### 3.4.1 Optimization Problem
 
 Two tensors can have the same dtype, rank, logical shape, and numerical values
 while admitting very different implementation performance. Axis order,
@@ -145,7 +252,7 @@ semantic tensor and its canonical `TY_IDX` remain unchanged. Each alternative
 is connected to the semantic root through a semantics-preserving
 TensorEvolutionGraph edge.
 
-### 3.5.2 Performance Mechanisms
+### 3.4.2 Performance Mechanisms
 
 | Mechanism | Why logical layout matters |
 | --- | --- |
@@ -164,7 +271,7 @@ may improve reuse while increasing padding, boundary work, register pressure,
 or shared-memory consumption. Logical-layout candidates must therefore remain
 inside the common candidate, cost, plan, and fallback framework.
 
-### 3.5.3 Inputs, Candidate Space, And Legality
+### 3.4.3 Inputs, Candidate Space, And Legality
 
 AI-P3 consumes canonical TensorDescriptorIR identity, static or symbolic shape,
 semantic tensor role, producer-consumer shape rules, effects, ownership,
@@ -179,7 +286,7 @@ control scope, dynamic dimensions, aliasing, effects, or consumer layout
 requirements keep legality or profitability unknown. They must not be guessed
 from Python source names or target-specific frontend annotations.
 
-### 3.5.4 Cost, Selection, And Fallback
+### 3.4.4 Cost, Selection, And Fallback
 
 Static tensor size can determine conversion volume exactly. For example, a
 `[16,16]` float32 tensor occupies 1024 bytes, so a separately materialized
@@ -194,7 +301,7 @@ unit. Every alternative names the unchanged semantic implementation as its
 fallback. An incomplete plan remains inspectable but cannot displace the
 complete executable baseline.
 
-### 3.5.5 Boundary With Physical Layout
+### 3.4.5 Boundary With Physical Layout
 
 Logical layout describes a representation possibility and its constraints. It
 does not choose HBM, L2, shared memory, registers, target-specific swizzles,
@@ -208,7 +315,7 @@ the owner constructs the refined immutable tensor descriptor and calls
 `TY_Intern_Tensor_Type()` so an identical canonical type is reused and the
 original tensor type is never modified in place.
 
-### 3.5.6 Downstream Consumers And Review Evidence
+### 3.4.6 Downstream Consumers And Review Evidence
 
 AI-P4 and AI-P5 combine layout with sharding and communication. AI-P6 chooses
 local residency. AI-P7 refines layout into hierarchical tiles. AI-P8 uses the
@@ -223,11 +330,11 @@ WHIRL and `ir_b2a -st -src` output must remain byte-identical. The focused
 implementation contract is documented in
 `AI-COMPILER-OPTIMIZATION-AIO6-LOGICAL-LAYOUT.md`.
 
-## 3.6 Why Layout And Sharding Precede Communication
+## 3.5 Why Layout And Sharding Precede Communication
 
 Communication is derived from layout and placement decisions. The optimizer should first describe candidate ownership and sharding of tensors, then derive collective and peer-to-peer operations from those choices. This avoids treating communication as a fixed artifact independent of the plan that caused it.
 
-## 3.7 Why Runtime Variants Come Late
+## 3.6 Why Runtime Variants Come Late
 
 Runtime adaptation should not invent arbitrary schedules. The static compiler should generate legal variants, attach guards, and expose a selection policy. The runtime observes state and selects from certified variants.
 
