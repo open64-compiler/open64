@@ -22,6 +22,7 @@
 typedef struct {
     std::vector<ST_IDX> result_symbols;
     std::vector<UINT32> input_ordinals;
+    DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT active_boundary;
     FILE *diagnostic;
     DSL_GATEKEEPER_MODE mode;
     DSL_GATEKEEPER_RESULT result;
@@ -157,7 +158,8 @@ DSL_Gatekeeper_Has_Unique_Ownership (ST_IDX st)
 
 static BOOL
 DSL_Gatekeeper_Find_Image_Node
-        (ST_IDX result_st,
+        (ST_IDX owner_pu_st,
+         ST_IDX result_st,
          const char *result_name,
          DSL_OPERATOR dsl_operator,
          UINT16 version,
@@ -165,28 +167,27 @@ DSL_Gatekeeper_Find_Image_Node
          DSL_IR_NODE_RECORD *node,
          DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptor)
 {
-    for (UINT32 i = 1; i <= DSL_IR_Image_Value_Count(); ++i) {
-        DSL_IR_VALUE_RECORD value;
-        if (!DSL_IR_Image_Get_Value(i, &value) || value.st != result_st ||
-            (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
-            value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
-            result_name == NULL ||
-            value.name == STR_IDX_ZERO ||
-            strcmp(Index_To_Str(value.name), result_name) != 0)
-            continue;
-        if (!DSL_IR_Image_Get_Node(value.producer_node_id, node))
-            return FALSE;
-        if (!DSL_IR_Image_Get_Opcode_Descriptor
-                 (node->opcode_descriptor_id, descriptor))
-            return FALSE;
-        if (descriptor->logical_operator != (UINT32)dsl_operator ||
-            descriptor->version != version ||
-            node->payload == STR_IDX_ZERO || payload == NULL ||
-            strcmp(Index_To_Str(node->payload), payload) != 0)
-            continue;
-        return TRUE;
-    }
-    return FALSE;
+    if (ST_IDX_level(owner_pu_st) != GLOBAL_SYMTAB ||
+        ST_IDX_index(owner_pu_st) == 0 ||
+        ST_IDX_index(owner_pu_st) >= ST_Table_Size(GLOBAL_SYMTAB) ||
+        ST_class(St_Table[owner_pu_st]) != CLASS_FUNC ||
+        result_name == NULL || payload == NULL || node == NULL ||
+        descriptor == NULL)
+        return FALSE;
+    DSL_IR_VALUE_RECORD value;
+    return DSL_IR_Image_Find_PU_Value
+               (result_st, result_name,
+                ST_name(St_Table[owner_pu_st]), &value) &&
+           (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) == 0 &&
+           value.producer_node_id != DSL_IR_NODE_INVALID_ID &&
+           DSL_IR_Image_Get_Node(value.producer_node_id, node) &&
+           node->result_value_id == value.id &&
+           DSL_IR_Image_Get_Opcode_Descriptor
+               (node->opcode_descriptor_id, descriptor) &&
+           descriptor->logical_operator == (UINT32)dsl_operator &&
+           descriptor->version == version &&
+           node->payload != STR_IDX_ZERO &&
+           strcmp(Index_To_Str(node->payload), payload) == 0;
 }
 
 static BOOL
@@ -235,8 +236,30 @@ DSL_Gatekeeper_Shape_Valid
          UINT16 version,
          const DSL_IR_NODE_RECORD *node,
          const std::vector<TY_IDX> &operand_types,
-         TY_IDX result_ty)
+         TY_IDX result_ty,
+         const DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT *active_boundary)
 {
+    if (node == NULL || active_boundary == NULL)
+        return FALSE;
+    std::vector<DSL_IR_VALUE_ID> operand_value_ids;
+    operand_value_ids.reserve(node->operand_count);
+    for (UINT32 i = 0; i < node->operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        if (!DSL_IR_Image_Get_Value_Reference
+                 (node->first_operand_reference_id + i, &reference))
+            return FALSE;
+        operand_value_ids.push_back(reference.value_id);
+    }
+    DSL_SHAPE_PROOF_CONTEXT proof_context;
+    if (!DSL_Shape_Proof_Context_Init
+             (&proof_context, active_boundary->pu_info,
+              active_boundary->tree, active_boundary->owner_pu_st,
+              node->id,
+              operand_value_ids.empty() ? NULL : &operand_value_ids[0],
+              operand_value_ids.size(), node->result_value_id) ||
+        !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+             (&proof_context))
+        return FALSE;
     DSL_SHAPE_OPERATOR_INPUT input;
     input.dsl_operator = dsl_operator;
     input.version = version;
@@ -245,7 +268,47 @@ DSL_Gatekeeper_Shape_Valid
                           NULL : &operand_types[0];
     input.operand_count = operand_types.size();
     input.result_ty = result_ty;
+    input.proof_context = &proof_context;
     return DSL_Shape_Check_Operator(&input) == DSL_SHAPE_CHECK_VALID;
+}
+
+static BOOL
+DSL_Gatekeeper_Value_Provenance_Valid
+        (const DSL_IR_NODE_RECORD *node,
+         TY_IDX result_ty,
+         const DSL_IR_ACTIVE_PU_BOUNDARY_CONTEXT *active_boundary)
+{
+    if (node == NULL || active_boundary == NULL)
+        return FALSE;
+    std::vector<DSL_IR_VALUE_ID> operand_value_ids;
+    operand_value_ids.reserve(node->operand_count);
+    for (UINT32 i = 0; i < node->operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        if (!DSL_IR_Image_Get_Value_Reference
+                 (node->first_operand_reference_id + i, &reference) ||
+            reference.owner_node_id != node->id || reference.ordinal != i)
+            return FALSE;
+        operand_value_ids.push_back(reference.value_id);
+    }
+    DSL_SHAPE_PROOF_CONTEXT proof_context;
+    if (!DSL_Shape_Proof_Context_Init
+             (&proof_context, active_boundary->pu_info,
+              active_boundary->tree, active_boundary->owner_pu_st,
+              node->id,
+              operand_value_ids.empty() ? NULL : &operand_value_ids[0],
+              operand_value_ids.size(), node->result_value_id) ||
+        !DSL_Shape_Proof_Context_Select_Unique_Interface_Mapping
+             (&proof_context))
+        return FALSE;
+    for (UINT32 i = 0; i < operand_value_ids.size(); ++i) {
+        DSL_IR_VALUE_RECORD operand;
+        if (!DSL_IR_Image_Get_Value(operand_value_ids[i], &operand) ||
+            !DSL_Shape_Proof_Context_Admit_Value
+                 (&proof_context, operand.id, operand.ty))
+            return FALSE;
+    }
+    return DSL_Shape_Proof_Context_Admit_Value
+               (&proof_context, node->result_value_id, result_ty);
 }
 
 static BOOL
@@ -659,7 +722,8 @@ DSL_Gatekeeper_Verify_Native_Node
     image_valid = DSL_WN_Get_Opcode_Annotation(expression, &annotation) &&
                   annotation.payload != NULL &&
                   DSL_Gatekeeper_Find_Image_Node
-                      (result_st, result_name, dsl_operator,
+                      (context->active_boundary.owner_pu_st,
+                       result_st, result_name, dsl_operator,
                        logical_opcode.effective_version, annotation.payload,
                        &image_node, &image_descriptor);
     if (!image_valid)
@@ -667,6 +731,12 @@ DSL_Gatekeeper_Verify_Native_Node
                     (context, "%s result has no matching DSL image node",
                      DSL_OPERATOR_name(dsl_operator));
     else {
+        if (!DSL_Gatekeeper_Value_Provenance_Valid
+                 (&image_node, result_ty, &context->active_boundary))
+            valid = DSL_Gatekeeper_Report
+                        (context, "%s result has unproved symbolic shape "
+                         "provenance",
+                         DSL_OPERATOR_name(dsl_operator));
         if (!DSL_Gatekeeper_Required_Attributes
                  (&image_node, &image_descriptor, context))
             valid = FALSE;
@@ -736,7 +806,8 @@ DSL_Gatekeeper_Verify_Native_Node
         shape_ready && image_valid && first_operand_ty != TY_IDX_ZERO &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
-              &image_node, operand_types, result_ty))
+              &image_node, operand_types, result_ty,
+              &context->active_boundary))
         valid = DSL_Gatekeeper_Report
                     (context, "%s result tensor is incompatible "
                      "with its operands",
@@ -746,7 +817,8 @@ DSL_Gatekeeper_Verify_Native_Node
         BOOL matmul_valid = second_operand_ty != TY_IDX_ZERO && image_valid &&
             DSL_Gatekeeper_Shape_Valid
                 (dsl_operator, logical_opcode.effective_version,
-                 &image_node, operand_types, result_ty);
+                 &image_node, operand_types, result_ty,
+                 &context->active_boundary);
         if (!matmul_valid)
             valid = DSL_Gatekeeper_Report
                         (context, "OPR_DSLMATMUL.v%u tensor or attribute "
@@ -767,20 +839,23 @@ DSL_Gatekeeper_Verify_Native_Node
         first_operand_ty != TY_IDX_ZERO &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
-              &image_node, operand_types, result_ty))
+              &image_node, operand_types, result_ty,
+              &context->active_boundary))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLFLATTEN result shape is invalid");
     if (shape_ready && image_valid && dsl_operator == OPR_DSLLINEAR &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
-              &image_node, operand_types, result_ty))
+              &image_node, operand_types, result_ty,
+              &context->active_boundary))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLLINEAR tensor or attribute contract "
                      "is invalid");
     if (shape_ready && image_valid && dsl_operator == OPR_DSLCONV2D &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
-              &image_node, operand_types, result_ty))
+              &image_node, operand_types, result_ty,
+              &context->active_boundary))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLCONV2D tensor or attribute contract "
                      "is invalid");
@@ -788,7 +863,8 @@ DSL_Gatekeeper_Verify_Native_Node
         dsl_operator == OPR_DSLBATCHNORMINFER &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
-              &image_node, operand_types, result_ty))
+              &image_node, operand_types, result_ty,
+              &context->active_boundary))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLBATCHNORMINFER tensor or attribute "
                      "contract is invalid");
@@ -796,7 +872,8 @@ DSL_Gatekeeper_Verify_Native_Node
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
-               &image_node, operand_types, result_ty)))
+               &image_node, operand_types, result_ty,
+               &context->active_boundary)))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLMAXPOOL2D result shape or attribute "
                      "contract is invalid");
@@ -805,7 +882,8 @@ DSL_Gatekeeper_Verify_Native_Node
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
-               &image_node, operand_types, result_ty)))
+               &image_node, operand_types, result_ty,
+               &context->active_boundary)))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLGLOBALAVGPOOL2D result shape or "
                      "attribute contract is invalid");
@@ -813,7 +891,8 @@ DSL_Gatekeeper_Verify_Native_Node
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
-               &image_node, operand_types, result_ty)))
+               &image_node, operand_types, result_ty,
+               &context->active_boundary)))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLRESHAPE result shape or attribute "
                      "contract is invalid");
@@ -821,7 +900,8 @@ DSL_Gatekeeper_Verify_Native_Node
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
-               &image_node, operand_types, result_ty)))
+               &image_node, operand_types, result_ty,
+               &context->active_boundary)))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLTRANSPOSE result shape or permutation "
                      "contract is invalid");
@@ -833,7 +913,8 @@ DSL_Gatekeeper_Verify_Native_Node
          dsl_operator == OPR_DSLSWIGLU) &&
         !DSL_Gatekeeper_Shape_Valid
              (dsl_operator, logical_opcode.effective_version,
-              &image_node, operand_types, result_ty))
+              &image_node, operand_types, result_ty,
+              &context->active_boundary))
         valid = DSL_Gatekeeper_Report
                     (context, "%s.v%u transformer expression contract is "
                      "invalid", info.stable_name,
@@ -852,7 +933,8 @@ DSL_Gatekeeper_Verify_Native_Node
         (first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid
               (dsl_operator, logical_opcode.effective_version,
-               &image_node, operand_types, result_ty)))
+               &image_node, operand_types, result_ty,
+               &context->active_boundary)))
         valid = DSL_Gatekeeper_Report
                     (context, "OPR_DSLOUTPUTLOGITS.v%u tensor or attribute "
                      "contract is invalid", logical_opcode.effective_version);
@@ -925,9 +1007,14 @@ DSL_Gatekeeper_Verify_PU_Mode
          DSL_GATEKEEPER_RESULT *result)
 {
     DSL_GATEKEEPER_CONTEXT context;
+    memset(&context.active_boundary, 0, sizeof(context.active_boundary));
     memset (&context.result, 0, sizeof(context.result));
     context.diagnostic = diagnostic;
     context.mode = mode;
+    context.active_boundary.pu_info = pu;
+    context.active_boundary.tree = pu == NULL ? NULL : PU_Info_tree_ptr(pu);
+    context.active_boundary.owner_pu_st =
+        pu == NULL ? ST_IDX_ZERO : PU_Info_proc_sym(pu);
 
     BOOL valid = DSL_IR_Image_Validate(diagnostic);
     if (!valid)
@@ -999,6 +1086,7 @@ DSL_Gatekeeper_Verify_Program_Mode
          DSL_GATEKEEPER_RESULT *result)
 {
     DSL_GATEKEEPER_CONTEXT context;
+    memset(&context.active_boundary, 0, sizeof(context.active_boundary));
     memset (&context.result, 0, sizeof(context.result));
     context.diagnostic = diagnostic;
     context.mode = mode;
@@ -1032,10 +1120,14 @@ DSL_Gatekeeper_Verify_Program_Mode
     context.result.result_symbol_count = context.result_symbols.size();
 
     for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
-        if (PU_Info_state(pu, WT_TREE) == Subsect_InMem &&
-            !DSL_Gatekeeper_Verify_Tree
-                 (PU_Info_tree_ptr(pu), NULL, -1, &context))
-            valid = FALSE;
+        if (PU_Info_state(pu, WT_TREE) == Subsect_InMem) {
+            context.active_boundary.pu_info = pu;
+            context.active_boundary.tree = PU_Info_tree_ptr(pu);
+            context.active_boundary.owner_pu_st = PU_Info_proc_sym(pu);
+            if (!DSL_Gatekeeper_Verify_Tree
+                     (PU_Info_tree_ptr(pu), NULL, -1, &context))
+                valid = FALSE;
+        }
     }
 
     if (context.result.native_node_count !=

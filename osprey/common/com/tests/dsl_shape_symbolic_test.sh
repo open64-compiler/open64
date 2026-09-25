@@ -20,6 +20,19 @@ done
 mkdir -p "$artifact_dir"
 find "$artifact_dir" -mindepth 1 -maxdepth 1 -type f -delete
 
+OPEN64_DSL_SHAPE_WP6_ADMISSION_ONLY=1 \
+  "$producer" >"$artifact_dir/wp6-admission.log" 2>&1
+for order in AB BA; do
+  OPEN64_DSL_SHAPE_WP6_ORDER_ONLY="$order" \
+    "$producer" >"$artifact_dir/wp6-order-$order.log" 2>&1
+  sed -E \
+    -e 's/fresh order (AB|BA)/fresh order ORDER/' \
+    -e 's/@pu[0-9a-f]{8}/@puLOCATOR/g' \
+    "$artifact_dir/wp6-order-$order.log" \
+    >"$artifact_dir/wp6-order-$order.normalized"
+done
+cmp -s "$artifact_dir/wp6-order-AB.normalized" \
+  "$artifact_dir/wp6-order-BA.normalized"
 OPEN64_DSL_SHAPE_SP8_ONLY=1 \
   "$producer" >"$artifact_dir/contract.log" 2>&1
 OPEN64_DSL_SHAPE_SP8_ONLY=1 \
@@ -29,6 +42,10 @@ OPEN64_DSL_SHAPE_SP8_ARTIFACT="$image" \
 
 grep -q "SP8 symbolic shape contract passed" "$artifact_dir/contract.log"
 grep -q "SP8 symbolic shape contract passed" "$artifact_dir/producer.log"
+grep -q "WP6 symbolic admission contract passed" \
+  "$artifact_dir/wp6-admission.log"
+grep -q "exact=1/1/1 mismatch=0/0/0" \
+  "$artifact_dir/wp6-order-AB.normalized"
 grep -Eq "logical_shape = \[1,4,L@pu[0-9a-f]{8},8\]" "$trace"
 grep -Eq "logical_shape = \[1,4,L@pu[0-9a-f]{8}\+1,8\]" "$trace"
 grep -Fq "logical_shape = [1,4,?,8]" "$trace"

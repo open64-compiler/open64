@@ -1581,6 +1581,46 @@ DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
     return TRUE;
 }
 
+typedef struct {
+    const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST *requests;
+    UINT32 request_count;
+    std::vector<BOOL> *matched;
+    BOOL valid;
+} DSL_IR_RETYPE_REFINEMENT_MATCH_CONTEXT;
+
+static BOOL
+DSL_IR_Retype_Match_Refinement
+        (const DSL_SHAPE_REFINEMENT *refinement,
+         void *visitor_context)
+{
+    DSL_IR_RETYPE_REFINEMENT_MATCH_CONTEXT *context =
+        static_cast<DSL_IR_RETYPE_REFINEMENT_MATCH_CONTEXT *>
+            (visitor_context);
+    if (refinement == NULL || context == NULL ||
+        context->requests == NULL || context->matched == NULL ||
+        context->matched->size() != context->request_count) {
+        if (context != NULL)
+            context->valid = FALSE;
+        return FALSE;
+    }
+    for (UINT32 i = 0; i < context->request_count; ++i) {
+        const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST &request =
+            context->requests[i];
+        if (request.value_id != refinement->value_id)
+            continue;
+        if ((*context->matched)[i] ||
+            !DSL_Shape_Refinement_Matches_Type
+                 (refinement, request.value_id, request.expected_old_ty,
+                  request.refined_ty)) {
+            context->valid = FALSE;
+            return FALSE;
+        }
+        (*context->matched)[i] = TRUE;
+        return TRUE;
+    }
+    return TRUE;
+}
+
 static BOOL
 DSL_IR_Retype_Has_Auxiliary_Relation (TY_IDX old_ty)
 {
@@ -1916,7 +1956,8 @@ DSL_IR_Refine_Native_Value_Types
                         "request owner does not match the active PU");
         }
         DSL_IR_VALUE_RECORD value;
-        if (!DSL_IR_Image_Get_Value(requests[i].value_id, &value)) {
+        if (!DSL_IR_Image_Get_Value(requests[i].value_id, &value) ||
+            value.ty != requests[i].expected_old_ty) {
             if (result != NULL)
                 *result = local_result;
             return DSL_IR_Retype_Report
@@ -1933,19 +1974,50 @@ DSL_IR_Refine_Native_Value_Types
                         requests[i].value_id,
                         "logical value is not owned by the active PU");
         }
-    }
-
-    std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
-    for (UINT32 i = 0; i < request_count; ++i) {
+        if (!DSL_IR_Retype_Type_Valid
+                 (requests[i].expected_old_ty, requests[i].refined_ty)) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-004",
+                        requests[i].value_id,
+                        "refined type is not a monotonic shape-only refinement");
+        }
         for (UINT32 prior = 0; prior < i; ++prior) {
             if (requests[prior].value_id == requests[i].value_id) {
                 if (result != NULL)
                     *result = local_result;
                 return DSL_IR_Retype_Report
                            (diagnostic, "DSL-SHAPE-RETYPE-001",
-                            requests[i].value_id, "duplicate value request");
+                            requests[i].value_id,
+                            "duplicate value request");
             }
         }
+    }
+
+    std::vector<BOOL> matched_refinements(request_count, FALSE);
+    DSL_IR_RETYPE_REFINEMENT_MATCH_CONTEXT match_context;
+    match_context.requests = requests;
+    match_context.request_count = request_count;
+    match_context.matched = &matched_refinements;
+    match_context.valid = TRUE;
+    DSL_SHAPE_SOLVER_RESULT solver_result;
+    memset(&solver_result, 0, sizeof(solver_result));
+    BOOL semantic_admitted = DSL_Shape_Analyze_PU_With_Refinements
+        (pu_info, tree, diagnostic, DSL_IR_Retype_Match_Refinement,
+         &match_context, &solver_result);
+    for (UINT32 i = 0; i < request_count && semantic_admitted; ++i)
+        semantic_admitted = matched_refinements[i];
+    if (!semantic_admitted || !match_context.valid) {
+        if (result != NULL)
+            *result = local_result;
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-006", 0,
+                    "candidate refinement batch is not solver-authorized");
+    }
+
+    std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
+    for (UINT32 i = 0; i < request_count; ++i) {
         if (!DSL_IR_Retype_Preflight
                  (pu_info, tree, requests[i], diagnostic, &journals[i])) {
             if (result != NULL)
