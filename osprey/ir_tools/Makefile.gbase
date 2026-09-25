@@ -156,6 +156,21 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
+LDIRT += dsl_tensor_evolution_contract_test \
+	dsl_tensor_evolution_contract_test.o
+LDIRT += dsl_opt_plan_contract_test dsl_opt_plan_contract_test.o
+LDIRT += dsl_tensor_analysis_contract_test \
+	dsl_tensor_analysis_contract_test.o
+LDIRT += dsl_tensor_locality_contract_test \
+	dsl_tensor_locality_contract_test.o
+LDIRT += dsl_fusion_candidate_contract_test \
+	dsl_fusion_candidate_contract_test.o
+LDIRT += dsl_layout_candidate_contract_test \
+	dsl_layout_candidate_contract_test.o
+LDIRT += dsl_distributed_candidate_contract_test \
+	dsl_distributed_candidate_contract_test.o
+LDIRT += dsl_residency_candidate_contract_test \
+	dsl_residency_candidate_contract_test.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
@@ -204,8 +219,17 @@ COMMON_COM_CXX_SRC =	\
         dsl_region.cxx \
 	dsl_memory_behavior.cxx \
 	dsl_opcode.cxx	\
+	dsl_opt_plan.cxx \
+	dsl_fusion_candidate.cxx \
+	dsl_layout_candidate.cxx \
+	dsl_distributed_candidate.cxx \
+	dsl_memory_hierarchy.cxx \
+	dsl_residency_candidate.cxx \
 	dsl_shape.cxx	\
+	dsl_tensor_analysis.cxx \
+	dsl_tensor_locality.cxx \
 	dsl_simp.cxx	\
+        dsl_tensor_evolution.cxx \
         dsl_tensor_fold.cxx \
 	dwarf_DST.cxx	\
 	dwarf_DST_dump.cxx	\
@@ -306,6 +330,78 @@ dsl_builder_contract_test: $(OBJECTS) controls.o dsl_builder_contract_test.o
 
 dsl_builder_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_tensor_evolution_contract_test: $(OBJECTS) controls.o \
+		dsl_tensor_evolution_contract_test.o
+	$(link.c++f) -o $@ dsl_tensor_evolution_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_tensor_evolution_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_tensor_evolution_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_opt_plan_contract_test: $(OBJECTS) controls.o \
+		dsl_opt_plan_contract_test.o
+	$(link.c++f) -o $@ dsl_opt_plan_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_opt_plan_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_opt_plan_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_tensor_analysis_contract_test: $(OBJECTS) controls.o \
+		dsl_tensor_analysis_contract_test.o
+	$(link.c++f) -o $@ dsl_tensor_analysis_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_tensor_analysis_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_tensor_analysis_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_tensor_locality_contract_test: $(OBJECTS) controls.o \
+		dsl_tensor_locality_contract_test.o
+	$(link.c++f) -o $@ dsl_tensor_locality_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_tensor_locality_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_tensor_locality_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_fusion_candidate_contract_test: $(OBJECTS) controls.o \
+		dsl_fusion_candidate_contract_test.o
+	$(link.c++f) -o $@ dsl_fusion_candidate_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_fusion_candidate_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_fusion_candidate_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_layout_candidate_contract_test: $(OBJECTS) controls.o \
+		dsl_layout_candidate_contract_test.o
+	$(link.c++f) -o $@ dsl_layout_candidate_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_layout_candidate_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_layout_candidate_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_distributed_candidate_contract_test: $(OBJECTS) controls.o \
+		dsl_distributed_candidate_contract_test.o
+	$(link.c++f) -o $@ dsl_distributed_candidate_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_distributed_candidate_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_distributed_candidate_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_residency_candidate_contract_test: $(OBJECTS) controls.o \
+		dsl_residency_candidate_contract_test.o
+	$(link.c++f) -o $@ dsl_residency_candidate_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_residency_candidate_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_residency_candidate_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \

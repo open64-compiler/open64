@@ -105,6 +105,43 @@ typedef struct {
 } DSL_ALGEBRAIC_RELATION_INFO;
 
 typedef enum {
+    DSL_FUSION_ITERATION_OPAQUE = 0,
+    DSL_FUSION_ITERATION_POINTWISE = 1,
+    DSL_FUSION_ITERATION_CONTRACTION = 2,
+    DSL_FUSION_ITERATION_REDUCTION = 3,
+    DSL_FUSION_ITERATION_VIEW = 4
+} DSL_FUSION_ITERATION_CLASS;
+
+typedef enum {
+    DSL_FUSION_INDEXING_OPAQUE = 0,
+    DSL_FUSION_INDEXING_IDENTITY = 1,
+    DSL_FUSION_INDEXING_BROADCAST = 2,
+    DSL_FUSION_INDEXING_CONTRACTION = 3,
+    DSL_FUSION_INDEXING_REDUCTION = 4,
+    DSL_FUSION_INDEXING_VIEW = 5
+} DSL_FUSION_INDEXING_CLASS;
+
+enum {
+    DSL_FUSIBILITY_NONE = 0,
+    DSL_FUSIBILITY_PRODUCER = 1U << 0,
+    DSL_FUSIBILITY_CONSUMER = 1U << 1,
+    DSL_FUSIBILITY_CLUSTER_ANCHOR = 1U << 2,
+    DSL_FUSIBILITY_EXACT_DESCRIPTOR = 1U << 3,
+    DSL_FUSIBILITY_SINGLE_RESULT = 1U << 4,
+    DSL_FUSIBILITY_SEMANTIC_PATTERN_REQUIRED = 1U << 5
+};
+
+/* Versioned static semantics used by generic, target-independent fusion. */
+typedef struct {
+    DSL_OPERATOR dsl_operator;
+    UINT16 version;
+    UINT16 reserved;
+    UINT32 iteration_space;
+    UINT32 operand_indexing;
+    UINT32 flags;
+} DSL_FUSIBILITY_INFO;
+
+typedef enum {
     DSL_OPCODE_CATEGORY_EXECUTABLE = 0,
     DSL_OPCODE_CATEGORY_DECLARATION = 1,
     DSL_OPCODE_CATEGORY_CONTRACT = 2,
@@ -254,6 +291,12 @@ extern BOOL DSL_Operator_Get_Algebraic_Info
                                 (DSL_OPERATOR dsl_operator,
                                  UINT16 version,
                                  DSL_ALGEBRAIC_INFO *info);
+extern BOOL DSL_Operator_Get_Fusibility_Info
+                                (DSL_OPERATOR dsl_operator,
+                                 UINT16 version,
+                                 DSL_FUSIBILITY_INFO *info);
+extern const char *DSL_Fusion_Iteration_Class_Name (UINT32 iteration_space);
+extern const char *DSL_Fusion_Indexing_Class_Name (UINT32 operand_indexing);
 extern BOOL DSL_Operator_Get_Swap_Equivalent
                                 (DSL_OPERATOR dsl_operator,
                                  UINT16 version,
