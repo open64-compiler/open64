@@ -1485,7 +1485,15 @@ typedef struct {
     DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
     WN *definition;
     std::vector<WN *> reads;
+    UINT32 applied_write_count;
 } DSL_IR_RETYPE_JOURNAL;
+
+typedef struct {
+    BOOL enabled;
+    UINT32 fail_after_write;
+    UINT32 next_write;
+    FILE *diagnostic;
+} DSL_IR_RETYPE_TEST_WRITE_CONTROL;
 
 static BOOL
 DSL_IR_Retype_Report
@@ -1721,22 +1729,141 @@ DSL_IR_Retype_Preflight
     journal->opcode = opcode;
     journal->definition = use.definition;
     journal->reads.swap(use.reads);
+    journal->applied_write_count = 0;
     return TRUE;
 }
 
+static BOOL
+DSL_IR_Retype_Test_After_Write
+        (DSL_IR_RETYPE_TEST_WRITE_CONTROL *control)
+{
+    if (control == NULL || !control->enabled)
+        return TRUE;
+    ++control->next_write;
+    if (control->next_write != control->fail_after_write)
+        return TRUE;
+    if (control->diagnostic != NULL)
+        fprintf(control->diagnostic,
+                "DSL-SHAPE-RETYPE-INJECT: after_write=%u action=fail\n",
+                control->next_write);
+    return FALSE;
+}
+
+static UINT32
+DSL_IR_Retype_Write_Count (const DSL_IR_RETYPE_JOURNAL &journal)
+{
+    return journal.reads.size() + 3;
+}
+
+static BOOL
+DSL_IR_Retype_Test_Postcheck_Name_Valid (const char *name)
+{
+    return name == NULL || name[0] == '\0' ||
+           strcmp(name, "active_boundary") == 0 ||
+           strcmp(name, "dsl_image") == 0 ||
+           strcmp(name, "region") == 0 ||
+           strcmp(name, "gatekeeper") == 0 ||
+           strcmp(name, "shared_shape") == 0 ||
+           strcmp(name, "final") == 0;
+}
+
 static void
+DSL_IR_Retype_Print_Write_Map
+        (const std::vector<DSL_IR_RETYPE_JOURNAL> &journals,
+         UINT32 selected,
+         FILE *diagnostic)
+{
+    if (diagnostic == NULL)
+        return;
+    UINT32 ordinal = 0;
+    for (UINT32 request = 0; request < journals.size(); ++request) {
+        const DSL_IR_RETYPE_JOURNAL &journal = journals[request];
+        for (UINT32 read = 0; read < journal.reads.size(); ++read) {
+            ++ordinal;
+            fprintf(diagnostic,
+                    "DSL-SHAPE-RETYPE-WRITE-MAP: ordinal=%u request=%u "
+                    "value=%u kind=read read_index=%u\n",
+                    ordinal, request, journal.value.id, read);
+        }
+        ++ordinal;
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-WRITE-MAP: ordinal=%u request=%u "
+                "value=%u kind=definition read_index=-1\n",
+                ordinal, request, journal.value.id);
+        ++ordinal;
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-WRITE-MAP: ordinal=%u request=%u "
+                "value=%u kind=symbol read_index=-1\n",
+                ordinal, request, journal.value.id);
+        ++ordinal;
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-WRITE-MAP: ordinal=%u request=%u "
+                "value=%u kind=value read_index=-1\n",
+                ordinal, request, journal.value.id);
+    }
+    fprintf(diagnostic,
+            "DSL-SHAPE-RETYPE-WRITE-MAP: total=%u selected=%u\n",
+            ordinal, selected);
+}
+
+static BOOL
 DSL_IR_Retype_Apply
         (DSL_IR_RETYPE_JOURNAL *journal,
          TY_IDX from_ty,
-         TY_IDX to_ty)
+         TY_IDX to_ty,
+         DSL_IR_RETYPE_TEST_WRITE_CONTROL *control)
 {
-    for (UINT32 i = 0; i < journal->reads.size(); ++i)
+    FmtAssert(journal != NULL && journal->applied_write_count == 0,
+              ("invalid DSL shape retype journal apply state"));
+    for (UINT32 i = 0; i < journal->reads.size(); ++i) {
         WN_set_ty(journal->reads[i], to_ty);
+        ++journal->applied_write_count;
+        if (!DSL_IR_Retype_Test_After_Write(control))
+            return FALSE;
+    }
     WN_set_ty(journal->definition, to_ty);
+    ++journal->applied_write_count;
+    if (!DSL_IR_Retype_Test_After_Write(control))
+        return FALSE;
     Set_ST_type(St_Table[journal->value.st], to_ty);
+    ++journal->applied_write_count;
+    if (!DSL_IR_Retype_Test_After_Write(control))
+        return FALSE;
     BOOL changed = DSL_IR_Image_Retype_Value
                        (journal->value.id, from_ty, to_ty);
     FmtAssert(changed, ("preflighted DSL value retype failed"));
+    ++journal->applied_write_count;
+    if (!DSL_IR_Retype_Test_After_Write(control))
+        return FALSE;
+    return TRUE;
+}
+
+static BOOL
+DSL_IR_Retype_Rollback (DSL_IR_RETYPE_JOURNAL *journal)
+{
+    if (journal == NULL)
+        return FALSE;
+    UINT32 read_count = journal->reads.size();
+    UINT32 applied = journal->applied_write_count;
+    if (applied > read_count + 3)
+        return FALSE;
+    if (applied > read_count + 2) {
+        if (!DSL_IR_Image_Retype_Value
+                 (journal->value.id, journal->request.refined_ty,
+                  journal->request.expected_old_ty))
+            return FALSE;
+    }
+    if (applied > read_count + 1)
+        Set_ST_type(St_Table[journal->value.st],
+                    journal->request.expected_old_ty);
+    if (applied > read_count)
+        WN_set_ty(journal->definition, journal->request.expected_old_ty);
+    UINT32 applied_reads = applied < read_count ? applied : read_count;
+    for (UINT32 i = applied_reads; i != 0; --i)
+        WN_set_ty(journal->reads[i - 1],
+                  journal->request.expected_old_ty);
+    journal->applied_write_count = 0;
+    return TRUE;
 }
 
 BOOL
@@ -1836,11 +1963,53 @@ DSL_IR_Refine_Native_Value_Types
         }
     }
 
+    DSL_IR_RETYPE_TEST_WRITE_CONTROL write_control;
+    memset(&write_control, 0, sizeof(write_control));
+    const char *fail_after_write =
+        getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+    const char *force_postcheck =
+        getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_POSTCHECK");
+    UINT32 total_write_count = 0;
+    for (UINT32 i = 0; i < request_count; ++i)
+        total_write_count += DSL_IR_Retype_Write_Count(journals[i]);
+    if (fail_after_write != NULL && fail_after_write[0] != '\0') {
+        char *end = NULL;
+        errno = 0;
+        unsigned long selected = strtoul(fail_after_write, &end, 10);
+        if (errno != 0 || end == fail_after_write || *end != '\0' ||
+            selected > total_write_count) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
+                        "invalid test write-failure ordinal");
+        }
+        write_control.enabled = TRUE;
+        write_control.fail_after_write = selected;
+        write_control.diagnostic = diagnostic;
+        DSL_IR_Retype_Print_Write_Map
+            (journals, write_control.fail_after_write, diagnostic);
+    }
+    if (!DSL_IR_Retype_Test_Postcheck_Name_Valid(force_postcheck)) {
+        if (result != NULL)
+            *result = local_result;
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
+                    "invalid test postcheck selector");
+    }
+
     local_result.request_count = request_count;
-    for (UINT32 i = 0; i < request_count; ++i) {
-        DSL_IR_Retype_Apply
+    BOOL apply_valid = !write_control.enabled ||
+                       write_control.fail_after_write != 0;
+    if (!apply_valid && write_control.enabled && diagnostic != NULL)
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-INJECT: after_write=0 action=fail\n");
+    for (UINT32 i = 0; apply_valid && i < request_count; ++i) {
+        apply_valid = DSL_IR_Retype_Apply
             (&journals[i], journals[i].request.expected_old_ty,
-             journals[i].request.refined_ty);
+             journals[i].request.refined_ty, &write_control);
+        if (!apply_valid)
+            break;
         ++local_result.updated_st_count;
         local_result.updated_wn_count += 1 + journals[i].reads.size();
         ++local_result.updated_value_count;
@@ -1849,21 +2018,54 @@ DSL_IR_Refine_Native_Value_Types
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     const char *force_post_failure =
         getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL");
-    ++local_result.boundary_postcheck_count;
-    BOOL boundary_valid = DSL_IR_Image_Validate_Active_PU_Boundaries
-                              (&boundary, diagnostic);
-    BOOL valid = boundary_valid && DSL_IR_Image_Validate(diagnostic) &&
-                 DSL_Gatekeeper_Verify_PU_Mode
-                     (pu_info, DSL_GATEKEEPER_STRICT, diagnostic,
-                      &gatekeeper_result) &&
-                 (force_post_failure == NULL ||
-                  strcmp(force_post_failure, "1") != 0);
+    BOOL valid = apply_valid;
+    if (valid) {
+        ++local_result.boundary_postcheck_count;
+        valid = DSL_IR_Image_Validate_Active_PU_Boundaries
+                    (&boundary, diagnostic) &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "active_boundary") != 0);
+    }
+    if (valid)
+        valid = DSL_IR_Image_Validate(diagnostic) &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "dsl_image") != 0);
+    if (valid)
+        valid = DSL_Region_Verify_PU(pu_info, diagnostic) &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "region") != 0);
+    if (valid)
+        valid = DSL_Gatekeeper_Verify_PU_Mode
+                    (pu_info, DSL_GATEKEEPER_STRICT, diagnostic,
+                     &gatekeeper_result) &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "gatekeeper") != 0);
+    if (valid) {
+        DSL_SHAPE_SOLVER_RESULT shape_result;
+        valid = DSL_Shape_Analyze_PU
+                    (pu_info, tree, diagnostic, &shape_result) &&
+                shape_result.refinable_value_count == 0 &&
+                shape_result.pending_value_count == 0 &&
+                shape_result.unresolved_value_count == 0 &&
+                (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "shared_shape") != 0);
+    }
+    if (valid)
+        valid = (force_postcheck == NULL ||
+                 strcmp(force_postcheck, "final") != 0) &&
+                (force_post_failure == NULL ||
+                 strcmp(force_post_failure, "1") != 0);
+    if (!valid && force_postcheck != NULL && diagnostic != NULL)
+        fprintf(diagnostic,
+                "DSL-SHAPE-RETYPE-POSTCHECK: name=%s action=fail\n",
+                force_postcheck);
     if (!valid) {
         for (UINT32 i = request_count; i != 0; --i) {
             DSL_IR_RETYPE_JOURNAL &journal = journals[i - 1];
-            DSL_IR_Retype_Apply
-                (&journal, journal.request.refined_ty,
-                 journal.request.expected_old_ty);
+            if (journal.applied_write_count == 0)
+                continue;
+            BOOL restored = DSL_IR_Retype_Rollback(&journal);
+            FmtAssert(restored, ("DSL shape retype rollback write failed"));
             ++local_result.rollback_count;
         }
         FmtAssert(DSL_IR_Image_Validate(diagnostic) &&
@@ -1872,8 +2074,10 @@ DSL_IR_Refine_Native_Value_Types
         if (result != NULL)
             *result = local_result;
         return DSL_IR_Retype_Report
-                   (diagnostic, "DSL-SHAPE-RETYPE-007", 0,
-                    "strict post-verification failed; transaction rolled back");
+                   (diagnostic, "DSL-SHAPE-RETYPE-008", 0,
+                    apply_valid ?
+                    "strict post-verification failed; transaction rolled back" :
+                    "injected commit write failure; transaction rolled back");
     }
     if (result != NULL)
         *result = local_result;

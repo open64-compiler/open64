@@ -378,6 +378,223 @@ Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
            record.ty == expected;
 }
 
+typedef struct {
+    TY_IDX add_definition_ty;
+    TY_IDX add_read_ty;
+    TY_IDX add_st_ty;
+    TY_IDX add_value_ty;
+    TY_IDX relu_definition_ty;
+    TY_IDX relu_st_ty;
+    TY_IDX relu_value_ty;
+    UINT32 add_region_use_count;
+    UINT32 relu_region_use_count;
+    UINT32 ty_table_size;
+    BOOL region_valid;
+    BOOL image_valid;
+    BOOL refinement_current;
+    PU_Info *active_pu_info;
+    PU *active_pu;
+} WP4_RETYPE_SNAPSHOT;
+
+static BOOL
+WP4_Capture_Retype_Snapshot
+        (PU_Info *pu,
+         DSL_BUILDER_VALUE add,
+         DSL_BUILDER_VALUE relu,
+         WP4_RETYPE_SNAPSHOT *snapshot)
+{
+    if (pu == NULL || add == NULL || relu == NULL || snapshot == NULL)
+        return FALSE;
+    WN *relu_expression = WN_kid0(relu);
+    WN *add_read = relu_expression == NULL ? NULL :
+                   WN_kid0(relu_expression);
+    DSL_IR_VALUE_RECORD add_value;
+    DSL_IR_VALUE_RECORD relu_value;
+    if (add_read == NULL || WN_operator(add_read) != OPR_LDID ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(add), &add_value) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(relu), &relu_value))
+        return FALSE;
+    snapshot->add_definition_ty = WN_ty(add);
+    snapshot->add_read_ty = WN_ty(add_read);
+    snapshot->add_st_ty = ST_type(St_Table[WN_st_idx(add)]);
+    snapshot->add_value_ty = add_value.ty;
+    snapshot->relu_definition_ty = WN_ty(relu);
+    snapshot->relu_st_ty = ST_type(St_Table[WN_st_idx(relu)]);
+    snapshot->relu_value_ty = relu_value.ty;
+    snapshot->add_region_use_count =
+        DSL_Region_Symbol_Use_Count(pu, WN_st_idx(add));
+    snapshot->relu_region_use_count =
+        DSL_Region_Symbol_Use_Count(pu, WN_st_idx(relu));
+    snapshot->ty_table_size = TY_Table_Size();
+    snapshot->region_valid = DSL_Region_Verify_PU(pu, NULL);
+    snapshot->image_valid = DSL_IR_Image_Validate(NULL);
+    snapshot->refinement_current =
+        VHO_DSL_Shape_Refinement_Is_Current
+            (pu, PU_Info_tree_ptr(pu), NULL);
+    snapshot->active_pu_info = Current_PU_Info;
+    snapshot->active_pu = Current_pu;
+    return TRUE;
+}
+
+static BOOL
+WP4_Retype_Snapshot_Matches
+        (PU_Info *pu,
+         DSL_BUILDER_VALUE add,
+         DSL_BUILDER_VALUE relu,
+         const WP4_RETYPE_SNAPSHOT &before)
+{
+    WP4_RETYPE_SNAPSHOT after;
+    return WP4_Capture_Retype_Snapshot(pu, add, relu, &after) &&
+           after.add_definition_ty == before.add_definition_ty &&
+           after.add_read_ty == before.add_read_ty &&
+           after.add_st_ty == before.add_st_ty &&
+           after.add_value_ty == before.add_value_ty &&
+           after.relu_definition_ty == before.relu_definition_ty &&
+           after.relu_st_ty == before.relu_st_ty &&
+           after.relu_value_ty == before.relu_value_ty &&
+           after.add_region_use_count == before.add_region_use_count &&
+           after.relu_region_use_count == before.relu_region_use_count &&
+           after.ty_table_size == before.ty_table_size &&
+           after.region_valid == before.region_valid &&
+           after.image_valid == before.image_valid &&
+           after.refinement_current == before.refinement_current &&
+           after.active_pu_info == before.active_pu_info &&
+           after.active_pu == before.active_pu;
+}
+
+static BOOL
+WP4_Replay_Diagnostic_With_Code (FILE *diagnostic, const char *code)
+{
+    if (diagnostic == NULL || code == NULL || fflush(diagnostic) != 0 ||
+        fseek(diagnostic, 0, SEEK_SET) != 0)
+        return FALSE;
+    BOOL found = FALSE;
+    char line[1024];
+    while (fgets(line, sizeof(line), diagnostic) != NULL) {
+        fputs(line, stderr);
+        if (strstr(line, code) != NULL)
+            found = TRUE;
+    }
+    return found;
+}
+
+static int
+Run_WP4_Multi_Request_Test
+        (const char *selected,
+         PU_Info *pu,
+         DSL_BUILDER_VALUE add,
+         DSL_BUILDER_VALUE relu,
+         TY_IDX pending_ty,
+         TY_IDX refined_ty,
+         const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST *requests)
+{
+    if (selected == NULL || pu == NULL || requests == NULL)
+        return 110;
+    if (!Value_Type_Is(add, pending_ty) ||
+        !Value_Type_Is(relu, pending_ty))
+        return 111;
+    WP4_RETYPE_SNAPSHOT before;
+    if (!WP4_Capture_Retype_Snapshot(pu, add, relu, &before))
+        return 112;
+    const char *artifact =
+        getenv("OPEN64_DSL_SHAPE_WP4_FINAL_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0')
+        (void)unlink(artifact);
+
+    if (strcmp(selected, "baseline") == 0) {
+        DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+        memset(&result, 0, sizeof(result));
+        BOOL accepted = DSL_IR_Refine_Native_Value_Types
+                            (pu, PU_Info_tree_ptr(pu), requests, 2,
+                             stderr, &result);
+        BOOL valid = accepted && result.request_count == 2 &&
+                     result.updated_st_count == 2 &&
+                     result.updated_wn_count == 3 &&
+                     result.updated_value_count == 2 &&
+                     result.rollback_count == 0 &&
+                     result.boundary_precheck_count == 1 &&
+                     result.boundary_postcheck_count == 1 &&
+                     Value_Type_Is(add, refined_ty) &&
+                     Value_Type_Is(relu, refined_ty) &&
+                     WN_ty(WN_kid0(WN_kid0(relu))) == refined_ty &&
+                     DSL_Region_Verify_PU(pu, NULL);
+        printf("WP4 baseline requests=2 accepted=%d writes=%u/%u/%u "
+               "rollback=%u valid=%d\n",
+               accepted, result.updated_st_count, result.updated_wn_count,
+               result.updated_value_count, result.rollback_count, valid);
+        return valid ? 0 : 113;
+    }
+
+    if (strcmp(selected, "failure") != 0 &&
+        strcmp(selected, "postcheck") != 0 &&
+        strcmp(selected, "recovery") != 0)
+        return 114;
+    UINT32 repeat_count = strcmp(selected, "recovery") == 0 ? 2 : 1;
+    const char *repeat_text = getenv("OPEN64_DSL_SHAPE_WP4_REPEAT");
+    if (repeat_text != NULL && repeat_text[0] != '\0')
+        repeat_count = (UINT32)strtoul(repeat_text, NULL, 10);
+    if (repeat_count == 0)
+        return 115;
+
+    for (UINT32 repeat = 0; repeat < repeat_count; ++repeat) {
+        DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+        memset(&result, 0, sizeof(result));
+        FILE *diagnostic = tmpfile();
+        if (diagnostic == NULL)
+            return 116;
+        BOOL accepted = DSL_IR_Refine_Native_Value_Types
+                            (pu, PU_Info_tree_ptr(pu), requests, 2,
+                             diagnostic, &result);
+        BOOL diagnostic_008 = WP4_Replay_Diagnostic_With_Code
+                                  (diagnostic, "DSL-SHAPE-RETYPE-008:");
+        fclose(diagnostic);
+        BOOL unchanged = WP4_Retype_Snapshot_Matches
+                             (pu, add, relu, before);
+        BOOL artifact_absent = artifact == NULL || artifact[0] == '\0' ||
+                               access(artifact, F_OK) != 0;
+        BOOL valid = !accepted && diagnostic_008 && unchanged &&
+                     artifact_absent &&
+                     result.request_count == 2 &&
+                     result.boundary_precheck_count == 1;
+        printf("WP4 %s repeat=%u accepted=%d requests=%u writes=%u/%u/%u "
+               "rollback=%u boundary=%u/%u unchanged=%d "
+               "diagnostic_008=%d artifact_absent=%d valid=%d\n",
+               selected, repeat, accepted, result.request_count,
+               result.updated_st_count, result.updated_wn_count,
+               result.updated_value_count, result.rollback_count,
+               result.boundary_precheck_count,
+               result.boundary_postcheck_count, unchanged,
+               diagnostic_008, artifact_absent, valid);
+        if (!valid)
+            return 117;
+    }
+
+    if (strcmp(selected, "recovery") == 0) {
+        unsetenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+        unsetenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_POSTCHECK");
+        UINT32 type_count = TY_Table_Size();
+        DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+        memset(&result, 0, sizeof(result));
+        BOOL accepted = DSL_IR_Refine_Native_Value_Types
+                            (pu, PU_Info_tree_ptr(pu), requests, 2,
+                             stderr, &result);
+        BOOL valid = accepted && result.rollback_count == 0 &&
+                     Value_Type_Is(add, refined_ty) &&
+                     Value_Type_Is(relu, refined_ty) &&
+                     WN_ty(WN_kid0(WN_kid0(relu))) == refined_ty &&
+                     TY_Table_Size() == type_count &&
+                     type_count == before.ty_table_size;
+        printf("WP4 recovery accepted=%d rollback=%u ty_reused=%d "
+               "valid=%d\n",
+               accepted, result.rollback_count,
+               TY_Table_Size() == before.ty_table_size, valid);
+        return valid ? 0 : 118;
+    }
+    return 0;
+}
+
 typedef enum {
     AUTH_CUSTOM_VALUE,
     AUTH_CUSTOM_ADDED,
@@ -1918,10 +2135,81 @@ Run_WP2_Region_Context_Red_Test(void)
     return valid ? 0 : 73;
 }
 
+static int
+Run_WP4_Single_Request_Baseline(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR input_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR pending_descriptor;
+    Initialize_Descriptor(&input_descriptor, "[2,3]", "activation");
+    Initialize_Descriptor
+        (&pending_descriptor, "[2,<pending>]", "derived_activation");
+    if (!DSL_Builder_Begin_Program())
+        return 118;
+    DSL_Opcode_Register_Common_Substrate();
+    TY_IDX input_ty = DSL_Builder_Intern_Tensor_Type
+                          ("wp4_single_input", MTYPE_To_TY(MTYPE_F4),
+                           &input_descriptor);
+    TY_IDX pending_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp4_single_pending", MTYPE_To_TY(MTYPE_F4),
+                             &pending_descriptor);
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("wp4_single");
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("wp4_single_input", input_ty, 0);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    DSL_BUILDER_VALUE kids[2] = { input, input };
+    DSL_BUILDER_VALUE add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1, "wp4_single_add", pending_ty);
+    if (input_ty == TY_IDX_ZERO || pending_ty == TY_IDX_ZERO ||
+        pu == NULL || input == NULL || add == NULL ||
+        !DSL_Builder_Append_PU_Value(pu, input) ||
+        !DSL_Builder_Append_PU_Value(pu, add) ||
+        !DSL_Builder_Select_PU(pu))
+        return 119;
+
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    refinement.rank = 2;
+    refinement.logical_shape = "[2,3]";
+    BOOL created = FALSE;
+    TY_IDX refined_ty = TY_Intern_Refined_Tensor_Type
+                            (pending_ty, &refinement, &created);
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST request;
+    request.owner_pu_st = PU_Info_proc_sym(pu);
+    request.value_id = DSL_Builder_Get_Value_Image_Id(add);
+    request.expected_old_ty = pending_ty;
+    request.refined_ty = refined_ty;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    memset(&result, 0, sizeof(result));
+    BOOL accepted = DSL_IR_Refine_Native_Value_Types
+                        (pu, PU_Info_tree_ptr(pu), &request, 1,
+                         stderr, &result);
+    BOOL valid = refined_ty != TY_IDX_ZERO && created && accepted &&
+                 result.request_count == 1 &&
+                 result.updated_st_count == 1 &&
+                 result.updated_wn_count == 1 &&
+                 result.updated_value_count == 1 &&
+                 result.rollback_count == 0 &&
+                 result.boundary_precheck_count == 1 &&
+                 result.boundary_postcheck_count == 1 &&
+                 Value_Type_Is(add, refined_ty) &&
+                 DSL_Region_Verify_PU(pu, NULL);
+    printf("WP4 baseline requests=1 accepted=%d writes=%u/%u/%u "
+           "rollback=%u valid=%d\n",
+           accepted, result.updated_st_count, result.updated_wn_count,
+           result.updated_value_count, result.rollback_count, valid);
+    return valid ? 0 : 120;
+}
+
 int
 main(void)
 {
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_SHAPE_WP4_SINGLE") != NULL)
+        return Run_WP4_Single_Request_Baseline();
     if (getenv("OPEN64_DSL_SHAPE_WP2_SUCCESS") != NULL)
         return Run_WP2_Success_Test
                    (getenv("OPEN64_DSL_SHAPE_WP2_SUCCESS"));
@@ -2052,6 +2340,11 @@ main(void)
     requests[1].value_id = DSL_Builder_Get_Value_Image_Id(relu);
     requests[1].expected_old_ty = pending_ty;
     requests[1].refined_ty = refined_ty;
+    const char *wp4_case = getenv("OPEN64_DSL_SHAPE_WP4_CASE");
+    if (wp4_case != NULL)
+        return Run_WP4_Multi_Request_Test
+                   (wp4_case, pu, add, relu, pending_ty, refined_ty,
+                    requests);
     DSL_IR_VALUE_TYPE_REFINEMENT_RESULT forced_failure;
     setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL", "1", 1);
     BOOL unexpectedly_committed = DSL_IR_Refine_Native_Value_Types
