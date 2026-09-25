@@ -1616,8 +1616,15 @@ DSL_IR_Retype_Preflight
                     "refined type is not a monotonic shape-only refinement");
 
     DSL_IR_VALUE_RECORD value;
-    if (!DSL_IR_Image_Get_Value(request.value_id, &value) ||
-        value.value_kind != DSL_IR_VALUE_OPERATOR_RESULT ||
+    if (!DSL_IR_Image_Get_Value(request.value_id, &value))
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-003", request.value_id,
+                    "value or expected old type does not match");
+    if (!DSL_IR_Image_Value_Belongs_To_PU(value, request.owner_pu_st))
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-002", request.value_id,
+                    "logical value is not owned by the active PU");
+    if (value.value_kind != DSL_IR_VALUE_OPERATOR_RESULT ||
         value.ty != request.expected_old_ty ||
         value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
         (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
@@ -1765,22 +1772,67 @@ DSL_IR_Refine_Native_Value_Types
                     "active PU boundary is invalid before retyping");
     }
 
+    for (UINT32 i = 0; i < request_count; ++i) {
+        if (requests[i].value_id == DSL_IR_VALUE_INVALID_ID) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-001",
+                        requests[i].value_id, "request is malformed");
+        }
+        if (requests[i].owner_pu_st != boundary.owner_pu_st) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-002",
+                        requests[i].value_id,
+                        "request owner does not match the active PU");
+        }
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(requests[i].value_id, &value)) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-003",
+                        requests[i].value_id,
+                        "value or expected old type does not match");
+        }
+        if (!DSL_IR_Image_Value_Belongs_To_PU
+                 (value, requests[i].owner_pu_st)) {
+            if (result != NULL)
+                *result = local_result;
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-002",
+                        requests[i].value_id,
+                        "logical value is not owned by the active PU");
+        }
+    }
+
     std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
     for (UINT32 i = 0; i < request_count; ++i) {
         for (UINT32 prior = 0; prior < i; ++prior) {
-            if (requests[prior].value_id == requests[i].value_id)
+            if (requests[prior].value_id == requests[i].value_id) {
+                if (result != NULL)
+                    *result = local_result;
                 return DSL_IR_Retype_Report
                            (diagnostic, "DSL-SHAPE-RETYPE-001",
                             requests[i].value_id, "duplicate value request");
+            }
         }
         if (!DSL_IR_Retype_Preflight
-                 (pu_info, tree, requests[i], diagnostic, &journals[i]))
+                 (pu_info, tree, requests[i], diagnostic, &journals[i])) {
+            if (result != NULL)
+                *result = local_result;
             return FALSE;
+        }
         for (UINT32 prior = 0; prior < i; ++prior) {
-            if (journals[prior].value.st == journals[i].value.st)
+            if (journals[prior].value.st == journals[i].value.st) {
+                if (result != NULL)
+                    *result = local_result;
                 return DSL_IR_Retype_Report
                            (diagnostic, "DSL-SHAPE-RETYPE-001",
                             requests[i].value_id, "duplicate result symbol");
+            }
         }
     }
 

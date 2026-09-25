@@ -173,6 +173,199 @@ Run_Custom_Identity_Retype_Test(BOOL qualifier_repro)
     return unchanged ? 0 : 5;
 }
 
+static int
+Run_Foreign_Owner_Retype_Test(void)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR input_descriptor;
+    DSL_BUILDER_TENSOR_DESCRIPTOR pending_descriptor;
+    Initialize_Descriptor(&input_descriptor, "[2,3]", "activation");
+    Initialize_Descriptor
+        (&pending_descriptor, "[2,<pending>]", "derived_activation");
+
+    if (!DSL_Builder_Begin_Program())
+        return 80;
+    DSL_Opcode_Register_Common_Substrate();
+    TY_IDX input_ty = DSL_Builder_Intern_Tensor_Type
+                          ("owner_repro_input", MTYPE_To_TY(MTYPE_F4),
+                           &input_descriptor);
+    TY_IDX pending_ty = DSL_Builder_Intern_Tensor_Type
+                            ("owner_repro_pending", MTYPE_To_TY(MTYPE_F4),
+                             &pending_descriptor);
+    TY_TENSOR_TYPE_CORE_REFINEMENT refinement;
+    refinement.rank = 2;
+    refinement.logical_shape = "[2,3]";
+    BOOL created = FALSE;
+    TY_IDX refined_ty = TY_Intern_Refined_Tensor_Type
+                            (pending_ty, &refinement, &created);
+    if (input_ty == TY_IDX_ZERO || pending_ty == TY_IDX_ZERO ||
+        refined_ty == TY_IDX_ZERO)
+        return 81;
+
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+
+    DSL_BUILDER_PROGRAM_UNIT first_pu =
+        DSL_Builder_Create_Minimal_PU("owner_repro_first");
+    DSL_BUILDER_VALUE first_input = DSL_Builder_Create_Model_Input
+                                        ("input", input_ty, 0);
+    DSL_BUILDER_VALUE first_kids[2] = { first_input, first_input };
+    DSL_BUILDER_VALUE first_add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, first_kids, 2, &attribute, 1, "shared_result", pending_ty);
+    DSL_BUILDER_REGION first_region = DSL_Builder_Create_Region
+        (first_pu, NULL, "shape.owner_repro.first.v1", 1);
+    if (first_pu == NULL || first_input == NULL || first_add == NULL ||
+        first_region == NULL ||
+        !DSL_Builder_Append_PU_Value(first_pu, first_input) ||
+        !DSL_Builder_Append_Region_Value(first_region, first_add) ||
+        !DSL_Builder_Declare_Region_Value
+             (first_region, first_add,
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+              0, DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Append_PU_Region(first_pu, first_region) ||
+        !DSL_Builder_Select_PU(first_pu) ||
+        !DSL_Region_Verify_PU(first_pu, stderr))
+        return 82;
+    ST_IDX first_st = DSL_Builder_Get_Value_Result_Symbol(first_add);
+    TY_IDX first_st_ty_before = ST_type(St_Table[first_st]);
+
+    DSL_BUILDER_PROGRAM_UNIT second_pu =
+        DSL_Builder_Create_Minimal_PU("owner_repro_second");
+    DSL_BUILDER_VALUE second_input = DSL_Builder_Create_Model_Input
+                                         ("input", input_ty, 0);
+    DSL_BUILDER_VALUE second_kids[2] = { second_input, second_input };
+    DSL_BUILDER_VALUE second_add = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, second_kids, 2, &attribute, 1, "shared_result", pending_ty);
+    DSL_BUILDER_REGION second_region = DSL_Builder_Create_Region
+        (second_pu, NULL, "shape.owner_repro.second.v1", 1);
+    if (second_pu == NULL || second_input == NULL || second_add == NULL ||
+        second_region == NULL ||
+        !DSL_Builder_Append_PU_Value(second_pu, second_input) ||
+        !DSL_Builder_Append_Region_Value(second_region, second_add) ||
+        !DSL_Builder_Declare_Region_Value
+             (second_region, second_add,
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+              0, DSL_REGION_INTERFACE_FLAG_NONE) ||
+        !DSL_Builder_Append_PU_Region(second_pu, second_region) ||
+        !DSL_Builder_Select_PU(second_pu) ||
+        !DSL_Region_Verify_PU(second_pu, stderr))
+        return 83;
+
+    ST_IDX second_st = DSL_Builder_Get_Value_Result_Symbol(second_add);
+    DSL_IR_VALUE_ID first_value_id =
+        DSL_Builder_Get_Value_Image_Id(first_add);
+    DSL_IR_VALUE_ID second_value_id =
+        DSL_Builder_Get_Value_Image_Id(second_add);
+    DSL_IR_VALUE_RECORD first_before;
+    DSL_IR_VALUE_RECORD second_before;
+    if (first_st != second_st ||
+        !DSL_IR_Image_Get_Value(first_value_id, &first_before) ||
+        !DSL_IR_Image_Get_Value(second_value_id, &second_before))
+        return 84;
+
+    TY_IDX first_wn_ty_before = WN_ty(first_add);
+    TY_IDX second_wn_ty_before = WN_ty(second_add);
+    TY_IDX second_st_ty_before = ST_type(St_Table[second_st]);
+    UINT32 first_region_uses_before =
+        DSL_Region_Symbol_Use_Count(first_pu, first_st);
+    UINT32 second_region_uses_before =
+        DSL_Region_Symbol_Use_Count(second_pu, second_st);
+    BOOL first_region_valid_before = DSL_Region_Verify_PU(first_pu, NULL);
+    BOOL second_region_valid_before = DSL_Region_Verify_PU(second_pu, NULL);
+    BOOL first_current_before = VHO_DSL_Shape_Refinement_Is_Current
+                                    (first_pu, PU_Info_tree_ptr(first_pu), NULL);
+    BOOL second_current_before = VHO_DSL_Shape_Refinement_Is_Current
+                                     (second_pu, PU_Info_tree_ptr(second_pu),
+                                      NULL);
+
+    DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST request;
+    request.owner_pu_st = PU_Info_proc_sym(second_pu);
+    request.value_id = first_value_id;
+    request.expected_old_ty = pending_ty;
+    request.refined_ty = refined_ty;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT result;
+    memset(&result, 0xff, sizeof(result));
+    FILE *diagnostic = tmpfile();
+    if (diagnostic == NULL)
+        return 85;
+    BOOL accepted = DSL_IR_Refine_Native_Value_Types
+                        (second_pu, PU_Info_tree_ptr(second_pu), &request, 1,
+                         diagnostic, &result);
+    BOOL active_unchanged = Current_PU_Info == second_pu;
+    TY_IDX second_st_ty_after = ST_type(St_Table[second_st]);
+    fflush(diagnostic);
+    rewind(diagnostic);
+    char diagnostic_text[2048];
+    size_t diagnostic_size =
+        fread(diagnostic_text, 1, sizeof(diagnostic_text) - 1, diagnostic);
+    diagnostic_text[diagnostic_size] = '\0';
+    fclose(diagnostic);
+
+    char expected_diagnostic[256];
+    snprintf(expected_diagnostic, sizeof(expected_diagnostic),
+             "DSL-SHAPE-RETYPE-002: value=%u "
+             "logical value is not owned by the active PU\n",
+             first_value_id);
+    BOOL diagnostic_exact =
+        strcmp(diagnostic_text, expected_diagnostic) == 0;
+    fputs(diagnostic_text, stdout);
+
+    DSL_IR_VALUE_RECORD first_after;
+    DSL_IR_VALUE_RECORD second_after;
+    BOOL value_unchanged =
+        DSL_IR_Image_Get_Value(first_value_id, &first_after) &&
+        DSL_IR_Image_Get_Value(second_value_id, &second_after) &&
+        memcmp(&first_before, &first_after, sizeof(first_before)) == 0 &&
+        memcmp(&second_before, &second_after, sizeof(second_before)) == 0;
+    BOOL wn_unchanged = WN_ty(first_add) == first_wn_ty_before &&
+                        WN_ty(second_add) == second_wn_ty_before;
+    BOOL first_st_unchanged = DSL_Builder_Select_PU(first_pu) &&
+                              ST_type(St_Table[first_st]) ==
+                                  first_st_ty_before;
+    BOOL active_restored = DSL_Builder_Select_PU(second_pu);
+    BOOL st_unchanged = first_st_unchanged && active_restored &&
+                        second_st_ty_after == second_st_ty_before;
+    BOOL region_unchanged =
+        DSL_Region_Verify_PU(first_pu, NULL) == first_region_valid_before &&
+        DSL_Region_Verify_PU(second_pu, NULL) == second_region_valid_before &&
+        DSL_Region_Symbol_Use_Count(first_pu, first_st) ==
+            first_region_uses_before &&
+        DSL_Region_Symbol_Use_Count(second_pu, second_st) ==
+            second_region_uses_before;
+    BOOL current_unchanged =
+        VHO_DSL_Shape_Refinement_Is_Current
+            (first_pu, PU_Info_tree_ptr(first_pu), NULL) ==
+            first_current_before &&
+        VHO_DSL_Shape_Refinement_Is_Current
+            (second_pu, PU_Info_tree_ptr(second_pu), NULL) ==
+            second_current_before &&
+        active_unchanged && Current_PU_Info == second_pu;
+    BOOL counters_clean = result.request_count == 0 &&
+                          result.updated_st_count == 0 &&
+                          result.updated_wn_count == 0 &&
+                          result.updated_value_count == 0 &&
+                          result.rollback_count == 0 &&
+                          result.boundary_precheck_count == 1 &&
+                          result.boundary_postcheck_count == 0;
+    BOOL valid = !accepted && counters_clean && diagnostic_exact &&
+                 wn_unchanged && st_unchanged && value_unchanged &&
+                 region_unchanged && current_unchanged;
+    printf("owner_repro accepted=%d requests=%u writes=%u/%u/%u "
+           "rollback=%u boundary=%u/%u collision=%d diagnostic=%d "
+           "wn=%d st=%d value=%d region=%d current=%d valid=%d\n",
+           accepted, result.request_count, result.updated_st_count,
+           result.updated_wn_count, result.updated_value_count,
+           result.rollback_count, result.boundary_precheck_count,
+           result.boundary_postcheck_count, first_st == second_st,
+           diagnostic_exact, wn_unchanged, st_unchanged, value_unchanged,
+           region_unchanged, current_unchanged, valid);
+    return valid ? 0 : 86;
+}
+
 static BOOL
 Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
 {
@@ -1744,6 +1937,8 @@ main(void)
         return Run_Custom_Identity_Retype_Test(FALSE);
     if (getenv("OPEN64_DSL_SHAPE_QUALIFIER_REPRO") != NULL)
         return Run_Custom_Identity_Retype_Test(TRUE);
+    if (getenv("OPEN64_DSL_SHAPE_FOREIGN_OWNER_REPRO") != NULL)
+        return Run_Foreign_Owner_Retype_Test();
     if (getenv("OPEN64_DSL_SHAPE_AUTH_MATRIX") != NULL)
         return Run_Authorization_Matrix();
     if (getenv("OPEN64_DSL_SHAPE_INTERNER_MATRIX") != NULL)
