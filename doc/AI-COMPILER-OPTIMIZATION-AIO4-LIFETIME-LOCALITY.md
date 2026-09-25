@@ -113,6 +113,7 @@ The focused contract covers:
 
 ## Next Boundary
 
-AIO-5 consumes these facts to generate check-only fusion candidates. It must
-not reinterpret a conservative lifetime as exact, and it must keep candidate
-generation separate from WHIRL mutation.
+AIO-5 now consumes these facts to generate check-only fusion candidates. It
+does not reinterpret a conservative lifetime as exact, and it keeps candidate
+generation and plan selection separate from WHIRL mutation. See
+`AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md`.
