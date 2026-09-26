@@ -175,6 +175,8 @@ LDIRT += dsl_tile_candidate_contract_test \
 	dsl_tile_candidate_contract_test.o
 LDIRT += dsl_fetch_pipeline_contract_test \
 	dsl_fetch_pipeline_contract_test.o
+LDIRT += dsl_physical_plan_contract_test \
+	dsl_physical_plan_contract_test.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
@@ -231,6 +233,7 @@ COMMON_COM_CXX_SRC =	\
 	dsl_residency_candidate.cxx \
 	dsl_tile_candidate.cxx \
 	dsl_fetch_pipeline.cxx \
+	dsl_physical_plan.cxx \
 	dsl_shape.cxx	\
 	dsl_tensor_analysis.cxx \
 	dsl_tensor_locality.cxx \
@@ -426,6 +429,15 @@ dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \
 
 dsl_fetch_pipeline_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_fetch_pipeline_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_physical_plan_contract_test: $(OBJECTS) controls.o \
+		dsl_physical_plan_contract_test.o
+	$(link.c++f) -o $@ dsl_physical_plan_contract_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_physical_plan_contract_test.o: \
+	$(COMMON_COM_DIR)/tests/dsl_physical_plan_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \

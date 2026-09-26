@@ -42,7 +42,8 @@ static const char *DSL_opt_legality_name_table[] = {
 static const char *DSL_opt_rejection_reason_name_table[] = {
     "none", "incomplete_analysis", "invalid_reference", "ownership",
     "descriptor", "effect", "resource", "cost_incomplete",
-    "target_mismatch", "budget_exhausted", "malformed"
+    "target_mismatch", "budget_exhausted", "malformed",
+    "provider_mismatch", "provider_unavailable"
 };
 
 static const char *DSL_opt_cost_term_name_table[] = {
@@ -104,7 +105,9 @@ DSL_Opt_Legality_Valid (UINT32 legality, UINT32 reason)
     if (legality == DSL_OPT_LEGALITY_REJECTED)
         return (reason >= DSL_OPT_REJECT_INVALID_REFERENCE &&
                 reason <= DSL_OPT_REJECT_RESOURCE) ||
-               reason == DSL_OPT_REJECT_MALFORMED;
+               reason == DSL_OPT_REJECT_MALFORMED ||
+               reason == DSL_OPT_REJECT_PROVIDER_MISMATCH ||
+               reason == DSL_OPT_REJECT_PROVIDER_UNAVAILABLE;
     return FALSE;
 }
 
