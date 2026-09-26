@@ -54,6 +54,7 @@ typedef struct {
     ST *runtime_model_input;
     ST *runtime_add;
     ST *runtime_matmul;
+    ST *runtime_matmul_physical;
     ST *runtime_relu;
     ST *runtime_flatten;
     ST *runtime_residual_add;
@@ -73,7 +74,18 @@ typedef struct {
     ST *runtime_attention_v2;
     ST *runtime_swiglu;
     ST *runtime_scatter;
+    const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan;
 } VHO_DSL_LOWER_CONTEXT;
+
+typedef char VHO_DSL_Runtime_Cublaslt_Provider_Matches
+    [(INT)OPEN64_DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT ==
+     (INT)DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT ? 1 : -1];
+typedef char VHO_DSL_Runtime_Hopper_Profile_Matches
+    [(INT)OPEN64_DSL_TARGET_PROFILE_NVIDIA_HOPPER ==
+     (INT)DSL_TARGET_PROFILE_NVIDIA_HOPPER ? 1 : -1];
+typedef char VHO_DSL_Runtime_Provider_Schedule_Matches
+    [(INT)OPEN64_DSL_PHYSICAL_SCHEDULE_PROVIDER_OWNED ==
+     (INT)DSL_PHYSICAL_SCHEDULE_PROVIDER_OWNED ? 1 : -1];
 
 typedef struct {
     UINT32 dtype;
@@ -319,6 +331,72 @@ VHO_DSL_Append_Integer
     INITV_IDX initv = New_INITV();
     INITV_Init_Integer(initv, mtype, value);
     return Append_INITV(initv, inito, previous);
+}
+
+static ST *
+VHO_DSL_Create_Physical_Plan_Symbol
+        (const DSL_PHYSICAL_IMPLEMENTATION_RECORD *implementation,
+         VHO_DSL_LOWER_CONTEXT *context)
+{
+    if (implementation == NULL ||
+        implementation->provider !=
+            DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT ||
+        implementation->capability_id == 0 ||
+        implementation->fallback_implementation_id == 0 ||
+        implementation->identity == 0)
+        return NULL;
+
+    TY_IDX blob_ty = Make_Array_Type
+                         (MTYPE_U1, 1,
+                          OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE);
+    Set_TY_align(blob_ty, 8);
+    ST *blob = Gen_Read_Only_Symbol(blob_ty, ".dsl_physical_plan");
+    Set_ST_is_initialized(blob);
+    INITO_IDX inito = New_INITO(blob);
+    INITV_IDX previous = INITV_IDX_ZERO;
+    UINT32 flags = OPEN64_DSL_PHYSICAL_PLAN_FLAG_ALLOW_FALLBACK;
+    if ((implementation->flags &
+         DSL_PHYSICAL_IMPLEMENTATION_FLAG_SEMANTICS_PRESERVING) != 0)
+        flags |= OPEN64_DSL_PHYSICAL_PLAN_FLAG_SEMANTICS_PRESERVING;
+
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U2,
+                    OPEN64_DSL_RUNTIME_ABI_VERSION);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U2,
+                    OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U4,
+                    OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U4,
+                    implementation->provider);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U4,
+                    implementation->capability_id);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U4,
+                    implementation->target_profile_id);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U4,
+                    implementation->schedule_kind);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U4,
+                    OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U4, flags);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U8,
+                    implementation->identity);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U8, 0);
+    if (Get_INITO_Size(inito) != OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE) {
+        VHO_DSL_Lower_Report
+            (context, "physical plan image has size %u, expected %u",
+             Get_INITO_Size(inito), OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE);
+        return NULL;
+    }
+    return blob;
 }
 
 static ST *
@@ -677,6 +755,7 @@ VHO_DSL_Runtime_Function
         (DSL_OPERATOR dsl_operator,
          UINT16 version,
          BOOL external_tensor,
+         BOOL physical_matmul,
          VHO_DSL_LOWER_CONTEXT *context)
 {
     ST **slot = NULL;
@@ -697,8 +776,10 @@ VHO_DSL_Runtime_Function
         name = "__open64_dsl_add_v1";
         break;
     case OPR_DSLMATMUL:
-        slot = &context->runtime_matmul;
-        name = "__open64_dsl_matmul_v1";
+        slot = physical_matmul ? &context->runtime_matmul_physical :
+               &context->runtime_matmul;
+        name = physical_matmul ? "__open64_dsl_matmul_physical_v1" :
+               "__open64_dsl_matmul_v1";
         break;
     case OPR_DSLRELU:
         slot = &context->runtime_relu;
@@ -988,20 +1069,29 @@ VHO_DSL_Build_Runtime_Call
          WN **call_result)
 {
     DSL_OPCODE_ANNOTATION annotation;
+    DSL_PHYSICAL_SITE_RECORD physical_site;
+    DSL_PHYSICAL_IMPLEMENTATION_RECORD physical_implementation;
     char value_kind[32];
     BOOL external_tensor;
+    BOOL physical_matmul = FALSE;
     if (!DSL_WN_Get_Opcode_Annotation(native, &annotation))
         return FALSE;
     external_tensor = dsl_operator == OPR_DSLTENSORCONST &&
         VHO_DSL_Payload_Value(annotation.payload, "value_kind",
                               value_kind, sizeof(value_kind)) &&
         strcmp(value_kind, "external_data") == 0;
+    if (dsl_operator == OPR_DSLMATMUL && context->physical_plan != NULL &&
+        DSL_physical_plan_find_selected
+            (context->physical_plan, image_node_id, &physical_site,
+             &physical_implementation))
+        physical_matmul = physical_implementation.provider ==
+                          DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT;
     ST *descriptor = VHO_DSL_Create_Descriptor_Symbol
                          (result_ty, dsl_operator == OPR_DSLTENSORCONST,
                           context);
     ST *function = VHO_DSL_Runtime_Function
                        (dsl_operator, annotation.version, external_tensor,
-                        context);
+                        physical_matmul, context);
     if (descriptor == NULL || function == NULL)
         return FALSE;
 
@@ -1012,7 +1102,7 @@ VHO_DSL_Build_Runtime_Call
         parameter_count = 2;
     else if (dsl_operator == OPR_DSLADD ||
              dsl_operator == OPR_DSLMATMUL)
-        parameter_count = 4;
+        parameter_count = physical_matmul ? 5 : 4;
     else if (dsl_operator == OPR_DSLRELU)
         parameter_count = 2;
     else if (dsl_operator == OPR_DSLFLATTEN)
@@ -1138,6 +1228,15 @@ VHO_DSL_Build_Runtime_Call
             strcmp(transpose, "true") == 0)
             flags |= OPEN64_DSL_MATMUL_FLAG_TRANSPOSE_KID1;
         WN_kid(call, parameter++) = VHO_DSL_U4_Parm(flags);
+        if (physical_matmul) {
+            ST *physical = VHO_DSL_Create_Physical_Plan_Symbol
+                               (&physical_implementation, context);
+            if (physical == NULL)
+                return FALSE;
+            WN_kid(call, parameter++) = VHO_DSL_Pointer_Parm
+                                            (WN_Lda(Pointer_Mtype, 0,
+                                                    physical));
+        }
     } else if (dsl_operator == OPR_DSLFLATTEN) {
         char start_text[32];
         char end_text[32];
@@ -1361,6 +1460,8 @@ VHO_DSL_Build_Runtime_Call
 
     if (parameter != parameter_count)
         return FALSE;
+    if (physical_matmul)
+        ++context->result.physical_provider_lowered_count;
     *call_result = call;
     return TRUE;
 }
@@ -1673,10 +1774,115 @@ VHO_DSL_Lowered_Tree_Is_Canonical
     return count == 0;
 }
 
-BOOL
-VHO_DSL_Lower_Verified_Program_Unit
+static BOOL
+VHO_DSL_Preflight_Physical_Plan
+        (struct pu_info *pu_info,
+         const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan,
+         VHO_DSL_LOWER_CONTEXT *context)
+{
+    if (physical_plan == NULL)
+        return TRUE;
+    if (!DSL_physical_plan_verify(physical_plan, context->diagnostic))
+        return VHO_DSL_Lower_Report
+                   (context, "selected physical plan is invalid");
+
+    UINT32 site_count = DSL_physical_plan_site_count(physical_plan);
+    for (UINT32 id = 1; id <= site_count; ++id) {
+        DSL_PHYSICAL_SITE_RECORD site;
+        DSL_PHYSICAL_IMPLEMENTATION_RECORD implementation;
+        DSL_PROVIDER_CAPABILITY_RECORD capability;
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+        if (!DSL_physical_plan_get_site(physical_plan, id, &site) ||
+            site.owner_pu_st != PU_Info_proc_sym(pu_info) ||
+            !DSL_physical_plan_get_implementation
+                 (physical_plan, site.selected_implementation_id,
+                  &implementation) ||
+            implementation.site_id != site.id ||
+            implementation.legality != DSL_OPT_LEGALITY_PROVEN ||
+            (implementation.flags &
+             DSL_PHYSICAL_IMPLEMENTATION_FLAG_SELECTED) == 0 ||
+            (implementation.flags &
+             DSL_PHYSICAL_IMPLEMENTATION_FLAG_SEMANTICS_PRESERVING) == 0 ||
+            !DSL_provider_capability_get
+                 (implementation.capability_id, &capability) ||
+            !DSL_IR_Image_Get_Node(site.semantic_node_id, &node) ||
+            !DSL_IR_Image_Get_Opcode_Descriptor
+                 (node.opcode_descriptor_id, &descriptor) ||
+            descriptor.logical_operator != capability.logical_operator ||
+            descriptor.version != capability.operator_version)
+            return VHO_DSL_Lower_Report
+                       (context, "physical site %u is incomplete or stale", id);
+
+        for (UINT32 prior = 1; prior < id; ++prior) {
+            DSL_PHYSICAL_SITE_RECORD prior_site;
+            if (!DSL_physical_plan_get_site
+                     (physical_plan, prior, &prior_site) ||
+                prior_site.semantic_node_id == site.semantic_node_id)
+                return VHO_DSL_Lower_Report
+                           (context,
+                            "physical site %u duplicates a semantic node", id);
+        }
+
+        if (implementation.provider ==
+            DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT) {
+            if (implementation.implementation_kind !=
+                    DSL_PHYSICAL_IMPLEMENTATION_BASELINE_DIRECT ||
+                implementation.schedule_kind != DSL_PHYSICAL_SCHEDULE_DIRECT ||
+                implementation.fallback_implementation_id != 0)
+                return VHO_DSL_Lower_Report
+                           (context, "physical site %u has an invalid baseline",
+                            id);
+        } else if (implementation.provider ==
+                   DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT) {
+            DSL_PHYSICAL_IMPLEMENTATION_RECORD fallback;
+            if (capability.provider !=
+                    DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT ||
+                capability.implementation_kind !=
+                    DSL_PHYSICAL_IMPLEMENTATION_LIBRARY ||
+                capability.logical_operator != OPR_DSLMATMUL ||
+                capability.operator_version != 1 ||
+                capability.schedule_kind !=
+                    DSL_PHYSICAL_SCHEDULE_PROVIDER_OWNED ||
+                (capability.flags &
+                 (DSL_PROVIDER_CAPABILITY_FLAG_REQUIRES_RUNTIME |
+                  DSL_PROVIDER_CAPABILITY_FLAG_REVIEWED)) !=
+                    (DSL_PROVIDER_CAPABILITY_FLAG_REQUIRES_RUNTIME |
+                     DSL_PROVIDER_CAPABILITY_FLAG_REVIEWED) ||
+                implementation.implementation_kind !=
+                    DSL_PHYSICAL_IMPLEMENTATION_LIBRARY ||
+                implementation.schedule_kind !=
+                    DSL_PHYSICAL_SCHEDULE_PROVIDER_OWNED ||
+                (implementation.flags &
+                 DSL_PHYSICAL_IMPLEMENTATION_FLAG_PROVIDER_AVAILABLE) == 0 ||
+                implementation.fallback_implementation_id !=
+                    site.baseline_implementation_id ||
+                !DSL_physical_plan_get_implementation
+                     (physical_plan, implementation.fallback_implementation_id,
+                      &fallback) ||
+                fallback.provider != DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT)
+                return VHO_DSL_Lower_Report
+                           (context,
+                            "physical site %u has no reviewed matmul provider "
+                            "and direct fallback contract", id);
+            ++context->result.physical_provider_site_count;
+        } else {
+            return VHO_DSL_Lower_Report
+                       (context,
+                        "physical site %u selects unsupported provider %s",
+                        id,
+                        DSL_physical_provider_name(implementation.provider));
+        }
+    }
+    context->result.physical_plan_site_count = site_count;
+    return TRUE;
+}
+
+static BOOL
+VHO_DSL_Lower_Verified_Engine
         (struct pu_info *pu_info,
          WN *tree,
+         const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan,
          FILE *diagnostic,
          VHO_DSL_LOWER_RESULT *result)
 {
@@ -1689,6 +1895,7 @@ VHO_DSL_Lower_Verified_Program_Unit
     context.runtime_model_input = NULL;
     context.runtime_add = NULL;
     context.runtime_matmul = NULL;
+    context.runtime_matmul_physical = NULL;
     context.runtime_relu = NULL;
     context.runtime_flatten = NULL;
     context.runtime_residual_add = NULL;
@@ -1708,22 +1915,83 @@ VHO_DSL_Lower_Verified_Program_Unit
     context.runtime_attention_v2 = NULL;
     context.runtime_swiglu = NULL;
     context.runtime_scatter = NULL;
+    context.physical_plan = physical_plan;
 
     BOOL valid = pu_info != NULL && tree != NULL;
-    if (valid)
-        valid = VHO_DSL_Lower_Tree(tree, &context);
-    else
+    BOOL preflight_valid = FALSE;
+    if (!valid) {
         VHO_DSL_Lower_Report
             (&context, "program unit or WHIRL tree is missing");
-
-    if (!VHO_DSL_Lowered_Tree_Is_Canonical
-             (tree, diagnostic,
-              &context.result.remaining_executable_carrier_count))
-        valid = FALSE;
+    } else {
+        preflight_valid = VHO_DSL_Preflight_Physical_Plan
+                              (pu_info, physical_plan, &context);
+        valid = preflight_valid;
+    }
+    if (preflight_valid) {
+        valid = VHO_DSL_Lower_Tree(tree, &context);
+        if (!VHO_DSL_Lowered_Tree_Is_Canonical
+                 (tree, diagnostic,
+                  &context.result.remaining_executable_carrier_count))
+            valid = FALSE;
+        if (context.result.physical_provider_lowered_count !=
+            context.result.physical_provider_site_count) {
+            VHO_DSL_Lower_Report
+                (&context,
+                 "lowered %u of %u selected physical provider site(s)",
+                 context.result.physical_provider_lowered_count,
+                 context.result.physical_provider_site_count);
+            valid = FALSE;
+        }
+    }
 
     if (result != NULL)
         *result = context.result;
     return valid;
+}
+
+BOOL
+VHO_DSL_Lower_Verified_Program_Unit_With_Physical_Plan
+        (struct pu_info *pu_info,
+         WN **tree,
+         const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan,
+         FILE *diagnostic,
+         VHO_DSL_LOWER_RESULT *result)
+{
+    if (result != NULL)
+        memset(result, 0, sizeof(*result));
+    if (pu_info == NULL || tree == NULL || *tree == NULL ||
+        physical_plan == NULL)
+        return FALSE;
+    WN *working_tree = WN_COPY_Tree(*tree);
+    VHO_DSL_LOWER_RESULT working_result;
+    memset(&working_result, 0, sizeof(working_result));
+    BOOL valid = working_tree != NULL &&
+                 VHO_DSL_Lower_Verified_Engine
+                     (pu_info, working_tree, physical_plan, diagnostic,
+                      &working_result);
+    if (!valid) {
+        if (working_tree != NULL)
+            WN_DELETE_Tree(working_tree);
+        if (result != NULL)
+            *result = working_result;
+        return FALSE;
+    }
+    *tree = working_tree;
+    Set_PU_Info_tree_ptr(pu_info, working_tree);
+    if (result != NULL)
+        *result = working_result;
+    return TRUE;
+}
+
+BOOL
+VHO_DSL_Lower_Verified_Program_Unit
+        (struct pu_info *pu_info,
+         WN *tree,
+         FILE *diagnostic,
+         VHO_DSL_LOWER_RESULT *result)
+{
+    return VHO_DSL_Lower_Verified_Engine
+               (pu_info, tree, NULL, diagnostic, result);
 }
 
 WN *

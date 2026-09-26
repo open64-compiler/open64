@@ -708,9 +708,11 @@ Deferred beyond this slice:
 
 ### AIO-11: AI-P9 Physical Plan And Implementation Selection
 
-Status: implemented as a selector-only, runtime-only, per-PU vertical slice on
-2026-09-25. `CommonPhysicalPlanIR` compares complete direct, generated, and
-reviewed-provider plans without rewriting executable or binary WHIRL.
+Status: implemented first as a selector-only, runtime-only, per-PU vertical
+slice on 2026-09-25. On 2026-09-26, the first reviewed application family
+connected selected `common.matmul.v1` cuBLASLt plans to normal VHO DSL
+lowering. `CommonPhysicalPlanIR` remains in-memory analysis state; the source
+binary WHIRL remains unchanged until that lowering boundary.
 
 Actions:
 
@@ -744,11 +746,27 @@ Implemented first vertical slice:
   before/after/repeat binary and `ir_b2a -st -src` evidence;
 - independent generation, selection, and fail-closed application controls.
 
+Implemented first application family:
+
+- complete plan/capability/owner/opcode/fallback preflight before WN mutation;
+- copied-tree application with PU adoption only after canonical verification;
+- append-only `__open64_dsl_matmul_physical_v1` runtime-provider ABI;
+- fixed 48-byte read-only physical-plan descriptor with deterministic identity;
+- selected cuBLASLt dispatch with runtime-owned CUDA resources and direct
+  fallback policy;
+- unavailable-provider lowering through the unchanged direct matmul ABI;
+- unsupported generated-kernel rejection before tree mutation;
+- post-lowering provider-site accounting and canonical-WHIRL verification;
+- deterministic provider and fallback `.B/.T` output plus retained source-to-
+  G14 diff;
+- no cuBLASLt, CUDA, JsonCpp, or frontend-builder linkage added to `be.so`.
+
 Deferred beyond this slice:
 
 - executable generated-loop/kernel construction and atomic WN application;
-- concrete cuBLASLt, cuDNN, Triton, or existing-PTX lowering families;
-- provider ABI, runtime handle, stream, workspace, and error/fallback wiring;
+- executable CUDA runtime adapter and measured cuBLASLt execution;
+- cuDNN, Triton, existing-PTX, and generated-kernel lowering families;
+- concrete runtime handle, stream, workspace, and error/fallback execution;
 - exact physical layout, alignment, address-space, target-instruction, and
   measured-performance validation;
 - AIO-12 runtime variants, mapped publication, and explicit IPA summaries.
@@ -925,8 +943,14 @@ artifact.
 16. [x] Execute the selector-first `AIO-11` vertical slice: compare complete
     direct, generated, and reviewed-provider physical plans with deterministic
     fallback and no executable or binary WHIRL rewrite.
-17. [ ] Implement one reviewed AIO-11 provider or generated-kernel lowering
+17. [x] Implement one reviewed AIO-11 provider or generated-kernel lowering
     family with atomic WHIRL application and retained before/after evidence.
+    The first family lowers selected rank-2 F4 `common.matmul.v1` to the
+    generic cuBLASLt provider ABI, preserves direct fallback, and retains G14
+    provider/fallback/rejection evidence without linking CUDA into `be.so`.
+18. [ ] Execute the first AIO-12 runtime-variant slice with reviewed shape or
+    alignment guards, a conservative direct fallback, explicit guard cost,
+    and retained true/false-path evidence.
 
 ## Related Documents
 

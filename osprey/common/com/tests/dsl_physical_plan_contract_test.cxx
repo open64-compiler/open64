@@ -11,11 +11,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
+#include <unistd.h>
+#if ! defined(BUILD_OS_DARWIN)
+#include <elf.h>
+#endif
 
 #include "defs.h"
 #include "mempool.h"
 #include "wn.h"
 #include "stab.h"
+#include "pu_info.h"
 #include "ir_reader.h"
 #include "erglob.h"
 #include "errors.h"
@@ -24,10 +30,15 @@
 #include "controls.h"
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
+#include "glob.h"
+#include "ir_bwrite.h"
 #include "dsl_builder.h"
 #include "dsl_fetch_pipeline.h"
+#include "dsl_gatekeeper.h"
+#include "dsl_lower.h"
 #include "dsl_opcode.h"
 #include "dsl_physical_plan.h"
+#include "open64_dsl_runtime_abi.h"
 
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
@@ -86,7 +97,7 @@ Create_Tensor_Type (const char *name)
     descriptor.layout = "row_major";
     descriptor.sharding = "replicated";
     descriptor.placement = "host";
-    descriptor.memory = "contiguous";
+    descriptor.memory = "host";
     descriptor.quantization = "none";
     return TY_Intern_Tensor_Type
                (name, MTYPE_To_TY(MTYPE_F4), &descriptor);
@@ -325,6 +336,188 @@ Check_Selection
     return rejected_reason == DSL_OPT_REJECT_NONE || rejected == 1;
 }
 
+static BOOL
+Check_Lowered_Runtime
+        (WN *tree, const char *matmul_name, UINT32 matmul_parameters)
+{
+    WN *body = WN_func_body(tree);
+    UINT32 call_count = 0;
+    UINT32 matmul_count = 0;
+    for (WN *statement = WN_first(body); statement != NULL;
+         statement = WN_next(statement)) {
+        if (WN_operator(statement) != OPR_CALL)
+            continue;
+        ++call_count;
+        if (strcmp(ST_name(WN_st(statement)), matmul_name) != 0)
+            continue;
+        ++matmul_count;
+        if ((UINT32)WN_kid_count(statement) != matmul_parameters)
+            return FALSE;
+        if (matmul_parameters == 5) {
+            WN *parameter = WN_kid0(WN_kid(statement, 4));
+            if (WN_operator(parameter) != OPR_LDA ||
+                strstr(ST_name(WN_st(parameter)), ".dsl_physical_plan") ==
+                    NULL ||
+                TY_size(ST_type(WN_st(parameter))) !=
+                    OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE ||
+                TY_align(ST_type(WN_st(parameter))) != 8)
+                return FALSE;
+        }
+    }
+    UINT32 remaining = 0;
+    return call_count == 4 && matmul_count == 1 &&
+           VHO_DSL_Lowered_Tree_Is_Canonical(tree, stderr, &remaining) &&
+           remaining == 0;
+}
+
+static BOOL
+Write_Lowered_Image (DSL_BUILDER_PROGRAM_UNIT pu, const char *path)
+{
+    char temporary[PATH_MAX];
+    if (pu == NULL || path == NULL || path[0] == '\0')
+        return FALSE;
+    INT written = snprintf(temporary, sizeof(temporary), "%s.tmp", path);
+    if (written < 0 || (size_t)written >= sizeof(temporary))
+        return FALSE;
+    (void)unlink(temporary);
+    Irb_File_Name = temporary;
+    if (Open_Output_Info(Irb_File_Name) == NULL)
+        return FALSE;
+    if (!DSL_Builder_Select_PU(pu)) {
+        Close_Output_Info();
+        (void)unlink(temporary);
+        return FALSE;
+    }
+    Write_PU_Info(pu);
+    Write_Global_Info(pu);
+    Close_Output_Info();
+    if (access(temporary, F_OK) != 0 || rename(temporary, path) != 0) {
+        (void)unlink(temporary);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static int
+Run_Lowering_Mode
+        (UINT32 selected_provider, BOOL induce_late_failure,
+         const char *artifact)
+{
+    AIO11_FIXTURE fixture;
+    AIO11_ANALYSIS analysis;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    VHO_DSL_LOWER_RESULT lower;
+    UINT32 direct =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT);
+    UINT32 generated =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED);
+    UINT32 cublas =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT);
+    UINT32 enabled = direct;
+    UINT32 available = direct;
+    if (selected_provider == DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT) {
+        enabled |= cublas;
+        available |= cublas;
+    } else if (selected_provider == DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED) {
+        enabled |= generated;
+        available |= generated;
+    } else {
+        enabled |= cublas;
+    }
+
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    if (!Create_Fixture("aio11_runtime_lowering", &fixture)) {
+        fprintf(stderr, "AIO-11 runtime fixture construction failed\n");
+        return 1;
+    }
+    if (!Build_Analysis
+             (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 3,
+              enabled, available, NULL, &analysis)) {
+        fprintf(stderr, "AIO-11 runtime analysis failed\n");
+        return 1;
+    }
+    if (!Check_Selection
+             (&analysis, 2, selected_provider, DSL_OPT_REJECT_NONE)) {
+        fprintf(stderr, "AIO-11 runtime selection mismatch\n");
+        return 1;
+    }
+    memset(&verify, 0, sizeof(verify));
+    if (!DSL_Builder_Verify_Program(&verify)) {
+        fprintf(stderr, "AIO-11 runtime source verification failed\n");
+        return 1;
+    }
+
+    WN *tree = PU_Info_tree_ptr(fixture.pu);
+    WN *original_tree = tree;
+    WN *malformed_native = NULL;
+    if (induce_late_failure) {
+        WN *definition = WN_first(WN_func_body(tree));
+        definition = WN_next(definition);
+        definition = WN_next(definition);
+        malformed_native = WN_kid0(definition);
+        WN_kid(malformed_native, 0) = WN_Intconst(MTYPE_I4, 0);
+    }
+    BOOL lowered = VHO_DSL_Lower_Verified_Program_Unit_With_Physical_Plan
+                       (fixture.pu, &tree, analysis.physical, stderr, &lower);
+    if (induce_late_failure) {
+        BOOL unchanged = !lowered && tree == original_tree &&
+                         PU_Info_tree_ptr(fixture.pu) == original_tree &&
+                         malformed_native != NULL &&
+                         WN_operator(WN_kid(malformed_native, 0)) ==
+                             OPR_INTCONST;
+        Destroy_Analysis(&analysis);
+        if (!unchanged || artifact != NULL)
+            return 1;
+        printf("AIO-11 late lowering failure rolled back WN mutation\n");
+        return 0;
+    }
+    if (selected_provider == DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED) {
+        BOOL unchanged = !lowered && tree == original_tree &&
+                         PU_Info_tree_ptr(fixture.pu) == original_tree &&
+                         DSL_WN_Is_Native
+                             (WN_kid0(WN_first(WN_func_body(tree))));
+        Destroy_Analysis(&analysis);
+        if (!unchanged || artifact != NULL)
+            return 1;
+        printf("AIO-11 unsupported provider rejected before WN mutation\n");
+        return 0;
+    }
+
+    const BOOL physical = selected_provider ==
+                          DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT;
+    if (!lowered || tree == original_tree ||
+        PU_Info_tree_ptr(fixture.pu) != tree ||
+        lower.physical_plan_site_count != 1 ||
+        lower.physical_provider_site_count != (physical ? 1U : 0U) ||
+        lower.physical_provider_lowered_count != (physical ? 1U : 0U) ||
+        !Check_Lowered_Runtime
+             (tree,
+              physical ? "__open64_dsl_matmul_physical_v1" :
+                         "__open64_dsl_matmul_v1",
+              physical ? 5 : 4)) {
+        fprintf(stderr,
+                "AIO-11 runtime lowering mismatch: valid=%u sites=%u "
+                "provider_sites=%u lowered=%u\n",
+                lowered, lower.physical_plan_site_count,
+                lower.physical_provider_site_count,
+                lower.physical_provider_lowered_count);
+        fdump_tree(stderr, tree);
+        return 1;
+    }
+    Destroy_Analysis(&analysis);
+
+    if (artifact == NULL || artifact[0] == '\0')
+        return 1;
+    if (!Write_Lowered_Image(fixture.pu, artifact)) {
+        fprintf(stderr, "AIO-11 lowered image finalization failed\n");
+        return 1;
+    }
+    printf("AIO-11 %s runtime lowering passed\n",
+           physical ? "cuBLASLt" : "direct fallback");
+    return 0;
+}
+
 static int
 Run_Image_Mode (BOOL run_analysis)
 {
@@ -509,5 +702,21 @@ main(void)
                     "provider mismatch fallback");
     if (strcmp(mode, "control") == 0)
         return Run_Control();
+    if (strcmp(mode, "lower-provider") == 0)
+        return Run_Lowering_Mode
+                   (DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT,
+                    FALSE,
+                    getenv("OPEN64_AIO11_ARTIFACT"));
+    if (strcmp(mode, "lower-fallback") == 0)
+        return Run_Lowering_Mode
+                   (DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT,
+                    FALSE,
+                    getenv("OPEN64_AIO11_ARTIFACT"));
+    if (strcmp(mode, "lower-reject") == 0)
+        return Run_Lowering_Mode
+                   (DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED, FALSE, NULL);
+    if (strcmp(mode, "lower-rollback") == 0)
+        return Run_Lowering_Mode
+                   (DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT, TRUE, NULL);
     return 1;
 }
