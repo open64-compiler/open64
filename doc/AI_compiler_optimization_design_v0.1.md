@@ -500,6 +500,19 @@ contract is documented in `AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md`.
 
 Runtime adaptation should not invent arbitrary schedules. The static compiler should generate legal variants, attach guards, and expose a selection policy. The runtime observes state and selects from certified variants.
 
+The first implemented AI-P10 slice follows this rule for the selected AIO-11
+rank-2 F4 `common.matmul.v1` plan. It preserves an unconditional direct
+implementation and adds a certified cuBLASLt variant guarded by two runtime
+buffer-alignment checks. Each check requires the corresponding operand address
+to be at least 16-byte aligned. The checks contribute explicit
+`runtime_selection` cost to AIO-2, and a false or missing observation reaches
+the direct fallback. Canonical tensor TY alignment is not strengthened by a
+runtime observation. This first slice is PU-local analysis and leaves binary
+WHIRL unchanged; executable conditional dispatch is a later application step.
+
+See `AI-COMPILER-OPTIMIZATION-AIO12-RUNTIME-VARIANT.md` for the record schema,
+invariants, compatibility boundary, and G15 certification.
+
 # 4 Top Three AI Compiler Research Opportunities
 
 The prior research opportunity analysis identified three architectural opportunities. They are not independent late passes. Each one spans the phase pipeline and requires persistent IR structures.
