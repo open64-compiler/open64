@@ -991,18 +991,20 @@ artifact.
     prospective boundary, and AIO-1 through AIO-11 require staged ownership
     cleanup as recorded in
     `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md`.
-20. [ ] Ownership M1: move AIO-2 plan-selection policy out of common while
-    preserving common candidate/cost/plan IR construction and exact selected
-    results.
-21. [ ] Ownership M2: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
-    keep graph/fact/snapshot/locality records and structural services common.
+20. [ ] Ownership M1: split AIO-11 physical implementation planning. Keep
+    provider capability and physical-plan IR in common; move candidate
+    discovery, capability/legality checks, costing, and selection into VHO.
+21. [ ] Ownership M2: move AIO-9 and AIO-10 tile-family and fetch/pipeline
+    decisions into VHO while preserving target-description and plan IR in
+    common and reserving canonical-loop realization for LNO.
 22. [ ] Ownership M3: move AIO-5 through AIO-8 candidate discovery, legality,
     cost, and selection into VHO while preserving record schemas and traces.
-23. [ ] Ownership M4: move AIO-9 through AIO-11 tile, fetch/pipeline, and
-    physical-plan decisions into VHO, leaving target and plan IR in common.
-24. [ ] Ownership M5: split tests by owner, rerun retained artifact
-    comparisons, and certify no binary WHIRL, mapped-image, runtime ABI, or
-    backend shared-library dependency regression.
+23. [ ] Ownership M4: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
+    keep graph/fact/snapshot/locality records and structural services common.
+24. [ ] Ownership M5: after all common callers have moved, relocate AIO-2
+    selection policy to the owning phase, split tests by owner, rerun retained
+    artifact comparisons, and certify no binary WHIRL, mapped-image, runtime
+    ABI, or backend shared-library dependency regression.
 
 ## Related Documents
 

@@ -77,30 +77,38 @@ common.
 
 ## Migration Order
 
-### Ownership M1: Selection Core
+The migration is consumer-first. Moving the common AIO-2 selector first would
+force its existing common callers to depend backward on VHO. Instead, move
+those consumers to their owning phase before relocating selection policy.
 
-Move `DSL_opt_plan_select()` policy to a phase-owned selection API while
-preserving candidate, cost, plan, and recorded-selection IR. Update callers
-without changing selected plans or retained artifacts.
+### Ownership M1: Physical Implementation Planning
 
-### Ownership M2: Fact Capture
+Split AIO-11 first. Common retains provider capability and physical-plan IR;
+VHO owns provider candidate discovery, capability/legality checks, cost, and
+selection. Existing executable lowering remains in VHO.
 
-Split AIO-1, AIO-3, and AIO-4. Common retains TensorEvolutionGraph,
-TensorAnalysisIR, TensorControlSnapshotIR, and TensorLocalityIR construction;
-VHO creates their contents from the active PU.
+### Ownership M2: Tile And Fetch Planning
+
+Split AIO-9 and AIO-10 tile-family and fetch/pipeline decisions into VHO.
+Preserve static target-description records in common and keep canonical-loop
+realization reserved for LNO.
 
 ### Ownership M3: Semantic Alternatives
 
 Split AIO-5 through AIO-8 candidate discovery, legality, cost, and selection
 into VHO. Preserve every common record and deterministic trace.
 
-### Ownership M4: Target Planning
+### Ownership M4: Fact Capture
 
-Split AIO-9 through AIO-11 tile, fetch/pipeline, and physical implementation
-decisions into VHO. Preserve static target-description records in common and
-keep executable lowering in VHO/LNO as appropriate.
+Split AIO-1, AIO-3, and AIO-4. Common retains TensorEvolutionGraph,
+TensorAnalysisIR, TensorControlSnapshotIR, and TensorLocalityIR construction;
+VHO creates their contents from the active PU.
 
-### Ownership M5: Certification
+### Ownership M5: Selection Core And Certification
+
+After no common caller remains, move `DSL_opt_plan_select()` policy to a
+phase-owned selection API while preserving candidate, cost, plan, and
+recorded-selection IR. Then:
 
 For every migrated milestone:
 
