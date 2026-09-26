@@ -991,7 +991,7 @@ artifact.
     prospective boundary, and AIO-1 through AIO-11 require staged ownership
     cleanup as recorded in
     `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md`.
-20. [ ] Ownership M1: split AIO-11 physical implementation planning. Keep
+20. [x] Ownership M1: split AIO-11 physical implementation planning. Keep
     provider capability and physical-plan IR in common; move candidate
     discovery, capability/legality checks, costing, and selection into VHO.
 21. [ ] Ownership M2: move AIO-9 and AIO-10 tile-family and fetch/pipeline

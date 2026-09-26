@@ -23,6 +23,7 @@ struct DSL_RUNTIME_VARIANT_ANALYSIS {
     ST_IDX owner_pu_st;
     const DSL_TENSOR_EVOLUTION_GRAPH *graph;
     const DSL_PHYSICAL_PLAN_ANALYSIS *physical;
+    const DSL_PHYSICAL_PLAN_IR *physical_ir;
     VHO_DSL_RUNTIME_VARIANT_CONTROL control;
     std::vector<DSL_RUNTIME_VARIANT_SITE_RECORD> sites;
     std::vector<DSL_RUNTIME_VARIANT_RECORD> variants;
@@ -334,7 +335,8 @@ VHO_DSL_Runtime_Variant_Create
         Current_PU_Info != pu || !DSL_Runtime_Control_Valid(*control) ||
         !DSL_Runtime_Variant_Owner_Valid(PU_Info_proc_sym(pu)) ||
         DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
-        !DSL_physical_plan_verify(physical, diagnostic)) {
+        !VHO_DSL_Physical_Plan_Verify(physical, diagnostic) ||
+        VHO_DSL_Physical_Plan_Get_IR(physical) == NULL) {
         DSL_Runtime_Variant_Report(diagnostic, "invalid create request", 0);
         return NULL;
     }
@@ -344,6 +346,7 @@ VHO_DSL_Runtime_Variant_Create
     analysis->owner_pu_st = PU_Info_proc_sym(pu);
     analysis->graph = graph;
     analysis->physical = physical;
+    analysis->physical_ir = VHO_DSL_Physical_Plan_Get_IR(physical);
     analysis->control = *control;
     analysis->ir = NULL;
     analysis->built = FALSE;
@@ -393,7 +396,7 @@ VHO_DSL_Runtime_Variant_Build
     }
 
     for (UINT32 id = 1;
-         id <= DSL_physical_plan_site_count(analysis->physical); ++id) {
+         id <= DSL_physical_plan_ir_site_count(analysis->physical_ir); ++id) {
         DSL_PHYSICAL_SITE_RECORD physical_site;
         DSL_PHYSICAL_IMPLEMENTATION_RECORD baseline;
         DSL_PHYSICAL_IMPLEMENTATION_RECORD selected;
@@ -401,13 +404,13 @@ VHO_DSL_Runtime_Variant_Build
         DSL_IR_NODE_RECORD node;
         DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
         DSL_TENSOR_EVOLUTION_NODE_RECORD evolution;
-        if (!DSL_physical_plan_get_site
-                 (analysis->physical, id, &physical_site) ||
-            !DSL_physical_plan_get_implementation
-                 (analysis->physical,
+        if (!DSL_physical_plan_ir_get_site
+                 (analysis->physical_ir, id, &physical_site) ||
+            !DSL_physical_plan_ir_get_implementation
+                 (analysis->physical_ir,
                   physical_site.baseline_implementation_id, &baseline) ||
-            !DSL_physical_plan_get_implementation
-                 (analysis->physical,
+            !DSL_physical_plan_ir_get_implementation
+                 (analysis->physical_ir,
                   physical_site.selected_implementation_id, &selected))
             return DSL_Runtime_Variant_Report
                        (diagnostic, "incomplete physical site", id);
@@ -540,7 +543,11 @@ VHO_DSL_Runtime_Variant_Verify
         DSL_runtime_variant_ir_guard_count(analysis->ir) !=
             analysis->guards.size() ||
         !DSL_tensor_evolution_verify(analysis->graph, diagnostic) ||
-        !DSL_physical_plan_verify(analysis->physical, diagnostic) ||
+        !VHO_DSL_Physical_Plan_Verify
+             (analysis->physical, diagnostic) ||
+        analysis->physical_ir !=
+            VHO_DSL_Physical_Plan_Get_IR(analysis->physical) ||
+        !DSL_physical_plan_ir_verify(analysis->physical_ir, diagnostic) ||
         analysis->sites.size() > analysis->control.max_sites)
         return DSL_Runtime_Variant_Report
                    (diagnostic, "invalid analysis", 0);
@@ -564,8 +571,8 @@ VHO_DSL_Runtime_Variant_Verify
              site.selected_variant_id != 0) ||
             site.selection_policy != DSL_RUNTIME_SELECTION_FIRST_MATCH ||
             site.reserved != 0 ||
-            !DSL_physical_plan_get_site
-                 (analysis->physical, site.physical_site_id,
+            !DSL_physical_plan_ir_get_site
+                 (analysis->physical_ir, site.physical_site_id,
                   &physical_site) ||
             physical_site.owner_pu_st != site.owner_pu_st ||
             physical_site.semantic_node_id != site.semantic_node_id ||
@@ -597,8 +604,8 @@ VHO_DSL_Runtime_Variant_Verify
                 !DSL_runtime_variant_ir_get_variant
                      (analysis->ir, variant.id, &ir_variant) ||
                 memcmp(&variant, &ir_variant, sizeof(variant)) != 0 ||
-                !DSL_physical_plan_get_implementation
-                     (analysis->physical,
+                !DSL_physical_plan_ir_get_implementation
+                     (analysis->physical_ir,
                       variant.physical_implementation_id,
                       &implementation) ||
                 implementation.site_id != site.physical_site_id ||
@@ -804,8 +811,8 @@ VHO_DSL_Runtime_Variant_Print
             const DSL_RUNTIME_VARIANT_RECORD &variant =
                 analysis->variants[site.first_variant_id - 1 + j];
             DSL_PHYSICAL_IMPLEMENTATION_RECORD implementation;
-            (void)DSL_physical_plan_get_implementation
-                      (analysis->physical,
+            (void)DSL_physical_plan_ir_get_implementation
+                      (analysis->physical_ir,
                        variant.physical_implementation_id,
                        &implementation);
             fprintf(file,

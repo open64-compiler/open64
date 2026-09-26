@@ -75,6 +75,7 @@ typedef struct {
     ST *runtime_swiglu;
     ST *runtime_scatter;
     const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan;
+    const DSL_PHYSICAL_PLAN_IR *physical_plan_ir;
 } VHO_DSL_LOWER_CONTEXT;
 
 typedef char VHO_DSL_Runtime_Cublaslt_Provider_Matches
@@ -1081,8 +1082,8 @@ VHO_DSL_Build_Runtime_Call
                               value_kind, sizeof(value_kind)) &&
         strcmp(value_kind, "external_data") == 0;
     if (dsl_operator == OPR_DSLMATMUL && context->physical_plan != NULL &&
-        DSL_physical_plan_find_selected
-            (context->physical_plan, image_node_id, &physical_site,
+        DSL_physical_plan_ir_find_selected
+            (context->physical_plan_ir, image_node_id, &physical_site,
              &physical_implementation))
         physical_matmul = physical_implementation.provider ==
                           DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT;
@@ -1782,21 +1783,28 @@ VHO_DSL_Preflight_Physical_Plan
 {
     if (physical_plan == NULL)
         return TRUE;
-    if (!DSL_physical_plan_verify(physical_plan, context->diagnostic))
+    if (!VHO_DSL_Physical_Plan_Verify
+             (physical_plan, context->diagnostic))
         return VHO_DSL_Lower_Report
                    (context, "selected physical plan is invalid");
+    const DSL_PHYSICAL_PLAN_IR *physical_ir =
+        VHO_DSL_Physical_Plan_Get_IR(physical_plan);
+    if (physical_ir == NULL)
+        return VHO_DSL_Lower_Report
+                   (context, "selected physical plan IR is missing");
+    context->physical_plan_ir = physical_ir;
 
-    UINT32 site_count = DSL_physical_plan_site_count(physical_plan);
+    UINT32 site_count = DSL_physical_plan_ir_site_count(physical_ir);
     for (UINT32 id = 1; id <= site_count; ++id) {
         DSL_PHYSICAL_SITE_RECORD site;
         DSL_PHYSICAL_IMPLEMENTATION_RECORD implementation;
         DSL_PROVIDER_CAPABILITY_RECORD capability;
         DSL_IR_NODE_RECORD node;
         DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
-        if (!DSL_physical_plan_get_site(physical_plan, id, &site) ||
+        if (!DSL_physical_plan_ir_get_site(physical_ir, id, &site) ||
             site.owner_pu_st != PU_Info_proc_sym(pu_info) ||
-            !DSL_physical_plan_get_implementation
-                 (physical_plan, site.selected_implementation_id,
+            !DSL_physical_plan_ir_get_implementation
+                 (physical_ir, site.selected_implementation_id,
                   &implementation) ||
             implementation.site_id != site.id ||
             implementation.legality != DSL_OPT_LEGALITY_PROVEN ||
@@ -1816,8 +1824,8 @@ VHO_DSL_Preflight_Physical_Plan
 
         for (UINT32 prior = 1; prior < id; ++prior) {
             DSL_PHYSICAL_SITE_RECORD prior_site;
-            if (!DSL_physical_plan_get_site
-                     (physical_plan, prior, &prior_site) ||
+            if (!DSL_physical_plan_ir_get_site
+                     (physical_ir, prior, &prior_site) ||
                 prior_site.semantic_node_id == site.semantic_node_id)
                 return VHO_DSL_Lower_Report
                            (context,
@@ -1857,8 +1865,8 @@ VHO_DSL_Preflight_Physical_Plan
                  DSL_PHYSICAL_IMPLEMENTATION_FLAG_PROVIDER_AVAILABLE) == 0 ||
                 implementation.fallback_implementation_id !=
                     site.baseline_implementation_id ||
-                !DSL_physical_plan_get_implementation
-                     (physical_plan, implementation.fallback_implementation_id,
+                !DSL_physical_plan_ir_get_implementation
+                     (physical_ir, implementation.fallback_implementation_id,
                       &fallback) ||
                 fallback.provider != DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT)
                 return VHO_DSL_Lower_Report
@@ -1916,6 +1924,7 @@ VHO_DSL_Lower_Verified_Engine
     context.runtime_swiglu = NULL;
     context.runtime_scatter = NULL;
     context.physical_plan = physical_plan;
+    context.physical_plan_ir = NULL;
 
     BOOL valid = pu_info != NULL && tree != NULL;
     BOOL preflight_valid = FALSE;

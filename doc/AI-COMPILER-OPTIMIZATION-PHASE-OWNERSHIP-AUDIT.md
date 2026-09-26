@@ -53,7 +53,7 @@ The following must not remain in common:
 | AIO-8 | `dsl_residency_candidate` and `dsl_memory_hierarchy` | Partial | Static target memory-hierarchy descriptors and common residency records conform. Residency candidate formation, capacity/resource legality, cost construction, and selection in `dsl_residency_candidate` move to VHO. |
 | AIO-9 | `dsl_tile_candidate` | Needs split | Tile site/plan/stage records remain common. Matmul shape capture, target/resource legality, tile-family generation, cost construction, and selection move to VHO initially; canonical-loop realization belongs to LNO when introduced. |
 | AIO-10 | `dsl_fetch_pipeline` | Needs split | Fetch/pipeline records remain common. Movement-plan generation, overlap estimates, barrier/resource legality, cost construction, and selection move to VHO. |
-| AIO-11 | `dsl_physical_plan` | Needs split | Provider capability and physical-plan records remain common. Provider candidate discovery, capability matching, cost construction, and implementation selection move to VHO. Existing executable lowering in `be/vho/dsl_lower.cxx` is correctly phase-owned. |
+| AIO-11 | `dsl_physical_plan` plus `dsl_physical_plan_opt` | Conforms after Ownership M1 | Common owns provider capability and CommonPhysicalPlanIR records, bulk construction, structural verification, access, and generic printing. VHO owns provider candidate discovery, capability/legality checks, cost construction, implementation selection, semantic verification, and executable lowering. |
 | AIO-12 | `dsl_runtime_variant` plus `dsl_runtime_variant_opt` | Conforms after ownership correction | Common owns RuntimeVariantIR creation and structural services. VHO owns fact capture, capability checks, candidate/cost construction, selection, semantic verification, and guard evaluation. |
 | AIO-13 | Not implemented | Boundary specified | Telemetry records and generic construction may be common. Feedback collection, profile interpretation, cost-model updates, and re-selection belong to the consuming phase; cross-PU aggregation requires explicit IPA/runtime design. |
 
@@ -83,9 +83,11 @@ those consumers to their owning phase before relocating selection policy.
 
 ### Ownership M1: Physical Implementation Planning
 
-Split AIO-11 first. Common retains provider capability and physical-plan IR;
-VHO owns provider candidate discovery, capability/legality checks, cost, and
-selection. Existing executable lowering remains in VHO.
+Completed. Common retains provider capability and physical-plan IR; VHO owns
+provider candidate discovery, capability/legality checks, cost, selection, and
+semantic verification. Existing executable lowering remains in VHO. The
+linked AIO-11 and AIO-12 lanes prove byte-identical analysis-only WHIRL and
+unchanged downstream runtime-variant behavior.
 
 ### Ownership M2: Tile And Fetch Planning
 

@@ -30,6 +30,24 @@ The selector does not replace target lowering, the Open64 runtime interface,
 LNO dependence analysis, or provider libraries. It prepares a complete,
 reviewable choice for those established boundaries.
 
+## Implementation Ownership
+
+The implementation follows the project phase-ownership boundary:
+
+- `common/com/dsl_physical_plan.{h,cxx}` defines the physical-plan records,
+  provider capability records, policy-free bulk construction, structural
+  verification, access, and generic printing;
+- `be/vho/dsl_physical_plan_opt.{h,cxx}` inspects the active PU and preceding
+  AIO analyses, matches capabilities, forms implementation candidates and
+  costs, selects a plan, performs semantic verification, and materializes the
+  completed common IR;
+- `be/vho/dsl_lower.cxx` owns application of the selected physical plan.
+
+Common code neither captures an active PU nor decides legality, cost,
+profitability, or selection. VHO publishes a completed
+`CommonPhysicalPlanIR`; downstream consumers first verify the VHO analysis and
+then inspect its read-only common IR view.
+
 ## CommonPhysicalPlanIR
 
 Each physical site identifies one logical DSL result and the selected AIO-9
