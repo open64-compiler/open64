@@ -897,6 +897,32 @@ DSL_physical_plan_get_implementation
     return TRUE;
 }
 
+BOOL
+DSL_physical_plan_find_selected
+        (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
+         DSL_IR_NODE_ID semantic_node_id,
+         DSL_PHYSICAL_SITE_RECORD *site,
+         DSL_PHYSICAL_IMPLEMENTATION_RECORD *implementation)
+{
+    if (analysis == NULL || semantic_node_id == DSL_IR_NODE_INVALID_ID ||
+        site == NULL || implementation == NULL)
+        return FALSE;
+    for (UINT32 i = 0; i < analysis->sites.size(); ++i) {
+        const DSL_PHYSICAL_SITE_RECORD &candidate = analysis->sites[i];
+        if (candidate.semantic_node_id != semantic_node_id)
+            continue;
+        if (candidate.selected_implementation_id == 0 ||
+            candidate.selected_implementation_id >
+                analysis->implementations.size())
+            return FALSE;
+        *site = candidate;
+        *implementation = analysis->implementations
+                              [candidate.selected_implementation_id - 1];
+        return TRUE;
+    }
+    return FALSE;
+}
+
 const DSL_OPT_PLAN_CONTEXT *
 DSL_physical_plan_get_plan_context
         (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis, DSL_PHYSICAL_SITE_ID id)

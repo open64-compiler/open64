@@ -5,8 +5,9 @@
 /*
  * AIO-11 PU-local physical implementation selection. The first slice compares
  * complete baseline, generated-kernel, and reviewed-provider plans without
- * rewriting executable or binary WHIRL. Provider lowering is added one family
- * at a time after this selector contract. Design:
+ * rewriting executable or binary WHIRL during selection. Reviewed provider
+ * lowering consumes this analysis one family at a time at the normal VHO DSL
+ * lowering boundary. Design:
  * doc/AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md.
  */
 
@@ -175,6 +176,12 @@ extern BOOL DSL_physical_plan_get_implementation
                                 (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
                                  DSL_PHYSICAL_IMPLEMENTATION_ID id,
                                  DSL_PHYSICAL_IMPLEMENTATION_RECORD *record);
+extern BOOL DSL_physical_plan_find_selected
+                                (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
+                                 DSL_IR_NODE_ID semantic_node_id,
+                                 DSL_PHYSICAL_SITE_RECORD *site,
+                                 DSL_PHYSICAL_IMPLEMENTATION_RECORD
+                                     *implementation);
 extern const DSL_OPT_PLAN_CONTEXT *DSL_physical_plan_get_plan_context
                                 (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
                                  DSL_PHYSICAL_SITE_ID id);

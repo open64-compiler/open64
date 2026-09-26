@@ -15,6 +15,7 @@ extern "C" {
 
 #define OPEN64_DSL_RUNTIME_ABI_VERSION 1
 #define OPEN64_DSL_TENSOR_DESCRIPTOR_V1_SIZE 64
+#define OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE 48
 
 typedef void *OPEN64_DSL_TENSOR_HANDLE;
 typedef void *OPEN64_DSL_STATE_HANDLE;
@@ -94,6 +95,36 @@ typedef enum {
 } OPEN64_DSL_RUNTIME_MATMUL_FLAGS;
 
 typedef enum {
+    OPEN64_DSL_PHYSICAL_PROVIDER_UNSPECIFIED = 0,
+    OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT = 1,
+    OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED = 2,
+    OPEN64_DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT = 3,
+    OPEN64_DSL_PHYSICAL_PROVIDER_NVIDIA_CUDNN = 4,
+    OPEN64_DSL_PHYSICAL_PROVIDER_TRITON = 5,
+    OPEN64_DSL_PHYSICAL_PROVIDER_EXISTING_PTX = 6
+} OPEN64_DSL_RUNTIME_PHYSICAL_PROVIDER;
+
+typedef enum {
+    OPEN64_DSL_TARGET_PROFILE_UNSPECIFIED = 0,
+    OPEN64_DSL_TARGET_PROFILE_CPU_BASELINE = 1,
+    OPEN64_DSL_TARGET_PROFILE_NVIDIA_HOPPER = 2,
+    OPEN64_DSL_TARGET_PROFILE_NVIDIA_BLACKWELL = 3
+} OPEN64_DSL_RUNTIME_TARGET_PROFILE;
+
+typedef enum {
+    OPEN64_DSL_PHYSICAL_SCHEDULE_UNSPECIFIED = 0,
+    OPEN64_DSL_PHYSICAL_SCHEDULE_DIRECT = 1,
+    OPEN64_DSL_PHYSICAL_SCHEDULE_TILED_PIPELINE = 2,
+    OPEN64_DSL_PHYSICAL_SCHEDULE_PROVIDER_OWNED = 3
+} OPEN64_DSL_RUNTIME_PHYSICAL_SCHEDULE;
+
+typedef enum {
+    OPEN64_DSL_PHYSICAL_PLAN_FLAG_NONE = 0,
+    OPEN64_DSL_PHYSICAL_PLAN_FLAG_SEMANTICS_PRESERVING = 1u << 0,
+    OPEN64_DSL_PHYSICAL_PLAN_FLAG_ALLOW_FALLBACK = 1u << 1
+} OPEN64_DSL_RUNTIME_PHYSICAL_PLAN_FLAGS;
+
+typedef enum {
     OPEN64_DSL_OUTPUT_SEMANTIC_UNSPECIFIED = 0,
     OPEN64_DSL_OUTPUT_SEMANTIC_LOGITS = 1,
     OPEN64_DSL_OUTPUT_SEMANTIC_TOKEN_LOGITS = 2
@@ -159,6 +190,26 @@ typedef struct {
 } OPEN64_DSL_SCALAR_VALUE_V1;
 
 /*
+ * Fixed lowering-time implementation contract. The runtime first attempts the
+ * selected provider and uses fallback_provider when provider setup or
+ * execution fails before publishing the result handle. Stream, workspace,
+ * device-library handles, and their lifetimes remain runtime-owned.
+ */
+typedef struct {
+    uint16_t abi_version;
+    uint16_t header_size;
+    uint32_t total_size;
+    uint32_t provider;
+    uint32_t capability_id;
+    uint32_t target_profile;
+    uint32_t schedule;
+    uint32_t fallback_provider;
+    uint32_t flags;
+    uint64_t plan_identity;
+    uint64_t reserved;
+} OPEN64_DSL_PHYSICAL_PLAN_V1;
+
+/*
  * Each successful call returns a distinct owning handle.  A NULL handle is a
  * runtime failure.  The compiler stores successful handles in distinct PREGs;
  * the runtime owns allocation, placement, and eventual reclamation policy.
@@ -182,6 +233,12 @@ OPEN64_DSL_TENSOR_HANDLE __open64_dsl_matmul_v1
                                  OPEN64_DSL_TENSOR_HANDLE kid1,
                                  const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
                                  uint32_t flags);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_matmul_physical_v1
+                                (OPEN64_DSL_TENSOR_HANDLE kid0,
+                                 OPEN64_DSL_TENSOR_HANDLE kid1,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
+                                 uint32_t flags,
+                                 const OPEN64_DSL_PHYSICAL_PLAN_V1 *plan);
 OPEN64_DSL_TENSOR_HANDLE __open64_dsl_relu_v1
                                 (OPEN64_DSL_TENSOR_HANDLE kid0,
                                  const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);

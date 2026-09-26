@@ -431,10 +431,10 @@ dsl_fetch_pipeline_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_fetch_pipeline_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_physical_plan_contract_test: $(OBJECTS) controls.o \
-		dsl_physical_plan_contract_test.o
+dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
+		dsl_opt.o dsl_shape_refine.o dsl_physical_plan_contract_test.o
 	$(link.c++f) -o $@ dsl_physical_plan_contract_test.o controls.o \
-		$(OBJECTS) $(LDFLAGS)
+		dsl_lower.o dsl_opt.o dsl_shape_refine.o $(OBJECTS) $(LDFLAGS)
 
 dsl_physical_plan_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_physical_plan_contract_test.cxx
@@ -447,6 +447,12 @@ dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 
 dsl_lower_contract_test.o: \
 	$(BE_VHO_DIR)/tests/dsl_lower_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_lower.o: $(BE_VHO_DIR)/dsl_lower.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_opt.o: $(BE_VHO_DIR)/dsl_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_opt_contract_test: $(OBJECTS) controls.o dsl_opt.o \

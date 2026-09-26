@@ -8,6 +8,8 @@ typedef char DSL_runtime_descriptor_size_must_be_64
     [sizeof(OPEN64_DSL_TENSOR_DESCRIPTOR_V1) == 64 ? 1 : -1];
 typedef char DSL_runtime_scalar_size_must_be_24
     [sizeof(OPEN64_DSL_SCALAR_VALUE_V1) == 24 ? 1 : -1];
+typedef char DSL_runtime_physical_plan_size_must_be_48
+    [sizeof(OPEN64_DSL_PHYSICAL_PLAN_V1) == 48 ? 1 : -1];
 typedef char DSL_runtime_abi_version_must_be_1
     [OPEN64_DSL_RUNTIME_ABI_VERSION == 1 ? 1 : -1];
 typedef char DSL_runtime_logits_semantic_must_be_1
@@ -24,6 +26,8 @@ typedef char DSL_runtime_linear_transpose_weight_must_be_4
     [OPEN64_DSL_LINEAR_FLAG_TRANSPOSE_WEIGHT == 4 ? 1 : -1];
 typedef char DSL_runtime_spatial_reduction_must_be_1
     [OPEN64_DSL_REDUCTION_AXES_SPATIAL == 1 ? 1 : -1];
+typedef char DSL_runtime_cublaslt_provider_must_be_3
+    [OPEN64_DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT == 3 ? 1 : -1];
 
 int
 main(void)
@@ -39,6 +43,11 @@ main(void)
          const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *, uint32_t, uint32_t,
          uint32_t, OPEN64_DSL_STATE_HANDLE *, OPEN64_DSL_STATE_HANDLE *) =
             &__open64_dsl_attention_v2;
+    OPEN64_DSL_TENSOR_HANDLE (*physical_matmul)
+        (OPEN64_DSL_TENSOR_HANDLE, OPEN64_DSL_TENSOR_HANDLE,
+         const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *, uint32_t,
+         const OPEN64_DSL_PHYSICAL_PLAN_V1 *) =
+            &__open64_dsl_matmul_physical_v1;
     OPEN64_DSL_TENSOR_DESCRIPTOR_V1 descriptor;
     descriptor.abi_version = OPEN64_DSL_RUNTIME_ABI_VERSION;
     descriptor.header_size = OPEN64_DSL_TENSOR_DESCRIPTOR_V1_SIZE;
@@ -51,5 +60,6 @@ main(void)
     descriptor.quantization = OPEN64_DSL_QUANTIZATION_NONE;
     descriptor.runtime_state = OPEN64_DSL_RUNTIME_STATE_STATIC;
     return descriptor.header_size == sizeof(descriptor) &&
-           rotary_v2 != 0 && attention_v2 != 0 ? 0 : 1;
+           rotary_v2 != 0 && attention_v2 != 0 && physical_matmul != 0 ?
+           0 : 1;
 }
