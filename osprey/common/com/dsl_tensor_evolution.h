@@ -122,6 +122,13 @@ extern BOOL DSL_Tensor_Evolution_Add_Tile
                                  DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
                                  DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id,
                                  FILE *diagnostic);
+extern BOOL DSL_Tensor_Evolution_Add_Staged_Buffer
+                                (DSL_TENSOR_EVOLUTION_GRAPH *graph,
+                                 DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
+                                 UINT32 representation_descriptor_id,
+                                 DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
+                                 DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id,
+                                 FILE *diagnostic);
 extern BOOL DSL_Tensor_Evolution_Verify
                                 (const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  FILE *diagnostic);
