@@ -708,6 +708,10 @@ Deferred beyond this slice:
 
 ### AIO-11: AI-P9 Physical Plan And Implementation Selection
 
+Status: implemented as a selector-only, runtime-only, per-PU vertical slice on
+2026-09-25. `CommonPhysicalPlanIR` compares complete direct, generated, and
+reviewed-provider plans without rewriting executable or binary WHIRL.
+
 Actions:
 
 1. Compare complete legal plans, not isolated transformations.
@@ -725,6 +729,29 @@ Acceptance:
 - `-O0` remains executable without optional search.
 
 PR boundary: selector first, then one provider/lowering family at a time.
+
+Implemented first vertical slice:
+
+- exact consumption of selected AIO-9 tile and AIO-10 fetch/pipeline plans;
+- reviewed, versioned capability records for direct Open64, generated Open64,
+  cuBLASLt, cuDNN, Triton, and existing PTX alternatives;
+- complete AIO-2 candidate, cost, legality, fallback, and deterministic
+  selection evidence for every physical implementation;
+- explicit provider mismatch and provider-unavailable rejection;
+- mandatory direct baseline and deterministic fallback;
+- `-O0` direct-baseline-only behavior;
+- PU-local lifetime, immutable tensor/operator identity, and byte-identical
+  before/after/repeat binary and `ir_b2a -st -src` evidence;
+- independent generation, selection, and fail-closed application controls.
+
+Deferred beyond this slice:
+
+- executable generated-loop/kernel construction and atomic WN application;
+- concrete cuBLASLt, cuDNN, Triton, or existing-PTX lowering families;
+- provider ABI, runtime handle, stream, workspace, and error/fallback wiring;
+- exact physical layout, alignment, address-space, target-instruction, and
+  measured-performance validation;
+- AIO-12 runtime variants, mapped publication, and explicit IPA summaries.
 
 ### AIO-12: AI-P10 Runtime Variants
 
@@ -892,6 +919,14 @@ artifact.
 14. [x] Execute the first `AIO-9` vertical slice: construct explicit G0-G11
     hierarchical tile-plan candidates with distinct Hopper/Blackwell families,
     AIO-2 cost/selection evidence, and no executable or binary WHIRL rewrite.
+15. [x] Execute the first `AIO-10` vertical slice: construct demand, vector,
+    asynchronous-copy, and multidimensional-async movement/pipeline plans from
+    the selected tile without executable or binary WHIRL rewrite.
+16. [x] Execute the selector-first `AIO-11` vertical slice: compare complete
+    direct, generated, and reviewed-provider physical plans with deterministic
+    fallback and no executable or binary WHIRL rewrite.
+17. [ ] Implement one reviewed AIO-11 provider or generated-kernel lowering
+    family with atomic WHIRL application and retained before/after evidence.
 
 ## Related Documents
 
@@ -918,6 +953,11 @@ artifact.
 - `AI-COMPILER-OPTIMIZATION-AIO9-HIERARCHICAL-TILING.md` - explicit G0-G11
   tile hierarchy, typed target/resource evidence, AIO-2 plans, compatibility,
   certification, and executable-transformation boundary.
+- `AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md` - selected-tile movement,
+  buffering, issue/wait, overlap cost, target capability, and fallback plans.
+- `AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md` - complete direct,
+  generated, and reviewed-provider alternatives, capability validation,
+  deterministic fallback, selection, and executable-application boundary.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion
   candidate skeleton, legality, cost, fallback, selection, and certification.
 - `VHO-DSL-OPTIMIZATION-PLAN.md` - fixed VHO DSL optimization pipeline and

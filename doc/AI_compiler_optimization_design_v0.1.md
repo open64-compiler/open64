@@ -769,6 +769,53 @@ raw/hidden/unhidden cost, deterministic selection, and byte-identical binary
 WHIRL. The concrete first-slice contract is in
 `AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md`.
 
+## 6C AI-P9 Physical Plan And Implementation Selection Rationale
+
+### 6C.1 Optimization Problem And Inputs
+
+A legal tile and movement pipeline do not identify the implementation that
+should execute them. The compiler may retain direct DSL execution, generate a
+kernel, call a reviewed library, select a Triton implementation, or use an
+existing target kernel. AI-P9 consumes the semantic operator and tensor
+identity, selected tile, selected movement pipeline, complete resource and
+synchronization costs, target profile, and reviewed provider capabilities. It
+must compare complete implementations rather than choose one local scheduling
+decision in isolation.
+
+### 6C.2 Candidate Space And Performance Mechanism
+
+Each alternative binds a provider, implementation kind, target capability,
+tile, movement plan, schedule, fallback, and stable identity. A generated
+kernel can exploit compiler-selected tiling and overlap. A library may provide
+a highly tuned implementation but add launch, workspace, layout, and ABI
+costs. An existing kernel can avoid compilation cost but may constrain shapes
+and layouts. The direct implementation remains the semantic baseline.
+
+The first implementation uses deterministic low-confidence relative compute,
+memory, synchronization, and launch terms. These terms establish complete-plan
+selection and do not claim measured performance. Later target models,
+profiling, and autotuning may refine the estimates without weakening legality.
+
+### 6C.3 Legality, Cost, And Fallback
+
+Selection requires an exact versioned capability match for logical operator,
+dtype, rank, target profile, and runtime availability. Generated plans also
+require proven selected tile and pipeline legality. Unknown evidence remains
+unknown; provider mismatch and unavailability are explicit rejections. Every
+nonbaseline plan names the direct implementation as a deterministic fallback.
+`-O0` keeps only that direct baseline and performs no optional search.
+
+### 6C.4 Ownership Boundary And Evidence
+
+AI-P9 owns physical implementation comparison and selection. It does not by
+itself emit provider calls, generate instructions, allocate storage, or bind a
+runtime ABI. The first selector is PU-local and runtime-only, so provider names
+appear in analysis evidence but never in executable WHIRL. Each later provider
+or generated-kernel family must add a reviewed atomic prepare/apply/postprocess
+transaction, concrete target and ABI validation, and retained before/after
+`.B` and `ir_b2a -st -src` evidence. The concrete selector contract is in
+`AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md`.
+
 # 7 Candidate Generation And Profitability Architecture
 
 Candidate generation should produce a candidate tree rather than a sequence of independent pass decisions. Fusion, layout, placement, sharding, tiling, memory residency, fetch, pipeline, communication, and runtime-variant choices become branches within OptimizationCandidateIR and are evaluated as OptimizationPlanIR instances.
