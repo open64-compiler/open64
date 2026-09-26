@@ -208,71 +208,71 @@ typedef struct {
     UINT32 rejected_plan_count;
 } DSL_OPT_SELECTION_RESULT;
 
-extern DSL_OPT_PLAN_CONTEXT *DSL_Opt_Plan_Create
+extern DSL_OPT_PLAN_CONTEXT *DSL_opt_plan_create
                                 (struct pu_info *pu,
                                  const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_OPT_PLAN_BUDGET *budget,
                                  FILE *diagnostic);
-extern void DSL_Opt_Plan_Destroy (DSL_OPT_PLAN_CONTEXT *context);
-extern BOOL DSL_Opt_Plan_Add_Candidate
+extern void DSL_opt_plan_destroy (DSL_OPT_PLAN_CONTEXT *context);
+extern BOOL DSL_opt_plan_add_candidate
                                 (DSL_OPT_PLAN_CONTEXT *context,
                                  const DSL_OPT_CANDIDATE_INPUT *input,
                                  DSL_OPT_CANDIDATE_ID *candidate_id,
                                  FILE *diagnostic);
-extern BOOL DSL_Opt_Plan_Add_Cost
+extern BOOL DSL_opt_plan_add_cost
                                 (DSL_OPT_PLAN_CONTEXT *context,
                                  const DSL_OPT_COST_INPUT *input,
                                  DSL_OPT_COST_ID *cost_id,
                                  FILE *diagnostic);
-extern BOOL DSL_Opt_Plan_Add_Plan
+extern BOOL DSL_opt_plan_add_plan
                                 (DSL_OPT_PLAN_CONTEXT *context,
                                  const DSL_OPT_PLAN_INPUT *input,
                                  DSL_OPT_PLAN_ID *plan_id,
                                  FILE *diagnostic);
-extern BOOL DSL_Opt_Plan_Select
+extern BOOL DSL_opt_plan_select
                                 (DSL_OPT_PLAN_CONTEXT *context,
                                  UINT32 target_profile_id,
                                  DSL_OPT_SELECTION_RESULT *result,
                                  FILE *diagnostic);
-extern BOOL DSL_Opt_Plan_Verify
+extern BOOL DSL_opt_plan_verify
                                 (const DSL_OPT_PLAN_CONTEXT *context,
                                  FILE *diagnostic);
-extern void DSL_Opt_Plan_Print
+extern void DSL_opt_plan_print
                                 (FILE *file,
                                  const DSL_OPT_PLAN_CONTEXT *context);
-extern UINT32 DSL_Opt_Plan_Candidate_Count
+extern UINT32 DSL_opt_plan_candidate_count
                                 (const DSL_OPT_PLAN_CONTEXT *context);
-extern UINT32 DSL_Opt_Plan_Cost_Count
+extern UINT32 DSL_opt_plan_cost_count
                                 (const DSL_OPT_PLAN_CONTEXT *context);
-extern UINT32 DSL_Opt_Plan_Plan_Count
+extern UINT32 DSL_opt_plan_plan_count
                                 (const DSL_OPT_PLAN_CONTEXT *context);
-extern BOOL DSL_Opt_Plan_Get_Candidate
+extern BOOL DSL_opt_plan_get_candidate
                                 (const DSL_OPT_PLAN_CONTEXT *context,
                                  DSL_OPT_CANDIDATE_ID id,
                                  DSL_OPT_CANDIDATE_RECORD *record);
-extern BOOL DSL_Opt_Plan_Get_Cost
+extern BOOL DSL_opt_plan_get_cost
                                 (const DSL_OPT_PLAN_CONTEXT *context,
                                  DSL_OPT_COST_ID id,
                                  DSL_OPT_COST_RECORD *record);
-extern BOOL DSL_Opt_Plan_Get_Plan
+extern BOOL DSL_opt_plan_get_plan
                                 (const DSL_OPT_PLAN_CONTEXT *context,
                                  DSL_OPT_PLAN_ID id,
                                  DSL_OPT_PLAN_RECORD *record);
-extern BOOL DSL_Opt_Plan_Get_Member
+extern BOOL DSL_opt_plan_get_member
                                 (const DSL_OPT_PLAN_CONTEXT *context,
                                  DSL_OPT_PLAN_ID plan_id,
                                  UINT32 ordinal,
                                  DSL_OPT_PLAN_MEMBER_RECORD *record);
-extern BOOL DSL_Opt_Plan_Candidate_Budget_Exhausted
+extern BOOL DSL_opt_plan_candidate_budget_exhausted
                                 (const DSL_OPT_PLAN_CONTEXT *context);
-extern BOOL DSL_Opt_Plan_Plan_Budget_Exhausted
+extern BOOL DSL_opt_plan_plan_budget_exhausted
                                 (const DSL_OPT_PLAN_CONTEXT *context);
-extern const char *DSL_Opt_Candidate_Kind_Name (UINT32 kind);
-extern const char *DSL_Opt_Legality_Name (UINT32 legality);
-extern const char *DSL_Opt_Rejection_Reason_Name (UINT32 reason);
-extern const char *DSL_Opt_Cost_Term_Name (UINT32 term);
-extern const char *DSL_Opt_Cost_Unit_Name (UINT32 unit);
-extern const char *DSL_Opt_Cost_Confidence_Name (UINT32 confidence);
-extern const char *DSL_Opt_Cost_Evidence_Name (UINT32 evidence);
+extern const char *DSL_opt_candidate_kind_name (UINT32 kind);
+extern const char *DSL_opt_legality_name (UINT32 legality);
+extern const char *DSL_opt_rejection_reason_name (UINT32 reason);
+extern const char *DSL_opt_cost_term_name (UINT32 term);
+extern const char *DSL_opt_cost_unit_name (UINT32 unit);
+extern const char *DSL_opt_cost_confidence_name (UINT32 confidence);
+extern const char *DSL_opt_cost_evidence_name (UINT32 evidence);
 
 #endif /* dsl_opt_plan_INCLUDED */

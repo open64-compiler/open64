@@ -114,7 +114,7 @@ Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
       CODEREP *projectable = NULL;
 
       FmtAssert(exp->Kid_count() <= 2 &&
-                WOPT_DSL_Semantic_Info_Get
+                WOPT_DSL_semantic_info_get
                     (exp->Dsl_semantic_info_id(), &info),
                 ("Gen_exp_wn: invalid logical DSL CODEREP"));
       if (statement_wn != NULL &&
@@ -132,7 +132,7 @@ Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
         if (result != NULL)
           result_st = ST_st_idx(result);
       }
-      if (WOPT_DSL_Projection_Info(&info) &&
+      if (WOPT_DSL_projection_info(&info) &&
           exp->Kid_count() == 1) {
         projectable = exp->Get_opnd(0);
         if (projectable->Kind() == CK_VAR) {
@@ -147,15 +147,15 @@ Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
         WOPT_DSL_SEMANTIC_INFO standalone_info;
         if (projectable->Kind() == CK_OP &&
             projectable->Dsl_semantic_info(&projectable_info) &&
-            WOPT_DSL_Projectable_Info(&projectable_info) &&
-            WOPT_DSL_Uncombine_Projection_Semantics
+            WOPT_DSL_projectable_info(&projectable_info) &&
+            WOPT_DSL_uncombine_projection_semantics
                 (&info, &standalone_info)) {
           FmtAssert(projectable->Kid_count() == 2,
                     ("Gen_exp_wn: malformed logical DSL DIVREM"));
           for (INT i = 0; i < projectable->Kid_count(); ++i)
             dsl_kids[i] =
                 Gen_exp_wn(stmt, projectable->Get_opnd(i), emitter);
-          wn = WOPT_DSL_Emit_WN
+          wn = WOPT_DSL_emit_WN
                    (&standalone_info, original, result_st,
                     dsl_kids, projectable->Kid_count(), TFile);
           FmtAssert(wn != NULL,
@@ -166,7 +166,7 @@ Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
       for (INT i = 0; i < exp->Kid_count(); ++i)
         dsl_kids[i] =
             Gen_exp_wn(stmt, exp->Get_opnd(i), emitter);
-      wn = WOPT_DSL_Emit_WN
+      wn = WOPT_DSL_emit_WN
                (&info, original, result_st, dsl_kids,
                 exp->Kid_count(), TFile);
       FmtAssert(wn != NULL,

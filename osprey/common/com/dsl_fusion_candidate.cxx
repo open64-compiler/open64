@@ -41,21 +41,21 @@ struct DSL_FUSION_CANDIDATE_ANALYSIS {
     BOOL built;
 };
 
-static const char *DSL_fusion_pattern_name[] = {
+static const char *DSL_fusion_pattern_name_table[] = {
     "unknown", "matmul_bias_activation", "residual_activation",
     "generic_cluster"
 };
 
-static const char *DSL_fusion_member_role_name[] = {
+static const char *DSL_fusion_member_role_name_table[] = {
     "unknown", "matmul", "bias_add", "residual_add", "activation",
     "generic_contraction", "generic_pointwise"
 };
 
-static const char *DSL_fusion_boundary_kind_name[] = {
+static const char *DSL_fusion_boundary_kind_name_table[] = {
     "unknown", "input", "output", "alternative_cut"
 };
 
-static const char *DSL_fusion_fact_state_name[] = {
+static const char *DSL_fusion_fact_state_name_table[] = {
     "unknown", "proven", "rejected"
 };
 
@@ -91,39 +91,39 @@ DSL_Fusion_Active (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis)
 }
 
 const char *
-DSL_Fusion_Pattern_Name (UINT32 pattern)
+DSL_fusion_pattern_name (UINT32 pattern)
 {
-    return pattern < sizeof(DSL_fusion_pattern_name) /
-                         sizeof(DSL_fusion_pattern_name[0]) ?
-           DSL_fusion_pattern_name[pattern] : "unknown";
+    return pattern < sizeof(DSL_fusion_pattern_name_table) /
+                         sizeof(DSL_fusion_pattern_name_table[0]) ?
+           DSL_fusion_pattern_name_table[pattern] : "unknown";
 }
 
 const char *
-DSL_Fusion_Member_Role_Name (UINT32 role)
+DSL_fusion_member_role_name (UINT32 role)
 {
-    return role < sizeof(DSL_fusion_member_role_name) /
-                      sizeof(DSL_fusion_member_role_name[0]) ?
-           DSL_fusion_member_role_name[role] : "unknown";
+    return role < sizeof(DSL_fusion_member_role_name_table) /
+                      sizeof(DSL_fusion_member_role_name_table[0]) ?
+           DSL_fusion_member_role_name_table[role] : "unknown";
 }
 
 const char *
-DSL_Fusion_Boundary_Kind_Name (UINT32 kind)
+DSL_fusion_boundary_kind_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_fusion_boundary_kind_name) /
-                      sizeof(DSL_fusion_boundary_kind_name[0]) ?
-           DSL_fusion_boundary_kind_name[kind] : "unknown";
+    return kind < sizeof(DSL_fusion_boundary_kind_name_table) /
+                      sizeof(DSL_fusion_boundary_kind_name_table[0]) ?
+           DSL_fusion_boundary_kind_name_table[kind] : "unknown";
 }
 
 const char *
-DSL_Fusion_Fact_State_Name (UINT32 state)
+DSL_fusion_fact_state_name (UINT32 state)
 {
-    return state < sizeof(DSL_fusion_fact_state_name) /
-                       sizeof(DSL_fusion_fact_state_name[0]) ?
-           DSL_fusion_fact_state_name[state] : "unknown";
+    return state < sizeof(DSL_fusion_fact_state_name_table) /
+                       sizeof(DSL_fusion_fact_state_name_table[0]) ?
+           DSL_fusion_fact_state_name_table[state] : "unknown";
 }
 
 void
-DSL_Fusion_Control_Init (DSL_FUSION_CONTROL *control)
+DSL_fusion_control_init (DSL_FUSION_CONTROL *control)
 {
     if (control == NULL)
         return;
@@ -370,10 +370,10 @@ DSL_Fusion_Generic_Has_Forward_Consumer
     DSL_TENSOR_FACT_RECORD fact;
     DSL_TENSOR_USE_FACT_RECORD use;
     DSL_FUSIBILITY_INFO trait;
-    if (!DSL_Tensor_Analysis_Find_Fact
+    if (!DSL_tensor_analysis_find_fact
              (analysis->tensor_analysis, value_id, &fact) ||
         fact.use_count != 1 ||
-        !DSL_Tensor_Analysis_Get_Use
+        !DSL_tensor_analysis_get_use
              (analysis->tensor_analysis, fact.first_use_id, &use) ||
         !DSL_Operator_Get_Fusibility_Info
              ((DSL_OPERATOR)use.consumer_operator,
@@ -543,7 +543,7 @@ DSL_Fusion_Layout_State
     UINT32 aggregate = DSL_FUSION_FACT_PROVEN;
     for (UINT32 i = 0; i < match.eliminated_values.size(); ++i) {
         DSL_LOGICAL_LAYOUT_SITE_RECORD site;
-        if (!DSL_Logical_Layout_Find_Site
+        if (!DSL_logical_layout_find_site
                  (analysis->layout, match.eliminated_values[i], &site)) {
             aggregate = DSL_FUSION_FACT_UNKNOWN;
             continue;
@@ -552,7 +552,7 @@ DSL_Fusion_Layout_State
         BOOL found_unknown = FALSE;
         for (UINT32 j = 0; j < site.alternative_count; ++j) {
             DSL_LOGICAL_LAYOUT_ALTERNATIVE_RECORD alternative;
-            if (!DSL_Logical_Layout_Get_Alternative
+            if (!DSL_logical_layout_get_alternative
                      (analysis->layout, site.first_alternative_id + j,
                       &alternative)) {
                 found_unknown = TRUE;
@@ -609,7 +609,7 @@ DSL_Fusion_Classify
                 boundary.consumer_node_id == match.members[1]) {
                 DSL_TENSOR_FACT_RECORD bias;
                 found_bias = TRUE;
-                if (!DSL_Tensor_Analysis_Find_Fact
+                if (!DSL_tensor_analysis_find_fact
                          (analysis->tensor_analysis, boundary.value_id,
                           &bias) ||
                     (bias.value_role != DSL_TENSOR_VALUE_ROLE_CONSTANT &&
@@ -639,10 +639,10 @@ DSL_Fusion_Classify
         DSL_TENSOR_FACT_RECORD tensor;
         DSL_TENSOR_USE_FACT_RECORD use;
         DSL_TENSOR_LOCALITY_FACT_RECORD locality;
-        if (!DSL_Tensor_Analysis_Find_Fact
+        if (!DSL_tensor_analysis_find_fact
                  (analysis->tensor_analysis, match.eliminated_values[i],
                   &tensor) ||
-            !DSL_Tensor_Locality_Find_Fact
+            !DSL_tensor_locality_find_fact
                  (analysis->locality, match.eliminated_values[i],
                   &locality)) {
             control_exact = FALSE;
@@ -650,7 +650,7 @@ DSL_Fusion_Classify
             continue;
         }
         if (tensor.use_count != 1 ||
-            !DSL_Tensor_Analysis_Get_Use
+            !DSL_tensor_analysis_get_use
                  (analysis->tensor_analysis, tensor.first_use_id, &use) ||
             i + 1 >= match.members.size() ||
             use.consumer_node_id != match.members[i + 1] ||
@@ -670,7 +670,7 @@ DSL_Fusion_Classify
     for (UINT32 i = 0; i < match.boundaries.size(); ++i) {
         if (match.boundaries[i].kind == DSL_FUSION_BOUNDARY_INPUT) {
             DSL_TENSOR_LOCALITY_FACT_RECORD locality;
-            if (!DSL_Tensor_Locality_Find_Fact
+            if (!DSL_tensor_locality_find_fact
                      (analysis->locality, match.boundaries[i].value_id,
                       &locality) ||
                 locality.size_state != DSL_TENSOR_SIZE_STATIC ||
@@ -760,13 +760,13 @@ DSL_Fusion_Build_Plan
     DSL_OPT_CANDIDATE_ID member_id;
     DSL_OPT_SELECTION_RESULT selection;
 
-    if (!DSL_Tensor_Evolution_Find_Semantic_Root
+    if (!DSL_tensor_evolution_find_semantic_root
              (analysis->graph, site->result_value_id, &root))
         return DSL_Fusion_Report
                    (diagnostic, "missing result evolution root", site->id);
     budget.max_candidates = 2;
     budget.max_plans = 2;
-    DSL_OPT_PLAN_CONTEXT *context = DSL_Opt_Plan_Create
+    DSL_OPT_PLAN_CONTEXT *context = DSL_opt_plan_create
                                         (analysis->pu, analysis->graph,
                                          &budget, diagnostic);
     if (context == NULL)
@@ -781,10 +781,10 @@ DSL_Fusion_Build_Plan
     candidate.rejection_reason = DSL_OPT_REJECT_NONE;
     candidate.ordering_key = 1;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_BASELINE;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &site->baseline_candidate_id,
               diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
 
@@ -815,9 +815,9 @@ DSL_Fusion_Build_Plan
         (&cost.terms[DSL_OPT_COST_RUNTIME_SELECTION], 0,
          DSL_OPT_COST_CONFIDENCE_MEDIUM,
          DSL_OPT_COST_EVIDENCE_BASELINE_POLICY);
-    if (!DSL_Opt_Plan_Add_Cost
+    if (!DSL_opt_plan_add_cost
              (context, &cost, &baseline_cost_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
 
@@ -831,9 +831,9 @@ DSL_Fusion_Build_Plan
     plan.ordering_key = 1;
     plan.flags = DSL_OPT_PLAN_FLAG_BASELINE |
                  DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    if (!DSL_Opt_Plan_Add_Plan
+    if (!DSL_opt_plan_add_plan
              (context, &plan, &site->baseline_plan_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
 
@@ -847,10 +847,10 @@ DSL_Fusion_Build_Plan
     candidate.rejection_reason = site->rejection_reason;
     candidate.ordering_key = 2;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &site->fusion_candidate_id,
               diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
 
@@ -887,9 +887,9 @@ DSL_Fusion_Build_Plan
         (&cost.terms[DSL_OPT_COST_RUNTIME_SELECTION], 0,
          DSL_OPT_COST_CONFIDENCE_MEDIUM,
          DSL_OPT_COST_EVIDENCE_STATIC_ANALYSIS);
-    if (!DSL_Opt_Plan_Add_Cost
+    if (!DSL_opt_plan_add_cost
              (context, &cost, &fusion_cost_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
 
@@ -903,17 +903,17 @@ DSL_Fusion_Build_Plan
     plan.rejection_reason = site->rejection_reason;
     plan.ordering_key = 2;
     plan.flags = DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    if (!DSL_Opt_Plan_Add_Plan
+    if (!DSL_opt_plan_add_plan
              (context, &plan, &site->fusion_plan_id, diagnostic) ||
-        !DSL_Opt_Plan_Verify(context, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        !DSL_opt_plan_verify(context, diagnostic)) {
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     if (analysis->control.select_plans) {
-        if (!DSL_Opt_Plan_Select
+        if (!DSL_opt_plan_select
                  (context, analysis->control.target_profile_id,
                   &selection, diagnostic)) {
-            DSL_Opt_Plan_Destroy(context);
+            DSL_opt_plan_destroy(context);
             return FALSE;
         }
         site->selected_plan_id = selection.selected_plan_id;
@@ -923,19 +923,19 @@ DSL_Fusion_Build_Plan
 }
 
 DSL_FUSION_CANDIDATE_ANALYSIS *
-DSL_Fusion_Candidates_Create
+DSL_fusion_candidates_create
         (PU_Info *pu, const DSL_TENSOR_EVOLUTION_GRAPH *graph,
          const DSL_TENSOR_ANALYSIS *tensor_analysis,
          const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
          const DSL_FUSION_CONTROL *control, FILE *diagnostic)
 {
-    return DSL_Fusion_Candidates_Create_With_Layout
+    return DSL_fusion_candidates_create_with_layout
                (pu, graph, tensor_analysis, locality, NULL, control,
                 diagnostic);
 }
 
 DSL_FUSION_CANDIDATE_ANALYSIS *
-DSL_Fusion_Candidates_Create_With_Layout
+DSL_fusion_candidates_create_with_layout
         (PU_Info *pu, const DSL_TENSOR_EVOLUTION_GRAPH *graph,
          const DSL_TENSOR_ANALYSIS *tensor_analysis,
          const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
@@ -944,13 +944,13 @@ DSL_Fusion_Candidates_Create_With_Layout
 {
     if (pu == NULL || graph == NULL || tensor_analysis == NULL ||
         locality == NULL || control == NULL || Current_PU_Info != pu ||
-        DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
+        DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Fusion_Control_Valid(*control) ||
-        !DSL_Tensor_Evolution_Verify(graph, diagnostic) ||
-        !DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
-        !DSL_Tensor_Locality_Verify(locality, diagnostic) ||
+        !DSL_tensor_evolution_verify(graph, diagnostic) ||
+        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !DSL_tensor_locality_verify(locality, diagnostic) ||
         (layout != NULL &&
-         !DSL_Logical_Layout_Verify(layout, diagnostic))) {
+         !DSL_logical_layout_verify(layout, diagnostic))) {
         DSL_Fusion_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -968,17 +968,17 @@ DSL_Fusion_Candidates_Create_With_Layout
 }
 
 void
-DSL_Fusion_Candidates_Destroy (DSL_FUSION_CANDIDATE_ANALYSIS *analysis)
+DSL_fusion_candidates_destroy (DSL_FUSION_CANDIDATE_ANALYSIS *analysis)
 {
     if (analysis == NULL)
         return;
     for (UINT32 i = 0; i < analysis->plans.size(); ++i)
-        DSL_Opt_Plan_Destroy(analysis->plans[i]);
+        DSL_opt_plan_destroy(analysis->plans[i]);
     delete analysis;
 }
 
 BOOL
-DSL_Fusion_Candidates_Build
+DSL_fusion_candidates_build
         (DSL_FUSION_CANDIDATE_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Fusion_Active(analysis) || analysis->built)
@@ -988,11 +988,11 @@ DSL_Fusion_Candidates_Build
         return TRUE;
     }
     for (DSL_TENSOR_FACT_ID id = 1;
-         id <= DSL_Tensor_Analysis_Fact_Count(analysis->tensor_analysis);
+         id <= DSL_tensor_analysis_fact_count(analysis->tensor_analysis);
          ++id) {
         DSL_TENSOR_FACT_RECORD fact;
         DSL_FUSION_PATTERN_MATCH match;
-        if (!DSL_Tensor_Analysis_Get_Fact
+        if (!DSL_tensor_analysis_get_fact
                  (analysis->tensor_analysis, id, &fact) ||
             fact.producer_node_id == DSL_IR_NODE_INVALID_ID)
             continue;
@@ -1046,11 +1046,11 @@ DSL_Fusion_Candidates_Build
         analysis->sites.push_back(site);
     }
     analysis->built = TRUE;
-    return DSL_Fusion_Candidates_Verify(analysis, diagnostic);
+    return DSL_fusion_candidates_verify(analysis, diagnostic);
 }
 
 BOOL
-DSL_Fusion_Candidates_Verify
+DSL_fusion_candidates_verify
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Fusion_Active(analysis) || !analysis->built ||
@@ -1100,7 +1100,7 @@ DSL_Fusion_Candidates_Verify
              site.selected_plan_id == 0) ||
             (!analysis->control.select_plans &&
              site.selected_plan_id != 0) ||
-            !DSL_Opt_Plan_Verify(analysis->plans[i], diagnostic))
+            !DSL_opt_plan_verify(analysis->plans[i], diagnostic))
             return DSL_Fusion_Report
                        (diagnostic, "invalid fusion site", site.id);
         if ((site.legality == DSL_OPT_LEGALITY_PROVEN &&
@@ -1192,7 +1192,7 @@ DSL_Fusion_Print_U64 (FILE *file, UINT64 value)
 }
 
 void
-DSL_Fusion_Candidates_Print
+DSL_fusion_candidates_print
         (FILE *file, const DSL_FUSION_CANDIDATE_ANALYSIS *analysis)
 {
     if (file == NULL || analysis == NULL)
@@ -1221,16 +1221,16 @@ DSL_Fusion_Candidates_Print
                 "boundaries=%u legality=%s reason=%s semantic=%s "
                 "descriptor=%s effect=%s resource=%s layout=%s "
                 "materializations=%u bytes=",
-                site.id, DSL_Fusion_Pattern_Name(site.pattern),
+                site.id, DSL_fusion_pattern_name(site.pattern),
                 site.root_node_id, site.result_value_id,
                 site.member_count, site.boundary_count,
-                DSL_Opt_Legality_Name(site.legality),
-                DSL_Opt_Rejection_Reason_Name(site.rejection_reason),
-                DSL_Fusion_Fact_State_Name(site.semantic_state),
-                DSL_Fusion_Fact_State_Name(site.descriptor_state),
-                DSL_Fusion_Fact_State_Name(site.effect_state),
-                DSL_Fusion_Fact_State_Name(site.resource_state),
-                DSL_Fusion_Fact_State_Name(site.layout_state),
+                DSL_opt_legality_name(site.legality),
+                DSL_opt_rejection_reason_name(site.rejection_reason),
+                DSL_fusion_fact_state_name(site.semantic_state),
+                DSL_fusion_fact_state_name(site.descriptor_state),
+                DSL_fusion_fact_state_name(site.effect_state),
+                DSL_fusion_fact_state_name(site.resource_state),
+                DSL_fusion_fact_state_name(site.layout_state),
                 site.eliminated_materialization_count);
         DSL_Fusion_Print_U64(file, site.eliminated_materialization_bytes);
         fprintf(file, " live_growth_bytes=");
@@ -1247,7 +1247,7 @@ DSL_Fusion_Candidates_Print
             fprintf(file,
                     "    member %u ordinal=%u role=%s node=%u value=%u\n",
                     member.id, member.ordinal,
-                    DSL_Fusion_Member_Role_Name(member.role),
+                    DSL_fusion_member_role_name(member.role),
                     member.node_id, member.result_value_id);
         }
         for (UINT32 j = 0; j < site.boundary_count; ++j) {
@@ -1257,7 +1257,7 @@ DSL_Fusion_Candidates_Print
                     "    boundary %u kind=%s value=%u producer=%u "
                     "consumer=%u operand=",
                     boundary.id,
-                    DSL_Fusion_Boundary_Kind_Name(boundary.kind),
+                    DSL_fusion_boundary_kind_name(boundary.kind),
                     boundary.value_id, boundary.producer_node_id,
                     boundary.consumer_node_id);
             if (boundary.operand_ordinal ==
@@ -1266,33 +1266,33 @@ DSL_Fusion_Candidates_Print
             else
                 fprintf(file, "%u\n", boundary.operand_ordinal);
         }
-        DSL_Opt_Plan_Print(file, analysis->plans[i]);
+        DSL_opt_plan_print(file, analysis->plans[i]);
     }
 }
 
 UINT32
-DSL_Fusion_Candidates_Site_Count
+DSL_fusion_candidates_site_count
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->sites.size();
 }
 
 UINT32
-DSL_Fusion_Candidates_Member_Count
+DSL_fusion_candidates_member_count
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->members.size();
 }
 
 UINT32
-DSL_Fusion_Candidates_Boundary_Count
+DSL_fusion_candidates_boundary_count
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->boundaries.size();
 }
 
 BOOL
-DSL_Fusion_Candidates_Get_Site
+DSL_fusion_candidates_get_site
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
          DSL_FUSION_SITE_ID id, DSL_FUSION_SITE_RECORD *record)
 {
@@ -1304,7 +1304,7 @@ DSL_Fusion_Candidates_Get_Site
 }
 
 BOOL
-DSL_Fusion_Candidates_Get_Member
+DSL_fusion_candidates_get_member
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
          DSL_FUSION_MEMBER_ID id, DSL_FUSION_MEMBER_RECORD *record)
 {
@@ -1316,7 +1316,7 @@ DSL_Fusion_Candidates_Get_Member
 }
 
 BOOL
-DSL_Fusion_Candidates_Get_Boundary
+DSL_fusion_candidates_get_boundary
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
          DSL_FUSION_BOUNDARY_ID id, DSL_FUSION_BOUNDARY_RECORD *record)
 {
@@ -1328,7 +1328,7 @@ DSL_Fusion_Candidates_Get_Boundary
 }
 
 const DSL_OPT_PLAN_CONTEXT *
-DSL_Fusion_Candidates_Get_Plan_Context
+DSL_fusion_candidates_get_plan_context
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
          DSL_FUSION_SITE_ID id)
 {

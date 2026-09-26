@@ -112,7 +112,7 @@ an analysis result, not a tiled implementation and not a performance claim.
 
 ## Inspection And Certification
 
-`DSL_Opt_Plan_Print()` emits deterministic candidate, term, plan, fallback,
+`DSL_opt_plan_print()` emits deterministic candidate, term, plan, fallback,
 and selection evidence. The service is intentionally absent from `ir_b2a`
 because AIO-2 is runtime-only.
 

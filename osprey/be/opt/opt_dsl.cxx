@@ -124,7 +124,7 @@ WOPT_DSL_TCON_Index(ST_IDX st, TCON_IDX *tcon_idx)
 }
 
 BOOL
-WOPT_DSL_Import_Semantic_Info(const WN *wn, ST_IDX result_st,
+WOPT_DSL_import_semantic_info(const WN *wn, ST_IDX result_st,
                               const char *owner_pu,
                               WOPT_DSL_SEMANTIC_INFO *info,
                               FILE *diagnostic)
@@ -217,7 +217,7 @@ WOPT_DSL_Import_Semantic_Info(const WN *wn, ST_IDX result_st,
 }
 
 BOOL
-WOPT_DSL_Create_Folded_Tensor_Info
+WOPT_DSL_create_folded_tensor_info
     (const WOPT_DSL_SEMANTIC_INFO *origin, TCON_IDX result_tcon_idx,
      WOPT_DSL_SEMANTIC_INFO *result)
 {
@@ -242,7 +242,7 @@ WOPT_DSL_Create_Folded_Tensor_Info
 }
 
 BOOL
-WOPT_DSL_Fold_Compact_Tensors
+WOPT_DSL_fold_compact_tensors
     (const WOPT_DSL_SEMANTIC_INFO *origin,
      const TCON_IDX *operand_tcon_idx, UINT32 operand_count,
      WOPT_DSL_SEMANTIC_INFO *result, FILE *diagnostic)
@@ -312,7 +312,7 @@ WOPT_DSL_Fold_Compact_Tensors
               DSL_Tensor_Fold_Status_Name(status));
     return FALSE;
   }
-  return WOPT_DSL_Create_Folded_Tensor_Info
+  return WOPT_DSL_create_folded_tensor_info
              (origin, replacement.result_tcon_idx, result);
 }
 
@@ -399,7 +399,7 @@ WOPT_DSL_Binary_Payload(
 }
 
 WN *
-WOPT_DSL_Emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
+WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
                  const WN *original, ST_IDX result_st,
                  WN **kids, UINT32 kid_count, FILE *diagnostic)
 {

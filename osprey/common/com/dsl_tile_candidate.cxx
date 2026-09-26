@@ -52,18 +52,18 @@ struct DSL_TILE_ANALYSIS {
     BOOL built;
 };
 
-static const char *DSL_tile_phase_name[] = {
+static const char *DSL_tile_phase_name_table[] = {
     "P7.0", "P7.1", "P7.2", "P7.3", "P7.4", "P7.5",
     "P7.6", "P7.7", "P7.8", "P7.9", "P7.10", "P7.11"
 };
 
-static const char *DSL_tile_level_name[] = {
+static const char *DSL_tile_level_name_table[] = {
     "unknown", "problem", "output", "coalescing", "reduction",
     "shared", "resource", "thread", "register_reuse", "vector",
     "family", "warp", "instruction"
 };
 
-static const char *DSL_tile_family_name[] = {
+static const char *DSL_tile_family_name_table[] = {
     "unknown", "baseline", "cuda_64", "cuda_128", "blackwell_wide"
 };
 
@@ -71,7 +71,7 @@ static const char *DSL_tile_edge_name[] = {
     "unknown", "exact", "predicated"
 };
 
-static const char *DSL_tile_instruction_name[] = {
+static const char *DSL_tile_instruction_name_table[] = {
     "unknown", "scalar_fma", "vector_fma"
 };
 
@@ -122,30 +122,30 @@ DSL_Tile_Active (const DSL_TILE_ANALYSIS *analysis)
 }
 
 const char *
-DSL_Tile_Phase_Name (UINT32 phase)
+DSL_tile_phase_name (UINT32 phase)
 {
     return phase < DSL_TILE_PHASE_COUNT ?
-           DSL_tile_phase_name[phase] : "unknown";
+           DSL_tile_phase_name_table[phase] : "unknown";
 }
 
 const char *
-DSL_Tile_Level_Name (UINT32 level)
+DSL_tile_level_name (UINT32 level)
 {
-    return level < sizeof(DSL_tile_level_name) /
-                       sizeof(DSL_tile_level_name[0]) ?
-           DSL_tile_level_name[level] : "unknown";
+    return level < sizeof(DSL_tile_level_name_table) /
+                       sizeof(DSL_tile_level_name_table[0]) ?
+           DSL_tile_level_name_table[level] : "unknown";
 }
 
 const char *
-DSL_Tile_Family_Name (UINT32 family)
+DSL_tile_family_name (UINT32 family)
 {
-    return family < sizeof(DSL_tile_family_name) /
-                        sizeof(DSL_tile_family_name[0]) ?
-           DSL_tile_family_name[family] : "unknown";
+    return family < sizeof(DSL_tile_family_name_table) /
+                        sizeof(DSL_tile_family_name_table[0]) ?
+           DSL_tile_family_name_table[family] : "unknown";
 }
 
 const char *
-DSL_Tile_Edge_Policy_Name (UINT32 policy)
+DSL_tile_edge_policy_name (UINT32 policy)
 {
     return policy < sizeof(DSL_tile_edge_name) /
                         sizeof(DSL_tile_edge_name[0]) ?
@@ -153,15 +153,15 @@ DSL_Tile_Edge_Policy_Name (UINT32 policy)
 }
 
 const char *
-DSL_Tile_Instruction_Name (UINT32 instruction)
+DSL_tile_instruction_name (UINT32 instruction)
 {
-    return instruction < sizeof(DSL_tile_instruction_name) /
-                             sizeof(DSL_tile_instruction_name[0]) ?
-           DSL_tile_instruction_name[instruction] : "unknown";
+    return instruction < sizeof(DSL_tile_instruction_name_table) /
+                             sizeof(DSL_tile_instruction_name_table[0]) ?
+           DSL_tile_instruction_name_table[instruction] : "unknown";
 }
 
 void
-DSL_Tile_Control_Init (DSL_TILE_CONTROL *control)
+DSL_tile_control_init (DSL_TILE_CONTROL *control)
 {
     if (control == NULL)
         return;
@@ -326,28 +326,28 @@ DSL_Tile_Source_Evolution
          const DSL_TENSOR_FACT_RECORD &tensor,
          DSL_TENSOR_EVOLUTION_NODE_RECORD *source)
 {
-    if (!DSL_Tensor_Evolution_Find_Semantic_Root
+    if (!DSL_tensor_evolution_find_semantic_root
              (analysis->graph, tensor.value_id, source))
         return FALSE;
     if (analysis->residency == NULL)
         return TRUE;
     for (UINT32 site_id = 1;
-         site_id <= DSL_Residency_Site_Count(analysis->residency);
+         site_id <= DSL_residency_site_count(analysis->residency);
          ++site_id) {
         DSL_RESIDENCY_SITE_RECORD site;
-        if (!DSL_Residency_Get_Site
+        if (!DSL_residency_get_site
                  (analysis->residency, site_id, &site))
             return FALSE;
         if (site.semantic_value_id != tensor.value_id)
             continue;
         for (UINT32 i = 0; i < site.alternative_count; ++i) {
             DSL_RESIDENCY_ALTERNATIVE_RECORD alternative;
-            if (!DSL_Residency_Get_Alternative
+            if (!DSL_residency_get_alternative
                      (analysis->residency,
                       site.first_alternative_id + i, &alternative))
                 return FALSE;
             if (alternative.plan_id == site.selected_plan_id)
-                return DSL_Tensor_Evolution_Get_Node
+                return DSL_tensor_evolution_get_node
                            (analysis->graph,
                             alternative.result_evolution_node_id, source);
         }
@@ -535,7 +535,7 @@ DSL_Tile_Add_Optimization_Plan
     candidate.flags = (tile->flags & DSL_TILE_PLAN_FLAG_BASELINE) != 0 ?
                       DSL_OPT_CANDIDATE_FLAG_BASELINE :
                       DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &tile->candidate_id, diagnostic))
         return FALSE;
 
@@ -564,7 +564,7 @@ DSL_Tile_Add_Optimization_Plan
             DSL_Tile_Unknown_Cost(&cost.terms[i]);
     }
     DSL_OPT_COST_ID cost_id;
-    if (!DSL_Opt_Plan_Add_Cost(context, &cost, &cost_id, diagnostic))
+    if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic))
         return FALSE;
 
     DSL_OPT_CANDIDATE_ID member = tile->candidate_id;
@@ -582,7 +582,7 @@ DSL_Tile_Add_Optimization_Plan
     plan.flags = (tile->flags & DSL_TILE_PLAN_FLAG_BASELINE) != 0 ?
                  DSL_OPT_PLAN_FLAG_BASELINE :
                  DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    if (!DSL_Opt_Plan_Add_Plan
+    if (!DSL_opt_plan_add_plan
              (context, &plan, &tile->optimization_plan_id, diagnostic))
         return FALSE;
     if ((tile->flags & DSL_TILE_PLAN_FLAG_BASELINE) != 0)
@@ -739,10 +739,10 @@ DSL_Tile_Add_Family
     tile.warps_per_cta =
         DSL_Tile_Ceil_Div(tile.threads_per_cta, 32);
     tile.barrier_count = 2;
-    if (!DSL_Memory_Hierarchy_Find_Tier
+    if (!DSL_memory_hierarchy_find_tier
              (analysis->control.target_profile_id,
               DSL_MEMORY_TIER_SHARED, &shared) ||
-        !DSL_Memory_Hierarchy_Find_Tier
+        !DSL_memory_hierarchy_find_tier
              (analysis->control.target_profile_id,
               DSL_MEMORY_TIER_REGISTER, &registers))
         return DSL_Tile_Report(diagnostic, "missing target resources", tile.id);
@@ -763,7 +763,7 @@ DSL_Tile_Add_Family
     } else {
         DSL_Tile_Classify(locality, &tile);
     }
-    if (!DSL_Tensor_Evolution_Add_Tile
+    if (!DSL_tensor_evolution_add_tile
              (analysis->graph, source.id, tile.id,
               &tile.result_evolution_node_id, &tile.evolution_edge_id,
               diagnostic) ||
@@ -781,7 +781,7 @@ DSL_Tile_Add_Family
 }
 
 DSL_TILE_ANALYSIS *
-DSL_Tile_Create
+DSL_tile_create
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
          const DSL_TENSOR_ANALYSIS *tensor_analysis,
          const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
@@ -790,13 +790,13 @@ DSL_Tile_Create
 {
     if (pu == NULL || graph == NULL || tensor_analysis == NULL ||
         locality == NULL || control == NULL || Current_PU_Info != pu ||
-        DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
+        DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Tile_Control_Valid(*control) ||
-        !DSL_Tensor_Evolution_Verify(graph, diagnostic) ||
-        !DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
-        !DSL_Tensor_Locality_Verify(locality, diagnostic) ||
+        !DSL_tensor_evolution_verify(graph, diagnostic) ||
+        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !DSL_tensor_locality_verify(locality, diagnostic) ||
         (residency != NULL &&
-         !DSL_Residency_Verify(residency, diagnostic))) {
+         !DSL_residency_verify(residency, diagnostic))) {
         DSL_Tile_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -813,17 +813,17 @@ DSL_Tile_Create
 }
 
 void
-DSL_Tile_Destroy (DSL_TILE_ANALYSIS *analysis)
+DSL_tile_destroy (DSL_TILE_ANALYSIS *analysis)
 {
     if (analysis == NULL)
         return;
     for (UINT32 i = 0; i < analysis->plans.size(); ++i)
-        DSL_Opt_Plan_Destroy(analysis->plans[i]);
+        DSL_opt_plan_destroy(analysis->plans[i]);
     delete analysis;
 }
 
 BOOL
-DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
+DSL_tile_build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Tile_Active(analysis) || analysis->built)
         return DSL_Tile_Report(diagnostic, "analysis is not mutable", 0);
@@ -832,7 +832,7 @@ DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
         return TRUE;
     }
     for (DSL_TENSOR_FACT_ID id = 1;
-         id <= DSL_Tensor_Analysis_Fact_Count(analysis->tensor_analysis);
+         id <= DSL_tensor_analysis_fact_count(analysis->tensor_analysis);
          ++id) {
         DSL_TENSOR_FACT_RECORD tensor;
         DSL_TENSOR_LOCALITY_FACT_RECORD locality;
@@ -842,7 +842,7 @@ DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
         UINT64 n;
         UINT64 k;
         UINT64 element_bytes;
-        if (!DSL_Tensor_Analysis_Get_Fact
+        if (!DSL_tensor_analysis_get_fact
                  (analysis->tensor_analysis, id, &tensor) ||
             (analysis->control.focus_value_id != 0 &&
              tensor.value_id != analysis->control.focus_value_id))
@@ -853,7 +853,7 @@ DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
         if (analysis->sites.size() >= analysis->control.max_sites)
             return DSL_Tile_Report
                        (diagnostic, "tile site budget exhausted", id);
-        if (!DSL_Tensor_Locality_Find_Fact
+        if (!DSL_tensor_locality_find_fact
                  (analysis->locality, tensor.value_id, &locality) ||
             !DSL_Tile_Source_Evolution(analysis, tensor, &source))
             return DSL_Tile_Report
@@ -872,7 +872,7 @@ DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
         DSL_OPT_PLAN_BUDGET budget;
         budget.max_candidates = analysis->control.max_plans_per_site;
         budget.max_plans = analysis->control.max_plans_per_site;
-        DSL_OPT_PLAN_CONTEXT *context = DSL_Opt_Plan_Create
+        DSL_OPT_PLAN_CONTEXT *context = DSL_opt_plan_create
             (analysis->pu, analysis->graph, &budget, diagnostic);
         if (context == NULL)
             return FALSE;
@@ -910,7 +910,7 @@ DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
         }
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;
-            if (!DSL_Opt_Plan_Select
+            if (!DSL_opt_plan_select
                      (context, analysis->control.target_profile_id,
                       &selection, diagnostic))
                 return FALSE;
@@ -919,11 +919,11 @@ DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
         analysis->sites.push_back(site);
     }
     analysis->built = TRUE;
-    return DSL_Tile_Verify(analysis, diagnostic);
+    return DSL_tile_verify(analysis, diagnostic);
 }
 
 BOOL
-DSL_Tile_Verify
+DSL_tile_verify
         (const DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Tile_Active(analysis))
@@ -940,7 +940,7 @@ DSL_Tile_Verify
             site.first_tile_plan_id != expected_plan ||
             site.tile_plan_count == 0 || site.baseline_plan_id == 0 ||
             site.reserved != 0 ||
-            !DSL_Opt_Plan_Verify(analysis->plans[i], diagnostic))
+            !DSL_opt_plan_verify(analysis->plans[i], diagnostic))
             return DSL_Tile_Report(diagnostic, "invalid tile site", site.id);
         for (UINT32 j = 0; j < site.tile_plan_count; ++j) {
             const DSL_TILE_PLAN_RECORD &tile =
@@ -986,7 +986,7 @@ DSL_Tile_Verify
     }
     if (expected_plan != analysis->tile_plans.size() + 1 ||
         expected_stage != analysis->stages.size() + 1 ||
-        !DSL_Tensor_Evolution_Verify(analysis->graph, diagnostic))
+        !DSL_tensor_evolution_verify(analysis->graph, diagnostic))
         return DSL_Tile_Report(diagnostic, "tile table mismatch", 0);
     return TRUE;
 }
@@ -1001,7 +1001,7 @@ DSL_Tile_Print_U64 (FILE *file, UINT64 value)
 }
 
 void
-DSL_Tile_Print (FILE *file, const DSL_TILE_ANALYSIS *analysis)
+DSL_tile_print (FILE *file, const DSL_TILE_ANALYSIS *analysis)
 {
     if (file == NULL || !DSL_Tile_Active(analysis))
         return;
@@ -1009,7 +1009,7 @@ DSL_Tile_Print (FILE *file, const DSL_TILE_ANALYSIS *analysis)
             "CommonTilePlanIR: owner=0x%x target=%s stage=G%u "
             "sites=%u plans=%u stages=%u select=%s apply=no\n",
             analysis->owner_pu_st,
-            DSL_Target_Profile_Name(analysis->control.target_profile_id),
+            DSL_target_profile_name(analysis->control.target_profile_id),
             analysis->control.maximum_phase,
             (UINT32)analysis->sites.size(),
             (UINT32)analysis->tile_plans.size(),
@@ -1028,7 +1028,7 @@ DSL_Tile_Print (FILE *file, const DSL_TILE_ANALYSIS *analysis)
                 analysis->tile_plans[site.first_tile_plan_id - 1 + j];
             fprintf(file,
                     "    tile-plan id=%u family=%s problem=[",
-                    tile.id, DSL_Tile_Family_Name(tile.family));
+                    tile.id, DSL_tile_family_name(tile.family));
             DSL_Tile_Print_U64(file, tile.problem_m);
             fprintf(file, ",");
             DSL_Tile_Print_U64(file, tile.problem_n);
@@ -1044,10 +1044,10 @@ DSL_Tile_Print (FILE *file, const DSL_TILE_ANALYSIS *analysis)
                     tile.thread_m, tile.thread_n,
                     tile.instruction_m, tile.instruction_n,
                     tile.instruction_k, tile.vector_width,
-                    DSL_Tile_Edge_Policy_Name(tile.edge_policy),
-                    DSL_Tile_Instruction_Name(tile.instruction_family),
-                    DSL_Opt_Legality_Name(tile.legality),
-                    DSL_Opt_Rejection_Reason_Name(tile.rejection_reason),
+                    DSL_tile_edge_policy_name(tile.edge_policy),
+                    DSL_tile_instruction_name(tile.instruction_family),
+                    DSL_opt_legality_name(tile.legality),
+                    DSL_opt_rejection_reason_name(tile.rejection_reason),
                     tile.candidate_id, tile.optimization_plan_id,
                     tile.result_evolution_node_id, tile.stage_count);
             fprintf(file,
@@ -1074,38 +1074,38 @@ DSL_Tile_Print (FILE *file, const DSL_TILE_ANALYSIS *analysis)
                         "      tile-stage id=%u stage=G%u phase=%s "
                         "level=%s extent=[%llu,%llu,%llu]\n",
                         stage.id, stage.phase,
-                        DSL_Tile_Phase_Name(stage.phase),
-                        DSL_Tile_Level_Name(stage.level_kind),
+                        DSL_tile_phase_name(stage.phase),
+                        DSL_tile_level_name(stage.level_kind),
                         (unsigned long long)stage.extent_m,
                         (unsigned long long)stage.extent_n,
                         (unsigned long long)stage.extent_k);
             }
         }
-        DSL_Opt_Plan_Print(file, analysis->plans[i]);
+        DSL_opt_plan_print(file, analysis->plans[i]);
     }
-    DSL_Tensor_Evolution_Print(file, analysis->graph);
+    DSL_tensor_evolution_print(file, analysis->graph);
 }
 
 UINT32
-DSL_Tile_Site_Count (const DSL_TILE_ANALYSIS *analysis)
+DSL_tile_site_count (const DSL_TILE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->sites.size();
 }
 
 UINT32
-DSL_Tile_Plan_Count (const DSL_TILE_ANALYSIS *analysis)
+DSL_tile_plan_count (const DSL_TILE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->tile_plans.size();
 }
 
 UINT32
-DSL_Tile_Stage_Count (const DSL_TILE_ANALYSIS *analysis)
+DSL_tile_stage_count (const DSL_TILE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->stages.size();
 }
 
 BOOL
-DSL_Tile_Get_Site
+DSL_tile_get_site
         (const DSL_TILE_ANALYSIS *analysis, DSL_TILE_SITE_ID id,
          DSL_TILE_SITE_RECORD *record)
 {
@@ -1117,7 +1117,7 @@ DSL_Tile_Get_Site
 }
 
 BOOL
-DSL_Tile_Get_Plan
+DSL_tile_get_plan
         (const DSL_TILE_ANALYSIS *analysis, DSL_TILE_PLAN_ID id,
          DSL_TILE_PLAN_RECORD *record)
 {
@@ -1129,7 +1129,7 @@ DSL_Tile_Get_Plan
 }
 
 BOOL
-DSL_Tile_Get_Stage
+DSL_tile_get_stage
         (const DSL_TILE_ANALYSIS *analysis, DSL_TILE_STAGE_ID id,
          DSL_TILE_STAGE_RECORD *record)
 {
@@ -1141,7 +1141,7 @@ DSL_Tile_Get_Stage
 }
 
 const DSL_OPT_PLAN_CONTEXT *
-DSL_Tile_Get_Plan_Context
+DSL_tile_get_plan_context
         (const DSL_TILE_ANALYSIS *analysis, DSL_TILE_SITE_ID id)
 {
     return analysis == NULL || id == 0 || id > analysis->plans.size() ?

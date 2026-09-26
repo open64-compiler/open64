@@ -722,6 +722,53 @@ For each shared-memory tile candidate, P7.4 should emit:
 
 P8 consumes those hints to build CommonFetchPlanIR and CommonPipelineIR. A P8 plan should bind the selected movement engine, source/destination memory levels, stage count, prefetch distance, arrival barrier, consumer wait point, edge-tile behavior, and fallback path. The profitability model should charge only the unhidden portion of movement latency, so the plan selection explicitly asks whether the P7.4 tile and P8 pipeline together reduce compute-unit bubbles.
 
+## 6B AI-P8 Fetch And Async-Pipeline Rationale
+
+### 6B.1 Optimization Problem And Inputs
+
+A legal tile does not by itself hide the latency required to fill that tile.
+Demand movement can leave compute units idle, while an overly early fetch can
+race a producer, cross a communication epoch, consume excessive shared memory,
+or add synchronization that costs more than the hidden latency. AI-P8 consumes
+the selected P7 tile, lifetime and ownership facts, communication visibility,
+memory tiers, target movement capabilities, and resource limits. It must not
+rediscover or silently replace the P7 tile.
+
+### 6B.2 Candidate Space And Performance Mechanism
+
+The initial alternatives are demand load, vector load, asynchronous copy, and
+multidimensional asynchronous transfer. Each plan binds source and destination
+memory tiers, transaction size, buffering depth, prefetch distance, issue
+point, arrival barrier, consumer wait, boundary policy, and fallback. Deeper
+buffering can overlap more movement with computation, but consumes more
+capacity and synchronization resources.
+
+### 6B.3 Legality, Cost, And Fallback
+
+Early movement requires proven lifetime, unique ownership, effect freedom,
+communication-epoch safety, target capability, and capacity. AIO-10 records
+the movement engine's minimum-alignment requirement, but exact address and
+storage alignment remain physical-plan and target-lowering checks. An async
+prefetch distance must remain within its buffer-stage window. Unknown or unsafe
+evidence never becomes implicit permission. The demand plan is the conservative
+fallback.
+
+CandidateCostIR stores raw, hidden, and unhidden movement separately. Initial
+static estimates are low-confidence relative costs; they exercise complete
+plan selection but are not performance claims. AIO-P9 must compare the full
+tile, movement, synchronization, resource, and kernel plan before executable
+mutation.
+
+### 6B.4 Ownership Boundary And Evidence
+
+AI-P8 owns generic fetch and pipeline planning. It does not emit target
+instructions, allocate shared memory, insert barriers, or choose a provider.
+The first implementation is PU-local and runtime-only. Review evidence shows
+single/double/triple buffering, target fallback, unsafe early-fetch rejection,
+raw/hidden/unhidden cost, deterministic selection, and byte-identical binary
+WHIRL. The concrete first-slice contract is in
+`AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md`.
+
 # 7 Candidate Generation And Profitability Architecture
 
 Candidate generation should produce a candidate tree rather than a sequence of independent pass decisions. Fusion, layout, placement, sharding, tiling, memory residency, fetch, pipeline, communication, and runtime-variant choices become branches within OptimizationCandidateIR and are evaluated as OptimizationPlanIR instances.

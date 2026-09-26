@@ -17,6 +17,7 @@
 #include "defs.h"
 
 typedef UINT32 DSL_MEMORY_TIER_ID;
+typedef UINT32 DSL_MEMORY_MOVEMENT_CAPABILITY_ID;
 
 #define DSL_MEMORY_TIER_INVALID_ID ((UINT32)0)
 #define DSL_MEMORY_CAPACITY_UNKNOWN (~(UINT64)0)
@@ -48,6 +49,14 @@ typedef enum {
     DSL_MEMORY_SCOPE_THREAD = 5
 } DSL_MEMORY_SCOPE_KIND;
 
+typedef enum {
+    DSL_MEMORY_MOVEMENT_UNKNOWN = 0,
+    DSL_MEMORY_MOVEMENT_DEMAND = 1,
+    DSL_MEMORY_MOVEMENT_VECTOR = 2,
+    DSL_MEMORY_MOVEMENT_ASYNC_COPY = 3,
+    DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC = 4
+} DSL_MEMORY_MOVEMENT_ENGINE;
+
 enum {
     DSL_MEMORY_TIER_FLAG_NONE = 0,
     DSL_MEMORY_TIER_FLAG_CAPACITY_EXACT = 0x00000001,
@@ -55,6 +64,14 @@ enum {
     DSL_MEMORY_TIER_FLAG_SOFTWARE_MANAGED = 0x00000004,
     DSL_MEMORY_TIER_FLAG_SPILLABLE = 0x00000008,
     DSL_MEMORY_TIER_FLAG_PROFILE_ASSUMPTION = 0x00000010
+};
+
+enum {
+    DSL_MEMORY_MOVEMENT_FLAG_NONE = 0,
+    DSL_MEMORY_MOVEMENT_FLAG_ASYNC = 0x00000001,
+    DSL_MEMORY_MOVEMENT_FLAG_REQUIRES_BARRIER = 0x00000002,
+    DSL_MEMORY_MOVEMENT_FLAG_MULTIDIMENSIONAL = 0x00000004,
+    DSL_MEMORY_MOVEMENT_FLAG_PROFILE_ASSUMPTION = 0x00000008
 };
 
 typedef struct {
@@ -76,22 +93,44 @@ typedef struct {
     UINT32 reserved;
 } DSL_MEMORY_TIER_RECORD;
 
-extern BOOL DSL_Memory_Hierarchy_Get_Profile
+typedef struct {
+    DSL_MEMORY_MOVEMENT_CAPABILITY_ID id;
+    UINT32 engine;
+    UINT32 source_tier_kind;
+    UINT32 destination_tier_kind;
+    UINT32 transaction_bytes;
+    UINT32 minimum_alignment;
+    UINT32 maximum_stages;
+    UINT32 latency_class;
+    UINT32 flags;
+    UINT32 reserved;
+} DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD;
+
+extern BOOL DSL_memory_hierarchy_get_profile
                                 (UINT32 profile_id,
                                  DSL_MEMORY_HIERARCHY_PROFILE *profile);
-extern BOOL DSL_Memory_Hierarchy_Get_Tier
+extern BOOL DSL_memory_hierarchy_get_tier
                                 (UINT32 profile_id,
                                  DSL_MEMORY_TIER_ID tier_id,
                                  DSL_MEMORY_TIER_RECORD *tier);
-extern BOOL DSL_Memory_Hierarchy_Find_Tier
+extern BOOL DSL_memory_hierarchy_find_tier
                                 (UINT32 profile_id, UINT32 kind,
                                  DSL_MEMORY_TIER_RECORD *tier);
-extern BOOL DSL_Memory_Hierarchy_Validate
+extern UINT32 DSL_memory_hierarchy_movement_count (UINT32 profile_id);
+extern BOOL DSL_memory_hierarchy_get_movement
+                                (UINT32 profile_id,
+                                 DSL_MEMORY_MOVEMENT_CAPABILITY_ID id,
+                                 DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD *record);
+extern BOOL DSL_memory_hierarchy_find_movement
+                                (UINT32 profile_id, UINT32 engine,
+                                 DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD *record);
+extern BOOL DSL_memory_hierarchy_validate
                                 (UINT32 profile_id, FILE *diagnostic);
-extern void DSL_Memory_Hierarchy_Print
+extern void DSL_memory_hierarchy_print
                                 (FILE *file, UINT32 profile_id);
-extern const char *DSL_Target_Profile_Name (UINT32 profile_id);
-extern const char *DSL_Memory_Tier_Name (UINT32 kind);
-extern const char *DSL_Memory_Scope_Name (UINT32 scope);
+extern const char *DSL_target_profile_name (UINT32 profile_id);
+extern const char *DSL_memory_tier_name (UINT32 kind);
+extern const char *DSL_memory_scope_name (UINT32 scope);
+extern const char *DSL_memory_movement_name (UINT32 engine);
 
 #endif /* dsl_memory_hierarchy_INCLUDED */

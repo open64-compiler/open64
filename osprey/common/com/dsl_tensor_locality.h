@@ -150,68 +150,68 @@ typedef struct {
     UINT32 reserved;
 } DSL_TENSOR_LOCALITY_USE_RECORD;
 
-extern DSL_TENSOR_CONTROL_SNAPSHOT *DSL_Tensor_Control_Snapshot_Create
+extern DSL_TENSOR_CONTROL_SNAPSHOT *DSL_tensor_control_snapshot_create
                                 (struct pu_info *pu,
                                  FILE *diagnostic);
-extern void DSL_Tensor_Control_Snapshot_Destroy
+extern void DSL_tensor_control_snapshot_destroy
                                 (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot);
-extern BOOL DSL_Tensor_Control_Snapshot_Add_Block
+extern BOOL DSL_tensor_control_snapshot_add_block
                                 (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
                                  const DSL_TENSOR_CONTROL_BLOCK *block,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Control_Snapshot_Add_Position
+extern BOOL DSL_tensor_control_snapshot_add_position
                                 (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
                                  const DSL_TENSOR_CONTROL_POSITION *position,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Control_Snapshot_Seal
+extern BOOL DSL_tensor_control_snapshot_seal
                                 (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Control_Snapshot_Verify
+extern BOOL DSL_tensor_control_snapshot_verify
                                 (const DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
                                  FILE *diagnostic);
-extern void DSL_Tensor_Control_Snapshot_Print
+extern void DSL_tensor_control_snapshot_print
                                 (FILE *file,
                                  const DSL_TENSOR_CONTROL_SNAPSHOT *snapshot);
 
-extern DSL_TENSOR_LOCALITY_ANALYSIS *DSL_Tensor_Locality_Create
+extern DSL_TENSOR_LOCALITY_ANALYSIS *DSL_tensor_locality_create
                                 (struct pu_info *pu,
                                  const DSL_TENSOR_ANALYSIS *tensor_analysis,
                                  const DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
                                  FILE *diagnostic);
-extern void DSL_Tensor_Locality_Destroy
+extern void DSL_tensor_locality_destroy
                                 (DSL_TENSOR_LOCALITY_ANALYSIS *analysis);
-extern BOOL DSL_Tensor_Locality_Build
+extern BOOL DSL_tensor_locality_build
                                 (DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Locality_Verify
+extern BOOL DSL_tensor_locality_verify
                                 (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern void DSL_Tensor_Locality_Print
+extern void DSL_tensor_locality_print
                                 (FILE *file,
                                  const DSL_TENSOR_LOCALITY_ANALYSIS *analysis);
-extern UINT32 DSL_Tensor_Locality_Fact_Count
+extern UINT32 DSL_tensor_locality_fact_count
                                 (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis);
-extern UINT32 DSL_Tensor_Locality_Use_Count
+extern UINT32 DSL_tensor_locality_use_count
                                 (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis);
-extern BOOL DSL_Tensor_Locality_Get_Fact
+extern BOOL DSL_tensor_locality_get_fact
                                 (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
                                  DSL_TENSOR_LOCALITY_FACT_ID id,
                                  DSL_TENSOR_LOCALITY_FACT_RECORD *record);
-extern BOOL DSL_Tensor_Locality_Get_Use
+extern BOOL DSL_tensor_locality_get_use
                                 (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
                                  DSL_TENSOR_LOCALITY_USE_ID id,
                                  DSL_TENSOR_LOCALITY_USE_RECORD *record);
-extern BOOL DSL_Tensor_Locality_Find_Fact
+extern BOOL DSL_tensor_locality_find_fact
                                 (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
                                  DSL_IR_VALUE_ID value_id,
                                  DSL_TENSOR_LOCALITY_FACT_RECORD *record);
 
-extern const char *DSL_Tensor_Size_State_Name (UINT32 state);
-extern const char *DSL_Tensor_Lifetime_State_Name (UINT32 state);
-extern const char *DSL_Tensor_Distance_State_Name (UINT32 state);
-extern const char *DSL_Tensor_Access_Pattern_Name (UINT32 pattern);
-extern const char *DSL_Tensor_Residency_Benefit_Name (UINT32 benefit);
-extern const char *DSL_Tensor_Critical_Path_State_Name (UINT32 state);
-extern const char *DSL_Tensor_Alias_State_Name (UINT32 state);
+extern const char *DSL_tensor_size_state_name (UINT32 state);
+extern const char *DSL_tensor_lifetime_state_name (UINT32 state);
+extern const char *DSL_tensor_distance_state_name (UINT32 state);
+extern const char *DSL_tensor_access_pattern_name (UINT32 pattern);
+extern const char *DSL_tensor_residency_benefit_name (UINT32 benefit);
+extern const char *DSL_tensor_critical_path_state_name (UINT32 state);
+extern const char *DSL_tensor_alias_state_name (UINT32 state);
 
 #endif /* dsl_tensor_locality_INCLUDED */

@@ -130,65 +130,65 @@ typedef struct {
     UINT32 reserved;
 } DSL_LOGICAL_LAYOUT_ALTERNATIVE_RECORD;
 
-extern void DSL_Logical_Layout_Control_Init
+extern void DSL_logical_layout_control_init
                                 (DSL_LOGICAL_LAYOUT_CONTROL *control);
-extern DSL_LOGICAL_LAYOUT_ANALYSIS *DSL_Logical_Layout_Create
+extern DSL_LOGICAL_LAYOUT_ANALYSIS *DSL_logical_layout_create
                                 (struct pu_info *pu,
                                  DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_TENSOR_ANALYSIS *tensor_analysis,
                                  const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
                                  const DSL_LOGICAL_LAYOUT_CONTROL *control,
                                  FILE *diagnostic);
-extern void DSL_Logical_Layout_Destroy
+extern void DSL_logical_layout_destroy
                                 (DSL_LOGICAL_LAYOUT_ANALYSIS *analysis);
-extern BOOL DSL_Logical_Layout_Build
+extern BOOL DSL_logical_layout_build
                                 (DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Logical_Layout_Verify
+extern BOOL DSL_logical_layout_verify
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern void DSL_Logical_Layout_Print
+extern void DSL_logical_layout_print
                                 (FILE *file,
                                  const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis);
-extern UINT32 DSL_Logical_Layout_Descriptor_Count
+extern UINT32 DSL_logical_layout_descriptor_count
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis);
-extern UINT32 DSL_Logical_Layout_Axis_Count
+extern UINT32 DSL_logical_layout_axis_count
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis);
-extern UINT32 DSL_Logical_Layout_Block_Count
+extern UINT32 DSL_logical_layout_block_count
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis);
-extern UINT32 DSL_Logical_Layout_Site_Count
+extern UINT32 DSL_logical_layout_site_count
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis);
-extern UINT32 DSL_Logical_Layout_Alternative_Count
+extern UINT32 DSL_logical_layout_alternative_count
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis);
-extern BOOL DSL_Logical_Layout_Get_Descriptor
+extern BOOL DSL_logical_layout_get_descriptor
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_LOGICAL_LAYOUT_DESCRIPTOR_ID id,
                                  DSL_LOGICAL_LAYOUT_DESCRIPTOR_RECORD *record);
-extern BOOL DSL_Logical_Layout_Get_Axis
+extern BOOL DSL_logical_layout_get_axis
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_LOGICAL_LAYOUT_AXIS_ID id,
                                  DSL_LOGICAL_LAYOUT_AXIS_RECORD *record);
-extern BOOL DSL_Logical_Layout_Get_Block
+extern BOOL DSL_logical_layout_get_block
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_LOGICAL_LAYOUT_BLOCK_ID id,
                                  DSL_LOGICAL_LAYOUT_BLOCK_RECORD *record);
-extern BOOL DSL_Logical_Layout_Get_Site
+extern BOOL DSL_logical_layout_get_site
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_LOGICAL_LAYOUT_SITE_ID id,
                                  DSL_LOGICAL_LAYOUT_SITE_RECORD *record);
-extern BOOL DSL_Logical_Layout_Find_Site
+extern BOOL DSL_logical_layout_find_site
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_IR_VALUE_ID semantic_value_id,
                                  DSL_LOGICAL_LAYOUT_SITE_RECORD *record);
-extern BOOL DSL_Logical_Layout_Get_Alternative
+extern BOOL DSL_logical_layout_get_alternative
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_LOGICAL_LAYOUT_ALTERNATIVE_ID id,
                                  DSL_LOGICAL_LAYOUT_ALTERNATIVE_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_Logical_Layout_Get_Plan_Context
+extern const DSL_OPT_PLAN_CONTEXT *DSL_logical_layout_get_plan_context
                                 (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
                                  DSL_LOGICAL_LAYOUT_SITE_ID id);
-extern const char *DSL_Logical_Layout_Kind_Name (UINT32 kind);
-extern const char *DSL_Layout_Compatibility_Name (UINT32 state);
-extern const char *DSL_Layout_Conversion_Name (UINT32 state);
+extern const char *DSL_logical_layout_kind_name (UINT32 kind);
+extern const char *DSL_layout_compatibility_name (UINT32 state);
+extern const char *DSL_layout_conversion_name (UINT32 state);
 
 #endif /* dsl_layout_candidate_INCLUDED */

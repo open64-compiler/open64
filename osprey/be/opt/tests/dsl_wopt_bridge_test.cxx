@@ -243,13 +243,13 @@ main(int argc, char **argv)
   WOPT_DSL_SEMANTIC_INFO zero_info;
   WOPT_DSL_SEMANTIC_INFO one_info;
   WOPT_DSL_SEMANTIC_INFO add_info;
-  if (!WOPT_DSL_Import_Semantic_Info
+  if (!WOPT_DSL_import_semantic_info
           (WN_kid0(zero), DSL_Builder_Get_Value_Result_Symbol(zero),
            owner, &zero_info, stderr) ||
-      !WOPT_DSL_Import_Semantic_Info
+      !WOPT_DSL_import_semantic_info
           (WN_kid0(one), DSL_Builder_Get_Value_Result_Symbol(one),
            owner, &one_info, stderr) ||
-      !WOPT_DSL_Import_Semantic_Info
+      !WOPT_DSL_import_semantic_info
           (WN_kid0(add), DSL_Builder_Get_Value_Result_Symbol(add),
            owner, &add_info, stderr))
     return 1;
@@ -259,7 +259,7 @@ main(int argc, char **argv)
   };
   WOPT_DSL_SEMANTIC_INFO folded;
   if (add_info.logical_operator != OPR_DSLADD ||
-      !WOPT_DSL_Fold_Compact_Tensors
+      !WOPT_DSL_fold_compact_tensors
           (&add_info, operand_tcon, 2, &folded, stderr) ||
       folded.logical_operator != OPR_DSLTENSORCONST ||
       folded.tensor_tcon_idx == TCON_IDX_ZERO) {
@@ -267,7 +267,7 @@ main(int argc, char **argv)
     return 1;
   }
 
-  WN *emitted = WOPT_DSL_Emit_WN
+  WN *emitted = WOPT_DSL_emit_WN
                     (&folded, WN_kid0(add),
                      DSL_Builder_Get_Value_Result_Symbol(add),
                      NULL, 0, stderr);

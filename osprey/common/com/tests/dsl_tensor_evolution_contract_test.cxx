@@ -173,7 +173,7 @@ Check_Root
          TY_IDX expected_ty)
 {
     DSL_TENSOR_EVOLUTION_NODE_RECORD root;
-    return DSL_Tensor_Evolution_Find_Semantic_Root
+    return DSL_tensor_evolution_find_semantic_root
                (graph, DSL_Builder_Get_Value_Image_Id(value), &root) &&
            root.id == expected_id &&
            root.kind == DSL_TENSOR_EVOLUTION_NODE_SEMANTIC &&
@@ -207,55 +207,55 @@ Run_Image_Mode(BOOL build_graph)
     image_values = DSL_IR_Image_Value_Count();
     type_count = TY_Table_Size();
     if (build_graph) {
-        graph = DSL_Tensor_Evolution_Create(fixture.pu, stderr);
+        graph = DSL_tensor_evolution_create(fixture.pu, stderr);
         if (graph == NULL ||
-            !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
-            !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
-            !DSL_Tensor_Evolution_Verify(graph, stderr) ||
-            DSL_Tensor_Evolution_Node_Count(graph) != 3 ||
-            DSL_Tensor_Evolution_Edge_Count(graph) != 0 ||
+            !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
+            !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
+            !DSL_tensor_evolution_verify(graph, stderr) ||
+            DSL_tensor_evolution_node_count(graph) != 3 ||
+            DSL_tensor_evolution_edge_count(graph) != 0 ||
             !Check_Root(graph, fixture.kid0, 1,
                         DSL_Builder_Get_Value_Type(fixture.kid0)) ||
             !Check_Root(graph, fixture.kid1, 2,
                         DSL_Builder_Get_Value_Type(fixture.kid1)) ||
             !Check_Root(graph, fixture.result, 3,
                         DSL_Builder_Get_Value_Type(fixture.result)) ||
-            DSL_Tensor_Evolution_Get_Node
+            DSL_tensor_evolution_get_node
                 (graph, DSL_TENSOR_EVOLUTION_NODE_INVALID_ID, &node) ||
-            DSL_Tensor_Evolution_Get_Node(graph, 4, &node) ||
-            DSL_Tensor_Evolution_Get_Edge(graph, 1, &edge) ||
-            DSL_Tensor_Evolution_Find_Semantic_Root
+            DSL_tensor_evolution_get_node(graph, 4, &node) ||
+            DSL_tensor_evolution_get_edge(graph, 1, &edge) ||
+            DSL_tensor_evolution_find_semantic_root
                 (graph, DSL_IR_VALUE_INVALID_ID, &node) ||
-            strcmp(DSL_Tensor_Evolution_Node_Kind_Name(99), "unknown") != 0 ||
-            strcmp(DSL_Tensor_Evolution_Transform_Kind_Name(99),
+            strcmp(DSL_tensor_evolution_node_kind_name(99), "unknown") != 0 ||
+            strcmp(DSL_tensor_evolution_transform_kind_name(99),
                    "unknown") != 0 ||
             DSL_IR_Image_Node_Count() != image_nodes ||
             DSL_IR_Image_Value_Count() != image_values ||
             TY_Table_Size() != type_count) {
             fprintf(stderr, "AIO-1 semantic root contract changed\n");
-            DSL_Tensor_Evolution_Destroy(graph);
+            DSL_tensor_evolution_destroy(graph);
             return 1;
         }
         if (graph_path != NULL && graph_path[0] != '\0') {
             FILE *file = fopen(graph_path, "w");
             if (file == NULL) {
-                DSL_Tensor_Evolution_Destroy(graph);
+                DSL_tensor_evolution_destroy(graph);
                 return 1;
             }
-            DSL_Tensor_Evolution_Print(file, graph);
+            DSL_tensor_evolution_print(file, graph);
             fclose(file);
         }
-        DSL_Tensor_Evolution_Destroy(graph);
-        graph = DSL_Tensor_Evolution_Create(fixture.pu, stderr);
+        DSL_tensor_evolution_destroy(graph);
+        graph = DSL_tensor_evolution_create(fixture.pu, stderr);
         if (graph == NULL ||
-            !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
-            DSL_Tensor_Evolution_Node_Count(graph) != 3 ||
-            DSL_Tensor_Evolution_Edge_Count(graph) != 0) {
+            !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
+            DSL_tensor_evolution_node_count(graph) != 3 ||
+            DSL_tensor_evolution_edge_count(graph) != 0) {
             fprintf(stderr, "AIO-1 graph reset contract changed\n");
-            DSL_Tensor_Evolution_Destroy(graph);
+            DSL_tensor_evolution_destroy(graph);
             return 1;
         }
-        DSL_Tensor_Evolution_Destroy(graph);
+        DSL_tensor_evolution_destroy(graph);
     }
 
     image_request.path = artifact;
@@ -279,33 +279,33 @@ Run_Ownership_Contract(void)
     DSL_Opcode_Register_Common_Substrate();
     if (!Create_Fixture("aio1_first_pu", &first))
         return 1;
-    first_graph = DSL_Tensor_Evolution_Create(first.pu, stderr);
+    first_graph = DSL_tensor_evolution_create(first.pu, stderr);
     if (first_graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(first_graph, stderr) ||
-        DSL_Tensor_Evolution_Node_Count(first_graph) != 3)
+        !DSL_tensor_evolution_build_semantic_roots(first_graph, stderr) ||
+        DSL_tensor_evolution_node_count(first_graph) != 3)
         return 1;
 
     if (!Create_Fixture("aio1_second_pu", &second) || quiet == NULL ||
-        DSL_Tensor_Evolution_Create(first.pu, quiet) != NULL ||
-        DSL_Tensor_Evolution_Build_Semantic_Roots(first_graph, quiet) ||
-        DSL_Tensor_Evolution_Node_Count(first_graph) != 3)
+        DSL_tensor_evolution_create(first.pu, quiet) != NULL ||
+        DSL_tensor_evolution_build_semantic_roots(first_graph, quiet) ||
+        DSL_tensor_evolution_node_count(first_graph) != 3)
         return 1;
-    second_graph = DSL_Tensor_Evolution_Create(second.pu, stderr);
+    second_graph = DSL_tensor_evolution_create(second.pu, stderr);
     if (second_graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(second_graph, stderr) ||
-        DSL_Tensor_Evolution_Node_Count(second_graph) != 3 ||
-        DSL_Tensor_Evolution_Verify(first_graph, quiet))
+        !DSL_tensor_evolution_build_semantic_roots(second_graph, stderr) ||
+        DSL_tensor_evolution_node_count(second_graph) != 3 ||
+        DSL_tensor_evolution_verify(first_graph, quiet))
         return 1;
 
     if (!DSL_Builder_Select_PU(first.pu) ||
-        !DSL_Tensor_Evolution_Verify(first_graph, stderr) ||
-        DSL_Tensor_Evolution_Verify(second_graph, quiet) ||
+        !DSL_tensor_evolution_verify(first_graph, stderr) ||
+        DSL_tensor_evolution_verify(second_graph, quiet) ||
         !DSL_Builder_Select_PU(second.pu) ||
-        !DSL_Tensor_Evolution_Verify(second_graph, stderr))
+        !DSL_tensor_evolution_verify(second_graph, stderr))
         return 1;
 
-    DSL_Tensor_Evolution_Destroy(first_graph);
-    DSL_Tensor_Evolution_Destroy(second_graph);
+    DSL_tensor_evolution_destroy(first_graph);
+    DSL_tensor_evolution_destroy(second_graph);
     fclose(quiet);
     printf("AIO-1 per-PU ownership contract passed\n");
     return 0;

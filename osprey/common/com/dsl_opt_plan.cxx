@@ -30,35 +30,35 @@ struct DSL_OPT_PLAN_CONTEXT {
     DSL_OPT_SELECTION_RESULT selection;
 };
 
-static const char *DSL_opt_candidate_kind_name[] = {
+static const char *DSL_opt_candidate_kind_name_table[] = {
     "unknown", "baseline", "tile", "fusion", "layout", "placement",
     "sharding", "residency", "pipeline", "kernel", "runtime_variant"
 };
 
-static const char *DSL_opt_legality_name[] = {
+static const char *DSL_opt_legality_name_table[] = {
     "unknown", "proven", "rejected"
 };
 
-static const char *DSL_opt_rejection_reason_name[] = {
+static const char *DSL_opt_rejection_reason_name_table[] = {
     "none", "incomplete_analysis", "invalid_reference", "ownership",
     "descriptor", "effect", "resource", "cost_incomplete",
     "target_mismatch", "budget_exhausted", "malformed"
 };
 
-static const char *DSL_opt_cost_term_name[] = {
+static const char *DSL_opt_cost_term_name_table[] = {
     "compute", "memory_unhidden", "communication_unhidden", "sync",
     "launch", "runtime_selection"
 };
 
-static const char *DSL_opt_cost_unit_name[] = {
+static const char *DSL_opt_cost_unit_name_table[] = {
     "unknown", "relative", "cycles", "nanoseconds"
 };
 
-static const char *DSL_opt_cost_confidence_name[] = {
+static const char *DSL_opt_cost_confidence_name_table[] = {
     "unknown", "low", "medium", "high", "exact"
 };
 
-static const char *DSL_opt_cost_evidence_name[] = {
+static const char *DSL_opt_cost_evidence_name_table[] = {
     "unknown", "baseline_policy", "static_analysis", "target_model",
     "measured", "telemetry"
 };
@@ -184,9 +184,9 @@ DSL_Opt_Candidate_Input_Valid
                           DSL_OPT_CANDIDATE_FLAG_PROVISIONAL)) != 0 ||
         !DSL_Opt_Legality_Valid(input->legality,
                                 input->rejection_reason) ||
-        !DSL_Tensor_Evolution_Get_Node
+        !DSL_tensor_evolution_get_node
              (context->graph, input->source_evolution_node_id, &source) ||
-        !DSL_Tensor_Evolution_Get_Node
+        !DSL_tensor_evolution_get_node
              (context->graph, input->result_evolution_node_id, &result) ||
         source.owner_pu_st != context->owner_pu_st ||
         result.owner_pu_st != context->owner_pu_st ||
@@ -214,70 +214,70 @@ DSL_Opt_Candidate_Input_Valid
 }
 
 const char *
-DSL_Opt_Candidate_Kind_Name (UINT32 kind)
+DSL_opt_candidate_kind_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_opt_candidate_kind_name) /
-                      sizeof(DSL_opt_candidate_kind_name[0]) ?
-           DSL_opt_candidate_kind_name[kind] : "unknown";
+    return kind < sizeof(DSL_opt_candidate_kind_name_table) /
+                      sizeof(DSL_opt_candidate_kind_name_table[0]) ?
+           DSL_opt_candidate_kind_name_table[kind] : "unknown";
 }
 
 const char *
-DSL_Opt_Legality_Name (UINT32 legality)
+DSL_opt_legality_name (UINT32 legality)
 {
-    return legality < sizeof(DSL_opt_legality_name) /
-                          sizeof(DSL_opt_legality_name[0]) ?
-           DSL_opt_legality_name[legality] : "unknown";
+    return legality < sizeof(DSL_opt_legality_name_table) /
+                          sizeof(DSL_opt_legality_name_table[0]) ?
+           DSL_opt_legality_name_table[legality] : "unknown";
 }
 
 const char *
-DSL_Opt_Rejection_Reason_Name (UINT32 reason)
+DSL_opt_rejection_reason_name (UINT32 reason)
 {
-    return reason < sizeof(DSL_opt_rejection_reason_name) /
-                      sizeof(DSL_opt_rejection_reason_name[0]) ?
-           DSL_opt_rejection_reason_name[reason] : "unknown";
+    return reason < sizeof(DSL_opt_rejection_reason_name_table) /
+                      sizeof(DSL_opt_rejection_reason_name_table[0]) ?
+           DSL_opt_rejection_reason_name_table[reason] : "unknown";
 }
 
 const char *
-DSL_Opt_Cost_Term_Name (UINT32 term)
+DSL_opt_cost_term_name (UINT32 term)
 {
     return term < DSL_OPT_COST_TERM_COUNT ?
-           DSL_opt_cost_term_name[term] : "unknown";
+           DSL_opt_cost_term_name_table[term] : "unknown";
 }
 
 const char *
-DSL_Opt_Cost_Unit_Name (UINT32 unit)
+DSL_opt_cost_unit_name (UINT32 unit)
 {
-    return unit < sizeof(DSL_opt_cost_unit_name) /
-                      sizeof(DSL_opt_cost_unit_name[0]) ?
-           DSL_opt_cost_unit_name[unit] : "unknown";
+    return unit < sizeof(DSL_opt_cost_unit_name_table) /
+                      sizeof(DSL_opt_cost_unit_name_table[0]) ?
+           DSL_opt_cost_unit_name_table[unit] : "unknown";
 }
 
 const char *
-DSL_Opt_Cost_Confidence_Name (UINT32 confidence)
+DSL_opt_cost_confidence_name (UINT32 confidence)
 {
-    return confidence < sizeof(DSL_opt_cost_confidence_name) /
-                            sizeof(DSL_opt_cost_confidence_name[0]) ?
-           DSL_opt_cost_confidence_name[confidence] : "unknown";
+    return confidence < sizeof(DSL_opt_cost_confidence_name_table) /
+                            sizeof(DSL_opt_cost_confidence_name_table[0]) ?
+           DSL_opt_cost_confidence_name_table[confidence] : "unknown";
 }
 
 const char *
-DSL_Opt_Cost_Evidence_Name (UINT32 evidence)
+DSL_opt_cost_evidence_name (UINT32 evidence)
 {
-    return evidence < sizeof(DSL_opt_cost_evidence_name) /
-                          sizeof(DSL_opt_cost_evidence_name[0]) ?
-           DSL_opt_cost_evidence_name[evidence] : "unknown";
+    return evidence < sizeof(DSL_opt_cost_evidence_name_table) /
+                          sizeof(DSL_opt_cost_evidence_name_table[0]) ?
+           DSL_opt_cost_evidence_name_table[evidence] : "unknown";
 }
 
 DSL_OPT_PLAN_CONTEXT *
-DSL_Opt_Plan_Create
+DSL_opt_plan_create
         (PU_Info *pu, const DSL_TENSOR_EVOLUTION_GRAPH *graph,
          const DSL_OPT_PLAN_BUDGET *budget, FILE *diagnostic)
 {
     if (pu == NULL || graph == NULL || budget == NULL ||
         budget->max_candidates == 0 || budget->max_plans == 0 ||
         Current_PU_Info != pu ||
-        DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
-        !DSL_Tensor_Evolution_Verify(graph, diagnostic)) {
+        DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
+        !DSL_tensor_evolution_verify(graph, diagnostic)) {
         DSL_Opt_Plan_Report(diagnostic, "invalid active program unit", 0);
         return NULL;
     }
@@ -295,13 +295,13 @@ DSL_Opt_Plan_Create
 }
 
 void
-DSL_Opt_Plan_Destroy (DSL_OPT_PLAN_CONTEXT *context)
+DSL_opt_plan_destroy (DSL_OPT_PLAN_CONTEXT *context)
 {
     delete context;
 }
 
 BOOL
-DSL_Opt_Plan_Add_Candidate
+DSL_opt_plan_add_candidate
         (DSL_OPT_PLAN_CONTEXT *context,
          const DSL_OPT_CANDIDATE_INPUT *input,
          DSL_OPT_CANDIDATE_ID *candidate_id, FILE *diagnostic)
@@ -347,7 +347,7 @@ DSL_Opt_Plan_Add_Candidate
 }
 
 BOOL
-DSL_Opt_Plan_Add_Cost
+DSL_opt_plan_add_cost
         (DSL_OPT_PLAN_CONTEXT *context, const DSL_OPT_COST_INPUT *input,
          DSL_OPT_COST_ID *cost_id, FILE *diagnostic)
 {
@@ -384,7 +384,7 @@ DSL_Opt_Plan_Add_Cost
 }
 
 BOOL
-DSL_Opt_Plan_Add_Plan
+DSL_opt_plan_add_plan
         (DSL_OPT_PLAN_CONTEXT *context, const DSL_OPT_PLAN_INPUT *input,
          DSL_OPT_PLAN_ID *plan_id, FILE *diagnostic)
 {
@@ -477,11 +477,11 @@ DSL_Opt_Plan_Add_Plan
 }
 
 BOOL
-DSL_Opt_Plan_Verify
+DSL_opt_plan_verify
         (const DSL_OPT_PLAN_CONTEXT *context, FILE *diagnostic)
 {
     if (!DSL_Opt_Plan_Active(context) ||
-        !DSL_Tensor_Evolution_Verify(context->graph, diagnostic) ||
+        !DSL_tensor_evolution_verify(context->graph, diagnostic) ||
         context->candidates.size() > context->budget.max_candidates ||
         context->costs.size() > context->budget.max_plans ||
         context->plans.size() > context->budget.max_plans)
@@ -608,7 +608,7 @@ DSL_Opt_Plan_Verify
 }
 
 BOOL
-DSL_Opt_Plan_Select
+DSL_opt_plan_select
         (DSL_OPT_PLAN_CONTEXT *context, UINT32 target_profile_id,
          DSL_OPT_SELECTION_RESULT *result, FILE *diagnostic)
 {
@@ -618,7 +618,7 @@ DSL_Opt_Plan_Select
     selection.target_profile_id = target_profile_id;
     if (result != NULL)
         memset(result, 0, sizeof(*result));
-    if (target_profile_id == 0 || !DSL_Opt_Plan_Verify(context, diagnostic))
+    if (target_profile_id == 0 || !DSL_opt_plan_verify(context, diagnostic))
         return FALSE;
     if (context->selection_complete) {
         if (context->selection.target_profile_id != target_profile_id)
@@ -663,7 +663,7 @@ DSL_Opt_Plan_Select
     }
     context->selection = selection;
     context->selection_complete = TRUE;
-    if (!DSL_Opt_Plan_Verify(context, diagnostic)) {
+    if (!DSL_opt_plan_verify(context, diagnostic)) {
         context->selection_complete = FALSE;
         memset(&context->selection, 0, sizeof(context->selection));
         return FALSE;
@@ -693,7 +693,7 @@ DSL_Opt_Plan_State_Name
 }
 
 void
-DSL_Opt_Plan_Print
+DSL_opt_plan_print
         (FILE *file, const DSL_OPT_PLAN_CONTEXT *context)
 {
     if (file == NULL || context == NULL)
@@ -715,13 +715,13 @@ DSL_Opt_Plan_Print
                 "  candidate[%u] kind=%s semantic_node=%u source=%u "
                 "result=%u parent=%u legality=%s reason=%s order=%llu "
                 "flags=0x%x\n",
-                candidate.id, DSL_Opt_Candidate_Kind_Name(candidate.kind),
+                candidate.id, DSL_opt_candidate_kind_name(candidate.kind),
                 candidate.semantic_node_id,
                 candidate.source_evolution_node_id,
                 candidate.result_evolution_node_id,
                 candidate.parent_candidate_id,
-                DSL_Opt_Legality_Name(candidate.legality),
-                DSL_Opt_Rejection_Reason_Name(candidate.rejection_reason),
+                DSL_opt_legality_name(candidate.legality),
+                DSL_opt_rejection_reason_name(candidate.rejection_reason),
                 (unsigned long long)candidate.ordering_key, candidate.flags);
     }
     for (UINT32 i = 0; i < context->costs.size(); ++i) {
@@ -735,19 +735,19 @@ DSL_Opt_Plan_Print
         else
             fprintf(file, "<unknown>");
         fprintf(file, " confidence=%s order=%llu\n",
-                DSL_Opt_Cost_Confidence_Name(cost.minimum_confidence),
+                DSL_opt_cost_confidence_name(cost.minimum_confidence),
                 (unsigned long long)cost.ordering_key);
         for (UINT32 term = 0; term < DSL_OPT_COST_TERM_COUNT; ++term) {
             const DSL_OPT_COST_TERM &value = cost.terms[term];
-            fprintf(file, "    %s=", DSL_Opt_Cost_Term_Name(term));
+            fprintf(file, "    %s=", DSL_opt_cost_term_name(term));
             if (value.unit == DSL_OPT_COST_UNIT_UNKNOWN)
                 fprintf(file, "<unknown>\n");
             else
                 fprintf(file, "%llu %s confidence=%s evidence=%s\n",
                         (unsigned long long)value.amount,
-                        DSL_Opt_Cost_Unit_Name(value.unit),
-                        DSL_Opt_Cost_Confidence_Name(value.confidence),
-                        DSL_Opt_Cost_Evidence_Name(value.evidence));
+                        DSL_opt_cost_unit_name(value.unit),
+                        DSL_opt_cost_confidence_name(value.confidence),
+                        DSL_opt_cost_evidence_name(value.evidence));
         }
     }
     for (UINT32 i = 0; i < context->plans.size(); ++i) {
@@ -764,8 +764,8 @@ DSL_Opt_Plan_Print
                 " cost=%u fallback=%u legality=%s reason=%s order=%llu "
                 "flags=0x%x state=%s\n",
                 plan.cost_id, plan.fallback_plan_id,
-                DSL_Opt_Legality_Name(plan.legality),
-                DSL_Opt_Rejection_Reason_Name(plan.rejection_reason),
+                DSL_opt_legality_name(plan.legality),
+                DSL_opt_rejection_reason_name(plan.rejection_reason),
                 (unsigned long long)plan.ordering_key, plan.flags,
                 DSL_Opt_Plan_State_Name(context, plan));
     }
@@ -782,25 +782,25 @@ DSL_Opt_Plan_Print
 }
 
 UINT32
-DSL_Opt_Plan_Candidate_Count (const DSL_OPT_PLAN_CONTEXT *context)
+DSL_opt_plan_candidate_count (const DSL_OPT_PLAN_CONTEXT *context)
 {
     return context == NULL ? 0 : context->candidates.size();
 }
 
 UINT32
-DSL_Opt_Plan_Cost_Count (const DSL_OPT_PLAN_CONTEXT *context)
+DSL_opt_plan_cost_count (const DSL_OPT_PLAN_CONTEXT *context)
 {
     return context == NULL ? 0 : context->costs.size();
 }
 
 UINT32
-DSL_Opt_Plan_Plan_Count (const DSL_OPT_PLAN_CONTEXT *context)
+DSL_opt_plan_plan_count (const DSL_OPT_PLAN_CONTEXT *context)
 {
     return context == NULL ? 0 : context->plans.size();
 }
 
 BOOL
-DSL_Opt_Plan_Get_Candidate
+DSL_opt_plan_get_candidate
         (const DSL_OPT_PLAN_CONTEXT *context, DSL_OPT_CANDIDATE_ID id,
          DSL_OPT_CANDIDATE_RECORD *record)
 {
@@ -812,7 +812,7 @@ DSL_Opt_Plan_Get_Candidate
 }
 
 BOOL
-DSL_Opt_Plan_Get_Cost
+DSL_opt_plan_get_cost
         (const DSL_OPT_PLAN_CONTEXT *context, DSL_OPT_COST_ID id,
          DSL_OPT_COST_RECORD *record)
 {
@@ -824,7 +824,7 @@ DSL_Opt_Plan_Get_Cost
 }
 
 BOOL
-DSL_Opt_Plan_Get_Plan
+DSL_opt_plan_get_plan
         (const DSL_OPT_PLAN_CONTEXT *context, DSL_OPT_PLAN_ID id,
          DSL_OPT_PLAN_RECORD *record)
 {
@@ -836,7 +836,7 @@ DSL_Opt_Plan_Get_Plan
 }
 
 BOOL
-DSL_Opt_Plan_Get_Member
+DSL_opt_plan_get_member
         (const DSL_OPT_PLAN_CONTEXT *context, DSL_OPT_PLAN_ID plan_id,
          UINT32 ordinal, DSL_OPT_PLAN_MEMBER_RECORD *record)
 {
@@ -852,14 +852,14 @@ DSL_Opt_Plan_Get_Member
 }
 
 BOOL
-DSL_Opt_Plan_Candidate_Budget_Exhausted
+DSL_opt_plan_candidate_budget_exhausted
         (const DSL_OPT_PLAN_CONTEXT *context)
 {
     return context == NULL ? FALSE : context->candidate_budget_exhausted;
 }
 
 BOOL
-DSL_Opt_Plan_Plan_Budget_Exhausted
+DSL_opt_plan_plan_budget_exhausted
         (const DSL_OPT_PLAN_CONTEXT *context)
 {
     return context == NULL ? FALSE : context->plan_budget_exhausted;

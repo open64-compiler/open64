@@ -177,7 +177,7 @@ WOPT_DSL_Compact_TCON(CODEREP *cr, UINT32 depth, TCON_IDX *tcon_idx)
     return FALSE;
 
   if (cr->Is_dsl_op()) {
-    if (!WOPT_DSL_Semantic_Info_Get
+    if (!WOPT_DSL_semantic_info_get
             (cr->Dsl_semantic_info_id(), &info) ||
         info.logical_operator != OPR_DSLTENSORCONST ||
         info.tensor_tcon_idx == TCON_IDX_ZERO)
@@ -204,7 +204,7 @@ WOPT_DSL_Fold_Expr(CODEREP *cr)
 
   if (!WOPT_Enable_CRSIMP || cr == NULL || !cr->Is_dsl_op() ||
       cr->Kid_count() != 2 ||
-      !WOPT_DSL_Semantic_Info_Get
+      !WOPT_DSL_semantic_info_get
           (cr->Dsl_semantic_info_id(), &origin) ||
       (origin.logical_operator != OPR_DSLADD &&
        origin.logical_operator != OPR_DSLMUL))
@@ -213,11 +213,11 @@ WOPT_DSL_Fold_Expr(CODEREP *cr)
           (cr->Get_opnd(0), 0, &operand_tcon_idx[0]) ||
       !WOPT_DSL_Compact_TCON
           (cr->Get_opnd(1), 0, &operand_tcon_idx[1]) ||
-      !WOPT_DSL_Fold_Compact_Tensors
+      !WOPT_DSL_fold_compact_tensors
           (&origin, operand_tcon_idx, 2, &folded, TFile))
     return NULL;
 
-  folded_id = WOPT_DSL_Semantic_Info_Intern(&folded);
+  folded_id = WOPT_DSL_semantic_info_intern(&folded);
   if (folded_id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID)
     return NULL;
   replacement = Alloc_stack_cr(0);
@@ -282,7 +282,7 @@ FOLD::Prove_DSL_Factorization(CODEREP *left, CODEREP *right,
       TY_mtype(TY_tensor_element_ty(left_info.result_ty));
   BOOL floating_point = MTYPE_is_float(element_mtype);
   if ((!MTYPE_is_integral(element_mtype) && !floating_point) ||
-      !WOPT_DSL_Algebraic_Safety_Allows
+      !WOPT_DSL_algebraic_safety_allows
           (safety, floating_point, Enable_Cfold_Reassociate))
     return FALSE;
 

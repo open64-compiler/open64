@@ -134,15 +134,15 @@ typedef struct {
     UINT32 reserved;
 } DSL_FUSION_BOUNDARY_RECORD;
 
-extern void DSL_Fusion_Control_Init (DSL_FUSION_CONTROL *control);
-extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_Fusion_Candidates_Create
+extern void DSL_fusion_control_init (DSL_FUSION_CONTROL *control);
+extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_fusion_candidates_create
                                 (struct pu_info *pu,
                                  const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_TENSOR_ANALYSIS *tensor_analysis,
                                  const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
                                  const DSL_FUSION_CONTROL *control,
                                  FILE *diagnostic);
-extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_Fusion_Candidates_Create_With_Layout
+extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_fusion_candidates_create_with_layout
                                 (struct pu_info *pu,
                                  const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_TENSOR_ANALYSIS *tensor_analysis,
@@ -150,41 +150,41 @@ extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_Fusion_Candidates_Create_With_Layout
                                  const DSL_LOGICAL_LAYOUT_ANALYSIS *layout,
                                  const DSL_FUSION_CONTROL *control,
                                  FILE *diagnostic);
-extern void DSL_Fusion_Candidates_Destroy
+extern void DSL_fusion_candidates_destroy
                                 (DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern BOOL DSL_Fusion_Candidates_Build
+extern BOOL DSL_fusion_candidates_build
                                 (DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Fusion_Candidates_Verify
+extern BOOL DSL_fusion_candidates_verify
                                 (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern void DSL_Fusion_Candidates_Print
+extern void DSL_fusion_candidates_print
                                 (FILE *file,
                                  const DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern UINT32 DSL_Fusion_Candidates_Site_Count
+extern UINT32 DSL_fusion_candidates_site_count
                                 (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern UINT32 DSL_Fusion_Candidates_Member_Count
+extern UINT32 DSL_fusion_candidates_member_count
                                 (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern UINT32 DSL_Fusion_Candidates_Boundary_Count
+extern UINT32 DSL_fusion_candidates_boundary_count
                                 (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern BOOL DSL_Fusion_Candidates_Get_Site
+extern BOOL DSL_fusion_candidates_get_site
                                 (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
                                  DSL_FUSION_SITE_ID id,
                                  DSL_FUSION_SITE_RECORD *record);
-extern BOOL DSL_Fusion_Candidates_Get_Member
+extern BOOL DSL_fusion_candidates_get_member
                                 (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
                                  DSL_FUSION_MEMBER_ID id,
                                  DSL_FUSION_MEMBER_RECORD *record);
-extern BOOL DSL_Fusion_Candidates_Get_Boundary
+extern BOOL DSL_fusion_candidates_get_boundary
                                 (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
                                  DSL_FUSION_BOUNDARY_ID id,
                                  DSL_FUSION_BOUNDARY_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_Fusion_Candidates_Get_Plan_Context
+extern const DSL_OPT_PLAN_CONTEXT *DSL_fusion_candidates_get_plan_context
                                 (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
                                  DSL_FUSION_SITE_ID id);
-extern const char *DSL_Fusion_Pattern_Name (UINT32 pattern);
-extern const char *DSL_Fusion_Member_Role_Name (UINT32 role);
-extern const char *DSL_Fusion_Boundary_Kind_Name (UINT32 kind);
-extern const char *DSL_Fusion_Fact_State_Name (UINT32 state);
+extern const char *DSL_fusion_pattern_name (UINT32 pattern);
+extern const char *DSL_fusion_member_role_name (UINT32 role);
+extern const char *DSL_fusion_boundary_kind_name (UINT32 kind);
+extern const char *DSL_fusion_fact_state_name (UINT32 state);
 
 #endif /* dsl_fusion_candidate_INCLUDED */

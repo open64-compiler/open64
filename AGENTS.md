@@ -247,9 +247,15 @@ only when the current task needs detail.
     read.
 11. Give public free functions, globals, enum values, and macros a stable
     subsystem prefix such as `DSL_` or `WOPT_DSL_`. Enum values and macros use
-    uppercase underscore-separated names. Avoid new unprefixed global names and
-    prefer inline functions over macros unless an existing Open64 protocol
-    requires a macro.
+    uppercase underscore-separated names. Extern free functions follow the
+    WOPT API convention: preserve the uppercase subsystem acronym, then use
+    lowercase underscore-separated component and operation words, for example
+    `DSL_tensor_evolution_create()` and
+    `WOPT_DSL_populate_tensor_control_snapshot()`. Preserve an additional
+    uppercase word only when it is itself an established compiler acronym,
+    such as `WN` or `DIVREM`. Avoid new unprefixed global names and prefer
+    inline functions over macros unless an existing Open64 protocol requires a
+    macro.
 12. Use established optimizer abbreviations such as `cr`, `stmt`, `bb`, `cfg`,
     `wn`, `phi`, `aux_id`, `kid0`, and `kid1` where their meaning is local and
     unambiguous. Use descriptive lowercase underscore-separated names for new

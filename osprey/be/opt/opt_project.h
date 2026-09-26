@@ -197,7 +197,7 @@ Projectable_operation(const CODEREP *const cr)
   if (cr->Is_dsl_op()) {
     WOPT_DSL_SEMANTIC_INFO info;
     return cr->Dsl_semantic_info(&info) &&
-           WOPT_DSL_Projectable_Info(&info);
+           WOPT_DSL_projectable_info(&info);
   }
 #ifdef TARG_X8664
   return (Projectable_operation(cr->Op()) || OPCODE_rtype(cr->Op()) == MTYPE_V16C8 ||
@@ -234,7 +234,7 @@ Projection_operation(const CODEREP *const cr)
   if (cr->Is_dsl_op()) {
     WOPT_DSL_SEMANTIC_INFO info;
     return cr->Dsl_semantic_info(&info) &&
-           WOPT_DSL_Projection_Info(&info);
+           WOPT_DSL_projection_info(&info);
   }
   return Projection_operation(cr->Opr());
 }

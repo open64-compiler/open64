@@ -3,15 +3,14 @@
  */
 
 /*
- * Certifies AIO-9 hierarchical tile-plan staging, target differentiation,
- * legality, cost, and check-only TensorEvolutionGraph overlays. Design:
- * doc/AI-COMPILER-OPTIMIZATION-AIO9-HIERARCHICAL-TILING.md.
+ * Certifies AIO-10 fetch/pipeline planning, target capability fallback,
+ * buffering, overlap cost, safety rejection, and unchanged binary WHIRL.
+ * Design: doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <vector>
 
 #include "defs.h"
 #include "mempool.h"
@@ -26,7 +25,7 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
-#include "dsl_tile_candidate.h"
+#include "dsl_fetch_pipeline.h"
 #include "dsl_opcode.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -44,7 +43,7 @@ typedef struct {
     DSL_BUILDER_PROGRAM_UNIT pu;
     DSL_BUILDER_VALUE values[4];
     UINT32 file_id;
-} AIO9_FIXTURE;
+} AIO10_FIXTURE;
 
 typedef struct {
     DSL_TENSOR_EVOLUTION_GRAPH *graph;
@@ -52,7 +51,8 @@ typedef struct {
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot;
     DSL_TENSOR_LOCALITY_ANALYSIS *locality;
     DSL_TILE_ANALYSIS *tile;
-} AIO9_ANALYSIS;
+    DSL_FETCH_PIPELINE_ANALYSIS *pipeline;
+} AIO10_ANALYSIS;
 
 static void
 Initialize_Test_Context(void)
@@ -103,7 +103,7 @@ Set_Source (DSL_BUILDER_VALUE value, UINT32 file_id, UINT32 line)
 }
 
 static BOOL
-Create_Fixture (const char *name, AIO9_FIXTURE *fixture)
+Create_Fixture (const char *name, AIO10_FIXTURE *fixture)
 {
     DSL_BUILDER_PU_SOURCE_IDENTITY identity;
     DSL_BUILDER_OPERATOR_ATTRIBUTE attributes[2];
@@ -119,7 +119,7 @@ Create_Fixture (const char *name, AIO9_FIXTURE *fixture)
         return FALSE;
     memset(&identity, 0, sizeof(identity));
     identity.canonical_definition_name = name;
-    identity.defining_module = "aio9.tile_candidate_contract";
+    identity.defining_module = "aio10.fetch_pipeline_contract";
     identity.defining_file = __FILE__;
     identity.defining_line = 1;
     if (!DSL_Builder_Set_PU_Source_Identity(fixture->pu, &identity))
@@ -135,10 +135,10 @@ Create_Fixture (const char *name, AIO9_FIXTURE *fixture)
         return FALSE;
 
     fixture->values[0] = DSL_Builder_Create_Tensor_Constant
-                             ("aio9_kid0", tensor_ty, "float32", 2,
+                             ("aio10_kid0", tensor_ty, "float32", 2,
                               "[64,64]", "splat", "1.0");
     fixture->values[1] = DSL_Builder_Create_Tensor_Constant
-                             ("aio9_kid1", tensor_ty, "float32", 2,
+                             ("aio10_kid1", tensor_ty, "float32", 2,
                               "[64,64]", "splat", "1.0");
     attributes[0].name = "attr.transpose_kid0";
     attributes[0].value = "false";
@@ -148,12 +148,12 @@ Create_Fixture (const char *name, AIO9_FIXTURE *fixture)
     kids[1] = fixture->values[1];
     fixture->values[2] = DSL_Builder_Create_Operator_With_Result
                              (matmul, 1, kids, 2, attributes, 2,
-                              "aio9_matmul", tensor_ty);
+                              "aio10_matmul", tensor_ty);
     kids[0] = fixture->values[2];
     fixture->values[3] = DSL_Builder_Create_Operator_With_Result
                              (relu, 2, kids, 1, NULL, 0,
-                              "aio9_relu", tensor_ty);
-    const UINT32 source_lines[4] = { 129, 132, 141, 145 };
+                              "aio10_relu", tensor_ty);
+    const UINT32 source_lines[4] = { 132, 135, 144, 148 };
     for (UINT32 i = 0; i < 4; ++i) {
         if (fixture->values[i] == NULL ||
             !Set_Source(fixture->values[i], fixture->file_id,
@@ -174,7 +174,7 @@ Value_Node (DSL_BUILDER_VALUE value)
 }
 
 static DSL_TENSOR_CONTROL_SNAPSHOT *
-Create_Snapshot (const AIO9_FIXTURE *fixture, BOOL effect)
+Create_Snapshot (const AIO10_FIXTURE *fixture)
 {
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot =
         DSL_tensor_control_snapshot_create(fixture->pu, stderr);
@@ -182,7 +182,6 @@ Create_Snapshot (const AIO9_FIXTURE *fixture, BOOL effect)
     memset(&block, 0, sizeof(block));
     block.block_id = 1;
     block.reverse_postorder = 1;
-    block.flags = effect ? DSL_TENSOR_CONTROL_EFFECT_BARRIER : 0;
     if (snapshot == NULL ||
         !DSL_tensor_control_snapshot_add_block(snapshot, &block, stderr))
         return NULL;
@@ -202,8 +201,9 @@ Create_Snapshot (const AIO9_FIXTURE *fixture, BOOL effect)
 }
 
 static void
-Destroy_Analysis (AIO9_ANALYSIS *analysis)
+Destroy_Analysis (AIO10_ANALYSIS *analysis)
 {
+    DSL_fetch_pipeline_destroy(analysis->pipeline);
     DSL_tile_destroy(analysis->tile);
     DSL_tensor_locality_destroy(analysis->locality);
     DSL_tensor_control_snapshot_destroy(analysis->snapshot);
@@ -213,11 +213,12 @@ Destroy_Analysis (AIO9_ANALYSIS *analysis)
 }
 
 static BOOL
-Build_Analysis (const AIO9_FIXTURE *fixture, UINT32 profile,
-                UINT32 phase, BOOL effect, BOOL select_plans,
-                FILE *trace, AIO9_ANALYSIS *analysis)
+Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
+                UINT32 prefetch_distance, BOOL select_plans,
+                FILE *trace, AIO10_ANALYSIS *analysis)
 {
-    DSL_TILE_CONTROL control;
+    DSL_TILE_CONTROL tile_control;
+    DSL_FETCH_PIPELINE_CONTROL fetch_control;
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
@@ -229,129 +230,124 @@ Build_Analysis (const AIO9_FIXTURE *fixture, UINT32 profile,
     if (analysis->tensor == NULL ||
         !DSL_tensor_analysis_build(analysis->tensor, stderr))
         return FALSE;
-    analysis->snapshot = Create_Snapshot(fixture, effect);
+    analysis->snapshot = Create_Snapshot(fixture);
     analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
         !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
-    DSL_tile_control_init(&control);
-    control.target_profile_id = profile;
-    control.maximum_phase = phase;
-    control.select_plans = select_plans;
-    control.focus_value_id =
+
+    DSL_tile_control_init(&tile_control);
+    tile_control.target_profile_id = profile;
+    tile_control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
     analysis->tile = DSL_tile_create
                          (fixture->pu, analysis->graph, analysis->tensor,
-                          analysis->locality, NULL, &control, stderr);
+                          analysis->locality, NULL, &tile_control, stderr);
     if (analysis->tile == NULL ||
         !DSL_tile_build(analysis->tile, stderr) ||
         !DSL_tile_verify(analysis->tile, stderr))
         return FALSE;
-    if (trace != NULL)
+
+    DSL_fetch_pipeline_control_init(&fetch_control);
+    fetch_control.target_profile_id = profile;
+    fetch_control.focus_value_id = tile_control.focus_value_id;
+    fetch_control.prefetch_distance_hint = prefetch_distance;
+    fetch_control.select_plans = select_plans;
+    analysis->pipeline = DSL_fetch_pipeline_create
+                             (fixture->pu, analysis->graph,
+                              analysis->locality, NULL, analysis->tile,
+                              &fetch_control, stderr);
+    if (analysis->pipeline == NULL ||
+        !DSL_fetch_pipeline_build(analysis->pipeline, stderr) ||
+        !DSL_fetch_pipeline_verify(analysis->pipeline, stderr))
+        return FALSE;
+    if (trace != NULL) {
         DSL_tile_print(trace, analysis->tile);
+        DSL_fetch_pipeline_print(trace, analysis->pipeline);
+    }
     return TRUE;
 }
 
 static BOOL
-Check_Oracle (const DSL_TILE_PLAN_RECORD &tile)
+Check_Main_Contract (const AIO10_ANALYSIS *analysis, UINT32 profile,
+                     BOOL unsafe_distance)
 {
-    const UINT32 extent = 64;
-    std::vector<float> lhs(extent * extent);
-    std::vector<float> rhs(extent * extent);
-    std::vector<float> reference(extent * extent, 0.0f);
-    std::vector<float> tiled(extent * extent, 0.0f);
-    for (UINT32 i = 0; i < extent * extent; ++i) {
-        lhs[i] = (float)((INT32)(i % 13) - 6) / 16.0f;
-        rhs[i] = (float)((INT32)(i % 17) - 8) / 16.0f;
-    }
-    for (UINT32 i = 0; i < extent; ++i)
-        for (UINT32 j = 0; j < extent; ++j)
-            for (UINT32 k = 0; k < extent; ++k)
-                reference[i * extent + j] +=
-                    lhs[i * extent + k] * rhs[k * extent + j];
-    UINT32 cta_m = tile.cta_m == 0 ? extent : tile.cta_m;
-    UINT32 cta_n = tile.cta_n == 0 ? extent : tile.cta_n;
-    UINT32 cta_k = tile.cta_k == 0 ? extent : tile.cta_k;
-    for (UINT32 bm = 0; bm < extent; bm += cta_m)
-        for (UINT32 bn = 0; bn < extent; bn += cta_n)
-            for (UINT32 i = bm; i < extent && i < bm + cta_m; ++i)
-                for (UINT32 j = bn; j < extent && j < bn + cta_n; ++j)
-                    for (UINT32 bk = 0; bk < extent; bk += cta_k)
-                        for (UINT32 k = bk;
-                             k < extent && k < bk + cta_k; ++k)
-                            tiled[i * extent + j] +=
-                                lhs[i * extent + k] *
-                                rhs[k * extent + j];
-    return memcmp(&reference[0], &tiled[0],
-                  reference.size() * sizeof(float)) == 0;
-}
-
-static BOOL
-Check_Main_Contract (const AIO9_ANALYSIS *analysis, UINT32 profile,
-                     UINT32 phase, BOOL effect)
-{
-    DSL_TILE_SITE_RECORD site;
-    UINT32 alternatives = phase == 0 ? 0 :
-                          profile == DSL_TARGET_PROFILE_NVIDIA_BLACKWELL ?
-                          3 : profile == DSL_TARGET_PROFILE_NVIDIA_HOPPER ?
-                          2 : 0;
-    UINT32 plans = 1 + alternatives;
-    UINT32 stages = 1 + alternatives * (phase + 1);
-    if (DSL_tile_site_count(analysis->tile) != 1 ||
-        DSL_tile_plan_count(analysis->tile) != plans ||
-        DSL_tile_stage_count(analysis->tile) != stages ||
-        !DSL_tile_get_site(analysis->tile, 1, &site) ||
-        site.tile_plan_count != plans)
+    DSL_FETCH_SITE_RECORD site;
+    UINT32 expected_plans = profile == DSL_TARGET_PROFILE_CPU_BASELINE ?
+                            1 : 4;
+    UINT32 expected_fetches = expected_plans * 2;
+    UINT32 expected_stages = profile == DSL_TARGET_PROFILE_CPU_BASELINE ?
+                             1 : 7;
+    if (DSL_fetch_pipeline_site_count(analysis->pipeline) != 1 ||
+        DSL_fetch_pipeline_plan_count(analysis->pipeline) !=
+            expected_plans ||
+        DSL_fetch_pipeline_fetch_count(analysis->pipeline) !=
+            expected_fetches ||
+        DSL_fetch_pipeline_stage_count(analysis->pipeline) !=
+            expected_stages ||
+        !DSL_fetch_pipeline_get_site
+             (analysis->pipeline, 1, &site) ||
+        site.pipeline_plan_count != expected_plans)
         return FALSE;
+
     UINT32 proven = 0;
     UINT32 rejected = 0;
-    BOOL found_wide = FALSE;
-    for (UINT32 id = 1; id <= plans; ++id) {
-        DSL_TILE_PLAN_RECORD tile;
-        if (!DSL_tile_get_plan(analysis->tile, id, &tile) ||
-            !Check_Oracle(tile))
+    UINT32 async_stages = 0;
+    UINT32 tma_stages = 0;
+    UINT32 selected_engine = DSL_MEMORY_MOVEMENT_UNKNOWN;
+    for (UINT32 id = 1; id <= expected_plans; ++id) {
+        DSL_FETCH_PLAN_RECORD plan;
+        if (!DSL_fetch_pipeline_get_plan
+                 (analysis->pipeline, id, &plan) ||
+            plan.raw_movement_cost != plan.hidden_movement_cost +
+                                      plan.unhidden_movement_cost)
             return FALSE;
-        if (tile.family == DSL_TILE_FAMILY_BLACKWELL_WIDE)
-            found_wide = TRUE;
-        if (id != 1 && tile.legality == DSL_OPT_LEGALITY_PROVEN)
+        if (plan.optimization_plan_id == site.selected_plan_id)
+            selected_engine = plan.engine;
+        if (plan.engine == DSL_MEMORY_MOVEMENT_ASYNC_COPY)
+            async_stages = plan.stage_count;
+        if (plan.engine ==
+                DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC)
+            tma_stages = plan.stage_count;
+        if (id != 1 && plan.legality == DSL_OPT_LEGALITY_PROVEN)
             ++proven;
-        if (id != 1 && tile.legality == DSL_OPT_LEGALITY_REJECTED &&
-            tile.rejection_reason == DSL_OPT_REJECT_EFFECT)
+        if (id != 1 && plan.legality == DSL_OPT_LEGALITY_REJECTED &&
+            plan.rejection_reason == DSL_OPT_REJECT_RESOURCE)
             ++rejected;
     }
-    if ((profile == DSL_TARGET_PROFILE_NVIDIA_BLACKWELL && phase != 0) !=
-        found_wide)
+    if (profile == DSL_TARGET_PROFILE_CPU_BASELINE)
+        return selected_engine == DSL_MEMORY_MOVEMENT_DEMAND;
+    if (async_stages != 2 || tma_stages != 3)
         return FALSE;
-    if (phase >= DSL_TILE_PHASE_P7_5_RESOURCE &&
-        ((effect && rejected != alternatives) ||
-         (!effect && proven != alternatives)))
-        return FALSE;
-    return TRUE;
+    if (unsafe_distance)
+        return rejected == 2 && proven == 1 &&
+               selected_engine == DSL_MEMORY_MOVEMENT_VECTOR;
+    return proven == 3 && rejected == 0 &&
+           selected_engine ==
+               DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC;
 }
 
 static int
 Run_Image_Mode (BOOL run_analysis)
 {
-    const char *artifact = getenv("OPEN64_AIO9_ARTIFACT");
-    const char *trace_path = getenv("OPEN64_AIO9_ANALYSIS");
-    const char *phase_text = getenv("OPEN64_AIO9_PHASE");
+    const char *artifact = getenv("OPEN64_AIO10_ARTIFACT");
+    const char *trace_path = getenv("OPEN64_AIO10_ANALYSIS");
     DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
     DSL_BUILDER_VERIFY_RESULT verify;
-    AIO9_FIXTURE fixture;
-    AIO9_ANALYSIS analysis;
-    UINT32 phase = phase_text == NULL ? 11 : atoi(phase_text);
+    AIO10_FIXTURE fixture;
+    AIO10_ANALYSIS analysis;
     UINT32 nodes;
     UINT32 values;
     UINT32 types;
     char diagnostic[4096];
     FILE *trace = NULL;
-    if (artifact == NULL || artifact[0] == '\0' || phase >= 12)
+    if (artifact == NULL || artifact[0] == '\0')
         return 1;
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
-    if (!Create_Fixture("aio9_tiling", &fixture))
+    if (!Create_Fixture("aio10_pipeline", &fixture))
         return 1;
     nodes = DSL_IR_Image_Node_Count();
     values = DSL_IR_Image_Value_Count();
@@ -360,11 +356,10 @@ Run_Image_Mode (BOOL run_analysis)
         if (trace_path == NULL || trace_path[0] == '\0' ||
             (trace = fopen(trace_path, "w")) == NULL ||
             !Build_Analysis
-                 (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, phase,
-                  FALSE, TRUE, trace, &analysis) ||
+                 (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1,
+                  TRUE, trace, &analysis) ||
             !Check_Main_Contract
-                 (&analysis, DSL_TARGET_PROFILE_NVIDIA_HOPPER,
-                  phase, FALSE) ||
+                 (&analysis, DSL_TARGET_PROFILE_NVIDIA_HOPPER, FALSE) ||
             DSL_IR_Image_Node_Count() != nodes ||
             DSL_IR_Image_Value_Count() != values ||
             TY_Table_Size() != types)
@@ -382,90 +377,74 @@ Run_Image_Mode (BOOL run_analysis)
     request.flags = 0;
     if (!DSL_Builder_Finalize_Mapped_Image(&request))
         return 1;
-    printf("AIO-9 %s G%u image passed\n",
-           run_analysis ? "analyzed" : "baseline", phase);
+    printf("AIO-10 %s G12 image passed\n",
+           run_analysis ? "analyzed" : "baseline");
     return 0;
 }
 
 static int
-Run_Target (UINT32 profile, BOOL effect)
+Run_Target (UINT32 profile, BOOL unsafe_distance)
 {
-    const char *trace_path = getenv("OPEN64_AIO9_ANALYSIS");
-    AIO9_FIXTURE fixture;
-    AIO9_ANALYSIS analysis;
+    const char *trace_path = getenv("OPEN64_AIO10_ANALYSIS");
+    AIO10_FIXTURE fixture;
+    AIO10_ANALYSIS analysis;
     FILE *trace = trace_path == NULL ? NULL : fopen(trace_path, "w");
     if (trace_path != NULL && trace == NULL)
         return 1;
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
-    if (!Create_Fixture("aio9_target", &fixture) ||
+    if (!Create_Fixture("aio10_target", &fixture) ||
         !Build_Analysis
-             (&fixture, profile, DSL_TILE_PHASE_P7_11_INSTRUCTION,
-              effect, TRUE, trace, &analysis) ||
-        !Check_Main_Contract
-             (&analysis, profile, DSL_TILE_PHASE_P7_11_INSTRUCTION,
-              effect))
+             (&fixture, profile, unsafe_distance ? 4 : 1,
+              TRUE, trace, &analysis) ||
+        !Check_Main_Contract(&analysis, profile, unsafe_distance))
         return 1;
     if (trace != NULL)
         fclose(trace);
     Destroy_Analysis(&analysis);
-    printf("AIO-9 target profile %u%s passed\n", profile,
-           effect ? " effect rejection" : "");
+    printf("AIO-10 target profile %u%s passed\n", profile,
+           unsafe_distance ? " unsafe-distance rejection" : "");
     return 0;
 }
 
 static int
 Run_Control(void)
 {
-    AIO9_FIXTURE fixture;
-    AIO9_ANALYSIS analysis;
-    DSL_TILE_CONTROL control;
-    DSL_TILE_ANALYSIS *disabled;
+    AIO10_FIXTURE fixture;
+    AIO10_ANALYSIS analysis;
+    DSL_FETCH_PIPELINE_CONTROL control;
+    DSL_FETCH_PIPELINE_ANALYSIS *disabled;
     FILE *quiet = tmpfile();
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
-    if (quiet == NULL || !Create_Fixture("aio9_control", &fixture))
+    if (quiet == NULL || !Create_Fixture("aio10_control", &fixture) ||
+        !Build_Analysis
+             (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1,
+              FALSE, NULL, &analysis))
         return 1;
-    memset(&analysis, 0, sizeof(analysis));
-    analysis.graph = DSL_tensor_evolution_create(fixture.pu, stderr);
-    if (analysis.graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(analysis.graph, stderr))
-        return 1;
-    analysis.tensor = DSL_tensor_analysis_create
-                          (fixture.pu, analysis.graph, stderr);
-    if (analysis.tensor == NULL ||
-        !DSL_tensor_analysis_build(analysis.tensor, stderr))
-        return 1;
-    analysis.snapshot = Create_Snapshot(&fixture, FALSE);
-    analysis.locality = DSL_tensor_locality_create
-                            (fixture.pu, analysis.tensor,
-                             analysis.snapshot, stderr);
-    if (analysis.locality == NULL ||
-        !DSL_tensor_locality_build(analysis.locality, stderr))
-        return 1;
-    DSL_tile_control_init(&control);
+    DSL_fetch_pipeline_destroy(analysis.pipeline);
+    analysis.pipeline = NULL;
+    DSL_fetch_pipeline_control_init(&control);
     control.apply_transformation = 1;
-    if (DSL_tile_create
-            (fixture.pu, analysis.graph, analysis.tensor,
-             analysis.locality, NULL, &control, quiet) != NULL)
+    if (DSL_fetch_pipeline_create
+            (fixture.pu, analysis.graph, analysis.locality, NULL,
+             analysis.tile, &control, quiet) != NULL)
         return 1;
     control.apply_transformation = 0;
     control.generate_candidates = 0;
     control.select_plans = 0;
-    disabled = DSL_tile_create
-                   (fixture.pu, analysis.graph, analysis.tensor,
-                    analysis.locality, NULL, &control, stderr);
-    if (disabled == NULL || !DSL_tile_build(disabled, stderr) ||
-        !DSL_tile_verify(disabled, stderr) ||
-        DSL_tile_site_count(disabled) != 0)
+    disabled = DSL_fetch_pipeline_create
+                   (fixture.pu, analysis.graph, analysis.locality, NULL,
+                    analysis.tile, &control, stderr);
+    if (disabled == NULL ||
+        !DSL_fetch_pipeline_build(disabled, stderr) ||
+        !DSL_fetch_pipeline_verify(disabled, stderr) ||
+        DSL_fetch_pipeline_site_count(disabled) != 0)
         return 1;
-    DSL_tile_destroy(disabled);
-    DSL_tensor_locality_destroy(analysis.locality);
-    DSL_tensor_control_snapshot_destroy(analysis.snapshot);
-    DSL_tensor_analysis_destroy(analysis.tensor);
-    DSL_tensor_evolution_destroy(analysis.graph);
+    DSL_fetch_pipeline_destroy(disabled);
+    Destroy_Analysis(&analysis);
     fclose(quiet);
-    printf("AIO-9 control contract passed\n");
+    printf("AIO-10 control contract passed\n");
     return 0;
 }
 
@@ -474,18 +453,20 @@ main(void)
 {
     const char *mode;
     Initialize_Test_Context();
-    mode = getenv("OPEN64_AIO9_MODE");
+    mode = getenv("OPEN64_AIO10_MODE");
     if (mode == NULL)
         return 1;
     if (strcmp(mode, "before") == 0)
         return Run_Image_Mode(FALSE);
-    if (strcmp(mode, "stage") == 0)
+    if (strcmp(mode, "pipeline") == 0)
         return Run_Image_Mode(TRUE);
     if (strcmp(mode, "hopper") == 0)
         return Run_Target(DSL_TARGET_PROFILE_NVIDIA_HOPPER, FALSE);
     if (strcmp(mode, "blackwell") == 0)
         return Run_Target(DSL_TARGET_PROFILE_NVIDIA_BLACKWELL, FALSE);
-    if (strcmp(mode, "effect") == 0)
+    if (strcmp(mode, "cpu") == 0)
+        return Run_Target(DSL_TARGET_PROFILE_CPU_BASELINE, FALSE);
+    if (strcmp(mode, "unsafe") == 0)
         return Run_Target(DSL_TARGET_PROFILE_NVIDIA_HOPPER, TRUE);
     if (strcmp(mode, "control") == 0)
         return Run_Control();

@@ -295,8 +295,8 @@ extern BOOL DSL_Operator_Get_Fusibility_Info
                                 (DSL_OPERATOR dsl_operator,
                                  UINT16 version,
                                  DSL_FUSIBILITY_INFO *info);
-extern const char *DSL_Fusion_Iteration_Class_Name (UINT32 iteration_space);
-extern const char *DSL_Fusion_Indexing_Class_Name (UINT32 operand_indexing);
+extern const char *DSL_fusion_iteration_class_name (UINT32 iteration_space);
+extern const char *DSL_fusion_indexing_class_name (UINT32 operand_indexing);
 extern BOOL DSL_Operator_Get_Swap_Equivalent
                                 (DSL_OPERATOR dsl_operator,
                                  UINT16 version,

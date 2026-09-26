@@ -306,10 +306,10 @@ Check_Operand_Role
 {
     DSL_TENSOR_FACT_RECORD fact;
     DSL_TENSOR_USE_FACT_RECORD use;
-    return DSL_Tensor_Analysis_Find_Fact
+    return DSL_tensor_analysis_find_fact
                (analysis, DSL_Builder_Get_Value_Image_Id(value), &fact) &&
            fact.use_count == 1 &&
-           DSL_Tensor_Analysis_Get_Use
+           DSL_tensor_analysis_get_use
                (analysis, fact.first_use_id, &use) &&
            use.role == expected_role &&
            use.consumer_operator == expected_consumer &&
@@ -338,21 +338,21 @@ Analyze_Fixture
                           fixture->expected_operator == OPR_DSLCONV2D ?
                           cnn_roles : transformer_roles;
     DSL_TENSOR_EVOLUTION_GRAPH *graph =
-        DSL_Tensor_Evolution_Create(fixture->pu, stderr);
+        DSL_tensor_evolution_create(fixture->pu, stderr);
     DSL_TENSOR_ANALYSIS *analysis;
     DSL_TENSOR_FACT_RECORD result;
     if (graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
+        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
         return FALSE;
-    analysis = DSL_Tensor_Analysis_Create(fixture->pu, graph, stderr);
-    if (analysis == NULL || !DSL_Tensor_Analysis_Build(analysis, stderr) ||
-        !DSL_Tensor_Analysis_Build(analysis, stderr) ||
-        !DSL_Tensor_Analysis_Verify(analysis, stderr) ||
-        !DSL_Tensor_Analysis_Is_Complete(analysis) ||
-        DSL_Tensor_Analysis_Fact_Count(analysis) !=
+    analysis = DSL_tensor_analysis_create(fixture->pu, graph, stderr);
+    if (analysis == NULL || !DSL_tensor_analysis_build(analysis, stderr) ||
+        !DSL_tensor_analysis_build(analysis, stderr) ||
+        !DSL_tensor_analysis_verify(analysis, stderr) ||
+        !DSL_tensor_analysis_is_complete(analysis) ||
+        DSL_tensor_analysis_fact_count(analysis) !=
             fixture->operand_count + 1 ||
-        DSL_Tensor_Analysis_Use_Count(analysis) != fixture->operand_count ||
-        !DSL_Tensor_Analysis_Find_Fact
+        DSL_tensor_analysis_use_count(analysis) != fixture->operand_count ||
+        !DSL_tensor_analysis_find_fact
              (analysis, DSL_Builder_Get_Value_Image_Id(fixture->result),
               &result) ||
         result.producer_operator != fixture->expected_operator ||
@@ -364,7 +364,7 @@ Analyze_Fixture
         return FALSE;
     if (fixture->expected_operator != OPR_DSLMATMUL) {
         DSL_TENSOR_FACT_RECORD input;
-        if (!DSL_Tensor_Analysis_Find_Fact
+        if (!DSL_tensor_analysis_find_fact
                  (analysis,
                   DSL_Builder_Get_Value_Image_Id(fixture->operands[0]),
                   &input) ||
@@ -378,9 +378,9 @@ Analyze_Fixture
             return FALSE;
     }
     if (trace != NULL)
-        DSL_Tensor_Analysis_Print(trace, analysis);
-    DSL_Tensor_Analysis_Destroy(analysis);
-    DSL_Tensor_Evolution_Destroy(graph);
+        DSL_tensor_analysis_print(trace, analysis);
+    DSL_tensor_analysis_destroy(analysis);
+    DSL_tensor_evolution_destroy(graph);
     return TRUE;
 }
 
@@ -475,24 +475,24 @@ Records_Equal
         (const DSL_TENSOR_ANALYSIS *first,
          const DSL_TENSOR_ANALYSIS *second)
 {
-    if (DSL_Tensor_Analysis_Fact_Count(first) !=
-            DSL_Tensor_Analysis_Fact_Count(second) ||
-        DSL_Tensor_Analysis_Use_Count(first) !=
-            DSL_Tensor_Analysis_Use_Count(second))
+    if (DSL_tensor_analysis_fact_count(first) !=
+            DSL_tensor_analysis_fact_count(second) ||
+        DSL_tensor_analysis_use_count(first) !=
+            DSL_tensor_analysis_use_count(second))
         return FALSE;
-    for (UINT32 id = 1; id <= DSL_Tensor_Analysis_Fact_Count(first); ++id) {
+    for (UINT32 id = 1; id <= DSL_tensor_analysis_fact_count(first); ++id) {
         DSL_TENSOR_FACT_RECORD left;
         DSL_TENSOR_FACT_RECORD right;
-        if (!DSL_Tensor_Analysis_Get_Fact(first, id, &left) ||
-            !DSL_Tensor_Analysis_Get_Fact(second, id, &right) ||
+        if (!DSL_tensor_analysis_get_fact(first, id, &left) ||
+            !DSL_tensor_analysis_get_fact(second, id, &right) ||
             memcmp(&left, &right, sizeof(left)) != 0)
             return FALSE;
     }
-    for (UINT32 id = 1; id <= DSL_Tensor_Analysis_Use_Count(first); ++id) {
+    for (UINT32 id = 1; id <= DSL_tensor_analysis_use_count(first); ++id) {
         DSL_TENSOR_USE_FACT_RECORD left;
         DSL_TENSOR_USE_FACT_RECORD right;
-        if (!DSL_Tensor_Analysis_Get_Use(first, id, &left) ||
-            !DSL_Tensor_Analysis_Get_Use(second, id, &right) ||
+        if (!DSL_tensor_analysis_get_use(first, id, &left) ||
+            !DSL_tensor_analysis_get_use(second, id, &right) ||
             memcmp(&left, &right, sizeof(left)) != 0)
             return FALSE;
     }
@@ -513,34 +513,34 @@ Run_Metadata_Independence(void)
     DSL_Opcode_Register_Common_Substrate();
     if (!Create_Matmul_Fixture(&fixture))
         return 1;
-    graph = DSL_Tensor_Evolution_Create(fixture.pu, stderr);
+    graph = DSL_tensor_evolution_create(fixture.pu, stderr);
     if (graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
+        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
         return 1;
-    before = DSL_Tensor_Analysis_Create(fixture.pu, graph, stderr);
-    if (before == NULL || !DSL_Tensor_Analysis_Build(before, stderr))
+    before = DSL_tensor_analysis_create(fixture.pu, graph, stderr);
+    if (before == NULL || !DSL_tensor_analysis_build(before, stderr))
         return 1;
     metadata.name = "source_layer_name";
     metadata.value = "metadata_must_not_change_semantics";
     if (!DSL_Builder_Attach_Value_Metadata
              (fixture.operands[0], &metadata, 1))
         return 1;
-    after = DSL_Tensor_Analysis_Create(fixture.pu, graph, stderr);
-    if (after == NULL || !DSL_Tensor_Analysis_Build(after, stderr) ||
+    after = DSL_tensor_analysis_create(fixture.pu, graph, stderr);
+    if (after == NULL || !DSL_tensor_analysis_build(after, stderr) ||
         !Records_Equal(before, after) ||
-        DSL_Tensor_Analysis_Get_Fact(after, 0, &unused) ||
-        DSL_Tensor_Analysis_Get_Fact(after, 4, &unused) ||
-        DSL_Tensor_Analysis_Get_Use(after, 0, &use) ||
-        DSL_Tensor_Analysis_Get_Use(after, 3, &use) ||
-        strcmp(DSL_Tensor_Dimension_State_Name(99), "unknown") != 0 ||
-        strcmp(DSL_Tensor_Ownership_Name(99), "unknown") != 0 ||
-        strcmp(DSL_Tensor_Reuse_Role_Name(99), "unknown") != 0 ||
-        strcmp(DSL_Tensor_Value_Role_Name(99), "unknown") != 0 ||
-        strcmp(DSL_Tensor_Use_Role_Name(99), "unknown") != 0)
+        DSL_tensor_analysis_get_fact(after, 0, &unused) ||
+        DSL_tensor_analysis_get_fact(after, 4, &unused) ||
+        DSL_tensor_analysis_get_use(after, 0, &use) ||
+        DSL_tensor_analysis_get_use(after, 3, &use) ||
+        strcmp(DSL_tensor_dimension_state_name(99), "unknown") != 0 ||
+        strcmp(DSL_tensor_ownership_name(99), "unknown") != 0 ||
+        strcmp(DSL_tensor_reuse_role_name(99), "unknown") != 0 ||
+        strcmp(DSL_tensor_value_role_name(99), "unknown") != 0 ||
+        strcmp(DSL_tensor_use_role_name(99), "unknown") != 0)
         return 1;
-    DSL_Tensor_Analysis_Destroy(after);
-    DSL_Tensor_Analysis_Destroy(before);
-    DSL_Tensor_Evolution_Destroy(graph);
+    DSL_tensor_analysis_destroy(after);
+    DSL_tensor_analysis_destroy(before);
+    DSL_tensor_evolution_destroy(graph);
     printf("AIO-3 metadata independence contract passed\n");
     return 0;
 }
@@ -572,37 +572,37 @@ Run_Incomplete_And_Ownership(void)
                    file_id, __LINE__);
     if (pending == NULL || !DSL_Builder_Append_PU_Value(pending_pu, pending))
         return 1;
-    graph = DSL_Tensor_Evolution_Create(pending_pu, stderr);
+    graph = DSL_tensor_evolution_create(pending_pu, stderr);
     if (graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
+        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
         return 1;
-    analysis = DSL_Tensor_Analysis_Create(pending_pu, graph, stderr);
-    if (analysis == NULL || !DSL_Tensor_Analysis_Build(analysis, quiet) ||
-        DSL_Tensor_Analysis_Is_Complete(analysis) ||
-        !DSL_Tensor_Analysis_Find_Fact
+    analysis = DSL_tensor_analysis_create(pending_pu, graph, stderr);
+    if (analysis == NULL || !DSL_tensor_analysis_build(analysis, quiet) ||
+        DSL_tensor_analysis_is_complete(analysis) ||
+        !DSL_tensor_analysis_find_fact
              (analysis, DSL_Builder_Get_Value_Image_Id(pending), &fact) ||
         fact.dimension_state != DSL_TENSOR_DIMENSION_UNRESOLVED ||
         fact.dynamic_dimension_count != DSL_TENSOR_DIMENSION_COUNT_UNKNOWN ||
         (fact.completeness & DSL_TENSOR_FACT_COMPLETE_SHAPE) != 0)
         return 1;
-    DSL_Tensor_Analysis_Destroy(analysis);
-    DSL_Tensor_Evolution_Destroy(graph);
+    DSL_tensor_analysis_destroy(analysis);
+    DSL_tensor_evolution_destroy(graph);
 
     if (!Create_Matmul_Fixture(&first))
         return 1;
-    graph = DSL_Tensor_Evolution_Create(first.pu, stderr);
+    graph = DSL_tensor_evolution_create(first.pu, stderr);
     if (graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
+        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
         return 1;
-    analysis = DSL_Tensor_Analysis_Create(first.pu, graph, stderr);
-    if (analysis == NULL || !DSL_Tensor_Analysis_Build(analysis, stderr) ||
+    analysis = DSL_tensor_analysis_create(first.pu, graph, stderr);
+    if (analysis == NULL || !DSL_tensor_analysis_build(analysis, stderr) ||
         !Create_CNN_Fixture(&second) ||
-        DSL_Tensor_Analysis_Verify(analysis, quiet) ||
+        DSL_tensor_analysis_verify(analysis, quiet) ||
         !DSL_Builder_Select_PU(first.pu) ||
-        !DSL_Tensor_Analysis_Verify(analysis, stderr))
+        !DSL_tensor_analysis_verify(analysis, stderr))
         return 1;
-    DSL_Tensor_Analysis_Destroy(analysis);
-    DSL_Tensor_Evolution_Destroy(graph);
+    DSL_tensor_analysis_destroy(analysis);
+    DSL_tensor_evolution_destroy(graph);
     fclose(quiet);
     printf("AIO-3 incomplete and per-PU ownership contracts passed\n");
     return 0;

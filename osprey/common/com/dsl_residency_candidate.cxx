@@ -29,19 +29,19 @@ struct DSL_RESIDENCY_ANALYSIS {
     BOOL built;
 };
 
-static const char *DSL_residency_promotion_name[] = {
+static const char *DSL_residency_promotion_name_table[] = {
     "unknown", "none", "on_demand", "prefetch"
 };
 
-static const char *DSL_residency_demotion_name[] = {
+static const char *DSL_residency_demotion_name_table[] = {
     "unknown", "none", "last_use", "pressure"
 };
 
-static const char *DSL_residency_spill_name[] = {
+static const char *DSL_residency_spill_name_table[] = {
     "unknown", "none", "lower_tier", "system"
 };
 
-static const char *DSL_residency_eviction_name[] = {
+static const char *DSL_residency_eviction_name_table[] = {
     "unknown", "none", "last_use", "pressure"
 };
 
@@ -77,39 +77,39 @@ DSL_Residency_Active (const DSL_RESIDENCY_ANALYSIS *analysis)
 }
 
 const char *
-DSL_Residency_Promotion_Name (UINT32 policy)
+DSL_residency_promotion_name (UINT32 policy)
 {
-    return policy < sizeof(DSL_residency_promotion_name) /
-                        sizeof(DSL_residency_promotion_name[0]) ?
-           DSL_residency_promotion_name[policy] : "unknown";
+    return policy < sizeof(DSL_residency_promotion_name_table) /
+                        sizeof(DSL_residency_promotion_name_table[0]) ?
+           DSL_residency_promotion_name_table[policy] : "unknown";
 }
 
 const char *
-DSL_Residency_Demotion_Name (UINT32 policy)
+DSL_residency_demotion_name (UINT32 policy)
 {
-    return policy < sizeof(DSL_residency_demotion_name) /
-                        sizeof(DSL_residency_demotion_name[0]) ?
-           DSL_residency_demotion_name[policy] : "unknown";
+    return policy < sizeof(DSL_residency_demotion_name_table) /
+                        sizeof(DSL_residency_demotion_name_table[0]) ?
+           DSL_residency_demotion_name_table[policy] : "unknown";
 }
 
 const char *
-DSL_Residency_Spill_Name (UINT32 policy)
+DSL_residency_spill_name (UINT32 policy)
 {
-    return policy < sizeof(DSL_residency_spill_name) /
-                        sizeof(DSL_residency_spill_name[0]) ?
-           DSL_residency_spill_name[policy] : "unknown";
+    return policy < sizeof(DSL_residency_spill_name_table) /
+                        sizeof(DSL_residency_spill_name_table[0]) ?
+           DSL_residency_spill_name_table[policy] : "unknown";
 }
 
 const char *
-DSL_Residency_Eviction_Name (UINT32 policy)
+DSL_residency_eviction_name (UINT32 policy)
 {
-    return policy < sizeof(DSL_residency_eviction_name) /
-                        sizeof(DSL_residency_eviction_name[0]) ?
-           DSL_residency_eviction_name[policy] : "unknown";
+    return policy < sizeof(DSL_residency_eviction_name_table) /
+                        sizeof(DSL_residency_eviction_name_table[0]) ?
+           DSL_residency_eviction_name_table[policy] : "unknown";
 }
 
 void
-DSL_Residency_Control_Init (DSL_RESIDENCY_CONTROL *control)
+DSL_residency_control_init (DSL_RESIDENCY_CONTROL *control)
 {
     if (control == NULL)
         return;
@@ -139,7 +139,7 @@ DSL_Residency_Control_Valid (const DSL_RESIDENCY_CONTROL &control)
            control.enable_shared <= 1 && control.enable_register <= 1 &&
            control.reserved == 0 &&
            (!control.select_plans || control.generate_candidates) &&
-           DSL_Memory_Hierarchy_Validate
+           DSL_memory_hierarchy_validate
                (control.target_profile_id, NULL);
 }
 
@@ -278,14 +278,14 @@ DSL_Residency_Build_Baseline_Plan
          DSL_OPT_PLAN_CONTEXT **context_out, FILE *diagnostic)
 {
     DSL_TENSOR_EVOLUTION_NODE_RECORD root;
-    if (!DSL_Tensor_Evolution_Find_Semantic_Root
+    if (!DSL_tensor_evolution_find_semantic_root
              (analysis->graph, tensor.value_id, &root))
         return DSL_Residency_Report
                    (diagnostic, "missing semantic root", tensor.value_id);
     DSL_OPT_PLAN_BUDGET budget;
     budget.max_candidates = analysis->control.max_alternatives_per_site + 1;
     budget.max_plans = analysis->control.max_alternatives_per_site + 1;
-    DSL_OPT_PLAN_CONTEXT *context = DSL_Opt_Plan_Create
+    DSL_OPT_PLAN_CONTEXT *context = DSL_opt_plan_create
                                         (analysis->pu, analysis->graph,
                                          &budget, diagnostic);
     if (context == NULL)
@@ -300,10 +300,10 @@ DSL_Residency_Build_Baseline_Plan
     candidate.rejection_reason = DSL_OPT_REJECT_NONE;
     candidate.ordering_key = 1;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_BASELINE;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &site->baseline_candidate_id,
               diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     DSL_OPT_COST_INPUT cost;
@@ -316,8 +316,8 @@ DSL_Residency_Build_Baseline_Plan
              DSL_OPT_COST_CONFIDENCE_MEDIUM,
              DSL_OPT_COST_EVIDENCE_BASELINE_POLICY);
     DSL_OPT_COST_ID cost_id;
-    if (!DSL_Opt_Plan_Add_Cost(context, &cost, &cost_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+    if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic)) {
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     DSL_OPT_CANDIDATE_ID member = site->baseline_candidate_id;
@@ -331,9 +331,9 @@ DSL_Residency_Build_Baseline_Plan
     plan.ordering_key = 1;
     plan.flags = DSL_OPT_PLAN_FLAG_BASELINE |
                  DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    if (!DSL_Opt_Plan_Add_Plan
+    if (!DSL_opt_plan_add_plan
              (context, &plan, &site->baseline_plan_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     *context_out = context;
@@ -364,7 +364,7 @@ DSL_Residency_Add_Alternative_Plan
     candidate.rejection_reason = alternative->rejection_reason;
     candidate.ordering_key = ordinal + 1;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &alternative->candidate_id,
               diagnostic))
         return FALSE;
@@ -381,7 +381,7 @@ DSL_Residency_Add_Alternative_Plan
              DSL_OPT_COST_CONFIDENCE_LOW,
              DSL_OPT_COST_EVIDENCE_TARGET_MODEL);
     DSL_OPT_COST_ID cost_id;
-    if (!DSL_Opt_Plan_Add_Cost(context, &cost, &cost_id, diagnostic))
+    if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic))
         return FALSE;
     DSL_OPT_CANDIDATE_ID member = alternative->candidate_id;
     DSL_OPT_PLAN_INPUT plan;
@@ -394,7 +394,7 @@ DSL_Residency_Add_Alternative_Plan
     plan.rejection_reason = alternative->rejection_reason;
     plan.ordering_key = ordinal + 1;
     plan.flags = DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    return DSL_Opt_Plan_Add_Plan
+    return DSL_opt_plan_add_plan
                (context, &plan, &alternative->plan_id, diagnostic);
 }
 
@@ -429,7 +429,7 @@ DSL_Residency_Add_Alternative
     alternative.descriptor_id = descriptor.id;
     DSL_Residency_Classify(locality, tier, &descriptor, &alternative);
     analysis->descriptors.push_back(descriptor);
-    if (!DSL_Tensor_Evolution_Add_Local_Physical
+    if (!DSL_tensor_evolution_add_local_physical
              (analysis->graph, site->semantic_root_id, descriptor.id,
               &alternative.result_evolution_node_id,
               &alternative.evolution_edge_id, diagnostic) ||
@@ -445,7 +445,7 @@ DSL_Residency_Add_Alternative
 }
 
 DSL_RESIDENCY_ANALYSIS *
-DSL_Residency_Create
+DSL_residency_create
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
          const DSL_TENSOR_ANALYSIS *tensor_analysis,
          const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
@@ -453,11 +453,11 @@ DSL_Residency_Create
 {
     if (pu == NULL || graph == NULL || tensor_analysis == NULL ||
         locality == NULL || control == NULL || Current_PU_Info != pu ||
-        DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
+        DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Residency_Control_Valid(*control) ||
-        !DSL_Tensor_Evolution_Verify(graph, diagnostic) ||
-        !DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
-        !DSL_Tensor_Locality_Verify(locality, diagnostic)) {
+        !DSL_tensor_evolution_verify(graph, diagnostic) ||
+        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !DSL_tensor_locality_verify(locality, diagnostic)) {
         DSL_Residency_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -473,17 +473,17 @@ DSL_Residency_Create
 }
 
 void
-DSL_Residency_Destroy (DSL_RESIDENCY_ANALYSIS *analysis)
+DSL_residency_destroy (DSL_RESIDENCY_ANALYSIS *analysis)
 {
     if (analysis == NULL)
         return;
     for (UINT32 i = 0; i < analysis->plans.size(); ++i)
-        DSL_Opt_Plan_Destroy(analysis->plans[i]);
+        DSL_opt_plan_destroy(analysis->plans[i]);
     delete analysis;
 }
 
 BOOL
-DSL_Residency_Build (DSL_RESIDENCY_ANALYSIS *analysis, FILE *diagnostic)
+DSL_residency_build (DSL_RESIDENCY_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Residency_Active(analysis) || analysis->built)
         return DSL_Residency_Report
@@ -493,16 +493,16 @@ DSL_Residency_Build (DSL_RESIDENCY_ANALYSIS *analysis, FILE *diagnostic)
         return TRUE;
     }
     DSL_MEMORY_HIERARCHY_PROFILE profile;
-    if (!DSL_Memory_Hierarchy_Get_Profile
+    if (!DSL_memory_hierarchy_get_profile
              (analysis->control.target_profile_id, &profile))
         return DSL_Residency_Report
                    (diagnostic, "missing target profile", 0);
     for (DSL_TENSOR_FACT_ID id = 1;
-         id <= DSL_Tensor_Analysis_Fact_Count(analysis->tensor_analysis);
+         id <= DSL_tensor_analysis_fact_count(analysis->tensor_analysis);
          ++id) {
         DSL_TENSOR_FACT_RECORD tensor;
         DSL_TENSOR_LOCALITY_FACT_RECORD locality;
-        if (!DSL_Tensor_Analysis_Get_Fact
+        if (!DSL_tensor_analysis_get_fact
                  (analysis->tensor_analysis, id, &tensor) ||
             tensor.value_role != DSL_TENSOR_VALUE_ROLE_INTERMEDIATE ||
             tensor.rank < 1 || tensor.producer_node_id == 0 ||
@@ -512,12 +512,12 @@ DSL_Residency_Build (DSL_RESIDENCY_ANALYSIS *analysis, FILE *diagnostic)
         if (analysis->sites.size() >= analysis->control.max_sites)
             return DSL_Residency_Report
                        (diagnostic, "residency site budget exhausted", id);
-        if (!DSL_Tensor_Locality_Find_Fact
+        if (!DSL_tensor_locality_find_fact
                  (analysis->locality, tensor.value_id, &locality))
             return DSL_Residency_Report
                        (diagnostic, "missing locality evidence", id);
         DSL_TENSOR_EVOLUTION_NODE_RECORD root;
-        if (!DSL_Tensor_Evolution_Find_Semantic_Root
+        if (!DSL_tensor_evolution_find_semantic_root
                  (analysis->graph, tensor.value_id, &root))
             return DSL_Residency_Report
                        (diagnostic, "missing residency root", id);
@@ -535,9 +535,9 @@ DSL_Residency_Build (DSL_RESIDENCY_ANALYSIS *analysis, FILE *diagnostic)
             return FALSE;
         for (UINT32 tier_id = 1; tier_id <= profile.tier_count; ++tier_id) {
             DSL_MEMORY_TIER_RECORD tier;
-            if (!DSL_Memory_Hierarchy_Get_Tier
+            if (!DSL_memory_hierarchy_get_tier
                      (profile.id, tier_id, &tier)) {
-                DSL_Opt_Plan_Destroy(context);
+                DSL_opt_plan_destroy(context);
                 return FALSE;
             }
             if (!DSL_Residency_Tier_Enabled(analysis->control, tier.kind))
@@ -548,16 +548,16 @@ DSL_Residency_Build (DSL_RESIDENCY_ANALYSIS *analysis, FILE *diagnostic)
             if (!DSL_Residency_Add_Alternative
                      (analysis, tensor, locality, &site, context, tier,
                       diagnostic)) {
-                DSL_Opt_Plan_Destroy(context);
+                DSL_opt_plan_destroy(context);
                 return FALSE;
             }
         }
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;
-            if (!DSL_Opt_Plan_Select
+            if (!DSL_opt_plan_select
                      (context, analysis->control.target_profile_id,
                       &selection, diagnostic)) {
-                DSL_Opt_Plan_Destroy(context);
+                DSL_opt_plan_destroy(context);
                 return FALSE;
             }
             site.selected_plan_id = selection.selected_plan_id;
@@ -566,11 +566,11 @@ DSL_Residency_Build (DSL_RESIDENCY_ANALYSIS *analysis, FILE *diagnostic)
         analysis->sites.push_back(site);
     }
     analysis->built = TRUE;
-    return DSL_Residency_Verify(analysis, diagnostic);
+    return DSL_residency_verify(analysis, diagnostic);
 }
 
 BOOL
-DSL_Residency_Verify
+DSL_residency_verify
         (const DSL_RESIDENCY_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Residency_Active(analysis) || !analysis->built ||
@@ -590,7 +590,7 @@ DSL_Residency_Verify
             alternative.descriptor_id != descriptor.id ||
             descriptor.target_profile_id !=
                 analysis->control.target_profile_id ||
-            !DSL_Memory_Hierarchy_Get_Tier
+            !DSL_memory_hierarchy_get_tier
                  (descriptor.target_profile_id, descriptor.tier_id, &tier) ||
             descriptor.tier_kind != tier.kind ||
             descriptor.tier_scope != tier.scope ||
@@ -617,10 +617,10 @@ DSL_Residency_Verify
              alternative.rejection_reason != DSL_OPT_REJECT_NONE) ||
             (alternative.legality != DSL_OPT_LEGALITY_PROVEN &&
              alternative.rejection_reason == DSL_OPT_REJECT_NONE) ||
-            !DSL_Tensor_Evolution_Get_Node
+            !DSL_tensor_evolution_get_node
                  (analysis->graph, alternative.result_evolution_node_id,
                   &node) ||
-            !DSL_Tensor_Evolution_Get_Edge
+            !DSL_tensor_evolution_get_edge
                  (analysis->graph, alternative.evolution_edge_id, &edge) ||
             node.kind != DSL_TENSOR_EVOLUTION_NODE_LOCAL_PHYSICAL ||
             node.representation_descriptor_id != descriptor.id ||
@@ -638,10 +638,10 @@ DSL_Residency_Verify
         if (site.id != i + 1 || site.owner_pu_st != analysis->owner_pu_st ||
             site.first_alternative_id != expected_alternative ||
             site.alternative_count == 0 || site.reserved != 0 ||
-            !DSL_Tensor_Evolution_Find_Semantic_Root
+            !DSL_tensor_evolution_find_semantic_root
                  (analysis->graph, site.semantic_value_id, &root) ||
             root.id != site.semantic_root_id ||
-            !DSL_Opt_Plan_Verify(analysis->plans[i], diagnostic))
+            !DSL_opt_plan_verify(analysis->plans[i], diagnostic))
             return DSL_Residency_Report
                        (diagnostic, "invalid residency site", site.id);
         for (UINT32 j = 0; j < site.alternative_count; ++j) {
@@ -655,7 +655,7 @@ DSL_Residency_Verify
         expected_alternative += site.alternative_count;
     }
     return expected_alternative == analysis->alternatives.size() + 1 &&
-           DSL_Tensor_Evolution_Verify(analysis->graph, diagnostic);
+           DSL_tensor_evolution_verify(analysis->graph, diagnostic);
 }
 
 static void
@@ -668,7 +668,7 @@ DSL_Residency_Print_U64 (FILE *file, UINT64 value)
 }
 
 void
-DSL_Residency_Print
+DSL_residency_print
         (FILE *file, const DSL_RESIDENCY_ANALYSIS *analysis)
 {
     if (file == NULL || analysis == NULL)
@@ -680,12 +680,12 @@ DSL_Residency_Print
             ST_IDX_index(analysis->owner_pu_st),
             DSL_Residency_Owner_Valid(analysis->owner_pu_st) ?
                 ST_name(St_Table[analysis->owner_pu_st]) : "<invalid>",
-            DSL_Target_Profile_Name(analysis->control.target_profile_id),
+            DSL_target_profile_name(analysis->control.target_profile_id),
             (UINT32)analysis->sites.size(),
             (UINT32)analysis->descriptors.size(),
             (UINT32)analysis->alternatives.size(),
             analysis->control.select_plans ? "yes" : "no");
-    DSL_Memory_Hierarchy_Print(file, analysis->control.target_profile_id);
+    DSL_memory_hierarchy_print(file, analysis->control.target_profile_id);
     for (UINT32 i = 0; i < analysis->sites.size(); ++i) {
         const DSL_RESIDENCY_SITE_RECORD &site = analysis->sites[i];
         fprintf(file, "  site[%u] value=%u root=%u alternatives=%u "
@@ -700,52 +700,52 @@ DSL_Residency_Print
                 analysis->descriptors[alternative.descriptor_id - 1];
             fprintf(file, "    alternative[%u] tier=%s scope=%s required=",
                     alternative.id,
-                    DSL_Memory_Tier_Name(descriptor.tier_kind),
-                    DSL_Memory_Scope_Name(descriptor.tier_scope));
+                    DSL_memory_tier_name(descriptor.tier_kind),
+                    DSL_memory_scope_name(descriptor.tier_scope));
             DSL_Residency_Print_U64(file, descriptor.required_bytes);
             fprintf(file, " capacity=");
             DSL_Residency_Print_U64(file, descriptor.capacity_bytes);
             fprintf(file, " promote=%s demote=%s spill=%s evict=%s "
                           "legality=%s reason=%s node=%u edge=%u "
                           "candidate=%u plan=%u\n",
-                    DSL_Residency_Promotion_Name
+                    DSL_residency_promotion_name
                         (descriptor.promotion_policy),
-                    DSL_Residency_Demotion_Name
+                    DSL_residency_demotion_name
                         (descriptor.demotion_policy),
-                    DSL_Residency_Spill_Name(descriptor.spill_policy),
-                    DSL_Residency_Eviction_Name
+                    DSL_residency_spill_name(descriptor.spill_policy),
+                    DSL_residency_eviction_name
                         (descriptor.eviction_policy),
-                    DSL_Opt_Legality_Name(alternative.legality),
-                    DSL_Opt_Rejection_Reason_Name
+                    DSL_opt_legality_name(alternative.legality),
+                    DSL_opt_rejection_reason_name
                         (alternative.rejection_reason),
                     alternative.result_evolution_node_id,
                     alternative.evolution_edge_id,
                     alternative.candidate_id, alternative.plan_id);
         }
-        DSL_Opt_Plan_Print(file, analysis->plans[i]);
+        DSL_opt_plan_print(file, analysis->plans[i]);
     }
 }
 
 UINT32
-DSL_Residency_Descriptor_Count (const DSL_RESIDENCY_ANALYSIS *analysis)
+DSL_residency_descriptor_count (const DSL_RESIDENCY_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->descriptors.size();
 }
 
 UINT32
-DSL_Residency_Site_Count (const DSL_RESIDENCY_ANALYSIS *analysis)
+DSL_residency_site_count (const DSL_RESIDENCY_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->sites.size();
 }
 
 UINT32
-DSL_Residency_Alternative_Count (const DSL_RESIDENCY_ANALYSIS *analysis)
+DSL_residency_alternative_count (const DSL_RESIDENCY_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->alternatives.size();
 }
 
 BOOL
-DSL_Residency_Get_Descriptor
+DSL_residency_get_descriptor
         (const DSL_RESIDENCY_ANALYSIS *analysis,
          DSL_RESIDENCY_DESCRIPTOR_ID id,
          DSL_RESIDENCY_DESCRIPTOR_RECORD *record)
@@ -758,7 +758,7 @@ DSL_Residency_Get_Descriptor
 }
 
 BOOL
-DSL_Residency_Get_Site
+DSL_residency_get_site
         (const DSL_RESIDENCY_ANALYSIS *analysis, DSL_RESIDENCY_SITE_ID id,
          DSL_RESIDENCY_SITE_RECORD *record)
 {
@@ -770,7 +770,7 @@ DSL_Residency_Get_Site
 }
 
 BOOL
-DSL_Residency_Get_Alternative
+DSL_residency_get_alternative
         (const DSL_RESIDENCY_ANALYSIS *analysis,
          DSL_RESIDENCY_ALTERNATIVE_ID id,
          DSL_RESIDENCY_ALTERNATIVE_RECORD *record)
@@ -783,7 +783,7 @@ DSL_Residency_Get_Alternative
 }
 
 const DSL_OPT_PLAN_CONTEXT *
-DSL_Residency_Get_Plan_Context
+DSL_residency_get_plan_context
         (const DSL_RESIDENCY_ANALYSIS *analysis, DSL_RESIDENCY_SITE_ID id)
 {
     return analysis == NULL || id == 0 || id > analysis->plans.size() ?

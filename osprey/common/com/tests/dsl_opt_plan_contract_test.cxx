@@ -201,12 +201,12 @@ Build_Plan_Fixture
     DSL_OPT_CANDIDATE_ID member;
 
     memset(plan_fixture, 0, sizeof(*plan_fixture));
-    if (!DSL_Tensor_Evolution_Find_Semantic_Root
+    if (!DSL_tensor_evolution_find_semantic_root
              (graph, DSL_Builder_Get_Value_Image_Id(fixture->result),
               &result_root) ||
         !DSL_IR_Image_Get_Value(result_root.semantic_value_id, &result_value))
         return FALSE;
-    plan_fixture->context = DSL_Opt_Plan_Create
+    plan_fixture->context = DSL_opt_plan_create
                                 (fixture->pu, graph, budget, diagnostic);
     if (plan_fixture->context == NULL)
         return FALSE;
@@ -220,7 +220,7 @@ Build_Plan_Fixture
     candidate.rejection_reason = DSL_OPT_REJECT_NONE;
     candidate.ordering_key = 100;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_BASELINE;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (plan_fixture->context, &candidate,
               &plan_fixture->baseline_candidate, diagnostic))
         return FALSE;
@@ -229,7 +229,7 @@ Build_Plan_Fixture
     candidate.parent_candidate_id = plan_fixture->baseline_candidate;
     candidate.ordering_key = 200;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (plan_fixture->context, &candidate,
               &plan_fixture->tile_candidate, diagnostic))
         return FALSE;
@@ -249,7 +249,7 @@ Build_Plan_Fixture
                    DSL_OPT_COST_EVIDENCE_BASELINE_POLICY);
     Set_Known_Term(&cost.terms[DSL_OPT_COST_RUNTIME_SELECTION], 0,
                    DSL_OPT_COST_EVIDENCE_BASELINE_POLICY);
-    if (!DSL_Opt_Plan_Add_Cost
+    if (!DSL_opt_plan_add_cost
              (plan_fixture->context, &cost,
               &plan_fixture->baseline_cost, diagnostic))
         return FALSE;
@@ -267,7 +267,7 @@ Build_Plan_Fixture
                    DSL_OPT_COST_EVIDENCE_STATIC_ANALYSIS);
     Set_Known_Term(&cost.terms[DSL_OPT_COST_RUNTIME_SELECTION], 0,
                    DSL_OPT_COST_EVIDENCE_STATIC_ANALYSIS);
-    if (!DSL_Opt_Plan_Add_Cost
+    if (!DSL_opt_plan_add_cost
              (plan_fixture->context, &cost,
               &plan_fixture->tile_cost, diagnostic))
         return FALSE;
@@ -281,7 +281,7 @@ Build_Plan_Fixture
     plan.rejection_reason = DSL_OPT_REJECT_NONE;
     plan.ordering_key = 100;
     plan.flags = DSL_OPT_PLAN_FLAG_BASELINE;
-    if (!DSL_Opt_Plan_Add_Plan
+    if (!DSL_opt_plan_add_plan
              (plan_fixture->context, &plan,
               &plan_fixture->baseline_plan, diagnostic))
         return FALSE;
@@ -292,7 +292,7 @@ Build_Plan_Fixture
     plan.fallback_plan_id = plan_fixture->baseline_plan;
     plan.ordering_key = 200;
     plan.flags = DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    return DSL_Opt_Plan_Add_Plan
+    return DSL_opt_plan_add_plan
                (plan_fixture->context, &plan,
                 &plan_fixture->tile_plan, diagnostic);
 }
@@ -305,34 +305,34 @@ Check_Main_Plan(const AIO2_PLAN_FIXTURE *fixture)
     DSL_OPT_PLAN_RECORD plan;
     DSL_OPT_PLAN_MEMBER_RECORD member;
     DSL_OPT_SELECTION_RESULT selection;
-    if (!DSL_Opt_Plan_Verify(fixture->context, stderr) ||
-        !DSL_Opt_Plan_Select(fixture->context, 1, &selection, stderr) ||
-        !DSL_Opt_Plan_Select(fixture->context, 1, &selection, stderr) ||
+    if (!DSL_opt_plan_verify(fixture->context, stderr) ||
+        !DSL_opt_plan_select(fixture->context, 1, &selection, stderr) ||
+        !DSL_opt_plan_select(fixture->context, 1, &selection, stderr) ||
         selection.selected_plan_id != fixture->baseline_plan ||
         selection.legal_plan_count != 2 ||
         selection.complete_cost_count != 1 ||
         selection.incomplete_cost_count != 1 ||
         selection.target_mismatch_count != 0 ||
         selection.rejected_plan_count != 0 ||
-        DSL_Opt_Plan_Candidate_Count(fixture->context) != 2 ||
-        DSL_Opt_Plan_Cost_Count(fixture->context) != 2 ||
-        DSL_Opt_Plan_Plan_Count(fixture->context) != 2 ||
-        !DSL_Opt_Plan_Get_Candidate
+        DSL_opt_plan_candidate_count(fixture->context) != 2 ||
+        DSL_opt_plan_cost_count(fixture->context) != 2 ||
+        DSL_opt_plan_plan_count(fixture->context) != 2 ||
+        !DSL_opt_plan_get_candidate
              (fixture->context, fixture->tile_candidate, &candidate) ||
         candidate.parent_candidate_id != fixture->baseline_candidate ||
-        !DSL_Opt_Plan_Get_Cost
+        !DSL_opt_plan_get_cost
              (fixture->context, fixture->baseline_cost, &cost) ||
         !cost.complete || cost.total != 155 ||
-        !DSL_Opt_Plan_Get_Cost
+        !DSL_opt_plan_get_cost
              (fixture->context, fixture->tile_cost, &cost) ||
         cost.complete || cost.total != 0 ||
-        !DSL_Opt_Plan_Get_Plan
+        !DSL_opt_plan_get_plan
              (fixture->context, fixture->tile_plan, &plan) ||
         plan.fallback_plan_id != fixture->baseline_plan ||
-        !DSL_Opt_Plan_Get_Member
+        !DSL_opt_plan_get_member
              (fixture->context, fixture->tile_plan, 0, &member) ||
         member.candidate_id != fixture->tile_candidate ||
-        DSL_Opt_Plan_Get_Member
+        DSL_opt_plan_get_member
              (fixture->context, fixture->tile_plan, 1, &member))
         return FALSE;
     return TRUE;
@@ -364,11 +364,11 @@ Run_Image_Mode(BOOL build_plan)
     type_count = TY_Table_Size();
 
     if (build_plan) {
-        graph = DSL_Tensor_Evolution_Create(fixture.pu, stderr);
+        graph = DSL_tensor_evolution_create(fixture.pu, stderr);
         budget.max_candidates = 4;
         budget.max_plans = 4;
         if (graph == NULL ||
-            !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
+            !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
             !Build_Plan_Fixture
                  (&fixture, graph, &budget, &plan_fixture, stderr) ||
             !Check_Main_Plan(&plan_fixture) ||
@@ -380,18 +380,18 @@ Run_Image_Mode(BOOL build_plan)
             FILE *file = fopen(graph_path, "w");
             if (file == NULL)
                 return 1;
-            DSL_Tensor_Evolution_Print(file, graph);
+            DSL_tensor_evolution_print(file, graph);
             fclose(file);
         }
         if (plan_path != NULL && plan_path[0] != '\0') {
             FILE *file = fopen(plan_path, "w");
             if (file == NULL)
                 return 1;
-            DSL_Opt_Plan_Print(file, plan_fixture.context);
+            DSL_opt_plan_print(file, plan_fixture.context);
             fclose(file);
         }
-        DSL_Opt_Plan_Destroy(plan_fixture.context);
-        DSL_Tensor_Evolution_Destroy(graph);
+        DSL_opt_plan_destroy(plan_fixture.context);
+        DSL_tensor_evolution_destroy(graph);
     }
 
     image_request.path = artifact;
@@ -426,11 +426,11 @@ Run_Negative_Contract(void)
     if (quiet == NULL ||
         !Create_Fixture("aio2_negative_contract", &fixture))
         return 1;
-    graph = DSL_Tensor_Evolution_Create(fixture.pu, stderr);
+    graph = DSL_tensor_evolution_create(fixture.pu, stderr);
     budget.max_candidates = 4;
     budget.max_plans = 4;
     if (graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
+        !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
         !Build_Plan_Fixture
              (&fixture, graph, &budget, &plan_fixture, stderr))
         return 1;
@@ -439,9 +439,9 @@ Run_Negative_Contract(void)
     cost.target_profile_id = 1;
     cost.ordering_key = 300;
     cost.terms[DSL_OPT_COST_COMPUTE].amount = 1;
-    if (DSL_Opt_Plan_Add_Cost
+    if (DSL_opt_plan_add_cost
             (plan_fixture.context, &cost, &cost_id, quiet) ||
-        DSL_Opt_Plan_Cost_Count(plan_fixture.context) != 2)
+        DSL_opt_plan_cost_count(plan_fixture.context) != 2)
         return 1;
 
     duplicate_members[0] = plan_fixture.baseline_candidate;
@@ -454,14 +454,14 @@ Run_Negative_Contract(void)
     plan.legality = DSL_OPT_LEGALITY_PROVEN;
     plan.rejection_reason = DSL_OPT_REJECT_NONE;
     plan.ordering_key = 300;
-    if (DSL_Opt_Plan_Add_Plan
+    if (DSL_opt_plan_add_plan
             (plan_fixture.context, &plan, &plan_id, quiet) ||
-        DSL_Opt_Plan_Plan_Count(plan_fixture.context) != 2 ||
-        DSL_Opt_Plan_Select
+        DSL_opt_plan_plan_count(plan_fixture.context) != 2 ||
+        DSL_opt_plan_select
             (plan_fixture.context, 2, &selection, quiet) ||
         selection.selected_plan_id != 0 ||
         selection.target_mismatch_count != 2 ||
-        !DSL_Opt_Plan_Select
+        !DSL_opt_plan_select
             (plan_fixture.context, 1, &selection, stderr) ||
         selection.selected_plan_id != plan_fixture.baseline_plan)
         return 1;
@@ -476,7 +476,7 @@ Run_Negative_Contract(void)
     candidate.rejection_reason = DSL_OPT_REJECT_NONE;
     candidate.ordering_key = 300;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-    if (DSL_Opt_Plan_Add_Candidate
+    if (DSL_opt_plan_add_candidate
             (plan_fixture.context, &candidate, &candidate_id, quiet))
         return 1;
     memset(&cost, 0, sizeof(cost));
@@ -485,32 +485,32 @@ Run_Negative_Contract(void)
     for (UINT32 i = 0; i < DSL_OPT_COST_TERM_COUNT; ++i)
         Set_Known_Term(&cost.terms[i], i + 1,
                        DSL_OPT_COST_EVIDENCE_STATIC_ANALYSIS);
-    if (DSL_Opt_Plan_Add_Cost
+    if (DSL_opt_plan_add_cost
             (plan_fixture.context, &cost, &cost_id, quiet) ||
-        DSL_Opt_Plan_Add_Plan
+        DSL_opt_plan_add_plan
             (plan_fixture.context, &plan, &plan_id, quiet) ||
-        DSL_Opt_Plan_Candidate_Count(plan_fixture.context) != 2 ||
-        DSL_Opt_Plan_Cost_Count(plan_fixture.context) != 2 ||
-        DSL_Opt_Plan_Plan_Count(plan_fixture.context) != 2)
+        DSL_opt_plan_candidate_count(plan_fixture.context) != 2 ||
+        DSL_opt_plan_cost_count(plan_fixture.context) != 2 ||
+        DSL_opt_plan_plan_count(plan_fixture.context) != 2)
         return 1;
-    DSL_Opt_Plan_Destroy(plan_fixture.context);
+    DSL_opt_plan_destroy(plan_fixture.context);
 
     budget.max_candidates = 1;
     budget.max_plans = 1;
     if (!Build_Plan_Fixture
              (&fixture, graph, &budget, &plan_fixture, quiet)) {
         if (plan_fixture.context != NULL)
-            DSL_Opt_Plan_Destroy(plan_fixture.context);
+            DSL_opt_plan_destroy(plan_fixture.context);
     } else {
         return 1;
     }
 
-    DSL_OPT_PLAN_CONTEXT *limited = DSL_Opt_Plan_Create
+    DSL_OPT_PLAN_CONTEXT *limited = DSL_opt_plan_create
                                         (fixture.pu, graph, &budget, stderr);
     DSL_TENSOR_EVOLUTION_NODE_RECORD result_root;
     DSL_IR_VALUE_RECORD result_value;
     if (limited == NULL ||
-        !DSL_Tensor_Evolution_Find_Semantic_Root
+        !DSL_tensor_evolution_find_semantic_root
              (graph, DSL_Builder_Get_Value_Image_Id(fixture.result),
               &result_root) ||
         !DSL_IR_Image_Get_Value(result_root.semantic_value_id, &result_value))
@@ -524,7 +524,7 @@ Run_Negative_Contract(void)
     candidate.rejection_reason = DSL_OPT_REJECT_NONE;
     candidate.ordering_key = 100;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_BASELINE;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (limited, &candidate, &candidate_id, stderr))
         return 1;
     baseline_candidate_id = candidate_id;
@@ -532,10 +532,10 @@ Run_Negative_Contract(void)
     candidate.parent_candidate_id = candidate_id;
     candidate.ordering_key = 200;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-    if (DSL_Opt_Plan_Add_Candidate
+    if (DSL_opt_plan_add_candidate
             (limited, &candidate, &candidate_id, quiet) ||
-        !DSL_Opt_Plan_Candidate_Budget_Exhausted(limited) ||
-        DSL_Opt_Plan_Candidate_Count(limited) != 1)
+        !DSL_opt_plan_candidate_budget_exhausted(limited) ||
+        DSL_opt_plan_candidate_count(limited) != 1)
         return 1;
 
     memset(&cost, 0, sizeof(cost));
@@ -544,12 +544,12 @@ Run_Negative_Contract(void)
     for (UINT32 i = 0; i < DSL_OPT_COST_TERM_COUNT; ++i)
         Set_Known_Term(&cost.terms[i], i + 1,
                        DSL_OPT_COST_EVIDENCE_BASELINE_POLICY);
-    if (!DSL_Opt_Plan_Add_Cost(limited, &cost, &cost_id, stderr))
+    if (!DSL_opt_plan_add_cost(limited, &cost, &cost_id, stderr))
         return 1;
     baseline_cost_id = cost_id;
     cost.ordering_key = 200;
-    if (DSL_Opt_Plan_Add_Cost(limited, &cost, &cost_id, quiet) ||
-        DSL_Opt_Plan_Cost_Count(limited) != 1)
+    if (DSL_opt_plan_add_cost(limited, &cost, &cost_id, quiet) ||
+        DSL_opt_plan_cost_count(limited) != 1)
         return 1;
     memset(&plan, 0, sizeof(plan));
     plan.candidate_ids = &baseline_candidate_id;
@@ -559,15 +559,15 @@ Run_Negative_Contract(void)
     plan.rejection_reason = DSL_OPT_REJECT_NONE;
     plan.ordering_key = 100;
     plan.flags = DSL_OPT_PLAN_FLAG_BASELINE;
-    if (!DSL_Opt_Plan_Add_Plan(limited, &plan, &plan_id, stderr) ||
-        DSL_Opt_Plan_Add_Plan(limited, &plan, &plan_id, quiet) ||
-        !DSL_Opt_Plan_Plan_Budget_Exhausted(limited) ||
-        DSL_Opt_Plan_Plan_Count(limited) != 1 ||
-        !DSL_Opt_Plan_Verify(limited, stderr))
+    if (!DSL_opt_plan_add_plan(limited, &plan, &plan_id, stderr) ||
+        DSL_opt_plan_add_plan(limited, &plan, &plan_id, quiet) ||
+        !DSL_opt_plan_plan_budget_exhausted(limited) ||
+        DSL_opt_plan_plan_count(limited) != 1 ||
+        !DSL_opt_plan_verify(limited, stderr))
         return 1;
 
-    DSL_Opt_Plan_Destroy(limited);
-    DSL_Tensor_Evolution_Destroy(graph);
+    DSL_opt_plan_destroy(limited);
+    DSL_tensor_evolution_destroy(graph);
     fclose(quiet);
     printf("AIO-2 negative and budget contracts passed\n");
     return 0;

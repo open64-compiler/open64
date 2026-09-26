@@ -86,21 +86,21 @@ typedef struct {
     UINT32 reserved2;
 } DSL_TENSOR_EVOLUTION_EDGE_RECORD;
 
-extern DSL_TENSOR_EVOLUTION_GRAPH *DSL_Tensor_Evolution_Create
+extern DSL_TENSOR_EVOLUTION_GRAPH *DSL_tensor_evolution_create
                                 (struct pu_info *pu, FILE *diagnostic);
-extern void DSL_Tensor_Evolution_Destroy
+extern void DSL_tensor_evolution_destroy
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph);
-extern BOOL DSL_Tensor_Evolution_Build_Semantic_Roots
+extern BOOL DSL_tensor_evolution_build_semantic_roots
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Evolution_Add_Logical_Layout
+extern BOOL DSL_tensor_evolution_add_logical_layout
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
                                  UINT32 representation_descriptor_id,
                                  DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
                                  DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Evolution_Add_Distributed
+extern BOOL DSL_tensor_evolution_add_distributed
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
                                  UINT32 representation_descriptor_id,
@@ -108,45 +108,52 @@ extern BOOL DSL_Tensor_Evolution_Add_Distributed
                                  DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
                                  DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Evolution_Add_Local_Physical
+extern BOOL DSL_tensor_evolution_add_local_physical
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
                                  UINT32 representation_descriptor_id,
                                  DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
                                  DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Evolution_Add_Tile
+extern BOOL DSL_tensor_evolution_add_tile
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
                                  UINT32 representation_descriptor_id,
                                  DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
                                  DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Evolution_Verify
+extern BOOL DSL_tensor_evolution_add_staged_buffer
+                                (DSL_TENSOR_EVOLUTION_GRAPH *graph,
+                                 DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
+                                 UINT32 representation_descriptor_id,
+                                 DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
+                                 DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id,
+                                 FILE *diagnostic);
+extern BOOL DSL_tensor_evolution_verify
                                 (const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  FILE *diagnostic);
-extern void DSL_Tensor_Evolution_Print
+extern void DSL_tensor_evolution_print
                                 (FILE *file,
                                  const DSL_TENSOR_EVOLUTION_GRAPH *graph);
-extern ST_IDX DSL_Tensor_Evolution_Owner
+extern ST_IDX DSL_tensor_evolution_owner
                                 (const DSL_TENSOR_EVOLUTION_GRAPH *graph);
-extern UINT32 DSL_Tensor_Evolution_Node_Count
+extern UINT32 DSL_tensor_evolution_node_count
                                 (const DSL_TENSOR_EVOLUTION_GRAPH *graph);
-extern UINT32 DSL_Tensor_Evolution_Edge_Count
+extern UINT32 DSL_tensor_evolution_edge_count
                                 (const DSL_TENSOR_EVOLUTION_GRAPH *graph);
-extern BOOL DSL_Tensor_Evolution_Get_Node
+extern BOOL DSL_tensor_evolution_get_node
                                 (const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  DSL_TENSOR_EVOLUTION_NODE_ID id,
                                  DSL_TENSOR_EVOLUTION_NODE_RECORD *record);
-extern BOOL DSL_Tensor_Evolution_Get_Edge
+extern BOOL DSL_tensor_evolution_get_edge
                                 (const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  DSL_TENSOR_EVOLUTION_EDGE_ID id,
                                  DSL_TENSOR_EVOLUTION_EDGE_RECORD *record);
-extern BOOL DSL_Tensor_Evolution_Find_Semantic_Root
+extern BOOL DSL_tensor_evolution_find_semantic_root
                                 (const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  DSL_IR_VALUE_ID value_id,
                                  DSL_TENSOR_EVOLUTION_NODE_RECORD *record);
-extern const char *DSL_Tensor_Evolution_Node_Kind_Name (UINT32 kind);
-extern const char *DSL_Tensor_Evolution_Transform_Kind_Name (UINT32 kind);
+extern const char *DSL_tensor_evolution_node_kind_name (UINT32 kind);
+extern const char *DSL_tensor_evolution_transform_kind_name (UINT32 kind);
 
 #endif /* dsl_tensor_evolution_INCLUDED */

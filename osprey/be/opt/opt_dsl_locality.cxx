@@ -34,7 +34,7 @@ WOPT_DSL_Control_Flags (const BB_NODE *bb)
 }
 
 BOOL
-WOPT_DSL_Populate_Tensor_Control_Snapshot
+WOPT_DSL_populate_tensor_control_snapshot
     (CFG *cfg, PU_Info *pu, DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
      FILE *diagnostic)
 {
@@ -59,7 +59,7 @@ WOPT_DSL_Populate_Tensor_Control_Snapshot
     block.loop_depth = bb->Loopdepth();
     block.region_id = bb->Rid_id();
     block.flags = WOPT_DSL_Control_Flags(bb);
-    if (!DSL_Tensor_Control_Snapshot_Add_Block
+    if (!DSL_tensor_control_snapshot_add_block
              (snapshot, &block, diagnostic))
       return FALSE;
   }
@@ -80,7 +80,7 @@ WOPT_DSL_Populate_Tensor_Control_Snapshot
         position.block_id = bb->Id();
         position.statement_order = statement_order;
         position.reverse_postorder = bb->Rpo_id() + 1;
-        if (!DSL_Tensor_Control_Snapshot_Add_Position
+        if (!DSL_tensor_control_snapshot_add_position
                  (snapshot, &position, diagnostic))
           return FALSE;
       }
@@ -88,5 +88,5 @@ WOPT_DSL_Populate_Tensor_Control_Snapshot
         break;
     }
   }
-  return DSL_Tensor_Control_Snapshot_Seal(snapshot, diagnostic);
+  return DSL_tensor_control_snapshot_seal(snapshot, diagnostic);
 }

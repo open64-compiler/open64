@@ -661,6 +661,11 @@ Deferred beyond this slice:
 
 ### AIO-10: AI-P8 Fetch, Prefetch, And Async Pipeline
 
+Status: implemented as a check-only, runtime-only, per-PU vertical slice on
+2026-09-25. `CommonFetchPlanIR` and `CommonPipelineIR` consume the selected
+AIO-9 tile and record demand, vector, async-copy, and multidimensional-async
+alternatives without rewriting executable or binary WHIRL.
+
 Actions:
 
 1. Consume P7 prefetch hints rather than rediscovering tiles.
@@ -677,6 +682,29 @@ Acceptance:
 - traces expose raw and hidden movement cost.
 
 PR boundary: generic fetch/pipeline IR before target-specific movement engines.
+
+Implemented first vertical slice:
+
+- exact selected-tile consumption with two typed operand fetch records;
+- one-, two-, and three-stage buffering alternatives;
+- issue, arrival-barrier, wait, edge-policy, and fallback evidence;
+- typed CPU, Hopper, and Blackwell movement capability profiles;
+- raw, hidden, and unhidden low-confidence relative movement cost;
+- AIO-2 candidate, plan, deterministic selection, and fallback integration;
+- provisional staged-buffer TensorEvolutionGraph overlays;
+- PU-local lifetime, unique-ownership, effect, communication, target,
+  buffering, and unsafe-distance checks;
+- byte-identical before/after/repeat binary and `ir_b2a -st -src` evidence.
+
+Deferred beyond this slice:
+
+- executable OPR_PREFETCH, async-copy, TMA, barrier, and wait emission;
+- LNO-backed issue scheduling and dependence proof;
+- target instruction, address-space, dtype, swizzle, bank, occupancy, and
+  measured-latency modeling;
+- host/device, remote, KV-cache, and communication pipelines;
+- AIO-11 complete physical-plan selection and atomic application;
+- explicit IPA summaries and mapped publication.
 
 ### AIO-11: AI-P9 Physical Plan And Implementation Selection
 

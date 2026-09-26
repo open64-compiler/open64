@@ -186,7 +186,7 @@ Add_Block (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot, UINT32 id, UINT32 rpo,
     block.reverse_postorder = rpo;
     block.region_id = region;
     block.flags = flags;
-    return DSL_Tensor_Control_Snapshot_Add_Block(snapshot, &block, stderr);
+    return DSL_tensor_control_snapshot_add_block(snapshot, &block, stderr);
 }
 
 static BOOL
@@ -200,7 +200,7 @@ Add_Position (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
     position.block_id = block;
     position.reverse_postorder = rpo;
     position.statement_order = order;
-    return DSL_Tensor_Control_Snapshot_Add_Position
+    return DSL_tensor_control_snapshot_add_position
                (snapshot, &position, stderr);
 }
 
@@ -208,7 +208,7 @@ static DSL_TENSOR_CONTROL_SNAPSHOT *
 Create_Snapshot (const AIO7_FIXTURE *fixture, AIO7_CONTROL_KIND kind)
 {
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot =
-        DSL_Tensor_Control_Snapshot_Create(fixture->pu, stderr);
+        DSL_tensor_control_snapshot_create(fixture->pu, stderr);
     if (snapshot == NULL)
         return NULL;
     if (kind == AIO7_CONTROL_REGION) {
@@ -229,18 +229,18 @@ Create_Snapshot (const AIO7_FIXTURE *fixture, AIO7_CONTROL_KIND kind)
                 return NULL;
         }
     }
-    return DSL_Tensor_Control_Snapshot_Seal(snapshot, stderr) ?
+    return DSL_tensor_control_snapshot_seal(snapshot, stderr) ?
            snapshot : NULL;
 }
 
 static void
 Destroy_Analysis (AIO7_ANALYSIS *analysis)
 {
-    DSL_Distributed_Destroy(analysis->distributed);
-    DSL_Tensor_Locality_Destroy(analysis->locality);
-    DSL_Tensor_Control_Snapshot_Destroy(analysis->snapshot);
-    DSL_Tensor_Analysis_Destroy(analysis->tensor);
-    DSL_Tensor_Evolution_Destroy(analysis->graph);
+    DSL_distributed_destroy(analysis->distributed);
+    DSL_tensor_locality_destroy(analysis->locality);
+    DSL_tensor_control_snapshot_destroy(analysis->snapshot);
+    DSL_tensor_analysis_destroy(analysis->tensor);
+    DSL_tensor_evolution_destroy(analysis->graph);
     memset(analysis, 0, sizeof(*analysis));
 }
 
@@ -251,39 +251,39 @@ Build_Analysis (const AIO7_FIXTURE *fixture, AIO7_CONTROL_KIND kind,
 {
     DSL_DISTRIBUTED_CONTROL control;
     memset(analysis, 0, sizeof(*analysis));
-    analysis->graph = DSL_Tensor_Evolution_Create(fixture->pu, stderr);
+    analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots
+        !DSL_tensor_evolution_build_semantic_roots
              (analysis->graph, stderr))
         return FALSE;
-    analysis->tensor = DSL_Tensor_Analysis_Create
+    analysis->tensor = DSL_tensor_analysis_create
                            (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor == NULL ||
-        !DSL_Tensor_Analysis_Build(analysis->tensor, stderr))
+        !DSL_tensor_analysis_build(analysis->tensor, stderr))
         return FALSE;
     analysis->snapshot = Create_Snapshot(fixture, kind);
-    analysis->locality = DSL_Tensor_Locality_Create
+    analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_Tensor_Locality_Build(analysis->locality, stderr))
+        !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
-    DSL_Distributed_Control_Init(&control);
+    DSL_distributed_control_init(&control);
     control.derive_communication = derive_communication;
     control.select_plans = select_plans;
     control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->distributed = DSL_Distributed_Create
+    analysis->distributed = DSL_distributed_create
                                 (fixture->pu, analysis->graph,
                                  analysis->tensor, analysis->locality,
                                  &control, stderr);
     if (analysis->distributed == NULL ||
-        !DSL_Distributed_Build(analysis->distributed, stderr) ||
-        !DSL_Distributed_Verify(analysis->distributed, stderr))
+        !DSL_distributed_build(analysis->distributed, stderr) ||
+        !DSL_distributed_verify(analysis->distributed, stderr))
         return FALSE;
     if (trace != NULL) {
-        DSL_Tensor_Evolution_Print(trace, analysis->graph);
-        DSL_Distributed_Print(trace, analysis->distributed);
+        DSL_tensor_evolution_print(trace, analysis->graph);
+        DSL_distributed_print(trace, analysis->distributed);
     }
     return TRUE;
 }
@@ -311,16 +311,16 @@ Check_Main_Contract (const AIO7_ANALYSIS *analysis, BOOL selected)
     };
     static const UINT64 bytes[] = { 256, 256, 512, 256 };
     DSL_DISTRIBUTED_SITE_RECORD site;
-    if (DSL_Distributed_Site_Count(analysis->distributed) != 1 ||
-        DSL_Distributed_Alternative_Count(analysis->distributed) != 4 ||
-        DSL_Distributed_Descriptor_Count(analysis->distributed) != 4 ||
-        DSL_Distributed_Alias_Count(analysis->distributed) != 4 ||
-        DSL_Distributed_Range_Count(analysis->distributed) != 7 ||
-        DSL_Communication_Epoch_Count(analysis->distributed) != 1 ||
-        DSL_Communication_Intent_Count(analysis->distributed) != 4 ||
-        DSL_Tensor_Evolution_Node_Count(analysis->graph) != 8 ||
-        DSL_Tensor_Evolution_Edge_Count(analysis->graph) != 4 ||
-        !DSL_Distributed_Get_Site(analysis->distributed, 1, &site) ||
+    if (DSL_distributed_site_count(analysis->distributed) != 1 ||
+        DSL_distributed_alternative_count(analysis->distributed) != 4 ||
+        DSL_distributed_descriptor_count(analysis->distributed) != 4 ||
+        DSL_distributed_alias_count(analysis->distributed) != 4 ||
+        DSL_distributed_range_count(analysis->distributed) != 7 ||
+        DSL_communication_epoch_count(analysis->distributed) != 1 ||
+        DSL_communication_intent_count(analysis->distributed) != 4 ||
+        DSL_tensor_evolution_node_count(analysis->graph) != 8 ||
+        DSL_tensor_evolution_edge_count(analysis->graph) != 4 ||
+        !DSL_distributed_get_site(analysis->distributed, 1, &site) ||
         site.alternative_count != 4 ||
         (selected && site.selected_plan_id != 3) ||
         (!selected && site.selected_plan_id != 0))
@@ -330,14 +330,14 @@ Check_Main_Contract (const AIO7_ANALYSIS *analysis, BOOL selected)
         DSL_DISTRIBUTED_DESCRIPTOR_RECORD descriptor;
         DSL_DISTRIBUTED_ALIAS_RECORD alias;
         DSL_COMMUNICATION_INTENT_RECORD intent;
-        if (!DSL_Distributed_Get_Alternative
+        if (!DSL_distributed_get_alternative
                  (analysis->distributed, id, &alternative) ||
-            !DSL_Distributed_Get_Descriptor
+            !DSL_distributed_get_descriptor
                  (analysis->distributed, alternative.descriptor_id,
                   &descriptor) ||
-            !DSL_Distributed_Get_Alias
+            !DSL_distributed_get_alias
                  (analysis->distributed, descriptor.alias_id, &alias) ||
-            !DSL_Communication_Get_Intent
+            !DSL_communication_get_intent
                  (analysis->distributed,
                   alternative.communication_intent_id, &intent) ||
             descriptor.placement_kind != placement[id - 1] ||
@@ -414,7 +414,7 @@ Run_Classification (AIO7_CONTROL_KIND kind, UINT32 expected_legality)
     DSL_Opcode_Register_Common_Substrate();
     if (!Create_Fixture("aio7_classification", "[8,8]", &fixture) ||
         !Build_Analysis(&fixture, kind, TRUE, FALSE, NULL, &analysis) ||
-        !DSL_Distributed_Get_Alternative
+        !DSL_distributed_get_alternative
              (analysis.distributed, 2, &alternative) ||
         alternative.legality != expected_legality)
         return 1;
@@ -434,7 +434,7 @@ Run_Shape_Case (const char *shape, UINT32 expected_legality)
         !Build_Analysis
              (&fixture, AIO7_CONTROL_STRAIGHT, TRUE, FALSE, NULL,
               &analysis) ||
-        !DSL_Distributed_Get_Alternative
+        !DSL_distributed_get_alternative
              (analysis.distributed, 2, &alternative) ||
         alternative.legality != expected_legality)
         return 1;
@@ -454,8 +454,8 @@ Run_Communication_Disabled(void)
         !Build_Analysis
              (&fixture, AIO7_CONTROL_STRAIGHT, FALSE, FALSE, NULL,
               &analysis) ||
-        DSL_Communication_Intent_Count(analysis.distributed) != 0 ||
-        !DSL_Distributed_Get_Alternative
+        DSL_communication_intent_count(analysis.distributed) != 0 ||
+        !DSL_distributed_get_alternative
              (analysis.distributed, 2, &alternative) ||
         alternative.communication_intent_id != 0 ||
         alternative.legality != DSL_OPT_LEGALITY_UNKNOWN)
@@ -479,49 +479,49 @@ Run_Control_And_Scope(void)
         !Create_Fixture("aio7_scope_first", "[8,8]", &first))
         return 1;
     memset(&analysis, 0, sizeof(analysis));
-    analysis.graph = DSL_Tensor_Evolution_Create(first.pu, stderr);
+    analysis.graph = DSL_tensor_evolution_create(first.pu, stderr);
     if (analysis.graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(analysis.graph, stderr))
+        !DSL_tensor_evolution_build_semantic_roots(analysis.graph, stderr))
         return 1;
-    analysis.tensor = DSL_Tensor_Analysis_Create
+    analysis.tensor = DSL_tensor_analysis_create
                           (first.pu, analysis.graph, stderr);
     if (analysis.tensor == NULL ||
-        !DSL_Tensor_Analysis_Build(analysis.tensor, stderr))
+        !DSL_tensor_analysis_build(analysis.tensor, stderr))
         return 1;
     analysis.snapshot = Create_Snapshot(&first, AIO7_CONTROL_STRAIGHT);
-    analysis.locality = DSL_Tensor_Locality_Create
+    analysis.locality = DSL_tensor_locality_create
                             (first.pu, analysis.tensor,
                              analysis.snapshot, stderr);
     if (analysis.locality == NULL ||
-        !DSL_Tensor_Locality_Build(analysis.locality, stderr))
+        !DSL_tensor_locality_build(analysis.locality, stderr))
         return 1;
-    DSL_Distributed_Control_Init(&control);
+    DSL_distributed_control_init(&control);
     control.apply_transformation = 1;
-    if (DSL_Distributed_Create
+    if (DSL_distributed_create
             (first.pu, analysis.graph, analysis.tensor, analysis.locality,
              &control, quiet) != NULL)
         return 1;
     control.apply_transformation = 0;
     control.generate_candidates = 0;
-    disabled = DSL_Distributed_Create
+    disabled = DSL_distributed_create
                    (first.pu, analysis.graph, analysis.tensor,
                     analysis.locality, &control, stderr);
-    if (disabled == NULL || !DSL_Distributed_Build(disabled, stderr) ||
-        !DSL_Distributed_Verify(disabled, stderr) ||
-        DSL_Distributed_Site_Count(disabled) != 0)
+    if (disabled == NULL || !DSL_distributed_build(disabled, stderr) ||
+        !DSL_distributed_verify(disabled, stderr) ||
+        DSL_distributed_site_count(disabled) != 0)
         return 1;
-    DSL_Distributed_Destroy(disabled);
+    DSL_distributed_destroy(disabled);
     control.generate_candidates = 1;
     control.focus_value_id = DSL_Builder_Get_Value_Image_Id(first.values[2]);
-    analysis.distributed = DSL_Distributed_Create
+    analysis.distributed = DSL_distributed_create
                                (first.pu, analysis.graph, analysis.tensor,
                                 analysis.locality, &control, stderr);
     if (analysis.distributed == NULL ||
-        !DSL_Distributed_Build(analysis.distributed, stderr) ||
+        !DSL_distributed_build(analysis.distributed, stderr) ||
         !Create_Fixture("aio7_scope_second", "[8,8]", &second) ||
-        DSL_Distributed_Verify(analysis.distributed, quiet) ||
+        DSL_distributed_verify(analysis.distributed, quiet) ||
         !DSL_Builder_Select_PU(first.pu) ||
-        !DSL_Distributed_Verify(analysis.distributed, stderr))
+        !DSL_distributed_verify(analysis.distributed, stderr))
         return 1;
     Destroy_Analysis(&analysis);
     fclose(quiet);

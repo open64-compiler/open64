@@ -83,7 +83,7 @@ fails without mutating the graph or WHIRL.
 
 ## Inspection
 
-`DSL_Tensor_Evolution_Print()` emits deterministic phase evidence containing
+`DSL_tensor_evolution_print()` emits deterministic phase evidence containing
 the owner, node and edge counts, node kind, value ID/name, canonical TY index,
 dtype, logical shape, semantic root, and flags. The graph is intentionally not
 printed by `ir_b2a`: AIO-1 is runtime-only and must not leak into binary WHIRL.

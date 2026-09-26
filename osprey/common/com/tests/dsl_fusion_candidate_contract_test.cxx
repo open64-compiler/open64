@@ -230,7 +230,7 @@ Create_Control_Snapshot
         (const AIO5_FIXTURE *fixture, UINT32 control_flags)
 {
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot =
-        DSL_Tensor_Control_Snapshot_Create(fixture->pu, stderr);
+        DSL_tensor_control_snapshot_create(fixture->pu, stderr);
     DSL_TENSOR_CONTROL_BLOCK block;
     BOOL split_region =
         (control_flags & DSL_TENSOR_CONTROL_REGION) != 0;
@@ -242,7 +242,7 @@ Create_Control_Snapshot
     block.flags = control_flags;
     block.region_id = split_region ? 10 : 0;
     block.immediate_postdominator = split_region ? 2 : 0;
-    if (!DSL_Tensor_Control_Snapshot_Add_Block
+    if (!DSL_tensor_control_snapshot_add_block
              (snapshot, &block, stderr))
         return NULL;
     if (split_region) {
@@ -252,7 +252,7 @@ Create_Control_Snapshot
         block.immediate_dominator = 1;
         block.region_id = 20;
         block.flags = control_flags;
-        if (!DSL_Tensor_Control_Snapshot_Add_Block
+        if (!DSL_tensor_control_snapshot_add_block
                  (snapshot, &block, stderr))
             return NULL;
     }
@@ -264,11 +264,11 @@ Create_Control_Snapshot
         position.statement_order = split_region && i >= 6 ?
                                    i - 5 : i + 1;
         position.reverse_postorder = position.block_id;
-        if (!DSL_Tensor_Control_Snapshot_Add_Position
+        if (!DSL_tensor_control_snapshot_add_position
                  (snapshot, &position, stderr))
             return NULL;
     }
-    if (!DSL_Tensor_Control_Snapshot_Seal(snapshot, stderr))
+    if (!DSL_tensor_control_snapshot_seal(snapshot, stderr))
         return NULL;
     return snapshot;
 }
@@ -278,12 +278,12 @@ Destroy_Analysis (AIO5_ANALYSIS *analysis)
 {
     if (analysis == NULL)
         return;
-    DSL_Fusion_Candidates_Destroy(analysis->fusion);
-    DSL_Logical_Layout_Destroy(analysis->layout);
-    DSL_Tensor_Locality_Destroy(analysis->locality);
-    DSL_Tensor_Control_Snapshot_Destroy(analysis->snapshot);
-    DSL_Tensor_Analysis_Destroy(analysis->tensor_analysis);
-    DSL_Tensor_Evolution_Destroy(analysis->graph);
+    DSL_fusion_candidates_destroy(analysis->fusion);
+    DSL_logical_layout_destroy(analysis->layout);
+    DSL_tensor_locality_destroy(analysis->locality);
+    DSL_tensor_control_snapshot_destroy(analysis->snapshot);
+    DSL_tensor_analysis_destroy(analysis->tensor_analysis);
+    DSL_tensor_evolution_destroy(analysis->graph);
     memset(analysis, 0, sizeof(*analysis));
 }
 
@@ -294,42 +294,42 @@ Build_Generic_Analysis
 {
     DSL_LOGICAL_LAYOUT_CONTROL layout_control;
     memset(analysis, 0, sizeof(*analysis));
-    analysis->graph = DSL_Tensor_Evolution_Create(fixture->pu, stderr);
+    analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots
+        !DSL_tensor_evolution_build_semantic_roots
              (analysis->graph, stderr))
         return FALSE;
-    analysis->tensor_analysis = DSL_Tensor_Analysis_Create
+    analysis->tensor_analysis = DSL_tensor_analysis_create
                                     (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor_analysis == NULL ||
-        !DSL_Tensor_Analysis_Build(analysis->tensor_analysis, stderr))
+        !DSL_tensor_analysis_build(analysis->tensor_analysis, stderr))
         return FALSE;
     analysis->snapshot = Create_Control_Snapshot(fixture, 0);
-    analysis->locality = DSL_Tensor_Locality_Create
+    analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor_analysis,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_Tensor_Locality_Build(analysis->locality, stderr))
+        !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
-    DSL_Logical_Layout_Control_Init(&layout_control);
-    analysis->layout = DSL_Logical_Layout_Create
+    DSL_logical_layout_control_init(&layout_control);
+    analysis->layout = DSL_logical_layout_create
                            (fixture->pu, analysis->graph,
                             analysis->tensor_analysis, analysis->locality,
                             &layout_control, stderr);
     if (analysis->layout == NULL ||
-        !DSL_Logical_Layout_Build(analysis->layout, stderr))
+        !DSL_logical_layout_build(analysis->layout, stderr))
         return FALSE;
-    analysis->fusion = DSL_Fusion_Candidates_Create_With_Layout
+    analysis->fusion = DSL_fusion_candidates_create_with_layout
                            (fixture->pu, analysis->graph,
                             analysis->tensor_analysis, analysis->locality,
                             analysis->layout, control, stderr);
     if (analysis->fusion == NULL ||
-        !DSL_Fusion_Candidates_Build(analysis->fusion, stderr) ||
-        !DSL_Fusion_Candidates_Verify(analysis->fusion, stderr))
+        !DSL_fusion_candidates_build(analysis->fusion, stderr) ||
+        !DSL_fusion_candidates_verify(analysis->fusion, stderr))
         return FALSE;
     if (trace != NULL) {
-        DSL_Logical_Layout_Print(trace, analysis->layout);
-        DSL_Fusion_Candidates_Print(trace, analysis->fusion);
+        DSL_logical_layout_print(trace, analysis->layout);
+        DSL_fusion_candidates_print(trace, analysis->fusion);
     }
     return TRUE;
 }
@@ -341,36 +341,36 @@ Build_Analysis
          AIO5_ANALYSIS *analysis)
 {
     memset(analysis, 0, sizeof(*analysis));
-    analysis->graph = DSL_Tensor_Evolution_Create(fixture->pu, stderr);
+    analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots
+        !DSL_tensor_evolution_build_semantic_roots
              (analysis->graph, stderr))
         return FALSE;
-    analysis->tensor_analysis = DSL_Tensor_Analysis_Create
+    analysis->tensor_analysis = DSL_tensor_analysis_create
                                     (fixture->pu, analysis->graph,
                                      stderr);
     if (analysis->tensor_analysis == NULL ||
-        !DSL_Tensor_Analysis_Build(analysis->tensor_analysis, stderr))
+        !DSL_tensor_analysis_build(analysis->tensor_analysis, stderr))
         return FALSE;
     analysis->snapshot = Create_Control_Snapshot
                              (fixture, control_flags);
-    analysis->locality = DSL_Tensor_Locality_Create
+    analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor_analysis,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_Tensor_Locality_Build(analysis->locality, stderr))
+        !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
-    analysis->fusion = DSL_Fusion_Candidates_Create
+    analysis->fusion = DSL_fusion_candidates_create
                            (fixture->pu, analysis->graph,
                             analysis->tensor_analysis,
                             analysis->locality, control, stderr);
     if (analysis->fusion == NULL ||
-        !DSL_Fusion_Candidates_Build(analysis->fusion, stderr) ||
-        !DSL_Fusion_Candidates_Verify(analysis->fusion, stderr))
+        !DSL_fusion_candidates_build(analysis->fusion, stderr) ||
+        !DSL_fusion_candidates_verify(analysis->fusion, stderr))
         return FALSE;
     if (trace != NULL) {
-        DSL_Tensor_Locality_Print(trace, analysis->locality);
-        DSL_Fusion_Candidates_Print(trace, analysis->fusion);
+        DSL_tensor_locality_print(trace, analysis->locality);
+        DSL_fusion_candidates_print(trace, analysis->fusion);
     }
     return TRUE;
 }
@@ -381,12 +381,12 @@ Check_Legal_Selected (const AIO5_ANALYSIS *analysis, BOOL selected)
     DSL_FUSION_SITE_RECORD matmul;
     DSL_FUSION_SITE_RECORD residual;
     DSL_OPT_COST_RECORD cost;
-    if (DSL_Fusion_Candidates_Site_Count(analysis->fusion) != 2 ||
-        DSL_Fusion_Candidates_Member_Count(analysis->fusion) != 5 ||
-        DSL_Fusion_Candidates_Boundary_Count(analysis->fusion) != 10 ||
-        !DSL_Fusion_Candidates_Get_Site
+    if (DSL_fusion_candidates_site_count(analysis->fusion) != 2 ||
+        DSL_fusion_candidates_member_count(analysis->fusion) != 5 ||
+        DSL_fusion_candidates_boundary_count(analysis->fusion) != 10 ||
+        !DSL_fusion_candidates_get_site
              (analysis->fusion, 1, &matmul) ||
-        !DSL_Fusion_Candidates_Get_Site
+        !DSL_fusion_candidates_get_site
              (analysis->fusion, 2, &residual) ||
         matmul.pattern != DSL_FUSION_PATTERN_MATMUL_BIAS_ACTIVATION ||
         residual.pattern != DSL_FUSION_PATTERN_RESIDUAL_ACTIVATION ||
@@ -400,8 +400,8 @@ Check_Legal_Selected (const AIO5_ANALYSIS *analysis, BOOL selected)
         residual.live_range_growth_bytes != 32 ||
         matmul.selected_plan_id != (selected ? 2 : 0) ||
         residual.selected_plan_id != (selected ? 2 : 0) ||
-        !DSL_Opt_Plan_Get_Cost
-             (DSL_Fusion_Candidates_Get_Plan_Context
+        !DSL_opt_plan_get_cost
+             (DSL_fusion_candidates_get_plan_context
                   (analysis->fusion, 1),
               2, &cost) || !cost.complete)
         return FALSE;
@@ -413,10 +413,10 @@ Check_Generic_Selected (const AIO5_ANALYSIS *analysis)
 {
     DSL_FUSION_SITE_RECORD site;
     DSL_FUSION_MEMBER_RECORD member;
-    if (DSL_Fusion_Candidates_Site_Count(analysis->fusion) != 1 ||
-        DSL_Fusion_Candidates_Member_Count(analysis->fusion) != 3 ||
-        DSL_Fusion_Candidates_Boundary_Count(analysis->fusion) != 6 ||
-        !DSL_Fusion_Candidates_Get_Site(analysis->fusion, 1, &site) ||
+    if (DSL_fusion_candidates_site_count(analysis->fusion) != 1 ||
+        DSL_fusion_candidates_member_count(analysis->fusion) != 3 ||
+        DSL_fusion_candidates_boundary_count(analysis->fusion) != 6 ||
+        !DSL_fusion_candidates_get_site(analysis->fusion, 1, &site) ||
         site.pattern != DSL_FUSION_PATTERN_GENERIC_CLUSTER ||
         site.legality != DSL_OPT_LEGALITY_PROVEN ||
         site.layout_state != DSL_FUSION_FACT_UNKNOWN ||
@@ -424,13 +424,13 @@ Check_Generic_Selected (const AIO5_ANALYSIS *analysis)
         site.eliminated_materialization_bytes != 32 ||
         site.live_range_growth_bytes != 48 ||
         site.selected_plan_id != site.fusion_plan_id ||
-        !DSL_Fusion_Candidates_Get_Member
+        !DSL_fusion_candidates_get_member
              (analysis->fusion, site.first_member_id, &member) ||
         member.role != DSL_FUSION_MEMBER_GENERIC_CONTRACTION ||
-        !DSL_Fusion_Candidates_Get_Member
+        !DSL_fusion_candidates_get_member
              (analysis->fusion, site.first_member_id + 1, &member) ||
         member.role != DSL_FUSION_MEMBER_GENERIC_POINTWISE ||
-        !DSL_Fusion_Candidates_Get_Member
+        !DSL_fusion_candidates_get_member
              (analysis->fusion, site.first_member_id + 2, &member) ||
         member.role != DSL_FUSION_MEMBER_GENERIC_POINTWISE)
         return FALSE;
@@ -470,7 +470,7 @@ Run_Image_Mode (BOOL run_analysis)
         trace = fopen(trace_path, "w");
         if (trace == NULL)
             return 1;
-        DSL_Fusion_Control_Init(&control);
+        DSL_fusion_control_init(&control);
         control.select_plans = 1;
         control.resource_limit_bytes = 256;
         if (!Build_Analysis(&fixture, FALSE, &control, trace, &analysis) ||
@@ -480,7 +480,7 @@ Run_Image_Mode (BOOL run_analysis)
             TY_Table_Size() != types)
             return 1;
         Destroy_Analysis(&analysis);
-        DSL_Fusion_Control_Init(&control);
+        DSL_fusion_control_init(&control);
         control.enable_semantic_patterns = 0;
         control.enable_generic_clusters = 1;
         control.select_plans = 1;
@@ -519,7 +519,7 @@ Run_Candidate_Only(void)
     AIO5_ANALYSIS analysis;
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
-    DSL_Fusion_Control_Init(&control);
+    DSL_fusion_control_init(&control);
     control.resource_limit_bytes = 256;
     if (!Create_Fixture
              ("aio5_candidate_only", "[2,2]", AIO5_FIXTURE_LEGAL,
@@ -545,9 +545,9 @@ Run_Fusibility_Contract(void)
              (OPR_DSLRESIDUALADD, 2, &trait) ||
         (trait.flags & DSL_FUSIBILITY_SEMANTIC_PATTERN_REQUIRED) == 0 ||
         DSL_Operator_Get_Fusibility_Info(OPR_DSLRELU, 1, &trait) ||
-        strcmp(DSL_Fusion_Iteration_Class_Name
+        strcmp(DSL_fusion_iteration_class_name
                    (DSL_FUSION_ITERATION_CONTRACTION), "contraction") != 0 ||
-        strcmp(DSL_Fusion_Indexing_Class_Name
+        strcmp(DSL_fusion_indexing_class_name
                    (DSL_FUSION_INDEXING_BROADCAST), "broadcast") != 0)
         return 1;
     printf("AIO-5 versioned fusibility traits passed\n");
@@ -565,7 +565,7 @@ Run_Generic_Budget_Contract(void)
     memset(&analysis, 0, sizeof(analysis));
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
-    DSL_Fusion_Control_Init(&control);
+    DSL_fusion_control_init(&control);
     control.enable_semantic_patterns = 0;
     control.enable_generic_clusters = 1;
     control.select_plans = 1;
@@ -575,12 +575,12 @@ Run_Generic_Budget_Contract(void)
              ("aio5_generic_budget", "[2,2]", AIO5_FIXTURE_LEGAL,
               &fixture) ||
         !Build_Generic_Analysis(&fixture, &control, NULL, &analysis) ||
-        DSL_Fusion_Candidates_Site_Count(analysis.fusion) != 1 ||
-        !DSL_Fusion_Candidates_Get_Site(analysis.fusion, 1, &site) ||
+        DSL_fusion_candidates_site_count(analysis.fusion) != 1 ||
+        !DSL_fusion_candidates_get_site(analysis.fusion, 1, &site) ||
         site.pattern != DSL_FUSION_PATTERN_GENERIC_CLUSTER ||
         site.member_count != 2 || site.boundary_count != 4 ||
         site.eliminated_materialization_count != 1 ||
-        !DSL_Fusion_Candidates_Get_Member
+        !DSL_fusion_candidates_get_member
              (analysis.fusion, site.first_member_id, &member) ||
         member.role != DSL_FUSION_MEMBER_GENERIC_POINTWISE) {
         Destroy_Analysis(&analysis);
@@ -603,7 +603,7 @@ Run_Generic_Rejection
     memset(&analysis, 0, sizeof(analysis));
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
-    DSL_Fusion_Control_Init(&control);
+    DSL_fusion_control_init(&control);
     control.enable_semantic_patterns = 0;
     control.enable_generic_clusters = 1;
     control.select_plans = 1;
@@ -615,33 +615,33 @@ Run_Generic_Rejection
                  (&fixture, &control, NULL, &analysis))
             return 1;
     } else {
-        analysis.graph = DSL_Tensor_Evolution_Create(fixture.pu, stderr);
+        analysis.graph = DSL_tensor_evolution_create(fixture.pu, stderr);
         if (analysis.graph == NULL ||
-            !DSL_Tensor_Evolution_Build_Semantic_Roots
+            !DSL_tensor_evolution_build_semantic_roots
                  (analysis.graph, stderr))
             return 1;
-        analysis.tensor_analysis = DSL_Tensor_Analysis_Create
+        analysis.tensor_analysis = DSL_tensor_analysis_create
                                        (fixture.pu, analysis.graph, stderr);
         if (analysis.tensor_analysis == NULL ||
-            !DSL_Tensor_Analysis_Build(analysis.tensor_analysis, stderr))
+            !DSL_tensor_analysis_build(analysis.tensor_analysis, stderr))
             return 1;
         analysis.snapshot = Create_Control_Snapshot(&fixture, control_flags);
-        analysis.locality = DSL_Tensor_Locality_Create
+        analysis.locality = DSL_tensor_locality_create
                                 (fixture.pu, analysis.tensor_analysis,
                                  analysis.snapshot, stderr);
         if (analysis.locality == NULL ||
-            !DSL_Tensor_Locality_Build(analysis.locality, stderr))
+            !DSL_tensor_locality_build(analysis.locality, stderr))
             return 1;
-        analysis.fusion = DSL_Fusion_Candidates_Create
+        analysis.fusion = DSL_fusion_candidates_create
                               (fixture.pu, analysis.graph,
                                analysis.tensor_analysis, analysis.locality,
                                &control, stderr);
         if (analysis.fusion == NULL ||
-            !DSL_Fusion_Candidates_Build(analysis.fusion, stderr))
+            !DSL_fusion_candidates_build(analysis.fusion, stderr))
             return 1;
     }
-    if (DSL_Fusion_Candidates_Site_Count(analysis.fusion) != 1 ||
-        !DSL_Fusion_Candidates_Get_Site(analysis.fusion, 1, &site) ||
+    if (DSL_fusion_candidates_site_count(analysis.fusion) != 1 ||
+        !DSL_fusion_candidates_get_site(analysis.fusion, 1, &site) ||
         site.pattern != DSL_FUSION_PATTERN_GENERIC_CLUSTER ||
         site.legality != expected_legality ||
         site.rejection_reason != expected_reason ||
@@ -651,8 +651,8 @@ Run_Generic_Rejection
     }
     Destroy_Analysis(&analysis);
     printf("AIO-5 generic rejection passed legality=%s reason=%s\n",
-           DSL_Opt_Legality_Name(expected_legality),
-           DSL_Opt_Rejection_Reason_Name(expected_reason));
+           DSL_opt_legality_name(expected_legality),
+           DSL_opt_rejection_reason_name(expected_reason));
     return 0;
 }
 
@@ -669,23 +669,23 @@ Run_Rejection
     DSL_FUSION_SITE_RECORD site;
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
-    DSL_Fusion_Control_Init(&control);
+    DSL_fusion_control_init(&control);
     control.select_plans = 1;
     control.resource_limit_bytes = resource_limit;
     if (!Create_Fixture
              ("aio5_negative", "[2,2]", kind, &fixture) ||
         !Build_Analysis
              (&fixture, control_flags, &control, NULL, &analysis) ||
-        DSL_Fusion_Candidates_Site_Count(analysis.fusion) != 2 ||
-        !DSL_Fusion_Candidates_Get_Site(analysis.fusion, 1, &site) ||
+        DSL_fusion_candidates_site_count(analysis.fusion) != 2 ||
+        !DSL_fusion_candidates_get_site(analysis.fusion, 1, &site) ||
         site.legality != expected_legality ||
         site.rejection_reason != expected_reason ||
         site.selected_plan_id != expected_selected)
         return 1;
     Destroy_Analysis(&analysis);
     printf("AIO-5 rejection passed legality=%s reason=%s\n",
-           DSL_Opt_Legality_Name(expected_legality),
-           DSL_Opt_Rejection_Reason_Name(expected_reason));
+           DSL_opt_legality_name(expected_legality),
+           DSL_opt_rejection_reason_name(expected_reason));
     return 0;
 }
 
@@ -704,33 +704,33 @@ Run_Control_Contract(void)
              ("aio5_control", "[2,2]", AIO5_FIXTURE_LEGAL,
               &fixture))
         return 1;
-    DSL_Fusion_Control_Init(&control);
+    DSL_fusion_control_init(&control);
     control.generate_candidates = 0;
     if (!Build_Analysis(&fixture, FALSE, &control, NULL, &analysis) ||
-        DSL_Fusion_Candidates_Site_Count(analysis.fusion) != 0)
+        DSL_fusion_candidates_site_count(analysis.fusion) != 0)
         return 1;
     Destroy_Analysis(&analysis);
 
-    DSL_Fusion_Control_Init(&control);
+    DSL_fusion_control_init(&control);
     control.apply_transformation = 1;
-    analysis.graph = DSL_Tensor_Evolution_Create(fixture.pu, quiet);
+    analysis.graph = DSL_tensor_evolution_create(fixture.pu, quiet);
     if (analysis.graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots
+        !DSL_tensor_evolution_build_semantic_roots
              (analysis.graph, quiet))
         return 1;
-    analysis.tensor_analysis = DSL_Tensor_Analysis_Create
+    analysis.tensor_analysis = DSL_tensor_analysis_create
                                    (fixture.pu, analysis.graph, quiet);
     if (analysis.tensor_analysis == NULL ||
-        !DSL_Tensor_Analysis_Build(analysis.tensor_analysis, quiet))
+        !DSL_tensor_analysis_build(analysis.tensor_analysis, quiet))
         return 1;
     analysis.snapshot = Create_Control_Snapshot(&fixture, FALSE);
-    analysis.locality = DSL_Tensor_Locality_Create
+    analysis.locality = DSL_tensor_locality_create
                             (fixture.pu, analysis.tensor_analysis,
                              analysis.snapshot, quiet);
     if (analysis.locality == NULL ||
-        !DSL_Tensor_Locality_Build(analysis.locality, quiet))
+        !DSL_tensor_locality_build(analysis.locality, quiet))
         return 1;
-    fusion = DSL_Fusion_Candidates_Create
+    fusion = DSL_fusion_candidates_create
                  (fixture.pu, analysis.graph, analysis.tensor_analysis,
                   analysis.locality, &control, quiet);
     if (fusion != NULL)
@@ -752,7 +752,7 @@ Run_PU_Scope_Contract(void)
     FILE *quiet = tmpfile();
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
-    DSL_Fusion_Control_Init(&control);
+    DSL_fusion_control_init(&control);
     control.resource_limit_bytes = 256;
     control.enable_semantic_patterns = 0;
     control.enable_generic_clusters = 1;
@@ -763,9 +763,9 @@ Run_PU_Scope_Contract(void)
         !Create_Fixture
              ("aio5_scope_other", "[2,2]", AIO5_FIXTURE_LEGAL,
               &other) ||
-        DSL_Fusion_Candidates_Verify(analysis.fusion, quiet) ||
+        DSL_fusion_candidates_verify(analysis.fusion, quiet) ||
         !DSL_Builder_Select_PU(fixture.pu) ||
-        !DSL_Fusion_Candidates_Verify(analysis.fusion, quiet))
+        !DSL_fusion_candidates_verify(analysis.fusion, quiet))
         return 1;
     Destroy_Analysis(&analysis);
     fclose(quiet);
