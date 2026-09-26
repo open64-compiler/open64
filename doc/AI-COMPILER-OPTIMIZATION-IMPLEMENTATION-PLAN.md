@@ -122,12 +122,29 @@ Proposed new orchestration files:
 ```text
 osprey/be/vho/dsl_ai_opt.h
 osprey/be/vho/dsl_ai_opt.cxx
+osprey/be/vho/dsl_runtime_variant_opt.h
+osprey/be/vho/dsl_runtime_variant_opt.cxx
 ```
 
 `VHO_DSL_AI_Optimize_Program_Unit()` owns active-PU traversal, phase ordering,
 analysis lifetime, candidate budgets, selected-plan application, diagnostics,
 tracing, and final per-PU verification. It does not own common record schemas,
 operator semantics, Python capture, or target code generation.
+
+The directory boundary is semantic, not merely organizational:
+
+- `common/com` defines IR records and stable IDs, constructs/interns records,
+  performs structural verification, and provides generic access and printing;
+- `be/vho` captures PU-local facts from WHIRL, discovers candidates, evaluates
+  legality and cost, selects plans, and applies VHO transformations;
+- `be/opt` owns decisions requiring CFG, SSA, CODEREP, value numbering, PRE,
+  or other WOPT state;
+- LNO owns canonical-loop decisions and IPA owns explicitly cross-PU work.
+
+A common IR constructor must not decide which record should be created or
+selected. The owning phase computes that content and calls the common creation
+API. This boundary applies retroactively to AIO services as they are revised;
+new milestones must satisfy it when introduced.
 
 ### Common semantic substrate
 
@@ -144,9 +161,12 @@ osprey/common/com/dsl_runtime_variant.h
 osprey/common/com/dsl_runtime_variant.cxx
 ```
 
-These services use stable IDs and fixed-layout records where persistence is
-required. They must not expose VHO, WOPT, LNO, backend, Python, CUDA, or vendor
-library types in public common interfaces.
+These common services define and create IR only. They use stable IDs and
+fixed-layout records where persistence is required, and may provide structural
+verification, generic accessors, and logical printers. They must not harvest
+PU facts, discover candidates, model profitability, select an optimization,
+or apply a transformation. They must not expose VHO, WOPT, LNO, backend,
+Python, CUDA, or vendor-library types in public common interfaces.
 
 ### Existing analysis and transformation engines
 
@@ -779,7 +799,11 @@ variant and one certified cuBLASLt variant guarded by `kid0`/`kid1` runtime
 buffer alignment of at least 16 bytes. The two guard checks contribute an
 explicit cost of 4 to AIO-2's `runtime_selection` term. Guard-true selects the
 fast implementation; guard-false selects the direct fallback. The analysis is
-PU-local and does not change executable or binary WHIRL.
+PU-local and does not change executable or binary WHIRL. Common/com owns only
+the RuntimeVariantIR records, constructor, structural verifier, accessors, and
+generic printer. `be/vho/dsl_runtime_variant_opt.{h,cxx}` owns physical-plan
+fact capture, target checks, candidate/cost construction, selection, semantic
+verification, and runtime guard evaluation.
 
 Actions:
 
@@ -962,6 +986,25 @@ artifact.
     operand-alignment guards around the selected cuBLASLt matmul plan, retains
     the direct implementation as an unconditional fallback, accounts for the
     guard cost through AIO-2, and leaves binary WHIRL byte-identical.
+19. [x] Audit AIO-0 through AIO-13 against the common/phase ownership rule.
+    AIO-0 conforms, AIO-12 conforms after its common/VHO split, AIO-13 has a
+    prospective boundary, and AIO-1 through AIO-11 require staged ownership
+    cleanup as recorded in
+    `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md`.
+20. [ ] Ownership M1: split AIO-11 physical implementation planning. Keep
+    provider capability and physical-plan IR in common; move candidate
+    discovery, capability/legality checks, costing, and selection into VHO.
+21. [ ] Ownership M2: move AIO-9 and AIO-10 tile-family and fetch/pipeline
+    decisions into VHO while preserving target-description and plan IR in
+    common and reserving canonical-loop realization for LNO.
+22. [ ] Ownership M3: move AIO-5 through AIO-8 candidate discovery, legality,
+    cost, and selection into VHO while preserving record schemas and traces.
+23. [ ] Ownership M4: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
+    keep graph/fact/snapshot/locality records and structural services common.
+24. [ ] Ownership M5: after all common callers have moved, relocate AIO-2
+    selection policy to the owning phase, split tests by owner, rerun retained
+    artifact comparisons, and certify no binary WHIRL, mapped-image, runtime
+    ABI, or backend shared-library dependency regression.
 
 ## Related Documents
 
@@ -996,6 +1039,8 @@ artifact.
 - `AI-COMPILER-OPTIMIZATION-AIO12-RUNTIME-VARIANT.md` - certified PU-local
   variants, runtime guards, guard cost, conservative fallback, runtime
   evaluation, compatibility, and G15 certification.
+- `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md` - AIO-0 through AIO-13
+  conformance matrix and staged common/VHO/WOPT/LNO/IPA ownership migration.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion
   candidate skeleton, legality, cost, fallback, selection, and certification.
 - `VHO-DSL-OPTIMIZATION-PLAN.md` - fixed VHO DSL optimization pipeline and

@@ -48,6 +48,7 @@ sources=(
   "osprey/be/opt/tests/dsl_wopt_semantic_info_test.cxx"
   "osprey/be/vho/dsl_lower.cxx"
   "osprey/be/vho/dsl_opt.cxx"
+  "osprey/be/vho/dsl_runtime_variant_opt.cxx"
   "osprey/be/vho/dsl_shape_refine.cxx"
   "osprey/be/vho/fhe_convert.cxx"
   "osprey/be/vho/fhe_semantic_convert.cxx"
