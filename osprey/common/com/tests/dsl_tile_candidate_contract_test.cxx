@@ -1,4 +1,12 @@
-/* Check-only contract tests for AIO-9 hierarchical tile planning. */
+/*
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies AIO-9 hierarchical tile-plan staging, target differentiation,
+ * legality, cost, and check-only TensorEvolutionGraph overlays. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO9-HIERARCHICAL-TILING.md.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

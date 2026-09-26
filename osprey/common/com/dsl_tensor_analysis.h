@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-3 semantic tensor facts derived from logical DSL contracts.
+ * AIO-3 PU-local semantic tensor facts derived from logical DSL contracts.
+ * The analysis reads managed IR but adds no persistent image state.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO3-SEMANTIC-TENSOR.md.
  */
@@ -20,9 +21,9 @@
 #include "symtab.h"
 
 struct pu_info;
-struct dsl_tensor_analysis;
+struct DSL_TENSOR_ANALYSIS;
 
-typedef struct dsl_tensor_analysis DSL_TENSOR_ANALYSIS;
+typedef struct DSL_TENSOR_ANALYSIS DSL_TENSOR_ANALYSIS;
 typedef UINT32 DSL_TENSOR_FACT_ID;
 typedef UINT32 DSL_TENSOR_USE_FACT_ID;
 

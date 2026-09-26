@@ -17,11 +17,11 @@
 
 class CFG;
 struct pu_info;
-struct dsl_tensor_control_snapshot;
+struct DSL_TENSOR_CONTROL_SNAPSHOT;
 
 extern BOOL WOPT_DSL_Populate_Tensor_Control_Snapshot
     (CFG *cfg, struct pu_info *pu,
-     struct dsl_tensor_control_snapshot *snapshot,
+     struct DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
      FILE *diagnostic);
 
 #endif /* opt_dsl_locality_INCLUDED */

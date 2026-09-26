@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-1 runtime-only tensor identity and representation evolution graph.
+ * AIO-1 runtime-only, PU-local tensor identity and representation evolution
+ * graph. This public contract adds no mapped-image or WHIRL layout state.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO1-TENSOR-EVOLUTION.md.
  */
@@ -18,9 +19,9 @@
 #include "symtab.h"
 
 struct pu_info;
-struct dsl_tensor_evolution_graph;
+struct DSL_TENSOR_EVOLUTION_GRAPH;
 
-typedef struct dsl_tensor_evolution_graph DSL_TENSOR_EVOLUTION_GRAPH;
+typedef struct DSL_TENSOR_EVOLUTION_GRAPH DSL_TENSOR_EVOLUTION_GRAPH;
 typedef UINT32 DSL_TENSOR_EVOLUTION_NODE_ID;
 typedef UINT32 DSL_TENSOR_EVOLUTION_EDGE_ID;
 

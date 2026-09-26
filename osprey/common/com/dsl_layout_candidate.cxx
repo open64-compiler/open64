@@ -2,6 +2,13 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Constructs AIO-6 PU-local logical-layout alternatives and compatibility
+ * evidence while preserving canonical TensorDescriptorIR identity. It is a
+ * runtime-only planning service. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO6-LOGICAL-LAYOUT.md.
+ */
+
 #include <string.h>
 #include <vector>
 
@@ -10,7 +17,7 @@
 #include "dsl_shape.h"
 #include "pu_info.h"
 
-struct dsl_logical_layout_analysis {
+struct DSL_LOGICAL_LAYOUT_ANALYSIS {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     DSL_TENSOR_EVOLUTION_GRAPH *graph;

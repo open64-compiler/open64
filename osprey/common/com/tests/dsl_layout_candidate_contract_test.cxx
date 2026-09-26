@@ -1,5 +1,11 @@
 /*
- * Check-only contract tests for AIO-6 logical-layout alternatives.
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies AIO-6 logical-layout compatibility, conversion cost, fallback, and
+ * check-only alternative construction. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO6-LOGICAL-LAYOUT.md.
  */
 
 #include <stdio.h>

@@ -1,5 +1,11 @@
 /*
- * Check-only contract tests for AIO-4 tensor lifetime and locality analysis.
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies AIO-4 PU-local lifetime, reuse, alias, control, and locality
+ * classification without retaining optimizer-owned CFG objects. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO4-LIFETIME-LOCALITY.md.
  */
 
 #include <stdio.h>

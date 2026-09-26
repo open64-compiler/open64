@@ -37,7 +37,7 @@ typedef struct {
     UINT32 vector_width;
 } DSL_TILE_FAMILY_SEED;
 
-struct dsl_tile_analysis {
+struct DSL_TILE_ANALYSIS {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     DSL_TENSOR_EVOLUTION_GRAPH *graph;
@@ -153,11 +153,11 @@ DSL_Tile_Edge_Policy_Name (UINT32 policy)
 }
 
 const char *
-DSL_Tile_Instruction_Name (UINT32 family)
+DSL_Tile_Instruction_Name (UINT32 instruction)
 {
-    return family < sizeof(DSL_tile_instruction_name) /
-                        sizeof(DSL_tile_instruction_name[0]) ?
-           DSL_tile_instruction_name[family] : "unknown";
+    return instruction < sizeof(DSL_tile_instruction_name) /
+                             sizeof(DSL_tile_instruction_name[0]) ?
+           DSL_tile_instruction_name[instruction] : "unknown";
 }
 
 void

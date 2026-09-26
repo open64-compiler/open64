@@ -1,5 +1,11 @@
 /*
- * Check-only contract tests for AIO-3 semantic tensor analysis.
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies AIO-3 semantic tensor facts, operand roles, ownership, descriptor
+ * completeness, and metadata independence within one PU. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO3-SEMANTIC-TENSOR.md.
  */
 
 #include <stdio.h>

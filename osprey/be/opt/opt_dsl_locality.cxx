@@ -2,6 +2,12 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Adapts the active WOPT CFG into the AIO-4 PU-local control snapshot without
+ * exporting WOPT-owned pointers or widening analysis beyond the active PU.
+ * Design: doc/AI-COMPILER-OPTIMIZATION-AIO4-LIFETIME-LOCALITY.md.
+ */
+
 #include <string.h>
 
 #include "opt_cfg.h"

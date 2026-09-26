@@ -1,5 +1,11 @@
 /*
- * Check-only contract tests for AIO-5 high-level fusion candidates.
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies AIO-5 semantic and generic fusion discovery, legality, fallback,
+ * and check-only plan construction within one PU. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md.
  */
 
 #include <stdio.h>

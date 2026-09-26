@@ -2,6 +2,13 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Provides the typed, target-independent AIO-8 memory hierarchy used by
+ * residency and tiling planners. Profiles are immutable planning envelopes,
+ * not runtime device discovery. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
+ */
+
 #include <string.h>
 
 #include "dsl_memory_hierarchy.h"

@@ -2,6 +2,13 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Maintains the AIO-1 runtime-only, PU-local tensor representation evolution
+ * graph. Semantic roots remain immutable while alternatives form explicit
+ * descendant nodes. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO1-TENSOR-EVOLUTION.md.
+ */
+
 #include <string.h>
 #include <vector>
 
@@ -9,7 +16,7 @@
 #include "pu_info.h"
 #include "strtab.h"
 
-struct dsl_tensor_evolution_graph {
+struct DSL_TENSOR_EVOLUTION_GRAPH {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     std::vector<DSL_TENSOR_EVOLUTION_NODE_RECORD> nodes;

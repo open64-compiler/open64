@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-8 target-independent memory hierarchy with typed target adapters.
+ * AIO-8 target-independent memory hierarchy with immutable typed target
+ * adapters. These runtime planning profiles add no WHIRL image state.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
  */

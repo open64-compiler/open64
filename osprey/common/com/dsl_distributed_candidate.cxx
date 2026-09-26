@@ -2,6 +2,13 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Builds AIO-7 PU-local placement, sharding, ownership, and communication
+ * candidates. The analysis is runtime-only and does not rewrite WHIRL or alter
+ * mapped-image contracts. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO7-DISTRIBUTED.md.
+ */
+
 #include <string.h>
 #include <vector>
 
@@ -10,7 +17,7 @@
 #include "dsl_shape.h"
 #include "pu_info.h"
 
-struct dsl_distributed_analysis {
+struct DSL_DISTRIBUTED_ANALYSIS {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     DSL_TENSOR_EVOLUTION_GRAPH *graph;

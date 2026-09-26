@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-9 check-only hierarchical tile-plan construction.
+ * AIO-9 PU-local, check-only hierarchical tile-plan construction. The API
+ * records runtime planning state and leaves executable and binary WHIRL intact.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO9-HIERARCHICAL-TILING.md.
  */
@@ -21,9 +22,9 @@
 #include "dsl_tensor_locality.h"
 
 struct pu_info;
-struct dsl_tile_analysis;
+struct DSL_TILE_ANALYSIS;
 
-typedef struct dsl_tile_analysis DSL_TILE_ANALYSIS;
+typedef struct DSL_TILE_ANALYSIS DSL_TILE_ANALYSIS;
 typedef UINT32 DSL_TILE_SITE_ID;
 typedef UINT32 DSL_TILE_PLAN_ID;
 typedef UINT32 DSL_TILE_STAGE_ID;

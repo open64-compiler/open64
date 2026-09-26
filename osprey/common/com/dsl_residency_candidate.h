@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-8 check-only local memory residency alternatives.
+ * AIO-8 PU-local, check-only memory residency alternatives. The contract does
+ * not allocate target memory or rewrite executable WHIRL.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
  */
@@ -20,9 +21,9 @@
 #include "dsl_tensor_locality.h"
 
 struct pu_info;
-struct dsl_residency_analysis;
+struct DSL_RESIDENCY_ANALYSIS;
 
-typedef struct dsl_residency_analysis DSL_RESIDENCY_ANALYSIS;
+typedef struct DSL_RESIDENCY_ANALYSIS DSL_RESIDENCY_ANALYSIS;
 typedef UINT32 DSL_RESIDENCY_DESCRIPTOR_ID;
 typedef UINT32 DSL_RESIDENCY_SITE_ID;
 typedef UINT32 DSL_RESIDENCY_ALTERNATIVE_ID;

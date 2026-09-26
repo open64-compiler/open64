@@ -2,6 +2,13 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Derives AIO-3 PU-local semantic tensor facts from canonical descriptors and
+ * logical DSL operator contracts. Source metadata is deliberately excluded
+ * from semantic equivalence. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO3-SEMANTIC-TENSOR.md.
+ */
+
 #include <string.h>
 #include <vector>
 
@@ -11,7 +18,7 @@
 #include "pu_info.h"
 #include "strtab.h"
 
-struct dsl_tensor_analysis {
+struct DSL_TENSOR_ANALYSIS {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     const DSL_TENSOR_EVOLUTION_GRAPH *graph;

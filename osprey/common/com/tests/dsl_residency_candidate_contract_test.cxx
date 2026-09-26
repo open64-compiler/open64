@@ -1,4 +1,12 @@
-/* Check-only contract tests for AIO-8 memory residency planning. */
+/*
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies AIO-8 memory hierarchy and PU-local residency alternatives without
+ * allocating target storage or transforming WHIRL. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
