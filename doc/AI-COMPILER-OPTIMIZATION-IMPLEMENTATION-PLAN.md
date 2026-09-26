@@ -606,6 +606,12 @@ Deferred beyond this slice:
 
 ### AIO-9: AI-P7 Hierarchical Tile Plans
 
+Status: completed as a check-only, runtime-only, per-PU vertical slice on
+2026-09-25. `CommonTilePlanIR` records the `P7.0` through `P7.11` hierarchy,
+bounded Hopper/Blackwell families, typed resource evidence, AIO-2
+cost/selection/fallback, and provisional TensorEvolutionGraph tile overlays
+without rewriting executable or binary WHIRL.
+
 Actions:
 
 1. Implement `P7.0` through `P7.11` as candidate refinements, not one opaque
@@ -626,6 +632,32 @@ Acceptance:
 - numerical results match the `-O0` reference under the active FP contract.
 
 PR boundary: one tile level or tightly related group per PR.
+
+Implemented first vertical slice:
+
+- one unchanged baseline and bounded `cuda_64`, `cuda_128`, and
+  `blackwell_wide` candidate families;
+- problem, CTA, warp, thread, register, vector, and instruction tile evidence;
+- explicit G0-G11 stage records aligned with P7.0-P7.11;
+- global-memory traffic, operation count, shared/register/thread/warp/barrier,
+  buffering, edge-policy, and TMA-candidate evidence;
+- typed Hopper/Blackwell resource queries through AIO-8;
+- AIO-2 candidates, low-confidence relative costs, legality, deterministic
+  selection, and baseline fallback;
+- provisional runtime-only tile nodes/edges in TensorEvolutionGraph;
+- active-PU scope, effect/ownership/resource rejection, numerical GEMM oracle,
+  and byte-identical before/after/repeat binary evidence.
+
+Deferred beyond this slice:
+
+- LNO-backed executable loop blocking and dependence legality;
+- complete coalescing, occupancy, bank-conflict, wave, and arithmetic-intensity
+  models;
+- separate A/B shared layouts, tensor-core fragments, and low-precision scale
+  tiles;
+- AIO-10 fetch/prefetch/TMA/cp.async pipeline realization;
+- measured/autotuned cost evidence, runtime variants, and mapped publication;
+- explicit IPA summaries and cross-PU tile planning.
 
 ### AIO-10: AI-P8 Fetch, Prefetch, And Async Pipeline
 
@@ -829,6 +861,9 @@ artifact.
 13. [x] Execute the first `AIO-8` vertical slice: define typed CPU/Hopper/
     Blackwell memory hierarchies and capacity/lifetime checked residency
     alternatives without allocating storage or changing binary WHIRL.
+14. [x] Execute the first `AIO-9` vertical slice: construct explicit G0-G11
+    hierarchical tile-plan candidates with distinct Hopper/Blackwell families,
+    AIO-2 cost/selection evidence, and no executable or binary WHIRL rewrite.
 
 ## Related Documents
 
@@ -852,6 +887,9 @@ artifact.
 - `AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md` - typed memory hierarchy
   adapters, runtime-only residency alternatives, capacity/lifetime legality,
   AIO-2 plans, compatibility, and certification.
+- `AI-COMPILER-OPTIMIZATION-AIO9-HIERARCHICAL-TILING.md` - explicit G0-G11
+  tile hierarchy, typed target/resource evidence, AIO-2 plans, compatibility,
+  certification, and executable-transformation boundary.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion
   candidate skeleton, legality, cost, fallback, selection, and certification.
 - `VHO-DSL-OPTIMIZATION-PLAN.md` - fixed VHO DSL optimization pipeline and

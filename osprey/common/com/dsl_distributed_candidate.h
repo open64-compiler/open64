@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-7 placement, sharding, ownership, and derived communication plans.
+ * AIO-7 PU-local placement, sharding, ownership, and derived communication
+ * plans. The API records runtime-only candidates and does not rewrite WHIRL.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO7-DISTRIBUTED.md.
  */
@@ -19,9 +20,9 @@
 #include "dsl_tensor_locality.h"
 
 struct pu_info;
-struct dsl_distributed_analysis;
+struct DSL_DISTRIBUTED_ANALYSIS;
 
-typedef struct dsl_distributed_analysis DSL_DISTRIBUTED_ANALYSIS;
+typedef struct DSL_DISTRIBUTED_ANALYSIS DSL_DISTRIBUTED_ANALYSIS;
 typedef UINT32 DSL_DISTRIBUTED_DESCRIPTOR_ID;
 typedef UINT32 DSL_DISTRIBUTED_RANGE_ID;
 typedef UINT32 DSL_DISTRIBUTED_ALIAS_ID;

@@ -2,13 +2,20 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Builds AIO-8 PU-local memory-residency alternatives from tensor locality and
+ * target hierarchy facts. The service remains check-only and never allocates
+ * target memory or rewrites WHIRL. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
+ */
+
 #include <string.h>
 #include <vector>
 
 #include "dsl_residency_candidate.h"
 #include "pu_info.h"
 
-struct dsl_residency_analysis {
+struct DSL_RESIDENCY_ANALYSIS {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     DSL_TENSOR_EVOLUTION_GRAPH *graph;

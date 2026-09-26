@@ -1,5 +1,11 @@
 /*
- * Check-only contract tests for AIO-2 candidate, plan, legality, and cost IR.
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies AIO-2 candidate, legality, cost, fallback, and deterministic plan
+ * selection without transforming WHIRL. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO2-PLAN-COST.md.
  */
 
 #include <stdio.h>

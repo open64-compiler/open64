@@ -2,6 +2,13 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Computes AIO-4 PU-local tensor lifetime, reuse, alias, and locality facts
+ * from stable DSL IDs plus a driver-owned control snapshot. It does not retain
+ * CFG or WOPT pointers. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO4-LIFETIME-LOCALITY.md.
+ */
+
 #include <algorithm>
 #include <limits.h>
 #include <string.h>
@@ -12,7 +19,7 @@
 #include "dsl_shape.h"
 #include "pu_info.h"
 
-struct dsl_tensor_control_snapshot {
+struct DSL_TENSOR_CONTROL_SNAPSHOT {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     BOOL sealed;
@@ -20,7 +27,7 @@ struct dsl_tensor_control_snapshot {
     std::vector<DSL_TENSOR_CONTROL_POSITION> positions;
 };
 
-struct dsl_tensor_locality_analysis {
+struct DSL_TENSOR_LOCALITY_ANALYSIS {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     const DSL_TENSOR_ANALYSIS *tensor_analysis;

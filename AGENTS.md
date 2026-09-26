@@ -216,6 +216,50 @@ only when the current task needs detail.
    to set its declaration source position with `Set_ST_Srcpos()`. When a
    builder creates both a defining WN and a result ST, propagate the same
    complete source position, including file, line, and column, to both objects.
+6. Every newly created `.h` and `.cxx` file must begin with a concise
+   architectural comment after the copyright notice. State the file's purpose,
+   owning component or compilation scope, important behavior or compatibility
+   boundary, and the repository-relative path of the controlling design or
+   plan document. A public header should identify the contract it exposes; its
+   implementation file should identify what it deliberately does and does not
+   change.
+7. Add short orienting comments before non-obvious algorithm boundaries such
+   as preparation, shared-engine reuse, legality classification, transactional
+   mutation, verification, and postprocessing. Explain the invariant or design
+   reason rather than restating the code. During final review, verify these
+   comments exist in every newly added C/C++ source file and still agree with
+   the implementation and cited design document.
+8. All new DSL-related C/C++ files and APIs, including `dsl_*`, `opt_dsl_*`,
+   and names prefixed with `DSL_` or `WOPT_DSL_`, must follow the established
+   Open64 `be/opt` naming style. Use `ALL_CAPS_WITH_UNDERSCORES` for classes,
+   structs, typedefs, enum types, and public symbolic types;
+   `_lowercase_snake_case` for ordinary private data members; and
+   `lowercase_snake_case` for parameters and local variables.
+9. Name member functions with an initial capital and underscore-separated
+   words, while preserving established compiler acronyms in uppercase, for
+   example `Build_candidates()`, `Verify_IR()`, and `Compute_PRE_saves()`.
+   Do not introduce CamelCase forms such as `BuildCandidates()` or mixed-case
+   acronym forms such as `Dsl` in new DSL code.
+10. Name trivial field accessors after the property, such as `Cfg()` or
+    `Descriptor()`. Use `Set_`, `Reset_`, `Is_`, `Has_`, and `Can_` for
+    mutation and predicate APIs. Reserve `Get_` for operations that perform a
+    lookup, computation, copy, or output assignment rather than a direct field
+    read.
+11. Give public free functions, globals, enum values, and macros a stable
+    subsystem prefix such as `DSL_` or `WOPT_DSL_`. Enum values and macros use
+    uppercase underscore-separated names. Avoid new unprefixed global names and
+    prefer inline functions over macros unless an existing Open64 protocol
+    requires a macro.
+12. Use established optimizer abbreviations such as `cr`, `stmt`, `bb`, `cfg`,
+    `wn`, `phi`, `aux_id`, `kid0`, and `kid1` where their meaning is local and
+    unambiguous. Use descriptive lowercase underscore-separated names for new
+    semantic concepts. Do not use pointer-name prefixes or other Hungarian
+    notation.
+13. Treat compact historical structures, generated interfaces, required
+    Makefile syntax, and tightly scoped template utilities as exceptions, not
+    precedents for new DSL naming. When an owning directory has a stricter
+    established convention, preserve that convention and document any
+    intentional departure during review.
 
 ## Driver And Phase Option Convention
 

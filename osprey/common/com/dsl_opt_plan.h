@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-2 candidate, legality, cost, fallback, and plan-selection service.
+ * AIO-2 PU-local candidate, legality, cost, fallback, and plan-selection
+ * service. Its records are runtime-only and do not change WHIRL layout.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO2-PLAN-COST.md.
  */
@@ -19,9 +20,9 @@
 #include "symtab.h"
 
 struct pu_info;
-struct dsl_opt_plan_context;
+struct DSL_OPT_PLAN_CONTEXT;
 
-typedef struct dsl_opt_plan_context DSL_OPT_PLAN_CONTEXT;
+typedef struct DSL_OPT_PLAN_CONTEXT DSL_OPT_PLAN_CONTEXT;
 typedef UINT32 DSL_OPT_CANDIDATE_ID;
 typedef UINT32 DSL_OPT_COST_ID;
 typedef UINT32 DSL_OPT_PLAN_ID;

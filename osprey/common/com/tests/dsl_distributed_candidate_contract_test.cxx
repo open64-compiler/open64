@@ -1,4 +1,12 @@
-/* Check-only contract tests for AIO-7 placement and communication. */
+/*
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies AIO-7 placement, sharding, ownership, communication derivation,
+ * and conservative PU-local rejection behavior. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO7-DISTRIBUTED.md.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

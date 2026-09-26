@@ -70,6 +70,7 @@ sources=(
   "osprey/common/com/dsl_distributed_candidate.cxx"
   "osprey/common/com/dsl_memory_hierarchy.cxx"
   "osprey/common/com/dsl_residency_candidate.cxx"
+  "osprey/common/com/dsl_tile_candidate.cxx"
   "osprey/common/com/dsl_shape.cxx"
   "osprey/common/com/dsl_tensor_analysis.cxx"
   "osprey/common/com/dsl_tensor_locality.cxx"
@@ -93,6 +94,7 @@ sources=(
   "osprey/common/com/tests/dsl_layout_candidate_contract_test.cxx"
   "osprey/common/com/tests/dsl_distributed_candidate_contract_test.cxx"
   "osprey/common/com/tests/dsl_residency_candidate_contract_test.cxx"
+  "osprey/common/com/tests/dsl_tile_candidate_contract_test.cxx"
   "osprey/torch2whirl/python/native/open64_dsc_native_bridge.cxx"
 )
 
@@ -133,6 +135,9 @@ if [[ -n "${OPEN64_AIO7_TEST:-}" ]]; then
 fi
 if [[ -n "${OPEN64_AIO8_TEST:-}" ]]; then
   "$script_dir/dsl_residency_candidate_contract_test.sh"
+fi
+if [[ -n "${OPEN64_AIO9_TEST:-}" ]]; then
+  "$script_dir/dsl_tile_candidate_contract_test.sh"
 fi
 "$script_dir/dsl_operator_layout_test.sh"
 bash "$repo_root/osprey/be/opt/tests/dsl_wopt_semantic_info_test.sh"

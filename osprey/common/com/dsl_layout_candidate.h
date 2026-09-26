@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-6 immutable logical-layout alternatives and compatibility evidence.
+ * AIO-6 PU-local immutable logical-layout alternatives and compatibility
+ * evidence. It preserves tensor type identity and adds no binary IR state.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO6-LOGICAL-LAYOUT.md.
  */
@@ -19,9 +20,9 @@
 #include "dsl_tensor_locality.h"
 
 struct pu_info;
-struct dsl_logical_layout_analysis;
+struct DSL_LOGICAL_LAYOUT_ANALYSIS;
 
-typedef struct dsl_logical_layout_analysis DSL_LOGICAL_LAYOUT_ANALYSIS;
+typedef struct DSL_LOGICAL_LAYOUT_ANALYSIS DSL_LOGICAL_LAYOUT_ANALYSIS;
 typedef UINT32 DSL_LOGICAL_LAYOUT_DESCRIPTOR_ID;
 typedef UINT32 DSL_LOGICAL_LAYOUT_AXIS_ID;
 typedef UINT32 DSL_LOGICAL_LAYOUT_BLOCK_ID;

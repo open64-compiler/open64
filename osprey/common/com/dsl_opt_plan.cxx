@@ -2,13 +2,20 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Implements the AIO-2 PU-local candidate, legality, cost, fallback, and plan
+ * selection service. Plans are runtime-only analysis objects and do not change
+ * WHIRL binary layout. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO2-PLAN-COST.md.
+ */
+
 #include <string.h>
 #include <vector>
 
 #include "dsl_opt_plan.h"
 #include "pu_info.h"
 
-struct dsl_opt_plan_context {
+struct DSL_OPT_PLAN_CONTEXT {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     const DSL_TENSOR_EVOLUTION_GRAPH *graph;

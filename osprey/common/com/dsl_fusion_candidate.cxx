@@ -2,6 +2,13 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * Discovers AIO-5 PU-local fusion candidates from logical DSL contracts and
+ * records check-only plans. It does not rewrite executable WHIRL or persist a
+ * new binary image. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md.
+ */
+
 #include <string.h>
 #include <vector>
 
@@ -9,7 +16,7 @@
 #include "dsl_opcode.h"
 #include "pu_info.h"
 
-struct dsl_fusion_pattern_match {
+struct DSL_FUSION_PATTERN_MATCH {
     UINT32 pattern;
     DSL_IR_NODE_ID root_node_id;
     DSL_IR_VALUE_ID result_value_id;
@@ -19,7 +26,7 @@ struct dsl_fusion_pattern_match {
     std::vector<DSL_IR_VALUE_ID> eliminated_values;
 };
 
-struct dsl_fusion_candidate_analysis {
+struct DSL_FUSION_CANDIDATE_ANALYSIS {
     PU_Info *pu;
     ST_IDX owner_pu_st;
     const DSL_TENSOR_EVOLUTION_GRAPH *graph;
@@ -185,7 +192,7 @@ DSL_Fusion_Value_Producer
 
 static void
 DSL_Fusion_Add_Boundary
-        (dsl_fusion_pattern_match *match, DSL_IR_VALUE_ID value_id,
+        (DSL_FUSION_PATTERN_MATCH *match, DSL_IR_VALUE_ID value_id,
          DSL_IR_NODE_ID producer_node_id, DSL_IR_NODE_ID consumer_node_id,
          UINT32 kind, UINT32 operand_ordinal)
 {
@@ -202,7 +209,7 @@ DSL_Fusion_Add_Boundary
 static BOOL
 DSL_Fusion_Match_Matmul_Bias_Activation
         (const DSL_IR_NODE_RECORD &activation,
-         dsl_fusion_pattern_match *match)
+         DSL_FUSION_PATTERN_MATCH *match)
 {
     DSL_IR_VALUE_ID add_value;
     DSL_IR_VALUE_RECORD add_result;
@@ -284,7 +291,7 @@ DSL_Fusion_Match_Matmul_Bias_Activation
 static BOOL
 DSL_Fusion_Match_Residual_Activation
         (const DSL_IR_NODE_RECORD &activation,
-         dsl_fusion_pattern_match *match)
+         DSL_FUSION_PATTERN_MATCH *match)
 {
     DSL_IR_VALUE_ID residual_value;
     DSL_IR_VALUE_RECORD residual_result;
@@ -330,7 +337,7 @@ DSL_Fusion_Match_Residual_Activation
 
 static BOOL
 DSL_Fusion_Match
-        (DSL_IR_NODE_ID root_node_id, dsl_fusion_pattern_match *match)
+        (DSL_IR_NODE_ID root_node_id, DSL_FUSION_PATTERN_MATCH *match)
 {
     DSL_IR_NODE_RECORD activation;
     DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
@@ -378,7 +385,7 @@ DSL_Fusion_Generic_Has_Forward_Consumer
 
 static BOOL
 DSL_Fusion_Generic_Member_Index
-        (const dsl_fusion_pattern_match &match, DSL_IR_NODE_ID node_id,
+        (const DSL_FUSION_PATTERN_MATCH &match, DSL_IR_NODE_ID node_id,
          UINT32 *index)
 {
     for (UINT32 i = 0; i < match.members.size(); ++i) {
@@ -394,7 +401,7 @@ DSL_Fusion_Generic_Member_Index
 static BOOL
 DSL_Fusion_Match_Generic
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
-         DSL_IR_NODE_ID root_node_id, dsl_fusion_pattern_match *match)
+         DSL_IR_NODE_ID root_node_id, DSL_FUSION_PATTERN_MATCH *match)
 {
     DSL_IR_NODE_RECORD root;
     DSL_IR_OPCODE_DESCRIPTOR_RECORD root_descriptor;
@@ -529,7 +536,7 @@ DSL_Fusion_Add_U64 (UINT64 value, UINT64 *sum)
 static UINT32
 DSL_Fusion_Layout_State
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
-         const dsl_fusion_pattern_match &match)
+         const DSL_FUSION_PATTERN_MATCH &match)
 {
     if (analysis->layout == NULL)
         return DSL_FUSION_FACT_UNKNOWN;
@@ -571,7 +578,7 @@ DSL_Fusion_Layout_State
 static void
 DSL_Fusion_Classify
         (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
-         const dsl_fusion_pattern_match &match,
+         const DSL_FUSION_PATTERN_MATCH &match,
          DSL_FUSION_SITE_RECORD *site)
 {
     DSL_IR_VALUE_RECORD result;
@@ -984,7 +991,7 @@ DSL_Fusion_Candidates_Build
          id <= DSL_Tensor_Analysis_Fact_Count(analysis->tensor_analysis);
          ++id) {
         DSL_TENSOR_FACT_RECORD fact;
-        dsl_fusion_pattern_match match;
+        DSL_FUSION_PATTERN_MATCH match;
         if (!DSL_Tensor_Analysis_Get_Fact
                  (analysis->tensor_analysis, id, &fact) ||
             fact.producer_node_id == DSL_IR_NODE_INVALID_ID)

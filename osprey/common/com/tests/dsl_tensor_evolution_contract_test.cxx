@@ -1,5 +1,11 @@
 /*
- * Check-only contract tests for the per-PU TensorEvolutionGraph.
+ * Copyright (C) 2026 Open64 Project
+ */
+
+/*
+ * Certifies the AIO-1 PU-local TensorEvolutionGraph ownership, immutable-root,
+ * and check-only representation contracts. Design:
+ * doc/AI-COMPILER-OPTIMIZATION-AIO1-TENSOR-EVOLUTION.md.
  */
 
 #include <stdio.h>

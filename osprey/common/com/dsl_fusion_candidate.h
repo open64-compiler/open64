@@ -3,7 +3,8 @@
  */
 
 /*
- * AIO-5 check-only semantic and generic fusion candidate discovery.
+ * AIO-5 PU-local, check-only semantic and generic fusion candidate discovery.
+ * It exposes planning evidence and performs no executable WHIRL rewrite.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md.
  */
@@ -20,9 +21,9 @@
 #include "dsl_tensor_locality.h"
 
 struct pu_info;
-struct dsl_fusion_candidate_analysis;
+struct DSL_FUSION_CANDIDATE_ANALYSIS;
 
-typedef struct dsl_fusion_candidate_analysis DSL_FUSION_CANDIDATE_ANALYSIS;
+typedef struct DSL_FUSION_CANDIDATE_ANALYSIS DSL_FUSION_CANDIDATE_ANALYSIS;
 typedef UINT32 DSL_FUSION_SITE_ID;
 typedef UINT32 DSL_FUSION_MEMBER_ID;
 typedef UINT32 DSL_FUSION_BOUNDARY_ID;
