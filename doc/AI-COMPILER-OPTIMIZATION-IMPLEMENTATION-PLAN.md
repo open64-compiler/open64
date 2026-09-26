@@ -773,6 +773,14 @@ Deferred beyond this slice:
 
 ### AIO-12: AI-P10 Runtime Variants
 
+Status: the first generic runtime-only slice is implemented for the reviewed
+rank-2 F4 `common.matmul.v1` physical site. It creates one unconditional direct
+variant and one certified cuBLASLt variant guarded by `kid0`/`kid1` runtime
+buffer alignment of at least 16 bytes. The two guard checks contribute an
+explicit cost of 4 to AIO-2's `runtime_selection` term. Guard-true selects the
+fast implementation; guard-false selects the direct fallback. The analysis is
+PU-local and does not change executable or binary WHIRL.
+
 Actions:
 
 1. Define certified variants, guards, fallback chains, and guard cost.
@@ -948,9 +956,12 @@ artifact.
     The first family lowers selected rank-2 F4 `common.matmul.v1` to the
     generic cuBLASLt provider ABI, preserves direct fallback, and retains G14
     provider/fallback/rejection evidence without linking CUDA into `be.so`.
-18. [ ] Execute the first AIO-12 runtime-variant slice with reviewed shape or
+18. [x] Execute the first AIO-12 runtime-variant slice with reviewed shape or
     alignment guards, a conservative direct fallback, explicit guard cost,
-    and retained true/false-path evidence.
+    and retained true/false-path evidence. The first slice uses two runtime
+    operand-alignment guards around the selected cuBLASLt matmul plan, retains
+    the direct implementation as an unconditional fallback, accounts for the
+    guard cost through AIO-2, and leaves binary WHIRL byte-identical.
 
 ## Related Documents
 
@@ -982,6 +993,9 @@ artifact.
 - `AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md` - complete direct,
   generated, and reviewed-provider alternatives, capability validation,
   deterministic fallback, selection, and executable-application boundary.
+- `AI-COMPILER-OPTIMIZATION-AIO12-RUNTIME-VARIANT.md` - certified PU-local
+  variants, runtime guards, guard cost, conservative fallback, runtime
+  evaluation, compatibility, and G15 certification.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion
   candidate skeleton, legality, cost, fallback, selection, and certification.
 - `VHO-DSL-OPTIMIZATION-PLAN.md` - fixed VHO DSL optimization pipeline and
