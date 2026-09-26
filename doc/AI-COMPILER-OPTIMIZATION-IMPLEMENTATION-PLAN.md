@@ -986,12 +986,23 @@ artifact.
     operand-alignment guards around the selected cuBLASLt matmul plan, retains
     the direct implementation as an unconditional fallback, accounts for the
     guard cost through AIO-2, and leaves binary WHIRL byte-identical.
-19. [ ] Audit the AIO-1 through AIO-11 services against the common/phase
-    ownership rule. Preserve common record schemas and construction APIs, but
-    move PU fact capture, candidate discovery, legality/cost analysis,
-    selection, and transformation policy into VHO, WOPT, LNO, or IPA according
-    to compilation scope. Stage this migration without changing binary WHIRL
-    or invalidating retained milestone artifacts.
+19. [x] Audit AIO-0 through AIO-13 against the common/phase ownership rule.
+    AIO-0 conforms, AIO-12 conforms after its common/VHO split, AIO-13 has a
+    prospective boundary, and AIO-1 through AIO-11 require staged ownership
+    cleanup as recorded in
+    `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md`.
+20. [ ] Ownership M1: move AIO-2 plan-selection policy out of common while
+    preserving common candidate/cost/plan IR construction and exact selected
+    results.
+21. [ ] Ownership M2: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
+    keep graph/fact/snapshot/locality records and structural services common.
+22. [ ] Ownership M3: move AIO-5 through AIO-8 candidate discovery, legality,
+    cost, and selection into VHO while preserving record schemas and traces.
+23. [ ] Ownership M4: move AIO-9 through AIO-11 tile, fetch/pipeline, and
+    physical-plan decisions into VHO, leaving target and plan IR in common.
+24. [ ] Ownership M5: split tests by owner, rerun retained artifact
+    comparisons, and certify no binary WHIRL, mapped-image, runtime ABI, or
+    backend shared-library dependency regression.
 
 ## Related Documents
 
@@ -1026,6 +1037,8 @@ artifact.
 - `AI-COMPILER-OPTIMIZATION-AIO12-RUNTIME-VARIANT.md` - certified PU-local
   variants, runtime guards, guard cost, conservative fallback, runtime
   evaluation, compatibility, and G15 certification.
+- `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md` - AIO-0 through AIO-13
+  conformance matrix and staged common/VHO/WOPT/LNO/IPA ownership migration.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion
   candidate skeleton, legality, cost, fallback, selection, and certification.
 - `VHO-DSL-OPTIMIZATION-PLAN.md` - fixed VHO DSL optimization pipeline and
