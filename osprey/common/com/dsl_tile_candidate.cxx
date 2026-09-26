@@ -2,6 +2,16 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * AIO-9 check-only hierarchical tile-plan construction.
+ *
+ * This file deliberately builds runtime-only candidates: it reads logical
+ * DSL/TensorDescriptorIR facts, reuses AIO-2 planning and AIO-8 target
+ * resources, and adds provisional TensorEvolutionGraph overlays. It does not
+ * rewrite executable or binary WHIRL. See
+ * doc/AI-COMPILER-OPTIMIZATION-AIO9-HIERARCHICAL-TILING.md.
+ */
+
 #include <algorithm>
 #include <string.h>
 #include <vector>
@@ -388,6 +398,7 @@ static BOOL
 DSL_Tile_Add_Stages
         (DSL_TILE_ANALYSIS *analysis, DSL_TILE_PLAN_RECORD *plan)
 {
+    /* Keep each P7 refinement visible as its matching G-stage evidence. */
     plan->first_stage_id = analysis->stages.size() + 1;
     if (!DSL_Tile_Add_Stage
              (analysis, plan, DSL_TILE_PHASE_P7_0_BASELINE,
@@ -506,6 +517,7 @@ DSL_Tile_Add_Optimization_Plan
          DSL_TILE_PLAN_RECORD *tile, BOOL complete_cost,
          FILE *diagnostic)
 {
+    /* Adapt the typed tile record to the shared AIO-2 candidate/plan service. */
     DSL_OPT_PLAN_CONTEXT *context = analysis->plans.back();
     DSL_OPT_CANDIDATE_INPUT candidate;
     memset(&candidate, 0, sizeof(candidate));
@@ -625,6 +637,7 @@ DSL_Tile_Classify
         (const DSL_TENSOR_LOCALITY_FACT_RECORD &locality,
          DSL_TILE_PLAN_RECORD *tile)
 {
+    /* Resource feasibility is meaningful only after locality and ownership. */
     if (locality.lifetime_state == DSL_TENSOR_LIFETIME_EFFECT) {
         tile->legality = DSL_OPT_LEGALITY_REJECTED;
         tile->rejection_reason = DSL_OPT_REJECT_EFFECT;
@@ -868,6 +881,7 @@ DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
                  (analysis, &site, tensor, source, m, n, k,
                   element_bytes, diagnostic))
             return FALSE;
+        /* Target adapters bound the candidate family; they do not lower it. */
         BOOL cuda_profile =
             analysis->control.target_profile_id ==
                 DSL_TARGET_PROFILE_NVIDIA_HOPPER ||

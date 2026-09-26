@@ -452,6 +452,11 @@ DSL_Tensor_Evolution_Add_Tile
          DSL_TENSOR_EVOLUTION_NODE_ID *result_node_id,
          DSL_TENSOR_EVOLUTION_EDGE_ID *edge_id, FILE *diagnostic)
 {
+    /*
+     * A tile is a provisional representation of the same semantic tensor.
+     * Keep its canonical TY_IDX and value identity unchanged; AIO-9 owns the
+     * runtime descriptor referenced by representation_descriptor_id.
+     */
     if (result_node_id != NULL)
         *result_node_id = DSL_TENSOR_EVOLUTION_NODE_INVALID_ID;
     if (edge_id != NULL)
