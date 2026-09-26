@@ -196,7 +196,7 @@ Add_Block
     block.loop_depth = loop_depth;
     block.region_id = region_id;
     block.flags = flags;
-    return DSL_Tensor_Control_Snapshot_Add_Block
+    return DSL_tensor_control_snapshot_add_block
                (snapshot, &block, stderr);
 }
 
@@ -211,7 +211,7 @@ Add_Position
     position.block_id = block_id;
     position.statement_order = statement_order;
     position.reverse_postorder = rpo;
-    return DSL_Tensor_Control_Snapshot_Add_Position
+    return DSL_tensor_control_snapshot_add_position
                (snapshot, &position, stderr);
 }
 
@@ -220,7 +220,7 @@ Create_Control_Snapshot
         (const AIO4_FIXTURE *fixture, AIO4_CONTROL_KIND kind)
 {
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot =
-        DSL_Tensor_Control_Snapshot_Create(fixture->pu, stderr);
+        DSL_tensor_control_snapshot_create(fixture->pu, stderr);
     if (snapshot == NULL)
         return NULL;
     if (kind == AIO4_CONTROL_STRAIGHT || kind == AIO4_CONTROL_EFFECT) {
@@ -271,7 +271,7 @@ Create_Control_Snapshot
             !Add_Position(snapshot, fixture->values[4], 2, 2, 2))
             return NULL;
     }
-    if (!DSL_Tensor_Control_Snapshot_Seal(snapshot, stderr))
+    if (!DSL_tensor_control_snapshot_seal(snapshot, stderr))
         return NULL;
     return snapshot;
 }
@@ -282,40 +282,40 @@ Analyze
          FILE *trace, DSL_TENSOR_LOCALITY_FACT_RECORD *reused_fact)
 {
     DSL_TENSOR_EVOLUTION_GRAPH *graph =
-        DSL_Tensor_Evolution_Create(fixture->pu, stderr);
+        DSL_tensor_evolution_create(fixture->pu, stderr);
     DSL_TENSOR_ANALYSIS *tensor_analysis;
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot;
     DSL_TENSOR_LOCALITY_ANALYSIS *locality;
     if (graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
+        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
         return FALSE;
-    tensor_analysis = DSL_Tensor_Analysis_Create
+    tensor_analysis = DSL_tensor_analysis_create
                           (fixture->pu, graph, stderr);
     if (tensor_analysis == NULL ||
-        !DSL_Tensor_Analysis_Build(tensor_analysis, stderr))
+        !DSL_tensor_analysis_build(tensor_analysis, stderr))
         return FALSE;
     snapshot = Create_Control_Snapshot(fixture, kind);
-    locality = DSL_Tensor_Locality_Create
+    locality = DSL_tensor_locality_create
                    (fixture->pu, tensor_analysis, snapshot, stderr);
     if (snapshot == NULL || locality == NULL ||
-        !DSL_Tensor_Locality_Build(locality, stderr) ||
-        !DSL_Tensor_Locality_Build(locality, stderr) ||
-        !DSL_Tensor_Locality_Verify(locality, stderr) ||
-        DSL_Tensor_Locality_Fact_Count(locality) != 5 ||
-        DSL_Tensor_Locality_Use_Count(locality) != 6 ||
-        !DSL_Tensor_Locality_Find_Fact
+        !DSL_tensor_locality_build(locality, stderr) ||
+        !DSL_tensor_locality_build(locality, stderr) ||
+        !DSL_tensor_locality_verify(locality, stderr) ||
+        DSL_tensor_locality_fact_count(locality) != 5 ||
+        DSL_tensor_locality_use_count(locality) != 6 ||
+        !DSL_tensor_locality_find_fact
              (locality,
               DSL_Builder_Get_Value_Image_Id(fixture->values[2]),
               reused_fact))
         return FALSE;
     if (trace != NULL) {
-        DSL_Tensor_Control_Snapshot_Print(trace, snapshot);
-        DSL_Tensor_Locality_Print(trace, locality);
+        DSL_tensor_control_snapshot_print(trace, snapshot);
+        DSL_tensor_locality_print(trace, locality);
     }
-    DSL_Tensor_Locality_Destroy(locality);
-    DSL_Tensor_Control_Snapshot_Destroy(snapshot);
-    DSL_Tensor_Analysis_Destroy(tensor_analysis);
-    DSL_Tensor_Evolution_Destroy(graph);
+    DSL_tensor_locality_destroy(locality);
+    DSL_tensor_control_snapshot_destroy(snapshot);
+    DSL_tensor_analysis_destroy(tensor_analysis);
+    DSL_tensor_evolution_destroy(graph);
     return TRUE;
 }
 
@@ -407,15 +407,15 @@ Run_Control_Contract (AIO4_CONTROL_KIND kind)
                 "AIO-4 control mismatch kind=%u lifetime=%s "
                 "distance=%s critical=%s\n",
                 kind,
-                DSL_Tensor_Lifetime_State_Name(reused.lifetime_state),
-                DSL_Tensor_Distance_State_Name
+                DSL_tensor_lifetime_state_name(reused.lifetime_state),
+                DSL_tensor_distance_state_name
                     (reused.reuse_distance_state),
-                DSL_Tensor_Critical_Path_State_Name
+                DSL_tensor_critical_path_state_name
                     (reused.critical_path_state));
         return 1;
     }
     printf("AIO-4 control contract passed kind=%u lifetime=%s\n",
-           kind, DSL_Tensor_Lifetime_State_Name(reused.lifetime_state));
+           kind, DSL_tensor_lifetime_state_name(reused.lifetime_state));
     return 0;
 }
 
@@ -439,28 +439,28 @@ Run_Unknown_And_PU_Scope(void)
         reused.object_bytes != DSL_TENSOR_LOCALITY_UNKNOWN_U64)
         return 1;
 
-    graph = DSL_Tensor_Evolution_Create(pending.pu, stderr);
+    graph = DSL_tensor_evolution_create(pending.pu, stderr);
     if (graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
+        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
         return 1;
-    tensor_analysis = DSL_Tensor_Analysis_Create(pending.pu, graph, stderr);
+    tensor_analysis = DSL_tensor_analysis_create(pending.pu, graph, stderr);
     if (tensor_analysis == NULL ||
-        !DSL_Tensor_Analysis_Build(tensor_analysis, quiet))
+        !DSL_tensor_analysis_build(tensor_analysis, quiet))
         return 1;
     snapshot = Create_Control_Snapshot(&pending, AIO4_CONTROL_STRAIGHT);
-    locality = DSL_Tensor_Locality_Create
+    locality = DSL_tensor_locality_create
                    (pending.pu, tensor_analysis, snapshot, stderr);
     if (locality == NULL ||
-        !DSL_Tensor_Locality_Build(locality, quiet) ||
+        !DSL_tensor_locality_build(locality, quiet) ||
         !Create_Fixture("aio4_other_pu", "[2,4]", &other) ||
-        DSL_Tensor_Locality_Verify(locality, quiet) ||
+        DSL_tensor_locality_verify(locality, quiet) ||
         !DSL_Builder_Select_PU(pending.pu) ||
-        !DSL_Tensor_Locality_Verify(locality, quiet))
+        !DSL_tensor_locality_verify(locality, quiet))
         return 1;
-    DSL_Tensor_Locality_Destroy(locality);
-    DSL_Tensor_Control_Snapshot_Destroy(snapshot);
-    DSL_Tensor_Analysis_Destroy(tensor_analysis);
-    DSL_Tensor_Evolution_Destroy(graph);
+    DSL_tensor_locality_destroy(locality);
+    DSL_tensor_control_snapshot_destroy(snapshot);
+    DSL_tensor_analysis_destroy(tensor_analysis);
+    DSL_tensor_evolution_destroy(graph);
     fclose(quiet);
     printf("AIO-4 unknown-shape and per-PU scope contracts passed\n");
     return 0;

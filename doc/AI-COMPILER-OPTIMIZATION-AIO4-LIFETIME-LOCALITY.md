@@ -29,7 +29,7 @@ not a second CFG. It records only the stable facts needed by AI-P1:
 - branch and effect-barrier flags; and
 - logical DSL node statement placement.
 
-`WOPT_DSL_Populate_Tensor_Control_Snapshot()` copies these facts from the
+`WOPT_DSL_populate_tensor_control_snapshot()` copies these facts from the
 active `CFG` and `BB_NODE` services while their WN statement mapping is valid.
 The common analysis does not include or retain `CFG *`, `BB_NODE *`, `WN *`,
 or another backend-private pointer. Callers without a valid Open64 CFG must

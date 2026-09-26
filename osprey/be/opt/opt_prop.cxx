@@ -1810,7 +1810,7 @@ COPYPROP::Is_exp_factorable(CODEREP *producer_rhs,
               producer_info.logical_operator, producer_info.version,
               DSL_ALGEBRAIC_RELATION_FACTOR, &relation) &&
          relation.operand_mask != 0 &&
-         WOPT_DSL_Algebraic_Safety_Allows
+         WOPT_DSL_algebraic_safety_allows
              (relation.safety, floating_point,
               Enable_Cfold_Reassociate);
 }
@@ -1920,9 +1920,9 @@ COPYPROP::Try_dsl_factorization(STMTREP *stmt)
     return FALSE;
 
   WOPT_DSL_SEMANTIC_INFO_ID inner_id =
-      WOPT_DSL_Semantic_Info_Intern(&inner_info);
+      WOPT_DSL_semantic_info_intern(&inner_info);
   WOPT_DSL_SEMANTIC_INFO_ID result_id =
-      WOPT_DSL_Semantic_Info_Intern(&result_info);
+      WOPT_DSL_semantic_info_intern(&result_info);
   if (inner_id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID ||
       result_id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID)
     return FALSE;

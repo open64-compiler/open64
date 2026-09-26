@@ -145,11 +145,11 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLREMPART"
 };
 
-static const char *DSL_fusion_iteration_class_name[] = {
+static const char *DSL_fusion_iteration_class_name_table[] = {
     "opaque", "pointwise", "contraction", "reduction", "view"
 };
 
-static const char *DSL_fusion_indexing_class_name[] = {
+static const char *DSL_fusion_indexing_class_name_table[] = {
     "opaque", "identity", "broadcast", "contraction", "reduction", "view"
 };
 
@@ -883,17 +883,19 @@ DSL_Operator_Get_Fusibility_Info
 }
 
 const char *
-DSL_Fusion_Iteration_Class_Name (UINT32 iteration_space)
+DSL_fusion_iteration_class_name (UINT32 iteration_space)
 {
-    return iteration_space < DSL_ARRAY_COUNT(DSL_fusion_iteration_class_name) ?
-           DSL_fusion_iteration_class_name[iteration_space] : "unknown";
+    return iteration_space <
+             DSL_ARRAY_COUNT(DSL_fusion_iteration_class_name_table) ?
+           DSL_fusion_iteration_class_name_table[iteration_space] : "unknown";
 }
 
 const char *
-DSL_Fusion_Indexing_Class_Name (UINT32 operand_indexing)
+DSL_fusion_indexing_class_name (UINT32 operand_indexing)
 {
-    return operand_indexing < DSL_ARRAY_COUNT(DSL_fusion_indexing_class_name) ?
-           DSL_fusion_indexing_class_name[operand_indexing] : "unknown";
+    return operand_indexing <
+             DSL_ARRAY_COUNT(DSL_fusion_indexing_class_name_table) ?
+           DSL_fusion_indexing_class_name_table[operand_indexing] : "unknown";
 }
 
 BOOL

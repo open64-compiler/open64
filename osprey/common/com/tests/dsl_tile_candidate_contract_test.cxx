@@ -177,14 +177,14 @@ static DSL_TENSOR_CONTROL_SNAPSHOT *
 Create_Snapshot (const AIO9_FIXTURE *fixture, BOOL effect)
 {
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot =
-        DSL_Tensor_Control_Snapshot_Create(fixture->pu, stderr);
+        DSL_tensor_control_snapshot_create(fixture->pu, stderr);
     DSL_TENSOR_CONTROL_BLOCK block;
     memset(&block, 0, sizeof(block));
     block.block_id = 1;
     block.reverse_postorder = 1;
     block.flags = effect ? DSL_TENSOR_CONTROL_EFFECT_BARRIER : 0;
     if (snapshot == NULL ||
-        !DSL_Tensor_Control_Snapshot_Add_Block(snapshot, &block, stderr))
+        !DSL_tensor_control_snapshot_add_block(snapshot, &block, stderr))
         return NULL;
     for (UINT32 i = 0; i < 4; ++i) {
         DSL_TENSOR_CONTROL_POSITION position;
@@ -193,22 +193,22 @@ Create_Snapshot (const AIO9_FIXTURE *fixture, BOOL effect)
         position.block_id = 1;
         position.reverse_postorder = 1;
         position.statement_order = i + 1;
-        if (!DSL_Tensor_Control_Snapshot_Add_Position
+        if (!DSL_tensor_control_snapshot_add_position
                  (snapshot, &position, stderr))
             return NULL;
     }
-    return DSL_Tensor_Control_Snapshot_Seal(snapshot, stderr) ?
+    return DSL_tensor_control_snapshot_seal(snapshot, stderr) ?
            snapshot : NULL;
 }
 
 static void
 Destroy_Analysis (AIO9_ANALYSIS *analysis)
 {
-    DSL_Tile_Destroy(analysis->tile);
-    DSL_Tensor_Locality_Destroy(analysis->locality);
-    DSL_Tensor_Control_Snapshot_Destroy(analysis->snapshot);
-    DSL_Tensor_Analysis_Destroy(analysis->tensor);
-    DSL_Tensor_Evolution_Destroy(analysis->graph);
+    DSL_tile_destroy(analysis->tile);
+    DSL_tensor_locality_destroy(analysis->locality);
+    DSL_tensor_control_snapshot_destroy(analysis->snapshot);
+    DSL_tensor_analysis_destroy(analysis->tensor);
+    DSL_tensor_evolution_destroy(analysis->graph);
     memset(analysis, 0, sizeof(*analysis));
 }
 
@@ -219,38 +219,38 @@ Build_Analysis (const AIO9_FIXTURE *fixture, UINT32 profile,
 {
     DSL_TILE_CONTROL control;
     memset(analysis, 0, sizeof(*analysis));
-    analysis->graph = DSL_Tensor_Evolution_Create(fixture->pu, stderr);
+    analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots
+        !DSL_tensor_evolution_build_semantic_roots
              (analysis->graph, stderr))
         return FALSE;
-    analysis->tensor = DSL_Tensor_Analysis_Create
+    analysis->tensor = DSL_tensor_analysis_create
                            (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor == NULL ||
-        !DSL_Tensor_Analysis_Build(analysis->tensor, stderr))
+        !DSL_tensor_analysis_build(analysis->tensor, stderr))
         return FALSE;
     analysis->snapshot = Create_Snapshot(fixture, effect);
-    analysis->locality = DSL_Tensor_Locality_Create
+    analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_Tensor_Locality_Build(analysis->locality, stderr))
+        !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
-    DSL_Tile_Control_Init(&control);
+    DSL_tile_control_init(&control);
     control.target_profile_id = profile;
     control.maximum_phase = phase;
     control.select_plans = select_plans;
     control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->tile = DSL_Tile_Create
+    analysis->tile = DSL_tile_create
                          (fixture->pu, analysis->graph, analysis->tensor,
                           analysis->locality, NULL, &control, stderr);
     if (analysis->tile == NULL ||
-        !DSL_Tile_Build(analysis->tile, stderr) ||
-        !DSL_Tile_Verify(analysis->tile, stderr))
+        !DSL_tile_build(analysis->tile, stderr) ||
+        !DSL_tile_verify(analysis->tile, stderr))
         return FALSE;
     if (trace != NULL)
-        DSL_Tile_Print(trace, analysis->tile);
+        DSL_tile_print(trace, analysis->tile);
     return TRUE;
 }
 
@@ -299,10 +299,10 @@ Check_Main_Contract (const AIO9_ANALYSIS *analysis, UINT32 profile,
                           2 : 0;
     UINT32 plans = 1 + alternatives;
     UINT32 stages = 1 + alternatives * (phase + 1);
-    if (DSL_Tile_Site_Count(analysis->tile) != 1 ||
-        DSL_Tile_Plan_Count(analysis->tile) != plans ||
-        DSL_Tile_Stage_Count(analysis->tile) != stages ||
-        !DSL_Tile_Get_Site(analysis->tile, 1, &site) ||
+    if (DSL_tile_site_count(analysis->tile) != 1 ||
+        DSL_tile_plan_count(analysis->tile) != plans ||
+        DSL_tile_stage_count(analysis->tile) != stages ||
+        !DSL_tile_get_site(analysis->tile, 1, &site) ||
         site.tile_plan_count != plans)
         return FALSE;
     UINT32 proven = 0;
@@ -310,7 +310,7 @@ Check_Main_Contract (const AIO9_ANALYSIS *analysis, UINT32 profile,
     BOOL found_wide = FALSE;
     for (UINT32 id = 1; id <= plans; ++id) {
         DSL_TILE_PLAN_RECORD tile;
-        if (!DSL_Tile_Get_Plan(analysis->tile, id, &tile) ||
+        if (!DSL_tile_get_plan(analysis->tile, id, &tile) ||
             !Check_Oracle(tile))
             return FALSE;
         if (tile.family == DSL_TILE_FAMILY_BLACKWELL_WIDE)
@@ -427,43 +427,43 @@ Run_Control(void)
     if (quiet == NULL || !Create_Fixture("aio9_control", &fixture))
         return 1;
     memset(&analysis, 0, sizeof(analysis));
-    analysis.graph = DSL_Tensor_Evolution_Create(fixture.pu, stderr);
+    analysis.graph = DSL_tensor_evolution_create(fixture.pu, stderr);
     if (analysis.graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots(analysis.graph, stderr))
+        !DSL_tensor_evolution_build_semantic_roots(analysis.graph, stderr))
         return 1;
-    analysis.tensor = DSL_Tensor_Analysis_Create
+    analysis.tensor = DSL_tensor_analysis_create
                           (fixture.pu, analysis.graph, stderr);
     if (analysis.tensor == NULL ||
-        !DSL_Tensor_Analysis_Build(analysis.tensor, stderr))
+        !DSL_tensor_analysis_build(analysis.tensor, stderr))
         return 1;
     analysis.snapshot = Create_Snapshot(&fixture, FALSE);
-    analysis.locality = DSL_Tensor_Locality_Create
+    analysis.locality = DSL_tensor_locality_create
                             (fixture.pu, analysis.tensor,
                              analysis.snapshot, stderr);
     if (analysis.locality == NULL ||
-        !DSL_Tensor_Locality_Build(analysis.locality, stderr))
+        !DSL_tensor_locality_build(analysis.locality, stderr))
         return 1;
-    DSL_Tile_Control_Init(&control);
+    DSL_tile_control_init(&control);
     control.apply_transformation = 1;
-    if (DSL_Tile_Create
+    if (DSL_tile_create
             (fixture.pu, analysis.graph, analysis.tensor,
              analysis.locality, NULL, &control, quiet) != NULL)
         return 1;
     control.apply_transformation = 0;
     control.generate_candidates = 0;
     control.select_plans = 0;
-    disabled = DSL_Tile_Create
+    disabled = DSL_tile_create
                    (fixture.pu, analysis.graph, analysis.tensor,
                     analysis.locality, NULL, &control, stderr);
-    if (disabled == NULL || !DSL_Tile_Build(disabled, stderr) ||
-        !DSL_Tile_Verify(disabled, stderr) ||
-        DSL_Tile_Site_Count(disabled) != 0)
+    if (disabled == NULL || !DSL_tile_build(disabled, stderr) ||
+        !DSL_tile_verify(disabled, stderr) ||
+        DSL_tile_site_count(disabled) != 0)
         return 1;
-    DSL_Tile_Destroy(disabled);
-    DSL_Tensor_Locality_Destroy(analysis.locality);
-    DSL_Tensor_Control_Snapshot_Destroy(analysis.snapshot);
-    DSL_Tensor_Analysis_Destroy(analysis.tensor);
-    DSL_Tensor_Evolution_Destroy(analysis.graph);
+    DSL_tile_destroy(disabled);
+    DSL_tensor_locality_destroy(analysis.locality);
+    DSL_tensor_control_snapshot_destroy(analysis.snapshot);
+    DSL_tensor_analysis_destroy(analysis.tensor);
+    DSL_tensor_evolution_destroy(analysis.graph);
     fclose(quiet);
     printf("AIO-9 control contract passed\n");
     return 0;

@@ -1468,7 +1468,7 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
   Is_True(WN_opcode(wn_orig)==OPC_FUNC_ENTRY || WN_opcode(wn_orig)==OPC_REGION,
 	  ("Pre_Optimizer, unknown WHIRL entry point"));
 
-  WOPT_DSL_Semantic_Info_Reset();
+  WOPT_DSL_semantic_info_reset();
 
   // sets Opt_current_pu_st static
   Opt_set_current_pu_name(wn_tree);
@@ -2464,7 +2464,7 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
   if (WN_opcode(opt_wn) == OPC_FUNC_ENTRY)
     Set_PU_Info_tree_ptr (Current_PU_Info, opt_wn);
 
-  if (WOPT_DSL_Semantic_Info_Count() != 0 &&
+  if (WOPT_DSL_semantic_info_count() != 0 &&
       Current_PU_Info != NULL) {
     DSL_GATEKEEPER_RESULT result;
     FmtAssert(DSL_Gatekeeper_Verify_PU

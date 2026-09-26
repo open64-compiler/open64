@@ -182,8 +182,8 @@ typedef struct {
     UINT32 reserved;
 } DSL_TILE_STAGE_RECORD;
 
-extern void DSL_Tile_Control_Init (DSL_TILE_CONTROL *control);
-extern DSL_TILE_ANALYSIS *DSL_Tile_Create
+extern void DSL_tile_control_init (DSL_TILE_CONTROL *control);
+extern DSL_TILE_ANALYSIS *DSL_tile_create
                                 (struct pu_info *pu,
                                  DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_TENSOR_ANALYSIS *tensor_analysis,
@@ -191,38 +191,38 @@ extern DSL_TILE_ANALYSIS *DSL_Tile_Create
                                  const DSL_RESIDENCY_ANALYSIS *residency,
                                  const DSL_TILE_CONTROL *control,
                                  FILE *diagnostic);
-extern void DSL_Tile_Destroy (DSL_TILE_ANALYSIS *analysis);
-extern BOOL DSL_Tile_Build
+extern void DSL_tile_destroy (DSL_TILE_ANALYSIS *analysis);
+extern BOOL DSL_tile_build
                                 (DSL_TILE_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Tile_Verify
+extern BOOL DSL_tile_verify
                                 (const DSL_TILE_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern void DSL_Tile_Print
+extern void DSL_tile_print
                                 (FILE *file,
                                  const DSL_TILE_ANALYSIS *analysis);
-extern UINT32 DSL_Tile_Site_Count (const DSL_TILE_ANALYSIS *analysis);
-extern UINT32 DSL_Tile_Plan_Count (const DSL_TILE_ANALYSIS *analysis);
-extern UINT32 DSL_Tile_Stage_Count (const DSL_TILE_ANALYSIS *analysis);
-extern BOOL DSL_Tile_Get_Site
+extern UINT32 DSL_tile_site_count (const DSL_TILE_ANALYSIS *analysis);
+extern UINT32 DSL_tile_plan_count (const DSL_TILE_ANALYSIS *analysis);
+extern UINT32 DSL_tile_stage_count (const DSL_TILE_ANALYSIS *analysis);
+extern BOOL DSL_tile_get_site
                                 (const DSL_TILE_ANALYSIS *analysis,
                                  DSL_TILE_SITE_ID id,
                                  DSL_TILE_SITE_RECORD *record);
-extern BOOL DSL_Tile_Get_Plan
+extern BOOL DSL_tile_get_plan
                                 (const DSL_TILE_ANALYSIS *analysis,
                                  DSL_TILE_PLAN_ID id,
                                  DSL_TILE_PLAN_RECORD *record);
-extern BOOL DSL_Tile_Get_Stage
+extern BOOL DSL_tile_get_stage
                                 (const DSL_TILE_ANALYSIS *analysis,
                                  DSL_TILE_STAGE_ID id,
                                  DSL_TILE_STAGE_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_Tile_Get_Plan_Context
+extern const DSL_OPT_PLAN_CONTEXT *DSL_tile_get_plan_context
                                 (const DSL_TILE_ANALYSIS *analysis,
                                  DSL_TILE_SITE_ID id);
-extern const char *DSL_Tile_Phase_Name (UINT32 phase);
-extern const char *DSL_Tile_Level_Name (UINT32 level);
-extern const char *DSL_Tile_Family_Name (UINT32 family);
-extern const char *DSL_Tile_Edge_Policy_Name (UINT32 policy);
-extern const char *DSL_Tile_Instruction_Name (UINT32 family);
+extern const char *DSL_tile_phase_name (UINT32 phase);
+extern const char *DSL_tile_level_name (UINT32 level);
+extern const char *DSL_tile_family_name (UINT32 family);
+extern const char *DSL_tile_edge_policy_name (UINT32 policy);
+extern const char *DSL_tile_instruction_name (UINT32 family);
 
 #endif /* dsl_tile_candidate_INCLUDED */

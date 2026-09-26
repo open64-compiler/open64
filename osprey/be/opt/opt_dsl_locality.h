@@ -19,7 +19,7 @@ class CFG;
 struct pu_info;
 struct DSL_TENSOR_CONTROL_SNAPSHOT;
 
-extern BOOL WOPT_DSL_Populate_Tensor_Control_Snapshot
+extern BOOL WOPT_DSL_populate_tensor_control_snapshot
     (CFG *cfg, struct pu_info *pu,
      struct DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
      FILE *diagnostic);

@@ -659,7 +659,7 @@ fixtures intentionally stop at the reviewed WOPT boundary:
 is expected and retained as a diagnostic artifact.
 
 Strict floating-point legality is tested without relying on that later
-development assertion. `WOPT_DSL_Algebraic_Safety_Allows()` accepts
+development assertion. `WOPT_DSL_algebraic_safety_allows()` accepts
 floating-point factorization only when Open64's reassociation control is
 enabled. With strict FP active, meaning reassociation is disabled, it returns
 not-applicable, WOPT preserves the original expression, and the traditional

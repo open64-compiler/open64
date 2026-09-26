@@ -36,7 +36,7 @@ static const char *DSL_fetch_issue_name[] = {
     "unknown", "consumer", "previous_k_tile", "prologue"
 };
 
-static const char *DSL_fetch_barrier_name[] = {
+static const char *DSL_fetch_barrier_name_table[] = {
     "none", "cta", "arrival"
 };
 
@@ -77,7 +77,7 @@ DSL_Fetch_Pipeline_Active (const DSL_FETCH_PIPELINE_ANALYSIS *analysis)
 }
 
 const char *
-DSL_Fetch_Issue_Point_Name (UINT32 point)
+DSL_fetch_issue_point_name (UINT32 point)
 {
     return point < sizeof(DSL_fetch_issue_name) /
                        sizeof(DSL_fetch_issue_name[0]) ?
@@ -85,15 +85,15 @@ DSL_Fetch_Issue_Point_Name (UINT32 point)
 }
 
 const char *
-DSL_Fetch_Barrier_Name (UINT32 barrier)
+DSL_fetch_barrier_name (UINT32 barrier)
 {
-    return barrier < sizeof(DSL_fetch_barrier_name) /
-                         sizeof(DSL_fetch_barrier_name[0]) ?
-           DSL_fetch_barrier_name[barrier] : "unknown";
+    return barrier < sizeof(DSL_fetch_barrier_name_table) /
+                         sizeof(DSL_fetch_barrier_name_table[0]) ?
+           DSL_fetch_barrier_name_table[barrier] : "unknown";
 }
 
 const char *
-DSL_Fetch_Wait_Point_Name (UINT32 point)
+DSL_fetch_wait_point_name (UINT32 point)
 {
     return point < sizeof(DSL_fetch_wait_name) /
                        sizeof(DSL_fetch_wait_name[0]) ?
@@ -101,7 +101,7 @@ DSL_Fetch_Wait_Point_Name (UINT32 point)
 }
 
 void
-DSL_Fetch_Pipeline_Control_Init (DSL_FETCH_PIPELINE_CONTROL *control)
+DSL_fetch_pipeline_control_init (DSL_FETCH_PIPELINE_CONTROL *control)
 {
     if (control == NULL)
         return;
@@ -184,7 +184,7 @@ DSL_Fetch_Selected_Tile
         return FALSE;
     for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
         DSL_TILE_PLAN_RECORD candidate;
-        if (!DSL_Tile_Get_Plan
+        if (!DSL_tile_get_plan
                  (analysis->tile, site.first_tile_plan_id + i,
                   &candidate))
             return FALSE;
@@ -204,16 +204,16 @@ DSL_Fetch_Distributed_Safe
     if (analysis->distributed == NULL)
         return TRUE;
     for (UINT32 id = 1;
-         id <= DSL_Distributed_Site_Count(analysis->distributed); ++id) {
+         id <= DSL_distributed_site_count(analysis->distributed); ++id) {
         DSL_DISTRIBUTED_SITE_RECORD site;
-        if (!DSL_Distributed_Get_Site
+        if (!DSL_distributed_get_site
                  (analysis->distributed, id, &site))
             return FALSE;
         if (site.semantic_value_id != value_id)
             continue;
         for (UINT32 i = 0; i < site.alternative_count; ++i) {
             DSL_DISTRIBUTED_ALTERNATIVE_RECORD alternative;
-            if (!DSL_Distributed_Get_Alternative
+            if (!DSL_distributed_get_alternative
                      (analysis->distributed,
                       site.first_alternative_id + i, &alternative))
                 return FALSE;
@@ -234,7 +234,7 @@ DSL_Fetch_Operand_Safe
     if (reason == NULL)
         return FALSE;
     *reason = DSL_OPT_REJECT_NONE;
-    if (!DSL_Tensor_Locality_Find_Fact
+    if (!DSL_tensor_locality_find_fact
              (analysis->locality, value_id, &locality)) {
         *reason = DSL_OPT_REJECT_INCOMPLETE_ANALYSIS;
         return FALSE;
@@ -275,17 +275,17 @@ DSL_Fetch_Plan_Operands
     if (element_bytes == 0 ||
         TY_tensor_element_ty(operands[0].ty) !=
             TY_tensor_element_ty(operands[1].ty) ||
-        !DSL_Tensor_Evolution_Find_Semantic_Root
+        !DSL_tensor_evolution_find_semantic_root
              (analysis->graph, operands[0].id, &roots[0]) ||
-        !DSL_Tensor_Evolution_Find_Semantic_Root
+        !DSL_tensor_evolution_find_semantic_root
              (analysis->graph, operands[1].id, &roots[1]))
         return FALSE;
     if (tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0) {
         DSL_TENSOR_LOCALITY_FACT_RECORD locality0;
         DSL_TENSOR_LOCALITY_FACT_RECORD locality1;
-        if (!DSL_Tensor_Locality_Find_Fact
+        if (!DSL_tensor_locality_find_fact
                  (analysis->locality, operands[0].id, &locality0) ||
-            !DSL_Tensor_Locality_Find_Fact
+            !DSL_tensor_locality_find_fact
                  (analysis->locality, operands[1].id, &locality1) ||
             locality0.object_bytes == DSL_TENSOR_LOCALITY_UNKNOWN_U64 ||
             locality1.object_bytes == DSL_TENSOR_LOCALITY_UNKNOWN_U64)
@@ -318,7 +318,7 @@ DSL_Fetch_Add_Optimization_Plan
 {
     DSL_OPT_PLAN_CONTEXT *context = analysis->plan_contexts.back();
     DSL_TILE_PLAN_RECORD tile;
-    if (!DSL_Tile_Get_Plan
+    if (!DSL_tile_get_plan
              (analysis->tile, pipeline->tile_plan_id, &tile))
         return DSL_Fetch_Pipeline_Report
                    (diagnostic, "missing pipeline tile", pipeline->id);
@@ -340,7 +340,7 @@ DSL_Fetch_Add_Optimization_Plan
         (pipeline->flags & DSL_FETCH_PLAN_FLAG_BASELINE) != 0 ?
         DSL_OPT_CANDIDATE_FLAG_BASELINE :
         DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &pipeline->candidate_id, diagnostic))
         return FALSE;
 
@@ -359,7 +359,7 @@ DSL_Fetch_Add_Optimization_Plan
                  DSL_OPT_COST_EVIDENCE_TARGET_MODEL);
     }
     DSL_OPT_COST_ID cost_id;
-    if (!DSL_Opt_Plan_Add_Cost(context, &cost, &cost_id, diagnostic))
+    if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic))
         return FALSE;
 
     DSL_OPT_CANDIDATE_ID member = pipeline->candidate_id;
@@ -377,7 +377,7 @@ DSL_Fetch_Add_Optimization_Plan
     plan.flags =
         (pipeline->flags & DSL_FETCH_PLAN_FLAG_BASELINE) != 0 ?
         DSL_OPT_PLAN_FLAG_BASELINE : DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    if (!DSL_Opt_Plan_Add_Plan
+    if (!DSL_opt_plan_add_plan
              (context, &plan, &pipeline->optimization_plan_id, diagnostic))
         return FALSE;
     if ((pipeline->flags & DSL_FETCH_PLAN_FLAG_BASELINE) != 0)
@@ -419,7 +419,7 @@ DSL_Fetch_Add_Plan
     UINT64 bytes[2];
     DSL_FETCH_PLAN_RECORD pipeline;
     memset(&pipeline, 0, sizeof(pipeline));
-    if (!DSL_Memory_Hierarchy_Find_Movement
+    if (!DSL_memory_hierarchy_find_movement
              (analysis->control.target_profile_id, engine, &capability))
         return baseline ?
                DSL_Fetch_Pipeline_Report
@@ -570,7 +570,7 @@ DSL_Fetch_Add_Plan
         fetch.unhidden_movement_cost =
             fetch.raw_movement_cost - fetch.hidden_movement_cost;
         if (!baseline && pipeline.legality == DSL_OPT_LEGALITY_PROVEN &&
-            !DSL_Tensor_Evolution_Add_Staged_Buffer
+            !DSL_tensor_evolution_add_staged_buffer
                  (analysis->graph, roots[ordinal].id, fetch.id,
                   &fetch.result_evolution_node_id,
                   &fetch.evolution_edge_id, diagnostic))
@@ -601,7 +601,7 @@ DSL_Fetch_Add_Plan
 }
 
 DSL_FETCH_PIPELINE_ANALYSIS *
-DSL_Fetch_Pipeline_Create
+DSL_fetch_pipeline_create
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
          const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
          const DSL_DISTRIBUTED_ANALYSIS *distributed,
@@ -610,15 +610,15 @@ DSL_Fetch_Pipeline_Create
 {
     if (pu == NULL || graph == NULL || locality == NULL || tile == NULL ||
         control == NULL || Current_PU_Info != pu ||
-        DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
+        DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Fetch_Pipeline_Control_Valid(*control) ||
-        !DSL_Memory_Hierarchy_Validate
+        !DSL_memory_hierarchy_validate
              (control->target_profile_id, diagnostic) ||
-        !DSL_Tensor_Evolution_Verify(graph, diagnostic) ||
-        !DSL_Tensor_Locality_Verify(locality, diagnostic) ||
-        !DSL_Tile_Verify(tile, diagnostic) ||
+        !DSL_tensor_evolution_verify(graph, diagnostic) ||
+        !DSL_tensor_locality_verify(locality, diagnostic) ||
+        !DSL_tile_verify(tile, diagnostic) ||
         (distributed != NULL &&
-         !DSL_Distributed_Verify(distributed, diagnostic))) {
+         !DSL_distributed_verify(distributed, diagnostic))) {
         DSL_Fetch_Pipeline_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -636,17 +636,17 @@ DSL_Fetch_Pipeline_Create
 }
 
 void
-DSL_Fetch_Pipeline_Destroy (DSL_FETCH_PIPELINE_ANALYSIS *analysis)
+DSL_fetch_pipeline_destroy (DSL_FETCH_PIPELINE_ANALYSIS *analysis)
 {
     if (analysis == NULL)
         return;
     for (UINT32 i = 0; i < analysis->plan_contexts.size(); ++i)
-        DSL_Opt_Plan_Destroy(analysis->plan_contexts[i]);
+        DSL_opt_plan_destroy(analysis->plan_contexts[i]);
     delete analysis;
 }
 
 BOOL
-DSL_Fetch_Pipeline_Build
+DSL_fetch_pipeline_build
         (DSL_FETCH_PIPELINE_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Fetch_Pipeline_Active(analysis) || analysis->built)
@@ -657,11 +657,11 @@ DSL_Fetch_Pipeline_Build
         return TRUE;
     }
     for (DSL_TILE_SITE_ID tile_site_id = 1;
-         tile_site_id <= DSL_Tile_Site_Count(analysis->tile);
+         tile_site_id <= DSL_tile_site_count(analysis->tile);
          ++tile_site_id) {
         DSL_TILE_SITE_RECORD tile_site;
         DSL_TILE_PLAN_RECORD tile;
-        if (!DSL_Tile_Get_Site(analysis->tile, tile_site_id, &tile_site) ||
+        if (!DSL_tile_get_site(analysis->tile, tile_site_id, &tile_site) ||
             (analysis->control.focus_value_id != 0 &&
              tile_site.semantic_value_id !=
                  analysis->control.focus_value_id))
@@ -691,7 +691,7 @@ DSL_Fetch_Pipeline_Build
         DSL_OPT_PLAN_BUDGET budget;
         budget.max_candidates = analysis->control.max_plans_per_site;
         budget.max_plans = analysis->control.max_plans_per_site;
-        DSL_OPT_PLAN_CONTEXT *context = DSL_Opt_Plan_Create
+        DSL_OPT_PLAN_CONTEXT *context = DSL_opt_plan_create
             (analysis->pu, analysis->graph, &budget, diagnostic);
         if (context == NULL)
             return FALSE;
@@ -721,7 +721,7 @@ DSL_Fetch_Pipeline_Build
         }
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;
-            if (!DSL_Opt_Plan_Select
+            if (!DSL_opt_plan_select
                      (context, analysis->control.target_profile_id,
                       &selection, diagnostic))
                 return FALSE;
@@ -729,11 +729,11 @@ DSL_Fetch_Pipeline_Build
         }
     }
     analysis->built = TRUE;
-    return DSL_Fetch_Pipeline_Verify(analysis, diagnostic);
+    return DSL_fetch_pipeline_verify(analysis, diagnostic);
 }
 
 BOOL
-DSL_Fetch_Pipeline_Verify
+DSL_fetch_pipeline_verify
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Fetch_Pipeline_Active(analysis))
@@ -757,7 +757,7 @@ DSL_Fetch_Pipeline_Verify
             site.selected_tile_plan_id == 0 || site.reserved != 0 ||
             !DSL_IR_Image_Get_Node(site.semantic_node_id, &node) ||
             node.result_value_id != site.semantic_value_id ||
-            !DSL_Opt_Plan_Verify
+            !DSL_opt_plan_verify
                  (analysis->plan_contexts[i], diagnostic))
             return DSL_Fetch_Pipeline_Report
                        (diagnostic, "invalid fetch site", site.id);
@@ -823,7 +823,7 @@ DSL_Fetch_Pipeline_Verify
                       fetch.evolution_edge_id != 0 || fetch.flags != 0)) ||
                     (!baseline && pipeline.legality ==
                          DSL_OPT_LEGALITY_PROVEN &&
-                     (!DSL_Tensor_Evolution_Get_Node
+                     (!DSL_tensor_evolution_get_node
                           (analysis->graph,
                            fetch.result_evolution_node_id, &result) ||
                       result.kind !=
@@ -868,14 +868,14 @@ DSL_Fetch_Pipeline_Verify
     if (expected_plan != analysis->plans.size() + 1 ||
         expected_fetch != analysis->fetches.size() + 1 ||
         expected_stage != analysis->stages.size() + 1 ||
-        !DSL_Tensor_Evolution_Verify(analysis->graph, diagnostic))
+        !DSL_tensor_evolution_verify(analysis->graph, diagnostic))
         return DSL_Fetch_Pipeline_Report
                    (diagnostic, "pipeline table mismatch", 0);
     return TRUE;
 }
 
 void
-DSL_Fetch_Pipeline_Print
+DSL_fetch_pipeline_print
         (FILE *file, const DSL_FETCH_PIPELINE_ANALYSIS *analysis)
 {
     if (file == NULL || !DSL_Fetch_Pipeline_Active(analysis))
@@ -885,7 +885,7 @@ DSL_Fetch_Pipeline_Print
             "stage=G12 sites=%u plans=%u fetches=%u stages=%u "
             "select=%s apply=no\n",
             analysis->owner_pu_st,
-            DSL_Target_Profile_Name(analysis->control.target_profile_id),
+            DSL_target_profile_name(analysis->control.target_profile_id),
             (UINT32)analysis->sites.size(),
             (UINT32)analysis->plans.size(),
             (UINT32)analysis->fetches.size(),
@@ -908,17 +908,17 @@ DSL_Fetch_Pipeline_Print
                     "buffering=%llu/%llu barriers=%u legality=%s "
                     "reason=%s candidate=%u plan=%u\n",
                     pipeline.id,
-                    DSL_Memory_Movement_Name(pipeline.engine),
+                    DSL_memory_movement_name(pipeline.engine),
                     pipeline.stage_count, pipeline.prefetch_distance,
-                    DSL_Fetch_Issue_Point_Name(pipeline.issue_point),
-                    DSL_Fetch_Barrier_Name(pipeline.arrival_barrier),
-                    DSL_Fetch_Wait_Point_Name(pipeline.wait_point),
-                    DSL_Tile_Edge_Policy_Name(pipeline.edge_policy),
+                    DSL_fetch_issue_point_name(pipeline.issue_point),
+                    DSL_fetch_barrier_name(pipeline.arrival_barrier),
+                    DSL_fetch_wait_point_name(pipeline.wait_point),
+                    DSL_tile_edge_policy_name(pipeline.edge_policy),
                     (unsigned long long)pipeline.buffering_bytes,
                     (unsigned long long)pipeline.buffering_capacity_bytes,
                     pipeline.barrier_count,
-                    DSL_Opt_Legality_Name(pipeline.legality),
-                    DSL_Opt_Rejection_Reason_Name
+                    DSL_opt_legality_name(pipeline.legality),
+                    DSL_opt_rejection_reason_name
                         (pipeline.rejection_reason),
                     pipeline.candidate_id,
                     pipeline.optimization_plan_id);
@@ -937,8 +937,8 @@ DSL_Fetch_Pipeline_Print
                         "unhidden=%llu evolution=%u flags=0x%x\n",
                         fetch.id, fetch.operand_ordinal, fetch.value_id,
                         TY_IDX_index(fetch.descriptor_ty),
-                        DSL_Memory_Tier_Name(fetch.source_tier_kind),
-                        DSL_Memory_Tier_Name(fetch.destination_tier_kind),
+                        DSL_memory_tier_name(fetch.source_tier_kind),
+                        DSL_memory_tier_name(fetch.destination_tier_kind),
                         (unsigned long long)fetch.bytes_per_stage,
                         fetch.transaction_bytes, fetch.minimum_alignment,
                         (unsigned long long)fetch.raw_movement_cost,
@@ -954,48 +954,48 @@ DSL_Fetch_Pipeline_Print
                         "distance=%u issue=%s arrival=%s wait=%s\n",
                         stage.id, stage.ordinal, stage.buffer_slot,
                         stage.prefetch_distance,
-                        DSL_Fetch_Issue_Point_Name(stage.issue_point),
-                        DSL_Fetch_Barrier_Name(stage.arrival_barrier),
-                        DSL_Fetch_Wait_Point_Name(stage.wait_point));
+                        DSL_fetch_issue_point_name(stage.issue_point),
+                        DSL_fetch_barrier_name(stage.arrival_barrier),
+                        DSL_fetch_wait_point_name(stage.wait_point));
             }
         }
-        DSL_Opt_Plan_Print(file, analysis->plan_contexts[i]);
+        DSL_opt_plan_print(file, analysis->plan_contexts[i]);
     }
-    DSL_Memory_Hierarchy_Print
+    DSL_memory_hierarchy_print
         (file, analysis->control.target_profile_id);
-    DSL_Tensor_Evolution_Print(file, analysis->graph);
+    DSL_tensor_evolution_print(file, analysis->graph);
 }
 
 UINT32
-DSL_Fetch_Pipeline_Site_Count
+DSL_fetch_pipeline_site_count
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->sites.size();
 }
 
 UINT32
-DSL_Fetch_Pipeline_Plan_Count
+DSL_fetch_pipeline_plan_count
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->plans.size();
 }
 
 UINT32
-DSL_Fetch_Pipeline_Fetch_Count
+DSL_fetch_pipeline_fetch_count
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->fetches.size();
 }
 
 UINT32
-DSL_Fetch_Pipeline_Stage_Count
+DSL_fetch_pipeline_stage_count
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->stages.size();
 }
 
 BOOL
-DSL_Fetch_Pipeline_Get_Site
+DSL_fetch_pipeline_get_site
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
          DSL_FETCH_SITE_ID id, DSL_FETCH_SITE_RECORD *record)
 {
@@ -1007,7 +1007,7 @@ DSL_Fetch_Pipeline_Get_Site
 }
 
 BOOL
-DSL_Fetch_Pipeline_Get_Plan
+DSL_fetch_pipeline_get_plan
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
          DSL_FETCH_PLAN_ID id, DSL_FETCH_PLAN_RECORD *record)
 {
@@ -1019,7 +1019,7 @@ DSL_Fetch_Pipeline_Get_Plan
 }
 
 BOOL
-DSL_Fetch_Pipeline_Get_Fetch
+DSL_fetch_pipeline_get_fetch
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
          DSL_FETCH_RECORD_ID id, DSL_FETCH_RECORD *record)
 {
@@ -1031,7 +1031,7 @@ DSL_Fetch_Pipeline_Get_Fetch
 }
 
 BOOL
-DSL_Fetch_Pipeline_Get_Stage
+DSL_fetch_pipeline_get_stage
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
          DSL_PIPELINE_STAGE_ID id, DSL_PIPELINE_STAGE_RECORD *record)
 {
@@ -1043,7 +1043,7 @@ DSL_Fetch_Pipeline_Get_Stage
 }
 
 const DSL_OPT_PLAN_CONTEXT *
-DSL_Fetch_Pipeline_Get_Plan_Context
+DSL_fetch_pipeline_get_plan_context
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis, DSL_FETCH_SITE_ID id)
 {
     return analysis == NULL || id == 0 ||

@@ -87,7 +87,7 @@ a symbolic or runtime-dynamic interpretation.
 
 Mandatory fact classes are type core, shape, producer, ownership, and
 consumers. Missing classes remain visible in the completeness mask and produce
-a diagnostic. `DSL_Tensor_Analysis_Is_Complete()` distinguishes a complete
+a diagnostic. `DSL_tensor_analysis_is_complete()` distinguishes a complete
 analysis from a structurally valid analysis containing unresolved facts.
 
 This is intentionally compatible with compiler-owned shape refinement. A
@@ -107,7 +107,7 @@ later, but only after the owning domain gatekeeper has completed.
 
 ## Inspection And Certification
 
-`DSL_Tensor_Analysis_Print()` emits deterministic per-PU fact and use traces.
+`DSL_tensor_analysis_print()` emits deterministic per-PU fact and use traces.
 The printer uses stable logical opcode names from the managed descriptor and
 does not expose physical `OPR_DSL` escape encoding. Because the analysis is
 runtime-only, its records must not appear in `ir_b2a` output.

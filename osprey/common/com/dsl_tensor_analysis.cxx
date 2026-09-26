@@ -27,24 +27,24 @@ struct DSL_TENSOR_ANALYSIS {
     UINT32 incomplete_fact_count;
 };
 
-static const char *DSL_tensor_dimension_state_name[] = {
+static const char *DSL_tensor_dimension_state_name_table[] = {
     "unknown", "static", "unresolved"
 };
 
-static const char *DSL_tensor_ownership_name[] = {
+static const char *DSL_tensor_ownership_name_table[] = {
     "unknown", "unique", "shared"
 };
 
-static const char *DSL_tensor_reuse_role_name[] = {
+static const char *DSL_tensor_reuse_role_name_table[] = {
     "unknown", "unused", "single_use", "multiple_use"
 };
 
-static const char *DSL_tensor_value_role_name[] = {
+static const char *DSL_tensor_value_role_name_table[] = {
     "unknown", "constant", "model_input", "formal", "intermediate",
     "symbol"
 };
 
-static const char *DSL_tensor_use_role_name[] = {
+static const char *DSL_tensor_use_role_name_table[] = {
     "unknown", "generic", "contraction_kid0", "contraction_kid1",
     "activation", "weight", "bias", "scale", "mean", "variance",
     "query", "key", "value", "index", "view_source",
@@ -119,7 +119,7 @@ DSL_Tensor_Analysis_Active (const DSL_TENSOR_ANALYSIS *analysis)
            PU_Info_proc_sym(analysis->pu) == analysis->owner_pu_st &&
            Current_pu ==
                &Pu_Table[ST_pu(St_Table[analysis->owner_pu_st])] &&
-           DSL_Tensor_Evolution_Owner(analysis->graph) ==
+           DSL_tensor_evolution_owner(analysis->graph) ==
                analysis->owner_pu_st;
 }
 
@@ -358,53 +358,53 @@ DSL_Tensor_Analysis_Add_Uses
 }
 
 const char *
-DSL_Tensor_Dimension_State_Name (UINT32 state)
+DSL_tensor_dimension_state_name (UINT32 state)
 {
-    return state < sizeof(DSL_tensor_dimension_state_name) /
-                       sizeof(DSL_tensor_dimension_state_name[0]) ?
-           DSL_tensor_dimension_state_name[state] : "unknown";
+    return state < sizeof(DSL_tensor_dimension_state_name_table) /
+                       sizeof(DSL_tensor_dimension_state_name_table[0]) ?
+           DSL_tensor_dimension_state_name_table[state] : "unknown";
 }
 
 const char *
-DSL_Tensor_Ownership_Name (UINT32 ownership)
+DSL_tensor_ownership_name (UINT32 ownership)
 {
-    return ownership < sizeof(DSL_tensor_ownership_name) /
-                           sizeof(DSL_tensor_ownership_name[0]) ?
-           DSL_tensor_ownership_name[ownership] : "unknown";
+    return ownership < sizeof(DSL_tensor_ownership_name_table) /
+                           sizeof(DSL_tensor_ownership_name_table[0]) ?
+           DSL_tensor_ownership_name_table[ownership] : "unknown";
 }
 
 const char *
-DSL_Tensor_Reuse_Role_Name (UINT32 role)
+DSL_tensor_reuse_role_name (UINT32 role)
 {
-    return role < sizeof(DSL_tensor_reuse_role_name) /
-                      sizeof(DSL_tensor_reuse_role_name[0]) ?
-           DSL_tensor_reuse_role_name[role] : "unknown";
+    return role < sizeof(DSL_tensor_reuse_role_name_table) /
+                      sizeof(DSL_tensor_reuse_role_name_table[0]) ?
+           DSL_tensor_reuse_role_name_table[role] : "unknown";
 }
 
 const char *
-DSL_Tensor_Value_Role_Name (UINT32 role)
+DSL_tensor_value_role_name (UINT32 role)
 {
-    return role < sizeof(DSL_tensor_value_role_name) /
-                      sizeof(DSL_tensor_value_role_name[0]) ?
-           DSL_tensor_value_role_name[role] : "unknown";
+    return role < sizeof(DSL_tensor_value_role_name_table) /
+                      sizeof(DSL_tensor_value_role_name_table[0]) ?
+           DSL_tensor_value_role_name_table[role] : "unknown";
 }
 
 const char *
-DSL_Tensor_Use_Role_Name (UINT32 role)
+DSL_tensor_use_role_name (UINT32 role)
 {
-    return role < sizeof(DSL_tensor_use_role_name) /
-                      sizeof(DSL_tensor_use_role_name[0]) ?
-           DSL_tensor_use_role_name[role] : "unknown";
+    return role < sizeof(DSL_tensor_use_role_name_table) /
+                      sizeof(DSL_tensor_use_role_name_table[0]) ?
+           DSL_tensor_use_role_name_table[role] : "unknown";
 }
 
 DSL_TENSOR_ANALYSIS *
-DSL_Tensor_Analysis_Create
+DSL_tensor_analysis_create
         (PU_Info *pu, const DSL_TENSOR_EVOLUTION_GRAPH *graph,
          FILE *diagnostic)
 {
     if (pu == NULL || graph == NULL || Current_PU_Info != pu ||
-        DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
-        !DSL_Tensor_Evolution_Verify(graph, diagnostic)) {
+        DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
+        !DSL_tensor_evolution_verify(graph, diagnostic)) {
         DSL_Tensor_Analysis_Report
             (diagnostic, "invalid active program unit", 0);
         return NULL;
@@ -418,13 +418,13 @@ DSL_Tensor_Analysis_Create
 }
 
 void
-DSL_Tensor_Analysis_Destroy (DSL_TENSOR_ANALYSIS *analysis)
+DSL_tensor_analysis_destroy (DSL_TENSOR_ANALYSIS *analysis)
 {
     delete analysis;
 }
 
 BOOL
-DSL_Tensor_Analysis_Find_Fact
+DSL_tensor_analysis_find_fact
         (const DSL_TENSOR_ANALYSIS *analysis, DSL_IR_VALUE_ID value_id,
          DSL_TENSOR_FACT_RECORD *record)
 {
@@ -441,14 +441,14 @@ DSL_Tensor_Analysis_Find_Fact
 }
 
 BOOL
-DSL_Tensor_Analysis_Build
+DSL_tensor_analysis_build
         (DSL_TENSOR_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Tensor_Analysis_Active(analysis))
         return DSL_Tensor_Analysis_Report
                    (diagnostic, "program unit is not active", 0);
     if (!analysis->facts.empty())
-        return DSL_Tensor_Analysis_Verify(analysis, diagnostic);
+        return DSL_tensor_analysis_verify(analysis, diagnostic);
 
     /*
      * Facts come from canonical tensor descriptors and versioned logical
@@ -456,7 +456,7 @@ DSL_Tensor_Analysis_Build
      * evidence and therefore do not participate in classification.
      */
     for (DSL_TENSOR_EVOLUTION_NODE_ID root_id = 1;
-         root_id <= DSL_Tensor_Evolution_Node_Count(analysis->graph);
+         root_id <= DSL_tensor_evolution_node_count(analysis->graph);
          ++root_id) {
         DSL_TENSOR_EVOLUTION_NODE_RECORD root;
         DSL_IR_VALUE_RECORD value;
@@ -466,7 +466,7 @@ DSL_Tensor_Analysis_Build
         const char *shape;
         UINT32 parsed_rank = 0;
 
-        if (!DSL_Tensor_Evolution_Get_Node
+        if (!DSL_tensor_evolution_get_node
                  (analysis->graph, root_id, &root))
             return DSL_Tensor_Analysis_Report
                        (diagnostic, "invalid evolution node", root_id);
@@ -536,11 +536,11 @@ DSL_Tensor_Analysis_Build
                 (diagnostic, stored.value_id, stored.completeness);
         }
     }
-    return DSL_Tensor_Analysis_Verify(analysis, diagnostic);
+    return DSL_tensor_analysis_verify(analysis, diagnostic);
 }
 
 BOOL
-DSL_Tensor_Analysis_Verify
+DSL_tensor_analysis_verify
         (const DSL_TENSOR_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Tensor_Analysis_Active(analysis))
@@ -556,7 +556,7 @@ DSL_Tensor_Analysis_Verify
         DSL_IR_OPCODE_DESCRIPTOR_RECORD producer_descriptor;
         if (fact.id != i + 1 || fact.reserved0 != 0 || fact.reserved1 != 0 ||
             fact.semantic_root_id == DSL_TENSOR_EVOLUTION_NODE_INVALID_ID ||
-            !DSL_Tensor_Evolution_Get_Node
+            !DSL_tensor_evolution_get_node
                  (analysis->graph, fact.semantic_root_id, &root) ||
             root.semantic_value_id != fact.value_id ||
             root.descriptor_ty != fact.descriptor_ty ||
@@ -672,13 +672,13 @@ DSL_Tensor_Analysis_Verify
 }
 
 BOOL
-DSL_Tensor_Analysis_Is_Complete (const DSL_TENSOR_ANALYSIS *analysis)
+DSL_tensor_analysis_is_complete (const DSL_TENSOR_ANALYSIS *analysis)
 {
     return analysis != NULL && analysis->incomplete_fact_count == 0;
 }
 
 void
-DSL_Tensor_Analysis_Print
+DSL_tensor_analysis_print
         (FILE *file, const DSL_TENSOR_ANALYSIS *analysis)
 {
     if (file == NULL || analysis == NULL)
@@ -723,11 +723,11 @@ DSL_Tensor_Analysis_Print
                 fact.id, fact.semantic_root_id, fact.value_id, name,
                 TY_IDX_index(fact.descriptor_ty),
                 TY_IDX_index(fact.element_ty), dtype, fact.rank, shape,
-                DSL_Tensor_Dimension_State_Name(fact.dimension_state),
+                DSL_tensor_dimension_state_name(fact.dimension_state),
                 producer, fact.producer_version,
-                DSL_Tensor_Value_Role_Name(fact.value_role),
-                DSL_Tensor_Ownership_Name(fact.ownership),
-                DSL_Tensor_Reuse_Role_Name(fact.reuse_role),
+                DSL_tensor_value_role_name(fact.value_role),
+                DSL_tensor_ownership_name(fact.ownership),
+                DSL_tensor_reuse_role_name(fact.reuse_role),
                 fact.first_use_id, fact.use_count, fact.completeness);
     }
     for (UINT32 i = 0; i < analysis->uses.size(); ++i) {
@@ -741,26 +741,26 @@ DSL_Tensor_Analysis_Print
                      (DSL_OPERATOR)use.consumer_operator),
                 use.consumer_version, use.consumer_node_id,
                 use.operand_ordinal,
-                DSL_Tensor_Use_Role_Name(use.role),
+                DSL_tensor_use_role_name(use.role),
                 DSL_Tensor_Analysis_Shape_Rule_Name(use.shape_rule),
                 use.memory_behavior);
     }
 }
 
 UINT32
-DSL_Tensor_Analysis_Fact_Count (const DSL_TENSOR_ANALYSIS *analysis)
+DSL_tensor_analysis_fact_count (const DSL_TENSOR_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->facts.size();
 }
 
 UINT32
-DSL_Tensor_Analysis_Use_Count (const DSL_TENSOR_ANALYSIS *analysis)
+DSL_tensor_analysis_use_count (const DSL_TENSOR_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->uses.size();
 }
 
 BOOL
-DSL_Tensor_Analysis_Get_Fact
+DSL_tensor_analysis_get_fact
         (const DSL_TENSOR_ANALYSIS *analysis, DSL_TENSOR_FACT_ID id,
          DSL_TENSOR_FACT_RECORD *record)
 {
@@ -772,7 +772,7 @@ DSL_Tensor_Analysis_Get_Fact
 }
 
 BOOL
-DSL_Tensor_Analysis_Get_Use
+DSL_tensor_analysis_get_use
         (const DSL_TENSOR_ANALYSIS *analysis, DSL_TENSOR_USE_FACT_ID id,
          DSL_TENSOR_USE_FACT_RECORD *record)
 {

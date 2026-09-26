@@ -106,31 +106,31 @@ typedef struct {
     UINT32 reserved;
 } DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD;
 
-extern BOOL DSL_Memory_Hierarchy_Get_Profile
+extern BOOL DSL_memory_hierarchy_get_profile
                                 (UINT32 profile_id,
                                  DSL_MEMORY_HIERARCHY_PROFILE *profile);
-extern BOOL DSL_Memory_Hierarchy_Get_Tier
+extern BOOL DSL_memory_hierarchy_get_tier
                                 (UINT32 profile_id,
                                  DSL_MEMORY_TIER_ID tier_id,
                                  DSL_MEMORY_TIER_RECORD *tier);
-extern BOOL DSL_Memory_Hierarchy_Find_Tier
+extern BOOL DSL_memory_hierarchy_find_tier
                                 (UINT32 profile_id, UINT32 kind,
                                  DSL_MEMORY_TIER_RECORD *tier);
-extern UINT32 DSL_Memory_Hierarchy_Movement_Count (UINT32 profile_id);
-extern BOOL DSL_Memory_Hierarchy_Get_Movement
+extern UINT32 DSL_memory_hierarchy_movement_count (UINT32 profile_id);
+extern BOOL DSL_memory_hierarchy_get_movement
                                 (UINT32 profile_id,
                                  DSL_MEMORY_MOVEMENT_CAPABILITY_ID id,
                                  DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD *record);
-extern BOOL DSL_Memory_Hierarchy_Find_Movement
+extern BOOL DSL_memory_hierarchy_find_movement
                                 (UINT32 profile_id, UINT32 engine,
                                  DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD *record);
-extern BOOL DSL_Memory_Hierarchy_Validate
+extern BOOL DSL_memory_hierarchy_validate
                                 (UINT32 profile_id, FILE *diagnostic);
-extern void DSL_Memory_Hierarchy_Print
+extern void DSL_memory_hierarchy_print
                                 (FILE *file, UINT32 profile_id);
-extern const char *DSL_Target_Profile_Name (UINT32 profile_id);
-extern const char *DSL_Memory_Tier_Name (UINT32 kind);
-extern const char *DSL_Memory_Scope_Name (UINT32 scope);
-extern const char *DSL_Memory_Movement_Name (UINT32 engine);
+extern const char *DSL_target_profile_name (UINT32 profile_id);
+extern const char *DSL_memory_tier_name (UINT32 kind);
+extern const char *DSL_memory_scope_name (UINT32 scope);
+extern const char *DSL_memory_movement_name (UINT32 engine);
 
 #endif /* dsl_memory_hierarchy_INCLUDED */

@@ -161,9 +161,9 @@ typedef struct {
     UINT32 reserved;
 } DSL_PIPELINE_STAGE_RECORD;
 
-extern void DSL_Fetch_Pipeline_Control_Init
+extern void DSL_fetch_pipeline_control_init
                                 (DSL_FETCH_PIPELINE_CONTROL *control);
-extern DSL_FETCH_PIPELINE_ANALYSIS *DSL_Fetch_Pipeline_Create
+extern DSL_FETCH_PIPELINE_ANALYSIS *DSL_fetch_pipeline_create
                                 (struct pu_info *pu,
                                  DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
@@ -171,46 +171,46 @@ extern DSL_FETCH_PIPELINE_ANALYSIS *DSL_Fetch_Pipeline_Create
                                  const DSL_TILE_ANALYSIS *tile,
                                  const DSL_FETCH_PIPELINE_CONTROL *control,
                                  FILE *diagnostic);
-extern void DSL_Fetch_Pipeline_Destroy
+extern void DSL_fetch_pipeline_destroy
                                 (DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern BOOL DSL_Fetch_Pipeline_Build
+extern BOOL DSL_fetch_pipeline_build
                                 (DSL_FETCH_PIPELINE_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Fetch_Pipeline_Verify
+extern BOOL DSL_fetch_pipeline_verify
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern void DSL_Fetch_Pipeline_Print
+extern void DSL_fetch_pipeline_print
                                 (FILE *file,
                                  const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern UINT32 DSL_Fetch_Pipeline_Site_Count
+extern UINT32 DSL_fetch_pipeline_site_count
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern UINT32 DSL_Fetch_Pipeline_Plan_Count
+extern UINT32 DSL_fetch_pipeline_plan_count
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern UINT32 DSL_Fetch_Pipeline_Fetch_Count
+extern UINT32 DSL_fetch_pipeline_fetch_count
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern UINT32 DSL_Fetch_Pipeline_Stage_Count
+extern UINT32 DSL_fetch_pipeline_stage_count
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern BOOL DSL_Fetch_Pipeline_Get_Site
+extern BOOL DSL_fetch_pipeline_get_site
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
                                  DSL_FETCH_SITE_ID id,
                                  DSL_FETCH_SITE_RECORD *record);
-extern BOOL DSL_Fetch_Pipeline_Get_Plan
+extern BOOL DSL_fetch_pipeline_get_plan
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
                                  DSL_FETCH_PLAN_ID id,
                                  DSL_FETCH_PLAN_RECORD *record);
-extern BOOL DSL_Fetch_Pipeline_Get_Fetch
+extern BOOL DSL_fetch_pipeline_get_fetch
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
                                  DSL_FETCH_RECORD_ID id,
                                  DSL_FETCH_RECORD *record);
-extern BOOL DSL_Fetch_Pipeline_Get_Stage
+extern BOOL DSL_fetch_pipeline_get_stage
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
                                  DSL_PIPELINE_STAGE_ID id,
                                  DSL_PIPELINE_STAGE_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_Fetch_Pipeline_Get_Plan_Context
+extern const DSL_OPT_PLAN_CONTEXT *DSL_fetch_pipeline_get_plan_context
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
                                  DSL_FETCH_SITE_ID id);
-extern const char *DSL_Fetch_Issue_Point_Name (UINT32 point);
-extern const char *DSL_Fetch_Barrier_Name (UINT32 barrier);
-extern const char *DSL_Fetch_Wait_Point_Name (UINT32 point);
+extern const char *DSL_fetch_issue_point_name (UINT32 point);
+extern const char *DSL_fetch_barrier_name (UINT32 barrier);
+extern const char *DSL_fetch_wait_point_name (UINT32 point);
 
 #endif /* dsl_fetch_pipeline_INCLUDED */

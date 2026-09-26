@@ -1532,7 +1532,7 @@ CODEMAP::Hash_op_and_canon(CODEREP *cr, BOOL canonicalize)
 
   INT val = cr->Op();
   if (cr->Is_dsl_op())
-    val += WOPT_DSL_Semantic_Info_Hash(cr->Dsl_semantic_info_id());
+    val += WOPT_DSL_semantic_info_hash(cr->Dsl_semantic_info_id());
 
   for (INT i = 0; i < cr->Kid_count(); i++) {
     CODEREP *opnd = cr->Get_opnd(i);
@@ -3230,13 +3230,13 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
     WOPT_DSL_SEMANTIC_INFO_ID info_id;
 
     FmtAssert(result_st != ST_IDX_ZERO &&
-              WOPT_DSL_Import_Semantic_Info
+              WOPT_DSL_import_semantic_info
                   (wn, result_st,
                    Current_PU_Info == NULL ? NULL :
                        ST_name(PU_Info_proc_sym(Current_PU_Info)),
                    &info, TFile),
               ("CODEMAP::Add_expr: incomplete logical DSL import"));
-    info_id = WOPT_DSL_Semantic_Info_Intern(&info);
+    info_id = WOPT_DSL_semantic_info_intern(&info);
     FmtAssert(info_id != WOPT_DSL_SEMANTIC_INFO_INVALID_ID,
               ("CODEMAP::Add_expr: failed to intern logical DSL identity"));
 
@@ -3250,16 +3250,16 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
     }
     if ((info.logical_operator == OPR_DSLDIV ||
          info.logical_operator == OPR_DSLREM) &&
-        WOPT_DSL_DIVREM_Combination_Enabled(WOPT_Enable_DIVREM)) {
+        WOPT_DSL_DIVREM_combination_enabled(WOPT_Enable_DIVREM)) {
       WOPT_DSL_SEMANTIC_INFO combined_info;
       WOPT_DSL_SEMANTIC_INFO projection_info;
-      FmtAssert(WOPT_DSL_Create_DIVREM_Semantics
+      FmtAssert(WOPT_DSL_create_DIVREM_semantics
                     (&info, &combined_info, &projection_info),
                 ("CODEMAP::Add_expr: invalid DSL DIVREM semantics"));
       WOPT_DSL_SEMANTIC_INFO_ID combined_id =
-          WOPT_DSL_Semantic_Info_Intern(&combined_info);
+          WOPT_DSL_semantic_info_intern(&combined_info);
       WOPT_DSL_SEMANTIC_INFO_ID projection_id =
-          WOPT_DSL_Semantic_Info_Intern(&projection_info);
+          WOPT_DSL_semantic_info_intern(&projection_info);
       FmtAssert(combined_id != WOPT_DSL_SEMANTIC_INFO_INVALID_ID &&
                 projection_id != WOPT_DSL_SEMANTIC_INFO_INVALID_ID,
                 ("CODEMAP::Add_expr: failed to intern DSL DIVREM"));

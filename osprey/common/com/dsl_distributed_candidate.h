@@ -191,75 +191,75 @@ typedef struct {
     UINT32 reserved1;
 } DSL_COMMUNICATION_INTENT_RECORD;
 
-extern void DSL_Distributed_Control_Init
+extern void DSL_distributed_control_init
                                 (DSL_DISTRIBUTED_CONTROL *control);
-extern DSL_DISTRIBUTED_ANALYSIS *DSL_Distributed_Create
+extern DSL_DISTRIBUTED_ANALYSIS *DSL_distributed_create
                                 (struct pu_info *pu,
                                  DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_TENSOR_ANALYSIS *tensor_analysis,
                                  const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
                                  const DSL_DISTRIBUTED_CONTROL *control,
                                  FILE *diagnostic);
-extern void DSL_Distributed_Destroy (DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern BOOL DSL_Distributed_Build
+extern void DSL_distributed_destroy (DSL_DISTRIBUTED_ANALYSIS *analysis);
+extern BOOL DSL_distributed_build
                                 (DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Distributed_Verify
+extern BOOL DSL_distributed_verify
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern void DSL_Distributed_Print
+extern void DSL_distributed_print
                                 (FILE *file,
                                  const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_Distributed_Descriptor_Count
+extern UINT32 DSL_distributed_descriptor_count
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_Distributed_Alias_Count
+extern UINT32 DSL_distributed_alias_count
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_Distributed_Range_Count
+extern UINT32 DSL_distributed_range_count
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_Distributed_Site_Count
+extern UINT32 DSL_distributed_site_count
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_Distributed_Alternative_Count
+extern UINT32 DSL_distributed_alternative_count
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_Communication_Epoch_Count
+extern UINT32 DSL_communication_epoch_count
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_Communication_Intent_Count
+extern UINT32 DSL_communication_intent_count
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern BOOL DSL_Distributed_Get_Descriptor
+extern BOOL DSL_distributed_get_descriptor
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  DSL_DISTRIBUTED_DESCRIPTOR_ID id,
                                  DSL_DISTRIBUTED_DESCRIPTOR_RECORD *record);
-extern BOOL DSL_Distributed_Get_Alias
+extern BOOL DSL_distributed_get_alias
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  DSL_DISTRIBUTED_ALIAS_ID id,
                                  DSL_DISTRIBUTED_ALIAS_RECORD *record);
-extern BOOL DSL_Distributed_Get_Range
+extern BOOL DSL_distributed_get_range
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  DSL_DISTRIBUTED_RANGE_ID id,
                                  DSL_DISTRIBUTED_RANGE_RECORD *record);
-extern BOOL DSL_Distributed_Get_Site
+extern BOOL DSL_distributed_get_site
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  DSL_DISTRIBUTED_SITE_ID id,
                                  DSL_DISTRIBUTED_SITE_RECORD *record);
-extern BOOL DSL_Distributed_Get_Alternative
+extern BOOL DSL_distributed_get_alternative
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  DSL_DISTRIBUTED_ALTERNATIVE_ID id,
                                  DSL_DISTRIBUTED_ALTERNATIVE_RECORD *record);
-extern BOOL DSL_Communication_Get_Epoch
+extern BOOL DSL_communication_get_epoch
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  DSL_COMMUNICATION_EPOCH_ID id,
                                  DSL_COMMUNICATION_EPOCH_RECORD *record);
-extern BOOL DSL_Communication_Get_Intent
+extern BOOL DSL_communication_get_intent
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  DSL_COMMUNICATION_INTENT_ID id,
                                  DSL_COMMUNICATION_INTENT_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_Distributed_Get_Plan_Context
+extern const DSL_OPT_PLAN_CONTEXT *DSL_distributed_get_plan_context
                                 (const DSL_DISTRIBUTED_ANALYSIS *analysis,
                                  DSL_DISTRIBUTED_SITE_ID id);
-extern const char *DSL_Placement_Kind_Name (UINT32 kind);
-extern const char *DSL_Sharding_Kind_Name (UINT32 kind);
-extern const char *DSL_Distributed_Ownership_Name (UINT32 kind);
-extern const char *DSL_Distributed_Range_State_Name (UINT32 state);
-extern const char *DSL_Distributed_Disjoint_State_Name (UINT32 state);
-extern const char *DSL_Communication_Kind_Name (UINT32 kind);
+extern const char *DSL_placement_kind_name (UINT32 kind);
+extern const char *DSL_sharding_kind_name (UINT32 kind);
+extern const char *DSL_distributed_ownership_name (UINT32 kind);
+extern const char *DSL_distributed_range_state_name (UINT32 state);
+extern const char *DSL_distributed_disjoint_state_name (UINT32 state);
+extern const char *DSL_communication_kind_name (UINT32 kind);
 
 #endif /* dsl_distributed_candidate_INCLUDED */

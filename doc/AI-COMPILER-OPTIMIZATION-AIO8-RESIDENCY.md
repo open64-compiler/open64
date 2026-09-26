@@ -22,8 +22,8 @@ WHIRL, or add a mapped-image record.
   software-management, spill, and assumption flags;
 - CPU baseline, NVIDIA Hopper, and NVIDIA Blackwell profile adapters.
 
-Hot queries use `DSL_Memory_Hierarchy_Get_Profile`,
-`DSL_Memory_Hierarchy_Get_Tier`, and `DSL_Memory_Hierarchy_Find_Tier`. They do
+Hot queries use `DSL_memory_hierarchy_get_profile`,
+`DSL_memory_hierarchy_get_tier`, and `DSL_memory_hierarchy_find_tier`. They do
 not parse free-form option strings, JSON, or frontend metadata.
 
 The NVIDIA values used by this first adapter follow the public NVIDIA tuning

@@ -36,13 +36,13 @@ WOPT_DSL_Hash_Combine(UINT64 hash, UINT64 value)
 }
 
 void
-WOPT_DSL_Semantic_Info_Reset(void)
+WOPT_DSL_semantic_info_reset(void)
 {
   WOPT_dsl_semantic_info.clear();
 }
 
 WOPT_DSL_SEMANTIC_INFO_ID
-WOPT_DSL_Semantic_Info_Intern(const WOPT_DSL_SEMANTIC_INFO *info)
+WOPT_DSL_semantic_info_intern(const WOPT_DSL_SEMANTIC_INFO *info)
 {
   if (info == NULL || info->logical_operator == OPR_DSLUNKNOWN ||
       info->version == 0)
@@ -61,7 +61,7 @@ WOPT_DSL_Semantic_Info_Intern(const WOPT_DSL_SEMANTIC_INFO *info)
 }
 
 BOOL
-WOPT_DSL_Semantic_Info_Get(WOPT_DSL_SEMANTIC_INFO_ID id,
+WOPT_DSL_semantic_info_get(WOPT_DSL_SEMANTIC_INFO_ID id,
                            WOPT_DSL_SEMANTIC_INFO *info)
 {
   if (id == WOPT_DSL_SEMANTIC_INFO_INVALID_ID ||
@@ -73,12 +73,12 @@ WOPT_DSL_Semantic_Info_Get(WOPT_DSL_SEMANTIC_INFO_ID id,
 }
 
 UINT32
-WOPT_DSL_Semantic_Info_Hash(WOPT_DSL_SEMANTIC_INFO_ID id)
+WOPT_DSL_semantic_info_hash(WOPT_DSL_SEMANTIC_INFO_ID id)
 {
   WOPT_DSL_SEMANTIC_INFO info;
   UINT64 hash = 1469598103934665603ULL;
 
-  if (!WOPT_DSL_Semantic_Info_Get(id, &info))
+  if (!WOPT_DSL_semantic_info_get(id, &info))
     return 0;
   hash = WOPT_DSL_Hash_Combine(hash, info.logical_operator);
   hash = WOPT_DSL_Hash_Combine(hash, info.version);
@@ -94,13 +94,13 @@ WOPT_DSL_Semantic_Info_Hash(WOPT_DSL_SEMANTIC_INFO_ID id)
 }
 
 UINT32
-WOPT_DSL_Semantic_Info_Count(void)
+WOPT_DSL_semantic_info_count(void)
 {
   return WOPT_dsl_semantic_info.size();
 }
 
 BOOL
-WOPT_DSL_Algebraic_Safety_Allows
+WOPT_DSL_algebraic_safety_allows
     (DSL_ALGEBRAIC_SAFETY safety, BOOL floating_point,
      BOOL reassociation_enabled)
 {
@@ -118,14 +118,14 @@ WOPT_DSL_Algebraic_Safety_Allows
 }
 
 void
-WOPT_DSL_Reset_DIVREM_Target_Policy(void)
+WOPT_DSL_reset_DIVREM_target_policy(void)
 {
   WOPT_dsl_divrem_target_policy.lowering_capability = FALSE;
   WOPT_dsl_divrem_target_policy.profitable = FALSE;
 }
 
 BOOL
-WOPT_DSL_Set_DIVREM_Target_Policy
+WOPT_DSL_set_DIVREM_target_policy
     (const WOPT_DSL_DIVREM_TARGET_POLICY *policy)
 {
   if (policy == NULL)
@@ -135,7 +135,7 @@ WOPT_DSL_Set_DIVREM_Target_Policy
 }
 
 BOOL
-WOPT_DSL_Get_DIVREM_Target_Policy
+WOPT_DSL_get_DIVREM_target_policy
     (WOPT_DSL_DIVREM_TARGET_POLICY *policy)
 {
   if (policy == NULL)
@@ -145,7 +145,7 @@ WOPT_DSL_Get_DIVREM_Target_Policy
 }
 
 BOOL
-WOPT_DSL_DIVREM_Combination_Enabled(BOOL option_enabled)
+WOPT_DSL_DIVREM_combination_enabled(BOOL option_enabled)
 {
   return option_enabled &&
          WOPT_dsl_divrem_target_policy.lowering_capability &&
@@ -153,7 +153,7 @@ WOPT_DSL_DIVREM_Combination_Enabled(BOOL option_enabled)
 }
 
 BOOL
-WOPT_DSL_Projectable_Info(const WOPT_DSL_SEMANTIC_INFO *info)
+WOPT_DSL_projectable_info(const WOPT_DSL_SEMANTIC_INFO *info)
 {
   return info != NULL &&
          info->logical_operator == OPR_DSLDIVREM &&
@@ -162,7 +162,7 @@ WOPT_DSL_Projectable_Info(const WOPT_DSL_SEMANTIC_INFO *info)
 }
 
 BOOL
-WOPT_DSL_Projection_Info(const WOPT_DSL_SEMANTIC_INFO *info)
+WOPT_DSL_projection_info(const WOPT_DSL_SEMANTIC_INFO *info)
 {
   return info != NULL &&
          (info->logical_operator == OPR_DSLDIVPART ||
@@ -173,7 +173,7 @@ WOPT_DSL_Projection_Info(const WOPT_DSL_SEMANTIC_INFO *info)
 }
 
 BOOL
-WOPT_DSL_Create_DIVREM_Semantics
+WOPT_DSL_create_DIVREM_semantics
     (const WOPT_DSL_SEMANTIC_INFO *standalone,
      WOPT_DSL_SEMANTIC_INFO *combined,
      WOPT_DSL_SEMANTIC_INFO *projection)
@@ -214,11 +214,11 @@ WOPT_DSL_Create_DIVREM_Semantics
 }
 
 BOOL
-WOPT_DSL_Uncombine_Projection_Semantics
+WOPT_DSL_uncombine_projection_semantics
     (const WOPT_DSL_SEMANTIC_INFO *projection,
      WOPT_DSL_SEMANTIC_INFO *standalone)
 {
-  if (!WOPT_DSL_Projection_Info(projection) || standalone == NULL)
+  if (!WOPT_DSL_projection_info(projection) || standalone == NULL)
     return FALSE;
   *standalone = *projection;
   standalone->id = WOPT_DSL_SEMANTIC_INFO_INVALID_ID;

@@ -23,7 +23,7 @@ struct DSL_TENSOR_EVOLUTION_GRAPH {
     std::vector<DSL_TENSOR_EVOLUTION_EDGE_RECORD> edges;
 };
 
-static const char *DSL_tensor_evolution_node_kind_name[] = {
+static const char *DSL_tensor_evolution_node_kind_name_table[] = {
     "unknown",
     "semantic",
     "logical_layout",
@@ -35,7 +35,7 @@ static const char *DSL_tensor_evolution_node_kind_name[] = {
     "instruction_fragment"
 };
 
-static const char *DSL_tensor_evolution_transform_kind_name[] = {
+static const char *DSL_tensor_evolution_transform_kind_name_table[] = {
     "unknown",
     "logical_layout",
     "shard",
@@ -108,23 +108,23 @@ DSL_Tensor_Evolution_Descriptor_Valid (TY_IDX ty)
 }
 
 const char *
-DSL_Tensor_Evolution_Node_Kind_Name (UINT32 kind)
+DSL_tensor_evolution_node_kind_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_tensor_evolution_node_kind_name) /
-                      sizeof(DSL_tensor_evolution_node_kind_name[0]) ?
-           DSL_tensor_evolution_node_kind_name[kind] : "unknown";
+    return kind < sizeof(DSL_tensor_evolution_node_kind_name_table) /
+                      sizeof(DSL_tensor_evolution_node_kind_name_table[0]) ?
+           DSL_tensor_evolution_node_kind_name_table[kind] : "unknown";
 }
 
 const char *
-DSL_Tensor_Evolution_Transform_Kind_Name (UINT32 kind)
+DSL_tensor_evolution_transform_kind_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_tensor_evolution_transform_kind_name) /
-                      sizeof(DSL_tensor_evolution_transform_kind_name[0]) ?
-           DSL_tensor_evolution_transform_kind_name[kind] : "unknown";
+    return kind < sizeof(DSL_tensor_evolution_transform_kind_name_table) /
+                      sizeof(DSL_tensor_evolution_transform_kind_name_table[0]) ?
+           DSL_tensor_evolution_transform_kind_name_table[kind] : "unknown";
 }
 
 DSL_TENSOR_EVOLUTION_GRAPH *
-DSL_Tensor_Evolution_Create (PU_Info *pu, FILE *diagnostic)
+DSL_tensor_evolution_create (PU_Info *pu, FILE *diagnostic)
 {
     if (pu == NULL || Current_PU_Info != pu ||
         !DSL_Tensor_Evolution_Owner_Valid(PU_Info_proc_sym(pu)) ||
@@ -142,13 +142,13 @@ DSL_Tensor_Evolution_Create (PU_Info *pu, FILE *diagnostic)
 }
 
 void
-DSL_Tensor_Evolution_Destroy (DSL_TENSOR_EVOLUTION_GRAPH *graph)
+DSL_tensor_evolution_destroy (DSL_TENSOR_EVOLUTION_GRAPH *graph)
 {
     delete graph;
 }
 
 BOOL
-DSL_Tensor_Evolution_Find_Semantic_Root
+DSL_tensor_evolution_find_semantic_root
         (const DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_IR_VALUE_ID value_id,
          DSL_TENSOR_EVOLUTION_NODE_RECORD *record)
@@ -168,7 +168,7 @@ DSL_Tensor_Evolution_Find_Semantic_Root
 }
 
 BOOL
-DSL_Tensor_Evolution_Build_Semantic_Roots
+DSL_tensor_evolution_build_semantic_roots
         (DSL_TENSOR_EVOLUTION_GRAPH *graph, FILE *diagnostic)
 {
     if (!DSL_Tensor_Evolution_Active(graph))
@@ -195,7 +195,7 @@ DSL_Tensor_Evolution_Build_Semantic_Roots
         if (!DSL_Tensor_Evolution_Descriptor_Valid(value.ty))
             return DSL_Tensor_Evolution_Report
                        (diagnostic, "tensor descriptor is not canonical", id);
-        if (DSL_Tensor_Evolution_Find_Semantic_Root(graph, id, &root)) {
+        if (DSL_tensor_evolution_find_semantic_root(graph, id, &root)) {
             if (root.descriptor_ty != value.ty)
                 return DSL_Tensor_Evolution_Report
                            (diagnostic, "semantic root changed type", id);
@@ -211,11 +211,11 @@ DSL_Tensor_Evolution_Build_Semantic_Roots
         root.semantic_root_id = root.id;
         graph->nodes.push_back(root);
     }
-    return DSL_Tensor_Evolution_Verify(graph, diagnostic);
+    return DSL_tensor_evolution_verify(graph, diagnostic);
 }
 
 BOOL
-DSL_Tensor_Evolution_Add_Logical_Layout
+DSL_tensor_evolution_add_logical_layout
         (DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
          UINT32 representation_descriptor_id,
@@ -281,7 +281,7 @@ DSL_Tensor_Evolution_Add_Logical_Layout
 
     graph->nodes.push_back(result);
     graph->edges.push_back(edge);
-    if (!DSL_Tensor_Evolution_Verify(graph, diagnostic)) {
+    if (!DSL_tensor_evolution_verify(graph, diagnostic)) {
         graph->edges.pop_back();
         graph->nodes.pop_back();
         return FALSE;
@@ -292,7 +292,7 @@ DSL_Tensor_Evolution_Add_Logical_Layout
 }
 
 BOOL
-DSL_Tensor_Evolution_Add_Distributed
+DSL_tensor_evolution_add_distributed
         (DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
          UINT32 representation_descriptor_id, UINT32 transformation_kind,
@@ -359,7 +359,7 @@ DSL_Tensor_Evolution_Add_Distributed
 
     graph->nodes.push_back(result);
     graph->edges.push_back(edge);
-    if (!DSL_Tensor_Evolution_Verify(graph, diagnostic)) {
+    if (!DSL_tensor_evolution_verify(graph, diagnostic)) {
         graph->edges.pop_back();
         graph->nodes.pop_back();
         return FALSE;
@@ -370,7 +370,7 @@ DSL_Tensor_Evolution_Add_Distributed
 }
 
 BOOL
-DSL_Tensor_Evolution_Add_Local_Physical
+DSL_tensor_evolution_add_local_physical
         (DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
          UINT32 representation_descriptor_id,
@@ -441,7 +441,7 @@ DSL_Tensor_Evolution_Add_Local_Physical
 
     graph->nodes.push_back(result);
     graph->edges.push_back(edge);
-    if (!DSL_Tensor_Evolution_Verify(graph, diagnostic)) {
+    if (!DSL_tensor_evolution_verify(graph, diagnostic)) {
         graph->edges.pop_back();
         graph->nodes.pop_back();
         return FALSE;
@@ -452,7 +452,7 @@ DSL_Tensor_Evolution_Add_Local_Physical
 }
 
 BOOL
-DSL_Tensor_Evolution_Add_Tile
+DSL_tensor_evolution_add_tile
         (DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
          UINT32 representation_descriptor_id,
@@ -525,7 +525,7 @@ DSL_Tensor_Evolution_Add_Tile
 
     graph->nodes.push_back(result);
     graph->edges.push_back(edge);
-    if (!DSL_Tensor_Evolution_Verify(graph, diagnostic)) {
+    if (!DSL_tensor_evolution_verify(graph, diagnostic)) {
         graph->edges.pop_back();
         graph->nodes.pop_back();
         return FALSE;
@@ -536,7 +536,7 @@ DSL_Tensor_Evolution_Add_Tile
 }
 
 BOOL
-DSL_Tensor_Evolution_Add_Staged_Buffer
+DSL_tensor_evolution_add_staged_buffer
         (DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_EVOLUTION_NODE_ID source_node_id,
          UINT32 representation_descriptor_id,
@@ -614,7 +614,7 @@ DSL_Tensor_Evolution_Add_Staged_Buffer
 
     graph->nodes.push_back(result);
     graph->edges.push_back(edge);
-    if (!DSL_Tensor_Evolution_Verify(graph, diagnostic)) {
+    if (!DSL_tensor_evolution_verify(graph, diagnostic)) {
         graph->edges.pop_back();
         graph->nodes.pop_back();
         return FALSE;
@@ -625,7 +625,7 @@ DSL_Tensor_Evolution_Add_Staged_Buffer
 }
 
 BOOL
-DSL_Tensor_Evolution_Verify
+DSL_tensor_evolution_verify
         (const DSL_TENSOR_EVOLUTION_GRAPH *graph, FILE *diagnostic)
 {
     if (!DSL_Tensor_Evolution_Active(graph))
@@ -763,7 +763,7 @@ DSL_Tensor_Evolution_Verify
 }
 
 void
-DSL_Tensor_Evolution_Print
+DSL_tensor_evolution_print
         (FILE *file, const DSL_TENSOR_EVOLUTION_GRAPH *graph)
 {
     if (file == NULL || graph == NULL)
@@ -799,7 +799,7 @@ DSL_Tensor_Evolution_Print
                 "  [%u] kind=%s value=%u name=%s ty=%u "
                 "dtype=%s shape=%s semantic_root=%u representation=%u "
                 "flags=0x%x\n",
-                node.id, DSL_Tensor_Evolution_Node_Kind_Name(node.kind),
+                node.id, DSL_tensor_evolution_node_kind_name(node.kind),
                 node.semantic_value_id, value_name,
                 TY_IDX_index(node.descriptor_ty), dtype, shape,
                 node.semantic_root_id, node.representation_descriptor_id,
@@ -810,31 +810,31 @@ DSL_Tensor_Evolution_Print
         fprintf(file,
                 "  edge[%u] source=%u result=%u transform=%s flags=0x%x\n",
                 edge.id, edge.source_node_id, edge.result_node_id,
-                DSL_Tensor_Evolution_Transform_Kind_Name
+                DSL_tensor_evolution_transform_kind_name
                     (edge.transformation_kind), edge.flags);
     }
 }
 
 ST_IDX
-DSL_Tensor_Evolution_Owner (const DSL_TENSOR_EVOLUTION_GRAPH *graph)
+DSL_tensor_evolution_owner (const DSL_TENSOR_EVOLUTION_GRAPH *graph)
 {
     return graph == NULL ? ST_IDX_ZERO : graph->owner_pu_st;
 }
 
 UINT32
-DSL_Tensor_Evolution_Node_Count (const DSL_TENSOR_EVOLUTION_GRAPH *graph)
+DSL_tensor_evolution_node_count (const DSL_TENSOR_EVOLUTION_GRAPH *graph)
 {
     return graph == NULL ? 0 : graph->nodes.size();
 }
 
 UINT32
-DSL_Tensor_Evolution_Edge_Count (const DSL_TENSOR_EVOLUTION_GRAPH *graph)
+DSL_tensor_evolution_edge_count (const DSL_TENSOR_EVOLUTION_GRAPH *graph)
 {
     return graph == NULL ? 0 : graph->edges.size();
 }
 
 BOOL
-DSL_Tensor_Evolution_Get_Node
+DSL_tensor_evolution_get_node
         (const DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_EVOLUTION_NODE_ID id,
          DSL_TENSOR_EVOLUTION_NODE_RECORD *record)
@@ -847,7 +847,7 @@ DSL_Tensor_Evolution_Get_Node
 }
 
 BOOL
-DSL_Tensor_Evolution_Get_Edge
+DSL_tensor_evolution_get_edge
         (const DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_EVOLUTION_EDGE_ID id,
          DSL_TENSOR_EVOLUTION_EDGE_RECORD *record)

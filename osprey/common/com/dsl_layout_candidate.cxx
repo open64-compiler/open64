@@ -33,15 +33,15 @@ struct DSL_LOGICAL_LAYOUT_ANALYSIS {
     BOOL built;
 };
 
-static const char *DSL_logical_layout_kind_name[] = {
+static const char *DSL_logical_layout_kind_name_table[] = {
     "unknown", "permuted", "blocked", "packed_head", "domain"
 };
 
-static const char *DSL_layout_compatibility_name[] = {
+static const char *DSL_layout_compatibility_name_table[] = {
     "unknown", "proven", "rejected"
 };
 
-static const char *DSL_layout_conversion_name[] = {
+static const char *DSL_layout_conversion_name_table[] = {
     "unknown", "known"
 };
 
@@ -77,31 +77,31 @@ DSL_Logical_Layout_Active (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
 }
 
 const char *
-DSL_Logical_Layout_Kind_Name (UINT32 kind)
+DSL_logical_layout_kind_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_logical_layout_kind_name) /
-                      sizeof(DSL_logical_layout_kind_name[0]) ?
-           DSL_logical_layout_kind_name[kind] : "unknown";
+    return kind < sizeof(DSL_logical_layout_kind_name_table) /
+                      sizeof(DSL_logical_layout_kind_name_table[0]) ?
+           DSL_logical_layout_kind_name_table[kind] : "unknown";
 }
 
 const char *
-DSL_Layout_Compatibility_Name (UINT32 state)
+DSL_layout_compatibility_name (UINT32 state)
 {
-    return state < sizeof(DSL_layout_compatibility_name) /
-                       sizeof(DSL_layout_compatibility_name[0]) ?
-           DSL_layout_compatibility_name[state] : "unknown";
+    return state < sizeof(DSL_layout_compatibility_name_table) /
+                       sizeof(DSL_layout_compatibility_name_table[0]) ?
+           DSL_layout_compatibility_name_table[state] : "unknown";
 }
 
 const char *
-DSL_Layout_Conversion_Name (UINT32 state)
+DSL_layout_conversion_name (UINT32 state)
 {
-    return state < sizeof(DSL_layout_conversion_name) /
-                       sizeof(DSL_layout_conversion_name[0]) ?
-           DSL_layout_conversion_name[state] : "unknown";
+    return state < sizeof(DSL_layout_conversion_name_table) /
+                       sizeof(DSL_layout_conversion_name_table[0]) ?
+           DSL_layout_conversion_name_table[state] : "unknown";
 }
 
 void
-DSL_Logical_Layout_Control_Init (DSL_LOGICAL_LAYOUT_CONTROL *control)
+DSL_logical_layout_control_init (DSL_LOGICAL_LAYOUT_CONTROL *control)
 {
     if (control == NULL)
         return;
@@ -281,7 +281,7 @@ DSL_Logical_Layout_Compatibility
     DSL_TENSOR_LOCALITY_FACT_RECORD locality;
     BOOL all_layout_consumers = tensor.use_count != 0;
     *rejection_reason = DSL_OPT_REJECT_NONE;
-    if (!DSL_Tensor_Locality_Find_Fact
+    if (!DSL_tensor_locality_find_fact
              (analysis->locality, tensor.value_id, &locality)) {
         *rejection_reason = DSL_OPT_REJECT_INCOMPLETE_ANALYSIS;
         return DSL_LAYOUT_COMPATIBILITY_UNKNOWN;
@@ -298,7 +298,7 @@ DSL_Logical_Layout_Compatibility
         DSL_TENSOR_USE_FACT_RECORD use;
         DSL_IR_NODE_RECORD consumer;
         DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
-        if (!DSL_Tensor_Analysis_Get_Use
+        if (!DSL_tensor_analysis_get_use
                  (analysis->tensor_analysis, tensor.first_use_id + i, &use) ||
             !DSL_Logical_Layout_Node_Info
                  (use.consumer_node_id, &consumer, &descriptor)) {
@@ -331,7 +331,7 @@ DSL_Logical_Layout_Classify
     alternative->compatibility_state = DSL_Logical_Layout_Compatibility
                                             (analysis, tensor,
                                              &alternative->rejection_reason);
-    if (DSL_Tensor_Locality_Find_Fact
+    if (DSL_tensor_locality_find_fact
             (analysis->locality, tensor.value_id, &locality) &&
         locality.size_state == DSL_TENSOR_SIZE_STATIC &&
         locality.object_bytes <= DSL_LOGICAL_LAYOUT_UNKNOWN_U64 / 2) {
@@ -389,7 +389,7 @@ DSL_Logical_Layout_Build_Plans
     DSL_OPT_CANDIDATE_ID member_id;
     budget.max_candidates = site->alternative_count + 1;
     budget.max_plans = site->alternative_count + 1;
-    DSL_OPT_PLAN_CONTEXT *context = DSL_Opt_Plan_Create
+    DSL_OPT_PLAN_CONTEXT *context = DSL_opt_plan_create
                                         (analysis->pu, analysis->graph,
                                          &budget, diagnostic);
     if (context == NULL)
@@ -404,10 +404,10 @@ DSL_Logical_Layout_Build_Plans
     candidate.rejection_reason = DSL_OPT_REJECT_NONE;
     candidate.ordering_key = 1;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_BASELINE;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &site->baseline_candidate_id,
               diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     memset(&cost, 0, sizeof(cost));
@@ -418,8 +418,8 @@ DSL_Logical_Layout_Build_Plans
             (&cost.terms[i], i == DSL_OPT_COST_COMPUTE ? 100 : 0,
              DSL_OPT_COST_CONFIDENCE_MEDIUM,
              DSL_OPT_COST_EVIDENCE_BASELINE_POLICY);
-    if (!DSL_Opt_Plan_Add_Cost(context, &cost, &cost_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+    if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic)) {
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     member_id = site->baseline_candidate_id;
@@ -432,9 +432,9 @@ DSL_Logical_Layout_Build_Plans
     plan.ordering_key = 1;
     plan.flags = DSL_OPT_PLAN_FLAG_BASELINE |
                  DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    if (!DSL_Opt_Plan_Add_Plan
+    if (!DSL_opt_plan_add_plan
              (context, &plan, &site->baseline_plan_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
 
@@ -452,10 +452,10 @@ DSL_Logical_Layout_Build_Plans
         candidate.rejection_reason = alternative.rejection_reason;
         candidate.ordering_key = i + 2;
         candidate.flags = DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-        if (!DSL_Opt_Plan_Add_Candidate
+        if (!DSL_opt_plan_add_candidate
                  (context, &candidate, &alternative.candidate_id,
                   diagnostic)) {
-            DSL_Opt_Plan_Destroy(context);
+            DSL_opt_plan_destroy(context);
             return FALSE;
         }
         memset(&cost, 0, sizeof(cost));
@@ -468,8 +468,8 @@ DSL_Logical_Layout_Build_Plans
                  DSL_OPT_COST_EVIDENCE_STATIC_ANALYSIS);
         DSL_Logical_Layout_Unknown_Cost
             (&cost.terms[DSL_OPT_COST_MEMORY_UNHIDDEN]);
-        if (!DSL_Opt_Plan_Add_Cost(context, &cost, &cost_id, diagnostic)) {
-            DSL_Opt_Plan_Destroy(context);
+        if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic)) {
+            DSL_opt_plan_destroy(context);
             return FALSE;
         }
         member_id = alternative.candidate_id;
@@ -482,21 +482,21 @@ DSL_Logical_Layout_Build_Plans
         plan.rejection_reason = alternative.rejection_reason;
         plan.ordering_key = i + 2;
         plan.flags = DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-        if (!DSL_Opt_Plan_Add_Plan
+        if (!DSL_opt_plan_add_plan
                  (context, &plan, &alternative.plan_id, diagnostic)) {
-            DSL_Opt_Plan_Destroy(context);
+            DSL_opt_plan_destroy(context);
             return FALSE;
         }
     }
-    if (!DSL_Opt_Plan_Verify(context, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+    if (!DSL_opt_plan_verify(context, diagnostic)) {
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     if (analysis->control.select_plans) {
-        if (!DSL_Opt_Plan_Select
+        if (!DSL_opt_plan_select
                  (context, analysis->control.target_profile_id,
                   &selection, diagnostic)) {
-            DSL_Opt_Plan_Destroy(context);
+            DSL_opt_plan_destroy(context);
             return FALSE;
         }
         site->selected_plan_id = selection.selected_plan_id;
@@ -520,7 +520,7 @@ DSL_Logical_Layout_Add_Alternative
     if (!DSL_Logical_Layout_Intern_Descriptor
              (analysis, tensor.descriptor_ty, kind, order, block_axes,
               block_factors, &descriptor_id, diagnostic) ||
-        !DSL_Tensor_Evolution_Add_Logical_Layout
+        !DSL_tensor_evolution_add_logical_layout
              (analysis->graph, tensor.semantic_root_id, descriptor_id,
               &result_node_id, &edge_id, diagnostic))
         return FALSE;
@@ -538,7 +538,7 @@ DSL_Logical_Layout_Add_Alternative
 }
 
 DSL_LOGICAL_LAYOUT_ANALYSIS *
-DSL_Logical_Layout_Create
+DSL_logical_layout_create
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
          const DSL_TENSOR_ANALYSIS *tensor_analysis,
          const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
@@ -546,11 +546,11 @@ DSL_Logical_Layout_Create
 {
     if (pu == NULL || graph == NULL || tensor_analysis == NULL ||
         locality == NULL || control == NULL || Current_PU_Info != pu ||
-        DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
+        DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Logical_Layout_Control_Valid(*control) ||
-        !DSL_Tensor_Evolution_Verify(graph, diagnostic) ||
-        !DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
-        !DSL_Tensor_Locality_Verify(locality, diagnostic)) {
+        !DSL_tensor_evolution_verify(graph, diagnostic) ||
+        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !DSL_tensor_locality_verify(locality, diagnostic)) {
         DSL_Logical_Layout_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -567,17 +567,17 @@ DSL_Logical_Layout_Create
 }
 
 void
-DSL_Logical_Layout_Destroy (DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
+DSL_logical_layout_destroy (DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
 {
     if (analysis == NULL)
         return;
     for (UINT32 i = 0; i < analysis->plans.size(); ++i)
-        DSL_Opt_Plan_Destroy(analysis->plans[i]);
+        DSL_opt_plan_destroy(analysis->plans[i]);
     delete analysis;
 }
 
 BOOL
-DSL_Logical_Layout_Build
+DSL_logical_layout_build
         (DSL_LOGICAL_LAYOUT_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Logical_Layout_Active(analysis) || analysis->built)
@@ -588,10 +588,10 @@ DSL_Logical_Layout_Build
         return TRUE;
     }
     for (DSL_TENSOR_FACT_ID id = 1;
-         id <= DSL_Tensor_Analysis_Fact_Count(analysis->tensor_analysis);
+         id <= DSL_tensor_analysis_fact_count(analysis->tensor_analysis);
          ++id) {
         DSL_TENSOR_FACT_RECORD tensor;
-        if (!DSL_Tensor_Analysis_Get_Fact
+        if (!DSL_tensor_analysis_get_fact
                  (analysis->tensor_analysis, id, &tensor))
             return DSL_Logical_Layout_Report
                        (diagnostic, "missing tensor fact", id);
@@ -666,7 +666,7 @@ DSL_Logical_Layout_Build
         analysis->sites.push_back(site);
     }
     analysis->built = TRUE;
-    return DSL_Logical_Layout_Verify(analysis, diagnostic);
+    return DSL_logical_layout_verify(analysis, diagnostic);
 }
 
 static BOOL
@@ -763,15 +763,15 @@ DSL_Logical_Layout_Descriptors_Equal
 }
 
 BOOL
-DSL_Logical_Layout_Verify
+DSL_logical_layout_verify
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Logical_Layout_Active(analysis) || !analysis->built ||
         !DSL_Logical_Layout_Control_Valid(analysis->control) ||
-        !DSL_Tensor_Evolution_Verify(analysis->graph, diagnostic) ||
-        !DSL_Tensor_Analysis_Verify
+        !DSL_tensor_evolution_verify(analysis->graph, diagnostic) ||
+        !DSL_tensor_analysis_verify
              (analysis->tensor_analysis, diagnostic) ||
-        !DSL_Tensor_Locality_Verify(analysis->locality, diagnostic) ||
+        !DSL_tensor_locality_verify(analysis->locality, diagnostic) ||
         analysis->sites.size() != analysis->plans.size() ||
         analysis->sites.size() > analysis->control.max_sites)
         return DSL_Logical_Layout_Report(diagnostic, "invalid analysis", 0);
@@ -812,7 +812,7 @@ DSL_Logical_Layout_Verify
             site.alternative_count >
                 analysis->control.max_alternatives_per_site ||
             site.baseline_candidate_id == 0 || site.baseline_plan_id == 0 ||
-            !DSL_Tensor_Analysis_Find_Fact
+            !DSL_tensor_analysis_find_fact
                  (analysis->tensor_analysis, site.semantic_value_id,
                   &tensor) ||
             tensor.semantic_root_id != site.semantic_root_id ||
@@ -820,7 +820,7 @@ DSL_Logical_Layout_Verify
              site.selected_plan_id != site.baseline_plan_id) ||
             (!analysis->control.select_plans &&
              site.selected_plan_id != 0) ||
-            !DSL_Opt_Plan_Verify(analysis->plans[i], diagnostic))
+            !DSL_opt_plan_verify(analysis->plans[i], diagnostic))
             return DSL_Logical_Layout_Report
                        (diagnostic, "invalid layout site", site.id);
         for (UINT32 j = 0; j < site.alternative_count; ++j) {
@@ -832,10 +832,10 @@ DSL_Logical_Layout_Verify
                 alternative.site_id != site.id ||
                 alternative.descriptor_id == 0 ||
                 alternative.descriptor_id > analysis->descriptors.size() ||
-                !DSL_Tensor_Evolution_Get_Node
+                !DSL_tensor_evolution_get_node
                      (analysis->graph,
                       alternative.result_evolution_node_id, &node) ||
-                !DSL_Tensor_Evolution_Get_Edge
+                !DSL_tensor_evolution_get_edge
                      (analysis->graph, alternative.evolution_edge_id,
                       &edge) ||
                 node.kind !=
@@ -901,7 +901,7 @@ DSL_Logical_Layout_Print_U64 (FILE *file, UINT64 value)
 }
 
 void
-DSL_Logical_Layout_Print
+DSL_logical_layout_print
         (FILE *file, const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
 {
     if (file == NULL || analysis == NULL)
@@ -923,7 +923,7 @@ DSL_Logical_Layout_Print
             analysis->descriptors[i];
         fprintf(file, "  descriptor %u kind=%s source_ty=%u rank=%u axes=[",
                 descriptor.id,
-                DSL_Logical_Layout_Kind_Name(descriptor.kind),
+                DSL_logical_layout_kind_name(descriptor.kind),
                 TY_IDX_index(descriptor.source_descriptor_ty),
                 descriptor.rank);
         for (UINT32 j = 0; j < descriptor.axis_count; ++j) {
@@ -958,59 +958,59 @@ DSL_Logical_Layout_Print
                     alternative.id, alternative.descriptor_id,
                     alternative.result_evolution_node_id,
                     alternative.evolution_edge_id,
-                    DSL_Layout_Compatibility_Name
+                    DSL_layout_compatibility_name
                         (alternative.compatibility_state),
-                    DSL_Layout_Conversion_Name
+                    DSL_layout_conversion_name
                         (alternative.conversion_state));
             DSL_Logical_Layout_Print_U64
                 (file, alternative.conversion_bytes);
             fprintf(file, " legality=%s reason=%s candidate=%u plan=%u\n",
-                    DSL_Opt_Legality_Name(alternative.legality),
-                    DSL_Opt_Rejection_Reason_Name
+                    DSL_opt_legality_name(alternative.legality),
+                    DSL_opt_rejection_reason_name
                         (alternative.rejection_reason),
                     alternative.candidate_id, alternative.plan_id);
         }
-        DSL_Opt_Plan_Print(file, analysis->plans[i]);
+        DSL_opt_plan_print(file, analysis->plans[i]);
     }
 }
 
 UINT32
-DSL_Logical_Layout_Descriptor_Count
+DSL_logical_layout_descriptor_count
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->descriptors.size();
 }
 
 UINT32
-DSL_Logical_Layout_Axis_Count
+DSL_logical_layout_axis_count
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->axes.size();
 }
 
 UINT32
-DSL_Logical_Layout_Block_Count
+DSL_logical_layout_block_count
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->blocks.size();
 }
 
 UINT32
-DSL_Logical_Layout_Site_Count
+DSL_logical_layout_site_count
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->sites.size();
 }
 
 UINT32
-DSL_Logical_Layout_Alternative_Count
+DSL_logical_layout_alternative_count
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->alternatives.size();
 }
 
 BOOL
-DSL_Logical_Layout_Get_Descriptor
+DSL_logical_layout_get_descriptor
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
          DSL_LOGICAL_LAYOUT_DESCRIPTOR_ID id,
          DSL_LOGICAL_LAYOUT_DESCRIPTOR_RECORD *record)
@@ -1023,7 +1023,7 @@ DSL_Logical_Layout_Get_Descriptor
 }
 
 BOOL
-DSL_Logical_Layout_Get_Axis
+DSL_logical_layout_get_axis
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
          DSL_LOGICAL_LAYOUT_AXIS_ID id,
          DSL_LOGICAL_LAYOUT_AXIS_RECORD *record)
@@ -1036,7 +1036,7 @@ DSL_Logical_Layout_Get_Axis
 }
 
 BOOL
-DSL_Logical_Layout_Get_Block
+DSL_logical_layout_get_block
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
          DSL_LOGICAL_LAYOUT_BLOCK_ID id,
          DSL_LOGICAL_LAYOUT_BLOCK_RECORD *record)
@@ -1049,7 +1049,7 @@ DSL_Logical_Layout_Get_Block
 }
 
 BOOL
-DSL_Logical_Layout_Get_Site
+DSL_logical_layout_get_site
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
          DSL_LOGICAL_LAYOUT_SITE_ID id,
          DSL_LOGICAL_LAYOUT_SITE_RECORD *record)
@@ -1062,7 +1062,7 @@ DSL_Logical_Layout_Get_Site
 }
 
 BOOL
-DSL_Logical_Layout_Find_Site
+DSL_logical_layout_find_site
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
          DSL_IR_VALUE_ID semantic_value_id,
          DSL_LOGICAL_LAYOUT_SITE_RECORD *record)
@@ -1079,7 +1079,7 @@ DSL_Logical_Layout_Find_Site
 }
 
 BOOL
-DSL_Logical_Layout_Get_Alternative
+DSL_logical_layout_get_alternative
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
          DSL_LOGICAL_LAYOUT_ALTERNATIVE_ID id,
          DSL_LOGICAL_LAYOUT_ALTERNATIVE_RECORD *record)
@@ -1092,7 +1092,7 @@ DSL_Logical_Layout_Get_Alternative
 }
 
 const DSL_OPT_PLAN_CONTEXT *
-DSL_Logical_Layout_Get_Plan_Context
+DSL_logical_layout_get_plan_context
         (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis,
          DSL_LOGICAL_LAYOUT_SITE_ID id)
 {

@@ -1175,7 +1175,7 @@ public:
                                         Dsl_semantic_info_id() != 0; }
   BOOL      Dsl_semantic_info(WOPT_DSL_SEMANTIC_INFO *info) const
                                       { return Is_dsl_op() &&
-                                        WOPT_DSL_Semantic_Info_Get
+                                        WOPT_DSL_semantic_info_get
                                             (Dsl_semantic_info_id(), info); }
   DSL_OPERATOR Dsl_operator(void) const
                                       { WOPT_DSL_SEMANTIC_INFO info;

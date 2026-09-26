@@ -124,42 +124,42 @@ typedef struct {
     UINT32 reserved;
 } DSL_TENSOR_USE_FACT_RECORD;
 
-extern DSL_TENSOR_ANALYSIS *DSL_Tensor_Analysis_Create
+extern DSL_TENSOR_ANALYSIS *DSL_tensor_analysis_create
                                 (struct pu_info *pu,
                                  const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  FILE *diagnostic);
-extern void DSL_Tensor_Analysis_Destroy (DSL_TENSOR_ANALYSIS *analysis);
-extern BOOL DSL_Tensor_Analysis_Build
+extern void DSL_tensor_analysis_destroy (DSL_TENSOR_ANALYSIS *analysis);
+extern BOOL DSL_tensor_analysis_build
                                 (DSL_TENSOR_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Analysis_Verify
+extern BOOL DSL_tensor_analysis_verify
                                 (const DSL_TENSOR_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Tensor_Analysis_Is_Complete
+extern BOOL DSL_tensor_analysis_is_complete
                                 (const DSL_TENSOR_ANALYSIS *analysis);
-extern void DSL_Tensor_Analysis_Print
+extern void DSL_tensor_analysis_print
                                 (FILE *file,
                                  const DSL_TENSOR_ANALYSIS *analysis);
-extern UINT32 DSL_Tensor_Analysis_Fact_Count
+extern UINT32 DSL_tensor_analysis_fact_count
                                 (const DSL_TENSOR_ANALYSIS *analysis);
-extern UINT32 DSL_Tensor_Analysis_Use_Count
+extern UINT32 DSL_tensor_analysis_use_count
                                 (const DSL_TENSOR_ANALYSIS *analysis);
-extern BOOL DSL_Tensor_Analysis_Get_Fact
+extern BOOL DSL_tensor_analysis_get_fact
                                 (const DSL_TENSOR_ANALYSIS *analysis,
                                  DSL_TENSOR_FACT_ID id,
                                  DSL_TENSOR_FACT_RECORD *record);
-extern BOOL DSL_Tensor_Analysis_Get_Use
+extern BOOL DSL_tensor_analysis_get_use
                                 (const DSL_TENSOR_ANALYSIS *analysis,
                                  DSL_TENSOR_USE_FACT_ID id,
                                  DSL_TENSOR_USE_FACT_RECORD *record);
-extern BOOL DSL_Tensor_Analysis_Find_Fact
+extern BOOL DSL_tensor_analysis_find_fact
                                 (const DSL_TENSOR_ANALYSIS *analysis,
                                  DSL_IR_VALUE_ID value_id,
                                  DSL_TENSOR_FACT_RECORD *record);
-extern const char *DSL_Tensor_Dimension_State_Name (UINT32 state);
-extern const char *DSL_Tensor_Ownership_Name (UINT32 ownership);
-extern const char *DSL_Tensor_Reuse_Role_Name (UINT32 role);
-extern const char *DSL_Tensor_Value_Role_Name (UINT32 role);
-extern const char *DSL_Tensor_Use_Role_Name (UINT32 role);
+extern const char *DSL_tensor_dimension_state_name (UINT32 state);
+extern const char *DSL_tensor_ownership_name (UINT32 ownership);
+extern const char *DSL_tensor_reuse_role_name (UINT32 role);
+extern const char *DSL_tensor_value_role_name (UINT32 role);
+extern const char *DSL_tensor_use_role_name (UINT32 role);
 
 #endif /* dsl_tensor_analysis_INCLUDED */

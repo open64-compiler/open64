@@ -128,48 +128,48 @@ typedef struct {
     UINT32 reserved;
 } DSL_RESIDENCY_ALTERNATIVE_RECORD;
 
-extern void DSL_Residency_Control_Init (DSL_RESIDENCY_CONTROL *control);
-extern DSL_RESIDENCY_ANALYSIS *DSL_Residency_Create
+extern void DSL_residency_control_init (DSL_RESIDENCY_CONTROL *control);
+extern DSL_RESIDENCY_ANALYSIS *DSL_residency_create
                                 (struct pu_info *pu,
                                  DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  const DSL_TENSOR_ANALYSIS *tensor_analysis,
                                  const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
                                  const DSL_RESIDENCY_CONTROL *control,
                                  FILE *diagnostic);
-extern void DSL_Residency_Destroy (DSL_RESIDENCY_ANALYSIS *analysis);
-extern BOOL DSL_Residency_Build
+extern void DSL_residency_destroy (DSL_RESIDENCY_ANALYSIS *analysis);
+extern BOOL DSL_residency_build
                                 (DSL_RESIDENCY_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern BOOL DSL_Residency_Verify
+extern BOOL DSL_residency_verify
                                 (const DSL_RESIDENCY_ANALYSIS *analysis,
                                  FILE *diagnostic);
-extern void DSL_Residency_Print
+extern void DSL_residency_print
                                 (FILE *file,
                                  const DSL_RESIDENCY_ANALYSIS *analysis);
-extern UINT32 DSL_Residency_Descriptor_Count
+extern UINT32 DSL_residency_descriptor_count
                                 (const DSL_RESIDENCY_ANALYSIS *analysis);
-extern UINT32 DSL_Residency_Site_Count
+extern UINT32 DSL_residency_site_count
                                 (const DSL_RESIDENCY_ANALYSIS *analysis);
-extern UINT32 DSL_Residency_Alternative_Count
+extern UINT32 DSL_residency_alternative_count
                                 (const DSL_RESIDENCY_ANALYSIS *analysis);
-extern BOOL DSL_Residency_Get_Descriptor
+extern BOOL DSL_residency_get_descriptor
                                 (const DSL_RESIDENCY_ANALYSIS *analysis,
                                  DSL_RESIDENCY_DESCRIPTOR_ID id,
                                  DSL_RESIDENCY_DESCRIPTOR_RECORD *record);
-extern BOOL DSL_Residency_Get_Site
+extern BOOL DSL_residency_get_site
                                 (const DSL_RESIDENCY_ANALYSIS *analysis,
                                  DSL_RESIDENCY_SITE_ID id,
                                  DSL_RESIDENCY_SITE_RECORD *record);
-extern BOOL DSL_Residency_Get_Alternative
+extern BOOL DSL_residency_get_alternative
                                 (const DSL_RESIDENCY_ANALYSIS *analysis,
                                  DSL_RESIDENCY_ALTERNATIVE_ID id,
                                  DSL_RESIDENCY_ALTERNATIVE_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_Residency_Get_Plan_Context
+extern const DSL_OPT_PLAN_CONTEXT *DSL_residency_get_plan_context
                                 (const DSL_RESIDENCY_ANALYSIS *analysis,
                                  DSL_RESIDENCY_SITE_ID id);
-extern const char *DSL_Residency_Promotion_Name (UINT32 policy);
-extern const char *DSL_Residency_Demotion_Name (UINT32 policy);
-extern const char *DSL_Residency_Spill_Name (UINT32 policy);
-extern const char *DSL_Residency_Eviction_Name (UINT32 policy);
+extern const char *DSL_residency_promotion_name (UINT32 policy);
+extern const char *DSL_residency_demotion_name (UINT32 policy);
+extern const char *DSL_residency_spill_name (UINT32 policy);
+extern const char *DSL_residency_eviction_name (UINT32 policy);
 
 #endif /* dsl_residency_candidate_INCLUDED */

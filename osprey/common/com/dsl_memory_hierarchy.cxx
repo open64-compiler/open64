@@ -13,20 +13,20 @@
 
 #include "dsl_memory_hierarchy.h"
 
-static const char *DSL_target_profile_name[] = {
+static const char *DSL_target_profile_name_table[] = {
     "unknown", "cpu_baseline", "nvidia_hopper", "nvidia_blackwell"
 };
 
-static const char *DSL_memory_tier_name[] = {
+static const char *DSL_memory_tier_name_table[] = {
     "unknown", "system", "pinned_host", "hbm", "l2", "shared",
     "register", "remote"
 };
 
-static const char *DSL_memory_scope_name[] = {
+static const char *DSL_memory_scope_name_table[] = {
     "unknown", "system", "device", "sm", "cta", "thread"
 };
 
-static const char *DSL_memory_movement_name[] = {
+static const char *DSL_memory_movement_name_table[] = {
     "unknown", "demand", "vector", "async_copy", "tma_like"
 };
 
@@ -214,39 +214,39 @@ DSL_Memory_Hierarchy_Movement_Rows
 }
 
 const char *
-DSL_Target_Profile_Name (UINT32 profile_id)
+DSL_target_profile_name (UINT32 profile_id)
 {
-    return profile_id < sizeof(DSL_target_profile_name) /
-                            sizeof(DSL_target_profile_name[0]) ?
-           DSL_target_profile_name[profile_id] : "unknown";
+    return profile_id < sizeof(DSL_target_profile_name_table) /
+                            sizeof(DSL_target_profile_name_table[0]) ?
+           DSL_target_profile_name_table[profile_id] : "unknown";
 }
 
 const char *
-DSL_Memory_Tier_Name (UINT32 kind)
+DSL_memory_tier_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_memory_tier_name) /
-                      sizeof(DSL_memory_tier_name[0]) ?
-           DSL_memory_tier_name[kind] : "unknown";
+    return kind < sizeof(DSL_memory_tier_name_table) /
+                      sizeof(DSL_memory_tier_name_table[0]) ?
+           DSL_memory_tier_name_table[kind] : "unknown";
 }
 
 const char *
-DSL_Memory_Scope_Name (UINT32 scope)
+DSL_memory_scope_name (UINT32 scope)
 {
-    return scope < sizeof(DSL_memory_scope_name) /
-                       sizeof(DSL_memory_scope_name[0]) ?
-           DSL_memory_scope_name[scope] : "unknown";
+    return scope < sizeof(DSL_memory_scope_name_table) /
+                       sizeof(DSL_memory_scope_name_table[0]) ?
+           DSL_memory_scope_name_table[scope] : "unknown";
 }
 
 const char *
-DSL_Memory_Movement_Name (UINT32 engine)
+DSL_memory_movement_name (UINT32 engine)
 {
-    return engine < sizeof(DSL_memory_movement_name) /
-                        sizeof(DSL_memory_movement_name[0]) ?
-           DSL_memory_movement_name[engine] : "unknown";
+    return engine < sizeof(DSL_memory_movement_name_table) /
+                        sizeof(DSL_memory_movement_name_table[0]) ?
+           DSL_memory_movement_name_table[engine] : "unknown";
 }
 
 BOOL
-DSL_Memory_Hierarchy_Get_Profile
+DSL_memory_hierarchy_get_profile
         (UINT32 profile_id, DSL_MEMORY_HIERARCHY_PROFILE *profile)
 {
     const DSL_MEMORY_TIER_RECORD *rows;
@@ -256,13 +256,13 @@ DSL_Memory_Hierarchy_Get_Profile
         return FALSE;
     memset(profile, 0, sizeof(*profile));
     profile->id = profile_id;
-    profile->name = DSL_Target_Profile_Name(profile_id);
+    profile->name = DSL_target_profile_name(profile_id);
     profile->tier_count = count;
     return TRUE;
 }
 
 BOOL
-DSL_Memory_Hierarchy_Get_Tier
+DSL_memory_hierarchy_get_tier
         (UINT32 profile_id, DSL_MEMORY_TIER_ID tier_id,
          DSL_MEMORY_TIER_RECORD *tier)
 {
@@ -277,7 +277,7 @@ DSL_Memory_Hierarchy_Get_Tier
 }
 
 BOOL
-DSL_Memory_Hierarchy_Find_Tier
+DSL_memory_hierarchy_find_tier
         (UINT32 profile_id, UINT32 kind, DSL_MEMORY_TIER_RECORD *tier)
 {
     const DSL_MEMORY_TIER_RECORD *rows;
@@ -295,7 +295,7 @@ DSL_Memory_Hierarchy_Find_Tier
 }
 
 UINT32
-DSL_Memory_Hierarchy_Movement_Count (UINT32 profile_id)
+DSL_memory_hierarchy_movement_count (UINT32 profile_id)
 {
     const DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD *rows;
     UINT32 count;
@@ -304,7 +304,7 @@ DSL_Memory_Hierarchy_Movement_Count (UINT32 profile_id)
 }
 
 BOOL
-DSL_Memory_Hierarchy_Get_Movement
+DSL_memory_hierarchy_get_movement
         (UINT32 profile_id, DSL_MEMORY_MOVEMENT_CAPABILITY_ID id,
          DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD *record)
 {
@@ -319,7 +319,7 @@ DSL_Memory_Hierarchy_Get_Movement
 }
 
 BOOL
-DSL_Memory_Hierarchy_Find_Movement
+DSL_memory_hierarchy_find_movement
         (UINT32 profile_id, UINT32 engine,
          DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD *record)
 {
@@ -338,7 +338,7 @@ DSL_Memory_Hierarchy_Find_Movement
 }
 
 BOOL
-DSL_Memory_Hierarchy_Validate (UINT32 profile_id, FILE *diagnostic)
+DSL_memory_hierarchy_validate (UINT32 profile_id, FILE *diagnostic)
 {
     const DSL_MEMORY_TIER_RECORD *rows;
     UINT32 count;
@@ -400,9 +400,9 @@ DSL_Memory_Hierarchy_Validate (UINT32 profile_id, FILE *diagnostic)
                DSL_MEMORY_MOVEMENT_FLAG_MULTIDIMENSIONAL |
                DSL_MEMORY_MOVEMENT_FLAG_PROFILE_ASSUMPTION)) != 0 ||
             movement.reserved != 0 ||
-            !DSL_Memory_Hierarchy_Find_Tier
+            !DSL_memory_hierarchy_find_tier
                  (profile_id, movement.source_tier_kind, &source_tier) ||
-            !DSL_Memory_Hierarchy_Find_Tier
+            !DSL_memory_hierarchy_find_tier
                  (profile_id, movement.destination_tier_kind,
                   &destination_tier))
             return FALSE;
@@ -415,22 +415,22 @@ DSL_Memory_Hierarchy_Validate (UINT32 profile_id, FILE *diagnostic)
 }
 
 void
-DSL_Memory_Hierarchy_Print (FILE *file, UINT32 profile_id)
+DSL_memory_hierarchy_print (FILE *file, UINT32 profile_id)
 {
     DSL_MEMORY_HIERARCHY_PROFILE profile;
     if (file == NULL ||
-        !DSL_Memory_Hierarchy_Get_Profile(profile_id, &profile))
+        !DSL_memory_hierarchy_get_profile(profile_id, &profile))
         return;
     fprintf(file, "MemoryHierarchyDescriptorIR: profile=%u name=%s "
                   "tiers=%u\n", profile.id, profile.name,
             profile.tier_count);
     for (UINT32 i = 1; i <= profile.tier_count; ++i) {
         DSL_MEMORY_TIER_RECORD tier;
-        if (!DSL_Memory_Hierarchy_Get_Tier(profile_id, i, &tier))
+        if (!DSL_memory_hierarchy_get_tier(profile_id, i, &tier))
             return;
         fprintf(file, "  tier[%u] kind=%s scope=%s capacity=", tier.id,
-                DSL_Memory_Tier_Name(tier.kind),
-                DSL_Memory_Scope_Name(tier.scope));
+                DSL_memory_tier_name(tier.kind),
+                DSL_memory_scope_name(tier.scope));
         if (tier.capacity_bytes == DSL_MEMORY_CAPACITY_UNKNOWN)
             fprintf(file, "<unknown>");
         else
@@ -441,19 +441,19 @@ DSL_Memory_Hierarchy_Print (FILE *file, UINT32 profile_id)
                 tier.minimum_alignment, tier.latency_class, tier.flags);
     }
     UINT32 movement_count =
-        DSL_Memory_Hierarchy_Movement_Count(profile_id);
+        DSL_memory_hierarchy_movement_count(profile_id);
     for (UINT32 i = 1; i <= movement_count; ++i) {
         DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD movement;
-        if (!DSL_Memory_Hierarchy_Get_Movement
+        if (!DSL_memory_hierarchy_get_movement
                  (profile_id, i, &movement))
             return;
         fprintf(file,
                 "  movement[%u] engine=%s source=%s destination=%s "
                 "transaction=%u alignment=%u stages=%u latency_class=%u "
                 "flags=0x%x\n",
-                movement.id, DSL_Memory_Movement_Name(movement.engine),
-                DSL_Memory_Tier_Name(movement.source_tier_kind),
-                DSL_Memory_Tier_Name(movement.destination_tier_kind),
+                movement.id, DSL_memory_movement_name(movement.engine),
+                DSL_memory_tier_name(movement.source_tier_kind),
+                DSL_memory_tier_name(movement.destination_tier_kind),
                 movement.transaction_bytes, movement.minimum_alignment,
                 movement.maximum_stages, movement.latency_class,
                 movement.flags);

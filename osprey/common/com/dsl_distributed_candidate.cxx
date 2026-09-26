@@ -35,27 +35,27 @@ struct DSL_DISTRIBUTED_ANALYSIS {
     BOOL built;
 };
 
-static const char *DSL_placement_kind_name[] = {
+static const char *DSL_placement_kind_name_table[] = {
     "unknown", "replicated", "partitioned", "remote_single"
 };
 
-static const char *DSL_sharding_kind_name[] = {
+static const char *DSL_sharding_kind_name_table[] = {
     "unknown", "replicated", "axis", "partial_reduction", "migrated"
 };
 
-static const char *DSL_distributed_ownership_name[] = {
+static const char *DSL_distributed_ownership_name_table[] = {
     "unknown", "disjoint", "replicated", "reduced", "migrated"
 };
 
-static const char *DSL_distributed_range_state_name[] = {
+static const char *DSL_distributed_range_state_name_table[] = {
     "unknown", "exact"
 };
 
-static const char *DSL_distributed_disjoint_state_name[] = {
+static const char *DSL_distributed_disjoint_state_name_table[] = {
     "unknown", "proven", "overlap"
 };
 
-static const char *DSL_communication_kind_name[] = {
+static const char *DSL_communication_kind_name_table[] = {
     "unknown", "all_gather", "scatter", "all_reduce", "reduce_scatter",
     "all_to_all", "peer_copy"
 };
@@ -92,55 +92,55 @@ DSL_Distributed_Active (const DSL_DISTRIBUTED_ANALYSIS *analysis)
 }
 
 const char *
-DSL_Placement_Kind_Name (UINT32 kind)
+DSL_placement_kind_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_placement_kind_name) /
-                      sizeof(DSL_placement_kind_name[0]) ?
-           DSL_placement_kind_name[kind] : "unknown";
+    return kind < sizeof(DSL_placement_kind_name_table) /
+                      sizeof(DSL_placement_kind_name_table[0]) ?
+           DSL_placement_kind_name_table[kind] : "unknown";
 }
 
 const char *
-DSL_Sharding_Kind_Name (UINT32 kind)
+DSL_sharding_kind_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_sharding_kind_name) /
-                      sizeof(DSL_sharding_kind_name[0]) ?
-           DSL_sharding_kind_name[kind] : "unknown";
+    return kind < sizeof(DSL_sharding_kind_name_table) /
+                      sizeof(DSL_sharding_kind_name_table[0]) ?
+           DSL_sharding_kind_name_table[kind] : "unknown";
 }
 
 const char *
-DSL_Distributed_Ownership_Name (UINT32 kind)
+DSL_distributed_ownership_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_distributed_ownership_name) /
-                      sizeof(DSL_distributed_ownership_name[0]) ?
-           DSL_distributed_ownership_name[kind] : "unknown";
+    return kind < sizeof(DSL_distributed_ownership_name_table) /
+                      sizeof(DSL_distributed_ownership_name_table[0]) ?
+           DSL_distributed_ownership_name_table[kind] : "unknown";
 }
 
 const char *
-DSL_Distributed_Range_State_Name (UINT32 state)
+DSL_distributed_range_state_name (UINT32 state)
 {
-    return state < sizeof(DSL_distributed_range_state_name) /
-                       sizeof(DSL_distributed_range_state_name[0]) ?
-           DSL_distributed_range_state_name[state] : "unknown";
+    return state < sizeof(DSL_distributed_range_state_name_table) /
+                       sizeof(DSL_distributed_range_state_name_table[0]) ?
+           DSL_distributed_range_state_name_table[state] : "unknown";
 }
 
 const char *
-DSL_Distributed_Disjoint_State_Name (UINT32 state)
+DSL_distributed_disjoint_state_name (UINT32 state)
 {
-    return state < sizeof(DSL_distributed_disjoint_state_name) /
-                       sizeof(DSL_distributed_disjoint_state_name[0]) ?
-           DSL_distributed_disjoint_state_name[state] : "unknown";
+    return state < sizeof(DSL_distributed_disjoint_state_name_table) /
+                       sizeof(DSL_distributed_disjoint_state_name_table[0]) ?
+           DSL_distributed_disjoint_state_name_table[state] : "unknown";
 }
 
 const char *
-DSL_Communication_Kind_Name (UINT32 kind)
+DSL_communication_kind_name (UINT32 kind)
 {
-    return kind < sizeof(DSL_communication_kind_name) /
-                      sizeof(DSL_communication_kind_name[0]) ?
-           DSL_communication_kind_name[kind] : "unknown";
+    return kind < sizeof(DSL_communication_kind_name_table) /
+                      sizeof(DSL_communication_kind_name_table[0]) ?
+           DSL_communication_kind_name_table[kind] : "unknown";
 }
 
 void
-DSL_Distributed_Control_Init (DSL_DISTRIBUTED_CONTROL *control)
+DSL_distributed_control_init (DSL_DISTRIBUTED_CONTROL *control)
 {
     if (control == NULL)
         return;
@@ -507,13 +507,13 @@ DSL_Distributed_Build_Baseline_Plan
     DSL_OPT_PLAN_INPUT plan;
     DSL_OPT_COST_ID cost_id;
     DSL_OPT_CANDIDATE_ID member;
-    if (!DSL_Tensor_Evolution_Find_Semantic_Root
+    if (!DSL_tensor_evolution_find_semantic_root
              (analysis->graph, tensor.value_id, &root))
         return DSL_Distributed_Report
                    (diagnostic, "missing semantic root", tensor.value_id);
     budget.max_candidates = analysis->control.max_alternatives_per_site + 1;
     budget.max_plans = analysis->control.max_alternatives_per_site + 1;
-    DSL_OPT_PLAN_CONTEXT *context = DSL_Opt_Plan_Create
+    DSL_OPT_PLAN_CONTEXT *context = DSL_opt_plan_create
                                         (analysis->pu, analysis->graph,
                                          &budget, diagnostic);
     if (context == NULL)
@@ -527,10 +527,10 @@ DSL_Distributed_Build_Baseline_Plan
     candidate.rejection_reason = DSL_OPT_REJECT_NONE;
     candidate.ordering_key = 1;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_BASELINE;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &site->baseline_candidate_id,
               diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     memset(&cost, 0, sizeof(cost));
@@ -545,8 +545,8 @@ DSL_Distributed_Build_Baseline_Plan
         DSL_Distributed_Cost_Term
             (&cost.terms[i], 0, DSL_OPT_COST_CONFIDENCE_MEDIUM,
              DSL_OPT_COST_EVIDENCE_BASELINE_POLICY);
-    if (!DSL_Opt_Plan_Add_Cost(context, &cost, &cost_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+    if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic)) {
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     member = site->baseline_candidate_id;
@@ -559,9 +559,9 @@ DSL_Distributed_Build_Baseline_Plan
     plan.ordering_key = 1;
     plan.flags = DSL_OPT_PLAN_FLAG_BASELINE |
                  DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    if (!DSL_Opt_Plan_Add_Plan
+    if (!DSL_opt_plan_add_plan
              (context, &plan, &site->baseline_plan_id, diagnostic)) {
-        DSL_Opt_Plan_Destroy(context);
+        DSL_opt_plan_destroy(context);
         return FALSE;
     }
     *context_out = context;
@@ -583,7 +583,7 @@ DSL_Distributed_Add_Alternative_Plan
     DSL_OPT_PLAN_INPUT plan;
     DSL_OPT_COST_ID cost_id;
     DSL_OPT_CANDIDATE_ID member;
-    if (!DSL_Tensor_Evolution_Find_Semantic_Root
+    if (!DSL_tensor_evolution_find_semantic_root
              (analysis->graph, site.semantic_value_id, &root))
         return FALSE;
     memset(&candidate, 0, sizeof(candidate));
@@ -604,7 +604,7 @@ DSL_Distributed_Add_Alternative_Plan
     candidate.rejection_reason = alternative->rejection_reason;
     candidate.ordering_key = ordinal + 1;
     candidate.flags = DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
-    if (!DSL_Opt_Plan_Add_Candidate
+    if (!DSL_opt_plan_add_candidate
              (context, &candidate, &alternative->candidate_id,
               diagnostic))
         return FALSE;
@@ -646,7 +646,7 @@ DSL_Distributed_Add_Alternative_Plan
         (&cost.terms[DSL_OPT_COST_RUNTIME_SELECTION], 0,
          DSL_OPT_COST_CONFIDENCE_LOW,
          DSL_OPT_COST_EVIDENCE_STATIC_ANALYSIS);
-    if (!DSL_Opt_Plan_Add_Cost(context, &cost, &cost_id, diagnostic))
+    if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic))
         return FALSE;
 
     member = alternative->candidate_id;
@@ -659,7 +659,7 @@ DSL_Distributed_Add_Alternative_Plan
     plan.rejection_reason = alternative->rejection_reason;
     plan.ordering_key = ordinal + 1;
     plan.flags = DSL_OPT_PLAN_FLAG_ANALYSIS_ONLY;
-    return DSL_Opt_Plan_Add_Plan
+    return DSL_opt_plan_add_plan
                (context, &plan, &alternative->plan_id, diagnostic);
 }
 
@@ -691,7 +691,7 @@ DSL_Distributed_Add_Alternative
                        sharding_kind == DSL_SHARDING_MIGRATED ?
                        DSL_TENSOR_EVOLUTION_TRANSFORM_PLACE :
                        DSL_TENSOR_EVOLUTION_TRANSFORM_SHARD;
-    if (!DSL_Tensor_Evolution_Add_Distributed
+    if (!DSL_tensor_evolution_add_distributed
              (analysis->graph, site->semantic_root_id, descriptor_id,
               transform, &alternative.result_evolution_node_id,
               &alternative.evolution_edge_id, diagnostic))
@@ -724,7 +724,7 @@ DSL_Distributed_Add_Alternative
 }
 
 DSL_DISTRIBUTED_ANALYSIS *
-DSL_Distributed_Create
+DSL_distributed_create
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
          const DSL_TENSOR_ANALYSIS *tensor_analysis,
          const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
@@ -732,11 +732,11 @@ DSL_Distributed_Create
 {
     if (pu == NULL || graph == NULL || tensor_analysis == NULL ||
         locality == NULL || control == NULL || Current_PU_Info != pu ||
-        DSL_Tensor_Evolution_Owner(graph) != PU_Info_proc_sym(pu) ||
+        DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Distributed_Control_Valid(*control) ||
-        !DSL_Tensor_Evolution_Verify(graph, diagnostic) ||
-        !DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
-        !DSL_Tensor_Locality_Verify(locality, diagnostic)) {
+        !DSL_tensor_evolution_verify(graph, diagnostic) ||
+        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !DSL_tensor_locality_verify(locality, diagnostic)) {
         DSL_Distributed_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -752,12 +752,12 @@ DSL_Distributed_Create
 }
 
 void
-DSL_Distributed_Destroy (DSL_DISTRIBUTED_ANALYSIS *analysis)
+DSL_distributed_destroy (DSL_DISTRIBUTED_ANALYSIS *analysis)
 {
     if (analysis == NULL)
         return;
     for (UINT32 i = 0; i < analysis->plans.size(); ++i)
-        DSL_Opt_Plan_Destroy(analysis->plans[i]);
+        DSL_opt_plan_destroy(analysis->plans[i]);
     delete analysis;
 }
 
@@ -778,7 +778,7 @@ DSL_Distributed_Add_Epoch
     epoch.consumer_count = tensor.use_count;
     if (tensor.use_count != 0) {
         DSL_TENSOR_USE_FACT_RECORD use;
-        if (!DSL_Tensor_Analysis_Get_Use
+        if (!DSL_tensor_analysis_get_use
                  (analysis->tensor_analysis, tensor.first_use_id, &use))
             return DSL_Distributed_Report
                        (diagnostic, "missing first communication use",
@@ -791,7 +791,7 @@ DSL_Distributed_Add_Epoch
 }
 
 BOOL
-DSL_Distributed_Build
+DSL_distributed_build
         (DSL_DISTRIBUTED_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Distributed_Active(analysis) || analysis->built)
@@ -802,13 +802,13 @@ DSL_Distributed_Build
         return TRUE;
     }
     for (DSL_TENSOR_FACT_ID id = 1;
-         id <= DSL_Tensor_Analysis_Fact_Count(analysis->tensor_analysis);
+         id <= DSL_tensor_analysis_fact_count(analysis->tensor_analysis);
          ++id) {
         DSL_TENSOR_FACT_RECORD tensor;
         DSL_TENSOR_LOCALITY_FACT_RECORD locality;
         DSL_IR_NODE_RECORD producer_node;
         DSL_IR_OPCODE_DESCRIPTOR_RECORD producer;
-        if (!DSL_Tensor_Analysis_Get_Fact
+        if (!DSL_tensor_analysis_get_fact
                  (analysis->tensor_analysis, id, &tensor) ||
             tensor.value_role != DSL_TENSOR_VALUE_ROLE_INTERMEDIATE ||
             tensor.rank < 1 || tensor.producer_node_id == 0 ||
@@ -818,7 +818,7 @@ DSL_Distributed_Build
         if (analysis->sites.size() >= analysis->control.max_sites)
             return DSL_Distributed_Report
                        (diagnostic, "distributed site budget exhausted", id);
-        if (!DSL_Tensor_Locality_Find_Fact
+        if (!DSL_tensor_locality_find_fact
                  (analysis->locality, tensor.value_id, &locality) ||
             !DSL_Distributed_Node_Info
                  (tensor.producer_node_id, &producer_node, &producer))
@@ -826,7 +826,7 @@ DSL_Distributed_Build
                        (diagnostic, "missing distributed site evidence", id);
 
         DSL_TENSOR_EVOLUTION_NODE_RECORD root;
-        if (!DSL_Tensor_Evolution_Find_Semantic_Root
+        if (!DSL_tensor_evolution_find_semantic_root
                  (analysis->graph, tensor.value_id, &root))
             return DSL_Distributed_Report
                        (diagnostic, "missing distributed root", id);
@@ -880,7 +880,7 @@ DSL_Distributed_Build
 
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;
-            if (!DSL_Opt_Plan_Select
+            if (!DSL_opt_plan_select
                      (context, analysis->control.target_profile_id,
                       &selection, diagnostic))
                 return FALSE;
@@ -890,11 +890,11 @@ DSL_Distributed_Build
         analysis->sites.push_back(site);
     }
     analysis->built = TRUE;
-    return DSL_Distributed_Verify(analysis, diagnostic);
+    return DSL_distributed_verify(analysis, diagnostic);
 }
 
 BOOL
-DSL_Distributed_Verify
+DSL_distributed_verify
         (const DSL_DISTRIBUTED_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Distributed_Active(analysis) || !analysis->built ||
@@ -987,7 +987,7 @@ DSL_Distributed_Verify
             !DSL_IR_Image_Get_Value
                  (site.semantic_value_id, &semantic_value) ||
             semantic_value.producer_node_id != epoch.producer_node_id ||
-            !DSL_Tensor_Evolution_Get_Node
+            !DSL_tensor_evolution_get_node
                  (analysis->graph, site.semantic_root_id, &semantic_root) ||
             semantic_root.kind != DSL_TENSOR_EVOLUTION_NODE_SEMANTIC ||
             semantic_root.semantic_value_id != site.semantic_value_id ||
@@ -995,7 +995,7 @@ DSL_Distributed_Verify
             (analysis->control.select_plans && site.selected_plan_id == 0) ||
             (!analysis->control.select_plans && site.selected_plan_id != 0) ||
             site.reserved != 0 || epoch.reserved != 0 ||
-            !DSL_Opt_Plan_Verify(analysis->plans[i], diagnostic))
+            !DSL_opt_plan_verify(analysis->plans[i], diagnostic))
             return DSL_Distributed_Report
                        (diagnostic, "invalid distributed site", site.id);
         for (UINT32 j = 0; j < site.alternative_count; ++j) {
@@ -1019,7 +1019,7 @@ DSL_Distributed_Verify
                 alternative.legality > DSL_OPT_LEGALITY_REJECTED ||
                 alternative.candidate_id == 0 || alternative.plan_id == 0 ||
                 alternative.reserved != 0 ||
-                !DSL_Tensor_Evolution_Get_Node
+                !DSL_tensor_evolution_get_node
                      (analysis->graph,
                       alternative.result_evolution_node_id, &result) ||
                 result.kind != DSL_TENSOR_EVOLUTION_NODE_DISTRIBUTED ||
@@ -1068,7 +1068,7 @@ DSL_Distributed_Verify
     if (expected_alternative != analysis->alternatives.size() + 1)
         return DSL_Distributed_Report
                    (diagnostic, "orphan distributed alternative", 0);
-    return DSL_Tensor_Evolution_Verify(analysis->graph, diagnostic);
+    return DSL_tensor_evolution_verify(analysis->graph, diagnostic);
 }
 
 static void
@@ -1081,7 +1081,7 @@ DSL_Distributed_Print_U64 (FILE *file, UINT64 value)
 }
 
 void
-DSL_Distributed_Print
+DSL_distributed_print
         (FILE *file, const DSL_DISTRIBUTED_ANALYSIS *analysis)
 {
     if (file == NULL || analysis == NULL)
@@ -1130,18 +1130,18 @@ DSL_Distributed_Print
                     "    alternative %u placement=%s sharding=%s "
                     "ownership=%s axis=",
                     alternative.id,
-                    DSL_Placement_Kind_Name(descriptor.placement_kind),
-                    DSL_Sharding_Kind_Name(descriptor.sharding_kind),
-                    DSL_Distributed_Ownership_Name(descriptor.ownership));
+                    DSL_placement_kind_name(descriptor.placement_kind),
+                    DSL_sharding_kind_name(descriptor.sharding_kind),
+                    DSL_distributed_ownership_name(descriptor.ownership));
             if (descriptor.shard_axis == DSL_DISTRIBUTED_NO_AXIS)
                 fprintf(file, "<none>");
             else
                 fprintf(file, "%u", descriptor.shard_axis);
             fprintf(file,
                     " disjoint=%s legality=%s reason=%s communication_bytes=",
-                    DSL_Distributed_Disjoint_State_Name(alias.disjoint_state),
-                    DSL_Opt_Legality_Name(alternative.legality),
-                    DSL_Opt_Rejection_Reason_Name
+                    DSL_distributed_disjoint_state_name(alias.disjoint_state),
+                    DSL_opt_legality_name(alternative.legality),
+                    DSL_opt_rejection_reason_name
                         (alternative.rejection_reason));
             DSL_Distributed_Print_U64
                 (file, alternative.communication_bytes);
@@ -1155,7 +1155,7 @@ DSL_Distributed_Print
                 fprintf(file,
                         "      range %u device=%u axis=%u state=%s [",
                         record.id, record.device_ordinal, record.axis,
-                        DSL_Distributed_Range_State_Name(record.state));
+                        DSL_distributed_range_state_name(record.state));
                 DSL_Distributed_Print_U64(file, record.lower);
                 fprintf(file, ",");
                 DSL_Distributed_Print_U64(file, record.upper);
@@ -1168,47 +1168,47 @@ DSL_Distributed_Print
                 fprintf(file,
                         "      communication %u kind=%s epoch=%u sources=%u "
                         "destinations=%u bytes=",
-                        intent.id, DSL_Communication_Kind_Name(intent.kind),
+                        intent.id, DSL_communication_kind_name(intent.kind),
                         intent.epoch_id, intent.source_count,
                         intent.destination_count);
                 DSL_Distributed_Print_U64(file, intent.bytes);
                 fprintf(file, " legality=%s reason=%s\n",
-                        DSL_Opt_Legality_Name(intent.legality),
-                        DSL_Opt_Rejection_Reason_Name
+                        DSL_opt_legality_name(intent.legality),
+                        DSL_opt_rejection_reason_name
                             (intent.rejection_reason));
             }
         }
-        DSL_Opt_Plan_Print(file, analysis->plans[i]);
+        DSL_opt_plan_print(file, analysis->plans[i]);
     }
 }
 
 #define DSL_DISTRIBUTED_COUNT_GETTERS(kind, field)                         \
-UINT32 DSL_Distributed_##kind##_Count                                     \
+UINT32 DSL_distributed_##kind##_count                                     \
         (const DSL_DISTRIBUTED_ANALYSIS *analysis)                        \
 {                                                                         \
     return analysis == NULL ? 0 : analysis->field.size();                 \
 }
 
-DSL_DISTRIBUTED_COUNT_GETTERS(Descriptor, descriptors)
-DSL_DISTRIBUTED_COUNT_GETTERS(Alias, aliases)
-DSL_DISTRIBUTED_COUNT_GETTERS(Range, ranges)
-DSL_DISTRIBUTED_COUNT_GETTERS(Site, sites)
-DSL_DISTRIBUTED_COUNT_GETTERS(Alternative, alternatives)
+DSL_DISTRIBUTED_COUNT_GETTERS(descriptor, descriptors)
+DSL_DISTRIBUTED_COUNT_GETTERS(alias, aliases)
+DSL_DISTRIBUTED_COUNT_GETTERS(range, ranges)
+DSL_DISTRIBUTED_COUNT_GETTERS(site, sites)
+DSL_DISTRIBUTED_COUNT_GETTERS(alternative, alternatives)
 
 UINT32
-DSL_Communication_Epoch_Count (const DSL_DISTRIBUTED_ANALYSIS *analysis)
+DSL_communication_epoch_count (const DSL_DISTRIBUTED_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->epochs.size();
 }
 
 UINT32
-DSL_Communication_Intent_Count (const DSL_DISTRIBUTED_ANALYSIS *analysis)
+DSL_communication_intent_count (const DSL_DISTRIBUTED_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->intents.size();
 }
 
 #define DSL_DISTRIBUTED_GETTER(name, id_type, record_type, field)          \
-BOOL DSL_Distributed_Get_##name                                           \
+BOOL DSL_distributed_get_##name                                           \
         (const DSL_DISTRIBUTED_ANALYSIS *analysis, id_type id,            \
          record_type *record)                                             \
 {                                                                         \
@@ -1219,19 +1219,19 @@ BOOL DSL_Distributed_Get_##name                                           \
     return TRUE;                                                          \
 }
 
-DSL_DISTRIBUTED_GETTER(Descriptor, DSL_DISTRIBUTED_DESCRIPTOR_ID,
+DSL_DISTRIBUTED_GETTER(descriptor, DSL_DISTRIBUTED_DESCRIPTOR_ID,
                        DSL_DISTRIBUTED_DESCRIPTOR_RECORD, descriptors)
-DSL_DISTRIBUTED_GETTER(Alias, DSL_DISTRIBUTED_ALIAS_ID,
+DSL_DISTRIBUTED_GETTER(alias, DSL_DISTRIBUTED_ALIAS_ID,
                        DSL_DISTRIBUTED_ALIAS_RECORD, aliases)
-DSL_DISTRIBUTED_GETTER(Range, DSL_DISTRIBUTED_RANGE_ID,
+DSL_DISTRIBUTED_GETTER(range, DSL_DISTRIBUTED_RANGE_ID,
                        DSL_DISTRIBUTED_RANGE_RECORD, ranges)
-DSL_DISTRIBUTED_GETTER(Site, DSL_DISTRIBUTED_SITE_ID,
+DSL_DISTRIBUTED_GETTER(site, DSL_DISTRIBUTED_SITE_ID,
                        DSL_DISTRIBUTED_SITE_RECORD, sites)
-DSL_DISTRIBUTED_GETTER(Alternative, DSL_DISTRIBUTED_ALTERNATIVE_ID,
+DSL_DISTRIBUTED_GETTER(alternative, DSL_DISTRIBUTED_ALTERNATIVE_ID,
                        DSL_DISTRIBUTED_ALTERNATIVE_RECORD, alternatives)
 
 BOOL
-DSL_Communication_Get_Epoch
+DSL_communication_get_epoch
         (const DSL_DISTRIBUTED_ANALYSIS *analysis,
          DSL_COMMUNICATION_EPOCH_ID id,
          DSL_COMMUNICATION_EPOCH_RECORD *record)
@@ -1244,7 +1244,7 @@ DSL_Communication_Get_Epoch
 }
 
 BOOL
-DSL_Communication_Get_Intent
+DSL_communication_get_intent
         (const DSL_DISTRIBUTED_ANALYSIS *analysis,
          DSL_COMMUNICATION_INTENT_ID id,
          DSL_COMMUNICATION_INTENT_RECORD *record)
@@ -1257,7 +1257,7 @@ DSL_Communication_Get_Intent
 }
 
 const DSL_OPT_PLAN_CONTEXT *
-DSL_Distributed_Get_Plan_Context
+DSL_distributed_get_plan_context
         (const DSL_DISTRIBUTED_ANALYSIS *analysis,
          DSL_DISTRIBUTED_SITE_ID id)
 {

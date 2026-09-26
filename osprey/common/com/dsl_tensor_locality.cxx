@@ -36,33 +36,33 @@ struct DSL_TENSOR_LOCALITY_ANALYSIS {
     std::vector<DSL_TENSOR_LOCALITY_USE_RECORD> uses;
 };
 
-static const char *DSL_tensor_size_state_name[] = {
+static const char *DSL_tensor_size_state_name_table[] = {
     "unknown", "static", "symbolic", "overflow"
 };
 
-static const char *DSL_tensor_lifetime_state_name[] = {
+static const char *DSL_tensor_lifetime_state_name_table[] = {
     "unknown", "exact_block", "dominated", "branch", "loop",
     "region", "effect", "alias"
 };
 
-static const char *DSL_tensor_distance_state_name[] = {
+static const char *DSL_tensor_distance_state_name_table[] = {
     "unknown", "exact", "conservative"
 };
 
-static const char *DSL_tensor_access_pattern_name[] = {
+static const char *DSL_tensor_access_pattern_name_table[] = {
     "unknown", "elementwise", "contraction", "reduction", "view",
     "indexed", "mixed"
 };
 
-static const char *DSL_tensor_residency_benefit_name[] = {
+static const char *DSL_tensor_residency_benefit_name_table[] = {
     "unknown", "none", "low", "medium", "high"
 };
 
-static const char *DSL_tensor_critical_path_state_name[] = {
+static const char *DSL_tensor_critical_path_state_name_table[] = {
     "unknown", "off", "on"
 };
 
-static const char *DSL_tensor_alias_state_name[] = {
+static const char *DSL_tensor_alias_state_name_table[] = {
     "unknown", "conservative", "proven_unique"
 };
 
@@ -191,7 +191,7 @@ DSL_Tensor_Control_Position_Less
 }
 
 DSL_TENSOR_CONTROL_SNAPSHOT *
-DSL_Tensor_Control_Snapshot_Create (PU_Info *pu, FILE *diagnostic)
+DSL_tensor_control_snapshot_create (PU_Info *pu, FILE *diagnostic)
 {
     if (pu == NULL || Current_PU_Info != pu ||
         !DSL_Tensor_Locality_Owner_Valid(PU_Info_proc_sym(pu))) {
@@ -208,14 +208,14 @@ DSL_Tensor_Control_Snapshot_Create (PU_Info *pu, FILE *diagnostic)
 }
 
 void
-DSL_Tensor_Control_Snapshot_Destroy
+DSL_tensor_control_snapshot_destroy
         (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot)
 {
     delete snapshot;
 }
 
 BOOL
-DSL_Tensor_Control_Snapshot_Add_Block
+DSL_tensor_control_snapshot_add_block
         (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
          const DSL_TENSOR_CONTROL_BLOCK *block, FILE *diagnostic)
 {
@@ -237,7 +237,7 @@ DSL_Tensor_Control_Snapshot_Add_Block
 }
 
 BOOL
-DSL_Tensor_Control_Snapshot_Add_Position
+DSL_tensor_control_snapshot_add_position
         (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
          const DSL_TENSOR_CONTROL_POSITION *position, FILE *diagnostic)
 {
@@ -260,7 +260,7 @@ DSL_Tensor_Control_Snapshot_Add_Position
 }
 
 BOOL
-DSL_Tensor_Control_Snapshot_Verify
+DSL_tensor_control_snapshot_verify
         (const DSL_TENSOR_CONTROL_SNAPSHOT *snapshot, FILE *diagnostic)
 {
     if (!DSL_Tensor_Control_Active(snapshot))
@@ -311,7 +311,7 @@ DSL_Tensor_Control_Snapshot_Verify
 }
 
 BOOL
-DSL_Tensor_Control_Snapshot_Seal
+DSL_tensor_control_snapshot_seal
         (DSL_TENSOR_CONTROL_SNAPSHOT *snapshot, FILE *diagnostic)
 {
     if (!DSL_Tensor_Control_Active(snapshot))
@@ -324,11 +324,11 @@ DSL_Tensor_Control_Snapshot_Seal
                   DSL_Tensor_Control_Position_Less);
         snapshot->sealed = TRUE;
     }
-    return DSL_Tensor_Control_Snapshot_Verify(snapshot, diagnostic);
+    return DSL_tensor_control_snapshot_verify(snapshot, diagnostic);
 }
 
 void
-DSL_Tensor_Control_Snapshot_Print
+DSL_tensor_control_snapshot_print
         (FILE *file, const DSL_TENSOR_CONTROL_SNAPSHOT *snapshot)
 {
     if (file == NULL || snapshot == NULL)
@@ -490,14 +490,14 @@ DSL_Tensor_Locality_Dataflow_Depths
 }
 
 DSL_TENSOR_LOCALITY_ANALYSIS *
-DSL_Tensor_Locality_Create
+DSL_tensor_locality_create
         (PU_Info *pu, const DSL_TENSOR_ANALYSIS *tensor_analysis,
          const DSL_TENSOR_CONTROL_SNAPSHOT *snapshot, FILE *diagnostic)
 {
     if (pu == NULL || tensor_analysis == NULL || snapshot == NULL ||
         Current_PU_Info != pu || snapshot->pu != pu || !snapshot->sealed ||
-        !DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
-        !DSL_Tensor_Control_Snapshot_Verify(snapshot, diagnostic)) {
+        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !DSL_tensor_control_snapshot_verify(snapshot, diagnostic)) {
         DSL_Tensor_Locality_Report
             (diagnostic, "invalid per-PU analysis input", 0);
         return NULL;
@@ -512,7 +512,7 @@ DSL_Tensor_Locality_Create
 }
 
 void
-DSL_Tensor_Locality_Destroy (DSL_TENSOR_LOCALITY_ANALYSIS *analysis)
+DSL_tensor_locality_destroy (DSL_TENSOR_LOCALITY_ANALYSIS *analysis)
 {
     delete analysis;
 }
@@ -550,7 +550,7 @@ DSL_Tensor_Locality_Finalize_Fact
         const DSL_TENSOR_LOCALITY_USE_RECORD &local_use =
             analysis->uses[fact->first_use_id - 1 + i];
         DSL_TENSOR_USE_FACT_RECORD tensor_use;
-        DSL_Tensor_Analysis_Get_Use
+        DSL_tensor_analysis_get_use
             (analysis->tensor_analysis, local_use.tensor_use_fact_id,
              &tensor_use);
         UINT32 candidate = DSL_Tensor_Locality_Access(tensor_use);
@@ -676,7 +676,7 @@ DSL_Tensor_Locality_Finalize_Fact
 }
 
 BOOL
-DSL_Tensor_Locality_Build
+DSL_tensor_locality_build
         (DSL_TENSOR_LOCALITY_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Tensor_Locality_Active(analysis) ||
@@ -684,16 +684,16 @@ DSL_Tensor_Locality_Build
         return DSL_Tensor_Locality_Report
                    (diagnostic, "analysis is not active", 0);
     if (!analysis->facts.empty())
-        return DSL_Tensor_Locality_Verify(analysis, diagnostic);
+        return DSL_tensor_locality_verify(analysis, diagnostic);
 
     for (DSL_TENSOR_FACT_ID tensor_id = 1;
-         tensor_id <= DSL_Tensor_Analysis_Fact_Count
+         tensor_id <= DSL_tensor_analysis_fact_count
                           (analysis->tensor_analysis);
          ++tensor_id) {
         DSL_TENSOR_FACT_RECORD tensor;
         DSL_TENSOR_LOCALITY_FACT_RECORD fact;
         std::vector<DSL_TENSOR_LOCALITY_USE_RECORD> uses;
-        if (!DSL_Tensor_Analysis_Get_Fact
+        if (!DSL_tensor_analysis_get_fact
                  (analysis->tensor_analysis, tensor_id, &tensor))
             return DSL_Tensor_Locality_Report
                        (diagnostic, "missing tensor fact", tensor_id);
@@ -719,7 +719,7 @@ DSL_Tensor_Locality_Build
             DSL_TENSOR_LOCALITY_USE_RECORD use;
             const DSL_TENSOR_CONTROL_POSITION *position;
             const DSL_TENSOR_CONTROL_BLOCK *block;
-            DSL_Tensor_Analysis_Get_Use
+            DSL_tensor_analysis_get_use
                 (analysis->tensor_analysis, tensor.first_use_id + i,
                  &tensor_use);
             memset(&use, 0, sizeof(use));
@@ -762,7 +762,7 @@ DSL_Tensor_Locality_Build
     DSL_Tensor_Locality_Dataflow_Depths(&forward, &reverse, &maximum);
     for (UINT32 i = 0; i < analysis->facts.size(); ++i) {
         DSL_TENSOR_FACT_RECORD tensor;
-        DSL_Tensor_Analysis_Get_Fact
+        DSL_tensor_analysis_get_fact
             (analysis->tensor_analysis,
              analysis->facts[i].tensor_fact_id, &tensor);
         DSL_Tensor_Locality_Finalize_Fact
@@ -794,17 +794,17 @@ DSL_Tensor_Locality_Build
         }
         fact.working_set_bytes = working_set;
     }
-    return DSL_Tensor_Locality_Verify(analysis, diagnostic);
+    return DSL_tensor_locality_verify(analysis, diagnostic);
 }
 
 BOOL
-DSL_Tensor_Locality_Verify
+DSL_tensor_locality_verify
         (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis, FILE *diagnostic)
 {
     if (!DSL_Tensor_Locality_Active(analysis) ||
-        !DSL_Tensor_Control_Snapshot_Verify
+        !DSL_tensor_control_snapshot_verify
              (analysis->snapshot, diagnostic) ||
-        !DSL_Tensor_Analysis_Verify
+        !DSL_tensor_analysis_verify
              (analysis->tensor_analysis, diagnostic))
         return DSL_Tensor_Locality_Report
                    (diagnostic, "invalid analysis context", 0);
@@ -813,7 +813,7 @@ DSL_Tensor_Locality_Verify
         const DSL_TENSOR_LOCALITY_FACT_RECORD &fact = analysis->facts[i];
         DSL_TENSOR_FACT_RECORD tensor;
         if (fact.id != i + 1 || fact.tensor_fact_id == 0 ||
-            !DSL_Tensor_Analysis_Get_Fact
+            !DSL_tensor_analysis_get_fact
                  (analysis->tensor_analysis, fact.tensor_fact_id, &tensor) ||
             fact.value_id != tensor.value_id ||
             fact.producer_node_id != tensor.producer_node_id ||
@@ -845,7 +845,7 @@ DSL_Tensor_Locality_Verify
         DSL_TENSOR_USE_FACT_RECORD tensor_use;
         if (use.id != i + 1 || use.locality_fact_id == 0 ||
             use.locality_fact_id > analysis->facts.size() ||
-            !DSL_Tensor_Analysis_Get_Use
+            !DSL_tensor_analysis_get_use
                  (analysis->tensor_analysis, use.tensor_use_fact_id,
                   &tensor_use) ||
             use.consumer_node_id != tensor_use.consumer_node_id ||
@@ -858,7 +858,7 @@ DSL_Tensor_Locality_Verify
 }
 
 void
-DSL_Tensor_Locality_Print
+DSL_tensor_locality_print
         (FILE *file, const DSL_TENSOR_LOCALITY_ANALYSIS *analysis)
 {
     if (file == NULL || analysis == NULL)
@@ -912,18 +912,18 @@ DSL_Tensor_Locality_Print
                 fact.id, fact.tensor_fact_id, fact.value_id,
                 fact.producer_node_id, fact.last_consumer_node_id,
                 fact.first_use_id, fact.use_count,
-                DSL_Tensor_Size_State_Name(fact.size_state),
+                DSL_tensor_size_state_name(fact.size_state),
                 object_bytes,
-                DSL_Tensor_Lifetime_State_Name(fact.lifetime_state),
-                DSL_Tensor_Distance_State_Name
+                DSL_tensor_lifetime_state_name(fact.lifetime_state),
+                DSL_tensor_distance_state_name
                     (fact.reuse_distance_state),
                 distance, working_set,
-                DSL_Tensor_Access_Pattern_Name(fact.access_pattern),
-                DSL_Tensor_Residency_Benefit_Name
+                DSL_tensor_access_pattern_name(fact.access_pattern),
+                DSL_tensor_residency_benefit_name
                     (fact.residency_benefit),
-                DSL_Tensor_Critical_Path_State_Name
+                DSL_tensor_critical_path_state_name
                     (fact.critical_path_state),
-                DSL_Tensor_Alias_State_Name(fact.alias_state),
+                DSL_tensor_alias_state_name(fact.alias_state),
                 fact.producer_path_position,
                 fact.last_use_path_position,
                 read_bytes, write_bytes);
@@ -941,21 +941,21 @@ DSL_Tensor_Locality_Print
 }
 
 UINT32
-DSL_Tensor_Locality_Fact_Count
+DSL_tensor_locality_fact_count
         (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->facts.size();
 }
 
 UINT32
-DSL_Tensor_Locality_Use_Count
+DSL_tensor_locality_use_count
         (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis)
 {
     return analysis == NULL ? 0 : analysis->uses.size();
 }
 
 BOOL
-DSL_Tensor_Locality_Get_Fact
+DSL_tensor_locality_get_fact
         (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
          DSL_TENSOR_LOCALITY_FACT_ID id,
          DSL_TENSOR_LOCALITY_FACT_RECORD *record)
@@ -968,7 +968,7 @@ DSL_Tensor_Locality_Get_Fact
 }
 
 BOOL
-DSL_Tensor_Locality_Get_Use
+DSL_tensor_locality_get_use
         (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
          DSL_TENSOR_LOCALITY_USE_ID id,
          DSL_TENSOR_LOCALITY_USE_RECORD *record)
@@ -981,7 +981,7 @@ DSL_Tensor_Locality_Get_Use
 }
 
 BOOL
-DSL_Tensor_Locality_Find_Fact
+DSL_tensor_locality_find_fact
         (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
          DSL_IR_VALUE_ID value_id,
          DSL_TENSOR_LOCALITY_FACT_RECORD *record)
@@ -1006,20 +1006,20 @@ const char *function (UINT32 value) \
 }
 
 DSL_TENSOR_LOCALITY_NAME_FUNCTION
-    (DSL_Tensor_Size_State_Name, DSL_tensor_size_state_name)
+    (DSL_tensor_size_state_name, DSL_tensor_size_state_name_table)
 DSL_TENSOR_LOCALITY_NAME_FUNCTION
-    (DSL_Tensor_Lifetime_State_Name, DSL_tensor_lifetime_state_name)
+    (DSL_tensor_lifetime_state_name, DSL_tensor_lifetime_state_name_table)
 DSL_TENSOR_LOCALITY_NAME_FUNCTION
-    (DSL_Tensor_Distance_State_Name, DSL_tensor_distance_state_name)
+    (DSL_tensor_distance_state_name, DSL_tensor_distance_state_name_table)
 DSL_TENSOR_LOCALITY_NAME_FUNCTION
-    (DSL_Tensor_Access_Pattern_Name, DSL_tensor_access_pattern_name)
+    (DSL_tensor_access_pattern_name, DSL_tensor_access_pattern_name_table)
 DSL_TENSOR_LOCALITY_NAME_FUNCTION
-    (DSL_Tensor_Residency_Benefit_Name,
-     DSL_tensor_residency_benefit_name)
+    (DSL_tensor_residency_benefit_name,
+     DSL_tensor_residency_benefit_name_table)
 DSL_TENSOR_LOCALITY_NAME_FUNCTION
-    (DSL_Tensor_Critical_Path_State_Name,
-     DSL_tensor_critical_path_state_name)
+    (DSL_tensor_critical_path_state_name,
+     DSL_tensor_critical_path_state_name_table)
 DSL_TENSOR_LOCALITY_NAME_FUNCTION
-    (DSL_Tensor_Alias_State_Name, DSL_tensor_alias_state_name)
+    (DSL_tensor_alias_state_name, DSL_tensor_alias_state_name_table)
 
 #undef DSL_TENSOR_LOCALITY_NAME_FUNCTION

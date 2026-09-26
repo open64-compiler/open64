@@ -177,13 +177,13 @@ static DSL_TENSOR_CONTROL_SNAPSHOT *
 Create_Snapshot (const AIO10_FIXTURE *fixture)
 {
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot =
-        DSL_Tensor_Control_Snapshot_Create(fixture->pu, stderr);
+        DSL_tensor_control_snapshot_create(fixture->pu, stderr);
     DSL_TENSOR_CONTROL_BLOCK block;
     memset(&block, 0, sizeof(block));
     block.block_id = 1;
     block.reverse_postorder = 1;
     if (snapshot == NULL ||
-        !DSL_Tensor_Control_Snapshot_Add_Block(snapshot, &block, stderr))
+        !DSL_tensor_control_snapshot_add_block(snapshot, &block, stderr))
         return NULL;
     for (UINT32 i = 0; i < 4; ++i) {
         DSL_TENSOR_CONTROL_POSITION position;
@@ -192,23 +192,23 @@ Create_Snapshot (const AIO10_FIXTURE *fixture)
         position.block_id = 1;
         position.reverse_postorder = 1;
         position.statement_order = i + 1;
-        if (!DSL_Tensor_Control_Snapshot_Add_Position
+        if (!DSL_tensor_control_snapshot_add_position
                  (snapshot, &position, stderr))
             return NULL;
     }
-    return DSL_Tensor_Control_Snapshot_Seal(snapshot, stderr) ?
+    return DSL_tensor_control_snapshot_seal(snapshot, stderr) ?
            snapshot : NULL;
 }
 
 static void
 Destroy_Analysis (AIO10_ANALYSIS *analysis)
 {
-    DSL_Fetch_Pipeline_Destroy(analysis->pipeline);
-    DSL_Tile_Destroy(analysis->tile);
-    DSL_Tensor_Locality_Destroy(analysis->locality);
-    DSL_Tensor_Control_Snapshot_Destroy(analysis->snapshot);
-    DSL_Tensor_Analysis_Destroy(analysis->tensor);
-    DSL_Tensor_Evolution_Destroy(analysis->graph);
+    DSL_fetch_pipeline_destroy(analysis->pipeline);
+    DSL_tile_destroy(analysis->tile);
+    DSL_tensor_locality_destroy(analysis->locality);
+    DSL_tensor_control_snapshot_destroy(analysis->snapshot);
+    DSL_tensor_analysis_destroy(analysis->tensor);
+    DSL_tensor_evolution_destroy(analysis->graph);
     memset(analysis, 0, sizeof(*analysis));
 }
 
@@ -220,52 +220,52 @@ Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
     DSL_TILE_CONTROL tile_control;
     DSL_FETCH_PIPELINE_CONTROL fetch_control;
     memset(analysis, 0, sizeof(*analysis));
-    analysis->graph = DSL_Tensor_Evolution_Create(fixture->pu, stderr);
+    analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_Tensor_Evolution_Build_Semantic_Roots
+        !DSL_tensor_evolution_build_semantic_roots
              (analysis->graph, stderr))
         return FALSE;
-    analysis->tensor = DSL_Tensor_Analysis_Create
+    analysis->tensor = DSL_tensor_analysis_create
                            (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor == NULL ||
-        !DSL_Tensor_Analysis_Build(analysis->tensor, stderr))
+        !DSL_tensor_analysis_build(analysis->tensor, stderr))
         return FALSE;
     analysis->snapshot = Create_Snapshot(fixture);
-    analysis->locality = DSL_Tensor_Locality_Create
+    analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_Tensor_Locality_Build(analysis->locality, stderr))
+        !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
 
-    DSL_Tile_Control_Init(&tile_control);
+    DSL_tile_control_init(&tile_control);
     tile_control.target_profile_id = profile;
     tile_control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->tile = DSL_Tile_Create
+    analysis->tile = DSL_tile_create
                          (fixture->pu, analysis->graph, analysis->tensor,
                           analysis->locality, NULL, &tile_control, stderr);
     if (analysis->tile == NULL ||
-        !DSL_Tile_Build(analysis->tile, stderr) ||
-        !DSL_Tile_Verify(analysis->tile, stderr))
+        !DSL_tile_build(analysis->tile, stderr) ||
+        !DSL_tile_verify(analysis->tile, stderr))
         return FALSE;
 
-    DSL_Fetch_Pipeline_Control_Init(&fetch_control);
+    DSL_fetch_pipeline_control_init(&fetch_control);
     fetch_control.target_profile_id = profile;
     fetch_control.focus_value_id = tile_control.focus_value_id;
     fetch_control.prefetch_distance_hint = prefetch_distance;
     fetch_control.select_plans = select_plans;
-    analysis->pipeline = DSL_Fetch_Pipeline_Create
+    analysis->pipeline = DSL_fetch_pipeline_create
                              (fixture->pu, analysis->graph,
                               analysis->locality, NULL, analysis->tile,
                               &fetch_control, stderr);
     if (analysis->pipeline == NULL ||
-        !DSL_Fetch_Pipeline_Build(analysis->pipeline, stderr) ||
-        !DSL_Fetch_Pipeline_Verify(analysis->pipeline, stderr))
+        !DSL_fetch_pipeline_build(analysis->pipeline, stderr) ||
+        !DSL_fetch_pipeline_verify(analysis->pipeline, stderr))
         return FALSE;
     if (trace != NULL) {
-        DSL_Tile_Print(trace, analysis->tile);
-        DSL_Fetch_Pipeline_Print(trace, analysis->pipeline);
+        DSL_tile_print(trace, analysis->tile);
+        DSL_fetch_pipeline_print(trace, analysis->pipeline);
     }
     return TRUE;
 }
@@ -280,14 +280,14 @@ Check_Main_Contract (const AIO10_ANALYSIS *analysis, UINT32 profile,
     UINT32 expected_fetches = expected_plans * 2;
     UINT32 expected_stages = profile == DSL_TARGET_PROFILE_CPU_BASELINE ?
                              1 : 7;
-    if (DSL_Fetch_Pipeline_Site_Count(analysis->pipeline) != 1 ||
-        DSL_Fetch_Pipeline_Plan_Count(analysis->pipeline) !=
+    if (DSL_fetch_pipeline_site_count(analysis->pipeline) != 1 ||
+        DSL_fetch_pipeline_plan_count(analysis->pipeline) !=
             expected_plans ||
-        DSL_Fetch_Pipeline_Fetch_Count(analysis->pipeline) !=
+        DSL_fetch_pipeline_fetch_count(analysis->pipeline) !=
             expected_fetches ||
-        DSL_Fetch_Pipeline_Stage_Count(analysis->pipeline) !=
+        DSL_fetch_pipeline_stage_count(analysis->pipeline) !=
             expected_stages ||
-        !DSL_Fetch_Pipeline_Get_Site
+        !DSL_fetch_pipeline_get_site
              (analysis->pipeline, 1, &site) ||
         site.pipeline_plan_count != expected_plans)
         return FALSE;
@@ -299,7 +299,7 @@ Check_Main_Contract (const AIO10_ANALYSIS *analysis, UINT32 profile,
     UINT32 selected_engine = DSL_MEMORY_MOVEMENT_UNKNOWN;
     for (UINT32 id = 1; id <= expected_plans; ++id) {
         DSL_FETCH_PLAN_RECORD plan;
-        if (!DSL_Fetch_Pipeline_Get_Plan
+        if (!DSL_fetch_pipeline_get_plan
                  (analysis->pipeline, id, &plan) ||
             plan.raw_movement_cost != plan.hidden_movement_cost +
                                       plan.unhidden_movement_cost)
@@ -422,26 +422,26 @@ Run_Control(void)
              (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1,
               FALSE, NULL, &analysis))
         return 1;
-    DSL_Fetch_Pipeline_Destroy(analysis.pipeline);
+    DSL_fetch_pipeline_destroy(analysis.pipeline);
     analysis.pipeline = NULL;
-    DSL_Fetch_Pipeline_Control_Init(&control);
+    DSL_fetch_pipeline_control_init(&control);
     control.apply_transformation = 1;
-    if (DSL_Fetch_Pipeline_Create
+    if (DSL_fetch_pipeline_create
             (fixture.pu, analysis.graph, analysis.locality, NULL,
              analysis.tile, &control, quiet) != NULL)
         return 1;
     control.apply_transformation = 0;
     control.generate_candidates = 0;
     control.select_plans = 0;
-    disabled = DSL_Fetch_Pipeline_Create
+    disabled = DSL_fetch_pipeline_create
                    (fixture.pu, analysis.graph, analysis.locality, NULL,
                     analysis.tile, &control, stderr);
     if (disabled == NULL ||
-        !DSL_Fetch_Pipeline_Build(disabled, stderr) ||
-        !DSL_Fetch_Pipeline_Verify(disabled, stderr) ||
-        DSL_Fetch_Pipeline_Site_Count(disabled) != 0)
+        !DSL_fetch_pipeline_build(disabled, stderr) ||
+        !DSL_fetch_pipeline_verify(disabled, stderr) ||
+        DSL_fetch_pipeline_site_count(disabled) != 0)
         return 1;
-    DSL_Fetch_Pipeline_Destroy(disabled);
+    DSL_fetch_pipeline_destroy(disabled);
     Destroy_Analysis(&analysis);
     fclose(quiet);
     printf("AIO-10 control contract passed\n");
