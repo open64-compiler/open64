@@ -73,6 +73,7 @@ sources=(
   "osprey/common/com/dsl_tile_candidate.cxx"
   "osprey/common/com/dsl_fetch_pipeline.cxx"
   "osprey/common/com/dsl_physical_plan.cxx"
+  "osprey/common/com/dsl_runtime_variant.cxx"
   "osprey/common/com/dsl_shape.cxx"
   "osprey/common/com/dsl_tensor_analysis.cxx"
   "osprey/common/com/dsl_tensor_locality.cxx"
@@ -148,6 +149,9 @@ if [[ -n "${OPEN64_AIO10_TEST:-}" ]]; then
 fi
 if [[ -n "${OPEN64_AIO11_TEST:-}" ]]; then
   "$script_dir/dsl_physical_plan_contract_test.sh"
+fi
+if [[ -n "${OPEN64_AIO12_TEST:-}" ]]; then
+  "$script_dir/dsl_runtime_variant_contract_test.sh"
 fi
 "$script_dir/dsl_operator_layout_test.sh"
 bash "$repo_root/osprey/be/opt/tests/dsl_wopt_semantic_info_test.sh"

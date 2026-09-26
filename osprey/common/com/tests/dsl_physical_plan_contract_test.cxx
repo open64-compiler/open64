@@ -38,6 +38,7 @@
 #include "dsl_lower.h"
 #include "dsl_opcode.h"
 #include "dsl_physical_plan.h"
+#include "dsl_runtime_variant.h"
 #include "open64_dsl_runtime_abi.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -65,6 +66,7 @@ typedef struct {
     DSL_TILE_ANALYSIS *tile;
     DSL_FETCH_PIPELINE_ANALYSIS *pipeline;
     DSL_PHYSICAL_PLAN_ANALYSIS *physical;
+    DSL_RUNTIME_VARIANT_ANALYSIS *runtime_variant;
 } AIO11_ANALYSIS;
 
 static void
@@ -216,6 +218,7 @@ Create_Snapshot (const AIO11_FIXTURE *fixture)
 static void
 Destroy_Analysis (AIO11_ANALYSIS *analysis)
 {
+    DSL_runtime_variant_destroy(analysis->runtime_variant);
     DSL_physical_plan_destroy(analysis->physical);
     DSL_fetch_pipeline_destroy(analysis->pipeline);
     DSL_tile_destroy(analysis->tile);
@@ -298,6 +301,133 @@ Build_Analysis
         DSL_fetch_pipeline_print(trace, analysis->pipeline);
         DSL_physical_plan_print(trace, analysis->physical);
     }
+    return TRUE;
+}
+
+static BOOL
+Build_Runtime_Variants
+        (const AIO11_FIXTURE *fixture, FILE *trace,
+         AIO11_ANALYSIS *analysis)
+{
+    DSL_RUNTIME_VARIANT_CONTROL control;
+    DSL_runtime_variant_control_init(&control);
+    control.focus_value_id =
+        DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
+    analysis->runtime_variant = DSL_runtime_variant_create
+        (fixture->pu, analysis->graph, analysis->physical,
+         &control, stderr);
+    if (analysis->runtime_variant == NULL ||
+        !DSL_runtime_variant_build(analysis->runtime_variant, stderr) ||
+        !DSL_runtime_variant_verify(analysis->runtime_variant, stderr))
+        return FALSE;
+    if (trace != NULL)
+        DSL_runtime_variant_print(trace, analysis->runtime_variant);
+    return TRUE;
+}
+
+static BOOL
+Check_Runtime_Variants (AIO11_ANALYSIS *analysis, FILE *trace)
+{
+    DSL_RUNTIME_VARIANT_SITE_RECORD site;
+    DSL_RUNTIME_VARIANT_RECORD baseline;
+    DSL_RUNTIME_VARIANT_RECORD fast;
+    DSL_RUNTIME_GUARD_RECORD guard0;
+    DSL_RUNTIME_GUARD_RECORD guard1;
+    DSL_PHYSICAL_IMPLEMENTATION_RECORD baseline_implementation;
+    DSL_PHYSICAL_IMPLEMENTATION_RECORD fast_implementation;
+    const DSL_OPT_PLAN_CONTEXT *context;
+    DSL_OPT_PLAN_RECORD fast_plan;
+    DSL_OPT_COST_RECORD fast_cost;
+    DSL_RUNTIME_VARIANT_EVALUATION_RESULT guard_true;
+    DSL_RUNTIME_VARIANT_EVALUATION_RESULT guard_false;
+    DSL_RUNTIME_VARIANT_EVALUATION_RESULT malformed;
+    DSL_RUNTIME_GUARD_OBSERVATION true_observations[2];
+    DSL_RUNTIME_GUARD_OBSERVATION false_observations[2];
+    DSL_RUNTIME_GUARD_OBSERVATION duplicate_observations[2];
+    FILE *quiet = tmpfile();
+    memset(true_observations, 0, sizeof(true_observations));
+    memset(false_observations, 0, sizeof(false_observations));
+    memset(duplicate_observations, 0, sizeof(duplicate_observations));
+    true_observations[0].operand_ordinal = 0;
+    true_observations[0].observed_alignment = 16;
+    true_observations[1].operand_ordinal = 1;
+    true_observations[1].observed_alignment = 32;
+    false_observations[0].operand_ordinal = 0;
+    false_observations[0].observed_alignment = 8;
+    false_observations[1].operand_ordinal = 1;
+    false_observations[1].observed_alignment = 16;
+    duplicate_observations[0].operand_ordinal = 0;
+    duplicate_observations[0].observed_alignment = 16;
+    duplicate_observations[1].operand_ordinal = 0;
+    duplicate_observations[1].observed_alignment = 16;
+
+    if (quiet == NULL ||
+        DSL_runtime_variant_site_count(analysis->runtime_variant) != 1 ||
+        DSL_runtime_variant_count(analysis->runtime_variant) != 2 ||
+        DSL_runtime_guard_count(analysis->runtime_variant) != 2 ||
+        !DSL_runtime_variant_get_site
+             (analysis->runtime_variant, 1, &site) ||
+        !DSL_runtime_variant_get_variant
+             (analysis->runtime_variant, site.baseline_variant_id,
+              &baseline) ||
+        !DSL_runtime_variant_get_variant
+             (analysis->runtime_variant, site.selected_variant_id, &fast) ||
+        baseline.id == fast.id || baseline.guard_count != 0 ||
+        fast.guard_count != 2 ||
+        fast.fallback_variant_id != baseline.id ||
+        !DSL_runtime_variant_get_guard
+             (analysis->runtime_variant, fast.first_guard_id, &guard0) ||
+        !DSL_runtime_variant_get_guard
+             (analysis->runtime_variant, fast.first_guard_id + 1,
+              &guard1) ||
+        guard0.operand_ordinal != 0 || guard1.operand_ordinal != 1 ||
+        guard0.required_value != 16 || guard1.required_value != 16 ||
+        guard0.evaluation_cost != 2 || guard1.evaluation_cost != 2 ||
+        !DSL_physical_plan_get_implementation
+             (analysis->physical, baseline.physical_implementation_id,
+              &baseline_implementation) ||
+        !DSL_physical_plan_get_implementation
+             (analysis->physical, fast.physical_implementation_id,
+              &fast_implementation) ||
+        baseline_implementation.provider !=
+            DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT ||
+        fast_implementation.provider !=
+            DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT ||
+        (context = DSL_runtime_variant_get_plan_context
+                       (analysis->runtime_variant, site.id)) == NULL ||
+        !DSL_opt_plan_get_plan
+             (context, fast.optimization_plan_id, &fast_plan) ||
+        !DSL_opt_plan_get_cost(context, fast_plan.cost_id, &fast_cost) ||
+        fast_cost.terms[DSL_OPT_COST_RUNTIME_SELECTION].amount != 4 ||
+        fast.guard_cost != 4 || fast.total_cost != fast_cost.total ||
+        !DSL_runtime_variant_evaluate
+             (analysis->runtime_variant, site.id,
+              true_observations, 2, &guard_true, stderr) ||
+        guard_true.selected_variant_id != fast.id ||
+        guard_true.selected_implementation_id != fast_implementation.id ||
+        !guard_true.guard_passed || guard_true.fallback_taken ||
+        guard_true.evaluated_guard_count != 2 ||
+        guard_true.evaluation_cost != 4 ||
+        !DSL_runtime_variant_evaluate
+             (analysis->runtime_variant, site.id,
+              false_observations, 2, &guard_false, stderr) ||
+        guard_false.selected_variant_id != baseline.id ||
+        guard_false.selected_implementation_id !=
+            baseline_implementation.id ||
+        guard_false.guard_passed || !guard_false.fallback_taken ||
+        guard_false.evaluated_guard_count != 1 ||
+        guard_false.evaluation_cost != 2 ||
+        DSL_runtime_variant_evaluate
+             (analysis->runtime_variant, site.id,
+              duplicate_observations, 2, &malformed, quiet))
+        return FALSE;
+    if (trace != NULL) {
+        DSL_runtime_variant_print_evaluation
+            (trace, "alignment_guard_true", &guard_true);
+        DSL_runtime_variant_print_evaluation
+            (trace, "alignment_guard_false", &guard_false);
+    }
+    fclose(quiet);
     return TRUE;
 }
 
@@ -657,6 +787,104 @@ Run_Control(void)
     return 0;
 }
 
+static int
+Run_Runtime_Variant_Mode(void)
+{
+    const char *artifact = getenv("OPEN64_AIO12_ARTIFACT");
+    const char *trace_path = getenv("OPEN64_AIO12_ANALYSIS");
+    AIO11_FIXTURE fixture;
+    AIO11_ANALYSIS analysis;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    UINT32 direct =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT);
+    UINT32 cublas =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT);
+    UINT32 nodes;
+    UINT32 values;
+    UINT32 types;
+    FILE *trace;
+    if (artifact == NULL || artifact[0] == '\0' || trace_path == NULL ||
+        trace_path[0] == '\0' || (trace = fopen(trace_path, "w")) == NULL)
+        return 1;
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    if (!Create_Fixture("aio11_physical_plan", &fixture))
+        return 1;
+    nodes = DSL_IR_Image_Node_Count();
+    values = DSL_IR_Image_Value_Count();
+    types = TY_Table_Size();
+    if (!Build_Analysis
+             (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 3,
+              direct | cublas, direct | cublas, trace, &analysis) ||
+        !Build_Runtime_Variants(&fixture, trace, &analysis) ||
+        !Check_Runtime_Variants(&analysis, trace) ||
+        DSL_IR_Image_Node_Count() != nodes ||
+        DSL_IR_Image_Value_Count() != values || TY_Table_Size() != types) {
+        fclose(trace);
+        return 1;
+    }
+    fclose(trace);
+    Destroy_Analysis(&analysis);
+    memset(&verify, 0, sizeof(verify));
+    if (!DSL_Builder_Verify_Program(&verify))
+        return 1;
+    request.path = artifact;
+    request.flags = 0;
+    if (!DSL_Builder_Finalize_Mapped_Image(&request))
+        return 1;
+    printf("AIO-12 alignment-guard runtime variants passed\n");
+    return 0;
+}
+
+static int
+Run_Runtime_Variant_Control(void)
+{
+    AIO11_FIXTURE fixture;
+    AIO11_ANALYSIS analysis;
+    DSL_RUNTIME_VARIANT_CONTROL control;
+    DSL_RUNTIME_VARIANT_ANALYSIS *disabled;
+    UINT32 direct =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT);
+    UINT32 cublas =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT);
+    FILE *quiet = tmpfile();
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    if (quiet == NULL ||
+        !Create_Fixture("aio12_runtime_variant_control", &fixture) ||
+        !Build_Analysis
+             (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 3,
+              direct | cublas, direct | cublas, NULL, &analysis))
+        return 1;
+    DSL_runtime_variant_control_init(&control);
+    control.focus_value_id =
+        DSL_Builder_Get_Value_Image_Id(fixture.values[2]);
+    control.apply_selected_variant = 1;
+    if (DSL_runtime_variant_create
+            (fixture.pu, analysis.graph, analysis.physical,
+             &control, quiet) != NULL)
+        return 1;
+    control.apply_selected_variant = 0;
+    control.generate_variants = 0;
+    control.select_policy = 0;
+    disabled = DSL_runtime_variant_create
+                   (fixture.pu, analysis.graph, analysis.physical,
+                    &control, stderr);
+    if (disabled == NULL ||
+        !DSL_runtime_variant_build(disabled, stderr) ||
+        !DSL_runtime_variant_verify(disabled, stderr) ||
+        DSL_runtime_variant_site_count(disabled) != 0 ||
+        DSL_runtime_variant_count(disabled) != 0 ||
+        DSL_runtime_guard_count(disabled) != 0)
+        return 1;
+    DSL_runtime_variant_destroy(disabled);
+    Destroy_Analysis(&analysis);
+    fclose(quiet);
+    printf("AIO-12 runtime variant control contract passed\n");
+    return 0;
+}
+
 int
 main(void)
 {
@@ -718,5 +946,9 @@ main(void)
     if (strcmp(mode, "lower-rollback") == 0)
         return Run_Lowering_Mode
                    (DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT, TRUE, NULL);
+    if (strcmp(mode, "runtime-variant") == 0)
+        return Run_Runtime_Variant_Mode();
+    if (strcmp(mode, "runtime-variant-control") == 0)
+        return Run_Runtime_Variant_Control();
     return 1;
 }
