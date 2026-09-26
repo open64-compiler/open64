@@ -216,6 +216,19 @@ only when the current task needs detail.
    to set its declaration source position with `Set_ST_Srcpos()`. When a
    builder creates both a defining WN and a result ST, propagate the same
    complete source position, including file, line, and column, to both objects.
+6. Every newly created `.h` and `.cxx` file must begin with a concise
+   architectural comment after the copyright notice. State the file's purpose,
+   owning component or compilation scope, important behavior or compatibility
+   boundary, and the repository-relative path of the controlling design or
+   plan document. A public header should identify the contract it exposes; its
+   implementation file should identify what it deliberately does and does not
+   change.
+7. Add short orienting comments before non-obvious algorithm boundaries such
+   as preparation, shared-engine reuse, legality classification, transactional
+   mutation, verification, and postprocessing. Explain the invariant or design
+   reason rather than restating the code. During final review, verify these
+   comments exist in every newly added C/C++ source file and still agree with
+   the implementation and cited design document.
 
 ## Driver And Phase Option Convention
 
