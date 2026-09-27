@@ -51,8 +51,8 @@ The following must not remain in common:
 | AIO-6 | `dsl_layout_candidate` | Needs split | Layout descriptor/site/alternative IR remains common. Alternative discovery, conversion legality, cost construction, and selection move to VHO. |
 | AIO-7 | `dsl_distributed_candidate` | Needs split | Placement, sharding, alias-range, communication-epoch, and intent records remain common. PU-local derivation, legality, communication cost, and selection move to VHO; cross-PU inference is deferred to explicit IPA. |
 | AIO-8 | `dsl_residency_candidate` and `dsl_memory_hierarchy` | Partial | Static target memory-hierarchy descriptors and common residency records conform. Residency candidate formation, capacity/resource legality, cost construction, and selection in `dsl_residency_candidate` move to VHO. |
-| AIO-9 | `dsl_tile_candidate` | Needs split | Tile site/plan/stage records remain common. Matmul shape capture, target/resource legality, tile-family generation, cost construction, and selection move to VHO initially; canonical-loop realization belongs to LNO when introduced. |
-| AIO-10 | `dsl_fetch_pipeline` | Needs split | Fetch/pipeline records remain common. Movement-plan generation, overlap estimates, barrier/resource legality, cost construction, and selection move to VHO. |
+| AIO-9 | `dsl_tile_candidate` plus `dsl_tile_candidate_opt` | Conforms after Ownership M2 | Common owns tile site/plan/stage records, bulk construction, structural verification, access, stable names, and generic printing. VHO owns matmul shape capture, target/resource legality, tile-family generation, costs, selection, and semantic verification. Canonical-loop realization remains reserved for LNO. |
+| AIO-10 | `dsl_fetch_pipeline` plus `dsl_fetch_pipeline_opt` | Conforms after Ownership M2 | Common owns fetch/pipeline records, bulk construction, structural verification, access, stable names, and generic printing. VHO consumes `CommonTilePlanIR` and owns movement-plan generation, overlap estimates, barrier/resource legality, costs, selection, and semantic verification. |
 | AIO-11 | `dsl_physical_plan` plus `dsl_physical_plan_opt` | Conforms after Ownership M1 | Common owns provider capability and CommonPhysicalPlanIR records, bulk construction, structural verification, access, and generic printing. VHO owns provider candidate discovery, capability/legality checks, cost construction, implementation selection, semantic verification, and executable lowering. |
 | AIO-12 | `dsl_runtime_variant` plus `dsl_runtime_variant_opt` | Conforms after ownership correction | Common owns RuntimeVariantIR creation and structural services. VHO owns fact capture, capability checks, candidate/cost construction, selection, semantic verification, and guard evaluation. |
 | AIO-13 | Not implemented | Boundary specified | Telemetry records and generic construction may be common. Feedback collection, profile interpretation, cost-model updates, and re-selection belong to the consuming phase; cross-PU aggregation requires explicit IPA/runtime design. |
@@ -91,9 +91,15 @@ unchanged downstream runtime-variant behavior.
 
 ### Ownership M2: Tile And Fetch Planning
 
-Split AIO-9 and AIO-10 tile-family and fetch/pipeline decisions into VHO.
-Preserve static target-description records in common and keep canonical-loop
-realization reserved for LNO.
+Completed. AIO-9 and AIO-10 tile-family and fetch/pipeline decisions reside in
+`be/vho/dsl_tile_candidate_opt.{h,cxx}` and
+`be/vho/dsl_fetch_pipeline_opt.{h,cxx}`. Policy-free
+`CommonTilePlanIR` and `CommonFetchPlanIR/CommonPipelineIR` containers remain
+in common with structural services. AIO-10 consumes the neutral tile IR and
+AIO-11 consumes both neutral IRs, so downstream phases do not reach through a
+VHO analysis implementation. Static target-description records remain common,
+and canonical-loop realization remains reserved for LNO. Linked AIO-9 through
+AIO-12 lanes prove unchanged selected records and downstream behavior.
 
 ### Ownership M3: Semantic Alternatives
 

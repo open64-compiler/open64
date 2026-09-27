@@ -33,7 +33,16 @@ where their semantics apply rather than introducing a parallel loop optimizer.
 
 ## CommonTilePlanIR
 
-`dsl_tile_candidate.{h,cxx}` owns runtime-only records for:
+`common/com/dsl_tile_candidate.{h,cxx}` owns the policy-free runtime-only
+`CommonTilePlanIR` records, bulk construction, structural verification,
+accessors, stable names, and generic printing. It does not inspect an active
+PU, form a candidate, decide legality, estimate costs, or select a plan.
+
+`be/vho/dsl_tile_candidate_opt.{h,cxx}` owns active-PU matmul shape capture,
+target tile-family generation, semantic/resource legality, cost construction,
+selection, and semantic verification. It materializes its completed decisions
+through the common bulk constructor. This split preserves the following
+records:
 
 - one candidate site identified by owner PU, logical node/value, semantic
   tensor root, and selected input representation;

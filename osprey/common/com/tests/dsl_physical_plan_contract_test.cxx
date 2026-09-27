@@ -34,6 +34,7 @@
 #include "ir_bwrite.h"
 #include "dsl_builder.h"
 #include "dsl_fetch_pipeline.h"
+#include "dsl_fetch_pipeline_opt.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_lower.h"
 #include "dsl_opcode.h"
@@ -220,8 +221,8 @@ Destroy_Analysis (AIO11_ANALYSIS *analysis)
 {
     VHO_DSL_Runtime_Variant_Destroy(analysis->runtime_variant);
     VHO_DSL_Physical_Plan_Destroy(analysis->physical);
-    DSL_fetch_pipeline_destroy(analysis->pipeline);
-    DSL_tile_destroy(analysis->tile);
+    VHO_DSL_Fetch_Pipeline_Destroy(analysis->pipeline);
+    VHO_DSL_Tile_Destroy(analysis->tile);
     DSL_tensor_locality_destroy(analysis->locality);
     DSL_tensor_control_snapshot_destroy(analysis->snapshot);
     DSL_tensor_analysis_destroy(analysis->tensor);
@@ -236,8 +237,8 @@ Build_Analysis
          UINT32 available_provider_mask, FILE *trace,
          AIO11_ANALYSIS *analysis)
 {
-    DSL_TILE_CONTROL tile_control;
-    DSL_FETCH_PIPELINE_CONTROL fetch_control;
+    VHO_DSL_TILE_CONTROL tile_control;
+    VHO_DSL_FETCH_PIPELINE_CONTROL fetch_control;
     VHO_DSL_PHYSICAL_PLAN_CONTROL physical_control;
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
@@ -258,29 +259,29 @@ Build_Analysis
         !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
 
-    DSL_tile_control_init(&tile_control);
+    VHO_DSL_Tile_Control_Init(&tile_control);
     tile_control.target_profile_id = profile;
     tile_control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->tile = DSL_tile_create
+    analysis->tile = VHO_DSL_Tile_Create
                          (fixture->pu, analysis->graph, analysis->tensor,
                           analysis->locality, NULL, &tile_control, stderr);
     if (analysis->tile == NULL ||
-        !DSL_tile_build(analysis->tile, stderr) ||
-        !DSL_tile_verify(analysis->tile, stderr))
+        !VHO_DSL_Tile_Build(analysis->tile, stderr) ||
+        !VHO_DSL_Tile_Verify(analysis->tile, stderr))
         return FALSE;
 
-    DSL_fetch_pipeline_control_init(&fetch_control);
+    VHO_DSL_Fetch_Pipeline_Control_Init(&fetch_control);
     fetch_control.target_profile_id = profile;
     fetch_control.focus_value_id = tile_control.focus_value_id;
     fetch_control.prefetch_distance_hint = 1;
-    analysis->pipeline = DSL_fetch_pipeline_create
+    analysis->pipeline = VHO_DSL_Fetch_Pipeline_Create
                              (fixture->pu, analysis->graph,
                               analysis->locality, NULL, analysis->tile,
                               &fetch_control, stderr);
     if (analysis->pipeline == NULL ||
-        !DSL_fetch_pipeline_build(analysis->pipeline, stderr) ||
-        !DSL_fetch_pipeline_verify(analysis->pipeline, stderr))
+        !VHO_DSL_Fetch_Pipeline_Build(analysis->pipeline, stderr) ||
+        !VHO_DSL_Fetch_Pipeline_Verify(analysis->pipeline, stderr))
         return FALSE;
 
     VHO_DSL_Physical_Plan_Control_Init(&physical_control);
@@ -297,8 +298,8 @@ Build_Analysis
         !VHO_DSL_Physical_Plan_Verify(analysis->physical, stderr))
         return FALSE;
     if (trace != NULL) {
-        DSL_tile_print(trace, analysis->tile);
-        DSL_fetch_pipeline_print(trace, analysis->pipeline);
+        VHO_DSL_Tile_Print(trace, analysis->tile);
+        VHO_DSL_Fetch_Pipeline_Print(trace, analysis->pipeline);
         VHO_DSL_Physical_Plan_Print(trace, analysis->physical);
     }
     return TRUE;

@@ -48,6 +48,8 @@ sources=(
   "osprey/be/opt/tests/dsl_wopt_semantic_info_test.cxx"
   "osprey/be/vho/dsl_lower.cxx"
   "osprey/be/vho/dsl_opt.cxx"
+  "osprey/be/vho/dsl_tile_candidate_opt.cxx"
+  "osprey/be/vho/dsl_fetch_pipeline_opt.cxx"
   "osprey/be/vho/dsl_physical_plan_opt.cxx"
   "osprey/be/vho/dsl_runtime_variant_opt.cxx"
   "osprey/be/vho/dsl_shape_refine.cxx"

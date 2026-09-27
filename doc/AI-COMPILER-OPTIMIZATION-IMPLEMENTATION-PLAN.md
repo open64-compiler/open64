@@ -994,9 +994,12 @@ artifact.
 20. [x] Ownership M1: split AIO-11 physical implementation planning. Keep
     provider capability and physical-plan IR in common; move candidate
     discovery, capability/legality checks, costing, and selection into VHO.
-21. [ ] Ownership M2: move AIO-9 and AIO-10 tile-family and fetch/pipeline
+21. [x] Ownership M2: move AIO-9 and AIO-10 tile-family and fetch/pipeline
     decisions into VHO while preserving target-description and plan IR in
-    common and reserving canonical-loop realization for LNO.
+    common and reserving canonical-loop realization for LNO. Common now owns
+    policy-free bulk-created tile/fetch/pipeline records and structural
+    services; VHO owns active-PU capture, legality, costs, selection, and
+    semantic verification. AIO-10 and AIO-11 consume the neutral IR handles.
 22. [ ] Ownership M3: move AIO-5 through AIO-8 candidate discovery, legality,
     cost, and selection into VHO while preserving record schemas and traces.
 23. [ ] Ownership M4: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;

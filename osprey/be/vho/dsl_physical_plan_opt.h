@@ -14,7 +14,9 @@
 #include <stdio.h>
 
 #include "defs.h"
+#include "dsl_fetch_pipeline_opt.h"
 #include "dsl_physical_plan.h"
+#include "dsl_tile_candidate_opt.h"
 
 struct pu_info;
 struct DSL_PHYSICAL_PLAN_ANALYSIS;

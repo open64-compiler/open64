@@ -27,6 +27,7 @@
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
 #include "dsl_tile_candidate.h"
+#include "dsl_tile_candidate_opt.h"
 #include "dsl_opcode.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -204,7 +205,7 @@ Create_Snapshot (const AIO9_FIXTURE *fixture, BOOL effect)
 static void
 Destroy_Analysis (AIO9_ANALYSIS *analysis)
 {
-    DSL_tile_destroy(analysis->tile);
+    VHO_DSL_Tile_Destroy(analysis->tile);
     DSL_tensor_locality_destroy(analysis->locality);
     DSL_tensor_control_snapshot_destroy(analysis->snapshot);
     DSL_tensor_analysis_destroy(analysis->tensor);
@@ -217,7 +218,7 @@ Build_Analysis (const AIO9_FIXTURE *fixture, UINT32 profile,
                 UINT32 phase, BOOL effect, BOOL select_plans,
                 FILE *trace, AIO9_ANALYSIS *analysis)
 {
-    DSL_TILE_CONTROL control;
+    VHO_DSL_TILE_CONTROL control;
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
@@ -236,21 +237,21 @@ Build_Analysis (const AIO9_FIXTURE *fixture, UINT32 profile,
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
         !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
-    DSL_tile_control_init(&control);
+    VHO_DSL_Tile_Control_Init(&control);
     control.target_profile_id = profile;
     control.maximum_phase = phase;
     control.select_plans = select_plans;
     control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->tile = DSL_tile_create
+    analysis->tile = VHO_DSL_Tile_Create
                          (fixture->pu, analysis->graph, analysis->tensor,
                           analysis->locality, NULL, &control, stderr);
     if (analysis->tile == NULL ||
-        !DSL_tile_build(analysis->tile, stderr) ||
-        !DSL_tile_verify(analysis->tile, stderr))
+        !VHO_DSL_Tile_Build(analysis->tile, stderr) ||
+        !VHO_DSL_Tile_Verify(analysis->tile, stderr))
         return FALSE;
     if (trace != NULL)
-        DSL_tile_print(trace, analysis->tile);
+        VHO_DSL_Tile_Print(trace, analysis->tile);
     return TRUE;
 }
 
@@ -299,10 +300,11 @@ Check_Main_Contract (const AIO9_ANALYSIS *analysis, UINT32 profile,
                           2 : 0;
     UINT32 plans = 1 + alternatives;
     UINT32 stages = 1 + alternatives * (phase + 1);
-    if (DSL_tile_site_count(analysis->tile) != 1 ||
-        DSL_tile_plan_count(analysis->tile) != plans ||
-        DSL_tile_stage_count(analysis->tile) != stages ||
-        !DSL_tile_get_site(analysis->tile, 1, &site) ||
+    const DSL_TILE_PLAN_IR *tile_ir = VHO_DSL_Tile_Get_IR(analysis->tile);
+    if (DSL_tile_plan_ir_site_count(tile_ir) != 1 ||
+        DSL_tile_plan_ir_plan_count(tile_ir) != plans ||
+        DSL_tile_plan_ir_stage_count(tile_ir) != stages ||
+        !DSL_tile_plan_ir_get_site(tile_ir, 1, &site) ||
         site.tile_plan_count != plans)
         return FALSE;
     UINT32 proven = 0;
@@ -310,7 +312,7 @@ Check_Main_Contract (const AIO9_ANALYSIS *analysis, UINT32 profile,
     BOOL found_wide = FALSE;
     for (UINT32 id = 1; id <= plans; ++id) {
         DSL_TILE_PLAN_RECORD tile;
-        if (!DSL_tile_get_plan(analysis->tile, id, &tile) ||
+        if (!DSL_tile_plan_ir_get_plan(tile_ir, id, &tile) ||
             !Check_Oracle(tile))
             return FALSE;
         if (tile.family == DSL_TILE_FAMILY_BLACKWELL_WIDE)
@@ -419,7 +421,7 @@ Run_Control(void)
 {
     AIO9_FIXTURE fixture;
     AIO9_ANALYSIS analysis;
-    DSL_TILE_CONTROL control;
+    VHO_DSL_TILE_CONTROL control;
     DSL_TILE_ANALYSIS *disabled;
     FILE *quiet = tmpfile();
     DSL_Builder_Begin_Program();
@@ -443,23 +445,23 @@ Run_Control(void)
     if (analysis.locality == NULL ||
         !DSL_tensor_locality_build(analysis.locality, stderr))
         return 1;
-    DSL_tile_control_init(&control);
+    VHO_DSL_Tile_Control_Init(&control);
     control.apply_transformation = 1;
-    if (DSL_tile_create
+    if (VHO_DSL_Tile_Create
             (fixture.pu, analysis.graph, analysis.tensor,
              analysis.locality, NULL, &control, quiet) != NULL)
         return 1;
     control.apply_transformation = 0;
     control.generate_candidates = 0;
     control.select_plans = 0;
-    disabled = DSL_tile_create
+    disabled = VHO_DSL_Tile_Create
                    (fixture.pu, analysis.graph, analysis.tensor,
                     analysis.locality, NULL, &control, stderr);
-    if (disabled == NULL || !DSL_tile_build(disabled, stderr) ||
-        !DSL_tile_verify(disabled, stderr) ||
-        DSL_tile_site_count(disabled) != 0)
+    if (disabled == NULL || !VHO_DSL_Tile_Build(disabled, stderr) ||
+        !VHO_DSL_Tile_Verify(disabled, stderr) ||
+        DSL_tile_plan_ir_site_count(VHO_DSL_Tile_Get_IR(disabled)) != 0)
         return 1;
-    DSL_tile_destroy(disabled);
+    VHO_DSL_Tile_Destroy(disabled);
     DSL_tensor_locality_destroy(analysis.locality);
     DSL_tensor_control_snapshot_destroy(analysis.snapshot);
     DSL_tensor_analysis_destroy(analysis.tensor);

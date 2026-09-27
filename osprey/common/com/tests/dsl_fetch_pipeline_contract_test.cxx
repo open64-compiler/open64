@@ -26,6 +26,7 @@
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
 #include "dsl_fetch_pipeline.h"
+#include "dsl_fetch_pipeline_opt.h"
 #include "dsl_opcode.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -203,8 +204,8 @@ Create_Snapshot (const AIO10_FIXTURE *fixture)
 static void
 Destroy_Analysis (AIO10_ANALYSIS *analysis)
 {
-    DSL_fetch_pipeline_destroy(analysis->pipeline);
-    DSL_tile_destroy(analysis->tile);
+    VHO_DSL_Fetch_Pipeline_Destroy(analysis->pipeline);
+    VHO_DSL_Tile_Destroy(analysis->tile);
     DSL_tensor_locality_destroy(analysis->locality);
     DSL_tensor_control_snapshot_destroy(analysis->snapshot);
     DSL_tensor_analysis_destroy(analysis->tensor);
@@ -217,8 +218,8 @@ Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
                 UINT32 prefetch_distance, BOOL select_plans,
                 FILE *trace, AIO10_ANALYSIS *analysis)
 {
-    DSL_TILE_CONTROL tile_control;
-    DSL_FETCH_PIPELINE_CONTROL fetch_control;
+    VHO_DSL_TILE_CONTROL tile_control;
+    VHO_DSL_FETCH_PIPELINE_CONTROL fetch_control;
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
@@ -238,34 +239,34 @@ Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
         !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
 
-    DSL_tile_control_init(&tile_control);
+    VHO_DSL_Tile_Control_Init(&tile_control);
     tile_control.target_profile_id = profile;
     tile_control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->tile = DSL_tile_create
+    analysis->tile = VHO_DSL_Tile_Create
                          (fixture->pu, analysis->graph, analysis->tensor,
                           analysis->locality, NULL, &tile_control, stderr);
     if (analysis->tile == NULL ||
-        !DSL_tile_build(analysis->tile, stderr) ||
-        !DSL_tile_verify(analysis->tile, stderr))
+        !VHO_DSL_Tile_Build(analysis->tile, stderr) ||
+        !VHO_DSL_Tile_Verify(analysis->tile, stderr))
         return FALSE;
 
-    DSL_fetch_pipeline_control_init(&fetch_control);
+    VHO_DSL_Fetch_Pipeline_Control_Init(&fetch_control);
     fetch_control.target_profile_id = profile;
     fetch_control.focus_value_id = tile_control.focus_value_id;
     fetch_control.prefetch_distance_hint = prefetch_distance;
     fetch_control.select_plans = select_plans;
-    analysis->pipeline = DSL_fetch_pipeline_create
+    analysis->pipeline = VHO_DSL_Fetch_Pipeline_Create
                              (fixture->pu, analysis->graph,
                               analysis->locality, NULL, analysis->tile,
                               &fetch_control, stderr);
     if (analysis->pipeline == NULL ||
-        !DSL_fetch_pipeline_build(analysis->pipeline, stderr) ||
-        !DSL_fetch_pipeline_verify(analysis->pipeline, stderr))
+        !VHO_DSL_Fetch_Pipeline_Build(analysis->pipeline, stderr) ||
+        !VHO_DSL_Fetch_Pipeline_Verify(analysis->pipeline, stderr))
         return FALSE;
     if (trace != NULL) {
-        DSL_tile_print(trace, analysis->tile);
-        DSL_fetch_pipeline_print(trace, analysis->pipeline);
+        VHO_DSL_Tile_Print(trace, analysis->tile);
+        VHO_DSL_Fetch_Pipeline_Print(trace, analysis->pipeline);
     }
     return TRUE;
 }
@@ -280,15 +281,16 @@ Check_Main_Contract (const AIO10_ANALYSIS *analysis, UINT32 profile,
     UINT32 expected_fetches = expected_plans * 2;
     UINT32 expected_stages = profile == DSL_TARGET_PROFILE_CPU_BASELINE ?
                              1 : 7;
-    if (DSL_fetch_pipeline_site_count(analysis->pipeline) != 1 ||
-        DSL_fetch_pipeline_plan_count(analysis->pipeline) !=
+    const DSL_FETCH_PIPELINE_IR *pipeline_ir =
+        VHO_DSL_Fetch_Pipeline_Get_IR(analysis->pipeline);
+    if (DSL_fetch_pipeline_ir_site_count(pipeline_ir) != 1 ||
+        DSL_fetch_pipeline_ir_plan_count(pipeline_ir) !=
             expected_plans ||
-        DSL_fetch_pipeline_fetch_count(analysis->pipeline) !=
+        DSL_fetch_pipeline_ir_fetch_count(pipeline_ir) !=
             expected_fetches ||
-        DSL_fetch_pipeline_stage_count(analysis->pipeline) !=
+        DSL_fetch_pipeline_ir_stage_count(pipeline_ir) !=
             expected_stages ||
-        !DSL_fetch_pipeline_get_site
-             (analysis->pipeline, 1, &site) ||
+        !DSL_fetch_pipeline_ir_get_site(pipeline_ir, 1, &site) ||
         site.pipeline_plan_count != expected_plans)
         return FALSE;
 
@@ -299,8 +301,7 @@ Check_Main_Contract (const AIO10_ANALYSIS *analysis, UINT32 profile,
     UINT32 selected_engine = DSL_MEMORY_MOVEMENT_UNKNOWN;
     for (UINT32 id = 1; id <= expected_plans; ++id) {
         DSL_FETCH_PLAN_RECORD plan;
-        if (!DSL_fetch_pipeline_get_plan
-                 (analysis->pipeline, id, &plan) ||
+        if (!DSL_fetch_pipeline_ir_get_plan(pipeline_ir, id, &plan) ||
             plan.raw_movement_cost != plan.hidden_movement_cost +
                                       plan.unhidden_movement_cost)
             return FALSE;
@@ -412,7 +413,7 @@ Run_Control(void)
 {
     AIO10_FIXTURE fixture;
     AIO10_ANALYSIS analysis;
-    DSL_FETCH_PIPELINE_CONTROL control;
+    VHO_DSL_FETCH_PIPELINE_CONTROL control;
     DSL_FETCH_PIPELINE_ANALYSIS *disabled;
     FILE *quiet = tmpfile();
     DSL_Builder_Begin_Program();
@@ -422,26 +423,27 @@ Run_Control(void)
              (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1,
               FALSE, NULL, &analysis))
         return 1;
-    DSL_fetch_pipeline_destroy(analysis.pipeline);
+    VHO_DSL_Fetch_Pipeline_Destroy(analysis.pipeline);
     analysis.pipeline = NULL;
-    DSL_fetch_pipeline_control_init(&control);
+    VHO_DSL_Fetch_Pipeline_Control_Init(&control);
     control.apply_transformation = 1;
-    if (DSL_fetch_pipeline_create
+    if (VHO_DSL_Fetch_Pipeline_Create
             (fixture.pu, analysis.graph, analysis.locality, NULL,
              analysis.tile, &control, quiet) != NULL)
         return 1;
     control.apply_transformation = 0;
     control.generate_candidates = 0;
     control.select_plans = 0;
-    disabled = DSL_fetch_pipeline_create
+    disabled = VHO_DSL_Fetch_Pipeline_Create
                    (fixture.pu, analysis.graph, analysis.locality, NULL,
                     analysis.tile, &control, stderr);
     if (disabled == NULL ||
-        !DSL_fetch_pipeline_build(disabled, stderr) ||
-        !DSL_fetch_pipeline_verify(disabled, stderr) ||
-        DSL_fetch_pipeline_site_count(disabled) != 0)
+        !VHO_DSL_Fetch_Pipeline_Build(disabled, stderr) ||
+        !VHO_DSL_Fetch_Pipeline_Verify(disabled, stderr) ||
+        DSL_fetch_pipeline_ir_site_count
+            (VHO_DSL_Fetch_Pipeline_Get_IR(disabled)) != 0)
         return 1;
-    DSL_fetch_pipeline_destroy(disabled);
+    VHO_DSL_Fetch_Pipeline_Destroy(disabled);
     Destroy_Analysis(&analysis);
     fclose(quiet);
     printf("AIO-10 control contract passed\n");

@@ -24,7 +24,9 @@ struct DSL_PHYSICAL_PLAN_ANALYSIS {
     ST_IDX owner_pu_st;
     const DSL_TENSOR_EVOLUTION_GRAPH *graph;
     const DSL_TILE_ANALYSIS *tile;
+    const DSL_TILE_PLAN_IR *tile_ir;
     const DSL_FETCH_PIPELINE_ANALYSIS *pipeline;
+    const DSL_FETCH_PIPELINE_IR *pipeline_ir;
     VHO_DSL_PHYSICAL_PLAN_CONTROL control;
     std::vector<DSL_PHYSICAL_SITE_RECORD> sites;
     std::vector<DSL_PHYSICAL_IMPLEMENTATION_RECORD> implementations;
@@ -133,7 +135,7 @@ DSL_Physical_Find_Capability
 
 static BOOL
 DSL_Physical_Selected_Fetch
-        (const DSL_FETCH_PIPELINE_ANALYSIS *pipeline,
+        (const DSL_FETCH_PIPELINE_IR *pipeline,
          const DSL_FETCH_SITE_RECORD &site,
          DSL_FETCH_PLAN_RECORD *selected)
 {
@@ -141,7 +143,7 @@ DSL_Physical_Selected_Fetch
         return FALSE;
     for (UINT32 i = 0; i < site.pipeline_plan_count; ++i) {
         DSL_FETCH_PLAN_RECORD candidate;
-        if (!DSL_fetch_pipeline_get_plan
+        if (!DSL_fetch_pipeline_ir_get_plan
                  (pipeline, site.first_pipeline_plan_id + i, &candidate))
             return FALSE;
         if (candidate.optimization_plan_id == site.selected_plan_id) {
@@ -452,6 +454,8 @@ VHO_DSL_Physical_Plan_Create
     if (pu == NULL || graph == NULL || tile == NULL || pipeline == NULL ||
         control == NULL || Current_PU_Info != pu ||
         !DSL_Physical_Control_Valid(*control) ||
+        !VHO_DSL_Tile_Verify(tile, diagnostic) ||
+        !VHO_DSL_Fetch_Pipeline_Verify(pipeline, diagnostic) ||
         !DSL_Physical_Owner_Valid(PU_Info_proc_sym(pu))) {
         DSL_Physical_Report(diagnostic, "invalid create request", 0);
         return NULL;
@@ -462,10 +466,17 @@ VHO_DSL_Physical_Plan_Create
     analysis->owner_pu_st = PU_Info_proc_sym(pu);
     analysis->graph = graph;
     analysis->tile = tile;
+    analysis->tile_ir = VHO_DSL_Tile_Get_IR(tile);
     analysis->pipeline = pipeline;
+    analysis->pipeline_ir = VHO_DSL_Fetch_Pipeline_Get_IR(pipeline);
     analysis->control = *control;
     analysis->ir = NULL;
     analysis->built = FALSE;
+    if (analysis->tile_ir == NULL || analysis->pipeline_ir == NULL) {
+        delete analysis;
+        DSL_Physical_Report(diagnostic, "missing input IR", 0);
+        return NULL;
+    }
     return analysis;
 }
 
@@ -509,15 +520,15 @@ VHO_DSL_Physical_Plan_Build
                VHO_DSL_Physical_Plan_Verify(analysis, diagnostic);
     }
     for (UINT32 id = 1;
-         id <= DSL_fetch_pipeline_site_count(analysis->pipeline); ++id) {
+         id <= DSL_fetch_pipeline_ir_site_count(analysis->pipeline_ir); ++id) {
         DSL_FETCH_SITE_RECORD fetch_site;
         DSL_FETCH_PLAN_RECORD fetch;
         DSL_TILE_PLAN_RECORD tile;
         DSL_IR_NODE_RECORD node;
         DSL_IR_VALUE_RECORD value;
         DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
-        if (!DSL_fetch_pipeline_get_site
-                 (analysis->pipeline, id, &fetch_site) ||
+        if (!DSL_fetch_pipeline_ir_get_site
+                 (analysis->pipeline_ir, id, &fetch_site) ||
             (analysis->control.focus_value_id != 0 &&
              fetch_site.semantic_value_id !=
                  analysis->control.focus_value_id))
@@ -526,9 +537,9 @@ VHO_DSL_Physical_Plan_Build
             return DSL_Physical_Report
                        (diagnostic, "site budget exhausted", id);
         if (!DSL_Physical_Selected_Fetch
-                 (analysis->pipeline, fetch_site, &fetch) ||
-            !DSL_tile_get_plan
-                 (analysis->tile, fetch.tile_plan_id, &tile) ||
+                 (analysis->pipeline_ir, fetch_site, &fetch) ||
+            !DSL_tile_plan_ir_get_plan
+                 (analysis->tile_ir, fetch.tile_plan_id, &tile) ||
             !DSL_IR_Image_Get_Node(fetch_site.semantic_node_id, &node) ||
             !DSL_IR_Image_Get_Value(fetch_site.semantic_value_id, &value) ||
             !DSL_IR_Image_Get_Opcode_Descriptor
